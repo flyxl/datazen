@@ -17,6 +17,12 @@ export const connectionCommands = {
   disconnect: (connectionId: string) =>
     invoke<void>('disconnect', { connectionId }),
 
+  getConnectionInfo: (connectionId: string) =>
+    invoke<{ databaseType: string; name: string; host?: string; port?: number; database?: string }>(
+      'get_connection_info',
+      { connectionId },
+    ),
+
   getGroups: () => invoke<string[]>('get_groups'),
 
   saveGroups: (groups: string[]) => invoke<void>('save_groups', { groups }),

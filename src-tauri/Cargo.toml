@@ -24,7 +24,10 @@ sqlx = { version = "0.7", features = [
     "sqlite",
     "chrono",
     "json",
+    "rust_decimal",
+    "uuid",
 ] }
+rust_decimal = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 aes-gcm = "0.10"
@@ -38,6 +41,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 sysinfo = "0.30"
 async-trait = "0.1"
+urlencoding = "2"
 tauri-plugin-webdriver = { version = "0.2", optional = true }
 tauri-plugin-dialog = "2"
 

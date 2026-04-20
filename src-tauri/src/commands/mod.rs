@@ -3,8 +3,8 @@
 use crate::cache::SchemaCache;
 use crate::db::registry::DriverRegistry;
 use crate::db::{
-    ConnectionConfig, ExplainResult, MultiQueryResult, QueryResult, ServerInfo, TableDataResult,
-    TableInfo, TableSchema,
+    ConnectionConfig, DatabaseType, ExplainResult, MultiQueryResult, QueryResult, ServerInfo,
+    TableDataResult, TableInfo, TableSchema,
 };
 use crate::services::{ConnectionManager, FilterCondition, OrderBy, QueryExecutor, SortCondition};
 use crate::store::{AppSettings, QueryHistoryEntry, Store};
@@ -123,6 +123,34 @@ pub async fn disconnect(state: State<'_, AppState>, connection_id: String) -> Re
     state.schema_cache.clear_connection(&connection_id).await;
     tracing::info!(%connection_id, "disconnect OK");
     Ok(())
+}
+
+#[tauri::command]
+pub async fn get_connection_info(
+    state: State<'_, AppState>,
+    connection_id: String,
+) -> Result<serde_json::Value, String> {
+    let config = state
+        .connection_manager
+        .get_connection_config(&connection_id)
+        .await
+        .map_err(|e| log_err("get_connection_info", &e))?;
+
+    let db_type = match config.database_type {
+        DatabaseType::PostgreSQL => "postgresql",
+        DatabaseType::MySQL => "mysql",
+        DatabaseType::MariaDB => "mariadb",
+        DatabaseType::SQLite => "sqlite",
+        DatabaseType::Redis => "redis",
+    };
+
+    Ok(serde_json::json!({
+        "databaseType": db_type,
+        "name": config.name,
+        "host": config.host,
+        "port": config.port,
+        "database": config.database,
+    }))
 }
 
 #[tauri::command]

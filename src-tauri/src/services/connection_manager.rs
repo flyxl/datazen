@@ -114,6 +114,17 @@ impl ConnectionManager {
         Ok((driver, active.handle.clone()))
     }
 
+    pub async fn get_connection_config(
+        &self,
+        connection_id: &str,
+    ) -> Result<ConnectionConfig, ConnectionError> {
+        let connections = self.connections.read().await;
+        let active = connections
+            .get(connection_id)
+            .ok_or_else(|| ConnectionError::ConnectionNotFound(connection_id.to_string()))?;
+        Ok(active.config.clone())
+    }
+
     pub async fn test_connection(&self, config: &ConnectionConfig) -> Result<ServerInfo, ConnectionError> {
         let driver = self
             .registry

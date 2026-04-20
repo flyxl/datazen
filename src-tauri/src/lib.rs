@@ -164,6 +164,7 @@ pub fn run() {
             commands::test_connection,
             commands::connect,
             commands::disconnect,
+            commands::get_connection_info,
             commands::get_databases,
             commands::get_tables,
             commands::get_table_schema,

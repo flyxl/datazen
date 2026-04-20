@@ -9,6 +9,7 @@ interface IndexesViewProps {
   connectionId: string;
   tableName: string;
   createIndexTrigger?: number;
+  databaseType?: string;
 }
 
 function TypeBadge({ type: t }: { type: string }) {
@@ -27,15 +28,18 @@ interface CreateIndexDialogProps {
   onSubmit: (sql: string) => void;
   onCancel: () => void;
   submitting: boolean;
+  databaseType?: string;
 }
 
-function CreateIndexDialog({ columns, tableName, onSubmit, onCancel, submitting }: CreateIndexDialogProps) {
+function CreateIndexDialog({ columns, tableName, onSubmit, onCancel, submitting, databaseType }: CreateIndexDialogProps) {
+  const isMySQL = databaseType === 'mysql' || databaseType === 'mariadb';
   const [indexName, setIndexName] = useState('');
   const [selectedCols, setSelectedCols] = useState<string[]>([]);
   const [isUnique, setIsUnique] = useState(false);
   const [indexType, setIndexType] = useState<'btree' | 'hash' | 'gin' | 'gist'>('btree');
 
   const autoName = `idx_${tableName}_${selectedCols.join('_')}`;
+  const q = isMySQL ? '`' : '"';
 
   const toggleColumn = (col: string) => {
     setSelectedCols((prev) =>
@@ -48,8 +52,8 @@ function CreateIndexDialog({ columns, tableName, onSubmit, onCancel, submitting 
     const name = indexName.trim() || autoName;
     const uniqueKw = isUnique ? 'UNIQUE ' : '';
     const usingKw = indexType !== 'btree' ? ` USING ${indexType}` : '';
-    const quotedCols = selectedCols.map((c) => `"${c}"`).join(', ');
-    const sql = `CREATE ${uniqueKw}INDEX "${name}" ON "${tableName}"${usingKw} (${quotedCols})`;
+    const quotedCols = selectedCols.map((c) => `${q}${c}${q}`).join(', ');
+    const sql = `CREATE ${uniqueKw}INDEX ${q}${name}${q} ON ${q}${tableName}${q}${usingKw} (${quotedCols})`;
     onSubmit(sql);
   };
 
@@ -125,8 +129,8 @@ function CreateIndexDialog({ columns, tableName, onSubmit, onCancel, submitting 
             >
               <option value="btree">B-Tree</option>
               <option value="hash">Hash</option>
-              <option value="gin">GIN</option>
-              <option value="gist">GiST</option>
+              {!isMySQL && <option value="gin">GIN</option>}
+              {!isMySQL && <option value="gist">GiST</option>}
             </select>
           </div>
         </div>
@@ -136,7 +140,7 @@ function CreateIndexDialog({ columns, tableName, onSubmit, onCancel, submitting 
           <div className="mb-4 rounded border border-edge bg-surface-alt p-2.5">
             <div className="mb-1 text-[10px] font-medium uppercase text-fg-muted">SQL 预览</div>
             <code className="block whitespace-pre-wrap text-xs text-green-400">
-              {`CREATE ${isUnique ? 'UNIQUE ' : ''}INDEX "${indexName.trim() || autoName}" ON "${tableName}"${indexType !== 'btree' ? ` USING ${indexType}` : ''} (${selectedCols.map((c) => `"${c}"`).join(', ')})`}
+              {`CREATE ${isUnique ? 'UNIQUE ' : ''}INDEX ${q}${indexName.trim() || autoName}${q} ON ${q}${tableName}${q}${indexType !== 'btree' ? ` USING ${indexType}` : ''} (${selectedCols.map((c) => `${q}${c}${q}`).join(', ')})`}
             </code>
           </div>
         )}
@@ -195,7 +199,9 @@ function DeleteConfirmDialog({ indexName, onConfirm, onCancel, submitting }: Del
 
 // ── Main IndexesView ─────────────────────────────────────────────
 
-export function IndexesView({ connectionId, tableName, createIndexTrigger }: IndexesViewProps) {
+export function IndexesView({ connectionId, tableName, createIndexTrigger, databaseType }: IndexesViewProps) {
+  const isMySQL = databaseType === 'mysql' || databaseType === 'mariadb';
+  const q = isMySQL ? '`' : '"';
   const [indexes, setIndexes] = useState<IndexInfo[]>([]);
   const [columns, setColumns] = useState<ColumnSchema[]>([]);
   const [loading, setLoading] = useState(false);
@@ -253,7 +259,10 @@ export function IndexesView({ connectionId, tableName, createIndexTrigger }: Ind
     if (!deleteTarget) return;
     setSubmitting(true);
     try {
-      await databaseCommands.executeSQL(connectionId, `DROP INDEX "${deleteTarget}"`);
+      const dropSql = isMySQL
+        ? `DROP INDEX ${q}${deleteTarget}${q} ON ${q}${tableName}${q}`
+        : `DROP INDEX ${q}${deleteTarget}${q}`;
+      await databaseCommands.executeSQL(connectionId, dropSql);
       setDeleteTarget(null);
       setVersion((v) => v + 1);
     } catch (e) {
@@ -377,6 +386,7 @@ export function IndexesView({ connectionId, tableName, createIndexTrigger }: Ind
           onSubmit={handleCreateIndex}
           onCancel={() => setShowCreate(false)}
           submitting={submitting}
+          databaseType={databaseType}
         />
       )}
 

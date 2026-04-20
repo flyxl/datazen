@@ -95,6 +95,7 @@ export function ConnectionWindow() {
 
   const connectionId = getUrlParam('connectionId') ?? '';
   const connectionName = getUrlParam('connectionName') ?? '连接';
+  const databaseType = getUrlParam('databaseType') ?? 'postgresql';
   const initialDatabase = getUrlParam('database') ?? undefined;
 
   const [panels, setPanels] = useState<Panel[]>([]);
@@ -115,6 +116,7 @@ export function ConnectionWindow() {
   const totalRows = useTableDataStore((s) => s.totalRows);
   const selectedRows = useTableDataStore((s) => s.selectedRows);
   const tableName = useTableDataStore((s) => s.tableName);
+  const setDbType = useTableDataStore((s) => s.setDatabaseType);
 
   const createQueryTab = useQueryStore((s) => s.createTab);
   const closeQueryTab = useQueryStore((s) => s.closeTab);
@@ -137,6 +139,10 @@ export function ConnectionWindow() {
   useEffect(() => {
     if (connectionId) setQueryConnectionId(connectionId);
   }, [connectionId, setQueryConnectionId]);
+
+  useEffect(() => {
+    setDbType(databaseType);
+  }, [databaseType, setDbType]);
 
   const handleSelectTable = useCallback((table: string) => {
     console.log('[ConnectionWindow] select table', table);
@@ -380,7 +386,13 @@ export function ConnectionWindow() {
     );
   }
 
-  const centerTitle = `${connectionName} - PostgreSQL - DataZen`;
+  const dbTypeLabel: Record<string, string> = {
+    postgresql: 'PostgreSQL',
+    mysql: 'MySQL',
+    mariadb: 'MariaDB',
+    sqlite: 'SQLite',
+  };
+  const centerTitle = `${connectionName} - ${dbTypeLabel[databaseType] ?? databaseType} - DataZen`;
 
   return (
     <div className="flex h-screen min-h-0 flex-col bg-surface text-fg">
@@ -549,13 +561,13 @@ export function ConnectionWindow() {
                     <StructureView connectionId={connectionId} tableName={activePanel.tableName} onEditStructure={handleAlterTable} />
                   )}
                   {activePanel.subTab === 'indexes' && (
-                    <IndexesView connectionId={connectionId} tableName={activePanel.tableName} createIndexTrigger={createIndexTrigger} />
+                    <IndexesView connectionId={connectionId} tableName={activePanel.tableName} createIndexTrigger={createIndexTrigger} databaseType={databaseType} />
                   )}
                   {activePanel.subTab === 'foreignKeys' && (
                     <ForeignKeysView connectionId={connectionId} tableName={activePanel.tableName} />
                   )}
                   {activePanel.subTab === 'ddl' && (
-                    <DDLView connectionId={connectionId} tableName={activePanel.tableName} />
+                    <DDLView connectionId={connectionId} tableName={activePanel.tableName} databaseType={databaseType} />
                   )}
                 </div>
               </>
@@ -610,7 +622,7 @@ export function ConnectionWindow() {
         </div>
         <div className="truncate text-fg-muted">
           {[
-            'PostgreSQL',
+            dbTypeLabel[databaseType] ?? databaseType,
             connectionName,
             currentDatabase,
             tableName,
@@ -670,6 +682,7 @@ export function ConnectionWindow() {
           columns={tableColumns}
           rows={tableRows}
           selectedRows={selectedRows}
+          databaseType={databaseType}
         />
       )}
 
@@ -679,6 +692,7 @@ export function ConnectionWindow() {
         connectionId={connectionId}
         tableName={importTableName}
         onImported={handleRefresh}
+        databaseType={databaseType}
       />
     </div>
   );

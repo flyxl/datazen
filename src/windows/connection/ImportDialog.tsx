@@ -15,9 +15,10 @@ interface ImportDialogProps {
   connectionId: string;
   tableName: string | null;
   onImported: () => void;
+  databaseType?: string;
 }
 
-export function ImportDialog({ open: isOpen, onClose, connectionId, tableName, onImported }: ImportDialogProps) {
+export function ImportDialog({ open: isOpen, onClose, connectionId, tableName, onImported, databaseType }: ImportDialogProps) {
   const [filePath, setFilePath] = useState<string | null>(null);
   const [parsedData, setParsedData] = useState<ParsedData | null>(null);
   const [importing, setImporting] = useState(false);
@@ -62,7 +63,7 @@ export function ImportDialog({ open: isOpen, onClose, connectionId, tableName, o
     setResult(null);
     setImporting(true);
     try {
-      const sql = generateInsertSQL(targetTable.trim(), parsedData);
+      const sql = generateInsertSQL(targetTable.trim(), parsedData, databaseType);
       if (!sql) {
         setError('没有数据可导入');
         return;

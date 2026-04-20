@@ -6,9 +6,10 @@ import { Button } from '../../components/ui/Button';
 interface DDLViewProps {
   connectionId: string;
   tableName: string;
+  databaseType?: string;
 }
 
-export function DDLView({ connectionId, tableName }: DDLViewProps) {
+export function DDLView({ connectionId, tableName, databaseType }: DDLViewProps) {
   const [ddl, setDdl] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -20,7 +21,10 @@ export function DDLView({ connectionId, tableName }: DDLViewProps) {
     setError(null);
     setDdl('');
 
-    const sql = `
+    const isMySQL = databaseType === 'mysql' || databaseType === 'mariadb';
+    const sql = isMySQL
+      ? `SHOW CREATE TABLE \`${tableName}\``
+      : `
       SELECT
         'CREATE TABLE ' || quote_ident(schemaname) || '.' || quote_ident(tablename) || E' (\\n' ||
         string_agg(
@@ -44,7 +48,7 @@ export function DDLView({ connectionId, tableName }: DDLViewProps) {
       .then((multi) => {
         if (!cancelled) {
           const row = multi.results[0]?.rows[0];
-          const val = row?.[0];
+          const val = isMySQL ? row?.[1] : row?.[0];
           setDdl(typeof val === 'string' ? val : val != null ? String(val) : '-- 无法获取 DDL');
           setLoading(false);
         }

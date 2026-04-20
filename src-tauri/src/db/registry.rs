@@ -1,5 +1,6 @@
 //! Driver registry — resolves `DatabaseType` to a concrete `DatabaseDriver`.
 
+use super::mysql::MysqlDriver;
 use super::postgres::PostgresDriver;
 use super::{DatabaseDriver, DatabaseType};
 use std::collections::HashMap;
@@ -40,11 +41,17 @@ impl Default for DriverRegistry {
     }
 }
 
-/// Registers built-in drivers (currently PostgreSQL stub only).
+/// Registers built-in drivers.
 pub async fn init_drivers() -> DriverRegistry {
     let registry = DriverRegistry::new();
     registry
         .register(Arc::new(PostgresDriver::new()))
+        .await;
+    registry
+        .register(Arc::new(MysqlDriver::new(false)))
+        .await;
+    registry
+        .register(Arc::new(MysqlDriver::new(true)))
         .await;
     registry
 }

@@ -3,6 +3,7 @@ import { Loader2 } from 'lucide-react';
 import { DataTable } from '../../components/DataTable/DataTable';
 import type { ColumnDef } from '../../components/DataTable/TableHeader';
 import { useTableDataStore } from '../../stores/tableDataStore';
+import type { TableState } from '../../stores/tableDataStore';
 
 interface TableViewProps {
   connectionId: string;
@@ -10,20 +11,10 @@ interface TableViewProps {
 }
 
 export function TableView({ connectionId, tableName }: TableViewProps) {
-  const columns = useTableDataStore((s) => s.columns);
-  const rows = useTableDataStore((s) => s.rows);
-  const totalRows = useTableDataStore((s) => s.totalRows);
-  const page = useTableDataStore((s) => s.page);
-  const pageSize = useTableDataStore((s) => s.pageSize);
-  const sorts = useTableDataStore((s) => s.sorts);
-  const filters = useTableDataStore((s) => s.filters);
-  const editBuffer = useTableDataStore((s) => s.editBuffer);
-  const editingCell = useTableDataStore((s) => s.editingCell);
-  const selectedRows = useTableDataStore((s) => s.selectedRows);
-  const loading = useTableDataStore((s) => s.loading);
-  const error = useTableDataStore((s) => s.error);
-
+  const tableStates = useTableDataStore((s) => s.tableStates);
+  const activeTable = useTableDataStore((s) => s.activeTable);
   const loadTableData = useTableDataStore((s) => s.loadTableData);
+  const switchToTable = useTableDataStore((s) => s.switchToTable);
   const setSort = useTableDataStore((s) => s.setSort);
   const addFilter = useTableDataStore((s) => s.addFilter);
   const removeFilter = useTableDataStore((s) => s.removeFilter);
@@ -36,10 +27,29 @@ export function TableView({ connectionId, tableName }: TableViewProps) {
   const selectRow = useTableDataStore((s) => s.selectRow);
   const toggleSelectAll = useTableDataStore((s) => s.toggleSelectAll);
 
+  const ts: TableState | undefined = tableStates.get(tableName);
+  const hasData = ts != null && ts.columns.length > 0;
+
   useEffect(() => {
-    console.log('[TableView] loading', connectionId, tableName);
-    void loadTableData({ connectionId, table: tableName });
-  }, [connectionId, tableName, loadTableData]);
+    if (hasData && activeTable !== tableName) {
+      switchToTable(tableName);
+    } else if (!hasData) {
+      void loadTableData({ connectionId, table: tableName });
+    }
+  }, [connectionId, tableName, hasData, activeTable, loadTableData, switchToTable]);
+
+  const columns = ts?.columns ?? [];
+  const rows = ts?.rows ?? [];
+  const totalRows = ts?.totalRows ?? 0;
+  const page = ts?.page ?? 0;
+  const pageSize = ts?.pageSize ?? 50;
+  const sorts = ts?.sorts ?? [];
+  const filters = ts?.filters ?? [];
+  const editBuffer = ts?.editBuffer ?? new Map();
+  const editingCell = ts?.editingCell ?? null;
+  const selectedRows = ts?.selectedRows ?? new Set<number>();
+  const loading = ts?.loading ?? false;
+  const error = ts?.error ?? null;
 
   if (error) {
     return (

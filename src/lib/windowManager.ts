@@ -77,9 +77,10 @@ export function openNewConnectionWindow(editId?: string) {
   }
 }
 
-export function openConnectionWindow(connectionId: string, connectionName: string, database?: string) {
+export function openConnectionWindow(connectionId: string, connectionName: string, database?: string, databaseType?: string) {
   const params: Record<string, string> = { window: 'connection', connectionId, connectionName };
   if (database) params.database = database;
+  if (databaseType) params.databaseType = databaseType;
 
   const opts: OpenWindowOptions = {
     params,

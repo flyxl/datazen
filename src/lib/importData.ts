@@ -83,17 +83,20 @@ function escapeSQLValue(value: unknown): string {
   return `'${str.replaceAll("'", "''")}'`;
 }
 
-function escapeSQLIdent(name: string): string {
+function escapeSQLIdent(name: string, dbType?: string): string {
+  if (dbType === 'mysql' || dbType === 'mariadb') {
+    return `\`${name.replaceAll('`', '``')}\``;
+  }
   return `"${name.replaceAll('"', '""')}"`;
 }
 
-export function generateInsertSQL(tableName: string, data: ParsedData): string {
+export function generateInsertSQL(tableName: string, data: ParsedData, databaseType?: string): string {
   if (data.rows.length === 0) return '';
-  const colList = data.columns.map(escapeSQLIdent).join(', ');
+  const colList = data.columns.map((c) => escapeSQLIdent(c, databaseType)).join(', ');
   return data.rows
     .map((row) => {
       const values = data.columns.map((col) => escapeSQLValue(row[col])).join(', ');
-      return `INSERT INTO ${escapeSQLIdent(tableName)} (${colList}) VALUES (${values});`;
+      return `INSERT INTO ${escapeSQLIdent(tableName, databaseType)} (${colList}) VALUES (${values});`;
     })
     .join('\n');
 }

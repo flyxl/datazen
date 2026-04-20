@@ -295,6 +295,17 @@ pub trait DatabaseDriver: Send + Sync {
         table: &str,
     ) -> Result<TableSchema, DriverError>;
 
+    /// Lightweight: only fetch column info (no indexes/foreign keys).
+    /// Default delegates to get_table_schema; drivers may override for speed.
+    async fn get_columns(
+        &self,
+        handle: &ConnectionHandle,
+        table: &str,
+    ) -> Result<(Vec<ColumnSchema>, Vec<String>), DriverError> {
+        let schema = self.get_table_schema(handle, table).await?;
+        Ok((schema.columns, schema.primary_keys))
+    }
+
     async fn query(&self, handle: &ConnectionHandle, sql: &str) -> Result<QueryResult, DriverError>;
 
     async fn query_multi(
@@ -327,6 +338,7 @@ pub trait DatabaseDriver: Send + Sync {
     async fn cancel_query(&self, handle: &ConnectionHandle) -> Result<(), DriverError>;
 }
 
+pub mod mysql;
 pub mod postgres;
 pub mod registry;
 

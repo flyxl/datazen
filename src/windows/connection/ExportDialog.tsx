@@ -15,6 +15,7 @@ interface ExportDialogProps {
   columns: ColumnSchema[];
   rows: Record<string, unknown>[];
   selectedRows: Set<number>;
+  databaseType?: string;
 }
 
 const FORMAT_OPTIONS: { value: ExportFormat; label: string }[] = [
@@ -24,7 +25,7 @@ const FORMAT_OPTIONS: { value: ExportFormat; label: string }[] = [
   { value: 'sql_update', label: 'SQL UPDATE' },
 ];
 
-export function ExportDialog({ open, onClose, tableName, columns, rows, selectedRows }: ExportDialogProps) {
+export function ExportDialog({ open, onClose, tableName, columns, rows, selectedRows, databaseType }: ExportDialogProps) {
   const [format, setFormat] = useState<ExportFormat>('csv');
   const [scope, setScope] = useState<ExportScope>('current_page');
   const [selectedCols, setSelectedCols] = useState<Set<string>>(() => new Set(columns.map((c) => c.name)));
@@ -65,6 +66,7 @@ export function ExportDialog({ open, onClose, tableName, columns, rows, selected
         scope,
         selectedColumns: colNames,
         format,
+        databaseType,
       });
 
       const defaultName = getDefaultFilename(tableName, format);

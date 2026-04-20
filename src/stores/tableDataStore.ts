@@ -21,7 +21,6 @@ export interface CellEdit {
   columnName: string;
   originalValue: unknown;
   newValue: unknown;
-  /** Snapshot of PK values from the row BEFORE mutation, used for WHERE clause. */
   pkSnapshot: Record<string, unknown>;
 }
 
@@ -37,13 +36,15 @@ function escapeSqlValue(val: unknown): string {
   return `'${String(val).replaceAll("'", "''")}'`;
 }
 
-function escapeSqlIdent(name: string): string {
+function escapeSqlIdent(name: string, dbType?: string): string {
+  if (dbType === 'mysql' || dbType === 'mariadb') {
+    return `\`${name.replaceAll('`', '``')}\``;
+  }
   return `"${name.replaceAll('"', '""')}"`;
 }
 
-interface TableDataStore {
-  connectionId: string | null;
-  tableName: string | null;
+/** Per-table state slice */
+export interface TableState {
   columns: ColumnSchema[];
   rows: Record<string, unknown>[];
   totalRows: number;
@@ -57,7 +58,50 @@ interface TableDataStore {
   editingCell: { row: number; col: string } | null;
   loading: boolean;
   error: string | null;
+}
 
+function emptyTableState(): TableState {
+  return {
+    columns: [],
+    rows: [],
+    totalRows: 0,
+    page: 0,
+    pageSize: 50,
+    filters: [],
+    sorts: [],
+    editBuffer: new Map(),
+    selectedRows: new Set(),
+    lastSelectedIndex: null,
+    editingCell: null,
+    loading: false,
+    error: null,
+  };
+}
+
+interface TableDataStore {
+  connectionId: string | null;
+  databaseType: string | null;
+  activeTable: string | null;
+  tableStates: Map<string, TableState>;
+
+  /** Convenience selectors that read from the active table's state */
+  columns: ColumnSchema[];
+  rows: Record<string, unknown>[];
+  totalRows: number;
+  page: number;
+  pageSize: number;
+  filters: FilterCondition[];
+  sorts: SortCondition[];
+  editBuffer: Map<string, CellEdit>;
+  selectedRows: Set<number>;
+  lastSelectedIndex: number | null;
+  editingCell: { row: number; col: string } | null;
+  loading: boolean;
+  error: string | null;
+  tableName: string | null;
+
+  setDatabaseType: (dbType: string) => void;
+  switchToTable: (table: string) => void;
   loadTableData: (params: { connectionId: string; table: string }) => Promise<void>;
   setPage: (page: number) => void;
   setPageSize: (size: number) => void;
@@ -73,29 +117,77 @@ interface TableDataStore {
   selectRow: (index: number, opts?: { multi?: boolean; range?: boolean }) => void;
   toggleSelectAll: () => void;
   deleteSelectedRows: () => Promise<void>;
+  closeTable: (table: string) => void;
   reset: () => void;
+}
+
+function getState(states: Map<string, TableState>, table: string | null): TableState {
+  if (!table) return emptyTableState();
+  return states.get(table) ?? emptyTableState();
+}
+
+function syncFlat(active: string | null, states: Map<string, TableState>) {
+  const ts = getState(states, active);
+  return {
+    tableName: active,
+    columns: ts.columns,
+    rows: ts.rows,
+    totalRows: ts.totalRows,
+    page: ts.page,
+    pageSize: ts.pageSize,
+    filters: ts.filters,
+    sorts: ts.sorts,
+    editBuffer: ts.editBuffer,
+    selectedRows: ts.selectedRows,
+    lastSelectedIndex: ts.lastSelectedIndex,
+    editingCell: ts.editingCell,
+    loading: ts.loading,
+    error: ts.error,
+  };
+}
+
+function updateActive(
+  get: () => TableDataStore,
+  set: (partial: Partial<TableDataStore>) => void,
+  updater: (ts: TableState) => Partial<TableState>,
+): void {
+  const { activeTable, tableStates } = get();
+  if (!activeTable) return;
+  const current = getState(tableStates, activeTable);
+  const patched = { ...current, ...updater(current) };
+  const next = new Map(tableStates);
+  next.set(activeTable, patched);
+  set({ tableStates: next, ...syncFlat(activeTable, next) });
 }
 
 export const useTableDataStore = create<TableDataStore>((set, get) => ({
   connectionId: null,
-  tableName: null,
-  columns: [],
-  rows: [],
-  totalRows: 0,
-  page: 0,
-  pageSize: 50,
-  filters: [],
-  sorts: [],
-  editBuffer: new Map(),
-  selectedRows: new Set(),
-  lastSelectedIndex: null,
-  editingCell: null,
-  loading: false,
-  error: null,
+  databaseType: null,
+  activeTable: null,
+  tableStates: new Map(),
+  ...syncFlat(null, new Map()),
+
+  setDatabaseType: (dbType: string) => set({ databaseType: dbType }),
+
+  switchToTable: (table: string) => {
+    const { tableStates } = get();
+    set({ activeTable: table, ...syncFlat(table, tableStates) });
+  },
 
   loadTableData: async ({ connectionId, table }) => {
-    const { page, pageSize, filters, sorts } = get();
-    set({ loading: true, error: null, connectionId, tableName: table });
+    const { tableStates } = get();
+    const existing = tableStates.get(table) ?? emptyTableState();
+    const { page, pageSize, filters, sorts } = existing;
+
+    const next = new Map(tableStates);
+    next.set(table, { ...existing, loading: true, error: null });
+    set({
+      connectionId,
+      activeTable: table,
+      tableStates: next,
+      ...syncFlat(table, next),
+    });
+
     try {
       const res = await databaseCommands.getTableData({
         connectionId,
@@ -105,7 +197,10 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
         filters,
         sorts,
       });
-      set({
+      const updated = new Map(get().tableStates);
+      const ts = updated.get(table) ?? emptyTableState();
+      const patched: TableState = {
+        ...ts,
         columns: res.columns,
         rows: rowsToRecords(res.columns, res.rows),
         totalRows: res.totalRows ?? 0,
@@ -115,84 +210,102 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
         selectedRows: new Set(),
         editBuffer: new Map(),
         editingCell: null,
+        error: null,
+      };
+      updated.set(table, patched);
+      set({
+        tableStates: updated,
+        ...(get().activeTable === table ? syncFlat(table, updated) : {}),
       });
     } catch (e) {
-      set({
+      const updated = new Map(get().tableStates);
+      const ts = updated.get(table) ?? emptyTableState();
+      updated.set(table, {
+        ...ts,
         loading: false,
         error: e instanceof Error ? e.message : '加载表数据失败',
+      });
+      set({
+        tableStates: updated,
+        ...(get().activeTable === table ? syncFlat(table, updated) : {}),
       });
     }
   },
 
   setPage: (page) => {
-    set({ page });
-    const { connectionId, tableName } = get();
-    if (connectionId && tableName) void get().loadTableData({ connectionId, table: tableName });
+    updateActive(get, set, () => ({ page }));
+    const { connectionId, activeTable } = get();
+    if (connectionId && activeTable) void get().loadTableData({ connectionId, table: activeTable });
   },
 
   setPageSize: (size) => {
-    set({ pageSize: size, page: 0 });
-    const { connectionId, tableName } = get();
-    if (connectionId && tableName) void get().loadTableData({ connectionId, table: tableName });
+    updateActive(get, set, () => ({ pageSize: size, page: 0 }));
+    const { connectionId, activeTable } = get();
+    if (connectionId && activeTable) void get().loadTableData({ connectionId, table: activeTable });
   },
 
-  addFilter: (filter) =>
-    set((s) => ({
-      filters: [...s.filters, filter],
-      page: 0,
-    })),
+  addFilter: (filter) => updateActive(get, set, (ts) => ({
+    filters: [...ts.filters, filter],
+    page: 0,
+  })),
 
-  removeFilter: (index) =>
-    set((s) => ({
-      filters: s.filters.filter((_, i) => i !== index),
-      page: 0,
-    })),
+  removeFilter: (index) => updateActive(get, set, (ts) => ({
+    filters: ts.filters.filter((_, i) => i !== index),
+    page: 0,
+  })),
 
-  clearFilters: () => set({ filters: [], page: 0 }),
+  clearFilters: () => updateActive(get, set, () => ({ filters: [], page: 0 })),
 
   setSort: (sort) => {
-    set({ sorts: [sort], page: 0 });
-    const { connectionId, tableName } = get();
-    if (connectionId && tableName) void get().loadTableData({ connectionId, table: tableName });
+    updateActive(get, set, () => ({ sorts: [sort], page: 0 }));
+    const { connectionId, activeTable } = get();
+    if (connectionId && activeTable) void get().loadTableData({ connectionId, table: activeTable });
   },
 
-  startEdit: (row, col) => set({ editingCell: { row, col } }),
+  startEdit: (row, col) => updateActive(get, set, () => ({ editingCell: { row, col } })),
 
   updateCell: (row, col, value) => {
-    const { rows, editBuffer, columns } = get();
-    const rowObj = rows[row];
+    const { activeTable, tableStates } = get();
+    if (!activeTable) return;
+    const ts = getState(tableStates, activeTable);
+    const rowObj = ts.rows[row];
     if (!rowObj) return;
     const originalValue = rowObj[col];
     const key = editKey(row, col);
 
-    const pkCols = columns.filter((c) => c.isPrimaryKey);
+    const pkCols = ts.columns.filter((c) => c.isPrimaryKey);
     const pkSnapshot: Record<string, unknown> = {};
     for (const pk of pkCols) {
       pkSnapshot[pk.name] = rowObj[pk.name];
     }
 
-    const next = new Map(editBuffer);
-    next.set(key, { rowIndex: row, columnName: col, originalValue, newValue: value, pkSnapshot });
-    const nextRows = [...rows];
+    const nextBuffer = new Map(ts.editBuffer);
+    nextBuffer.set(key, { rowIndex: row, columnName: col, originalValue, newValue: value, pkSnapshot });
+    const nextRows = [...ts.rows];
     nextRows[row] = { ...rowObj, [col]: value as Value };
-    set({ rows: nextRows, editBuffer: next, editingCell: null });
+
+    const next = new Map(tableStates);
+    next.set(activeTable, { ...ts, rows: nextRows, editBuffer: nextBuffer, editingCell: null });
+    set({ tableStates: next, ...syncFlat(activeTable, next) });
     void get().commitChanges();
   },
 
-  cancelEdit: () => set({ editingCell: null }),
+  cancelEdit: () => updateActive(get, set, () => ({ editingCell: null })),
 
   commitChanges: async () => {
-    const { editBuffer, columns, connectionId, tableName } = get();
-    if (editBuffer.size === 0 || !connectionId || !tableName) return;
+    const { activeTable, tableStates, connectionId, databaseType } = get();
+    if (!activeTable || !connectionId) return;
+    const ts = getState(tableStates, activeTable);
+    if (ts.editBuffer.size === 0) return;
 
-    const pkCols = columns.filter((c) => c.isPrimaryKey);
+    const pkCols = ts.columns.filter((c) => c.isPrimaryKey);
     if (pkCols.length === 0) {
-      set({ error: '无法提交更改：表没有主键' });
+      updateActive(get, set, () => ({ error: '无法提交更改：表没有主键' }));
       return;
     }
 
-    const snapshot = new Map(editBuffer);
-    set({ editBuffer: new Map() });
+    const snapshot = new Map(ts.editBuffer);
+    updateActive(get, set, () => ({ editBuffer: new Map() }));
 
     const editsByRow = new Map<number, CellEdit[]>();
     for (const edit of snapshot.values()) {
@@ -201,21 +314,20 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
       editsByRow.set(edit.rowIndex, existing);
     }
 
+    const dbType = databaseType ?? undefined;
     const statements: string[] = [];
     for (const [, edits] of editsByRow) {
       const setClauses = edits.map(
-        (e) => `${escapeSqlIdent(e.columnName)} = ${escapeSqlValue(e.newValue)}`,
+        (e) => `${escapeSqlIdent(e.columnName, dbType)} = ${escapeSqlValue(e.newValue)}`,
       );
-
       const { pkSnapshot } = edits[0];
       const whereClauses = pkCols.map((pk) => {
         const pkVal = pkSnapshot[pk.name];
-        if (pkVal === null || pkVal === undefined) return `${escapeSqlIdent(pk.name)} IS NULL`;
-        return `${escapeSqlIdent(pk.name)} = ${escapeSqlValue(pkVal)}`;
+        if (pkVal === null || pkVal === undefined) return `${escapeSqlIdent(pk.name, dbType)} IS NULL`;
+        return `${escapeSqlIdent(pk.name, dbType)} = ${escapeSqlValue(pkVal)}`;
       });
-
       statements.push(
-        `UPDATE ${escapeSqlIdent(tableName)} SET ${setClauses.join(', ')} WHERE ${whereClauses.join(' AND ')}`,
+        `UPDATE ${escapeSqlIdent(activeTable, dbType)} SET ${setClauses.join(', ')} WHERE ${whereClauses.join(' AND ')}`,
       );
     }
 
@@ -223,73 +335,75 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
       for (const sql of statements) {
         await queryCommands.executeQuery(connectionId, sql);
       }
-      void get().loadTableData({ connectionId, table: tableName });
+      void get().loadTableData({ connectionId, table: activeTable });
     } catch (e) {
-      for (const [key, edit] of snapshot) {
-        get().editBuffer.set(key, edit);
-      }
-      set({ editBuffer: new Map(get().editBuffer), error: e instanceof Error ? e.message : '提交更改失败' });
+      const current = getState(get().tableStates, activeTable);
+      const merged = new Map(current.editBuffer);
+      for (const [key, edit] of snapshot) merged.set(key, edit);
+      updateActive(get, set, () => ({
+        editBuffer: merged,
+        error: e instanceof Error ? e.message : '提交更改失败',
+      }));
     }
   },
 
   discardChanges: () => {
-    const { editBuffer, connectionId, tableName } = get();
-    if (editBuffer.size === 0) return;
-    set({ editBuffer: new Map(), editingCell: null });
-    if (connectionId && tableName) void get().loadTableData({ connectionId, table: tableName });
+    const { activeTable, connectionId } = get();
+    if (!activeTable) return;
+    updateActive(get, set, () => ({ editBuffer: new Map(), editingCell: null }));
+    if (connectionId) void get().loadTableData({ connectionId, table: activeTable });
   },
 
   selectRow: (index, opts) => {
-    const { lastSelectedIndex } = get();
-    if (opts?.range && lastSelectedIndex !== null) {
-      const lo = Math.min(lastSelectedIndex, index);
-      const hi = Math.max(lastSelectedIndex, index);
-      const next = new Set(get().selectedRows);
-      for (let i = lo; i <= hi; i += 1) next.add(i);
-      set({ selectedRows: next, lastSelectedIndex: index });
-    } else if (opts?.multi) {
-      const next = new Set(get().selectedRows);
-      if (next.has(index)) next.delete(index);
-      else next.add(index);
-      set({ selectedRows: next, lastSelectedIndex: index });
-    } else {
-      set({ selectedRows: new Set([index]), lastSelectedIndex: index });
-    }
+    updateActive(get, set, (ts) => {
+      if (opts?.range && ts.lastSelectedIndex !== null) {
+        const lo = Math.min(ts.lastSelectedIndex, index);
+        const hi = Math.max(ts.lastSelectedIndex, index);
+        const next = new Set(ts.selectedRows);
+        for (let i = lo; i <= hi; i += 1) next.add(i);
+        return { selectedRows: next, lastSelectedIndex: index };
+      } else if (opts?.multi) {
+        const next = new Set(ts.selectedRows);
+        if (next.has(index)) next.delete(index);
+        else next.add(index);
+        return { selectedRows: next, lastSelectedIndex: index };
+      }
+      return { selectedRows: new Set([index]), lastSelectedIndex: index };
+    });
   },
 
-  toggleSelectAll: () =>
-    set((s) => {
-      const allSelected = s.selectedRows.size === s.rows.length && s.rows.length > 0;
+  toggleSelectAll: () => {
+    updateActive(get, set, (ts) => {
+      const allSelected = ts.selectedRows.size === ts.rows.length && ts.rows.length > 0;
       if (allSelected) return { selectedRows: new Set(), lastSelectedIndex: null };
       const next = new Set<number>();
-      for (let i = 0; i < s.rows.length; i += 1) next.add(i);
+      for (let i = 0; i < ts.rows.length; i += 1) next.add(i);
       return { selectedRows: next, lastSelectedIndex: null };
-    }),
+    });
+  },
 
   deleteSelectedRows: async () => {
-    set((s) => ({
-      rows: s.rows.filter((_, i) => !s.selectedRows.has(i)),
+    updateActive(get, set, (ts) => ({
+      rows: ts.rows.filter((_, i) => !ts.selectedRows.has(i)),
       selectedRows: new Set(),
     }));
+  },
+
+  closeTable: (table: string) => {
+    const { tableStates, activeTable } = get();
+    const next = new Map(tableStates);
+    next.delete(table);
+    const newActive = activeTable === table ? null : activeTable;
+    set({ tableStates: next, activeTable: newActive, ...syncFlat(newActive, next) });
   },
 
   reset: () =>
     set({
       connectionId: null,
-      tableName: null,
-      columns: [],
-      rows: [],
-      totalRows: 0,
-      page: 0,
-      pageSize: 50,
-      filters: [],
-      sorts: [],
-      editBuffer: new Map(),
-      selectedRows: new Set(),
-      lastSelectedIndex: null,
-      editingCell: null,
-      loading: false,
-      error: null,
+      databaseType: null,
+      activeTable: null,
+      tableStates: new Map(),
+      ...syncFlat(null, new Map()),
     }),
 }));
 

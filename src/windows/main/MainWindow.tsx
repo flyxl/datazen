@@ -72,7 +72,7 @@ export function MainWindow() {
     const entry = useActiveConnectionStore.getState().connections[cfg.id];
     if (entry?.status === 'connected' && entry.connectionId) {
       console.log('[MainWindow] opening connection window', entry.connectionId, cfg.name);
-      openConnectionWindow(entry.connectionId, cfg.name, cfg.database);
+      openConnectionWindow(entry.connectionId, cfg.name, cfg.database, cfg.databaseType);
     }
   }, [connectAction]);
 

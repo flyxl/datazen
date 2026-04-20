@@ -11,6 +11,7 @@ interface ExportOptions {
   scope: ExportScope;
   selectedColumns: string[];
   format: ExportFormat;
+  databaseType?: string;
 }
 
 function escapeCSV(value: unknown): string {
@@ -30,7 +31,10 @@ function escapeSQLValue(value: unknown): string {
   return `'${str.replaceAll("'", "''")}'`;
 }
 
-function escapeSQLIdent(name: string): string {
+function escapeSQLIdent(name: string, dbType?: string): string {
+  if (dbType === 'mysql' || dbType === 'mariadb') {
+    return `\`${name.replaceAll('`', '``')}\``;
+  }
   return `"${name.replaceAll('"', '""')}"`;
 }
 
@@ -42,7 +46,7 @@ function getRows(rows: Record<string, unknown>[], selectedRows: Set<number>, sco
 }
 
 export function generateExport(options: ExportOptions): { content: string; extension: string; mimeType: string } {
-  const { tableName, rows, selectedRows, scope, selectedColumns, format } = options;
+  const { tableName, rows, selectedRows, scope, selectedColumns, format, databaseType } = options;
   const dataRows = getRows(rows, selectedRows, scope);
   const cols = selectedColumns;
 
@@ -65,10 +69,10 @@ export function generateExport(options: ExportOptions): { content: string; exten
     }
 
     case 'sql_insert': {
-      const colList = cols.map(escapeSQLIdent).join(', ');
+      const colList = cols.map((c) => escapeSQLIdent(c, databaseType)).join(', ');
       const statements = dataRows.map((row) => {
         const values = cols.map((col) => escapeSQLValue(row[col])).join(', ');
-        return `INSERT INTO ${escapeSQLIdent(tableName)} (${colList}) VALUES (${values});`;
+        return `INSERT INTO ${escapeSQLIdent(tableName, databaseType)} (${colList}) VALUES (${values});`;
       });
       return { content: statements.join('\n'), extension: 'sql', mimeType: 'text/sql' };
     }
@@ -79,10 +83,10 @@ export function generateExport(options: ExportOptions): { content: string; exten
       const statements = dataRows.map((row) => {
         const setClauses = cols
           .filter((c) => c !== pkName)
-          .map((col) => `${escapeSQLIdent(col)} = ${escapeSQLValue(row[col])}`)
+          .map((col) => `${escapeSQLIdent(col, databaseType)} = ${escapeSQLValue(row[col])}`)
           .join(', ');
-        const where = `${escapeSQLIdent(pkName)} = ${escapeSQLValue(row[pkName])}`;
-        return `UPDATE ${escapeSQLIdent(tableName)} SET ${setClauses} WHERE ${where};`;
+        const where = `${escapeSQLIdent(pkName, databaseType)} = ${escapeSQLValue(row[pkName])}`;
+        return `UPDATE ${escapeSQLIdent(tableName, databaseType)} SET ${setClauses} WHERE ${where};`;
       });
       return { content: statements.join('\n'), extension: 'sql', mimeType: 'text/sql' };
     }

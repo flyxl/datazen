@@ -2,7 +2,8 @@
 
 use crate::cache::SchemaCache;
 use crate::db::{
-    ConnectionHandle, DatabaseDriver, DriverError, TableDataResult, TableSchema, Value,
+    ColumnSchema, ConnectionHandle, DatabaseDriver, DatabaseType, DriverError, TableDataResult,
+    Value,
 };
 use std::sync::Arc;
 
@@ -74,6 +75,23 @@ impl QueryExecutor {
         }
     }
 
+    /// Returns the identifier quote character for the given database type.
+    fn quote_char(db_type: DatabaseType) -> char {
+        match db_type {
+            DatabaseType::MySQL | DatabaseType::MariaDB => '`',
+            _ => '"',
+        }
+    }
+
+    /// Quotes an identifier according to the database type.
+    fn quote_ident(name: &str, q: char) -> String {
+        if q == '`' {
+            format!("`{}`", name.replace('`', "``"))
+        } else {
+            format!("\"{}\"", name.replace('"', "\"\""))
+        }
+    }
+
     pub async fn get_table_data(
         &self,
         driver: &Arc<dyn DatabaseDriver>,
@@ -86,12 +104,14 @@ impl QueryExecutor {
         filters: Option<Vec<FilterCondition>>,
         order_by: Option<OrderBy>,
     ) -> Result<TableDataResult, DriverError> {
-        let schema = self
+        let cached = self
             .schema_cache
-            .get_table_schema(connection_id, database, table, driver, handle)
+            .get_columns(connection_id, database, table, driver, handle)
             .await?;
 
-        let count_sql = self.build_count_sql(&schema, &filters);
+        let q = Self::quote_char(driver.driver_type());
+
+        let count_sql = Self::build_count_sql(&cached.table_name, &cached.columns, &filters, q);
         let total_rows = match driver.query(handle, &count_sql).await {
             Ok(count_result) => {
                 count_result.rows.first()
@@ -105,11 +125,11 @@ impl QueryExecutor {
             Err(_) => None,
         };
 
-        let sql = self.build_select_sql(&schema, page, page_size, filters, order_by);
+        let sql = Self::build_select_sql(&cached.table_name, &cached.columns, page, page_size, filters, order_by, q);
         let result = driver.query(handle, &sql).await?;
 
         Ok(TableDataResult {
-            columns: schema.columns.clone(),
+            columns: cached.columns,
             rows: result.rows,
             total_rows,
             page,
@@ -118,19 +138,21 @@ impl QueryExecutor {
     }
 
     fn build_count_sql(
-        &self,
-        schema: &TableSchema,
+        table_name: &str,
+        columns: &[ColumnSchema],
         filters: &Option<Vec<FilterCondition>>,
+        q: char,
     ) -> String {
+        let _ = columns;
         let mut sql = format!(
-            "SELECT COUNT(*) FROM \"{}\"",
-            schema.table_name.replace('"', "\"\"")
+            "SELECT COUNT(*) FROM {}",
+            Self::quote_ident(table_name, q)
         );
 
         if let Some(conditions) = filters {
             let parts: Vec<String> = conditions
                 .iter()
-                .map(|c| self.format_condition(c))
+                .map(|c| Self::format_condition(c, q))
                 .filter(|s| !s.is_empty())
                 .collect();
             if !parts.is_empty() {
@@ -143,32 +165,32 @@ impl QueryExecutor {
     }
 
     fn build_select_sql(
-        &self,
-        schema: &TableSchema,
+        table_name: &str,
+        columns: &[ColumnSchema],
         page: u32,
         page_size: u32,
         filters: Option<Vec<FilterCondition>>,
         order_by: Option<OrderBy>,
+        q: char,
     ) -> String {
         let mut sql = String::new();
         sql.push_str("SELECT ");
-        if schema.columns.is_empty() {
+        if columns.is_empty() {
             sql.push('*');
         } else {
             sql.push_str(
-                &schema
-                    .columns
+                &columns
                     .iter()
-                    .map(|c| format!("\"{}\"", c.name.replace('"', "\"\"")))
+                    .map(|c| Self::quote_ident(&c.name, q))
                     .collect::<Vec<_>>()
                     .join(", "),
             );
         }
 
-        sql.push_str(&format!(" FROM \"{}\"", schema.table_name.replace('"', "\"\"")));
+        sql.push_str(&format!(" FROM {}", Self::quote_ident(table_name, q)));
 
         if let Some(conditions) = filters {
-            let parts: Vec<String> = conditions.iter().map(|c| self.format_condition(c)).collect();
+            let parts: Vec<String> = conditions.iter().map(|c| Self::format_condition(c, q)).collect();
             let parts: Vec<String> = parts.into_iter().filter(|s| !s.is_empty()).collect();
             if !parts.is_empty() {
                 sql.push_str(" WHERE ");
@@ -178,8 +200,8 @@ impl QueryExecutor {
 
         if let Some(order) = order_by {
             sql.push_str(&format!(
-                " ORDER BY \"{}\" {}",
-                order.column.replace('"', "\"\""),
+                " ORDER BY {} {}",
+                Self::quote_ident(&order.column, q),
                 if order.descending { "DESC" } else { "ASC" }
             ));
         }
@@ -189,16 +211,16 @@ impl QueryExecutor {
         sql
     }
 
-    fn format_condition(&self, condition: &FilterCondition) -> String {
-        let col = format!("\"{}\"", condition.column.replace('"', "\"\""));
+    fn format_condition(condition: &FilterCondition, q: char) -> String {
+        let col = Self::quote_ident(&condition.column, q);
         match condition.operator {
-            FilterOperator::Eq => format!("{col} = {}", self.format_value(&condition.value)),
-            FilterOperator::Ne => format!("{col} != {}", self.format_value(&condition.value)),
-            FilterOperator::Gt => format!("{col} > {}", self.format_value(&condition.value)),
-            FilterOperator::Lt => format!("{col} < {}", self.format_value(&condition.value)),
-            FilterOperator::Gte => format!("{col} >= {}", self.format_value(&condition.value)),
-            FilterOperator::Lte => format!("{col} <= {}", self.format_value(&condition.value)),
-            FilterOperator::Like => format!("{col} LIKE {}", self.format_value(&condition.value)),
+            FilterOperator::Eq => format!("{col} = {}", Self::format_value(&condition.value)),
+            FilterOperator::Ne => format!("{col} != {}", Self::format_value(&condition.value)),
+            FilterOperator::Gt => format!("{col} > {}", Self::format_value(&condition.value)),
+            FilterOperator::Lt => format!("{col} < {}", Self::format_value(&condition.value)),
+            FilterOperator::Gte => format!("{col} >= {}", Self::format_value(&condition.value)),
+            FilterOperator::Lte => format!("{col} <= {}", Self::format_value(&condition.value)),
+            FilterOperator::Like => format!("{col} LIKE {}", Self::format_value(&condition.value)),
             FilterOperator::In => match &condition.value {
                 Value::Json(serde_json::Value::Array(arr)) => {
                     let parts: Vec<String> = arr.iter().map(Self::format_json_scalar).collect();
@@ -211,7 +233,7 @@ impl QueryExecutor {
         }
     }
 
-    fn format_value(&self, value: &Value) -> String {
+    fn format_value(value: &Value) -> String {
         match value {
             Value::Null => "NULL".to_string(),
             Value::Bool(b) => b.to_string(),

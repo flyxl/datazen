@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ChevronDown, ChevronRight, Eye, Loader2, Table2 } from 'lucide-react';
+import { ChevronDown, ChevronRight, Database, Eye, Loader2, Table2 } from 'lucide-react';
 import { useSchemaStore } from '../../stores/schemaStore';
 import { cn } from '../../lib/cn';
 
@@ -29,7 +29,6 @@ export function SchemaTree({
   const loadForConnection = useSchemaStore((s) => s.loadForConnection);
   const loadTables = useSchemaStore((s) => s.loadTables);
 
-  const [dbDropdownOpen, setDbDropdownOpen] = useState(false);
   const [tablesExpanded, setTablesExpanded] = useState(true);
   const [viewsExpanded, setViewsExpanded] = useState(true);
 
@@ -45,13 +44,6 @@ export function SchemaTree({
     }
   }, [initialDatabase, databases, currentDatabase, loadTables]);
 
-  function handleSwitchDb(db: string) {
-    setDbDropdownOpen(false);
-    if (db !== currentDatabase) {
-      void loadTables(db);
-    }
-  }
-
   const query = searchQuery.toLowerCase();
   const filteredTables = query
     ? tables.filter((t) => t.name.toLowerCase().includes(query))
@@ -66,46 +58,13 @@ export function SchemaTree({
 
   return (
     <div className="flex flex-col">
-      {/* Database selector */}
-      <div className="relative p-2">
-        <button
-          type="button"
-          className="flex w-full items-center justify-between rounded-md border border-edge bg-surface px-3 py-2 text-sm text-fg"
-          onClick={() => setDbDropdownOpen(!dbDropdownOpen)}
-        >
-          <span className="truncate">{currentDatabase ?? '选择数据库…'}</span>
-          <ChevronDown className={cn('h-4 w-4 shrink-0 text-fg-muted transition-transform', dbDropdownOpen && 'rotate-180')} />
-        </button>
-
-        {dbDropdownOpen && (
-          <>
-            <button
-              type="button"
-              aria-label="关闭"
-              className="fixed inset-0 z-20"
-              onClick={() => setDbDropdownOpen(false)}
-            />
-            <div className="absolute left-2 right-2 top-full z-30 mt-1 max-h-60 overflow-y-auto rounded-md border border-edge bg-surface shadow-xl">
-              {databases.map((db) => (
-                <button
-                  key={db}
-                  type="button"
-                  className={cn(
-                    'flex w-full items-center px-3 py-2 text-left text-sm hover:bg-surface-raised',
-                    db === currentDatabase ? 'font-semibold text-fg' : 'text-fg-secondary',
-                  )}
-                  onClick={() => handleSwitchDb(db)}
-                >
-                  {db}
-                </button>
-              ))}
-              {databases.length === 0 && (
-                <div className="px-3 py-2 text-xs text-fg-muted">无数据库</div>
-              )}
-            </div>
-          </>
-        )}
-      </div>
+      {/* Database name (read-only) */}
+      {currentDatabase && (
+        <div className="flex items-center gap-2 border-b border-edge px-3 py-2">
+          <Database className="h-3.5 w-3.5 shrink-0 text-fg-muted" />
+          <span className="truncate text-sm text-fg">{currentDatabase}</span>
+        </div>
+      )}
 
       {loading && tables.length === 0 && (
         <div className="flex items-center gap-2 px-3 py-2 text-xs text-fg-muted">
