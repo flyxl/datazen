@@ -1,0 +1,263 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 900" width="1400" height="900">
+  <defs>
+    <linearGradient id="headerGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#1e293b"/>
+      <stop offset="100%" style="stop-color:#0f172a"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#000" flood-opacity="0.2"/>
+    </filter>
+  </defs>
+  
+  <!-- 背景 -->
+  <rect width="1400" height="900" fill="#0f172a"/>
+  
+  <!-- 标题栏 -->
+  <rect width="1400" height="40" fill="#1e293b"/>
+  <circle cx="20" cy="20" r="6" fill="#ef4444"/>
+  <circle cx="40" cy="20" r="6" fill="#fbbf24"/>
+  <circle cx="60" cy="20" r="6" fill="#22c55e"/>
+  <!-- 连接状态指示 -->
+  <circle cx="100" cy="20" r="4" fill="#22c55e"/>
+  <text x="112" y="25" fill="#94a3b8" font-family="Inter, sans-serif" font-size="12">主数据库</text>
+  <text x="600" y="25" text-anchor="middle" fill="#94a3b8" font-family="Inter, sans-serif" font-size="13">主数据库 - PostgreSQL - DataZen</text>
+  
+  <!-- 工具栏 -->
+  <rect y="40" width="1400" height="48" fill="#1e293b"/>
+  <rect y="87" width="1400" height="1" fill="#334155"/>
+  
+  <!-- 工具栏按钮 -->
+  <!-- 刷新 -->
+  <rect x="16" y="48" width="36" height="32" rx="6" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+  <path d="M34 64 A6 6 0 1 1 34 52" fill="none" stroke="#94a3b8" stroke-width="1.5" stroke-linecap="round"/>
+  <path d="M34 52 L38 56 L30 56" fill="none" stroke="#94a3b8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  
+  <!-- 新建查询 -->
+  <rect x="60" y="48" width="100" height="32" rx="6" fill="#3b82f6" filter="url(#shadow)"/>
+  <text x="110" y="69" text-anchor="middle" fill="#ffffff" font-family="Inter, sans-serif" font-size="12" font-weight="500">+ 新建查询</text>
+  
+  <!-- 新建表 -->
+  <rect x="172" y="48" width="80" height="32" rx="6" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+  <text x="212" y="69" text-anchor="middle" fill="#94a3b8" font-family="Inter, sans-serif" font-size="12">新建表</text>
+  
+  <!-- 导入 -->
+  <rect x="264" y="48" width="60" height="32" rx="6" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+  <text x="294" y="69" text-anchor="middle" fill="#94a3b8" font-family="Inter, sans-serif" font-size="12">导入</text>
+  
+  <!-- 导出 -->
+  <rect x="336" y="48" width="60" height="32" rx="6" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+  <text x="366" y="69" text-anchor="middle" fill="#94a3b8" font-family="Inter, sans-serif" font-size="12">导出</text>
+  
+  <!-- 分隔线 -->
+  <rect x="412" y="52" width="1" height="24" fill="#334155"/>
+  
+  <!-- 搜索框 -->
+  <rect x="428" y="48" width="280" height="32" rx="6" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+  <text x="452" y="69" fill="#64748b" font-family="Inter, sans-serif" font-size="12">搜索表、视图...</text>
+  <circle cx="440" cy="64" r="5" fill="none" stroke="#64748b" stroke-width="1.5"/>
+  <line x1="443" y1="67" x2="447" y2="71" stroke="#64748b" stroke-width="1.5" stroke-linecap="round"/>
+  
+  <!-- 右侧工具栏按钮 -->
+  <!-- 设置 -->
+  <rect x="1340" y="48" width="36" height="32" rx="6" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+  <circle cx="1358" cy="64" r="8" fill="none" stroke="#94a3b8" stroke-width="1.5"/>
+  <circle cx="1358" cy="64" r="2" fill="#94a3b8"/>
+  
+  <!-- 左侧边栏 - 数据库结构树 -->
+  <rect y="88" width="280" height="812" fill="#1e293b"/>
+  <rect x="280" y="88" width="1" height="812" fill="#334155"/>
+  
+  <!-- 数据库选择器 -->
+  <rect x="8" y="96" width="264" height="40" rx="6" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+  <text x="24" y="122" fill="#f1f5f9" font-family="Inter, sans-serif" font-size="13">myapp_production</text>
+  <path d="M252 112 L260 120 L268 112" fill="none" stroke="#64748b" stroke-width="1.5" stroke-linecap="round"/>
+  
+  <!-- 结构树 -->
+  <text x="16" y="160" fill="#64748b" font-family="Inter, sans-serif" font-size="11" font-weight="600" letter-spacing="0.5">TABLES (12)</text>
+  
+  <!-- 表项目 - users (选中) -->
+  <rect x="8" y="168" width="264" height="32" rx="6" fill="#334155"/>
+  <path d="M24 176 L24 192 L36 192 L36 176 Z" fill="none" stroke="#f1f5f9" stroke-width="1.5"/>
+  <text x="48" y="189" fill="#f1f5f9" font-family="Inter, sans-serif" font-size="13">users</text>
+  <text x="240" y="189" text-anchor="end" fill="#64748b" font-family="Inter, sans-serif" font-size="11">1.2M</text>
+  
+  <!-- 表项目 - posts -->
+  <rect x="8" y="204" width="264" height="32" rx="6" fill="transparent"/>
+  <path d="M24 212 L24 228 L36 228 L36 212 Z" fill="none" stroke="#94a3b8" stroke-width="1.5"/>
+  <text x="48" y="225" fill="#94a3b8" font-family="Inter, sans-serif" font-size="13">posts</text>
+  <text x="240" y="225" text-anchor="end" fill="#64748b" font-family="Inter, sans-serif" font-size="11">856K</text>
+  
+  <!-- 表项目 - comments -->
+  <rect x="8" y="240" width="264" height="32" rx="6" fill="transparent"/>
+  <path d="M24 248 L24 264 L36 264 L36 248 Z" fill="none" stroke="#94a3b8" stroke-width="1.5"/>
+  <text x="48" y="261" fill="#94a3b8" font-family="Inter, sans-serif" font-size="13">comments</text>
+  <text x="240" y="261" text-anchor="end" fill="#64748b" font-family="Inter, sans-serif" font-size="11">2.1M</text>
+  
+  <!-- 表项目 - categories -->
+  <rect x="8" y="276" width="264" height="32" rx="6" fill="transparent"/>
+  <path d="M24 284 L24 300 L36 300 L36 284 Z" fill="none" stroke="#94a3b8" stroke-width="1.5"/>
+  <text x="48" y="297" fill="#94a3b8" font-family="Inter, sans-serif" font-size="13">categories</text>
+  <text x="240" y="297" text-anchor="end" fill="#64748b" font-family="Inter, sans-serif" font-size="11">156</text>
+  
+  <!-- 表项目 - tags -->
+  <rect x="8" y="312" width="264" height="32" rx="6" fill="transparent"/>
+  <path d="M24 320 L24 336 L36 336 L36 320 Z" fill="none" stroke="#94a3b8" stroke-width="1.5"/>
+  <text x="48" y="333" fill="#94a3b8" font-family="Inter, sans-serif" font-size="13">tags</text>
+  <text x="240" y="333" text-anchor="end" fill="#64748b" font-family="Inter, sans-serif" font-size="11">892</text>
+  
+  <!-- 表项目 - post_tags -->
+  <rect x="8" y="348" width="264" height="32" rx="6" fill="transparent"/>
+  <path d="M24 356 L24 372 L36 372 L36 356 Z" fill="none" stroke="#94a3b8" stroke-width="1.5"/>
+  <text x="48" y="369" fill="#94a3b8" font-family="Inter, sans-serif" font-size="13">post_tags</text>
+  <text x="240" y="369" text-anchor="end" fill="#64748b" font-family="Inter, sans-serif" font-size="11">1.5M</text>
+  
+  <!-- 更多表... -->
+  <text x="24" y="400" fill="#64748b" font-family="Inter, sans-serif" font-size="12">还有 6 个表...</text>
+  
+  <!-- VIEWS 分隔 -->
+  <text x="16" y="436" fill="#64748b" font-family="Inter, sans-serif" font-size="11" font-weight="600" letter-spacing="0.5">VIEWS (3)</text>
+  
+  <!-- 视图项目 -->
+  <rect x="8" y="444" width="264" height="32" rx="6" fill="transparent"/>
+  <circle cx="30" cy="460" r="6" fill="none" stroke="#94a3b8" stroke-width="1.5"/>
+  <text x="48" y="465" fill="#94a3b8" font-family="Inter, sans-serif" font-size="13">active_users</text>
+  
+  <rect x="8" y="480" width="264" height="32" rx="6" fill="transparent"/>
+  <circle cx="30" cy="496" r="6" fill="none" stroke="#94a3b8" stroke-width="1.5"/>
+  <text x="48" y="501" fill="#94a3b8" font-family="Inter, sans-serif" font-size="13">post_statistics</text>
+  
+  <rect x="8" y="516" width="264" height="32" rx="6" fill="transparent"/>
+  <circle cx="30" cy="532" r="6" fill="none" stroke="#94a3b8" stroke-width="1.5"/>
+  <text x="48" y="537" fill="#94a3b8" font-family="Inter, sans-serif" font-size="13">user_activity</text>
+  
+  <!-- 主内容区域 -->
+  
+  <!-- 标签页栏 -->
+  <rect x="280" y="88" width="1120" height="40" fill="#1e293b"/>
+  <rect x="280" y="127" width="1120" height="1" fill="#334155"/>
+  
+  <!-- 标签页 - 结构 -->
+  <rect x="280" y="88" width="100" height="40" fill="#0f172a"/>
+  <rect x="280" y="126" width="100" height="1" fill="#3b82f6"/>
+  <text x="330" y="113" text-anchor="middle" fill="#f1f5f9" font-family="Inter, sans-serif" font-size="13">结构</text>
+  
+  <!-- 标签页 - 数据 -->
+  <rect x="380" y="88" width="100" height="40" fill="#1e293b"/>
+  <text x="430" y="113" text-anchor="middle" fill="#94a3b8" font-family="Inter, sans-serif" font-size="13">数据</text>
+  
+  <!-- 标签页 - 索引 -->
+  <rect x="480" y="88" width="100" height="40" fill="#1e293b"/>
+  <text x="530" y="113" text-anchor="middle" fill="#94a3b8" font-family="Inter, sans-serif" font-size="13">索引</text>
+  
+  <!-- 标签页 - 外键 -->
+  <rect x="580" y="88" width="100" height="40" fill="#1e293b"/>
+  <text x="630" y="113" text-anchor="middle" fill="#94a3b8" font-family="Inter, sans-serif" font-size="13">外键</text>
+  
+  <!-- 标签页 - DDL -->
+  <rect x="680" y="88" width="100" height="40" fill="#1e293b"/>
+  <text x="730" y="113" text-anchor="middle" fill="#94a3b8" font-family="Inter, sans-serif" font-size="13">DDL</text>
+  
+  <!-- 表结构内容 -->
+  <text x="304" y="160" fill="#f1f5f9" font-family="Inter, sans-serif" font-size="16" font-weight="600">users</text>
+  <text x="360" y="160" fill="#64748b" font-family="Inter, sans-serif" font-size="13">· 用户表</text>
+  
+  <!-- 表结构表格 -->
+  <rect x="296" y="176" width="1080" height="40" fill="#1e293b"/>
+  <rect x="296" y="215" width="1080" height="1" fill="#334155"/>
+  
+  <!-- 表头 -->
+  <text x="320" y="201" fill="#94a3b8" font-family="Inter, sans-serif" font-size="12" font-weight="500">字段名</text>
+  <text x="480" y="201" fill="#94a3b8" font-family="Inter, sans-serif" font-size="12" font-weight="500">类型</text>
+  <text x="640" y="201" fill="#94a3b8" font-family="Inter, sans-serif" font-size="12" font-weight="500">可空</text>
+  <text x="720" y="201" fill="#94a3b8" font-family="Inter, sans-serif" font-size="12" font-weight="500">默认值</text>
+  <text x="900" y="201" fill="#94a3b8" font-family="Inter, sans-serif" font-size="12" font-weight="500">键</text>
+  <text x="1000" y="201" fill="#94a3b8" font-family="Inter, sans-serif" font-size="12" font-weight="500">注释</text>
+  
+  <!-- 数据行 -->
+  <!-- id -->
+  <rect x="296" y="216" width="1080" height="44" fill="#0f172a"/>
+  <text x="320" y="243" fill="#f1f5f9" font-family="JetBrains Mono, monospace" font-size="13">id</text>
+  <text x="480" y="243" fill="#22c55e" font-family="JetBrains Mono, monospace" font-size="13">bigint</text>
+  <text x="656" y="243" fill="#64748b" font-family="Inter, sans-serif" font-size="13">NO</text>
+  <text x="720" y="243" fill="#64748b" font-family="Inter, sans-serif" font-size="12">nextval('users_id_seq')</text>
+  <rect x="900" y="228" width="24" height="20" rx="4" fill="#3b82f6" opacity="0.2"/>
+  <text x="912" y="243" text-anchor="middle" fill="#3b82f6" font-family="Inter, sans-serif" font-size="10" font-weight="600">PK</text>
+  <text x="1000" y="243" fill="#64748b" font-family="Inter, sans-serif" font-size="12">主键ID</text>
+  
+  <!-- email -->
+  <rect x="296" y="260" width="1080" height="44" fill="#0f172a"/>
+  <rect x="296" y="303" width="1080" height="1" fill="#334155"/>
+  <text x="320" y="287" fill="#f1f5f9" font-family="JetBrains Mono, monospace" font-size="13">email</text>
+  <text x="480" y="287" fill="#f59e0b" font-family="JetBrains Mono, monospace" font-size="13">varchar(255)</text>
+  <text x="656" y="287" fill="#64748b" font-family="Inter, sans-serif" font-size="13">NO</text>
+  <text x="720" y="287" fill="#64748b" font-family="Inter, sans-serif" font-size="12">—</text>
+  <rect x="900" y="272" width="24" height="20" rx="4" fill="#f59e0b" opacity="0.2"/>
+  <text x="912" y="287" text-anchor="middle" fill="#f59e0b" font-family="Inter, sans-serif" font-size="10" font-weight="600">UQ</text>
+  <text x="1000" y="287" fill="#64748b" font-family="Inter, sans-serif" font-size="12">邮箱地址</text>
+  
+  <!-- name -->
+  <rect x="296" y="304" width="1080" height="44" fill="#0f172a"/>
+  <rect x="296" y="347" width="1080" height="1" fill="#334155"/>
+  <text x="320" y="331" fill="#f1f5f9" font-family="JetBrains Mono, monospace" font-size="13">name</text>
+  <text x="480" y="331" fill="#f59e0b" font-family="JetBrains Mono, monospace" font-size="13">varchar(100)</text>
+  <text x="656" y="331" fill="#22c55e" font-family="Inter, sans-serif" font-size="13">YES</text>
+  <text x="720" y="331" fill="#64748b" font-family="Inter, sans-serif" font-size="12">NULL</text>
+  <text x="1000" y="331" fill="#64748b" font-family="Inter, sans-serif" font-size="12">用户名称</text>
+  
+  <!-- password_hash -->
+  <rect x="296" y="348" width="1080" height="44" fill="#0f172a"/>
+  <rect x="296" y="391" width="1080" height="1" fill="#334155"/>
+  <text x="320" y="375" fill="#f1f5f9" font-family="JetBrains Mono, monospace" font-size="13">password_hash</text>
+  <text x="480" y="375" fill="#f59e0b" font-family="JetBrains Mono, monospace" font-size="13">varchar(255)</text>
+  <text x="656" y="375" fill="#64748b" font-family="Inter, sans-serif" font-size="13">NO</text>
+  <text x="720" y="375" fill="#64748b" font-family="Inter, sans-serif" font-size="12">—</text>
+  <text x="1000" y="375" fill="#64748b" font-family="Inter, sans-serif" font-size="12">密码哈希</text>
+  
+  <!-- created_at -->
+  <rect x="296" y="392" width="1080" height="44" fill="#0f172a"/>
+  <rect x="296" y="435" width="1080" height="1" fill="#334155"/>
+  <text x="320" y="419" fill="#f1f5f9" font-family="JetBrains Mono, monospace" font-size="13">created_at</text>
+  <text x="480" y="419" fill="#8b5cf6" font-family="JetBrains Mono, monospace" font-size="13">timestamp</text>
+  <text x="656" y="419" fill="#64748b" font-family="Inter, sans-serif" font-size="13">NO</text>
+  <text x="720" y="419" fill="#22c55e" font-family="JetBrains Mono, monospace" font-size="12">now()</text>
+  <text x="1000" y="419" fill="#64748b" font-family="Inter, sans-serif" font-size="12">创建时间</text>
+  
+  <!-- updated_at -->
+  <rect x="296" y="436" width="1080" height="44" fill="#0f172a"/>
+  <rect x="296" y="479" width="1080" height="1" fill="#334155"/>
+  <text x="320" y="463" fill="#f1f5f9" font-family="JetBrains Mono, monospace" font-size="13">updated_at</text>
+  <text x="480" y="463" fill="#8b5cf6" font-family="JetBrains Mono, monospace" font-size="13">timestamp</text>
+  <text x="656" y="463" fill="#64748b" font-family="Inter, sans-serif" font-size="13">NO</text>
+  <text x="720" y="463" fill="#22c55e" font-family="JetBrains Mono, monospace" font-size="12">now()</text>
+  <text x="1000" y="463" fill="#64748b" font-family="Inter, sans-serif" font-size="12">更新时间</text>
+  
+  <!-- status -->
+  <rect x="296" y="480" width="1080" height="44" fill="#0f172a"/>
+  <rect x="296" y="523" width="1080" height="1" fill="#334155"/>
+  <text x="320" y="507" fill="#f1f5f9" font-family="JetBrains Mono, monospace" font-size="13">status</text>
+  <text x="480" y="507" fill="#f59e0b" font-family="JetBrains Mono, monospace" font-size="13">varchar(20)</text>
+  <text x="656" y="507" fill="#64748b" font-family="Inter, sans-serif" font-size="13">NO</text>
+  <text x="720" y="507" fill="#22c55e" font-family="JetBrains Mono, monospace" font-size="12">'active'</text>
+  <text x="1000" y="507" fill="#64748b" font-family="Inter, sans-serif" font-size="12">用户状态</text>
+  
+  <!-- 统计信息 -->
+  <rect x="296" y="540" width="1080" height="48" rx="8" fill="#1e293b"/>
+  <text x="320" y="570" fill="#94a3b8" font-family="Inter, sans-serif" font-size="12">7 个字段</text>
+  <text x="420" y="570" fill="#334155" font-family="Inter, sans-serif" font-size="12">|</text>
+  <text x="450" y="570" fill="#94a3b8" font-family="Inter, sans-serif" font-size="12">1 个主键</text>
+  <text x="540" y="570" fill="#334155" font-family="Inter, sans-serif" font-size="12">|</text>
+  <text x="570" y="570" fill="#94a3b8" font-family="Inter, sans-serif" font-size="12">1 个唯一索引</text>
+  <text x="690" y="570" fill="#334155" font-family="Inter, sans-serif" font-size="12">|</text>
+  <text x="720" y="570" fill="#94a3b8" font-family="Inter, sans-serif" font-size="12">约 1,200,000 行</text>
+  <text x="870" y="570" fill="#334155" font-family="Inter, sans-serif" font-size="12">|</text>
+  <text x="900" y="570" fill="#94a3b8" font-family="Inter, sans-serif" font-size="12">大小: ~256 MB</text>
+  
+  <!-- 状态栏 -->
+  <rect y="860" width="1400" height="40" fill="#1e293b"/>
+  <rect y="860" width="1400" height="1" fill="#334155"/>
+  <circle cx="32" cy="880" r="4" fill="#22c55e"/>
+  <text x="48" y="885" fill="#94a3b8" font-family="Inter, sans-serif" font-size="12">已连接</text>
+  <text x="600" y="885" text-anchor="middle" fill="#64748b" font-family="Inter, sans-serif" font-size="12">PostgreSQL 14.2 | prod-db.example.com:5432 | myapp_production</text>
+  <text x="1376" y="885" text-anchor="end" fill="#64748b" font-family="Inter, sans-serif" font-size="12">⌘N 新建查询 · ⌘R 刷新</text>
+</svg>

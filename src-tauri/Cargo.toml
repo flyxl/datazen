@@ -1,0 +1,48 @@
+[package]
+name = "datazen"
+version = "0.1.0"
+description = "DataZen desktop database client (Tauri backend)"
+authors = ["DataZen"]
+edition = "2021"
+rust-version = "1.77.2"
+
+[lib]
+name = "datazen"
+path = "src/lib.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tokio = { version = "1", features = ["full"] }
+sqlx = { version = "0.7", features = [
+    "runtime-tokio",
+    "tls-rustls",
+    "postgres",
+    "mysql",
+    "sqlite",
+    "chrono",
+    "json",
+] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+aes-gcm = "0.10"
+base64 = "0.22"
+rand = "0.8"
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+thiserror = "1"
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+sysinfo = "0.30"
+async-trait = "0.1"
+tauri-plugin-webdriver = { version = "0.2", optional = true }
+tauri-plugin-dialog = "2"
+
+[features]
+webdriver = ["tauri-plugin-webdriver"]
+
+[profile.dev]
+incremental = true

@@ -1,0 +1,303 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 900" width="1400" height="900">
+  <defs>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#000" flood-opacity="0.2"/>
+    </filter>
+    <linearGradient id="resultGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#1e293b"/>
+      <stop offset="100%" style="stop-color:#0f172a"/>
+    </linearGradient>
+  </defs>
+  
+  <!-- 背景 -->
+  <rect width="1400" height="900" fill="#0f172a"/>
+  
+  <!-- 标题栏 -->
+  <rect width="1400" height="40" fill="#1e293b"/>
+  <circle cx="20" cy="20" r="6" fill="#ef4444"/>
+  <circle cx="40" cy="20" r="6" fill="#fbbf24"/>
+  <circle cx="60" cy="20" r="6" fill="#22c55e"/>
+  <circle cx="100" cy="20" r="4" fill="#22c55e"/>
+  <text x="112" y="25" fill="#94a3b8" font-family="Inter, sans-serif" font-size="12">主数据库</text>
+  <text x="600" y="25" text-anchor="middle" fill="#94a3b8" font-family="Inter, sans-serif" font-size="13">查询 - myapp_production - DataZen</text>
+  
+  <!-- 工具栏 -->
+  <rect y="40" width="1400" height="48" fill="#1e293b"/>
+  <rect y="87" width="1400" height="1" fill="#334155"/>
+  
+  <!-- 执行按钮 -->
+  <rect x="16" y="48" width="80" height="32" rx="6" fill="#22c55e" filter="url(#shadow)"/>
+  <polygon points="44,56 44,72 58,64" fill="#ffffff"/>
+  <text x="74" y="69" fill="#ffffff" font-family="Inter, sans-serif" font-size="12" font-weight="500">执行</text>
+  
+  <!-- 执行选中 -->
+  <rect x="104" y="48" width="100" height="32" rx="6" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+  <text x="154" y="69" text-anchor="middle" fill="#94a3b8" font-family="Inter, sans-serif" font-size="12">执行选中</text>
+  
+  <!-- 取消查询 -->
+  <rect x="216" y="48" width="80" height="32" rx="6" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+  <rect x="244" y="60" width="12" height="12" rx="2" fill="#94a3b8"/>
+  <text x="268" y="69" fill="#94a3b8" font-family="Inter, sans-serif" font-size="12">取消</text>
+  
+  <!-- 分隔线 -->
+  <rect x="312" y="52" width="1" height="24" fill="#334155"/>
+  
+  <!-- 格式化 -->
+  <rect x="328" y="48" width="80" height="32" rx="6" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+  <text x="368" y="69" text-anchor="middle" fill="#94a3b8" font-family="Inter, sans-serif" font-size="12">格式化</text>
+  
+  <!-- 清空 -->
+  <rect x="420" y="48" width="60" height="32" rx="6" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+  <text x="450" y="69" text-anchor="middle" fill="#94a3b8" font-family="Inter, sans-serif" font-size="12">清空</text>
+  
+  <!-- 分隔线 -->
+  <rect x="496" y="52" width="1" height="24" fill="#334155"/>
+  
+  <!-- 保存查询 -->
+  <rect x="512" y="48" width="80" height="32" rx="6" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+  <text x="552" y="69" text-anchor="middle" fill="#94a3b8" font-family="Inter, sans-serif" font-size="12">保存</text>
+  
+  <!-- 收藏查询 -->
+  <rect x="604" y="48" width="80" height="32" rx="6" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+  <path d="M644 56 L646 62 L652 62 L647 66 L649 72 L644 68 L639 72 L641 66 L636 62 L642 62 Z" fill="none" stroke="#fbbf24" stroke-width="1"/>
+  <text x="662" y="69" fill="#94a3b8" font-family="Inter, sans-serif" font-size="12">收藏</text>
+  
+  <!-- 历史记录 -->
+  <rect x="696" y="48" width="80" height="32" rx="6" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+  <text x="736" y="69" text-anchor="middle" fill="#94a3b8" font-family="Inter, sans-serif" font-size="12">历史</text>
+  
+  <!-- 执行计划 -->
+  <rect x="790" y="48" width="90" height="32" rx="6" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+  <text x="835" y="69" text-anchor="middle" fill="#94a3b8" font-family="Inter, sans-serif" font-size="12">执行计划</text>
+  
+  <!-- 右侧工具 -->
+  <rect x="1340" y="48" width="36" height="32" rx="6" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+  <circle cx="1358" cy="64" r="8" fill="none" stroke="#94a3b8" stroke-width="1.5"/>
+  <circle cx="1358" cy="64" r="2" fill="#94a3b8"/>
+  
+  <!-- 主内容区分割 -->
+  <!-- 上半部分 - SQL编辑器 -->
+  <rect y="88" width="1400" height="320" fill="#0f172a"/>
+  <rect y="407" width="1400" height="1" fill="#334155"/>
+  
+  <!-- 编辑器标签页 -->
+  <rect y="88" width="1400" height="32" fill="#1e293b"/>
+  <rect y="119" width="1400" height="1" fill="#334155"/>
+  
+  <!-- 标签页1 - 激活 -->
+  <rect x="0" y="88" width="140" height="32" fill="#0f172a"/>
+  <rect x="0" y="119" width="140" height="1" fill="#3b82f6"/>
+  <text x="24" y="109" fill="#f1f5f9" font-family="Inter, sans-serif" font-size="12">查询 1</text>
+  <rect x="112" y="99" width="16" height="16" rx="4" fill="#334155"/>
+  <text x="120" y="111" fill="#94a3b8" font-family="Inter, sans-serif" font-size="10">×</text>
+  
+  <!-- 标签页2 -->
+  <rect x="140" y="88" width="140" height="32" fill="#1e293b"/>
+  <text x="164" y="109" fill="#94a3b8" font-family="Inter, sans-serif" font-size="12">查询 2</text>
+  <rect x="252" y="99" width="16" height="16" rx="4" fill="#334155"/>
+  <text x="260" y="111" fill="#64748b" font-family="Inter, sans-serif" font-size="10">×</text>
+  
+  <!-- 标签页3 -->
+  <rect x="280" y="88" width="160" height="32" fill="#1e293b"/>
+  <text x="304" y="109" fill="#94a3b8" font-family="Inter, sans-serif" font-size="12">用户统计查询</text>
+  <rect x="420" y="99" width="16" height="16" rx="4" fill="#334155"/>
+  <text x="428" y="111" fill="#64748b" font-family="Inter, sans-serif" font-size="10">×</text>
+  
+  <!-- 新建标签页按钮 -->
+  <rect x="448" y="94" width="24" height="24" rx="4" fill="#334155"/>
+  <text x="460" y="110" text-anchor="middle" fill="#94a3b8" font-family="Inter, sans-serif" font-size="16">+</text>
+  
+  <!-- SQL 编辑器内容 -->
+  <!-- 行号背景 -->
+  <rect x="0" y="120" width="48" height="287" fill="#0f172a"/>
+  
+  <!-- 行号 -->
+  <text x="24" y="152" text-anchor="end" fill="#475569" font-family="JetBrains Mono, monospace" font-size="13">1</text>
+  <text x="24" y="176" text-anchor="end" fill="#475569" font-family="JetBrains Mono, monospace" font-size="13">2</text>
+  <text x="24" y="200" text-anchor="end" fill="#475569" font-family="JetBrains Mono, monospace" font-size="13">3</text>
+  <text x="24" y="224" text-anchor="end" fill="#475569" font-family="JetBrains Mono, monospace" font-size="13">4</text>
+  <text x="24" y="248" text-anchor="end" fill="#475569" font-family="JetBrains Mono, monospace" font-size="13">5</text>
+  <text x="24" y="272" text-anchor="end" fill="#475569" font-family="JetBrains Mono, monospace" font-size="13">6</text>
+  <text x="24" y="296" text-anchor="end" fill="#475569" font-family="JetBrains Mono, monospace" font-size="13">7</text>
+  <text x="24" y="320" text-anchor="end" fill="#475569" font-family="JetBrains Mono, monospace" font-size="13">8</text>
+  <text x="24" y="344" text-anchor="end" fill="#475569" font-family="JetBrains Mono, monospace" font-size="13">9</text>
+  <text x="24" y="368" text-anchor="end" fill="#475569" font-family="JetBrains Mono, monospace" font-size="13">10</text>
+  <text x="24" y="392" text-anchor="end" fill="#475569" font-family="JetBrains Mono, monospace" font-size="13">11</text>
+  
+  <!-- SQL 代码 - 语法高亮 -->
+  <!-- SELECT 关键字 -->
+  <text x="56" y="152" fill="#c084fc" font-family="JetBrains Mono, monospace" font-size="13">SELECT</text>
+  
+  <!-- 字段名 -->
+  <text x="120" y="152" fill="#f1f5f9" font-family="JetBrains Mono, monospace" font-size="13">u.id,</text>
+  <text x="64" y="176" fill="#f1f5f9" font-family="JetBrains Mono, monospace" font-size="13">u.name,</text>
+  <text x="64" y="200" fill="#f1f5f9" font-family="JetBrains Mono, monospace" font-size="13">u.email,</text>
+  <text x="64" y="224" fill="#f1f5f9" font-family="JetBrains Mono, monospace" font-size="13">COUNT(p.id)</text>
+  <text x="176" y="224" fill="#c084fc" font-family="JetBrains Mono, monospace" font-size="13">AS</text>
+  <text x="208" y="224" fill="#f1f5f9" font-family="JetBrains Mono, monospace" font-size="13">post_count</text>
+  
+  <!-- FROM 关键字 -->
+  <text x="56" y="248" fill="#c084fc" font-family="JetBrains Mono, monospace" font-size="13">FROM</text>
+  <text x="104" y="248" fill="#22c55e" font-family="JetBrains Mono, monospace" font-size="13">users</text>
+  <text x="152" y="248" fill="#f1f5f9" font-family="JetBrains Mono, monospace" font-size="13">u</text>
+  
+  <!-- LEFT JOIN -->
+  <text x="56" y="272" fill="#c084fc" font-family="JetBrains Mono, monospace" font-size="13">LEFT</text>
+  <text x="96" y="272" fill="#c084fc" font-family="JetBrains Mono, monospace" font-size="13">JOIN</text>
+  <text x="144" y="272" fill="#22c55e" font-family="JetBrains Mono, monospace" font-size="13">posts</text>
+  <text x="192" y="272" fill="#f1f5f9" font-family="JetBrains Mono, monospace" font-size="13">p</text>
+  <text x="208" y="272" fill="#c084fc" font-family="JetBrains Mono, monospace" font-size="13">ON</text>
+  <text x="232" y="272" fill="#f1f5f9" font-family="JetBrains Mono, monospace" font-size="13">u.id</text>
+  <text x="264" y="272" fill="#3b82f6" font-family="JetBrains Mono, monospace" font-size="13">=</text>
+  <text x="280" y="272" fill="#f1f5f9" font-family="JetBrains Mono, monospace" font-size="13">p.user_id</text>
+  
+  <!-- GROUP BY -->
+  <text x="56" y="296" fill="#c084fc" font-family="JetBrains Mono, monospace" font-size="13">GROUP</text>
+  <text x="112" y="296" fill="#c084fc" font-family="JetBrains Mono, monospace" font-size="13">BY</text>
+  <text x="152" y="296" fill="#f1f5f9" font-family="JetBrains Mono, monospace" font-size="13">u.id, u.name, u.email</text>
+  
+  <!-- ORDER BY -->
+  <text x="56" y="320" fill="#c084fc" font-family="JetBrains Mono, monospace" font-size="13">ORDER</text>
+  <text x="112" y="320" fill="#c084fc" font-family="JetBrains Mono, monospace" font-size="13">BY</text>
+  <text x="152" y="320" fill="#f1f5f9" font-family="JetBrains Mono, monospace" font-size="13">post_count</text>
+  <text x="240" y="320" fill="#c084fc" font-family="JetBrains Mono, monospace" font-size="13">DESC</text>
+  
+  <!-- LIMIT -->
+  <text x="56" y="344" fill="#c084fc" font-family="JetBrains Mono, monospace" font-size="13">LIMIT</text>
+  <text x="112" y="344" fill="#fbbf24" font-family="JetBrains Mono, monospace" font-size="13">10</text>
+  <text x="128" y="344" fill="#64748b" font-family="JetBrains Mono, monospace" font-size="13">;</text>
+  
+  <!-- 光标 -->
+  <rect x="144" y="352" width="2" height="16" fill="#3b82f6">
+    <animate attributeName="opacity" values="1;0;1" dur="1s" repeatCount="indefinite"/>
+  </rect>
+  
+  <!-- 下半部分 - 查询结果 -->
+  <rect y="408" width="1400" height="492" fill="#0f172a"/>
+  
+  <!-- 结果标签页 -->
+  <rect y="408" width="1400" height="32" fill="#1e293b"/>
+  <rect y="439" width="1400" height="1" fill="#334155"/>
+  
+  <!-- 结果标签 -->
+  <rect x="0" y="408" width="80" height="32" fill="#0f172a"/>
+  <rect x="0" y="439" width="80" height="1" fill="#3b82f6"/>
+  <text x="40" y="429" text-anchor="middle" fill="#f1f5f9" font-family="Inter, sans-serif" font-size="12">结果</text>
+  
+  <!-- 消息标签 -->
+  <rect x="80" y="408" width="80" height="32" fill="#1e293b"/>
+  <text x="120" y="429" text-anchor="middle" fill="#94a3b8" font-family="Inter, sans-serif" font-size="12">消息</text>
+  
+  <!-- 查询信息栏 -->
+  <rect x="16" y="452" width="1368" height="32" rx="6" fill="#1e293b"/>
+  <text x="32" y="473" fill="#22c55e" font-family="Inter, sans-serif" font-size="12">✓ 查询成功</text>
+  <text x="160" y="473" fill="#64748b" font-family="Inter, sans-serif" font-size="12">|</text>
+  <text x="180" y="473" fill="#94a3b8" font-family="Inter, sans-serif" font-size="12">返回 10 行</text>
+  <text x="280" y="473" fill="#64748b" font-family="Inter, sans-serif" font-size="12">|</text>
+  <text x="300" y="473" fill="#94a3b8" font-family="Inter, sans-serif" font-size="12">耗时: 23.5ms</text>
+  <text x="420" y="473" fill="#64748b" font-family="Inter, sans-serif" font-size="12">|</text>
+  <text x="440" y="473" fill="#94a3b8" font-family="Inter, sans-serif" font-size="12">扫描行数: 1,245</text>
+  
+  <!-- 导出按钮 -->
+  <rect x="1280" y="456" width="80" height="24" rx="4" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+  <text x="1320" y="473" text-anchor="middle" fill="#94a3b8" font-family="Inter, sans-serif" font-size="11">导出结果</text>
+  
+  <!-- 结果表格 -->
+  <rect x="16" y="492" width="1368" height="36" fill="#1e293b"/>
+  <rect x="16" y="527" width="1368" height="1" fill="#334155"/>
+  
+  <!-- 表头 -->
+  <text x="40" y="516" fill="#94a3b8" font-family="Inter, sans-serif" font-size="12" font-weight="500">id</text>
+  <text x="140" y="516" fill="#94a3b8" font-family="Inter, sans-serif" font-size="12" font-weight="500">name</text>
+  <text x="320" y="516" fill="#94a3b8" font-family="Inter, sans-serif" font-size="12" font-weight="500">email</text>
+  <text x="580" y="516" fill="#94a3b8" font-family="Inter, sans-serif" font-size="12" font-weight="500">post_count</text>
+  
+  <!-- 排序图标 -->
+  <path d="M60 504 L64 508 L68 504" fill="none" stroke="#64748b" stroke-width="1"/>
+  <path d="M60 512 L64 508 L68 512" fill="none" stroke="#64748b" stroke-width="1"/>
+  
+  <!-- 数据行 -->
+  <!-- 行1 -->
+  <rect x="16" y="528" width="1368" height="40" fill="#0f172a"/>
+  <rect x="16" y="567" width="1368" height="1" fill="#334155"/>
+  <text x="40" y="553" fill="#f1f5f9" font-family="JetBrains Mono, monospace" font-size="13">1</text>
+  <text x="140" y="553" fill="#f1f5f9" font-family="Inter, sans-serif" font-size="13">张三</text>
+  <text x="320" y="553" fill="#3b82f6" font-family="JetBrains Mono, monospace" font-size="13">zhangsan@example.com</text>
+  <text x="580" y="553" fill="#fbbf24" font-family="JetBrains Mono, monospace" font-size="13">156</text>
+  
+  <!-- 行2 -->
+  <rect x="16" y="568" width="1368" height="40" fill="#0f172a"/>
+  <rect x="16" y="607" width="1368" height="1" fill="#334155"/>
+  <text x="40" y="593" fill="#f1f5f9" font-family="JetBrains Mono, monospace" font-size="13">2</text>
+  <text x="140" y="593" fill="#f1f5f9" font-family="Inter, sans-serif" font-size="13">李四</text>
+  <text x="320" y="593" fill="#3b82f6" font-family="JetBrains Mono, monospace" font-size="13">lisi@example.com</text>
+  <text x="580" y="593" fill="#fbbf24" font-family="JetBrains Mono, monospace" font-size="13">143</text>
+  
+  <!-- 行3 -->
+  <rect x="16" y="608" width="1368" height="40" fill="#0f172a"/>
+  <rect x="16" y="647" width="1368" height="1" fill="#334155"/>
+  <text x="40" y="633" fill="#f1f5f9" font-family="JetBrains Mono, monospace" font-size="13">3</text>
+  <text x="140" y="633" fill="#f1f5f9" font-family="Inter, sans-serif" font-size="13">王五</text>
+  <text x="320" y="633" fill="#3b82f6" font-family="JetBrains Mono, monospace" font-size="13">wangwu@example.com</text>
+  <text x="580" y="633" fill="#fbbf24" font-family="JetBrains Mono, monospace" font-size="13">128</text>
+  
+  <!-- 行4 -->
+  <rect x="16" y="648" width="1368" height="40" fill="#0f172a"/>
+  <rect x="16" y="687" width="1368" height="1" fill="#334155"/>
+  <text x="40" y="673" fill="#f1f5f9" font-family="JetBrains Mono, monospace" font-size="13">4</text>
+  <text x="140" y="673" fill="#f1f5f9" font-family="Inter, sans-serif" font-size="13">赵六</text>
+  <text x="320" y="673" fill="#3b82f6" font-family="JetBrains Mono, monospace" font-size="13">zhaoliu@example.com</text>
+  <text x="580" y="673" fill="#fbbf24" font-family="JetBrains Mono, monospace" font-size="13">112</text>
+  
+  <!-- 行5 -->
+  <rect x="16" y="688" width="1368" height="40" fill="#0f172a"/>
+  <rect x="16" y="727" width="1368" height="1" fill="#334155"/>
+  <text x="40" y="713" fill="#f1f5f9" font-family="JetBrains Mono, monospace" font-size="13">5</text>
+  <text x="140" y="713" fill="#f1f5f9" font-family="Inter, sans-serif" font-size="13">孙七</text>
+  <text x="320" y="713" fill="#3b82f6" font-family="JetBrains Mono, monospace" font-size="13">sunqi@example.com</text>
+  <text x="580" y="713" fill="#fbbf24" font-family="JetBrains Mono, monospace" font-size="13">98</text>
+  
+  <!-- 行6 -->
+  <rect x="16" y="728" width="1368" height="40" fill="#0f172a"/>
+  <rect x="16" y="767" width="1368" height="1" fill="#334155"/>
+  <text x="40" y="753" fill="#f1f5f9" font-family="JetBrains Mono, monospace" font-size="13">6</text>
+  <text x="140" y="753" fill="#f1f5f9" font-family="Inter, sans-serif" font-size="13">周八</text>
+  <text x="320" y="753" fill="#3b82f6" font-family="JetBrains Mono, monospace" font-size="13">zhouba@example.com</text>
+  <text x="580" y="753" fill="#fbbf24" font-family="JetBrains Mono, monospace" font-size="13">87</text>
+  
+  <!-- 行7 -->
+  <rect x="16" y="768" width="1368" height="40" fill="#0f172a"/>
+  <rect x="16" y="807" width="1368" height="1" fill="#334155"/>
+  <text x="40" y="793" fill="#f1f5f9" font-family="JetBrains Mono, monospace" font-size="13">7</text>
+  <text x="140" y="793" fill="#f1f5f9" font-family="Inter, sans-serif" font-size="13">吴九</text>
+  <text x="320" y="793" fill="#3b82f6" font-family="JetBrains Mono, monospace" font-size="13">wujiu@example.com</text>
+  <text x="580" y="793" fill="#fbbf24" font-family="JetBrains Mono, monospace" font-size="13">76</text>
+  
+  <!-- 分页 -->
+  <rect y="820" width="1400" height="40" fill="#1e293b"/>
+  <text x="16" y="845" fill="#94a3b8" font-family="Inter, sans-serif" font-size="12">显示 1-10 / 共 10 行</text>
+  
+  <!-- 分页按钮 -->
+  <rect x="1220" y="828" width="32" height="24" rx="4" fill="#334155"/>
+  <text x="1236" y="845" text-anchor="middle" fill="#64748b" font-family="Inter, sans-serif" font-size="10">‹</text>
+  
+  <rect x="1260" y="828" width="32" height="24" rx="4" fill="#3b82f6"/>
+  <text x="1276" y="845" text-anchor="middle" fill="#ffffff" font-family="Inter, sans-serif" font-size="11">1</text>
+  
+  <rect x="1300" y="828" width="32" height="24" rx="4" fill="#334155"/>
+  <text x="1316" y="845" text-anchor="middle" fill="#64748b" font-family="Inter, sans-serif" font-size="10">›</text>
+  
+  <!-- 每页行数选择 -->
+  <rect x="1340" y="828" width="44" height="24" rx="4" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+  <text x="1356" y="845" text-anchor="middle" fill="#94a3b8" font-family="Inter, sans-serif" font-size="11">50</text>
+  <path d="M1372 836 L1376 840 L1380 836" fill="none" stroke="#64748b" stroke-width="1"/>
+  
+  <!-- 状态栏 -->
+  <rect y="860" width="1400" height="40" fill="#1e293b"/>
+  <rect y="860" width="1400" height="1" fill="#334155"/>
+  <circle cx="32" cy="880" r="4" fill="#22c55e"/>
+  <text x="48" y="885" fill="#94a3b8" font-family="Inter, sans-serif" font-size="12">已连接</text>
+  <text x="600" y="885" text-anchor="middle" fill="#64748b" font-family="Inter, sans-serif" font-size="12">PostgreSQL 14.2 | prod-db.example.com:5432</text>
+  <text x="1376" y="885" text-anchor="end" fill="#64748b" font-family="Inter, sans-serif" font-size="12">⌘+Enter 执行 · ⌘+Shift+Enter 执行选中</text>
+</svg>

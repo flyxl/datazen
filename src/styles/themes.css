@@ -1,0 +1,47 @@
+/*
+ * Semantic color tokens.
+ *
+ * Light = :root (default), Dark = .dark override.
+ * Referenced in tailwind.config.ts as custom colors so that
+ * `bg-surface`, `text-fg`, `border-edge` etc. just work.
+ */
+
+:root {
+  /* Backgrounds */
+  --c-surface: #ffffff;
+  --c-surface-alt: #f8fafc;
+  --c-surface-raised: #f1f5f9;
+  --c-surface-inset: #e2e8f0;
+
+  /* Borders */
+  --c-edge: #e2e8f0;
+
+  /* Foreground / Text */
+  --c-fg: #0f172a;
+  --c-fg-secondary: #475569;
+  --c-fg-muted: #94a3b8;
+
+  /* Accent & status (same both themes) */
+  --c-accent: #3b82f6;
+  --c-success: #22c55e;
+  --c-warning: #f59e0b;
+  --c-danger: #ef4444;
+
+  /* Title bar background (TrafficLights area) */
+  --c-titlebar: #f1f5f9;
+}
+
+.dark {
+  --c-surface: #0f172a;
+  --c-surface-alt: #1e293b;
+  --c-surface-raised: #334155;
+  --c-surface-inset: #0f172a;
+
+  --c-edge: #334155;
+
+  --c-fg: #f1f5f9;
+  --c-fg-secondary: #94a3b8;
+  --c-fg-muted: #64748b;
+
+  --c-titlebar: #1e293b;
+}

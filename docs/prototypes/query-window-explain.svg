@@ -1,0 +1,155 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 900" width="1400" height="900">
+  <defs>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#000" flood-opacity="0.2"/>
+    </filter>
+  </defs>
+  
+  <!-- 背景 -->
+  <rect width="1400" height="900" fill="#0f172a"/>
+  
+  <!-- 标题栏 -->
+  <rect width="1400" height="40" fill="#1e293b"/>
+  <circle cx="20" cy="20" r="6" fill="#ef4444"/>
+  <circle cx="40" cy="20" r="6" fill="#fbbf24"/>
+  <circle cx="60" cy="20" r="6" fill="#22c55e"/>
+  <text x="600" y="25" text-anchor="middle" fill="#94a3b8" font-family="Inter, sans-serif" font-size="13">查询 - myapp_production - DataZen</text>
+  
+  <!-- 工具栏 -->
+  <rect y="40" width="1400" height="48" fill="#1e293b"/>
+  <rect y="87" width="1400" height="1" fill="#334155"/>
+  
+  <!-- 执行按钮 -->
+  <rect x="16" y="48" width="80" height="32" rx="6" fill="#22c55e" filter="url(#shadow)"/>
+  <text x="56" y="69" text-anchor="middle" fill="#ffffff" font-family="Inter, sans-serif" font-size="12" font-weight="500">执行</text>
+  
+  <!-- 执行计划按钮 (选中) -->
+  <rect x="790" y="48" width="90" height="32" rx="6" fill="#3b82f6"/>
+  <text x="835" y="69" text-anchor="middle" fill="#ffffff" font-family="Inter, sans-serif" font-size="12">执行计划</text>
+  
+  <!-- SQL 编辑器区域 (简化) -->
+  <rect y="88" width="1400" height="200" fill="#0f172a"/>
+  <rect y="287" width="1400" height="1" fill="#334155"/>
+  
+  <!-- 编辑器标签页 -->
+  <rect y="88" width="1400" height="32" fill="#1e293b"/>
+  <rect y="119" width="1400" height="1" fill="#334155"/>
+  
+  <rect x="0" y="88" width="140" height="32" fill="#0f172a"/>
+  <rect x="0" y="119" width="140" height="1" fill="#3b82f6"/>
+  <text x="24" y="109" fill="#f1f5f9" font-family="Inter, sans-serif" font-size="12">查询 1</text>
+  
+  <!-- 简化的SQL代码 -->
+  <text x="56" y="152" fill="#c084fc" font-family="JetBrains Mono, monospace" font-size="13">SELECT</text>
+  <text x="120" y="152" fill="#f1f5f9" font-family="JetBrains Mono, monospace" font-size="13">*</text>
+  <text x="136" y="152" fill="#c084fc" font-family="JetBrains Mono, monospace" font-size="13">FROM</text>
+  <text x="176" y="152" fill="#22c55e" font-family="JetBrains Mono, monospace" font-size="13">users u</text>
+  <text x="56" y="176" fill="#c084fc" font-family="JetBrains Mono, monospace" font-size="13">JOIN</text>
+  <text x="96" y="176" fill="#22c55e" font-family="JetBrains Mono, monospace" font-size="13">posts p</text>
+  <text x="152" y="176" fill="#c084fc" font-family="JetBrains Mono, monospace" font-size="13">ON</text>
+  <text x="176" y="176" fill="#f1f5f9" font-family="JetBrains Mono, monospace" font-size="13">u.id = p.user_id</text>
+  <text x="56" y="200" fill="#c084fc" font-family="JetBrains Mono, monospace" font-size="13">WHERE</text>
+  <text x="112" y="200" fill="#f1f5f9" font-family="JetBrains Mono, monospace" font-size="13">u.status = 'active';</text>
+  
+  <!-- 执行计划区域 -->
+  <rect y="288" width="1400" height="612" fill="#0f172a"/>
+  
+  <!-- 结果标签页 -->
+  <rect y="288" width="1400" height="32" fill="#1e293b"/>
+  <rect y="319" width="1400" height="1" fill="#334155"/>
+  
+  <rect x="0" y="288" width="80" height="32" fill="#1e293b"/>
+  <text x="40" y="309" text-anchor="middle" fill="#94a3b8" font-family="Inter, sans-serif" font-size="12">结果</text>
+  
+  <rect x="80" y="288" width="80" height="32" fill="#1e293b"/>
+  <text x="120" y="309" text-anchor="middle" fill="#94a3b8" font-family="Inter, sans-serif" font-size="12">消息</text>
+  
+  <!-- 执行计划标签 (选中) -->
+  <rect x="160" y="288" width="100" height="32" fill="#0f172a"/>
+  <rect x="160" y="319" width="100" height="1" fill="#3b82f6"/>
+  <text x="210" y="309" text-anchor="middle" fill="#f1f5f9" font-family="Inter, sans-serif" font-size="12">执行计划</text>
+  
+  <!-- 执行计划统计 -->
+  <rect x="48" y="340" width="1304" height="48" rx="6" fill="#1e293b"/>
+  <text x="64" y="370" fill="#22c55e" font-family="Inter, sans-serif" font-size="12">总成本:</text>
+  <text x="136" y="370" fill="#f1f5f9" font-family="Inter, sans-serif" font-size="12" font-weight="500">245.67</text>
+  <text x="220" y="370" fill="#64748b" font-family="Inter, sans-serif" font-size="12">|</text>
+  <text x="240" y="370" fill="#22c55e" font-family="Inter, sans-serif" font-size="12">预估行数:</text>
+  <text x="320" y="370" fill="#f1f5f9" font-family="Inter, sans-serif" font-size="12" font-weight="500">8,542</text>
+  <text x="384" y="370" fill="#64748b" font-family="Inter, sans-serif" font-size="12">|</text>
+  <text x="404" y="370" fill="#22c55e" font-family="Inter, sans-serif" font-size="12">预估宽度:</text>
+  <text x="484" y="370" fill="#f1f5f9" font-family="Inter, sans-serif" font-size="12" font-weight="500">128 bytes</text>
+  <text x="576" y="370" fill="#64748b" font-family="Inter, sans-serif" font-size="12">|</text>
+  <text x="596" y="370" fill="#22c55e" font-family="Inter, sans-serif" font-size="12">执行时间:</text>
+  <text x="676" y="370" fill="#f1f5f9" font-family="Inter, sans-serif" font-size="12" font-weight="500">12.45ms</text>
+  
+  <!-- 可视化执行计划 -->
+  <text x="64" y="420" fill="#f1f5f9" font-family="Inter, sans-serif" font-size="14" font-weight="600">可视化计划</text>
+  
+  <!-- 执行计划树 -->
+  <g transform="translate(100, 440)">
+    <!-- Limit 节点 -->
+    <rect x="0" y="0" width="200" height="48" rx="8" fill="#3b82f6" opacity="0.2" stroke="#3b82f6" stroke-width="1"/>
+    <text x="16" y="20" fill="#f1f5f9" font-family="Inter, sans-serif" font-size="12" font-weight="500">Limit</text>
+    <text x="16" y="36" fill="#64748b" font-family="Inter, sans-serif" font-size="10">Cost: 0.00..245.67</text>
+    <text x="16" y="48" fill="#64748b" font-family="Inter, sans-serif" font-size="10">Rows: 100</text>
+    
+    <!-- 连接线 -->
+    <line x1="100" y1="48" x2="100" y2="80" stroke="#334155" stroke-width="2"/>
+    
+    <!-- Nested Loop 节点 -->
+    <rect x="0" y="80" width="200" height="48" rx="8" fill="#f59e0b" opacity="0.2" stroke="#f59e0b" stroke-width="1"/>
+    <text x="16" y="100" fill="#f1f5f9" font-family="Inter, sans-serif" font-size="12" font-weight="500">Nested Loop</text>
+    <text x="16" y="116" fill="#64748b" font-family="Inter, sans-serif" font-size="10">Cost: 0.00..245.67</text>
+    <text x="16" y="128" fill="#64748b" font-family="Inter, sans-serif" font-size="10">Rows: 8,542</text>
+    
+    <!-- 分支连接线 -->
+    <line x1="100" y1="128" x2="100" y2="160" stroke="#334155" stroke-width="2"/>
+    <line x1="100" y1="160" x2="50" y2="180" stroke="#334155" stroke-width="2"/>
+    <line x1="100" y1="160" x2="300" y2="180" stroke="#334155" stroke-width="2"/>
+    
+    <!-- Index Scan 节点 -->
+    <rect x="-50" y="180" width="200" height="48" rx="8" fill="#22c55e" opacity="0.2" stroke="#22c55e" stroke-width="1"/>
+    <text x="-34" y="200" fill="#f1f5f9" font-family="Inter, sans-serif" font-size="12" font-weight="500">Index Scan</text>
+    <text x="-34" y="216" fill="#64748b" font-family="Inter, sans-serif" font-size="10">users_pkey</text>
+    <text x="-34" y="228" fill="#64748b" font-family="Inter, sans-serif" font-size="10">Cost: 0.00..8.27</text>
+    
+    <!-- Seq Scan 节点 -->
+    <rect x="200" y="180" width="200" height="48" rx="8" fill="#ef4444" opacity="0.2" stroke="#ef4444" stroke-width="1"/>
+    <text x="216" y="200" fill="#f1f5f9" font-family="Inter, sans-serif" font-size="12" font-weight="500">Seq Scan</text>
+    <text x="216" y="216" fill="#64748b" font-family="Inter, sans-serif" font-size="10">posts</text>
+    <text x="216" y="228" fill="#64748b" font-family="Inter, sans-serif" font-size="10">Cost: 0.00..135.00 ⚠️</text>
+  </g>
+  
+  <!-- 纯文本执行计划 -->
+  <text x="700" y="420" fill="#f1f5f9" font-family="Inter, sans-serif" font-size="14" font-weight="600">文本计划</text>
+  
+  <rect x="700" y="440" width="640" height="280" rx="8" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+  
+  <text x="716" y="468" fill="#f1f5f9" font-family="JetBrains Mono, monospace" font-size="11">QUERY PLAN</text>
+  <text x="716" y="488" fill="#f1f5f9" font-family="JetBrains Mono, monospace" font-size="11">-------------------------------------------------------------------</text>
+  <text x="716" y="508" fill="#3b82f6" font-family="JetBrains Mono, monospace" font-size="11">Limit</text>
+  <text x="732" y="528" fill="#64748b" font-family="JetBrains Mono, monospace" font-size="11">(cost=0.00..245.67 rows=100 width=128)</text>
+  <text x="732" y="548" fill="#f59e0b" font-family="JetBrains Mono, monospace" font-size="11">->  Nested Loop</text>
+  <text x="748" y="568" fill="#64748b" font-family="JetBrains Mono, monospace" font-size="11">(cost=0.00..245.67 rows=8542 width=128)</text>
+  <text x="748" y="588" fill="#22c55e" font-family="JetBrains Mono, monospace" font-size="11">->  Index Scan using users_pkey on users u</text>
+  <text x="764" y="608" fill="#64748b" font-family="JetBrains Mono, monospace" font-size="11">(cost=0.00..8.27 rows=1 width=72)</text>
+  <text x="764" y="628" fill="#64748b" font-family="JetBrains Mono, monospace" font-size="11">Index Cond: (id = p.user_id)</text>
+  <text x="748" y="648" fill="#ef4444" font-family="JetBrains Mono, monospace" font-size="11">->  Seq Scan on posts p</text>
+  <text x="764" y="668" fill="#64748b" font-family="JetBrains Mono, monospace" font-size="11">(cost=0.00..135.00 rows=8542 width=56)</text>
+  <text x="764" y="688" fill="#64748b" font-family="JetBrains Mono, monospace" font-size="11">Filter: (status = 'active'::text)</text>
+  
+  <!-- 优化建议 -->
+  <rect x="48" y="760" width="1304" height="80" rx="8" fill="#fbbf24" opacity="0.1" stroke="#fbbf24" stroke-width="1"/>
+  <text x="64" y="792" fill="#fbbf24" font-family="Inter, sans-serif" font-size="14" font-weight="500">💡 优化建议</text>
+  <text x="64" y="816" fill="#94a3b8" font-family="Inter, sans-serif" font-size="12">posts 表上的顺序扫描可能影响性能。建议在 posts(user_id, status) 上创建索引。</text>
+  <rect x="1200" y="800" width="120" height="28" rx="6" fill="#fbbf24" opacity="0.2"/>
+  <text x="1260" y="819" text-anchor="middle" fill="#fbbf24" font-family="Inter, sans-serif" font-size="11">创建索引 →</text>
+  
+  <!-- 状态栏 -->
+  <rect y="852" width="1400" height="48" fill="#1e293b"/>
+  <rect y="852" width="1400" height="1" fill="#334155"/>
+  <circle cx="32" cy="876" r="4" fill="#22c55e"/>
+  <text x="48" y="880" fill="#94a3b8" font-family="Inter, sans-serif" font-size="12">已连接</text>
+</svg>

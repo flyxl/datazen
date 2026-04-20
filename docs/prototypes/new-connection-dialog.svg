@@ -1,0 +1,161 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800" width="1200" height="800">
+  <defs>
+    <linearGradient id="headerGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#1e293b"/>
+      <stop offset="100%" style="stop-color:#0f172a"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="16" flood-color="#000" flood-opacity="0.5"/>
+    </filter>
+    <filter id="smallShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#000" flood-opacity="0.2"/>
+    </filter>
+  </defs>
+  
+  <!-- 背景遮罩 -->
+  <rect width="1200" height="800" fill="#0f172a" opacity="0.8"/>
+  
+  <!-- 对话框 -->
+  <g filter="url(#shadow)">
+    <rect x="200" y="80" width="800" height="640" rx="16" fill="#1e293b"/>
+    
+    <!-- 标题栏 -->
+    <rect x="200" y="80" width="800" height="56" rx="16" fill="#1e293b"/>
+    <rect x="200" y="120" width="800" height="16" fill="#1e293b"/>
+    <!-- macOS 窗口控制按钮 -->
+    <circle cx="228" cy="108" r="6" fill="#ef4444"/>
+    <circle cx="248" cy="108" r="6" fill="#fbbf24"/>
+    <circle cx="268" cy="108" r="6" fill="#22c55e"/>
+    <!-- 标题 -->
+    <text x="600" y="113" text-anchor="middle" fill="#f1f5f9" font-family="Inter, sans-serif" font-size="15" font-weight="600">新建连接</text>
+    
+    <!-- 内容区域 -->
+    
+    <!-- 左侧数据库类型选择 -->
+    <rect x="200" y="136" width="200" height="584" fill="#0f172a" rx="0"/>
+    <rect x="200" y="720" width="200" height="0" rx="0 0 0 16" fill="#0f172a"/>
+    
+    <text x="224" y="168" fill="#94a3b8" font-family="Inter, sans-serif" font-size="11" font-weight="600" letter-spacing="0.5">选择数据库类型</text>
+    
+    <!-- PostgreSQL 选项 -->
+    <rect x="216" y="184" width="168" height="56" rx="8" fill="#334155"/>
+    <rect x="232" y="200" width="32" height="24" rx="4" fill="#3b82f6" opacity="0.2"/>
+    <ellipse cx="248" cy="206" rx="10" ry="4" fill="none" stroke="#3b82f6" stroke-width="1.5"/>
+    <path d="M238 206 L238 218 Q238 222 248 222 Q258 222 258 218 L258 206" fill="none" stroke="#3b82f6" stroke-width="1.5"/>
+    <text x="276" y="214" fill="#f1f5f9" font-family="Inter, sans-serif" font-size="13" font-weight="500">PostgreSQL</text>
+    
+    <!-- MySQL 选项 -->
+    <rect x="216" y="248" width="168" height="56" rx="8" fill="transparent"/>
+    <rect x="232" y="264" width="32" height="24" rx="4" fill="#f59e0b" opacity="0.2"/>
+    <ellipse cx="248" cy="270" rx="10" ry="4" fill="none" stroke="#f59e0b" stroke-width="1.5"/>
+    <path d="M238 270 L238 282 Q238 286 248 286 Q258 286 258 282 L258 270" fill="none" stroke="#f59e0b" stroke-width="1.5"/>
+    <text x="276" y="278" fill="#94a3b8" font-family="Inter, sans-serif" font-size="13">MySQL</text>
+    
+    <!-- MariaDB 选项 -->
+    <rect x="216" y="312" width="168" height="56" rx="8" fill="transparent"/>
+    <rect x="232" y="328" width="32" height="24" rx="4" fill="#f59e0b" opacity="0.2"/>
+    <ellipse cx="248" cy="334" rx="10" ry="4" fill="none" stroke="#f59e0b" stroke-width="1.5"/>
+    <path d="M238 334 L238 346 Q238 350 248 350 Q258 350 258 346 L258 334" fill="none" stroke="#f59e0b" stroke-width="1.5"/>
+    <text x="276" y="342" fill="#94a3b8" font-family="Inter, sans-serif" font-size="13">MariaDB</text>
+    
+    <!-- SQLite 选项 -->
+    <rect x="216" y="376" width="168" height="56" rx="8" fill="transparent"/>
+    <rect x="232" y="392" width="32" height="24" rx="4" fill="#22c55e" opacity="0.2"/>
+    <path d="M242 396 L258 396 L258 416 L242 416 Z" fill="none" stroke="#22c55e" stroke-width="1.5"/>
+    <path d="M242 396 L248 392 L264 392 L258 396" fill="none" stroke="#22c55e" stroke-width="1.5"/>
+    <text x="276" y="406" fill="#94a3b8" font-family="Inter, sans-serif" font-size="13">SQLite</text>
+    
+    <!-- Redis 选项 (计划中) -->
+    <rect x="216" y="440" width="168" height="56" rx="8" fill="transparent"/>
+    <rect x="232" y="456" width="32" height="24" rx="4" fill="#ef4444" opacity="0.2"/>
+    <text x="248" y="472" text-anchor="middle" fill="#ef4444" font-family="Inter, sans-serif" font-size="12" font-weight="bold">R</text>
+    <text x="276" y="470" fill="#64748b" font-family="Inter, sans-serif" font-size="13">Redis</text>
+    <text x="276" y="484" fill="#64748b" font-family="Inter, sans-serif" font-size="10">计划中</text>
+    
+    <!-- 右侧表单区域 -->
+    <text x="440" y="168" fill="#94a3b8" font-family="Inter, sans-serif" font-size="11" font-weight="600" letter-spacing="0.5">连接配置</text>
+    
+    <!-- 连接名称 -->
+    <text x="440" y="204" fill="#f1f5f9" font-family="Inter, sans-serif" font-size="13">连接名称</text>
+    <text x="555" y="204" fill="#ef4444" font-family="Inter, sans-serif" font-size="13">*</text>
+    <rect x="440" y="212" width="520" height="36" rx="6" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+    <text x="456" y="236" fill="#f1f5f9" font-family="Inter, sans-serif" font-size="13">主数据库</text>
+    
+    <!-- 主机地址 -->
+    <text x="440" y="276" fill="#f1f5f9" font-family="Inter, sans-serif" font-size="13">主机地址</text>
+    <text x="532" y="276" fill="#ef4444" font-family="Inter, sans-serif" font-size="13">*</text>
+    <rect x="440" y="284" width="360" height="36" rx="6" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+    <text x="456" y="308" fill="#f1f5f9" font-family="Inter, sans-serif" font-size="13">prod-db.example.com</text>
+    
+    <!-- 端口 -->
+    <text x="820" y="276" fill="#f1f5f9" font-family="Inter, sans-serif" font-size="13">端口</text>
+    <text x="860" y="276" fill="#ef4444" font-family="Inter, sans-serif" font-size="13">*</text>
+    <rect x="820" y="284" width="140" height="36" rx="6" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+    <text x="836" y="308" fill="#f1f5f9" font-family="Inter, sans-serif" font-size="13">5432</text>
+    
+    <!-- 数据库名 -->
+    <text x="440" y="348" fill="#f1f5f9" font-family="Inter, sans-serif" font-size="13">数据库名</text>
+    <text x="532" y="348" fill="#ef4444" font-family="Inter, sans-serif" font-size="13">*</text>
+    <rect x="440" y="356" width="520" height="36" rx="6" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+    <text x="456" y="380" fill="#f1f5f9" font-family="Inter, sans-serif" font-size="13">myapp_production</text>
+    
+    <!-- 用户名 -->
+    <text x="440" y="420" fill="#f1f5f9" font-family="Inter, sans-serif" font-size="13">用户名</text>
+    <text x="500" y="420" fill="#ef4444" font-family="Inter, sans-serif" font-size="13">*</text>
+    <rect x="440" y="428" width="360" height="36" rx="6" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+    <text x="456" y="452" fill="#f1f5f9" font-family="Inter, sans-serif" font-size="13">postgres</text>
+    
+    <!-- 密码 -->
+    <text x="820" y="420" fill="#f1f5f9" font-family="Inter, sans-serif" font-size="13">密码</text>
+    <text x="868" y="420" fill="#ef4444" font-family="Inter, sans-serif" font-size="13">*</text>
+    <rect x="820" y="428" width="140" height="36" rx="6" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+    <text x="836" y="452" fill="#64748b" font-family="Inter, sans-serif" font-size="13">••••••••</text>
+    <!-- 显示密码按钮 -->
+    <circle cx="940" cy="446" r="8" fill="transparent" stroke="#64748b" stroke-width="1"/>
+    
+    <!-- 高级设置折叠区域 -->
+    <rect x="440" y="488" width="520" height="40" rx="6" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+    <text x="456" y="514" fill="#94a3b8" font-family="Inter, sans-serif" font-size="13">高级设置</text>
+    <!-- 展开箭头 -->
+    <path d="M936 504 L944 512 L952 504" fill="none" stroke="#64748b" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    
+    <!-- 颜色标签 -->
+    <text x="440" y="560" fill="#f1f5f9" font-family="Inter, sans-serif" font-size="13">颜色标签</text>
+    <rect x="440" y="568" width="520" height="40" rx="6" fill="#0f172a"/>
+    <!-- 颜色选项 -->
+    <circle cx="464" cy="588" r="10" fill="#ef4444" stroke="#334155" stroke-width="2"/>
+    <circle cx="504" cy="588" r="10" fill="#f59e0b"/>
+    <circle cx="544" cy="588" r="10" fill="#22c55e"/>
+    <circle cx="584" cy="588" r="10" fill="#3b82f6"/>
+    <circle cx="624" cy="588" r="10" fill="#8b5cf6"/>
+    <circle cx="664" cy="588" r="10" fill="#ec4899"/>
+    <circle cx="704" cy="588" r="10" fill="#64748b"/>
+    
+    <!-- 分组选择 -->
+    <text x="760" y="560" fill="#f1f5f9" font-family="Inter, sans-serif" font-size="13">分组</text>
+    <rect x="760" y="568" width="200" height="40" rx="6" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+    <text x="776" y="594" fill="#f1f5f9" font-family="Inter, sans-serif" font-size="13">生产环境</text>
+    <!-- 下拉箭头 -->
+    <path d="M936 580 L944 588 L952 580" fill="none" stroke="#64748b" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    
+    <!-- 底部按钮区域 -->
+    <rect x="200" y="664" width="800" height="56" rx="0 0 16 16" fill="#1e293b"/>
+    <rect x="200" y="664" width="800" height="1" fill="#334155"/>
+    
+    <!-- 测试连接按钮 -->
+    <rect x="440" y="680" width="120" height="36" rx="6" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+    <text x="500" y="704" text-anchor="middle" fill="#94a3b8" font-family="Inter, sans-serif" font-size="13">测试连接</text>
+    
+    <!-- 取消按钮 -->
+    <rect x="720" y="680" width="80" height="36" rx="6" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+    <text x="760" y="704" text-anchor="middle" fill="#94a3b8" font-family="Inter, sans-serif" font-size="13">取消</text>
+    
+    <!-- 保存按钮 -->
+    <rect x="816" y="680" width="120" height="36" rx="6" fill="#3b82f6" filter="url(#smallShadow)"/>
+    <text x="876" y="704" text-anchor="middle" fill="#ffffff" font-family="Inter, sans-serif" font-size="13" font-weight="500">保存</text>
+  </g>
+  
+  <!-- 快捷键提示 -->
+  <text x="600" y="776" text-anchor="middle" fill="#64748b" font-family="Inter, sans-serif" font-size="12">⌘+Enter 测试连接 · Enter 保存 · Esc 取消</text>
+</svg>

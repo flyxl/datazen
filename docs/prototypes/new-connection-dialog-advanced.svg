@@ -1,0 +1,168 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 900" width="1200" height="900">
+  <defs>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="16" flood-color="#000" flood-opacity="0.5"/>
+    </filter>
+    <filter id="smallShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#000" flood-opacity="0.2"/>
+    </filter>
+  </defs>
+  
+  <!-- 背景遮罩 -->
+  <rect width="1200" height="900" fill="#0f172a" opacity="0.8"/>
+  
+  <!-- 对话框 -->
+  <g filter="url(#shadow)">
+    <rect x="200" y="40" width="800" height="820" rx="16" fill="#1e293b"/>
+    
+    <!-- 标题栏 -->
+    <rect x="200" y="40" width="800" height="56" rx="16" fill="#1e293b"/>
+    <rect x="200" y="80" width="800" height="16" fill="#1e293b"/>
+    <circle cx="228" cy="68" r="6" fill="#ef4444"/>
+    <circle cx="248" cy="68" r="6" fill="#fbbf24"/>
+    <circle cx="268" cy="68" r="6" fill="#22c55e"/>
+    <text x="600" y="73" text-anchor="middle" fill="#f1f5f9" font-family="Inter, sans-serif" font-size="15" font-weight="600">新建连接</text>
+    
+    <!-- 左侧数据库类型选择 -->
+    <rect x="200" y="96" width="200" height="764" fill="#0f172a"/>
+    <text x="224" y="128" fill="#94a3b8" font-family="Inter, sans-serif" font-size="11" font-weight="600" letter-spacing="0.5">选择数据库类型</text>
+    
+    <!-- PostgreSQL 选项 (选中) -->
+    <rect x="216" y="144" width="168" height="56" rx="8" fill="#334155"/>
+    <rect x="232" y="160" width="32" height="24" rx="4" fill="#3b82f6" opacity="0.2"/>
+    <ellipse cx="248" cy="166" rx="10" ry="4" fill="none" stroke="#3b82f6" stroke-width="1.5"/>
+    <path d="M238 166 L238 178 Q238 182 248 182 Q258 182 258 178 L258 166" fill="none" stroke="#3b82f6" stroke-width="1.5"/>
+    <text x="276" y="174" fill="#f1f5f9" font-family="Inter, sans-serif" font-size="13" font-weight="500">PostgreSQL</text>
+    
+    <!-- MySQL 选项 -->
+    <rect x="216" y="208" width="168" height="56" rx="8" fill="transparent"/>
+    <text x="276" y="238" fill="#94a3b8" font-family="Inter, sans-serif" font-size="13">MySQL</text>
+    
+    <!-- SQLite 选项 -->
+    <rect x="216" y="272" width="168" height="56" rx="8" fill="transparent"/>
+    <text x="276" y="302" fill="#94a3b8" font-family="Inter, sans-serif" font-size="13">SQLite</text>
+    
+    <!-- 右侧表单区域 -->
+    <text x="440" y="128" fill="#94a3b8" font-family="Inter, sans-serif" font-size="11" font-weight="600" letter-spacing="0.5">连接配置</text>
+    
+    <!-- 连接名称 -->
+    <text x="440" y="164" fill="#f1f5f9" font-family="Inter, sans-serif" font-size="13">连接名称</text>
+    <text x="555" y="164" fill="#ef4444" font-family="Inter, sans-serif" font-size="13">*</text>
+    <rect x="440" y="172" width="520" height="36" rx="6" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+    <text x="456" y="196" fill="#f1f5f9" font-family="Inter, sans-serif" font-size="13">主数据库</text>
+    
+    <!-- 主机地址 -->
+    <text x="440" y="236" fill="#f1f5f9" font-family="Inter, sans-serif" font-size="13">主机地址</text>
+    <text x="532" y="236" fill="#ef4444" font-family="Inter, sans-serif" font-size="13">*</text>
+    <rect x="440" y="244" width="360" height="36" rx="6" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+    <text x="456" y="268" fill="#f1f5f9" font-family="Inter, sans-serif" font-size="13">prod-db.example.com</text>
+    
+    <!-- 端口 -->
+    <text x="820" y="236" fill="#f1f5f9" font-family="Inter, sans-serif" font-size="13">端口</text>
+    <text x="860" y="236" fill="#ef4444" font-family="Inter, sans-serif" font-size="13">*</text>
+    <rect x="820" y="244" width="140" height="36" rx="6" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+    <text x="836" y="268" fill="#f1f5f9" font-family="Inter, sans-serif" font-size="13">5432</text>
+    
+    <!-- 数据库名 -->
+    <text x="440" y="308" fill="#f1f5f9" font-family="Inter, sans-serif" font-size="13">数据库名</text>
+    <text x="532" y="308" fill="#ef4444" font-family="Inter, sans-serif" font-size="13">*</text>
+    <rect x="440" y="316" width="520" height="36" rx="6" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+    <text x="456" y="340" fill="#f1f5f9" font-family="Inter, sans-serif" font-size="13">myapp_production</text>
+    
+    <!-- 用户名 -->
+    <text x="440" y="380" fill="#f1f5f9" font-family="Inter, sans-serif" font-size="13">用户名</text>
+    <text x="500" y="380" fill="#ef4444" font-family="Inter, sans-serif" font-size="13">*</text>
+    <rect x="440" y="388" width="360" height="36" rx="6" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+    <text x="456" y="412" fill="#f1f5f9" font-family="Inter, sans-serif" font-size="13">postgres</text>
+    
+    <!-- 密码 -->
+    <text x="820" y="380" fill="#f1f5f9" font-family="Inter, sans-serif" font-size="13">密码</text>
+    <text x="868" y="380" fill="#ef4444" font-family="Inter, sans-serif" font-size="13">*</text>
+    <rect x="820" y="388" width="140" height="36" rx="6" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+    <text x="836" y="412" fill="#64748b" font-family="Inter, sans-serif" font-size="13">••••••••</text>
+    
+    <!-- 高级设置展开状态 -->
+    <rect x="440" y="448" width="520" height="280" rx="8" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+    
+    <!-- 高级设置标题栏 (展开状态) -->
+    <rect x="440" y="448" width="520" height="40" rx="8" fill="#1e293b"/>
+    <text x="456" y="474" fill="#f1f5f9" font-family="Inter, sans-serif" font-size="13" font-weight="500">高级设置</text>
+    <!-- 收起箭头 -->
+    <path d="M936 460 L944 468 L952 460" fill="none" stroke="#94a3b8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    
+    <!-- SSL 设置 -->
+    <text x="456" y="512" fill="#94a3b8" font-family="Inter, sans-serif" font-size="12">SSL 模式</text>
+    <rect x="456" y="520" width="240" height="32" rx="6" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+    <text x="472" y="542" fill="#f1f5f9" font-family="Inter, sans-serif" font-size="12">首选 (Prefer)</text>
+    <path d="M676 532 L684 540 L692 532" fill="none" stroke="#64748b" stroke-width="1.5"/>
+    
+    <!-- 连接超时 -->
+    <text x="720" y="512" fill="#94a3b8" font-family="Inter, sans-serif" font-size="12">连接超时</text>
+    <rect x="720" y="520" width="100" height="32" rx="6" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+    <text x="736" y="542" fill="#f1f5f9" font-family="Inter, sans-serif" font-size="12">30 秒</text>
+    <path d="M800 532 L808 540 L816 532" fill="none" stroke="#64748b" stroke-width="1.5"/>
+    
+    <!-- SSH 隧道设置 -->
+    <rect x="456" y="568" width="500" height="140" rx="8" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+    
+    <!-- SSH 开关 -->
+    <text x="472" y="592" fill="#f1f5f9" font-family="Inter, sans-serif" font-size="13">SSH 隧道</text>
+    <!-- 开关 (开启状态) -->
+    <rect x="880" y="576" width="48" height="24" rx="12" fill="#3b82f6"/>
+    <circle cx="908" cy="588" r="8" fill="#ffffff"/>
+    
+    <!-- SSH 配置 (启用时显示) -->
+    <text x="472" y="624" fill="#94a3b8" font-family="Inter, sans-serif" font-size="12">SSH 主机</text>
+    <rect x="472" y="632" width="200" height="28" rx="4" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+    <text x="484" y="651" fill="#f1f5f9" font-family="Inter, sans-serif" font-size="11">jump.example.com</text>
+    
+    <text x="692" y="624" fill="#94a3b8" font-family="Inter, sans-serif" font-size="12">SSH 端口</text>
+    <rect x="692" y="632" width="80" height="28" rx="4" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+    <text x="704" y="651" fill="#f1f5f9" font-family="Inter, sans-serif" font-size="11">22</text>
+    
+    <text x="472" y="680" fill="#94a3b8" font-family="Inter, sans-serif" font-size="12">SSH 用户</text>
+    <rect x="472" y="688" width="140" height="28" rx="4" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+    <text x="484" y="707" fill="#f1f5f9" font-family="Inter, sans-serif" font-size="11">deploy</text>
+    
+    <text x="632" y="680" fill="#94a3b8" font-family="Inter, sans-serif" font-size="12">私钥路径</text>
+    <rect x="632" y="688" width="200" height="28" rx="4" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+    <text x="644" y="707" fill="#f1f5f9" font-family="Inter, sans-serif" font-size="11">~/.ssh/id_rsa</text>
+    <!-- 浏览按钮 -->
+    <rect x="840" y="688" width="48" height="28" rx="4" fill="#334155"/>
+    <text x="864" y="707" text-anchor="middle" fill="#94a3b8" font-family="Inter, sans-serif" font-size="11">浏览</text>
+    
+    <!-- 颜色标签 -->
+    <text x="440" y="756" fill="#f1f5f9" font-family="Inter, sans-serif" font-size="13">颜色标签</text>
+    <rect x="440" y="764" width="520" height="40" rx="6" fill="#0f172a"/>
+    <circle cx="464" cy="784" r="10" fill="#ef4444" stroke="#ffffff" stroke-width="2"/>
+    <circle cx="504" cy="784" r="10" fill="#f59e0b"/>
+    <circle cx="544" cy="784" r="10" fill="#22c55e"/>
+    <circle cx="584" cy="784" r="10" fill="#3b82f6"/>
+    <circle cx="624" cy="784" r="10" fill="#8b5cf6"/>
+    <circle cx="664" cy="784" r="10" fill="#ec4899"/>
+    <circle cx="704" cy="784" r="10" fill="#64748b"/>
+    
+    <!-- 分组选择 -->
+    <text x="760" y="756" fill="#f1f5f9" font-family="Inter, sans-serif" font-size="13">分组</text>
+    <rect x="760" y="764" width="200" height="40" rx="6" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+    <text x="776" y="790" fill="#f1f5f9" font-family="Inter, sans-serif" font-size="13">生产环境</text>
+    <path d="M936 776 L944 784 L952 776" fill="none" stroke="#64748b" stroke-width="1.5"/>
+    
+    <!-- 底部按钮区域 -->
+    <rect x="200" y="820" width="800" height="40" rx="0 0 16 16" fill="#1e293b"/>
+    <rect x="200" y="820" width="800" height="1" fill="#334155"/>
+    
+    <!-- 测试连接按钮 -->
+    <rect x="440" y="828" width="120" height="32" rx="6" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+    <text x="500" y="849" text-anchor="middle" fill="#94a3b8" font-family="Inter, sans-serif" font-size="13">测试连接</text>
+    
+    <!-- 取消按钮 -->
+    <rect x="720" y="828" width="80" height="32" rx="6" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+    <text x="760" y="849" text-anchor="middle" fill="#94a3b8" font-family="Inter, sans-serif" font-size="13">取消</text>
+    
+    <!-- 保存按钮 -->
+    <rect x="816" y="828" width="120" height="32" rx="6" fill="#3b82f6" filter="url(#smallShadow)"/>
+    <text x="876" y="849" text-anchor="middle" fill="#ffffff" font-family="Inter, sans-serif" font-size="13" font-weight="500">保存</text>
+  </g>
+</svg>

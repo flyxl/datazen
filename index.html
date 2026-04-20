@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DataZen</title>
+    <script>
+      window.__HTML_START__ = performance.now();
+      var _d = new Date(), _p = function(n,w){return String(n).padStart(w||2,'0');};
+      console.log(_p(_d.getFullYear(),4)+'-'+_p(_d.getMonth()+1)+'-'+_p(_d.getDate())+' '+_p(_d.getHours())+':'+_p(_d.getMinutes())+':'+_p(_d.getSeconds())+'.'+_p(_d.getMilliseconds(),3)+' [startup] HTML inline script executing');
+      (function () {
+        var saved = 'dark';
+        try { saved = localStorage.getItem('datazen-theme') || 'dark'; } catch (e) {}
+        var isDark = saved === 'dark' || (saved === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.classList.toggle('dark', isDark);
+        var bg = isDark ? '#0f172a' : '#ffffff';
+        document.documentElement.style.backgroundColor = bg;
+        document.write('<style>body{background:' + bg + ';margin:0}</style>');
+      })();
+    </script>
+    <style>
+      #splash{display:flex;align-items:center;justify-content:center;flex-direction:column;position:fixed;inset:0;z-index:99999;transition:opacity .3s}
+      #splash.hide{opacity:0;pointer-events:none}
+      .dark #splash{color:#94a3b8}
+      #splash{color:#64748b}
+      @keyframes spin{to{transform:rotate(360deg)}}
+      #splash .spinner{width:28px;height:28px;border:2.5px solid currentColor;border-top-color:transparent;border-radius:50%;animation:spin .7s linear infinite;opacity:.6}
+      #splash .label{margin-top:14px;font-size:13px;font-family:-apple-system,BlinkMacSystemFont,sans-serif;letter-spacing:.02em;opacity:.7}
+    </style>
+  </head>
+  <body class="h-full antialiased">
+    <div id="splash">
+      <div class="spinner"></div>
+      <div class="label">DataZen</div>
+    </div>
+    <div id="root" class="h-full min-h-0"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

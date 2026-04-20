@@ -1,0 +1,40 @@
+.DS_Store
+node_modules
+/build
+/.svelte-kit
+/package
+.env
+.env.*
+!.env.example
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*
+
+# Build artifacts and logs
+/target
+src-tauri/target/
+build-logs/
+*.log
+
+# Updater keys (keep private)
+updater-keys/
+
+# Code signing certificates (keep private)
+*.p12
+*.pem
+*.key
+!public.key
+
+# Platform-specific build artifacts
+*.dmg
+*.msi
+*.deb
+*.AppImage
+*.rpm
+*.pkg
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+.ssh*
+dist/
