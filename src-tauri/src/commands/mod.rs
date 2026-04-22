@@ -84,6 +84,7 @@ pub async fn test_connection(
         host = ?config.host,
         port = ?config.port,
         db_type = ?config.database_type,
+        ssh = ?config.ssh_tunnel.as_ref().map(|s| format!("{}@{}:{}", s.username, s.host, s.port)),
         "test_connection"
     );
     let result = state
@@ -412,7 +413,10 @@ pub async fn read_file(path: String) -> Result<String, String> {
 pub async fn backup_database(
     state: State<'_, AppState>,
     connection_id: String,
+    database: Option<String>,
     output_path: String,
+    options: Option<Vec<String>>,
+    compress: Option<bool>,
 ) -> Result<(), String> {
     tracing::info!(%connection_id, %output_path, "backup_database");
     let config = state
@@ -427,24 +431,36 @@ pub async fn backup_database(
         .await
         .map_err(|e| log_err("backup_database", &e))?;
 
-    let db_name = config.database.as_deref().unwrap_or("");
+    let db_name = database.as_deref().unwrap_or(config.database.as_deref().unwrap_or(""));
+    let opts: std::collections::HashSet<String> = options.unwrap_or_default().into_iter().collect();
+    let schema_only = opts.contains("schema-only") || opts.contains("no-data");
+    let data_only = opts.contains("data-only") || opts.contains("no-create-info");
+    let add_drop = opts.contains("clean") || opts.contains("add-drop-table");
+    let add_create_db = opts.contains("create");
+
     let tables = driver
         .get_tables(&handle, db_name)
         .await
         .map_err(|e| log_err("backup_database", &e))?;
 
-    let quote_char = match config.database_type {
-        DatabaseType::MySQL | DatabaseType::MariaDB => '`',
-        _ => '"',
-    };
+    let qi = |name: &str| driver.quote_ident(name);
 
     let mut out = String::new();
     out.push_str(&format!("-- DataZen backup: {}\n", db_name));
-    out.push_str(&format!("-- Date: {}\n\n", chrono::Utc::now().to_rfc3339()));
+    out.push_str(&format!("-- Date: {}\n", chrono::Utc::now().to_rfc3339()));
+    if !opts.is_empty() {
+        out.push_str(&format!("-- Options: {}\n", opts.iter().cloned().collect::<Vec<_>>().join(", ")));
+    }
+    out.push('\n');
+
+    if add_create_db {
+        let q_db = qi(db_name);
+        out.push_str(&format!("CREATE DATABASE IF NOT EXISTS {};\n", q_db));
+        out.push_str(&format!("\\connect {};\n\n", q_db));
+    }
 
     for table in &tables {
         let tname = &table.name;
-        let q = |name: &str| format!("{}{}{}", quote_char, name, quote_char);
 
         let schema = driver
             .get_table_schema(&handle, tname)
@@ -453,54 +469,72 @@ pub async fn backup_database(
 
         out.push_str(&format!("-- Table: {}\n", tname));
 
-        let cols_sql: Vec<String> = schema.columns.iter().map(|c| {
-            let mut def = format!("  {} {}", q(&c.name), c.data_type);
-            if !c.nullable { def.push_str(" NOT NULL"); }
-            if let Some(ref dv) = c.default_value {
-                def.push_str(&format!(" DEFAULT {}", dv));
-            }
-            def
-        }).collect();
-
-        let mut create = format!("CREATE TABLE IF NOT EXISTS {} (\n{}", q(tname), cols_sql.join(",\n"));
-        if !schema.primary_keys.is_empty() {
-            let pk_cols: Vec<String> = schema.primary_keys.iter().map(|k| q(k)).collect();
-            create.push_str(&format!(",\n  PRIMARY KEY ({})", pk_cols.join(", ")));
+        if add_drop {
+            out.push_str(&format!("DROP TABLE IF EXISTS {};\n", qi(tname)));
         }
-        create.push_str("\n);\n\n");
-        out.push_str(&create);
 
-        let col_names: Vec<String> = schema.columns.iter().map(|c| q(&c.name)).collect();
-        let select_sql = format!("SELECT {} FROM {}", col_names.join(", "), q(tname));
-
-        match driver.query(&handle, &select_sql).await {
-            Ok(result) => {
-                for row in &result.rows {
-                    let vals: Vec<String> = row.iter().map(|v| match v {
-                        None => "NULL".to_string(),
-                        Some(crate::db::Value::Null) => "NULL".to_string(),
-                        Some(crate::db::Value::Bool(b)) => if *b { "TRUE".to_string() } else { "FALSE".to_string() },
-                        Some(crate::db::Value::Integer(n)) => n.to_string(),
-                        Some(crate::db::Value::Float(f)) => f.to_string(),
-                        Some(crate::db::Value::String(s)) => format!("'{}'", s.replace('\'', "''")),
-                        Some(crate::db::Value::Timestamp(s)) => format!("'{}'", s),
-                        Some(crate::db::Value::Json(j)) => format!("'{}'", j.to_string().replace('\'', "''")),
-                        Some(crate::db::Value::Bytes(b)) => format!("'\\x{}'", b.iter().map(|byte| format!("{:02x}", byte)).collect::<String>()),
-                    }).collect();
-                    out.push_str(&format!("INSERT INTO {} ({}) VALUES ({});\n",
-                        q(tname), col_names.join(", "), vals.join(", ")));
+        if !data_only {
+            let cols_sql: Vec<String> = schema.columns.iter().map(|c| {
+                let mut def = format!("  {} {}", qi(&c.name), c.data_type);
+                if !c.nullable { def.push_str(" NOT NULL"); }
+                if let Some(ref dv) = c.default_value {
+                    def.push_str(&format!(" DEFAULT {}", dv));
                 }
-                out.push('\n');
+                def
+            }).collect();
+
+            let mut create = format!("CREATE TABLE IF NOT EXISTS {} (\n{}", qi(tname), cols_sql.join(",\n"));
+            if !schema.primary_keys.is_empty() {
+                let pk_cols: Vec<String> = schema.primary_keys.iter().map(|k| qi(k)).collect();
+                create.push_str(&format!(",\n  PRIMARY KEY ({})", pk_cols.join(", ")));
             }
-            Err(e) => {
-                out.push_str(&format!("-- Error dumping data for {}: {}\n\n", tname, e));
+            create.push_str("\n);\n\n");
+            out.push_str(&create);
+        }
+
+        if !schema_only {
+            let col_names: Vec<String> = schema.columns.iter().map(|c| qi(&c.name)).collect();
+            let select_sql = format!("SELECT {} FROM {}", col_names.join(", "), qi(tname));
+
+            match driver.query(&handle, &select_sql).await {
+                Ok(result) => {
+                    for row in &result.rows {
+                        let vals: Vec<String> = row.iter().map(|v| match v {
+                            None => "NULL".to_string(),
+                            Some(crate::db::Value::Null) => "NULL".to_string(),
+                            Some(crate::db::Value::Bool(b)) => if *b { "TRUE".to_string() } else { "FALSE".to_string() },
+                            Some(crate::db::Value::Integer(n)) => n.to_string(),
+                            Some(crate::db::Value::Float(f)) => f.to_string(),
+                            Some(crate::db::Value::String(s)) => format!("'{}'", s.replace('\'', "''")),
+                            Some(crate::db::Value::Timestamp(s)) => format!("'{}'", s),
+                            Some(crate::db::Value::Json(j)) => format!("'{}'", j.to_string().replace('\'', "''")),
+                            Some(crate::db::Value::Bytes(b)) => format!("'\\x{}'", b.iter().map(|byte| format!("{:02x}", byte)).collect::<String>()),
+                        }).collect();
+                        out.push_str(&format!("INSERT INTO {} ({}) VALUES ({});\n",
+                            qi(tname), col_names.join(", "), vals.join(", ")));
+                    }
+                    out.push('\n');
+                }
+                Err(e) => {
+                    out.push_str(&format!("-- Error dumping data for {}: {}\n\n", tname, e));
+                }
             }
         }
     }
 
-    tokio::fs::write(&output_path, out.as_bytes())
-        .await
-        .map_err(|e| log_err("backup_database", &e))?;
+    let data = out.as_bytes();
+    if compress.unwrap_or(false) {
+        use std::io::Write;
+        let file = std::fs::File::create(&output_path)
+            .map_err(|e| log_err("backup_database", &e))?;
+        let mut encoder = flate2::write::GzEncoder::new(file, flate2::Compression::default());
+        encoder.write_all(data).map_err(|e| log_err("backup_database", &e))?;
+        encoder.finish().map_err(|e| log_err("backup_database", &e))?;
+    } else {
+        tokio::fs::write(&output_path, data)
+            .await
+            .map_err(|e| log_err("backup_database", &e))?;
+    }
     tracing::info!(%output_path, "backup_database OK");
     Ok(())
 }
@@ -906,23 +940,15 @@ pub async fn sync_table(
     let tgt_type = &tgt_config.database_type;
     let cross_db = src_type != tgt_type;
 
-    let quote_char = match tgt_config.database_type {
-        DatabaseType::MySQL | DatabaseType::MariaDB => '`',
-        _ => '"',
-    };
-    let src_quote = match src_config.database_type {
-        DatabaseType::MySQL | DatabaseType::MariaDB => '`',
-        _ => '"',
-    };
-    let q = |name: &str| format!("{}{}{}", quote_char, name, quote_char);
-    let sq = |name: &str| format!("{}{}{}", src_quote, name, src_quote);
-
     let (src_driver, src_handle) = state.connection_manager
         .get_connection(&source_connection_id).await
         .map_err(|e| log_err("sync_table", &e))?;
     let (tgt_driver, tgt_handle) = state.connection_manager
         .get_connection(&target_connection_id).await
         .map_err(|e| log_err("sync_table", &e))?;
+
+    let q = |name: &str| tgt_driver.quote_ident(name);
+    let sq = |name: &str| src_driver.quote_ident(name);
 
     let src_schema = src_driver.get_table_schema(&src_handle, &table_name).await
         .map_err(|e| log_err("sync_table", &e))?;
@@ -968,10 +994,8 @@ async fn count_rows(
     driver: &dyn crate::db::DatabaseDriver,
     handle: &crate::db::ConnectionHandle,
     table: &str,
-    quote_char: char,
 ) -> Result<u64, String> {
-    let q = format!("{0}{1}{0}", quote_char, table);
-    let sql = format!("SELECT COUNT(*) FROM {}", q);
+    let sql = format!("SELECT COUNT(*) FROM {}", driver.quote_ident(table));
     let res = driver.query(handle, &sql).await.map_err(|e| e.to_string())?;
     if let Some(row) = res.rows.first() {
         if let Some(Some(crate::db::Value::Integer(n))) = row.first() {
@@ -1008,10 +1032,6 @@ pub async fn sync_tables(
     let tgt_type = tgt_config.database_type.clone();
     let cross_db = src_type != tgt_type;
 
-    let tgt_qc = match tgt_type { DatabaseType::MySQL | DatabaseType::MariaDB => '`', _ => '"' };
-    let src_qc = match src_type { DatabaseType::MySQL | DatabaseType::MariaDB => '`', _ => '"' };
-    let q = move |name: &str| format!("{}{}{}", tgt_qc, name, tgt_qc);
-    let sq = move |name: &str| format!("{}{}{}", src_qc, name, src_qc);
     let is_mysql_target = matches!(tgt_type, DatabaseType::MySQL | DatabaseType::MariaDB);
 
     let emit = |evt: SyncProgressEvent| { let _ = app_handle.emit("sync:progress", &evt); };
@@ -1033,7 +1053,7 @@ pub async fn sync_tables(
             .get_connection(&source_connection_id).await
             .map_err(|e| log_err("sync_tables", &e))?;
         for t in &tables {
-            let cnt = count_rows(src_driver.as_ref(), &src_handle, t, src_qc).await?;
+            let cnt = count_rows(src_driver.as_ref(), &src_handle, t).await?;
             source_row_counts.insert(t.clone(), cnt);
         }
     }
@@ -1086,6 +1106,9 @@ pub async fn sync_tables(
             let (tgt_driver, tgt_handle) = state.connection_manager
                 .get_connection(&target_connection_id).await
                 .map_err(|e| log_err("sync_tables", &e))?;
+
+            let q = |name: &str| tgt_driver.quote_ident(name);
+            let sq = |name: &str| src_driver.quote_ident(name);
 
             let src_schema = src_driver.get_table_schema(&src_handle, table_name).await
                 .map_err(|e| log_err("sync_tables", &e))?;
@@ -1229,19 +1252,13 @@ pub async fn check_sync_conflicts(
         .get_connection(&task.source_connection_id).await
         .map_err(|e| log_err("check_sync_conflicts", &e))?;
 
-    let src_qc = {
-        let cfg = state.connection_manager.get_connection_config(&task.source_connection_id).await
-            .map_err(|e| log_err("check_sync_conflicts", &e))?;
-        match cfg.database_type { DatabaseType::MySQL | DatabaseType::MariaDB => '`', _ => '"' }
-    };
-
     let mut conflicts = Vec::<serde_json::Value>::new();
 
     for table in &task.tables {
         if task.completed_tables.contains(table) { continue; }
 
         let original_count = task.source_row_counts.get(table).copied().unwrap_or(0);
-        let current_count = count_rows(src_driver.as_ref(), &src_handle, table, src_qc).await?;
+        let current_count = count_rows(src_driver.as_ref(), &src_handle, table).await?;
 
         if current_count != original_count {
             conflicts.push(serde_json::json!({

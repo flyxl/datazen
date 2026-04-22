@@ -1,4 +1,5 @@
 import type { Value } from '../types';
+import { t } from '../locales/t';
 
 export function formatTimestamp(value: unknown): string {
   if (value === null || value === undefined) return 'NULL';
@@ -23,7 +24,7 @@ export function formatCell(value: unknown): string {
 }
 
 export function formatLastConnected(iso?: string): string {
-  if (!iso) return '从未连接';
+  if (!iso) return t('conn.neverConnected');
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
   return d.toLocaleString();

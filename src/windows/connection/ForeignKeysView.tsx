@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { databaseCommands } from '../../commands/database';
 import type { ForeignKeyInfo, TableSchema } from '../../types';
+import { useI18n } from '../../hooks/useI18n';
 
 interface ForeignKeysViewProps {
   connectionId: string;
@@ -9,6 +10,7 @@ interface ForeignKeysViewProps {
 }
 
 export function ForeignKeysView({ connectionId, tableName }: ForeignKeysViewProps) {
+  const { t } = useI18n();
   const [foreignKeys, setForeignKeys] = useState<ForeignKeyInfo[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -28,19 +30,19 @@ export function ForeignKeysView({ connectionId, tableName }: ForeignKeysViewProp
       })
       .catch((e) => {
         if (!cancelled) {
-          setError(typeof e === 'string' ? e : e instanceof Error ? e.message : '加载外键失败');
+          setError(typeof e === 'string' ? e : e instanceof Error ? e.message : t('fk.loadFailed'));
           setLoading(false);
         }
       });
 
     return () => { cancelled = true; };
-  }, [connectionId, tableName]);
+  }, [connectionId, tableName, t]);
 
   if (loading) {
     return (
       <div className="flex flex-1 items-center justify-center gap-2 text-fg-muted">
         <Loader2 className="h-5 w-5 animate-spin" />
-        加载外键信息…
+        {t('fk.loading')}
       </div>
     );
   }
@@ -50,24 +52,24 @@ export function ForeignKeysView({ connectionId, tableName }: ForeignKeysViewProp
   }
 
   if (foreignKeys.length === 0) {
-    return <div className="flex flex-1 items-center justify-center text-sm text-fg-muted">该表没有外键</div>;
+    return <div className="flex flex-1 items-center justify-center text-sm text-fg-muted">{t('fk.noForeignKeys')}</div>;
   }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex items-baseline gap-2 px-4 py-3">
         <span className="text-base font-semibold text-fg">{tableName}</span>
-        <span className="text-sm text-fg-muted">· {foreignKeys.length} 个外键</span>
+        <span className="text-sm text-fg-muted">· {t('fk.count', { count: foreignKeys.length })}</span>
       </div>
 
       <div className="min-h-0 flex-1 overflow-auto">
         <table className="w-full border-collapse text-[13px]">
           <thead className="sticky top-0 z-10">
             <tr className="bg-surface-alt text-left text-xs font-medium text-fg-secondary">
-              <th className="border-b border-edge px-4 py-2.5 font-medium">约束名</th>
-              <th className="border-b border-edge px-4 py-2.5 font-medium">本表列</th>
-              <th className="border-b border-edge px-4 py-2.5 font-medium">引用表</th>
-              <th className="border-b border-edge px-4 py-2.5 font-medium">引用列</th>
+              <th className="border-b border-edge px-4 py-2.5 font-medium">{t('fk.constraintName')}</th>
+              <th className="border-b border-edge px-4 py-2.5 font-medium">{t('fk.localColumn')}</th>
+              <th className="border-b border-edge px-4 py-2.5 font-medium">{t('fk.refTable')}</th>
+              <th className="border-b border-edge px-4 py-2.5 font-medium">{t('fk.refColumn')}</th>
               <th className="border-b border-edge px-4 py-2.5 font-medium">ON UPDATE</th>
               <th className="border-b border-edge px-4 py-2.5 font-medium">ON DELETE</th>
             </tr>

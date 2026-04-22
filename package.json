@@ -8,8 +8,11 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
-    "e2e": "wdio run e2e/wdio.conf.ts",
-    "e2e:webdriver": "tauri-webdriver"
+    "e2e": "node e2e/run.mjs",
+    "e2e:skip-build": "node e2e/run.mjs --skip-build",
+    "e2e:wdio": "wdio run e2e/wdio.conf.ts",
+    "e2e:core": "node e2e/run.mjs --skip-build -- --spec e2e/specs/main-window.ts,e2e/specs/new-connection.ts,e2e/specs/edit-delete-connection.ts,e2e/specs/connection-search-group.ts,e2e/specs/settings.ts,e2e/specs/i18n-menu.ts,e2e/specs/homepage-features.ts,e2e/specs/drag-drop-groups.ts,e2e/specs/backup-database.ts",
+    "e2e:db": "node e2e/run.mjs --skip-build -- --spec e2e/specs/connection-window.ts,e2e/specs/sql-query.ts,e2e/specs/table-data.ts,e2e/specs/table-edit.ts,e2e/specs/table-structure.ts,e2e/specs/export-import.ts,e2e/specs/data-types.ts,e2e/specs/mysql.ts,e2e/specs/data-sync-real.ts"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.1",
@@ -24,6 +27,7 @@
     "@tanstack/react-virtual": "^3.13.6",
     "@tauri-apps/api": "^2.5.0",
     "@tauri-apps/plugin-dialog": "^2.7.0",
+    "@tauri-apps/plugin-os": "^2.3.2",
     "@tauri-apps/plugin-shell": "^2.2.1",
     "clsx": "^2.1.1",
     "lucide-react": "^0.487.0",

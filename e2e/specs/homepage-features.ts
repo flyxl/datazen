@@ -2,7 +2,7 @@
  * E2E tests for the redesigned homepage, data sync, and drag-and-drop features.
  */
 import { expect, browser, $, $$ } from '@wdio/globals';
-import { closeExtraWindows } from '../helpers.js';
+import { closeExtraWindows, expandAllGroups } from '../helpers.js';
 
 describe('主页 TablePlus 风格 (HOME)', () => {
   let mainWindow: string;
@@ -10,6 +10,7 @@ describe('主页 TablePlus 风格 (HOME)', () => {
   before(async () => {
     mainWindow = await browser.getWindowHandle();
     await $('input[placeholder="查找连接…"]').waitForDisplayed({ timeout: 10000 });
+    await expandAllGroups();
     await browser.pause(1000);
   });
 
@@ -389,6 +390,7 @@ describe('拖拽连接到不同分组 (DRAG)', () => {
   before(async () => {
     mainWindow = await browser.getWindowHandle();
     await $('input[placeholder="查找连接…"]').waitForDisplayed({ timeout: 10000 });
+    await expandAllGroups();
     await browser.pause(1000);
 
     await browser.waitUntil(

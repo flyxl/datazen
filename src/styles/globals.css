@@ -17,10 +17,48 @@ body {
   transition: background-color 0.15s ease, color 0.15s ease;
 }
 
+/* macOS rounded corners for custom-decorated windows.
+   The entire html→body chain must be transparent so that the
+   window's native transparent background shows through the corners.
+   Only #root gets the opaque bg + border-radius. */
+html.macos-rounded {
+  background-color: transparent !important;
+}
+html.macos-rounded body {
+  background: transparent !important;
+}
+html.macos-rounded #root {
+  border-radius: 10px;
+  overflow: hidden;
+  background-color: var(--c-surface);
+}
+html.macos-rounded #splash {
+  border-radius: 10px;
+}
+
 * {
   box-sizing: border-box;
 }
 
 ::selection {
   background: rgba(59, 130, 246, 0.35);
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--c-surface-inset);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--c-fg-muted);
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
 }

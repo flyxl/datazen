@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { connectionCommands } from '../commands/connection';
 import { emitCrossWindow } from '../lib/crossWindowBus';
+import { t } from '../locales/t';
 import type { ConnectionConfig, ServerInfo } from '../types';
 
 const EVENT_CONNECTIONS_CHANGED = 'datazen:connections-changed';
@@ -88,7 +89,7 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
     } catch (e) {
       set({
         loading: false,
-        error: e instanceof Error ? e.message : '加载连接失败',
+        error: e instanceof Error ? e.message : t('connStore.loadFailed'),
       });
     }
   },
@@ -112,7 +113,7 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
     } catch (e) {
       set({
         loading: false,
-        error: e instanceof Error ? e.message : '保存连接失败',
+        error: e instanceof Error ? e.message : t('connStore.saveFailed'),
       });
     }
   },
@@ -124,7 +125,7 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
     const copy: ConnectionConfig = {
       ...source,
       id: `conn_${Math.random().toString(36).slice(2, 10)}`,
-      name: `${source.name} (副本)`,
+      name: `${source.name} (${t('conn.copyName')})`,
       lastConnectedAt: undefined,
     };
     await get().saveConnection(copy);
@@ -140,7 +141,7 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
     } catch (e) {
       set({
         loading: false,
-        error: e instanceof Error ? e.message : '删除连接失败',
+        error: e instanceof Error ? e.message : t('connStore.deleteFailed'),
       });
     }
   },

@@ -1,22 +1,9 @@
 import { useCallback } from 'react';
-import type { ConnectionConfig, DatabaseType } from '../../types';
+import type { ConnectionConfig } from '../../types';
 import type { ConnectionStatus } from '../../stores/activeConnectionStore';
 import { cn } from '../../lib/cn';
-
-function dbIcon(t: DatabaseType): { label: string; bg: string } {
-  switch (t) {
-    case 'postgresql':
-      return { label: 'Pg', bg: 'bg-blue-600' };
-    case 'mysql':
-      return { label: 'My', bg: 'bg-orange-500' };
-    case 'mariadb':
-      return { label: 'Ma', bg: 'bg-sky-600' };
-    case 'sqlite':
-      return { label: 'Lt', bg: 'bg-emerald-600' };
-    default:
-      return { label: 'DB', bg: 'bg-gray-500' };
-  }
-}
+import { getDbIcon, formatConnectionAddr } from '../../lib/databaseTypes';
+import { useI18n } from '../../hooks/useI18n';
 
 export interface ConnectionItemProps {
   connection: ConnectionConfig;
@@ -39,13 +26,12 @@ export function ConnectionItem({
   onContextMenu,
   onPointerDown,
 }: ConnectionItemProps) {
-  const { label, bg } = dbIcon(connection.databaseType);
+  const { t } = useI18n();
+  const { label, bg } = getDbIcon(connection.databaseType);
   const isConnected = status === 'connected';
-  const isLocal = connection.host === 'localhost' || connection.host === '127.0.0.1';
-  const addr =
-    connection.databaseType === 'sqlite'
-      ? (connection.database ?? 'SQLite')
-      : `${connection.host ?? 'localhost'} : ${connection.database ?? ''}`;
+  const hasSSH = connection.sshTunnel?.enabled === true;
+  const isLocal = !hasSSH && (connection.host === 'localhost' || connection.host === '127.0.0.1');
+  const addr = formatConnectionAddr(connection);
 
   const handleDoubleClick = useCallback(() => {
     onConnect(connection);
@@ -84,11 +70,14 @@ export function ConnectionItem({
           {isLocal && (
             <span className="text-[11px] font-medium text-green-500">(local)</span>
           )}
+          {hasSSH && (
+            <span className="text-[11px] font-medium text-blue-400">(SSH)</span>
+          )}
         </div>
         <div className="mt-0.5 truncate text-[11px] text-fg-muted">{addr}</div>
       </div>
       {isConnected && (
-        <span className="h-2 w-2 shrink-0 rounded-full bg-green-500" title="已连接" />
+        <span className="h-2 w-2 shrink-0 rounded-full bg-green-500" title={t('conn.connected')} />
       )}
     </div>
   );

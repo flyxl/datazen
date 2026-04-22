@@ -275,6 +275,21 @@ pub enum DriverError {
 pub trait DatabaseDriver: Send + Sync {
     fn driver_type(&self) -> DatabaseType;
 
+    /// Identifier quote character. Override for non-standard quoting (e.g. MySQL uses backtick).
+    fn quote_char(&self) -> char {
+        '"'
+    }
+
+    /// Quote an identifier according to this driver's convention.
+    fn quote_ident(&self, name: &str) -> String {
+        let q = self.quote_char();
+        if q == '`' {
+            format!("`{}`", name.replace('`', "``"))
+        } else {
+            format!("\"{}\"", name.replace('"', "\"\""))
+        }
+    }
+
     async fn connect(&self, config: &ConnectionConfig) -> Result<ConnectionHandle, DriverError>;
 
     async fn test_connection(&self, config: &ConnectionConfig) -> Result<ServerInfo, DriverError>;
@@ -340,6 +355,8 @@ pub trait DatabaseDriver: Send + Sync {
 
 pub mod mysql;
 pub mod postgres;
+pub mod redis_driver;
+pub mod sqlite;
 pub mod registry;
 
 pub use registry::{init_drivers, DriverRegistry};

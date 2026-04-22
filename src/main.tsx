@@ -31,6 +31,8 @@ if (splash) {
 }
 
 if ('__TAURI_INTERNALS__' in globalThis) {
+  // Sub-windows (new-connection, data-sync, etc.) start hidden;
+  // show them once React has rendered the shell.
   import('@tauri-apps/api/window').then(({ getCurrentWindow }) => {
     const win = getCurrentWindow();
     if (win.label !== 'main') {

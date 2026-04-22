@@ -10,6 +10,7 @@
     "frontendDist": "../dist"
   },
   "app": {
+    "macOSPrivateApi": true,
     "windows": [
       {
         "label": "main",
@@ -19,7 +20,8 @@
         "minWidth": 520,
         "minHeight": 400,
         "decorations": false,
-        "backgroundColor": "#0f172a"
+        "transparent": true,
+        "visible": false
       }
     ],
     "security": {

@@ -1,5 +1,5 @@
 /** Database engine identifiers (aligned with backend serde lowercase). */
-export type DatabaseType = 'postgresql' | 'mysql' | 'mariadb' | 'sqlite';
+export type DatabaseType = 'postgresql' | 'mysql' | 'mariadb' | 'sqlite' | 'redis';
 
 export type SslMode = 'disable' | 'prefer' | 'require' | 'verifyCa' | 'verifyFull';
 

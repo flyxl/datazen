@@ -220,7 +220,7 @@ describe('导出和导入 (EI-001~EI-006)', () => {
       const dlg = document.querySelector('.fixed.inset-0.z-50');
       if (!dlg) return;
       const toggleBtn = dlg.querySelector('button.text-xs');
-      if (toggleBtn && toggleBtn.textContent?.includes('取消全选')) {
+      if (toggleBtn && (toggleBtn.textContent?.includes('全不选') || toggleBtn.textContent?.includes('取消全选'))) {
         (toggleBtn as HTMLElement).click();
       }
     });

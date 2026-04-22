@@ -30,7 +30,7 @@ export function Dialog({ open, title, description, children, onClose, footer, cl
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <button
         type="button"
-        aria-label="关闭"
+        aria-label="Close"
         className="absolute inset-0 bg-black/50"
         onClick={onClose}
       />

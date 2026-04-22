@@ -4,6 +4,7 @@ import { databaseCommands } from '../../commands/database';
 import { Button } from '../../components/ui/Button';
 import type { TableSchema } from '../../types';
 import { cn } from '../../lib/cn';
+import { useI18n } from '../../hooks/useI18n';
 
 interface StructureViewProps {
   connectionId: string;
@@ -38,6 +39,7 @@ function KeyBadge({ label, tone }: { label: string; tone: 'blue' | 'amber' | 'gr
 }
 
 export function StructureView({ connectionId, tableName, onEditStructure }: StructureViewProps) {
+  const { t } = useI18n();
   const [schema, setSchema] = useState<TableSchema | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -58,7 +60,7 @@ export function StructureView({ connectionId, tableName, onEditStructure }: Stru
       })
       .catch((e) => {
         if (!cancelled) {
-          const msg = typeof e === 'string' ? e : e instanceof Error ? e.message : '加载表结构失败';
+          const msg = typeof e === 'string' ? e : e instanceof Error ? e.message : t('structView.loadFailed');
           console.error('[StructureView] error', msg);
           setError(msg);
           setLoading(false);
@@ -66,13 +68,13 @@ export function StructureView({ connectionId, tableName, onEditStructure }: Stru
       });
 
     return () => { cancelled = true; };
-  }, [connectionId, tableName]);
+  }, [connectionId, tableName, t]);
 
   if (loading) {
     return (
       <div className="flex flex-1 items-center justify-center gap-2 text-fg-muted">
         <Loader2 className="h-5 w-5 animate-spin" />
-        加载表结构…
+        {t('structView.loading')}
       </div>
     );
   }
@@ -103,7 +105,7 @@ export function StructureView({ connectionId, tableName, onEditStructure }: Stru
             onClick={() => onEditStructure(tableName)}
           >
             <Pencil className="h-3.5 w-3.5" />
-            编辑结构
+            {t('structView.editStructure')}
           </Button>
         )}
       </div>
@@ -113,12 +115,12 @@ export function StructureView({ connectionId, tableName, onEditStructure }: Stru
         <table className="w-full border-collapse text-[13px]">
           <thead className="sticky top-0 z-10">
             <tr className="bg-surface-alt text-left text-xs font-medium text-fg-secondary">
-              <th className="border-b border-edge px-4 py-2.5 font-medium">字段名</th>
-              <th className="border-b border-edge px-4 py-2.5 font-medium">类型</th>
-              <th className="border-b border-edge px-4 py-2.5 font-medium">可空</th>
-              <th className="border-b border-edge px-4 py-2.5 font-medium">默认值</th>
-              <th className="border-b border-edge px-4 py-2.5 font-medium">键</th>
-              <th className="border-b border-edge px-4 py-2.5 font-medium">注释</th>
+              <th className="border-b border-edge px-4 py-2.5 font-medium">{t('structView.fieldName')}</th>
+              <th className="border-b border-edge px-4 py-2.5 font-medium">{t('structView.type')}</th>
+              <th className="border-b border-edge px-4 py-2.5 font-medium">{t('structView.nullable')}</th>
+              <th className="border-b border-edge px-4 py-2.5 font-medium">{t('structView.defaultValue')}</th>
+              <th className="border-b border-edge px-4 py-2.5 font-medium">{t('structView.primaryKey')}</th>
+              <th className="border-b border-edge px-4 py-2.5 font-medium">{t('structView.comment')}</th>
             </tr>
           </thead>
           <tbody>
@@ -160,15 +162,15 @@ export function StructureView({ connectionId, tableName, onEditStructure }: Stru
 
       {/* Summary bar */}
       <div className="flex items-center gap-4 border-t border-edge bg-surface-alt px-4 py-2.5 text-xs text-fg-secondary">
-        <span>{schema.columns.length} 个字段</span>
+        <span>{t('structView.fields', { count: schema.columns.length })}</span>
         <span className="text-edge">|</span>
-        <span>{schema.primaryKeys.length} 个主键</span>
+        <span>{t('structView.primaryKeys', { count: schema.primaryKeys.length })}</span>
         <span className="text-edge">|</span>
-        <span>{schema.indexes.filter((i) => i.isUnique && !i.isPrimary).length} 个唯一索引</span>
+        <span>{t('structView.uniqueIndexes', { count: schema.indexes.filter((i) => i.isUnique && !i.isPrimary).length })}</span>
         <span className="text-edge">|</span>
-        <span>{schema.indexes.length} 个索引</span>
+        <span>{t('structView.indexCount', { count: schema.indexes.length })}</span>
         <span className="text-edge">|</span>
-        <span>{schema.foreignKeys.length} 个外键</span>
+        <span>{t('structView.foreignKeyCount', { count: schema.foreignKeys.length })}</span>
       </div>
     </div>
   );

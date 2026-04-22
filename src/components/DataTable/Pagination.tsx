@@ -1,4 +1,5 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { useI18n } from '../../hooks/useI18n';
 import { Button } from '../ui/Button';
 import { Select } from '../ui/Select';
 
@@ -11,10 +12,12 @@ export interface PaginationProps {
 }
 
 export function Pagination({ page, pageSize, totalRows, onPageChange, onPageSizeChange }: PaginationProps) {
+  const { t } = useI18n();
   const totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
   const current = Math.min(page, totalPages - 1);
   const from = totalRows === 0 ? 0 : current * pageSize + 1;
   const to = Math.min(totalRows, (current + 1) * pageSize);
+  const pageLabel = [t('pagination.page'), `${current + 1} / ${totalPages}`, t('pagination.pageOf')].filter(Boolean).join(' ');
 
   return (
     <div className="flex h-10 shrink-0 items-center justify-between gap-3 border-t border-edge bg-surface-alt px-3 text-xs text-fg-secondary">
@@ -23,7 +26,7 @@ export function Pagination({ page, pageSize, totalRows, onPageChange, onPageSize
       </div>
       <div className="flex items-center gap-2">
         <div className="hidden items-center gap-2 sm:flex">
-          <span>每页</span>
+          <span>{t('pagination.perPage')}</span>
           <Select
             className="h-8 w-[92px]"
             value={pageSize}
@@ -37,19 +40,19 @@ export function Pagination({ page, pageSize, totalRows, onPageChange, onPageSize
             className="h-8 w-8 px-0"
             disabled={current <= 0}
             onClick={() => onPageChange(current - 1)}
-            aria-label="上一页"
+            aria-label={t('pagination.prev')}
           >
             <ChevronLeft className="h-4 w-4" />
           </Button>
           <div className="w-[120px] truncate text-center tabular-nums">
-            第 {current + 1} / {totalPages} 页
+            {pageLabel}
           </div>
           <Button
             variant="secondary"
             className="h-8 w-8 px-0"
             disabled={current >= totalPages - 1}
             onClick={() => onPageChange(current + 1)}
-            aria-label="下一页"
+            aria-label={t('pagination.next')}
           >
             <ChevronRight className="h-4 w-4" />
           </Button>

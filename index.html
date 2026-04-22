@@ -14,13 +14,20 @@
         try { saved = localStorage.getItem('datazen-theme') || 'dark'; } catch (e) {}
         var isDark = saved === 'dark' || (saved === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
         document.documentElement.classList.toggle('dark', isDark);
-        var bg = isDark ? '#0f172a' : '#ffffff';
-        document.documentElement.style.backgroundColor = bg;
-        document.write('<style>body{background:' + bg + ';margin:0}</style>');
+        var isMac = navigator.userAgent.indexOf('Mac') !== -1 && '__TAURI_INTERNALS__' in window;
+        if (isMac) {
+          document.documentElement.classList.add('macos-rounded');
+          document.documentElement.style.backgroundColor = 'transparent';
+          document.write('<style>body{background:transparent;margin:0}#root{border-radius:10px;overflow:hidden;background:' + (isDark ? '#0f172a' : '#ffffff') + '}</style>');
+        } else {
+          var bg = isDark ? '#0f172a' : '#ffffff';
+          document.documentElement.style.backgroundColor = bg;
+          document.write('<style>body{background:' + bg + ';margin:0}</style>');
+        }
       })();
     </script>
     <style>
-      #splash{display:flex;align-items:center;justify-content:center;flex-direction:column;position:fixed;inset:0;z-index:99999;transition:opacity .3s}
+      #splash{display:flex;align-items:center;justify-content:center;flex-direction:column;position:fixed;inset:0;z-index:99999;transition:opacity .3s;border-radius:inherit}
       #splash.hide{opacity:0;pointer-events:none}
       .dark #splash{color:#94a3b8}
       #splash{color:#64748b}
@@ -35,6 +42,22 @@
       <div class="label">DataZen</div>
     </div>
     <div id="root" class="h-full min-h-0"></div>
+    <script>
+      // Show the window after theme + splash are painted.
+      // Windows start hidden (visible:false) to avoid a white flash
+      // when the system theme is light but the app theme is dark.
+      if ('__TAURI_INTERNALS__' in window) {
+        (function () {
+          var params = new URLSearchParams(window.location.search);
+          var isSubWindow = params.has('window');
+          if (!isSubWindow) {
+            window.__TAURI_INTERNALS__
+              .invoke('plugin:window|show', { label: 'main' })
+              .catch(function () {});
+          }
+        })();
+      }
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

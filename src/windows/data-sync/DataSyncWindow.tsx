@@ -15,13 +15,14 @@ import {
   Trash2,
   XCircle,
 } from 'lucide-react';
-import { TrafficLights } from '../../components/TrafficLights';
+import { TitleBar } from '../../components/TitleBar';
 import { ThemeToggle } from '../../components/ThemeToggle';
 import { StatusBar } from '../../components/StatusBar';
 import { Button } from '../../components/ui/Button';
 import { Select } from '../../components/ui/Select';
 import { Dialog } from '../../components/ui/Dialog';
 import { useThemeListener } from '../../hooks/useThemeListener';
+import { useI18n } from '../../hooks/useI18n';
 import { cn } from '../../lib/cn';
 import type { ConnectionConfig } from '../../types';
 
@@ -80,6 +81,7 @@ function formatDuration(ms: number): string {
 
 export function DataSyncWindow() {
   useThemeListener();
+  const { t } = useI18n();
 
   const [connections, setConnections] = useState<ConnectionConfig[]>([]);
   const [activeConns, setActiveConns] = useState<Record<string, string>>({});
@@ -157,20 +159,20 @@ export function DataSyncWindow() {
       setActiveConns((prev) => ({ ...prev, [configId]: connectionId }));
       return connectionId;
     } catch (e) {
-      setErrorMsg(`连接失败: ${e instanceof Error ? e.message : String(e)}`);
+      setErrorMsg(`${t('sync.connectFailed')} ${e instanceof Error ? e.message : String(e)}`);
       setErrorOpen(true);
       return null;
     }
-  }, [activeConns]);
+  }, [activeConns, t]);
 
   const handleCompare = useCallback(async () => {
     if (!sourceId || !targetId) {
-      setErrorMsg('请选择源数据库和目标数据库');
+      setErrorMsg(t('sync.selectBoth'));
       setErrorOpen(true);
       return;
     }
     if (sourceId === targetId) {
-      setErrorMsg('源数据库和目标数据库不能相同');
+      setErrorMsg(t('sync.cannotSame'));
       setErrorOpen(true);
       return;
     }
@@ -204,7 +206,7 @@ export function DataSyncWindow() {
       setErrorOpen(true);
       setSyncState('idle');
     }
-  }, [sourceId, targetId, ensureConnected]);
+  }, [sourceId, targetId, ensureConnected, t]);
 
   const startSync = useCallback(async (
     tablesToSync: string[],
@@ -278,10 +280,10 @@ export function DataSyncWindow() {
         setResumeDialogOpen(true);
       }
     } catch (e) {
-      setErrorMsg(`检查冲突失败: ${e instanceof Error ? e.message : String(e)}`);
+      setErrorMsg(`${t('sync.checkConflictFailed')} ${e instanceof Error ? e.message : String(e)}`);
       setErrorOpen(true);
     }
-  }, [ensureConnected]);
+  }, [ensureConnected, t]);
 
   const handleResumeConfirm = useCallback(async (restartFromZero: boolean) => {
     setResumeDialogOpen(false);
@@ -363,10 +365,10 @@ export function DataSyncWindow() {
 
   const statusLabel = (status: string) => {
     switch (status) {
-      case 'identical': return '一致';
-      case 'different': return '不同';
-      case 'source_only': return '仅源';
-      case 'target_only': return '仅目标';
+      case 'identical': return t('sync.identical');
+      case 'different': return t('sync.different');
+      case 'source_only': return t('sync.sourceOnly');
+      case 'target_only': return t('sync.targetOnly');
       default: return status;
     }
   };
@@ -384,21 +386,14 @@ export function DataSyncWindow() {
   return (
     <div className="flex h-screen min-h-0 flex-col bg-surface text-fg">
       {/* Title bar */}
-      <header className="relative flex h-10 min-h-[40px] shrink-0 items-center bg-titlebar">
-        <div className="absolute inset-0" data-tauri-drag-region />
-        <div className="relative z-10 px-3"><TrafficLights /></div>
-        <div className="pointer-events-none flex min-w-0 flex-1 justify-center">
-          <div className="truncate text-xs font-medium text-fg-secondary">数据同步 - DataZen</div>
-        </div>
-        <div className="relative z-10 pr-3"><ThemeToggle /></div>
-      </header>
+      <TitleBar title={t('sync.windowTitle')} rightContent={<ThemeToggle />} />
 
       {/* Saved tasks banner */}
       {savedTasks.length > 0 && syncState !== 'syncing' && (
         <div className="border-b border-edge bg-amber-500/5 px-6 py-3">
           <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-amber-600 dark:text-amber-400">
             <Pause className="h-3.5 w-3.5" />
-            有 {savedTasks.length} 个未完成的同步任务
+            {t('sync.savedTasks', { count: savedTasks.length })}
           </div>
           <div className="space-y-2">
             {savedTasks.map((task) => {
@@ -411,14 +406,14 @@ export function DataSyncWindow() {
                     <span className="mx-1 text-fg-muted">→</span>
                     <span className="font-medium text-fg">{tgtName}</span>
                     <span className="ml-2 text-fg-muted">
-                      ({task.completedTables.length}/{task.tables.length} 表已完成)
+                      ({t('sync.tablesCompleted', { done: task.completedTables.length, total: task.tables.length })})
                     </span>
                     {task.status === 'failed' && task.errorMessage && (
-                      <span className="ml-2 text-red-500">失败: {task.errorMessage.slice(0, 60)}…</span>
+                      <span className="ml-2 text-red-500">{t('sync.failedMsg')} {task.errorMessage.slice(0, 60)}…</span>
                     )}
                   </div>
                   <Button variant="ghost" className="h-7 gap-1 px-2 text-xs" onClick={() => void handleResumeClick(task)}>
-                    <Play className="h-3 w-3" /> 继续
+                    <Play className="h-3 w-3" /> {t('sync.continue')}
                   </Button>
                   <Button variant="ghost" className="h-7 px-2 text-xs text-red-500 hover:text-red-600" onClick={() => void handleDeleteTask(task.id)}>
                     <Trash2 className="h-3 w-3" />
@@ -433,18 +428,18 @@ export function DataSyncWindow() {
       {/* Connection selectors */}
       <div className="flex shrink-0 items-center gap-4 border-b border-edge px-6 py-4">
         <div className="min-w-0 flex-1">
-          <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-fg-muted">源数据库</label>
-          <Select value={sourceId} options={connOptions} onChange={setSourceId} placeholder="选择源连接…" />
+          <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-fg-muted">{t('sync.source')}</label>
+          <Select value={sourceId} options={connOptions} onChange={setSourceId} placeholder={t('sync.selectSource')} />
         </div>
         <ArrowRight className="mt-5 h-5 w-5 shrink-0 text-fg-muted" />
         <div className="min-w-0 flex-1">
-          <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-fg-muted">目标数据库</label>
-          <Select value={targetId} options={connOptions} onChange={setTargetId} placeholder="选择目标连接…" />
+          <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-fg-muted">{t('sync.target')}</label>
+          <Select value={targetId} options={connOptions} onChange={setTargetId} placeholder={t('sync.selectTarget')} />
         </div>
         <div className="mt-5 shrink-0">
           <Button variant="primary" onClick={() => void handleCompare()} disabled={syncState === 'comparing' || syncState === 'syncing'}>
             {syncState === 'comparing' ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
-            比较
+            {t('sync.compare')}
           </Button>
         </div>
       </div>
@@ -453,38 +448,38 @@ export function DataSyncWindow() {
       <div className="min-h-0 flex-1 overflow-auto">
         {syncState === 'idle' && (
           <div className="flex h-full items-center justify-center text-sm text-fg-muted">
-            选择源数据库和目标数据库，然后点击"比较"
+            {t('sync.selectPrompt')}
           </div>
         )}
 
         {syncState === 'comparing' && (
           <div className="flex h-full items-center justify-center gap-2 text-sm text-fg-muted">
             <Loader2 className="h-4 w-4 animate-spin" />
-            正在比较数据库结构…
+            {t('sync.comparing')}
           </div>
         )}
 
         {(syncState === 'compared' || syncState === 'syncing' || syncState === 'done') && (
           <div className="p-4">
             <div className="mb-3 flex items-center gap-2">
-              <Button variant="ghost" className="text-xs" onClick={selectAll}>全选</Button>
-              <Button variant="ghost" className="text-xs" onClick={deselectAll}>全不选</Button>
+              <Button variant="ghost" className="text-xs" onClick={selectAll}>{t('common.selectAll')}</Button>
+              <Button variant="ghost" className="text-xs" onClick={deselectAll}>{t('common.deselectAll')}</Button>
               <div className="flex-1" />
               <span className="text-xs text-fg-muted">
-                {comparisons.filter((r) => r.status === 'identical').length} 一致 /
-                {' '}{comparisons.filter((r) => r.status === 'different').length} 不同 /
-                {' '}{comparisons.filter((r) => r.status === 'source_only').length} 仅源 /
-                {' '}{comparisons.filter((r) => r.status === 'target_only').length} 仅目标
+                {comparisons.filter((r) => r.status === 'identical').length} {t('sync.identical')} /
+                {' '}{comparisons.filter((r) => r.status === 'different').length} {t('sync.different')} /
+                {' '}{comparisons.filter((r) => r.status === 'source_only').length} {t('sync.sourceOnly')} /
+                {' '}{comparisons.filter((r) => r.status === 'target_only').length} {t('sync.targetOnly')}
               </span>
             </div>
 
             <div className="flex items-center gap-3 rounded-t-lg border border-edge bg-surface-alt px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-fg-muted">
               <div className="w-6" />
               <div className="w-6" />
-              <div className="min-w-0 flex-1">表名</div>
-              <div className="w-20 text-right">源行数</div>
-              <div className="w-20 text-right">目标行数</div>
-              <div className="w-20 text-center">状态</div>
+              <div className="min-w-0 flex-1">{t('sync.tableName')}</div>
+              <div className="w-20 text-right">{t('sync.sourceRows')}</div>
+              <div className="w-20 text-right">{t('sync.targetRows')}</div>
+              <div className="w-20 text-center">{t('sync.status')}</div>
             </div>
 
             {comparisons.map((row) => {
@@ -519,29 +514,29 @@ export function DataSyncWindow() {
       {/* Footer */}
       {(syncState === 'compared' || syncState === 'syncing' || syncState === 'done') && (
         <div className="flex shrink-0 items-center gap-3 border-t border-edge px-6 py-3">
-          <span className="text-xs text-fg-muted">已选择 {selectedTables.size} / {comparisons.length} 个表</span>
+          <span className="text-xs text-fg-muted">{t('sync.selected', { selected: selectedTables.size, total: comparisons.length })}</span>
           <div className="flex-1" />
           <Button variant="primary" onClick={() => void handleSync()} disabled={syncState === 'syncing' || selectedTables.size === 0}>
             {syncState === 'syncing' ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
-            {syncState === 'done' ? '重新同步' : '开始同步'}
+            {syncState === 'done' ? t('sync.reSync') : t('sync.startSync')}
           </Button>
         </div>
       )}
 
       <StatusBar
-        left={<span className="truncate">数据同步</span>}
+        left={<span className="truncate">{t('sync.title')}</span>}
         right={<span className="tabular-nums">DataZen v1.0.0</span>}
       />
 
       {/* ── Progress Dialog ── */}
       <Dialog
         open={progressOpen}
-        title="同步进度"
+        title={t('sync.progressTitle')}
         onClose={() => { if (progress?.phase === 'done' || progress?.phase === 'error') setProgressOpen(false); }}
         className="max-w-lg"
         footer={
           (progress?.phase === 'done' || progress?.phase === 'error') ? (
-            <Button variant="primary" onClick={() => setProgressOpen(false)}>关闭</Button>
+            <Button variant="primary" onClick={() => setProgressOpen(false)}>{t('common.close')}</Button>
           ) : undefined
         }
       >
@@ -549,8 +544,8 @@ export function DataSyncWindow() {
           {/* Overall progress */}
           <div>
             <div className="mb-1.5 flex items-center justify-between text-xs text-fg-muted">
-              <span>总进度</span>
-              <span>{progress?.completedTables.length ?? 0} / {progress?.totalTables ?? 0} 表</span>
+              <span>{t('sync.overallProgress')}</span>
+              <span>{t('sync.tableCount', { done: progress?.completedTables.length ?? 0, total: progress?.totalTables ?? 0 })}</span>
             </div>
             <div className="h-2.5 overflow-hidden rounded-full bg-surface-raised">
               <div
@@ -569,7 +564,7 @@ export function DataSyncWindow() {
               <div className="mb-1 flex items-center justify-between">
                 <span className="truncate font-mono text-sm text-fg">{progress.currentTable}</span>
                 <span className="ml-2 shrink-0 text-xs tabular-nums text-fg-muted">
-                  {progress.syncedRows.toLocaleString()} / {progress.sourceRowCount.toLocaleString()} 行
+                  {t('sync.rowProgress', { synced: progress.syncedRows.toLocaleString(), total: progress.sourceRowCount.toLocaleString() })}
                 </span>
               </div>
               <div className="h-1.5 overflow-hidden rounded-full bg-surface-raised">
@@ -582,14 +577,14 @@ export function DataSyncWindow() {
           {progress?.phase === 'counting' && (
             <div className="flex items-center gap-2 text-sm text-fg-muted">
               <Loader2 className="h-4 w-4 animate-spin" />
-              正在统计源表行数…
+              {t('sync.countingRows')}
             </div>
           )}
 
           {progress?.phase === 'done' && (
             <div className="flex items-center gap-2 text-sm text-green-500">
               <CheckCircle2 className="h-4 w-4" />
-              同步完成！共 {progress.completedTables.length} 个表
+              {t('sync.syncDone', { count: progress.completedTables.length })}
             </div>
           )}
 
@@ -603,19 +598,19 @@ export function DataSyncWindow() {
           {/* Elapsed time */}
           <div className="flex items-center gap-1.5 text-xs text-fg-muted">
             <Clock className="h-3.5 w-3.5" />
-            已用时: {formatDuration(elapsed)}
+            {t('sync.elapsed')} {formatDuration(elapsed)}
           </div>
 
           {/* Completed tables list */}
           {progress && progress.completedTables.length > 0 && (
             <details className="text-xs">
               <summary className="cursor-pointer text-fg-muted hover:text-fg">
-                已完成的表 ({progress.completedTables.length})
+                {t('sync.completedTables')} ({progress.completedTables.length})
               </summary>
               <div className="mt-1 max-h-32 overflow-auto rounded border border-edge bg-surface p-2 font-mono text-fg-secondary">
-                {progress.completedTables.map((t) => (
-                  <div key={t} className="flex items-center gap-1">
-                    <CheckCircle2 className="h-3 w-3 text-green-500" /> {t}
+                {progress.completedTables.map((tableName) => (
+                  <div key={tableName} className="flex items-center gap-1">
+                    <CheckCircle2 className="h-3 w-3 text-green-500" /> {tableName}
                   </div>
                 ))}
               </div>
@@ -627,26 +622,26 @@ export function DataSyncWindow() {
       {/* ── Resume Dialog (no conflicts) ── */}
       <Dialog
         open={resumeDialogOpen}
-        title="继续同步任务"
-        description={resumeTask ? `已完成 ${resumeTask.completedTables.length}/${resumeTask.tables.length} 个表` : ''}
+        title={t('sync.resumeTitle')}
+        description={resumeTask ? t('sync.resumeDesc', { done: resumeTask.completedTables.length, total: resumeTask.tables.length }) : ''}
         onClose={() => setResumeDialogOpen(false)}
         footer={
           <>
-            <Button variant="ghost" onClick={() => setResumeDialogOpen(false)}>取消</Button>
+            <Button variant="ghost" onClick={() => setResumeDialogOpen(false)}>{t('common.cancel')}</Button>
             <Button variant="ghost" onClick={() => void handleResumeConfirm(true)}>
-              <RefreshCcw className="h-3.5 w-3.5" /> 从零开始
+              <RefreshCcw className="h-3.5 w-3.5" /> {t('sync.resumeRestart')}
             </Button>
             <Button variant="primary" onClick={() => void handleResumeConfirm(false)}>
-              <Play className="h-3.5 w-3.5" /> 从断点继续
+              <Play className="h-3.5 w-3.5" /> {t('sync.resumeContinue')}
             </Button>
           </>
         }
       >
         <div className="space-y-3 text-sm text-fg-secondary">
-          <p>该任务上次中断于表同步过程中。请选择恢复策略：</p>
+          <p>{t('sync.resumeExplain')}</p>
           <div className="rounded-lg border border-edge bg-surface p-3 text-xs">
-            <div><span className="font-semibold text-fg">从断点继续</span>：跳过已完成的 {resumeTask?.completedTables.length} 个表，从中断处继续同步剩余表</div>
-            <div className="mt-2"><span className="font-semibold text-fg">从零开始</span>：忽略之前进度，重新同步所有 {resumeTask?.tables.length} 个表</div>
+            <div><span className="font-semibold text-fg">{t('sync.resumeContinue')}</span>：{t('sync.resumeContinueDesc', { count: resumeTask?.completedTables.length ?? 0 })}</div>
+            <div className="mt-2"><span className="font-semibold text-fg">{t('sync.resumeRestart')}</span>：{t('sync.resumeRestartDesc', { count: resumeTask?.tables.length ?? 0 })}</div>
           </div>
         </div>
       </Dialog>
@@ -654,17 +649,17 @@ export function DataSyncWindow() {
       {/* ── Conflict Dialog ── */}
       <Dialog
         open={conflictDialogOpen}
-        title="检测到数据变更"
-        description="源数据库的部分表行数发生了变化"
+        title={t('sync.conflictTitle')}
+        description={t('sync.conflictDesc')}
         onClose={() => setConflictDialogOpen(false)}
         footer={
           <>
-            <Button variant="ghost" onClick={() => setConflictDialogOpen(false)}>取消</Button>
+            <Button variant="ghost" onClick={() => setConflictDialogOpen(false)}>{t('common.cancel')}</Button>
             <Button variant="ghost" onClick={() => void handleResumeConfirm(true)}>
-              <RefreshCcw className="h-3.5 w-3.5" /> 从零开始
+              <RefreshCcw className="h-3.5 w-3.5" /> {t('sync.resumeRestart')}
             </Button>
             <Button variant="primary" onClick={() => void handleResumeConfirm(false)}>
-              <Play className="h-3.5 w-3.5" /> 仍然继续
+              <Play className="h-3.5 w-3.5" /> {t('sync.conflictContinue')}
             </Button>
           </>
         }
@@ -672,14 +667,14 @@ export function DataSyncWindow() {
         <div className="space-y-3 text-sm">
           <div className="flex items-start gap-2 rounded-lg border border-amber-300/30 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-300">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-            <span>以下表的行数在上次同步后发生了变化。继续同步可能导致数据不一致。</span>
+            <span>{t('sync.conflictWarning')}</span>
           </div>
 
           <div className="overflow-hidden rounded-lg border border-edge">
             <div className="flex items-center gap-3 bg-surface-alt px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-fg-muted">
-              <div className="min-w-0 flex-1">表名</div>
-              <div className="w-24 text-right">原始行数</div>
-              <div className="w-24 text-right">当前行数</div>
+              <div className="min-w-0 flex-1">{t('sync.tableName')}</div>
+              <div className="w-24 text-right">{t('sync.originalRows')}</div>
+              <div className="w-24 text-right">{t('sync.currentRows')}</div>
             </div>
             {conflicts.map((c) => (
               <div key={c.table} className="flex items-center gap-3 border-t border-edge px-3 py-1.5 text-xs">
@@ -691,8 +686,8 @@ export function DataSyncWindow() {
           </div>
 
           <div className="rounded-lg border border-edge bg-surface p-3 text-xs text-fg-muted">
-            <div><span className="font-semibold text-fg">仍然继续</span>：跳过已完成的表，从断点继续（已变更的表将在到达时重新同步）</div>
-            <div className="mt-1"><span className="font-semibold text-fg">从零开始</span>：忽略所有进度，重新同步所有表</div>
+            <div><span className="font-semibold text-fg">{t('sync.conflictContinue')}</span>：{t('sync.conflictContinueDesc')}</div>
+            <div className="mt-1"><span className="font-semibold text-fg">{t('sync.resumeRestart')}</span>：{t('sync.conflictRestartDesc')}</div>
           </div>
         </div>
       </Dialog>
@@ -700,9 +695,9 @@ export function DataSyncWindow() {
       {/* ── Error Dialog ── */}
       <Dialog
         open={errorOpen}
-        title="提示"
+        title={t('common.hint')}
         onClose={() => setErrorOpen(false)}
-        footer={<Button variant="primary" onClick={() => setErrorOpen(false)}>确定</Button>}
+        footer={<Button variant="primary" onClick={() => setErrorOpen(false)}>{t('common.ok')}</Button>}
       >
         <p className="whitespace-pre-wrap break-all text-sm text-fg-secondary">{errorMsg}</p>
       </Dialog>

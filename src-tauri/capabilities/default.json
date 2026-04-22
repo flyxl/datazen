@@ -1,7 +1,7 @@
 {
   "identifier": "default",
   "description": "Default capability set for DataZen",
-  "windows": ["main", "new-connection-*", "connection-*", "query-*", "data-sync-*", "settings-singleton"],
+  "windows": ["main", "new-connection-*", "connection-*", "query-*", "data-sync-*", "backup-*", "settings-singleton"],
   "permissions": [
     "core:default",
     "core:window:allow-create",
@@ -20,6 +20,9 @@
     "core:webview:allow-create-webview-window",
     "core:event:default",
     "core:menu:default",
-    "dialog:default"
+    "dialog:default",
+    "os:default",
+    "core:window:allow-is-maximized",
+    "core:window:allow-unminimize"
   ]
 }

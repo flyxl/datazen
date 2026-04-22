@@ -10,7 +10,7 @@ import { StatusBar } from '../../components/StatusBar';
 import { Dialog } from '../../components/ui/Dialog';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
-import { TrafficLights } from '../../components/TrafficLights';
+import { TitleBar } from '../../components/TitleBar';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 import { useResizable } from '../../hooks/useResizable';
 import { useTauriEvent } from '../../hooks/useTauriEvent';
@@ -21,8 +21,9 @@ import { useUiStore } from '../../stores/uiStore';
 import { useActiveConnectionStore } from '../../stores/activeConnectionStore';
 import { cn } from '../../lib/cn';
 import { listenCrossWindow } from '../../lib/crossWindowBus';
-import { openConnectionWindow, openDataSyncWindow, openNewConnectionWindow, openSettingsWindow } from '../../lib/windowManager';
+import { openBackupWindow, openConnectionWindow, openDataSyncWindow, openNewConnectionWindow, openSettingsWindow } from '../../lib/windowManager';
 import { ThemeToggle } from '../../components/ThemeToggle';
+import { useI18n } from '../../hooks/useI18n';
 import { ActionPanel } from './ActionPanel';
 import { ConnectionItem } from './ConnectionItem';
 import type { ConnectionConfig } from '../../types';
@@ -32,6 +33,7 @@ import type { ConnectionConfig } from '../../types';
 export function MainWindow() {
   useTauriEvent();
   useThemeListener();
+  const { t } = useI18n();
 
   const fetchConnections = useConnectionStore((s) => s.fetchConnections);
   const fetchGroups = useConnectionStore((s) => s.fetchGroups);
@@ -100,17 +102,18 @@ export function MainWindow() {
     void loadSettings();
   }, [fetchConnections, fetchGroups, loadSettings]);
 
-  // Auto-expand: on first load expand all; when groups change, expand any new ones
+  // When groups change, auto-expand only newly added groups (not on first load)
+  const prevGroupsRef = useRef<string[] | null>(null);
   useEffect(() => {
     if (groups.length === 0) return;
-    setExpandedGroups((prev) => {
-      if (prev.size === 0) {
-        return new Set([...groups, '']);
-      }
-      const hasNew = groups.some((g) => !prev.has(g));
-      if (!hasNew) return prev;
-      const next = new Set(prev);
-      for (const g of groups) next.add(g);
+    const prev = prevGroupsRef.current;
+    prevGroupsRef.current = groups;
+    if (!prev) return; // first load: keep all collapsed
+    const newGroups = groups.filter((g) => !prev.includes(g));
+    if (newGroups.length === 0) return;
+    setExpandedGroups((s) => {
+      const next = new Set(s);
+      for (const g of newGroups) next.add(g);
       return next;
     });
   }, [groups]);
@@ -129,14 +132,17 @@ export function MainWindow() {
 
   useEffect(() => {
     let cancelled = false;
-    let cleanup: (() => void) | undefined;
+    const cleanups: (() => void)[] = [];
     void listenCrossWindow('menu:open-settings', () => {
       if (!cancelled) openSettingsWindow();
-    }).then((unlisten) => {
-      if (cancelled) unlisten();
-      else cleanup = unlisten;
-    });
-    return () => { cancelled = true; cleanup?.(); };
+    }).then((u) => { if (cancelled) u(); else cleanups.push(u); });
+    void listenCrossWindow('menu:new-connection', () => {
+      if (!cancelled) openNewConnectionWindow();
+    }).then((u) => { if (cancelled) u(); else cleanups.push(u); });
+    void listenCrossWindow('menu:data-sync', () => {
+      if (!cancelled) openDataSyncWindow();
+    }).then((u) => { if (cancelled) u(); else cleanups.push(u); });
+    return () => { cancelled = true; cleanups.forEach((fn) => fn()); };
   }, []);
 
   // (native context menus handle their own dismiss)
@@ -169,7 +175,7 @@ export function MainWindow() {
 
   // ── Keyboard shortcuts ──
   useKeyboardShortcuts([
-    { key: 'mod+n', scope: 'global', description: '新建连接', action: () => openNewConnectionWindow() },
+    { key: 'mod+n', scope: 'global', description: 'New Connection', action: () => openNewConnectionWindow() },
   ]);
 
   // ── Status ──
@@ -179,10 +185,10 @@ export function MainWindow() {
   );
 
   const statusLeft = (() => {
-    if (loading) return '加载中…';
+    if (loading) return t('common.loading');
     if (error) return <span className="text-red-400">{error}</span>;
-    if (activeCount > 0) return <span className="text-green-400">{activeCount} 个活跃连接</span>;
-    return '就绪';
+    if (activeCount > 0) return <span className="text-green-400">{t('main.activeConnections', { count: activeCount })}</span>;
+    return t('main.ready');
   })();
 
   // ── Helpers ──
@@ -204,13 +210,13 @@ export function MainWindow() {
     const isUngrouped = groupName === '';
 
     const items: Array<MenuItem | PredefinedMenuItem> = [
-      await MenuItem.new({ text: '新建分组', action: () => { setNewGroupName(''); setNewGroupDialogOpen(true); } }),
+      await MenuItem.new({ text: t('main.ctx.newGroup'), action: () => { setNewGroupName(''); setNewGroupDialogOpen(true); } }),
     ];
     if (!isUngrouped) {
       items.push(
         await PredefinedMenuItem.new({ item: 'Separator' }),
-        await MenuItem.new({ text: '重命名分组', action: () => { setRenamingGroup(groupName); setRenameValue(groupName); } }),
-        await MenuItem.new({ text: '删除分组', action: () => { void deleteGroup(groupName); } }),
+        await MenuItem.new({ text: t('main.ctx.renameGroup'), action: () => { setRenamingGroup(groupName); setRenameValue(groupName); } }),
+        await MenuItem.new({ text: t('main.ctx.deleteGroup'), action: () => { void deleteGroup(groupName); } }),
       );
     }
     const menu = await Menu.new({ items });
@@ -225,12 +231,12 @@ export function MainWindow() {
     const isConnected = activeConnections[conn.id]?.status === 'connected';
     const items: Array<MenuItem | Submenu | PredefinedMenuItem> = [
       await MenuItem.new({
-        text: isConnected ? '断开连接' : '打开连接',
+        text: isConnected ? t('main.ctx.disconnect') : t('main.ctx.openConnection'),
         action: () => { if (isConnected) void disconnectAction(conn.id); else void handleConnect(conn); },
       }),
       await PredefinedMenuItem.new({ item: 'Separator' }),
-      await MenuItem.new({ text: '编辑连接', action: () => openNewConnectionWindow(conn.id) }),
-      await MenuItem.new({ text: '复制连接', action: () => { void duplicateConnection(conn.id); } }),
+      await MenuItem.new({ text: t('main.ctx.editConnection'), action: () => openNewConnectionWindow(conn.id) }),
+      await MenuItem.new({ text: t('main.ctx.duplicateConnection'), action: () => { void duplicateConnection(conn.id); } }),
       await PredefinedMenuItem.new({ item: 'Separator' }),
     ];
 
@@ -241,13 +247,13 @@ export function MainWindow() {
         subItems.push(await MenuItem.new({ text: g, action: () => { void moveConnectionToGroup(conn.id, g); } }));
       }
       if (conn.group) {
-        subItems.push(await MenuItem.new({ text: '移除分组', action: () => { void moveConnectionToGroup(conn.id, undefined); } }));
+        subItems.push(await MenuItem.new({ text: t('main.ctx.removeFromGroup'), action: () => { void moveConnectionToGroup(conn.id, undefined); } }));
       }
-      items.push(await Submenu.new({ text: '移动到分组', items: subItems }));
+      items.push(await Submenu.new({ text: t('main.ctx.moveToGroup'), items: subItems }));
       items.push(await PredefinedMenuItem.new({ item: 'Separator' }));
     }
 
-    items.push(await MenuItem.new({ text: '删除连接', action: () => { void deleteConnection(conn.id); } }));
+    items.push(await MenuItem.new({ text: t('main.ctx.deleteConnection'), action: () => { void deleteConnection(conn.id); } }));
     const menu = await Menu.new({ items });
     await menu.popup();
   }, [activeConnections, groups, disconnectAction, handleConnect, duplicateConnection, deleteConnection, moveConnectionToGroup]);
@@ -336,54 +342,18 @@ export function MainWindow() {
 
   // ── Backup / Restore handlers ──
 
-  const handleBackup = useCallback(async () => {
-    try {
-      const { save } = await import('@tauri-apps/plugin-dialog');
-      const path = await save({
-        title: '选择备份保存位置',
-        filters: [{ name: 'SQL Files', extensions: ['sql'] }],
-      });
-      if (!path) return;
-      if (!selectedId) {
-        setErrorMessage('请先选择一个连接');
-        setErrorDialogOpen(true);
-        return;
-      }
-      const conn = connections.find((c) => c.id === selectedId);
-      if (!conn) return;
-
-      const entry = activeConnections[conn.id];
-      if (entry?.status !== 'connected' || !entry.connectionId) {
-        setErrorMessage('请先连接到数据库后再进行备份');
-        setErrorDialogOpen(true);
-        return;
-      }
-
-      const { invoke } = await import('@tauri-apps/api/core');
-      await invoke('backup_database', {
-        connectionId: entry.connectionId,
-        outputPath: path,
-      });
-      setErrorMessage(`备份成功：${path}`);
-      setErrorDialogOpen(true);
-    } catch (e) {
-      setErrorMessage(e instanceof Error ? e.message : String(e));
-      setErrorDialogOpen(true);
-    }
-  }, [selectedId, connections, activeConnections]);
-
   const handleRestore = useCallback(async () => {
     try {
       const { open } = await import('@tauri-apps/plugin-dialog');
       const path = await open({
-        title: '选择要恢复的 SQL 文件',
+        title: t('action.restore'),
         filters: [{ name: 'SQL Files', extensions: ['sql'] }],
         multiple: false,
       });
       if (!path) return;
 
       if (!selectedId) {
-        setErrorMessage('请先选择一个连接');
+        setErrorMessage(t('main.restoreFailed'));
         setErrorDialogOpen(true);
         return;
       }
@@ -392,7 +362,7 @@ export function MainWindow() {
 
       const entry = activeConnections[conn.id];
       if (entry?.status !== 'connected' || !entry.connectionId) {
-        setErrorMessage('请先连接到数据库后再进行恢复');
+        setErrorMessage(t('main.restoreFailed'));
         setErrorDialogOpen(true);
         return;
       }
@@ -402,7 +372,7 @@ export function MainWindow() {
         connectionId: entry.connectionId,
         inputPath: typeof path === 'string' ? path : (path as unknown as string),
       });
-      setErrorMessage('恢复成功！');
+      setErrorMessage(t('main.restoreSuccess'));
       setErrorDialogOpen(true);
     } catch (e) {
       setErrorMessage(e instanceof Error ? e.message : String(e));
@@ -418,8 +388,8 @@ export function MainWindow() {
     e.preventDefault();
     const menu = await Menu.new({
       items: [
-        await MenuItem.new({ text: '新建分组', action: () => { setNewGroupName(''); setNewGroupDialogOpen(true); } }),
-        await MenuItem.new({ text: '新建连接', action: () => openNewConnectionWindow() }),
+        await MenuItem.new({ text: t('main.ctx.newGroup'), action: () => { setNewGroupName(''); setNewGroupDialogOpen(true); } }),
+        await MenuItem.new({ text: t('main.newConnection'), action: () => openNewConnectionWindow() }),
       ],
     });
     await menu.popup();
@@ -428,18 +398,7 @@ export function MainWindow() {
   return (
     <div className="flex h-screen min-h-0 min-w-[520px] flex-col bg-surface text-fg">
       {/* ── Title bar ── */}
-      <header className="relative flex h-10 min-h-[40px] shrink-0 items-center bg-titlebar">
-        <div className="absolute inset-0" data-tauri-drag-region />
-        <div className="relative z-10 px-3">
-          <TrafficLights />
-        </div>
-        <div className="pointer-events-none flex min-w-0 flex-1 justify-center">
-          <div className="truncate text-xs font-medium text-fg-secondary">DataZen</div>
-        </div>
-        <div className="relative z-10 pr-3">
-          <ThemeToggle />
-        </div>
-      </header>
+      <TitleBar title="DataZen" rightContent={<ThemeToggle />} />
 
       {/* ── Body ── */}
       <div className="flex min-h-0 flex-1">
@@ -450,7 +409,7 @@ export function MainWindow() {
         >
           <ActionPanel
             onNewConnection={() => openNewConnectionWindow()}
-            onBackup={() => void handleBackup()}
+            onBackup={() => openBackupWindow()}
             onRestore={() => void handleRestore()}
             onDataSync={() => openDataSyncWindow()}
           />
@@ -458,7 +417,7 @@ export function MainWindow() {
         <div
           ref={handleRef}
           className="w-1 shrink-0 cursor-col-resize bg-transparent hover:bg-blue-500/30"
-          title="拖拽调整侧边栏宽度"
+          title={t('main.sidebar.resize')}
         />
 
         {/* ── Main content ── */}
@@ -469,7 +428,7 @@ export function MainWindow() {
               type="button"
               onClick={() => openNewConnectionWindow()}
               className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-fg-muted hover:bg-surface-raised hover:text-fg"
-              title="新建连接"
+              title={t('main.newConnection')}
             >
               <Plus className="h-4 w-4" />
             </button>
@@ -478,7 +437,7 @@ export function MainWindow() {
               <Input
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="查找连接…"
+                placeholder={t('main.searchPlaceholder')}
                 className="h-8 pl-8 text-[13px]"
               />
             </div>
@@ -491,20 +450,20 @@ export function MainWindow() {
           >
             {grouped.length === 0 && (
               <div className="flex flex-col items-center justify-center py-20 text-sm text-fg-muted">
-                <p>没有连接</p>
+                <p>{t('main.noConnections')}</p>
                 <Button
                   variant="ghost"
                   className="mt-3"
                   onClick={() => openNewConnectionWindow()}
                 >
                   <Plus className="h-4 w-4" />
-                  新建连接
+                  {t('main.createFirst')}
                 </Button>
               </div>
             )}
             {grouped.map(({ group: groupName, connections: groupConns }) => {
               const expanded = expandedGroups.has(groupName);
-              const displayName = groupName || '未分组';
+              const displayName = groupName || t('main.ungrouped');
               const isDragOver = dragOverGroup === groupName;
 
               return (
@@ -591,13 +550,13 @@ export function MainWindow() {
       {/* ── New group dialog ── */}
       <Dialog
         open={newGroupDialogOpen}
-        title="新建分组"
+        title={t('main.newGroupTitle')}
         onClose={() => setNewGroupDialogOpen(false)}
         className="max-w-sm"
         footer={
           <>
             <Button variant="ghost" onClick={() => setNewGroupDialogOpen(false)}>
-              取消
+              {t('common.cancel')}
             </Button>
             <Button
               variant="primary"
@@ -608,7 +567,7 @@ export function MainWindow() {
                 setNewGroupDialogOpen(false);
               }}
             >
-              确定
+              {t('common.ok')}
             </Button>
           </>
         }
@@ -625,7 +584,7 @@ export function MainWindow() {
               setNewGroupDialogOpen(false);
             }
           }}
-          placeholder="请输入分组名称"
+          placeholder={t('main.groupNamePlaceholder')}
           className="text-sm"
           autoCapitalize="off"
           autoCorrect="off"
@@ -635,11 +594,11 @@ export function MainWindow() {
       {/* ── Error / info dialog ── */}
       <Dialog
         open={errorDialogOpen}
-        title="提示"
+        title={t('common.hint')}
         onClose={() => setErrorDialogOpen(false)}
         footer={
           <Button variant="primary" onClick={() => setErrorDialogOpen(false)}>
-            确定
+            {t('common.ok')}
           </Button>
         }
       >
@@ -652,7 +611,7 @@ export function MainWindow() {
           <span className="truncate">
             {statusLeft}
             <span className="mx-2 text-edge">|</span>
-            <span title="连接数量">连接：{connections.length}</span>
+            <span>{t('main.connectionCount', { count: connections.length })}</span>
           </span>
         }
         right={<span className="tabular-nums">DataZen v1.0.0</span>}

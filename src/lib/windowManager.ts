@@ -5,6 +5,9 @@
  * In browser dev mode, opens new browser tabs with query params.
  */
 
+import { t } from '../locales/t';
+import { getPlatformSync } from '../hooks/usePlatform';
+
 let counter = 0;
 
 function nextLabel(prefix: string) {
@@ -31,6 +34,7 @@ function currentBgColor(): string {
 
 async function openTauriWindow(label: string, options: OpenWindowOptions) {
   const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
+  const isMac = getPlatformSync() === 'macos';
 
   const qs = new URLSearchParams(options.params ?? {}).toString();
   const url = qs ? `index.html?${qs}` : 'index.html';
@@ -42,10 +46,11 @@ async function openTauriWindow(label: string, options: OpenWindowOptions) {
     height: options.height ?? 640,
     center: options.center ?? true,
     decorations: false,
+    transparent: isMac,
     minWidth: 600,
     minHeight: 480,
     visible: false,
-    backgroundColor: currentBgColor(),
+    ...(isMac ? {} : { backgroundColor: currentBgColor() }),
   });
 }
 
@@ -67,7 +72,7 @@ export function openNewConnectionWindow(editId?: string) {
     params,
     width: 800,
     height: 680,
-    title: editId ? '编辑连接 - DataZen' : '新建连接 - DataZen',
+    title: editId ? t('win.editConnection') : t('win.newConnection'),
   };
 
   if (isTauri()) {
@@ -101,7 +106,7 @@ export function openQueryWindow(connectionId: string, database: string) {
     params: { window: 'query', connectionId, database },
     width: 1000,
     height: 700,
-    title: `查询 - ${database} - DataZen`,
+    title: t('win.query', { db: database }),
   };
 
   if (isTauri()) {
@@ -116,11 +121,26 @@ export function openDataSyncWindow() {
     params: { window: 'data-sync' },
     width: 1000,
     height: 700,
-    title: '数据同步 - DataZen',
+    title: t('win.dataSync'),
   };
 
   if (isTauri()) {
     void openTauriWindow(nextLabel('data-sync'), opts);
+  } else {
+    openBrowserWindow(opts);
+  }
+}
+
+export function openBackupWindow() {
+  const opts: OpenWindowOptions = {
+    params: { window: 'backup' },
+    width: 750,
+    height: 520,
+    title: t('win.backup'),
+  };
+
+  if (isTauri()) {
+    void openTauriWindow(nextLabel('backup'), opts);
   } else {
     openBrowserWindow(opts);
   }
@@ -138,17 +158,19 @@ export function openSettingsWindow() {
         return;
       }
       const qs = new URLSearchParams({ window: 'settings' }).toString();
+      const isMac = getPlatformSync() === 'macos';
       new WebviewWindow(SETTINGS_LABEL, {
         url: `index.html?${qs}`,
-        title: '偏好设置 - DataZen',
+        title: t('win.settings'),
         width: 600,
         height: 560,
         center: true,
         decorations: false,
+        transparent: isMac,
         minWidth: 480,
         minHeight: 400,
         visible: false,
-        backgroundColor: currentBgColor(),
+        ...(isMac ? {} : { backgroundColor: currentBgColor() }),
       });
     })();
   } else {
@@ -156,7 +178,7 @@ export function openSettingsWindow() {
       params: { window: 'settings' },
       width: 600,
       height: 560,
-      title: '偏好设置 - DataZen',
+      title: t('win.settings'),
     });
   }
 }

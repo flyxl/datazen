@@ -3,6 +3,7 @@ import { Loader2 } from 'lucide-react';
 import { DataTable } from '../../components/DataTable/DataTable';
 import type { ColumnDef } from '../../components/DataTable/TableHeader';
 import { useTableDataStore } from '../../stores/tableDataStore';
+import { useI18n } from '../../hooks/useI18n';
 import type { TableState } from '../../stores/tableDataStore';
 
 interface TableViewProps {
@@ -11,6 +12,7 @@ interface TableViewProps {
 }
 
 export function TableView({ connectionId, tableName }: TableViewProps) {
+  const { t } = useI18n();
   const tableStates = useTableDataStore((s) => s.tableStates);
   const activeTable = useTableDataStore((s) => s.activeTable);
   const loadTableData = useTableDataStore((s) => s.loadTableData);
@@ -61,7 +63,7 @@ export function TableView({ connectionId, tableName }: TableViewProps) {
             className="mt-2 text-xs text-accent hover:underline"
             onClick={() => void loadTableData({ connectionId, table: tableName })}
           >
-            重试
+            {t('common.retry')}
           </button>
         </div>
       </div>
@@ -72,7 +74,7 @@ export function TableView({ connectionId, tableName }: TableViewProps) {
     return (
       <div className="flex flex-1 items-center justify-center gap-2 text-fg-muted">
         <Loader2 className="h-5 w-5 animate-spin" />
-        加载表数据…
+        {t('tableView.loadingData')}
       </div>
     );
   }

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { cn } from '../lib/cn';
+import { useI18n } from '../hooks/useI18n';
 
 function isTauri(): boolean {
   return '__TAURI_INTERNALS__' in window;
@@ -36,6 +37,7 @@ async function toggleMaximize() {
 }
 
 export function TrafficLights() {
+  const { t } = useI18n();
   const [hovered, setHovered] = useState(false);
 
   return (
@@ -52,7 +54,7 @@ export function TrafficLights() {
           'group relative h-3 w-3 rounded-full bg-[#ff5f57] transition-colors',
           'hover:bg-[#ff3b30] active:bg-[#bf4943]',
         )}
-        title="关闭"
+        title={t('traffic.close')}
       >
         {hovered && (
           <svg className="absolute inset-0 h-3 w-3" viewBox="0 0 12 12">
@@ -67,7 +69,7 @@ export function TrafficLights() {
           'group relative h-3 w-3 rounded-full bg-[#febc2e] transition-colors',
           'hover:bg-[#f0a000] active:bg-[#bf9022]',
         )}
-        title="最小化"
+        title={t('traffic.minimize')}
       >
         {hovered && (
           <svg className="absolute inset-0 h-3 w-3" viewBox="0 0 12 12">
@@ -88,7 +90,7 @@ export function TrafficLights() {
           'group relative h-3 w-3 rounded-full bg-[#28c840] transition-colors',
           'hover:bg-[#1aad29] active:bg-[#1f9a30]',
         )}
-        title="全屏 (⌥+点击: 最大化)"
+        title={t('traffic.fullscreen')}
       >
         {hovered && (
           <svg className="absolute inset-0 h-3 w-3" viewBox="0 0 12 12">

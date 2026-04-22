@@ -14,7 +14,7 @@ path = "src/lib.rs"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = ["macos-private-api"] }
 tokio = { version = "1", features = ["full"] }
 sqlx = { version = "0.7", features = [
     "runtime-tokio",
@@ -44,6 +44,10 @@ async-trait = "0.1"
 urlencoding = "2"
 tauri-plugin-webdriver = { version = "0.2", optional = true }
 tauri-plugin-dialog = "2"
+tauri-plugin-os = "2.3.2"
+flate2 = "1.1.9"
+russh = "0.60"
+redis = { version = "0.27", features = ["tokio-comp", "aio"] }
 
 [features]
 webdriver = ["tauri-plugin-webdriver"]

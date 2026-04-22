@@ -1,7 +1,9 @@
 import { create } from 'zustand';
 import { databaseCommands } from '../commands/database';
 import { queryCommands } from '../commands/query';
-import type { ColumnSchema, FilterCondition, SortCondition, Value } from '../types';
+import { t } from '../locales/t';
+import type { ColumnSchema, DatabaseType, FilterCondition, SortCondition, Value } from '../types';
+import { escapeIdent } from '../lib/databaseTypes';
 
 function rowsToRecords(
   columns: ColumnSchema[],
@@ -37,10 +39,7 @@ function escapeSqlValue(val: unknown): string {
 }
 
 function escapeSqlIdent(name: string, dbType?: string): string {
-  if (dbType === 'mysql' || dbType === 'mariadb') {
-    return `\`${name.replaceAll('`', '``')}\``;
-  }
-  return `"${name.replaceAll('"', '""')}"`;
+  return escapeIdent(name, dbType as DatabaseType | undefined);
 }
 
 /** Per-table state slice */
@@ -223,7 +222,7 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
       updated.set(table, {
         ...ts,
         loading: false,
-        error: e instanceof Error ? e.message : '加载表数据失败',
+        error: e instanceof Error ? e.message : t('tableData.loadFailed'),
       });
       set({
         tableStates: updated,
@@ -300,7 +299,7 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
 
     const pkCols = ts.columns.filter((c) => c.isPrimaryKey);
     if (pkCols.length === 0) {
-      updateActive(get, set, () => ({ error: '无法提交更改：表没有主键' }));
+      updateActive(get, set, () => ({ error: t('tableData.noPrimaryKey') }));
       return;
     }
 
@@ -342,7 +341,7 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
       for (const [key, edit] of snapshot) merged.set(key, edit);
       updateActive(get, set, () => ({
         editBuffer: merged,
-        error: e instanceof Error ? e.message : '提交更改失败',
+        error: e instanceof Error ? e.message : t('tableData.commitFailed'),
       }));
     }
   },

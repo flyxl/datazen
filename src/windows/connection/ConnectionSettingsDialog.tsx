@@ -4,6 +4,7 @@ import { Button } from '../../components/ui/Button';
 import { Select } from '../../components/ui/Select';
 import { useSettingsStore } from '../../stores/settingsStore';
 import type { AppSettings } from '../../types';
+import { useI18n } from '../../hooks/useI18n';
 
 interface ConnectionSettingsDialogProps {
   open: boolean;
@@ -12,13 +13,9 @@ interface ConnectionSettingsDialogProps {
 
 const PAGE_SIZE_OPTIONS = [25, 50, 100, 200, 500];
 const RESULT_LIMIT_OPTIONS = [1000, 2000, 5000, 10000, 50000];
-const THEME_OPTIONS: { value: AppSettings['theme']; label: string }[] = [
-  { value: 'light', label: '浅色主题' },
-  { value: 'dark', label: '深色主题' },
-  { value: 'system', label: '跟随系统' },
-];
 
 export function ConnectionSettingsDialog({ open, onClose }: ConnectionSettingsDialogProps) {
+  const { t } = useI18n();
   const settings = useSettingsStore((s) => s.settings);
   const updateSettings = useSettingsStore((s) => s.updateSettings);
 
@@ -40,33 +37,37 @@ export function ConnectionSettingsDialog({ open, onClose }: ConnectionSettingsDi
   return (
     <Dialog
       open={open}
-      title="连接设置"
-      description="配置当前连接窗口的显示和行为"
+      title={t('connSettings.title')}
+      description={t('connSettings.description')}
       onClose={onClose}
       footer={
         <>
-          <Button variant="secondary" onClick={onClose}>取消</Button>
-          <Button variant="primary" onClick={() => void handleSave()}>保存</Button>
+          <Button variant="secondary" onClick={onClose}>{t('common.cancel')}</Button>
+          <Button variant="primary" onClick={() => void handleSave()}>{t('common.save')}</Button>
         </>
       }
     >
       <div className="space-y-5">
         {/* Theme */}
         <div>
-          <label className="mb-1 block text-xs font-medium text-fg-secondary">主题</label>
+          <label className="mb-1 block text-xs font-medium text-fg-secondary">{t('settings.theme')}</label>
           <Select
             value={draft.theme}
-            options={THEME_OPTIONS}
+            options={[
+              { value: 'light', label: t('menu.themeLight') },
+              { value: 'dark', label: t('menu.themeDark') },
+              { value: 'system', label: t('menu.themeSystem') },
+            ]}
             onChange={(v) => updateField('theme', v as AppSettings['theme'])}
           />
         </div>
 
         {/* Default page size */}
         <div>
-          <label className="mb-1 block text-xs font-medium text-fg-secondary">默认每页行数</label>
+          <label className="mb-1 block text-xs font-medium text-fg-secondary">{t('settings.defaultPageSize')}</label>
           <Select
             value={draft.defaultPageSize}
-            options={PAGE_SIZE_OPTIONS.map((v) => ({ value: String(v), label: `${v} 行` }))}
+            options={PAGE_SIZE_OPTIONS.map((v) => ({ value: String(v), label: `${v} ${t('common.rows')}` }))}
             onChange={(v) => updateField('defaultPageSize', Number(v))}
           />
         </div>
@@ -74,8 +75,8 @@ export function ConnectionSettingsDialog({ open, onClose }: ConnectionSettingsDi
         {/* Limit SELECT results toggle */}
         <div className="flex items-center justify-between">
           <div>
-            <label className="text-xs font-medium text-fg-secondary">限制 SELECT 结果行数</label>
-            <p className="text-[11px] text-fg-muted">自动为无 LIMIT 的 SELECT 添加行数限制</p>
+            <label className="text-xs font-medium text-fg-secondary">{t('settings.limitSelect')}</label>
+            <p className="text-[11px] text-fg-muted">{t('settings.limitSelectHint')}</p>
           </div>
           <input
             type="checkbox"
@@ -88,10 +89,10 @@ export function ConnectionSettingsDialog({ open, onClose }: ConnectionSettingsDi
         {/* Query result limit */}
         {draft.limitSelectResults && (
           <div>
-            <label className="mb-1 block text-xs font-medium text-fg-secondary">最大返回行数</label>
+            <label className="mb-1 block text-xs font-medium text-fg-secondary">{t('settings.maxRows')}</label>
             <Select
               value={draft.queryResultLimit}
-              options={RESULT_LIMIT_OPTIONS.map((v) => ({ value: String(v), label: `${v.toLocaleString()} 行` }))}
+              options={RESULT_LIMIT_OPTIONS.map((v) => ({ value: String(v), label: `${v.toLocaleString()} ${t('common.rows')}` }))}
               onChange={(v) => updateField('queryResultLimit', Number(v))}
             />
           </div>
@@ -99,7 +100,7 @@ export function ConnectionSettingsDialog({ open, onClose }: ConnectionSettingsDi
 
         {/* Editor font size */}
         <div>
-          <label className="mb-1 block text-xs font-medium text-fg-secondary">编辑器字号</label>
+          <label className="mb-1 block text-xs font-medium text-fg-secondary">{`${t('settings.editor')}${t('settings.fontSize')}`}</label>
           <div className="flex items-center gap-2">
             <input
               type="range"
@@ -116,7 +117,7 @@ export function ConnectionSettingsDialog({ open, onClose }: ConnectionSettingsDi
 
         {/* Editor font family */}
         <div>
-          <label className="mb-1 block text-xs font-medium text-fg-secondary">编辑器字体</label>
+          <label className="mb-1 block text-xs font-medium text-fg-secondary">{`${t('settings.editor')}${t('settings.fontFamily')}`}</label>
           <input
             type="text"
             value={draft.editorFontFamily}
@@ -128,8 +129,8 @@ export function ConnectionSettingsDialog({ open, onClose }: ConnectionSettingsDi
         {/* Confirm on delete */}
         <div className="flex items-center justify-between">
           <div>
-            <label className="text-xs font-medium text-fg-secondary">删除确认</label>
-            <p className="text-[11px] text-fg-muted">删除行时弹出确认对话框</p>
+            <label className="text-xs font-medium text-fg-secondary">{t('settings.confirmDelete')}</label>
+            <p className="text-[11px] text-fg-muted">{t('settings.confirmDeleteHint')}</p>
           </div>
           <input
             type="checkbox"
@@ -142,8 +143,8 @@ export function ConnectionSettingsDialog({ open, onClose }: ConnectionSettingsDi
         {/* Auto commit */}
         <div className="flex items-center justify-between">
           <div>
-            <label className="text-xs font-medium text-fg-secondary">自动提交</label>
-            <p className="text-[11px] text-fg-muted">编辑数据后自动提交更改</p>
+            <label className="text-xs font-medium text-fg-secondary">{t('settings.autoCommit')}</label>
+            <p className="text-[11px] text-fg-muted">{t('settings.autoCommitHint')}</p>
           </div>
           <input
             type="checkbox"

@@ -2,6 +2,8 @@
 
 use super::mysql::MysqlDriver;
 use super::postgres::PostgresDriver;
+use super::redis_driver::RedisDriver;
+use super::sqlite::SqliteDriver;
 use super::{DatabaseDriver, DatabaseType};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -52,6 +54,12 @@ pub async fn init_drivers() -> DriverRegistry {
         .await;
     registry
         .register(Arc::new(MysqlDriver::new(true)))
+        .await;
+    registry
+        .register(Arc::new(SqliteDriver::new()))
+        .await;
+    registry
+        .register(Arc::new(RedisDriver::new()))
         .await;
     registry
 }

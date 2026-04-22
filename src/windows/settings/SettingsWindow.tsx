@@ -1,21 +1,30 @@
 import { useCallback, useEffect, useState } from 'react';
-import { TrafficLights } from '../../components/TrafficLights';
+import { TitleBar } from '../../components/TitleBar';
 import { Button } from '../../components/ui/Button';
 import { Select } from '../../components/ui/Select';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useThemeListener } from '../../hooks/useThemeListener';
+import { useI18n } from '../../hooks/useI18n';
 import type { AppSettings } from '../../types';
+import type { TranslationKey } from '../../locales';
 
 const PAGE_SIZE_OPTIONS = [25, 50, 100, 200, 500];
 const RESULT_LIMIT_OPTIONS = [1000, 2000, 5000, 10000, 50000];
-const THEME_OPTIONS: { value: AppSettings['theme']; label: string }[] = [
-  { value: 'light', label: '浅色主题' },
-  { value: 'dark', label: '深色主题' },
-  { value: 'system', label: '跟随系统' },
+
+const THEME_KEYS: { value: AppSettings['theme']; key: TranslationKey }[] = [
+  { value: 'light', key: 'theme.light' },
+  { value: 'dark', key: 'theme.dark' },
+  { value: 'system', key: 'theme.system' },
+];
+
+const LANGUAGE_OPTIONS = [
+  { value: 'zh-CN', label: '简体中文' },
+  { value: 'en', label: 'English' },
 ];
 
 export function SettingsWindow() {
   useThemeListener();
+  const { t } = useI18n();
 
   const settings = useSettingsStore((s) => s.settings);
   const loadSettings = useSettingsStore((s) => s.loadSettings);
@@ -51,30 +60,35 @@ export function SettingsWindow() {
 
   const isDirty = JSON.stringify(draft) !== JSON.stringify(settings);
 
+  const themeOptions = THEME_KEYS.map((tk) => ({
+    value: tk.value,
+    label: t(tk.key),
+  }));
+
   return (
     <div className="flex h-screen flex-col bg-surface text-fg">
       {/* Title bar */}
-      <header className="relative flex h-10 min-h-[40px] shrink-0 items-center bg-titlebar">
-        <div className="absolute inset-0" data-tauri-drag-region />
-        <div className="relative z-10 px-3">
-          <TrafficLights />
-        </div>
-        <div className="pointer-events-none flex min-w-0 flex-1 justify-center">
-          <span className="truncate text-xs font-medium text-fg-secondary">偏好设置 - DataZen</span>
-        </div>
-        <div className="w-[72px] shrink-0" />
-      </header>
+      <TitleBar title={t('win.settings')} />
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto px-8 py-6">
-        <h1 className="mb-6 text-lg font-semibold text-fg">偏好设置</h1>
+        <h1 className="mb-6 text-lg font-semibold text-fg">{t('settings.title')}</h1>
 
         <div className="mx-auto max-w-lg space-y-6">
+          {/* Language */}
+          <SettingRow label={t('settings.language')}>
+            <Select
+              value={draft.language}
+              options={LANGUAGE_OPTIONS}
+              onChange={(v) => updateField('language', v)}
+            />
+          </SettingRow>
+
           {/* Theme */}
-          <SettingRow label="主题">
+          <SettingRow label={t('settings.theme')}>
             <Select
               value={draft.theme}
-              options={THEME_OPTIONS}
+              options={themeOptions}
               onChange={(v) => updateField('theme', v as AppSettings['theme'])}
             />
           </SettingRow>
@@ -82,28 +96,27 @@ export function SettingsWindow() {
           <Divider />
 
           {/* Data browsing section */}
-          <SectionTitle>数据浏览</SectionTitle>
+          <SectionTitle>{t('settings.dataBrowsing')}</SectionTitle>
 
-          <SettingRow label="默认每页行数">
+          <SettingRow label={t('settings.defaultPageSize')}>
             <Select
               value={draft.defaultPageSize}
-              options={PAGE_SIZE_OPTIONS.map((v) => ({ value: String(v), label: `${v} 行` }))}
+              options={PAGE_SIZE_OPTIONS.map((v) => ({ value: String(v), label: `${v} ${t('common.rows')}` }))}
               onChange={(v) => updateField('defaultPageSize', Number(v))}
             />
           </SettingRow>
 
           <ToggleRow
-            label="限制 SELECT 结果行数"
-            description="开启后自动为无 LIMIT 的 SELECT 语句添加行数限制"
+            label={t('settings.limitSelect')}
             checked={draft.limitSelectResults}
             onChange={(v) => updateField('limitSelectResults', v)}
           />
 
           {draft.limitSelectResults && (
-            <SettingRow label="最大返回行数" hint="SELECT 查询的最大返回行数">
+            <SettingRow label={t('settings.maxRows')}>
               <Select
                 value={draft.queryResultLimit}
-                options={RESULT_LIMIT_OPTIONS.map((v) => ({ value: String(v), label: `${v.toLocaleString()} 行` }))}
+                options={RESULT_LIMIT_OPTIONS.map((v) => ({ value: String(v), label: `${v.toLocaleString()} ${t('common.rows')}` }))}
                 onChange={(v) => updateField('queryResultLimit', Number(v))}
               />
             </SettingRow>
@@ -112,9 +125,9 @@ export function SettingsWindow() {
           <Divider />
 
           {/* Editor section */}
-          <SectionTitle>编辑器</SectionTitle>
+          <SectionTitle>{t('settings.editor')}</SectionTitle>
 
-          <SettingRow label="字号">
+          <SettingRow label={t('settings.fontSize')}>
             <div className="flex items-center gap-3">
               <input
                 type="range"
@@ -129,7 +142,7 @@ export function SettingsWindow() {
             </div>
           </SettingRow>
 
-          <SettingRow label="字体">
+          <SettingRow label={t('settings.fontFamily')}>
             <input
               type="text"
               value={draft.editorFontFamily}
@@ -141,18 +154,16 @@ export function SettingsWindow() {
           <Divider />
 
           {/* Behavior section */}
-          <SectionTitle>行为</SectionTitle>
+          <SectionTitle>{t('settings.behavior')}</SectionTitle>
 
           <ToggleRow
-            label="删除确认"
-            description="删除行时弹出确认对话框"
+            label={t('settings.confirmDelete')}
             checked={draft.confirmOnDelete}
             onChange={(v) => updateField('confirmOnDelete', v)}
           />
 
           <ToggleRow
-            label="自动提交"
-            description="编辑数据后自动提交更改"
+            label={t('settings.autoCommit')}
             checked={draft.autoCommit}
             onChange={(v) => updateField('autoCommit', v)}
           />
@@ -161,10 +172,10 @@ export function SettingsWindow() {
 
       {/* Footer */}
       <footer className="flex shrink-0 items-center justify-end gap-3 border-t border-edge px-8 py-3">
-        {saved && <span className="text-xs text-green-500">已保存</span>}
-        <Button variant="secondary" onClick={() => void handleClose()}>关闭</Button>
+        {saved && <span className="text-xs text-green-500">{t('settings.saved')}</span>}
+        <Button variant="secondary" onClick={() => void handleClose()}>{t('common.close')}</Button>
         <Button variant="primary" disabled={!isDirty} onClick={() => void handleSave()}>
-          保存
+          {t('common.save')}
         </Button>
       </footer>
     </div>
@@ -191,18 +202,14 @@ function SettingRow({ label, hint, children }: { label: string; hint?: string; c
   );
 }
 
-function ToggleRow({ label, description, checked, onChange }: {
+function ToggleRow({ label, checked, onChange }: {
   label: string;
-  description: string;
   checked: boolean;
   onChange: (v: boolean) => void;
 }) {
   return (
     <div className="flex items-center justify-between">
-      <div>
-        <div className="text-sm text-fg-secondary">{label}</div>
-        <div className="text-[11px] text-fg-muted">{description}</div>
-      </div>
+      <div className="text-sm text-fg-secondary">{label}</div>
       <button
         type="button"
         role="switch"

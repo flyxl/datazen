@@ -356,7 +356,7 @@ impl DatabaseDriver for PostgresDriver {
         let cols = sqlx::query(
             r#"
             SELECT column_name, data_type, is_nullable, column_default,
-                   col_description((table_schema||'.'||table_name)::regclass, ordinal_position) as comment
+                   col_description((quote_ident(table_schema)||'.'||quote_ident(table_name))::regclass, ordinal_position) as comment
             FROM information_schema.columns
             WHERE table_name = $1
             ORDER BY ordinal_position
@@ -372,7 +372,7 @@ impl DatabaseDriver for PostgresDriver {
             SELECT a.attname
             FROM pg_index i
             JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
-            WHERE i.indrelid = $1::regclass AND i.indisprimary
+            WHERE i.indrelid = quote_ident($1)::regclass AND i.indisprimary
             "#,
         )
         .bind(table)
@@ -413,7 +413,7 @@ impl DatabaseDriver for PostgresDriver {
             JOIN pg_am   am ON am.oid  = i.relam
             JOIN LATERAL unnest(ix.indkey) WITH ORDINALITY AS k(attnum, n) ON true
             JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = k.attnum
-            WHERE ix.indrelid = $1::regclass
+            WHERE ix.indrelid = quote_ident($1)::regclass
             GROUP BY i.relname, ix.indisunique, ix.indisprimary, am.amname
             ORDER BY ix.indisprimary DESC, i.relname
             "#,

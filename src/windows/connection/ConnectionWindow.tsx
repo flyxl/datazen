@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   ClipboardCopy,
@@ -14,10 +14,11 @@ import {
   Upload,
   X,
 } from 'lucide-react';
-import { TrafficLights } from '../../components/TrafficLights';
+import { TitleBar } from '../../components/TitleBar';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { useResizable } from '../../hooks/useResizable';
+import { useI18n } from '../../hooks/useI18n';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 import { useThemeListener } from '../../hooks/useThemeListener';
 import { useSettingsStore } from '../../stores/settingsStore';
@@ -28,6 +29,8 @@ import { connectionCommands } from '../../commands/connection';
 import { emitCrossWindow, listenCrossWindow } from '../../lib/crossWindowBus';
 import { getUrlParam } from '../../lib/windowKind';
 import { cn } from '../../lib/cn';
+import { getDbLabel } from '../../lib/databaseTypes';
+import type { DatabaseType } from '../../types';
 import { SchemaTree } from './SchemaTree';
 import { StructureView } from './StructureView';
 import { TableView } from './TableView';
@@ -40,18 +43,21 @@ import { ImportDialog } from './ImportDialog';
 import { TableStructureEditor } from './TableStructureEditor';
 import { ContextMenu } from '../../components/ui/ContextMenu';
 import type { ContextMenuEntry } from '../../components/ui/ContextMenu';
+import type { TranslationKey } from '../../locales';
 
 // ── Panel types ──
 
 type SubTabId = 'data' | 'structure' | 'indexes' | 'foreignKeys' | 'ddl';
 
-const SUB_TABS: { id: SubTabId; label: string }[] = [
-  { id: 'data', label: '数据' },
-  { id: 'structure', label: '结构' },
-  { id: 'indexes', label: '索引' },
-  { id: 'foreignKeys', label: '外键' },
-  { id: 'ddl', label: 'DDL' },
-];
+function getSubTabs(t: (key: TranslationKey) => string): { id: SubTabId; label: string }[] {
+  return [
+    { id: 'data', label: t('connWin.data') },
+    { id: 'structure', label: t('connWin.structure') },
+    { id: 'indexes', label: t('connWin.indexes') },
+    { id: 'foreignKeys', label: t('connWin.foreignKeys') },
+    { id: 'ddl', label: 'DDL' },
+  ];
+}
 
 interface TablePanel {
   type: 'table';
@@ -91,10 +97,11 @@ function nextPanelId(prefix: string) {
 export function ConnectionWindow() {
   useThemeListener();
 
+  const { t } = useI18n();
   const loadSettings = useSettingsStore((s) => s.loadSettings);
 
   const connectionId = getUrlParam('connectionId') ?? '';
-  const connectionName = getUrlParam('connectionName') ?? '连接';
+  const connectionName = getUrlParam('connectionName') ?? t('connWin.connected');
   const databaseType = getUrlParam('databaseType') ?? 'postgresql';
   const initialDatabase = getUrlParam('database') ?? undefined;
 
@@ -237,34 +244,34 @@ export function ConnectionWindow() {
 
   const [createIndexTrigger, setCreateIndexTrigger] = useState(0);
 
-  const contextMenuItems: ContextMenuEntry[] = (() => {
+  const contextMenuItems: ContextMenuEntry[] = useMemo(() => {
     if (!activePanel) {
-      return [{ id: 'new-query', label: '新建查询', icon: <Plus className="h-3.5 w-3.5" /> }];
+      return [{ id: 'new-query', label: t('connWin.newQuery'), icon: <Plus className="h-3.5 w-3.5" /> }];
     }
 
     const common: ContextMenuEntry[] = [
-      { id: 'refresh', label: '刷新', icon: <RefreshCw className="h-3.5 w-3.5" /> },
-      { id: 'new-query', label: '新建查询', icon: <Plus className="h-3.5 w-3.5" /> },
+      { id: 'refresh', label: t('connWin.refresh'), icon: <RefreshCw className="h-3.5 w-3.5" /> },
+      { id: 'new-query', label: t('connWin.newQuery'), icon: <Plus className="h-3.5 w-3.5" /> },
     ];
     const sep: ContextMenuEntry = { id: 'sep1', separator: true };
 
     if (activePanel.type === 'table') {
       switch (activePanel.subTab) {
         case 'data':
-          return [{ id: 'copy-cell', label: '复制单元格', icon: <ClipboardCopy className="h-3.5 w-3.5" /> }, sep, ...common];
+          return [{ id: 'copy-cell', label: t('connWin.copyCell'), icon: <ClipboardCopy className="h-3.5 w-3.5" /> }, sep, ...common];
         case 'structure':
-          return [{ id: 'edit-structure', label: '编辑结构', icon: <Pencil className="h-3.5 w-3.5" /> }, sep, ...common];
+          return [{ id: 'edit-structure', label: t('connWin.editStructure'), icon: <Pencil className="h-3.5 w-3.5" /> }, sep, ...common];
         case 'indexes':
-          return [{ id: 'create-index', label: '新建索引', icon: <Plus className="h-3.5 w-3.5" /> }, sep, ...common];
+          return [{ id: 'create-index', label: t('connWin.newIndex'), icon: <Plus className="h-3.5 w-3.5" /> }, sep, ...common];
         case 'ddl':
-          return [{ id: 'copy-ddl', label: '复制 DDL', icon: <ClipboardCopy className="h-3.5 w-3.5" /> }, sep, ...common];
+          return [{ id: 'copy-ddl', label: t('connWin.copyDDL'), icon: <ClipboardCopy className="h-3.5 w-3.5" /> }, sep, ...common];
         default:
           return common;
       }
     }
 
     return common;
-  })();
+  }, [activePanel, t]);
 
   const handleContextAction = useCallback((id: string) => {
     switch (id) {
@@ -368,12 +375,12 @@ export function ConnectionWindow() {
   }, [connectionId]);
 
   useKeyboardShortcuts([
-    { key: 'mod+n', scope: 'global', description: '新建查询', action: handleNewQuery },
-    { key: 'mod+r', scope: 'global', description: '刷新', action: handleRefresh },
+    { key: 'mod+n', scope: 'global', description: t('connWin.newQuery'), action: handleNewQuery },
+    { key: 'mod+r', scope: 'global', description: t('connWin.refresh'), action: handleRefresh },
     {
       key: 'mod+w',
       scope: 'global',
-      description: '关闭当前标签',
+      description: t('common.close'),
       action: () => { if (activePanelId) handleClosePanel(activePanelId); },
     },
   ]);
@@ -381,47 +388,39 @@ export function ConnectionWindow() {
   if (!connectionId) {
     return (
       <div className="flex h-screen items-center justify-center bg-surface text-fg">
-        <div className="text-sm text-fg-muted">缺少连接参数</div>
+        <div className="text-sm text-fg-muted">{t('connWin.missingParams')}</div>
       </div>
     );
   }
 
-  const dbTypeLabel: Record<string, string> = {
-    postgresql: 'PostgreSQL',
-    mysql: 'MySQL',
-    mariadb: 'MariaDB',
-    sqlite: 'SQLite',
-  };
-  const centerTitle = `${connectionName} - ${dbTypeLabel[databaseType] ?? databaseType} - DataZen`;
+  const dbType = databaseType as DatabaseType;
+  const centerTitle = `${connectionName} - ${getDbLabel(dbType)} - DataZen`;
 
   return (
     <div className="flex h-screen min-h-0 flex-col bg-surface text-fg">
       {/* Title bar */}
-      <header className="relative flex h-10 min-h-[40px] shrink-0 items-center bg-titlebar">
-        <div className="absolute inset-0" data-tauri-drag-region />
-        <div className="relative z-10 flex items-center gap-2 px-3">
-          <TrafficLights />
-          <span className="inline-flex h-2 w-2 rounded-full bg-green-500" />
-          <span className="text-xs text-fg-secondary">{connectionName}</span>
-        </div>
-        <div className="pointer-events-none flex min-w-0 flex-1 justify-center">
-          <span className="truncate text-xs font-medium text-fg-secondary">{centerTitle}</span>
-        </div>
-        <div className="w-[72px] shrink-0" />
-      </header>
+      <TitleBar
+        title={centerTitle}
+        leftContent={
+          <div className="flex items-center gap-2">
+            <span className="inline-flex h-2 w-2 rounded-full bg-green-500" />
+            <span className="text-xs text-fg-secondary">{connectionName}</span>
+          </div>
+        }
+      />
 
       {/* Toolbar */}
       <div className="flex h-12 min-h-[48px] shrink-0 items-center gap-2 border-b border-edge bg-surface-alt px-4">
-        <Button variant="secondary" className="h-8 w-8 !px-0" title="刷新 (⌘R)" onClick={handleRefresh}>
+        <Button variant="secondary" className="h-8 w-8 !px-0" title={`${t('connWin.refresh')} (⌘R)`} onClick={handleRefresh}>
           <RefreshCw className="h-4 w-4" />
         </Button>
         <Button variant="primary" className="h-8" onClick={handleNewQuery}>
           <Plus className="h-4 w-4" />
-          新建查询
+          {t('connWin.newQuery')}
         </Button>
         <Button variant="secondary" className="h-8" onClick={handleCreateTable}>
           <TableProperties className="h-4 w-4" />
-          新建表
+          {t('connWin.newTable')}
         </Button>
         <div className="mx-1 h-6 w-px bg-edge" />
 
@@ -430,7 +429,7 @@ export function ConnectionWindow() {
           <Input
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="搜索表、视图..."
+            placeholder={t('connWin.searchTables')}
             className="h-8 pl-9 text-xs"
           />
         </div>
@@ -478,8 +477,8 @@ export function ConnectionWindow() {
                     const labelMap: Record<string, string> = {
                       table: (panel as TablePanel).tableName,
                       query: (panel as QueryPanelInfo).title,
-                      'create-table': '新建表',
-                      'alter-table': `编辑 · ${(panel as AlterTablePanel).tableName}`,
+                      'create-table': t('connWin.newTable'),
+                      'alter-table': `${t('connWin.editStructure')} · ${(panel as AlterTablePanel).tableName}`,
                     };
                     const icon = iconMap[panel.type];
                     const label = labelMap[panel.type];
@@ -519,7 +518,7 @@ export function ConnectionWindow() {
                 <button
                   type="button"
                   className="shrink-0 px-2 py-2 text-fg-muted hover:text-fg"
-                  title="新建查询 (⌘N)"
+                  title={`${t('connWin.newQuery')} (⌘N)`}
                   onClick={handleNewQuery}
                 >
                   <Plus className="h-3.5 w-3.5" />
@@ -532,7 +531,7 @@ export function ConnectionWindow() {
               <>
                 {/* Sub-tab bar */}
                 <div className="flex shrink-0 border-b border-edge bg-surface-alt">
-                  {SUB_TABS.map((tab) => (
+                  {getSubTabs(t).map((tab) => (
                     <button
                       key={tab.id}
                       type="button"
@@ -606,7 +605,9 @@ export function ConnectionWindow() {
               <div className="flex flex-1 items-center justify-center text-fg-muted">
                 <div className="text-center">
                   <Database className="mx-auto h-10 w-10 opacity-20" />
-                  <div className="mt-3 text-sm">在左侧选择一个表，或按 ⌘N 新建查询</div>
+                  <div className="mt-3 text-sm">
+                    {`${t('connWin.selectTable')} (⌘N ${t('connWin.newQuery')})`}
+                  </div>
                 </div>
               </div>
             )}
@@ -618,22 +619,22 @@ export function ConnectionWindow() {
       <footer className="flex h-10 min-h-[40px] shrink-0 items-center justify-between border-t border-edge bg-surface-alt px-4 text-xs text-fg-secondary">
         <div className="flex items-center gap-2">
           <span className="inline-flex h-2 w-2 rounded-full bg-green-500" />
-          <span>已连接</span>
+          <span>{t('connWin.connected')}</span>
         </div>
         <div className="truncate text-fg-muted">
           {[
-            dbTypeLabel[databaseType] ?? databaseType,
+            getDbLabel(dbType),
             connectionName,
             currentDatabase,
             tableName,
-            tableColumns.length > 0 && `${tableColumns.length} 列`,
-            totalRows > 0 && `${totalRows} 行`,
+            tableColumns.length > 0 && `${tableColumns.length} ${t('connWin.fields')}`,
+            totalRows > 0 && `${totalRows} ${t('connWin.rowCount')}`,
           ]
             .filter(Boolean)
             .join(' · ')}
         </div>
         <div className="shrink-0 text-fg-muted">
-          <kbd className="font-mono">⌘N</kbd> 新建查询 · <kbd className="font-mono">⌘R</kbd> 刷新 · <kbd className="font-mono">⌘W</kbd> 关闭标签
+          <kbd className="font-mono">⌘N</kbd> {t('connWin.newQuery')} · <kbd className="font-mono">⌘R</kbd> {t('connWin.refresh')} · <kbd className="font-mono">⌘W</kbd> {t('common.close')}
         </div>
       </footer>
 
@@ -650,7 +651,7 @@ export function ConnectionWindow() {
             onClick={() => { const name = tableCtx.tableName; setTableCtx(null); handleAlterTable(name); }}
           >
             <Pencil className="h-3.5 w-3.5" />
-            编辑表结构…
+            {t('connWin.editTableStructure')}
           </button>
           <div className="my-1 h-px bg-edge" />
           <button
@@ -659,7 +660,7 @@ export function ConnectionWindow() {
             onClick={() => handleTableCtxAction('export')}
           >
             <Download className="h-3.5 w-3.5" />
-            导出数据…
+            {t('connWin.exportData')}
           </button>
           <button
             type="button"
@@ -667,7 +668,7 @@ export function ConnectionWindow() {
             onClick={() => handleTableCtxAction('import')}
           >
             <Upload className="h-3.5 w-3.5" />
-            导入数据…
+            {t('connWin.importData')}
           </button>
         </div>,
         document.body,

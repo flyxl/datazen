@@ -2,6 +2,7 @@
 
 use crate::db::{ConnectionConfig, ConnectionHandle, DatabaseDriver, DatabaseType, DriverError, ServerInfo};
 use crate::db::registry::DriverRegistry;
+use crate::ssh_tunnel::SshTunnel;
 use crate::store::Store;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -16,6 +17,7 @@ struct ActiveConnection {
     #[allow(dead_code)]
     created_at: Instant,
     last_used: Instant,
+    _tunnel: Option<SshTunnel>,
 }
 
 /// Coordinates configuration lookup, driver selection, and pooling handles.
@@ -58,13 +60,16 @@ impl ConnectionManager {
             .await
             .ok_or_else(|| ConnectionError::ConfigNotFound(config_id.to_string()))?;
 
+        // If SSH tunnel is configured, establish it and rewrite host/port
+        let (effective_config, tunnel) = self.maybe_start_tunnel(config).await?;
+
         let driver = self
             .registry
-            .get(&config.database_type)
+            .get(&effective_config.database_type)
             .await
-            .ok_or(ConnectionError::DriverNotFound(config.database_type.clone()))?;
+            .ok_or(ConnectionError::DriverNotFound(effective_config.database_type.clone()))?;
 
-        let handle = driver.connect(&config).await?;
+        let handle = driver.connect(&effective_config).await?;
         let connection_id = handle.id.clone();
 
         let mut connections = self.connections.write().await;
@@ -72,9 +77,10 @@ impl ConnectionManager {
             connection_id.clone(),
             ActiveConnection {
                 handle,
-                config,
+                config: effective_config,
                 created_at: Instant::now(),
                 last_used: Instant::now(),
+                _tunnel: tunnel,
             },
         );
 
@@ -126,16 +132,20 @@ impl ConnectionManager {
     }
 
     pub async fn test_connection(&self, config: &ConnectionConfig) -> Result<ServerInfo, ConnectionError> {
+        // If SSH tunnel is configured, establish a temporary tunnel for testing
+        let (effective_config, _tunnel) = self.maybe_start_tunnel(config.clone()).await?;
+
         let driver = self
             .registry
-            .get(&config.database_type)
+            .get(&effective_config.database_type)
             .await
-            .ok_or_else(|| ConnectionError::DriverNotFound(config.database_type.clone()))?;
+            .ok_or_else(|| ConnectionError::DriverNotFound(effective_config.database_type.clone()))?;
 
         driver
-            .test_connection(config)
+            .test_connection(&effective_config)
             .await
             .map_err(ConnectionError::DriverError)
+        // _tunnel is dropped here, closing the temporary SSH session
     }
 
     pub async fn cleanup_idle_connections(&self) {
@@ -175,5 +185,47 @@ impl ConnectionManager {
                 let _ = driver.disconnect(active.handle).await;
             }
         }
+    }
+
+    /// If SSH tunnel is enabled in the config, start the tunnel and return
+    /// a modified config pointing to `127.0.0.1:<local_port>`.
+    async fn maybe_start_tunnel(
+        &self,
+        config: ConnectionConfig,
+    ) -> Result<(ConnectionConfig, Option<SshTunnel>), ConnectionError> {
+        let ssh = match &config.ssh_tunnel {
+            Some(s) if s.enabled => s,
+            _ => return Ok((config, None)),
+        };
+
+        let remote_host = config.host.as_deref().ok_or_else(|| {
+            ConnectionError::DriverError(DriverError::InvalidConfig(
+                "SSH tunnel requires a database host".into(),
+            ))
+        })?;
+        let remote_port = config.port.ok_or_else(|| {
+            ConnectionError::DriverError(DriverError::InvalidConfig(
+                "SSH tunnel requires a database port".into(),
+            ))
+        })?;
+
+        tracing::info!(
+            ssh_host = %ssh.host,
+            ssh_port = ssh.port,
+            remote = %format!("{remote_host}:{remote_port}"),
+            "Starting SSH tunnel"
+        );
+
+        let tunnel = SshTunnel::start(ssh, remote_host, remote_port)
+            .await
+            .map_err(ConnectionError::DriverError)?;
+
+        let mut tunneled = config;
+        tunneled.host = Some("127.0.0.1".to_string());
+        tunneled.port = Some(tunnel.local_port());
+        // Clear SSH config from the effective config so drivers don't see it
+        tunneled.ssh_tunnel = None;
+
+        Ok((tunneled, Some(tunnel)))
     }
 }

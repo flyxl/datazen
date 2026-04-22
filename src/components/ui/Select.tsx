@@ -138,7 +138,7 @@ export function Select({ value, options, onChange, placeholder, disabled, classN
         onKeyDown={handleKeyDown}
       >
         <span className={cn('min-w-0 truncate', !selectedOption && 'text-fg-muted')}>
-          {selectedOption?.label ?? placeholder ?? '请选择'}
+          {selectedOption?.label ?? placeholder ?? ''}
         </span>
         <ChevronDown className={cn('h-3.5 w-3.5 shrink-0 text-fg-muted transition-transform', open && 'rotate-180')} />
       </button>

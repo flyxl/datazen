@@ -3,14 +3,17 @@ import { Sun, Moon, Monitor } from 'lucide-react';
 import { useSettingsStore } from '../stores/settingsStore';
 import { cn } from '../lib/cn';
 import type { AppSettings } from '../types';
+import type { TranslationKey } from '../locales';
+import { useI18n } from '../hooks/useI18n';
 
-const OPTIONS: { value: AppSettings['theme']; label: string; Icon: typeof Sun }[] = [
-  { value: 'light', label: '浅色', Icon: Sun },
-  { value: 'dark', label: '深色', Icon: Moon },
-  { value: 'system', label: '跟随系统', Icon: Monitor },
+const OPTIONS: { value: AppSettings['theme']; key: TranslationKey; Icon: typeof Sun }[] = [
+  { value: 'light', key: 'theme.light', Icon: Sun },
+  { value: 'dark', key: 'theme.dark', Icon: Moon },
+  { value: 'system', key: 'theme.system', Icon: Monitor },
 ];
 
 export function ThemeToggle() {
+  const { t } = useI18n();
   const theme = useSettingsStore((s) => s.settings.theme);
   const updateSettings = useSettingsStore((s) => s.updateSettings);
   const [open, setOpen] = useState(false);
@@ -34,7 +37,7 @@ export function ThemeToggle() {
         type="button"
         onClick={() => setOpen((v) => !v)}
         className="inline-flex h-8 w-8 items-center justify-center rounded-md text-fg-muted hover:bg-surface-raised hover:text-fg transition-colors"
-        title={`主题：${current.label}`}
+        title={t('theme.tooltip', { current: t(current.key) })}
       >
         <CurrentIcon className="h-4 w-4" />
       </button>
@@ -57,7 +60,7 @@ export function ThemeToggle() {
               )}
             >
               <opt.Icon className="h-3.5 w-3.5" />
-              {opt.label}
+              {t(opt.key)}
             </button>
           ))}
         </div>

@@ -1,5 +1,6 @@
 import { DatabaseBackup, Download, Plus, RefreshCcw } from 'lucide-react';
 import { cn } from '../../lib/cn';
+import { useI18n } from '../../hooks/useI18n';
 
 export interface ActionPanelProps {
   onNewConnection: () => void;
@@ -9,11 +10,12 @@ export interface ActionPanelProps {
 }
 
 export function ActionPanel({ onNewConnection, onBackup, onRestore, onDataSync }: ActionPanelProps) {
+  const { t } = useI18n();
   const items = [
-    { icon: DatabaseBackup, label: '备份数据库…', action: onBackup },
-    { icon: Download, label: '恢复数据库…', action: onRestore },
-    { icon: RefreshCcw, label: '数据同步…', action: onDataSync },
-    { icon: Plus, label: '新建连接…', action: onNewConnection },
+    { icon: DatabaseBackup, label: t('action.backup'), action: onBackup },
+    { icon: Download, label: t('action.restore'), action: onRestore },
+    { icon: RefreshCcw, label: t('action.dataSync'), action: onDataSync },
+    { icon: Plus, label: t('action.newConnection'), action: onNewConnection },
   ];
 
   return (

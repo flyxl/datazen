@@ -4,6 +4,7 @@ import { databaseCommands } from '../../commands/database';
 import type { IndexInfo, TableSchema, ColumnSchema } from '../../types';
 import { cn } from '../../lib/cn';
 import { Button } from '../../components/ui/Button';
+import { useI18n } from '../../hooks/useI18n';
 
 interface IndexesViewProps {
   connectionId: string;
@@ -32,6 +33,7 @@ interface CreateIndexDialogProps {
 }
 
 function CreateIndexDialog({ columns, tableName, onSubmit, onCancel, submitting, databaseType }: CreateIndexDialogProps) {
+  const { t } = useI18n();
   const isMySQL = databaseType === 'mysql' || databaseType === 'mariadb';
   const [indexName, setIndexName] = useState('');
   const [selectedCols, setSelectedCols] = useState<string[]>([]);
@@ -60,11 +62,11 @@ function CreateIndexDialog({ columns, tableName, onSubmit, onCancel, submitting,
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" role="dialog" aria-modal="true">
       <div className="w-[480px] rounded-lg border border-edge bg-surface p-5 shadow-xl">
-        <h3 className="mb-4 text-base font-semibold text-fg">新建索引</h3>
+        <h3 className="mb-4 text-base font-semibold text-fg">{t('indexes.newIndex')}</h3>
 
         {/* Index name */}
         <div className="mb-3">
-          <label htmlFor="idx-name" className="mb-1 block text-xs text-fg-secondary">索引名称</label>
+          <label htmlFor="idx-name" className="mb-1 block text-xs text-fg-secondary">{t('indexes.indexName')}</label>
           <input
             id="idx-name"
             className="h-8 w-full rounded border border-edge bg-surface-alt px-2.5 text-sm text-fg outline-none focus:border-blue-500"
@@ -76,7 +78,7 @@ function CreateIndexDialog({ columns, tableName, onSubmit, onCancel, submitting,
 
         {/* Column selection */}
         <div className="mb-3">
-          <label htmlFor="idx-cols" className="mb-1 block text-xs text-fg-secondary">选择列（按选择顺序排列）</label>
+          <label htmlFor="idx-cols" className="mb-1 block text-xs text-fg-secondary">{t('indexes.selectColumns')}</label>
           <div id="idx-cols" className="max-h-40 overflow-auto rounded border border-edge bg-surface-alt p-2">
             {columns.map((col) => {
               const checked = selectedCols.includes(col.name);
@@ -117,11 +119,11 @@ function CreateIndexDialog({ columns, tableName, onSubmit, onCancel, submitting,
               onChange={(e) => setIsUnique(e.target.checked)}
               className="accent-blue-500"
             />
-            唯一索引
+            {t('indexes.unique')}
           </label>
 
           <div className="flex items-center gap-2">
-            <span className="text-xs text-fg-secondary">索引类型</span>
+            <span className="text-xs text-fg-secondary">{t('indexes.indexType')}</span>
             <select
               className="h-7 rounded border border-edge bg-surface-alt px-2 text-xs text-fg outline-none"
               value={indexType}
@@ -138,7 +140,7 @@ function CreateIndexDialog({ columns, tableName, onSubmit, onCancel, submitting,
         {/* SQL preview */}
         {selectedCols.length > 0 && (
           <div className="mb-4 rounded border border-edge bg-surface-alt p-2.5">
-            <div className="mb-1 text-[10px] font-medium uppercase text-fg-muted">SQL 预览</div>
+            <div className="mb-1 text-[10px] font-medium uppercase text-fg-muted">{t('indexes.sqlPreview')}</div>
             <code className="block whitespace-pre-wrap text-xs text-green-400">
               {`CREATE ${isUnique ? 'UNIQUE ' : ''}INDEX ${q}${indexName.trim() || autoName}${q} ON ${q}${tableName}${q}${indexType !== 'btree' ? ` USING ${indexType}` : ''} (${selectedCols.map((c) => `${q}${c}${q}`).join(', ')})`}
             </code>
@@ -148,14 +150,14 @@ function CreateIndexDialog({ columns, tableName, onSubmit, onCancel, submitting,
         {/* Actions */}
         <div className="flex justify-end gap-2">
           <Button variant="secondary" onClick={onCancel} disabled={submitting}>
-            取消
+            {t('common.cancel')}
           </Button>
           <Button
             onClick={handleSubmit}
             disabled={selectedCols.length === 0 || submitting}
           >
             {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-            创建索引
+            {t('indexes.createIndex')}
           </Button>
         </div>
       </div>
@@ -173,23 +175,24 @@ interface DeleteConfirmProps {
 }
 
 function DeleteConfirmDialog({ indexName, onConfirm, onCancel, submitting }: DeleteConfirmProps) {
+  const { t } = useI18n();
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" role="dialog" aria-modal="true">
       <div className="w-[400px] rounded-lg border border-edge bg-surface p-5 shadow-xl">
         <div className="mb-3 flex items-center gap-2 text-amber-400">
           <AlertTriangle className="h-5 w-5" />
-          <h3 className="text-base font-semibold">确认删除索引</h3>
+          <h3 className="text-base font-semibold">{t('indexes.confirmDeleteTitle')}</h3>
         </div>
         <p className="mb-4 text-sm text-fg-secondary">
-          确定要删除索引 <code className="rounded bg-surface-alt px-1.5 py-0.5 font-mono text-fg">{indexName}</code> 吗？此操作不可撤销。
+          {t('indexes.confirmDeleteMsg', { name: indexName })}
         </p>
         <div className="flex justify-end gap-2">
           <Button variant="secondary" onClick={onCancel} disabled={submitting}>
-            取消
+            {t('common.cancel')}
           </Button>
           <Button variant="danger" onClick={onConfirm} disabled={submitting}>
             {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-            删除
+            {t('common.delete')}
           </Button>
         </div>
       </div>
@@ -200,6 +203,7 @@ function DeleteConfirmDialog({ indexName, onConfirm, onCancel, submitting }: Del
 // ── Main IndexesView ─────────────────────────────────────────────
 
 export function IndexesView({ connectionId, tableName, createIndexTrigger, databaseType }: IndexesViewProps) {
+  const { t } = useI18n();
   const isMySQL = databaseType === 'mysql' || databaseType === 'mariadb';
   const q = isMySQL ? '`' : '"';
   const [indexes, setIndexes] = useState<IndexInfo[]>([]);
@@ -227,13 +231,13 @@ export function IndexesView({ connectionId, tableName, createIndexTrigger, datab
       })
       .catch((e) => {
         if (!cancelled) {
-          setError(typeof e === 'string' ? e : e instanceof Error ? e.message : '加载索引失败');
+          setError(typeof e === 'string' ? e : e instanceof Error ? e.message : t('indexes.loadFailed'));
           setLoading(false);
         }
       });
 
     return () => { cancelled = true; };
-  }, [connectionId, tableName, version]);
+  }, [connectionId, tableName, version, t]);
 
   useEffect(() => loadSchema(), [loadSchema]);
 
@@ -248,7 +252,7 @@ export function IndexesView({ connectionId, tableName, createIndexTrigger, datab
       setShowCreate(false);
       setVersion((v) => v + 1);
     } catch (e) {
-      const msg = typeof e === 'string' ? e : e instanceof Error ? e.message : '创建索引失败';
+      const msg = typeof e === 'string' ? e : e instanceof Error ? e.message : t('indexes.createFailed');
       setError(msg);
     } finally {
       setSubmitting(false);
@@ -266,7 +270,7 @@ export function IndexesView({ connectionId, tableName, createIndexTrigger, datab
       setDeleteTarget(null);
       setVersion((v) => v + 1);
     } catch (e) {
-      const msg = typeof e === 'string' ? e : e instanceof Error ? e.message : '删除索引失败';
+      const msg = typeof e === 'string' ? e : e instanceof Error ? e.message : t('indexes.deleteFailed');
       setError(msg);
     } finally {
       setSubmitting(false);
@@ -277,7 +281,7 @@ export function IndexesView({ connectionId, tableName, createIndexTrigger, datab
     return (
       <div className="flex flex-1 items-center justify-center gap-2 text-fg-muted">
         <Loader2 className="h-5 w-5 animate-spin" />
-        加载索引信息…
+        {t('indexes.loading')}
       </div>
     );
   }
@@ -287,7 +291,7 @@ export function IndexesView({ connectionId, tableName, createIndexTrigger, datab
       <div className="flex flex-1 flex-col items-center justify-center gap-2">
         <span className="text-sm text-red-400">{error}</span>
         <Button variant="secondary" className="h-7 text-xs" onClick={() => { setError(null); setVersion((v) => v + 1); }}>
-          重试
+          {t('common.retry')}
         </Button>
       </div>
     );
@@ -298,7 +302,7 @@ export function IndexesView({ connectionId, tableName, createIndexTrigger, datab
       {/* Header */}
       <div className="flex items-center gap-2 px-4 py-3">
         <span className="text-base font-semibold text-fg">{tableName}</span>
-        <span className="text-sm text-fg-muted">· {indexes.length} 个索引</span>
+        <span className="text-sm text-fg-muted">· {t('indexes.count', { count: indexes.length })}</span>
         <div className="flex-1" />
         <Button
           variant="secondary"
@@ -306,21 +310,21 @@ export function IndexesView({ connectionId, tableName, createIndexTrigger, datab
           onClick={() => setShowCreate(true)}
         >
           <Plus className="h-3.5 w-3.5" />
-          新建索引
+          {t('indexes.newIndex')}
         </Button>
       </div>
 
       {/* Table or empty state */}
       {indexes.length === 0 ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-3 text-fg-muted">
-          <span className="text-sm">该表没有索引</span>
+          <span className="text-sm">{t('indexes.noIndexes')}</span>
           <Button
             variant="secondary"
             className="h-8 gap-1 text-xs"
             onClick={() => setShowCreate(true)}
           >
             <Plus className="h-3.5 w-3.5" />
-            创建第一个索引
+            {t('indexes.createFirst')}
           </Button>
         </div>
       ) : (
@@ -328,12 +332,12 @@ export function IndexesView({ connectionId, tableName, createIndexTrigger, datab
           <table className="w-full border-collapse text-[13px]">
             <thead className="sticky top-0 z-10">
               <tr className="bg-surface-alt text-left text-xs font-medium text-fg-secondary">
-                <th className="border-b border-edge px-4 py-2.5 font-medium">索引名</th>
-                <th className="border-b border-edge px-4 py-2.5 font-medium">列</th>
-                <th className="border-b border-edge px-4 py-2.5 font-medium">类型</th>
-                <th className="border-b border-edge px-4 py-2.5 font-medium">唯一</th>
-                <th className="border-b border-edge px-4 py-2.5 font-medium">主键</th>
-                <th className="border-b border-edge px-4 py-2.5 font-medium w-16">操作</th>
+                <th className="border-b border-edge px-4 py-2.5 font-medium">{t('indexes.colName')}</th>
+                <th className="border-b border-edge px-4 py-2.5 font-medium">{t('indexes.colColumns')}</th>
+                <th className="border-b border-edge px-4 py-2.5 font-medium">{t('indexes.colType')}</th>
+                <th className="border-b border-edge px-4 py-2.5 font-medium">{t('indexes.colUnique')}</th>
+                <th className="border-b border-edge px-4 py-2.5 font-medium">{t('indexes.colPrimary')}</th>
+                <th className="border-b border-edge px-4 py-2.5 font-medium w-16">{t('indexes.colActions')}</th>
               </tr>
             </thead>
             <tbody>
@@ -364,7 +368,7 @@ export function IndexesView({ connectionId, tableName, createIndexTrigger, datab
                     {!idx.isPrimary && (
                       <button
                         className="rounded p-1 text-fg-muted opacity-0 transition hover:bg-red-500/10 hover:text-red-400 group-hover:opacity-100"
-                        title="删除索引"
+                        title={t('indexes.deleteIndex')}
                         onClick={() => setDeleteTarget(idx.name)}
                       >
                         <Trash2 className="h-3.5 w-3.5" />

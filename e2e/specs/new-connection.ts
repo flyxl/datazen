@@ -1,5 +1,5 @@
 import { expect, browser, $, $$ } from '@wdio/globals';
-import { switchToNewWindow, closeExtraWindows } from '../helpers.js';
+import { switchToNewWindow, closeExtraWindows, expandAllGroups } from '../helpers.js';
 
 describe('新建连接 (CM-002, CM-005)', () => {
   let mainWindow: string;
@@ -10,6 +10,27 @@ describe('新建连接 (CM-002, CM-005)', () => {
 
   afterEach(async () => {
     await closeExtraWindows(mainWindow);
+  });
+
+  after(async () => {
+    // Clean up any test connections created during the suite
+    const conns: any[] = await browser.executeAsync((done: (r: any) => void) => {
+      (window as any).__TAURI_INTERNALS__
+        .invoke('get_connections')
+        .then((r: any) => done(r))
+        .catch(() => done([]));
+    });
+    for (const c of conns) {
+      if (c.name === 'E2E-自动测试' || c.name === 'E2E-测试连接') {
+        await browser.executeAsync((id: string, done: (r: any) => void) => {
+          (window as any).__TAURI_INTERNALS__
+            .invoke('delete_connection', { id })
+            .then(() => done(null))
+            .catch(() => done(null));
+        }, c.id);
+      }
+    }
+    await browser.pause(300);
   });
 
   it('点击新建连接按钮应打开新窗口 (CM-002)', async () => {
@@ -158,6 +179,7 @@ describe('新建连接 (CM-002, CM-005)', () => {
       { timeout: 10000 },
     );
     await browser.switchToWindow(mainWindow);
+    await expandAllGroups();
 
     const card = await $('div*=E2E-自动测试');
     await card.waitForDisplayed({ timeout: 5000 });

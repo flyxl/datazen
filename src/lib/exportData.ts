@@ -1,4 +1,5 @@
-import type { ColumnSchema } from '../types';
+import type { ColumnSchema, DatabaseType } from '../types';
+import { escapeIdent } from './databaseTypes';
 
 export type ExportFormat = 'csv' | 'json' | 'sql_insert' | 'sql_update';
 export type ExportScope = 'current_page' | 'selected';
@@ -32,10 +33,7 @@ function escapeSQLValue(value: unknown): string {
 }
 
 function escapeSQLIdent(name: string, dbType?: string): string {
-  if (dbType === 'mysql' || dbType === 'mariadb') {
-    return `\`${name.replaceAll('`', '``')}\``;
-  }
-  return `"${name.replaceAll('"', '""')}"`;
+  return escapeIdent(name, dbType as DatabaseType | undefined);
 }
 
 function getRows(rows: Record<string, unknown>[], selectedRows: Set<number>, scope: ExportScope): Record<string, unknown>[] {

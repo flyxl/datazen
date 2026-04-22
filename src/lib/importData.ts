@@ -1,3 +1,6 @@
+import type { DatabaseType } from '../types';
+import { escapeIdent } from './databaseTypes';
+
 export interface ParsedData {
   columns: string[];
   rows: Record<string, unknown>[];
@@ -84,10 +87,7 @@ function escapeSQLValue(value: unknown): string {
 }
 
 function escapeSQLIdent(name: string, dbType?: string): string {
-  if (dbType === 'mysql' || dbType === 'mariadb') {
-    return `\`${name.replaceAll('`', '``')}\``;
-  }
-  return `"${name.replaceAll('"', '""')}"`;
+  return escapeIdent(name, dbType as DatabaseType | undefined);
 }
 
 export function generateInsertSQL(tableName: string, data: ParsedData, databaseType?: string): string {

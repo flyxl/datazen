@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ChevronDown, ChevronRight, Database, Eye, Loader2, Table2 } from 'lucide-react';
 import { useSchemaStore } from '../../stores/schemaStore';
+import { useI18n } from '../../hooks/useI18n';
 import { cn } from '../../lib/cn';
 
 interface SchemaTreeProps {
@@ -20,6 +21,7 @@ export function SchemaTree({
   onSelectTable,
   onTableContextMenu,
 }: SchemaTreeProps) {
+  const { t } = useI18n();
   const databases = useSchemaStore((s) => s.databases);
   const tables = useSchemaStore((s) => s.tables);
   const views = useSchemaStore((s) => s.views);
@@ -69,7 +71,7 @@ export function SchemaTree({
       {loading && tables.length === 0 && (
         <div className="flex items-center gap-2 px-3 py-2 text-xs text-fg-muted">
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          加载中…
+          {t('common.loading')}
         </div>
       )}
 
@@ -155,7 +157,7 @@ export function SchemaTree({
 
       {!loading && filteredTables.length === 0 && filteredViews.length === 0 && currentDatabase && (
         <div className="px-3 py-3 text-center text-xs text-fg-muted">
-          {query ? '没有匹配的表或视图' : '没有表'}
+          {query ? t('schemaTree.noMatchingTables') : t('schemaTree.noTables')}
         </div>
       )}
     </div>

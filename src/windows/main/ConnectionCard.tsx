@@ -1,25 +1,12 @@
 import { Copy, Database, EthernetPort, Loader2, Pencil, Plug, Trash2, Unplug } from 'lucide-react';
-import type { ConnectionConfig, DatabaseType } from '../../types';
+import type { ConnectionConfig } from '../../types';
 import type { ConnectionStatus } from '../../stores/activeConnectionStore';
 import { formatLastConnected } from '../../lib/formatters';
 import { cn } from '../../lib/cn';
+import { DB_REGISTRY, getDbLabel } from '../../lib/databaseTypes';
 import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
-
-function typeLabel(t: DatabaseType) {
-  switch (t) {
-    case 'postgresql':
-      return 'PostgreSQL';
-    case 'mysql':
-      return 'MySQL';
-    case 'mariadb':
-      return 'MariaDB';
-    case 'sqlite':
-      return 'SQLite';
-    default:
-      return t;
-  }
-}
+import { useI18n } from '../../hooks/useI18n';
 
 export interface ConnectionCardProps {
   connection: ConnectionConfig;
@@ -42,15 +29,20 @@ export function ConnectionCard({
   onDuplicate,
   onDelete,
 }: ConnectionCardProps) {
+  const { t } = useI18n();
   const isConnecting = status === 'connecting';
   const isConnected = status === 'connected';
 
+  const meta = DB_REGISTRY[connection.databaseType];
+  const hasSSH = connection.sshTunnel?.enabled === true;
   const addr =
-    connection.databaseType === 'sqlite'
-      ? (connection.database ?? 'SQLite')
-      : `${connection.host ?? ''}${connection.port ? `:${connection.port}` : ''}`;
+    meta?.connectionMode === 'file'
+      ? (connection.database ?? meta.label)
+      : hasSSH
+        ? `${connection.sshTunnel!.host} → ${connection.host ?? ''}:${connection.port ?? ''}`
+        : `${connection.host ?? ''}${connection.port ? `:${connection.port}` : ''}`;
 
-  const title = `${connection.name} · ${typeLabel(connection.databaseType)}`;
+  const title = `${connection.name} · ${getDbLabel(connection.databaseType)}`;
 
   return (
     <div
@@ -76,10 +68,10 @@ export function ConnectionCard({
           <div className="flex items-center gap-2">
             <div className="truncate text-sm font-semibold text-fg">{connection.name}</div>
             <Badge tone="accent" className="shrink-0">
-              {typeLabel(connection.databaseType)}
+              {getDbLabel(connection.databaseType)}
             </Badge>
             {isConnected && (
-              <span className="inline-flex h-2 w-2 shrink-0 rounded-full bg-green-500" title="已连接" />
+              <span className="inline-flex h-2 w-2 shrink-0 rounded-full bg-green-500" title={t('conn.connected')} />
             )}
           </div>
           <div className="mt-1 flex items-center gap-2 text-xs text-fg-secondary">
@@ -89,7 +81,7 @@ export function ConnectionCard({
             </span>
           </div>
           <div className="mt-2 text-xs text-fg-muted">
-            最后连接：<span className="text-fg-secondary">{formatLastConnected(connection.lastConnectedAt)}</span>
+            {t('conn.lastConnected')}<span className="text-fg-secondary">{formatLastConnected(connection.lastConnectedAt)}</span>
           </div>
         </div>
       </div>
@@ -97,7 +89,7 @@ export function ConnectionCard({
       <div className={cn(viewMode === 'list' ? 'flex shrink-0 items-center gap-2' : 'mt-4 flex items-center gap-2')}>
         <button
           type="button"
-          title="编辑连接"
+          title={t('conn.edit')}
           onClick={() => onEdit(connection.id)}
           className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-edge text-fg-muted hover:bg-surface hover:text-fg"
         >
@@ -105,7 +97,7 @@ export function ConnectionCard({
         </button>
         <button
           type="button"
-          title="复制连接"
+          title={t('conn.duplicate')}
           onClick={() => onDuplicate(connection.id)}
           className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-edge text-fg-muted hover:bg-surface hover:text-fg"
         >
@@ -113,7 +105,7 @@ export function ConnectionCard({
         </button>
         <button
           type="button"
-          title="删除连接"
+          title={t('conn.delete')}
           onClick={() => onDelete(connection.id)}
           className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-edge text-fg-muted hover:bg-red-500/10 hover:text-red-400"
         >
@@ -127,7 +119,7 @@ export function ConnectionCard({
             onClick={onDisconnect}
           >
             <Unplug className="h-4 w-4" />
-            断开
+            {t('conn.disconnect')}
           </Button>
         ) : (
           <Button
@@ -141,7 +133,7 @@ export function ConnectionCard({
             ) : (
               <Plug className="h-4 w-4" />
             )}
-            {isConnecting ? '连接中…' : '连接'}
+            {isConnecting ? t('conn.connecting') : t('conn.connect')}
           </Button>
         )}
       </div>

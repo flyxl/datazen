@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Check, Copy, Loader2 } from 'lucide-react';
 import { queryCommands } from '../../commands/query';
 import { Button } from '../../components/ui/Button';
+import { useI18n } from '../../hooks/useI18n';
 
 interface DDLViewProps {
   connectionId: string;
@@ -10,6 +11,7 @@ interface DDLViewProps {
 }
 
 export function DDLView({ connectionId, tableName, databaseType }: DDLViewProps) {
+  const { t } = useI18n();
   const [ddl, setDdl] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -49,19 +51,19 @@ export function DDLView({ connectionId, tableName, databaseType }: DDLViewProps)
         if (!cancelled) {
           const row = multi.results[0]?.rows[0];
           const val = isMySQL ? row?.[1] : row?.[0];
-          setDdl(typeof val === 'string' ? val : val != null ? String(val) : '-- 无法获取 DDL');
+          setDdl(typeof val === 'string' ? val : val != null ? String(val) : `-- ${t('ddl.getFailed')}`);
           setLoading(false);
         }
       })
       .catch((e) => {
         if (!cancelled) {
-          setError(typeof e === 'string' ? e : e instanceof Error ? e.message : '获取 DDL 失败');
+          setError(typeof e === 'string' ? e : e instanceof Error ? e.message : t('ddl.loadFailed'));
           setLoading(false);
         }
       });
 
     return () => { cancelled = true; };
-  }, [connectionId, tableName]);
+  }, [connectionId, tableName, databaseType, t]);
 
   const handleCopy = useCallback(async () => {
     try {
@@ -77,7 +79,7 @@ export function DDLView({ connectionId, tableName, databaseType }: DDLViewProps)
     return (
       <div className="flex flex-1 items-center justify-center gap-2 text-fg-muted">
         <Loader2 className="h-5 w-5 animate-spin" />
-        生成 DDL…
+        {t('ddl.generating')}
       </div>
     );
   }
@@ -95,7 +97,7 @@ export function DDLView({ connectionId, tableName, databaseType }: DDLViewProps)
         </div>
         <Button variant="secondary" className="h-7 gap-1 px-2 text-xs" onClick={() => void handleCopy()}>
           {copied ? <Check className="h-3.5 w-3.5 text-green-400" /> : <Copy className="h-3.5 w-3.5" />}
-          {copied ? '已复制' : '复制'}
+          {copied ? t('common.copied') : t('common.copy')}
         </Button>
       </div>
 

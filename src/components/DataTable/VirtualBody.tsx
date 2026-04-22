@@ -1,5 +1,6 @@
 import type { RefObject } from 'react';
 import { useMemo } from 'react';
+import { useI18n } from '../../hooks/useI18n';
 import { useVirtualTable } from '../../hooks/useVirtualTable';
 import type { ColumnDef } from './TableHeader';
 import { CellRenderer } from './CellRenderer';
@@ -32,6 +33,7 @@ export function VirtualBody({
   onCellEditCancel,
   onRowSelect,
 }: VirtualBodyProps) {
+  const { t } = useI18n();
   const { virtualRows, totalHeight } = useVirtualTable({
     rows,
     rowHeight,
@@ -90,7 +92,7 @@ export function VirtualBody({
                   range: e.shiftKey,
                 });
               }}
-              title="选择行"
+              title={t('dataTable.selectRow')}
             >
               {vRow.index + 1}
             </button>

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { databaseCommands } from '../commands/database';
+import { t } from '../locales/t';
 import type { TableInfo } from '../types';
 
 interface SchemaStore {
@@ -44,7 +45,7 @@ export const useSchemaStore = create<SchemaStore>((set, get) => ({
     } catch (e) {
       set({
         loading: false,
-        error: e instanceof Error ? e.message : '加载数据库失败',
+        error: e instanceof Error ? e.message : t('schema.loadDbFailed'),
       });
     }
   },
@@ -61,7 +62,7 @@ export const useSchemaStore = create<SchemaStore>((set, get) => ({
     } catch (e) {
       set({
         loading: false,
-        error: e instanceof Error ? e.message : '加载表失败',
+        error: e instanceof Error ? e.message : t('schema.loadTablesFailed'),
       });
     }
   },

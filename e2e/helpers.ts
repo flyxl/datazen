@@ -32,6 +32,24 @@ export async function closeExtraWindows(mainWindow: string) {
 
 // ── main window ─────────────────────────────────────────────────────
 
+/** Expand all collapsed groups so connection items become visible. */
+export async function expandAllGroups() {
+  // Lucide renders <svg class="lucide lucide-chevron-right ..."> when collapsed
+  // and <svg class="lucide lucide-chevron-down ..."> when expanded.
+  // Click only headers whose SVG indicates collapsed state.
+  await browser.execute(() => {
+    document.querySelectorAll('[data-group-header]').forEach((header) => {
+      const svg = header.querySelector('svg');
+      if (!svg) return;
+      const classes = svg.getAttribute('class') || '';
+      if (classes.includes('chevron-right')) {
+        (header as HTMLElement).click();
+      }
+    });
+  });
+  await browser.pause(500);
+}
+
 /**
  * Double-click a connection item in the new grouped list to open it.
  * Searches for a connection containing `nameFragment` in its text.
@@ -40,6 +58,9 @@ export async function closeExtraWindows(mainWindow: string) {
 export async function clickCardConnectButton(nameFragment = 'Pg') {
   const handles = await browser.getWindowHandles();
   if (handles.length > 1) return true;
+
+  // Expand groups first so items are visible
+  await expandAllGroups();
 
   // Use JS dblclick dispatch since WebDriver dblclick may not work in WebKit
   const found = await browser.execute((frag: string) => {
@@ -62,6 +83,7 @@ export async function clickCardConnectButton(nameFragment = 'Pg') {
 
 /** Find a connection item by name in the main window. */
 export async function findCardByName(connName: string) {
+  await expandAllGroups();
   const items = await $$('[data-conn-item]');
   for (const item of items) {
     const text = await item.getText();
@@ -78,7 +100,8 @@ export async function findCardByName(connName: string) {
  */
 export async function openConnectionWindow() {
   const mainWindow = await browser.getWindowHandle();
-  // Wait for the main window to render connection items
+  // Expand groups and wait for the main window to render connection items
+  await expandAllGroups();
   await browser.waitUntil(
     async () => (await $$('[data-conn-item]')).length > 0,
     { timeout: 15000, timeoutMsg: '等待连接项加载超时' },
@@ -124,6 +147,9 @@ export async function createAndConnectMySQL(opts: {
   } = opts;
 
   const mainWindow = await browser.getWindowHandle();
+
+  // Expand groups so items are visible
+  await expandAllGroups();
 
   // Check if the MySQL connection item already exists and just double-click to connect
   const existingItem = await findCardByName(name);
@@ -233,6 +259,7 @@ export async function createAndConnectMySQL(opts: {
  */
 export async function connectToCard(cardName: string) {
   const mainWindow = await browser.getWindowHandle();
+  await expandAllGroups();
   const card = await findCardByName(cardName);
   if (!card) throw new Error(`未找到连接 "${cardName}"`);
 
@@ -373,19 +400,4 @@ export async function waitForEditInput() {
     { timeout: 8000, timeoutMsg: '等待编辑 input 出现超时' },
   );
   return $('input.font-mono');
-}
-
-/** Use the Zustand store to directly update a cell value and commit. */
-export async function storeUpdateCell(rowIndex: number, columnName: string, value: unknown) {
-  await browser.execute(
-    (row: number, col: string, val: unknown) => {
-      const store = (window as any).__tableDataStore;
-      if (!store) throw new Error('__tableDataStore not found');
-      store.getState().updateCell(row, col, val);
-    },
-    rowIndex,
-    columnName,
-    value,
-  );
-  await browser.pause(2000);
 }

@@ -2,7 +2,7 @@
 
 use crate::cache::SchemaCache;
 use crate::db::{
-    ColumnSchema, ConnectionHandle, DatabaseDriver, DatabaseType, DriverError, TableDataResult,
+    ColumnSchema, ConnectionHandle, DatabaseDriver, DriverError, TableDataResult,
     Value,
 };
 use std::sync::Arc;
@@ -75,23 +75,6 @@ impl QueryExecutor {
         }
     }
 
-    /// Returns the identifier quote character for the given database type.
-    fn quote_char(db_type: DatabaseType) -> char {
-        match db_type {
-            DatabaseType::MySQL | DatabaseType::MariaDB => '`',
-            _ => '"',
-        }
-    }
-
-    /// Quotes an identifier according to the database type.
-    fn quote_ident(name: &str, q: char) -> String {
-        if q == '`' {
-            format!("`{}`", name.replace('`', "``"))
-        } else {
-            format!("\"{}\"", name.replace('"', "\"\""))
-        }
-    }
-
     pub async fn get_table_data(
         &self,
         driver: &Arc<dyn DatabaseDriver>,
@@ -109,9 +92,9 @@ impl QueryExecutor {
             .get_columns(connection_id, database, table, driver, handle)
             .await?;
 
-        let q = Self::quote_char(driver.driver_type());
+        let qi = |name: &str| driver.quote_ident(name);
 
-        let count_sql = Self::build_count_sql(&cached.table_name, &cached.columns, &filters, q);
+        let count_sql = Self::build_count_sql(&cached.table_name, &cached.columns, &filters, &qi);
         let total_rows = match driver.query(handle, &count_sql).await {
             Ok(count_result) => {
                 count_result.rows.first()
@@ -125,7 +108,7 @@ impl QueryExecutor {
             Err(_) => None,
         };
 
-        let sql = Self::build_select_sql(&cached.table_name, &cached.columns, page, page_size, filters, order_by, q);
+        let sql = Self::build_select_sql(&cached.table_name, &cached.columns, page, page_size, filters, order_by, &qi);
         let result = driver.query(handle, &sql).await?;
 
         Ok(TableDataResult {
@@ -141,18 +124,15 @@ impl QueryExecutor {
         table_name: &str,
         columns: &[ColumnSchema],
         filters: &Option<Vec<FilterCondition>>,
-        q: char,
+        qi: &dyn Fn(&str) -> String,
     ) -> String {
         let _ = columns;
-        let mut sql = format!(
-            "SELECT COUNT(*) FROM {}",
-            Self::quote_ident(table_name, q)
-        );
+        let mut sql = format!("SELECT COUNT(*) FROM {}", qi(table_name));
 
         if let Some(conditions) = filters {
             let parts: Vec<String> = conditions
                 .iter()
-                .map(|c| Self::format_condition(c, q))
+                .map(|c| Self::format_condition(c, qi))
                 .filter(|s| !s.is_empty())
                 .collect();
             if !parts.is_empty() {
@@ -171,7 +151,7 @@ impl QueryExecutor {
         page_size: u32,
         filters: Option<Vec<FilterCondition>>,
         order_by: Option<OrderBy>,
-        q: char,
+        qi: &dyn Fn(&str) -> String,
     ) -> String {
         let mut sql = String::new();
         sql.push_str("SELECT ");
@@ -181,16 +161,16 @@ impl QueryExecutor {
             sql.push_str(
                 &columns
                     .iter()
-                    .map(|c| Self::quote_ident(&c.name, q))
+                    .map(|c| qi(&c.name))
                     .collect::<Vec<_>>()
                     .join(", "),
             );
         }
 
-        sql.push_str(&format!(" FROM {}", Self::quote_ident(table_name, q)));
+        sql.push_str(&format!(" FROM {}", qi(table_name)));
 
         if let Some(conditions) = filters {
-            let parts: Vec<String> = conditions.iter().map(|c| Self::format_condition(c, q)).collect();
+            let parts: Vec<String> = conditions.iter().map(|c| Self::format_condition(c, qi)).collect();
             let parts: Vec<String> = parts.into_iter().filter(|s| !s.is_empty()).collect();
             if !parts.is_empty() {
                 sql.push_str(" WHERE ");
@@ -201,7 +181,7 @@ impl QueryExecutor {
         if let Some(order) = order_by {
             sql.push_str(&format!(
                 " ORDER BY {} {}",
-                Self::quote_ident(&order.column, q),
+                qi(&order.column),
                 if order.descending { "DESC" } else { "ASC" }
             ));
         }
@@ -211,8 +191,8 @@ impl QueryExecutor {
         sql
     }
 
-    fn format_condition(condition: &FilterCondition, q: char) -> String {
-        let col = Self::quote_ident(&condition.column, q);
+    fn format_condition(condition: &FilterCondition, qi: &dyn Fn(&str) -> String) -> String {
+        let col = qi(&condition.column);
         match condition.operator {
             FilterOperator::Eq => format!("{col} = {}", Self::format_value(&condition.value)),
             FilterOperator::Ne => format!("{col} != {}", Self::format_value(&condition.value)),

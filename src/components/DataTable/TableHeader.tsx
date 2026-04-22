@@ -1,6 +1,7 @@
 import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react';
 import type { SortCondition } from '../../types';
 import { cn } from '../../lib/cn';
+import { useI18n } from '../../hooks/useI18n';
 
 export interface ColumnDef {
   id: string;
@@ -17,6 +18,7 @@ export interface TableHeaderProps {
 }
 
 export function TableHeader({ columns, sorts, onSort, columnWidths, onResizeStart }: TableHeaderProps) {
+  const { t } = useI18n();
   const active = sorts[0];
 
   return (
@@ -51,7 +53,7 @@ export function TableHeader({ columns, sorts, onSort, columnWidths, onResizeStar
                 'inline-flex h-7 w-7 items-center justify-center rounded-md text-fg-muted hover:bg-surface hover:text-fg',
                 sorted !== 'none' && 'text-blue-400',
               )}
-              title="排序"
+              title={t('dataTable.sort')}
               onClick={() => {
                 if (sorted === 'none') onSort({ column: col.name, descending: false });
                 else if (sorted === 'asc') onSort({ column: col.name, descending: true });

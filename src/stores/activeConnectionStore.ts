@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { connectionCommands } from '../commands/connection';
 import { emitCrossWindow } from '../lib/crossWindowBus';
+import { t } from '../locales/t';
 import type { ConnectionConfig, ServerInfo } from '../types';
 
 export type ConnectionStatus = 'idle' | 'connecting' | 'connected' | 'error';
@@ -8,7 +9,7 @@ export type ConnectionStatus = 'idle' | 'connecting' | 'connected' | 'error';
 function extractError(e: unknown): string {
   if (typeof e === 'string') return e;
   if (e instanceof Error) return e.message;
-  return '未知错误';
+  return t('backend.unknownError');
 }
 
 export interface ConnectionEntry {

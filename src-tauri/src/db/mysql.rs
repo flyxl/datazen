@@ -288,6 +288,10 @@ impl DatabaseDriver for MysqlDriver {
         }
     }
 
+    fn quote_char(&self) -> char {
+        '`'
+    }
+
     async fn test_connection(&self, config: &ConnectionConfig) -> Result<ServerInfo, DriverError> {
         let url = build_mysql_url(config)?;
         let timeout = Duration::from_secs(config.connection_timeout as u64);

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { FolderPlus } from 'lucide-react';
 import { cn } from '../../lib/cn';
 import { Input } from '../../components/ui/Input';
+import { useI18n } from '../../hooks/useI18n';
 
 export interface GroupPanelProps {
   groups: string[];
@@ -11,6 +12,7 @@ export interface GroupPanelProps {
 }
 
 export function GroupPanel({ groups, selectedGroup, onSelectGroup, onAddGroup }: GroupPanelProps) {
+  const { t } = useI18n();
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState('');
 
@@ -26,10 +28,10 @@ export function GroupPanel({ groups, selectedGroup, onSelectGroup, onAddGroup }:
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex items-center justify-between border-b border-edge px-3 py-3">
-        <div className="text-[11px] font-semibold uppercase tracking-wider text-fg-muted">分组</div>
+        <div className="text-[11px] font-semibold uppercase tracking-wider text-fg-muted">{t('newConn.group')}</div>
         <button
           type="button"
-          title="新建分组"
+          title={t('main.ctx.newGroup')}
           onClick={() => setAdding(true)}
           className="rounded p-1 text-fg-muted hover:bg-surface hover:text-fg"
         >
@@ -48,7 +50,7 @@ export function GroupPanel({ groups, selectedGroup, onSelectGroup, onAddGroup }:
                 : 'text-fg-secondary hover:bg-surface/50 hover:text-fg',
             )}
           >
-            全部
+            {t('main.allGroups')}
           </button>
           {groups.map((g) => (
             <button
@@ -77,7 +79,7 @@ export function GroupPanel({ groups, selectedGroup, onSelectGroup, onAddGroup }:
                   if (e.key === 'Escape') { setAdding(false); setNewName(''); }
                 }}
                 onBlur={handleSubmit}
-                placeholder="分组名称"
+                placeholder={t('main.groupNamePlaceholder')}
                 className="h-8 text-xs"
               />
             </div>

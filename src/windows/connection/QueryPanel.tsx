@@ -8,6 +8,7 @@ import { useQueryStore } from '../../stores/queryStore';
 import { useSchemaStore } from '../../stores/schemaStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useColumnResize } from '../../hooks/useColumnResize';
+import { useI18n } from '../../hooks/useI18n';
 import { databaseCommands } from '../../commands/database';
 import { cn } from '../../lib/cn';
 import type { StatementResult } from '../../types';
@@ -18,6 +19,7 @@ interface QueryPanelProps {
 }
 
 export function QueryPanel({ connectionId, queryTabId }: QueryPanelProps) {
+  const { t } = useI18n();
   const tab = useQueryStore((s) => s.tabs.find((t) => t.id === queryTabId));
   const historyVisible = useQueryStore((s) => s.historyVisible);
   const history = useQueryStore((s) => s.history);
@@ -104,18 +106,18 @@ export function QueryPanel({ connectionId, queryTabId }: QueryPanelProps) {
           disabled={tab.running}
         >
           <Play className="h-3.5 w-3.5" />
-          执行
+          {t('query.execute')}
         </Button>
         {tab.running && (
           <Button variant="danger" className="h-7 gap-1 px-2 text-xs" onClick={handleCancel}>
             <Square className="h-3.5 w-3.5" />
-            停止
+            {t('query.stop')}
           </Button>
         )}
-        <span className="text-[11px] text-fg-muted">⌘+Enter 执行</span>
+        <span className="text-[11px] text-fg-muted">⌘+Enter {t('query.execute')}</span>
         <div className="flex-1" />
         {tab.executionTimeMs != null && (
-          <span className="text-[11px] text-fg-muted">总耗时 {tab.executionTimeMs} ms</span>
+          <span className="text-[11px] text-fg-muted">{t('query.totalTime')} {tab.executionTimeMs} ms</span>
         )}
         <Button
           variant={historyVisible ? 'secondary' : 'ghost'}
@@ -123,7 +125,7 @@ export function QueryPanel({ connectionId, queryTabId }: QueryPanelProps) {
           onClick={toggleHistory}
         >
           <Clock className="h-3.5 w-3.5" />
-          历史
+          {t('query.history')}
         </Button>
       </div>
 
@@ -136,7 +138,7 @@ export function QueryPanel({ connectionId, queryTabId }: QueryPanelProps) {
               value={tab.sql}
               onChange={(v) => updateSql(tab.id, v)}
               onExecute={handleExecute}
-              placeholder="输入 SQL 查询语句…"
+              placeholder={t('query.placeholder')}
               schema={editorSchema}
             />
           </div>
@@ -146,7 +148,7 @@ export function QueryPanel({ connectionId, queryTabId }: QueryPanelProps) {
             {tab.running && (
               <div className="flex flex-1 items-center justify-center gap-2 text-fg-muted">
                 <Loader2 className="h-5 w-5 animate-spin" />
-                执行中…
+                {t('query.executing')}
               </div>
             )}
 
@@ -175,9 +177,9 @@ export function QueryPanel({ connectionId, queryTabId }: QueryPanelProps) {
                         )}
                         onClick={() => setActiveResult(tab.id, idx)}
                       >
-                        结果 {idx + 1}
+                        {t('query.result')} {idx + 1}
                         <span className="ml-1.5 text-[10px] text-fg-muted">
-                          ({r.rows.length} 行, {r.executionTimeMs}ms)
+                          ({r.rows.length} {t('common.rows')}, {r.executionTimeMs}ms)
                         </span>
                         {idx === activeResultIdx && (
                           <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-accent" />
@@ -194,7 +196,7 @@ export function QueryPanel({ connectionId, queryTabId }: QueryPanelProps) {
 
             {results.length === 0 && !tab.running && !tab.error && (
               <div className="flex flex-1 items-center justify-center text-sm text-fg-muted">
-                按 ⌘+Enter 执行查询
+                {t('query.shortcutHint')}
               </div>
             )}
           </div>
@@ -204,10 +206,10 @@ export function QueryPanel({ connectionId, queryTabId }: QueryPanelProps) {
         {historyVisible && (
           <aside className="w-64 shrink-0 overflow-y-auto border-l border-edge bg-surface-alt">
             <div className="border-b border-edge px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-fg-muted">
-              查询历史
+              {t('query.historyTitle')}
             </div>
             {history.length === 0 ? (
-              <div className="px-3 py-4 text-center text-xs text-fg-muted">暂无历史记录</div>
+              <div className="px-3 py-4 text-center text-xs text-fg-muted">{t('query.noHistory')}</div>
             ) : (
               history.map((h) => (
                 <button
@@ -219,7 +221,7 @@ export function QueryPanel({ connectionId, queryTabId }: QueryPanelProps) {
                   <div className="truncate font-mono text-xs text-fg-secondary">{h.sql}</div>
                   <div className="mt-1 flex items-center gap-2 text-[11px] text-fg-muted">
                     <span className={h.success ? 'text-green-400' : 'text-red-400'}>
-                      {h.success ? '成功' : '失败'}
+                      {h.success ? t('common.success') : t('common.failed')}
                     </span>
                     <span>{h.executionTimeMs}ms</span>
                   </div>
@@ -236,6 +238,7 @@ export function QueryPanel({ connectionId, queryTabId }: QueryPanelProps) {
 const ROW_HEIGHT = 32;
 
 function ResultTable({ result }: { result: StatementResult }) {
+  const { t } = useI18n();
   const { columns, rows } = result;
   const queryResultLimit = useSettingsStore((s) => s.settings.queryResultLimit);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -251,9 +254,9 @@ function ResultTable({ result }: { result: StatementResult }) {
   return (
     <>
       <div className="flex items-center gap-3 border-b border-edge bg-surface-alt px-3 py-1.5 text-xs text-fg-secondary">
-        <span>{rows.length} 行</span>
+        <span>{rows.length} {t('common.rows')}</span>
         <span className="text-edge">|</span>
-        <span>{columns.length} 列</span>
+        <span>{columns.length} {t('common.columns')}</span>
         <span className="text-edge">|</span>
         <span>{result.executionTimeMs} ms</span>
         {result.sql && (
@@ -269,7 +272,7 @@ function ResultTable({ result }: { result: StatementResult }) {
             <span className="text-edge">|</span>
             <span className="flex items-center gap-1 text-yellow-400">
               <AlertTriangle className="h-3 w-3" />
-              结果已截断，仅显示前 {queryResultLimit} 条
+              {t('query.resultTruncated', { limit: queryResultLimit })}
             </span>
           </>
         )}

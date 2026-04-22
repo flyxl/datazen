@@ -1,6 +1,7 @@
 import { useRef } from 'react';
 import type { FilterCondition, SortCondition } from '../../types';
 import type { CellEdit } from '../../stores/tableDataStore';
+import { useI18n } from '../../hooks/useI18n';
 import { useColumnResize } from '../../hooks/useColumnResize';
 import { FilterBar } from '../FilterBar';
 import { Pagination } from './Pagination';
@@ -59,6 +60,7 @@ export function DataTable({
   void _onFilter;
   void _editBuffer;
 
+  const { t } = useI18n();
   const scrollRef = useRef<HTMLDivElement>(null);
   const { columnWidths, onResizeStart } = useColumnResize({ count: columns.length });
 
@@ -76,14 +78,14 @@ export function DataTable({
             }}
             onChange={onSelectAll}
           />
-          全选
+          {t('dataTable.selectAll')}
         </label>
         {selectedRows.size > 0 && (
           <span className="text-xs text-fg-muted">
-            已选 {selectedRows.size} / {rows.length} 行
+            {t('dataTable.selected')} {selectedRows.size} / {rows.length} {t('common.rows')}
           </span>
         )}
-        {loading ? <span className="text-xs text-fg-muted">加载中…</span> : null}
+        {loading ? <span className="text-xs text-fg-muted">{t('common.loading')}</span> : null}
       </div>
       {/* Single scroll container for both horizontal & vertical scrolling */}
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto">

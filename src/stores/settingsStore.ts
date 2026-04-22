@@ -27,7 +27,12 @@ function resolveIsDark(theme: AppSettings['theme']): boolean {
 function applyTheme(theme: AppSettings['theme']) {
   const isDark = resolveIsDark(theme);
   document.documentElement.classList.toggle('dark', isDark);
-  document.documentElement.style.backgroundColor = isDark ? '#0f172a' : '#ffffff';
+  const isMacRounded = document.documentElement.classList.contains('macos-rounded');
+  if (isMacRounded) {
+    document.documentElement.style.backgroundColor = 'transparent';
+  } else {
+    document.documentElement.style.backgroundColor = isDark ? '#0f172a' : '#ffffff';
+  }
   try {
     localStorage.setItem(THEME_STORAGE_KEY, theme);
   } catch {
@@ -105,6 +110,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
 
     if (partial.theme) {
       void emitCrossWindow('datazen:theme-changed', partial.theme);
+    }
+    if (partial.language) {
+      void import('@tauri-apps/api/core').then(({ invoke }) =>
+        invoke('rebuild_menu', { language: partial.language }).catch(() => {}),
+      );
     }
     void emitCrossWindow('datazen:settings-changed', next);
   },

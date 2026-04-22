@@ -7,6 +7,7 @@ import { fileCommands } from '../../commands/file';
 import { generateExport, getDefaultFilename } from '../../lib/exportData';
 import type { ExportFormat, ExportScope } from '../../lib/exportData';
 import type { ColumnSchema } from '../../types';
+import { useI18n } from '../../hooks/useI18n';
 
 interface ExportDialogProps {
   open: boolean;
@@ -26,6 +27,7 @@ const FORMAT_OPTIONS: { value: ExportFormat; label: string }[] = [
 ];
 
 export function ExportDialog({ open, onClose, tableName, columns, rows, selectedRows, databaseType }: ExportDialogProps) {
+  const { t } = useI18n();
   const [format, setFormat] = useState<ExportFormat>('csv');
   const [scope, setScope] = useState<ExportScope>('current_page');
   const [selectedCols, setSelectedCols] = useState<Set<string>>(() => new Set(columns.map((c) => c.name)));
@@ -92,18 +94,18 @@ export function ExportDialog({ open, onClose, tableName, columns, rows, selected
   return (
     <Dialog
       open={open}
-      title="导出数据"
-      description={`从表 ${tableName} 导出数据`}
+      title={t('export.title')}
+      description={t('export.description', { table: tableName })}
       onClose={onClose}
       footer={
         <>
-          <Button variant="secondary" onClick={onClose}>取消</Button>
+          <Button variant="secondary" onClick={onClose}>{t('common.cancel')}</Button>
           <Button
             variant="primary"
             onClick={() => void handleExport()}
             disabled={exporting || selectedCols.size === 0}
           >
-            {exporting ? '导出中...' : '导出'}
+            {exporting ? t('export.exporting') : t('export.export')}
           </Button>
         </>
       }
@@ -111,7 +113,7 @@ export function ExportDialog({ open, onClose, tableName, columns, rows, selected
       <div className="space-y-4">
         {/* Format */}
         <div>
-          <label className="mb-1 block text-xs font-medium text-fg-secondary">导出格式</label>
+          <label className="mb-1 block text-xs font-medium text-fg-secondary">{t('export.format')}</label>
           <Select
             value={format}
             options={FORMAT_OPTIONS}
@@ -121,12 +123,12 @@ export function ExportDialog({ open, onClose, tableName, columns, rows, selected
 
         {/* Scope */}
         <div>
-          <label className="mb-1 block text-xs font-medium text-fg-secondary">导出范围</label>
+          <label className="mb-1 block text-xs font-medium text-fg-secondary">{t('export.range')}</label>
           <Select
             value={scope}
             options={[
-              { value: 'current_page', label: `当前页 (${rows.length} 行)` },
-              { value: 'selected', label: `选中行 (${selectedRows.size} 行)`, disabled: selectedRows.size === 0 },
+              { value: 'current_page', label: `${t('export.currentPage')} (${rows.length} ${t('common.rows')})` },
+              { value: 'selected', label: `${t('export.selectedRows')} (${selectedRows.size} ${t('common.rows')})`, disabled: selectedRows.size === 0 },
             ]}
             onChange={(v) => setScope(v as ExportScope)}
           />
@@ -135,9 +137,9 @@ export function ExportDialog({ open, onClose, tableName, columns, rows, selected
         {/* Column selection */}
         <div>
           <div className="mb-1 flex items-center justify-between">
-            <label className="text-xs font-medium text-fg-secondary">选择列</label>
+            <label className="text-xs font-medium text-fg-secondary">{t('export.selectColumns')}</label>
             <button type="button" className="text-xs text-accent hover:underline" onClick={toggleAll}>
-              {selectedCols.size === columns.length ? '取消全选' : '全选'}
+              {selectedCols.size === columns.length ? t('common.deselectAll') : t('common.selectAll')}
             </button>
           </div>
           <div className="max-h-40 overflow-y-auto rounded-md border border-edge bg-surface p-2">
@@ -158,8 +160,8 @@ export function ExportDialog({ open, onClose, tableName, columns, rows, selected
 
         {/* Summary */}
         <div className="rounded-md border border-edge bg-surface px-3 py-2 text-xs text-fg-muted">
-          将导出 <span className="font-medium text-fg-secondary">{rowCount}</span> 行 ×{' '}
-          <span className="font-medium text-fg-secondary">{selectedCols.size}</span> 列，格式为{' '}
+          {t('export.willExport', { rows: rowCount, cols: selectedCols.size })}
+          , {t('export.formatAs')}{' '}
           <span className="font-medium text-fg-secondary">
             {FORMAT_OPTIONS.find((o) => o.value === format)?.label}
           </span>

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { queryCommands } from '../commands/query';
+import { t } from '../locales/t';
 import type { QueryHistoryEntry, StatementResult } from '../types';
 
 export interface QueryTab {
@@ -16,14 +17,14 @@ export interface QueryTab {
 function extractError(e: unknown): string {
   if (typeof e === 'string') return e;
   if (e instanceof Error) return e.message;
-  return '执行失败';
+  return t('query.executeFailed');
 }
 
 function newTab(): QueryTab {
   const id = `tab-${Math.random().toString(36).slice(2, 9)}`;
   return {
     id,
-    title: '查询 1',
+    title: t('query.tab', { n: '1' }),
     sql: '',
     results: [],
     activeResultIdx: 0,
@@ -68,7 +69,7 @@ export const useQueryStore = create<QueryStore>((set, get) => ({
   createTab: () => {
     tabCounter += 1;
     const tab = newTab();
-    tab.title = `查询 ${tabCounter}`;
+    tab.title = t('query.tab', { n: String(tabCounter) });
     set((s) => ({
       tabs: [...s.tabs, tab],
       activeTabId: tab.id,
@@ -99,10 +100,10 @@ export const useQueryStore = create<QueryStore>((set, get) => ({
     const { connectionId, tabs } = get();
     if (!connectionId) {
       set({
-        tabs: tabs.map((t) =>
-          t.id === tabId
-            ? { ...t, error: '未连接数据库', running: false, results: [], activeResultIdx: 0 }
-            : t,
+        tabs: tabs.map((tab) =>
+          tab.id === tabId
+            ? { ...tab, error: t('query.notConnected'), running: false, results: [], activeResultIdx: 0 }
+            : tab,
         ),
       });
       return;

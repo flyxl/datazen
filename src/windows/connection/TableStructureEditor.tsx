@@ -6,6 +6,7 @@ import { Select } from '../../components/ui/Select';
 import { databaseCommands } from '../../commands/database';
 import { queryCommands } from '../../commands/query';
 import { cn } from '../../lib/cn';
+import { useI18n } from '../../hooks/useI18n';
 
 const PG_TYPES = [
   { value: 'integer', label: 'integer' },
@@ -163,6 +164,7 @@ export function TableStructureEditor({
   onSuccess,
   onCancel,
 }: TableStructureEditorProps) {
+  const { t } = useI18n();
   const [tableName, setTableName] = useState(initialTableName ?? '');
   const [columns, setColumns] = useState<ColumnDef[]>(
     initialColumns?.length ? initialColumns : [
@@ -202,14 +204,14 @@ export function TableStructureEditor({
       })
       .catch((e) => {
         if (cancelled) return;
-        let msg = '加载表结构失败';
+        let msg = t('structEditor.loadFailed');
         if (typeof e === 'string') msg = e;
         else if (e instanceof Error) msg = e.message;
         setError(msg);
         setLoadingSchema(false);
       });
     return () => { cancelled = true; };
-  }, [mode, connectionId, initialTableName]);
+  }, [mode, connectionId, initialTableName, t]);
 
   const updateColumn = useCallback((id: string, patch: Partial<ColumnDef>) => {
     setColumns((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c)));
@@ -261,7 +263,7 @@ export function TableStructureEditor({
       await queryCommands.executeQuery(connectionId, sql);
       onSuccess();
     } catch (e) {
-      const msg = typeof e === 'string' ? e : (e instanceof Error ? e.message : '执行失败');
+      const msg = typeof e === 'string' ? e : (e instanceof Error ? e.message : t('structEditor.executeFailed'));
       setError(msg);
     } finally {
       setExecuting(false);
@@ -274,7 +276,7 @@ export function TableStructureEditor({
     return (
       <div className="flex flex-1 items-center justify-center gap-2 text-fg-muted">
         <Loader2 className="h-5 w-5 animate-spin" />
-        加载表结构…
+        {t('structEditor.loading')}
       </div>
     );
   }
@@ -284,14 +286,14 @@ export function TableStructureEditor({
       {/* Header */}
       <div className="flex items-center gap-4 border-b border-edge bg-surface-alt px-4 py-3">
         <span className="text-base font-semibold text-fg">
-          {mode === 'create' ? '新建表' : `编辑表结构 · ${initialTableName}`}
+          {mode === 'create' ? t('structEditor.newTable') : `${t('structEditor.editTable')} · ${initialTableName}`}
         </span>
         <div className="flex-1" />
         <Button variant="secondary" className="h-8 text-xs" onClick={handlePreview} disabled={!isValid}>
-          预览 SQL
+          {t('structEditor.previewSQL')}
         </Button>
         <Button variant="secondary" className="h-8 text-xs" onClick={onCancel}>
-          取消
+          {t('common.cancel')}
         </Button>
         <Button
           variant="primary"
@@ -299,14 +301,14 @@ export function TableStructureEditor({
           disabled={!isValid || executing}
           onClick={() => void handleExecute()}
         >
-          {executing ? '执行中…' : (mode === 'create' ? '创建表' : '保存更改')}
+          {executing ? t('structEditor.executing') : (mode === 'create' ? t('structEditor.createTable') : t('structEditor.saveChanges'))}
         </Button>
       </div>
 
       {/* Table name */}
       {mode === 'create' && (
         <div className="flex items-center gap-3 border-b border-edge px-4 py-3">
-          <label className="text-sm text-fg-secondary">表名</label>
+          <label className="text-sm text-fg-secondary">{t('structEditor.tableName')}</label>
           <Input
             value={tableName}
             onChange={(e) => setTableName(e.target.value)}
@@ -322,13 +324,13 @@ export function TableStructureEditor({
           <thead className="sticky top-0 z-10">
             <tr className="bg-surface-alt text-left text-xs font-medium text-fg-secondary">
               <th className="w-8 border-b border-edge px-1 py-2.5" />
-              <th className="min-w-[140px] border-b border-edge px-2 py-2.5 font-medium">字段名</th>
-              <th className="min-w-[160px] border-b border-edge px-2 py-2.5 font-medium">类型</th>
-              <th className="w-[60px] border-b border-edge px-2 py-2.5 text-center font-medium">可空</th>
-              <th className="w-[60px] border-b border-edge px-2 py-2.5 text-center font-medium">主键</th>
-              <th className="w-[60px] border-b border-edge px-2 py-2.5 text-center font-medium">唯一</th>
-              <th className="min-w-[120px] border-b border-edge px-2 py-2.5 font-medium">默认值</th>
-              <th className="min-w-[120px] border-b border-edge px-2 py-2.5 font-medium">注释</th>
+              <th className="min-w-[140px] border-b border-edge px-2 py-2.5 font-medium">{t('structView.fieldName')}</th>
+              <th className="min-w-[160px] border-b border-edge px-2 py-2.5 font-medium">{t('structView.type')}</th>
+              <th className="w-[60px] border-b border-edge px-2 py-2.5 text-center font-medium">{t('structView.nullable')}</th>
+              <th className="w-[60px] border-b border-edge px-2 py-2.5 text-center font-medium">{t('structView.primaryKey')}</th>
+              <th className="w-[60px] border-b border-edge px-2 py-2.5 text-center font-medium">{t('structView.unique')}</th>
+              <th className="min-w-[120px] border-b border-edge px-2 py-2.5 font-medium">{t('structView.defaultValue')}</th>
+              <th className="min-w-[120px] border-b border-edge px-2 py-2.5 font-medium">{t('structView.comment')}</th>
               <th className="w-10 border-b border-edge px-1 py-2.5" />
             </tr>
           </thead>
@@ -409,7 +411,7 @@ export function TableStructureEditor({
                     type="button"
                     className="rounded p-1 text-fg-muted hover:bg-red-500/10 hover:text-red-400"
                     onClick={() => removeColumn(col.id)}
-                    title="删除列"
+                    title={t('structEditor.deleteColumn')}
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
@@ -423,7 +425,7 @@ export function TableStructureEditor({
         <div className="px-4 py-3">
           <Button variant="secondary" className="h-8 gap-1 text-xs" onClick={addColumn}>
             <Plus className="h-3.5 w-3.5" />
-            添加列
+            {t('structEditor.addColumn')}
           </Button>
         </div>
       </div>
@@ -439,13 +441,13 @@ export function TableStructureEditor({
       {previewSql && (
         <div className="border-t border-edge bg-surface-alt">
           <div className="flex items-center justify-between px-4 py-2">
-            <span className="text-xs font-medium text-fg-secondary">SQL 预览</span>
+            <span className="text-xs font-medium text-fg-secondary">{t('structEditor.sqlPreview')}</span>
             <button
               type="button"
               className="text-xs text-fg-muted hover:text-fg"
               onClick={() => setPreviewSql(null)}
             >
-              关闭
+              {t('common.close')}
             </button>
           </div>
           <pre className="max-h-40 overflow-auto px-4 pb-3 font-mono text-xs leading-relaxed text-fg-secondary">

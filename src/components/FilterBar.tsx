@@ -3,6 +3,7 @@ import type { FilterCondition } from '../types';
 import { formatCell } from '../lib/formatters';
 import { cn } from '../lib/cn';
 import { Badge } from './ui/Badge';
+import { useI18n } from '../hooks/useI18n';
 
 export interface FilterBarProps {
   filters: FilterCondition[];
@@ -16,6 +17,7 @@ function labelFor(f: FilterCondition) {
 }
 
 export function FilterBar({ filters, onRemove, onClear, className }: FilterBarProps) {
+  const { t } = useI18n();
   if (filters.length === 0) return null;
 
   return (
@@ -25,7 +27,7 @@ export function FilterBar({ filters, onRemove, onClear, className }: FilterBarPr
         className,
       )}
     >
-      <div className="text-[11px] font-semibold uppercase tracking-wider text-fg-muted">筛选</div>
+      <div className="text-[11px] font-semibold uppercase tracking-wider text-fg-muted">{t('filter.filter')}</div>
       <div className="flex min-w-0 flex-1 flex-wrap gap-2">
         {filters.map((f, idx) => (
           <Badge key={`${f.column}-${idx}`} tone="accent" className="max-w-full gap-2">
@@ -36,7 +38,7 @@ export function FilterBar({ filters, onRemove, onClear, className }: FilterBarPr
               type="button"
               className="rounded-sm p-0.5 text-blue-300 hover:bg-blue-500/10"
               onClick={() => onRemove(idx)}
-              aria-label="移除筛选"
+              aria-label={t('filter.remove')}
             >
               <X className="h-3.5 w-3.5" />
             </button>
@@ -44,7 +46,7 @@ export function FilterBar({ filters, onRemove, onClear, className }: FilterBarPr
         ))}
       </div>
       <button type="button" className="text-xs text-fg-secondary hover:text-fg" onClick={onClear}>
-        清空
+        {t('filter.clear')}
       </button>
     </div>
   );
