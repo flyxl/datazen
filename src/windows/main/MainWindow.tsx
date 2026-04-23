@@ -102,18 +102,21 @@ export function MainWindow() {
     void loadSettings();
   }, [fetchConnections, fetchGroups, loadSettings]);
 
-  // When groups change, auto-expand only newly added groups (not on first load)
   const prevGroupsRef = useRef<string[] | null>(null);
   useEffect(() => {
-    if (groups.length === 0) return;
     const prev = prevGroupsRef.current;
     prevGroupsRef.current = groups;
-    if (!prev) return; // first load: keep all collapsed
+    if (!prev) {
+      // First load: expand all groups + ungrouped
+      setExpandedGroups(new Set([...groups, '']));
+      return;
+    }
     const newGroups = groups.filter((g) => !prev.includes(g));
     if (newGroups.length === 0) return;
     setExpandedGroups((s) => {
       const next = new Set(s);
       for (const g of newGroups) next.add(g);
+      next.add('');
       return next;
     });
   }, [groups]);
@@ -619,7 +622,7 @@ export function MainWindow() {
             <span>{t('main.connectionCount', { count: connections.length })}</span>
           </span>
         }
-        right={<span className="tabular-nums">DataZen v1.0.0</span>}
+        right={<span className="tabular-nums">DataZen v0.0.1</span>}
       />
     </div>
   );

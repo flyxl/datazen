@@ -27,29 +27,20 @@ export function SchemaTree({
 }: SchemaTreeProps) {
   const { t } = useI18n();
   const isKeyValue = DB_REGISTRY[databaseType]?.isKeyValue ?? false;
-  const databases = useSchemaStore((s) => s.databases);
   const tables = useSchemaStore((s) => s.tables);
   const views = useSchemaStore((s) => s.views);
   const loading = useSchemaStore((s) => s.loading);
   const error = useSchemaStore((s) => s.error);
   const currentDatabase = useSchemaStore((s) => s.currentDatabase);
   const loadForConnection = useSchemaStore((s) => s.loadForConnection);
-  const loadTables = useSchemaStore((s) => s.loadTables);
 
   const [tablesExpanded, setTablesExpanded] = useState(true);
   const [viewsExpanded, setViewsExpanded] = useState(true);
 
   useEffect(() => {
-    console.log('[SchemaTree] loading for connection', connectionId);
-    void loadForConnection(connectionId);
-  }, [connectionId, loadForConnection]);
-
-  useEffect(() => {
-    if (initialDatabase && databases.length > 0 && !currentDatabase) {
-      const match = databases.find((d) => d === initialDatabase);
-      if (match) void loadTables(match);
-    }
-  }, [initialDatabase, databases, currentDatabase, loadTables]);
+    console.log('[SchemaTree] loading for connection', connectionId, 'preferred db', initialDatabase);
+    void loadForConnection(connectionId, { preferredDatabase: initialDatabase });
+  }, [connectionId, loadForConnection, initialDatabase]);
 
   const query = searchQuery.toLowerCase();
   const filteredTables = query

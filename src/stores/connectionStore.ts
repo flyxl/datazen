@@ -41,8 +41,15 @@ export function groupConnections(
     map.get(key)!.push(c);
   }
   const result: { group: string; connections: ConnectionConfig[] }[] = [];
+  const seen = new Set<string>();
   for (const g of groups) {
     result.push({ group: g, connections: map.get(g) ?? [] });
+    seen.add(g);
+  }
+  for (const [key, conns] of map) {
+    if (key && !seen.has(key) && conns.length > 0) {
+      result.push({ group: key, connections: conns });
+    }
   }
   const ungrouped = map.get('');
   if (ungrouped && ungrouped.length > 0) {

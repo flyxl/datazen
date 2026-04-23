@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Loader2, Pencil } from 'lucide-react';
-import { databaseCommands } from '../../commands/database';
+import { getCachedTableSchema } from '../../lib/schemaCache';
 import { Button } from '../../components/ui/Button';
 import type { TableSchema } from '../../types';
 import { cn } from '../../lib/cn';
@@ -50,8 +50,7 @@ export function StructureView({ connectionId, tableName, onEditStructure }: Stru
     setError(null);
     console.log('[StructureView] loading schema', connectionId, tableName);
 
-    databaseCommands
-      .getTableSchema(connectionId, tableName)
+    getCachedTableSchema(connectionId, tableName)
       .then((result) => {
         if (!cancelled) {
           setSchema(result);

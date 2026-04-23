@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Loader2, Plus, Trash2, AlertTriangle } from 'lucide-react';
 import { databaseCommands } from '../../commands/database';
+import { getCachedTableSchema, invalidateSchemaCache } from '../../lib/schemaCache';
 import type { IndexInfo, TableSchema, ColumnSchema, DatabaseType } from '../../types';
 import { cn } from '../../lib/cn';
 import { Button } from '../../components/ui/Button';
@@ -223,8 +224,7 @@ export function IndexesView({ connectionId, tableName, createIndexTrigger, datab
     setLoading(true);
     setError(null);
 
-    databaseCommands
-      .getTableSchema(connectionId, tableName)
+    getCachedTableSchema(connectionId, tableName)
       .then((schema: TableSchema) => {
         if (!cancelled) {
           setIndexes(schema.indexes);
@@ -252,6 +252,7 @@ export function IndexesView({ connectionId, tableName, createIndexTrigger, datab
     setSubmitting(true);
     try {
       await databaseCommands.executeSQL(connectionId, sql);
+      invalidateSchemaCache(connectionId, tableName);
       setShowCreate(false);
       setVersion((v) => v + 1);
     } catch (e) {
@@ -270,6 +271,7 @@ export function IndexesView({ connectionId, tableName, createIndexTrigger, datab
         ? `DROP INDEX ${q}${deleteTarget}${q} ON ${q}${tableName}${q}`
         : `DROP INDEX ${q}${deleteTarget}${q}`;
       await databaseCommands.executeSQL(connectionId, dropSql);
+      invalidateSchemaCache(connectionId, tableName);
       setDeleteTarget(null);
       setVersion((v) => v + 1);
     } catch (e) {

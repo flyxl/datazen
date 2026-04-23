@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Check, Copy, Loader2 } from 'lucide-react';
-import { queryCommands } from '../../commands/query';
+import { getCachedDDL } from '../../lib/schemaCache';
+import { SqlCodeBlock } from '../../components/SqlCodeBlock';
 import { Button } from '../../components/ui/Button';
 import { useI18n } from '../../hooks/useI18n';
 import { DB_REGISTRY } from '../../lib/databaseTypes';
@@ -48,15 +49,13 @@ export function DDLView({ connectionId, tableName, databaseType }: DDLViewProps)
       GROUP BY schemaname, tablename;
     `;
 
-    queryCommands
-      .executeQuery(connectionId, sql)
-      .then((multi) => {
-        if (!cancelled) {
-          const row = multi.results[0]?.rows[0];
-          const val = isMySQLDialect ? row?.[1] : row?.[0];
-          setDdl(typeof val === 'string' ? val : val != null ? String(val) : `-- ${t('ddl.getFailed')}`);
-          setLoading(false);
-        }
+    getCachedDDL(connectionId, tableName, sql, (rows) => {
+      const row = rows[0];
+      const val = isMySQLDialect ? row?.[1] : row?.[0];
+      return typeof val === 'string' ? val : val != null ? String(val) : `-- ${t('ddl.getFailed')}`;
+    })
+      .then((result) => {
+        if (!cancelled) { setDdl(result); setLoading(false); }
       })
       .catch((e) => {
         if (!cancelled) {
@@ -104,10 +103,8 @@ export function DDLView({ connectionId, tableName, databaseType }: DDLViewProps)
         </Button>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-auto bg-surface p-4">
-        <pre className="whitespace-pre-wrap font-mono text-[13px] leading-relaxed text-fg-secondary">
-          {ddl}
-        </pre>
+      <div className="min-h-0 flex-1 overflow-auto bg-surface">
+        <SqlCodeBlock code={ddl} dialect={DB_REGISTRY[databaseType as DatabaseType]?.sqlDialect} />
       </div>
     </div>
   );

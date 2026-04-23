@@ -8,6 +8,7 @@ import { useConnectionStore } from '../stores/connectionStore';
  */
 export function useTauriEvent() {
   const fetchConnections = useConnectionStore((s) => s.fetchConnections);
+  const fetchGroups = useConnectionStore((s) => s.fetchGroups);
 
   useEffect(() => {
     let cancelled = false;
@@ -18,7 +19,10 @@ export function useTauriEvent() {
         const unlisten = await listenCrossWindow(
           'datazen:connections-changed',
           () => {
-            if (!cancelled) void fetchConnections();
+            if (!cancelled) {
+              void fetchConnections();
+              void fetchGroups();
+            }
           },
         );
         if (cancelled) unlisten();
@@ -32,5 +36,5 @@ export function useTauriEvent() {
       cancelled = true;
       cleanup?.();
     };
-  }, [fetchConnections]);
+  }, [fetchConnections, fetchGroups]);
 }

@@ -14,7 +14,7 @@ interface SchemaStore {
   loading: boolean;
   error: string | null;
 
-  loadForConnection: (connectionId: string, options?: { skipLoadTables?: boolean }) => Promise<void>;
+  loadForConnection: (connectionId: string, options?: { skipLoadTables?: boolean; preferredDatabase?: string }) => Promise<void>;
   loadTables: (database: string) => Promise<void>;
   toggleExpand: (id: string) => void;
   setSelected: (id: string | null) => void;
@@ -37,10 +37,13 @@ export const useSchemaStore = create<SchemaStore>((set, get) => ({
     try {
       const databases = await databaseCommands.getDatabases(connectionId);
       set({ databases, loading: false });
-      const first = databases[0] ?? null;
-      if (first && !options?.skipLoadTables) {
-        await get().loadTables(first);
-        get().setSelected(`db:${first}`);
+      if (options?.skipLoadTables) return;
+      const preferred = options?.preferredDatabase && databases.includes(options.preferredDatabase)
+        ? options.preferredDatabase
+        : databases[0] ?? null;
+      if (preferred) {
+        await get().loadTables(preferred);
+        get().setSelected(`db:${preferred}`);
       }
     } catch (e) {
       set({
