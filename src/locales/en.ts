@@ -121,6 +121,7 @@ const en: Record<TranslationKey, string> = {
   'newConn.host': 'Host',
   'newConn.port': 'Port',
   'newConn.database': 'Database',
+  'newConn.databaseIndex': 'Database index',
   'newConn.username': 'Username',
   'newConn.password': 'Password',
   'newConn.group': 'Group',
@@ -192,7 +193,9 @@ const en: Record<TranslationKey, string> = {
   'connWin.refresh': 'Refresh',
   'connWin.newTable': 'New Table',
   'connWin.searchTables': 'Search tables, views…',
+  'connWin.searchKeys': 'Search keys…',
   'connWin.selectTable': 'Select a table on the left…',
+  'connWin.selectKey': 'Select a key on the left…',
   'connWin.copyCell': 'Copy Cell',
   'connWin.editStructure': 'Edit Structure',
   'connWin.newIndex': 'New Index',
@@ -208,8 +211,12 @@ const en: Record<TranslationKey, string> = {
   'tableView.loadingData': 'Loading table data…',
 
   // ── Schema Tree ──
+  'schemaTree.tables': 'Tables',
+  'schemaTree.keys': 'Keys',
   'schemaTree.noMatchingTables': 'No matching tables or views',
   'schemaTree.noTables': 'No tables',
+  'schemaTree.noMatchingKeys': 'No matching keys',
+  'schemaTree.noKeys': 'No keys',
 
   // ── Query Panel ──
   'query.execute': 'Execute',

@@ -21,6 +21,13 @@ import { getUrlParam } from '../../lib/windowKind';
 import { DB_REGISTRY } from '../../lib/databaseTypes';
 import type { ConnectionConfig, DatabaseType, SslMode, SshTunnelConfig } from '../../types';
 
+/** Redis logical DB index (0–15); invalid input becomes `"0"`. */
+function normalizeRedisDatabaseField(s: string): string {
+  const u = s.trim();
+  if (u === '' || !/^\d+$/.test(u)) return '0';
+  return String(Math.min(15, Math.max(0, parseInt(u, 10))));
+}
+
 function newId() {
   return `conn_${Math.random().toString(36).slice(2, 10)}`;
 }
@@ -156,6 +163,10 @@ export function NewConnectionWindow() {
     if (!meta.supportsSSH) {
       setSshEnabled(false);
     }
+    if (newType === 'redis') {
+      setDatabase('0');
+      setUsername('');
+    }
   }
 
   const sshTunnel: SshTunnelConfig | undefined = sshEnabled
@@ -186,6 +197,16 @@ export function NewConnectionWindow() {
       return { ...base, database };
     }
 
+    if (databaseType === 'redis') {
+      return {
+        ...base,
+        host: host || DB_REGISTRY[databaseType].defaultHost || undefined,
+        port: Number(port) || DB_REGISTRY[databaseType].defaultPort || undefined,
+        database: normalizeRedisDatabaseField(database),
+        password: password || undefined,
+      };
+    }
+
     return {
       ...base,
       host: host || DB_REGISTRY[databaseType].defaultHost || undefined,
@@ -194,7 +215,7 @@ export function NewConnectionWindow() {
       username: username || DB_REGISTRY[databaseType].defaultUser || undefined,
       password: password || undefined,
     };
-  }, [colorTag, database, databaseType, group, host, name, password, port, sslMode, sshTunnel, t, username]);
+  }, [colorTag, database, databaseType, group, host, name, password, port, sslMode, sshTunnel, t, username, editId]);
 
   async function onTest() {
     setTesting(true);
@@ -220,6 +241,7 @@ export function NewConnectionWindow() {
 
   const isFileMode = DB_REGISTRY[databaseType].connectionMode === 'file';
   const isSqlite = isFileMode;
+  const isRedis = databaseType === 'redis';
 
   const sslOptions = useMemo(
     () => [
@@ -286,6 +308,44 @@ export function NewConnectionWindow() {
                   <Label required>{t('newConn.dbFilePath')}</Label>
                   <Input value={database} onChange={(e) => setDatabase(e.target.value)} placeholder="/path/to/db.sqlite" />
                 </div>
+              ) : isRedis ? (
+                <>
+                  <div>
+                    <Label required>{t('newConn.host')}</Label>
+                    <Input value={host} onChange={(e) => setHost(e.target.value)} placeholder="127.0.0.1" />
+                  </div>
+                  <div>
+                    <Label required>{t('newConn.port')}</Label>
+                    <Input value={port} onChange={(e) => setPort(e.target.value)} />
+                  </div>
+                  <div className="md:col-span-2">
+                    <Label>{t('newConn.databaseIndex')}</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      max={15}
+                      value={database}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (v === '') {
+                          setDatabase('');
+                          return;
+                        }
+                        setDatabase(
+                          String(Math.min(15, Math.max(0, parseInt(v, 10) || 0))),
+                        );
+                      }}
+                      onBlur={() => {
+                        if (database.trim() === '') setDatabase('0');
+                      }}
+                      placeholder="0"
+                    />
+                  </div>
+                  <div className="md:col-span-2">
+                    <Label>{t('newConn.password')}</Label>
+                    <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+                  </div>
+                </>
               ) : (
                 <>
                   <div>
@@ -407,14 +467,16 @@ export function NewConnectionWindow() {
                   </div>
                 )}
 
-                <div>
-                  <Label>{t('newConn.sslMode')}</Label>
-                  <Select
-                    value={sslMode}
-                    options={sslOptions}
-                    onChange={(v) => setSslMode(v as SslMode)}
-                  />
-                </div>
+                {!isRedis && (
+                  <div>
+                    <Label>{t('newConn.sslMode')}</Label>
+                    <Select
+                      value={sslMode}
+                      options={sslOptions}
+                      onChange={(v) => setSslMode(v as SslMode)}
+                    />
+                  </div>
+                )}
 
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <div>

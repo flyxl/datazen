@@ -12,6 +12,12 @@ import { cn } from '../../lib/cn';
 import { DB_REGISTRY } from '../../lib/databaseTypes';
 import type { ConnectionConfig, DatabaseType, SslMode, SshTunnelConfig } from '../../types';
 
+function normalizeRedisDatabaseField(s: string): string {
+  const u = s.trim();
+  if (u === '' || !/^\d+$/.test(u)) return '0';
+  return String(Math.min(15, Math.max(0, parseInt(u, 10))));
+}
+
 export interface NewConnectionDialogProps {
   open: boolean;
   onClose: () => void;
@@ -89,6 +95,10 @@ export function NewConnectionDialog({ open, onClose }: NewConnectionDialogProps)
     if (!meta.supportsSSH) {
       setSshEnabled(false);
     }
+    if (newType === 'redis') {
+      setDatabase('0');
+      setUsername('');
+    }
   }
 
   const sshTunnel: SshTunnelConfig | undefined = sshEnabled
@@ -117,6 +127,16 @@ export function NewConnectionDialog({ open, onClose }: NewConnectionDialogProps)
 
     if (DB_REGISTRY[databaseType].connectionMode === 'file') {
       return { ...base, database };
+    }
+
+    if (databaseType === 'redis') {
+      return {
+        ...base,
+        host: host || DB_REGISTRY[databaseType].defaultHost || undefined,
+        port: Number(port) || DB_REGISTRY[databaseType].defaultPort || undefined,
+        database: normalizeRedisDatabaseField(database),
+        password: password || undefined,
+      };
     }
 
     return {
@@ -153,6 +173,7 @@ export function NewConnectionDialog({ open, onClose }: NewConnectionDialogProps)
 
   const isFileMode = DB_REGISTRY[databaseType].connectionMode === 'file';
   const isSqlite = isFileMode;
+  const isRedis = databaseType === 'redis';
 
   const sslOptions = useMemo(
     () => [
@@ -221,6 +242,44 @@ export function NewConnectionDialog({ open, onClose }: NewConnectionDialogProps)
               <Label required>{t('newConn.dbFilePath')}</Label>
               <Input value={database} onChange={(e) => setDatabase(e.target.value)} placeholder="/path/to/db.sqlite" />
             </div>
+          ) : isRedis ? (
+            <>
+              <div>
+                <Label required>{t('newConn.host')}</Label>
+                <Input value={host} onChange={(e) => setHost(e.target.value)} placeholder="127.0.0.1" />
+              </div>
+              <div>
+                <Label required>{t('newConn.port')}</Label>
+                <Input value={port} onChange={(e) => setPort(e.target.value)} />
+              </div>
+              <div className="md:col-span-2">
+                <Label>{t('newConn.databaseIndex')}</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  max={15}
+                  value={database}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    if (v === '') {
+                      setDatabase('');
+                      return;
+                    }
+                    setDatabase(
+                      String(Math.min(15, Math.max(0, parseInt(v, 10) || 0))),
+                    );
+                  }}
+                  onBlur={() => {
+                    if (database.trim() === '') setDatabase('0');
+                  }}
+                  placeholder="0"
+                />
+              </div>
+              <div className="md:col-span-2">
+                <Label>{t('newConn.password')}</Label>
+                <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+              </div>
+            </>
           ) : (
             <>
               <div>
@@ -368,14 +427,16 @@ export function NewConnectionDialog({ open, onClose }: NewConnectionDialogProps)
             )}
 
             {/* SSL mode */}
-            <div>
-              <Label>{t('newConn.sslMode')}</Label>
-              <Select
-                value={sslMode}
-                options={sslOptions}
-                onChange={(v) => setSslMode(v as SslMode)}
-              />
-            </div>
+            {!isRedis && (
+              <div>
+                <Label>{t('newConn.sslMode')}</Label>
+                <Select
+                  value={sslMode}
+                  options={sslOptions}
+                  onChange={(v) => setSslMode(v as SslMode)}
+                />
+              </div>
+            )}
 
             {/* Color tag */}
             <div>

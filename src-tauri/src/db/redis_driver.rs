@@ -15,6 +15,7 @@ use std::time::Instant;
 use tokio::sync::RwLock;
 
 struct RedisConn {
+    #[allow(dead_code)]
     client: Client,
     connection: MultiplexedConnection,
 }
@@ -39,18 +40,41 @@ impl RedisDriver {
             .ok_or_else(|| DriverError::ConnectionFailed("Redis connection not found".into()))
     }
 
+    /// Redis only accepts a numeric db index in the URL path; non-numeric values default to `0`.
+    fn redis_db_index(raw: Option<&str>) -> String {
+        let s = raw.map(str::trim).unwrap_or("");
+        if s.is_empty() {
+            return "0".into();
+        }
+        if s.chars().all(|c| c.is_ascii_digit()) {
+            s.to_string()
+        } else {
+            "0".into()
+        }
+    }
+
     fn build_url(config: &ConnectionConfig) -> String {
         let host = config.host.as_deref().unwrap_or("127.0.0.1");
         let port = config.port.unwrap_or(6379);
-        let db = config.database.as_deref().unwrap_or("0");
-        if let Some(password) = &config.password {
-            if let Some(user) = &config.username {
-                format!("redis://{}:{}@{}:{}/{}", user, password, host, port, db)
-            } else {
-                format!("redis://:{}@{}:{}/{}", password, host, port, db)
+        let db = Self::redis_db_index(config.database.as_deref());
+        let password = config
+            .password
+            .as_deref()
+            .map(|p| urlencoding::encode(p));
+        let username = config
+            .username
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(|u| urlencoding::encode(u));
+
+        match (username, password) {
+            (Some(user), Some(pass)) => {
+                format!("redis://{}:{}@{}:{}/{}", user, pass, host, port, db)
             }
-        } else {
-            format!("redis://{}:{}/{}", host, port, db)
+            (None, Some(pass)) => format!("redis://:{}@{}:{}/{}", pass, host, port, db),
+            (Some(user), None) => format!("redis://{}@{}:{}/{}", user, host, port, db),
+            (None, None) => format!("redis://{}:{}/{}", host, port, db),
         }
     }
 }

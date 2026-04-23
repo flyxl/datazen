@@ -29,7 +29,7 @@ import { connectionCommands } from '../../commands/connection';
 import { emitCrossWindow, listenCrossWindow } from '../../lib/crossWindowBus';
 import { getUrlParam } from '../../lib/windowKind';
 import { cn } from '../../lib/cn';
-import { getDbLabel } from '../../lib/databaseTypes';
+import { DB_REGISTRY, getDbLabel } from '../../lib/databaseTypes';
 import type { DatabaseType } from '../../types';
 import { SchemaTree } from './SchemaTree';
 import { StructureView } from './StructureView';
@@ -394,6 +394,7 @@ export function ConnectionWindow() {
   }
 
   const dbType = databaseType as DatabaseType;
+  const isKeyValue = DB_REGISTRY[dbType]?.isKeyValue ?? false;
   const centerTitle = `${connectionName} - ${getDbLabel(dbType)} - DataZen`;
 
   return (
@@ -418,10 +419,12 @@ export function ConnectionWindow() {
           <Plus className="h-4 w-4" />
           {t('connWin.newQuery')}
         </Button>
-        <Button variant="secondary" className="h-8" onClick={handleCreateTable}>
-          <TableProperties className="h-4 w-4" />
-          {t('connWin.newTable')}
-        </Button>
+        {!isKeyValue && (
+          <Button variant="secondary" className="h-8" onClick={handleCreateTable}>
+            <TableProperties className="h-4 w-4" />
+            {t('connWin.newTable')}
+          </Button>
+        )}
         <div className="mx-1 h-6 w-px bg-edge" />
 
         <div className="relative min-w-0 max-w-[280px] flex-1">
@@ -429,7 +432,7 @@ export function ConnectionWindow() {
           <Input
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder={t('connWin.searchTables')}
+            placeholder={isKeyValue ? t('connWin.searchKeys') : t('connWin.searchTables')}
             className="h-8 pl-9 text-xs"
           />
         </div>
@@ -446,11 +449,12 @@ export function ConnectionWindow() {
         >
           <SchemaTree
             connectionId={connectionId}
+            databaseType={dbType}
             initialDatabase={initialDatabase}
             selectedTable={activePanel?.type === 'table' ? activePanel.tableName : null}
             searchQuery={searchQuery}
             onSelectTable={handleSelectTable}
-            onTableContextMenu={handleTableContextMenu}
+            onTableContextMenu={isKeyValue ? undefined : handleTableContextMenu}
           />
         </aside>
 
@@ -527,7 +531,13 @@ export function ConnectionWindow() {
             )}
 
             {/* Panel content */}
-            {activePanel?.type === 'table' && (
+            {activePanel?.type === 'table' && isKeyValue && (
+              <div className="flex min-h-0 flex-1 flex-col">
+                <TableView connectionId={connectionId} tableName={activePanel.tableName} />
+              </div>
+            )}
+
+            {activePanel?.type === 'table' && !isKeyValue && (
               <>
                 {/* Sub-tab bar */}
                 <div className="flex shrink-0 border-b border-edge bg-surface-alt">
@@ -606,7 +616,7 @@ export function ConnectionWindow() {
                 <div className="text-center">
                   <Database className="mx-auto h-10 w-10 opacity-20" />
                   <div className="mt-3 text-sm">
-                    {`${t('connWin.selectTable')} (⌘N ${t('connWin.newQuery')})`}
+                    {`${isKeyValue ? t('connWin.selectKey') : t('connWin.selectTable')} (⌘N ${t('connWin.newQuery')})`}
                   </div>
                 </div>
               </div>

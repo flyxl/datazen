@@ -119,6 +119,7 @@ const zhCN = {
   'newConn.host': '主机地址',
   'newConn.port': '端口',
   'newConn.database': '数据库名',
+  'newConn.databaseIndex': '数据库索引',
   'newConn.username': '用户名',
   'newConn.password': '密码',
   'newConn.group': '分组',
@@ -190,7 +191,9 @@ const zhCN = {
   'connWin.refresh': '刷新',
   'connWin.newTable': '新建表',
   'connWin.searchTables': '搜索表、视图...',
+  'connWin.searchKeys': '搜索键…',
   'connWin.selectTable': '在左侧选择一个表…',
+  'connWin.selectKey': '在左侧选择一个键…',
   'connWin.copyCell': '复制单元格',
   'connWin.editStructure': '编辑结构',
   'connWin.newIndex': '新建索引',
@@ -206,8 +209,12 @@ const zhCN = {
   'tableView.loadingData': '加载表数据…',
 
   // ── Schema Tree ──
+  'schemaTree.tables': '表',
+  'schemaTree.keys': '键',
   'schemaTree.noMatchingTables': '没有匹配的表或视图',
   'schemaTree.noTables': '没有表',
+  'schemaTree.noMatchingKeys': '没有匹配的键',
+  'schemaTree.noKeys': '没有键',
 
   // ── Query Panel ──
   'query.execute': '执行',

@@ -3,9 +3,12 @@ import { ChevronDown, ChevronRight, Database, Eye, Loader2, Table2 } from 'lucid
 import { useSchemaStore } from '../../stores/schemaStore';
 import { useI18n } from '../../hooks/useI18n';
 import { cn } from '../../lib/cn';
+import { DB_REGISTRY } from '../../lib/databaseTypes';
+import type { DatabaseType } from '../../types';
 
 interface SchemaTreeProps {
   connectionId: string;
+  databaseType: DatabaseType;
   initialDatabase?: string;
   selectedTable: string | null;
   searchQuery: string;
@@ -15,6 +18,7 @@ interface SchemaTreeProps {
 
 export function SchemaTree({
   connectionId,
+  databaseType,
   initialDatabase,
   selectedTable,
   searchQuery,
@@ -22,6 +26,7 @@ export function SchemaTree({
   onTableContextMenu,
 }: SchemaTreeProps) {
   const { t } = useI18n();
+  const isKeyValue = DB_REGISTRY[databaseType]?.isKeyValue ?? false;
   const databases = useSchemaStore((s) => s.databases);
   const tables = useSchemaStore((s) => s.tables);
   const views = useSchemaStore((s) => s.views);
@@ -86,11 +91,11 @@ export function SchemaTree({
             {tablesExpanded
               ? <ChevronDown className="h-3 w-3 shrink-0" />
               : <ChevronRight className="h-3 w-3 shrink-0" />}
-            Tables ({filteredTables.length})
+            {isKeyValue ? t('schemaTree.keys') : t('schemaTree.tables')} ({filteredTables.length})
           </button>
-          {tablesExpanded && filteredTables.map((t) => {
-            const fullName = t.schema ? `${t.schema}.${t.name}` : t.name;
-            const isSelected = selectedTable === t.name;
+          {tablesExpanded && filteredTables.map((tbl) => {
+            const fullName = tbl.schema ? `${tbl.schema}.${tbl.name}` : tbl.name;
+            const isSelected = selectedTable === tbl.name;
             return (
               <button
                 key={fullName}
@@ -100,18 +105,18 @@ export function SchemaTree({
                   isSelected && 'bg-surface-raised text-fg',
                   !isSelected && 'text-fg-secondary',
                 )}
-                onClick={() => onSelectTable(t.name, t.schema)}
+                onClick={() => onSelectTable(tbl.name, tbl.schema)}
                 onContextMenu={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  onTableContextMenu?.(t.name, e.clientX, e.clientY);
+                  onTableContextMenu?.(tbl.name, e.clientX, e.clientY);
                 }}
               >
                 <Table2 className="h-3.5 w-3.5 shrink-0 text-fg-secondary" />
-                <span className="min-w-0 truncate">{t.name}</span>
-                {t.rowCount != null && (
+                <span className="min-w-0 truncate">{tbl.name}</span>
+                {tbl.rowCount != null && (
                   <span className="ml-auto shrink-0 text-[11px] text-fg-muted">
-                    {formatRowCount(t.rowCount)}
+                    {formatRowCount(tbl.rowCount)}
                   </span>
                 )}
               </button>
@@ -121,7 +126,7 @@ export function SchemaTree({
       )}
 
       {/* Views section */}
-      {filteredViews.length > 0 && (
+      {!isKeyValue && filteredViews.length > 0 && (
         <div>
           <button
             type="button"
@@ -155,9 +160,15 @@ export function SchemaTree({
         </div>
       )}
 
-      {!loading && filteredTables.length === 0 && filteredViews.length === 0 && currentDatabase && (
+      {!loading && filteredTables.length === 0 && (isKeyValue || filteredViews.length === 0) && currentDatabase && (
         <div className="px-3 py-3 text-center text-xs text-fg-muted">
-          {query ? t('schemaTree.noMatchingTables') : t('schemaTree.noTables')}
+          {query
+            ? isKeyValue
+              ? t('schemaTree.noMatchingKeys')
+              : t('schemaTree.noMatchingTables')
+            : isKeyValue
+              ? t('schemaTree.noKeys')
+              : t('schemaTree.noTables')}
         </div>
       )}
     </div>

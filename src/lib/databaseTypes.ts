@@ -35,6 +35,10 @@ export interface DatabaseTypeMeta {
   supportsBackup: boolean;
   /** Whether this type supports schemas (tables, queries, etc.) */
   supportsTables: boolean;
+  /** Key-value stores (e.g. Redis) — no SQL tables in the traditional sense */
+  isKeyValue: boolean;
+  /** Whether SQL is the primary query language */
+  supportsSQL: boolean;
 }
 
 export const DB_REGISTRY: Record<DatabaseType, DatabaseTypeMeta> = {
@@ -51,6 +55,8 @@ export const DB_REGISTRY: Record<DatabaseType, DatabaseTypeMeta> = {
     supportsSSH: true,
     supportsBackup: true,
     supportsTables: true,
+    isKeyValue: false,
+    supportsSQL: true,
   },
   mysql: {
     label: 'MySQL',
@@ -65,6 +71,8 @@ export const DB_REGISTRY: Record<DatabaseType, DatabaseTypeMeta> = {
     supportsSSH: true,
     supportsBackup: true,
     supportsTables: true,
+    isKeyValue: false,
+    supportsSQL: true,
   },
   mariadb: {
     label: 'MariaDB',
@@ -79,6 +87,8 @@ export const DB_REGISTRY: Record<DatabaseType, DatabaseTypeMeta> = {
     supportsSSH: true,
     supportsBackup: true,
     supportsTables: true,
+    isKeyValue: false,
+    supportsSQL: true,
   },
   sqlite: {
     label: 'SQLite',
@@ -93,6 +103,8 @@ export const DB_REGISTRY: Record<DatabaseType, DatabaseTypeMeta> = {
     supportsSSH: false,
     supportsBackup: false,
     supportsTables: true,
+    isKeyValue: false,
+    supportsSQL: true,
   },
   redis: {
     label: 'Redis',
@@ -107,6 +119,8 @@ export const DB_REGISTRY: Record<DatabaseType, DatabaseTypeMeta> = {
     supportsSSH: true,
     supportsBackup: false,
     supportsTables: false,
+    isKeyValue: true,
+    supportsSQL: false,
   },
 };
 
