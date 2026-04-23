@@ -419,14 +419,17 @@ impl DatabaseDriver for MysqlDriver {
         handle: &ConnectionHandle,
         table: &str,
     ) -> Result<TableSchema, DriverError> {
+        let t0 = std::time::Instant::now();
         let pools = self.pools.read().await;
         let pool = Self::get_pool(&pools, handle)?;
 
         let (columns, pk_names) = Self::fetch_columns(pool, table).await?;
+        tracing::info!(%table, cols = columns.len(), ms = t0.elapsed().as_millis() as u64, "mysql get_table_schema: columns fetched");
 
         let current_db = Self::current_database(pool).await?;
 
         // ── indexes ──
+        let t_idx = std::time::Instant::now();
         let idx_rows = sqlx::query(
             r#"
             SELECT INDEX_NAME, COLUMN_NAME, NON_UNIQUE, INDEX_TYPE, SEQ_IN_INDEX
@@ -462,8 +465,10 @@ impl DatabaseDriver for MysqlDriver {
         indexes.sort_by(|a, b| {
             b.is_primary.cmp(&a.is_primary).then(a.name.cmp(&b.name))
         });
+        tracing::info!(%table, index_count = indexes.len(), ms = t_idx.elapsed().as_millis() as u64, "mysql get_table_schema: indexes fetched");
 
         // ── foreign keys ──
+        let t_fk = std::time::Instant::now();
         let fk_rows = sqlx::query(
             r#"
             SELECT
@@ -513,6 +518,8 @@ impl DatabaseDriver for MysqlDriver {
 
         let mut foreign_keys: Vec<ForeignKeyInfo> = fk_map.into_values().collect();
         foreign_keys.sort_by(|a, b| a.name.cmp(&b.name));
+        tracing::info!(%table, fk_count = foreign_keys.len(), ms = t_fk.elapsed().as_millis() as u64, "mysql get_table_schema: foreign keys fetched");
+        tracing::info!(%table, total_ms = t0.elapsed().as_millis() as u64, "mysql get_table_schema: complete");
 
         Ok(TableSchema {
             table_name: table.to_string(),

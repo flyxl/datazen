@@ -9,6 +9,7 @@ use crate::db::{
 use crate::services::{ConnectionManager, FilterCondition, OrderBy, QueryExecutor, SortCondition};
 use crate::store::{AppSettings, QueryHistoryEntry, Store, SyncTask};
 use std::sync::Arc;
+use std::time::Instant;
 use tauri::{Emitter, State};
 use uuid::Uuid;
 use std::path::PathBuf;
@@ -166,7 +167,8 @@ pub async fn get_databases(
     state: State<'_, AppState>,
     connection_id: String,
 ) -> Result<Vec<String>, String> {
-    tracing::debug!(%connection_id, "get_databases");
+    let start = Instant::now();
+    tracing::info!(%connection_id, "get_databases");
     let (driver, handle) = state
         .connection_manager
         .get_connection(&connection_id)
@@ -177,7 +179,7 @@ pub async fn get_databases(
         .get_databases(&handle)
         .await
         .map_err(|e| log_err("get_databases", &e))?;
-    tracing::debug!(%connection_id, count = dbs.len(), "get_databases OK");
+    tracing::info!(%connection_id, count = dbs.len(), ms = start.elapsed().as_millis() as u64, "get_databases OK");
     Ok(dbs)
 }
 
@@ -187,7 +189,8 @@ pub async fn get_tables(
     connection_id: String,
     database: String,
 ) -> Result<Vec<TableInfo>, String> {
-    tracing::debug!(%connection_id, %database, "get_tables");
+    let start = Instant::now();
+    tracing::info!(%connection_id, %database, "get_tables");
     let (driver, handle) = state
         .connection_manager
         .get_connection(&connection_id)
@@ -198,7 +201,7 @@ pub async fn get_tables(
         .get_tables(&handle, &database)
         .await
         .map_err(|e| log_err("get_tables", &e))?;
-    tracing::debug!(%connection_id, %database, count = tables.len(), "get_tables OK");
+    tracing::info!(%connection_id, %database, count = tables.len(), ms = start.elapsed().as_millis() as u64, "get_tables OK");
     Ok(tables)
 }
 
@@ -212,6 +215,8 @@ pub async fn kv_scan_keys(
     cursor: u64,
     count: u32,
 ) -> Result<serde_json::Value, String> {
+    let start = Instant::now();
+    tracing::info!(%connection_id, db_index, %pattern, cursor, count, "kv_scan_keys");
     let config = state
         .connection_manager
         .get_connection_config(&connection_id)
@@ -231,6 +236,7 @@ pub async fn kv_scan_keys(
         .scan_keys_with_info(&handle, db_index, &pattern, cursor, count)
         .await
         .map_err(|e| log_err("kv_scan_keys", &e))?;
+    tracing::info!(%connection_id, db_index, next_cursor, key_count = keys.len(), db_size, ms = start.elapsed().as_millis() as u64, "kv_scan_keys OK");
     Ok(serde_json::json!({
         "cursor": next_cursor,
         "keys": keys,
@@ -246,6 +252,8 @@ pub async fn kv_get_key(
     db_index: u32,
     key: String,
 ) -> Result<serde_json::Value, String> {
+    let start = Instant::now();
+    tracing::info!(%connection_id, db_index, %key, "kv_get_key");
     let config = state
         .connection_manager
         .get_connection_config(&connection_id)
@@ -265,7 +273,33 @@ pub async fn kv_get_key(
         .get_key_detail(&handle, db_index, &key)
         .await
         .map_err(|e| log_err("kv_get_key", &e))?;
+    tracing::info!(%connection_id, db_index, %key, ms = start.elapsed().as_millis() as u64, "kv_get_key OK");
     serde_json::to_value(detail).map_err(|e| log_err("kv_get_key", &e))
+}
+
+/// Lightweight column-only query — no FK / index lookups.
+/// Used by the SQL editor for autocompletion.
+#[tauri::command]
+pub async fn get_columns(
+    state: State<'_, AppState>,
+    connection_id: String,
+    table: String,
+) -> Result<Vec<String>, String> {
+    let start = Instant::now();
+    tracing::info!(%connection_id, %table, "get_columns");
+    let (driver, handle) = state
+        .connection_manager
+        .get_connection(&connection_id)
+        .await
+        .map_err(|e| log_err("get_columns", &e))?;
+
+    let (cols, _pks) = driver
+        .get_columns(&handle, &table)
+        .await
+        .map_err(|e| log_err("get_columns", &e))?;
+
+    tracing::info!(%connection_id, %table, count = cols.len(), ms = start.elapsed().as_millis() as u64, "get_columns OK");
+    Ok(cols.into_iter().map(|c| c.name).collect())
 }
 
 #[tauri::command]
@@ -274,7 +308,8 @@ pub async fn get_table_schema(
     connection_id: String,
     table: String,
 ) -> Result<TableSchema, String> {
-    tracing::debug!(%connection_id, %table, "get_table_schema");
+    let start = Instant::now();
+    tracing::info!(%connection_id, %table, "get_table_schema");
     let (driver, handle) = state
         .connection_manager
         .get_connection(&connection_id)
@@ -285,7 +320,7 @@ pub async fn get_table_schema(
         .get_table_schema(&handle, &table)
         .await
         .map_err(|e| log_err("get_table_schema", &e))?;
-    tracing::debug!(%connection_id, %table, cols = schema.columns.len(), "get_table_schema OK");
+    tracing::info!(%connection_id, %table, cols = schema.columns.len(), indexes = schema.indexes.len(), fks = schema.foreign_keys.len(), ms = start.elapsed().as_millis() as u64, "get_table_schema OK");
     Ok(schema)
 }
 
@@ -299,7 +334,8 @@ pub async fn get_table_data(
     filters: Option<Vec<FilterCondition>>,
     sorts: Option<Vec<SortCondition>>,
 ) -> Result<TableDataResult, String> {
-    tracing::debug!(%connection_id, %table, page, page_size, "get_table_data");
+    let start = Instant::now();
+    tracing::info!(%connection_id, %table, page, page_size, "get_table_data");
     let (driver, handle) = state
         .connection_manager
         .get_connection(&connection_id)
@@ -328,7 +364,7 @@ pub async fn get_table_data(
         )
         .await
         .map_err(|e| log_err("get_table_data", &e))?;
-    tracing::debug!(%connection_id, %table, rows = result.rows.len(), "get_table_data OK");
+    tracing::info!(%connection_id, %table, rows = result.rows.len(), ms = start.elapsed().as_millis() as u64, "get_table_data OK");
     Ok(result)
 }
 
@@ -338,7 +374,8 @@ pub async fn execute_query(
     connection_id: String,
     sql: String,
 ) -> Result<MultiQueryResult, String> {
-    tracing::info!(%connection_id, sql_len = sql.len(), "execute_query");
+    let sql_preview: String = sql.chars().take(500).collect();
+    tracing::info!(%connection_id, sql_len = sql.len(), %sql_preview, "execute_query");
     let settings = state.store.get_settings().await;
     let limit = if settings.limit_select_results && settings.query_result_limit > 0 {
         Some(settings.query_result_limit)

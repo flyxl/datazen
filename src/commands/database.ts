@@ -17,6 +17,9 @@ export const databaseCommands = {
   getTables: (connectionId: string, database: string) =>
     invoke<TableInfo[]>('get_tables', { connectionId, database }),
 
+  getColumns: (connectionId: string, table: string) =>
+    invoke<string[]>('get_columns', { connectionId, table }),
+
   getTableSchema: (connectionId: string, table: string) =>
     invoke<TableSchema>('get_table_schema', { connectionId, table }),
 

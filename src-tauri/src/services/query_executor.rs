@@ -95,6 +95,7 @@ impl QueryExecutor {
         let qi = |name: &str| driver.quote_ident(name);
 
         let count_sql = Self::build_count_sql(&cached.table_name, &cached.columns, &filters, &qi);
+        tracing::info!(%table, %count_sql, "query_executor: count query");
         let total_rows = match driver.query(handle, &count_sql).await {
             Ok(count_result) => {
                 count_result.rows.first()
@@ -109,6 +110,7 @@ impl QueryExecutor {
         };
 
         let sql = Self::build_select_sql(&cached.table_name, &cached.columns, page, page_size, filters, order_by, &qi);
+        tracing::info!(%table, %sql, "query_executor: select query");
         let result = driver.query(handle, &sql).await?;
 
         Ok(TableDataResult {

@@ -56,7 +56,7 @@ export function RedisConnectionView({
   const [keyDetailLoading, setKeyDetailLoading] = useState(false);
 
   useEffect(() => {
-    void loadForConnection(connectionId);
+    void loadForConnection(connectionId, { skipLoadTables: true });
   }, [connectionId, loadForConnection]);
 
   useEffect(() => {

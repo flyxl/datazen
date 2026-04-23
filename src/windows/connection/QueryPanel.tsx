@@ -51,8 +51,8 @@ export function QueryPanel({ connectionId, queryTabId }: QueryPanelProps) {
     Promise.all(
       missing.map((name) =>
         databaseCommands
-          .getTableSchema(connectionId, name)
-          .then((schema) => [name, schema.columns.map((c) => c.name)] as const)
+          .getColumns(connectionId, name)
+          .then((cols) => [name, cols] as const)
           .catch(() => [name, [] as string[]] as const),
       ),
     ).then((entries) => {

@@ -148,6 +148,11 @@ export function MainWindow() {
   // (native context menus handle their own dismiss)
 
   const handleConnect = useCallback(async (cfg: ConnectionConfig) => {
+    const existing = useActiveConnectionStore.getState().connections[cfg.id];
+    if (existing?.status === 'connected' && existing.connectionId) {
+      openConnectionWindow(existing.connectionId, cfg.name, cfg.database, cfg.databaseType);
+      return;
+    }
     await connectAction(cfg);
     const entry = useActiveConnectionStore.getState().connections[cfg.id];
     if (entry?.status === 'connected' && entry.connectionId) {
