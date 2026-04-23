@@ -89,17 +89,26 @@ jobs:
           LABEL="${{ matrix.os_label }}"
           mkdir -p artifacts
 
-          for dir in dmg macos nsis msi appimage deb rpm; do
-            DIR_PATH="$BUNDLE_DIR/$dir"
-            [ -d "$DIR_PATH" ] || continue
-            for file in "$DIR_PATH"/*; do
-              [ -f "$file" ] || continue
-              base=$(basename "$file")
-              ext="${base#*.}"
-              name="${base%%.*}"
-              newname="${name}-${LABEL}.${ext}"
-              cp "$file" "artifacts/$newname"
-            done
+          shopt -s nullglob
+          for file in \
+            "$BUNDLE_DIR"/dmg/*.dmg \
+            "$BUNDLE_DIR"/nsis/*.exe \
+            "$BUNDLE_DIR"/msi/*.msi \
+            "$BUNDLE_DIR"/appimage/*.AppImage \
+            "$BUNDLE_DIR"/deb/*.deb \
+            "$BUNDLE_DIR"/rpm/*.rpm; do
+            [ -f "$file" ] || continue
+            base=$(basename "$file")
+            # Insert platform label before the final extension
+            if [[ "$base" == *.tar.gz ]]; then
+              stem="${base%.tar.gz}"
+              newname="${stem}-${LABEL}.tar.gz"
+            else
+              stem="${base%.*}"
+              ext="${base##*.}"
+              newname="${stem}-${LABEL}.${ext}"
+            fi
+            cp "$file" "artifacts/$newname"
           done
           ls -la artifacts/ || true
 
