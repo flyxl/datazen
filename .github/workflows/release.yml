@@ -52,7 +52,7 @@ jobs:
         run: pnpm install
 
       - name: Build Tauri app
-        run: npx tauri build --target ${{ matrix.target }}
+        run: pnpm tauri build --target ${{ matrix.target }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
