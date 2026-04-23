@@ -146,8 +146,14 @@ pub async fn get_connection_info(
         DatabaseType::Redis => "redis",
     };
 
+    let driver_category = match config.database_type {
+        DatabaseType::Redis => "keyvalue",
+        _ => "sql",
+    };
+
     Ok(serde_json::json!({
         "databaseType": db_type,
+        "driverCategory": driver_category,
         "name": config.name,
         "host": config.host,
         "port": config.port,

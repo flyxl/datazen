@@ -39,6 +39,8 @@ export interface DatabaseTypeMeta {
   isKeyValue: boolean;
   /** Whether SQL is the primary query language */
   supportsSQL: boolean;
+  /** Category aligned with backend `DriverCategory` / connection info */
+  category: 'sql' | 'kv' | 'document';
 }
 
 export const DB_REGISTRY: Record<DatabaseType, DatabaseTypeMeta> = {
@@ -57,6 +59,7 @@ export const DB_REGISTRY: Record<DatabaseType, DatabaseTypeMeta> = {
     supportsTables: true,
     isKeyValue: false,
     supportsSQL: true,
+    category: 'sql',
   },
   mysql: {
     label: 'MySQL',
@@ -73,6 +76,7 @@ export const DB_REGISTRY: Record<DatabaseType, DatabaseTypeMeta> = {
     supportsTables: true,
     isKeyValue: false,
     supportsSQL: true,
+    category: 'sql',
   },
   mariadb: {
     label: 'MariaDB',
@@ -89,6 +93,7 @@ export const DB_REGISTRY: Record<DatabaseType, DatabaseTypeMeta> = {
     supportsTables: true,
     isKeyValue: false,
     supportsSQL: true,
+    category: 'sql',
   },
   sqlite: {
     label: 'SQLite',
@@ -105,6 +110,7 @@ export const DB_REGISTRY: Record<DatabaseType, DatabaseTypeMeta> = {
     supportsTables: true,
     isKeyValue: false,
     supportsSQL: true,
+    category: 'sql',
   },
   redis: {
     label: 'Redis',
@@ -121,6 +127,7 @@ export const DB_REGISTRY: Record<DatabaseType, DatabaseTypeMeta> = {
     supportsTables: false,
     isKeyValue: true,
     supportsSQL: false,
+    category: 'kv',
   },
 };
 

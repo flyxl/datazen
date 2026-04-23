@@ -15,6 +15,15 @@ pub enum DatabaseType {
     Redis,
 }
 
+/// High-level driver category (SQL vs key-value vs document).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum DriverCategory {
+    Sql,
+    KeyValue,
+    Document,
+}
+
 /// SSL mode for remote databases.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
@@ -296,6 +305,10 @@ pub enum DriverError {
 pub trait DatabaseDriver: Send + Sync {
     fn driver_type(&self) -> DatabaseType;
 
+    fn driver_category(&self) -> DriverCategory {
+        DriverCategory::Sql
+    }
+
     /// Identifier quote character. Override for non-standard quoting (e.g. MySQL uses backtick).
     fn quote_char(&self) -> char {
         '"'
@@ -362,14 +375,26 @@ pub trait DatabaseDriver: Send + Sync {
 
     async fn begin_transaction(
         &self,
-        handle: &ConnectionHandle,
-    ) -> Result<TransactionHandle, DriverError>;
+        _handle: &ConnectionHandle,
+    ) -> Result<TransactionHandle, DriverError> {
+        Err(DriverError::TransactionError("Not supported for this driver type".into()))
+    }
 
-    async fn commit(&self, tx: TransactionHandle) -> Result<(), DriverError>;
+    async fn commit(&self, _tx: TransactionHandle) -> Result<(), DriverError> {
+        Err(DriverError::TransactionError("Not supported for this driver type".into()))
+    }
 
-    async fn rollback(&self, tx: TransactionHandle) -> Result<(), DriverError>;
+    async fn rollback(&self, _tx: TransactionHandle) -> Result<(), DriverError> {
+        Err(DriverError::TransactionError("Not supported for this driver type".into()))
+    }
 
-    async fn explain(&self, handle: &ConnectionHandle, sql: &str) -> Result<ExplainResult, DriverError>;
+    async fn explain(
+        &self,
+        _handle: &ConnectionHandle,
+        _sql: &str,
+    ) -> Result<ExplainResult, DriverError> {
+        Err(DriverError::QueryFailed("Not supported for this driver type".into()))
+    }
 
     async fn cancel_query(&self, handle: &ConnectionHandle) -> Result<(), DriverError>;
 }

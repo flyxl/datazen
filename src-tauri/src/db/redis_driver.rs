@@ -584,6 +584,10 @@ impl DatabaseDriver for RedisDriver {
         DatabaseType::Redis
     }
 
+    fn driver_category(&self) -> DriverCategory {
+        DriverCategory::KeyValue
+    }
+
     fn quote_char(&self) -> char {
         '\0' // Redis doesn't quote identifiers
     }
@@ -892,29 +896,6 @@ impl DatabaseDriver for RedisDriver {
     async fn execute(&self, handle: &ConnectionHandle, sql: &str) -> Result<u64, DriverError> {
         let result = self.query(handle, sql).await?;
         Ok(result.rows_affected.unwrap_or(0))
-    }
-
-    async fn begin_transaction(
-        &self,
-        _handle: &ConnectionHandle,
-    ) -> Result<TransactionHandle, DriverError> {
-        Err(DriverError::TransactionError("Transactions are not supported for Redis".into()))
-    }
-
-    async fn commit(&self, _tx: TransactionHandle) -> Result<(), DriverError> {
-        Err(DriverError::TransactionError("Transactions are not supported for Redis".into()))
-    }
-
-    async fn rollback(&self, _tx: TransactionHandle) -> Result<(), DriverError> {
-        Err(DriverError::TransactionError("Transactions are not supported for Redis".into()))
-    }
-
-    async fn explain(
-        &self,
-        _handle: &ConnectionHandle,
-        _sql: &str,
-    ) -> Result<ExplainResult, DriverError> {
-        Err(DriverError::QueryFailed("EXPLAIN is not available for Redis".into()))
     }
 
     async fn cancel_query(&self, _handle: &ConnectionHandle) -> Result<(), DriverError> {
