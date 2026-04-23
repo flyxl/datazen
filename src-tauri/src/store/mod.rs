@@ -219,30 +219,8 @@ impl Store {
 
         cache.connections = self.load_connections_from_disk().await?;
 
-        // Seed a demo connection when the store is empty (first launch).
-        if cache.connections.is_empty() {
-            cache.connections.push(ConnectionConfig {
-                id: uuid::Uuid::new_v4().to_string(),
-                name: "本地 PostgreSQL".to_string(),
-                database_type: crate::db::DatabaseType::PostgreSQL,
-                host: Some("localhost".to_string()),
-                port: Some(5432),
-                database: Some("postgres".to_string()),
-                username: Some("postgres".to_string()),
-                password: Some(String::new()),
-                ssl_mode: crate::db::SslMode::Disable,
-                connection_timeout: 30,
-                ssh_tunnel: None,
-                color_tag: Some("#3b82f6".to_string()),
-                group: Some("开发环境".to_string()),
-                last_connected_at: None,
-            });
-            let snapshot = cache.connections.clone();
-            drop(cache);
-            self.persist_connections(&snapshot).await?;
-            // Re-acquire the write guard for the rest of init.
-            cache = self.cache.write().await;
-        }
+        // First launch: store is empty, nothing to seed.
+        // Users create connections via the UI.
 
         cache.groups = self
             .load_json_file::<Vec<String>>("groups.json")
