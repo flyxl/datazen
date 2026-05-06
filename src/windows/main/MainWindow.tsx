@@ -78,6 +78,19 @@ export function MainWindow() {
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [importData, setImportData] = useState<{ connections: ConnectionConfig[]; groups: string[] } | null>(null);
 
+  // Export password dialog state
+  const [exportPasswordDialogOpen, setExportPasswordDialogOpen] = useState(false);
+  const [exportPassword, setExportPassword] = useState('');
+  const [exportPasswordConfirm, setExportPasswordConfirm] = useState('');
+  const [exportPasswordError, setExportPasswordError] = useState('');
+  const [pendingExportPath, setPendingExportPath] = useState<string | null>(null);
+
+  // Import password dialog state
+  const [importPasswordDialogOpen, setImportPasswordDialogOpen] = useState(false);
+  const [importPassword, setImportPassword] = useState('');
+  const [importPasswordError, setImportPasswordError] = useState('');
+  const [pendingImportPath, setPendingImportPath] = useState<string | null>(null);
+
   // ── Pointer-based drag state ──
   const [draggingConnId, setDraggingConnId] = useState<string | null>(null);
   const [dragOverGroup, setDragOverGroup] = useState<string | null>(null);
@@ -365,14 +378,41 @@ export function MainWindow() {
         filters: [{ name: 'JSON', extensions: ['json'] }],
       });
       if (!path) return;
-      const count = await connectionCommands.exportConnections(path);
-      setErrorMessage(t('configExport.success', { count }));
-      setErrorDialogOpen(true);
+      setPendingExportPath(path);
+      setExportPassword('');
+      setExportPasswordConfirm('');
+      setExportPasswordError('');
+      setExportPasswordDialogOpen(true);
     } catch (e) {
       setErrorMessage(e instanceof Error ? e.message : String(e));
       setErrorDialogOpen(true);
     }
   }, [t]);
+
+  const submitExportPassword = useCallback(async () => {
+    if (!exportPassword) {
+      setExportPasswordError(t('configExport.passwordRequired'));
+      return;
+    }
+    if (exportPassword !== exportPasswordConfirm) {
+      setExportPasswordError(t('configExport.passwordMismatch'));
+      return;
+    }
+    if (!pendingExportPath) return;
+    setExportPasswordDialogOpen(false);
+    try {
+      const count = await connectionCommands.exportConnections(pendingExportPath, exportPassword);
+      setErrorMessage(t('configExport.success', { count }));
+      setErrorDialogOpen(true);
+    } catch (e) {
+      setErrorMessage(e instanceof Error ? e.message : String(e));
+      setErrorDialogOpen(true);
+    } finally {
+      setPendingExportPath(null);
+      setExportPassword('');
+      setExportPasswordConfirm('');
+    }
+  }, [exportPassword, exportPasswordConfirm, pendingExportPath, t]);
 
   const handleImportConfig = useCallback(async () => {
     try {
@@ -384,24 +424,82 @@ export function MainWindow() {
       });
       if (!path) return;
       const filePath = typeof path === 'string' ? path : (path as unknown as string);
-      const data = await connectionCommands.importConnectionsPreview(filePath);
-      if (!data.connections || !Array.isArray(data.connections)) {
-        setErrorMessage(t('configImport.invalidFile'));
-        setErrorDialogOpen(true);
-        return;
-      }
-      setImportData(data as { connections: ConnectionConfig[]; groups: string[] });
-      setImportDialogOpen(true);
+      setPendingImportPath(filePath);
+      setImportPassword('');
+      setImportPasswordError('');
+      setImportPasswordDialogOpen(true);
     } catch (e) {
       setErrorMessage(e instanceof Error ? e.message : String(e));
       setErrorDialogOpen(true);
     }
   }, [t]);
 
+  const submitImportPassword = useCallback(async () => {
+    if (!pendingImportPath) return;
+    try {
+      const data = await connectionCommands.importConnectionsPreview(pendingImportPath, importPassword);
+      if (!data.connections || !Array.isArray(data.connections)) {
+        setImportPasswordDialogOpen(false);
+        setErrorMessage(t('configImport.invalidFile'));
+        setErrorDialogOpen(true);
+        return;
+      }
+      setImportPasswordDialogOpen(false);
+
+      const existingById = new Map(connections.map((c) => [c.id, c]));
+      const existingByName = new Map(connections.map((c) => [c.name, c]));
+      const hasConflict = data.connections.some((inc) =>
+        existingById.has(inc.id) || existingByName.has(inc.name),
+      );
+
+      if (hasConflict) {
+        setImportData(data as { connections: ConnectionConfig[]; groups: string[] });
+        setImportDialogOpen(true);
+      } else {
+        let imported = 0;
+        for (const conn of data.connections) {
+          await connectionCommands.saveConnection(conn);
+          imported++;
+        }
+        if (data.groups?.length) {
+          const existingGroups = await connectionCommands.getGroups();
+          const allGroups = [...new Set([...existingGroups, ...data.groups])];
+          await connectionCommands.saveGroups(allGroups);
+        }
+        await fetchConnections();
+        await fetchGroups();
+        setErrorMessage(t('configImport.success', { count: imported }));
+        setErrorDialogOpen(true);
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (msg.includes('wrong password') || msg.includes('Decryption failed')) {
+        setImportPasswordError(t('configImport.wrongPassword'));
+      } else {
+        setImportPasswordDialogOpen(false);
+        setErrorMessage(msg);
+        setErrorDialogOpen(true);
+      }
+    }
+  }, [pendingImportPath, importPassword, connections, fetchConnections, fetchGroups, t]);
+
   const handleImportResult = useCallback((message: string) => {
     setErrorMessage(message);
     setErrorDialogOpen(true);
   }, []);
+
+  // ── Menu bar events for export/import ──
+  useEffect(() => {
+    let cancelled = false;
+    const cleanups: (() => void)[] = [];
+    void listenCrossWindow('menu:export-config', () => {
+      if (!cancelled) void handleExportConfig();
+    }).then((u) => { if (cancelled) u(); else cleanups.push(u); });
+    void listenCrossWindow('menu:import-config', () => {
+      if (!cancelled) void handleImportConfig();
+    }).then((u) => { if (cancelled) u(); else cleanups.push(u); });
+    return () => { cancelled = true; cleanups.forEach((fn) => fn()); };
+  }, [handleExportConfig, handleImportConfig]);
 
   // ── Backup / Restore handlers ──
 
@@ -475,8 +573,6 @@ export function MainWindow() {
             onBackup={() => openBackupWindow()}
             onRestore={() => void handleRestore()}
             onDataSync={() => openDataSyncWindow()}
-            onExportConfig={() => void handleExportConfig()}
-            onImportConfig={() => void handleImportConfig()}
           />
         </aside>
         <div
@@ -661,6 +757,7 @@ export function MainWindow() {
         open={errorDialogOpen}
         title={t('common.hint')}
         onClose={() => setErrorDialogOpen(false)}
+        className="max-w-xs"
         footer={
           <Button variant="primary" onClick={() => setErrorDialogOpen(false)}>
             {t('common.ok')}
@@ -668,6 +765,79 @@ export function MainWindow() {
         }
       >
         <p className="whitespace-pre-wrap break-all text-sm text-fg-secondary">{errorMessage}</p>
+      </Dialog>
+
+      {/* ── Export password dialog ── */}
+      <Dialog
+        open={exportPasswordDialogOpen}
+        title={t('configExport.passwordTitle')}
+        onClose={() => { setExportPasswordDialogOpen(false); setPendingExportPath(null); }}
+        className="max-w-sm"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => { setExportPasswordDialogOpen(false); setPendingExportPath(null); }}>
+              {t('common.cancel')}
+            </Button>
+            <Button variant="primary" onClick={() => void submitExportPassword()}>
+              {t('common.ok')}
+            </Button>
+          </>
+        }
+      >
+        <p className="mb-3 text-sm text-fg-secondary">{t('configExport.passwordDesc')}</p>
+        <Input
+          type="password"
+          autoFocus
+          value={exportPassword}
+          onChange={(e) => { setExportPassword(e.target.value); setExportPasswordError(''); }}
+          placeholder={t('configExport.passwordPlaceholder')}
+          className="mb-2 text-sm"
+          onKeyDown={(e) => { if (e.key === 'Enter') document.getElementById('export-pw-confirm')?.focus(); }}
+        />
+        <Input
+          id="export-pw-confirm"
+          type="password"
+          value={exportPasswordConfirm}
+          onChange={(e) => { setExportPasswordConfirm(e.target.value); setExportPasswordError(''); }}
+          placeholder={t('configExport.passwordConfirmPlaceholder')}
+          className="text-sm"
+          onKeyDown={(e) => { if (e.key === 'Enter') void submitExportPassword(); }}
+        />
+        {exportPasswordError && (
+          <p className="mt-2 text-xs text-red-400">{exportPasswordError}</p>
+        )}
+      </Dialog>
+
+      {/* ── Import password dialog ── */}
+      <Dialog
+        open={importPasswordDialogOpen}
+        title={t('configImport.passwordTitle')}
+        onClose={() => { setImportPasswordDialogOpen(false); setPendingImportPath(null); }}
+        className="max-w-sm"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => { setImportPasswordDialogOpen(false); setPendingImportPath(null); }}>
+              {t('common.cancel')}
+            </Button>
+            <Button variant="primary" onClick={() => void submitImportPassword()}>
+              {t('common.ok')}
+            </Button>
+          </>
+        }
+      >
+        <p className="mb-3 text-sm text-fg-secondary">{t('configImport.passwordDesc')}</p>
+        <Input
+          type="password"
+          autoFocus
+          value={importPassword}
+          onChange={(e) => { setImportPassword(e.target.value); setImportPasswordError(''); }}
+          placeholder={t('configImport.passwordPlaceholder')}
+          className="text-sm"
+          onKeyDown={(e) => { if (e.key === 'Enter') void submitImportPassword(); }}
+        />
+        {importPasswordError && (
+          <p className="mt-2 text-xs text-red-400">{importPasswordError}</p>
+        )}
       </Dialog>
 
       {/* ── Import config dialog ── */}
@@ -687,7 +857,7 @@ export function MainWindow() {
             <span>{t('main.connectionCount', { count: connections.length })}</span>
           </span>
         }
-        right={<span className="tabular-nums">DataZen v0.0.1</span>}
+        right={<span className="tabular-nums">DataZen v0.0.2</span>}
       />
     </div>
   );

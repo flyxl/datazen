@@ -94,6 +94,12 @@ const zhCN = {
   // ── Config Import / Export ──
   'configExport.success': '已导出 {count} 个连接配置',
   'configExport.failed': '导出失败',
+  'configExport.passwordTitle': '设置导出密码',
+  'configExport.passwordDesc': '该密码用于加密连接配置中的敏感信息，导入时需要输入此密码',
+  'configExport.passwordPlaceholder': '请输入密码',
+  'configExport.passwordConfirmPlaceholder': '请确认密码',
+  'configExport.passwordMismatch': '两次输入的密码不一致',
+  'configExport.passwordRequired': '请输入密码',
   'configImport.title': '导入连接配置',
   'configImport.description': '以下连接与现有配置存在冲突，请选择处理方式',
   'configImport.noConflicts': '没有冲突，将直接导入 {count} 个连接',
@@ -109,6 +115,10 @@ const zhCN = {
   'configImport.success': '成功导入 {count} 个连接',
   'configImport.invalidFile': '无效的配置文件',
   'configImport.failed': '导入失败',
+  'configImport.passwordTitle': '输入导入密码',
+  'configImport.passwordDesc': '该配置文件已加密，请输入导出时设置的密码',
+  'configImport.passwordPlaceholder': '请输入密码',
+  'configImport.wrongPassword': '密码错误，请重试',
 
   // ── Connection Item / Card ──
   'conn.connected': '已连接',

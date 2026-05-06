@@ -96,6 +96,12 @@ const en: Record<TranslationKey, string> = {
   // ── Config Import / Export ──
   'configExport.success': 'Exported {count} connections',
   'configExport.failed': 'Export failed',
+  'configExport.passwordTitle': 'Set Export Password',
+  'configExport.passwordDesc': 'This password encrypts sensitive data in the exported file. You will need it when importing.',
+  'configExport.passwordPlaceholder': 'Enter password',
+  'configExport.passwordConfirmPlaceholder': 'Confirm password',
+  'configExport.passwordMismatch': 'Passwords do not match',
+  'configExport.passwordRequired': 'Password is required',
   'configImport.title': 'Import Connections',
   'configImport.description': 'The following connections conflict with existing ones. Choose how to resolve.',
   'configImport.noConflicts': 'No conflicts, will import {count} connections directly',
@@ -111,6 +117,10 @@ const en: Record<TranslationKey, string> = {
   'configImport.success': 'Imported {count} connections',
   'configImport.invalidFile': 'Invalid config file',
   'configImport.failed': 'Import failed',
+  'configImport.passwordTitle': 'Enter Import Password',
+  'configImport.passwordDesc': 'This file is encrypted. Enter the password used during export.',
+  'configImport.passwordPlaceholder': 'Enter password',
+  'configImport.wrongPassword': 'Wrong password, please try again',
 
   // ── Connection Item / Card ──
   'conn.connected': 'Connected',

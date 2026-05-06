@@ -1,4 +1,4 @@
-import { DatabaseBackup, Download, FolderUp, FolderDown, Plus, RefreshCcw } from 'lucide-react';
+import { DatabaseBackup, Download, Plus, RefreshCcw } from 'lucide-react';
 import { cn } from '../../lib/cn';
 import { useI18n } from '../../hooks/useI18n';
 
@@ -7,18 +7,14 @@ export interface ActionPanelProps {
   onBackup: () => void;
   onRestore: () => void;
   onDataSync: () => void;
-  onExportConfig: () => void;
-  onImportConfig: () => void;
 }
 
-export function ActionPanel({ onNewConnection, onBackup, onRestore, onDataSync, onExportConfig, onImportConfig }: ActionPanelProps) {
+export function ActionPanel({ onNewConnection, onBackup, onRestore, onDataSync }: ActionPanelProps) {
   const { t } = useI18n();
   const items = [
     { icon: DatabaseBackup, label: t('action.backup'), action: onBackup },
     { icon: Download, label: t('action.restore'), action: onRestore },
     { icon: RefreshCcw, label: t('action.dataSync'), action: onDataSync },
-    { icon: FolderUp, label: t('action.exportConfig'), action: onExportConfig },
-    { icon: FolderDown, label: t('action.importConfig'), action: onImportConfig },
     { icon: Plus, label: t('action.newConnection'), action: onNewConnection },
   ];
 

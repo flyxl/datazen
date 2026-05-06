@@ -30,6 +30,8 @@ fn menu_labels(lang: &str) -> HashMap<&'static str, &'static str> {
         m.insert("open-settings", "Settings…");
         m.insert("new-connection", "New Connection");
         m.insert("data-sync", "Data Sync");
+        m.insert("export-config", "Export Config…");
+        m.insert("import-config", "Import Config…");
     } else {
         m.insert("edit", "编辑");
         m.insert("view", "显示");
@@ -41,6 +43,8 @@ fn menu_labels(lang: &str) -> HashMap<&'static str, &'static str> {
         m.insert("open-settings", "偏好设置…");
         m.insert("new-connection", "新建连接");
         m.insert("data-sync", "数据同步");
+        m.insert("export-config", "导出配置…");
+        m.insert("import-config", "导入配置…");
     }
     m
 }
@@ -79,6 +83,14 @@ fn build_app_menu(
         .id("data-sync")
         .build(app)?;
 
+    let export_config_item = MenuItemBuilder::new(l["export-config"])
+        .id("export-config")
+        .build(app)?;
+
+    let import_config_item = MenuItemBuilder::new(l["import-config"])
+        .id("import-config")
+        .build(app)?;
+
     let edit_menu = SubmenuBuilder::new(app, l["edit"])
         .undo()
         .redo()
@@ -98,6 +110,9 @@ fn build_app_menu(
     let tools_menu = SubmenuBuilder::new(app, l["tools"])
         .item(&new_conn_item)
         .item(&data_sync_item)
+        .separator()
+        .item(&export_config_item)
+        .item(&import_config_item)
         .build()?;
 
     let window_menu = SubmenuBuilder::new(app, l["window"])
@@ -127,6 +142,8 @@ fn build_app_menu(
             "open-settings" => { let _ = app_handle.emit("menu:open-settings", ()); }
             "new-connection" => { let _ = app_handle.emit("menu:new-connection", ()); }
             "data-sync" => { let _ = app_handle.emit("menu:data-sync", ()); }
+            "export-config" => { let _ = app_handle.emit("menu:export-config", ()); }
+            "import-config" => { let _ = app_handle.emit("menu:import-config", ()); }
             _ => {}
         }
     });
@@ -171,6 +188,14 @@ fn rebuild_menu_for_handle(
         .id("data-sync")
         .build(handle)?;
 
+    let export_config_item = MenuItemBuilder::new(l["export-config"])
+        .id("export-config")
+        .build(handle)?;
+
+    let import_config_item = MenuItemBuilder::new(l["import-config"])
+        .id("import-config")
+        .build(handle)?;
+
     let edit_menu = SubmenuBuilder::new(handle, l["edit"])
         .undo()
         .redo()
@@ -190,6 +215,9 @@ fn rebuild_menu_for_handle(
     let tools_menu = SubmenuBuilder::new(handle, l["tools"])
         .item(&new_conn_item)
         .item(&data_sync_item)
+        .separator()
+        .item(&export_config_item)
+        .item(&import_config_item)
         .build()?;
 
     let window_menu = SubmenuBuilder::new(handle, l["window"])
@@ -219,6 +247,8 @@ fn rebuild_menu_for_handle(
             "open-settings" => { let _ = app_handle.emit("menu:open-settings", ()); }
             "new-connection" => { let _ = app_handle.emit("menu:new-connection", ()); }
             "data-sync" => { let _ = app_handle.emit("menu:data-sync", ()); }
+            "export-config" => { let _ = app_handle.emit("menu:export-config", ()); }
+            "import-config" => { let _ = app_handle.emit("menu:import-config", ()); }
             _ => {}
         }
     });
