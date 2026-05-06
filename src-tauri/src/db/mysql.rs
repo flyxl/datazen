@@ -97,6 +97,92 @@ impl MysqlDriver {
         Ok((columns, pk_names))
     }
 
+    fn quote_identifier(name: &str) -> String {
+        format!("`{}`", name.replace('`', "``"))
+    }
+
+    /// Parse CONSTRAINT ... FOREIGN KEY lines from SHOW CREATE TABLE output.
+    fn parse_fk_from_create_table(create_sql: &str) -> Vec<ForeignKeyInfo> {
+        let mut fks = Vec::new();
+        for line in create_sql.lines() {
+            let trimmed = line.trim();
+            if !trimmed.contains("FOREIGN KEY") {
+                continue;
+            }
+            // Pattern: CONSTRAINT `name` FOREIGN KEY (`cols`) REFERENCES `table` (`cols`) ...
+            let fk_name = Self::extract_backtick_after(trimmed, "CONSTRAINT");
+            let fk_cols = Self::extract_backtick_list_after(trimmed, "FOREIGN KEY");
+            let ref_table = Self::extract_backtick_after(trimmed, "REFERENCES");
+            let ref_cols = Self::extract_backtick_list_after(trimmed, &format!("REFERENCES `{}`", ref_table.replace('`', "``")));
+
+            let on_delete = Self::extract_rule(trimmed, "ON DELETE");
+            let on_update = Self::extract_rule(trimmed, "ON UPDATE");
+
+            if !fk_name.is_empty() && !fk_cols.is_empty() {
+                fks.push(ForeignKeyInfo {
+                    name: fk_name,
+                    columns: fk_cols,
+                    referenced_table: ref_table,
+                    referenced_columns: ref_cols,
+                    on_delete,
+                    on_update,
+                });
+            }
+        }
+        fks.sort_by(|a, b| a.name.cmp(&b.name));
+        fks
+    }
+
+    /// Extract the first backtick-quoted identifier after a keyword.
+    fn extract_backtick_after(s: &str, keyword: &str) -> String {
+        if let Some(pos) = s.find(keyword) {
+            let after = &s[pos + keyword.len()..];
+            if let Some(start) = after.find('`') {
+                let inner = &after[start + 1..];
+                if let Some(end) = inner.find('`') {
+                    return inner[..end].to_string();
+                }
+            }
+        }
+        String::new()
+    }
+
+    /// Extract a parenthesized list of backtick-quoted identifiers after a keyword.
+    fn extract_backtick_list_after(s: &str, keyword: &str) -> Vec<String> {
+        if let Some(pos) = s.find(keyword) {
+            let after = &s[pos + keyword.len()..];
+            if let Some(paren_start) = after.find('(') {
+                let inner = &after[paren_start + 1..];
+                if let Some(paren_end) = inner.find(')') {
+                    let list_str = &inner[..paren_end];
+                    return list_str
+                        .split(',')
+                        .filter_map(|part| {
+                            let t = part.trim();
+                            if t.starts_with('`') && t.ends_with('`') && t.len() >= 2 {
+                                Some(t[1..t.len() - 1].to_string())
+                            } else {
+                                None
+                            }
+                        })
+                        .collect();
+                }
+            }
+        }
+        Vec::new()
+    }
+
+    fn extract_rule(s: &str, keyword: &str) -> String {
+        if let Some(pos) = s.find(keyword) {
+            let after = s[pos + keyword.len()..].trim_start();
+            let rule = after.split(|c: char| c == ',' || c == ')' || c == '\n').next().unwrap_or("").trim();
+            if !rule.is_empty() {
+                return rule.to_uppercase();
+            }
+        }
+        "RESTRICT".to_string()
+    }
+
     fn safe_integer(v: i64) -> Value {
         if v > JS_MAX_SAFE_INT || v < JS_MIN_SAFE_INT {
             Value::String(v.to_string())
@@ -430,77 +516,68 @@ impl DatabaseDriver for MysqlDriver {
         let pools = self.pools.read().await;
         let pool = Self::get_pool(&pools, handle)?;
 
-        let current_db = Self::current_database(pool).await?;
-        let (columns, pk_names) = Self::fetch_columns_with_db(pool, &current_db, table).await?;
-        tracing::info!(%table, cols = columns.len(), ms = t0.elapsed().as_millis() as u64, "mysql get_table_schema: columns fetched");
+        let q = Self::quote_identifier(table);
 
-        // Run indexes and foreign keys in parallel
-        let table_owned = table.to_string();
-        let db_for_idx = current_db.clone();
-        let db_for_fk = current_db.clone();
-        let tbl_for_idx = table_owned.clone();
-        let tbl_for_fk = table_owned.clone();
-
-        let t_parallel = std::time::Instant::now();
-
-        let (idx_rows, fk_rows) = tokio::try_join!(
+        // All three queries in parallel using fast SHOW commands instead of information_schema
+        let (col_rows, idx_rows, create_row) = tokio::try_join!(
             async {
-                sqlx::query(
-                    r#"
-                    SELECT INDEX_NAME, COLUMN_NAME, NON_UNIQUE, INDEX_TYPE, SEQ_IN_INDEX
-                    FROM information_schema.STATISTICS
-                    WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
-                    ORDER BY INDEX_NAME, SEQ_IN_INDEX
-                    "#,
-                )
-                .bind(&db_for_idx)
-                .bind(&tbl_for_idx)
-                .fetch_all(pool)
-                .await
-                .map_err(|e| DriverError::QueryFailed(e.to_string()))
+                sqlx::query(&format!("SHOW FULL COLUMNS FROM {}", q))
+                    .fetch_all(pool)
+                    .await
+                    .map_err(|e| DriverError::QueryFailed(e.to_string()))
             },
             async {
-                // Tighter FK query: also constrain rc by TABLE_NAME to reduce scan scope
-                sqlx::query(
-                    r#"
-                    SELECT
-                        kcu.CONSTRAINT_NAME,
-                        kcu.COLUMN_NAME,
-                        kcu.REFERENCED_TABLE_NAME,
-                        kcu.REFERENCED_COLUMN_NAME,
-                        kcu.ORDINAL_POSITION,
-                        rc.UPDATE_RULE,
-                        rc.DELETE_RULE
-                    FROM information_schema.KEY_COLUMN_USAGE kcu
-                    JOIN information_schema.REFERENTIAL_CONSTRAINTS rc
-                      ON rc.CONSTRAINT_NAME = kcu.CONSTRAINT_NAME
-                     AND rc.CONSTRAINT_SCHEMA = kcu.TABLE_SCHEMA
-                     AND rc.TABLE_NAME = kcu.TABLE_NAME
-                    WHERE kcu.TABLE_SCHEMA = ?
-                      AND kcu.TABLE_NAME = ?
-                      AND kcu.REFERENCED_TABLE_NAME IS NOT NULL
-                    ORDER BY kcu.CONSTRAINT_NAME, kcu.ORDINAL_POSITION
-                    "#,
-                )
-                .bind(&db_for_fk)
-                .bind(&tbl_for_fk)
-                .fetch_all(pool)
-                .await
-                .map_err(|e| DriverError::QueryFailed(e.to_string()))
+                sqlx::query(&format!("SHOW INDEX FROM {}", q))
+                    .fetch_all(pool)
+                    .await
+                    .map_err(|e| DriverError::QueryFailed(e.to_string()))
+            },
+            async {
+                sqlx::query(&format!("SHOW CREATE TABLE {}", q))
+                    .fetch_one(pool)
+                    .await
+                    .map_err(|e| DriverError::QueryFailed(e.to_string()))
             }
         )?;
 
-        tracing::info!(%table, idx_rows = idx_rows.len(), fk_rows = fk_rows.len(),
-            ms = t_parallel.elapsed().as_millis() as u64,
-            "mysql get_table_schema: indexes+fk parallel fetch done");
+        tracing::info!(%table, col_rows = col_rows.len(), idx_rows = idx_rows.len(),
+            ms = t0.elapsed().as_millis() as u64,
+            "mysql get_table_schema: SHOW queries done");
 
-        // ── process indexes ──
+        // ── columns from SHOW FULL COLUMNS ──
+        let mut pk_names: Vec<String> = Vec::new();
+        let columns: Vec<ColumnSchema> = col_rows
+            .iter()
+            .map(|r| {
+                let name: String = r.get("Field");
+                let col_type: String = r.get("Type");
+                let nullable: String = r.get("Null");
+                let key: String = r.try_get::<String, _>("Key").unwrap_or_default();
+                let extra: String = r.try_get::<String, _>("Extra").unwrap_or_default();
+                let comment: Option<String> = r.try_get::<String, _>("Comment").ok().filter(|s| !s.is_empty());
+                let is_pk = key == "PRI";
+                if is_pk {
+                    pk_names.push(name.clone());
+                }
+                ColumnSchema {
+                    is_primary_key: is_pk,
+                    name,
+                    data_type: col_type,
+                    nullable: nullable == "YES",
+                    default_value: r.try_get("Default").ok(),
+                    comment,
+                    is_auto_increment: extra.contains("auto_increment"),
+                }
+            })
+            .collect();
+
+        // ── indexes from SHOW INDEX ──
         let mut idx_map: HashMap<String, IndexInfo> = HashMap::new();
         for r in &idx_rows {
-            let idx_name: String = r.get("INDEX_NAME");
-            let col_name: String = r.get("COLUMN_NAME");
-            let non_unique: i32 = r.try_get::<i32, _>("NON_UNIQUE").unwrap_or(1);
-            let idx_type: String = r.get("INDEX_TYPE");
+            let idx_name: String = r.get("Key_name");
+            let col_name: String = r.get("Column_name");
+            let non_unique: i64 = r.try_get::<i64, _>("Non_unique").unwrap_or(1);
+            let idx_type: String = r.try_get::<String, _>("Index_type").unwrap_or_default();
 
             let entry = idx_map.entry(idx_name.clone()).or_insert_with(|| IndexInfo {
                 name: idx_name.clone(),
@@ -517,31 +594,11 @@ impl DatabaseDriver for MysqlDriver {
             b.is_primary.cmp(&a.is_primary).then(a.name.cmp(&b.name))
         });
 
-        // ── process foreign keys ──
-        let mut fk_map: HashMap<String, ForeignKeyInfo> = HashMap::new();
-        for r in &fk_rows {
-            let fk_name: String = r.get("CONSTRAINT_NAME");
-            let col: String = r.get("COLUMN_NAME");
-            let ref_table: String = r.get("REFERENCED_TABLE_NAME");
-            let ref_col: String = r.get("REFERENCED_COLUMN_NAME");
-            let update_rule: String = r.get("UPDATE_RULE");
-            let delete_rule: String = r.get("DELETE_RULE");
+        // ── foreign keys parsed from SHOW CREATE TABLE output ──
+        let create_sql: String = create_row.try_get(1).unwrap_or_default();
+        let foreign_keys = Self::parse_fk_from_create_table(&create_sql);
 
-            let entry = fk_map.entry(fk_name.clone()).or_insert_with(|| ForeignKeyInfo {
-                name: fk_name,
-                columns: Vec::new(),
-                referenced_table: ref_table,
-                referenced_columns: Vec::new(),
-                on_update: update_rule,
-                on_delete: delete_rule,
-            });
-            entry.columns.push(col);
-            entry.referenced_columns.push(ref_col);
-        }
-
-        let mut foreign_keys: Vec<ForeignKeyInfo> = fk_map.into_values().collect();
-        foreign_keys.sort_by(|a, b| a.name.cmp(&b.name));
-        tracing::info!(%table, indexes = indexes.len(), fks = foreign_keys.len(),
+        tracing::info!(%table, cols = columns.len(), indexes = indexes.len(), fks = foreign_keys.len(),
             total_ms = t0.elapsed().as_millis() as u64, "mysql get_table_schema: complete");
 
         Ok(TableSchema {
