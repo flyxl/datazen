@@ -511,6 +511,54 @@ pub async fn save_settings(state: State<'_, AppState>, settings: AppSettings) ->
 }
 
 #[tauri::command]
+pub async fn export_connections(
+    state: State<'_, AppState>,
+    path: String,
+) -> Result<u32, String> {
+    tracing::info!(%path, "export_connections");
+    let connections = state.store.get_connections().await;
+    let groups = state.store.get_groups().await;
+    let count = connections.len() as u32;
+
+    let export_data = serde_json::json!({
+        "version": 1,
+        "exportedAt": chrono::Utc::now().to_rfc3339(),
+        "app": "DataZen",
+        "connections": connections,
+        "groups": groups,
+    });
+
+    let json = serde_json::to_string_pretty(&export_data)
+        .map_err(|e| log_err("export_connections", &e))?;
+
+    tokio::fs::write(PathBuf::from(&path), json.as_bytes())
+        .await
+        .map_err(|e| log_err("export_connections", &e))?;
+
+    tracing::info!(%path, count, "export_connections OK");
+    Ok(count)
+}
+
+#[tauri::command]
+pub async fn import_connections_preview(
+    path: String,
+) -> Result<serde_json::Value, String> {
+    tracing::info!(%path, "import_connections_preview");
+    let content = tokio::fs::read_to_string(PathBuf::from(&path))
+        .await
+        .map_err(|e| log_err("import_connections_preview", &e))?;
+
+    let data: serde_json::Value = serde_json::from_str(&content)
+        .map_err(|e| log_err("import_connections_preview", &e))?;
+
+    if !data.get("connections").is_some() {
+        return Err("Invalid import file: missing 'connections' field".to_string());
+    }
+
+    Ok(data)
+}
+
+#[tauri::command]
 pub async fn write_file(path: String, contents: String) -> Result<(), String> {
     let p = PathBuf::from(&path);
     tokio::fs::write(&p, contents.as_bytes())

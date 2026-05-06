@@ -26,4 +26,9 @@ export const connectionCommands = {
   getGroups: () => invoke<string[]>('get_groups'),
 
   saveGroups: (groups: string[]) => invoke<void>('save_groups', { groups }),
+
+  exportConnections: (path: string) => invoke<number>('export_connections', { path }),
+
+  importConnectionsPreview: (path: string) =>
+    invoke<{ connections: ConnectionConfig[]; groups: string[] }>('import_connections_preview', { path }),
 };

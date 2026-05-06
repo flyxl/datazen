@@ -90,6 +90,27 @@ const en: Record<TranslationKey, string> = {
   'action.restore': 'Restore Database…',
   'action.dataSync': 'Data Sync…',
   'action.newConnection': 'New Connection…',
+  'action.exportConfig': 'Export Config…',
+  'action.importConfig': 'Import Config…',
+
+  // ── Config Import / Export ──
+  'configExport.success': 'Exported {count} connections',
+  'configExport.failed': 'Export failed',
+  'configImport.title': 'Import Connections',
+  'configImport.description': 'The following connections conflict with existing ones. Choose how to resolve.',
+  'configImport.noConflicts': 'No conflicts, will import {count} connections directly',
+  'configImport.conflict': 'Conflict',
+  'configImport.new': 'New',
+  'configImport.skip': 'Skip',
+  'configImport.overwrite': 'Overwrite',
+  'configImport.keepBoth': 'Keep Both',
+  'configImport.existing': 'Existing',
+  'configImport.incoming': 'Incoming',
+  'configImport.applyAll': 'All',
+  'configImport.importing': 'Importing…',
+  'configImport.success': 'Imported {count} connections',
+  'configImport.invalidFile': 'Invalid config file',
+  'configImport.failed': 'Import failed',
 
   // ── Connection Item / Card ──
   'conn.connected': 'Connected',

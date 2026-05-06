@@ -88,6 +88,27 @@ const zhCN = {
   'action.restore': '恢复数据库…',
   'action.dataSync': '数据同步…',
   'action.newConnection': '新建连接…',
+  'action.exportConfig': '导出配置…',
+  'action.importConfig': '导入配置…',
+
+  // ── Config Import / Export ──
+  'configExport.success': '已导出 {count} 个连接配置',
+  'configExport.failed': '导出失败',
+  'configImport.title': '导入连接配置',
+  'configImport.description': '以下连接与现有配置存在冲突，请选择处理方式',
+  'configImport.noConflicts': '没有冲突，将直接导入 {count} 个连接',
+  'configImport.conflict': '冲突',
+  'configImport.new': '新增',
+  'configImport.skip': '跳过',
+  'configImport.overwrite': '覆盖',
+  'configImport.keepBoth': '保留两者',
+  'configImport.existing': '现有',
+  'configImport.incoming': '导入',
+  'configImport.applyAll': '全部',
+  'configImport.importing': '导入中…',
+  'configImport.success': '成功导入 {count} 个连接',
+  'configImport.invalidFile': '无效的配置文件',
+  'configImport.failed': '导入失败',
 
   // ── Connection Item / Card ──
   'conn.connected': '已连接',

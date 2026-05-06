@@ -334,6 +334,8 @@ pub fn run() {
             commands::clear_query_history,
             commands::get_settings,
             commands::save_settings,
+            commands::export_connections,
+            commands::import_connections_preview,
             commands::write_file,
             commands::read_file,
             commands::backup_database,

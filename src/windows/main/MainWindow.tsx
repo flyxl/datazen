@@ -26,6 +26,8 @@ import { ThemeToggle } from '../../components/ThemeToggle';
 import { useI18n } from '../../hooks/useI18n';
 import { ActionPanel } from './ActionPanel';
 import { ConnectionItem } from './ConnectionItem';
+import { ImportConfigDialog } from './ImportConfigDialog';
+import { connectionCommands } from '../../commands/connection';
 import type { ConnectionConfig } from '../../types';
 
 // ─── Main Window ────────────────────────────────────────────────────
@@ -71,6 +73,10 @@ export function MainWindow() {
   // New group dialog state
   const [newGroupDialogOpen, setNewGroupDialogOpen] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
+
+  // Import config dialog state
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [importData, setImportData] = useState<{ connections: ConnectionConfig[]; groups: string[] } | null>(null);
 
   // ── Pointer-based drag state ──
   const [draggingConnId, setDraggingConnId] = useState<string | null>(null);
@@ -348,6 +354,55 @@ export function MainWindow() {
     setRenamingGroup(null);
   }, [renamingGroup, renameValue, renameGroup]);
 
+  // ── Export / Import config handlers ──
+
+  const handleExportConfig = useCallback(async () => {
+    try {
+      const { save } = await import('@tauri-apps/plugin-dialog');
+      const path = await save({
+        title: t('action.exportConfig'),
+        defaultPath: `datazen-config-${new Date().toISOString().slice(0, 10)}.json`,
+        filters: [{ name: 'JSON', extensions: ['json'] }],
+      });
+      if (!path) return;
+      const count = await connectionCommands.exportConnections(path);
+      setErrorMessage(t('configExport.success', { count }));
+      setErrorDialogOpen(true);
+    } catch (e) {
+      setErrorMessage(e instanceof Error ? e.message : String(e));
+      setErrorDialogOpen(true);
+    }
+  }, [t]);
+
+  const handleImportConfig = useCallback(async () => {
+    try {
+      const { open } = await import('@tauri-apps/plugin-dialog');
+      const path = await open({
+        title: t('action.importConfig'),
+        filters: [{ name: 'JSON', extensions: ['json'] }],
+        multiple: false,
+      });
+      if (!path) return;
+      const filePath = typeof path === 'string' ? path : (path as unknown as string);
+      const data = await connectionCommands.importConnectionsPreview(filePath);
+      if (!data.connections || !Array.isArray(data.connections)) {
+        setErrorMessage(t('configImport.invalidFile'));
+        setErrorDialogOpen(true);
+        return;
+      }
+      setImportData(data as { connections: ConnectionConfig[]; groups: string[] });
+      setImportDialogOpen(true);
+    } catch (e) {
+      setErrorMessage(e instanceof Error ? e.message : String(e));
+      setErrorDialogOpen(true);
+    }
+  }, [t]);
+
+  const handleImportResult = useCallback((message: string) => {
+    setErrorMessage(message);
+    setErrorDialogOpen(true);
+  }, []);
+
   // ── Backup / Restore handlers ──
 
   const handleRestore = useCallback(async () => {
@@ -420,6 +475,8 @@ export function MainWindow() {
             onBackup={() => openBackupWindow()}
             onRestore={() => void handleRestore()}
             onDataSync={() => openDataSyncWindow()}
+            onExportConfig={() => void handleExportConfig()}
+            onImportConfig={() => void handleImportConfig()}
           />
         </aside>
         <div
@@ -612,6 +669,14 @@ export function MainWindow() {
       >
         <p className="whitespace-pre-wrap break-all text-sm text-fg-secondary">{errorMessage}</p>
       </Dialog>
+
+      {/* ── Import config dialog ── */}
+      <ImportConfigDialog
+        open={importDialogOpen}
+        onClose={() => setImportDialogOpen(false)}
+        importData={importData}
+        onResult={handleImportResult}
+      />
 
       {/* ── Status bar ── */}
       <StatusBar
