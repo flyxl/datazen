@@ -316,8 +316,16 @@ pub async fn get_table_schema(
         .await
         .map_err(|e| log_err("get_table_schema", &e))?;
 
-    let schema = driver
-        .get_table_schema(&handle, &table)
+    let config = state
+        .connection_manager
+        .get_connection_config(&connection_id)
+        .await
+        .map_err(|e| log_err("get_table_schema", &e))?;
+    let database = config.database.as_deref().unwrap_or("default");
+
+    let schema = state
+        .schema_cache
+        .get_table_schema(&connection_id, database, &table, &driver, &handle)
         .await
         .map_err(|e| log_err("get_table_schema", &e))?;
     tracing::info!(%connection_id, %table, cols = schema.columns.len(), indexes = schema.indexes.len(), fks = schema.foreign_keys.len(), ms = start.elapsed().as_millis() as u64, "get_table_schema OK");

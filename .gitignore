@@ -19,7 +19,9 @@ build-logs/
 updater-keys/
 
 # Code signing certificates (keep private)
+.certs/
 *.p12
+*.pfx
 *.pem
 *.key
 !public.key

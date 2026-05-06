@@ -65,7 +65,10 @@ describe('主窗口 (CM-001)', () => {
 
   it('连接项应显示数据库类型图标和名称', async () => {
     await browser.waitUntil(
-      async () => (await $('body').getText()).includes('Pg') || (await $('body').getText()).includes('My'),
+      async () => {
+        const body = await $('body').getText();
+        return body.includes('Pg') || body.includes('My') || body.includes('SL') || body.includes('Rd');
+      },
       { timeout: 10000, timeoutMsg: '等待数据库类型图标加载超时' },
     );
   });

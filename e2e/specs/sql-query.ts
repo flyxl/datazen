@@ -8,7 +8,7 @@ import {
 
 /**
  * SQL query module tests.
- * Requires the seeded "本地 PostgreSQL" connection to be available.
+ * Requires a PostgreSQL connection (seeded by wdio.conf.ts before hook).
  */
 describe('SQL 查询模块 (SQ-001~SQ-012)', () => {
   let mainWindow: string;

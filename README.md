@@ -15,7 +15,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/prototypes/connection-window-data-tab.svg" width="720" alt="DataZen Connection Window" />
+  <img src="docs/screenshots/connection-window.png" width="720" alt="DataZen 数据浏览" />
 </p>
 
 ---
@@ -34,12 +34,12 @@
 - **暗色主题** — 原生暗色 UI，护眼舒适
 
 <p align="center">
-  <img src="docs/prototypes/main-window.svg" width="360" alt="Main Window" />
-  <img src="docs/prototypes/new-connection-dialog.svg" width="360" alt="New Connection" />
+  <img src="docs/screenshots/main-window.png" width="360" alt="主窗口" />
+  <img src="docs/screenshots/new-connection.png" width="360" alt="新建连接" />
 </p>
 <p align="center">
-  <img src="docs/prototypes/query-window.svg" width="360" alt="Query Editor" />
-  <img src="docs/prototypes/table-data-editor.svg" width="360" alt="Table Editor" />
+  <img src="docs/screenshots/query-editor.png" width="360" alt="SQL 编辑器" />
+  <img src="docs/screenshots/redis-view.png" width="360" alt="Redis 视图" />
 </p>
 
 ---
@@ -69,10 +69,22 @@
 
 | 平台 | 格式 |
 |------|------|
-| macOS (Apple Silicon) | `.dmg` |
-| macOS (Intel) | `.dmg` |
-| Windows | `.exe` (NSIS) / `.msi` |
-| Linux | `.deb` / `.rpm` / `.AppImage` |
+| macOS (Apple Silicon) | `.dmg` (文件名含 `macos-arm64`) |
+| macOS (Intel) | `.dmg` (文件名含 `macos-x64`) |
+| Windows | `.exe` / `.msi` (文件名含 `windows-x64`) |
+| Linux | `.deb` / `.rpm` / `.AppImage` (文件名含 `linux-x64`) |
+
+### macOS 首次打开
+
+由于应用未经过 Apple 公证（免费开源项目），首次打开时可能提示"已损坏"或"无法验证"。
+
+**解决方法**：安装后在终端运行：
+
+```bash
+xattr -cr /Applications/DataZen.app
+```
+
+然后正常双击打开即可。
 
 ---
 

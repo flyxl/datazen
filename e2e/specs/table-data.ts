@@ -10,7 +10,7 @@ import {
 
 /**
  * Table data view tests: pagination, sorting, column resize.
- * Requires the seeded "本地 PostgreSQL" connection.
+ * Requires a PostgreSQL connection (seeded by wdio.conf.ts before hook).
  */
 
 const TEST_TABLE = '_e2e_data_view_test';

@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif; background: #0f1219; color: #e2e8f0; }
+  
+  /* Main Window */
+  .main-window {
+    width: 680px; height: 480px; background: #131820; border-radius: 12px; overflow: hidden;
+    display: flex; flex-direction: column; border: 1px solid #1e293b;
+  }
+  .titlebar {
+    height: 38px; display: flex; align-items: center; padding: 0 16px; background: #0f1219;
+    border-bottom: 1px solid #1e293b; -webkit-app-region: drag;
+  }
+  .traffic-lights { display: flex; gap: 8px; }
+  .traffic-light { width: 12px; height: 12px; border-radius: 50%; }
+  .tl-red { background: #ff5f57; }
+  .tl-yellow { background: #febc2e; }
+  .tl-green { background: #28c840; }
+  .titlebar-title { flex: 1; text-align: center; font-size: 13px; color: #94a3b8; }
+  
+  .main-body { display: flex; flex: 1; min-height: 0; }
+  .sidebar { width: 200px; background: #0f1219; border-right: 1px solid #1e293b; display: flex; flex-direction: column; padding: 12px; }
+  .sidebar-btn { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 8px; font-size: 13px; color: #94a3b8; cursor: pointer; border: none; background: none; width: 100%; text-align: left; }
+  .sidebar-btn:hover { background: #1e293b; }
+  .sidebar-btn.primary { color: #38bdf8; }
+  .sidebar-icon { width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; font-size: 14px; }
+  
+  .content { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  .search-bar { padding: 8px 12px; border-bottom: 1px solid #1e293b; }
+  .search-input { width: 100%; background: #1e293b; border: 1px solid #334155; border-radius: 6px; padding: 6px 10px; color: #e2e8f0; font-size: 13px; outline: none; }
+  
+  .conn-list { flex: 1; overflow-y: auto; padding: 8px 0; }
+  .group-header { padding: 4px 12px; font-size: 11px; color: #64748b; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; display: flex; align-items: center; gap: 6px; }
+  .group-chevron { font-size: 10px; }
+  
+  .conn-item { display: flex; align-items: center; gap: 10px; padding: 8px 12px; cursor: pointer; border-radius: 6px; margin: 1px 8px; }
+  .conn-item:hover { background: #1e293b; }
+  .conn-badge { width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: white; flex-shrink: 0; }
+  .badge-pg { background: #3b82f6; }
+  .badge-my { background: #f59e0b; }
+  .badge-rd { background: #ef4444; }
+  .badge-sl { background: #22c55e; }
+  .conn-info { flex: 1; min-width: 0; }
+  .conn-name { font-size: 13px; font-weight: 500; color: #e2e8f0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .conn-detail { font-size: 11px; color: #64748b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .conn-tag { width: 4px; height: 32px; border-radius: 2px; flex-shrink: 0; }
+  .tag-blue { background: #3b82f6; }
+  .tag-green { background: #22c55e; }
+  .tag-red { background: #ef4444; }
+  .tag-yellow { background: #f59e0b; }
+  
+  .statusbar { height: 24px; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; background: #0f1219; border-top: 1px solid #1e293b; font-size: 11px; color: #475569; }
+  
+  /* Connection Window */
+  .conn-window {
+    width: 960px; height: 600px; background: #131820; border-radius: 12px; overflow: hidden;
+    display: flex; flex-direction: column; border: 1px solid #1e293b;
+  }
+  .conn-window .toolbar { display: flex; align-items: center; gap: 8px; padding: 8px 16px; border-bottom: 1px solid #1e293b; background: #0f1219; }
+  .tool-btn { padding: 5px 12px; border-radius: 6px; font-size: 12px; color: #94a3b8; background: #1e293b; border: 1px solid #334155; cursor: pointer; display: flex; align-items: center; gap: 4px; }
+  .tool-btn.active { background: #38bdf8; color: #0f1219; border-color: #38bdf8; }
+  
+  .conn-body { display: flex; flex: 1; min-height: 0; }
+  .schema-tree { width: 220px; background: #0f1219; border-right: 1px solid #1e293b; display: flex; flex-direction: column; }
+  .schema-search { padding: 8px; }
+  .tree-list { flex: 1; overflow-y: auto; padding: 4px 0; }
+  .tree-section { padding: 4px 12px; font-size: 11px; color: #64748b; font-weight: 600; display: flex; align-items: center; gap: 4px; }
+  .tree-item { padding: 4px 12px 4px 24px; font-size: 13px; color: #94a3b8; cursor: pointer; display: flex; align-items: center; gap: 6px; }
+  .tree-item:hover { background: #1e293b; }
+  .tree-item.active { background: #1e293b; color: #e2e8f0; }
+  .tree-icon { font-size: 12px; }
+  
+  .data-panel { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .tab-bar { display: flex; border-bottom: 1px solid #1e293b; background: #0f1219; }
+  .tab-item { padding: 8px 16px; font-size: 13px; color: #64748b; cursor: pointer; border-bottom: 2px solid transparent; }
+  .tab-item.active { color: #38bdf8; border-bottom-color: #38bdf8; }
+  
+  .data-table { flex: 1; overflow: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead { position: sticky; top: 0; z-index: 1; }
+  th { background: #0f1219; padding: 8px 12px; text-align: left; font-weight: 500; color: #94a3b8; border-bottom: 1px solid #1e293b; white-space: nowrap; }
+  td { padding: 6px 12px; border-bottom: 1px solid #1a2030; color: #cbd5e1; white-space: nowrap; }
+  tr:hover td { background: #1a2030; }
+  .null-val { color: #64748b; font-style: italic; }
+  .num-val { color: #a78bfa; }
+  .str-val { color: #34d399; }
+  .date-val { color: #fb923c; }
+  
+  .data-footer { display: flex; align-items: center; justify-content: space-between; padding: 6px 12px; border-top: 1px solid #1e293b; background: #0f1219; font-size: 12px; color: #64748b; }
+  .pagination { display: flex; align-items: center; gap: 8px; }
+  .page-btn { padding: 2px 8px; background: #1e293b; border: 1px solid #334155; border-radius: 4px; color: #94a3b8; font-size: 11px; cursor: pointer; }
+  
+  /* New Connection Window */
+  .new-conn-window {
+    width: 720px; height: 520px; background: #131820; border-radius: 12px; overflow: hidden;
+    display: flex; flex-direction: column; border: 1px solid #1e293b;
+  }
+  .new-conn-body { flex: 1; display: flex; flex-direction: column; padding: 20px 32px; overflow-y: auto; }
+  .section-title { font-size: 14px; font-weight: 600; color: #e2e8f0; margin-bottom: 12px; }
+  .section-subtitle { font-size: 12px; color: #64748b; margin-bottom: 16px; }
+  .db-types { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
+  .db-type-btn { padding: 6px 14px; border-radius: 6px; font-size: 13px; border: 1px solid #334155; background: #1e293b; color: #94a3b8; cursor: pointer; display: flex; align-items: center; gap: 6px; }
+  .db-type-btn.selected { background: #38bdf8; color: #0f1219; border-color: #38bdf8; }
+  .form-row { display: flex; gap: 12px; margin-bottom: 12px; }
+  .form-group { flex: 1; }
+  .form-label { font-size: 12px; color: #94a3b8; margin-bottom: 4px; }
+  .form-input { width: 100%; background: #1e293b; border: 1px solid #334155; border-radius: 6px; padding: 7px 10px; color: #e2e8f0; font-size: 13px; outline: none; }
+  .form-input:focus { border-color: #38bdf8; }
+  .form-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 16px 32px; border-top: 1px solid #1e293b; }
+  .btn { padding: 7px 20px; border-radius: 6px; font-size: 13px; cursor: pointer; border: none; }
+  .btn-secondary { background: #1e293b; color: #94a3b8; }
+  .btn-outline { background: transparent; border: 1px solid #334155; color: #94a3b8; }
+  .btn-primary { background: #38bdf8; color: #0f1219; font-weight: 500; }
+  
+  /* Query Window */
+  .query-area { display: flex; flex-direction: column; flex: 1; }
+  .editor-area { height: 160px; background: #0f1219; border-bottom: 1px solid #1e293b; padding: 12px; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 13px; color: #e2e8f0; line-height: 1.5; }
+  .sql-keyword { color: #c084fc; font-weight: 600; }
+  .sql-string { color: #34d399; }
+  .sql-number { color: #a78bfa; }
+  .sql-func { color: #fbbf24; }
+  .sql-comment { color: #64748b; font-style: italic; }
+  .line-num { color: #475569; display: inline-block; width: 28px; text-align: right; margin-right: 12px; user-select: none; }
+  .result-area { flex: 1; display: flex; flex-direction: column; }
+  .result-header { display: flex; align-items: center; gap: 12px; padding: 8px 12px; background: #0f1219; border-bottom: 1px solid #1e293b; font-size: 12px; color: #64748b; }
+  .result-badge { padding: 2px 8px; border-radius: 4px; font-size: 11px; }
+  .result-success { background: #166534; color: #4ade80; }
+  
+  /* Redis View */
+  .redis-sidebar { width: 220px; background: #0f1219; border-right: 1px solid #1e293b; }
+  .redis-db-list { padding: 8px 0; }
+  .redis-db { padding: 6px 12px; font-size: 13px; color: #94a3b8; cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
+  .redis-db:hover { background: #1e293b; }
+  .redis-db.active { background: #1e293b; color: #ef4444; }
+  .redis-count { font-size: 11px; color: #64748b; background: #1e293b; padding: 1px 6px; border-radius: 4px; }
+  .redis-keys { flex: 1; display: flex; flex-direction: column; }
+  .key-item { display: flex; align-items: center; gap: 8px; padding: 6px 12px; font-size: 13px; color: #cbd5e1; cursor: pointer; }
+  .key-item:hover { background: #1a2030; }
+  .key-type { font-size: 10px; padding: 1px 4px; border-radius: 3px; font-weight: 600; }
+  .type-string { background: #166534; color: #4ade80; }
+  .type-hash { background: #7c2d12; color: #fb923c; }
+  .type-list { background: #1e3a5f; color: #60a5fa; }
+  .type-set { background: #4c1d95; color: #c084fc; }
+  .type-zset { background: #713f12; color: #fbbf24; }
+  .key-name { flex: 1; font-family: 'SF Mono', monospace; overflow: hidden; text-overflow: ellipsis; }
+  .key-ttl { font-size: 11px; color: #64748b; }
+  
+  .page-wrapper { display: flex; flex-direction: column; align-items: center; gap: 40px; padding: 40px; }
+  .screenshot-label { font-size: 14px; color: #64748b; text-align: center; margin-bottom: 8px; }
+</style>
+</head>
+<body>
+<div class="page-wrapper">
+
+<!-- Screenshot 1: Main Window -->
+<div id="main-window">
+<div class="main-window">
+  <div class="titlebar">
+    <div class="traffic-lights"><div class="traffic-light tl-red"></div><div class="traffic-light tl-yellow"></div><div class="traffic-light tl-green"></div></div>
+    <div class="titlebar-title">DataZen</div>
+  </div>
+  <div class="main-body">
+    <div class="sidebar">
+      <div class="sidebar-btn primary">＋ 新建连接…</div>
+      <div style="height:8px"></div>
+      <div class="sidebar-btn">📦 备份数据库</div>
+      <div class="sidebar-btn">📥 恢复数据库</div>
+      <div class="sidebar-btn">🔄 数据同步</div>
+      <div style="flex:1"></div>
+      <div class="sidebar-btn">⚙ 设置</div>
+    </div>
+    <div class="content">
+      <div class="search-bar">
+        <input class="search-input" value="查找连接…" readonly>
+      </div>
+      <div class="conn-list">
+        <div class="group-header"><span class="group-chevron">▼</span> 生产环境</div>
+        <div class="conn-item">
+          <div class="conn-tag tag-blue"></div>
+          <div class="conn-badge badge-pg">Pg</div>
+          <div class="conn-info"><div class="conn-name">主数据库 (PostgreSQL)</div><div class="conn-detail">prod-db.example.com:5432 • appdb</div></div>
+        </div>
+        <div class="conn-item">
+          <div class="conn-tag tag-red"></div>
+          <div class="conn-badge badge-rd">Rd</div>
+          <div class="conn-info"><div class="conn-name">缓存服务 (Redis)</div><div class="conn-detail">redis.example.com:6379</div></div>
+        </div>
+        <div class="group-header"><span class="group-chevron">▼</span> 测试环境</div>
+        <div class="conn-item">
+          <div class="conn-tag tag-yellow"></div>
+          <div class="conn-badge badge-my">My</div>
+          <div class="conn-info"><div class="conn-name">MySQL 测试库</div><div class="conn-detail">test-db.example.com:3306 • testdb</div></div>
+        </div>
+        <div class="conn-item">
+          <div class="conn-tag tag-green"></div>
+          <div class="conn-badge badge-sl">SL</div>
+          <div class="conn-info"><div class="conn-name">本地 SQLite</div><div class="conn-detail">/data/app.sqlite</div></div>
+        </div>
+        <div class="group-header"><span class="group-chevron">▼</span> 开发环境</div>
+        <div class="conn-item">
+          <div class="conn-tag tag-blue"></div>
+          <div class="conn-badge badge-pg">Pg</div>
+          <div class="conn-info"><div class="conn-name">本地 PostgreSQL</div><div class="conn-detail">localhost:5432 • devdb</div></div>
+        </div>
+        <div class="conn-item">
+          <div class="conn-tag tag-yellow"></div>
+          <div class="conn-badge badge-my">My</div>
+          <div class="conn-info"><div class="conn-name">Docker MySQL</div><div class="conn-detail">localhost:3306 • myapp</div></div>
+        </div>
+      </div>
+      <div class="statusbar">
+        <span>6 个连接</span>
+        <span>DataZen v0.0.1</span>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- Screenshot 2: Connection Window (Data Browse) -->
+<div id="connection-window">
+<div class="conn-window">
+  <div class="titlebar">
+    <div class="traffic-lights"><div class="traffic-light tl-red"></div><div class="traffic-light tl-yellow"></div><div class="traffic-light tl-green"></div></div>
+    <div class="titlebar-title">主数据库 — PostgreSQL</div>
+  </div>
+  <div class="toolbar">
+    <div class="tool-btn">↻ 刷新</div>
+    <div class="tool-btn active">＋ 新建查询</div>
+    <div class="tool-btn">＋ 新建表</div>
+    <div style="flex:1"></div>
+    <div style="display:flex; align-items:center; gap:6px; font-size:12px; color:#4ade80;">● 已连接 <span style="color:#64748b">PostgreSQL 16.2</span></div>
+  </div>
+  <div class="conn-body">
+    <div class="schema-tree">
+      <div class="schema-search"><input class="search-input" value="搜索表、视图..." readonly style="font-size:12px;padding:5px 8px;"></div>
+      <div class="tree-list">
+        <div class="tree-section">▼ 📊 Tables (12)</div>
+        <div class="tree-item active"><span class="tree-icon">📋</span> users</div>
+        <div class="tree-item"><span class="tree-icon">📋</span> orders</div>
+        <div class="tree-item"><span class="tree-icon">📋</span> products</div>
+        <div class="tree-item"><span class="tree-icon">📋</span> categories</div>
+        <div class="tree-item"><span class="tree-icon">📋</span> payments</div>
+        <div class="tree-item"><span class="tree-icon">📋</span> reviews</div>
+        <div class="tree-item"><span class="tree-icon">📋</span> inventory</div>
+        <div class="tree-item"><span class="tree-icon">📋</span> shipping</div>
+        <div class="tree-section">▶ 👁 Views (3)</div>
+      </div>
+    </div>
+    <div class="data-panel">
+      <div class="tab-bar">
+        <div class="tab-item active">数据</div>
+        <div class="tab-item">结构</div>
+        <div class="tab-item">索引</div>
+        <div class="tab-item">外键</div>
+        <div class="tab-item">DDL</div>
+      </div>
+      <div class="data-table">
+        <table>
+          <thead>
+            <tr><th>#</th><th>id</th><th>username</th><th>email</th><th>status</th><th>created_at</th><th>balance</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="num-val">1</td><td class="num-val">1001</td><td class="str-val">alice_wang</td><td class="str-val">alice@example.com</td><td class="str-val">active</td><td class="date-val">2025-12-01 08:30:00</td><td class="num-val">12,580.50</td></tr>
+            <tr><td class="num-val">2</td><td class="num-val">1002</td><td class="str-val">bob_li</td><td class="str-val">bob@example.com</td><td class="str-val">active</td><td class="date-val">2025-12-02 14:15:00</td><td class="num-val">8,320.00</td></tr>
+            <tr><td class="num-val">3</td><td class="num-val">1003</td><td class="str-val">charlie_z</td><td class="str-val">charlie@test.io</td><td class="str-val">inactive</td><td class="date-val">2025-11-28 09:00:00</td><td class="num-val">450.75</td></tr>
+            <tr><td class="num-val">4</td><td class="num-val">1004</td><td class="str-val">david_chen</td><td class="str-val">david@corp.cn</td><td class="str-val">active</td><td class="date-val">2025-12-05 16:45:00</td><td class="num-val">25,100.00</td></tr>
+            <tr><td class="num-val">5</td><td class="num-val">1005</td><td class="str-val">emma_liu</td><td class="str-val">emma@demo.org</td><td class="str-val">pending</td><td class="date-val">2026-01-10 11:20:00</td><td class="num-val">3,200.80</td></tr>
+            <tr><td class="num-val">6</td><td class="num-val">1006</td><td class="str-val">frank_wu</td><td class="null-val">NULL</td><td class="str-val">active</td><td class="date-val">2026-01-15 07:55:00</td><td class="num-val">67,890.25</td></tr>
+            <tr><td class="num-val">7</td><td class="num-val">1007</td><td class="str-val">grace_hu</td><td class="str-val">grace@mail.com</td><td class="str-val">active</td><td class="date-val">2026-02-01 13:10:00</td><td class="num-val">1,550.00</td></tr>
+            <tr><td class="num-val">8</td><td class="num-val">1008</td><td class="str-val">henry_xu</td><td class="str-val">henry@work.net</td><td class="str-val">blocked</td><td class="date-val">2026-02-14 19:30:00</td><td class="num-val">0.00</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="data-footer">
+        <span>共 1,234 行 · 第 1-50 行</span>
+        <div class="pagination">
+          <span class="page-btn">◀ 上一页</span>
+          <span>1 / 25</span>
+          <span class="page-btn">下一页 ▶</span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="statusbar">
+    <span>● 已连接 · appdb · users</span>
+    <span>加载耗时 45ms</span>
+  </div>
+</div>
+</div>
+
+<!-- Screenshot 3: New Connection Window -->
+<div id="new-connection">
+<div class="new-conn-window">
+  <div class="titlebar">
+    <div class="traffic-lights"><div class="traffic-light tl-red"></div><div class="traffic-light tl-yellow"></div><div class="traffic-light tl-green"></div></div>
+    <div class="titlebar-title">新建连接</div>
+  </div>
+  <div class="new-conn-body">
+    <div class="section-title">选择数据库类型</div>
+    <div class="db-types">
+      <div class="db-type-btn selected"><span style="color:white">🐘</span> PostgreSQL</div>
+      <div class="db-type-btn"><span>🐬</span> MySQL</div>
+      <div class="db-type-btn"><span>🔵</span> MariaDB</div>
+      <div class="db-type-btn"><span>📦</span> SQLite</div>
+      <div class="db-type-btn"><span>🔴</span> Redis</div>
+    </div>
+    <div class="section-title">连接配置</div>
+    <div class="form-row">
+      <div class="form-group"><div class="form-label">连接名称</div><input class="form-input" value="主数据库" readonly></div>
+      <div class="form-group" style="flex:0.4"><div class="form-label">颜色标签</div><div style="display:flex;gap:6px;padding-top:4px"><div style="width:24px;height:24px;border-radius:50%;background:#3b82f6;border:2px solid #60a5fa"></div><div style="width:24px;height:24px;border-radius:50%;background:#22c55e"></div><div style="width:24px;height:24px;border-radius:50%;background:#f59e0b"></div><div style="width:24px;height:24px;border-radius:50%;background:#ef4444"></div><div style="width:24px;height:24px;border-radius:50%;background:#8b5cf6"></div></div></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><div class="form-label">主机</div><input class="form-input" value="prod-db.example.com" readonly></div>
+      <div class="form-group" style="flex:0.3"><div class="form-label">端口</div><input class="form-input" value="5432" readonly></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><div class="form-label">用户名</div><input class="form-input" value="postgres" readonly></div>
+      <div class="form-group"><div class="form-label">密码</div><input class="form-input" value="••••••••" readonly type="text"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><div class="form-label">数据库</div><input class="form-input" value="appdb" readonly></div>
+      <div class="form-group"><div class="form-label">分组</div><input class="form-input" value="生产环境" readonly></div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;margin-top:4px;">
+      <label style="font-size:13px;color:#94a3b8;display:flex;align-items:center;gap:6px;cursor:pointer;">
+        <input type="checkbox" style="accent-color:#38bdf8"> 通过 SSH 隧道连接
+      </label>
+    </div>
+  </div>
+  <div class="form-actions">
+    <div class="btn btn-outline">测试连接</div>
+    <div style="flex:1"></div>
+    <div class="btn btn-secondary">取消</div>
+    <div class="btn btn-primary">保存</div>
+  </div>
+</div>
+</div>
+
+<!-- Screenshot 4: Query Window / Redis View -->
+<div id="query-editor">
+<div class="conn-window">
+  <div class="titlebar">
+    <div class="traffic-lights"><div class="traffic-light tl-red"></div><div class="traffic-light tl-yellow"></div><div class="traffic-light tl-green"></div></div>
+    <div class="titlebar-title">SQL 查询 — 主数据库</div>
+  </div>
+  <div class="toolbar">
+    <div class="tool-btn active">▶ 执行</div>
+    <div class="tool-btn">📋 格式化</div>
+    <div class="tool-btn">📊 执行计划</div>
+    <div style="flex:1"></div>
+    <div style="font-size:12px;color:#64748b;">耗时 <span style="color:#4ade80">23ms</span> · 5 行</div>
+  </div>
+  <div style="display:flex;flex-direction:column;flex:1">
+    <div class="editor-area">
+      <div><span class="line-num">1</span><span class="sql-keyword">SELECT</span> u.username, u.email, o.total_amount, o.status</div>
+      <div><span class="line-num">2</span><span class="sql-keyword">FROM</span> users u</div>
+      <div><span class="line-num">3</span><span class="sql-keyword">JOIN</span> orders o <span class="sql-keyword">ON</span> u.id = o.user_id</div>
+      <div><span class="line-num">4</span><span class="sql-keyword">WHERE</span> o.created_at >= <span class="sql-string">'2026-01-01'</span></div>
+      <div><span class="line-num">5</span>  <span class="sql-keyword">AND</span> o.total_amount > <span class="sql-number">1000</span></div>
+      <div><span class="line-num">6</span><span class="sql-keyword">ORDER BY</span> o.total_amount <span class="sql-keyword">DESC</span></div>
+      <div><span class="line-num">7</span><span class="sql-keyword">LIMIT</span> <span class="sql-number">50</span>;</div>
+    </div>
+    <div class="result-area">
+      <div class="result-header">
+        <span class="result-badge result-success">✓ 成功</span>
+        <span>5 行结果 · 23ms</span>
+      </div>
+      <div class="data-table" style="flex:1">
+        <table>
+          <thead>
+            <tr><th>username</th><th>email</th><th>total_amount</th><th>status</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="str-val">david_chen</td><td class="str-val">david@corp.cn</td><td class="num-val">15,800.00</td><td class="str-val">completed</td></tr>
+            <tr><td class="str-val">alice_wang</td><td class="str-val">alice@example.com</td><td class="num-val">8,950.00</td><td class="str-val">completed</td></tr>
+            <tr><td class="str-val">bob_li</td><td class="str-val">bob@example.com</td><td class="num-val">5,200.00</td><td class="str-val">pending</td></tr>
+            <tr><td class="str-val">emma_liu</td><td class="str-val">emma@demo.org</td><td class="num-val">3,100.50</td><td class="str-val">completed</td></tr>
+            <tr><td class="str-val">grace_hu</td><td class="str-val">grace@mail.com</td><td class="num-val">1,250.00</td><td class="str-val">shipped</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- Screenshot 5: Redis View -->
+<div id="redis-view">
+<div class="conn-window">
+  <div class="titlebar">
+    <div class="traffic-lights"><div class="traffic-light tl-red"></div><div class="traffic-light tl-yellow"></div><div class="traffic-light tl-green"></div></div>
+    <div class="titlebar-title">缓存服务 — Redis</div>
+  </div>
+  <div class="toolbar">
+    <div class="tool-btn">↻ 刷新</div>
+    <div class="tool-btn active">＋ 新建查询</div>
+    <div style="flex:1"></div>
+    <div style="display:flex; align-items:center; gap:6px; font-size:12px; color:#4ade80;">● 已连接 <span style="color:#64748b">Redis 7.2.4</span></div>
+  </div>
+  <div class="conn-body">
+    <div class="redis-sidebar">
+      <div style="padding:8px 12px;font-size:12px;color:#64748b;border-bottom:1px solid #1e293b;">Databases</div>
+      <div class="redis-db-list">
+        <div class="redis-db active"><span>db0</span><span class="redis-count">1,284</span></div>
+        <div class="redis-db"><span>db1</span><span class="redis-count">56</span></div>
+        <div class="redis-db"><span>db2</span><span class="redis-count">3</span></div>
+        <div class="redis-db"><span>db3</span><span class="redis-count">0</span></div>
+        <div class="redis-db"><span>db4</span><span class="redis-count">0</span></div>
+      </div>
+    </div>
+    <div class="redis-keys" style="flex:1;display:flex;flex-direction:column;">
+      <div style="padding:8px 12px;border-bottom:1px solid #1e293b;">
+        <input class="search-input" value="搜索 Key…" readonly style="font-size:12px;padding:5px 8px;">
+      </div>
+      <div style="display:flex;border-bottom:1px solid #1e293b;padding:6px 12px;font-size:11px;color:#64748b;">
+        <span style="flex:1">KEY</span>
+        <span style="width:50px">TYPE</span>
+        <span style="width:60px;text-align:right">TTL</span>
+      </div>
+      <div style="flex:1;overflow-y:auto;">
+        <div class="key-item"><span class="key-type type-string">STR</span><span class="key-name">user:session:a1b2c3</span><span class="key-ttl">3600s</span></div>
+        <div class="key-item"><span class="key-type type-hash">HASH</span><span class="key-name">user:profile:1001</span><span class="key-ttl">-1</span></div>
+        <div class="key-item"><span class="key-type type-list">LIST</span><span class="key-name">queue:email:pending</span><span class="key-ttl">-1</span></div>
+        <div class="key-item"><span class="key-type type-set">SET</span><span class="key-name">tags:product:electronics</span><span class="key-ttl">86400s</span></div>
+        <div class="key-item"><span class="key-type type-zset">ZSET</span><span class="key-name">leaderboard:daily</span><span class="key-ttl">43200s</span></div>
+        <div class="key-item"><span class="key-type type-string">STR</span><span class="key-name">config:app:version</span><span class="key-ttl">-1</span></div>
+        <div class="key-item"><span class="key-type type-hash">HASH</span><span class="key-name">cache:product:2048</span><span class="key-ttl">7200s</span></div>
+        <div class="key-item"><span class="key-type type-string">STR</span><span class="key-name">rate:limit:api:10.0.1.5</span><span class="key-ttl">60s</span></div>
+        <div class="key-item"><span class="key-type type-list">LIST</span><span class="key-name">queue:notification</span><span class="key-ttl">-1</span></div>
+        <div class="key-item"><span class="key-type type-set">SET</span><span class="key-name">online:users</span><span class="key-ttl">-1</span></div>
+      </div>
+      <div class="data-footer">
+        <span>db0 · 1,284 keys</span>
+        <span>SCAN cursor: 128</span>
+      </div>
+    </div>
+  </div>
+  <div class="statusbar">
+    <span>● 已连接 · db0</span>
+    <span>内存使用 128MB</span>
+  </div>
+</div>
+</div>
+
+</div>
+</body>
+</html>

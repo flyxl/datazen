@@ -11,7 +11,7 @@ import {
 /**
  * Export and Import dialog tests.
  * Export/Import dialogs are opened via right-click context menu on table names.
- * Requires the seeded "本地 PostgreSQL" connection.
+ * Requires a PostgreSQL connection (seeded by wdio.conf.ts before hook).
  */
 
 const TEST_TABLE = '_e2e_export_test';

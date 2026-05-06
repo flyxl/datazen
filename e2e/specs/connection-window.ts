@@ -14,7 +14,7 @@ const TEST_CHILD = '_e2e_idx_child';
 
 /**
  * Database browsing & data viewing tests.
- * Requires the seeded "本地 PostgreSQL" connection to be available.
+ * Requires a PostgreSQL connection (seeded by wdio.conf.ts before hook).
  */
 describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
   let mainWindow: string;

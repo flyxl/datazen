@@ -20,7 +20,7 @@ import {
  * - Keyboard commit/cancel use dispatchEvent which React's root listener catches
  * - Database verification uses SQL queries through the query tab
  *
- * Requires the seeded "本地 PostgreSQL" connection to be available.
+ * Requires a PostgreSQL connection (seeded by wdio.conf.ts before hook).
  */
 
 const TEST_TABLE = '_e2e_edit_test';

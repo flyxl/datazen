@@ -36,8 +36,9 @@ export const config: WebdriverIO.Config = {
     timeout: 60000,
   },
   before: async function () {
-    // Global setup: force language to zh-CN so all Chinese selectors work
     await browser.pause(2000);
+
+    // Force language to zh-CN so all Chinese selectors work
     await browser.executeAsync((done: (r: unknown) => void) => {
       (window as any).__TAURI_INTERNALS__
         .invoke('save_settings', {
@@ -56,9 +57,51 @@ export const config: WebdriverIO.Config = {
         .then(() => done(null))
         .catch((e: unknown) => done(String(e)));
     });
-    // Reload page so the new language takes effect
+
+    // Seed a PostgreSQL connection if none exist (required by most test suites)
+    const connCount = await browser.executeAsync((done: (r: number) => void) => {
+      (window as any).__TAURI_INTERNALS__
+        .invoke('get_connections')
+        .then((conns: any[]) => done(conns.length))
+        .catch(() => done(0));
+    });
+
+    if (connCount === 0) {
+      const pgHost = process.env.PG_HOST || '127.0.0.1';
+      const pgUser = process.env.PG_USER || 'postgres';
+      const pgPassword = process.env.PG_PASSWORD || '';
+      const pgDatabase = process.env.PG_DATABASE || 'postgres';
+      await browser.executeAsync(
+        (host: string, user: string, pw: string, db: string, done: (r: unknown) => void) => {
+          const config = {
+            id: 'conn_e2e_pg',
+            name: '本地 PostgreSQL',
+            databaseType: 'postgresql',
+            host,
+            port: 5432,
+            username: user,
+            password: pw,
+            database: db,
+            group: 'E2E 测试',
+            colorTag: 'blue',
+            sslMode: 'disable',
+          };
+          (window as any).__TAURI_INTERNALS__
+            .invoke('save_connection', { config })
+            .then(() => done(null))
+            .catch((e: unknown) => done(String(e)));
+        },
+        pgHost,
+        pgUser,
+        pgPassword,
+        pgDatabase,
+      );
+    }
+
+    // Reload page so the new language and seeded connections take effect
     await browser.execute(() => location.reload());
     await browser.pause(2000);
+
     // Expand all connection groups so items are visible
     await browser.execute(() => {
       document.querySelectorAll('[data-group-header]').forEach((el) => {

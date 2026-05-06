@@ -47,7 +47,14 @@ impl MysqlDriver {
         table: &str,
     ) -> Result<(Vec<ColumnSchema>, Vec<String>), DriverError> {
         let current_db = Self::current_database(pool).await?;
+        Self::fetch_columns_with_db(pool, &current_db, table).await
+    }
 
+    async fn fetch_columns_with_db(
+        pool: &MySqlPool,
+        current_db: &str,
+        table: &str,
+    ) -> Result<(Vec<ColumnSchema>, Vec<String>), DriverError> {
         let cols = sqlx::query(
             r#"
             SELECT COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT,
@@ -57,7 +64,7 @@ impl MysqlDriver {
             ORDER BY ORDINAL_POSITION
             "#,
         )
-        .bind(&current_db)
+        .bind(current_db)
         .bind(table)
         .fetch_all(pool)
         .await
@@ -423,27 +430,71 @@ impl DatabaseDriver for MysqlDriver {
         let pools = self.pools.read().await;
         let pool = Self::get_pool(&pools, handle)?;
 
-        let (columns, pk_names) = Self::fetch_columns(pool, table).await?;
+        let current_db = Self::current_database(pool).await?;
+        let (columns, pk_names) = Self::fetch_columns_with_db(pool, &current_db, table).await?;
         tracing::info!(%table, cols = columns.len(), ms = t0.elapsed().as_millis() as u64, "mysql get_table_schema: columns fetched");
 
-        let current_db = Self::current_database(pool).await?;
+        // Run indexes and foreign keys in parallel
+        let table_owned = table.to_string();
+        let db_for_idx = current_db.clone();
+        let db_for_fk = current_db.clone();
+        let tbl_for_idx = table_owned.clone();
+        let tbl_for_fk = table_owned.clone();
 
-        // ── indexes ──
-        let t_idx = std::time::Instant::now();
-        let idx_rows = sqlx::query(
-            r#"
-            SELECT INDEX_NAME, COLUMN_NAME, NON_UNIQUE, INDEX_TYPE, SEQ_IN_INDEX
-            FROM information_schema.STATISTICS
-            WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
-            ORDER BY INDEX_NAME, SEQ_IN_INDEX
-            "#,
-        )
-        .bind(&current_db)
-        .bind(table)
-        .fetch_all(pool)
-        .await
-        .unwrap_or_default();
+        let t_parallel = std::time::Instant::now();
 
+        let (idx_rows, fk_rows) = tokio::try_join!(
+            async {
+                sqlx::query(
+                    r#"
+                    SELECT INDEX_NAME, COLUMN_NAME, NON_UNIQUE, INDEX_TYPE, SEQ_IN_INDEX
+                    FROM information_schema.STATISTICS
+                    WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
+                    ORDER BY INDEX_NAME, SEQ_IN_INDEX
+                    "#,
+                )
+                .bind(&db_for_idx)
+                .bind(&tbl_for_idx)
+                .fetch_all(pool)
+                .await
+                .map_err(|e| DriverError::QueryFailed(e.to_string()))
+            },
+            async {
+                // Tighter FK query: also constrain rc by TABLE_NAME to reduce scan scope
+                sqlx::query(
+                    r#"
+                    SELECT
+                        kcu.CONSTRAINT_NAME,
+                        kcu.COLUMN_NAME,
+                        kcu.REFERENCED_TABLE_NAME,
+                        kcu.REFERENCED_COLUMN_NAME,
+                        kcu.ORDINAL_POSITION,
+                        rc.UPDATE_RULE,
+                        rc.DELETE_RULE
+                    FROM information_schema.KEY_COLUMN_USAGE kcu
+                    JOIN information_schema.REFERENTIAL_CONSTRAINTS rc
+                      ON rc.CONSTRAINT_NAME = kcu.CONSTRAINT_NAME
+                     AND rc.CONSTRAINT_SCHEMA = kcu.TABLE_SCHEMA
+                     AND rc.TABLE_NAME = kcu.TABLE_NAME
+                    WHERE kcu.TABLE_SCHEMA = ?
+                      AND kcu.TABLE_NAME = ?
+                      AND kcu.REFERENCED_TABLE_NAME IS NOT NULL
+                    ORDER BY kcu.CONSTRAINT_NAME, kcu.ORDINAL_POSITION
+                    "#,
+                )
+                .bind(&db_for_fk)
+                .bind(&tbl_for_fk)
+                .fetch_all(pool)
+                .await
+                .map_err(|e| DriverError::QueryFailed(e.to_string()))
+            }
+        )?;
+
+        tracing::info!(%table, idx_rows = idx_rows.len(), fk_rows = fk_rows.len(),
+            ms = t_parallel.elapsed().as_millis() as u64,
+            "mysql get_table_schema: indexes+fk parallel fetch done");
+
+        // ── process indexes ──
         let mut idx_map: HashMap<String, IndexInfo> = HashMap::new();
         for r in &idx_rows {
             let idx_name: String = r.get("INDEX_NAME");
@@ -465,36 +516,8 @@ impl DatabaseDriver for MysqlDriver {
         indexes.sort_by(|a, b| {
             b.is_primary.cmp(&a.is_primary).then(a.name.cmp(&b.name))
         });
-        tracing::info!(%table, index_count = indexes.len(), ms = t_idx.elapsed().as_millis() as u64, "mysql get_table_schema: indexes fetched");
 
-        // ── foreign keys ──
-        let t_fk = std::time::Instant::now();
-        let fk_rows = sqlx::query(
-            r#"
-            SELECT
-                kcu.CONSTRAINT_NAME,
-                kcu.COLUMN_NAME,
-                kcu.REFERENCED_TABLE_NAME,
-                kcu.REFERENCED_COLUMN_NAME,
-                kcu.ORDINAL_POSITION,
-                rc.UPDATE_RULE,
-                rc.DELETE_RULE
-            FROM information_schema.KEY_COLUMN_USAGE kcu
-            JOIN information_schema.REFERENTIAL_CONSTRAINTS rc
-              ON rc.CONSTRAINT_NAME = kcu.CONSTRAINT_NAME
-             AND rc.CONSTRAINT_SCHEMA = kcu.TABLE_SCHEMA
-            WHERE kcu.TABLE_SCHEMA = ?
-              AND kcu.TABLE_NAME = ?
-              AND kcu.REFERENCED_TABLE_NAME IS NOT NULL
-            ORDER BY kcu.CONSTRAINT_NAME, kcu.ORDINAL_POSITION
-            "#,
-        )
-        .bind(&current_db)
-        .bind(table)
-        .fetch_all(pool)
-        .await
-        .unwrap_or_default();
-
+        // ── process foreign keys ──
         let mut fk_map: HashMap<String, ForeignKeyInfo> = HashMap::new();
         for r in &fk_rows {
             let fk_name: String = r.get("CONSTRAINT_NAME");
@@ -518,8 +541,8 @@ impl DatabaseDriver for MysqlDriver {
 
         let mut foreign_keys: Vec<ForeignKeyInfo> = fk_map.into_values().collect();
         foreign_keys.sort_by(|a, b| a.name.cmp(&b.name));
-        tracing::info!(%table, fk_count = foreign_keys.len(), ms = t_fk.elapsed().as_millis() as u64, "mysql get_table_schema: foreign keys fetched");
-        tracing::info!(%table, total_ms = t0.elapsed().as_millis() as u64, "mysql get_table_schema: complete");
+        tracing::info!(%table, indexes = indexes.len(), fks = foreign_keys.len(),
+            total_ms = t0.elapsed().as_millis() as u64, "mysql get_table_schema: complete");
 
         Ok(TableSchema {
             table_name: table.to_string(),

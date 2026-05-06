@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
-import { databaseCommands } from '../../commands/database';
+import { getCachedTableSchema } from '../../lib/schemaCache';
 import type { ForeignKeyInfo, TableSchema } from '../../types';
 import { useI18n } from '../../hooks/useI18n';
 
@@ -20,8 +20,7 @@ export function ForeignKeysView({ connectionId, tableName }: ForeignKeysViewProp
     setLoading(true);
     setError(null);
 
-    databaseCommands
-      .getTableSchema(connectionId, tableName)
+    getCachedTableSchema(connectionId, tableName)
       .then((schema: TableSchema) => {
         if (!cancelled) {
           setForeignKeys(schema.foreignKeys);

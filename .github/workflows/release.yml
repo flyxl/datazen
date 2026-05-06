@@ -65,6 +65,20 @@ jobs:
           workspaces: src-tauri -> target
           shared-key: ${{ matrix.target }}
 
+      - name: Import Windows code signing certificate
+        if: runner.os == 'Windows'
+        env:
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          New-Item -ItemType directory -Path certificate
+          Set-Content -Path certificate/tempCert.txt -Value $env:WINDOWS_CERTIFICATE
+          certutil -decode certificate/tempCert.txt certificate/certificate.pfx
+          Remove-Item -Path certificate/tempCert.txt
+          Import-PfxCertificate -FilePath certificate/certificate.pfx -CertStoreLocation Cert:\CurrentUser\My -Password (ConvertTo-SecureString -String $env:WINDOWS_CERTIFICATE_PASSWORD -Force -AsPlainText)
+          Remove-Item -Path certificate/certificate.pfx
+        shell: pwsh
+
       - name: Install frontend dependencies
         run: pnpm install
 
@@ -72,15 +86,6 @@ jobs:
         run: pnpm tauri build --target ${{ matrix.target }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Sign macOS app (ad-hoc)
-        if: runner.os == 'macOS'
-        run: |
-          APP_PATH=$(find src-tauri/target/${{ matrix.target }}/release/bundle/macos -name '*.app' -maxdepth 1 | head -1)
-          if [ -n "$APP_PATH" ]; then
-            echo "Signing $APP_PATH"
-            codesign --force --deep --sign - "$APP_PATH"
-          fi
 
       - name: Rename artifacts with platform label
         shell: bash
@@ -117,5 +122,26 @@ jobs:
         with:
           draft: true
           files: artifacts/*
+          body: |
+            ## 安装说明
+
+            ### macOS
+            由于应用未经过 Apple 公证，首次打开时可能提示"已损坏"或"无法验证"。请按以下步骤操作：
+
+            1. 安装应用后，打开终端运行：
+               ```
+               xattr -cr /Applications/DataZen.app
+               ```
+            2. 然后正常打开应用即可。
+
+            或者：右键点击应用 → 选择"打开" → 在弹出的对话框中点击"打开"。
+
+            ### Windows
+            直接运行 `.exe` 安装包或 `.msi` 安装包即可。
+
+            ### Linux
+            - **Debian/Ubuntu**: `sudo dpkg -i DataZen_*.deb`
+            - **Fedora/RHEL**: `sudo rpm -i DataZen-*.rpm`
+            - **AppImage**: `chmod +x DataZen_*.AppImage && ./DataZen_*.AppImage`
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
