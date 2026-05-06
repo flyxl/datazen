@@ -525,7 +525,7 @@ export function DataSyncWindow() {
 
       <StatusBar
         left={<span className="truncate">{t('sync.title')}</span>}
-        right={<span className="tabular-nums">DataZen v1.0.0</span>}
+        right={<span className="tabular-nums">DataZen v0.0.2</span>}
       />
 
       {/* ── Progress Dialog ── */}

@@ -213,6 +213,6 @@
   <rect y="760" width="1200" height="40" fill="#1e293b"/>
   <rect y="760" width="1200" height="1" fill="#334155"/>
   <text x="24" y="784" fill="#64748b" font-family="Inter, sans-serif" font-size="12">8 个连接</text>
-  <text x="600" y="784" text-anchor="middle" fill="#64748b" font-family="Inter, sans-serif" font-size="12">DataZen v1.0.0</text>
+  <text x="600" y="784" text-anchor="middle" fill="#64748b" font-family="Inter, sans-serif" font-size="12">DataZen v0.0.2</text>
   <text x="1176" y="784" text-anchor="end" fill="#64748b" font-family="Inter, sans-serif" font-size="12">⌘N 新建连接</text>
 </svg>
