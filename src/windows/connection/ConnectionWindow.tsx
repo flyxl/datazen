@@ -696,7 +696,6 @@ export function ConnectionWindow() {
         {activePanel && (
           <DetailPanel
             open={detailOpen}
-            onToggle={() => setDetailOpen((p) => !p)}
             columns={detailColumnDefs}
             row={detailRow}
             rowIndex={detailRowIdx}
