@@ -29,10 +29,11 @@ wuxiaolongklws@gmail.com
 2. macOS 若录屏包含「无法打开」提示，先执行 `xattr -cr /Applications/DataZen.app`。
 3. 导出 MP4（H.264），目标时长 55-65 秒。
 
-## 从现有 GIF 生成占位视频（无旁白）
+## 生成 60 秒幻灯片视频（推荐）
 
 ```bash
-ffmpeg -y -i docs/screenshots/demo.gif -movflags faststart -pix_fmt yuv420p docs/marketing/video/demo-60s-placeholder.mp4
+./docs/marketing/scripts/build-demo-60s.sh
+# 输出: docs/marketing/video/demo-60s.mp4（约 60s，1280px 宽）
 ```
 
-正式发布前请用屏幕录制替换占位文件。
+旧占位：`demo-60s-placeholder.mp4`（GIF 转制，较短）。正式发布可用屏幕录制替换。
