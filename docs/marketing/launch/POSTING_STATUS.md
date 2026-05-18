@@ -5,8 +5,8 @@
 | GitHub Pages | 已上线 | https://flyxl.github.io/datazen/ |
 | GitHub 仓库 SEO | 已完成 | 描述、主页、Topics |
 | GitHub Issue 公告 | 已发布 | https://github.com/flyxl/datazen/issues/1 |
-| Dev.to | 待 GitHub 登录 | OAuth 停在 GitHub 登录页，见 `MANUAL_BROWSER_STEPS.md` |
-| V2EX | 需登录+邀请码 | 2024-05 后 Google 注册需邀请码 |
+| Dev.to | 待授权 | GitHub OAuth 页需手动点 **Authorize thepracticaldev**（按钮对自动化禁用） |
+| V2EX | 已发布 | https://www.v2ex.com/t/1213580 |
 | 掘金 | 需手机验证码 | 不支持仅用邮箱注册 |
 | 知乎 | 需登录 | 同上 |
 | Hacker News | 需登录 | submit 页需账号 |
@@ -29,7 +29,7 @@
 
 | 渠道 | 帖子 URL | 日期 |
 |------|----------|------|
-| V2EX | | |
+| V2EX | https://www.v2ex.com/t/1213580 | 2026-05-18 |
 | 掘金 | | |
 | 知乎 | | |
 | Product Hunt | | |
