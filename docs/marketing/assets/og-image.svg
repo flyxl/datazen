@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <rect width="1200" height="630" fill="#0f1219"/>
+  <rect x="60" y="60" width="1080" height="510" rx="16" fill="#1a2332" stroke="#1e293b" stroke-width="2"/>
+  <text x="100" y="200" fill="#00b4d8" font-family="system-ui,sans-serif" font-size="72" font-weight="700">DataZen</text>
+  <text x="100" y="280" fill="#e2e8f0" font-family="system-ui,sans-serif" font-size="36" font-weight="600">Lightweight database client</text>
+  <text x="100" y="340" fill="#94a3b8" font-family="system-ui,sans-serif" font-size="28">PostgreSQL, MySQL, SQLite, Redis</text>
+  <text x="100" y="420" fill="#64748b" font-family="system-ui,sans-serif" font-size="22">MIT licensed, Tauri + Rust, under 10 MB</text>
+  <text x="100" y="500" fill="#00b4d8" font-family="system-ui,sans-serif" font-size="20">github.com/flyxl/datazen</text>
+</svg>

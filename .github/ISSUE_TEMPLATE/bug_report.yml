@@ -1,0 +1,85 @@
+name: Bug Report
+description: Report a problem with DataZen
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve DataZen. Please search [existing issues](https://github.com/flyxl/datazen/issues) first.
+        For general questions, email **wuxiaolongklws@gmail.com**.
+
+  - type: input
+    id: version
+    attributes:
+      label: DataZen version
+      description: e.g. v0.0.3 from Releases page
+      placeholder: "0.0.3"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - macOS (Apple Silicon)
+        - macOS (Intel)
+        - Windows
+        - Linux
+    validations:
+      required: true
+
+  - type: input
+    id: os-version
+    attributes:
+      label: OS version
+      placeholder: "macOS 15.4 / Windows 11 / Ubuntu 24.04"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: database
+    attributes:
+      label: Database type (if relevant)
+      options:
+        - PostgreSQL
+        - MySQL / MariaDB
+        - SQLite
+        - Redis
+        - N/A / Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open DataZen
+        2. Create connection to ...
+        3. Click ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: Paste error messages or drag screenshots here
+    validations:
+      required: false

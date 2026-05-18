@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1270" height="760" viewBox="0 0 1270 760">
+  <rect width="1270" height="760" fill="#0f1219"/>
+  <text x="80" y="180" fill="#00b4d8" font-family="system-ui,sans-serif" font-size="88" font-weight="700">DataZen</text>
+  <text x="80" y="300" fill="#e2e8f0" font-family="system-ui,sans-serif" font-size="44">The free, lightweight</text>
+  <text x="80" y="360" fill="#e2e8f0" font-family="system-ui,sans-serif" font-size="44">database client for developers</text>
+  <text x="80" y="480" fill="#94a3b8" font-family="system-ui,sans-serif" font-size="28">MIT, Tauri + Rust, macOS / Windows / Linux</text>
+</svg>

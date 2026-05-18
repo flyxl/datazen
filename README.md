@@ -5,7 +5,8 @@
 <h1 align="center">DataZen</h1>
 
 <p align="center">
-  <strong>轻量、快速、跨平台的桌面数据库管理工具</strong>
+  <strong>轻量、快速、跨平台的桌面数据库管理工具</strong><br />
+  <strong>Lightweight, fast, cross-platform desktop database client</strong>
 </p>
 
 <p align="center">
@@ -15,21 +16,58 @@
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/connection-window.png" width="720" alt="DataZen 数据浏览" />
+  <a href="https://github.com/flyxl/datazen/releases"><strong>Download</strong></a>
+  ·
+  <a href="https://flyxl.github.io/datazen/">Website</a>
+  ·
+  <a href="mailto:wuxiaolongklws@gmail.com">Contact</a>
 </p>
+
+<p align="center">
+  <img src="docs/screenshots/demo.gif" width="720" alt="DataZen demo" />
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/connection-window.png" width="720" alt="DataZen data browser" />
+</p>
+
+[English](#features) · [中文](#特性) · [Install](#install) · [macOS note](#macos-first-launch) · [Contact](#contact--feedback)
 
 ---
 
+## About
+
+**DataZen** is a free, [MIT-licensed](LICENSE) database GUI for developers. Built with **Tauri + Rust** (&lt;10 MB installer), it manages **PostgreSQL, MySQL, SQLite, and Redis** in one app—with multi-window workflow, built-in **SSH tunnels**, SQL editor with autocomplete, backups, and PG↔MySQL sync. Credentials stay on your machine (AES-256-GCM); no cloud account required. UI supports **English and Chinese**.
+
+**DataZen** 是一款免费开源（MIT）的桌面数据库客户端，基于 **Tauri + Rust** 构建，安装包小于 10 MB。在一个应用中管理 **PostgreSQL、MySQL、SQLite、Redis**，支持多窗口、内置 **SSH 隧道**、SQL 自动补全、备份与 PG↔MySQL 同步。连接密码本地加密存储，无需云端账号，界面支持**中英文**。
+
+---
+
+<a id="features"></a>
+## Features
+
+- **Multi-database** — PostgreSQL, MySQL / MariaDB, SQLite, Redis in one app
+- **SSH tunneling** — Connect via bastion; pure Rust, no local `ssh` client required
+- **SQL editor** — Syntax highlighting, table/column autocomplete, multi-statement runs, EXPLAIN viz
+- **Data browser** — Virtual scrolling, inline edit, sort/filter, pagination
+- **Redis view** — Database list + key browser (String / Hash / List / Set / ZSet / Stream)
+- **Import / export** — CSV, JSON, SQL
+- **Backup** — One-click SQL dump (schema-only, data-only, gzip)
+- **Cross-DB sync** — PG ↔ MySQL schema compare and data sync with resume
+- **Bilingual UI** — English & Chinese
+- **Dark theme** — Native dark UI
+
+<a id="特性"></a>
 ## 特性
 
 - **多数据库支持** — PostgreSQL、MySQL / MariaDB、SQLite、Redis，统一管理
 - **SSH 隧道** — 通过跳板机安全连接远程数据库，纯 Rust 实现，无需本地安装 SSH 客户端
 - **智能 SQL 编辑器** — 语法高亮、自动补全（表名 + 列名）、多语句执行、执行计划可视化
 - **数据浏览与编辑** — 虚拟滚动表格、行内编辑、排序/筛选、分页导航
-- **Redis 专属视图** — 左侧 Database 列表 + 右侧 Key 浏览器，支持所有数据类型（String / Hash / List / Set / ZSet / Stream）
+- **Redis 专属视图** — 左侧 Database 列表 + 右侧 Key 浏览器，支持所有数据类型
 - **数据导入/导出** — CSV、JSON、SQL 格式互转
-- **数据库备份** — 一键备份为 SQL 文件（支持 Schema-only、Data-only、Gzip 压缩）
-- **数据同步** — 跨库/跨类型（PG ↔ MySQL）表结构对比 + 数据同步，支持断点续传
+- **数据库备份** — 一键备份为 SQL 文件（Schema / Data / Gzip）
+- **数据同步** — PG ↔ MySQL 表结构对比与数据同步，支持断点续传
 - **中英双语** — 界面语言自动跟随系统，支持手动切换
 - **暗色主题** — 原生暗色 UI，护眼舒适
 
@@ -63,9 +101,10 @@
 
 ---
 
-## 安装
+<a id="install"></a>
+## Install / 安装
 
-从 [Releases](https://github.com/flyxl/datazen/releases) 页面下载对应平台的安装包：
+Download from [Releases](https://github.com/flyxl/datazen/releases) · 从 [Releases](https://github.com/flyxl/datazen/releases) 下载：
 
 | 平台 | 格式 |
 |------|------|
@@ -74,17 +113,35 @@
 | Windows | `.exe` / `.msi` (文件名含 `windows-x64`) |
 | Linux | `.deb` / `.rpm` / `.AppImage` (文件名含 `linux-x64`) |
 
-### macOS 首次打开
+<a id="macos-first-launch"></a>
+### macOS first launch / 首次打开
 
-由于应用未经过 Apple 公证（免费开源项目），首次打开时可能提示"已损坏"或"无法验证"。
+The app is **not Apple-notarized** (typical for free OSS). You may see “damaged” or “cannot verify” on first open.
 
-**解决方法**：安装后在终端运行：
+应用**未经 Apple 公证**（开源项目常见情况），首次打开可能提示「已损坏」或「无法验证」。
+
+**Fix / 解决方法** — run after installing:
 
 ```bash
 xattr -cr /Applications/DataZen.app
 ```
 
-然后正常双击打开即可。
+Then open normally. Share this step in reviews if macOS blocks launch — it is expected, not corruption.
+
+---
+
+<a id="contact--feedback"></a>
+## Contact & feedback / 联系与反馈
+
+| Channel | Link |
+|---------|------|
+| **Email** | [wuxiaolongklws@gmail.com](mailto:wuxiaolongklws@gmail.com) |
+| **Issues** | [github.com/flyxl/datazen/issues](https://github.com/flyxl/datazen/issues) |
+| **Releases** | [github.com/flyxl/datazen/releases](https://github.com/flyxl/datazen/releases) |
+
+We typically respond to issues and email within a few business days. Bug reports welcome via the issue templates (version + OS required).
+
+Issue 与邮件反馈一般在几个工作日内回复；提交 Bug 请使用 Issue 模板并注明版本与系统。
 
 ---
 
@@ -202,6 +259,12 @@ datazen/
 ├── e2e/                        # E2E 测试
 └── .github/workflows/          # CI/CD
 ```
+
+---
+
+## Marketing assets / 推广素材
+
+Screenshots, OG image, Product Hunt copy, and launch posts: [`docs/marketing/`](docs/marketing/).
 
 ---
 

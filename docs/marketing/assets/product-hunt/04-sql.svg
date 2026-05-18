@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1270" height="760" viewBox="0 0 1270 760">
+  <rect width="1270" height="760" fill="#0f1219"/>
+  <text x="80" y="120" fill="#00b4d8" font-family="system-ui,sans-serif" font-size="48" font-weight="700">SQL editor + sync + backup</text>
+  <text x="80" y="220" fill="#e2e8f0" font-family="system-ui,sans-serif" font-size="28">Autocomplete (tables + columns)</text>
+  <text x="80" y="280" fill="#e2e8f0" font-family="system-ui,sans-serif" font-size="28">PG and MySQL schema and data sync</text>
+  <text x="80" y="340" fill="#e2e8f0" font-family="system-ui,sans-serif" font-size="28">One-click SQL backup (gzip)</text>
+  <text x="80" y="400" fill="#e2e8f0" font-family="system-ui,sans-serif" font-size="28">CSV / JSON / SQL import and export</text>
+</svg>

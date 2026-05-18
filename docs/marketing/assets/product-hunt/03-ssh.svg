@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1270" height="760" viewBox="0 0 1270 760">
+  <rect width="1270" height="760" fill="#0f1219"/>
+  <text x="80" y="140" fill="#00b4d8" font-family="system-ui,sans-serif" font-size="52" font-weight="700">SSH into prod, no local ssh</text>
+  <text x="80" y="240" fill="#e2e8f0" font-family="system-ui,sans-serif" font-size="32">Built-in tunneling via pure Rust (russh)</text>
+  <text x="80" y="320" fill="#94a3b8" font-family="system-ui,sans-serif" font-size="26">Bastion to PostgreSQL / MySQL on private networks</text>
+  <rect x="80" y="400" width="1110" height="200" rx="12" fill="#1a2332" stroke="#334155"/>
+  <text x="120" y="510" fill="#64748b" font-family="ui-monospace,monospace" font-size="22">laptop -SSH-&gt; bastion -&gt; database</text>
+</svg>

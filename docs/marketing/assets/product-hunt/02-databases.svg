@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1270" height="760" viewBox="0 0 1270 760">
+  <rect width="1270" height="760" fill="#0f1219"/>
+  <text x="80" y="120" fill="#00b4d8" font-family="system-ui,sans-serif" font-size="48" font-weight="700">One app, four databases</text>
+  <rect x="80" y="200" width="240" height="120" rx="12" fill="#3b82f6"/>
+  <text x="200" y="275" fill="#ffffff" font-family="system-ui,sans-serif" font-size="28" text-anchor="middle">PostgreSQL</text>
+  <rect x="360" y="200" width="240" height="120" rx="12" fill="#f59e0b"/>
+  <text x="480" y="275" fill="#ffffff" font-family="system-ui,sans-serif" font-size="28" text-anchor="middle">MySQL</text>
+  <rect x="640" y="200" width="240" height="120" rx="12" fill="#22c55e"/>
+  <text x="760" y="275" fill="#ffffff" font-family="system-ui,sans-serif" font-size="28" text-anchor="middle">SQLite</text>
+  <rect x="920" y="200" width="240" height="120" rx="12" fill="#ef4444"/>
+  <text x="1040" y="275" fill="#ffffff" font-family="system-ui,sans-serif" font-size="28" text-anchor="middle">Redis</text>
+  <text x="80" y="420" fill="#94a3b8" font-family="system-ui,sans-serif" font-size="26">Unified connections, SQL editor, Redis key browser</text>
+</svg>

@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>DataZen — Lightweight database client</title>
+  <meta name="description" content="Free, MIT-licensed desktop database client. PostgreSQL, MySQL, SQLite, Redis. Built with Tauri and Rust." />
+  <meta property="og:title" content="DataZen" />
+  <meta property="og:description" content="Lightweight, free, professional database client for developers." />
+  <meta property="og:image" content="https://flyxl.github.io/datazen/marketing/assets/og-image.png" />
+  <meta property="og:url" content="https://flyxl.github.io/datazen/" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <link rel="icon" href="marketing/assets/logo.png" />
+  <style>
+    :root {
+      --bg: #0f1219;
+      --surface: #131820;
+      --border: #1e293b;
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --accent: #00b4d8;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+    }
+    .wrap { max-width: 960px; margin: 0 auto; padding: 48px 24px 80px; }
+    header { text-align: center; margin-bottom: 48px; }
+    .logo { width: 96px; height: 96px; border-radius: 20px; margin-bottom: 16px; }
+    h1 { font-size: 2.5rem; font-weight: 700; letter-spacing: -0.02em; }
+    .tagline { color: var(--muted); font-size: 1.125rem; margin-top: 8px; }
+    .tagline-zh { font-size: 1rem; margin-top: 4px; }
+    .cta {
+      display: flex; flex-wrap: wrap; gap: 12px; justify-content: center;
+      margin-top: 28px;
+    }
+    .btn {
+      display: inline-block;
+      padding: 12px 24px;
+      border-radius: 10px;
+      font-weight: 600;
+      text-decoration: none;
+      font-size: 15px;
+    }
+    .btn-primary { background: var(--accent); color: #0f1219; }
+    .btn-secondary { background: var(--surface); color: var(--text); border: 1px solid var(--border); }
+    .hero-img {
+      width: 100%;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      margin: 40px 0;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 16px;
+      margin: 32px 0;
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+    }
+    .card h3 { font-size: 1rem; margin-bottom: 8px; color: var(--accent); }
+    .card p { font-size: 0.9rem; color: var(--muted); }
+    .shots {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 12px;
+      margin-top: 24px;
+    }
+    .shots img {
+      width: 100%;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+    }
+    footer {
+      text-align: center;
+      margin-top: 56px;
+      padding-top: 24px;
+      border-top: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 0.875rem;
+    }
+    footer a { color: var(--accent); }
+    .mac-tip {
+      background: #1a2332;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px 20px;
+      margin-top: 32px;
+      font-size: 0.875rem;
+    }
+    .mac-tip code {
+      display: block;
+      margin-top: 8px;
+      padding: 10px;
+      background: #0f1219;
+      border-radius: 6px;
+      font-family: ui-monospace, monospace;
+      font-size: 0.8rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <img class="logo" src="marketing/assets/logo.png" alt="DataZen" width="96" height="96" />
+      <h1>DataZen</h1>
+      <p class="tagline">Lightweight, free, professional database client</p>
+      <p class="tagline-zh">轻量、免费、专业的桌面数据库客户端</p>
+      <div class="cta">
+        <a class="btn btn-primary" href="https://github.com/flyxl/datazen/releases">Download</a>
+        <a class="btn btn-secondary" href="https://github.com/flyxl/datazen">GitHub</a>
+        <a class="btn btn-secondary" href="mailto:wuxiaolongklws@gmail.com">Contact</a>
+      </div>
+    </header>
+
+    <img class="hero-img" src="screenshots/demo.gif" alt="DataZen demo" width="900" />
+
+    <section class="grid">
+      <article class="card">
+        <h3>Multi-database</h3>
+        <p>PostgreSQL, MySQL, SQLite, and Redis in one native app (&lt;10 MB).</p>
+      </article>
+      <article class="card">
+        <h3>SSH built-in</h3>
+        <p>Connect through bastion hosts without a local ssh binary.</p>
+      </article>
+      <article class="card">
+        <h3>Local & secure</h3>
+        <p>Credentials encrypted on disk (AES-256-GCM). No cloud account.</p>
+      </article>
+      <article class="card">
+        <h3>MIT licensed</h3>
+        <p>Free and open source. macOS, Windows, and Linux.</p>
+      </article>
+    </section>
+
+    <section class="shots">
+      <img src="screenshots/main-window.png" alt="Main window" loading="lazy" />
+      <img src="screenshots/query-editor.png" alt="SQL editor" loading="lazy" />
+      <img src="screenshots/redis-view.png" alt="Redis view" loading="lazy" />
+    </section>
+
+    <aside class="mac-tip">
+      <strong>macOS first launch</strong> — If macOS says the app is damaged, run after install:
+      <code>xattr -cr /Applications/DataZen.app</code>
+      首次打开若提示「已损坏」，安装后执行上述命令即可。
+    </aside>
+
+    <footer>
+      <p>Feedback: <a href="mailto:wuxiaolongklws@gmail.com">wuxiaolongklws@gmail.com</a></p>
+      <p style="margin-top:8px"><a href="https://github.com/flyxl/datazen">Source on GitHub</a> · MIT License</p>
+    </footer>
+  </div>
+</body>
+</html>

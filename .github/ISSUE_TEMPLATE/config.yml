@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Email support
+    url: mailto:wuxiaolongklws@gmail.com
+    about: Questions, partnership, or feedback via email
+  - name: Download releases
+    url: https://github.com/flyxl/datazen/releases
+    about: Get the latest build for macOS, Windows, or Linux

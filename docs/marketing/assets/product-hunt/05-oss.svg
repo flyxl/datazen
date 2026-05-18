@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1270" height="760" viewBox="0 0 1270 760">
+  <rect width="1270" height="760" fill="#0f1219"/>
+  <text x="80" y="160" fill="#00b4d8" font-family="system-ui,sans-serif" font-size="56" font-weight="700">Open source, MIT</text>
+  <text x="80" y="280" fill="#e2e8f0" font-family="system-ui,sans-serif" font-size="36">Star on GitHub, contributions welcome</text>
+  <text x="80" y="400" fill="#94a3b8" font-family="system-ui,sans-serif" font-size="28">wuxiaolongklws@gmail.com</text>
+  <text x="80" y="460" fill="#00b4d8" font-family="system-ui,sans-serif" font-size="32">github.com/flyxl/datazen</text>
+</svg>
