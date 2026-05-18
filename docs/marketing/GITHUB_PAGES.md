@@ -22,18 +22,30 @@ git push origin main
 
 ## 第二步：在 GitHub 启用 Pages
 
-1. 打开 https://github.com/flyxl/datazen/settings/pages  
-2. **Build and deployment**
-   - **Source**: `GitHub Actions`（不要选 “Deploy from a branch”）
-3. 推送后 Actions 会自动运行 **Deploy GitHub Pages** 工作流  
-4. 若首次使用 Pages，可能需在 Settings → Pages 点击保存以激活
+### 仓库可见性
 
-### 用 CLI 启用（可选）
+GitHub Pages 对 **私有免费库不可用**。若仓库为 private，需改为 **Public** 或升级 GitHub Pro:
 
 ```bash
-gh api -X POST repos/flyxl/datazen/pages \
-  -f build_type=workflow
+gh repo edit flyxl/datazen --visibility public --accept-visibility-change-consequences
+gh api -X POST repos/flyxl/datazen/pages -f build_type=workflow
 ```
+
+也可在 Settings → General → Danger zone 中修改。
+
+启用后:
+
+1. 打开 https://github.com/flyxl/datazen/settings/pages  
+2. **Build and deployment** → **Source**: `GitHub Actions`  
+3. 重新运行 Actions 中的 **Deploy GitHub Pages**（或再 push 一次 `docs/`）
+
+### 用 CLI 启用（公开库或 Pro 账户）
+
+```bash
+gh api -X POST repos/flyxl/datazen/pages -f build_type=workflow
+```
+
+私有免费库会返回 422，需先按上表方案 A 或 B 处理。
 
 ## 第三步：确认部署成功
 
