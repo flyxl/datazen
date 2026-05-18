@@ -5,7 +5,7 @@
 | GitHub Pages | 已上线 | https://flyxl.github.io/datazen/ |
 | GitHub 仓库 SEO | 已完成 | 描述、主页、Topics |
 | GitHub Issue 公告 | 已发布 | https://github.com/flyxl/datazen/issues/1 |
-| Dev.to | 待授权 | GitHub OAuth 页需手动点 **Authorize thepracticaldev**（按钮对自动化禁用） |
+| Dev.to | 已发布 | https://dev.to/flyxl/datazen-a-10-mb-open-source-database-client-built-with-tauri-and-rust-4e8h |
 | V2EX | 已发布 | https://www.v2ex.com/t/1213580 |
 | 掘金 | 需手机验证码 | 不支持仅用邮箱注册 |
 | 知乎 | 需登录 | 同上 |
