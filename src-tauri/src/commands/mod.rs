@@ -1572,91 +1572,39 @@ pub async fn check_sync_conflicts(
     }))
 }
 
-// ── Kiwi SSO login ────────────────────────────────────────────────
+// ── Kiwi login (username/password → SSO → token) ─────────────────
 
 #[tauri::command]
-pub async fn kiwi_sso_login(
-    app: tauri::AppHandle,
+pub async fn kiwi_login(
     base_url: String,
-) -> Result<String, String> {
-    use tauri::{WebviewWindowBuilder, WebviewUrl};
-    use std::sync::Arc;
-    use tokio::sync::oneshot;
+    username: String,
+    password: String,
+) -> Result<serde_json::Value, String> {
+    tracing::info!("[kiwi_login] base_url={base_url}, user={username}");
 
-    let login_url = format!("{}/database-system/self-service-data", base_url.trim_end_matches('/'));
+    let client = reqwest::Client::builder()
+        .danger_accept_invalid_certs(true)
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .map_err(|e| format!("HTTP client: {e}"))?;
 
-    let (tx, rx) = oneshot::channel::<String>();
-    let tx = Arc::new(tokio::sync::Mutex::new(Some(tx)));
-
-    let window = WebviewWindowBuilder::new(
-        &app,
-        "kiwi-sso",
-        WebviewUrl::External(login_url.parse().map_err(|e| format!("Invalid URL: {e}"))?),
+    let token = crate::db::kiwi::sso_login(
+        &client,
+        base_url.trim_end_matches('/'),
+        &username,
+        &password,
     )
-    .title("Kiwi SSO Login")
-    .inner_size(900.0, 700.0)
-    .center()
-    .build()
-    .map_err(|e| format!("Failed to create SSO window: {e}"))?;
+    .await
+    .map_err(|e| {
+        tracing::error!("[kiwi_login] failed: {e}");
+        e.to_string()
+    })?;
 
-    // External pages don't have __TAURI_INTERNALS__, so we use
-    // document.title as a one-way IPC channel: inject JS that writes the
-    // token into the title, then poll window.title() from Rust.
-    let win_poll = window.clone();
-    let tx_poll = tx.clone();
-    tauri::async_runtime::spawn(async move {
-        let check_js = r#"
-            (function(){
-                try {
-                    var t = localStorage.getItem('Admin-Token');
-                    if (!t) {
-                        var m = (document.cookie || '').match(/Admin-Token=([^;]+)/);
-                        if (m) t = m[1];
-                    }
-                    if (t && t.length > 20) {
-                        document.title = 'KIWI_TOKEN:' + t;
-                    }
-                } catch(e){}
-            })();
-        "#;
-
-        for _ in 0..300 {
-            tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
-
-            // Inject the check script
-            if win_poll.eval(check_js).is_err() {
-                break; // window was closed by user
-            }
-
-            // Read back the window title
-            if let Ok(title) = win_poll.title() {
-                if let Some(token) = title.strip_prefix("KIWI_TOKEN:") {
-                    if token.len() > 20 {
-                        let mut guard = tx_poll.lock().await;
-                        if let Some(sender) = guard.take() {
-                            let _ = sender.send(token.to_string());
-                        }
-                        let _ = win_poll.close();
-                        return;
-                    }
-                }
-            }
-        }
-
-        // Timeout after ~5 minutes
-        let mut guard = tx_poll.lock().await;
-        if let Some(sender) = guard.take() {
-            let _ = sender.send(String::new());
-        }
-    });
-
-    let token = rx.await.map_err(|_| "SSO login cancelled".to_string())?;
-    if token.is_empty() {
-        return Err("SSO 登录超时，请重试".into());
-    }
-
-    let _ = window.close();
-    Ok(token)
+    tracing::info!("[kiwi_login] success, token_len={}", token.len());
+    Ok(serde_json::json!({
+        "token": token,
+        "username": username,
+    }))
 }
 
 /// Kiwi: list instances for a given token (called from frontend).

@@ -2,18 +2,238 @@
 //!
 //! Field mapping:
 //!   config.host     → Kiwi base URL  (e.g. "https://kiwi.akusre.com")
-//!   config.password → Admin-Token JWT
-//!   config.username → user_name header
+//!   config.username → SSO username (plaintext)
+//!   config.password → SSO password (plaintext)
 //!   config.database → instance domain (e.g. "pe-xxx.rwlb.ap-southeast-5.rds.aliyuncs.com")
 //!   config.port     → source_type    (default 4 = MySQL/PolarDB)
 
 use super::*;
 use async_trait::async_trait;
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE};
 use serde::Deserialize as SerdeDeserialize;
 use std::collections::HashMap;
 use std::time::Instant;
 use tokio::sync::RwLock;
+
+// ── DES-CBC-PKCS7 encryption (for SSO auth) ────────────────────────
+
+use cbc::cipher::{block_padding::Pkcs7, BlockEncryptMut, KeyIvInit};
+use des::Des;
+
+type DesCbcEnc = cbc::Encryptor<Des>;
+
+const DES_KEY: &[u8; 8] = b"ak01$#AK";
+const DES_IV: &[u8; 8] = b"ak01$#AK";
+
+fn des_encrypt_hex(plaintext: &str) -> String {
+    let enc = DesCbcEnc::new(DES_KEY.into(), DES_IV.into());
+    let ct = enc.encrypt_padded_vec_mut::<Pkcs7>(plaintext.as_bytes());
+    ct.iter().map(|b| format!("{:02x}", b)).collect()
+}
+
+// ── SSO login helpers ──────────────────────────────────────────────
+
+/// Derive SSO URL from Kiwi base URL: https://kiwi.x.com → https://sso.x.com
+fn derive_sso_url(base_url: &str) -> Result<String, DriverError> {
+    let (scheme, host_path) = if let Some(rest) = base_url.strip_prefix("https://") {
+        ("https", rest)
+    } else if let Some(rest) = base_url.strip_prefix("http://") {
+        ("http", rest)
+    } else {
+        return Err(DriverError::InvalidConfig(
+            "URL must start with http(s)://".into(),
+        ));
+    };
+    let host = host_path.split('/').next().unwrap_or(host_path);
+    let parts: Vec<&str> = host.splitn(2, '.').collect();
+    if parts.len() < 2 {
+        return Err(DriverError::InvalidConfig(
+            "Cannot derive SSO URL from base URL".into(),
+        ));
+    }
+    Ok(format!("{}://sso.{}", scheme, parts[1]))
+}
+
+/// Base64-URL decode (JWT payload uses URL-safe base64 without padding).
+fn base64_url_decode(input: &str) -> Result<Vec<u8>, DriverError> {
+    let padded = match input.len() % 4 {
+        2 => format!("{}==", input),
+        3 => format!("{}=", input),
+        _ => input.to_string(),
+    };
+    let standard = padded.replace('-', "+").replace('_', "/");
+    BASE64
+        .decode(&standard)
+        .map_err(|e| DriverError::AuthenticationFailed(format!("Base64 decode: {e}")))
+}
+
+/// Extract `ticket` query parameter from the redirect URL returned by SSO auth.
+fn extract_ticket_from_url(redirect_url: &str) -> Result<String, DriverError> {
+    if let Some(query) = redirect_url.split('?').nth(1) {
+        for pair in query.split('&') {
+            if let Some(value) = pair.strip_prefix("ticket=") {
+                return urlencoding::decode(value)
+                    .map(|v| v.to_string())
+                    .map_err(|e| {
+                        DriverError::AuthenticationFailed(format!("URL decode ticket: {e}"))
+                    });
+            }
+        }
+    }
+    Err(DriverError::AuthenticationFailed(
+        "No ticket in redirect URL".into(),
+    ))
+}
+
+/// Decode the JWT ticket and extract the `sid` field for the cookie.
+fn extract_sid_from_jwt(jwt: &str) -> Result<String, DriverError> {
+    let parts: Vec<&str> = jwt.split('.').collect();
+    if parts.len() < 2 {
+        return Err(DriverError::AuthenticationFailed(
+            "Invalid JWT format".into(),
+        ));
+    }
+    let payload = base64_url_decode(parts[1])?;
+    let json: serde_json::Value = serde_json::from_slice(&payload)
+        .map_err(|e| DriverError::AuthenticationFailed(format!("JWT payload parse: {e}")))?;
+    json.get("sid")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+        .ok_or_else(|| DriverError::AuthenticationFailed("No sid in JWT payload".into()))
+}
+
+/// Full SSO login: DES-encrypt credentials → POST sso_auth → extract ticket →
+/// GET validate_ticket → return Admin-Token.
+pub async fn sso_login(
+    client: &reqwest::Client,
+    base_url: &str,
+    username: &str,
+    password: &str,
+) -> Result<String, DriverError> {
+    let enc_user = des_encrypt_hex(username);
+    let enc_pass = des_encrypt_hex(password);
+    let sso_url = derive_sso_url(base_url)?;
+
+    tracing::info!("[kiwi] SSO login: sso_url={sso_url}, user={username}");
+
+    // Step 1: SSO auth → get ticket
+    #[derive(SerdeDeserialize)]
+    struct SsoAuthResp {
+        redirect_url: Option<String>,
+        err_code: i32,
+        #[serde(default)]
+        info: String,
+    }
+
+    let auth_body = serde_json::json!({
+        "username": enc_user,
+        "password": enc_pass,
+        "service": "",
+        "platform": "kiwi",
+        "renew": "",
+        "extra": ""
+    });
+
+    let resp = client
+        .post(&format!("{}/api/sso_auth/", sso_url))
+        .header("Content-Type", "application/json;charset=UTF-8")
+        .header("Accept", "application/json, text/plain, */*")
+        .json(&auth_body)
+        .send()
+        .await
+        .map_err(|e| DriverError::AuthenticationFailed(format!("SSO auth request: {e}")))?;
+
+    let status = resp.status();
+    let body = resp
+        .text()
+        .await
+        .map_err(|e| DriverError::AuthenticationFailed(format!("SSO auth body: {e}")))?;
+    tracing::info!("[kiwi] SSO auth → {status}, len={}", body.len());
+
+    let auth: SsoAuthResp = serde_json::from_str(&body)
+        .map_err(|e| DriverError::AuthenticationFailed(format!("SSO auth parse: {e}")))?;
+
+    if auth.err_code != 0 {
+        return Err(DriverError::AuthenticationFailed(format!(
+            "SSO auth failed (code={}): {}",
+            auth.err_code, auth.info
+        )));
+    }
+
+    let redirect_url = auth.redirect_url.ok_or_else(|| {
+        DriverError::AuthenticationFailed("No redirect_url in SSO response".into())
+    })?;
+
+    // Step 2: extract ticket from redirect_url
+    let ticket = extract_ticket_from_url(&redirect_url)?;
+
+    // Step 3: extract sid from the ticket JWT (needed as cookie for validate_ticket)
+    let sid = extract_sid_from_jwt(&ticket)?;
+
+    // Step 4: validate ticket → get Admin-Token
+    #[derive(SerdeDeserialize)]
+    struct VtResults {
+        token: String,
+    }
+    #[derive(SerdeDeserialize)]
+    struct VtResp {
+        code: i32,
+        #[serde(default)]
+        message: String,
+        results: Option<VtResults>,
+    }
+
+    let service_b64 = BASE64.encode(format!("{}/#/sys-pannel", sso_url).as_bytes());
+    let validate_url = format!(
+        "{}/gw/v1/auth/validate_ticket?ticket={}&service={}&extra=&platform=kiwi",
+        base_url,
+        urlencoding::encode(&ticket),
+        urlencoding::encode(&service_b64)
+    );
+
+    tracing::info!("[kiwi] validate_ticket GET {validate_url}");
+
+    let resp = client
+        .get(&validate_url)
+        .header("Cookie", format!("sid={}", sid))
+        .header("Accept", "application/json, text/plain, */*")
+        .header("Content-Type", "application/json")
+        .header("lang", "en")
+        .send()
+        .await
+        .map_err(|e| DriverError::AuthenticationFailed(format!("validate_ticket: {e}")))?;
+
+    let status = resp.status();
+    let body = resp
+        .text()
+        .await
+        .map_err(|e| DriverError::AuthenticationFailed(format!("validate_ticket body: {e}")))?;
+    tracing::info!("[kiwi] validate_ticket → {status}, len={}", body.len());
+
+    let vt: VtResp = serde_json::from_str(&body)
+        .map_err(|e| DriverError::AuthenticationFailed(format!("validate_ticket parse: {e}")))?;
+
+    if vt.code != 0 {
+        return Err(DriverError::AuthenticationFailed(format!(
+            "validate_ticket error (code={}): {}",
+            vt.code, vt.message
+        )));
+    }
+
+    let token = vt
+        .results
+        .map(|r| r.token)
+        .ok_or_else(|| {
+            DriverError::AuthenticationFailed("No token in validate_ticket response".into())
+        })?;
+
+    tracing::info!(
+        "[kiwi] SSO login success, token_len={}",
+        token.len()
+    );
+    Ok(token)
+}
 
 // ── Kiwi API response types ────────────────────────────────────────
 
@@ -26,28 +246,6 @@ struct KiwiResp<T> {
 }
 
 #[derive(Debug, SerdeDeserialize)]
-struct KiwiUserInfo {
-    #[allow(dead_code)]
-    token: Option<String>,
-    user_info: Option<KiwiUser>,
-}
-
-#[derive(Debug, SerdeDeserialize)]
-struct KiwiUser {
-    #[allow(dead_code)]
-    username: Option<String>,
-}
-
-#[derive(Debug, SerdeDeserialize)]
-struct KiwiInstance {
-    name: String,
-    #[serde(default)]
-    alias_name: String,
-    #[serde(default)]
-    short_domain: String,
-}
-
-#[derive(Debug, SerdeDeserialize)]
 struct KiwiDatabase {
     name: String,
     #[allow(dead_code)]
@@ -56,19 +254,15 @@ struct KiwiDatabase {
 }
 
 #[derive(Debug, SerdeDeserialize)]
-struct KiwiTableHeader {
-    table_name: String,
-    column_name: String,
-}
-
-#[derive(Debug, SerdeDeserialize)]
 struct KiwiBatchResult {
     #[serde(default)]
     result_id: String,
     #[serde(default, deserialize_with = "null_as_empty_vec")]
     headers: Vec<String>,
+    #[allow(dead_code)]
     #[serde(default)]
     time: f64,
+    #[allow(dead_code)]
     #[serde(default)]
     command: String,
     #[serde(default)]
@@ -86,20 +280,11 @@ where
 struct KiwiQueryResult {
     #[serde(default)]
     result: Vec<String>,
+    #[allow(dead_code)]
     #[serde(default)]
     total: i64,
     #[serde(default)]
     headers: Vec<String>,
-}
-
-#[derive(Debug, SerdeDeserialize)]
-struct KiwiInstanceResp {
-    #[allow(dead_code)]
-    #[serde(default)]
-    msg: String,
-    code: i32,
-    #[serde(default)]
-    result: Vec<KiwiInstance>,
 }
 
 // ── Session state stored per connection ─────────────────────────────
@@ -107,12 +292,14 @@ struct KiwiInstanceResp {
 struct KiwiSession {
     client: reqwest::Client,
     base_url: String,
-    token: String,
+    token: std::sync::Mutex<String>,
+    // Plaintext credentials for auto-refresh
+    sso_username: String,
+    sso_password: String,
     username: String,
     domain: String,
     source_type: u32,
     current_database: std::sync::Mutex<String>,
-    // Caches to avoid redundant HTTP calls
     cached_databases: std::sync::Mutex<Option<Vec<String>>>,
     cached_tables: std::sync::Mutex<HashMap<String, Vec<String>>>,
     cached_columns: std::sync::Mutex<HashMap<String, (Vec<ColumnSchema>, Vec<String>)>>,
@@ -120,8 +307,9 @@ struct KiwiSession {
 
 impl KiwiSession {
     fn auth_headers(&self) -> HeaderMap {
+        let token = self.token.lock().unwrap().clone();
         let mut h = HeaderMap::new();
-        if let Ok(v) = HeaderValue::from_str(&self.token) {
+        if let Ok(v) = HeaderValue::from_str(&token) {
             h.insert("X-Token", v.clone());
             h.insert("authorization", v);
         }
@@ -131,7 +319,10 @@ impl KiwiSession {
             }
         }
         h.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
-        h.insert("Accept", HeaderValue::from_static("application/json, text/plain, */*"));
+        h.insert(
+            "Accept",
+            HeaderValue::from_static("application/json, text/plain, */*"),
+        );
         h.insert("lang", HeaderValue::from_static("en"));
         h
     }
@@ -144,9 +335,24 @@ impl KiwiSession {
         *self.current_database.lock().unwrap() = db.to_string();
     }
 
+    /// Re-login via SSO and replace the token. Clears all metadata caches.
+    async fn refresh_token(&self) -> Result<(), DriverError> {
+        tracing::info!("[kiwi] Refreshing token for user={}", self.sso_username);
+        let new_token =
+            sso_login(&self.client, &self.base_url, &self.sso_username, &self.sso_password).await?;
+        *self.token.lock().unwrap() = new_token;
+        *self.cached_databases.lock().unwrap() = None;
+        self.cached_tables.lock().unwrap().clear();
+        self.cached_columns.lock().unwrap().clear();
+        tracing::info!("[kiwi] Token refreshed successfully");
+        Ok(())
+    }
+
+    /// HTTP GET with automatic 401 → refresh → retry.
     async fn get<T: serde::de::DeserializeOwned>(&self, path: &str) -> Result<T, DriverError> {
         let url = format!("{}{}", self.base_url, path);
         tracing::info!("[kiwi] GET {url}");
+
         let resp = self
             .client
             .get(&url)
@@ -155,28 +361,63 @@ impl KiwiSession {
             .await
             .map_err(|e| DriverError::ConnectionFailed(format!("HTTP GET failed: {e}")))?;
 
+        if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+            tracing::info!("[kiwi] GET {path} → 401, refreshing token…");
+            self.refresh_token().await?;
+            let resp = self
+                .client
+                .get(&url)
+                .headers(self.auth_headers())
+                .send()
+                .await
+                .map_err(|e| DriverError::ConnectionFailed(format!("HTTP GET retry: {e}")))?;
+            let status = resp.status();
+            let body = resp
+                .text()
+                .await
+                .map_err(|e| DriverError::QueryFailed(format!("read body: {e}")))?;
+            tracing::info!("[kiwi] GET {path} retry → {status}, len={}", body.len());
+            if !status.is_success() {
+                return Err(DriverError::QueryFailed(format!("HTTP {status}: {body}")));
+            }
+            return serde_json::from_str::<T>(&body).map_err(|e| {
+                DriverError::QueryFailed(format!(
+                    "parse JSON: {e} — body: {}",
+                    &body[..body.len().min(200)]
+                ))
+            });
+        }
+
         let status = resp.status();
         let body = resp
             .text()
             .await
             .map_err(|e| DriverError::QueryFailed(format!("read body: {e}")))?;
-
         tracing::info!("[kiwi] GET {path} → {status}, len={}", body.len());
         if !status.is_success() {
             tracing::error!("[kiwi] GET {path} failed: {body}");
             return Err(DriverError::QueryFailed(format!("HTTP {status}: {body}")));
         }
-        serde_json::from_str::<T>(&body)
-            .map_err(|e| DriverError::QueryFailed(format!("parse JSON: {e} — body: {}", &body[..body.len().min(200)])))
+        serde_json::from_str::<T>(&body).map_err(|e| {
+            DriverError::QueryFailed(format!(
+                "parse JSON: {e} — body: {}",
+                &body[..body.len().min(200)]
+            ))
+        })
     }
 
+    /// HTTP POST (JSON body) with automatic 401 → refresh → retry.
     async fn post_json<T: serde::de::DeserializeOwned>(
         &self,
         path: &str,
         body: &serde_json::Value,
     ) -> Result<T, DriverError> {
         let url = format!("{}{}", self.base_url, path);
-        tracing::info!("[kiwi] POST {url} body={}", serde_json::to_string(body).unwrap_or_default());
+        tracing::info!(
+            "[kiwi] POST {url} body={}",
+            serde_json::to_string(body).unwrap_or_default()
+        );
+
         let resp = self
             .client
             .post(&url)
@@ -186,22 +427,58 @@ impl KiwiSession {
             .await
             .map_err(|e| DriverError::ConnectionFailed(format!("HTTP POST failed: {e}")))?;
 
+        if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+            tracing::info!("[kiwi] POST {path} → 401, refreshing token…");
+            self.refresh_token().await?;
+            let resp = self
+                .client
+                .post(&url)
+                .headers(self.auth_headers())
+                .json(body)
+                .send()
+                .await
+                .map_err(|e| DriverError::ConnectionFailed(format!("HTTP POST retry: {e}")))?;
+            let status = resp.status();
+            let body_text = resp
+                .text()
+                .await
+                .map_err(|e| DriverError::QueryFailed(format!("read body: {e}")))?;
+            tracing::info!("[kiwi] POST {path} retry → {status}, len={}", body_text.len());
+            if !status.is_success() {
+                return Err(DriverError::QueryFailed(format!(
+                    "HTTP {status}: {body_text}"
+                )));
+            }
+            return serde_json::from_str::<T>(&body_text).map_err(|e| {
+                DriverError::QueryFailed(format!(
+                    "parse JSON: {e} — body: {}",
+                    &body_text[..body_text.len().min(200)]
+                ))
+            });
+        }
+
         let status = resp.status();
         let body_text = resp
             .text()
             .await
             .map_err(|e| DriverError::QueryFailed(format!("read body: {e}")))?;
-
         tracing::info!("[kiwi] POST {path} → {status}, len={}", body_text.len());
         if !status.is_success() {
             tracing::error!("[kiwi] POST {path} failed: {body_text}");
-            return Err(DriverError::QueryFailed(format!("HTTP {status}: {body_text}")));
+            return Err(DriverError::QueryFailed(format!(
+                "HTTP {status}: {body_text}"
+            )));
         }
-        serde_json::from_str::<T>(&body_text)
-            .map_err(|e| {
-                tracing::error!("[kiwi] POST {path} parse error: {e}, body: {}", &body_text[..body_text.len().min(300)]);
-                DriverError::QueryFailed(format!("parse JSON: {e} — body: {}", &body_text[..body_text.len().min(200)]))
-            })
+        serde_json::from_str::<T>(&body_text).map_err(|e| {
+            tracing::error!(
+                "[kiwi] POST {path} parse error: {e}, body: {}",
+                &body_text[..body_text.len().min(300)]
+            );
+            DriverError::QueryFailed(format!(
+                "parse JSON: {e} — body: {}",
+                &body_text[..body_text.len().min(200)]
+            ))
+        })
     }
 
     /// Execute SQL through the two-step async API and return (headers, rows, time_ms).
@@ -220,11 +497,15 @@ impl KiwiSession {
             "source_type": self.source_type,
         });
 
-        let batch_resp: KiwiResp<Vec<KiwiBatchResult>> =
-            self.post_json("/gw/v1/dataquery/query/batch", &batch_body).await?;
+        let batch_resp: KiwiResp<Vec<KiwiBatchResult>> = self
+            .post_json("/gw/v1/dataquery/query/batch", &batch_body)
+            .await?;
 
         if batch_resp.code != 0 {
-            return Err(DriverError::QueryFailed(format!("batch error: {}", batch_resp.msg)));
+            return Err(DriverError::QueryFailed(format!(
+                "batch error: {}",
+                batch_resp.msg
+            )));
         }
 
         let items = batch_resp.result.unwrap_or_default();
@@ -272,7 +553,6 @@ impl KiwiDriver {
         }
     }
 
-    /// Get the active database for a session. Falls back to the first available database.
     async fn resolve_active_db(&self, handle: &ConnectionHandle) -> Result<String, DriverError> {
         {
             let sessions = self.sessions.read().await;
@@ -282,7 +562,6 @@ impl KiwiDriver {
                 return Ok(active);
             }
         }
-        // No active db set — fall back to first
         let dbs = self.get_databases(handle).await?;
         let first = dbs.first().cloned().unwrap_or_default();
         {
@@ -302,7 +581,7 @@ impl KiwiDriver {
             .ok_or_else(|| DriverError::ConnectionFailed("Kiwi session not found".into()))
     }
 
-    fn build_session(config: &ConnectionConfig) -> Result<KiwiSession, DriverError> {
+    async fn build_session(config: &ConnectionConfig) -> Result<KiwiSession, DriverError> {
         let base_url = config
             .host
             .as_deref()
@@ -310,17 +589,23 @@ impl KiwiDriver {
             .trim_end_matches('/')
             .to_string();
 
-        let token = config
+        let sso_username = config
+            .username
+            .clone()
+            .ok_or_else(|| DriverError::InvalidConfig("username is required for Kiwi".into()))?;
+
+        let sso_password = config
             .password
             .as_deref()
-            .ok_or_else(|| DriverError::InvalidConfig("password (Admin-Token) is required".into()))?
+            .ok_or_else(|| DriverError::InvalidConfig("password is required for Kiwi".into()))?
             .to_string();
 
-        let username = config.username.clone().unwrap_or_else(|| "unknown".into());
         let domain = config
             .database
             .as_deref()
-            .ok_or_else(|| DriverError::InvalidConfig("database (instance domain) is required".into()))?
+            .ok_or_else(|| {
+                DriverError::InvalidConfig("database (instance domain) is required".into())
+            })?
             .to_string();
 
         let source_type = config.port.unwrap_or(4) as u32;
@@ -331,11 +616,16 @@ impl KiwiDriver {
             .build()
             .map_err(|e| DriverError::ConnectionFailed(format!("build HTTP client: {e}")))?;
 
+        let token =
+            sso_login(&client, &base_url, &sso_username, &sso_password).await?;
+
         Ok(KiwiSession {
             client,
             base_url,
-            token,
-            username,
+            token: std::sync::Mutex::new(token),
+            username: sso_username.clone(),
+            sso_username,
+            sso_password,
             domain,
             source_type,
             current_database: std::sync::Mutex::new(String::new()),
@@ -363,20 +653,7 @@ impl DatabaseDriver for KiwiDriver {
     // ── Connection lifecycle ───────────────────────────────────────
 
     async fn connect(&self, config: &ConnectionConfig) -> Result<ConnectionHandle, DriverError> {
-        let session = Self::build_session(config)?;
-
-        // Validate token
-        let url = format!(
-            "/gw/v1/user/get_user_info_by_token?token={}",
-            &session.token
-        );
-        let resp: KiwiResp<KiwiUserInfo> = session.get(&url).await?;
-        if resp.code != 0 {
-            return Err(DriverError::AuthenticationFailed(format!(
-                "Token validation failed: {}",
-                resp.msg
-            )));
-        }
+        let session = Self::build_session(config).await?;
 
         let pool_id = format!("kiwi_{}", uuid::Uuid::new_v4());
         let handle = ConnectionHandle {
@@ -389,24 +666,9 @@ impl DatabaseDriver for KiwiDriver {
     }
 
     async fn test_connection(&self, config: &ConnectionConfig) -> Result<ServerInfo, DriverError> {
-        let session = Self::build_session(config)?;
-        let url = format!(
-            "/gw/v1/user/get_user_info_by_token?token={}",
-            &session.token
-        );
-        let resp: KiwiResp<KiwiUserInfo> = session.get(&url).await?;
-        if resp.code != 0 {
-            return Err(DriverError::AuthenticationFailed(resp.msg));
-        }
-
-        let username = resp
-            .result
-            .and_then(|r| r.user_info)
-            .and_then(|u| u.username)
-            .unwrap_or_default();
-
+        let session = Self::build_session(config).await?;
         Ok(ServerInfo {
-            server_version: format!("Kiwi (user: {username})"),
+            server_version: format!("Kiwi (user: {})", session.username),
             server_type: "Kiwi".into(),
         })
     }
@@ -422,9 +684,11 @@ impl DatabaseDriver for KiwiDriver {
         let sessions = self.sessions.read().await;
         let s = Self::get_session(&sessions, handle)?;
 
-        // Return cached result if available
         if let Some(cached) = s.cached_databases.lock().unwrap().as_ref() {
-            tracing::info!("[kiwi] get_databases: returning {} cached databases", cached.len());
+            tracing::info!(
+                "[kiwi] get_databases: returning {} cached databases",
+                cached.len()
+            );
             return Ok(cached.clone());
         }
 
@@ -459,18 +723,26 @@ impl DatabaseDriver for KiwiDriver {
 
         s.set_active_db(database);
 
-        // Return cached if available
         if let Some(cached) = s.cached_tables.lock().unwrap().get(database) {
-            tracing::info!("[kiwi] get_tables: returning {} cached tables for {database}", cached.len());
-            return Ok(cached.iter().map(|name| TableInfo {
-                name: name.clone(),
-                schema: None,
-                table_type: TableType::Table,
-                row_count: None,
-            }).collect());
+            tracing::info!(
+                "[kiwi] get_tables: returning {} cached tables for {database}",
+                cached.len()
+            );
+            return Ok(cached
+                .iter()
+                .map(|name| TableInfo {
+                    name: name.clone(),
+                    schema: None,
+                    table_type: TableType::Table,
+                    row_count: None,
+                })
+                .collect());
         }
 
-        tracing::info!("[kiwi] get_tables: database={database}, domain={}", s.domain);
+        tracing::info!(
+            "[kiwi] get_tables: database={database}, domain={}",
+            s.domain
+        );
 
         let url = format!(
             "/gw/v1/dataquery/tables?source_type={}&domain={}&database={}",
@@ -482,7 +754,10 @@ impl DatabaseDriver for KiwiDriver {
         }
 
         let table_names: Vec<String> = resp.result.unwrap_or_default();
-        s.cached_tables.lock().unwrap().insert(database.to_string(), table_names.clone());
+        s.cached_tables
+            .lock()
+            .unwrap()
+            .insert(database.to_string(), table_names.clone());
 
         Ok(table_names
             .into_iter()
@@ -518,7 +793,6 @@ impl DatabaseDriver for KiwiDriver {
         let db = self.resolve_active_db(handle).await?;
         let cache_key = format!("{}.{}", db, table);
 
-        // Check cache first
         let cached = {
             let sessions = self.sessions.read().await;
             let s = Self::get_session(&sessions, handle)?;
@@ -539,7 +813,6 @@ impl DatabaseDriver for KiwiDriver {
         let sql = format!("SHOW COLUMNS FROM `{}`", table.replace('`', "``"));
         let (headers, rows, _) = s.exec_sql(&sql, &db).await?;
 
-        // SHOW COLUMNS returns: Field, Type, Null, Key, Default, Extra
         let field_idx = headers.iter().position(|h| h == "Field").unwrap_or(0);
         let type_idx = headers.iter().position(|h| h == "Type").unwrap_or(1);
         let null_idx = headers.iter().position(|h| h == "Null").unwrap_or(2);
@@ -558,7 +831,11 @@ impl DatabaseDriver for KiwiDriver {
             let key = get(key_idx);
             let default_val = {
                 let v = get(default_idx);
-                if v.is_empty() || v == "NULL" { None } else { Some(v) }
+                if v.is_empty() || v == "NULL" {
+                    None
+                } else {
+                    Some(v)
+                }
             };
             let extra = get(extra_idx);
             let is_pk = key == "PRI";
@@ -579,7 +856,6 @@ impl DatabaseDriver for KiwiDriver {
             });
         }
 
-        // Cache the result
         let result = (columns.clone(), pks.clone());
         s.cached_columns.lock().unwrap().insert(cache_key, result);
 
@@ -591,7 +867,6 @@ impl DatabaseDriver for KiwiDriver {
     async fn query(&self, handle: &ConnectionHandle, sql: &str) -> Result<QueryResult, DriverError> {
         let db = self.resolve_active_db(handle).await?;
 
-        // Strip LIMIT/OFFSET — Kiwi's query/result API handles pagination via page_size
         let clean_sql = strip_limit_offset(sql);
         tracing::info!("[kiwi] query: database={db}, sql={clean_sql}");
 
@@ -639,7 +914,6 @@ impl DatabaseDriver for KiwiDriver {
     ) -> Result<MultiQueryResult, DriverError> {
         let start = Instant::now();
 
-        // Split on semicolons (simple split — Kiwi handles one statement per batch call)
         let statements: Vec<&str> = sql
             .split(';')
             .map(|s| s.trim())
@@ -685,7 +959,6 @@ impl DatabaseDriver for KiwiDriver {
         sql: &str,
         _params: &[Value],
     ) -> Result<QueryResult, DriverError> {
-        // Kiwi API doesn't support parameterized queries — execute as-is
         self.query(handle, sql).await
     }
 
@@ -704,13 +977,13 @@ impl DatabaseDriver for KiwiDriver {
 /// Remove trailing LIMIT/OFFSET clause from SQL (Kiwi API handles pagination via page_size).
 fn strip_limit_offset(sql: &str) -> String {
     let upper = sql.to_ascii_uppercase();
-    // Find the last occurrence of " LIMIT "
     if let Some(limit_pos) = upper.rfind(" LIMIT ") {
         let after_limit = &upper[limit_pos + 7..];
-        // Verify it looks like "N OFFSET N" or just "N"
         let trimmed = after_limit.trim();
-        let is_limit_clause = trimmed.chars().all(|c| c.is_ascii_digit() || c.is_ascii_whitespace()
-            || trimmed.contains("OFFSET"));
+        let is_limit_clause = trimmed
+            .chars()
+            .all(|c| c.is_ascii_digit() || c.is_ascii_whitespace())
+            || trimmed.contains("OFFSET");
         if is_limit_clause {
             return sql[..limit_pos].to_string();
         }

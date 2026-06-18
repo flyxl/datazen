@@ -105,33 +105,35 @@ export function NewConnectionDialog({ open, onClose }: NewConnectionDialogProps)
   const [kiwiInstances, setKiwiInstances] = useState<{ name: string; alias: string; short: string }[]>([]);
   const [loadingInstances, setLoadingInstances] = useState(false);
 
-  async function handleKiwiSsoLogin() {
-    if (!host) return;
+  const [kiwiToken, setKiwiToken] = useState('');
+  const [kiwiLoggingIn, setKiwiLoggingIn] = useState(false);
+
+  async function handleKiwiLogin() {
+    if (!host || !username || !password) return;
+    setKiwiLoggingIn(true);
+    setTestErr(null);
     try {
-      const token = await (window as any).__TAURI_INTERNALS__?.invoke('kiwi_sso_login', { baseUrl: host });
-      if (token) {
-        setPassword(token);
-        // Load instances after successful login
-        loadKiwiInstances(host, token);
+      const result = await (window as any).__TAURI_INTERNALS__?.invoke('kiwi_login', {
+        baseUrl: host, username, password,
+      });
+      if (result?.token) {
+        setKiwiToken(result.token);
+        void loadKiwiInstances(host, result.token);
       }
     } catch (e) {
-      setTestErr(typeof e === 'string' ? e : e instanceof Error ? e.message : 'SSO login failed');
+      setTestErr(typeof e === 'string' ? e : e instanceof Error ? e.message : '登录失败');
+    } finally {
+      setKiwiLoggingIn(false);
     }
   }
 
   async function loadKiwiInstances(baseUrl: string, token: string) {
     setLoadingInstances(true);
     try {
-      const sourceType = Number(port) || 4;
-      const resp = await fetch(`${baseUrl}/gw/v1/dataquery/instances?source_type=${sourceType}`, {
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Token': token,
-          'authorization': token,
-        },
+      const data = await (window as any).__TAURI_INTERNALS__?.invoke('kiwi_list_instances', {
+        baseUrl, token, sourceType: Number(port) || 4, userName: username || undefined,
       });
-      const data = await resp.json();
-      if (data.code === 0 && Array.isArray(data.result)) {
+      if (data?.code === 0 && Array.isArray(data.result)) {
         setKiwiInstances(data.result.map((r: any) => ({
           name: r.name,
           alias: r.alias_name || '',
@@ -286,66 +288,55 @@ export function NewConnectionDialog({ open, onClose }: NewConnectionDialogProps)
                 <Label required>Kiwi URL</Label>
                 <Input value={host} onChange={(e) => setHost(e.target.value)} placeholder="https://kiwi.akusre.com" />
               </div>
-              <div className="md:col-span-2">
-                <Label required>Token (Admin-Token)</Label>
-                <div className="flex gap-2">
-                  <Input
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="SSO 登录后自动填充，或手动粘贴"
-                    className="flex-1"
-                  />
-                  <Button
-                    variant="secondary"
-                    onClick={() => void handleKiwiSsoLogin()}
-                    className="shrink-0 whitespace-nowrap"
-                  >
-                    SSO 登录
-                  </Button>
-                </div>
+              <div>
+                <Label required>Username</Label>
+                <Input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="用户名" />
               </div>
-              {password && (
-                <>
-                  <div className="md:col-span-2">
-                    <Label required>Instance Domain</Label>
-                    {kiwiInstances.length > 0 ? (
-                      <Select
+              <div>
+                <Label required>Password</Label>
+                <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="密码" />
+              </div>
+              <div className="md:col-span-2">
+                <Button
+                  variant="secondary"
+                  onClick={() => void handleKiwiLogin()}
+                  disabled={kiwiLoggingIn || !host || !username || !password}
+                  className="w-full"
+                >
+                  {kiwiLoggingIn ? '登录中...' : '登录并加载实例'}
+                </Button>
+              </div>
+              {kiwiToken && (
+                <div className="md:col-span-2">
+                  <Label required>Instance Domain</Label>
+                  {kiwiInstances.length > 0 ? (
+                    <Select
+                      value={database}
+                      options={kiwiInstances.map((inst) => ({
+                        value: inst.name,
+                        label: inst.short || inst.alias || inst.name,
+                      }))}
+                      onChange={setDatabase}
+                    />
+                  ) : (
+                    <div className="flex gap-2">
+                      <Input
                         value={database}
-                        options={kiwiInstances.map((inst) => ({
-                          value: inst.name,
-                          label: inst.short || inst.alias || inst.name,
-                        }))}
-                        onChange={setDatabase}
+                        onChange={(e) => setDatabase(e.target.value)}
+                        placeholder="pe-xxx.rwlb.ap-southeast-5.rds.aliyuncs.com"
+                        className="flex-1"
                       />
-                    ) : (
-                      <div className="flex gap-2">
-                        <Input
-                          value={database}
-                          onChange={(e) => setDatabase(e.target.value)}
-                          placeholder="pe-xxx.rwlb.ap-southeast-5.rds.aliyuncs.com"
-                          className="flex-1"
-                        />
-                        <Button
-                          variant="secondary"
-                          onClick={() => void loadKiwiInstances(host, password)}
-                          disabled={loadingInstances || !password}
-                          className="shrink-0 whitespace-nowrap"
-                        >
-                          {loadingInstances ? '加载中...' : '加载实例'}
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-                  <div>
-                    <Label>Username</Label>
-                    <Input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="wuxl" />
-                  </div>
-                  <div>
-                    <Label>Source Type</Label>
-                    <Input value={port} onChange={(e) => setPort(e.target.value)} placeholder="4" />
-                  </div>
-                </>
+                      <Button
+                        variant="secondary"
+                        onClick={() => void loadKiwiInstances(host, kiwiToken)}
+                        disabled={loadingInstances || !kiwiToken}
+                        className="shrink-0 whitespace-nowrap"
+                      >
+                        {loadingInstances ? '加载中...' : '加载实例'}
+                      </Button>
+                    </div>
+                  )}
+                </div>
               )}
             </>
           ) : (
