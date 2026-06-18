@@ -156,6 +156,27 @@ export const DB_REGISTRY: Record<DatabaseType, DatabaseTypeMeta> = {
     connectionView: 'keyvalue',
     databaseFieldType: 'index',
   },
+  kiwi: {
+    label: 'Kiwi',
+    shortLabel: 'Ki',
+    iconBg: 'bg-teal-600',
+    iconColor: 'text-teal-400',
+    defaultPort: 4,
+    defaultHost: 'https://kiwi.akusre.com',
+    defaultUser: '',
+    quoteChar: '`',
+    connectionMode: 'server',
+    supportsSSH: false,
+    supportsSSL: false,
+    supportsBackup: false,
+    supportsTables: true,
+    isKeyValue: false,
+    supportsSQL: true,
+    category: 'sql',
+    connectionView: 'sql',
+    sqlDialect: 'mysql',
+    databaseFieldType: 'name',
+  },
 };
 
 /** All database types available for the "new connection" UI. */

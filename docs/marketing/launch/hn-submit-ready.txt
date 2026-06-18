@@ -1,0 +1,23 @@
+=== Hacker News Show HN — 复制粘贴 ===
+
+1. 打开 https://news.ycombinator.com/login 登录（无账号则先注册）
+
+2. 打开 https://news.ycombinator.com/submit
+
+Title:
+Show HN: DataZen – MIT-licensed database GUI in a 10 MB Tauri app
+
+URL:
+https://github.com/flyxl/datazen
+
+3. 提交后，在评论区粘贴（可选）:
+
+Hi HN — I built DataZen, a desktop client for PostgreSQL, MySQL, SQLite, and Redis.
+
+Why: I wanted something lighter than DBeaver and free unlike TablePlus. It's Tauri + Rust, installer under 10 MB, with built-in SSH tunneling (pure Rust via russh, no local ssh binary), SQL editor with autocomplete, virtualized table browsing, backups, and PG↔MySQL sync.
+
+Credentials are encrypted locally (AES-256-GCM); no cloud account.
+
+MIT licensed, macOS/Windows/Linux builds on Releases. Early (v0.0.3) but I use it daily. Feedback welcome: wuxiaolongklws@gmail.com or GitHub Issues.
+
+macOS note: not Apple-notarized; if blocked, run: xattr -cr /Applications/DataZen.app

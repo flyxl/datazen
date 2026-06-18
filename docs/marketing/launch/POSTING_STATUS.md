@@ -7,9 +7,10 @@
 | GitHub Issue 公告 | 已发布 | https://github.com/flyxl/datazen/issues/1 |
 | Dev.to | 已发布 | https://dev.to/flyxl/datazen-a-10-mb-open-source-database-client-built-with-tauri-and-rust-4e8h |
 | V2EX | 已发布 | https://www.v2ex.com/t/1213580 |
+| GitHub Discussions | 已发布 | https://github.com/flyxl/datazen/discussions/2 |
 | 掘金 | 需手机验证码 | 不支持仅用邮箱注册 |
 | 知乎 | 需登录 | 同上 |
-| Hacker News | 需登录 | submit 页需账号 |
+| Hacker News | 需本机手动 | 当前网络/浏览器访问 HN 返回空白（可能被限流），需你在浏览器登录后提交 |
 | Product Hunt | 需 Maker 账号 | producthunt.com/posts/new |
 | Reddit | 需登录+ karma | 各 sub 规则不同 |
 | Gitee | 403 | 当前浏览器/IP 访问受限，需登录 Gitee |
@@ -30,6 +31,7 @@
 | 渠道 | 帖子 URL | 日期 |
 |------|----------|------|
 | V2EX | https://www.v2ex.com/t/1213580 | 2026-05-18 |
+| GitHub Discussions | https://github.com/flyxl/datazen/discussions/2 | 2026-05-18 |
 | 掘金 | | |
 | 知乎 | | |
 | Product Hunt | | |

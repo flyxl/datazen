@@ -17,6 +17,7 @@ interface SchemaStore {
 
   loadForConnection: (connectionId: string, options?: { skipLoadTables?: boolean; preferredDatabase?: string }) => Promise<void>;
   loadTables: (database: string) => Promise<void>;
+  loadColumnMap: () => Promise<void>;
   toggleExpand: (id: string) => void;
   setSelected: (id: string | null) => void;
   reset: () => void;
@@ -64,28 +65,27 @@ export const useSchemaStore = create<SchemaStore>((set, get) => ({
       const tables = all.filter((t) => t.tableType !== 'view');
       const views = all.filter((t) => t.tableType === 'view');
       set({ tables, views, loading: false, currentDatabase: database });
-
-      const allNames = all.map((t) => t.name);
-      Promise.all(
-        allNames.map((name) =>
-          databaseCommands
-            .getColumns(connectionId, name)
-            .then((cols) => [name, cols] as const)
-            .catch(() => [name, [] as string[]] as const),
-        ),
-      ).then((entries) => {
-        const map: Record<string, string[]> = {};
-        for (const [name, cols] of entries) {
-          map[name] = cols;
-        }
-        set({ columnMap: map });
-      });
     } catch (e) {
       set({
         loading: false,
         error: e instanceof Error ? e.message : t('schema.loadTablesFailed'),
       });
     }
+  },
+
+  loadColumnMap: async () => {
+    const { connectionId, tables, views } = get();
+    if (!connectionId) return;
+    const allNames = [...tables, ...views].map((t) => t.name);
+    const map: Record<string, string[]> = {};
+    for (const name of allNames) {
+      try {
+        map[name] = await databaseCommands.getColumns(connectionId, name);
+      } catch {
+        map[name] = [];
+      }
+    }
+    set({ columnMap: map });
   },
 
   toggleExpand: (id) =>

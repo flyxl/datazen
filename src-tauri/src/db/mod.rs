@@ -13,6 +13,7 @@ pub enum DatabaseType {
     MariaDB,
     SQLite,
     Redis,
+    Kiwi,
 }
 
 /// High-level driver category (SQL vs key-value vs document).
@@ -399,6 +400,7 @@ pub trait DatabaseDriver: Send + Sync {
     async fn cancel_query(&self, handle: &ConnectionHandle) -> Result<(), DriverError>;
 }
 
+pub mod kiwi;
 pub mod mysql;
 pub mod postgres;
 pub mod redis_driver;

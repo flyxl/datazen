@@ -33,6 +33,7 @@ export function QueryPanel({ connectionId, queryTabId }: QueryPanelProps) {
   const tables = useSchemaStore((s) => s.tables);
   const views = useSchemaStore((s) => s.views);
   const columnMap = useSchemaStore((s) => s.columnMap);
+  const loadColumnMap = useSchemaStore((s) => s.loadColumnMap);
 
   const editorSchema: SqlSchema = useMemo(() => {
     const result: SqlSchema = {};
@@ -46,6 +47,12 @@ export function QueryPanel({ connectionId, queryTabId }: QueryPanelProps) {
     setConnectionId(connectionId);
     void loadHistory();
   }, [connectionId, setConnectionId, loadHistory]);
+
+  useEffect(() => {
+    if (tables.length > 0 && Object.keys(columnMap).length === 0) {
+      void loadColumnMap();
+    }
+  }, [tables, columnMap, loadColumnMap]);
 
   const handleExecute = useCallback(() => {
     if (tab) void executeQuery(tab.id);

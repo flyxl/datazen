@@ -49,6 +49,7 @@ flate2 = "1.1.9"
 russh = "0.60"
 redis = { version = "0.27", features = ["tokio-comp", "aio"] }
 sha2 = "0.10.9"
+reqwest = { version = "0.13.3", features = ["json", "cookies"] }
 
 [features]
 webdriver = ["tauri-plugin-webdriver"]

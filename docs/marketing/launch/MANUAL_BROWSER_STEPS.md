@@ -2,13 +2,22 @@
 
 自动化已打开 **Cursor 内置浏览器**。以下渠道均需**你已登录**或**完成验证码/邀请码**，无法仅用邮箱代注册。
 
-## 当前浏览器停在哪
+## 已完成（2026-05-18）
 
-上次停在 **GitHub 登录页**（为 Dev.to OAuth）。请在该标签页：
+- Dev.to：https://dev.to/flyxl/datazen-a-10-mb-open-source-database-client-built-with-tauri-and-rust-4e8h  
+- V2EX：https://www.v2ex.com/t/1213580  
+- GitHub Discussions：https://github.com/flyxl/datazen/discussions/2  
 
-1. 输入你的 GitHub 账号密码（或使用 Passkey）登录  
-2. 授权 DEV Community  
-3. 进入 https://dev.to/new 后粘贴 [`devto.md`](devto.md) 正文并发布  
+## 当前浏览器标签（待你登录后发）
+
+| 标签 | 状态 |
+|------|------|
+| 掘金 | 登录页，需手机验证码 |
+| SegmentFault | 已预填手机号，需短信验证码 |
+| 知乎 | 登录页 |
+| Reddit | 登录页（Google 登录可能需 2FA） |
+| Product Hunt | 发帖权限说明页 |
+| Hashnode / AlternativeTo | Cloudflare 验证中 |
 
 ## 各渠道最短路径
 

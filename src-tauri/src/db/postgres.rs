@@ -350,6 +350,67 @@ impl DatabaseDriver for PostgresDriver {
             .collect())
     }
 
+    async fn get_columns(
+        &self,
+        handle: &ConnectionHandle,
+        table: &str,
+    ) -> Result<(Vec<ColumnSchema>, Vec<String>), DriverError> {
+        let pools = self.pools.read().await;
+        let pool = Self::get_pool(&pools, handle)?;
+
+        let (cols, pk_rows) = tokio::try_join!(
+            async {
+                sqlx::query(
+                    r#"
+                    SELECT column_name, data_type, is_nullable, column_default,
+                           col_description((quote_ident(table_schema)||'.'||quote_ident(table_name))::regclass, ordinal_position) as comment
+                    FROM information_schema.columns
+                    WHERE table_name = $1
+                    ORDER BY ordinal_position
+                    "#,
+                )
+                .bind(table)
+                .fetch_all(pool)
+                .await
+                .map_err(|e| DriverError::QueryFailed(e.to_string()))
+            },
+            async {
+                sqlx::query(
+                    r#"
+                    SELECT a.attname
+                    FROM pg_index i
+                    JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
+                    WHERE i.indrelid = quote_ident($1)::regclass AND i.indisprimary
+                    "#,
+                )
+                .bind(table)
+                .fetch_all(pool)
+                .await
+                .map_err(|e| DriverError::QueryFailed(e.to_string()))
+            },
+        )?;
+
+        let pk_names: Vec<String> = pk_rows.iter().map(|r| r.get::<String, _>(0)).collect();
+        let columns: Vec<ColumnSchema> = cols
+            .iter()
+            .map(|r| {
+                let name: String = r.get("column_name");
+                let nullable: String = r.get("is_nullable");
+                ColumnSchema {
+                    is_primary_key: pk_names.contains(&name),
+                    name,
+                    data_type: r.get("data_type"),
+                    nullable: nullable == "YES",
+                    default_value: r.get("column_default"),
+                    comment: r.get("comment"),
+                    is_auto_increment: false,
+                }
+            })
+            .collect();
+
+        Ok((columns, pk_names))
+    }
+
     async fn get_table_schema(
         &self,
         handle: &ConnectionHandle,

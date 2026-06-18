@@ -378,6 +378,8 @@ pub fn run() {
             commands::save_sync_task_direct,
             commands::delete_sync_task,
             commands::check_sync_conflicts,
+            commands::kiwi_sso_login,
+            commands::kiwi_list_instances,
             rebuild_menu,
         ])
         .run(tauri::generate_context!())

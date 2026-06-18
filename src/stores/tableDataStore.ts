@@ -180,9 +180,15 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
   },
 
   loadTableData: async ({ connectionId, table, skipCount }) => {
-    const { tableStates } = get();
+    const { tableStates, databaseType } = get();
     const existing = tableStates.get(table) ?? emptyTableState();
-    const { page, pageSize, filters, sorts } = existing;
+
+    // Prevent duplicate concurrent loads for the same table
+    if (existing.loading) return;
+
+    const { page, filters, sorts } = existing;
+    // Kiwi caps at 1000 rows with no pagination support
+    const pageSize = databaseType === 'kiwi' ? 1000 : existing.pageSize;
 
     const next = new Map(tableStates);
     next.set(table, { ...existing, loading: true, error: null });

@@ -285,6 +285,162 @@ export async function connectToCard(cardName: string) {
   return { mainWindow, connWindow };
 }
 
+// ── Kiwi connection helpers ──────────────────────────────────────────
+
+/**
+ * Create a Kiwi connection via the new-connection UI and connect to it.
+ * Requires E2E_KIWI_* env vars.
+ * Returns { mainWindow, connWindow }.
+ */
+export async function createAndConnectKiwi(opts: {
+  name?: string;
+  baseUrl?: string;
+  token?: string;
+  username?: string;
+  domain?: string;
+  sourceType?: string;
+} = {}) {
+  const {
+    name = 'E2E-Kiwi',
+    baseUrl = process.env.E2E_KIWI_URL || 'https://kiwi.akusre.com',
+    token = process.env.E2E_KIWI_TOKEN || '',
+    username = process.env.E2E_KIWI_USERNAME || '',
+    domain = process.env.E2E_KIWI_DOMAIN || '',
+    sourceType = process.env.E2E_KIWI_SOURCE_TYPE || '4',
+  } = opts;
+
+  if (!token) throw new Error('E2E_KIWI_TOKEN is required for Kiwi E2E tests');
+  if (!domain) throw new Error('E2E_KIWI_DOMAIN is required for Kiwi E2E tests');
+
+  const mainWindow = await browser.getWindowHandle();
+  await expandAllGroups();
+
+  // Re-use existing connection if present
+  const existingItem = await findCardByName(name);
+  if (existingItem) {
+    await browser.execute((n: string) => {
+      const items = document.querySelectorAll('[data-conn-item]');
+      for (const item of items) {
+        if (item.textContent?.includes(n)) {
+          item.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+          return;
+        }
+      }
+    }, name);
+    await browser.waitUntil(
+      async () => (await browser.getWindowHandles()).length > 1,
+      { timeout: 30000, timeoutMsg: '等待 Kiwi 连接窗口打开超时' },
+    );
+    const handles = await browser.getWindowHandles();
+    const connWindow = handles.find((h) => h !== mainWindow)!;
+    await browser.switchToWindow(connWindow);
+    await $('button*=新建查询').waitForDisplayed({ timeout: 20000 });
+    await browser.pause(2000);
+    return { mainWindow, connWindow };
+  }
+
+  // Create new Kiwi connection
+  const newConnBtn = await $('button*=新建连接');
+  await newConnBtn.click();
+  await switchToNewWindow(mainWindow);
+
+  // Select Kiwi type
+  const kiwiBtn = await $('button*=Kiwi');
+  await kiwiBtn.click();
+  await browser.pause(300);
+
+  // Connection name
+  const nameInput = await $('input[placeholder="例如：主数据库"]');
+  await nameInput.setValue(name);
+
+  // Kiwi URL
+  const urlInput = await $('input[placeholder="https://kiwi.akusre.com"]');
+  await urlInput.clearValue();
+  await urlInput.setValue(baseUrl);
+
+  // Token (paste directly instead of SSO)
+  const tokenInput = await $('input[type="password"]');
+  await tokenInput.setValue(token);
+  await browser.pause(500);
+
+  // Instance domain
+  const domainInput = await $('input[placeholder*="rwlb"]');
+  if (await domainInput.isExisting()) {
+    await domainInput.clearValue();
+    await domainInput.setValue(domain);
+  }
+
+  // Username
+  const allInputs = await $$('input');
+  for (const inp of allInputs) {
+    if ((await inp.getAttribute('placeholder')) === 'wuxl') {
+      await inp.clearValue();
+      await inp.setValue(username);
+      break;
+    }
+  }
+
+  // Source type
+  for (const inp of allInputs) {
+    if ((await inp.getValue()) === '4' && (await inp.getAttribute('placeholder')) === '4') {
+      await inp.clearValue();
+      await inp.setValue(sourceType);
+      break;
+    }
+  }
+
+  // Test connection first
+  const testBtn = await $('button*=测试连接');
+  await testBtn.click();
+  await browser.waitUntil(
+    async () => {
+      const body = await $('body').getText();
+      return body.includes('连接成功') || body.includes('Driver error') || body.includes('Error');
+    },
+    { timeout: 20000, timeoutMsg: '等待 Kiwi 测试连接超时' },
+  );
+
+  const bodyAfterTest = await $('body').getText();
+  if (bodyAfterTest.includes('Driver error') || bodyAfterTest.includes('Error')) {
+    throw new Error('Kiwi test connection failed: ' + bodyAfterTest.slice(0, 300));
+  }
+
+  // Save
+  const saveBtn = await $('button*=保存');
+  await saveBtn.click();
+  await browser.waitUntil(
+    async () => (await browser.getWindowHandles()).length === 1,
+    { timeout: 10000, timeoutMsg: '保存 Kiwi 连接后窗口未关闭' },
+  );
+  await browser.switchToWindow(mainWindow);
+  await browser.pause(1000);
+
+  // Connect
+  const card = await findCardByName(name);
+  if (!card) throw new Error(`未找到 Kiwi 连接 "${name}"`);
+  await browser.execute((n: string) => {
+    const items = document.querySelectorAll('[data-conn-item]');
+    for (const item of items) {
+      if (item.textContent?.includes(n)) {
+        item.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+        return;
+      }
+    }
+  }, name);
+
+  await browser.waitUntil(
+    async () => (await browser.getWindowHandles()).length > 1,
+    { timeout: 30000, timeoutMsg: '等待 Kiwi 连接窗口打开超时' },
+  );
+  const handles = await browser.getWindowHandles();
+  const connWindow = handles.find((h) => h !== mainWindow)!;
+  await browser.switchToWindow(connWindow);
+  await $('button*=新建查询').waitForDisplayed({ timeout: 20000 });
+  await browser.pause(2000);
+
+  return { mainWindow, connWindow };
+}
+
 // ── SQL / CodeMirror ────────────────────────────────────────────────
 
 /** Replace CodeMirror editor content using execCommand. */

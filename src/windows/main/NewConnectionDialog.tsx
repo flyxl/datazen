@@ -95,6 +95,54 @@ export function NewConnectionDialog({ open, onClose }: NewConnectionDialogProps)
     if (!meta.supportsSSH) setSshEnabled(false);
     if (meta.databaseFieldType === 'index') setDatabase('0');
     if (!meta.defaultUser) setUsername('');
+    if (newType === 'kiwi') {
+      setHost(meta.defaultHost);
+      setDatabase('');
+      setPort(String(meta.defaultPort));
+    }
+  }
+
+  const [kiwiInstances, setKiwiInstances] = useState<{ name: string; alias: string; short: string }[]>([]);
+  const [loadingInstances, setLoadingInstances] = useState(false);
+
+  async function handleKiwiSsoLogin() {
+    if (!host) return;
+    try {
+      const token = await (window as any).__TAURI_INTERNALS__?.invoke('kiwi_sso_login', { baseUrl: host });
+      if (token) {
+        setPassword(token);
+        // Load instances after successful login
+        loadKiwiInstances(host, token);
+      }
+    } catch (e) {
+      setTestErr(typeof e === 'string' ? e : e instanceof Error ? e.message : 'SSO login failed');
+    }
+  }
+
+  async function loadKiwiInstances(baseUrl: string, token: string) {
+    setLoadingInstances(true);
+    try {
+      const sourceType = Number(port) || 4;
+      const resp = await fetch(`${baseUrl}/gw/v1/dataquery/instances?source_type=${sourceType}`, {
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Token': token,
+          'authorization': token,
+        },
+      });
+      const data = await resp.json();
+      if (data.code === 0 && Array.isArray(data.result)) {
+        setKiwiInstances(data.result.map((r: any) => ({
+          name: r.name,
+          alias: r.alias_name || '',
+          short: r.short_domain || '',
+        })));
+      }
+    } catch {
+      // ignore — instances can be entered manually
+    } finally {
+      setLoadingInstances(false);
+    }
   }
 
   const sshTunnel: SshTunnelConfig | undefined = sshEnabled
@@ -162,7 +210,8 @@ export function NewConnectionDialog({ open, onClose }: NewConnectionDialogProps)
   const meta = DB_REGISTRY[databaseType];
   const isFileMode = meta.connectionMode === 'file';
   const isIndexMode = meta.databaseFieldType === 'index';
-  const hasUsername = !!meta.defaultUser;
+  const isKiwi = databaseType === 'kiwi';
+  const hasUsername = !!meta.defaultUser || isKiwi;
 
   const sslOptions = useMemo(
     () => [
@@ -231,6 +280,74 @@ export function NewConnectionDialog({ open, onClose }: NewConnectionDialogProps)
               <Label required>{t('newConn.dbFilePath')}</Label>
               <Input value={database} onChange={(e) => setDatabase(e.target.value)} placeholder="/path/to/db.sqlite" />
             </div>
+          ) : isKiwi ? (
+            <>
+              <div className="md:col-span-2">
+                <Label required>Kiwi URL</Label>
+                <Input value={host} onChange={(e) => setHost(e.target.value)} placeholder="https://kiwi.akusre.com" />
+              </div>
+              <div className="md:col-span-2">
+                <Label required>Token (Admin-Token)</Label>
+                <div className="flex gap-2">
+                  <Input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="SSO 登录后自动填充，或手动粘贴"
+                    className="flex-1"
+                  />
+                  <Button
+                    variant="secondary"
+                    onClick={() => void handleKiwiSsoLogin()}
+                    className="shrink-0 whitespace-nowrap"
+                  >
+                    SSO 登录
+                  </Button>
+                </div>
+              </div>
+              {password && (
+                <>
+                  <div className="md:col-span-2">
+                    <Label required>Instance Domain</Label>
+                    {kiwiInstances.length > 0 ? (
+                      <Select
+                        value={database}
+                        options={kiwiInstances.map((inst) => ({
+                          value: inst.name,
+                          label: inst.short || inst.alias || inst.name,
+                        }))}
+                        onChange={setDatabase}
+                      />
+                    ) : (
+                      <div className="flex gap-2">
+                        <Input
+                          value={database}
+                          onChange={(e) => setDatabase(e.target.value)}
+                          placeholder="pe-xxx.rwlb.ap-southeast-5.rds.aliyuncs.com"
+                          className="flex-1"
+                        />
+                        <Button
+                          variant="secondary"
+                          onClick={() => void loadKiwiInstances(host, password)}
+                          disabled={loadingInstances || !password}
+                          className="shrink-0 whitespace-nowrap"
+                        >
+                          {loadingInstances ? '加载中...' : '加载实例'}
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <Label>Username</Label>
+                    <Input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="wuxl" />
+                  </div>
+                  <div>
+                    <Label>Source Type</Label>
+                    <Input value={port} onChange={(e) => setPort(e.target.value)} placeholder="4" />
+                  </div>
+                </>
+              )}
+            </>
           ) : (
             <>
               <div>
