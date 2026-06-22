@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, Clock, Loader2, Play, Square } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AlertTriangle, Bookmark, Clock, Loader2, Play, Square, Trash2 } from 'lucide-react';
+import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import { Button } from '../../components/ui/Button';
 import { SqlEditor } from '../../components/SqlEditor';
-import type { SqlSchema } from '../../components/SqlEditor';
+import type { SqlEditorHandle, SqlSchema } from '../../components/SqlEditor';
 import { DataTable } from '../../components/DataTable/DataTable';
 import type { ColumnDef } from '../../components/DataTable/TableHeader';
 import { useQueryStore } from '../../stores/queryStore';
@@ -26,9 +28,22 @@ export function QueryPanel({ connectionId, queryTabId }: QueryPanelProps) {
   const updateSql = useQueryStore((s) => s.updateSql);
   const setActiveResult = useQueryStore((s) => s.setActiveResult);
   const executeQuery = useQueryStore((s) => s.executeQuery);
+  const executeSelection = useQueryStore((s) => s.executeSelection);
   const cancelQuery = useQueryStore((s) => s.cancelQuery);
   const loadHistory = useQueryStore((s) => s.loadHistory);
   const toggleHistory = useQueryStore((s) => s.toggleHistory);
+  const favorites = useQueryStore((s) => s.favorites);
+  const favoritesVisible = useQueryStore((s) => s.favoritesVisible);
+  const loadFavorites = useQueryStore((s) => s.loadFavorites);
+  const addFavorite = useQueryStore((s) => s.addFavorite);
+  const deleteFavorite = useQueryStore((s) => s.deleteFavorite);
+  const toggleFavorites = useQueryStore((s) => s.toggleFavorites);
+
+  const editorRef = useRef<SqlEditorHandle>(null);
+  const pendingFavSqlRef = useRef('');
+  const [favoriteName, setFavoriteName] = useState('');
+  const [showFavoriteDialog, setShowFavoriteDialog] = useState(false);
+  const [favoriteDialogSql, setFavoriteDialogSql] = useState('');
 
   const tables = useSchemaStore((s) => s.tables);
   const views = useSchemaStore((s) => s.views);
@@ -46,7 +61,8 @@ export function QueryPanel({ connectionId, queryTabId }: QueryPanelProps) {
   useEffect(() => {
     setConnectionId(connectionId);
     void loadHistory();
-  }, [connectionId, setConnectionId, loadHistory]);
+    void loadFavorites();
+  }, [connectionId, setConnectionId, loadHistory, loadFavorites]);
 
   useEffect(() => {
     if (tables.length > 0 && Object.keys(columnMap).length === 0) {
@@ -55,12 +71,40 @@ export function QueryPanel({ connectionId, queryTabId }: QueryPanelProps) {
   }, [tables, columnMap, loadColumnMap]);
 
   const handleExecute = useCallback(() => {
-    if (tab) void executeQuery(tab.id);
-  }, [tab, executeQuery]);
+    if (!tab) return;
+    const sel = editorRef.current?.getSelection()?.trim();
+    if (sel) {
+      void executeSelection(tab.id, sel);
+    } else {
+      void executeQuery(tab.id);
+    }
+  }, [tab, executeQuery, executeSelection]);
+
+  const handleExecuteSelection = useCallback((sql: string) => {
+    if (tab) void executeSelection(tab.id, sql);
+  }, [tab, executeSelection]);
 
   const handleCancel = useCallback(() => {
     if (tab) void cancelQuery(tab.id);
   }, [tab, cancelQuery]);
+
+  const handleEditorContextMenu = useCallback((_e: MouseEvent, sqlText: string) => {
+    const lang = useSettingsStore.getState().settings.language || 'zh-CN';
+    pendingFavSqlRef.current = sqlText;
+    void invoke('show_editor_context_menu', { lang: lang === 'en' ? 'en' : 'zh' });
+  }, []);
+
+  useEffect(() => {
+    const unlisten = listen('menu:add-favorite', () => {
+      const sql = pendingFavSqlRef.current;
+      if (sql) {
+        setFavoriteDialogSql(sql);
+        setFavoriteName('');
+        setShowFavoriteDialog(true);
+      }
+    });
+    return () => { void unlisten.then((fn) => fn()); };
+  }, []);
 
   if (!tab) return null;
 
@@ -99,21 +143,93 @@ export function QueryPanel({ connectionId, queryTabId }: QueryPanelProps) {
           <Clock className="h-3.5 w-3.5" />
           {t('query.history')}
         </Button>
+        <Button
+          variant={favoritesVisible ? 'secondary' : 'ghost'}
+          className="h-7 gap-1 px-2 text-xs"
+          onClick={toggleFavorites}
+        >
+          <Bookmark className="h-3.5 w-3.5" />
+          {t('query.favorites')}
+        </Button>
       </div>
 
       {/* Editor + results (vertical split) */}
       <div className="flex min-h-0 flex-1">
         <div className="flex min-w-0 flex-1 flex-col">
           {/* SQL editor */}
-          <div className="min-h-[100px] border-b border-edge" style={{ height: '35%' }}>
+          <div className="relative min-h-[100px] border-b border-edge" style={{ height: '35%' }}>
             <SqlEditor
+              ref={editorRef}
               value={tab.sql}
               onChange={(v) => updateSql(tab.id, v)}
               onExecute={handleExecute}
+              onExecuteSelection={handleExecuteSelection}
+              onContextMenu={handleEditorContextMenu}
               placeholder={t('query.placeholder')}
               schema={editorSchema}
             />
           </div>
+
+          {showFavoriteDialog && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setShowFavoriteDialog(false)}>
+              <div
+                className="w-[400px] rounded-lg border border-edge bg-surface p-4 shadow-xl"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="mb-3 text-sm font-medium text-fg">{t('query.addFavorite')}</div>
+                <div className="mb-2">
+                  <label className="mb-1 block text-xs text-fg-muted">{t('query.favoriteTitle')}</label>
+                  <input
+                    type="text"
+                    value={favoriteName}
+                    onChange={(e) => setFavoriteName(e.target.value)}
+                    placeholder={t('query.favoriteTitlePlaceholder')}
+                    className="h-8 w-full rounded border border-edge bg-surface-alt px-2 text-sm text-fg focus:border-accent focus:outline-none"
+                    autoFocus
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && favoriteName.trim()) {
+                        void addFavorite(favoriteName.trim(), favoriteDialogSql);
+                        setFavoriteName('');
+                        setShowFavoriteDialog(false);
+                      }
+                      if (e.key === 'Escape') {
+                        setShowFavoriteDialog(false);
+                      }
+                    }}
+                  />
+                </div>
+                <div className="mb-3">
+                  <label className="mb-1 block text-xs text-fg-muted">SQL</label>
+                  <div className="max-h-[120px] overflow-auto rounded border border-edge bg-surface-alt p-2 font-mono text-xs text-fg-secondary">
+                    {favoriteDialogSql}
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2">
+                  <Button
+                    variant="ghost"
+                    className="h-7 px-3 text-xs"
+                    onClick={() => setShowFavoriteDialog(false)}
+                  >
+                    {t('common.cancel')}
+                  </Button>
+                  <Button
+                    variant="primary"
+                    className="h-7 px-3 text-xs"
+                    disabled={!favoriteName.trim()}
+                    onClick={() => {
+                      if (favoriteName.trim()) {
+                        void addFavorite(favoriteName.trim(), favoriteDialogSql);
+                        setFavoriteName('');
+                        setShowFavoriteDialog(false);
+                      }
+                    }}
+                  >
+                    {t('common.save')}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Results area */}
           <div className="flex min-h-0 flex-1 flex-col">
@@ -175,6 +291,39 @@ export function QueryPanel({ connectionId, queryTabId }: QueryPanelProps) {
         </div>
 
         {/* History panel */}
+        {favoritesVisible && (
+          <aside className="w-64 shrink-0 overflow-y-auto border-l border-edge bg-surface-alt">
+            <div className="border-b border-edge px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-fg-muted">
+              {t('query.favoritesTitle')}
+            </div>
+            {favorites.length === 0 ? (
+              <div className="px-3 py-4 text-center text-xs text-fg-muted">{t('query.noFavorites')}</div>
+            ) : (
+              favorites.map((f) => (
+                <div
+                  key={f.id}
+                  className="group flex w-full items-start border-b border-edge px-3 py-2 hover:bg-surface-raised"
+                >
+                  <button
+                    type="button"
+                    className="min-w-0 flex-1 text-left"
+                    onClick={() => updateSql(tab.id, f.sql)}
+                  >
+                    <div className="truncate text-xs font-medium text-fg">{f.title}</div>
+                    <div className="mt-0.5 truncate font-mono text-[11px] text-fg-muted">{f.sql}</div>
+                  </button>
+                  <button
+                    type="button"
+                    className="ml-1 shrink-0 p-1 text-fg-muted opacity-0 hover:text-red-400 group-hover:opacity-100"
+                    onClick={() => void deleteFavorite(f.id)}
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </button>
+                </div>
+              ))
+            )}
+          </aside>
+        )}
         {historyVisible && (
           <aside className="w-64 shrink-0 overflow-y-auto border-l border-edge bg-surface-alt">
             <div className="border-b border-edge px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-fg-muted">

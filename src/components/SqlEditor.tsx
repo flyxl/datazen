@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useImperativeHandle, useRef, forwardRef } from 'react';
 import { EditorView, keymap, placeholder as cmPlaceholder, lineNumbers } from '@codemirror/view';
 import { EditorState, Compartment } from '@codemirror/state';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
@@ -126,27 +126,48 @@ function themeExtensions(config: ThemeConfig) {
 /** Table name → column names mapping for autocompletion */
 export type SqlSchema = Record<string, string[]>;
 
+export interface SqlEditorHandle {
+  getSelection: () => string;
+}
+
 interface SqlEditorProps {
   value: string;
   onChange: (value: string) => void;
   onExecute?: () => void;
+  onExecuteSelection?: (sql: string) => void;
+  onContextMenu?: (e: MouseEvent, selectedSql: string) => void;
   placeholder?: string;
   schema?: SqlSchema;
 }
 
-export function SqlEditor({ value, onChange, onExecute, placeholder, schema }: SqlEditorProps) {
+export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function SqlEditor({ value, onChange, onExecute, onExecuteSelection, onContextMenu: onCtxMenu, placeholder, schema }, ref) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const themeCompartment = useRef(new Compartment());
   const sqlCompartment = useRef(new Compartment());
   const onChangeRef = useRef(onChange);
   const onExecuteRef = useRef(onExecute);
+  const onExecuteSelectionRef = useRef(onExecuteSelection);
+  const onCtxMenuRef = useRef(onCtxMenu);
 
   const editorFontSize = useSettingsStore((s) => s.settings.editorFontSize);
   const editorFontFamily = useSettingsStore((s) => s.settings.editorFontFamily);
 
   onChangeRef.current = onChange;
   onExecuteRef.current = onExecute;
+  onExecuteSelectionRef.current = onExecuteSelection;
+  onCtxMenuRef.current = onCtxMenu;
+
+  useImperativeHandle(ref, () => ({
+    getSelection: () => {
+      const view = viewRef.current;
+      if (!view) return '';
+      return view.state.sliceDoc(
+        view.state.selection.main.from,
+        view.state.selection.main.to
+      );
+    },
+  }));
 
   function currentThemeConfig(): ThemeConfig {
     const { editorFontSize: fs, editorFontFamily: ff } = useSettingsStore.getState().settings;
@@ -168,7 +189,18 @@ export function SqlEditor({ value, onChange, onExecute, placeholder, schema }: S
         keymap.of([
           {
             key: 'Mod-Enter',
-            run: () => { onExecuteRef.current?.(); return true; },
+            run: (view) => {
+              const sel = view.state.sliceDoc(
+                view.state.selection.main.from,
+                view.state.selection.main.to
+              );
+              if (sel.trim()) {
+                onExecuteSelectionRef.current?.(sel);
+              } else {
+                onExecuteRef.current?.();
+              }
+              return true;
+            },
           },
           { key: 'Tab', run: acceptCompletion },
         ]),
@@ -189,6 +221,24 @@ export function SqlEditor({ value, onChange, onExecute, placeholder, schema }: S
         ),
         themeCompartment.current.of(themeExtensions(config)),
         EditorView.lineWrapping,
+        EditorView.domEventHandlers({
+          contextmenu: (e, view) => {
+            const handler = onCtxMenuRef.current;
+            if (!handler) return false;
+            const sel = view.state.sliceDoc(
+              view.state.selection.main.from,
+              view.state.selection.main.to
+            );
+            const sqlText = sel.trim() || view.state.doc.toString().trim();
+            if (sqlText) {
+              e.preventDefault();
+              e.stopPropagation();
+              handler(e, sqlText);
+              return true;
+            }
+            return false;
+          },
+        }),
         EditorView.updateListener.of((update) => {
           if (update.docChanged) {
             onChangeRef.current(update.state.doc.toString());
@@ -252,4 +302,4 @@ export function SqlEditor({ value, onChange, onExecute, placeholder, schema }: S
   }, [value]);
 
   return <div ref={containerRef} className="h-full w-full overflow-hidden" />;
-}
+});

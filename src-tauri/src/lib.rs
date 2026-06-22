@@ -144,6 +144,7 @@ fn build_app_menu(
             "data-sync" => { let _ = app_handle.emit("menu:data-sync", ()); }
             "export-config" => { let _ = app_handle.emit("menu:export-config", ()); }
             "import-config" => { let _ = app_handle.emit("menu:import-config", ()); }
+            "ctx-add-favorite" => { let _ = app_handle.emit("menu:add-favorite", ()); }
             _ => {}
         }
     });
@@ -249,6 +250,7 @@ fn rebuild_menu_for_handle(
             "data-sync" => { let _ = app_handle.emit("menu:data-sync", ()); }
             "export-config" => { let _ = app_handle.emit("menu:export-config", ()); }
             "import-config" => { let _ = app_handle.emit("menu:import-config", ()); }
+            "ctx-add-favorite" => { let _ = app_handle.emit("menu:add-favorite", ()); }
             _ => {}
         }
     });
@@ -363,6 +365,10 @@ pub fn run() {
             commands::cancel_query,
             commands::get_query_history,
             commands::clear_query_history,
+            commands::get_favorite_queries,
+            commands::add_favorite_query,
+            commands::delete_favorite_query,
+            commands::show_editor_context_menu,
             commands::get_settings,
             commands::save_settings,
             commands::export_connections,

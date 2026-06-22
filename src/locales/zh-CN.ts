@@ -285,6 +285,12 @@ const zhCN = {
   'query.tab': '查询 {n}',
   'query.notConnected': '未连接数据库',
   'query.executeFailed': '执行失败',
+  'query.favorites': '收藏',
+  'query.favoritesTitle': 'SQL 收藏',
+  'query.noFavorites': '暂无收藏',
+  'query.addFavorite': '收藏 SQL',
+  'query.favoriteTitle': '收藏标题',
+  'query.favoriteTitlePlaceholder': '输入收藏标题...',
 
   // ── Table Data ──
   'tableData.loadFailed': '加载表数据失败',

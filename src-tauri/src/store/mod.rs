@@ -65,6 +65,15 @@ pub struct QueryHistoryEntry {
     pub error_message: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FavoriteQuery {
+    pub id: String,
+    pub title: String,
+    pub sql: String,
+    pub created_at: DateTime<Utc>,
+}
+
 /// Persisted state for a data-sync task (checkpoint / resume).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -99,6 +108,7 @@ struct StoreCache {
     groups: Vec<String>,
     settings: AppSettings,
     query_history: Vec<QueryHistoryEntry>,
+    favorite_queries: Vec<FavoriteQuery>,
     sync_tasks: Vec<SyncTask>,
 }
 
@@ -232,6 +242,10 @@ impl Store {
             .unwrap_or_default();
         cache.query_history = self
             .load_json_file::<Vec<QueryHistoryEntry>>("history/queries.json")
+            .await
+            .unwrap_or_default();
+        cache.favorite_queries = self
+            .load_json_file::<Vec<FavoriteQuery>>("favorites/queries.json")
             .await
             .unwrap_or_default();
         cache.sync_tasks = self
@@ -399,9 +413,22 @@ impl Store {
     pub async fn add_query_history(&self, entry: QueryHistoryEntry) -> Result<(), StoreError> {
         {
             let mut cache = self.cache.write().await;
-            cache.query_history.insert(0, entry);
-            if cache.query_history.len() > 1000 {
-                cache.query_history.truncate(1000);
+            let dominated = cache.query_history.first()
+                .map(|last| last.sql.trim() == entry.sql.trim())
+                .unwrap_or(false);
+            if dominated {
+                if let Some(first) = cache.query_history.first_mut() {
+                    first.executed_at = entry.executed_at;
+                    first.execution_time_ms = entry.execution_time_ms;
+                    first.rows_affected = entry.rows_affected;
+                    first.success = entry.success;
+                    first.error_message = entry.error_message.clone();
+                }
+            } else {
+                cache.query_history.insert(0, entry);
+                if cache.query_history.len() > 1000 {
+                    cache.query_history.truncate(1000);
+                }
             }
         }
 
@@ -425,6 +452,35 @@ impl Store {
         }
         self.save_json_file("history/queries.json", &Vec::<QueryHistoryEntry>::new())
             .await
+    }
+
+    pub async fn get_favorite_queries(&self) -> Vec<FavoriteQuery> {
+        let cache = self.cache.read().await;
+        cache.favorite_queries.clone()
+    }
+
+    pub async fn add_favorite_query(&self, fav: FavoriteQuery) -> Result<(), StoreError> {
+        {
+            let mut cache = self.cache.write().await;
+            cache.favorite_queries.insert(0, fav);
+        }
+        let snapshot = {
+            let cache = self.cache.read().await;
+            cache.favorite_queries.clone()
+        };
+        self.save_json_file("favorites/queries.json", &snapshot).await
+    }
+
+    pub async fn delete_favorite_query(&self, id: &str) -> Result<(), StoreError> {
+        {
+            let mut cache = self.cache.write().await;
+            cache.favorite_queries.retain(|f| f.id != id);
+        }
+        let snapshot = {
+            let cache = self.cache.read().await;
+            cache.favorite_queries.clone()
+        };
+        self.save_json_file("favorites/queries.json", &snapshot).await
     }
 
     pub async fn get_settings(&self) -> AppSettings {

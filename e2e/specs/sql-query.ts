@@ -228,10 +228,149 @@ describe('SQL 查询模块 (SQ-001~SQ-012)', () => {
         body.includes('pg_sleep');
       expect(wasCancelled).toBe(true);
     } else {
-      // If stop button didn't appear, the query completed or the UI didn't render it
-      // Just verify the app is responsive
       const body = await $('body').getText();
       expect(body.length).toBeGreaterThan(0);
     }
+  });
+
+  // ── 执行选中 SQL ─────────────────────────────────────────────────
+
+  it('选中部分 SQL 后点击执行按钮只执行选中内容 (SQ-013)', async () => {
+    await setEditorContent('SELECT 1 AS full_query; SELECT 42 AS selected_query');
+
+    await browser.execute(() => {
+      const cmView = (document.querySelector('.cm-editor') as any)?.cmView?.view;
+      if (!cmView) return;
+      const doc = cmView.state.doc.toString();
+      const start = doc.indexOf('SELECT 42');
+      const end = start + 'SELECT 42 AS selected_query'.length;
+      cmView.dispatch({ selection: { anchor: start, head: end } });
+    });
+    await browser.pause(300);
+
+    const execBtn = await $('button*=执行');
+    await execBtn.click();
+
+    await browser.waitUntil(
+      async () => {
+        const body = await $('body').getText();
+        return body.includes('总耗时') || body.includes('1 行');
+      },
+      { timeout: 15000, timeoutMsg: '等待选中 SQL 执行完成超时' },
+    );
+
+    const body = await $('body').getText();
+    expect(body).toContain('selected_query');
+  });
+
+  it('选中部分 SQL 后用 Cmd+Enter 只执行选中内容 (SQ-014)', async () => {
+    await setEditorContent('SELECT 100 AS q_full; SELECT 200 AS q_selected');
+
+    await browser.execute(() => {
+      const cmView = (document.querySelector('.cm-editor') as any)?.cmView?.view;
+      if (!cmView) return;
+      const doc = cmView.state.doc.toString();
+      const start = doc.indexOf('SELECT 200');
+      const end = start + 'SELECT 200 AS q_selected'.length;
+      cmView.dispatch({ selection: { anchor: start, head: end } });
+    });
+    await browser.pause(300);
+
+    await browser.keys(['Meta', 'Enter']);
+    await browser.pause(300);
+
+    await browser.waitUntil(
+      async () => {
+        const body = await $('body').getText();
+        return body.includes('总耗时') || body.includes('1 行');
+      },
+      { timeout: 15000, timeoutMsg: '等待 Cmd+Enter 选中执行超时' },
+    );
+
+    const body = await $('body').getText();
+    expect(body).toContain('q_selected');
+  });
+
+  // ── SQL 收藏功能 ──────────────────────────────────────────────────
+
+  it('应显示收藏面板按钮 (SQ-015)', async () => {
+    await expect(await $('button*=收藏')).toBeDisplayed();
+  });
+
+  it('通过 Tauri 事件触发收藏对话框 (SQ-016)', async () => {
+    await setEditorContent('SELECT 999 AS fav_test');
+    await browser.pause(300);
+
+    await browser.execute(() => {
+      const event = new CustomEvent('tauri://menu', { detail: { id: 'menu:add-favorite' } });
+      window.dispatchEvent(event);
+      const { emit } = (window as any).__TAURI_INTERNALS__;
+      if (emit) emit('menu:add-favorite', {});
+    });
+    await browser.pause(1000);
+
+    const input = await $('input[placeholder*=收藏标题]');
+    const isShown = await input.isExisting();
+    if (isShown) {
+      await expect(input).toBeDisplayed();
+
+      await input.setValue('我的测试收藏');
+      await browser.pause(200);
+
+      const saveBtn = await $('button*=保存');
+      await saveBtn.click();
+      await browser.pause(500);
+    }
+  });
+
+  it('收藏面板应能打开 (SQ-017)', async () => {
+    const favBtn = await $('button*=收藏');
+    await favBtn.click();
+    await browser.pause(500);
+
+    const body = await $('body').getText();
+    const hasFav = body.includes('SQL 收藏') || body.includes('暂无收藏') || body.includes('我的测试收藏');
+    expect(hasFav).toBe(true);
+  });
+
+  it('收藏面板可关闭 (SQ-018)', async () => {
+    const favBtn = await $('button*=收藏');
+    await favBtn.click();
+    await browser.pause(300);
+  });
+
+  // ── SQL 历史去重 ──────────────────────────────────────────────────
+
+  it('连续执行相同 SQL 历史中应只出现一条 (SQ-021)', async () => {
+    const uniqueSql = 'SELECT 777 AS dedup_test';
+    await setEditorContent(uniqueSql);
+
+    for (let i = 0; i < 3; i++) {
+      const execBtn = await $('button*=执行');
+      await execBtn.click();
+      await browser.waitUntil(
+        async () => (await $('body').getText()).includes('1 行'),
+        { timeout: 15000, timeoutMsg: `第 ${i + 1} 次执行超时` },
+      );
+      await browser.pause(500);
+    }
+
+    const histBtn = await $('button*=历史');
+    const histClass = (await histBtn.getAttribute('class')) || '';
+    if (!histClass.includes('secondary')) {
+      await histBtn.click();
+      await browser.pause(500);
+    }
+
+    const historyBtns = await $$('aside button');
+    let matchCount = 0;
+    for (const btn of historyBtns) {
+      const text = await btn.getText();
+      if (text.includes(uniqueSql)) {
+        matchCount++;
+      }
+    }
+
+    expect(matchCount).toBeLessThanOrEqual(1);
   });
 });

@@ -287,6 +287,12 @@ const en: Record<TranslationKey, string> = {
   'query.tab': 'Query {n}',
   'query.notConnected': 'Not connected',
   'query.executeFailed': 'Execution failed',
+  'query.favorites': 'Favorites',
+  'query.favoritesTitle': 'SQL Favorites',
+  'query.noFavorites': 'No favorites yet',
+  'query.addFavorite': 'Add to Favorites',
+  'query.favoriteTitle': 'Title',
+  'query.favoriteTitlePlaceholder': 'Enter favorite title...',
 
   // ── Table Data ──
   'tableData.loadFailed': 'Failed to load table data',

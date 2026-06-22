@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { queryCommands } from '../commands/query';
 import { t } from '../locales/t';
-import type { QueryHistoryEntry, StatementResult } from '../types';
+import type { FavoriteQuery, QueryHistoryEntry, StatementResult } from '../types';
 
 export interface QueryTab {
   id: string;
@@ -41,6 +41,8 @@ interface QueryStore {
   historyVisible: boolean;
   history: QueryHistoryEntry[];
   resultDetailRowIndex: number | null;
+  favorites: FavoriteQuery[];
+  favoritesVisible: boolean;
 
   setConnectionId: (id: string | null) => void;
   createTab: () => void;
@@ -53,6 +55,10 @@ interface QueryStore {
   cancelQuery: (tabId: string) => Promise<void>;
   loadHistory: () => Promise<void>;
   toggleHistory: () => void;
+  loadFavorites: () => Promise<void>;
+  addFavorite: (title: string, sql: string) => Promise<void>;
+  deleteFavorite: (id: string) => Promise<void>;
+  toggleFavorites: () => void;
   updateResultCell: (tabId: string, resultIdx: number, row: number, col: string, value: unknown) => void;
   reset: () => void;
   setResultDetailRow: (index: number | null) => void;
@@ -67,6 +73,8 @@ export const useQueryStore = create<QueryStore>((set, get) => ({
   historyVisible: false,
   history: [],
   resultDetailRowIndex: null,
+  favorites: [],
+  favoritesVisible: false,
 
   setConnectionId: (id) => set({ connectionId: id }),
 
@@ -209,6 +217,23 @@ export const useQueryStore = create<QueryStore>((set, get) => ({
 
   toggleHistory: () => set((s) => ({ historyVisible: !s.historyVisible })),
 
+  loadFavorites: async () => {
+    const favorites = await queryCommands.getFavoriteQueries();
+    set({ favorites });
+  },
+
+  addFavorite: async (title, sql) => {
+    await queryCommands.addFavoriteQuery(title, sql);
+    await get().loadFavorites();
+  },
+
+  deleteFavorite: async (id) => {
+    await queryCommands.deleteFavoriteQuery(id);
+    await get().loadFavorites();
+  },
+
+  toggleFavorites: () => set((s) => ({ favoritesVisible: !s.favoritesVisible })),
+
   setResultDetailRow: (index) => set({ resultDetailRowIndex: index }),
 
   updateResultCell: (tabId, resultIdx, row, col, value) =>
@@ -239,6 +264,8 @@ export const useQueryStore = create<QueryStore>((set, get) => ({
       activeTabId: '',
       historyVisible: false,
       history: [],
+      favorites: [],
+      favoritesVisible: false,
     });
   },
 }));

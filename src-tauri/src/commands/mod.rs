@@ -516,6 +516,56 @@ pub async fn clear_query_history(state: State<'_, AppState>) -> Result<(), Strin
 }
 
 #[tauri::command]
+pub async fn get_favorite_queries(state: State<'_, AppState>) -> Result<Vec<crate::store::FavoriteQuery>, String> {
+    Ok(state.store.get_favorite_queries().await)
+}
+
+#[tauri::command]
+pub async fn add_favorite_query(
+    state: State<'_, AppState>,
+    title: String,
+    sql: String,
+) -> Result<crate::store::FavoriteQuery, String> {
+    let fav = crate::store::FavoriteQuery {
+        id: uuid::Uuid::new_v4().to_string(),
+        title,
+        sql,
+        created_at: chrono::Utc::now(),
+    };
+    state.store.add_favorite_query(fav.clone()).await
+        .map_err(|e| log_err("add_favorite_query", &e))?;
+    Ok(fav)
+}
+
+#[tauri::command]
+pub async fn delete_favorite_query(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<(), String> {
+    state.store.delete_favorite_query(&id).await
+        .map_err(|e| log_err("delete_favorite_query", &e))
+}
+
+#[tauri::command]
+pub fn show_editor_context_menu(
+    window: tauri::Window,
+    lang: String,
+) -> Result<(), String> {
+    use tauri::menu::MenuBuilder;
+
+    let label_favorite = if lang == "en" { "Add to Favorites" } else { "收藏 SQL" };
+
+    let menu = MenuBuilder::new(&window)
+        .text("ctx-add-favorite", label_favorite)
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    window.popup_menu(&menu).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn get_settings(state: State<'_, AppState>) -> Result<AppSettings, String> {
     Ok(state.store.get_settings().await)
 }
