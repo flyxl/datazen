@@ -35,6 +35,28 @@ const PG_CONFIG = {
 };
 
 const TMP_DIR = os.tmpdir();
+const TEST_TABLE = '_e2e_backup_test';
+
+async function seedBackupTable(connId: string) {
+  await invokeBackend('execute_query', {
+    connectionId: connId,
+    sql: `
+      DROP TABLE IF EXISTS ${TEST_TABLE};
+      CREATE TABLE ${TEST_TABLE} (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL
+      );
+      INSERT INTO ${TEST_TABLE} (name) VALUES ('alice');
+    `,
+  });
+}
+
+async function dropBackupTable(connId: string) {
+  await invokeBackend('execute_query', {
+    connectionId: connId,
+    sql: `DROP TABLE IF EXISTS ${TEST_TABLE}`,
+  });
+}
 
 // ═════════════════════════════════════════════════════════════════════
 // Group 1: Backend backup command tests
@@ -48,9 +70,11 @@ describe('数据库备份功能 (BACKUP)', () => {
     await browser.pause(3000);
     await invokeBackend('save_connection', { config: PG_CONFIG });
     connectionId = await invokeBackend<string>('connect', { configId: PG_CONFIG.id });
+    await seedBackupTable(connectionId);
   });
 
   after(async () => {
+    try { await dropBackupTable(connectionId); } catch { /* ok */ }
     try { await invokeBackend('disconnect', { connectionId }); } catch { /* ok */ }
     try { await invokeBackend('delete_connection', { id: PG_CONFIG.id }); } catch { /* ok */ }
   });
@@ -82,8 +106,10 @@ describe('数据库备份功能 (BACKUP)', () => {
     expect(exists).toBe(true);
 
     const content = fs.readFileSync(outPath, 'utf-8');
+    const lc = content.toLowerCase();
     expect(content).toContain('-- DataZen backup');
-    expect(content).toContain('CREATE TABLE');
+    expect(lc).toContain('create table');
+    expect(lc).toContain(TEST_TABLE);
 
     fs.unlinkSync(outPath);
   });
@@ -100,8 +126,10 @@ describe('数据库备份功能 (BACKUP)', () => {
     });
 
     const content = fs.readFileSync(outPath, 'utf-8');
-    expect(content).toContain('CREATE TABLE');
-    expect(content).not.toContain('INSERT INTO');
+    const lc = content.toLowerCase();
+    expect(lc).toContain('create table');
+    expect(lc).toContain(TEST_TABLE);
+    expect(content).not.toMatch(/insert into/i);
     expect(content).toContain('-- Options:');
 
     fs.unlinkSync(outPath);
@@ -141,7 +169,8 @@ describe('数据库备份功能 (BACKUP)', () => {
 
     const content = fs.readFileSync(outPath, 'utf-8');
     const lc = content.toLowerCase();
-    expect(lc.includes('drop table') || lc.includes('drop table if exists')).toBe(true);
+    expect(lc).toContain('drop table if exists');
+    expect(lc).toContain(TEST_TABLE);
 
     fs.unlinkSync(outPath);
   });
@@ -203,7 +232,8 @@ describe('数据库备份功能 (BACKUP)', () => {
 
     const content = fs.readFileSync(outPath, 'utf-8');
     const lc = content.toLowerCase();
-    expect(lc.includes('drop table') || lc.includes('drop table if exists')).toBe(true);
+    expect(lc).toContain('drop table if exists');
+    expect(lc).toContain(TEST_TABLE);
     expect(lc).toContain('create table');
     expect(content).toContain('-- Options:');
 
