@@ -11,11 +11,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 vi.mock('../../commands/database', () => ({
   databaseCommands: {
     getTableData: vi.fn(),
-  },
-}));
-vi.mock('../../commands/query', () => ({
-  queryCommands: {
-    executeQuery: vi.fn(),
+    commitRowUpdates: vi.fn(),
   },
 }));
 

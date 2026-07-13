@@ -7,6 +7,7 @@ import {
   executeSQL,
   clickTableInSidebar,
   switchSubTab,
+  waitForSchemaTreeLoaded,
 } from '../helpers.js';
 
 const TEST_PARENT = '_e2e_idx_parent';
@@ -123,10 +124,7 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
   // ── 模式/表列表 ────────────────────────────────────────────────
 
   it('左侧应显示数据库和表列表 (DB-001, DB-002)', async () => {
-    await browser.waitUntil(
-      async () => (await $('aside').getText()).includes('Tables'),
-      { timeout: 10000, timeoutMsg: '等待 Tables 列表加载超时' },
-    );
+    await waitForSchemaTreeLoaded();
   });
 
   it('点击表名应打开数据标签页 (DB-002, DB-007)', async () => {
@@ -614,10 +612,7 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
     await search.clearValue();
     await browser.pause(500);
 
-    await browser.waitUntil(
-      async () => (await $('aside').getText()).includes('Tables'),
-      { timeout: 5000 },
-    );
+    await waitForSchemaTreeLoaded(5000);
   });
 
   // ── 新建查询 ───────────────────────────────────────────────────

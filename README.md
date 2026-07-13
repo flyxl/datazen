@@ -181,56 +181,49 @@ pnpm e2e
 
 ## 添加新的数据库类型
 
-DataZen 采用**注册表驱动**的架构，新增数据库类型只需修改少量文件：
+DataZen 采用**注册表驱动 + 策略模式**的架构。设计原则：**if-else 只出现在路由/选择层**（选哪个组件、哪个策略），业务逻辑放在独立模块中。
 
-### 1. 后端：实现 `DatabaseDriver` trait
+### 后端
 
-在 `src-tauri/src/db/` 下新建驱动文件，实现 `DatabaseDriver` trait：
+1. 在 `src-tauri/src/db/` 实现驱动：
+   - **SQL 类**：实现 `DatabaseDriver` trait（`connect`、`query`、`get_tables` 等）
+   - **KV 类**：额外实现 `KeyValueDriver` trait（`scan_keys_with_info`、`get_key_detail`）
+2. 在 `src-tauri/src/db/registry.rs` 的 `init_drivers()` 注册；KV 驱动需在 `get_kv_driver()` 中映射
+3. 按需覆盖 trait 默认方法：`skip_count_query()`、`format_sql_literal()`、`build_update_sql()`
+4. 在 `DatabaseType` 枚举（Rust）添加变体
 
-```rust
-#[async_trait]
-impl DatabaseDriver for MyNewDriver {
-    async fn connect(&self, config: &ConnectionConfig) -> Result<ConnectionHandle, DriverError>;
-    async fn disconnect(&self, handle: &ConnectionHandle) -> Result<(), DriverError>;
-    async fn get_databases(&self, handle: &ConnectionHandle) -> Result<Vec<String>, DriverError>;
-    async fn get_tables(&self, handle: &ConnectionHandle, database: &str) -> Result<Vec<TableInfo>, DriverError>;
-    // ... 其他方法有默认实现，按需覆盖
-}
-```
+**Commands 层**按领域拆分（`commands/connection.rs`、`schema.rs`、`query.rs`、`kv.rs` 等），新增 IPC 命令放入对应子模块并在 `commands/mod.rs` re-export。
 
-在 `src-tauri/src/db/registry.rs` 的 `init_drivers()` 中注册新驱动。
+### 前端
 
-### 2. 前端：注册数据库类型元数据
-
-在 `src/lib/databaseTypes.ts` 的 `DB_REGISTRY` 中添加一条配置：
+1. 在 `src/types/index.ts` 的 `DatabaseType` 联合类型添加新名称
+2. 在 `src/lib/databaseTypes.ts` 的 `DB_REGISTRY` 添加元数据条目：
 
 ```typescript
 mynewdb: {
   label: 'MyNewDB',
-  shortLabel: 'ND',
-  iconBg: 'bg-purple-500',
-  iconColor: 'text-purple-500',
-  defaultPort: 9999,
-  defaultHost: 'localhost',
-  defaultUser: 'admin',
-  quoteChar: '"',
-  connectionMode: 'server',
-  supportsSSH: true,
-  supportsBackup: false,
-  supportsTables: true,
-  isKeyValue: false,
-  supportsSQL: true,
+  // ... icon、port、quoteChar 等
+  connectionView: 'sql',           // 'sql' | 'keyvalue' | 'document'
+  connectionForm: 'standard',      // 'standard' | 'kiwi' | 'file' | 'index'
+  sqlDialect: 'postgresql',        // DDL/索引/备份方言（可选）
+  hasMultiDatabase: false,         // 多库树（如 Kiwi）
+  defaultPageSize: undefined,      // 固定分页（如 Kiwi 1000）
+  supportsBackup: true,
   category: 'sql',
 },
 ```
 
-### 3. 类型声明
+3. **（可选）连接表单**：在 `src/components/connection/` 添加 `*ConnectionFields.tsx`，在 `ConnectionFormBody.tsx` 按 `connectionForm` 路由
+4. **（可选）连接视图**：在 `src/windows/connection/` 创建视图组件，注册到 `src/lib/connectionViews/index.ts` 的 `CONNECTION_VIEWS`
+5. **（可选）Schema 树变体**：多库场景在 `schema-tree/` 添加变体组件，由 `SchemaTree.tsx` 按 `hasMultiDatabase` 路由
+6. **（可选）SQL 方言**：在 `src/lib/sqlDialects/` 添加方言策略（DDL 查询、索引 SQL、备份选项）
 
-在 `src/types/index.ts` 的 `DatabaseType` 联合类型中添加新类型名称。
+### 验收清单
 
-### 4. （可选）自定义连接窗口
-
-如果新数据库不是传统 SQL 类型（如 KV 或文档数据库），可以在 `src/windows/connection/` 下创建专属视图组件，并在 `ConnectionWindow.tsx` 中通过 `DB_REGISTRY` 的 `isKeyValue` / `category` 字段路由到对应视图。
+- [ ] 无 `databaseType === 'xxx'` 硬编码（行为差异由 `DB_REGISTRY` 标志驱动）
+- [ ] 视图/表单组件内部无方言 if-else（使用 `sqlDialects/` 模块）
+- [ ] `npx vitest run` + `cargo test` 通过
+- [ ] 相关 e2e spec 覆盖新型连接的基本流程
 
 ---
 
@@ -246,14 +239,16 @@ datazen/
 │   │   └── ...
 │   ├── stores/                 # Zustand 状态管理
 │   ├── commands/               # Tauri IPC 命令封装
-│   ├── lib/                    # 工具函数 + DB_REGISTRY
+│   ├── lib/                    # DB_REGISTRY, sqlDialects, connectionViews
+│   ├── components/connection/  # 共享连接表单（useConnectionForm + Fields）
 │   ├── locales/                # 国际化（中/英）
 │   └── types/                  # TypeScript 类型定义
 ├── src-tauri/                  # Rust 后端
 │   ├── src/
 │   │   ├── db/                 # 数据库驱动（PG/MySQL/SQLite/Redis）
 │   │   ├── services/           # 连接管理、查询执行
-│   │   ├── commands/           # Tauri 命令处理
+│   │   ├── commands/           # Tauri IPC（按领域拆分子模块）
+│   │   │   ├── connection.rs, schema.rs, query.rs, kv.rs, ...
 │   │   └── store/              # 本地持久化存储
 │   └── icons/                  # 应用图标
 ├── e2e/                        # E2E 测试

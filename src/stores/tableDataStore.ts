@@ -1,9 +1,8 @@
 import { create } from 'zustand';
-import { databaseCommands } from '../commands/database';
-import { queryCommands } from '../commands/query';
+import { databaseCommands, type RowUpdateBatch } from '../commands/database';
 import { t } from '../locales/t';
 import type { ColumnSchema, DatabaseType, FilterCondition, SortCondition, Value } from '../types';
-import { escapeIdent } from '../lib/databaseTypes';
+import { DB_REGISTRY } from '../lib/databaseTypes';
 
 function rowsToRecords(
   columns: ColumnSchema[],
@@ -30,16 +29,9 @@ function editKey(rowIndex: number, columnName: string) {
   return `${rowIndex}:${columnName}`;
 }
 
-function escapeSqlValue(val: unknown): string {
-  if (val === null || val === undefined) return 'NULL';
-  if (typeof val === 'number') return String(val);
-  if (typeof val === 'boolean') return val ? 'TRUE' : 'FALSE';
-  if (typeof val === 'object') return `'${JSON.stringify(val).replaceAll("'", "''")}'`;
-  return `'${String(val).replaceAll("'", "''")}'`;
-}
-
-function escapeSqlIdent(name: string, dbType?: string): string {
-  return escapeIdent(name, dbType as DatabaseType | undefined);
+function toCellValue(val: unknown): Value | null {
+  if (val === null || val === undefined) return null;
+  return val as Value;
 }
 
 /** Per-table state slice */
@@ -187,8 +179,8 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
     if (existing.loading) return;
 
     const { page, filters, sorts } = existing;
-    // Kiwi caps at 1000 rows with no pagination support
-    const pageSize = databaseType === 'kiwi' ? 1000 : existing.pageSize;
+    const defaultPageSize = DB_REGISTRY[databaseType as DatabaseType]?.defaultPageSize;
+    const pageSize = defaultPageSize ?? existing.pageSize;
 
     const next = new Map(tableStates);
     next.set(table, { ...existing, loading: true, error: null });
@@ -305,7 +297,7 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
   cancelEdit: () => updateActive(get, set, () => ({ editingCell: null })),
 
   commitChanges: async () => {
-    const { activeTable, tableStates, connectionId, databaseType } = get();
+    const { activeTable, tableStates, connectionId } = get();
     if (!activeTable || !connectionId) return;
     const ts = getState(tableStates, activeTable);
     if (ts.editBuffer.size === 0) return;
@@ -326,27 +318,23 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
       editsByRow.set(edit.rowIndex, existing);
     }
 
-    const dbType = databaseType ?? undefined;
-    const statements: string[] = [];
+    const batches: RowUpdateBatch[] = [];
     for (const [, edits] of editsByRow) {
-      const setClauses = edits.map(
-        (e) => `${escapeSqlIdent(e.columnName, dbType)} = ${escapeSqlValue(e.newValue)}`,
-      );
       const { pkSnapshot } = edits[0];
-      const whereClauses = pkCols.map((pk) => {
-        const pkVal = pkSnapshot[pk.name];
-        if (pkVal === null || pkVal === undefined) return `${escapeSqlIdent(pk.name, dbType)} IS NULL`;
-        return `${escapeSqlIdent(pk.name, dbType)} = ${escapeSqlValue(pkVal)}`;
+      batches.push({
+        setColumns: edits.map((e) => ({
+          column: e.columnName,
+          value: toCellValue(e.newValue),
+        })),
+        pkColumns: pkCols.map((pk) => ({
+          column: pk.name,
+          value: toCellValue(pkSnapshot[pk.name]),
+        })),
       });
-      statements.push(
-        `UPDATE ${escapeSqlIdent(activeTable, dbType)} SET ${setClauses.join(', ')} WHERE ${whereClauses.join(' AND ')}`,
-      );
     }
 
     try {
-      for (const sql of statements) {
-        await queryCommands.executeQuery(connectionId, sql);
-      }
+      await databaseCommands.commitRowUpdates(connectionId, activeTable, batches);
       void get().loadTableData({ connectionId, table: activeTable });
     } catch (e) {
       const current = getState(get().tableStates, activeTable);

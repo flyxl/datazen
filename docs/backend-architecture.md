@@ -3111,3 +3111,49 @@ async fn test_full_query_flow() {
     manager.disconnect(&conn_id).await.unwrap();
 }
 ```
+
+---
+
+## 十二、数据库类型扩展架构（2026-07 重构后）
+
+### 12.1 Commands 模块划分
+
+`src-tauri/src/commands/` 按领域拆分为子模块，`mod.rs` 仅保留 `AppState`、re-export 和 `log_err`：
+
+| 模块 | 职责 |
+|------|------|
+| `connection.rs` | 连接 CRUD、测试、connect/disconnect |
+| `schema.rs` | 数据库/表/列/表数据 |
+| `query.rs` | SQL 执行、explain、查询历史/收藏 |
+| `kv.rs` | KV 扫描/读取（通过 `KeyValueDriver`） |
+| `data.rs` | 行级更新（`commit_row_updates`） |
+| `backup.rs` | 备份/恢复 |
+| `sync.rs` | PG↔MySQL 数据同步 |
+| `kiwi.rs` | Kiwi OAuth 登录/实例列表 |
+| `config.rs` | 设置、分组、导入导出（含加密） |
+| `file.rs` | 文件读写、编辑器右键菜单 |
+
+### 12.2 驱动接口隔离
+
+```
+DatabaseDriver (SQL 通用)
+├── format_sql_literal()     # 值字面量格式化（PG: TRUE/FALSE, MySQL: 1/0）
+├── build_update_sql()       # UPDATE 语句构建
+└── skip_count_query()       # 是否跳过 COUNT(*)（Kiwi 覆盖为 true）
+
+KeyValueDriver (KV 专用, db/traits/kv.rs)
+├── scan_keys_with_info()
+└── get_key_detail()
+```
+
+- `DriverRegistry::get()` — 获取 `Arc<dyn DatabaseDriver>`
+- `DriverRegistry::get_kv_driver()` — 获取 `Arc<dyn KeyValueDriver>`（目前 Redis）
+
+### 12.3 添加新 DB 类型检查清单
+
+1. `db/mod.rs` — `DatabaseType` 枚举添加变体
+2. `db/` — 实现 `DatabaseDriver`（+ 可选 `KeyValueDriver`）
+3. `db/registry.rs` — `init_drivers()` 注册；KV 类型在 `get_kv_driver()` 映射
+4. 按需覆盖：`skip_count_query`、`format_sql_literal`、`build_update_sql`
+5. 新型 IPC 命令放入对应 `commands/*.rs` 子模块
+6. `lib.rs` — `generate_handler` 注册新命令

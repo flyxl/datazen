@@ -7,6 +7,7 @@
 //! - `scan_keys_with_info` / `get_key_detail` — KV browser commands
 
 use super::*;
+use super::traits::KeyValueDriver;
 use async_trait::async_trait;
 use redis::aio::MultiplexedConnection;
 use redis::AsyncCommands;
@@ -1037,6 +1038,33 @@ impl DatabaseDriver for RedisDriver {
 
     async fn cancel_query(&self, _handle: &ConnectionHandle) -> Result<(), DriverError> {
         Ok(())
+    }
+}
+
+#[async_trait]
+impl KeyValueDriver for RedisDriver {
+    fn driver_type(&self) -> DatabaseType {
+        DatabaseType::Redis
+    }
+
+    async fn scan_keys_with_info(
+        &self,
+        handle: &ConnectionHandle,
+        db_index: u32,
+        pattern: &str,
+        cursor: u64,
+        count: u32,
+    ) -> Result<(u64, Vec<KeyEntry>, u64), DriverError> {
+        RedisDriver::scan_keys_with_info(self, handle, db_index, pattern, cursor, count).await
+    }
+
+    async fn get_key_detail(
+        &self,
+        handle: &ConnectionHandle,
+        db_index: u32,
+        key: &str,
+    ) -> Result<KeyDetail, DriverError> {
+        RedisDriver::get_key_detail(self, handle, db_index, key).await
     }
 }
 

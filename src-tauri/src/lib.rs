@@ -360,6 +360,7 @@ pub fn run() {
             commands::get_columns,
             commands::get_table_schema,
             commands::get_table_data,
+            commands::commit_row_updates,
             commands::execute_query,
             commands::get_explain,
             commands::cancel_query,

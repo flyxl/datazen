@@ -8,7 +8,18 @@ import type {
   TableDataResult,
   TableInfo,
   TableSchema,
+  Value,
 } from '../types';
+
+export interface CellUpdate {
+  column: string;
+  value: Value | null;
+}
+
+export interface RowUpdateBatch {
+  setColumns: CellUpdate[];
+  pkColumns: CellUpdate[];
+}
 
 export const databaseCommands = {
   getDatabases: (connectionId: string) =>
@@ -50,4 +61,7 @@ export const databaseCommands = {
 
   kvGetKey: (connectionId: string, dbIndex: number, key: string) =>
     invoke<KeyDetail>('kv_get_key', { connectionId, dbIndex, key }),
+
+  commitRowUpdates: (connectionId: string, table: string, updates: RowUpdateBatch[]) =>
+    invoke<void>('commit_row_updates', { connectionId, table, updates }),
 };

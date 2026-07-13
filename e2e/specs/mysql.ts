@@ -7,7 +7,7 @@ import {
   clickTableInSidebar,
   switchSubTab,
   clickFirstTable,
-
+  asideHasSchemaSections,
 } from '../helpers.js';
 
 const TABLE_BASIC = '_e2e_mysql_basic';
@@ -131,7 +131,7 @@ describe('MySQL 数据库支持 (MY-001~MY-020)', () => {
 
     const aside = await $('aside');
     const asideText = await aside.getText();
-    expect(asideText).toContain('Tables');
+    expect(asideHasSchemaSections(asideText)).toBe(true);
   });
 
   it('侧边栏应显示 MySQL 测试表 (MY-002)', async () => {
