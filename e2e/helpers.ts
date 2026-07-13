@@ -485,12 +485,29 @@ export async function openQueryTab() {
 
 // ── schema sidebar ──────────────────────────────────────────────────
 
+/** Sidebar section headers indicating schema tree loaded (en + zh-CN). */
+export const SCHEMA_TREE_SECTION_MARKERS = ['Tables', '表', 'Keys', '键', 'Views', '视图'] as const;
+
+export function asideHasSchemaSections(text: string): boolean {
+  return SCHEMA_TREE_SECTION_MARKERS.some((marker) => text.includes(marker));
+}
+
+/** True if text looks like a schema tree section header (e.g. "Tables (5)" or "表 (3)"). */
+export function isSchemaSectionLabel(text: string): boolean {
+  return SCHEMA_TREE_SECTION_MARKERS.some((m) => text.startsWith(m));
+}
+
+/** Wait until the connection window sidebar shows table/key sections. */
+export async function waitForSchemaTreeLoaded(timeout = 10000) {
+  await browser.waitUntil(
+    async () => asideHasSchemaSections(await $('aside').getText()),
+    { timeout, timeoutMsg: '等待 schema 树加载超时' },
+  );
+}
+
 /** Click a table by exact name in the sidebar. */
 export async function clickTableInSidebar(tableName: string) {
-  await browser.waitUntil(
-    async () => (await $('aside').getText()).includes('Tables'),
-    { timeout: 10000, timeoutMsg: '等待 Tables 列表加载超时' },
-  );
+  await waitForSchemaTreeLoaded();
   const asideButtons = await $$('aside button');
   for (const btn of asideButtons) {
     const text = (await btn.getText()).trim();
@@ -504,10 +521,7 @@ export async function clickTableInSidebar(tableName: string) {
 
 /** Click the first table/view entry in the sidebar and return its name. */
 export async function clickFirstTable() {
-  await browser.waitUntil(
-    async () => (await $('aside').getText()).includes('Tables'),
-    { timeout: 10000, timeoutMsg: '等待 Tables 列表加载超时' },
-  );
+  await waitForSchemaTreeLoaded();
   const asideButtons = await $$('aside button');
   for (const btn of asideButtons) {
     const text = (await btn.getText()).trim();

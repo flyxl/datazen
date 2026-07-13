@@ -6,29 +6,12 @@ import { Input } from '../../components/ui/Input';
 import { useI18n } from '../../hooks/useI18n';
 import { cn } from '../../lib/cn';
 import { getDbLabel, getDbIcon, getDbIconColor, DB_REGISTRY } from '../../lib/databaseTypes';
+import { getSqlDialect } from '../../lib/sqlDialects';
 import type { ConnectionConfig, DatabaseType } from '../../types';
 
 interface DatabaseInfo {
   name: string;
 }
-
-const PG_OPTIONS = [
-  { id: 'data-only', label: '--data-only' },
-  { id: 'clean', label: '--clean' },
-  { id: 'create', label: '--create' },
-  { id: 'no-owner', label: '--no-owner' },
-  { id: 'schema-only', label: '--schema-only' },
-  { id: 'format-custom', label: '--format=custom' },
-] as const;
-
-const MYSQL_OPTIONS = [
-  { id: 'no-data', label: '--no-data' },
-  { id: 'add-drop-table', label: '--add-drop-table' },
-  { id: 'single-transaction', label: '--single-transaction' },
-  { id: 'routines', label: '--routines' },
-  { id: 'triggers', label: '--triggers' },
-  { id: 'no-create-info', label: '--no-create-info' },
-] as const;
 
 function getDbIconCompact(dbType: DatabaseType) {
   return getDbIconColor(dbType);
@@ -68,9 +51,9 @@ export function BackupWindow() {
 
   const backupOptions = useMemo(() => {
     if (!selectedConn) return [];
-    return DB_REGISTRY[selectedConn.databaseType]?.sqlDialect === 'mysql'
-      ? MYSQL_OPTIONS
-      : PG_OPTIONS;
+    const meta = DB_REGISTRY[selectedConn.databaseType];
+    if (!meta?.supportsBackup) return [];
+    return getSqlDialect(selectedConn.databaseType)?.backupOptions ?? [];
   }, [selectedConn]);
 
   useEffect(() => {
@@ -86,6 +69,7 @@ export function BackupWindow() {
   const grouped = useMemo(() => {
     const q = searchConn.trim().toLowerCase();
     const filtered = connections.filter((c) => {
+      if (!DB_REGISTRY[c.databaseType]?.supportsBackup) return false;
       if (!q) return true;
       return `${c.name} ${c.host ?? ''} ${c.database ?? ''}`.toLowerCase().includes(q);
     });

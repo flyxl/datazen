@@ -10,6 +10,7 @@ import {
   executeSQL,
   clickTableInSidebar,
   switchSubTab,
+  asideHasSchemaSections,
 } from '../helpers.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -130,7 +131,7 @@ describe('SQLite', () => {
   it('should show tables in sidebar', async () => {
     const aside = await $('aside');
     const text = await aside.getText();
-    expect(text).toContain('Tables');
+    expect(asideHasSchemaSections(text)).toBe(true);
     expect(text).toContain('users');
     expect(text).toContain('posts');
     expect(text).toContain('tags');

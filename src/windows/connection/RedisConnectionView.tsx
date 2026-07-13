@@ -22,11 +22,7 @@ import type { KeyEntry, KeyDetail as KeyDetailType, StatementResult } from '../.
 const ROW_HEIGHT = 32;
 const PAGE_SIZE = 200;
 
-interface RedisConnectionViewProps {
-  connectionId: string;
-  connectionName: string;
-  initialDatabase?: string;
-}
+import type { ConnectionViewProps } from '../../lib/connectionViews/types';
 
 type ActiveTab = 'items' | 'queries';
 
@@ -34,7 +30,7 @@ export function RedisConnectionView({
   connectionId,
   connectionName,
   initialDatabase,
-}: RedisConnectionViewProps) {
+}: ConnectionViewProps) {
   const { t } = useI18n();
 
   const databases = useSchemaStore((s) => s.databases);

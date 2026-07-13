@@ -650,6 +650,31 @@ impl DatabaseDriver for KiwiDriver {
         '`'
     }
 
+    fn skip_count_query(&self) -> bool {
+        true
+    }
+
+    fn format_sql_literal(&self, value: &Option<super::Value>) -> String {
+        match value {
+            None | Some(super::Value::Null) => "NULL".to_string(),
+            Some(super::Value::Bool(b)) => {
+                if *b {
+                    "1".to_string()
+                } else {
+                    "0".to_string()
+                }
+            }
+            Some(super::Value::Integer(i)) => i.to_string(),
+            Some(super::Value::Float(f)) => f.to_string(),
+            Some(super::Value::String(s)) => format!("'{}'", s.replace('\'', "''")),
+            Some(super::Value::Bytes(b)) => {
+                format!("'{}'", String::from_utf8_lossy(b).replace('\'', "''"))
+            }
+            Some(super::Value::Timestamp(s)) => format!("'{}'", s.replace('\'', "''")),
+            Some(super::Value::Json(j)) => format!("'{}'", j.to_string().replace('\'', "''")),
+        }
+    }
+
     // ── Connection lifecycle ───────────────────────────────────────
 
     async fn connect(&self, config: &ConnectionConfig) -> Result<ConnectionHandle, DriverError> {

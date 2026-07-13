@@ -5,6 +5,7 @@ use super::mysql::MysqlDriver;
 use super::postgres::PostgresDriver;
 use super::redis_driver::RedisDriver;
 use super::sqlite::SqliteDriver;
+use super::traits::KeyValueDriver;
 use super::{DatabaseDriver, DatabaseType};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -38,6 +39,13 @@ impl DriverRegistry {
     pub async fn supported_types(&self) -> Vec<DatabaseType> {
         let drivers = self.drivers.read().await;
         drivers.keys().cloned().collect()
+    }
+
+    pub async fn get_kv_driver(&self, db_type: &DatabaseType) -> Option<Arc<dyn KeyValueDriver>> {
+        match db_type {
+            DatabaseType::Redis => Some(self.redis.clone() as Arc<dyn KeyValueDriver>),
+            _ => None,
+        }
     }
 }
 

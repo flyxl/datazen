@@ -10,6 +10,9 @@ import {
   openQueryTab,
   clickFirstTable,
   switchSubTab,
+  asideHasSchemaSections,
+  waitForSchemaTreeLoaded,
+  isSchemaSectionLabel,
 } from '../helpers.js';
 
 const CONN_NAME = 'E2E-Kiwi';
@@ -253,7 +256,7 @@ describe('Kiwi 连接与查询 (KW-010~KW-025)', () => {
     let clicked = false;
     for (const btn of dbButtons) {
       const text = (await btn.getText()).trim();
-      if (text.length > 0 && !text.includes('Tables') && !text.includes('Views')) {
+      if (text.length > 0 && !isSchemaSectionLabel(text)) {
         await btn.click();
         clicked = true;
         break;
@@ -261,21 +264,14 @@ describe('Kiwi 连接与查询 (KW-010~KW-025)', () => {
     }
     expect(clicked).toBe(true);
 
-    // Wait for Tables section to appear
-    await browser.waitUntil(
-      async () => (await $('aside').getText()).includes('Tables'),
-      { timeout: 15000, timeoutMsg: '等待 Tables 列表加载超时' },
-    );
+    await waitForSchemaTreeLoaded(15000);
     const asideText = await $('aside').getText();
-    expect(asideText).toContain('Tables');
+    expect(asideHasSchemaSections(asideText)).toBe(true);
   });
 
   it('表列表中应包含至少一张表 (KW-014)', async function () {
     if (shouldSkip) return this.skip();
-    await browser.waitUntil(
-      async () => (await $('aside').getText()).includes('Tables'),
-      { timeout: 10000, timeoutMsg: '等待 Tables 加载超时' },
-    );
+    await waitForSchemaTreeLoaded();
 
     const tableName = await clickFirstTable();
     expect(tableName).not.toBeNull();

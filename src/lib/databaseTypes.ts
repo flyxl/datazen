@@ -49,6 +49,12 @@ export interface DatabaseTypeMeta {
   sqlDialect?: 'postgresql' | 'mysql' | 'sqlite';
   /** How the "database" field behaves in the connection form */
   databaseFieldType: 'name' | 'path' | 'index';
+  /** Whether the schema tree supports multiple databases/instances (e.g. Kiwi) */
+  hasMultiDatabase?: boolean;
+  /** Default page size for table data; unset uses per-table or global default */
+  defaultPageSize?: number;
+  /** Connection form variant */
+  connectionForm: 'standard' | 'kiwi' | 'file' | 'index';
 }
 
 export const DB_REGISTRY: Record<DatabaseType, DatabaseTypeMeta> = {
@@ -72,6 +78,7 @@ export const DB_REGISTRY: Record<DatabaseType, DatabaseTypeMeta> = {
     connectionView: 'sql',
     sqlDialect: 'postgresql',
     databaseFieldType: 'name',
+    connectionForm: 'standard',
   },
   mysql: {
     label: 'MySQL',
@@ -93,6 +100,7 @@ export const DB_REGISTRY: Record<DatabaseType, DatabaseTypeMeta> = {
     connectionView: 'sql',
     sqlDialect: 'mysql',
     databaseFieldType: 'name',
+    connectionForm: 'standard',
   },
   mariadb: {
     label: 'MariaDB',
@@ -114,6 +122,7 @@ export const DB_REGISTRY: Record<DatabaseType, DatabaseTypeMeta> = {
     connectionView: 'sql',
     sqlDialect: 'mysql',
     databaseFieldType: 'name',
+    connectionForm: 'standard',
   },
   sqlite: {
     label: 'SQLite',
@@ -135,6 +144,7 @@ export const DB_REGISTRY: Record<DatabaseType, DatabaseTypeMeta> = {
     connectionView: 'sql',
     sqlDialect: 'sqlite',
     databaseFieldType: 'path',
+    connectionForm: 'file',
   },
   redis: {
     label: 'Redis',
@@ -155,6 +165,7 @@ export const DB_REGISTRY: Record<DatabaseType, DatabaseTypeMeta> = {
     category: 'kv',
     connectionView: 'keyvalue',
     databaseFieldType: 'index',
+    connectionForm: 'index',
   },
   kiwi: {
     label: 'Kiwi',
@@ -176,6 +187,9 @@ export const DB_REGISTRY: Record<DatabaseType, DatabaseTypeMeta> = {
     connectionView: 'sql',
     sqlDialect: 'mysql',
     databaseFieldType: 'name',
+    hasMultiDatabase: true,
+    defaultPageSize: 1000,
+    connectionForm: 'kiwi',
   },
 };
 
@@ -214,6 +228,13 @@ export function getDbIcon(dbType: DatabaseType): { label: string; bg: string } {
 /** Get the icon color class for compact displays. */
 export function getDbIconColor(dbType: DatabaseType): string {
   return DB_REGISTRY[dbType]?.iconColor ?? 'text-fg-muted';
+}
+
+/** Redis logical DB index (0–15); invalid input becomes `"0"`. */
+export function normalizeRedisDatabaseField(s: string): string {
+  const u = s.trim();
+  if (u === '' || !/^\d+$/.test(u)) return '0';
+  return String(Math.min(15, Math.max(0, parseInt(u, 10))));
 }
 
 /** Build a display address string for a connection. */

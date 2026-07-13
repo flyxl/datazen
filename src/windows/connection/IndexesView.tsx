@@ -7,6 +7,7 @@ import { cn } from '../../lib/cn';
 import { Button } from '../../components/ui/Button';
 import { useI18n } from '../../hooks/useI18n';
 import { DB_REGISTRY } from '../../lib/databaseTypes';
+import { getSqlDialect } from '../../lib/sqlDialects';
 
 interface IndexesViewProps {
   connectionId: string;
@@ -34,10 +35,17 @@ interface CreateIndexDialogProps {
   databaseType?: string;
 }
 
+const INDEX_METHOD_LABELS: Record<'btree' | 'hash' | 'gin' | 'gist', string> = {
+  btree: 'B-Tree',
+  hash: 'Hash',
+  gin: 'GIN',
+  gist: 'GiST',
+};
+
 function CreateIndexDialog({ columns, tableName, onSubmit, onCancel, submitting, databaseType }: CreateIndexDialogProps) {
   const { t } = useI18n();
   const meta = DB_REGISTRY[databaseType as DatabaseType];
-  const isMySQLDialect = meta?.sqlDialect === 'mysql';
+  const indexDialect = databaseType ? getSqlDialect(databaseType as DatabaseType)?.index : null;
   const [indexName, setIndexName] = useState('');
   const [selectedCols, setSelectedCols] = useState<string[]>([]);
   const [isUnique, setIsUnique] = useState(false);
@@ -45,6 +53,19 @@ function CreateIndexDialog({ columns, tableName, onSubmit, onCancel, submitting,
 
   const autoName = `idx_${tableName}_${selectedCols.join('_')}`;
   const q = meta?.quoteChar || '"';
+  const supportedMethods = indexDialect?.supportedIndexMethods ?? ['btree'];
+
+  const buildCreateIndexSql = (name: string, cols: string[]) => {
+    if (!indexDialect) return '';
+    return indexDialect.getCreateIndexSql({
+      indexName: name,
+      tableName,
+      columns: cols,
+      unique: isUnique,
+      method: indexType,
+      quoteChar: q,
+    });
+  };
 
   const toggleColumn = (col: string) => {
     setSelectedCols((prev) =>
@@ -53,13 +74,9 @@ function CreateIndexDialog({ columns, tableName, onSubmit, onCancel, submitting,
   };
 
   const handleSubmit = () => {
-    if (selectedCols.length === 0) return;
+    if (selectedCols.length === 0 || !indexDialect) return;
     const name = indexName.trim() || autoName;
-    const uniqueKw = isUnique ? 'UNIQUE ' : '';
-    const usingKw = indexType !== 'btree' ? ` USING ${indexType}` : '';
-    const quotedCols = selectedCols.map((c) => `${q}${c}${q}`).join(', ');
-    const sql = `CREATE ${uniqueKw}INDEX ${q}${name}${q} ON ${q}${tableName}${q}${usingKw} (${quotedCols})`;
-    onSubmit(sql);
+    onSubmit(buildCreateIndexSql(name, selectedCols));
   };
 
   return (
@@ -132,10 +149,9 @@ function CreateIndexDialog({ columns, tableName, onSubmit, onCancel, submitting,
               value={indexType}
               onChange={(e) => setIndexType(e.target.value as typeof indexType)}
             >
-              <option value="btree">B-Tree</option>
-              <option value="hash">Hash</option>
-              {!isMySQLDialect && <option value="gin">GIN</option>}
-              {!isMySQLDialect && <option value="gist">GiST</option>}
+              {supportedMethods.map((method) => (
+                <option key={method} value={method}>{INDEX_METHOD_LABELS[method]}</option>
+              ))}
             </select>
           </div>
         </div>
@@ -145,7 +161,7 @@ function CreateIndexDialog({ columns, tableName, onSubmit, onCancel, submitting,
           <div className="mb-4 rounded border border-edge bg-surface-alt p-2.5">
             <div className="mb-1 text-[10px] font-medium uppercase text-fg-muted">{t('indexes.sqlPreview')}</div>
             <code className="block whitespace-pre-wrap text-xs text-green-400">
-              {`CREATE ${isUnique ? 'UNIQUE ' : ''}INDEX ${q}${indexName.trim() || autoName}${q} ON ${q}${tableName}${q}${indexType !== 'btree' ? ` USING ${indexType}` : ''} (${selectedCols.map((c) => `${q}${c}${q}`).join(', ')})`}
+              {buildCreateIndexSql(indexName.trim() || autoName, selectedCols)}
             </code>
           </div>
         )}
@@ -208,7 +224,7 @@ function DeleteConfirmDialog({ indexName, onConfirm, onCancel, submitting }: Del
 export function IndexesView({ connectionId, tableName, createIndexTrigger, databaseType }: IndexesViewProps) {
   const { t } = useI18n();
   const dbMeta = DB_REGISTRY[databaseType as DatabaseType];
-  const isMySQLDialect = dbMeta?.sqlDialect === 'mysql';
+  const indexDialect = databaseType ? getSqlDialect(databaseType as DatabaseType)?.index : null;
   const q = dbMeta?.quoteChar || '"';
   const [indexes, setIndexes] = useState<IndexInfo[]>([]);
   const [columns, setColumns] = useState<ColumnSchema[]>([]);
@@ -267,9 +283,8 @@ export function IndexesView({ connectionId, tableName, createIndexTrigger, datab
     if (!deleteTarget) return;
     setSubmitting(true);
     try {
-      const dropSql = isMySQLDialect
-        ? `DROP INDEX ${q}${deleteTarget}${q} ON ${q}${tableName}${q}`
-        : `DROP INDEX ${q}${deleteTarget}${q}`;
+      const dropSql = indexDialect?.getDropIndexSql(deleteTarget, tableName, q)
+        ?? `DROP INDEX ${q}${deleteTarget}${q}`;
       await databaseCommands.executeSQL(connectionId, dropSql);
       invalidateSchemaCache(connectionId, tableName);
       setDeleteTarget(null);

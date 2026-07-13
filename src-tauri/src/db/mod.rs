@@ -325,6 +325,67 @@ pub trait DatabaseDriver: Send + Sync {
         }
     }
 
+    /// Whether COUNT(*) should be skipped when fetching paginated table data.
+    fn skip_count_query(&self) -> bool {
+        false
+    }
+
+    /// Format a value for SQL literals (UPDATE/INSERT). MySQL uses 1/0 for bool; PG uses TRUE/FALSE.
+    fn format_sql_literal(&self, value: &Option<Value>) -> String {
+        match value {
+            None | Some(Value::Null) => "NULL".to_string(),
+            Some(Value::Bool(b)) => {
+                if *b {
+                    "TRUE".to_string()
+                } else {
+                    "FALSE".to_string()
+                }
+            }
+            Some(Value::Integer(i)) => i.to_string(),
+            Some(Value::Float(f)) => f.to_string(),
+            Some(Value::String(s)) => format!("'{}'", s.replace('\'', "''")),
+            Some(Value::Bytes(b)) => format!("'{}'", String::from_utf8_lossy(b).replace('\'', "''")),
+            Some(Value::Timestamp(s)) => format!("'{}'", s.replace('\'', "''")),
+            Some(Value::Json(j)) => format!("'{}'", j.to_string().replace('\'', "''")),
+        }
+    }
+
+    /// Build UPDATE statement for row edit.
+    fn build_update_sql(
+        &self,
+        table: &str,
+        set_columns: &[(&str, Option<Value>)],
+        pk_columns: &[(&str, Option<Value>)],
+    ) -> String {
+        let set_clauses: Vec<String> = set_columns
+            .iter()
+            .map(|(col, val)| {
+                format!(
+                    "{} = {}",
+                    self.quote_ident(col),
+                    self.format_sql_literal(val)
+                )
+            })
+            .collect();
+        let where_clauses: Vec<String> = pk_columns
+            .iter()
+            .map(|(col, val)| match val {
+                None | Some(Value::Null) => format!("{} IS NULL", self.quote_ident(col)),
+                Some(v) => format!(
+                    "{} = {}",
+                    self.quote_ident(col),
+                    self.format_sql_literal(&Some(v.clone()))
+                ),
+            })
+            .collect();
+        format!(
+            "UPDATE {} SET {} WHERE {}",
+            self.quote_ident(table),
+            set_clauses.join(", "),
+            where_clauses.join(" AND ")
+        )
+    }
+
     async fn connect(&self, config: &ConnectionConfig) -> Result<ConnectionHandle, DriverError>;
 
     async fn test_connection(&self, config: &ConnectionConfig) -> Result<ServerInfo, DriverError>;
@@ -406,5 +467,6 @@ pub mod postgres;
 pub mod redis_driver;
 pub mod sqlite;
 pub mod registry;
+pub mod traits;
 
 pub use registry::{init_drivers, DriverRegistry};
