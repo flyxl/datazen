@@ -22,6 +22,7 @@ export function useConnectionForm(options: UseConnectionFormOptions = {}) {
   const [host, setHost] = useState('127.0.0.1');
   const [port, setPort] = useState('5432');
   const [database, setDatabase] = useState('postgres');
+  const [schema, setSchema] = useState('default');
   const [username, setUsername] = useState('postgres');
   const [password, setPassword] = useState('');
   const [sslMode, setSslMode] = useState<SslMode>('prefer');
@@ -60,6 +61,7 @@ export function useConnectionForm(options: UseConnectionFormOptions = {}) {
     setHost(existing.host ?? '127.0.0.1');
     setPort(String(existing.port ?? (DB_REGISTRY[existing.databaseType].defaultPort || '')));
     setDatabase(existing.database ?? '');
+    setSchema(existing.schema ?? 'default');
     setUsername(existing.username ?? '');
     setPassword(existing.password ?? '');
     setSslMode(existing.sslMode);
@@ -101,6 +103,13 @@ export function useConnectionForm(options: UseConnectionFormOptions = {}) {
       setHost(meta.defaultHost);
       setDatabase('');
       setPort(String(meta.defaultPort));
+    }
+    if (meta.connectionForm === 'catalog') {
+      setHost(meta.defaultHost);
+      setPort(String(meta.defaultPort));
+      setDatabase('');
+      setSchema('default');
+      setUsername('');
     }
   }
 
@@ -198,11 +207,14 @@ export function useConnectionForm(options: UseConnectionFormOptions = {}) {
       database: draftMeta.databaseFieldType === 'index' ? normalizeRedisDatabaseField(database) : database || undefined,
       password: password || undefined,
     };
-    if (draftMeta.defaultUser || draftMeta.connectionForm === 'kiwi') {
+    if (draftMeta.defaultUser || draftMeta.connectionForm === 'kiwi' || draftMeta.connectionForm === 'catalog') {
       conn.username = username || draftMeta.defaultUser || undefined;
     }
+    if (draftMeta.connectionForm === 'catalog') {
+      conn.schema = schema.trim() || 'default';
+    }
     return conn;
-  }, [colorTag, database, databaseType, editId, group, host, name, password, port, sslMode, sshTunnel, t, username]);
+  }, [colorTag, database, databaseType, editId, group, host, name, password, port, schema, sslMode, sshTunnel, t, username]);
 
   async function onTest() {
     setTesting(true);
@@ -246,6 +258,8 @@ export function useConnectionForm(options: UseConnectionFormOptions = {}) {
     setPort,
     database,
     setDatabase,
+    schema,
+    setSchema,
     username,
     setUsername,
     password,

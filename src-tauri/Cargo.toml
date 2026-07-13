@@ -52,6 +52,8 @@ sha2 = "0.10.9"
 reqwest = { version = "0.13.3", features = ["json", "cookies"] }
 des = "0.8"
 cbc = { version = "0.1", features = ["alloc"] }
+prusto = { version = "0.5.2", features = ["presto"] }
+trino-rust-client = "0.9.3"
 
 [features]
 webdriver = ["tauri-plugin-webdriver"]

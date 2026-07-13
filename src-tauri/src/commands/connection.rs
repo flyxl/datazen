@@ -112,6 +112,8 @@ pub async fn get_connection_info(
         DatabaseType::SQLite => "sqlite",
         DatabaseType::Redis => "redis",
         DatabaseType::Kiwi => "kiwi",
+        DatabaseType::Presto => "presto",
+        DatabaseType::Trino => "trino",
     };
 
     let driver_category = match config.database_type {
@@ -126,5 +128,6 @@ pub async fn get_connection_info(
         "host": config.host,
         "port": config.port,
         "database": config.database,
+        "schema": config.schema,
     }))
 }

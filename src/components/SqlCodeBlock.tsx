@@ -71,7 +71,7 @@ function makeTheme(dark: boolean) {
 
 interface SqlCodeBlockProps {
   code: string;
-  dialect?: 'postgresql' | 'mysql' | 'sqlite';
+  dialect?: 'postgresql' | 'mysql' | 'sqlite' | 'trino';
 }
 
 export function SqlCodeBlock({ code, dialect = 'postgresql' }: SqlCodeBlockProps) {

@@ -150,6 +150,8 @@ const zhCN = {
   'newConn.host': '主机地址',
   'newConn.port': '端口',
   'newConn.database': '数据库名',
+  'newConn.catalog': 'Catalog',
+  'newConn.schema': 'Schema',
   'newConn.databaseIndex': '数据库索引',
   'newConn.username': '用户名',
   'newConn.password': '密码',

@@ -3,6 +3,7 @@ import { Select } from '../ui/Select';
 import { useI18n } from '../../hooks/useI18n';
 import { DB_REGISTRY } from '../../lib/databaseTypes';
 import { Label } from './shared';
+import { CatalogConnectionFields } from './CatalogConnectionFields';
 import { ConnectionAdvancedSettings } from './ConnectionAdvancedSettings';
 import { FileConnectionFields } from './FileConnectionFields';
 import { IndexConnectionFields } from './IndexConnectionFields';
@@ -75,6 +76,12 @@ export function ConnectionFormBody({
             form={form}
             databaseField={<IndexConnectionFields form={form} />}
             hostPlaceholder={isWindow ? 'prod-db.example.com' : '127.0.0.1'}
+          />
+        )}
+        {form.formVariant === 'catalog' && (
+          <CatalogConnectionFields
+            form={form}
+            hostPlaceholder={isWindow ? 'presto.example.com' : '127.0.0.1'}
           />
         )}
         {form.formVariant === 'standard' && (

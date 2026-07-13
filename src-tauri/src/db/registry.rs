@@ -1,6 +1,7 @@
 //! Driver registry — resolves `DatabaseType` to a concrete `DatabaseDriver`.
 
 use super::kiwi::KiwiDriver;
+use super::olap::OlapDriver;
 use super::mysql::MysqlDriver;
 use super::postgres::PostgresDriver;
 use super::redis_driver::RedisDriver;
@@ -71,6 +72,12 @@ pub async fn init_drivers() -> DriverRegistry {
         .await;
     registry
         .register(Arc::new(KiwiDriver::new()))
+        .await;
+    registry
+        .register(Arc::new(OlapDriver::new(DatabaseType::Presto)))
+        .await;
+    registry
+        .register(Arc::new(OlapDriver::new(DatabaseType::Trino)))
         .await;
     registry
 }

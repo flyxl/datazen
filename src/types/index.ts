@@ -1,5 +1,5 @@
 /** Database engine identifiers (aligned with backend serde lowercase). */
-export type DatabaseType = 'postgresql' | 'mysql' | 'mariadb' | 'sqlite' | 'redis' | 'kiwi';
+export type DatabaseType = 'postgresql' | 'mysql' | 'mariadb' | 'sqlite' | 'redis' | 'kiwi' | 'presto' | 'trino';
 
 export type SslMode = 'disable' | 'prefer' | 'require' | 'verifyCa' | 'verifyFull';
 
@@ -21,6 +21,8 @@ export interface ConnectionConfig {
   host?: string;
   port?: number;
   database?: string;
+  /** Presto/Trino schema within catalog */
+  schema?: string;
   username?: string;
   password?: string;
   sslMode: SslMode;

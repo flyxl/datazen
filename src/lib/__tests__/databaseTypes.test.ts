@@ -21,4 +21,11 @@ describe('DB_REGISTRY behavioral flags', () => {
     expect(DB_REGISTRY.postgresql.connectionForm).toBe('standard');
     expect(DB_REGISTRY.mysql.connectionForm).toBe('standard');
   });
+
+  it('presto and trino use catalog connection form', () => {
+    expect(DB_REGISTRY.presto.connectionForm).toBe('catalog');
+    expect(DB_REGISTRY.trino.connectionForm).toBe('catalog');
+    expect(DB_REGISTRY.presto.hasMultiDatabase).toBe(true);
+    expect(DB_REGISTRY.trino.sqlDialect).toBe('trino');
+  });
 });
