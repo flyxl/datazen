@@ -14,6 +14,8 @@ pub enum DatabaseType {
     SQLite,
     Redis,
     Kiwi,
+    Presto,
+    Trino,
 }
 
 /// High-level driver category (SQL vs key-value vs document).
@@ -70,6 +72,8 @@ pub struct ConnectionConfig {
     pub host: Option<String>,
     pub port: Option<u16>,
     pub database: Option<String>,
+    /// OLAP schema (Presto/Trino); defaults to `default` when unset.
+    pub schema: Option<String>,
     pub username: Option<String>,
     pub password: Option<String>,
     #[serde(default)]
@@ -461,6 +465,7 @@ pub trait DatabaseDriver: Send + Sync {
     async fn cancel_query(&self, handle: &ConnectionHandle) -> Result<(), DriverError>;
 }
 
+pub mod olap;
 pub mod kiwi;
 pub mod mysql;
 pub mod postgres;

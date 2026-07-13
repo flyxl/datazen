@@ -152,6 +152,8 @@ const en: Record<TranslationKey, string> = {
   'newConn.host': 'Host',
   'newConn.port': 'Port',
   'newConn.database': 'Database',
+  'newConn.catalog': 'Catalog',
+  'newConn.schema': 'Schema',
   'newConn.databaseIndex': 'Database index',
   'newConn.username': 'Username',
   'newConn.password': 'Password',

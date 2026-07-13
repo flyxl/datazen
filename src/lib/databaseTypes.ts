@@ -46,7 +46,7 @@ export interface DatabaseTypeMeta {
   /** Which connection view component to render: sql (table browser), keyvalue (Redis), document (future MongoDB) */
   connectionView: 'sql' | 'keyvalue' | 'document';
   /** SQL dialect family for DDL/index queries; undefined for non-SQL types */
-  sqlDialect?: 'postgresql' | 'mysql' | 'sqlite';
+  sqlDialect?: 'postgresql' | 'mysql' | 'sqlite' | 'trino';
   /** How the "database" field behaves in the connection form */
   databaseFieldType: 'name' | 'path' | 'index';
   /** Whether the schema tree supports multiple databases/instances (e.g. Kiwi) */
@@ -54,7 +54,7 @@ export interface DatabaseTypeMeta {
   /** Default page size for table data; unset uses per-table or global default */
   defaultPageSize?: number;
   /** Connection form variant */
-  connectionForm: 'standard' | 'kiwi' | 'file' | 'index';
+  connectionForm: 'standard' | 'kiwi' | 'file' | 'index' | 'catalog';
 }
 
 export const DB_REGISTRY: Record<DatabaseType, DatabaseTypeMeta> = {
@@ -190,6 +190,52 @@ export const DB_REGISTRY: Record<DatabaseType, DatabaseTypeMeta> = {
     hasMultiDatabase: true,
     defaultPageSize: 1000,
     connectionForm: 'kiwi',
+  },
+  presto: {
+    label: 'Presto',
+    shortLabel: 'Pr',
+    iconBg: 'bg-violet-600',
+    iconColor: 'text-violet-400',
+    defaultPort: 8080,
+    defaultHost: '127.0.0.1',
+    defaultUser: '',
+    quoteChar: '"',
+    connectionMode: 'server',
+    supportsSSH: false,
+    supportsSSL: true,
+    supportsBackup: false,
+    supportsTables: true,
+    isKeyValue: false,
+    supportsSQL: true,
+    category: 'sql',
+    connectionView: 'sql',
+    sqlDialect: 'trino',
+    databaseFieldType: 'name',
+    hasMultiDatabase: true,
+    connectionForm: 'catalog',
+  },
+  trino: {
+    label: 'Trino',
+    shortLabel: 'Tr',
+    iconBg: 'bg-indigo-600',
+    iconColor: 'text-indigo-400',
+    defaultPort: 8080,
+    defaultHost: '127.0.0.1',
+    defaultUser: '',
+    quoteChar: '"',
+    connectionMode: 'server',
+    supportsSSH: false,
+    supportsSSL: true,
+    supportsBackup: false,
+    supportsTables: true,
+    isKeyValue: false,
+    supportsSQL: true,
+    category: 'sql',
+    connectionView: 'sql',
+    sqlDialect: 'trino',
+    databaseFieldType: 'name',
+    hasMultiDatabase: true,
+    connectionForm: 'catalog',
   },
 };
 

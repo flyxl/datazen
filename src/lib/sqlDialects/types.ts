@@ -1,5 +1,5 @@
 
-export type SqlDialectFamily = 'postgresql' | 'mysql' | 'sqlite';
+export type SqlDialectFamily = 'postgresql' | 'mysql' | 'sqlite' | 'trino';
 
 export interface DdlDialect {
   /** SQL to fetch DDL; returns how to extract DDL string from first result row */

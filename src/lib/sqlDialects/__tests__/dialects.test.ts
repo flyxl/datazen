@@ -28,4 +28,11 @@ describe('getSqlDialect', () => {
     const sql = getSqlDialect('postgresql')!.index.getDropIndexSql('idx_foo', 'users', '"');
     expect(sql).not.toContain('ON');
   });
+
+  it('trino maps presto and trino db types', () => {
+    expect(getSqlDialect('trino')?.family).toBe('trino');
+    expect(getSqlDialect('presto')?.family).toBe('trino');
+    const ddl = getSqlDialect('trino')!.ddl.getTableDdlQuery('users', 'default').sql;
+    expect(ddl).toContain('SHOW CREATE TABLE');
+  });
 });
