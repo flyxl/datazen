@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import type { FilterCondition, SortCondition } from '../../types';
 import type { CellEdit } from '../../stores/tableDataStore';
 import { useI18n } from '../../hooks/useI18n';
@@ -78,7 +78,7 @@ export function DataTable({
   rowHeight = 40,
 }: DataTableProps) {
   const { t } = useI18n();
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null);
   const colMeta = useMemo(
     () => columns.map((c) => ({ name: c.name, type: c.type })),
     [columns],
@@ -132,7 +132,7 @@ export function DataTable({
 
       {statusBar}
 
-      <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto">
+      <div ref={setScrollEl} className="min-h-0 flex-1 overflow-auto">
         <TableHeader
           columns={columns}
           sorts={sorts}
@@ -148,7 +148,7 @@ export function DataTable({
           editingCell={editingCell ?? null}
           selectedRows={selectedRows}
           highlightedRow={highlightedRow}
-          scrollRef={scrollRef}
+          scrollElement={scrollEl}
           columnWidths={columnWidths}
           onCellDoubleClick={onCellDoubleClick ?? NOOP}
           onCellEdit={onCellEdit ?? NOOP}

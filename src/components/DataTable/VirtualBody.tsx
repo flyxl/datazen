@@ -1,4 +1,3 @@
-import type { RefObject } from 'react';
 import { useMemo } from 'react';
 import { useI18n } from '../../hooks/useI18n';
 import { useVirtualTable } from '../../hooks/useVirtualTable';
@@ -13,7 +12,7 @@ export interface VirtualBodyProps {
   editingCell: { row: number; col: string } | null;
   selectedRows: Set<number>;
   highlightedRow?: number | null;
-  scrollRef: RefObject<HTMLDivElement | null>;
+  scrollElement: HTMLDivElement | null;
   columnWidths?: number[];
   onCellDoubleClick: (row: number, col: string) => void;
   onCellEdit: (row: number, col: string, value: unknown) => void;
@@ -28,7 +27,7 @@ export function VirtualBody({
   editingCell,
   selectedRows,
   highlightedRow,
-  scrollRef,
+  scrollElement,
   columnWidths,
   onCellDoubleClick,
   onCellEdit,
@@ -40,7 +39,7 @@ export function VirtualBody({
     rows,
     rowHeight,
     overscan: 12,
-    containerRef: scrollRef,
+    scrollElement,
   });
 
   const colNames = useMemo(() => columns.map((c) => c.name), [columns]);
