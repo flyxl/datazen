@@ -4,6 +4,7 @@ mod db;
 mod services;
 pub mod ssh_tunnel;
 mod store;
+pub mod sync;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -16,6 +17,7 @@ use db::init_drivers;
 use cache::SchemaCache;
 use services::ConnectionManager;
 use store::Store;
+use sync::adapters::init_sync_adapters;
 
 fn menu_labels(lang: &str) -> HashMap<&'static str, &'static str> {
     let mut m = HashMap::new();
@@ -308,11 +310,14 @@ pub fn run() {
 
                 connection_manager.clone().start_cleanup_task();
 
+                let sync_adapters = Arc::new(init_sync_adapters());
+
                 Ok::<AppState, String>(AppState {
                     driver_registry: registry,
                     connection_manager,
                     store,
                     schema_cache,
+                    sync_adapters,
                 })
             })?;
             tracing::info!("[startup]   block_on total: {:?}", t0.elapsed());

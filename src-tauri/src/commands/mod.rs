@@ -26,6 +26,7 @@ use crate::cache::SchemaCache;
 use crate::db::registry::DriverRegistry;
 use crate::services::ConnectionManager;
 use crate::store::Store;
+use crate::sync::adapter_registry::SyncAdapterRegistry;
 use std::sync::Arc;
 
 /// Shared application state injected into every command handler.
@@ -35,6 +36,7 @@ pub struct AppState {
     pub connection_manager: Arc<ConnectionManager>,
     pub store: Arc<Store>,
     pub schema_cache: Arc<SchemaCache>,
+    pub sync_adapters: Arc<SyncAdapterRegistry>,
 }
 
 pub(crate) fn log_err(cmd: &str, e: &dyn std::fmt::Display) -> String {

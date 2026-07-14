@@ -1,29 +1,10 @@
-import path from 'node:path';
-import url from 'node:url';
-
-const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
-
-function getAppBinaryPath(): string {
-  const target = path.resolve(__dirname, '../src-tauri/target');
-  if (process.platform === 'win32') {
-    return path.join(target, 'debug/datazen.exe');
-  }
-  return path.join(target, 'debug/datazen');
-}
-
 export const config: WebdriverIO.Config = {
   runner: 'local',
   specs: ['./specs/**/*.ts'],
   maxInstances: 1,
-  capabilities: [
-    {
-      'tauri:options': {
-        application: getAppBinaryPath(),
-      },
-    } as WebdriverIO.Capabilities,
-  ],
+  capabilities: [{}],
   hostname: '127.0.0.1',
-  port: 4444,
+  port: 4445,
   path: '/',
   logLevel: 'warn',
   waitforTimeout: 10000,
@@ -36,6 +17,7 @@ export const config: WebdriverIO.Config = {
     timeout: 60000,
   },
   before: async function () {
+    await browser.url('tauri://localhost');
     await browser.pause(2000);
 
     // Force language to zh-CN so all Chinese selectors work
