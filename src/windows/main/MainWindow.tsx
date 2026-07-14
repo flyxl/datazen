@@ -857,7 +857,7 @@ export function MainWindow() {
             <span>{t('main.connectionCount', { count: connections.length })}</span>
           </span>
         }
-        right={<span className="tabular-nums">DataZen v0.0.6</span>}
+        right={<span className="tabular-nums">DataZen v0.0.7</span>}
       />
     </div>
   );
