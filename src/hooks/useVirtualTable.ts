@@ -1,22 +1,21 @@
 import { useVirtualizer } from '@tanstack/react-virtual';
-import type { RefObject } from 'react';
 
 export interface UseVirtualTableOptions {
   rows: unknown[][];
   rowHeight: number;
   overscan?: number;
-  containerRef: RefObject<HTMLDivElement | null>;
+  scrollElement: HTMLDivElement | null;
 }
 
 export function useVirtualTable({
   rows,
   rowHeight,
   overscan = 10,
-  containerRef,
+  scrollElement,
 }: UseVirtualTableOptions) {
   const virtualizer = useVirtualizer({
     count: rows.length,
-    getScrollElement: () => containerRef.current,
+    getScrollElement: () => scrollElement,
     estimateSize: () => rowHeight,
     overscan,
   });
