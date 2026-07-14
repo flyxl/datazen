@@ -532,7 +532,26 @@ impl KiwiSession {
         let rows: Vec<Vec<String>> = qr
             .result
             .iter()
-            .filter_map(|row_str| serde_json::from_str::<Vec<String>>(row_str).ok())
+            .filter_map(|row_str| {
+                match serde_json::from_str::<Vec<serde_json::Value>>(row_str) {
+                    Ok(vals) => Some(
+                        vals.into_iter()
+                            .map(|v| match v {
+                                serde_json::Value::String(s) => s,
+                                serde_json::Value::Null => "NULL".to_string(),
+                                other => other.to_string(),
+                            })
+                            .collect(),
+                    ),
+                    Err(e) => {
+                        tracing::warn!(
+                            "[kiwi] Failed to parse row: {e}, raw: {}",
+                            &row_str[..row_str.len().min(200)]
+                        );
+                        None
+                    }
+                }
+            })
             .collect();
 
         let elapsed = start.elapsed().as_millis() as u64;
