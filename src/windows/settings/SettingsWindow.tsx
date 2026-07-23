@@ -18,8 +18,8 @@ const THEME_KEYS: { value: AppSettings['theme']; key: TranslationKey }[] = [
 ];
 
 const LANGUAGE_OPTIONS = [
-  { value: 'zh-CN', label: '简体中文' },
-  { value: 'en', label: 'English' },
+  { value: 'en', label: '🇬🇧 English' },
+  { value: 'zh-CN', label: '🇨🇳 简体中文' },
 ];
 
 export function SettingsWindow() {

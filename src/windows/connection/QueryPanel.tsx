@@ -89,7 +89,7 @@ export function QueryPanel({ connectionId, queryTabId }: QueryPanelProps) {
   }, [tab, cancelQuery]);
 
   const handleEditorContextMenu = useCallback((_e: MouseEvent, sqlText: string) => {
-    const lang = useSettingsStore.getState().settings.language || 'zh-CN';
+    const lang = useSettingsStore.getState().settings.language || 'en';
     pendingFavSqlRef.current = sqlText;
     void invoke('show_editor_context_menu', { lang: lang === 'en' ? 'en' : 'zh' });
   }, []);

@@ -38,7 +38,7 @@ impl Default for AppSettings {
     fn default() -> Self {
         Self {
             theme: "dark".to_string(),
-            language: "zh-CN".to_string(),
+            language: "en".to_string(),
             limit_select_results: true,
             query_result_limit: 5000,
             editor_font_size: 13,

@@ -44,6 +44,9 @@ const en: Record<TranslationKey, string> = {
   'theme.dark': 'Dark',
   'theme.system': 'System',
   'theme.tooltip': 'Theme: {current}',
+  'language.tooltip': 'Language: {current}',
+  'language.english': 'English',
+  'language.chinese': 'Simplified Chinese',
 
   // ── Traffic Lights ──
   'traffic.close': 'Close',

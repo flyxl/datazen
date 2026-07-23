@@ -22,7 +22,7 @@ import { useActiveConnectionStore } from '../../stores/activeConnectionStore';
 import { cn } from '../../lib/cn';
 import { listenCrossWindow } from '../../lib/crossWindowBus';
 import { openBackupWindow, openConnectionWindow, openDataSyncWindow, openNewConnectionWindow, openSettingsWindow } from '../../lib/windowManager';
-import { ThemeToggle } from '../../components/ThemeToggle';
+import { HeaderControls } from '../../components/HeaderControls';
 import { useI18n } from '../../hooks/useI18n';
 import { ActionPanel } from './ActionPanel';
 import { ConnectionItem } from './ConnectionItem';
@@ -559,7 +559,7 @@ export function MainWindow() {
   return (
     <div className="flex h-screen min-h-0 min-w-[520px] flex-col bg-surface text-fg">
       {/* ── Title bar ── */}
-      <TitleBar title="DataZen" rightContent={<ThemeToggle />} />
+      <TitleBar title="DataZen" rightContent={<HeaderControls />} />
 
       {/* ── Body ── */}
       <div className="flex min-h-0 flex-1">
