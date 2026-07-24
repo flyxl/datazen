@@ -42,11 +42,11 @@ describe('Internationalization (I18N-001~I18N-010)', () => {
     await browser.pause(500);
   });
 
-  // ── Default language should be zh-CN ──
+  // ── Default language should be English ──
 
-  it('I18N-001: default language should be zh-CN', async () => {
+  it('I18N-001: default language should be English', async () => {
     const settings = await invokeBackend<AppSettings>('get_settings');
-    expect(settings.language).toBe('zh-CN');
+    expect(settings.language).toBe('en');
   });
 
   it('I18N-002: main window should display Chinese UI with zh-CN', async () => {

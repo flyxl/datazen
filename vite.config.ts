@@ -8,5 +8,10 @@ export default defineConfig({
   server: {
     port: 5173,
     strictPort: true,
+    watch: {
+      // Cargo continuously replaces Windows executables while Tauri is compiling.
+      // Watching those locked artifacts makes Node's FSWatcher fail with EBUSY.
+      ignored: ['**/src-tauri/target/**'],
+    },
   },
 });

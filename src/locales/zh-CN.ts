@@ -42,6 +42,9 @@ const zhCN = {
   'theme.dark': '深色',
   'theme.system': '跟随系统',
   'theme.tooltip': '主题：{current}',
+  'language.tooltip': '语言：{current}',
+  'language.english': '英语',
+  'language.chinese': '简体中文',
 
   // ── Traffic Lights ──
   'traffic.close': '关闭',

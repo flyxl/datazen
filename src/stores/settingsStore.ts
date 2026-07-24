@@ -5,7 +5,7 @@ import type { AppSettings } from '../types';
 
 const DEFAULT_SETTINGS: AppSettings = {
   theme: 'dark',
-  language: 'zh-CN',
+  language: 'en',
   limitSelectResults: true,
   queryResultLimit: 5000,
   editorFontSize: 13,
@@ -38,6 +38,10 @@ function applyTheme(theme: AppSettings['theme']) {
   } catch {
     // localStorage might be unavailable
   }
+}
+
+function applyLanguage(language: AppSettings['language']) {
+  document.documentElement.lang = language || 'en';
 }
 
 export function currentIsDark(): boolean {
@@ -77,6 +81,7 @@ export function applyThemeLocally(theme: AppSettings['theme']) {
  */
 export function applySettingsLocally(incoming: AppSettings) {
   applyTheme(incoming.theme);
+  applyLanguage(incoming.language);
   watchSystemTheme(incoming.theme);
   useSettingsStore.setState({ settings: incoming });
 }
@@ -94,10 +99,12 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     try {
       const settings = await settingsCommands.getSettings();
       applyTheme(settings.theme);
+      applyLanguage(settings.language);
       watchSystemTheme(settings.theme);
       set({ settings });
     } catch {
       applyTheme(DEFAULT_SETTINGS.theme);
+      applyLanguage(DEFAULT_SETTINGS.language);
     }
   },
 
@@ -105,6 +112,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const next = { ...get().settings, ...partial };
     await settingsCommands.saveSettings(next);
     applyTheme(next.theme);
+    applyLanguage(next.language);
     watchSystemTheme(next.theme);
     set({ settings: next });
 
