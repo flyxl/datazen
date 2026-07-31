@@ -295,7 +295,7 @@ pub fn run() {
             let t0 = Instant::now();
             let app_state = tauri::async_runtime::block_on(async {
                 let t_drv = Instant::now();
-                let registry = Arc::new(init_drivers().await);
+                let registry: Arc<db::DriverRegistry> = Arc::new(init_drivers().await);
                 tracing::info!("[startup]   init_drivers: {:?}", t_drv.elapsed());
 
                 let t_store = Instant::now();

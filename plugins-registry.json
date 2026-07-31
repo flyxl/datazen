@@ -1,0 +1,30 @@
+{
+  "postgres": {
+    "source": "builtin",
+    "description": "PostgreSQL driver (always included)"
+  },
+  "mysql": {
+    "source": "builtin",
+    "description": "MySQL / MariaDB driver (always included)"
+  },
+  "sqlite": {
+    "source": "builtin",
+    "description": "SQLite driver (always included)"
+  },
+  "redis": {
+    "source": "builtin",
+    "description": "Redis key-value store (always included)"
+  },
+  "kiwi": {
+    "source": "git",
+    "git": "https://github.com/flyxl/datazen-plugin-kiwi.git",
+    "feature": "plugin-kiwi",
+    "description": "Kiwi cloud database proxy"
+  },
+  "olap": {
+    "source": "git",
+    "git": "https://github.com/flyxl/datazen-plugin-olap.git",
+    "feature": "plugin-olap",
+    "description": "Presto / Trino OLAP engines"
+  }
+}
