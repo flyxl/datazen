@@ -183,8 +183,8 @@ function generateFrontendRegistry(plugins) {
  * This file registers frontend components and metadata for active plugins.
  * Regenerated every time the build runs with different --plugins args.
  */
-${importLines.length > 0 ? importLines.join('\n') + '\n' : ''}import type { DatabaseTypeMeta } from '../lib/databaseMeta';
-import type { SqlDialectStrategy } from '../lib/sqlDialects/types';
+${importLines.length > 0 ? importLines.join('\n') + '\n' : ''}import type { DatabaseTypeMeta } from '@datazen/plugin-sdk';
+import type { SqlDialectStrategy } from '@datazen/plugin-sdk';
 import type { ComponentType } from 'react';
 
 /**
