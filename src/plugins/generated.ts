@@ -9,8 +9,8 @@ import { KiwiConnectionFields } from '../../.plugins/kiwi/ui/KiwiConnectionField
 import { prestoMeta, trinoMeta } from '../../.plugins/olap/ui/plugin-meta';
 import { CatalogConnectionFields } from '../../.plugins/olap/ui/CatalogConnectionFields';
 import { trinoDialect } from '../../.plugins/olap/ui/trinoDialect';
-import type { DatabaseTypeMeta } from '../lib/databaseMeta';
-import type { SqlDialectStrategy } from '../lib/sqlDialects/types';
+import type { DatabaseTypeMeta } from '@datazen/plugin-sdk';
+import type { SqlDialectStrategy } from '@datazen/plugin-sdk';
 import type { ComponentType } from 'react';
 
 /**
