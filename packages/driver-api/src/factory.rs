@@ -13,6 +13,12 @@ pub trait DatabaseDriverFactory: Send + Sync + 'static {
     /// Unique string identifier for this driver (e.g. "kiwi", "redis").
     fn driver_id(&self) -> &'static str;
 
+    /// Protocol version this plugin was compiled against.
+    /// Must match [`crate::PROTOCOL_VERSION`] at runtime.
+    fn protocol_version(&self) -> u32 {
+        crate::PROTOCOL_VERSION
+    }
+
     /// If this driver also implements KeyValueDriver, return it.
     /// Default returns None.
     fn create_kv(&self) -> Option<Arc<dyn KeyValueDriver>> {

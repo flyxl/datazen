@@ -13,6 +13,13 @@ import type { DatabaseTypeMeta } from '../lib/databaseMeta';
 import type { SqlDialectStrategy } from '../lib/sqlDialects/types';
 import type { ComponentType } from 'react';
 
+/**
+ * Frontend plugin protocol version.
+ * Must match the version expected by the main app.
+ * Bump when making breaking changes to plugin interfaces.
+ */
+export const PLUGIN_PROTOCOL_VERSION = 1;
+
 /** Database types contributed by active plugins. */
 export type PluginDatabaseType = 'kiwi' | 'presto' | 'trino';
 

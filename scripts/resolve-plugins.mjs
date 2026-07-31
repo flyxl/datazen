@@ -27,7 +27,21 @@ const PLUGINS_DIR = resolve(ROOT, '.plugins');
 
 function loadRegistry() {
   const raw = readFileSync(resolve(ROOT, 'plugins-registry.json'), 'utf-8');
-  return JSON.parse(raw);
+  const registry = JSON.parse(raw);
+
+  // Allow local development overrides via .plugins-dev.json (gitignored)
+  const devOverridePath = resolve(ROOT, '.plugins-dev.json');
+  if (existsSync(devOverridePath)) {
+    const overrides = JSON.parse(readFileSync(devOverridePath, 'utf-8'));
+    for (const [name, override] of Object.entries(overrides)) {
+      if (registry[name]) {
+        Object.assign(registry[name], override);
+        console.log(`[resolve-plugins] dev override: ${name} → ${override.path || override.git}`);
+      }
+    }
+  }
+
+  return registry;
 }
 
 function parseArgs() {
@@ -173,6 +187,13 @@ ${importLines.length > 0 ? importLines.join('\n') + '\n' : ''}import type { Data
 import type { SqlDialectStrategy } from '../lib/sqlDialects/types';
 import type { ComponentType } from 'react';
 
+/**
+ * Frontend plugin protocol version.
+ * Must match the version expected by the main app.
+ * Bump when making breaking changes to plugin interfaces.
+ */
+export const PLUGIN_PROTOCOL_VERSION = 1;
+
 /** Database types contributed by active plugins. */
 export type PluginDatabaseType = ${typeUnion};
 
@@ -215,27 +236,45 @@ export function getPluginConnectionForm(formVariant: string): ComponentType<any>
 
 /**
  * Clone or update plugin repositories into .plugins/<name>/.
- * Only processes plugins with source === 'git'.
+ * Supports git (clone from remote) and local (symlink from local path).
  */
 function clonePlugins(plugins, registry) {
   mkdirSync(PLUGINS_DIR, { recursive: true });
 
   for (const name of plugins) {
     const meta = registry[name];
-    if (meta.source !== 'git' || !meta.git) continue;
+    if (meta.source === 'builtin') continue;
 
     const pluginDir = resolve(PLUGINS_DIR, name);
 
-    if (existsSync(resolve(pluginDir, '.git'))) {
-      console.log(`[resolve-plugins] updating ${name} ...`);
-      try {
-        execSync('git pull --ff-only', { cwd: pluginDir, stdio: 'pipe' });
-      } catch {
-        console.warn(`  [warn] git pull failed for "${name}", using existing checkout`);
+    if (meta.source === 'local' && meta.path) {
+      const localPath = resolve(ROOT, meta.path);
+      if (!existsSync(localPath)) {
+        console.error(`[resolve-plugins] local plugin path not found: ${localPath}`);
+        continue;
       }
-    } else {
-      console.log(`[resolve-plugins] cloning ${name} from ${meta.git} ...`);
-      execSync(`git clone --depth 1 ${meta.git} ${pluginDir}`, { stdio: 'pipe' });
+      // Create symlink for local development
+      if (existsSync(pluginDir)) {
+        execSync(`rm -rf ${pluginDir}`, { stdio: 'pipe' });
+      }
+      execSync(`ln -s ${localPath} ${pluginDir}`, { stdio: 'pipe' });
+      console.log(`[resolve-plugins] linked ${name} → ${localPath}`);
+    } else if (meta.source === 'git' && meta.git) {
+      if (existsSync(resolve(pluginDir, '.git'))) {
+        console.log(`[resolve-plugins] updating ${name} ...`);
+        try {
+          execSync('git pull --ff-only', { cwd: pluginDir, stdio: 'pipe' });
+        } catch {
+          console.warn(`  [warn] git pull failed for "${name}", using existing checkout`);
+        }
+      } else {
+        // Remove stale symlink or directory if source type changed
+        if (existsSync(pluginDir)) {
+          execSync(`rm -rf ${pluginDir}`, { stdio: 'pipe' });
+        }
+        console.log(`[resolve-plugins] cloning ${name} from ${meta.git} ...`);
+        execSync(`git clone --depth 1 ${meta.git} ${pluginDir}`, { stdio: 'pipe' });
+      }
     }
   }
 }
