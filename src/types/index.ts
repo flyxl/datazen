@@ -1,5 +1,9 @@
-/** Database engine identifiers (aligned with backend serde lowercase). */
-export type DatabaseType = 'postgresql' | 'mysql' | 'mariadb' | 'sqlite' | 'redis' | 'kiwi' | 'presto' | 'trino';
+/** Built-in database engine identifiers. */
+export type BuiltinDatabaseType = 'postgresql' | 'mysql' | 'mariadb' | 'sqlite' | 'redis';
+
+/** All database types: built-in + plugin-provided. */
+import type { PluginDatabaseType } from '../plugins/generated';
+export type DatabaseType = BuiltinDatabaseType | PluginDatabaseType;
 
 export type SslMode = 'disable' | 'prefer' | 'require' | 'verifyCa' | 'verifyFull';
 

@@ -1,5 +1,6 @@
 // ── Kiwi login (username/password → SSO → token) ─────────────────
 
+#[cfg(feature = "plugin-kiwi")]
 #[tauri::command]
 pub async fn kiwi_login(
     base_url: String,
@@ -14,7 +15,7 @@ pub async fn kiwi_login(
         .build()
         .map_err(|e| format!("HTTP client: {e}"))?;
 
-    let token = crate::db::kiwi::sso_login(
+    let token = datazen_plugin_kiwi::sso_login(
         &client,
         base_url.trim_end_matches('/'),
         &username,
@@ -33,7 +34,18 @@ pub async fn kiwi_login(
     }))
 }
 
+#[cfg(not(feature = "plugin-kiwi"))]
+#[tauri::command]
+pub async fn kiwi_login(
+    _base_url: String,
+    _username: String,
+    _password: String,
+) -> Result<serde_json::Value, String> {
+    Err("Kiwi plugin is not enabled in this build".into())
+}
+
 /// Kiwi: list instances for a given token (called from frontend).
+#[cfg(feature = "plugin-kiwi")]
 #[tauri::command]
 pub async fn kiwi_list_instances(
     base_url: String,
@@ -92,4 +104,15 @@ pub async fn kiwi_list_instances(
         .map_err(|e| format!("Parse JSON: {e} — body: {}", &body_text[..body_text.len().min(200)]))?;
 
     Ok(body)
+}
+
+#[cfg(not(feature = "plugin-kiwi"))]
+#[tauri::command]
+pub async fn kiwi_list_instances(
+    _base_url: String,
+    _token: String,
+    _source_type: Option<u32>,
+    _user_name: Option<String>,
+) -> Result<serde_json::Value, String> {
+    Err("Kiwi plugin is not enabled in this build".into())
 }

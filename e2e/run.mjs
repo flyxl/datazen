@@ -55,11 +55,11 @@ function waitForPort(port, host = '127.0.0.1', timeoutMs = 15000) {
 }
 
 function getAppBinaryPath() {
-  const target = path.resolve(__dirname, '../src-tauri/target');
+  const root = path.resolve(__dirname, '..');
   if (process.platform === 'win32') {
-    return path.join(target, 'debug/datazen.exe');
+    return path.join(root, 'target/debug/datazen.exe');
   }
-  return path.join(target, 'debug/datazen');
+  return path.join(root, 'target/debug/datazen');
 }
 
 // Step 1: Build

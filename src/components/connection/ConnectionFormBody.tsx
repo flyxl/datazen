@@ -3,12 +3,11 @@ import { Select } from '../ui/Select';
 import { useI18n } from '../../hooks/useI18n';
 import { DB_REGISTRY } from '../../lib/databaseTypes';
 import { Label } from './shared';
-import { CatalogConnectionFields } from './CatalogConnectionFields';
 import { ConnectionAdvancedSettings } from './ConnectionAdvancedSettings';
 import { FileConnectionFields } from './FileConnectionFields';
 import { IndexConnectionFields } from './IndexConnectionFields';
-import { KiwiConnectionFields } from './KiwiConnectionFields';
 import { StandardConnectionFields } from './StandardConnectionFields';
+import { getPluginConnectionForm } from '../../plugins/generated';
 import type { ConnectionFormState } from './useConnectionForm';
 import type { DatabaseType } from '../../types';
 
@@ -27,6 +26,7 @@ export function ConnectionFormBody({
 }: ConnectionFormBodyProps) {
   const { t } = useI18n();
   const isWindow = variant === 'window';
+  const PluginConnectionForm = getPluginConnectionForm(form.formVariant);
 
   return (
     <>
@@ -69,22 +69,18 @@ export function ConnectionFormBody({
           </>
         )}
 
-        {form.formVariant === 'file' && <FileConnectionFields form={form} />}
-        {form.formVariant === 'kiwi' && <KiwiConnectionFields form={form} />}
-        {form.formVariant === 'index' && (
+        {PluginConnectionForm && <PluginConnectionForm form={form} />}
+        {!PluginConnectionForm && form.formVariant === 'file' && (
+          <FileConnectionFields form={form} />
+        )}
+        {!PluginConnectionForm && form.formVariant === 'index' && (
           <StandardConnectionFields
             form={form}
             databaseField={<IndexConnectionFields form={form} />}
             hostPlaceholder={isWindow ? 'prod-db.example.com' : '127.0.0.1'}
           />
         )}
-        {form.formVariant === 'catalog' && (
-          <CatalogConnectionFields
-            form={form}
-            hostPlaceholder={isWindow ? 'presto.example.com' : '127.0.0.1'}
-          />
-        )}
-        {form.formVariant === 'standard' && (
+        {!PluginConnectionForm && form.formVariant === 'standard' && (
           <StandardConnectionFields
             form={form}
             hostPlaceholder={isWindow ? 'prod-db.example.com' : '127.0.0.1'}
