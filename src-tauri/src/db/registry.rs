@@ -79,8 +79,19 @@ pub async fn init_drivers() -> DriverRegistry {
     // Plugin drivers discovered via inventory at link time.
     // Each plugin crate uses `register_driver!` to submit a factory.
     for factory in iter_driver_factories() {
+        let pv = factory.protocol_version();
+        if pv != datazen_driver_api::PROTOCOL_VERSION {
+            tracing::error!(
+                "Plugin '{}' protocol version mismatch: expected {}, got {}. Skipping.",
+                factory.driver_id(),
+                datazen_driver_api::PROTOCOL_VERSION,
+                pv
+            );
+            continue;
+        }
+
         let driver = factory.create();
-        tracing::info!("Registered plugin driver: {}", factory.driver_id());
+        tracing::info!("Registered plugin driver: {} (protocol v{})", factory.driver_id(), pv);
         registry.register(driver).await;
 
         if let Some(kv) = factory.create_kv() {

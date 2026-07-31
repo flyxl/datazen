@@ -164,7 +164,14 @@ pnpm tauri dev
 ### 构建发行版
 
 ```bash
+# 包含所有插件（默认）
 pnpm tauri build
+
+# 仅内置驱动（最小体积）
+pnpm tauri:build:minimal
+
+# 指定插件
+pnpm tauri:build --plugins=kiwi,olap
 ```
 
 ### 运行 E2E 测试
@@ -181,49 +188,38 @@ pnpm e2e
 
 ## 添加新的数据库类型
 
-DataZen 采用**注册表驱动 + 策略模式**的架构。设计原则：**if-else 只出现在路由/选择层**（选哪个组件、哪个策略），业务逻辑放在独立模块中。
+DataZen 支持两种方式添加新数据库驱动：
 
-### 后端
+### 方式 1：作为外部插件（推荐）
 
-1. 在 `src-tauri/src/db/` 实现驱动：
-   - **SQL 类**：实现 `DatabaseDriver` trait（`connect`、`query`、`get_tables` 等）
-   - **KV 类**：额外实现 `KeyValueDriver` trait（`scan_keys_with_info`、`get_key_detail`）
-2. 在 `src-tauri/src/db/registry.rs` 的 `init_drivers()` 注册；KV 驱动需在 `get_kv_driver()` 中映射
-3. 按需覆盖 trait 默认方法：`skip_count_query()`、`format_sql_literal()`、`build_update_sql()`
-4. 在 `DatabaseType` 枚举（Rust）添加变体
+在独立仓库中开发，构建时按需组合。详见 **[插件开发指南](docs/plugin-development.md)**。
 
-**Commands 层**按领域拆分（`commands/connection.rs`、`schema.rs`、`query.rs`、`kv.rs` 等），新增 IPC 命令放入对应子模块并在 `commands/mod.rs` re-export。
+```bash
+# 构建时指定包含的插件
+DATAZEN_PLUGINS=kiwi,olap pnpm tauri build
 
-### 前端
-
-1. 在 `src/types/index.ts` 的 `DatabaseType` 联合类型添加新名称
-2. 在 `src/lib/databaseTypes.ts` 的 `DB_REGISTRY` 添加元数据条目：
-
-```typescript
-mynewdb: {
-  label: 'MyNewDB',
-  // ... icon、port、quoteChar 等
-  connectionView: 'sql',           // 'sql' | 'keyvalue' | 'document'
-  connectionForm: 'standard',      // 'standard' | 'kiwi' | 'file' | 'index'
-  sqlDialect: 'postgresql',        // DDL/索引/备份方言（可选）
-  hasMultiDatabase: false,         // 多库树（如 Kiwi）
-  defaultPageSize: undefined,      // 固定分页（如 Kiwi 1000）
-  supportsBackup: true,
-  category: 'sql',
-},
+# 或使用全部/无插件模式
+DATAZEN_PLUGINS=all pnpm tauri build
+DATAZEN_PLUGINS=none pnpm tauri build
 ```
 
-3. **（可选）连接表单**：在 `src/components/connection/` 添加 `*ConnectionFields.tsx`，在 `ConnectionFormBody.tsx` 按 `connectionForm` 路由
-4. **（可选）连接视图**：在 `src/windows/connection/` 创建视图组件，注册到 `src/lib/connectionViews/index.ts` 的 `CONNECTION_VIEWS`
-5. **（可选）Schema 树变体**：多库场景在 `schema-tree/` 添加变体组件，由 `SchemaTree.tsx` 按 `hasMultiDatabase` 路由
-6. **（可选）SQL 方言**：在 `src/lib/sqlDialects/` 添加方言策略（DDL 查询、索引 SQL、备份选项）
+### 方式 2：作为内置驱动
+
+适用于核心数据库（PostgreSQL、MySQL、SQLite、Redis）。
+
+**后端**：
+1. 在 `src-tauri/src/db/` 实现 `DatabaseDriver` trait
+2. 在 `registry.rs` 的 `init_drivers()` 中注册
+
+**前端**：
+1. 在 `src/lib/databaseTypes.ts` 的 `BUILTIN_DB_REGISTRY` 添加元数据
+2. 在 `src/types/index.ts` 的 `BuiltinDatabaseType` 添加类型
 
 ### 验收清单
 
-- [ ] 无 `databaseType === 'xxx'` 硬编码（行为差异由 `DB_REGISTRY` 标志驱动）
-- [ ] 视图/表单组件内部无方言 if-else（使用 `sqlDialects/` 模块）
+- [ ] 无 `databaseType === 'xxx'` 硬编码（行为差异由 `DB_REGISTRY` 元数据驱动）
+- [ ] 视图/表单组件内部无方言 if-else（使用 `sqlDialects/` 策略）
 - [ ] `npx vitest run` + `cargo test` 通过
-- [ ] 相关 e2e spec 覆盖新型连接的基本流程
 
 ---
 
@@ -231,28 +227,31 @@ mynewdb: {
 
 ```
 datazen/
-├── src/                        # React 前端
-│   ├── components/             # 通用 UI 组件
-│   ├── windows/                # 各窗口页面
-│   │   ├── main/               # 主窗口（连接列表）
-│   │   ├── connection/         # 连接窗口（数据浏览）
-│   │   └── ...
-│   ├── stores/                 # Zustand 状态管理
-│   ├── commands/               # Tauri IPC 命令封装
-│   ├── lib/                    # DB_REGISTRY, sqlDialects, connectionViews
-│   ├── components/connection/  # 共享连接表单（useConnectionForm + Fields）
-│   ├── locales/                # 国际化（中/英）
-│   └── types/                  # TypeScript 类型定义
-├── src-tauri/                  # Rust 后端
+├── src/                         # React 前端
+│   ├── components/              # 通用 UI 组件
+│   ├── windows/                 # 各窗口页面（main, connection, settings 等）
+│   ├── stores/                  # Zustand 状态管理
+│   ├── commands/                # Tauri IPC 命令封装
+│   ├── lib/                     # DB_REGISTRY, sqlDialects, connectionViews
+│   ├── plugins/generated.ts     # 自动生成的插件注册（resolve-plugins.mjs 产出）
+│   ├── locales/                 # 国际化（中/英）
+│   └── types/                   # TypeScript 类型定义
+├── src-tauri/                   # Rust 后端
 │   ├── src/
-│   │   ├── db/                 # 数据库驱动（PG/MySQL/SQLite/Redis）
-│   │   ├── services/           # 连接管理、查询执行
-│   │   ├── commands/           # Tauri IPC（按领域拆分子模块）
-│   │   │   ├── connection.rs, schema.rs, query.rs, kv.rs, ...
-│   │   └── store/              # 本地持久化存储
-│   └── icons/                  # 应用图标
-├── e2e/                        # E2E 测试
-└── .github/workflows/          # CI/CD
+│   │   ├── db/                  # 内置数据库驱动 + registry
+│   │   ├── commands/            # Tauri IPC（按领域拆分）
+│   │   └── store/               # 本地持久化
+│   └── Cargo.toml
+├── packages/driver-api/         # 插件公共 API crate（traits + types + inventory）
+├── scripts/resolve-plugins.mjs  # 插件解析 + 代码生成
+├── plugins-registry.json        # 插件注册表（git/builtin/local）
+├── .plugins/                    # 构建时克隆的插件目录（gitignored）
+├── e2e/                         # E2E 测试
+├── docs/                        # 文档
+│   ├── rfc-plugin-system.md     # 插件系统 RFC
+│   └── plugin-development.md    # 插件开发指南
+├── Cargo.toml                   # Workspace 根配置
+└── AGENTS.md                    # AI Agent 项目指引
 ```
 
 ---

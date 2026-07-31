@@ -14,3 +14,10 @@ mod factory;
 pub use types::*;
 pub use traits::*;
 pub use factory::*;
+
+/// Protocol version for the driver API.
+///
+/// Bump this when making breaking changes to `DatabaseDriver`, `KeyValueDriver`,
+/// or `DatabaseDriverFactory` traits. Plugins compiled against a different
+/// protocol version will be rejected at startup.
+pub const PROTOCOL_VERSION: u32 = 1;
