@@ -1,0 +1,15 @@
+[workspace]
+resolver = "2"
+members = [
+    "src-tauri",
+    "packages/driver-api",
+]
+
+[profile.dev]
+incremental = true
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1
+opt-level = "s"
