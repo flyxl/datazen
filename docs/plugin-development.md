@@ -107,6 +107,7 @@ datazen_driver_api::register_driver!(&MyDbDriverFactory);
 ```
 datazen-plugin-mydb/
 ├── Cargo.toml
+├── package.json            # 声明 @datazen/plugin-sdk 依赖
 ├── src/
 │   └── lib.rs
 └── ui/
@@ -114,10 +115,22 @@ datazen-plugin-mydb/
     └── MyDbConnectionFields.tsx  # 自定义连接表单（可选）
 ```
 
+**`package.json`**（用于前端类型提示）：
+
+```json
+{
+  "name": "datazen-plugin-mydb",
+  "private": true,
+  "devDependencies": {
+    "@datazen/plugin-sdk": "github:flyxl/datazen-plugin-sdk"
+  }
+}
+```
+
 **`ui/plugin-meta.ts`**（必须）：
 
 ```typescript
-import type { DatabaseTypeMeta } from '../../../src/lib/databaseMeta';
+import type { DatabaseTypeMeta } from '@datazen/plugin-sdk';
 
 export const mydbMeta: DatabaseTypeMeta = {
   label: 'MyDB',
@@ -143,7 +156,7 @@ export const mydbMeta: DatabaseTypeMeta = {
 };
 ```
 
-> **注意**：`ui/` 下的文件通过相对路径 `../../../src/...` 引用主项目组件。构建时，插件被放置在 `.plugins/mydb/`，所以路径向上 3 级到达项目根。
+> **注意**：插件通过 `@datazen/plugin-sdk` 导入组件和类型。构建时，Vite 会将此包解析为主应用中的实际实现。安装 SDK（`pnpm add @datazen/plugin-sdk@github:flyxl/datazen-plugin-sdk`）即可获得完整类型提示。
 
 ### 5. 注册到主项目
 
