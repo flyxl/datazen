@@ -7,8 +7,6 @@
 //! - `scan_keys_with_info` / `get_key_detail` — KV browser commands
 
 use super::*;
-use super::traits::KeyValueDriver;
-use async_trait::async_trait;
 use redis::aio::MultiplexedConnection;
 use redis::AsyncCommands;
 use redis::Client;

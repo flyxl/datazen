@@ -65,7 +65,7 @@ jobs:
       - name: Cache Rust compilation
         uses: swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri -> target
+          workspaces: . -> target
           shared-key: ${{ matrix.target }}
 
       - name: Import Windows code signing certificate
@@ -93,7 +93,7 @@ jobs:
       - name: Rename artifacts with platform label
         shell: bash
         run: |
-          BUNDLE_DIR="src-tauri/target/${{ matrix.target }}/release/bundle"
+          BUNDLE_DIR="target/${{ matrix.target }}/release/bundle"
           LABEL="${{ matrix.os_label }}"
           mkdir -p artifacts
 

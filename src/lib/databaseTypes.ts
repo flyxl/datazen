@@ -1,63 +1,17 @@
 /**
  * Unified database type registry.
  *
- * Adding a new database type? Just add an entry here — all UI components,
- * form defaults, identifier quoting, and label/icon rendering will pick it up
- * automatically.
+ * Built-in types are defined here. Plugin types are merged in from
+ * src/plugins/generated.ts at import time.
  */
 
 import type { DatabaseType } from '../types';
+import { PLUGIN_DB_ENTRIES } from '../plugins/generated';
 
-export type ConnectionMode = 'server' | 'file' | 'url';
+export type { ConnectionMode, DatabaseTypeMeta } from './databaseMeta';
+import type { DatabaseTypeMeta } from './databaseMeta';
 
-export interface DatabaseTypeMeta {
-  /** Human-readable name, e.g. "PostgreSQL" */
-  label: string;
-  /** 2-char abbreviation for icons, e.g. "Pg" */
-  shortLabel: string;
-  /** Tailwind bg class for the icon badge */
-  iconBg: string;
-  /** Tailwind text-color class for compact icon (backup window etc.) */
-  iconColor: string;
-  /** Default port (0 = not applicable) */
-  defaultPort: number;
-  /** Default host */
-  defaultHost: string;
-  /** Default username (empty string = no username field in form) */
-  defaultUser: string;
-  /** Identifier quoting character (`"` for SQL standard, `` ` `` for MySQL) */
-  quoteChar: string;
-  /** Connection mode: server (host:port), file (path), url (connection string) */
-  connectionMode: ConnectionMode;
-  /** Whether SSH tunneling is supported */
-  supportsSSH: boolean;
-  /** Whether SSL/TLS configuration is supported */
-  supportsSSL: boolean;
-  /** Whether database backup is supported */
-  supportsBackup: boolean;
-  /** Whether this type supports schemas (tables, queries, etc.) */
-  supportsTables: boolean;
-  /** Key-value stores (e.g. Redis) — no SQL tables in the traditional sense */
-  isKeyValue: boolean;
-  /** Whether SQL is the primary query language */
-  supportsSQL: boolean;
-  /** Category aligned with backend `DriverCategory` / connection info */
-  category: 'sql' | 'kv' | 'document';
-  /** Which connection view component to render: sql (table browser), keyvalue (Redis), document (future MongoDB) */
-  connectionView: 'sql' | 'keyvalue' | 'document';
-  /** SQL dialect family for DDL/index queries; undefined for non-SQL types */
-  sqlDialect?: 'postgresql' | 'mysql' | 'sqlite' | 'trino';
-  /** How the "database" field behaves in the connection form */
-  databaseFieldType: 'name' | 'path' | 'index';
-  /** Whether the schema tree supports multiple databases/instances (e.g. Kiwi) */
-  hasMultiDatabase?: boolean;
-  /** Default page size for table data; unset uses per-table or global default */
-  defaultPageSize?: number;
-  /** Connection form variant */
-  connectionForm: 'standard' | 'kiwi' | 'file' | 'index' | 'catalog';
-}
-
-export const DB_REGISTRY: Record<DatabaseType, DatabaseTypeMeta> = {
+const BUILTIN_DB_REGISTRY: Record<string, DatabaseTypeMeta> = {
   postgresql: {
     label: 'PostgreSQL',
     shortLabel: 'Pg',
@@ -167,77 +121,12 @@ export const DB_REGISTRY: Record<DatabaseType, DatabaseTypeMeta> = {
     databaseFieldType: 'index',
     connectionForm: 'index',
   },
-  kiwi: {
-    label: 'Kiwi',
-    shortLabel: 'Ki',
-    iconBg: 'bg-teal-600',
-    iconColor: 'text-teal-400',
-    defaultPort: 4,
-    defaultHost: 'https://kiwi.akusre.com',
-    defaultUser: '',
-    quoteChar: '`',
-    connectionMode: 'server',
-    supportsSSH: false,
-    supportsSSL: false,
-    supportsBackup: false,
-    supportsTables: true,
-    isKeyValue: false,
-    supportsSQL: true,
-    category: 'sql',
-    connectionView: 'sql',
-    sqlDialect: 'mysql',
-    databaseFieldType: 'name',
-    hasMultiDatabase: true,
-    defaultPageSize: 1000,
-    connectionForm: 'kiwi',
-  },
-  presto: {
-    label: 'Presto',
-    shortLabel: 'Pr',
-    iconBg: 'bg-violet-600',
-    iconColor: 'text-violet-400',
-    defaultPort: 8080,
-    defaultHost: '127.0.0.1',
-    defaultUser: '',
-    quoteChar: '"',
-    connectionMode: 'server',
-    supportsSSH: false,
-    supportsSSL: true,
-    supportsBackup: false,
-    supportsTables: true,
-    isKeyValue: false,
-    supportsSQL: true,
-    category: 'sql',
-    connectionView: 'sql',
-    sqlDialect: 'trino',
-    databaseFieldType: 'name',
-    hasMultiDatabase: true,
-    connectionForm: 'catalog',
-  },
-  trino: {
-    label: 'Trino',
-    shortLabel: 'Tr',
-    iconBg: 'bg-indigo-600',
-    iconColor: 'text-indigo-400',
-    defaultPort: 8080,
-    defaultHost: '127.0.0.1',
-    defaultUser: '',
-    quoteChar: '"',
-    connectionMode: 'server',
-    supportsSSH: false,
-    supportsSSL: true,
-    supportsBackup: false,
-    supportsTables: true,
-    isKeyValue: false,
-    supportsSQL: true,
-    category: 'sql',
-    connectionView: 'sql',
-    sqlDialect: 'trino',
-    databaseFieldType: 'name',
-    hasMultiDatabase: true,
-    connectionForm: 'catalog',
-  },
 };
+
+export const DB_REGISTRY: Record<DatabaseType, DatabaseTypeMeta> = {
+  ...BUILTIN_DB_REGISTRY,
+  ...PLUGIN_DB_ENTRIES,
+} as Record<DatabaseType, DatabaseTypeMeta>;
 
 /** All database types available for the "new connection" UI. */
 export const DB_TYPE_LIST: { value: DatabaseType; label: string; color: string }[] = (
