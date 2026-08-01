@@ -18,8 +18,10 @@
 | 0 | 前端: types + commands + aiStore | ✅ 已完成 | ✅ TS 编译通过 | — | — |
 | 0 | 前端: AI 设置页面 | ✅ 已完成 | ✅ TS 编译通过 | 🔲 | — |
 | 0 | i18n (zh-CN + en) | ✅ 已完成 | ✅ TS 编译通过 | — | — |
-| 1 | NL2SQL 后端 + 前端 | 🔲 未开始 | 🔲 | 🔲 | — |
-| 1 | SQL 错误诊断 后端 + 前端 | 🔲 未开始 | 🔲 | 🔲 | — |
+| 1 | SchemaContextBuilder + PromptBuilder | ✅ 已完成 | ✅ 编译通过 | — | — |
+| 1 | NL2SQL + 诊断 IPC 命令 | ✅ 已完成 | ✅ 编译通过 | — | — |
+| 1 | NL2SQL 前端 UI (Nl2SqlPanel) | ✅ 已完成 | ✅ TS 编译通过 | 🔲 | — |
+| 1 | SQL 错误诊断前端 UI (DiagnosisPanel) | ✅ 已完成 | ✅ TS 编译通过 | 🔲 | — |
 | 2 | EXPLAIN 可视化 + AI 解读 | 🔲 未开始 | 🔲 | 🔲 | — |
 | 3 | AI Chat 侧边栏 | 🔲 未开始 | 🔲 | 🔲 | — |
 | 4 | MCP Server 基础 | 🔲 未开始 | 🔲 | 🔲 | — |
@@ -68,6 +70,44 @@
   - `src/stores/aiStore.ts` Zustand store
   - `src/windows/settings/SettingsWindow.tsx` 添加 AI 设置区域
   - `src/locales/zh-CN.ts` + `en.ts` 添加翻译键
+
+## Phase 1 详细记录
+
+### SchemaContextBuilder + PromptBuilder
+- **完成时间**: 2026-08-01
+- **变更**:
+  - `src-tauri/src/ai/context.rs` — 构建紧凑 DDL 作为 LLM 上下文，支持 token 预算控制
+  - `src-tauri/src/ai/prompt.rs` — NL2SQL / 错误诊断 / EXPLAIN 分析的 prompt 模板管理
+  - `src-tauri/src/ai/mod.rs` 导出新模块
+
+### NL2SQL + 诊断 IPC 命令
+- **完成时间**: 2026-08-01
+- **变更**:
+  - `src-tauri/src/commands/ai.rs` 新增 `ai_generate_sql` (流式) 和 `ai_diagnose_error`
+  - `src-tauri/src/commands/mod.rs` 注册新命令
+  - `src-tauri/src/lib.rs` 添加 `schema_context_builder` 到 AppState
+
+### NL2SQL 前端 UI
+- **完成时间**: 2026-08-01
+- **变更**:
+  - `src/components/ai/Nl2SqlPanel.tsx` — 可折叠的 NL2SQL 输入面板，实时流式显示生成的 SQL
+  - `src/windows/connection/QueryPanel.tsx` — 集成 AI 按钮到工具栏，嵌入 Nl2SqlPanel
+  - `src/stores/aiStore.ts` — 添加 NL2SQL 状态管理和流处理
+  - `src/commands/ai.ts` — 添加 `generateSql` IPC 调用和事件监听
+
+### SQL 错误诊断前端 UI
+- **完成时间**: 2026-08-01
+- **变更**:
+  - `src/components/ai/DiagnosisPanel.tsx` — 诊断结果展示面板，含修正 SQL 应用功能
+  - `src/windows/connection/QueryPanel.tsx` — 在错误区域添加"诊断"按钮，嵌入 DiagnosisPanel
+  - `src/stores/aiStore.ts` — 添加诊断状态管理
+  - `src/commands/ai.ts` — 添加 `diagnoseError` IPC 调用
+
+### 前端初始化
+- `src/windows/connection/ConnectionWindow.tsx` — 启动时加载 AI 配置
+
+### i18n
+- `src/locales/zh-CN.ts` + `en.ts` — 添加 NL2SQL 和诊断相关翻译键
 
 ---
 

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, Bookmark, Clock, Loader2, Play, Square, Trash2 } from 'lucide-react';
+import { AlertTriangle, Bookmark, Clock, Loader2, Play, Sparkles, Square, Stethoscope, Trash2 } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { Button } from '../../components/ui/Button';
@@ -7,9 +7,12 @@ import { SqlEditor } from '../../components/SqlEditor';
 import type { SqlEditorHandle, SqlSchema } from '../../components/SqlEditor';
 import { DataTable } from '../../components/DataTable/DataTable';
 import type { ColumnDef } from '../../components/DataTable/TableHeader';
+import { Nl2SqlPanel } from '../../components/ai/Nl2SqlPanel';
+import { DiagnosisPanel } from '../../components/ai/DiagnosisPanel';
 import { useQueryStore } from '../../stores/queryStore';
 import { useSchemaStore } from '../../stores/schemaStore';
 import { useSettingsStore } from '../../stores/settingsStore';
+import { useAiStore } from '../../stores/aiStore';
 import { useI18n } from '../../hooks/useI18n';
 import { cn } from '../../lib/cn';
 import type { StatementResult } from '../../types';
@@ -39,15 +42,20 @@ export function QueryPanel({ connectionId, queryTabId }: QueryPanelProps) {
   const deleteFavorite = useQueryStore((s) => s.deleteFavorite);
   const toggleFavorites = useQueryStore((s) => s.toggleFavorites);
 
+  const isAiConfigured = useAiStore((s) => s.isConfigured);
+
   const editorRef = useRef<SqlEditorHandle>(null);
   const pendingFavSqlRef = useRef('');
   const [favoriteName, setFavoriteName] = useState('');
   const [showFavoriteDialog, setShowFavoriteDialog] = useState(false);
   const [favoriteDialogSql, setFavoriteDialogSql] = useState('');
+  const [nl2sqlVisible, setNl2sqlVisible] = useState(false);
+  const [diagnosisVisible, setDiagnosisVisible] = useState(false);
 
   const tables = useSchemaStore((s) => s.tables);
   const views = useSchemaStore((s) => s.views);
   const columnMap = useSchemaStore((s) => s.columnMap);
+  const currentDatabase = useSchemaStore((s) => s.currentDatabase);
   const loadColumnMap = useSchemaStore((s) => s.loadColumnMap);
 
   const editorSchema: SqlSchema = useMemo(() => {
@@ -87,6 +95,10 @@ export function QueryPanel({ connectionId, queryTabId }: QueryPanelProps) {
   const handleCancel = useCallback(() => {
     if (tab) void cancelQuery(tab.id);
   }, [tab, cancelQuery]);
+
+  const handleApplyAiSql = useCallback((sql: string) => {
+    if (tab) updateSql(tab.id, sql);
+  }, [tab, updateSql]);
 
   const handleEditorContextMenu = useCallback((_e: MouseEvent, sqlText: string) => {
     const lang = useSettingsStore.getState().settings.language || 'zh-CN';
@@ -151,7 +163,26 @@ export function QueryPanel({ connectionId, queryTabId }: QueryPanelProps) {
           <Bookmark className="h-3.5 w-3.5" />
           {t('query.favorites')}
         </Button>
+        {isAiConfigured && (
+          <Button
+            variant={nl2sqlVisible ? 'secondary' : 'ghost'}
+            className="h-7 gap-1 px-2 text-xs"
+            onClick={() => setNl2sqlVisible((v) => !v)}
+          >
+            <Sparkles className="h-3.5 w-3.5" />
+            {t('nl2sql.title')}
+          </Button>
+        )}
       </div>
+
+      {/* NL2SQL panel (collapsible) */}
+      {nl2sqlVisible && currentDatabase && (
+        <Nl2SqlPanel
+          connectionId={connectionId}
+          database={currentDatabase}
+          onApplySql={handleApplyAiSql}
+        />
+      )}
 
       {/* Editor + results (vertical split) */}
       <div className="flex min-h-0 flex-1">
@@ -241,10 +272,34 @@ export function QueryPanel({ connectionId, queryTabId }: QueryPanelProps) {
             )}
 
             {tab.error && !tab.running && (
-              <div className="flex-1 overflow-auto p-4">
-                <div className="rounded-md border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">
-                  {tab.error}
+              <div className="flex-1 overflow-auto">
+                <div className="p-4">
+                  <div className="flex items-start gap-2 rounded-md border border-red-500/20 bg-red-500/10 px-4 py-3">
+                    <span className="flex-1 text-sm text-red-400">{tab.error}</span>
+                    {isAiConfigured && currentDatabase && (
+                      <button
+                        type="button"
+                        className="shrink-0 rounded px-2 py-0.5 text-[11px] text-blue-400 hover:bg-blue-500/10"
+                        onClick={() => setDiagnosisVisible(true)}
+                      >
+                        <span className="flex items-center gap-1">
+                          <Stethoscope className="h-3 w-3" />
+                          {t('diagnosis.diagnose')}
+                        </span>
+                      </button>
+                    )}
+                  </div>
                 </div>
+                {diagnosisVisible && currentDatabase && (
+                  <DiagnosisPanel
+                    connectionId={connectionId}
+                    database={currentDatabase}
+                    sql={tab.sql}
+                    errorMessage={tab.error}
+                    onApplySql={handleApplyAiSql}
+                    onClose={() => setDiagnosisVisible(false)}
+                  />
+                )}
               </div>
             )}
 
