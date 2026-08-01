@@ -185,7 +185,7 @@ async fn sync_one_table<F>(
 where
     F: Fn(u64) + Send + Sync,
 {
-    let cross_db = src_type != tgt_type;
+    let _cross_db = src_type != tgt_type;
 
     let (src_driver, src_handle) = state.connection_manager
         .get_connection(source_connection_id).await

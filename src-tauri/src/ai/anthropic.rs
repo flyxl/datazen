@@ -83,6 +83,7 @@ struct ApiUsage {
 // SSE event types for streaming
 #[derive(Deserialize)]
 #[serde(tag = "type")]
+#[allow(dead_code)]
 enum StreamEvent {
     #[serde(rename = "message_start")]
     MessageStart { message: StreamMessageStart },
@@ -108,6 +109,7 @@ struct StreamMessageStart {
 }
 
 #[derive(Deserialize)]
+#[allow(dead_code)]
 struct ContentDelta {
     #[serde(rename = "type")]
     delta_type: String,
@@ -115,6 +117,7 @@ struct ContentDelta {
 }
 
 #[derive(Deserialize)]
+#[allow(dead_code)]
 struct MessageDeltaBody {
     stop_reason: Option<String>,
 }

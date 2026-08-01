@@ -56,6 +56,7 @@ impl QueryExecutor {
         Self { schema_cache }
     }
 
+    #[allow(dead_code)]
     pub async fn execute_query(
         &self,
         driver: &Arc<dyn DatabaseDriver>,
