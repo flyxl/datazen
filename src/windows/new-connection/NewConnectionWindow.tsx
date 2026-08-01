@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Database } from 'lucide-react';
 import { TitleBar } from '../../components/TitleBar';
 import { Button } from '../../components/ui/Button';
@@ -74,27 +74,6 @@ export function NewConnectionWindow() {
     [groups, t],
   );
 
-  const pendingRef = useRef<{ type: string; timer: ReturnType<typeof setTimeout> } | null>(null);
-
-  function handleDbTypeClick(dbValue: DatabaseType) {
-    if (pendingRef.current) {
-      clearTimeout(pendingRef.current.timer);
-      pendingRef.current = null;
-    }
-    form.handleDatabaseTypeChange(dbValue);
-  }
-
-  function handleDbTypeMouseDown(dbValue: DatabaseType) {
-    if (pendingRef.current) clearTimeout(pendingRef.current.timer);
-    pendingRef.current = {
-      type: dbValue,
-      timer: setTimeout(() => {
-        form.handleDatabaseTypeChange(dbValue);
-        pendingRef.current = null;
-      }, 150),
-    };
-  }
-
   return (
     <div className="flex h-screen min-h-0 flex-col bg-surface-alt text-fg">
       <TitleBar title={editId ? t('newConn.editTitle') : t('newConn.title')} />
@@ -109,10 +88,9 @@ export function NewConnectionWindow() {
               <button
                 key={db.value}
                 type="button"
-                onMouseDown={() => handleDbTypeMouseDown(db.value)}
-                onClick={() => handleDbTypeClick(db.value)}
+                onPointerDown={() => form.handleDatabaseTypeChange(db.value)}
                 className={cn(
-                  'flex items-center gap-3 rounded-lg px-3 py-3 text-left text-sm transition-colors',
+                  'flex items-center gap-3 rounded-lg px-3 py-3 text-left text-sm transition-colors select-none',
                   form.databaseType === db.value
                     ? 'bg-surface-raised text-fg'
                     : 'text-fg-secondary hover:bg-surface-alt hover:text-fg',
