@@ -21,9 +21,10 @@ import type { ExplainResult, StatementResult } from '../../types';
 interface QueryPanelProps {
   connectionId: string;
   queryTabId: string;
+  databaseType?: string;
 }
 
-export function QueryPanel({ connectionId, queryTabId }: QueryPanelProps) {
+export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPanelProps) {
   const { t } = useI18n();
   const tab = useQueryStore((s) => s.tabs.find((t) => t.id === queryTabId));
   const historyVisible = useQueryStore((s) => s.historyVisible);
@@ -226,6 +227,7 @@ export function QueryPanel({ connectionId, queryTabId }: QueryPanelProps) {
               onContextMenu={handleEditorContextMenu}
               placeholder={t('query.placeholder')}
               schema={editorSchema}
+              databaseType={databaseType}
             />
           </div>
 

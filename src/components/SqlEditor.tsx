@@ -2,7 +2,8 @@ import { useEffect, useImperativeHandle, useRef, forwardRef } from 'react';
 import { EditorView, keymap, placeholder as cmPlaceholder, lineNumbers } from '@codemirror/view';
 import { EditorState, Compartment } from '@codemirror/state';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
-import { sql, PostgreSQL } from '@codemirror/lang-sql';
+import { sql, PostgreSQL, MySQL, MariaSQL, SQLite, StandardSQL } from '@codemirror/lang-sql';
+import type { SQLDialect } from '@codemirror/lang-sql';
 import { syntaxHighlighting, HighlightStyle } from '@codemirror/language';
 import { tags } from '@lezer/highlight';
 import { autocompletion, closeBrackets, acceptCompletion } from '@codemirror/autocomplete';
@@ -130,6 +131,18 @@ export interface SqlEditorHandle {
   getSelection: () => string;
 }
 
+const CM_DIALECT_MAP: Record<string, SQLDialect> = {
+  postgresql: PostgreSQL,
+  mysql: MySQL,
+  mariadb: MariaSQL,
+  sqlite: SQLite,
+};
+
+function resolveCmDialect(dbType?: string): SQLDialect {
+  if (!dbType) return StandardSQL;
+  return CM_DIALECT_MAP[dbType] ?? StandardSQL;
+}
+
 interface SqlEditorProps {
   value: string;
   onChange: (value: string) => void;
@@ -138,9 +151,10 @@ interface SqlEditorProps {
   onContextMenu?: (e: MouseEvent, selectedSql: string) => void;
   placeholder?: string;
   schema?: SqlSchema;
+  databaseType?: string;
 }
 
-export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function SqlEditor({ value, onChange, onExecute, onExecuteSelection, onContextMenu: onCtxMenu, placeholder, schema }, ref) {
+export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function SqlEditor({ value, onChange, onExecute, onExecuteSelection, onContextMenu: onCtxMenu, placeholder, schema, databaseType }, ref) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const themeCompartment = useRef(new Compartment());
@@ -214,7 +228,7 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
         }),
         sqlCompartment.current.of(
           sql({
-            dialect: PostgreSQL,
+            dialect: resolveCmDialect(databaseType),
             upperCaseKeywords: true,
             schema: schema ?? {},
           }),
@@ -282,13 +296,13 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
     view.dispatch({
       effects: sqlCompartment.current.reconfigure(
         sql({
-          dialect: PostgreSQL,
+          dialect: resolveCmDialect(databaseType),
           upperCaseKeywords: true,
           schema: schema ?? {},
         }),
       ),
     });
-  }, [schema]);
+  }, [schema, databaseType]);
 
   useEffect(() => {
     const view = viewRef.current;
