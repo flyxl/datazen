@@ -131,6 +131,33 @@
   - `src/windows/connection/QueryPanel.tsx` 集成 Explain 按钮和视图切换
   - `src/locales/zh-CN.ts` + `en.ts` 添加 EXPLAIN 翻译键
 
+## Phase 3 详细记录
+
+### AI Chat 后端 IPC
+- **完成时间**: 2026-08-01
+- **变更**:
+  - `src-tauri/src/commands/ai.rs` 新增 `ai_chat` 流式命令（支持可选 schema 注入）
+  - `src-tauri/src/lib.rs` 注册新命令
+
+### AI Chat 前端 UI
+- **完成时间**: 2026-08-01
+- **变更**:
+  - `src/components/ai/AiChatPanel.tsx` — 侧边栏对话面板（消息渲染 + 代码块提取 + SQL 插入）
+  - `src/windows/connection/SqlConnectionView.tsx` — 集成 Chat 按钮和 320px 侧边栏
+  - `src/stores/aiStore.ts` — Chat session 管理、流式处理路由（NL2SQL + Chat）
+  - `src/commands/ai.ts` — 添加 `chat` IPC 封装
+  - `src/types/index.ts` — 添加 `AiChatMessage`, `AiChatSession` 类型
+  - `src/locales/zh-CN.ts` + `en.ts` — Chat 翻译键
+
+## 提交历史
+
+| 提交 | Phase | 描述 |
+|------|-------|------|
+| `17465dc` | Phase 0 | AI infrastructure foundation |
+| `990a3db` | Phase 1 | NL2SQL and SQL error diagnosis |
+| `6b36524` | Phase 2 | EXPLAIN visualization with AI analysis |
+| `9c167b8` | Phase 3 | AI Chat sidebar assistant |
+
 ---
 
 *此文件随开发进度持续更新。*
