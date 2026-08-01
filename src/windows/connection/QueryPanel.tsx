@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, Bookmark, Clock, Loader2, Play, Sparkles, Square, Stethoscope, Trash2 } from 'lucide-react';
+import { AlertTriangle, Bookmark, Clock, FileSearch, Loader2, Play, Sparkles, Square, Stethoscope, Trash2 } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { Button } from '../../components/ui/Button';
@@ -9,13 +9,15 @@ import { DataTable } from '../../components/DataTable/DataTable';
 import type { ColumnDef } from '../../components/DataTable/TableHeader';
 import { Nl2SqlPanel } from '../../components/ai/Nl2SqlPanel';
 import { DiagnosisPanel } from '../../components/ai/DiagnosisPanel';
+import { ExplainPanel } from '../../components/ai/ExplainPanel';
 import { useQueryStore } from '../../stores/queryStore';
 import { useSchemaStore } from '../../stores/schemaStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useAiStore } from '../../stores/aiStore';
 import { useI18n } from '../../hooks/useI18n';
 import { cn } from '../../lib/cn';
-import type { StatementResult } from '../../types';
+import { queryCommands } from '../../commands/query';
+import type { ExplainResult, StatementResult } from '../../types';
 
 interface QueryPanelProps {
   connectionId: string;
@@ -51,6 +53,10 @@ export function QueryPanel({ connectionId, queryTabId }: QueryPanelProps) {
   const [favoriteDialogSql, setFavoriteDialogSql] = useState('');
   const [nl2sqlVisible, setNl2sqlVisible] = useState(false);
   const [diagnosisVisible, setDiagnosisVisible] = useState(false);
+  const [explainResult, setExplainResult] = useState<ExplainResult | null>(null);
+  const [explainLoading, setExplainLoading] = useState(false);
+  const [explainError, setExplainError] = useState<string | null>(null);
+  const [showExplain, setShowExplain] = useState(false);
 
   const tables = useSchemaStore((s) => s.tables);
   const views = useSchemaStore((s) => s.views);
@@ -100,6 +106,22 @@ export function QueryPanel({ connectionId, queryTabId }: QueryPanelProps) {
     if (tab) updateSql(tab.id, sql);
   }, [tab, updateSql]);
 
+  const handleExplain = useCallback(async () => {
+    if (!tab?.sql.trim()) return;
+    setExplainLoading(true);
+    setExplainError(null);
+    setShowExplain(true);
+    try {
+      const result = await queryCommands.getExplain(connectionId, tab.sql);
+      setExplainResult(result);
+    } catch (e) {
+      setExplainResult(null);
+      setExplainError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setExplainLoading(false);
+    }
+  }, [connectionId, tab]);
+
   const handleEditorContextMenu = useCallback((_e: MouseEvent, sqlText: string) => {
     const lang = useSettingsStore.getState().settings.language || 'zh-CN';
     pendingFavSqlRef.current = sqlText;
@@ -142,6 +164,15 @@ export function QueryPanel({ connectionId, queryTabId }: QueryPanelProps) {
             {t('query.stop')}
           </Button>
         )}
+        <Button
+          variant="ghost"
+          className="h-7 gap-1 px-2 text-xs"
+          onClick={() => void handleExplain()}
+          disabled={tab.running || !tab.sql.trim()}
+        >
+          <FileSearch className="h-3.5 w-3.5" />
+          {t('explain.title')}
+        </Button>
         <span className="text-[11px] text-fg-muted">⌘+Enter {t('query.execute')}</span>
         <div className="flex-1" />
         {tab.executionTimeMs != null && (
@@ -264,14 +295,59 @@ export function QueryPanel({ connectionId, queryTabId }: QueryPanelProps) {
 
           {/* Results area */}
           <div className="flex min-h-0 flex-1 flex-col">
-            {tab.running && (
+            {/* EXPLAIN view */}
+            {showExplain && !tab.running && (
+              <div className="flex min-h-0 flex-1 flex-col">
+                <div className="flex shrink-0 items-center gap-0 border-b border-edge bg-surface-alt px-1">
+                  {results.length > 0 && (
+                    <button
+                      type="button"
+                      className="relative px-3 py-1.5 text-xs text-fg-muted hover:text-fg-secondary transition-colors"
+                      onClick={() => setShowExplain(false)}
+                    >
+                      {t('query.result')}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="relative px-3 py-1.5 text-xs text-fg font-medium transition-colors"
+                  >
+                    {t('explain.title')}
+                    <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-accent" />
+                  </button>
+                </div>
+                {explainLoading && (
+                  <div className="flex flex-1 items-center justify-center gap-2 text-fg-muted">
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                    {t('explain.loading')}
+                  </div>
+                )}
+                {!explainLoading && explainError && (
+                  <div className="p-4">
+                    <div className="rounded-md border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+                      {explainError}
+                    </div>
+                  </div>
+                )}
+                {!explainLoading && explainResult && (
+                  <ExplainPanel
+                    connectionId={connectionId}
+                    sql={tab.sql}
+                    explainOutput={explainResult.planText}
+                    onApplySql={handleApplyAiSql}
+                  />
+                )}
+              </div>
+            )}
+
+            {!showExplain && tab.running && (
               <div className="flex flex-1 items-center justify-center gap-2 text-fg-muted">
                 <Loader2 className="h-5 w-5 animate-spin" />
                 {t('query.executing')}
               </div>
             )}
 
-            {tab.error && !tab.running && (
+            {!showExplain && tab.error && !tab.running && (
               <div className="flex-1 overflow-auto">
                 <div className="p-4">
                   <div className="flex items-start gap-2 rounded-md border border-red-500/20 bg-red-500/10 px-4 py-3">
@@ -303,10 +379,10 @@ export function QueryPanel({ connectionId, queryTabId }: QueryPanelProps) {
               </div>
             )}
 
-            {results.length > 0 && !tab.running && (
+            {!showExplain && results.length > 0 && !tab.running && (
               <>
-                {/* Result tabs — only show when there are multiple results */}
-                {results.length > 1 && (
+                {/* Result tabs */}
+                {(results.length > 1 || explainResult) && (
                   <div className="flex shrink-0 items-center gap-0 border-b border-edge bg-surface-alt px-1">
                     {results.map((r, idx) => (
                       <button
@@ -329,6 +405,15 @@ export function QueryPanel({ connectionId, queryTabId }: QueryPanelProps) {
                         )}
                       </button>
                     ))}
+                    {explainResult && (
+                      <button
+                        type="button"
+                        className="relative px-3 py-1.5 text-xs text-fg-muted hover:text-fg-secondary transition-colors"
+                        onClick={() => setShowExplain(true)}
+                      >
+                        {t('explain.title')}
+                      </button>
+                    )}
                   </div>
                 )}
 
@@ -337,7 +422,7 @@ export function QueryPanel({ connectionId, queryTabId }: QueryPanelProps) {
               </>
             )}
 
-            {results.length === 0 && !tab.running && !tab.error && (
+            {!showExplain && results.length === 0 && !tab.running && !tab.error && (
               <div className="flex flex-1 items-center justify-center text-sm text-fg-muted">
                 {t('query.shortcutHint')}
               </div>

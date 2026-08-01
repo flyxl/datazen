@@ -254,6 +254,62 @@ pub async fn ai_diagnose_error(
         .map_err(|e| log_err("ai_diagnose_error", &e))
 }
 
+// ─── EXPLAIN Analysis ───
+
+#[tauri::command]
+pub async fn ai_analyze_explain(
+    state: State<'_, AppState>,
+    connection_id: String,
+    explain_output: String,
+    original_sql: String,
+) -> Result<ExplainAnalysis, String> {
+    let ai_config = state
+        .store
+        .get_ai_config()
+        .await
+        .ok_or_else(|| "AI 未配置".to_string())?;
+
+    let provider = state
+        .ai_registry
+        .get(&ai_config.provider_type)
+        .await
+        .ok_or("Provider not available")?;
+
+    let (driver, _) = state
+        .connection_manager
+        .get_connection(&connection_id)
+        .await
+        .map_err(|e| log_err("ai_analyze_explain", &e))?;
+
+    let db_type = format!("{:?}", driver.driver_type());
+
+    let request = CompletionRequest {
+        request_id: Uuid::new_v4().to_string(),
+        model: ai_config.model.clone(),
+        messages: vec![
+            PromptBuilder::explain_analysis_system(&db_type),
+            ChatMessage {
+                role: MessageRole::User,
+                content: format!(
+                    "SQL:\n```\n{original_sql}\n```\n\nEXPLAIN output:\n```\n{explain_output}\n```"
+                ),
+            },
+        ],
+        temperature: Some(0.0),
+        max_tokens: Some(2000),
+        stop: None,
+    };
+
+    let response = provider
+        .complete(&request)
+        .await
+        .map_err(|e| log_err("ai_analyze_explain", &e))?;
+
+    let content = strip_markdown_fences(&response.content);
+    serde_json::from_str::<ExplainAnalysis>(&content)
+        .map_err(|e| log_err("ai_analyze_explain", &e))
+}
+
 fn strip_markdown_fences(s: &str) -> String {
     let trimmed = s.trim();
     if let Some(rest) = trimmed.strip_prefix("```") {

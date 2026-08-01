@@ -4,6 +4,7 @@ import type {
   AiProviderConfig,
   AiProviderType,
   DiagnosisResult,
+  ExplainAnalysis,
   ModelInfo,
   ProviderListItem,
   StreamChunkPayload,
@@ -41,6 +42,12 @@ export const aiCommands = {
     sql: string;
     errorMessage: string;
   }) => invoke<DiagnosisResult>('ai_diagnose_error', params),
+
+  analyzeExplain: (params: {
+    connectionId: string;
+    explainOutput: string;
+    originalSql: string;
+  }) => invoke<ExplainAnalysis>('ai_analyze_explain', params),
 };
 
 export function onAiStreamChunk(

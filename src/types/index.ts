@@ -250,6 +250,24 @@ export interface DiagnosisResult {
   changes: string[];
 }
 
+export interface ExplainAnalysis {
+  summary: string;
+  bottlenecks: Bottleneck[];
+  suggestions: ExplainSuggestion[];
+}
+
+export interface Bottleneck {
+  node: string;
+  description: string;
+  severity: 'high' | 'medium' | 'low';
+}
+
+export interface ExplainSuggestion {
+  description: string;
+  sql: string | null;
+  impact: string;
+}
+
 export interface StreamChunkPayload {
   requestId: string;
   content: string;

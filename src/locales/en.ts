@@ -532,6 +532,22 @@ const en: Record<TranslationKey, string> = {
   'nl2sql.clear': 'Clear',
   'nl2sql.notConfigured': 'Please configure an AI provider in Settings first',
 
+  // ── EXPLAIN Analysis ──
+  'explain.title': 'EXPLAIN Analysis',
+  'explain.rawOutput': 'Execution Plan',
+  'explain.analyze': 'AI Analyze',
+  'explain.analyzing': 'Analyzing…',
+  'explain.summary': 'Summary',
+  'explain.bottlenecks': 'Bottlenecks',
+  'explain.suggestions': 'Optimization Suggestions',
+  'explain.expectedImpact': 'Expected Impact',
+  'explain.severity.high': 'High',
+  'explain.severity.medium': 'Medium',
+  'explain.severity.low': 'Low',
+  'explain.loading': 'Loading execution plan…',
+  'explain.notConfigured': 'Please configure an AI provider in Settings first',
+  'explain.noData': 'Run a query and click Explain to view the execution plan',
+
   // ── SQL Diagnosis ──
   'diagnosis.title': 'AI Error Diagnosis',
   'diagnosis.diagnose': 'Diagnose',
