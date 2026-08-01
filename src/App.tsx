@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect } from 'react';
 import { getWindowKind } from './lib/windowKind';
 import { mark } from './lib/startupTimer';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 const MainWindow = lazy(() =>
   import('./windows/main/MainWindow').then((m) => {
@@ -66,8 +67,10 @@ function WindowContent() {
 
 export default function App() {
   return (
-    <Suspense fallback={null}>
-      <WindowContent />
-    </Suspense>
+    <ErrorBoundary>
+      <Suspense fallback={null}>
+        <WindowContent />
+      </Suspense>
+    </ErrorBoundary>
   );
 }

@@ -88,7 +88,7 @@ export function NewConnectionWindow() {
               <button
                 key={db.value}
                 type="button"
-                onPointerDown={() => form.handleDatabaseTypeChange(db.value)}
+                onClick={() => form.handleDatabaseTypeChange(db.value)}
                 className={cn(
                   'flex items-center gap-3 rounded-lg px-3 py-3 text-left text-sm transition-colors select-none',
                   form.databaseType === db.value

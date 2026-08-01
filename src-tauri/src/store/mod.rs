@@ -140,6 +140,10 @@ pub enum StoreError {
 }
 
 impl Store {
+    pub fn data_dir(&self) -> &PathBuf {
+        &self.data_dir
+    }
+
     pub async fn init(app_handle: &tauri::AppHandle) -> Result<Self, StoreError> {
         let data_dir = app_handle
             .path()

@@ -166,7 +166,7 @@ pub async fn restore_database(
         tracing::info!(%connection_id, statements = statements.len(), "restore_database OK");
         Ok(())
     } else {
-        let msg = format!("部分语句执行失败 ({}/{}):\n{}", errors.len(), statements.len(), errors.join("\n"));
+        let msg = format!("Partial restore failure ({}/{} statements failed):\n{}", errors.len(), statements.len(), errors.join("\n"));
         Err(msg)
     }
 }

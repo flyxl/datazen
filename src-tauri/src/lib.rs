@@ -268,12 +268,8 @@ fn rebuild_menu(handle: tauri::AppHandle, language: String) -> Result<(), String
     rebuild_menu_for_handle(&handle, &language).map_err(|e| e.to_string())
 }
 
-async fn create_app_state_headless() -> Result<AppState, String> {
+async fn build_app_state(store: Arc<Store>) -> Result<AppState, String> {
     let registry: Arc<db::DriverRegistry> = Arc::new(init_drivers().await);
-    let data_dir = dirs::data_dir()
-        .ok_or_else(|| "Cannot determine data dir".to_string())?
-        .join("com.datazen.app");
-    let store = Arc::new(Store::init_with_path(&data_dir).await.map_err(|e| e.to_string())?);
     let schema_cache = Arc::new(SchemaCache::new(registry.clone()));
     let connection_manager = Arc::new(ConnectionManager::new(
         registry.clone(),
@@ -296,6 +292,7 @@ async fn create_app_state_headless() -> Result<AppState, String> {
         connection_manager.clone(),
     ));
 
+    let data_dir = store.data_dir();
     let skill_registry = Arc::new(mcp::SkillRegistry::new(data_dir.join("skills")));
     if let Err(e) = skill_registry.load_all().await {
         tracing::warn!("Failed to load skills: {e}");
@@ -332,7 +329,13 @@ pub fn run_mcp_stdio() {
         .expect("Failed to create tokio runtime");
 
     rt.block_on(async {
-        let app_state = match create_app_state_headless().await {
+        let data_dir = dirs::data_dir()
+            .expect("Cannot determine data dir")
+            .join("com.datazen.app");
+        let store = Arc::new(
+            Store::init_with_path(&data_dir).await.expect("Failed to init store"),
+        );
+        let app_state = match build_app_state(store).await {
             Ok(s) => s,
             Err(e) => {
                 tracing::error!("Failed to initialize AppState: {e}");
@@ -374,63 +377,11 @@ pub fn run() {
 
             let t0 = Instant::now();
             let app_state = tauri::async_runtime::block_on(async {
-                let t_drv = Instant::now();
-                let registry: Arc<db::DriverRegistry> = Arc::new(init_drivers().await);
-                tracing::info!("[startup]   init_drivers: {:?}", t_drv.elapsed());
-
                 let t_store = Instant::now();
                 let store = Arc::new(Store::init(&handle).await.map_err(|e| e.to_string())?);
                 tracing::info!("[startup]   Store::init: {:?}", t_store.elapsed());
 
-                let schema_cache = Arc::new(SchemaCache::new(registry.clone()));
-                let connection_manager = Arc::new(ConnectionManager::new(
-                    registry.clone(),
-                    store.clone(),
-                ));
-
-                connection_manager.clone().start_cleanup_task();
-
-                let sync_adapters = Arc::new(init_sync_adapters());
-
-                let t_ai = Instant::now();
-                let ai_registry = Arc::new(init_ai_providers().await);
-                tracing::info!("[startup]   init_ai_providers: {:?}", t_ai.elapsed());
-
-                if let Some(ai_config) = store.get_ai_config().await {
-                    if let Some(provider) = ai_registry.get(&ai_config.provider_type).await {
-                        if let Err(e) = provider.initialize(&ai_config).await {
-                            tracing::warn!("Failed to initialize saved AI provider: {e}");
-                        }
-                    }
-                }
-
-                let schema_context_builder = Arc::new(SchemaContextBuilder::new(
-                    schema_cache.clone(),
-                    connection_manager.clone(),
-                ));
-
-                let data_dir = handle
-                    .path()
-                    .app_data_dir()
-                    .map_err(|e| e.to_string())?;
-                let skill_registry = Arc::new(mcp::SkillRegistry::new(data_dir.join("skills")));
-                if let Err(e) = skill_registry.load_all().await {
-                    tracing::warn!("Failed to load skills: {e}");
-                }
-
-                let mcp_client_manager = Arc::new(mcp::McpClientManager::new());
-
-                Ok::<AppState, String>(AppState {
-                    driver_registry: registry,
-                    connection_manager,
-                    store,
-                    schema_cache,
-                    sync_adapters,
-                    ai_registry,
-                    schema_context_builder,
-                    skill_registry,
-                    mcp_client_manager,
-                })
+                build_app_state(store).await
             })?;
             tracing::info!("[startup]   block_on total: {:?}", t0.elapsed());
 
@@ -533,6 +484,7 @@ pub fn run() {
             commands::mcp_client_list,
             commands::mcp_client_tools,
             commands::mcp_client_call_tool,
+            commands::create_sub_window,
             rebuild_menu,
         ])
         .build(tauri::generate_context!())

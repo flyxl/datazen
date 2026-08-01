@@ -1,12 +1,13 @@
 /**
  * Multi-window manager.
  *
- * In Tauri runtime, creates real OS windows via WebviewWindow.
+ * In Tauri runtime, creates real OS windows via Rust-side command
+ * to ensure `accept_first_mouse` is applied at the native layer.
  * In browser dev mode, opens new browser tabs with query params.
  */
 
+import { invoke } from '@tauri-apps/api/core';
 import { t } from '../locales/t';
-import { getPlatformSync } from '../hooks/usePlatform';
 
 let counter = 0;
 
@@ -16,43 +17,34 @@ function nextLabel(prefix: string) {
 }
 
 interface OpenWindowOptions {
-  /** URL query params to pass context to the new window. */
   params?: Record<string, string>;
-  /** Window width (default 800). */
   width?: number;
-  /** Window height (default 640). */
   height?: number;
-  /** Window title. */
+  minWidth?: number;
+  minHeight?: number;
   title?: string;
-  /** Whether to center the window (default true). */
   center?: boolean;
 }
 
-function currentBgColor(): string {
-  return document.documentElement.classList.contains('dark') ? '#0f172a' : '#ffffff';
+function isTauri(): boolean {
+  return '__TAURI_INTERNALS__' in window;
 }
 
 async function openTauriWindow(label: string, options: OpenWindowOptions) {
-  const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
-  const isMac = getPlatformSync() === 'macos';
-
   const qs = new URLSearchParams(options.params ?? {}).toString();
   const url = qs ? `index.html?${qs}` : 'index.html';
 
-  new WebviewWindow(label, {
-    url,
-    title: options.title ?? 'DataZen',
-    width: options.width ?? 800,
-    height: options.height ?? 640,
-    center: options.center ?? true,
-    decorations: false,
-    transparent: isMac,
-    minWidth: 600,
-    minHeight: 480,
-    visible: false,
-    focus: true,
-    acceptFirstMouse: true,
-    ...(isMac ? {} : { backgroundColor: currentBgColor() }),
+  await invoke('create_sub_window', {
+    options: {
+      label,
+      url,
+      title: options.title ?? 'DataZen',
+      width: options.width ?? 800,
+      height: options.height ?? 640,
+      minWidth: options.minWidth,
+      minHeight: options.minHeight,
+      center: options.center ?? true,
+    },
   });
 }
 
@@ -62,26 +54,26 @@ function openBrowserWindow(options: OpenWindowOptions) {
   window.open(url, '_blank', `width=${options.width ?? 800},height=${options.height ?? 640}`);
 }
 
-function isTauri(): boolean {
-  return '__TAURI_INTERNALS__' in window;
+function openWindow(label: string, options: OpenWindowOptions) {
+  if (isTauri()) {
+    void openTauriWindow(label, options);
+  } else {
+    openBrowserWindow(options);
+  }
 }
 
 export function openNewConnectionWindow(editId?: string) {
   const params: Record<string, string> = { window: 'new-connection' };
   if (editId) params.editId = editId;
 
-  const opts: OpenWindowOptions = {
+  openWindow(nextLabel('new-connection'), {
     params,
     width: 800,
     height: 680,
+    minWidth: 600,
+    minHeight: 480,
     title: editId ? t('win.editConnection') : t('win.newConnection'),
-  };
-
-  if (isTauri()) {
-    void openTauriWindow(nextLabel('new-connection'), opts);
-  } else {
-    openBrowserWindow(opts);
-  }
+  });
 }
 
 export function openConnectionWindow(connectionId: string, connectionName: string, database?: string, databaseType?: string) {
@@ -89,63 +81,47 @@ export function openConnectionWindow(connectionId: string, connectionName: strin
   if (database) params.database = database;
   if (databaseType) params.databaseType = databaseType;
 
-  const opts: OpenWindowOptions = {
+  openWindow(nextLabel('connection'), {
     params,
     width: 1200,
     height: 800,
+    minWidth: 600,
+    minHeight: 480,
     title: `${connectionName} - DataZen`,
-  };
-
-  if (isTauri()) {
-    void openTauriWindow(nextLabel('connection'), opts);
-  } else {
-    openBrowserWindow(opts);
-  }
+  });
 }
 
 export function openQueryWindow(connectionId: string, database: string) {
-  const opts: OpenWindowOptions = {
+  openWindow(nextLabel('query'), {
     params: { window: 'query', connectionId, database },
     width: 1000,
     height: 700,
+    minWidth: 600,
+    minHeight: 480,
     title: t('win.query', { db: database }),
-  };
-
-  if (isTauri()) {
-    void openTauriWindow(nextLabel('query'), opts);
-  } else {
-    openBrowserWindow(opts);
-  }
+  });
 }
 
 export function openDataSyncWindow() {
-  const opts: OpenWindowOptions = {
+  openWindow(nextLabel('data-sync'), {
     params: { window: 'data-sync' },
     width: 1000,
     height: 700,
+    minWidth: 600,
+    minHeight: 480,
     title: t('win.dataSync'),
-  };
-
-  if (isTauri()) {
-    void openTauriWindow(nextLabel('data-sync'), opts);
-  } else {
-    openBrowserWindow(opts);
-  }
+  });
 }
 
 export function openBackupWindow() {
-  const opts: OpenWindowOptions = {
+  openWindow(nextLabel('backup'), {
     params: { window: 'backup' },
     width: 750,
     height: 520,
+    minWidth: 600,
+    minHeight: 400,
     title: t('win.backup'),
-  };
-
-  if (isTauri()) {
-    void openTauriWindow(nextLabel('backup'), opts);
-  } else {
-    openBrowserWindow(opts);
-  }
+  });
 }
 
 const SETTINGS_LABEL = 'settings-singleton';
@@ -161,22 +137,13 @@ export function openSettingsWindow(section?: string) {
       }
       const params: Record<string, string> = { window: 'settings' };
       if (section) params.section = section;
-      const qs = new URLSearchParams(params).toString();
-      const isMac = getPlatformSync() === 'macos';
-      new WebviewWindow(SETTINGS_LABEL, {
-        url: `index.html?${qs}`,
+      await openTauriWindow(SETTINGS_LABEL, {
+        params,
         title: t('win.settings'),
         width: 720,
         height: 560,
-        center: true,
-        decorations: false,
-        transparent: isMac,
         minWidth: 560,
         minHeight: 400,
-        visible: false,
-        focus: true,
-        acceptFirstMouse: true,
-        ...(isMac ? {} : { backgroundColor: currentBgColor() }),
       });
     })();
   } else {

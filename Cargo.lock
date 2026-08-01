@@ -1235,6 +1235,7 @@ version = "0.0.7"
 dependencies = [
  "aes-gcm 0.10.3",
  "anyhow",
+ "argon2",
  "async-trait",
  "base64 0.22.1",
  "chrono",
@@ -1257,7 +1258,6 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_yaml",
- "sha2 0.10.9",
  "sqlx",
  "sysinfo",
  "tauri",
@@ -1276,7 +1276,7 @@ dependencies = [
 
 [[package]]
 name = "datazen-ai-api"
-version = "0.1.0"
+version = "0.0.7"
 dependencies = [
  "async-trait",
  "inventory",

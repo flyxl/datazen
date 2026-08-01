@@ -63,6 +63,7 @@ mod provider_tests {
                     api_key: Some(api_key.to_string()),
                     endpoint: Some(endpoint.to_string()),
                     model: String::new(),
+                    max_tokens: 200_000,
                     extra: serde_json::Value::Null,
                 };
                 p.initialize(&config).await.expect("Failed to initialize");
