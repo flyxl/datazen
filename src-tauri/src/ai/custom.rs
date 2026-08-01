@@ -560,10 +560,6 @@ impl CustomProvider {
         request: &CompletionRequest,
     ) -> Result<CompletionResponse, AiError> {
         let url = Self::build_url(&state.endpoint, "/chat/completions");
-        tracing::debug!(
-            %url, model = %request.model, messages = request.messages.len(),
-            protocol = "openai_chat", "custom: complete request"
-        );
 
         let body = OaiRequest {
             model: request.model.clone(),
@@ -573,6 +569,9 @@ impl CustomProvider {
             stop: request.stop.clone(),
             stream: Some(false),
         };
+
+        let raw_request = serde_json::to_string(&body).unwrap_or_default();
+        tracing::info!(%url, "custom(openai_chat): HTTP request body\n{}", raw_request);
 
         let resp = self
             .client
@@ -585,12 +584,7 @@ impl CustomProvider {
 
         let status = resp.status();
         let raw_body = resp.text().await.unwrap_or_default();
-        tracing::info!(
-            %status,
-            body_len = raw_body.len(),
-            body_preview = %&raw_body[..raw_body.len().min(500)],
-            "custom(openai_chat): raw HTTP response"
-        );
+        tracing::info!(%status, "custom(openai_chat): HTTP response body\n{}", raw_body);
 
         if !status.is_success() {
             return Err(map_oai_error(status, &raw_body));
@@ -622,14 +616,6 @@ impl CustomProvider {
             })
             .unwrap_or_default();
 
-        tracing::debug!(
-            response_len = content.len(),
-            finish_reason = ?choice.finish_reason,
-            prompt_tokens = usage.prompt_tokens,
-            completion_tokens = usage.completion_tokens,
-            "custom(openai_chat): complete response"
-        );
-
         Ok(CompletionResponse {
             request_id: request.request_id.clone(),
             content,
@@ -646,11 +632,6 @@ impl CustomProvider {
     ) -> Result<CompletionResponse, AiError> {
         let url = Self::build_url(&state.endpoint, "/responses");
         let (instructions, input) = split_instructions(&request.messages);
-        tracing::debug!(
-            %url, model = %request.model, input_count = input.len(),
-            has_instructions = instructions.is_some(),
-            protocol = "openai_responses", "custom: complete request"
-        );
 
         let body = OaiResponsesRequest {
             model: request.model.clone(),
@@ -662,6 +643,9 @@ impl CustomProvider {
             store: Some(false),
         };
 
+        let raw_request = serde_json::to_string(&body).unwrap_or_default();
+        tracing::info!(%url, "custom(openai_responses): HTTP request body\n{}", raw_request);
+
         let resp = self
             .client
             .post(&url)
@@ -672,15 +656,14 @@ impl CustomProvider {
             .map_err(|e| AiError::RequestFailed(e.to_string()))?;
 
         let status = resp.status();
+        let raw_resp = resp.text().await.unwrap_or_default();
+        tracing::info!(%status, "custom(openai_responses): HTTP response body\n{}", raw_resp);
         if !status.is_success() {
-            let text = resp.text().await.unwrap_or_default();
-            return Err(map_oai_error(status, &text));
+            return Err(map_oai_error(status, &raw_resp));
         }
 
-        let api_resp: OaiResponsesResponse = resp
-            .json()
-            .await
-            .map_err(|e| AiError::RequestFailed(e.to_string()))?;
+        let api_resp: OaiResponsesResponse = serde_json::from_str(&raw_resp)
+            .map_err(|e| AiError::RequestFailed(format!("JSON decode: {e}")))?;
 
         let content = api_resp
             .output
@@ -701,13 +684,6 @@ impl CustomProvider {
             })
             .unwrap_or_default();
 
-        tracing::debug!(
-            response_len = content.len(),
-            prompt_tokens = usage.prompt_tokens,
-            completion_tokens = usage.completion_tokens,
-            "custom(openai_responses): complete response"
-        );
-
         Ok(CompletionResponse {
             request_id: request.request_id.clone(),
             content,
@@ -724,11 +700,6 @@ impl CustomProvider {
     ) -> Result<CompletionResponse, AiError> {
         let url = Self::build_url(&state.endpoint, "/v1/messages");
         let (system, messages) = split_system_messages(&request.messages);
-        tracing::debug!(
-            %url, model = %request.model, messages = messages.len(),
-            has_system = system.is_some(),
-            protocol = "anthropic", "custom: complete request"
-        );
 
         let body = AnthropicRequest {
             model: request.model.clone(),
@@ -739,6 +710,9 @@ impl CustomProvider {
             stop_sequences: request.stop.clone(),
             stream: None,
         };
+
+        let raw_request = serde_json::to_string(&body).unwrap_or_default();
+        tracing::info!(%url, "custom(anthropic): HTTP request body\n{}", raw_request);
 
         let resp = self
             .client
@@ -752,15 +726,14 @@ impl CustomProvider {
             .map_err(|e| AiError::RequestFailed(e.to_string()))?;
 
         let status = resp.status();
+        let raw_resp = resp.text().await.unwrap_or_default();
+        tracing::info!(%status, "custom(anthropic): HTTP response body\n{}", raw_resp);
         if !status.is_success() {
-            let text = resp.text().await.unwrap_or_default();
-            return Err(map_oai_error(status, &text));
+            return Err(map_oai_error(status, &raw_resp));
         }
 
-        let api_resp: AnthropicResponse = resp
-            .json()
-            .await
-            .map_err(|e| AiError::RequestFailed(e.to_string()))?;
+        let api_resp: AnthropicResponse = serde_json::from_str(&raw_resp)
+            .map_err(|e| AiError::RequestFailed(format!("JSON decode: {e}")))?;
 
         let content = api_resp
             .content
@@ -771,12 +744,6 @@ impl CustomProvider {
             .join("");
 
         let total = api_resp.usage.input_tokens + api_resp.usage.output_tokens;
-        tracing::debug!(
-            response_len = content.len(),
-            input_tokens = api_resp.usage.input_tokens,
-            output_tokens = api_resp.usage.output_tokens,
-            "custom(anthropic): complete response"
-        );
 
         Ok(CompletionResponse {
             request_id: request.request_id.clone(),
@@ -798,7 +765,6 @@ impl CustomProvider {
         sender: mpsc::Sender<Result<StreamChunk, AiError>>,
     ) -> Result<(), AiError> {
         let url = Self::build_url(&state.endpoint, "/chat/completions");
-        tracing::debug!(%url, model = %request.model, protocol = "openai_chat", "custom: stream request");
 
         let body = OaiRequest {
             model: request.model.clone(),
@@ -808,6 +774,9 @@ impl CustomProvider {
             stop: request.stop.clone(),
             stream: Some(true),
         };
+
+        let raw_request = serde_json::to_string(&body).unwrap_or_default();
+        tracing::info!(%url, "custom(openai_chat): stream HTTP request body\n{}", raw_request);
 
         let resp = self
             .client
@@ -909,7 +878,6 @@ impl CustomProvider {
     ) -> Result<(), AiError> {
         let url = Self::build_url(&state.endpoint, "/responses");
         let (instructions, input) = split_instructions(&request.messages);
-        tracing::debug!(%url, model = %request.model, protocol = "openai_responses", "custom: stream request");
 
         let body = OaiResponsesRequest {
             model: request.model.clone(),
@@ -920,6 +888,9 @@ impl CustomProvider {
             stream: Some(true),
             store: Some(false),
         };
+
+        let raw_request = serde_json::to_string(&body).unwrap_or_default();
+        tracing::info!(%url, "custom(openai_responses): stream HTTP request body\n{}", raw_request);
 
         let resp = self
             .client
@@ -1020,7 +991,6 @@ impl CustomProvider {
     ) -> Result<(), AiError> {
         let url = Self::build_url(&state.endpoint, "/v1/messages");
         let (system, messages) = split_system_messages(&request.messages);
-        tracing::debug!(%url, model = %request.model, protocol = "anthropic", "custom: stream request");
 
         let body = AnthropicRequest {
             model: request.model.clone(),
@@ -1031,6 +1001,9 @@ impl CustomProvider {
             stop_sequences: request.stop.clone(),
             stream: Some(true),
         };
+
+        let raw_request = serde_json::to_string(&body).unwrap_or_default();
+        tracing::info!(%url, "custom(anthropic): stream HTTP request body\n{}", raw_request);
 
         let resp = self
             .client

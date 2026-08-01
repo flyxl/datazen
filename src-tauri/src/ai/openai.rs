@@ -259,14 +259,6 @@ impl AiProvider for OpenAiProvider {
             .ok_or_else(|| AiError::NotConfigured("OpenAI provider not initialized".into()))?;
 
         let url = Self::build_url(&state.endpoint, "/chat/completions");
-        tracing::debug!(
-            %url,
-            model = %request.model,
-            messages = request.messages.len(),
-            temperature = ?request.temperature,
-            max_tokens = ?request.max_tokens,
-            "openai: complete request"
-        );
 
         let body = ApiRequest {
             model: request.model.clone(),
@@ -276,6 +268,9 @@ impl AiProvider for OpenAiProvider {
             stop: request.stop.clone(),
             stream: Some(false),
         };
+
+        let raw_request = serde_json::to_string(&body).unwrap_or_default();
+        tracing::info!(%url, "openai: HTTP request body\n{}", raw_request);
 
         let resp = self
             .client
@@ -288,12 +283,7 @@ impl AiProvider for OpenAiProvider {
 
         let status = resp.status();
         let raw_body = resp.text().await.unwrap_or_default();
-        tracing::info!(
-            %status,
-            body_len = raw_body.len(),
-            body_preview = %&raw_body[..raw_body.len().min(500)],
-            "openai: raw HTTP response"
-        );
+        tracing::info!(%status, "openai: HTTP response body\n{}", raw_body);
 
         if !status.is_success() {
             return Err(map_api_error(status, &raw_body));
@@ -325,14 +315,6 @@ impl AiProvider for OpenAiProvider {
             })
             .unwrap_or_default();
 
-        tracing::debug!(
-            response_len = content.len(),
-            model = %api_resp.model,
-            prompt_tokens = usage.prompt_tokens,
-            completion_tokens = usage.completion_tokens,
-            "openai: complete response"
-        );
-
         Ok(CompletionResponse {
             request_id: request.request_id.clone(),
             content,
@@ -357,13 +339,6 @@ impl AiProvider for OpenAiProvider {
             .ok_or_else(|| AiError::NotConfigured("OpenAI provider not initialized".into()))?;
 
         let url = Self::build_url(&state.endpoint, "/chat/completions");
-        tracing::debug!(
-            %url,
-            model = %request.model,
-            messages = request.messages.len(),
-            "openai: stream_complete request"
-        );
-
         let body = ApiRequest {
             model: request.model.clone(),
             messages: request.messages.iter().map(|m| m.into()).collect(),
@@ -372,6 +347,9 @@ impl AiProvider for OpenAiProvider {
             stop: request.stop.clone(),
             stream: Some(true),
         };
+
+        let raw_request = serde_json::to_string(&body).unwrap_or_default();
+        tracing::info!(%url, "openai: stream HTTP request body\n{}", raw_request);
 
         let resp = self
             .client

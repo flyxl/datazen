@@ -271,10 +271,6 @@ impl AiProvider for AnthropicProvider {
 
         let url = Self::build_url(&state.endpoint, "/v1/messages");
         let (system, messages) = split_system_messages(&request.messages);
-        tracing::debug!(
-            %url, model = %request.model, messages = messages.len(),
-            has_system = system.is_some(), "anthropic: complete request"
-        );
 
         let body = ApiRequest {
             model: request.model.clone(),
@@ -285,6 +281,9 @@ impl AiProvider for AnthropicProvider {
             stop_sequences: request.stop.clone(),
             stream: None,
         };
+
+        let raw_request = serde_json::to_string(&body).unwrap_or_default();
+        tracing::info!(%url, "anthropic: HTTP request body\n{}", raw_request);
 
         let resp = self
             .client
@@ -298,15 +297,14 @@ impl AiProvider for AnthropicProvider {
             .map_err(|e| AiError::RequestFailed(e.to_string()))?;
 
         let status = resp.status();
+        let raw_resp = resp.text().await.unwrap_or_default();
+        tracing::info!(%status, "anthropic: HTTP response body\n{}", raw_resp);
         if !status.is_success() {
-            let text = resp.text().await.unwrap_or_default();
-            return Err(map_api_error(status, &text));
+            return Err(map_api_error(status, &raw_resp));
         }
 
-        let api_resp: ApiResponse = resp
-            .json()
-            .await
-            .map_err(|e| AiError::RequestFailed(e.to_string()))?;
+        let api_resp: ApiResponse = serde_json::from_str(&raw_resp)
+            .map_err(|e| AiError::RequestFailed(format!("JSON decode: {e}")))?;
 
         let content = api_resp
             .content
@@ -347,11 +345,6 @@ impl AiProvider for AnthropicProvider {
 
         let url = Self::build_url(&state.endpoint, "/v1/messages");
         let (system, messages) = split_system_messages(&request.messages);
-        tracing::debug!(
-            %url, model = %request.model, messages = messages.len(),
-            "anthropic: stream_complete request"
-        );
-
         let body = ApiRequest {
             model: request.model.clone(),
             messages,
@@ -361,6 +354,9 @@ impl AiProvider for AnthropicProvider {
             stop_sequences: request.stop.clone(),
             stream: Some(true),
         };
+
+        let raw_request = serde_json::to_string(&body).unwrap_or_default();
+        tracing::info!(%url, "anthropic: stream HTTP request body\n{}", raw_request);
 
         let resp = self
             .client
