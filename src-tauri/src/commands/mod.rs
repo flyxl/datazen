@@ -1,5 +1,6 @@
 //! Tauri IPC command surface.
 
+pub mod ai;
 mod backup;
 mod config;
 mod connection;
@@ -11,6 +12,7 @@ mod query;
 mod schema;
 mod sync;
 
+pub use ai::*;
 pub use backup::*;
 pub use config::*;
 pub use connection::*;
@@ -22,6 +24,7 @@ pub use query::*;
 pub use schema::*;
 pub use sync::*;
 
+use crate::ai::AiProviderRegistry;
 use crate::cache::SchemaCache;
 use crate::db::registry::DriverRegistry;
 use crate::services::ConnectionManager;
@@ -37,6 +40,7 @@ pub struct AppState {
     pub store: Arc<Store>,
     pub schema_cache: Arc<SchemaCache>,
     pub sync_adapters: Arc<SyncAdapterRegistry>,
+    pub ai_registry: Arc<AiProviderRegistry>,
 }
 
 pub(crate) fn log_err(cmd: &str, e: &dyn std::fmt::Display) -> String {

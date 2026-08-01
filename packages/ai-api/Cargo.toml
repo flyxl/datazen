@@ -1,0 +1,16 @@
+[package]
+name = "datazen-ai-api"
+version = "0.1.0"
+edition = "2021"
+description = "Public AI Provider API for DataZen — traits, types, and factory registration"
+
+[dependencies]
+async-trait = "0.1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "1"
+inventory = "0.3"
+tokio = { version = "1", features = ["sync"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

@@ -15,6 +15,7 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 datazen-driver-api = { path = "../packages/driver-api" }
+datazen-ai-api = { path = "../packages/ai-api" }
 inventory = "0.3"
 tauri = { version = "2", features = ["macos-private-api"] }
 tokio = { version = "1", features = ["full"] }
@@ -50,7 +51,8 @@ tauri-plugin-os = "2.3.2"
 flate2 = "1.1.9"
 russh = "0.60"
 sha2 = "0.10.9"
-reqwest = { version = "0.13.3", features = ["json", "cookies"] }
+reqwest = { version = "0.13.3", features = ["json", "cookies", "stream"] }
+futures-util = "0.3"
 redis = { version = "0.27", features = ["tokio-comp", "aio"] }
 
 # Plugin crates (optional — controlled by features)
