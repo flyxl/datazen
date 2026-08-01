@@ -1,5 +1,6 @@
 //! Tauri IPC command surface.
 
+mod adb;
 pub mod ai;
 mod backup;
 mod config;
@@ -14,6 +15,7 @@ mod schema;
 mod sync;
 mod window;
 
+pub use adb::*;
 pub use ai::*;
 pub use backup::*;
 pub use config::*;

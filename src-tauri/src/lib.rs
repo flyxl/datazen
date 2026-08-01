@@ -382,6 +382,9 @@ pub fn run() {
             commands::mcp_client_tools,
             commands::mcp_client_call_tool,
             commands::create_sub_window,
+            commands::adb_list_packages,
+            commands::adb_list_databases,
+            commands::adb_pull_database,
             rebuild_menu,
         ])
         .build(tauri::generate_context!())

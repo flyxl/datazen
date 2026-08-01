@@ -9,8 +9,8 @@
 |---|---------|------|---------|---------|------|
 | 1 | Plugin 命令基础设施（构建脚本 + plugin_init.rs 生成） | ✅ 已完成 | ✅ 3 pass | — | — |
 | 2 | Kiwi 命令迁移到插件工程 | ✅ 已完成 | ✅ 2 pass | 🔲 | — |
-| 3 | Android ADB 拉取 SQLite 数据库（后端） | 🔲 未开始 | 🔲 | 🔲 | — |
-| 4 | Android ADB 拉取 SQLite 数据库（前端） | 🔲 未开始 | 🔲 | 🔲 | — |
+| 3 | Android ADB 拉取 SQLite 数据库（后端） | ✅ 已完成 | ✅ 5 pass | 🔲 | — |
+| 4 | Android ADB 拉取 SQLite 数据库（前端） | ✅ 已完成 | ✅ TS 编译通过 | 🔲 | — |
 
 ## 状态说明
 
@@ -46,6 +46,33 @@
   - `src/components/connection/useConnectionForm.ts` — `handleKiwiLogin` 和 `loadKiwiInstances` 改用 `pluginInvoke('kiwi', ...)`
 - **单元测试**: 2 pass（`test_login_command_compiles`、`test_list_instances_command_compiles`）
 - **编译验证**: Rust `cargo check` (±kiwi) + TypeScript `tsc --noEmit` 均通过
+
+### 功能 3: Android ADB 拉取 SQLite 数据库（后端）
+- **完成时间**: 2026-08-02
+- **变更**:
+  - `src-tauri/src/commands/adb.rs`（新建）— 3 个 IPC 命令:
+    - `adb_list_packages` — 调用 `adb shell pm list packages -3` 列出第三方应用
+    - `adb_list_databases` — 调用 `adb shell run-as {pkg} find ./databases` 列出数据库文件
+    - `adb_pull_database` — 调用 `adb exec-out run-as {pkg} cat {db_path}` 拉取到本地
+  - 安全校验: 包名白名单字符集、路径遍历检测、本地路径父目录存在性
+  - `src-tauri/src/commands/mod.rs` — 注册 `adb` 模块
+  - `src-tauri/src/lib.rs` — 在 `generate_handler!` 中添加 3 个命令
+- **单元测试**: 5 pass（包名校验×2、本地路径校验×2、路径遍历拒绝）
+
+### 功能 4: Android ADB 拉取 SQLite 数据库（前端）
+- **完成时间**: 2026-08-02
+- **变更**:
+  - `src/commands/adb.ts`（新建）— ADB IPC 封装（`adbListPackages`, `adbListDatabases`, `adbPullDatabase`）
+  - `src/components/connection/FileConnectionFields.tsx` — 重写:
+    - 保留原始文件路径输入
+    - 新增 "从 Android 设备拉取" 模式切换
+    - APK 包名搜索过滤 + 下拉选择
+    - 数据库文件下拉选择
+    - 本地存放路径输入 + 拉取按钮
+    - 状态反馈（成功/失败消息）
+    - 拉取成功后自动设置数据库路径
+  - `src/locales/zh-CN.ts` + `en.ts` — 添加 17 个 ADB 翻译键
+- **编译验证**: TypeScript `tsc --noEmit` 通过
 
 ---
 
