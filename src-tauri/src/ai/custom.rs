@@ -159,6 +159,7 @@ struct AnthropicUsage {
 
 #[derive(Deserialize)]
 #[serde(tag = "type")]
+#[allow(dead_code)]
 enum AnthropicStreamEvent {
     #[serde(rename = "message_start")]
     MessageStart { message: AnthropicMsgStart },

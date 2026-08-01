@@ -17,6 +17,7 @@ use tokio::sync::RwLock;
 
 /// Cached table schema with metadata.
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct CachedSchema {
     pub schema: TableSchema,
     pub cached_at: Instant,

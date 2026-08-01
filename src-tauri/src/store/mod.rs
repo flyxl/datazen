@@ -620,5 +620,3 @@ impl Store {
             .map_err(|e| StoreError::WriteError(e.to_string()))
     }
 }
-
-pub type ConfigStore = Store;
