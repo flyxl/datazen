@@ -579,6 +579,17 @@ const en: Record<TranslationKey, string> = {
   'smartFilter.noFilters': 'No filter conditions parsed',
   'smartFilter.parsed': '{count} filter condition(s) parsed',
 
+  // ── MCP Server ──
+  'mcp.title': 'MCP Server',
+  'mcp.description': 'Run DataZen as an MCP Server so external AI tools (Claude Desktop, Cursor, etc.) can access your databases',
+  'mcp.status': 'Status',
+  'mcp.running': 'Running',
+  'mcp.stopped': 'Stopped',
+  'mcp.start': 'Start MCP Server',
+  'mcp.stop': 'Stop',
+  'mcp.transport': 'Transport',
+  'mcp.usage': 'To use DataZen as an MCP server with Claude Desktop or Cursor, add the following config:',
+
   // ── Select ──
   'select.placeholder': 'Select…',
 

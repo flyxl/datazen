@@ -577,6 +577,17 @@ const zhCN = {
   'smartFilter.noFilters': '未解析到筛选条件',
   'smartFilter.parsed': '已解析 {count} 个筛选条件',
 
+  // ── MCP Server ──
+  'mcp.title': 'MCP Server',
+  'mcp.description': '将 DataZen 作为 MCP Server 运行，让外部 AI 工具（如 Claude Desktop、Cursor）可以访问你的数据库',
+  'mcp.status': '状态',
+  'mcp.running': '运行中',
+  'mcp.stopped': '已停止',
+  'mcp.start': '启动 MCP Server',
+  'mcp.stop': '停止',
+  'mcp.transport': '传输方式',
+  'mcp.usage': '要在 Claude Desktop 或 Cursor 中使用 DataZen 作为 MCP 服务器，请添加以下配置：',
+
   // ── Select ──
   'select.placeholder': '请选择',
 

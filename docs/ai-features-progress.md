@@ -26,10 +26,12 @@
 | 2 | EXPLAIN 前端 UI (ExplainPanel) | ✅ 已完成 | ✅ TS 编译通过 | 🔲 | — |
 | 3 | AI Chat 后端 IPC | ✅ 已完成 | ✅ 编译通过 | — | — |
 | 3 | AI Chat 前端 (AiChatPanel) | ✅ 已完成 | ✅ TS 编译通过 | 🔲 | — |
-| 4 | MCP Server 基础 | 🔲 未开始 | 🔲 | 🔲 | — |
+| 7 | 智能筛选后端 (ai_parse_filter) | ✅ 已完成 | ✅ 编译通过 | — | ✅ |
+| 7 | 智能筛选前端 (NlFilterInput) | ✅ 已完成 | ✅ TS 编译通过 | ✅ | ✅ |
+| 4 | MCP Server 基础 (tools + resources + prompts) | ✅ 已完成 | ✅ 6 pass | 🔲 | — |
+| 4 | MCP 设置页面 (Settings UI) | ✅ 已完成 | ✅ TS 编译通过 | 🔲 | — |
 | 5 | Skills 系统 | 🔲 未开始 | 🔲 | 🔲 | — |
 | 6 | MCP Client | 🔲 未开始 | 🔲 | 🔲 | — |
-| 7 | 智能筛选 | 🔲 未开始 | 🔲 | 🔲 | — |
 
 ## 状态说明
 
@@ -148,6 +150,49 @@
   - `src/commands/ai.ts` — 添加 `chat` IPC 封装
   - `src/types/index.ts` — 添加 `AiChatMessage`, `AiChatSession` 类型
   - `src/locales/zh-CN.ts` + `en.ts` — Chat 翻译键
+
+## Phase 7 详细记录
+
+### 智能筛选后端 (ai_parse_filter)
+- **完成时间**: 2026-08-01
+- **变更**:
+  - `src-tauri/src/commands/ai.rs` 新增 `ai_parse_filter` 命令
+  - `src-tauri/src/ai/prompt.rs` 新增 `nl_filter_system` prompt 模板
+  - 包含列名校验和 null 值运算符规范化
+
+### 智能筛选前端 (NlFilterInput)
+- **完成时间**: 2026-08-01
+- **变更**:
+  - `src/components/ai/NlFilterInput.tsx` — 自然语言筛选输入组件
+  - `src/stores/aiStore.ts` — 筛选状态管理（解析、错误、结果）
+  - `src/stores/tableDataStore.ts` — 添加 `setFilters` 批量设置筛选
+  - `src/windows/connection/TableView.tsx` — 集成筛选组件
+  - 修复 BUG-001~008（竞态条件、表切换状态泄漏等）
+
+## Phase 4 详细记录
+
+### MCP Server 基础
+- **完成时间**: 2026-08-01
+- **变更**:
+  - `src-tauri/Cargo.toml` 添加 `rmcp` 2.2.0 + `schemars` + `tokio-util` + `urlencoding`
+  - `src-tauri/src/mcp/mod.rs` — MCP 服务器启动逻辑（stdio 传输，优雅关闭）
+  - `src-tauri/src/mcp/server.rs` — 完整 MCP 服务器实现
+    - 7 个 Tools: `list_connections`, `list_databases`, `list_tables`, `query`, `get_schema`, `explain_query`, `describe_table`
+    - 3 个 Resources: `datazen://connections`, `datazen://query-history`, `datazen://schema/{id}/{db}`
+    - 3 个 Prompts: `nl2sql`, `diagnose_error`, `explain_plan`
+    - `resolve_connection()` 自动连接机制（config ID → runtime connection）
+    - URI 编码处理（支持特殊字符的连接 ID）
+    - 6 个单元测试
+  - `src-tauri/src/commands/mcp.rs` — IPC 命令（`mcp_get_status`, `mcp_start_stdio`, `mcp_stop`）
+  - `src-tauri/src/lib.rs` — 注册 MCP 模块和 IPC 命令
+  - `src/commands/ai.ts` — 前端 MCP IPC 封装
+  - Bug 修复: MCP-001 (tools 注册), MCP-002 (连接 ID 解析), MCP-005 (优雅关闭), MCP-006 (URI 编码)
+
+### MCP 设置页面
+- **完成时间**: 2026-08-01
+- **变更**:
+  - `src/windows/settings/SettingsWindow.tsx` — 添加 MCP Server 管理区域（启停控制 + 配置示例）
+  - `src/locales/zh-CN.ts` + `en.ts` — 添加 MCP 翻译键
 
 ## 提交历史
 

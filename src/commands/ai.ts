@@ -65,6 +65,10 @@ export const aiCommands = {
     table: string;
     naturalLanguage: string;
   }) => invoke<FilterCondition[]>('ai_parse_filter', params),
+
+  mcpGetStatus: () => invoke<{ running: boolean; transport: string }>('mcp_get_status'),
+  mcpStartStdio: () => invoke<void>('mcp_start_stdio'),
+  mcpStop: () => invoke<void>('mcp_stop'),
 };
 
 export function onAiStreamChunk(
