@@ -35,8 +35,7 @@ if ('__TAURI_INTERNALS__' in globalThis) {
     const win = getCurrentWindow();
     if (win.label !== 'main') {
       void win.show().then(() => {
-        void win.setFocus();
-        setTimeout(() => void win.setFocus(), 50);
+        win.setFocus().catch(() => {});
       });
     }
   });
