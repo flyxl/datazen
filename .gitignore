@@ -52,3 +52,7 @@ e2e/.env
 .plugins-dev.json
 /.plugins/
 /plugins/
+
+# Test config (contains API keys)
+.env.test
+src-tauri/tests/.env.test
