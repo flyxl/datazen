@@ -277,15 +277,20 @@ impl AiProvider for OpenAiProvider {
             .map_err(|e| AiError::RequestFailed(e.to_string()))?;
 
         let status = resp.status();
+        let raw_body = resp.text().await.unwrap_or_default();
+        tracing::info!(
+            %status,
+            body_len = raw_body.len(),
+            body_preview = %&raw_body[..raw_body.len().min(500)],
+            "openai: raw HTTP response"
+        );
+
         if !status.is_success() {
-            let text = resp.text().await.unwrap_or_default();
-            return Err(map_api_error(status, &text));
+            return Err(map_api_error(status, &raw_body));
         }
 
-        let api_resp: ApiResponse = resp
-            .json()
-            .await
-            .map_err(|e| AiError::RequestFailed(e.to_string()))?;
+        let api_resp: ApiResponse = serde_json::from_str(&raw_body)
+            .map_err(|e| AiError::RequestFailed(format!("JSON decode: {e}")))?;
 
         let choice = api_resp
             .choices
