@@ -22,6 +22,73 @@ impl SchemaContextBuilder {
         }
     }
 
+    /// Returns only table names (no column details). Much cheaper for initial LLM calls.
+    pub async fn get_table_names(
+        &self,
+        connection_id: &str,
+        database: &str,
+    ) -> Result<(String, Vec<String>), String> {
+        let (driver, handle) = self
+            .connection_manager
+            .get_connection(connection_id)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        let db_type = format!("{:?}", driver.driver_type());
+
+        let tables = driver
+            .get_tables(&handle, database)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        let names: Vec<String> = tables.iter().map(|t| t.name.clone()).collect();
+        Ok((db_type, names))
+    }
+
+    /// Build detailed DDL for specific tables only.
+    pub async fn build_selective_context(
+        &self,
+        connection_id: &str,
+        database: &str,
+        table_names: &[String],
+        max_tokens_budget: usize,
+    ) -> Result<SqlGenerationContext, String> {
+        let (driver, handle) = self
+            .connection_manager
+            .get_connection(connection_id)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        let db_type = format!("{:?}", driver.driver_type());
+        let mut ddl_parts = Vec::new();
+        let mut token_estimate = 0;
+
+        for table_name in table_names {
+            let schema = self
+                .schema_cache
+                .get_table_schema(connection_id, database, table_name, &driver, &handle)
+                .await;
+
+            if let Ok(schema) = schema {
+                let ddl_line = format_compact_ddl(table_name, &schema);
+                let line_tokens = ddl_line.len() / 4;
+                if token_estimate + line_tokens > max_tokens_budget {
+                    break;
+                }
+                token_estimate += line_tokens;
+                ddl_parts.push(ddl_line);
+            }
+        }
+
+        Ok(SqlGenerationContext {
+            database_type: db_type,
+            database_version: None,
+            schema_ddl: ddl_parts.join("\n"),
+            current_table: None,
+            recent_queries: vec![],
+        })
+    }
+
     pub async fn build_sql_context(
         &self,
         connection_id: &str,

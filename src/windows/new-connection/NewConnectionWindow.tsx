@@ -9,11 +9,12 @@ import { useI18n } from '../../hooks/useI18n';
 import { cn } from '../../lib/cn';
 import { getUrlParam } from '../../lib/windowKind';
 import { DB_REGISTRY } from '../../lib/databaseTypes';
+import { connectionCommands } from '../../commands/connection';
 import { ConnectionFormBody } from '../../components/connection/ConnectionFormBody';
 import { useConnectionForm } from '../../components/connection/useConnectionForm';
 import type { DatabaseType } from '../../types';
 
-const DB_TYPES: { value: DatabaseType; label: string; color: string }[] = (
+const ALL_DB_TYPES: { value: DatabaseType; label: string; color: string }[] = (
   Object.entries(DB_REGISTRY) as [DatabaseType, (typeof DB_REGISTRY)[DatabaseType]][]
 ).map(([value, meta]) => ({
   value,
@@ -44,11 +45,20 @@ export function NewConnectionWindow() {
   const groups = useConnectionStore((s) => s.groups);
 
   const [editId] = useState(() => getUrlParam('editId'));
+  const [availableDrivers, setAvailableDrivers] = useState<string[] | null>(null);
 
   useEffect(() => {
     void fetchConnections();
     void fetchGroups();
+    connectionCommands.getAvailableDrivers()
+      .then(setAvailableDrivers)
+      .catch(() => setAvailableDrivers(null));
   }, [fetchConnections, fetchGroups]);
+
+  const dbTypes = useMemo(() => {
+    if (!availableDrivers) return ALL_DB_TYPES;
+    return ALL_DB_TYPES.filter((db) => availableDrivers.includes(db.value));
+  }, [availableDrivers]);
 
   const form = useConnectionForm({
     editId,
@@ -74,7 +84,7 @@ export function NewConnectionWindow() {
             {t('newConn.selectDbType')}
           </div>
           <div className="flex flex-col gap-1.5">
-            {DB_TYPES.map((db) => (
+            {dbTypes.map((db) => (
               <button
                 key={db.value}
                 type="button"

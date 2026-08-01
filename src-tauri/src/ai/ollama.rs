@@ -201,6 +201,10 @@ impl AiProvider for OllamaProvider {
             .ok_or_else(|| AiError::NotConfigured("Ollama provider not initialized".into()))?;
 
         let url = Self::build_url(&state.endpoint, "/api/chat");
+        tracing::debug!(
+            %url, model = %request.model, messages = request.messages.len(),
+            "ollama: complete request"
+        );
 
         let options = if request.temperature.is_some()
             || request.max_tokens.is_some()
@@ -277,6 +281,10 @@ impl AiProvider for OllamaProvider {
             .ok_or_else(|| AiError::NotConfigured("Ollama provider not initialized".into()))?;
 
         let url = Self::build_url(&state.endpoint, "/api/chat");
+        tracing::debug!(
+            %url, model = %request.model, messages = request.messages.len(),
+            "ollama: stream_complete request"
+        );
 
         let options = if request.temperature.is_some()
             || request.max_tokens.is_some()

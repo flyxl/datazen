@@ -268,6 +268,10 @@ impl AiProvider for AnthropicProvider {
 
         let url = Self::build_url(&state.endpoint, "/v1/messages");
         let (system, messages) = split_system_messages(&request.messages);
+        tracing::debug!(
+            %url, model = %request.model, messages = messages.len(),
+            has_system = system.is_some(), "anthropic: complete request"
+        );
 
         let body = ApiRequest {
             model: request.model.clone(),
@@ -340,6 +344,10 @@ impl AiProvider for AnthropicProvider {
 
         let url = Self::build_url(&state.endpoint, "/v1/messages");
         let (system, messages) = split_system_messages(&request.messages);
+        tracing::debug!(
+            %url, model = %request.model, messages = messages.len(),
+            "anthropic: stream_complete request"
+        );
 
         let body = ApiRequest {
             model: request.model.clone(),

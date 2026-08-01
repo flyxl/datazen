@@ -297,6 +297,15 @@
   - `src/commands/ai.ts` — analyzeQueries IPC 封装
   - `src/stores/aiStore.ts` — queryAnalysis/isAnalyzingQueries 状态
 
+## 日志覆盖
+
+| 层级 | 范围 | 日志级别 |
+|------|------|---------|
+| 后端 IPC 入口 | ai_generate_sql, ai_diagnose_error, ai_analyze_explain, ai_parse_filter, ai_chat, ai_generate_schema_doc, ai_diagnose_connection, ai_analyze_queries | `info` |
+| 后端 Provider | openai/anthropic/ollama/custom 的 complete + stream_complete | `debug` |
+| 后端自定义 Provider | fetch_remote_models + 协议细节 | `info`/`debug` |
+| 前端 Store | generateSql, diagnoseError, analyzeExplain, parseFilter, sendChatMessage | `console.debug` |
+
 ## 提交历史
 
 | 提交 | Phase | 描述 |

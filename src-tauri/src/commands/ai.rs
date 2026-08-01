@@ -51,6 +51,24 @@ pub async fn ai_get_models(
 }
 
 #[tauri::command]
+pub async fn ai_fetch_remote_models(
+    protocol: String,
+    endpoint: String,
+    api_key: String,
+) -> Result<Vec<ModelInfo>, String> {
+    let proto = match protocol.as_str() {
+        "open_ai_compatible" => crate::ai::custom::CustomProtocol::OpenAiCompatible,
+        "open_ai_responses" => crate::ai::custom::CustomProtocol::OpenAiResponses,
+        "anthropic_compatible" => crate::ai::custom::CustomProtocol::AnthropicCompatible,
+        other => return Err(format!("Unknown protocol: {other}")),
+    };
+
+    crate::ai::custom::fetch_remote_models(proto, &endpoint, &api_key)
+        .await
+        .map_err(|e| log_err("ai_fetch_remote_models", &e))
+}
+
+#[tauri::command]
 pub async fn ai_validate_config(
     state: State<'_, AppState>,
     config: AiProviderConfig,
@@ -121,13 +139,31 @@ pub async fn ai_generate_sql(
     natural_language: String,
     request_id: String,
     current_table: Option<String>,
-    recent_queries: Vec<String>,
+    recent_queries: Option<Vec<String>>,
 ) -> Result<String, String> {
+    let recent_queries = recent_queries.unwrap_or_default();
+    tracing::info!(
+        %request_id,
+        %connection_id,
+        %database,
+        input = %natural_language,
+        current_table = ?current_table,
+        recent_queries_count = recent_queries.len(),
+        "ai_generate_sql: start"
+    );
+
     let ai_config = state
         .store
         .get_ai_config()
         .await
         .ok_or_else(|| "AI 未配置".to_string())?;
+
+    tracing::debug!(
+        provider = %ai_config.provider_type,
+        model = %ai_config.model,
+        endpoint = ?ai_config.endpoint,
+        "ai_generate_sql: provider config"
+    );
 
     let provider = state
         .ai_registry
@@ -147,6 +183,11 @@ pub async fn ai_generate_sql(
         .await
         .map_err(|e| log_err("ai_generate_sql", &e))?;
 
+    tracing::debug!(
+        schema_ddl_len = context.schema_ddl.len(),
+        "ai_generate_sql: schema context built"
+    );
+
     let system_msg = PromptBuilder::nl2sql_system(&context);
     let user_msg = ChatMessage {
         role: MessageRole::User,
@@ -162,6 +203,14 @@ pub async fn ai_generate_sql(
         max_tokens: Some(2000),
         stop: None,
     };
+
+    tracing::debug!(
+        %request_id,
+        model = %request.model,
+        messages_count = request.messages.len(),
+        system_prompt_len = request.messages.first().map(|m| m.content.len()).unwrap_or(0),
+        "ai_generate_sql: sending to provider (stream)"
+    );
 
     let req_id_clone = request_id.clone();
     let handle_clone = app_handle.clone();
@@ -211,6 +260,14 @@ pub async fn ai_diagnose_error(
     sql: String,
     error_message: String,
 ) -> Result<DiagnosisResult, String> {
+    tracing::info!(
+        %connection_id,
+        %database,
+        sql_len = sql.len(),
+        error = %error_message,
+        "ai_diagnose_error: start"
+    );
+
     let ai_config = state
         .store
         .get_ai_config()
@@ -244,10 +301,22 @@ pub async fn ai_diagnose_error(
         stop: None,
     };
 
+    tracing::debug!(
+        model = %request.model,
+        messages_count = request.messages.len(),
+        "ai_diagnose_error: sending to provider"
+    );
+
     let response = provider
         .complete(&request)
         .await
         .map_err(|e| log_err("ai_diagnose_error", &e))?;
+
+    tracing::debug!(
+        response_len = response.content.len(),
+        usage = ?response.usage,
+        "ai_diagnose_error: response received"
+    );
 
     let content = strip_markdown_fences(&response.content);
     serde_json::from_str::<DiagnosisResult>(&content)
@@ -263,6 +332,12 @@ pub async fn ai_analyze_explain(
     explain_output: String,
     original_sql: String,
 ) -> Result<ExplainAnalysis, String> {
+    tracing::info!(
+        %connection_id,
+        sql_len = original_sql.len(),
+        explain_len = explain_output.len(),
+        "ai_analyze_explain: start"
+    );
     let ai_config = state
         .store
         .get_ai_config()
@@ -320,6 +395,13 @@ pub async fn ai_parse_filter(
     table: String,
     natural_language: String,
 ) -> Result<Vec<crate::services::query_executor::FilterCondition>, String> {
+    tracing::info!(
+        %connection_id,
+        %database,
+        %table,
+        input = %natural_language,
+        "ai_parse_filter: start"
+    );
     let ai_config = state
         .store
         .get_ai_config()
@@ -411,6 +493,15 @@ pub async fn ai_chat(
     request_id: String,
     include_schema: bool,
 ) -> Result<String, String> {
+    tracing::info!(
+        %request_id,
+        connection_id = ?connection_id,
+        database = ?database,
+        messages_count = messages.len(),
+        %include_schema,
+        last_user_msg = messages.last().map(|m| &m.content[..m.content.len().min(100)]).unwrap_or(""),
+        "ai_chat: start"
+    );
     let ai_config = state
         .store
         .get_ai_config()
@@ -581,6 +672,7 @@ pub async fn ai_generate_schema_doc(
     connection_id: String,
     database: String,
 ) -> Result<String, String> {
+    tracing::info!(%connection_id, %database, "ai_generate_schema_doc: start");
     let ai_config = state
         .store
         .get_ai_config()
@@ -593,9 +685,59 @@ pub async fn ai_generate_schema_doc(
         .await
         .ok_or("Provider not available")?;
 
+    // Step 1: Get table names only (no column details)
+    let (db_type, all_table_names) = state
+        .schema_context_builder
+        .get_table_names(&connection_id, &database)
+        .await
+        .map_err(|e| log_err("ai_generate_schema_doc", &e))?;
+
+    // If few tables, skip the selection step and document all
+    let selected_tables = if all_table_names.len() <= 30 {
+        all_table_names.clone()
+    } else {
+        // Ask LLM to pick the most relevant tables
+        let select_request = CompletionRequest {
+            request_id: Uuid::new_v4().to_string(),
+            model: ai_config.model.clone(),
+            messages: vec![
+                PromptBuilder::schema_doc_select_tables(&db_type, &all_table_names),
+                ChatMessage {
+                    role: MessageRole::User,
+                    content: "Select the important user tables.".into(),
+                },
+            ],
+            temperature: Some(0.0),
+            max_tokens: Some(500),
+            stop: None,
+        };
+
+        let select_response = provider
+            .complete(&select_request)
+            .await
+            .map_err(|e| log_err("ai_generate_schema_doc[select]", &e))?;
+
+        let raw = strip_markdown_fences(select_response.content.trim());
+        serde_json::from_str::<Vec<String>>(&raw).unwrap_or_else(|_| {
+            // Fallback: filter out obvious system tables
+            all_table_names
+                .iter()
+                .filter(|n| {
+                    !n.starts_with("pg_")
+                        && !n.starts_with("sql_")
+                        && !n.starts_with("sqlite_")
+                        && !n.starts_with("information_schema")
+                })
+                .take(30)
+                .cloned()
+                .collect()
+        })
+    };
+
+    // Step 2: Get detailed schema for selected tables only
     let context = state
         .schema_context_builder
-        .build_sql_context(&connection_id, &database, None, &[], 8000)
+        .build_selective_context(&connection_id, &database, &selected_tables, 8000)
         .await
         .map_err(|e| log_err("ai_generate_schema_doc", &e))?;
 
@@ -652,6 +794,7 @@ pub async fn ai_diagnose_connection(
     connection_id: String,
     error_message: String,
 ) -> Result<ConnectionDiagnosis, String> {
+    tracing::info!(%connection_id, error = %error_message, "ai_diagnose_connection: start");
     let ai_config = state
         .store
         .get_ai_config()
@@ -736,6 +879,7 @@ pub async fn ai_analyze_queries(
     state: State<'_, AppState>,
     connection_id: Option<String>,
 ) -> Result<QueryAnalysis, String> {
+    tracing::info!(connection_id = ?connection_id, "ai_analyze_queries: start");
     let ai_config = state
         .store
         .get_ai_config()

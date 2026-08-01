@@ -132,3 +132,14 @@ pub async fn get_connection_info(
         "serverVersion": config.server_version,
     }))
 }
+
+#[tauri::command]
+pub async fn get_available_drivers(state: State<'_, AppState>) -> Result<Vec<String>, String> {
+    let types = state.driver_registry.supported_types().await;
+    let names: Vec<String> = types
+        .into_iter()
+        .map(|t| serde_json::to_value(&t).unwrap_or_default())
+        .filter_map(|v| v.as_str().map(|s| s.to_string()))
+        .collect();
+    Ok(names)
+}

@@ -7,6 +7,7 @@ pub use datazen_ai_api::*;
 
 pub mod anthropic;
 pub mod context;
+pub mod custom;
 pub mod ollama;
 pub mod openai;
 pub mod prompt;

@@ -4,7 +4,6 @@ import { DataTable } from '../../components/DataTable/DataTable';
 import type { ColumnDef } from '../../components/DataTable/TableHeader';
 import { NlFilterInput } from '../../components/ai/NlFilterInput';
 import { useTableDataStore, type TableState } from '../../stores/tableDataStore';
-import { useAiStore } from '../../stores/aiStore';
 import { useI18n } from '../../hooks/useI18n';
 
 interface TableViewProps {
@@ -15,7 +14,7 @@ interface TableViewProps {
 
 export function TableView({ connectionId, database, tableName }: TableViewProps) {
   const { t } = useI18n();
-  const isAiConfigured = useAiStore((s) => s.isConfigured);
+  // NlFilterInput handles unconfigured state internally
   const tableStates = useTableDataStore((s) => s.tableStates);
   const activeTable = useTableDataStore((s) => s.activeTable);
   const loadTableData = useTableDataStore((s) => s.loadTableData);
@@ -94,13 +93,11 @@ export function TableView({ connectionId, database, tableName }: TableViewProps)
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      {isAiConfigured && (
-        <NlFilterInput
-          connectionId={connectionId}
-          database={database}
-          tableName={tableName}
-        />
-      )}
+      <NlFilterInput
+        connectionId={connectionId}
+        database={database}
+        tableName={tableName}
+      />
       <DataTable
         columns={columnDefs}
         rows={rowArrays}

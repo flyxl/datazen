@@ -26,6 +26,9 @@ export const aiCommands = {
   getModels: (providerType: AiProviderType) =>
     invoke<ModelInfo[]>('ai_get_models', { providerType }),
 
+  fetchRemoteModels: (protocol: string, endpoint: string, apiKey: string) =>
+    invoke<ModelInfo[]>('ai_fetch_remote_models', { protocol, endpoint, apiKey }),
+
   validateConfig: (config: AiProviderConfig) =>
     invoke<void>('ai_validate_config', { config }),
 

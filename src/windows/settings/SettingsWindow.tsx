@@ -1,4 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
+import {
+  Bot,
+  Code2,
+  Globe,
+  MousePointerClick,
+  Plug,
+  Server,
+  Table2,
+} from 'lucide-react';
 import { TitleBar } from '../../components/TitleBar';
 import { Button } from '../../components/ui/Button';
 import { Select } from '../../components/ui/Select';
@@ -6,6 +15,8 @@ import { useSettingsStore } from '../../stores/settingsStore';
 import { useAiStore } from '../../stores/aiStore';
 import { useThemeListener } from '../../hooks/useThemeListener';
 import { useI18n } from '../../hooks/useI18n';
+import { getUrlParam } from '../../lib/windowKind';
+import { cn } from '../../lib/cn';
 import type { AppSettings, AiProviderConfig, AiProviderType, McpServerConfig } from '../../types';
 import type { TranslationKey } from '../../locales';
 
@@ -23,6 +34,18 @@ const LANGUAGE_OPTIONS = [
   { value: 'en', label: 'English' },
 ];
 
+type SettingsSection = 'general' | 'dataBrowsing' | 'editor' | 'behavior' | 'ai' | 'mcpServer' | 'mcpClient';
+
+const SECTIONS: { id: SettingsSection; labelKey: TranslationKey; icon: React.ComponentType<{ className?: string }> }[] = [
+  { id: 'general', labelKey: 'settings.general', icon: Globe },
+  { id: 'dataBrowsing', labelKey: 'settings.dataBrowsing', icon: Table2 },
+  { id: 'editor', labelKey: 'settings.editor', icon: Code2 },
+  { id: 'behavior', labelKey: 'settings.behavior', icon: MousePointerClick },
+  { id: 'ai', labelKey: 'settings.ai', icon: Bot },
+  { id: 'mcpServer', labelKey: 'mcp.title', icon: Server },
+  { id: 'mcpClient', labelKey: 'mcpClient.title', icon: Plug },
+];
+
 export function SettingsWindow() {
   useThemeListener();
   const { t } = useI18n();
@@ -33,6 +56,14 @@ export function SettingsWindow() {
 
   const [draft, setDraft] = useState<AppSettings>(settings);
   const [saved, setSaved] = useState(false);
+
+  const [activeSection, setActiveSection] = useState<SettingsSection>(() => {
+    const fromUrl = getUrlParam('section');
+    if (fromUrl && SECTIONS.some((s) => s.id === fromUrl)) {
+      return fromUrl as SettingsSection;
+    }
+    return 'general';
+  });
 
   useEffect(() => {
     void loadSettings();
@@ -68,142 +99,159 @@ export function SettingsWindow() {
 
   return (
     <div className="flex h-screen flex-col bg-surface text-fg">
-      {/* Title bar */}
       <TitleBar title={t('win.settings')} />
 
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto px-8 py-6">
-        <h1 className="mb-6 text-lg font-semibold text-fg">{t('settings.title')}</h1>
+      <div className="flex min-h-0 flex-1">
+        {/* Sidebar */}
+        <nav className="flex w-[180px] shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-edge bg-surface-alt px-2 py-3">
+          {SECTIONS.map((sec) => {
+            const Icon = sec.icon;
+            const isActive = activeSection === sec.id;
+            return (
+              <button
+                key={sec.id}
+                type="button"
+                onClick={() => setActiveSection(sec.id)}
+                className={cn(
+                  'flex items-center gap-2.5 rounded-md px-3 py-2 text-left text-[13px] transition-colors',
+                  isActive
+                    ? 'bg-accent/15 font-medium text-accent'
+                    : 'text-fg-secondary hover:bg-surface-raised hover:text-fg',
+                )}
+              >
+                <Icon className="h-4 w-4 shrink-0" />
+                {t(sec.labelKey)}
+              </button>
+            );
+          })}
+        </nav>
 
-        <div className="mx-auto max-w-lg space-y-6">
-          {/* Language */}
-          <SettingRow label={t('settings.language')}>
-            <Select
-              value={draft.language}
-              options={LANGUAGE_OPTIONS}
-              onChange={(v) => updateField('language', v)}
-            />
-          </SettingRow>
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto px-8 py-6">
+          <div className="mx-auto max-w-lg space-y-5">
+            {activeSection === 'general' && (
+              <>
+                <SectionTitle>{t('settings.general')}</SectionTitle>
 
-          {/* Theme */}
-          <SettingRow label={t('settings.theme')}>
-            <Select
-              value={draft.theme}
-              options={themeOptions}
-              onChange={(v) => updateField('theme', v as AppSettings['theme'])}
-            />
-          </SettingRow>
+                <SettingRow label={t('settings.language')}>
+                  <Select
+                    value={draft.language}
+                    options={LANGUAGE_OPTIONS}
+                    onChange={(v) => updateField('language', v)}
+                  />
+                </SettingRow>
 
-          <Divider />
+                <SettingRow label={t('settings.theme')}>
+                  <Select
+                    value={draft.theme}
+                    options={themeOptions}
+                    onChange={(v) => updateField('theme', v as AppSettings['theme'])}
+                  />
+                </SettingRow>
+              </>
+            )}
 
-          {/* Data browsing section */}
-          <SectionTitle>{t('settings.dataBrowsing')}</SectionTitle>
+            {activeSection === 'dataBrowsing' && (
+              <>
+                <SectionTitle>{t('settings.dataBrowsing')}</SectionTitle>
 
-          <SettingRow label={t('settings.defaultPageSize')}>
-            <Select
-              value={draft.defaultPageSize}
-              options={PAGE_SIZE_OPTIONS.map((v) => ({ value: String(v), label: `${v} ${t('common.rows')}` }))}
-              onChange={(v) => updateField('defaultPageSize', Number(v))}
-            />
-          </SettingRow>
+                <SettingRow label={t('settings.defaultPageSize')}>
+                  <Select
+                    value={draft.defaultPageSize}
+                    options={PAGE_SIZE_OPTIONS.map((v) => ({ value: String(v), label: `${v} ${t('common.rows')}` }))}
+                    onChange={(v) => updateField('defaultPageSize', Number(v))}
+                  />
+                </SettingRow>
 
-          <ToggleRow
-            label={t('settings.limitSelect')}
-            checked={draft.limitSelectResults}
-            onChange={(v) => updateField('limitSelectResults', v)}
-          />
+                <ToggleRow
+                  label={t('settings.limitSelect')}
+                  checked={draft.limitSelectResults}
+                  onChange={(v) => updateField('limitSelectResults', v)}
+                />
 
-          {draft.limitSelectResults && (
-            <SettingRow label={t('settings.maxRows')}>
-              <Select
-                value={draft.queryResultLimit}
-                options={RESULT_LIMIT_OPTIONS.map((v) => ({ value: String(v), label: `${v.toLocaleString()} ${t('common.rows')}` }))}
-                onChange={(v) => updateField('queryResultLimit', Number(v))}
-              />
-            </SettingRow>
-          )}
+                {draft.limitSelectResults && (
+                  <SettingRow label={t('settings.maxRows')}>
+                    <Select
+                      value={draft.queryResultLimit}
+                      options={RESULT_LIMIT_OPTIONS.map((v) => ({ value: String(v), label: `${v.toLocaleString()} ${t('common.rows')}` }))}
+                      onChange={(v) => updateField('queryResultLimit', Number(v))}
+                    />
+                  </SettingRow>
+                )}
+              </>
+            )}
 
-          <Divider />
+            {activeSection === 'editor' && (
+              <>
+                <SectionTitle>{t('settings.editor')}</SectionTitle>
 
-          {/* Editor section */}
-          <SectionTitle>{t('settings.editor')}</SectionTitle>
+                <SettingRow label={t('settings.fontSize')}>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="range"
+                      min={10}
+                      max={24}
+                      step={1}
+                      value={draft.editorFontSize}
+                      onChange={(e) => updateField('editorFontSize', Number(e.target.value))}
+                      className="flex-1 accent-accent"
+                    />
+                    <span className="w-12 text-right text-sm tabular-nums text-fg-secondary">{draft.editorFontSize}px</span>
+                  </div>
+                </SettingRow>
 
-          <SettingRow label={t('settings.fontSize')}>
-            <div className="flex items-center gap-3">
-              <input
-                type="range"
-                min={10}
-                max={24}
-                step={1}
-                value={draft.editorFontSize}
-                onChange={(e) => updateField('editorFontSize', Number(e.target.value))}
-                className="flex-1 accent-accent"
-              />
-              <span className="w-12 text-right text-sm tabular-nums text-fg-secondary">{draft.editorFontSize}px</span>
-            </div>
-          </SettingRow>
+                <SettingRow label={t('settings.fontFamily')}>
+                  <input
+                    type="text"
+                    value={draft.editorFontFamily}
+                    onChange={(e) => updateField('editorFontFamily', e.target.value)}
+                    className="h-9 w-full rounded-md border border-edge bg-surface px-3 text-sm text-fg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/25"
+                  />
+                </SettingRow>
+              </>
+            )}
 
-          <SettingRow label={t('settings.fontFamily')}>
-            <input
-              type="text"
-              value={draft.editorFontFamily}
-              onChange={(e) => updateField('editorFontFamily', e.target.value)}
-              className="h-9 w-full rounded-md border border-edge bg-surface px-3 text-sm text-fg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/25"
-            />
-          </SettingRow>
+            {activeSection === 'behavior' && (
+              <>
+                <SectionTitle>{t('settings.behavior')}</SectionTitle>
 
-          <Divider />
+                <ToggleRow
+                  label={t('settings.confirmDelete')}
+                  checked={draft.confirmOnDelete}
+                  onChange={(v) => updateField('confirmOnDelete', v)}
+                />
 
-          {/* Behavior section */}
-          <SectionTitle>{t('settings.behavior')}</SectionTitle>
+                <ToggleRow
+                  label={t('settings.autoCommit')}
+                  checked={draft.autoCommit}
+                  onChange={(v) => updateField('autoCommit', v)}
+                />
+              </>
+            )}
 
-          <ToggleRow
-            label={t('settings.confirmDelete')}
-            checked={draft.confirmOnDelete}
-            onChange={(v) => updateField('confirmOnDelete', v)}
-          />
-
-          <ToggleRow
-            label={t('settings.autoCommit')}
-            checked={draft.autoCommit}
-            onChange={(v) => updateField('autoCommit', v)}
-          />
-
-          <Divider />
-
-          {/* AI section */}
-          <AiSettingsSection />
-
-          <Divider />
-
-          {/* MCP Server section */}
-          <McpSettingsSection />
-
-          <Divider />
-
-          {/* MCP Client section */}
-          <McpClientSection />
+            {activeSection === 'ai' && <AiSettingsSection />}
+            {activeSection === 'mcpServer' && <McpSettingsSection />}
+            {activeSection === 'mcpClient' && <McpClientSection />}
+          </div>
         </div>
       </div>
 
-      {/* Footer */}
-      <footer className="flex shrink-0 items-center justify-end gap-3 border-t border-edge px-8 py-3">
-        {saved && <span className="text-xs text-green-500">{t('settings.saved')}</span>}
-        <Button variant="secondary" onClick={() => void handleClose()}>{t('common.close')}</Button>
-        <Button variant="primary" disabled={!isDirty} onClick={() => void handleSave()}>
-          {t('common.save')}
-        </Button>
-      </footer>
+      {/* Footer - only show for general settings that use draft/save */}
+      {['general', 'dataBrowsing', 'editor', 'behavior'].includes(activeSection) && (
+        <footer className="flex shrink-0 items-center justify-end gap-3 border-t border-edge px-8 py-3">
+          {saved && <span className="text-xs text-green-500">{t('settings.saved')}</span>}
+          <Button variant="secondary" onClick={() => void handleClose()}>{t('common.close')}</Button>
+          <Button variant="primary" disabled={!isDirty} onClick={() => void handleSave()}>
+            {t('common.save')}
+          </Button>
+        </footer>
+      )}
     </div>
   );
 }
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return <h2 className="text-[13px] font-semibold uppercase tracking-wider text-fg-muted">{children}</h2>;
-}
-
-function Divider() {
-  return <div className="h-px bg-edge" />;
 }
 
 function SettingRow({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
@@ -317,6 +365,8 @@ function McpClientSection() {
     }
   };
 
+  const inputClass = 'h-9 w-full rounded-md border border-edge bg-surface px-3 text-sm text-fg outline-none focus:border-blue-500';
+
   return (
     <>
       <SectionTitle>{t('mcpClient.title')}</SectionTitle>
@@ -367,7 +417,7 @@ function McpClientSection() {
               value={draft.id}
               onChange={(e) => setDraft((d) => ({ ...d, id: e.target.value }))}
               placeholder="my-mcp-server"
-              className="h-9 w-full rounded-md border border-edge bg-surface px-3 text-sm text-fg outline-none focus:border-blue-500"
+              className={inputClass}
             />
           </SettingRow>
           <SettingRow label={t('mcpClient.serverName')}>
@@ -376,7 +426,7 @@ function McpClientSection() {
               value={draft.name}
               onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
               placeholder="My Server"
-              className="h-9 w-full rounded-md border border-edge bg-surface px-3 text-sm text-fg outline-none focus:border-blue-500"
+              className={inputClass}
             />
           </SettingRow>
           <SettingRow label={t('mcpClient.command')}>
@@ -385,7 +435,7 @@ function McpClientSection() {
               value={draft.command ?? ''}
               onChange={(e) => setDraft((d) => ({ ...d, command: e.target.value }))}
               placeholder="/usr/local/bin/my-mcp"
-              className="h-9 w-full rounded-md border border-edge bg-surface px-3 text-sm text-fg outline-none focus:border-blue-500"
+              className={inputClass}
             />
           </SettingRow>
           <SettingRow label={t('mcpClient.args')}>
@@ -428,11 +478,14 @@ function AiSettingsSection() {
     configError,
     validating,
     saving,
+    remoteModels,
+    fetchingRemoteModels,
     loadConfig,
     loadProviders,
     validateConfig,
     saveConfig,
     deleteConfig,
+    fetchRemoteModels,
     clearError,
   } = useAiStore();
 
@@ -442,6 +495,8 @@ function AiSettingsSection() {
     endpoint: '',
     model: '',
   });
+  const [customProtocol, setCustomProtocol] = useState<string>('open_ai_compatible');
+  const [manualModelInput, setManualModelInput] = useState(false);
   const [validateOk, setValidateOk] = useState(false);
   const [saveOk, setSaveOk] = useState(false);
 
@@ -457,14 +512,20 @@ function AiSettingsSection() {
         apiKey: config.apiKey ?? '',
         endpoint: config.endpoint ?? '',
         model: config.model,
+        extra: config.extra,
       });
+      if (config.providerType === 'custom' && config.extra?.protocol) {
+        setCustomProtocol(config.extra.protocol as string);
+      }
     }
   }, [config]);
+
+  const isCustom = aiDraft.providerType === 'custom';
+  const isOllama = aiDraft.providerType === 'ollama';
 
   const selectedProvider = providers.find(
     (p) => p.providerType === aiDraft.providerType,
   );
-  const isOllama = aiDraft.providerType === 'ollama';
 
   const handleProviderChange = (val: string) => {
     const providerType = val as AiProviderType;
@@ -474,15 +535,37 @@ function AiSettingsSection() {
       apiKey: '',
       endpoint: '',
       model: provider?.defaultModel ?? '',
+      extra: providerType === 'custom' ? { protocol: customProtocol } : undefined,
     });
+    setManualModelInput(false);
     setValidateOk(false);
     setSaveOk(false);
     clearError();
   };
 
+  const handleProtocolChange = (val: string) => {
+    setCustomProtocol(val);
+    setAiDraft((d) => ({
+      ...d,
+      model: '',
+      extra: { protocol: val },
+    }));
+    setManualModelInput(false);
+  };
+
+  const handleFetchModels = async () => {
+    const endpoint = aiDraft.endpoint?.trim();
+    const apiKey = aiDraft.apiKey?.trim();
+    if (!endpoint || !apiKey) return;
+    await fetchRemoteModels(customProtocol, endpoint, apiKey);
+  };
+
   const handleValidate = async () => {
     setValidateOk(false);
-    const ok = await validateConfig(aiDraft);
+    const configToValidate = isCustom
+      ? { ...aiDraft, extra: { protocol: customProtocol } }
+      : aiDraft;
+    const ok = await validateConfig(configToValidate);
     if (ok) {
       setValidateOk(true);
       setTimeout(() => setValidateOk(false), 3000);
@@ -491,7 +574,10 @@ function AiSettingsSection() {
 
   const handleSave = async () => {
     setSaveOk(false);
-    const ok = await saveConfig(aiDraft);
+    const configToSave = isCustom
+      ? { ...aiDraft, extra: { protocol: customProtocol } }
+      : aiDraft;
+    const ok = await saveConfig(configToSave);
     if (ok) {
       setSaveOk(true);
       setTimeout(() => setSaveOk(false), 3000);
@@ -506,6 +592,7 @@ function AiSettingsSection() {
       endpoint: '',
       model: providers.find((p) => p.providerType === 'open_ai')?.defaultModel ?? '',
     });
+    setManualModelInput(false);
     setSaveOk(false);
     setValidateOk(false);
   };
@@ -515,10 +602,27 @@ function AiSettingsSection() {
     label: p.displayName,
   }));
 
-  const modelOptions = (selectedProvider?.models ?? []).map((m) => ({
-    value: m.id,
-    label: m.displayName,
-  }));
+  const protocolOptions = [
+    { value: 'open_ai_compatible', label: t('settings.ai.protocolOpenAiChat') },
+    { value: 'open_ai_responses', label: t('settings.ai.protocolOpenAiResponses') },
+    { value: 'anthropic_compatible', label: t('settings.ai.protocolAnthropic') },
+  ];
+
+  const modelOptions = isCustom
+    ? remoteModels.map((m) => ({ value: m.id, label: m.displayName }))
+    : (selectedProvider?.models ?? []).map((m) => ({ value: m.id, label: m.displayName }));
+
+  const canFetchModels = isCustom && !!(aiDraft.endpoint?.trim()) && !!(aiDraft.apiKey?.trim());
+
+  const endpointPlaceholder = isCustom
+    ? customProtocol === 'anthropic_compatible'
+      ? t('settings.ai.endpointHintAnthropic')
+      : customProtocol === 'open_ai_responses'
+        ? t('settings.ai.endpointHintOpenAiResponses')
+        : t('settings.ai.endpointHintOpenAiChat')
+    : t('settings.ai.endpointPlaceholder');
+
+  const inputClass = 'h-9 w-full rounded-md border border-edge bg-surface px-3 text-sm text-fg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/25';
 
   return (
     <>
@@ -540,6 +644,16 @@ function AiSettingsSection() {
         />
       </SettingRow>
 
+      {isCustom && (
+        <SettingRow label={t('settings.ai.protocol')}>
+          <Select
+            value={customProtocol}
+            options={protocolOptions}
+            onChange={handleProtocolChange}
+          />
+        </SettingRow>
+      )}
+
       {!isOllama && (
         <SettingRow label={t('settings.ai.apiKey')}>
           <input
@@ -549,7 +663,7 @@ function AiSettingsSection() {
               setAiDraft((d) => ({ ...d, apiKey: e.target.value }))
             }
             placeholder={t('settings.ai.apiKeyPlaceholder')}
-            className="h-9 w-full rounded-md border border-edge bg-surface px-3 text-sm text-fg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/25"
+            className={inputClass}
           />
         </SettingRow>
       )}
@@ -565,17 +679,52 @@ function AiSettingsSection() {
           onChange={(e) =>
             setAiDraft((d) => ({ ...d, endpoint: e.target.value }))
           }
-          placeholder={t('settings.ai.endpointPlaceholder')}
-          className="h-9 w-full rounded-md border border-edge bg-surface px-3 text-sm text-fg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/25"
+          placeholder={endpointPlaceholder}
+          className={inputClass}
         />
       </SettingRow>
 
+      {isCustom && (
+        <p className="text-xs text-fg-muted">{t('settings.ai.customHint')}</p>
+      )}
+
+      {isCustom && (
+        <div className="flex items-center gap-2">
+          <Button
+            variant="secondary"
+            onClick={() => void handleFetchModels()}
+            disabled={!canFetchModels || fetchingRemoteModels}
+          >
+            {fetchingRemoteModels ? t('settings.ai.fetchingModels') : t('settings.ai.fetchModels')}
+          </Button>
+          <label className="flex items-center gap-1.5 text-xs text-fg-muted">
+            <input
+              type="checkbox"
+              checked={manualModelInput}
+              onChange={(e) => setManualModelInput(e.target.checked)}
+              className="rounded"
+            />
+            {t('settings.ai.modelManual')}
+          </label>
+        </div>
+      )}
+
       <SettingRow label={t('settings.ai.model')}>
-        <Select
-          value={aiDraft.model}
-          options={modelOptions}
-          onChange={(v) => setAiDraft((d) => ({ ...d, model: v }))}
-        />
+        {manualModelInput && isCustom ? (
+          <input
+            type="text"
+            value={aiDraft.model}
+            onChange={(e) => setAiDraft((d) => ({ ...d, model: e.target.value }))}
+            placeholder="e.g. gpt-4o, claude-sonnet-4-20250514"
+            className={inputClass}
+          />
+        ) : (
+          <Select
+            value={aiDraft.model}
+            options={modelOptions}
+            onChange={(v) => setAiDraft((d) => ({ ...d, model: v }))}
+          />
+        )}
       </SettingRow>
 
       {configError && (

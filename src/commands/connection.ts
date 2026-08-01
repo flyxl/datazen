@@ -26,6 +26,8 @@ export const connectionCommands = {
       { connectionId },
     ),
 
+  getAvailableDrivers: () => invoke<string[]>('get_available_drivers'),
+
   getGroups: () => invoke<string[]>('get_groups'),
 
   saveGroups: (groups: string[]) => invoke<void>('save_groups', { groups }),
