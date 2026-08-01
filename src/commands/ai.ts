@@ -7,6 +7,9 @@ import type {
   DiagnosisResult,
   ExplainAnalysis,
   FilterCondition,
+  McpClientStatus,
+  McpServerConfig,
+  McpToolInfo,
   ModelInfo,
   SkillDefinition,
   SkillListItem,
@@ -81,6 +84,18 @@ export const aiCommands = {
   skillSave: (skill: SkillDefinition) => invoke<void>('skill_save', { skill }),
   skillDelete: (skillId: string) => invoke<void>('skill_delete', { skillId }),
   skillReload: () => invoke<void>('skill_reload'),
+
+  mcpClientConnect: (config: McpServerConfig) =>
+    invoke<void>('mcp_client_connect', { config }),
+  mcpClientDisconnect: (serverId: string) =>
+    invoke<void>('mcp_client_disconnect', { serverId }),
+  mcpClientList: () => invoke<McpClientStatus[]>('mcp_client_list'),
+  mcpClientTools: () => invoke<McpToolInfo[]>('mcp_client_tools'),
+  mcpClientCallTool: (params: {
+    serverId: string;
+    toolName: string;
+    arguments: Record<string, unknown>;
+  }) => invoke<string>('mcp_client_call_tool', params),
 };
 
 export function onAiStreamChunk(

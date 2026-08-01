@@ -33,7 +33,9 @@
 | 5 | Skills 后端 (SkillRegistry + SkillExecutor) | ✅ 已完成 | ✅ 9 pass | — | — |
 | 5 | Skills 前端 (SkillsPanel + Chat集成) | ✅ 已完成 | ✅ TS 编译通过 | 🔲 | — |
 | 5 | Skills MCP 集成 (list_skills + run_skill) | ✅ 已完成 | ✅ 编译通过 | 🔲 | — |
-| 6 | MCP Client | 🔲 未开始 | 🔲 | 🔲 | — |
+| 6 | MCP Client 后端 (McpClientManager) | ✅ 已完成 | ✅ 3 pass | — | — |
+| 6 | MCP Client IPC 命令 | ✅ 已完成 | ✅ 编译通过 | — | — |
+| 6 | MCP Client 前端 (McpClientSection) | ✅ 已完成 | ✅ TS 编译通过 | 🔲 | — |
 
 ## 状态说明
 
@@ -229,6 +231,35 @@
   - `src/components/ai/SkillsPanel.tsx` — Skill 选择、变量输入、执行、结果展示
   - `src/components/ai/AiChatPanel.tsx` — Chat/Skills 标签页切换
   - `src/locales/zh-CN.ts` + `en.ts` — Skills 翻译键
+
+## Phase 6 详细记录
+
+### MCP Client 后端
+- **完成时间**: 2026-08-01
+- **变更**:
+  - `src-tauri/src/mcp/client.rs` — McpClientManager 实现
+    - connect/disconnect/disconnect_all/all_tools/call_tool/connected_servers
+    - stdio transport 支持（TokioChildProcess）
+    - 30s 连接超时保护
+    - connect 失败时进程清理
+    - call_tool 读锁范围优化（clone peer 后释放锁）
+    - 非 Object arguments 校验
+    - 3 个单元测试
+  - `src-tauri/src/commands/mcp.rs` — 5 个 IPC 命令
+    - mcp_client_connect/disconnect/list/tools/call_tool
+    - is_error 检查：工具返回错误时前端收到 Err
+  - `src-tauri/src/commands/mod.rs` — AppState 添加 mcp_client_manager
+  - `src-tauri/src/lib.rs` — 初始化 McpClientManager + 注册命令 + 退出时 disconnect_all
+  - 依赖: rmcp 增加 client + transport-child-process features
+
+### MCP Client 前端
+- **完成时间**: 2026-08-01
+- **变更**:
+  - `src/types/index.ts` — McpServerConfig/McpClientStatus/McpToolInfo 类型
+  - `src/commands/ai.ts` — MCP Client IPC 封装
+  - `src/stores/aiStore.ts` — MCP Client 状态管理 + connectMcpServer 失败时 rethrow
+  - `src/windows/settings/SettingsWindow.tsx` — McpClientSection（添加/连接/断开/空状态）
+  - `src/locales/zh-CN.ts` + `en.ts` — MCP Client 翻译键
 
 ## 提交历史
 

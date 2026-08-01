@@ -1,8 +1,10 @@
 //! MCP Server module — exposes DataZen's database capabilities via MCP protocol.
 
+pub mod client;
 mod server;
 pub mod skills;
 
+pub use client::{McpClientManager, McpServerConfig, McpToolInfo};
 pub use server::DataZenMcpServer;
 pub use skills::{SkillDefinition, SkillExecutor, SkillListItem, SkillRegistry};
 

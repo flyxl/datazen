@@ -301,6 +301,8 @@ async fn create_app_state_headless() -> Result<AppState, String> {
         tracing::warn!("Failed to load skills: {e}");
     }
 
+    let mcp_client_manager = Arc::new(mcp::McpClientManager::new());
+
     Ok(AppState {
         driver_registry: registry,
         connection_manager,
@@ -310,6 +312,7 @@ async fn create_app_state_headless() -> Result<AppState, String> {
         ai_registry,
         schema_context_builder,
         skill_registry,
+        mcp_client_manager,
     })
 }
 
@@ -415,6 +418,8 @@ pub fn run() {
                     tracing::warn!("Failed to load skills: {e}");
                 }
 
+                let mcp_client_manager = Arc::new(mcp::McpClientManager::new());
+
                 Ok::<AppState, String>(AppState {
                     driver_registry: registry,
                     connection_manager,
@@ -424,6 +429,7 @@ pub fn run() {
                     ai_registry,
                     schema_context_builder,
                     skill_registry,
+                    mcp_client_manager,
                 })
             })?;
             tracing::info!("[startup]   block_on total: {:?}", t0.elapsed());
@@ -517,8 +523,20 @@ pub fn run() {
             commands::skill_save,
             commands::skill_delete,
             commands::skill_reload,
+            commands::mcp_client_connect,
+            commands::mcp_client_disconnect,
+            commands::mcp_client_list,
+            commands::mcp_client_tools,
+            commands::mcp_client_call_tool,
             rebuild_menu,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app_handle, event| {
+            if let tauri::RunEvent::ExitRequested { .. } = event {
+                let state = app_handle.state::<AppState>();
+                let mgr = state.mcp_client_manager.clone();
+                tauri::async_runtime::block_on(mgr.disconnect_all());
+            }
+        });
 }
