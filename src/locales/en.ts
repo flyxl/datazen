@@ -521,7 +521,6 @@ const en: Record<TranslationKey, string> = {
   'settings.ai.delete': 'Clear Config',
   'settings.ai.notConfigured': 'Not configured',
   'settings.ai.configured': 'Configured',
-  'settings.ai.ollamaHint': 'Ollama requires no API Key — ensure the Ollama service is running',
   'settings.ai.description': 'Configure an AI provider to enable NL-to-SQL, error diagnosis, and other smart features',
   'settings.ai.goToConfigure': 'Go to Settings',
   'settings.ai.protocol': 'Protocol',
