@@ -402,10 +402,7 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
   },
 
   deleteSelectedRows: async () => {
-    updateActive(get, set, (ts) => ({
-      rows: ts.rows.filter((_, i) => !ts.selectedRows.has(i)),
-      selectedRows: new Set(),
-    }));
+    throw new Error('Row deletion requires backend support (not yet implemented)');
   },
 
   closeTable: (table: string) => {
