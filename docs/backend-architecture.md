@@ -3157,3 +3157,183 @@ KeyValueDriver (KV 专用, db/traits/kv.rs)
 4. 按需覆盖：`skip_count_query`、`format_sql_literal`、`build_update_sql`
 5. 新型 IPC 命令放入对应 `commands/*.rs` 子模块
 6. `lib.rs` — `generate_handler` 注册新命令
+
+---
+
+## 十三、AI 模块架构
+
+### 13.1 概述
+
+AI 模块采用与数据库驱动相同的 **Provider 抽象 + Registry** 模式，通过 `packages/ai-api` 公共 crate 定义统一接口，支持多种 LLM Provider。
+
+### 13.2 架构分层
+
+```
+packages/ai-api/                    # 公共 AI Provider API crate
+├── src/
+│   ├── lib.rs                      # AI_PROTOCOL_VERSION + re-exports
+│   ├── traits.rs                   # AiProvider trait (async_trait, Send+Sync)
+│   ├── types.rs                    # AiProviderConfig, AiMessage, AiError, ModelInfo
+│   └── factory.rs                  # AiProviderFactory + inventory + register_ai_provider!
+
+src-tauri/src/ai/                   # 内置 AI Provider 实现
+├── mod.rs                          # 模块组织 + init_ai_providers()
+├── openai.rs                       # OpenAI Provider (Chat Completions + Responses API)
+├── anthropic.rs                    # Anthropic Provider (Messages API)
+├── custom.rs                       # 自定义 OpenAI 兼容 Provider (含远程模型列表获取)
+├── registry.rs                     # AiProviderRegistry (动态注册/获取)
+├── context.rs                      # SchemaContextBuilder (DDL 上下文, token 预算控制)
+└── prompt.rs                       # PromptBuilder (多语言 prompt 模板, 随 i18n 切换)
+```
+
+### 13.3 AiProvider Trait
+
+```rust
+#[async_trait]
+pub trait AiProvider: Send + Sync {
+    fn provider_type(&self) -> &str;
+    async fn initialize(&self, config: &AiProviderConfig) -> Result<(), AiError>;
+    async fn complete(&self, messages: &[AiMessage]) -> Result<String, AiError>;
+    async fn stream_complete(
+        &self,
+        messages: &[AiMessage],
+        tx: tokio::sync::mpsc::Sender<String>,
+    ) -> Result<(), AiError>;
+    async fn list_models(&self) -> Result<Vec<ModelInfo>, AiError>;
+}
+```
+
+### 13.4 AI IPC 命令
+
+| 命令 | 功能 | 流式 |
+|------|------|------|
+| `ai_generate_sql` | NL2SQL | ✅ Tauri Events |
+| `ai_diagnose_error` | SQL 错误诊断 | ❌ |
+| `ai_analyze_explain` | EXPLAIN 计划 AI 分析 | ❌ |
+| `ai_chat` | AI 对话 | ✅ Tauri Events |
+| `ai_parse_filter` | 自然语言筛选解析 | ❌ |
+| `ai_generate_schema_doc` | Schema 文档生成 | ❌ |
+| `ai_diagnose_connection` | 连接故障排查 | ❌ |
+| `ai_analyze_queries` | 查询历史分析 | ❌ |
+| `ai_list_skills` | 列出所有 Skills | ❌ |
+| `ai_execute_skill` | 执行 Skill | ❌ |
+| `ai_save_skill` / `ai_delete_skill` | Skill CRUD | ❌ |
+
+### 13.5 SchemaContextBuilder
+
+构建紧凑 DDL 作为 LLM 上下文：
+- 首次仅发送表名列表（减少 token 消耗）
+- LLM 需要时再补充详细列/约束信息
+- 支持 token 预算控制
+
+### 13.6 PromptBuilder
+
+多语言 prompt 模板管理：
+- 模板跟随应用 i18n 设置自动切换语言
+- 涵盖 NL2SQL、错误诊断、EXPLAIN 分析、Schema 文档、连接故障排查等场景
+
+---
+
+## 十四、MCP（Model Context Protocol）模块
+
+### 14.1 MCP Server
+
+DataZen 作为 MCP Server 暴露数据库操作能力给外部 LLM 应用（Claude Desktop、Cursor 等）。
+
+```
+src-tauri/src/mcp/
+├── mod.rs          # MCP 启动/停止, 状态管理
+├── server.rs       # MCP Server 实现
+├── client.rs       # MCP Client 管理
+└── skills.rs       # Skills 系统
+```
+
+**Server Tools:**
+- `list_connections` / `list_databases` / `list_tables` / `query` / `get_schema`
+- `explain_query` / `describe_table` / `list_skills` / `run_skill`
+
+**Server Resources:**
+- `datazen://connections` / `datazen://query-history`
+- `datazen://schema/{id}/{db}` / `datazen://skills`
+
+**Server Prompts:**
+- `nl2sql` / `diagnose_error` / `explain_plan`
+
+### 14.2 MCP Client
+
+连接外部 MCP Server，获取工具能力：
+- stdio transport 支持（TokioChildProcess）
+- 30s 连接超时保护
+- connect 失败时自动进程清理
+
+### 14.3 Skills 系统
+
+用户自定义 AI 工作流：
+- YAML 格式定义
+- 支持 `query`（SQL 查询）和 `ai`（LLM 推理）两种步骤类型
+- 变量替换（`{{var}}` + `{{steps.id.result}}` + 内置变量）
+- 路径遍历防护
+- 查询结果行数限制（1000）
+
+---
+
+## 十五、结构化错误处理
+
+### 15.1 CommandError 枚举
+
+所有 IPC 命令使用统一的 `CommandError` 枚举（`src-tauri/src/commands/error.rs`）：
+
+```rust
+pub enum CommandError {
+    Store(StoreError),
+    Connection(ConnectionError),
+    Driver(DriverError),
+    Ai(AiError),
+    Io(std::io::Error),
+    Json(serde_json::Error),
+    NotFound(String),
+    NotConfigured(String),
+    Validation(String),
+    Internal(String),
+}
+```
+
+- 实现 `serde::Serialize` 序列化为纯字符串，保持前端兼容
+- 通过 `From<T>` 实现自动类型转换
+- `CmdExt` trait 提供 `.cmd_err(cmd)` 方法统一日志记录和错误转换
+
+### 15.2 AppState 结构
+
+```rust
+pub struct AppState {
+    pub driver_registry: Arc<DriverRegistry>,
+    pub connection_manager: Arc<ConnectionManager>,
+    pub store: Arc<Store>,
+    pub schema_cache: Arc<SchemaCache>,
+    pub sync_adapters: Arc<SyncAdapterRegistry>,
+    pub ai_registry: Arc<AiProviderRegistry>,
+    pub schema_context_builder: Arc<SchemaContextBuilder>,
+    pub skill_registry: Arc<SkillRegistry>,
+    pub mcp_client_manager: Arc<McpClientManager>,
+}
+```
+
+`build_app_state()` 函数统一初始化，GUI 和 headless MCP 模式共享。
+
+---
+
+## 十六、窗口管理
+
+### 16.1 Rust 端窗口创建
+
+所有子窗口通过 Rust 命令 `create_sub_window` 创建（`src-tauri/src/commands/window.rs`），确保：
+- macOS `accept_first_mouse` 在原生层正确设置
+- 统一的窗口默认参数（decorations、transparent 等）
+- 前端通过 `invoke('create_sub_window', { options })` 调用
+
+### 16.2 安全
+
+- CSP（Content Security Policy）限制脚本/连接源
+- Argon2id 密码派生（替代原有双轮 SHA-256）
+- 基本路径遍历防护（file 命令）
+- AI API Key 加密存储在 `ai_config.enc`
