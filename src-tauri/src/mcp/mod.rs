@@ -1,8 +1,10 @@
 //! MCP Server module — exposes DataZen's database capabilities via MCP protocol.
 
 mod server;
+pub mod skills;
 
 pub use server::DataZenMcpServer;
+pub use skills::{SkillDefinition, SkillExecutor, SkillListItem, SkillRegistry};
 
 use crate::commands::AppState;
 use std::sync::Arc;

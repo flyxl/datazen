@@ -590,6 +590,14 @@ const en: Record<TranslationKey, string> = {
   'mcp.transport': 'Transport',
   'mcp.usage': 'To use DataZen as an MCP server with Claude Desktop or Cursor, add the following config:',
 
+  // ── Skills ──
+  'skills.title': 'Skills',
+  'skills.loading': 'Loading skills…',
+  'skills.empty': 'No skills defined. Place YAML files in the skills/ folder.',
+  'skills.run': 'Run',
+  'skills.running': 'Running…',
+  'skills.result': 'Result',
+
   // ── Select ──
   'select.placeholder': 'Select…',
 

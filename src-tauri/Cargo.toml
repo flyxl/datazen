@@ -62,6 +62,8 @@ rmcp = { version = "2.2.0", features = ["server", "transport-io", "transport-str
 schemars = "1.2.2"
 tokio-util = { version = "0.7.19", features = ["rt"] }
 dirs = "6.0.0"
+serde_yaml = "0.9.34"
+regex = "1.13.1"
 
 [features]
 default = ["plugin-kiwi", "plugin-olap"]

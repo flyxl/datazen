@@ -30,7 +30,9 @@
 | 7 | 智能筛选前端 (NlFilterInput) | ✅ 已完成 | ✅ TS 编译通过 | ✅ | ✅ |
 | 4 | MCP Server 基础 (tools + resources + prompts) | ✅ 已完成 | ✅ 6 pass | 🔲 | — |
 | 4 | MCP 设置页面 (Settings UI) | ✅ 已完成 | ✅ TS 编译通过 | 🔲 | — |
-| 5 | Skills 系统 | 🔲 未开始 | 🔲 | 🔲 | — |
+| 5 | Skills 后端 (SkillRegistry + SkillExecutor) | ✅ 已完成 | ✅ 9 pass | — | — |
+| 5 | Skills 前端 (SkillsPanel + Chat集成) | ✅ 已完成 | ✅ TS 编译通过 | 🔲 | — |
+| 5 | Skills MCP 集成 (list_skills + run_skill) | ✅ 已完成 | ✅ 编译通过 | 🔲 | — |
 | 6 | MCP Client | 🔲 未开始 | 🔲 | 🔲 | — |
 
 ## 状态说明
@@ -193,6 +195,40 @@
 - **变更**:
   - `src/windows/settings/SettingsWindow.tsx` — 添加 MCP Server 管理区域（启停控制 + 配置示例）
   - `src/locales/zh-CN.ts` + `en.ts` — 添加 MCP 翻译键
+
+## Phase 5 详细记录
+
+### Skills 后端
+- **完成时间**: 2026-08-01
+- **变更**:
+  - `src-tauri/src/mcp/skills.rs` — 完整 Skills 系统实现
+    - YAML 格式的 Skill 定义（query + ai 步骤类型）
+    - SkillRegistry — 从文件系统加载/保存/删除/列表
+    - SkillExecutor — 顺序执行步骤（SQL 查询 + AI 推理）
+    - SkillContext — 变量替换（{{var}} + {{steps.id.result}} + 内置变量）
+    - 路径遍历防护（ID 校验）
+    - 必填变量验证 + 默认值填充
+    - 查询结果行数限制（1000）
+    - 9 个单元测试
+  - `src-tauri/src/commands/ai.rs` — 5 个 IPC 命令（list/execute/save/delete/reload）
+  - `src-tauri/src/commands/mod.rs` — AppState 添加 skill_registry
+  - `src-tauri/src/lib.rs` — 初始化 SkillRegistry + 注册命令
+  - 依赖: serde_yaml, regex
+
+### Skills MCP 集成
+- **完成时间**: 2026-08-01
+- **变更**:
+  - `src-tauri/src/mcp/server.rs` — 新增 `list_skills` + `run_skill` tools + `datazen://skills` resource
+
+### Skills 前端
+- **完成时间**: 2026-08-01
+- **变更**:
+  - `src/types/index.ts` — Skill 相关类型定义
+  - `src/commands/ai.ts` — Skill IPC 封装
+  - `src/stores/aiStore.ts` — Skill 状态管理
+  - `src/components/ai/SkillsPanel.tsx` — Skill 选择、变量输入、执行、结果展示
+  - `src/components/ai/AiChatPanel.tsx` — Chat/Skills 标签页切换
+  - `src/locales/zh-CN.ts` + `en.ts` — Skills 翻译键
 
 ## 提交历史
 

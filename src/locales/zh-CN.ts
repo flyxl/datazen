@@ -588,6 +588,14 @@ const zhCN = {
   'mcp.transport': '传输方式',
   'mcp.usage': '要在 Claude Desktop 或 Cursor 中使用 DataZen 作为 MCP 服务器，请添加以下配置：',
 
+  // ── Skills ──
+  'skills.title': '技能',
+  'skills.loading': '加载中…',
+  'skills.empty': '暂无技能定义。请将 YAML 文件放入 skills/ 文件夹。',
+  'skills.run': '运行',
+  'skills.running': '运行中…',
+  'skills.result': '结果',
+
   // ── Select ──
   'select.placeholder': '请选择',
 

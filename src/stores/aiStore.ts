@@ -10,6 +10,7 @@ import type {
   FilterCondition,
   ModelInfo,
   ProviderListItem,
+  SkillListItem,
   StreamChunkPayload,
 } from '../types';
 
@@ -104,6 +105,20 @@ interface AiStore {
 
   handleStreamChunk: (payload: StreamChunkPayload) => void;
   setupEventListeners: () => Promise<() => void>;
+
+  skills: SkillListItem[];
+  skillsLoading: boolean;
+  skillExecutionResult: string | null;
+  isExecutingSkill: boolean;
+  skillError: string | null;
+
+  loadSkills: () => Promise<void>;
+  executeSkill: (params: {
+    skillId: string;
+    variables: Record<string, unknown>;
+    connectionId?: string;
+  }) => Promise<void>;
+  clearSkillResult: () => void;
 }
 
 export const useAiStore = create<AiStore>((set, get) => ({
@@ -468,4 +483,33 @@ export const useAiStore = create<AiStore>((set, get) => ({
       unError();
     };
   },
+
+  skills: [],
+  skillsLoading: false,
+  skillExecutionResult: null,
+  isExecutingSkill: false,
+  skillError: null,
+
+  loadSkills: async () => {
+    set({ skillsLoading: true });
+    try {
+      const skills = await aiCommands.skillList();
+      set({ skills, skillsLoading: false });
+    } catch (e) {
+      set({ skillsLoading: false, skillError: String(e) });
+    }
+  },
+
+  executeSkill: async ({ skillId, variables, connectionId }) => {
+    set({ isExecutingSkill: true, skillExecutionResult: null, skillError: null });
+    try {
+      const result = await aiCommands.skillExecute({ skillId, variables, connectionId });
+      set({ isExecutingSkill: false, skillExecutionResult: result });
+    } catch (e) {
+      set({ isExecutingSkill: false, skillError: String(e) });
+    }
+  },
+
+  clearSkillResult: () =>
+    set({ skillExecutionResult: null, skillError: null }),
 }));

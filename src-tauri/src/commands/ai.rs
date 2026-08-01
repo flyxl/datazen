@@ -520,6 +520,59 @@ fn strip_markdown_fences(s: &str) -> String {
     trimmed.to_string()
 }
 
+// ─── Skill IPC commands ───
+
+#[tauri::command]
+pub async fn skill_list(
+    state: State<'_, AppState>,
+) -> Result<Vec<crate::mcp::SkillListItem>, String> {
+    Ok(state.skill_registry.list().await)
+}
+
+#[tauri::command]
+pub async fn skill_execute(
+    state: State<'_, AppState>,
+    skill_id: String,
+    variables: serde_json::Value,
+    connection_id: Option<String>,
+) -> Result<String, String> {
+    let skill = state
+        .skill_registry
+        .get(&skill_id)
+        .await
+        .ok_or_else(|| format!("Skill '{skill_id}' not found"))?;
+
+    crate::mcp::SkillExecutor::execute(
+        &skill,
+        &state,
+        connection_id.as_deref(),
+        &variables,
+    )
+    .await
+    .map_err(|e| log_err("skill_execute", &e))
+}
+
+#[tauri::command]
+pub async fn skill_save(
+    state: State<'_, AppState>,
+    skill: crate::mcp::SkillDefinition,
+) -> Result<(), String> {
+    state.skill_registry.save_skill(&skill).await
+}
+
+#[tauri::command]
+pub async fn skill_delete(
+    state: State<'_, AppState>,
+    skill_id: String,
+) -> Result<(), String> {
+    state.skill_registry.delete_skill(&skill_id).await
+}
+
+#[tauri::command]
+pub async fn skill_reload(state: State<'_, AppState>) -> Result<(), String> {
+    state.skill_registry.load_all().await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
