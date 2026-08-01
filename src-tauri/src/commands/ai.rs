@@ -7,7 +7,7 @@ use tauri::{AppHandle, Emitter, State};
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
-fn language_instruction(lang: &str) -> String {
+fn language_hint(lang: &str) -> String {
     let lang_name = match lang {
         "zh-CN" => "Chinese (Simplified)",
         "zh-TW" => "Chinese (Traditional)",
@@ -16,12 +16,12 @@ fn language_instruction(lang: &str) -> String {
         "ko" => "Korean",
         _ => lang,
     };
-    format!("\n\nIMPORTANT: Respond in {lang_name}.")
+    format!("\n\nIMPORTANT: All free-text content in your response MUST be in {lang_name}.")
 }
 
-fn append_language(msg: &mut ChatMessage, lang: &str) {
-    if msg.role == MessageRole::System {
-        msg.content.push_str(&language_instruction(lang));
+fn inject_language_hint(messages: &mut [ChatMessage], lang: &str) {
+    if let Some(sys) = messages.iter_mut().find(|m| m.role == MessageRole::System) {
+        sys.content.push_str(&language_hint(lang));
     }
 }
 
@@ -206,7 +206,8 @@ pub async fn ai_generate_sql(
         "ai_generate_sql: schema context built"
     );
 
-    let system_msg = PromptBuilder::nl2sql_system(&context);
+    let lang = state.store.get_settings().await.language;
+    let system_msg = PromptBuilder::nl2sql_system(&context, &lang);
     let user_msg = ChatMessage {
         role: MessageRole::User,
         content: natural_language,
@@ -221,8 +222,7 @@ pub async fn ai_generate_sql(
         max_tokens: Some(ai_config.max_tokens),
         stop: None,
     };
-    let lang = state.store.get_settings().await.language;
-    request.messages.iter_mut().for_each(|m| append_language(m, &lang));
+    inject_language_hint(&mut request.messages, &lang);
 
     tracing::debug!(
         %request_id,
@@ -306,11 +306,12 @@ pub async fn ai_diagnose_error(
         .await
         .map_err(|e| log_err("ai_diagnose_error", &e))?;
 
+    let lang = state.store.get_settings().await.language;
     let mut request = CompletionRequest {
         request_id: Uuid::new_v4().to_string(),
         model: ai_config.model.clone(),
         messages: vec![
-            PromptBuilder::diagnose_system(&context.database_type, &context.schema_ddl),
+            PromptBuilder::diagnose_system(&context.database_type, &context.schema_ddl, &lang),
             ChatMessage {
                 role: MessageRole::User,
                 content: format!("SQL:\n```\n{sql}\n```\n\nError:\n{error_message}"),
@@ -320,8 +321,7 @@ pub async fn ai_diagnose_error(
         max_tokens: Some(ai_config.max_tokens),
         stop: None,
     };
-    let lang = state.store.get_settings().await.language;
-    request.messages.iter_mut().for_each(|m| append_language(m, &lang));
+    inject_language_hint(&mut request.messages, &lang);
 
     tracing::debug!(
         model = %request.model,
@@ -389,11 +389,12 @@ pub async fn ai_analyze_explain(
 
     let db_type = format!("{:?}", driver.driver_type());
 
+    let lang = state.store.get_settings().await.language;
     let mut request = CompletionRequest {
         request_id: Uuid::new_v4().to_string(),
         model: ai_config.model.clone(),
         messages: vec![
-            PromptBuilder::explain_analysis_system(&db_type),
+            PromptBuilder::explain_analysis_system(&db_type, &lang),
             ChatMessage {
                 role: MessageRole::User,
                 content: format!(
@@ -405,8 +406,7 @@ pub async fn ai_analyze_explain(
         max_tokens: Some(ai_config.max_tokens),
         stop: None,
     };
-    let lang = state.store.get_settings().await.language;
-    request.messages.iter_mut().for_each(|m| append_language(m, &lang));
+    inject_language_hint(&mut request.messages, &lang);
 
     for (i, msg) in request.messages.iter().enumerate() {
         tracing::info!(
@@ -505,11 +505,12 @@ pub async fn ai_parse_filter(
         .collect::<Vec<_>>()
         .join("\n");
 
+    let lang = state.store.get_settings().await.language;
     let mut request = CompletionRequest {
         request_id: Uuid::new_v4().to_string(),
         model: ai_config.model.clone(),
         messages: vec![
-            PromptBuilder::nl_filter_system(&db_type, &columns_ddl),
+            PromptBuilder::nl_filter_system(&db_type, &columns_ddl, &lang),
             ChatMessage {
                 role: MessageRole::User,
                 content: natural_language,
@@ -519,8 +520,7 @@ pub async fn ai_parse_filter(
         max_tokens: Some(ai_config.max_tokens),
         stop: None,
     };
-    let lang = state.store.get_settings().await.language;
-    request.messages.iter_mut().for_each(|m| append_language(m, &lang));
+    inject_language_hint(&mut request.messages, &lang);
 
     let response = provider
         .complete(&request)
@@ -582,6 +582,8 @@ pub async fn ai_chat(
         .await
         .ok_or("Provider not available")?;
 
+    let lang = state.store.get_settings().await.language;
+    let is_zh = lang.starts_with("zh");
     let mut full_messages: Vec<ChatMessage> = Vec::new();
 
     if include_schema {
@@ -596,12 +598,14 @@ pub async fn ai_chat(
                     .build_sql_context(conn_id, db, None, &[], 4000)
                     .await
                 {
+                    let desc = if is_zh {
+                        format!("你是一个有用的数据库助手。用户已连接到 {db_type} 数据库。")
+                    } else {
+                        format!("You are a helpful database assistant. The user is connected to a {db_type} database.")
+                    };
                     full_messages.push(ChatMessage {
                         role: MessageRole::System,
-                        content: format!(
-                            "You are a helpful database assistant. The user is connected to a {db_type} database.\n\nSchema:\n{}",
-                            context.schema_ddl
-                        ),
+                        content: format!("{desc}\n\nSchema:\n{}", context.schema_ddl),
                     });
                 }
             }
@@ -609,9 +613,14 @@ pub async fn ai_chat(
     }
 
     if full_messages.is_empty() {
+        let desc = if is_zh {
+            "你是一个有用的数据库助手。帮助用户处理 SQL 查询、数据库概念和数据分析。编写 SQL 时请使用正确的格式并解释你的思路。"
+        } else {
+            "You are a helpful database assistant. Help the user with SQL queries, database concepts, and data analysis. When writing SQL, use proper formatting and explain your reasoning."
+        };
         full_messages.push(ChatMessage {
             role: MessageRole::System,
-            content: "You are a helpful database assistant. Help the user with SQL queries, database concepts, and data analysis. When writing SQL, use proper formatting and explain your reasoning.".to_string(),
+            content: desc.to_string(),
         });
     }
 
@@ -626,8 +635,7 @@ pub async fn ai_chat(
         max_tokens: Some(ai_config.max_tokens),
         stop: None,
     };
-    let lang = state.store.get_settings().await.language;
-    request.messages.iter_mut().for_each(|m| append_language(m, &lang));
+    inject_language_hint(&mut request.messages, &lang);
 
     let req_id_clone = request_id.clone();
     let handle_clone = app_handle.clone();
@@ -762,11 +770,12 @@ pub async fn ai_generate_schema_doc(
         .await
         .map_err(|e| log_err("ai_generate_schema_doc", &e))?;
 
+    let lang = state.store.get_settings().await.language;
+
     // If few tables, skip the selection step and document all
     let selected_tables = if all_table_names.len() <= 30 {
         all_table_names.clone()
     } else {
-        // Ask LLM to pick the most relevant tables
         let select_request = CompletionRequest {
             request_id: Uuid::new_v4().to_string(),
             model: ai_config.model.clone(),
@@ -811,22 +820,26 @@ pub async fn ai_generate_schema_doc(
         .await
         .map_err(|e| log_err("ai_generate_schema_doc", &e))?;
 
+    let user_content = if lang.starts_with("zh") {
+        "请为上面的数据库 schema 生成文档。"
+    } else {
+        "Generate documentation for the database schema above."
+    };
     let mut request = CompletionRequest {
         request_id: Uuid::new_v4().to_string(),
         model: ai_config.model.clone(),
         messages: vec![
-            PromptBuilder::schema_doc_system(&context.database_type, &context.schema_ddl),
+            PromptBuilder::schema_doc_system(&context.database_type, &context.schema_ddl, &lang),
             ChatMessage {
                 role: MessageRole::User,
-                content: "Generate documentation for the database schema above.".into(),
+                content: user_content.into(),
             },
         ],
         temperature: Some(0.3),
         max_tokens: Some(ai_config.max_tokens),
         stop: None,
     };
-    let lang = state.store.get_settings().await.language;
-    request.messages.iter_mut().for_each(|m| append_language(m, &lang));
+    inject_language_hint(&mut request.messages, &lang);
 
     let response = provider
         .complete(&request)
@@ -899,11 +912,12 @@ pub async fn ai_diagnose_connection(
         conn_info.connection_timeout,
     );
 
+    let lang = state.store.get_settings().await.language;
     let mut request = CompletionRequest {
         request_id: Uuid::new_v4().to_string(),
         model: ai_config.model.clone(),
         messages: vec![
-            PromptBuilder::connection_diagnose_system(),
+            PromptBuilder::connection_diagnose_system(&lang),
             ChatMessage {
                 role: MessageRole::User,
                 content: format!(
@@ -915,8 +929,7 @@ pub async fn ai_diagnose_connection(
         max_tokens: Some(ai_config.max_tokens),
         stop: None,
     };
-    let lang = state.store.get_settings().await.language;
-    request.messages.iter_mut().for_each(|m| append_language(m, &lang));
+    inject_language_hint(&mut request.messages, &lang);
 
     let response = provider
         .complete(&request)
@@ -987,11 +1000,12 @@ pub async fn ai_analyze_queries(
         .collect::<Vec<_>>()
         .join("\n---\n");
 
+    let lang = state.store.get_settings().await.language;
     let mut request = CompletionRequest {
         request_id: Uuid::new_v4().to_string(),
         model: ai_config.model.clone(),
         messages: vec![
-            PromptBuilder::query_summary_system(),
+            PromptBuilder::query_summary_system(&lang),
             ChatMessage {
                 role: MessageRole::User,
                 content: format!(
@@ -1004,8 +1018,7 @@ pub async fn ai_analyze_queries(
         max_tokens: Some(ai_config.max_tokens),
         stop: None,
     };
-    let lang = state.store.get_settings().await.language;
-    request.messages.iter_mut().for_each(|m| append_language(m, &lang));
+    inject_language_hint(&mut request.messages, &lang);
 
     let response = provider
         .complete(&request)

@@ -495,7 +495,7 @@ mod tests {
         };
         let api_msg: ApiMessage = (&msg).into();
         assert_eq!(api_msg.role, "system");
-        assert_eq!(api_msg.content, "You are helpful.");
+        assert_eq!(api_msg.content, Some("You are helpful.".into()));
     }
 
     #[tokio::test]
@@ -506,6 +506,7 @@ mod tests {
             api_key: None,
             endpoint: None,
             model: "gpt-4o".into(),
+            max_tokens: 200_000,
             extra: serde_json::Value::Null,
         };
         let err = provider.validate_config(&config).await.unwrap_err();
@@ -549,6 +550,7 @@ mod tests {
             api_key: Some("sk-test".into()),
             endpoint: None,
             model: "gpt-4o".into(),
+            max_tokens: 200_000,
             extra: serde_json::Value::Null,
         };
         provider.initialize(&config).await.unwrap();

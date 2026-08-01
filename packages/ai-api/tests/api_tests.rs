@@ -101,6 +101,7 @@ fn test_ai_config_serde() {
         api_key: Some("sk-test".into()),
         endpoint: None,
         model: "gpt-4o".into(),
+            max_tokens: 200_000,
         extra: serde_json::Value::Null,
     };
 
@@ -195,6 +196,7 @@ async fn test_mock_provider_validate_config() {
         api_key: Some("sk-valid".into()),
         endpoint: None,
         model: "mock-model".into(),
+            max_tokens: 200_000,
         extra: serde_json::Value::Null,
     };
     assert!(provider.validate_config(&valid_config).await.is_ok());
@@ -204,6 +206,7 @@ async fn test_mock_provider_validate_config() {
         api_key: Some("invalid".into()),
         endpoint: None,
         model: "mock-model".into(),
+            max_tokens: 200_000,
         extra: serde_json::Value::Null,
     };
     let err = provider.validate_config(&invalid_config).await.unwrap_err();
@@ -219,6 +222,7 @@ async fn test_mock_provider_complete() {
         api_key: Some("sk-test".into()),
         endpoint: None,
         model: "mock-model".into(),
+            max_tokens: 200_000,
         extra: serde_json::Value::Null,
     };
 
@@ -264,6 +268,7 @@ async fn test_mock_provider_stream_fallback() {
         api_key: Some("sk-test".into()),
         endpoint: None,
         model: "mock-model".into(),
+            max_tokens: 200_000,
         extra: serde_json::Value::Null,
     };
     provider.initialize(&config).await.unwrap();

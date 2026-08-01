@@ -1140,6 +1140,7 @@ mod tests {
             api_key: Some("key".into()),
             endpoint: Some("http://example.com".into()),
             model: "model".into(),
+            max_tokens: 200_000,
             extra: serde_json::Value::Null,
         };
         assert_eq!(
@@ -1155,6 +1156,7 @@ mod tests {
             api_key: Some("key".into()),
             endpoint: Some("http://example.com".into()),
             model: "model".into(),
+            max_tokens: 200_000,
             extra: serde_json::json!({ "protocol": "open_ai_compatible" }),
         };
         assert_eq!(
@@ -1170,6 +1172,7 @@ mod tests {
             api_key: Some("key".into()),
             endpoint: Some("http://example.com".into()),
             model: "model".into(),
+            max_tokens: 200_000,
             extra: serde_json::json!({ "protocol": "anthropic_compatible" }),
         };
         assert_eq!(
@@ -1187,6 +1190,7 @@ mod tests {
             api_key: None,
             endpoint: Some("http://example.com".into()),
             model: "model".into(),
+            max_tokens: 200_000,
             extra: serde_json::Value::Null,
         };
         assert!(matches!(
@@ -1199,6 +1203,7 @@ mod tests {
             api_key: Some("key".into()),
             endpoint: None,
             model: "model".into(),
+            max_tokens: 200_000,
             extra: serde_json::Value::Null,
         };
         assert!(matches!(
@@ -1211,6 +1216,7 @@ mod tests {
             api_key: Some("key".into()),
             endpoint: Some("http://example.com".into()),
             model: String::new(),
+            max_tokens: 200_000,
             extra: serde_json::Value::Null,
         };
         assert!(matches!(
@@ -1244,6 +1250,7 @@ mod tests {
             api_key: Some("key".into()),
             endpoint: Some("http://example.com".into()),
             model: "model".into(),
+            max_tokens: 200_000,
             extra: serde_json::json!({ "protocol": "open_ai_compatible" }),
         };
         provider.initialize(&config).await.unwrap();
