@@ -200,7 +200,7 @@ pub async fn ai_generate_sql(
         model: ai_config.model.clone(),
         messages: vec![system_msg, user_msg],
         temperature: Some(0.0),
-        max_tokens: Some(2000),
+        max_tokens: Some(ai_config.max_tokens),
         stop: None,
     };
 
@@ -297,7 +297,7 @@ pub async fn ai_diagnose_error(
             },
         ],
         temperature: Some(0.0),
-        max_tokens: Some(8000),
+        max_tokens: Some(ai_config.max_tokens),
         stop: None,
     };
 
@@ -380,7 +380,7 @@ pub async fn ai_analyze_explain(
             },
         ],
         temperature: Some(0.0),
-        max_tokens: Some(8000),
+        max_tokens: Some(ai_config.max_tokens),
         stop: None,
     };
 
@@ -492,7 +492,7 @@ pub async fn ai_parse_filter(
             },
         ],
         temperature: Some(0.0),
-        max_tokens: Some(1000),
+        max_tokens: Some(ai_config.max_tokens),
         stop: None,
     };
 
@@ -597,7 +597,7 @@ pub async fn ai_chat(
         model: ai_config.model.clone(),
         messages: full_messages,
         temperature: Some(0.7),
-        max_tokens: Some(4000),
+        max_tokens: Some(ai_config.max_tokens),
         stop: None,
     };
 
@@ -750,7 +750,7 @@ pub async fn ai_generate_schema_doc(
                 },
             ],
             temperature: Some(0.0),
-            max_tokens: Some(500),
+            max_tokens: Some(ai_config.max_tokens),
             stop: None,
         };
 
@@ -794,7 +794,7 @@ pub async fn ai_generate_schema_doc(
             },
         ],
         temperature: Some(0.3),
-        max_tokens: Some(4000),
+        max_tokens: Some(ai_config.max_tokens),
         stop: None,
     };
 
@@ -882,7 +882,7 @@ pub async fn ai_diagnose_connection(
             },
         ],
         temperature: Some(0.0),
-        max_tokens: Some(2000),
+        max_tokens: Some(ai_config.max_tokens),
         stop: None,
     };
 
@@ -969,7 +969,7 @@ pub async fn ai_analyze_queries(
             },
         ],
         temperature: Some(0.2),
-        max_tokens: Some(3000),
+        max_tokens: Some(ai_config.max_tokens),
         stop: None,
     };
 

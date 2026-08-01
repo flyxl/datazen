@@ -506,6 +506,7 @@ const zhCN = {
   'settings.ai': 'AI 助手',
   'settings.ai.provider': 'AI 服务商',
   'settings.ai.model': '模型',
+  'settings.ai.maxTokens': '最大 Token 数',
   'settings.ai.apiKey': 'API Key',
   'settings.ai.apiKeyPlaceholder': '输入 API Key',
   'settings.ai.endpoint': '自定义端点',
