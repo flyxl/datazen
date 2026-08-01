@@ -145,7 +145,7 @@ mod provider_tests {
             recent_queries: vec![],
         };
 
-        let system = datazen::ai::PromptBuilder::nl2sql_system(&context);
+        let system = datazen::ai::PromptBuilder::nl2sql_system(&context, "en");
         let request = CompletionRequest {
             request_id: "test-nl2sql".into(),
             model,
@@ -184,6 +184,7 @@ mod provider_tests {
         let system = datazen::ai::PromptBuilder::diagnose_system(
             "PostgreSQL",
             "  users (id int4 PK, name varchar, email varchar)",
+            "en",
         );
         let request = CompletionRequest {
             request_id: "test-diagnose".into(),
@@ -236,7 +237,7 @@ mod provider_tests {
 
         let provider = create_provider(&ptype, &endpoint, &api_key).await;
 
-        let system = datazen::ai::PromptBuilder::explain_analysis_system("PostgreSQL");
+        let system = datazen::ai::PromptBuilder::explain_analysis_system("PostgreSQL", "en");
         let request = CompletionRequest {
             request_id: "test-explain".into(),
             model,
@@ -291,6 +292,7 @@ mod provider_tests {
         let system = datazen::ai::PromptBuilder::nl_filter_system(
             "PostgreSQL",
             "  id int4 NOT NULL PK\n  name varchar NULL\n  age int4 NULL\n  status varchar NULL",
+            "en",
         );
         let request = CompletionRequest {
             request_id: "test-filter".into(),
@@ -352,6 +354,7 @@ mod provider_tests {
         let system = datazen::ai::PromptBuilder::schema_doc_system(
             "PostgreSQL",
             "  users (id int4 PK, name varchar NOT NULL, email varchar NOT NULL UNIQUE)\n  orders (id int4 PK, user_id int4 NOT NULL, amount numeric, created_at timestamp DEFAULT now())",
+            "en",
         );
         let request = CompletionRequest {
             request_id: "test-schema-doc".into(),
@@ -388,7 +391,7 @@ mod provider_tests {
 
         let provider = create_provider(&ptype, &endpoint, &api_key).await;
 
-        let system = datazen::ai::PromptBuilder::connection_diagnose_system();
+        let system = datazen::ai::PromptBuilder::connection_diagnose_system("en");
         let request = CompletionRequest {
             request_id: "test-conn-diag".into(),
             model,
@@ -444,7 +447,7 @@ mod provider_tests {
 
         let provider = create_provider(&ptype, &endpoint, &api_key).await;
 
-        let system = datazen::ai::PromptBuilder::query_summary_system();
+        let system = datazen::ai::PromptBuilder::query_summary_system("en");
         let request = CompletionRequest {
             request_id: "test-query-analysis".into(),
             model,

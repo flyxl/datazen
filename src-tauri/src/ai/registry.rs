@@ -114,7 +114,7 @@ mod tests {
         let list = registry.list_providers().await;
         assert_eq!(list.len(), 1);
         assert_eq!(list[0].0, AiProviderType::Anthropic);
-        assert_eq!(list[0].1, "Anthropic");
+        assert_eq!(list[0].1, "Anthropic (Claude)");
     }
 
     #[tokio::test]

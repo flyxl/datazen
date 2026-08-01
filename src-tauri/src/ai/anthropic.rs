@@ -511,6 +511,7 @@ mod tests {
             api_key: None,
             endpoint: None,
             model: "claude-sonnet-4-20250514".into(),
+            max_tokens: 200_000,
             extra: serde_json::Value::Null,
         };
         let err = provider.validate_config(&config).await.unwrap_err();
