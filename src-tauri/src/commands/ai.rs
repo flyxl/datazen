@@ -310,6 +310,95 @@ pub async fn ai_analyze_explain(
         .map_err(|e| log_err("ai_analyze_explain", &e))
 }
 
+// ─── Smart Filter ───
+
+#[tauri::command]
+pub async fn ai_parse_filter(
+    state: State<'_, AppState>,
+    connection_id: String,
+    database: String,
+    table: String,
+    natural_language: String,
+) -> Result<Vec<crate::services::query_executor::FilterCondition>, String> {
+    let ai_config = state
+        .store
+        .get_ai_config()
+        .await
+        .ok_or_else(|| "AI 未配置".to_string())?;
+
+    let provider = state
+        .ai_registry
+        .get(&ai_config.provider_type)
+        .await
+        .ok_or("Provider not available")?;
+
+    let (driver, handle) = state
+        .connection_manager
+        .get_connection(&connection_id)
+        .await
+        .map_err(|e| log_err("ai_parse_filter", &e))?;
+
+    let db_type = format!("{:?}", driver.driver_type());
+
+    let cached = state
+        .schema_cache
+        .get_columns(&connection_id, &database, &table, &driver, &handle)
+        .await
+        .map_err(|e| log_err("ai_parse_filter", &e))?;
+
+    let columns_ddl = cached
+        .columns
+        .iter()
+        .map(|c| {
+            let nullable = if c.nullable { " NULL" } else { " NOT NULL" };
+            let pk = if c.is_primary_key { " PK" } else { "" };
+            format!("  {} {}{}{}", c.name, c.data_type, nullable, pk)
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let request = CompletionRequest {
+        request_id: Uuid::new_v4().to_string(),
+        model: ai_config.model.clone(),
+        messages: vec![
+            PromptBuilder::nl_filter_system(&db_type, &columns_ddl),
+            ChatMessage {
+                role: MessageRole::User,
+                content: natural_language,
+            },
+        ],
+        temperature: Some(0.0),
+        max_tokens: Some(1000),
+        stop: None,
+    };
+
+    let response = provider
+        .complete(&request)
+        .await
+        .map_err(|e| log_err("ai_parse_filter", &e))?;
+
+    let content = strip_markdown_fences(&response.content);
+    let mut filters: Vec<crate::services::query_executor::FilterCondition> =
+        serde_json::from_str(&content).map_err(|e| log_err("ai_parse_filter", &e))?;
+
+    let valid_columns: std::collections::HashSet<String> =
+        cached.columns.iter().map(|c| c.name.clone()).collect();
+
+    filters.retain(|f| valid_columns.contains(&f.column));
+
+    use crate::services::query_executor::FilterOperator;
+    use datazen_driver_api::Value;
+    for f in &mut filters {
+        match (&f.operator, &f.value) {
+            (FilterOperator::Eq, Value::Null) => f.operator = FilterOperator::IsNull,
+            (FilterOperator::Ne, Value::Null) => f.operator = FilterOperator::IsNotNull,
+            _ => {}
+        }
+    }
+
+    Ok(filters)
+}
+
 // ─── AI Chat ───
 
 #[tauri::command]

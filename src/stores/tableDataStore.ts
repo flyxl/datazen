@@ -97,6 +97,7 @@ interface TableDataStore {
   setPage: (page: number) => void;
   setPageSize: (size: number) => void;
   addFilter: (filter: FilterCondition) => void;
+  setFilters: (filters: FilterCondition[]) => void;
   removeFilter: (index: number) => void;
   clearFilters: () => void;
   setSort: (sort: SortCondition) => void;
@@ -248,17 +249,35 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
     if (connectionId && activeTable) void get().loadTableData({ connectionId, table: activeTable, skipCount: true });
   },
 
-  addFilter: (filter) => updateActive(get, set, (ts) => ({
-    filters: [...ts.filters, filter],
-    page: 0,
-  })),
+  addFilter: (filter) => {
+    updateActive(get, set, (ts) => ({
+      filters: [...ts.filters, filter],
+      page: 0,
+    }));
+    const { connectionId, activeTable } = get();
+    if (connectionId && activeTable) void get().loadTableData({ connectionId, table: activeTable });
+  },
 
-  removeFilter: (index) => updateActive(get, set, (ts) => ({
-    filters: ts.filters.filter((_, i) => i !== index),
-    page: 0,
-  })),
+  setFilters: (filters) => {
+    updateActive(get, set, () => ({ filters, page: 0 }));
+    const { connectionId, activeTable } = get();
+    if (connectionId && activeTable) void get().loadTableData({ connectionId, table: activeTable });
+  },
 
-  clearFilters: () => updateActive(get, set, () => ({ filters: [], page: 0 })),
+  removeFilter: (index) => {
+    updateActive(get, set, (ts) => ({
+      filters: ts.filters.filter((_, i) => i !== index),
+      page: 0,
+    }));
+    const { connectionId, activeTable } = get();
+    if (connectionId && activeTable) void get().loadTableData({ connectionId, table: activeTable });
+  },
+
+  clearFilters: () => {
+    updateActive(get, set, () => ({ filters: [], page: 0 }));
+    const { connectionId, activeTable } = get();
+    if (connectionId && activeTable) void get().loadTableData({ connectionId, table: activeTable });
+  },
 
   setSort: (sort) => {
     updateActive(get, set, () => ({ sorts: [sort], page: 0 }));

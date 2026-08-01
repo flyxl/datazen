@@ -6,6 +6,7 @@ import type {
   AiProviderType,
   DiagnosisResult,
   ExplainAnalysis,
+  FilterCondition,
   ModelInfo,
   ProviderListItem,
   StreamChunkPayload,
@@ -57,6 +58,13 @@ export const aiCommands = {
     requestId: string;
     includeSchema?: boolean;
   }) => invoke<string>('ai_chat', params),
+
+  parseFilter: (params: {
+    connectionId: string;
+    database: string;
+    table: string;
+    naturalLanguage: string;
+  }) => invoke<FilterCondition[]>('ai_parse_filter', params),
 };
 
 export function onAiStreamChunk(

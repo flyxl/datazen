@@ -568,6 +568,17 @@ const en: Record<TranslationKey, string> = {
   'diagnosis.applySuggested': 'Apply Suggestion',
   'diagnosis.notConfigured': 'Please configure an AI provider in Settings first',
 
+  // ── Smart Filter ──
+  'smartFilter.title': 'Smart Filter',
+  'smartFilter.placeholder': 'Describe filter conditions, e.g. "age > 18 and name contains John"',
+  'smartFilter.parse': 'Filter',
+  'smartFilter.parsing': 'Parsing…',
+  'smartFilter.apply': 'Apply Filter',
+  'smartFilter.clear': 'Clear',
+  'smartFilter.notConfigured': 'Please configure an AI provider in Settings first',
+  'smartFilter.noFilters': 'No filter conditions parsed',
+  'smartFilter.parsed': '{count} filter condition(s) parsed',
+
   // ── Select ──
   'select.placeholder': 'Select…',
 
