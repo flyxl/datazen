@@ -3,6 +3,7 @@ mod cache;
 mod commands;
 mod db;
 pub mod mcp;
+mod plugin_init;
 mod services;
 pub mod ssh_tunnel;
 mod store;
@@ -260,6 +261,8 @@ pub fn run() {
     #[cfg(feature = "webdriver")]
     let builder = builder.plugin(tauri_plugin_webdriver::init());
 
+    let builder = plugin_init::register_plugins(builder);
+
     let t_builder = Instant::now();
     tracing::info!("[startup] builder created");
 
@@ -350,8 +353,6 @@ pub fn run() {
             commands::save_sync_task_direct,
             commands::delete_sync_task,
             commands::check_sync_conflicts,
-            commands::kiwi_login,
-            commands::kiwi_list_instances,
             commands::ai_get_providers,
             commands::ai_get_models,
             commands::ai_fetch_remote_models,
