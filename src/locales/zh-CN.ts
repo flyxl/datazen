@@ -520,6 +520,16 @@ const zhCN = {
   'settings.ai.ollamaHint': 'Ollama 无需 API Key，请确保 Ollama 服务已启动',
   'settings.ai.description': '配置 AI 服务以启用自然语言转 SQL、错误诊断等智能功能',
 
+  // ── AI Chat ──
+  'chat.title': 'AI 助手',
+  'chat.placeholder': '输入消息，询问关于数据库的问题…',
+  'chat.send': '发送',
+  'chat.clear': '清除对话',
+  'chat.thinking': '思考中…',
+  'chat.notConfigured': '请先在设置中配置 AI 服务',
+  'chat.welcome': '你好！我是你的数据库助手。你可以问我关于 SQL 查询、数据库概念或数据分析的问题。',
+  'chat.insertSql': '插入到编辑器',
+
   // ── NL2SQL ──
   'nl2sql.title': 'AI 生成 SQL',
   'nl2sql.placeholder': '用自然语言描述你想查询的内容…',

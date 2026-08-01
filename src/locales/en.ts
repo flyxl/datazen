@@ -522,6 +522,16 @@ const en: Record<TranslationKey, string> = {
   'settings.ai.ollamaHint': 'Ollama requires no API Key — ensure the Ollama service is running',
   'settings.ai.description': 'Configure an AI provider to enable NL-to-SQL, error diagnosis, and other smart features',
 
+  // ── AI Chat ──
+  'chat.title': 'AI Assistant',
+  'chat.placeholder': 'Ask a question about your database…',
+  'chat.send': 'Send',
+  'chat.clear': 'Clear Chat',
+  'chat.thinking': 'Thinking…',
+  'chat.notConfigured': 'Please configure an AI provider in Settings first',
+  'chat.welcome': 'Hello! I\'m your database assistant. Ask me about SQL queries, database concepts, or data analysis.',
+  'chat.insertSql': 'Insert to Editor',
+
   // ── NL2SQL ──
   'nl2sql.title': 'AI Generate SQL',
   'nl2sql.placeholder': 'Describe what you want to query in natural language…',

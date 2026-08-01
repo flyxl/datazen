@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import { aiCommands, onAiStreamChunk, onAiStreamError } from '../commands/ai';
 import type {
+  AiChatMessage,
+  AiChatSession,
   AiProviderConfig,
   AiProviderType,
   DiagnosisResult,
@@ -43,6 +45,8 @@ interface AiStore {
   isAnalyzingExplain: boolean;
   explainError: string | null;
 
+  chatSession: AiChatSession | null;
+
   loadConfig: () => Promise<void>;
   loadProviders: () => Promise<void>;
   loadModels: (providerType: AiProviderType) => Promise<void>;
@@ -75,6 +79,15 @@ interface AiStore {
   }) => Promise<void>;
   clearExplainAnalysis: () => void;
 
+  initChatSession: () => void;
+  sendChatMessage: (params: {
+    connectionId?: string;
+    database?: string;
+    content: string;
+    includeSchema?: boolean;
+  }) => Promise<void>;
+  clearChat: () => void;
+
   handleStreamChunk: (payload: StreamChunkPayload) => void;
   setupEventListeners: () => Promise<() => void>;
 }
@@ -97,6 +110,8 @@ export const useAiStore = create<AiStore>((set, get) => ({
   explainAnalysis: null,
   isAnalyzingExplain: false,
   explainError: null,
+
+  chatSession: null,
 
   loadConfig: async () => {
     set({ configLoading: true, configError: null });
@@ -256,21 +271,119 @@ export const useAiStore = create<AiStore>((set, get) => ({
   clearExplainAnalysis: () =>
     set({ explainAnalysis: null, isAnalyzingExplain: false, explainError: null }),
 
+  // ── Chat ──
+
+  initChatSession: () => {
+    set({
+      chatSession: {
+        id: crypto.randomUUID(),
+        messages: [],
+        isStreaming: false,
+        streamContent: '',
+        requestId: null,
+      },
+    });
+  },
+
+  sendChatMessage: async ({ connectionId, database, content, includeSchema = true }) => {
+    const { chatSession } = get();
+    if (!chatSession) return;
+
+    const userMessage: AiChatMessage = { role: 'user', content };
+    const requestId = crypto.randomUUID();
+
+    set({
+      chatSession: {
+        ...chatSession,
+        messages: [...chatSession.messages, userMessage],
+        isStreaming: true,
+        streamContent: '',
+        requestId,
+      },
+    });
+
+    try {
+      await aiCommands.chat({
+        connectionId,
+        database,
+        messages: [...chatSession.messages, userMessage],
+        requestId,
+        includeSchema,
+      });
+    } catch (e) {
+      const session = get().chatSession;
+      if (session) {
+        set({
+          chatSession: {
+            ...session,
+            isStreaming: false,
+            streamContent: '',
+            requestId: null,
+            messages: [
+              ...session.messages,
+              { role: 'assistant', content: `Error: ${e instanceof Error ? e.message : String(e)}` },
+            ],
+          },
+        });
+      }
+    }
+  },
+
+  clearChat: () => {
+    const { chatSession } = get();
+    if (chatSession) {
+      set({
+        chatSession: {
+          ...chatSession,
+          messages: [],
+          isStreaming: false,
+          streamContent: '',
+          requestId: null,
+        },
+      });
+    }
+  },
+
   // ── Stream handling ──
 
   handleStreamChunk: (payload) => {
-    const { nl2sql } = get();
-    if (payload.requestId !== nl2sql.requestId) return;
+    const { nl2sql, chatSession } = get();
 
-    set((s) => ({
-      nl2sql: {
-        ...s.nl2sql,
-        generatedSql: payload.content
-          ? s.nl2sql.generatedSql + payload.content
-          : s.nl2sql.generatedSql,
-        isGenerating: payload.done ? false : s.nl2sql.isGenerating,
-      },
-    }));
+    if (payload.requestId === nl2sql.requestId) {
+      set((s) => ({
+        nl2sql: {
+          ...s.nl2sql,
+          generatedSql: payload.content
+            ? s.nl2sql.generatedSql + payload.content
+            : s.nl2sql.generatedSql,
+          isGenerating: payload.done ? false : s.nl2sql.isGenerating,
+        },
+      }));
+      return;
+    }
+
+    if (chatSession && payload.requestId === chatSession.requestId) {
+      const newContent = (chatSession.streamContent || '') + (payload.content || '');
+      if (payload.done) {
+        const assistantMessage: AiChatMessage = { role: 'assistant', content: newContent };
+        set({
+          chatSession: {
+            ...chatSession,
+            messages: [...chatSession.messages, assistantMessage],
+            isStreaming: false,
+            streamContent: '',
+            requestId: null,
+          },
+        });
+      } else {
+        set({
+          chatSession: {
+            ...chatSession,
+            streamContent: newContent,
+          },
+        });
+      }
+    }
   },
 
   setupEventListeners: async () => {
@@ -278,12 +391,26 @@ export const useAiStore = create<AiStore>((set, get) => ({
       get().handleStreamChunk(payload);
     });
     const unError = await onAiStreamError((payload) => {
-      const { nl2sql } = get();
+      const { nl2sql, chatSession } = get();
       if (payload.requestId === nl2sql.requestId) {
         set((s) => ({
           nl2sql: { ...s.nl2sql, isGenerating: false },
           nl2sqlError: payload.error,
         }));
+      }
+      if (chatSession && payload.requestId === chatSession.requestId) {
+        set({
+          chatSession: {
+            ...chatSession,
+            isStreaming: false,
+            streamContent: '',
+            requestId: null,
+            messages: [
+              ...chatSession.messages,
+              { role: 'assistant', content: `Error: ${payload.error}` },
+            ],
+          },
+        });
       }
     });
     return () => {

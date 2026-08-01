@@ -268,6 +268,19 @@ export interface ExplainSuggestion {
   impact: string;
 }
 
+export interface AiChatMessage {
+  role: 'system' | 'user' | 'assistant';
+  content: string;
+}
+
+export interface AiChatSession {
+  id: string;
+  messages: AiChatMessage[];
+  isStreaming: boolean;
+  streamContent: string;
+  requestId: string | null;
+}
+
 export interface StreamChunkPayload {
   requestId: string;
   content: string;
