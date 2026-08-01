@@ -1,6 +1,6 @@
 [package]
 name = "datazen-ai-api"
-version = "0.1.0"
+version = "0.0.7"
 edition = "2021"
 description = "Public AI Provider API for DataZen — traits, types, and factory registration"
 

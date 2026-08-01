@@ -25,6 +25,32 @@ fn inject_language_hint(messages: &mut [ChatMessage], lang: &str) {
     }
 }
 
+use std::sync::Arc;
+use datazen_ai_api::AiProviderConfig;
+
+async fn resolve_ai(state: &AppState) -> Result<(Arc<dyn AiProvider>, AiProviderConfig), String> {
+    let config = state
+        .store
+        .get_ai_config()
+        .await
+        .ok_or_else(|| "AI_NOT_CONFIGURED".to_string())?;
+
+    tracing::debug!(
+        provider = %config.provider_type,
+        model = %config.model,
+        endpoint = ?config.endpoint,
+        "resolve_ai: provider config"
+    );
+
+    let provider = state
+        .ai_registry
+        .get(&config.provider_type)
+        .await
+        .ok_or_else(|| "AI_PROVIDER_NOT_AVAILABLE".to_string())?;
+
+    Ok((provider, config))
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProviderListItem {
@@ -170,24 +196,7 @@ pub async fn ai_generate_sql(
         "ai_generate_sql: start"
     );
 
-    let ai_config = state
-        .store
-        .get_ai_config()
-        .await
-        .ok_or_else(|| "AI 未配置".to_string())?;
-
-    tracing::debug!(
-        provider = %ai_config.provider_type,
-        model = %ai_config.model,
-        endpoint = ?ai_config.endpoint,
-        "ai_generate_sql: provider config"
-    );
-
-    let provider = state
-        .ai_registry
-        .get(&ai_config.provider_type)
-        .await
-        .ok_or("Provider not available")?;
+    let (provider, ai_config) = resolve_ai(&state).await?;
 
     let context = state
         .schema_context_builder
@@ -288,17 +297,7 @@ pub async fn ai_diagnose_error(
         "ai_diagnose_error: start"
     );
 
-    let ai_config = state
-        .store
-        .get_ai_config()
-        .await
-        .ok_or_else(|| "AI 未配置".to_string())?;
-
-    let provider = state
-        .ai_registry
-        .get(&ai_config.provider_type)
-        .await
-        .ok_or("Provider not available")?;
+    let (provider, ai_config) = resolve_ai(&state).await?;
 
     let context = state
         .schema_context_builder
@@ -369,17 +368,7 @@ pub async fn ai_analyze_explain(
         explain_len = explain_output.len(),
         "ai_analyze_explain: start"
     );
-    let ai_config = state
-        .store
-        .get_ai_config()
-        .await
-        .ok_or_else(|| "AI 未配置".to_string())?;
-
-    let provider = state
-        .ai_registry
-        .get(&ai_config.provider_type)
-        .await
-        .ok_or("Provider not available")?;
+    let (provider, ai_config) = resolve_ai(&state).await?;
 
     let (driver, _) = state
         .connection_manager
@@ -468,17 +457,7 @@ pub async fn ai_parse_filter(
         input = %natural_language,
         "ai_parse_filter: start"
     );
-    let ai_config = state
-        .store
-        .get_ai_config()
-        .await
-        .ok_or_else(|| "AI 未配置".to_string())?;
-
-    let provider = state
-        .ai_registry
-        .get(&ai_config.provider_type)
-        .await
-        .ok_or("Provider not available")?;
+    let (provider, ai_config) = resolve_ai(&state).await?;
 
     let (driver, handle) = state
         .connection_manager
@@ -570,17 +549,7 @@ pub async fn ai_chat(
         last_user_msg = messages.last().map(|m| &m.content[..m.content.len().min(100)]).unwrap_or(""),
         "ai_chat: start"
     );
-    let ai_config = state
-        .store
-        .get_ai_config()
-        .await
-        .ok_or_else(|| "AI 未配置".to_string())?;
-
-    let provider = state
-        .ai_registry
-        .get(&ai_config.provider_type)
-        .await
-        .ok_or("Provider not available")?;
+    let (provider, ai_config) = resolve_ai(&state).await?;
 
     let lang = state.store.get_settings().await.language;
     let is_zh = lang.starts_with("zh");
@@ -751,17 +720,7 @@ pub async fn ai_generate_schema_doc(
     database: String,
 ) -> Result<String, String> {
     tracing::info!(%connection_id, %database, "ai_generate_schema_doc: start");
-    let ai_config = state
-        .store
-        .get_ai_config()
-        .await
-        .ok_or_else(|| "AI 未配置".to_string())?;
-
-    let provider = state
-        .ai_registry
-        .get(&ai_config.provider_type)
-        .await
-        .ok_or("Provider not available")?;
+    let (provider, ai_config) = resolve_ai(&state).await?;
 
     // Step 1: Get table names only (no column details)
     let (db_type, all_table_names) = state
@@ -880,17 +839,7 @@ pub async fn ai_diagnose_connection(
     error_message: String,
 ) -> Result<ConnectionDiagnosis, String> {
     tracing::info!(%connection_id, error = %error_message, "ai_diagnose_connection: start");
-    let ai_config = state
-        .store
-        .get_ai_config()
-        .await
-        .ok_or_else(|| "AI 未配置".to_string())?;
-
-    let provider = state
-        .ai_registry
-        .get(&ai_config.provider_type)
-        .await
-        .ok_or("Provider not available")?;
+    let (provider, ai_config) = resolve_ai(&state).await?;
 
     let conn_info = state
         .store
@@ -967,17 +916,7 @@ pub async fn ai_analyze_queries(
     connection_id: Option<String>,
 ) -> Result<QueryAnalysis, String> {
     tracing::info!(connection_id = ?connection_id, "ai_analyze_queries: start");
-    let ai_config = state
-        .store
-        .get_ai_config()
-        .await
-        .ok_or_else(|| "AI 未配置".to_string())?;
-
-    let provider = state
-        .ai_registry
-        .get(&ai_config.provider_type)
-        .await
-        .ok_or("Provider not available")?;
+    let (provider, ai_config) = resolve_ai(&state).await?;
 
     let history = state.store.get_query_history(200).await;
     let filtered: Vec<_> = if let Some(ref cid) = connection_id {

@@ -3,7 +3,6 @@ use crate::store::AppSettings;
 use aes_gcm::aead::{Aead, KeyInit};
 use aes_gcm::{Aes256Gcm, Key, Nonce};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
-use sha2::{Sha256, Digest};
 use std::path::PathBuf;
 use tauri::State;
 
@@ -36,20 +35,14 @@ pub async fn save_settings(state: State<'_, AppState>, settings: AppSettings) ->
         .map_err(|e| log_err("save_settings", &e))
 }
 
-fn derive_key_from_password(password: &str, salt: &[u8]) -> [u8; 32] {
-    let mut hasher = Sha256::new();
-    hasher.update(salt);
-    hasher.update(password.as_bytes());
-    let round1 = hasher.finalize();
-    // Second round for extra stretching
-    let mut hasher2 = Sha256::new();
-    hasher2.update(&round1);
-    hasher2.update(salt);
-    hasher2.update(password.as_bytes());
-    let result = hasher2.finalize();
+fn derive_key_from_password(password: &str, salt: &[u8]) -> Result<[u8; 32], String> {
+    use argon2::Argon2;
+
     let mut key = [0u8; 32];
-    key.copy_from_slice(&result);
-    key
+    Argon2::default()
+        .hash_password_into(password.as_bytes(), salt, &mut key)
+        .map_err(|e| format!("Key derivation failed: {e}"))?;
+    Ok(key)
 }
 
 fn encrypt_with_key(plaintext: &str, key: &[u8; 32]) -> Result<String, String> {
@@ -93,7 +86,7 @@ pub async fn export_connections(
 
     let mut salt = [0u8; 16];
     rand::RngCore::fill_bytes(&mut rand::thread_rng(), &mut salt);
-    let key = derive_key_from_password(&password, &salt);
+    let key = derive_key_from_password(&password, &salt)?;
 
     let mut export_conns = Vec::new();
     for conn in &connections {
@@ -165,7 +158,7 @@ pub async fn import_connections_preview(
         let salt_b64 = data.get("salt").and_then(|v| v.as_str()).unwrap_or("");
         let salt = BASE64.decode(salt_b64)
             .map_err(|e| log_err("import_connections_preview", &e))?;
-        let key = derive_key_from_password(&password, &salt);
+        let key = derive_key_from_password(&password, &salt)?;
 
         if let Some(conns) = data.get_mut("connections").and_then(|v| v.as_array_mut()) {
             for conn in conns.iter_mut() {

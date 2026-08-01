@@ -56,3 +56,7 @@ e2e/.env
 # Test config (contains API keys)
 .env.test
 src-tauri/tests/.env.test
+
+# Duplicate lockfiles (pnpm uses pnpm-lock.yaml; Cargo workspace uses root Cargo.lock)
+package-lock.json
+src-tauri/Cargo.lock

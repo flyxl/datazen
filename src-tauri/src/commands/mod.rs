@@ -12,6 +12,7 @@ pub mod mcp;
 mod query;
 mod schema;
 mod sync;
+mod window;
 
 pub use ai::*;
 pub use backup::*;
@@ -25,6 +26,7 @@ pub use mcp::*;
 pub use query::*;
 pub use schema::*;
 pub use sync::*;
+pub use window::*;
 
 use crate::ai::{AiProviderRegistry, SchemaContextBuilder};
 use crate::cache::SchemaCache;
