@@ -8,6 +8,8 @@ import type {
   ExplainAnalysis,
   FilterCondition,
   ModelInfo,
+  SkillDefinition,
+  SkillListItem,
   ProviderListItem,
   StreamChunkPayload,
   StreamErrorPayload,
@@ -69,6 +71,16 @@ export const aiCommands = {
   mcpGetStatus: () => invoke<{ running: boolean; transport: string }>('mcp_get_status'),
   mcpStartStdio: () => invoke<void>('mcp_start_stdio'),
   mcpStop: () => invoke<void>('mcp_stop'),
+
+  skillList: () => invoke<SkillListItem[]>('skill_list'),
+  skillExecute: (params: {
+    skillId: string;
+    variables: Record<string, unknown>;
+    connectionId?: string;
+  }) => invoke<string>('skill_execute', params),
+  skillSave: (skill: SkillDefinition) => invoke<void>('skill_save', { skill }),
+  skillDelete: (skillId: string) => invoke<void>('skill_delete', { skillId }),
+  skillReload: () => invoke<void>('skill_reload'),
 };
 
 export function onAiStreamChunk(

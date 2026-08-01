@@ -292,3 +292,43 @@ export interface StreamErrorPayload {
   requestId: string;
   error: string;
 }
+
+// ── Skill types ──
+
+export interface SkillVariable {
+  name: string;
+  type: string;
+  description: string;
+  required?: boolean;
+  default?: unknown;
+}
+
+export interface SkillStep {
+  type: 'query' | 'ai';
+  id: string;
+  sql?: string;
+  prompt?: string;
+}
+
+export interface SkillOutput {
+  format: string;
+  template?: string;
+}
+
+export interface SkillDefinition {
+  id: string;
+  name: string;
+  description: string;
+  version?: string;
+  author?: string;
+  variables: SkillVariable[];
+  steps: SkillStep[];
+  output?: SkillOutput;
+}
+
+export interface SkillListItem {
+  id: string;
+  name: string;
+  description: string;
+  variables: SkillVariable[];
+}

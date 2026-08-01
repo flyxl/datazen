@@ -296,6 +296,11 @@ async fn create_app_state_headless() -> Result<AppState, String> {
         connection_manager.clone(),
     ));
 
+    let skill_registry = Arc::new(mcp::SkillRegistry::new(data_dir.join("skills")));
+    if let Err(e) = skill_registry.load_all().await {
+        tracing::warn!("Failed to load skills: {e}");
+    }
+
     Ok(AppState {
         driver_registry: registry,
         connection_manager,
@@ -304,6 +309,7 @@ async fn create_app_state_headless() -> Result<AppState, String> {
         sync_adapters,
         ai_registry,
         schema_context_builder,
+        skill_registry,
     })
 }
 
@@ -400,6 +406,15 @@ pub fn run() {
                     connection_manager.clone(),
                 ));
 
+                let data_dir = handle
+                    .path()
+                    .app_data_dir()
+                    .map_err(|e| e.to_string())?;
+                let skill_registry = Arc::new(mcp::SkillRegistry::new(data_dir.join("skills")));
+                if let Err(e) = skill_registry.load_all().await {
+                    tracing::warn!("Failed to load skills: {e}");
+                }
+
                 Ok::<AppState, String>(AppState {
                     driver_registry: registry,
                     connection_manager,
@@ -408,6 +423,7 @@ pub fn run() {
                     sync_adapters,
                     ai_registry,
                     schema_context_builder,
+                    skill_registry,
                 })
             })?;
             tracing::info!("[startup]   block_on total: {:?}", t0.elapsed());
@@ -496,6 +512,11 @@ pub fn run() {
             commands::mcp_get_status,
             commands::mcp_start_stdio,
             commands::mcp_stop,
+            commands::skill_list,
+            commands::skill_execute,
+            commands::skill_save,
+            commands::skill_delete,
+            commands::skill_reload,
             rebuild_menu,
         ])
         .run(tauri::generate_context!())

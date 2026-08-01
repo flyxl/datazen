@@ -59,6 +59,17 @@ pub struct ListDatabasesInput {
     pub connection_id: String,
 }
 
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct RunSkillInput {
+    /// Skill ID to execute
+    pub skill_id: String,
+    /// Input variables for the skill (JSON object)
+    #[serde(default)]
+    pub variables: serde_json::Value,
+    /// Optional connection ID (some skills require a database connection)
+    pub connection_id: Option<String>,
+}
+
 // ─── Prompt Argument Types ───
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -298,6 +309,37 @@ impl DataZenMcpServer {
 
         Ok(desc)
     }
+
+    #[tool(description = "List all available user-defined skills. Skills are reusable AI workflows combining prompts and database operations.")]
+    async fn list_skills(&self) -> Result<String, McpError> {
+        let skills = self.app_state.skill_registry.list().await;
+        serde_json::to_string_pretty(&skills)
+            .map_err(|e| McpError::internal_error(e.to_string(), None))
+    }
+
+    #[tool(description = "Execute a user-defined skill by ID. Skills are reusable workflows combining prompts and database operations. Use list_skills to see available skills.")]
+    async fn run_skill(
+        &self,
+        Parameters(input): Parameters<RunSkillInput>,
+    ) -> Result<String, McpError> {
+        let skill = self
+            .app_state
+            .skill_registry
+            .get(&input.skill_id)
+            .await
+            .ok_or_else(|| {
+                McpError::invalid_params(format!("Skill '{}' not found", input.skill_id), None)
+            })?;
+
+        super::SkillExecutor::execute(
+            &skill,
+            &self.app_state,
+            input.connection_id.as_deref(),
+            &input.variables,
+        )
+        .await
+        .map_err(|e| McpError::internal_error(e, None))
+    }
 }
 
 // ─── Prompts ───
@@ -415,6 +457,7 @@ impl ServerHandler for DataZenMcpServer {
             resources: vec![
                 Resource::new("datazen://connections", "Database Connections"),
                 Resource::new("datazen://query-history", "Query History"),
+                Resource::new("datazen://skills", "Available Skills"),
             ],
             next_cursor: None,
             meta: None,
@@ -458,6 +501,16 @@ impl ServerHandler for DataZenMcpServer {
                 })
                 .collect();
             let json = serde_json::to_string_pretty(&result)
+                .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            return Ok(ReadResourceResult::new(vec![ResourceContents::text(
+                json,
+                &request.uri,
+            )]));
+        }
+
+        if uri == "datazen://skills" {
+            let skills = self.app_state.skill_registry.list().await;
+            let json = serde_json::to_string_pretty(&skills)
                 .map_err(|e| McpError::internal_error(e.to_string(), None))?;
             return Ok(ReadResourceResult::new(vec![ResourceContents::text(
                 json,

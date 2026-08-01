@@ -56,6 +56,7 @@ pub async fn mcp_start_stdio(state: State<'_, AppState>) -> Result<(), String> {
         sync_adapters: state.sync_adapters.clone(),
         ai_registry: state.ai_registry.clone(),
         schema_context_builder: state.schema_context_builder.clone(),
+        skill_registry: state.skill_registry.clone(),
     });
 
     let cancel = CancellationToken::new();

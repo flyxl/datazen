@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Loader2, MessageSquare, Send, Sparkles, Trash2, Copy, Check } from 'lucide-react';
+import { Loader2, MessageSquare, Send, Sparkles, Trash2, Copy, Check, Wand2 } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { useI18n } from '../../hooks/useI18n';
 import { useAiStore } from '../../stores/aiStore';
 import { cn } from '../../lib/cn';
+import { SkillsPanel } from './SkillsPanel';
 import type { AiChatMessage } from '../../types';
 
 interface AiChatPanelProps {
@@ -21,6 +22,7 @@ export function AiChatPanel({ connectionId, database, onInsertSql }: AiChatPanel
   const clearChat = useAiStore((s) => s.clearChat);
 
   const [input, setInput] = useState('');
+  const [tab, setTab] = useState<'chat' | 'skills'>('chat');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -63,79 +65,109 @@ export function AiChatPanel({ connectionId, database, onInsertSql }: AiChatPanel
 
   return (
     <div className="flex h-full flex-col">
-      {/* Header */}
-      <div className="flex shrink-0 items-center justify-between border-b border-edge px-3 py-2">
-        <div className="flex items-center gap-2">
-          <MessageSquare className="h-3.5 w-3.5 text-blue-400" />
-          <span className="text-xs font-medium text-fg">{t('chat.title')}</span>
-        </div>
-        <Button
-          variant="ghost"
-          className="h-6 px-1.5 text-[11px]"
-          onClick={clearChat}
-          disabled={!chatSession?.messages.length}
-        >
-          <Trash2 className="h-3 w-3" />
-        </Button>
-      </div>
-
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-3 py-2">
-        {chatSession?.messages.length === 0 && !chatSession.isStreaming && (
-          <div className="py-8 text-center text-xs text-fg-muted">
-            {t('chat.welcome')}
-          </div>
-        )}
-
-        {chatSession?.messages.map((msg, i) => (
-          <ChatBubble key={i} message={msg} onInsertSql={onInsertSql} />
-        ))}
-
-        {chatSession?.isStreaming && chatSession.streamContent && (
-          <ChatBubble
-            message={{ role: 'assistant', content: chatSession.streamContent }}
-            isStreaming
-          />
-        )}
-
-        {chatSession?.isStreaming && !chatSession.streamContent && (
-          <div className="flex items-center gap-2 py-2 text-xs text-fg-muted">
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            {t('chat.thinking')}
-          </div>
-        )}
-
-        <div ref={messagesEndRef} />
-      </div>
-
-      {/* Input */}
-      <div className="shrink-0 border-t border-edge p-2">
-        <div className="flex gap-1.5">
-          <textarea
-            ref={inputRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={t('chat.placeholder')}
-            rows={1}
-            disabled={chatSession?.isStreaming}
+      {/* Header with tabs */}
+      <div className="flex shrink-0 items-center justify-between border-b border-edge px-3 py-1.5">
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
             className={cn(
-              'flex-1 resize-none rounded border border-edge bg-surface px-2 py-1.5',
-              'text-sm text-fg placeholder:text-fg-muted',
-              'focus:border-accent focus:outline-none',
-              'disabled:opacity-50',
+              'flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors',
+              tab === 'chat' ? 'bg-accent/10 text-accent font-medium' : 'text-fg-muted hover:text-fg',
             )}
-          />
-          <Button
-            variant="primary"
-            className="h-8 shrink-0 px-2"
-            disabled={!input.trim() || chatSession?.isStreaming}
-            onClick={handleSend}
+            onClick={() => setTab('chat')}
           >
-            <Send className="h-3.5 w-3.5" />
-          </Button>
+            <MessageSquare className="h-3 w-3" />
+            {t('chat.title')}
+          </button>
+          <button
+            type="button"
+            className={cn(
+              'flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors',
+              tab === 'skills' ? 'bg-accent/10 text-accent font-medium' : 'text-fg-muted hover:text-fg',
+            )}
+            onClick={() => setTab('skills')}
+          >
+            <Wand2 className="h-3 w-3" />
+            {t('skills.title')}
+          </button>
         </div>
+        {tab === 'chat' && (
+          <Button
+            variant="ghost"
+            className="h-6 px-1.5 text-[11px]"
+            onClick={clearChat}
+            disabled={!chatSession?.messages.length}
+          >
+            <Trash2 className="h-3 w-3" />
+          </Button>
+        )}
       </div>
+
+      {tab === 'skills' ? (
+        <div className="flex-1 overflow-y-auto px-3 py-2">
+          <SkillsPanel connectionId={connectionId} />
+        </div>
+      ) : (
+        <>
+          {/* Messages */}
+          <div className="flex-1 overflow-y-auto px-3 py-2">
+            {chatSession?.messages.length === 0 && !chatSession.isStreaming && (
+              <div className="py-8 text-center text-xs text-fg-muted">
+                {t('chat.welcome')}
+              </div>
+            )}
+
+            {chatSession?.messages.map((msg, i) => (
+              <ChatBubble key={i} message={msg} onInsertSql={onInsertSql} />
+            ))}
+
+            {chatSession?.isStreaming && chatSession.streamContent && (
+              <ChatBubble
+                message={{ role: 'assistant', content: chatSession.streamContent }}
+                isStreaming
+              />
+            )}
+
+            {chatSession?.isStreaming && !chatSession.streamContent && (
+              <div className="flex items-center gap-2 py-2 text-xs text-fg-muted">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                {t('chat.thinking')}
+              </div>
+            )}
+
+            <div ref={messagesEndRef} />
+          </div>
+
+          {/* Input */}
+          <div className="shrink-0 border-t border-edge p-2">
+            <div className="flex gap-1.5">
+              <textarea
+                ref={inputRef}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder={t('chat.placeholder')}
+                rows={1}
+                disabled={chatSession?.isStreaming}
+                className={cn(
+                  'flex-1 resize-none rounded border border-edge bg-surface px-2 py-1.5',
+                  'text-sm text-fg placeholder:text-fg-muted',
+                  'focus:border-accent focus:outline-none',
+                  'disabled:opacity-50',
+                )}
+              />
+              <Button
+                variant="primary"
+                className="h-8 shrink-0 px-2"
+                disabled={!input.trim() || chatSession?.isStreaming}
+                onClick={handleSend}
+              >
+                <Send className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
