@@ -1238,10 +1238,12 @@ dependencies = [
  "async-trait",
  "base64 0.22.1",
  "chrono",
+ "datazen-ai-api",
  "datazen-driver-api 0.0.7",
  "datazen-plugin-kiwi",
  "datazen-plugin-olap",
  "flate2",
+ "futures-util",
  "inventory",
  "rand 0.8.7",
  "redis",
@@ -1264,6 +1266,18 @@ dependencies = [
  "tracing-subscriber",
  "urlencoding",
  "uuid",
+]
+
+[[package]]
+name = "datazen-ai-api"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "inventory",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tokio",
 ]
 
 [[package]]

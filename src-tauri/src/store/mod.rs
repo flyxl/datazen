@@ -12,6 +12,7 @@ use tauri::Manager;
 use thiserror::Error;
 use tokio::sync::RwLock;
 
+use crate::ai::AiProviderConfig;
 use crate::db::ConnectionConfig;
 
 /// Application settings persisted on disk.
@@ -110,6 +111,7 @@ struct StoreCache {
     query_history: Vec<QueryHistoryEntry>,
     favorite_queries: Vec<FavoriteQuery>,
     sync_tasks: Vec<SyncTask>,
+    ai_config: Option<AiProviderConfig>,
 }
 
 /// Encrypted JSON store rooted at the per-app data directory.
@@ -252,6 +254,10 @@ impl Store {
             .load_json_file::<Vec<SyncTask>>("sync_tasks.json")
             .await
             .unwrap_or_default();
+        cache.ai_config = self
+            .load_encrypted_json::<AiProviderConfig>("ai_config.enc")
+            .await
+            .ok();
 
         Ok(())
     }
@@ -535,6 +541,66 @@ impl Store {
             cache.sync_tasks.clone()
         };
         self.save_json_file("sync_tasks.json", &snapshot).await
+    }
+
+    // ── AI config (encrypted) ──
+
+    pub async fn get_ai_config(&self) -> Option<AiProviderConfig> {
+        let cache = self.cache.read().await;
+        cache.ai_config.clone()
+    }
+
+    pub async fn save_ai_config(&self, config: &AiProviderConfig) -> Result<(), StoreError> {
+        {
+            let mut cache = self.cache.write().await;
+            cache.ai_config = Some(config.clone());
+        }
+        self.save_encrypted_json("ai_config.enc", config).await
+    }
+
+    pub async fn delete_ai_config(&self) -> Result<(), StoreError> {
+        {
+            let mut cache = self.cache.write().await;
+            cache.ai_config = None;
+        }
+        let path = self.data_dir.join("ai_config.enc");
+        if path.exists() {
+            tokio::fs::remove_file(&path)
+                .await
+                .map_err(|e| StoreError::WriteError(e.to_string()))?;
+        }
+        Ok(())
+    }
+
+    // ── Encrypted JSON helpers ──
+
+    async fn load_encrypted_json<T>(&self, filename: &str) -> Result<T, StoreError>
+    where
+        T: for<'de> Deserialize<'de>,
+    {
+        let path = self.data_dir.join(filename);
+        if !path.exists() {
+            return Err(StoreError::ReadError("missing".into()));
+        }
+        let encrypted = tokio::fs::read_to_string(&path)
+            .await
+            .map_err(|e| StoreError::ReadError(e.to_string()))?;
+        let plaintext = self.decrypt(&encrypted)?;
+        serde_json::from_str(&plaintext).map_err(|e| StoreError::ParseError(e.to_string()))
+    }
+
+    async fn save_encrypted_json<T: Serialize>(
+        &self,
+        filename: &str,
+        data: &T,
+    ) -> Result<(), StoreError> {
+        let path = self.data_dir.join(filename);
+        let json =
+            serde_json::to_string(data).map_err(|e| StoreError::ParseError(e.to_string()))?;
+        let encrypted = self.encrypt(&json)?;
+        tokio::fs::write(&path, encrypted)
+            .await
+            .map_err(|e| StoreError::WriteError(e.to_string()))
     }
 }
 

@@ -502,6 +502,26 @@ const en: Record<TranslationKey, string> = {
   'connSettings.title': 'Connection Settings',
   'connSettings.description': 'Configure display and behavior for this connection',
 
+  // ── AI Settings ──
+  'settings.ai': 'AI Assistant',
+  'settings.ai.provider': 'AI Provider',
+  'settings.ai.model': 'Model',
+  'settings.ai.apiKey': 'API Key',
+  'settings.ai.apiKeyPlaceholder': 'Enter API Key',
+  'settings.ai.endpoint': 'Custom Endpoint',
+  'settings.ai.endpointPlaceholder': 'Default official endpoint',
+  'settings.ai.validate': 'Validate',
+  'settings.ai.validating': 'Validating…',
+  'settings.ai.validated': 'Validated',
+  'settings.ai.save': 'Save Config',
+  'settings.ai.saving': 'Saving…',
+  'settings.ai.saved': 'Config saved',
+  'settings.ai.delete': 'Clear Config',
+  'settings.ai.notConfigured': 'Not configured',
+  'settings.ai.configured': 'Configured',
+  'settings.ai.ollamaHint': 'Ollama requires no API Key — ensure the Ollama service is running',
+  'settings.ai.description': 'Configure an AI provider to enable NL-to-SQL, error diagnosis, and other smart features',
+
   // ── Select ──
   'select.placeholder': 'Select…',
 

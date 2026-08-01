@@ -1,3 +1,4 @@
+mod ai;
 mod cache;
 mod commands;
 mod db;
@@ -12,6 +13,7 @@ use std::time::Instant;
 
 use tauri::menu::{CheckMenuItemBuilder, MenuBuilder, MenuItemBuilder, SubmenuBuilder};
 use tauri::{Emitter, Manager};
+use ai::init_ai_providers;
 use commands::AppState;
 use db::init_drivers;
 use cache::SchemaCache;
@@ -312,12 +314,25 @@ pub fn run() {
 
                 let sync_adapters = Arc::new(init_sync_adapters());
 
+                let t_ai = Instant::now();
+                let ai_registry = Arc::new(init_ai_providers().await);
+                tracing::info!("[startup]   init_ai_providers: {:?}", t_ai.elapsed());
+
+                if let Some(ai_config) = store.get_ai_config().await {
+                    if let Some(provider) = ai_registry.get(&ai_config.provider_type).await {
+                        if let Err(e) = provider.initialize(&ai_config).await {
+                            tracing::warn!("Failed to initialize saved AI provider: {e}");
+                        }
+                    }
+                }
+
                 Ok::<AppState, String>(AppState {
                     driver_registry: registry,
                     connection_manager,
                     store,
                     schema_cache,
                     sync_adapters,
+                    ai_registry,
                 })
             })?;
             tracing::info!("[startup]   block_on total: {:?}", t0.elapsed());
@@ -392,6 +407,12 @@ pub fn run() {
             commands::check_sync_conflicts,
             commands::kiwi_login,
             commands::kiwi_list_instances,
+            commands::ai_get_providers,
+            commands::ai_get_models,
+            commands::ai_validate_config,
+            commands::ai_save_config,
+            commands::ai_get_config,
+            commands::ai_delete_config,
             rebuild_menu,
         ])
         .run(tauri::generate_context!())

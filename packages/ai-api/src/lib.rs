@@ -1,0 +1,17 @@
+//! DataZen AI Provider API
+//!
+//! Public crate defining the `AiProvider` trait and related types.
+//! Mirrors `datazen-driver-api` for database drivers.
+
+pub const AI_PROTOCOL_VERSION: u32 = 1;
+
+mod traits;
+mod types;
+mod factory;
+
+pub use traits::*;
+pub use types::*;
+pub use factory::*;
+
+pub use async_trait::async_trait;
+pub use inventory;

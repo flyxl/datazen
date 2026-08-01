@@ -500,6 +500,26 @@ const zhCN = {
   'connSettings.title': '连接设置',
   'connSettings.description': '配置当前连接窗口的显示和行为',
 
+  // ── AI Settings ──
+  'settings.ai': 'AI 助手',
+  'settings.ai.provider': 'AI 服务商',
+  'settings.ai.model': '模型',
+  'settings.ai.apiKey': 'API Key',
+  'settings.ai.apiKeyPlaceholder': '输入 API Key',
+  'settings.ai.endpoint': '自定义端点',
+  'settings.ai.endpointPlaceholder': '默认官方端点',
+  'settings.ai.validate': '验证',
+  'settings.ai.validating': '验证中…',
+  'settings.ai.validated': '验证通过',
+  'settings.ai.save': '保存配置',
+  'settings.ai.saving': '保存中…',
+  'settings.ai.saved': '配置已保存',
+  'settings.ai.delete': '清除配置',
+  'settings.ai.notConfigured': '未配置',
+  'settings.ai.configured': '已配置',
+  'settings.ai.ollamaHint': 'Ollama 无需 API Key，请确保 Ollama 服务已启动',
+  'settings.ai.description': '配置 AI 服务以启用自然语言转 SQL、错误诊断等智能功能',
+
   // ── Select ──
   'select.placeholder': '请选择',
 

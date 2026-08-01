@@ -214,3 +214,32 @@ export interface TableDataResult {
   page: number;
   pageSize: number;
 }
+
+// ── AI Types ──
+
+export type AiProviderType = 'open_ai' | 'anthropic' | 'ollama' | 'custom';
+
+export interface AiProviderConfig {
+  providerType: AiProviderType;
+  apiKey?: string;
+  endpoint?: string;
+  model: string;
+  extra?: Record<string, unknown>;
+}
+
+export interface ModelInfo {
+  id: string;
+  displayName: string;
+  contextWindow: number;
+  supportsStreaming: boolean;
+  supportsTools: boolean;
+}
+
+export interface ProviderListItem {
+  providerType: AiProviderType;
+  displayName: string;
+  models: ModelInfo[];
+  defaultModel: string;
+  supportsStreaming: boolean;
+  supportsTools: boolean;
+}
