@@ -14,7 +14,7 @@ path = "src/lib.rs"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-datazen-driver-api = { path = "../packages/driver-api" }
+datazen-driver-api = { git = "https://github.com/flyxl/datazen-driver-api.git" }
 datazen-ai-api = { path = "../packages/ai-api" }
 inventory = "0.3"
 tauri = { version = "2", features = ["macos-private-api"] }
