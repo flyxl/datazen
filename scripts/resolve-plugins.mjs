@@ -311,8 +311,8 @@ function main() {
     plugins,
     features,
     cargoArgs: features.length > 0
-      ? `--no-default-features --features "${features.join(',')}"`
-      : '--no-default-features',
+      ? `--features "${features.join(',')}"`
+      : '',
   };
 
   const outPath = resolve(ROOT, '.plugin-features.json');
@@ -324,9 +324,9 @@ function main() {
   // Also output to stdout for scripts that pipe this
   console.log(`\nCargo build command:`);
   if (features.length > 0) {
-    console.log(`  cargo build --no-default-features --features "${features.join(',')}"`);
+    console.log(`  cargo build --features "${features.join(',')}"`);
   } else {
-    console.log(`  cargo build --no-default-features`);
+    console.log(`  cargo build`);
   }
 }
 
