@@ -93,7 +93,6 @@ export function useConnectionForm(options: UseConnectionFormOptions = {}) {
   );
 
   function handleDatabaseTypeChange(newType: DatabaseType) {
-    console.debug('[useConnectionForm] handleDatabaseTypeChange called:', newType, 'current:', databaseType);
     setDatabaseType(newType);
     const meta = DB_REGISTRY[newType];
     setPort(meta.defaultPort ? String(meta.defaultPort) : '');
