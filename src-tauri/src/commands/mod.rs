@@ -29,7 +29,7 @@ pub use sync::*;
 use crate::ai::{AiProviderRegistry, SchemaContextBuilder};
 use crate::cache::SchemaCache;
 use crate::db::registry::DriverRegistry;
-use crate::mcp::SkillRegistry;
+use crate::mcp::{McpClientManager, SkillRegistry};
 use crate::services::ConnectionManager;
 use crate::store::Store;
 use crate::sync::adapter_registry::SyncAdapterRegistry;
@@ -46,6 +46,7 @@ pub struct AppState {
     pub ai_registry: Arc<AiProviderRegistry>,
     pub schema_context_builder: Arc<SchemaContextBuilder>,
     pub skill_registry: Arc<SkillRegistry>,
+    pub mcp_client_manager: Arc<McpClientManager>,
 }
 
 pub(crate) fn log_err(cmd: &str, e: &dyn std::fmt::Display) -> String {

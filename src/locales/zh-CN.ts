@@ -588,6 +588,19 @@ const zhCN = {
   'mcp.transport': '传输方式',
   'mcp.usage': '要在 Claude Desktop 或 Cursor 中使用 DataZen 作为 MCP 服务器，请添加以下配置：',
 
+  // ── MCP Client ──
+  'mcpClient.title': '外部 MCP 服务',
+  'mcpClient.description': '连接外部 MCP Server，扩展 AI 助手能力。',
+  'mcpClient.addServer': '添加 MCP 服务',
+  'mcpClient.serverName': '名称',
+  'mcpClient.command': '命令',
+  'mcpClient.args': '参数',
+  'mcpClient.connect': '连接',
+  'mcpClient.connecting': '连接中…',
+  'mcpClient.disconnect': '断开',
+  'mcpClient.tools': '工具',
+  'mcpClient.noServers': '暂无已连接的 MCP 服务。',
+
   // ── Skills ──
   'skills.title': '技能',
   'skills.loading': '加载中…',

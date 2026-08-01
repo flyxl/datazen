@@ -590,6 +590,19 @@ const en: Record<TranslationKey, string> = {
   'mcp.transport': 'Transport',
   'mcp.usage': 'To use DataZen as an MCP server with Claude Desktop or Cursor, add the following config:',
 
+  // ── MCP Client ──
+  'mcpClient.title': 'External MCP Servers',
+  'mcpClient.description': 'Connect to external MCP Servers to extend AI assistant capabilities.',
+  'mcpClient.addServer': 'Add MCP Server',
+  'mcpClient.serverName': 'Name',
+  'mcpClient.command': 'Command',
+  'mcpClient.args': 'Arguments',
+  'mcpClient.connect': 'Connect',
+  'mcpClient.connecting': 'Connecting…',
+  'mcpClient.disconnect': 'Disconnect',
+  'mcpClient.tools': 'tools',
+  'mcpClient.noServers': 'No MCP servers connected.',
+
   // ── Skills ──
   'skills.title': 'Skills',
   'skills.loading': 'Loading skills…',

@@ -332,3 +332,28 @@ export interface SkillListItem {
   description: string;
   variables: SkillVariable[];
 }
+
+// ── MCP Client types ──
+
+export interface McpServerConfig {
+  id: string;
+  name: string;
+  transport: 'stdio';
+  command?: string;
+  args?: string[];
+  env?: Record<string, string>;
+  enabled: boolean;
+}
+
+export interface McpClientStatus {
+  serverId: string;
+  serverName: string;
+  toolsCount: number;
+}
+
+export interface McpToolInfo {
+  serverId: string;
+  serverName: string;
+  toolName: string;
+  description?: string;
+}

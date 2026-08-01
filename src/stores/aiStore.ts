@@ -8,6 +8,9 @@ import type {
   DiagnosisResult,
   ExplainAnalysis,
   FilterCondition,
+  McpClientStatus,
+  McpServerConfig,
+  McpToolInfo,
   ModelInfo,
   ProviderListItem,
   SkillListItem,
@@ -119,6 +122,22 @@ interface AiStore {
     connectionId?: string;
   }) => Promise<void>;
   clearSkillResult: () => void;
+
+  mcpServers: McpClientStatus[];
+  mcpTools: McpToolInfo[];
+  mcpConnecting: boolean;
+  mcpError: string | null;
+
+  connectMcpServer: (config: McpServerConfig) => Promise<void>;
+  disconnectMcpServer: (serverId: string) => Promise<void>;
+  loadMcpServers: () => Promise<void>;
+  loadMcpTools: () => Promise<void>;
+  callMcpTool: (params: {
+    serverId: string;
+    toolName: string;
+    arguments: Record<string, unknown>;
+  }) => Promise<string>;
+  clearMcpError: () => void;
 }
 
 export const useAiStore = create<AiStore>((set, get) => ({
@@ -512,4 +531,63 @@ export const useAiStore = create<AiStore>((set, get) => ({
 
   clearSkillResult: () =>
     set({ skillExecutionResult: null, skillError: null }),
+
+  mcpServers: [],
+  mcpTools: [],
+  mcpConnecting: false,
+  mcpError: null,
+
+  connectMcpServer: async (config) => {
+    set({ mcpConnecting: true, mcpError: null });
+    try {
+      await aiCommands.mcpClientConnect(config);
+      await get().loadMcpServers();
+      await get().loadMcpTools();
+      set({ mcpConnecting: false });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      set({ mcpConnecting: false, mcpError: msg });
+      throw new Error(msg);
+    }
+  },
+
+  disconnectMcpServer: async (serverId) => {
+    try {
+      await aiCommands.mcpClientDisconnect(serverId);
+      await get().loadMcpServers();
+      await get().loadMcpTools();
+    } catch (e) {
+      set({ mcpError: e instanceof Error ? e.message : String(e) });
+    }
+  },
+
+  loadMcpServers: async () => {
+    try {
+      const servers = await aiCommands.mcpClientList();
+      set({ mcpServers: servers });
+    } catch (e) {
+      console.error('Failed to load MCP servers:', e);
+    }
+  },
+
+  loadMcpTools: async () => {
+    try {
+      const tools = await aiCommands.mcpClientTools();
+      set({ mcpTools: tools });
+    } catch (e) {
+      console.error('Failed to load MCP tools:', e);
+    }
+  },
+
+  callMcpTool: async ({ serverId, toolName, arguments: args }) => {
+    try {
+      return await aiCommands.mcpClientCallTool({ serverId, toolName, arguments: args });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      set({ mcpError: msg });
+      throw new Error(msg);
+    }
+  },
+
+  clearMcpError: () => set({ mcpError: null }),
 }));
