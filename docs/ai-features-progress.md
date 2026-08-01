@@ -24,7 +24,8 @@
 | 1 | SQL 错误诊断前端 UI (DiagnosisPanel) | ✅ 已完成 | ✅ TS 编译通过 | 🔲 | — |
 | 2 | EXPLAIN 分析后端 IPC | ✅ 已完成 | ✅ 编译通过 | — | — |
 | 2 | EXPLAIN 前端 UI (ExplainPanel) | ✅ 已完成 | ✅ TS 编译通过 | 🔲 | — |
-| 3 | AI Chat 侧边栏 | 🔲 未开始 | 🔲 | 🔲 | — |
+| 3 | AI Chat 后端 IPC | ✅ 已完成 | ✅ 编译通过 | — | — |
+| 3 | AI Chat 前端 (AiChatPanel) | ✅ 已完成 | ✅ TS 编译通过 | 🔲 | — |
 | 4 | MCP Server 基础 | 🔲 未开始 | 🔲 | 🔲 | — |
 | 5 | Skills 系统 | 🔲 未开始 | 🔲 | 🔲 | — |
 | 6 | MCP Client | 🔲 未开始 | 🔲 | 🔲 | — |

@@ -422,6 +422,7 @@ pub fn run() {
             commands::ai_generate_sql,
             commands::ai_diagnose_error,
             commands::ai_analyze_explain,
+            commands::ai_chat,
             rebuild_menu,
         ])
         .run(tauri::generate_context!())

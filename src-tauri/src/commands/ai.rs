@@ -310,6 +310,113 @@ pub async fn ai_analyze_explain(
         .map_err(|e| log_err("ai_analyze_explain", &e))
 }
 
+// ─── AI Chat ───
+
+#[tauri::command]
+pub async fn ai_chat(
+    state: State<'_, AppState>,
+    app_handle: AppHandle,
+    connection_id: Option<String>,
+    database: Option<String>,
+    messages: Vec<ChatMessage>,
+    request_id: String,
+    include_schema: bool,
+) -> Result<String, String> {
+    let ai_config = state
+        .store
+        .get_ai_config()
+        .await
+        .ok_or_else(|| "AI 未配置".to_string())?;
+
+    let provider = state
+        .ai_registry
+        .get(&ai_config.provider_type)
+        .await
+        .ok_or("Provider not available")?;
+
+    let mut full_messages: Vec<ChatMessage> = Vec::new();
+
+    if include_schema {
+        if let Some(ref conn_id) = connection_id {
+            let db = database.as_deref().unwrap_or("");
+            if let Ok((driver, _handle)) =
+                state.connection_manager.get_connection(conn_id).await
+            {
+                let db_type = format!("{:?}", driver.driver_type());
+                if let Ok(context) = state
+                    .schema_context_builder
+                    .build_sql_context(conn_id, db, None, &[], 4000)
+                    .await
+                {
+                    full_messages.push(ChatMessage {
+                        role: MessageRole::System,
+                        content: format!(
+                            "You are a helpful database assistant. The user is connected to a {db_type} database.\n\nSchema:\n{}",
+                            context.schema_ddl
+                        ),
+                    });
+                }
+            }
+        }
+    }
+
+    if full_messages.is_empty() {
+        full_messages.push(ChatMessage {
+            role: MessageRole::System,
+            content: "You are a helpful database assistant. Help the user with SQL queries, database concepts, and data analysis. When writing SQL, use proper formatting and explain your reasoning.".to_string(),
+        });
+    }
+
+    full_messages.extend(messages);
+
+    let (tx, mut rx) = mpsc::channel::<Result<StreamChunk, AiError>>(32);
+    let request = CompletionRequest {
+        request_id: request_id.clone(),
+        model: ai_config.model.clone(),
+        messages: full_messages,
+        temperature: Some(0.7),
+        max_tokens: Some(4000),
+        stop: None,
+    };
+
+    let req_id_clone = request_id.clone();
+    let handle_clone = app_handle.clone();
+
+    tokio::spawn(async move {
+        while let Some(chunk_result) = rx.recv().await {
+            match chunk_result {
+                Ok(chunk) => {
+                    let _ = handle_clone.emit(
+                        "ai:stream-chunk",
+                        serde_json::json!({
+                            "requestId": req_id_clone,
+                            "content": chunk.content,
+                            "done": chunk.done,
+                            "usage": chunk.usage,
+                        }),
+                    );
+                }
+                Err(e) => {
+                    let _ = handle_clone.emit(
+                        "ai:stream-error",
+                        serde_json::json!({
+                            "requestId": req_id_clone,
+                            "error": e.to_string(),
+                        }),
+                    );
+                }
+            }
+        }
+    });
+
+    provider
+        .stream_complete(&request, tx)
+        .await
+        .map_err(|e| log_err("ai_chat", &e))?;
+
+    Ok(request_id)
+}
+
 fn strip_markdown_fences(s: &str) -> String {
     let trimmed = s.trim();
     if let Some(rest) = trimmed.strip_prefix("```") {

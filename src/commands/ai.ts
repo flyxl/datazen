@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import type {
+  AiChatMessage,
   AiProviderConfig,
   AiProviderType,
   DiagnosisResult,
@@ -48,6 +49,14 @@ export const aiCommands = {
     explainOutput: string;
     originalSql: string;
   }) => invoke<ExplainAnalysis>('ai_analyze_explain', params),
+
+  chat: (params: {
+    connectionId?: string;
+    database?: string;
+    messages: AiChatMessage[];
+    requestId: string;
+    includeSchema?: boolean;
+  }) => invoke<string>('ai_chat', params),
 };
 
 export function onAiStreamChunk(

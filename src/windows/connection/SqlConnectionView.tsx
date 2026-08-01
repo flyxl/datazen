@@ -5,6 +5,7 @@ import {
   Code2,
   Database,
   Download,
+  MessageSquare,
   Pencil,
   Plus,
   RefreshCw,
@@ -41,6 +42,8 @@ import type { TranslationKey } from '../../locales';
 import { DetailPanel } from '../../components/DataTable/DetailPanel';
 import { DetailPanelToggle } from '../../components/DataTable/DetailPanelToggle';
 import type { ColumnDef } from '../../components/DataTable/TableHeader';
+import { AiChatPanel } from '../../components/ai/AiChatPanel';
+import { useAiStore } from '../../stores/aiStore';
 import { rowToRecord } from '../../lib/rowToRecord';
 
 type SubTabId = 'data' | 'structure' | 'indexes' | 'foreignKeys' | 'ddl';
@@ -99,6 +102,8 @@ export function SqlConnectionView({
   const [panels, setPanels] = useState<Panel[]>([]);
   const [activePanelId, setActivePanelId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [aiChatOpen, setAiChatOpen] = useState(false);
+  const isAiConfigured = useAiStore((s) => s.isConfigured);
   const [exportOpen, setExportOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [exportTableName, setExportTableName] = useState<string | null>(null);
@@ -123,6 +128,7 @@ export function SqlConnectionView({
   const closeQueryTab = useQueryStore((s) => s.closeTab);
   const setQueryConnectionId = useQueryStore((s) => s.setConnectionId);
   const queryTabs = useQueryStore((s) => s.tabs);
+  const updateQuerySql = useQueryStore((s) => s.updateSql);
   const resultDetailRowIndex = useQueryStore((s) => s.resultDetailRowIndex);
   const updateResultCell = useQueryStore((s) => s.updateResultCell);
 
@@ -406,6 +412,16 @@ export function SqlConnectionView({
 
         <div className="flex-1" />
 
+        {isAiConfigured && (
+          <Button
+            variant={aiChatOpen ? 'secondary' : 'ghost'}
+            className="h-7 gap-1 px-2 text-xs"
+            onClick={() => setAiChatOpen((v) => !v)}
+          >
+            <MessageSquare className="h-3.5 w-3.5" />
+          </Button>
+        )}
+
         {activePanel && (
           <DetailPanelToggle open={detailOpen} onToggle={() => setDetailOpen((p) => !p)} />
         )}
@@ -591,6 +607,21 @@ export function SqlConnectionView({
             editable
             onFieldEdit={handleDetailFieldEdit}
           />
+        )}
+
+        {aiChatOpen && (
+          <aside className="w-80 shrink-0 border-l border-edge bg-surface">
+            <AiChatPanel
+              connectionId={connectionId}
+              database={currentDatabase ?? undefined}
+              onInsertSql={(sql) => {
+                if (activePanel?.type === 'query') {
+                  const tab = queryTabs.find((t) => t.id === (activePanel as QueryPanelInfo).queryTabId);
+                  if (tab) updateQuerySql(tab.id, sql);
+                }
+              }}
+            />
+          </aside>
         )}
       </div>
 
