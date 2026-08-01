@@ -77,6 +77,7 @@ pub struct ConnectionConfig {
     pub color_tag: Option<String>,
     pub group: Option<String>,
     pub last_connected_at: Option<String>,
+    pub server_version: Option<String>,
 }
 
 fn default_connection_timeout() -> u32 {

@@ -164,6 +164,15 @@ pub trait DatabaseDriver: Send + Sync {
     }
 
     async fn cancel_query(&self, handle: &ConnectionHandle) -> Result<(), DriverError>;
+
+    /// Fetch server version info using an existing connection handle.
+    /// Unlike `test_connection` which creates a temporary pool, this reuses the live connection.
+    async fn get_server_info(&self, _handle: &ConnectionHandle) -> Result<ServerInfo, DriverError> {
+        Ok(ServerInfo {
+            server_version: String::new(),
+            server_type: format!("{:?}", self.driver_type()),
+        })
+    }
 }
 
 #[async_trait]

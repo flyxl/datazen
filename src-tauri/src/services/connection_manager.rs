@@ -64,7 +64,7 @@ impl ConnectionManager {
             .await
             .ok_or_else(|| ConnectionError::ConfigNotFound(config_id.to_string()))?;
 
-        let (effective_config, tunnel) = self.maybe_start_tunnel(config).await?;
+        let (mut effective_config, tunnel) = self.maybe_start_tunnel(config).await?;
 
         let driver = self
             .registry
@@ -74,6 +74,17 @@ impl ConnectionManager {
 
         let handle = driver.connect(&effective_config).await?;
         let connection_id = handle.id.clone();
+
+        if effective_config.server_version.is_none() {
+            if let Ok(info) = driver.get_server_info(&handle).await {
+                effective_config.server_version = Some(info.server_version.clone());
+                // Persist version to the stored config
+                if let Some(mut stored) = self.store.get_connection(config_id).await {
+                    stored.server_version = Some(info.server_version);
+                    let _ = self.store.save_connection(stored).await;
+                }
+            }
+        }
 
         self.config_id_map.write().await
             .insert(connection_id.clone(), config_id.to_string());
