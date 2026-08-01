@@ -50,6 +50,7 @@ async function openTauriWindow(label: string, options: OpenWindowOptions) {
     minWidth: 600,
     minHeight: 480,
     visible: false,
+    acceptFirstMouse: true,
     ...(isMac ? {} : { backgroundColor: currentBgColor() }),
   });
 }
@@ -172,6 +173,7 @@ export function openSettingsWindow(section?: string) {
         minWidth: 560,
         minHeight: 400,
         visible: false,
+        acceptFirstMouse: true,
         ...(isMac ? {} : { backgroundColor: currentBgColor() }),
       });
     })();
