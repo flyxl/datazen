@@ -473,4 +473,18 @@ impl DatabaseDriver for SqliteDriver {
     async fn cancel_query(&self, _handle: &ConnectionHandle) -> Result<(), DriverError> {
         Ok(())
     }
+
+    async fn get_server_info(&self, handle: &ConnectionHandle) -> Result<ServerInfo, DriverError> {
+        let pools = self.pools.read().await;
+        let pool = Self::get_pool(&pools, handle)?;
+        let row = sqlx::query("SELECT sqlite_version()")
+            .fetch_one(pool)
+            .await
+            .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+        let version: String = row.try_get(0).unwrap_or_default();
+        Ok(ServerInfo {
+            server_version: version,
+            server_type: "SQLite".to_string(),
+        })
+    }
 }

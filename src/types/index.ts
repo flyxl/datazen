@@ -35,6 +35,7 @@ export interface ConnectionConfig {
   colorTag?: string;
   group?: string;
   lastConnectedAt?: string;
+  serverVersion?: string;
 }
 
 export interface ServerInfo {

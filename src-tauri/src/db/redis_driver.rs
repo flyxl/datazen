@@ -1037,6 +1037,25 @@ impl DatabaseDriver for RedisDriver {
     async fn cancel_query(&self, _handle: &ConnectionHandle) -> Result<(), DriverError> {
         Ok(())
     }
+
+    async fn get_server_info(&self, handle: &ConnectionHandle) -> Result<ServerInfo, DriverError> {
+        let mut conns = self.connections.write().await;
+        let redis_conn = Self::get_conn(&mut conns, handle)?;
+        let info: String = redis::cmd("INFO")
+            .arg("server")
+            .query_async(&mut redis_conn.connection)
+            .await
+            .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+        let version = info
+            .lines()
+            .find(|l| l.starts_with("redis_version:"))
+            .map(|l| l.trim_start_matches("redis_version:").trim().to_string())
+            .unwrap_or_else(|| "unknown".into());
+        Ok(ServerInfo {
+            server_version: version,
+            server_type: "Redis".to_string(),
+        })
+    }
 }
 
 #[async_trait]

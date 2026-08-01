@@ -129,5 +129,6 @@ pub async fn get_connection_info(
         "port": config.port,
         "database": config.database,
         "schema": config.schema,
+        "serverVersion": config.server_version,
     }))
 }

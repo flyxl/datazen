@@ -21,7 +21,7 @@ export const connectionCommands = {
     invoke<void>('disconnect', { connectionId }),
 
   getConnectionInfo: (connectionId: string) =>
-    invoke<{ databaseType: string; name: string; host?: string; port?: number; database?: string }>(
+    invoke<{ databaseType: string; driverCategory: string; name: string; host?: string; port?: number; database?: string; schema?: string; serverVersion?: string }>(
       'get_connection_info',
       { connectionId },
     ),
