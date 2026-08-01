@@ -1,3 +1,4 @@
+use super::error::CommandError;
 use serde::Deserialize;
 use tauri::{AppHandle, WebviewUrl, WebviewWindowBuilder};
 
@@ -30,7 +31,7 @@ fn default_height() -> f64 { 640.0 }
 fn default_true() -> bool { true }
 
 #[tauri::command]
-pub fn create_sub_window(app: AppHandle, options: CreateWindowOptions) -> Result<(), String> {
+pub fn create_sub_window(app: AppHandle, options: CreateWindowOptions) -> Result<(), CommandError> {
     let is_mac = cfg!(target_os = "macos");
     let decorations = options.decorations.unwrap_or(false);
     let transparent = options.transparent.unwrap_or(is_mac);
@@ -57,6 +58,6 @@ pub fn create_sub_window(app: AppHandle, options: CreateWindowOptions) -> Result
         builder = builder.center();
     }
 
-    builder.build().map_err(|e| e.to_string())?;
+    builder.build().map_err(|e| CommandError::Internal(e.to_string()))?;
     Ok(())
 }

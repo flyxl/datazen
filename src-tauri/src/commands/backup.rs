@@ -1,4 +1,5 @@
-use super::{AppState, log_err};
+use super::error::{CmdExt, CommandError};
+use super::AppState;
 use tauri::State;
 
 #[tauri::command]
@@ -9,19 +10,19 @@ pub async fn backup_database(
     output_path: String,
     options: Option<Vec<String>>,
     compress: Option<bool>,
-) -> Result<(), String> {
+) -> Result<(), CommandError> {
     tracing::info!(%connection_id, %output_path, "backup_database");
     let config = state
         .connection_manager
         .get_connection_config(&connection_id)
         .await
-        .map_err(|e| log_err("backup_database", &e))?;
+        .cmd_err("backup_database")?;
 
     let (driver, handle) = state
         .connection_manager
         .get_connection(&connection_id)
         .await
-        .map_err(|e| log_err("backup_database", &e))?;
+        .cmd_err("backup_database")?;
 
     let db_name = database.as_deref().unwrap_or(config.database.as_deref().unwrap_or(""));
     let opts: std::collections::HashSet<String> = options.unwrap_or_default().into_iter().collect();
@@ -33,7 +34,7 @@ pub async fn backup_database(
     let tables = driver
         .get_tables(&handle, db_name)
         .await
-        .map_err(|e| log_err("backup_database", &e))?;
+        .cmd_err("backup_database")?;
 
     let qi = |name: &str| driver.quote_ident(name);
 
@@ -57,7 +58,7 @@ pub async fn backup_database(
         let schema = driver
             .get_table_schema(&handle, tname)
             .await
-            .map_err(|e| log_err("backup_database", &e))?;
+            .cmd_err("backup_database")?;
 
         out.push_str(&format!("-- Table: {}\n", tname));
 
@@ -118,14 +119,14 @@ pub async fn backup_database(
     if compress.unwrap_or(false) {
         use std::io::Write;
         let file = std::fs::File::create(&output_path)
-            .map_err(|e| log_err("backup_database", &e))?;
+            .map_err(|e| { tracing::error!(cmd = "backup_database", error = %e); CommandError::Io(e) })?;
         let mut encoder = flate2::write::GzEncoder::new(file, flate2::Compression::default());
-        encoder.write_all(data).map_err(|e| log_err("backup_database", &e))?;
-        encoder.finish().map_err(|e| log_err("backup_database", &e))?;
+        encoder.write_all(data).map_err(|e| { tracing::error!(cmd = "backup_database", error = %e); CommandError::Io(e) })?;
+        encoder.finish().map_err(|e| { tracing::error!(cmd = "backup_database", error = %e); CommandError::Io(e) })?;
     } else {
         tokio::fs::write(&output_path, data)
             .await
-            .map_err(|e| log_err("backup_database", &e))?;
+            .cmd_err("backup_database")?;
     }
     tracing::info!(%output_path, "backup_database OK");
     Ok(())
@@ -136,17 +137,17 @@ pub async fn restore_database(
     state: State<'_, AppState>,
     connection_id: String,
     input_path: String,
-) -> Result<(), String> {
+) -> Result<(), CommandError> {
     tracing::info!(%connection_id, %input_path, "restore_database");
     let sql = tokio::fs::read_to_string(&input_path)
         .await
-        .map_err(|e| log_err("restore_database", &e))?;
+        .cmd_err("restore_database")?;
 
     let (driver, handle) = state
         .connection_manager
         .get_connection(&connection_id)
         .await
-        .map_err(|e| log_err("restore_database", &e))?;
+        .cmd_err("restore_database")?;
 
     let statements: Vec<&str> = sql
         .split(';')
@@ -167,6 +168,6 @@ pub async fn restore_database(
         Ok(())
     } else {
         let msg = format!("Partial restore failure ({}/{} statements failed):\n{}", errors.len(), statements.len(), errors.join("\n"));
-        Err(msg)
+        Err(CommandError::Internal(msg))
     }
 }

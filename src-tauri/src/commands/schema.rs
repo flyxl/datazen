@@ -1,4 +1,5 @@
-use super::{AppState, log_err};
+use super::error::{CmdExt, CommandError};
+use super::AppState;
 use crate::db::{TableDataResult, TableInfo, TableSchema};
 use crate::services::{FilterCondition, OrderBy, QueryExecutor, SortCondition};
 use std::time::Instant;
@@ -8,19 +9,19 @@ use tauri::State;
 pub async fn get_databases(
     state: State<'_, AppState>,
     connection_id: String,
-) -> Result<Vec<String>, String> {
+) -> Result<Vec<String>, CommandError> {
     let start = Instant::now();
     tracing::info!(%connection_id, "get_databases");
     let (driver, handle) = state
         .connection_manager
         .get_connection(&connection_id)
         .await
-        .map_err(|e| log_err("get_databases", &e))?;
+        .cmd_err("get_databases")?;
 
     let dbs = driver
         .get_databases(&handle)
         .await
-        .map_err(|e| log_err("get_databases", &e))?;
+        .cmd_err("get_databases")?;
     tracing::info!(%connection_id, count = dbs.len(), ms = start.elapsed().as_millis() as u64, "get_databases OK");
     Ok(dbs)
 }
@@ -30,19 +31,19 @@ pub async fn get_tables(
     state: State<'_, AppState>,
     connection_id: String,
     database: String,
-) -> Result<Vec<TableInfo>, String> {
+) -> Result<Vec<TableInfo>, CommandError> {
     let start = Instant::now();
     tracing::info!(%connection_id, %database, "get_tables");
     let (driver, handle) = state
         .connection_manager
         .get_connection(&connection_id)
         .await
-        .map_err(|e| log_err("get_tables", &e))?;
+        .cmd_err("get_tables")?;
 
     let tables = driver
         .get_tables(&handle, &database)
         .await
-        .map_err(|e| log_err("get_tables", &e))?;
+        .cmd_err("get_tables")?;
     tracing::info!(%connection_id, %database, count = tables.len(), ms = start.elapsed().as_millis() as u64, "get_tables OK");
     Ok(tables)
 }
@@ -53,19 +54,19 @@ pub async fn get_columns(
     state: State<'_, AppState>,
     connection_id: String,
     table: String,
-) -> Result<Vec<String>, String> {
+) -> Result<Vec<String>, CommandError> {
     let start = Instant::now();
     tracing::info!(%connection_id, %table, "get_columns");
     let (driver, handle) = state
         .connection_manager
         .get_connection(&connection_id)
         .await
-        .map_err(|e| log_err("get_columns", &e))?;
+        .cmd_err("get_columns")?;
 
     let (cols, _pks) = driver
         .get_columns(&handle, &table)
         .await
-        .map_err(|e| log_err("get_columns", &e))?;
+        .cmd_err("get_columns")?;
 
     tracing::info!(%connection_id, %table, count = cols.len(), ms = start.elapsed().as_millis() as u64, "get_columns OK");
     Ok(cols.into_iter().map(|c| c.name).collect())
@@ -76,27 +77,27 @@ pub async fn get_table_schema(
     state: State<'_, AppState>,
     connection_id: String,
     table: String,
-) -> Result<TableSchema, String> {
+) -> Result<TableSchema, CommandError> {
     let start = Instant::now();
     tracing::info!(%connection_id, %table, "get_table_schema");
     let (driver, handle) = state
         .connection_manager
         .get_connection(&connection_id)
         .await
-        .map_err(|e| log_err("get_table_schema", &e))?;
+        .cmd_err("get_table_schema")?;
 
     let config = state
         .connection_manager
         .get_connection_config(&connection_id)
         .await
-        .map_err(|e| log_err("get_table_schema", &e))?;
+        .cmd_err("get_table_schema")?;
     let database = config.database.as_deref().unwrap_or("default");
 
     let schema = state
         .schema_cache
         .get_table_schema(&connection_id, database, &table, &driver, &handle)
         .await
-        .map_err(|e| log_err("get_table_schema", &e))?;
+        .cmd_err("get_table_schema")?;
     tracing::info!(%connection_id, %table, cols = schema.columns.len(), indexes = schema.indexes.len(), fks = schema.foreign_keys.len(), ms = start.elapsed().as_millis() as u64, "get_table_schema OK");
     Ok(schema)
 }
@@ -111,14 +112,14 @@ pub async fn get_table_data(
     filters: Option<Vec<FilterCondition>>,
     sorts: Option<Vec<SortCondition>>,
     skip_count: Option<bool>,
-) -> Result<TableDataResult, String> {
+) -> Result<TableDataResult, CommandError> {
     let start = Instant::now();
     tracing::info!(%connection_id, %table, page, page_size, "get_table_data");
     let (driver, handle) = state
         .connection_manager
         .get_connection(&connection_id)
         .await
-        .map_err(|e| log_err("get_table_data", &e))?;
+        .cmd_err("get_table_data")?;
 
     let order = sorts
         .and_then(|list| list.into_iter().next())
@@ -127,7 +128,6 @@ pub async fn get_table_data(
             descending: s.descending,
         });
 
-    // For Kiwi connections, always skip COUNT(*) — max 1000 rows anyway
     let effective_skip_count = skip_count.unwrap_or(false) || driver.skip_count_query();
 
     let executor = QueryExecutor::new(state.schema_cache.clone());
@@ -145,7 +145,7 @@ pub async fn get_table_data(
             effective_skip_count,
         )
         .await
-        .map_err(|e| log_err("get_table_data", &e))?;
+        .cmd_err("get_table_data")?;
     tracing::info!(%connection_id, %table, rows = result.rows.len(), ms = start.elapsed().as_millis() as u64, "get_table_data OK");
     Ok(result)
 }

@@ -1,7 +1,8 @@
 //! AI-related Tauri IPC commands.
 
 use crate::ai::*;
-use crate::commands::{log_err, AppState};
+use crate::commands::error::{CmdExt, CommandError};
+use crate::commands::AppState;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
 use tokio::sync::mpsc;
@@ -28,12 +29,12 @@ fn inject_language_hint(messages: &mut [ChatMessage], lang: &str) {
 use std::sync::Arc;
 use datazen_ai_api::AiProviderConfig;
 
-async fn resolve_ai(state: &AppState) -> Result<(Arc<dyn AiProvider>, AiProviderConfig), String> {
+async fn resolve_ai(state: &AppState) -> Result<(Arc<dyn AiProvider>, AiProviderConfig), CommandError> {
     let config = state
         .store
         .get_ai_config()
         .await
-        .ok_or_else(|| "AI_NOT_CONFIGURED".to_string())?;
+        .ok_or_else(|| CommandError::NotConfigured("AI_NOT_CONFIGURED".into()))?;
 
     tracing::debug!(
         provider = %config.provider_type,
@@ -46,7 +47,7 @@ async fn resolve_ai(state: &AppState) -> Result<(Arc<dyn AiProvider>, AiProvider
         .ai_registry
         .get(&config.provider_type)
         .await
-        .ok_or_else(|| "AI_PROVIDER_NOT_AVAILABLE".to_string())?;
+        .ok_or_else(|| CommandError::NotConfigured("AI_PROVIDER_NOT_AVAILABLE".into()))?;
 
     Ok((provider, config))
 }
@@ -65,7 +66,7 @@ pub struct ProviderListItem {
 #[tauri::command]
 pub async fn ai_get_providers(
     state: State<'_, AppState>,
-) -> Result<Vec<ProviderListItem>, String> {
+) -> Result<Vec<ProviderListItem>, CommandError> {
     let providers = state.ai_registry.all_providers().await;
     let result = providers
         .into_iter()
@@ -85,12 +86,12 @@ pub async fn ai_get_providers(
 pub async fn ai_get_models(
     state: State<'_, AppState>,
     provider_type: AiProviderType,
-) -> Result<Vec<ModelInfo>, String> {
+) -> Result<Vec<ModelInfo>, CommandError> {
     let provider = state
         .ai_registry
         .get(&provider_type)
         .await
-        .ok_or_else(|| format!("Provider {:?} not found", provider_type))?;
+        .ok_or_else(|| CommandError::NotFound(format!("Provider {:?} not found", provider_type)))?;
     Ok(provider.available_models())
 }
 
@@ -99,69 +100,69 @@ pub async fn ai_fetch_remote_models(
     protocol: String,
     endpoint: String,
     api_key: String,
-) -> Result<Vec<ModelInfo>, String> {
+) -> Result<Vec<ModelInfo>, CommandError> {
     let proto = match protocol.as_str() {
         "open_ai_compatible" => crate::ai::custom::CustomProtocol::OpenAiCompatible,
         "open_ai_responses" => crate::ai::custom::CustomProtocol::OpenAiResponses,
         "anthropic_compatible" => crate::ai::custom::CustomProtocol::AnthropicCompatible,
-        other => return Err(format!("Unknown protocol: {other}")),
+        other => return Err(CommandError::Validation(format!("Unknown protocol: {other}"))),
     };
 
     crate::ai::custom::fetch_remote_models(proto, &endpoint, &api_key)
         .await
-        .map_err(|e| log_err("ai_fetch_remote_models", &e))
+        .cmd_err("ai_fetch_remote_models")
 }
 
 #[tauri::command]
 pub async fn ai_validate_config(
     state: State<'_, AppState>,
     config: AiProviderConfig,
-) -> Result<(), String> {
+) -> Result<(), CommandError> {
     let provider = state
         .ai_registry
         .get(&config.provider_type)
         .await
-        .ok_or_else(|| format!("Provider {:?} not found", config.provider_type))?;
+        .ok_or_else(|| CommandError::NotFound(format!("Provider {:?} not found", config.provider_type)))?;
     provider
         .validate_config(&config)
         .await
-        .map_err(|e| log_err("ai_validate_config", &e))
+        .cmd_err("ai_validate_config")
 }
 
 #[tauri::command]
 pub async fn ai_save_config(
     state: State<'_, AppState>,
     config: AiProviderConfig,
-) -> Result<(), String> {
+) -> Result<(), CommandError> {
     let provider = state
         .ai_registry
         .get(&config.provider_type)
         .await
-        .ok_or_else(|| format!("Provider {:?} not found", config.provider_type))?;
+        .ok_or_else(|| CommandError::NotFound(format!("Provider {:?} not found", config.provider_type)))?;
 
     provider
         .initialize(&config)
         .await
-        .map_err(|e| log_err("ai_save_config", &e))?;
+        .cmd_err("ai_save_config")?;
 
     state
         .store
         .save_ai_config(&config)
         .await
-        .map_err(|e| log_err("ai_save_config", &e))
+        .cmd_err("ai_save_config")
 }
 
 #[tauri::command]
 pub async fn ai_get_config(
     state: State<'_, AppState>,
-) -> Result<Option<AiProviderConfig>, String> {
+) -> Result<Option<AiProviderConfig>, CommandError> {
     Ok(state.store.get_ai_config().await)
 }
 
 #[tauri::command]
 pub async fn ai_delete_config(
     state: State<'_, AppState>,
-) -> Result<(), String> {
+) -> Result<(), CommandError> {
     for provider in state.ai_registry.all_providers().await {
         provider.reset().await;
     }
@@ -169,7 +170,7 @@ pub async fn ai_delete_config(
         .store
         .delete_ai_config()
         .await
-        .map_err(|e| log_err("ai_delete_config", &e))
+        .cmd_err("ai_delete_config")
 }
 
 // ─── NL2SQL ───
@@ -184,7 +185,7 @@ pub async fn ai_generate_sql(
     request_id: String,
     current_table: Option<String>,
     recent_queries: Option<Vec<String>>,
-) -> Result<String, String> {
+) -> Result<String, CommandError> {
     let recent_queries = recent_queries.unwrap_or_default();
     tracing::info!(
         %request_id,
@@ -208,7 +209,7 @@ pub async fn ai_generate_sql(
             4000,
         )
         .await
-        .map_err(|e| log_err("ai_generate_sql", &e))?;
+        .cmd_err("ai_generate_sql")?;
 
     tracing::debug!(
         schema_ddl_len = context.schema_ddl.len(),
@@ -274,7 +275,7 @@ pub async fn ai_generate_sql(
     provider
         .stream_complete(&request, tx)
         .await
-        .map_err(|e| log_err("ai_generate_sql", &e))?;
+        .cmd_err("ai_generate_sql")?;
 
     Ok(request_id)
 }
@@ -288,7 +289,7 @@ pub async fn ai_diagnose_error(
     database: String,
     sql: String,
     error_message: String,
-) -> Result<DiagnosisResult, String> {
+) -> Result<DiagnosisResult, CommandError> {
     tracing::info!(
         %connection_id,
         %database,
@@ -303,7 +304,7 @@ pub async fn ai_diagnose_error(
         .schema_context_builder
         .build_sql_context(&connection_id, &database, None, &[], 3000)
         .await
-        .map_err(|e| log_err("ai_diagnose_error", &e))?;
+        .cmd_err("ai_diagnose_error")?;
 
     let lang = state.store.get_settings().await.language;
     let mut request = CompletionRequest {
@@ -331,7 +332,7 @@ pub async fn ai_diagnose_error(
     let response = provider
         .complete(&request)
         .await
-        .map_err(|e| log_err("ai_diagnose_error", &e))?;
+        .cmd_err("ai_diagnose_error")?;
 
     tracing::debug!(
         response_len = response.content.len(),
@@ -341,15 +342,17 @@ pub async fn ai_diagnose_error(
 
     let content = strip_markdown_fences(&response.content);
     if content.trim().is_empty() {
-        return Err(log_err("ai_diagnose_error", &"LLM returned empty response"));
+        tracing::error!(cmd = "ai_diagnose_error", "LLM returned empty response");
+        return Err(CommandError::Internal("LLM returned empty response".into()));
     }
     serde_json::from_str::<DiagnosisResult>(&content)
         .map_err(|e| {
             tracing::error!(
+                cmd = "ai_diagnose_error",
                 raw_content = %&content[..content.len().min(500)],
-                "ai_diagnose_error: JSON parse failed"
+                "JSON parse failed: {e}"
             );
-            log_err("ai_diagnose_error", &e)
+            CommandError::Json(e)
         })
 }
 
@@ -361,7 +364,7 @@ pub async fn ai_analyze_explain(
     connection_id: String,
     explain_output: String,
     original_sql: String,
-) -> Result<ExplainAnalysis, String> {
+) -> Result<ExplainAnalysis, CommandError> {
     tracing::info!(
         %connection_id,
         sql_len = original_sql.len(),
@@ -374,7 +377,7 @@ pub async fn ai_analyze_explain(
         .connection_manager
         .get_connection(&connection_id)
         .await
-        .map_err(|e| log_err("ai_analyze_explain", &e))?;
+        .cmd_err("ai_analyze_explain")?;
 
     let db_type = format!("{:?}", driver.driver_type());
 
@@ -410,7 +413,7 @@ pub async fn ai_analyze_explain(
     let response = provider
         .complete(&request)
         .await
-        .map_err(|e| log_err("ai_analyze_explain", &e))?;
+        .cmd_err("ai_analyze_explain")?;
 
     tracing::info!(
         response_len = response.content.len(),
@@ -428,15 +431,17 @@ pub async fn ai_analyze_explain(
 
     let content = strip_markdown_fences(&response.content);
     if content.trim().is_empty() {
-        return Err(log_err("ai_analyze_explain", &"LLM returned empty response"));
+        tracing::error!(cmd = "ai_analyze_explain", "LLM returned empty response");
+        return Err(CommandError::Internal("LLM returned empty response".into()));
     }
     serde_json::from_str::<ExplainAnalysis>(&content)
         .map_err(|e| {
             tracing::error!(
+                cmd = "ai_analyze_explain",
                 raw_content = %&content[..content.len().min(500)],
-                "ai_analyze_explain: JSON parse failed"
+                "JSON parse failed: {e}"
             );
-            log_err("ai_analyze_explain", &e)
+            CommandError::Json(e)
         })
 }
 
@@ -449,7 +454,7 @@ pub async fn ai_parse_filter(
     database: String,
     table: String,
     natural_language: String,
-) -> Result<Vec<crate::services::query_executor::FilterCondition>, String> {
+) -> Result<Vec<crate::services::query_executor::FilterCondition>, CommandError> {
     tracing::info!(
         %connection_id,
         %database,
@@ -463,7 +468,7 @@ pub async fn ai_parse_filter(
         .connection_manager
         .get_connection(&connection_id)
         .await
-        .map_err(|e| log_err("ai_parse_filter", &e))?;
+        .cmd_err("ai_parse_filter")?;
 
     let db_type = format!("{:?}", driver.driver_type());
 
@@ -471,7 +476,7 @@ pub async fn ai_parse_filter(
         .schema_cache
         .get_columns(&connection_id, &database, &table, &driver, &handle)
         .await
-        .map_err(|e| log_err("ai_parse_filter", &e))?;
+        .cmd_err("ai_parse_filter")?;
 
     let columns_ddl = cached
         .columns
@@ -504,11 +509,11 @@ pub async fn ai_parse_filter(
     let response = provider
         .complete(&request)
         .await
-        .map_err(|e| log_err("ai_parse_filter", &e))?;
+        .cmd_err("ai_parse_filter")?;
 
     let content = strip_markdown_fences(&response.content);
     let mut filters: Vec<crate::services::query_executor::FilterCondition> =
-        serde_json::from_str(&content).map_err(|e| log_err("ai_parse_filter", &e))?;
+        serde_json::from_str(&content).cmd_err("ai_parse_filter")?;
 
     let valid_columns: std::collections::HashSet<String> =
         cached.columns.iter().map(|c| c.name.clone()).collect();
@@ -539,7 +544,7 @@ pub async fn ai_chat(
     messages: Vec<ChatMessage>,
     request_id: String,
     include_schema: bool,
-) -> Result<String, String> {
+) -> Result<String, CommandError> {
     tracing::info!(
         %request_id,
         connection_id = ?connection_id,
@@ -639,7 +644,7 @@ pub async fn ai_chat(
     provider
         .stream_complete(&request, tx)
         .await
-        .map_err(|e| log_err("ai_chat", &e))?;
+        .cmd_err("ai_chat")?;
 
     Ok(request_id)
 }
@@ -663,7 +668,7 @@ fn strip_markdown_fences(s: &str) -> String {
 #[tauri::command]
 pub async fn skill_list(
     state: State<'_, AppState>,
-) -> Result<Vec<crate::mcp::SkillListItem>, String> {
+) -> Result<Vec<crate::mcp::SkillListItem>, CommandError> {
     Ok(state.skill_registry.list().await)
 }
 
@@ -673,12 +678,12 @@ pub async fn skill_execute(
     skill_id: String,
     variables: serde_json::Value,
     connection_id: Option<String>,
-) -> Result<String, String> {
+) -> Result<String, CommandError> {
     let skill = state
         .skill_registry
         .get(&skill_id)
         .await
-        .ok_or_else(|| format!("Skill '{skill_id}' not found"))?;
+        .ok_or_else(|| CommandError::NotFound(format!("Skill '{skill_id}' not found")))?;
 
     crate::mcp::SkillExecutor::execute(
         &skill,
@@ -687,28 +692,28 @@ pub async fn skill_execute(
         &variables,
     )
     .await
-    .map_err(|e| log_err("skill_execute", &e))
+    .cmd_err("skill_execute")
 }
 
 #[tauri::command]
 pub async fn skill_save(
     state: State<'_, AppState>,
     skill: crate::mcp::SkillDefinition,
-) -> Result<(), String> {
-    state.skill_registry.save_skill(&skill).await
+) -> Result<(), CommandError> {
+    state.skill_registry.save_skill(&skill).await.map_err(CommandError::Internal)
 }
 
 #[tauri::command]
 pub async fn skill_delete(
     state: State<'_, AppState>,
     skill_id: String,
-) -> Result<(), String> {
-    state.skill_registry.delete_skill(&skill_id).await
+) -> Result<(), CommandError> {
+    state.skill_registry.delete_skill(&skill_id).await.map_err(CommandError::Internal)
 }
 
 #[tauri::command]
-pub async fn skill_reload(state: State<'_, AppState>) -> Result<(), String> {
-    state.skill_registry.load_all().await
+pub async fn skill_reload(state: State<'_, AppState>) -> Result<(), CommandError> {
+    state.skill_registry.load_all().await.map_err(CommandError::Internal)
 }
 
 // ─── Phase 8: Schema documentation ───
@@ -718,7 +723,7 @@ pub async fn ai_generate_schema_doc(
     state: State<'_, AppState>,
     connection_id: String,
     database: String,
-) -> Result<String, String> {
+) -> Result<String, CommandError> {
     tracing::info!(%connection_id, %database, "ai_generate_schema_doc: start");
     let (provider, ai_config) = resolve_ai(&state).await?;
 
@@ -727,7 +732,7 @@ pub async fn ai_generate_schema_doc(
         .schema_context_builder
         .get_table_names(&connection_id, &database)
         .await
-        .map_err(|e| log_err("ai_generate_schema_doc", &e))?;
+        .cmd_err("ai_generate_schema_doc")?;
 
     let lang = state.store.get_settings().await.language;
 
@@ -753,7 +758,7 @@ pub async fn ai_generate_schema_doc(
         let select_response = provider
             .complete(&select_request)
             .await
-            .map_err(|e| log_err("ai_generate_schema_doc[select]", &e))?;
+            .cmd_err("ai_generate_schema_doc[select]")?;
 
         let raw = strip_markdown_fences(select_response.content.trim());
         serde_json::from_str::<Vec<String>>(&raw).unwrap_or_else(|_| {
@@ -777,7 +782,7 @@ pub async fn ai_generate_schema_doc(
         .schema_context_builder
         .build_selective_context(&connection_id, &database, &selected_tables, 8000)
         .await
-        .map_err(|e| log_err("ai_generate_schema_doc", &e))?;
+        .cmd_err("ai_generate_schema_doc")?;
 
     let user_content = if lang.starts_with("zh") {
         "请为上面的数据库 schema 生成文档。"
@@ -803,7 +808,7 @@ pub async fn ai_generate_schema_doc(
     let response = provider
         .complete(&request)
         .await
-        .map_err(|e| log_err("ai_generate_schema_doc", &e))?;
+        .cmd_err("ai_generate_schema_doc")?;
 
     let content = response.content.trim();
     let stripped = if content.starts_with("```markdown") || content.starts_with("```md") {
@@ -837,7 +842,7 @@ pub async fn ai_diagnose_connection(
     state: State<'_, AppState>,
     connection_id: String,
     error_message: String,
-) -> Result<ConnectionDiagnosis, String> {
+) -> Result<ConnectionDiagnosis, CommandError> {
     tracing::info!(%connection_id, error = %error_message, "ai_diagnose_connection: start");
     let (provider, ai_config) = resolve_ai(&state).await?;
 
@@ -845,7 +850,7 @@ pub async fn ai_diagnose_connection(
         .store
         .get_connection(&connection_id)
         .await
-        .ok_or("Connection config not found")?;
+        .ok_or_else(|| CommandError::NotFound("Connection config not found".into()))?;
 
     let ssl_str = format!("{:?}", conn_info.ssl_mode);
     let ssh_str = if conn_info.ssh_tunnel.is_some() { "enabled" } else { "disabled" };
@@ -883,11 +888,11 @@ pub async fn ai_diagnose_connection(
     let response = provider
         .complete(&request)
         .await
-        .map_err(|e| log_err("ai_diagnose_connection", &e))?;
+        .cmd_err("ai_diagnose_connection")?;
 
     let content = strip_markdown_fences(&response.content);
     serde_json::from_str::<ConnectionDiagnosis>(&content)
-        .map_err(|e| log_err("ai_diagnose_connection", &e))
+        .cmd_err("ai_diagnose_connection")
 }
 
 // ─── Phase 8: Query history analysis ───
@@ -914,7 +919,7 @@ pub struct QueryCategory {
 pub async fn ai_analyze_queries(
     state: State<'_, AppState>,
     connection_id: Option<String>,
-) -> Result<QueryAnalysis, String> {
+) -> Result<QueryAnalysis, CommandError> {
     tracing::info!(connection_id = ?connection_id, "ai_analyze_queries: start");
     let (provider, ai_config) = resolve_ai(&state).await?;
 
@@ -929,7 +934,7 @@ pub async fn ai_analyze_queries(
     };
 
     if filtered.is_empty() {
-        return Err("No query history available".to_string());
+        return Err(CommandError::Validation("No query history available".into()));
     }
 
     let queries_text = filtered
@@ -962,11 +967,11 @@ pub async fn ai_analyze_queries(
     let response = provider
         .complete(&request)
         .await
-        .map_err(|e| log_err("ai_analyze_queries", &e))?;
+        .cmd_err("ai_analyze_queries")?;
 
     let content = strip_markdown_fences(&response.content);
     serde_json::from_str::<QueryAnalysis>(&content)
-        .map_err(|e| log_err("ai_analyze_queries", &e))
+        .cmd_err("ai_analyze_queries")
 }
 
 #[cfg(test)]

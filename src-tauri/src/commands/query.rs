@@ -1,4 +1,5 @@
-use super::{AppState, log_err};
+use super::error::{CmdExt, CommandError};
+use super::AppState;
 use crate::db::{ExplainResult, MultiQueryResult};
 use crate::store::QueryHistoryEntry;
 use tauri::State;
@@ -9,7 +10,7 @@ pub async fn execute_query(
     state: State<'_, AppState>,
     connection_id: String,
     sql: String,
-) -> Result<MultiQueryResult, String> {
+) -> Result<MultiQueryResult, CommandError> {
     let sql_preview: String = sql.chars().take(500).collect();
     tracing::info!(%connection_id, sql_len = sql.len(), %sql_preview, "execute_query");
     let settings = state.store.get_settings().await;
@@ -23,7 +24,7 @@ pub async fn execute_query(
         .connection_manager
         .get_connection(&connection_id)
         .await
-        .map_err(|e| log_err("execute_query", &e))?;
+        .cmd_err("execute_query")?;
 
     match driver.query_multi(&handle, &sql, limit).await {
         Ok(result) => {
@@ -66,7 +67,7 @@ pub async fn execute_query(
                 error_message: Some(err.to_string()),
             };
             let _ = state.store.add_query_history(entry).await;
-            Err(err.to_string())
+            Err(CommandError::Driver(err))
         }
     }
 }
@@ -76,55 +77,55 @@ pub async fn get_explain(
     state: State<'_, AppState>,
     connection_id: String,
     sql: String,
-) -> Result<ExplainResult, String> {
+) -> Result<ExplainResult, CommandError> {
     tracing::debug!(%connection_id, "get_explain");
     let (driver, handle) = state
         .connection_manager
         .get_connection(&connection_id)
         .await
-        .map_err(|e| log_err("get_explain", &e))?;
+        .cmd_err("get_explain")?;
 
     driver
         .explain(&handle, &sql)
         .await
-        .map_err(|e| log_err("get_explain", &e))
+        .cmd_err("get_explain")
 }
 
 #[tauri::command]
-pub async fn cancel_query(state: State<'_, AppState>, connection_id: String) -> Result<(), String> {
+pub async fn cancel_query(state: State<'_, AppState>, connection_id: String) -> Result<(), CommandError> {
     tracing::info!(%connection_id, "cancel_query");
     let (driver, handle) = state
         .connection_manager
         .get_connection(&connection_id)
         .await
-        .map_err(|e| log_err("cancel_query", &e))?;
+        .cmd_err("cancel_query")?;
 
     driver
         .cancel_query(&handle)
         .await
-        .map_err(|e| log_err("cancel_query", &e))
+        .cmd_err("cancel_query")
 }
 
 #[tauri::command]
 pub async fn get_query_history(
     state: State<'_, AppState>,
     limit: usize,
-) -> Result<Vec<QueryHistoryEntry>, String> {
+) -> Result<Vec<QueryHistoryEntry>, CommandError> {
     Ok(state.store.get_query_history(limit).await)
 }
 
 #[tauri::command]
-pub async fn clear_query_history(state: State<'_, AppState>) -> Result<(), String> {
+pub async fn clear_query_history(state: State<'_, AppState>) -> Result<(), CommandError> {
     tracing::info!("clear_query_history");
     state
         .store
         .clear_query_history()
         .await
-        .map_err(|e| log_err("clear_query_history", &e))
+        .cmd_err("clear_query_history")
 }
 
 #[tauri::command]
-pub async fn get_favorite_queries(state: State<'_, AppState>) -> Result<Vec<crate::store::FavoriteQuery>, String> {
+pub async fn get_favorite_queries(state: State<'_, AppState>) -> Result<Vec<crate::store::FavoriteQuery>, CommandError> {
     Ok(state.store.get_favorite_queries().await)
 }
 
@@ -133,7 +134,7 @@ pub async fn add_favorite_query(
     state: State<'_, AppState>,
     title: String,
     sql: String,
-) -> Result<crate::store::FavoriteQuery, String> {
+) -> Result<crate::store::FavoriteQuery, CommandError> {
     let fav = crate::store::FavoriteQuery {
         id: uuid::Uuid::new_v4().to_string(),
         title,
@@ -141,7 +142,7 @@ pub async fn add_favorite_query(
         created_at: chrono::Utc::now(),
     };
     state.store.add_favorite_query(fav.clone()).await
-        .map_err(|e| log_err("add_favorite_query", &e))?;
+        .cmd_err("add_favorite_query")?;
     Ok(fav)
 }
 
@@ -149,7 +150,7 @@ pub async fn add_favorite_query(
 pub async fn delete_favorite_query(
     state: State<'_, AppState>,
     id: String,
-) -> Result<(), String> {
+) -> Result<(), CommandError> {
     state.store.delete_favorite_query(&id).await
-        .map_err(|e| log_err("delete_favorite_query", &e))
+        .cmd_err("delete_favorite_query")
 }

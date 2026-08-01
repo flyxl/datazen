@@ -5,6 +5,7 @@ mod backup;
 mod config;
 mod connection;
 mod data;
+mod error;
 mod file;
 mod kiwi;
 mod kv;
@@ -51,8 +52,3 @@ pub struct AppState {
     pub mcp_client_manager: Arc<McpClientManager>,
 }
 
-pub(crate) fn log_err(cmd: &str, e: &dyn std::fmt::Display) -> String {
-    let msg = e.to_string();
-    tracing::error!(cmd, error = %msg);
-    msg
-}

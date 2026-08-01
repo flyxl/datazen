@@ -1,6 +1,7 @@
 //! MCP Server + Client management IPC commands.
 
-use crate::commands::{log_err, AppState};
+use crate::commands::error::{CmdExt, CommandError};
+use crate::commands::AppState;
 use crate::mcp;
 use serde::Serialize;
 use std::sync::Arc;
@@ -23,7 +24,7 @@ struct McpHandle {
 static MCP_HANDLE: Mutex<Option<McpHandle>> = Mutex::const_new(None);
 
 #[tauri::command]
-pub async fn mcp_get_status() -> Result<McpServerStatus, String> {
+pub async fn mcp_get_status() -> Result<McpServerStatus, CommandError> {
     let guard = MCP_HANDLE.lock().await;
     let running = guard
         .as_ref()
@@ -40,11 +41,11 @@ pub async fn mcp_get_status() -> Result<McpServerStatus, String> {
 }
 
 #[tauri::command]
-pub async fn mcp_start_stdio(state: State<'_, AppState>) -> Result<(), String> {
+pub async fn mcp_start_stdio(state: State<'_, AppState>) -> Result<(), CommandError> {
     let mut guard = MCP_HANDLE.lock().await;
     if let Some(ref h) = *guard {
         if !h.task.is_finished() {
-            return Err("MCP Server is already running".into());
+            return Err(CommandError::Validation("MCP Server is already running".into()));
         }
     }
 
@@ -72,7 +73,7 @@ pub async fn mcp_start_stdio(state: State<'_, AppState>) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub async fn mcp_stop() -> Result<(), String> {
+pub async fn mcp_stop() -> Result<(), CommandError> {
     let mut guard = MCP_HANDLE.lock().await;
     if let Some(h) = guard.take() {
         h.cancel.cancel();
@@ -87,20 +88,21 @@ pub async fn mcp_stop() -> Result<(), String> {
 pub async fn mcp_client_connect(
     state: State<'_, AppState>,
     config: mcp::McpServerConfig,
-) -> Result<(), String> {
+) -> Result<(), CommandError> {
     state
         .mcp_client_manager
         .connect(&config)
         .await
-        .map_err(|e| log_err("mcp_client_connect", &e))
+        .cmd_err("mcp_client_connect")
 }
 
 #[tauri::command]
 pub async fn mcp_client_disconnect(
     state: State<'_, AppState>,
     server_id: String,
-) -> Result<(), String> {
+) -> Result<(), CommandError> {
     state.mcp_client_manager.disconnect(&server_id).await
+        .map_err(CommandError::Internal)
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -114,7 +116,7 @@ pub struct McpClientStatus {
 #[tauri::command]
 pub async fn mcp_client_list(
     state: State<'_, AppState>,
-) -> Result<Vec<McpClientStatus>, String> {
+) -> Result<Vec<McpClientStatus>, CommandError> {
     Ok(state
         .mcp_client_manager
         .connected_servers()
@@ -131,7 +133,7 @@ pub async fn mcp_client_list(
 #[tauri::command]
 pub async fn mcp_client_tools(
     state: State<'_, AppState>,
-) -> Result<Vec<mcp::McpToolInfo>, String> {
+) -> Result<Vec<mcp::McpToolInfo>, CommandError> {
     Ok(state.mcp_client_manager.all_tools().await)
 }
 
@@ -141,12 +143,12 @@ pub async fn mcp_client_call_tool(
     server_id: String,
     tool_name: String,
     arguments: serde_json::Value,
-) -> Result<String, String> {
+) -> Result<String, CommandError> {
     let result = state
         .mcp_client_manager
         .call_tool(&server_id, &tool_name, arguments)
         .await
-        .map_err(|e| log_err("mcp_client_call_tool", &e))?;
+        .cmd_err("mcp_client_call_tool")?;
 
     let output = result
         .content
@@ -162,7 +164,7 @@ pub async fn mcp_client_call_tool(
         .join("\n");
 
     if result.is_error == Some(true) {
-        return Err(output);
+        return Err(CommandError::Internal(output));
     }
 
     Ok(output)
