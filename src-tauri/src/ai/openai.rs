@@ -53,8 +53,12 @@ struct ApiRequest {
 
 #[derive(Serialize, Deserialize)]
 struct ApiMessage {
+    #[allow(dead_code)]
     role: String,
-    content: String,
+    #[serde(default)]
+    content: Option<String>,
+    #[serde(default)]
+    reasoning_content: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -93,6 +97,8 @@ struct ApiStreamChoice {
 #[derive(Deserialize)]
 struct ApiDelta {
     content: Option<String>,
+    #[serde(default)]
+    reasoning_content: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -116,7 +122,8 @@ impl From<&ChatMessage> for ApiMessage {
                 MessageRole::Assistant => "assistant",
             }
             .into(),
-            content: msg.content.clone(),
+            content: Some(msg.content.clone()),
+            reasoning_content: None,
         }
     }
 }
@@ -303,7 +310,10 @@ impl AiProvider for OpenAiProvider {
         let content = choice
             .message
             .as_ref()
-            .map(|m| m.content.clone())
+            .map(|m| {
+                m.content.clone().unwrap_or_default()
+                    + &m.reasoning_content.clone().unwrap_or_default()
+            })
             .unwrap_or_default();
 
         let usage = api_resp
@@ -428,7 +438,11 @@ impl AiProvider for OpenAiProvider {
                         let content = choice
                             .delta
                             .as_ref()
-                            .and_then(|d| d.content.clone())
+                            .map(|d| {
+                                let c = d.content.clone().unwrap_or_default();
+                                let r = d.reasoning_content.clone().unwrap_or_default();
+                                c + &r
+                            })
                             .unwrap_or_default();
 
                         let done = choice.finish_reason.is_some();

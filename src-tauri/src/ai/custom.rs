@@ -71,8 +71,12 @@ struct OaiRequest {
 
 #[derive(Serialize, Deserialize)]
 struct OaiMessage {
+    #[allow(dead_code)]
     role: String,
-    content: String,
+    #[serde(default)]
+    content: Option<String>,
+    #[serde(default)]
+    reasoning_content: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -111,6 +115,8 @@ struct OaiStreamChoice {
 #[derive(Deserialize)]
 struct OaiDelta {
     content: Option<String>,
+    #[serde(default)]
+    reasoning_content: Option<String>,
 }
 
 // ─── Anthropic-compatible wire types ───
@@ -264,7 +270,8 @@ impl From<&ChatMessage> for OaiMessage {
                 MessageRole::Assistant => "assistant",
             }
             .into(),
-            content: msg.content.clone(),
+            content: Some(msg.content.clone()),
+            reasoning_content: None,
         }
     }
 }
@@ -292,7 +299,8 @@ fn split_system_messages(messages: &[ChatMessage]) -> (Option<String>, Vec<OaiMe
                 _ => unreachable!(),
             }
             .into(),
-            content: m.content.clone(),
+            content: Some(m.content.clone()),
+            reasoning_content: None,
         })
         .collect();
 
@@ -322,7 +330,8 @@ fn split_instructions(messages: &[ChatMessage]) -> (Option<String>, Vec<OaiMessa
                 _ => unreachable!(),
             }
             .into(),
-            content: m.content.clone(),
+            content: Some(m.content.clone()),
+            reasoning_content: None,
         })
         .collect();
 
@@ -598,7 +607,10 @@ impl CustomProvider {
         let content = choice
             .message
             .as_ref()
-            .map(|m| m.content.clone())
+            .map(|m| {
+                m.content.clone().unwrap_or_default()
+                    + &m.reasoning_content.clone().unwrap_or_default()
+            })
             .unwrap_or_default();
 
         let usage = api_resp
@@ -858,7 +870,11 @@ impl CustomProvider {
                         let content = choice
                             .delta
                             .as_ref()
-                            .and_then(|d| d.content.clone())
+                            .map(|d| {
+                                let c = d.content.clone().unwrap_or_default();
+                                let r = d.reasoning_content.clone().unwrap_or_default();
+                                c + &r
+                            })
                             .unwrap_or_default();
 
                         let done = choice.finish_reason.is_some();
