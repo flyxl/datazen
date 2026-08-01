@@ -34,7 +34,10 @@ if ('__TAURI_INTERNALS__' in globalThis) {
   import('@tauri-apps/api/window').then(({ getCurrentWindow }) => {
     const win = getCurrentWindow();
     if (win.label !== 'main') {
-      void win.show().then(() => win.setFocus());
+      void win.show().then(() => {
+        void win.setFocus();
+        setTimeout(() => void win.setFocus(), 50);
+      });
     }
   });
 }
