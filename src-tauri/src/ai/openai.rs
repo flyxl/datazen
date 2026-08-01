@@ -249,6 +249,14 @@ impl AiProvider for OpenAiProvider {
             .ok_or_else(|| AiError::NotConfigured("OpenAI provider not initialized".into()))?;
 
         let url = Self::build_url(&state.endpoint, "/chat/completions");
+        tracing::debug!(
+            %url,
+            model = %request.model,
+            messages = request.messages.len(),
+            temperature = ?request.temperature,
+            max_tokens = ?request.max_tokens,
+            "openai: complete request"
+        );
 
         let body = ApiRequest {
             model: request.model.clone(),
@@ -299,6 +307,14 @@ impl AiProvider for OpenAiProvider {
             })
             .unwrap_or_default();
 
+        tracing::debug!(
+            response_len = content.len(),
+            model = %api_resp.model,
+            prompt_tokens = usage.prompt_tokens,
+            completion_tokens = usage.completion_tokens,
+            "openai: complete response"
+        );
+
         Ok(CompletionResponse {
             request_id: request.request_id.clone(),
             content,
@@ -323,6 +339,12 @@ impl AiProvider for OpenAiProvider {
             .ok_or_else(|| AiError::NotConfigured("OpenAI provider not initialized".into()))?;
 
         let url = Self::build_url(&state.endpoint, "/chat/completions");
+        tracing::debug!(
+            %url,
+            model = %request.model,
+            messages = request.messages.len(),
+            "openai: stream_complete request"
+        );
 
         let body = ApiRequest {
             model: request.model.clone(),

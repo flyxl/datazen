@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Loader2, MessageSquare, Send, Sparkles, Trash2, Copy, Check, Wand2 } from 'lucide-react';
+import { Loader2, MessageSquare, Send, Settings, Sparkles, Trash2, Copy, Check, Wand2 } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { useI18n } from '../../hooks/useI18n';
 import { useAiStore } from '../../stores/aiStore';
 import { cn } from '../../lib/cn';
+import { openSettingsWindow } from '../../lib/windowManager';
 import { SkillsPanel } from './SkillsPanel';
 import type { AiChatMessage } from '../../types';
 
@@ -57,7 +58,11 @@ export function AiChatPanel({ connectionId, database, onInsertSql }: AiChatPanel
       <div className="flex h-full items-center justify-center p-4">
         <div className="text-center text-xs text-fg-muted">
           <Sparkles className="mx-auto mb-2 h-5 w-5" />
-          {t('chat.notConfigured')}
+          <p className="mb-3">{t('chat.notConfigured')}</p>
+          <Button variant="primary" className="h-7 gap-1 px-3 text-xs" onClick={() => openSettingsWindow('ai')}>
+            <Settings className="h-3.5 w-3.5" />
+            {t('settings.ai.goToConfigure')}
+          </Button>
         </div>
       </div>
     );

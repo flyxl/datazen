@@ -1,8 +1,9 @@
 import { useCallback, useEffect } from 'react';
-import { ArrowDownToLine, Loader2, Stethoscope, X } from 'lucide-react';
+import { ArrowDownToLine, Loader2, Settings, Stethoscope, X } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { useI18n } from '../../hooks/useI18n';
 import { useAiStore } from '../../stores/aiStore';
+import { openSettingsWindow } from '../../lib/windowManager';
 
 interface DiagnosisPanelProps {
   connectionId: string;
@@ -58,7 +59,11 @@ export function DiagnosisPanel({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 text-xs text-fg-muted">
             <Stethoscope className="h-3.5 w-3.5" />
-            {t('diagnosis.notConfigured')}
+            <span>{t('diagnosis.notConfigured')}</span>
+            <Button variant="primary" className="h-5 gap-1 px-1.5 text-[10px]" onClick={() => openSettingsWindow('ai')}>
+              <Settings className="h-2.5 w-2.5" />
+              {t('settings.ai.goToConfigure')}
+            </Button>
           </div>
           <button type="button" className="text-fg-muted hover:text-fg" onClick={handleClose}>
             <X className="h-3.5 w-3.5" />

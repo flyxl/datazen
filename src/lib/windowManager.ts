@@ -148,7 +148,7 @@ export function openBackupWindow() {
 
 const SETTINGS_LABEL = 'settings-singleton';
 
-export function openSettingsWindow() {
+export function openSettingsWindow(section?: string) {
   if (isTauri()) {
     void (async () => {
       const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
@@ -157,26 +157,30 @@ export function openSettingsWindow() {
         await existing.setFocus();
         return;
       }
-      const qs = new URLSearchParams({ window: 'settings' }).toString();
+      const params: Record<string, string> = { window: 'settings' };
+      if (section) params.section = section;
+      const qs = new URLSearchParams(params).toString();
       const isMac = getPlatformSync() === 'macos';
       new WebviewWindow(SETTINGS_LABEL, {
         url: `index.html?${qs}`,
         title: t('win.settings'),
-        width: 600,
+        width: 720,
         height: 560,
         center: true,
         decorations: false,
         transparent: isMac,
-        minWidth: 480,
+        minWidth: 560,
         minHeight: 400,
         visible: false,
         ...(isMac ? {} : { backgroundColor: currentBgColor() }),
       });
     })();
   } else {
+    const params: Record<string, string> = { window: 'settings' };
+    if (section) params.section = section;
     openBrowserWindow({
-      params: { window: 'settings' },
-      width: 600,
+      params,
+      width: 720,
       height: 560,
       title: t('win.settings'),
     });

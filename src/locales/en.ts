@@ -197,6 +197,7 @@ const en: Record<TranslationKey, string> = {
 
   // ── Settings ──
   'settings.title': 'Settings',
+  'settings.general': 'General',
   'settings.theme': 'Theme',
   'settings.language': 'Language',
   'settings.langZh': '简体中文',
@@ -223,6 +224,7 @@ const en: Record<TranslationKey, string> = {
   'connWin.foreignKeys': 'Foreign Keys',
   'connWin.connected': 'Connected',
   'connWin.newQuery': 'New Query',
+  'connWin.toggleSidebar': 'Toggle Sidebar',
   'connWin.refresh': 'Refresh',
   'connWin.newTable': 'New Table',
   'connWin.searchTables': 'Search tables, views…',
@@ -521,6 +523,18 @@ const en: Record<TranslationKey, string> = {
   'settings.ai.configured': 'Configured',
   'settings.ai.ollamaHint': 'Ollama requires no API Key — ensure the Ollama service is running',
   'settings.ai.description': 'Configure an AI provider to enable NL-to-SQL, error diagnosis, and other smart features',
+  'settings.ai.goToConfigure': 'Go to Settings',
+  'settings.ai.protocol': 'Protocol',
+  'settings.ai.protocolOpenAiChat': 'OpenAI Chat Completions',
+  'settings.ai.protocolOpenAiResponses': 'OpenAI Responses',
+  'settings.ai.protocolAnthropic': 'Anthropic Messages',
+  'settings.ai.fetchModels': 'Fetch Models',
+  'settings.ai.fetchingModels': 'Fetching…',
+  'settings.ai.modelManual': 'Enter model ID manually',
+  'settings.ai.customHint': 'Enter Base URL and API Key, then fetch model list',
+  'settings.ai.endpointHintOpenAiChat': 'e.g. https://api.openai.com/v1',
+  'settings.ai.endpointHintOpenAiResponses': 'e.g. https://api.openai.com/v1',
+  'settings.ai.endpointHintAnthropic': 'e.g. https://api.anthropic.com',
 
   // ── AI Chat ──
   'chat.title': 'AI Assistant',

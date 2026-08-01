@@ -39,7 +39,23 @@ export function NlFilterInput({ connectionId, database, tableName }: NlFilterInp
     };
   }, [tableName]);
 
-  if (!isConfigured) return null;
+  if (!isConfigured) {
+    // Still render the toggle button so users know the feature exists
+    return (
+      <div className="flex items-center gap-2 border-b border-edge px-2 py-1">
+        <button
+          type="button"
+          className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-fg-muted hover:bg-surface-alt hover:text-fg"
+          onClick={() => {
+            import('../../lib/windowManager').then((m) => m.openSettingsWindow('ai'));
+          }}
+        >
+          <Sparkles className="h-3 w-3" />
+          {t('smartFilter.notConfigured')}
+        </button>
+      </div>
+    );
+  }
 
   const handleParse = async () => {
     abortRef.current = false;

@@ -1,9 +1,10 @@
 import { useCallback, useEffect } from 'react';
-import { AlertTriangle, ArrowDownToLine, Loader2, Sparkles, Zap } from 'lucide-react';
+import { AlertTriangle, ArrowDownToLine, Loader2, Settings, Sparkles, Zap } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { useI18n } from '../../hooks/useI18n';
 import { useAiStore } from '../../stores/aiStore';
 import { cn } from '../../lib/cn';
+import { openSettingsWindow } from '../../lib/windowManager';
 
 interface ExplainPanelProps {
   connectionId: string;
@@ -160,7 +161,11 @@ export function ExplainPanel({ connectionId, sql, explainOutput, onApplySql }: E
       {!isConfigured && (
         <div className="flex items-center gap-2 p-4 text-xs text-fg-muted">
           <Sparkles className="h-3.5 w-3.5" />
-          {t('explain.notConfigured')}
+          <span className="flex-1">{t('explain.notConfigured')}</span>
+          <Button variant="primary" className="h-6 gap-1 px-2 text-[11px]" onClick={() => openSettingsWindow('ai')}>
+            <Settings className="h-3 w-3" />
+            {t('settings.ai.goToConfigure')}
+          </Button>
         </div>
       )}
     </div>

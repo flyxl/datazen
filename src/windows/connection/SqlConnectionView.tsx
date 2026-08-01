@@ -43,7 +43,6 @@ import { DetailPanel } from '../../components/DataTable/DetailPanel';
 import { DetailPanelToggle } from '../../components/DataTable/DetailPanelToggle';
 import type { ColumnDef } from '../../components/DataTable/TableHeader';
 import { AiChatPanel } from '../../components/ai/AiChatPanel';
-import { useAiStore } from '../../stores/aiStore';
 import { rowToRecord } from '../../lib/rowToRecord';
 
 type SubTabId = 'data' | 'structure' | 'indexes' | 'foreignKeys' | 'ddl';
@@ -102,8 +101,9 @@ export function SqlConnectionView({
   const [panels, setPanels] = useState<Panel[]>([]);
   const [activePanelId, setActivePanelId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const [aiChatOpen, setAiChatOpen] = useState(false);
-  const isAiConfigured = useAiStore((s) => s.isConfigured);
+  // AI chat toggle is always visible; AiChatPanel handles unconfigured state
   const [exportOpen, setExportOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [exportTableName, setExportTableName] = useState<string | null>(null);
@@ -334,6 +334,7 @@ export function SqlConnectionView({
   }, [tableCtx]);
 
   useKeyboardShortcuts([
+    { key: 'mod+b', scope: 'global', description: t('connWin.toggleSidebar') ?? 'Toggle Sidebar', action: () => setSidebarOpen((v) => !v) },
     { key: 'mod+n', scope: 'global', description: t('connWin.newQuery'), action: handleNewQuery },
     { key: 'mod+r', scope: 'global', description: t('connWin.refresh'), action: handleRefresh },
     {
@@ -412,15 +413,13 @@ export function SqlConnectionView({
 
         <div className="flex-1" />
 
-        {isAiConfigured && (
-          <Button
-            variant={aiChatOpen ? 'secondary' : 'ghost'}
-            className="h-7 gap-1 px-2 text-xs"
-            onClick={() => setAiChatOpen((v) => !v)}
-          >
-            <MessageSquare className="h-3.5 w-3.5" />
-          </Button>
-        )}
+        <Button
+          variant={aiChatOpen ? 'secondary' : 'ghost'}
+          className="h-7 gap-1 px-2 text-xs"
+          onClick={() => setAiChatOpen((v) => !v)}
+        >
+          <MessageSquare className="h-3.5 w-3.5" />
+        </Button>
 
         {activePanel && (
           <DetailPanelToggle open={detailOpen} onToggle={() => setDetailOpen((p) => !p)} />
@@ -428,25 +427,29 @@ export function SqlConnectionView({
       </div>
 
       <div className="flex min-h-0 flex-1">
-        <aside
-          style={{ width: sidebarWidth }}
-          className="flex shrink-0 flex-col overflow-y-auto border-r border-edge bg-surface-alt"
-        >
-          <SchemaTree
-            connectionId={connectionId}
-            databaseType={databaseType}
-            initialDatabase={initialDatabase}
-            selectedTable={activePanel?.type === 'table' ? activePanel.tableName : null}
-            searchQuery={searchQuery}
-            onSelectTable={handleSelectTable}
-            onTableContextMenu={handleTableContextMenu}
-          />
-        </aside>
+        {sidebarOpen && (
+          <>
+            <aside
+              style={{ width: sidebarWidth }}
+              className="flex shrink-0 flex-col overflow-y-auto border-r border-edge bg-surface-alt"
+            >
+              <SchemaTree
+                connectionId={connectionId}
+                databaseType={databaseType}
+                initialDatabase={initialDatabase}
+                selectedTable={activePanel?.type === 'table' ? activePanel.tableName : null}
+                searchQuery={searchQuery}
+                onSelectTable={handleSelectTable}
+                onTableContextMenu={handleTableContextMenu}
+              />
+            </aside>
 
-        <div
-          ref={handleRef}
-          className="w-1 shrink-0 cursor-col-resize bg-transparent hover:bg-blue-500/30"
-        />
+            <div
+              ref={handleRef}
+              className="w-1 shrink-0 cursor-col-resize bg-transparent hover:bg-blue-500/30"
+            />
+          </>
+        )}
 
         <ContextMenu items={contextMenuItems} onAction={handleContextAction}>
           <div className="flex min-h-0 min-w-0 flex-1 flex-col">

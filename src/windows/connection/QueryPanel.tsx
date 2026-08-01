@@ -13,7 +13,6 @@ import { ExplainPanel } from '../../components/ai/ExplainPanel';
 import { useQueryStore } from '../../stores/queryStore';
 import { useSchemaStore } from '../../stores/schemaStore';
 import { useSettingsStore } from '../../stores/settingsStore';
-import { useAiStore } from '../../stores/aiStore';
 import { useI18n } from '../../hooks/useI18n';
 import { cn } from '../../lib/cn';
 import { queryCommands } from '../../commands/query';
@@ -44,7 +43,7 @@ export function QueryPanel({ connectionId, queryTabId }: QueryPanelProps) {
   const deleteFavorite = useQueryStore((s) => s.deleteFavorite);
   const toggleFavorites = useQueryStore((s) => s.toggleFavorites);
 
-  const isAiConfigured = useAiStore((s) => s.isConfigured);
+  // AI entry points are always visible; panels handle unconfigured state internally
 
   const editorRef = useRef<SqlEditorHandle>(null);
   const pendingFavSqlRef = useRef('');
@@ -194,16 +193,14 @@ export function QueryPanel({ connectionId, queryTabId }: QueryPanelProps) {
           <Bookmark className="h-3.5 w-3.5" />
           {t('query.favorites')}
         </Button>
-        {isAiConfigured && (
-          <Button
-            variant={nl2sqlVisible ? 'secondary' : 'ghost'}
-            className="h-7 gap-1 px-2 text-xs"
-            onClick={() => setNl2sqlVisible((v) => !v)}
-          >
-            <Sparkles className="h-3.5 w-3.5" />
-            {t('nl2sql.title')}
-          </Button>
-        )}
+        <Button
+          variant={nl2sqlVisible ? 'secondary' : 'ghost'}
+          className="h-7 gap-1 px-2 text-xs"
+          onClick={() => setNl2sqlVisible((v) => !v)}
+        >
+          <Sparkles className="h-3.5 w-3.5" />
+          {t('nl2sql.title')}
+        </Button>
       </div>
 
       {/* NL2SQL panel (collapsible) */}
@@ -352,7 +349,7 @@ export function QueryPanel({ connectionId, queryTabId }: QueryPanelProps) {
                 <div className="p-4">
                   <div className="flex items-start gap-2 rounded-md border border-red-500/20 bg-red-500/10 px-4 py-3">
                     <span className="flex-1 text-sm text-red-400">{tab.error}</span>
-                    {isAiConfigured && currentDatabase && (
+                    {currentDatabase && (
                       <button
                         type="button"
                         className="shrink-0 rounded px-2 py-0.5 text-[11px] text-blue-400 hover:bg-blue-500/10"

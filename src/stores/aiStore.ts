@@ -59,9 +59,13 @@ interface AiStore {
   isParsingFilter: boolean;
   nlFilterError: string | null;
 
+  remoteModels: ModelInfo[];
+  fetchingRemoteModels: boolean;
+
   loadConfig: () => Promise<void>;
   loadProviders: () => Promise<void>;
   loadModels: (providerType: AiProviderType) => Promise<void>;
+  fetchRemoteModels: (protocol: string, endpoint: string, apiKey: string) => Promise<ModelInfo[]>;
   validateConfig: (config: AiProviderConfig) => Promise<boolean>;
   saveConfig: (config: AiProviderConfig) => Promise<boolean>;
   deleteConfig: () => Promise<void>;
@@ -187,6 +191,9 @@ export const useAiStore = create<AiStore>((set, get) => ({
   isParsingFilter: false,
   nlFilterError: null,
 
+  remoteModels: [],
+  fetchingRemoteModels: false,
+
   loadConfig: async () => {
     set({ configLoading: true, configError: null });
     try {
@@ -219,6 +226,21 @@ export const useAiStore = create<AiStore>((set, get) => ({
       set({ models });
     } catch (e) {
       console.error('Failed to load models:', e);
+    }
+  },
+
+  fetchRemoteModels: async (protocol, endpoint, apiKey) => {
+    set({ fetchingRemoteModels: true, configError: null });
+    try {
+      const models = await aiCommands.fetchRemoteModels(protocol, endpoint, apiKey);
+      set({ remoteModels: models, fetchingRemoteModels: false });
+      return models;
+    } catch (e) {
+      set({
+        fetchingRemoteModels: false,
+        configError: e instanceof Error ? e.message : String(e),
+      });
+      return [];
     }
   },
 
@@ -283,6 +305,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
     if (!nl2sql.input.trim()) return;
 
     const requestId = crypto.randomUUID();
+    console.debug('[AI] generateSql:', { ...params, input: nl2sql.input, requestId });
     set({
       nl2sql: {
         ...nl2sql,
@@ -300,6 +323,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
         requestId,
       });
     } catch (e) {
+      console.error('[AI] generateSql error:', e);
       set((s) => ({
         nl2sql: { ...s.nl2sql, isGenerating: false },
         nl2sqlError: e instanceof Error ? e.message : String(e),
@@ -312,9 +336,11 @@ export const useAiStore = create<AiStore>((set, get) => ({
   // ── Diagnosis ──
 
   diagnoseError: async (params) => {
+    console.debug('[AI] diagnoseError:', { sql_len: params.sql?.length, error: params.errorMessage });
     set({ isDiagnosing: true, diagnosisError: null, diagnosis: null });
     try {
       const result = await aiCommands.diagnoseError(params);
+      console.debug('[AI] diagnoseError result:', { causes: result?.possibleCauses?.length });
       set({ diagnosis: result, isDiagnosing: false });
     } catch (e) {
       set({
@@ -330,11 +356,14 @@ export const useAiStore = create<AiStore>((set, get) => ({
   // ── EXPLAIN Analysis ──
 
   analyzeExplain: async (params) => {
+    console.debug('[AI] analyzeExplain:', { connectionId: params.connectionId, sql_len: params.originalSql?.length });
     set({ isAnalyzingExplain: true, explainAnalysis: null, explainError: null });
     try {
       const result = await aiCommands.analyzeExplain(params);
+      console.debug('[AI] analyzeExplain result:', { bottlenecks: result?.bottlenecks?.length, suggestions: result?.suggestions?.length });
       set({ explainAnalysis: result, isAnalyzingExplain: false });
     } catch (e) {
+      console.error('[AI] analyzeExplain error:', e);
       set({
         isAnalyzingExplain: false,
         explainError: e instanceof Error ? e.message : String(e),
@@ -353,6 +382,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
     const { nlFilterInput } = get();
     if (!nlFilterInput.trim()) return null;
 
+    console.debug('[AI] parseFilter:', { connectionId, database, table, input: nlFilterInput });
     set({ isParsingFilter: true, nlFilterError: null, parsedFilters: null });
 
     try {
@@ -362,9 +392,11 @@ export const useAiStore = create<AiStore>((set, get) => ({
         table,
         naturalLanguage: nlFilterInput,
       });
+      console.debug('[AI] parseFilter result:', { filterCount: filters?.length });
       set({ parsedFilters: filters, isParsingFilter: false });
       return filters;
     } catch (e) {
+      console.error('[AI] parseFilter error:', e);
       set({
         isParsingFilter: false,
         nlFilterError: e instanceof Error ? e.message : String(e),
@@ -394,6 +426,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
     const { chatSession } = get();
     if (!chatSession) return;
 
+    console.debug('[AI] sendChatMessage:', { connectionId, database, contentLen: content.length, includeSchema, historyLen: chatSession.messages.length });
     const userMessage: AiChatMessage = { role: 'user', content };
     const requestId = crypto.randomUUID();
 

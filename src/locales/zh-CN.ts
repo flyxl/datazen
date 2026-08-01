@@ -195,6 +195,7 @@ const zhCN = {
 
   // ── Settings ──
   'settings.title': '偏好设置',
+  'settings.general': '通用',
   'settings.theme': '主题',
   'settings.language': '语言',
   'settings.langZh': '简体中文',
@@ -221,6 +222,7 @@ const zhCN = {
   'connWin.foreignKeys': '外键',
   'connWin.connected': '已连接',
   'connWin.newQuery': '新建查询',
+  'connWin.toggleSidebar': '切换侧边栏',
   'connWin.refresh': '刷新',
   'connWin.newTable': '新建表',
   'connWin.searchTables': '搜索表、视图...',
@@ -519,6 +521,18 @@ const zhCN = {
   'settings.ai.configured': '已配置',
   'settings.ai.ollamaHint': 'Ollama 无需 API Key，请确保 Ollama 服务已启动',
   'settings.ai.description': '配置 AI 服务以启用自然语言转 SQL、错误诊断等智能功能',
+  'settings.ai.goToConfigure': '前往配置',
+  'settings.ai.protocol': '协议',
+  'settings.ai.protocolOpenAiChat': 'OpenAI Chat Completions',
+  'settings.ai.protocolOpenAiResponses': 'OpenAI Responses',
+  'settings.ai.protocolAnthropic': 'Anthropic Messages',
+  'settings.ai.fetchModels': '获取模型列表',
+  'settings.ai.fetchingModels': '获取中…',
+  'settings.ai.modelManual': '手动输入模型 ID',
+  'settings.ai.customHint': '填写 Base URL 和 API Key 后可获取模型列表',
+  'settings.ai.endpointHintOpenAiChat': '例如 https://api.openai.com/v1',
+  'settings.ai.endpointHintOpenAiResponses': '例如 https://api.openai.com/v1',
+  'settings.ai.endpointHintAnthropic': '例如 https://api.anthropic.com',
 
   // ── AI Chat ──
   'chat.title': 'AI 助手',

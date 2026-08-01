@@ -6,6 +6,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use super::anthropic::AnthropicProvider;
+use super::custom::CustomProvider;
 use super::ollama::OllamaProvider;
 use super::openai::OpenAiProvider;
 
@@ -148,6 +149,9 @@ pub async fn init_ai_providers() -> AiProviderRegistry {
         .await;
     registry
         .register(Arc::new(OllamaProvider::new()))
+        .await;
+    registry
+        .register(Arc::new(CustomProvider::new()))
         .await;
 
     for factory in iter_ai_provider_factories() {

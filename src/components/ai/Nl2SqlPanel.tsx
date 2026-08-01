@@ -1,9 +1,10 @@
 import { useCallback, useRef, useState } from 'react';
-import { Loader2, Sparkles, Copy, Check, Trash2, ArrowDownToLine } from 'lucide-react';
+import { Loader2, Sparkles, Copy, Check, Trash2, ArrowDownToLine, Settings } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { useI18n } from '../../hooks/useI18n';
 import { useAiStore } from '../../stores/aiStore';
 import { cn } from '../../lib/cn';
+import { openSettingsWindow } from '../../lib/windowManager';
 
 interface Nl2SqlPanelProps {
   connectionId: string;
@@ -54,9 +55,13 @@ export function Nl2SqlPanel({ connectionId, database, currentTable, onApplySql }
 
   if (!isConfigured) {
     return (
-      <div className="flex items-center gap-2 px-3 py-2 text-xs text-fg-muted">
+      <div className="flex items-center gap-2 px-3 py-2 text-xs text-fg-muted border-b border-edge bg-surface-alt">
         <Sparkles className="h-3.5 w-3.5" />
-        {t('nl2sql.notConfigured')}
+        <span className="flex-1">{t('nl2sql.notConfigured')}</span>
+        <Button variant="primary" className="h-6 gap-1 px-2 text-[11px]" onClick={() => openSettingsWindow('ai')}>
+          <Settings className="h-3 w-3" />
+          {t('settings.ai.goToConfigure')}
+        </Button>
       </div>
     );
   }
