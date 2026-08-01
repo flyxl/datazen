@@ -21,3 +21,7 @@ export { useI18n } from '../hooks/useI18n';
 export type { DatabaseTypeMeta, ConnectionMode } from '../lib/databaseMeta';
 export type { ConnectionFormState } from '../components/connection/useConnectionForm';
 export type { SqlDialectStrategy, SqlDialectFamily } from '../lib/sqlDialects/types';
+
+// === Plugin Commands ===
+export { pluginInvoke, hasPluginCommand } from '../plugins/generated';
+export type { PluginCommandMeta } from '../plugins/generated';
