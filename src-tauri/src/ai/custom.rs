@@ -602,6 +602,14 @@ impl CustomProvider {
             })
             .unwrap_or_default();
 
+        tracing::debug!(
+            response_len = content.len(),
+            finish_reason = ?choice.finish_reason,
+            prompt_tokens = usage.prompt_tokens,
+            completion_tokens = usage.completion_tokens,
+            "custom(openai_chat): complete response"
+        );
+
         Ok(CompletionResponse {
             request_id: request.request_id.clone(),
             content,
@@ -673,6 +681,13 @@ impl CustomProvider {
             })
             .unwrap_or_default();
 
+        tracing::debug!(
+            response_len = content.len(),
+            prompt_tokens = usage.prompt_tokens,
+            completion_tokens = usage.completion_tokens,
+            "custom(openai_responses): complete response"
+        );
+
         Ok(CompletionResponse {
             request_id: request.request_id.clone(),
             content,
@@ -736,6 +751,12 @@ impl CustomProvider {
             .join("");
 
         let total = api_resp.usage.input_tokens + api_resp.usage.output_tokens;
+        tracing::debug!(
+            response_len = content.len(),
+            input_tokens = api_resp.usage.input_tokens,
+            output_tokens = api_resp.usage.output_tokens,
+            "custom(anthropic): complete response"
+        );
 
         Ok(CompletionResponse {
             request_id: request.request_id.clone(),

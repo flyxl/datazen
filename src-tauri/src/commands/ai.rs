@@ -319,8 +319,17 @@ pub async fn ai_diagnose_error(
     );
 
     let content = strip_markdown_fences(&response.content);
+    if content.trim().is_empty() {
+        return Err(log_err("ai_diagnose_error", &"LLM returned empty response"));
+    }
     serde_json::from_str::<DiagnosisResult>(&content)
-        .map_err(|e| log_err("ai_diagnose_error", &e))
+        .map_err(|e| {
+            tracing::error!(
+                raw_content = %&content[..content.len().min(500)],
+                "ai_diagnose_error: JSON parse failed"
+            );
+            log_err("ai_diagnose_error", &e)
+        })
 }
 
 // ─── EXPLAIN Analysis ───
@@ -375,14 +384,35 @@ pub async fn ai_analyze_explain(
         stop: None,
     };
 
+    tracing::debug!(
+        model = %request.model,
+        messages_count = request.messages.len(),
+        "ai_analyze_explain: sending to provider"
+    );
+
     let response = provider
         .complete(&request)
         .await
         .map_err(|e| log_err("ai_analyze_explain", &e))?;
 
+    tracing::debug!(
+        response_len = response.content.len(),
+        response_preview = %&response.content[..response.content.len().min(200)],
+        "ai_analyze_explain: response received"
+    );
+
     let content = strip_markdown_fences(&response.content);
+    if content.trim().is_empty() {
+        return Err(log_err("ai_analyze_explain", &"LLM returned empty response"));
+    }
     serde_json::from_str::<ExplainAnalysis>(&content)
-        .map_err(|e| log_err("ai_analyze_explain", &e))
+        .map_err(|e| {
+            tracing::error!(
+                raw_content = %&content[..content.len().min(500)],
+                "ai_analyze_explain: JSON parse failed"
+            );
+            log_err("ai_analyze_explain", &e)
+        })
 }
 
 // ─── Smart Filter ───
