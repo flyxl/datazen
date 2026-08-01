@@ -665,7 +665,7 @@ impl CustomProvider {
         let api_resp: OaiResponsesResponse = serde_json::from_str(&raw_resp)
             .map_err(|e| AiError::RequestFailed(format!("JSON decode: {e}")))?;
 
-        let content = api_resp
+        let message_content: String = api_resp
             .output
             .iter()
             .filter(|item| item.item_type == "message")
@@ -674,6 +674,20 @@ impl CustomProvider {
             .filter_map(|block| block.text.as_deref())
             .collect::<Vec<_>>()
             .join("");
+
+        let content = if message_content.is_empty() {
+            api_resp
+                .output
+                .iter()
+                .filter(|item| item.item_type == "reasoning")
+                .flat_map(|item| item.content.iter().flatten())
+                .filter(|block| block.block_type == "reasoning_text")
+                .filter_map(|block| block.text.as_deref())
+                .collect::<Vec<_>>()
+                .join("")
+        } else {
+            message_content
+        };
 
         let usage = api_resp
             .usage
@@ -939,7 +953,7 @@ impl CustomProvider {
 
                 if let Ok(event) = serde_json::from_str::<OaiResponsesStreamEvent>(data) {
                     match event.event_type.as_str() {
-                        "response.output_text.delta" => {
+                        "response.output_text.delta" | "response.reasoning_text.delta" => {
                             if let Some(text) = event.delta {
                                 if !text.is_empty() {
                                     if sender

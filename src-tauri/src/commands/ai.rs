@@ -297,7 +297,7 @@ pub async fn ai_diagnose_error(
             },
         ],
         temperature: Some(0.0),
-        max_tokens: Some(1500),
+        max_tokens: Some(8000),
         stop: None,
     };
 
@@ -380,7 +380,7 @@ pub async fn ai_analyze_explain(
             },
         ],
         temperature: Some(0.0),
-        max_tokens: Some(2000),
+        max_tokens: Some(8000),
         stop: None,
     };
 
