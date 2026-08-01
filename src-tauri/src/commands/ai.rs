@@ -384,22 +384,34 @@ pub async fn ai_analyze_explain(
         stop: None,
     };
 
-    tracing::debug!(
-        model = %request.model,
-        messages_count = request.messages.len(),
-        "ai_analyze_explain: sending to provider"
-    );
+    for (i, msg) in request.messages.iter().enumerate() {
+        tracing::info!(
+            idx = i,
+            role = ?msg.role,
+            content_len = msg.content.len(),
+            content_preview = %&msg.content[..msg.content.len().min(300)],
+            "ai_analyze_explain: message[{}]", i
+        );
+    }
 
     let response = provider
         .complete(&request)
         .await
         .map_err(|e| log_err("ai_analyze_explain", &e))?;
 
-    tracing::debug!(
+    tracing::info!(
         response_len = response.content.len(),
-        response_preview = %&response.content[..response.content.len().min(200)],
+        finish_reason = ?response.finish_reason,
+        prompt_tokens = response.usage.prompt_tokens,
+        completion_tokens = response.usage.completion_tokens,
         "ai_analyze_explain: response received"
     );
+    if !response.content.is_empty() {
+        tracing::info!(
+            response_content = %&response.content[..response.content.len().min(500)],
+            "ai_analyze_explain: response content"
+        );
+    }
 
     let content = strip_markdown_fences(&response.content);
     if content.trim().is_empty() {
