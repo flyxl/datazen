@@ -2,6 +2,7 @@ mod ai;
 mod cache;
 mod commands;
 mod db;
+pub mod mcp;
 mod services;
 pub mod ssh_tunnel;
 mod store;
@@ -267,6 +268,74 @@ fn rebuild_menu(handle: tauri::AppHandle, language: String) -> Result<(), String
     rebuild_menu_for_handle(&handle, &language).map_err(|e| e.to_string())
 }
 
+async fn create_app_state_headless() -> Result<AppState, String> {
+    let registry: Arc<db::DriverRegistry> = Arc::new(init_drivers().await);
+    let data_dir = dirs::data_dir()
+        .ok_or_else(|| "Cannot determine data dir".to_string())?
+        .join("com.datazen.app");
+    let store = Arc::new(Store::init_with_path(&data_dir).await.map_err(|e| e.to_string())?);
+    let schema_cache = Arc::new(SchemaCache::new(registry.clone()));
+    let connection_manager = Arc::new(ConnectionManager::new(
+        registry.clone(),
+        store.clone(),
+    ));
+    connection_manager.clone().start_cleanup_task();
+    let sync_adapters = Arc::new(init_sync_adapters());
+    let ai_registry = Arc::new(init_ai_providers().await);
+
+    if let Some(ai_config) = store.get_ai_config().await {
+        if let Some(provider) = ai_registry.get(&ai_config.provider_type).await {
+            if let Err(e) = provider.initialize(&ai_config).await {
+                tracing::warn!("Failed to initialize saved AI provider: {e}");
+            }
+        }
+    }
+
+    let schema_context_builder = Arc::new(SchemaContextBuilder::new(
+        schema_cache.clone(),
+        connection_manager.clone(),
+    ));
+
+    Ok(AppState {
+        driver_registry: registry,
+        connection_manager,
+        store,
+        schema_cache,
+        sync_adapters,
+        ai_registry,
+        schema_context_builder,
+    })
+}
+
+/// Run as a headless MCP stdio server (invoked with `--mcp`).
+pub fn run_mcp_stdio() {
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+        )
+        .with_writer(std::io::stderr)
+        .init();
+
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("Failed to create tokio runtime");
+
+    rt.block_on(async {
+        let app_state = match create_app_state_headless().await {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::error!("Failed to initialize AppState: {e}");
+                std::process::exit(1);
+            }
+        };
+
+        let cancel = tokio_util::sync::CancellationToken::new();
+        mcp::start_mcp_stdio(Arc::new(app_state), cancel).await;
+    });
+}
+
 /// Entry point invoked by `main.rs`.
 pub fn run() {
     tracing_subscriber::fmt()
@@ -424,6 +493,9 @@ pub fn run() {
             commands::ai_analyze_explain,
             commands::ai_chat,
             commands::ai_parse_filter,
+            commands::mcp_get_status,
+            commands::mcp_start_stdio,
+            commands::mcp_stop,
             rebuild_menu,
         ])
         .run(tauri::generate_context!())

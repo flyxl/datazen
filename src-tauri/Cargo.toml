@@ -58,6 +58,10 @@ redis = { version = "0.27", features = ["tokio-comp", "aio"] }
 # Plugin crates (optional — controlled by features)
 datazen-plugin-kiwi = { git = "https://github.com/flyxl/datazen-plugin-kiwi.git", optional = true }
 datazen-plugin-olap = { git = "https://github.com/flyxl/datazen-plugin-olap.git", optional = true }
+rmcp = { version = "2.2.0", features = ["server", "transport-io", "transport-streamable-http-server", "macros", "schemars"] }
+schemars = "1.2.2"
+tokio-util = { version = "0.7.19", features = ["rt"] }
+dirs = "6.0.0"
 
 [features]
 default = ["plugin-kiwi", "plugin-olap"]

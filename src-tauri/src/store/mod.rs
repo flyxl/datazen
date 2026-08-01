@@ -162,6 +162,23 @@ impl Store {
         Ok(store)
     }
 
+    pub async fn init_with_path(data_dir: &std::path::Path) -> Result<Self, StoreError> {
+        tokio::fs::create_dir_all(data_dir)
+            .await
+            .map_err(|e| StoreError::InitError(e.to_string()))?;
+
+        let encryption_key = Self::get_or_create_encryption_key(data_dir).await?;
+
+        let store = Self {
+            data_dir: data_dir.to_path_buf(),
+            encryption_key,
+            cache: Arc::new(RwLock::new(StoreCache::default())),
+        };
+
+        store.load_all().await?;
+        Ok(store)
+    }
+
     async fn get_or_create_encryption_key(data_dir: &std::path::Path) -> Result<[u8; 32], StoreError> {
         let key_path = data_dir.join(".key");
 

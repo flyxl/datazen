@@ -173,6 +173,11 @@ export function SettingsWindow() {
 
           {/* AI section */}
           <AiSettingsSection />
+
+          <Divider />
+
+          {/* MCP Server section */}
+          <McpSettingsSection />
         </div>
       </div>
 
@@ -232,6 +237,31 @@ function ToggleRow({ label, checked, onChange }: {
         />
       </button>
     </div>
+  );
+}
+
+function McpSettingsSection() {
+  const { t } = useI18n();
+
+  return (
+    <>
+      <SectionTitle>{t('mcp.title')}</SectionTitle>
+      <p className="text-xs text-fg-muted">{t('mcp.description')}</p>
+
+      <div className="rounded-md border border-edge bg-surface p-3">
+        <p className="text-xs text-fg-muted">{t('mcp.usage')}</p>
+        <pre className="mt-2 text-xs font-mono text-fg-secondary whitespace-pre-wrap break-all">
+{`{
+  "mcpServers": {
+    "datazen": {
+      "command": "datazen",
+      "args": ["--mcp"]
+    }
+  }
+}`}
+        </pre>
+      </div>
+    </>
   );
 }
 
