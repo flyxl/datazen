@@ -110,6 +110,89 @@ Rules:
         }
     }
 
+    pub fn schema_doc_system(db_type: &str, schema_ddl: &str) -> ChatMessage {
+        ChatMessage {
+            role: MessageRole::System,
+            content: format!(
+                r#"You are a database documentation expert. Generate comprehensive documentation for the database schema.
+
+Database: {db_type}
+Schema:
+{schema_ddl}
+
+Generate documentation in Markdown format with:
+1. **Overview** — Brief description of what this database/schema is likely used for
+2. **Tables** — For each table:
+   - Purpose and description
+   - Column descriptions (infer meaning from names, types, and relationships)
+   - Primary keys and constraints
+   - Relationships (foreign keys, referenced tables)
+3. **Entity Relationships** — Describe relationships between tables
+4. **Notes** — Any observations about naming conventions, patterns, or potential issues
+
+Rules:
+- Write clear, professional documentation
+- Infer purpose from column names and types when not obvious
+- Use Markdown formatting with headers, tables, and lists
+- Be concise but thorough
+- Output in the same language as the user's request (default to English)"#,
+            ),
+        }
+    }
+
+    pub fn connection_diagnose_system() -> ChatMessage {
+        ChatMessage {
+            role: MessageRole::System,
+            content: r#"You are a database connectivity expert. Diagnose connection failures and provide actionable solutions.
+
+Respond in this exact JSON format:
+{
+  "diagnosis": "Clear explanation of why the connection failed",
+  "possibleCauses": ["Cause 1", "Cause 2"],
+  "solutions": [
+    {"description": "Step-by-step fix", "command": "optional shell/SQL command"}
+  ],
+  "category": "auth|network|config|server|driver"
+}
+
+Common categories:
+- auth: authentication failures (wrong password, expired credentials, missing permissions)
+- network: connectivity issues (timeout, DNS, firewall, port blocked)
+- config: configuration errors (wrong host, port, database name, SSL settings)
+- server: server-side issues (not running, max connections, resource limits)
+- driver: client/driver issues (version mismatch, missing libraries)"#
+                .to_string(),
+        }
+    }
+
+    pub fn query_summary_system() -> ChatMessage {
+        ChatMessage {
+            role: MessageRole::System,
+            content: r#"You are a SQL query analyst. Analyze a list of SQL queries and provide insights.
+
+Respond in this exact JSON format:
+{
+  "summary": "Brief overview of query patterns",
+  "categories": [
+    {"name": "Category name", "count": 5, "examples": ["SELECT ...", "UPDATE ..."]},
+  ],
+  "insights": [
+    "Observation about query patterns",
+    "Performance concern or optimization suggestion"
+  ],
+  "frequentTables": ["table1", "table2"],
+  "recommendations": ["Recommendation 1", "Recommendation 2"]
+}
+
+Rules:
+- Group queries by type (SELECT, INSERT, UPDATE, DELETE, DDL)
+- Identify the most frequently accessed tables
+- Note any potential performance issues (missing WHERE, SELECT *, etc.)
+- Keep recommendations actionable and specific"#
+                .to_string(),
+        }
+    }
+
     pub fn explain_analysis_system(db_type: &str) -> ChatMessage {
         ChatMessage {
             role: MessageRole::System,
@@ -204,5 +287,40 @@ mod tests {
         assert!(msg.content.contains("MySQL"));
         assert!(msg.content.contains("bottlenecks"));
         assert!(msg.content.contains("suggestions"));
+    }
+
+    #[test]
+    fn test_schema_doc_system_prompt() {
+        let msg = PromptBuilder::schema_doc_system(
+            "PostgreSQL",
+            "  users (id int4 PK, name varchar, email varchar)\n  orders (id int4 PK, user_id int4 FK→users)",
+        );
+        assert_eq!(msg.role, MessageRole::System);
+        assert!(msg.content.contains("documentation expert"));
+        assert!(msg.content.contains("PostgreSQL"));
+        assert!(msg.content.contains("users"));
+        assert!(msg.content.contains("orders"));
+        assert!(msg.content.contains("Entity Relationships"));
+    }
+
+    #[test]
+    fn test_connection_diagnose_system_prompt() {
+        let msg = PromptBuilder::connection_diagnose_system();
+        assert_eq!(msg.role, MessageRole::System);
+        assert!(msg.content.contains("connectivity expert"));
+        assert!(msg.content.contains("possibleCauses"));
+        assert!(msg.content.contains("solutions"));
+        assert!(msg.content.contains("auth"));
+        assert!(msg.content.contains("network"));
+    }
+
+    #[test]
+    fn test_query_summary_system_prompt() {
+        let msg = PromptBuilder::query_summary_system();
+        assert_eq!(msg.role, MessageRole::System);
+        assert!(msg.content.contains("query analyst"));
+        assert!(msg.content.contains("categories"));
+        assert!(msg.content.contains("frequentTables"));
+        assert!(msg.content.contains("recommendations"));
     }
 }

@@ -36,6 +36,9 @@
 | 6 | MCP Client 后端 (McpClientManager) | ✅ 已完成 | ✅ 3 pass | — | — |
 | 6 | MCP Client IPC 命令 | ✅ 已完成 | ✅ 编译通过 | — | — |
 | 6 | MCP Client 前端 (McpClientSection) | ✅ 已完成 | ✅ TS 编译通过 | 🔲 | — |
+| 8 | Schema 文档自动生成 | ✅ 已完成 | ✅ 8 pass | — | — |
+| 8 | 连接故障排查 | ✅ 已完成 | ✅ 7 pass | — | — |
+| 8 | 查询历史智能管理 | ✅ 已完成 | ✅ 7 pass | — | — |
 
 ## 状态说明
 
@@ -260,6 +263,39 @@
   - `src/stores/aiStore.ts` — MCP Client 状态管理 + connectMcpServer 失败时 rethrow
   - `src/windows/settings/SettingsWindow.tsx` — McpClientSection（添加/连接/断开/空状态）
   - `src/locales/zh-CN.ts` + `en.ts` — MCP Client 翻译键
+
+## Phase 8 详细记录
+
+### Schema 文档自动生成
+- **完成时间**: 2026-08-01
+- **变更**:
+  - `src-tauri/src/ai/prompt.rs` — schema_doc_system prompt + 单元测试
+  - `src-tauri/src/commands/ai.rs` — ai_generate_schema_doc IPC 命令
+  - `src/types/index.ts` — 无需额外类型（返回 String/Markdown）
+  - `src/commands/ai.ts` — generateSchemaDoc IPC 封装
+  - `src/stores/aiStore.ts` — schemaDoc/isGeneratingSchemaDoc/schemaDocError 状态
+
+### 连接故障排查
+- **完成时间**: 2026-08-01
+- **变更**:
+  - `src-tauri/src/ai/prompt.rs` — connection_diagnose_system prompt + 单元测试
+  - `src-tauri/src/commands/ai.rs` — ai_diagnose_connection IPC 命令
+    - 包含 SSL/SSH/username/timeout 等详细连接摘要
+    - ConnectionDiagnosis/ConnectionSolution 结构 + serde 测试
+  - `src/types/index.ts` — ConnectionDiagnosis/ConnectionSolution 类型
+  - `src/commands/ai.ts` — diagnoseConnection IPC 封装
+  - `src/stores/aiStore.ts` — connectionDiagnosis/isDiagnosingConnection 状态
+
+### 查询历史智能管理
+- **完成时间**: 2026-08-01
+- **变更**:
+  - `src-tauri/src/ai/prompt.rs` — query_summary_system prompt + 单元测试
+  - `src-tauri/src/commands/ai.rs` — ai_analyze_queries IPC 命令
+    - 支持按 connection_id 过滤，最多分析 100 条
+    - QueryAnalysis/QueryCategory 结构 + serde 测试
+  - `src/types/index.ts` — QueryAnalysis/QueryCategory 类型
+  - `src/commands/ai.ts` — analyzeQueries IPC 封装
+  - `src/stores/aiStore.ts` — queryAnalysis/isAnalyzingQueries 状态
 
 ## 提交历史
 
