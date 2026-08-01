@@ -519,7 +519,6 @@ const zhCN = {
   'settings.ai.delete': '清除配置',
   'settings.ai.notConfigured': '未配置',
   'settings.ai.configured': '已配置',
-  'settings.ai.ollamaHint': 'Ollama 无需 API Key，请确保 Ollama 服务已启动',
   'settings.ai.description': '配置 AI 服务以启用自然语言转 SQL、错误诊断等智能功能',
   'settings.ai.goToConfigure': '前往配置',
   'settings.ai.protocol': '协议',

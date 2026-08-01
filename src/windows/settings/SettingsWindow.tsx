@@ -521,7 +521,6 @@ function AiSettingsSection() {
   }, [config]);
 
   const isCustom = aiDraft.providerType === 'custom';
-  const isOllama = aiDraft.providerType === 'ollama';
 
   const selectedProvider = providers.find(
     (p) => p.providerType === aiDraft.providerType,
@@ -654,23 +653,17 @@ function AiSettingsSection() {
         </SettingRow>
       )}
 
-      {!isOllama && (
-        <SettingRow label={t('settings.ai.apiKey')}>
-          <input
-            type="password"
-            value={aiDraft.apiKey ?? ''}
-            onChange={(e) =>
-              setAiDraft((d) => ({ ...d, apiKey: e.target.value }))
-            }
-            placeholder={t('settings.ai.apiKeyPlaceholder')}
-            className={inputClass}
-          />
-        </SettingRow>
-      )}
-
-      {isOllama && (
-        <p className="text-xs text-fg-muted">{t('settings.ai.ollamaHint')}</p>
-      )}
+      <SettingRow label={t('settings.ai.apiKey')}>
+        <input
+          type="password"
+          value={aiDraft.apiKey ?? ''}
+          onChange={(e) =>
+            setAiDraft((d) => ({ ...d, apiKey: e.target.value }))
+          }
+          placeholder={t('settings.ai.apiKeyPlaceholder')}
+          className={inputClass}
+        />
+      </SettingRow>
 
       <SettingRow label={t('settings.ai.endpoint')}>
         <input

@@ -217,7 +217,7 @@ export interface TableDataResult {
 
 // ── AI Types ──
 
-export type AiProviderType = 'open_ai' | 'anthropic' | 'ollama' | 'custom';
+export type AiProviderType = 'open_ai' | 'anthropic' | 'custom';
 
 export interface AiProviderConfig {
   providerType: AiProviderType;

@@ -7,7 +7,6 @@ use tokio::sync::RwLock;
 
 use super::anthropic::AnthropicProvider;
 use super::custom::CustomProvider;
-use super::ollama::OllamaProvider;
 use super::openai::OpenAiProvider;
 
 pub struct AiProviderRegistry {
@@ -109,13 +108,13 @@ mod tests {
     async fn test_list_providers() {
         let registry = AiProviderRegistry::new();
         registry
-            .register(Arc::new(OllamaProvider::new()))
+            .register(Arc::new(AnthropicProvider::new()))
             .await;
 
         let list = registry.list_providers().await;
         assert_eq!(list.len(), 1);
-        assert_eq!(list[0].0, AiProviderType::Ollama);
-        assert_eq!(list[0].1, "Ollama (Local)");
+        assert_eq!(list[0].0, AiProviderType::Anthropic);
+        assert_eq!(list[0].1, "Anthropic");
     }
 
     #[tokio::test]
@@ -125,15 +124,14 @@ mod tests {
         let types = registry.available_providers().await;
         assert!(types.contains(&AiProviderType::OpenAi));
         assert!(types.contains(&AiProviderType::Anthropic));
-        assert!(types.contains(&AiProviderType::Ollama));
-        assert!(types.len() >= 3);
+        assert!(types.len() >= 2);
     }
 
     #[tokio::test]
     async fn test_all_providers() {
         let registry = init_ai_providers().await;
         let all = registry.all_providers().await;
-        assert!(all.len() >= 3);
+        assert!(all.len() >= 2);
     }
 }
 
@@ -146,9 +144,6 @@ pub async fn init_ai_providers() -> AiProviderRegistry {
         .await;
     registry
         .register(Arc::new(AnthropicProvider::new()))
-        .await;
-    registry
-        .register(Arc::new(OllamaProvider::new()))
         .await;
     registry
         .register(Arc::new(CustomProvider::new()))

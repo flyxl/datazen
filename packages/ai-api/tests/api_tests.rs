@@ -82,7 +82,6 @@ impl AiProvider for MockProvider {
 fn test_provider_type_display() {
     assert_eq!(AiProviderType::OpenAi.to_string(), "OpenAI");
     assert_eq!(AiProviderType::Anthropic.to_string(), "Anthropic");
-    assert_eq!(AiProviderType::Ollama.to_string(), "Ollama");
     assert_eq!(AiProviderType::Custom.to_string(), "Custom");
 }
 

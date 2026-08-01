@@ -8,7 +8,6 @@ use thiserror::Error;
 pub enum AiProviderType {
     OpenAi,
     Anthropic,
-    Ollama,
     Custom,
 }
 
@@ -17,7 +16,6 @@ impl std::fmt::Display for AiProviderType {
         match self {
             Self::OpenAi => write!(f, "OpenAI"),
             Self::Anthropic => write!(f, "Anthropic"),
-            Self::Ollama => write!(f, "Ollama"),
             Self::Custom => write!(f, "Custom"),
         }
     }
@@ -28,7 +26,7 @@ impl std::fmt::Display for AiProviderType {
 pub struct AiProviderConfig {
     pub provider_type: AiProviderType,
     pub api_key: Option<String>,
-    /// Custom endpoint URL (e.g. Ollama: http://localhost:11434)
+    /// Custom endpoint URL
     pub endpoint: Option<String>,
     pub model: String,
     /// Provider-specific extra config (pass-through)
