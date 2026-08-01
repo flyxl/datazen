@@ -88,10 +88,9 @@ export function NewConnectionWindow() {
               <button
                 key={db.value}
                 type="button"
-                onMouseDown={() => console.debug('[NewConnectionWindow] mousedown on:', db.value)}
-                onClick={() => { console.debug('[NewConnectionWindow] click on:', db.value); form.handleDatabaseTypeChange(db.value); }}
+                onPointerDown={() => form.handleDatabaseTypeChange(db.value)}
                 className={cn(
-                  'flex items-center gap-3 rounded-lg px-3 py-3 text-left text-sm transition-colors',
+                  'flex items-center gap-3 rounded-lg px-3 py-3 text-left text-sm transition-colors select-none',
                   form.databaseType === db.value
                     ? 'bg-surface-raised text-fg'
                     : 'text-fg-secondary hover:bg-surface-alt hover:text-fg',
