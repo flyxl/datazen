@@ -35,11 +35,10 @@ export function ExplainPanel({ connectionId, sql, explainOutput, onApplySql }: E
   const clearExplainAnalysis = useAiStore((s) => s.clearExplainAnalysis);
 
   useEffect(() => {
-    clearExplainAnalysis();
     return () => {
       clearExplainAnalysis();
     };
-  }, [explainOutput, sql, clearExplainAnalysis]);
+  }, [clearExplainAnalysis]);
 
   const handleAnalyze = useCallback(() => {
     void analyzeExplain({ connectionId, explainOutput, originalSql: sql });

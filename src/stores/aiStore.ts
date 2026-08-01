@@ -340,7 +340,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
     set({ isDiagnosing: true, diagnosisError: null, diagnosis: null });
     try {
       const result = await aiCommands.diagnoseError(params);
-      console.debug('[AI] diagnoseError result:', { causes: result?.possibleCauses?.length });
+      console.debug('[AI] diagnoseError result:', { changes: result?.changes?.length });
       set({ diagnosis: result, isDiagnosing: false });
     } catch (e) {
       set({
