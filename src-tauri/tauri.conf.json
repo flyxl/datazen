@@ -21,7 +21,8 @@
         "minHeight": 400,
         "decorations": false,
         "transparent": true,
-        "visible": false
+        "visible": false,
+        "acceptFirstMouse": true
       }
     ],
     "security": {
