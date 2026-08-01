@@ -77,14 +77,15 @@ export const useSchemaStore = create<SchemaStore>((set, get) => ({
     const { connectionId, tables, views } = get();
     if (!connectionId) return;
     const allNames = [...tables, ...views].map((t) => t.name);
+    const results = await Promise.all(
+      allNames.map((name) =>
+        databaseCommands.getColumns(connectionId, name).catch(() => [] as string[]),
+      ),
+    );
     const map: Record<string, string[]> = {};
-    for (const name of allNames) {
-      try {
-        map[name] = await databaseCommands.getColumns(connectionId, name);
-      } catch {
-        map[name] = [];
-      }
-    }
+    allNames.forEach((name, i) => {
+      map[name] = results[i];
+    });
     set({ columnMap: map });
   },
 
