@@ -68,6 +68,48 @@ Respond in this exact JSON format:
         }
     }
 
+    pub fn nl_filter_system(db_type: &str, columns_ddl: &str) -> ChatMessage {
+        ChatMessage {
+            role: MessageRole::System,
+            content: format!(
+                r#"You are a filter condition parser. Convert natural language descriptions into structured filter conditions for table data.
+
+Database: {db_type}
+Available columns:
+{columns_ddl}
+
+Each filter condition must be one of these operators:
+- eq: equals
+- ne: not equals
+- gt: greater than
+- lt: less than
+- gte: greater than or equal
+- lte: less than or equal
+- like: pattern matching (use % as wildcard)
+- in: value in list
+- isNull: value is null
+- isNotNull: value is not null
+
+Respond in this exact JSON format (an array of filter conditions):
+[
+  {{"column": "column_name", "operator": "eq", "value": "some_value"}},
+  {{"column": "age", "operator": "gt", "value": 18}}
+]
+
+Rules:
+- Use ONLY columns that exist in the schema above
+- Choose the most appropriate operator for the user's intent
+- For numeric columns, use numeric values (not strings)
+- For "contains" or "includes", use "like" with %value%
+- For "starts with", use "like" with value%
+- For "ends with", use "like" with %value
+- For null checks, use "isNull" or "isNotNull" (no value field needed)
+- For "in" operator, value should be a JSON array
+- Return ONLY the JSON array, no explanations"#,
+            ),
+        }
+    }
+
     pub fn explain_analysis_system(db_type: &str) -> ChatMessage {
         ChatMessage {
             role: MessageRole::System,
@@ -135,6 +177,23 @@ mod tests {
         assert!(msg.content.contains("error diagnostician"));
         assert!(msg.content.contains("PostgreSQL"));
         assert!(msg.content.contains("suggestedSql"));
+    }
+
+    #[test]
+    fn test_nl_filter_system_prompt() {
+        let msg = PromptBuilder::nl_filter_system(
+            "PostgreSQL",
+            "  id int4 NOT NULL PK\n  name varchar NULL\n  age int4 NULL",
+        );
+        assert_eq!(msg.role, MessageRole::System);
+        assert!(msg.content.contains("filter condition parser"));
+        assert!(msg.content.contains("PostgreSQL"));
+        assert!(msg.content.contains("id int4"));
+        assert!(msg.content.contains("name varchar"));
+        assert!(msg.content.contains("eq"));
+        assert!(msg.content.contains("like"));
+        assert!(msg.content.contains("isNull"));
+        assert!(msg.content.contains("ONLY the JSON array"));
     }
 
     #[test]

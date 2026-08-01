@@ -2,16 +2,20 @@ import { useEffect } from 'react';
 import { Loader2 } from 'lucide-react';
 import { DataTable } from '../../components/DataTable/DataTable';
 import type { ColumnDef } from '../../components/DataTable/TableHeader';
+import { NlFilterInput } from '../../components/ai/NlFilterInput';
 import { useTableDataStore, type TableState } from '../../stores/tableDataStore';
+import { useAiStore } from '../../stores/aiStore';
 import { useI18n } from '../../hooks/useI18n';
 
 interface TableViewProps {
   connectionId: string;
+  database: string;
   tableName: string;
 }
 
-export function TableView({ connectionId, tableName }: TableViewProps) {
+export function TableView({ connectionId, database, tableName }: TableViewProps) {
   const { t } = useI18n();
+  const isAiConfigured = useAiStore((s) => s.isConfigured);
   const tableStates = useTableDataStore((s) => s.tableStates);
   const activeTable = useTableDataStore((s) => s.activeTable);
   const loadTableData = useTableDataStore((s) => s.loadTableData);
@@ -89,9 +93,17 @@ export function TableView({ connectionId, tableName }: TableViewProps) {
   );
 
   return (
-    <DataTable
-      columns={columnDefs}
-      rows={rowArrays}
+    <div className="flex flex-1 flex-col overflow-hidden">
+      {isAiConfigured && (
+        <NlFilterInput
+          connectionId={connectionId}
+          database={database}
+          tableName={tableName}
+        />
+      )}
+      <DataTable
+        columns={columnDefs}
+        rows={rowArrays}
       totalRows={totalRows}
       page={page}
       pageSize={pageSize}
@@ -110,8 +122,9 @@ export function TableView({ connectionId, tableName }: TableViewProps) {
       onCellEditCancel={cancelEdit}
       onRowSelect={selectRow}
       onSelectAll={toggleSelectAll}
-      onRowClick={setDetailRow}
-      highlightedRow={detailRowIndex}
-    />
+        onRowClick={setDetailRow}
+        highlightedRow={detailRowIndex}
+      />
+    </div>
   );
 }

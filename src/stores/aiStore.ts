@@ -7,6 +7,7 @@ import type {
   AiProviderType,
   DiagnosisResult,
   ExplainAnalysis,
+  FilterCondition,
   ModelInfo,
   ProviderListItem,
   StreamChunkPayload,
@@ -47,6 +48,11 @@ interface AiStore {
 
   chatSession: AiChatSession | null;
 
+  nlFilterInput: string;
+  parsedFilters: FilterCondition[] | null;
+  isParsingFilter: boolean;
+  nlFilterError: string | null;
+
   loadConfig: () => Promise<void>;
   loadProviders: () => Promise<void>;
   loadModels: (providerType: AiProviderType) => Promise<void>;
@@ -78,6 +84,14 @@ interface AiStore {
     originalSql: string;
   }) => Promise<void>;
   clearExplainAnalysis: () => void;
+
+  setNlFilterInput: (input: string) => void;
+  parseFilter: (params: {
+    connectionId: string;
+    database: string;
+    table: string;
+  }) => Promise<FilterCondition[] | null>;
+  clearNlFilter: () => void;
 
   initChatSession: () => void;
   sendChatMessage: (params: {
@@ -112,6 +126,11 @@ export const useAiStore = create<AiStore>((set, get) => ({
   explainError: null,
 
   chatSession: null,
+
+  nlFilterInput: '',
+  parsedFilters: null,
+  isParsingFilter: false,
+  nlFilterError: null,
 
   loadConfig: async () => {
     set({ configLoading: true, configError: null });
@@ -270,6 +289,37 @@ export const useAiStore = create<AiStore>((set, get) => ({
 
   clearExplainAnalysis: () =>
     set({ explainAnalysis: null, isAnalyzingExplain: false, explainError: null }),
+
+  // ── Smart Filter ──
+
+  setNlFilterInput: (input) => set({ nlFilterInput: input }),
+
+  parseFilter: async ({ connectionId, database, table }) => {
+    const { nlFilterInput } = get();
+    if (!nlFilterInput.trim()) return null;
+
+    set({ isParsingFilter: true, nlFilterError: null, parsedFilters: null });
+
+    try {
+      const filters = await aiCommands.parseFilter({
+        connectionId,
+        database,
+        table,
+        naturalLanguage: nlFilterInput,
+      });
+      set({ parsedFilters: filters, isParsingFilter: false });
+      return filters;
+    } catch (e) {
+      set({
+        isParsingFilter: false,
+        nlFilterError: e instanceof Error ? e.message : String(e),
+      });
+      return null;
+    }
+  },
+
+  clearNlFilter: () =>
+    set({ nlFilterInput: '', parsedFilters: null, isParsingFilter: false, nlFilterError: null }),
 
   // ── Chat ──
 

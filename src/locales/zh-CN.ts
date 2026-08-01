@@ -566,6 +566,17 @@ const zhCN = {
   'diagnosis.applySuggested': '应用修正',
   'diagnosis.notConfigured': '请先在设置中配置 AI 服务',
 
+  // ── Smart Filter ──
+  'smartFilter.title': '智能筛选',
+  'smartFilter.placeholder': '用自然语言描述筛选条件，如"年龄大于 18 且姓名包含张"',
+  'smartFilter.parse': '筛选',
+  'smartFilter.parsing': '解析中…',
+  'smartFilter.apply': '应用筛选',
+  'smartFilter.clear': '清除',
+  'smartFilter.notConfigured': '请先在设置中配置 AI 服务',
+  'smartFilter.noFilters': '未解析到筛选条件',
+  'smartFilter.parsed': '已解析 {count} 个筛选条件',
+
   // ── Select ──
   'select.placeholder': '请选择',
 

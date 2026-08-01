@@ -538,7 +538,7 @@ export function SqlConnectionView({
 
                 <div className="flex min-h-0 flex-1 flex-col">
                   {activePanel.subTab === 'data' && (
-                    <TableView connectionId={connectionId} tableName={activePanel.tableName} />
+                    <TableView connectionId={connectionId} database={currentDatabase ?? ''} tableName={activePanel.tableName} />
                   )}
                   {activePanel.subTab === 'structure' && (
                     <StructureView connectionId={connectionId} tableName={activePanel.tableName} onEditStructure={handleAlterTable} />
