@@ -224,6 +224,7 @@ export interface AiProviderConfig {
   apiKey?: string;
   endpoint?: string;
   model: string;
+  maxTokens?: number;
   extra?: Record<string, unknown>;
 }
 

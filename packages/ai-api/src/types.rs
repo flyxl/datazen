@@ -29,9 +29,15 @@ pub struct AiProviderConfig {
     /// Custom endpoint URL
     pub endpoint: Option<String>,
     pub model: String,
+    #[serde(default = "default_max_tokens")]
+    pub max_tokens: u32,
     /// Provider-specific extra config (pass-through)
     #[serde(default)]
     pub extra: serde_json::Value,
+}
+
+fn default_max_tokens() -> u32 {
+    200_000
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

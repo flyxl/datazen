@@ -508,6 +508,7 @@ const en: Record<TranslationKey, string> = {
   'settings.ai': 'AI Assistant',
   'settings.ai.provider': 'AI Provider',
   'settings.ai.model': 'Model',
+  'settings.ai.maxTokens': 'Max Tokens',
   'settings.ai.apiKey': 'API Key',
   'settings.ai.apiKeyPlaceholder': 'Enter API Key',
   'settings.ai.endpoint': 'Custom Endpoint',

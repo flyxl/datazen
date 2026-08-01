@@ -494,6 +494,7 @@ function AiSettingsSection() {
     apiKey: '',
     endpoint: '',
     model: '',
+    maxTokens: 200000,
   });
   const [customProtocol, setCustomProtocol] = useState<string>('open_ai_compatible');
   const [manualModelInput, setManualModelInput] = useState(false);
@@ -512,6 +513,7 @@ function AiSettingsSection() {
         apiKey: config.apiKey ?? '',
         endpoint: config.endpoint ?? '',
         model: config.model,
+        maxTokens: config.maxTokens ?? 200000,
         extra: config.extra,
       });
       if (config.providerType === 'custom' && config.extra?.protocol) {
@@ -718,6 +720,18 @@ function AiSettingsSection() {
             onChange={(v) => setAiDraft((d) => ({ ...d, model: v }))}
           />
         )}
+      </SettingRow>
+
+      <SettingRow label={t('settings.ai.maxTokens')}>
+        <input
+          type="number"
+          value={aiDraft.maxTokens ?? 200000}
+          onChange={(e) =>
+            setAiDraft((d) => ({ ...d, maxTokens: parseInt(e.target.value, 10) || 200000 }))
+          }
+          min={1000}
+          className={inputClass}
+        />
       </SettingRow>
 
       {configError && (
