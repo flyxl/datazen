@@ -4,6 +4,7 @@ import type {
   AiChatMessage,
   AiProviderConfig,
   AiProviderType,
+  ConnectionDiagnosis,
   DiagnosisResult,
   ExplainAnalysis,
   FilterCondition,
@@ -11,6 +12,7 @@ import type {
   McpServerConfig,
   McpToolInfo,
   ModelInfo,
+  QueryAnalysis,
   SkillDefinition,
   SkillListItem,
   ProviderListItem,
@@ -84,6 +86,20 @@ export const aiCommands = {
   skillSave: (skill: SkillDefinition) => invoke<void>('skill_save', { skill }),
   skillDelete: (skillId: string) => invoke<void>('skill_delete', { skillId }),
   skillReload: () => invoke<void>('skill_reload'),
+
+  generateSchemaDoc: (params: {
+    connectionId: string;
+    database: string;
+  }) => invoke<string>('ai_generate_schema_doc', params),
+
+  diagnoseConnection: (params: {
+    connectionId: string;
+    errorMessage: string;
+  }) => invoke<ConnectionDiagnosis>('ai_diagnose_connection', params),
+
+  analyzeQueries: (params: {
+    connectionId?: string;
+  }) => invoke<QueryAnalysis>('ai_analyze_queries', params),
 
   mcpClientConnect: (config: McpServerConfig) =>
     invoke<void>('mcp_client_connect', { config }),

@@ -5,6 +5,7 @@ import type {
   AiChatSession,
   AiProviderConfig,
   AiProviderType,
+  ConnectionDiagnosis,
   DiagnosisResult,
   ExplainAnalysis,
   FilterCondition,
@@ -13,6 +14,7 @@ import type {
   McpToolInfo,
   ModelInfo,
   ProviderListItem,
+  QueryAnalysis,
   SkillListItem,
   StreamChunkPayload,
 } from '../types';
@@ -122,6 +124,25 @@ interface AiStore {
     connectionId?: string;
   }) => Promise<void>;
   clearSkillResult: () => void;
+
+  schemaDoc: string | null;
+  isGeneratingSchemaDoc: boolean;
+  schemaDocError: string | null;
+
+  connectionDiagnosis: ConnectionDiagnosis | null;
+  isDiagnosingConnection: boolean;
+  connectionDiagnosisError: string | null;
+
+  queryAnalysis: QueryAnalysis | null;
+  isAnalyzingQueries: boolean;
+  queryAnalysisError: string | null;
+
+  generateSchemaDoc: (params: { connectionId: string; database: string }) => Promise<void>;
+  clearSchemaDoc: () => void;
+  diagnoseConnection: (params: { connectionId: string; errorMessage: string }) => Promise<void>;
+  clearConnectionDiagnosis: () => void;
+  analyzeQueries: (params: { connectionId?: string }) => Promise<void>;
+  clearQueryAnalysis: () => void;
 
   mcpServers: McpClientStatus[];
   mcpTools: McpToolInfo[];
@@ -531,6 +552,63 @@ export const useAiStore = create<AiStore>((set, get) => ({
 
   clearSkillResult: () =>
     set({ skillExecutionResult: null, skillError: null }),
+
+  schemaDoc: null,
+  isGeneratingSchemaDoc: false,
+  schemaDocError: null,
+
+  connectionDiagnosis: null,
+  isDiagnosingConnection: false,
+  connectionDiagnosisError: null,
+
+  queryAnalysis: null,
+  isAnalyzingQueries: false,
+  queryAnalysisError: null,
+
+  generateSchemaDoc: async ({ connectionId, database }) => {
+    set({ isGeneratingSchemaDoc: true, schemaDoc: null, schemaDocError: null });
+    try {
+      const doc = await aiCommands.generateSchemaDoc({ connectionId, database });
+      set({ schemaDoc: doc, isGeneratingSchemaDoc: false });
+    } catch (e) {
+      set({
+        isGeneratingSchemaDoc: false,
+        schemaDocError: e instanceof Error ? e.message : String(e),
+      });
+    }
+  },
+
+  clearSchemaDoc: () => set({ schemaDoc: null, schemaDocError: null, isGeneratingSchemaDoc: false }),
+
+  diagnoseConnection: async ({ connectionId, errorMessage }) => {
+    set({ isDiagnosingConnection: true, connectionDiagnosis: null, connectionDiagnosisError: null });
+    try {
+      const result = await aiCommands.diagnoseConnection({ connectionId, errorMessage });
+      set({ connectionDiagnosis: result, isDiagnosingConnection: false });
+    } catch (e) {
+      set({
+        isDiagnosingConnection: false,
+        connectionDiagnosisError: e instanceof Error ? e.message : String(e),
+      });
+    }
+  },
+
+  clearConnectionDiagnosis: () => set({ connectionDiagnosis: null, connectionDiagnosisError: null, isDiagnosingConnection: false }),
+
+  analyzeQueries: async ({ connectionId }) => {
+    set({ isAnalyzingQueries: true, queryAnalysis: null, queryAnalysisError: null });
+    try {
+      const result = await aiCommands.analyzeQueries({ connectionId });
+      set({ queryAnalysis: result, isAnalyzingQueries: false });
+    } catch (e) {
+      set({
+        isAnalyzingQueries: false,
+        queryAnalysisError: e instanceof Error ? e.message : String(e),
+      });
+    }
+  },
+
+  clearQueryAnalysis: () => set({ queryAnalysis: null, queryAnalysisError: null, isAnalyzingQueries: false }),
 
   mcpServers: [],
   mcpTools: [],

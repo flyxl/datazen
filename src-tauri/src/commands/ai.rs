@@ -573,6 +573,230 @@ pub async fn skill_reload(state: State<'_, AppState>) -> Result<(), String> {
     state.skill_registry.load_all().await
 }
 
+// ─── Phase 8: Schema documentation ───
+
+#[tauri::command]
+pub async fn ai_generate_schema_doc(
+    state: State<'_, AppState>,
+    connection_id: String,
+    database: String,
+) -> Result<String, String> {
+    let ai_config = state
+        .store
+        .get_ai_config()
+        .await
+        .ok_or_else(|| "AI 未配置".to_string())?;
+
+    let provider = state
+        .ai_registry
+        .get(&ai_config.provider_type)
+        .await
+        .ok_or("Provider not available")?;
+
+    let context = state
+        .schema_context_builder
+        .build_sql_context(&connection_id, &database, None, &[], 8000)
+        .await
+        .map_err(|e| log_err("ai_generate_schema_doc", &e))?;
+
+    let request = CompletionRequest {
+        request_id: Uuid::new_v4().to_string(),
+        model: ai_config.model.clone(),
+        messages: vec![
+            PromptBuilder::schema_doc_system(&context.database_type, &context.schema_ddl),
+            ChatMessage {
+                role: MessageRole::User,
+                content: "Generate documentation for the database schema above.".into(),
+            },
+        ],
+        temperature: Some(0.3),
+        max_tokens: Some(4000),
+        stop: None,
+    };
+
+    let response = provider
+        .complete(&request)
+        .await
+        .map_err(|e| log_err("ai_generate_schema_doc", &e))?;
+
+    let content = response.content.trim();
+    let stripped = if content.starts_with("```markdown") || content.starts_with("```md") {
+        strip_markdown_fences(content)
+    } else {
+        content.to_string()
+    };
+    Ok(stripped)
+}
+
+// ─── Phase 8: Connection diagnostics ───
+
+#[derive(Debug, Clone, Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConnectionDiagnosis {
+    pub diagnosis: String,
+    pub possible_causes: Vec<String>,
+    pub solutions: Vec<ConnectionSolution>,
+    pub category: String,
+}
+
+#[derive(Debug, Clone, Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConnectionSolution {
+    pub description: String,
+    pub command: Option<String>,
+}
+
+#[tauri::command]
+pub async fn ai_diagnose_connection(
+    state: State<'_, AppState>,
+    connection_id: String,
+    error_message: String,
+) -> Result<ConnectionDiagnosis, String> {
+    let ai_config = state
+        .store
+        .get_ai_config()
+        .await
+        .ok_or_else(|| "AI 未配置".to_string())?;
+
+    let provider = state
+        .ai_registry
+        .get(&ai_config.provider_type)
+        .await
+        .ok_or("Provider not available")?;
+
+    let conn_info = state
+        .store
+        .get_connection(&connection_id)
+        .await
+        .ok_or("Connection config not found")?;
+
+    let ssl_str = format!("{:?}", conn_info.ssl_mode);
+    let ssh_str = if conn_info.ssh_tunnel.is_some() { "enabled" } else { "disabled" };
+    let conn_summary = format!(
+        "Connection type: {:?}\nHost: {}\nPort: {}\nDatabase: {}\nUsername: {}\nSSL: {}\nSSH Tunnel: {}\nTimeout: {}s",
+        conn_info.database_type,
+        conn_info.host.as_deref().unwrap_or("N/A"),
+        conn_info.port.map(|p| p.to_string()).unwrap_or_else(|| "N/A".into()),
+        conn_info.database.as_deref().unwrap_or("N/A"),
+        conn_info.username.as_deref().unwrap_or("N/A"),
+        ssl_str,
+        ssh_str,
+        conn_info.connection_timeout,
+    );
+
+    let request = CompletionRequest {
+        request_id: Uuid::new_v4().to_string(),
+        model: ai_config.model.clone(),
+        messages: vec![
+            PromptBuilder::connection_diagnose_system(),
+            ChatMessage {
+                role: MessageRole::User,
+                content: format!(
+                    "Connection details:\n{conn_summary}\n\nError:\n{error_message}"
+                ),
+            },
+        ],
+        temperature: Some(0.0),
+        max_tokens: Some(2000),
+        stop: None,
+    };
+
+    let response = provider
+        .complete(&request)
+        .await
+        .map_err(|e| log_err("ai_diagnose_connection", &e))?;
+
+    let content = strip_markdown_fences(&response.content);
+    serde_json::from_str::<ConnectionDiagnosis>(&content)
+        .map_err(|e| log_err("ai_diagnose_connection", &e))
+}
+
+// ─── Phase 8: Query history analysis ───
+
+#[derive(Debug, Clone, Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QueryAnalysis {
+    pub summary: String,
+    pub categories: Vec<QueryCategory>,
+    pub insights: Vec<String>,
+    pub frequent_tables: Vec<String>,
+    pub recommendations: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QueryCategory {
+    pub name: String,
+    pub count: usize,
+    pub examples: Vec<String>,
+}
+
+#[tauri::command]
+pub async fn ai_analyze_queries(
+    state: State<'_, AppState>,
+    connection_id: Option<String>,
+) -> Result<QueryAnalysis, String> {
+    let ai_config = state
+        .store
+        .get_ai_config()
+        .await
+        .ok_or_else(|| "AI 未配置".to_string())?;
+
+    let provider = state
+        .ai_registry
+        .get(&ai_config.provider_type)
+        .await
+        .ok_or("Provider not available")?;
+
+    let history = state.store.get_query_history(200).await;
+    let filtered: Vec<_> = if let Some(ref cid) = connection_id {
+        history
+            .iter()
+            .filter(|h| &h.connection_id == cid)
+            .collect()
+    } else {
+        history.iter().collect()
+    };
+
+    if filtered.is_empty() {
+        return Err("No query history available".to_string());
+    }
+
+    let queries_text = filtered
+        .iter()
+        .take(100)
+        .map(|h| h.sql.as_str())
+        .collect::<Vec<_>>()
+        .join("\n---\n");
+
+    let request = CompletionRequest {
+        request_id: Uuid::new_v4().to_string(),
+        model: ai_config.model.clone(),
+        messages: vec![
+            PromptBuilder::query_summary_system(),
+            ChatMessage {
+                role: MessageRole::User,
+                content: format!(
+                    "Analyze these {} queries:\n\n{queries_text}",
+                    filtered.len().min(100),
+                ),
+            },
+        ],
+        temperature: Some(0.2),
+        max_tokens: Some(3000),
+        stop: None,
+    };
+
+    let response = provider
+        .complete(&request)
+        .await
+        .map_err(|e| log_err("ai_analyze_queries", &e))?;
+
+    let content = strip_markdown_fences(&response.content);
+    serde_json::from_str::<QueryAnalysis>(&content)
+        .map_err(|e| log_err("ai_analyze_queries", &e))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -623,5 +847,44 @@ mod tests {
     fn test_strip_markdown_fences_whitespace() {
         let input = "  ```json\n  {\"key\":\"val\"}  \n```  ";
         assert_eq!(strip_markdown_fences(input), "{\"key\":\"val\"}");
+    }
+
+    #[test]
+    fn test_connection_diagnosis_deserialization() {
+        let json = r#"{
+            "diagnosis": "Authentication failed",
+            "possibleCauses": ["Wrong password", "User does not exist"],
+            "solutions": [
+                {"description": "Check password", "command": null},
+                {"description": "Create user", "command": "CREATE USER test"}
+            ],
+            "category": "auth"
+        }"#;
+        let result: ConnectionDiagnosis = serde_json::from_str(json).unwrap();
+        assert_eq!(result.diagnosis, "Authentication failed");
+        assert_eq!(result.possible_causes.len(), 2);
+        assert_eq!(result.solutions.len(), 2);
+        assert_eq!(result.category, "auth");
+        assert!(result.solutions[0].command.is_none());
+        assert_eq!(result.solutions[1].command.as_deref(), Some("CREATE USER test"));
+    }
+
+    #[test]
+    fn test_query_analysis_deserialization() {
+        let json = r#"{
+            "summary": "Mostly read queries",
+            "categories": [
+                {"name": "SELECT", "count": 10, "examples": ["SELECT * FROM users"]}
+            ],
+            "insights": ["Heavy read workload"],
+            "frequentTables": ["users", "orders"],
+            "recommendations": ["Add index on orders.user_id"]
+        }"#;
+        let result: QueryAnalysis = serde_json::from_str(json).unwrap();
+        assert_eq!(result.summary, "Mostly read queries");
+        assert_eq!(result.categories.len(), 1);
+        assert_eq!(result.categories[0].count, 10);
+        assert_eq!(result.frequent_tables, vec!["users", "orders"]);
+        assert_eq!(result.recommendations.len(), 1);
     }
 }
