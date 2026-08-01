@@ -29,6 +29,9 @@ impl AnthropicProvider {
 
     fn build_url(endpoint: &str, path: &str) -> String {
         let base = endpoint.trim_end_matches('/');
+        if base.ends_with(path.trim_start_matches('/').trim_end_matches('/')) {
+            return base.to_string();
+        }
         format!("{base}{path}")
     }
 }
