@@ -1,9 +1,10 @@
-use super::{AppState, log_err};
+use super::error::{CmdExt, CommandError};
+use super::AppState;
 use crate::db::{ConnectionConfig, DatabaseType, ServerInfo};
 use tauri::State;
 
 #[tauri::command]
-pub async fn get_connections(state: State<'_, AppState>) -> Result<Vec<ConnectionConfig>, String> {
+pub async fn get_connections(state: State<'_, AppState>) -> Result<Vec<ConnectionConfig>, CommandError> {
     let list = state.store.get_connections().await;
     tracing::debug!(count = list.len(), "get_connections");
     Ok(list)
@@ -13,30 +14,30 @@ pub async fn get_connections(state: State<'_, AppState>) -> Result<Vec<Connectio
 pub async fn save_connection(
     state: State<'_, AppState>,
     config: ConnectionConfig,
-) -> Result<(), String> {
+) -> Result<(), CommandError> {
     tracing::info!(id = %config.id, name = %config.name, "save_connection");
     state
         .store
         .save_connection(config)
         .await
-        .map_err(|e| log_err("save_connection", &e))
+        .cmd_err("save_connection")
 }
 
 #[tauri::command]
-pub async fn delete_connection(state: State<'_, AppState>, id: String) -> Result<(), String> {
+pub async fn delete_connection(state: State<'_, AppState>, id: String) -> Result<(), CommandError> {
     tracing::info!(%id, "delete_connection");
     state
         .store
         .delete_connection(&id)
         .await
-        .map_err(|e| log_err("delete_connection", &e))
+        .cmd_err("delete_connection")
 }
 
 #[tauri::command]
 pub async fn test_connection(
     state: State<'_, AppState>,
     config: ConnectionConfig,
-) -> Result<ServerInfo, String> {
+) -> Result<ServerInfo, CommandError> {
     tracing::info!(
         name = %config.name,
         host = ?config.host,
@@ -49,19 +50,19 @@ pub async fn test_connection(
         .connection_manager
         .test_connection(&config)
         .await
-        .map_err(|e| log_err("test_connection", &e))?;
+        .cmd_err("test_connection")?;
     tracing::info!(version = %result.server_version, "test_connection OK");
     Ok(result)
 }
 
 #[tauri::command]
-pub async fn connect(state: State<'_, AppState>, config_id: String) -> Result<String, String> {
+pub async fn connect(state: State<'_, AppState>, config_id: String) -> Result<String, CommandError> {
     tracing::info!(%config_id, "connect");
     let conn_id = state
         .connection_manager
         .connect(&config_id)
         .await
-        .map_err(|e| log_err("connect", &e))?;
+        .cmd_err("connect")?;
 
     if let Some(mut cfg) = state.store.get_connection(&config_id).await {
         cfg.last_connected_at = Some(chrono::Utc::now().to_rfc3339());
@@ -76,19 +77,19 @@ pub async fn connect(state: State<'_, AppState>, config_id: String) -> Result<St
 pub async fn ping_connection(
     state: State<'_, AppState>,
     connection_id: String,
-) -> Result<bool, String> {
+) -> Result<bool, CommandError> {
     let alive = state.connection_manager.ping(&connection_id).await;
     Ok(alive)
 }
 
 #[tauri::command]
-pub async fn disconnect(state: State<'_, AppState>, connection_id: String) -> Result<(), String> {
+pub async fn disconnect(state: State<'_, AppState>, connection_id: String) -> Result<(), CommandError> {
     tracing::info!(%connection_id, "disconnect");
     state
         .connection_manager
         .disconnect(&connection_id)
         .await
-        .map_err(|e| log_err("disconnect", &e))?;
+        .cmd_err("disconnect")?;
     state.schema_cache.clear_connection(&connection_id).await;
     tracing::info!(%connection_id, "disconnect OK");
     Ok(())
@@ -98,12 +99,12 @@ pub async fn disconnect(state: State<'_, AppState>, connection_id: String) -> Re
 pub async fn get_connection_info(
     state: State<'_, AppState>,
     connection_id: String,
-) -> Result<serde_json::Value, String> {
+) -> Result<serde_json::Value, CommandError> {
     let config = state
         .connection_manager
         .get_connection_config(&connection_id)
         .await
-        .map_err(|e| log_err("get_connection_info", &e))?;
+        .cmd_err("get_connection_info")?;
 
     let db_type = match config.database_type {
         DatabaseType::PostgreSQL => "postgresql",
@@ -134,7 +135,7 @@ pub async fn get_connection_info(
 }
 
 #[tauri::command]
-pub async fn get_available_drivers(state: State<'_, AppState>) -> Result<Vec<String>, String> {
+pub async fn get_available_drivers(state: State<'_, AppState>) -> Result<Vec<String>, CommandError> {
     let types = state.driver_registry.supported_types().await;
     let names: Vec<String> = types
         .into_iter()

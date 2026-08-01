@@ -1,3 +1,5 @@
+use super::error::CommandError;
+
 // ── Kiwi login (username/password → SSO → token) ─────────────────
 
 #[cfg(feature = "plugin-kiwi")]
@@ -6,14 +8,14 @@ pub async fn kiwi_login(
     base_url: String,
     username: String,
     password: String,
-) -> Result<serde_json::Value, String> {
+) -> Result<serde_json::Value, CommandError> {
     tracing::info!("[kiwi_login] base_url={base_url}, user={username}");
 
     let client = reqwest::Client::builder()
         .danger_accept_invalid_certs(true)
         .timeout(std::time::Duration::from_secs(30))
         .build()
-        .map_err(|e| format!("HTTP client: {e}"))?;
+        .map_err(|e| CommandError::Internal(format!("HTTP client: {e}")))?;
 
     let token = datazen_plugin_kiwi::sso_login(
         &client,
@@ -24,7 +26,7 @@ pub async fn kiwi_login(
     .await
     .map_err(|e| {
         tracing::error!("[kiwi_login] failed: {e}");
-        e.to_string()
+        CommandError::Internal(e.to_string())
     })?;
 
     tracing::info!("[kiwi_login] success, token_len={}", token.len());
@@ -40,8 +42,8 @@ pub async fn kiwi_login(
     _base_url: String,
     _username: String,
     _password: String,
-) -> Result<serde_json::Value, String> {
-    Err("Kiwi plugin is not enabled in this build".into())
+) -> Result<serde_json::Value, CommandError> {
+    Err(CommandError::NotConfigured("Kiwi plugin is not enabled in this build".into()))
 }
 
 /// Kiwi: list instances for a given token (called from frontend).
@@ -52,7 +54,7 @@ pub async fn kiwi_list_instances(
     token: String,
     source_type: Option<u32>,
     user_name: Option<String>,
-) -> Result<serde_json::Value, String> {
+) -> Result<serde_json::Value, CommandError> {
     let st = source_type.unwrap_or(4);
     let url = format!(
         "{}/gw/v1/dataquery/instances?source_type={}",
@@ -65,7 +67,7 @@ pub async fn kiwi_list_instances(
     let client = reqwest::Client::builder()
         .danger_accept_invalid_certs(true)
         .build()
-        .map_err(|e| format!("HTTP client: {e}"))?;
+        .map_err(|e| CommandError::Internal(format!("HTTP client: {e}")))?;
 
     let mut req = client
         .get(&url)
@@ -86,14 +88,14 @@ pub async fn kiwi_list_instances(
         .await
         .map_err(|e| {
             tracing::error!("[kiwi_list_instances] request error: {e}");
-            format!("Request failed: {e}")
+            CommandError::Internal(format!("Request failed: {e}"))
         })?;
 
     let status = resp.status();
     let body_text = resp
         .text()
         .await
-        .map_err(|e| format!("Read body: {e}"))?;
+        .map_err(|e| CommandError::Internal(format!("Read body: {e}")))?;
 
     tracing::info!("[kiwi_list_instances] status={status}, body_len={}", body_text.len());
     if body_text.len() < 500 {
@@ -101,7 +103,7 @@ pub async fn kiwi_list_instances(
     }
 
     let body: serde_json::Value = serde_json::from_str(&body_text)
-        .map_err(|e| format!("Parse JSON: {e} — body: {}", &body_text[..body_text.len().min(200)]))?;
+        .map_err(|e| CommandError::Internal(format!("Parse JSON: {e} — body: {}", &body_text[..body_text.len().min(200)])))?;
 
     Ok(body)
 }
@@ -113,6 +115,6 @@ pub async fn kiwi_list_instances(
     _token: String,
     _source_type: Option<u32>,
     _user_name: Option<String>,
-) -> Result<serde_json::Value, String> {
-    Err("Kiwi plugin is not enabled in this build".into())
+) -> Result<serde_json::Value, CommandError> {
+    Err(CommandError::NotConfigured("Kiwi plugin is not enabled in this build".into()))
 }

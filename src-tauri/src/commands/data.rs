@@ -1,4 +1,5 @@
-use super::{AppState, log_err};
+use super::error::{CmdExt, CommandError};
+use super::AppState;
 use crate::db::Value;
 use tauri::State;
 
@@ -22,20 +23,20 @@ pub async fn commit_row_updates(
     connection_id: String,
     table: String,
     updates: Vec<RowUpdateBatch>,
-) -> Result<(), String> {
+) -> Result<(), CommandError> {
     tracing::info!(%connection_id, %table, batch_count = updates.len(), "commit_row_updates");
     let (driver, handle) = state
         .connection_manager
         .get_connection(&connection_id)
         .await
-        .map_err(|e| log_err("commit_row_updates", &e))?;
+        .cmd_err("commit_row_updates")?;
 
     driver
         .execute(&handle, "BEGIN")
         .await
-        .map_err(|e| log_err("commit_row_updates", &e))?;
+        .cmd_err("commit_row_updates")?;
 
-    let result: Result<(), String> = async {
+    let result: Result<(), CommandError> = async {
         for batch in &updates {
             let set_columns: Vec<(&str, Option<Value>)> = batch
                 .set_columns
@@ -51,7 +52,7 @@ pub async fn commit_row_updates(
             driver
                 .execute(&handle, &sql)
                 .await
-                .map_err(|e| log_err("commit_row_updates", &e))?;
+                .cmd_err("commit_row_updates")?;
         }
         Ok(())
     }
@@ -62,7 +63,7 @@ pub async fn commit_row_updates(
             driver
                 .execute(&handle, "COMMIT")
                 .await
-                .map_err(|e| log_err("commit_row_updates", &e))?;
+                .cmd_err("commit_row_updates")?;
             tracing::info!(%connection_id, %table, batch_count = updates.len(), "commit_row_updates OK");
             Ok(())
         }
