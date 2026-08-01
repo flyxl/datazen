@@ -22,7 +22,8 @@
 | 1 | NL2SQL + 诊断 IPC 命令 | ✅ 已完成 | ✅ 编译通过 | — | — |
 | 1 | NL2SQL 前端 UI (Nl2SqlPanel) | ✅ 已完成 | ✅ TS 编译通过 | 🔲 | — |
 | 1 | SQL 错误诊断前端 UI (DiagnosisPanel) | ✅ 已完成 | ✅ TS 编译通过 | 🔲 | — |
-| 2 | EXPLAIN 可视化 + AI 解读 | 🔲 未开始 | 🔲 | 🔲 | — |
+| 2 | EXPLAIN 分析后端 IPC | ✅ 已完成 | ✅ 编译通过 | — | — |
+| 2 | EXPLAIN 前端 UI (ExplainPanel) | ✅ 已完成 | ✅ TS 编译通过 | 🔲 | — |
 | 3 | AI Chat 侧边栏 | 🔲 未开始 | 🔲 | 🔲 | — |
 | 4 | MCP Server 基础 | 🔲 未开始 | 🔲 | 🔲 | — |
 | 5 | Skills 系统 | 🔲 未开始 | 🔲 | 🔲 | — |
@@ -108,6 +109,26 @@
 
 ### i18n
 - `src/locales/zh-CN.ts` + `en.ts` — 添加 NL2SQL 和诊断相关翻译键
+
+## Phase 2 详细记录
+
+### EXPLAIN 分析后端 IPC
+- **完成时间**: 2026-08-01
+- **变更**:
+  - `src-tauri/src/commands/ai.rs` 新增 `ai_analyze_explain` 命令
+  - `src-tauri/src/lib.rs` 注册新命令
+  - 复用已有的 `PromptBuilder::explain_analysis_system` prompt
+  - 复用 `strip_markdown_fences` 处理 LLM 响应
+
+### EXPLAIN 前端 UI
+- **完成时间**: 2026-08-01
+- **变更**:
+  - `src/types/index.ts` 添加 `ExplainAnalysis`, `Bottleneck`, `ExplainSuggestion` 类型
+  - `src/commands/ai.ts` 添加 `analyzeExplain` IPC 封装
+  - `src/stores/aiStore.ts` 添加 EXPLAIN 分析状态管理
+  - `src/components/ai/ExplainPanel.tsx` 创建 EXPLAIN 可视化面板（含 AI 分析）
+  - `src/windows/connection/QueryPanel.tsx` 集成 Explain 按钮和视图切换
+  - `src/locales/zh-CN.ts` + `en.ts` 添加 EXPLAIN 翻译键
 
 ---
 

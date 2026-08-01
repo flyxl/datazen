@@ -530,6 +530,22 @@ const zhCN = {
   'nl2sql.clear': '清除',
   'nl2sql.notConfigured': '请先在设置中配置 AI 服务',
 
+  // ── EXPLAIN Analysis ──
+  'explain.title': 'EXPLAIN 分析',
+  'explain.rawOutput': '执行计划',
+  'explain.analyze': 'AI 分析',
+  'explain.analyzing': '分析中…',
+  'explain.summary': '总结',
+  'explain.bottlenecks': '性能瓶颈',
+  'explain.suggestions': '优化建议',
+  'explain.expectedImpact': '预期效果',
+  'explain.severity.high': '高',
+  'explain.severity.medium': '中',
+  'explain.severity.low': '低',
+  'explain.loading': '获取执行计划…',
+  'explain.notConfigured': '请先在设置中配置 AI 服务',
+  'explain.noData': '运行查询后点击 Explain 按钮查看执行计划',
+
   // ── SQL Diagnosis ──
   'diagnosis.title': 'AI 错误诊断',
   'diagnosis.diagnose': '诊断',

@@ -4,6 +4,7 @@ import type {
   AiProviderConfig,
   AiProviderType,
   DiagnosisResult,
+  ExplainAnalysis,
   ModelInfo,
   ProviderListItem,
   StreamChunkPayload,
@@ -38,6 +39,9 @@ interface AiStore {
   diagnosis: DiagnosisResult | null;
   isDiagnosing: boolean;
   diagnosisError: string | null;
+  explainAnalysis: ExplainAnalysis | null;
+  isAnalyzingExplain: boolean;
+  explainError: string | null;
 
   loadConfig: () => Promise<void>;
   loadProviders: () => Promise<void>;
@@ -64,6 +68,13 @@ interface AiStore {
   }) => Promise<void>;
   clearDiagnosis: () => void;
 
+  analyzeExplain: (params: {
+    connectionId: string;
+    explainOutput: string;
+    originalSql: string;
+  }) => Promise<void>;
+  clearExplainAnalysis: () => void;
+
   handleStreamChunk: (payload: StreamChunkPayload) => void;
   setupEventListeners: () => Promise<() => void>;
 }
@@ -83,6 +94,9 @@ export const useAiStore = create<AiStore>((set, get) => ({
   diagnosis: null,
   isDiagnosing: false,
   diagnosisError: null,
+  explainAnalysis: null,
+  isAnalyzingExplain: false,
+  explainError: null,
 
   loadConfig: async () => {
     set({ configLoading: true, configError: null });
@@ -223,6 +237,24 @@ export const useAiStore = create<AiStore>((set, get) => ({
 
   clearDiagnosis: () =>
     set({ diagnosis: null, isDiagnosing: false, diagnosisError: null }),
+
+  // ── EXPLAIN Analysis ──
+
+  analyzeExplain: async (params) => {
+    set({ isAnalyzingExplain: true, explainAnalysis: null, explainError: null });
+    try {
+      const result = await aiCommands.analyzeExplain(params);
+      set({ explainAnalysis: result, isAnalyzingExplain: false });
+    } catch (e) {
+      set({
+        isAnalyzingExplain: false,
+        explainError: e instanceof Error ? e.message : String(e),
+      });
+    }
+  },
+
+  clearExplainAnalysis: () =>
+    set({ explainAnalysis: null, isAnalyzingExplain: false, explainError: null }),
 
   // ── Stream handling ──
 
