@@ -14,3 +14,6 @@ strip = true
 lto = true
 codegen-units = 1
 opt-level = "s"
+
+[patch."https://github.com/flyxl/datazen-driver-api.git"]
+datazen-driver-api = { path = "packages/driver-api" }

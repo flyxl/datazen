@@ -1239,7 +1239,7 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "datazen-ai-api",
- "datazen-driver-api 0.0.7",
+ "datazen-driver-api",
  "datazen-plugin-kiwi",
  "datazen-plugin-olap",
  "dirs",
@@ -1298,18 +1298,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "datazen-driver-api"
-version = "0.0.7"
-source = "git+https://github.com/flyxl/datazen-driver-api.git#fb56c187c4a43ab329e10e5ab316754375407e2a"
-dependencies = [
- "async-trait",
- "inventory",
- "serde",
- "serde_json",
- "thiserror 1.0.69",
-]
-
-[[package]]
 name = "datazen-plugin-kiwi"
 version = "0.0.7"
 source = "git+https://github.com/flyxl/datazen-plugin-kiwi.git#31f6cd291732ba6a4247f12d431e86f685448e1c"
@@ -1317,7 +1305,7 @@ dependencies = [
  "async-trait",
  "base64 0.22.1",
  "cbc 0.1.2",
- "datazen-driver-api 0.0.7 (git+https://github.com/flyxl/datazen-driver-api.git)",
+ "datazen-driver-api",
  "des",
  "reqwest 0.13.4",
  "serde",
@@ -1334,7 +1322,7 @@ version = "0.0.7"
 source = "git+https://github.com/flyxl/datazen-plugin-olap.git#bce30105677740555c12fd23b3c218a3b3c1f23e"
 dependencies = [
  "async-trait",
- "datazen-driver-api 0.0.7 (git+https://github.com/flyxl/datazen-driver-api.git)",
+ "datazen-driver-api",
  "prusto",
  "serde",
  "serde_json",
