@@ -30,24 +30,47 @@ pub async fn commit_row_updates(
         .await
         .map_err(|e| log_err("commit_row_updates", &e))?;
 
-    for batch in &updates {
-        let set_columns: Vec<(&str, Option<Value>)> = batch
-            .set_columns
-            .iter()
-            .map(|c| (c.column.as_str(), c.value.clone()))
-            .collect();
-        let pk_columns: Vec<(&str, Option<Value>)> = batch
-            .pk_columns
-            .iter()
-            .map(|c| (c.column.as_str(), c.value.clone()))
-            .collect();
-        let sql = driver.build_update_sql(&table, &set_columns, &pk_columns);
-        driver
-            .execute(&handle, &sql)
-            .await
-            .map_err(|e| log_err("commit_row_updates", &e))?;
-    }
+    driver
+        .execute(&handle, "BEGIN")
+        .await
+        .map_err(|e| log_err("commit_row_updates", &e))?;
 
-    tracing::info!(%connection_id, %table, batch_count = updates.len(), "commit_row_updates OK");
-    Ok(())
+    let result: Result<(), String> = async {
+        for batch in &updates {
+            let set_columns: Vec<(&str, Option<Value>)> = batch
+                .set_columns
+                .iter()
+                .map(|c| (c.column.as_str(), c.value.clone()))
+                .collect();
+            let pk_columns: Vec<(&str, Option<Value>)> = batch
+                .pk_columns
+                .iter()
+                .map(|c| (c.column.as_str(), c.value.clone()))
+                .collect();
+            let sql = driver.build_update_sql(&table, &set_columns, &pk_columns);
+            driver
+                .execute(&handle, &sql)
+                .await
+                .map_err(|e| log_err("commit_row_updates", &e))?;
+        }
+        Ok(())
+    }
+    .await;
+
+    match result {
+        Ok(()) => {
+            driver
+                .execute(&handle, "COMMIT")
+                .await
+                .map_err(|e| log_err("commit_row_updates", &e))?;
+            tracing::info!(%connection_id, %table, batch_count = updates.len(), "commit_row_updates OK");
+            Ok(())
+        }
+        Err(e) => {
+            if let Err(rb_err) = driver.execute(&handle, "ROLLBACK").await {
+                tracing::warn!("rollback failed: {rb_err}");
+            }
+            Err(e)
+        }
+    }
 }

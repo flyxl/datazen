@@ -54,118 +54,12 @@ fn menu_labels(lang: &str) -> HashMap<&'static str, &'static str> {
     m
 }
 
-fn build_app_menu(
-    app: &tauri::App,
+fn setup_menu(
+    handle: &tauri::AppHandle,
     theme: &str,
     lang: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let l = menu_labels(lang);
-
-    let theme_light = CheckMenuItemBuilder::new(l["theme-light"])
-        .id("theme-light")
-        .checked(theme == "light")
-        .build(app)?;
-    let theme_dark = CheckMenuItemBuilder::new(l["theme-dark"])
-        .id("theme-dark")
-        .checked(theme == "dark")
-        .build(app)?;
-    let theme_system = CheckMenuItemBuilder::new(l["theme-system"])
-        .id("theme-system")
-        .checked(theme == "system")
-        .build(app)?;
-
-    let settings_item = MenuItemBuilder::new(l["open-settings"])
-        .id("open-settings")
-        .accelerator("CmdOrCtrl+,")
-        .build(app)?;
-
-    let new_conn_item = MenuItemBuilder::new(l["new-connection"])
-        .id("new-connection")
-        .accelerator("CmdOrCtrl+N")
-        .build(app)?;
-
-    let data_sync_item = MenuItemBuilder::new(l["data-sync"])
-        .id("data-sync")
-        .build(app)?;
-
-    let export_config_item = MenuItemBuilder::new(l["export-config"])
-        .id("export-config")
-        .build(app)?;
-
-    let import_config_item = MenuItemBuilder::new(l["import-config"])
-        .id("import-config")
-        .build(app)?;
-
-    let edit_menu = SubmenuBuilder::new(app, l["edit"])
-        .undo()
-        .redo()
-        .separator()
-        .cut()
-        .copy()
-        .paste()
-        .select_all()
-        .build()?;
-
-    let view_menu = SubmenuBuilder::new(app, l["view"])
-        .items(&[&theme_light, &theme_dark, &theme_system])
-        .separator()
-        .item(&settings_item)
-        .build()?;
-
-    let tools_menu = SubmenuBuilder::new(app, l["tools"])
-        .item(&new_conn_item)
-        .item(&data_sync_item)
-        .separator()
-        .item(&export_config_item)
-        .item(&import_config_item)
-        .build()?;
-
-    let window_menu = SubmenuBuilder::new(app, l["window"])
-        .minimize()
-        .close_window()
-        .build()?;
-
-    let menu = MenuBuilder::new(app)
-        .items(&[&edit_menu, &view_menu, &tools_menu, &window_menu])
-        .build()?;
-
-    app.set_menu(menu)?;
-
-    let tl = theme_light.clone();
-    let td = theme_dark.clone();
-    let ts = theme_system.clone();
-
-    app.on_menu_event(move |app_handle, event| {
-        let id = event.id().as_ref();
-        if let Some(theme) = id.strip_prefix("theme-") {
-            let _ = tl.set_checked(id == "theme-light");
-            let _ = td.set_checked(id == "theme-dark");
-            let _ = ts.set_checked(id == "theme-system");
-            let _ = app_handle.emit("menu:theme-change", theme);
-        }
-        match id {
-            "open-settings" => { let _ = app_handle.emit("menu:open-settings", ()); }
-            "new-connection" => { let _ = app_handle.emit("menu:new-connection", ()); }
-            "data-sync" => { let _ = app_handle.emit("menu:data-sync", ()); }
-            "export-config" => { let _ = app_handle.emit("menu:export-config", ()); }
-            "import-config" => { let _ = app_handle.emit("menu:import-config", ()); }
-            "ctx-add-favorite" => { let _ = app_handle.emit("menu:add-favorite", ()); }
-            _ => {}
-        }
-    });
-
-    Ok(())
-}
-
-fn rebuild_menu_for_handle(
-    handle: &tauri::AppHandle,
-    lang: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let l = menu_labels(lang);
-
-    let state = handle.state::<AppState>();
-    let settings = tauri::async_runtime::block_on(state.store.get_settings());
-    let theme = &settings.theme;
 
     let theme_light = CheckMenuItemBuilder::new(l["theme-light"])
         .id("theme-light")
@@ -265,7 +159,9 @@ fn rebuild_menu_for_handle(
 
 #[tauri::command]
 fn rebuild_menu(handle: tauri::AppHandle, language: String) -> Result<(), String> {
-    rebuild_menu_for_handle(&handle, &language).map_err(|e| e.to_string())
+    let state = handle.state::<AppState>();
+    let settings = tauri::async_runtime::block_on(state.store.get_settings());
+    setup_menu(&handle, &settings.theme, &language).map_err(|e| e.to_string())
 }
 
 async fn build_app_state(store: Arc<Store>) -> Result<AppState, String> {
@@ -404,7 +300,7 @@ pub fn run() {
             app.manage(app_state);
 
             let t_menu = Instant::now();
-            build_app_menu(app, &initial_settings.theme, &initial_settings.language)?;
+            setup_menu(&handle, &initial_settings.theme, &initial_settings.language)?;
             tracing::info!("[startup]   build menu: {:?}", t_menu.elapsed());
 
             tracing::info!("[startup] setup complete: {:?}", t_setup.elapsed());
