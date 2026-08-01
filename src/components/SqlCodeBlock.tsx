@@ -1,7 +1,8 @@
 import { useEffect, useRef } from 'react';
 import { EditorView, lineNumbers } from '@codemirror/view';
 import { EditorState } from '@codemirror/state';
-import { sql, PostgreSQL, MySQL } from '@codemirror/lang-sql';
+import { sql, PostgreSQL, MySQL, MariaSQL, SQLite, StandardSQL } from '@codemirror/lang-sql';
+import type { SQLDialect } from '@codemirror/lang-sql';
 import { syntaxHighlighting, HighlightStyle } from '@codemirror/language';
 import { tags } from '@lezer/highlight';
 
@@ -81,7 +82,13 @@ export function SqlCodeBlock({ code, dialect = 'postgresql' }: SqlCodeBlockProps
   useEffect(() => {
     if (!containerRef.current) return;
     const dark = document.documentElement.classList.contains('dark');
-    const sqlDialect = dialect === 'mysql' ? MySQL : PostgreSQL;
+    const dialectMap: Record<string, SQLDialect> = {
+      postgresql: PostgreSQL,
+      mysql: MySQL,
+      mariadb: MariaSQL,
+      sqlite: SQLite,
+    };
+    const sqlDialect = dialectMap[dialect] ?? StandardSQL;
 
     const state = EditorState.create({
       doc: code,

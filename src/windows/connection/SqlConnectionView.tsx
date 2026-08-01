@@ -560,7 +560,7 @@ export function SqlConnectionView({
             )}
 
             {activePanel?.type === 'query' && (
-              <QueryPanel connectionId={connectionId} queryTabId={activePanel.queryTabId} />
+              <QueryPanel connectionId={connectionId} queryTabId={activePanel.queryTabId} databaseType={databaseType} />
             )}
 
             {activePanel?.type === 'create-table' && (
