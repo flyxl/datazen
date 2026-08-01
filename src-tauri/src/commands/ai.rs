@@ -7,6 +7,24 @@ use tauri::{AppHandle, Emitter, State};
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
+fn language_instruction(lang: &str) -> String {
+    let lang_name = match lang {
+        "zh-CN" => "Chinese (Simplified)",
+        "zh-TW" => "Chinese (Traditional)",
+        "en" => "English",
+        "ja" => "Japanese",
+        "ko" => "Korean",
+        _ => lang,
+    };
+    format!("\n\nIMPORTANT: Respond in {lang_name}.")
+}
+
+fn append_language(msg: &mut ChatMessage, lang: &str) {
+    if msg.role == MessageRole::System {
+        msg.content.push_str(&language_instruction(lang));
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProviderListItem {
@@ -195,7 +213,7 @@ pub async fn ai_generate_sql(
     };
 
     let (tx, mut rx) = mpsc::channel::<Result<StreamChunk, AiError>>(32);
-    let request = CompletionRequest {
+    let mut request = CompletionRequest {
         request_id: request_id.clone(),
         model: ai_config.model.clone(),
         messages: vec![system_msg, user_msg],
@@ -203,6 +221,8 @@ pub async fn ai_generate_sql(
         max_tokens: Some(ai_config.max_tokens),
         stop: None,
     };
+    let lang = state.store.get_settings().await.language;
+    request.messages.iter_mut().for_each(|m| append_language(m, &lang));
 
     tracing::debug!(
         %request_id,
@@ -286,7 +306,7 @@ pub async fn ai_diagnose_error(
         .await
         .map_err(|e| log_err("ai_diagnose_error", &e))?;
 
-    let request = CompletionRequest {
+    let mut request = CompletionRequest {
         request_id: Uuid::new_v4().to_string(),
         model: ai_config.model.clone(),
         messages: vec![
@@ -300,6 +320,8 @@ pub async fn ai_diagnose_error(
         max_tokens: Some(ai_config.max_tokens),
         stop: None,
     };
+    let lang = state.store.get_settings().await.language;
+    request.messages.iter_mut().for_each(|m| append_language(m, &lang));
 
     tracing::debug!(
         model = %request.model,
@@ -367,7 +389,7 @@ pub async fn ai_analyze_explain(
 
     let db_type = format!("{:?}", driver.driver_type());
 
-    let request = CompletionRequest {
+    let mut request = CompletionRequest {
         request_id: Uuid::new_v4().to_string(),
         model: ai_config.model.clone(),
         messages: vec![
@@ -383,6 +405,8 @@ pub async fn ai_analyze_explain(
         max_tokens: Some(ai_config.max_tokens),
         stop: None,
     };
+    let lang = state.store.get_settings().await.language;
+    request.messages.iter_mut().for_each(|m| append_language(m, &lang));
 
     for (i, msg) in request.messages.iter().enumerate() {
         tracing::info!(
@@ -481,7 +505,7 @@ pub async fn ai_parse_filter(
         .collect::<Vec<_>>()
         .join("\n");
 
-    let request = CompletionRequest {
+    let mut request = CompletionRequest {
         request_id: Uuid::new_v4().to_string(),
         model: ai_config.model.clone(),
         messages: vec![
@@ -495,6 +519,8 @@ pub async fn ai_parse_filter(
         max_tokens: Some(ai_config.max_tokens),
         stop: None,
     };
+    let lang = state.store.get_settings().await.language;
+    request.messages.iter_mut().for_each(|m| append_language(m, &lang));
 
     let response = provider
         .complete(&request)
@@ -592,7 +618,7 @@ pub async fn ai_chat(
     full_messages.extend(messages);
 
     let (tx, mut rx) = mpsc::channel::<Result<StreamChunk, AiError>>(32);
-    let request = CompletionRequest {
+    let mut request = CompletionRequest {
         request_id: request_id.clone(),
         model: ai_config.model.clone(),
         messages: full_messages,
@@ -600,6 +626,8 @@ pub async fn ai_chat(
         max_tokens: Some(ai_config.max_tokens),
         stop: None,
     };
+    let lang = state.store.get_settings().await.language;
+    request.messages.iter_mut().for_each(|m| append_language(m, &lang));
 
     let req_id_clone = request_id.clone();
     let handle_clone = app_handle.clone();
@@ -783,7 +811,7 @@ pub async fn ai_generate_schema_doc(
         .await
         .map_err(|e| log_err("ai_generate_schema_doc", &e))?;
 
-    let request = CompletionRequest {
+    let mut request = CompletionRequest {
         request_id: Uuid::new_v4().to_string(),
         model: ai_config.model.clone(),
         messages: vec![
@@ -797,6 +825,8 @@ pub async fn ai_generate_schema_doc(
         max_tokens: Some(ai_config.max_tokens),
         stop: None,
     };
+    let lang = state.store.get_settings().await.language;
+    request.messages.iter_mut().for_each(|m| append_language(m, &lang));
 
     let response = provider
         .complete(&request)
@@ -869,7 +899,7 @@ pub async fn ai_diagnose_connection(
         conn_info.connection_timeout,
     );
 
-    let request = CompletionRequest {
+    let mut request = CompletionRequest {
         request_id: Uuid::new_v4().to_string(),
         model: ai_config.model.clone(),
         messages: vec![
@@ -885,6 +915,8 @@ pub async fn ai_diagnose_connection(
         max_tokens: Some(ai_config.max_tokens),
         stop: None,
     };
+    let lang = state.store.get_settings().await.language;
+    request.messages.iter_mut().for_each(|m| append_language(m, &lang));
 
     let response = provider
         .complete(&request)
@@ -955,7 +987,7 @@ pub async fn ai_analyze_queries(
         .collect::<Vec<_>>()
         .join("\n---\n");
 
-    let request = CompletionRequest {
+    let mut request = CompletionRequest {
         request_id: Uuid::new_v4().to_string(),
         model: ai_config.model.clone(),
         messages: vec![
@@ -972,6 +1004,8 @@ pub async fn ai_analyze_queries(
         max_tokens: Some(ai_config.max_tokens),
         stop: None,
     };
+    let lang = state.store.get_settings().await.language;
+    request.messages.iter_mut().for_each(|m| append_language(m, &lang));
 
     let response = provider
         .complete(&request)
