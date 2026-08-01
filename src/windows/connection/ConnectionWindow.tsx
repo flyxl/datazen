@@ -3,6 +3,7 @@ import { TitleBar } from '../../components/TitleBar';
 import { useI18n } from '../../hooks/useI18n';
 import { useThemeListener } from '../../hooks/useThemeListener';
 import { useSettingsStore } from '../../stores/settingsStore';
+import { useAiStore } from '../../stores/aiStore';
 import { connectionCommands } from '../../commands/connection';
 import { emitCrossWindow, listenCrossWindow } from '../../lib/crossWindowBus';
 import { getUrlParam } from '../../lib/windowKind';
@@ -15,15 +16,23 @@ export function ConnectionWindow() {
 
   const { t } = useI18n();
   const loadSettings = useSettingsStore((s) => s.loadSettings);
+  const loadAiConfig = useAiStore((s) => s.loadConfig);
 
   const connectionId = getUrlParam('connectionId') ?? '';
   const connectionName = getUrlParam('connectionName') ?? t('connWin.connected');
   const databaseType = getUrlParam('databaseType') ?? 'postgresql';
   const initialDatabase = getUrlParam('database') ?? undefined;
 
+  const setupAiListeners = useAiStore((s) => s.setupEventListeners);
+
   useEffect(() => {
     void loadSettings();
-  }, [loadSettings]);
+    void loadAiConfig();
+    const cleanup = setupAiListeners();
+    return () => {
+      void cleanup.then((fn) => fn());
+    };
+  }, [loadSettings, loadAiConfig, setupAiListeners]);
 
   useEffect(() => {
     if (!connectionId) return;

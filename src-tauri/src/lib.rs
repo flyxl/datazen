@@ -13,7 +13,7 @@ use std::time::Instant;
 
 use tauri::menu::{CheckMenuItemBuilder, MenuBuilder, MenuItemBuilder, SubmenuBuilder};
 use tauri::{Emitter, Manager};
-use ai::init_ai_providers;
+use ai::{init_ai_providers, SchemaContextBuilder};
 use commands::AppState;
 use db::init_drivers;
 use cache::SchemaCache;
@@ -326,6 +326,11 @@ pub fn run() {
                     }
                 }
 
+                let schema_context_builder = Arc::new(SchemaContextBuilder::new(
+                    schema_cache.clone(),
+                    connection_manager.clone(),
+                ));
+
                 Ok::<AppState, String>(AppState {
                     driver_registry: registry,
                     connection_manager,
@@ -333,6 +338,7 @@ pub fn run() {
                     schema_cache,
                     sync_adapters,
                     ai_registry,
+                    schema_context_builder,
                 })
             })?;
             tracing::info!("[startup]   block_on total: {:?}", t0.elapsed());
@@ -413,6 +419,8 @@ pub fn run() {
             commands::ai_save_config,
             commands::ai_get_config,
             commands::ai_delete_config,
+            commands::ai_generate_sql,
+            commands::ai_diagnose_error,
             rebuild_menu,
         ])
         .run(tauri::generate_context!())

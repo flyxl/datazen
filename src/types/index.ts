@@ -243,3 +243,21 @@ export interface ProviderListItem {
   supportsStreaming: boolean;
   supportsTools: boolean;
 }
+
+export interface DiagnosisResult {
+  explanation: string;
+  suggestedSql: string | null;
+  changes: string[];
+}
+
+export interface StreamChunkPayload {
+  requestId: string;
+  content: string;
+  done: boolean;
+  usage?: { promptTokens: number; completionTokens: number; totalTokens: number };
+}
+
+export interface StreamErrorPayload {
+  requestId: string;
+  error: string;
+}

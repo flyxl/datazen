@@ -3,7 +3,9 @@
 use crate::ai::*;
 use crate::commands::{log_err, AppState};
 use serde::Serialize;
-use tauri::State;
+use tauri::{AppHandle, Emitter, State};
+use tokio::sync::mpsc;
+use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -108,6 +110,164 @@ pub async fn ai_delete_config(
         .map_err(|e| log_err("ai_delete_config", &e))
 }
 
+// ─── NL2SQL ───
+
+#[tauri::command]
+pub async fn ai_generate_sql(
+    state: State<'_, AppState>,
+    app_handle: AppHandle,
+    connection_id: String,
+    database: String,
+    natural_language: String,
+    request_id: String,
+    current_table: Option<String>,
+    recent_queries: Vec<String>,
+) -> Result<String, String> {
+    let ai_config = state
+        .store
+        .get_ai_config()
+        .await
+        .ok_or_else(|| "AI 未配置".to_string())?;
+
+    let provider = state
+        .ai_registry
+        .get(&ai_config.provider_type)
+        .await
+        .ok_or("Provider not available")?;
+
+    let context = state
+        .schema_context_builder
+        .build_sql_context(
+            &connection_id,
+            &database,
+            current_table.as_deref(),
+            &recent_queries,
+            4000,
+        )
+        .await
+        .map_err(|e| log_err("ai_generate_sql", &e))?;
+
+    let system_msg = PromptBuilder::nl2sql_system(&context);
+    let user_msg = ChatMessage {
+        role: MessageRole::User,
+        content: natural_language,
+    };
+
+    let (tx, mut rx) = mpsc::channel::<Result<StreamChunk, AiError>>(32);
+    let request = CompletionRequest {
+        request_id: request_id.clone(),
+        model: ai_config.model.clone(),
+        messages: vec![system_msg, user_msg],
+        temperature: Some(0.0),
+        max_tokens: Some(2000),
+        stop: None,
+    };
+
+    let req_id_clone = request_id.clone();
+    let handle_clone = app_handle.clone();
+
+    tokio::spawn(async move {
+        while let Some(chunk_result) = rx.recv().await {
+            match chunk_result {
+                Ok(chunk) => {
+                    let _ = handle_clone.emit(
+                        "ai:stream-chunk",
+                        serde_json::json!({
+                            "requestId": req_id_clone,
+                            "content": chunk.content,
+                            "done": chunk.done,
+                            "usage": chunk.usage,
+                        }),
+                    );
+                }
+                Err(e) => {
+                    let _ = handle_clone.emit(
+                        "ai:stream-error",
+                        serde_json::json!({
+                            "requestId": req_id_clone,
+                            "error": e.to_string(),
+                        }),
+                    );
+                }
+            }
+        }
+    });
+
+    provider
+        .stream_complete(&request, tx)
+        .await
+        .map_err(|e| log_err("ai_generate_sql", &e))?;
+
+    Ok(request_id)
+}
+
+// ─── SQL Error Diagnosis ───
+
+#[tauri::command]
+pub async fn ai_diagnose_error(
+    state: State<'_, AppState>,
+    connection_id: String,
+    database: String,
+    sql: String,
+    error_message: String,
+) -> Result<DiagnosisResult, String> {
+    let ai_config = state
+        .store
+        .get_ai_config()
+        .await
+        .ok_or_else(|| "AI 未配置".to_string())?;
+
+    let provider = state
+        .ai_registry
+        .get(&ai_config.provider_type)
+        .await
+        .ok_or("Provider not available")?;
+
+    let context = state
+        .schema_context_builder
+        .build_sql_context(&connection_id, &database, None, &[], 3000)
+        .await
+        .map_err(|e| log_err("ai_diagnose_error", &e))?;
+
+    let request = CompletionRequest {
+        request_id: Uuid::new_v4().to_string(),
+        model: ai_config.model.clone(),
+        messages: vec![
+            PromptBuilder::diagnose_system(&context.database_type, &context.schema_ddl),
+            ChatMessage {
+                role: MessageRole::User,
+                content: format!("SQL:\n```\n{sql}\n```\n\nError:\n{error_message}"),
+            },
+        ],
+        temperature: Some(0.0),
+        max_tokens: Some(1500),
+        stop: None,
+    };
+
+    let response = provider
+        .complete(&request)
+        .await
+        .map_err(|e| log_err("ai_diagnose_error", &e))?;
+
+    let content = strip_markdown_fences(&response.content);
+    serde_json::from_str::<DiagnosisResult>(&content)
+        .map_err(|e| log_err("ai_diagnose_error", &e))
+}
+
+fn strip_markdown_fences(s: &str) -> String {
+    let trimmed = s.trim();
+    if let Some(rest) = trimmed.strip_prefix("```") {
+        let body = rest
+            .strip_prefix("json")
+            .or_else(|| rest.strip_prefix("JSON"))
+            .unwrap_or(rest);
+        if let Some(end) = body.rfind("```") {
+            return body[..end].trim().to_string();
+        }
+    }
+    trimmed.to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -134,5 +294,29 @@ mod tests {
         assert!(json.contains("\"displayName\":\"OpenAI\""));
         assert!(json.contains("\"defaultModel\":\"gpt-4o\""));
         assert!(json.contains("\"supportsStreaming\":true"));
+    }
+
+    #[test]
+    fn test_strip_markdown_fences_plain_json() {
+        let input = r#"{"explanation":"test","suggestedSql":null,"changes":[]}"#;
+        assert_eq!(strip_markdown_fences(input), input);
+    }
+
+    #[test]
+    fn test_strip_markdown_fences_with_json_fence() {
+        let input = "```json\n{\"explanation\":\"test\"}\n```";
+        assert_eq!(strip_markdown_fences(input), "{\"explanation\":\"test\"}");
+    }
+
+    #[test]
+    fn test_strip_markdown_fences_with_bare_fence() {
+        let input = "```\n{\"explanation\":\"test\"}\n```";
+        assert_eq!(strip_markdown_fences(input), "{\"explanation\":\"test\"}");
+    }
+
+    #[test]
+    fn test_strip_markdown_fences_whitespace() {
+        let input = "  ```json\n  {\"key\":\"val\"}  \n```  ";
+        assert_eq!(strip_markdown_fences(input), "{\"key\":\"val\"}");
     }
 }

@@ -6,8 +6,12 @@
 pub use datazen_ai_api::*;
 
 pub mod anthropic;
+pub mod context;
 pub mod ollama;
 pub mod openai;
+pub mod prompt;
 pub mod registry;
 
+pub use context::SchemaContextBuilder;
+pub use prompt::PromptBuilder;
 pub use registry::{init_ai_providers, AiProviderRegistry};

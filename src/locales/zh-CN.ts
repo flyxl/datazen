@@ -520,6 +520,26 @@ const zhCN = {
   'settings.ai.ollamaHint': 'Ollama 无需 API Key，请确保 Ollama 服务已启动',
   'settings.ai.description': '配置 AI 服务以启用自然语言转 SQL、错误诊断等智能功能',
 
+  // ── NL2SQL ──
+  'nl2sql.title': 'AI 生成 SQL',
+  'nl2sql.placeholder': '用自然语言描述你想查询的内容…',
+  'nl2sql.generate': '生成 SQL',
+  'nl2sql.generating': '生成中…',
+  'nl2sql.apply': '应用到编辑器',
+  'nl2sql.copy': '复制',
+  'nl2sql.clear': '清除',
+  'nl2sql.notConfigured': '请先在设置中配置 AI 服务',
+
+  // ── SQL Diagnosis ──
+  'diagnosis.title': 'AI 错误诊断',
+  'diagnosis.diagnose': '诊断',
+  'diagnosis.diagnosing': '分析中…',
+  'diagnosis.explanation': '错误原因',
+  'diagnosis.suggestedSql': '修正后的 SQL',
+  'diagnosis.changes': '修改说明',
+  'diagnosis.applySuggested': '应用修正',
+  'diagnosis.notConfigured': '请先在设置中配置 AI 服务',
+
   // ── Select ──
   'select.placeholder': '请选择',
 

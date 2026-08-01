@@ -1,11 +1,27 @@
 import { create } from 'zustand';
-import { aiCommands } from '../commands/ai';
+import { aiCommands, onAiStreamChunk, onAiStreamError } from '../commands/ai';
 import type {
   AiProviderConfig,
   AiProviderType,
+  DiagnosisResult,
   ModelInfo,
   ProviderListItem,
+  StreamChunkPayload,
 } from '../types';
+
+interface Nl2SqlState {
+  input: string;
+  generatedSql: string;
+  isGenerating: boolean;
+  requestId: string | null;
+}
+
+const initialNl2Sql: Nl2SqlState = {
+  input: '',
+  generatedSql: '',
+  isGenerating: false,
+  requestId: null,
+};
 
 interface AiStore {
   config: AiProviderConfig | null;
@@ -17,6 +33,12 @@ interface AiStore {
   validating: boolean;
   saving: boolean;
 
+  nl2sql: Nl2SqlState;
+  nl2sqlError: string | null;
+  diagnosis: DiagnosisResult | null;
+  isDiagnosing: boolean;
+  diagnosisError: string | null;
+
   loadConfig: () => Promise<void>;
   loadProviders: () => Promise<void>;
   loadModels: (providerType: AiProviderType) => Promise<void>;
@@ -24,9 +46,29 @@ interface AiStore {
   saveConfig: (config: AiProviderConfig) => Promise<boolean>;
   deleteConfig: () => Promise<void>;
   clearError: () => void;
+
+  setNl2SqlInput: (input: string) => void;
+  generateSql: (params: {
+    connectionId: string;
+    database: string;
+    currentTable?: string;
+    recentQueries?: string[];
+  }) => Promise<void>;
+  clearNl2Sql: () => void;
+
+  diagnoseError: (params: {
+    connectionId: string;
+    database: string;
+    sql: string;
+    errorMessage: string;
+  }) => Promise<void>;
+  clearDiagnosis: () => void;
+
+  handleStreamChunk: (payload: StreamChunkPayload) => void;
+  setupEventListeners: () => Promise<() => void>;
 }
 
-export const useAiStore = create<AiStore>((set) => ({
+export const useAiStore = create<AiStore>((set, get) => ({
   config: null,
   isConfigured: false,
   providers: [],
@@ -35,6 +77,12 @@ export const useAiStore = create<AiStore>((set) => ({
   configError: null,
   validating: false,
   saving: false,
+
+  nl2sql: { ...initialNl2Sql },
+  nl2sqlError: null,
+  diagnosis: null,
+  isDiagnosing: false,
+  diagnosisError: null,
 
   loadConfig: async () => {
     set({ configLoading: true, configError: null });
@@ -121,4 +169,94 @@ export const useAiStore = create<AiStore>((set) => ({
   },
 
   clearError: () => set({ configError: null }),
+
+  // ── NL2SQL ──
+
+  setNl2SqlInput: (input) =>
+    set((s) => ({ nl2sql: { ...s.nl2sql, input } })),
+
+  generateSql: async (params) => {
+    const { nl2sql } = get();
+    if (!nl2sql.input.trim()) return;
+
+    const requestId = crypto.randomUUID();
+    set({
+      nl2sql: {
+        ...nl2sql,
+        generatedSql: '',
+        isGenerating: true,
+        requestId,
+      },
+      nl2sqlError: null,
+    });
+
+    try {
+      await aiCommands.generateSql({
+        ...params,
+        naturalLanguage: nl2sql.input,
+        requestId,
+      });
+    } catch (e) {
+      set((s) => ({
+        nl2sql: { ...s.nl2sql, isGenerating: false },
+        nl2sqlError: e instanceof Error ? e.message : String(e),
+      }));
+    }
+  },
+
+  clearNl2Sql: () => set({ nl2sql: { ...initialNl2Sql }, nl2sqlError: null }),
+
+  // ── Diagnosis ──
+
+  diagnoseError: async (params) => {
+    set({ isDiagnosing: true, diagnosisError: null, diagnosis: null });
+    try {
+      const result = await aiCommands.diagnoseError(params);
+      set({ diagnosis: result, isDiagnosing: false });
+    } catch (e) {
+      set({
+        isDiagnosing: false,
+        diagnosisError: e instanceof Error ? e.message : String(e),
+      });
+    }
+  },
+
+  clearDiagnosis: () =>
+    set({ diagnosis: null, isDiagnosing: false, diagnosisError: null }),
+
+  // ── Stream handling ──
+
+  handleStreamChunk: (payload) => {
+    const { nl2sql } = get();
+    if (payload.requestId !== nl2sql.requestId) return;
+
+    set((s) => ({
+      nl2sql: {
+        ...s.nl2sql,
+        generatedSql: payload.content
+          ? s.nl2sql.generatedSql + payload.content
+          : s.nl2sql.generatedSql,
+        isGenerating: payload.done ? false : s.nl2sql.isGenerating,
+      },
+    }));
+  },
+
+  setupEventListeners: async () => {
+    const unChunk = await onAiStreamChunk((payload) => {
+      get().handleStreamChunk(payload);
+    });
+    const unError = await onAiStreamError((payload) => {
+      const { nl2sql } = get();
+      if (payload.requestId === nl2sql.requestId) {
+        set((s) => ({
+          nl2sql: { ...s.nl2sql, isGenerating: false },
+          nl2sqlError: payload.error,
+        }));
+      }
+    });
+    return () => {
+      unChunk();
+      unError();
+    };
+  },
 }));
