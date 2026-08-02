@@ -776,18 +776,22 @@ impl DatabaseDriver for PostgresDriver {
     }
     
     async fn cancel_query(&self, handle: &ConnectionHandle) -> Result<(), DriverError> {
-        // PostgreSQL 使用 pg_cancel_backend 取消查询
-        // 需要获取当前连接的后端 PID
         let pools = self.pools.read().await;
-        let pool = pools.get(&handle.pool_id)
-            .ok_or_else(|| DriverError::ConnectionFailed("Connection not found".to_string()))?;
-        
-        // 获取后端 PID 并取消
-        sqlx::query("SELECT pg_cancel_backend(pg_backend_pid())")
-            .execute(pool)
-            .await
-            .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
-        
+        let pool = Self::get_pool(&pools, handle)?;
+
+        // 取消同数据库内所有活跃查询（排除自身连接）
+        let rows = sqlx::query(
+            "SELECT pg_cancel_backend(pid) \
+             FROM pg_stat_activity \
+             WHERE pid != pg_backend_pid() \
+               AND state = 'active' \
+               AND datname = current_database()",
+        )
+        .fetch_all(pool)
+        .await
+        .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+
+        tracing::info!(cancelled = rows.len(), "pg: cancelled active queries");
         Ok(())
     }
     

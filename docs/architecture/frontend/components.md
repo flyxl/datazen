@@ -210,7 +210,7 @@ CSS 实现：
 │ 编辑器 Tab栏                                     │  ← h-8
 ├──────────────────────────────────────────────────┤
 │                                                  │
-│   Monaco SQL 编辑器                               │  ← 可拖拽高度
+│   CodeMirror SQL 编辑器                            │  ← 可拖拽高度
 │                                                  │
 ├──────────────────────────────────────────────────┤  ← 拖拽分割线
 │ 结果 Tab栏 (结果 | 消息)                          │  ← h-8
@@ -480,7 +480,6 @@ export const queryCommands = {
   getExplain: (connectionId: string, sql: string) =>
     invoke<ExplainResult>('get_explain', { connection_id: connectionId, sql }),
 
-  // 注意：需要后端新增 #[tauri::command] cancel_query（见下方补齐说明）
   cancelQuery: (connectionId: string) =>
     invoke<void>('cancel_query', { connection_id: connectionId }),
 
@@ -805,8 +804,8 @@ export async function openQueryWindow(connectionId: string, database: string) {
 |------|------|----------|
 | 组件单测 | Vitest + React Testing Library | DataTable, CellRenderer, FilterBar |
 | Store 单测 | Vitest | 每个 Store 的 action/state 变化 |
-| 集成测试 | Playwright | 窗口创建/关闭, 连接流程, 查询执行 |
-| 性能测试 | Playwright + Chrome DevTools | 10 万行滚动帧率, 内存占用 |
+| 集成测试 | WebdriverIO | 窗口创建/关闭, 连接流程, 查询执行 |
+| 性能测试 | WebdriverIO + Chrome DevTools | 10 万行滚动帧率, 内存占用 |
 | 快照测试 | Storybook | 关键 UI 组件视觉回归 |
 
 ## 9. 开发阶段规划
@@ -817,5 +816,5 @@ export async function openQueryWindow(connectionId: string, database: string) {
 | **Phase 2: 主窗口** | 连接管理 Store；连接卡片/分组；新建连接对话框；连接测试 | 主窗口功能完整 |
 | **Phase 3: 连接窗口** | Schema 树；表结构标签页；数据标签页（DataTable 核心）；虚拟滚动；分页 | 可浏览表结构和数据 |
 | **Phase 4: 数据编辑** | 行内编辑；新增/删除行；筛选/排序；数据导出 | 完整数据编辑功能 |
-| **Phase 5: 查询窗口** | Monaco 编辑器集成；查询执行/取消；结果展示；查询历史/收藏；执行计划 | 查询功能完整 |
+| **Phase 5: 查询窗口** | CodeMirror 编辑器集成；查询执行/取消；结果展示；查询历史/收藏；执行计划 | 查询功能完整 |
 | **Phase 6: 打磨** | 主题切换；快捷键；错误处理；性能优化；窗口间通信 | 生产就绪 |
