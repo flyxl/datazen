@@ -32,7 +32,7 @@ pub use window::*;
 use crate::ai::{AiProviderRegistry, PromptResolver, SchemaContextBuilder};
 use crate::cache::SchemaCache;
 use crate::db::registry::DriverRegistry;
-use crate::mcp::{McpClientManager, SkillRegistry};
+use crate::mcp::{McpClientManager, SkillHistoryManager, SkillRegistry};
 use crate::services::ConnectionManager;
 use crate::store::Store;
 use crate::sync::adapter_registry::SyncAdapterRegistry;
@@ -50,6 +50,7 @@ pub struct AppState {
     pub schema_context_builder: Arc<SchemaContextBuilder>,
     pub prompt_resolver: Arc<PromptResolver>,
     pub skill_registry: Arc<SkillRegistry>,
+    pub skill_history: Arc<SkillHistoryManager>,
     pub mcp_client_manager: Arc<McpClientManager>,
 }
 

@@ -8,12 +8,15 @@ import type {
   DiagnosisResult,
   ExplainAnalysis,
   FilterCondition,
+  HistoryEntry,
+  HistoryListItem,
   McpClientStatus,
   McpServerConfig,
   McpToolInfo,
   ModelInfo,
   QueryAnalysis,
   SkillDefinition,
+  SkillExecutionResult,
   SkillListItem,
   ProviderListItem,
   StreamChunkPayload,
@@ -115,12 +118,19 @@ export const aiCommands = {
     skillId: string;
     variables: Record<string, unknown>;
     connectionId?: string;
-  }) => invoke<string>('skill_execute', params),
+  }) => invoke<SkillExecutionResult>('skill_execute', params),
   skillSave: (skill: SkillDefinition) => invoke<void>('skill_save', { skill }),
   skillDelete: (skillId: string) => invoke<void>('skill_delete', { skillId }),
   skillReload: () => invoke<void>('skill_reload'),
   skillGetDir: () => invoke<string>('skill_get_dir'),
   skillGet: (skillId: string) => invoke<SkillDefinition>('skill_get', { skillId }),
+
+  skillHistoryList: (skillId?: string) =>
+    invoke<HistoryListItem[]>('skill_history_list', { skillId: skillId ?? null }),
+  skillHistoryGet: (historyId: string) =>
+    invoke<HistoryEntry>('skill_history_get', { historyId }),
+  skillHistoryClear: (skillId?: string) =>
+    invoke<number>('skill_history_clear', { skillId: skillId ?? null }),
 
   generateSchemaDoc: (params: {
     connectionId: string;

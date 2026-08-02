@@ -15,6 +15,7 @@ import type {
   ModelInfo,
   ProviderListItem,
   QueryAnalysis,
+  SkillExecutionResult,
   SkillListItem,
   StreamChunkPayload,
 } from '../types';
@@ -117,7 +118,7 @@ interface AiStore {
 
   skills: SkillListItem[];
   skillsLoading: boolean;
-  skillExecutionResult: string | null;
+  skillExecutionResult: SkillExecutionResult | null;
   isExecutingSkill: boolean;
   skillError: string | null;
 

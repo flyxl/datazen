@@ -104,6 +104,21 @@ impl ConnectionManager {
         Ok(connection_id)
     }
 
+    /// Return an existing connection for the given config_id, or create a new one.
+    /// Prevents duplicate connection pools for the same saved configuration.
+    pub async fn get_or_connect(&self, config_id: &str) -> Result<String, ConnectionError> {
+        {
+            let map = self.config_id_map.read().await;
+            let connections = self.connections.read().await;
+            for (conn_id, cfg_id) in map.iter() {
+                if cfg_id == config_id && connections.contains_key(conn_id) {
+                    return Ok(conn_id.clone());
+                }
+            }
+        }
+        self.connect(config_id).await
+    }
+
     pub async fn disconnect(&self, connection_id: &str) -> Result<(), ConnectionError> {
         self.config_id_map.write().await.remove(connection_id);
 

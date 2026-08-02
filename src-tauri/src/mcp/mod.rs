@@ -2,11 +2,15 @@
 
 pub mod client;
 mod server;
+pub mod skill_history;
 pub mod skills;
 
 pub use client::{McpClientManager, McpServerConfig, McpToolInfo};
 pub use server::DataZenMcpServer;
-pub use skills::{SkillDefinition, SkillExecutor, SkillListItem, SkillRegistry};
+pub use skill_history::SkillHistoryManager;
+pub use skills::{
+    SkillDefinition, SkillExecutionResult, SkillExecutor, SkillListItem, SkillRegistry,
+};
 
 use crate::commands::AppState;
 use std::sync::Arc;
