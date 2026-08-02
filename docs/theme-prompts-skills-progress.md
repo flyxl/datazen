@@ -9,7 +9,7 @@
 | 1 | FileConnectionFields light theme 适配 | ✅ 已完成 | — | 🔲 | — |
 | 2 | 可配置 AI Prompt（后端 + driver-api） | ✅ 已完成 | ✅ 8/8 | 🔲 | — |
 | 3 | 可配置 AI Prompt（前端设置 UI） | ✅ 已完成 | — | 🔲 | — |
-| 4 | 新增 Skill 创建入口 + 存储路径说明 | 🔲 未开始 | 🔲 | 🔲 | — |
+| 4 | 新增 Skill 创建入口 + 存储路径说明 | ✅ 已完成 | — | 🔲 | — |
 
 ## 状态说明
 

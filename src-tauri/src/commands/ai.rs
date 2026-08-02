@@ -768,6 +768,25 @@ pub async fn skill_reload(state: State<'_, AppState>) -> Result<(), CommandError
     state.skill_registry.load_all().await.map_err(CommandError::Internal)
 }
 
+#[tauri::command]
+pub async fn skill_get_dir(
+    state: State<'_, AppState>,
+) -> Result<String, CommandError> {
+    Ok(state.skill_registry.skills_dir().display().to_string())
+}
+
+#[tauri::command]
+pub async fn skill_get(
+    state: State<'_, AppState>,
+    skill_id: String,
+) -> Result<crate::mcp::SkillDefinition, CommandError> {
+    state
+        .skill_registry
+        .get(&skill_id)
+        .await
+        .ok_or_else(|| CommandError::NotFound(format!("Skill '{skill_id}' not found")))
+}
+
 // ─── Phase 8: Schema documentation ───
 
 #[tauri::command]
