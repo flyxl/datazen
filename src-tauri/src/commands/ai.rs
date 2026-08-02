@@ -364,20 +364,11 @@ pub async fn ai_diagnose_error(
         "ai_diagnose_error: response received"
     );
 
-    let content = strip_markdown_fences(&response.content);
-    if content.trim().is_empty() {
-        tracing::error!(cmd = "ai_diagnose_error", "LLM returned empty response");
-        return Err(CommandError::Internal("LLM returned empty response".into()));
-    }
-    serde_json::from_str::<DiagnosisResult>(&content)
-        .map_err(|e| {
-            tracing::error!(
-                cmd = "ai_diagnose_error",
-                raw_content = %&content[..content.len().min(500)],
-                "JSON parse failed: {e}"
-            );
-            CommandError::Json(e)
-        })
+    parse_ai_json::<DiagnosisResult>(
+        &response.content,
+        response.finish_reason.as_deref(),
+        "ai_diagnose_error",
+    )
 }
 
 // ─── EXPLAIN Analysis ───
@@ -458,20 +449,11 @@ pub async fn ai_analyze_explain(
         );
     }
 
-    let content = strip_markdown_fences(&response.content);
-    if content.trim().is_empty() {
-        tracing::error!(cmd = "ai_analyze_explain", "LLM returned empty response");
-        return Err(CommandError::Internal("LLM returned empty response".into()));
-    }
-    serde_json::from_str::<ExplainAnalysis>(&content)
-        .map_err(|e| {
-            tracing::error!(
-                cmd = "ai_analyze_explain",
-                raw_content = %&content[..content.len().min(500)],
-                "JSON parse failed: {e}"
-            );
-            CommandError::Json(e)
-        })
+    parse_ai_json::<ExplainAnalysis>(
+        &response.content,
+        response.finish_reason.as_deref(),
+        "ai_analyze_explain",
+    )
 }
 
 // ─── Smart Filter ───
@@ -546,9 +528,8 @@ pub async fn ai_parse_filter(
         .await
         .cmd_err("ai_parse_filter")?;
 
-    let content = strip_markdown_fences(&response.content);
     let mut filters: Vec<crate::services::query_executor::FilterCondition> =
-        serde_json::from_str(&content).cmd_err("ai_parse_filter")?;
+        parse_ai_json(&response.content, response.finish_reason.as_deref(), "ai_parse_filter")?;
 
     let valid_columns: std::collections::HashSet<String> =
         cached.columns.iter().map(|c| c.name.clone()).collect();
@@ -657,6 +638,40 @@ pub async fn ai_chat(
         .cmd_err("ai_chat")?;
 
     Ok(request_id)
+}
+
+fn parse_ai_json<T: serde::de::DeserializeOwned>(
+    raw: &str,
+    finish_reason: Option<&str>,
+    cmd: &str,
+) -> Result<T, CommandError> {
+    let content = strip_markdown_fences(raw);
+    if content.trim().is_empty() {
+        tracing::error!(cmd, "LLM returned empty response");
+        return Err(CommandError::Internal("LLM returned empty response".into()));
+    }
+    serde_json::from_str::<T>(&content).map_err(|e| {
+        tracing::error!(
+            cmd,
+            raw_content = %&content[..content.len().min(500)],
+            ?finish_reason,
+            "JSON parse failed: {e}"
+        );
+        let is_truncated =
+            matches!(finish_reason, Some("length") | Some("max_tokens"));
+        if is_truncated {
+            CommandError::Internal(
+                "AI response was truncated due to max_tokens limit. \
+                 Please increase the \"Max Tokens\" setting in AI configuration."
+                    .into(),
+            )
+        } else {
+            CommandError::Internal(format!(
+                "Failed to parse AI response. The model may have returned an invalid format. \
+                 Try again or increase Max Tokens in settings. (detail: {e})"
+            ))
+        }
+    })
 }
 
 fn emit_stream_chunk_or_error(
@@ -1014,9 +1029,11 @@ pub async fn ai_diagnose_connection(
         .await
         .cmd_err("ai_diagnose_connection")?;
 
-    let content = strip_markdown_fences(&response.content);
-    serde_json::from_str::<ConnectionDiagnosis>(&content)
-        .cmd_err("ai_diagnose_connection")
+    parse_ai_json::<ConnectionDiagnosis>(
+        &response.content,
+        response.finish_reason.as_deref(),
+        "ai_diagnose_connection",
+    )
 }
 
 // ─── Phase 8: Query history analysis ───
@@ -1095,9 +1112,11 @@ pub async fn ai_analyze_queries(
         .await
         .cmd_err("ai_analyze_queries")?;
 
-    let content = strip_markdown_fences(&response.content);
-    serde_json::from_str::<QueryAnalysis>(&content)
-        .cmd_err("ai_analyze_queries")
+    parse_ai_json::<QueryAnalysis>(
+        &response.content,
+        response.finish_reason.as_deref(),
+        "ai_analyze_queries",
+    )
 }
 
 // ─── Prompt management IPC commands ───
