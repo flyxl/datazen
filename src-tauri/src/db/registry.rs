@@ -49,12 +49,17 @@ impl DriverRegistry {
         kv_drivers.get(db_type).cloned()
     }
 
-    /// Look up a SQL driver by its `Debug` name (e.g. `"PostgreSQL"`, `"MySQL"`).
+    /// Look up a SQL driver by its serialized name (e.g. `"postgresql"`, `"mysql"`).
     pub fn get_sql_driver_by_name(&self, name: &str) -> Option<Arc<dyn DatabaseDriver>> {
         let drivers = self.drivers.blocking_read();
         drivers
             .iter()
-            .find(|(dt, _)| format!("{:?}", dt) == name)
+            .find(|(dt, _)| {
+                serde_json::to_value(dt)
+                    .ok()
+                    .and_then(|v| v.as_str().map(|s| s == name))
+                    .unwrap_or(false)
+            })
             .map(|(_, d)| d.clone())
     }
 }
