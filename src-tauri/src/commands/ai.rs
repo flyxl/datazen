@@ -1,12 +1,15 @@
 //! AI-related Tauri IPC commands.
 
 use crate::ai::*;
+use crate::ai::prompt_resolver::{PromptInfo, PromptOverrideEntry};
 use crate::commands::error::{CmdExt, CommandError};
 use crate::commands::AppState;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
 use tokio::sync::mpsc;
 use uuid::Uuid;
+use std::collections::HashMap;
+use datazen_driver_api::PromptScenario;
 
 fn language_hint(lang: &str) -> String {
     let lang_name = match lang {
@@ -217,7 +220,36 @@ pub async fn ai_generate_sql(
     );
 
     let lang = state.store.get_settings().await.language;
-    let system_msg = PromptBuilder::nl2sql_system(&context, &lang);
+
+    let (driver_ref, _) = state
+        .connection_manager
+        .get_connection(&connection_id)
+        .await
+        .cmd_err("ai_generate_sql")?;
+
+    let version_str = context
+        .database_version
+        .as_deref()
+        .map(|v| format!(" {v}"))
+        .unwrap_or_default();
+    let recent = if context.recent_queries.is_empty() {
+        String::new()
+    } else {
+        let label = if lang.starts_with("zh") { "近期查询（供风格参考）" } else { "Recent queries (for style reference)" };
+        format!(
+            "\n\n{label}:\n{}",
+            context.recent_queries.iter().map(|q| format!("- {q}")).collect::<Vec<_>>().join("\n")
+        )
+    };
+    let mut vars = HashMap::new();
+    vars.insert("db_type", context.database_type.as_str());
+    vars.insert("version", version_str.as_str());
+    vars.insert("schema", context.schema_ddl.as_str());
+    vars.insert("recent", recent.as_str());
+    let tpl = state.prompt_resolver.resolve(PromptScenario::Nl2Sql, Some(driver_ref.as_ref()), &lang).await;
+    let system_content = prompt_resolver::render_template(&tpl, &vars);
+
+    let system_msg = ChatMessage { role: MessageRole::System, content: system_content };
     let user_msg = ChatMessage {
         role: MessageRole::User,
         content: natural_language,
@@ -307,11 +339,24 @@ pub async fn ai_diagnose_error(
         .cmd_err("ai_diagnose_error")?;
 
     let lang = state.store.get_settings().await.language;
+
+    let (driver_ref, _) = state
+        .connection_manager
+        .get_connection(&connection_id)
+        .await
+        .cmd_err("ai_diagnose_error")?;
+
+    let mut vars = HashMap::new();
+    vars.insert("db_type", context.database_type.as_str());
+    vars.insert("schema", context.schema_ddl.as_str());
+    let tpl = state.prompt_resolver.resolve(PromptScenario::Diagnose, Some(driver_ref.as_ref()), &lang).await;
+    let system_content = prompt_resolver::render_template(&tpl, &vars);
+
     let mut request = CompletionRequest {
         request_id: Uuid::new_v4().to_string(),
         model: ai_config.model.clone(),
         messages: vec![
-            PromptBuilder::diagnose_system(&context.database_type, &context.schema_ddl, &lang),
+            ChatMessage { role: MessageRole::System, content: system_content },
             ChatMessage {
                 role: MessageRole::User,
                 content: format!("SQL:\n```\n{sql}\n```\n\nError:\n{error_message}"),
@@ -382,11 +427,16 @@ pub async fn ai_analyze_explain(
     let db_type = format!("{:?}", driver.driver_type());
 
     let lang = state.store.get_settings().await.language;
+    let mut vars = HashMap::new();
+    vars.insert("db_type", db_type.as_str());
+    let tpl = state.prompt_resolver.resolve(PromptScenario::ExplainAnalysis, Some(driver.as_ref()), &lang).await;
+    let system_content = prompt_resolver::render_template(&tpl, &vars);
+
     let mut request = CompletionRequest {
         request_id: Uuid::new_v4().to_string(),
         model: ai_config.model.clone(),
         messages: vec![
-            PromptBuilder::explain_analysis_system(&db_type, &lang),
+            ChatMessage { role: MessageRole::System, content: system_content },
             ChatMessage {
                 role: MessageRole::User,
                 content: format!(
@@ -490,11 +540,17 @@ pub async fn ai_parse_filter(
         .join("\n");
 
     let lang = state.store.get_settings().await.language;
+    let mut vars = HashMap::new();
+    vars.insert("db_type", db_type.as_str());
+    vars.insert("columns", columns_ddl.as_str());
+    let tpl = state.prompt_resolver.resolve(PromptScenario::NlFilter, Some(driver.as_ref()), &lang).await;
+    let system_content = prompt_resolver::render_template(&tpl, &vars);
+
     let mut request = CompletionRequest {
         request_id: Uuid::new_v4().to_string(),
         model: ai_config.model.clone(),
         messages: vec![
-            PromptBuilder::nl_filter_system(&db_type, &columns_ddl, &lang),
+            ChatMessage { role: MessageRole::System, content: system_content },
             ChatMessage {
                 role: MessageRole::User,
                 content: natural_language,
@@ -557,7 +613,6 @@ pub async fn ai_chat(
     let (provider, ai_config) = resolve_ai(&state).await?;
 
     let lang = state.store.get_settings().await.language;
-    let is_zh = lang.starts_with("zh");
     let mut full_messages: Vec<ChatMessage> = Vec::new();
 
     if include_schema {
@@ -572,10 +627,11 @@ pub async fn ai_chat(
                     .build_sql_context(conn_id, db, None, &[], 4000)
                     .await
                 {
-                    let desc = if is_zh {
-                        format!("你是一个有用的数据库助手。用户已连接到 {db_type} 数据库。")
+                    let base = state.prompt_resolver.resolve(PromptScenario::Chat, Some(driver.as_ref()), &lang).await;
+                    let desc = if lang.starts_with("zh") {
+                        format!("{base}\n\n用户已连接到 {db_type} 数据库。")
                     } else {
-                        format!("You are a helpful database assistant. The user is connected to a {db_type} database.")
+                        format!("{base}\n\nThe user is connected to a {db_type} database.")
                     };
                     full_messages.push(ChatMessage {
                         role: MessageRole::System,
@@ -587,14 +643,10 @@ pub async fn ai_chat(
     }
 
     if full_messages.is_empty() {
-        let desc = if is_zh {
-            "你是一个有用的数据库助手。帮助用户处理 SQL 查询、数据库概念和数据分析。编写 SQL 时请使用正确的格式并解释你的思路。"
-        } else {
-            "You are a helpful database assistant. Help the user with SQL queries, database concepts, and data analysis. When writing SQL, use proper formatting and explain your reasoning."
-        };
+        let chat_prompt = state.prompt_resolver.resolve(PromptScenario::Chat, None, &lang).await;
         full_messages.push(ChatMessage {
             role: MessageRole::System,
-            content: desc.to_string(),
+            content: chat_prompt,
         });
     }
 
@@ -736,15 +788,28 @@ pub async fn ai_generate_schema_doc(
 
     let lang = state.store.get_settings().await.language;
 
+    let (driver_ref, _) = state
+        .connection_manager
+        .get_connection(&connection_id)
+        .await
+        .cmd_err("ai_generate_schema_doc")?;
+
     // If few tables, skip the selection step and document all
     let selected_tables = if all_table_names.len() <= 30 {
         all_table_names.clone()
     } else {
+        let table_names_str = all_table_names.join(", ");
+        let mut select_vars = HashMap::new();
+        select_vars.insert("db_type", db_type.as_str());
+        select_vars.insert("table_names", table_names_str.as_str());
+        let select_tpl = state.prompt_resolver.resolve(PromptScenario::SchemaDocSelectTables, Some(driver_ref.as_ref()), &lang).await;
+        let select_content = prompt_resolver::render_template(&select_tpl, &select_vars);
+
         let select_request = CompletionRequest {
             request_id: Uuid::new_v4().to_string(),
             model: ai_config.model.clone(),
             messages: vec![
-                PromptBuilder::schema_doc_select_tables(&db_type, &all_table_names),
+                ChatMessage { role: MessageRole::System, content: select_content },
                 ChatMessage {
                     role: MessageRole::User,
                     content: "Select the important user tables.".into(),
@@ -789,11 +854,17 @@ pub async fn ai_generate_schema_doc(
     } else {
         "Generate documentation for the database schema above."
     };
+    let mut doc_vars = HashMap::new();
+    doc_vars.insert("db_type", context.database_type.as_str());
+    doc_vars.insert("schema", context.schema_ddl.as_str());
+    let doc_tpl = state.prompt_resolver.resolve(PromptScenario::SchemaDoc, Some(driver_ref.as_ref()), &lang).await;
+    let doc_system_content = prompt_resolver::render_template(&doc_tpl, &doc_vars);
+
     let mut request = CompletionRequest {
         request_id: Uuid::new_v4().to_string(),
         model: ai_config.model.clone(),
         messages: vec![
-            PromptBuilder::schema_doc_system(&context.database_type, &context.schema_ddl, &lang),
+            ChatMessage { role: MessageRole::System, content: doc_system_content },
             ChatMessage {
                 role: MessageRole::User,
                 content: user_content.into(),
@@ -867,11 +938,13 @@ pub async fn ai_diagnose_connection(
     );
 
     let lang = state.store.get_settings().await.language;
+    let conn_diag_prompt = state.prompt_resolver.resolve(PromptScenario::ConnectionDiagnose, None, &lang).await;
+
     let mut request = CompletionRequest {
         request_id: Uuid::new_v4().to_string(),
         model: ai_config.model.clone(),
         messages: vec![
-            PromptBuilder::connection_diagnose_system(&lang),
+            ChatMessage { role: MessageRole::System, content: conn_diag_prompt },
             ChatMessage {
                 role: MessageRole::User,
                 content: format!(
@@ -945,11 +1018,13 @@ pub async fn ai_analyze_queries(
         .join("\n---\n");
 
     let lang = state.store.get_settings().await.language;
+    let query_summary_prompt = state.prompt_resolver.resolve(PromptScenario::QuerySummary, None, &lang).await;
+
     let mut request = CompletionRequest {
         request_id: Uuid::new_v4().to_string(),
         model: ai_config.model.clone(),
         messages: vec![
-            PromptBuilder::query_summary_system(&lang),
+            ChatMessage { role: MessageRole::System, content: query_summary_prompt },
             ChatMessage {
                 role: MessageRole::User,
                 content: format!(
@@ -972,6 +1047,51 @@ pub async fn ai_analyze_queries(
     let content = strip_markdown_fences(&response.content);
     serde_json::from_str::<QueryAnalysis>(&content)
         .cmd_err("ai_analyze_queries")
+}
+
+// ─── Prompt management IPC commands ───
+
+#[tauri::command]
+pub async fn prompt_list(
+    state: State<'_, AppState>,
+    driver_type: Option<String>,
+) -> Result<Vec<PromptInfo>, CommandError> {
+    let driver: Option<std::sync::Arc<dyn datazen_driver_api::DatabaseDriver>> =
+        if let Some(ref dt) = driver_type {
+            state.driver_registry.get_sql_driver_by_name(dt)
+        } else {
+            None
+        };
+    let prompts = state
+        .prompt_resolver
+        .list_prompts(driver.as_deref())
+        .await;
+    Ok(prompts)
+}
+
+#[tauri::command]
+pub async fn prompt_set_override(
+    state: State<'_, AppState>,
+    entry: PromptOverrideEntry,
+) -> Result<(), CommandError> {
+    state
+        .prompt_resolver
+        .set_override(entry)
+        .await
+        .map_err(CommandError::Internal)
+}
+
+#[tauri::command]
+pub async fn prompt_remove_override(
+    state: State<'_, AppState>,
+    driver_type: String,
+    scenario: PromptScenario,
+) -> Result<(), CommandError> {
+    state
+        .prompt_resolver
+        .remove_override(&driver_type, scenario)
+        .await
+        .map_err(CommandError::Internal)
 }
 
 #[cfg(test)]

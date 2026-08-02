@@ -29,7 +29,7 @@ pub use schema::*;
 pub use sync::*;
 pub use window::*;
 
-use crate::ai::{AiProviderRegistry, SchemaContextBuilder};
+use crate::ai::{AiProviderRegistry, PromptResolver, SchemaContextBuilder};
 use crate::cache::SchemaCache;
 use crate::db::registry::DriverRegistry;
 use crate::mcp::{McpClientManager, SkillRegistry};
@@ -48,6 +48,7 @@ pub struct AppState {
     pub sync_adapters: Arc<SyncAdapterRegistry>,
     pub ai_registry: Arc<AiProviderRegistry>,
     pub schema_context_builder: Arc<SchemaContextBuilder>,
+    pub prompt_resolver: Arc<PromptResolver>,
     pub skill_registry: Arc<SkillRegistry>,
     pub mcp_client_manager: Arc<McpClientManager>,
 }

@@ -1265,6 +1265,7 @@ dependencies = [
  "tauri-plugin-dialog",
  "tauri-plugin-os",
  "tauri-plugin-webdriver",
+ "tempfile",
  "thiserror 1.0.69",
  "tokio",
  "tokio-util",

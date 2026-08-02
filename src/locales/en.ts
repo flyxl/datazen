@@ -551,6 +551,23 @@ const en: Record<TranslationKey, string> = {
   'settings.ai.endpointHintOpenAiResponses': 'e.g. https://api.openai.com/v1',
   'settings.ai.endpointHintAnthropic': 'e.g. https://api.anthropic.com',
 
+  // ── Prompt Management ──
+  'settings.prompts': 'Prompt Management',
+  'settings.prompts.description': 'View and customize system prompts used by AI features. Each driver and scenario can be configured individually.',
+  'settings.prompts.driver': 'Database Driver',
+  'settings.prompts.allDrivers': 'All Drivers (Global)',
+  'settings.prompts.source.default': 'Default',
+  'settings.prompts.source.driver': 'Driver Custom',
+  'settings.prompts.source.user': 'User Custom',
+  'settings.prompts.edit': 'Edit',
+  'settings.prompts.reset': 'Reset to Default',
+  'settings.prompts.resetConfirm': 'Are you sure you want to reset this prompt to the default?',
+  'settings.prompts.zh': 'Chinese Prompt',
+  'settings.prompts.en': 'English Prompt',
+  'settings.prompts.saved': 'Prompt saved',
+  'settings.prompts.resetDone': 'Reset to default',
+  'settings.prompts.variables': 'Available Variables',
+
   // ── AI Chat ──
   'chat.title': 'AI Assistant',
   'chat.placeholder': 'Ask a question about your database…',

@@ -190,6 +190,12 @@ async fn build_app_state(store: Arc<Store>) -> Result<AppState, String> {
     ));
 
     let data_dir = store.data_dir();
+
+    let prompt_resolver = Arc::new(ai::PromptResolver::new(data_dir));
+    if let Err(e) = prompt_resolver.load().await {
+        tracing::warn!("Failed to load prompt overrides: {e}");
+    }
+
     let skill_registry = Arc::new(mcp::SkillRegistry::new(data_dir.join("skills")));
     if let Err(e) = skill_registry.load_all().await {
         tracing::warn!("Failed to load skills: {e}");
@@ -205,6 +211,7 @@ async fn build_app_state(store: Arc<Store>) -> Result<AppState, String> {
         sync_adapters,
         ai_registry,
         schema_context_builder,
+        prompt_resolver,
         skill_registry,
         mcp_client_manager,
     })
@@ -385,6 +392,9 @@ pub fn run() {
             commands::adb_list_packages,
             commands::adb_list_databases,
             commands::adb_pull_database,
+            commands::prompt_list,
+            commands::prompt_set_override,
+            commands::prompt_remove_override,
             rebuild_menu,
         ])
         .build(tauri::generate_context!())
