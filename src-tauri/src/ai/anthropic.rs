@@ -425,6 +425,7 @@ impl AiProvider for AnthropicProvider {
                                     if sender
                                         .send(Ok(StreamChunk {
                                             content: text,
+                                            reasoning: None,
                                             done: false,
                                             usage: None,
                                         }))
@@ -444,6 +445,7 @@ impl AiProvider for AnthropicProvider {
                             let _ = sender
                                 .send(Ok(StreamChunk {
                                     content: String::new(),
+                                    reasoning: None,
                                     done: true,
                                     usage: Some(TokenUsage {
                                         prompt_tokens,

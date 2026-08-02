@@ -93,6 +93,8 @@ pub struct CompletionResponse {
 #[serde(rename_all = "camelCase")]
 pub struct StreamChunk {
     pub content: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning: Option<String>,
     pub done: bool,
     pub usage: Option<TokenUsage>,
 }

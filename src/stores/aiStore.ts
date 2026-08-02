@@ -419,6 +419,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
         messages: [],
         isStreaming: false,
         streamContent: '',
+        streamReasoning: '',
         requestId: null,
       },
     });
@@ -438,6 +439,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
         messages: [...chatSession.messages, userMessage],
         isStreaming: true,
         streamContent: '',
+        streamReasoning: '',
         requestId,
       },
     });
@@ -458,6 +460,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
             ...session,
             isStreaming: false,
             streamContent: '',
+            streamReasoning: '',
             requestId: null,
             messages: [
               ...session.messages,
@@ -505,14 +508,20 @@ export const useAiStore = create<AiStore>((set, get) => ({
 
     if (chatSession && payload.requestId === chatSession.requestId) {
       const newContent = (chatSession.streamContent || '') + (payload.content || '');
+      const newReasoning = (chatSession.streamReasoning || '') + (payload.reasoning || '');
       if (payload.done) {
-        const assistantMessage: AiChatMessage = { role: 'assistant', content: newContent };
+        const assistantMessage: AiChatMessage = {
+          role: 'assistant',
+          content: newContent,
+          reasoning: newReasoning || undefined,
+        };
         set({
           chatSession: {
             ...chatSession,
             messages: [...chatSession.messages, assistantMessage],
             isStreaming: false,
             streamContent: '',
+            streamReasoning: '',
             requestId: null,
           },
         });
@@ -521,6 +530,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
           chatSession: {
             ...chatSession,
             streamContent: newContent,
+            streamReasoning: newReasoning,
           },
         });
       }

@@ -272,6 +272,7 @@ export interface ExplainSuggestion {
 export interface AiChatMessage {
   role: 'system' | 'user' | 'assistant';
   content: string;
+  reasoning?: string;
 }
 
 export interface AiChatSession {
@@ -279,12 +280,14 @@ export interface AiChatSession {
   messages: AiChatMessage[];
   isStreaming: boolean;
   streamContent: string;
+  streamReasoning: string;
   requestId: string | null;
 }
 
 export interface StreamChunkPayload {
   requestId: string;
   content: string;
+  reasoning?: string;
   done: boolean;
   usage?: { promptTokens: number; completionTokens: number; totalTokens: number };
 }
