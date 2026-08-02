@@ -13,7 +13,7 @@
 | shadcn/ui | latest | 组件库 |
 | Zustand | 4.x | 状态管理 |
 | @tanstack/react-virtual | 3.x | 虚拟滚动 |
-| Monaco Editor | 0.50+ | SQL 编辑器 |
+| CodeMirror | 6.x | SQL 编辑器（按 databaseType 动态切换方言） |
 | Lucide React | latest | 图标库 |
 | @tauri-apps/api | 2.x | Tauri IPC |
 

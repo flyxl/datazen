@@ -85,7 +85,7 @@ DataZen 是一个跨平台桌面数据库管理工具，基于 **Tauri v2**（Ru
 |------|------|
 | [安全措施](security.md) | 密码加密、CSP、Argon2id KDF、路径遍历防护、AI Key 安全 |
 | [窗口管理](windows.md) | 多窗口架构、Rust 端窗口创建、macOS acceptFirstMouse |
-| [测试策略](testing.md) | Rust 单元/集成测试、Vitest 前端测试、WebdriverIO E2E |
+| [测试策略](testing.md) | Rust 单元/集成测试、Vitest 前端测试、WebdriverIO E2E、手工黑盒测试 (`test/`) |
 
 ## 其他文档
 

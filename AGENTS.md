@@ -10,7 +10,7 @@ DataZen 是一个跨平台桌面数据库管理工具，基于 **Tauri v2**（Ru
 - **后端语言**：Rust
 - **包管理**：pnpm（前端）、Cargo workspace（Rust）
 - **状态管理**：Zustand
-- **测试**：Vitest（单元）、WebdriverIO（E2E）
+- **测试**：Vitest（单元）、WebdriverIO（E2E）、手工黑盒测试（`test/`）
 - **AI 集成**：多 Provider 支持（OpenAI / Anthropic / 自定义 OpenAI 兼容）、MCP Server/Client
 
 ## 目录结构
@@ -53,7 +53,8 @@ datazen/
 ├── plugins-registry.json        # 插件注册表
 ├── .plugins/                    # 构建时生成的插件目录（gitignored）
 ├── e2e/                         # WebdriverIO E2E 测试
-├── docs/                        # 文档（RFC、进度跟踪、代码审查报告）
+├── test/                        # 手工黑盒测试（测试计划、用例、结果、Bug 报告）
+├── docs/                        # 文档（RFC、架构设计、进度跟踪、代码审查报告）
 └── Cargo.toml                   # Workspace 根配置
 ```
 
@@ -84,6 +85,17 @@ DATAZEN_PLUGINS=none pnpm build        # 仅内置驱动
 - **内置驱动**（PostgreSQL, MySQL, MariaDB, SQLite, Redis）在 `src-tauri/src/db/registry.rs` 直接注册
 - **插件驱动** 通过 `datazen-driver-api` 的 `register_driver!` 宏 + `inventory` 自动发现
 - 前端 `DB_REGISTRY` 由 `src/lib/databaseTypes.ts`（内置）+ `src/plugins/generated.ts`（插件）合并
+
+### 查询取消
+
+各驱动实现 `cancel_query()` trait 方法，前端通过 `queryStore.cancelQuery` 调用：
+
+| 驱动 | 取消机制 |
+|------|---------|
+| PostgreSQL | `pg_cancel_backend(pid)`：通过 `pg_stat_activity` 查找同数据库活跃查询并取消 |
+| MySQL | `KILL QUERY thread_id`：通过 `information_schema.processlist` 查找活跃线程并终止 |
+| SQLite | No-op（进程内单连接，无独立取消机制） |
+| Redis | No-op（命令为原子操作） |
 
 ### AI 模块架构
 
@@ -139,6 +151,7 @@ DataZen 同时作为 **MCP Server** 和 **MCP Client**：
 
 - **零硬编码**：行为差异通过 `DB_REGISTRY` 元数据驱动，避免 `if (type === 'xxx')`
 - **表单路由**：`ConnectionFormBody.tsx` 通过 `connectionForm` 字段选择渲染哪个表单组件
+- **表单验证**：`useConnectionForm.ts` 的 `validate()` 在 `onTest()` / `onSave()` 前检查必填字段（host/port 或 database 文件路径），失败时 `validationErrors` 驱动红色边框 + 错误提示
 - **视图路由**：`connectionViews/index.ts` 的 `CONNECTION_VIEWS` 映射视图组件
 - **SQL 方言**：`sqlDialects/` 下的策略对象处理 DDL/索引/备份差异
 - **SQL 编辑器方言**：`SqlEditor` 根据连接的 `databaseType` 动态选择 CodeMirror 方言
