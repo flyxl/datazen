@@ -96,10 +96,22 @@ export function useConnectionForm(options: UseConnectionFormOptions = {}) {
   function handleDatabaseTypeChange(newType: DatabaseType) {
     setDatabaseType(newType);
     const meta = DB_REGISTRY[newType];
+
+    setHost(meta.defaultHost || '127.0.0.1');
     setPort(meta.defaultPort ? String(meta.defaultPort) : '');
+    setUsername(meta.defaultUser || '');
+
     if (!meta.supportsSSH) setSshEnabled(false);
-    if (meta.databaseFieldType === 'index') setDatabase('0');
-    if (!meta.defaultUser) setUsername('');
+
+    if (meta.databaseFieldType === 'index') {
+      setDatabase('0');
+    } else if (meta.connectionMode === 'file') {
+      setDatabase('');
+    } else {
+      const defaultDb = newType === 'postgresql' ? 'postgres' : '';
+      setDatabase(defaultDb);
+    }
+
     if (meta.connectionForm === 'kiwi') {
       setHost(meta.defaultHost);
       setDatabase('');

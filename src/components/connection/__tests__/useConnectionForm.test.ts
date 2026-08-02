@@ -64,6 +64,35 @@ describe('useConnectionForm', () => {
     expect(DB_REGISTRY.kiwi.connectionForm).toBe('kiwi');
   });
 
+  it('resets database and username when switching types (BUG-001)', () => {
+    const { result } = renderHook(() => useConnectionForm());
+
+    // Default: PostgreSQL
+    expect(result.current.database).toBe('postgres');
+    expect(result.current.username).toBe('postgres');
+
+    // Switch to MySQL: database should clear, username should be 'root'
+    act(() => result.current.handleDatabaseTypeChange('mysql'));
+    expect(result.current.database).toBe('');
+    expect(result.current.username).toBe('root');
+    expect(result.current.port).toBe('3306');
+
+    // Switch to SQLite: database (file path) should clear
+    act(() => result.current.handleDatabaseTypeChange('sqlite'));
+    expect(result.current.database).toBe('');
+    expect(result.current.username).toBe('');
+
+    // Switch to Redis: database should be '0'
+    act(() => result.current.handleDatabaseTypeChange('redis'));
+    expect(result.current.database).toBe('0');
+
+    // Switch back to PostgreSQL: database should be 'postgres', username 'postgres'
+    act(() => result.current.handleDatabaseTypeChange('postgresql'));
+    expect(result.current.database).toBe('postgres');
+    expect(result.current.username).toBe('postgres');
+    expect(result.current.port).toBe('5432');
+  });
+
   it('includes username in kiwi draft', () => {
     const { result } = renderHook(() => useConnectionForm());
 

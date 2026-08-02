@@ -280,7 +280,19 @@ export function MainWindow() {
       items.push(await PredefinedMenuItem.new({ item: 'Separator' }));
     }
 
-    items.push(await MenuItem.new({ text: t('main.ctx.deleteConnection'), action: () => { void deleteConnection(conn.id); } }));
+    items.push(await MenuItem.new({
+      text: t('main.ctx.deleteConnection'),
+      action: async () => {
+        const { ask } = await import('@tauri-apps/plugin-dialog');
+        const confirmed = await ask(
+          t('main.ctx.confirmDeleteConnection', { name: conn.name }),
+          { title: t('main.ctx.deleteConnection'), kind: 'warning' },
+        );
+        if (confirmed) {
+          void deleteConnection(conn.id);
+        }
+      },
+    }));
     const menu = await Menu.new({ items });
     await menu.popup();
   }, [activeConnections, groups, disconnectAction, handleConnect, duplicateConnection, deleteConnection, moveConnectionToGroup]);
