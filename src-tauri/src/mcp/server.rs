@@ -331,14 +331,16 @@ impl DataZenMcpServer {
                 McpError::invalid_params(format!("Skill '{}' not found", input.skill_id), None)
             })?;
 
-        super::SkillExecutor::execute(
+        let result = super::SkillExecutor::execute(
             &skill,
             &self.app_state,
             input.connection_id.as_deref(),
             &input.variables,
         )
         .await
-        .map_err(|e| McpError::internal_error(e, None))
+        .map_err(|e| McpError::internal_error(e, None))?;
+
+        Ok(result.final_output)
     }
 }
 

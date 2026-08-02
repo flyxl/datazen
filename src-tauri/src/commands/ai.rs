@@ -730,21 +730,31 @@ pub async fn skill_execute(
     skill_id: String,
     variables: serde_json::Value,
     connection_id: Option<String>,
-) -> Result<String, CommandError> {
+) -> Result<crate::mcp::SkillExecutionResult, CommandError> {
     let skill = state
         .skill_registry
         .get(&skill_id)
         .await
         .ok_or_else(|| CommandError::NotFound(format!("Skill '{skill_id}' not found")))?;
 
-    crate::mcp::SkillExecutor::execute(
+    let result = crate::mcp::SkillExecutor::execute(
         &skill,
         &state,
         connection_id.as_deref(),
         &variables,
     )
     .await
-    .cmd_err("skill_execute")
+    .cmd_err("skill_execute")?;
+
+    if let Err(e) = state
+        .skill_history
+        .record(&skill.id, &skill.name, &variables, &result)
+        .await
+    {
+        tracing::warn!("Failed to record skill history: {e}");
+    }
+
+    Ok(result)
 }
 
 #[tauri::command]
@@ -785,6 +795,40 @@ pub async fn skill_get(
         .get(&skill_id)
         .await
         .ok_or_else(|| CommandError::NotFound(format!("Skill '{skill_id}' not found")))
+}
+
+// ─── Skill History ───
+
+#[tauri::command]
+pub async fn skill_history_list(
+    state: State<'_, AppState>,
+    skill_id: Option<String>,
+) -> Result<Vec<crate::mcp::skill_history::HistoryListItem>, CommandError> {
+    Ok(state.skill_history.list(skill_id.as_deref()).await)
+}
+
+#[tauri::command]
+pub async fn skill_history_get(
+    state: State<'_, AppState>,
+    history_id: String,
+) -> Result<crate::mcp::skill_history::HistoryEntry, CommandError> {
+    state
+        .skill_history
+        .get(&history_id)
+        .await
+        .ok_or_else(|| CommandError::NotFound(format!("History '{history_id}' not found")))
+}
+
+#[tauri::command]
+pub async fn skill_history_clear(
+    state: State<'_, AppState>,
+    skill_id: Option<String>,
+) -> Result<usize, CommandError> {
+    state
+        .skill_history
+        .clear(skill_id.as_deref())
+        .await
+        .cmd_err("skill_history_clear")
 }
 
 // ─── Phase 8: Schema documentation ───
