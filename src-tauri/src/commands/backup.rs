@@ -159,7 +159,17 @@ pub async fn restore_database(
     for stmt in &statements {
         let full = format!("{};", stmt);
         if let Err(e) = driver.execute(&handle, &full).await {
-            errors.push(format!("Error executing: {}... -> {}", &stmt[..stmt.len().min(80)], e));
+            let max = 80;
+            let end = if stmt.len() <= max {
+                stmt.len()
+            } else {
+                let mut e = max;
+                while e > 0 && !stmt.is_char_boundary(e) {
+                    e -= 1;
+                }
+                e
+            };
+            errors.push(format!("Error executing: {}... -> {e}", &stmt[..end]));
         }
     }
 

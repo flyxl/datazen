@@ -375,7 +375,15 @@ mod provider_tests {
         let response = complete_with_retry(provider.as_ref(), &request, 3)
             .await
             .expect("Schema doc generation failed");
-        eprintln!("  Phase 8 Schema Doc (first 200 chars): {}", &response.content[..response.content.len().min(200)]);
+        let preview_end = {
+            let max = 200;
+            let mut end = max.min(response.content.len());
+            while end > 0 && !response.content.is_char_boundary(end) {
+                end -= 1;
+            }
+            end
+        };
+        eprintln!("  Phase 8 Schema Doc (first 200 chars): {}", &response.content[..preview_end]);
 
         let content = response.content.to_lowercase();
         assert!(content.contains("user"), "Doc should mention users table");
