@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { aiCommands, onAiStreamChunk, onAiStreamError } from '../commands/ai';
+import { extractSqlFromResponse } from '../lib/extractSql';
 import type {
   AiChatMessage,
   AiChatSession,
@@ -489,15 +490,16 @@ export const useAiStore = create<AiStore>((set, get) => ({
     const { nl2sql, chatSession } = get();
 
     if (payload.requestId === nl2sql.requestId) {
-      set((s) => ({
+      const accumulated = payload.content
+        ? nl2sql.generatedSql + payload.content
+        : nl2sql.generatedSql;
+      set({
         nl2sql: {
-          ...s.nl2sql,
-          generatedSql: payload.content
-            ? s.nl2sql.generatedSql + payload.content
-            : s.nl2sql.generatedSql,
-          isGenerating: payload.done ? false : s.nl2sql.isGenerating,
+          ...nl2sql,
+          generatedSql: payload.done ? extractSqlFromResponse(accumulated) : accumulated,
+          isGenerating: payload.done ? false : nl2sql.isGenerating,
         },
-      }));
+      });
       return;
     }
 
