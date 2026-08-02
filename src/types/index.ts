@@ -298,17 +298,39 @@ export interface StreamErrorPayload {
 
 export interface SkillVariable {
   name: string;
-  type: string;
+  type: string; // 'string' | 'number' | 'connection'
   description: string;
   required?: boolean;
   default?: unknown;
 }
 
+export type SkillStepType = 'query' | 'ai' | 'condition' | 'foreach';
+
+export interface ErrorHandlingConfig {
+  strategy: 'abort' | 'skip' | 'fallback';
+  fallbackSteps?: SkillStep[];
+}
+
 export interface SkillStep {
-  type: 'query' | 'ai';
+  type: SkillStepType;
   id: string;
+  // query fields
   sql?: string;
+  connection?: string;
+  // ai fields
   prompt?: string;
+  // common
+  timeoutSecs?: number;
+  onError?: ErrorHandlingConfig;
+  // condition fields
+  if?: string;
+  thenSteps?: SkillStep[];
+  elseSteps?: SkillStep[];
+  // foreach fields
+  items?: string;
+  asVar?: string;
+  steps?: SkillStep[];
+  maxIterations?: number;
 }
 
 export interface SkillOutput {
@@ -325,6 +347,8 @@ export interface SkillDefinition {
   variables: SkillVariable[];
   steps: SkillStep[];
   output?: SkillOutput;
+  timeoutSecs?: number;
+  errorHandling?: ErrorHandlingConfig;
 }
 
 export interface SkillListItem {
@@ -332,6 +356,45 @@ export interface SkillListItem {
   name: string;
   description: string;
   variables: SkillVariable[];
+}
+
+export type StepStatus = 'success' | 'failed' | 'skipped' | 'timed_out';
+
+export interface StepExecutionResult {
+  stepId: string;
+  stepType: string;
+  status: StepStatus;
+  result?: Record<string, unknown>;
+  executionTimeMs: number;
+  error?: string;
+  connectionName?: string;
+  sqlExecuted?: string;
+}
+
+export interface SkillExecutionResult {
+  success: boolean;
+  finalOutput: string;
+  steps: StepExecutionResult[];
+  totalTimeMs: number;
+  error?: string;
+}
+
+export interface HistoryListItem {
+  id: string;
+  skillId: string;
+  skillName: string;
+  success: boolean;
+  totalTimeMs: number;
+  createdAt: string;
+}
+
+export interface HistoryEntry {
+  id: string;
+  skillId: string;
+  skillName: string;
+  variables: Record<string, unknown>;
+  result: SkillExecutionResult;
+  createdAt: string;
 }
 
 // ── Phase 8: Schema docs + Connection diagnosis + Query analysis ──

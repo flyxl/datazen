@@ -201,6 +201,11 @@ async fn build_app_state(store: Arc<Store>) -> Result<AppState, String> {
         tracing::warn!("Failed to load skills: {e}");
     }
 
+    let skill_history = Arc::new(mcp::SkillHistoryManager::new(data_dir.join("skill_history")));
+    if let Err(e) = skill_history.load().await {
+        tracing::warn!("Failed to load skill history: {e}");
+    }
+
     let mcp_client_manager = Arc::new(mcp::McpClientManager::new());
 
     Ok(AppState {
@@ -213,6 +218,7 @@ async fn build_app_state(store: Arc<Store>) -> Result<AppState, String> {
         schema_context_builder,
         prompt_resolver,
         skill_registry,
+        skill_history,
         mcp_client_manager,
     })
 }
@@ -397,6 +403,9 @@ pub fn run() {
             commands::prompt_list,
             commands::prompt_set_override,
             commands::prompt_remove_override,
+            commands::skill_history_list,
+            commands::skill_history_get,
+            commands::skill_history_clear,
             rebuild_menu,
         ])
         .build(tauri::generate_context!())
