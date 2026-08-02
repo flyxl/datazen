@@ -115,18 +115,18 @@ export function FileConnectionFields({ form }: { form: ConnectionFormState }) {
       </div>
 
       {/* ADB mode toggle */}
-      <label className="flex items-center gap-2 text-sm cursor-pointer select-none text-neutral-400 hover:text-neutral-300">
+      <label className="flex items-center gap-2 text-sm cursor-pointer select-none text-fg-muted hover:text-fg-secondary">
         <input
           type="checkbox"
           checked={adbMode}
           onChange={handleToggleAdb}
-          className="rounded border-neutral-600 bg-neutral-700"
+          className="rounded border-edge bg-surface-raised"
         />
         {t('newConn.adbMode')}
       </label>
 
       {adbMode && (
-        <div className="space-y-3 p-3 rounded-lg border border-neutral-700 bg-neutral-800/50">
+        <div className="space-y-3 p-3 rounded-lg border border-edge bg-surface-alt/50">
           {/* Package selector with filter */}
           <div>
             <Label>{t('newConn.adbSelectPackage')}</Label>
@@ -137,7 +137,7 @@ export function FileConnectionFields({ form }: { form: ConnectionFormState }) {
               className="mb-1"
             />
             {loadingPackages ? (
-              <p className="text-xs text-neutral-500">
+              <p className="text-xs text-fg-muted">
                 {t('newConn.adbLoadingPackages')}
               </p>
             ) : (
@@ -158,9 +158,9 @@ export function FileConnectionFields({ form }: { form: ConnectionFormState }) {
             <div>
               <Label>{t('newConn.adbSelectDatabase')}</Label>
               {loadingDatabases ? (
-                <p className="text-xs text-neutral-500">
-                  {t('newConn.adbLoadingDatabases')}
-                </p>
+                <p className="text-xs text-fg-muted">
+                {t('newConn.adbLoadingDatabases')}
+              </p>
               ) : (
                 <Select
                   value={selectedDbPath}
@@ -200,10 +200,10 @@ export function FileConnectionFields({ form }: { form: ConnectionFormState }) {
 
           {/* Status messages */}
           {error && (
-            <p className="text-xs text-red-400">{error}</p>
+            <p className="text-xs text-[var(--c-danger)]">{error}</p>
           )}
           {success && (
-            <p className="text-xs text-green-400">{success}</p>
+            <p className="text-xs text-[var(--c-success)]">{success}</p>
           )}
         </div>
       )}
