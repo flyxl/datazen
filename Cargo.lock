@@ -1265,6 +1265,7 @@ dependencies = [
  "tauri-plugin-dialog",
  "tauri-plugin-os",
  "tauri-plugin-webdriver",
+ "tempfile",
  "thiserror 1.0.69",
  "tokio",
  "tokio-util",
@@ -1300,7 +1301,6 @@ dependencies = [
 [[package]]
 name = "datazen-plugin-kiwi"
 version = "0.0.7"
-source = "git+https://github.com/flyxl/datazen-plugin-kiwi.git#31f6cd291732ba6a4247f12d431e86f685448e1c"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -1310,6 +1310,7 @@ dependencies = [
  "reqwest 0.13.4",
  "serde",
  "serde_json",
+ "tauri",
  "tokio",
  "tracing",
  "urlencoding",

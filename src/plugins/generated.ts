@@ -6,6 +6,7 @@
  */
 import { kiwiMeta } from '../../.plugins/kiwi/ui/plugin-meta';
 import { KiwiConnectionFields } from '../../.plugins/kiwi/ui/KiwiConnectionFields';
+import { invoke } from '@tauri-apps/api/core';
 import type { DatabaseTypeMeta } from '@datazen/plugin-sdk';
 import type { SqlDialectStrategy } from '@datazen/plugin-sdk';
 import type { ComponentType } from 'react';
@@ -48,4 +49,32 @@ export function getPluginConnectionForm(formVariant: string): ComponentType<any>
     }
   }
   return undefined;
+}
+
+// ===== Plugin Commands =====
+
+export interface PluginCommandMeta {
+  pluginId: string;
+  commands: string[];
+}
+
+/** Commands registered by active plugins via Tauri Plugin system. */
+export const PLUGIN_COMMANDS: PluginCommandMeta[] = [
+  { pluginId: 'kiwi', commands: ['login', 'list_instances'] },
+];
+
+/** Invoke a plugin-provided Tauri command using plugin:id|command format. */
+export async function pluginInvoke<T = unknown>(
+  pluginId: string,
+  command: string,
+  args?: Record<string, unknown>,
+): Promise<T> {
+  return invoke<T>(`plugin:${pluginId}|${command}`, args ?? {});
+}
+
+/** Check whether a specific plugin command is available in this build. */
+export function hasPluginCommand(pluginId: string, command: string): boolean {
+  return PLUGIN_COMMANDS.some(
+    (p) => p.pluginId === pluginId && p.commands.includes(command),
+  );
 }

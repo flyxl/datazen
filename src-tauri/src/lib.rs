@@ -3,6 +3,7 @@ mod cache;
 mod commands;
 mod db;
 pub mod mcp;
+mod plugin_init;
 mod services;
 pub mod ssh_tunnel;
 mod store;
@@ -189,6 +190,12 @@ async fn build_app_state(store: Arc<Store>) -> Result<AppState, String> {
     ));
 
     let data_dir = store.data_dir();
+
+    let prompt_resolver = Arc::new(ai::PromptResolver::new(data_dir));
+    if let Err(e) = prompt_resolver.load().await {
+        tracing::warn!("Failed to load prompt overrides: {e}");
+    }
+
     let skill_registry = Arc::new(mcp::SkillRegistry::new(data_dir.join("skills")));
     if let Err(e) = skill_registry.load_all().await {
         tracing::warn!("Failed to load skills: {e}");
@@ -204,6 +211,7 @@ async fn build_app_state(store: Arc<Store>) -> Result<AppState, String> {
         sync_adapters,
         ai_registry,
         schema_context_builder,
+        prompt_resolver,
         skill_registry,
         mcp_client_manager,
     })
@@ -259,6 +267,8 @@ pub fn run() {
 
     #[cfg(feature = "webdriver")]
     let builder = builder.plugin(tauri_plugin_webdriver::init());
+
+    let builder = plugin_init::register_plugins(builder);
 
     let t_builder = Instant::now();
     tracing::info!("[startup] builder created");
@@ -350,8 +360,6 @@ pub fn run() {
             commands::save_sync_task_direct,
             commands::delete_sync_task,
             commands::check_sync_conflicts,
-            commands::kiwi_login,
-            commands::kiwi_list_instances,
             commands::ai_get_providers,
             commands::ai_get_models,
             commands::ai_fetch_remote_models,
@@ -372,6 +380,8 @@ pub fn run() {
             commands::skill_save,
             commands::skill_delete,
             commands::skill_reload,
+            commands::skill_get_dir,
+            commands::skill_get,
             commands::ai_generate_schema_doc,
             commands::ai_diagnose_connection,
             commands::ai_analyze_queries,
@@ -381,6 +391,12 @@ pub fn run() {
             commands::mcp_client_tools,
             commands::mcp_client_call_tool,
             commands::create_sub_window,
+            commands::adb_list_packages,
+            commands::adb_list_databases,
+            commands::adb_pull_database,
+            commands::prompt_list,
+            commands::prompt_set_override,
+            commands::prompt_remove_override,
             rebuild_menu,
         ])
         .build(tauri::generate_context!())

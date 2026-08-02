@@ -257,6 +257,82 @@ pub struct KeyDetail {
     pub value: serde_json::Value,
 }
 
+/// Identifies an AI prompt scenario.
+///
+/// Each scenario has a default system prompt template built into the main app.
+/// Drivers can override per-scenario prompts via [`DatabaseDriver::prompt_overrides`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PromptScenario {
+    #[serde(rename = "nl2sql")]
+    Nl2Sql,
+    Diagnose,
+    #[serde(rename = "nl_filter")]
+    NlFilter,
+    #[serde(rename = "schema_doc_select_tables")]
+    SchemaDocSelectTables,
+    #[serde(rename = "schema_doc")]
+    SchemaDoc,
+    #[serde(rename = "connection_diagnose")]
+    ConnectionDiagnose,
+    #[serde(rename = "query_summary")]
+    QuerySummary,
+    #[serde(rename = "explain_analysis")]
+    ExplainAnalysis,
+    Chat,
+}
+
+impl PromptScenario {
+    pub fn all() -> &'static [PromptScenario] {
+        &[
+            Self::Nl2Sql,
+            Self::Diagnose,
+            Self::NlFilter,
+            Self::SchemaDocSelectTables,
+            Self::SchemaDoc,
+            Self::ConnectionDiagnose,
+            Self::QuerySummary,
+            Self::ExplainAnalysis,
+            Self::Chat,
+        ]
+    }
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::Nl2Sql => "NL → SQL",
+            Self::Diagnose => "SQL Error Diagnosis",
+            Self::NlFilter => "NL Filter",
+            Self::SchemaDocSelectTables => "Schema Doc (Table Selection)",
+            Self::SchemaDoc => "Schema Documentation",
+            Self::ConnectionDiagnose => "Connection Diagnosis",
+            Self::QuerySummary => "Query Summary",
+            Self::ExplainAnalysis => "EXPLAIN Analysis",
+            Self::Chat => "AI Chat",
+        }
+    }
+}
+
+impl std::fmt::Display for PromptScenario {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = serde_json::to_value(self)
+            .ok()
+            .and_then(|v| v.as_str().map(String::from))
+            .unwrap_or_else(|| format!("{:?}", self));
+        f.write_str(&s)
+    }
+}
+
+/// A bilingual prompt template for a specific scenario.
+///
+/// Templates can contain `{{variable}}` placeholders that get substituted at
+/// runtime. Available variables depend on the scenario.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PromptTemplate {
+    pub system_zh: String,
+    pub system_en: String,
+}
+
 #[derive(Debug, Error)]
 pub enum DriverError {
     #[error("Connection failed: {0}")]

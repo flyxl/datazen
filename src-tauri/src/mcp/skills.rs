@@ -71,6 +71,10 @@ impl SkillRegistry {
         }
     }
 
+    pub fn skills_dir(&self) -> &PathBuf {
+        &self.skills_dir
+    }
+
     pub async fn load_all(&self) -> Result<(), String> {
         if !self.skills_dir.exists() {
             std::fs::create_dir_all(&self.skills_dir).map_err(|e| e.to_string())?;
