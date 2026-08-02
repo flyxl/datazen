@@ -71,6 +71,7 @@ const zhCN = {
   'main.ctx.removeFromGroup': '移除分组',
   'main.ctx.moveToGroup': '移动到分组',
   'main.ctx.deleteConnection': '删除连接',
+  'main.ctx.confirmDeleteConnection': '确定要删除连接「{name}」吗？此操作不可撤消。',
 
   // ── Main / Group Dialog ──
   'main.newGroupTitle': '新建分组',

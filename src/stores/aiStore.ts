@@ -197,6 +197,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
   fetchingRemoteModels: false,
 
   loadConfig: async () => {
+    if (!('__TAURI_INTERNALS__' in globalThis)) return;
     set({ configLoading: true, configError: null });
     try {
       const config = await aiCommands.getConfig();
@@ -214,6 +215,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
   },
 
   loadProviders: async () => {
+    if (!('__TAURI_INTERNALS__' in globalThis)) return;
     try {
       const providers = await aiCommands.getProviders();
       set({ providers });
@@ -538,6 +540,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
   },
 
   setupEventListeners: async () => {
+    if (!('__TAURI_INTERNALS__' in globalThis)) return () => {};
     const unChunk = await onAiStreamChunk((payload) => {
       get().handleStreamChunk(payload);
     });

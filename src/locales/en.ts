@@ -73,6 +73,7 @@ const en: Record<TranslationKey, string> = {
   'main.ctx.removeFromGroup': 'Remove from Group',
   'main.ctx.moveToGroup': 'Move to Group',
   'main.ctx.deleteConnection': 'Delete Connection',
+  'main.ctx.confirmDeleteConnection': 'Are you sure you want to delete connection "{name}"? This cannot be undone.',
 
   // ── Main / Group Dialog ──
   'main.newGroupTitle': 'New Group',
