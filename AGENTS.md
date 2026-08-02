@@ -26,7 +26,7 @@ datazen/
 │   ├── windows/                 # 各窗口页面（main, connection, settings, backup, data-sync, new-connection）
 │   ├── stores/                  # Zustand 状态（aiStore, connectionStore, queryStore, schemaStore 等）
 │   ├── commands/                # Tauri IPC 命令封装（ai.ts, connection.ts, query.ts 等）
-│   ├── lib/                     # 工具库（databaseTypes, sqlDialects, connectionViews, windowManager）
+│   ├── lib/                     # 工具库（databaseTypes, sqlDialects, connectionViews, windowManager, extractSql）
 │   ├── plugins/generated.ts     # 自动生成的插件注册（勿手动编辑）
 │   ├── plugin-sdk/              # 插件前端 SDK
 │   ├── hooks/                   # React hooks（useI18n, useTheme, usePlatform 等）
@@ -101,10 +101,10 @@ src-tauri/src/ai/
 ```
 
 **AI IPC 命令**（`src-tauri/src/commands/ai.rs`）：
-- `ai_generate_sql` — NL2SQL（流式，通过 Tauri Events 推送）
+- `ai_generate_sql` — NL2SQL（流式，通过 Tauri Events 推送，含 `extractSqlFromResponse` 后处理）
 - `ai_diagnose_error` — SQL 错误诊断
 - `ai_analyze_explain` — EXPLAIN 计划 AI 分析
-- `ai_chat` — AI 对话（流式）
+- `ai_chat` — AI 对话（流式，支持思考/回答分离）
 - `ai_parse_filter` — 自然语言筛选解析
 - `ai_generate_schema_doc` — Schema 文档生成
 - `ai_diagnose_connection` — 连接故障排查
@@ -115,7 +115,7 @@ src-tauri/src/ai/
 - `Nl2SqlPanel` — 自然语言转 SQL 输入面板
 - `DiagnosisPanel` — SQL 错误诊断结果展示
 - `ExplainPanel` — EXPLAIN 可视化 + AI 分析
-- `AiChatPanel` — 侧边栏 AI 对话面板（含 Skills 标签页）
+- `AiChatPanel` — 侧边栏 AI 对话面板（含 Skills 标签页，支持推理过程折叠显示）
 - `NlFilterInput` — 自然语言筛选输入
 - `SkillsPanel` — Skills 管理和执行
 
@@ -129,6 +129,11 @@ DataZen 同时作为 **MCP Server** 和 **MCP Client**：
   - Prompts: `nl2sql`, `diagnose_error`, `explain_plan`
 - **MCP Client**（`src-tauri/src/mcp/client.rs`）— 连接外部 MCP Server 获取工具能力
 - **Skills**（`src-tauri/src/mcp/skills.rs`）— 用户自定义 AI 工作流（YAML 定义、变量替换、SQL + AI 步骤执行）
+  - 支持跨数据库查询（通过 `connection` 变量绑定不同连接）
+  - 步骤类型：`Query`（SQL 查询）、`Ai`（AI 推理）、`Condition`（条件分支）、`ForEach`（循环）
+  - 模板引擎支持深层 JSON 路径（`steps.<id>.rows.0.field`）和通配符（`steps.<id>.rows.*.field`）
+  - 错误处理策略：`abort`、`skip`、`fallback`
+  - 执行历史持久化（`src-tauri/src/mcp/skill_history.rs`）
 
 ### 前端约定
 
@@ -157,6 +162,17 @@ DataZen 同时作为 **MCP Server** 和 **MCP Client**：
 - 分类：`Store`, `Connection`, `Driver`, `Ai`, `Io`, `Json`, `NotFound`, `NotConfigured`, `Validation`, `Internal`
 - 序列化为纯字符串以保持前端兼容
 - `CmdExt` trait 提供统一的错误日志记录和转换
+- AI JSON 解析使用 `parse_ai_json()` 辅助函数，自动检测 `finish_reason` 截断并给出友好提示
+- 所有字符串截断使用 `truncate_str()` 确保在 UTF-8 字符边界上截断，避免 panic
+
+### AI 流式响应
+
+`StreamChunk` 包含 `content` 和 `reasoning` 两个独立字段：
+- `content` — 正式回答内容
+- `reasoning` — 模型思考/推理过程（`reasoning_content` from OpenAI/DeepSeek）
+- 前端 `aiStore` 分别累积两个字段，完成后合并到 `AiChatMessage`
+- 聊天界面将推理过程渲染为可折叠区域（默认折叠）
+- NL2SQL 在流完成时通过 `extractSqlFromResponse()` 过滤非 SQL 内容
 
 ## 开发命令
 
