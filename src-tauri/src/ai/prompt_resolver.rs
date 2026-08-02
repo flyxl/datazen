@@ -102,7 +102,11 @@ impl PromptResolver {
         driver: Option<&dyn DatabaseDriver>,
         lang: &str,
     ) -> String {
-        let driver_type_name = driver.map(|d| format!("{:?}", d.driver_type()));
+        let driver_type_name = driver.and_then(|d| {
+            serde_json::to_value(&d.driver_type())
+                .ok()
+                .and_then(|v| v.as_str().map(String::from))
+        });
 
         let overrides = self.user_overrides.read().await;
 
@@ -142,7 +146,11 @@ impl PromptResolver {
         &self,
         driver: Option<&dyn DatabaseDriver>,
     ) -> Vec<PromptInfo> {
-        let driver_type_name = driver.map(|d| format!("{:?}", d.driver_type()));
+        let driver_type_name = driver.and_then(|d| {
+            serde_json::to_value(&d.driver_type())
+                .ok()
+                .and_then(|v| v.as_str().map(String::from))
+        });
         let driver_prompts = driver
             .map(|d| d.prompt_overrides())
             .unwrap_or_default();

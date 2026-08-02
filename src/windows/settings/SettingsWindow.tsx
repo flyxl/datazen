@@ -19,6 +19,7 @@ import { useI18n } from '../../hooks/useI18n';
 import { getUrlParam } from '../../lib/windowKind';
 import { cn } from '../../lib/cn';
 import { aiCommands, type PromptInfo, type PromptOverrideEntry, type PromptScenario, type PromptSource } from '../../commands/ai';
+import { connectionCommands } from '../../commands/connection';
 import type { AppSettings, AiProviderConfig, AiProviderType, McpServerConfig } from '../../types';
 import type { TranslationKey } from '../../locales';
 
@@ -799,15 +800,17 @@ function PromptSettingsSection() {
   const [editZh, setEditZh] = useState('');
   const [editEn, setEditEn] = useState('');
   const [feedback, setFeedback] = useState('');
-
-  const driverOptions = [
+  const [driverOptions, setDriverOptions] = useState<{ value: string; label: string }[]>([
     { value: '*', label: t('settings.prompts.allDrivers') },
-    { value: 'PostgreSQL', label: 'PostgreSQL' },
-    { value: 'MySQL', label: 'MySQL' },
-    { value: 'MariaDB', label: 'MariaDB' },
-    { value: 'SQLite', label: 'SQLite' },
-    { value: 'Redis', label: 'Redis' },
-  ];
+  ]);
+
+  useEffect(() => {
+    void connectionCommands.getAvailableDrivers().then((drivers) => {
+      const base = [{ value: '*', label: t('settings.prompts.allDrivers') }];
+      const opts = drivers.map((d) => ({ value: d, label: d }));
+      setDriverOptions([...base, ...opts]);
+    });
+  }, [t]);
 
   const loadPrompts = useCallback(async () => {
     const dt = driverType === '*' ? undefined : driverType;
