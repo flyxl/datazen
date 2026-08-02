@@ -204,9 +204,13 @@ export const useQueryStore = create<QueryStore>((set, get) => ({
   cancelQuery: async (tabId) => {
     const { connectionId } = get();
     if (!connectionId) return;
-    await queryCommands.cancelQuery(connectionId);
+    try {
+      await queryCommands.cancelQuery(connectionId);
+    } catch {
+      // best-effort cancellation
+    }
     set((s) => ({
-      tabs: s.tabs.map((t) => (t.id === tabId ? { ...t, running: false } : t)),
+      tabs: s.tabs.map((t) => (t.id === tabId ? { ...t, running: false, error: 'Query cancelled' } : t)),
     }));
   },
 

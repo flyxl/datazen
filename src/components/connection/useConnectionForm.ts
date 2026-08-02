@@ -197,6 +197,22 @@ export function useConnectionForm(options: UseConnectionFormOptions = {}) {
   const formVariant = meta.connectionForm;
   const hasUsername = !!meta.defaultUser || formVariant === 'kiwi';
 
+  const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
+
+  const validate = useCallback((): boolean => {
+    const errors: Record<string, string> = {};
+
+    if (meta.connectionMode === 'file') {
+      if (!database.trim()) errors.database = t('newConn.required');
+    } else if (formVariant !== 'kiwi' && formVariant !== 'catalog') {
+      if (!host.trim()) errors.host = t('newConn.required');
+      if (!port.trim() || isNaN(Number(port))) errors.port = t('newConn.required');
+    }
+
+    setValidationErrors(errors);
+    return Object.keys(errors).length === 0;
+  }, [database, formVariant, host, meta.connectionMode, port, t]);
+
   const draft = useMemo((): ConnectionConfig => {
     const base: ConnectionConfig = {
       id: editId ?? newId(),
@@ -230,6 +246,7 @@ export function useConnectionForm(options: UseConnectionFormOptions = {}) {
   }, [colorTag, database, databaseType, editId, group, host, name, password, port, schema, sslMode, sshTunnel, t, username]);
 
   async function onTest() {
+    if (!validate()) return;
     setTesting(true);
     setTestOk(null);
     setTestErr(null);
@@ -247,6 +264,7 @@ export function useConnectionForm(options: UseConnectionFormOptions = {}) {
   }
 
   async function onSave() {
+    if (!validate()) return;
     await saveConnection(draft);
     onAfterSave?.();
   }
@@ -320,6 +338,8 @@ export function useConnectionForm(options: UseConnectionFormOptions = {}) {
     showAdvanced,
     setShowAdvanced,
     tabFill,
+    validationErrors,
+    validate,
   };
 }
 

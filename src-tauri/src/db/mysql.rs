@@ -836,7 +836,32 @@ impl DatabaseDriver for MysqlDriver {
         })
     }
 
-    async fn cancel_query(&self, _handle: &ConnectionHandle) -> Result<(), DriverError> {
+    async fn cancel_query(&self, handle: &ConnectionHandle) -> Result<(), DriverError> {
+        let pools = self.pools.read().await;
+        let pool = Self::get_pool(&pools, handle)?;
+
+        let rows: Vec<sqlx::mysql::MySqlRow> = sqlx::query(
+            "SELECT id FROM information_schema.processlist \
+             WHERE id != CONNECTION_ID() \
+               AND command != 'Sleep' \
+               AND info IS NOT NULL",
+        )
+        .fetch_all(pool)
+        .await
+        .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+
+        let mut cancelled = 0u32;
+        for row in &rows {
+            let thread_id: u64 = row.try_get::<u64, _>(0).unwrap_or(0);
+            if thread_id > 0 {
+                let kill_sql = format!("KILL QUERY {}", thread_id);
+                if sqlx::query(&kill_sql).execute(pool).await.is_ok() {
+                    cancelled += 1;
+                }
+            }
+        }
+
+        tracing::info!(cancelled, "mysql: cancelled active queries");
         Ok(())
     }
 

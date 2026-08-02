@@ -180,6 +180,7 @@ const zhCN = {
   'newConn.testing': '测试中…',
   'newConn.testSuccess': '连接成功：',
   'newConn.testFailed': '测试失败',
+  'newConn.required': '此字段为必填项',
   'newConn.unnamed': '未命名连接',
   'newConn.defaultGroup': '开发环境',
   'newConn.colorRed': '红色',
