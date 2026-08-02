@@ -577,6 +577,7 @@ const en: Record<TranslationKey, string> = {
   'chat.notConfigured': 'Please configure an AI provider in Settings first',
   'chat.welcome': 'Hello! I\'m your database assistant. Ask me about SQL queries, database concepts, or data analysis.',
   'chat.insertSql': 'Insert to Editor',
+  'chat.reasoning': 'Thinking',
 
   // ── NL2SQL ──
   'nl2sql.title': 'AI Generate SQL',

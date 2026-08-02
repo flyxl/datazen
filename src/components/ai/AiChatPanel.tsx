@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Loader2, MessageSquare, Send, Settings, Sparkles, Trash2, Copy, Check, Wand2 } from 'lucide-react';
+import { ChevronDown, ChevronRight, Loader2, MessageSquare, Send, Settings, Sparkles, Trash2, Copy, Check, Wand2 } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { useI18n } from '../../hooks/useI18n';
 import { useAiStore } from '../../stores/aiStore';
@@ -126,9 +126,13 @@ export function AiChatPanel({ connectionId, database, onInsertSql }: AiChatPanel
               <ChatBubble key={i} message={msg} onInsertSql={onInsertSql} />
             ))}
 
-            {chatSession?.isStreaming && chatSession.streamContent && (
+            {chatSession?.isStreaming && (chatSession.streamContent || chatSession.streamReasoning) && (
               <ChatBubble
-                message={{ role: 'assistant', content: chatSession.streamContent }}
+                message={{
+                  role: 'assistant',
+                  content: chatSession.streamContent,
+                  reasoning: chatSession.streamReasoning || undefined,
+                }}
                 isStreaming
               />
             )}
@@ -189,6 +193,7 @@ function ChatBubble({
   const { t } = useI18n();
   const isUser = message.role === 'user';
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
+  const [reasoningOpen, setReasoningOpen] = useState(false);
 
   const codeBlocks = !isUser
     ? extractCodeBlocks(message.content)
@@ -208,10 +213,40 @@ function ChatBubble({
           isUser
             ? 'bg-blue-500/20 text-fg'
             : 'bg-surface-alt text-fg-secondary',
-          isStreaming && 'animate-pulse',
+          isStreaming && !message.content && message.reasoning && 'animate-pulse',
         )}
       >
-        <pre className="whitespace-pre-wrap font-sans">{message.content}</pre>
+        {message.reasoning && (
+          <div className="mb-2">
+            <button
+              type="button"
+              className="flex items-center gap-1 text-[10px] text-fg-muted hover:text-fg transition-colors"
+              onClick={() => setReasoningOpen(!reasoningOpen)}
+            >
+              {reasoningOpen
+                ? <ChevronDown className="h-3 w-3" />
+                : <ChevronRight className="h-3 w-3" />
+              }
+              <Sparkles className="h-2.5 w-2.5" />
+              {t('chat.reasoning')}
+            </button>
+            {reasoningOpen && (
+              <pre className="mt-1 whitespace-pre-wrap font-sans text-[11px] text-fg-muted border-l-2 border-fg-muted/20 pl-2 ml-1">
+                {message.reasoning}
+              </pre>
+            )}
+          </div>
+        )}
+
+        {message.content && (
+          <pre className={cn('whitespace-pre-wrap font-sans', isStreaming && 'animate-pulse')}>{message.content}</pre>
+        )}
+
+        {!message.content && isStreaming && message.reasoning && (
+          <div className="flex items-center gap-1 text-[10px] text-fg-muted mt-1">
+            <Loader2 className="h-3 w-3 animate-spin" />
+          </div>
+        )}
 
         {codeBlocks.length > 0 && !isStreaming && (
           <div className="mt-2 flex flex-wrap gap-1">

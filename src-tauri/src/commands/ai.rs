@@ -279,28 +279,7 @@ pub async fn ai_generate_sql(
 
     tokio::spawn(async move {
         while let Some(chunk_result) = rx.recv().await {
-            match chunk_result {
-                Ok(chunk) => {
-                    let _ = handle_clone.emit(
-                        "ai:stream-chunk",
-                        serde_json::json!({
-                            "requestId": req_id_clone,
-                            "content": chunk.content,
-                            "done": chunk.done,
-                            "usage": chunk.usage,
-                        }),
-                    );
-                }
-                Err(e) => {
-                    let _ = handle_clone.emit(
-                        "ai:stream-error",
-                        serde_json::json!({
-                            "requestId": req_id_clone,
-                            "error": e.to_string(),
-                        }),
-                    );
-                }
-            }
+            emit_stream_chunk_or_error(&handle_clone, &req_id_clone, chunk_result);
         }
     });
 
@@ -668,28 +647,7 @@ pub async fn ai_chat(
 
     tokio::spawn(async move {
         while let Some(chunk_result) = rx.recv().await {
-            match chunk_result {
-                Ok(chunk) => {
-                    let _ = handle_clone.emit(
-                        "ai:stream-chunk",
-                        serde_json::json!({
-                            "requestId": req_id_clone,
-                            "content": chunk.content,
-                            "done": chunk.done,
-                            "usage": chunk.usage,
-                        }),
-                    );
-                }
-                Err(e) => {
-                    let _ = handle_clone.emit(
-                        "ai:stream-error",
-                        serde_json::json!({
-                            "requestId": req_id_clone,
-                            "error": e.to_string(),
-                        }),
-                    );
-                }
-            }
+            emit_stream_chunk_or_error(&handle_clone, &req_id_clone, chunk_result);
         }
     });
 
@@ -699,6 +657,36 @@ pub async fn ai_chat(
         .cmd_err("ai_chat")?;
 
     Ok(request_id)
+}
+
+fn emit_stream_chunk_or_error(
+    handle: &AppHandle,
+    request_id: &str,
+    result: Result<StreamChunk, AiError>,
+) {
+    match result {
+        Ok(chunk) => {
+            let mut payload = serde_json::json!({
+                "requestId": request_id,
+                "content": chunk.content,
+                "done": chunk.done,
+                "usage": chunk.usage,
+            });
+            if let Some(reasoning) = &chunk.reasoning {
+                payload["reasoning"] = serde_json::Value::String(reasoning.clone());
+            }
+            let _ = handle.emit("ai:stream-chunk", payload);
+        }
+        Err(e) => {
+            let _ = handle.emit(
+                "ai:stream-error",
+                serde_json::json!({
+                    "requestId": request_id,
+                    "error": e.to_string(),
+                }),
+            );
+        }
+    }
 }
 
 fn strip_markdown_fences(s: &str) -> String {

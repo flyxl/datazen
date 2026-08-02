@@ -404,6 +404,7 @@ impl AiProvider for OpenAiProvider {
                     let _ = sender
                         .send(Ok(StreamChunk {
                             content: String::new(),
+                            reasoning: None,
                             done: true,
                             usage: None,
                         }))
@@ -416,12 +417,13 @@ impl AiProvider for OpenAiProvider {
                         let content = choice
                             .delta
                             .as_ref()
-                            .map(|d| {
-                                let c = d.content.clone().unwrap_or_default();
-                                let r = d.reasoning_content.clone().unwrap_or_default();
-                                c + &r
-                            })
+                            .and_then(|d| d.content.clone())
                             .unwrap_or_default();
+                        let reasoning = choice
+                            .delta
+                            .as_ref()
+                            .and_then(|d| d.reasoning_content.clone())
+                            .filter(|r| !r.is_empty());
 
                         let done = choice.finish_reason.is_some();
                         let usage = chunk.usage.map(|u| TokenUsage {
@@ -430,10 +432,11 @@ impl AiProvider for OpenAiProvider {
                             total_tokens: u.total_tokens,
                         });
 
-                        if !content.is_empty() || done {
+                        if !content.is_empty() || reasoning.is_some() || done {
                             if sender
                                 .send(Ok(StreamChunk {
                                     content,
+                                    reasoning,
                                     done,
                                     usage,
                                 }))
