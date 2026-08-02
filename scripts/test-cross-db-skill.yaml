@@ -1,0 +1,46 @@
+id: order-logistics
+name: 查询订单物流
+description: 根据用户ID查询最新订单，并从物流库查询该订单的物流详情
+timeout_secs: 60
+error_handling:
+  strategy: abort
+variables:
+  - name: pg_conn
+    type: connection
+    description: 订单数据库 (PostgreSQL)
+    required: true
+  - name: mysql_conn
+    type: connection
+    description: 物流数据库 (MySQL)
+    required: true
+  - name: uid
+    type: string
+    description: 用户ID
+    required: true
+steps:
+  - type: query
+    id: get_orders
+    connection: "{{pg_conn}}"
+    sql: "SELECT order_id, product_name, amount FROM test_orders WHERE uid = '{{uid}}' ORDER BY created_at DESC"
+    timeout_secs: 10
+
+  - type: condition
+    id: check_orders
+    if: "steps.get_orders.rows_count > 0"
+    then_steps:
+      - type: query
+        id: get_logistics
+        connection: "{{mysql_conn}}"
+        sql: "SELECT order_id, carrier, tracking_no, status, updated_at FROM test_logistics WHERE order_id IN ({{steps.get_orders.rows.*.order_id}})"
+        timeout_secs: 10
+
+output:
+  format: markdown
+  template: |
+    ## 用户 {{uid}} 的订单物流信息
+
+    ### 订单列表
+    {{steps.get_orders.result}}
+
+    ### 物流详情
+    {{steps.get_logistics.result}}
