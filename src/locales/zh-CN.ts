@@ -549,6 +549,23 @@ const zhCN = {
   'settings.ai.endpointHintOpenAiResponses': '例如 https://api.openai.com/v1',
   'settings.ai.endpointHintAnthropic': '例如 https://api.anthropic.com',
 
+  // ── Prompt Management ──
+  'settings.prompts': 'Prompt 管理',
+  'settings.prompts.description': '查看和自定义 AI 功能使用的系统 Prompt。每个驱动和场景都可以单独配置。',
+  'settings.prompts.driver': '数据库驱动',
+  'settings.prompts.allDrivers': '通用（所有驱动）',
+  'settings.prompts.source.default': '默认',
+  'settings.prompts.source.driver': '驱动定制',
+  'settings.prompts.source.user': '用户自定义',
+  'settings.prompts.edit': '编辑',
+  'settings.prompts.reset': '重置为默认',
+  'settings.prompts.resetConfirm': '确定要重置此 Prompt 为默认值吗？',
+  'settings.prompts.zh': '中文 Prompt',
+  'settings.prompts.en': '英文 Prompt',
+  'settings.prompts.saved': 'Prompt 已保存',
+  'settings.prompts.resetDone': '已重置为默认',
+  'settings.prompts.variables': '可用变量',
+
   // ── AI Chat ──
   'chat.title': 'AI 助手',
   'chat.placeholder': '输入消息，询问关于数据库的问题…',

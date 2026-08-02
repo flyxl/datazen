@@ -48,6 +48,15 @@ impl DriverRegistry {
         let kv_drivers = self.kv_drivers.read().await;
         kv_drivers.get(db_type).cloned()
     }
+
+    /// Look up a SQL driver by its `Debug` name (e.g. `"PostgreSQL"`, `"MySQL"`).
+    pub fn get_sql_driver_by_name(&self, name: &str) -> Option<Arc<dyn DatabaseDriver>> {
+        let drivers = self.drivers.blocking_read();
+        drivers
+            .iter()
+            .find(|(dt, _)| format!("{:?}", dt) == name)
+            .map(|(_, d)| d.clone())
+    }
 }
 
 /// Registers built-in drivers and discovers plugin drivers via `inventory`.

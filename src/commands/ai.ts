@@ -20,6 +20,36 @@ import type {
   StreamErrorPayload,
 } from '../types';
 
+export type PromptScenario =
+  | 'nl2sql'
+  | 'diagnose'
+  | 'nl_filter'
+  | 'schema_doc_select_tables'
+  | 'schema_doc'
+  | 'connection_diagnose'
+  | 'query_summary'
+  | 'explain_analysis'
+  | 'chat';
+
+export type PromptSource = 'default' | 'driver' | 'user';
+
+export interface PromptInfo {
+  scenario: PromptScenario;
+  label: string;
+  source: PromptSource;
+  systemZh: string;
+  systemEn: string;
+  defaultZh: string;
+  defaultEn: string;
+}
+
+export interface PromptOverrideEntry {
+  driverType: string;
+  scenario: PromptScenario;
+  systemZh: string;
+  systemEn: string;
+}
+
 export const aiCommands = {
   getProviders: () => invoke<ProviderListItem[]>('ai_get_providers'),
 
@@ -115,6 +145,13 @@ export const aiCommands = {
     toolName: string;
     arguments: Record<string, unknown>;
   }) => invoke<string>('mcp_client_call_tool', params),
+
+  promptList: (driverType?: string) =>
+    invoke<PromptInfo[]>('prompt_list', { driverType: driverType ?? null }),
+  promptSetOverride: (entry: PromptOverrideEntry) =>
+    invoke<void>('prompt_set_override', { entry }),
+  promptRemoveOverride: (driverType: string, scenario: PromptScenario) =>
+    invoke<void>('prompt_remove_override', { driverType, scenario }),
 };
 
 export function onAiStreamChunk(
