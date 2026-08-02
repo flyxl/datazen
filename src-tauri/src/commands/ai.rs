@@ -425,7 +425,7 @@ pub async fn ai_analyze_explain(
             idx = i,
             role = ?msg.role,
             content_len = msg.content.len(),
-            content_preview = %&msg.content[..msg.content.len().min(300)],
+            content_preview = %truncate_str(&msg.content, 300),
             "ai_analyze_explain: message[{}]", i
         );
     }
@@ -444,7 +444,7 @@ pub async fn ai_analyze_explain(
     );
     if !response.content.is_empty() {
         tracing::info!(
-            response_content = %&response.content[..response.content.len().min(500)],
+            response_content = %truncate_str(&response.content, 500),
             "ai_analyze_explain: response content"
         );
     }
@@ -567,7 +567,7 @@ pub async fn ai_chat(
         database = ?database,
         messages_count = messages.len(),
         %include_schema,
-        last_user_msg = messages.last().map(|m| &m.content[..m.content.len().min(100)]).unwrap_or(""),
+        last_user_msg = messages.last().map(|m| truncate_str(&m.content, 100)).unwrap_or(""),
         "ai_chat: start"
     );
     let (provider, ai_config) = resolve_ai(&state).await?;
@@ -640,6 +640,17 @@ pub async fn ai_chat(
     Ok(request_id)
 }
 
+fn truncate_str(s: &str, max_bytes: usize) -> &str {
+    if s.len() <= max_bytes {
+        return s;
+    }
+    let mut end = max_bytes;
+    while end > 0 && !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    &s[..end]
+}
+
 fn parse_ai_json<T: serde::de::DeserializeOwned>(
     raw: &str,
     finish_reason: Option<&str>,
@@ -653,7 +664,7 @@ fn parse_ai_json<T: serde::de::DeserializeOwned>(
     serde_json::from_str::<T>(&content).map_err(|e| {
         tracing::error!(
             cmd,
-            raw_content = %&content[..content.len().min(500)],
+            raw_content = %truncate_str(&content, 500),
             ?finish_reason,
             "JSON parse failed: {e}"
         );

@@ -339,11 +339,22 @@ fn split_instructions(messages: &[ChatMessage]) -> (Option<String>, Vec<OaiMessa
     (instructions, input)
 }
 
+fn truncate_str(s: &str, max_bytes: usize) -> &str {
+    if s.len() <= max_bytes {
+        return s;
+    }
+    let mut end = max_bytes;
+    while end > 0 && !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    &s[..end]
+}
+
 fn map_oai_error(status: reqwest::StatusCode, body: &str) -> AiError {
     match status.as_u16() {
         401 => AiError::InvalidApiKey,
         429 => AiError::RateLimited { retry_after_secs: 60 },
-        _ => AiError::RequestFailed(format!("HTTP {status}: {}", &body[..body.len().min(500)])),
+        _ => AiError::RequestFailed(format!("HTTP {status}: {}", truncate_str(body, 500))),
     }
 }
 
