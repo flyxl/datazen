@@ -380,6 +380,8 @@ pub fn run() {
             commands::skill_save,
             commands::skill_delete,
             commands::skill_reload,
+            commands::skill_get_dir,
+            commands::skill_get,
             commands::ai_generate_schema_doc,
             commands::ai_diagnose_connection,
             commands::ai_analyze_queries,

@@ -119,6 +119,8 @@ export const aiCommands = {
   skillSave: (skill: SkillDefinition) => invoke<void>('skill_save', { skill }),
   skillDelete: (skillId: string) => invoke<void>('skill_delete', { skillId }),
   skillReload: () => invoke<void>('skill_reload'),
+  skillGetDir: () => invoke<string>('skill_get_dir'),
+  skillGet: (skillId: string) => invoke<SkillDefinition>('skill_get', { skillId }),
 
   generateSchemaDoc: (params: {
     connectionId: string;
