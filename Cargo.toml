@@ -5,6 +5,10 @@ members = [
     "packages/driver-api",
     "packages/ai-api",
 ]
+exclude = [
+    ".plugins/kiwi",
+    ".plugins/olap",
+]
 
 [profile.dev]
 incremental = true
@@ -17,3 +21,6 @@ opt-level = "s"
 
 [patch."https://github.com/flyxl/datazen-driver-api.git"]
 datazen-driver-api = { path = "packages/driver-api" }
+
+[patch."https://github.com/flyxl/datazen-plugin-kiwi.git"]
+datazen-plugin-kiwi = { path = ".plugins/kiwi" }

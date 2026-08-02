@@ -70,3 +70,6 @@ default = []
 webdriver = ["tauri-plugin-webdriver"]
 plugin-kiwi = ["dep:datazen-plugin-kiwi"]
 plugin-olap = ["dep:datazen-plugin-olap"]
+
+[dev-dependencies]
+tempfile = "3.27.0"

@@ -5,6 +5,7 @@ import { useI18n } from '../../hooks/useI18n';
 import { DB_REGISTRY, normalizeRedisDatabaseField } from '../../lib/databaseTypes';
 import { newId } from './shared';
 import type { ConnectionConfig, DatabaseType, SslMode, SshTunnelConfig } from '../../types';
+import { pluginInvoke } from '../../plugins/generated';
 
 export interface UseConnectionFormOptions {
   editId?: string | null;
@@ -116,7 +117,7 @@ export function useConnectionForm(options: UseConnectionFormOptions = {}) {
   async function loadKiwiInstances(baseUrl: string, token: string) {
     setLoadingInstances(true);
     try {
-      const data = await (window as any).__TAURI_INTERNALS__?.invoke('kiwi_list_instances', {
+      const data = await pluginInvoke<any>('kiwi', 'list_instances', {
         baseUrl,
         token,
         sourceType: Number(port) || 4,
@@ -148,7 +149,7 @@ export function useConnectionForm(options: UseConnectionFormOptions = {}) {
     setTestErr(null);
     setTestOk(null);
     try {
-      const result = await (window as any).__TAURI_INTERNALS__?.invoke('kiwi_login', {
+      const result = await pluginInvoke<any>('kiwi', 'login', {
         baseUrl: host,
         username,
         password,
