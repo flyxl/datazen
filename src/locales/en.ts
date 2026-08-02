@@ -182,6 +182,7 @@ const en: Record<TranslationKey, string> = {
   'newConn.testing': 'Testing…',
   'newConn.testSuccess': 'Connected: ',
   'newConn.testFailed': 'Test Failed',
+  'newConn.required': 'This field is required',
   'newConn.unnamed': 'Unnamed Connection',
   'newConn.defaultGroup': 'Development',
   'newConn.colorRed': 'Red',

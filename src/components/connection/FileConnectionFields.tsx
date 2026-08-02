@@ -111,7 +111,11 @@ export function FileConnectionFields({ form }: { form: ConnectionFormState }) {
           value={form.database}
           onChange={(e) => form.setDatabase(e.target.value)}
           placeholder="/path/to/db.sqlite"
+          className={form.validationErrors.database ? 'border-red-500' : ''}
         />
+        {form.validationErrors.database && (
+          <p className="mt-1 text-xs text-red-400">{form.validationErrors.database}</p>
+        )}
       </div>
 
       {/* ADB mode toggle */}

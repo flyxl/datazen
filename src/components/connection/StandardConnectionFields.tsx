@@ -25,11 +25,22 @@ export function StandardConnectionFields({
           value={form.host}
           onChange={(e) => form.setHost(e.target.value)}
           placeholder={hostPlaceholder}
+          className={form.validationErrors.host ? 'border-red-500' : ''}
         />
+        {form.validationErrors.host && (
+          <p className="mt-1 text-xs text-red-400">{form.validationErrors.host}</p>
+        )}
       </div>
       <div>
         <Label required>{t('newConn.port')}</Label>
-        <Input value={form.port} onChange={(e) => form.setPort(e.target.value)} />
+        <Input
+          value={form.port}
+          onChange={(e) => form.setPort(e.target.value)}
+          className={form.validationErrors.port ? 'border-red-500' : ''}
+        />
+        {form.validationErrors.port && (
+          <p className="mt-1 text-xs text-red-400">{form.validationErrors.port}</p>
+        )}
       </div>
       {databaseField ?? (
         <div className="md:col-span-2">

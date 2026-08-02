@@ -731,7 +731,22 @@ impl DatabaseDriver for PostgresDriver {
         })
     }
 
-    async fn cancel_query(&self, _handle: &ConnectionHandle) -> Result<(), DriverError> {
+    async fn cancel_query(&self, handle: &ConnectionHandle) -> Result<(), DriverError> {
+        let pools = self.pools.read().await;
+        let pool = Self::get_pool(&pools, handle)?;
+
+        let rows = sqlx::query(
+            "SELECT pg_cancel_backend(pid) \
+             FROM pg_stat_activity \
+             WHERE pid != pg_backend_pid() \
+               AND state = 'active' \
+               AND datname = current_database()",
+        )
+        .fetch_all(pool)
+        .await
+        .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+
+        tracing::info!(cancelled = rows.len(), "pg: cancelled active queries");
         Ok(())
     }
 

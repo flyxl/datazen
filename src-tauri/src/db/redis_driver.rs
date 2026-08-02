@@ -1035,6 +1035,7 @@ impl DatabaseDriver for RedisDriver {
     }
 
     async fn cancel_query(&self, _handle: &ConnectionHandle) -> Result<(), DriverError> {
+        tracing::debug!("redis: cancel_query is a no-op (commands are atomic)");
         Ok(())
     }
 

@@ -471,6 +471,7 @@ impl DatabaseDriver for SqliteDriver {
     }
 
     async fn cancel_query(&self, _handle: &ConnectionHandle) -> Result<(), DriverError> {
+        tracing::debug!("sqlite: cancel_query is a no-op (single-connection, in-process)");
         Ok(())
     }
 
