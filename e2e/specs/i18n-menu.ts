@@ -117,7 +117,7 @@ describe('Internationalization (I18N-001~I18N-010)', () => {
     const searchInput = await $('input[type="text"]');
     if (await searchInput.isExisting()) {
       const placeholder = await searchInput.getAttribute('placeholder');
-      expect(placeholder).toContain(t('main.searchPlaceholder'));
+      expect(placeholder).toContain('查找');
     }
   });
 

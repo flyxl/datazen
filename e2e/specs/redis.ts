@@ -179,8 +179,8 @@ describe('Redis 数据库支持 (RD-001~RD-015)', () => {
 
   it('Redis 连接窗口应显示"数据浏览"和"命令"标签 (RD-001)', async () => {
     const body = await $('body').getText();
-    expect(body).toContain(t('redis.items'));
-    expect(body).toContain(t('redis.queries'));
+    expect(body).toContain('数据浏览');
+    expect(body).toContain('命令');
   });
 
   it('标题栏应显示 Redis 类型 (RD-002)', async () => {
@@ -208,7 +208,7 @@ describe('Redis 数据库支持 (RD-001~RD-015)', () => {
       await browser.pause(2000);
       const body = await $('body').getText();
       // Should show at least one e2e key or key count info
-      const hasKeyInfo = body.includes('e2e:') || body.includes('loaded') || body.includes(t('redis.dbSize', { count: '' }).replace('{count} ', ''));
+      const hasKeyInfo = body.includes('e2e:') || body.includes('loaded') || body.includes('个键');
       expect(hasKeyInfo).toBe(true);
     }
   });

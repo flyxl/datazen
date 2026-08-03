@@ -61,29 +61,3 @@ pub fn create_sub_window(app: AppHandle, options: CreateWindowOptions) -> Result
     builder.build().map_err(|e| CommandError::Internal(e.to_string()))?;
     Ok(())
 }
-
-#[tauri::command]
-pub fn open_in_explorer(path: String) -> Result<(), CommandError> {
-    #[cfg(target_os = "macos")]
-    {
-        std::process::Command::new("open")
-            .arg(&path)
-            .spawn()
-            .map_err(|e| CommandError::Internal(e.to_string()))?;
-    }
-    #[cfg(target_os = "windows")]
-    {
-        std::process::Command::new("explorer")
-            .arg(&path)
-            .spawn()
-            .map_err(|e| CommandError::Internal(e.to_string()))?;
-    }
-    #[cfg(target_os = "linux")]
-    {
-        std::process::Command::new("xdg-open")
-            .arg(&path)
-            .spawn()
-            .map_err(|e| CommandError::Internal(e.to_string()))?;
-    }
-    Ok(())
-}

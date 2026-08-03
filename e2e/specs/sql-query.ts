@@ -114,7 +114,7 @@ describe('SQL 查询模块 (SQ-001~SQ-012)', () => {
     await tab2.click();
     await browser.pause(300);
     const body = await $('body').getText();
-    expect(body).toContain(`1 ${t('common.rows')}`);
+    expect(body).toContain('1 行');
 
     const tab1 = await $(`button*=${t('query.result')} 1`);
     await tab1.click();
@@ -132,7 +132,7 @@ describe('SQL 查询模块 (SQ-001~SQ-012)', () => {
     await execBtn.click();
 
     await browser.waitUntil(
-      async () => (await $('body').getText()).includes(t('query.totalTime')),
+      async () => (await $('body').getText()).includes('总耗时'),
       { timeout: 15000, timeoutMsg: 'Timed out waiting for DML execution' },
     );
 
@@ -141,7 +141,7 @@ describe('SQL 查询模块 (SQ-001~SQ-012)', () => {
     const execBtn2 = await $(`button*=${t('query.execute')}`);
     await execBtn2.click();
     await browser.waitUntil(
-      async () => (await $('body').getText()).includes(t('query.totalTime')),
+      async () => (await $('body').getText()).includes('总耗时'),
       { timeout: 10000 },
     );
   });
@@ -158,7 +158,8 @@ describe('SQL 查询模块 (SQ-001~SQ-012)', () => {
     await browser.waitUntil(
       async () => {
         const body = await $('body').getText();
-        return body.includes('does not exist') || body.includes('nonexistent') || body.includes('ERROR') ||
+        return body.includes('does not exist') || body.includes('不存在') ||
+          body.includes('nonexistent') || body.includes('ERROR') ||
           body.includes(t('common.failed'));
       },
       { timeout: 20000, timeoutMsg: 'Timed out waiting for error message' },
@@ -284,7 +285,7 @@ describe('SQL 查询模块 (SQ-001~SQ-012)', () => {
         const body = await $('body').getText();
         return body.includes(t('query.totalTime')) || body.includes(`1 ${t('common.rows')}`);
       },
-      { timeout: 15000, timeoutMsg: 'Timed out waiting for Cmd+Enter selected execution' },
+      { timeout: 15000, timeoutMsg: '等待 Cmd+Enter 选中执行超时' },
     );
 
     const body = await $('body').getText();
@@ -309,7 +310,7 @@ describe('SQL 查询模块 (SQ-001~SQ-012)', () => {
     });
     await browser.pause(1000);
 
-    const input = await $(`input[placeholder*="${t('query.favoriteTitlePlaceholder')}"]`);
+    const input = await $('input[placeholder*=收藏标题]');
     const isShown = await input.isExisting();
     if (isShown) {
       await expect(input).toBeDisplayed();

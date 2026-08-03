@@ -24,7 +24,7 @@ datazen/
 │   │   ├── connection/          # 连接表单组件
 │   │   ├── DataTable/           # 数据表格组件
 │   │   └── ui/                  # 基础 UI 组件（Button, Dialog, Input, Select 等）
-│   ├── windows/                 # 各窗口页面（main, connection, settings, backup, data-sync, new-connection）
+│   ├── windows/                 # 各窗口页面（main, connection, settings, backup, data-sync, new-connection, workflow）
 │   ├── stores/                  # Zustand 状态（aiStore, connectionStore, queryStore, schemaStore 等）
 │   ├── commands/                # Tauri IPC 命令封装（ai.ts, connection.ts, query.ts 等）
 │   ├── lib/                     # 工具库（databaseTypes, sqlDialects, connectionViews, windowManager, extractSql, chart/）
@@ -130,7 +130,8 @@ src-tauri/src/ai/
 - `ExplainPanel` — EXPLAIN 可视化 + AI 分析
 - `AiChatPanel` — 侧边栏 AI 对话面板（含 Workflows 标签页，支持推理过程折叠显示）
 - `NlFilterInput` — 自然语言筛选输入
-- `WorkflowPanel` — Workflows 管理和执行
+- `WorkflowPanel` — Workflows 管理和执行（嵌入 ConnectionView 侧边栏）
+- `WorkflowWindow` — Workflow 独立窗口（`src/windows/workflow/`），采用 ConnectionWindow 风格的 tab 系统展示执行结果
 
 ### MCP（Model Context Protocol）
 
@@ -201,7 +202,7 @@ QueryPanel
 - **视图路由**：`connectionViews/index.ts` 的 `CONNECTION_VIEWS` 映射视图组件
 - **SQL 方言**：`sqlDialects/` 下的策略对象处理 DDL/索引/备份差异
 - **SQL 编辑器方言**：`SqlEditor` 根据连接的 `databaseType` 动态选择 CodeMirror 方言
-- **多窗口管理**：`windowManager.ts` 通过 Rust 命令 `create_sub_window` 创建原生窗口（确保 macOS `acceptFirstMouse`）
+- **多窗口管理**：`windowManager.ts` 通过 Rust 命令 `create_sub_window` 创建原生窗口（确保 macOS `acceptFirstMouse`）。窗口种类由 `windowKind.ts` 的 URL 参数路由，`App.tsx` 按 kind 懒加载不同窗口组件
 - **ErrorBoundary**：全局错误边界组件防止白屏
 
 ### IPC 通信
