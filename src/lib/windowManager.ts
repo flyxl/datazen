@@ -124,6 +124,17 @@ export function openBackupWindow() {
   });
 }
 
+export function openWorkflowWindow() {
+  openWindow(nextLabel('workflow'), {
+    params: { window: 'workflow' },
+    width: 1100,
+    height: 750,
+    minWidth: 700,
+    minHeight: 500,
+    title: t('win.workflow'),
+  });
+}
+
 const SETTINGS_LABEL = 'settings-singleton';
 
 export function openSettingsWindow(section?: string) {

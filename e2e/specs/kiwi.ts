@@ -1,4 +1,5 @@
 import { expect, browser, $, $$ } from '@wdio/globals';
+import { t } from '../i18n.js';
 import {
   closeExtraWindows,
   switchToNewWindow,
@@ -44,7 +45,7 @@ describe('Kiwi 连接表单 (KW-001~KW-006)', () => {
   });
 
   it('切换到 Kiwi 类型应显示专属表单字段 (KW-001)', async () => {
-    const btn = await $('button*=新建连接');
+    const btn = await $(`button*=${t('action.newConnection')}`);
     await btn.click();
     await switchToNewWindow(mainWindow);
 
@@ -61,9 +62,9 @@ describe('Kiwi 连接表单 (KW-001~KW-006)', () => {
     const tokenInput = await $('input[type="password"]');
     await expect(tokenInput).toBeDisplayed();
 
-    // Should show SSO login button
-    const ssoBtn = await $('button*=SSO 登录');
-    await expect(ssoBtn).toBeDisplayed();
+    // Should show Kiwi login button (plugin UI — matched by layout, no i18n key)
+    const loginBtn = await $('div.md\\:col-span-2 button.w-full');
+    await expect(loginBtn).toBeDisplayed();
 
     // Standard host/port fields should NOT be shown
     const hostInput = await $('input[placeholder="prod-db.example.com"]');
@@ -71,7 +72,7 @@ describe('Kiwi 连接表单 (KW-001~KW-006)', () => {
   });
 
   it('Kiwi URL 默认值应为 https://kiwi.akusre.com (KW-002)', async () => {
-    const btn = await $('button*=新建连接');
+    const btn = await $(`button*=${t('action.newConnection')}`);
     await btn.click();
     await switchToNewWindow(mainWindow);
 
@@ -85,7 +86,7 @@ describe('Kiwi 连接表单 (KW-001~KW-006)', () => {
   });
 
   it('填入 Token 后应显示 Instance Domain 和 Username 字段 (KW-003)', async () => {
-    const btn = await $('button*=新建连接');
+    const btn = await $(`button*=${t('action.newConnection')}`);
     await btn.click();
     await switchToNewWindow(mainWindow);
 
@@ -111,7 +112,7 @@ describe('Kiwi 连接表单 (KW-001~KW-006)', () => {
   });
 
   it('"加载实例" 按钮应在填入 Token 后显示 (KW-004)', async () => {
-    const btn = await $('button*=新建连接');
+    const btn = await $(`button*=${t('action.newConnection')}`);
     await btn.click();
     await switchToNewWindow(mainWindow);
 
@@ -123,12 +124,12 @@ describe('Kiwi 连接表单 (KW-001~KW-006)', () => {
     await tokenInput.setValue('fake-token-for-ui-test-12345678901234567890');
     await browser.pause(600);
 
-    const loadBtn = await $('button*=加载实例');
+    const loadBtn = await $('.flex.gap-2 button.shrink-0');
     await expect(loadBtn).toBeDisplayed();
   });
 
   it('Source Type 字段默认值应为 4 (KW-005)', async () => {
-    const btn = await $('button*=新建连接');
+    const btn = await $(`button*=${t('action.newConnection')}`);
     await btn.click();
     await switchToNewWindow(mainWindow);
 
@@ -154,7 +155,7 @@ describe('Kiwi 连接表单 (KW-001~KW-006)', () => {
   });
 
   it('从 Kiwi 切换回 PostgreSQL 应恢复标准表单 (KW-006)', async () => {
-    const btn = await $('button*=新建连接');
+    const btn = await $(`button*=${t('action.newConnection')}`);
     await btn.click();
     await switchToNewWindow(mainWindow);
 
@@ -229,7 +230,7 @@ describe('Kiwi 连接与查询 (KW-010~KW-025)', () => {
   it('Kiwi 连接窗口应显示 SQL 查询界面 (KW-010)', async function () {
     if (shouldSkip) return this.skip();
     const body = await $('body').getText();
-    expect(body).toContain('新建查询');
+    expect(body).toContain(t('connWin.newQuery'));
   });
 
   it('标题栏应包含连接名称和 Kiwi 标识 (KW-011)', async function () {
@@ -283,13 +284,13 @@ describe('Kiwi 连接与查询 (KW-010~KW-025)', () => {
   it('点击表后应显示数据/结构等子标签 (KW-015)', async function () {
     if (shouldSkip) return this.skip();
     const body = await $('body').getText();
-    const hasStructureTab = body.includes('结构') || body.includes('Structure');
+    const hasStructureTab = body.includes(t('connWin.structure')) || body.includes('Structure');
     expect(hasStructureTab).toBe(true);
   });
 
   it('结构标签应显示列信息（名称、类型等） (KW-016)', async function () {
     if (shouldSkip) return this.skip();
-    await switchSubTab('结构');
+    await switchSubTab(t('connWin.structure'));
     await browser.pause(2000);
 
     const body = await $('body').getText();
@@ -321,7 +322,7 @@ describe('Kiwi 连接与查询 (KW-010~KW-025)', () => {
     const body = await $('body').getText();
     // Should show result with "1" and execution time
     expect(body).toContain('1');
-    expect(body).toContain('总耗时');
+    expect(body).toContain(t('query.totalTime'));
   });
 
   it('应能执行 SHOW DATABASES 查询 (KW-019)', async function () {
@@ -342,7 +343,7 @@ describe('Kiwi 连接与查询 (KW-010~KW-025)', () => {
     await openQueryTab();
     await executeSQL('SHOW TABLES');
     const body = await $('body').getText();
-    expect(body).toContain('总耗时');
+    expect(body).toContain(t('query.totalTime'));
   });
 
   it('应能执行带 WHERE 条件的 SELECT (KW-021)', async function () {
@@ -358,21 +359,21 @@ describe('Kiwi 连接与查询 (KW-010~KW-025)', () => {
     if (shouldSkip) return this.skip();
     await openQueryTab();
     await setEditorContent('SELEC INVALID SYNTAX');
-    const execBtn = await $('button*=执行');
+    const execBtn = await $(`button*=${t('query.execute')}`);
     await execBtn.click();
     await browser.waitUntil(
       async () => {
         const body = await $('body').getText();
-        return body.includes('error') || body.includes('Error') || body.includes('错误') || body.includes('text-red');
+        return body.includes('error') || body.includes('Error') || body.includes(t('common.error')) || body.includes('text-red');
       },
-      { timeout: 15000, timeoutMsg: '等待错误提示超时' },
+      { timeout: 15000, timeoutMsg: 'Timed out waiting for error message' },
     );
     const body = await $('body').getText();
     const hasError =
       body.includes('error') ||
       body.includes('Error') ||
       body.includes('syntax') ||
-      body.includes('错误');
+      body.includes(t('common.error'));
     expect(hasError).toBe(true);
   });
 
@@ -473,7 +474,7 @@ describe('Kiwi 连接管理 (KW-030~KW-034)', () => {
   it('应能保存 Kiwi 连接并在主窗口显示 (KW-030)', async function () {
     if (shouldSkip) return this.skip();
 
-    const btn = await $('button*=新建连接');
+    const btn = await $(`button*=${t('action.newConnection')}`);
     await btn.click();
     await switchToNewWindow(mainWindow);
 
@@ -481,7 +482,7 @@ describe('Kiwi 连接管理 (KW-030~KW-034)', () => {
     await kiwiBtn.click();
     await browser.pause(300);
 
-    const nameInput = await $('input[placeholder="例如：主数据库"]');
+    const nameInput = await $(`input[placeholder="${t('newConn.namePlaceholder')}"]`);
     await nameInput.setValue(TEST_CONN);
 
     const urlInput = await $('input[placeholder="https://kiwi.akusre.com"]');
@@ -498,12 +499,12 @@ describe('Kiwi 连接管理 (KW-030~KW-034)', () => {
       await domainInput.setValue(KIWI_DOMAIN);
     }
 
-    const saveBtn = await $('button*=保存');
+    const saveBtn = await $(`button*=${t('common.save')}`);
     await saveBtn.click();
 
     await browser.waitUntil(
       async () => (await browser.getWindowHandles()).length === 1,
-      { timeout: 10000, timeoutMsg: '保存 Kiwi 连接后窗口未关闭' },
+      { timeout: 10000, timeoutMsg: 'Window did not close after saving Kiwi connection' },
     );
 
     await browser.switchToWindow(mainWindow);
@@ -530,7 +531,7 @@ describe('Kiwi 连接管理 (KW-030~KW-034)', () => {
   it('测试连接应返回成功 (KW-032)', async function () {
     if (shouldSkip) return this.skip();
 
-    const btn = await $('button*=新建连接');
+    const btn = await $(`button*=${t('action.newConnection')}`);
     await btn.click();
     await switchToNewWindow(mainWindow);
 
@@ -552,24 +553,24 @@ describe('Kiwi 连接管理 (KW-030~KW-034)', () => {
       await domainInput.setValue(KIWI_DOMAIN);
     }
 
-    const testBtn = await $('button*=测试连接');
+    const testBtn = await $(`button*=${t('newConn.testConnection')}`);
     await testBtn.click();
     await browser.waitUntil(
       async () => {
         const body = await $('body').getText();
-        return body.includes('连接成功') || body.includes('Error');
+        return body.includes(t('newConn.testSuccess')) || body.includes('Error');
       },
-      { timeout: 20000, timeoutMsg: '等待 Kiwi 测试连接结果超时' },
+      { timeout: 20000, timeoutMsg: 'Timed out waiting for Kiwi test connection result' },
     );
 
     const body = await $('body').getText();
-    expect(body).toContain('连接成功');
+    expect(body).toContain(t('newConn.testSuccess'));
   });
 
   it('无效 Token 测试连接应报错 (KW-033)', async function () {
     if (shouldSkip) return this.skip();
 
-    const btn = await $('button*=新建连接');
+    const btn = await $(`button*=${t('action.newConnection')}`);
     await btn.click();
     await switchToNewWindow(mainWindow);
 
@@ -591,21 +592,21 @@ describe('Kiwi 连接管理 (KW-030~KW-034)', () => {
       await domainInput.setValue(KIWI_DOMAIN);
     }
 
-    const testBtn = await $('button*=测试连接');
+    const testBtn = await $(`button*=${t('newConn.testConnection')}`);
     await testBtn.click();
     await browser.waitUntil(
       async () => {
         const body = await $('body').getText();
-        return body.includes('连接成功') || body.includes('Error') || body.includes('error') || body.includes('失败');
+        return body.includes(t('newConn.testSuccess')) || body.includes('Error') || body.includes('error') || body.includes(t('common.failed'));
       },
-      { timeout: 20000, timeoutMsg: '等待 Kiwi 错误测试连接结果超时' },
+      { timeout: 20000, timeoutMsg: 'Timed out waiting for Kiwi error test result' },
     );
 
     const body = await $('body').getText();
     const hasError =
       body.includes('Error') ||
       body.includes('error') ||
-      body.includes('失败') ||
+      body.includes(t('common.failed')) ||
       body.includes('Authentication');
     expect(hasError).toBe(true);
   });
@@ -633,13 +634,13 @@ describe('Kiwi 连接管理 (KW-030~KW-034)', () => {
     await browser.pause(500);
 
     // Click delete option in context menu
-    const deleteOption = await $('div*=删除');
+    const deleteOption = await $(`div*=${t('common.delete')}`);
     if (await deleteOption.isExisting()) {
       await deleteOption.click();
       await browser.pause(500);
 
       // Confirm deletion
-      const confirmBtn = await $('button*=删除');
+      const confirmBtn = await $(`button*=${t('common.delete')}`);
       if (await confirmBtn.isExisting()) {
         await confirmBtn.click();
         await browser.pause(1000);

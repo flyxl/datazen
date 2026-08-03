@@ -1,9 +1,10 @@
 import { expect, browser, $, $$ } from '@wdio/globals';
 import { expandAllGroups } from '../helpers.js';
+import { t } from '../i18n.js';
 
 describe('连接搜索和分组 (CM-007, CM-008)', () => {
   before(async () => {
-    await $('input[placeholder="查找连接…"]').waitForDisplayed({ timeout: 10000 });
+    await $(`input[placeholder="${t('main.searchPlaceholder')}"]`).waitForDisplayed({ timeout: 10000 });
     await expandAllGroups();
     await browser.pause(1000);
   });
@@ -11,7 +12,7 @@ describe('连接搜索和分组 (CM-007, CM-008)', () => {
   // ── 搜索功能 (CM-008) ─────────────────────────────────────────
 
   it('搜索框应能过滤连接 - 无匹配 (CM-008)', async () => {
-    const input = await $('input[placeholder="查找连接…"]');
+    const input = await $(`input[placeholder="${t('main.searchPlaceholder')}"]`);
     await input.setValue('不存在的连接XYZ_99999');
     await browser.pause(500);
 
@@ -24,12 +25,12 @@ describe('连接搜索和分组 (CM-007, CM-008)', () => {
   });
 
   it('搜索应支持按主机地址过滤 (CM-008)', async () => {
-    const input = await $('input[placeholder="查找连接…"]');
+    const input = await $(`input[placeholder="${t('main.searchPlaceholder')}"]`);
     await input.setValue('localhost');
     await browser.pause(500);
 
     const body = await $('body').getText();
-    const hasResult = body.includes('localhost') || body.includes('127.0.0.1') || body.includes('没有连接');
+    const hasResult = body.includes('localhost') || body.includes('127.0.0.1') || body.includes(t('main.noConnections'));
     expect(hasResult).toBe(true);
 
     await input.clearValue();
@@ -37,7 +38,7 @@ describe('连接搜索和分组 (CM-007, CM-008)', () => {
   });
 
   it('搜索应支持按连接名称过滤 (CM-008)', async () => {
-    const input = await $('input[placeholder="查找连接…"]');
+    const input = await $(`input[placeholder="${t('main.searchPlaceholder')}"]`);
     await input.setValue('Postgres');
     await browser.pause(500);
 
@@ -49,7 +50,7 @@ describe('连接搜索和分组 (CM-007, CM-008)', () => {
   });
 
   it('搜索框应能输入并清空 (CM-008)', async () => {
-    const input = await $('input[placeholder="查找连接…"]');
+    const input = await $(`input[placeholder="${t('main.searchPlaceholder')}"]`);
     await input.setValue('test_value');
     const value = await input.getValue();
     expect(value).toBe('test_value');
@@ -77,13 +78,13 @@ describe('连接搜索和分组 (CM-007, CM-008)', () => {
   it('分组头绑定了 contextmenu 处理器 (CM-007)', async () => {
     // Native context menus block WebDriver, so we only verify the elements exist
     // and have event handlers registered (React attaches via delegation).
-    const hasNonUngroupedHeaders = await browser.execute(() => {
+    const hasNonUngroupedHeaders = await browser.execute((ungroupedLabel) => {
       const headers = document.querySelectorAll('[data-group-header]');
       for (const h of headers) {
-        if (h.textContent && !h.textContent.includes('未分组')) return true;
+        if (h.textContent && !h.textContent.includes(ungroupedLabel)) return true;
       }
       return false;
-    });
+    }, t('main.ungrouped'));
     // If there are named groups, their headers should be present and clickable
     if (hasNonUngroupedHeaders) {
       const headers = await $$('[data-group-header]');

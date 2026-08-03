@@ -1,4 +1,5 @@
 import { expect, browser, $ } from '@wdio/globals';
+import { t } from '../i18n.js';
 import {
   clickCardConnectButton,
   closeExtraWindows,
@@ -24,7 +25,7 @@ describe('详情面板 (DP-001~DP-004)', () => {
 
   before(async () => {
     mainWindow = await browser.getWindowHandle();
-    await $('button*=新建连接').waitForDisplayed({ timeout: 10000 });
+    await $(`button*=${t('action.newConnection')}`).waitForDisplayed({ timeout: 10000 });
     await browser.pause(1500);
 
     let handles = await browser.getWindowHandles();
@@ -32,13 +33,13 @@ describe('详情面板 (DP-001~DP-004)', () => {
       await clickCardConnectButton();
       await browser.waitUntil(
         async () => (await browser.getWindowHandles()).length > 1,
-        { timeout: 30000, timeoutMsg: '等待连接窗口打开超时' },
+        { timeout: 30000, timeoutMsg: 'Timed out waiting for connection window' },
       );
       handles = await browser.getWindowHandles();
     }
     const connWindow = handles.find((h) => h !== mainWindow)!;
     await browser.switchToWindow(connWindow);
-    await $('button*=新建查询').waitForDisplayed({ timeout: 20000 });
+    await $(`button*=${t('connWin.newQuery')}`).waitForDisplayed({ timeout: 20000 });
     await browser.pause(2000);
 
     await openQueryTab();
@@ -57,7 +58,7 @@ describe('详情面板 (DP-001~DP-004)', () => {
         ('Bob', 200, '{"role":"user"}')
     `);
 
-    const refreshBtn = await $('button[title="刷新 (⌘R)"]');
+    const refreshBtn = await $(`button[title="${t('connWin.refresh')} (⌘R)"]`);
     await refreshBtn.click();
     await browser.pause(2000);
   });
@@ -82,23 +83,23 @@ describe('详情面板 (DP-001~DP-004)', () => {
   it('打开表数据后应看到详情面板的折叠按钮 (DP-001)', async () => {
     await clickTableInSidebar(TEST_TABLE);
     await browser.pause(2000);
-    await switchSubTab('数据');
+    await switchSubTab(t('connWin.data'));
 
     await browser.waitUntil(
       async () => (await $('body').getText()).includes('Alice'),
-      { timeout: 15000, timeoutMsg: '等待表数据加载超时' },
+      { timeout: 15000, timeoutMsg: 'Timed out waiting for table data to load' },
     );
 
     // The detail panel toggle button should exist at the window level
-    const toggleBtn = await $('button[title="显示详情面板"]');
+    const toggleBtn = await $(`button[title="${t('detail.show')}"]`);
     await expect(toggleBtn).toBeExisting();
   });
 
   it('详情面板应在窗口右侧而不是表格内部 (DP-001)', async () => {
     // The toggle button should be a sibling of the main content area,
     // NOT inside the DataTable's rounded border container.
-    const isWindowLevel = await browser.execute(() => {
-      const btn = document.querySelector('button[title="显示详情面板"]');
+    const isWindowLevel = await browser.execute((showTitle) => {
+      const btn = document.querySelector(`button[title="${showTitle}"]`);
       if (!btn) return false;
       // Walk up the DOM — the detail panel should NOT be inside
       // a container with rounded border (DataTable's wrapper).
@@ -111,7 +112,7 @@ describe('详情面板 (DP-001~DP-004)', () => {
         parent = parent.parentElement;
       }
       return true;
-    });
+    }, t('detail.show'));
     expect(isWindowLevel).toBe(true);
   });
 
@@ -126,13 +127,13 @@ describe('详情面板 (DP-001~DP-004)', () => {
     await browser.pause(300);
 
     // Open the detail panel
-    const toggleBtn = await $('button[title="显示详情面板"]');
+    const toggleBtn = await $(`button[title="${t('detail.show')}"]`);
     await toggleBtn.click();
     await browser.pause(500);
 
     // The detail panel should now show the "详情" header
     const body = await $('body').getText();
-    expect(body).toContain('详情');
+    expect(body).toContain(t('detail.title'));
 
     // Should show field names from the table
     expect(body).toContain('name');

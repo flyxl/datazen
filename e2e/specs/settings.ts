@@ -1,4 +1,5 @@
 import { expect, browser, $ } from '@wdio/globals';
+import { t } from '../i18n.js';
 
 async function invokeBackend<T>(cmd: string, args: Record<string, unknown> = {}): Promise<T> {
   const result = await browser.executeAsync(
@@ -40,22 +41,22 @@ describe('Settings (SS-001~SS-006)', () => {
   // ── Theme toggle (SS-001) ──
 
   it('SS-001: should display theme toggle button', async () => {
-    const themeBtn = await $('button[title*="主题"]');
+    const themeBtn = await $(`button[title*="${t('settings.theme')}"]`);
     await expect(themeBtn).toBeDisplayed();
   });
 
   it('SS-001: clicking theme button should show options', async () => {
-    const themeBtn = await $('button[title*="主题"]');
+    const themeBtn = await $(`button[title*="${t('settings.theme')}"]`);
     await themeBtn.click();
     await browser.pause(300);
 
-    await expect(await $('button*=浅色')).toBeDisplayed();
-    await expect(await $('button*=深色')).toBeDisplayed();
-    await expect(await $('button*=跟随系统')).toBeDisplayed();
+    await expect(await $(`button*=${t('theme.light')}`)).toBeDisplayed();
+    await expect(await $(`button*=${t('theme.dark')}`)).toBeDisplayed();
+    await expect(await $(`button*=${t('theme.system')}`)).toBeDisplayed();
   });
 
   it('SS-001: light theme should remove dark class', async () => {
-    const lightBtn = await $('button*=浅色');
+    const lightBtn = await $(`button*=${t('theme.light')}`);
     await lightBtn.click();
     await browser.pause(500);
 
@@ -65,11 +66,11 @@ describe('Settings (SS-001~SS-006)', () => {
   });
 
   it('SS-001: dark theme should add dark class', async () => {
-    const themeBtn = await $('button[title*="主题"]');
+    const themeBtn = await $(`button[title*="${t('settings.theme')}"]`);
     await themeBtn.click();
     await browser.pause(300);
 
-    const darkBtn = await $('button*=深色');
+    const darkBtn = await $(`button*=${t('theme.dark')}`);
     await darkBtn.click();
     await browser.pause(500);
 
@@ -79,11 +80,11 @@ describe('Settings (SS-001~SS-006)', () => {
   });
 
   it('SS-002: system theme should work', async () => {
-    const themeBtn = await $('button[title*="主题"]');
+    const themeBtn = await $(`button[title*="${t('settings.theme')}"]`);
     await themeBtn.click();
     await browser.pause(300);
 
-    const systemBtn = await $('button*=跟随系统');
+    const systemBtn = await $(`button*=${t('theme.system')}`);
     await expect(systemBtn).toBeDisplayed();
     await systemBtn.click();
     await browser.pause(300);

@@ -8,6 +8,7 @@
  * decode_rows path without depending on table browsing UX details.
  */
 import { expect, browser, $, $$ } from '@wdio/globals';
+import { t } from '../i18n.js';
 import {
   openConnectionWindow,
   createAndConnectMySQL,
@@ -28,7 +29,7 @@ async function expectBodyContains(expected: string[], timeout = 10000) {
   for (const str of expected) {
     await browser.waitUntil(
       async () => (await $('body').getText()).includes(str),
-      { timeout, timeoutMsg: `前端未显示预期值: "${str}"` },
+      { timeout, timeoutMsg: `Expected value not displayed: "${str}"` },
     );
   }
 }
@@ -47,14 +48,14 @@ async function queryAndExpect(sql: string, expected: string[]) {
 async function browseTableAndExpect(table: string, expected: string[]) {
   await clickTableInSidebar(table);
   await browser.pause(3000);
-  await switchSubTab('数据');
+  await switchSubTab(t('connWin.data'));
   // Wait for data to finish loading (spinner gone)
   await browser.waitUntil(
     async () => {
       const body = await $('body').getText();
-      return !body.includes('加载表数据') && (body.includes('全选') || body.includes('每页'));
+      return !body.includes(t('tableView.loadingData')) && (body.includes(t('common.selectAll')) || body.includes(t('pagination.perPage')));
     },
-    { timeout: 20000, timeoutMsg: `等待表 "${table}" 数据加载完成超时` },
+    { timeout: 20000, timeoutMsg: `Timed out waiting for table "${table}" data to load` },
   );
   await browser.pause(500);
   await expectBodyContains(expected, 15000);
@@ -137,7 +138,7 @@ describe('PostgreSQL 字段类型前端展示 (PG-TYPE-001~015)', () => {
     `);
 
     // Refresh sidebar
-    const refreshBtn = await $('button[title="刷新 (⌘R)"]');
+    const refreshBtn = await $(`button[title="${t('connWin.refresh')} (⌘R)"]`);
     if (await refreshBtn.isExisting()) {
       await refreshBtn.click();
       await browser.pause(2000);
@@ -433,7 +434,7 @@ describe('MySQL 字段类型前端展示 (MY-TYPE-001~020)', () => {
     `);
 
     // Refresh sidebar
-    const refreshBtn = await $('button[title="刷新 (⌘R)"]');
+    const refreshBtn = await $(`button[title="${t('connWin.refresh')} (⌘R)"]`);
     if (await refreshBtn.isExisting()) {
       await refreshBtn.click();
       await browser.pause(2000);
@@ -643,13 +644,13 @@ describe('MySQL 字段类型前端展示 (MY-TYPE-001~020)', () => {
   it('结构 tab 应正确显示 MySQL 列类型标签 (MY-TYPE-020)', async () => {
     await clickTableInSidebar(MY_TABLE);
     await browser.pause(1500);
-    await switchSubTab('结构');
+    await switchSubTab(t('connWin.structure'));
     await browser.waitUntil(
       async () => {
         const b = await $('body').getText();
-        return b.includes('c_tinyint') || b.includes('字段名');
+        return b.includes('c_tinyint') || b.includes(t('structView.fieldName'));
       },
-      { timeout: 10000, timeoutMsg: '等待结构 tab 加载超时' },
+      { timeout: 10000, timeoutMsg: 'Timed out waiting for structure tab to load' },
     );
 
     const body = await $('body').getText();

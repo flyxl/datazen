@@ -1,4 +1,5 @@
 import { expect, browser, $, $$ } from '@wdio/globals';
+import { t } from '../i18n.js';
 import {
   clickCardConnectButton,
   closeExtraWindows,
@@ -15,20 +16,20 @@ describe('SQL 查询模块 (SQ-001~SQ-012)', () => {
 
   before(async () => {
     mainWindow = await browser.getWindowHandle();
-    await $('button*=新建连接').waitForDisplayed({ timeout: 10000 });
+    await $(`button*=${t('action.newConnection')}`).waitForDisplayed({ timeout: 10000 });
     await browser.pause(1500);
 
     await clickCardConnectButton();
 
     await browser.waitUntil(
       async () => (await browser.getWindowHandles()).length > 1,
-      { timeout: 20000, timeoutMsg: '等待连接窗口打开超时' },
+      { timeout: 20000, timeoutMsg: 'Timed out waiting for connection window' },
     );
     const handles = await browser.getWindowHandles();
     const connWindow = handles.find((h) => h !== mainWindow)!;
     await browser.switchToWindow(connWindow);
 
-    await $('button*=新建查询').waitForDisplayed({ timeout: 20000 });
+    await $(`button*=${t('connWin.newQuery')}`).waitForDisplayed({ timeout: 20000 });
     await browser.pause(1000);
 
     await openQueryTab();
@@ -41,7 +42,7 @@ describe('SQL 查询模块 (SQ-001~SQ-012)', () => {
   // ── 基础 UI ────────────────────────────────────────────────────
 
   it('SQL 编辑器应显示执行按钮 (SQ-001)', async () => {
-    await expect(await $('button*=执行')).toBeDisplayed();
+    await expect(await $(`button*=${t('query.execute')}`)).toBeDisplayed();
   });
 
   it('应显示执行快捷键提示 (SQ-001)', async () => {
@@ -50,11 +51,11 @@ describe('SQL 查询模块 (SQ-001~SQ-012)', () => {
 
   it('执行查询期间应显示停止按钮 (SQ-001)', async () => {
     await setEditorContent('SELECT pg_sleep(5)');
-    const execBtn = await $('button*=执行');
+    const execBtn = await $(`button*=${t('query.execute')}`);
     await execBtn.click();
     await browser.pause(500);
 
-    const stopBtn = await $('button*=停止');
+    const stopBtn = await $(`button*=${t('query.stop')}`);
     const isVisible = await stopBtn.isDisplayed();
     expect(isVisible).toBe(true);
 
@@ -68,24 +69,24 @@ describe('SQL 查询模块 (SQ-001~SQ-012)', () => {
   it('应能输入 SQL 并执行查询 (SQ-001, SQ-002)', async () => {
     await setEditorContent('SELECT 1 AS test_col');
 
-    const execBtn = await $('button*=执行');
+    const execBtn = await $(`button*=${t('query.execute')}`);
     await execBtn.click();
 
     await browser.waitUntil(
-      async () => (await $('body').getText()).includes('1 行'),
-      { timeout: 15000, timeoutMsg: '等待查询结果超时' },
+      async () => (await $('body').getText()).includes(`1 ${t('common.rows')}`),
+      { timeout: 15000, timeoutMsg: 'Timed out waiting for query result' },
     );
   });
 
   it('结果应显示行数、列数和耗时 (SQ-004)', async () => {
     const body = await $('body').getText();
-    expect(body).toContain('行');
-    expect(body).toContain('列');
+    expect(body).toContain(t('common.rows'));
+    expect(body).toContain(t('common.columns'));
     expect(body).toContain('ms');
   });
 
   it('执行后应显示总耗时 (SQ-002)', async () => {
-    await expect(await $('span*=总耗时')).toBeDisplayed();
+    await expect(await $(`span*=${t('query.totalTime')}`)).toBeDisplayed();
   });
 
   // ── 多语句 ─────────────────────────────────────────────────────
@@ -93,29 +94,29 @@ describe('SQL 查询模块 (SQ-001~SQ-012)', () => {
   it('执行多条语句应显示多个结果标签 (SQ-011)', async () => {
     await setEditorContent('SELECT 1 AS a; SELECT 2 AS b');
 
-    const execBtn = await $('button*=执行');
+    const execBtn = await $(`button*=${t('query.execute')}`);
     await execBtn.click();
 
     await browser.waitUntil(
       async () => {
         const body = await $('body').getText();
-        return body.includes('结果 1') && body.includes('结果 2');
+        return body.includes(`${t('query.result')} 1`) && body.includes(`${t('query.result')} 2`);
       },
-      { timeout: 15000, timeoutMsg: '等待多结果集标签超时' },
+      { timeout: 15000, timeoutMsg: 'Timed out waiting for multi-result tabs' },
     );
 
-    await expect(await $('button*=结果 1')).toBeDisplayed();
-    await expect(await $('button*=结果 2')).toBeDisplayed();
+    await expect(await $(`button*=${t('query.result')} 1`)).toBeDisplayed();
+    await expect(await $(`button*=${t('query.result')} 2`)).toBeDisplayed();
   });
 
   it('应能切换结果标签 (SQ-011)', async () => {
-    const tab2 = await $('button*=结果 2');
+    const tab2 = await $(`button*=${t('query.result')} 2`);
     await tab2.click();
     await browser.pause(300);
     const body = await $('body').getText();
-    expect(body).toContain('1 行');
+    expect(body).toContain(`1 ${t('common.rows')}`);
 
-    const tab1 = await $('button*=结果 1');
+    const tab1 = await $(`button*=${t('query.result')} 1`);
     await tab1.click();
     await browser.pause(300);
   });
@@ -127,20 +128,20 @@ describe('SQL 查询模块 (SQ-001~SQ-012)', () => {
       "CREATE TABLE IF NOT EXISTS _e2e_sql_test (id SERIAL PRIMARY KEY, val TEXT); " +
       "INSERT INTO _e2e_sql_test (val) VALUES ('hello')"
     );
-    const execBtn = await $('button*=执行');
+    const execBtn = await $(`button*=${t('query.execute')}`);
     await execBtn.click();
 
     await browser.waitUntil(
-      async () => (await $('body').getText()).includes('总耗时'),
-      { timeout: 15000, timeoutMsg: '等待 DML 执行超时' },
+      async () => (await $('body').getText()).includes(t('query.totalTime')),
+      { timeout: 15000, timeoutMsg: 'Timed out waiting for DML execution' },
     );
 
     // Clean up
     await setEditorContent('DROP TABLE IF EXISTS _e2e_sql_test');
-    const execBtn2 = await $('button*=执行');
+    const execBtn2 = await $(`button*=${t('query.execute')}`);
     await execBtn2.click();
     await browser.waitUntil(
-      async () => (await $('body').getText()).includes('总耗时'),
+      async () => (await $('body').getText()).includes(t('query.totalTime')),
       { timeout: 10000 },
     );
   });
@@ -151,32 +152,31 @@ describe('SQL 查询模块 (SQ-001~SQ-012)', () => {
     await openQueryTab();
     await setEditorContent('SELECT * FROM nonexistent_table_xyz_12345');
 
-    const execBtn = await $('button*=执行');
+    const execBtn = await $(`button*=${t('query.execute')}`);
     await execBtn.click();
 
     await browser.waitUntil(
       async () => {
         const body = await $('body').getText();
-        return body.includes('does not exist') || body.includes('不存在') ||
-          body.includes('nonexistent') || body.includes('ERROR') ||
-          body.includes('失败');
+        return body.includes('does not exist') || body.includes('nonexistent') || body.includes('ERROR') ||
+          body.includes(t('common.failed'));
       },
-      { timeout: 20000, timeoutMsg: '等待错误信息超时' },
+      { timeout: 20000, timeoutMsg: 'Timed out waiting for error message' },
     );
   });
 
   // ── 历史面板 ───────────────────────────────────────────────────
 
   it('历史按钮应能切换历史面板 (SQ-005)', async () => {
-    const histBtn = await $('button*=历史');
+    const histBtn = await $(`button*=${t('query.history')}`);
     await histBtn.click();
     await browser.pause(500);
-    await expect(await $('div*=查询历史')).toBeDisplayed();
+    await expect(await $(`div*=${t('query.historyTitle')}`)).toBeDisplayed();
   });
 
   it('历史面板应显示之前执行的 SQL 记录 (SQ-005)', async () => {
     const body = await $('body').getText();
-    const hasHistory = body.includes('SELECT') || body.includes('成功') || body.includes('失败');
+    const hasHistory = body.includes('SELECT') || body.includes(t('common.success')) || body.includes(t('common.failed'));
     expect(hasHistory).toBe(true);
   });
 
@@ -203,7 +203,7 @@ describe('SQL 查询模块 (SQ-001~SQ-012)', () => {
   });
 
   it('关闭历史面板 (SQ-005)', async () => {
-    const histBtn = await $('button*=历史');
+    const histBtn = await $(`button*=${t('query.history')}`);
     await histBtn.click();
     await browser.pause(300);
   });
@@ -212,19 +212,19 @@ describe('SQL 查询模块 (SQ-001~SQ-012)', () => {
 
   it('执行长查询时应能取消 (SQ-006)', async () => {
     await setEditorContent('SELECT pg_sleep(10)');
-    const execBtn = await $('button*=执行');
+    const execBtn = await $(`button*=${t('query.execute')}`);
     await execBtn.click();
     await browser.pause(1500);
 
-    const stopBtn = await $('button*=停止');
+    const stopBtn = await $(`button*=${t('query.stop')}`);
     if (await stopBtn.isExisting() && await stopBtn.isDisplayed()) {
       await stopBtn.click();
       await browser.pause(3000);
 
       const body = await $('body').getText();
-      const wasCancelled = body.includes('cancel') || body.includes('取消') ||
-        body.includes('总耗时') || body.includes('错误') ||
-        body.includes('失败') || body.includes('interrupted') ||
+      const wasCancelled = body.includes('cancel') || body.includes(t('common.cancel')) ||
+        body.includes(t('query.totalTime')) || body.includes(t('common.error')) ||
+        body.includes(t('common.failed')) || body.includes('interrupted') ||
         body.includes('pg_sleep');
       expect(wasCancelled).toBe(true);
     } else {
@@ -248,15 +248,15 @@ describe('SQL 查询模块 (SQ-001~SQ-012)', () => {
     });
     await browser.pause(300);
 
-    const execBtn = await $('button*=执行');
+    const execBtn = await $(`button*=${t('query.execute')}`);
     await execBtn.click();
 
     await browser.waitUntil(
       async () => {
         const body = await $('body').getText();
-        return body.includes('总耗时') || body.includes('1 行');
+        return body.includes(t('query.totalTime')) || body.includes(`1 ${t('common.rows')}`);
       },
-      { timeout: 15000, timeoutMsg: '等待选中 SQL 执行完成超时' },
+      { timeout: 15000, timeoutMsg: 'Timed out waiting for selected SQL execution' },
     );
 
     const body = await $('body').getText();
@@ -282,9 +282,9 @@ describe('SQL 查询模块 (SQ-001~SQ-012)', () => {
     await browser.waitUntil(
       async () => {
         const body = await $('body').getText();
-        return body.includes('总耗时') || body.includes('1 行');
+        return body.includes(t('query.totalTime')) || body.includes(`1 ${t('common.rows')}`);
       },
-      { timeout: 15000, timeoutMsg: '等待 Cmd+Enter 选中执行超时' },
+      { timeout: 15000, timeoutMsg: 'Timed out waiting for Cmd+Enter selected execution' },
     );
 
     const body = await $('body').getText();
@@ -294,7 +294,7 @@ describe('SQL 查询模块 (SQ-001~SQ-012)', () => {
   // ── SQL 收藏功能 ──────────────────────────────────────────────────
 
   it('应显示收藏面板按钮 (SQ-015)', async () => {
-    await expect(await $('button*=收藏')).toBeDisplayed();
+    await expect(await $(`button*=${t('query.favorites')}`)).toBeDisplayed();
   });
 
   it('通过 Tauri 事件触发收藏对话框 (SQ-016)', async () => {
@@ -309,7 +309,7 @@ describe('SQL 查询模块 (SQ-001~SQ-012)', () => {
     });
     await browser.pause(1000);
 
-    const input = await $('input[placeholder*=收藏标题]');
+    const input = await $(`input[placeholder*="${t('query.favoriteTitlePlaceholder')}"]`);
     const isShown = await input.isExisting();
     if (isShown) {
       await expect(input).toBeDisplayed();
@@ -317,24 +317,24 @@ describe('SQL 查询模块 (SQ-001~SQ-012)', () => {
       await input.setValue('我的测试收藏');
       await browser.pause(200);
 
-      const saveBtn = await $('button*=保存');
+      const saveBtn = await $(`button*=${t('common.save')}`);
       await saveBtn.click();
       await browser.pause(500);
     }
   });
 
   it('收藏面板应能打开 (SQ-017)', async () => {
-    const favBtn = await $('button*=收藏');
+    const favBtn = await $(`button*=${t('query.favorites')}`);
     await favBtn.click();
     await browser.pause(500);
 
     const body = await $('body').getText();
-    const hasFav = body.includes('SQL 收藏') || body.includes('暂无收藏') || body.includes('我的测试收藏');
+    const hasFav = body.includes(t('query.favoritesTitle')) || body.includes(t('query.noFavorites')) || body.includes('我的测试收藏');
     expect(hasFav).toBe(true);
   });
 
   it('收藏面板可关闭 (SQ-018)', async () => {
-    const favBtn = await $('button*=收藏');
+    const favBtn = await $(`button*=${t('query.favorites')}`);
     await favBtn.click();
     await browser.pause(300);
   });
@@ -346,16 +346,16 @@ describe('SQL 查询模块 (SQ-001~SQ-012)', () => {
     await setEditorContent(uniqueSql);
 
     for (let i = 0; i < 3; i++) {
-      const execBtn = await $('button*=执行');
+      const execBtn = await $(`button*=${t('query.execute')}`);
       await execBtn.click();
       await browser.waitUntil(
-        async () => (await $('body').getText()).includes('1 行'),
-        { timeout: 15000, timeoutMsg: `第 ${i + 1} 次执行超时` },
+        async () => (await $('body').getText()).includes(`1 ${t('common.rows')}`),
+        { timeout: 15000, timeoutMsg: `Execution attempt ${i + 1} timed out` },
       );
       await browser.pause(500);
     }
 
-    const histBtn = await $('button*=历史');
+    const histBtn = await $(`button*=${t('query.history')}`);
     const histClass = (await histBtn.getAttribute('class')) || '';
     if (!histClass.includes('secondary')) {
       await histBtn.click();

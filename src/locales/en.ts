@@ -91,6 +91,7 @@ const en: Record<TranslationKey, string> = {
   'action.restore': 'Restore Database…',
   'action.dataSync': 'Data Sync…',
   'action.newConnection': 'New Connection…',
+  'action.workflow': 'Workflow…',
   'action.exportConfig': 'Export Config…',
   'action.importConfig': 'Import Config…',
 
@@ -711,6 +712,18 @@ const en: Record<TranslationKey, string> = {
   'workflows.history.back': 'Back',
   'workflows.history.clear': 'Clear history',
   'workflows.history.clearConfirm': 'Clear all execution history?',
+  'workflows.execute': 'Execute',
+  'workflows.executing': 'Executing…',
+  'workflows.name': 'Name',
+  'workflows.description': 'Description',
+  'workflows.steps': 'Steps',
+  'workflows.addStep': 'Add Step',
+  'workflows.openDir': 'Open workflow directory',
+  'workflows.selectStep': 'Click a step tab above to view execution details',
+  'workflows.emptyHint': 'Select a workflow and execute it. Results will appear here.',
+  'workflows.noQueryResult': 'This step returned no query result',
+  'workflows.defaultConn': 'Default connection',
+  'workflows.noWorkflows': 'No workflows. Click + above to create one.',
 
   // ── Chart ──
   'chart.viewTable': 'Table',
@@ -757,6 +770,9 @@ const en: Record<TranslationKey, string> = {
   'chart.sampledWarning': 'Large dataset, chart shows first {limit} rows only',
   'chart.nlPlaceholder': 'Type command (e.g. switch to pie)',
   'chart.nlHint': 'Adjust chart with natural language',
+  'chart.expand': 'Expand',
+  'chart.expandTitle': 'Chart Preview',
+  'chart.collapse': 'Collapse',
   'nl2sql.applyAndChart': 'Apply & Chart',
 
   // ── Select ──
@@ -771,6 +787,7 @@ const en: Record<TranslationKey, string> = {
   'win.newConnection': 'New Connection - DataZen',
   'win.query': 'Query - {db} - DataZen',
   'win.dataSync': 'Data Sync - DataZen',
+  'win.workflow': 'Workflow - DataZen',
   'win.settings': 'Settings - DataZen',
 };
 

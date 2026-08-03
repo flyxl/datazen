@@ -7,6 +7,7 @@
  * Tests call Tauri IPC commands directly (no UI interaction) for speed.
  */
 import { expect, browser, $ } from '@wdio/globals';
+import { t } from '../i18n.js';
 
 // ── Connection configs (credentials from environment variables) ─────
 
@@ -121,7 +122,7 @@ let myRoConnId: string;
 
 describe('数据同步: PG→PG 基础功能 (SYNC-REAL)', () => {
   before(async () => {
-    await $('input[placeholder="查找连接…"]').waitForDisplayed({ timeout: 10000 });
+    await $(`input[placeholder="${t('main.searchPlaceholder')}"]`).waitForDisplayed({ timeout: 10000 });
     await browser.pause(500);
 
     // Save connection configs and connect
@@ -299,7 +300,7 @@ describe('数据同步: PG→PG 基础功能 (SYNC-REAL)', () => {
 
 describe('数据同步: 权限错误 (SYNC-PERM)', () => {
   before(async () => {
-    await $('input[placeholder="查找连接…"]').waitForDisplayed({ timeout: 10000 });
+    await $(`input[placeholder="${t('main.searchPlaceholder')}"]`).waitForDisplayed({ timeout: 10000 });
     await browser.pause(500);
 
     // Ensure source connection is ready with a table to sync
@@ -372,7 +373,7 @@ describe('数据同步: 权限错误 (SYNC-PERM)', () => {
 
 describe('数据同步: PG→MySQL 跨库 (SYNC-CROSS)', () => {
   before(async () => {
-    await $('input[placeholder="查找连接…"]').waitForDisplayed({ timeout: 10000 });
+    await $(`input[placeholder="${t('main.searchPlaceholder')}"]`).waitForDisplayed({ timeout: 10000 });
     await browser.pause(500);
 
     if (!srcConnId) srcConnId = await saveAndConnect(PG_SRC);
@@ -529,7 +530,7 @@ describe('数据同步: 批量同步与进度 (SYNC-BATCH)', () => {
   let batchTgtId: string;
 
   before(async () => {
-    await $('input[placeholder="查找连接…"]').waitForDisplayed({ timeout: 10000 });
+    await $(`input[placeholder="${t('main.searchPlaceholder')}"]`).waitForDisplayed({ timeout: 10000 });
     await browser.pause(500);
 
     batchSrcId = await saveAndConnect(PG_SRC);
@@ -658,7 +659,7 @@ describe('数据同步: 断点续传与冲突检测 (SYNC-RESUME)', () => {
   let resumeTgtId: string;
 
   before(async () => {
-    await $('input[placeholder="查找连接…"]').waitForDisplayed({ timeout: 10000 });
+    await $(`input[placeholder="${t('main.searchPlaceholder')}"]`).waitForDisplayed({ timeout: 10000 });
     await browser.pause(500);
 
     resumeSrcId = await saveAndConnect(PG_SRC);

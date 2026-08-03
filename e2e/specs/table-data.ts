@@ -1,4 +1,5 @@
 import { expect, browser, $, $$ } from '@wdio/globals';
+import { t } from '../i18n.js';
 import {
   clickCardConnectButton,
   closeExtraWindows,
@@ -20,7 +21,7 @@ describe('表数据视图 (TD-001~TD-008)', () => {
 
   before(async () => {
     mainWindow = await browser.getWindowHandle();
-    await $('button*=新建连接').waitForDisplayed({ timeout: 10000 });
+    await $(`button*=${t('action.newConnection')}`).waitForDisplayed({ timeout: 10000 });
     await browser.pause(1500);
 
     // Check if already in connection window
@@ -29,13 +30,13 @@ describe('表数据视图 (TD-001~TD-008)', () => {
       await clickCardConnectButton();
       await browser.waitUntil(
         async () => (await browser.getWindowHandles()).length > 1,
-        { timeout: 30000, timeoutMsg: '等待连接窗口打开超时' },
+        { timeout: 30000, timeoutMsg: 'Timed out waiting for connection window' },
       );
       handles = await browser.getWindowHandles();
     }
     const connWindow = handles.find((h) => h !== mainWindow)!;
     await browser.switchToWindow(connWindow);
-    await $('button*=新建查询').waitForDisplayed({ timeout: 20000 });
+    await $(`button*=${t('connWin.newQuery')}`).waitForDisplayed({ timeout: 20000 });
     await browser.pause(2000);
 
     // Create test table with enough rows for pagination
@@ -57,7 +58,7 @@ describe('表数据视图 (TD-001~TD-008)', () => {
     `);
 
     // Refresh sidebar
-    const refreshBtn = await $('button[title="刷新 (⌘R)"]');
+    const refreshBtn = await $(`button[title="${t('connWin.refresh')} (⌘R)"]`);
     await refreshBtn.click();
     await browser.pause(2000);
   });
@@ -84,14 +85,14 @@ describe('表数据视图 (TD-001~TD-008)', () => {
   it('点击表名应加载数据并显示行 (TD-001)', async () => {
     await clickTableInSidebar(TEST_TABLE);
     await browser.pause(2000);
-    await switchSubTab('数据');
+    await switchSubTab(t('connWin.data'));
 
     await browser.waitUntil(
       async () => {
         const body = await $('body').getText();
-        return body.includes('user_') && body.includes('全选');
+        return body.includes('user_') && body.includes(t('common.selectAll'));
       },
-      { timeout: 15000, timeoutMsg: '等待表数据加载超时' },
+      { timeout: 15000, timeoutMsg: 'Timed out waiting for table data to load' },
     );
   });
 
@@ -104,43 +105,43 @@ describe('表数据视图 (TD-001~TD-008)', () => {
   // ── 分页 ───────────────────────────────────────────────────────
 
   it('应显示分页导航 (TD-002)', async () => {
-    const prevBtn = await $('button[aria-label="上一页"]');
-    const nextBtn = await $('button[aria-label="下一页"]');
+    const prevBtn = await $(`button[aria-label="${t('pagination.prev')}"]`);
+    const nextBtn = await $(`button[aria-label="${t('pagination.next')}"]`);
     await expect(prevBtn).toBeExisting();
     await expect(nextBtn).toBeExisting();
   });
 
   it('首页时上一页按钮应禁用 (TD-002)', async () => {
-    const prevBtn = await $('button[aria-label="上一页"]');
+    const prevBtn = await $(`button[aria-label="${t('pagination.prev')}"]`);
     const disabled = await prevBtn.getAttribute('disabled');
     expect(disabled).not.toBeNull();
   });
 
   it('点击下一页应加载下一页数据 (TD-002)', async () => {
-    const nextBtn = await $('button[aria-label="下一页"]');
+    const nextBtn = await $(`button[aria-label="${t('pagination.next')}"]`);
     await nextBtn.click();
     await browser.pause(2000);
 
     const body = await $('body').getText();
     // Should now show page 2 data (e.g. "第 2 / N 页" or range like "26-50")
-    const hasPage2 = body.includes('第 2') || body.includes('26');
+    const hasPage2 = body.includes(`${t('pagination.page')} 2`) || body.includes('26');
     expect(hasPage2).toBe(true);
   });
 
   it('点击上一页应回到第一页 (TD-002)', async () => {
-    const prevBtn = await $('button[aria-label="上一页"]');
+    const prevBtn = await $(`button[aria-label="${t('pagination.prev')}"]`);
     await prevBtn.click();
     await browser.pause(2000);
 
     const body = await $('body').getText();
-    const hasPage1 = body.includes('第 1') || body.includes('1-');
+    const hasPage1 = body.includes(`${t('pagination.page')} 1`) || body.includes('1-');
     expect(hasPage1).toBe(true);
   });
 
   // ── 排序 ───────────────────────────────────────────────────────
 
   it('点击列头应触发排序 (TD-003)', async () => {
-    const headerBtns = await $$('button[title="排序"]');
+    const headerBtns = await $$(`button[title="${t('dataTable.sort')}"]`);
     const count = await headerBtns.length;
     if (count > 0) {
       await headerBtns[0].click();
@@ -152,7 +153,7 @@ describe('表数据视图 (TD-001~TD-008)', () => {
   });
 
   it('再次点击列头应切换排序方向 (TD-003)', async () => {
-    const headerBtns = await $$('button[title="排序"]');
+    const headerBtns = await $$(`button[title="${t('dataTable.sort')}"]`);
     const count = await headerBtns.length;
     if (count > 0) {
       await headerBtns[0].click();
@@ -164,7 +165,7 @@ describe('表数据视图 (TD-001~TD-008)', () => {
   });
 
   it('第三次点击列头应取消排序 (TD-003)', async () => {
-    const headerBtns = await $$('button[title="排序"]');
+    const headerBtns = await $$(`button[title="${t('dataTable.sort')}"]`);
     const count = await headerBtns.length;
     if (count > 0) {
       await headerBtns[0].click();
@@ -191,7 +192,7 @@ describe('表数据视图 (TD-001~TD-008)', () => {
   it('应显示全选复选框或按钮 (TD-005)', async () => {
     // "全选" might be text in header or a checkbox
     const body = await $('body').getText();
-    const hasSelectAll = body.includes('全选') || body.includes('select');
+    const hasSelectAll = body.includes(t('common.selectAll')) || body.includes('select');
     // If not visible as text, check for checkbox in header
     if (!hasSelectAll) {
       const checkboxes = await browser.execute(() =>

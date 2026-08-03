@@ -1,4 +1,5 @@
 import { expect, browser, $, $$ } from '@wdio/globals';
+import { t } from '../i18n.js';
 import {
   createAndConnectMySQL,
   closeExtraWindows,
@@ -99,7 +100,7 @@ describe('MySQL 数据库支持 (MY-001~MY-020)', () => {
     `);
 
     // Refresh sidebar
-    const refreshBtn = await $('button[title="刷新 (⌘R)"]');
+    const refreshBtn = await $(`button[title="${t('connWin.refresh')} (⌘R)"]`);
     if (await refreshBtn.isExisting()) {
       await refreshBtn.click();
       await browser.pause(2000);
@@ -126,7 +127,7 @@ describe('MySQL 数据库支持 (MY-001~MY-020)', () => {
   // ── Connection & Sidebar ──
 
   it('MySQL 连接窗口应显示工具栏和侧边栏 (MY-001)', async () => {
-    const toolbar = await $('button*=新建查询');
+    const toolbar = await $(`button*=${t('connWin.newQuery')}`);
     await expect(toolbar).toBeDisplayed();
 
     const aside = await $('aside');
@@ -216,7 +217,7 @@ describe('MySQL 数据库支持 (MY-001~MY-020)', () => {
   it('结构 tab 应显示 MySQL 列信息 (MY-012)', async () => {
     await clickTableInSidebar(TABLE_BASIC);
     await browser.pause(1500);
-    await switchSubTab('结构');
+    await switchSubTab(t('connWin.structure'));
     await browser.pause(1500);
 
     const body = await $('body').getText();
@@ -232,7 +233,7 @@ describe('MySQL 数据库支持 (MY-001~MY-020)', () => {
   it('索引 tab 应显示 MySQL 索引 (MY-013)', async () => {
     await clickTableInSidebar(TABLE_IDX);
     await browser.pause(1500);
-    await switchSubTab('索引');
+    await switchSubTab(t('connWin.indexes'));
     await browser.pause(1500);
 
     const body = await $('body').getText();
@@ -319,11 +320,11 @@ describe('MySQL 数据库支持 (MY-001~MY-020)', () => {
     // Click the table to load data
     await clickTableInSidebar(TABLE_BASIC);
     await browser.pause(2000);
-    await switchSubTab('数据');
+    await switchSubTab(t('connWin.data'));
     await browser.pause(1000);
 
     // Should show pagination info (more than 50 rows total)
     const body = await $('body').getText();
-    expect(body).toContain('行');
+    expect(body).toContain(t('common.rows'));
   });
 });
