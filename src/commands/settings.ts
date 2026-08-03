@@ -6,4 +6,8 @@ export const settingsCommands = {
 
   saveSettings: (settings: AppSettings) =>
     invoke<void>('save_settings', { settings }),
+
+  getLogPath: () => invoke<string>('get_log_path'),
+
+  openLogFolder: () => invoke<void>('open_log_folder'),
 };

@@ -10,6 +10,7 @@ mod store;
 pub mod sync;
 
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -38,6 +39,7 @@ fn menu_labels(lang: &str) -> HashMap<&'static str, &'static str> {
         m.insert("data-sync", "Data Sync");
         m.insert("export-config", "Export Config…");
         m.insert("import-config", "Import Config…");
+        m.insert("view-logs", "View Logs");
     } else {
         m.insert("edit", "编辑");
         m.insert("view", "显示");
@@ -51,6 +53,7 @@ fn menu_labels(lang: &str) -> HashMap<&'static str, &'static str> {
         m.insert("data-sync", "数据同步");
         m.insert("export-config", "导出配置…");
         m.insert("import-config", "导入配置…");
+        m.insert("view-logs", "查看日志");
     }
     m
 }
@@ -97,6 +100,10 @@ fn setup_menu(
         .id("import-config")
         .build(handle)?;
 
+    let view_logs_item = MenuItemBuilder::new(l["view-logs"])
+        .id("view-logs")
+        .build(handle)?;
+
     let edit_menu = SubmenuBuilder::new(handle, l["edit"])
         .undo()
         .redo()
@@ -116,6 +123,8 @@ fn setup_menu(
     let tools_menu = SubmenuBuilder::new(handle, l["tools"])
         .item(&new_conn_item)
         .item(&data_sync_item)
+        .separator()
+        .item(&view_logs_item)
         .separator()
         .item(&export_config_item)
         .item(&import_config_item)
@@ -150,12 +159,47 @@ fn setup_menu(
             "data-sync" => { let _ = app_handle.emit("menu:data-sync", ()); }
             "export-config" => { let _ = app_handle.emit("menu:export-config", ()); }
             "import-config" => { let _ = app_handle.emit("menu:import-config", ()); }
+            "view-logs" => { let _ = app_handle.emit("menu:view-logs", ()); }
             "ctx-add-favorite" => { let _ = app_handle.emit("menu:add-favorite", ()); }
             _ => {}
         }
     });
 
     Ok(())
+}
+
+fn resolve_log_settings() -> (String, PathBuf) {
+    let data_dir = dirs::data_dir()
+        .map(|d| d.join("com.tbeasy.datazen"))
+        .unwrap_or_else(|| PathBuf::from("."));
+
+    let settings_path = data_dir.join("settings.json");
+
+    let (level, custom_path) = std::fs::read_to_string(&settings_path)
+        .ok()
+        .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+        .map(|v| {
+            let level = v
+                .get("logLevel")
+                .and_then(|v| v.as_str())
+                .unwrap_or("info")
+                .to_string();
+            let path = v
+                .get("logPath")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            (level, path)
+        })
+        .unwrap_or_else(|| ("info".to_string(), String::new()));
+
+    let log_dir = if custom_path.is_empty() {
+        data_dir.join("logs")
+    } else {
+        PathBuf::from(custom_path)
+    };
+
+    (level, log_dir)
 }
 
 #[tauri::command]
@@ -260,11 +304,22 @@ pub fn run_mcp_stdio() {
 
 /// Entry point invoked by `main.rs`.
 pub fn run() {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
-        )
+    let (log_level, log_dir) = resolve_log_settings();
+
+    let _ = std::fs::create_dir_all(&log_dir);
+
+    let file_appender = tracing_appender::rolling::daily(&log_dir, "datazen.log");
+    let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
+
+    use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+
+    let filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| EnvFilter::new(&log_level));
+
+    tracing_subscriber::registry()
+        .with(filter)
+        .with(fmt::layer())
+        .with(fmt::layer().with_writer(non_blocking).with_ansi(false))
         .init();
 
     let builder = tauri::Builder::default()
@@ -353,6 +408,8 @@ pub fn run() {
             commands::show_editor_context_menu,
             commands::get_settings,
             commands::save_settings,
+            commands::get_log_path,
+            commands::open_log_folder,
             commands::export_connections,
             commands::import_connections_preview,
             commands::write_file,
