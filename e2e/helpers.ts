@@ -5,14 +5,13 @@
  * feature-specific assertions.
  */
 import { browser, $, $$ } from '@wdio/globals';
-import { t } from './i18n.js';
 
 // ── window management ───────────────────────────────────────────────
 
 export async function switchToNewWindow(originalHandle: string): Promise<string> {
   await browser.waitUntil(
     async () => (await browser.getWindowHandles()).length > 1,
-    { timeout: 15000, timeoutMsg: 'Timed out waiting for new window' },
+    { timeout: 15000, timeoutMsg: '等待新窗口打开超时' },
   );
   const handles = await browser.getWindowHandles();
   const newHandle = handles.find((h) => h !== originalHandle)!;
@@ -105,19 +104,19 @@ export async function openConnectionWindow() {
   await expandAllGroups();
   await browser.waitUntil(
     async () => (await $$('[data-conn-item]')).length > 0,
-    { timeout: 15000, timeoutMsg: 'Timed out waiting for connection items to load' },
+    { timeout: 15000, timeoutMsg: '等待连接项加载超时' },
   );
   await browser.pause(1500);
 
   await clickCardConnectButton();
   await browser.waitUntil(
     async () => (await browser.getWindowHandles()).length > 1,
-    { timeout: 30000, timeoutMsg: 'Timed out waiting for connection window' },
+    { timeout: 30000, timeoutMsg: '等待连接窗口打开超时' },
   );
   const handles = await browser.getWindowHandles();
   const connWindow = handles.find((h) => h !== mainWindow)!;
   await browser.switchToWindow(connWindow);
-  await $(`button*=${t('connWin.newQuery')}`).waitForDisplayed({ timeout: 20000 });
+  await $('button*=新建查询').waitForDisplayed({ timeout: 20000 });
   await browser.pause(2000);
 
   return { mainWindow, connWindow };
@@ -166,17 +165,18 @@ export async function createAndConnectMySQL(opts: {
     }, name);
     await browser.waitUntil(
       async () => (await browser.getWindowHandles()).length > 1,
-      { timeout: 30000, timeoutMsg: 'Timed out waiting for MySQL connection window' },
+      { timeout: 30000, timeoutMsg: '等待 MySQL 连接窗口打开超时' },
     );
     const handles = await browser.getWindowHandles();
     const connWindow = handles.find((h) => h !== mainWindow)!;
     await browser.switchToWindow(connWindow);
-    await $(`button*=${t('connWin.newQuery')}`).waitForDisplayed({ timeout: 20000 });
+    await $('button*=新建查询').waitForDisplayed({ timeout: 20000 });
     await browser.pause(2000);
     return { mainWindow, connWindow };
   }
 
-  const newConnBtn = await $(`button*=${t('action.newConnection')}`);
+  // Create a new MySQL connection
+  const newConnBtn = await $('button*=新建连接');
   await newConnBtn.click();
   const newConnWindow = await switchToNewWindow(mainWindow);
 
@@ -186,7 +186,7 @@ export async function createAndConnectMySQL(opts: {
   await browser.pause(300);
 
   // Fill form fields
-  const nameInput = await $(`input[placeholder="${t('newConn.namePlaceholder')}"]`);
+  const nameInput = await $('input[placeholder="例如：主数据库"]');
   await nameInput.setValue(name);
 
   const hostInput = await $('input[placeholder="prod-db.example.com"]');
@@ -219,18 +219,18 @@ export async function createAndConnectMySQL(opts: {
   }
 
   // Save
-  const saveBtn = await $(`button*=${t('common.save')}`);
+  const saveBtn = await $('button*=保存');
   await saveBtn.click();
   await browser.waitUntil(
     async () => (await browser.getWindowHandles()).length === 1,
-    { timeout: 10000, timeoutMsg: 'Window did not close after saving connection' },
+    { timeout: 10000, timeoutMsg: '保存连接后窗口未关闭' },
   );
   await browser.switchToWindow(mainWindow);
   await browser.pause(1000);
 
   // Now connect by double-clicking the item
   const card = await findCardByName(name);
-  if (!card) throw new Error(`MySQL connection "${name}" not found`);
+  if (!card) throw new Error(`未找到 MySQL 连接 "${name}"`);
   await browser.execute((n: string) => {
     const items = document.querySelectorAll('[data-conn-item]');
     for (const item of items) {
@@ -243,12 +243,12 @@ export async function createAndConnectMySQL(opts: {
 
   await browser.waitUntil(
     async () => (await browser.getWindowHandles()).length > 1,
-    { timeout: 30000, timeoutMsg: 'Timed out waiting for MySQL connection window' },
+    { timeout: 30000, timeoutMsg: '等待 MySQL 连接窗口打开超时' },
   );
   const handles = await browser.getWindowHandles();
   const connWindow = handles.find((h) => h !== mainWindow)!;
   await browser.switchToWindow(connWindow);
-  await $(`button*=${t('connWin.newQuery')}`).waitForDisplayed({ timeout: 20000 });
+  await $('button*=新建查询').waitForDisplayed({ timeout: 20000 });
   await browser.pause(2000);
 
   return { mainWindow, connWindow };
@@ -261,7 +261,7 @@ export async function connectToCard(cardName: string) {
   const mainWindow = await browser.getWindowHandle();
   await expandAllGroups();
   const card = await findCardByName(cardName);
-  if (!card) throw new Error(`Connection "${cardName}" not found`);
+  if (!card) throw new Error(`未找到连接 "${cardName}"`);
 
   await browser.execute((n: string) => {
     const items = document.querySelectorAll('[data-conn-item]');
@@ -275,12 +275,12 @@ export async function connectToCard(cardName: string) {
 
   await browser.waitUntil(
     async () => (await browser.getWindowHandles()).length > 1,
-    { timeout: 30000, timeoutMsg: `Timed out waiting for "${cardName}" connection window` },
+    { timeout: 30000, timeoutMsg: `等待 "${cardName}" 连接窗口打开超时` },
   );
   const handles = await browser.getWindowHandles();
   const connWindow = handles.find((h) => h !== mainWindow)!;
   await browser.switchToWindow(connWindow);
-  await $(`button*=${t('connWin.newQuery')}`).waitForDisplayed({ timeout: 20000 });
+  await $('button*=新建查询').waitForDisplayed({ timeout: 20000 });
   await browser.pause(2000);
   return { mainWindow, connWindow };
 }
@@ -329,18 +329,18 @@ export async function createAndConnectKiwi(opts: {
     }, name);
     await browser.waitUntil(
       async () => (await browser.getWindowHandles()).length > 1,
-      { timeout: 30000, timeoutMsg: 'Timed out waiting for Kiwi connection window' },
+      { timeout: 30000, timeoutMsg: '等待 Kiwi 连接窗口打开超时' },
     );
     const handles = await browser.getWindowHandles();
     const connWindow = handles.find((h) => h !== mainWindow)!;
     await browser.switchToWindow(connWindow);
-    await $(`button*=${t('connWin.newQuery')}`).waitForDisplayed({ timeout: 20000 });
+    await $('button*=新建查询').waitForDisplayed({ timeout: 20000 });
     await browser.pause(2000);
     return { mainWindow, connWindow };
   }
 
   // Create new Kiwi connection
-  const newConnBtn = await $(`button*=${t('action.newConnection')}`);
+  const newConnBtn = await $('button*=新建连接');
   await newConnBtn.click();
   await switchToNewWindow(mainWindow);
 
@@ -350,7 +350,7 @@ export async function createAndConnectKiwi(opts: {
   await browser.pause(300);
 
   // Connection name
-  const nameInput = await $(`input[placeholder="${t('newConn.namePlaceholder')}"]`);
+  const nameInput = await $('input[placeholder="例如：主数据库"]');
   await nameInput.setValue(name);
 
   // Kiwi URL
@@ -390,14 +390,14 @@ export async function createAndConnectKiwi(opts: {
   }
 
   // Test connection first
-  const testBtn = await $(`button*=${t('newConn.testConnection')}`);
+  const testBtn = await $('button*=测试连接');
   await testBtn.click();
   await browser.waitUntil(
     async () => {
       const body = await $('body').getText();
-      return body.includes(t('newConn.testSuccess')) || body.includes('Driver error') || body.includes('Error');
+      return body.includes('连接成功') || body.includes('Driver error') || body.includes('Error');
     },
-    { timeout: 20000, timeoutMsg: 'Kiwi test connection timed out' },
+    { timeout: 20000, timeoutMsg: '等待 Kiwi 测试连接超时' },
   );
 
   const bodyAfterTest = await $('body').getText();
@@ -406,18 +406,18 @@ export async function createAndConnectKiwi(opts: {
   }
 
   // Save
-  const saveBtn = await $(`button*=${t('common.save')}`);
+  const saveBtn = await $('button*=保存');
   await saveBtn.click();
   await browser.waitUntil(
     async () => (await browser.getWindowHandles()).length === 1,
-    { timeout: 10000, timeoutMsg: 'Window did not close after saving Kiwi connection' },
+    { timeout: 10000, timeoutMsg: '保存 Kiwi 连接后窗口未关闭' },
   );
   await browser.switchToWindow(mainWindow);
   await browser.pause(1000);
 
   // Connect
   const card = await findCardByName(name);
-  if (!card) throw new Error(`Kiwi connection "${name}" not found`);
+  if (!card) throw new Error(`未找到 Kiwi 连接 "${name}"`);
   await browser.execute((n: string) => {
     const items = document.querySelectorAll('[data-conn-item]');
     for (const item of items) {
@@ -430,12 +430,12 @@ export async function createAndConnectKiwi(opts: {
 
   await browser.waitUntil(
     async () => (await browser.getWindowHandles()).length > 1,
-    { timeout: 30000, timeoutMsg: 'Timed out waiting for Kiwi connection window' },
+    { timeout: 30000, timeoutMsg: '等待 Kiwi 连接窗口打开超时' },
   );
   const handles = await browser.getWindowHandles();
   const connWindow = handles.find((h) => h !== mainWindow)!;
   await browser.switchToWindow(connWindow);
-  await $(`button*=${t('connWin.newQuery')}`).waitForDisplayed({ timeout: 20000 });
+  await $('button*=新建查询').waitForDisplayed({ timeout: 20000 });
   await browser.pause(2000);
 
   return { mainWindow, connWindow };
@@ -462,31 +462,31 @@ export async function setEditorContent(sql: string) {
 /** Execute SQL in the currently active query tab and wait for completion. */
 export async function executeSQL(sql: string) {
   await setEditorContent(sql);
-  const execBtn = await $(`button*=${t('query.execute')}`);
+  const execBtn = await $('button*=执行');
   await execBtn.click();
   await browser.waitUntil(
     async () => {
       const body = await $('body').getText();
-      return body.includes(t('query.totalTime')) || body.includes('text-red-400');
+      return body.includes('总耗时') || body.includes('text-red-400');
     },
-    { timeout: 15000, timeoutMsg: `Timed out waiting for SQL execution: ${sql.slice(0, 60)}` },
+    { timeout: 15000, timeoutMsg: `等待 SQL 执行完成超时: ${sql.slice(0, 60)}` },
   );
   await browser.pause(500);
 }
 
 /** Open a new query tab and wait for the execute button. */
 export async function openQueryTab() {
-  const newQueryBtn = await $(`button*=${t('connWin.newQuery')}`);
+  const newQueryBtn = await $('button*=新建查询');
   await newQueryBtn.click();
   await browser.pause(500);
-  const execBtn = await $(`button*=${t('query.execute')}`);
+  const execBtn = await $('button*=执行');
   await execBtn.waitForDisplayed({ timeout: 5000 });
 }
 
 // ── schema sidebar ──────────────────────────────────────────────────
 
 /** Sidebar section headers indicating schema tree loaded (en + zh-CN). */
-export const SCHEMA_TREE_SECTION_MARKERS = ['Tables', t('schemaTree.tables'), 'Keys', t('schemaTree.keys'), 'Views', '视图'] as const;
+export const SCHEMA_TREE_SECTION_MARKERS = ['Tables', '表', 'Keys', '键', 'Views', '视图'] as const;
 
 export function asideHasSchemaSections(text: string): boolean {
   return SCHEMA_TREE_SECTION_MARKERS.some((marker) => text.includes(marker));
@@ -501,7 +501,7 @@ export function isSchemaSectionLabel(text: string): boolean {
 export async function waitForSchemaTreeLoaded(timeout = 10000) {
   await browser.waitUntil(
     async () => asideHasSchemaSections(await $('aside').getText()),
-    { timeout, timeoutMsg: 'Timed out waiting for schema tree to load' },
+    { timeout, timeoutMsg: '等待 schema 树加载超时' },
   );
 }
 
@@ -516,7 +516,7 @@ export async function clickTableInSidebar(tableName: string) {
       return;
     }
   }
-  throw new Error(`Table "${tableName}" not found in sidebar`);
+  throw new Error(`未找到表 "${tableName}"`);
 }
 
 /** Click the first table/view entry in the sidebar and return its name. */
@@ -534,7 +534,7 @@ export async function clickFirstTable() {
   return null;
 }
 
-/** Switch to a sub-tab inside a table panel (Data/Structure/Indexes/ForeignKeys/DDL). */
+/** Switch to a sub-tab inside a table panel (数据/结构/索引/外键/DDL). */
 export async function switchSubTab(label: string) {
   const tab = await $(`button*=${label}`);
   await tab.click();
@@ -550,7 +550,7 @@ export async function doubleClickCellByText(text: string) {
       const el = await $(`span[title="${text}"]`);
       return el.isDisplayed();
     },
-    { timeout: 8000, timeoutMsg: `Timed out waiting for cell "${text}" to appear` },
+    { timeout: 8000, timeoutMsg: `等待 "${text}" 单元格显示超时` },
   );
   await browser.execute((t: string) => {
     const el = document.querySelector(`span[title="${t}"]`);
@@ -567,7 +567,7 @@ export async function waitForEditInput() {
       const exists = await browser.execute(() => !!document.querySelector('input.font-mono'));
       return exists;
     },
-    { timeout: 8000, timeoutMsg: 'Timed out waiting for edit input' },
+    { timeout: 8000, timeoutMsg: '等待编辑 input 出现超时' },
   );
   return $('input.font-mono');
 }

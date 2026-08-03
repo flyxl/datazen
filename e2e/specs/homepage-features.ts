@@ -80,7 +80,7 @@ describe('主页 TablePlus 风格 (HOME)', () => {
 
   it('HOME-008: 状态栏应显示连接总数', async () => {
     const body = await $('body').getText();
-    expect(body).toContain(t('main.connectionCount', { count: '' }).replace('{count}', ''));
+    expect(body).toContain('连接：');
   });
 
   // ── Group expand/collapse ────────────────────────────────────────
@@ -188,7 +188,7 @@ describe('主页 TablePlus 风格 (HOME)', () => {
     await browser.switchToWindow(mainWindow);
     await browser.pause(2000);
     const body = await $('body').getText();
-    const hasStatus = body.includes(t('main.activeConnections', { count: '' }).replace('{count} ', ''));
+    const hasStatus = body.includes('活跃连接');
     expect(hasStatus).toBe(true);
   });
 
@@ -215,7 +215,7 @@ describe('主页 TablePlus 风格 (HOME)', () => {
     const allBtns = await $$('button');
     for (const b of allBtns) {
       const text = await b.getText();
-      if (text.includes(t('action.newConnection'))) {
+      if (text.includes('新建连接…')) {
         await b.click();
         break;
       }
@@ -232,7 +232,7 @@ describe('主页 TablePlus 风格 (HOME)', () => {
     const allBtns = await $$('button');
     for (const b of allBtns) {
       const text = await b.getText();
-      if (text.includes(t('action.dataSync'))) {
+      if (text.includes('数据同步…')) {
         await b.click();
         break;
       }
@@ -248,9 +248,9 @@ describe('主页 TablePlus 风格 (HOME)', () => {
     await browser.switchToWindow(syncWin);
     await browser.pause(2000);
     const body = await $('body').getText();
-    expect(body).toContain(t('sync.source'));
-    expect(body).toContain(t('sync.target'));
-    expect(body).toContain(t('sync.compare'));
+    expect(body).toContain('源数据库');
+    expect(body).toContain('目标数据库');
+    expect(body).toContain('比较');
   });
 });
 
@@ -266,7 +266,7 @@ describe('数据同步窗口 (SYNC)', () => {
     await browser.pause(300);
     const allBtns = await $$('button');
     for (const b of allBtns) {
-      if ((await b.getText()).includes(t('action.dataSync'))) {
+      if ((await b.getText()).includes('数据同步…')) {
         await b.click();
         break;
       }
@@ -298,8 +298,8 @@ describe('数据同步窗口 (SYNC)', () => {
   it('SYNC-001: 应显示源和目标连接选择器', async () => {
     await openSyncWindow();
     const body = await $('body').getText();
-    expect(body).toContain(t('sync.source'));
-    expect(body).toContain(t('sync.target'));
+    expect(body).toContain('源数据库');
+    expect(body).toContain('目标数据库');
   });
 
   it('SYNC-002: 应显示标题栏 "数据同步 - DataZen"', async () => {
@@ -327,13 +327,13 @@ describe('数据同步窗口 (SYNC)', () => {
     await browser.pause(1000);
 
     const body = await $('body').getText();
-    expect(body).toContain(t('select.placeholder'));
+    expect(body).toContain('请选择');
   });
 
   it('SYNC-006: 应显示初始引导文本', async () => {
     await openSyncWindow();
     const body = await $('body').getText();
-    const hasGuide = body.includes(t('sync.selectPrompt')) || body.includes(t('sync.compare'));
+    const hasGuide = body.includes('选择源数据库和目标数据库') || body.includes('比较');
     expect(hasGuide).toBe(true);
   });
 
@@ -366,7 +366,7 @@ describe('数据同步窗口 (SYNC)', () => {
     await compareBtn.click();
     await browser.pause(1500);
     const body = await $('body').getText();
-    expect(body).toContain(t('sync.cannotSame'));
+    expect(body).toContain('不能相同');
   });
 
   it('SYNC-010: 窗口可正常关闭', async () => {

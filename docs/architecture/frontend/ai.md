@@ -6,12 +6,15 @@
 
 ```
 src/components/ai/
-├── Nl2SqlPanel.tsx      # NL2SQL 输入面板（可折叠，流式显示生成 SQL）
-├── DiagnosisPanel.tsx   # SQL 错误诊断结果展示（含修正 SQL 一键应用）
-├── ExplainPanel.tsx     # EXPLAIN 可视化面板（树形展示 + AI 分析）
-├── AiChatPanel.tsx      # 侧边栏 AI 对话面板（消息渲染、代码块提取、SQL 插入）
-├── NlFilterInput.tsx    # 自然语言筛选输入组件
-└── WorkflowPanel.tsx      # Workflows 管理和执行面板
+├── Nl2SqlPanel.tsx        # NL2SQL 输入面板（可折叠，流式显示生成 SQL）
+├── DiagnosisPanel.tsx     # SQL 错误诊断结果展示（含修正 SQL 一键应用）
+├── ExplainPanel.tsx       # EXPLAIN 可视化面板（树形展示 + AI 分析）
+├── AiChatPanel.tsx        # 侧边栏 AI 对话面板（消息渲染、代码块提取、SQL 插入）
+├── NlFilterInput.tsx      # 自然语言筛选输入组件
+└── WorkflowPanel.tsx      # Workflows 管理面板（嵌入 ConnectionView 侧边栏）
+
+src/windows/workflow/
+└── WorkflowWindow.tsx     # Workflow 独立窗口（含 tab 系统 + DataTable 结果展示）
 ```
 
 ### 1.2 AI 状态管理（aiStore）
@@ -46,6 +49,7 @@ src/components/ai/
 | QueryPanel 错误区域 | `DiagnosisPanel` | SQL 错误诊断 |
 | QueryPanel 结果 Tab | `ExplainPanel` | EXPLAIN AI 分析 |
 | SqlConnectionView 侧边栏 | `AiChatPanel` | AI 对话 + Workflows |
+| 主窗口侧边栏 | `ActionPanel` → `WorkflowWindow` | 独立 Workflow 窗口入口 |
 | TableView 筛选区域 | `NlFilterInput` | 自然语言筛选 |
 | ChartToolbar NL输入 | `nlConfig.ts` | 自然语言图表配置调整 |
 | SettingsWindow | AI 配置 | Provider/Model/Key/MaxTokens |

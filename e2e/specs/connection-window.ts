@@ -139,7 +139,7 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
   });
 
   it('应显示结构/数据/索引/外键/DDL 子标签 (DB-003~DB-005, DB-010)', async () => {
-    for (const label of [t('connWin.data'), t('connWin.structure'), t('connWin.indexes'), t('connWin.foreignKeys'), 'DDL']) {
+    for (const label of ['数据', '结构', '索引', '外键', 'DDL']) {
       await expect(await $(`button*=${label}`)).toBeDisplayed();
     }
   });
@@ -152,7 +152,7 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
     await browser.pause(2000);
 
     const body = await $('body').getText();
-    const hasStructure = body.includes(t('structView.fieldName')) || body.includes(t('structView.type')) ||
+    const hasStructure = body.includes('字段名') || body.includes('类型') ||
       body.includes('integer') || body.includes('varchar') || body.includes('text') ||
       body.includes('boolean') || body.includes('timestamp');
     expect(hasStructure).toBe(true);
@@ -177,7 +177,7 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
 
     const body = await $('body').getText();
     expect(body).toContain(t('indexes.colName'));
-    expect(body).toContain(t('indexes.count', { count: '' }).replace('{count} ', ''));
+    expect(body).toContain('个索引');
   });
 
   it('索引标签应显示主键索引 (DB-004)', async () => {
@@ -224,7 +224,7 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
 
     const dialog = await $('[role="dialog"]');
     await expect(dialog).toBeDisplayed();
-    expect(await dialog.getText()).toContain(t('indexes.newIndex'));
+    expect(await dialog.getText()).toContain('新建索引');
   });
 
   it('创建索引对话框应显示列列表 (DB-004a)', async () => {
@@ -257,14 +257,14 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
   });
 
   it('点击取消应关闭创建对话框 (DB-004a)', async () => {
-    await browser.execute((cancelLabel) => {
+    await browser.execute(() => {
       const dialog = document.querySelector('[role="dialog"]');
       if (!dialog) return;
       const btns = dialog.querySelectorAll('button');
       for (const btn of btns) {
-        if (btn.textContent?.trim() === cancelLabel) { btn.click(); break; }
+        if (btn.textContent?.trim() === t('common.cancel')) { btn.click(); break; }
       }
-    }, t('common.cancel'));
+    });
     await browser.pause(500);
 
     const dialogExists = await browser.execute(() => !!document.querySelector('[role="dialog"]'));
@@ -303,14 +303,14 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
     await browser.pause(500);
 
     // Click create button
-    await browser.execute((createLabel) => {
+    await browser.execute(() => {
       const dialog = document.querySelector('[role="dialog"]');
       if (!dialog) return;
       const btns = dialog.querySelectorAll('button');
       for (const btn of btns) {
-        if (btn.textContent?.includes(createLabel)) { btn.click(); break; }
+        if (btn.textContent?.includes(t('indexes.createIndex'))) { btn.click(); break; }
       }
-    }, t('indexes.createIndex'));
+    });
 
     await browser.waitUntil(
       async () => {
@@ -345,18 +345,18 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
 
   it('确认删除应移除索引 (DB-004c)', async () => {
     // Click the confirm delete button in the dialog
-    await browser.execute((deleteLabel, cancelLabel) => {
+    await browser.execute(() => {
       const dialog = document.querySelector('[role="dialog"]');
       if (!dialog) return;
       const btns = dialog.querySelectorAll('button');
       for (const btn of btns) {
         const text = btn.textContent?.trim() ?? '';
-        if (text === deleteLabel || (text.includes(deleteLabel) && !text.includes(cancelLabel))) {
+        if (text === t('common.delete') || (text.includes(t('common.delete')) && !text.includes('取消'))) {
           (btn as HTMLElement).click();
           break;
         }
       }
-    }, t('common.delete'), t('common.cancel'));
+    });
 
     await browser.waitUntil(
       async () => {
@@ -374,12 +374,12 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
   // ── 外键 tab ────────────────────────────────────────────────────
 
   it('外键标签应显示外键列表 (DB-005)', async () => {
-    await switchSubTab(t('connWin.foreignKeys'));
+    await switchSubTab('外键');
     await browser.pause(2000);
 
     const body = await $('body').getText();
     expect(body).toContain(t('fk.constraintName'));
-    expect(body).toContain(t('fk.count', { count: 1 }));
+    expect(body).toContain('1 个外键');
   });
 
   it('外键标签应显示外键详情 (DB-005)', async () => {
@@ -411,7 +411,7 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
     await browser.pause(500);
 
     await browser.waitUntil(
-      async () => (await $('body').getText()).includes(t('common.copied')),
+      async () => (await $('body').getText()).includes('已复制'),
       { timeout: 3000, timeoutMsg: 'Timed out waiting for copied toast' },
     );
   });
@@ -425,7 +425,7 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
     await browser.waitUntil(
       async () => {
         const body = await $('body').getText();
-        return body.includes(t('common.selectAll')) || body.includes(t('common.rows')) || body.includes(t('common.loading'));
+        return body.includes(t('common.selectAll')) || body.includes('行') || body.includes('加载中');
       },
       { timeout: 15000, timeoutMsg: 'Timed out waiting for data view to render' },
     );
@@ -496,7 +496,7 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
     await browser.pause(500);
 
     const body = await $('body').getText();
-    expect(body).toContain(t('indexes.newIndex'));
+    expect(body).toContain('新建索引');
     expect(body).toContain(t('connWin.refresh'));
     expect(body).toContain(t('connWin.newQuery'));
     expect(body).not.toContain(t('connWin.copyCell'));
@@ -508,7 +508,7 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
   });
 
   it('外键标签右键菜单不应包含非通用项 (CTX-004)', async () => {
-    await switchSubTab(t('connWin.foreignKeys'));
+    await switchSubTab('外键');
     await browser.pause(2000);
 
     await browser.execute(() => {
@@ -567,29 +567,29 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
     });
     await browser.pause(500);
 
-    await browser.execute((newIndexLabel) => {
+    await browser.execute(() => {
       const menuItems = document.querySelectorAll('.fixed.z-\\[9999\\] button');
       for (const item of menuItems) {
-        if (item.textContent?.includes(newIndexLabel)) {
+        if (item.textContent?.includes(t('indexes.newIndex'))) {
           (item as HTMLElement).click();
           break;
         }
       }
-    }, t('indexes.newIndex'));
+    });
     await browser.pause(500);
 
     const dialog = await $('[role="dialog"]');
     await expect(dialog).toBeDisplayed();
-    expect(await dialog.getText()).toContain(t('indexes.newIndex'));
+    expect(await dialog.getText()).toContain('新建索引');
 
-    await browser.execute((cancelLabel) => {
+    await browser.execute(() => {
       const d = document.querySelector('[role="dialog"]');
       if (!d) return;
       const btns = d.querySelectorAll('button');
       for (const btn of btns) {
-        if (btn.textContent?.trim() === cancelLabel) { btn.click(); break; }
+        if (btn.textContent?.trim() === t('common.cancel')) { btn.click(); break; }
       }
-    }, t('common.cancel'));
+    });
     await browser.pause(300);
   });
 

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Minimize2 } from 'lucide-react';
+import { Minimize2, X } from 'lucide-react';
 import { inferAllFields } from '../../lib/chart/fieldInference';
 import { recommendChart } from '../../lib/chart/recommend';
 import { transformData, type TransformResult } from '../../lib/chart/transform';
@@ -191,6 +191,13 @@ function ChartExpandOverlay({
           title={t('chart.collapse')}
         >
           <Minimize2 className="h-3.5 w-3.5" />
+        </button>
+        <button
+          type="button"
+          className="rounded-md p-1 text-fg-muted hover:bg-surface-raised hover:text-fg transition-colors"
+          onClick={onClose}
+        >
+          <X className="h-4 w-4" />
         </button>
       </div>
 

@@ -13,7 +13,7 @@ import {
   X,
 } from 'lucide-react';
 import { TitleBar } from '../../components/TitleBar';
-
+import { ThemeToggle } from '../../components/ThemeToggle';
 import { StatusBar } from '../../components/StatusBar';
 import { DataTable } from '../../components/DataTable/DataTable';
 import type { ColumnDef } from '../../components/DataTable/TableHeader';
@@ -34,6 +34,36 @@ import type {
   WorkflowStepType,
 } from '../../types';
 
+// ─── Result tab types (mirroring SqlConnectionView panel pattern) ────────────
+
+interface ExecutionTab {
+  type: 'execution';
+  id: string;
+  workflowName: string;
+  result: WorkflowExecutionResult;
+  activeStepIndex: number | null;
+}
+
+interface HistoryTab {
+  type: 'history';
+  id: string;
+  historyId: string;
+  workflowName: string;
+  result: WorkflowExecutionResult;
+  createdAt: string;
+  activeStepIndex: number | null;
+}
+
+type ResultTab = ExecutionTab | HistoryTab;
+
+let tabCounter = 0;
+function nextTabId(prefix: string) {
+  tabCounter += 1;
+  return `${prefix}-${tabCounter}`;
+}
+
+// ─── Draft helpers ───────────────────────────────────────────────────────────
+
 interface WorkflowStepDraft {
   type: WorkflowStepType;
   id: string;
@@ -43,22 +73,17 @@ interface WorkflowStepDraft {
   database?: string;
 }
 
-interface WorkflowVariableDraft {
-  name: string;
-  varType: string;
-  description: string;
-  required: boolean;
-}
-
 function emptyDraft() {
   return {
     id: '',
     name: '',
     description: '',
-    variables: [] as WorkflowVariableDraft[],
+    variables: [] as { name: string; varType: string; description: string; required: boolean }[],
     steps: [{ type: 'query' as WorkflowStepType, id: 'step1', sql: '' }] as WorkflowStepDraft[],
   };
 }
+
+// ─── Main component ─────────────────────────────────────────────────────────
 
 export function WorkflowWindow() {
   useThemeListener();
@@ -68,7 +93,6 @@ export function WorkflowWindow() {
   const workflowsLoading = useAiStore((s) => s.workflowsLoading);
   const loadWorkflows = useAiStore((s) => s.loadWorkflows);
   const executeWorkflow = useAiStore((s) => s.executeWorkflow);
-  const result = useAiStore((s) => s.workflowExecutionResult);
   const isExecuting = useAiStore((s) => s.isExecutingWorkflow);
   const workflowError = useAiStore((s) => s.workflowError);
   const clearWorkflowResult = useAiStore((s) => s.clearWorkflowResult);
@@ -81,10 +105,12 @@ export function WorkflowWindow() {
   const [draft, setDraft] = useState(emptyDraft());
   const [feedback, setFeedback] = useState('');
   const [savedConnections, setSavedConnections] = useState<{ id: string; name: string; databaseType: string }[]>([]);
-  const [activeStepIndex, setActiveStepIndex] = useState<number | null>(null);
-  const [tab, setTab] = useState<'workflows' | 'history'>('workflows');
+  const [sideTab, setSideTab] = useState<'workflows' | 'history'>('workflows');
   const [historyItems, setHistoryItems] = useState<HistoryListItem[]>([]);
-  const [historyDetail, setHistoryDetail] = useState<WorkflowExecutionResult | null>(null);
+
+  // Result tabs (right panel) — mirrors SqlConnectionView panels
+  const [resultTabs, setResultTabs] = useState<ResultTab[]>([]);
+  const [activeTabId, setActiveTabId] = useState<string | null>(null);
 
   useEffect(() => {
     void loadWorkflows();
@@ -100,13 +126,12 @@ export function WorkflowWindow() {
   }, []);
 
   useEffect(() => {
-    if (tab === 'history') void loadHistory();
-  }, [tab, loadHistory]);
+    if (sideTab === 'history') void loadHistory();
+  }, [sideTab, loadHistory]);
 
   const handleSelect = (workflow: WorkflowListItem) => {
     setSelectedWorkflow(workflow);
     clearWorkflowResult();
-    setActiveStepIndex(null);
     const defaults: Record<string, string> = {};
     for (const v of workflow.variables) {
       defaults[v.name] = v.default != null ? String(v.default) : '';
@@ -116,10 +141,82 @@ export function WorkflowWindow() {
 
   const handleExecute = async () => {
     if (!selectedWorkflow) return;
-    setActiveStepIndex(null);
     await executeWorkflow({ workflowId: selectedWorkflow.id, variables });
+    const { workflowExecutionResult: execResult, workflowError: execError } = useAiStore.getState();
+    if (execResult) {
+      const tab: ExecutionTab = {
+        type: 'execution',
+        id: nextTabId('exec'),
+        workflowName: selectedWorkflow.name,
+        result: execResult,
+        activeStepIndex: execResult.steps.length > 0 ? 0 : null,
+      };
+      setResultTabs((prev) => [...prev, tab]);
+      setActiveTabId(tab.id);
+    } else if (execError) {
+      const errorResult: WorkflowExecutionResult = {
+        success: false,
+        finalOutput: '',
+        steps: [],
+        totalTimeMs: 0,
+        error: execError,
+      };
+      const tab: ExecutionTab = {
+        type: 'execution',
+        id: nextTabId('exec'),
+        workflowName: selectedWorkflow.name,
+        result: errorResult,
+        activeStepIndex: null,
+      };
+      setResultTabs((prev) => [...prev, tab]);
+      setActiveTabId(tab.id);
+    }
     void loadHistory();
   };
+
+  const handleViewHistory = async (historyId: string) => {
+    // Deduplicate: if same history already open, just activate it
+    const existing = resultTabs.find((t) => t.type === 'history' && t.historyId === historyId);
+    if (existing) {
+      setActiveTabId(existing.id);
+      return;
+    }
+    try {
+      const entry = await aiCommands.workflowHistoryGet(historyId);
+      const tab: HistoryTab = {
+        type: 'history',
+        id: nextTabId('hist'),
+        historyId,
+        workflowName: entry.workflowName,
+        result: entry.result,
+        createdAt: entry.createdAt,
+        activeStepIndex: entry.result.steps.length > 0 ? 0 : null,
+      };
+      setResultTabs((prev) => [...prev, tab]);
+      setActiveTabId(tab.id);
+    } catch (e) {
+      setFeedback(String(e));
+    }
+  };
+
+  const handleCloseTab = useCallback((tabId: string) => {
+    setResultTabs((prev) => {
+      const idx = prev.findIndex((t) => t.id === tabId);
+      const next = prev.filter((t) => t.id !== tabId);
+      setActiveTabId((current) => {
+        if (current !== tabId) return current;
+        if (next.length === 0) return null;
+        return next[Math.min(idx, next.length - 1)].id;
+      });
+      return next;
+    });
+  }, []);
+
+  const handleSetStepIndex = useCallback((tabId: string, stepIndex: number | null) => {
+    setResultTabs((prev) =>
+      prev.map((t) => (t.id === tabId ? { ...t, activeStepIndex: stepIndex } : t)),
+    );
+  }, []);
 
   const handleDelete = async (workflowId: string) => {
     if (!confirm(t('workflows.deleteConfirm'))) return;
@@ -138,11 +235,9 @@ export function WorkflowWindow() {
 
   const handleOpenDir = useCallback(async () => {
     try {
-      const { invoke } = await import('@tauri-apps/api/core');
-      await invoke('open_in_explorer', { path: workflowsDir });
-    } catch {
-      /* browser mode — ignore */
-    }
+      const { open } = await import('@tauri-apps/plugin-shell');
+      await open(workflowsDir);
+    } catch { /* browser mode */ }
   }, [workflowsDir]);
 
   const handleEdit = async (workflowId: string) => {
@@ -153,18 +248,10 @@ export function WorkflowWindow() {
         name: workflow.name,
         description: workflow.description,
         variables: workflow.variables.map((v) => ({
-          name: v.name,
-          varType: v.type || 'string',
-          description: v.description,
-          required: v.required ?? false,
+          name: v.name, varType: v.type || 'string', description: v.description, required: v.required ?? false,
         })),
         steps: workflow.steps.map((s) => ({
-          type: s.type as WorkflowStepType,
-          id: s.id,
-          sql: s.sql,
-          prompt: s.prompt,
-          connection: s.connection,
-          database: s.database,
+          type: s.type as WorkflowStepType, id: s.id, sql: s.sql, prompt: s.prompt, connection: s.connection, database: s.database,
         })),
       });
       setEditingId(workflowId);
@@ -174,31 +261,13 @@ export function WorkflowWindow() {
     }
   };
 
-  const handleCreate = () => {
-    setDraft(emptyDraft());
-    setEditingId(null);
-    setShowForm(true);
-  };
+  const handleCreate = () => { setDraft(emptyDraft()); setEditingId(null); setShowForm(true); };
 
   const handleSave = async () => {
     const workflow: WorkflowDefinition = {
-      id: draft.id.trim(),
-      name: draft.name.trim(),
-      description: draft.description.trim(),
-      variables: draft.variables.map((v) => ({
-        name: v.name,
-        type: v.varType,
-        description: v.description,
-        required: v.required,
-      })),
-      steps: draft.steps.map((s) => ({
-        type: s.type,
-        id: s.id,
-        sql: s.sql,
-        prompt: s.prompt,
-        connection: s.connection,
-        database: s.database,
-      })),
+      id: draft.id.trim(), name: draft.name.trim(), description: draft.description.trim(),
+      variables: draft.variables.map((v) => ({ name: v.name, type: v.varType, description: v.description, required: v.required })),
+      steps: draft.steps.map((s) => ({ type: s.type, id: s.id, sql: s.sql, prompt: s.prompt, connection: s.connection, database: s.database })),
     };
     try {
       await aiCommands.workflowSave(workflow);
@@ -211,50 +280,29 @@ export function WorkflowWindow() {
     }
   };
 
-  const handleViewHistory = async (historyId: string) => {
-    try {
-      const entry = await aiCommands.workflowHistoryGet(historyId);
-      setHistoryDetail(entry.result);
-      setActiveStepIndex(null);
-    } catch (e) {
-      setFeedback(String(e));
-    }
-  };
-
   const handleClearHistory = async () => {
     if (!confirm(t('workflows.history.clearConfirm'))) return;
     await aiCommands.workflowHistoryClear();
     setHistoryItems([]);
-    setHistoryDetail(null);
   };
 
-  const displayResult = historyDetail ?? result;
-  const activeStep = displayResult && activeStepIndex != null ? displayResult.steps[activeStepIndex] : null;
+  const activeTab = resultTabs.find((t) => t.id === activeTabId) ?? null;
 
   return (
     <div className="flex h-screen flex-col bg-surface text-fg">
-      <TitleBar title={t('win.workflow')} />
+      <TitleBar title={t('win.workflow')} rightContent={<ThemeToggle />} />
 
       <div className="flex flex-1 min-h-0">
-        {/* Left panel: workflow list + config */}
+        {/* Left sidebar */}
         <div className="flex w-80 shrink-0 flex-col border-r border-edge bg-surface-alt">
-          {/* Tabs */}
           <div className="flex items-center gap-1 border-b border-edge px-3 py-2">
-            <button
-              type="button"
-              onClick={() => { setTab('workflows'); setHistoryDetail(null); }}
-              className={cn('px-2 py-0.5 text-xs rounded transition-colors', tab === 'workflows' ? 'bg-accent/10 text-accent' : 'text-fg-muted hover:text-fg')}
-            >
-              <Wand2 className="inline h-3 w-3 mr-1" />
-              Workflows
+            <button type="button" onClick={() => setSideTab('workflows')}
+              className={cn('px-2 py-0.5 text-xs rounded transition-colors', sideTab === 'workflows' ? 'bg-accent/10 text-accent' : 'text-fg-muted hover:text-fg')}>
+              <Wand2 className="inline h-3 w-3 mr-1" />Workflows
             </button>
-            <button
-              type="button"
-              onClick={() => setTab('history')}
-              className={cn('flex items-center gap-1 px-2 py-0.5 text-xs rounded transition-colors', tab === 'history' ? 'bg-accent/10 text-accent' : 'text-fg-muted hover:text-fg')}
-            >
-              <History className="h-3 w-3" />
-              {t('workflows.history.title')}
+            <button type="button" onClick={() => setSideTab('history')}
+              className={cn('flex items-center gap-1 px-2 py-0.5 text-xs rounded transition-colors', sideTab === 'history' ? 'bg-accent/10 text-accent' : 'text-fg-muted hover:text-fg')}>
+              <History className="h-3 w-3" />{t('workflows.history.title')}
             </button>
             <div className="flex-1" />
             <button type="button" onClick={handleReload} className="text-fg-muted hover:text-fg p-1 rounded" title={t('workflows.reload')}>
@@ -272,135 +320,92 @@ export function WorkflowWindow() {
           )}
 
           <div className="flex-1 overflow-y-auto">
-            {tab === 'history' ? (
-              <HistoryList
-                items={historyItems}
-                onView={handleViewHistory}
-                onClear={() => void handleClearHistory()}
-                t={t}
-              />
+            {sideTab === 'history' ? (
+              <HistoryList items={historyItems} onView={(id) => void handleViewHistory(id)} onClear={() => void handleClearHistory()} t={t} />
             ) : showForm ? (
-              <WorkflowForm
-                draft={draft}
-                editingId={editingId}
-                connections={savedConnections}
-                onDraftChange={setDraft}
-                onSave={() => void handleSave()}
-                onCancel={() => setShowForm(false)}
-                t={t}
-              />
+              <WorkflowForm draft={draft} editingId={editingId} connections={savedConnections}
+                onDraftChange={setDraft} onSave={() => void handleSave()} onCancel={() => setShowForm(false)} t={t} />
             ) : (
-              <WorkflowList
-                workflows={workflows}
-                loading={workflowsLoading}
-                selectedId={selectedWorkflow?.id}
-                onSelect={handleSelect}
-                onEdit={(id) => void handleEdit(id)}
-                onDelete={(id) => void handleDelete(id)}
-                onCreate={handleCreate}
-                t={t}
-              />
+              <WorkflowList workflows={workflows} loading={workflowsLoading} selectedId={selectedWorkflow?.id}
+                onSelect={handleSelect} onEdit={(id) => void handleEdit(id)} onDelete={(id) => void handleDelete(id)} onCreate={handleCreate} t={t} />
             )}
           </div>
 
-          {/* Variables + Execute (when workflow selected) */}
-          {tab === 'workflows' && !showForm && selectedWorkflow && (
+          {sideTab === 'workflows' && !showForm && selectedWorkflow && (
             <div className="border-t border-edge p-3 space-y-2">
               <div className="text-xs font-medium text-fg-secondary">{selectedWorkflow.name}</div>
-              {selectedWorkflow.description && (
-                <div className="text-[11px] text-fg-muted">{selectedWorkflow.description}</div>
-              )}
+              {selectedWorkflow.description && <div className="text-[11px] text-fg-muted">{selectedWorkflow.description}</div>}
               {selectedWorkflow.variables.length > 0 && (
                 <div className="space-y-1.5">
                   {selectedWorkflow.variables.map((v) => (
                     <div key={v.name}>
-                      <label className="text-[11px] text-fg-muted">
-                        {v.name} {v.required && <span className="text-red-400">*</span>}
-                      </label>
+                      <label className="text-[11px] text-fg-muted">{v.name} {v.required && <span className="text-red-400">*</span>}</label>
                       {v.type === 'connection' ? (
-                        <Select
-                          value={variables[v.name] ?? ''}
-                          options={savedConnections.map((c) => ({ value: c.id, label: c.name }))}
-                          onChange={(val) => setVariables({ ...variables, [v.name]: val })}
-                          className="!h-7 !text-xs"
-                        />
+                        <Select value={variables[v.name] ?? ''} options={savedConnections.map((c) => ({ value: c.id, label: c.name }))}
+                          onChange={(val) => setVariables({ ...variables, [v.name]: val })} className="!h-7 !text-xs" />
                       ) : (
-                        <input
-                          type="text"
-                          className="w-full h-7 rounded border border-edge bg-surface px-2 text-xs text-fg outline-none focus:border-accent"
-                          value={variables[v.name] ?? ''}
-                          onChange={(e) => setVariables({ ...variables, [v.name]: e.target.value })}
-                          placeholder={v.description}
-                        />
+                        <input type="text" className="w-full h-7 rounded border border-edge bg-surface px-2 text-xs text-fg outline-none focus:border-accent"
+                          value={variables[v.name] ?? ''} onChange={(e) => setVariables({ ...variables, [v.name]: e.target.value })} placeholder={v.description} />
                       )}
                     </div>
                   ))}
                 </div>
               )}
-              <Button
-                onClick={() => void handleExecute()}
-                disabled={isExecuting}
-                className="w-full"
-              >
-                {isExecuting ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
-                ) : (
-                  <Play className="h-3.5 w-3.5 mr-1" />
-                )}
+              <Button onClick={() => void handleExecute()} disabled={isExecuting} className="w-full">
+                {isExecuting ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Play className="h-3.5 w-3.5 mr-1" />}
                 {isExecuting ? t('workflows.executing') : t('workflows.execute')}
               </Button>
-              {workflowError && (
-                <p className="text-xs text-red-400">{workflowError}</p>
-              )}
+              {workflowError && <p className="text-xs text-red-400">{workflowError}</p>}
             </div>
           )}
         </div>
 
-        {/* Right panel: result display */}
+        {/* Right panel: tab bar + content */}
         <div className="flex flex-1 flex-col min-h-0">
-          {displayResult ? (
-            <>
-              {/* Steps header */}
-              <div className="flex items-center gap-1 border-b border-edge bg-surface-alt px-3 py-1.5 overflow-x-auto">
-                <span className={cn('text-xs font-medium mr-2', displayResult.success ? 'text-green-500' : 'text-red-400')}>
-                  {displayResult.success ? '✓' : '✗'} {displayResult.totalTimeMs}ms
-                </span>
-                {displayResult.steps.map((step, i) => (
-                  <button
-                    key={step.stepId}
-                    type="button"
-                    onClick={() => setActiveStepIndex(i)}
-                    className={cn(
-                      'flex items-center gap-1 rounded px-2 py-0.5 text-[11px] transition-colors whitespace-nowrap',
-                      activeStepIndex === i ? 'bg-accent/10 text-accent' : 'text-fg-muted hover:text-fg hover:bg-surface-raised/50',
-                    )}
-                  >
-                    <StepStatusIcon status={step.status} />
-                    {step.stepId}
-                    <span className="text-fg-muted">[{step.stepType}]</span>
-                  </button>
-                ))}
-                {historyDetail && (
-                  <button
-                    type="button"
-                    onClick={() => setHistoryDetail(null)}
-                    className="ml-auto flex items-center gap-1 text-xs text-fg-muted hover:text-fg"
-                  >
-                    <X className="h-3 w-3" />
-                    {t('workflows.history.back')}
-                  </button>
-                )}
-              </div>
+          {/* Tab bar (ConnectionWindow style) */}
+          {resultTabs.length > 0 && (
+            <div className="flex shrink-0 items-center border-b border-edge bg-surface-alt">
+              <div className="flex min-w-0 flex-1 overflow-x-auto">
+                {resultTabs.map((tab) => {
+                  const isActive = tab.id === activeTabId;
+                  const icon = tab.type === 'execution'
+                    ? <Play className="h-3.5 w-3.5 shrink-0" />
+                    : <History className="h-3.5 w-3.5 shrink-0" />;
+                  const label = tab.type === 'history'
+                    ? `${tab.workflowName} · ${new Date(tab.createdAt).toLocaleTimeString()}`
+                    : tab.workflowName;
 
-              {/* Step detail / DataTable */}
-              {activeStep ? (
-                <StepDetailView step={activeStep} t={t} />
-              ) : (
-                <div className="flex flex-1 items-center justify-center text-xs text-fg-muted">
-                  {t('workflows.selectStep')}
-                </div>
-              )}
-            </>
+                  return (
+                    <div
+                      key={tab.id}
+                      className={cn(
+                        'group relative flex items-center gap-1.5 border-r border-edge px-3 py-2 text-xs',
+                        isActive ? 'bg-surface text-fg' : 'text-fg-secondary hover:bg-surface-raised hover:text-fg',
+                      )}
+                    >
+                      <button type="button" className="flex items-center gap-1.5" onClick={() => setActiveTabId(tab.id)}>
+                        {icon}
+                        <span className="max-w-[160px] truncate">{label}</span>
+                        <span className={cn('text-[10px]', tab.result.success ? 'text-green-500' : 'text-red-400')}>
+                          {tab.result.success ? '✓' : '✗'}
+                        </span>
+                      </button>
+                      <button type="button"
+                        className="rounded p-0.5 text-fg-muted opacity-0 hover:bg-surface-raised hover:text-fg group-hover:opacity-100"
+                        onClick={() => handleCloseTab(tab.id)}>
+                        <X className="h-3 w-3" />
+                      </button>
+                      {isActive && <span className="absolute inset-x-0 bottom-0 h-0.5 bg-blue-500" />}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Tab content */}
+          {activeTab ? (
+            <ResultTabContent tab={activeTab} onStepChange={(idx) => handleSetStepIndex(activeTab.id, idx)} t={t} />
           ) : (
             <div className="flex flex-1 items-center justify-center text-sm text-fg-muted">
               <div className="text-center">
@@ -416,6 +421,66 @@ export function WorkflowWindow() {
     </div>
   );
 }
+
+// ─── Result tab content ─────────────────────────────────────────────────────
+
+function ResultTabContent({
+  tab,
+  onStepChange,
+  t,
+}: {
+  tab: ResultTab;
+  onStepChange: (idx: number | null) => void;
+  t: ReturnType<typeof useI18n>['t'];
+}) {
+  const { result, activeStepIndex } = tab;
+  const activeStep = activeStepIndex != null ? result.steps[activeStepIndex] : null;
+
+  return (
+    <div className="flex flex-1 flex-col min-h-0">
+      {/* Step sub-tabs */}
+      <div className="flex shrink-0 items-center gap-0 border-b border-edge bg-surface-alt px-1 overflow-x-auto">
+        <span className={cn('px-2 py-1.5 text-xs font-medium', result.success ? 'text-green-500' : 'text-red-400')}>
+          {result.success ? '✓' : '✗'} {result.totalTimeMs}ms
+        </span>
+        {result.steps.map((step, i) => (
+          <button
+            key={step.stepId}
+            type="button"
+            onClick={() => onStepChange(i)}
+            className={cn(
+              'relative px-3 py-1.5 text-xs transition-colors whitespace-nowrap',
+              activeStepIndex === i ? 'text-fg font-medium' : 'text-fg-muted hover:text-fg-secondary',
+            )}
+          >
+            <span className="flex items-center gap-1">
+              <StepStatusIcon status={step.status} />
+              {step.stepId}
+              <span className="text-fg-muted text-[10px]">[{step.stepType}]</span>
+            </span>
+            {activeStepIndex === i && <span className="absolute inset-x-0 bottom-0 h-0.5 bg-accent" />}
+          </button>
+        ))}
+      </div>
+
+      {activeStep ? (
+        <StepDetailView step={activeStep} t={t} />
+      ) : (
+        <div className="flex flex-1 items-center justify-center text-xs text-fg-muted">
+          {t('workflows.selectStep')}
+        </div>
+      )}
+
+      {result.error ? (
+        <div className="shrink-0 border-t border-edge bg-red-500/5 px-3 py-2 text-xs text-red-400">
+          {result.error}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+// ─── Shared sub-components ──────────────────────────────────────────────────
 
 function StepStatusIcon({ status }: { status: string }) {
   if (status === 'success') return <span className="text-green-500">✓</span>;
@@ -438,19 +503,15 @@ function StepDetailView({ step, t }: { step: StepExecutionResult; t: ReturnType<
 
   return (
     <div className="flex flex-1 flex-col min-h-0">
-      {/* Step meta bar */}
       <div className="flex items-center gap-3 border-b border-edge bg-surface-alt px-3 py-1.5 text-xs text-fg-secondary">
         <span className="font-medium text-fg">{step.stepId}</span>
         <span className="text-fg-muted">[{step.stepType}]</span>
         <StepStatusIcon status={step.status} />
         {step.connectionName && <span className="text-accent">{step.connectionName}</span>}
         <span className="text-fg-muted">{step.executionTimeMs}ms</span>
-        {rowsCount > 0 && (
-          <span>{rowsCount} {t('common.rows')}</span>
-        )}
+        {rowsCount > 0 && <span>{rowsCount} {t('common.rows')}</span>}
       </div>
 
-      {/* SQL display */}
       {step.sqlExecuted ? (
         <div className="border-b border-edge bg-surface px-3 py-2">
           <pre className="text-[11px] font-mono text-fg-secondary whitespace-pre-wrap break-words max-h-20 overflow-auto">
@@ -459,14 +520,10 @@ function StepDetailView({ step, t }: { step: StepExecutionResult; t: ReturnType<
         </div>
       ) : null}
 
-      {/* Error display */}
       {step.error ? (
-        <div className="border-b border-edge bg-red-500/5 px-3 py-2 text-xs text-red-400">
-          {step.error}
-        </div>
+        <div className="border-b border-edge bg-red-500/5 px-3 py-2 text-xs text-red-400">{step.error}</div>
       ) : null}
 
-      {/* AI result display */}
       {step.stepType === 'ai' && step.result?.response ? (
         <div className="border-b border-edge px-3 py-2">
           <pre className="text-xs text-fg-secondary whitespace-pre-wrap break-words max-h-60 overflow-auto">
@@ -475,225 +532,105 @@ function StepDetailView({ step, t }: { step: StepExecutionResult; t: ReturnType<
         </div>
       ) : null}
 
-      {/* DataTable for query results */}
       {columns.length > 0 ? (
         <div className="flex flex-1 min-h-0">
-          <DataTable
-            columns={columns}
-            rows={tableRows}
-            rowHeight={32}
-          />
+          <DataTable columns={columns} rows={tableRows} rowHeight={32} />
         </div>
       ) : step.stepType === 'query' && !step.error ? (
-        <div className="flex flex-1 items-center justify-center text-xs text-fg-muted">
-          {t('workflows.noQueryResult')}
-        </div>
+        <div className="flex flex-1 items-center justify-center text-xs text-fg-muted">{t('workflows.noQueryResult')}</div>
       ) : null}
     </div>
   );
 }
 
-function WorkflowList({
-  workflows,
-  loading,
-  selectedId,
-  onSelect,
-  onEdit,
-  onDelete,
-  onCreate,
-  t,
-}: {
-  workflows: WorkflowListItem[];
-  loading: boolean;
-  selectedId?: string;
-  onSelect: (w: WorkflowListItem) => void;
-  onEdit: (id: string) => void;
-  onDelete: (id: string) => void;
-  onCreate: () => void;
-  t: ReturnType<typeof useI18n>['t'];
+// ─── Left sidebar sub-components ────────────────────────────────────────────
+
+function WorkflowList({ workflows, loading, selectedId, onSelect, onEdit, onDelete, onCreate, t }: {
+  workflows: WorkflowListItem[]; loading: boolean; selectedId?: string;
+  onSelect: (w: WorkflowListItem) => void; onEdit: (id: string) => void;
+  onDelete: (id: string) => void; onCreate: () => void; t: ReturnType<typeof useI18n>['t'];
 }) {
   if (loading) {
-    return (
-      <div className="flex items-center justify-center py-8 text-fg-muted text-xs">
-        <Loader2 className="h-4 w-4 animate-spin mr-1" />
-        {t('workflows.loading')}
-      </div>
-    );
+    return <div className="flex items-center justify-center py-8 text-fg-muted text-xs"><Loader2 className="h-4 w-4 animate-spin mr-1" />{t('workflows.loading')}</div>;
   }
-
   return (
     <div className="p-2 space-y-0.5">
-      <button
-        type="button"
-        onClick={onCreate}
-        className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-xs text-accent hover:bg-surface-raised/50 transition-colors"
-      >
-        <Plus className="h-3.5 w-3.5" />
-        {t('workflows.create')}
+      <button type="button" onClick={onCreate}
+        className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-xs text-accent hover:bg-surface-raised/50 transition-colors">
+        <Plus className="h-3.5 w-3.5" />{t('workflows.create')}
       </button>
       {workflows.map((w) => (
-        <div
-          key={w.id}
-          className={cn(
-            'group flex items-center gap-2 rounded-md px-3 py-2 cursor-pointer transition-colors',
-            selectedId === w.id ? 'bg-accent/10 text-accent' : 'text-fg-secondary hover:bg-surface-raised/50 hover:text-fg',
-          )}
-          onClick={() => onSelect(w)}
-        >
+        <div key={w.id} className={cn('group flex items-center gap-2 rounded-md px-3 py-2 cursor-pointer transition-colors',
+          selectedId === w.id ? 'bg-accent/10 text-accent' : 'text-fg-secondary hover:bg-surface-raised/50 hover:text-fg')} onClick={() => onSelect(w)}>
           <Wand2 className="h-3.5 w-3.5 shrink-0" />
           <div className="flex-1 min-w-0">
             <div className="text-xs font-medium truncate">{w.name}</div>
             {w.description && <div className="text-[10px] text-fg-muted truncate">{w.description}</div>}
           </div>
           <div className="hidden group-hover:flex items-center gap-0.5">
-            <button type="button" onClick={(e) => { e.stopPropagation(); onEdit(w.id); }} className="p-0.5 rounded hover:bg-surface-alt" title="Edit">
-              <Pencil className="h-3 w-3" />
-            </button>
-            <button type="button" onClick={(e) => { e.stopPropagation(); onDelete(w.id); }} className="p-0.5 rounded hover:bg-surface-alt text-red-400" title="Delete">
-              <Trash2 className="h-3 w-3" />
-            </button>
+            <button type="button" onClick={(e) => { e.stopPropagation(); onEdit(w.id); }} className="p-0.5 rounded hover:bg-surface-alt" title="Edit"><Pencil className="h-3 w-3" /></button>
+            <button type="button" onClick={(e) => { e.stopPropagation(); onDelete(w.id); }} className="p-0.5 rounded hover:bg-surface-alt text-red-400" title="Delete"><Trash2 className="h-3 w-3" /></button>
           </div>
         </div>
       ))}
-      {workflows.length === 0 && (
-        <div className="py-6 text-center text-xs text-fg-muted">{t('workflows.noWorkflows')}</div>
-      )}
+      {workflows.length === 0 && <div className="py-6 text-center text-xs text-fg-muted">{t('workflows.noWorkflows')}</div>}
     </div>
   );
 }
 
-function WorkflowForm({
-  draft,
-  editingId,
-  connections,
-  onDraftChange,
-  onSave,
-  onCancel,
-  t,
-}: {
-  draft: ReturnType<typeof emptyDraft>;
-  editingId: string | null;
+function WorkflowForm({ draft, editingId, connections, onDraftChange, onSave, onCancel, t }: {
+  draft: ReturnType<typeof emptyDraft>; editingId: string | null;
   connections: { id: string; name: string; databaseType: string }[];
-  onDraftChange: (d: ReturnType<typeof emptyDraft>) => void;
-  onSave: () => void;
-  onCancel: () => void;
-  t: ReturnType<typeof useI18n>['t'];
+  onDraftChange: (d: ReturnType<typeof emptyDraft>) => void; onSave: () => void;
+  onCancel: () => void; t: ReturnType<typeof useI18n>['t'];
 }) {
   const inputClass = 'w-full h-7 rounded border border-edge bg-surface px-2 text-xs text-fg outline-none focus:border-accent';
   const textareaClass = 'w-full rounded border border-edge bg-surface px-2 py-1 text-xs font-mono text-fg outline-none focus:border-accent resize-y min-h-[60px]';
-
   return (
     <div className="p-3 space-y-3">
       <div className="flex items-center justify-between">
         <span className="text-xs font-medium text-fg">{editingId ? t('workflows.edit') : t('workflows.create')}</span>
-        <button type="button" onClick={onCancel} className="text-fg-muted hover:text-fg">
-          <X className="h-3.5 w-3.5" />
-        </button>
+        <button type="button" onClick={onCancel} className="text-fg-muted hover:text-fg"><X className="h-3.5 w-3.5" /></button>
       </div>
-
-      <div>
-        <label className="text-[11px] text-fg-muted">ID</label>
-        <input className={inputClass} value={draft.id} onChange={(e) => onDraftChange({ ...draft, id: e.target.value })} disabled={!!editingId} />
-      </div>
-      <div>
-        <label className="text-[11px] text-fg-muted">{t('workflows.name')}</label>
-        <input className={inputClass} value={draft.name} onChange={(e) => onDraftChange({ ...draft, name: e.target.value })} />
-      </div>
-      <div>
-        <label className="text-[11px] text-fg-muted">{t('workflows.description')}</label>
-        <input className={inputClass} value={draft.description} onChange={(e) => onDraftChange({ ...draft, description: e.target.value })} />
-      </div>
-
-      {/* Steps */}
+      <div><label className="text-[11px] text-fg-muted">ID</label>
+        <input className={inputClass} value={draft.id} onChange={(e) => onDraftChange({ ...draft, id: e.target.value })} disabled={!!editingId} /></div>
+      <div><label className="text-[11px] text-fg-muted">{t('workflows.name')}</label>
+        <input className={inputClass} value={draft.name} onChange={(e) => onDraftChange({ ...draft, name: e.target.value })} /></div>
+      <div><label className="text-[11px] text-fg-muted">{t('workflows.description')}</label>
+        <input className={inputClass} value={draft.description} onChange={(e) => onDraftChange({ ...draft, description: e.target.value })} /></div>
       <div>
         <div className="flex items-center justify-between mb-1">
           <label className="text-[11px] text-fg-muted">{t('workflows.steps')}</label>
-          <button
-            type="button"
-            onClick={() => onDraftChange({ ...draft, steps: [...draft.steps, { type: 'query', id: `step${draft.steps.length + 1}`, sql: '' }] })}
-            className="text-accent text-[10px] hover:underline"
-          >
-            + {t('workflows.addStep')}
-          </button>
+          <button type="button" onClick={() => onDraftChange({ ...draft, steps: [...draft.steps, { type: 'query', id: `step${draft.steps.length + 1}`, sql: '' }] })}
+            className="text-accent text-[10px] hover:underline">+ {t('workflows.addStep')}</button>
         </div>
         {draft.steps.map((step, i) => (
           <div key={i} className="mb-2 rounded border border-edge p-2 space-y-1">
             <div className="flex items-center gap-1">
-              <input
-                className="h-6 w-20 rounded border border-edge bg-surface px-1 text-[11px] text-fg outline-none"
-                value={step.id}
-                onChange={(e) => {
-                  const next = [...draft.steps];
-                  next[i] = { ...next[i], id: e.target.value };
-                  onDraftChange({ ...draft, steps: next });
-                }}
-                placeholder="step_id"
-              />
-              <Select
-                value={step.type}
-                options={[
-                  { value: 'query', label: 'Query' },
-                  { value: 'ai', label: 'AI' },
-                ]}
-                onChange={(v) => {
-                  const next = [...draft.steps];
-                  next[i] = { ...next[i], type: v as WorkflowStepType };
-                  onDraftChange({ ...draft, steps: next });
-                }}
-                className="!h-6 !text-[11px] w-20"
-              />
+              <input className="h-6 w-20 rounded border border-edge bg-surface px-1 text-[11px] text-fg outline-none" value={step.id}
+                onChange={(e) => { const next = [...draft.steps]; next[i] = { ...next[i], id: e.target.value }; onDraftChange({ ...draft, steps: next }); }} placeholder="step_id" />
+              <Select value={step.type} options={[{ value: 'query', label: 'Query' }, { value: 'ai', label: 'AI' }]}
+                onChange={(v) => { const next = [...draft.steps]; next[i] = { ...next[i], type: v as WorkflowStepType }; onDraftChange({ ...draft, steps: next }); }} className="!h-6 !text-[11px] w-20" />
               {connections.length > 0 && (
-                <Select
-                  value={step.connection ?? ''}
-                  options={[{ value: '', label: t('workflows.defaultConn') }, ...connections.map((c) => ({ value: c.id, label: c.name }))]}
-                  onChange={(v) => {
-                    const next = [...draft.steps];
-                    next[i] = { ...next[i], connection: v || undefined };
-                    onDraftChange({ ...draft, steps: next });
-                  }}
-                  className="!h-6 !text-[11px] flex-1"
-                />
+                <Select value={step.connection ?? ''} options={[{ value: '', label: t('workflows.defaultConn') }, ...connections.map((c) => ({ value: c.id, label: c.name }))]}
+                  onChange={(v) => { const next = [...draft.steps]; next[i] = { ...next[i], connection: v || undefined }; onDraftChange({ ...draft, steps: next }); }} className="!h-6 !text-[11px] flex-1" />
               )}
               {draft.steps.length > 1 && (
-                <button
-                  type="button"
-                  onClick={() => onDraftChange({ ...draft, steps: draft.steps.filter((_, j) => j !== i) })}
-                  className="text-red-400 hover:text-red-300 p-0.5"
-                >
-                  <X className="h-3 w-3" />
-                </button>
+                <button type="button" onClick={() => onDraftChange({ ...draft, steps: draft.steps.filter((_, j) => j !== i) })} className="text-red-400 hover:text-red-300 p-0.5">
+                  <X className="h-3 w-3" /></button>
               )}
             </div>
             {step.type === 'query' && (
-              <textarea
-                className={textareaClass}
-                value={step.sql ?? ''}
-                onChange={(e) => {
-                  const next = [...draft.steps];
-                  next[i] = { ...next[i], sql: e.target.value };
-                  onDraftChange({ ...draft, steps: next });
-                }}
-                placeholder="SELECT ..."
-                rows={3}
-              />
+              <textarea className={textareaClass} value={step.sql ?? ''}
+                onChange={(e) => { const next = [...draft.steps]; next[i] = { ...next[i], sql: e.target.value }; onDraftChange({ ...draft, steps: next }); }} placeholder="SELECT ..." rows={3} />
             )}
             {step.type === 'ai' && (
-              <textarea
-                className={textareaClass}
-                value={step.prompt ?? ''}
-                onChange={(e) => {
-                  const next = [...draft.steps];
-                  next[i] = { ...next[i], prompt: e.target.value };
-                  onDraftChange({ ...draft, steps: next });
-                }}
-                placeholder="AI prompt..."
-                rows={3}
-              />
+              <textarea className={textareaClass} value={step.prompt ?? ''}
+                onChange={(e) => { const next = [...draft.steps]; next[i] = { ...next[i], prompt: e.target.value }; onDraftChange({ ...draft, steps: next }); }} placeholder="AI prompt..." rows={3} />
             )}
           </div>
         ))}
       </div>
-
       <div className="flex gap-2">
         <Button onClick={onSave} className="flex-1">{t('common.save')}</Button>
         <Button variant="secondary" onClick={onCancel} className="flex-1">{t('common.cancel')}</Button>
@@ -702,46 +639,28 @@ function WorkflowForm({
   );
 }
 
-function HistoryList({
-  items,
-  onView,
-  onClear,
-  t,
-}: {
-  items: HistoryListItem[];
-  onView: (id: string) => void;
-  onClear: () => void;
-  t: ReturnType<typeof useI18n>['t'];
+function HistoryList({ items, onView, onClear, t }: {
+  items: HistoryListItem[]; onView: (id: string) => void; onClear: () => void; t: ReturnType<typeof useI18n>['t'];
 }) {
   return (
     <div className="p-2">
       {items.length > 0 && (
         <div className="flex justify-end mb-1">
-          <button type="button" onClick={onClear} className="text-[10px] text-fg-muted hover:text-red-400">
-            {t('workflows.history.clear')}
-          </button>
+          <button type="button" onClick={onClear} className="text-[10px] text-fg-muted hover:text-red-400">{t('workflows.history.clear')}</button>
         </div>
       )}
       {items.map((item) => (
-        <button
-          key={item.id}
-          type="button"
-          onClick={() => onView(item.id)}
-          className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left hover:bg-surface-raised/50 transition-colors"
-        >
+        <button key={item.id} type="button" onClick={() => onView(item.id)}
+          className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left hover:bg-surface-raised/50 transition-colors">
           <Clock className="h-3.5 w-3.5 text-fg-muted shrink-0" />
           <div className="flex-1 min-w-0">
             <div className="text-xs font-medium text-fg truncate">{item.workflowName}</div>
             <div className="text-[10px] text-fg-muted">{new Date(item.createdAt).toLocaleString()}</div>
           </div>
-          <span className={cn('text-[10px]', item.success ? 'text-green-500' : 'text-red-400')}>
-            {item.success ? '✓' : '✗'}
-          </span>
+          <span className={cn('text-[10px]', item.success ? 'text-green-500' : 'text-red-400')}>{item.success ? '✓' : '✗'}</span>
         </button>
       ))}
-      {items.length === 0 && (
-        <div className="py-6 text-center text-xs text-fg-muted">{t('workflows.history.empty')}</div>
-      )}
+      {items.length === 0 && <div className="py-6 text-center text-xs text-fg-muted">{t('workflows.history.empty')}</div>}
     </div>
   );
 }

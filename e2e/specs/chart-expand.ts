@@ -1,6 +1,5 @@
 import { expect, browser, $, $$ } from '@wdio/globals';
 import { openConnectionWindow, closeExtraWindows, executeSQL, openQueryTab } from '../helpers.js';
-import { t } from '../i18n.js';
 
 describe('图表放大功能 (CHART-EXPAND)', () => {
   let mainWindow: string;
@@ -12,17 +11,33 @@ describe('图表放大功能 (CHART-EXPAND)', () => {
     connWindow = res.connWindow;
     await openQueryTab();
     await browser.pause(1000);
+
+    // Create test table and insert data in a single SQL statement
+    await executeSQL(`
+      CREATE TABLE IF NOT EXISTS e2e_chart_test (category TEXT, amount INTEGER);
+      DELETE FROM e2e_chart_test;
+      INSERT INTO e2e_chart_test (category, amount) VALUES
+        ('Alpha', 100), ('Beta', 200), ('Gamma', 150), ('Delta', 300), ('Epsilon', 250);
+    `);
+    await browser.pause(500);
+    await openQueryTab();
+    await browser.pause(500);
   });
 
   after(async () => {
+    // Cleanup the test table
+    try {
+      await openQueryTab();
+      await executeSQL('DROP TABLE IF EXISTS e2e_chart_test');
+    } catch { /* ignore */ }
     await closeExtraWindows(mainWindow);
   });
 
   it('应能切换到图表视图', async () => {
-    await executeSQL('SELECT status, COUNT(*) as count FROM product GROUP BY status ORDER BY count DESC LIMIT 10');
+    await executeSQL('SELECT category, amount FROM e2e_chart_test ORDER BY category');
     await browser.pause(1000);
 
-    const chartBtn = await $(`button*=${t('chart.viewChart')}`);
+    const chartBtn = await $('button*=图表');
     await chartBtn.waitForDisplayed({ timeout: 5000 });
     await chartBtn.click();
     await browser.pause(1000);
@@ -32,16 +47,16 @@ describe('图表放大功能 (CHART-EXPAND)', () => {
   });
 
   it('应显示放大按钮', async () => {
-    const expandBtn = await $(`button[title="${t('chart.expand')}"]`);
+    const expandBtn = await $('button[title="放大显示"]');
     await expandBtn.waitForDisplayed({ timeout: 5000 });
   });
 
   it('点击放大按钮应打开全屏图表覆盖层', async () => {
-    const expandBtn = await $(`button[title="${t('chart.expand')}"]`);
+    const expandBtn = await $('button[title="放大显示"]');
     await expandBtn.click();
     await browser.pause(500);
 
-    const title = await $(`span*=${t('chart.expandTitle')}`);
+    const title = await $('span*=图表预览');
     await title.waitForDisplayed({ timeout: 5000 });
   });
 
@@ -63,34 +78,34 @@ describe('图表放大功能 (CHART-EXPAND)', () => {
     await browser.keys('Escape');
     await browser.pause(500);
 
-    const title = await $(`span*=${t('chart.expandTitle')}`);
+    const title = await $('span*=图表预览');
     const exists = await title.isExisting();
     expect(exists).toBe(false);
   });
 
   it('点击关闭按钮也应关闭放大视图', async () => {
-    const expandBtn = await $(`button[title="${t('chart.expand')}"]`);
+    const expandBtn = await $('button[title="放大显示"]');
     await expandBtn.click();
     await browser.pause(500);
 
-    const title = await $(`span*=${t('chart.expandTitle')}`);
+    const title = await $('span*=图表预览');
     await title.waitForDisplayed({ timeout: 5000 });
 
-    const closeBtn = await $(`button[title="${t('chart.collapse')}"]`);
+    const closeBtn = await $('button[title="退出放大"]');
     await closeBtn.click();
     await browser.pause(500);
 
-    const titleAfter = await $(`span*=${t('chart.expandTitle')}`);
+    const titleAfter = await $('span*=图表预览');
     const exists = await titleAfter.isExisting();
     expect(exists).toBe(false);
   });
 
   it('切回表格视图后放大按钮不可见', async () => {
-    const tableBtn = await $(`button*=${t('chart.viewTable')}`);
+    const tableBtn = await $('button*=表格');
     await tableBtn.click();
     await browser.pause(500);
 
-    const expandBtn = await $(`button[title="${t('chart.expand')}"]`);
+    const expandBtn = await $('button[title="放大显示"]');
     const exists = await expandBtn.isExisting();
     expect(exists).toBe(false);
   });

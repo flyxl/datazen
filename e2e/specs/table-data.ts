@@ -134,7 +134,7 @@ describe('表数据视图 (TD-001~TD-008)', () => {
     await browser.pause(2000);
 
     const body = await $('body').getText();
-    const hasPage1 = body.includes(`${t('pagination.page')} 1`) || body.includes('1-');
+    const hasPage1 = body.includes('第 1') || body.includes('1-');
     expect(hasPage1).toBe(true);
   });
 
