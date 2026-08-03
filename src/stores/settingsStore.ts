@@ -13,6 +13,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   confirmOnDelete: true,
   autoCommit: true,
   defaultPageSize: 50,
+  logLevel: 'info',
+  logPath: '',
 };
 
 const THEME_STORAGE_KEY = 'datazen-theme';

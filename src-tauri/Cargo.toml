@@ -42,7 +42,9 @@ uuid = { version = "1", features = ["v4", "serde"] }
 thiserror = "1"
 anyhow = "1"
 tracing = "0.1"
+tracing-appender = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+open = "5"
 sysinfo = "0.30"
 async-trait = "0.1"
 urlencoding = "2"

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   Bot,
   Code2,
+  FileText,
   Globe,
   MessageSquareText,
   MousePointerClick,
@@ -19,12 +20,21 @@ import { useI18n } from '../../hooks/useI18n';
 import { getUrlParam } from '../../lib/windowKind';
 import { cn } from '../../lib/cn';
 import { aiCommands, type PromptInfo, type PromptOverrideEntry, type PromptScenario, type PromptSource } from '../../commands/ai';
+import { settingsCommands } from '../../commands/settings';
 import { DB_REGISTRY } from '../../lib/databaseTypes';
 import type { AppSettings, AiProviderConfig, AiProviderType, DatabaseType, McpServerConfig } from '../../types';
 import type { TranslationKey } from '../../locales';
 
 const PAGE_SIZE_OPTIONS = [25, 50, 100, 200, 500];
 const RESULT_LIMIT_OPTIONS = [1000, 2000, 5000, 10000, 50000];
+
+const LOG_LEVEL_OPTIONS: { value: AppSettings['logLevel']; label: string }[] = [
+  { value: 'trace', label: 'Trace' },
+  { value: 'debug', label: 'Debug' },
+  { value: 'info', label: 'Info' },
+  { value: 'warn', label: 'Warn' },
+  { value: 'error', label: 'Error' },
+];
 
 const THEME_KEYS: { value: AppSettings['theme']; key: TranslationKey }[] = [
   { value: 'light', key: 'theme.light' },
@@ -37,13 +47,14 @@ const LANGUAGE_OPTIONS = [
   { value: 'en', label: 'English' },
 ];
 
-type SettingsSection = 'general' | 'dataBrowsing' | 'editor' | 'behavior' | 'ai' | 'prompts' | 'mcpServer' | 'mcpClient';
+type SettingsSection = 'general' | 'dataBrowsing' | 'editor' | 'behavior' | 'logging' | 'ai' | 'prompts' | 'mcpServer' | 'mcpClient';
 
 const SECTIONS: { id: SettingsSection; labelKey: TranslationKey; icon: React.ComponentType<{ className?: string }> }[] = [
   { id: 'general', labelKey: 'settings.general', icon: Globe },
   { id: 'dataBrowsing', labelKey: 'settings.dataBrowsing', icon: Table2 },
   { id: 'editor', labelKey: 'settings.editor', icon: Code2 },
   { id: 'behavior', labelKey: 'settings.behavior', icon: MousePointerClick },
+  { id: 'logging', labelKey: 'settings.logging', icon: FileText },
   { id: 'ai', labelKey: 'settings.ai', icon: Bot },
   { id: 'prompts', labelKey: 'settings.prompts', icon: MessageSquareText },
   { id: 'mcpServer', labelKey: 'mcp.title', icon: Server },
@@ -60,6 +71,7 @@ export function SettingsWindow() {
 
   const [draft, setDraft] = useState<AppSettings>(settings);
   const [saved, setSaved] = useState(false);
+  const [defaultLogPath, setDefaultLogPath] = useState('');
 
   const [activeSection, setActiveSection] = useState<SettingsSection>(() => {
     const fromUrl = getUrlParam('section');
@@ -72,6 +84,10 @@ export function SettingsWindow() {
   useEffect(() => {
     void loadSettings();
   }, [loadSettings]);
+
+  useEffect(() => {
+    void settingsCommands.getLogPath().then(setDefaultLogPath).catch(() => {});
+  }, []);
 
   useEffect(() => {
     setDraft(settings);
@@ -233,6 +249,38 @@ export function SettingsWindow() {
               </>
             )}
 
+            {activeSection === 'logging' && (
+              <>
+                <SectionTitle>{t('settings.logging')}</SectionTitle>
+
+                <SettingRow label={t('settings.logLevel')}>
+                  <Select
+                    value={draft.logLevel}
+                    options={LOG_LEVEL_OPTIONS}
+                    onChange={(v) => updateField('logLevel', v as AppSettings['logLevel'])}
+                  />
+                </SettingRow>
+
+                <SettingRow label={t('settings.logPath')}>
+                  <input
+                    type="text"
+                    value={draft.logPath}
+                    onChange={(e) => updateField('logPath', e.target.value)}
+                    placeholder={defaultLogPath || t('settings.logPathPlaceholder')}
+                    className="h-9 w-full rounded-md border border-edge bg-surface px-3 text-sm text-fg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/25"
+                  />
+                </SettingRow>
+
+                <div className="flex items-center gap-3">
+                  <Button variant="secondary" onClick={() => void settingsCommands.openLogFolder()}>
+                    {t('settings.viewLogs')}
+                  </Button>
+                </div>
+
+                <p className="text-xs text-fg-muted">{t('settings.logRestartNote')}</p>
+              </>
+            )}
+
             {activeSection === 'ai' && <AiSettingsSection />}
             {activeSection === 'prompts' && <PromptSettingsSection />}
             {activeSection === 'mcpServer' && <McpSettingsSection />}
@@ -242,7 +290,7 @@ export function SettingsWindow() {
       </div>
 
       {/* Footer - only show for general settings that use draft/save */}
-      {['general', 'dataBrowsing', 'editor', 'behavior'].includes(activeSection) && (
+      {['general', 'dataBrowsing', 'editor', 'behavior', 'logging'].includes(activeSection) && (
         <footer className="flex shrink-0 items-center justify-end gap-3 border-t border-edge px-8 py-3">
           {saved && <span className="text-xs text-green-500">{t('settings.saved')}</span>}
           <Button variant="secondary" onClick={() => void handleClose()}>{t('common.close')}</Button>
