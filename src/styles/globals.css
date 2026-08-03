@@ -40,6 +40,24 @@ html.macos-rounded #splash {
   box-sizing: border-box;
 }
 
+/* Prevent Tailwind v4 preflight from breaking CodeMirror layout.
+   Preflight sets border/padding/margin to 0 on all elements via @layer base;
+   CodeMirror injects its styles at runtime (un-layered) so they normally win,
+   but production bundling can change injection order. These rules ensure
+   CodeMirror's critical layout properties are always applied. */
+.cm-editor {
+  display: flex !important;
+  flex-direction: column;
+  position: relative !important;
+}
+
+.cm-scroller {
+  display: flex !important;
+  align-items: flex-start !important;
+  overflow: auto;
+  flex-grow: 1;
+}
+
 ::selection {
   background: rgba(59, 130, 246, 0.35);
 }
