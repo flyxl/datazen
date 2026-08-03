@@ -25,9 +25,9 @@ const zhCN = {
   'menu.file': '文件',
   'menu.newConnection': '新建连接',
   'menu.dataSync': '数据同步',
-  'menu.backup': '备份数据库…',
-  'menu.restore': '恢复数据库…',
-  'menu.settings': '偏好设置…',
+  'menu.backup': '备份数据库',
+  'menu.restore': '恢复数据库',
+  'menu.settings': '偏好设置',
   'menu.edit': '编辑',
   'menu.view': '显示',
   'menu.themeLight': '浅色主题',
@@ -49,7 +49,7 @@ const zhCN = {
   'traffic.fullscreen': '全屏 (⌥+点击: 最大化)',
 
   // ── Main Window ──
-  'main.searchPlaceholder': '查找连接…',
+  'main.searchPlaceholder': '查找连接',
   'main.newConnection': '新建连接',
   'main.noConnections': '没有连接',
   'main.createFirst': '新建连接',
@@ -85,12 +85,13 @@ const zhCN = {
   'main.sidebar.resize': '拖拽调整侧边栏宽度',
 
   // ── Action Panel ──
-  'action.backup': '备份数据库…',
-  'action.restore': '恢复数据库…',
-  'action.dataSync': '数据同步…',
-  'action.newConnection': '新建连接…',
-  'action.exportConfig': '导出配置…',
-  'action.importConfig': '导入配置…',
+  'action.backup': '备份数据库',
+  'action.restore': '恢复数据库',
+  'action.dataSync': '数据同步',
+  'action.newConnection': '新建连接',
+  'action.workflow': '工作流',
+  'action.exportConfig': '导出配置',
+  'action.importConfig': '导入配置',
 
   // ── Config Import / Export ──
   'configExport.success': '已导出 {count} 个连接配置',
@@ -709,6 +710,18 @@ const zhCN = {
   'workflows.history.back': '返回列表',
   'workflows.history.clear': '清空记录',
   'workflows.history.clearConfirm': '确定要清空所有执行记录吗？',
+  'workflows.execute': '执行',
+  'workflows.executing': '执行中…',
+  'workflows.name': '名称',
+  'workflows.description': '描述',
+  'workflows.steps': '步骤',
+  'workflows.addStep': '添加步骤',
+  'workflows.openDir': '打开工作流目录',
+  'workflows.selectStep': '点击上方步骤标签查看执行详情',
+  'workflows.emptyHint': '选择一个工作流并执行，结果将在此处展示',
+  'workflows.noQueryResult': '该步骤未返回查询结果',
+  'workflows.defaultConn': '默认连接',
+  'workflows.noWorkflows': '暂无工作流。点击上方 + 按钮创建',
 
   // ── Chart ──
   'chart.viewTable': '表格',
@@ -755,6 +768,9 @@ const zhCN = {
   'chart.sampledWarning': '数据量较大，图表仅展示前 {limit} 行',
   'chart.nlPlaceholder': '输入指令（如：换成饼图）',
   'chart.nlHint': '用自然语言调整图表',
+  'chart.expand': '放大显示',
+  'chart.expandTitle': '图表预览',
+  'chart.collapse': '退出放大',
   'nl2sql.applyAndChart': '应用并图表化',
 
   // ── Select ──
@@ -769,6 +785,7 @@ const zhCN = {
   'win.newConnection': '新建连接 - DataZen',
   'win.query': '查询 - {db} - DataZen',
   'win.dataSync': '数据同步 - DataZen',
+  'win.workflow': '工作流 - DataZen',
   'win.settings': '偏好设置 - DataZen',
 } as const;
 

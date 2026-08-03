@@ -39,6 +39,12 @@ const BackupWindow = lazy(() =>
     return { default: m.BackupWindow };
   }),
 );
+const WorkflowWindow = lazy(() =>
+  import('./windows/workflow/WorkflowWindow').then((m) => {
+    mark('WorkflowWindow chunk loaded');
+    return { default: m.WorkflowWindow };
+  }),
+);
 
 const windowKind = getWindowKind();
 mark(`windowKind resolved: "${windowKind}"`);
@@ -59,6 +65,8 @@ function WindowContent() {
       return <DataSyncWindow />;
     case 'backup':
       return <BackupWindow />;
+    case 'workflow':
+      return <WorkflowWindow />;
     case 'main':
     default:
       return <MainWindow />;

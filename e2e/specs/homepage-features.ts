@@ -3,13 +3,14 @@
  */
 import { expect, browser, $, $$ } from '@wdio/globals';
 import { closeExtraWindows, expandAllGroups } from '../helpers.js';
+import { t } from '../i18n.js';
 
 describe('主页 TablePlus 风格 (HOME)', () => {
   let mainWindow: string;
 
   before(async () => {
     mainWindow = await browser.getWindowHandle();
-    await $('input[placeholder="查找连接…"]').waitForDisplayed({ timeout: 10000 });
+    await $(`input[placeholder="${t('main.searchPlaceholder')}"]`).waitForDisplayed({ timeout: 10000 });
     await expandAllGroups();
     await browser.pause(1000);
   });
@@ -24,10 +25,10 @@ describe('主页 TablePlus 风格 (HOME)', () => {
   // ── Layout ──────────────────────────────────────────────────────
 
   it('HOME-001: 左侧应显示操作面板', async () => {
-    const backup = await $('button*=备份数据库');
-    const restore = await $('button*=恢复数据库');
-    const sync = await $('button*=数据同步');
-    const newConn = await $('button*=新建连接');
+    const backup = await $(`button*=${t('action.backup')}`);
+    const restore = await $(`button*=${t('action.restore')}`);
+    const sync = await $(`button*=${t('action.dataSync')}`);
+    const newConn = await $(`button*=${t('action.newConnection')}`);
     await expect(backup).toBeDisplayed();
     await expect(restore).toBeDisplayed();
     await expect(sync).toBeDisplayed();
@@ -42,12 +43,12 @@ describe('主页 TablePlus 风格 (HOME)', () => {
   });
 
   it('HOME-003: 搜索栏应在连接列表上方', async () => {
-    const searchInput = await $('input[placeholder="查找连接…"]');
+    const searchInput = await $(`input[placeholder="${t('main.searchPlaceholder')}"]`);
     await expect(searchInput).toBeDisplayed();
   });
 
   it('HOME-004: 搜索栏旁应有"+"新建连接按钮', async () => {
-    const plusBtn = await $('button[title="新建连接"]');
+    const plusBtn = await $(`button[title="${t('main.newConnection')}"]`);
     await expect(plusBtn).toBeDisplayed();
   });
 
@@ -60,7 +61,7 @@ describe('主页 TablePlus 风格 (HOME)', () => {
     // Wait for groups to expand and items to appear
     await browser.waitUntil(
       async () => (await $$('[data-conn-item]')).length > 0,
-      { timeout: 5000, timeoutMsg: '等待连接项出现' },
+      { timeout: 5000, timeoutMsg: 'Timed out waiting for connection items' },
     );
     const items = await $$('[data-conn-item]');
     expect(items.length).toBeGreaterThan(0);
@@ -79,7 +80,7 @@ describe('主页 TablePlus 风格 (HOME)', () => {
 
   it('HOME-008: 状态栏应显示连接总数', async () => {
     const body = await $('body').getText();
-    expect(body).toContain('连接：');
+    expect(body).toContain(t('main.connectionCount', { count: '' }).replace('{count}', ''));
   });
 
   // ── Group expand/collapse ────────────────────────────────────────
@@ -87,7 +88,7 @@ describe('主页 TablePlus 风格 (HOME)', () => {
   it('HOME-010: 折叠分组应隐藏其连接', async () => {
     await browser.waitUntil(
       async () => (await $$('[data-conn-item]')).length > 0,
-      { timeout: 5000, timeoutMsg: '等待连接项出现' },
+      { timeout: 5000, timeoutMsg: 'Timed out waiting for connection items' },
     );
 
     const totalBefore = (await $$('[data-conn-item]')).length;
@@ -177,7 +178,7 @@ describe('主页 TablePlus 风格 (HOME)', () => {
 
     await browser.waitUntil(
       async () => (await browser.getWindowHandles()).length > 1,
-      { timeout: 30000, timeoutMsg: '等待连接窗口打开超时' },
+      { timeout: 30000, timeoutMsg: 'Timed out waiting for connection window' },
     );
     const handles = await browser.getWindowHandles();
     expect(handles.length).toBeGreaterThan(1);
@@ -187,14 +188,14 @@ describe('主页 TablePlus 风格 (HOME)', () => {
     await browser.switchToWindow(mainWindow);
     await browser.pause(2000);
     const body = await $('body').getText();
-    const hasStatus = body.includes('活跃连接');
+    const hasStatus = body.includes(t('main.activeConnections', { count: '' }).replace('{count} ', ''));
     expect(hasStatus).toBe(true);
   });
 
   // ── Search filtering ─────────────────────────────────────────────
 
   it('HOME-050: 搜索应实时过滤连接', async () => {
-    const input = await $('input[placeholder="查找连接…"]');
+    const input = await $(`input[placeholder="${t('main.searchPlaceholder')}"]`);
     const itemsBefore = (await $$('[data-conn-item]')).length;
 
     await input.setValue('ZZZZNOTEXIST');
@@ -214,14 +215,14 @@ describe('主页 TablePlus 风格 (HOME)', () => {
     const allBtns = await $$('button');
     for (const b of allBtns) {
       const text = await b.getText();
-      if (text.includes('新建连接…')) {
+      if (text.includes(t('action.newConnection'))) {
         await b.click();
         break;
       }
     }
     await browser.waitUntil(
       async () => (await browser.getWindowHandles()).length > 1,
-      { timeout: 15000, timeoutMsg: '等待新建连接窗口打开超时' },
+      { timeout: 15000, timeoutMsg: 'Timed out waiting for new connection window' },
     );
     const handles = await browser.getWindowHandles();
     expect(handles.length).toBeGreaterThan(1);
@@ -231,14 +232,14 @@ describe('主页 TablePlus 风格 (HOME)', () => {
     const allBtns = await $$('button');
     for (const b of allBtns) {
       const text = await b.getText();
-      if (text.includes('数据同步…')) {
+      if (text.includes(t('action.dataSync'))) {
         await b.click();
         break;
       }
     }
     await browser.waitUntil(
       async () => (await browser.getWindowHandles()).length > 1,
-      { timeout: 15000, timeoutMsg: '等待数据同步窗口打开超时' },
+      { timeout: 15000, timeoutMsg: 'Timed out waiting for data sync window' },
     );
     const handles = await browser.getWindowHandles();
     expect(handles.length).toBeGreaterThan(1);
@@ -247,9 +248,9 @@ describe('主页 TablePlus 风格 (HOME)', () => {
     await browser.switchToWindow(syncWin);
     await browser.pause(2000);
     const body = await $('body').getText();
-    expect(body).toContain('源数据库');
-    expect(body).toContain('目标数据库');
-    expect(body).toContain('比较');
+    expect(body).toContain(t('sync.source'));
+    expect(body).toContain(t('sync.target'));
+    expect(body).toContain(t('sync.compare'));
   });
 });
 
@@ -265,14 +266,14 @@ describe('数据同步窗口 (SYNC)', () => {
     await browser.pause(300);
     const allBtns = await $$('button');
     for (const b of allBtns) {
-      if ((await b.getText()).includes('数据同步…')) {
+      if ((await b.getText()).includes(t('action.dataSync'))) {
         await b.click();
         break;
       }
     }
     await browser.waitUntil(
       async () => (await browser.getWindowHandles()).length > 1,
-      { timeout: 15000, timeoutMsg: '等待数据同步窗口打开超时' },
+      { timeout: 15000, timeoutMsg: 'Timed out waiting for data sync window' },
     );
     const handles = await browser.getWindowHandles();
     const syncWin = handles.find((h) => h !== mainWindow)!;
@@ -283,7 +284,7 @@ describe('数据同步窗口 (SYNC)', () => {
 
   before(async () => {
     mainWindow = await browser.getWindowHandle();
-    await $('input[placeholder="查找连接…"]').waitForDisplayed({ timeout: 10000 });
+    await $(`input[placeholder="${t('main.searchPlaceholder')}"]`).waitForDisplayed({ timeout: 10000 });
     await browser.pause(500);
   });
 
@@ -297,14 +298,14 @@ describe('数据同步窗口 (SYNC)', () => {
   it('SYNC-001: 应显示源和目标连接选择器', async () => {
     await openSyncWindow();
     const body = await $('body').getText();
-    expect(body).toContain('源数据库');
-    expect(body).toContain('目标数据库');
+    expect(body).toContain(t('sync.source'));
+    expect(body).toContain(t('sync.target'));
   });
 
   it('SYNC-002: 应显示标题栏 "数据同步 - DataZen"', async () => {
     await openSyncWindow();
     const body = await $('body').getText();
-    expect(body).toContain('数据同步');
+    expect(body).toContain(t('sync.title'));
   });
 
   it('SYNC-003: 应显示 TrafficLights 和 ThemeToggle', async () => {
@@ -315,31 +316,31 @@ describe('数据同步窗口 (SYNC)', () => {
 
   it('SYNC-004: 应显示"比较"按钮', async () => {
     await openSyncWindow();
-    const compareBtn = await $('button*=比较');
+    const compareBtn = await $(`button*=${t('sync.compare')}`);
     await expect(compareBtn).toBeDisplayed();
   });
 
   it('SYNC-005: 未选择连接时点击比较应提示', async () => {
     await openSyncWindow();
-    const compareBtn = await $('button*=比较');
+    const compareBtn = await $(`button*=${t('sync.compare')}`);
     await compareBtn.click();
     await browser.pause(1000);
 
     const body = await $('body').getText();
-    expect(body).toContain('请选择');
+    expect(body).toContain(t('select.placeholder'));
   });
 
   it('SYNC-006: 应显示初始引导文本', async () => {
     await openSyncWindow();
     const body = await $('body').getText();
-    const hasGuide = body.includes('选择源数据库和目标数据库') || body.includes('比较');
+    const hasGuide = body.includes(t('sync.selectPrompt')) || body.includes(t('sync.compare'));
     expect(hasGuide).toBe(true);
   });
 
   it('SYNC-007: 状态栏应显示数据同步标题', async () => {
     await openSyncWindow();
     const body = await $('body').getText();
-    expect(body).toContain('数据同步');
+    expect(body).toContain(t('sync.title'));
     expect(body).toContain('DataZen v0.0.7');
   });
 
@@ -361,17 +362,17 @@ describe('数据同步窗口 (SYNC)', () => {
     await selects[0].selectByAttribute('value', val);
     await selects[1].selectByAttribute('value', val);
     await browser.pause(300);
-    const compareBtn = await $('button*=比较');
+    const compareBtn = await $(`button*=${t('sync.compare')}`);
     await compareBtn.click();
     await browser.pause(1500);
     const body = await $('body').getText();
-    expect(body).toContain('不能相同');
+    expect(body).toContain(t('sync.cannotSame'));
   });
 
   it('SYNC-010: 窗口可正常关闭', async () => {
     await openSyncWindow();
     // Use the TrafficLights close button (title="关闭")
-    const closeBtn = await $('button[title="关闭"]');
+    const closeBtn = await $(`button[title="${t('traffic.close')}"]`);
     await closeBtn.click();
     await browser.pause(2000);
     await browser.switchToWindow(mainWindow);
@@ -389,17 +390,17 @@ describe('拖拽连接到不同分组 (DRAG)', () => {
 
   before(async () => {
     mainWindow = await browser.getWindowHandle();
-    await $('input[placeholder="查找连接…"]').waitForDisplayed({ timeout: 10000 });
+    await $(`input[placeholder="${t('main.searchPlaceholder')}"]`).waitForDisplayed({ timeout: 10000 });
     await expandAllGroups();
     await browser.pause(1000);
 
     await browser.waitUntil(
       async () => (await $$('[data-group-header]')).length > 0,
-      { timeout: 5000, timeoutMsg: '等待分组加载' },
+      { timeout: 5000, timeoutMsg: 'Timed out waiting for groups to load' },
     );
     await browser.waitUntil(
       async () => (await $$('[data-conn-item]')).length > 0,
-      { timeout: 5000, timeoutMsg: '等待连接项出现' },
+      { timeout: 5000, timeoutMsg: 'Timed out waiting for connection items' },
     );
   });
 
@@ -444,7 +445,7 @@ describe('拖拽连接到不同分组 (DRAG)', () => {
       }));
     });
     await browser.pause(300);
-    const searchInput = await $('input[placeholder="查找连接…"]');
+    const searchInput = await $(`input[placeholder="${t('main.searchPlaceholder')}"]`);
     await expect(searchInput).toBeDisplayed();
   });
 

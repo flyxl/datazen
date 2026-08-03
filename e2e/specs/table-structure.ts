@@ -1,4 +1,5 @@
 import { expect, browser, $, $$ } from '@wdio/globals';
+import { t } from '../i18n.js';
 import {
   clickCardConnectButton,
   closeExtraWindows,
@@ -20,7 +21,7 @@ describe('表结构编辑 (TS-001~TS-008)', () => {
 
   before(async () => {
     mainWindow = await browser.getWindowHandle();
-    await $('button*=新建连接').waitForDisplayed({ timeout: 10000 });
+    await $(`button*=${t('action.newConnection')}`).waitForDisplayed({ timeout: 10000 });
     await browser.pause(1500);
 
     let handles = await browser.getWindowHandles();
@@ -28,13 +29,13 @@ describe('表结构编辑 (TS-001~TS-008)', () => {
       await clickCardConnectButton();
       await browser.waitUntil(
         async () => (await browser.getWindowHandles()).length > 1,
-        { timeout: 30000, timeoutMsg: '等待连接窗口打开超时' },
+        { timeout: 30000, timeoutMsg: 'Timed out waiting for connection window' },
       );
       handles = await browser.getWindowHandles();
     }
     const connWindow = handles.find((h) => h !== mainWindow)!;
     await browser.switchToWindow(connWindow);
-    await $('button*=新建查询').waitForDisplayed({ timeout: 20000 });
+    await $(`button*=${t('connWin.newQuery')}`).waitForDisplayed({ timeout: 20000 });
     await browser.pause(2000);
 
     // Clean up any leftover test table
@@ -62,12 +63,12 @@ describe('表结构编辑 (TS-001~TS-008)', () => {
   // ── 新建表 ─────────────────────────────────────────────────────
 
   it('应显示新建表按钮 (TS-001)', async () => {
-    const newTableBtn = await $('button*=新建表');
+    const newTableBtn = await $(`button*=${t('connWin.newTable')}`);
     await expect(newTableBtn).toBeDisplayed();
   });
 
   it('点击新建表应打开表结构编辑器 (TS-001)', async () => {
-    const newTblBtn = await $('button*=新建表');
+    const newTblBtn = await $(`button*=${t('connWin.newTable')}`);
     await newTblBtn.click();
     await browser.pause(1000);
 
@@ -79,8 +80,8 @@ describe('表结构编辑 (TS-001~TS-008)', () => {
 
   it('表结构编辑器应显示列定义区域 (TS-001)', async () => {
     const body = await $('body').getText();
-    expect(body).toContain('字段名');
-    expect(body).toContain('类型');
+    expect(body).toContain(t('structView.fieldName'));
+    expect(body).toContain(t('structView.type'));
   });
 
   it('应能输入表名 (TS-002)', async () => {
@@ -103,7 +104,7 @@ describe('表结构编辑 (TS-001~TS-008)', () => {
     const addBtns = await $$('button');
     for (const btn of addBtns) {
       const text = await btn.getText();
-      if (text.includes('添加列') || text.includes('+')) {
+      if (text.includes(t('structEditor.addColumn')) || text.includes('+')) {
         await btn.click();
         await browser.pause(300);
         break;
@@ -116,7 +117,7 @@ describe('表结构编辑 (TS-001~TS-008)', () => {
   });
 
   it('预览 SQL 应显示 CREATE TABLE 语句 (TS-004)', async () => {
-    const previewBtn = await $('button*=预览 SQL');
+    const previewBtn = await $(`button*=${t('structEditor.previewSQL')}`);
     if (await previewBtn.isDisplayed()) {
       await previewBtn.click();
       await browser.pause(500);
@@ -126,7 +127,7 @@ describe('表结构编辑 (TS-001~TS-008)', () => {
       expect(hasCreateSQL).toBe(true);
 
       // Close preview if there's a close button
-      const closeBtn = await $('button*=关闭');
+      const closeBtn = await $(`button*=${t('common.close')}`);
       if (await closeBtn.isExisting()) {
         await closeBtn.click();
         await browser.pause(300);
@@ -147,14 +148,14 @@ describe('表结构编辑 (TS-001~TS-008)', () => {
     `);
 
     // Refresh sidebar
-    const refreshBtn = await $('button[title="刷新 (⌘R)"]');
+    const refreshBtn = await $(`button[title="${t('connWin.refresh')} (⌘R)"]`);
     await refreshBtn.click();
     await browser.pause(2000);
 
     // Verify table appears
     await browser.waitUntil(
       async () => (await $('aside').getText()).includes(TEST_TABLE),
-      { timeout: 10000, timeoutMsg: '等待新建表出现在侧边栏超时' },
+      { timeout: 10000, timeoutMsg: 'Timed out waiting for new table in sidebar' },
     );
   });
 
@@ -163,7 +164,7 @@ describe('表结构编辑 (TS-001~TS-008)', () => {
   it('结构标签应显示表的列信息 (TS-006)', async () => {
     await clickTableInSidebar(TEST_TABLE);
     await browser.pause(1500);
-    await switchSubTab('结构');
+    await switchSubTab(t('connWin.structure'));
     await browser.pause(1500);
 
     const body = await $('body').getText();
@@ -175,7 +176,7 @@ describe('表结构编辑 (TS-001~TS-008)', () => {
   it('结构标签应有编辑按钮或显示列详情 (TS-006)', async () => {
     const body = await $('body').getText();
     // Either shows "编辑表结构" button or at minimum displays column types
-    const hasStructureInfo = body.includes('编辑表结构') || body.includes('integer') ||
+    const hasStructureInfo = body.includes(t('connWin.editTableStructure')) || body.includes('integer') ||
       body.includes('varchar') || body.includes('NOT NULL');
     expect(hasStructureInfo).toBe(true);
   });

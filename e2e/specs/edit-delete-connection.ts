@@ -1,4 +1,5 @@
 import { expect, browser } from '@wdio/globals';
+import { t } from '../i18n.js';
 
 async function invokeBackend<T>(cmd: string, args: Record<string, unknown> = {}): Promise<T> {
   const result = await browser.executeAsync(
@@ -112,7 +113,7 @@ describe('编辑、复制和删除连接 (CM-003, CM-004, CM-006)', () => {
     const copy: Conn = {
       ...TEST_CONN,
       id: `${TEST_CONN.id}-copy-${Date.now()}`,
-      name: `${TEST_CONN.name} (副本)`,
+      name: `${TEST_CONN.name} (${t('conn.copyName')})`,
     };
     await invokeBackend('save_connection', { config: copy });
 
@@ -122,7 +123,7 @@ describe('编辑、复制和删除连接 (CM-003, CM-004, CM-006)', () => {
 
     const foundCopy = connsAfter.find((c) => c.id === copy.id);
     expect(foundCopy).toBeDefined();
-    expect(foundCopy!.name).toContain('副本');
+    expect(foundCopy!.name).toContain(t('conn.copyName'));
 
     // Clean up copy
     await invokeBackend('delete_connection', { id: copy.id });

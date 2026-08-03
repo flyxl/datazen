@@ -6,6 +6,7 @@
  */
 import { expect, browser, $, $$ } from '@wdio/globals';
 import { expandAllGroups } from '../helpers.js';
+import { t } from '../i18n.js';
 
 const GROUP_A = 'DragTestGroupA';
 const GROUP_B = 'DragTestGroupB';
@@ -89,7 +90,7 @@ async function pointerDrag(
 
 describe('拖拽连接到不同分组 - Pointer 事件 (DND)', () => {
   before(async () => {
-    await $('input[placeholder="查找连接…"]').waitForDisplayed({ timeout: 10000 });
+    await $(`input[placeholder="${t('main.searchPlaceholder')}"]`).waitForDisplayed({ timeout: 10000 });
     await expandAllGroups();
     await browser.pause(500);
 
@@ -117,7 +118,7 @@ describe('拖拽连接到不同分组 - Pointer 事件 (DND)', () => {
     });
 
     await browser.execute(() => location.reload());
-    await $('input[placeholder="查找连接…"]').waitForDisplayed({ timeout: 10000 });
+    await $(`input[placeholder="${t('main.searchPlaceholder')}"]`).waitForDisplayed({ timeout: 10000 });
     await expandAllGroups();
     await browser.pause(1500);
   });

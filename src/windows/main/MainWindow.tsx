@@ -21,7 +21,7 @@ import { useUiStore } from '../../stores/uiStore';
 import { useActiveConnectionStore } from '../../stores/activeConnectionStore';
 import { cn } from '../../lib/cn';
 import { listenCrossWindow } from '../../lib/crossWindowBus';
-import { openBackupWindow, openConnectionWindow, openDataSyncWindow, openNewConnectionWindow, openSettingsWindow } from '../../lib/windowManager';
+import { openBackupWindow, openConnectionWindow, openDataSyncWindow, openNewConnectionWindow, openSettingsWindow, openWorkflowWindow } from '../../lib/windowManager';
 import { ThemeToggle } from '../../components/ThemeToggle';
 import { useI18n } from '../../hooks/useI18n';
 import { ActionPanel } from './ActionPanel';
@@ -589,6 +589,7 @@ export function MainWindow() {
             onBackup={() => openBackupWindow()}
             onRestore={() => void handleRestore()}
             onDataSync={() => openDataSyncWindow()}
+            onWorkflow={() => openWorkflowWindow()}
           />
         </aside>
         <div

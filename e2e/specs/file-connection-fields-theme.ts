@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { expect, browser, $ } from '@wdio/globals';
 import { switchToNewWindow, closeExtraWindows } from '../helpers.js';
+import { t } from '../i18n.js';
 
 const ROOT = path.resolve(import.meta.dirname, '../..');
 const FILE_CONNECTION_FIELDS = path.join(
@@ -69,7 +70,7 @@ async function setTheme(theme: 'light' | 'dark') {
 }
 
 async function openSqliteConnectionForm() {
-  const btn = await $('button*=新建连接');
+  const btn = await $(`button*=${t('action.newConnection')}`);
   await btn.click();
   await switchToNewWindow(await browser.getWindowHandle());
 
@@ -82,15 +83,15 @@ async function openSqliteConnectionForm() {
 }
 
 async function toggleAdbMode() {
-  const clicked = await browser.execute(() => {
+  const clicked = await browser.execute((adbModeLabel) => {
     const labels = Array.from(document.querySelectorAll('label'));
-    const adbLabel = labels.find((l) => l.textContent?.includes('从 Android 设备拉取'));
+    const adbLabel = labels.find((l) => l.textContent?.includes(adbModeLabel));
     if (!adbLabel) return false;
     const checkbox = adbLabel.querySelector('input[type="checkbox"]') as HTMLInputElement | null;
     if (!checkbox) return false;
     checkbox.click();
     return true;
-  });
+  }, t('newConn.adbMode'));
   expect(clicked).toBe(true);
   await browser.pause(500);
 }
@@ -164,19 +165,19 @@ describe('FileConnectionFields 浅色主题适配 (FCF-001~FCF-010)', () => {
     expect(cls ?? '').not.toContain('dark');
 
     await expect(await $('input[placeholder="/path/to/db.sqlite"]')).toBeDisplayed();
-    await expect(await $('label*=从 Android 设备拉取')).toBeDisplayed();
+    await expect(await $(`label*=${t('newConn.adbMode')}`)).toBeDisplayed();
   });
 
   it('FCF-007: 浅色主题下 ADB 开关 label 应使用 text-fg-muted 语义类', async () => {
     await setTheme('light');
     await openSqliteConnectionForm();
 
-    const hasSemanticLabel = await browser.execute(() => {
+    const hasSemanticLabel = await browser.execute((adbModeLabel) => {
       const labels = Array.from(document.querySelectorAll('label'));
-      const adbLabel = labels.find((l) => l.textContent?.includes('从 Android 设备拉取'));
+      const adbLabel = labels.find((l) => l.textContent?.includes(adbModeLabel));
       if (!adbLabel) return false;
       return adbLabel.className.includes('text-fg-muted');
-    });
+    }, t('newConn.adbMode'));
     expect(hasSemanticLabel).toBe(true);
   });
 
@@ -185,9 +186,9 @@ describe('FileConnectionFields 浅色主题适配 (FCF-001~FCF-010)', () => {
     await openSqliteConnectionForm();
     await toggleAdbMode();
 
-    const panelOk = await browser.execute(() => {
+    const panelOk = await browser.execute((adbModeLabel) => {
       const labels = Array.from(document.querySelectorAll('label'));
-      const adbLabel = labels.find((l) => l.textContent?.includes('从 Android 设备拉取'));
+      const adbLabel = labels.find((l) => l.textContent?.includes(adbModeLabel));
       if (!adbLabel) return false;
       let sibling = adbLabel.nextElementSibling;
       while (sibling) {
@@ -198,7 +199,7 @@ describe('FileConnectionFields 浅色主题适配 (FCF-001~FCF-010)', () => {
         sibling = sibling.nextElementSibling;
       }
       return false;
-    });
+    }, t('newConn.adbMode'));
     expect(panelOk).toBe(true);
   });
 
@@ -207,7 +208,7 @@ describe('FileConnectionFields 浅色主题适配 (FCF-001~FCF-010)', () => {
     await openSqliteConnectionForm();
     await toggleAdbMode();
 
-    const result = await browser.execute(() => {
+    const result = await browser.execute((adbModeLabel) => {
       const surfaceAlt = getComputedStyle(document.documentElement)
         .getPropertyValue('--c-surface-alt')
         .trim();
@@ -216,7 +217,7 @@ describe('FileConnectionFields 浅色主题适配 (FCF-001~FCF-010)', () => {
         .trim();
 
       const labels = Array.from(document.querySelectorAll('label'));
-      const adbLabel = labels.find((l) => l.textContent?.includes('从 Android 设备拉取'));
+      const adbLabel = labels.find((l) => l.textContent?.includes(adbModeLabel));
       if (!adbLabel) return null;
 
       let sibling = adbLabel.nextElementSibling;
@@ -235,7 +236,7 @@ describe('FileConnectionFields 浅色主题适配 (FCF-001~FCF-010)', () => {
         sibling = sibling.nextElementSibling;
       }
       return null;
-    });
+    }, t('newConn.adbMode'));
 
     expect(result).not.toBeNull();
     expect(result!.surfaceAlt).toBe('#f8fafc');
@@ -254,7 +255,7 @@ describe('FileConnectionFields 浅色主题适配 (FCF-001~FCF-010)', () => {
 
     await toggleAdbMode();
 
-    const result = await browser.execute(() => {
+    const result = await browser.execute((adbModeLabel) => {
       const surfaceAlt = getComputedStyle(document.documentElement)
         .getPropertyValue('--c-surface-alt')
         .trim();
@@ -263,7 +264,7 @@ describe('FileConnectionFields 浅色主题适配 (FCF-001~FCF-010)', () => {
         .trim();
 
       const labels = Array.from(document.querySelectorAll('label'));
-      const adbLabel = labels.find((l) => l.textContent?.includes('从 Android 设备拉取'));
+      const adbLabel = labels.find((l) => l.textContent?.includes(adbModeLabel));
       if (!adbLabel || !adbLabel.className.includes('text-fg-muted')) {
         return { ok: false, reason: 'missing semantic label class' };
       }
@@ -284,7 +285,7 @@ describe('FileConnectionFields 浅色主题适配 (FCF-001~FCF-010)', () => {
         sibling = sibling.nextElementSibling;
       }
       return { ok: false, reason: 'missing semantic panel class' };
-    });
+    }, t('newConn.adbMode'));
 
     expect(result.ok).toBe(true);
     expect(result.surfaceAlt).toBe('#1e293b');

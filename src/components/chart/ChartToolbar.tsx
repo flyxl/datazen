@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
-import { BarChart3, Download, LineChart as LineChartIcon, MessageSquare, PieChart as PieChartIcon, ScatterChart as ScatterChartIcon, TrendingUp } from 'lucide-react';
+import { BarChart3, Download, Maximize2, LineChart as LineChartIcon, MessageSquare, PieChart as PieChartIcon, ScatterChart as ScatterChartIcon, TrendingUp } from 'lucide-react';
 import { useI18n } from '../../hooks/useI18n';
 import { cn } from '../../lib/cn';
 import { exportChartAsPng, exportChartAsSvg } from '../../lib/chart/export';
@@ -11,6 +11,7 @@ interface ChartToolbarProps {
   onChange: (config: ChartConfig) => void;
   chartRef: React.RefObject<HTMLDivElement | null>;
   fields?: ChartField[];
+  onExpand?: () => void;
 }
 
 const CHART_TYPES: { type: ChartType; icon: React.ElementType; labelKey: string }[] = [
@@ -21,7 +22,7 @@ const CHART_TYPES: { type: ChartType; icon: React.ElementType; labelKey: string 
   { type: 'area', icon: TrendingUp, labelKey: 'chart.type.area' },
 ];
 
-export function ChartToolbar({ config, onChange, chartRef, fields = [] }: ChartToolbarProps) {
+export function ChartToolbar({ config, onChange, chartRef, fields = [], onExpand }: ChartToolbarProps) {
   const { t } = useI18n();
   const [exportOpen, setExportOpen] = useState(false);
   const [nlInput, setNlInput] = useState('');
@@ -128,6 +129,18 @@ export function ChartToolbar({ config, onChange, chartRef, fields = [] }: ChartT
           title={t('chart.nlHint')}
         >
           <MessageSquare className="h-3.5 w-3.5" />
+        </button>
+      )}
+
+      {/* Expand button */}
+      {onExpand && (
+        <button
+          type="button"
+          className="flex items-center gap-1 rounded px-2 py-1 text-xs text-fg-muted hover:text-fg-secondary hover:bg-surface transition-colors"
+          onClick={onExpand}
+          title={t('chart.expand')}
+        >
+          <Maximize2 className="h-3.5 w-3.5" />
         </button>
       )}
 

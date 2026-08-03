@@ -1,6 +1,7 @@
 import { expect, browser, $, $$ } from '@wdio/globals';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { t } from '../i18n.js';
 import {
   closeExtraWindows,
   switchToNewWindow,
@@ -42,13 +43,13 @@ async function createAndConnectSQLite() {
     const handles = await browser.getWindowHandles();
     const connWindow = handles.find((h) => h !== mainWindow)!;
     await browser.switchToWindow(connWindow);
-    await $('button*=新建查询').waitForDisplayed({ timeout: 20000 });
+    await $(`button*=${t('connWin.newQuery')}`).waitForDisplayed({ timeout: 20000 });
     await browser.pause(2000);
     return { mainWindow, connWindow };
   }
 
   // Create new connection
-  const newConnBtn = await $('button*=新建连接');
+  const newConnBtn = await $(`button*=${t('action.newConnection')}`);
   await newConnBtn.click();
   await switchToNewWindow(mainWindow);
 
@@ -58,7 +59,7 @@ async function createAndConnectSQLite() {
   await browser.pause(300);
 
   // Fill name
-  const nameInput = await $('input[placeholder="例如：主数据库"]');
+  const nameInput = await $(`input[placeholder="${t('newConn.namePlaceholder')}"]`);
   await nameInput.setValue(CONN_NAME);
 
   // Fill database file path
@@ -66,19 +67,19 @@ async function createAndConnectSQLite() {
   await dbInput.setValue(DB_PATH);
 
   // Test connection
-  const testBtn = await $('button*=测试连接');
+  const testBtn = await $(`button*=${t('newConn.testConnection')}`);
   await testBtn.click();
   await browser.waitUntil(
     async () => {
       const body = await $('body').getText();
-      return body.includes('连接成功') || body.includes('text-red-400');
+      return body.includes(t('newConn.testSuccess')) || body.includes('text-red-400');
     },
     { timeout: 15000 },
   );
   await browser.pause(500);
 
   // Save
-  const saveBtn = await $('button*=保存');
+  const saveBtn = await $(`button*=${t('common.save')}`);
   await saveBtn.click();
   await browser.waitUntil(
     async () => (await browser.getWindowHandles()).length === 1,
@@ -89,7 +90,7 @@ async function createAndConnectSQLite() {
 
   // Connect
   const card = await findCardByName(CONN_NAME);
-  if (!card) throw new Error(`未找到 SQLite 连接 "${CONN_NAME}"`);
+  if (!card) throw new Error(`SQLite connection "${CONN_NAME}" not found`);
   await browser.execute((n: string) => {
     const items = document.querySelectorAll('[data-conn-item]');
     for (const item of items) {
@@ -107,7 +108,7 @@ async function createAndConnectSQLite() {
   const handles = await browser.getWindowHandles();
   const connWindow = handles.find((h) => h !== mainWindow)!;
   await browser.switchToWindow(connWindow);
-  await $('button*=新建查询').waitForDisplayed({ timeout: 20000 });
+  await $(`button*=${t('connWin.newQuery')}`).waitForDisplayed({ timeout: 20000 });
   await browser.pause(2000);
   return { mainWindow, connWindow };
 }
@@ -155,7 +156,7 @@ describe('SQLite', () => {
   it('should show table structure', async () => {
     await clickTableInSidebar('users');
     await browser.pause(500);
-    await switchSubTab('结构');
+    await switchSubTab(t('connWin.structure'));
     await browser.pause(1000);
     const body = await $('body').getText();
     expect(body).toContain('id');
@@ -174,13 +175,13 @@ describe('SQLite', () => {
     await executeSQL('SELECT COUNT(*) FROM users;\nSELECT COUNT(*) FROM posts');
     const body = await $('body').getText();
     // Should show "结果 1" and "结果 2" tabs
-    expect(body).toContain('结果 1');
+    expect(body).toContain(`${t('query.result')} 1`);
   });
 
   it('should show indexes', async () => {
     await clickTableInSidebar('users');
     await browser.pause(500);
-    await switchSubTab('索引');
+    await switchSubTab(t('connWin.indexes'));
     await browser.pause(1000);
     // SQLite creates autoindex for UNIQUE constraints
     const body = await $('body').getText();

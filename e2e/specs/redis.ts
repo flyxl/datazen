@@ -1,4 +1,5 @@
 import { expect, browser, $, $$ } from '@wdio/globals';
+import { t } from '../i18n.js';
 import {
   closeExtraWindows,
   switchToNewWindow,
@@ -29,7 +30,7 @@ async function createAndConnectRedis() {
     }, CONN_NAME);
     await browser.waitUntil(
       async () => (await browser.getWindowHandles()).length > 1,
-      { timeout: 30000, timeoutMsg: '等待 Redis 连接窗口打开超时' },
+      { timeout: 30000, timeoutMsg: 'Timed out waiting for Redis connection window' },
     );
     const handles = await browser.getWindowHandles();
     const connWindow = handles.find((h) => h !== mainWindow)!;
@@ -38,7 +39,7 @@ async function createAndConnectRedis() {
     return { mainWindow, connWindow };
   }
 
-  const newConnBtn = await $('button*=新建连接');
+  const newConnBtn = await $(`button*=${t('action.newConnection')}`);
   await newConnBtn.click();
   await switchToNewWindow(mainWindow);
 
@@ -46,7 +47,7 @@ async function createAndConnectRedis() {
   await redisBtn.click();
   await browser.pause(300);
 
-  const nameInput = await $('input[placeholder="例如：主数据库"]');
+  const nameInput = await $(`input[placeholder="${t('newConn.namePlaceholder')}"]`);
   await nameInput.setValue(CONN_NAME);
 
   const hostInput = await $('input[placeholder="127.0.0.1"]');
@@ -65,14 +66,14 @@ async function createAndConnectRedis() {
   const pwInput = await $('input[type="password"]');
   await pwInput.setValue(REDIS_PASSWORD);
 
-  const testBtn = await $('button*=测试连接');
+  const testBtn = await $(`button*=${t('newConn.testConnection')}`);
   await testBtn.click();
   await browser.waitUntil(
     async () => {
       const body = await $('body').getText();
-      return body.includes('连接成功') || body.includes('Driver error');
+      return body.includes(t('newConn.testSuccess')) || body.includes('Driver error');
     },
-    { timeout: 15000, timeoutMsg: '等待 Redis 测试连接超时' },
+    { timeout: 15000, timeoutMsg: 'Timed out waiting for Redis test connection' },
   );
 
   const bodyAfterTest = await $('body').getText();
@@ -80,17 +81,17 @@ async function createAndConnectRedis() {
     throw new Error('Redis test connection failed: ' + bodyAfterTest);
   }
 
-  const saveBtn = await $('button*=保存');
+  const saveBtn = await $(`button*=${t('common.save')}`);
   await saveBtn.click();
   await browser.waitUntil(
     async () => (await browser.getWindowHandles()).length === 1,
-    { timeout: 10000, timeoutMsg: '保存连接后窗口未关闭' },
+    { timeout: 10000, timeoutMsg: 'Window did not close after saving connection' },
   );
   await browser.switchToWindow(mainWindow);
   await browser.pause(1000);
 
   const card = await findCardByName(CONN_NAME);
-  if (!card) throw new Error(`未找到 Redis 连接 "${CONN_NAME}"`);
+  if (!card) throw new Error(`Redis connection "${CONN_NAME}" not found`);
   await browser.execute((n: string) => {
     const items = document.querySelectorAll('[data-conn-item]');
     for (const item of items) {
@@ -103,7 +104,7 @@ async function createAndConnectRedis() {
 
   await browser.waitUntil(
     async () => (await browser.getWindowHandles()).length > 1,
-    { timeout: 30000, timeoutMsg: '等待 Redis 连接窗口打开超时' },
+    { timeout: 30000, timeoutMsg: 'Timed out waiting for Redis connection window' },
   );
   const handles = await browser.getWindowHandles();
   const connWindow = handles.find((h) => h !== mainWindow)!;
@@ -115,14 +116,14 @@ async function createAndConnectRedis() {
 
 async function executeRedisCommand(cmd: string) {
   await setEditorContent(cmd);
-  const execBtn = await $('button*=执行');
+  const execBtn = await $(`button*=${t('query.execute')}`);
   await execBtn.click();
   await browser.waitUntil(
     async () => {
       const body = await $('body').getText();
       return body.includes('ms') || body.includes('text-red-400');
     },
-    { timeout: 15000, timeoutMsg: `等待 Redis 命令执行完成超时: ${cmd}` },
+    { timeout: 15000, timeoutMsg: `Timed out waiting for Redis command: ${cmd}` },
   );
   await browser.pause(500);
 }
@@ -141,7 +142,7 @@ describe('Redis 数据库支持 (RD-001~RD-015)', () => {
     mainWindow = result.mainWindow;
 
     // Setup test data via Queries tab
-    const queriesTab = await $('button*=命令');
+    const queriesTab = await $(`button*=${t('redis.queries')}`);
     if (await queriesTab.isExisting()) {
       await queriesTab.click();
       await browser.pause(500);
@@ -161,7 +162,7 @@ describe('Redis 数据库支持 (RD-001~RD-015)', () => {
       const connHandle = handles.find((h) => h !== mainWindow);
       if (connHandle) {
         await browser.switchToWindow(connHandle);
-        const queriesTab = await $('button*=命令');
+        const queriesTab = await $(`button*=${t('redis.queries')}`);
         if (await queriesTab.isExisting()) await queriesTab.click();
         await browser.pause(300);
         await executeRedisCommand('DEL e2e:string:hello e2e:string:count');
@@ -178,8 +179,8 @@ describe('Redis 数据库支持 (RD-001~RD-015)', () => {
 
   it('Redis 连接窗口应显示"数据浏览"和"命令"标签 (RD-001)', async () => {
     const body = await $('body').getText();
-    expect(body).toContain('数据浏览');
-    expect(body).toContain('命令');
+    expect(body).toContain(t('redis.items'));
+    expect(body).toContain(t('redis.queries'));
   });
 
   it('标题栏应显示 Redis 类型 (RD-002)', async () => {
@@ -191,7 +192,7 @@ describe('Redis 数据库支持 (RD-001~RD-015)', () => {
   // ── Database Sidebar ──
 
   it('左侧边栏应显示 Redis 数据库列表 (RD-003)', async () => {
-    const itemsTab = await $('button*=数据浏览');
+    const itemsTab = await $(`button*=${t('redis.items')}`);
     await itemsTab.click();
     await browser.pause(1000);
 
@@ -207,7 +208,7 @@ describe('Redis 数据库支持 (RD-001~RD-015)', () => {
       await browser.pause(2000);
       const body = await $('body').getText();
       // Should show at least one e2e key or key count info
-      const hasKeyInfo = body.includes('e2e:') || body.includes('loaded') || body.includes('个键');
+      const hasKeyInfo = body.includes('e2e:') || body.includes('loaded') || body.includes(t('redis.dbSize', { count: '' }).replace('{count} ', ''));
       expect(hasKeyInfo).toBe(true);
     }
   });
@@ -216,12 +217,12 @@ describe('Redis 数据库支持 (RD-001~RD-015)', () => {
 
   it('键表格应显示 key/type/TTL/value 列 (RD-005)', async () => {
     const body = await $('body').getText();
-    const hasColumns = body.includes('键') || body.includes('Key');
+    const hasColumns = body.includes(t('redis.key')) || body.includes('Key');
     expect(hasColumns).toBe(true);
   });
 
   it('应能搜索键 (RD-006)', async () => {
-    const searchInput = await $('input[placeholder*="搜索键"]');
+    const searchInput = await $(`input[placeholder*="${t('redis.searchKeys')}"]`);
     if (await searchInput.isExisting()) {
       await searchInput.clearValue();
       await searchInput.setValue('e2e:*');
@@ -255,7 +256,7 @@ describe('Redis 数据库支持 (RD-001~RD-015)', () => {
   // ── Redis Commands (Queries tab) ──
 
   it('切换到命令标签应显示编辑器 (RD-008)', async () => {
-    const queriesTab = await $('button*=命令');
+    const queriesTab = await $(`button*=${t('redis.queries')}`);
     await queriesTab.click();
     await browser.pause(500);
     const editor = await $('.cm-editor');

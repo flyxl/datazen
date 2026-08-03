@@ -1,4 +1,4 @@
-export type WindowKind = 'main' | 'new-connection' | 'connection' | 'query' | 'settings' | 'data-sync' | 'backup';
+export type WindowKind = 'main' | 'new-connection' | 'connection' | 'query' | 'settings' | 'data-sync' | 'backup' | 'workflow';
 
 let cachedKind: WindowKind | null = null;
 
@@ -14,6 +14,7 @@ export function getWindowKind(): WindowKind {
   else if (w === 'settings') cachedKind = 'settings';
   else if (w === 'data-sync') cachedKind = 'data-sync';
   else if (w === 'backup') cachedKind = 'backup';
+  else if (w === 'workflow') cachedKind = 'workflow';
   else cachedKind = 'main';
 
   return cachedKind;

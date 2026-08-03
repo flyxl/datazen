@@ -1,4 +1,5 @@
 import { expect, browser, $ } from '@wdio/globals';
+import { t } from '../i18n.js';
 
 async function invokeBackend<T>(cmd: string, args: Record<string, unknown> = {}): Promise<T> {
   const result = await browser.executeAsync(
@@ -116,20 +117,20 @@ describe('Internationalization (I18N-001~I18N-010)', () => {
     const searchInput = await $('input[type="text"]');
     if (await searchInput.isExisting()) {
       const placeholder = await searchInput.getAttribute('placeholder');
-      expect(placeholder).toContain('查找');
+      expect(placeholder).toContain(t('main.searchPlaceholder'));
     }
   });
 
   it('I18N-006: Chinese theme toggle should show Chinese labels', async () => {
-    const themeBtn = await $('button[title*="主题"]');
+    const themeBtn = await $(`button[title*="${t('settings.theme')}"]`);
     if (await themeBtn.isExisting()) {
       await themeBtn.click();
       await browser.pause(300);
 
-      const lightBtn = await $('button*=浅色');
+      const lightBtn = await $(`button*=${t('theme.light')}`);
       expect(await lightBtn.isExisting()).toBe(true);
 
-      const darkBtn = await $('button*=深色');
+      const darkBtn = await $(`button*=${t('theme.dark')}`);
       expect(await darkBtn.isExisting()).toBe(true);
 
       await themeBtn.click();

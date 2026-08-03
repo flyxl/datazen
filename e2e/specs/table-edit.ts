@@ -1,4 +1,5 @@
 import { expect, browser, $ } from '@wdio/globals';
+import { t } from '../i18n.js';
 import {
   clickCardConnectButton,
   closeExtraWindows,
@@ -30,7 +31,7 @@ describe('表数据编辑 (DE-002~DE-005)', () => {
 
   before(async () => {
     mainWindow = await browser.getWindowHandle();
-    await $('button*=新建连接').waitForDisplayed({ timeout: 10000 });
+    await $(`button*=${t('action.newConnection')}`).waitForDisplayed({ timeout: 10000 });
     await browser.pause(1500);
 
     let handles = await browser.getWindowHandles();
@@ -38,13 +39,13 @@ describe('表数据编辑 (DE-002~DE-005)', () => {
       await clickCardConnectButton();
       await browser.waitUntil(
         async () => (await browser.getWindowHandles()).length > 1,
-        { timeout: 30000, timeoutMsg: '等待连接窗口打开超时' },
+        { timeout: 30000, timeoutMsg: 'Timed out waiting for connection window' },
       );
       handles = await browser.getWindowHandles();
     }
     const connWindow = handles.find((h) => h !== mainWindow)!;
     await browser.switchToWindow(connWindow);
-    await $('button*=新建查询').waitForDisplayed({ timeout: 20000 });
+    await $(`button*=${t('connWin.newQuery')}`).waitForDisplayed({ timeout: 20000 });
     await browser.pause(2000);
 
     await openQueryTab();
@@ -63,7 +64,7 @@ describe('表数据编辑 (DE-002~DE-005)', () => {
         ('Charlie', 300)`,
     );
 
-    const refreshBtn = await $('button[title="刷新 (⌘R)"]');
+    const refreshBtn = await $(`button[title="${t('connWin.refresh')} (⌘R)"]`);
     await refreshBtn.click();
     await browser.pause(2000);
   });
@@ -89,16 +90,16 @@ describe('表数据编辑 (DE-002~DE-005)', () => {
     await clickTableInSidebar(TEST_TABLE);
     await browser.pause(2000);
 
-    await $('button*=数据').waitForDisplayed({ timeout: 8000 });
+    await $(`button*=${t('connWin.data')}`).waitForDisplayed({ timeout: 8000 });
 
     // Virtual table rows use absolute positioning so getText() may not capture cell values.
     // Verify table loaded by checking the status bar row count.
     await browser.waitUntil(
       async () => {
         const body = await $('body').getText();
-        return body.includes('全选') && (body.includes('1-') || body.includes('Alice'));
+        return body.includes(t('common.selectAll')) && (body.includes('1-') || body.includes('Alice'));
       },
-      { timeout: 15000, timeoutMsg: '等待表数据加载超时' },
+      { timeout: 15000, timeoutMsg: 'Timed out waiting for table data to load' },
     );
   });
 
@@ -109,7 +110,7 @@ describe('表数据编辑 (DE-002~DE-005)', () => {
       async () => {
         return browser.execute(() => !!document.querySelector('span[title="Alice"]'));
       },
-      { timeout: 10000, timeoutMsg: '等待 "Alice" 单元格出现超时' },
+      { timeout: 10000, timeoutMsg: 'Timed out waiting for Alice cell' },
     );
 
     await browser.execute(() => {
@@ -168,11 +169,11 @@ describe('表数据编辑 (DE-002~DE-005)', () => {
   it('Escape 取消编辑不应修改数据 (DE-005)', async () => {
     await clickTableInSidebar(TEST_TABLE);
     await browser.pause(1500);
-    await switchSubTab('数据');
+    await switchSubTab(t('connWin.data'));
 
     await browser.waitUntil(
       async () => (await $('body').getText()).includes('Charlie'),
-      { timeout: 10000, timeoutMsg: '等待表数据加载超时' },
+      { timeout: 10000, timeoutMsg: 'Timed out waiting for table data to load' },
     );
 
     await doubleClickCellByText('Charlie');
