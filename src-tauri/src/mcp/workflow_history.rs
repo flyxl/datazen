@@ -1,6 +1,6 @@
-//! Persists Skill execution history for auditing and replay.
+//! Persists workflow execution history for auditing and replay.
 
-use super::skills::SkillExecutionResult;
+use super::workflows::WorkflowExecutionResult;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use tokio::sync::RwLock;
@@ -11,10 +11,12 @@ const MAX_HISTORY_ENTRIES: usize = 100;
 #[serde(rename_all = "camelCase")]
 pub struct HistoryEntry {
     pub id: String,
-    pub skill_id: String,
-    pub skill_name: String,
+    #[serde(alias = "skillId")]
+    pub workflow_id: String,
+    #[serde(alias = "skillName")]
+    pub workflow_name: String,
     pub variables: serde_json::Value,
-    pub result: SkillExecutionResult,
+    pub result: WorkflowExecutionResult,
     pub created_at: String,
 }
 
@@ -22,19 +24,21 @@ pub struct HistoryEntry {
 #[serde(rename_all = "camelCase")]
 pub struct HistoryListItem {
     pub id: String,
-    pub skill_id: String,
-    pub skill_name: String,
+    #[serde(alias = "skillId")]
+    pub workflow_id: String,
+    #[serde(alias = "skillName")]
+    pub workflow_name: String,
     pub success: bool,
     pub total_time_ms: u64,
     pub created_at: String,
 }
 
-pub struct SkillHistoryManager {
+pub struct WorkflowHistoryManager {
     history_dir: PathBuf,
     cache: RwLock<Vec<HistoryEntry>>,
 }
 
-impl SkillHistoryManager {
+impl WorkflowHistoryManager {
     pub fn new(history_dir: PathBuf) -> Self {
         Self {
             history_dir,
@@ -76,10 +80,10 @@ impl SkillHistoryManager {
 
     pub async fn record(
         &self,
-        skill_id: &str,
-        skill_name: &str,
+        workflow_id: &str,
+        workflow_name: &str,
         variables: &serde_json::Value,
-        result: &SkillExecutionResult,
+        result: &WorkflowExecutionResult,
     ) -> Result<String, String> {
         if !self.history_dir.exists() {
             std::fs::create_dir_all(&self.history_dir).map_err(|e| e.to_string())?;
@@ -94,8 +98,8 @@ impl SkillHistoryManager {
 
         let entry = HistoryEntry {
             id: id.clone(),
-            skill_id: skill_id.into(),
-            skill_name: skill_name.into(),
+            workflow_id: workflow_id.into(),
+            workflow_name: workflow_name.into(),
             variables: variables.clone(),
             result: result.clone(),
             created_at: now.to_rfc3339(),
@@ -119,15 +123,15 @@ impl SkillHistoryManager {
         Ok(id)
     }
 
-    pub async fn list(&self, skill_id: Option<&str>) -> Vec<HistoryListItem> {
+    pub async fn list(&self, workflow_id: Option<&str>) -> Vec<HistoryListItem> {
         let cache = self.cache.read().await;
         cache
             .iter()
-            .filter(|e| skill_id.map_or(true, |sid| e.skill_id == sid))
+            .filter(|e| workflow_id.map_or(true, |wid| e.workflow_id == wid))
             .map(|e| HistoryListItem {
                 id: e.id.clone(),
-                skill_id: e.skill_id.clone(),
-                skill_name: e.skill_name.clone(),
+                workflow_id: e.workflow_id.clone(),
+                workflow_name: e.workflow_name.clone(),
                 success: e.result.success,
                 total_time_ms: e.result.total_time_ms,
                 created_at: e.created_at.clone(),
@@ -144,11 +148,11 @@ impl SkillHistoryManager {
             .cloned()
     }
 
-    pub async fn clear(&self, skill_id: Option<&str>) -> Result<usize, String> {
+    pub async fn clear(&self, workflow_id: Option<&str>) -> Result<usize, String> {
         let mut cache = self.cache.write().await;
         let (to_remove, to_keep): (Vec<_>, Vec<_>) = cache
             .drain(..)
-            .partition(|e| skill_id.map_or(true, |sid| e.skill_id == sid));
+            .partition(|e| workflow_id.map_or(true, |wid| e.workflow_id == wid));
 
         let count = to_remove.len();
         for entry in &to_remove {
@@ -164,10 +168,10 @@ impl SkillHistoryManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mcp::skills::{StepExecutionResult, StepStatus};
+    use crate::mcp::workflows::{StepExecutionResult, StepStatus};
 
-    fn make_test_result(success: bool) -> SkillExecutionResult {
-        SkillExecutionResult {
+    fn make_test_result(success: bool) -> WorkflowExecutionResult {
+        WorkflowExecutionResult {
             success,
             final_output: "test output".into(),
             steps: vec![StepExecutionResult {
@@ -188,53 +192,53 @@ mod tests {
     #[tokio::test]
     async fn test_record_and_list() {
         let dir = tempfile::tempdir().unwrap();
-        let mgr = SkillHistoryManager::new(dir.path().to_path_buf());
+        let mgr = WorkflowHistoryManager::new(dir.path().to_path_buf());
         mgr.load().await.unwrap();
 
         let result = make_test_result(true);
         let id = mgr
-            .record("skill-1", "Skill 1", &serde_json::json!({"uid": "U001"}), &result)
+            .record("workflow-1", "Workflow 1", &serde_json::json!({"uid": "U001"}), &result)
             .await
             .unwrap();
 
         let list = mgr.list(None).await;
         assert_eq!(list.len(), 1);
         assert_eq!(list[0].id, id);
-        assert_eq!(list[0].skill_id, "skill-1");
+        assert_eq!(list[0].workflow_id, "workflow-1");
         assert!(list[0].success);
 
         let entry = mgr.get(&id).await.unwrap();
-        assert_eq!(entry.skill_name, "Skill 1");
+        assert_eq!(entry.workflow_name, "Workflow 1");
         assert_eq!(entry.variables, serde_json::json!({"uid": "U001"}));
     }
 
     #[tokio::test]
-    async fn test_list_filter_by_skill_id() {
+    async fn test_list_filter_by_workflow_id() {
         let dir = tempfile::tempdir().unwrap();
-        let mgr = SkillHistoryManager::new(dir.path().to_path_buf());
+        let mgr = WorkflowHistoryManager::new(dir.path().to_path_buf());
         mgr.load().await.unwrap();
 
         let r = make_test_result(true);
-        mgr.record("skill-a", "A", &serde_json::json!({}), &r).await.unwrap();
-        mgr.record("skill-b", "B", &serde_json::json!({}), &r).await.unwrap();
-        mgr.record("skill-a", "A", &serde_json::json!({}), &r).await.unwrap();
+        mgr.record("workflow-a", "A", &serde_json::json!({}), &r).await.unwrap();
+        mgr.record("workflow-b", "B", &serde_json::json!({}), &r).await.unwrap();
+        mgr.record("workflow-a", "A", &serde_json::json!({}), &r).await.unwrap();
 
         assert_eq!(mgr.list(None).await.len(), 3);
-        assert_eq!(mgr.list(Some("skill-a")).await.len(), 2);
-        assert_eq!(mgr.list(Some("skill-b")).await.len(), 1);
+        assert_eq!(mgr.list(Some("workflow-a")).await.len(), 2);
+        assert_eq!(mgr.list(Some("workflow-b")).await.len(), 1);
     }
 
     #[tokio::test]
     async fn test_clear() {
         let dir = tempfile::tempdir().unwrap();
-        let mgr = SkillHistoryManager::new(dir.path().to_path_buf());
+        let mgr = WorkflowHistoryManager::new(dir.path().to_path_buf());
         mgr.load().await.unwrap();
 
         let r = make_test_result(true);
-        mgr.record("s1", "S1", &serde_json::json!({}), &r).await.unwrap();
-        mgr.record("s2", "S2", &serde_json::json!({}), &r).await.unwrap();
+        mgr.record("w1", "W1", &serde_json::json!({}), &r).await.unwrap();
+        mgr.record("w2", "W2", &serde_json::json!({}), &r).await.unwrap();
 
-        let removed = mgr.clear(Some("s1")).await.unwrap();
+        let removed = mgr.clear(Some("w1")).await.unwrap();
         assert_eq!(removed, 1);
         assert_eq!(mgr.list(None).await.len(), 1);
 
@@ -249,14 +253,14 @@ mod tests {
         let r = make_test_result(true);
 
         {
-            let mgr = SkillHistoryManager::new(dir.path().to_path_buf());
+            let mgr = WorkflowHistoryManager::new(dir.path().to_path_buf());
             mgr.load().await.unwrap();
-            mgr.record("s1", "S1", &serde_json::json!({"x": 1}), &r)
+            mgr.record("w1", "W1", &serde_json::json!({"x": 1}), &r)
                 .await
                 .unwrap();
         }
 
-        let mgr2 = SkillHistoryManager::new(dir.path().to_path_buf());
+        let mgr2 = WorkflowHistoryManager::new(dir.path().to_path_buf());
         mgr2.load().await.unwrap();
         assert_eq!(mgr2.list(None).await.len(), 1);
     }

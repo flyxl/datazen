@@ -497,6 +497,9 @@ function McpClientSection() {
               onChange={(e) => setArgsText(e.target.value)}
               placeholder="--flag1&#10;--flag2"
               rows={3}
+              autoCapitalize="off"
+              autoCorrect="off"
+              spellCheck={false}
               className="w-full rounded-md border border-edge bg-surface px-3 py-2 text-sm text-fg outline-none focus:border-blue-500"
             />
           </SettingRow>

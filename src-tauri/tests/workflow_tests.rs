@@ -1,9 +1,9 @@
-//! Integration tests for skill workflow cross-database features.
+//! Integration tests for workflow cross-database features.
 //!
 //! Requires local PostgreSQL and MySQL instances with test data
-//! from `scripts/setup-skill-workflow-testdata.sh`.
+//! from `scripts/setup-workflow-testdata.sh`.
 //!
-//! Run with: `cargo test -p datazen --test skill_workflow_tests -- --nocapture`
+//! Run with: `cargo test -p datazen --test workflow_tests -- --nocapture`
 //! Skip if databases are unavailable (tests check connectivity first).
 
 use std::path::PathBuf;
@@ -15,7 +15,7 @@ fn load_env() -> Option<DbConfig> {
         .join(".env");
 
     if !env_path.exists() {
-        eprintln!("⏭  Skipping skill workflow tests: .env not found");
+        eprintln!("⏭  Skipping workflow tests: .env not found");
         return None;
     }
 
@@ -91,28 +91,28 @@ impl DbConfig {
     }
 }
 
-// ─── TC-01: Cross-DB Skill YAML Parsing ─────────────────────────────────────
+// ─── TC-01: Cross-DB Workflow YAML Parsing ─────────────────────────────────────
 
-use datazen::mcp::skills::{SkillDefinition, SkillStep};
+use datazen::mcp::workflows::{WorkflowDefinition, WorkflowStep};
 
 #[test]
-fn tc01_cross_db_skill_yaml_parses() {
-    let yaml = include_str!("../../scripts/test-cross-db-skill.yaml");
-    let skill: SkillDefinition = serde_yaml::from_str(yaml).unwrap();
-    assert_eq!(skill.id, "order-logistics");
-    assert!(skill.timeout_secs.is_some());
-    assert!(skill.error_handling.is_some());
+fn tc01_cross_db_workflow_yaml_parses() {
+    let yaml = include_str!("../../scripts/test-cross-db-workflow.yaml");
+    let workflow: WorkflowDefinition = serde_yaml::from_str(yaml).unwrap();
+    assert_eq!(workflow.id, "order-logistics");
+    assert!(workflow.timeout_secs.is_some());
+    assert!(workflow.error_handling.is_some());
 
-    let conn_vars: Vec<_> = skill
+    let conn_vars: Vec<_> = workflow
         .variables
         .iter()
         .filter(|v| v.var_type == "connection")
         .collect();
     assert_eq!(conn_vars.len(), 2, "Should have 2 connection variables");
 
-    assert!(skill.steps.len() >= 2, "Should have at least 2 steps");
-    match &skill.steps[0] {
-        SkillStep::Query { connection, .. } => {
+    assert!(workflow.steps.len() >= 2, "Should have at least 2 steps");
+    match &workflow.steps[0] {
+        WorkflowStep::Query { connection, .. } => {
             assert!(
                 connection.is_some(),
                 "First query should have per-step connection"
@@ -187,9 +187,9 @@ async fn tc02_cross_db_query_and_template_resolution() {
 
 #[tokio::test]
 async fn tc03_structured_result_serialization() {
-    use datazen::mcp::skills::{SkillExecutionResult, StepExecutionResult, StepStatus};
+    use datazen::mcp::workflows::{WorkflowExecutionResult, StepExecutionResult, StepStatus};
 
-    let result = SkillExecutionResult {
+    let result = WorkflowExecutionResult {
         success: true,
         final_output: "done".into(),
         steps: vec![StepExecutionResult {
@@ -218,7 +218,7 @@ async fn tc03_structured_result_serialization() {
     assert!(json.contains("\"totalTimeMs\""));
     assert!(json.contains("ORD-001"));
 
-    let parsed: SkillExecutionResult = serde_json::from_str(&json).unwrap();
+    let parsed: WorkflowExecutionResult = serde_json::from_str(&json).unwrap();
     assert_eq!(parsed.steps.len(), 1);
     assert_eq!(parsed.steps[0].step_id, "s1");
 }
@@ -394,7 +394,7 @@ async fn tc07_timeout_behavior() {
 #[test]
 fn tc08_connection_reuse_logic() {
     // ConnectionManager.get_or_connect is tested via the module's internal tests
-    // Here we verify the SkillDefinition can reference connection variables
+    // Here we verify the WorkflowDefinition can reference connection variables
     let yaml = r#"
 id: reuse-test
 name: Reuse
@@ -414,11 +414,11 @@ steps:
     connection: "{{db}}"
     sql: "SELECT 2"
 "#;
-    let skill: SkillDefinition = serde_yaml::from_str(yaml).unwrap();
-    match (&skill.steps[0], &skill.steps[1]) {
+    let workflow: WorkflowDefinition = serde_yaml::from_str(yaml).unwrap();
+    match (&workflow.steps[0], &workflow.steps[1]) {
         (
-            SkillStep::Query { connection: c1, .. },
-            SkillStep::Query { connection: c2, .. },
+            WorkflowStep::Query { connection: c1, .. },
+            WorkflowStep::Query { connection: c2, .. },
         ) => {
             assert_eq!(c1, c2, "Both steps should use the same connection variable");
         }
@@ -432,7 +432,7 @@ steps:
 fn tc09_backward_compat_old_yaml() {
     let yaml = r#"
 id: old-format
-name: Old Skill
+name: Old Workflow
 description: No new fields
 variables:
   - name: query
@@ -449,11 +449,11 @@ steps:
 output:
   format: text
 "#;
-    let skill: SkillDefinition = serde_yaml::from_str(yaml).unwrap();
-    assert!(skill.timeout_secs.is_none());
-    assert!(skill.error_handling.is_none());
-    match &skill.steps[0] {
-        SkillStep::Query {
+    let workflow: WorkflowDefinition = serde_yaml::from_str(yaml).unwrap();
+    assert!(workflow.timeout_secs.is_none());
+    assert!(workflow.error_handling.is_none());
+    match &workflow.steps[0] {
+        WorkflowStep::Query {
             connection,
             timeout_secs,
             on_error,
@@ -471,14 +471,14 @@ output:
 
 #[tokio::test]
 async fn tc10_history_persistence() {
-    use datazen::mcp::skill_history::SkillHistoryManager;
-    use datazen::mcp::skills::{SkillExecutionResult, StepExecutionResult, StepStatus};
+    use datazen::mcp::workflow_history::WorkflowHistoryManager;
+    use datazen::mcp::workflows::{WorkflowExecutionResult, StepExecutionResult, StepStatus};
 
     let dir = tempfile::tempdir().unwrap();
-    let mgr = SkillHistoryManager::new(dir.path().to_path_buf());
+    let mgr = WorkflowHistoryManager::new(dir.path().to_path_buf());
     mgr.load().await.unwrap();
 
-    let result = SkillExecutionResult {
+    let result = WorkflowExecutionResult {
         success: true,
         final_output: "test".into(),
         steps: vec![StepExecutionResult {
@@ -497,8 +497,8 @@ async fn tc10_history_persistence() {
 
     let id = mgr
         .record(
-            "skill-1",
-            "Skill 1",
+            "workflow-1",
+            "Workflow 1",
             &serde_json::json!({"uid": "U001"}),
             &result,
         )
@@ -511,12 +511,12 @@ async fn tc10_history_persistence() {
     assert!(items[0].success);
 
     let entry = mgr.get(&id).await.unwrap();
-    assert_eq!(entry.skill_name, "Skill 1");
+    assert_eq!(entry.workflow_name, "Workflow 1");
     assert_eq!(entry.result.steps[0].step_id, "s1");
 
     // Persist and reload
     drop(mgr);
-    let mgr2 = SkillHistoryManager::new(dir.path().to_path_buf());
+    let mgr2 = WorkflowHistoryManager::new(dir.path().to_path_buf());
     mgr2.load().await.unwrap();
     assert_eq!(mgr2.list(None).await.len(), 1);
 
@@ -541,10 +541,10 @@ steps:
     id: get_logistics
     sql: "SELECT * FROM logistics WHERE order_id IN ({{steps.get_orders.rows.*.order_id}})"
 "#;
-    let skill: SkillDefinition = serde_yaml::from_str(yaml).unwrap();
-    assert_eq!(skill.steps.len(), 2);
-    match &skill.steps[1] {
-        SkillStep::Query { sql, .. } => {
+    let workflow: WorkflowDefinition = serde_yaml::from_str(yaml).unwrap();
+    assert_eq!(workflow.steps.len(), 2);
+    match &workflow.steps[1] {
+        WorkflowStep::Query { sql, .. } => {
             assert!(sql.contains("{{steps.get_orders.rows.*.order_id}}"));
         }
         _ => panic!("Expected Query"),
@@ -577,11 +577,11 @@ steps:
             id: detail
             sql: "SELECT * FROM d WHERE id = '{{row.id}}'"
 "#;
-    let skill: SkillDefinition = serde_yaml::from_str(yaml).unwrap();
-    assert_eq!(skill.steps.len(), 2);
+    let workflow: WorkflowDefinition = serde_yaml::from_str(yaml).unwrap();
+    assert_eq!(workflow.steps.len(), 2);
 
-    match &skill.steps[1] {
-        SkillStep::Condition {
+    match &workflow.steps[1] {
+        WorkflowStep::Condition {
             then_steps,
             else_steps,
             ..
@@ -589,7 +589,7 @@ steps:
             assert_eq!(then_steps.len(), 1);
             assert!(else_steps.is_none());
             match &then_steps[0] {
-                SkillStep::ForEach {
+                WorkflowStep::ForEach {
                     as_var,
                     max_iterations,
                     steps,

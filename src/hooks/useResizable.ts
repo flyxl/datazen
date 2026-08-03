@@ -6,6 +6,8 @@ export interface UseResizableOptions {
   minSize: number;
   maxSize: number;
   storageKey?: string;
+  /** When true, dragging towards positive axis shrinks the panel (for right-side panels). */
+  reverse?: boolean;
 }
 
 export function useResizable({
@@ -14,6 +16,7 @@ export function useResizable({
   minSize,
   maxSize,
   storageKey,
+  reverse = false,
 }: UseResizableOptions) {
   const [size, setSize] = useState(() => {
     if (storageKey) {
@@ -29,7 +32,10 @@ export function useResizable({
   const sizeRef = useRef(size);
   sizeRef.current = size;
 
-  const handleRef = useRef<HTMLDivElement | null>(null);
+  const [handleEl, setHandleEl] = useState<HTMLDivElement | null>(null);
+  const handleRef = useCallback((el: HTMLDivElement | null) => {
+    setHandleEl(el);
+  }, []);
 
   const clamp = useCallback(
     (n: number) => Math.max(minSize, Math.min(maxSize, n)),
@@ -37,8 +43,7 @@ export function useResizable({
   );
 
   useEffect(() => {
-    const handle = handleRef.current;
-    if (!handle) return;
+    if (!handleEl) return;
 
     let startPos = 0;
     let startSize = 0;
@@ -48,23 +53,23 @@ export function useResizable({
       active = true;
       startPos = direction === 'horizontal' ? e.clientX : e.clientY;
       startSize = sizeRef.current;
-      handle!.setPointerCapture(e.pointerId);
+      handleEl!.setPointerCapture(e.pointerId);
       document.body.style.cursor = direction === 'horizontal' ? 'col-resize' : 'row-resize';
       document.body.style.userSelect = 'none';
     }
 
     function onPointerMove(e: PointerEvent) {
-      if (!active || !handle!.hasPointerCapture(e.pointerId)) return;
+      if (!active || !handleEl!.hasPointerCapture(e.pointerId)) return;
       const pos = direction === 'horizontal' ? e.clientX : e.clientY;
       const delta = pos - startPos;
-      const next = clamp(startSize + delta);
+      const next = clamp(startSize + (reverse ? -delta : delta));
       setSize(next);
     }
 
     function onPointerUp(e: PointerEvent) {
-      if (!handle!.hasPointerCapture(e.pointerId)) return;
+      if (!handleEl!.hasPointerCapture(e.pointerId)) return;
       active = false;
-      handle!.releasePointerCapture(e.pointerId);
+      handleEl!.releasePointerCapture(e.pointerId);
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
       if (storageKey) {
@@ -72,18 +77,18 @@ export function useResizable({
       }
     }
 
-    handle.addEventListener('pointerdown', onPointerDown);
-    handle.addEventListener('pointermove', onPointerMove);
-    handle.addEventListener('pointerup', onPointerUp);
-    handle.addEventListener('pointercancel', onPointerUp);
+    handleEl.addEventListener('pointerdown', onPointerDown);
+    handleEl.addEventListener('pointermove', onPointerMove);
+    handleEl.addEventListener('pointerup', onPointerUp);
+    handleEl.addEventListener('pointercancel', onPointerUp);
 
     return () => {
-      handle.removeEventListener('pointerdown', onPointerDown);
-      handle.removeEventListener('pointermove', onPointerMove);
-      handle.removeEventListener('pointerup', onPointerUp);
-      handle.removeEventListener('pointercancel', onPointerUp);
+      handleEl.removeEventListener('pointerdown', onPointerDown);
+      handleEl.removeEventListener('pointermove', onPointerMove);
+      handleEl.removeEventListener('pointerup', onPointerUp);
+      handleEl.removeEventListener('pointercancel', onPointerUp);
     };
-  }, [clamp, direction, storageKey]);
+  }, [handleEl, clamp, direction, reverse, storageKey]);
 
   return { size, setSize, handleRef };
 }

@@ -142,7 +142,7 @@
 | TC-AI-006 | AI 对话 | ✅ | DeepSeek 正确回答关于 test_logistics 表结构的问题，返回 6 列信息和 SQL 建议 |
 | TC-AI-007 | AI 对话 — 插入 SQL | ✅ | 端到端验证：AI Chat 问"写查询每种状态订单数量的SQL"→ 正确生成 SQL → "插入到编辑器"成功插入纯 SQL → 执行返回 4 行正确结果 |
 | TC-AI-008 | NL 筛选 | ✅ | 端到端验证：输入"显示status为delivered的记录"→ AI 解析为 `status eq delivered` → 表格从 5 行筛选到 2 行 |
-| TC-AI-009 | Skills 管理 | ✅ | 技能标签页可访问，界面正确显示 |
+| TC-AI-009 | Workflows 管理 | ✅ | 工作流标签页可访问，界面正确显示 |
 
 ### 模块七：数据同步
 

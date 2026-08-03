@@ -377,7 +377,7 @@ pub struct AppState {
     pub sync_adapters: Arc<SyncAdapterRegistry>,
     pub ai_registry: Arc<AiProviderRegistry>,
     pub schema_context_builder: Arc<SchemaContextBuilder>,
-    pub skill_registry: Arc<SkillRegistry>,
+    pub workflow_registry: Arc<WorkflowRegistry>,
     pub mcp_client_manager: Arc<McpClientManager>,
 }
 ```

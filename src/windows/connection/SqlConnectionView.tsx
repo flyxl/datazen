@@ -141,6 +141,14 @@ export function SqlConnectionView({
     maxSize: 420,
     storageKey: 'connection.sidebar',
   });
+  const { size: aiSidebarWidth, handleRef: aiHandleRef } = useResizable({
+    direction: 'horizontal',
+    initialSize: 320,
+    minSize: 240,
+    maxSize: 600,
+    reverse: true,
+    storageKey: 'connection.aiSidebar',
+  });
 
   useEffect(() => {
     if (connectionId) setQueryConnectionId(connectionId);
@@ -613,8 +621,13 @@ export function SqlConnectionView({
         )}
 
         {aiChatOpen && (
-          <aside className="w-80 shrink-0 border-l border-edge bg-surface">
-            <AiChatPanel
+          <>
+            <div
+              ref={aiHandleRef}
+              className="w-1 shrink-0 cursor-col-resize bg-transparent hover:bg-blue-500/30"
+            />
+            <aside style={{ width: aiSidebarWidth }} className="shrink-0 border-l border-edge bg-surface">
+              <AiChatPanel
               connectionId={connectionId}
               database={currentDatabase ?? undefined}
               onInsertSql={(sql) => {
@@ -623,8 +636,9 @@ export function SqlConnectionView({
                   if (tab) updateQuerySql(tab.id, sql);
                 }
               }}
-            />
-          </aside>
+              />
+            </aside>
+          </>
         )}
       </div>
 

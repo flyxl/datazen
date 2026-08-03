@@ -58,8 +58,8 @@ pub async fn mcp_start_stdio(state: State<'_, AppState>) -> Result<(), CommandEr
         ai_registry: state.ai_registry.clone(),
         schema_context_builder: state.schema_context_builder.clone(),
         prompt_resolver: state.prompt_resolver.clone(),
-        skill_registry: state.skill_registry.clone(),
-        skill_history: state.skill_history.clone(),
+        workflow_registry: state.workflow_registry.clone(),
+        workflow_history: state.workflow_history.clone(),
         mcp_client_manager: state.mcp_client_manager.clone(),
     });
 

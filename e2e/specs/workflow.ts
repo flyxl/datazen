@@ -18,14 +18,14 @@ async function invokeBackend<T>(cmd: string, args: Record<string, unknown> = {})
   return result as T;
 }
 
-interface SkillListItem {
+interface WorkflowListItem {
   id: string;
   name: string;
   description: string;
   variables: { name: string; type: string; description: string; required: boolean }[];
 }
 
-interface SkillExecutionResult {
+interface WorkflowExecutionResult {
   success: boolean;
   finalOutput: string;
   steps: {
@@ -44,14 +44,14 @@ interface SkillExecutionResult {
 
 interface HistoryListItem {
   id: string;
-  skillId: string;
-  skillName: string;
+  workflowId: string;
+  workflowName: string;
   success: boolean;
   executedAt: string;
   totalTimeMs: number;
 }
 
-describe('Skill 跨库工作流 E2E 测试', () => {
+describe('Workflow 跨库工作流 E2E 测试', () => {
   let mainWindow: string;
   let connWindow: string;
   let runtimeConnId: string;
@@ -70,21 +70,21 @@ describe('Skill 跨库工作流 E2E 测试', () => {
   });
 
   after(async () => {
-    // Clean up test skills
+    // Clean up test workflows
     try {
-      await invokeBackend('skill_delete', { skillId: 'e2e-simple-query' });
+      await invokeBackend('workflow_delete', { workflowId: 'e2e-simple-query' });
     } catch { /* ignore */ }
     try {
-      await invokeBackend('skill_delete', { skillId: 'e2e-condition-test' });
+      await invokeBackend('workflow_delete', { workflowId: 'e2e-condition-test' });
     } catch { /* ignore */ }
     try {
-      await invokeBackend('skill_delete', { skillId: 'e2e-foreach-test' });
+      await invokeBackend('workflow_delete', { workflowId: 'e2e-foreach-test' });
     } catch { /* ignore */ }
     try {
-      await invokeBackend('skill_delete', { skillId: 'e2e-error-test' });
+      await invokeBackend('workflow_delete', { workflowId: 'e2e-error-test' });
     } catch { /* ignore */ }
     try {
-      await invokeBackend('skill_history_clear', { skillId: null });
+      await invokeBackend('workflow_history_clear', { workflowId: null });
     } catch { /* ignore */ }
 
     if (mainWindow) {
@@ -92,13 +92,13 @@ describe('Skill 跨库工作流 E2E 测试', () => {
     }
   });
 
-  // ── SW-01: Skill CRUD via IPC ──────────────────────────────────
+  // ── SW-01: Workflow CRUD via IPC ──────────────────────────────────
 
-  it('SW-01: 应能通过 IPC 创建、读取、删除 Skill', async () => {
-    const skill = {
+  it('SW-01: 应能通过 IPC 创建、读取、删除 Workflow', async () => {
+    const workflow = {
       id: 'e2e-simple-query',
       name: 'E2E 简单查询',
-      description: '测试 Skill CRUD',
+      description: '测试 Workflow CRUD',
       variables: [
         { name: 'table_name', type: 'string', description: '表名', required: true },
       ],
@@ -107,32 +107,32 @@ describe('Skill 跨库工作流 E2E 测试', () => {
       ],
     };
 
-    await invokeBackend('skill_save', { skill });
+    await invokeBackend('workflow_save', { workflow });
 
-    const list = await invokeBackend<SkillListItem[]>('skill_list');
+    const list = await invokeBackend<WorkflowListItem[]>('workflow_list');
     const found = list.find((s) => s.id === 'e2e-simple-query');
     expect(found).toBeDefined();
     expect(found!.name).toBe('E2E 简单查询');
     expect(found!.variables.length).toBe(1);
 
-    const detail = await invokeBackend<any>('skill_get', { skillId: 'e2e-simple-query' });
+    const detail = await invokeBackend<any>('workflow_get', { workflowId: 'e2e-simple-query' });
     expect(detail.id).toBe('e2e-simple-query');
     expect(detail.steps.length).toBe(1);
 
-    await invokeBackend('skill_delete', { skillId: 'e2e-simple-query' });
+    await invokeBackend('workflow_delete', { workflowId: 'e2e-simple-query' });
 
-    const listAfter = await invokeBackend<SkillListItem[]>('skill_list');
+    const listAfter = await invokeBackend<WorkflowListItem[]>('workflow_list');
     const foundAfter = listAfter.find((s) => s.id === 'e2e-simple-query');
     expect(foundAfter).toBeUndefined();
   });
 
-  // ── SW-02: Skill Execution with Structured Result ─────────────
+  // ── SW-02: Workflow Execution with Structured Result ─────────────
 
-  it('SW-02: 应能执行 Skill 并返回结构化结果', async function () {
+  it('SW-02: 应能执行 Workflow 并返回结构化结果', async function () {
     if (!runtimeConnId) return this.skip();
     this.timeout(30000);
 
-    const skill = {
+    const workflow = {
       id: 'e2e-simple-query',
       name: 'E2E 简单查询',
       description: '测试执行',
@@ -141,10 +141,10 @@ describe('Skill 跨库工作流 E2E 测试', () => {
         { type: 'query', id: 'step1', sql: 'SELECT 1 AS val, \'hello\' AS msg' },
       ],
     };
-    await invokeBackend('skill_save', { skill });
+    await invokeBackend('workflow_save', { workflow });
 
-    const result = await invokeBackend<SkillExecutionResult>('skill_execute', {
-      skillId: 'e2e-simple-query',
+    const result = await invokeBackend<WorkflowExecutionResult>('workflow_execute', {
+      workflowId: 'e2e-simple-query',
       variables: {},
       connectionId: runtimeConnId,
     });
@@ -170,36 +170,36 @@ describe('Skill 跨库工作流 E2E 测试', () => {
   it('SW-03: 执行后应自动记录历史', async function () {
     if (!runtimeConnId) return this.skip();
 
-    const history = await invokeBackend<HistoryListItem[]>('skill_history_list', {
-      skillId: null,
+    const history = await invokeBackend<HistoryListItem[]>('workflow_history_list', {
+      workflowId: null,
     });
-    const e2eEntries = history.filter((h) => h.skillId === 'e2e-simple-query');
+    const e2eEntries = history.filter((h) => h.workflowId === 'e2e-simple-query');
     expect(e2eEntries.length).toBeGreaterThan(0);
     expect(e2eEntries[0].success).toBe(true);
     expect(e2eEntries[0].totalTimeMs).toBeGreaterThanOrEqual(0);
 
-    const detail = await invokeBackend<any>('skill_history_get', {
+    const detail = await invokeBackend<any>('workflow_history_get', {
       historyId: e2eEntries[0].id,
     });
-    expect(detail.skillId).toBe('e2e-simple-query');
+    expect(detail.workflowId).toBe('e2e-simple-query');
     expect(detail.result.steps.length).toBe(1);
 
-    const cleared = await invokeBackend<number>('skill_history_clear', { skillId: null });
+    const cleared = await invokeBackend<number>('workflow_history_clear', { workflowId: null });
     expect(cleared).toBeGreaterThan(0);
 
-    const afterClear = await invokeBackend<HistoryListItem[]>('skill_history_list', {
-      skillId: null,
+    const afterClear = await invokeBackend<HistoryListItem[]>('workflow_history_list', {
+      workflowId: null,
     });
     expect(afterClear.length).toBe(0);
   });
 
   // ── SW-04: Variable Substitution in SQL ────────────────────────
 
-  it('SW-04: Skill 变量应正确替换到 SQL 模板中', async function () {
+  it('SW-04: Workflow 变量应正确替换到 SQL 模板中', async function () {
     if (!runtimeConnId) return this.skip();
     this.timeout(30000);
 
-    const skill = {
+    const workflow = {
       id: 'e2e-simple-query',
       name: 'E2E 变量替换',
       description: '测试变量替换',
@@ -210,10 +210,10 @@ describe('Skill 跨库工作流 E2E 测试', () => {
         { type: 'query', id: 'step1', sql: "SELECT '{{val}}' AS result" },
       ],
     };
-    await invokeBackend('skill_save', { skill });
+    await invokeBackend('workflow_save', { workflow });
 
-    const result = await invokeBackend<SkillExecutionResult>('skill_execute', {
-      skillId: 'e2e-simple-query',
+    const result = await invokeBackend<WorkflowExecutionResult>('workflow_execute', {
+      workflowId: 'e2e-simple-query',
       variables: { val: 'E2E_TEST_VALUE' },
       connectionId: runtimeConnId,
     });
@@ -223,13 +223,104 @@ describe('Skill 跨库工作流 E2E 测试', () => {
     expect(sql).toContain('E2E_TEST_VALUE');
   });
 
+  // ── SW-04b: Multi-step template with data[N].field ─────────────
+
+  it('SW-04b: 多步骤模板引用应支持 data[0].field 语法', async function () {
+    if (!runtimeConnId) return this.skip();
+    this.timeout(30000);
+
+    const workflow = {
+      id: 'e2e-simple-query',
+      name: 'E2E 模板引用',
+      description: '测试 data[0].field 跨步骤引用',
+      variables: [],
+      steps: [
+        { type: 'query', id: 'step1', sql: "SELECT 42 AS magic_number, 'hello' AS greeting" },
+        { type: 'query', id: 'step2', sql: "SELECT '{{steps.step1.data[0].greeting}}' AS msg, {{steps.step1.data[0].magic_number}} AS num" },
+      ],
+    };
+    await invokeBackend('workflow_save', { workflow });
+
+    const result = await invokeBackend<WorkflowExecutionResult>('workflow_execute', {
+      workflowId: 'e2e-simple-query',
+      variables: {},
+      connectionId: runtimeConnId,
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.steps.length).toBe(2);
+
+    const step2 = result.steps[1];
+    expect(step2.status).toBe('success');
+    expect(step2.sqlExecuted).toContain('hello');
+    expect(step2.sqlExecuted).toContain('42');
+
+    // Verify the data field exists in step results
+    const step1Result = result.steps[0].result;
+    expect(step1Result.data).toBeDefined();
+    expect(step1Result.data.length).toBeGreaterThan(0);
+    expect(step1Result.data[0]).toHaveProperty('magic_number');
+    expect(step1Result.data[0]).toHaveProperty('greeting');
+  });
+
+  // ── SW-04c: Template with result[N].field (alias for data) ────
+
+  it('SW-04c: result[0].field 应与 data[0].field 等价', async function () {
+    if (!runtimeConnId) return this.skip();
+    this.timeout(30000);
+
+    const workflow = {
+      id: 'e2e-simple-query',
+      name: 'E2E result alias',
+      description: '测试 result 和 data 等价',
+      variables: [],
+      steps: [
+        { type: 'query', id: 'src', sql: "SELECT 99 AS code" },
+        { type: 'query', id: 'dst', sql: "SELECT {{steps.src.result[0].code}} AS via_result" },
+      ],
+    };
+    await invokeBackend('workflow_save', { workflow });
+
+    const result = await invokeBackend<WorkflowExecutionResult>('workflow_execute', {
+      workflowId: 'e2e-simple-query',
+      variables: {},
+      connectionId: runtimeConnId,
+    });
+
+    expect(result.success).toBe(true);
+    const dstStep = result.steps.find((s) => s.stepId === 'dst');
+    expect(dstStep).toBeDefined();
+    expect(dstStep!.status).toBe('success');
+    expect(dstStep!.sqlExecuted).toContain('99');
+  });
+
+  // ── SW-04d: Workflow query step with database field ────────────
+
+  it('SW-04d: 工作流 query step 应能保存和读取 database 字段', async function () {
+    const workflow = {
+      id: 'e2e-simple-query',
+      name: 'E2E database field',
+      description: '测试 database 字段',
+      variables: [],
+      steps: [
+        { type: 'query', id: 'q1', sql: 'SELECT 1', database: 'mydb' },
+        { type: 'query', id: 'q2', sql: 'SELECT 2' },
+      ],
+    };
+    await invokeBackend('workflow_save', { workflow });
+
+    const detail = await invokeBackend<any>('workflow_get', { workflowId: 'e2e-simple-query' });
+    expect(detail.steps[0].database).toBe('mydb');
+    expect(detail.steps[1].database).toBeUndefined();
+  });
+
   // ── SW-05: Condition Step Execution ─────────────────────────────
 
   it('SW-05: 条件步骤应根据表达式执行分支', async function () {
     if (!runtimeConnId) return this.skip();
     this.timeout(30000);
 
-    const skill = {
+    const workflow = {
       id: 'e2e-condition-test',
       name: 'E2E 条件测试',
       description: '测试条件分支',
@@ -249,10 +340,10 @@ describe('Skill 跨库工作流 E2E 测试', () => {
         },
       ],
     };
-    await invokeBackend('skill_save', { skill });
+    await invokeBackend('workflow_save', { workflow });
 
-    const result = await invokeBackend<SkillExecutionResult>('skill_execute', {
-      skillId: 'e2e-condition-test',
+    const result = await invokeBackend<WorkflowExecutionResult>('workflow_execute', {
+      workflowId: 'e2e-condition-test',
       variables: {},
       connectionId: runtimeConnId,
     });
@@ -271,7 +362,7 @@ describe('Skill 跨库工作流 E2E 测试', () => {
     if (!runtimeConnId) return this.skip();
     this.timeout(30000);
 
-    const skill = {
+    const workflow = {
       id: 'e2e-error-test',
       name: 'E2E 错误测试',
       description: '测试错误处理',
@@ -280,11 +371,11 @@ describe('Skill 跨库工作流 E2E 测试', () => {
         { type: 'query', id: 'bad_query', sql: 'SELECT * FROM nonexistent_e2e_table_xyz' },
       ],
     };
-    await invokeBackend('skill_save', { skill });
+    await invokeBackend('workflow_save', { workflow });
 
     try {
-      const result = await invokeBackend<SkillExecutionResult>('skill_execute', {
-        skillId: 'e2e-error-test',
+      const result = await invokeBackend<WorkflowExecutionResult>('workflow_execute', {
+        workflowId: 'e2e-error-test',
         variables: {},
         connectionId: runtimeConnId,
       });

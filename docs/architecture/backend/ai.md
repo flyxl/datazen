@@ -55,9 +55,9 @@ pub trait AiProvider: Send + Sync {
 | `ai_generate_schema_doc` | Schema 文档生成 | ❌ |
 | `ai_diagnose_connection` | 连接故障排查 | ❌ |
 | `ai_analyze_queries` | 查询历史分析 | ❌ |
-| `ai_list_skills` | 列出所有 Skills | ❌ |
-| `ai_execute_skill` | 执行 Skill | ❌ |
-| `ai_save_skill` / `ai_delete_skill` | Skill CRUD | ❌ |
+| `workflow_list` | 列出所有 Workflows | ❌ |
+| `workflow_execute` | 执行 Workflow | ❌ |
+| `workflow_save` / `workflow_delete` | Workflow CRUD | ❌ |
 
 ### 1.5 SchemaContextBuilder
 

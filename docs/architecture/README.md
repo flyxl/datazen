@@ -53,7 +53,7 @@ DataZen 是一个跨平台桌面数据库管理工具，基于 **Tauri v2**（Ru
 | **Services 层** | 业务逻辑处理 | 连接管理、查询执行、事务控制 |
 | **Drivers 层** | 数据库驱动抽象 | 统一接口、连接池管理、插件扩展 |
 | **AI 层** | LLM 集成 | 多 Provider 支持、流式输出、上下文构建 |
-| **MCP 层** | 工具协议 | Server 暴露能力、Client 连接外部、Skills 工作流 |
+| **MCP 层** | 工具协议 | Server 暴露能力、Client 连接外部、Workflows 工作流 |
 | **Stores 层** | 本地持久化 | 加密存储、配置管理 |
 
 ---
@@ -68,7 +68,7 @@ DataZen 是一个跨平台桌面数据库管理工具，基于 **Tauri v2**（Ru
 | [持久化存储](backend/store.md) | 本地文件存储、AES-256-GCM 加密、配置/历史/收藏管理 |
 | [IPC 命令层](backend/commands.md) | Tauri Commands 模块划分、AppState 结构、CommandError 错误处理 |
 | [AI 模块](backend/ai.md) | AiProvider trait、Provider 实现、SchemaContextBuilder、PromptBuilder |
-| [MCP 模块](backend/mcp.md) | MCP Server（Tools/Resources/Prompts）、MCP Client、Skills 系统 |
+| [MCP 模块](backend/mcp.md) | MCP Server（Tools/Resources/Prompts）、MCP Client、Workflows 系统 |
 
 ## 前端文档
 

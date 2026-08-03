@@ -299,9 +299,9 @@ export interface StreamErrorPayload {
   error: string;
 }
 
-// ── Skill types ──
+// ── Workflow types ──
 
-export interface SkillVariable {
+export interface WorkflowVariable {
   name: string;
   type: string; // 'string' | 'number' | 'connection'
   description: string;
@@ -309,19 +309,20 @@ export interface SkillVariable {
   default?: unknown;
 }
 
-export type SkillStepType = 'query' | 'ai' | 'condition' | 'foreach';
+export type WorkflowStepType = 'query' | 'ai' | 'condition' | 'foreach';
 
 export interface ErrorHandlingConfig {
   strategy: 'abort' | 'skip' | 'fallback';
-  fallbackSteps?: SkillStep[];
+  fallbackSteps?: WorkflowStep[];
 }
 
-export interface SkillStep {
-  type: SkillStepType;
+export interface WorkflowStep {
+  type: WorkflowStepType;
   id: string;
   // query fields
   sql?: string;
   connection?: string;
+  database?: string;
   // ai fields
   prompt?: string;
   // common
@@ -329,38 +330,38 @@ export interface SkillStep {
   onError?: ErrorHandlingConfig;
   // condition fields
   if?: string;
-  thenSteps?: SkillStep[];
-  elseSteps?: SkillStep[];
+  thenSteps?: WorkflowStep[];
+  elseSteps?: WorkflowStep[];
   // foreach fields
   items?: string;
   asVar?: string;
-  steps?: SkillStep[];
+  steps?: WorkflowStep[];
   maxIterations?: number;
 }
 
-export interface SkillOutput {
+export interface WorkflowOutput {
   format: string;
   template?: string;
 }
 
-export interface SkillDefinition {
+export interface WorkflowDefinition {
   id: string;
   name: string;
   description: string;
   version?: string;
   author?: string;
-  variables: SkillVariable[];
-  steps: SkillStep[];
-  output?: SkillOutput;
+  variables: WorkflowVariable[];
+  steps: WorkflowStep[];
+  output?: WorkflowOutput;
   timeoutSecs?: number;
   errorHandling?: ErrorHandlingConfig;
 }
 
-export interface SkillListItem {
+export interface WorkflowListItem {
   id: string;
   name: string;
   description: string;
-  variables: SkillVariable[];
+  variables: WorkflowVariable[];
 }
 
 export type StepStatus = 'success' | 'failed' | 'skipped' | 'timed_out';
@@ -376,7 +377,7 @@ export interface StepExecutionResult {
   sqlExecuted?: string;
 }
 
-export interface SkillExecutionResult {
+export interface WorkflowExecutionResult {
   success: boolean;
   finalOutput: string;
   steps: StepExecutionResult[];
@@ -386,8 +387,8 @@ export interface SkillExecutionResult {
 
 export interface HistoryListItem {
   id: string;
-  skillId: string;
-  skillName: string;
+  workflowId: string;
+  workflowName: string;
   success: boolean;
   totalTimeMs: number;
   createdAt: string;
@@ -395,10 +396,10 @@ export interface HistoryListItem {
 
 export interface HistoryEntry {
   id: string;
-  skillId: string;
-  skillName: string;
+  workflowId: string;
+  workflowName: string;
   variables: Record<string, unknown>;
-  result: SkillExecutionResult;
+  result: WorkflowExecutionResult;
   createdAt: string;
 }
 

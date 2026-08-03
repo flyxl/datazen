@@ -1,6 +1,6 @@
-//! User-defined AI workflow (Skill) system.
+//! User-defined AI workflow system.
 //!
-//! Skills are YAML-defined reusable workflows combining prompt templates,
+//! Workflows are YAML-defined reusable automations combining prompt templates,
 //! database queries, conditional logic, loops, and variable substitution.
 //! Supports cross-database workflows with per-step connection binding.
 
@@ -16,22 +16,22 @@ use uuid::Uuid;
 // ─── Data Model (Phase 1) ───────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SkillDefinition {
+pub struct WorkflowDefinition {
     pub id: String,
     pub name: String,
     pub description: String,
     pub version: Option<String>,
     pub author: Option<String>,
     #[serde(default)]
-    pub variables: Vec<SkillVariable>,
-    pub steps: Vec<SkillStep>,
-    pub output: Option<SkillOutput>,
+    pub variables: Vec<WorkflowVariable>,
+    pub steps: Vec<WorkflowStep>,
+    pub output: Option<WorkflowOutput>,
     pub timeout_secs: Option<u64>,
     pub error_handling: Option<ErrorHandlingConfig>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SkillVariable {
+pub struct WorkflowVariable {
     pub name: String,
     #[serde(rename = "type")]
     pub var_type: String,
@@ -42,12 +42,13 @@ pub struct SkillVariable {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
-pub enum SkillStep {
+pub enum WorkflowStep {
     #[serde(rename = "query")]
     Query {
         id: String,
         sql: String,
         connection: Option<String>,
+        database: Option<String>,
         timeout_secs: Option<u64>,
         on_error: Option<ErrorHandlingConfig>,
     },
@@ -63,20 +64,20 @@ pub enum SkillStep {
         id: String,
         #[serde(rename = "if")]
         expr: String,
-        then_steps: Vec<SkillStep>,
-        else_steps: Option<Vec<SkillStep>>,
+        then_steps: Vec<WorkflowStep>,
+        else_steps: Option<Vec<WorkflowStep>>,
     },
     #[serde(rename = "foreach")]
     ForEach {
         id: String,
         items: String,
         as_var: String,
-        steps: Vec<SkillStep>,
+        steps: Vec<WorkflowStep>,
         max_iterations: Option<usize>,
     },
 }
 
-impl SkillStep {
+impl WorkflowStep {
     pub fn step_id(&self) -> &str {
         match self {
             Self::Query { id, .. }
@@ -113,7 +114,7 @@ impl SkillStep {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SkillOutput {
+pub struct WorkflowOutput {
     pub format: String,
     pub template: Option<String>,
 }
@@ -122,7 +123,7 @@ pub struct SkillOutput {
 pub struct ErrorHandlingConfig {
     pub strategy: ErrorStrategyKind,
     #[serde(default)]
-    pub fallback_steps: Option<Vec<SkillStep>>,
+    pub fallback_steps: Option<Vec<WorkflowStep>>,
 }
 
 impl ErrorHandlingConfig {
@@ -149,14 +150,14 @@ pub enum ErrorStrategyKind {
 pub enum ErrorStrategy {
     Abort,
     Skip,
-    Fallback { steps: Vec<SkillStep> },
+    Fallback { steps: Vec<WorkflowStep> },
 }
 
 // ─── Execution Result ───────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct SkillExecutionResult {
+pub struct WorkflowExecutionResult {
     pub success: bool,
     pub final_output: String,
     pub steps: Vec<StepExecutionResult>,
@@ -190,42 +191,42 @@ pub enum StepStatus {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct SkillListItem {
+pub struct WorkflowListItem {
     pub id: String,
     pub name: String,
     pub description: String,
-    pub variables: Vec<SkillVariable>,
+    pub variables: Vec<WorkflowVariable>,
 }
 
 // ─── Registry ───────────────────────────────────────────────────────────────
 
-pub struct SkillRegistry {
-    skills: RwLock<HashMap<String, SkillDefinition>>,
-    skills_dir: PathBuf,
+pub struct WorkflowRegistry {
+    workflows: RwLock<HashMap<String, WorkflowDefinition>>,
+    workflows_dir: PathBuf,
 }
 
-impl SkillRegistry {
-    pub fn new(skills_dir: PathBuf) -> Self {
+impl WorkflowRegistry {
+    pub fn new(workflows_dir: PathBuf) -> Self {
         Self {
-            skills: RwLock::new(HashMap::new()),
-            skills_dir,
+            workflows: RwLock::new(HashMap::new()),
+            workflows_dir,
         }
     }
 
-    pub fn skills_dir(&self) -> &PathBuf {
-        &self.skills_dir
+    pub fn workflows_dir(&self) -> &PathBuf {
+        &self.workflows_dir
     }
 
     pub async fn load_all(&self) -> Result<(), String> {
-        if !self.skills_dir.exists() {
-            std::fs::create_dir_all(&self.skills_dir).map_err(|e| e.to_string())?;
+        if !self.workflows_dir.exists() {
+            std::fs::create_dir_all(&self.workflows_dir).map_err(|e| e.to_string())?;
             return Ok(());
         }
 
-        let mut skills = self.skills.write().await;
-        skills.clear();
+        let mut workflows = self.workflows.write().await;
+        workflows.clear();
 
-        let entries = std::fs::read_dir(&self.skills_dir).map_err(|e| e.to_string())?;
+        let entries = std::fs::read_dir(&self.workflows_dir).map_err(|e| e.to_string())?;
 
         for entry in entries {
             let entry = entry.map_err(|e| e.to_string())?;
@@ -235,39 +236,39 @@ impl SkillRegistry {
                 .extension()
                 .map_or(false, |ext| ext == "yaml" || ext == "yml")
             {
-                match Self::load_skill_file(&path) {
-                    Ok(skill) => {
-                        tracing::info!("Loaded skill: {} ({})", skill.name, skill.id);
-                        skills.insert(skill.id.clone(), skill);
+                match Self::load_workflow_file(&path) {
+                    Ok(workflow) => {
+                        tracing::info!("Loaded workflow: {} ({})", workflow.name, workflow.id);
+                        workflows.insert(workflow.id.clone(), workflow);
                     }
                     Err(e) => {
-                        tracing::warn!("Failed to load skill {:?}: {}", path, e);
+                        tracing::warn!("Failed to load workflow {:?}: {}", path, e);
                     }
                 }
             }
         }
 
-        tracing::info!("Loaded {} skills", skills.len());
+        tracing::info!("Loaded {} workflows", workflows.len());
         Ok(())
     }
 
-    fn load_skill_file(path: &std::path::Path) -> Result<SkillDefinition, String> {
+    fn load_workflow_file(path: &std::path::Path) -> Result<WorkflowDefinition, String> {
         let content =
             std::fs::read_to_string(path).map_err(|e| format!("Failed to read {path:?}: {e}"))?;
-        serde_yaml::from_str::<SkillDefinition>(&content)
+        serde_yaml::from_str::<WorkflowDefinition>(&content)
             .map_err(|e| format!("Failed to parse {path:?}: {e}"))
     }
 
-    pub async fn get(&self, id: &str) -> Option<SkillDefinition> {
-        self.skills.read().await.get(id).cloned()
+    pub async fn get(&self, id: &str) -> Option<WorkflowDefinition> {
+        self.workflows.read().await.get(id).cloned()
     }
 
-    pub async fn list(&self) -> Vec<SkillListItem> {
-        self.skills
+    pub async fn list(&self) -> Vec<WorkflowListItem> {
+        self.workflows
             .read()
             .await
             .values()
-            .map(|s| SkillListItem {
+            .map(|s| WorkflowListItem {
                 id: s.id.clone(),
                 name: s.name.clone(),
                 description: s.description.clone(),
@@ -283,58 +284,58 @@ impl SkillRegistry {
                 .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
         {
             return Err(format!(
-                "Invalid skill id: {id}. Only alphanumeric, dash, and underscore are allowed."
+                "Invalid workflow id: {id}. Only alphanumeric, dash, and underscore are allowed."
             ));
         }
         Ok(())
     }
 
-    pub async fn save_skill(&self, skill: &SkillDefinition) -> Result<(), String> {
-        Self::validate_id(&skill.id)?;
-        let yaml = serde_yaml::to_string(skill).map_err(|e| e.to_string())?;
-        let path = self.skills_dir.join(format!("{}.yaml", skill.id));
+    pub async fn save_workflow(&self, workflow: &WorkflowDefinition) -> Result<(), String> {
+        Self::validate_id(&workflow.id)?;
+        let yaml = serde_yaml::to_string(workflow).map_err(|e| e.to_string())?;
+        let path = self.workflows_dir.join(format!("{}.yaml", workflow.id));
         std::fs::write(&path, yaml).map_err(|e| e.to_string())?;
-        self.skills
+        self.workflows
             .write()
             .await
-            .insert(skill.id.clone(), skill.clone());
+            .insert(workflow.id.clone(), workflow.clone());
         Ok(())
     }
 
-    pub async fn delete_skill(&self, id: &str) -> Result<(), String> {
+    pub async fn delete_workflow(&self, id: &str) -> Result<(), String> {
         Self::validate_id(id)?;
-        let path = self.skills_dir.join(format!("{id}.yaml"));
+        let path = self.workflows_dir.join(format!("{id}.yaml"));
         if path.exists() {
             std::fs::remove_file(&path).map_err(|e| e.to_string())?;
         }
-        self.skills.write().await.remove(id);
+        self.workflows.write().await.remove(id);
         Ok(())
     }
 }
 
 // ─── Executor (Phase 2-6) ───────────────────────────────────────────────────
 
-pub struct SkillExecutor;
+pub struct WorkflowExecutor;
 
-impl SkillExecutor {
+impl WorkflowExecutor {
     pub async fn execute(
-        skill: &SkillDefinition,
+        workflow: &WorkflowDefinition,
         app_state: &AppState,
         connection_id: Option<&str>,
         variables: &serde_json::Value,
-    ) -> Result<SkillExecutionResult, String> {
+    ) -> Result<WorkflowExecutionResult, String> {
         let start = Instant::now();
-        let global_timeout = skill.timeout_secs.unwrap_or(300);
-        let default_strategy = skill
+        let global_timeout = workflow.timeout_secs.unwrap_or(300);
+        let default_strategy = workflow
             .error_handling
             .as_ref()
             .map(|eh| eh.to_strategy())
             .unwrap_or(ErrorStrategy::Abort);
 
-        let mut context = SkillContext::new(variables);
+        let mut context = WorkflowContext::new(variables);
         context.set_builtin_variables();
 
-        for var in &skill.variables {
+        for var in &workflow.variables {
             if !context.variables.contains_key(&var.name) {
                 if let Some(default) = &var.default {
                     let val = match default {
@@ -356,7 +357,7 @@ impl SkillExecutor {
 
         let mut step_results = Vec::new();
         let outcome = Self::execute_steps(
-            &skill.steps,
+            &workflow.steps,
             app_state,
             connection_id,
             &mut context,
@@ -371,7 +372,7 @@ impl SkillExecutor {
 
         match outcome {
             Ok(()) => {
-                let final_output = if let Some(ref output) = skill.output {
+                let final_output = if let Some(ref output) = workflow.output {
                     if let Some(ref template) = output.template {
                         context.resolve_template(template).unwrap_or_default()
                     } else {
@@ -380,7 +381,7 @@ impl SkillExecutor {
                 } else {
                     context.get_last_result().unwrap_or_default()
                 };
-                Ok(SkillExecutionResult {
+                Ok(WorkflowExecutionResult {
                     success: true,
                     final_output,
                     steps: step_results,
@@ -390,7 +391,7 @@ impl SkillExecutor {
             }
             Err(e) => {
                 let final_output = context.get_last_result().unwrap_or_default();
-                Ok(SkillExecutionResult {
+                Ok(WorkflowExecutionResult {
                     success: false,
                     final_output,
                     steps: step_results,
@@ -403,10 +404,10 @@ impl SkillExecutor {
 
     #[allow(clippy::too_many_arguments)]
     fn execute_steps<'a>(
-        steps: &'a [SkillStep],
+        steps: &'a [WorkflowStep],
         app_state: &'a AppState,
         connection_id: Option<&'a str>,
-        context: &'a mut SkillContext,
+        context: &'a mut WorkflowContext,
         step_results: &'a mut Vec<StepExecutionResult>,
         default_strategy: &'a ErrorStrategy,
         global_timeout_secs: u64,
@@ -421,7 +422,7 @@ impl SkillExecutor {
             }
 
             match step {
-                SkillStep::Condition {
+                WorkflowStep::Condition {
                     id,
                     expr,
                     then_steps,
@@ -459,7 +460,7 @@ impl SkillExecutor {
                     .await?;
                 }
 
-                SkillStep::ForEach {
+                WorkflowStep::ForEach {
                     id,
                     items,
                     as_var,
@@ -688,19 +689,21 @@ impl SkillExecutor {
     }
 
     async fn execute_single_step(
-        step: &SkillStep,
+        step: &WorkflowStep,
         app_state: &AppState,
         global_connection_id: Option<&str>,
-        context: &mut SkillContext,
+        context: &mut WorkflowContext,
     ) -> Result<StepExecutionResult, String> {
         match step {
-            SkillStep::Query {
+            WorkflowStep::Query {
                 id,
                 sql,
                 connection,
+                database,
                 ..
             } => {
                 let resolved_sql = context.resolve_template(sql)?;
+                tracing::info!("[workflow] step '{}' resolved sql: {}", id, resolved_sql);
 
                 let conn_ref = if let Some(conn_tmpl) = connection {
                     Some(context.resolve_template(conn_tmpl)?)
@@ -714,24 +717,52 @@ impl SkillExecutor {
                 let (driver, handle, conn_name) =
                     resolve_connection(conn_id, app_state).await?;
 
-                let limited_sql = if !resolved_sql.to_uppercase().contains("LIMIT") {
-                    format!("{resolved_sql} LIMIT 1000")
-                } else {
-                    resolved_sql.clone()
-                };
+                if let Some(db_tmpl) = database {
+                    let resolved_db = context.resolve_template(db_tmpl)?;
+                    if !resolved_db.is_empty() {
+                        driver
+                            .use_database(&handle, &resolved_db)
+                            .await
+                            .map_err(|e| e.to_string())?;
+                    }
+                }
+
+                let clean_sql = resolved_sql.trim_end_matches(';').trim().to_string();
 
                 let result = driver
-                    .query(&handle, &limited_sql)
+                    .query(&handle, &clean_sql)
                     .await
                     .map_err(|e| e.to_string())?;
 
+                let col_names: Vec<&str> = result.columns.iter().map(|c| c.name.as_str()).collect();
+                let data: Vec<serde_json::Value> = result.rows.iter().map(|row| {
+                    let mut obj = serde_json::Map::new();
+                    for (i, col) in col_names.iter().enumerate() {
+                        let val = row.get(i).and_then(|v| v.as_ref());
+                        obj.insert(col.to_string(), match val {
+                            None => serde_json::Value::Null,
+                            Some(v) => serde_json::to_value(v).unwrap_or(serde_json::Value::Null),
+                        });
+                    }
+                    serde_json::Value::Object(obj)
+                }).collect();
+
                 let structured = serde_json::json!({
                     "rows": result.rows,
+                    "data": data,
+                    "result": data,
                     "rows_count": result.rows.len(),
                     "columns": result.columns,
                     "execution_time_ms": result.execution_time_ms,
-                    "result": serde_json::to_string_pretty(&result.rows).unwrap_or_default(),
                 });
+
+                tracing::info!(
+                    "[workflow] step '{}' result: columns={:?}, rows_count={}",
+                    id, col_names, result.rows.len()
+                );
+                if let Some(first) = data.first() {
+                    tracing::info!("[workflow] step '{}' first_row: {}", id, first);
+                }
 
                 context.set_step_result(id, structured.clone());
 
@@ -747,7 +778,7 @@ impl SkillExecutor {
                 })
             }
 
-            SkillStep::Ai { id, prompt, .. } => {
+            WorkflowStep::Ai { id, prompt, .. } => {
                 let resolved_prompt = context.resolve_template(prompt)?;
 
                 let ai_config = app_state
@@ -840,14 +871,14 @@ async fn resolve_connection(
 
 // ─── Context (Phase 2: structured results + deep path resolution) ────────────
 
-struct SkillContext {
+struct WorkflowContext {
     variables: HashMap<String, String>,
     step_results: HashMap<String, serde_json::Value>,
     loop_vars: HashMap<String, serde_json::Value>,
     last_step_id: Option<String>,
 }
 
-impl SkillContext {
+impl WorkflowContext {
     fn new(input: &serde_json::Value) -> Self {
         let mut variables = HashMap::new();
         if let Some(obj) = input.as_object() {
@@ -955,19 +986,31 @@ impl SkillContext {
     }
 
     fn resolve_json_path(&self, value: &serde_json::Value, path: &str) -> String {
-        // Handle wildcard: rows.*.field
         if path.contains(".*") {
             return self.resolve_wildcard_path(value, path);
         }
 
-        let parts: Vec<&str> = path.split('.').collect();
         let mut current = value.clone();
 
-        for part in &parts {
-            if let Ok(idx) = part.parse::<usize>() {
+        for raw_part in path.split('.') {
+            let part = raw_part.trim();
+            if part.is_empty() {
+                continue;
+            }
+            // Support bracket indexing: "field[0]" or "[0]"
+            if let Some(bracket_pos) = part.find('[') {
+                let field = &part[..bracket_pos];
+                if !field.is_empty() {
+                    current = current.get(field).cloned().unwrap_or(serde_json::Value::Null);
+                }
+                let idx_str = part[bracket_pos + 1..].trim_end_matches(']');
+                if let Ok(idx) = idx_str.parse::<usize>() {
+                    current = current.get(idx).cloned().unwrap_or(serde_json::Value::Null);
+                }
+            } else if let Ok(idx) = part.parse::<usize>() {
                 current = current.get(idx).cloned().unwrap_or(serde_json::Value::Null);
             } else {
-                current = current.get(*part).cloned().unwrap_or(serde_json::Value::Null);
+                current = current.get(part).cloned().unwrap_or(serde_json::Value::Null);
             }
         }
 
@@ -1050,7 +1093,7 @@ fn json_value_to_string(val: &serde_json::Value) -> String {
 
 // ─── Condition Evaluator (Phase 4) ──────────────────────────────────────────
 
-fn evaluate_condition(expr: &str, context: &SkillContext) -> bool {
+fn evaluate_condition(expr: &str, context: &WorkflowContext) -> bool {
     let expr = expr.trim();
 
     // is_empty / is_not_empty
@@ -1135,7 +1178,7 @@ steps:
 output:
   format: markdown
 "#;
-        let skill: SkillDefinition = serde_yaml::from_str(yaml).unwrap();
+        let skill: WorkflowDefinition = serde_yaml::from_str(yaml).unwrap();
         assert_eq!(skill.id, "test-skill");
         assert_eq!(skill.name, "Test Skill");
         assert_eq!(skill.variables.len(), 1);
@@ -1191,7 +1234,7 @@ steps:
 output:
   format: markdown
 "#;
-        let skill: SkillDefinition = serde_yaml::from_str(yaml).unwrap();
+        let skill: WorkflowDefinition = serde_yaml::from_str(yaml).unwrap();
         assert_eq!(skill.id, "cross-db");
         assert_eq!(skill.timeout_secs, Some(60));
         assert!(skill.error_handling.is_some());
@@ -1199,7 +1242,7 @@ output:
         assert_eq!(skill.variables[0].var_type, "connection");
 
         match &skill.steps[0] {
-            SkillStep::Query {
+            WorkflowStep::Query {
                 connection,
                 timeout_secs,
                 ..
@@ -1211,7 +1254,7 @@ output:
         }
 
         match &skill.steps[1] {
-            SkillStep::Condition {
+            WorkflowStep::Condition {
                 then_steps,
                 else_steps,
                 ..
@@ -1223,7 +1266,7 @@ output:
         }
 
         match &skill.steps[2] {
-            SkillStep::ForEach {
+            WorkflowStep::ForEach {
                 as_var,
                 max_iterations,
                 steps,
@@ -1263,7 +1306,7 @@ fallback_steps:
     #[test]
     fn test_skill_context_variable_resolution() {
         let input = serde_json::json!({"table_name": "users", "limit": 10});
-        let mut ctx = SkillContext::new(&input);
+        let mut ctx = WorkflowContext::new(&input);
         ctx.set_builtin_variables();
 
         let result = ctx
@@ -1275,7 +1318,7 @@ fallback_steps:
     #[test]
     fn test_skill_context_step_result_resolution_backward_compat() {
         let input = serde_json::json!({});
-        let mut ctx = SkillContext::new(&input);
+        let mut ctx = WorkflowContext::new(&input);
         ctx.set_step_result(
             "query1",
             serde_json::json!({
@@ -1294,7 +1337,7 @@ fallback_steps:
     #[test]
     fn test_skill_context_deep_path_rows_0_field() {
         let input = serde_json::json!({});
-        let mut ctx = SkillContext::new(&input);
+        let mut ctx = WorkflowContext::new(&input);
         ctx.set_step_result(
             "get_order",
             serde_json::json!({
@@ -1312,7 +1355,7 @@ fallback_steps:
     #[test]
     fn test_skill_context_deep_path_rows_count() {
         let input = serde_json::json!({});
-        let mut ctx = SkillContext::new(&input);
+        let mut ctx = WorkflowContext::new(&input);
         ctx.set_step_result(
             "s1",
             serde_json::json!({
@@ -1330,7 +1373,7 @@ fallback_steps:
     #[test]
     fn test_skill_context_wildcard_rows_star_field() {
         let input = serde_json::json!({});
-        let mut ctx = SkillContext::new(&input);
+        let mut ctx = WorkflowContext::new(&input);
         ctx.set_step_result(
             "s1",
             serde_json::json!({
@@ -1355,7 +1398,7 @@ fallback_steps:
     #[test]
     fn test_skill_context_loop_variable() {
         let input = serde_json::json!({});
-        let mut ctx = SkillContext::new(&input);
+        let mut ctx = WorkflowContext::new(&input);
         ctx.set_loop_var(
             "order",
             serde_json::json!({"order_id": "ORD-001", "amount": 100}),
@@ -1370,7 +1413,7 @@ fallback_steps:
     #[test]
     fn test_skill_context_builtin_variables() {
         let input = serde_json::json!({});
-        let mut ctx = SkillContext::new(&input);
+        let mut ctx = WorkflowContext::new(&input);
         ctx.set_builtin_variables();
 
         let result = ctx.resolve_template("Date: {{current_date}}").unwrap();
@@ -1381,7 +1424,7 @@ fallback_steps:
     #[test]
     fn test_skill_context_hyphenated_step_id() {
         let input = serde_json::json!({});
-        let mut ctx = SkillContext::new(&input);
+        let mut ctx = WorkflowContext::new(&input);
         ctx.set_step_result(
             "get-data",
             serde_json::json!({"result": "result here"}),
@@ -1396,7 +1439,7 @@ fallback_steps:
     #[test]
     fn test_skill_context_last_result_ordering() {
         let input = serde_json::json!({});
-        let mut ctx = SkillContext::new(&input);
+        let mut ctx = WorkflowContext::new(&input);
         ctx.set_step_result("step1", serde_json::json!({"result": "first"}));
         ctx.set_step_result("step2", serde_json::json!({"result": "second"}));
         ctx.set_step_result("step3", serde_json::json!({"result": "third"}));
@@ -1405,7 +1448,7 @@ fallback_steps:
 
     #[test]
     fn test_skill_list_item_serialization() {
-        let item = SkillListItem {
+        let item = WorkflowListItem {
             id: "test".into(),
             name: "Test".into(),
             description: "A test".into(),
@@ -1417,11 +1460,11 @@ fallback_steps:
 
     #[test]
     fn test_skill_id_validation() {
-        assert!(SkillRegistry::validate_id("valid-id_123").is_ok());
-        assert!(SkillRegistry::validate_id("").is_err());
-        assert!(SkillRegistry::validate_id("../../evil").is_err());
-        assert!(SkillRegistry::validate_id("has space").is_err());
-        assert!(SkillRegistry::validate_id("path/slash").is_err());
+        assert!(WorkflowRegistry::validate_id("valid-id_123").is_ok());
+        assert!(WorkflowRegistry::validate_id("").is_err());
+        assert!(WorkflowRegistry::validate_id("../../evil").is_err());
+        assert!(WorkflowRegistry::validate_id("has space").is_err());
+        assert!(WorkflowRegistry::validate_id("path/slash").is_err());
     }
 
     #[test]
@@ -1429,9 +1472,9 @@ fallback_steps:
         let yaml = r#"type: query
 id: get_data
 sql: "SELECT 1""#;
-        let step: SkillStep = serde_yaml::from_str(yaml).unwrap();
+        let step: WorkflowStep = serde_yaml::from_str(yaml).unwrap();
         match step {
-            SkillStep::Query { id, sql, .. } => {
+            WorkflowStep::Query { id, sql, .. } => {
                 assert_eq!(id, "get_data");
                 assert_eq!(sql, "SELECT 1");
             }
@@ -1441,9 +1484,9 @@ sql: "SELECT 1""#;
         let yaml = r#"type: ai
 id: analyze
 prompt: "Analyze this""#;
-        let step: SkillStep = serde_yaml::from_str(yaml).unwrap();
+        let step: WorkflowStep = serde_yaml::from_str(yaml).unwrap();
         match step {
-            SkillStep::Ai { id, prompt, .. } => {
+            WorkflowStep::Ai { id, prompt, .. } => {
                 assert_eq!(id, "analyze");
                 assert_eq!(prompt, "Analyze this");
             }
@@ -1454,7 +1497,7 @@ prompt: "Analyze this""#;
     #[test]
     fn test_condition_evaluator_numeric_comparison() {
         let input = serde_json::json!({});
-        let mut ctx = SkillContext::new(&input);
+        let mut ctx = WorkflowContext::new(&input);
         ctx.set_step_result(
             "s1",
             serde_json::json!({"rows_count": 3}),
@@ -1471,7 +1514,7 @@ prompt: "Analyze this""#;
     #[test]
     fn test_condition_evaluator_is_empty() {
         let input = serde_json::json!({});
-        let mut ctx = SkillContext::new(&input);
+        let mut ctx = WorkflowContext::new(&input);
         ctx.set_step_result(
             "s1",
             serde_json::json!({"rows_count": 0, "rows": []}),
@@ -1488,7 +1531,7 @@ prompt: "Analyze this""#;
     #[test]
     fn test_condition_evaluator_string_comparison() {
         let input = serde_json::json!({"status": "active"});
-        let ctx = SkillContext::new(&input);
+        let ctx = WorkflowContext::new(&input);
 
         assert!(evaluate_condition("status == 'active'", &ctx));
         assert!(!evaluate_condition("status == 'inactive'", &ctx));
@@ -1498,7 +1541,7 @@ prompt: "Analyze this""#;
     #[test]
     fn test_condition_evaluator_truthy() {
         let input = serde_json::json!({"flag": "yes"});
-        let ctx = SkillContext::new(&input);
+        let ctx = WorkflowContext::new(&input);
 
         assert!(evaluate_condition("flag", &ctx));
         assert!(!evaluate_condition("missing_var", &ctx));
@@ -1506,7 +1549,7 @@ prompt: "Analyze this""#;
 
     #[test]
     fn test_execution_result_serialization() {
-        let result = SkillExecutionResult {
+        let result = WorkflowExecutionResult {
             success: true,
             final_output: "done".into(),
             steps: vec![StepExecutionResult {
@@ -1532,7 +1575,7 @@ prompt: "Analyze this""#;
     #[test]
     fn test_resolve_deep_path() {
         let input = serde_json::json!({});
-        let mut ctx = SkillContext::new(&input);
+        let mut ctx = WorkflowContext::new(&input);
         ctx.set_step_result(
             "get_orders",
             serde_json::json!({
@@ -1572,11 +1615,11 @@ steps:
 output:
   format: text
 "#;
-        let skill: SkillDefinition = serde_yaml::from_str(yaml).unwrap();
+        let skill: WorkflowDefinition = serde_yaml::from_str(yaml).unwrap();
         assert_eq!(skill.timeout_secs, None);
         assert!(skill.error_handling.is_none());
         match &skill.steps[0] {
-            SkillStep::Query {
+            WorkflowStep::Query {
                 connection,
                 timeout_secs,
                 on_error,
@@ -1599,13 +1642,15 @@ sql: "SELECT 1"
 on_error:
   strategy: skip
 "#;
-        let step: SkillStep = serde_yaml::from_str(yaml).unwrap();
+        let step: WorkflowStep = serde_yaml::from_str(yaml).unwrap();
         match step {
-            SkillStep::Query { on_error, .. } => {
+            WorkflowStep::Query { on_error, .. } => {
                 let cfg = on_error.unwrap();
                 assert_eq!(cfg.strategy, ErrorStrategyKind::Skip);
             }
             _ => panic!("Expected Query"),
         }
     }
+
+    
 }

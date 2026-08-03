@@ -2,14 +2,15 @@
 
 pub mod client;
 mod server;
-pub mod skill_history;
-pub mod skills;
+pub mod workflow_history;
+pub mod workflows;
 
 pub use client::{McpClientManager, McpServerConfig, McpToolInfo};
 pub use server::DataZenMcpServer;
-pub use skill_history::SkillHistoryManager;
-pub use skills::{
-    SkillDefinition, SkillExecutionResult, SkillExecutor, SkillListItem, SkillRegistry,
+pub use workflow_history::WorkflowHistoryManager;
+pub use workflows::{
+    WorkflowDefinition, WorkflowExecutionResult, WorkflowExecutor, WorkflowListItem,
+    WorkflowRegistry,
 };
 
 use crate::commands::AppState;

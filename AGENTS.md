@@ -19,7 +19,7 @@ DataZen 是一个跨平台桌面数据库管理工具，基于 **Tauri v2**（Ru
 datazen/
 ├── src/                         # React 前端源码
 │   ├── components/              # 通用 UI 组件
-│   │   ├── ai/                  # AI 功能组件（Nl2SqlPanel, DiagnosisPanel, ExplainPanel, AiChatPanel, NlFilterInput, SkillsPanel）
+│   │   ├── ai/                  # AI 功能组件（Nl2SqlPanel, DiagnosisPanel, ExplainPanel, AiChatPanel, NlFilterInput, WorkflowPanel）
 │   │   ├── chart/               # 图表可视化组件（ChartView, ChartToolbar, AxisConfigurator, ChartCanvas, renderers/）
 │   │   ├── connection/          # 连接表单组件
 │   │   ├── DataTable/           # 数据表格组件
@@ -38,7 +38,7 @@ datazen/
 │   │   ├── ai/                  # AI 模块（openai, anthropic, custom, registry, context, prompt）
 │   │   ├── commands/            # Tauri IPC 命令实现（ai, connection, query, schema, mcp 等）
 │   │   ├── db/                  # 数据库驱动（postgres, mysql, sqlite, redis_driver, registry）
-│   │   ├── mcp/                 # MCP 模块（server, client, skills）
+│   │   ├── mcp/                 # MCP 模块（server, client, workflows）
 │   │   ├── services/            # 服务层（ConnectionManager, QueryExecutor）
 │   │   ├── cache/               # 缓存（SchemaCache）
 │   │   ├── store/               # 持久化存储（Store — 连接、设置、AI 配置加密存储）
@@ -122,31 +122,31 @@ src-tauri/src/ai/
 - `ai_generate_schema_doc` — Schema 文档生成
 - `ai_diagnose_connection` — 连接故障排查
 - `ai_analyze_queries` — 查询历史分析
-- `ai_list_skills` / `ai_execute_skill` / `ai_save_skill` / `ai_delete_skill` / `ai_reload_skills` — Skills 管理
+- `workflow_list` / `workflow_execute` / `workflow_save` / `workflow_delete` / `workflow_reload` — Workflows 管理
 
 **前端 AI 组件**（`src/components/ai/`）：
 - `Nl2SqlPanel` — 自然语言转 SQL 输入面板
 - `DiagnosisPanel` — SQL 错误诊断结果展示
 - `ExplainPanel` — EXPLAIN 可视化 + AI 分析
-- `AiChatPanel` — 侧边栏 AI 对话面板（含 Skills 标签页，支持推理过程折叠显示）
+- `AiChatPanel` — 侧边栏 AI 对话面板（含 Workflows 标签页，支持推理过程折叠显示）
 - `NlFilterInput` — 自然语言筛选输入
-- `SkillsPanel` — Skills 管理和执行
+- `WorkflowPanel` — Workflows 管理和执行
 
 ### MCP（Model Context Protocol）
 
 DataZen 同时作为 **MCP Server** 和 **MCP Client**：
 
 - **MCP Server**（`src-tauri/src/mcp/server.rs`）— 暴露数据库操作给外部 LLM 应用（Claude Desktop、Cursor 等）
-  - Tools: `list_connections`, `list_databases`, `list_tables`, `query`, `get_schema`, `explain_query`, `describe_table`, `list_skills`, `run_skill`
-  - Resources: `datazen://connections`, `datazen://query-history`, `datazen://schema/{id}/{db}`, `datazen://skills`
+  - Tools: `list_connections`, `list_databases`, `list_tables`, `query`, `get_schema`, `explain_query`, `describe_table`, `list_workflows`, `run_workflow`
+  - Resources: `datazen://connections`, `datazen://query-history`, `datazen://schema/{id}/{db}`, `datazen://workflows`
   - Prompts: `nl2sql`, `diagnose_error`, `explain_plan`
 - **MCP Client**（`src-tauri/src/mcp/client.rs`）— 连接外部 MCP Server 获取工具能力
-- **Skills**（`src-tauri/src/mcp/skills.rs`）— 用户自定义 AI 工作流（YAML 定义、变量替换、SQL + AI 步骤执行）
+- **Workflows**（`src-tauri/src/mcp/workflows.rs`）— 用户自定义 AI 工作流（YAML 定义、变量替换、SQL + AI 步骤执行）
   - 支持跨数据库查询（通过 `connection` 变量绑定不同连接）
   - 步骤类型：`Query`（SQL 查询）、`Ai`（AI 推理）、`Condition`（条件分支）、`ForEach`（循环）
   - 模板引擎支持深层 JSON 路径（`steps.<id>.rows.0.field`）和通配符（`steps.<id>.rows.*.field`）
   - 错误处理策略：`abort`、`skip`、`fallback`
-  - 执行历史持久化（`src-tauri/src/mcp/skill_history.rs`）
+  - 执行历史持久化（`src-tauri/src/mcp/workflow_history.rs`）
 
 ### 图表可视化
 

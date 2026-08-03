@@ -729,120 +729,136 @@ fn strip_markdown_fences(s: &str) -> String {
     trimmed.to_string()
 }
 
-// ─── Skill IPC commands ───
+// ─── Workflow IPC commands ───
 
 #[tauri::command]
-pub async fn skill_list(
+pub async fn workflow_list(
     state: State<'_, AppState>,
-) -> Result<Vec<crate::mcp::SkillListItem>, CommandError> {
-    Ok(state.skill_registry.list().await)
+) -> Result<Vec<crate::mcp::WorkflowListItem>, CommandError> {
+    Ok(state.workflow_registry.list().await)
 }
 
 #[tauri::command]
-pub async fn skill_execute(
+pub async fn workflow_execute(
     state: State<'_, AppState>,
-    skill_id: String,
+    workflow_id: String,
     variables: serde_json::Value,
     connection_id: Option<String>,
-) -> Result<crate::mcp::SkillExecutionResult, CommandError> {
-    let skill = state
-        .skill_registry
-        .get(&skill_id)
+) -> Result<crate::mcp::WorkflowExecutionResult, CommandError> {
+    let workflow = state
+        .workflow_registry
+        .get(&workflow_id)
         .await
-        .ok_or_else(|| CommandError::NotFound(format!("Skill '{skill_id}' not found")))?;
+        .ok_or_else(|| CommandError::NotFound(format!("Workflow '{workflow_id}' not found")))?;
 
-    let result = crate::mcp::SkillExecutor::execute(
-        &skill,
+    let result = crate::mcp::WorkflowExecutor::execute(
+        &workflow,
         &state,
         connection_id.as_deref(),
         &variables,
     )
     .await
-    .cmd_err("skill_execute")?;
+    .cmd_err("workflow_execute")?;
 
     if let Err(e) = state
-        .skill_history
-        .record(&skill.id, &skill.name, &variables, &result)
+        .workflow_history
+        .record(&workflow.id, &workflow.name, &variables, &result)
         .await
     {
-        tracing::warn!("Failed to record skill history: {e}");
+        tracing::warn!("Failed to record workflow history: {e}");
     }
 
     Ok(result)
 }
 
 #[tauri::command]
-pub async fn skill_save(
+pub async fn workflow_save(
     state: State<'_, AppState>,
-    skill: crate::mcp::SkillDefinition,
+    workflow: crate::mcp::WorkflowDefinition,
 ) -> Result<(), CommandError> {
-    state.skill_registry.save_skill(&skill).await.map_err(CommandError::Internal)
+    state
+        .workflow_registry
+        .save_workflow(&workflow)
+        .await
+        .map_err(CommandError::Internal)
 }
 
 #[tauri::command]
-pub async fn skill_delete(
+pub async fn workflow_delete(
     state: State<'_, AppState>,
-    skill_id: String,
+    workflow_id: String,
 ) -> Result<(), CommandError> {
-    state.skill_registry.delete_skill(&skill_id).await.map_err(CommandError::Internal)
+    state
+        .workflow_registry
+        .delete_workflow(&workflow_id)
+        .await
+        .map_err(CommandError::Internal)
 }
 
 #[tauri::command]
-pub async fn skill_reload(state: State<'_, AppState>) -> Result<(), CommandError> {
-    state.skill_registry.load_all().await.map_err(CommandError::Internal)
+pub async fn workflow_reload(state: State<'_, AppState>) -> Result<(), CommandError> {
+    state
+        .workflow_registry
+        .load_all()
+        .await
+        .map_err(CommandError::Internal)
 }
 
 #[tauri::command]
-pub async fn skill_get_dir(
+pub async fn workflow_get_dir(
     state: State<'_, AppState>,
 ) -> Result<String, CommandError> {
-    Ok(state.skill_registry.skills_dir().display().to_string())
+    Ok(state
+        .workflow_registry
+        .workflows_dir()
+        .display()
+        .to_string())
 }
 
 #[tauri::command]
-pub async fn skill_get(
+pub async fn workflow_get(
     state: State<'_, AppState>,
-    skill_id: String,
-) -> Result<crate::mcp::SkillDefinition, CommandError> {
+    workflow_id: String,
+) -> Result<crate::mcp::WorkflowDefinition, CommandError> {
     state
-        .skill_registry
-        .get(&skill_id)
+        .workflow_registry
+        .get(&workflow_id)
         .await
-        .ok_or_else(|| CommandError::NotFound(format!("Skill '{skill_id}' not found")))
+        .ok_or_else(|| CommandError::NotFound(format!("Workflow '{workflow_id}' not found")))
 }
 
-// ─── Skill History ───
+// ─── Workflow History ───
 
 #[tauri::command]
-pub async fn skill_history_list(
+pub async fn workflow_history_list(
     state: State<'_, AppState>,
-    skill_id: Option<String>,
-) -> Result<Vec<crate::mcp::skill_history::HistoryListItem>, CommandError> {
-    Ok(state.skill_history.list(skill_id.as_deref()).await)
+    workflow_id: Option<String>,
+) -> Result<Vec<crate::mcp::workflow_history::HistoryListItem>, CommandError> {
+    Ok(state.workflow_history.list(workflow_id.as_deref()).await)
 }
 
 #[tauri::command]
-pub async fn skill_history_get(
+pub async fn workflow_history_get(
     state: State<'_, AppState>,
     history_id: String,
-) -> Result<crate::mcp::skill_history::HistoryEntry, CommandError> {
+) -> Result<crate::mcp::workflow_history::HistoryEntry, CommandError> {
     state
-        .skill_history
+        .workflow_history
         .get(&history_id)
         .await
         .ok_or_else(|| CommandError::NotFound(format!("History '{history_id}' not found")))
 }
 
 #[tauri::command]
-pub async fn skill_history_clear(
+pub async fn workflow_history_clear(
     state: State<'_, AppState>,
-    skill_id: Option<String>,
+    workflow_id: Option<String>,
 ) -> Result<usize, CommandError> {
     state
-        .skill_history
-        .clear(skill_id.as_deref())
+        .workflow_history
+        .clear(workflow_id.as_deref())
         .await
-        .cmd_err("skill_history_clear")
+        .cmd_err("workflow_history_clear")
 }
 
 // ─── Phase 8: Schema documentation ───

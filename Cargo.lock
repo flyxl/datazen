@@ -1309,6 +1309,7 @@ dependencies = [
  "cbc 0.1.2",
  "datazen-driver-api",
  "des",
+ "regex",
  "reqwest 0.13.4",
  "serde",
  "serde_json",

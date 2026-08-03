@@ -11,7 +11,7 @@ src/components/ai/
 ├── ExplainPanel.tsx     # EXPLAIN 可视化面板（树形展示 + AI 分析）
 ├── AiChatPanel.tsx      # 侧边栏 AI 对话面板（消息渲染、代码块提取、SQL 插入）
 ├── NlFilterInput.tsx    # 自然语言筛选输入组件
-└── SkillsPanel.tsx      # Skills 管理和执行面板
+└── WorkflowPanel.tsx      # Workflows 管理和执行面板
 ```
 
 ### 1.2 AI 状态管理（aiStore）
@@ -29,7 +29,7 @@ src/components/ai/
 | Schema 文档 | schemaDoc、isGeneratingSchemaDoc |
 | 连接诊断 | connectionDiagnosis、isDiagnosingConnection |
 | 查询分析 | queryAnalysis、isAnalyzingQueries |
-| Skills | skills、isExecutingSkill |
+| Workflows | workflows、isExecutingWorkflow |
 | MCP | mcpServers、mcpStatus |
 
 ### 1.3 AI IPC 封装（commands/ai.ts）
@@ -45,7 +45,7 @@ src/components/ai/
 | QueryPanel 工具栏 | `Nl2SqlPanel` | NL2SQL 输入（含「应用并图表化」） |
 | QueryPanel 错误区域 | `DiagnosisPanel` | SQL 错误诊断 |
 | QueryPanel 结果 Tab | `ExplainPanel` | EXPLAIN AI 分析 |
-| SqlConnectionView 侧边栏 | `AiChatPanel` | AI 对话 + Skills |
+| SqlConnectionView 侧边栏 | `AiChatPanel` | AI 对话 + Workflows |
 | TableView 筛选区域 | `NlFilterInput` | 自然语言筛选 |
 | ChartToolbar NL输入 | `nlConfig.ts` | 自然语言图表配置调整 |
 | SettingsWindow | AI 配置 | Provider/Model/Key/MaxTokens |

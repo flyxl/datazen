@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Setup test data for skill workflow cross-database E2E tests.
+# Setup test data for workflow cross-database E2E tests.
 # Requires: psql, mysql CLI tools, and a .env file with connection info.
 set -euo pipefail
 

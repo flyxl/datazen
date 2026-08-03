@@ -175,6 +175,16 @@ pub trait DatabaseDriver: Send + Sync {
         })
     }
 
+    /// Switch the active database for subsequent queries.
+    /// Drivers that maintain per-session state (e.g. Kiwi) should override this.
+    async fn use_database(
+        &self,
+        _handle: &ConnectionHandle,
+        _database: &str,
+    ) -> Result<(), DriverError> {
+        Ok(())
+    }
+
     /// Return driver-specific prompt overrides for AI features.
     ///
     /// Templates can use `{{variable}}` placeholders. Available variables per

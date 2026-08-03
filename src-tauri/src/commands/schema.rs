@@ -12,11 +12,26 @@ pub async fn get_databases(
 ) -> Result<Vec<String>, CommandError> {
     let start = Instant::now();
     tracing::info!(%connection_id, "get_databases");
-    let (driver, handle) = state
+
+    let (driver, handle) = match state
         .connection_manager
         .get_connection(&connection_id)
         .await
-        .cmd_err("get_databases")?;
+    {
+        Ok(pair) => pair,
+        Err(_) => {
+            let runtime_id = state
+                .connection_manager
+                .get_or_connect(&connection_id)
+                .await
+                .cmd_err("get_databases")?;
+            state
+                .connection_manager
+                .get_connection(&runtime_id)
+                .await
+                .cmd_err("get_databases")?
+        }
+    };
 
     let dbs = driver
         .get_databases(&handle)

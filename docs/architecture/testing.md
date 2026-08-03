@@ -41,7 +41,7 @@ pnpm e2e                           # WebdriverIO E2E
 | `src-tauri/src/ai/anthropic.rs` | Anthropic Provider（5 tests） |
 | `src-tauri/src/ai/prompt.rs` | Prompt 模板 |
 | `src-tauri/src/mcp/server.rs` | MCP Server tools（6 tests） |
-| `src-tauri/src/mcp/skills.rs` | Skills 系统（9 tests） |
+| `src-tauri/src/mcp/workflows.rs` | Workflows 系统（9 tests） |
 | `src-tauri/src/mcp/client.rs` | MCP Client（3 tests） |
 
 ### 3.2 集成测试
