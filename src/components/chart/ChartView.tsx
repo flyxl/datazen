@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { inferAllFields } from '../../lib/chart/fieldInference';
 import { recommendChart } from '../../lib/chart/recommend';
-import { transformData } from '../../lib/chart/transform';
+import { transformData, type TransformResult } from '../../lib/chart/transform';
 import type { StatementResult } from '../../types';
 import type { ChartConfig, ChartRecommendation } from '../../types/chart';
 import { DEFAULT_CHART_CONFIG } from '../../types/chart';
@@ -62,7 +62,15 @@ export function ChartView({ result, onDataPointClick, savedConfig, onConfigChang
     return result;
   }, [result]);
 
-  const data = useMemo(() => transformData(chartResult, config), [chartResult, config]);
+  const { data, seriesKeys } = useMemo<TransformResult>(
+    () => transformData(chartResult, config),
+    [chartResult, config],
+  );
+
+  const renderConfig = useMemo<ChartConfig>(() => {
+    if (!config.groupBy) return config;
+    return { ...config, yAxes: seriesKeys, groupBy: null };
+  }, [config, seriesKeys]);
 
   if (result.rows.length === 0) {
     return <ChartEmptyState reason="noData" />;
@@ -88,7 +96,7 @@ export function ChartView({ result, onDataPointClick, savedConfig, onConfigChang
           {showEmptyCanvas ? (
             <ChartEmptyState reason="noConfig" />
           ) : (
-            <ChartCanvas data={data} config={config} onDataPointClick={onDataPointClick} />
+            <ChartCanvas data={data} config={renderConfig} onDataPointClick={onDataPointClick} />
           )}
         </div>
       </div>

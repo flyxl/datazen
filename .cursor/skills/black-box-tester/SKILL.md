@@ -113,8 +113,9 @@ CallMcpTool("user-computer-use", "screenshot", { width: 1024 })
 | UI、窗口 | TC-UI-* | 6 | 多窗口独立，重复连接复用，侧边栏 |
 | 快捷键、hotkey | TC-HOTKEY-* | 5 | Cmd+N/Enter/W/B/,/R |
 | 边界、容错、edge | TC-EDGE-* | 8 | 超长名/特殊字符/断连/大结果集/并发/注入 |
+| 图表、chart、可视化 | TC-CHART-* | 13 | 视图切换/类型切换/轴配置/智能推荐/导出/联动/NL配置/持久化 |
 
-**冒烟测试（P0）**：TC-CONN-001~004, TC-DBWIN-001, TC-TABLE-001~002, TC-QUERY-001~002/005, TC-HOTKEY-003, TC-NL2SQL-001（共 13 个）
+**冒烟测试（P0）**：TC-CONN-001~004, TC-DBWIN-001, TC-TABLE-001~002, TC-QUERY-001~002/005, TC-HOTKEY-003, TC-NL2SQL-001, TC-CHART-001（共 14 个）
 
 ## Bug 记录规范
 
