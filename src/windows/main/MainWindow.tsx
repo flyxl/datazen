@@ -28,6 +28,7 @@ import { ActionPanel } from './ActionPanel';
 import { ConnectionItem } from './ConnectionItem';
 import { ImportConfigDialog } from './ImportConfigDialog';
 import { connectionCommands } from '../../commands/connection';
+import { settingsCommands } from '../../commands/settings';
 import type { ConnectionConfig } from '../../types';
 
 // ─── Main Window ────────────────────────────────────────────────────
@@ -163,6 +164,9 @@ export function MainWindow() {
     }).then((u) => { if (cancelled) u(); else cleanups.push(u); });
     void listenCrossWindow('menu:data-sync', () => {
       if (!cancelled) openDataSyncWindow();
+    }).then((u) => { if (cancelled) u(); else cleanups.push(u); });
+    void listenCrossWindow('menu:view-logs', () => {
+      if (!cancelled) void settingsCommands.openLogFolder();
     }).then((u) => { if (cancelled) u(); else cleanups.push(u); });
     return () => { cancelled = true; cleanups.forEach((fn) => fn()); };
   }, []);

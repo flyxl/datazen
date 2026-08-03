@@ -158,6 +158,8 @@ export interface AppSettings {
   confirmOnDelete: boolean;
   autoCommit: boolean;
   defaultPageSize: number;
+  logLevel: 'trace' | 'debug' | 'info' | 'warn' | 'error';
+  logPath: string;
 }
 
 export type FilterOperator =
