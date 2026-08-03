@@ -26,7 +26,14 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: asset: tauri:; connect-src 'self' https: http:",
+      "csp": {
+        "default-src": "'self'",
+        "script-src": "'self'",
+        "style-src": "'self' 'unsafe-inline'",
+        "img-src": "'self' data: asset: tauri:",
+        "connect-src": "'self' https: http: ipc: http://ipc.localhost"
+      },
+      "dangerousDisableAssetCspModification": ["style-src"],
       "capabilities": ["default"]
     }
   },
