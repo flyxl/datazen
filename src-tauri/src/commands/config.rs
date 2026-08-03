@@ -36,6 +36,31 @@ pub async fn save_settings(state: State<'_, AppState>, settings: AppSettings) ->
         .cmd_err("save_settings")
 }
 
+#[tauri::command]
+pub async fn get_log_path(state: State<'_, AppState>) -> Result<String, CommandError> {
+    let settings = state.store.get_settings().await;
+    let data_dir = state.store.data_dir();
+    let log_dir = if settings.log_path.is_empty() {
+        data_dir.join("logs")
+    } else {
+        PathBuf::from(&settings.log_path)
+    };
+    Ok(log_dir.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+pub async fn open_log_folder(state: State<'_, AppState>) -> Result<(), CommandError> {
+    let settings = state.store.get_settings().await;
+    let data_dir = state.store.data_dir();
+    let log_dir = if settings.log_path.is_empty() {
+        data_dir.join("logs")
+    } else {
+        PathBuf::from(&settings.log_path)
+    };
+    std::fs::create_dir_all(&log_dir).map_err(CommandError::from)?;
+    open::that(&log_dir).map_err(|e| CommandError::Internal(format!("open_log_folder: {e}")))
+}
+
 fn derive_key_from_password(password: &str, salt: &[u8]) -> Result<[u8; 32], CommandError> {
     use argon2::Argon2;
 

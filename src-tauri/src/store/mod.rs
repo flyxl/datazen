@@ -29,10 +29,18 @@ pub struct AppSettings {
     pub confirm_on_delete: bool,
     pub auto_commit: bool,
     pub default_page_size: u32,
+    #[serde(default = "default_log_level")]
+    pub log_level: String,
+    #[serde(default)]
+    pub log_path: String,
 }
 
 fn default_limit_select() -> bool {
     true
+}
+
+fn default_log_level() -> String {
+    "info".to_string()
 }
 
 impl Default for AppSettings {
@@ -47,6 +55,8 @@ impl Default for AppSettings {
             confirm_on_delete: true,
             auto_commit: true,
             default_page_size: 50,
+            log_level: default_log_level(),
+            log_path: String::new(),
         }
     }
 }
