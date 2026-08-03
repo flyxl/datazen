@@ -9,9 +9,7 @@ use tauri::Runtime;
 pub fn register_plugins<R: Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> {
     let builder = builder;
 
-    #[cfg(feature = "plugin-kiwi")]
-    let builder = builder.plugin(datazen_plugin_kiwi::init());
-
+    // No plugins with Tauri commands enabled
 
     builder
 }

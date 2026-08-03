@@ -66,7 +66,7 @@ export interface PluginCommandMeta {
 
 /** Commands registered by active plugins via Tauri Plugin system. */
 export const PLUGIN_COMMANDS: PluginCommandMeta[] = [
-  { pluginId: 'kiwi', commands: ['login', 'list_instances'] },
+
 ];
 
 /** Invoke a plugin-provided Tauri command using plugin:id|command format. */
