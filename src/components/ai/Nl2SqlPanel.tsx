@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
-import { Loader2, Sparkles, Copy, Check, Trash2, ArrowDownToLine, Settings } from 'lucide-react';
+import { BarChart3, Loader2, Sparkles, Copy, Check, Trash2, ArrowDownToLine, Settings } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { useI18n } from '../../hooks/useI18n';
 import { useAiStore } from '../../stores/aiStore';
@@ -11,9 +11,10 @@ interface Nl2SqlPanelProps {
   database: string;
   currentTable?: string;
   onApplySql: (sql: string) => void;
+  onApplyAndChart?: (sql: string) => void;
 }
 
-export function Nl2SqlPanel({ connectionId, database, currentTable, onApplySql }: Nl2SqlPanelProps) {
+export function Nl2SqlPanel({ connectionId, database, currentTable, onApplySql, onApplyAndChart }: Nl2SqlPanelProps) {
   const { t } = useI18n();
   const nl2sql = useAiStore((s) => s.nl2sql);
   const nl2sqlError = useAiStore((s) => s.nl2sqlError);
@@ -99,6 +100,16 @@ export function Nl2SqlPanel({ connectionId, database, currentTable, onApplySql }
                     <ArrowDownToLine className="h-3 w-3" />
                     {t('nl2sql.apply')}
                   </Button>
+                  {onApplyAndChart && (
+                    <Button
+                      variant="primary"
+                      className="h-6 gap-1 px-2 text-[11px]"
+                      onClick={() => onApplyAndChart(nl2sql.generatedSql)}
+                    >
+                      <BarChart3 className="h-3 w-3" />
+                      {t('nl2sql.applyAndChart')}
+                    </Button>
+                  )}
                   <Button
                     variant="ghost"
                     className="h-6 gap-1 px-2 text-[11px]"

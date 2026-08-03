@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, Bookmark, Clock, FileSearch, Loader2, Play, Sparkles, Square, Stethoscope, Trash2 } from 'lucide-react';
+import { AlertTriangle, BarChart3, Bookmark, Clock, FileSearch, Loader2, Play, Sparkles, Square, Stethoscope, TableProperties, Trash2 } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { Button } from '../../components/ui/Button';
@@ -7,6 +7,7 @@ import { SqlEditor } from '../../components/SqlEditor';
 import type { SqlEditorHandle, SqlSchema } from '../../components/SqlEditor';
 import { DataTable } from '../../components/DataTable/DataTable';
 import type { ColumnDef } from '../../components/DataTable/TableHeader';
+import { ChartView } from '../../components/chart/ChartView';
 import { Nl2SqlPanel } from '../../components/ai/Nl2SqlPanel';
 import { DiagnosisPanel } from '../../components/ai/DiagnosisPanel';
 import { ExplainPanel } from '../../components/ai/ExplainPanel';
@@ -43,6 +44,8 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
   const addFavorite = useQueryStore((s) => s.addFavorite);
   const deleteFavorite = useQueryStore((s) => s.deleteFavorite);
   const toggleFavorites = useQueryStore((s) => s.toggleFavorites);
+  const setResultDetailRow = useQueryStore((s) => s.setResultDetailRow);
+  const setChartConfig = useQueryStore((s) => s.setChartConfig);
 
   // AI entry points are always visible; panels handle unconfigured state internally
 
@@ -57,6 +60,12 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
   const [explainLoading, setExplainLoading] = useState(false);
   const [explainError, setExplainError] = useState<string | null>(null);
   const [showExplain, setShowExplain] = useState(false);
+  const resultViewMode = tab?.resultViewMode ?? 'table';
+  const setResultViewModeStore = useQueryStore((s) => s.setResultViewMode);
+  const setResultViewMode = useCallback(
+    (mode: 'table' | 'chart') => { if (tab) setResultViewModeStore(tab.id, mode); },
+    [tab, setResultViewModeStore],
+  );
 
   const tables = useSchemaStore((s) => s.tables);
   const views = useSchemaStore((s) => s.views);
@@ -105,6 +114,13 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
   const handleApplyAiSql = useCallback((sql: string) => {
     if (tab) updateSql(tab.id, sql);
   }, [tab, updateSql]);
+
+  const handleApplyAndChart = useCallback(async (sql: string) => {
+    if (!tab) return;
+    updateSql(tab.id, sql);
+    await executeQuery(tab.id);
+    setResultViewMode('chart');
+  }, [tab, updateSql, executeQuery, setResultViewMode]);
 
   const handleExplain = useCallback(async () => {
     if (!tab?.sql.trim()) return;
@@ -210,6 +226,7 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
           connectionId={connectionId}
           database={currentDatabase}
           onApplySql={handleApplyAiSql}
+          onApplyAndChart={(sql) => void handleApplyAndChart(sql)}
         />
       )}
 
@@ -416,8 +433,60 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
                   </div>
                 )}
 
-                {/* Active result table */}
-                {activeResult && <ResultTable result={activeResult} />}
+                {/* View mode toggle + active result */}
+                {activeResult && (
+                  <>
+                    <div className="flex shrink-0 items-center border-b border-edge bg-surface-alt px-2">
+                      <div className="flex items-center gap-0.5 rounded-md bg-surface p-0.5 my-1">
+                        <button
+                          type="button"
+                          className={cn(
+                            'flex items-center gap-1 rounded px-2 py-0.5 text-xs transition-colors',
+                            resultViewMode === 'table'
+                              ? 'bg-accent/20 text-accent font-medium'
+                              : 'text-fg-muted hover:text-fg-secondary',
+                          )}
+                          onClick={() => setResultViewMode('table')}
+                        >
+                          <TableProperties className="h-3 w-3" />
+                          {t('chart.viewTable')}
+                        </button>
+                        <button
+                          type="button"
+                          className={cn(
+                            'flex items-center gap-1 rounded px-2 py-0.5 text-xs transition-colors',
+                            resultViewMode === 'chart'
+                              ? 'bg-accent/20 text-accent font-medium'
+                              : 'text-fg-muted hover:text-fg-secondary',
+                          )}
+                          onClick={() => setResultViewMode('chart')}
+                        >
+                          <BarChart3 className="h-3 w-3" />
+                          {t('chart.viewChart')}
+                        </button>
+                      </div>
+                      {resultViewMode === 'chart' && activeResult.rows.length > 1000 && (
+                        <span className="ml-2 flex items-center gap-1 text-[11px] text-yellow-400">
+                          <AlertTriangle className="h-3 w-3" />
+                          {t('chart.sampledWarning', { limit: '1000' })}
+                        </span>
+                      )}
+                    </div>
+                    {resultViewMode === 'table' ? (
+                      <ResultTable result={activeResult} />
+                    ) : (
+                      <ChartView
+                        result={activeResult}
+                        savedConfig={tab.chartConfig}
+                        onConfigChange={(cfg) => setChartConfig(tab.id, cfg)}
+                        onDataPointClick={(rowIndex) => {
+                          setResultViewMode('table');
+                          setResultDetailRow(rowIndex);
+                        }}
+                      />
+                    )}
+                  </>
+                )}
               </>
             )}
 

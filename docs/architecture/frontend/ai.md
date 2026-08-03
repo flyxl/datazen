@@ -42,11 +42,12 @@ src/components/ai/
 
 | 集成点 | 组件 | AI 功能 |
 |--------|------|---------|
-| QueryPanel 工具栏 | `Nl2SqlPanel` | NL2SQL 输入 |
+| QueryPanel 工具栏 | `Nl2SqlPanel` | NL2SQL 输入（含「应用并图表化」） |
 | QueryPanel 错误区域 | `DiagnosisPanel` | SQL 错误诊断 |
 | QueryPanel 结果 Tab | `ExplainPanel` | EXPLAIN AI 分析 |
 | SqlConnectionView 侧边栏 | `AiChatPanel` | AI 对话 + Skills |
 | TableView 筛选区域 | `NlFilterInput` | 自然语言筛选 |
+| ChartToolbar NL输入 | `nlConfig.ts` | 自然语言图表配置调整 |
 | SettingsWindow | AI 配置 | Provider/Model/Key/MaxTokens |
 | SettingsWindow | MCP Server/Client | 启停/连接管理 |
 

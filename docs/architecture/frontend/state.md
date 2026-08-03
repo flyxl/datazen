@@ -231,6 +231,8 @@ interface QueryTab {
   error: string | null;
   running: boolean;
   executionTimeMs: number | null;
+  chartConfig?: ChartConfig;
+  resultViewMode?: 'table' | 'chart';
 }
 
 interface QueryStore {
@@ -250,6 +252,8 @@ interface QueryStore {
   cancelQuery: (tabId: string) => Promise<void>;
   loadHistory: () => Promise<void>;
   toggleHistory: () => void;
+  setChartConfig: (tabId: string, config: ChartConfig) => void;
+  setResultViewMode: (tabId: string, mode: 'table' | 'chart') => void;
 }
 ```
 

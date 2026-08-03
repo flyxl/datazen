@@ -75,8 +75,8 @@ DataZen 是一个跨平台桌面数据库管理工具，基于 **Tauri v2**（Ru
 | 文档 | 内容 |
 |------|------|
 | [状态管理](frontend/state.md) | Zustand stores 设计、事件处理、跨窗口通信 |
-| [组件与布局](frontend/components.md) | 核心组件设计、DataTable、虚拟滚动、响应式布局、主题系统 |
-| [AI 功能](frontend/ai.md) | AI 组件（NL2SQL、诊断、Chat）、SQL 编辑器方言、aiStore |
+| [组件与布局](frontend/components.md) | 核心组件设计、DataTable、虚拟滚动、响应式布局、主题系统、图表可视化 |
+| [AI 功能](frontend/ai.md) | AI 组件（NL2SQL、诊断、Chat）、SQL 编辑器方言、aiStore、NL图表配置 |
 | [扩展性](frontend/extensibility.md) | DB 类型扩展、插件系统、DB_REGISTRY 元数据驱动 |
 
 ## 横切关注点
@@ -95,4 +95,5 @@ DataZen 是一个跨平台桌面数据库管理工具，基于 **Tauri v2**（Ru
 - [AI 功能开发进度](../ai-features-progress.md)
 - [数据同步 IR 设计](../plan-sync-ir.md)
 - [插件开发指南](../plugin-development.md)
+- [图表可视化设计](../chart-visualization-design.md)
 - [代码审查报告](../code-review-2026-08-01-958f1b6.md)
