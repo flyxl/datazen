@@ -11,7 +11,7 @@
 | **数据连接** | 多源连接 + 数据建模 | 直连数据库（PG/MySQL/SQLite/Redis） |
 | **核心价值** | 数据洞察与决策支持 | 数据库操作与查询效率 |
 | **部署方式** | Cloud + Server + Desktop | 纯桌面（Tauri） |
-| **AI 集成** | Tableau Agent + Pulse + MCP | NL2SQL + 诊断 + 对话 + Skills + MCP |
+| **AI 集成** | Tableau Agent + Pulse + MCP | NL2SQL + 诊断 + 对话 + Workflows + MCP |
 
 **关键认知**：DataZen 不应试图成为 Tableau，而是从 Tableau 中提取**适合数据库管理场景**的功能理念。
 
@@ -59,7 +59,7 @@
 
 | Tableau 功能 | DataZen 现状 | 借鉴价值 | 优先级 |
 |-------------|-------------|---------|--------|
-| **多源 JOIN（跨库关联）** | Skill Workflow 跨库查询 | **已有基础** — 不同实现路径 | -- |
+| **多源 JOIN（跨库关联）** | Workflow 跨库查询 | **已有基础** — 不同实现路径 | -- |
 | **数据提取（Extract）** | 无 | **低** — DataZen 直连数据库 | -- |
 | **关系模型（Relationships）** | 外键视图 | **中** — ER 图更直观 | P3 |
 | **计算字段** | 纯 SQL | **低** — SQL 本身就是计算引擎 | -- |
@@ -131,7 +131,7 @@ Tableau 的拖拽构建太重了，但 DataZen 可以实现轻量版：
 | **表结构管理** | 创建/修改表、索引、外键，Tableau 无此能力 |
 | **SQL 编辑器** | 专业级 SQL 编辑（语法高亮、自动补全），Tableau 有限 |
 | **多数据库类型** | Redis KV 操作、SQLite 文件数据库，Tableau 侧重 OLAP |
-| **跨库 Skill 工作流** | YAML 定义的自动化跨库操作管道 |
+| **跨库 Workflow 工作流** | YAML 定义的自动化跨库操作管道 |
 | **MCP Server 模式** | 被其他 AI 工具调用（Cursor / Claude Desktop） |
 | **轻量桌面应用** | Tauri 构建，安装包小、启动快，无需服务器 |
 | **数据库备份/恢复** | 原生备份还原功能 |

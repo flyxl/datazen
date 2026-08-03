@@ -1,6 +1,6 @@
-# Theme 适配 + 可配置 Prompt + Skill 创建 — 开发进度
+# Theme 适配 + 可配置 Prompt + Workflow 创建 — 开发进度
 
-> 跟踪 `feat/theme-prompts-skills` 分支上所有功能模块的开发和测试状态。
+> 跟踪 `feat/theme-prompts-workflows` 分支上所有功能模块的开发和测试状态。
 
 ## 总体进度
 
@@ -9,7 +9,7 @@
 | 1 | FileConnectionFields light theme 适配 | ✅ 已完成 | — | ✅ 10/10 | 9b6922d |
 | 2 | 可配置 AI Prompt（后端 + driver-api） | ✅ 已完成 | ✅ 8/8 | ✅ 10/11 | 3704e42 |
 | 3 | 可配置 AI Prompt（前端设置 UI） | ✅ 已完成 | — | ✅ (含于#2) | 3704e42 |
-| 4 | 新增 Skill 创建入口 + 存储路径说明 | ✅ 已完成 | ✅ 9/9 | ✅ 21/21 | 5a56147 |
+| 4 | 新增 Workflow 创建入口 + 存储路径说明 | ✅ 已完成 | ✅ 9/9 | ✅ 21/21 | 5a56147 |
 
 ## 状态说明
 
@@ -32,11 +32,11 @@
 - IPC: `prompt_list`, `prompt_set_override`, `prompt_remove_override`
 - Settings UI: "Prompt 管理" 区域
 
-### 功能 3: Skill 创建入口
-- 新建/编辑/删除 Skill 的完整表单（ID、名称、描述、变量、步骤）
-- 显示 skills 存储路径 (`{app_data_dir}/skills/`)
+### 功能 3: Workflow 创建入口
+- 新建/编辑/删除 Workflow 的完整表单（ID、名称、描述、变量、步骤）
+- 显示 workflows 存储路径 (`{app_data_dir}/workflows/`)
 - 刷新按钮
-- IPC: `skill_get_dir`, `skill_get`
+- IPC: `workflow_get_dir`, `workflow_get`
 
 ---
 

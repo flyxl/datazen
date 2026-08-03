@@ -64,4 +64,4 @@ fn derive_key_from_password(password: &str, salt: &[u8]) -> Result<[u8; 32], Str
 | 数据外发 | 默认仅发送 Schema 元数据（表名、列名、类型），不发送数据行 |
 | 传输安全 | 所有 API 请求通过 HTTPS |
 | 日志脱敏 | tracing 日志中不记录 API Key |
-| Skills 安全 | 路径遍历防护（ID 校验）、查询结果行数限制（1000） |
+| Workflows 安全 | 路径遍历防护（ID 校验）、查询结果行数限制（1000） |

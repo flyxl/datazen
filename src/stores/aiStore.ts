@@ -16,8 +16,8 @@ import type {
   ModelInfo,
   ProviderListItem,
   QueryAnalysis,
-  SkillExecutionResult,
-  SkillListItem,
+  WorkflowExecutionResult,
+  WorkflowListItem,
   StreamChunkPayload,
 } from '../types';
 
@@ -117,19 +117,19 @@ interface AiStore {
   handleStreamChunk: (payload: StreamChunkPayload) => void;
   setupEventListeners: () => Promise<() => void>;
 
-  skills: SkillListItem[];
-  skillsLoading: boolean;
-  skillExecutionResult: SkillExecutionResult | null;
-  isExecutingSkill: boolean;
-  skillError: string | null;
+  workflows: WorkflowListItem[];
+  workflowsLoading: boolean;
+  workflowExecutionResult: WorkflowExecutionResult | null;
+  isExecutingWorkflow: boolean;
+  workflowError: string | null;
 
-  loadSkills: () => Promise<void>;
-  executeSkill: (params: {
-    skillId: string;
+  loadWorkflows: () => Promise<void>;
+  executeWorkflow: (params: {
+    workflowId: string;
     variables: Record<string, unknown>;
     connectionId?: string;
   }) => Promise<void>;
-  clearSkillResult: () => void;
+  clearWorkflowResult: () => void;
 
   schemaDoc: string | null;
   isGeneratingSchemaDoc: boolean;
@@ -573,34 +573,34 @@ export const useAiStore = create<AiStore>((set, get) => ({
     };
   },
 
-  skills: [],
-  skillsLoading: false,
-  skillExecutionResult: null,
-  isExecutingSkill: false,
-  skillError: null,
+  workflows: [],
+  workflowsLoading: false,
+  workflowExecutionResult: null,
+  isExecutingWorkflow: false,
+  workflowError: null,
 
-  loadSkills: async () => {
-    set({ skillsLoading: true });
+  loadWorkflows: async () => {
+    set({ workflowsLoading: true });
     try {
-      const skills = await aiCommands.skillList();
-      set({ skills, skillsLoading: false });
+      const workflows = await aiCommands.workflowList();
+      set({ workflows, workflowsLoading: false });
     } catch (e) {
-      set({ skillsLoading: false, skillError: String(e) });
+      set({ workflowsLoading: false, workflowError: String(e) });
     }
   },
 
-  executeSkill: async ({ skillId, variables, connectionId }) => {
-    set({ isExecutingSkill: true, skillExecutionResult: null, skillError: null });
+  executeWorkflow: async ({ workflowId, variables, connectionId }) => {
+    set({ isExecutingWorkflow: true, workflowExecutionResult: null, workflowError: null });
     try {
-      const result = await aiCommands.skillExecute({ skillId, variables, connectionId });
-      set({ isExecutingSkill: false, skillExecutionResult: result });
+      const result = await aiCommands.workflowExecute({ workflowId, variables, connectionId });
+      set({ isExecutingWorkflow: false, workflowExecutionResult: result });
     } catch (e) {
-      set({ isExecutingSkill: false, skillError: String(e) });
+      set({ isExecutingWorkflow: false, workflowError: String(e) });
     }
   },
 
-  clearSkillResult: () =>
-    set({ skillExecutionResult: null, skillError: null }),
+  clearWorkflowResult: () =>
+    set({ workflowExecutionResult: null, workflowError: null }),
 
   schemaDoc: null,
   isGeneratingSchemaDoc: false,

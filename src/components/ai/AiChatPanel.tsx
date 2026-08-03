@@ -5,7 +5,7 @@ import { useI18n } from '../../hooks/useI18n';
 import { useAiStore } from '../../stores/aiStore';
 import { cn } from '../../lib/cn';
 import { openSettingsWindow } from '../../lib/windowManager';
-import { SkillsPanel } from './SkillsPanel';
+import { WorkflowPanel } from './WorkflowPanel';
 import type { AiChatMessage } from '../../types';
 
 interface AiChatPanelProps {
@@ -23,7 +23,7 @@ export function AiChatPanel({ connectionId, database, onInsertSql }: AiChatPanel
   const clearChat = useAiStore((s) => s.clearChat);
 
   const [input, setInput] = useState('');
-  const [tab, setTab] = useState<'chat' | 'skills'>('chat');
+  const [tab, setTab] = useState<'chat' | 'workflows'>('chat');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -88,12 +88,12 @@ export function AiChatPanel({ connectionId, database, onInsertSql }: AiChatPanel
             type="button"
             className={cn(
               'flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors',
-              tab === 'skills' ? 'bg-accent/10 text-accent font-medium' : 'text-fg-muted hover:text-fg',
+              tab === 'workflows' ? 'bg-accent/10 text-accent font-medium' : 'text-fg-muted hover:text-fg',
             )}
-            onClick={() => setTab('skills')}
+            onClick={() => setTab('workflows')}
           >
             <Wand2 className="h-3 w-3" />
-            {t('skills.title')}
+            {t('workflows.title')}
           </button>
         </div>
         {tab === 'chat' && (
@@ -108,9 +108,9 @@ export function AiChatPanel({ connectionId, database, onInsertSql }: AiChatPanel
         )}
       </div>
 
-      {tab === 'skills' ? (
+      {tab === 'workflows' ? (
         <div className="flex-1 overflow-y-auto px-3 py-2">
-          <SkillsPanel connectionId={connectionId} />
+          <WorkflowPanel connectionId={connectionId} />
         </div>
       ) : (
         <>
@@ -158,6 +158,9 @@ export function AiChatPanel({ connectionId, database, onInsertSql }: AiChatPanel
                 placeholder={t('chat.placeholder')}
                 rows={1}
                 disabled={chatSession?.isStreaming}
+                autoCapitalize="off"
+                autoCorrect="off"
+                spellCheck={false}
                 className={cn(
                   'flex-1 resize-none rounded border border-edge bg-surface px-2 py-1.5',
                   'text-sm text-fg placeholder:text-fg-muted',

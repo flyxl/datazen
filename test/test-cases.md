@@ -554,14 +554,14 @@
 | **测试步骤** | 1. 在 NL 筛选输入框中输入「只显示年龄大于 25 的男性用户」 |
 | **预期结果** | 1. AI 将自然语言转换为结构化筛选条件<br>2. 筛选条件自动应用到表数据<br>3. 数据正确过滤 |
 
-### TC-AI-009 — Skills 管理
+### TC-AI-009 — Workflows 管理
 
 | 项目 | 内容 |
 |------|------|
 | **优先级** | P1 |
 | **前置条件** | AI Provider 已配置 |
-| **测试步骤** | 1. 打开 Skills 标签页<br>2. 点击创建新 Skill<br>3. 定义 Skill（YAML 格式，包含 SQL 步骤）<br>4. 保存 Skill<br>5. 执行 Skill |
-| **预期结果** | 1. Skills 列表正确显示<br>2. 创建/编辑/删除 Skill 正常工作<br>3. Skill 执行产生预期结果<br>4. 执行历史可查看 |
+| **测试步骤** | 1. 打开 Workflows 标签页<br>2. 点击创建新 Workflow<br>3. 定义 Workflow（YAML 格式，包含 SQL 步骤）<br>4. 保存 Workflow<br>5. 执行 Workflow |
+| **预期结果** | 1. Workflows 列表正确显示<br>2. 创建/编辑/删除 Workflow 正常工作<br>3. Workflow 执行产生预期结果<br>4. 执行历史可查看 |
 
 ---
 
@@ -1047,68 +1047,68 @@
 
 ---
 
-## 模块十七：Skill 工作流 (SKILL)
+## 模块十七：Workflow 工作流 (WORKFLOW)
 
-### TC-SKILL-001 — 查看 Skill 列表
-
-| 项目 | 内容 |
-|------|------|
-| **优先级** | P1 |
-| **前置条件** | AI 面板可用，已配置至少一个 Skill YAML |
-| **测试步骤** | 1. 打开 AI 面板<br>2. 切换到 Skills 标签页 |
-| **预期结果** | 1. 显示已加载的 Skill 列表<br>2. 每个 Skill 显示名称、描述<br>3. 如果无 Skill 文件，显示空状态提示 |
-
-### TC-SKILL-002 — 创建新 Skill
+### TC-WORKFLOW-001 — 查看 Workflow 列表
 
 | 项目 | 内容 |
 |------|------|
 | **优先级** | P1 |
-| **前置条件** | AI 面板的 Skills 标签页已打开 |
-| **测试步骤** | 1. 点击「新建 Skill」<br>2. 填写 Skill 名称和描述<br>3. 添加变量（string 类型和 connection 类型）<br>4. 添加 query 步骤（指定连接和 SQL）<br>5. 保存 |
-| **预期结果** | 1. 编辑器 UI 正确显示<br>2. 变量类型选项包含 string、number、connection<br>3. connection 变量在执行时渲染为连接下拉选择器<br>4. 保存后 YAML 文件生成到 app_data_dir/skills/ |
+| **前置条件** | AI 面板可用，已配置至少一个 Workflow YAML |
+| **测试步骤** | 1. 打开 AI 面板<br>2. 切换到 Workflows 标签页 |
+| **预期结果** | 1. 显示已加载的 Workflow 列表<br>2. 每个 Workflow 显示名称、描述<br>3. 如果无 Workflow 文件，显示空状态提示 |
 
-### TC-SKILL-003 — 执行 Skill
+### TC-WORKFLOW-002 — 创建新 Workflow
 
 | 项目 | 内容 |
 |------|------|
 | **优先级** | P1 |
-| **前置条件** | 已创建一个包含 query 步骤的 Skill |
-| **测试步骤** | 1. 选择已创建的 Skill<br>2. 填写输入参数<br>3. 点击执行 |
+| **前置条件** | AI 面板的 Workflows 标签页已打开 |
+| **测试步骤** | 1. 点击「新建 Workflow」<br>2. 填写 Workflow 名称和描述<br>3. 添加变量（string 类型和 connection 类型）<br>4. 添加 query 步骤（指定连接和 SQL）<br>5. 保存 |
+| **预期结果** | 1. 编辑器 UI 正确显示<br>2. 变量类型选项包含 string、number、connection<br>3. connection 变量在执行时渲染为连接下拉选择器<br>4. 保存后 YAML 文件生成到 app_data_dir/workflows/ |
+
+### TC-WORKFLOW-003 — 执行 Workflow
+
+| 项目 | 内容 |
+|------|------|
+| **优先级** | P1 |
+| **前置条件** | 已创建一个包含 query 步骤的 Workflow |
+| **测试步骤** | 1. 选择已创建的 Workflow<br>2. 填写输入参数<br>3. 点击执行 |
 | **预期结果** | 1. 输入参数表单正确渲染<br>2. 执行过程显示进度<br>3. 执行结果按步骤展示（每步显示状态、耗时、SQL、结果） |
 
-### TC-SKILL-004 — Skill 执行历史
+### TC-WORKFLOW-004 — Workflow 执行历史
 
 | 项目 | 内容 |
 |------|------|
 | **优先级** | P2 |
-| **前置条件** | 已执行过 Skill |
+| **前置条件** | 已执行过 Workflow |
 | **测试步骤** | 1. 切换到历史标签页<br>2. 点击某条历史记录 |
-| **预期结果** | 1. 历史列表显示执行时间、Skill 名称、状态<br>2. 点击后查看完整的分步执行结果 |
+| **预期结果** | 1. 历史列表显示执行时间、Workflow 名称、状态<br>2. 点击后查看完整的分步执行结果 |
 
-### TC-SKILL-005 — Skill 跨库查询
+### TC-WORKFLOW-005 — Workflow 跨库查询
 
 | 项目 | 内容 |
 |------|------|
 | **优先级** | P1 |
-| **前置条件** | 有 PG 和 MySQL 两个可用连接，Skill 包含两个 query 步骤分别指向不同连接 |
-| **测试步骤** | 1. 创建跨库 Skill：步骤 1 查 PG 订单，步骤 2 用步骤 1 结果查 MySQL 物流<br>2. 执行 Skill |
+| **前置条件** | 有 PG 和 MySQL 两个可用连接，Workflow 包含两个 query 步骤分别指向不同连接 |
+| **测试步骤** | 1. 创建跨库 Workflow：步骤 1 查 PG 订单，步骤 2 用步骤 1 结果查 MySQL 物流<br>2. 执行 Workflow |
 | **预期结果** | 1. 步骤 1 从 PG 获取订单数据<br>2. 步骤 2 使用步骤 1 的结果（模板引用 `{{steps.s1.rows.0.order_id}}`）查询 MySQL<br>3. 两步结果都正确展示 |
 
-### TC-SKILL-006 — Skill 条件执行
+### TC-WORKFLOW-006 — Workflow 条件执行
 
 | 项目 | 内容 |
 |------|------|
 | **优先级** | P2 |
-| **前置条件** | Skill 包含 condition 步骤 |
-| **测试步骤** | 1. 创建包含条件判断的 Skill（如 rows_count > 0 时执行 then，否则执行 else）<br>2. 分别用存在数据和不存在数据的条件执行 |
+| **前置条件** | Workflow 包含 condition 步骤 |
+| **测试步骤** | 1. 创建包含条件判断的 Workflow（如 rows_count > 0 时执行 then，否则执行 else）<br>2. 分别用存在数据和不存在数据的条件执行 |
 | **预期结果** | 1. 条件为真时执行 then_steps<br>2. 条件为假时执行 else_steps<br>3. 结果面板正确展示执行了哪个分支 |
 
-### TC-SKILL-007 — Skill 错误处理
+### TC-WORKFLOW-007 — Workflow 错误处理
 
 | 项目 | 内容 |
 |------|------|
 | **优先级** | P2 |
-| **前置条件** | Skill 包含一个会失败的步骤 |
+| **前置条件** | Workflow 包含一个会失败的步骤 |
 | **测试步骤** | 1. 创建包含无效 SQL 的步骤<br>2. 设置 on_error: skip<br>3. 执行 |
 | **预期结果** | 1. 失败步骤标记为 skipped<br>2. 后续步骤继续执行<br>3. 错误信息在结果面板中可见 |
 
@@ -1156,6 +1156,6 @@
 | 边界与容错 | 8 | 0 | 3 | 5 | 0 |
 | AI 对话增强 | 4 | 0 | 3 | 1 | 0 |
 | AI 诊断改进 | 2 | 0 | 2 | 0 | 0 |
-| Skill 工作流 | 7 | 0 | 4 | 3 | 0 |
+| Workflow 工作流 | 7 | 0 | 4 | 3 | 0 |
 | NL2SQL 增强 | 2 | 1 | 1 | 0 | 0 |
 | **合计** | **117** | **13** | **66** | **35** | **3** |

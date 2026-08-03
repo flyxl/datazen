@@ -60,13 +60,13 @@ pub struct ListDatabasesInput {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
-pub struct RunSkillInput {
-    /// Skill ID to execute
-    pub skill_id: String,
-    /// Input variables for the skill (JSON object)
+pub struct RunWorkflowInput {
+    /// Workflow ID to execute
+    pub workflow_id: String,
+    /// Input variables for the workflow (JSON object)
     #[serde(default)]
     pub variables: serde_json::Value,
-    /// Optional connection ID (some skills require a database connection)
+    /// Optional connection ID (some workflows require a database connection)
     pub connection_id: Option<String>,
 }
 
@@ -310,29 +310,29 @@ impl DataZenMcpServer {
         Ok(desc)
     }
 
-    #[tool(description = "List all available user-defined skills. Skills are reusable AI workflows combining prompts and database operations.")]
-    async fn list_skills(&self) -> Result<String, McpError> {
-        let skills = self.app_state.skill_registry.list().await;
-        serde_json::to_string_pretty(&skills)
+    #[tool(description = "List all available user-defined workflows. Workflows are reusable AI automations combining prompts and database operations.")]
+    async fn list_workflows(&self) -> Result<String, McpError> {
+        let workflows = self.app_state.workflow_registry.list().await;
+        serde_json::to_string_pretty(&workflows)
             .map_err(|e| McpError::internal_error(e.to_string(), None))
     }
 
-    #[tool(description = "Execute a user-defined skill by ID. Skills are reusable workflows combining prompts and database operations. Use list_skills to see available skills.")]
-    async fn run_skill(
+    #[tool(description = "Execute a user-defined workflow by ID. Workflows are reusable automations combining prompts and database operations. Use list_workflows to see available workflows.")]
+    async fn run_workflow(
         &self,
-        Parameters(input): Parameters<RunSkillInput>,
+        Parameters(input): Parameters<RunWorkflowInput>,
     ) -> Result<String, McpError> {
-        let skill = self
+        let workflow = self
             .app_state
-            .skill_registry
-            .get(&input.skill_id)
+            .workflow_registry
+            .get(&input.workflow_id)
             .await
             .ok_or_else(|| {
-                McpError::invalid_params(format!("Skill '{}' not found", input.skill_id), None)
+                McpError::invalid_params(format!("Workflow '{}' not found", input.workflow_id), None)
             })?;
 
-        let result = super::SkillExecutor::execute(
-            &skill,
+        let result = super::WorkflowExecutor::execute(
+            &workflow,
             &self.app_state,
             input.connection_id.as_deref(),
             &input.variables,
@@ -459,7 +459,7 @@ impl ServerHandler for DataZenMcpServer {
             resources: vec![
                 Resource::new("datazen://connections", "Database Connections"),
                 Resource::new("datazen://query-history", "Query History"),
-                Resource::new("datazen://skills", "Available Skills"),
+                Resource::new("datazen://workflows", "Available Workflows"),
             ],
             next_cursor: None,
             meta: None,
@@ -510,9 +510,9 @@ impl ServerHandler for DataZenMcpServer {
             )]));
         }
 
-        if uri == "datazen://skills" {
-            let skills = self.app_state.skill_registry.list().await;
-            let json = serde_json::to_string_pretty(&skills)
+        if uri == "datazen://workflows" {
+            let workflows = self.app_state.workflow_registry.list().await;
+            let json = serde_json::to_string_pretty(&workflows)
                 .map_err(|e| McpError::internal_error(e.to_string(), None))?;
             return Ok(ReadResourceResult::new(vec![ResourceContents::text(
                 json,

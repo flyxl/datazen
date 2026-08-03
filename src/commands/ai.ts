@@ -15,9 +15,9 @@ import type {
   McpToolInfo,
   ModelInfo,
   QueryAnalysis,
-  SkillDefinition,
-  SkillExecutionResult,
-  SkillListItem,
+  WorkflowDefinition,
+  WorkflowExecutionResult,
+  WorkflowListItem,
   ProviderListItem,
   StreamChunkPayload,
   StreamErrorPayload,
@@ -113,24 +113,24 @@ export const aiCommands = {
   mcpStartStdio: () => invoke<void>('mcp_start_stdio'),
   mcpStop: () => invoke<void>('mcp_stop'),
 
-  skillList: () => invoke<SkillListItem[]>('skill_list'),
-  skillExecute: (params: {
-    skillId: string;
+  workflowList: () => invoke<WorkflowListItem[]>('workflow_list'),
+  workflowExecute: (params: {
+    workflowId: string;
     variables: Record<string, unknown>;
     connectionId?: string;
-  }) => invoke<SkillExecutionResult>('skill_execute', params),
-  skillSave: (skill: SkillDefinition) => invoke<void>('skill_save', { skill }),
-  skillDelete: (skillId: string) => invoke<void>('skill_delete', { skillId }),
-  skillReload: () => invoke<void>('skill_reload'),
-  skillGetDir: () => invoke<string>('skill_get_dir'),
-  skillGet: (skillId: string) => invoke<SkillDefinition>('skill_get', { skillId }),
+  }) => invoke<WorkflowExecutionResult>('workflow_execute', params),
+  workflowSave: (workflow: WorkflowDefinition) => invoke<void>('workflow_save', { workflow }),
+  workflowDelete: (workflowId: string) => invoke<void>('workflow_delete', { workflowId }),
+  workflowReload: () => invoke<void>('workflow_reload'),
+  workflowGetDir: () => invoke<string>('workflow_get_dir'),
+  workflowGet: (workflowId: string) => invoke<WorkflowDefinition>('workflow_get', { workflowId }),
 
-  skillHistoryList: (skillId?: string) =>
-    invoke<HistoryListItem[]>('skill_history_list', { skillId: skillId ?? null }),
-  skillHistoryGet: (historyId: string) =>
-    invoke<HistoryEntry>('skill_history_get', { historyId }),
-  skillHistoryClear: (skillId?: string) =>
-    invoke<number>('skill_history_clear', { skillId: skillId ?? null }),
+  workflowHistoryList: (workflowId?: string) =>
+    invoke<HistoryListItem[]>('workflow_history_list', { workflowId: workflowId ?? null }),
+  workflowHistoryGet: (historyId: string) =>
+    invoke<HistoryEntry>('workflow_history_get', { historyId }),
+  workflowHistoryClear: (workflowId?: string) =>
+    invoke<number>('workflow_history_clear', { workflowId: workflowId ?? null }),
 
   generateSchemaDoc: (params: {
     connectionId: string;

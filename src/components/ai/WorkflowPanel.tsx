@@ -18,40 +18,43 @@ import { useI18n } from '../../hooks/useI18n';
 import { useAiStore } from '../../stores/aiStore';
 import { aiCommands } from '../../commands/ai';
 import { connectionCommands } from '../../commands/connection';
+import { databaseCommands } from '../../commands/database';
+import { DB_REGISTRY } from '../../lib/databaseTypes';
 import type { TranslationKey } from '../../locales';
 import type {
   HistoryListItem,
-  SkillDefinition,
-  SkillExecutionResult,
-  SkillListItem,
-  SkillStepType,
+  WorkflowDefinition,
+  WorkflowExecutionResult,
+  WorkflowListItem,
+  WorkflowStepType,
   StepExecutionResult,
 } from '../../types';
 
 type TFn = (key: TranslationKey, params?: Record<string, string | number>) => string;
 
-interface SkillsPanelProps {
+interface WorkflowPanelProps {
   connectionId?: string;
 }
 
-interface SkillStepDraft {
-  type: SkillStepType;
+interface WorkflowStepDraft {
+  type: WorkflowStepType;
   id: string;
   sql?: string;
   prompt?: string;
   connection?: string;
+  database?: string;
   // condition
   expr?: string;
-  thenSteps?: SkillStepDraft[];
-  elseSteps?: SkillStepDraft[];
+  thenSteps?: WorkflowStepDraft[];
+  elseSteps?: WorkflowStepDraft[];
   // foreach
   items?: string;
   asVar?: string;
-  steps?: SkillStepDraft[];
+  steps?: WorkflowStepDraft[];
   maxIterations?: number;
 }
 
-interface SkillVariableDraft {
+interface WorkflowVariableDraft {
   name: string;
   varType: string;
   description: string;
@@ -63,46 +66,46 @@ function emptyDraft() {
     id: '',
     name: '',
     description: '',
-    variables: [] as SkillVariableDraft[],
-    steps: [{ type: 'query' as SkillStepType, id: 'step1', sql: '' }] as SkillStepDraft[],
+    variables: [] as WorkflowVariableDraft[],
+    steps: [{ type: 'query' as WorkflowStepType, id: 'step1', sql: '' }] as WorkflowStepDraft[],
   };
 }
 
-type PanelTab = 'skills' | 'history';
+type PanelTab = 'workflows' | 'history';
 
-export function SkillsPanel({ connectionId }: SkillsPanelProps) {
+export function WorkflowPanel({ connectionId }: WorkflowPanelProps) {
   const { t } = useI18n();
-  const skills = useAiStore((s) => s.skills);
-  const skillsLoading = useAiStore((s) => s.skillsLoading);
-  const loadSkills = useAiStore((s) => s.loadSkills);
-  const executeSkill = useAiStore((s) => s.executeSkill);
-  const result = useAiStore((s) => s.skillExecutionResult);
-  const isExecuting = useAiStore((s) => s.isExecutingSkill);
-  const skillError = useAiStore((s) => s.skillError);
-  const clearSkillResult = useAiStore((s) => s.clearSkillResult);
+  const workflows = useAiStore((s) => s.workflows);
+  const workflowsLoading = useAiStore((s) => s.workflowsLoading);
+  const loadWorkflows = useAiStore((s) => s.loadWorkflows);
+  const executeWorkflow = useAiStore((s) => s.executeWorkflow);
+  const result = useAiStore((s) => s.workflowExecutionResult);
+  const isExecuting = useAiStore((s) => s.isExecutingWorkflow);
+  const workflowError = useAiStore((s) => s.workflowError);
+  const clearWorkflowResult = useAiStore((s) => s.clearWorkflowResult);
 
-  const [selectedSkill, setSelectedSkill] = useState<SkillListItem | null>(null);
+  const [selectedWorkflow, setSelectedWorkflow] = useState<WorkflowListItem | null>(null);
   const [variables, setVariables] = useState<Record<string, string>>({});
-  const [skillsDir, setSkillsDir] = useState('');
+  const [workflowsDir, setWorkflowsDir] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState(emptyDraft());
   const [feedback, setFeedback] = useState('');
-  const [tab, setTab] = useState<PanelTab>('skills');
+  const [tab, setTab] = useState<PanelTab>('workflows');
   const [historyItems, setHistoryItems] = useState<HistoryListItem[]>([]);
-  const [historyDetail, setHistoryDetail] = useState<SkillExecutionResult | null>(null);
-  const [savedConnections, setSavedConnections] = useState<{ id: string; name: string }[]>([]);
+  const [historyDetail, setHistoryDetail] = useState<WorkflowExecutionResult | null>(null);
+  const [savedConnections, setSavedConnections] = useState<{ id: string; name: string; databaseType: string }[]>([]);
 
   useEffect(() => {
-    void loadSkills();
-    void aiCommands.skillGetDir().then(setSkillsDir);
+    void loadWorkflows();
+    void aiCommands.workflowGetDir().then(setWorkflowsDir);
     void connectionCommands.getConnections().then((conns) =>
-      setSavedConnections(conns.map((c) => ({ id: c.id, name: c.name }))),
+      setSavedConnections(conns.map((c) => ({ id: c.id, name: c.name, databaseType: c.databaseType }))),
     );
-  }, [loadSkills]);
+  }, [loadWorkflows]);
 
   const loadHistory = useCallback(async () => {
-    const items = await aiCommands.skillHistoryList();
+    const items = await aiCommands.workflowHistoryList();
     setHistoryItems(items);
   }, []);
 
@@ -110,19 +113,19 @@ export function SkillsPanel({ connectionId }: SkillsPanelProps) {
     if (tab === 'history') void loadHistory();
   }, [tab, loadHistory]);
 
-  const handleSelect = (skill: SkillListItem) => {
-    setSelectedSkill(skill);
-    clearSkillResult();
+  const handleSelect = (workflow: WorkflowListItem) => {
+    setSelectedWorkflow(workflow);
+    clearWorkflowResult();
     const defaults: Record<string, string> = {};
-    for (const v of skill.variables) {
+    for (const v of workflow.variables) {
       defaults[v.name] = v.default != null ? String(v.default) : '';
     }
     setVariables(defaults);
   };
 
   const handleExecute = async () => {
-    if (!selectedSkill) return;
-    await executeSkill({ skillId: selectedSkill.id, variables, connectionId });
+    if (!selectedWorkflow) return;
+    await executeWorkflow({ workflowId: selectedWorkflow.id, variables, connectionId });
     void loadHistory();
   };
 
@@ -132,40 +135,40 @@ export function SkillsPanel({ connectionId }: SkillsPanelProps) {
     setShowForm(true);
   };
 
-  const handleEdit = async (skillId: string) => {
+  const handleEdit = async (workflowId: string) => {
     try {
-      const skill: SkillDefinition = await aiCommands.skillGet(skillId);
+      const workflow: WorkflowDefinition = await aiCommands.workflowGet(workflowId);
       setDraft({
-        id: skill.id,
-        name: skill.name,
-        description: skill.description,
-        variables: skill.variables.map((v) => ({
+        id: workflow.id,
+        name: workflow.name,
+        description: workflow.description,
+        variables: workflow.variables.map((v) => ({
           name: v.name,
           varType: v.type || 'string',
           description: v.description,
           required: v.required ?? false,
         })),
-        steps: skill.steps.map(defStepToDraft),
+        steps: workflow.steps.map(defStepToDraft),
       });
-      setEditingId(skillId);
+      setEditingId(workflowId);
       setShowForm(true);
     } catch (e) {
       setFeedback(String(e));
     }
   };
 
-  const handleDelete = async (skillId: string) => {
-    if (!confirm(t('skills.deleteConfirm'))) return;
-    await aiCommands.skillDelete(skillId);
-    if (selectedSkill?.id === skillId) {
-      setSelectedSkill(null);
-      clearSkillResult();
+  const handleDelete = async (workflowId: string) => {
+    if (!confirm(t('workflows.deleteConfirm'))) return;
+    await aiCommands.workflowDelete(workflowId);
+    if (selectedWorkflow?.id === workflowId) {
+      setSelectedWorkflow(null);
+      clearWorkflowResult();
     }
-    void loadSkills();
+    void loadWorkflows();
   };
 
   const handleSave = async () => {
-    const skill: SkillDefinition = {
+    const workflow: WorkflowDefinition = {
       id: draft.id.trim(),
       name: draft.name.trim(),
       description: draft.description.trim(),
@@ -178,24 +181,24 @@ export function SkillsPanel({ connectionId }: SkillsPanelProps) {
       steps: draft.steps.map(draftStepToDef),
     };
     try {
-      await aiCommands.skillSave(skill);
+      await aiCommands.workflowSave(workflow);
       setShowForm(false);
-      setFeedback(t('skills.saved'));
+      setFeedback(t('workflows.saved'));
       setTimeout(() => setFeedback(''), 2000);
-      void loadSkills();
+      void loadWorkflows();
     } catch (e) {
       setFeedback(String(e));
     }
   };
 
   const handleReload = useCallback(async () => {
-    await aiCommands.skillReload();
-    void loadSkills();
-  }, [loadSkills]);
+    await aiCommands.workflowReload();
+    void loadWorkflows();
+  }, [loadWorkflows]);
 
   const handleViewHistory = async (historyId: string) => {
     try {
-      const entry = await aiCommands.skillHistoryGet(historyId);
+      const entry = await aiCommands.workflowHistoryGet(historyId);
       setHistoryDetail(entry.result);
     } catch (e) {
       setFeedback(String(e));
@@ -203,8 +206,8 @@ export function SkillsPanel({ connectionId }: SkillsPanelProps) {
   };
 
   const handleClearHistory = async () => {
-    if (!confirm(t('skills.history.clearConfirm'))) return;
-    await aiCommands.skillHistoryClear();
+    if (!confirm(t('workflows.history.clearConfirm'))) return;
+    await aiCommands.workflowHistoryClear();
     setHistoryItems([]);
     setHistoryDetail(null);
   };
@@ -214,11 +217,11 @@ export function SkillsPanel({ connectionId }: SkillsPanelProps) {
   const textareaClass =
     'w-full rounded border border-edge bg-surface px-2 py-1 text-xs font-mono text-fg outline-none focus:border-accent resize-y min-h-[60px]';
 
-  if (skillsLoading) {
+  if (workflowsLoading) {
     return (
       <div className="flex items-center justify-center py-4 text-fg-muted text-xs">
         <Loader2 className="h-4 w-4 animate-spin mr-1" />
-        {t('skills.loading')}
+        {t('workflows.loading')}
       </div>
     );
   }
@@ -229,15 +232,15 @@ export function SkillsPanel({ connectionId }: SkillsPanelProps) {
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-medium flex items-center gap-2">
           <Wand2 className="w-4 h-4" />
-          {t('skills.title')}
+          {t('workflows.title')}
         </h3>
         <div className="flex items-center gap-1">
           <button
             type="button"
-            onClick={() => setTab('skills')}
-            className={`px-2 py-0.5 text-[11px] rounded transition-colors ${tab === 'skills' ? 'bg-accent/10 text-accent' : 'text-fg-muted hover:text-fg'}`}
+            onClick={() => setTab('workflows')}
+            className={`px-2 py-0.5 text-[11px] rounded transition-colors ${tab === 'workflows' ? 'bg-accent/10 text-accent' : 'text-fg-muted hover:text-fg'}`}
           >
-            {t('skills.title')}
+            {t('workflows.title')}
           </button>
           <button
             type="button"
@@ -245,7 +248,7 @@ export function SkillsPanel({ connectionId }: SkillsPanelProps) {
             className={`flex items-center gap-1 px-2 py-0.5 text-[11px] rounded transition-colors ${tab === 'history' ? 'bg-accent/10 text-accent' : 'text-fg-muted hover:text-fg'}`}
           >
             <History className="h-3 w-3" />
-            {t('skills.history.title')}
+            {t('workflows.history.title')}
           </button>
         </div>
       </div>
@@ -271,36 +274,36 @@ export function SkillsPanel({ connectionId }: SkillsPanelProps) {
               type="button"
               onClick={handleCreate}
               className="flex items-center gap-1 px-2 py-1 text-[11px] text-accent hover:bg-accent/10 rounded transition-colors"
-              title={t('skills.create')}
+              title={t('workflows.create')}
             >
               <Plus className="h-3.5 w-3.5" />
-              {t('skills.create')}
+              {t('workflows.create')}
             </button>
             <button
               type="button"
               onClick={() => void handleReload()}
               className="p-1 text-fg-muted hover:text-fg rounded transition-colors"
-              title={t('skills.reload')}
+              title={t('workflows.reload')}
             >
               <RefreshCw className="h-3.5 w-3.5" />
             </button>
           </div>
 
           {/* Storage path */}
-          {skillsDir && (
+          {workflowsDir && (
             <div className="flex items-start gap-2 rounded-md border border-edge bg-surface-alt/50 p-2">
               <FolderOpen className="h-3.5 w-3.5 shrink-0 mt-0.5 text-fg-muted" />
               <div>
-                <div className="text-[10px] text-fg-muted">{t('skills.storageDir')}</div>
-                <code className="text-[11px] text-fg-secondary break-all select-all">{skillsDir}</code>
-                <div className="text-[10px] text-fg-muted mt-0.5">{t('skills.storageDirHint')}</div>
+                <div className="text-[10px] text-fg-muted">{t('workflows.storageDir')}</div>
+                <code className="text-[11px] text-fg-secondary break-all select-all">{workflowsDir}</code>
+                <div className="text-[10px] text-fg-muted mt-0.5">{t('workflows.storageDirHint')}</div>
               </div>
             </div>
           )}
 
           {/* Create/Edit form */}
           {showForm && (
-            <SkillForm
+            <WorkflowForm
               draft={draft}
               setDraft={setDraft}
               editingId={editingId}
@@ -313,41 +316,41 @@ export function SkillsPanel({ connectionId }: SkillsPanelProps) {
             />
           )}
 
-          {/* Skills list */}
-          {skills.length === 0 && !showForm ? (
+          {/* Workflows list */}
+          {workflows.length === 0 && !showForm ? (
             <div className="py-4 text-center text-xs text-fg-muted">
-              {t('skills.empty')}
+              {t('workflows.empty')}
             </div>
           ) : (
             <div className="space-y-1">
-              {skills.map((skill) => (
+              {workflows.map((workflow) => (
                 <div
-                  key={skill.id}
+                  key={workflow.id}
                   className={`flex items-center justify-between px-3 py-2 rounded-md text-sm transition-colors cursor-pointer ${
-                    selectedSkill?.id === skill.id
+                    selectedWorkflow?.id === workflow.id
                       ? 'bg-accent/10 text-accent'
                       : 'hover:bg-surface-raised text-fg-secondary'
                   }`}
-                  onClick={() => handleSelect(skill)}
+                  onClick={() => handleSelect(workflow)}
                 >
                   <div className="min-w-0 flex-1">
-                    <div className="font-medium">{skill.name}</div>
-                    <div className="text-[11px] text-fg-muted truncate">{skill.description}</div>
+                    <div className="font-medium">{workflow.name}</div>
+                    <div className="text-[11px] text-fg-muted truncate">{workflow.description}</div>
                   </div>
                   <div className="flex items-center gap-0.5 shrink-0 ml-2">
                     <button
                       type="button"
-                      onClick={(e) => { e.stopPropagation(); void handleEdit(skill.id); }}
+                      onClick={(e) => { e.stopPropagation(); void handleEdit(workflow.id); }}
                       className="p-1 text-fg-muted hover:text-fg rounded transition-colors"
-                      title={t('skills.edit')}
+                      title={t('workflows.edit')}
                     >
                       <Pencil className="h-3 w-3" />
                     </button>
                     <button
                       type="button"
-                      onClick={(e) => { e.stopPropagation(); void handleDelete(skill.id); }}
+                      onClick={(e) => { e.stopPropagation(); void handleDelete(workflow.id); }}
                       className="p-1 text-fg-muted hover:text-red-400 rounded transition-colors"
-                      title={t('skills.delete')}
+                      title={t('workflows.delete')}
                     >
                       <Trash2 className="h-3 w-3" />
                     </button>
@@ -357,16 +360,16 @@ export function SkillsPanel({ connectionId }: SkillsPanelProps) {
             </div>
           )}
 
-          {/* Execute selected skill */}
-          {selectedSkill && !showForm && (
+          {/* Execute selected workflow */}
+          {selectedWorkflow && !showForm && (
             <div className="space-y-2 border-t border-edge pt-3">
-              {selectedSkill.variables.map((v) => (
+              {selectedWorkflow.variables.map((v) => (
                 <div key={v.name}>
                   <label className="text-[11px] text-fg-muted block mb-0.5">
                     {v.description || v.name}
                     {v.required && <span className="text-red-400 ml-0.5">*</span>}
                     {v.type === 'connection' && (
-                      <span className="ml-1 text-accent text-[10px]">[{t('skills.form.varTypeConnection')}]</span>
+                      <span className="ml-1 text-accent text-[10px]">[{t('workflows.form.varTypeConnection')}]</span>
                     )}
                   </label>
                   {v.type === 'connection' ? (
@@ -378,7 +381,7 @@ export function SkillsPanel({ connectionId }: SkillsPanelProps) {
                       className={inputClass}
                       disabled={isExecuting}
                     >
-                      <option value="">{t('skills.form.selectConnection')}</option>
+                      <option value="">{t('workflows.form.selectConnection')}</option>
                       {savedConnections.map((c) => (
                         <option key={c.id} value={c.id}>{c.name}</option>
                       ))}
@@ -409,14 +412,14 @@ export function SkillsPanel({ connectionId }: SkillsPanelProps) {
                 ) : (
                   <Play className="h-3.5 w-3.5" />
                 )}
-                {isExecuting ? t('skills.running') : t('skills.run')}
+                {isExecuting ? t('workflows.running') : t('workflows.run')}
               </button>
             </div>
           )}
 
-          {skillError && (
+          {workflowError && (
             <div className="text-xs text-red-400 rounded bg-red-500/10 p-2">
-              {skillError}
+              {workflowError}
             </div>
           )}
 
@@ -434,14 +437,14 @@ function ExecutionResultPanel({
   result,
   t,
 }: {
-  result: SkillExecutionResult;
+  result: WorkflowExecutionResult;
   t: TFn;
 }) {
   return (
     <div className="border border-edge rounded-md bg-surface overflow-hidden">
       <div className={`flex items-center justify-between px-3 py-2 text-xs font-medium border-b border-edge ${result.success ? 'bg-green-500/5 text-green-600 dark:text-green-400' : 'bg-red-500/5 text-red-600 dark:text-red-400'}`}>
         <span>
-          {result.success ? '✓' : '✗'} {result.success ? t('skills.result') : t('skills.executionFailed')}
+          {result.success ? '✓' : '✗'} {result.success ? t('workflows.result') : t('workflows.executionFailed')}
         </span>
         <span className="text-fg-muted font-normal">{result.totalTimeMs}ms</span>
       </div>
@@ -458,7 +461,7 @@ function ExecutionResultPanel({
 
       {result.finalOutput && (
         <div className="px-3 py-2 border-t border-edge">
-          <div className="text-[10px] text-fg-muted mb-1">{t('skills.finalOutput')}</div>
+          <div className="text-[10px] text-fg-muted mb-1">{t('workflows.finalOutput')}</div>
           <pre className="text-xs text-fg-secondary whitespace-pre-wrap break-words max-h-40 overflow-auto">
             {result.finalOutput}
           </pre>
@@ -563,7 +566,7 @@ function HistoryTab({
   t,
 }: {
   items: HistoryListItem[];
-  detail: SkillExecutionResult | null;
+  detail: WorkflowExecutionResult | null;
   onView: (id: string) => void;
   onClear: () => void;
   onCloseDetail: () => void;
@@ -578,7 +581,7 @@ function HistoryTab({
           className="flex items-center gap-1 text-xs text-accent hover:underline mb-2"
         >
           <X className="h-3 w-3" />
-          {t('skills.history.back')}
+          {t('workflows.history.back')}
         </button>
         <ExecutionResultPanel result={detail} t={t} />
       </div>
@@ -593,13 +596,13 @@ function HistoryTab({
           onClick={onClear}
           className="text-[11px] text-red-400 hover:underline"
         >
-          {t('skills.history.clear')}
+          {t('workflows.history.clear')}
         </button>
       )}
 
       {items.length === 0 ? (
         <div className="py-4 text-center text-xs text-fg-muted">
-          {t('skills.history.empty')}
+          {t('workflows.history.empty')}
         </div>
       ) : (
         items.map((item) => (
@@ -609,7 +612,7 @@ function HistoryTab({
             className="flex items-center justify-between px-3 py-2 rounded-md hover:bg-surface-raised text-xs cursor-pointer transition-colors"
           >
             <div className="min-w-0 flex-1">
-              <div className="font-medium text-fg">{item.skillName}</div>
+              <div className="font-medium text-fg">{item.workflowName}</div>
               <div className="flex items-center gap-2 text-[10px] text-fg-muted mt-0.5">
                 <Clock className="h-3 w-3 shrink-0" />
                 {new Date(item.createdAt).toLocaleString()}
@@ -626,9 +629,9 @@ function HistoryTab({
   );
 }
 
-// ─── Skill Form ─────────────────────────────────────────────────────────────
+// ─── Workflow Form ──────────────────────────────────────────────────────────
 
-function SkillForm({
+function WorkflowForm({
   draft,
   setDraft,
   editingId,
@@ -642,16 +645,16 @@ function SkillForm({
   draft: ReturnType<typeof emptyDraft>;
   setDraft: React.Dispatch<React.SetStateAction<ReturnType<typeof emptyDraft>>>;
   editingId: string | null;
-  savedConnections: { id: string; name: string }[];
+  savedConnections: { id: string; name: string; databaseType: string }[];
   onSave: () => void;
   onCancel: () => void;
   t: TFn;
   inputClass: string;
   textareaClass: string;
 }) {
-  const addStep = (type: SkillStepType) => {
+  const addStep = (type: WorkflowStepType) => {
     const idx = draft.steps.length + 1;
-    const base: SkillStepDraft = { type, id: `step${idx}` };
+    const base: WorkflowStepDraft = { type, id: `step${idx}` };
     if (type === 'query') base.sql = '';
     if (type === 'ai') base.prompt = '';
     if (type === 'condition') {
@@ -697,49 +700,49 @@ function SkillForm({
   return (
     <div className="space-y-2 border border-edge rounded-md p-3 bg-surface">
       <h4 className="text-xs font-medium text-fg">
-        {editingId ? t('skills.edit') : t('skills.create')}
+        {editingId ? t('workflows.edit') : t('workflows.create')}
       </h4>
 
       <div>
-        <label className="text-[10px] text-fg-muted block mb-0.5">{t('skills.form.id')}</label>
+        <label className="text-[10px] text-fg-muted block mb-0.5">{t('workflows.form.id')}</label>
         <input
           type="text"
           value={draft.id}
           onChange={(e) => setDraft((p) => ({ ...p, id: e.target.value }))}
           className={inputClass}
-          placeholder={t('skills.form.idPlaceholder')}
+          placeholder={t('workflows.form.idPlaceholder')}
           disabled={!!editingId}
         />
       </div>
 
       <div>
-        <label className="text-[10px] text-fg-muted block mb-0.5">{t('skills.form.name')}</label>
+        <label className="text-[10px] text-fg-muted block mb-0.5">{t('workflows.form.name')}</label>
         <input
           type="text"
           value={draft.name}
           onChange={(e) => setDraft((p) => ({ ...p, name: e.target.value }))}
           className={inputClass}
-          placeholder={t('skills.form.namePlaceholder')}
+          placeholder={t('workflows.form.namePlaceholder')}
         />
       </div>
 
       <div>
-        <label className="text-[10px] text-fg-muted block mb-0.5">{t('skills.form.description')}</label>
+        <label className="text-[10px] text-fg-muted block mb-0.5">{t('workflows.form.description')}</label>
         <input
           type="text"
           value={draft.description}
           onChange={(e) => setDraft((p) => ({ ...p, description: e.target.value }))}
           className={inputClass}
-          placeholder={t('skills.form.descriptionPlaceholder')}
+          placeholder={t('workflows.form.descriptionPlaceholder')}
         />
       </div>
 
       {/* Variables */}
       <div>
         <div className="flex items-center justify-between mb-1">
-          <label className="text-[10px] text-fg-muted">{t('skills.form.variables')}</label>
+          <label className="text-[10px] text-fg-muted">{t('workflows.form.variables')}</label>
           <button type="button" onClick={addVariable} className="text-[10px] text-accent hover:underline">
-            {t('skills.form.addVariable')}
+            {t('workflows.form.addVariable')}
           </button>
         </div>
         {draft.variables.map((v, i) => (
@@ -753,7 +756,7 @@ function SkillForm({
                 setDraft((p) => ({ ...p, variables: vars }));
               }}
               className={inputClass}
-              placeholder={t('skills.form.varName')}
+              placeholder={t('workflows.form.varName')}
               style={{ width: '25%' }}
             />
             <select
@@ -768,7 +771,7 @@ function SkillForm({
             >
               <option value="string">string</option>
               <option value="number">number</option>
-              <option value="connection">{t('skills.form.varTypeConnection')}</option>
+              <option value="connection">{t('workflows.form.varTypeConnection')}</option>
             </select>
             <input
               type="text"
@@ -779,7 +782,7 @@ function SkillForm({
                 setDraft((p) => ({ ...p, variables: vars }));
               }}
               className={inputClass}
-              placeholder={t('skills.form.varDesc')}
+              placeholder={t('workflows.form.varDesc')}
               style={{ width: '35%' }}
             />
             <label className="flex items-center gap-0.5 text-[10px] text-fg-muted whitespace-nowrap">
@@ -792,7 +795,7 @@ function SkillForm({
                   setDraft((p) => ({ ...p, variables: vars }));
                 }}
               />
-              {t('skills.form.varRequired')}
+              {t('workflows.form.varRequired')}
             </label>
             <button
               type="button"
@@ -807,7 +810,7 @@ function SkillForm({
 
       {/* Steps */}
       <div>
-        <label className="text-[10px] text-fg-muted block mb-1">{t('skills.form.steps')}</label>
+        <label className="text-[10px] text-fg-muted block mb-1">{t('workflows.form.steps')}</label>
         {draft.steps.map((step, i) => (
           <StepEditor
             key={i}
@@ -824,16 +827,16 @@ function SkillForm({
         ))}
         <div className="flex gap-2 flex-wrap">
           <button type="button" onClick={() => addStep('query')} className="text-[10px] text-accent hover:underline">
-            + {t('skills.form.addQueryStep')}
+            + {t('workflows.form.addQueryStep')}
           </button>
           <button type="button" onClick={() => addStep('ai')} className="text-[10px] text-accent hover:underline">
-            + {t('skills.form.addAiStep')}
+            + {t('workflows.form.addAiStep')}
           </button>
           <button type="button" onClick={() => addStep('condition')} className="text-[10px] text-accent hover:underline">
-            + {t('skills.form.addConditionStep')}
+            + {t('workflows.form.addConditionStep')}
           </button>
           <button type="button" onClick={() => addStep('foreach')} className="text-[10px] text-accent hover:underline">
-            + {t('skills.form.addForeachStep')}
+            + {t('workflows.form.addForeachStep')}
           </button>
         </div>
       </div>
@@ -860,6 +863,94 @@ function SkillForm({
   );
 }
 
+function DatabasePicker({
+  step,
+  savedConnections,
+  onUpdate,
+  t,
+  inputClass,
+}: {
+  step: WorkflowStepDraft;
+  savedConnections: { id: string; name: string; databaseType: string }[];
+  onUpdate: (field: string, value: unknown) => void;
+  t: TFn;
+  inputClass: string;
+}) {
+  const [databases, setDatabases] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const connId = step.connection ?? '';
+  const isVariable = connId.startsWith('{{');
+  const savedConn = !isVariable ? savedConnections.find((c) => c.id === connId) : undefined;
+  const meta = savedConn ? DB_REGISTRY[savedConn.databaseType as keyof typeof DB_REGISTRY] : undefined;
+  const needsDb = !!meta?.hasMultiDatabase;
+
+  useEffect(() => {
+    if (!needsDb || !connId) {
+      setDatabases([]);
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    (async () => {
+      try {
+        const dbs = await databaseCommands.getDatabases(connId);
+        if (!cancelled) setDatabases(dbs);
+      } catch {
+        if (!cancelled) setDatabases([]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [connId, needsDb]);
+
+  if (!needsDb && !isVariable) return null;
+
+  if (isVariable) {
+    return (
+      <div className="flex items-center gap-1">
+        <label className="text-[10px] text-fg-muted w-12 shrink-0">{t('workflows.form.database')}</label>
+        <input
+          type="text"
+          value={step.database ?? ''}
+          onChange={(e) => onUpdate('database', e.target.value || undefined)}
+          className={inputClass}
+          placeholder={t('workflows.form.databasePlaceholder')}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-1">
+      <label className="text-[10px] text-fg-muted w-12 shrink-0">{t('workflows.form.database')}</label>
+      {loading ? (
+        <span className="text-[10px] text-fg-muted">{t('workflows.loading')}</span>
+      ) : databases.length > 0 ? (
+        <select
+          value={step.database ?? ''}
+          onChange={(e) => onUpdate('database', e.target.value || undefined)}
+          className={inputClass}
+        >
+          <option value="">{t('workflows.form.selectDatabase')}</option>
+          {databases.map((db) => (
+            <option key={db} value={db}>{db}</option>
+          ))}
+        </select>
+      ) : (
+        <input
+          type="text"
+          value={step.database ?? ''}
+          onChange={(e) => onUpdate('database', e.target.value || undefined)}
+          className={inputClass}
+          placeholder={t('workflows.form.databasePlaceholder')}
+        />
+      )}
+    </div>
+  );
+}
+
 function StepEditor({
   step,
   index,
@@ -871,21 +962,21 @@ function StepEditor({
   inputClass,
   textareaClass,
 }: {
-  step: SkillStepDraft;
+  step: WorkflowStepDraft;
   index: number;
   onRemove: () => void;
   onUpdate: (field: string, value: unknown) => void;
   connVarNames: string[];
-  savedConnections: { id: string; name: string }[];
+  savedConnections: { id: string; name: string; databaseType: string }[];
   t: TFn;
   inputClass: string;
   textareaClass: string;
 }) {
   const typeLabel =
-    step.type === 'query' ? t('skills.form.sql')
-      : step.type === 'ai' ? t('skills.form.prompt')
-        : step.type === 'condition' ? t('skills.form.condition')
-          : t('skills.form.foreach');
+    step.type === 'query' ? t('workflows.form.sql')
+      : step.type === 'ai' ? t('workflows.form.prompt')
+        : step.type === 'condition' ? t('workflows.form.condition')
+          : t('workflows.form.foreach');
 
   return (
     <div className="mb-2 rounded border border-edge p-2 space-y-1 bg-surface-alt/30">
@@ -894,12 +985,12 @@ function StepEditor({
           #{index + 1} {typeLabel}
         </span>
         <button type="button" onClick={onRemove} className="text-[10px] text-red-400 hover:underline">
-          {t('skills.form.removeStep')}
+          {t('workflows.form.removeStep')}
         </button>
       </div>
 
       <div className="flex items-center gap-1">
-        <label className="text-[10px] text-fg-muted w-12 shrink-0">{t('skills.form.stepId')}</label>
+        <label className="text-[10px] text-fg-muted w-12 shrink-0">{t('workflows.form.stepId')}</label>
         <input
           type="text"
           value={step.id}
@@ -911,13 +1002,13 @@ function StepEditor({
       {step.type === 'query' && (
         <>
           <div className="flex items-center gap-1">
-            <label className="text-[10px] text-fg-muted w-12 shrink-0">{t('skills.form.connection')}</label>
+            <label className="text-[10px] text-fg-muted w-12 shrink-0">{t('workflows.form.connection')}</label>
             <select
               value={step.connection ?? ''}
               onChange={(e) => onUpdate('connection', e.target.value || undefined)}
               className={inputClass}
             >
-              <option value="">{t('skills.form.defaultConnection')}</option>
+              <option value="">{t('workflows.form.defaultConnection')}</option>
               {connVarNames.map((name) => (
                 <option key={`var:${name}`} value={`{{${name}}}`}>
                   {'{{' + name + '}}'}
@@ -928,6 +1019,13 @@ function StepEditor({
               ))}
             </select>
           </div>
+          <DatabasePicker
+            step={step}
+            savedConnections={savedConnections}
+            onUpdate={onUpdate}
+            t={t}
+            inputClass={inputClass}
+          />
           <textarea
             value={step.sql ?? ''}
             onChange={(e) => onUpdate('sql', e.target.value)}
@@ -944,7 +1042,7 @@ function StepEditor({
           onChange={(e) => onUpdate('prompt', e.target.value)}
           className={textareaClass}
           rows={3}
-          placeholder={t('skills.form.prompt')}
+          placeholder={t('workflows.form.prompt')}
         />
       )}
 
@@ -960,7 +1058,7 @@ function StepEditor({
               placeholder="steps.s1.rows_count > 0"
             />
           </div>
-          <div className="text-[10px] text-fg-muted mt-1">then / else {t('skills.form.conditionHint')}</div>
+          <div className="text-[10px] text-fg-muted mt-1">then / else {t('workflows.form.conditionHint')}</div>
         </>
       )}
 
@@ -1004,11 +1102,12 @@ function StepEditor({
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-function defStepToDraft(s: SkillDefinition['steps'][number]): SkillStepDraft {
-  const base: SkillStepDraft = { type: s.type, id: s.id };
+function defStepToDraft(s: WorkflowDefinition['steps'][number]): WorkflowStepDraft {
+  const base: WorkflowStepDraft = { type: s.type, id: s.id };
   if (s.type === 'query') {
     base.sql = s.sql;
     base.connection = s.connection;
+    base.database = s.database;
   } else if (s.type === 'ai') {
     base.prompt = s.prompt;
   } else if (s.type === 'condition') {
@@ -1024,13 +1123,14 @@ function defStepToDraft(s: SkillDefinition['steps'][number]): SkillStepDraft {
   return base;
 }
 
-function draftStepToDef(s: SkillStepDraft): SkillDefinition['steps'][number] {
+function draftStepToDef(s: WorkflowStepDraft): WorkflowDefinition['steps'][number] {
   if (s.type === 'query') {
     return {
       type: 'query',
       id: s.id,
       sql: s.sql ?? '',
       connection: s.connection,
+      database: s.database,
     };
   }
   if (s.type === 'ai') {

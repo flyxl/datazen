@@ -11,16 +11,16 @@ src-tauri/src/mcp/
 ├── mod.rs          # MCP 启动/停止, 状态管理
 ├── server.rs       # MCP Server 实现
 ├── client.rs       # MCP Client 管理
-└── skills.rs       # Skills 系统
+└── workflows.rs       # Workflows 系统
 ```
 
 **Server Tools:**
 - `list_connections` / `list_databases` / `list_tables` / `query` / `get_schema`
-- `explain_query` / `describe_table` / `list_skills` / `run_skill`
+- `explain_query` / `describe_table` / `list_workflows` / `run_workflow`
 
 **Server Resources:**
 - `datazen://connections` / `datazen://query-history`
-- `datazen://schema/{id}/{db}` / `datazen://skills`
+- `datazen://schema/{id}/{db}` / `datazen://workflows`
 
 **Server Prompts:**
 - `nl2sql` / `diagnose_error` / `explain_plan`
@@ -32,7 +32,7 @@ src-tauri/src/mcp/
 - 30s 连接超时保护
 - connect 失败时自动进程清理
 
-### 1.3 Skills 系统
+### 1.3 Workflows 系统
 
 用户自定义 AI 工作流：
 - YAML 格式定义

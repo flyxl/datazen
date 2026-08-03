@@ -12,7 +12,7 @@
 | [持久化存储](architecture/backend/store.md) | 本地文件存储、AES-256-GCM 加密 |
 | [IPC 命令层](architecture/backend/commands.md) | Tauri Commands、AppState、CommandError |
 | [AI 模块](architecture/backend/ai.md) | AiProvider trait、Provider 实现、Prompt 管理 |
-| [MCP 模块](architecture/backend/mcp.md) | MCP Server/Client、Skills 系统 |
+| [MCP 模块](architecture/backend/mcp.md) | MCP Server/Client、Workflows 系统 |
 | [安全措施](architecture/security.md) | 加密、CSP、密码派生 |
 | [窗口管理](architecture/windows.md) | 多窗口架构、Rust 端窗口创建 |
 | [测试策略](architecture/testing.md) | 单元测试、集成测试、E2E |

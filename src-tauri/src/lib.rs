@@ -240,14 +240,14 @@ async fn build_app_state(store: Arc<Store>) -> Result<AppState, String> {
         tracing::warn!("Failed to load prompt overrides: {e}");
     }
 
-    let skill_registry = Arc::new(mcp::SkillRegistry::new(data_dir.join("skills")));
-    if let Err(e) = skill_registry.load_all().await {
-        tracing::warn!("Failed to load skills: {e}");
+    let workflow_registry = Arc::new(mcp::WorkflowRegistry::new(data_dir.join("skills")));
+    if let Err(e) = workflow_registry.load_all().await {
+        tracing::warn!("Failed to load workflows: {e}");
     }
 
-    let skill_history = Arc::new(mcp::SkillHistoryManager::new(data_dir.join("skill_history")));
-    if let Err(e) = skill_history.load().await {
-        tracing::warn!("Failed to load skill history: {e}");
+    let workflow_history = Arc::new(mcp::WorkflowHistoryManager::new(data_dir.join("skill_history")));
+    if let Err(e) = workflow_history.load().await {
+        tracing::warn!("Failed to load workflow history: {e}");
     }
 
     let mcp_client_manager = Arc::new(mcp::McpClientManager::new());
@@ -261,8 +261,8 @@ async fn build_app_state(store: Arc<Store>) -> Result<AppState, String> {
         ai_registry,
         schema_context_builder,
         prompt_resolver,
-        skill_registry,
-        skill_history,
+        workflow_registry,
+        workflow_history,
         mcp_client_manager,
     })
 }
@@ -438,13 +438,13 @@ pub fn run() {
             commands::mcp_get_status,
             commands::mcp_start_stdio,
             commands::mcp_stop,
-            commands::skill_list,
-            commands::skill_execute,
-            commands::skill_save,
-            commands::skill_delete,
-            commands::skill_reload,
-            commands::skill_get_dir,
-            commands::skill_get,
+            commands::workflow_list,
+            commands::workflow_execute,
+            commands::workflow_save,
+            commands::workflow_delete,
+            commands::workflow_reload,
+            commands::workflow_get_dir,
+            commands::workflow_get,
             commands::ai_generate_schema_doc,
             commands::ai_diagnose_connection,
             commands::ai_analyze_queries,
@@ -460,9 +460,9 @@ pub fn run() {
             commands::prompt_list,
             commands::prompt_set_override,
             commands::prompt_remove_override,
-            commands::skill_history_list,
-            commands::skill_history_get,
-            commands::skill_history_clear,
+            commands::workflow_history_list,
+            commands::workflow_history_get,
+            commands::workflow_history_clear,
             rebuild_menu,
         ])
         .build(tauri::generate_context!())

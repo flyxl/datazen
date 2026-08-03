@@ -2986,13 +2986,13 @@ DataZen 作为 MCP Server 运行，通过标准 MCP 协议暴露数据库操作�
 │  │  ├── list_databases (列出数据库)                           │ │
 │  │  ├── explain_query  (获取执行计划)                         │ │
 │  │  ├── describe_table (表的详细信息)                         │ │
-│  │  └── run_skill      (执行用户自定义 Skill)                │ │
+│  │  └── run_workflow      (执行用户自定义 Workflow)                │ │
 │  ├────────────────────────────────────────────────────────────┤ │
 │  │  Resources                                                 │ │
 │  │  ├── datazen://connections          (连接列表)             │ │
 │  │  ├── datazen://schema/{conn}/{db}   (数据库 Schema)       │ │
 │  │  ├── datazen://query-history/{conn} (查询历史)            │ │
-│  │  └── datazen://skills               (可用 Skills)         │ │
+│  │  └── datazen://workflows               (可用 Workflows)         │ │
 │  ├────────────────────────────────────────────────────────────┤ │
 │  │  Prompts                                                   │ │
 │  │  ├── nl2sql          (自然语言→SQL 模板)                  │ │
@@ -3048,12 +3048,12 @@ use std::sync::Arc;
 #[derive(Clone)]
 pub struct DataZenMcpServer {
     app_state: Arc<AppState>,
-    skill_registry: Arc<SkillRegistry>,
+    workflow_registry: Arc<WorkflowRegistry>,
 }
 
 impl DataZenMcpServer {
-    pub fn new(app_state: Arc<AppState>, skill_registry: Arc<SkillRegistry>) -> Self {
-        Self { app_state, skill_registry }
+    pub fn new(app_state: Arc<AppState>, workflow_registry: Arc<WorkflowRegistry>) -> Self {
+        Self { app_state, workflow_registry }
     }
 }
 
@@ -3119,12 +3119,12 @@ pub struct DescribeTableInput {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
-pub struct RunSkillInput {
-    /// Skill ID to execute
-    pub skill_id: String,
-    /// Input variables for the skill (JSON object)
+pub struct RunWorkflowInput {
+    /// Workflow ID to execute
+    pub workflow_id: String,
+    /// Input variables for the workflow (JSON object)
     pub variables: serde_json::Value,
-    /// Optional connection ID (some skills require a database connection)
+    /// Optional connection ID (some workflows require a database connection)
     pub connection_id: Option<String>,
 }
 
@@ -3272,16 +3272,16 @@ impl DataZenMcpServer {
             .map_err(|e| anyhow::anyhow!(e))
     }
 
-    /// Execute a user-defined skill
-    #[tool(description = "Execute a user-defined skill by ID. Skills are reusable workflows combining prompts and database operations. Use list_skills resource to see available skills.")]
-    pub async fn run_skill(
+    /// Execute a user-defined workflow
+    #[tool(description = "Execute a user-defined workflow by ID. Workflows are reusable workflows combining prompts and database operations. Use list_workflows resource to see available workflows.")]
+    pub async fn run_workflow(
         &self,
-        #[tool(aggr)] input: Json<RunSkillInput>,
+        #[tool(aggr)] input: Json<RunWorkflowInput>,
     ) -> Result<String, anyhow::Error> {
-        let skill = self.skill_registry.get(&input.skill_id)
-            .ok_or_else(|| anyhow::anyhow!("Skill '{}' not found", input.skill_id))?;
+        let workflow = self.workflow_registry.get(&input.workflow_id)
+            .ok_or_else(|| anyhow::anyhow!("Workflow '{}' not found", input.workflow_id))?;
 
-        skill.execute(
+        workflow.execute(
             &self.app_state,
             input.connection_id.as_deref(),
             &input.variables,
@@ -3308,9 +3308,9 @@ impl DataZenMcpServer {
                 mime_type: Some("application/json".into()),
             },
             Resource {
-                uri: "datazen://skills".into(),
-                name: "Available Skills".into(),
-                description: Some("User-defined skills that can be executed".into()),
+                uri: "datazen://workflows".into(),
+                name: "Available Workflows".into(),
+                description: Some("User-defined workflows that can be executed".into()),
                 mime_type: Some("application/json".into()),
             },
         ]
@@ -3344,9 +3344,9 @@ impl DataZenMcpServer {
                     .map_err(|e| e.to_string())?;
                 Ok(ResourceContents::text(json, uri))
             }
-            "datazen://skills" => {
-                let skills = self.skill_registry.list();
-                let json = serde_json::to_string_pretty(&skills)
+            "datazen://workflows" => {
+                let workflows = self.workflow_registry.list();
+                let json = serde_json::to_string_pretty(&workflows)
                     .map_err(|e| e.to_string())?;
                 Ok(ResourceContents::text(json, uri))
             }
@@ -3474,10 +3474,10 @@ use tracing::{info, error};
 /// 外部客户端通过 HTTP 连接
 pub async fn start_http_mcp_server(
     app_state: Arc<AppState>,
-    skill_registry: Arc<SkillRegistry>,
+    workflow_registry: Arc<WorkflowRegistry>,
     port: u16,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let server = DataZenMcpServer::new(app_state, skill_registry);
+    let server = DataZenMcpServer::new(app_state, workflow_registry);
     let listener = TcpListener::bind(format!("127.0.0.1:{}", port)).await?;
     info!("MCP Server listening on http://127.0.0.1:{}", port);
 
@@ -3495,9 +3495,9 @@ pub async fn start_http_mcp_server(
 /// 通过命令行参数 `--mcp-stdio` 激活
 pub async fn start_stdio_mcp_server(
     app_state: Arc<AppState>,
-    skill_registry: Arc<SkillRegistry>,
+    workflow_registry: Arc<WorkflowRegistry>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let server = DataZenMcpServer::new(app_state, skill_registry);
+    let server = DataZenMcpServer::new(app_state, workflow_registry);
     let transport = (tokio::io::stdin(), tokio::io::stdout());
     let service = server.serve(transport).await?;
     service.waiting().await?;
@@ -3513,10 +3513,10 @@ mod tools;      // #[tool] 定义在 server.rs 中，也可拆到此文件
 mod resources;
 mod prompts;
 pub mod transport;
-pub mod skills;  // Skill 系统
+pub mod workflows;  // Workflow 系统
 
 pub use server::DataZenMcpServer;
-pub use skills::{Skill, SkillRegistry};
+pub use workflows::{Workflow, WorkflowRegistry};
 ```
 
 ### 5.4 MCP Server 启动集成
@@ -3533,10 +3533,10 @@ let mcp_port = app_state.store.get_settings().await
 
 if let Some(port) = mcp_port {
     let state_clone = Arc::new(app_state.clone());
-    let skills_clone = skill_registry.clone();
+    let workflow_registry_clone = workflow_registry.clone();
     tokio::spawn(async move {
         if let Err(e) = mcp::transport::start_http_mcp_server(
-            state_clone, skills_clone, port
+            state_clone, workflow_registry_clone, port
         ).await {
             tracing::error!("MCP Server failed: {}", e);
         }
@@ -3599,29 +3599,29 @@ Settings 页面新增 MCP Server 配置板块：
 
 ---
 
-## 第六部分：Skills 系统 — 用户自定义 AI 工作流
+## 第六部分：Workflows 系统 — 用户自定义 AI 工作流
 
 ### 6.1 概述
 
-Skills 是用户自定义的可复用 AI 工作流，将 Prompt 模板、数据库操作、变量替换组合成一个可调用的单元。Skills 通过 MCP 的 `run_skill` tool 和 DataZen 内置 AI 功能两个入口被调用。
+Workflows 是用户自定义的可复用 AI 工作流，将 Prompt 模板、数据库操作、变量替换组合成一个可调用的单元。Workflows 通过 MCP 的 `run_workflow` tool 和 DataZen 内置 AI 功能两个入口被调用。
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│                 Skill 调用入口                       │
+│                 Workflow 调用入口                       │
 │                                                      │
 │  ┌─────────────────┐    ┌─────────────────────────┐ │
-│  │ MCP run_skill   │    │ DataZen AI Chat         │ │
-│  │ (外部 LLM 调用) │    │ (内置 /skill 命令)     │ │
+│  │ MCP run_workflow   │    │ DataZen AI Chat         │ │
+│  │ (外部 LLM 调用) │    │ (内置 /workflow 命令)     │ │
 │  └────────┬────────┘    └────────────┬────────────┘ │
 │           └──────────────┬───────────┘              │
 │                          ▼                           │
 │              ┌───────────────────────┐               │
-│              │   Skill Registry     │               │
+│              │   Workflow Registry     │               │
 │              │   (运行时加载管理)    │               │
 │              └───────────┬───────────┘               │
 │                          ▼                           │
 │              ┌───────────────────────┐               │
-│              │   Skill Executor     │               │
+│              │   Workflow Executor     │               │
 │              │   1. 变量替换        │               │
 │              │   2. SQL 执行 (可选) │               │
 │              │   3. LLM 调用 (可选) │               │
@@ -3630,22 +3630,22 @@ Skills 是用户自定义的可复用 AI 工作流，将 Prompt 模板、数据�
 └─────────────────────────────────────────────────────┘
 ```
 
-### 6.2 Skill 定义格式
+### 6.2 Workflow 定义格式
 
-Skills 以 YAML 文件定义，存储在用户数据目录下的 `skills/` 文件夹中：
+Workflows 以 YAML 文件定义，存储在用户数据目录下的 `workflows/` 文件夹中：
 
 ```
-~/.datazen/skills/
+~/.datazen/workflows/
 ├── monthly-report.yaml
 ├── find-slow-queries.yaml
 ├── table-health-check.yaml
 └── data-quality-audit.yaml
 ```
 
-#### Skill YAML Schema
+#### Workflow YAML Schema
 
 ```yaml
-# ~/.datazen/skills/monthly-report.yaml
+# ~/.datazen/workflows/monthly-report.yaml
 
 # ─── 元数据 ───
 id: monthly-report
@@ -3723,10 +3723,10 @@ output:
     {{steps.analysis.result}}
 ```
 
-#### 更多 Skill 示例
+#### 更多 Workflow 示例
 
 ```yaml
-# ~/.datazen/skills/find-slow-queries.yaml
+# ~/.datazen/workflows/find-slow-queries.yaml
 id: find-slow-queries
 name: 慢查询发现
 description: 分析 pg_stat_statements 找出慢查询并给出优化建议
@@ -3757,7 +3757,7 @@ output:
 ```
 
 ```yaml
-# ~/.datazen/skills/table-health-check.yaml
+# ~/.datazen/workflows/table-health-check.yaml
 id: table-health-check
 name: 表健康检查
 description: 检查表的数据质量和健康状况
@@ -3798,9 +3798,9 @@ output:
   format: markdown
 ```
 
-### 6.3 Skill 后端实现
+### 6.3 Workflow 后端实现
 
-#### `src-tauri/src/mcp/skills.rs`
+#### `src-tauri/src/mcp/workflows.rs`
 
 ```rust
 use crate::ai::{AiProviderConfig, ChatMessage, CompletionRequest, MessageRole};
@@ -3812,22 +3812,22 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{info, warn};
 
-// ─── Skill 定义类型 ───
+// ─── Workflow 定义类型 ───
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SkillDefinition {
+pub struct WorkflowDefinition {
     pub id: String,
     pub name: String,
     pub description: String,
     pub version: Option<String>,
     pub author: Option<String>,
-    pub variables: Vec<SkillVariable>,
-    pub steps: Vec<SkillStep>,
-    pub output: Option<SkillOutput>,
+    pub variables: Vec<WorkflowVariable>,
+    pub steps: Vec<WorkflowStep>,
+    pub output: Option<WorkflowOutput>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SkillVariable {
+pub struct WorkflowVariable {
     pub name: String,
     #[serde(rename = "type")]
     pub var_type: String,       // "string" | "number" | "boolean"
@@ -3838,7 +3838,7 @@ pub struct SkillVariable {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
-pub enum SkillStep {
+pub enum WorkflowStep {
     #[serde(rename = "query")]
     Query {
         id: String,
@@ -3852,38 +3852,38 @@ pub enum SkillStep {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SkillOutput {
+pub struct WorkflowOutput {
     pub format: String,        // "markdown" | "json" | "text"
     pub template: Option<String>,
 }
 
-// ─── Skill Registry ───
+// ─── Workflow Registry ───
 
-pub struct SkillRegistry {
-    skills: RwLock<HashMap<String, SkillDefinition>>,
-    skills_dir: PathBuf,
+pub struct WorkflowRegistry {
+    workflows: RwLock<HashMap<String, WorkflowDefinition>>,
+    workflows_dir: PathBuf,
 }
 
-impl SkillRegistry {
-    pub fn new(skills_dir: PathBuf) -> Self {
+impl WorkflowRegistry {
+    pub fn new(workflows_dir: PathBuf) -> Self {
         Self {
-            skills: RwLock::new(HashMap::new()),
-            skills_dir,
+            workflows: RwLock::new(HashMap::new()),
+            workflows_dir,
         }
     }
 
-    /// 从文件系统加载所有 skill 定义
+    /// 从文件系统加载所有 workflow 定义
     pub async fn load_all(&self) -> Result<(), String> {
-        if !self.skills_dir.exists() {
-            std::fs::create_dir_all(&self.skills_dir)
+        if !self.workflows_dir.exists() {
+            std::fs::create_dir_all(&self.workflows_dir)
                 .map_err(|e| e.to_string())?;
             return Ok(());
         }
 
-        let mut skills = self.skills.write().await;
-        skills.clear();
+        let mut workflows = self.workflows.write().await;
+        workflows.clear();
 
-        let entries = std::fs::read_dir(&self.skills_dir)
+        let entries = std::fs::read_dir(&self.workflows_dir)
             .map_err(|e| e.to_string())?;
 
         for entry in entries {
@@ -3891,35 +3891,35 @@ impl SkillRegistry {
             let path = entry.path();
 
             if path.extension().map_or(false, |ext| ext == "yaml" || ext == "yml") {
-                match self.load_skill_file(&path) {
-                    Ok(skill) => {
-                        info!("Loaded skill: {} ({})", skill.name, skill.id);
-                        skills.insert(skill.id.clone(), skill);
+                match self.load_workflow_file(&path) {
+                    Ok(workflow) => {
+                        info!("Loaded workflow: {} ({})", workflow.name, workflow.id);
+                        workflows.insert(workflow.id.clone(), workflow);
                     }
                     Err(e) => {
-                        warn!("Failed to load skill {:?}: {}", path, e);
+                        warn!("Failed to load workflow {:?}: {}", path, e);
                     }
                 }
             }
         }
 
-        info!("Loaded {} skills", skills.len());
+        info!("Loaded {} workflows", workflows.len());
         Ok(())
     }
 
-    fn load_skill_file(&self, path: &PathBuf) -> Result<SkillDefinition, String> {
+    fn load_workflow_file(&self, path: &PathBuf) -> Result<WorkflowDefinition, String> {
         let content = std::fs::read_to_string(path)
             .map_err(|e| format!("Failed to read {:?}: {}", path, e))?;
-        serde_yaml::from_str::<SkillDefinition>(&content)
+        serde_yaml::from_str::<WorkflowDefinition>(&content)
             .map_err(|e| format!("Failed to parse {:?}: {}", path, e))
     }
 
-    pub async fn get(&self, id: &str) -> Option<SkillDefinition> {
-        self.skills.read().await.get(id).cloned()
+    pub async fn get(&self, id: &str) -> Option<WorkflowDefinition> {
+        self.workflows.read().await.get(id).cloned()
     }
 
-    pub async fn list(&self) -> Vec<SkillListItem> {
-        self.skills.read().await.values().map(|s| SkillListItem {
+    pub async fn list(&self) -> Vec<WorkflowListItem> {
+        self.workflows.read().await.values().map(|s| WorkflowListItem {
             id: s.id.clone(),
             name: s.name.clone(),
             description: s.description.clone(),
@@ -3927,60 +3927,60 @@ impl SkillRegistry {
         }).collect()
     }
 
-    /// 保存用户创建的 skill
-    pub async fn save_skill(&self, skill: &SkillDefinition) -> Result<(), String> {
-        let yaml = serde_yaml::to_string(skill)
+    /// 保存用户创建的 workflow
+    pub async fn save_workflow(&self, workflow: &WorkflowDefinition) -> Result<(), String> {
+        let yaml = serde_yaml::to_string(workflow)
             .map_err(|e| e.to_string())?;
-        let path = self.skills_dir.join(format!("{}.yaml", skill.id));
+        let path = self.workflows_dir.join(format!("{}.yaml", workflow.id));
         std::fs::write(&path, yaml)
             .map_err(|e| e.to_string())?;
-        self.skills.write().await.insert(skill.id.clone(), skill.clone());
+        self.workflows.write().await.insert(workflow.id.clone(), workflow.clone());
         Ok(())
     }
 
-    /// 删除 skill
-    pub async fn delete_skill(&self, id: &str) -> Result<(), String> {
-        let path = self.skills_dir.join(format!("{}.yaml", id));
+    /// 删除 workflow
+    pub async fn delete_workflow(&self, id: &str) -> Result<(), String> {
+        let path = self.workflows_dir.join(format!("{}.yaml", id));
         if path.exists() {
             std::fs::remove_file(&path).map_err(|e| e.to_string())?;
         }
-        self.skills.write().await.remove(id);
+        self.workflows.write().await.remove(id);
         Ok(())
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct SkillListItem {
+pub struct WorkflowListItem {
     pub id: String,
     pub name: String,
     pub description: String,
-    pub variables: Vec<SkillVariable>,
+    pub variables: Vec<WorkflowVariable>,
 }
 
-// ─── Skill 执行引擎 ───
+// ─── Workflow 执行引擎 ───
 
-pub struct SkillExecutor;
+pub struct WorkflowExecutor;
 
-impl SkillExecutor {
-    /// 执行一个 Skill
+impl WorkflowExecutor {
+    /// 执行一个 Workflow
     pub async fn execute(
-        skill: &SkillDefinition,
+        workflow: &WorkflowDefinition,
         app_state: &AppState,
         connection_id: Option<&str>,
         variables: &serde_json::Value,
     ) -> Result<String, anyhow::Error> {
-        let mut context = SkillContext::new(variables);
+        let mut context = WorkflowContext::new(variables);
 
         // 填充内置变量
         context.set_builtin_variables();
 
         // 按顺序执行步骤
-        for step in &skill.steps {
+        for step in &workflow.steps {
             match step {
-                SkillStep::Query { id, sql } => {
+                WorkflowStep::Query { id, sql } => {
                     let conn_id = connection_id
-                        .ok_or_else(|| anyhow::anyhow!("Skill requires a database connection"))?;
+                        .ok_or_else(|| anyhow::anyhow!("Workflow requires a database connection"))?;
 
                     let resolved_sql = context.resolve_template(sql)?;
                     let (driver, handle) = app_state.connection_manager
@@ -3995,7 +3995,7 @@ impl SkillExecutor {
                     context.set_step_result(id, &result_str);
                 }
 
-                SkillStep::Ai { id, prompt } => {
+                WorkflowStep::Ai { id, prompt } => {
                     let resolved_prompt = context.resolve_template(prompt)?;
 
                     // 使用 AI Provider 执行
@@ -4028,7 +4028,7 @@ impl SkillExecutor {
         }
 
         // 格式化输出
-        if let Some(ref output) = skill.output {
+        if let Some(ref output) = workflow.output {
             if let Some(ref template) = output.template {
                 context.resolve_template(template)
                     .map_err(|e| anyhow::anyhow!(e))
@@ -4041,13 +4041,13 @@ impl SkillExecutor {
     }
 }
 
-/// Skill 执行上下文：变量替换 + 步骤结果
-struct SkillContext {
+/// Workflow 执行上下文：变量替换 + 步骤结果
+struct WorkflowContext {
     variables: HashMap<String, String>,
     step_results: HashMap<String, String>,
 }
 
-impl SkillContext {
+impl WorkflowContext {
     fn new(input: &serde_json::Value) -> Self {
         let mut variables = HashMap::new();
         if let Some(obj) = input.as_object() {
@@ -4113,165 +4113,165 @@ impl SkillContext {
 }
 ```
 
-### 6.4 Skill IPC 命令
+### 6.4 Workflow IPC 命令
 
 ```rust
 // src-tauri/src/commands/ai.rs 中新增
 
 #[tauri::command]
-pub async fn skill_list(
+pub async fn workflow_list(
     state: State<'_, AppState>,
-) -> Result<Vec<SkillListItem>, String> {
-    Ok(state.skill_registry.list().await)
+) -> Result<Vec<WorkflowListItem>, String> {
+    Ok(state.workflow_registry.list().await)
 }
 
 #[tauri::command]
-pub async fn skill_execute(
+pub async fn workflow_execute(
     state: State<'_, AppState>,
     app_handle: AppHandle,
-    skill_id: String,
+    workflow_id: String,
     variables: serde_json::Value,
     connection_id: Option<String>,
 ) -> Result<String, String> {
-    let skill = state.skill_registry.get(&skill_id).await
-        .ok_or_else(|| format!("Skill '{}' not found", skill_id))?;
+    let workflow = state.workflow_registry.get(&workflow_id).await
+        .ok_or_else(|| format!("Workflow '{}' not found", workflow_id))?;
 
-    SkillExecutor::execute(
-        &skill,
+    WorkflowExecutor::execute(
+        &workflow,
         &state,
         connection_id.as_deref(),
         &variables,
     ).await
-    .map_err(|e| log_err("skill_execute", &e))
+    .map_err(|e| log_err("workflow_execute", &e))
 }
 
 #[tauri::command]
-pub async fn skill_save(
+pub async fn workflow_save(
     state: State<'_, AppState>,
-    skill: SkillDefinition,
+    workflow: WorkflowDefinition,
 ) -> Result<(), String> {
-    state.skill_registry.save_skill(&skill).await
+    state.workflow_registry.save_workflow(&workflow).await
 }
 
 #[tauri::command]
-pub async fn skill_delete(
+pub async fn workflow_delete(
     state: State<'_, AppState>,
-    skill_id: String,
+    workflow_id: String,
 ) -> Result<(), String> {
-    state.skill_registry.delete_skill(&skill_id).await
+    state.workflow_registry.delete_workflow(&workflow_id).await
 }
 
 #[tauri::command]
-pub async fn skill_reload(
+pub async fn workflow_reload(
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    state.skill_registry.load_all().await
+    state.workflow_registry.load_all().await
 }
 ```
 
-### 6.5 前端 Skills 管理 UI
+### 6.5 前端 Workflows 管理 UI
 
 #### 命令封装 (`src/commands/ai.ts` 扩展)
 
 ```typescript
 // 追加到 aiCommands 对象
-skillList: () =>
-  invoke<SkillListItem[]>('skill_list'),
+workflowList: () =>
+  invoke<WorkflowListItem[]>('workflow_list'),
 
-skillExecute: (params: {
-  skillId: string;
+workflowExecute: (params: {
+  workflowId: string;
   variables: Record<string, unknown>;
   connectionId?: string;
 }) =>
-  invoke<string>('skill_execute', params),
+  invoke<string>('workflow_execute', params),
 
-skillSave: (skill: SkillDefinition) =>
-  invoke<void>('skill_save', { skill }),
+workflowSave: (workflow: WorkflowDefinition) =>
+  invoke<void>('workflow_save', { workflow }),
 
-skillDelete: (skillId: string) =>
-  invoke<void>('skill_delete', { skillId }),
+workflowDelete: (workflowId: string) =>
+  invoke<void>('workflow_delete', { workflowId }),
 
-skillReload: () =>
-  invoke<void>('skill_reload'),
+workflowReload: () =>
+  invoke<void>('workflow_reload'),
 ```
 
-#### Skills Store 扩展 (`src/stores/aiStore.ts`)
+#### Workflows Store 扩展 (`src/stores/aiStore.ts`)
 
 ```typescript
-// aiStore 中新增 Skill 相关状态
+// aiStore 中新增 Workflow 相关状态
 interface AiStore {
   // ... 现有字段 ...
 
-  // Skills
-  skills: SkillListItem[];
-  skillsLoading: boolean;
-  skillExecutionResult: string | null;
-  isExecutingSkill: boolean;
+  // Workflows
+  workflows: WorkflowListItem[];
+  workflowsLoading: boolean;
+  workflowExecutionResult: string | null;
+  isExecutingWorkflow: boolean;
 
-  loadSkills: () => Promise<void>;
-  executeSkill: (params: {
-    skillId: string;
+  loadWorkflows: () => Promise<void>;
+  executeWorkflow: (params: {
+    workflowId: string;
     variables: Record<string, unknown>;
     connectionId?: string;
   }) => Promise<void>;
-  clearSkillResult: () => void;
+  clearWorkflowResult: () => void;
 }
 ```
 
-#### Skills Panel 组件
+#### Workflows Panel 组件
 
-在 AI Chat 侧边栏中集成 Skill 快速执行面板：
+在 AI Chat 侧边栏中集成 Workflow 快速执行面板：
 
 ```tsx
-// src/components/ai/SkillsPanel.tsx
+// src/components/ai/WorkflowPanel.tsx
 
-export function SkillsPanel({ connectionId }: { connectionId: string }) {
+export function WorkflowPanel({ connectionId }: { connectionId: string }) {
   const { t } = useI18n();
-  const skills = useAiStore((s) => s.skills);
-  const loadSkills = useAiStore((s) => s.loadSkills);
-  const executeSkill = useAiStore((s) => s.executeSkill);
-  const result = useAiStore((s) => s.skillExecutionResult);
-  const isExecuting = useAiStore((s) => s.isExecutingSkill);
-  const [selectedSkill, setSelectedSkill] = useState<SkillListItem | null>(null);
+  const workflows = useAiStore((s) => s.workflows);
+  const loadWorkflows = useAiStore((s) => s.loadWorkflows);
+  const executeWorkflow = useAiStore((s) => s.executeWorkflow);
+  const result = useAiStore((s) => s.workflowExecutionResult);
+  const isExecuting = useAiStore((s) => s.isExecutingWorkflow);
+  const [selectedWorkflow, setSelectedWorkflow] = useState<WorkflowListItem | null>(null);
   const [variables, setVariables] = useState<Record<string, string>>({});
 
-  useEffect(() => { loadSkills(); }, []);
+  useEffect(() => { loadWorkflows(); }, []);
 
   return (
     <div className="space-y-3">
       <h3 className="text-sm font-medium flex items-center gap-2">
         <WandIcon className="w-4 h-4" />
-        {t('ai.skills.title')}
+        {t('ai.workflows.title')}
       </h3>
 
-      {/* Skill 列表 */}
+      {/* Workflow 列表 */}
       <div className="space-y-1">
-        {skills.map((skill) => (
+        {workflows.map((workflow) => (
           <button
-            key={skill.id}
+            key={workflow.id}
             className="w-full text-left px-3 py-2 rounded-md hover:bg-muted/50 text-sm"
             onClick={() => {
-              setSelectedSkill(skill);
+              setSelectedWorkflow(workflow);
               // 初始化默认值
               const defaults: Record<string, string> = {};
-              skill.variables.forEach((v) => {
+              workflow.variables.forEach((v) => {
                 if (v.default) defaults[v.name] = String(v.default);
               });
               setVariables(defaults);
             }}
           >
-            <div className="font-medium">{skill.name}</div>
-            <div className="text-xs text-muted-foreground">{skill.description}</div>
+            <div className="font-medium">{workflow.name}</div>
+            <div className="text-xs text-muted-foreground">{workflow.description}</div>
           </button>
         ))}
       </div>
 
-      {/* 选中 Skill 的变量输入 */}
-      {selectedSkill && (
+      {/* 选中 Workflow 的变量输入 */}
+      {selectedWorkflow && (
         <div className="p-3 rounded-md border border-border space-y-2">
-          <h4 className="text-sm font-medium">{selectedSkill.name}</h4>
+          <h4 className="text-sm font-medium">{selectedWorkflow.name}</h4>
 
-          {selectedSkill.variables.map((v) => (
+          {selectedWorkflow.variables.map((v) => (
             <div key={v.name}>
               <label className="text-xs text-muted-foreground">{v.description}</label>
               <Input
@@ -4284,14 +4284,14 @@ export function SkillsPanel({ connectionId }: { connectionId: string }) {
 
           <Button
             size="sm"
-            onClick={() => executeSkill({
-              skillId: selectedSkill.id,
+            onClick={() => executeWorkflow({
+              workflowId: selectedWorkflow.id,
               variables,
               connectionId,
             })}
             disabled={isExecuting}
           >
-            {isExecuting ? <LoadingSpinner /> : t('ai.skills.run')}
+            {isExecuting ? <LoadingSpinner /> : t('ai.workflows.run')}
           </Button>
         </div>
       )}
@@ -4307,9 +4307,9 @@ export function SkillsPanel({ connectionId }: { connectionId: string }) {
 }
 ```
 
-#### AI Chat 中的 `/skill` 命令
+#### AI Chat 中的 `/workflow` 命令
 
-在 `AiChatPanel` 中支持 `/skill` 快捷命令：
+在 `AiChatPanel` 中支持 `/workflow` 快捷命令：
 
 ```typescript
 // AiChatPanel.tsx 中的命令解析
@@ -4319,8 +4319,8 @@ const parseSlashCommand = (input: string): SlashCommand | null => {
   if (!match) return null;
 
   switch (match[1]) {
-    case 'skill':
-      return { type: 'skill', args: match[2] };
+    case 'workflow':
+      return { type: 'workflow', args: match[2] };
     case 'explain':
       return { type: 'explain', args: match[2] };
     case 'optimize':
@@ -4330,40 +4330,40 @@ const parseSlashCommand = (input: string): SlashCommand | null => {
   }
 };
 
-// 处理 /skill 命令
-// 用法: /skill monthly-report table_name=users month=2026-07
-const handleSkillCommand = async (args: string) => {
+// 处理 /workflow 命令
+// 用法: /workflow monthly-report table_name=users month=2026-07
+const handleWorkflowCommand = async (args: string) => {
   const parts = args.split(/\s+/);
-  const skillId = parts[0];
+  const workflowId = parts[0];
   const variables: Record<string, string> = {};
   parts.slice(1).forEach((part) => {
     const [key, value] = part.split('=');
     if (key && value) variables[key] = value;
   });
 
-  await executeSkill({ skillId, variables, connectionId });
+  await executeWorkflow({ workflowId, variables, connectionId });
 };
 ```
 
-### 6.6 Skill 与 MCP Prompt 的关系
+### 6.6 Workflow 与 MCP Prompt 的关系
 
-Skills 和 MCP Prompts 互相补充：
+Workflows 和 MCP Prompts 互相补充：
 
-| 特性 | MCP Prompts | DataZen Skills |
+| 特性 | MCP Prompts | DataZen Workflows |
 |------|------------|----------------|
 | 定义方式 | 代码中硬编码 | 用户自定义 YAML |
 | 多步骤 | 单个 prompt | 多步骤工作流 |
 | SQL 执行 | 通过 tool 调用 | 内置 query step |
 | AI 调用 | 客户端控制 | 自动调用配置的 LLM |
 | 变量 | 简单参数 | 类型化变量 + 默认值 + 步骤结果引用 |
-| 调用方式 | MCP `get_prompt` | MCP `run_skill` tool / UI / Chat 命令 |
+| 调用方式 | MCP `get_prompt` | MCP `run_workflow` tool / UI / Chat 命令 |
 
-### 6.7 内置 Skills
+### 6.7 内置 Workflows
 
-DataZen 预装一组开箱即用的 Skills：
+DataZen 预装一组开箱即用的 Workflows：
 
 ```
-src-tauri/resources/builtin-skills/
+src-tauri/resources/builtin-workflows/
 ├── table-summary.yaml          # 表数据概览
 ├── find-duplicates.yaml        # 查找重复数据
 ├── column-statistics.yaml      # 列统计分析
@@ -4372,7 +4372,7 @@ src-tauri/resources/builtin-skills/
 └── data-dictionary.yaml        # 数据字典生成
 ```
 
-内置 Skills 在首次启动时复制到用户的 `~/.datazen/skills/` 目录，用户可自由修改。
+内置 Workflows 在首次启动时复制到用户的 `~/.datazen/workflows/` 目录，用户可自由修改。
 
 ---
 
@@ -4547,7 +4547,7 @@ impl McpClientManager {
 | **Phase 2** | EXPLAIN 可视化 + AI 解读 | 1 周 | Phase 0 |
 | **Phase 3** | AI Chat 侧边栏助手 | 2 周 | Phase 0 |
 | **Phase 4** | MCP Server 基础（tools + resources） | 1-2 周 | Phase 0 |
-| **Phase 5** | Skills 系统（定义 + 执行 + UI） | 2 周 | Phase 4 |
+| **Phase 5** | Workflows 系统（定义 + 执行 + UI） | 2 周 | Phase 4 |
 | **Phase 6** | MCP Prompts + MCP Client（连接外部 Server） | 1-2 周 | Phase 4 |
 | **Phase 7** | 智能筛选 + SQL 补全增强 | 1 周 | Phase 0 |
 | **Phase 8** | Schema 文档 + 数据导入 + 其他增值功能 | 2-3 周 | Phase 0-1 |
@@ -4564,7 +4564,7 @@ impl McpClientManager {
 | 传输安全 | 所有 API 请求通过 HTTPS（Ollama 除外，本地通信） |
 | 日志脱敏 | tracing 日志中不记录 API Key、不记录 SQL 中的具体数据值 |
 | MCP Server 访问控制 | 默认仅监听 127.0.0.1，可配置白名单 |
-| Skill SQL 注入 | 模板变量替换不直接拼接用户输入到 SQL，使用参数化查询 |
+| Workflow SQL 注入 | 模板变量替换不直接拼接用户输入到 SQL，使用参数化查询 |
 | 外部 MCP Server | 用户显式配置，显示工具列表供确认 |
 
 ## 竞品对比
@@ -4581,7 +4581,7 @@ impl McpClientManager {
 | 插件化 Provider | ❌ | ❌ | ❌ | ✅ register_ai_provider! |
 | **MCP Server** | ❌ | ❌ | ❌ | **✅ (独有)** |
 | **MCP Client** | ❌ | ❌ | ❌ | **✅ (独有)** |
-| **Skills 系统** | ❌ | ❌ | ❌ | **✅ (独有)** |
+| **Workflows 系统** | ❌ | ❌ | ❌ | **✅ (独有)** |
 
 ## 开放问题
 
@@ -4592,6 +4592,6 @@ impl McpClientManager {
 5. **Ollama 模型列表动态获取** — 需在 validate_config 阶段调用 `/api/tags` 获取并缓存
 6. **错误诊断 JSON 解析失败** — LLM 不保证返回合法 JSON，需要 fallback 策略（正则提取或重试）
 7. **MCP Server 认证** — 是否需要为 MCP Server 添加 Token 认证？初期仅本地访问可不加
-8. **Skill 安全沙箱** — 用户自定义 Skill 的 SQL 是否需要权限控制（如禁止 DROP/DELETE）？
+8. **Workflow 安全沙箱** — 用户自定义 Workflow 的 SQL 是否需要权限控制（如禁止 DROP/DELETE）？
 9. **MCP 2026-07-28 无状态** — 新版 MCP 无 session，每个请求自包含，需确认 rmcp 3.x 的正确用法
-10. **Skill 编辑器** — 是否在 UI 中提供可视化 Skill 编辑器，还是仅支持 YAML 文件编辑？
+10. **Workflow 编辑器** — 是否在 UI 中提供可视化 Workflow 编辑器，还是仅支持 YAML 文件编辑？
