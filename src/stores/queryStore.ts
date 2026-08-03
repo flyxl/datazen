@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { queryCommands } from '../commands/query';
 import { t } from '../locales/t';
 import type { FavoriteQuery, QueryHistoryEntry, StatementResult } from '../types';
+import type { ChartConfig } from '../types/chart';
 
 export interface QueryTab {
   id: string;
@@ -12,6 +13,8 @@ export interface QueryTab {
   error: string | null;
   running: boolean;
   executionTimeMs: number | null;
+  chartConfig?: ChartConfig;
+  resultViewMode?: 'table' | 'chart';
 }
 
 function extractError(e: unknown): string {
@@ -62,6 +65,8 @@ interface QueryStore {
   updateResultCell: (tabId: string, resultIdx: number, row: number, col: string, value: unknown) => void;
   reset: () => void;
   setResultDetailRow: (index: number | null) => void;
+  setChartConfig: (tabId: string, config: ChartConfig) => void;
+  setResultViewMode: (tabId: string, mode: 'table' | 'chart') => void;
 }
 
 let tabCounter = 0;
@@ -272,4 +277,18 @@ export const useQueryStore = create<QueryStore>((set, get) => ({
       favoritesVisible: false,
     });
   },
+
+  setChartConfig: (tabId, config) =>
+    set((s) => ({
+      tabs: s.tabs.map((tab) =>
+        tab.id === tabId ? { ...tab, chartConfig: config } : tab,
+      ),
+    })),
+
+  setResultViewMode: (tabId, mode) =>
+    set((s) => ({
+      tabs: s.tabs.map((tab) =>
+        tab.id === tabId ? { ...tab, resultViewMode: mode } : tab,
+      ),
+    })),
 }));

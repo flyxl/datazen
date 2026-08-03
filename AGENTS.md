@@ -20,13 +20,14 @@ datazen/
 ├── src/                         # React 前端源码
 │   ├── components/              # 通用 UI 组件
 │   │   ├── ai/                  # AI 功能组件（Nl2SqlPanel, DiagnosisPanel, ExplainPanel, AiChatPanel, NlFilterInput, SkillsPanel）
+│   │   ├── chart/               # 图表可视化组件（ChartView, ChartToolbar, AxisConfigurator, ChartCanvas, renderers/）
 │   │   ├── connection/          # 连接表单组件
 │   │   ├── DataTable/           # 数据表格组件
 │   │   └── ui/                  # 基础 UI 组件（Button, Dialog, Input, Select 等）
 │   ├── windows/                 # 各窗口页面（main, connection, settings, backup, data-sync, new-connection）
 │   ├── stores/                  # Zustand 状态（aiStore, connectionStore, queryStore, schemaStore 等）
 │   ├── commands/                # Tauri IPC 命令封装（ai.ts, connection.ts, query.ts 等）
-│   ├── lib/                     # 工具库（databaseTypes, sqlDialects, connectionViews, windowManager, extractSql）
+│   ├── lib/                     # 工具库（databaseTypes, sqlDialects, connectionViews, windowManager, extractSql, chart/）
 │   ├── plugins/generated.ts     # 自动生成的插件注册（勿手动编辑）
 │   ├── plugin-sdk/              # 插件前端 SDK
 │   ├── hooks/                   # React hooks（useI18n, useTheme, usePlatform 等）
@@ -146,6 +147,51 @@ DataZen 同时作为 **MCP Server** 和 **MCP Client**：
   - 模板引擎支持深层 JSON 路径（`steps.<id>.rows.0.field`）和通配符（`steps.<id>.rows.*.field`）
   - 错误处理策略：`abort`、`skip`、`fallback`
   - 执行历史持久化（`src-tauri/src/mcp/skill_history.rs`）
+
+### 图表可视化
+
+查询结果支持表格/图表双视图切换，基于 **Recharts** 实现：
+
+```
+QueryPanel
+├── [📋 表格] [📈 图表]  ← SegmentedControl 视图切换
+├── 表格视图 — ResultTable（DataTable）
+└── 图表视图 — ChartView
+    ├── ChartToolbar           — 图表类型 + 选项 + NL输入 + 导出
+    ├── AxisConfigurator       — 轴/字段/聚合/排序/配色配置
+    └── ChartCanvas            — 图表渲染（5种类型）
+        ├── BarChartRenderer
+        ├── LineChartRenderer
+        ├── PieChartRenderer
+        ├── ScatterChartRenderer
+        └── AreaChartRenderer
+```
+
+**数据流**：
+1. `inferAllFields()` — 从 `StatementResult` 推断字段类型（numeric/datetime/categorical）
+2. `recommendChart()` — 基于字段类型规则推荐图表类型和轴配置
+3. `transformData()` — 将 `StatementResult` + `ChartConfig` 转换为 Recharts 数据点
+4. 配置持久化在 `queryStore.QueryTab.chartConfig`
+
+**核心模块**（`src/lib/chart/`）：
+- `fieldInference.ts` — 字段类型推断
+- `recommend.ts` — 智能推荐引擎
+- `transform.ts` — 数据转换 + 聚合 + 排序
+- `colors.ts` — 5 套配色方案
+- `format.ts` — 数值千分位格式化
+- `nlConfig.ts` — 自然语言图表配置解析
+- `export.ts` — PNG/SVG 导出
+
+**类型**：`src/types/chart.ts` — `ChartType`, `ChartConfig`, `ChartField`, `ChartDataPoint`
+
+**功能**：
+- 5 种图表类型（柱/线/饼/散/面积）+ 智能推荐
+- 多 Y 轴支持 + 分组 + 聚合（sum/avg/count/min/max）
+- 图表↔表格联动（点击数据点跳转表格行）
+- NL2SQL「应用并图表化」（生成 SQL → 自动执行 → 切换图表）
+- 自然语言调整配置（"换成饼图"、"按销量排序"）
+- 导出 PNG/SVG、配色切换、数值标签
+- 大数据集采样（>1000 行自动截断）
 
 ### 前端约定
 

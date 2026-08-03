@@ -694,7 +694,83 @@ function SchemaTree() {
 }
 ```
 
-## 6. 窗口路由与多窗口管理
+## 6. 图表可视化系统
+
+### 6.1 架构总览
+
+查询结果支持表格/图表双视图切换，基于 **Recharts** 实现。核心设计原则：
+
+- **零配置启动**：通过字段类型推断 + 规则引擎自动推荐最佳图表
+- **配置持久化**：图表配置绑定到 `queryStore.QueryTab`，切换标签页/重新执行不丢失
+- **渐进增强**：先看到合理的默认图表，再通过 UI 或自然语言微调
+
+### 6.2 组件结构
+
+```
+QueryPanel
+├── [📋 表格] [📈 图表]       ← 视图切换按钮
+├── ResultTable               ← 表格视图
+└── ChartView                 ← 图表视图（入口组件）
+    ├── ChartToolbar           — 图表类型选择 + 选项开关 + NL输入框 + 导出
+    ├── AxisConfigurator       — 轴映射 + 字段列表 + 聚合/排序/配色
+    └── ChartCanvas            — 渲染层（absolute定位，解决ResponsiveContainer高度问题）
+        ├── BarChartRenderer
+        ├── LineChartRenderer
+        ├── PieChartRenderer
+        ├── ScatterChartRenderer
+        └── AreaChartRenderer
+```
+
+### 6.3 数据流
+
+```
+StatementResult
+  → inferAllFields()       字段类型推断（numeric/datetime/categorical）
+  → recommendChart()       规则引擎推荐图表类型 + 轴映射
+  → ChartConfig            用户可覆盖的配置对象
+  → transformData()        数据转换 + 聚合 + 排序 → ChartDataPoint[]
+  → Renderer               Recharts 渲染
+```
+
+### 6.4 核心模块（src/lib/chart/）
+
+| 模块 | 职责 |
+|------|------|
+| `fieldInference.ts` | 基于列名和采样值推断字段类型 |
+| `recommend.ts` | 基于字段组合的规则引擎，推荐图表类型和轴配置 |
+| `transform.ts` | 直接映射 / 聚合模式数据转换，支持分组和排序 |
+| `colors.ts` | 5 套内置配色方案（default/warm/cool/neon/pastel） |
+| `format.ts` | 千分位数值格式化、百分比格式化、轴刻度格式化 |
+| `nlConfig.ts` | 自然语言解析图表配置指令（"换成饼图"、"按销量排序"） |
+| `export.ts` | PNG（html-to-image）/ SVG 导出 |
+
+### 6.5 功能特性
+
+- **5 种图表类型**：柱状图、折线图、饼图、散点图、面积图
+- **智能推荐**：根据字段类型自动选择最佳图表
+- **多 Y 轴 + 分组**：支持多数值列同时展示、按分类列分组
+- **5 种聚合**：sum / avg / count / min / max
+- **图表↔表格联动**：点击数据点切换到表格并高亮对应行
+- **NL2SQL 自动图表化**：「应用并图表化」按钮一键执行 SQL 并展示图表
+- **自然语言配置调整**：通过文本输入修改图表类型、排序、聚合等
+- **导出**：PNG / SVG 格式
+- **大数据集保护**：>1000 行自动截断采样
+
+### 6.6 配置持久化
+
+图表配置通过 `queryStore` 中的 `QueryTab` 进行持久化：
+
+```typescript
+interface QueryTab {
+  // ...existing fields...
+  chartConfig?: ChartConfig;
+  resultViewMode?: 'table' | 'chart';
+}
+```
+
+通过 `setChartConfig(tabId, config)` 和 `setResultViewMode(tabId, mode)` 更新。
+
+## 7. 窗口路由与多窗口管理
 
 ### 10.1 窗口入口分发
 
@@ -753,7 +829,7 @@ export async function openQueryWindow(connectionId: string, database: string) {
 }
 ```
 
-## 7. 设计稿还原规范
+## 8. 设计稿还原规范
 
 ### 11.1 布局尺寸对照
 
@@ -798,7 +874,7 @@ export async function openQueryWindow(connectionId: string, database: string) {
 | 表头 | Inter 12px 600 | `text-xs font-medium text-slate-400` |
 | 标签文字 | Inter 11px 600 spacing | `text-[11px] font-semibold tracking-wider uppercase text-slate-400` |
 
-## 8. 测试策略
+## 9. 测试策略
 
 | 层级 | 工具 | 覆盖范围 |
 |------|------|----------|
@@ -808,7 +884,7 @@ export async function openQueryWindow(connectionId: string, database: string) {
 | 性能测试 | WebdriverIO + Chrome DevTools | 10 万行滚动帧率, 内存占用 |
 | 快照测试 | Storybook | 关键 UI 组件视觉回归 |
 
-## 9. 开发阶段规划
+## 10. 开发阶段规划
 
 | 阶段 | 内容 | 输出 |
 |------|------|------|
@@ -818,3 +894,4 @@ export async function openQueryWindow(connectionId: string, database: string) {
 | **Phase 4: 数据编辑** | 行内编辑；新增/删除行；筛选/排序；数据导出 | 完整数据编辑功能 |
 | **Phase 5: 查询窗口** | CodeMirror 编辑器集成；查询执行/取消；结果展示；查询历史/收藏；执行计划 | 查询功能完整 |
 | **Phase 6: 打磨** | 主题切换；快捷键；错误处理；性能优化；窗口间通信 | 生产就绪 |
+| **Phase 7: 图表可视化** | Recharts 集成；5种图表类型；智能推荐；轴配置；NL调整；导出PNG/SVG | 查询结果可视化 |
