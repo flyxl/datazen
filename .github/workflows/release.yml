@@ -124,6 +124,20 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install
 
+      - name: Clone plugin repositories for Cargo resolution
+        shell: bash
+        run: |
+          mkdir -p .plugins
+          for repo in \
+            "kiwi https://github.com/flyxl/datazen-plugin-kiwi.git" \
+            "olap https://github.com/flyxl/datazen-plugin-olap.git"; do
+            name="${repo%% *}"
+            url="${repo#* }"
+            if [ ! -d ".plugins/$name/.git" ]; then
+              git clone --depth 1 "$url" ".plugins/$name"
+            fi
+          done
+
       - name: Build Tauri app
         shell: bash
         run: |
