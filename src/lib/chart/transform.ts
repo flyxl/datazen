@@ -1,19 +1,28 @@
 import type { StatementResult } from '../../types';
 import type { AggregationType, ChartConfig, ChartDataPoint } from '../../types/chart';
 
+export interface TransformResult {
+  data: ChartDataPoint[];
+  seriesKeys: string[];
+}
+
 export function transformData(
   result: StatementResult,
   config: ChartConfig,
-): ChartDataPoint[] {
+): TransformResult {
   const records = result.rows.map((row) =>
     Object.fromEntries(result.columns.map((col, i) => [col.name, row[i]])),
   );
 
-  const raw = config.aggregation === 'none'
+  const flat = config.aggregation === 'none'
     ? transformDirect(records, config)
     : transformAggregated(records, config);
 
-  return sortData(raw, config);
+  if (config.groupBy) {
+    return pivotByGroup(flat, config);
+  }
+
+  return { data: sortData(flat, config), seriesKeys: config.yAxes };
 }
 
 function transformDirect(
@@ -36,7 +45,7 @@ function transformDirect(
       point[y] = toNumber(rec[y]);
     }
     if (config.groupBy) {
-      point[config.groupBy] = String(rec[config.groupBy] ?? '');
+      point['__group__'] = String(rec[config.groupBy] ?? '');
     }
     return point;
   });
@@ -47,6 +56,29 @@ function transformAggregated(
   config: ChartConfig,
 ): ChartDataPoint[] {
   if (!config.xAxis) return [];
+
+  if (config.groupBy) {
+    const compositeGroups = new Map<string, Record<string, unknown>[]>();
+    for (const rec of records) {
+      const xVal = String(rec[config.xAxis] ?? '__null__');
+      const gVal = String(rec[config.groupBy] ?? '__null__');
+      const key = `${xVal}\0${gVal}`;
+      if (!compositeGroups.has(key)) compositeGroups.set(key, []);
+      compositeGroups.get(key)!.push(rec);
+    }
+
+    return Array.from(compositeGroups.entries()).map(([key, rows]) => {
+      const [xVal, gVal] = key.split('\0');
+      const point: ChartDataPoint = {
+        [config.xAxis!]: xVal,
+        '__group__': gVal,
+      };
+      for (const y of config.yAxes) {
+        point[y] = aggregate(rows.map((r) => r[y]), config.aggregation);
+      }
+      return point;
+    });
+  }
 
   const groups = new Map<string, Record<string, unknown>[]>();
   for (const rec of records) {
@@ -62,6 +94,42 @@ function transformAggregated(
     }
     return point;
   });
+}
+
+function pivotByGroup(flat: ChartDataPoint[], config: ChartConfig): TransformResult {
+  const xKey = config.xAxis ?? '__index';
+
+  const groupValuesSet = new Set<string>();
+  for (const point of flat) {
+    groupValuesSet.add(String(point['__group__'] ?? ''));
+  }
+  const groupValues = [...groupValuesSet];
+
+  const pivotMap = new Map<string, ChartDataPoint>();
+  const xOrder: string[] = [];
+  for (const point of flat) {
+    const xVal = String(point[xKey] ?? '');
+    if (!pivotMap.has(xVal)) {
+      pivotMap.set(xVal, { [xKey]: point[xKey] });
+      xOrder.push(xVal);
+    }
+    const pivotPoint = pivotMap.get(xVal)!;
+    const gVal = String(point['__group__'] ?? '');
+    for (const y of config.yAxes) {
+      const seriesKey = config.yAxes.length > 1 ? `${gVal}·${y}` : gVal;
+      pivotPoint[seriesKey] = point[y];
+    }
+  }
+
+  const seriesKeys: string[] = [];
+  for (const gVal of groupValues) {
+    for (const y of config.yAxes) {
+      seriesKeys.push(config.yAxes.length > 1 ? `${gVal}·${y}` : gVal);
+    }
+  }
+
+  const data = xOrder.map((x) => pivotMap.get(x)!);
+  return { data: sortData(data, config), seriesKeys };
 }
 
 function aggregate(values: unknown[], type: AggregationType): number | null {
