@@ -74,8 +74,6 @@ pub struct CompletionRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub temperature: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub max_tokens: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub stop: Option<Vec<String>>,
 }
 
@@ -84,6 +82,8 @@ pub struct CompletionRequest {
 pub struct CompletionResponse {
     pub request_id: String,
     pub content: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning: Option<String>,
     pub usage: TokenUsage,
     pub model: String,
     pub finish_reason: Option<String>,

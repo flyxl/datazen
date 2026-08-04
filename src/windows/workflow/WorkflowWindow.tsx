@@ -9,6 +9,7 @@ import {
   Play,
   Plus,
   RefreshCw,
+  Sparkles,
   Table2,
   Trash2,
   Wand2,
@@ -19,6 +20,7 @@ import { StatusBar } from '../../components/StatusBar';
 import { DataTable } from '../../components/DataTable/DataTable';
 import type { ColumnDef } from '../../components/DataTable/TableHeader';
 import { ChartView } from '../../components/chart/ChartView';
+import { WorkflowChatPanel } from '../../components/ai/WorkflowChatPanel';
 import { Button } from '../../components/ui/Button';
 import { Select } from '../../components/ui/Select';
 import { useThemeListener } from '../../hooks/useThemeListener';
@@ -106,6 +108,7 @@ export function WorkflowWindow() {
   const [variables, setVariables] = useState<Record<string, string>>({});
   const [workflowsDir, setWorkflowsDir] = useState('');
   const [showForm, setShowForm] = useState(false);
+  const [showAiChat, setShowAiChat] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState(emptyDraft());
   const [feedback, setFeedback] = useState('');
@@ -324,18 +327,25 @@ export function WorkflowWindow() {
           )}
 
           <div className="flex-1 overflow-y-auto">
-            {sideTab === 'history' ? (
+            {showAiChat ? (
+              <WorkflowChatPanel
+                connections={savedConnections}
+                onSaved={() => { void loadWorkflows(); setFeedback(t('workflows.aiCreate.saved')); setTimeout(() => setFeedback(''), 3000); }}
+                onBack={() => setShowAiChat(false)}
+              />
+            ) : sideTab === 'history' ? (
               <HistoryList items={historyItems} onView={(id) => void handleViewHistory(id)} onClear={() => void handleClearHistory()} t={t} />
             ) : showForm ? (
               <WorkflowForm draft={draft} editingId={editingId} connections={savedConnections}
                 onDraftChange={setDraft} onSave={() => void handleSave()} onCancel={() => setShowForm(false)} t={t} />
             ) : (
               <WorkflowList workflows={workflows} loading={workflowsLoading} selectedId={selectedWorkflow?.id}
-                onSelect={handleSelect} onEdit={(id) => void handleEdit(id)} onDelete={(id) => void handleDelete(id)} onCreate={handleCreate} t={t} />
+                onSelect={handleSelect} onEdit={(id) => void handleEdit(id)} onDelete={(id) => void handleDelete(id)}
+                onCreate={handleCreate} onAiCreate={() => { setShowForm(false); setShowAiChat(true); }} t={t} />
             )}
           </div>
 
-          {sideTab === 'workflows' && !showForm && selectedWorkflow && (
+          {sideTab === 'workflows' && !showForm && !showAiChat && selectedWorkflow && (
             <div className="border-t border-edge p-3 space-y-2">
               <div className="text-xs font-medium text-fg-secondary">{selectedWorkflow.name}</div>
               {selectedWorkflow.description && <div className="text-[11px] text-fg-muted">{selectedWorkflow.description}</div>}
@@ -593,20 +603,26 @@ function StepDetailView({ step, t }: { step: StepExecutionResult; t: ReturnType<
 
 // ─── Left sidebar sub-components ────────────────────────────────────────────
 
-function WorkflowList({ workflows, loading, selectedId, onSelect, onEdit, onDelete, onCreate, t }: {
+function WorkflowList({ workflows, loading, selectedId, onSelect, onEdit, onDelete, onCreate, onAiCreate, t }: {
   workflows: WorkflowListItem[]; loading: boolean; selectedId?: string;
   onSelect: (w: WorkflowListItem) => void; onEdit: (id: string) => void;
-  onDelete: (id: string) => void; onCreate: () => void; t: ReturnType<typeof useI18n>['t'];
+  onDelete: (id: string) => void; onCreate: () => void; onAiCreate: () => void; t: ReturnType<typeof useI18n>['t'];
 }) {
   if (loading) {
     return <div className="flex items-center justify-center py-8 text-fg-muted text-xs"><Loader2 className="h-4 w-4 animate-spin mr-1" />{t('workflows.loading')}</div>;
   }
   return (
     <div className="p-2 space-y-0.5">
-      <button type="button" onClick={onCreate}
-        className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-xs text-accent hover:bg-surface-raised/50 transition-colors">
-        <Plus className="h-3.5 w-3.5" />{t('workflows.create')}
-      </button>
+      <div className="flex gap-1">
+        <button type="button" onClick={onCreate}
+          className="flex flex-1 items-center gap-2 rounded-md px-3 py-2 text-xs text-accent hover:bg-surface-raised/50 transition-colors">
+          <Plus className="h-3.5 w-3.5" />{t('workflows.create')}
+        </button>
+        <button type="button" onClick={onAiCreate}
+          className="flex flex-1 items-center gap-2 rounded-md px-3 py-2 text-xs text-purple-400 hover:bg-surface-raised/50 transition-colors">
+          <Sparkles className="h-3.5 w-3.5" />{t('workflows.aiCreate')}
+        </button>
+      </div>
       {workflows.map((w) => (
         <div key={w.id} className={cn('group flex items-center gap-2 rounded-md px-3 py-2 cursor-pointer transition-colors',
           selectedId === w.id ? 'bg-accent/10 text-accent' : 'text-fg-secondary hover:bg-surface-raised/50 hover:text-fg')} onClick={() => onSelect(w)}>

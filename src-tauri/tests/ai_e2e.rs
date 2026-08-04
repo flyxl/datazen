@@ -1,11 +1,36 @@
 //! End-to-end integration tests for AI features.
 //!
 //! These tests require a real LLM API and are skipped if `.env.test` is absent.
-//! Run with: `cargo test -p datazen --test ai_e2e -- --nocapture`
+//! Run with: `cargo test -p datazen --test ai_e2e -- --nocapture --test-threads=1`
+//!
+//! Tests must run sequentially (`--test-threads=1`) to avoid API rate limiting.
 
 use std::path::PathBuf;
 
-fn load_test_config() -> Option<(String, String, String, String)> {
+/// Strip markdown fences from an AI response (e.g. ```json ... ```).
+fn strip_fences(raw: &str) -> String {
+    let trimmed = raw.trim();
+    if let Some(rest) = trimmed.strip_prefix("```") {
+        let inner = rest
+            .strip_prefix("json")
+            .or_else(|| rest.strip_prefix("JSON"))
+            .unwrap_or(rest);
+        if let Some(end) = inner.rfind("```") {
+            return inner[..end].trim().to_string();
+        }
+    }
+    trimmed.to_string()
+}
+
+struct TestConfig {
+    provider: String,
+    endpoint: String,
+    api_key: String,
+    model: String,
+    max_tokens: u32,
+}
+
+fn load_test_config() -> Option<TestConfig> {
     let env_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .unwrap()
@@ -21,6 +46,7 @@ fn load_test_config() -> Option<(String, String, String, String)> {
     let mut endpoint = String::new();
     let mut api_key = String::new();
     let mut model = String::new();
+    let mut max_tokens: u32 = 4096;
 
     for line in content.lines() {
         let line = line.trim();
@@ -33,6 +59,9 @@ fn load_test_config() -> Option<(String, String, String, String)> {
                 "AI_ENDPOINT" => endpoint = v.trim().to_string(),
                 "AI_API_KEY" => api_key = v.trim().to_string(),
                 "AI_MODEL" => model = v.trim().to_string(),
+                "AI_MAX_TOKENS" => {
+                    max_tokens = v.trim().parse().unwrap_or(4096);
+                }
                 _ => {}
             }
         }
@@ -43,7 +72,7 @@ fn load_test_config() -> Option<(String, String, String, String)> {
         return None;
     }
 
-    Some((provider, endpoint, api_key, model))
+    Some(TestConfig { provider, endpoint, api_key, model, max_tokens })
 }
 
 mod provider_tests {
@@ -54,6 +83,7 @@ mod provider_tests {
         provider_type: &str,
         endpoint: &str,
         api_key: &str,
+        max_tokens: u32,
     ) -> Box<dyn AiProvider> {
         match provider_type {
             "open_ai" => {
@@ -63,7 +93,7 @@ mod provider_tests {
                     api_key: Some(api_key.to_string()),
                     endpoint: Some(endpoint.to_string()),
                     model: String::new(),
-                    max_tokens: 200_000,
+                    max_tokens,
                     extra: serde_json::Value::Null,
                 };
                 p.initialize(&config).await.expect("Failed to initialize");
@@ -83,7 +113,7 @@ mod provider_tests {
                 Ok(resp) => return Ok(resp),
                 Err(AiError::RateLimited { retry_after_secs }) => {
                     if attempt < max_retries {
-                        let wait = retry_after_secs.min(10);
+                        let wait = retry_after_secs.max(1);
                         eprintln!("  ⏳ Rate limited, waiting {wait}s (attempt {}/{})", attempt + 1, max_retries);
                         tokio::time::sleep(std::time::Duration::from_secs(wait)).await;
                     } else {
@@ -100,30 +130,31 @@ mod provider_tests {
 
     #[tokio::test]
     async fn test_phase0_provider_validate_and_complete() {
-        let Some((ptype, endpoint, api_key, model)) = load_test_config() else {
+        let Some(cfg) = load_test_config() else {
             return;
         };
 
-        let provider = create_provider(&ptype, &endpoint, &api_key).await;
+        let provider = create_provider(&cfg.provider, &cfg.endpoint, &cfg.api_key, cfg.max_tokens).await;
 
         let request = CompletionRequest {
             request_id: "test-phase0".into(),
-            model: model.clone(),
+            model: cfg.model.clone(),
             messages: vec![ChatMessage {
                 role: MessageRole::User,
                 content: "Reply with exactly the word: OK".into(),
             }],
             temperature: Some(0.0),
-            max_tokens: Some(100),
+
             stop: None,
         };
 
         let resp = complete_with_retry(provider.as_ref(), &request, 3).await
             .expect("complete() failed after retries");
         eprintln!("  Phase 0 response: {:?}", resp.content);
+        eprintln!("  Phase 0 reasoning: {:?}", resp.reasoning);
         assert!(
-            !resp.content.is_empty(),
-            "Response content should not be empty"
+            !resp.content.is_empty() || resp.reasoning.is_some(),
+            "Response should have content or reasoning"
         );
     }
 
@@ -131,11 +162,11 @@ mod provider_tests {
 
     #[tokio::test]
     async fn test_phase1_nl2sql_generation() {
-        let Some((ptype, endpoint, api_key, model)) = load_test_config() else {
+        let Some(cfg) = load_test_config() else {
             return;
         };
 
-        let provider = create_provider(&ptype, &endpoint, &api_key).await;
+        let provider = create_provider(&cfg.provider, &cfg.endpoint, &cfg.api_key, cfg.max_tokens).await;
 
         let context = SqlGenerationContext {
             database_type: "PostgreSQL".into(),
@@ -149,7 +180,7 @@ mod provider_tests {
         let system = datazen::ai::PromptBuilder::nl2sql_system(&context, "en");
         let request = CompletionRequest {
             request_id: "test-nl2sql".into(),
-            model,
+            model: cfg.model,
             messages: vec![
                 system,
                 ChatMessage {
@@ -158,7 +189,7 @@ mod provider_tests {
                 },
             ],
             temperature: Some(0.0),
-            max_tokens: Some(500),
+
             stop: None,
         };
 
@@ -176,11 +207,11 @@ mod provider_tests {
 
     #[tokio::test]
     async fn test_phase1_sql_diagnosis() {
-        let Some((ptype, endpoint, api_key, model)) = load_test_config() else {
+        let Some(cfg) = load_test_config() else {
             return;
         };
 
-        let provider = create_provider(&ptype, &endpoint, &api_key).await;
+        let provider = create_provider(&cfg.provider, &cfg.endpoint, &cfg.api_key, cfg.max_tokens).await;
 
         let system = datazen::ai::PromptBuilder::diagnose_system(
             "PostgreSQL",
@@ -189,7 +220,7 @@ mod provider_tests {
         );
         let request = CompletionRequest {
             request_id: "test-diagnose".into(),
-            model,
+            model: cfg.model,
             messages: vec![
                 system,
                 ChatMessage {
@@ -198,20 +229,14 @@ mod provider_tests {
                 },
             ],
             temperature: Some(0.0),
-            max_tokens: Some(1000),
+
             stop: None,
         };
 
         let response = complete_with_retry(provider.as_ref(), &request, 3).await.expect("Diagnosis failed");
         eprintln!("  Phase 1 Diagnosis: {}", response.content);
 
-        let content = response.content.trim();
-        let json_str = if content.starts_with("```") {
-            let lines: Vec<&str> = content.lines().collect();
-            lines[1..lines.len() - 1].join("\n")
-        } else {
-            content.to_string()
-        };
+        let json_str = strip_fences(&response.content);
 
         let parsed: Result<serde_json::Value, _> = serde_json::from_str(&json_str);
         assert!(
@@ -232,16 +257,16 @@ mod provider_tests {
 
     #[tokio::test]
     async fn test_phase2_explain_analysis() {
-        let Some((ptype, endpoint, api_key, model)) = load_test_config() else {
+        let Some(cfg) = load_test_config() else {
             return;
         };
 
-        let provider = create_provider(&ptype, &endpoint, &api_key).await;
+        let provider = create_provider(&cfg.provider, &cfg.endpoint, &cfg.api_key, cfg.max_tokens).await;
 
         let system = datazen::ai::PromptBuilder::explain_analysis_system("PostgreSQL", "en");
         let request = CompletionRequest {
             request_id: "test-explain".into(),
-            model,
+            model: cfg.model,
             messages: vec![
                 system,
                 ChatMessage {
@@ -250,7 +275,7 @@ mod provider_tests {
                 },
             ],
             temperature: Some(0.0),
-            max_tokens: Some(1500),
+
             stop: None,
         };
 
@@ -259,13 +284,7 @@ mod provider_tests {
             .expect("EXPLAIN analysis failed");
         eprintln!("  Phase 2 EXPLAIN: {}", response.content);
 
-        let content = response.content.trim();
-        let json_str = if content.starts_with("```") {
-            let lines: Vec<&str> = content.lines().collect();
-            lines[1..lines.len() - 1].join("\n")
-        } else {
-            content.to_string()
-        };
+        let json_str = strip_fences(&response.content);
 
         let parsed: Result<serde_json::Value, _> = serde_json::from_str(&json_str);
         assert!(
@@ -284,11 +303,11 @@ mod provider_tests {
 
     #[tokio::test]
     async fn test_phase7_smart_filter() {
-        let Some((ptype, endpoint, api_key, model)) = load_test_config() else {
+        let Some(cfg) = load_test_config() else {
             return;
         };
 
-        let provider = create_provider(&ptype, &endpoint, &api_key).await;
+        let provider = create_provider(&cfg.provider, &cfg.endpoint, &cfg.api_key, cfg.max_tokens).await;
 
         let system = datazen::ai::PromptBuilder::nl_filter_system(
             "PostgreSQL",
@@ -297,7 +316,7 @@ mod provider_tests {
         );
         let request = CompletionRequest {
             request_id: "test-filter".into(),
-            model,
+            model: cfg.model,
             messages: vec![
                 system,
                 ChatMessage {
@@ -306,7 +325,7 @@ mod provider_tests {
                 },
             ],
             temperature: Some(0.0),
-            max_tokens: Some(500),
+
             stop: None,
         };
 
@@ -315,13 +334,7 @@ mod provider_tests {
             .expect("Smart filter failed");
         eprintln!("  Phase 7 Filter: {}", response.content);
 
-        let content = response.content.trim();
-        let json_str = if content.starts_with("```") {
-            let lines: Vec<&str> = content.lines().collect();
-            lines[1..lines.len() - 1].join("\n")
-        } else {
-            content.to_string()
-        };
+        let json_str = strip_fences(&response.content);
 
         let parsed: Result<Vec<serde_json::Value>, _> = serde_json::from_str(&json_str);
         assert!(
@@ -346,11 +359,11 @@ mod provider_tests {
 
     #[tokio::test]
     async fn test_phase8_schema_doc() {
-        let Some((ptype, endpoint, api_key, model)) = load_test_config() else {
+        let Some(cfg) = load_test_config() else {
             return;
         };
 
-        let provider = create_provider(&ptype, &endpoint, &api_key).await;
+        let provider = create_provider(&cfg.provider, &cfg.endpoint, &cfg.api_key, cfg.max_tokens).await;
 
         let system = datazen::ai::PromptBuilder::schema_doc_system(
             "PostgreSQL",
@@ -359,7 +372,7 @@ mod provider_tests {
         );
         let request = CompletionRequest {
             request_id: "test-schema-doc".into(),
-            model,
+            model: cfg.model,
             messages: vec![
                 system,
                 ChatMessage {
@@ -368,7 +381,7 @@ mod provider_tests {
                 },
             ],
             temperature: Some(0.3),
-            max_tokens: Some(2000),
+
             stop: None,
         };
 
@@ -394,16 +407,16 @@ mod provider_tests {
 
     #[tokio::test]
     async fn test_phase8_connection_diagnosis() {
-        let Some((ptype, endpoint, api_key, model)) = load_test_config() else {
+        let Some(cfg) = load_test_config() else {
             return;
         };
 
-        let provider = create_provider(&ptype, &endpoint, &api_key).await;
+        let provider = create_provider(&cfg.provider, &cfg.endpoint, &cfg.api_key, cfg.max_tokens).await;
 
         let system = datazen::ai::PromptBuilder::connection_diagnose_system("en");
         let request = CompletionRequest {
             request_id: "test-conn-diag".into(),
-            model,
+            model: cfg.model,
             messages: vec![
                 system,
                 ChatMessage {
@@ -412,7 +425,7 @@ mod provider_tests {
                 },
             ],
             temperature: Some(0.0),
-            max_tokens: Some(1500),
+
             stop: None,
         };
 
@@ -421,13 +434,7 @@ mod provider_tests {
             .expect("Connection diagnosis failed");
         eprintln!("  Phase 8 Conn Diagnosis: {}", response.content);
 
-        let content = response.content.trim();
-        let json_str = if content.starts_with("```") {
-            let lines: Vec<&str> = content.lines().collect();
-            lines[1..lines.len() - 1].join("\n")
-        } else {
-            content.to_string()
-        };
+        let json_str = strip_fences(&response.content);
 
         let parsed: Result<serde_json::Value, _> = serde_json::from_str(&json_str);
         assert!(
@@ -450,16 +457,16 @@ mod provider_tests {
 
     #[tokio::test]
     async fn test_phase8_query_analysis() {
-        let Some((ptype, endpoint, api_key, model)) = load_test_config() else {
+        let Some(cfg) = load_test_config() else {
             return;
         };
 
-        let provider = create_provider(&ptype, &endpoint, &api_key).await;
+        let provider = create_provider(&cfg.provider, &cfg.endpoint, &cfg.api_key, cfg.max_tokens).await;
 
         let system = datazen::ai::PromptBuilder::query_summary_system("en");
         let request = CompletionRequest {
             request_id: "test-query-analysis".into(),
-            model,
+            model: cfg.model,
             messages: vec![
                 system,
                 ChatMessage {
@@ -468,7 +475,7 @@ mod provider_tests {
                 },
             ],
             temperature: Some(0.2),
-            max_tokens: Some(2000),
+
             stop: None,
         };
 
@@ -477,13 +484,7 @@ mod provider_tests {
             .expect("Query analysis failed");
         eprintln!("  Phase 8 Query Analysis: {}", response.content);
 
-        let content = response.content.trim();
-        let json_str = if content.starts_with("```") {
-            let lines: Vec<&str> = content.lines().collect();
-            lines[1..lines.len() - 1].join("\n")
-        } else {
-            content.to_string()
-        };
+        let json_str = strip_fences(&response.content);
 
         let parsed: Result<serde_json::Value, _> = serde_json::from_str(&json_str);
         assert!(
@@ -505,21 +506,21 @@ mod provider_tests {
 
     #[tokio::test]
     async fn test_phase1_streaming() {
-        let Some((ptype, endpoint, api_key, model)) = load_test_config() else {
+        let Some(cfg) = load_test_config() else {
             return;
         };
 
-        let provider = create_provider(&ptype, &endpoint, &api_key).await;
+        let provider = create_provider(&cfg.provider, &cfg.endpoint, &cfg.api_key, cfg.max_tokens).await;
 
         let request = CompletionRequest {
             request_id: "test-stream".into(),
-            model,
+            model: cfg.model,
             messages: vec![ChatMessage {
                 role: MessageRole::User,
                 content: "Count from 1 to 5".into(),
             }],
             temperature: Some(0.0),
-            max_tokens: Some(200),
+
             stop: None,
         };
 

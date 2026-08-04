@@ -32,7 +32,8 @@ export type PromptScenario =
   | 'connection_diagnose'
   | 'query_summary'
   | 'explain_analysis'
-  | 'chat';
+  | 'chat'
+  | 'workflow_generate';
 
 export type PromptSource = 'default' | 'driver' | 'user';
 
@@ -100,6 +101,7 @@ export const aiCommands = {
     messages: AiChatMessage[];
     requestId: string;
     includeSchema?: boolean;
+    scenario?: PromptScenario;
   }) => invoke<string>('ai_chat', params),
 
   parseFilter: (params: {

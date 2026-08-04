@@ -801,7 +801,6 @@ impl WorkflowExecutor {
                         content: resolved_prompt.clone(),
                     }],
                     temperature: Some(0.3),
-                    max_tokens: Some(4000),
                     stop: None,
                 };
 

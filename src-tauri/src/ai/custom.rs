@@ -26,6 +26,7 @@ struct CustomState {
     api_key: String,
     endpoint: String,
     protocol: CustomProtocol,
+    max_tokens: u32,
 }
 
 impl CustomProvider {
@@ -508,6 +509,7 @@ impl AiProvider for CustomProvider {
             api_key: api_key.to_string(),
             endpoint: endpoint.to_string(),
             protocol,
+            max_tokens: config.max_tokens,
         });
 
         Ok(())
@@ -577,7 +579,7 @@ impl CustomProvider {
             model: request.model.clone(),
             messages: request.messages.iter().map(|m| m.into()).collect(),
             temperature: request.temperature,
-            max_tokens: request.max_tokens,
+            max_tokens: Some(state.max_tokens),
             stop: request.stop.clone(),
             stream: Some(false),
         };
@@ -610,12 +612,13 @@ impl CustomProvider {
             .first()
             .ok_or_else(|| AiError::RequestFailed("No choices in response".into()))?;
 
-        let content = choice
+        let (content, reasoning) = choice
             .message
             .as_ref()
             .map(|m| {
-                m.content.clone().unwrap_or_default()
-                    + &m.reasoning_content.clone().unwrap_or_default()
+                let c = m.content.clone().unwrap_or_default();
+                let r = m.reasoning_content.clone().filter(|s| !s.is_empty());
+                (c, r)
             })
             .unwrap_or_default();
 
@@ -631,6 +634,7 @@ impl CustomProvider {
         Ok(CompletionResponse {
             request_id: request.request_id.clone(),
             content,
+            reasoning,
             model: api_resp.model,
             finish_reason: choice.finish_reason.clone(),
             usage,
@@ -650,7 +654,7 @@ impl CustomProvider {
             input,
             instructions,
             temperature: request.temperature,
-            max_output_tokens: request.max_tokens,
+            max_output_tokens: Some(state.max_tokens),
             stream: Some(false),
             store: Some(false),
         };
@@ -677,7 +681,7 @@ impl CustomProvider {
         let api_resp: OaiResponsesResponse = serde_json::from_str(&raw_resp)
             .map_err(|e| AiError::RequestFailed(format!("JSON decode: {e}")))?;
 
-        let message_content: String = api_resp
+        let content: String = api_resp
             .output
             .iter()
             .filter(|item| item.item_type == "message")
@@ -687,19 +691,17 @@ impl CustomProvider {
             .collect::<Vec<_>>()
             .join("");
 
-        let content = if message_content.is_empty() {
-            api_resp
-                .output
-                .iter()
-                .filter(|item| item.item_type == "reasoning")
-                .flat_map(|item| item.content.iter().flatten())
-                .filter(|block| block.block_type == "reasoning_text")
-                .filter_map(|block| block.text.as_deref())
-                .collect::<Vec<_>>()
-                .join("")
-        } else {
-            message_content
-        };
+        let reasoning_text: String = api_resp
+            .output
+            .iter()
+            .filter(|item| item.item_type == "reasoning")
+            .flat_map(|item| item.content.iter().flatten())
+            .filter(|block| block.block_type == "reasoning_text")
+            .filter_map(|block| block.text.as_deref())
+            .collect::<Vec<_>>()
+            .join("");
+
+        let reasoning = if reasoning_text.is_empty() { None } else { Some(reasoning_text) };
 
         let usage = api_resp
             .usage
@@ -713,6 +715,7 @@ impl CustomProvider {
         Ok(CompletionResponse {
             request_id: request.request_id.clone(),
             content,
+            reasoning,
             model: api_resp.model,
             finish_reason: Some("stop".into()),
             usage,
@@ -730,7 +733,7 @@ impl CustomProvider {
         let body = AnthropicRequest {
             model: request.model.clone(),
             messages,
-            max_tokens: request.max_tokens.unwrap_or(4096),
+            max_tokens: state.max_tokens,
             system,
             temperature: request.temperature,
             stop_sequences: request.stop.clone(),
@@ -769,11 +772,21 @@ impl CustomProvider {
             .collect::<Vec<_>>()
             .join("");
 
+        let reasoning_text: String = api_resp
+            .content
+            .iter()
+            .filter(|b| b.block_type == "thinking")
+            .filter_map(|b| b.text.as_deref())
+            .collect::<Vec<_>>()
+            .join("");
+        let reasoning = if reasoning_text.is_empty() { None } else { Some(reasoning_text) };
+
         let total = api_resp.usage.input_tokens + api_resp.usage.output_tokens;
 
         Ok(CompletionResponse {
             request_id: request.request_id.clone(),
             content,
+            reasoning,
             model: api_resp.model,
             finish_reason: api_resp.stop_reason,
             usage: TokenUsage {
@@ -796,7 +809,7 @@ impl CustomProvider {
             model: request.model.clone(),
             messages: request.messages.iter().map(|m| m.into()).collect(),
             temperature: request.temperature,
-            max_tokens: request.max_tokens,
+            max_tokens: Some(state.max_tokens),
             stop: request.stop.clone(),
             stream: Some(true),
         };
@@ -912,7 +925,7 @@ impl CustomProvider {
             input,
             instructions,
             temperature: request.temperature,
-            max_output_tokens: request.max_tokens,
+            max_output_tokens: Some(state.max_tokens),
             stream: Some(true),
             store: Some(false),
         };
@@ -1043,7 +1056,7 @@ impl CustomProvider {
         let body = AnthropicRequest {
             model: request.model.clone(),
             messages,
-            max_tokens: request.max_tokens.unwrap_or(4096),
+            max_tokens: state.max_tokens,
             system,
             temperature: request.temperature,
             stop_sequences: request.stop.clone(),
@@ -1269,7 +1282,6 @@ mod tests {
             model: "model".into(),
             messages: vec![],
             temperature: None,
-            max_tokens: None,
             stop: None,
         };
         assert!(matches!(
@@ -1297,7 +1309,6 @@ mod tests {
             model: "model".into(),
             messages: vec![],
             temperature: None,
-            max_tokens: None,
             stop: None,
         };
         assert!(matches!(

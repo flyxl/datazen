@@ -261,7 +261,7 @@ pub async fn ai_generate_sql(
         model: ai_config.model.clone(),
         messages: vec![system_msg, user_msg],
         temperature: Some(0.0),
-        max_tokens: Some(ai_config.max_tokens),
+
         stop: None,
     };
     inject_language_hint(&mut request.messages, &lang);
@@ -342,7 +342,7 @@ pub async fn ai_diagnose_error(
             },
         ],
         temperature: Some(0.0),
-        max_tokens: Some(ai_config.max_tokens),
+
         stop: None,
     };
     inject_language_hint(&mut request.messages, &lang);
@@ -415,7 +415,7 @@ pub async fn ai_analyze_explain(
             },
         ],
         temperature: Some(0.0),
-        max_tokens: Some(ai_config.max_tokens),
+
         stop: None,
     };
     inject_language_hint(&mut request.messages, &lang);
@@ -518,7 +518,7 @@ pub async fn ai_parse_filter(
             },
         ],
         temperature: Some(0.0),
-        max_tokens: Some(ai_config.max_tokens),
+
         stop: None,
     };
     inject_language_hint(&mut request.messages, &lang);
@@ -560,13 +560,22 @@ pub async fn ai_chat(
     messages: Vec<ChatMessage>,
     request_id: String,
     include_schema: bool,
+    scenario: Option<String>,
 ) -> Result<String, CommandError> {
+    let is_workflow = scenario.as_deref() == Some("workflow_generate");
+    let prompt_scenario = if is_workflow {
+        PromptScenario::WorkflowGenerate
+    } else {
+        PromptScenario::Chat
+    };
+
     tracing::info!(
         %request_id,
         connection_id = ?connection_id,
         database = ?database,
         messages_count = messages.len(),
         %include_schema,
+        scenario = ?scenario,
         last_user_msg = messages.last().map(|m| truncate_str(&m.content, 100)).unwrap_or(""),
         "ai_chat: start"
     );
@@ -587,15 +596,35 @@ pub async fn ai_chat(
                     .build_sql_context(conn_id, db, None, &[], 4000)
                     .await
                 {
-                    let base = state.prompt_resolver.resolve(PromptScenario::Chat, Some(driver.as_ref()), &lang).await;
-                    let desc = if lang.starts_with("zh") {
+                    let mut vars = HashMap::new();
+                    vars.insert("db_type", db_type.as_str());
+                    vars.insert("schema", context.schema_ddl.as_str());
+
+                    let connections_ctx = if is_workflow {
+                        build_connections_context(&state, &lang).await
+                    } else {
+                        String::new()
+                    };
+                    vars.insert("connections", connections_ctx.as_str());
+
+                    let base_tpl = state.prompt_resolver.resolve(prompt_scenario, Some(driver.as_ref()), &lang).await;
+                    let base = crate::ai::prompt_resolver::render_template(&base_tpl, &vars);
+
+                    let desc = if is_workflow {
+                        base
+                    } else if lang.starts_with("zh") {
                         format!("{base}\n\n用户已连接到 {db_type} 数据库。")
                     } else {
                         format!("{base}\n\nThe user is connected to a {db_type} database.")
                     };
+
                     full_messages.push(ChatMessage {
                         role: MessageRole::System,
-                        content: format!("{desc}\n\nSchema:\n{}", context.schema_ddl),
+                        content: if is_workflow {
+                            desc
+                        } else {
+                            format!("{desc}\n\nSchema:\n{}", context.schema_ddl)
+                        },
                     });
                 }
             }
@@ -603,11 +632,25 @@ pub async fn ai_chat(
     }
 
     if full_messages.is_empty() {
-        let chat_prompt = state.prompt_resolver.resolve(PromptScenario::Chat, None, &lang).await;
-        full_messages.push(ChatMessage {
-            role: MessageRole::System,
-            content: chat_prompt,
-        });
+        if is_workflow {
+            let connections_ctx = build_connections_context(&state, &lang).await;
+            let mut vars = HashMap::new();
+            vars.insert("connections", connections_ctx.as_str());
+            vars.insert("schema", "");
+            vars.insert("db_type", "");
+            let tpl = state.prompt_resolver.resolve(prompt_scenario, None, &lang).await;
+            let prompt = crate::ai::prompt_resolver::render_template(&tpl, &vars);
+            full_messages.push(ChatMessage {
+                role: MessageRole::System,
+                content: prompt,
+            });
+        } else {
+            let chat_prompt = state.prompt_resolver.resolve(prompt_scenario, None, &lang).await;
+            full_messages.push(ChatMessage {
+                role: MessageRole::System,
+                content: chat_prompt,
+            });
+        }
     }
 
     full_messages.extend(messages);
@@ -618,7 +661,7 @@ pub async fn ai_chat(
         model: ai_config.model.clone(),
         messages: full_messages,
         temperature: Some(0.7),
-        max_tokens: Some(ai_config.max_tokens),
+
         stop: None,
     };
     inject_language_hint(&mut request.messages, &lang);
@@ -638,6 +681,24 @@ pub async fn ai_chat(
         .cmd_err("ai_chat")?;
 
     Ok(request_id)
+}
+
+async fn build_connections_context(state: &AppState, lang: &str) -> String {
+    let conns = state.store.get_connections().await;
+    if conns.is_empty() {
+        return String::new();
+    }
+    let mut lines = Vec::new();
+    let header = if lang.starts_with("zh") {
+        "用户有以下可用的数据库连接："
+    } else {
+        "The user has the following database connections available:"
+    };
+    lines.push(header.to_string());
+    for c in &conns {
+        lines.push(format!("- \"{}\" ({:?}) — id: {}", c.name, c.database_type, c.id));
+    }
+    lines.join("\n")
 }
 
 fn truncate_str(s: &str, max_bytes: usize) -> &str {
@@ -661,28 +722,86 @@ fn parse_ai_json<T: serde::de::DeserializeOwned>(
         tracing::error!(cmd, "LLM returned empty response");
         return Err(CommandError::Internal("LLM returned empty response".into()));
     }
-    serde_json::from_str::<T>(&content).map_err(|e| {
-        tracing::error!(
-            cmd,
-            raw_content = %truncate_str(&content, 500),
-            ?finish_reason,
-            "JSON parse failed: {e}"
-        );
-        let is_truncated =
-            matches!(finish_reason, Some("length") | Some("max_tokens"));
-        if is_truncated {
-            CommandError::Internal(
-                "AI response was truncated due to max_tokens limit. \
-                 Please increase the \"Max Tokens\" setting in AI configuration."
-                    .into(),
-            )
-        } else {
-            CommandError::Internal(format!(
-                "Failed to parse AI response. The model may have returned an invalid format. \
-                 Try again or increase Max Tokens in settings. (detail: {e})"
-            ))
+
+    if let Ok(val) = serde_json::from_str::<T>(&content) {
+        return Ok(val);
+    }
+
+    if let Some(extracted) = extract_json_boundary(&content) {
+        if let Ok(val) = serde_json::from_str::<T>(extracted) {
+            tracing::debug!(cmd, "Parsed JSON after extracting from mixed content");
+            return Ok(val);
         }
-    })
+    }
+
+    let Err(err) = serde_json::from_str::<serde_json::Value>(&content) else {
+        return Err(CommandError::Internal(
+            "AI response JSON structure does not match the expected schema.".into(),
+        ));
+    };
+    tracing::error!(
+        cmd,
+        raw_content = %truncate_str(&content, 500),
+        ?finish_reason,
+        "JSON parse failed: {err}"
+    );
+    let is_truncated = matches!(finish_reason, Some("length") | Some("max_tokens"));
+    if is_truncated {
+        Err(CommandError::Internal(
+            "AI response was truncated due to max_tokens limit. \
+             Please increase the \"Max Tokens\" setting in AI configuration."
+                .into(),
+        ))
+    } else {
+        Err(CommandError::Internal(format!(
+            "Failed to parse AI response. The model may have returned an invalid format. \
+             Try again or increase Max Tokens in settings. (detail: {err})"
+        )))
+    }
+}
+
+/// Extract the first complete JSON object `{...}` or array `[...]` from text
+/// that may contain trailing non-JSON content (e.g. model reasoning).
+fn extract_json_boundary(s: &str) -> Option<&str> {
+    let trimmed = s.trim();
+    let (open, close) = if trimmed.starts_with('{') {
+        ('{', '}')
+    } else if trimmed.starts_with('[') {
+        ('[', ']')
+    } else {
+        return None;
+    };
+
+    let mut depth = 0i32;
+    let mut in_string = false;
+    let mut escape_next = false;
+
+    for (i, ch) in trimmed.char_indices() {
+        if escape_next {
+            escape_next = false;
+            continue;
+        }
+        if ch == '\\' && in_string {
+            escape_next = true;
+            continue;
+        }
+        if ch == '"' {
+            in_string = !in_string;
+            continue;
+        }
+        if in_string {
+            continue;
+        }
+        if ch == open {
+            depth += 1;
+        } else if ch == close {
+            depth -= 1;
+            if depth == 0 {
+                return Some(&trimmed[..=i]);
+            }
+        }
+    }
+    None
 }
 
 fn emit_stream_chunk_or_error(
@@ -909,7 +1028,7 @@ pub async fn ai_generate_schema_doc(
                 },
             ],
             temperature: Some(0.0),
-            max_tokens: Some(ai_config.max_tokens),
+    
             stop: None,
         };
 
@@ -964,7 +1083,7 @@ pub async fn ai_generate_schema_doc(
             },
         ],
         temperature: Some(0.3),
-        max_tokens: Some(ai_config.max_tokens),
+
         stop: None,
     };
     inject_language_hint(&mut request.messages, &lang);
@@ -1046,7 +1165,7 @@ pub async fn ai_diagnose_connection(
             },
         ],
         temperature: Some(0.0),
-        max_tokens: Some(ai_config.max_tokens),
+
         stop: None,
     };
     inject_language_hint(&mut request.messages, &lang);
@@ -1129,7 +1248,7 @@ pub async fn ai_analyze_queries(
             },
         ],
         temperature: Some(0.2),
-        max_tokens: Some(ai_config.max_tokens),
+
         stop: None,
     };
     inject_language_hint(&mut request.messages, &lang);
@@ -1241,6 +1360,51 @@ mod tests {
     fn test_strip_markdown_fences_whitespace() {
         let input = "  ```json\n  {\"key\":\"val\"}  \n```  ";
         assert_eq!(strip_markdown_fences(input), "{\"key\":\"val\"}");
+    }
+
+    #[test]
+    fn test_extract_json_boundary_object_with_trailing() {
+        let input = r#"{"key":"val"}The user wants me to..."#;
+        assert_eq!(extract_json_boundary(input), Some(r#"{"key":"val"}"#));
+    }
+
+    #[test]
+    fn test_extract_json_boundary_array_with_trailing() {
+        let input = r#"[{"a":1}]Some reasoning text"#;
+        assert_eq!(extract_json_boundary(input), Some(r#"[{"a":1}]"#));
+    }
+
+    #[test]
+    fn test_extract_json_boundary_nested() {
+        let input = r#"{"a":{"b":"c"},"d":[1,2]}trailing"#;
+        assert_eq!(extract_json_boundary(input), Some(r#"{"a":{"b":"c"},"d":[1,2]}"#));
+    }
+
+    #[test]
+    fn test_extract_json_boundary_with_escaped_quotes() {
+        let input = r#"{"msg":"say \"hello\""}extra"#;
+        assert_eq!(extract_json_boundary(input), Some(r#"{"msg":"say \"hello\""}"#));
+    }
+
+    #[test]
+    fn test_extract_json_boundary_no_json() {
+        assert_eq!(extract_json_boundary("not json at all"), None);
+    }
+
+    #[test]
+    fn test_extract_json_boundary_clean() {
+        let input = r#"{"key":"val"}"#;
+        assert_eq!(extract_json_boundary(input), Some(input));
+    }
+
+    #[test]
+    fn test_parse_ai_json_with_trailing_reasoning() {
+        #[derive(serde::Deserialize)]
+        struct Simple { key: String }
+        let raw = r#"{"key":"val"}The user wants me to analyze..."#;
+        let result: Result<Simple, _> = parse_ai_json(raw, None, "test");
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().key, "val");
     }
 
     #[test]
