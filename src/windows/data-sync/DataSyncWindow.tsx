@@ -16,7 +16,6 @@ import {
   XCircle,
 } from 'lucide-react';
 import { TitleBar } from '../../components/TitleBar';
-import { ThemeToggle } from '../../components/ThemeToggle';
 import { StatusBar } from '../../components/StatusBar';
 import { Button } from '../../components/ui/Button';
 import { Select } from '../../components/ui/Select';
@@ -386,7 +385,7 @@ export function DataSyncWindow() {
   return (
     <div className="flex h-screen min-h-0 flex-col bg-surface text-fg">
       {/* Title bar */}
-      <TitleBar title={t('sync.windowTitle')} rightContent={<ThemeToggle />} />
+      <TitleBar title={t('sync.windowTitle')} />
 
       {/* Saved tasks banner */}
       {savedTasks.length > 0 && syncState !== 'syncing' && (
