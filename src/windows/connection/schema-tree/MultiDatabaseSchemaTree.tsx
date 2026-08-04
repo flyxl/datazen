@@ -32,6 +32,7 @@ export function MultiDatabaseSchemaTree({
   }, [connectionId, loadForConnection, initialDatabase]);
 
   const handleToggleDb = useCallback(async (dbName: string) => {
+    const wasExpanded = expandedDbs.has(dbName);
     setExpandedDbs((prev) => {
       const next = new Set(prev);
       if (next.has(dbName)) {
@@ -41,6 +42,10 @@ export function MultiDatabaseSchemaTree({
       }
       return next;
     });
+
+    if (!wasExpanded) {
+      useSchemaStore.setState({ currentDatabase: dbName });
+    }
 
     if (!dbTables[dbName] && !dbLoading.has(dbName)) {
       setDbLoading((prev) => new Set(prev).add(dbName));
@@ -58,7 +63,7 @@ export function MultiDatabaseSchemaTree({
         });
       }
     }
-  }, [connectionId, dbTables, dbLoading]);
+  }, [connectionId, dbTables, dbLoading, expandedDbs]);
 
   const query = searchQuery.toLowerCase();
   const filteredDbs = query

@@ -11,6 +11,7 @@ pub mod custom;
 pub mod openai;
 pub mod prompt;
 pub mod prompt_resolver;
+pub mod protocol;
 pub mod registry;
 
 pub use context::SchemaContextBuilder;

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, BarChart3, Bookmark, Clock, FileSearch, Loader2, Play, Sparkles, Square, Stethoscope, TableProperties, Trash2 } from 'lucide-react';
+import { AlertTriangle, BarChart3, Bookmark, Clock, Database, FileSearch, Loader2, Play, Sparkles, Square, Stethoscope, TableProperties, Trash2 } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { Button } from '../../components/ui/Button';
+import { Select } from '../../components/ui/Select';
 import { SqlEditor } from '../../components/SqlEditor';
 import type { SqlEditorHandle, SqlSchema } from '../../components/SqlEditor';
 import { DataTable } from '../../components/DataTable/DataTable';
@@ -17,6 +18,7 @@ import { useSettingsStore } from '../../stores/settingsStore';
 import { useI18n } from '../../hooks/useI18n';
 import { cn } from '../../lib/cn';
 import { queryCommands } from '../../commands/query';
+import { DB_REGISTRY } from '../../lib/databaseTypes';
 import type { ExplainResult, StatementResult } from '../../types';
 
 interface QueryPanelProps {
@@ -70,8 +72,12 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
   const tables = useSchemaStore((s) => s.tables);
   const views = useSchemaStore((s) => s.views);
   const columnMap = useSchemaStore((s) => s.columnMap);
+  const databases = useSchemaStore((s) => s.databases);
   const currentDatabase = useSchemaStore((s) => s.currentDatabase);
   const loadColumnMap = useSchemaStore((s) => s.loadColumnMap);
+  const loadTables = useSchemaStore((s) => s.loadTables);
+
+  const isMultiDb = !!(databaseType && DB_REGISTRY[databaseType as keyof typeof DB_REGISTRY]?.hasMultiDatabase);
 
   const editorSchema: SqlSchema = useMemo(() => {
     const result: SqlSchema = {};
@@ -165,6 +171,17 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
     <div className="flex min-h-0 flex-1 flex-col">
       {/* Toolbar */}
       <div className="flex h-9 shrink-0 items-center gap-2 border-b border-edge bg-surface-alt px-3">
+        {isMultiDb && databases.length > 0 && (
+          <div className="flex items-center gap-1.5 shrink-0">
+            <Database className="h-3.5 w-3.5 text-fg-muted" />
+            <Select
+              value={currentDatabase ?? ''}
+              options={databases.map((db) => ({ value: db, label: db }))}
+              onChange={(db) => void loadTables(db)}
+              className="!h-6 !text-[11px] max-w-[180px]"
+            />
+          </div>
+        )}
         <Button
           variant="primary"
           className="h-7 gap-1 px-2 text-xs"

@@ -580,6 +580,7 @@ const zhCN = {
   'chat.placeholder': '输入消息，询问关于数据库的问题…',
   'chat.send': '发送',
   'chat.clear': '清除对话',
+  'chat.stop': '停止生成',
   'chat.thinking': '思考中…',
   'chat.notConfigured': '请先在设置中配置 AI 服务',
   'chat.welcome': '你好！我是你的数据库助手。你可以问我关于 SQL 查询、数据库概念或数据分析的问题。',

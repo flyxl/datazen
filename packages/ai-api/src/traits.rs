@@ -18,12 +18,6 @@ pub trait AiProvider: Send + Sync {
     /// Human-readable provider name.
     fn display_name(&self) -> &str;
 
-    /// Models this provider offers.
-    fn available_models(&self) -> Vec<ModelInfo>;
-
-    /// Default model ID.
-    fn default_model(&self) -> &str;
-
     fn supports_streaming(&self) -> bool {
         true
     }

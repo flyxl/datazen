@@ -1,16 +1,16 @@
-//! Anthropic (Claude) AI provider.
+//! Anthropic (Claude) AI provider — delegates to `protocol::anthropic`.
 
 use async_trait::async_trait;
 use datazen_ai_api::*;
-use reqwest::Client;
-use serde::{Deserialize, Serialize};
+use reqwest::Client as HttpClient;
 use tokio::sync::{mpsc, RwLock};
 
+use super::protocol::{self, ProtocolConfig, CONNECT_TIMEOUT};
+
 const DEFAULT_ENDPOINT: &str = "https://api.anthropic.com";
-const API_VERSION: &str = "2023-06-01";
 
 pub struct AnthropicProvider {
-    client: Client,
+    http_client: HttpClient,
     state: RwLock<Option<ProviderState>>,
 }
 
@@ -23,167 +23,26 @@ struct ProviderState {
 impl AnthropicProvider {
     pub fn new() -> Self {
         Self {
-            client: Client::new(),
+            http_client: HttpClient::builder()
+                .connect_timeout(CONNECT_TIMEOUT)
+                .build()
+                .unwrap_or_default(),
             state: RwLock::new(None),
         }
     }
 
-    fn build_url(endpoint: &str, path: &str) -> String {
-        let base = endpoint.trim_end_matches('/');
-        if base.ends_with(path.trim_start_matches('/').trim_end_matches('/')) {
-            return base.to_string();
-        }
-        format!("{base}{path}")
-    }
-}
-
-// ─── Anthropic Messages API wire types ───
-
-#[derive(Serialize)]
-struct ApiRequest {
-    model: String,
-    messages: Vec<ApiMessage>,
-    max_tokens: u32,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    system: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    temperature: Option<f32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    stop_sequences: Option<Vec<String>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    stream: Option<bool>,
-}
-
-#[derive(Serialize, Deserialize)]
-struct ApiMessage {
-    role: String,
-    content: String,
-}
-
-#[derive(Deserialize)]
-struct ApiResponse {
-    content: Vec<ContentBlock>,
-    model: String,
-    stop_reason: Option<String>,
-    usage: ApiUsage,
-}
-
-#[derive(Deserialize)]
-struct ContentBlock {
-    #[serde(rename = "type")]
-    block_type: String,
-    text: Option<String>,
-}
-
-#[derive(Deserialize)]
-struct ApiUsage {
-    input_tokens: u32,
-    output_tokens: u32,
-}
-
-// SSE event types for streaming
-#[derive(Deserialize)]
-#[serde(tag = "type")]
-#[allow(dead_code)]
-enum StreamEvent {
-    #[serde(rename = "message_start")]
-    MessageStart { message: StreamMessageStart },
-    #[serde(rename = "content_block_start")]
-    ContentBlockStart { content_block: ContentBlock },
-    #[serde(rename = "content_block_delta")]
-    ContentBlockDelta { delta: ContentDelta },
-    #[serde(rename = "content_block_stop")]
-    ContentBlockStop {},
-    #[serde(rename = "message_delta")]
-    MessageDelta { delta: MessageDeltaBody, usage: ApiUsage },
-    #[serde(rename = "message_stop")]
-    MessageStop {},
-    #[serde(rename = "ping")]
-    Ping {},
-    #[serde(other)]
-    Unknown,
-}
-
-#[derive(Deserialize)]
-struct StreamMessageStart {
-    usage: Option<ApiUsage>,
-}
-
-#[derive(Deserialize)]
-#[allow(dead_code)]
-struct ContentDelta {
-    #[serde(rename = "type")]
-    delta_type: String,
-    text: Option<String>,
-}
-
-#[derive(Deserialize)]
-#[allow(dead_code)]
-struct MessageDeltaBody {
-    stop_reason: Option<String>,
-}
-
-#[derive(Deserialize)]
-struct ApiErrorResponse {
-    error: ApiErrorDetail,
-}
-
-#[derive(Deserialize)]
-struct ApiErrorDetail {
-    message: String,
-    #[serde(rename = "type")]
-    error_type: String,
-}
-
-fn map_api_error(status: reqwest::StatusCode, body: &str) -> AiError {
-    if let Ok(err_resp) = serde_json::from_str::<ApiErrorResponse>(body) {
-        let msg = err_resp.error.message;
-        return match status.as_u16() {
-            401 => AiError::InvalidApiKey,
-            429 => AiError::RateLimited {
-                retry_after_secs: 60,
-            },
-            _ if err_resp.error.error_type == "invalid_request_error"
-                && msg.contains("token") =>
-            {
-                AiError::ContextLengthExceeded { used: 0, limit: 0 }
-            }
-            _ => AiError::RequestFailed(msg),
-        };
-    }
-    AiError::RequestFailed(format!("HTTP {status}: {body}"))
-}
-
-/// Extracts system message content and non-system messages for the Anthropic API,
-/// which uses a separate `system` parameter.
-fn split_system_messages(messages: &[ChatMessage]) -> (Option<String>, Vec<ApiMessage>) {
-    let system_parts: Vec<&str> = messages
-        .iter()
-        .filter(|m| m.role == MessageRole::System)
-        .map(|m| m.content.as_str())
-        .collect();
-
-    let system = if system_parts.is_empty() {
-        None
-    } else {
-        Some(system_parts.join("\n\n"))
-    };
-
-    let api_messages = messages
-        .iter()
-        .filter(|m| m.role != MessageRole::System)
-        .map(|m| ApiMessage {
-            role: match m.role {
-                MessageRole::User => "user",
-                MessageRole::Assistant => "assistant",
-                _ => unreachable!(),
-            }
-            .into(),
-            content: m.content.clone(),
+    async fn protocol_config(&self) -> Result<ProtocolConfig, AiError> {
+        let guard = self.state.read().await;
+        let s = guard
+            .as_ref()
+            .ok_or_else(|| AiError::NotConfigured("Anthropic provider not initialized".into()))?;
+        Ok(ProtocolConfig {
+            http_client: self.http_client.clone(),
+            api_base: s.endpoint.clone(),
+            api_key: s.api_key.clone(),
+            max_tokens: s.max_tokens,
         })
-        .collect();
-
-    (system, api_messages)
+    }
 }
 
 #[async_trait]
@@ -196,36 +55,6 @@ impl AiProvider for AnthropicProvider {
         "Anthropic (Claude)"
     }
 
-    fn available_models(&self) -> Vec<ModelInfo> {
-        vec![
-            ModelInfo {
-                id: "claude-sonnet-4-20250514".into(),
-                display_name: "Claude Sonnet 4".into(),
-                context_window: 200_000,
-                supports_streaming: true,
-                supports_tools: true,
-            },
-            ModelInfo {
-                id: "claude-3-5-haiku-20241022".into(),
-                display_name: "Claude 3.5 Haiku".into(),
-                context_window: 200_000,
-                supports_streaming: true,
-                supports_tools: true,
-            },
-            ModelInfo {
-                id: "claude-3-5-sonnet-20241022".into(),
-                display_name: "Claude 3.5 Sonnet".into(),
-                context_window: 200_000,
-                supports_streaming: true,
-                supports_tools: true,
-            },
-        ]
-    }
-
-    fn default_model(&self) -> &str {
-        "claude-sonnet-4-20250514"
-    }
-
     fn supports_tools(&self) -> bool {
         true
     }
@@ -235,9 +64,7 @@ impl AiProvider for AnthropicProvider {
             .api_key
             .as_deref()
             .filter(|k| !k.is_empty())
-            .ok_or_else(|| {
-                AiError::NotConfigured("API key is required for Anthropic".into())
-            })?;
+            .ok_or_else(|| AiError::NotConfigured("API key is required for Anthropic".into()))?;
         Ok(())
     }
 
@@ -246,9 +73,7 @@ impl AiProvider for AnthropicProvider {
             .api_key
             .as_deref()
             .filter(|k| !k.is_empty())
-            .ok_or_else(|| {
-                AiError::NotConfigured("API key is required for Anthropic".into())
-            })?;
+            .ok_or_else(|| AiError::NotConfigured("API key is required for Anthropic".into()))?;
 
         let endpoint = config
             .endpoint
@@ -265,87 +90,9 @@ impl AiProvider for AnthropicProvider {
         Ok(())
     }
 
-    async fn complete(
-        &self,
-        request: &CompletionRequest,
-    ) -> Result<CompletionResponse, AiError> {
-        let state_guard = self.state.read().await;
-        let state = state_guard
-            .as_ref()
-            .ok_or_else(|| AiError::NotConfigured("Anthropic provider not initialized".into()))?;
-
-        let url = Self::build_url(&state.endpoint, "/v1/messages");
-        let (system, messages) = split_system_messages(&request.messages);
-
-        let body = ApiRequest {
-            model: request.model.clone(),
-            messages,
-            max_tokens: state.max_tokens,
-            system,
-            temperature: request.temperature,
-            stop_sequences: request.stop.clone(),
-            stream: None,
-        };
-
-        let raw_request = serde_json::to_string(&body).unwrap_or_default();
-        tracing::info!(%url, "anthropic: HTTP request body\n{}", raw_request);
-
-        let resp = self
-            .client
-            .post(&url)
-            .header("x-api-key", &state.api_key)
-            .header("anthropic-version", API_VERSION)
-            .header("content-type", "application/json")
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| AiError::RequestFailed(e.to_string()))?;
-
-        let status = resp.status();
-        let raw_resp = resp.text().await.unwrap_or_default();
-        tracing::info!(%status, "anthropic: HTTP response body\n{}", raw_resp);
-        if !status.is_success() {
-            return Err(map_api_error(status, &raw_resp));
-        }
-
-        let api_resp: ApiResponse = serde_json::from_str(&raw_resp)
-            .map_err(|e| AiError::RequestFailed(format!("JSON decode: {e}")))?;
-
-        let content = api_resp
-            .content
-            .iter()
-            .filter(|b| b.block_type == "text")
-            .filter_map(|b| b.text.as_deref())
-            .collect::<Vec<_>>()
-            .join("");
-
-        let reasoning_text: String = api_resp
-            .content
-            .iter()
-            .filter(|b| b.block_type == "thinking")
-            .filter_map(|b| b.text.as_deref())
-            .collect::<Vec<_>>()
-            .join("");
-        let reasoning = if reasoning_text.is_empty() { None } else { Some(reasoning_text) };
-
-        let total = api_resp.usage.input_tokens + api_resp.usage.output_tokens;
-
-        Ok(CompletionResponse {
-            request_id: request.request_id.clone(),
-            content,
-            reasoning,
-            model: api_resp.model,
-            finish_reason: api_resp.stop_reason,
-            usage: TokenUsage {
-                prompt_tokens: api_resp.usage.input_tokens,
-                completion_tokens: api_resp.usage.output_tokens,
-                total_tokens: total,
-            },
-        })
-    }
-
-    async fn reset(&self) {
-        *self.state.write().await = None;
+    async fn complete(&self, request: &CompletionRequest) -> Result<CompletionResponse, AiError> {
+        let cfg = self.protocol_config().await?;
+        protocol::anthropic::complete(&cfg, request).await
     }
 
     async fn stream_complete(
@@ -353,128 +100,12 @@ impl AiProvider for AnthropicProvider {
         request: &CompletionRequest,
         sender: mpsc::Sender<Result<StreamChunk, AiError>>,
     ) -> Result<(), AiError> {
-        let state_guard = self.state.read().await;
-        let state = state_guard
-            .as_ref()
-            .ok_or_else(|| AiError::NotConfigured("Anthropic provider not initialized".into()))?;
+        let cfg = self.protocol_config().await?;
+        protocol::anthropic::stream_complete(&cfg, request, sender).await
+    }
 
-        let url = Self::build_url(&state.endpoint, "/v1/messages");
-        let (system, messages) = split_system_messages(&request.messages);
-        let body = ApiRequest {
-            model: request.model.clone(),
-            messages,
-            max_tokens: state.max_tokens,
-            system,
-            temperature: request.temperature,
-            stop_sequences: request.stop.clone(),
-            stream: Some(true),
-        };
-
-        let raw_request = serde_json::to_string(&body).unwrap_or_default();
-        tracing::info!(%url, "anthropic: stream HTTP request body\n{}", raw_request);
-
-        let resp = self
-            .client
-            .post(&url)
-            .header("x-api-key", &state.api_key)
-            .header("anthropic-version", API_VERSION)
-            .header("content-type", "application/json")
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| AiError::RequestFailed(e.to_string()))?;
-
-        let status = resp.status();
-        if !status.is_success() {
-            let text = resp.text().await.unwrap_or_default();
-            return Err(map_api_error(status, &text));
-        }
-
-        let mut byte_buf = Vec::new();
-        let mut stream = resp.bytes_stream();
-        let mut prompt_tokens = 0u32;
-        let mut output_tokens = 0u32;
-
-        while let Some(chunk_result) =
-            futures_util::StreamExt::next(&mut stream).await
-        {
-            let chunk_bytes = match chunk_result {
-                Ok(b) => b,
-                Err(e) => {
-                    let _ = sender.send(Err(AiError::RequestFailed(e.to_string()))).await;
-                    return Ok(());
-                }
-            };
-
-            byte_buf.extend_from_slice(&chunk_bytes);
-
-            while let Some(line_end) = byte_buf.iter().position(|&b| b == b'\n') {
-                let line = String::from_utf8_lossy(&byte_buf[..line_end])
-                    .trim()
-                    .to_string();
-                byte_buf.drain(..=line_end);
-
-                if line.is_empty() || line.starts_with(':') {
-                    continue;
-                }
-
-                let data = match line.strip_prefix("data: ") {
-                    Some(d) => d.trim(),
-                    None if line.starts_with("event:") => continue,
-                    None => continue,
-                };
-
-                if let Ok(event) = serde_json::from_str::<StreamEvent>(data) {
-                    match event {
-                        StreamEvent::MessageStart { message } => {
-                            if let Some(usage) = message.usage {
-                                prompt_tokens = usage.input_tokens;
-                            }
-                        }
-                        StreamEvent::ContentBlockDelta { delta } => {
-                            if let Some(text) = delta.text {
-                                if !text.is_empty() {
-                                    if sender
-                                        .send(Ok(StreamChunk {
-                                            content: text,
-                                            reasoning: None,
-                                            done: false,
-                                            usage: None,
-                                        }))
-                                        .await
-                                        .is_err()
-                                    {
-                                        return Ok(());
-                                    }
-                                }
-                            }
-                        }
-                        StreamEvent::MessageDelta { usage, .. } => {
-                            output_tokens = usage.output_tokens;
-                        }
-                        StreamEvent::MessageStop {} => {
-                            let total = prompt_tokens + output_tokens;
-                            let _ = sender
-                                .send(Ok(StreamChunk {
-                                    content: String::new(),
-                                    reasoning: None,
-                                    done: true,
-                                    usage: Some(TokenUsage {
-                                        prompt_tokens,
-                                        completion_tokens: output_tokens,
-                                        total_tokens: total,
-                                    }),
-                                }))
-                                .await;
-                            return Ok(());
-                        }
-                        _ => {}
-                    }
-                }
-            }
-        }
-
-        Ok(())
+    async fn reset(&self) {
+        *self.state.write().await = None;
     }
 }
 
@@ -491,35 +122,6 @@ mod tests {
         assert!(provider.supports_tools());
     }
 
-    #[test]
-    fn test_split_system_messages() {
-        let messages = vec![
-            ChatMessage {
-                role: MessageRole::System,
-                content: "You are helpful.".into(),
-            },
-            ChatMessage {
-                role: MessageRole::User,
-                content: "Hello".into(),
-            },
-        ];
-        let (system, api_msgs) = split_system_messages(&messages);
-        assert_eq!(system.unwrap(), "You are helpful.");
-        assert_eq!(api_msgs.len(), 1);
-        assert_eq!(api_msgs[0].role, "user");
-    }
-
-    #[test]
-    fn test_split_system_messages_none() {
-        let messages = vec![ChatMessage {
-            role: MessageRole::User,
-            content: "Hello".into(),
-        }];
-        let (system, api_msgs) = split_system_messages(&messages);
-        assert!(system.is_none());
-        assert_eq!(api_msgs.len(), 1);
-    }
-
     #[tokio::test]
     async fn test_validate_config_requires_key() {
         let provider = AnthropicProvider::new();
@@ -533,12 +135,5 @@ mod tests {
         };
         let err = provider.validate_config(&config).await.unwrap_err();
         assert!(matches!(err, AiError::NotConfigured(_)));
-    }
-
-    #[test]
-    fn test_map_api_error_401() {
-        let body = r#"{"error":{"message":"Invalid API key","type":"authentication_error"}}"#;
-        let err = map_api_error(reqwest::StatusCode::UNAUTHORIZED, body);
-        assert!(matches!(err, AiError::InvalidApiKey));
     }
 }

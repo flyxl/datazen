@@ -582,6 +582,7 @@ const en: Record<TranslationKey, string> = {
   'chat.placeholder': 'Ask a question about your database…',
   'chat.send': 'Send',
   'chat.clear': 'Clear Chat',
+  'chat.stop': 'Stop generating',
   'chat.thinking': 'Thinking…',
   'chat.notConfigured': 'Please configure an AI provider in Settings first',
   'chat.welcome': 'Hello! I\'m your database assistant. Ask me about SQL queries, database concepts, or data analysis.',

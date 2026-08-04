@@ -8,11 +8,11 @@ import {
   FileCode,
   Loader2,
   Save,
-  Send,
   Sparkles,
   Settings,
 } from 'lucide-react';
 import { Button } from '../ui/Button';
+import { AiInput } from './AiInput';
 import { Select } from '../ui/Select';
 import { useI18n } from '../../hooks/useI18n';
 import { useAiStore } from '../../stores/aiStore';
@@ -42,7 +42,6 @@ export function WorkflowChatPanel({ connections, onSaved, onBack }: WorkflowChat
   const [saveOk, setSaveOk] = useState(false);
   const [saveError, setSaveError] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     if (!workflowChat) initChat();
@@ -63,16 +62,6 @@ export function WorkflowChatPanel({ connections, onSaved, onBack }: WorkflowChat
     setInput('');
   }, [input, workflowChat, sendMessage, selectedConnection]);
 
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        handleSend();
-      }
-    },
-    [handleSend],
-  );
-
   const handleNewChat = useCallback(() => {
     clearChat();
     initChat();
@@ -80,6 +69,20 @@ export function WorkflowChatPanel({ connections, onSaved, onBack }: WorkflowChat
     setSaveOk(false);
     setSaveError('');
   }, [clearChat, initChat]);
+
+  const handleStop = useCallback(() => {
+    const session = workflowChat;
+    if (!session) return;
+    const collected = session.streamContent || '';
+    const reasoning = session.streamReasoning || '';
+    const msgs = [...session.messages];
+    if (collected || reasoning) {
+      msgs.push({ role: 'assistant', content: collected, reasoning: reasoning || undefined });
+    }
+    useAiStore.setState({
+      workflowChat: { ...session, messages: msgs, isStreaming: false, streamContent: '', streamReasoning: '', requestId: null },
+    });
+  }, [workflowChat]);
 
   const handleSaveYaml = useCallback(async (yaml: string) => {
     setSaving(true);
@@ -198,34 +201,15 @@ export function WorkflowChatPanel({ connections, onSaved, onBack }: WorkflowChat
 
       {/* Input */}
       <div className="shrink-0 border-t border-edge p-2">
-        <div className="flex gap-1.5">
-          <textarea
-            ref={inputRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={t('workflows.aiCreate.placeholder')}
-            rows={2}
-            disabled={workflowChat?.isStreaming}
-            autoCapitalize="off"
-            autoCorrect="off"
-            spellCheck={false}
-            className={cn(
-              'flex-1 resize-none rounded border border-edge bg-surface px-2 py-1.5',
-              'text-sm text-fg placeholder:text-fg-muted',
-              'focus:border-accent focus:outline-none',
-              'disabled:opacity-50',
-            )}
-          />
-          <Button
-            variant="primary"
-            className="h-auto shrink-0 px-2 self-end"
-            disabled={!input.trim() || workflowChat?.isStreaming}
-            onClick={handleSend}
-          >
-            <Send className="h-3.5 w-3.5" />
-          </Button>
-        </div>
+        <AiInput
+          value={input}
+          onChange={setInput}
+          onSubmit={handleSend}
+          placeholder={t('workflows.aiCreate.placeholder')}
+          rows={3}
+          isLoading={workflowChat?.isStreaming}
+          onStop={handleStop}
+        />
       </div>
     </div>
   );

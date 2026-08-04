@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  AlertTriangle,
+  BarChart3,
   Clock,
   FolderOpen,
   History,
@@ -8,6 +10,8 @@ import {
   Play,
   Plus,
   RefreshCw,
+  Sparkles,
+  TableProperties,
   Trash2,
   Wand2,
   X,
@@ -17,22 +21,32 @@ import { ThemeToggle } from '../../components/ThemeToggle';
 import { StatusBar } from '../../components/StatusBar';
 import { DataTable } from '../../components/DataTable/DataTable';
 import type { ColumnDef } from '../../components/DataTable/TableHeader';
+import { ChartView } from '../../components/chart/ChartView';
+import { WorkflowChatPanel } from '../../components/ai/WorkflowChatPanel';
+import { isChartableResult } from '../../lib/chart/fieldInference';
 import { Button } from '../../components/ui/Button';
 import { Select } from '../../components/ui/Select';
+import { useResizable } from '../../hooks/useResizable';
 import { useThemeListener } from '../../hooks/useThemeListener';
 import { useI18n } from '../../hooks/useI18n';
 import { useAiStore } from '../../stores/aiStore';
 import { aiCommands } from '../../commands/ai';
 import { connectionCommands } from '../../commands/connection';
 import { cn } from '../../lib/cn';
+import { WorkflowForm, emptyDraft } from './WorkflowForm';
+import type { WorkflowDraft } from './WorkflowForm';
 import type {
+  ColumnInfo,
   HistoryListItem,
+  StatementResult,
   StepExecutionResult,
+  Value,
   WorkflowDefinition,
   WorkflowExecutionResult,
   WorkflowListItem,
   WorkflowStepType,
 } from '../../types';
+import type { ChartConfig } from '../../types/chart';
 
 // ── Panel types (same pattern as ConnectionWindow) ──────────────────
 
@@ -52,7 +66,19 @@ interface HistoryDetailPanel {
   result: WorkflowExecutionResult;
 }
 
-type Panel = WorkflowRunPanel | HistoryDetailPanel;
+interface EditPanel {
+  type: 'edit';
+  id: string;
+  editingId: string | null;
+  draft: WorkflowDraft;
+}
+
+interface AiCreatePanel {
+  type: 'ai-create';
+  id: string;
+}
+
+type Panel = WorkflowRunPanel | HistoryDetailPanel | EditPanel | AiCreatePanel;
 
 let panelCounter = 0;
 function nextPanelId(prefix: string) {
@@ -60,26 +86,7 @@ function nextPanelId(prefix: string) {
   return `${prefix}-${panelCounter}`;
 }
 
-// ── Draft types ─────────────────────────────────────────────────────
-
-interface WorkflowStepDraft {
-  type: WorkflowStepType;
-  id: string;
-  sql?: string;
-  prompt?: string;
-  connection?: string;
-  database?: string;
-}
-
-function emptyDraft() {
-  return {
-    id: '',
-    name: '',
-    description: '',
-    variables: [] as { name: string; varType: string; description: string; required: boolean }[],
-    steps: [{ type: 'query' as WorkflowStepType, id: 'step1', sql: '' }] as WorkflowStepDraft[],
-  };
-}
+// (WorkflowDraft types and emptyDraft moved to ./WorkflowForm.tsx)
 
 // ── Main Component ──────────────────────────────────────────────────
 
@@ -90,6 +97,7 @@ export function WorkflowWindow() {
   const workflows = useAiStore((s) => s.workflows);
   const workflowsLoading = useAiStore((s) => s.workflowsLoading);
   const loadWorkflows = useAiStore((s) => s.loadWorkflows);
+  const loadConfig = useAiStore((s) => s.loadConfig);
   const executeWorkflow = useAiStore((s) => s.executeWorkflow);
   const workflowError = useAiStore((s) => s.workflowError);
   const clearWorkflowResult = useAiStore((s) => s.clearWorkflowResult);
@@ -99,21 +107,26 @@ export function WorkflowWindow() {
   const [activeStepIndex, setActiveStepIndex] = useState<number | null>(null);
 
   const [workflowsDir, setWorkflowsDir] = useState('');
-  const [showForm, setShowForm] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [draft, setDraft] = useState(emptyDraft());
   const [feedback, setFeedback] = useState('');
   const [savedConnections, setSavedConnections] = useState<{ id: string; name: string; databaseType: string }[]>([]);
   const [sideTab, setSideTab] = useState<'workflows' | 'history'>('workflows');
   const [historyItems, setHistoryItems] = useState<HistoryListItem[]>([]);
+  const { size: sidebarWidth, handleRef: sidebarHandleRef } = useResizable({
+    direction: 'horizontal',
+    initialSize: 256,
+    minSize: 180,
+    maxSize: 420,
+    storageKey: 'workflow.sidebar',
+  });
 
   useEffect(() => {
+    void loadConfig();
     void loadWorkflows();
     void aiCommands.workflowGetDir().then(setWorkflowsDir);
     void connectionCommands.getConnections().then((conns) =>
       setSavedConnections(conns.map((c) => ({ id: c.id, name: c.name, databaseType: c.databaseType }))),
     );
-  }, [loadWorkflows]);
+  }, [loadConfig, loadWorkflows]);
 
   const loadHistory = useCallback(async () => {
     const items = await aiCommands.workflowHistoryList();
@@ -178,6 +191,13 @@ export function WorkflowWindow() {
     });
   }, []);
 
+  const updateEditDraft = useCallback((panelId: string, draft: WorkflowDraft) => {
+    setPanels((prev) => prev.map((p): Panel => {
+      if (p.id !== panelId || p.type !== 'edit') return p;
+      return { ...p, draft };
+    }));
+  }, []);
+
   // ── Workflow CRUD ─────────────────────────────────────────────────
 
   const [variables, setVariables] = useState<Record<string, string>>({});
@@ -235,10 +255,26 @@ export function WorkflowWindow() {
     } catch { /* browser mode */ }
   }, [workflowsDir]);
 
+  const openEditPanel = useCallback((editingId: string | null, draft: WorkflowDraft) => {
+    const existing = panels.find((p) => p.type === 'edit' && (p as EditPanel).editingId === editingId);
+    if (existing) {
+      setActivePanelId(existing.id);
+      return;
+    }
+    const panel: EditPanel = {
+      type: 'edit',
+      id: nextPanelId('edit'),
+      editingId,
+      draft,
+    };
+    setPanels((prev) => [...prev, panel]);
+    setActivePanelId(panel.id);
+  }, [panels]);
+
   const handleEdit = async (workflowId: string) => {
     try {
       const workflow: WorkflowDefinition = await aiCommands.workflowGet(workflowId);
-      setDraft({
+      openEditPanel(workflowId, {
         id: workflow.id,
         name: workflow.name,
         description: workflow.description,
@@ -249,27 +285,36 @@ export function WorkflowWindow() {
           type: s.type as WorkflowStepType, id: s.id, sql: s.sql, prompt: s.prompt, connection: s.connection, database: s.database,
         })),
       });
-      setEditingId(workflowId);
-      setShowForm(true);
     } catch (e) { setFeedback(String(e)); }
   };
 
-  const handleCreate = () => { setDraft(emptyDraft()); setEditingId(null); setShowForm(true); };
+  const handleCreate = () => { openEditPanel(null, emptyDraft()); };
 
-  const handleSave = async () => {
+  const handleAiCreate = useCallback(() => {
+    const existing = panels.find((p) => p.type === 'ai-create');
+    if (existing) {
+      setActivePanelId(existing.id);
+      return;
+    }
+    const panel: AiCreatePanel = { type: 'ai-create', id: nextPanelId('ai') };
+    setPanels((prev) => [...prev, panel]);
+    setActivePanelId(panel.id);
+  }, [panels]);
+
+  const handleSave = useCallback(async (panelId: string, d: WorkflowDraft) => {
     const workflow: WorkflowDefinition = {
-      id: draft.id.trim(), name: draft.name.trim(), description: draft.description.trim(),
-      variables: draft.variables.map((v) => ({ name: v.name, type: v.varType, description: v.description, required: v.required })),
-      steps: draft.steps.map((s) => ({ type: s.type, id: s.id, sql: s.sql, prompt: s.prompt, connection: s.connection, database: s.database })),
+      id: d.id.trim(), name: d.name.trim(), description: d.description.trim(),
+      variables: d.variables.map((v) => ({ name: v.name, type: v.varType, description: v.description, required: v.required })),
+      steps: d.steps.map((s) => ({ type: s.type, id: s.id, sql: s.sql, prompt: s.prompt, connection: s.connection, database: s.database })),
     };
     try {
       await aiCommands.workflowSave(workflow);
-      setShowForm(false);
+      closePanel(panelId);
       setFeedback(t('workflows.saved'));
       setTimeout(() => setFeedback(''), 2000);
       void loadWorkflows();
     } catch (e) { setFeedback(String(e)); }
-  };
+  }, [closePanel, t, loadWorkflows]);
 
   const handleClearHistory = async () => {
     if (!confirm(t('workflows.history.clearConfirm'))) return;
@@ -296,42 +341,32 @@ export function WorkflowWindow() {
 
   return (
     <div className="flex h-screen flex-col bg-surface text-fg">
-      <TitleBar title={t('win.workflow')} rightContent={<ThemeToggle />} />
-
-      {/* Toolbar */}
-      <div className="flex h-10 shrink-0 items-center gap-2 border-b border-edge bg-surface-alt px-4">
-        <Button variant="secondary" className="h-7 w-7 !px-0" title={t('workflows.reload')} onClick={() => void handleReload()}>
-          <RefreshCw className="h-3.5 w-3.5" />
-        </Button>
-        <Button variant="primary" className="h-7 text-xs" onClick={handleCreate}>
-          <Plus className="h-3.5 w-3.5" />
-          {t('workflows.create')}
-        </Button>
-        {workflowsDir && (
-          <Button variant="secondary" className="h-7 w-7 !px-0" title={t('workflows.openDir')} onClick={() => void handleOpenDir()}>
-            <FolderOpen className="h-3.5 w-3.5" />
-          </Button>
-        )}
-
-        <div className="flex-1" />
-
-        {/* Execute button (when run panel active) */}
-        {currentWorkflow && (
-          <Button
-            variant="primary"
-            className="h-7 text-xs"
-            onClick={() => void handleExecute()}
-            disabled={isExecuting}
-          >
-            {isExecuting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
-            {isExecuting ? t('workflows.executing') : t('workflows.execute')}
-          </Button>
-        )}
-      </div>
+      <TitleBar
+        title={t('win.workflow')}
+        leftContent={
+          <div className="flex items-center gap-1 ml-2">
+            <Button variant="secondary" className="h-6 w-6 !px-0" title={t('workflows.reload')} onClick={() => void handleReload()}>
+              <RefreshCw className="h-3 w-3" />
+            </Button>
+            <Button variant="secondary" className="h-6 w-6 !px-0" title={t('workflows.create')} onClick={handleCreate}>
+              <Plus className="h-3 w-3" />
+            </Button>
+            <Button variant="secondary" className="h-6 w-6 !px-0" title={t('workflows.aiCreate.title')} onClick={handleAiCreate}>
+              <Sparkles className="h-3 w-3" />
+            </Button>
+            {workflowsDir && (
+              <Button variant="secondary" className="h-6 w-6 !px-0" title={t('workflows.openDir')} onClick={() => void handleOpenDir()}>
+                <FolderOpen className="h-3 w-3" />
+              </Button>
+            )}
+          </div>
+        }
+        rightContent={<ThemeToggle />}
+      />
 
       <div className="flex min-h-0 flex-1">
         {/* Left sidebar: workflow list / history */}
-        <div className="flex w-64 shrink-0 flex-col border-r border-edge bg-surface-alt">
+        <div style={{ width: sidebarWidth }} className="flex shrink-0 flex-col border-r border-edge bg-surface-alt">
           <div className="flex items-center border-b border-edge">
             <button
               type="button"
@@ -359,8 +394,6 @@ export function WorkflowWindow() {
           <div className="flex-1 overflow-y-auto">
             {sideTab === 'history' ? (
               <HistoryList items={historyItems} onView={(id, name) => void openHistoryPanel(id, name)} onClear={() => void handleClearHistory()} t={t} />
-            ) : showForm ? (
-              <WorkflowForm draft={draft} editingId={editingId} connections={savedConnections} onDraftChange={setDraft} onSave={() => void handleSave()} onCancel={() => setShowForm(false)} t={t} />
             ) : (
               <WorkflowSidebarList
                 workflows={workflows}
@@ -374,34 +407,12 @@ export function WorkflowWindow() {
             )}
           </div>
 
-          {/* Variables input (when run panel active) */}
-          {currentWorkflow && currentWorkflow.variables.length > 0 && (
-            <div className="border-t border-edge p-3 space-y-1.5">
-              <div className="text-[11px] text-fg-muted font-medium">{t('workflows.form.variables')}</div>
-              {currentWorkflow.variables.map((v) => (
-                <div key={v.name}>
-                  <label className="text-[10px] text-fg-muted">{v.name}{v.required && <span className="text-red-400">*</span>}</label>
-                  {v.type === 'connection' ? (
-                    <Select
-                      value={variables[v.name] ?? ''}
-                      options={savedConnections.map((c) => ({ value: c.id, label: c.name }))}
-                      onChange={(val) => setVariables({ ...variables, [v.name]: val })}
-                      className="!h-6 !text-[11px]"
-                    />
-                  ) : (
-                    <input
-                      type="text"
-                      className="w-full h-6 rounded border border-edge bg-surface px-2 text-[11px] text-fg outline-none focus:border-accent"
-                      value={variables[v.name] ?? ''}
-                      onChange={(e) => setVariables({ ...variables, [v.name]: e.target.value })}
-                      placeholder={v.description}
-                    />
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
         </div>
+
+        <div
+          ref={sidebarHandleRef}
+          className="w-1 shrink-0 cursor-col-resize bg-transparent hover:bg-blue-500/30"
+        />
 
         {/* Main content: tab bar + result */}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -411,15 +422,25 @@ export function WorkflowWindow() {
               <div className="flex min-w-0 flex-1 overflow-x-auto">
                 {panels.map((panel) => {
                   const isActive = panel.id === activePanelId;
-                  const icon = panel.type === 'run'
-                    ? <Wand2 className="h-3.5 w-3.5 shrink-0" />
-                    : <History className="h-3.5 w-3.5 shrink-0" />;
-                  const label = panel.type === 'run'
-                    ? (panel as WorkflowRunPanel).workflowName
-                    : `${(panel as HistoryDetailPanel).workflowName}`;
+                  const icon = panel.type === 'ai-create'
+                    ? <Sparkles className="h-3.5 w-3.5 shrink-0 text-accent" />
+                    : panel.type === 'edit'
+                      ? <Pencil className="h-3.5 w-3.5 shrink-0" />
+                      : panel.type === 'run'
+                        ? <Wand2 className="h-3.5 w-3.5 shrink-0" />
+                        : <History className="h-3.5 w-3.5 shrink-0" />;
+                  const label = panel.type === 'ai-create'
+                    ? t('workflows.aiCreate.title')
+                    : panel.type === 'edit'
+                      ? ((panel as EditPanel).editingId ? (panel as EditPanel).draft.name || t('workflows.edit') : t('workflows.create'))
+                      : panel.type === 'run'
+                        ? (panel as WorkflowRunPanel).workflowName
+                        : (panel as HistoryDetailPanel).workflowName;
                   const resultStatus = panel.type === 'run'
                     ? (panel as WorkflowRunPanel).result
-                    : (panel as HistoryDetailPanel).result;
+                    : panel.type === 'history'
+                      ? (panel as HistoryDetailPanel).result
+                      : null;
 
                   return (
                     <div
@@ -480,8 +501,73 @@ export function WorkflowWindow() {
             </div>
           )}
 
+          {/* Variables input + execute button (when run panel active) */}
+          {currentWorkflow && (
+            <div className="shrink-0 border-b border-edge bg-surface px-4 py-3">
+              {currentWorkflow.variables.length > 0 && (
+                <div className="flex flex-wrap items-end gap-3 mb-3">
+                  {currentWorkflow.variables.map((v) => (
+                    <div key={v.name} className="min-w-[160px] max-w-[260px] flex-1">
+                      <label className="text-[11px] text-fg-muted block mb-0.5">
+                        {v.name}
+                        {v.required && <span className="text-red-400">*</span>}
+                        {v.description && <span className="ml-1 text-fg-muted/60">({v.description})</span>}
+                      </label>
+                      {v.type === 'connection' ? (
+                        <Select
+                          value={variables[v.name] ?? ''}
+                          options={savedConnections.map((c) => ({ value: c.id, label: c.name }))}
+                          onChange={(val) => setVariables({ ...variables, [v.name]: val })}
+                          className="!h-7 !text-xs"
+                        />
+                      ) : (
+                        <input
+                          type="text"
+                          className="w-full h-7 rounded border border-edge bg-surface-alt px-2 text-xs text-fg outline-none focus:border-accent"
+                          value={variables[v.name] ?? ''}
+                          onChange={(e) => setVariables({ ...variables, [v.name]: e.target.value })}
+                          placeholder={v.description}
+                        />
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+              <Button
+                variant="primary"
+                className="h-8 text-xs"
+                onClick={() => void handleExecute()}
+                disabled={isExecuting}
+              >
+                {isExecuting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
+                {isExecuting ? t('workflows.executing') : t('workflows.execute')}
+              </Button>
+            </div>
+          )}
+
           {/* Panel content */}
-          {currentStep ? (
+          {activePanel?.type === 'ai-create' ? (
+            <div className="relative flex-1 min-h-0">
+              <div className="absolute inset-0">
+                <WorkflowChatPanel
+                  connections={savedConnections}
+                  onSaved={() => void loadWorkflows()}
+                  onBack={() => closePanel(activePanel.id)}
+                />
+              </div>
+            </div>
+          ) : activePanel?.type === 'edit' ? (
+            <div className="flex flex-1 min-h-0 overflow-y-auto">
+              <WorkflowForm
+                draft={(activePanel as EditPanel).draft}
+                editingId={(activePanel as EditPanel).editingId}
+                connections={savedConnections}
+                onDraftChange={(d) => updateEditDraft(activePanel.id, d)}
+                onSave={() => void handleSave(activePanel.id, (activePanel as EditPanel).draft)}
+                onCancel={() => closePanel(activePanel.id)}
+              />
+            </div>
+          ) : currentStep ? (
             <StepDetailView step={currentStep} t={t} />
           ) : currentResult ? (
             <div className="flex flex-1 items-center justify-center text-xs text-fg-muted">
@@ -491,14 +577,14 @@ export function WorkflowWindow() {
             <div className="flex flex-1 items-center justify-center p-4">
               <p className="text-xs text-red-400">{workflowError}</p>
             </div>
-          ) : (
+          ) : !currentWorkflow && !activePanel ? (
             <div className="flex flex-1 items-center justify-center text-sm text-fg-muted">
               <div className="text-center">
                 <Wand2 className="h-12 w-12 mx-auto mb-3 opacity-20" />
                 <p>{t('workflows.emptyHint')}</p>
               </div>
             </div>
-          )}
+          ) : null}
         </div>
       </div>
 
@@ -516,17 +602,60 @@ function StepStatusIcon({ status }: { status: string }) {
   return <span className="text-red-400">✗</span>;
 }
 
-function StepDetailView({ step, t }: { step: StepExecutionResult; t: ReturnType<typeof useI18n>['t'] }) {
-  const rows = step.result?.rows as Record<string, unknown>[] | undefined;
-  const rowsCount = (step.result?.rows_count ?? rows?.length ?? 0) as number;
+function extractStepColumnNames(stepResult: Record<string, unknown> | undefined): { name: string; dataType: string }[] {
+  if (!stepResult) return [];
+  const cols = stepResult.columns as { name: string; dataType?: string }[] | undefined;
+  if (Array.isArray(cols) && cols.length > 0) {
+    return cols.map((c) => ({ name: c.name, dataType: c.dataType || 'text' }));
+  }
+  const data = (stepResult.data ?? stepResult.result) as Record<string, unknown>[] | undefined;
+  if (Array.isArray(data) && data.length > 0 && typeof data[0] === 'object' && data[0] !== null && !Array.isArray(data[0])) {
+    return Object.keys(data[0]).map((k) => ({ name: k, dataType: 'text' }));
+  }
+  const rows = stepResult.rows as unknown[][] | undefined;
+  if (Array.isArray(rows) && rows.length > 0 && Array.isArray(rows[0])) {
+    return rows[0].map((_, i) => ({ name: `col_${i + 1}`, dataType: 'text' }));
+  }
+  return [];
+}
 
-  const { columns, tableRows } = useMemo(() => {
-    if (!rows || rows.length === 0) return { columns: [] as ColumnDef[], tableRows: [] as unknown[][] };
-    const keys = Object.keys(rows[0]);
-    const cols: ColumnDef[] = keys.map((k) => ({ id: k, name: k, type: 'text' }));
-    const tRows = rows.map((r) => keys.map((k) => r[k] ?? null));
-    return { columns: cols, tableRows: tRows };
-  }, [rows]);
+function stepToStatementResult(step: StepExecutionResult): StatementResult | null {
+  const r = step.result;
+  if (!r?.rows) return null;
+  const cols = extractStepColumnNames(r);
+  if (cols.length === 0) return null;
+  const columnInfos: ColumnInfo[] = cols.map((c) => ({
+    name: c.name,
+    dataType: c.dataType,
+    nullable: true,
+  }));
+  return {
+    sql: step.sqlExecuted ?? '',
+    columns: columnInfos,
+    rows: r.rows as (Value | null)[][],
+    executionTimeMs: (r.execution_time_ms as number) ?? step.executionTimeMs,
+  };
+}
+
+function StepDetailView({ step, t }: { step: StepExecutionResult; t: ReturnType<typeof useI18n>['t'] }) {
+  const tableRows = step.result?.rows as unknown[][] | undefined;
+  const rowsCount = (step.result?.rows_count ?? tableRows?.length ?? 0) as number;
+  const [viewMode, setViewMode] = useState<'table' | 'chart'>('table');
+  const [chartConfig, setChartConfig] = useState<ChartConfig | undefined>();
+
+  const colInfos = useMemo(() => extractStepColumnNames(step.result), [step.result]);
+
+  const columns: ColumnDef[] = useMemo(() => {
+    if (colInfos.length === 0) return [];
+    return colInfos.map((c) => ({ id: c.name, name: c.name, type: c.dataType || 'text' }));
+  }, [colInfos]);
+
+  const statementResult = useMemo(() => stepToStatementResult(step), [step]);
+  const chartable = useMemo(
+    () => statementResult != null && isChartableResult(statementResult),
+    [statementResult],
+  );
+  const hasData = columns.length > 0 && tableRows && tableRows.length > 0;
 
   return (
     <div className="flex flex-1 flex-col min-h-0">
@@ -537,6 +666,37 @@ function StepDetailView({ step, t }: { step: StepExecutionResult; t: ReturnType<
         {step.connectionName ? <span className="text-accent">{step.connectionName}</span> : null}
         <span className="text-fg-muted">{step.executionTimeMs}ms</span>
         {rowsCount > 0 && <span>{rowsCount} {t('common.rows')}</span>}
+
+        {hasData && chartable && (
+          <div className="ml-auto flex items-center gap-0.5 rounded-md bg-surface p-0.5">
+            <button
+              type="button"
+              className={cn(
+                'flex items-center gap-1 rounded px-2 py-0.5 text-xs transition-colors',
+                viewMode === 'table'
+                  ? 'bg-accent/20 text-accent font-medium'
+                  : 'text-fg-muted hover:text-fg-secondary',
+              )}
+              onClick={() => setViewMode('table')}
+            >
+              <TableProperties className="h-3 w-3" />
+              {t('chart.viewTable')}
+            </button>
+            <button
+              type="button"
+              className={cn(
+                'flex items-center gap-1 rounded px-2 py-0.5 text-xs transition-colors',
+                viewMode === 'chart'
+                  ? 'bg-accent/20 text-accent font-medium'
+                  : 'text-fg-muted hover:text-fg-secondary',
+              )}
+              onClick={() => setViewMode('chart')}
+            >
+              <BarChart3 className="h-3 w-3" />
+              {t('chart.viewChart')}
+            </button>
+          </div>
+        )}
       </div>
 
       {step.sqlExecuted ? (
@@ -551,13 +711,30 @@ function StepDetailView({ step, t }: { step: StepExecutionResult; t: ReturnType<
         <div className="border-b border-edge bg-red-500/5 px-3 py-2 text-xs text-red-400">{step.error}</div>
       ) : null}
 
-      {step.stepType === 'ai' && step.result?.response ? (
+      {step.stepType === 'ai' && step.result?.result != null ? (
         <div className="border-b border-edge px-3 py-2">
-          <pre className="text-xs text-fg-secondary whitespace-pre-wrap break-words max-h-60 overflow-auto">{String(step.result.response)}</pre>
+          <pre className="text-xs text-fg-secondary whitespace-pre-wrap break-words max-h-60 overflow-auto">{String(step.result.result)}</pre>
         </div>
       ) : null}
 
-      {columns.length > 0 ? (
+      {viewMode === 'chart' && statementResult ? (
+        <>
+          {statementResult.rows.length > 1000 && (
+            <div className="flex items-center gap-1 border-b border-edge bg-surface-alt px-3 py-1 text-[11px] text-yellow-400">
+              <AlertTriangle className="h-3 w-3" />
+              {t('chart.sampledWarning', { limit: '1000' })}
+            </div>
+          )}
+          <div className="flex flex-1 min-h-0">
+            <ChartView
+              result={statementResult}
+              savedConfig={chartConfig}
+              onConfigChange={setChartConfig}
+              onDataPointClick={() => setViewMode('table')}
+            />
+          </div>
+        </>
+      ) : hasData ? (
         <div className="flex flex-1 min-h-0">
           <DataTable columns={columns} rows={tableRows} rowHeight={32} />
         </div>
@@ -617,79 +794,6 @@ function WorkflowSidebarList({
       {workflows.length === 0 && (
         <div className="py-6 text-center text-xs text-fg-muted">{t('workflows.noWorkflows')}</div>
       )}
-    </div>
-  );
-}
-
-function WorkflowForm({
-  draft, editingId, connections, onDraftChange, onSave, onCancel, t,
-}: {
-  draft: ReturnType<typeof emptyDraft>;
-  editingId: string | null;
-  connections: { id: string; name: string; databaseType: string }[];
-  onDraftChange: (d: ReturnType<typeof emptyDraft>) => void;
-  onSave: () => void;
-  onCancel: () => void;
-  t: ReturnType<typeof useI18n>['t'];
-}) {
-  const inputClass = 'w-full h-7 rounded border border-edge bg-surface px-2 text-xs text-fg outline-none focus:border-accent';
-  const textareaClass = 'w-full rounded border border-edge bg-surface px-2 py-1 text-xs font-mono text-fg outline-none focus:border-accent resize-y min-h-[60px]';
-
-  return (
-    <div className="p-3 space-y-3">
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-medium text-fg">{editingId ? t('workflows.edit') : t('workflows.create')}</span>
-        <button type="button" onClick={onCancel} className="text-fg-muted hover:text-fg"><X className="h-3.5 w-3.5" /></button>
-      </div>
-      <div>
-        <label className="text-[11px] text-fg-muted">ID</label>
-        <input className={inputClass} value={draft.id} onChange={(e) => onDraftChange({ ...draft, id: e.target.value })} disabled={!!editingId} />
-      </div>
-      <div>
-        <label className="text-[11px] text-fg-muted">{t('workflows.name')}</label>
-        <input className={inputClass} value={draft.name} onChange={(e) => onDraftChange({ ...draft, name: e.target.value })} />
-      </div>
-      <div>
-        <label className="text-[11px] text-fg-muted">{t('workflows.description')}</label>
-        <input className={inputClass} value={draft.description} onChange={(e) => onDraftChange({ ...draft, description: e.target.value })} />
-      </div>
-      <div>
-        <div className="flex items-center justify-between mb-1">
-          <label className="text-[11px] text-fg-muted">{t('workflows.steps')}</label>
-          <button type="button" onClick={() => onDraftChange({ ...draft, steps: [...draft.steps, { type: 'query', id: `step${draft.steps.length + 1}`, sql: '' }] })} className="text-accent text-[10px] hover:underline">
-            + {t('workflows.addStep')}
-          </button>
-        </div>
-        {draft.steps.map((step, i) => (
-          <div key={i} className="mb-2 rounded border border-edge p-2 space-y-1">
-            <div className="flex items-center gap-1">
-              <input className="h-6 w-20 rounded border border-edge bg-surface px-1 text-[11px] text-fg outline-none" value={step.id}
-                onChange={(e) => { const s = [...draft.steps]; s[i] = { ...s[i], id: e.target.value }; onDraftChange({ ...draft, steps: s }); }} placeholder="step_id" />
-              <Select value={step.type} options={[{ value: 'query', label: 'Query' }, { value: 'ai', label: 'AI' }]}
-                onChange={(v) => { const s = [...draft.steps]; s[i] = { ...s[i], type: v as WorkflowStepType }; onDraftChange({ ...draft, steps: s }); }} className="!h-6 !text-[11px] w-20" />
-              {connections.length > 0 && (
-                <Select value={step.connection ?? ''} options={[{ value: '', label: t('workflows.defaultConn') }, ...connections.map((c) => ({ value: c.id, label: c.name }))]}
-                  onChange={(v) => { const s = [...draft.steps]; s[i] = { ...s[i], connection: v || undefined }; onDraftChange({ ...draft, steps: s }); }} className="!h-6 !text-[11px] flex-1" />
-              )}
-              {draft.steps.length > 1 && (
-                <button type="button" onClick={() => onDraftChange({ ...draft, steps: draft.steps.filter((_, j) => j !== i) })} className="text-red-400 hover:text-red-300 p-0.5">
-                  <X className="h-3 w-3" />
-                </button>
-              )}
-            </div>
-            {step.type === 'query' && (
-              <textarea className={textareaClass} value={step.sql ?? ''} onChange={(e) => { const s = [...draft.steps]; s[i] = { ...s[i], sql: e.target.value }; onDraftChange({ ...draft, steps: s }); }} placeholder="SELECT ..." rows={3} />
-            )}
-            {step.type === 'ai' && (
-              <textarea className={textareaClass} value={step.prompt ?? ''} onChange={(e) => { const s = [...draft.steps]; s[i] = { ...s[i], prompt: e.target.value }; onDraftChange({ ...draft, steps: s }); }} placeholder="AI prompt..." rows={3} />
-            )}
-          </div>
-        ))}
-      </div>
-      <div className="flex gap-2">
-        <Button onClick={onSave} className="flex-1">{t('common.save')}</Button>
-        <Button variant="secondary" onClick={onCancel} className="flex-1">{t('common.cancel')}</Button>
-      </div>
     </div>
   );
 }

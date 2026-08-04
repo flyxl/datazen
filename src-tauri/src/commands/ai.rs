@@ -60,10 +60,18 @@ async fn resolve_ai(state: &AppState) -> Result<(Arc<dyn AiProvider>, AiProvider
 pub struct ProviderListItem {
     pub provider_type: AiProviderType,
     pub display_name: String,
-    pub models: Vec<ModelInfo>,
-    pub default_model: String,
     pub supports_streaming: bool,
     pub supports_tools: bool,
+    pub default_endpoint: String,
+    pub default_protocol: String,
+}
+
+fn provider_defaults(pt: AiProviderType) -> (&'static str, &'static str) {
+    match pt {
+        AiProviderType::OpenAi => ("https://api.openai.com/v1", "open_ai_compatible"),
+        AiProviderType::Anthropic => ("https://api.anthropic.com", "anthropic_compatible"),
+        AiProviderType::Custom => ("", "open_ai_compatible"),
+    }
 }
 
 #[tauri::command]
@@ -73,29 +81,19 @@ pub async fn ai_get_providers(
     let providers = state.ai_registry.all_providers().await;
     let result = providers
         .into_iter()
-        .map(|p| ProviderListItem {
-            provider_type: p.provider_type(),
-            display_name: p.display_name().to_string(),
-            models: p.available_models(),
-            default_model: p.default_model().to_string(),
-            supports_streaming: p.supports_streaming(),
-            supports_tools: p.supports_tools(),
+        .map(|p| {
+            let (ep, proto) = provider_defaults(p.provider_type());
+            ProviderListItem {
+                provider_type: p.provider_type(),
+                display_name: p.display_name().to_string(),
+                supports_streaming: p.supports_streaming(),
+                supports_tools: p.supports_tools(),
+                default_endpoint: ep.into(),
+                default_protocol: proto.into(),
+            }
         })
         .collect();
     Ok(result)
-}
-
-#[tauri::command]
-pub async fn ai_get_models(
-    state: State<'_, AppState>,
-    provider_type: AiProviderType,
-) -> Result<Vec<ModelInfo>, CommandError> {
-    let provider = state
-        .ai_registry
-        .get(&provider_type)
-        .await
-        .ok_or_else(|| CommandError::NotFound(format!("Provider {:?} not found", provider_type)))?;
-    Ok(provider.available_models())
 }
 
 #[tauri::command]
@@ -134,6 +132,7 @@ pub async fn ai_validate_config(
 
 #[tauri::command]
 pub async fn ai_save_config(
+    handle: AppHandle,
     state: State<'_, AppState>,
     config: AiProviderConfig,
 ) -> Result<(), CommandError> {
@@ -152,7 +151,10 @@ pub async fn ai_save_config(
         .store
         .save_ai_config(&config)
         .await
-        .cmd_err("ai_save_config")
+        .cmd_err("ai_save_config")?;
+
+    let _ = handle.emit("ai:config-changed", true);
+    Ok(())
 }
 
 #[tauri::command]
@@ -164,6 +166,7 @@ pub async fn ai_get_config(
 
 #[tauri::command]
 pub async fn ai_delete_config(
+    handle: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<(), CommandError> {
     for provider in state.ai_registry.all_providers().await {
@@ -173,7 +176,10 @@ pub async fn ai_delete_config(
         .store
         .delete_ai_config()
         .await
-        .cmd_err("ai_delete_config")
+        .cmd_err("ai_delete_config")?;
+
+    let _ = handle.emit("ai:config-changed", false);
+    Ok(())
 }
 
 // ─── NL2SQL ───
@@ -1319,23 +1325,18 @@ mod tests {
         let item = ProviderListItem {
             provider_type: AiProviderType::OpenAi,
             display_name: "OpenAI".into(),
-            models: vec![ModelInfo {
-                id: "gpt-4o".into(),
-                display_name: "GPT-4o".into(),
-                context_window: 128_000,
-                supports_streaming: true,
-                supports_tools: true,
-            }],
-            default_model: "gpt-4o".into(),
             supports_streaming: true,
             supports_tools: true,
+            default_endpoint: "https://api.openai.com/v1".into(),
+            default_protocol: "open_ai_compatible".into(),
         };
 
         let json = serde_json::to_string(&item).unwrap();
         assert!(json.contains("\"providerType\":\"open_ai\""));
         assert!(json.contains("\"displayName\":\"OpenAI\""));
-        assert!(json.contains("\"defaultModel\":\"gpt-4o\""));
         assert!(json.contains("\"supportsStreaming\":true"));
+        assert!(json.contains("\"defaultEndpoint\":"));
+        assert!(json.contains("\"defaultProtocol\":"));
     }
 
     #[test]

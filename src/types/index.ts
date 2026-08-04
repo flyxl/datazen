@@ -241,10 +241,10 @@ export interface ModelInfo {
 export interface ProviderListItem {
   providerType: AiProviderType;
   displayName: string;
-  models: ModelInfo[];
-  defaultModel: string;
   supportsStreaming: boolean;
   supportsTools: boolean;
+  defaultEndpoint: string;
+  defaultProtocol: string;
 }
 
 export interface DiagnosisResult {

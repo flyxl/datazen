@@ -28,20 +28,6 @@ impl AiProvider for MockProvider {
         "Mock Provider"
     }
 
-    fn available_models(&self) -> Vec<ModelInfo> {
-        vec![ModelInfo {
-            id: "mock-model".into(),
-            display_name: "Mock Model".into(),
-            context_window: 4096,
-            supports_streaming: true,
-            supports_tools: false,
-        }]
-    }
-
-    fn default_model(&self) -> &str {
-        "mock-model"
-    }
-
     async fn validate_config(&self, config: &AiProviderConfig) -> Result<(), AiError> {
         if config.api_key.as_deref() == Some("invalid") {
             return Err(AiError::InvalidApiKey);
@@ -313,12 +299,6 @@ fn test_provider_metadata() {
     assert_eq!(provider.display_name(), "Mock Provider");
     assert!(provider.supports_streaming());
     assert!(!provider.supports_tools());
-    assert_eq!(provider.default_model(), "mock-model");
-
-    let models = provider.available_models();
-    assert_eq!(models.len(), 1);
-    assert_eq!(models[0].id, "mock-model");
-    assert_eq!(models[0].context_window, 4096);
 }
 
 // ─── Factory tests ───

@@ -590,10 +590,13 @@ function AiSettingsSection() {
     setAiDraft({
       providerType,
       apiKey: '',
-      endpoint: '',
-      model: provider?.defaultModel ?? '',
+      endpoint: provider?.defaultEndpoint ?? '',
+      model: '',
       extra: providerType === 'custom' ? { protocol: customProtocol } : undefined,
     });
+    if (provider) {
+      setCustomProtocol(provider.defaultProtocol || 'open_ai_compatible');
+    }
     setManualModelInput(false);
     setValidateOk(false);
     setSaveOk(false);
@@ -614,7 +617,10 @@ function AiSettingsSection() {
     const endpoint = aiDraft.endpoint?.trim();
     const apiKey = aiDraft.apiKey?.trim();
     if (!endpoint || !apiKey) return;
-    await fetchRemoteModels(customProtocol, endpoint, apiKey);
+    const protocol = isCustom
+      ? customProtocol
+      : (selectedProvider?.defaultProtocol ?? 'open_ai_compatible');
+    await fetchRemoteModels(protocol, endpoint, apiKey);
   };
 
   const handleValidate = async () => {
@@ -643,11 +649,12 @@ function AiSettingsSection() {
 
   const handleDelete = async () => {
     await deleteConfig();
+    const openAiProvider = providers.find((p) => p.providerType === 'open_ai');
     setAiDraft({
       providerType: 'open_ai',
       apiKey: '',
-      endpoint: '',
-      model: providers.find((p) => p.providerType === 'open_ai')?.defaultModel ?? '',
+      endpoint: openAiProvider?.defaultEndpoint ?? '',
+      model: '',
     });
     setManualModelInput(false);
     setSaveOk(false);
@@ -665,11 +672,9 @@ function AiSettingsSection() {
     { value: 'anthropic_compatible', label: t('settings.ai.protocolAnthropic') },
   ];
 
-  const modelOptions = isCustom
-    ? remoteModels.map((m) => ({ value: m.id, label: m.displayName }))
-    : (selectedProvider?.models ?? []).map((m) => ({ value: m.id, label: m.displayName }));
+  const modelOptions = remoteModels.map((m) => ({ value: m.id, label: m.displayName }));
 
-  const canFetchModels = isCustom && !!(aiDraft.endpoint?.trim()) && !!(aiDraft.apiKey?.trim());
+  const canFetchModels = !!(aiDraft.endpoint?.trim()) && !!(aiDraft.apiKey?.trim());
 
   const endpointPlaceholder = isCustom
     ? customProtocol === 'anthropic_compatible'
@@ -739,15 +744,15 @@ function AiSettingsSection() {
         <p className="text-xs text-fg-muted">{t('settings.ai.customHint')}</p>
       )}
 
-      {isCustom && (
-        <div className="flex items-center gap-2">
-          <Button
-            variant="secondary"
-            onClick={() => void handleFetchModels()}
-            disabled={!canFetchModels || fetchingRemoteModels}
-          >
-            {fetchingRemoteModels ? t('settings.ai.fetchingModels') : t('settings.ai.fetchModels')}
-          </Button>
+      <div className="flex items-center gap-2">
+        <Button
+          variant="secondary"
+          onClick={() => void handleFetchModels()}
+          disabled={!canFetchModels || fetchingRemoteModels}
+        >
+          {fetchingRemoteModels ? t('settings.ai.fetchingModels') : t('settings.ai.fetchModels')}
+        </Button>
+        {modelOptions.length > 0 && (
           <label className="flex items-center gap-1.5 text-xs text-fg-muted">
             <input
               type="checkbox"
@@ -757,11 +762,11 @@ function AiSettingsSection() {
             />
             {t('settings.ai.modelManual')}
           </label>
-        </div>
-      )}
+        )}
+      </div>
 
       <SettingRow label={t('settings.ai.model')}>
-        {manualModelInput && isCustom ? (
+        {manualModelInput || modelOptions.length === 0 ? (
           <input
             type="text"
             value={aiDraft.model}

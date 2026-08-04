@@ -3,7 +3,6 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import type {
   AiChatMessage,
   AiProviderConfig,
-  AiProviderType,
   ConnectionDiagnosis,
   DiagnosisResult,
   ExplainAnalysis,
@@ -56,9 +55,6 @@ export interface PromptOverrideEntry {
 
 export const aiCommands = {
   getProviders: () => invoke<ProviderListItem[]>('ai_get_providers'),
-
-  getModels: (providerType: AiProviderType) =>
-    invoke<ModelInfo[]>('ai_get_models', { providerType }),
 
   fetchRemoteModels: (protocol: string, endpoint: string, apiKey: string) =>
     invoke<ModelInfo[]>('ai_fetch_remote_models', { protocol, endpoint, apiKey }),
@@ -180,6 +176,14 @@ export function onAiStreamError(
   callback: (payload: StreamErrorPayload) => void,
 ): Promise<UnlistenFn> {
   return listen<StreamErrorPayload>('ai:stream-error', (event) => {
+    callback(event.payload);
+  });
+}
+
+export function onAiConfigChanged(
+  callback: (isConfigured: boolean) => void,
+): Promise<UnlistenFn> {
+  return listen<boolean>('ai:config-changed', (event) => {
     callback(event.payload);
   });
 }
