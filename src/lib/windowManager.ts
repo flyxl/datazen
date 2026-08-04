@@ -124,15 +124,34 @@ export function openBackupWindow() {
   });
 }
 
+const WORKFLOW_LABEL = 'workflow-singleton';
+
 export function openWorkflowWindow() {
-  openWindow(nextLabel('workflow'), {
-    params: { window: 'workflow' },
-    width: 1100,
-    height: 750,
-    minWidth: 700,
-    minHeight: 500,
-    title: t('win.workflow'),
-  });
+  if (isTauri()) {
+    void (async () => {
+      const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
+      const existing = await WebviewWindow.getByLabel(WORKFLOW_LABEL);
+      if (existing) {
+        await existing.setFocus();
+        return;
+      }
+      await openTauriWindow(WORKFLOW_LABEL, {
+        params: { window: 'workflow' },
+        width: 1100,
+        height: 750,
+        minWidth: 700,
+        minHeight: 500,
+        title: t('win.workflow'),
+      });
+    })();
+  } else {
+    openBrowserWindow({
+      params: { window: 'workflow' },
+      width: 1100,
+      height: 750,
+      title: t('win.workflow'),
+    });
+  }
 }
 
 const SETTINGS_LABEL = 'settings-singleton';
