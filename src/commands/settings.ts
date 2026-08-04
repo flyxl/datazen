@@ -9,5 +9,5 @@ export const settingsCommands = {
 
   getLogPath: () => invoke<string>('get_log_path'),
 
-  openLogFolder: () => invoke<void>('open_log_folder'),
+  openPath: (path: string) => invoke<void>('open_path', { path }),
 };
