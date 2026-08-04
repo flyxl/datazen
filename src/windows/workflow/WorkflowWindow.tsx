@@ -100,6 +100,7 @@ export function WorkflowWindow() {
   const executeWorkflow = useAiStore((s) => s.executeWorkflow);
   const workflowError = useAiStore((s) => s.workflowError);
   const clearWorkflowResult = useAiStore((s) => s.clearWorkflowResult);
+  const setupAiListeners = useAiStore((s) => s.setupEventListeners);
 
   const [panels, setPanels] = useState<Panel[]>([]);
   const [activePanelId, setActivePanelId] = useState<string | null>(null);
@@ -125,7 +126,9 @@ export function WorkflowWindow() {
     void connectionCommands.getConnections().then((conns) =>
       setSavedConnections(conns.map((c) => ({ id: c.id, name: c.name, databaseType: c.databaseType }))),
     );
-  }, [loadConfig, loadWorkflows]);
+    const cleanup = setupAiListeners();
+    return () => { void cleanup.then((fn) => fn()); };
+  }, [loadConfig, loadWorkflows, setupAiListeners]);
 
   const loadHistory = useCallback(async () => {
     const items = await aiCommands.workflowHistoryList();
