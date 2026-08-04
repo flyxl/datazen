@@ -6,8 +6,6 @@
 
 #[cfg(feature = "plugin-kiwi")]
 extern crate datazen_plugin_kiwi;
-#[cfg(feature = "plugin-olap")]
-extern crate datazen_plugin_olap;
 use tauri::Runtime;
 
 pub fn register_plugins<R: Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> {

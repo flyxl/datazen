@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "computer-use": {
+      "command": "npx",
+      "args": ["--yes", "--prefer-offline", "@zavora-ai/computer-use-mcp"]
+    }
+  }
+}
