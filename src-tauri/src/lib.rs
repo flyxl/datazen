@@ -240,7 +240,7 @@ async fn build_app_state(store: Arc<Store>) -> Result<AppState, String> {
         tracing::warn!("Failed to load prompt overrides: {e}");
     }
 
-    let workflow_registry = Arc::new(mcp::WorkflowRegistry::new(data_dir.join("skills")));
+    let workflow_registry = Arc::new(mcp::WorkflowRegistry::new(data_dir.join("workflows")));
     if let Err(e) = workflow_registry.load_all().await {
         tracing::warn!("Failed to load workflows: {e}");
     }
