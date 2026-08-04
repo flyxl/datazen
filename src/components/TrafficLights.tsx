@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { cn } from '../lib/cn';
 import { useI18n } from '../hooks/useI18n';
+import { useUiStore } from '../stores/uiStore';
 
 function isTauri(): boolean {
   return '__TAURI_INTERNALS__' in window;
@@ -25,7 +26,9 @@ async function toggleFullscreen() {
     const { getCurrentWindow } = await import('@tauri-apps/api/window');
     const win = getCurrentWindow();
     const isFull = await win.isFullscreen();
-    await win.setFullscreen(!isFull);
+    const next = !isFull;
+    await win.setFullscreen(next);
+    useUiStore.getState().setFullscreen(next);
   }
 }
 

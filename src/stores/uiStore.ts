@@ -12,6 +12,7 @@ interface UiStore {
   connectionsViewMode: ConnectionsViewMode;
   activeDialog: DialogId;
   contextMenu: { x: number; y: number; items: { label: string; onClick: () => void }[] } | null;
+  isFullscreen: boolean;
 
   setMainSidebarWidth: (w: number) => void;
   setConnectionSidebarWidth: (w: number) => void;
@@ -21,6 +22,7 @@ interface UiStore {
   closeDialog: () => void;
   setContextMenu: (menu: UiStore['contextMenu']) => void;
   setConnectionsViewMode: (mode: ConnectionsViewMode) => void;
+  setFullscreen: (value: boolean) => void;
 }
 
 export const useUiStore = create<UiStore>((set) => ({
@@ -31,6 +33,7 @@ export const useUiStore = create<UiStore>((set) => ({
   connectionsViewMode: 'grid',
   activeDialog: null,
   contextMenu: null,
+  isFullscreen: false,
 
   setMainSidebarWidth: (w) => set({ mainSidebarWidth: w }),
   setConnectionSidebarWidth: (w) => set({ connectionSidebarWidth: w }),
@@ -40,4 +43,6 @@ export const useUiStore = create<UiStore>((set) => ({
   closeDialog: () => set({ activeDialog: null }),
   setContextMenu: (contextMenu) => set({ contextMenu }),
   setConnectionsViewMode: (connectionsViewMode) => set({ connectionsViewMode }),
+  setFullscreen: (isFullscreen) => set({ isFullscreen }),
 }));
+
