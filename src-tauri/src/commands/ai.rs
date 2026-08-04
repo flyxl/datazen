@@ -5,7 +5,7 @@ use crate::ai::prompt_resolver::{PromptInfo, PromptOverrideEntry};
 use crate::commands::error::{CmdExt, CommandError};
 use crate::commands::AppState;
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, State, WebviewWindow};
 use tokio::sync::mpsc;
 use uuid::Uuid;
 use std::collections::HashMap;
@@ -187,7 +187,7 @@ pub async fn ai_delete_config(
 #[tauri::command]
 pub async fn ai_generate_sql(
     state: State<'_, AppState>,
-    app_handle: AppHandle,
+    window: WebviewWindow,
     connection_id: String,
     database: String,
     natural_language: String,
@@ -281,11 +281,11 @@ pub async fn ai_generate_sql(
     );
 
     let req_id_clone = request_id.clone();
-    let handle_clone = app_handle.clone();
+    let window_clone = window.clone();
 
     tokio::spawn(async move {
         while let Some(chunk_result) = rx.recv().await {
-            emit_stream_chunk_or_error(&handle_clone, &req_id_clone, chunk_result);
+            emit_stream_chunk_or_error(&window_clone, &req_id_clone, chunk_result);
         }
     });
 
@@ -560,7 +560,7 @@ pub async fn ai_parse_filter(
 #[tauri::command]
 pub async fn ai_chat(
     state: State<'_, AppState>,
-    app_handle: AppHandle,
+    window: WebviewWindow,
     connection_id: Option<String>,
     database: Option<String>,
     messages: Vec<ChatMessage>,
@@ -673,11 +673,11 @@ pub async fn ai_chat(
     inject_language_hint(&mut request.messages, &lang);
 
     let req_id_clone = request_id.clone();
-    let handle_clone = app_handle.clone();
+    let window_clone = window.clone();
 
     tokio::spawn(async move {
         while let Some(chunk_result) = rx.recv().await {
-            emit_stream_chunk_or_error(&handle_clone, &req_id_clone, chunk_result);
+            emit_stream_chunk_or_error(&window_clone, &req_id_clone, chunk_result);
         }
     });
 
@@ -810,8 +810,8 @@ fn extract_json_boundary(s: &str) -> Option<&str> {
     None
 }
 
-fn emit_stream_chunk_or_error(
-    handle: &AppHandle,
+fn emit_stream_chunk_or_error<R: tauri::Runtime>(
+    emitter: &impl Emitter<R>,
     request_id: &str,
     result: Result<StreamChunk, AiError>,
 ) {
@@ -826,10 +826,10 @@ fn emit_stream_chunk_or_error(
             if let Some(reasoning) = &chunk.reasoning {
                 payload["reasoning"] = serde_json::Value::String(reasoning.clone());
             }
-            let _ = handle.emit("ai:stream-chunk", payload);
+            let _ = emitter.emit("ai:stream-chunk", payload);
         }
         Err(e) => {
-            let _ = handle.emit(
+            let _ = emitter.emit(
                 "ai:stream-error",
                 serde_json::json!({
                     "requestId": request_id,
