@@ -805,6 +805,7 @@ function WorkflowSidebarList({
             'group flex items-center gap-2 rounded-md px-3 py-2 cursor-pointer transition-colors',
             activePanelWorkflowId === w.id ? 'bg-accent/10 text-accent' : 'text-fg-secondary hover:bg-surface-raised/50 hover:text-fg',
           )}
+          onMouseDown={(e) => e.preventDefault()}
           onClick={() => onSelect(w)}
         >
           <Wand2 className="h-3.5 w-3.5 shrink-0" />

@@ -341,6 +341,7 @@ export function WorkflowPanel({ connectionId }: WorkflowPanelProps) {
                       ? 'bg-accent/10 text-accent'
                       : 'hover:bg-surface-raised text-fg-secondary'
                   }`}
+                  onMouseDown={(e) => e.preventDefault()}
                   onClick={() => handleSelect(workflow)}
                 >
                   <div className="min-w-0 flex-1">
@@ -717,6 +718,7 @@ function HistoryTab({
         items.map((item) => (
           <div
             key={item.id}
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => onView(item.id)}
             className="flex items-center justify-between px-3 py-2 rounded-md hover:bg-surface-raised text-xs cursor-pointer transition-colors"
           >
