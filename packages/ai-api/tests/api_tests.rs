@@ -65,6 +65,7 @@ impl AiProvider for MockProvider {
         Ok(CompletionResponse {
             request_id: request.request_id.clone(),
             content: self.response_content.clone(),
+            reasoning: None,
             model: request.model.clone(),
             finish_reason: Some("stop".into()),
             usage: TokenUsage {
@@ -136,7 +137,6 @@ fn test_completion_request_serde() {
             },
         ],
         temperature: Some(0.7),
-        max_tokens: None,
         stop: None,
     };
 
@@ -232,7 +232,7 @@ async fn test_mock_provider_complete() {
             model: "mock-model".into(),
             messages: vec![],
             temperature: None,
-            max_tokens: None,
+
             stop: None,
         })
         .await;
@@ -249,7 +249,7 @@ async fn test_mock_provider_complete() {
                 content: "test".into(),
             }],
             temperature: None,
-            max_tokens: None,
+
             stop: None,
         })
         .await
@@ -282,7 +282,7 @@ async fn test_mock_provider_stream_fallback() {
                 model: "mock-model".into(),
                 messages: vec![],
                 temperature: None,
-                max_tokens: None,
+    
                 stop: None,
             },
             tx,

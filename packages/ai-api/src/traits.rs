@@ -57,7 +57,7 @@ pub trait AiProvider: Send + Sync {
         let _ = sender
             .send(Ok(StreamChunk {
                 content: response.content,
-                reasoning: None,
+                reasoning: response.reasoning,
                 done: true,
                 usage: Some(response.usage),
             }))

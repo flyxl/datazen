@@ -16,6 +16,7 @@ pub struct OpenAiProvider {
 struct ProviderState {
     api_key: String,
     endpoint: String,
+    max_tokens: u32,
 }
 
 impl OpenAiProvider {
@@ -244,6 +245,7 @@ impl AiProvider for OpenAiProvider {
         *self.state.write().await = Some(ProviderState {
             api_key: api_key.to_string(),
             endpoint,
+            max_tokens: config.max_tokens,
         });
 
         Ok(())
@@ -264,7 +266,7 @@ impl AiProvider for OpenAiProvider {
             model: request.model.clone(),
             messages: request.messages.iter().map(|m| m.into()).collect(),
             temperature: request.temperature,
-            max_tokens: request.max_tokens,
+            max_tokens: Some(state.max_tokens),
             stop: request.stop.clone(),
             stream: Some(false),
         };
@@ -297,12 +299,13 @@ impl AiProvider for OpenAiProvider {
             .first()
             .ok_or_else(|| AiError::RequestFailed("No choices in response".into()))?;
 
-        let content = choice
+        let (content, reasoning) = choice
             .message
             .as_ref()
             .map(|m| {
-                m.content.clone().unwrap_or_default()
-                    + &m.reasoning_content.clone().unwrap_or_default()
+                let c = m.content.clone().unwrap_or_default();
+                let r = m.reasoning_content.clone().filter(|s| !s.is_empty());
+                (c, r)
             })
             .unwrap_or_default();
 
@@ -318,6 +321,7 @@ impl AiProvider for OpenAiProvider {
         Ok(CompletionResponse {
             request_id: request.request_id.clone(),
             content,
+            reasoning,
             model: api_resp.model,
             finish_reason: choice.finish_reason.clone(),
             usage,
@@ -343,7 +347,7 @@ impl AiProvider for OpenAiProvider {
             model: request.model.clone(),
             messages: request.messages.iter().map(|m| m.into()).collect(),
             temperature: request.temperature,
-            max_tokens: request.max_tokens,
+            max_tokens: Some(state.max_tokens),
             stop: request.stop.clone(),
             stream: Some(true),
         };
@@ -524,7 +528,6 @@ mod tests {
             model: "gpt-4o".into(),
             messages: vec![],
             temperature: None,
-            max_tokens: None,
             stop: None,
         };
         let err = provider.complete(&req).await.unwrap_err();
@@ -563,7 +566,6 @@ mod tests {
             model: "gpt-4o".into(),
             messages: vec![],
             temperature: None,
-            max_tokens: None,
             stop: None,
         };
         assert!(provider.complete(&req).await.is_err() || provider.complete(&req).await.is_ok());

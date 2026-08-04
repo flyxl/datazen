@@ -114,6 +114,16 @@ interface AiStore {
   }) => Promise<void>;
   clearChat: () => void;
 
+  workflowChat: AiChatSession | null;
+  initWorkflowChat: () => void;
+  sendWorkflowChatMessage: (params: {
+    connectionId?: string;
+    database?: string;
+    content: string;
+    includeSchema?: boolean;
+  }) => Promise<void>;
+  clearWorkflowChat: () => void;
+
   handleStreamChunk: (payload: StreamChunkPayload) => void;
   setupEventListeners: () => Promise<() => void>;
 
@@ -489,10 +499,89 @@ export const useAiStore = create<AiStore>((set, get) => ({
     }
   },
 
+  // ── Workflow Chat ──
+
+  workflowChat: null,
+
+  initWorkflowChat: () => {
+    set({
+      workflowChat: {
+        id: crypto.randomUUID(),
+        messages: [],
+        isStreaming: false,
+        streamContent: '',
+        streamReasoning: '',
+        requestId: null,
+      },
+    });
+  },
+
+  sendWorkflowChatMessage: async ({ connectionId, database, content, includeSchema = true }) => {
+    const { workflowChat } = get();
+    if (!workflowChat) return;
+
+    const userMessage: AiChatMessage = { role: 'user', content };
+    const requestId = crypto.randomUUID();
+
+    set({
+      workflowChat: {
+        ...workflowChat,
+        messages: [...workflowChat.messages, userMessage],
+        isStreaming: true,
+        streamContent: '',
+        streamReasoning: '',
+        requestId,
+      },
+    });
+
+    try {
+      await aiCommands.chat({
+        connectionId,
+        database,
+        messages: [...workflowChat.messages, userMessage],
+        requestId,
+        includeSchema,
+        scenario: 'workflow_generate',
+      });
+    } catch (e) {
+      const session = get().workflowChat;
+      if (session) {
+        set({
+          workflowChat: {
+            ...session,
+            isStreaming: false,
+            streamContent: '',
+            streamReasoning: '',
+            requestId: null,
+            messages: [
+              ...session.messages,
+              { role: 'assistant', content: `Error: ${e instanceof Error ? e.message : String(e)}` },
+            ],
+          },
+        });
+      }
+    }
+  },
+
+  clearWorkflowChat: () => {
+    const { workflowChat } = get();
+    if (workflowChat) {
+      set({
+        workflowChat: {
+          ...workflowChat,
+          messages: [],
+          isStreaming: false,
+          streamContent: '',
+          requestId: null,
+        },
+      });
+    }
+  },
+
   // ── Stream handling ──
 
   handleStreamChunk: (payload) => {
-    const { nl2sql, chatSession } = get();
+    const { nl2sql, chatSession, workflowChat } = get();
 
     if (payload.requestId === nl2sql.requestId) {
       const accumulated = payload.content
@@ -508,9 +597,17 @@ export const useAiStore = create<AiStore>((set, get) => ({
       return;
     }
 
-    if (chatSession && payload.requestId === chatSession.requestId) {
-      const newContent = (chatSession.streamContent || '') + (payload.content || '');
-      const newReasoning = (chatSession.streamReasoning || '') + (payload.reasoning || '');
+    const targetSession =
+      chatSession && payload.requestId === chatSession.requestId
+        ? 'chatSession'
+        : workflowChat && payload.requestId === workflowChat.requestId
+          ? 'workflowChat'
+          : null;
+
+    if (targetSession) {
+      const session = (targetSession === 'chatSession' ? chatSession : workflowChat)!;
+      const newContent = (session.streamContent || '') + (payload.content || '');
+      const newReasoning = (session.streamReasoning || '') + (payload.reasoning || '');
       if (payload.done) {
         const assistantMessage: AiChatMessage = {
           role: 'assistant',
@@ -518,9 +615,9 @@ export const useAiStore = create<AiStore>((set, get) => ({
           reasoning: newReasoning || undefined,
         };
         set({
-          chatSession: {
-            ...chatSession,
-            messages: [...chatSession.messages, assistantMessage],
+          [targetSession]: {
+            ...session,
+            messages: [...session.messages, assistantMessage],
             isStreaming: false,
             streamContent: '',
             streamReasoning: '',
@@ -529,8 +626,8 @@ export const useAiStore = create<AiStore>((set, get) => ({
         });
       } else {
         set({
-          chatSession: {
-            ...chatSession,
+          [targetSession]: {
+            ...session,
             streamContent: newContent,
             streamReasoning: newReasoning,
           },
@@ -545,22 +642,29 @@ export const useAiStore = create<AiStore>((set, get) => ({
       get().handleStreamChunk(payload);
     });
     const unError = await onAiStreamError((payload) => {
-      const { nl2sql, chatSession } = get();
+      const { nl2sql, chatSession, workflowChat } = get();
       if (payload.requestId === nl2sql.requestId) {
         set((s) => ({
           nl2sql: { ...s.nl2sql, isGenerating: false },
           nl2sqlError: payload.error,
         }));
       }
-      if (chatSession && payload.requestId === chatSession.requestId) {
+      const errTarget =
+        chatSession && payload.requestId === chatSession.requestId
+          ? 'chatSession'
+          : workflowChat && payload.requestId === workflowChat.requestId
+            ? 'workflowChat'
+            : null;
+      if (errTarget) {
+        const session = (errTarget === 'chatSession' ? chatSession : workflowChat)!;
         set({
-          chatSession: {
-            ...chatSession,
+          [errTarget]: {
+            ...session,
             isStreaming: false,
             streamContent: '',
             requestId: null,
             messages: [
-              ...chatSession.messages,
+              ...session.messages,
               { role: 'assistant', content: `Error: ${payload.error}` },
             ],
           },

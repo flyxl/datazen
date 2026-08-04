@@ -280,6 +280,8 @@ pub enum PromptScenario {
     #[serde(rename = "explain_analysis")]
     ExplainAnalysis,
     Chat,
+    #[serde(rename = "workflow_generate")]
+    WorkflowGenerate,
 }
 
 impl PromptScenario {
@@ -294,6 +296,7 @@ impl PromptScenario {
             Self::QuerySummary,
             Self::ExplainAnalysis,
             Self::Chat,
+            Self::WorkflowGenerate,
         ]
     }
 
@@ -308,6 +311,7 @@ impl PromptScenario {
             Self::QuerySummary => "Query Summary",
             Self::ExplainAnalysis => "EXPLAIN Analysis",
             Self::Chat => "AI Chat",
+            Self::WorkflowGenerate => "Workflow Generate",
         }
     }
 }

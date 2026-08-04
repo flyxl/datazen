@@ -835,6 +835,7 @@ const SCENARIO_VARIABLES: Record<PromptScenario, string[]> = {
   query_summary: [],
   explain_analysis: ['db_type'],
   chat: [],
+  workflow_generate: ['db_type', 'schema', 'connections'],
 };
 
 const SOURCE_BADGE_CLASSES: Record<PromptSource, string> = {

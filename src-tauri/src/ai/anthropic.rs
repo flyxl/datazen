@@ -17,6 +17,7 @@ pub struct AnthropicProvider {
 struct ProviderState {
     api_key: String,
     endpoint: String,
+    max_tokens: u32,
 }
 
 impl AnthropicProvider {
@@ -258,6 +259,7 @@ impl AiProvider for AnthropicProvider {
         *self.state.write().await = Some(ProviderState {
             api_key: api_key.to_string(),
             endpoint,
+            max_tokens: config.max_tokens,
         });
 
         Ok(())
@@ -278,7 +280,7 @@ impl AiProvider for AnthropicProvider {
         let body = ApiRequest {
             model: request.model.clone(),
             messages,
-            max_tokens: request.max_tokens.unwrap_or(4096),
+            max_tokens: state.max_tokens,
             system,
             temperature: request.temperature,
             stop_sequences: request.stop.clone(),
@@ -317,11 +319,21 @@ impl AiProvider for AnthropicProvider {
             .collect::<Vec<_>>()
             .join("");
 
+        let reasoning_text: String = api_resp
+            .content
+            .iter()
+            .filter(|b| b.block_type == "thinking")
+            .filter_map(|b| b.text.as_deref())
+            .collect::<Vec<_>>()
+            .join("");
+        let reasoning = if reasoning_text.is_empty() { None } else { Some(reasoning_text) };
+
         let total = api_resp.usage.input_tokens + api_resp.usage.output_tokens;
 
         Ok(CompletionResponse {
             request_id: request.request_id.clone(),
             content,
+            reasoning,
             model: api_resp.model,
             finish_reason: api_resp.stop_reason,
             usage: TokenUsage {
@@ -351,7 +363,7 @@ impl AiProvider for AnthropicProvider {
         let body = ApiRequest {
             model: request.model.clone(),
             messages,
-            max_tokens: request.max_tokens.unwrap_or(4096),
+            max_tokens: state.max_tokens,
             system,
             temperature: request.temperature,
             stop_sequences: request.stop.clone(),
