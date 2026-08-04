@@ -62,11 +62,33 @@ function openWindow(label: string, options: OpenWindowOptions) {
   }
 }
 
+/**
+ * Open a singleton window: if one with the given label already exists,
+ * focus it; otherwise create a new one.
+ */
+function openSingletonWindow(label: string, options: OpenWindowOptions) {
+  if (isTauri()) {
+    void (async () => {
+      const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
+      const existing = await WebviewWindow.getByLabel(label);
+      if (existing) {
+        await existing.setFocus();
+        return;
+      }
+      await openTauriWindow(label, options);
+    })();
+  } else {
+    openBrowserWindow(options);
+  }
+}
+
+// ── Singleton windows ───────────────────────────────────────────────
+
 export function openNewConnectionWindow(editId?: string) {
   const params: Record<string, string> = { window: 'new-connection' };
   if (editId) params.editId = editId;
 
-  openWindow(nextLabel('new-connection'), {
+  openSingletonWindow('new-connection-singleton', {
     params,
     width: 800,
     height: 680,
@@ -75,6 +97,55 @@ export function openNewConnectionWindow(editId?: string) {
     title: editId ? t('win.editConnection') : t('win.newConnection'),
   });
 }
+
+export function openDataSyncWindow() {
+  openSingletonWindow('data-sync-singleton', {
+    params: { window: 'data-sync' },
+    width: 1000,
+    height: 700,
+    minWidth: 600,
+    minHeight: 480,
+    title: t('win.dataSync'),
+  });
+}
+
+export function openBackupWindow() {
+  openSingletonWindow('backup-singleton', {
+    params: { window: 'backup' },
+    width: 750,
+    height: 520,
+    minWidth: 600,
+    minHeight: 400,
+    title: t('win.backup'),
+  });
+}
+
+export function openWorkflowWindow() {
+  openSingletonWindow('workflow-singleton', {
+    params: { window: 'workflow' },
+    width: 1100,
+    height: 750,
+    minWidth: 700,
+    minHeight: 500,
+    title: t('win.workflow'),
+  });
+}
+
+export function openSettingsWindow(section?: string) {
+  const params: Record<string, string> = { window: 'settings' };
+  if (section) params.section = section;
+
+  openSingletonWindow('settings-singleton', {
+    params,
+    title: t('win.settings'),
+    width: 720,
+    height: 560,
+    minWidth: 560,
+    minHeight: 400,
+  });
+}
+
+// ── Multi-instance windows ──────────────────────────────────────────
 
 export function openConnectionWindow(connectionId: string, connectionName: string, database?: string, databaseType?: string) {
   const params: Record<string, string> = { window: 'connection', connectionId, connectionName };
@@ -100,90 +171,4 @@ export function openQueryWindow(connectionId: string, database: string) {
     minHeight: 480,
     title: t('win.query', { db: database }),
   });
-}
-
-export function openDataSyncWindow() {
-  openWindow(nextLabel('data-sync'), {
-    params: { window: 'data-sync' },
-    width: 1000,
-    height: 700,
-    minWidth: 600,
-    minHeight: 480,
-    title: t('win.dataSync'),
-  });
-}
-
-export function openBackupWindow() {
-  openWindow(nextLabel('backup'), {
-    params: { window: 'backup' },
-    width: 750,
-    height: 520,
-    minWidth: 600,
-    minHeight: 400,
-    title: t('win.backup'),
-  });
-}
-
-const WORKFLOW_LABEL = 'workflow-singleton';
-
-export function openWorkflowWindow() {
-  if (isTauri()) {
-    void (async () => {
-      const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
-      const existing = await WebviewWindow.getByLabel(WORKFLOW_LABEL);
-      if (existing) {
-        await existing.setFocus();
-        return;
-      }
-      await openTauriWindow(WORKFLOW_LABEL, {
-        params: { window: 'workflow' },
-        width: 1100,
-        height: 750,
-        minWidth: 700,
-        minHeight: 500,
-        title: t('win.workflow'),
-      });
-    })();
-  } else {
-    openBrowserWindow({
-      params: { window: 'workflow' },
-      width: 1100,
-      height: 750,
-      title: t('win.workflow'),
-    });
-  }
-}
-
-const SETTINGS_LABEL = 'settings-singleton';
-
-export function openSettingsWindow(section?: string) {
-  if (isTauri()) {
-    void (async () => {
-      const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
-      const existing = await WebviewWindow.getByLabel(SETTINGS_LABEL);
-      if (existing) {
-        await existing.setFocus();
-        return;
-      }
-      const params: Record<string, string> = { window: 'settings' };
-      if (section) params.section = section;
-      await openTauriWindow(SETTINGS_LABEL, {
-        params,
-        title: t('win.settings'),
-        width: 720,
-        height: 560,
-        minWidth: 560,
-        minHeight: 400,
-      });
-    })();
-  } else {
-    const params: Record<string, string> = { window: 'settings' };
-    if (section) params.section = section;
-    openBrowserWindow({
-      params,
-      width: 720,
-      height: 560,
-      title: t('win.settings'),
-    });
-  }
 }
