@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  BarChart3,
   Clock,
   FolderOpen,
   History,
@@ -8,6 +9,7 @@ import {
   Play,
   Plus,
   RefreshCw,
+  Table2,
   Trash2,
   Wand2,
   X,
@@ -17,6 +19,7 @@ import { ThemeToggle } from '../../components/ThemeToggle';
 import { StatusBar } from '../../components/StatusBar';
 import { DataTable } from '../../components/DataTable/DataTable';
 import type { ColumnDef } from '../../components/DataTable/TableHeader';
+import { ChartView } from '../../components/chart/ChartView';
 import { Button } from '../../components/ui/Button';
 import { Select } from '../../components/ui/Select';
 import { useThemeListener } from '../../hooks/useThemeListener';
@@ -27,12 +30,14 @@ import { connectionCommands } from '../../commands/connection';
 import { cn } from '../../lib/cn';
 import type {
   HistoryListItem,
+  StatementResult,
   StepExecutionResult,
   WorkflowDefinition,
   WorkflowExecutionResult,
   WorkflowListItem,
   WorkflowStepType,
 } from '../../types';
+import type { ChartConfig } from '../../types/chart';
 
 // ─── Result tab types (mirroring SqlConnectionView panel pattern) ────────────
 
@@ -492,6 +497,8 @@ function StepStatusIcon({ status }: { status: string }) {
 function StepDetailView({ step, t }: { step: StepExecutionResult; t: ReturnType<typeof useI18n>['t'] }) {
   const rows = step.result?.rows as Record<string, unknown>[] | undefined;
   const rowsCount = (step.result?.rows_count ?? rows?.length ?? 0) as number;
+  const [viewMode, setViewMode] = useState<'table' | 'chart'>('table');
+  const [chartConfig, setChartConfig] = useState<ChartConfig | undefined>();
 
   const { columns, tableRows } = useMemo(() => {
     if (!rows || rows.length === 0) return { columns: [] as ColumnDef[], tableRows: [] as unknown[][] };
@@ -500,6 +507,18 @@ function StepDetailView({ step, t }: { step: StepExecutionResult; t: ReturnType<
     const tRows = rows.map((r) => keys.map((k) => r[k] ?? null));
     return { columns: cols, tableRows: tRows };
   }, [rows]);
+
+  const statementResult: StatementResult | null = useMemo(() => {
+    if (!rows || rows.length === 0 || columns.length === 0) return null;
+    return {
+      sql: step.sqlExecuted ?? '',
+      columns: columns.map((c) => ({ name: c.name, dataType: c.type ?? 'text', nullable: true })),
+      rows: tableRows as StatementResult['rows'],
+      executionTimeMs: step.executionTimeMs,
+    };
+  }, [rows, columns, tableRows, step.sqlExecuted, step.executionTimeMs]);
+
+  const hasData = columns.length > 0;
 
   return (
     <div className="flex flex-1 flex-col min-h-0">
@@ -510,6 +529,25 @@ function StepDetailView({ step, t }: { step: StepExecutionResult; t: ReturnType<
         {step.connectionName && <span className="text-accent">{step.connectionName}</span>}
         <span className="text-fg-muted">{step.executionTimeMs}ms</span>
         {rowsCount > 0 && <span>{rowsCount} {t('common.rows')}</span>}
+        {hasData && (
+          <>
+            <div className="flex-1" />
+            <div className="flex items-center gap-0.5">
+              <button type="button"
+                className={cn('flex items-center gap-1 rounded px-2 py-0.5 text-xs transition-colors',
+                  viewMode === 'table' ? 'bg-accent/20 text-accent font-medium' : 'text-fg-muted hover:text-fg-secondary')}
+                onClick={() => setViewMode('table')}>
+                <Table2 className="h-3 w-3" />{t('chart.viewTable')}
+              </button>
+              <button type="button"
+                className={cn('flex items-center gap-1 rounded px-2 py-0.5 text-xs transition-colors',
+                  viewMode === 'chart' ? 'bg-accent/20 text-accent font-medium' : 'text-fg-muted hover:text-fg-secondary')}
+                onClick={() => setViewMode('chart')}>
+                <BarChart3 className="h-3 w-3" />{t('chart.viewChart')}
+              </button>
+            </div>
+          </>
+        )}
       </div>
 
       {step.sqlExecuted ? (
@@ -532,10 +570,21 @@ function StepDetailView({ step, t }: { step: StepExecutionResult; t: ReturnType<
         </div>
       ) : null}
 
-      {columns.length > 0 ? (
-        <div className="flex flex-1 min-h-0">
-          <DataTable columns={columns} rows={tableRows} rowHeight={32} />
-        </div>
+      {hasData ? (
+        viewMode === 'chart' && statementResult ? (
+          <div className="flex flex-1 min-h-0">
+            <ChartView
+              result={statementResult}
+              savedConfig={chartConfig}
+              onConfigChange={setChartConfig}
+              onDataPointClick={() => setViewMode('table')}
+            />
+          </div>
+        ) : (
+          <div className="flex flex-1 min-h-0">
+            <DataTable columns={columns} rows={tableRows} rowHeight={32} />
+          </div>
+        )
       ) : step.stepType === 'query' && !step.error ? (
         <div className="flex flex-1 items-center justify-center text-xs text-fg-muted">{t('workflows.noQueryResult')}</div>
       ) : null}
