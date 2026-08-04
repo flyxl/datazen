@@ -424,7 +424,6 @@ pub fn run() {
             commands::delete_sync_task,
             commands::check_sync_conflicts,
             commands::ai_get_providers,
-            commands::ai_get_models,
             commands::ai_fetch_remote_models,
             commands::ai_validate_config,
             commands::ai_save_config,

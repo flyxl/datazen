@@ -1,7 +1,8 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { BarChart3, Loader2, Sparkles, Copy, Check, Trash2, ArrowDownToLine, Settings } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { useI18n } from '../../hooks/useI18n';
+import { useAiKeyboard } from '../../hooks/useAiKeyboard';
 import { useAiStore } from '../../stores/aiStore';
 import { cn } from '../../lib/cn';
 import { openSettingsWindow } from '../../lib/windowManager';
@@ -23,24 +24,14 @@ export function Nl2SqlPanel({ connectionId, database, currentTable, onApplySql, 
   const generateSql = useAiStore((s) => s.generateSql);
   const clearNl2Sql = useAiStore((s) => s.clearNl2Sql);
 
-  const inputRef = useRef<HTMLTextAreaElement>(null);
   const [copied, setCopied] = useState(false);
 
   const handleGenerate = useCallback(() => {
+    if (!nl2sql.input.trim() || nl2sql.isGenerating) return;
     void generateSql({ connectionId, database, currentTable });
-  }, [generateSql, connectionId, database, currentTable]);
+  }, [generateSql, connectionId, database, currentTable, nl2sql.input, nl2sql.isGenerating]);
 
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        if (nl2sql.input.trim() && !nl2sql.isGenerating) {
-          handleGenerate();
-        }
-      }
-    },
-    [nl2sql.input, nl2sql.isGenerating, handleGenerate],
-  );
+  const aiKeyboard = useAiKeyboard(handleGenerate);
 
   const handleCopy = useCallback(() => {
     void navigator.clipboard.writeText(nl2sql.generatedSql);
@@ -73,10 +64,9 @@ export function Nl2SqlPanel({ connectionId, database, currentTable, onApplySql, 
         <Sparkles className="mt-1.5 h-3.5 w-3.5 shrink-0 text-blue-400" />
         <div className="flex min-w-0 flex-1 flex-col gap-1.5">
           <textarea
-            ref={inputRef}
             value={nl2sql.input}
             onChange={(e) => setNl2SqlInput(e.target.value)}
-            onKeyDown={handleKeyDown}
+            {...aiKeyboard}
             placeholder={t('nl2sql.placeholder')}
             rows={1}
             className={cn(

@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
+import { useAiKeyboard } from '../../hooks/useAiKeyboard';
 import { BarChart3, Download, Maximize2, LineChart as LineChartIcon, MessageSquare, PieChart as PieChartIcon, ScatterChart as ScatterChartIcon, TrendingUp } from 'lucide-react';
 import { useI18n } from '../../hooks/useI18n';
 import { cn } from '../../lib/cn';
@@ -38,6 +39,8 @@ export function ChartToolbar({ config, onChange, chartRef, fields = [], onExpand
       setNlInput('');
     }
   }, [nlInput, fields, config, onChange]);
+
+  const aiKeyboard = useAiKeyboard(handleNlSubmit);
 
   const handleExport = async (format: 'png' | 'svg') => {
     setExportOpen(false);
@@ -113,9 +116,11 @@ export function ChartToolbar({ config, onChange, chartRef, fields = [], onExpand
             value={nlInput}
             onChange={(e) => setNlInput(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') handleNlSubmit();
+              aiKeyboard.onKeyDown(e);
               if (e.key === 'Escape') { setNlOpen(false); setNlInput(''); }
             }}
+            onCompositionStart={aiKeyboard.onCompositionStart}
+            onCompositionEnd={aiKeyboard.onCompositionEnd}
             placeholder={t('chart.nlPlaceholder')}
             className="h-6 w-40 rounded border border-edge bg-surface px-2 text-xs text-fg focus:border-accent focus:outline-none"
             autoFocus

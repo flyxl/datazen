@@ -1,11 +1,10 @@
 import { create } from 'zustand';
-import { aiCommands, onAiStreamChunk, onAiStreamError } from '../commands/ai';
+import { aiCommands, onAiStreamChunk, onAiStreamError, onAiConfigChanged } from '../commands/ai';
 import { extractSqlFromResponse } from '../lib/extractSql';
 import type {
   AiChatMessage,
   AiChatSession,
   AiProviderConfig,
-  AiProviderType,
   ConnectionDiagnosis,
   DiagnosisResult,
   ExplainAnalysis,
@@ -39,7 +38,6 @@ interface AiStore {
   config: AiProviderConfig | null;
   isConfigured: boolean;
   providers: ProviderListItem[];
-  models: ModelInfo[];
   configLoading: boolean;
   configError: string | null;
   validating: boolean;
@@ -66,7 +64,6 @@ interface AiStore {
 
   loadConfig: () => Promise<void>;
   loadProviders: () => Promise<void>;
-  loadModels: (providerType: AiProviderType) => Promise<void>;
   fetchRemoteModels: (protocol: string, endpoint: string, apiKey: string) => Promise<ModelInfo[]>;
   validateConfig: (config: AiProviderConfig) => Promise<boolean>;
   saveConfig: (config: AiProviderConfig) => Promise<boolean>;
@@ -181,7 +178,6 @@ export const useAiStore = create<AiStore>((set, get) => ({
   config: null,
   isConfigured: false,
   providers: [],
-  models: [],
   configLoading: false,
   configError: null,
   validating: false,
@@ -231,15 +227,6 @@ export const useAiStore = create<AiStore>((set, get) => ({
       set({ providers });
     } catch (e) {
       console.error('Failed to load AI providers:', e);
-    }
-  },
-
-  loadModels: async (providerType) => {
-    try {
-      const models = await aiCommands.getModels(providerType);
-      set({ models });
-    } catch (e) {
-      console.error('Failed to load models:', e);
     }
   },
 
@@ -298,7 +285,6 @@ export const useAiStore = create<AiStore>((set, get) => ({
       set({
         config: null,
         isConfigured: false,
-        models: [],
       });
     } catch (e) {
       set({
@@ -822,3 +808,10 @@ export const useAiStore = create<AiStore>((set, get) => ({
 
   clearMcpError: () => set({ mcpError: null }),
 }));
+
+// Listen for cross-window config changes so all windows stay in sync.
+if ('__TAURI_INTERNALS__' in globalThis) {
+  void onAiConfigChanged(() => {
+    void useAiStore.getState().loadConfig();
+  });
+}

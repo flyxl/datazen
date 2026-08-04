@@ -39,11 +39,11 @@ export const useSchemaStore = create<SchemaStore>((set, get) => ({
     set({ loading: true, error: null, connectionId });
     try {
       const databases = await databaseCommands.getDatabases(connectionId);
-      set({ databases, loading: false });
-      if (options?.skipLoadTables) return;
       const preferred = options?.preferredDatabase && databases.includes(options.preferredDatabase)
         ? options.preferredDatabase
         : databases[0] ?? null;
+      set({ databases, loading: false, currentDatabase: preferred });
+      if (options?.skipLoadTables) return;
       if (preferred) {
         await get().loadTables(preferred);
         get().setSelected(`db:${preferred}`);

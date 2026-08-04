@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Filter, Loader2, Sparkles, X } from 'lucide-react';
 import { useI18n } from '../../hooks/useI18n';
+import { useAiKeyboard } from '../../hooks/useAiKeyboard';
 import { useAiStore } from '../../stores/aiStore';
 import { useTableDataStore } from '../../stores/tableDataStore';
 
@@ -72,6 +73,8 @@ export function NlFilterInput({ connectionId, database, tableName }: NlFilterInp
     }
   };
 
+  const aiKeyboard = useAiKeyboard(() => void handleParse());
+
   const handleClear = () => {
     clearNlFilter();
     clearFilters();
@@ -100,12 +103,7 @@ export function NlFilterInput({ connectionId, database, tableName }: NlFilterInp
           placeholder={t('smartFilter.placeholder')}
           value={nlFilterInput}
           onChange={(e) => setNlFilterInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault();
-              void handleParse();
-            }
-          }}
+          {...aiKeyboard}
           disabled={isParsingFilter}
         />
         {isParsingFilter ? (

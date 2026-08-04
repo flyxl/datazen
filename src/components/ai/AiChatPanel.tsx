@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ChevronDown, ChevronRight, Loader2, MessageSquare, Send, Settings, Sparkles, Trash2, Copy, Check, Wand2 } from 'lucide-react';
+import { ChevronDown, ChevronRight, Loader2, MessageSquare, Settings, Sparkles, Trash2, Copy, Check, Wand2 } from 'lucide-react';
 import { Button } from '../ui/Button';
+import { AiInput } from './AiInput';
 import { useI18n } from '../../hooks/useI18n';
 import { useAiStore } from '../../stores/aiStore';
 import { cn } from '../../lib/cn';
@@ -25,7 +26,6 @@ export function AiChatPanel({ connectionId, database, onInsertSql }: AiChatPanel
   const [input, setInput] = useState('');
   const [tab, setTab] = useState<'chat' | 'workflows'>('chat');
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     if (!chatSession) {
@@ -42,16 +42,6 @@ export function AiChatPanel({ connectionId, database, onInsertSql }: AiChatPanel
     void sendMessage({ connectionId, database, content: input.trim() });
     setInput('');
   }, [input, chatSession, sendMessage, connectionId]);
-
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        handleSend();
-      }
-    },
-    [handleSend],
-  );
 
   if (!isConfigured) {
     return (
@@ -149,34 +139,14 @@ export function AiChatPanel({ connectionId, database, onInsertSql }: AiChatPanel
 
           {/* Input */}
           <div className="shrink-0 border-t border-edge p-2">
-            <div className="flex gap-1.5">
-              <textarea
-                ref={inputRef}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder={t('chat.placeholder')}
-                rows={1}
-                disabled={chatSession?.isStreaming}
-                autoCapitalize="off"
-                autoCorrect="off"
-                spellCheck={false}
-                className={cn(
-                  'flex-1 resize-none rounded border border-edge bg-surface px-2 py-1.5',
-                  'text-sm text-fg placeholder:text-fg-muted',
-                  'focus:border-accent focus:outline-none',
-                  'disabled:opacity-50',
-                )}
-              />
-              <Button
-                variant="primary"
-                className="h-8 shrink-0 px-2"
-                disabled={!input.trim() || chatSession?.isStreaming}
-                onClick={handleSend}
-              >
-                <Send className="h-3.5 w-3.5" />
-              </Button>
-            </div>
+            <AiInput
+              value={input}
+              onChange={setInput}
+              onSubmit={handleSend}
+              placeholder={t('chat.placeholder')}
+              disabled={chatSession?.isStreaming}
+              isLoading={chatSession?.isStreaming}
+            />
           </div>
         </>
       )}

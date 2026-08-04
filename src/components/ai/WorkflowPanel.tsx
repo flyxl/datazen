@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  AlertTriangle,
+  BarChart3,
   ChevronDown,
   ChevronRight,
   Clock,
@@ -10,6 +12,7 @@ import {
   Play,
   Plus,
   RefreshCw,
+  TableProperties,
   Trash2,
   Wand2,
   X,
@@ -20,15 +23,22 @@ import { aiCommands } from '../../commands/ai';
 import { connectionCommands } from '../../commands/connection';
 import { databaseCommands } from '../../commands/database';
 import { DB_REGISTRY } from '../../lib/databaseTypes';
+import { ChartView } from '../chart/ChartView';
+import { isChartableResult } from '../../lib/chart/fieldInference';
+import { cn } from '../../lib/cn';
 import type { TranslationKey } from '../../locales';
 import type {
+  ColumnInfo,
   HistoryListItem,
+  StatementResult,
+  Value,
   WorkflowDefinition,
   WorkflowExecutionResult,
   WorkflowListItem,
   WorkflowStepType,
   StepExecutionResult,
 } from '../../types';
+import type { ChartConfig } from '../../types/chart';
 
 type TFn = (key: TranslationKey, params?: Record<string, string | number>) => string;
 
@@ -471,13 +481,57 @@ function ExecutionResultPanel({
   );
 }
 
+function stepToStatementResult(step: StepExecutionResult): StatementResult | null {
+  const r = step.result;
+  if (!r?.rows) return null;
+  const cols = extractColumnNames(r);
+  if (cols.length === 0) return null;
+  const columnInfos: ColumnInfo[] = cols.map((c) => ({
+    name: c.name,
+    dataType: (c as { dataType?: string }).dataType || 'text',
+    nullable: true,
+  }));
+  return {
+    sql: step.sqlExecuted ?? '',
+    columns: columnInfos,
+    rows: r.rows as (Value | null)[][],
+    executionTimeMs: (r.execution_time_ms as number) ?? step.executionTimeMs,
+  };
+}
+
+function extractColumnNames(stepResult: Record<string, unknown> | undefined): { name: string }[] {
+  if (!stepResult) return [];
+  const cols = stepResult.columns as { name: string }[] | undefined;
+  if (Array.isArray(cols) && cols.length > 0) return cols;
+  const data = (stepResult.data ?? stepResult.result) as Record<string, unknown>[] | undefined;
+  if (Array.isArray(data) && data.length > 0 && typeof data[0] === 'object' && data[0] !== null && !Array.isArray(data[0])) {
+    return Object.keys(data[0]).map((k) => ({ name: k }));
+  }
+  const rows = stepResult.rows as unknown[][] | undefined;
+  if (Array.isArray(rows) && rows.length > 0 && Array.isArray(rows[0])) {
+    return rows[0].map((_, i) => ({ name: `col_${i + 1}` }));
+  }
+  return [];
+}
+
 function StepResultRow({ step }: { step: StepExecutionResult }) {
+  const { t } = useI18n();
   const [expanded, setExpanded] = useState(false);
+  const [viewMode, setViewMode] = useState<'table' | 'chart'>('table');
+  const [chartConfig, setChartConfig] = useState<ChartConfig | undefined>();
   const statusIcon = step.status === 'success' ? '✓' : step.status === 'skipped' ? '⏭' : step.status === 'timed_out' ? '⏱' : '✗';
   const statusColor = step.status === 'success' ? 'text-green-500' : step.status === 'skipped' ? 'text-yellow-500' : 'text-red-400';
 
-  const rows = step.result?.rows as Record<string, unknown>[] | undefined;
+  const colInfos = useMemo(() => extractColumnNames(step.result), [step.result]);
+  const rows = step.result?.rows as unknown[][] | undefined;
   const rowsCount = (step.result?.rows_count ?? rows?.length ?? 0) as number;
+
+  const statementResult = useMemo(() => stepToStatementResult(step), [step]);
+  const chartable = useMemo(
+    () => statementResult != null && isChartableResult(statementResult),
+    [statementResult],
+  );
+  const hasData = colInfos.length > 0 && rows && rows.length > 0;
 
   return (
     <div className="border-b border-edge last:border-b-0">
@@ -511,36 +565,86 @@ function StepResultRow({ step }: { step: StepExecutionResult }) {
             <div className="text-[11px] text-red-400">{step.error}</div>
           )}
 
-          {rows && rows.length > 0 && (
+          {hasData && (
             <div>
-              <div className="text-[10px] text-fg-muted">{rowsCount} row(s)</div>
-              <div className="overflow-auto max-h-40 border border-edge rounded mt-0.5">
-                <table className="w-full text-[11px]">
-                  <thead>
-                    <tr className="bg-surface-alt/50">
-                      {Object.keys(rows[0]).map((col) => (
-                        <th key={col} className="px-2 py-0.5 text-left font-medium text-fg-muted border-b border-edge whitespace-nowrap">
-                          {col}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows.slice(0, 20).map((row, i) => (
-                      <tr key={i} className="border-b border-edge last:border-b-0 hover:bg-surface-raised/30">
-                        {Object.values(row).map((val, j) => (
-                          <td key={j} className="px-2 py-0.5 text-fg-secondary whitespace-nowrap max-w-[200px] truncate">
-                            {val == null ? <span className="text-fg-muted italic">null</span> : String(val)}
-                          </td>
+              <div className="flex items-center gap-2">
+                <div className="text-[10px] text-fg-muted">{rowsCount} row(s)</div>
+                {chartable && (
+                  <div className="flex items-center gap-0.5 rounded-md bg-surface p-0.5 ml-auto">
+                    <button
+                      type="button"
+                      className={cn(
+                        'flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] transition-colors',
+                        viewMode === 'table'
+                          ? 'bg-accent/20 text-accent font-medium'
+                          : 'text-fg-muted hover:text-fg-secondary',
+                      )}
+                      onClick={() => setViewMode('table')}
+                    >
+                      <TableProperties className="h-2.5 w-2.5" />
+                      {t('chart.viewTable')}
+                    </button>
+                    <button
+                      type="button"
+                      className={cn(
+                        'flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] transition-colors',
+                        viewMode === 'chart'
+                          ? 'bg-accent/20 text-accent font-medium'
+                          : 'text-fg-muted hover:text-fg-secondary',
+                      )}
+                      onClick={() => setViewMode('chart')}
+                    >
+                      <BarChart3 className="h-2.5 w-2.5" />
+                      {t('chart.viewChart')}
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {viewMode === 'chart' && statementResult ? (
+                <div className="mt-1 border border-edge rounded overflow-hidden" style={{ height: 260 }}>
+                  {statementResult.rows.length > 1000 && (
+                    <div className="flex items-center gap-1 bg-surface-alt px-2 py-0.5 text-[10px] text-yellow-400">
+                      <AlertTriangle className="h-2.5 w-2.5" />
+                      {t('chart.sampledWarning', { limit: '1000' })}
+                    </div>
+                  )}
+                  <ChartView
+                    result={statementResult}
+                    savedConfig={chartConfig}
+                    onConfigChange={setChartConfig}
+                    onDataPointClick={() => setViewMode('table')}
+                  />
+                </div>
+              ) : (
+                <div className="overflow-auto max-h-40 border border-edge rounded mt-0.5">
+                  <table className="w-full text-[11px]">
+                    <thead className="sticky top-0">
+                      <tr className="bg-surface-alt">
+                        {colInfos.map((col) => (
+                          <th key={col.name} className="px-2 py-1 text-left font-semibold text-fg border-b border-edge whitespace-nowrap">
+                            {col.name}
+                          </th>
                         ))}
                       </tr>
-                    ))}
-                    {rows.length > 20 && (
-                      <tr><td colSpan={Object.keys(rows[0]).length} className="px-2 py-0.5 text-fg-muted text-center">... {rows.length - 20} more</td></tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {rows.slice(0, 20).map((row, i) => (
+                        <tr key={i} className="border-b border-edge last:border-b-0 hover:bg-surface-raised/30">
+                          {row.map((val, j) => (
+                            <td key={j} className="px-2 py-0.5 text-fg-secondary whitespace-nowrap max-w-[200px] truncate">
+                              {val == null ? <span className="text-fg-muted italic">null</span> : String(val)}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                      {rows.length > 20 && (
+                        <tr><td colSpan={colInfos.length} className="px-2 py-0.5 text-fg-muted text-center">... {rows.length - 20} more</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           )}
 

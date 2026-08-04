@@ -1,15 +1,16 @@
-//! OpenAI-compatible AI provider (supports OpenAI API and compatible endpoints).
+//! OpenAI AI provider — delegates to `protocol::openai_chat`.
 
 use async_trait::async_trait;
 use datazen_ai_api::*;
-use reqwest::Client;
-use serde::{Deserialize, Serialize};
+use reqwest::Client as HttpClient;
 use tokio::sync::{mpsc, RwLock};
+
+use super::protocol::{self, ProtocolConfig, CONNECT_TIMEOUT};
 
 const DEFAULT_ENDPOINT: &str = "https://api.openai.com/v1";
 
 pub struct OpenAiProvider {
-    client: Client,
+    http_client: HttpClient,
     state: RwLock<Option<ProviderState>>,
 }
 
@@ -22,132 +23,26 @@ struct ProviderState {
 impl OpenAiProvider {
     pub fn new() -> Self {
         Self {
-            client: Client::new(),
+            http_client: HttpClient::builder()
+                .connect_timeout(CONNECT_TIMEOUT)
+                .build()
+                .unwrap_or_default(),
             state: RwLock::new(None),
         }
     }
 
-    fn build_url(endpoint: &str, path: &str) -> String {
-        let base = endpoint.trim_end_matches('/');
-        if base.ends_with(path.trim_start_matches('/').trim_end_matches('/')) {
-            return base.to_string();
-        }
-        format!("{base}{path}")
+    async fn protocol_config(&self) -> Result<ProtocolConfig, AiError> {
+        let guard = self.state.read().await;
+        let s = guard
+            .as_ref()
+            .ok_or_else(|| AiError::NotConfigured("OpenAI provider not initialized".into()))?;
+        Ok(ProtocolConfig {
+            http_client: self.http_client.clone(),
+            api_base: s.endpoint.clone(),
+            api_key: s.api_key.clone(),
+            max_tokens: s.max_tokens,
+        })
     }
-}
-
-// ─── OpenAI API wire types ───
-
-#[derive(Serialize)]
-struct ApiRequest {
-    model: String,
-    messages: Vec<ApiMessage>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    temperature: Option<f32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    max_tokens: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    stop: Option<Vec<String>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    stream: Option<bool>,
-}
-
-#[derive(Serialize, Deserialize)]
-struct ApiMessage {
-    #[allow(dead_code)]
-    role: String,
-    #[serde(default)]
-    content: Option<String>,
-    #[serde(default)]
-    reasoning_content: Option<String>,
-}
-
-#[derive(Deserialize)]
-struct ApiResponse {
-    choices: Vec<ApiChoice>,
-    usage: Option<ApiUsage>,
-    model: String,
-}
-
-#[derive(Deserialize)]
-struct ApiChoice {
-    message: Option<ApiMessage>,
-    finish_reason: Option<String>,
-}
-
-#[derive(Deserialize)]
-struct ApiUsage {
-    prompt_tokens: u32,
-    completion_tokens: u32,
-    total_tokens: u32,
-}
-
-#[derive(Deserialize)]
-struct ApiStreamChunk {
-    choices: Vec<ApiStreamChoice>,
-    #[serde(default)]
-    usage: Option<ApiUsage>,
-}
-
-#[derive(Deserialize)]
-struct ApiStreamChoice {
-    delta: Option<ApiDelta>,
-    finish_reason: Option<String>,
-}
-
-#[derive(Deserialize)]
-struct ApiDelta {
-    content: Option<String>,
-    #[serde(default)]
-    reasoning_content: Option<String>,
-}
-
-#[derive(Deserialize)]
-struct ApiErrorResponse {
-    error: ApiErrorDetail,
-}
-
-#[derive(Deserialize)]
-struct ApiErrorDetail {
-    message: String,
-    #[serde(default)]
-    code: Option<String>,
-}
-
-impl From<&ChatMessage> for ApiMessage {
-    fn from(msg: &ChatMessage) -> Self {
-        Self {
-            role: match msg.role {
-                MessageRole::System => "system",
-                MessageRole::User => "user",
-                MessageRole::Assistant => "assistant",
-            }
-            .into(),
-            content: Some(msg.content.clone()),
-            reasoning_content: None,
-        }
-    }
-}
-
-fn map_api_error(status: reqwest::StatusCode, body: &str) -> AiError {
-    if let Ok(err_resp) = serde_json::from_str::<ApiErrorResponse>(body) {
-        let msg = err_resp.error.message;
-        let code = err_resp.error.code.as_deref().unwrap_or("");
-
-        return match status.as_u16() {
-            401 => AiError::InvalidApiKey,
-            429 => AiError::RateLimited {
-                retry_after_secs: 60,
-            },
-            _ if code == "context_length_exceeded" => AiError::ContextLengthExceeded {
-                used: 0,
-                limit: 0,
-            },
-            _ if code == "model_not_found" => AiError::ModelNotFound(msg),
-            _ => AiError::RequestFailed(msg),
-        };
-    }
-    AiError::RequestFailed(format!("HTTP {status}: {body}"))
 }
 
 #[async_trait]
@@ -158,43 +53,6 @@ impl AiProvider for OpenAiProvider {
 
     fn display_name(&self) -> &str {
         "OpenAI"
-    }
-
-    fn available_models(&self) -> Vec<ModelInfo> {
-        vec![
-            ModelInfo {
-                id: "gpt-4o".into(),
-                display_name: "GPT-4o".into(),
-                context_window: 128_000,
-                supports_streaming: true,
-                supports_tools: true,
-            },
-            ModelInfo {
-                id: "gpt-4o-mini".into(),
-                display_name: "GPT-4o mini".into(),
-                context_window: 128_000,
-                supports_streaming: true,
-                supports_tools: true,
-            },
-            ModelInfo {
-                id: "gpt-4-turbo".into(),
-                display_name: "GPT-4 Turbo".into(),
-                context_window: 128_000,
-                supports_streaming: true,
-                supports_tools: true,
-            },
-            ModelInfo {
-                id: "o3-mini".into(),
-                display_name: "o3-mini".into(),
-                context_window: 200_000,
-                supports_streaming: true,
-                supports_tools: true,
-            },
-        ]
-    }
-
-    fn default_model(&self) -> &str {
-        "gpt-4o-mini"
     }
 
     fn supports_tools(&self) -> bool {
@@ -209,23 +67,13 @@ impl AiProvider for OpenAiProvider {
             .ok_or_else(|| AiError::NotConfigured("API key is required for OpenAI".into()))?;
 
         let endpoint = config.endpoint.as_deref().unwrap_or(DEFAULT_ENDPOINT);
-        let url = Self::build_url(endpoint, "/models");
-
-        let resp = self
-            .client
-            .get(&url)
-            .bearer_auth(key)
-            .send()
-            .await
-            .map_err(|e| AiError::RequestFailed(e.to_string()))?;
-
-        if resp.status() == 401 {
-            return Err(AiError::InvalidApiKey);
-        }
-        if !resp.status().is_success() {
-            let body = resp.text().await.unwrap_or_default();
-            return Err(AiError::RequestFailed(format!("Validation failed: {body}")));
-        }
+        let cfg = ProtocolConfig {
+            http_client: self.http_client.clone(),
+            api_base: endpoint.into(),
+            api_key: key.into(),
+            max_tokens: config.max_tokens,
+        };
+        protocol::openai_chat::fetch_models(&cfg).await?;
         Ok(())
     }
 
@@ -251,85 +99,9 @@ impl AiProvider for OpenAiProvider {
         Ok(())
     }
 
-    async fn complete(
-        &self,
-        request: &CompletionRequest,
-    ) -> Result<CompletionResponse, AiError> {
-        let state_guard = self.state.read().await;
-        let state = state_guard
-            .as_ref()
-            .ok_or_else(|| AiError::NotConfigured("OpenAI provider not initialized".into()))?;
-
-        let url = Self::build_url(&state.endpoint, "/chat/completions");
-
-        let body = ApiRequest {
-            model: request.model.clone(),
-            messages: request.messages.iter().map(|m| m.into()).collect(),
-            temperature: request.temperature,
-            max_tokens: Some(state.max_tokens),
-            stop: request.stop.clone(),
-            stream: Some(false),
-        };
-
-        let raw_request = serde_json::to_string(&body).unwrap_or_default();
-        tracing::info!(%url, "openai: HTTP request body\n{}", raw_request);
-
-        let resp = self
-            .client
-            .post(&url)
-            .bearer_auth(&state.api_key)
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| AiError::RequestFailed(e.to_string()))?;
-
-        let status = resp.status();
-        let raw_body = resp.text().await.unwrap_or_default();
-        tracing::info!(%status, "openai: HTTP response body\n{}", raw_body);
-
-        if !status.is_success() {
-            return Err(map_api_error(status, &raw_body));
-        }
-
-        let api_resp: ApiResponse = serde_json::from_str(&raw_body)
-            .map_err(|e| AiError::RequestFailed(format!("JSON decode: {e}")))?;
-
-        let choice = api_resp
-            .choices
-            .first()
-            .ok_or_else(|| AiError::RequestFailed("No choices in response".into()))?;
-
-        let (content, reasoning) = choice
-            .message
-            .as_ref()
-            .map(|m| {
-                let c = m.content.clone().unwrap_or_default();
-                let r = m.reasoning_content.clone().filter(|s| !s.is_empty());
-                (c, r)
-            })
-            .unwrap_or_default();
-
-        let usage = api_resp
-            .usage
-            .map(|u| TokenUsage {
-                prompt_tokens: u.prompt_tokens,
-                completion_tokens: u.completion_tokens,
-                total_tokens: u.total_tokens,
-            })
-            .unwrap_or_default();
-
-        Ok(CompletionResponse {
-            request_id: request.request_id.clone(),
-            content,
-            reasoning,
-            model: api_resp.model,
-            finish_reason: choice.finish_reason.clone(),
-            usage,
-        })
-    }
-
-    async fn reset(&self) {
-        *self.state.write().await = None;
+    async fn complete(&self, request: &CompletionRequest) -> Result<CompletionResponse, AiError> {
+        let cfg = self.protocol_config().await?;
+        protocol::openai_chat::complete(&cfg, request).await
     }
 
     async fn stream_complete(
@@ -337,125 +109,12 @@ impl AiProvider for OpenAiProvider {
         request: &CompletionRequest,
         sender: mpsc::Sender<Result<StreamChunk, AiError>>,
     ) -> Result<(), AiError> {
-        let state_guard = self.state.read().await;
-        let state = state_guard
-            .as_ref()
-            .ok_or_else(|| AiError::NotConfigured("OpenAI provider not initialized".into()))?;
+        let cfg = self.protocol_config().await?;
+        protocol::openai_chat::stream_complete(&cfg, request, sender).await
+    }
 
-        let url = Self::build_url(&state.endpoint, "/chat/completions");
-        let body = ApiRequest {
-            model: request.model.clone(),
-            messages: request.messages.iter().map(|m| m.into()).collect(),
-            temperature: request.temperature,
-            max_tokens: Some(state.max_tokens),
-            stop: request.stop.clone(),
-            stream: Some(true),
-        };
-
-        let raw_request = serde_json::to_string(&body).unwrap_or_default();
-        tracing::info!(%url, "openai: stream HTTP request body\n{}", raw_request);
-
-        let resp = self
-            .client
-            .post(&url)
-            .bearer_auth(&state.api_key)
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| AiError::RequestFailed(e.to_string()))?;
-
-        let status = resp.status();
-        if !status.is_success() {
-            let text = resp.text().await.unwrap_or_default();
-            return Err(map_api_error(status, &text));
-        }
-
-        let mut byte_buf = Vec::new();
-        let mut stream = resp.bytes_stream();
-
-        // Process SSE stream: lines starting with "data: " contain JSON chunks
-        while let Some(chunk_result) =
-            futures_util::StreamExt::next(&mut stream).await
-        {
-            let chunk_bytes = match chunk_result {
-                Ok(b) => b,
-                Err(e) => {
-                    let _ = sender.send(Err(AiError::RequestFailed(e.to_string()))).await;
-                    return Ok(());
-                }
-            };
-
-            byte_buf.extend_from_slice(&chunk_bytes);
-
-            // Parse complete SSE lines from buffer
-            while let Some(line_end) = byte_buf.iter().position(|&b| b == b'\n') {
-                let line = String::from_utf8_lossy(&byte_buf[..line_end])
-                    .trim()
-                    .to_string();
-                byte_buf.drain(..=line_end);
-
-                if line.is_empty() || line.starts_with(':') {
-                    continue;
-                }
-
-                let data = if let Some(d) = line.strip_prefix("data: ") {
-                    d.trim()
-                } else {
-                    continue;
-                };
-
-                if data == "[DONE]" {
-                    let _ = sender
-                        .send(Ok(StreamChunk {
-                            content: String::new(),
-                            reasoning: None,
-                            done: true,
-                            usage: None,
-                        }))
-                        .await;
-                    return Ok(());
-                }
-
-                if let Ok(chunk) = serde_json::from_str::<ApiStreamChunk>(data) {
-                    if let Some(choice) = chunk.choices.first() {
-                        let content = choice
-                            .delta
-                            .as_ref()
-                            .and_then(|d| d.content.clone())
-                            .unwrap_or_default();
-                        let reasoning = choice
-                            .delta
-                            .as_ref()
-                            .and_then(|d| d.reasoning_content.clone())
-                            .filter(|r| !r.is_empty());
-
-                        let done = choice.finish_reason.is_some();
-                        let usage = chunk.usage.map(|u| TokenUsage {
-                            prompt_tokens: u.prompt_tokens,
-                            completion_tokens: u.completion_tokens,
-                            total_tokens: u.total_tokens,
-                        });
-
-                        if !content.is_empty() || reasoning.is_some() || done {
-                            if sender
-                                .send(Ok(StreamChunk {
-                                    content,
-                                    reasoning,
-                                    done,
-                                    usage,
-                                }))
-                                .await
-                                .is_err()
-                            {
-                                return Ok(());
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        Ok(())
+    async fn reset(&self) {
+        *self.state.write().await = None;
     }
 }
 
@@ -470,39 +129,6 @@ mod tests {
         assert_eq!(provider.display_name(), "OpenAI");
         assert!(provider.supports_streaming());
         assert!(provider.supports_tools());
-        assert_eq!(provider.default_model(), "gpt-4o-mini");
-    }
-
-    #[test]
-    fn test_openai_models_list() {
-        let provider = OpenAiProvider::new();
-        let models = provider.available_models();
-        assert!(!models.is_empty());
-        assert!(models.iter().any(|m| m.id == "gpt-4o"));
-        assert!(models.iter().any(|m| m.id == "gpt-4o-mini"));
-    }
-
-    #[test]
-    fn test_build_url() {
-        assert_eq!(
-            OpenAiProvider::build_url("https://api.openai.com/v1", "/chat/completions"),
-            "https://api.openai.com/v1/chat/completions"
-        );
-        assert_eq!(
-            OpenAiProvider::build_url("https://api.openai.com/v1/", "/models"),
-            "https://api.openai.com/v1/models"
-        );
-    }
-
-    #[test]
-    fn test_message_conversion() {
-        let msg = ChatMessage {
-            role: MessageRole::System,
-            content: "You are helpful.".into(),
-        };
-        let api_msg: ApiMessage = (&msg).into();
-        assert_eq!(api_msg.role, "system");
-        assert_eq!(api_msg.content, Some("You are helpful.".into()));
     }
 
     #[tokio::test]
@@ -534,20 +160,6 @@ mod tests {
         assert!(matches!(err, AiError::NotConfigured(_)));
     }
 
-    #[test]
-    fn test_map_api_error_401() {
-        let body = r#"{"error":{"message":"Invalid API key","code":"invalid_api_key"}}"#;
-        let err = map_api_error(reqwest::StatusCode::UNAUTHORIZED, body);
-        assert!(matches!(err, AiError::InvalidApiKey));
-    }
-
-    #[test]
-    fn test_map_api_error_429() {
-        let body = r#"{"error":{"message":"Rate limited","code":"rate_limit_exceeded"}}"#;
-        let err = map_api_error(reqwest::StatusCode::TOO_MANY_REQUESTS, body);
-        assert!(matches!(err, AiError::RateLimited { .. }));
-    }
-
     #[tokio::test]
     async fn test_reset_clears_state() {
         let provider = OpenAiProvider::new();
@@ -560,6 +172,7 @@ mod tests {
             extra: serde_json::Value::Null,
         };
         provider.initialize(&config).await.unwrap();
+        provider.reset().await;
 
         let req = CompletionRequest {
             request_id: "r1".into(),
@@ -568,18 +181,7 @@ mod tests {
             temperature: None,
             stop: None,
         };
-        assert!(provider.complete(&req).await.is_err() || provider.complete(&req).await.is_ok());
-
-        provider.reset().await;
-
         let err = provider.complete(&req).await.unwrap_err();
         assert!(matches!(err, AiError::NotConfigured(_)));
-    }
-
-    #[test]
-    fn test_map_api_error_context_length() {
-        let body = r#"{"error":{"message":"Too many tokens","code":"context_length_exceeded"}}"#;
-        let err = map_api_error(reqwest::StatusCode::BAD_REQUEST, body);
-        assert!(matches!(err, AiError::ContextLengthExceeded { .. }));
     }
 }
