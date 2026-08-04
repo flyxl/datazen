@@ -84,6 +84,11 @@ pub async fn mcp_stop() -> Result<(), CommandError> {
     Ok(())
 }
 
+#[tauri::command]
+pub async fn mcp_list_all_tools() -> Result<Vec<String>, CommandError> {
+    Ok(crate::mcp::MCP_ALL_TOOLS.iter().map(|s| s.to_string()).collect())
+}
+
 // ─── MCP Client commands ───
 
 #[tauri::command]

@@ -6,7 +6,7 @@ pub mod workflow_history;
 pub mod workflows;
 
 pub use client::{McpClientManager, McpServerConfig, McpToolInfo};
-pub use server::DataZenMcpServer;
+pub use server::{DataZenMcpServer, MCP_ALL_TOOLS};
 pub use workflow_history::WorkflowHistoryManager;
 pub use workflows::{
     WorkflowDefinition, WorkflowExecutionResult, WorkflowExecutor, WorkflowListItem,
@@ -18,7 +18,8 @@ use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
 
 pub async fn start_mcp_stdio(app_state: Arc<AppState>, cancel: CancellationToken) {
-    let server = DataZenMcpServer::new(app_state);
+    let disabled = app_state.store.get_settings().await.mcp_disabled_tools;
+    let server = DataZenMcpServer::new(app_state).with_disabled_tools(&disabled);
 
     use rmcp::ServiceExt;
     use tokio::io::{stdin, stdout};

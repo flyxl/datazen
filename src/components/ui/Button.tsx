@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes } from 'react';
+import type { ButtonHTMLAttributes, MouseEvent } from 'react';
 import { cn } from '../../lib/cn';
 
 type Variant = 'primary' | 'secondary' | 'ghost' | 'danger';
@@ -16,7 +16,11 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: Variant;
 }
 
-export function Button({ className, variant = 'primary', type = 'button', ...props }: ButtonProps) {
+export function Button({ className, variant = 'primary', type = 'button', onMouseDown, ...props }: ButtonProps) {
+  const handleMouseDown = (e: MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    onMouseDown?.(e);
+  };
   return (
     <button
       type={type}
@@ -25,6 +29,7 @@ export function Button({ className, variant = 'primary', type = 'button', ...pro
         variants[variant],
         className,
       )}
+      onMouseDown={handleMouseDown}
       {...props}
     />
   );

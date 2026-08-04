@@ -6,7 +6,7 @@ Read each subreddit's rules before posting. Do not cross-post the same text to m
 
 ## r/selfhosted
 
-**Title**: DataZen – lightweight MIT database client with built-in SSH tunnels (PG/MySQL/SQLite/Redis)
+**Title**: DataZen – lightweight GPLv3 database client with built-in SSH tunnels (PG/MySQL/SQLite/Redis)
 
 **Body**:
 
@@ -16,7 +16,7 @@ I made DataZen, a desktop GUI for managing databases locally — no cloud accoun
 - Built-in SSH tunneling (no local ssh client)
 - SQL editor, backups, import/export
 - Under 10 MB (Tauri + Rust)
-- MIT license, free
+- GPLv3 license, free
 
 Releases: https://github.com/flyxl/datazen/releases  
 Feedback: wuxiaolongklws@gmail.com
@@ -29,7 +29,7 @@ Feedback: wuxiaolongklws@gmail.com
 
 **Body**:
 
-DataZen is an MIT-licensed database client I've been building with Tauri v2. Backend uses async sqlx for PG/MySQL/SQLite, redis crate, and russh for SSH. Driver architecture is registry-based so adding a DB type is a small change.
+DataZen is a GPLv3-licensed database client I've been building with Tauri v2. Backend uses async sqlx for PG/MySQL/SQLite, redis crate, and russh for SSH. Driver architecture is registry-based so adding a DB type is a small change.
 
 Early v0.0.3 but usable for daily SQL + Redis work. Would appreciate Rust folks trying it and filing issues.
 

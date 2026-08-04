@@ -146,17 +146,23 @@ sql: "SELECT * FROM {{db_name}}.users LIMIT {{limit}}"
 
 ### 引用步骤结果
 
-使用 `{{steps.<step_id>.result}}` 引用之前步骤的执行结果：
+查询步骤的结果通过 `rows` 访问：
+
+```yaml
+# 访问第一行的 name 字段
+sql: "SELECT * FROM {{steps.get_tables.rows[0].name}}"
+
+# 通配符：展开所有行的字段用于 IN 子句
+sql: "SELECT * FROM orders WHERE id IN ({{steps.get_ids.rows.*.id}})"
+
+# 行数
+if: "steps.get_data.rows_count > 0"
+```
+
+AI 步骤的结果通过 `result` 访问：
 
 ```yaml
 prompt: "分析数据：{{steps.get_data.result}}"
-```
-
-支持深层路径访问：
-
-```yaml
-# 访问数组第一行的 name 字段
-sql: "SELECT * FROM {{steps.get_tables.result[0].name}}"
 ```
 
 ## 错误处理

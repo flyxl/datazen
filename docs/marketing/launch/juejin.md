@@ -11,7 +11,7 @@
 ### 1. 为什么做 DataZen
 
 - TablePlus 订阅成本、DBeaver 体积与启动速度
-- 目标：&lt;10MB、MIT 开源、日常开发够用
+- 目标：&lt;10MB、GPLv3 开源、日常开发够用
 
 ### 2. 技术选型
 
@@ -48,7 +48,7 @@
 
 ## 文末 CTA（可直接粘贴）
 
-> **DataZen** 是 MIT 开源的跨平台数据库客户端，支持 PostgreSQL、MySQL、SQLite、Redis，内置 SSH 与 SQL 自动补全。  
+> **DataZen** 是 GPLv3 开源的跨平台数据库客户端，支持 PostgreSQL、MySQL、SQLite、Redis，内置 SSH 与 SQL 自动补全。  
 > GitHub: https://github.com/flyxl/datazen  
 > 欢迎 Star。
 

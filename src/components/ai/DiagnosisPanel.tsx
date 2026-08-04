@@ -65,7 +65,7 @@ export function DiagnosisPanel({
               {t('settings.ai.goToConfigure')}
             </Button>
           </div>
-          <button type="button" className="text-fg-muted hover:text-fg" onClick={handleClose}>
+          <button type="button" onMouseDown={(e) => e.preventDefault()} className="text-fg-muted hover:text-fg" onClick={handleClose}>
             <X className="h-3.5 w-3.5" />
           </button>
         </div>
@@ -91,7 +91,7 @@ export function DiagnosisPanel({
               {t('diagnosis.diagnose')}
             </Button>
           )}
-          <button type="button" className="text-fg-muted hover:text-fg" onClick={handleClose}>
+          <button type="button" onMouseDown={(e) => e.preventDefault()} className="text-fg-muted hover:text-fg" onClick={handleClose}>
             <X className="h-3.5 w-3.5" />
           </button>
         </div>

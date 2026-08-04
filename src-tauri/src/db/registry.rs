@@ -94,14 +94,34 @@ pub async fn init_drivers() -> DriverRegistry {
     // Each plugin crate uses `register_driver!` to submit a factory.
     for factory in iter_driver_factories() {
         let pv = factory.protocol_version();
-        if pv != datazen_driver_api::PROTOCOL_VERSION {
+        if pv < datazen_driver_api::MIN_PROTOCOL_VERSION {
             tracing::error!(
-                "Plugin '{}' protocol version mismatch: expected {}, got {}. Skipping.",
+                "Plugin '{}' protocol version {} is too old (minimum {}). Skipping.",
                 factory.driver_id(),
-                datazen_driver_api::PROTOCOL_VERSION,
-                pv
+                pv,
+                datazen_driver_api::MIN_PROTOCOL_VERSION
             );
             continue;
+        }
+        if pv > datazen_driver_api::PROTOCOL_VERSION {
+            tracing::warn!(
+                "Plugin '{}' protocol version {} is newer than host {}. Loading with possible incompatibility.",
+                factory.driver_id(),
+                pv,
+                datazen_driver_api::PROTOCOL_VERSION
+            );
+        }
+        if pv < datazen_driver_api::PROTOCOL_VERSION {
+            tracing::warn!(
+                "Plugin '{}' protocol version {} < host {}. Running in degraded mode \
+                 (cancel_query={}, explain={}, streaming={}).",
+                factory.driver_id(),
+                pv,
+                datazen_driver_api::PROTOCOL_VERSION,
+                factory.supports_cancel_query(),
+                factory.supports_explain(),
+                factory.supports_streaming_results(),
+            );
         }
 
         let driver = factory.create();

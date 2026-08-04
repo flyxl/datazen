@@ -586,6 +586,8 @@ const zhCN = {
   'chat.welcome': '你好！我是你的数据库助手。你可以问我关于 SQL 查询、数据库概念或数据分析的问题。',
   'chat.insertSql': '插入到编辑器',
   'chat.reasoning': '思考过程',
+  'chat.questions.customAnswer': '输入自定义回答…',
+  'chat.questions.submit': '提交回答',
 
   // ── NL2SQL ──
   'nl2sql.title': 'AI 生成 SQL',
@@ -644,6 +646,11 @@ const zhCN = {
   'mcp.stop': '停止',
   'mcp.transport': '传输方式',
   'mcp.usage': '要在 Claude Desktop 或 Cursor 中使用 DataZen 作为 MCP 服务器，请添加以下配置：',
+  'mcp.tools': '暴露的工具',
+  'mcp.tools.description': '选择通过 MCP Server 暴露哪些工具给外部 AI 客户端',
+  'mcp.tools.enableAll': '全部启用',
+  'mcp.tools.disableAll': '全部禁用',
+  'mcp.tools.restartHint': '修改工具配置后，需要重启 MCP Server 才能生效',
 
   // ── MCP Client ──
   'mcpClient.title': '外部 MCP 服务',

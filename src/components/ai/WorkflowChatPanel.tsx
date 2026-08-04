@@ -21,6 +21,7 @@ import { cn } from '../../lib/cn';
 import { openSettingsWindow } from '../../lib/windowManager';
 import { extractWorkflowYaml, parseWorkflowYaml, validateWorkflowFields } from '../../lib/workflowYaml';
 import type { AiChatMessage, WorkflowDefinition } from '../../types';
+import { QuestionBlock } from './AiChatPanel';
 
 interface WorkflowChatPanelProps {
   connections: { id: string; name: string; databaseType: string }[];
@@ -132,7 +133,7 @@ export function WorkflowChatPanel({ connections, onSaved, onBack }: WorkflowChat
       {/* Header */}
       <div className="flex shrink-0 items-center gap-2 border-b border-edge px-3 py-1.5">
         {onBack && (
-          <button type="button" onClick={onBack} className="text-fg-muted hover:text-fg p-0.5 rounded">
+          <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={onBack} className="text-fg-muted hover:text-fg p-0.5 rounded">
             <ArrowLeft className="h-3.5 w-3.5" />
           </button>
         )}
@@ -174,6 +175,18 @@ export function WorkflowChatPanel({ connections, onSaved, onBack }: WorkflowChat
             saveOk={saveOk}
             saveError={saveError}
             t={t}
+            onAnswerQuestions={(answers) => {
+              void sendMessage({
+                connectionId: selectedConnection || undefined,
+                content: answers,
+                includeSchema: !!selectedConnection,
+              });
+            }}
+            isLastAssistant={
+              msg.role === 'assistant' &&
+              i === (workflowChat?.messages.length ?? 0) - 1 &&
+              !workflowChat?.isStreaming
+            }
           />
         ))}
 
@@ -223,6 +236,8 @@ function WorkflowChatBubble({
   saveOk,
   saveError,
   t,
+  onAnswerQuestions,
+  isLastAssistant,
 }: {
   message: AiChatMessage;
   isStreaming?: boolean;
@@ -231,6 +246,8 @@ function WorkflowChatBubble({
   saveOk?: boolean;
   saveError?: string;
   t: ReturnType<typeof useI18n>['t'];
+  onAnswerQuestions?: (formatted: string) => void;
+  isLastAssistant?: boolean;
 }) {
   const isUser = message.role === 'user';
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
@@ -259,7 +276,7 @@ function WorkflowChatBubble({
         {message.reasoning && (
           <div className="mb-2">
             <button
-              type="button"
+              type="button" onMouseDown={(e) => e.preventDefault()}
               className="flex items-center gap-1 text-[10px] text-fg-muted hover:text-fg transition-colors"
               onClick={() => setReasoningOpen(!reasoningOpen)}
             >
@@ -298,14 +315,14 @@ function WorkflowChatBubble({
                 </div>
                 <div className="flex gap-1">
                   <button
-                    type="button"
+                    type="button" onMouseDown={(e) => e.preventDefault()}
                     className="rounded bg-surface px-1.5 py-0.5 text-[10px] text-fg-muted hover:text-fg"
                     onClick={() => handleCopy(yaml, idx)}
                   >
                     {copiedIdx === idx ? <Check className="inline h-2.5 w-2.5" /> : <Copy className="inline h-2.5 w-2.5" />}
                   </button>
                   <button
-                    type="button"
+                    type="button" onMouseDown={(e) => e.preventDefault()}
                     className="rounded bg-surface px-1.5 py-0.5 text-[10px] text-fg-muted hover:text-fg"
                     onClick={() => setPreviewYaml(previewYaml === yaml ? null : yaml)}
                   >
@@ -313,7 +330,7 @@ function WorkflowChatBubble({
                   </button>
                   {onSaveYaml && (
                     <button
-                      type="button"
+                      type="button" onMouseDown={(e) => e.preventDefault()}
                       className={cn(
                         'flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px]',
                         saveOk ? 'text-green-500' : 'text-accent hover:text-accent/80',
@@ -345,6 +362,13 @@ function WorkflowChatBubble({
           </div>
         )}
       </div>
+
+      {!isUser && !isStreaming && message.questions && message.questions.length > 0 && isLastAssistant && onAnswerQuestions && (
+        <QuestionBlock
+          questions={message.questions}
+          onSubmit={onAnswerQuestions}
+        />
+      )}
     </div>
   );
 }

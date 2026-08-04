@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import { aiCommands, onAiStreamChunk, onAiStreamError, onAiConfigChanged } from '../commands/ai';
 import { extractSqlFromResponse } from '../lib/extractSql';
+import { normalizeAiProviders } from '../lib/aiProviders';
+import { extractQuestions, parseToolCallQuestions } from '../lib/extractQuestions';
 import type {
   AiChatMessage,
   AiChatSession,
@@ -223,7 +225,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
   loadProviders: async () => {
     if (!('__TAURI_INTERNALS__' in globalThis)) return;
     try {
-      const providers = await aiCommands.getProviders();
+      const providers = normalizeAiProviders(await aiCommands.getProviders());
       set({ providers });
     } catch (e) {
       console.error('Failed to load AI providers:', e);
@@ -428,13 +430,26 @@ export const useAiStore = create<AiStore>((set, get) => ({
     if (!chatSession) return;
 
     console.debug('[AI] sendChatMessage:', { connectionId, database, contentLen: content.length, includeSchema, historyLen: chatSession.messages.length });
-    const userMessage: AiChatMessage = { role: 'user', content };
+
+    const newMessages: AiChatMessage[] = [];
+    const lastMsg = chatSession.messages[chatSession.messages.length - 1];
+    if (lastMsg?.toolCalls && lastMsg.toolCalls.length > 0) {
+      const askCall = lastMsg.toolCalls.find((tc) => tc.name === 'ask_questions');
+      if (askCall) {
+        newMessages.push({ role: 'tool', content, toolCallId: askCall.id });
+      } else {
+        newMessages.push({ role: 'user', content });
+      }
+    } else {
+      newMessages.push({ role: 'user', content });
+    }
+
     const requestId = crypto.randomUUID();
 
     set({
       chatSession: {
         ...chatSession,
-        messages: [...chatSession.messages, userMessage],
+        messages: [...chatSession.messages, ...newMessages],
         isStreaming: true,
         streamContent: '',
         streamReasoning: '',
@@ -446,7 +461,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
       await aiCommands.chat({
         connectionId,
         database,
-        messages: [...chatSession.messages, userMessage],
+        messages: [...chatSession.messages, ...newMessages],
         requestId,
         includeSchema,
       });
@@ -506,13 +521,25 @@ export const useAiStore = create<AiStore>((set, get) => ({
     const { workflowChat } = get();
     if (!workflowChat) return;
 
-    const userMessage: AiChatMessage = { role: 'user', content };
+    const newMessages: AiChatMessage[] = [];
+    const lastMsg = workflowChat.messages[workflowChat.messages.length - 1];
+    if (lastMsg?.toolCalls && lastMsg.toolCalls.length > 0) {
+      const askCall = lastMsg.toolCalls.find((tc) => tc.name === 'ask_questions');
+      if (askCall) {
+        newMessages.push({ role: 'tool', content, toolCallId: askCall.id });
+      } else {
+        newMessages.push({ role: 'user', content });
+      }
+    } else {
+      newMessages.push({ role: 'user', content });
+    }
+
     const requestId = crypto.randomUUID();
 
     set({
       workflowChat: {
         ...workflowChat,
-        messages: [...workflowChat.messages, userMessage],
+        messages: [...workflowChat.messages, ...newMessages],
         isStreaming: true,
         streamContent: '',
         streamReasoning: '',
@@ -524,7 +551,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
       await aiCommands.chat({
         connectionId,
         database,
-        messages: [...workflowChat.messages, userMessage],
+        messages: [...workflowChat.messages, ...newMessages],
         requestId,
         includeSchema,
         scenario: 'workflow_generate',
@@ -595,10 +622,21 @@ export const useAiStore = create<AiStore>((set, get) => ({
       const newContent = (session.streamContent || '') + (payload.content || '');
       const newReasoning = (session.streamReasoning || '') + (payload.reasoning || '');
       if (payload.done) {
+        const { cleanContent, questions: xmlQuestions } = extractQuestions(newContent);
+        const toolCalls = payload.toolCalls && payload.toolCalls.length > 0 ? payload.toolCalls : undefined;
+
+        let questions = xmlQuestions.length > 0 ? xmlQuestions : undefined;
+        if (!questions && toolCalls) {
+          const tcQuestions = parseToolCallQuestions(toolCalls);
+          if (tcQuestions.length > 0) questions = tcQuestions;
+        }
+
         const assistantMessage: AiChatMessage = {
           role: 'assistant',
-          content: newContent,
+          content: cleanContent,
           reasoning: newReasoning || undefined,
+          questions,
+          toolCalls,
         };
         set({
           [targetSession]: {

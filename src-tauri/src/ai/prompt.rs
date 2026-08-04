@@ -67,6 +67,9 @@ impl PromptBuilder {
                 version = version_str,
                 schema = context.schema_ddl,
             ),
+            reasoning: None,
+            tool_calls: None,
+            tool_call_id: None,
         }
     }
 
@@ -93,6 +96,9 @@ Respond in this exact JSON format:
   "changes": ["Description of each change made"]
 }}"#,
             ),
+            reasoning: None,
+            tool_calls: None,
+            tool_call_id: None,
         }
     }
 
@@ -156,6 +162,9 @@ Respond in this exact JSON format (an array of filter conditions):
 
 {rules}"#,
             ),
+            reasoning: None,
+            tool_calls: None,
+            tool_call_id: None,
         }
     }
 
@@ -174,6 +183,9 @@ Return ONLY a JSON array of table names, no explanation.
 Example: ["users", "orders", "products"]
 If there are more than 30 important tables, pick the top 30."#,
             ),
+            reasoning: None,
+            tool_calls: None,
+            tool_call_id: None,
         }
     }
 
@@ -223,6 +235,9 @@ Rules:
             content: format!(
                 "{desc}\n\nDatabase: {db_type}\nSchema:\n{schema_ddl}\n\n{format_guide}",
             ),
+            reasoning: None,
+            tool_calls: None,
+            tool_call_id: None,
         }
     }
 
@@ -266,6 +281,9 @@ Respond in this exact JSON format:
 
 {categories}"#,
             ),
+            reasoning: None,
+            tool_calls: None,
+            tool_call_id: None,
         }
     }
 
@@ -311,6 +329,9 @@ Respond in this exact JSON format:
 
 {rules}"#,
             ),
+            reasoning: None,
+            tool_calls: None,
+            tool_call_id: None,
         }
     }
 
@@ -339,6 +360,9 @@ Respond in this exact JSON format:
   ]
 }}"#,
             ),
+            reasoning: None,
+            tool_calls: None,
+            tool_call_id: None,
         }
     }
 }

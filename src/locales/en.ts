@@ -588,6 +588,8 @@ const en: Record<TranslationKey, string> = {
   'chat.welcome': 'Hello! I\'m your database assistant. Ask me about SQL queries, database concepts, or data analysis.',
   'chat.insertSql': 'Insert to Editor',
   'chat.reasoning': 'Thinking',
+  'chat.questions.customAnswer': 'Type a custom answer…',
+  'chat.questions.submit': 'Submit Answers',
 
   // ── NL2SQL ──
   'nl2sql.title': 'AI Generate SQL',
@@ -646,6 +648,11 @@ const en: Record<TranslationKey, string> = {
   'mcp.stop': 'Stop',
   'mcp.transport': 'Transport',
   'mcp.usage': 'To use DataZen as an MCP server with Claude Desktop or Cursor, add the following config:',
+  'mcp.tools': 'Exposed Tools',
+  'mcp.tools.description': 'Choose which tools to expose via MCP Server to external AI clients',
+  'mcp.tools.enableAll': 'Enable All',
+  'mcp.tools.disableAll': 'Disable All',
+  'mcp.tools.restartHint': 'MCP Server needs to be restarted for tool changes to take effect',
 
   // ── MCP Client ──
   'mcpClient.title': 'External MCP Servers',

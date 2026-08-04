@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ChevronDown, ChevronRight, Loader2, MessageSquare, Settings, Sparkles, Trash2, Copy, Check, Wand2 } from 'lucide-react';
+import { ChevronDown, ChevronRight, Loader2, MessageSquare, Settings, Sparkles, Trash2, Copy, Check, Wand2, Send } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { AiInput } from './AiInput';
 import { useI18n } from '../../hooks/useI18n';
@@ -7,7 +7,7 @@ import { useAiStore } from '../../stores/aiStore';
 import { cn } from '../../lib/cn';
 import { openSettingsWindow } from '../../lib/windowManager';
 import { WorkflowPanel } from './WorkflowPanel';
-import type { AiChatMessage } from '../../types';
+import type { AiChatMessage, AiQuestion } from '../../types';
 
 interface AiChatPanelProps {
   connectionId: string;
@@ -64,7 +64,7 @@ export function AiChatPanel({ connectionId, database, onInsertSql }: AiChatPanel
       <div className="flex shrink-0 items-center justify-between border-b border-edge px-3 py-1.5">
         <div className="flex items-center gap-1">
           <button
-            type="button"
+            type="button" onMouseDown={(e) => e.preventDefault()}
             className={cn(
               'flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors',
               tab === 'chat' ? 'bg-accent/10 text-accent font-medium' : 'text-fg-muted hover:text-fg',
@@ -75,7 +75,7 @@ export function AiChatPanel({ connectionId, database, onInsertSql }: AiChatPanel
             {t('chat.title')}
           </button>
           <button
-            type="button"
+            type="button" onMouseDown={(e) => e.preventDefault()}
             className={cn(
               'flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors',
               tab === 'workflows' ? 'bg-accent/10 text-accent font-medium' : 'text-fg-muted hover:text-fg',
@@ -113,7 +113,19 @@ export function AiChatPanel({ connectionId, database, onInsertSql }: AiChatPanel
             )}
 
             {chatSession?.messages.map((msg, i) => (
-              <ChatBubble key={i} message={msg} onInsertSql={onInsertSql} />
+              <ChatBubble
+                key={i}
+                message={msg}
+                onInsertSql={onInsertSql}
+                onAnswerQuestions={(answers) => {
+                  void sendMessage({ connectionId, database, content: answers });
+                }}
+                isLastAssistant={
+                  msg.role === 'assistant' &&
+                  i === chatSession.messages.length - 1 &&
+                  !chatSession.isStreaming
+                }
+              />
             ))}
 
             {chatSession?.isStreaming && (chatSession.streamContent || chatSession.streamReasoning) && (
@@ -158,10 +170,14 @@ function ChatBubble({
   message,
   isStreaming,
   onInsertSql,
+  onAnswerQuestions,
+  isLastAssistant,
 }: {
   message: AiChatMessage;
   isStreaming?: boolean;
   onInsertSql?: (sql: string) => void;
+  onAnswerQuestions?: (formatted: string) => void;
+  isLastAssistant?: boolean;
 }) {
   const { t } = useI18n();
   const isUser = message.role === 'user';
@@ -178,6 +194,8 @@ function ChatBubble({
     setTimeout(() => setCopiedIdx(null), 1500);
   }, []);
 
+  const hasQuestions = !isUser && !isStreaming && message.questions && message.questions.length > 0;
+
   return (
     <div className={cn('mb-3', isUser ? 'flex justify-end' : '')}>
       <div
@@ -192,7 +210,7 @@ function ChatBubble({
         {message.reasoning && (
           <div className="mb-2">
             <button
-              type="button"
+              type="button" onMouseDown={(e) => e.preventDefault()}
               className="flex items-center gap-1 text-[10px] text-fg-muted hover:text-fg transition-colors"
               onClick={() => setReasoningOpen(!reasoningOpen)}
             >
@@ -226,7 +244,7 @@ function ChatBubble({
             {codeBlocks.map((block, idx) => (
               <span key={idx} className="flex gap-0.5">
                 <button
-                  type="button"
+                  type="button" onMouseDown={(e) => e.preventDefault()}
                   className="rounded bg-surface px-1.5 py-0.5 text-[10px] text-fg-muted hover:text-fg"
                   onClick={() => handleCopy(block, idx)}
                 >
@@ -238,7 +256,7 @@ function ChatBubble({
                 </button>
                 {onInsertSql && isSqlLike(block) && (
                   <button
-                    type="button"
+                    type="button" onMouseDown={(e) => e.preventDefault()}
                     className="rounded bg-surface px-1.5 py-0.5 text-[10px] text-blue-400 hover:text-blue-300"
                     onClick={() => onInsertSql(block)}
                   >
@@ -250,6 +268,13 @@ function ChatBubble({
           </div>
         )}
       </div>
+
+      {hasQuestions && isLastAssistant && onAnswerQuestions && (
+        <QuestionBlock
+          questions={message.questions!}
+          onSubmit={onAnswerQuestions}
+        />
+      )}
     </div>
   );
 }
@@ -267,4 +292,118 @@ function extractCodeBlocks(text: string): string[] {
 function isSqlLike(code: string): boolean {
   const sqlKeywords = /^\s*(SELECT|INSERT|UPDATE|DELETE|CREATE|ALTER|DROP|WITH|EXPLAIN)\b/i;
   return sqlKeywords.test(code);
+}
+
+export function QuestionBlock({
+  questions,
+  onSubmit,
+}: {
+  questions: AiQuestion[];
+  onSubmit: (formatted: string) => void;
+}) {
+  const { t } = useI18n();
+  const [answers, setAnswers] = useState<Record<string, string | string[]>>(() => {
+    const initial: Record<string, string | string[]> = {};
+    for (const q of questions) {
+      initial[q.id] = q.allowMultiple ? [] : '';
+    }
+    return initial;
+  });
+  const [submitted, setSubmitted] = useState(false);
+
+  const toggleOption = useCallback((questionId: string, optionId: string, allowMultiple?: boolean) => {
+    setAnswers((prev) => {
+      if (allowMultiple) {
+        const current = (prev[questionId] as string[]) || [];
+        const next = current.includes(optionId)
+          ? current.filter((id) => id !== optionId)
+          : [...current, optionId];
+        return { ...prev, [questionId]: next };
+      }
+      return { ...prev, [questionId]: prev[questionId] === optionId ? '' : optionId };
+    });
+  }, []);
+
+  const setTextAnswer = useCallback((questionId: string, text: string) => {
+    setAnswers((prev) => ({ ...prev, [questionId]: text }));
+  }, []);
+
+  const handleSubmit = useCallback(() => {
+    const lines: string[] = [];
+    for (const q of questions) {
+      const answer = answers[q.id];
+      if (q.allowMultiple && Array.isArray(answer) && answer.length > 0) {
+        const labels = answer.map((aid) => {
+          const opt = q.options.find((o) => o.id === aid);
+          return opt ? opt.label : aid;
+        });
+        lines.push(`${q.prompt}\n${labels.join(', ')}`);
+      } else if (typeof answer === 'string' && answer.trim()) {
+        const opt = q.options.find((o) => o.id === answer);
+        lines.push(`${q.prompt}\n${opt ? opt.label : answer}`);
+      }
+    }
+    if (lines.length > 0) {
+      setSubmitted(true);
+      onSubmit(lines.join('\n\n'));
+    }
+  }, [questions, answers, onSubmit]);
+
+  if (submitted) return null;
+
+  return (
+    <div className="mt-2 space-y-3 rounded-lg border border-accent/20 bg-accent/5 px-3 py-2.5">
+      {questions.map((q) => (
+        <div key={q.id}>
+          <p className="text-xs font-medium text-fg mb-1.5">{q.prompt}</p>
+
+          {q.options.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mb-1.5">
+              {q.options.map((opt) => {
+                const selected = q.allowMultiple
+                  ? ((answers[q.id] as string[]) || []).includes(opt.id)
+                  : answers[q.id] === opt.id;
+                return (
+                  <button
+                    key={opt.id}
+                    type="button" onMouseDown={(e) => e.preventDefault()}
+                    className={cn(
+                      'rounded-md border px-2.5 py-1 text-[11px] transition-colors',
+                      selected
+                        ? 'border-accent bg-accent/15 text-accent font-medium'
+                        : 'border-edge bg-surface text-fg-muted hover:text-fg hover:border-fg-muted',
+                    )}
+                    onClick={() => toggleOption(q.id, opt.id, q.allowMultiple)}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          <input
+            type="text"
+            className="w-full h-7 rounded border border-edge bg-surface px-2 text-xs text-fg outline-none focus:border-accent placeholder:text-fg-muted/50"
+            placeholder={t('chat.questions.customAnswer')}
+            value={
+              typeof answers[q.id] === 'string' && !q.options.find((o) => o.id === answers[q.id])
+                ? (answers[q.id] as string)
+                : ''
+            }
+            onChange={(e) => setTextAnswer(q.id, e.target.value)}
+          />
+        </div>
+      ))}
+
+      <Button
+        variant="primary"
+        className="h-7 text-xs gap-1"
+        onClick={handleSubmit}
+      >
+        <Send className="h-3 w-3" />
+        {t('chat.questions.submit')}
+      </Button>
+    </div>
+  );
 }

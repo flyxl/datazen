@@ -7,6 +7,7 @@ use tokio::sync::RwLock;
 
 use super::anthropic::AnthropicProvider;
 use super::custom::CustomProvider;
+use super::deepseek::DeepSeekProvider;
 use super::openai::OpenAiProvider;
 
 pub struct AiProviderRegistry {
@@ -124,7 +125,8 @@ mod tests {
         let types = registry.available_providers().await;
         assert!(types.contains(&AiProviderType::OpenAi));
         assert!(types.contains(&AiProviderType::Anthropic));
-        assert!(types.len() >= 2);
+        assert!(types.contains(&AiProviderType::DeepSeek));
+        assert!(types.len() >= 3);
     }
 
     #[tokio::test]
@@ -146,19 +148,41 @@ pub async fn init_ai_providers() -> AiProviderRegistry {
         .register(Arc::new(AnthropicProvider::new()))
         .await;
     registry
+        .register(Arc::new(DeepSeekProvider::new()))
+        .await;
+    registry
         .register(Arc::new(CustomProvider::new()))
         .await;
 
     for factory in iter_ai_provider_factories() {
         let pv = factory.protocol_version();
-        if pv != AI_PROTOCOL_VERSION {
+        if pv < MIN_AI_PROTOCOL_VERSION {
             tracing::error!(
-                "AI plugin '{}' protocol version mismatch: expected {}, got {}. Skipping.",
+                "AI plugin '{}' protocol version {} is too old (minimum {}). Skipping.",
                 factory.provider_id(),
-                AI_PROTOCOL_VERSION,
-                pv
+                pv,
+                MIN_AI_PROTOCOL_VERSION
             );
             continue;
+        }
+        if pv > AI_PROTOCOL_VERSION {
+            tracing::warn!(
+                "AI plugin '{}' protocol version {} is newer than host {}. Loading with possible incompatibility.",
+                factory.provider_id(),
+                pv,
+                AI_PROTOCOL_VERSION
+            );
+        }
+        if pv < AI_PROTOCOL_VERSION {
+            tracing::warn!(
+                "AI plugin '{}' protocol version {} < host {}. Running in degraded mode \
+                 (streaming={}, tools={}).",
+                factory.provider_id(),
+                pv,
+                AI_PROTOCOL_VERSION,
+                factory.supports_streaming(),
+                factory.supports_tools(),
+            );
         }
 
         let provider = factory.create();

@@ -160,6 +160,7 @@ export interface AppSettings {
   defaultPageSize: number;
   logLevel: 'trace' | 'debug' | 'info' | 'warn' | 'error';
   logPath: string;
+  mcpDisabledTools: string[];
 }
 
 export type FilterOperator =
@@ -219,7 +220,7 @@ export interface TableDataResult {
 
 // ── AI Types ──
 
-export type AiProviderType = 'open_ai' | 'anthropic' | 'custom';
+export type AiProviderType = 'open_ai' | 'deep_seek' | 'custom';
 
 export interface AiProviderConfig {
   providerType: AiProviderType;
@@ -271,10 +272,36 @@ export interface ExplainSuggestion {
   impact: string;
 }
 
+export interface AiQuestionOption {
+  id: string;
+  label: string;
+}
+
+export interface AiQuestion {
+  id: string;
+  prompt: string;
+  options: AiQuestionOption[];
+  allowMultiple?: boolean;
+}
+
+export interface AiToolCall {
+  id: string;
+  name: string;
+  arguments: string;
+}
+
+export interface AiToolResult {
+  toolCallId: string;
+  content: string;
+}
+
 export interface AiChatMessage {
-  role: 'system' | 'user' | 'assistant';
+  role: 'system' | 'user' | 'assistant' | 'tool';
   content: string;
   reasoning?: string;
+  questions?: AiQuestion[];
+  toolCalls?: AiToolCall[];
+  toolCallId?: string;
 }
 
 export interface AiChatSession {
@@ -292,6 +319,7 @@ export interface StreamChunkPayload {
   reasoning?: string;
   done: boolean;
   usage?: { promptTokens: number; completionTokens: number; totalTokens: number };
+  toolCalls?: AiToolCall[];
 }
 
 export interface StreamErrorPayload {

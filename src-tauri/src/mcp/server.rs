@@ -7,6 +7,7 @@ use rmcp::service::RequestContext;
 use rmcp::{prompt, prompt_handler, prompt_router, tool, tool_handler, tool_router, ErrorData as McpError, RoleServer, ServerHandler};
 use schemars::JsonSchema;
 use serde::Deserialize;
+use std::collections::HashSet;
 use std::sync::Arc;
 
 // ─── Tool Input Types ───
@@ -105,14 +106,35 @@ pub struct ExplainPlanArgs {
 #[derive(Clone)]
 pub struct DataZenMcpServer {
     app_state: Arc<AppState>,
+    disabled_tools: HashSet<String>,
 }
+
+pub const MCP_ALL_TOOLS: &[&str] = &[
+    "list_connections",
+    "list_databases",
+    "list_tables",
+    "query",
+    "get_schema",
+    "explain_query",
+    "describe_table",
+    "list_workflows",
+    "run_workflow",
+];
 
 impl DataZenMcpServer {
     pub fn new(app_state: Arc<AppState>) -> Self {
-        Self { app_state }
+        Self { app_state, disabled_tools: HashSet::new() }
     }
 
-    /// Resolve a connection ID (config ID or runtime ID) to a driver + handle + runtime ID.
+    pub fn with_disabled_tools(mut self, disabled: &[String]) -> Self {
+        self.disabled_tools = disabled.iter().cloned().collect();
+        self
+    }
+
+    fn map_err(e: String) -> McpError {
+        McpError::internal_error(e, None)
+    }
+
     async fn resolve_connection(
         &self,
         id: &str,
@@ -124,25 +146,13 @@ impl DataZenMcpServer {
         ),
         McpError,
     > {
-        if let Ok(conn) = self.app_state.connection_manager.get_connection(id).await {
-            return Ok((id.to_string(), conn.0, conn.1));
-        }
-
-        let conn_id = self
-            .app_state
-            .connection_manager
-            .connect(id)
-            .await
-            .map_err(|e| McpError::invalid_params(format!("Cannot connect: {e}"), None))?;
-
-        let (driver, handle) = self
-            .app_state
-            .connection_manager
-            .get_connection(&conn_id)
-            .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
-
-        Ok((conn_id, driver, handle))
+        let (driver, handle) = crate::services::db_tools::resolve_connection(
+            &self.app_state.connection_manager,
+            id,
+        )
+        .await
+        .map_err(Self::map_err)?;
+        Ok((id.to_string(), driver, handle))
     }
 }
 
@@ -152,22 +162,9 @@ impl DataZenMcpServer {
 impl DataZenMcpServer {
     #[tool(description = "List all configured database connections. Returns connection IDs, names, database types, and hosts.")]
     async fn list_connections(&self) -> Result<String, McpError> {
-        let connections = self.app_state.store.get_connections().await;
-        let result: Vec<serde_json::Value> = connections
-            .iter()
-            .map(|c| {
-                serde_json::json!({
-                    "id": c.id,
-                    "name": c.name,
-                    "databaseType": format!("{:?}", c.database_type),
-                    "host": c.host,
-                    "database": c.database,
-                })
-            })
-            .collect();
-
-        serde_json::to_string_pretty(&result)
-            .map_err(|e| McpError::internal_error(e.to_string(), None))
+        crate::services::db_tools::list_connections(&self.app_state.store)
+            .await
+            .map_err(Self::map_err)
     }
 
     #[tool(description = "List all databases on a connected server.")]
@@ -175,15 +172,9 @@ impl DataZenMcpServer {
         &self,
         Parameters(input): Parameters<ListDatabasesInput>,
     ) -> Result<String, McpError> {
-        let (_conn_id, driver, handle) = self.resolve_connection(&input.connection_id).await?;
-
-        let dbs = driver
-            .get_databases(&handle)
+        crate::services::db_tools::list_databases(&self.app_state.connection_manager, &input.connection_id)
             .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
-
-        serde_json::to_string_pretty(&dbs)
-            .map_err(|e| McpError::internal_error(e.to_string(), None))
+            .map_err(Self::map_err)
     }
 
     #[tool(description = "List all tables in a database. Returns table names with types and row counts.")]
@@ -191,16 +182,10 @@ impl DataZenMcpServer {
         &self,
         Parameters(input): Parameters<ListTablesInput>,
     ) -> Result<String, McpError> {
-        let (_conn_id, driver, handle) = self.resolve_connection(&input.connection_id).await?;
-
         let db = input.database.as_deref().unwrap_or("");
-        let tables = driver
-            .get_tables(&handle, db)
+        crate::services::db_tools::list_tables(&self.app_state.connection_manager, &input.connection_id, db)
             .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
-
-        serde_json::to_string_pretty(&tables)
-            .map_err(|e| McpError::internal_error(e.to_string(), None))
+            .map_err(Self::map_err)
     }
 
     #[tool(description = "Execute a SQL query on a connected database. Returns results as JSON. Use list_connections first to get valid connection IDs.")]
@@ -208,16 +193,9 @@ impl DataZenMcpServer {
         &self,
         Parameters(input): Parameters<QueryInput>,
     ) -> Result<String, McpError> {
-        let limit = input.limit.unwrap_or(100);
-        let (_conn_id, driver, handle) = self.resolve_connection(&input.connection_id).await?;
-
-        let result = driver
-            .query_multi(&handle, &input.sql, Some(limit))
+        crate::services::db_tools::query(&self.app_state.connection_manager, &input.connection_id, &input.sql, input.limit)
             .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
-
-        serde_json::to_string_pretty(&result)
-            .map_err(|e| McpError::internal_error(e.to_string(), None))
+            .map_err(Self::map_err)
     }
 
     #[tool(description = "Get detailed schema of a table including columns, types, primary keys, foreign keys, and indexes.")]
@@ -225,15 +203,10 @@ impl DataZenMcpServer {
         &self,
         Parameters(input): Parameters<GetSchemaInput>,
     ) -> Result<String, McpError> {
-        let (_conn_id, driver, handle) = self.resolve_connection(&input.connection_id).await?;
-
-        let schema = driver
-            .get_table_schema(&handle, &input.table)
+        let tables = vec![input.table.clone()];
+        crate::services::db_tools::get_table_schema(&self.app_state.connection_manager, &input.connection_id, &tables)
             .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
-
-        serde_json::to_string_pretty(&schema)
-            .map_err(|e| McpError::internal_error(e.to_string(), None))
+            .map_err(Self::map_err)
     }
 
     #[tool(description = "Get the execution plan (EXPLAIN) for a SQL query. Useful for performance analysis.")]
@@ -241,15 +214,9 @@ impl DataZenMcpServer {
         &self,
         Parameters(input): Parameters<ExplainQueryInput>,
     ) -> Result<String, McpError> {
-        let (_conn_id, driver, handle) = self.resolve_connection(&input.connection_id).await?;
-
-        let result = driver
-            .explain(&handle, &input.sql)
+        crate::services::db_tools::explain_query(&self.app_state.connection_manager, &input.connection_id, &input.sql)
             .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
-
-        serde_json::to_string_pretty(&result)
-            .map_err(|e| McpError::internal_error(e.to_string(), None))
+            .map_err(Self::map_err)
     }
 
     #[tool(description = "Get a human-readable description of a table including columns, types, constraints, and indexes.")]
@@ -257,12 +224,13 @@ impl DataZenMcpServer {
         &self,
         Parameters(input): Parameters<DescribeTableInput>,
     ) -> Result<String, McpError> {
-        let (_conn_id, driver, handle) = self.resolve_connection(&input.connection_id).await?;
-
-        let schema = driver
-            .get_table_schema(&handle, &input.table)
-            .await
-            .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+        let schema = crate::services::db_tools::get_single_table_schema(
+            &self.app_state.connection_manager,
+            &input.connection_id,
+            &input.table,
+        )
+        .await
+        .map_err(Self::map_err)?;
 
         let mut desc = format!("Table: {}\n\nColumns:\n", input.table);
         for col in &schema.columns {
@@ -438,6 +406,37 @@ impl DataZenMcpServer {
 #[tool_handler]
 #[prompt_handler]
 impl ServerHandler for DataZenMcpServer {
+    async fn list_tools(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<ListToolsResult, McpError> {
+        let mut router = Self::tool_router();
+        for name in &self.disabled_tools {
+            router.disable_route(name.clone());
+        }
+        Ok(ListToolsResult {
+            tools: router.list_all(),
+            next_cursor: None,
+            meta: None,
+        })
+    }
+
+    async fn call_tool(
+        &self,
+        request: CallToolRequestParams,
+        context: RequestContext<RoleServer>,
+    ) -> Result<CallToolResult, McpError> {
+        if self.disabled_tools.contains(request.name.as_ref()) {
+            return Err(McpError::invalid_params(
+                format!("Tool '{}' is disabled in DataZen settings", request.name),
+                None,
+            ));
+        }
+        let tcc = rmcp::handler::server::tool::ToolCallContext::new(self, request, context);
+        Self::tool_router().call(tcc).await
+    }
+
     fn get_info(&self) -> ServerInfo {
         ServerInfo::new(
             ServerCapabilities::builder()

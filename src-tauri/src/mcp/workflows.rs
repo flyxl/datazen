@@ -748,10 +748,8 @@ impl WorkflowExecutor {
                 }).collect();
 
                 let structured = serde_json::json!({
-                    "rows": result.rows,
-                    "data": data,
-                    "result": data,
-                    "rows_count": result.rows.len(),
+                    "rows": &data,
+                    "rows_count": data.len(),
                     "columns": result.columns,
                     "execution_time_ms": result.execution_time_ms,
                 });
@@ -799,9 +797,14 @@ impl WorkflowExecutor {
                     messages: vec![ChatMessage {
                         role: MessageRole::User,
                         content: resolved_prompt.clone(),
+                        reasoning: None,
+                        tool_calls: None,
+                        tool_call_id: None,
                     }],
                     temperature: Some(0.3),
                     stop: None,
+                    tools: None,
+                    previous_response_id: None,
                 };
 
                 let response = provider.complete(&request).await.map_err(|e| e.to_string())?;
@@ -937,10 +940,10 @@ impl WorkflowContext {
     ///
     /// Supported patterns:
     /// - `{{variable_name}}` — input variables + built-ins
-    /// - `{{steps.<id>.result}}` — full result string (backward compat)
     /// - `{{steps.<id>.rows.0.field}}` — first row, specific column
     /// - `{{steps.<id>.rows.*.field}}` — all rows' field values, comma-separated for IN clauses
     /// - `{{steps.<id>.rows_count}}` — row count
+    /// - `{{steps.<id>.result}}` — AI step output text
     /// - `{{item.field}}` — foreach loop variable
     fn resolve_template(&self, template: &str) -> Result<String, String> {
         let re = regex::Regex::new(r"\{\{([^}]+)\}\}").map_err(|e| e.to_string())?;
@@ -996,11 +999,15 @@ impl WorkflowContext {
             if part.is_empty() {
                 continue;
             }
-            // Support bracket indexing: "field[0]" or "[0]"
             if let Some(bracket_pos) = part.find('[') {
                 let field = &part[..bracket_pos];
                 if !field.is_empty() {
-                    current = current.get(field).cloned().unwrap_or(serde_json::Value::Null);
+                    let next = current.get(field).cloned().unwrap_or(serde_json::Value::Null);
+                    current = if next.is_null() && (field == "data" || field == "result") {
+                        current.get("rows").cloned().unwrap_or(serde_json::Value::Null)
+                    } else {
+                        next
+                    };
                 }
                 let idx_str = part[bracket_pos + 1..].trim_end_matches(']');
                 if let Ok(idx) = idx_str.parse::<usize>() {
@@ -1009,7 +1016,12 @@ impl WorkflowContext {
             } else if let Ok(idx) = part.parse::<usize>() {
                 current = current.get(idx).cloned().unwrap_or(serde_json::Value::Null);
             } else {
-                current = current.get(part).cloned().unwrap_or(serde_json::Value::Null);
+                let next = current.get(part).cloned().unwrap_or(serde_json::Value::Null);
+                current = if next.is_null() && (part == "data" || part == "result") {
+                    current.get("rows").cloned().unwrap_or(serde_json::Value::Null)
+                } else {
+                    next
+                };
             }
         }
 
@@ -1021,13 +1033,17 @@ impl WorkflowContext {
         let parts: Vec<&str> = path.split('.').collect();
         let wildcard_pos = parts.iter().position(|p| *p == "*").unwrap_or(0);
 
-        // Navigate to the array
         let mut current = value.clone();
         for part in &parts[..wildcard_pos] {
             if let Ok(idx) = part.parse::<usize>() {
                 current = current.get(idx).cloned().unwrap_or(serde_json::Value::Null);
             } else {
-                current = current.get(*part).cloned().unwrap_or(serde_json::Value::Null);
+                let next = current.get(*part).cloned().unwrap_or(serde_json::Value::Null);
+                current = if next.is_null() && (*part == "data" || *part == "result") {
+                    current.get("rows").cloned().unwrap_or(serde_json::Value::Null)
+                } else {
+                    next
+                };
             }
         }
 
@@ -1068,8 +1084,13 @@ impl WorkflowContext {
                             current =
                                 current.get(idx).cloned().unwrap_or(serde_json::Value::Null);
                         } else {
-                            current =
+                            let next =
                                 current.get(*part).cloned().unwrap_or(serde_json::Value::Null);
+                            current = if next.is_null() && (*part == "data" || *part == "result") {
+                                current.get("rows").cloned().unwrap_or(serde_json::Value::Null)
+                            } else {
+                                next
+                            };
                         }
                     }
                     return Some(current);
@@ -1392,6 +1413,32 @@ fallback_steps:
             result,
             "SELECT * FROM t WHERE id IN ('ORD-001','ORD-002','ORD-003')"
         );
+    }
+
+    #[test]
+    fn test_data_result_fallback_to_rows() {
+        let input = serde_json::json!({});
+        let mut ctx = WorkflowContext::new(&input);
+        ctx.set_step_result(
+            "s1",
+            serde_json::json!({
+                "rows": [
+                    {"code": 42, "name": "hello"},
+                ],
+                "rows_count": 1,
+            }),
+        );
+
+        // "data" and "result" fall back to "rows" when they don't exist
+        let r1 = ctx.resolve_template("{{steps.s1.data[0].name}}").unwrap();
+        assert_eq!(r1, "hello");
+
+        let r2 = ctx.resolve_template("{{steps.s1.result[0].code}}").unwrap();
+        assert_eq!(r2, "42");
+
+        // "rows" still works directly
+        let r3 = ctx.resolve_template("{{steps.s1.rows[0].name}}").unwrap();
+        assert_eq!(r3, "hello");
     }
 
     #[test]

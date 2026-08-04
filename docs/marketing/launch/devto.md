@@ -8,7 +8,7 @@
 
 ---
 
-DataZen is a free, MIT-licensed desktop app for **PostgreSQL, MySQL, SQLite, and Redis**.
+DataZen is a free, GPLv3-licensed desktop app for **PostgreSQL, MySQL, SQLite, and Redis**.
 
 ## Why another client?
 

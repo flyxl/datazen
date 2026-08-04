@@ -2,7 +2,7 @@
 
 **Title** (pick one):
 
-- Show HN: DataZen – MIT-licensed database GUI in a 10 MB Tauri app
+- Show HN: DataZen – GPLv3-licensed database GUI in a 10 MB Tauri app
 - Show HN: DataZen – open-source TablePlus alternative (Rust + Tauri)
 
 **URL**: https://github.com/flyxl/datazen
@@ -15,7 +15,7 @@ Why: I wanted something lighter than DBeaver and free unlike TablePlus. It's Tau
 
 Credentials are encrypted locally (AES-256-GCM); no cloud account.
 
-MIT licensed, macOS/Windows/Linux builds on Releases. Early (v0.0.3) but I use it daily. Feedback welcome: wuxiaolongklws@gmail.com or GitHub Issues.
+GPLv3 licensed, macOS/Windows/Linux builds on Releases. Early (v0.0.3) but I use it daily. Feedback welcome: wuxiaolongklws@gmail.com or GitHub Issues.
 
 macOS note: not Apple-notarized; if blocked, `xattr -cr /Applications/DataZen.app`.
 

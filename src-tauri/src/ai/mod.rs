@@ -8,6 +8,7 @@ pub use datazen_ai_api::*;
 pub mod anthropic;
 pub mod context;
 pub mod custom;
+pub mod deepseek;
 pub mod openai;
 pub mod prompt;
 pub mod prompt_resolver;

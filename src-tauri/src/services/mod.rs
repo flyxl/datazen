@@ -1,4 +1,5 @@
 pub mod connection_manager;
+pub mod db_tools;
 pub mod query_executor;
 
 pub use connection_manager::ConnectionManager;

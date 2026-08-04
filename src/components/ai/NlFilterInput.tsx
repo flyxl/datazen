@@ -45,7 +45,7 @@ export function NlFilterInput({ connectionId, database, tableName }: NlFilterInp
     return (
       <div className="flex items-center gap-2 border-b border-edge px-2 py-1">
         <button
-          type="button"
+          type="button" onMouseDown={(e) => e.preventDefault()}
           className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-fg-muted hover:bg-surface-alt hover:text-fg"
           onClick={() => {
             import('../../lib/windowManager').then((m) => m.openSettingsWindow('ai'));
@@ -83,7 +83,7 @@ export function NlFilterInput({ connectionId, database, tableName }: NlFilterInp
   if (!expanded) {
     return (
       <button
-        type="button"
+        type="button" onMouseDown={(e) => e.preventDefault()}
         className="flex items-center gap-1 px-2 py-1 text-xs text-fg-muted hover:text-fg rounded transition-colors"
         onClick={() => setExpanded(true)}
         title={t('smartFilter.title')}
@@ -113,7 +113,7 @@ export function NlFilterInput({ connectionId, database, tableName }: NlFilterInp
           </span>
         ) : (
           <button
-            type="button"
+            type="button" onMouseDown={(e) => e.preventDefault()}
             className="px-2 py-0.5 text-xs bg-accent text-white rounded hover:bg-accent/90 disabled:opacity-50 transition-colors"
             onClick={() => void handleParse()}
             disabled={!nlFilterInput.trim()}
@@ -122,7 +122,7 @@ export function NlFilterInput({ connectionId, database, tableName }: NlFilterInp
           </button>
         )}
         <button
-          type="button"
+          type="button" onMouseDown={(e) => e.preventDefault()}
           className="p-0.5 text-fg-muted hover:text-fg rounded transition-colors"
           onClick={() => {
             handleClear();

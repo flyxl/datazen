@@ -1,4 +1,4 @@
-//! Anthropic Messages API protocol (direct HTTP — no mature SDK).
+//! Anthropic Messages API protocol (direct HTTP).
 //!
 //! Used by both `AnthropicProvider` and `CustomProvider(AnthropicCompatible)`.
 
@@ -16,7 +16,7 @@ const API_VERSION: &str = "2023-06-01";
 #[derive(Serialize)]
 struct ApiRequest {
     model: String,
-    messages: Vec<ApiMessage>,
+    messages: Vec<serde_json::Value>,
     max_tokens: u32,
     #[serde(skip_serializing_if = "Option::is_none")]
     system: Option<String>,
@@ -26,12 +26,8 @@ struct ApiRequest {
     stop_sequences: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     stream: Option<bool>,
-}
-
-#[derive(Serialize)]
-struct ApiMessage {
-    role: String,
-    content: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tools: Option<Vec<serde_json::Value>>,
 }
 
 #[derive(Deserialize)]
@@ -46,7 +42,14 @@ struct ApiResponse {
 struct ContentBlock {
     #[serde(rename = "type")]
     block_type: String,
+    #[serde(default)]
     text: Option<String>,
+    #[serde(default)]
+    id: Option<String>,
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    input: Option<serde_json::Value>,
 }
 
 #[derive(Deserialize)]
@@ -61,8 +64,15 @@ struct ApiUsage {
 enum StreamEvent {
     #[serde(rename = "message_start")]
     MessageStart { message: StreamMsgStart },
+    #[serde(rename = "content_block_start")]
+    ContentBlockStart {
+        index: usize,
+        content_block: ContentBlockMeta,
+    },
     #[serde(rename = "content_block_delta")]
-    ContentBlockDelta { delta: ContentDelta },
+    ContentBlockDelta { index: usize, delta: ContentDelta },
+    #[serde(rename = "content_block_stop")]
+    ContentBlockStop { index: usize },
     #[serde(rename = "message_delta")]
     MessageDelta {
         delta: MsgDeltaBody,
@@ -80,8 +90,26 @@ struct StreamMsgStart {
 }
 
 #[derive(Deserialize)]
-struct ContentDelta {
-    text: Option<String>,
+struct ContentBlockMeta {
+    #[serde(rename = "type")]
+    block_type: String,
+    #[serde(default)]
+    id: Option<String>,
+    #[serde(default)]
+    name: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(tag = "type")]
+enum ContentDelta {
+    #[serde(rename = "text_delta")]
+    TextDelta { text: String },
+    #[serde(rename = "thinking_delta")]
+    ThinkingDelta { thinking: String },
+    #[serde(rename = "input_json_delta")]
+    InputJsonDelta { partial_json: String },
+    #[serde(other)]
+    Other,
 }
 
 #[derive(Deserialize)]
@@ -101,7 +129,7 @@ fn build_url(endpoint: &str) -> String {
     }
 }
 
-fn split_system(messages: &[ChatMessage]) -> (Option<String>, Vec<ApiMessage>) {
+fn build_messages(messages: &[ChatMessage]) -> (Option<String>, Vec<serde_json::Value>) {
     let system_parts: Vec<&str> = messages
         .iter()
         .filter(|m| m.role == MessageRole::System)
@@ -114,21 +142,105 @@ fn split_system(messages: &[ChatMessage]) -> (Option<String>, Vec<ApiMessage>) {
         Some(system_parts.join("\n\n"))
     };
 
-    let api_messages = messages
+    let api_messages: Vec<serde_json::Value> = messages
         .iter()
         .filter(|m| m.role != MessageRole::System)
-        .map(|m| ApiMessage {
-            role: match m.role {
-                MessageRole::User => "user",
-                MessageRole::Assistant => "assistant",
-                _ => unreachable!(),
+        .map(|m| match m.role {
+            MessageRole::User => serde_json::json!({
+                "role": "user",
+                "content": m.content,
+            }),
+            MessageRole::Assistant => {
+                let has_tool_calls = m.tool_calls.as_ref().is_some_and(|t| !t.is_empty());
+                let has_reasoning = m.reasoning.as_ref().is_some_and(|r| !r.is_empty());
+
+                if has_tool_calls || has_reasoning {
+                    let mut blocks = Vec::new();
+                    if let Some(reasoning) = &m.reasoning {
+                        if !reasoning.is_empty() {
+                            blocks.push(serde_json::json!({
+                                "type": "thinking",
+                                "thinking": reasoning,
+                            }));
+                        }
+                    }
+                    if !m.content.is_empty() {
+                        blocks.push(serde_json::json!({
+                            "type": "text",
+                            "text": m.content,
+                        }));
+                    }
+                    if let Some(tool_calls) = &m.tool_calls {
+                        for tc in tool_calls {
+                            let input: serde_json::Value =
+                                serde_json::from_str(&tc.arguments).unwrap_or(serde_json::json!({}));
+                            blocks.push(serde_json::json!({
+                                "type": "tool_use",
+                                "id": tc.id,
+                                "name": tc.name,
+                                "input": input,
+                            }));
+                        }
+                    }
+                    serde_json::json!({
+                        "role": "assistant",
+                        "content": blocks,
+                    })
+                } else {
+                    serde_json::json!({
+                        "role": "assistant",
+                        "content": m.content,
+                    })
+                }
             }
-            .into(),
-            content: m.content.clone(),
+            MessageRole::Tool => serde_json::json!({
+                "role": "user",
+                "content": [{
+                    "type": "tool_result",
+                    "tool_use_id": m.tool_call_id,
+                    "content": m.content,
+                }],
+            }),
+            _ => serde_json::json!({
+                "role": "user",
+                "content": m.content,
+            }),
         })
         .collect();
 
     (system, api_messages)
+}
+
+fn to_anthropic_tools(tools: &[ToolDefinition]) -> Vec<serde_json::Value> {
+    tools
+        .iter()
+        .map(|t| {
+            serde_json::json!({
+                "name": t.name,
+                "description": t.description,
+                "input_schema": t.parameters,
+            })
+        })
+        .collect()
+}
+
+fn parse_tool_use_blocks(content: &[ContentBlock]) -> Option<Vec<ToolCall>> {
+    let calls: Vec<ToolCall> = content
+        .iter()
+        .filter(|b| b.block_type == "tool_use")
+        .filter_map(|b| {
+            Some(ToolCall {
+                id: b.id.clone()?,
+                name: b.name.clone()?,
+                arguments: b
+                    .input
+                    .as_ref()
+                    .map(|v| serde_json::to_string(v).unwrap_or_default())
+                    .unwrap_or_else(|| "{}".into()),
+            })
+        })
+        .collect();
+    if calls.is_empty() { None } else { Some(calls) }
 }
 
 // ─── Public API ───
@@ -138,7 +250,9 @@ pub async fn complete(
     request: &CompletionRequest,
 ) -> Result<CompletionResponse, AiError> {
     let url = build_url(&cfg.api_base);
-    let (system, messages) = split_system(&request.messages);
+    let (system, messages) = build_messages(&request.messages);
+
+    let tools = request.tools.as_ref().map(|t| to_anthropic_tools(t));
 
     let body = ApiRequest {
         model: request.model.clone(),
@@ -148,6 +262,7 @@ pub async fn complete(
         temperature: request.temperature,
         stop_sequences: request.stop.clone(),
         stream: None,
+        tools,
     };
 
     tracing::info!(%url, "anthropic: request\n{}", serde_json::to_string(&body).unwrap_or_default());
@@ -188,10 +303,13 @@ pub async fn complete(
         .filter_map(|b| b.text.as_deref())
         .collect::<Vec<_>>()
         .join("");
-    let reasoning = if reasoning_text.is_empty() {
-        None
+    let reasoning = if reasoning_text.is_empty() { None } else { Some(reasoning_text) };
+
+    let tool_calls = parse_tool_use_blocks(&api_resp.content);
+    let finish_reason = if tool_calls.is_some() {
+        Some("tool_calls".into())
     } else {
-        Some(reasoning_text)
+        api_resp.stop_reason
     };
 
     let total = api_resp.usage.input_tokens + api_resp.usage.output_tokens;
@@ -201,12 +319,14 @@ pub async fn complete(
         content,
         reasoning,
         model: api_resp.model,
-        finish_reason: api_resp.stop_reason,
+        finish_reason,
         usage: TokenUsage {
             prompt_tokens: api_resp.usage.input_tokens,
             completion_tokens: api_resp.usage.output_tokens,
             total_tokens: total,
         },
+        tool_calls,
+        response_id: None,
     })
 }
 
@@ -216,7 +336,9 @@ pub async fn stream_complete(
     sender: mpsc::Sender<Result<StreamChunk, AiError>>,
 ) -> Result<(), AiError> {
     let url = build_url(&cfg.api_base);
-    let (system, messages) = split_system(&request.messages);
+    let (system, messages) = build_messages(&request.messages);
+
+    let tools = request.tools.as_ref().map(|t| to_anthropic_tools(t));
 
     let body = ApiRequest {
         model: request.model.clone(),
@@ -226,6 +348,7 @@ pub async fn stream_complete(
         temperature: request.temperature,
         stop_sequences: request.stop.clone(),
         stream: Some(true),
+        tools,
     };
 
     tracing::info!(%url, "anthropic: stream request\n{}", serde_json::to_string(&body).unwrap_or_default());
@@ -254,6 +377,15 @@ pub async fn stream_complete(
     let mut prompt_tokens = 0u32;
     let mut output_tokens = 0u32;
     let mut chunk_count: u64 = 0;
+
+    // Tool call accumulation
+    struct PendingToolUse {
+        id: String,
+        name: String,
+        args: String,
+    }
+    let mut pending_tool_uses: Vec<PendingToolUse> = Vec::new();
+    let mut _current_block_type: Option<String> = None;
 
     loop {
         let maybe = match tokio::time::timeout(STREAM_CHUNK_TIMEOUT, stream.next()).await {
@@ -310,8 +442,18 @@ pub async fn stream_complete(
                             prompt_tokens = usage.input_tokens;
                         }
                     }
-                    StreamEvent::ContentBlockDelta { delta } => {
-                        if let Some(text) = delta.text {
+                    StreamEvent::ContentBlockStart { content_block, .. } => {
+                        _current_block_type = Some(content_block.block_type.clone());
+                        if content_block.block_type == "tool_use" {
+                            pending_tool_uses.push(PendingToolUse {
+                                id: content_block.id.unwrap_or_default(),
+                                name: content_block.name.unwrap_or_default(),
+                                args: String::new(),
+                            });
+                        }
+                    }
+                    StreamEvent::ContentBlockDelta { delta, .. } => match delta {
+                        ContentDelta::TextDelta { text } => {
                             if !text.is_empty()
                                 && sender
                                     .send(Ok(StreamChunk {
@@ -319,6 +461,8 @@ pub async fn stream_complete(
                                         reasoning: None,
                                         done: false,
                                         usage: None,
+                                        tool_calls: None,
+                                        response_id: None,
                                     }))
                                     .await
                                     .is_err()
@@ -326,6 +470,32 @@ pub async fn stream_complete(
                                 return Ok(());
                             }
                         }
+                        ContentDelta::ThinkingDelta { thinking } => {
+                            if !thinking.is_empty()
+                                && sender
+                                    .send(Ok(StreamChunk {
+                                        content: String::new(),
+                                        reasoning: Some(thinking),
+                                        done: false,
+                                        usage: None,
+                                        tool_calls: None,
+                                        response_id: None,
+                                    }))
+                                    .await
+                                    .is_err()
+                            {
+                                return Ok(());
+                            }
+                        }
+                        ContentDelta::InputJsonDelta { partial_json } => {
+                            if let Some(last) = pending_tool_uses.last_mut() {
+                                last.args.push_str(&partial_json);
+                            }
+                        }
+                        ContentDelta::Other => {}
+                    },
+                    StreamEvent::ContentBlockStop { .. } => {
+                        _current_block_type = None;
                     }
                     StreamEvent::MessageDelta { usage, .. } => {
                         output_tokens = usage.output_tokens;
@@ -333,6 +503,20 @@ pub async fn stream_complete(
                     StreamEvent::MessageStop {} => {
                         tracing::info!(chunk_count, "anthropic: stream complete");
                         let total = prompt_tokens + output_tokens;
+                        let tool_calls = if pending_tool_uses.is_empty() {
+                            None
+                        } else {
+                            Some(
+                                pending_tool_uses
+                                    .drain(..)
+                                    .map(|t| ToolCall {
+                                        id: t.id,
+                                        name: t.name,
+                                        arguments: t.args,
+                                    })
+                                    .collect(),
+                            )
+                        };
                         let _ = sender
                             .send(Ok(StreamChunk {
                                 content: String::new(),
@@ -343,6 +527,8 @@ pub async fn stream_complete(
                                     completion_tokens: output_tokens,
                                     total_tokens: total,
                                 }),
+                                tool_calls,
+                                response_id: None,
                             }))
                             .await;
                         return Ok(());
@@ -354,8 +540,29 @@ pub async fn stream_complete(
     }
 
     tracing::warn!(chunk_count, "anthropic: stream ended without message_stop");
+    let tool_calls = if pending_tool_uses.is_empty() {
+        None
+    } else {
+        Some(
+            pending_tool_uses
+                .into_iter()
+                .map(|t| ToolCall {
+                    id: t.id,
+                    name: t.name,
+                    arguments: t.args,
+                })
+                .collect(),
+        )
+    };
     let _ = sender
-        .send(Ok(StreamChunk { content: String::new(), reasoning: None, done: true, usage: None }))
+        .send(Ok(StreamChunk {
+            content: String::new(),
+            reasoning: None,
+            done: true,
+            usage: None,
+            tool_calls,
+            response_id: None,
+        }))
         .await;
 
     Ok(())

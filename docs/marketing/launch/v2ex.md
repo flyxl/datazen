@@ -7,7 +7,7 @@
 
 厌倦了 TablePlus 订阅？可以试试 **DataZen**。
 
-DataZen 是 MIT 协议的开源桌面数据库工具，基于 **Tauri + Rust**，安装包不到 10MB，启动快、占内存少。
+DataZen 是 GPLv3 协议的开源桌面数据库工具，基于 **Tauri + Rust**，安装包不到 10MB，启动快、占内存少。
 
 **支持数据库**: PostgreSQL、MySQL / MariaDB、SQLite、Redis
 

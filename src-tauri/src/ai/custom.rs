@@ -336,6 +336,8 @@ mod tests {
             messages: vec![],
             temperature: None,
             stop: None,
+            tools: None,
+            previous_response_id: None,
         };
         assert!(matches!(
             provider.complete(&req).await.unwrap_err(),
@@ -363,6 +365,8 @@ mod tests {
             messages: vec![],
             temperature: None,
             stop: None,
+            tools: None,
+            previous_response_id: None,
         };
         assert!(matches!(
             provider.complete(&req).await.unwrap_err(),

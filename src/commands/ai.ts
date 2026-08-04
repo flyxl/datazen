@@ -110,6 +110,7 @@ export const aiCommands = {
   mcpGetStatus: () => invoke<{ running: boolean; transport: string }>('mcp_get_status'),
   mcpStartStdio: () => invoke<void>('mcp_start_stdio'),
   mcpStop: () => invoke<void>('mcp_stop'),
+  mcpListAllTools: () => invoke<string[]>('mcp_list_all_tools'),
 
   workflowList: () => invoke<WorkflowListItem[]>('workflow_list'),
   workflowExecute: (params: {

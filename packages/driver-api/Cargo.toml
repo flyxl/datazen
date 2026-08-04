@@ -3,7 +3,7 @@ name = "datazen-driver-api"
 version = "0.0.7"
 edition = "2021"
 description = "Public API (traits and types) for DataZen database driver plugins"
-license = "MIT"
+license = "GPL-3.0-or-later"
 
 [dependencies]
 async-trait = "0.1"

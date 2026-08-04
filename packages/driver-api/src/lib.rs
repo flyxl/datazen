@@ -18,6 +18,11 @@ pub use factory::*;
 /// Protocol version for the driver API.
 ///
 /// Bump this when making breaking changes to `DatabaseDriver`, `KeyValueDriver`,
-/// or `DatabaseDriverFactory` traits. Plugins compiled against a different
-/// protocol version will be rejected at startup.
+/// or `DatabaseDriverFactory` traits.
 pub const PROTOCOL_VERSION: u32 = 1;
+
+/// Minimum protocol version the host still supports.
+///
+/// Plugins with version < MIN will be rejected; those between MIN and current
+/// will run in degraded mode (missing capabilities default to `false`).
+pub const MIN_PROTOCOL_VERSION: u32 = 1;

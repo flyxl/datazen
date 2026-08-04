@@ -14,9 +14,23 @@ pub trait DatabaseDriverFactory: Send + Sync + 'static {
     fn driver_id(&self) -> &'static str;
 
     /// Protocol version this plugin was compiled against.
-    /// Must match [`crate::PROTOCOL_VERSION`] at runtime.
     fn protocol_version(&self) -> u32 {
         crate::PROTOCOL_VERSION
+    }
+
+    /// Whether this driver supports query cancellation.
+    fn supports_cancel_query(&self) -> bool {
+        false
+    }
+
+    /// Whether this driver supports EXPLAIN analysis.
+    fn supports_explain(&self) -> bool {
+        false
+    }
+
+    /// Whether this driver supports streaming results.
+    fn supports_streaming_results(&self) -> bool {
+        false
     }
 
     /// If this driver also implements KeyValueDriver, return it.

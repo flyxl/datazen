@@ -15,6 +15,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   defaultPageSize: 50,
   logLevel: 'info',
   logPath: '',
+  mcpDisabledTools: [],
 };
 
 const THEME_STORAGE_KEY = 'datazen-theme';

@@ -4,7 +4,7 @@
 
 ## 前言
 
-日常开发里总要连 PostgreSQL、MySQL、偶尔还有 Redis。商业客户端好用但要订阅，DBeaver 功能全但偏重。于是我做了 **DataZen** —— MIT 开源、安装包不到 10MB 的跨平台桌面客户端。
+日常开发里总要连 PostgreSQL、MySQL、偶尔还有 Redis。商业客户端好用但要订阅，DBeaver 功能全但偏重。于是我做了 **DataZen** —— GPLv3 开源、安装包不到 10MB 的跨平台桌面客户端。
 
 - 仓库：https://github.com/flyxl/datazen  
 - 下载：https://github.com/flyxl/datazen/releases  
