@@ -12,7 +12,7 @@
 <p align="center">
   <a href="https://github.com/flyxl/datazen/releases"><img src="https://img.shields.io/github/v/release/flyxl/datazen?style=flat-square&color=00b4d8" alt="Release" /></a>
   <img src="https://img.shields.io/badge/platforms-macOS%20%7C%20Windows%20%7C%20Linux-blue?style=flat-square" alt="Platforms" />
-  <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License" />
+  <img src="https://img.shields.io/badge/license-GPL--3.0-blue?style=flat-square" alt="License" />
 </p>
 
 <p align="center">
@@ -37,9 +37,9 @@
 
 ## About
 
-**DataZen** is a free, [MIT-licensed](LICENSE) database GUI for developers. Built with **Tauri + Rust** (&lt;10 MB installer), it manages **PostgreSQL, MySQL, SQLite, and Redis** in one app—with multi-window workflow, built-in **SSH tunnels**, SQL editor with autocomplete, backups, and PG↔MySQL sync. Credentials stay on your machine (AES-256-GCM); no cloud account required. UI supports **English and Chinese**.
+**DataZen** is a free, [GPLv3-licensed](LICENSE) database GUI for developers. Built with **Tauri + Rust** (&lt;10 MB installer), it manages **PostgreSQL, MySQL, SQLite, and Redis** in one app—with multi-window workflow, built-in **SSH tunnels**, SQL editor with autocomplete, backups, and PG↔MySQL sync. Credentials stay on your machine (AES-256-GCM); no cloud account required. UI supports **English and Chinese**.
 
-**DataZen** 是一款免费开源（MIT）的桌面数据库客户端，基于 **Tauri + Rust** 构建，安装包小于 10 MB。在一个应用中管理 **PostgreSQL、MySQL、SQLite、Redis**，支持多窗口、内置 **SSH 隧道**、SQL 自动补全、备份与 PG↔MySQL 同步。连接密码本地加密存储，无需云端账号，界面支持**中英文**。
+**DataZen** 是一款免费开源（GPLv3）的桌面数据库客户端，基于 **Tauri + Rust** 构建，安装包小于 10 MB。在一个应用中管理 **PostgreSQL、MySQL、SQLite、Redis**，支持多窗口、内置 **SSH 隧道**、SQL 自动补全、备份与 PG↔MySQL 同步。连接密码本地加密存储，无需云端账号，界面支持**中英文**。
 
 ---
 
@@ -264,4 +264,4 @@ Screenshots, OG image, Product Hunt copy, and launch posts: [`docs/marketing/`](
 
 ## License
 
-[MIT](LICENSE)
+[GPLv3](LICENSE)

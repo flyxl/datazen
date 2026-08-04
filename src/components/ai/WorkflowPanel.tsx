@@ -246,14 +246,14 @@ export function WorkflowPanel({ connectionId }: WorkflowPanelProps) {
         </h3>
         <div className="flex items-center gap-1">
           <button
-            type="button"
+            type="button" onMouseDown={(e) => e.preventDefault()}
             onClick={() => setTab('workflows')}
             className={`px-2 py-0.5 text-[11px] rounded transition-colors ${tab === 'workflows' ? 'bg-accent/10 text-accent' : 'text-fg-muted hover:text-fg'}`}
           >
             {t('workflows.title')}
           </button>
           <button
-            type="button"
+            type="button" onMouseDown={(e) => e.preventDefault()}
             onClick={() => setTab('history')}
             className={`flex items-center gap-1 px-2 py-0.5 text-[11px] rounded transition-colors ${tab === 'history' ? 'bg-accent/10 text-accent' : 'text-fg-muted hover:text-fg'}`}
           >
@@ -281,7 +281,7 @@ export function WorkflowPanel({ connectionId }: WorkflowPanelProps) {
           {/* Actions bar */}
           <div className="flex items-center gap-1">
             <button
-              type="button"
+              type="button" onMouseDown={(e) => e.preventDefault()}
               onClick={handleCreate}
               className="flex items-center gap-1 px-2 py-1 text-[11px] text-accent hover:bg-accent/10 rounded transition-colors"
               title={t('workflows.create')}
@@ -290,7 +290,7 @@ export function WorkflowPanel({ connectionId }: WorkflowPanelProps) {
               {t('workflows.create')}
             </button>
             <button
-              type="button"
+              type="button" onMouseDown={(e) => e.preventDefault()}
               onClick={() => void handleReload()}
               className="p-1 text-fg-muted hover:text-fg rounded transition-colors"
               title={t('workflows.reload')}
@@ -349,7 +349,7 @@ export function WorkflowPanel({ connectionId }: WorkflowPanelProps) {
                   </div>
                   <div className="flex items-center gap-0.5 shrink-0 ml-2">
                     <button
-                      type="button"
+                      type="button" onMouseDown={(e) => e.preventDefault()}
                       onClick={(e) => { e.stopPropagation(); void handleEdit(workflow.id); }}
                       className="p-1 text-fg-muted hover:text-fg rounded transition-colors"
                       title={t('workflows.edit')}
@@ -357,7 +357,7 @@ export function WorkflowPanel({ connectionId }: WorkflowPanelProps) {
                       <Pencil className="h-3 w-3" />
                     </button>
                     <button
-                      type="button"
+                      type="button" onMouseDown={(e) => e.preventDefault()}
                       onClick={(e) => { e.stopPropagation(); void handleDelete(workflow.id); }}
                       className="p-1 text-fg-muted hover:text-red-400 rounded transition-colors"
                       title={t('workflows.delete')}
@@ -412,7 +412,7 @@ export function WorkflowPanel({ connectionId }: WorkflowPanelProps) {
               ))}
 
               <button
-                type="button"
+                type="button" onMouseDown={(e) => e.preventDefault()}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-accent text-white rounded hover:bg-accent/90 disabled:opacity-50 transition-colors"
                 onClick={() => void handleExecute()}
                 disabled={isExecuting}
@@ -491,10 +491,19 @@ function stepToStatementResult(step: StepExecutionResult): StatementResult | nul
     dataType: (c as { dataType?: string }).dataType || 'text',
     nullable: true,
   }));
+  const rawRows = r.rows as unknown[];
+  let rows: (Value | null)[][];
+  if (rawRows.length > 0 && typeof rawRows[0] === 'object' && rawRows[0] !== null && !Array.isArray(rawRows[0])) {
+    rows = (rawRows as Record<string, unknown>[]).map((obj) =>
+      cols.map((c) => (obj[c.name] ?? null) as Value | null),
+    );
+  } else {
+    rows = rawRows as (Value | null)[][];
+  }
   return {
     sql: step.sqlExecuted ?? '',
     columns: columnInfos,
-    rows: r.rows as (Value | null)[][],
+    rows,
     executionTimeMs: (r.execution_time_ms as number) ?? step.executionTimeMs,
   };
 }
@@ -503,13 +512,9 @@ function extractColumnNames(stepResult: Record<string, unknown> | undefined): { 
   if (!stepResult) return [];
   const cols = stepResult.columns as { name: string }[] | undefined;
   if (Array.isArray(cols) && cols.length > 0) return cols;
-  const data = (stepResult.data ?? stepResult.result) as Record<string, unknown>[] | undefined;
-  if (Array.isArray(data) && data.length > 0 && typeof data[0] === 'object' && data[0] !== null && !Array.isArray(data[0])) {
-    return Object.keys(data[0]).map((k) => ({ name: k }));
-  }
-  const rows = stepResult.rows as unknown[][] | undefined;
-  if (Array.isArray(rows) && rows.length > 0 && Array.isArray(rows[0])) {
-    return rows[0].map((_, i) => ({ name: `col_${i + 1}` }));
+  const rows = stepResult.rows as Record<string, unknown>[] | undefined;
+  if (Array.isArray(rows) && rows.length > 0 && typeof rows[0] === 'object' && rows[0] !== null && !Array.isArray(rows[0])) {
+    return Object.keys(rows[0]).map((k) => ({ name: k }));
   }
   return [];
 }
@@ -523,10 +528,10 @@ function StepResultRow({ step }: { step: StepExecutionResult }) {
   const statusColor = step.status === 'success' ? 'text-green-500' : step.status === 'skipped' ? 'text-yellow-500' : 'text-red-400';
 
   const colInfos = useMemo(() => extractColumnNames(step.result), [step.result]);
-  const rows = step.result?.rows as unknown[][] | undefined;
-  const rowsCount = (step.result?.rows_count ?? rows?.length ?? 0) as number;
 
   const statementResult = useMemo(() => stepToStatementResult(step), [step]);
+  const rows = statementResult?.rows;
+  const rowsCount = (step.result?.rows_count as number | undefined) ?? rows?.length ?? 0;
   const chartable = useMemo(
     () => statementResult != null && isChartableResult(statementResult),
     [statementResult],
@@ -536,7 +541,7 @@ function StepResultRow({ step }: { step: StepExecutionResult }) {
   return (
     <div className="border-b border-edge last:border-b-0">
       <button
-        type="button"
+        type="button" onMouseDown={(e) => e.preventDefault()}
         onClick={() => setExpanded(!expanded)}
         className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-surface-raised/50 transition-colors"
       >
@@ -572,7 +577,7 @@ function StepResultRow({ step }: { step: StepExecutionResult }) {
                 {chartable && (
                   <div className="flex items-center gap-0.5 rounded-md bg-surface p-0.5 ml-auto">
                     <button
-                      type="button"
+                      type="button" onMouseDown={(e) => e.preventDefault()}
                       className={cn(
                         'flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] transition-colors',
                         viewMode === 'table'
@@ -585,7 +590,7 @@ function StepResultRow({ step }: { step: StepExecutionResult }) {
                       {t('chart.viewTable')}
                     </button>
                     <button
-                      type="button"
+                      type="button" onMouseDown={(e) => e.preventDefault()}
                       className={cn(
                         'flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] transition-colors',
                         viewMode === 'chart'
@@ -680,7 +685,7 @@ function HistoryTab({
     return (
       <div>
         <button
-          type="button"
+          type="button" onMouseDown={(e) => e.preventDefault()}
           onClick={onCloseDetail}
           className="flex items-center gap-1 text-xs text-accent hover:underline mb-2"
         >
@@ -696,7 +701,7 @@ function HistoryTab({
     <div className="space-y-2">
       {items.length > 0 && (
         <button
-          type="button"
+          type="button" onMouseDown={(e) => e.preventDefault()}
           onClick={onClear}
           className="text-[11px] text-red-400 hover:underline"
         >
@@ -845,7 +850,7 @@ function WorkflowForm({
       <div>
         <div className="flex items-center justify-between mb-1">
           <label className="text-[10px] text-fg-muted">{t('workflows.form.variables')}</label>
-          <button type="button" onClick={addVariable} className="text-[10px] text-accent hover:underline">
+          <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={addVariable} className="text-[10px] text-accent hover:underline">
             {t('workflows.form.addVariable')}
           </button>
         </div>
@@ -902,7 +907,7 @@ function WorkflowForm({
               {t('workflows.form.varRequired')}
             </label>
             <button
-              type="button"
+              type="button" onMouseDown={(e) => e.preventDefault()}
               onClick={() => removeVariable(i)}
               className="p-0.5 text-fg-muted hover:text-red-400"
             >
@@ -930,16 +935,16 @@ function WorkflowForm({
           />
         ))}
         <div className="flex gap-2 flex-wrap">
-          <button type="button" onClick={() => addStep('query')} className="text-[10px] text-accent hover:underline">
+          <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => addStep('query')} className="text-[10px] text-accent hover:underline">
             + {t('workflows.form.addQueryStep')}
           </button>
-          <button type="button" onClick={() => addStep('ai')} className="text-[10px] text-accent hover:underline">
+          <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => addStep('ai')} className="text-[10px] text-accent hover:underline">
             + {t('workflows.form.addAiStep')}
           </button>
-          <button type="button" onClick={() => addStep('condition')} className="text-[10px] text-accent hover:underline">
+          <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => addStep('condition')} className="text-[10px] text-accent hover:underline">
             + {t('workflows.form.addConditionStep')}
           </button>
-          <button type="button" onClick={() => addStep('foreach')} className="text-[10px] text-accent hover:underline">
+          <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => addStep('foreach')} className="text-[10px] text-accent hover:underline">
             + {t('workflows.form.addForeachStep')}
           </button>
         </div>
@@ -948,7 +953,7 @@ function WorkflowForm({
       {/* Actions */}
       <div className="flex gap-2 pt-1">
         <button
-          type="button"
+          type="button" onMouseDown={(e) => e.preventDefault()}
           className="px-3 py-1 text-xs bg-accent text-white rounded hover:bg-accent/90 transition-colors disabled:opacity-50"
           onClick={onSave}
           disabled={!draft.id.trim() || !draft.name.trim() || draft.steps.length === 0}
@@ -956,7 +961,7 @@ function WorkflowForm({
           {t('common.save')}
         </button>
         <button
-          type="button"
+          type="button" onMouseDown={(e) => e.preventDefault()}
           className="px-3 py-1 text-xs text-fg-secondary border border-edge rounded hover:bg-surface-raised transition-colors"
           onClick={onCancel}
         >
@@ -1088,7 +1093,7 @@ function StepEditor({
         <span className="text-[10px] font-medium text-fg-secondary">
           #{index + 1} {typeLabel}
         </span>
-        <button type="button" onClick={onRemove} className="text-[10px] text-red-400 hover:underline">
+        <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={onRemove} className="text-[10px] text-red-400 hover:underline">
           {t('workflows.form.removeStep')}
         </button>
       </div>

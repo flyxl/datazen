@@ -437,6 +437,7 @@ pub fn run() {
             commands::mcp_get_status,
             commands::mcp_start_stdio,
             commands::mcp_stop,
+            commands::mcp_list_all_tools,
             commands::workflow_list,
             commands::workflow_execute,
             commands::workflow_save,

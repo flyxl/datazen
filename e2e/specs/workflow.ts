@@ -232,11 +232,11 @@ describe('Workflow 跨库工作流 E2E 测试', () => {
     const workflow = {
       id: 'e2e-simple-query',
       name: 'E2E 模板引用',
-      description: '测试 data[0].field 跨步骤引用',
+      description: '测试 rows[0].field 跨步骤引用',
       variables: [],
       steps: [
         { type: 'query', id: 'step1', sql: "SELECT 42 AS magic_number, 'hello' AS greeting" },
-        { type: 'query', id: 'step2', sql: "SELECT '{{steps.step1.data[0].greeting}}' AS msg, {{steps.step1.data[0].magic_number}} AS num" },
+        { type: 'query', id: 'step2', sql: "SELECT '{{steps.step1.rows[0].greeting}}' AS msg, {{steps.step1.rows[0].magic_number}} AS num" },
       ],
     };
     await invokeBackend('workflow_save', { workflow });
@@ -255,28 +255,27 @@ describe('Workflow 跨库工作流 E2E 测试', () => {
     expect(step2.sqlExecuted).toContain('hello');
     expect(step2.sqlExecuted).toContain('42');
 
-    // Verify the data field exists in step results
     const step1Result = result.steps[0].result;
-    expect(step1Result.data).toBeDefined();
-    expect(step1Result.data.length).toBeGreaterThan(0);
-    expect(step1Result.data[0]).toHaveProperty('magic_number');
-    expect(step1Result.data[0]).toHaveProperty('greeting');
+    expect(step1Result.rows).toBeDefined();
+    expect(step1Result.rows.length).toBeGreaterThan(0);
+    expect(step1Result.rows[0]).toHaveProperty('magic_number');
+    expect(step1Result.rows[0]).toHaveProperty('greeting');
   });
 
   // ── SW-04c: Template with result[N].field (alias for data) ────
 
-  it('SW-04c: result[0].field 应与 data[0].field 等价', async function () {
+  it('SW-04c: rows[0].field bracket 语法引用', async function () {
     if (!runtimeConnId) return this.skip();
     this.timeout(30000);
 
     const workflow = {
       id: 'e2e-simple-query',
       name: 'E2E result alias',
-      description: '测试 result 和 data 等价',
+      description: '测试 rows[0].field bracket 语法',
       variables: [],
       steps: [
         { type: 'query', id: 'src', sql: "SELECT 99 AS code" },
-        { type: 'query', id: 'dst', sql: "SELECT {{steps.src.result[0].code}} AS via_result" },
+        { type: 'query', id: 'dst', sql: "SELECT {{steps.src.rows[0].code}} AS via_rows" },
       ],
     };
     await invokeBackend('workflow_save', { workflow });

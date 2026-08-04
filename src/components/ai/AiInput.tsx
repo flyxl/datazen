@@ -66,6 +66,7 @@ export const AiInput = forwardRef<HTMLTextAreaElement, AiInputProps>(function Ai
         {showStop ? (
           <button
             type="button"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={onStop}
             title={t('chat.stop')}
             className={cn(
@@ -79,6 +80,7 @@ export const AiInput = forwardRef<HTMLTextAreaElement, AiInputProps>(function Ai
         ) : (
           <button
             type="button"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={onSubmit}
             disabled={!canSend}
             className={cn(

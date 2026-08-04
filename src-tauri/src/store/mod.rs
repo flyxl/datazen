@@ -33,6 +33,8 @@ pub struct AppSettings {
     pub log_level: String,
     #[serde(default)]
     pub log_path: String,
+    #[serde(default)]
+    pub mcp_disabled_tools: Vec<String>,
 }
 
 fn default_limit_select() -> bool {
@@ -57,6 +59,7 @@ impl Default for AppSettings {
             default_page_size: 50,
             log_level: default_log_level(),
             log_path: String::new(),
+            mcp_disabled_tools: Vec::new(),
         }
     }
 }

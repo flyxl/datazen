@@ -22,6 +22,7 @@ import { cn } from '../../lib/cn';
 import { aiCommands, type PromptInfo, type PromptOverrideEntry, type PromptScenario, type PromptSource } from '../../commands/ai';
 import { settingsCommands } from '../../commands/settings';
 import { DB_REGISTRY } from '../../lib/databaseTypes';
+import { isKnownProviderType } from '../../lib/aiProviders';
 import type { AppSettings, AiProviderConfig, AiProviderType, DatabaseType, McpServerConfig } from '../../types';
 import type { TranslationKey } from '../../locales';
 
@@ -348,6 +349,36 @@ function ToggleRow({ label, checked, onChange }: {
 
 function McpSettingsSection() {
   const { t } = useI18n();
+  const settings = useSettingsStore((s) => s.settings);
+  const updateSettings = useSettingsStore((s) => s.updateSettings);
+  const [allTools, setAllTools] = useState<string[]>([]);
+  const [disabledTools, setDisabledTools] = useState<string[]>([]);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    void aiCommands.mcpListAllTools().then(setAllTools).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    setDisabledTools(settings.mcpDisabledTools ?? []);
+  }, [settings.mcpDisabledTools]);
+
+  const toggleTool = (toolName: string) => {
+    setDisabledTools((prev) =>
+      prev.includes(toolName) ? prev.filter((t) => t !== toolName) : [...prev, toolName],
+    );
+  };
+
+  const handleSaveTools = async () => {
+    await updateSettings({ ...settings, mcpDisabledTools: disabledTools });
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  };
+
+  const handleEnableAll = () => setDisabledTools([]);
+  const handleDisableAll = () => setDisabledTools([...allTools]);
+
+  const toolsDirty = JSON.stringify([...disabledTools].sort()) !== JSON.stringify([...(settings.mcpDisabledTools ?? [])].sort());
 
   return (
     <>
@@ -367,6 +398,59 @@ function McpSettingsSection() {
 }`}
         </pre>
       </div>
+
+      {allTools.length > 0 && (
+        <>
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-medium text-fg">{t('mcp.tools')}</h3>
+            <div className="flex items-center gap-2">
+              <button type="button" onClick={handleEnableAll} className="text-xs text-accent hover:underline">
+                {t('mcp.tools.enableAll')}
+              </button>
+              <span className="text-fg-muted">|</span>
+              <button type="button" onClick={handleDisableAll} className="text-xs text-accent hover:underline">
+                {t('mcp.tools.disableAll')}
+              </button>
+            </div>
+          </div>
+          <p className="text-xs text-fg-muted">{t('mcp.tools.description')}</p>
+
+          <div className="space-y-1">
+            {allTools.map((tool) => {
+              const enabled = !disabledTools.includes(tool);
+              return (
+                <div key={tool} className="flex items-center justify-between rounded-md border border-edge bg-surface px-3 py-2">
+                  <span className="text-sm font-mono text-fg">{tool}</span>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={enabled}
+                    onClick={() => toggleTool(tool)}
+                    className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors ${
+                      enabled ? 'bg-accent' : 'bg-edge'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${
+                        enabled ? 'translate-x-[18px]' : 'translate-x-[3px]'
+                      }`}
+                    />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+
+          <p className="text-xs text-fg-muted">{t('mcp.tools.restartHint')}</p>
+
+          <div className="flex items-center gap-3">
+            {saved && <span className="text-xs text-green-500">{t('settings.saved')}</span>}
+            <Button variant="primary" disabled={!toolsDirty} onClick={() => void handleSaveTools()}>
+              {t('common.save')}
+            </Button>
+          </div>
+        </>
+      )}
     </>
   );
 }
@@ -564,8 +648,11 @@ function AiSettingsSection() {
 
   useEffect(() => {
     if (config) {
+      const providerType = isKnownProviderType(config.providerType)
+        ? config.providerType
+        : 'open_ai';
       setAiDraft({
-        providerType: config.providerType,
+        providerType,
         apiKey: config.apiKey ?? '',
         endpoint: config.endpoint ?? '',
         model: config.model,

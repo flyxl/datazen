@@ -70,6 +70,7 @@ fn provider_defaults(pt: AiProviderType) -> (&'static str, &'static str) {
     match pt {
         AiProviderType::OpenAi => ("https://api.openai.com/v1", "open_ai_compatible"),
         AiProviderType::Anthropic => ("https://api.anthropic.com", "anthropic_compatible"),
+        AiProviderType::DeepSeek => ("https://api.deepseek.com", "open_ai_responses"),
         AiProviderType::Custom => ("", "open_ai_compatible"),
     }
 }
@@ -255,10 +256,13 @@ pub async fn ai_generate_sql(
     let tpl = state.prompt_resolver.resolve(PromptScenario::Nl2Sql, Some(driver_ref.as_ref()), &lang).await;
     let system_content = prompt_resolver::render_template(&tpl, &vars);
 
-    let system_msg = ChatMessage { role: MessageRole::System, content: system_content };
+    let system_msg = ChatMessage { role: MessageRole::System, content: system_content, reasoning: None, tool_calls: None, tool_call_id: None };
     let user_msg = ChatMessage {
         role: MessageRole::User,
         content: natural_language,
+        reasoning: None,
+        tool_calls: None,
+        tool_call_id: None,
     };
 
     let (tx, mut rx) = mpsc::channel::<Result<StreamChunk, AiError>>(32);
@@ -269,6 +273,8 @@ pub async fn ai_generate_sql(
         temperature: Some(0.0),
 
         stop: None,
+        tools: None,
+        previous_response_id: None,
     };
     inject_language_hint(&mut request.messages, &lang);
 
@@ -341,15 +347,20 @@ pub async fn ai_diagnose_error(
         request_id: Uuid::new_v4().to_string(),
         model: ai_config.model.clone(),
         messages: vec![
-            ChatMessage { role: MessageRole::System, content: system_content },
+            ChatMessage { role: MessageRole::System, content: system_content, reasoning: None, tool_calls: None, tool_call_id: None },
             ChatMessage {
                 role: MessageRole::User,
                 content: format!("SQL:\n```\n{sql}\n```\n\nError:\n{error_message}"),
+                reasoning: None,
+                tool_calls: None,
+                tool_call_id: None,
             },
         ],
         temperature: Some(0.0),
 
         stop: None,
+        tools: None,
+        previous_response_id: None,
     };
     inject_language_hint(&mut request.messages, &lang);
 
@@ -412,17 +423,22 @@ pub async fn ai_analyze_explain(
         request_id: Uuid::new_v4().to_string(),
         model: ai_config.model.clone(),
         messages: vec![
-            ChatMessage { role: MessageRole::System, content: system_content },
+            ChatMessage { role: MessageRole::System, content: system_content, reasoning: None, tool_calls: None, tool_call_id: None },
             ChatMessage {
                 role: MessageRole::User,
                 content: format!(
                     "SQL:\n```\n{original_sql}\n```\n\nEXPLAIN output:\n```\n{explain_output}\n```"
                 ),
+                reasoning: None,
+                tool_calls: None,
+                tool_call_id: None,
             },
         ],
         temperature: Some(0.0),
 
         stop: None,
+        tools: None,
+        previous_response_id: None,
     };
     inject_language_hint(&mut request.messages, &lang);
 
@@ -517,15 +533,20 @@ pub async fn ai_parse_filter(
         request_id: Uuid::new_v4().to_string(),
         model: ai_config.model.clone(),
         messages: vec![
-            ChatMessage { role: MessageRole::System, content: system_content },
+            ChatMessage { role: MessageRole::System, content: system_content, reasoning: None, tool_calls: None, tool_call_id: None },
             ChatMessage {
                 role: MessageRole::User,
                 content: natural_language,
+                reasoning: None,
+                tool_calls: None,
+                tool_call_id: None,
             },
         ],
         temperature: Some(0.0),
 
         stop: None,
+        tools: None,
+        previous_response_id: None,
     };
     inject_language_hint(&mut request.messages, &lang);
 
@@ -553,6 +574,94 @@ pub async fn ai_parse_filter(
     }
 
     Ok(filters)
+}
+
+// ─── Database Tool Definitions & Execution ───
+
+fn db_tool_definitions() -> Vec<ToolDefinition> {
+    vec![
+        ToolDefinition {
+            name: "list_connections".into(),
+            description: "List all configured database connections with their IDs, names, database types, and hosts. Call this first to discover available data sources.".into(),
+            parameters: serde_json::json!({
+                "type": "object",
+                "properties": {},
+                "required": []
+            }),
+        },
+        ToolDefinition {
+            name: "list_databases".into(),
+            description: "List all databases on a connected database server.".into(),
+            parameters: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "connection_id": { "type": "string", "description": "The connection ID from list_connections" }
+                },
+                "required": ["connection_id"]
+            }),
+        },
+        ToolDefinition {
+            name: "list_tables".into(),
+            description: "List all tables in a database with their types and row counts.".into(),
+            parameters: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "connection_id": { "type": "string", "description": "The connection ID" },
+                    "database": { "type": "string", "description": "Database name (optional for some database types)" }
+                },
+                "required": ["connection_id"]
+            }),
+        },
+        ToolDefinition {
+            name: "get_table_schema".into(),
+            description: "Get detailed schema of one or more tables, including column names, data types, primary keys, foreign keys, and indexes. Supports batch queries for multiple tables.".into(),
+            parameters: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "connection_id": { "type": "string", "description": "The connection ID" },
+                    "tables": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "One or more table names to get schema for"
+                    }
+                },
+                "required": ["connection_id", "tables"]
+            }),
+        },
+    ]
+}
+
+fn is_db_tool(name: &str) -> bool {
+    matches!(name, "list_connections" | "list_databases" | "list_tables" | "get_table_schema")
+}
+
+async fn execute_db_tool(state: &AppState, tool_call: &ToolCall) -> String {
+    let args: serde_json::Value = serde_json::from_str(&tool_call.arguments).unwrap_or_default();
+    tracing::info!(tool = %tool_call.name, args = %args, "execute_db_tool");
+
+    let cm = &state.connection_manager;
+    let result = match tool_call.name.as_str() {
+        "list_connections" => crate::services::db_tools::list_connections(&state.store).await,
+        "list_databases" => {
+            let conn_id = args["connection_id"].as_str().unwrap_or("");
+            crate::services::db_tools::list_databases(cm, conn_id).await
+        }
+        "list_tables" => {
+            let conn_id = args["connection_id"].as_str().unwrap_or("");
+            let database = args["database"].as_str().unwrap_or("");
+            crate::services::db_tools::list_tables(cm, conn_id, database).await
+        }
+        "get_table_schema" => {
+            let conn_id = args["connection_id"].as_str().unwrap_or("");
+            let tables: Vec<String> = args["tables"]
+                .as_array()
+                .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                .unwrap_or_default();
+            crate::services::db_tools::get_table_schema(cm, conn_id, &tables).await
+        }
+        other => Err(format!("Unknown tool: {other}")),
+    };
+    result.unwrap_or_else(|e| e)
 }
 
 // ─── AI Chat ───
@@ -631,6 +740,9 @@ pub async fn ai_chat(
                         } else {
                             format!("{desc}\n\nSchema:\n{}", context.schema_ddl)
                         },
+                        reasoning: None,
+                        tool_calls: None,
+                        tool_call_id: None,
                     });
                 }
             }
@@ -649,44 +761,228 @@ pub async fn ai_chat(
             full_messages.push(ChatMessage {
                 role: MessageRole::System,
                 content: prompt,
+                reasoning: None,
+                tool_calls: None,
+                tool_call_id: None,
             });
         } else {
             let chat_prompt = state.prompt_resolver.resolve(prompt_scenario, None, &lang).await;
             full_messages.push(ChatMessage {
                 role: MessageRole::System,
                 content: chat_prompt,
+                reasoning: None,
+                tool_calls: None,
+                tool_call_id: None,
             });
         }
     }
 
     full_messages.extend(messages);
 
-    let (tx, mut rx) = mpsc::channel::<Result<StreamChunk, AiError>>(32);
+    let ask_questions_tool = ToolDefinition {
+        name: "ask_questions".into(),
+        description: "Ask the user structured questions to gather information. Use when you need the user to choose between options or provide specific input.".into(),
+        parameters: serde_json::json!({
+            "type": "object",
+            "properties": {
+                "questions": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "id": { "type": "string", "description": "Unique question identifier" },
+                            "prompt": { "type": "string", "description": "The question text" },
+                            "options": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "id": { "type": "string" },
+                                        "label": { "type": "string" }
+                                    },
+                                    "required": ["id", "label"]
+                                },
+                                "description": "Predefined options. Can be empty for free-text input."
+                            },
+                            "allowMultiple": { "type": "boolean", "description": "Allow selecting multiple options", "default": false }
+                        },
+                        "required": ["id", "prompt"]
+                    }
+                }
+            },
+            "required": ["questions"]
+        }),
+    };
+
+    let mut all_tools = vec![ask_questions_tool];
+    all_tools.extend(db_tool_definitions());
+
     let mut request = CompletionRequest {
         request_id: request_id.clone(),
         model: ai_config.model.clone(),
         messages: full_messages,
         temperature: Some(0.7),
-
         stop: None,
+        tools: Some(all_tools),
+        previous_response_id: None,
     };
     inject_language_hint(&mut request.messages, &lang);
 
-    let req_id_clone = request_id.clone();
-    let window_clone = window.clone();
+    // ─── Streaming loop with automatic database tool execution ───
+    const MAX_TOOL_ROUNDS: usize = 10;
 
-    tokio::spawn(async move {
-        while let Some(chunk_result) = rx.recv().await {
-            emit_stream_chunk_or_error(&window_clone, &req_id_clone, chunk_result);
+    for round in 0..MAX_TOOL_ROUNDS {
+        let (tx, mut rx) = mpsc::channel::<Result<StreamChunk, AiError>>(32);
+
+        // Consumer task: forwards chunks to frontend, collects final state
+        let (result_tx, result_rx) = tokio::sync::oneshot::channel::<StreamRoundResult>();
+        let window_c = window.clone();
+        let rid_c = request_id.clone();
+
+        tokio::spawn(async move {
+            let mut full_content = String::new();
+            let mut full_reasoning = String::new();
+            let mut final_tool_calls: Option<Vec<ToolCall>> = None;
+            let mut final_usage = None;
+            let mut final_response_id = None;
+            let mut had_error = false;
+
+            while let Some(chunk_result) = rx.recv().await {
+                match chunk_result {
+                    Ok(chunk) => {
+                        if chunk.done {
+                            let content = chunk.content;
+                            let reasoning = chunk.reasoning;
+                            full_content.push_str(&content);
+                            if let Some(r) = &reasoning {
+                                full_reasoning.push_str(r);
+                            }
+                            final_tool_calls = chunk.tool_calls;
+                            final_usage = chunk.usage;
+                            final_response_id = chunk.response_id;
+                            if !content.is_empty() || reasoning.is_some() {
+                                emit_stream_chunk_or_error(&window_c, &rid_c, Ok(StreamChunk {
+                                    content,
+                                    reasoning,
+                                    done: false,
+                                    usage: None,
+                                    tool_calls: None,
+                                    response_id: None,
+                                }));
+                            }
+                        } else {
+                            full_content.push_str(&chunk.content);
+                            if let Some(r) = &chunk.reasoning {
+                                full_reasoning.push_str(r);
+                            }
+                            emit_stream_chunk_or_error(&window_c, &rid_c, Ok(chunk));
+                        }
+                    }
+                    Err(e) => {
+                        emit_stream_chunk_or_error(&window_c, &rid_c, Err(e));
+                        had_error = true;
+                        break;
+                    }
+                }
+            }
+
+            let _ = result_tx.send(StreamRoundResult {
+                content: full_content,
+                reasoning: full_reasoning,
+                tool_calls: final_tool_calls,
+                usage: final_usage,
+                had_error,
+                response_id: final_response_id,
+            });
+        });
+
+        provider
+            .stream_complete(&request, tx)
+            .await
+            .cmd_err("ai_chat")?;
+
+        let result = result_rx
+            .await
+            .map_err(|_| CommandError::Internal("Stream result channel closed".into()))?;
+
+        if result.had_error {
+            return Ok(request_id);
         }
-    });
 
-    provider
-        .stream_complete(&request, tx)
-        .await
-        .cmd_err("ai_chat")?;
+        let db_tools: Vec<ToolCall> = result
+            .tool_calls
+            .as_ref()
+            .map(|tcs| tcs.iter().filter(|tc| is_db_tool(&tc.name)).cloned().collect())
+            .unwrap_or_default();
 
+        if db_tools.is_empty() {
+            emit_stream_chunk_or_error(&window, &request_id, Ok(StreamChunk {
+                content: String::new(),
+                reasoning: None,
+                done: true,
+                usage: result.usage,
+                tool_calls: result.tool_calls,
+                response_id: result.response_id,
+            }));
+            return Ok(request_id);
+        }
+
+        tracing::info!(
+            %request_id,
+            round,
+            db_tool_count = db_tools.len(),
+            tools = ?db_tools.iter().map(|t| format!("{}({})", t.name, t.arguments)).collect::<Vec<_>>(),
+            response_id = ?result.response_id,
+            "ai_chat: executing database tools (round {})", round
+        );
+
+        // Always use stateless mode: append assistant message (with tool_calls)
+        // to the full history. Not all Responses API providers (e.g. DeepSeek)
+        // support previous_response_id for server-side state management.
+        request.messages.push(ChatMessage {
+            role: MessageRole::Assistant,
+            content: result.content,
+            reasoning: if result.reasoning.is_empty() { None } else { Some(result.reasoning) },
+            tool_calls: result.tool_calls.clone(),
+            tool_call_id: None,
+        });
+
+        let all_tcs = result.tool_calls.unwrap_or_default();
+        for tc in &all_tcs {
+            let tool_result = if is_db_tool(&tc.name) {
+                execute_db_tool(&state, tc).await
+            } else {
+                "Pending: waiting for user response.".to_string()
+            };
+            request.messages.push(ChatMessage {
+                role: MessageRole::Tool,
+                content: tool_result,
+                reasoning: None,
+                tool_calls: None,
+                tool_call_id: Some(tc.id.clone()),
+            });
+        }
+    }
+
+    tracing::warn!(%request_id, "ai_chat: reached max tool rounds");
+    emit_stream_chunk_or_error(&window, &request_id, Ok(StreamChunk {
+        content: String::new(),
+        reasoning: None,
+        done: true,
+        usage: None,
+        tool_calls: None,
+        response_id: None,
+    }));
     Ok(request_id)
+}
+
+struct StreamRoundResult {
+    content: String,
+    reasoning: String,
+    tool_calls: Option<Vec<ToolCall>>,
+    usage: Option<TokenUsage>,
+    had_error: bool,
+    response_id: Option<String>,
 }
 
 async fn build_connections_context(state: &AppState, lang: &str) -> String {
@@ -825,6 +1121,9 @@ fn emit_stream_chunk_or_error<R: tauri::Runtime>(
             });
             if let Some(reasoning) = &chunk.reasoning {
                 payload["reasoning"] = serde_json::Value::String(reasoning.clone());
+            }
+            if let Some(tool_calls) = &chunk.tool_calls {
+                payload["toolCalls"] = serde_json::to_value(tool_calls).unwrap_or_default();
             }
             let _ = emitter.emit("ai:stream-chunk", payload);
         }
@@ -1027,15 +1326,20 @@ pub async fn ai_generate_schema_doc(
             request_id: Uuid::new_v4().to_string(),
             model: ai_config.model.clone(),
             messages: vec![
-                ChatMessage { role: MessageRole::System, content: select_content },
+                ChatMessage { role: MessageRole::System, content: select_content, reasoning: None, tool_calls: None, tool_call_id: None },
                 ChatMessage {
                     role: MessageRole::User,
                     content: "Select the important user tables.".into(),
+                    reasoning: None,
+                    tool_calls: None,
+                    tool_call_id: None,
                 },
             ],
             temperature: Some(0.0),
     
             stop: None,
+            tools: None,
+            previous_response_id: None,
         };
 
         let select_response = provider
@@ -1082,15 +1386,20 @@ pub async fn ai_generate_schema_doc(
         request_id: Uuid::new_v4().to_string(),
         model: ai_config.model.clone(),
         messages: vec![
-            ChatMessage { role: MessageRole::System, content: doc_system_content },
+            ChatMessage { role: MessageRole::System, content: doc_system_content, reasoning: None, tool_calls: None, tool_call_id: None },
             ChatMessage {
                 role: MessageRole::User,
                 content: user_content.into(),
+                reasoning: None,
+                tool_calls: None,
+                tool_call_id: None,
             },
         ],
         temperature: Some(0.3),
 
         stop: None,
+        tools: None,
+        previous_response_id: None,
     };
     inject_language_hint(&mut request.messages, &lang);
 
@@ -1162,17 +1471,22 @@ pub async fn ai_diagnose_connection(
         request_id: Uuid::new_v4().to_string(),
         model: ai_config.model.clone(),
         messages: vec![
-            ChatMessage { role: MessageRole::System, content: conn_diag_prompt },
+            ChatMessage { role: MessageRole::System, content: conn_diag_prompt, reasoning: None, tool_calls: None, tool_call_id: None },
             ChatMessage {
                 role: MessageRole::User,
                 content: format!(
                     "Connection details:\n{conn_summary}\n\nError:\n{error_message}"
                 ),
+                reasoning: None,
+                tool_calls: None,
+                tool_call_id: None,
             },
         ],
         temperature: Some(0.0),
 
         stop: None,
+        tools: None,
+        previous_response_id: None,
     };
     inject_language_hint(&mut request.messages, &lang);
 
@@ -1244,18 +1558,23 @@ pub async fn ai_analyze_queries(
         request_id: Uuid::new_v4().to_string(),
         model: ai_config.model.clone(),
         messages: vec![
-            ChatMessage { role: MessageRole::System, content: query_summary_prompt },
+            ChatMessage { role: MessageRole::System, content: query_summary_prompt, reasoning: None, tool_calls: None, tool_call_id: None },
             ChatMessage {
                 role: MessageRole::User,
                 content: format!(
                     "Analyze these {} queries:\n\n{queries_text}",
                     filtered.len().min(100),
                 ),
+                reasoning: None,
+                tool_calls: None,
+                tool_call_id: None,
             },
         ],
         temperature: Some(0.2),
 
         stop: None,
+        tools: None,
+        previous_response_id: None,
     };
     inject_language_hint(&mut request.messages, &lang);
 
@@ -1445,5 +1764,38 @@ mod tests {
         assert_eq!(result.categories[0].count, 10);
         assert_eq!(result.frequent_tables, vec!["users", "orders"]);
         assert_eq!(result.recommendations.len(), 1);
+    }
+
+    #[test]
+    fn test_is_db_tool() {
+        assert!(is_db_tool("list_connections"));
+        assert!(is_db_tool("list_databases"));
+        assert!(is_db_tool("list_tables"));
+        assert!(is_db_tool("get_table_schema"));
+        assert!(!is_db_tool("ask_questions"));
+        assert!(!is_db_tool("unknown_tool"));
+        assert!(!is_db_tool(""));
+    }
+
+    #[test]
+    fn test_db_tool_definitions_count() {
+        let tools = db_tool_definitions();
+        assert_eq!(tools.len(), 4);
+        let names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
+        assert!(names.contains(&"list_connections"));
+        assert!(names.contains(&"list_databases"));
+        assert!(names.contains(&"list_tables"));
+        assert!(names.contains(&"get_table_schema"));
+    }
+
+    #[test]
+    fn test_db_tool_definitions_have_valid_schemas() {
+        for tool in db_tool_definitions() {
+            assert!(!tool.name.is_empty());
+            assert!(!tool.description.is_empty());
+            assert!(tool.parameters.is_object());
+            let obj = tool.parameters.as_object().unwrap();
+            assert_eq!(obj.get("type").and_then(|v| v.as_str()), Some("object"));
+        }
     }
 }

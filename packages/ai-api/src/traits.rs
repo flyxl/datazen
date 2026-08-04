@@ -54,6 +54,8 @@ pub trait AiProvider: Send + Sync {
                 reasoning: response.reasoning,
                 done: true,
                 usage: Some(response.usage),
+                tool_calls: response.tool_calls,
+                response_id: response.response_id,
             }))
             .await;
         Ok(())

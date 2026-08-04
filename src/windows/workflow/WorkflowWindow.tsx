@@ -54,6 +54,7 @@ interface WorkflowRunPanel {
   id: string;
   workflowId: string;
   workflowName: string;
+  startedAt: string;
   result: WorkflowExecutionResult | null;
   isExecuting: boolean;
 }
@@ -61,7 +62,9 @@ interface WorkflowRunPanel {
 interface HistoryDetailPanel {
   type: 'history';
   id: string;
+  historyId: string;
   workflowName: string;
+  createdAt: string;
   result: WorkflowExecutionResult;
 }
 
@@ -154,6 +157,7 @@ export function WorkflowWindow() {
       id: nextPanelId('wf'),
       workflowId: workflow.id,
       workflowName: workflow.name,
+      startedAt: new Date().toISOString(),
       result: null,
       isExecuting: false,
     };
@@ -164,21 +168,29 @@ export function WorkflowWindow() {
   }, [panels, clearWorkflowResult]);
 
   const openHistoryPanel = useCallback(async (historyId: string, workflowName: string) => {
+    const existing = panels.find((p) => p.type === 'history' && (p as HistoryDetailPanel).historyId === historyId);
+    if (existing) {
+      setActivePanelId(existing.id);
+      setActiveStepIndex(existing.type === 'history' && (existing as HistoryDetailPanel).result.steps.length > 0 ? 0 : null);
+      return;
+    }
     try {
       const entry = await aiCommands.workflowHistoryGet(historyId);
       const panel: HistoryDetailPanel = {
         type: 'history',
         id: nextPanelId('hist'),
+        historyId,
         workflowName,
+        createdAt: entry.createdAt,
         result: entry.result,
       };
       setPanels((prev) => [...prev, panel]);
       setActivePanelId(panel.id);
-      setActiveStepIndex(null);
+      setActiveStepIndex(entry.result.steps.length > 0 ? 0 : null);
     } catch (e) {
       setFeedback(String(e));
     }
-  }, []);
+  }, [panels]);
 
   const closePanel = useCallback((panelId: string) => {
     setPanels((prev) => {
@@ -229,6 +241,9 @@ export function WorkflowWindow() {
         if (p.id !== wfPanel.id || p.type !== 'run') return p;
         return { ...p, result, isExecuting: false };
       }));
+      if (result && result.steps.length > 0) {
+        setActiveStepIndex(0);
+      }
     } catch {
       setPanels((prev) => prev.map((p): Panel => {
         if (p.id !== wfPanel.id || p.type !== 'run') return p;
@@ -371,7 +386,7 @@ export function WorkflowWindow() {
         <div style={{ width: sidebarWidth }} className="flex shrink-0 flex-col border-r border-edge bg-surface-alt">
           <div className="flex items-center border-b border-edge">
             <button
-              type="button"
+              type="button" onMouseDown={(e) => e.preventDefault()}
               onClick={() => setSideTab('workflows')}
               className={cn('flex-1 px-3 py-2 text-xs transition-colors relative', sideTab === 'workflows' ? 'text-fg font-medium' : 'text-fg-muted hover:text-fg')}
             >
@@ -379,7 +394,7 @@ export function WorkflowWindow() {
               {sideTab === 'workflows' && <span className="absolute inset-x-0 bottom-0 h-0.5 bg-blue-500" />}
             </button>
             <button
-              type="button"
+              type="button" onMouseDown={(e) => e.preventDefault()}
               onClick={() => setSideTab('history')}
               className={cn('flex-1 px-3 py-2 text-xs transition-colors relative flex items-center justify-center gap-1', sideTab === 'history' ? 'text-fg font-medium' : 'text-fg-muted hover:text-fg')}
             >
@@ -436,8 +451,8 @@ export function WorkflowWindow() {
                     : panel.type === 'edit'
                       ? ((panel as EditPanel).editingId ? (panel as EditPanel).draft.name || t('workflows.edit') : t('workflows.create'))
                       : panel.type === 'run'
-                        ? (panel as WorkflowRunPanel).workflowName
-                        : (panel as HistoryDetailPanel).workflowName;
+                        ? `${(panel as WorkflowRunPanel).workflowName} ${new Date((panel as WorkflowRunPanel).startedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                        : `${(panel as HistoryDetailPanel).workflowName} ${new Date((panel as HistoryDetailPanel).createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
                   const resultStatus = panel.type === 'run'
                     ? (panel as WorkflowRunPanel).result
                     : panel.type === 'history'
@@ -452,7 +467,15 @@ export function WorkflowWindow() {
                         isActive ? 'bg-surface text-fg' : 'text-fg-secondary hover:bg-surface-raised hover:text-fg',
                       )}
                     >
-                      <button type="button" className="flex items-center gap-1.5" onClick={() => { setActivePanelId(panel.id); setActiveStepIndex(null); }}>
+                      <button type="button" onMouseDown={(e) => e.preventDefault()} className="flex items-center gap-1.5" onClick={() => {
+                        setActivePanelId(panel.id);
+                        const panelResult = panel.type === 'run'
+                          ? (panel as WorkflowRunPanel).result
+                          : panel.type === 'history'
+                            ? (panel as HistoryDetailPanel).result
+                            : null;
+                        setActiveStepIndex(panelResult && panelResult.steps.length > 0 ? 0 : null);
+                      }}>
                         {icon}
                         <span className="max-w-[140px] truncate">{label}</span>
                         {resultStatus && (
@@ -465,7 +488,7 @@ export function WorkflowWindow() {
                         )}
                       </button>
                       <button
-                        type="button"
+                        type="button" onMouseDown={(e) => e.preventDefault()}
                         className="rounded p-0.5 text-fg-muted opacity-0 hover:bg-surface-raised hover:text-fg group-hover:opacity-100"
                         onClick={() => closePanel(panel.id)}
                       >
@@ -476,30 +499,6 @@ export function WorkflowWindow() {
                   );
                 })}
               </div>
-            </div>
-          )}
-
-          {/* Steps sub-tab bar (when result exists) */}
-          {currentResult && (
-            <div className="flex shrink-0 items-center gap-1 border-b border-edge bg-surface-alt px-3 py-1 overflow-x-auto">
-              <span className={cn('text-xs font-medium mr-2', currentResult.success ? 'text-green-500' : 'text-red-400')}>
-                {currentResult.success ? '✓' : '✗'} {currentResult.totalTimeMs}ms
-              </span>
-              {currentResult.steps.map((step, i) => (
-                <button
-                  key={step.stepId}
-                  type="button"
-                  onClick={() => setActiveStepIndex(i)}
-                  className={cn(
-                    'relative flex items-center gap-1 rounded px-2 py-1 text-[11px] transition-colors whitespace-nowrap',
-                    activeStepIndex === i ? 'bg-accent/10 text-accent' : 'text-fg-muted hover:text-fg hover:bg-surface-raised/50',
-                  )}
-                >
-                  <StepStatusIcon status={step.status} />
-                  {step.stepId}
-                  <span className="text-fg-muted">[{step.stepType}]</span>
-                </button>
-              ))}
             </div>
           )}
 
@@ -538,12 +537,37 @@ export function WorkflowWindow() {
               <Button
                 variant="primary"
                 className="h-8 text-xs"
+                onMouseDown={(e) => e.preventDefault()}
                 onClick={() => void handleExecute()}
                 disabled={isExecuting}
               >
                 {isExecuting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
                 {isExecuting ? t('workflows.executing') : t('workflows.execute')}
               </Button>
+            </div>
+          )}
+
+          {/* Steps sub-tab bar (when result exists) */}
+          {currentResult && (
+            <div className="flex shrink-0 items-center gap-1 border-b border-edge bg-surface-alt px-3 py-1 overflow-x-auto">
+              <span className={cn('text-xs font-medium mr-2', currentResult.success ? 'text-green-500' : 'text-red-400')}>
+                {currentResult.success ? '✓' : '✗'} {currentResult.totalTimeMs}ms
+              </span>
+              {currentResult.steps.map((step, i) => (
+                <button
+                  key={step.stepId}
+                  type="button" onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => setActiveStepIndex(i)}
+                  className={cn(
+                    'relative flex items-center gap-1 rounded px-2 py-1 text-[11px] transition-colors whitespace-nowrap',
+                    activeStepIndex === i ? 'bg-accent/10 text-accent' : 'text-fg-muted hover:text-fg hover:bg-surface-raised/50',
+                  )}
+                >
+                  <StepStatusIcon status={step.status} />
+                  {step.stepId}
+                  <span className="text-fg-muted">[{step.stepType}]</span>
+                </button>
+              ))}
             </div>
           )}
 
@@ -610,13 +634,9 @@ function extractStepColumnNames(stepResult: Record<string, unknown> | undefined)
   if (Array.isArray(cols) && cols.length > 0) {
     return cols.map((c) => ({ name: c.name, dataType: c.dataType || 'text' }));
   }
-  const data = (stepResult.data ?? stepResult.result) as Record<string, unknown>[] | undefined;
-  if (Array.isArray(data) && data.length > 0 && typeof data[0] === 'object' && data[0] !== null && !Array.isArray(data[0])) {
-    return Object.keys(data[0]).map((k) => ({ name: k, dataType: 'text' }));
-  }
-  const rows = stepResult.rows as unknown[][] | undefined;
-  if (Array.isArray(rows) && rows.length > 0 && Array.isArray(rows[0])) {
-    return rows[0].map((_, i) => ({ name: `col_${i + 1}`, dataType: 'text' }));
+  const rows = stepResult.rows as Record<string, unknown>[] | undefined;
+  if (Array.isArray(rows) && rows.length > 0 && typeof rows[0] === 'object' && rows[0] !== null && !Array.isArray(rows[0])) {
+    return Object.keys(rows[0]).map((k) => ({ name: k, dataType: 'text' }));
   }
   return [];
 }
@@ -631,17 +651,24 @@ function stepToStatementResult(step: StepExecutionResult): StatementResult | nul
     dataType: c.dataType,
     nullable: true,
   }));
+  const rawRows = r.rows as unknown[];
+  let rows: (Value | null)[][];
+  if (rawRows.length > 0 && typeof rawRows[0] === 'object' && rawRows[0] !== null && !Array.isArray(rawRows[0])) {
+    rows = (rawRows as Record<string, unknown>[]).map((obj) =>
+      cols.map((c) => (obj[c.name] ?? null) as Value | null),
+    );
+  } else {
+    rows = rawRows as (Value | null)[][];
+  }
   return {
     sql: step.sqlExecuted ?? '',
     columns: columnInfos,
-    rows: r.rows as (Value | null)[][],
+    rows,
     executionTimeMs: (r.execution_time_ms as number) ?? step.executionTimeMs,
   };
 }
 
 function StepDetailView({ step, t }: { step: StepExecutionResult; t: ReturnType<typeof useI18n>['t'] }) {
-  const tableRows = step.result?.rows as unknown[][] | undefined;
-  const rowsCount = (step.result?.rows_count ?? tableRows?.length ?? 0) as number;
   const [viewMode, setViewMode] = useState<'table' | 'chart'>('table');
   const [chartConfig, setChartConfig] = useState<ChartConfig | undefined>();
 
@@ -653,6 +680,8 @@ function StepDetailView({ step, t }: { step: StepExecutionResult; t: ReturnType<
   }, [colInfos]);
 
   const statementResult = useMemo(() => stepToStatementResult(step), [step]);
+  const tableRows = statementResult?.rows;
+  const rowsCount = (step.result?.rows_count as number | undefined) ?? tableRows?.length ?? 0;
   const chartable = useMemo(
     () => statementResult != null && isChartableResult(statementResult),
     [statementResult],
@@ -672,7 +701,7 @@ function StepDetailView({ step, t }: { step: StepExecutionResult; t: ReturnType<
         {hasData && chartable && (
           <div className="ml-auto flex items-center gap-0.5 rounded-md bg-surface p-0.5">
             <button
-              type="button"
+              type="button" onMouseDown={(e) => e.preventDefault()}
               className={cn(
                 'flex items-center gap-1 rounded px-2 py-0.5 text-xs transition-colors',
                 viewMode === 'table'
@@ -685,7 +714,7 @@ function StepDetailView({ step, t }: { step: StepExecutionResult; t: ReturnType<
               {t('chart.viewTable')}
             </button>
             <button
-              type="button"
+              type="button" onMouseDown={(e) => e.preventDefault()}
               className={cn(
                 'flex items-center gap-1 rounded px-2 py-0.5 text-xs transition-colors',
                 viewMode === 'chart'
@@ -784,10 +813,10 @@ function WorkflowSidebarList({
             {w.description && <div className="text-[10px] text-fg-muted truncate">{w.description}</div>}
           </div>
           <div className="hidden group-hover:flex items-center gap-0.5">
-            <button type="button" onClick={(e) => { e.stopPropagation(); onEdit(w.id); }} className="p-0.5 rounded hover:bg-surface-alt" title={t('workflows.edit')}>
+            <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={(e) => { e.stopPropagation(); onEdit(w.id); }} className="p-0.5 rounded hover:bg-surface-alt" title={t('workflows.edit')}>
               <Pencil className="h-3 w-3" />
             </button>
-            <button type="button" onClick={(e) => { e.stopPropagation(); onDelete(w.id); }} className="p-0.5 rounded hover:bg-surface-alt text-red-400" title={t('workflows.delete')}>
+            <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={(e) => { e.stopPropagation(); onDelete(w.id); }} className="p-0.5 rounded hover:bg-surface-alt text-red-400" title={t('workflows.delete')}>
               <Trash2 className="h-3 w-3" />
             </button>
           </div>
@@ -812,11 +841,11 @@ function HistoryList({
     <div className="p-1.5">
       {items.length > 0 && (
         <div className="flex justify-end mb-1">
-          <button type="button" onClick={onClear} className="text-[10px] text-fg-muted hover:text-red-400">{t('workflows.history.clear')}</button>
+          <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={onClear} className="text-[10px] text-fg-muted hover:text-red-400">{t('workflows.history.clear')}</button>
         </div>
       )}
       {items.map((item) => (
-        <button key={item.id} type="button" onClick={() => onView(item.id, item.workflowName)}
+        <button key={item.id} type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => onView(item.id, item.workflowName)}
           className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left hover:bg-surface-raised/50 transition-colors">
           <Clock className="h-3.5 w-3.5 text-fg-muted shrink-0" />
           <div className="flex-1 min-w-0">

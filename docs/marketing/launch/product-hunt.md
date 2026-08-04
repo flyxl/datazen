@@ -11,7 +11,7 @@
 
 ## Description (260 chars)
 
-DataZen manages PostgreSQL, MySQL, SQLite and Redis in one beautiful desktop app. Built with Rust for speed (under 10 MB). Features SQL editor, SSH tunnels, backups, PG-MySQL sync, dark mode and bilingual UI. MIT licensed.
+DataZen manages PostgreSQL, MySQL, SQLite and Redis in one beautiful desktop app. Built with Rust for speed (under 10 MB). Features SQL editor, SSH tunnels, backups, PG-MySQL sync, dark mode and bilingual UI. GPLv3 licensed.
 
 ## Maker comment (first comment)
 

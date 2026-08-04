@@ -18,6 +18,16 @@ pub trait AiProviderFactory: Send + Sync + 'static {
     fn protocol_version(&self) -> u32 {
         AI_PROTOCOL_VERSION
     }
+
+    /// Whether this provider supports streaming completions natively.
+    fn supports_streaming(&self) -> bool {
+        false
+    }
+
+    /// Whether this provider supports tool/function calling.
+    fn supports_tools(&self) -> bool {
+        false
+    }
 }
 
 inventory::collect!(&'static dyn AiProviderFactory);

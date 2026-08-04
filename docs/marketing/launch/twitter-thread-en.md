@@ -7,7 +7,7 @@ Rust + Tauri, under 10 MB.
 PG / MySQL / SQLite / Redis.
 SSH tunnels built-in.
 
-Free, MIT: github.com/flyxl/datazen
+Free, GPLv3: github.com/flyxl/datazen
 
 **Tweet 2**
 Why we built it:

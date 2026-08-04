@@ -67,7 +67,7 @@ export function WorkflowForm({
       <div>
         <div className="flex items-center justify-between mb-2">
           <label className="text-xs text-fg-muted font-medium">{t('workflows.steps')}</label>
-          <button type="button" onClick={() => onDraftChange({ ...draft, steps: [...draft.steps, { type: 'query', id: `step${draft.steps.length + 1}`, sql: '' }] })} className="text-accent text-xs hover:underline">
+          <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => onDraftChange({ ...draft, steps: [...draft.steps, { type: 'query', id: `step${draft.steps.length + 1}`, sql: '' }] })} className="text-accent text-xs hover:underline">
             + {t('workflows.addStep')}
           </button>
         </div>
@@ -83,7 +83,7 @@ export function WorkflowForm({
                   onChange={(v) => { const s = [...draft.steps]; s[i] = { ...s[i], connection: v || undefined }; onDraftChange({ ...draft, steps: s }); }} className="!h-7 !text-xs flex-1" />
               )}
               {draft.steps.length > 1 && (
-                <button type="button" onClick={() => onDraftChange({ ...draft, steps: draft.steps.filter((_, j) => j !== i) })} className="text-red-400 hover:text-red-300 p-1 rounded hover:bg-red-500/10">
+                <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => onDraftChange({ ...draft, steps: draft.steps.filter((_, j) => j !== i) })} className="text-red-400 hover:text-red-300 p-1 rounded hover:bg-red-500/10">
                   <Trash2 className="h-3.5 w-3.5" />
                 </button>
               )}

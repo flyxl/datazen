@@ -5,6 +5,12 @@
 
 pub const AI_PROTOCOL_VERSION: u32 = 1;
 
+/// Minimum AI protocol version the host still supports.
+///
+/// Plugins with version < MIN will be rejected; those between MIN and current
+/// will run in degraded mode (missing capabilities default to `false`).
+pub const MIN_AI_PROTOCOL_VERSION: u32 = 1;
+
 mod traits;
 mod types;
 mod factory;

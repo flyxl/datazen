@@ -13,7 +13,7 @@
 | 0:30-0:40 | SQL 编辑器 + 补全 | Write SQL with autocomplete for tables and columns. Run multiple statements. | SQL 自动补全，多语句执行。 |
 | 0:40-0:48 | SSH 设置（可选） | Reach private databases through built-in SSH — no local ssh client needed. | 内置 SSH 隧道，无需本机 ssh。 |
 | 0:48-0:55 | Redis 视图 | Explore Redis keys with a dedicated browser. | Redis 专用 Key 浏览器。 |
-| 0:55-1:00 | 结束卡：GitHub + 下载 | Download free on GitHub. MIT licensed. | GitHub 免费下载，MIT 开源。 |
+| 0:55-1:00 | 结束卡：GitHub + 下载 | Download free on GitHub. GPLv3 licensed. | GitHub 免费下载，GPLv3 开源。 |
 
 ## 结束卡文字
 

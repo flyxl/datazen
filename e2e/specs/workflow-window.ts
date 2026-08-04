@@ -1,4 +1,4 @@
-import { expect, browser, $ } from '@wdio/globals';
+import { expect, browser, $, $$ } from '@wdio/globals';
 import { closeExtraWindows, switchToNewWindow } from '../helpers.js';
 
 /**
@@ -27,6 +27,8 @@ const TEST_WORKFLOW_ID = 'e2e-wf-tab-test';
  * Create a self-contained test workflow via Tauri IPC.
  * Uses the first available connection for simple SELECT queries.
  */
+const FOCUS_TEST_WF_ID = 'e2e-wf-focus-test';
+
 async function seedTestWorkflow() {
   const conns = await invokeBackend<{ id: string }[]>('get_connections');
   const connId = conns.length > 0 ? conns[0].id : undefined;
@@ -42,10 +44,22 @@ async function seedTestWorkflow() {
     ],
   };
   await invokeBackend('workflow_save', { workflow });
+
+  const focusWf = {
+    id: FOCUS_TEST_WF_ID,
+    name: 'E2E Focus Test WF',
+    description: 'Workflow with variable to test focus behavior',
+    variables: [{ name: 'uid', type: 'string', description: 'User ID', required: true }],
+    steps: [
+      { type: 'query', id: 'step1', sql: "SELECT '{{uid}}' AS uid", connection: connId },
+    ],
+  };
+  await invokeBackend('workflow_save', { workflow: focusWf });
 }
 
 async function cleanupTestWorkflow() {
   try { await invokeBackend('workflow_delete', { workflowId: TEST_WORKFLOW_ID }); } catch { /* ok */ }
+  try { await invokeBackend('workflow_delete', { workflowId: FOCUS_TEST_WF_ID }); } catch { /* ok */ }
   try { await invokeBackend('workflow_history_clear', { workflowId: null }); } catch { /* ok */ }
 }
 
@@ -236,6 +250,114 @@ describe('Workflow Tab System (WORKFLOW-WINDOW)', () => {
     expect(body.includes('E2E Tab Test WF')).toBe(true);
   });
 
+  it('重复点击同一历史记录只打开一个 tab', async function () {
+    this.timeout(60000);
+    await openWorkflowFromMain(mainWindow);
+    await selectWorkflow();
+    await executeAndWait();
+    await browser.pause(500);
+
+    // Switch to history tab
+    await findAndClickButton(['执行记录', 'History']);
+    await browser.pause(1000);
+
+    // Count tabs before clicking history
+    const tabsBefore = await browser.execute(() => {
+      const tabBar = document.querySelectorAll('[class*="border-r"][class*="border-edge"][class*="text-xs"]');
+      return tabBar.length;
+    });
+
+    // Click the first history item
+    const historyItems = await $$('button*=E2E Tab Test WF');
+    if (historyItems.length > 0) {
+      await historyItems[0].click();
+      await browser.pause(1000);
+
+      // Count tabs after first click
+      const tabsAfterFirst = await browser.execute(() => {
+        const tabBar = document.querySelectorAll('[class*="border-r"][class*="border-edge"][class*="text-xs"]');
+        return tabBar.length;
+      });
+
+      // Click the same history item again
+      await findAndClickButton(['执行记录', 'History']);
+      await browser.pause(500);
+      const historyItems2 = await $$('button*=E2E Tab Test WF');
+      if (historyItems2.length > 0) {
+        await historyItems2[0].click();
+        await browser.pause(1000);
+      }
+
+      // Count tabs after second click - should be the same
+      const tabsAfterSecond = await browser.execute(() => {
+        const tabBar = document.querySelectorAll('[class*="border-r"][class*="border-edge"][class*="text-xs"]');
+        return tabBar.length;
+      });
+
+      expect(tabsAfterSecond).toBe(tabsAfterFirst);
+    }
+  });
+
+  it('执行后默认显示第一个 step 结果', async function () {
+    this.timeout(45000);
+    await openWorkflowFromMain(mainWindow);
+    await selectWorkflow();
+    await executeAndWait();
+
+    // After execution, the first step should be automatically selected
+    const body = await $('body').getText();
+    // step_a should be visible in the step detail view (its content or its tab highlighted)
+    const hasStepContent = body.includes('val') || body.includes('alpha') || body.includes('step_a');
+    expect(hasStepContent).toBe(true);
+
+    // The step_a tab should have the active/selected styling
+    const isStepAActive = await browser.execute(() => {
+      const buttons = document.querySelectorAll('button');
+      for (const btn of buttons) {
+        if (btn.textContent?.includes('step_a') && btn.className.includes('accent')) {
+          return true;
+        }
+      }
+      return false;
+    });
+    expect(isStepAActive).toBe(true);
+  });
+
+  it('参数输入框应在步骤标签栏上方', async function () {
+    this.timeout(45000);
+    await openWorkflowFromMain(mainWindow);
+    await selectWorkflow();
+    await executeAndWait();
+
+    // Verify layout order: execute button should appear before step tabs
+    const layoutCorrect = await browser.execute(() => {
+      const executeBtn = document.querySelector('button') as HTMLElement | null;
+      let executeBtnRect: DOMRect | null = null;
+      let stepTabRect: DOMRect | null = null;
+
+      const buttons = document.querySelectorAll('button');
+      for (const btn of buttons) {
+        const text = btn.textContent || '';
+        if ((text.includes('执行') || text.includes('Execute')) && !text.includes('执行记录')) {
+          executeBtnRect = btn.getBoundingClientRect();
+        }
+        if (text.includes('step_a')) {
+          stepTabRect = btn.getBoundingClientRect();
+        }
+      }
+
+      if (executeBtnRect && stepTabRect) {
+        // Execute button should be above (lower Y value) step tabs
+        return executeBtnRect.top < stepTabRect.top;
+      }
+      return null;
+    });
+
+    if (layoutCorrect !== null) {
+      expect(layoutCorrect).toBe(true);
+    }
+  });
+
   it('打开工作流目录按钮应通过 open_path 命令打开文件夹', async function () {
     this.timeout(15000);
     await openWorkflowFromMain(mainWindow);
@@ -281,5 +403,47 @@ describe('Workflow Tab System (WORKFLOW-WINDOW)', () => {
 
     expect(result.called).toBe(true);
     expect(result.path.length).toBeGreaterThan(0);
+  });
+
+  it('输入框有焦点时单击侧边栏标签应立即切换', async function () {
+    this.timeout(30000);
+    await openWorkflowFromMain(mainWindow);
+    await browser.pause(1000);
+
+    const focusWfItem = await $('div*=E2E Focus Test WF');
+    await focusWfItem.click();
+    await browser.pause(500);
+
+    const inputField = await $('input[placeholder]');
+    if (await inputField.isExisting()) {
+      await inputField.click();
+      await inputField.setValue('test-value');
+      await browser.pause(200);
+    }
+
+    const historyTab = await browser.execute(() => {
+      const buttons = document.querySelectorAll('button');
+      for (const btn of buttons) {
+        const text = btn.textContent || '';
+        if (text.includes('执行记录') || text.includes('History')) return true;
+      }
+      return false;
+    });
+    expect(historyTab).toBe(true);
+
+    await findAndClickButton(['执行记录', 'History']);
+    await browser.pause(300);
+
+    const isHistoryActive = await browser.execute(() => {
+      const buttons = document.querySelectorAll('button');
+      for (const btn of buttons) {
+        const text = btn.textContent || '';
+        if ((text.includes('执行记录') || text.includes('History')) && btn.className.includes('font-medium')) {
+          return true;
+        }
+      }
+      return false;
+    });
+    expect(isHistoryActive).toBe(true);
   });
 });

@@ -59,6 +59,8 @@ impl AiProvider for MockProvider {
                 completion_tokens: 20,
                 total_tokens: 30,
             },
+            tool_calls: None,
+            response_id: None,
         })
     }
 }
@@ -106,6 +108,9 @@ fn test_message_role_serde() {
     let msg = ChatMessage {
         role: MessageRole::System,
         content: "You are helpful.".into(),
+        reasoning: None,
+        tool_calls: None,
+        tool_call_id: None,
     };
     let json = serde_json::to_string(&msg).unwrap();
     assert!(json.contains("\"role\":\"system\""));
@@ -120,10 +125,15 @@ fn test_completion_request_serde() {
             ChatMessage {
                 role: MessageRole::User,
                 content: "Hello".into(),
+                reasoning: None,
+                tool_calls: None,
+                tool_call_id: None,
             },
         ],
         temperature: Some(0.7),
         stop: None,
+        tools: None,
+        previous_response_id: None,
     };
 
     let json = serde_json::to_string(&req).unwrap();
@@ -220,6 +230,8 @@ async fn test_mock_provider_complete() {
             temperature: None,
 
             stop: None,
+            tools: None,
+            previous_response_id: None,
         })
         .await;
     assert!(result.is_err());
@@ -233,10 +245,15 @@ async fn test_mock_provider_complete() {
             messages: vec![ChatMessage {
                 role: MessageRole::User,
                 content: "test".into(),
+                reasoning: None,
+                tool_calls: None,
+                tool_call_id: None,
             }],
             temperature: None,
 
             stop: None,
+            tools: None,
+            previous_response_id: None,
         })
         .await
         .unwrap();
@@ -270,6 +287,8 @@ async fn test_mock_provider_stream_fallback() {
                 temperature: None,
     
                 stop: None,
+                tools: None,
+                previous_response_id: None,
             },
             tx,
         )
