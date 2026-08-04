@@ -17,7 +17,6 @@ import {
   X,
 } from 'lucide-react';
 import { TitleBar } from '../../components/TitleBar';
-import { ThemeToggle } from '../../components/ThemeToggle';
 import { StatusBar } from '../../components/StatusBar';
 import { DataTable } from '../../components/DataTable/DataTable';
 import type { ColumnDef } from '../../components/DataTable/TableHeader';
@@ -249,9 +248,10 @@ export function WorkflowWindow() {
   }, [loadWorkflows]);
 
   const handleOpenDir = useCallback(async () => {
+    if (!workflowsDir) return;
     try {
-      const { open } = await import('@tauri-apps/plugin-shell');
-      await open(workflowsDir);
+      const { settingsCommands } = await import('../../commands/settings');
+      await settingsCommands.openPath(workflowsDir);
     } catch { /* browser mode */ }
   }, [workflowsDir]);
 
@@ -361,7 +361,6 @@ export function WorkflowWindow() {
             )}
           </div>
         }
-        rightContent={<ThemeToggle />}
       />
 
       <div className="flex min-h-0 flex-1">

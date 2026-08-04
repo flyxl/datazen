@@ -235,4 +235,51 @@ describe('Workflow Tab System (WORKFLOW-WINDOW)', () => {
     const body = await $('body').getText();
     expect(body.includes('E2E Tab Test WF')).toBe(true);
   });
+
+  it('打开工作流目录按钮应通过 open_path 命令打开文件夹', async function () {
+    this.timeout(15000);
+    await openWorkflowFromMain(mainWindow);
+    await browser.pause(1000);
+
+    const openDirBtn = await browser.execute(() => {
+      const buttons = document.querySelectorAll('button');
+      for (const btn of buttons) {
+        const title = btn.getAttribute('title') || '';
+        if (title.includes('打开工作流目录') || title.includes('Open workflow directory')) {
+          return true;
+        }
+      }
+      return false;
+    });
+    expect(openDirBtn).toBe(true);
+
+    const result = await browser.executeAsync(
+      (done: (r: { called: boolean; path: string }) => void) => {
+        const orig = (window as any).__TAURI_INTERNALS__.invoke;
+        let captured = { called: false, path: '' };
+        (window as any).__TAURI_INTERNALS__.invoke = (cmd: string, args: any) => {
+          if (cmd === 'open_path') {
+            captured = { called: true, path: args?.path || '' };
+            return Promise.resolve();
+          }
+          return orig(cmd, args);
+        };
+        const buttons = document.querySelectorAll('button');
+        for (const btn of buttons) {
+          const title = btn.getAttribute('title') || '';
+          if (title.includes('打开工作流目录') || title.includes('Open workflow directory')) {
+            btn.click();
+            break;
+          }
+        }
+        setTimeout(() => {
+          (window as any).__TAURI_INTERNALS__.invoke = orig;
+          done(captured);
+        }, 2000);
+      },
+    );
+
+    expect(result.called).toBe(true);
+    expect(result.path.length).toBeGreaterThan(0);
+  });
 });
