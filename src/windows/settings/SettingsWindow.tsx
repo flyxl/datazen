@@ -272,7 +272,7 @@ export function SettingsWindow() {
                 </SettingRow>
 
                 <div className="flex items-center gap-3">
-                  <Button variant="secondary" onClick={() => void settingsCommands.openLogFolder()}>
+                  <Button variant="secondary" onClick={() => void settingsCommands.getLogPath().then((p) => settingsCommands.openPath(p))}>
                     {t('settings.viewLogs')}
                   </Button>
                 </div>

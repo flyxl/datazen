@@ -15,7 +15,6 @@ import {
   X,
 } from 'lucide-react';
 import { TitleBar } from '../../components/TitleBar';
-import { ThemeToggle } from '../../components/ThemeToggle';
 import { StatusBar } from '../../components/StatusBar';
 import { DataTable } from '../../components/DataTable/DataTable';
 import type { ColumnDef } from '../../components/DataTable/TableHeader';
@@ -27,6 +26,7 @@ import { useI18n } from '../../hooks/useI18n';
 import { useAiStore } from '../../stores/aiStore';
 import { aiCommands } from '../../commands/ai';
 import { connectionCommands } from '../../commands/connection';
+import { settingsCommands } from '../../commands/settings';
 import { cn } from '../../lib/cn';
 import type {
   HistoryListItem,
@@ -240,8 +240,7 @@ export function WorkflowWindow() {
 
   const handleOpenDir = useCallback(async () => {
     try {
-      const { open } = await import('@tauri-apps/plugin-shell');
-      await open(workflowsDir);
+      if (workflowsDir) await settingsCommands.openPath(workflowsDir);
     } catch { /* browser mode */ }
   }, [workflowsDir]);
 
@@ -295,7 +294,7 @@ export function WorkflowWindow() {
 
   return (
     <div className="flex h-screen flex-col bg-surface text-fg">
-      <TitleBar title={t('win.workflow')} rightContent={<ThemeToggle />} />
+      <TitleBar title={t('win.workflow')} />
 
       <div className="flex flex-1 min-h-0">
         {/* Left sidebar */}

@@ -49,16 +49,12 @@ pub async fn get_log_path(state: State<'_, AppState>) -> Result<String, CommandE
 }
 
 #[tauri::command]
-pub async fn open_log_folder(state: State<'_, AppState>) -> Result<(), CommandError> {
-    let settings = state.store.get_settings().await;
-    let data_dir = state.store.data_dir();
-    let log_dir = if settings.log_path.is_empty() {
-        data_dir.join("logs")
-    } else {
-        PathBuf::from(&settings.log_path)
-    };
-    std::fs::create_dir_all(&log_dir).map_err(CommandError::from)?;
-    open::that(&log_dir).map_err(|e| CommandError::Internal(format!("open_log_folder: {e}")))
+pub async fn open_path(path: String) -> Result<(), CommandError> {
+    let p = PathBuf::from(&path);
+    if p.is_dir() {
+        std::fs::create_dir_all(&p).map_err(CommandError::from)?;
+    }
+    open::that(&path).map_err(|e| CommandError::Internal(format!("open_path: {e}")))
 }
 
 fn derive_key_from_password(password: &str, salt: &[u8]) -> Result<[u8; 32], CommandError> {

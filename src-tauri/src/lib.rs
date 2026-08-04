@@ -409,7 +409,7 @@ pub fn run() {
             commands::get_settings,
             commands::save_settings,
             commands::get_log_path,
-            commands::open_log_folder,
+            commands::open_path,
             commands::export_connections,
             commands::import_connections_preview,
             commands::write_file,

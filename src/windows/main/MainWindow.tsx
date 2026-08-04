@@ -166,7 +166,7 @@ export function MainWindow() {
       if (!cancelled) openDataSyncWindow();
     }).then((u) => { if (cancelled) u(); else cleanups.push(u); });
     void listenCrossWindow('menu:view-logs', () => {
-      if (!cancelled) void settingsCommands.openLogFolder();
+      if (!cancelled) void settingsCommands.getLogPath().then((p) => settingsCommands.openPath(p));
     }).then((u) => { if (cancelled) u(); else cleanups.push(u); });
     return () => { cancelled = true; cleanups.forEach((fn) => fn()); };
   }, []);
