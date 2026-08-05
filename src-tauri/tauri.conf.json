@@ -20,9 +20,6 @@
         "minWidth": 520,
         "minHeight": 400,
         "decorations": true,
-        "titleBarStyle": "Overlay",
-        "hiddenTitle": true,
-        "trafficLightPosition": { "x": 16, "y": 18 },
         "transparent": false,
         "visible": false,
         "acceptFirstMouse": true
@@ -36,8 +33,12 @@
         "img-src": "'self' data: asset: tauri:",
         "connect-src": "'self' https: http: ipc: http://ipc.localhost"
       },
-      "dangerousDisableAssetCspModification": ["style-src"],
-      "capabilities": ["default"]
+      "dangerousDisableAssetCspModification": [
+        "style-src"
+      ],
+      "capabilities": [
+        "default"
+      ]
     }
   },
   "bundle": {

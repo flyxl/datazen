@@ -1,8 +1,10 @@
-//! macOS traffic light (window controls) positioning.
+//! macOS window customization: overlay title bar and traffic light positioning.
 //!
 //! Replicates tao's `inset_traffic_lights` algorithm via native Cocoa APIs
 //! so that programmatically created sub-windows get the same button layout
-//! as the main window configured through `tauri.conf.json`.
+//! as the main window. Also provides `apply_overlay_titlebar` to apply
+//! the overlay title bar style after window creation (avoiding Windows
+//! incompatibility from putting `titleBarStyle: Overlay` in tauri.conf.json).
 
 use objc2::msg_send;
 use objc2::runtime::AnyObject;
@@ -15,6 +17,28 @@ const Y: f64 = 18.0;
 const CLOSE: isize = 0;
 const MINIATURIZE: isize = 1;
 const ZOOM: isize = 2;
+
+/// Apply overlay-style title bar: transparent, hidden title, full-size content.
+/// This replaces `titleBarStyle: "Overlay"` + `hiddenTitle: true` from the JSON
+/// config, which is macOS-specific and causes click-through issues on Windows.
+pub fn apply_overlay_titlebar(window: &impl HasWindowHandle) {
+    let Ok(handle) = window.window_handle() else { return };
+    if let RawWindowHandle::AppKit(h) = handle.as_raw() {
+        unsafe {
+            let ns_view = h.ns_view.as_ptr() as *mut AnyObject;
+            let ns_window: *mut AnyObject = msg_send![ns_view, window];
+            if ns_window.is_null() {
+                return;
+            }
+            // NSWindowStyleMask flags
+            let mask: usize = msg_send![ns_window, styleMask];
+            let full_size_content_view: usize = 1 << 15; // NSWindowStyleMaskFullSizeContentView
+            let _: () = msg_send![ns_window, setStyleMask: mask | full_size_content_view];
+            let _: () = msg_send![ns_window, setTitlebarAppearsTransparent: true];
+            let _: () = msg_send![ns_window, setTitleVisibility: 1_isize]; // NSWindowTitleHidden
+        }
+    }
+}
 
 /// Apply custom traffic light positions on any type that exposes a window handle.
 pub fn apply_traffic_lights(window: &impl HasWindowHandle) {

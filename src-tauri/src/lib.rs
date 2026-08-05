@@ -372,9 +372,14 @@ pub fn run() {
 
             app.manage(app_state);
 
-            #[cfg(not(target_os = "macos"))]
-            {
-                if let Some(win) = app.get_webview_window("main") {
+            if let Some(win) = app.get_webview_window("main") {
+                #[cfg(target_os = "macos")]
+                {
+                    macos::apply_overlay_titlebar(&win);
+                    macos::apply_traffic_lights(&win);
+                }
+                #[cfg(not(target_os = "macos"))]
+                {
                     let _ = win.set_decorations(false);
                 }
             }
