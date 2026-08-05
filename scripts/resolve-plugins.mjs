@@ -140,6 +140,7 @@ const FRONTEND_PLUGIN_CONFIG = {
       component: 'SupersetConnectionFields',
       path: '../../.plugins/superset/ui/SupersetConnectionFields',
       formVariant: 'superset',
+      validator: { export: 'supersetValidate' },
     },
     schemaTree: {
       component: 'SupersetSchemaTree',
@@ -154,6 +155,7 @@ function generateFrontendRegistry(plugins) {
   const importLines = [];
   const dbEntryLines = [];
   const formEntryLines = [];
+  const validatorEntryLines = [];
   const dialectEntryLines = [];
   const schemaTreeEntryLines = [];
   const pluginDbTypes = [];
@@ -174,8 +176,15 @@ function generateFrontendRegistry(plugins) {
 
     // Connection form
     if (cfg.connectionForm) {
+      const formImports = [cfg.connectionForm.component];
+      if (cfg.connectionForm.validator) {
+        formImports.push(cfg.connectionForm.validator.export);
+        validatorEntryLines.push(
+          `  ${cfg.connectionForm.formVariant}: ${cfg.connectionForm.validator.export},`
+        );
+      }
       importLines.push(
-        `import { ${cfg.connectionForm.component} } from '${cfg.connectionForm.path}';`
+        `import { ${formImports.join(', ')} } from '${cfg.connectionForm.path}';`
       );
       formEntryLines.push(
         `  { formVariant: '${cfg.connectionForm.formVariant}', component: ${cfg.connectionForm.component} },`
@@ -227,6 +236,7 @@ function generateFrontendRegistry(plugins) {
 ${importLines.length > 0 ? importLines.join('\n') + '\n' : ''}import { invoke } from '@tauri-apps/api/core';
 import type { DatabaseTypeMeta } from '@datazen/plugin-sdk';
 import type { SqlDialectStrategy } from '@datazen/plugin-sdk';
+import type { PluginFormValidator } from '@datazen/plugin-sdk';
 import type { ComponentType } from 'react';
 
 /**
@@ -267,6 +277,16 @@ export function getPluginConnectionForm(formVariant: string): ComponentType<any>
     }
   }
   return undefined;
+}
+
+/** Plugin-provided form validators, keyed by form variant. */
+const PLUGIN_VALIDATORS: Record<string, PluginFormValidator> = {
+${validatorEntryLines.join('\n')}
+};
+
+/** Lookup plugin-provided form validator by form variant. */
+export function getPluginValidator(formVariant: string): PluginFormValidator | undefined {
+  return PLUGIN_VALIDATORS[formVariant];
 }
 
 // ===== Plugin Schema Trees =====
