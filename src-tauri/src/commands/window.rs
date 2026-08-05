@@ -53,7 +53,7 @@ pub fn create_sub_window(app: AppHandle, options: CreateWindowOptions) -> Result
         builder = builder
             .title_bar_style(tauri::TitleBarStyle::Overlay)
             .hidden_title(true)
-            .traffic_light_position(tauri::LogicalPosition::new(14.0, 16.0));
+            .traffic_light_position(tauri::LogicalPosition::new(16.0, 18.0));
     }
 
     if let Some(mw) = options.min_width {
@@ -66,6 +66,10 @@ pub fn create_sub_window(app: AppHandle, options: CreateWindowOptions) -> Result
         builder = builder.center();
     }
 
-    builder.build().map_err(|e| CommandError::Internal(e.to_string()))?;
+    let webview_window = builder.build().map_err(|e| CommandError::Internal(e.to_string()))?;
+
+    #[cfg(target_os = "macos")]
+    crate::macos::apply_traffic_lights(&webview_window);
+
     Ok(())
 }
