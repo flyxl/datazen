@@ -1325,7 +1325,7 @@ dependencies = [
 [[package]]
 name = "datazen-plugin-olap"
 version = "0.0.7"
-source = "git+https://github.com/flyxl/datazen-plugin-olap.git#bce30105677740555c12fd23b3c218a3b3c1f23e"
+source = "git+https://github.com/flyxl/datazen-plugin-olap.git#3fe9959dc1a96d49617903c512395ea493fc0ade"
 dependencies = [
  "async-trait",
  "datazen-driver-api",
@@ -2745,7 +2745,7 @@ dependencies = [
  "libc",
  "percent-encoding",
  "pin-project-lite",
- "socket2 0.6.5",
+ "socket2 0.5.10",
  "system-configuration 0.7.0",
  "tokio",
  "tower-service",
@@ -2765,7 +2765,7 @@ dependencies = [
  "js-sys",
  "log",
  "wasm-bindgen",
- "windows-core 0.62.2",
+ "windows-core 0.61.2",
 ]
 
 [[package]]
@@ -4603,7 +4603,7 @@ dependencies = [
  "quinn-udp",
  "rustc-hash",
  "rustls 0.23.43",
- "socket2 0.6.5",
+ "socket2 0.5.10",
  "thiserror 2.0.19",
  "tokio",
  "tracing",
@@ -4642,7 +4642,7 @@ dependencies = [
  "cfg_aliases",
  "libc",
  "once_cell",
- "socket2 0.6.5",
+ "socket2 0.5.10",
  "tracing",
  "windows-sys 0.61.2",
 ]
@@ -6967,7 +6967,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.4.3",
+ "getrandom 0.3.4",
  "once_cell",
  "rustix",
  "windows-sys 0.61.2",
