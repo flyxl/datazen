@@ -52,7 +52,11 @@ pre,
 code,
 .cm-content,
 .cm-editor,
-.selectable {
+.selectable,
+[role="alert"],
+.text-red-400,
+.text-red-500,
+.whitespace-pre-wrap {
   -webkit-user-select: text;
   user-select: text;
 }

@@ -1012,8 +1012,9 @@ fn apply_mysql_select_limit(stmt: &str, limit: Option<u32>) -> (String, Option<u
         return (stmt.to_string(), None);
     }
 
-    if upper.contains(" LIMIT ") {
-        return (stmt.to_string(), None);
+    let has_limit = upper.split_whitespace().any(|w| w == "LIMIT");
+    if has_limit {
+        return (stmt.to_string(), Some(lim));
     }
 
     let effective = format!("{} LIMIT {}", trimmed, lim + 1);

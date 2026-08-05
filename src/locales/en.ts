@@ -312,7 +312,7 @@ const en: Record<TranslationKey, string> = {
   'query.shortcutHint': 'Press ⌘+Enter to execute',
   'query.historyTitle': 'Query History',
   'query.noHistory': 'No history yet',
-  'query.resultTruncated': 'Result truncated, showing first {limit} rows',
+  'query.resultTruncated': 'Result truncated to {limit} rows, adjustable in Settings',
   'query.tab': 'Query {n}',
   'query.notConnected': 'Not connected',
   'query.executeFailed': 'Execution failed',

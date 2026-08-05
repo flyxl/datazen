@@ -869,8 +869,8 @@ fn split_sql_statements(input: &str) -> Vec<String> {
 
 /// If the statement is a SELECT without an existing LIMIT clause, returns a
 /// modified SQL with `LIMIT limit+1` appended (the extra row lets us detect
-/// truncation) and `Some(limit)` as the applied cap.  Otherwise returns the
-/// original statement unchanged and `None`.
+/// truncation).  If the statement already has a LIMIT, the SQL is unchanged
+/// but the cap is still returned so the caller can truncate over-limit results.
 fn apply_select_limit(stmt: &str, limit: Option<u32>) -> (String, Option<u32>) {
     let Some(lim) = limit else {
         return (stmt.to_string(), None);
@@ -884,7 +884,7 @@ fn apply_select_limit(stmt: &str, limit: Option<u32>) -> (String, Option<u32>) {
     }
 
     if has_top_level_limit(trimmed) {
-        return (stmt.to_string(), None);
+        return (stmt.to_string(), Some(lim));
     }
 
     let effective = format!("{} LIMIT {}", trimmed, lim + 1);
