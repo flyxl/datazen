@@ -5,13 +5,14 @@
  * Regenerated every time the build runs with different --plugins args.
  */
 import { supersetMeta } from '../../.plugins/superset/ui/plugin-meta';
-import { SupersetConnectionFields } from '../../.plugins/superset/ui/SupersetConnectionFields';
+import { SupersetConnectionFields, supersetValidate } from '../../.plugins/superset/ui/SupersetConnectionFields';
 import { SupersetSchemaTree } from '../../.plugins/superset/ui/SupersetSchemaTree';
 import { kiwiMeta } from '../../.plugins/kiwi/ui/plugin-meta';
 import { KiwiConnectionFields } from '../../.plugins/kiwi/ui/KiwiConnectionFields';
 import { invoke } from '@tauri-apps/api/core';
 import type { DatabaseTypeMeta } from '@datazen/plugin-sdk';
 import type { SqlDialectStrategy } from '@datazen/plugin-sdk';
+import type { PluginFormValidator } from '@datazen/plugin-sdk';
 import type { ComponentType } from 'react';
 
 /**
@@ -54,6 +55,16 @@ export function getPluginConnectionForm(formVariant: string): ComponentType<any>
     }
   }
   return undefined;
+}
+
+/** Plugin-provided form validators, keyed by form variant. */
+const PLUGIN_VALIDATORS: Record<string, PluginFormValidator> = {
+  superset: supersetValidate,
+};
+
+/** Lookup plugin-provided form validator by form variant. */
+export function getPluginValidator(formVariant: string): PluginFormValidator | undefined {
+  return PLUGIN_VALIDATORS[formVariant];
 }
 
 // ===== Plugin Schema Trees =====
