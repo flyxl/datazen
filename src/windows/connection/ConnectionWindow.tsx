@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { TitleBar } from '../../components/TitleBar';
 import { useI18n } from '../../hooks/useI18n';
 import { useThemeListener } from '../../hooks/useThemeListener';
@@ -18,10 +18,15 @@ export function ConnectionWindow() {
   const loadSettings = useSettingsStore((s) => s.loadSettings);
   const loadAiConfig = useAiStore((s) => s.loadConfig);
 
-  const connectionId = getUrlParam('connectionId') ?? '';
+  const urlConnectionId = getUrlParam('connectionId') ?? '';
+  const configId = getUrlParam('configId') ?? '';
   const connectionName = getUrlParam('connectionName') ?? t('connWin.connected');
   const databaseType = getUrlParam('databaseType') ?? 'postgresql';
   const initialDatabase = getUrlParam('database') ?? undefined;
+
+  const [connectionId, setConnectionId] = useState(urlConnectionId);
+  const [connectError, setConnectError] = useState<string | null>(null);
+  const [showLoading, setShowLoading] = useState(false);
 
   const setupAiListeners = useAiStore((s) => s.setupEventListeners);
 
@@ -33,6 +38,32 @@ export function ConnectionWindow() {
       void cleanup.then((fn) => fn());
     };
   }, [loadSettings, loadAiConfig, setupAiListeners]);
+
+  useEffect(() => {
+    if (connectionId || !configId) return;
+    let cancelled = false;
+
+    const timer = setTimeout(() => { if (!cancelled) setShowLoading(true); }, 400);
+
+    (async () => {
+      try {
+        const connId = await connectionCommands.connect(configId);
+        if (!cancelled) {
+          setConnectionId(connId);
+          setConnectError(null);
+          void emitCrossWindow('datazen:connection-ready', { configId, connectionId: connId });
+        }
+      } catch (e) {
+        if (!cancelled) {
+          const msg = typeof e === 'string' ? e : e instanceof Error ? e.message : t('backend.unknownError');
+          setConnectError(msg);
+          void emitCrossWindow('datazen:connection-failed', { configId, error: msg });
+        }
+      }
+    })();
+
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [connectionId, configId, t]);
 
   useEffect(() => {
     if (!connectionId) return;
@@ -82,7 +113,12 @@ export function ConnectionWindow() {
     return () => clearInterval(timer);
   }, [connectionId]);
 
-  if (!connectionId) {
+  const dbType = databaseType as DatabaseType;
+  const viewMode = DB_REGISTRY[dbType]?.connectionView ?? 'sql';
+  const ViewComponent = getConnectionView(viewMode);
+  const centerTitle = `${connectionName} - ${getDbLabel(dbType)} - DataZen`;
+
+  if (!connectionId && !configId) {
     return (
       <div className="flex h-screen items-center justify-center bg-surface text-fg">
         <div className="text-sm text-fg-muted">{t('connWin.missingParams')}</div>
@@ -90,10 +126,58 @@ export function ConnectionWindow() {
     );
   }
 
-  const dbType = databaseType as DatabaseType;
-  const viewMode = DB_REGISTRY[dbType]?.connectionView ?? 'sql';
-  const ViewComponent = getConnectionView(viewMode);
-  const centerTitle = `${connectionName} - ${getDbLabel(dbType)} - DataZen`;
+  if (!connectionId && (showLoading || connectError)) {
+    return (
+      <div className="flex h-screen min-h-0 flex-col bg-surface text-fg">
+        <TitleBar
+          title={centerTitle}
+          leftContent={
+            <div className="flex items-center gap-2">
+              {connectError
+                ? <span className="inline-flex h-2 w-2 rounded-full bg-red-500" />
+                : <span className="inline-flex h-2 w-2 animate-pulse rounded-full bg-yellow-400" />
+              }
+              <span className="text-xs text-fg-secondary">{connectionName}</span>
+            </div>
+          }
+        />
+        <div className="flex flex-1 flex-col items-center justify-center gap-4">
+          {connectError ? (
+            <>
+              <div className="text-sm text-red-400">{connectError}</div>
+              <button
+                className="rounded-md bg-blue-500 px-4 py-1.5 text-sm text-white hover:bg-blue-600"
+                onClick={() => {
+                  setConnectError(null);
+                  void (async () => {
+                    if (!('__TAURI_INTERNALS__' in globalThis)) return;
+                    const { getCurrentWindow } = await import('@tauri-apps/api/window');
+                    await getCurrentWindow().destroy();
+                  })();
+                }}
+              >
+                {t('common.close')}
+              </button>
+            </>
+          ) : (
+            <>
+              <div className="h-6 w-6 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
+              <div className="text-sm text-fg-muted">{t('conn.connecting')}</div>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  if (!connectionId) {
+    return (
+      <div className="flex h-screen min-h-0 flex-col bg-surface text-fg">
+        <TitleBar title={centerTitle} />
+        <div className="flex-1" />
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen min-h-0 flex-col bg-surface text-fg">

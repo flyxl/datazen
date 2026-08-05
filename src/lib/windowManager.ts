@@ -147,8 +147,15 @@ export function openSettingsWindow(section?: string) {
 
 // ── Multi-instance windows ──────────────────────────────────────────
 
-export function openConnectionWindow(connectionId: string, connectionName: string, database?: string, databaseType?: string) {
-  const params: Record<string, string> = { window: 'connection', connectionId, connectionName };
+export function openConnectionWindow(
+  opts: { connectionId?: string; configId?: string },
+  connectionName: string,
+  database?: string,
+  databaseType?: string,
+) {
+  const params: Record<string, string> = { window: 'connection', connectionName };
+  if (opts.connectionId) params.connectionId = opts.connectionId;
+  if (opts.configId) params.configId = opts.configId;
   if (database) params.database = database;
   if (databaseType) params.databaseType = databaseType;
 

@@ -102,7 +102,7 @@ export function DataTable({
   const hasFilters = filters.length > 0 && onRemoveFilter && onClearFilters;
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-md border border-edge bg-surface">
+    <div className="selectable flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-md border border-edge bg-surface">
       {hasFilters && (
         <FilterBar filters={filters} onRemove={onRemoveFilter} onClear={onClearFilters} />
       )}

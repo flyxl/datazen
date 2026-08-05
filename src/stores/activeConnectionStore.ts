@@ -26,6 +26,12 @@ interface ActiveConnectionStore {
   connections: Record<string, ConnectionEntry>;
 
   connect: (config: ConnectionConfig) => Promise<void>;
+  /** Mark a connection as 'connecting' without triggering IPC. */
+  markConnecting: (configId: string, database: string | null) => void;
+  /** Mark a connection as 'connected' (called from cross-window event). */
+  markConnected: (configId: string, connectionId: string) => void;
+  /** Mark a connection as failed (called from cross-window event). */
+  markError: (configId: string, error: string) => void;
   disconnect: (configId: string) => Promise<void>;
   removeByConnectionId: (connectionId: string) => void;
   reset: () => void;
@@ -73,6 +79,7 @@ export const useActiveConnectionStore = create<ActiveConnectionStore>((set, get)
         },
       }));
       console.log('[connect] success', connectionId);
+      void emitCrossWindow('datazen:connection-ready', { configId, connectionId });
     } catch (e) {
       const msg = extractError(e);
       console.error('[connect] failed', msg);
@@ -88,7 +95,54 @@ export const useActiveConnectionStore = create<ActiveConnectionStore>((set, get)
           },
         },
       }));
+      void emitCrossWindow('datazen:connection-failed', { configId, error: msg });
     }
+  },
+
+  markConnecting: (configId, database) => {
+    set((s) => ({
+      connections: {
+        ...s.connections,
+        [configId]: {
+          connectionId: '',
+          configId,
+          status: 'connecting',
+          serverInfo: null,
+          currentDatabase: database,
+          error: null,
+        },
+      },
+    }));
+  },
+
+  markConnected: (configId, connectionId) => {
+    set((s) => ({
+      connections: {
+        ...s.connections,
+        [configId]: {
+          ...s.connections[configId],
+          connectionId,
+          configId,
+          status: 'connected',
+          error: null,
+        },
+      },
+    }));
+  },
+
+  markError: (configId, error) => {
+    set((s) => ({
+      connections: {
+        ...s.connections,
+        [configId]: {
+          ...s.connections[configId],
+          connectionId: '',
+          configId,
+          status: 'error',
+          error,
+        },
+      },
+    }));
   },
 
   disconnect: async (configId) => {

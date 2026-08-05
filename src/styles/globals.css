@@ -40,6 +40,23 @@ html.macos-rounded #splash {
   box-sizing: border-box;
 }
 
+body {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+input,
+textarea,
+[contenteditable="true"],
+pre,
+code,
+.cm-content,
+.cm-editor,
+.selectable {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
 ::selection {
   background: rgba(59, 130, 246, 0.35);
 }

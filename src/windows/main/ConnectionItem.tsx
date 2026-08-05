@@ -76,8 +76,14 @@ export function ConnectionItem({
         </div>
         <div className="mt-0.5 truncate text-[11px] text-fg-muted">{addr}</div>
       </div>
+      {status === 'connecting' && (
+        <span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-yellow-400" title={t('conn.connecting')} />
+      )}
       {isConnected && (
         <span className="h-2 w-2 shrink-0 rounded-full bg-green-500" title={t('conn.connected')} />
+      )}
+      {status === 'error' && (
+        <span className="h-2 w-2 shrink-0 rounded-full bg-red-500" title={t('conn.failed')} />
       )}
     </div>
   );

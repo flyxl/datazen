@@ -60,7 +60,7 @@ pub async fn connect(state: State<'_, AppState>, config_id: String) -> Result<St
     tracing::info!(%config_id, "connect");
     let conn_id = state
         .connection_manager
-        .connect(&config_id)
+        .get_or_connect(&config_id)
         .await
         .cmd_err("connect")?;
 
