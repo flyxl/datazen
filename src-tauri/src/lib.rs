@@ -2,8 +2,6 @@ pub mod ai;
 mod cache;
 mod commands;
 mod db;
-#[cfg(target_os = "macos")]
-mod macos;
 pub mod mcp;
 mod plugin_init;
 mod services;
@@ -384,17 +382,7 @@ pub fn run() {
 
             app.manage(app_state);
 
-            if let Some(win) = app.get_webview_window("main") {
-                #[cfg(target_os = "macos")]
-                {
-                    macos::apply_overlay_titlebar(&win);
-                    macos::apply_traffic_lights(&win);
-                }
-                #[cfg(not(target_os = "macos"))]
-                {
-                    let _ = win.set_decorations(false);
-                }
-            }
+            let _ = app.get_webview_window("main");
 
             // Native menu only on macOS (goes to system menu bar).
             // On Windows with decorations:false, the native menu bar conflicts
@@ -500,8 +488,6 @@ pub fn run() {
         .on_window_event(|window, event| {
             #[cfg(target_os = "macos")]
             if let tauri::WindowEvent::Resized(size) = event {
-                macos::apply_traffic_lights(window);
-
                 let win = window.clone();
                 let size = *size;
                 std::thread::spawn(move || {

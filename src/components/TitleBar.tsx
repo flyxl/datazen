@@ -1,22 +1,26 @@
 import type { ReactNode } from 'react';
-import { useEffect } from 'react';
+import { useCallback, useEffect } from 'react';
 import { usePlatform } from '../hooks/usePlatform';
 import { useUiStore } from '../stores/uiStore';
 import { WindowControls } from './WindowControls';
 
 export interface TitleBarProps {
   title?: ReactNode;
-  /** Extra content placed next to the window controls on the left (macOS) or left side (Windows). */
   leftContent?: ReactNode;
-  /** Extra content placed on the right side (macOS) or next to controls (Windows). */
   rightContent?: ReactNode;
 }
 
 /**
  * Cross-platform title bar.
- * - macOS: uses native titleBarStyle overlay with system traffic lights;
- *          left padding reserves space for the native buttons (hidden in fullscreen)
- * - Windows/Linux: title + left content on the left, window controls on the right
+ *
+ * macOS: uses native titleBarStyle "Overlay" with system traffic lights.
+ *        Drag handled by `data-tauri-drag-region` (safe on macOS overlay).
+ *
+ * Windows/Linux: frameless window (decorations: false).
+ *        Drag handled by `startDragging()` JS API on mousedown.
+ *        This avoids the native-level event interception that
+ *        `data-tauri-drag-region` causes on Windows/WebView2.
+ *        Window controls rendered in web (WindowControls component).
  */
 export function TitleBar({ title, leftContent, rightContent }: TitleBarProps) {
   const platform = usePlatform();
@@ -38,43 +42,41 @@ export function TitleBar({ title, leftContent, rightContent }: TitleBarProps) {
     return () => { unlisten?.(); };
   }, [isMac]);
 
+  const handleDragMouseDown = useCallback(async (e: React.MouseEvent) => {
+    if (isMac) return;
+    if (e.button !== 0) return;
+    if ((e.target as HTMLElement).closest('button, a, input, [data-no-drag]')) return;
+
+    const { getCurrentWindow } = await import('@tauri-apps/api/window');
+    await getCurrentWindow().startDragging();
+  }, [isMac]);
+
+  const leftPad = isMac && !isFullscreen ? 'pl-[78px]' : 'pl-3';
+  const rightPad = isMac ? 'pr-[14px]' : 'pr-[140px]';
+
   return (
-    <header className="relative flex h-10 min-h-[40px] shrink-0 items-center bg-titlebar">
-      {isMac ? (
-        <>
-          {/* macOS: absolute overlay for drag — safe because macOS uses native titlebar overlay */}
-          <div className="absolute inset-0" data-tauri-drag-region />
-          {!isFullscreen && <div className="w-[78px] shrink-0" />}
-          {leftContent && (
-            <div className="relative z-10 flex items-center" style={isFullscreen ? { paddingLeft: '0.75rem' } : undefined}>{leftContent}</div>
-          )}
-          <div className="pointer-events-none flex min-w-0 flex-1 justify-center">
-            {title && (
-              <div className="truncate text-xs font-medium text-fg-secondary">{title}</div>
-            )}
-          </div>
-          {rightContent ? (
-            <div className="relative z-10 pr-3">{rightContent}</div>
-          ) : (
-            !isFullscreen && <div className="w-[78px] shrink-0" />
-          )}
-        </>
-      ) : (
-        <>
-          {/* Windows/Linux: only flex-1 spacer is draggable — avoids absolute overlay eating clicks */}
-          <div className="flex items-center gap-2 pl-3">
-            {title && (
-              <span className="truncate text-xs font-medium text-fg-secondary">{title}</span>
-            )}
-            {leftContent}
-          </div>
-          <div className="flex-1" data-tauri-drag-region />
-          {rightContent && (
-            <div className="flex items-center pr-1">{rightContent}</div>
-          )}
-          <WindowControls />
-        </>
-      )}
+    <header
+      className="relative flex h-10 min-h-[40px] shrink-0 items-center bg-titlebar"
+      onMouseDown={!isMac ? handleDragMouseDown : undefined}
+    >
+      {/* macOS only: native drag region via attribute (safe with overlay titlebar) */}
+      {isMac && <div className="absolute inset-0" data-tauri-drag-region />}
+      {/* Windows/Linux: web window controls (absolute positioned at right) */}
+      {!isMac && <WindowControls />}
+
+      <div className={`relative z-10 flex items-center ${leftPad}`}>
+        {leftContent}
+      </div>
+
+      <div className="pointer-events-none flex min-w-0 flex-1 justify-center">
+        {title && (
+          <div className="truncate text-xs font-medium text-fg-secondary">{title}</div>
+        )}
+      </div>
+
+      <div className={`relative z-10 flex items-center ${rightPad}`}>
+        {rightContent}
+      </div>
     </header>
   );
 }

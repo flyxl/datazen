@@ -24,6 +24,8 @@
     "dialog:default",
     "os:default",
     "core:window:allow-is-maximized",
+    "core:window:allow-maximize",
+    "core:window:allow-unmaximize",
     "core:window:allow-unminimize",
     "core:window:allow-set-decorations"
   ]
