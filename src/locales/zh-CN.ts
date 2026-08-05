@@ -125,6 +125,7 @@ const zhCN = {
   // ── Connection Item / Card ──
   'conn.connected': '已连接',
   'conn.connecting': '连接中…',
+  'conn.failed': '连接失败',
   'conn.connect': '连接',
   'conn.disconnect': '断开',
   'conn.lastConnected': '最后连接：',

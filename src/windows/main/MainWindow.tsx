@@ -58,7 +58,7 @@ export function MainWindow() {
   const mainSidebarWidth = useUiStore((s) => s.mainSidebarWidth);
   const setMainSidebarWidth = useUiStore((s) => s.setMainSidebarWidth);
 
-  const connectAction = useActiveConnectionStore((s) => s.connect);
+  const markConnecting = useActiveConnectionStore((s) => s.markConnecting);
   const disconnectAction = useActiveConnectionStore((s) => s.disconnect);
   const activeConnections = useActiveConnectionStore((s) => s.connections);
 
@@ -143,14 +143,27 @@ export function MainWindow() {
 
   // ── Cross-window events ──
   useEffect(() => {
-    let unlisten: (() => void) | undefined;
+    let cancelled = false;
+    const fns: (() => void)[] = [];
     listenCrossWindow('datazen:connection-closed', (payload) => {
       const data = payload as { connectionId?: string } | undefined;
       if (data?.connectionId) {
         useActiveConnectionStore.getState().removeByConnectionId(data.connectionId);
       }
-    }).then((fn) => { unlisten = fn; });
-    return () => unlisten?.();
+    }).then((fn) => { if (cancelled) fn(); else fns.push(fn); });
+    listenCrossWindow('datazen:connection-ready', (payload) => {
+      const data = payload as { configId?: string; connectionId?: string } | undefined;
+      if (data?.configId && data?.connectionId) {
+        useActiveConnectionStore.getState().markConnected(data.configId, data.connectionId);
+      }
+    }).then((fn) => { if (cancelled) fn(); else fns.push(fn); });
+    listenCrossWindow('datazen:connection-failed', (payload) => {
+      const data = payload as { configId?: string; error?: string } | undefined;
+      if (data?.configId) {
+        useActiveConnectionStore.getState().markError(data.configId, data?.error ?? 'Unknown error');
+      }
+    }).then((fn) => { if (cancelled) fn(); else fns.push(fn); });
+    return () => { cancelled = true; fns.forEach((fn) => fn()); };
   }, []);
 
   useEffect(() => {
@@ -173,18 +186,34 @@ export function MainWindow() {
 
   // (native context menus handle their own dismiss)
 
-  const handleConnect = useCallback(async (cfg: ConnectionConfig) => {
+  const handleConnect = useCallback((cfg: ConnectionConfig) => {
     const existing = useActiveConnectionStore.getState().connections[cfg.id];
     if (existing?.status === 'connected' && existing.connectionId) {
-      openConnectionWindow(existing.connectionId, cfg.name, cfg.database, cfg.databaseType);
+      openConnectionWindow({ connectionId: existing.connectionId }, cfg.name, cfg.database, cfg.databaseType);
       return;
     }
-    await connectAction(cfg);
-    const entry = useActiveConnectionStore.getState().connections[cfg.id];
-    if (entry?.status === 'connected' && entry.connectionId) {
-      openConnectionWindow(entry.connectionId, cfg.name, cfg.database, cfg.databaseType);
+    if (existing?.status !== 'connecting') {
+      markConnecting(cfg.id, cfg.database ?? null);
     }
-  }, [connectAction]);
+
+    const FAST_THRESHOLD_MS = 300;
+    void (async () => {
+      try {
+        const connId = await Promise.race([
+          connectionCommands.connect(cfg.id),
+          new Promise<null>((r) => setTimeout(() => r(null), FAST_THRESHOLD_MS)),
+        ]);
+        if (connId) {
+          useActiveConnectionStore.getState().markConnected(cfg.id, connId);
+          openConnectionWindow({ connectionId: connId }, cfg.name, cfg.database, cfg.databaseType);
+        } else {
+          openConnectionWindow({ configId: cfg.id }, cfg.name, cfg.database, cfg.databaseType);
+        }
+      } catch {
+        openConnectionWindow({ configId: cfg.id }, cfg.name, cfg.database, cfg.databaseType);
+      }
+    })();
+  }, [markConnecting]);
 
   const { size: sidebarWidth, handleRef } = useResizable({
     direction: 'horizontal',

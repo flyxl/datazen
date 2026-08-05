@@ -127,6 +127,7 @@ const en: Record<TranslationKey, string> = {
   // ── Connection Item / Card ──
   'conn.connected': 'Connected',
   'conn.connecting': 'Connecting…',
+  'conn.failed': 'Connection failed',
   'conn.connect': 'Connect',
   'conn.disconnect': 'Disconnect',
   'conn.lastConnected': 'Last connected: ',
