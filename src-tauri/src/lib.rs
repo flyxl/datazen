@@ -2,6 +2,8 @@ pub mod ai;
 mod cache;
 mod commands;
 mod db;
+#[cfg(target_os = "macos")]
+mod macos;
 pub mod mcp;
 mod plugin_init;
 mod services;
@@ -475,6 +477,8 @@ pub fn run() {
         .on_window_event(|window, event| {
             #[cfg(target_os = "macos")]
             if let tauri::WindowEvent::Resized(size) = event {
+                macos::apply_traffic_lights(window);
+
                 let win = window.clone();
                 let size = *size;
                 std::thread::spawn(move || {
