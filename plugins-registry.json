@@ -21,12 +21,6 @@
     "feature": "plugin-kiwi",
     "description": "Kiwi cloud database proxy"
   },
-  "olap": {
-    "source": "git",
-    "git": "https://github.com/flyxl/datazen-plugin-olap.git",
-    "feature": "plugin-olap",
-    "description": "Presto / Trino OLAP engines"
-  },
   "superset": {
     "source": "git",
     "git": "https://github.com/flyxl/datazen-plugin-superset.git",
