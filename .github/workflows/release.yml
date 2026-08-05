@@ -124,22 +124,11 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install
 
-      - name: Clone plugin repositories for Cargo resolution
+      - name: Resolve plugins and build Tauri app
         shell: bash
         run: |
-          mkdir -p .plugins
-          for repo in \
-            "kiwi https://github.com/flyxl/datazen-plugin-kiwi.git"; do
-            name="${repo%% *}"
-            url="${repo#* }"
-            if [ ! -d ".plugins/$name/.git" ]; then
-              git clone --depth 1 "$url" ".plugins/$name"
-            fi
-          done
-
-      - name: Build Tauri app
-        shell: bash
-        run: |
+          # resolve-plugins.mjs clones repos, injects Cargo deps/features, generates code
+          node scripts/resolve-plugins.mjs --plugins="${{ matrix.plugins }}"
           FEATURES="${{ matrix.features }}"
           if [ -n "$FEATURES" ]; then
             pnpm tauri build --target ${{ matrix.target }} -f "$FEATURES"

@@ -6,8 +6,7 @@ members = [
     "packages/ai-api",
 ]
 exclude = [
-    ".plugins/kiwi",
-    ".plugins/superset",
+    ".plugins/*",
 ]
 
 [profile.dev]
@@ -22,5 +21,6 @@ opt-level = "s"
 [patch."https://github.com/flyxl/datazen-driver-api.git"]
 datazen-driver-api = { path = "packages/driver-api" }
 
-[patch."https://github.com/flyxl/datazen-plugin-kiwi.git"]
-datazen-plugin-kiwi = { path = ".plugins/kiwi" }
+# Plugin patches — injected by resolve-plugins.mjs at build time; do NOT add manually.
+# <<plugin-patches>>
+# <</plugin-patches>>

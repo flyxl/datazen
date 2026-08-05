@@ -4,11 +4,6 @@
  * This file registers frontend components and metadata for active plugins.
  * Regenerated every time the build runs with different --plugins args.
  */
-import { supersetMeta } from '../../.plugins/superset/ui/plugin-meta';
-import { SupersetConnectionFields, supersetValidate } from '../../.plugins/superset/ui/SupersetConnectionFields';
-import { SupersetSchemaTree } from '../../.plugins/superset/ui/SupersetSchemaTree';
-import { kiwiMeta } from '../../.plugins/kiwi/ui/plugin-meta';
-import { KiwiConnectionFields } from '../../.plugins/kiwi/ui/KiwiConnectionFields';
 import { invoke } from '@tauri-apps/api/core';
 import type { DatabaseTypeMeta } from '@datazen/plugin-sdk';
 import type { SqlDialectStrategy } from '@datazen/plugin-sdk';
@@ -23,12 +18,11 @@ import type { ComponentType } from 'react';
 export const PLUGIN_PROTOCOL_VERSION = 1;
 
 /** Database types contributed by active plugins. */
-export type PluginDatabaseType = 'superset' | 'kiwi';
+export type PluginDatabaseType = never;
 
 /** Plugin DB metadata entries (merged into DB_REGISTRY at runtime). */
 export const PLUGIN_DB_ENTRIES: Record<string, DatabaseTypeMeta> = {
-  superset: supersetMeta,
-  kiwi: kiwiMeta,
+
 };
 
 /** Plugin-provided SQL dialect strategies (merged into DIALECTS). */
@@ -43,8 +37,7 @@ interface PluginFormEntry {
 }
 
 const PLUGIN_FORMS: PluginFormEntry[] = [
-  { formVariant: 'superset', component: SupersetConnectionFields },
-  { formVariant: 'kiwi', component: KiwiConnectionFields },
+
 ];
 
 /** Lookup plugin-provided connection form by form variant (e.g. 'kiwi', 'catalog'). */
@@ -59,7 +52,7 @@ export function getPluginConnectionForm(formVariant: string): ComponentType<any>
 
 /** Plugin-provided form validators, keyed by form variant. */
 const PLUGIN_VALIDATORS: Record<string, PluginFormValidator> = {
-  superset: supersetValidate,
+
 };
 
 /** Lookup plugin-provided form validator by form variant. */
@@ -75,7 +68,7 @@ interface PluginSchemaTreeEntry {
 }
 
 const PLUGIN_SCHEMA_TREES: PluginSchemaTreeEntry[] = [
-  { dbType: 'superset', component: SupersetSchemaTree },
+
 ];
 
 /** Lookup plugin-provided schema tree by database type. */
