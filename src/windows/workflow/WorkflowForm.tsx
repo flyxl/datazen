@@ -64,6 +64,39 @@ export function WorkflowForm({
         <input className={inputClass} value={draft.description} onChange={(e) => onDraftChange({ ...draft, description: e.target.value })} />
       </div>
 
+      {/* Variables */}
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <label className="text-xs text-fg-muted font-medium">{t('workflows.form.variables')}</label>
+          <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => onDraftChange({ ...draft, variables: [...draft.variables, { name: '', varType: 'string', description: '', required: false }] })} className="text-accent text-xs hover:underline">
+            + {t('workflows.form.addVariable')}
+          </button>
+        </div>
+        {draft.variables.map((v, i) => (
+          <div key={i} className="mb-2 flex items-center gap-2">
+            <input className={inputClass} value={v.name} placeholder={t('workflows.form.varName')} style={{ width: '25%' }}
+              onChange={(e) => { const vars = [...draft.variables]; vars[i] = { ...vars[i], name: e.target.value }; onDraftChange({ ...draft, variables: vars }); }} />
+            <select className={inputClass} value={v.varType} style={{ width: '20%' }}
+              onChange={(e) => { const vars = [...draft.variables]; vars[i] = { ...vars[i], varType: e.target.value }; onDraftChange({ ...draft, variables: vars }); }}>
+              <option value="string">string</option>
+              <option value="number">number</option>
+              <option value="connection">{t('workflows.form.varTypeConnection')}</option>
+            </select>
+            <input className={inputClass} value={v.description} placeholder={t('workflows.form.varDesc')} style={{ width: '35%' }}
+              onChange={(e) => { const vars = [...draft.variables]; vars[i] = { ...vars[i], description: e.target.value }; onDraftChange({ ...draft, variables: vars }); }} />
+            <label className="flex items-center gap-1 text-xs text-fg-muted whitespace-nowrap">
+              <input type="checkbox" checked={v.required}
+                onChange={(e) => { const vars = [...draft.variables]; vars[i] = { ...vars[i], required: e.target.checked }; onDraftChange({ ...draft, variables: vars }); }} />
+              {t('workflows.form.varRequired')}
+            </label>
+            <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => onDraftChange({ ...draft, variables: draft.variables.filter((_, j) => j !== i) })}
+              className="p-1 text-fg-muted hover:text-red-400">
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        ))}
+      </div>
+
       <div>
         <div className="flex items-center justify-between mb-2">
           <label className="text-xs text-fg-muted font-medium">{t('workflows.steps')}</label>
