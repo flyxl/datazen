@@ -375,9 +375,9 @@ fn build_mysql_url(config: &ConnectionConfig) -> Result<String, DriverError> {
 impl DatabaseDriver for MysqlDriver {
     fn driver_type(&self) -> DatabaseType {
         if self.is_mariadb {
-            DatabaseType::MariaDB
+            "mariadb".to_string()
         } else {
-            DatabaseType::MySQL
+            "mysql".to_string()
         }
     }
 

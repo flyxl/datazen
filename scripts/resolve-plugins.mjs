@@ -133,6 +133,21 @@ const FRONTEND_PLUGIN_CONFIG = {
       { family: 'trino', export: 'trinoDialect', path: '../../.plugins/olap/ui/trinoDialect' },
     ],
   },
+  superset: {
+    dbTypes: [{ id: 'superset', metaExport: 'supersetMeta' }],
+    metaPath: '../../.plugins/superset/ui/plugin-meta',
+    connectionForm: {
+      component: 'SupersetConnectionFields',
+      path: '../../.plugins/superset/ui/SupersetConnectionFields',
+      formVariant: 'superset',
+    },
+    schemaTree: {
+      component: 'SupersetSchemaTree',
+      path: '../../.plugins/superset/ui/SupersetSchemaTree',
+      dbType: 'superset',
+    },
+    sqlDialects: [],
+  },
 };
 
 function generateFrontendRegistry(plugins) {
@@ -140,6 +155,7 @@ function generateFrontendRegistry(plugins) {
   const dbEntryLines = [];
   const formEntryLines = [];
   const dialectEntryLines = [];
+  const schemaTreeEntryLines = [];
   const pluginDbTypes = [];
 
   for (const id of plugins) {
@@ -163,6 +179,16 @@ function generateFrontendRegistry(plugins) {
       );
       formEntryLines.push(
         `  { formVariant: '${cfg.connectionForm.formVariant}', component: ${cfg.connectionForm.component} },`
+      );
+    }
+
+    // Schema tree
+    if (cfg.schemaTree) {
+      importLines.push(
+        `import { ${cfg.schemaTree.component} } from '${cfg.schemaTree.path}';`
+      );
+      schemaTreeEntryLines.push(
+        `  { dbType: '${cfg.schemaTree.dbType}', component: ${cfg.schemaTree.component} },`
       );
     }
 
@@ -243,6 +269,27 @@ export function getPluginConnectionForm(formVariant: string): ComponentType<any>
   return undefined;
 }
 
+// ===== Plugin Schema Trees =====
+
+interface PluginSchemaTreeEntry {
+  dbType: string;
+  component: ComponentType<any>;
+}
+
+const PLUGIN_SCHEMA_TREES: PluginSchemaTreeEntry[] = [
+${schemaTreeEntryLines.join('\n')}
+];
+
+/** Lookup plugin-provided schema tree by database type. */
+export function getPluginSchemaTree(dbType: string): ComponentType<any> | undefined {
+  for (const entry of PLUGIN_SCHEMA_TREES) {
+    if (entry.dbType === dbType) {
+      return entry.component;
+    }
+  }
+  return undefined;
+}
+
 // ===== Plugin Commands =====
 
 export interface PluginCommandMeta {
@@ -311,6 +358,9 @@ function clonePlugins(plugins, registry) {
         } catch {
           console.warn(`  [warn] git pull failed for "${name}", using existing checkout`);
         }
+      } else if (existsSync(resolve(pluginDir, 'Cargo.toml'))) {
+        // Local development: directory exists with source but no .git — keep as-is
+        console.log(`[resolve-plugins] using local ${name} (no .git, has Cargo.toml)`);
       } else {
         // Remove stale symlink or directory if source type changed
         if (existsSync(pluginDir)) {

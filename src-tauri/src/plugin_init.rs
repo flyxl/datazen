@@ -4,6 +4,8 @@
 // so that inventory-based driver registration takes effect.
 // Also registers Tauri plugins for crates that declare a tauriPlugin block.
 
+#[cfg(feature = "plugin-superset")]
+extern crate datazen_plugin_superset;
 #[cfg(feature = "plugin-kiwi")]
 extern crate datazen_plugin_kiwi;
 use tauri::Runtime;

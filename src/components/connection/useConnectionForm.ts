@@ -5,7 +5,7 @@ import { useI18n } from '../../hooks/useI18n';
 import { DB_REGISTRY, normalizeRedisDatabaseField } from '../../lib/databaseTypes';
 import { newId } from './shared';
 import type { ConnectionConfig, DatabaseType, SslMode, SshTunnelConfig } from '../../types';
-import { pluginInvoke } from '../../plugins/generated';
+import { pluginInvoke, getPluginConnectionForm, getPluginValidator } from '../../plugins/generated';
 
 export interface UseConnectionFormOptions {
   editId?: string | null;
@@ -200,6 +200,13 @@ export function useConnectionForm(options: UseConnectionFormOptions = {}) {
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
 
   const validate = useCallback((): boolean => {
+    const pluginValidator = getPluginValidator(formVariant);
+    if (pluginValidator) {
+      const errors = pluginValidator({ host, port, database, username, password, schema }, t as (key: string) => string);
+      setValidationErrors(errors);
+      return Object.keys(errors).length === 0;
+    }
+
     const errors: Record<string, string> = {};
 
     if (meta.connectionMode === 'file') {
@@ -211,7 +218,7 @@ export function useConnectionForm(options: UseConnectionFormOptions = {}) {
 
     setValidationErrors(errors);
     return Object.keys(errors).length === 0;
-  }, [database, formVariant, host, meta.connectionMode, port, t]);
+  }, [database, formVariant, host, meta.connectionMode, password, port, schema, t, username]);
 
   const draft = useMemo((): ConnectionConfig => {
     const base: ConnectionConfig = {
@@ -236,7 +243,8 @@ export function useConnectionForm(options: UseConnectionFormOptions = {}) {
       database: draftMeta.databaseFieldType === 'index' ? normalizeRedisDatabaseField(database) : database || undefined,
       password: password || undefined,
     };
-    if (draftMeta.defaultUser || draftMeta.connectionForm === 'kiwi' || draftMeta.connectionForm === 'catalog') {
+    const isPluginForm = !!getPluginConnectionForm(draftMeta.connectionForm);
+    if (draftMeta.defaultUser || draftMeta.connectionForm === 'kiwi' || draftMeta.connectionForm === 'catalog' || isPluginForm) {
       conn.username = username || draftMeta.defaultUser || undefined;
     }
     if (draftMeta.connectionForm === 'catalog') {

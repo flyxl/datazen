@@ -3,18 +3,9 @@
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
-#[serde(rename_all = "lowercase")]
-pub enum DatabaseType {
-    PostgreSQL,
-    MySQL,
-    MariaDB,
-    SQLite,
-    Redis,
-    Kiwi,
-    Presto,
-    Trino,
-}
+/// Database type identifier — a plain string (e.g. "postgresql", "mysql", "superset").
+/// Plugins define their own identifiers without modifying this crate.
+pub type DatabaseType = String;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -360,7 +351,7 @@ pub enum DriverError {
     #[error("Invalid configuration: {0}")]
     InvalidConfig(String),
 
-    #[error("Driver not found for type: {0:?}")]
+    #[error("Driver not found for type: {0}")]
     DriverNotFound(DatabaseType),
 
     #[error("Connection pool exhausted")]

@@ -236,7 +236,7 @@ fn build_pg_options(
 #[async_trait]
 impl DatabaseDriver for PostgresDriver {
     fn driver_type(&self) -> DatabaseType {
-        DatabaseType::PostgreSQL
+        "postgresql".to_string()
     }
 
     async fn test_connection(&self, config: &ConnectionConfig) -> Result<ServerInfo, DriverError> {

@@ -709,7 +709,7 @@ fn parse_redis_command_args(s: &str) -> Result<Vec<String>, DriverError> {
 #[async_trait]
 impl DatabaseDriver for RedisDriver {
     fn driver_type(&self) -> DatabaseType {
-        DatabaseType::Redis
+        "redis".to_string()
     }
 
     fn driver_category(&self) -> DriverCategory {
@@ -1062,7 +1062,7 @@ impl DatabaseDriver for RedisDriver {
 #[async_trait]
 impl KeyValueDriver for RedisDriver {
     fn driver_type(&self) -> DatabaseType {
-        DatabaseType::Redis
+        "redis".to_string()
     }
 
     async fn scan_keys_with_info(

@@ -98,7 +98,7 @@ fn db_path(config: &ConnectionConfig) -> Result<String, DriverError> {
 #[async_trait]
 impl DatabaseDriver for SqliteDriver {
     fn driver_type(&self) -> DatabaseType {
-        DatabaseType::SQLite
+        "sqlite".to_string()
     }
 
     async fn test_connection(&self, config: &ConnectionConfig) -> Result<ServerInfo, DriverError> {

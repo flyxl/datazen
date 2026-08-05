@@ -171,7 +171,7 @@ pub trait DatabaseDriver: Send + Sync {
     async fn get_server_info(&self, _handle: &ConnectionHandle) -> Result<ServerInfo, DriverError> {
         Ok(ServerInfo {
             server_version: String::new(),
-            server_type: format!("{:?}", self.driver_type()),
+            server_type: self.driver_type(),
         })
     }
 

@@ -50,4 +50,8 @@ export interface DatabaseTypeMeta {
   defaultPageSize?: number;
   /** Connection form variant — plugins can provide custom form identifiers */
   connectionForm: string;
+  /** Schema tree mode: 'standard' (default), 'multiDatabase', or 'custom' (plugin-provided tree) */
+  schemaTreeMode?: 'standard' | 'multiDatabase' | 'custom';
+  /** Whether this driver is read-only (no DDL, no create/alter table, no import) */
+  readOnly?: boolean;
 }

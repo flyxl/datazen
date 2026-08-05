@@ -1,6 +1,6 @@
 use super::error::{CmdExt, CommandError};
 use super::AppState;
-use crate::db::{ConnectionConfig, DatabaseType, ServerInfo};
+use crate::db::{ConnectionConfig, DriverCategory, ServerInfo};
 use tauri::State;
 
 #[tauri::command]
@@ -106,19 +106,14 @@ pub async fn get_connection_info(
         .await
         .cmd_err("get_connection_info")?;
 
-    let db_type = match config.database_type {
-        DatabaseType::PostgreSQL => "postgresql",
-        DatabaseType::MySQL => "mysql",
-        DatabaseType::MariaDB => "mariadb",
-        DatabaseType::SQLite => "sqlite",
-        DatabaseType::Redis => "redis",
-        DatabaseType::Kiwi => "kiwi",
-        DatabaseType::Presto => "presto",
-        DatabaseType::Trino => "trino",
-    };
+    let db_type = &config.database_type;
 
-    let driver_category = match config.database_type {
-        DatabaseType::Redis => "keyvalue",
+    let driver = state
+        .driver_registry
+        .get(db_type)
+        .await;
+    let driver_category = match driver.as_ref().map(|d| d.driver_category()) {
+        Some(DriverCategory::KeyValue) => "keyvalue",
         _ => "sql",
     };
 
