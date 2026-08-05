@@ -865,6 +865,21 @@ impl DatabaseDriver for MysqlDriver {
         Ok(())
     }
 
+    async fn use_database(
+        &self,
+        handle: &ConnectionHandle,
+        database: &str,
+    ) -> Result<(), DriverError> {
+        let pools = self.pools.read().await;
+        let pool = Self::get_pool(&pools, handle)?;
+        let sql = format!("USE {}", Self::quote_identifier(database));
+        sqlx::query(&sql)
+            .execute(pool)
+            .await
+            .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+        Ok(())
+    }
+
     async fn get_server_info(&self, handle: &ConnectionHandle) -> Result<ServerInfo, DriverError> {
         let pools = self.pools.read().await;
         let pool = Self::get_pool(&pools, handle)?;
