@@ -30,12 +30,7 @@ function resolveIsDark(theme: AppSettings['theme']): boolean {
 function applyTheme(theme: AppSettings['theme']) {
   const isDark = resolveIsDark(theme);
   document.documentElement.classList.toggle('dark', isDark);
-  const isMacRounded = document.documentElement.classList.contains('macos-rounded');
-  if (isMacRounded) {
-    document.documentElement.style.backgroundColor = 'transparent';
-  } else {
-    document.documentElement.style.backgroundColor = isDark ? '#0f172a' : '#ffffff';
-  }
+  document.documentElement.style.backgroundColor = isDark ? '#0f172a' : '#ffffff';
   try {
     localStorage.setItem(THEME_STORAGE_KEY, theme);
   } catch {
