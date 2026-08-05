@@ -472,7 +472,21 @@ pub fn run() {
             commands::workflow_history_clear,
             rebuild_menu,
         ])
-        .on_window_event(|_window, _event| {})
+        .on_window_event(|window, event| {
+            #[cfg(target_os = "macos")]
+            if let tauri::WindowEvent::Resized(size) = event {
+                let win = window.clone();
+                let size = *size;
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_millis(200));
+                    if let Some(monitor) = win.current_monitor().ok().flatten() {
+                        let mon = monitor.size();
+                        let is_fs = size.width >= mon.width && size.height >= mon.height;
+                        let _ = win.emit("fullscreen-changed", is_fs);
+                    }
+                });
+            }
+        })
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app_handle, event| {

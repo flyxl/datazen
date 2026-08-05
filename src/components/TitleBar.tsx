@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react';
+import { useEffect } from 'react';
 import { usePlatform } from '../hooks/usePlatform';
+import { useUiStore } from '../stores/uiStore';
 import { WindowControls } from './WindowControls';
 
 export interface TitleBarProps {
@@ -13,12 +15,28 @@ export interface TitleBarProps {
 /**
  * Cross-platform title bar.
  * - macOS: uses native titleBarStyle overlay with system traffic lights;
- *          left padding reserves space for the native buttons
+ *          left padding reserves space for the native buttons (hidden in fullscreen)
  * - Windows/Linux: title + left content on the left, window controls on the right
  */
 export function TitleBar({ title, leftContent, rightContent }: TitleBarProps) {
   const platform = usePlatform();
   const isMac = platform === 'macos';
+  const isFullscreen = useUiStore((s) => s.isFullscreen);
+
+  useEffect(() => {
+    if (!isMac || !('__TAURI_INTERNALS__' in window)) return;
+
+    let unlisten: (() => void) | undefined;
+
+    void (async () => {
+      const { listen } = await import('@tauri-apps/api/event');
+      unlisten = await listen<boolean>('fullscreen-changed', (e) => {
+        useUiStore.getState().setFullscreen(e.payload);
+      });
+    })();
+
+    return () => { unlisten?.(); };
+  }, [isMac]);
 
   return (
     <header className="relative flex h-10 min-h-[40px] shrink-0 items-center bg-titlebar">
@@ -26,10 +44,9 @@ export function TitleBar({ title, leftContent, rightContent }: TitleBarProps) {
 
       {isMac ? (
         <>
-          {/* Reserve space for native traffic lights (overlay mode) */}
-          <div className="w-[78px] shrink-0" />
+          {!isFullscreen && <div className="w-[78px] shrink-0" />}
           {leftContent && (
-            <div className="relative z-10 flex items-center">{leftContent}</div>
+            <div className="relative z-10 flex items-center" style={isFullscreen ? { paddingLeft: '0.75rem' } : undefined}>{leftContent}</div>
           )}
           <div className="pointer-events-none flex min-w-0 flex-1 justify-center">
             {title && (
@@ -39,7 +56,7 @@ export function TitleBar({ title, leftContent, rightContent }: TitleBarProps) {
           {rightContent ? (
             <div className="relative z-10 pr-3">{rightContent}</div>
           ) : (
-            <div className="w-[78px] shrink-0" />
+            !isFullscreen && <div className="w-[78px] shrink-0" />
           )}
         </>
       ) : (
