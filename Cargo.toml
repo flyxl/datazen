@@ -7,7 +7,6 @@ members = [
 ]
 exclude = [
     ".plugins/kiwi",
-    ".plugins/olap",
     ".plugins/superset",
 ]
 
@@ -25,6 +24,3 @@ datazen-driver-api = { path = "packages/driver-api" }
 
 [patch."https://github.com/flyxl/datazen-plugin-kiwi.git"]
 datazen-plugin-kiwi = { path = ".plugins/kiwi" }
-
-[patch."https://github.com/flyxl/datazen-plugin-olap.git"]
-datazen-plugin-olap = { path = ".plugins/olap" }
