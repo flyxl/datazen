@@ -310,7 +310,7 @@ const zhCN = {
   'query.shortcutHint': '按 ⌘+Enter 执行查询',
   'query.historyTitle': '查询历史',
   'query.noHistory': '暂无历史记录',
-  'query.resultTruncated': '结果已截断，仅显示前 {limit} 条',
+  'query.resultTruncated': '结果已截断，仅显示前 {limit} 条，可在设置中修改',
   'query.tab': '查询 {n}',
   'query.notConnected': '未连接数据库',
   'query.executeFailed': '执行失败',

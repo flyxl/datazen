@@ -38,7 +38,7 @@ pub struct AppSettings {
 }
 
 fn default_limit_select() -> bool {
-    true
+    false
 }
 
 fn default_log_level() -> String {
@@ -50,7 +50,7 @@ impl Default for AppSettings {
         Self {
             theme: "dark".to_string(),
             language: "zh-CN".to_string(),
-            limit_select_results: true,
+            limit_select_results: false,
             query_result_limit: 5000,
             editor_font_size: 13,
             editor_font_family: "JetBrains Mono".to_string(),
