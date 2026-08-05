@@ -40,10 +40,10 @@ export function TitleBar({ title, leftContent, rightContent }: TitleBarProps) {
 
   return (
     <header className="relative flex h-10 min-h-[40px] shrink-0 items-center bg-titlebar">
-      <div className="absolute inset-0" data-tauri-drag-region />
-
       {isMac ? (
         <>
+          {/* macOS: absolute overlay for drag — safe because macOS uses native titlebar overlay */}
+          <div className="absolute inset-0" data-tauri-drag-region />
           {!isFullscreen && <div className="w-[78px] shrink-0" />}
           {leftContent && (
             <div className="relative z-10 flex items-center" style={isFullscreen ? { paddingLeft: '0.75rem' } : undefined}>{leftContent}</div>
@@ -61,8 +61,8 @@ export function TitleBar({ title, leftContent, rightContent }: TitleBarProps) {
         </>
       ) : (
         <>
-          {/* Windows/Linux: icon + title left, controls right */}
-          <div className="relative z-10 flex items-center gap-2 pl-3">
+          {/* Windows/Linux: only flex-1 spacer is draggable — avoids absolute overlay eating clicks */}
+          <div className="flex items-center gap-2 pl-3">
             {title && (
               <span className="truncate text-xs font-medium text-fg-secondary">{title}</span>
             )}
@@ -70,7 +70,7 @@ export function TitleBar({ title, leftContent, rightContent }: TitleBarProps) {
           </div>
           <div className="flex-1" data-tauri-drag-region />
           {rightContent && (
-            <div className="relative z-10 flex items-center pr-1">{rightContent}</div>
+            <div className="flex items-center pr-1">{rightContent}</div>
           )}
           <WindowControls />
         </>

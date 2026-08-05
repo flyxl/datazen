@@ -11,11 +11,13 @@ pub mod ssh_tunnel;
 mod store;
 pub mod sync;
 
-use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
+#[cfg(target_os = "macos")]
+use std::collections::HashMap;
+#[cfg(target_os = "macos")]
 use tauri::menu::{CheckMenuItemBuilder, MenuBuilder, MenuItemBuilder, SubmenuBuilder};
 use tauri::{Emitter, Manager};
 use ai::{init_ai_providers, SchemaContextBuilder};
@@ -26,6 +28,7 @@ use services::ConnectionManager;
 use store::Store;
 use sync::adapters::init_sync_adapters;
 
+#[cfg(target_os = "macos")]
 fn menu_labels(lang: &str) -> HashMap<&'static str, &'static str> {
     let mut m = HashMap::new();
     if lang == "en" {
@@ -60,6 +63,7 @@ fn menu_labels(lang: &str) -> HashMap<&'static str, &'static str> {
     m
 }
 
+#[cfg(target_os = "macos")]
 fn setup_menu(
     handle: &tauri::AppHandle,
     theme: &str,
@@ -206,9 +210,17 @@ fn resolve_log_settings() -> (String, PathBuf) {
 
 #[tauri::command]
 fn rebuild_menu(handle: tauri::AppHandle, language: String) -> Result<(), String> {
-    let state = handle.state::<AppState>();
-    let settings = tauri::async_runtime::block_on(state.store.get_settings());
-    setup_menu(&handle, &settings.theme, &language).map_err(|e| e.to_string())
+    #[cfg(target_os = "macos")]
+    {
+        let state = handle.state::<AppState>();
+        let settings = tauri::async_runtime::block_on(state.store.get_settings());
+        setup_menu(&handle, &settings.theme, &language).map_err(|e| e.to_string())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (handle, language);
+        Ok(())
+    }
 }
 
 async fn build_app_state(store: Arc<Store>) -> Result<AppState, String> {
@@ -384,9 +396,15 @@ pub fn run() {
                 }
             }
 
-            let t_menu = Instant::now();
-            setup_menu(&handle, &initial_settings.theme, &initial_settings.language)?;
-            tracing::info!("[startup]   build menu: {:?}", t_menu.elapsed());
+            // Native menu only on macOS (goes to system menu bar).
+            // On Windows with decorations:false, the native menu bar conflicts
+            // with the webview and blocks mouse events (tauri-apps/tauri#12074).
+            #[cfg(target_os = "macos")]
+            {
+                let t_menu = Instant::now();
+                setup_menu(&handle, &initial_settings.theme, &initial_settings.language)?;
+                tracing::info!("[startup]   build menu: {:?}", t_menu.elapsed());
+            }
 
             tracing::info!("[startup] setup complete: {:?}", t_setup.elapsed());
             Ok(())
