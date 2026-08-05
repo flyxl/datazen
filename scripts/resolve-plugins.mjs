@@ -451,6 +451,85 @@ ${body}
   console.log(`[resolve-plugins] wrote ${outPath}`);
 }
 
+/**
+ * Replace content between start/end marker comments (idempotent).
+ * Markers look like: # <<name>>  ...content...  # <</name>>
+ */
+function replaceMarkerBlock(content, name, lines) {
+  const startTag = `# <<${name}>>`;
+  const endTag = `# <</${name}>>`;
+  const re = new RegExp(
+    escapeRegex(startTag) + '[\\s\\S]*?' + escapeRegex(endTag),
+  );
+  const replacement = lines.length > 0
+    ? `${startTag}\n${lines.join('\n')}\n${endTag}`
+    : `${startTag}\n${endTag}`;
+  return content.replace(re, replacement);
+}
+
+function escapeRegex(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Inject plugin dependencies and features into src-tauri/Cargo.toml at build time.
+ * Uses start/end markers for idempotent injection.
+ */
+function injectCargoToml(plugins, registry) {
+  const cargoPath = resolve(ROOT, 'src-tauri/Cargo.toml');
+  let content = readFileSync(cargoPath, 'utf-8');
+
+  // Build dependency lines (path-based, optional)
+  const depLines = [];
+  for (const name of plugins) {
+    const meta = registry[name];
+    if (!meta.feature) continue;
+    const crateName = `datazen-plugin-${name}`;
+    depLines.push(`${crateName} = { path = "../.plugins/${name}", optional = true }`);
+  }
+
+  // Build feature lines
+  const featureLines = [];
+  for (const name of plugins) {
+    const meta = registry[name];
+    if (!meta.feature) continue;
+    const crateName = `datazen-plugin-${name}`;
+    featureLines.push(`${meta.feature} = ["dep:${crateName}"]`);
+  }
+
+  content = replaceMarkerBlock(content, 'plugin-dependencies', depLines);
+  content = replaceMarkerBlock(content, 'plugin-features', featureLines);
+
+  writeFileSync(cargoPath, content);
+  console.log(`[resolve-plugins] injected ${depLines.length} deps + ${featureLines.length} features into Cargo.toml`);
+}
+
+/**
+ * Inject [patch] entries into root Cargo.toml for plugins using git sources.
+ * Uses start/end markers for idempotent injection.
+ */
+function injectRootCargoPatches(plugins, registry) {
+  const cargoPath = resolve(ROOT, 'Cargo.toml');
+  let content = readFileSync(cargoPath, 'utf-8');
+
+  const patchLines = [];
+  for (const name of plugins) {
+    const meta = registry[name];
+    if (meta.source !== 'git' || !meta.git) continue;
+    const crateName = `datazen-plugin-${name}`;
+    patchLines.push('');
+    patchLines.push(`[patch."${meta.git}"]`);
+    patchLines.push(`${crateName} = { path = ".plugins/${name}" }`);
+  }
+
+  content = replaceMarkerBlock(content, 'plugin-patches', patchLines);
+
+  writeFileSync(cargoPath, content);
+  if (patchLines.length > 0) {
+    console.log(`[resolve-plugins] injected ${plugins.length} patch(es) into root Cargo.toml`);
+  }
+}
+
 function main() {
   const registry = loadRegistry();
   const pluginsArg = parseArgs();
@@ -477,6 +556,10 @@ function main() {
       console.log(`  ${name}: local (${meta.path})`);
     }
   }
+
+  // Inject Cargo dependencies and features at build time
+  injectCargoToml(plugins, registry);
+  injectRootCargoPatches(plugins, registry);
 
   // Write the features file for the build system to consume
   const output = {
