@@ -33,7 +33,7 @@ fn default_true() -> bool { true }
 #[tauri::command]
 pub fn create_sub_window(app: AppHandle, options: CreateWindowOptions) -> Result<(), CommandError> {
     let is_mac = cfg!(target_os = "macos");
-    let decorations = options.decorations.unwrap_or(false);
+    let decorations = options.decorations.unwrap_or(is_mac);
     let transparent = options.transparent.unwrap_or(is_mac);
 
     let mut builder = WebviewWindowBuilder::new(
@@ -47,6 +47,13 @@ pub fn create_sub_window(app: AppHandle, options: CreateWindowOptions) -> Result
     .transparent(transparent)
     .visible(false)
     .accept_first_mouse(options.accept_first_mouse);
+
+    #[cfg(target_os = "macos")]
+    {
+        builder = builder
+            .title_bar_style(tauri::TitleBarStyle::Overlay)
+            .hidden_title(true);
+    }
 
     if let Some(mw) = options.min_width {
         if let Some(mh) = options.min_height {

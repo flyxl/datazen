@@ -22,6 +22,7 @@ import { Select } from '../../components/ui/Select';
 import { Dialog } from '../../components/ui/Dialog';
 import { useThemeListener } from '../../hooks/useThemeListener';
 import { useI18n } from '../../hooks/useI18n';
+import { useSettingsStore } from '../../stores/settingsStore';
 import { cn } from '../../lib/cn';
 import type { ConnectionConfig } from '../../types';
 
@@ -81,6 +82,7 @@ function formatDuration(ms: number): string {
 export function DataSyncWindow() {
   useThemeListener();
   const { t } = useI18n();
+  const loadSettings = useSettingsStore((s) => s.loadSettings);
 
   const [connections, setConnections] = useState<ConnectionConfig[]>([]);
   const [activeConns, setActiveConns] = useState<Record<string, string>>({});
@@ -106,6 +108,8 @@ export function DataSyncWindow() {
   const [conflictDialogOpen, setConflictDialogOpen] = useState(false);
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => { void loadSettings(); }, [loadSettings]);
 
   useEffect(() => {
     (async () => {
