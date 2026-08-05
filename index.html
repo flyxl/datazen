@@ -14,16 +14,9 @@
         try { saved = localStorage.getItem('datazen-theme') || 'dark'; } catch (e) {}
         var isDark = saved === 'dark' || (saved === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
         document.documentElement.classList.toggle('dark', isDark);
-        var isMac = navigator.userAgent.indexOf('Mac') !== -1 && '__TAURI_INTERNALS__' in window;
-        if (isMac) {
-          document.documentElement.classList.add('macos-rounded');
-          document.documentElement.style.backgroundColor = 'transparent';
-          document.write('<style>body{background:transparent;margin:0}#root{border-radius:10px;overflow:hidden;background:' + (isDark ? '#0f172a' : '#ffffff') + '}</style>');
-        } else {
-          var bg = isDark ? '#0f172a' : '#ffffff';
-          document.documentElement.style.backgroundColor = bg;
-          document.write('<style>body{background:' + bg + ';margin:0}</style>');
-        }
+        var bg = isDark ? '#0f172a' : '#ffffff';
+        document.documentElement.style.backgroundColor = bg;
+        document.write('<style>body{background:' + bg + ';margin:0}</style>');
       })();
     </script>
     <style>
