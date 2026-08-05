@@ -24,7 +24,7 @@ import { useSchemaStore } from '../../stores/schemaStore';
 import { useTableDataStore } from '../../stores/tableDataStore';
 import { useQueryStore } from '../../stores/queryStore';
 import { cn } from '../../lib/cn';
-import { getDbLabel } from '../../lib/databaseTypes';
+import { DB_REGISTRY, getDbLabel } from '../../lib/databaseTypes';
 import type { ConnectionViewProps } from '../../lib/connectionViews/types';
 import { SchemaTree } from './schema-tree/SchemaTree';
 import { StructureView } from './StructureView';
@@ -47,7 +47,13 @@ import { rowToRecord } from '../../lib/rowToRecord';
 
 type SubTabId = 'data' | 'structure' | 'indexes' | 'foreignKeys' | 'ddl';
 
-function getSubTabs(t: (key: TranslationKey) => string): { id: SubTabId; label: string }[] {
+function getSubTabs(t: (key: TranslationKey) => string, readOnly?: boolean): { id: SubTabId; label: string }[] {
+  if (readOnly) {
+    return [
+      { id: 'data', label: t('connWin.data') },
+      { id: 'structure', label: t('connWin.structure') },
+    ];
+  }
   return [
     { id: 'data', label: t('connWin.data') },
     { id: 'structure', label: t('connWin.structure') },
@@ -97,6 +103,7 @@ export function SqlConnectionView({
   initialDatabase,
 }: ConnectionViewProps) {
   const { t } = useI18n();
+  const isReadOnly = DB_REGISTRY[databaseType]?.readOnly === true;
 
   const [panels, setPanels] = useState<Panel[]>([]);
   const [activePanelId, setActivePanelId] = useState<string | null>(null);
@@ -267,6 +274,7 @@ export function SqlConnectionView({
         case 'data':
           return [{ id: 'copy-cell', label: t('connWin.copyCell'), icon: <ClipboardCopy className="h-3.5 w-3.5" /> }, sep, ...common];
         case 'structure':
+          if (isReadOnly) return common;
           return [{ id: 'edit-structure', label: t('connWin.editStructure'), icon: <Pencil className="h-3.5 w-3.5" /> }, sep, ...common];
         case 'indexes':
           return [{ id: 'create-index', label: t('connWin.newIndex'), icon: <Plus className="h-3.5 w-3.5" /> }, sep, ...common];
@@ -278,7 +286,7 @@ export function SqlConnectionView({
     }
 
     return common;
-  }, [activePanel, t]);
+  }, [activePanel, isReadOnly, t]);
 
   const handleContextAction = useCallback((id: string) => {
     switch (id) {
@@ -403,10 +411,12 @@ export function SqlConnectionView({
           <Plus className="h-4 w-4" />
           {t('connWin.newQuery')}
         </Button>
-        <Button variant="secondary" className="h-8" onClick={handleCreateTable}>
-          <TableProperties className="h-4 w-4" />
-          {t('connWin.newTable')}
-        </Button>
+        {!isReadOnly && (
+          <Button variant="secondary" className="h-8" onClick={handleCreateTable}>
+            <TableProperties className="h-4 w-4" />
+            {t('connWin.newTable')}
+          </Button>
+        )}
         <div className="mx-1 h-6 w-px bg-edge" />
 
         <div className="relative min-w-0 max-w-[280px] flex-1">
@@ -527,7 +537,7 @@ export function SqlConnectionView({
             {activePanel?.type === 'table' && (
               <>
                 <div className="flex shrink-0 border-b border-edge bg-surface-alt">
-                  {getSubTabs(t).map((tab) => (
+                  {getSubTabs(t, isReadOnly).map((tab) => (
                     <button
                       key={tab.id}
                       type="button"
@@ -670,15 +680,19 @@ export function SqlConnectionView({
           className="fixed z-[9999] min-w-[180px] rounded-lg border border-edge bg-surface-alt py-1 shadow-xl"
           style={{ left: tableCtx.x, top: tableCtx.y }}
         >
-          <button
-            type="button"
-            className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[13px] text-fg-secondary hover:bg-surface-raised hover:text-fg"
-            onClick={() => { const name = tableCtx.tableName; setTableCtx(null); handleAlterTable(name); }}
-          >
-            <Pencil className="h-3.5 w-3.5" />
-            {t('connWin.editTableStructure')}
-          </button>
-          <div className="my-1 h-px bg-edge" />
+          {!isReadOnly && (
+            <>
+              <button
+                type="button"
+                className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[13px] text-fg-secondary hover:bg-surface-raised hover:text-fg"
+                onClick={() => { const name = tableCtx.tableName; setTableCtx(null); handleAlterTable(name); }}
+              >
+                <Pencil className="h-3.5 w-3.5" />
+                {t('connWin.editTableStructure')}
+              </button>
+              <div className="my-1 h-px bg-edge" />
+            </>
+          )}
           <button
             type="button"
             className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[13px] text-fg-secondary hover:bg-surface-raised hover:text-fg"
@@ -687,14 +701,16 @@ export function SqlConnectionView({
             <Download className="h-3.5 w-3.5" />
             {t('connWin.exportData')}
           </button>
-          <button
-            type="button"
-            className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[13px] text-fg-secondary hover:bg-surface-raised hover:text-fg"
-            onClick={() => handleTableCtxAction('import')}
-          >
-            <Upload className="h-3.5 w-3.5" />
-            {t('connWin.importData')}
-          </button>
+          {!isReadOnly && (
+            <button
+              type="button"
+              className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[13px] text-fg-secondary hover:bg-surface-raised hover:text-fg"
+              onClick={() => handleTableCtxAction('import')}
+            >
+              <Upload className="h-3.5 w-3.5" />
+              {t('connWin.importData')}
+            </button>
+          )}
         </div>,
         document.body,
       )}

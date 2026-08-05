@@ -201,7 +201,7 @@ where
     let src_schema: TableSchema = src_driver.get_table_schema(&src_handle, table_name).await
         .cmd_err("sync_one_table")?;
 
-    let full_types = if matches!(src_type, DatabaseType::PostgreSQL) {
+    let full_types = if src_type == "postgresql" {
         Some(pg_full_column_types(src_driver.as_ref(), &src_handle, table_name).await?)
     } else {
         None

@@ -39,7 +39,7 @@ pub enum ConnectionError {
     #[error("Connection not found: {0}")]
     ConnectionNotFound(String),
 
-    #[error("Driver not found for type: {0:?}")]
+    #[error("Driver not found for type: {0}")]
     DriverNotFound(DatabaseType),
 
     #[error("Driver error: {0}")]

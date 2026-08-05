@@ -184,6 +184,9 @@ export function formatConnectionAddr(conn: {
   if (meta?.connectionMode === 'file') {
     return conn.database ?? meta.label;
   }
+  if (meta?.connectionMode === 'url') {
+    return conn.host ?? meta.label;
+  }
   const hasSSH = conn.sshTunnel?.enabled === true;
   if (hasSSH) {
     return `${conn.sshTunnel!.host} → ${conn.host ?? ''} : ${conn.database ?? ''}`;

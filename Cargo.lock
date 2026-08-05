@@ -1243,6 +1243,7 @@ dependencies = [
  "datazen-driver-api",
  "datazen-plugin-kiwi",
  "datazen-plugin-olap",
+ "datazen-plugin-superset",
  "dirs 6.0.0",
  "flate2",
  "futures-util",
@@ -1325,7 +1326,6 @@ dependencies = [
 [[package]]
 name = "datazen-plugin-olap"
 version = "0.0.7"
-source = "git+https://github.com/flyxl/datazen-plugin-olap.git#06401463701aac4d3b2c5e449e0c6a2163d3f1bf"
 dependencies = [
  "async-trait",
  "datazen-driver-api",
@@ -1335,6 +1335,22 @@ dependencies = [
  "tokio",
  "tracing",
  "trino-rust-client",
+ "uuid",
+]
+
+[[package]]
+name = "datazen-plugin-superset"
+version = "0.0.7"
+dependencies = [
+ "async-trait",
+ "datazen-driver-api",
+ "dirs 5.0.1",
+ "regex",
+ "reqwest 0.13.4",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
  "uuid",
 ]
 
@@ -4950,6 +4966,7 @@ dependencies = [
  "rustls-platform-verifier",
  "serde",
  "serde_json",
+ "serde_urlencoded",
  "sync_wrapper 1.0.2",
  "tokio",
  "tokio-rustls 0.26.4",
