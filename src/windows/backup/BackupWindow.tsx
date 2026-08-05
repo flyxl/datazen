@@ -3,7 +3,9 @@ import { ChevronDown, ChevronRight, Database, HardDrive } from 'lucide-react';
 import { TitleBar } from '../../components/TitleBar';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
+import { useThemeListener } from '../../hooks/useThemeListener';
 import { useI18n } from '../../hooks/useI18n';
+import { useSettingsStore } from '../../stores/settingsStore';
 import { cn } from '../../lib/cn';
 import { getDbLabel, getDbIcon, getDbIconColor, DB_REGISTRY } from '../../lib/databaseTypes';
 import { getSqlDialect } from '../../lib/sqlDialects';
@@ -22,7 +24,9 @@ function getDbShortLabel(dbType: DatabaseType) {
 }
 
 export function BackupWindow() {
+  useThemeListener();
   const { t } = useI18n();
+  const loadSettings = useSettingsStore((s) => s.loadSettings);
 
   const [connections, setConnections] = useState<ConnectionConfig[]>([]);
   const [groups, setGroups] = useState<string[]>([]);
@@ -55,6 +59,8 @@ export function BackupWindow() {
     if (!meta?.supportsBackup) return [];
     return getSqlDialect(selectedConn.databaseType)?.backupOptions ?? [];
   }, [selectedConn]);
+
+  useEffect(() => { void loadSettings(); }, [loadSettings]);
 
   useEffect(() => {
     void (async () => {

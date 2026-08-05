@@ -29,6 +29,7 @@ import { useResizable } from '../../hooks/useResizable';
 import { useThemeListener } from '../../hooks/useThemeListener';
 import { useI18n } from '../../hooks/useI18n';
 import { useAiStore } from '../../stores/aiStore';
+import { useSettingsStore } from '../../stores/settingsStore';
 import { aiCommands } from '../../commands/ai';
 import { connectionCommands } from '../../commands/connection';
 import { cn } from '../../lib/cn';
@@ -104,6 +105,7 @@ export function WorkflowWindow() {
   const workflowError = useAiStore((s) => s.workflowError);
   const clearWorkflowResult = useAiStore((s) => s.clearWorkflowResult);
   const setupAiListeners = useAiStore((s) => s.setupEventListeners);
+  const loadSettings = useSettingsStore((s) => s.loadSettings);
 
   const [panels, setPanels] = useState<Panel[]>([]);
   const [activePanelId, setActivePanelId] = useState<string | null>(null);
@@ -123,6 +125,7 @@ export function WorkflowWindow() {
   });
 
   useEffect(() => {
+    void loadSettings();
     void loadConfig();
     void loadWorkflows();
     void aiCommands.workflowGetDir().then(setWorkflowsDir);
@@ -131,7 +134,7 @@ export function WorkflowWindow() {
     );
     const cleanup = setupAiListeners();
     return () => { void cleanup.then((fn) => fn()); };
-  }, [loadConfig, loadWorkflows, setupAiListeners]);
+  }, [loadSettings, loadConfig, loadWorkflows, setupAiListeners]);
 
   const loadHistory = useCallback(async () => {
     const items = await aiCommands.workflowHistoryList();
@@ -731,7 +734,7 @@ function StepDetailView({ step, t }: { step: StepExecutionResult; t: ReturnType<
       </div>
 
       {step.sqlExecuted ? (
-        <div className="border-b border-edge bg-surface px-3 py-2">
+        <div className={cn('bg-surface px-3 py-2', !hasData && 'border-b border-edge')}>
           <pre className="text-[11px] font-mono text-fg-secondary whitespace-pre-wrap break-words max-h-20 overflow-auto">
             {step.sqlExecuted}
           </pre>

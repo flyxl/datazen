@@ -370,6 +370,13 @@ pub fn run() {
 
             app.manage(app_state);
 
+            #[cfg(not(target_os = "macos"))]
+            {
+                if let Some(win) = app.get_webview_window("main") {
+                    let _ = win.set_decorations(false);
+                }
+            }
+
             let t_menu = Instant::now();
             setup_menu(&handle, &initial_settings.theme, &initial_settings.language)?;
             tracing::info!("[startup]   build menu: {:?}", t_menu.elapsed());
@@ -465,29 +472,7 @@ pub fn run() {
             commands::workflow_history_clear,
             rebuild_menu,
         ])
-        .on_window_event(|window, event| {
-            if let tauri::WindowEvent::Resized(size) = event {
-                let label = window.label().to_string();
-                let win = window.clone();
-                let size = *size;
-                tracing::info!(
-                    "[fullscreen-detect] Resized: label={}, size={}x{}",
-                    label, size.width, size.height
-                );
-                std::thread::spawn(move || {
-                    std::thread::sleep(std::time::Duration::from_millis(300));
-                    if let Some(monitor) = win.current_monitor().ok().flatten() {
-                        let mon = monitor.size();
-                        let is_fs = size.width >= mon.width && size.height >= mon.height;
-                        tracing::info!(
-                            "[fullscreen-detect] monitor={}x{}, is_fs={}",
-                            mon.width, mon.height, is_fs
-                        );
-                        let _ = win.emit("fullscreen-changed", is_fs);
-                    }
-                });
-            }
-        })
+        .on_window_event(|_window, _event| {})
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app_handle, event| {
