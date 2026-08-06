@@ -195,8 +195,10 @@ pub async fn ai_generate_sql(
     request_id: String,
     current_table: Option<String>,
     recent_queries: Option<Vec<String>>,
+    context_files: Option<Vec<String>>,
 ) -> Result<String, CommandError> {
     let recent_queries = recent_queries.unwrap_or_default();
+    let mut natural_language = natural_language;
     tracing::info!(
         %request_id,
         %connection_id,
@@ -206,6 +208,34 @@ pub async fn ai_generate_sql(
         recent_queries_count = recent_queries.len(),
         "ai_generate_sql: start"
     );
+
+    if let Some(ref ctx_files) = context_files {
+        if !ctx_files.is_empty() {
+            let ctx_dir = super::context::resolve_context_dir_from_state(&state).await?;
+            let mut ctx_parts = Vec::new();
+            for rel_path in ctx_files {
+                let full_path = ctx_dir.join(rel_path);
+                if full_path.is_dir() {
+                    let files = super::context::collect_files_in_dir(&full_path);
+                    for file_path in files {
+                        if let Ok(content) = super::context::read_single_file(&file_path).await {
+                            let display = file_path
+                                .strip_prefix(&ctx_dir)
+                                .unwrap_or(&file_path)
+                                .to_string_lossy();
+                            ctx_parts.push(format!("[Context: {display}]\n{content}"));
+                        }
+                    }
+                } else if let Ok(content) = super::context::read_single_file(&full_path).await {
+                    ctx_parts.push(format!("[Context: {rel_path}]\n{content}"));
+                }
+            }
+            if !ctx_parts.is_empty() {
+                let context_block = ctx_parts.join("\n\n");
+                natural_language = format!("{context_block}\n\n{natural_language}");
+            }
+        }
+    }
 
     let (provider, ai_config) = resolve_ai(&state).await?;
 
@@ -676,6 +706,7 @@ pub async fn ai_chat(
     request_id: String,
     include_schema: bool,
     scenario: Option<String>,
+    context_files: Option<Vec<String>>,
 ) -> Result<String, CommandError> {
     let is_workflow = scenario.as_deref() == Some("workflow_generate");
     let prompt_scenario = if is_workflow {
@@ -778,6 +809,41 @@ pub async fn ai_chat(
     }
 
     full_messages.extend(messages);
+
+    // Inject context files into last user message
+    if let Some(ref ctx_files) = context_files {
+        if !ctx_files.is_empty() {
+            let ctx_dir = super::context::resolve_context_dir_from_state(&state).await?;
+            let mut ctx_parts = Vec::new();
+            for rel_path in ctx_files {
+                let full_path = ctx_dir.join(rel_path);
+                if full_path.is_dir() {
+                    let files = super::context::collect_files_in_dir(&full_path);
+                    for file_path in files {
+                        if let Ok(content) = super::context::read_single_file(&file_path).await {
+                            let display = file_path
+                                .strip_prefix(&ctx_dir)
+                                .unwrap_or(&file_path)
+                                .to_string_lossy();
+                            ctx_parts.push(format!("[Context: {display}]\n{content}"));
+                        }
+                    }
+                } else if let Ok(content) = super::context::read_single_file(&full_path).await {
+                    ctx_parts.push(format!("[Context: {rel_path}]\n{content}"));
+                }
+            }
+            if !ctx_parts.is_empty() {
+                if let Some(last_user) = full_messages
+                    .iter_mut()
+                    .rev()
+                    .find(|m| m.role == MessageRole::User)
+                {
+                    let context_block = ctx_parts.join("\n\n");
+                    last_user.content = format!("{context_block}\n\n{}", last_user.content);
+                }
+            }
+        }
+    }
 
     let ask_questions_tool = ToolDefinition {
         name: "ask_questions".into(),

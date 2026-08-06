@@ -236,6 +236,7 @@ const en: Record<TranslationKey, string> = {
   'settings.logPathPlaceholder': 'Leave empty for default path',
   'settings.viewLogs': 'View Logs',
   'settings.logRestartNote': 'Log configuration changes require app restart to take effect',
+  'settings.contextDir': 'AI Context Directory',
   'settings.confirmDelete': 'Confirm on Delete',
   'settings.autoCommit': 'Auto Commit',
   'settings.saved': 'Saved',
@@ -592,6 +593,17 @@ const en: Record<TranslationKey, string> = {
   'chat.reasoning': 'Thinking',
   'chat.questions.customAnswer': 'Type a custom answer…',
   'chat.questions.submit': 'Submit Answers',
+
+  // ── AI Context ──
+  'context.title': 'AI Context',
+  'context.noFiles': 'Context directory is empty, please add files to the context directory',
+  'context.noResults': 'No matching files found',
+  'context.placeholder': 'Type @ to reference context files…',
+  'context.dirSetting': 'AI Context Directory',
+  'context.dirSettingDesc': 'Directory path for AI context files, leave empty for default',
+  'context.openDir': 'Open Context Directory',
+  'context.file': 'File',
+  'context.dir': 'Directory',
 
   // ── NL2SQL ──
   'nl2sql.title': 'AI Generate SQL',

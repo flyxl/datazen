@@ -78,6 +78,7 @@ interface AiStore {
     database: string;
     currentTable?: string;
     recentQueries?: string[];
+    contextFiles?: string[];
   }) => Promise<void>;
   clearNl2Sql: () => void;
 
@@ -110,6 +111,7 @@ interface AiStore {
     database?: string;
     content: string;
     includeSchema?: boolean;
+    contextFiles?: string[];
   }) => Promise<void>;
   clearChat: () => void;
 
@@ -120,6 +122,7 @@ interface AiStore {
     database?: string;
     content: string;
     includeSchema?: boolean;
+    contextFiles?: string[];
   }) => Promise<void>;
   clearWorkflowChat: () => void;
 
@@ -425,7 +428,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
     });
   },
 
-  sendChatMessage: async ({ connectionId, database, content, includeSchema = true }) => {
+  sendChatMessage: async ({ connectionId, database, content, includeSchema = true, contextFiles }) => {
     const { chatSession } = get();
     if (!chatSession) return;
 
@@ -464,6 +467,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
         messages: [...chatSession.messages, ...newMessages],
         requestId,
         includeSchema,
+        contextFiles,
       });
     } catch (e) {
       const session = get().chatSession;
@@ -517,7 +521,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
     });
   },
 
-  sendWorkflowChatMessage: async ({ connectionId, database, content, includeSchema = true }) => {
+  sendWorkflowChatMessage: async ({ connectionId, database, content, includeSchema = true, contextFiles }) => {
     const { workflowChat } = get();
     if (!workflowChat) return;
 
@@ -555,6 +559,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
         requestId,
         includeSchema,
         scenario: 'workflow_generate',
+        contextFiles,
       });
     } catch (e) {
       const session = get().workflowChat;

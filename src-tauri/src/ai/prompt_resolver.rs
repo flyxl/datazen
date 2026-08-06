@@ -4,7 +4,7 @@
 //! 1. User override for (driver_type, scenario) — exact match
 //! 2. User override for (*, scenario) — global override
 //! 3. Driver-specific prompt from `DatabaseDriver::prompt_overrides()`
-//! 4. Built-in default from `PromptBuilder`
+//! 4. Built-in default from resource files (`resources/prompts/*.txt`)
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -54,28 +54,75 @@ pub enum PromptSource {
 
 pub struct PromptResolver {
     file_path: PathBuf,
+    prompts_dir: Option<PathBuf>,
     user_overrides: RwLock<Vec<PromptOverrideEntry>>,
+    /// lang -> (scenario_key -> template_content)
+    template_cache: RwLock<HashMap<String, HashMap<String, String>>>,
 }
 
 impl PromptResolver {
-    pub fn new(data_dir: &Path) -> Self {
+    pub fn new(data_dir: &Path, prompts_dir: Option<PathBuf>) -> Self {
         Self {
             file_path: data_dir.join("prompt_overrides.json"),
+            prompts_dir,
             user_overrides: RwLock::new(Vec::new()),
+            template_cache: RwLock::new(HashMap::new()),
         }
     }
 
     pub async fn load(&self) -> Result<(), String> {
-        if !self.file_path.exists() {
-            return Ok(());
+        if self.file_path.exists() {
+            let data = tokio::fs::read_to_string(&self.file_path)
+                .await
+                .map_err(|e| e.to_string())?;
+            let file: PromptOverridesFile =
+                serde_json::from_str(&data).map_err(|e| e.to_string())?;
+            *self.user_overrides.write().await = file.overrides;
         }
-        let data = tokio::fs::read_to_string(&self.file_path)
-            .await
-            .map_err(|e| e.to_string())?;
-        let file: PromptOverridesFile =
-            serde_json::from_str(&data).map_err(|e| e.to_string())?;
-        *self.user_overrides.write().await = file.overrides;
         Ok(())
+    }
+
+    /// Load prompt templates for a language from the prompts directory.
+    /// Always loads "en" first as fallback.
+    /// For `zh-*` languages, tries exact match (e.g. `zh-TW`) first, then `zh-CN`.
+    pub async fn load_language(&self, lang: &str) {
+        let Some(dir) = &self.prompts_dir else { return };
+
+        self.scan_and_cache_lang(dir, "en").await;
+
+        if lang != "en" {
+            self.scan_and_cache_lang(dir, lang).await;
+
+            if lang.starts_with("zh") && lang != "zh-CN" {
+                self.scan_and_cache_lang(dir, "zh-CN").await;
+            }
+        }
+    }
+
+    async fn scan_and_cache_lang(&self, base_dir: &Path, lang: &str) {
+        let lang_dir = base_dir.join(lang);
+        if !lang_dir.is_dir() {
+            return;
+        }
+
+        let mut templates = HashMap::new();
+        if let Ok(entries) = std::fs::read_dir(&lang_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().map(|e| e == "txt").unwrap_or(false) {
+                    if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                        if let Ok(content) = std::fs::read_to_string(&path) {
+                            templates.insert(stem.to_string(), content);
+                        }
+                    }
+                }
+            }
+        }
+
+        if !templates.is_empty() {
+            tracing::info!("[prompts] loaded {} templates for lang={lang}", templates.len());
+            self.template_cache.write().await.insert(lang.to_string(), templates);
+        }
     }
 
     async fn save(&self) -> Result<(), String> {
@@ -136,9 +183,29 @@ impl PromptResolver {
             }
         }
 
-        // 4. Built-in default
-        let (zh, en) = default_prompt(scenario);
-        Self::select_lang(&zh, &en, lang)
+        // 4. Template from files (cached) → zh-CN fallback → en fallback → embedded
+        let key = scenario_to_key(scenario);
+
+        let cache = self.template_cache.read().await;
+        // Try exact lang
+        if let Some(tpl) = cache.get(lang).and_then(|m| m.get(&key)) {
+            return tpl.clone();
+        }
+        // For zh-* variants, fall back to zh-CN
+        if lang.starts_with("zh") && lang != "zh-CN" {
+            if let Some(tpl) = cache.get("zh-CN").and_then(|m| m.get(&key)) {
+                return tpl.clone();
+            }
+        }
+        // Fall back to en
+        if !lang.starts_with("en") {
+            if let Some(tpl) = cache.get("en").and_then(|m| m.get(&key)) {
+                return tpl.clone();
+            }
+        }
+        drop(cache);
+
+        embedded_default(scenario).to_string()
     }
 
     /// Get all prompt infos for a specific driver type (for settings UI).
@@ -155,11 +222,23 @@ impl PromptResolver {
             .map(|d| d.prompt_overrides())
             .unwrap_or_default();
         let overrides = self.user_overrides.read().await;
+        let cache = self.template_cache.read().await;
 
         PromptScenario::all()
             .iter()
             .map(|&scenario| {
-                let (default_zh, default_en) = default_prompt(scenario);
+                let key = scenario_to_key(scenario);
+                let en_fallback = embedded_default(scenario).to_string();
+                let default_zh = cache
+                    .get("zh-CN")
+                    .and_then(|m| m.get(&key))
+                    .cloned()
+                    .unwrap_or_else(|| en_fallback.clone());
+                let default_en = cache
+                    .get("en")
+                    .and_then(|m| m.get(&key))
+                    .cloned()
+                    .unwrap_or(en_fallback);
                 let mut source = PromptSource::Default;
                 let mut system_zh = default_zh.clone();
                 let mut system_en = default_en.clone();
@@ -249,434 +328,27 @@ impl PromptResolver {
     }
 }
 
-/// Returns (zh, en) default prompts for each scenario.
-///
-/// These are the same prompts that were previously hardcoded in `PromptBuilder`,
-/// but extracted as static templates. They use `{{variable}}` placeholders.
-fn default_prompt(scenario: PromptScenario) -> (String, String) {
+/// Convert a `PromptScenario` to its file-system key (matches `.txt` file stems).
+fn scenario_to_key(scenario: PromptScenario) -> String {
+    serde_json::to_value(&scenario)
+        .ok()
+        .and_then(|v| v.as_str().map(String::from))
+        .unwrap_or_else(|| format!("{scenario:?}").to_lowercase())
+}
+
+/// Embedded English defaults compiled into the binary as a last-resort fallback.
+fn embedded_default(scenario: PromptScenario) -> &'static str {
     match scenario {
-        PromptScenario::Nl2Sql => (
-            r#"你是一位 SQL 专家。根据用户的自然语言描述和下面的数据库 schema，生成可执行的 SQL。
-
-Database: {{db_type}}{{version}}
-Schema:
-{{schema}}
-
-规则：
-- 仅返回可执行的 SQL，不要解释或 markdown
-- 使用 {{db_type}} 的正确方言
-- 使用表别名提高可读性
-- 如果描述有歧义，使用最合理的常见解释
-- 仅引用 schema 中存在的表和列{{recent}}"#
-                .into(),
-            r#"You are a SQL expert. Generate executable SQL based on the user's natural language description and the database schema below.
-
-Database: {{db_type}}{{version}}
-Schema:
-{{schema}}
-
-Rules:
-- Return ONLY executable SQL, no explanations or markdown
-- Use the correct dialect for {{db_type}}
-- Use table aliases for readability
-- If the description is ambiguous, use the most common reasonable interpretation
-- Reference only tables and columns that exist in the schema{{recent}}"#
-                .into(),
-        ),
-        PromptScenario::Diagnose => (
-            r#"你是一位数据库错误诊断专家。分析 SQL 错误并提供修复方案。
-
-Database: {{db_type}}
-Schema:
-{{schema}}
-
-Respond in this exact JSON format:
-{
-  "explanation": "Clear explanation of why the error occurred",
-  "suggestedSql": "Corrected SQL query (or null if unfixable)",
-  "changes": ["Description of each change made"]
-}"#
-                .into(),
-            r#"You are a database error diagnostician. Analyze SQL errors and provide fixes.
-
-Database: {{db_type}}
-Schema:
-{{schema}}
-
-Respond in this exact JSON format:
-{
-  "explanation": "Clear explanation of why the error occurred",
-  "suggestedSql": "Corrected SQL query (or null if unfixable)",
-  "changes": ["Description of each change made"]
-}"#
-                .into(),
-        ),
-        PromptScenario::NlFilter => (
-            r#"你是一个筛选条件解析器。将自然语言描述转换为结构化的表数据筛选条件。
-
-Database: {{db_type}}
-Available columns:
-{{columns}}
-
-Each filter condition must be one of these operators:
-- eq: equals
-- ne: not equals
-- gt: greater than
-- lt: less than
-- gte: greater than or equal
-- lte: less than or equal
-- like: pattern matching (use % as wildcard)
-- in: value in list
-- isNull: value is null
-- isNotNull: value is not null
-
-Respond in this exact JSON format (an array of filter conditions):
-[
-  {"column": "column_name", "operator": "eq", "value": "some_value"},
-  {"column": "age", "operator": "gt", "value": 18}
-]
-
-规则：
-- 仅使用上面 schema 中存在的列
-- 为用户意图选择最合适的运算符
-- 数值列使用数字值（不是字符串）
-- "包含" 或 "含有" 使用 "like" 配合 %value%
-- "以...开头" 使用 "like" 配合 value%
-- "以...结尾" 使用 "like" 配合 %value
-- 空值检查使用 "isNull" 或 "isNotNull"（无需 value 字段）
-- "in" 运算符的 value 应为 JSON 数组
-- 仅返回 JSON 数组，不要解释"#
-                .into(),
-            r#"You are a filter condition parser. Convert natural language descriptions into structured filter conditions for table data.
-
-Database: {{db_type}}
-Available columns:
-{{columns}}
-
-Each filter condition must be one of these operators:
-- eq: equals
-- ne: not equals
-- gt: greater than
-- lt: less than
-- gte: greater than or equal
-- lte: less than or equal
-- like: pattern matching (use % as wildcard)
-- in: value in list
-- isNull: value is null
-- isNotNull: value is not null
-
-Respond in this exact JSON format (an array of filter conditions):
-[
-  {"column": "column_name", "operator": "eq", "value": "some_value"},
-  {"column": "age", "operator": "gt", "value": 18}
-]
-
-Rules:
-- Use ONLY columns that exist in the schema above
-- Choose the most appropriate operator for the user's intent
-- For numeric columns, use numeric values (not strings)
-- For "contains" or "includes", use "like" with %value%
-- For "starts with", use "like" with value%
-- For "ends with", use "like" with %value
-- For null checks, use "isNull" or "isNotNull" (no value field needed)
-- For "in" operator, value should be a JSON array
-- Return ONLY the JSON array, no explanations"#
-                .into(),
-        ),
-        PromptScenario::SchemaDocSelectTables => (
-            r#"You are a database documentation expert.
-
-Database: {{db_type}}
-Tables: {{table_names}}
-
-From the table list above, select the most important user-created tables that should be documented. Exclude system/internal tables (e.g., pg_*, information_schema.*, sql_*, sqlite_*).
-Return ONLY a JSON array of table names, no explanation.
-Example: ["users", "orders", "products"]
-If there are more than 30 important tables, pick the top 30."#
-                .into(),
-            r#"You are a database documentation expert.
-
-Database: {{db_type}}
-Tables: {{table_names}}
-
-From the table list above, select the most important user-created tables that should be documented. Exclude system/internal tables (e.g., pg_*, information_schema.*, sql_*, sqlite_*).
-Return ONLY a JSON array of table names, no explanation.
-Example: ["users", "orders", "products"]
-If there are more than 30 important tables, pick the top 30."#
-                .into(),
-        ),
-        PromptScenario::SchemaDoc => (
-            r#"你是一位数据库文档专家。为下面的数据库 schema 生成全面的文档。
-
-Database: {{db_type}}
-Schema:
-{{schema}}
-
-使用 Markdown 格式生成文档，包含：
-1. **概述** — 简要描述此数据库/schema 的用途
-2. **表** — 每个表包括：
-   - 用途和描述
-   - 列说明（从名称、类型和关系推断含义）
-   - 主键和约束
-   - 关系（外键、引用表）
-3. **实体关系** — 描述表之间的关系
-4. **备注** — 命名规范、模式或潜在问题的观察
-
-规则：
-- 撰写清晰、专业的文档
-- 当含义不明显时，从列名和类型推断用途
-- 使用 Markdown 格式（标题、表格、列表）
-- 简洁但全面"#
-                .into(),
-            r#"You are a database documentation expert. Generate comprehensive documentation for the database schema.
-
-Database: {{db_type}}
-Schema:
-{{schema}}
-
-Generate documentation in Markdown format with:
-1. **Overview** — Brief description of what this database/schema is likely used for
-2. **Tables** — For each table:
-   - Purpose and description
-   - Column descriptions (infer meaning from names, types, and relationships)
-   - Primary keys and constraints
-   - Relationships (foreign keys, referenced tables)
-3. **Entity Relationships** — Describe relationships between tables
-4. **Notes** — Any observations about naming conventions, patterns, or potential issues
-
-Rules:
-- Write clear, professional documentation
-- Infer purpose from column names and types when not obvious
-- Use Markdown formatting with headers, tables, and lists
-- Be concise but thorough"#
-                .into(),
-        ),
-        PromptScenario::ConnectionDiagnose => (
-            r#"你是一位数据库连接专家。诊断连接失败原因并提供可操作的解决方案。
-
-Respond in this exact JSON format:
-{
-  "diagnosis": "Clear explanation of why the connection failed",
-  "possibleCauses": ["Cause 1", "Cause 2"],
-  "solutions": [
-    {"description": "Step-by-step fix", "command": "optional shell/SQL command"}
-  ],
-  "category": "auth|network|config|server|driver"
-}
-
-常见类别：
-- auth: 认证失败（密码错误、凭据过期、权限不足）
-- network: 网络问题（超时、DNS、防火墙、端口被阻止）
-- config: 配置错误（主机名、端口、数据库名、SSL 设置错误）
-- server: 服务端问题（未运行、最大连接数、资源限制）
-- driver: 客户端/驱动问题（版本不匹配、缺少库）"#
-                .into(),
-            r#"You are a database connectivity expert. Diagnose connection failures and provide actionable solutions.
-
-Respond in this exact JSON format:
-{
-  "diagnosis": "Clear explanation of why the connection failed",
-  "possibleCauses": ["Cause 1", "Cause 2"],
-  "solutions": [
-    {"description": "Step-by-step fix", "command": "optional shell/SQL command"}
-  ],
-  "category": "auth|network|config|server|driver"
-}
-
-Common categories:
-- auth: authentication failures (wrong password, expired credentials, missing permissions)
-- network: connectivity issues (timeout, DNS, firewall, port blocked)
-- config: configuration errors (wrong host, port, database name, SSL settings)
-- server: server-side issues (not running, max connections, resource limits)
-- driver: client/driver issues (version mismatch, missing libraries)"#
-                .into(),
-        ),
-        PromptScenario::QuerySummary => (
-            r#"你是一位 SQL 查询分析师。分析 SQL 查询列表并提供洞察。
-
-Respond in this exact JSON format:
-{
-  "summary": "Brief overview of query patterns",
-  "categories": [
-    {"name": "Category name", "count": 5, "examples": ["SELECT ...", "UPDATE ..."]}
-  ],
-  "insights": [
-    "Observation about query patterns",
-    "Performance concern or optimization suggestion"
-  ],
-  "frequentTables": ["table1", "table2"],
-  "recommendations": ["Recommendation 1", "Recommendation 2"]
-}
-
-规则：
-- 按类型分组查询（SELECT、INSERT、UPDATE、DELETE、DDL）
-- 识别最常访问的表
-- 注意潜在的性能问题（缺少 WHERE、SELECT * 等）
-- 建议要可操作且具体"#
-                .into(),
-            r#"You are a SQL query analyst. Analyze a list of SQL queries and provide insights.
-
-Respond in this exact JSON format:
-{
-  "summary": "Brief overview of query patterns",
-  "categories": [
-    {"name": "Category name", "count": 5, "examples": ["SELECT ...", "UPDATE ..."]}
-  ],
-  "insights": [
-    "Observation about query patterns",
-    "Performance concern or optimization suggestion"
-  ],
-  "frequentTables": ["table1", "table2"],
-  "recommendations": ["Recommendation 1", "Recommendation 2"]
-}
-
-Rules:
-- Group queries by type (SELECT, INSERT, UPDATE, DELETE, DDL)
-- Identify the most frequently accessed tables
-- Note any potential performance issues (missing WHERE, SELECT *, etc.)
-- Keep recommendations actionable and specific"#
-                .into(),
-        ),
-        PromptScenario::ExplainAnalysis => (
-            r#"你是一位数据库性能专家。分析 EXPLAIN 输出并识别瓶颈。
-
-Database: {{db_type}}
-
-Respond in this exact JSON format:
-{
-  "summary": "One-line performance summary",
-  "bottlenecks": [
-    {"node": "Node name", "description": "Why it's slow", "severity": "high|medium|low"}
-  ],
-  "suggestions": [
-    {"description": "What to do", "sql": "CREATE INDEX ... (or null)", "impact": "Expected improvement"}
-  ]
-}"#
-                .into(),
-            r#"You are a database performance expert. Analyze the EXPLAIN output and identify bottlenecks.
-
-Database: {{db_type}}
-
-Respond in this exact JSON format:
-{
-  "summary": "One-line performance summary",
-  "bottlenecks": [
-    {"node": "Node name", "description": "Why it's slow", "severity": "high|medium|low"}
-  ],
-  "suggestions": [
-    {"description": "What to do", "sql": "CREATE INDEX ... (or null)", "impact": "Expected improvement"}
-  ]
-}"#
-                .into(),
-        ),
-        PromptScenario::Chat => (
-            r#"你是一个有用的数据库助手。帮助用户处理 SQL 查询、数据库概念和数据分析。编写 SQL 时请使用正确的格式并解释你的思路。
-
-你可以使用以下数据库工具来获取用户的库表结构信息：
-- list_connections: 列出所有数据库连接
-- list_databases: 列出某个连接下的所有数据库
-- list_tables: 列出数据库中的所有表
-- get_table_schema: 获取表的详细 schema（列名、类型、主键、外键、索引）
-
-当你需要向用户收集更多信息时（例如澄清需求、让用户选择方案等），请使用 ask_questions 工具来提出结构化的问题。推荐的选项请加"(推荐)"后缀。每次最多 2-3 个问题，避免信息过载。"#.into(),
-            r#"You are a helpful database assistant. Help the user with SQL queries, database concepts, and data analysis. When writing SQL, use proper formatting and explain your reasoning.
-
-You can use the following database tools to explore the user's database structure:
-- list_connections: List all database connections
-- list_databases: List all databases on a connection
-- list_tables: List all tables in a database
-- get_table_schema: Get detailed schema (column names, types, primary keys, foreign keys, indexes)
-
-When you need to gather more information from the user (e.g., to clarify requirements, let the user choose between options), use the ask_questions tool to ask structured questions. Add "(Recommended)" suffix to recommended options. At most 2-3 questions per turn to avoid information overload."#.into(),
-        ),
-        PromptScenario::WorkflowGenerate => (
-            r#"你是 DataZen 的 Workflow 创建助手。你的任务是通过对话帮助用户创建数据库工作流（YAML 格式）。
-
-## Workflow YAML 格式规范
-- 步骤类型：query（SQL 查询）、ai（AI 分析）、condition（条件分支）、foreach（循环）
-- 变量类型：string、number、connection
-- 模板语法：{{变量名}}、{{steps.步骤id.rows.0.字段名}}、{{steps.步骤id.rows.*.字段名}}、{{steps.步骤id.rows_count}}
-- 内置变量：{{current_date}}、{{current_month}}、{{current_year}}
-- 错误处理策略：abort（中止）、skip（跳过）、fallback（降级步骤）
-- 所有 YAML 字段名使用 snake_case（如 timeout_secs、then_steps、as_var）
-
-## 数据库探索工具
-你可以使用以下工具来了解用户的数据库结构，以便生成准确的 SQL：
-- list_connections: 列出所有可用的数据库连接（名称、类型、ID）
-- list_databases: 列出某个连接下的所有数据库
-- list_tables: 列出某个数据库中的所有表（含类型和行数）
-- get_table_schema: 获取一个或多个表的详细 schema（列名、数据类型、主键、外键、索引），支持批量查询
-
-**重要**：在生成 workflow 之前，你应该主动调用这些工具获取表结构信息，确保 SQL 中引用的表名和列名准确无误。
-
-## 你需要收集的信息
-1. 业务目的：用户想做什么
-2. 数据源：使用哪些数据库连接和表（如不明确，先用 list_connections 和 list_tables 探索）
-3. 查询逻辑：SQL 查询内容、条件、关联
-4. 是否需要 AI 分析步骤
-5. 变量定义：哪些参数需要在每次运行时由用户输入
-6. 错误处理偏好（可选）
-
-## 提问交互
-当你需要向用户收集上述信息时，请使用 ask_questions 工具来提出结构化问题。推荐的选项请加"(推荐)"后缀。每次最多 2-3 个问题，避免信息过载。用户回答后会将答案发送给你，请根据答案继续对话或生成 YAML。
-
-## 对话策略
-- 首轮对话时，先用数据库工具探索可用的连接和表结构
-- 同时用 ask_questions 了解业务目的
-- 当信息充足时直接生成完整 YAML，不要过度追问
-- 编写 SQL 时根据数据库类型使用正确的方言语法
-
-## 输出格式
-当信息充足时，在回复中包含完整的 workflow YAML，用 ```yaml 代码块包裹。
-确保 YAML 包含 id、name、description、variables（如需要）、steps 等必填字段。
-
-{{connections}}
-{{schema}}"#
-                .into(),
-            r#"You are a DataZen Workflow creation assistant. Your task is to help users create database workflows (YAML format) through conversation.
-
-## Workflow YAML Format
-- Step types: query (SQL query), ai (AI analysis), condition (conditional branch), foreach (loop)
-- Variable types: string, number, connection
-- Template syntax: {{variable_name}}, {{steps.step_id.rows.0.field_name}}, {{steps.step_id.rows.*.field_name}}, {{steps.step_id.rows_count}}
-- Built-in variables: {{current_date}}, {{current_month}}, {{current_year}}
-- Error handling strategies: abort, skip, fallback
-- All YAML field names use snake_case (e.g. timeout_secs, then_steps, as_var)
-
-## Database Exploration Tools
-You can use the following tools to explore the user's database structure for generating accurate SQL:
-- list_connections: List all available database connections (name, type, ID)
-- list_databases: List all databases on a given connection
-- list_tables: List all tables in a database (with type and row count)
-- get_table_schema: Get detailed schema for one or more tables (column names, data types, primary keys, foreign keys, indexes), supports batch queries
-
-**Important**: Before generating a workflow, you should proactively call these tools to fetch table structure information, ensuring that table and column names referenced in SQL are accurate.
-
-## Information to Gather
-1. Business purpose: what the user wants to achieve
-2. Data sources: which database connections and tables to use (if unclear, use list_connections and list_tables to explore)
-3. Query logic: SQL queries, conditions, joins
-4. Whether AI analysis steps are needed
-5. Variable definitions: which parameters should be user-supplied at runtime
-6. Error handling preferences (optional)
-
-## Asking Questions
-When you need to collect information from the user, use the ask_questions tool to ask structured questions. Add "(Recommended)" suffix to recommended options. At most 2-3 questions per turn to avoid information overload. After the user answers, their answers will be sent back to you; continue the conversation or generate YAML based on their answers.
-
-## Conversation Strategy
-- On the first turn, use database tools to explore available connections and table structures
-- Simultaneously use ask_questions to learn the business purpose
-- Generate the complete YAML when you have enough information; don't over-ask
-- Use the correct SQL dialect based on the database type
-
-## Output Format
-When you have enough information, include the complete workflow YAML in a ```yaml code block.
-Ensure the YAML includes required fields: id, name, description, variables (if needed), and steps.
-
-{{connections}}
-{{schema}}"#
-                .into(),
-        ),
+        PromptScenario::Nl2Sql => include_str!("../../resources/prompts/en/nl2sql.txt"),
+        PromptScenario::Diagnose => include_str!("../../resources/prompts/en/diagnose.txt"),
+        PromptScenario::NlFilter => include_str!("../../resources/prompts/en/nl_filter.txt"),
+        PromptScenario::SchemaDocSelectTables => include_str!("../../resources/prompts/en/schema_doc_select_tables.txt"),
+        PromptScenario::SchemaDoc => include_str!("../../resources/prompts/en/schema_doc.txt"),
+        PromptScenario::ConnectionDiagnose => include_str!("../../resources/prompts/en/connection_diagnose.txt"),
+        PromptScenario::QuerySummary => include_str!("../../resources/prompts/en/query_summary.txt"),
+        PromptScenario::ExplainAnalysis => include_str!("../../resources/prompts/en/explain_analysis.txt"),
+        PromptScenario::Chat => include_str!("../../resources/prompts/en/chat.txt"),
+        PromptScenario::WorkflowGenerate => include_str!("../../resources/prompts/en/workflow_generate.txt"),
     }
 }
 
@@ -694,10 +366,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_default_prompt_covers_all_scenarios() {
+    fn test_embedded_defaults_cover_all_scenarios() {
         for scenario in PromptScenario::all() {
-            let (zh, en) = default_prompt(*scenario);
-            assert!(!zh.is_empty(), "{scenario:?} zh prompt is empty");
+            let en = embedded_default(*scenario);
             assert!(!en.is_empty(), "{scenario:?} en prompt is empty");
         }
     }
@@ -726,7 +397,7 @@ mod tests {
     #[tokio::test]
     async fn test_resolver_default_fallback() {
         let tmp = tempfile::tempdir().unwrap();
-        let resolver = PromptResolver::new(tmp.path());
+        let resolver = PromptResolver::new(tmp.path(), None);
         let result = resolver.resolve(PromptScenario::Nl2Sql, None, "en").await;
         assert!(result.contains("SQL expert"));
     }
@@ -734,7 +405,7 @@ mod tests {
     #[tokio::test]
     async fn test_resolver_user_override() {
         let tmp = tempfile::tempdir().unwrap();
-        let resolver = PromptResolver::new(tmp.path());
+        let resolver = PromptResolver::new(tmp.path(), None);
 
         resolver
             .set_override(PromptOverrideEntry {
@@ -756,7 +427,7 @@ mod tests {
     #[tokio::test]
     async fn test_resolver_remove_override() {
         let tmp = tempfile::tempdir().unwrap();
-        let resolver = PromptResolver::new(tmp.path());
+        let resolver = PromptResolver::new(tmp.path(), None);
 
         resolver
             .set_override(PromptOverrideEntry {
@@ -782,7 +453,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
 
         {
-            let resolver = PromptResolver::new(tmp.path());
+            let resolver = PromptResolver::new(tmp.path(), None);
             resolver
                 .set_override(PromptOverrideEntry {
                     driver_type: "PostgreSQL".into(),
@@ -795,7 +466,7 @@ mod tests {
         }
 
         {
-            let resolver = PromptResolver::new(tmp.path());
+            let resolver = PromptResolver::new(tmp.path(), None);
             resolver.load().await.unwrap();
             let overrides = resolver.get_all_overrides().await;
             assert_eq!(overrides.len(), 1);
@@ -806,7 +477,7 @@ mod tests {
     #[tokio::test]
     async fn test_list_prompts() {
         let tmp = tempfile::tempdir().unwrap();
-        let resolver = PromptResolver::new(tmp.path());
+        let resolver = PromptResolver::new(tmp.path(), None);
         let prompts = resolver.list_prompts(None).await;
         assert_eq!(prompts.len(), PromptScenario::all().len());
         for p in &prompts {

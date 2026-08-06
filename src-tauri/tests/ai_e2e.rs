@@ -5,7 +5,26 @@
 //!
 //! Tests must run sequentially (`--test-threads=1`) to avoid API rate limiting.
 
+use std::collections::HashMap;
 use std::path::PathBuf;
+
+use datazen::ai::prompt_resolver::{self, PromptResolver};
+use datazen_ai_api::{ChatMessage, MessageRole};
+use datazen_driver_api::PromptScenario;
+
+async fn system_prompt(scenario: PromptScenario, vars: &HashMap<&str, &str>, lang: &str) -> ChatMessage {
+    let tmp = tempfile::tempdir().unwrap();
+    let resolver = PromptResolver::new(tmp.path(), None);
+    let tpl = resolver.resolve(scenario, None, lang).await;
+    let content = prompt_resolver::render_template(&tpl, vars);
+    ChatMessage {
+        role: MessageRole::System,
+        content,
+        reasoning: None,
+        tool_calls: None,
+        tool_call_id: None,
+    }
+}
 
 /// Strip markdown fences from an AI response (e.g. ```json ... ```).
 fn strip_fences(raw: &str) -> String {
@@ -211,16 +230,12 @@ mod provider_tests {
 
         let provider = create_provider(&cfg.provider, &cfg.endpoint, &cfg.api_key, cfg.max_tokens).await;
 
-        let context = SqlGenerationContext {
-            database_type: "PostgreSQL".into(),
-            database_version: Some("15.0".into()),
-            schema_ddl: "  users (id int4 PK, name varchar, email varchar, created_at timestamp)\n  orders (id int4 PK, user_id int4 FK→users, amount numeric, status varchar)"
-                .into(),
-            current_table: Some("users".into()),
-            recent_queries: vec![],
-        };
-
-        let system = datazen::ai::PromptBuilder::nl2sql_system(&context, "en");
+        let mut vars = HashMap::new();
+        vars.insert("db_type", "PostgreSQL");
+        vars.insert("version", " 15.0");
+        vars.insert("schema", "  users (id int4 PK, name varchar, email varchar, created_at timestamp)\n  orders (id int4 PK, user_id int4 FK→users, amount numeric, status varchar)");
+        vars.insert("recent", "");
+        let system = system_prompt(PromptScenario::Nl2Sql, &vars, "en").await;
         let request = CompletionRequest {
             request_id: "test-nl2sql".into(),
             model: cfg.model,
@@ -261,11 +276,10 @@ mod provider_tests {
 
         let provider = create_provider(&cfg.provider, &cfg.endpoint, &cfg.api_key, cfg.max_tokens).await;
 
-        let system = datazen::ai::PromptBuilder::diagnose_system(
-            "PostgreSQL",
-            "  users (id int4 PK, name varchar, email varchar)",
-            "en",
-        );
+        let mut vars = HashMap::new();
+        vars.insert("db_type", "PostgreSQL");
+        vars.insert("schema", "  users (id int4 PK, name varchar, email varchar)");
+        let system = system_prompt(PromptScenario::Diagnose, &vars, "en").await;
         let request = CompletionRequest {
             request_id: "test-diagnose".into(),
             model: cfg.model,
@@ -316,7 +330,9 @@ mod provider_tests {
 
         let provider = create_provider(&cfg.provider, &cfg.endpoint, &cfg.api_key, cfg.max_tokens).await;
 
-        let system = datazen::ai::PromptBuilder::explain_analysis_system("PostgreSQL", "en");
+        let mut vars = HashMap::new();
+        vars.insert("db_type", "PostgreSQL");
+        let system = system_prompt(PromptScenario::ExplainAnalysis, &vars, "en").await;
         let request = CompletionRequest {
             request_id: "test-explain".into(),
             model: cfg.model,
@@ -367,11 +383,10 @@ mod provider_tests {
 
         let provider = create_provider(&cfg.provider, &cfg.endpoint, &cfg.api_key, cfg.max_tokens).await;
 
-        let system = datazen::ai::PromptBuilder::nl_filter_system(
-            "PostgreSQL",
-            "  id int4 NOT NULL PK\n  name varchar NULL\n  age int4 NULL\n  status varchar NULL",
-            "en",
-        );
+        let mut vars = HashMap::new();
+        vars.insert("db_type", "PostgreSQL");
+        vars.insert("columns", "  id int4 NOT NULL PK\n  name varchar NULL\n  age int4 NULL\n  status varchar NULL");
+        let system = system_prompt(PromptScenario::NlFilter, &vars, "en").await;
         let request = CompletionRequest {
             request_id: "test-filter".into(),
             model: cfg.model,
@@ -428,11 +443,10 @@ mod provider_tests {
 
         let provider = create_provider(&cfg.provider, &cfg.endpoint, &cfg.api_key, cfg.max_tokens).await;
 
-        let system = datazen::ai::PromptBuilder::schema_doc_system(
-            "PostgreSQL",
-            "  users (id int4 PK, name varchar NOT NULL, email varchar NOT NULL UNIQUE)\n  orders (id int4 PK, user_id int4 NOT NULL, amount numeric, created_at timestamp DEFAULT now())",
-            "en",
-        );
+        let mut vars = HashMap::new();
+        vars.insert("db_type", "PostgreSQL");
+        vars.insert("schema", "  users (id int4 PK, name varchar NOT NULL, email varchar NOT NULL UNIQUE)\n  orders (id int4 PK, user_id int4 NOT NULL, amount numeric, created_at timestamp DEFAULT now())");
+        let system = system_prompt(PromptScenario::SchemaDoc, &vars, "en").await;
         let request = CompletionRequest {
             request_id: "test-schema-doc".into(),
             model: cfg.model,
@@ -481,7 +495,8 @@ mod provider_tests {
 
         let provider = create_provider(&cfg.provider, &cfg.endpoint, &cfg.api_key, cfg.max_tokens).await;
 
-        let system = datazen::ai::PromptBuilder::connection_diagnose_system("en");
+        let vars = HashMap::new();
+        let system = system_prompt(PromptScenario::ConnectionDiagnose, &vars, "en").await;
         let request = CompletionRequest {
             request_id: "test-conn-diag".into(),
             model: cfg.model,
@@ -536,7 +551,8 @@ mod provider_tests {
 
         let provider = create_provider(&cfg.provider, &cfg.endpoint, &cfg.api_key, cfg.max_tokens).await;
 
-        let system = datazen::ai::PromptBuilder::query_summary_system("en");
+        let vars = HashMap::new();
+        let system = system_prompt(PromptScenario::QuerySummary, &vars, "en").await;
         let request = CompletionRequest {
             request_id: "test-query-analysis".into(),
             model: cfg.model,

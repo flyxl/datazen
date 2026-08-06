@@ -1,5 +1,5 @@
-import { useCallback, useState } from 'react';
-import { BarChart3, Loader2, Sparkles, Copy, Check, Trash2, ArrowDownToLine, Settings } from 'lucide-react';
+import { useCallback, useRef, useState } from 'react';
+import { BarChart3, Loader2, Sparkles, Copy, Check, Trash2, ArrowDownToLine, Settings, X } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { useI18n } from '../../hooks/useI18n';
 import { useAiKeyboard } from '../../hooks/useAiKeyboard';
@@ -7,6 +7,8 @@ import { useResizable } from '../../hooks/useResizable';
 import { useAiStore } from '../../stores/aiStore';
 import { cn } from '../../lib/cn';
 import { openSettingsWindow } from '../../lib/windowManager';
+import { ContextPicker } from './ContextPicker';
+import type { ContextEntry } from '../../types';
 
 interface Nl2SqlPanelProps {
   connectionId: string;
@@ -26,6 +28,10 @@ export function Nl2SqlPanel({ connectionId, database, currentTable, onApplySql, 
   const clearNl2Sql = useAiStore((s) => s.clearNl2Sql);
 
   const [copied, setCopied] = useState(false);
+  const [contextFiles, setContextFiles] = useState<ContextEntry[]>([]);
+  const [showPicker, setShowPicker] = useState(false);
+  const [pickerQuery, setPickerQuery] = useState('');
+  const inputWrapperRef = useRef<HTMLDivElement>(null);
 
   const { size: panelHeight, handleRef } = useResizable({
     direction: 'vertical',
@@ -37,8 +43,10 @@ export function Nl2SqlPanel({ connectionId, database, currentTable, onApplySql, 
 
   const handleGenerate = useCallback(() => {
     if (!nl2sql.input.trim() || nl2sql.isGenerating) return;
-    void generateSql({ connectionId, database, currentTable });
-  }, [generateSql, connectionId, database, currentTable, nl2sql.input, nl2sql.isGenerating]);
+    const ctxPaths = contextFiles.length > 0 ? contextFiles.map((f) => f.path) : undefined;
+    void generateSql({ connectionId, database, currentTable, contextFiles: ctxPaths });
+    setContextFiles([]);
+  }, [generateSql, connectionId, database, currentTable, nl2sql.input, nl2sql.isGenerating, contextFiles]);
 
   const aiKeyboard = useAiKeyboard(handleGenerate);
 
@@ -75,18 +83,77 @@ export function Nl2SqlPanel({ connectionId, database, currentTable, onApplySql, 
       <div className="flex min-h-0 flex-1 items-start gap-2 overflow-hidden p-2">
         <Sparkles className="mt-1.5 h-3.5 w-3.5 shrink-0 text-blue-400" />
         <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-1.5 overflow-hidden">
-          <textarea
-            value={nl2sql.input}
-            onChange={(e) => setNl2SqlInput(e.target.value)}
-            {...aiKeyboard}
-            placeholder={t('nl2sql.placeholder')}
-            rows={1}
-            className={cn(
-              'w-full shrink-0 resize-none rounded border border-edge bg-surface px-2 py-1.5',
-              'text-sm text-fg placeholder:text-fg-muted',
-              'focus:border-accent focus:outline-none',
+          {contextFiles.length > 0 && (
+            <div className="flex shrink-0 flex-wrap gap-1">
+              {contextFiles.map((f) => (
+                <span
+                  key={f.path}
+                  className="inline-flex items-center gap-1 rounded-md bg-accent/10 px-1.5 py-0.5 text-[11px] text-accent"
+                >
+                  @{f.name}
+                  <button
+                    type="button"
+                    className="rounded hover:bg-accent/20"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => setContextFiles((prev) => prev.filter((c) => c.path !== f.path))}
+                  >
+                    <X className="h-2.5 w-2.5" />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+          <div ref={inputWrapperRef} className="relative w-full shrink-0">
+            {showPicker && (
+              <ContextPicker
+                query={pickerQuery}
+                onSelect={(entry) => {
+                  if (!contextFiles.some((f) => f.path === entry.path)) {
+                    setContextFiles((prev) => [...prev, entry]);
+                  }
+                  const input = nl2sql.input;
+                  const atStart = input.lastIndexOf('@');
+                  if (atStart >= 0) {
+                    setNl2SqlInput(input.substring(0, atStart).trimEnd());
+                  }
+                  setShowPicker(false);
+                  setPickerQuery('');
+                }}
+                onClose={() => setShowPicker(false)}
+                anchorRef={inputWrapperRef}
+              />
             )}
-          />
+            <textarea
+              value={nl2sql.input}
+              onChange={(e) => {
+                const val = e.target.value;
+                setNl2SqlInput(val);
+                const cursorPos = e.target.selectionStart;
+                const before = val.substring(0, cursorPos);
+                const atMatch = before.match(/@([^\s@]*)$/);
+                if (atMatch) {
+                  setShowPicker(true);
+                  setPickerQuery(atMatch[1]);
+                } else {
+                  setShowPicker(false);
+                  setPickerQuery('');
+                }
+              }}
+              onKeyDown={(e) => {
+                if (showPicker && ['ArrowUp', 'ArrowDown', 'Enter', 'Escape'].includes(e.key)) return;
+                aiKeyboard.onKeyDown?.(e);
+              }}
+              onCompositionStart={aiKeyboard.onCompositionStart}
+              onCompositionEnd={aiKeyboard.onCompositionEnd}
+              placeholder={t('context.placeholder')}
+              rows={1}
+              className={cn(
+                'w-full resize-none rounded border border-edge bg-surface px-2 py-1.5',
+                'text-sm text-fg placeholder:text-fg-muted',
+                'focus:border-accent focus:outline-none',
+              )}
+            />
+          </div>
           {nl2sql.generatedSql && (
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded border border-edge bg-surface">
               <pre className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap p-2 font-mono text-xs text-fg-secondary">

@@ -16,6 +16,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   logLevel: 'info',
   logPath: '',
   mcpDisabledTools: [],
+  contextDir: '',
 };
 
 const THEME_STORAGE_KEY = 'datazen-theme';

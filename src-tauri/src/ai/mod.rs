@@ -10,12 +10,10 @@ pub mod context;
 pub mod custom;
 pub mod deepseek;
 pub mod openai;
-pub mod prompt;
 pub mod prompt_resolver;
 pub mod protocol;
 pub mod registry;
 
 pub use context::SchemaContextBuilder;
-pub use prompt::PromptBuilder;
 pub use prompt_resolver::PromptResolver;
 pub use registry::{init_ai_providers, AiProviderRegistry};

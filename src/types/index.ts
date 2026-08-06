@@ -148,6 +148,14 @@ export interface FavoriteQuery {
   createdAt: string;
 }
 
+export interface ContextEntry {
+  name: string;
+  path: string;
+  isDir: boolean;
+  size?: number;
+  children?: ContextEntry[];
+}
+
 export interface AppSettings {
   theme: 'light' | 'dark' | 'system';
   language: string;
@@ -161,6 +169,7 @@ export interface AppSettings {
   logLevel: 'trace' | 'debug' | 'info' | 'warn' | 'error';
   logPath: string;
   mcpDisabledTools: string[];
+  contextDir: string;
 }
 
 export type FilterOperator =
