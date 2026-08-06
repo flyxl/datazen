@@ -16,7 +16,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
-use tauri::menu::{CheckMenuItemBuilder, MenuBuilder, MenuItemBuilder, SubmenuBuilder};
+use tauri::menu::{CheckMenuItemBuilder, MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder};
 use tauri::{Emitter, Manager};
 use ai::{init_ai_providers, SchemaContextBuilder};
 use commands::AppState;
@@ -26,38 +26,16 @@ use services::ConnectionManager;
 use store::Store;
 use sync::adapters::init_sync_adapters;
 
-fn menu_labels(lang: &str) -> HashMap<&'static str, &'static str> {
-    let mut m = HashMap::new();
-    if lang == "en" {
-        m.insert("edit", "Edit");
-        m.insert("view", "View");
-        m.insert("tools", "Tools");
-        m.insert("window", "Window");
-        m.insert("theme-light", "Light");
-        m.insert("theme-dark", "Dark");
-        m.insert("theme-system", "System");
-        m.insert("open-settings", "Settings…");
-        m.insert("new-connection", "New Connection");
-        m.insert("data-sync", "Data Sync");
-        m.insert("export-config", "Export Config…");
-        m.insert("import-config", "Import Config…");
-        m.insert("view-logs", "View Logs");
-    } else {
-        m.insert("edit", "编辑");
-        m.insert("view", "显示");
-        m.insert("tools", "工具");
-        m.insert("window", "窗口");
-        m.insert("theme-light", "浅色主题");
-        m.insert("theme-dark", "深色主题");
-        m.insert("theme-system", "跟随系统");
-        m.insert("open-settings", "偏好设置…");
-        m.insert("new-connection", "新建连接");
-        m.insert("data-sync", "数据同步");
-        m.insert("export-config", "导出配置…");
-        m.insert("import-config", "导入配置…");
-        m.insert("view-logs", "查看日志");
-    }
-    m
+pub(crate) fn menu_labels(lang: &str) -> HashMap<String, String> {
+    static MENU_JSON: &str = include_str!("../resources/menu-labels.json");
+
+    let all: HashMap<String, HashMap<String, String>> =
+        serde_json::from_str(MENU_JSON).expect("invalid menu-labels.json");
+
+    all.get(lang)
+        .or_else(|| all.get("en"))
+        .cloned()
+        .unwrap_or_default()
 }
 
 fn setup_menu(
@@ -66,63 +44,66 @@ fn setup_menu(
     lang: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let l = menu_labels(lang);
+    let t = |key: &str| -> String {
+        l.get(key).cloned().unwrap_or_else(|| key.to_string())
+    };
 
-    let theme_light = CheckMenuItemBuilder::new(l["theme-light"])
+    let theme_light = CheckMenuItemBuilder::new(t("theme-light"))
         .id("theme-light")
         .checked(theme == "light")
         .build(handle)?;
-    let theme_dark = CheckMenuItemBuilder::new(l["theme-dark"])
+    let theme_dark = CheckMenuItemBuilder::new(t("theme-dark"))
         .id("theme-dark")
         .checked(theme == "dark")
         .build(handle)?;
-    let theme_system = CheckMenuItemBuilder::new(l["theme-system"])
+    let theme_system = CheckMenuItemBuilder::new(t("theme-system"))
         .id("theme-system")
         .checked(theme == "system")
         .build(handle)?;
 
-    let settings_item = MenuItemBuilder::new(l["open-settings"])
+    let settings_item = MenuItemBuilder::new(t("open-settings"))
         .id("open-settings")
         .accelerator("CmdOrCtrl+,")
         .build(handle)?;
 
-    let new_conn_item = MenuItemBuilder::new(l["new-connection"])
+    let new_conn_item = MenuItemBuilder::new(t("new-connection"))
         .id("new-connection")
         .accelerator("CmdOrCtrl+N")
         .build(handle)?;
 
-    let data_sync_item = MenuItemBuilder::new(l["data-sync"])
+    let data_sync_item = MenuItemBuilder::new(t("data-sync"))
         .id("data-sync")
         .build(handle)?;
 
-    let export_config_item = MenuItemBuilder::new(l["export-config"])
+    let export_config_item = MenuItemBuilder::new(t("export-config"))
         .id("export-config")
         .build(handle)?;
 
-    let import_config_item = MenuItemBuilder::new(l["import-config"])
+    let import_config_item = MenuItemBuilder::new(t("import-config"))
         .id("import-config")
         .build(handle)?;
 
-    let view_logs_item = MenuItemBuilder::new(l["view-logs"])
+    let view_logs_item = MenuItemBuilder::new(t("view-logs"))
         .id("view-logs")
         .build(handle)?;
 
-    let edit_menu = SubmenuBuilder::new(handle, l["edit"])
-        .undo()
-        .redo()
+    let edit_menu = SubmenuBuilder::new(handle, t("edit"))
+        .item(&PredefinedMenuItem::undo(handle, Some(&t("undo")))?)
+        .item(&PredefinedMenuItem::redo(handle, Some(&t("redo")))?)
         .separator()
-        .cut()
-        .copy()
-        .paste()
-        .select_all()
+        .item(&PredefinedMenuItem::cut(handle, Some(&t("cut")))?)
+        .item(&PredefinedMenuItem::copy(handle, Some(&t("copy")))?)
+        .item(&PredefinedMenuItem::paste(handle, Some(&t("paste")))?)
+        .item(&PredefinedMenuItem::select_all(handle, Some(&t("select-all")))?)
         .build()?;
 
-    let view_menu = SubmenuBuilder::new(handle, l["view"])
+    let view_menu = SubmenuBuilder::new(handle, t("view"))
         .items(&[&theme_light, &theme_dark, &theme_system])
         .separator()
         .item(&settings_item)
         .build()?;
 
-    let tools_menu = SubmenuBuilder::new(handle, l["tools"])
+    let tools_menu = SubmenuBuilder::new(handle, t("tools"))
         .item(&new_conn_item)
         .item(&data_sync_item)
         .separator()
@@ -132,9 +113,9 @@ fn setup_menu(
         .item(&import_config_item)
         .build()?;
 
-    let window_menu = SubmenuBuilder::new(handle, l["window"])
-        .minimize()
-        .close_window()
+    let window_menu = SubmenuBuilder::new(handle, t("window"))
+        .item(&PredefinedMenuItem::minimize(handle, Some(&t("minimize")))?)
+        .item(&PredefinedMenuItem::close_window(handle, Some(&t("close-window")))?)
         .build()?;
 
     let menu = MenuBuilder::new(handle)
