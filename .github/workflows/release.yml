@@ -32,24 +32,24 @@ jobs:
             plugins: "none"
             features: ""
             variant_suffix: ""
-          # ── Pro 版（内置驱动 + Kiwi）──
+          # ── Pro 版（内置驱动 + Kiwi + Superset）──
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
             os_label: windows-x64
-            plugins: "kiwi"
-            features: "plugin-kiwi"
+            plugins: "kiwi,superset"
+            features: "plugin-kiwi,plugin-superset"
             variant_suffix: "-pro"
           - platform: macos-latest
             target: aarch64-apple-darwin
             os_label: macos-arm64
-            plugins: "kiwi"
-            features: "plugin-kiwi"
+            plugins: "kiwi,superset"
+            features: "plugin-kiwi,plugin-superset"
             variant_suffix: "-pro"
           - platform: macos-latest
             target: x86_64-apple-darwin
             os_label: macos-x64
-            plugins: "kiwi"
-            features: "plugin-kiwi"
+            plugins: "kiwi,superset"
+            features: "plugin-kiwi,plugin-superset"
             variant_suffix: "-pro"
 
     runs-on: ${{ matrix.platform }}
