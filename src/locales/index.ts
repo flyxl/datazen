@@ -10,8 +10,8 @@ const locales: Record<SupportedLocale, Record<TranslationKey, string>> = {
 };
 
 export function getTranslation(locale: SupportedLocale, key: TranslationKey, params?: Record<string, string | number>): string {
-  const dict = locales[locale] ?? locales['zh-CN'];
-  let text = dict[key] ?? zhCN[key] ?? key;
+  const dict = locales[locale] ?? locales.en;
+  let text = dict[key] ?? en[key] ?? key;
   if (params) {
     for (const [k, v] of Object.entries(params)) {
       text = text.replace(new RegExp(`\\{${k}\\}`, 'g'), String(v));
@@ -21,5 +21,5 @@ export function getTranslation(locale: SupportedLocale, key: TranslationKey, par
 }
 
 export function getAllTranslations(locale: SupportedLocale): Record<string, string> {
-  return locales[locale] ?? locales['zh-CN'];
+  return locales[locale] ?? locales.en;
 }
