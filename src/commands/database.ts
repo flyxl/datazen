@@ -34,6 +34,9 @@ export const databaseCommands = {
   getTableSchema: (connectionId: string, table: string) =>
     invoke<TableSchema>('get_table_schema', { connectionId, table }),
 
+  getErData: (connectionId: string, database: string) =>
+    invoke<TableSchema[]>('get_er_data', { connectionId, database }),
+
   getTableData: (params: {
     connectionId: string;
     table: string;

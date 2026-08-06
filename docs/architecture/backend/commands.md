@@ -377,12 +377,33 @@ pub struct AppState {
     pub sync_adapters: Arc<SyncAdapterRegistry>,
     pub ai_registry: Arc<AiProviderRegistry>,
     pub schema_context_builder: Arc<SchemaContextBuilder>,
+    pub prompt_resolver: Arc<PromptResolver>,
     pub workflow_registry: Arc<WorkflowRegistry>,
+    pub workflow_history: Arc<WorkflowHistory>,
     pub mcp_client_manager: Arc<McpClientManager>,
 }
 ```
 
 `build_app_state()` 函数统一初始化，GUI 和 headless MCP 模式共享。
+
+### 3.3 IPC 命令模块清单
+
+| 模块 | 文件 | 关键命令 |
+|------|------|---------|
+| 连接管理 | `connection.rs` | `get_connections`, `save_connection`, `test_connection`, `connect`, `disconnect`, `ping`, `get_server_info`, `available_drivers` |
+| SQL 查询 | `query.rs` | `execute_query`, `get_explain`, `cancel_query`, `get_query_history`, `favorite_query` |
+| Schema | `schema.rs` | `get_databases`, `get_tables`, `get_columns`, `get_table_schema`, `get_table_data`, `get_er_data` |
+| 表编辑 | `data.rs` | `commit_edits`（批量行 UPDATE） |
+| Redis | `kv.rs` | `scan_keys`, `get_key_detail` |
+| 备份 | `backup.rs` | `backup_database`, `restore_database` |
+| 同步 | `sync.rs` | `sync_compare`, `sync_tables`, `sync_task_*` |
+| 配置 | `config.rs` | `get_settings`, `save_settings`, `get_groups`, `get_log_path`, `export_connections`, `import_connections` |
+| AI | `ai.rs` | `ai_generate_sql`, `ai_chat`, `ai_diagnose_error`, `ai_analyze_explain`, `ai_parse_filter`, `workflow_*`, `prompt_*`（约 30 个命令） |
+| 上下文 | `context.rs` | `context_get_dir`, `context_list_files`, `context_read_files` |
+| MCP | `mcp.rs` | `mcp_start`, `mcp_stop`, `mcp_status`, `mcp_client_connect`, `mcp_client_call_tool` |
+| 文件 | `file.rs` | `read_file`, `write_file`, `show_editor_context_menu` |
+| 窗口 | `window.rs` | `create_sub_window` |
+| ADB | `adb.rs` | `adb_list_packages`, `adb_list_databases`, `adb_pull_database` |
 
 ## 4. 安全措施总结
 

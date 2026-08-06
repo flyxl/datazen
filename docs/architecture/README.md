@@ -4,21 +4,27 @@
 
 ## 项目概述
 
-DataZen 是一个跨平台桌面数据库管理工具，基于 **Tauri v2**（Rust 后端 + React 前端）构建，集成 AI 辅助功能。
+DataZen 是一个跨平台桌面数据库管理工具，基于 **Tauri v2**（Rust 后端 + React 前端）构建，集成 AI 辅助功能。支持 GUI 桌面应用和无头 MCP stdio 服务器两种运行模式。
 
 ## 架构全景
 
 ```
 ┌───────────────────────────────────────────────────────────────────────┐
 │                          Tauri Application                            │
+│                  (GUI mode / headless MCP stdio mode)                 │
 ├───────────────────────────────────────────────────────────────────────┤
 │                                                                       │
 │  ┌─────────────────────────────────────────────────────────────────┐ │
 │  │                     Frontend (React + TS)                        │ │
 │  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐           │ │
 │  │  │Connection│ │  Query   │ │   AI     │ │ Settings │           │ │
-│  │  │ Manager  │ │  Editor  │ │ Features │ │  Panel   │           │ │
+│  │  │ Manager  │ │ Editor + │ │ Features │ │  Panel   │           │ │
+│  │  │          │ │  Chart   │ │ +Context │ │          │           │ │
 │  │  └────┬─────┘ └────┬─────┘ └────┬─────┘ └────┬─────┘           │ │
+│  │       │             │            │             │                  │ │
+│  │  ┌────┴─────┐ ┌─────┴────┐ ┌────┴─────┐                        │ │
+│  │  │ ER Diag  │ │DataExport│ │WorkflowWin│                        │ │
+│  │  └──────────┘ └──────────┘ └──────────┘                         │ │
 │  └───────┼────────────┼────────────┼────────────┼─────────────────┘ │
 │          └────────────┴────────────┴────────────┘                    │
 │                              │ Tauri IPC                             │
@@ -27,7 +33,7 @@ DataZen 是一个跨平台桌面数据库管理工具，基于 **Tauri v2**（Ru
 │  │                      Backend (Rust)                              │ │
 │  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────┐ ┌──────────┐ │ │
 │  │  │ Commands │ │ Services │ │    AI    │ │ MCP  │ │  Store   │ │ │
-│  │  │(IPC层)   │ │(业务逻辑)│ │(Provider)│ │(S/C) │ │(持久化)  │ │ │
+│  │  │(16模块)  │ │(连接/查询)│ │(4 Provid)│ │(S/C) │ │(AES加密) │ │ │
 │  │  └────┬─────┘ └────┬─────┘ └────┬─────┘ └──┬───┘ └──────────┘ │ │
 │  │       └────────────┴────────────┘           │                   │ │
 │  │                    │                         │                   │ │
@@ -36,25 +42,28 @@ DataZen 是一个跨平台桌面数据库管理工具，基于 **Tauri v2**（Ru
 │  │  │  ┌────┐ ┌────┐ ┌──────┐ ┌─────┐   │     │                   │ │
 │  │  │  │ PG │ │ My │ │SQLite│ │Redis│   │     │                   │ │
 │  │  │  └────┘ └────┘ └──────┘ └─────┘   │     │                   │ │
+│  │  │        + Plugin Drivers             │     │                   │ │
 │  │  └────────────────────────────────────┘     │                   │ │
 │  └─────────────────────────────────────────────┘                   │ │
 │                    │                     │                           │
 └────────────────────┼─────────────────────┼───────────────────────────┘
                      ▼                     ▼
             External Databases      LLM Providers
-            (PG, MySQL, etc.)    (OpenAI, Anthropic...)
+            (PG, MySQL, etc.)   (OpenAI, Anthropic,
+                                 DeepSeek, Custom...)
 ```
 
 ## 分层架构
 
 | 层级 | 职责 | 关键特性 |
 |------|------|----------|
-| **Commands 层** | 处理前端 IPC 调用 | 参数验证、结构化错误、日志记录 |
-| **Services 层** | 业务逻辑处理 | 连接管理、查询执行、事务控制 |
-| **Drivers 层** | 数据库驱动抽象 | 统一接口、连接池管理、插件扩展 |
-| **AI 层** | LLM 集成 | 多 Provider 支持、流式输出、上下文构建 |
+| **Commands 层** | 处理前端 IPC 调用 | 16 个命令模块、参数验证、结构化错误、日志记录 |
+| **Services 层** | 业务逻辑处理 | 连接管理（含去重锁）、查询执行、DbTools 共享工具 |
+| **Drivers 层** | 数据库驱动抽象 | 统一接口、连接池管理、编译时插件扩展（inventory） |
+| **AI 层** | LLM 集成 | 4 内置 Provider、协议层复用、流式输出、Prompt 资源文件 + 覆盖 |
 | **MCP 层** | 工具协议 | Server 暴露能力、Client 连接外部、Workflows 工作流 |
-| **Stores 层** | 本地持久化 | 加密存储、配置管理 |
+| **Sync 层** | 跨库数据同步 | IR 中间表示、O(N) 适配器 |
+| **Stores 层** | 本地持久化 | AES-256-GCM 加密存储、配置管理 |
 
 ---
 
@@ -62,30 +71,30 @@ DataZen 是一个跨平台桌面数据库管理工具，基于 **Tauri v2**（Ru
 
 | 文档 | 内容 |
 |------|------|
-| [数据库驱动层](backend/drivers.md) | DatabaseDriver trait、驱动注册表、插件扩展机制、添加新 DB 类型检查清单 |
-| [Schema 缓存](backend/cache.md) | 多级缓存架构、缓存失效策略、查询执行优化 |
-| [服务层](backend/services.md) | ConnectionManager 连接管理、资源安全、连接泄露防护 |
-| [持久化存储](backend/store.md) | 本地文件存储、AES-256-GCM 加密、配置/历史/收藏管理 |
-| [IPC 命令层](backend/commands.md) | Tauri Commands 模块划分、AppState 结构、CommandError 错误处理 |
-| [AI 模块](backend/ai.md) | AiProvider trait、Provider 实现、SchemaContextBuilder、PromptBuilder |
-| [MCP 模块](backend/mcp.md) | MCP Server（Tools/Resources/Prompts）、MCP Client、Workflows 系统 |
+| [数据库驱动层](backend/drivers.md) | DatabaseDriver trait（含 `supports_offset`/`supports_explain`）、驱动注册表、插件扩展机制 |
+| [Schema 缓存](backend/cache.md) | 两级 TTL 缓存架构、缓存失效策略、查询执行优化 |
+| [服务层](backend/services.md) | ConnectionManager（连接去重锁）、QueryExecutor（分页）、DbTools（共享工具） |
+| [持久化存储](backend/store.md) | AES-256-GCM 加密本地文件存储、配置/历史/收藏/Prompt覆盖管理 |
+| [IPC 命令层](backend/commands.md) | 16 个 Tauri Commands 模块、AppState 结构、CommandError 错误处理 |
+| [AI 模块](backend/ai.md) | AiProvider trait、4 内置 Provider、protocol 层、PromptResolver（资源文件 + 覆盖） |
+| [MCP 模块](backend/mcp.md) | MCP Server（Tools/Resources/Prompts）、MCP Client、Workflows 系统、双运行模式 |
 
 ## 前端文档
 
 | 文档 | 内容 |
 |------|------|
-| [状态管理](frontend/state.md) | Zustand stores 设计、事件处理、跨窗口通信 |
-| [组件与布局](frontend/components.md) | 核心组件设计、DataTable、虚拟滚动、响应式布局、主题系统、图表可视化 |
-| [AI 功能](frontend/ai.md) | AI 组件（NL2SQL、诊断、Chat）、SQL 编辑器方言、aiStore、NL图表配置 |
-| [扩展性](frontend/extensibility.md) | DB 类型扩展、插件系统、DB_REGISTRY 元数据驱动 |
+| [状态管理](frontend/state.md) | 8 个 Zustand stores、事件处理、跨窗口通信 |
+| [组件与布局](frontend/components.md) | DataTable（含数据导出）、ER 图（React Flow）、PathInput、虚拟滚动、图表可视化 |
+| [AI 功能](frontend/ai.md) | AI 组件（AiInput、ContextPicker、Chat、NL2SQL）、@ 上下文引用、SQL 编辑器方言 |
+| [扩展性](frontend/extensibility.md) | DB 类型扩展、DatabaseTypeMeta、插件系统、plugin-sdk |
 
 ## 横切关注点
 
 | 文档 | 内容 |
 |------|------|
-| [安全措施](security.md) | 密码加密、CSP、Argon2id KDF、路径遍历防护、AI Key 安全 |
-| [窗口管理](windows.md) | 多窗口架构、Rust 端窗口创建、macOS acceptFirstMouse |
-| [测试策略](testing.md) | Rust 单元/集成测试、Vitest 前端测试、WebdriverIO E2E、手工黑盒测试 (`test/`) |
+| [安全措施](security.md) | AES-256-GCM 加密、CSP、路径遍历防护、文件扩展名白名单、AI Key 安全 |
+| [窗口管理](windows.md) | 多窗口架构、Rust 端窗口创建、macOS acceptFirstMouse、windowKind URL 路由 |
+| [测试策略](testing.md) | Rust 单元/集成测试、Vitest 前端测试（25 文件）、WebdriverIO E2E（31 spec）、手工黑盒测试 |
 
 ## 其他文档
 
