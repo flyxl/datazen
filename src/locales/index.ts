@@ -1,17 +1,57 @@
 import zhCN, { type TranslationKey } from './zh-CN';
 import en from './en';
+import zhTW from './zh-TW';
+import es from './es';
+import fr from './fr';
+import de from './de';
+import ja from './ja';
+import ptBR from './pt-BR';
+import ru from './ru';
+import ko from './ko';
 
 export type { TranslationKey };
-export type SupportedLocale = 'zh-CN' | 'en';
+
+export const SUPPORTED_LOCALES = [
+  'en',
+  'zh-CN',
+  'zh-TW',
+  'es',
+  'fr',
+  'de',
+  'ja',
+  'pt-BR',
+  'ru',
+  'ko',
+] as const;
+
+export type SupportedLocale = (typeof SUPPORTED_LOCALES)[number];
 
 const locales: Record<SupportedLocale, Record<TranslationKey, string>> = {
-  'zh-CN': zhCN,
   en,
+  'zh-CN': zhCN,
+  'zh-TW': zhTW,
+  es,
+  fr,
+  de,
+  ja,
+  'pt-BR': ptBR,
+  ru,
+  ko,
 };
 
-export function getTranslation(locale: SupportedLocale, key: TranslationKey, params?: Record<string, string | number>): string {
-  const dict = locales[locale] ?? locales['zh-CN'];
-  let text = dict[key] ?? zhCN[key] ?? key;
+function resolveLocale(locale: string): SupportedLocale {
+  if (locale in locales) return locale as SupportedLocale;
+  return 'en';
+}
+
+export function getTranslation(
+  locale: SupportedLocale | string,
+  key: TranslationKey,
+  params?: Record<string, string | number>,
+): string {
+  const resolved = resolveLocale(locale);
+  const dict = locales[resolved];
+  let text = dict[key] ?? en[key] ?? zhCN[key] ?? key;
   if (params) {
     for (const [k, v] of Object.entries(params)) {
       text = text.replace(new RegExp(`\\{${k}\\}`, 'g'), String(v));
@@ -20,6 +60,6 @@ export function getTranslation(locale: SupportedLocale, key: TranslationKey, par
   return text;
 }
 
-export function getAllTranslations(locale: SupportedLocale): Record<string, string> {
-  return locales[locale] ?? locales['zh-CN'];
+export function getAllTranslations(locale: SupportedLocale | string): Record<string, string> {
+  return locales[resolveLocale(locale)];
 }
