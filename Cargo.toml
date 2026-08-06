@@ -24,12 +24,12 @@ datazen-driver-api = { path = "packages/driver-api" }
 # Plugin patches — injected by resolve-plugins.mjs at build time; do NOT add manually.
 # <<plugin-patches>>
 
-[patch."https://github.com/flyxl/datazen-plugin-kiwi.git"]
+[patch."https://github.com/flyxl/datazen-driver-kiwi.git"]
 datazen-plugin-kiwi = { path = ".plugins/kiwi" }
 
-[patch."https://github.com/flyxl/datazen-plugin-olap.git"]
+[patch."https://github.com/flyxl/datazen-driver-olap.git"]
 datazen-plugin-olap = { path = ".plugins/olap" }
 
-[patch."https://github.com/flyxl/datazen-plugin-superset.git"]
+[patch."https://github.com/flyxl/datazen-driver-superset.git"]
 datazen-plugin-superset = { path = ".plugins/superset" }
 # <</plugin-patches>>
