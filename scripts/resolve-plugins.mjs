@@ -529,10 +529,6 @@ function replaceMarkerBlock(content, name, lines) {
   return content.replace(re, replacement);
 }
 
-function escapeRegex(str) {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
 /**
  * Inject plugin dependencies and features into src-tauri/Cargo.toml at build time.
  * Uses start/end markers for idempotent injection.

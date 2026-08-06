@@ -4,18 +4,10 @@
 // so that inventory-based driver registration takes effect.
 // Also registers Tauri plugins for crates that declare a tauriPlugin block.
 
-#[cfg(feature = "plugin-kiwi")]
-extern crate datazen_plugin_kiwi;
-#[cfg(feature = "plugin-olap")]
-extern crate datazen_plugin_olap;
-#[cfg(feature = "plugin-superset")]
-extern crate datazen_plugin_superset;
 use tauri::Runtime;
 
 pub fn register_plugins<R: Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> {
     let builder = builder;
-
-    // No plugins with Tauri commands enabled
 
     builder
 }
