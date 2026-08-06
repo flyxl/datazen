@@ -48,14 +48,6 @@
     "yaml": "^2.9.0",
     "zustand": "^5.0.3"
   },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "better-sqlite3",
-      "esbuild",
-      "edgedriver",
-      "geckodriver"
-    ]
-  },
   "devDependencies": {
     "@tailwindcss/vite": "^4.1.4",
     "@tauri-apps/cli": "^2.10.1",
