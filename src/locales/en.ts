@@ -24,20 +24,32 @@ const en: Record<TranslationKey, string> = {
   'common.columns': 'columns',
   'common.browse': 'Browse',
 
-  // ── Menu (native) ──
+  // ── Menu (native + Windows HTML MenuBar) ──
   'menu.file': 'File',
   'menu.newConnection': 'New Connection',
   'menu.dataSync': 'Data Sync',
-  'menu.backup': 'Backup Database…',
-  'menu.restore': 'Restore Database…',
-  'menu.settings': 'Settings…',
+  'menu.backup': 'Backup Database',
+  'menu.restore': 'Restore Database',
+  'menu.settings': 'Settings',
   'menu.edit': 'Edit',
+  'menu.undo': 'Undo',
+  'menu.redo': 'Redo',
+  'menu.cut': 'Cut',
+  'menu.copy': 'Copy',
+  'menu.paste': 'Paste',
+  'menu.selectAll': 'Select All',
   'menu.view': 'View',
   'menu.themeLight': 'Light',
   'menu.themeDark': 'Dark',
   'menu.themeSystem': 'System',
   'menu.tools': 'Tools',
+  'menu.viewLogs': 'View Logs',
+  'menu.exportConfig': 'Export Config',
+  'menu.importConfig': 'Import Config',
   'menu.window': 'Window',
+  'menu.minimize': 'Minimize',
+  'menu.closeWindow': 'Close Window',
+  'menu.ctxAddFavorite': 'Add to Favorites',
   'menu.help': 'Help',
 
   // ── Theme ──
@@ -679,6 +691,8 @@ const en: Record<TranslationKey, string> = {
   // ── MCP Server ──
   'mcp.title': 'MCP Server',
   'mcp.description': 'Run DataZen as an MCP Server so external AI tools (Claude Desktop, Cursor, etc.) can access your databases',
+  'mcp.enabled': 'Enable MCP Server',
+  'mcp.enabledHint': 'Off by default. Prefer launching a dedicated process with --mcp for Claude Desktop / Cursor',
   'mcp.status': 'Status',
   'mcp.running': 'Running',
   'mcp.stopped': 'Stopped',
@@ -691,6 +705,7 @@ const en: Record<TranslationKey, string> = {
   'mcp.tools.enableAll': 'Enable All',
   'mcp.tools.disableAll': 'Disable All',
   'mcp.tools.restartHint': 'MCP Server needs to be restarted for tool changes to take effect',
+  'mcp.toggleError': 'Failed to start/stop MCP Server',
 
   // ── MCP Client ──
   'mcpClient.title': 'External MCP Servers',

@@ -33,6 +33,8 @@ use std::sync::Arc;
 use datazen_ai_api::AiProviderConfig;
 
 async fn resolve_ai(state: &AppState) -> Result<(Arc<dyn AiProvider>, AiProviderConfig), CommandError> {
+    state.ensure_ai_ready().await;
+
     let config = state
         .store
         .get_ai_config()
@@ -79,6 +81,7 @@ fn provider_defaults(pt: AiProviderType) -> (&'static str, &'static str) {
 pub async fn ai_get_providers(
     state: State<'_, AppState>,
 ) -> Result<Vec<ProviderListItem>, CommandError> {
+    state.ensure_ai_ready().await;
     let providers = state.ai_registry.all_providers().await;
     let result = providers
         .into_iter()
@@ -120,6 +123,7 @@ pub async fn ai_validate_config(
     state: State<'_, AppState>,
     config: AiProviderConfig,
 ) -> Result<(), CommandError> {
+    state.ensure_ai_ready().await;
     let provider = state
         .ai_registry
         .get(&config.provider_type)
@@ -137,6 +141,7 @@ pub async fn ai_save_config(
     state: State<'_, AppState>,
     config: AiProviderConfig,
 ) -> Result<(), CommandError> {
+    state.ensure_ai_ready().await;
     let provider = state
         .ai_registry
         .get(&config.provider_type)
@@ -1663,9 +1668,10 @@ pub async fn prompt_list(
     state: State<'_, AppState>,
     driver_type: Option<String>,
 ) -> Result<Vec<PromptInfo>, CommandError> {
+    state.ensure_ai_ready().await;
     let driver: Option<std::sync::Arc<dyn datazen_driver_api::DatabaseDriver>> =
         if let Some(ref dt) = driver_type {
-            state.driver_registry.get_sql_driver_by_name(dt)
+            state.driver_registry.get_sql_driver_by_name(dt).await
         } else {
             None
         };

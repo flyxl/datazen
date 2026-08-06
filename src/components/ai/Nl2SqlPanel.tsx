@@ -1,9 +1,8 @@
-import { useCallback, useRef, useState } from 'react';
-import { BarChart3, Loader2, Sparkles, Copy, Check, Trash2, ArrowDownToLine, Settings, X, ChevronDown, ChevronUp } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Loader2, Sparkles, Trash2, Settings, X } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { useI18n } from '../../hooks/useI18n';
 import { useAiKeyboard } from '../../hooks/useAiKeyboard';
-import { useResizable } from '../../hooks/useResizable';
 import { useAiStore } from '../../stores/aiStore';
 import { cn } from '../../lib/cn';
 import { openSettingsWindow } from '../../lib/windowManager';
@@ -14,11 +13,11 @@ interface Nl2SqlPanelProps {
   connectionId: string;
   database: string;
   currentTable?: string;
-  onApplySql: (sql: string) => void;
-  onApplyAndChart?: (sql: string) => void;
+  /** Stream / write generated SQL into the SQL editor. */
+  onSqlChange: (sql: string) => void;
 }
 
-export function Nl2SqlPanel({ connectionId, database, currentTable, onApplySql, onApplyAndChart }: Nl2SqlPanelProps) {
+export function Nl2SqlPanel({ connectionId, database, currentTable, onSqlChange }: Nl2SqlPanelProps) {
   const { t } = useI18n();
   const nl2sql = useAiStore((s) => s.nl2sql);
   const nl2sqlError = useAiStore((s) => s.nl2sqlError);
@@ -27,43 +26,30 @@ export function Nl2SqlPanel({ connectionId, database, currentTable, onApplySql, 
   const generateSql = useAiStore((s) => s.generateSql);
   const clearNl2Sql = useAiStore((s) => s.clearNl2Sql);
 
-  const [copied, setCopied] = useState(false);
   const [contextFiles, setContextFiles] = useState<ContextEntry[]>([]);
   const [showPicker, setShowPicker] = useState(false);
   const [pickerQuery, setPickerQuery] = useState('');
   const inputWrapperRef = useRef<HTMLDivElement>(null);
+  const lastWrittenRef = useRef('');
 
-  const hasSql = !!nl2sql.generatedSql;
-  const [sqlExpanded, setSqlExpanded] = useState(true);
-
-  const { size: panelHeight, handleRef } = useResizable({
-    direction: 'vertical',
-    initialSize: 120,
-    minSize: 72,
-    maxSize: 320,
-    storageKey: 'nl2sql-panel-height',
-  });
+  // Write SQL into the editor only when generation finishes (not streaming).
+  useEffect(() => {
+    if (nl2sql.isGenerating) return;
+    if (!nl2sql.generatedSql) return;
+    if (nl2sql.generatedSql === lastWrittenRef.current) return;
+    lastWrittenRef.current = nl2sql.generatedSql;
+    onSqlChange(nl2sql.generatedSql);
+  }, [nl2sql.isGenerating, nl2sql.generatedSql, onSqlChange]);
 
   const handleGenerate = useCallback(() => {
     if (!nl2sql.input.trim() || nl2sql.isGenerating || !database) return;
     const ctxPaths = contextFiles.length > 0 ? contextFiles.map((f) => f.path) : undefined;
+    lastWrittenRef.current = '';
     void generateSql({ connectionId, database, currentTable, contextFiles: ctxPaths });
     setContextFiles([]);
   }, [generateSql, connectionId, database, currentTable, nl2sql.input, nl2sql.isGenerating, contextFiles]);
 
   const aiKeyboard = useAiKeyboard(handleGenerate);
-
-  const handleCopy = useCallback(() => {
-    void navigator.clipboard.writeText(nl2sql.generatedSql);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
-  }, [nl2sql.generatedSql]);
-
-  const handleApply = useCallback(() => {
-    if (nl2sql.generatedSql) {
-      onApplySql(nl2sql.generatedSql);
-    }
-  }, [nl2sql.generatedSql, onApplySql]);
 
   if (!isConfigured) {
     return (
@@ -79,11 +65,7 @@ export function Nl2SqlPanel({ connectionId, database, currentTable, onApplySql, 
   }
 
   return (
-    <div
-      className="flex shrink-0 flex-col border-b border-edge bg-surface-alt"
-      style={hasSql && sqlExpanded ? { height: panelHeight } : undefined}
-    >
-      {/* Input row */}
+    <div className="flex shrink-0 flex-col border-b border-edge bg-surface-alt">
       <div className="flex shrink-0 items-start gap-2 p-2">
         <div ref={inputWrapperRef} className="relative min-w-0 flex-1">
           {showPicker && (
@@ -112,7 +94,6 @@ export function Nl2SqlPanel({ connectionId, database, currentTable, onApplySql, 
               'transition-colors focus-within:border-accent',
             )}
           >
-            {/* Context chips — inline at the start */}
             {contextFiles.length > 0 && (
               <div className="flex flex-wrap gap-1 pl-2 pt-1">
                 {contextFiles.map((f) => (
@@ -179,7 +160,7 @@ export function Nl2SqlPanel({ connectionId, database, currentTable, onApplySql, 
             )}
             {nl2sql.isGenerating ? t('nl2sql.generating') : t('nl2sql.generate')}
           </Button>
-          {(nl2sql.generatedSql || nl2sql.input) && (
+          {nl2sql.input && (
             <Button
               variant="ghost"
               className="h-7 px-1.5 text-xs"
@@ -191,70 +172,10 @@ export function Nl2SqlPanel({ connectionId, database, currentTable, onApplySql, 
         </div>
       </div>
 
-      {/* Generated SQL area — only rendered when SQL exists */}
-      {hasSql && (
-        <div className="mx-2 mb-2 flex min-h-0 flex-1 flex-col overflow-hidden rounded border border-edge bg-surface">
-          {/* Header with toggle + action buttons */}
-          {!nl2sql.isGenerating && (
-            <div className="flex shrink-0 items-center gap-1.5 border-b border-edge px-2 py-1.5">
-              <button
-                type="button"
-                className="flex items-center gap-1 text-[11px] text-fg-muted hover:text-fg transition-colors"
-                onClick={() => setSqlExpanded((v) => !v)}
-              >
-                {sqlExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-                SQL
-              </button>
-              <div className="flex-1" />
-              <Button
-                variant="primary"
-                className="h-6 gap-1 px-2 text-[11px]"
-                onClick={handleApply}
-              >
-                <ArrowDownToLine className="h-3 w-3" />
-                {t('nl2sql.apply')}
-              </Button>
-              {onApplyAndChart && (
-                <Button
-                  variant="primary"
-                  className="h-6 gap-1 px-2 text-[11px]"
-                  onClick={() => onApplyAndChart(nl2sql.generatedSql)}
-                >
-                  <BarChart3 className="h-3 w-3" />
-                  {t('nl2sql.applyAndChart')}
-                </Button>
-              )}
-              <Button
-                variant="ghost"
-                className="h-6 gap-1 px-2 text-[11px]"
-                onClick={handleCopy}
-              >
-                {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-                {t('nl2sql.copy')}
-              </Button>
-            </div>
-          )}
-          {/* SQL content — collapsible */}
-          {(sqlExpanded || nl2sql.isGenerating) && (
-            <pre className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap p-2 font-mono text-xs text-fg-secondary">
-              {nl2sql.generatedSql}
-            </pre>
-          )}
-        </div>
-      )}
-
       {nl2sqlError && (
         <div className="mx-2 mb-2 shrink-0 rounded border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-400">
           {nl2sqlError}
         </div>
-      )}
-
-      {/* Resize handle — only when SQL is expanded */}
-      {hasSql && sqlExpanded && (
-        <div
-          ref={handleRef}
-          className="h-1 shrink-0 cursor-row-resize bg-transparent hover:bg-blue-500/30"
-        />
       )}
     </div>
   );

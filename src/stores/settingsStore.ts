@@ -15,6 +15,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   defaultPageSize: 50,
   logLevel: 'info',
   logPath: '',
+  mcpServerEnabled: false,
   mcpDisabledTools: [],
   contextDir: '',
 };

@@ -16,6 +16,7 @@ import { useQueryStore } from '../../stores/queryStore';
 import { useSchemaStore } from '../../stores/schemaStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useI18n } from '../../hooks/useI18n';
+import { useResizable } from '../../hooks/useResizable';
 import { cn } from '../../lib/cn';
 import { queryCommands } from '../../commands/query';
 import { DB_REGISTRY } from '../../lib/databaseTypes';
@@ -68,6 +69,14 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
     (mode: 'table' | 'chart') => { if (tab) setResultViewModeStore(tab.id, mode); },
     [tab, setResultViewModeStore],
   );
+
+  const { size: editorHeight, handleRef: editorResizeRef } = useResizable({
+    direction: 'vertical',
+    initialSize: 280,
+    minSize: 100,
+    maxSize: 900,
+    storageKey: 'query-editor-height',
+  });
 
   const tables = useSchemaStore((s) => s.tables);
   const views = useSchemaStore((s) => s.views);
@@ -122,13 +131,6 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
   const handleApplyAiSql = useCallback((sql: string) => {
     if (tab) updateSql(tab.id, sql);
   }, [tab, updateSql]);
-
-  const handleApplyAndChart = useCallback(async (sql: string) => {
-    if (!tab) return;
-    updateSql(tab.id, sql);
-    await executeQuery(tab.id);
-    setResultViewMode('chart');
-  }, [tab, updateSql, executeQuery, setResultViewMode]);
 
   const handleExplain = useCallback(async () => {
     if (!tab?.sql.trim()) return;
@@ -249,13 +251,15 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
             <Nl2SqlPanel
               connectionId={connectionId}
               database={currentDatabase ?? ''}
-              onApplySql={handleApplyAiSql}
-              onApplyAndChart={(sql) => void handleApplyAndChart(sql)}
+              onSqlChange={handleApplyAiSql}
             />
           )}
 
-          {/* SQL editor */}
-          <div className="relative min-h-[100px] border-b border-edge" style={{ height: '35%' }}>
+          {/* SQL editor — height adjustable via bottom drag handle */}
+          <div
+            className="relative shrink-0 border-b border-edge"
+            style={{ height: editorHeight }}
+          >
             <SqlEditor
               ref={editorRef}
               value={tab.sql}
@@ -268,6 +272,11 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
               databaseType={databaseType}
             />
           </div>
+          <div
+            ref={editorResizeRef}
+            className="h-1.5 shrink-0 cursor-row-resize bg-transparent hover:bg-accent/30 active:bg-accent/40"
+            title="Drag to resize editor"
+          />
 
           {showFavoriteDialog && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setShowFavoriteDialog(false)}>

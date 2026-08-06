@@ -3,7 +3,8 @@
 use super::workflows::WorkflowExecutionResult;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use tokio::sync::RwLock;
+use std::sync::atomic::{AtomicBool, Ordering};
+use tokio::sync::{Mutex, RwLock};
 
 const MAX_HISTORY_ENTRIES: usize = 100;
 
@@ -36,14 +37,53 @@ pub struct HistoryListItem {
 pub struct WorkflowHistoryManager {
     history_dir: PathBuf,
     cache: RwLock<Vec<HistoryEntry>>,
+    loaded: AtomicBool,
+    load_lock: Mutex<()>,
 }
 
 impl WorkflowHistoryManager {
     pub fn new(history_dir: PathBuf) -> Self {
+        // Migrate legacy `skill_history` directory if present.
+        if !history_dir.exists() {
+            if let Some(parent) = history_dir.parent() {
+                let legacy = parent.join("skill_history");
+                if legacy.is_dir() {
+                    if let Err(e) = std::fs::rename(&legacy, &history_dir) {
+                        tracing::warn!(
+                            from = %legacy.display(),
+                            to = %history_dir.display(),
+                            error = %e,
+                            "Failed to rename skill_history → workflow_history"
+                        );
+                    } else {
+                        tracing::info!(
+                            to = %history_dir.display(),
+                            "Migrated skill_history → workflow_history"
+                        );
+                    }
+                }
+            }
+        }
+
         Self {
             history_dir,
             cache: RwLock::new(Vec::new()),
+            loaded: AtomicBool::new(false),
+            load_lock: Mutex::new(()),
         }
+    }
+
+    pub async fn ensure_loaded(&self) -> Result<(), String> {
+        if self.loaded.load(Ordering::Acquire) {
+            return Ok(());
+        }
+        let _guard = self.load_lock.lock().await;
+        if self.loaded.load(Ordering::Acquire) {
+            return Ok(());
+        }
+        self.load().await?;
+        self.loaded.store(true, Ordering::Release);
+        Ok(())
     }
 
     pub async fn load(&self) -> Result<(), String> {
@@ -85,6 +125,8 @@ impl WorkflowHistoryManager {
         variables: &serde_json::Value,
         result: &WorkflowExecutionResult,
     ) -> Result<String, String> {
+        self.ensure_loaded().await?;
+
         if !self.history_dir.exists() {
             std::fs::create_dir_all(&self.history_dir).map_err(|e| e.to_string())?;
         }
@@ -124,6 +166,10 @@ impl WorkflowHistoryManager {
     }
 
     pub async fn list(&self, workflow_id: Option<&str>) -> Vec<HistoryListItem> {
+        if let Err(e) = self.ensure_loaded().await {
+            tracing::warn!("Failed to load workflow history before list: {e}");
+            return Vec::new();
+        }
         let cache = self.cache.read().await;
         cache
             .iter()
@@ -140,6 +186,10 @@ impl WorkflowHistoryManager {
     }
 
     pub async fn get(&self, history_id: &str) -> Option<HistoryEntry> {
+        if let Err(e) = self.ensure_loaded().await {
+            tracing::warn!("Failed to load workflow history before get: {e}");
+            return None;
+        }
         self.cache
             .read()
             .await
@@ -149,6 +199,7 @@ impl WorkflowHistoryManager {
     }
 
     pub async fn clear(&self, workflow_id: Option<&str>) -> Result<usize, String> {
+        self.ensure_loaded().await?;
         let mut cache = self.cache.write().await;
         let (to_remove, to_keep): (Vec<_>, Vec<_>) = cache
             .drain(..)

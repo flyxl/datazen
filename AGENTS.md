@@ -144,5 +144,5 @@ cargo test -p datazen                  # Rust 单元测试
 - `AI_PROTOCOL_VERSION`（`packages/ai-api`）变更时需同步更新所有 AI Provider 插件
 - AI 配置加密存储在 `ai_config.enc`，不会出现在日志中
 - Prompt 模板在 `src-tauri/resources/prompts/{lang}/`，支持用户覆盖
-- 菜单翻译在 `src-tauri/resources/menu-labels.json`
+- 菜单翻译：前端 `src/locales/{zh-CN,en}.ts` 为唯一来源；`scripts/generate-menu-labels.mjs` 生成 `src-tauri/resources/menu-labels.json` 供 Rust 原生菜单使用（`pnpm menu:labels` / build / tauri:dev 自动执行）
 - 日志文件在 `{data_dir}/logs/`

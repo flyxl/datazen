@@ -23,6 +23,43 @@ struct McpHandle {
 
 static MCP_HANDLE: Mutex<Option<McpHandle>> = Mutex::const_new(None);
 
+fn clone_app_state(state: &AppState) -> Arc<AppState> {
+    Arc::new(AppState {
+        driver_registry: state.driver_registry.clone(),
+        connection_manager: state.connection_manager.clone(),
+        store: state.store.clone(),
+        schema_cache: state.schema_cache.clone(),
+        sync_adapters: state.sync_adapters.clone(),
+        ai_registry: state.ai_registry.clone(),
+        schema_context_builder: state.schema_context_builder.clone(),
+        prompt_resolver: state.prompt_resolver.clone(),
+        workflow_registry: state.workflow_registry.clone(),
+        workflow_history: state.workflow_history.clone(),
+        mcp_client_manager: state.mcp_client_manager.clone(),
+    })
+}
+
+/// Start embedded MCP stdio if not already running. Used by settings toggle and optional GUI auto-start.
+pub async fn start_embedded_mcp(state: &AppState) -> Result<(), CommandError> {
+    let mut guard = MCP_HANDLE.lock().await;
+    if let Some(ref h) = *guard {
+        if !h.task.is_finished() {
+            return Ok(());
+        }
+    }
+
+    let app_state = clone_app_state(state);
+    let cancel = CancellationToken::new();
+    let cancel_clone = cancel.clone();
+
+    let task = tokio::spawn(async move {
+        mcp::start_mcp_stdio(app_state, cancel_clone).await;
+    });
+
+    *guard = Some(McpHandle { task, cancel });
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn mcp_get_status() -> Result<McpServerStatus, CommandError> {
     let guard = MCP_HANDLE.lock().await;
@@ -42,36 +79,7 @@ pub async fn mcp_get_status() -> Result<McpServerStatus, CommandError> {
 
 #[tauri::command]
 pub async fn mcp_start_stdio(state: State<'_, AppState>) -> Result<(), CommandError> {
-    let mut guard = MCP_HANDLE.lock().await;
-    if let Some(ref h) = *guard {
-        if !h.task.is_finished() {
-            return Err(CommandError::Validation("MCP Server is already running".into()));
-        }
-    }
-
-    let app_state = Arc::new(AppState {
-        driver_registry: state.driver_registry.clone(),
-        connection_manager: state.connection_manager.clone(),
-        store: state.store.clone(),
-        schema_cache: state.schema_cache.clone(),
-        sync_adapters: state.sync_adapters.clone(),
-        ai_registry: state.ai_registry.clone(),
-        schema_context_builder: state.schema_context_builder.clone(),
-        prompt_resolver: state.prompt_resolver.clone(),
-        workflow_registry: state.workflow_registry.clone(),
-        workflow_history: state.workflow_history.clone(),
-        mcp_client_manager: state.mcp_client_manager.clone(),
-    });
-
-    let cancel = CancellationToken::new();
-    let cancel_clone = cancel.clone();
-
-    let task = tokio::spawn(async move {
-        mcp::start_mcp_stdio(app_state, cancel_clone).await;
-    });
-
-    *guard = Some(McpHandle { task, cancel });
-    Ok(())
+    start_embedded_mcp(&state).await
 }
 
 #[tauri::command]

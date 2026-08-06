@@ -8,10 +8,11 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use datazen_driver_api::{DatabaseDriver, PromptScenario};
 use serde::{Deserialize, Serialize};
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex, RwLock};
 
 /// A single user prompt override entry persisted on disk.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -58,6 +59,8 @@ pub struct PromptResolver {
     user_overrides: RwLock<Vec<PromptOverrideEntry>>,
     /// lang -> (scenario_key -> template_content)
     template_cache: RwLock<HashMap<String, HashMap<String, String>>>,
+    overrides_loaded: AtomicBool,
+    load_lock: Mutex<()>,
 }
 
 impl PromptResolver {
@@ -67,7 +70,34 @@ impl PromptResolver {
             prompts_dir,
             user_overrides: RwLock::new(Vec::new()),
             template_cache: RwLock::new(HashMap::new()),
+            overrides_loaded: AtomicBool::new(false),
+            load_lock: Mutex::new(()),
         }
+    }
+
+    /// Load overrides + language templates on first AI/prompt use.
+    pub async fn ensure_ready(&self, lang: &str) {
+        self.ensure_overrides_loaded().await;
+        // load_language is cheap when already cached
+        if !self.template_cache.read().await.contains_key("en") {
+            self.load_language(lang).await;
+        } else if lang != "en" && !self.template_cache.read().await.contains_key(lang) {
+            self.load_language(lang).await;
+        }
+    }
+
+    async fn ensure_overrides_loaded(&self) {
+        if self.overrides_loaded.load(Ordering::Acquire) {
+            return;
+        }
+        let _guard = self.load_lock.lock().await;
+        if self.overrides_loaded.load(Ordering::Acquire) {
+            return;
+        }
+        if let Err(e) = self.load().await {
+            tracing::warn!("Failed to load prompt overrides: {e}");
+        }
+        self.overrides_loaded.store(true, Ordering::Release);
     }
 
     pub async fn load(&self) -> Result<(), String> {

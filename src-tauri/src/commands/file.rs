@@ -24,7 +24,9 @@ pub fn show_editor_context_menu(
     Ok(())
 }
 
-const ALLOWED_EXTENSIONS: &[&str] = &["csv", "tsv", "json", "sql", "md", "txt", "xml", "yaml", "yml"];
+const ALLOWED_EXTENSIONS: &[&str] = &[
+    "csv", "tsv", "json", "sql", "md", "txt", "xml", "yaml", "yml", "png", "svg",
+];
 
 fn validate_file_path(path: &Path) -> Result<(), CommandError> {
     let canonical = path.to_string_lossy();
@@ -52,6 +54,20 @@ pub async fn write_file(path: String, contents: String) -> Result<(), CommandErr
         .cmd_err("write_file")
 }
 
+/// Write raw bytes (e.g. PNG). `data` is base64-encoded to keep IPC JSON-friendly.
+#[tauri::command]
+pub async fn write_file_base64(path: String, data_base64: String) -> Result<(), CommandError> {
+    use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
+    let p = PathBuf::from(&path);
+    validate_file_path(&p)?;
+    let bytes = BASE64
+        .decode(data_base64.trim())
+        .map_err(|e| CommandError::Validation(format!("Invalid base64: {e}")))?;
+    tokio::fs::write(&p, bytes)
+        .await
+        .cmd_err("write_file_base64")
+}
+
 #[tauri::command]
 pub async fn read_file(path: String) -> Result<String, CommandError> {
     let p = PathBuf::from(&path);
@@ -76,6 +92,8 @@ mod tests {
             "config.xml",
             "settings.yaml",
             "settings.yml",
+            "diagram.png",
+            "diagram.svg",
         ];
         for path in valid {
             assert!(

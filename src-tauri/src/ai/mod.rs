@@ -16,4 +16,4 @@ pub mod registry;
 
 pub use context::SchemaContextBuilder;
 pub use prompt_resolver::PromptResolver;
-pub use registry::{init_ai_providers, AiProviderRegistry};
+pub use registry::{init_ai_providers, register_ai_providers, AiProviderRegistry};

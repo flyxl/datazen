@@ -2,23 +2,53 @@
 
 use datazen_ai_api::*;
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex, RwLock};
 
 use super::anthropic::AnthropicProvider;
 use super::custom::CustomProvider;
 use super::deepseek::DeepSeekProvider;
 use super::openai::OpenAiProvider;
+use crate::store::Store;
 
 pub struct AiProviderRegistry {
     providers: Arc<RwLock<HashMap<AiProviderType, Arc<dyn AiProvider>>>>,
+    registered: AtomicBool,
+    register_lock: Mutex<()>,
 }
 
 impl AiProviderRegistry {
     pub fn new() -> Self {
         Self {
             providers: Arc::new(RwLock::new(HashMap::new())),
+            registered: AtomicBool::new(false),
+            register_lock: Mutex::new(()),
         }
+    }
+
+    /// Register built-in + plugin providers and restore the saved config.
+    /// Safe to call repeatedly; only the first call does work.
+    pub async fn ensure_registered(&self, store: &Store) {
+        if self.registered.load(Ordering::Acquire) {
+            return;
+        }
+        let _guard = self.register_lock.lock().await;
+        if self.registered.load(Ordering::Acquire) {
+            return;
+        }
+
+        let t = std::time::Instant::now();
+        register_ai_providers(self).await;
+        if let Some(ai_config) = store.get_ai_config().await {
+            if let Some(provider) = self.get(&ai_config.provider_type).await {
+                if let Err(e) = provider.initialize(&ai_config).await {
+                    tracing::warn!("Failed to initialize saved AI provider: {e}");
+                }
+            }
+        }
+        self.registered.store(true, Ordering::Release);
+        tracing::info!("[startup] AI providers ready: {:?}", t.elapsed());
     }
 
     pub async fn register(&self, provider: Arc<dyn AiProvider>) {
@@ -137,10 +167,9 @@ mod tests {
     }
 }
 
-/// Registers built-in AI providers and discovers plugin providers via `inventory`.
-pub async fn init_ai_providers() -> AiProviderRegistry {
-    let registry = AiProviderRegistry::new();
-
+/// Registers built-in AI providers and discovers plugin providers via `inventory`
+/// into an existing registry (used for deferred / in-place startup warm-up).
+pub async fn register_ai_providers(registry: &AiProviderRegistry) {
     registry
         .register(Arc::new(OpenAiProvider::new()))
         .await;
@@ -193,6 +222,11 @@ pub async fn init_ai_providers() -> AiProviderRegistry {
         );
         registry.register(provider).await;
     }
+}
 
+/// Registers built-in AI providers and discovers plugin providers via `inventory`.
+pub async fn init_ai_providers() -> AiProviderRegistry {
+    let registry = AiProviderRegistry::new();
+    register_ai_providers(&registry).await;
     registry
 }
