@@ -2,7 +2,7 @@
 /**
  * Generate src-tauri/resources/menu-labels.json from frontend locale files.
  *
- * Single source of truth: src/locales/{zh-CN,en}.ts
+ * Single source of truth: src/locales/*.ts
  * Rust native menus (and popup context menus) consume the generated JSON
  * via include_str! — they cannot import TypeScript at runtime.
  *
@@ -53,6 +53,14 @@ const RUST_TO_LOCALE = {
 const LOCALES = [
   { code: 'zh-CN', file: 'src/locales/zh-CN.ts' },
   { code: 'en', file: 'src/locales/en.ts' },
+  { code: 'zh-TW', file: 'src/locales/zh-TW.ts' },
+  { code: 'es', file: 'src/locales/es.ts' },
+  { code: 'fr', file: 'src/locales/fr.ts' },
+  { code: 'de', file: 'src/locales/de.ts' },
+  { code: 'ja', file: 'src/locales/ja.ts' },
+  { code: 'pt-BR', file: 'src/locales/pt-BR.ts' },
+  { code: 'ru', file: 'src/locales/ru.ts' },
+  { code: 'ko', file: 'src/locales/ko.ts' },
 ];
 
 function parseLocaleTs(source) {
@@ -68,11 +76,11 @@ function parseLocaleTs(source) {
   return map;
 }
 
-function buildLang(localeMap, code) {
+function buildLang(localeMap, code, fallbackMap) {
   const out = {};
   const missing = [];
   for (const [rustKey, localeKey] of Object.entries(RUST_TO_LOCALE)) {
-    const value = localeMap.get(localeKey);
+    const value = localeMap.get(localeKey) ?? fallbackMap?.get(localeKey);
     if (value === undefined) {
       missing.push(localeKey);
       continue;
@@ -81,18 +89,21 @@ function buildLang(localeMap, code) {
   }
   if (missing.length > 0) {
     throw new Error(
-      `[generate-menu-labels] ${code} missing keys:\n  - ${missing.join('\n  - ')}`,
+      `[generate-menu-labels] ${code} missing keys (no en fallback):\n  - ${missing.join('\n  - ')}`,
     );
   }
   return out;
 }
+
+const enPath = resolve(ROOT, 'src/locales/en.ts');
+const enFallback = parseLocaleTs(readFileSync(enPath, 'utf-8'));
 
 const result = {};
 for (const { code, file } of LOCALES) {
   const path = resolve(ROOT, file);
   const source = readFileSync(path, 'utf-8');
   const localeMap = parseLocaleTs(source);
-  result[code] = buildLang(localeMap, code);
+  result[code] = buildLang(localeMap, code, enFallback);
 }
 
 const json = `${JSON.stringify(result, null, 2)}\n`;

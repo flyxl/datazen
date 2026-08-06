@@ -46,7 +46,15 @@ const THEME_KEYS: { value: AppSettings['theme']; key: TranslationKey }[] = [
 
 const LANGUAGE_OPTIONS = [
   { value: 'zh-CN', label: '简体中文' },
+  { value: 'zh-TW', label: '繁體中文' },
   { value: 'en', label: 'English' },
+  { value: 'es', label: 'Español' },
+  { value: 'fr', label: 'Français' },
+  { value: 'de', label: 'Deutsch' },
+  { value: 'ja', label: '日本語' },
+  { value: 'pt-BR', label: 'Português (Brasil)' },
+  { value: 'ru', label: 'Русский' },
+  { value: 'ko', label: '한국어' },
 ];
 
 type SettingsSection = 'general' | 'dataBrowsing' | 'editor' | 'behavior' | 'logging' | 'ai' | 'prompts' | 'mcpServer' | 'mcpClient';

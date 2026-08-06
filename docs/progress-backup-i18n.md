@@ -6,9 +6,10 @@
 
 | # | Feature | Status | Unit tests | E2E test agent | Commit |
 |---|---------|--------|------------|----------------|--------|
-| 1 | App data ZIP export/import (replace config JSON) | ✅ done | 4/4 pass | pending | feat: replace config JSON backup with full app-data ZIP |
-| 2 | 10 locales (en, zh-CN, zh-TW, es, fr, de, ja, pt-BR, ru, ko) | ⏳ pending | pending | pending | — |
-| 3 | Delete GH v0.0.7 + trigger rebuild | ⏳ pending | n/a | n/a | — |
+| 1 | App data ZIP export/import (replace config JSON) | ✅ merged | 4/4 pass | pending | `feat/zip-backup` |
+| 2 | 10 locales (en, zh-CN, zh-TW, es, fr, de, ja, pt-BR, ru, ko) | ✅ merged | ✅ pass | pending | `feat/i18n-10` |
+| 3 | First-run language follows system (else `en`) | 🔄 merging | pending | pending | `feat/sys-locale` |
+| 4 | Trigger GitHub release package | ⏳ pending | n/a | n/a | — |
 
 ## Feature 1 notes
 
@@ -21,11 +22,15 @@
 
 ## Feature 2 notes
 
-_(fill after implementation)_
+- Extended `SupportedLocale` + `src/locales/index.ts` with 10 locales and `SUPPORTED_LOCALES` constant.
+- Added locale files: `zh-TW`, `es`, `fr`, `de`, `ja`, `pt-BR`, `ru`, `ko` (non-zh copied from `en`; `zh-TW` adapted from `zh-CN`).
+- Settings language dropdown lists all 10 locales.
+- `scripts/generate-menu-labels.mjs` generates menu labels for all 10 (en fallback for missing keys).
+- Vitest: `src/locales/locales.test.ts` — key parity, load, fallback.
 
 ## Feature 3 notes
 
-_(fill after release ops)_
+_(merging)_
 
 ## E2E / bug log
 
