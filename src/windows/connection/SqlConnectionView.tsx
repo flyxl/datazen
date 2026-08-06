@@ -112,6 +112,7 @@ export function SqlConnectionView({
 }: ConnectionViewProps) {
   const { t } = useI18n();
   const isReadOnly = DB_REGISTRY[databaseType]?.readOnly === true;
+  const supportsErDiagram = DB_REGISTRY[databaseType]?.supportsErDiagram !== false;
 
   const [panels, setPanels] = useState<Panel[]>([]);
   const [activePanelId, setActivePanelId] = useState<string | null>(null);
@@ -449,10 +450,12 @@ export function SqlConnectionView({
             {t('connWin.newTable')}
           </Button>
         )}
-        <Button variant="secondary" className="h-8" onClick={() => handleOpenErDiagram()}>
-          <GitFork className="h-4 w-4" />
-          {t('erDiagram.title')}
-        </Button>
+        {supportsErDiagram && (
+          <Button variant="secondary" className="h-8" onClick={() => handleOpenErDiagram()}>
+            <GitFork className="h-4 w-4" />
+            {t('erDiagram.title')}
+          </Button>
+        )}
         <div className="mx-1 h-6 w-px bg-edge" />
 
         <div className="relative min-w-0 max-w-[280px] flex-1">
@@ -742,14 +745,16 @@ export function SqlConnectionView({
               <div className="my-1 h-px bg-edge" />
             </>
           )}
-          <button
-            type="button"
-            className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[13px] text-fg-secondary hover:bg-surface-raised hover:text-fg"
-            onClick={() => handleTableCtxAction('er-focus')}
-          >
-            <GitFork className="h-3.5 w-3.5" />
-            {t('erDiagram.focusTable')}
-          </button>
+          {supportsErDiagram && (
+            <button
+              type="button"
+              className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[13px] text-fg-secondary hover:bg-surface-raised hover:text-fg"
+              onClick={() => handleTableCtxAction('er-focus')}
+            >
+              <GitFork className="h-3.5 w-3.5" />
+              {t('erDiagram.focusTable')}
+            </button>
+          )}
           <button
             type="button"
             className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[13px] text-fg-secondary hover:bg-surface-raised hover:text-fg"

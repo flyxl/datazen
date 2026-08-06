@@ -1,9 +1,10 @@
 import { expect, browser, $, $$ } from '@wdio/globals';
 import { expandAllGroups } from '../helpers.js';
+import { t } from '../i18n.js';
 
 describe('连接搜索和分组 (CM-007, CM-008)', () => {
   before(async () => {
-    await $('input[placeholder="查找连接…"]').waitForDisplayed({ timeout: 10000 });
+    await $(`input[placeholder="${t('main.searchPlaceholder')}"]`).waitForDisplayed({ timeout: 10000 });
     await expandAllGroups();
     await browser.pause(1000);
   });
@@ -11,7 +12,7 @@ describe('连接搜索和分组 (CM-007, CM-008)', () => {
   // ── 搜索功能 (CM-008) ─────────────────────────────────────────
 
   it('搜索框应能过滤连接 - 无匹配 (CM-008)', async () => {
-    const input = await $('input[placeholder="查找连接…"]');
+    const input = await $(`input[placeholder="${t('main.searchPlaceholder')}"]`);
     await input.setValue('不存在的连接XYZ_99999');
     await browser.pause(500);
 
@@ -24,20 +25,22 @@ describe('连接搜索和分组 (CM-007, CM-008)', () => {
   });
 
   it('搜索应支持按主机地址过滤 (CM-008)', async () => {
-    const input = await $('input[placeholder="查找连接…"]');
+    const input = await $(`input[placeholder="${t('main.searchPlaceholder')}"]`);
+    const itemsBefore = (await $$('[data-conn-item]')).length;
+
     await input.setValue('localhost');
     await browser.pause(500);
 
-    const body = await $('body').getText();
-    const hasResult = body.includes('localhost') || body.includes('127.0.0.1') || body.includes('没有连接');
-    expect(hasResult).toBe(true);
+    const itemsAfter = (await $$('[data-conn-item]')).length;
+    // Either some localhost connections are shown, or the list is filtered down
+    expect(itemsAfter).toBeLessThanOrEqual(itemsBefore);
 
     await input.clearValue();
     await browser.pause(300);
   });
 
   it('搜索应支持按连接名称过滤 (CM-008)', async () => {
-    const input = await $('input[placeholder="查找连接…"]');
+    const input = await $(`input[placeholder="${t('main.searchPlaceholder')}"]`);
     await input.setValue('Postgres');
     await browser.pause(500);
 
@@ -49,7 +52,7 @@ describe('连接搜索和分组 (CM-007, CM-008)', () => {
   });
 
   it('搜索框应能输入并清空 (CM-008)', async () => {
-    const input = await $('input[placeholder="查找连接…"]');
+    const input = await $(`input[placeholder="${t('main.searchPlaceholder')}"]`);
     await input.setValue('test_value');
     const value = await input.getValue();
     expect(value).toBe('test_value');

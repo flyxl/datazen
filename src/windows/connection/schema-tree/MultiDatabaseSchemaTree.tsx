@@ -1,10 +1,21 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, ChevronRight, Database, Loader2, Table2 } from 'lucide-react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { useSchemaStore } from '../../../stores/schemaStore';
 import { useI18n } from '../../../hooks/useI18n';
 import { cn } from '../../../lib/cn';
 import type { TableInfo } from '../../../types';
 import type { SchemaTreeProps } from './SchemaTree';
+
+type FlatRow =
+  | { type: 'db'; dbName: string; expanded: boolean; loading: boolean; tableCount: number }
+  | { type: 'table'; dbName: string; item: TableInfo }
+  | { type: 'db-empty'; dbName: string }
+  | { type: 'db-loading'; dbName: string }
+  | { type: 'empty' };
+
+const ROW_HEIGHT = 32;
+const EMPTY_HEIGHT = 36;
 
 export function MultiDatabaseSchemaTree({
   connectionId,
@@ -25,9 +36,9 @@ export function MultiDatabaseSchemaTree({
   const [expandedDbs, setExpandedDbs] = useState<Set<string>>(new Set());
   const [dbTables, setDbTables] = useState<Record<string, TableInfo[]>>({});
   const [dbLoading, setDbLoading] = useState<Set<string>>(new Set());
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    console.log('[SchemaTree] loading for connection', connectionId, 'preferred db', initialDatabase);
     void loadForConnection(connectionId, { preferredDatabase: initialDatabase, skipLoadTables: true });
   }, [connectionId, loadForConnection, initialDatabase]);
 
@@ -35,11 +46,8 @@ export function MultiDatabaseSchemaTree({
     const wasExpanded = expandedDbs.has(dbName);
     setExpandedDbs((prev) => {
       const next = new Set(prev);
-      if (next.has(dbName)) {
-        next.delete(dbName);
-      } else {
-        next.add(dbName);
-      }
+      if (next.has(dbName)) next.delete(dbName);
+      else next.add(dbName);
       return next;
     });
 
@@ -66,16 +74,78 @@ export function MultiDatabaseSchemaTree({
   }, [connectionId, dbTables, dbLoading, expandedDbs]);
 
   const query = searchQuery.toLowerCase();
-  const filteredDbs = query
-    ? databases.filter((d) => d.toLowerCase().includes(query))
-    : databases;
+
+  const flatRows = useMemo<FlatRow[]>(() => {
+    const filteredDbs = query
+      ? databases.filter((d) => {
+          if (d.toLowerCase().includes(query)) return true;
+          const tbls = dbTables[d];
+          return tbls?.some((tbl) => tbl.name.toLowerCase().includes(query)) ?? false;
+        })
+      : databases;
+
+    const rows: FlatRow[] = [];
+
+    for (const dbName of filteredDbs) {
+      const tbls = dbTables[dbName] ?? [];
+      const dbNameMatches = query && dbName.toLowerCase().includes(query);
+      const filteredDbTables = query && !dbNameMatches
+        ? tbls.filter((tbl) => tbl.name.toLowerCase().includes(query))
+        : tbls;
+      const hasTableMatch = !!(query && filteredDbTables.length > 0);
+      const isExpanded = expandedDbs.has(dbName) || hasTableMatch;
+      const isLoading = dbLoading.has(dbName);
+
+      rows.push({
+        type: 'db',
+        dbName,
+        expanded: isExpanded,
+        loading: isLoading,
+        tableCount: filteredDbTables.length,
+      });
+
+      if (isExpanded) {
+        if (isLoading) {
+          rows.push({ type: 'db-loading', dbName });
+        } else if (filteredDbTables.length === 0) {
+          rows.push({ type: 'db-empty', dbName });
+        } else {
+          for (const tbl of filteredDbTables) {
+            rows.push({ type: 'table', dbName, item: tbl });
+          }
+        }
+      }
+    }
+
+    if (rows.length === 0 && !loading) {
+      rows.push({ type: 'empty' });
+    }
+
+    return rows;
+  }, [databases, dbTables, expandedDbs, dbLoading, query, loading]);
+
+  const estimateSize = useCallback(
+    (index: number) => {
+      const row = flatRows[index];
+      if (row.type === 'empty' || row.type === 'db-empty') return EMPTY_HEIGHT;
+      return ROW_HEIGHT;
+    },
+    [flatRows],
+  );
+
+  const virtualizer = useVirtualizer({
+    count: flatRows.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize,
+    overscan: 15,
+  });
 
   if (error) {
     return <div className="p-3 text-xs text-red-400">{error}</div>;
   }
 
   return (
-    <div className="flex flex-col">
+    <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto">
       {loading && databases.length === 0 && (
         <div className="flex items-center gap-2 px-3 py-2 text-xs text-fg-muted">
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -83,80 +153,79 @@ export function MultiDatabaseSchemaTree({
         </div>
       )}
 
-      {filteredDbs.map((dbName) => {
-        const isExpanded = expandedDbs.has(dbName);
-        const isLoading = dbLoading.has(dbName);
-        const tbls = dbTables[dbName] ?? [];
-        const filteredDbTables = query
-          ? tbls.filter((tbl) => tbl.name.toLowerCase().includes(query))
-          : tbls;
-
-        return (
-          <div key={dbName}>
-            <button
-              type="button"
-              className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm hover:bg-surface-raised text-fg-secondary"
-              onClick={() => void handleToggleDb(dbName)}
+      <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
+        {virtualizer.getVirtualItems().map((virtualRow) => {
+          const row = flatRows[virtualRow.index];
+          return (
+            <div
+              key={virtualRow.index}
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '100%',
+                height: virtualRow.size,
+                transform: `translateY(${virtualRow.start}px)`,
+              }}
             >
-              {isExpanded
-                ? <ChevronDown className="h-3.5 w-3.5 shrink-0" />
-                : <ChevronRight className="h-3.5 w-3.5 shrink-0" />}
-              <Database className="h-3.5 w-3.5 shrink-0 text-teal-400" />
-              <span className="min-w-0 truncate">{dbName}</span>
-            </button>
+              {row.type === 'db' && (
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm hover:bg-surface-raised text-fg-secondary"
+                  onClick={() => void handleToggleDb(row.dbName)}
+                >
+                  {row.expanded
+                    ? <ChevronDown className="h-3.5 w-3.5 shrink-0" />
+                    : <ChevronRight className="h-3.5 w-3.5 shrink-0" />}
+                  <Database className="h-3.5 w-3.5 shrink-0 text-teal-400" />
+                  <span className="min-w-0 truncate">{row.dbName}</span>
+                </button>
+              )}
 
-            {isExpanded && (
-              <div className="pl-4">
-                {isLoading && (
-                  <div className="flex items-center gap-2 px-3 py-1 text-xs text-fg-muted">
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                    {t('common.loading')}
-                  </div>
-                )}
-                {!isLoading && filteredDbTables.length === 0 && (
-                  <div className="px-3 py-1 text-xs text-fg-muted">
-                    {t('schemaTree.noTables')}
-                  </div>
-                )}
-                {filteredDbTables.map((tbl) => {
-                  const isSelected = selectedTable === tbl.name;
-                  return (
-                    <button
-                      key={`${dbName}.${tbl.name}`}
-                      type="button"
-                      className={cn(
-                        'flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] hover:bg-surface-raised',
-                        isSelected && 'bg-surface-raised text-fg',
-                        !isSelected && 'text-fg-secondary',
-                      )}
-                      onClick={() => {
-                        if (currentDatabase !== dbName) {
-                          void loadTables(dbName);
-                        }
-                        onSelectTable(tbl.name, tbl.schema);
-                      }}
-                      onContextMenu={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        onTableContextMenu?.(tbl.name, e.clientX, e.clientY);
-                      }}
-                    >
-                      <Table2 className="h-3.5 w-3.5 shrink-0 text-fg-secondary" />
-                      <span className="min-w-0 truncate">{tbl.name}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        );
-      })}
+              {row.type === 'db-loading' && (
+                <div className="flex items-center gap-2 px-3 py-1 pl-8 text-xs text-fg-muted">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  {t('common.loading')}
+                </div>
+              )}
 
-      {!loading && filteredDbs.length === 0 && (
-        <div className="px-3 py-3 text-center text-xs text-fg-muted">
-          {query ? t('schemaTree.noMatchingTables') : t('schemaTree.noTables')}
-        </div>
-      )}
+              {row.type === 'db-empty' && (
+                <div className="px-3 py-1 pl-8 text-xs text-fg-muted">
+                  {t('schemaTree.noTables')}
+                </div>
+              )}
+
+              {row.type === 'table' && (
+                <button
+                  type="button"
+                  className={cn(
+                    'flex w-full items-center gap-2 py-1.5 pl-8 pr-3 text-left text-[13px] hover:bg-surface-raised',
+                    selectedTable === row.item.name ? 'bg-surface-raised text-fg' : 'text-fg-secondary',
+                  )}
+                  onClick={() => {
+                    if (currentDatabase !== row.dbName) void loadTables(row.dbName);
+                    onSelectTable(row.item.name, row.item.schema);
+                  }}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onTableContextMenu?.(row.item.name, e.clientX, e.clientY);
+                  }}
+                >
+                  <Table2 className="h-3.5 w-3.5 shrink-0 text-fg-secondary" />
+                  <span className="min-w-0 truncate">{row.item.name}</span>
+                </button>
+              )}
+
+              {row.type === 'empty' && (
+                <div className="px-3 py-3 text-center text-xs text-fg-muted">
+                  {query ? t('schemaTree.noMatchingTables') : t('schemaTree.noTables')}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

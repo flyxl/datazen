@@ -278,6 +278,7 @@ const zhCN = {
   'schemaTree.noTables': '没有表',
   'schemaTree.noMatchingKeys': '没有匹配的键',
   'schemaTree.noKeys': '没有键',
+  'schemaTree.showAll': '显示全部 ({count})',
 
   // ── ER Diagram ──
   'erDiagram.title': 'ER 图',

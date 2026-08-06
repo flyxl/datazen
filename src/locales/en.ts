@@ -280,6 +280,7 @@ const en: Record<TranslationKey, string> = {
   'schemaTree.noTables': 'No tables',
   'schemaTree.noMatchingKeys': 'No matching keys',
   'schemaTree.noKeys': 'No keys',
+  'schemaTree.showAll': 'Show all ({count})',
 
   // ── ER Diagram ──
   'erDiagram.title': 'ER Diagram',

@@ -26,6 +26,7 @@ export function SchemaTree(props: SchemaTreeProps) {
           databaseType={props.databaseType}
           onSelectTable={props.onSelectTable}
           selectedTable={props.selectedTable}
+          searchQuery={props.searchQuery}
         />
       );
     }
