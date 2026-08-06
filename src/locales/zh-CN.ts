@@ -234,6 +234,7 @@ const zhCN = {
   'settings.logPathPlaceholder': '留空使用默认路径',
   'settings.viewLogs': '查看日志',
   'settings.logRestartNote': '日志配置变更需要重启应用生效',
+  'settings.contextDir': 'AI 上下文目录',
   'settings.confirmDelete': '删除确认',
   'settings.autoCommit': '自动提交',
   'settings.saved': '已保存',
@@ -590,6 +591,17 @@ const zhCN = {
   'chat.reasoning': '思考过程',
   'chat.questions.customAnswer': '输入自定义回答…',
   'chat.questions.submit': '提交回答',
+
+  // ── AI Context ──
+  'context.title': 'AI 上下文',
+  'context.noFiles': '上下文目录为空，请将文件放入上下文目录',
+  'context.noResults': '未找到匹配的文件',
+  'context.placeholder': '输入 @ 引用上下文文件…',
+  'context.dirSetting': 'AI 上下文目录',
+  'context.dirSettingDesc': '用于存放 AI 上下文文件的目录路径，留空使用默认目录',
+  'context.openDir': '打开上下文目录',
+  'context.file': '文件',
+  'context.dir': '目录',
 
   // ── NL2SQL ──
   'nl2sql.title': 'AI 生成 SQL',

@@ -189,10 +189,11 @@ fn resolve_log_settings() -> (String, PathBuf) {
 fn rebuild_menu(handle: tauri::AppHandle, language: String) -> Result<(), String> {
     let state = handle.state::<AppState>();
     let settings = tauri::async_runtime::block_on(state.store.get_settings());
+    tauri::async_runtime::block_on(state.prompt_resolver.load_language(&language));
     setup_menu(&handle, &settings.theme, &language).map_err(|e| e.to_string())
 }
 
-async fn build_app_state(store: Arc<Store>) -> Result<AppState, String> {
+async fn build_app_state(store: Arc<Store>, prompts_dir: Option<PathBuf>) -> Result<AppState, String> {
     let registry: Arc<db::DriverRegistry> = Arc::new(init_drivers().await);
     let schema_cache = Arc::new(SchemaCache::new(registry.clone()));
     let connection_manager = Arc::new(ConnectionManager::new(
@@ -218,9 +219,16 @@ async fn build_app_state(store: Arc<Store>) -> Result<AppState, String> {
 
     let data_dir = store.data_dir();
 
-    let prompt_resolver = Arc::new(ai::PromptResolver::new(data_dir));
+    let prompt_resolver = Arc::new(ai::PromptResolver::new(data_dir, prompts_dir));
     if let Err(e) = prompt_resolver.load().await {
         tracing::warn!("Failed to load prompt overrides: {e}");
+    }
+    {
+        let pr = prompt_resolver.clone();
+        let lang = store.get_settings().await.language;
+        tokio::spawn(async move {
+            pr.load_language(&lang).await;
+        });
     }
 
     let workflow_registry = Arc::new(mcp::WorkflowRegistry::new(data_dir.join("workflows")));
@@ -272,7 +280,8 @@ pub fn run_mcp_stdio() {
         let store = Arc::new(
             Store::init_with_path(&data_dir).await.expect("Failed to init store"),
         );
-        let app_state = match build_app_state(store).await {
+        let prompts_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/prompts");
+        let app_state = match build_app_state(store, Some(prompts_dir)).await {
             Ok(s) => s,
             Err(e) => {
                 tracing::error!("Failed to initialize AppState: {e}");
@@ -326,12 +335,13 @@ pub fn run() {
             let handle = app.handle().clone();
 
             let t0 = Instant::now();
+            let prompts_dir = handle.path().resource_dir().ok().map(|d| d.join("prompts"));
             let app_state = tauri::async_runtime::block_on(async {
                 let t_store = Instant::now();
                 let store = Arc::new(Store::init(&handle).await.map_err(|e| e.to_string())?);
                 tracing::info!("[startup]   Store::init: {:?}", t_store.elapsed());
 
-                build_app_state(store).await
+                build_app_state(store, prompts_dir).await
             })?;
             tracing::info!("[startup]   block_on total: {:?}", t0.elapsed());
 
@@ -455,6 +465,9 @@ pub fn run() {
             commands::prompt_list,
             commands::prompt_set_override,
             commands::prompt_remove_override,
+            commands::context_get_dir,
+            commands::context_list_files,
+            commands::context_read_files,
             commands::workflow_history_list,
             commands::workflow_history_get,
             commands::workflow_history_clear,

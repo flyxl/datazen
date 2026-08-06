@@ -7,7 +7,7 @@ import { useAiStore } from '../../stores/aiStore';
 import { cn } from '../../lib/cn';
 import { openSettingsWindow } from '../../lib/windowManager';
 import { WorkflowPanel } from './WorkflowPanel';
-import type { AiChatMessage, AiQuestion } from '../../types';
+import type { AiChatMessage, AiQuestion, ContextEntry } from '../../types';
 
 interface AiChatPanelProps {
   connectionId: string;
@@ -25,6 +25,7 @@ export function AiChatPanel({ connectionId, database, onInsertSql }: AiChatPanel
 
   const [input, setInput] = useState('');
   const [tab, setTab] = useState<'chat' | 'workflows'>('chat');
+  const [contextFiles, setContextFiles] = useState<ContextEntry[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -39,9 +40,11 @@ export function AiChatPanel({ connectionId, database, onInsertSql }: AiChatPanel
 
   const handleSend = useCallback(() => {
     if (!input.trim() || chatSession?.isStreaming) return;
-    void sendMessage({ connectionId, database, content: input.trim() });
+    const ctxPaths = contextFiles.length > 0 ? contextFiles.map((f) => f.path) : undefined;
+    void sendMessage({ connectionId, database, content: input.trim(), contextFiles: ctxPaths });
     setInput('');
-  }, [input, chatSession, sendMessage, connectionId]);
+    setContextFiles([]);
+  }, [input, chatSession, sendMessage, connectionId, database, contextFiles]);
 
   if (!isConfigured) {
     return (
@@ -158,6 +161,8 @@ export function AiChatPanel({ connectionId, database, onInsertSql }: AiChatPanel
               placeholder={t('chat.placeholder')}
               disabled={chatSession?.isStreaming}
               isLoading={chatSession?.isStreaming}
+              contextFiles={contextFiles}
+              onContextFilesChange={setContextFiles}
             />
           </div>
         </>

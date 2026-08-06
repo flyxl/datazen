@@ -912,7 +912,64 @@ function AiSettingsSection() {
           </Button>
         )}
       </div>
+
+      <SectionTitle>{t('context.title')}</SectionTitle>
+
+      <SettingRow label={t('context.dirSetting')}>
+        <ContextDirSetting />
+      </SettingRow>
+      <p className="text-xs text-fg-muted">{t('context.dirSettingDesc')}</p>
     </>
+  );
+}
+
+function ContextDirSetting() {
+  const { t } = useI18n();
+  const settings = useSettingsStore((s) => s.settings);
+  const updateSettings = useSettingsStore((s) => s.updateSettings);
+  const [defaultDir, setDefaultDir] = useState('');
+  const [saved, setSaved] = useState(false);
+  const [localDir, setLocalDir] = useState(settings.contextDir);
+
+  useEffect(() => {
+    import('../../commands/context').then(({ contextCommands }) => {
+      void contextCommands.getDir().then(setDefaultDir).catch(() => {});
+    });
+  }, []);
+
+  useEffect(() => {
+    setLocalDir(settings.contextDir);
+  }, [settings.contextDir]);
+
+  const handleSave = async () => {
+    await updateSettings({ ...settings, contextDir: localDir });
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  };
+
+  return (
+    <div className="flex items-center gap-2">
+      <PathInput
+        value={localDir}
+        onChange={setLocalDir}
+        placeholder={defaultDir || t('context.dirSettingDesc')}
+        dialogOptions={{ directory: true }}
+        className="flex-1"
+      />
+      <Button variant="secondary" className="shrink-0 h-9" onClick={() => void handleSave()}>
+        {saved ? t('common.success') : t('common.save')}
+      </Button>
+      <Button
+        variant="ghost"
+        className="shrink-0 h-9 text-xs"
+        onClick={() => {
+          const dir = localDir || defaultDir;
+          if (dir) void settingsCommands.openPath(dir);
+        }}
+      >
+        {t('context.openDir')}
+      </Button>
+    </div>
   );
 }
 
