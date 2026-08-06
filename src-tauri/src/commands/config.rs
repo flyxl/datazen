@@ -1,6 +1,7 @@
 use super::error::{CmdExt, CommandError};
 use super::AppState;
 use crate::app_data_archive;
+use crate::i18n_locale;
 use crate::store::AppSettings;
 use aes_gcm::aead::{Aead, KeyInit};
 use aes_gcm::{Aes256Gcm, Key, Nonce};
@@ -25,6 +26,11 @@ pub async fn save_groups(state: State<'_, AppState>, groups: Vec<String>) -> Res
 #[tauri::command]
 pub async fn get_settings(state: State<'_, AppState>) -> Result<AppSettings, CommandError> {
     Ok(state.store.get_settings().await)
+}
+
+#[tauri::command]
+pub fn get_system_ui_language() -> String {
+    i18n_locale::default_ui_language()
 }
 
 #[tauri::command]

@@ -7,7 +7,7 @@ export function useI18n() {
 
   const t = useCallback(
     (key: TranslationKey, params?: Record<string, string | number>) =>
-      getTranslation(language ?? 'zh-CN', key, params),
+      getTranslation(language ?? 'en', key, params),
     [language],
   );
 

@@ -3,6 +3,7 @@ mod app_data_archive;
 mod cache;
 mod commands;
 mod db;
+mod i18n_locale;
 pub mod mcp;
 mod plugin_init;
 mod services;
@@ -458,6 +459,7 @@ pub fn run() {
             commands::delete_favorite_query,
             commands::show_editor_context_menu,
             commands::get_settings,
+            commands::get_system_ui_language,
             commands::save_settings,
             commands::get_log_path,
             commands::open_path,

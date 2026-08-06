@@ -1,7 +1,4 @@
-import type { TranslationKey } from './zh-CN';
-
-const zhTW: Record<TranslationKey, string> = {
-  // ── Common ──
+const translations = {
   'common.ok': '確定',
   'common.cancel': '取消',
   'common.save': '保存',
@@ -23,8 +20,6 @@ const zhTW: Record<TranslationKey, string> = {
   'common.rows': '列',
   'common.columns': '列',
   'common.browse': '浏覽',
-
-  // ── Menu (native + Windows HTML MenuBar) ──
   'menu.file': '文件',
   'menu.newConnection': '新建連接',
   'menu.dataSync': '數據同步',
@@ -51,19 +46,13 @@ const zhTW: Record<TranslationKey, string> = {
   'menu.closeWindow': '关閉視窗',
   'menu.ctxAddFavorite': '收藏 SQL',
   'menu.help': '幫助',
-
-  // ── Theme ──
   'theme.light': '淺色',
   'theme.dark': '深色',
   'theme.system': '跟隨系統',
   'theme.tooltip': '主題：{current}',
-
-  // ── Traffic Lights ──
   'traffic.close': '关閉',
   'traffic.minimize': '最小化',
   'traffic.fullscreen': '全螢幕 (⌥+点击: 最大化)',
-
-  // ── Main Window ──
   'main.searchPlaceholder': '查找連接',
   'main.newConnection': '新建連接',
   'main.noConnections': '沒有連接',
@@ -73,8 +62,6 @@ const zhTW: Record<TranslationKey, string> = {
   'main.ready': '就绪',
   'main.connectionCount': '連接：{count}',
   'main.allGroups': '全部',
-
-  // ── Main / Context Menu ──
   'main.ctx.newGroup': '新建分組',
   'main.ctx.renameGroup': '重新命名分組',
   'main.ctx.deleteGroup': '刪除分組',
@@ -87,19 +74,13 @@ const zhTW: Record<TranslationKey, string> = {
   'main.ctx.moveToGroup': '移动到分組',
   'main.ctx.deleteConnection': '刪除連接',
   'main.ctx.confirmDeleteConnection': '確定要刪除連接「{name}」吗？此操作不可撤消。',
-
-  // ── Main / Group Dialog ──
   'main.newGroupTitle': '新建分組',
   'main.groupNamePlaceholder': '請输入分組名稱',
-
-  // ── Main / Backup & Restore ──
   'main.backupSuccess': '數據庫備份成功',
   'main.backupFailed': '備份失败',
   'main.restoreSuccess': '數據庫恢復成功',
   'main.restoreFailed': '恢復失败',
   'main.sidebar.resize': '拖拽調整側边栏寬度',
-
-  // ── Action Panel ──
   'action.backup': '備份數據庫',
   'action.restore': '恢復數據庫',
   'action.dataSync': '數據同步',
@@ -107,37 +88,11 @@ const zhTW: Record<TranslationKey, string> = {
   'action.workflow': '工作流',
   'action.exportConfig': '導出設定',
   'action.importConfig': '導入設定',
-
-  // ── Config Import / Export ──
-  'configExport.success': '已導出 {count} 個連接設定',
-  'configExport.failed': '導出失败',
-  'configExport.passwordTitle': '設置導出密碼',
-  'configExport.passwordDesc': '該密碼用于加密連接設定中的敏感資訊，導入時需要输入此密碼',
-  'configExport.passwordPlaceholder': '請输入密碼',
-  'configExport.passwordConfirmPlaceholder': '請確認密碼',
-  'configExport.passwordMismatch': '兩次输入的密碼不一致',
-  'configExport.passwordRequired': '請输入密碼',
-  'configImport.title': '導入連接設定',
-  'configImport.description': '以下連接與現有設定存在冲突，請選择處理方式',
-  'configImport.noConflicts': '沒有冲突，將直接導入 {count} 個連接',
-  'configImport.conflict': '冲突',
-  'configImport.new': '新增',
-  'configImport.skip': '跳過',
-  'configImport.overwrite': '覆盖',
-  'configImport.keepBoth': '保留兩者',
-  'configImport.existing': '現有',
-  'configImport.incoming': '導入',
-  'configImport.applyAll': '全部',
-  'configImport.importing': '導入中…',
-  'configImport.success': '成功導入 {count} 個連接',
-  'configImport.invalidFile': '無效的設定文件',
-  'configImport.failed': '導入失败',
-  'configImport.passwordTitle': '输入導入密碼',
-  'configImport.passwordDesc': '該設定文件已加密，請输入導出時設置的密碼',
-  'configImport.passwordPlaceholder': '請输入密碼',
-  'configImport.wrongPassword': '密碼錯误，請重試',
-
-  // ── Connection Item / Card ──
+  'appData.exportSuccess': '应用数据已导出',
+  'appData.exportFailed': '导出失败',
+  'appData.importConfirmTitle': '导入应用数据',
+  'appData.importConfirmMessage': '此操作将覆盖所有应用数据（现有日志文件会保留）。是否继续？',
+  'appData.importFailed': '导入失败',
   'conn.connected': '已連接',
   'conn.connecting': '連接中…',
   'conn.failed': '連接失败',
@@ -149,13 +104,9 @@ const zhTW: Record<TranslationKey, string> = {
   'conn.delete': '刪除連接',
   'conn.neverConnected': '從未連接',
   'conn.copyName': '副本',
-
-  // ── Connection Store errors ──
   'connStore.loadFailed': '載入連接失败',
   'connStore.saveFailed': '保存連接失败',
   'connStore.deleteFailed': '刪除連接失败',
-
-  // ── New Connection ──
   'newConn.title': '新建連接',
   'newConn.editTitle': '编辑連接',
   'newConn.description': '設定數據庫連接資訊',
@@ -226,8 +177,6 @@ const zhTW: Record<TranslationKey, string> = {
   'newConn.adbNoPackages': '未找到第三方應用，請確保設備已連接',
   'newConn.adbNoDatabases': '未找到數據庫文件',
   'newConn.adbNotInstalled': 'adb 未安裝或不在 PATH 中',
-
-  // ── Settings ──
   'settings.title': '偏好設置',
   'settings.general': '通用',
   'settings.theme': '主題',
@@ -255,8 +204,6 @@ const zhTW: Record<TranslationKey, string> = {
   'settings.limitSelectHint': '自动為無 LIMIT 的 SELECT 添加列數限制',
   'settings.confirmDeleteHint': '刪除列時弹出確認對話框',
   'settings.autoCommitHint': '编辑數據后自动提交更改',
-
-  // ── Connection Window ──
   'connWin.data': '數據',
   'connWin.structure': '結構',
   'connWin.indexes': '索引',
@@ -281,11 +228,7 @@ const zhTW: Record<TranslationKey, string> = {
   'connWin.editTableStructure': '编辑表結構…',
   'connWin.exportData': '導出數據…',
   'connWin.importData': '導入數據…',
-
-  // ── Table View ──
   'tableView.loadingData': '載入表數據…',
-
-  // ── Schema Tree ──
   'schemaTree.tables': '表',
   'schemaTree.keys': '鍵',
   'schemaTree.noMatchingTables': '沒有匹配的表或視圖',
@@ -293,8 +236,6 @@ const zhTW: Record<TranslationKey, string> = {
   'schemaTree.noMatchingKeys': '沒有匹配的鍵',
   'schemaTree.noKeys': '沒有鍵',
   'schemaTree.showAll': '顯示全部 ({count})',
-
-  // ── ER Diagram ──
   'erDiagram.title': 'ER 圖',
   'erDiagram.noTables': '當前數據庫沒有表',
   'erDiagram.noRelations': '未发現外鍵关系',
@@ -314,8 +255,6 @@ const zhTW: Record<TranslationKey, string> = {
   'erDiagram.expand': '展開列',
   'erDiagram.tableCount': '{count} 張表',
   'erDiagram.relationCount': '{count} 個关系',
-
-  // ── Redis ──
   'redis.items': '數據浏覽',
   'redis.queries': '命令',
   'redis.history': '历史',
@@ -337,8 +276,6 @@ const zhTW: Record<TranslationKey, string> = {
   'redis.index': '索引',
   'redis.noExpiry': '無過期',
   'redis.seconds': '秒',
-
-  // ── Query Panel ──
   'query.execute': '執列',
   'query.stop': '停止',
   'query.totalTime': '總耗時',
@@ -359,41 +296,27 @@ const zhTW: Record<TranslationKey, string> = {
   'query.addFavorite': '收藏 SQL',
   'query.favoriteTitle': '收藏標题',
   'query.favoriteTitlePlaceholder': '输入收藏標题...',
-
-  // ── Table Data ──
   'tableData.loadFailed': '載入表數據失败',
   'tableData.noPrimaryKey': '無法提交更改：表沒有主鍵',
   'tableData.commitFailed': '提交更改失败',
-
-  // ── Schema Store ──
   'schema.loadDbFailed': '載入數據庫失败',
   'schema.loadTablesFailed': '載入表失败',
-
-  // ── DataTable ──
   'dataTable.selectAll': '全選',
   'dataTable.selected': '已選',
   'dataTable.sort': '排序',
   'dataTable.selectRow': '選择列',
-
-  // ── Detail Panel ──
   'detail.title': '詳情',
   'detail.show': '顯示詳情面板',
   'detail.hide': '隱藏詳情面板',
   'detail.noSelection': '点击一列以查看字段詳情',
-
-  // ── Pagination ──
   'pagination.perPage': '每页',
   'pagination.prev': '上一页',
   'pagination.next': '下一页',
   'pagination.page': '第',
   'pagination.pageOf': '页',
-
-  // ── Filter Bar ──
   'filter.filter': '筛選',
   'filter.remove': '移除筛選',
   'filter.clear': '清空',
-
-  // ── Import Dialog ──
   'import.title': '導入數據',
   'import.description': '從 CSV 或 JSON 文件導入數據',
   'import.selectFile': '選择文件',
@@ -407,8 +330,6 @@ const zhTW: Record<TranslationKey, string> = {
   'import.import': '導入',
   'import.noData': '沒有數據可導入',
   'import.success': '成功導入 {count} 列數據到 {table}',
-
-  // ── Export Dialog ──
   'export.title': '導出數據',
   'export.description': '從表 {table} 導出數據',
   'export.format': '導出格式',
@@ -420,13 +341,9 @@ const zhTW: Record<TranslationKey, string> = {
   'export.formatAs': '格式為',
   'export.exporting': '導出中...',
   'export.export': '導出',
-
-  // ── DDL View ──
   'ddl.generating': '生成 DDL…',
   'ddl.getFailed': '無法獲取 DDL',
   'ddl.loadFailed': '獲取 DDL 失败',
-
-  // ── Structure View ──
   'structView.loadFailed': '載入表結構失败',
   'structView.loading': '載入表結構…',
   'structView.editStructure': '编辑結構',
@@ -442,8 +359,6 @@ const zhTW: Record<TranslationKey, string> = {
   'structView.unique': '唯一',
   'structView.defaultValue': '默認值',
   'structView.comment': '注釋',
-
-  // ── Table Structure Editor ──
   'structEditor.loadFailed': '載入表結構失败',
   'structEditor.executeFailed': '執列失败',
   'structEditor.loading': '載入表結構…',
@@ -457,8 +372,6 @@ const zhTW: Record<TranslationKey, string> = {
   'structEditor.addColumn': '添加列',
   'structEditor.deleteColumn': '刪除列',
   'structEditor.sqlPreview': 'SQL 預覽',
-
-  // ── Indexes View ──
   'indexes.newIndex': '新建索引',
   'indexes.indexName': '索引名稱',
   'indexes.selectColumns': '選择列（按選择順序排列）',
@@ -482,8 +395,6 @@ const zhTW: Record<TranslationKey, string> = {
   'indexes.colPrimary': '主鍵',
   'indexes.colActions': '操作',
   'indexes.deleteIndex': '刪除索引',
-
-  // ── Foreign Keys View ──
   'fk.loadFailed': '載入外鍵失败',
   'fk.loading': '載入外鍵資訊…',
   'fk.noForeignKeys': '該表沒有外鍵',
@@ -492,8 +403,6 @@ const zhTW: Record<TranslationKey, string> = {
   'fk.localColumn': '本表列',
   'fk.refTable': '引用表',
   'fk.refColumn': '引用列',
-
-  // ── Data Sync ──
   'sync.title': '數據同步',
   'sync.windowTitle': '數據同步 - DataZen',
   'sync.source': '源數據庫',
@@ -545,8 +454,6 @@ const zhTW: Record<TranslationKey, string> = {
   'sync.checkConflictFailed': '檢查冲突失败:',
   'sync.originalRows': '原始列數',
   'sync.currentRows': '當前列數',
-
-  // ── Backup Window ──
   'backup.title': '備份數據庫',
   'backup.fileName': '文件名',
   'backup.fileNameHint': '点击可修改文件名模式',
@@ -558,15 +465,9 @@ const zhTW: Record<TranslationKey, string> = {
   'backup.startBackup': '開始備份…',
   'backup.inProgress': '備份中…',
   'backup.success': '備份成功',
-
-  // ── Window titles ──
   'win.backup': '備份數據庫 - DataZen',
-
-  // ── Connection Settings Dialog ──
   'connSettings.title': '連接設置',
   'connSettings.description': '設定當前連接視窗的顯示和列為',
-
-  // ── AI Settings ──
   'settings.ai': 'AI 助手',
   'settings.ai.provider': 'AI 服务商',
   'settings.ai.model': '模型',
@@ -597,8 +498,6 @@ const zhTW: Record<TranslationKey, string> = {
   'settings.ai.endpointHintOpenAiChat': '例如 https://api.openai.com/v1',
   'settings.ai.endpointHintOpenAiResponses': '例如 https://api.openai.com/v1',
   'settings.ai.endpointHintAnthropic': '例如 https://api.anthropic.com',
-
-  // ── Prompt Management ──
   'settings.prompts': 'Prompt 管理',
   'settings.prompts.description': '查看和自定義 AI 功能使用的系統 Prompt。每個驅动和场景都可以单独設定。',
   'settings.prompts.driver': '數據庫驅动',
@@ -614,8 +513,6 @@ const zhTW: Record<TranslationKey, string> = {
   'settings.prompts.saved': 'Prompt 已保存',
   'settings.prompts.resetDone': '已重置為默認',
   'settings.prompts.variables': '可用变量',
-
-  // ── AI Chat ──
   'chat.title': 'AI 助手',
   'chat.placeholder': '输入消息，询問关于數據庫的問题…',
   'chat.send': '发送',
@@ -628,8 +525,6 @@ const zhTW: Record<TranslationKey, string> = {
   'chat.reasoning': '思考過程',
   'chat.questions.customAnswer': '输入自定義回答…',
   'chat.questions.submit': '提交回答',
-
-  // ── AI Context ──
   'context.title': 'AI 上下文',
   'context.noFiles': '上下文目錄為空，請將文件放入上下文目錄',
   'context.noResults': '未找到匹配的文件',
@@ -639,8 +534,6 @@ const zhTW: Record<TranslationKey, string> = {
   'context.openDir': '打開上下文目錄',
   'context.file': '文件',
   'context.dir': '目錄',
-
-  // ── NL2SQL ──
   'nl2sql.title': 'AI 生成 SQL',
   'nl2sql.placeholder': '用自然語言描述你想查询的内容…',
   'nl2sql.generate': '生成 SQL',
@@ -650,8 +543,6 @@ const zhTW: Record<TranslationKey, string> = {
   'nl2sql.clear': '清除',
   'nl2sql.notConfigured': '請先在設置中設定 AI 服务',
   'nl2sql.selectDatabaseFirst': '請先在左側選择一個數據庫',
-
-  // ── EXPLAIN Analysis ──
   'explain.title': 'EXPLAIN 分析',
   'explain.rawOutput': '執列計划',
   'explain.analyze': 'AI 分析',
@@ -666,8 +557,6 @@ const zhTW: Record<TranslationKey, string> = {
   'explain.loading': '獲取執列計划…',
   'explain.notConfigured': '請先在設置中設定 AI 服务',
   'explain.noData': '運列查询后点击 Explain 按钮查看執列計划',
-
-  // ── SQL Diagnosis ──
   'diagnosis.title': 'AI 錯误诊斷',
   'diagnosis.diagnose': '诊斷',
   'diagnosis.diagnosing': '分析中…',
@@ -676,8 +565,6 @@ const zhTW: Record<TranslationKey, string> = {
   'diagnosis.changes': '修改說明',
   'diagnosis.applySuggested': '應用修正',
   'diagnosis.notConfigured': '請先在設置中設定 AI 服务',
-
-  // ── Smart Filter ──
   'smartFilter.title': '智能筛選',
   'smartFilter.placeholder': '用自然語言描述筛選條件，如"年龄大于 18 且姓名包含張"',
   'smartFilter.parse': '筛選',
@@ -687,8 +574,6 @@ const zhTW: Record<TranslationKey, string> = {
   'smartFilter.notConfigured': '請先在設置中設定 AI 服务',
   'smartFilter.noFilters': '未解析到筛選條件',
   'smartFilter.parsed': '已解析 {count} 個筛選條件',
-
-  // ── MCP Server ──
   'mcp.title': 'MCP Server',
   'mcp.description': '將 DataZen 作為 MCP Server 運列，讓外部 AI 工具（如 Claude Desktop、Cursor）可以訪問你的數據庫',
   'mcp.enabled': '啟用 MCP Server',
@@ -706,8 +591,6 @@ const zhTW: Record<TranslationKey, string> = {
   'mcp.tools.disableAll': '全部禁用',
   'mcp.tools.restartHint': '修改工具設定后，需要重啟 MCP Server 才能生效',
   'mcp.toggleError': '啟动/停止 MCP Server 失败',
-
-  // ── MCP Client ──
   'mcpClient.title': '外部 MCP 服务',
   'mcpClient.description': '連接外部 MCP Server，擴展 AI 助手能力。',
   'mcpClient.addServer': '添加 MCP 服务',
@@ -719,8 +602,6 @@ const zhTW: Record<TranslationKey, string> = {
   'mcpClient.disconnect': '斷開',
   'mcpClient.tools': '工具',
   'mcpClient.noServers': '暂無已連接的 MCP 服务。',
-
-  // ── Workflows ──
   'workflows.title': '工作流',
   'workflows.loading': '載入中…',
   'workflows.empty': '暂無工作流',
@@ -800,8 +681,6 @@ const zhTW: Record<TranslationKey, string> = {
   'workflows.aiCreate.parseError': 'YAML 解析失败',
   'workflows.aiCreate.missingField': '缺少必填字段：{field}',
   'workflows.aiCreate.back': '返回列表',
-
-  // ── Chart ──
   'chart.viewTable': '表格',
   'chart.viewChart': '圖表',
   'chart.type.bar': '柱状圖',
@@ -850,21 +729,17 @@ const zhTW: Record<TranslationKey, string> = {
   'chart.expandTitle': '圖表預覽',
   'chart.collapse': '退出放大',
   'nl2sql.applyAndChart': '應用並圖表化',
-
-  // ── Select ──
   'select.placeholder': '請選择',
-
-  // ── Backend errors ──
-  'backend.partialFail': '部分語句執列失败 ({success}/{total}):\n{errors}',
+  'backend.partialFail': '部分語句執列失败 ({success}/{total}):\\n{errors}',
   'backend.unknownError': '未知錯误',
-
-  // ── Window titles ──
   'win.editConnection': '编辑連接 - DataZen',
   'win.newConnection': '新建連接 - DataZen',
   'win.query': '查询 - {db} - DataZen',
   'win.dataSync': '數據同步 - DataZen',
   'win.workflow': '工作流 - DataZen',
   'win.settings': '偏好設置 - DataZen',
-};
+} as const;
 
-export default zhTW;
+export type TranslationKey = keyof typeof translations;
+export default translations;
+

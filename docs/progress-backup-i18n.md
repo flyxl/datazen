@@ -8,7 +8,7 @@
 |---|---------|--------|------------|----------------|--------|
 | 1 | App data ZIP export/import (replace config JSON) | ✅ merged | 4/4 pass | pending | `feat/zip-backup` |
 | 2 | 10 locales (en, zh-CN, zh-TW, es, fr, de, ja, pt-BR, ru, ko) | ✅ merged | ✅ pass | pending | `feat/i18n-10` |
-| 3 | First-run language follows system (else `en`) | 🔄 merging | pending | pending | `feat/sys-locale` |
+| 3 | First-run language follows system (else `en`) | ✅ merged | ✅ Rust + Vitest | pending | `feat/sys-locale` |
 | 4 | Trigger GitHub release package | ⏳ pending | n/a | n/a | — |
 
 ## Feature 1 notes
@@ -30,7 +30,10 @@
 
 ## Feature 3 notes
 
-_(merging)_
+- Rust `resolve_ui_language` in `src-tauri/src/i18n_locale.rs` maps OS locale → supported UI code; unknown → `en`.
+- Store uses `AppSettings::default_for_first_run()` when `settings.json` is absent; existing settings are never overwritten.
+- Frontend default language is `en`; `main.tsx` preloads settings via Tauri before first paint.
+- TS mirror `src/lib/resolveUiLanguage.ts` for dev fallback when backend unavailable.
 
 ## E2E / bug log
 
