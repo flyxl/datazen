@@ -8,7 +8,7 @@
 |---|---------|--------|------------|----------------|--------|
 | 1 | App data ZIP export/import (replace config JSON) | ✅ merged | 4/4 pass | ✅ pass (unit + static) | `feat/zip-backup` |
 | 2 | 10 locales (en, zh-CN, zh-TW, es, fr, de, ja, pt-BR, ru, ko) | ✅ merged | ✅ pass | pending | `feat/i18n-10` |
-| 3 | First-run language follows system (else `en`) | ✅ merged | ✅ Rust + Vitest | pending | `feat/sys-locale` |
+| 3 | First-run language follows system (else `en`) | ✅ merged | ✅ Rust + Vitest | ✅ pass | `feat/sys-locale` |
 | 4 | Trigger GitHub release package | ⏳ pending | n/a | n/a | — |
 
 ## Feature 1 notes
@@ -80,3 +80,47 @@ cargo test -p datazen app_data_archive   # 4 passed, 0 failed
 **Summary:** 9/9 PASS (4 fully via unit tests; 5 via static code verification — native file dialogs and app restart not automated in this run).
 
 **Bugs:** None recorded.
+
+### Feature 3 — First-run language follows system (else `en`)
+
+**Agent:** test-only (2026-08-07)  
+**Branch:** `feat/backup-zip-i18n`  
+**Host OS locale:** macOS `AppleLocale=zh_CN`
+
+#### Test cases (designed)
+
+| ID | Case | Steps | Expected |
+|----|------|-------|----------|
+| F3-E2E-001 | No `settings.json` → OS-mapped language | 1. Empty temp data dir (no `settings.json`). 2. `Store::init_with_path`. 3. `get_settings().language`. | Language equals `default_ui_language()` (`zh-CN` on host with `zh_CN`). |
+| F3-E2E-002 | Unsupported OS locale → `en` | Call `resolve_ui_language` with `it-IT`, `nl-NL`, `xx`. | All map to `en`. |
+| F3-E2E-003 | Existing `settings.json` not overwritten | 1. Write `settings.json` with `"language":"fr"`. 2. Init store. 3. Read settings. | Language remains `fr`. |
+| F3-E2E-004 | Store `default_for_first_run` wiring | Code review `AppSettings::default_for_first_run` + `load_all`. | Uses `default_ui_language()` only when file missing. |
+| F3-E2E-005 | Frontend preload before paint | Code review `main.tsx` + `settingsStore`. | Tauri path loads backend settings before `ReactDOM.createRoot`; default `en` in store; dev catch uses `resolveUiLanguage(navigator.language)`. |
+
+#### Execution results
+
+| ID | Result | Method | Evidence |
+|----|--------|--------|----------|
+| F3-E2E-001 | **PASS** | Store harness (temp, not committed) | `get_settings().language == default_ui_language()` → `zh-CN` |
+| F3-E2E-002 | **PASS** | Rust unit + store harness | `resolve_ui_language("it-IT"|"nl-NL"|"xx")` → `en`; `default_for_first_run().language` ∈ supported set |
+| F3-E2E-003 | **PASS** | Store harness | Pre-seeded `language:"fr"` preserved after init |
+| F3-E2E-004 | **PASS** | Static | `store/mod.rs` L56–59, L297–299 |
+| F3-E2E-005 | **PASS** | Static | `main.tsx` L20–28; `settingsStore.ts` L7–9, L94–104 |
+
+**Commands run**
+
+```bash
+cargo test -p datazen i18n_locale                                    # 8 passed, 0 failed
+npx vitest run src/lib/__tests__/resolveUiLanguage.test.ts           # 6 passed, 0 failed
+cargo test --lib feature3_e2e  # ephemeral harness in store/mod.rs     # 3 passed, 0 failed (reverted)
+```
+
+**Summary:** 5/5 PASS (3 via ephemeral store harness; 2 via unit/static). No GUI first-launch run (would need isolated app data dir).
+
+**Bugs:** None recorded.
+
+**Optional observations (not filed):**
+
+- OBS-001: `get_system_ui_language` IPC registered but unused on frontend; first-run uses `get_settings` (no functional impact).
+- OBS-002: `settingsStore` `DEFAULT_SETTINGS.limitSelectResults: true` vs Rust `false` — pre-existing; dev-only fallback path.
+- OBS-003: Dev catch uses `navigator.language` vs Rust `sys_locale` — may diverge outside Tauri; production path consistent.
