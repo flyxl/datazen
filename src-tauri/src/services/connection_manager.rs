@@ -29,6 +29,9 @@ pub struct ConnectionManager {
     config_id_map: Arc<RwLock<HashMap<String, String>>>,
     store: Arc<Store>,
     idle_timeout: Duration,
+    /// Per-config_id locks to prevent concurrent connect attempts for the same
+    /// configuration. Second+ callers wait and reuse the first caller's result.
+    connect_locks: std::sync::Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
 }
 
 #[derive(Debug, Error)]
@@ -54,6 +57,7 @@ impl ConnectionManager {
             config_id_map: Arc::new(RwLock::new(HashMap::new())),
             store,
             idle_timeout: Duration::from_secs(1800),
+            connect_locks: std::sync::Mutex::new(HashMap::new()),
         }
     }
 
@@ -105,8 +109,19 @@ impl ConnectionManager {
     }
 
     /// Return an existing connection for the given config_id, or create a new one.
-    /// Prevents duplicate connection pools for the same saved configuration.
+    /// Concurrent callers for the same config_id are serialised: the first caller
+    /// performs the actual connect; subsequent callers wait then reuse its result.
     pub async fn get_or_connect(&self, config_id: &str) -> Result<String, ConnectionError> {
+        let lock = {
+            let mut locks = self.connect_locks.lock().unwrap();
+            locks
+                .entry(config_id.to_string())
+                .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(())))
+                .clone()
+        };
+
+        let _guard = lock.lock().await;
+
         {
             let map = self.config_id_map.read().await;
             let connections = self.connections.read().await;

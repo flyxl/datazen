@@ -9,6 +9,7 @@ import { emitCrossWindow, listenCrossWindow } from '../../lib/crossWindowBus';
 import { getUrlParam } from '../../lib/windowKind';
 import { DB_REGISTRY, getDbLabel } from '../../lib/databaseTypes';
 import { getConnectionView } from '../../lib/connectionViews';
+import { useActiveConnectionStore } from '../../stores/activeConnectionStore';
 import type { DatabaseType } from '../../types';
 
 export function ConnectionWindow() {
@@ -41,8 +42,15 @@ export function ConnectionWindow() {
 
   useEffect(() => {
     if (connectionId || !configId) return;
-    let cancelled = false;
 
+    const existing = useActiveConnectionStore.getState().connections[configId];
+    if (existing?.status === 'connected' && existing.connectionId) {
+      setConnectionId(existing.connectionId);
+      void emitCrossWindow('datazen:connection-ready', { configId, connectionId: existing.connectionId });
+      return;
+    }
+
+    let cancelled = false;
     const timer = setTimeout(() => { if (!cancelled) setShowLoading(true); }, 400);
 
     (async () => {
