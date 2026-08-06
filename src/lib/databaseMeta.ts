@@ -56,4 +56,6 @@ export interface DatabaseTypeMeta {
   readOnly?: boolean;
   /** Whether this driver supports EXPLAIN query plan analysis */
   supportsExplain?: boolean;
+  /** Whether this driver supports ER diagram (requires FK metadata) */
+  supportsErDiagram?: boolean;
 }

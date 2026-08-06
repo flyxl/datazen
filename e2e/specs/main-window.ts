@@ -1,13 +1,13 @@
 import { expect, browser, $, $$ } from '@wdio/globals';
 import { closeExtraWindows, expandAllGroups } from '../helpers.js';
+import { t } from '../i18n.js';
 
 describe('主窗口 (CM-001)', () => {
   let mainWindow: string;
 
   before(async () => {
     mainWindow = await browser.getWindowHandle();
-    // Wait for the main window to be ready (search input is always visible)
-    await $('input[placeholder="查找连接…"]').waitForDisplayed({ timeout: 10000 });
+    await $(`input[placeholder="${t('main.searchPlaceholder')}"]`).waitForDisplayed({ timeout: 10000 });
     await expandAllGroups();
     await browser.pause(1000);
   });
@@ -24,23 +24,21 @@ describe('主窗口 (CM-001)', () => {
   // ── UI 元素 ──────────────────────────────────────────────────────
 
   it('应显示搜索框', async () => {
-    const input = await $('input[placeholder="查找连接…"]');
+    const input = await $(`input[placeholder="${t('main.searchPlaceholder')}"]`);
     await expect(input).toBeDisplayed();
   });
 
   it('应显示新建连接按钮（+号和 ActionPanel）', async () => {
-    // The "+" button near the search bar
-    const plusBtn = await $('button[title="新建连接"]');
+    const plusBtn = await $(`button[title="${t('main.newConnection')}"]`);
     await expect(plusBtn).toBeDisplayed();
-    // The "新建连接…" in the action panel
-    const actionBtn = await $('button*=新建连接');
+    const actionBtn = await $(`button*=${t('action.newConnection')}`);
     await expect(actionBtn).toBeDisplayed();
   });
 
   it('应显示左侧操作面板', async () => {
-    const backupBtn = await $('button*=备份数据库');
-    const restoreBtn = await $('button*=恢复数据库');
-    const syncBtn = await $('button*=数据同步');
+    const backupBtn = await $(`button*=${t('action.backup')}`);
+    const restoreBtn = await $(`button*=${t('action.restore')}`);
+    const syncBtn = await $(`button*=${t('action.dataSync')}`);
     await expect(backupBtn).toBeDisplayed();
     await expect(restoreBtn).toBeDisplayed();
     await expect(syncBtn).toBeDisplayed();
@@ -67,7 +65,7 @@ describe('主窗口 (CM-001)', () => {
     await browser.waitUntil(
       async () => {
         const body = await $('body').getText();
-        return body.includes('Pg') || body.includes('My') || body.includes('SL') || body.includes('Rd');
+        return body.includes('Pg') || body.includes('My') || body.includes('Ma') || body.includes('Lt') || body.includes('Rd') || body.includes('Ss') || body.includes('Ki') || body.includes('Pr') || body.includes('Tr');
       },
       { timeout: 10000, timeoutMsg: '等待数据库类型图标加载超时' },
     );
