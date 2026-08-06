@@ -1,11 +1,12 @@
 use super::error::{CmdExt, CommandError};
 use super::AppState;
+use crate::app_data_archive;
 use crate::store::AppSettings;
 use aes_gcm::aead::{Aead, KeyInit};
 use aes_gcm::{Aes256Gcm, Key, Nonce};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use std::path::PathBuf;
-use tauri::State;
+use tauri::{AppHandle, State};
 
 #[tauri::command]
 pub async fn get_groups(state: State<'_, AppState>) -> Result<Vec<String>, CommandError> {
@@ -206,4 +207,36 @@ pub async fn import_connections_preview(
     }
 
     Ok(data)
+}
+
+#[tauri::command]
+pub async fn export_app_data(state: State<'_, AppState>, path: String) -> Result<(), CommandError> {
+    tracing::info!(%path, "export_app_data");
+    let data_dir = state.store.data_dir().clone();
+    let dest = PathBuf::from(path);
+    tokio::task::spawn_blocking(move || app_data_archive::export_app_data(&data_dir, &dest))
+        .await
+        .map_err(|e| CommandError::Internal(format!("export_app_data task: {e}")))?
+        .cmd_err("export_app_data")?;
+    tracing::info!("export_app_data OK");
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn import_app_data(state: State<'_, AppState>, path: String) -> Result<(), CommandError> {
+    tracing::info!(%path, "import_app_data");
+    let data_dir = state.store.data_dir().clone();
+    let source = PathBuf::from(path);
+    tokio::task::spawn_blocking(move || app_data_archive::import_app_data(&data_dir, &source))
+        .await
+        .map_err(|e| CommandError::Internal(format!("import_app_data task: {e}")))?
+        .cmd_err("import_app_data")?;
+    tracing::info!("import_app_data OK");
+    Ok(())
+}
+
+#[tauri::command]
+pub fn restart_app(app: AppHandle) {
+    tracing::info!("restart_app");
+    app.restart();
 }
