@@ -11,6 +11,7 @@ import { Dialog } from '../../components/ui/Dialog';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
 import { TitleBar } from '../../components/TitleBar';
+import { MenuBar } from '../../components/MenuBar';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 import { useResizable } from '../../hooks/useResizable';
 import { useTauriEvent } from '../../hooks/useTauriEvent';
@@ -587,7 +588,7 @@ export function MainWindow() {
   return (
     <div className="flex h-screen min-h-0 min-w-[520px] flex-col bg-surface text-fg">
       {/* ── Title bar ── */}
-      <TitleBar title="DataZen" rightContent={<ThemeToggle />} />
+      <TitleBar title="DataZen" leftContent={<MenuBar />} rightContent={<ThemeToggle />} />
 
       {/* ── Body ── */}
       <div className="flex min-h-0 flex-1">

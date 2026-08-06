@@ -20,8 +20,6 @@ pub struct CreateWindowOptions {
     #[serde(default = "default_true")]
     pub accept_first_mouse: bool,
     #[serde(default)]
-    pub decorations: Option<bool>,
-    #[serde(default)]
     pub transparent: Option<bool>,
 }
 
@@ -33,7 +31,6 @@ fn default_true() -> bool { true }
 #[tauri::command]
 pub fn create_sub_window(app: AppHandle, options: CreateWindowOptions) -> Result<(), CommandError> {
     let is_mac = cfg!(target_os = "macos");
-    let decorations = options.decorations.unwrap_or(is_mac);
     let transparent = options.transparent.unwrap_or(false);
 
     let mut builder = WebviewWindowBuilder::new(
@@ -43,7 +40,7 @@ pub fn create_sub_window(app: AppHandle, options: CreateWindowOptions) -> Result
     )
     .title(&options.title)
     .inner_size(options.width, options.height)
-    .decorations(decorations)
+    .decorations(is_mac)
     .transparent(transparent)
     .visible(false)
     .accept_first_mouse(options.accept_first_mouse);
@@ -66,10 +63,7 @@ pub fn create_sub_window(app: AppHandle, options: CreateWindowOptions) -> Result
         builder = builder.center();
     }
 
-    let webview_window = builder.build().map_err(|e| CommandError::Internal(e.to_string()))?;
-
-    #[cfg(target_os = "macos")]
-    crate::macos::apply_traffic_lights(&webview_window);
+    builder.build().map_err(|e| CommandError::Internal(e.to_string()))?;
 
     Ok(())
 }
