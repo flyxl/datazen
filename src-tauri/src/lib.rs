@@ -1,4 +1,5 @@
 pub mod ai;
+mod app_data_archive;
 mod cache;
 mod commands;
 mod db;
@@ -462,6 +463,9 @@ pub fn run() {
             commands::open_path,
             commands::export_connections,
             commands::import_connections_preview,
+            commands::export_app_data,
+            commands::import_app_data,
+            commands::restart_app,
             commands::write_file,
             commands::write_file_base64,
             commands::read_file,
