@@ -126,15 +126,22 @@ async fn pg_full_column_types(
 }
 
 /// Resolve source and target sync adapters for a given pair of database types.
+/// Registers only those two types (or one if they match) on first use.
 fn resolve_adapters(
     state: &AppState,
     src_type: &DatabaseType,
     tgt_type: &DatabaseType,
 ) -> Result<(Arc<dyn SyncSourceAdapter>, Arc<dyn SyncTargetAdapter>), CommandError> {
-    let src_adapter = state.sync_adapters.get_source(src_type)
-        .ok_or_else(|| CommandError::NotFound(format!("No sync source adapter for {:?}", src_type)))?;
-    let tgt_adapter = state.sync_adapters.get_target(tgt_type)
-        .ok_or_else(|| CommandError::NotFound(format!("No sync target adapter for {:?}", tgt_type)))?;
+    state
+        .sync_adapters
+        .ensure_pair(src_type, tgt_type)
+        .map_err(CommandError::NotFound)?;
+    let src_adapter = state.sync_adapters.get_source(src_type).ok_or_else(|| {
+        CommandError::NotFound(format!("No sync source adapter for {:?}", src_type))
+    })?;
+    let tgt_adapter = state.sync_adapters.get_target(tgt_type).ok_or_else(|| {
+        CommandError::NotFound(format!("No sync target adapter for {:?}", tgt_type))
+    })?;
     Ok((src_adapter, tgt_adapter))
 }
 

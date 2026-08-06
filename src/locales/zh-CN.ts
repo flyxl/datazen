@@ -22,7 +22,7 @@ const zhCN = {
   'common.columns': '列',
   'common.browse': '浏览',
 
-  // ── Menu (native) ──
+  // ── Menu (native + Windows HTML MenuBar) ──
   'menu.file': '文件',
   'menu.newConnection': '新建连接',
   'menu.dataSync': '数据同步',
@@ -30,12 +30,24 @@ const zhCN = {
   'menu.restore': '恢复数据库',
   'menu.settings': '偏好设置',
   'menu.edit': '编辑',
+  'menu.undo': '撤销',
+  'menu.redo': '重做',
+  'menu.cut': '剪切',
+  'menu.copy': '复制',
+  'menu.paste': '粘贴',
+  'menu.selectAll': '全选',
   'menu.view': '显示',
   'menu.themeLight': '浅色主题',
   'menu.themeDark': '深色主题',
   'menu.themeSystem': '跟随系统',
   'menu.tools': '工具',
+  'menu.viewLogs': '查看日志',
+  'menu.exportConfig': '导出配置',
+  'menu.importConfig': '导入配置',
   'menu.window': '窗口',
+  'menu.minimize': '最小化',
+  'menu.closeWindow': '关闭窗口',
+  'menu.ctxAddFavorite': '收藏 SQL',
   'menu.help': '帮助',
 
   // ── Theme ──
@@ -677,6 +689,8 @@ const zhCN = {
   // ── MCP Server ──
   'mcp.title': 'MCP Server',
   'mcp.description': '将 DataZen 作为 MCP Server 运行，让外部 AI 工具（如 Claude Desktop、Cursor）可以访问你的数据库',
+  'mcp.enabled': '启用 MCP Server',
+  'mcp.enabledHint': '默认关闭。给 Claude Desktop / Cursor 使用时，推荐用命令行 datazen --mcp 单独启动',
   'mcp.status': '状态',
   'mcp.running': '运行中',
   'mcp.stopped': '已停止',
@@ -689,6 +703,7 @@ const zhCN = {
   'mcp.tools.enableAll': '全部启用',
   'mcp.tools.disableAll': '全部禁用',
   'mcp.tools.restartHint': '修改工具配置后，需要重启 MCP Server 才能生效',
+  'mcp.toggleError': '启动/停止 MCP Server 失败',
 
   // ── MCP Client ──
   'mcpClient.title': '外部 MCP 服务',

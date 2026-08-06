@@ -45,6 +45,12 @@ const pluginsArgs = args.filter(a => a.startsWith('--plugins'));
 const otherArgs = args.filter(a => !a.startsWith('--plugins'));
 const pluginsStr = pluginsArgs.join(' ');
 
+console.log('[tauri:dev] generating menu labels from locales...');
+execSync('node scripts/generate-menu-labels.mjs', {
+  cwd: ROOT,
+  stdio: 'inherit',
+});
+
 console.log('[tauri:dev] resolving plugins...');
 execSync(`node scripts/resolve-plugins.mjs ${pluginsStr}`, {
   cwd: ROOT,

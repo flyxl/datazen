@@ -9,5 +9,7 @@ use tauri::Runtime;
 pub fn register_plugins<R: Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> {
     let builder = builder;
 
+    // No plugins with Tauri commands enabled
+
     builder
 }

@@ -168,6 +168,8 @@ export interface AppSettings {
   defaultPageSize: number;
   logLevel: 'trace' | 'debug' | 'info' | 'warn' | 'error';
   logPath: string;
+  /** When true, GUI may start embedded MCP on launch. Default false. */
+  mcpServerEnabled: boolean;
   mcpDisabledTools: string[];
   contextDir: string;
 }

@@ -713,12 +713,41 @@ export const useAiStore = create<AiStore>((set, get) => ({
   workflowError: null,
 
   loadWorkflows: async () => {
-    set({ workflowsLoading: true });
+    // Delay showing the spinner by 100ms; if the load finishes sooner, never
+    // flash a loading state. Once shown, keep it visible for at least 200ms
+    // so a 101ms completion doesn't cause a blink.
+    const SHOW_AFTER_MS = 100;
+    const MIN_VISIBLE_MS = 200;
+
+    let showTimer: ReturnType<typeof setTimeout> | null = null;
+    let loadingShownAt: number | null = null;
+
+    showTimer = setTimeout(() => {
+      loadingShownAt = Date.now();
+      set({ workflowsLoading: true });
+    }, SHOW_AFTER_MS);
+
+    const finishLoading = async () => {
+      if (showTimer !== null) {
+        clearTimeout(showTimer);
+        showTimer = null;
+      }
+      if (loadingShownAt !== null) {
+        const remain = MIN_VISIBLE_MS - (Date.now() - loadingShownAt);
+        if (remain > 0) {
+          await new Promise((r) => setTimeout(r, remain));
+        }
+      }
+      set({ workflowsLoading: false });
+    };
+
     try {
       const workflows = await aiCommands.workflowList();
-      set({ workflows, workflowsLoading: false });
+      await finishLoading();
+      set({ workflows });
     } catch (e) {
-      set({ workflowsLoading: false, workflowError: String(e) });
+      await finishLoading();
+      set({ workflowError: String(e) });
     }
   },
 

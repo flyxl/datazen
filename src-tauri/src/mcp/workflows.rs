@@ -9,8 +9,9 @@ use datazen_ai_api::{ChatMessage, CompletionRequest, MessageRole};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex, RwLock};
 use uuid::Uuid;
 
 // ─── Data Model (Phase 1) ───────────────────────────────────────────────────
@@ -203,6 +204,10 @@ pub struct WorkflowListItem {
 pub struct WorkflowRegistry {
     workflows: RwLock<HashMap<String, WorkflowDefinition>>,
     workflows_dir: PathBuf,
+    /// Set after the first successful disk scan (or explicit reload).
+    loaded: AtomicBool,
+    /// Serializes first-load / reload so concurrent list/get don't race.
+    load_lock: Mutex<()>,
 }
 
 impl WorkflowRegistry {
@@ -210,6 +215,8 @@ impl WorkflowRegistry {
         Self {
             workflows: RwLock::new(HashMap::new()),
             workflows_dir,
+            loaded: AtomicBool::new(false),
+            load_lock: Mutex::new(()),
         }
     }
 
@@ -217,9 +224,33 @@ impl WorkflowRegistry {
         &self.workflows_dir
     }
 
+    /// Load YAML workflows from disk if they have not been loaded yet.
+    /// Called on first visit to the workflow UI (or MCP list/get).
+    pub async fn ensure_loaded(&self) -> Result<(), String> {
+        if self.loaded.load(Ordering::Acquire) {
+            return Ok(());
+        }
+        let _guard = self.load_lock.lock().await;
+        if self.loaded.load(Ordering::Acquire) {
+            return Ok(());
+        }
+        self.load_all_unlocked().await?;
+        self.loaded.store(true, Ordering::Release);
+        Ok(())
+    }
+
+    /// Force re-scan the workflows directory (Refresh button / workflow_reload).
     pub async fn load_all(&self) -> Result<(), String> {
+        let _guard = self.load_lock.lock().await;
+        self.load_all_unlocked().await?;
+        self.loaded.store(true, Ordering::Release);
+        Ok(())
+    }
+
+    async fn load_all_unlocked(&self) -> Result<(), String> {
         if !self.workflows_dir.exists() {
             std::fs::create_dir_all(&self.workflows_dir).map_err(|e| e.to_string())?;
+            self.workflows.write().await.clear();
             return Ok(());
         }
 
@@ -260,10 +291,18 @@ impl WorkflowRegistry {
     }
 
     pub async fn get(&self, id: &str) -> Option<WorkflowDefinition> {
+        if let Err(e) = self.ensure_loaded().await {
+            tracing::warn!("Failed to load workflows before get: {e}");
+            return None;
+        }
         self.workflows.read().await.get(id).cloned()
     }
 
     pub async fn list(&self) -> Vec<WorkflowListItem> {
+        if let Err(e) = self.ensure_loaded().await {
+            tracing::warn!("Failed to load workflows before list: {e}");
+            return Vec::new();
+        }
         self.workflows
             .read()
             .await

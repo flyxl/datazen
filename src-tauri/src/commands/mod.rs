@@ -56,3 +56,12 @@ pub struct AppState {
     pub mcp_client_manager: Arc<McpClientManager>,
 }
 
+impl AppState {
+    /// Lazily register AI providers + load prompt templates.
+    /// Does not run during GUI startup — only on first AI / prompt use.
+    pub async fn ensure_ai_ready(&self) {
+        self.ai_registry.ensure_registered(&self.store).await;
+        let lang = self.store.get_settings().await.language;
+        self.prompt_resolver.ensure_ready(&lang).await;
+    }
+}

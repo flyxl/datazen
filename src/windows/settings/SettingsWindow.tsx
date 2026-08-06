@@ -355,6 +355,9 @@ function McpSettingsSection() {
   const [allTools, setAllTools] = useState<string[]>([]);
   const [disabledTools, setDisabledTools] = useState<string[]>([]);
   const [saved, setSaved] = useState(false);
+  const [running, setRunning] = useState(false);
+  const [toggling, setToggling] = useState(false);
+  const [toggleError, setToggleError] = useState<string | null>(null);
 
   useEffect(() => {
     void aiCommands.mcpListAllTools().then(setAllTools).catch(() => {});
@@ -363,6 +366,43 @@ function McpSettingsSection() {
   useEffect(() => {
     setDisabledTools(settings.mcpDisabledTools ?? []);
   }, [settings.mcpDisabledTools]);
+
+  const refreshStatus = async () => {
+    try {
+      const status = await aiCommands.mcpGetStatus();
+      setRunning(status.running);
+    } catch {
+      setRunning(false);
+    }
+  };
+
+  useEffect(() => {
+    void refreshStatus();
+    const id = window.setInterval(() => void refreshStatus(), 3000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  const handleToggleEnabled = async (enabled: boolean) => {
+    setToggling(true);
+    setToggleError(null);
+    try {
+      await updateSettings({ ...settings, mcpServerEnabled: enabled });
+      if (enabled) {
+        await aiCommands.mcpStartStdio();
+      } else {
+        await aiCommands.mcpStop();
+      }
+      await refreshStatus();
+    } catch (e) {
+      setToggleError(e instanceof Error ? e.message : t('mcp.toggleError'));
+      // Revert preference if start failed after enabling
+      if (enabled) {
+        await updateSettings({ ...settings, mcpServerEnabled: false }).catch(() => {});
+      }
+    } finally {
+      setToggling(false);
+    }
+  };
 
   const toggleTool = (toolName: string) => {
     setDisabledTools((prev) =>
@@ -385,6 +425,30 @@ function McpSettingsSection() {
     <>
       <SectionTitle>{t('mcp.title')}</SectionTitle>
       <p className="text-xs text-fg-muted">{t('mcp.description')}</p>
+
+      <ToggleRow
+        label={t('mcp.enabled')}
+        checked={settings.mcpServerEnabled ?? false}
+        onChange={(v) => {
+          if (!toggling) void handleToggleEnabled(v);
+        }}
+      />
+      <p className="text-xs text-fg-muted -mt-1">{t('mcp.enabledHint')}</p>
+
+      <SettingRow label={t('mcp.status')}>
+        <div className="flex items-center gap-2 pt-2">
+          <span
+            className={`inline-block h-2 w-2 rounded-full ${running ? 'bg-green-500' : 'bg-fg-muted'}`}
+          />
+          <span className="text-sm text-fg">
+            {running ? t('mcp.running') : t('mcp.stopped')}
+          </span>
+        </div>
+      </SettingRow>
+
+      {toggleError && (
+        <p className="text-xs text-red-500">{toggleError}</p>
+      )}
 
       <div className="rounded-md border border-edge bg-surface p-3">
         <p className="text-xs text-fg-muted">{t('mcp.usage')}</p>

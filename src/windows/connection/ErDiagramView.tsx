@@ -16,6 +16,7 @@ import '@xyflow/react/dist/style.css';
 import { toPng, toSvg } from 'html-to-image';
 import { Download, Loader2, Search } from 'lucide-react';
 import { databaseCommands } from '../../commands/database';
+import { fileCommands } from '../../commands/file';
 import { Button } from '../../components/ui/Button';
 import { useI18n } from '../../hooks/useI18n';
 import { TableNode } from './er/TableNode';
@@ -135,14 +136,19 @@ function ErDiagramInner({ connectionId, database, focusTable, onSelectTable }: E
     const viewport = document.querySelector('.react-flow__viewport') as HTMLElement;
     if (!viewport) return;
     try {
+      const { save } = await import('@tauri-apps/plugin-dialog');
+      const filePath = await save({
+        defaultPath: `er-diagram-${database}.png`,
+        filters: [{ name: 'PNG', extensions: ['png'] }],
+      });
+      if (!filePath) return;
+
       const dataUrl = await toPng(viewport, {
         backgroundColor: '#1a1a2e',
         quality: 1,
       });
-      const link = document.createElement('a');
-      link.download = `er-diagram-${database}.png`;
-      link.href = dataUrl;
-      link.click();
+      const base64 = dataUrl.includes(',') ? dataUrl.split(',')[1]! : dataUrl;
+      await fileCommands.writeFileBase64(filePath, base64);
     } catch (e) {
       console.error('Export failed:', e);
     }
@@ -152,13 +158,26 @@ function ErDiagramInner({ connectionId, database, focusTable, onSelectTable }: E
     const viewport = document.querySelector('.react-flow__viewport') as HTMLElement;
     if (!viewport) return;
     try {
+      const { save } = await import('@tauri-apps/plugin-dialog');
+      const filePath = await save({
+        defaultPath: `er-diagram-${database}.svg`,
+        filters: [{ name: 'SVG', extensions: ['svg'] }],
+      });
+      if (!filePath) return;
+
       const dataUrl = await toSvg(viewport, {
         backgroundColor: '#1a1a2e',
       });
-      const link = document.createElement('a');
-      link.download = `er-diagram-${database}.svg`;
-      link.href = dataUrl;
-      link.click();
+      // data:image/svg+xml;charset=utf-8,... or base64
+      let svgContent: string;
+      if (dataUrl.startsWith('data:image/svg+xml;base64,')) {
+        svgContent = atob(dataUrl.slice('data:image/svg+xml;base64,'.length));
+      } else if (dataUrl.startsWith('data:image/svg+xml,')) {
+        svgContent = decodeURIComponent(dataUrl.slice(dataUrl.indexOf(',') + 1));
+      } else {
+        svgContent = dataUrl;
+      }
+      await fileCommands.writeFile(filePath, svgContent);
     } catch (e) {
       console.error('Export failed:', e);
     }

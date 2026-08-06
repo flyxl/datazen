@@ -34,18 +34,35 @@ async function openTauriWindow(label: string, options: OpenWindowOptions) {
   const qs = new URLSearchParams(options.params ?? {}).toString();
   const url = qs ? `index.html?${qs}` : 'index.html';
 
-  await invoke('create_sub_window', {
-    options: {
-      label,
-      url,
-      title: options.title ?? 'DataZen',
-      width: options.width ?? 800,
-      height: options.height ?? 640,
-      minWidth: options.minWidth,
-      minHeight: options.minHeight,
-      center: options.center ?? true,
-    },
-  });
+  try {
+    await invoke('create_sub_window', {
+      options: {
+        label,
+        url,
+        title: options.title ?? 'DataZen',
+        width: options.width ?? 800,
+        height: options.height ?? 640,
+        minWidth: options.minWidth,
+        minHeight: options.minHeight,
+        center: options.center ?? true,
+      },
+    });
+  } catch (e) {
+    console.error(`[windowManager] failed to open window "${label}"`, e);
+    // A rejected invoke (permission denied, build failure) is otherwise
+    // indistinguishable from "the click did nothing", and devtools are not
+    // available in release builds.
+    try {
+      const { message } = await import('@tauri-apps/plugin-dialog');
+      await message(`${label}\n\n${e instanceof Error ? e.message : String(e)}`, {
+        title: 'DataZen',
+        kind: 'error',
+      });
+    } catch {
+      // dialog unavailable; the console log above is the only trace
+    }
+    throw e;
+  }
 }
 
 function openBrowserWindow(options: OpenWindowOptions) {
@@ -56,30 +73,22 @@ function openBrowserWindow(options: OpenWindowOptions) {
 
 function openWindow(label: string, options: OpenWindowOptions) {
   if (isTauri()) {
-    void openTauriWindow(label, options);
+    void openTauriWindow(label, options).catch(() => {});
   } else {
     openBrowserWindow(options);
   }
 }
 
 /**
- * Open a singleton window: if one with the given label already exists,
- * focus it; otherwise create a new one.
+ * Open a singleton window.
+ *
+ * Reuse is handled in Rust: `create_sub_window` shows and focuses an
+ * existing window with the same label. Resolving it here instead would
+ * only focus the window, which silently does nothing when the window
+ * exists but never became visible.
  */
 function openSingletonWindow(label: string, options: OpenWindowOptions) {
-  if (isTauri()) {
-    void (async () => {
-      const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
-      const existing = await WebviewWindow.getByLabel(label);
-      if (existing) {
-        await existing.setFocus();
-        return;
-      }
-      await openTauriWindow(label, options);
-    })();
-  } else {
-    openBrowserWindow(options);
-  }
+  openWindow(label, options);
 }
 
 // ── Singleton windows ───────────────────────────────────────────────

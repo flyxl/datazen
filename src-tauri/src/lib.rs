@@ -19,13 +19,13 @@ use tauri::menu::{CheckMenuItemBuilder, MenuBuilder, MenuItemBuilder, Predefined
 #[cfg(target_os = "macos")]
 use tauri::Emitter;
 use tauri::Manager;
-use ai::{init_ai_providers, SchemaContextBuilder};
+use ai::SchemaContextBuilder;
 use commands::AppState;
 use db::init_drivers;
 use cache::SchemaCache;
 use services::ConnectionManager;
 use store::Store;
-use sync::adapters::init_sync_adapters;
+use sync::adapter_registry::SyncAdapterRegistry;
 
 pub(crate) fn menu_labels(lang: &str) -> HashMap<String, String> {
     static MENU_JSON: &str = include_str!("../resources/menu-labels.json");
@@ -190,7 +190,7 @@ fn resolve_log_settings() -> (String, PathBuf) {
 #[tauri::command]
 fn rebuild_menu(handle: tauri::AppHandle, language: String) -> Result<(), String> {
     let state = handle.state::<AppState>();
-    tauri::async_runtime::block_on(state.prompt_resolver.load_language(&language));
+    tauri::async_runtime::block_on(state.prompt_resolver.ensure_ready(&language));
     #[cfg(target_os = "macos")]
     {
         let settings = tauri::async_runtime::block_on(state.store.get_settings());
@@ -202,69 +202,107 @@ fn rebuild_menu(handle: tauri::AppHandle, language: String) -> Result<(), String
     }
 }
 
-async fn build_app_state(store: Arc<Store>, prompts_dir: Option<PathBuf>) -> Result<AppState, String> {
-    let registry: Arc<db::DriverRegistry> = Arc::new(init_drivers().await);
+/// Build AppState for the GUI: Store first, then preload drivers used by saved connections.
+/// Sync adapters / AI / prompts / workflows / history / MCP load on demand.
+async fn build_gui_app_state(
+    handle: &tauri::AppHandle,
+    prompts_dir: Option<PathBuf>,
+) -> Result<AppState, String> {
+    let t_core = Instant::now();
+    let store = Arc::new(Store::init(handle).await.map_err(|e| e.to_string())?);
+    tracing::info!("[startup]   store: {:?}", t_core.elapsed());
+
+    let t_drv = Instant::now();
+    let registry = Arc::new(init_drivers());
+    let needed: Vec<String> = {
+        let mut seen = std::collections::HashSet::new();
+        store
+            .get_connections()
+            .await
+            .into_iter()
+            .filter_map(|c| seen.insert(c.database_type.clone()).then_some(c.database_type))
+            .collect()
+    };
+    registry.ensure_types(&needed).await;
+    tracing::info!(
+        "[startup]   drivers ({} types): {:?}",
+        needed.len(),
+        t_drv.elapsed()
+    );
+
+    Ok(finish_app_state(
+        store,
+        registry,
+        Arc::new(SyncAdapterRegistry::new()),
+        prompts_dir,
+    ))
+}
+
+/// Build AppState for headless MCP (shells only; AI/prompts/sync load on first use).
+async fn build_app_state(
+    store: Arc<Store>,
+    prompts_dir: Option<PathBuf>,
+) -> Result<AppState, String> {
+    let t_drv = Instant::now();
+    let registry = Arc::new(init_drivers());
+    let needed: Vec<String> = {
+        let mut seen = std::collections::HashSet::new();
+        store
+            .get_connections()
+            .await
+            .into_iter()
+            .filter_map(|c| seen.insert(c.database_type.clone()).then_some(c.database_type))
+            .collect()
+    };
+    registry.ensure_types(&needed).await;
+    tracing::info!(
+        "[startup]   drivers ({} types): {:?}",
+        needed.len(),
+        t_drv.elapsed()
+    );
+    Ok(finish_app_state(
+        store,
+        registry,
+        Arc::new(SyncAdapterRegistry::new()),
+        prompts_dir,
+    ))
+}
+
+fn finish_app_state(
+    store: Arc<Store>,
+    registry: Arc<db::DriverRegistry>,
+    sync_adapters: Arc<sync::adapter_registry::SyncAdapterRegistry>,
+    prompts_dir: Option<PathBuf>,
+) -> AppState {
     let schema_cache = Arc::new(SchemaCache::new(registry.clone()));
     let connection_manager = Arc::new(ConnectionManager::new(
         registry.clone(),
         store.clone(),
     ));
     connection_manager.clone().start_cleanup_task();
-    let sync_adapters = Arc::new(init_sync_adapters());
-    let ai_registry = Arc::new(init_ai_providers().await);
 
-    if let Some(ai_config) = store.get_ai_config().await {
-        if let Some(provider) = ai_registry.get(&ai_config.provider_type).await {
-            if let Err(e) = provider.initialize(&ai_config).await {
-                tracing::warn!("Failed to initialize saved AI provider: {e}");
-            }
-        }
-    }
+    let data_dir = store.data_dir().to_path_buf();
 
-    let schema_context_builder = Arc::new(SchemaContextBuilder::new(
-        schema_cache.clone(),
-        connection_manager.clone(),
-    ));
-
-    let data_dir = store.data_dir();
-
-    let prompt_resolver = Arc::new(ai::PromptResolver::new(data_dir, prompts_dir));
-    if let Err(e) = prompt_resolver.load().await {
-        tracing::warn!("Failed to load prompt overrides: {e}");
-    }
-    {
-        let pr = prompt_resolver.clone();
-        let lang = store.get_settings().await.language;
-        tokio::spawn(async move {
-            pr.load_language(&lang).await;
-        });
-    }
-
-    let workflow_registry = Arc::new(mcp::WorkflowRegistry::new(data_dir.join("workflows")));
-    if let Err(e) = workflow_registry.load_all().await {
-        tracing::warn!("Failed to load workflows: {e}");
-    }
-
-    let workflow_history = Arc::new(mcp::WorkflowHistoryManager::new(data_dir.join("skill_history")));
-    if let Err(e) = workflow_history.load().await {
-        tracing::warn!("Failed to load workflow history: {e}");
-    }
-
-    let mcp_client_manager = Arc::new(mcp::McpClientManager::new());
-
-    Ok(AppState {
+    // AI / prompts / workflows / history / MCP client: empty shells.
+    // Nothing here touches disk or network — window can show immediately.
+    AppState {
         driver_registry: registry,
-        connection_manager,
+        connection_manager: connection_manager.clone(),
         store,
-        schema_cache,
+        schema_cache: schema_cache.clone(),
         sync_adapters,
-        ai_registry,
-        schema_context_builder,
-        prompt_resolver,
-        workflow_registry,
-        workflow_history,
-        mcp_client_manager,
-    })
+        ai_registry: Arc::new(ai::AiProviderRegistry::new()),
+        schema_context_builder: Arc::new(SchemaContextBuilder::new(
+            schema_cache,
+            connection_manager,
+        )),
+        prompt_resolver: Arc::new(ai::PromptResolver::new(&data_dir, prompts_dir)),
+        workflow_registry: Arc::new(mcp::WorkflowRegistry::new(data_dir.join("workflows"))),
+        workflow_history: Arc::new(mcp::WorkflowHistoryManager::new(
+            data_dir.join("workflow_history"),
+        )),
+        mcp_client_manager: Arc::new(mcp::McpClientManager::new()),
+    }
 }
 
 /// Run as a headless MCP stdio server (invoked with `--mcp`).
@@ -345,13 +383,7 @@ pub fn run() {
 
             let t0 = Instant::now();
             let prompts_dir = handle.path().resource_dir().ok().map(|d| d.join("prompts"));
-            let app_state = tauri::async_runtime::block_on(async {
-                let t_store = Instant::now();
-                let store = Arc::new(Store::init(&handle).await.map_err(|e| e.to_string())?);
-                tracing::info!("[startup]   Store::init: {:?}", t_store.elapsed());
-
-                build_app_state(store, prompts_dir).await
-            })?;
+            let app_state = tauri::async_runtime::block_on(build_gui_app_state(&handle, prompts_dir))?;
             tracing::info!("[startup]   block_on total: {:?}", t0.elapsed());
 
             std::thread::spawn(|| {
@@ -367,6 +399,17 @@ pub fn run() {
             app.manage(app_state);
 
             let _ = app.get_webview_window("main");
+
+            // Optional embedded MCP: only if user explicitly enabled it in settings (default off).
+            {
+                let state = handle.state::<AppState>();
+                let enabled = tauri::async_runtime::block_on(state.store.get_settings()).mcp_server_enabled;
+                if enabled {
+                    if let Err(e) = tauri::async_runtime::block_on(commands::start_embedded_mcp(state.inner())) {
+                        tracing::warn!(error = %e, "Failed to auto-start embedded MCP Server");
+                    }
+                }
+            }
 
             #[cfg(target_os = "macos")]
             {
@@ -420,6 +463,7 @@ pub fn run() {
             commands::export_connections,
             commands::import_connections_preview,
             commands::write_file,
+            commands::write_file_base64,
             commands::read_file,
             commands::backup_database,
             commands::restore_database,

@@ -1,6 +1,6 @@
-use super::error::CommandError;
+use super::error::{CmdExt, CommandError};
 use serde::Deserialize;
-use tauri::{AppHandle, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -28,15 +28,36 @@ fn default_width() -> f64 { 800.0 }
 fn default_height() -> f64 { 640.0 }
 fn default_true() -> bool { true }
 
+/// Create (or focus) a sub-window.
+///
+/// **Must be `async` on Windows.** Tauri/WebView2 deadlocks when
+/// `WebviewWindowBuilder::build()` is called from a synchronous command
+/// handler — the app freezes right after "open window" and never reaches
+/// the post-build log line. See Tauri docs on `WebviewWindowBuilder::build`.
 #[tauri::command]
-pub fn create_sub_window(app: AppHandle, options: CreateWindowOptions) -> Result<(), CommandError> {
+pub async fn create_sub_window(
+    app: AppHandle,
+    options: CreateWindowOptions,
+) -> Result<(), CommandError> {
+    tracing::info!(label = %options.label, url = %options.url, "create_sub_window requested");
+
+    // Singleton windows are requested repeatedly. Reuse here (not only in
+    // JS) so a window that exists but stayed hidden can still be shown.
+    if let Some(existing) = app.get_webview_window(&options.label) {
+        let _ = existing.show();
+        let _ = existing.unminimize();
+        let _ = existing.set_focus();
+        tracing::info!(label = %options.label, "create_sub_window reused existing");
+        return Ok(());
+    }
+
     let is_mac = cfg!(target_os = "macos");
     let transparent = options.transparent.unwrap_or(false);
 
     let mut builder = WebviewWindowBuilder::new(
         &app,
         &options.label,
-        WebviewUrl::App(options.url.into()),
+        WebviewUrl::App(options.url.clone().into()),
     )
     .title(&options.title)
     .inner_size(options.width, options.height)
@@ -63,7 +84,11 @@ pub fn create_sub_window(app: AppHandle, options: CreateWindowOptions) -> Result
         builder = builder.center();
     }
 
-    builder.build().map_err(|e| CommandError::Internal(e.to_string()))?;
+    builder
+        .build()
+        .map_err(|e| CommandError::Internal(e.to_string()))
+        .cmd_err("create_sub_window")?;
 
+    tracing::info!(label = %options.label, url = %options.url, "sub window created");
     Ok(())
 }

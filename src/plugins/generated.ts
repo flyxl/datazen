@@ -22,10 +22,12 @@ export type PluginDatabaseType = never;
 
 /** Plugin DB metadata entries (merged into DB_REGISTRY at runtime). */
 export const PLUGIN_DB_ENTRIES: Record<string, DatabaseTypeMeta> = {
+
 };
 
 /** Plugin-provided SQL dialect strategies (merged into DIALECTS). */
 export const PLUGIN_SQL_DIALECTS: Record<string, SqlDialectStrategy> = {
+
 };
 
 /** Plugin-provided connection form components. */
@@ -35,6 +37,7 @@ interface PluginFormEntry {
 }
 
 const PLUGIN_FORMS: PluginFormEntry[] = [
+
 ];
 
 /** Lookup plugin-provided connection form by form variant (e.g. 'kiwi', 'catalog'). */
@@ -49,6 +52,7 @@ export function getPluginConnectionForm(formVariant: string): ComponentType<any>
 
 /** Plugin-provided form validators, keyed by form variant. */
 const PLUGIN_VALIDATORS: Record<string, PluginFormValidator> = {
+
 };
 
 /** Lookup plugin-provided form validator by form variant. */
@@ -64,6 +68,7 @@ interface PluginSchemaTreeEntry {
 }
 
 const PLUGIN_SCHEMA_TREES: PluginSchemaTreeEntry[] = [
+
 ];
 
 /** Lookup plugin-provided schema tree by database type. */

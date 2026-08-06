@@ -33,6 +33,10 @@ pub struct AppSettings {
     pub log_level: String,
     #[serde(default)]
     pub log_path: String,
+    /// When true, GUI may start an embedded MCP stdio server on launch.
+    /// Default false — MCP for external clients should use `datazen --mcp`.
+    #[serde(default)]
+    pub mcp_server_enabled: bool,
     #[serde(default)]
     pub mcp_disabled_tools: Vec<String>,
     #[serde(default)]
@@ -61,6 +65,7 @@ impl Default for AppSettings {
             default_page_size: 50,
             log_level: default_log_level(),
             log_path: String::new(),
+            mcp_server_enabled: false,
             mcp_disabled_tools: Vec::new(),
             context_dir: String::new(),
         }
@@ -124,10 +129,15 @@ struct StoreCache {
     connections: Vec<ConnectionConfig>,
     groups: Vec<String>,
     settings: AppSettings,
+    /// Lazy: loaded on first history / favorites / sync / AI access.
     query_history: Vec<QueryHistoryEntry>,
+    query_history_loaded: bool,
     favorite_queries: Vec<FavoriteQuery>,
+    favorite_queries_loaded: bool,
     sync_tasks: Vec<SyncTask>,
+    sync_tasks_loaded: bool,
     ai_config: Option<AiProviderConfig>,
+    ai_config_loaded: bool,
 }
 
 /// Encrypted JSON store rooted at the per-app data directory.
@@ -279,24 +289,103 @@ impl Store {
             .load_json_file::<AppSettings>("settings.json")
             .await
             .unwrap_or_default();
-        cache.query_history = self
+
+        // query_history / favorites / sync_tasks / ai_config stay unloaded
+        // until their respective flows call ensure_* below.
+
+        Ok(())
+    }
+
+    async fn ensure_query_history_loaded(&self) {
+        {
+            let cache = self.cache.read().await;
+            if cache.query_history_loaded {
+                return;
+            }
+        }
+        let data = self
             .load_json_file::<Vec<QueryHistoryEntry>>("history/queries.json")
             .await
             .unwrap_or_default();
-        cache.favorite_queries = self
+        let mut cache = self.cache.write().await;
+        if cache.query_history_loaded {
+            return;
+        }
+        cache.query_history = data;
+        cache.query_history_loaded = true;
+        tracing::debug!(
+            count = cache.query_history.len(),
+            "Loaded query history on demand"
+        );
+    }
+
+    async fn ensure_favorite_queries_loaded(&self) {
+        {
+            let cache = self.cache.read().await;
+            if cache.favorite_queries_loaded {
+                return;
+            }
+        }
+        let data = self
             .load_json_file::<Vec<FavoriteQuery>>("favorites/queries.json")
             .await
             .unwrap_or_default();
-        cache.sync_tasks = self
+        let mut cache = self.cache.write().await;
+        if cache.favorite_queries_loaded {
+            return;
+        }
+        cache.favorite_queries = data;
+        cache.favorite_queries_loaded = true;
+        tracing::debug!(
+            count = cache.favorite_queries.len(),
+            "Loaded favorite queries on demand"
+        );
+    }
+
+    async fn ensure_sync_tasks_loaded(&self) {
+        {
+            let cache = self.cache.read().await;
+            if cache.sync_tasks_loaded {
+                return;
+            }
+        }
+        let data = self
             .load_json_file::<Vec<SyncTask>>("sync_tasks.json")
             .await
             .unwrap_or_default();
-        cache.ai_config = self
+        let mut cache = self.cache.write().await;
+        if cache.sync_tasks_loaded {
+            return;
+        }
+        cache.sync_tasks = data;
+        cache.sync_tasks_loaded = true;
+        tracing::debug!(
+            count = cache.sync_tasks.len(),
+            "Loaded sync tasks on demand"
+        );
+    }
+
+    async fn ensure_ai_config_loaded(&self) {
+        {
+            let cache = self.cache.read().await;
+            if cache.ai_config_loaded {
+                return;
+            }
+        }
+        let data = self
             .load_encrypted_json::<AiProviderConfig>("ai_config.enc")
             .await
             .ok();
-
-        Ok(())
+        let mut cache = self.cache.write().await;
+        if cache.ai_config_loaded {
+            return;
+        }
+        cache.ai_config = data;
+        cache.ai_config_loaded = true;
+        tracing::debug!(
+            present = cache.ai_config.is_some(),
+            "Loaded AI config on demand"
+        );
     }
 
     async fn load_connections_from_disk(&self) -> Result<Vec<ConnectionConfig>, StoreError> {
@@ -454,9 +543,12 @@ impl Store {
     }
 
     pub async fn add_query_history(&self, entry: QueryHistoryEntry) -> Result<(), StoreError> {
+        self.ensure_query_history_loaded().await;
         {
             let mut cache = self.cache.write().await;
-            let dominated = cache.query_history.first()
+            let dominated = cache
+                .query_history
+                .first()
                 .map(|last| last.sql.trim() == entry.sql.trim())
                 .unwrap_or(false);
             if dominated {
@@ -484,25 +576,30 @@ impl Store {
     }
 
     pub async fn get_query_history(&self, limit: usize) -> Vec<QueryHistoryEntry> {
+        self.ensure_query_history_loaded().await;
         let cache = self.cache.read().await;
         cache.query_history.iter().take(limit).cloned().collect()
     }
 
     pub async fn clear_query_history(&self) -> Result<(), StoreError> {
+        self.ensure_query_history_loaded().await;
         {
             let mut cache = self.cache.write().await;
             cache.query_history.clear();
+            cache.query_history_loaded = true;
         }
         self.save_json_file("history/queries.json", &Vec::<QueryHistoryEntry>::new())
             .await
     }
 
     pub async fn get_favorite_queries(&self) -> Vec<FavoriteQuery> {
+        self.ensure_favorite_queries_loaded().await;
         let cache = self.cache.read().await;
         cache.favorite_queries.clone()
     }
 
     pub async fn add_favorite_query(&self, fav: FavoriteQuery) -> Result<(), StoreError> {
+        self.ensure_favorite_queries_loaded().await;
         {
             let mut cache = self.cache.write().await;
             cache.favorite_queries.insert(0, fav);
@@ -515,6 +612,7 @@ impl Store {
     }
 
     pub async fn delete_favorite_query(&self, id: &str) -> Result<(), StoreError> {
+        self.ensure_favorite_queries_loaded().await;
         {
             let mut cache = self.cache.write().await;
             cache.favorite_queries.retain(|f| f.id != id);
@@ -548,11 +646,13 @@ impl Store {
     // ── Sync tasks ──
 
     pub async fn get_sync_tasks(&self) -> Vec<SyncTask> {
+        self.ensure_sync_tasks_loaded().await;
         let cache = self.cache.read().await;
         cache.sync_tasks.clone()
     }
 
     pub async fn save_sync_task(&self, task: SyncTask) -> Result<(), StoreError> {
+        self.ensure_sync_tasks_loaded().await;
         {
             let mut cache = self.cache.write().await;
             if let Some(pos) = cache.sync_tasks.iter().position(|t| t.id == task.id) {
@@ -569,6 +669,7 @@ impl Store {
     }
 
     pub async fn delete_sync_task(&self, id: &str) -> Result<(), StoreError> {
+        self.ensure_sync_tasks_loaded().await;
         {
             let mut cache = self.cache.write().await;
             cache.sync_tasks.retain(|t| t.id != id);
@@ -583,6 +684,7 @@ impl Store {
     // ── AI config (encrypted) ──
 
     pub async fn get_ai_config(&self) -> Option<AiProviderConfig> {
+        self.ensure_ai_config_loaded().await;
         let cache = self.cache.read().await;
         cache.ai_config.clone()
     }
@@ -591,6 +693,7 @@ impl Store {
         {
             let mut cache = self.cache.write().await;
             cache.ai_config = Some(config.clone());
+            cache.ai_config_loaded = true;
         }
         self.save_encrypted_json("ai_config.enc", config).await
     }
@@ -599,6 +702,7 @@ impl Store {
         {
             let mut cache = self.cache.write().await;
             cache.ai_config = None;
+            cache.ai_config_loaded = true;
         }
         let path = self.data_dir.join("ai_config.enc");
         if path.exists() {
