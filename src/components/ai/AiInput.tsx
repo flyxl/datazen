@@ -119,32 +119,13 @@ export const AiInput = forwardRef<HTMLTextAreaElement, AiInputProps>(function Ai
     [onContextFilesChange, contextFiles],
   );
 
+  const hasChips = contextFiles && contextFiles.length > 0;
+
   return (
     <div ref={wrapperRef} className={cn('relative', className)}>
-      {contextFiles && contextFiles.length > 0 && (
-        <div className="mb-1 flex flex-wrap gap-1">
-          {contextFiles.map((f) => (
-            <span
-              key={f.path}
-              className="inline-flex items-center gap-1 rounded-md bg-accent/10 px-1.5 py-0.5 text-[11px] text-accent"
-            >
-              @{f.name}
-              <button
-                type="button"
-                className="rounded hover:bg-accent/20"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => handleRemoveContext(f.path)}
-              >
-                <X className="h-2.5 w-2.5" />
-              </button>
-            </span>
-          ))}
-        </div>
-      )}
-
       <div
         className={cn(
-          'relative flex rounded-lg border border-edge bg-surface',
+          'relative flex flex-wrap items-end rounded-lg border border-edge bg-surface',
           'transition-colors focus-within:border-accent',
           disabled && 'opacity-50',
         )}
@@ -156,6 +137,28 @@ export const AiInput = forwardRef<HTMLTextAreaElement, AiInputProps>(function Ai
             onClose={() => setShowPicker(false)}
             anchorRef={wrapperRef}
           />
+        )}
+
+        {/* Context chips — inline at the start of the input */}
+        {hasChips && (
+          <div className="flex flex-wrap gap-1 pl-2 pt-2">
+            {contextFiles.map((f) => (
+              <span
+                key={f.path}
+                className="inline-flex items-center gap-0.5 rounded bg-accent/10 px-1.5 py-0.5 text-[11px] text-accent"
+              >
+                @{f.name}
+                <button
+                  type="button"
+                  className="rounded hover:bg-accent/20"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => handleRemoveContext(f.path)}
+                >
+                  <X className="h-2.5 w-2.5" />
+                </button>
+              </span>
+            ))}
+          </div>
         )}
 
         <textarea
@@ -172,7 +175,7 @@ export const AiInput = forwardRef<HTMLTextAreaElement, AiInputProps>(function Ai
           autoCorrect="off"
           spellCheck={false}
           className={cn(
-            'flex-1 resize-none bg-transparent px-3 py-2 text-sm text-fg',
+            'min-w-0 flex-1 resize-none bg-transparent px-3 py-2 text-sm text-fg',
             'placeholder:text-fg-muted focus:outline-none',
             'disabled:cursor-not-allowed',
           )}
