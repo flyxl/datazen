@@ -136,6 +136,8 @@ cargo test -p datazen                  # Rust 单元测试
 
 ## 重要注意事项
 
+- 插件 Git 仓库命名使用 `datazen-driver-xxx` 格式，Rust crate 名称仍为 `datazen-plugin-xxx`
+- `Cargo.toml` 中的插件占位段（`<<plugin-dependencies>>`、`<<plugin-features>>`、`<<plugin-patches>>`）在 git 中应保持为空；`resolve-plugins.mjs` 在构建时填充
 - `src/plugins/generated.ts` 和 `src-tauri/src/plugin_init.rs` 是自动生成的，修改后会被覆盖
 - `.plugins/` 是 gitignored，`pnpm build` 或 `node scripts/resolve-plugins.mjs` 自动生成
 - `PROTOCOL_VERSION`（`packages/driver-api`）变更时需同步更新所有插件

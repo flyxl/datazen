@@ -1,5 +1,7 @@
 # RFC: DataZen 插件化架构设计
 
+> 注意：本 RFC 中的插件仓库 URL 使用旧命名 `datazen-plugin-xxx`，实际已重命名为 `datazen-driver-xxx`。Rust crate 名称保持不变。
+
 > **状态**: Draft  
 > **日期**: 2026-07-31  
 > **作者**: DataZen Team

@@ -9,12 +9,24 @@ DataZen 采用**编译时插件系统**（类似 Caddy 2），插件在独立仓
 - **Rust 后端**：实现 `DatabaseDriver` trait 的 crate
 - **前端 UI**（可选）：自定义连接表单、元数据等 TypeScript/React 组件
 
+### 命名约定
+
+插件涉及两套命名，请勿混淆：
+
+| 用途 | 格式 | 示例 |
+|------|------|------|
+| **Git 仓库** | `datazen-driver-xxx` | `datazen-driver-kiwi` |
+| **Rust crate** | `datazen-plugin-xxx` | `datazen-plugin-kiwi` |
+
+- `plugins-registry.json` 中的 `git` 字段使用 **Git 仓库名**（`datazen-driver-xxx`）
+- 插件 `Cargo.toml` 的 `[package].name` 以及主项目 `src-tauri/Cargo.toml` 中的依赖名使用 **Rust crate 名**（`datazen-plugin-xxx`）
+
 ## 快速开始
 
 ### 1. 创建插件仓库
 
 ```bash
-mkdir datazen-plugin-mydb && cd datazen-plugin-mydb
+mkdir datazen-driver-mydb && cd datazen-driver-mydb
 cargo init --lib
 ```
 
@@ -105,9 +117,9 @@ datazen_driver_api::register_driver!(&MyDbDriverFactory);
 如果你的驱动需要自定义连接表单，在仓库中创建 `ui/` 目录：
 
 ```
-datazen-plugin-mydb/
-├── Cargo.toml
-├── package.json            # 声明 @datazen/plugin-sdk 依赖
+datazen-driver-mydb/          # Git 仓库目录名
+├── Cargo.toml                # [package].name = "datazen-plugin-mydb"
+├── package.json              # 声明 @datazen/plugin-sdk 依赖
 ├── src/
 │   └── lib.rs
 └── ui/
@@ -166,18 +178,18 @@ export const mydbMeta: DatabaseTypeMeta = {
 {
   "mydb": {
     "source": "git",
-    "git": "https://github.com/yourname/datazen-plugin-mydb.git",
+    "git": "https://github.com/yourname/datazen-driver-mydb.git",
     "feature": "plugin-mydb",
     "description": "MyDB driver"
   }
 }
 ```
 
-在 `src-tauri/Cargo.toml` 添加可选依赖和 feature：
+在 `src-tauri/Cargo.toml` 添加可选依赖和 feature（依赖名用 crate 名，Git URL 用仓库名）：
 
 ```toml
 [dependencies]
-datazen-plugin-mydb = { git = "https://github.com/yourname/datazen-plugin-mydb.git", optional = true }
+datazen-plugin-mydb = { git = "https://github.com/yourname/datazen-driver-mydb.git", optional = true }
 
 [features]
 plugin-mydb = ["dep:datazen-plugin-mydb"]
@@ -203,7 +215,7 @@ pnpm tauri:build --plugins=mydb
 {
   "kiwi": {
     "source": "local",
-    "path": "../datazen-plugin-kiwi"
+    "path": "../datazen-driver-kiwi"
   }
 }
 ```
@@ -215,15 +227,15 @@ pnpm tauri:build --plugins=mydb
 在 `src-tauri/Cargo.toml` 底部添加（开发时使用，勿提交）：
 
 ```toml
-[patch."https://github.com/flyxl/datazen-plugin-kiwi.git"]
-datazen-plugin-kiwi = { path = "../datazen-plugin-kiwi" }
+[patch."https://github.com/flyxl/datazen-driver-kiwi.git"]
+datazen-plugin-kiwi = { path = "../datazen-driver-kiwi" }
 ```
 
 或使用 `.cargo/config.toml`：
 
 ```toml
-[patch."https://github.com/flyxl/datazen-plugin-kiwi.git"]
-datazen-plugin-kiwi = { path = "../datazen-plugin-kiwi" }
+[patch."https://github.com/flyxl/datazen-driver-kiwi.git"]
+datazen-plugin-kiwi = { path = "../datazen-driver-kiwi" }
 ```
 
 ### 热重载开发
@@ -257,8 +269,8 @@ pnpm tauri dev
 ## 目录结构约定
 
 ```
-datazen-plugin-xxx/
-├── Cargo.toml              # Rust crate manifest
+datazen-driver-xxx/         # Git 仓库目录名
+├── Cargo.toml              # [package].name = "datazen-plugin-xxx"
 ├── src/
 │   └── lib.rs              # 驱动实现 + register_driver! 宏调用
 ├── ui/                     # 前端组件（可选）
@@ -272,5 +284,6 @@ datazen-plugin-xxx/
 
 | 插件 | 仓库 | 功能 |
 |------|------|------|
-| Kiwi | [datazen-plugin-kiwi](https://github.com/flyxl/datazen-plugin-kiwi) | 自定义连接表单 + SSO 登录 |
-| OLAP | [datazen-plugin-olap](https://github.com/flyxl/datazen-plugin-olap) | Presto/Trino, Catalog 表单 + 自定义 SQL 方言 |
+| Kiwi | [datazen-driver-kiwi](https://github.com/flyxl/datazen-driver-kiwi) | 自定义连接表单 + SSO 登录 |
+| OLAP | [datazen-driver-olap](https://github.com/flyxl/datazen-driver-olap) | Presto/Trino, Catalog 表单 + 自定义 SQL 方言 |
+| Superset | [datazen-driver-superset](https://github.com/flyxl/datazen-driver-superset) | Superset 数据探索平台 |
