@@ -9,7 +9,7 @@
 | 1 | App data ZIP export/import (replace config JSON) | ✅ merged | 4/4 pass | ✅ pass (unit + static) | `feat/zip-backup` |
 | 2 | 10 locales (en, zh-CN, zh-TW, es, fr, de, ja, pt-BR, ru, ko) | ✅ merged | ✅ pass | ✅ pass | `feat/i18n-10` |
 | 3 | First-run language follows system (else `en`) | ✅ merged | ✅ Rust + Vitest | ✅ pass | `feat/sys-locale` |
-| 4 | Trigger GitHub release package | ⏳ pending | n/a | n/a | — |
+| 4 | Trigger GitHub release package | 🔄 in progress | n/a | n/a | — |
 
 ## Feature 1 notes
 
