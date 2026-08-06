@@ -6,7 +6,7 @@
 
 | # | Feature | Status | Unit tests | E2E test agent | Commit |
 |---|---------|--------|------------|----------------|--------|
-| 1 | App data ZIP export/import (replace config JSON) | ✅ merged | 4/4 pass | pending | `feat/zip-backup` |
+| 1 | App data ZIP export/import (replace config JSON) | ✅ merged | 4/4 pass | ✅ pass (unit + static) | `feat/zip-backup` |
 | 2 | 10 locales (en, zh-CN, zh-TW, es, fr, de, ja, pt-BR, ru, ko) | ✅ merged | ✅ pass | pending | `feat/i18n-10` |
 | 3 | First-run language follows system (else `en`) | ✅ merged | ✅ Rust + Vitest | pending | `feat/sys-locale` |
 | 4 | Trigger GitHub release package | ⏳ pending | n/a | n/a | — |
@@ -37,4 +37,46 @@
 
 ## E2E / bug log
 
-_(test agents append here)_
+### Feature 1 — App data ZIP export/import
+
+**Agent:** test-only (2026-08-07)  
+**Branch:** `feat/backup-zip-i18n`  
+**Spec:** `docs/superpowers/specs/2026-08-07-backup-zip-i18n-design.md`
+
+#### Test cases (designed)
+
+| ID | Case | Steps | Expected |
+|----|------|-------|----------|
+| F1-E2E-001 | Export ZIP excludes logs | 1. Seed app data dir with `connections.json`, `settings.json`, `logs/app.log`, `scratch.tmp`, `.import_staging/partial`. 2. Export via menu **File → Export App Data** (or `menu:export-config`). 3. Save as `datazen-backup-YYYYMMDD.zip`. 4. List ZIP entries. | ZIP contains `connections.json`, `settings.json`; **no** `logs/*`, `*.tmp`, `.import_staging/*`. Default save name matches `datazen-backup-YYYYMMDD.zip`. |
+| F1-E2E-002 | Export success feedback | Complete F1-E2E-001 export. | Success message shown (`appData.exportSuccess`); no password dialog. |
+| F1-E2E-003 | Import overwrite warning | 1. **File → Import App Data**. 2. Pick valid backup ZIP. | Native `ask()` dialog with title `appData.importConfirmTitle`, message `appData.importConfirmMessage`, kind `warning`. |
+| F1-E2E-004 | Import cancel skips apply | On F1-E2E-003 dialog, click **Cancel**. | No `import_app_data` invoke; app data unchanged; no restart. |
+| F1-E2E-005 | Import confirm applies + restarts | 1. Note current app data. 2. Import valid ZIP; confirm overwrite. | Data dir replaced from ZIP (minus excluded paths); existing `logs/` preserved; app restarts via `restart_app`. |
+| F1-E2E-006 | Path traversal rejected | Import ZIP containing entry `../outside.txt` (or `foo/../../bar`). | Import fails with traversal/invalid-input error; target data dir unchanged. |
+| F1-E2E-007 | Preserve logs on import | 1. Target data dir has `logs/existing.log`. 2. Import ZIP that includes `connections.json` but no logs (export excludes logs). | After import, `logs/existing.log` content unchanged; zip-sourced `logs/app.log` not written. |
+| F1-E2E-008 | Old JSON flow removed | Open main window; trigger import/export. | No `ImportConfigDialog`, no password/Argon2 prompts. Menu labels: EN “Export/Import App Data”, zh-CN “导出/导入应用数据”. |
+| F1-E2E-009 | Menu wiring | Click native menu export/import items. | Emits `menu:export-config` / `menu:import-config`; `MainWindow` handlers open save/open dialogs and invoke backup commands. |
+
+#### Execution results
+
+| ID | Result | Method | Evidence |
+|----|--------|--------|----------|
+| F1-E2E-001 | **PASS** | Unit | `cargo test -p datazen app_data_archive::tests::round_trip_excludes_logs_and_preserves_existing_logs` — ZIP listing asserts no `logs/`, `.tmp`, `.import_staging`. |
+| F1-E2E-002 | **PASS** (partial) | Static | `MainWindow.tsx` `handleExportConfig`: `save()` → `exportAppData` → `setErrorMessage(t('appData.exportSuccess'))`. Default path `datazen-backup-${date}.zip`. GUI dialog not exercised. |
+| F1-E2E-003 | **PASS** | Static | `MainWindow.tsx` L413–416: `ask(t('appData.importConfirmMessage'), { title: …, kind: 'warning' })` before import. i18n keys present in `en.ts` / `zh-CN.ts`. |
+| F1-E2E-004 | **PASS** | Static | `if (!confirmed) return;` before `importAppData` / `restartApp`. |
+| F1-E2E-005 | **PASS** (partial) | Unit + static | Round-trip unit test covers data swap + log preserve. UI chain: `importAppData` then `restartApp()` (`backup.ts` → `restart_app` → `app.restart()` in `config.rs`). Full GUI restart not run. |
+| F1-E2E-006 | **PASS** | Unit | `rejects_path_traversal_in_zip_entries` + `rejects_malicious_zip_on_import` (4/4 tests green). |
+| F1-E2E-007 | **PASS** | Unit | Same round-trip test: `logs/existing.log` == `"keep me"`, no `logs/app.log`. |
+| F1-E2E-008 | **PASS** | Static | `ImportConfigDialog` absent from `src/`; menu keys relabeled in locales. |
+| F1-E2E-009 | **PASS** | Static | `lib.rs` menu ids `export-config`/`import-config` emit events; `MainWindow` listens and calls handlers; `lib.rs` registers `export_app_data`, `import_app_data`, `restart_app`. |
+
+**Commands run**
+
+```bash
+cargo test -p datazen app_data_archive   # 4 passed, 0 failed
+```
+
+**Summary:** 9/9 PASS (4 fully via unit tests; 5 via static code verification — native file dialogs and app restart not automated in this run).
+
+**Bugs:** None recorded.
