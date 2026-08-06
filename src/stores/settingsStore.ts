@@ -1,11 +1,12 @@
 import { create } from 'zustand';
 import { settingsCommands } from '../commands/settings';
 import { emitCrossWindow } from '../lib/crossWindowBus';
+import { resolveUiLanguage } from '../lib/resolveUiLanguage';
 import type { AppSettings } from '../types';
 
 const DEFAULT_SETTINGS: AppSettings = {
   theme: 'dark',
-  language: 'zh-CN',
+  language: 'en',
   limitSelectResults: true,
   queryResultLimit: 5000,
   editorFontSize: 13,
@@ -98,6 +99,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       set({ settings });
     } catch {
       applyTheme(DEFAULT_SETTINGS.theme);
+      const language = resolveUiLanguage(navigator.language);
+      set({ settings: { ...DEFAULT_SETTINGS, language } });
     }
   },
 
