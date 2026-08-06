@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
-import { BarChart3, Loader2, Sparkles, Copy, Check, Trash2, ArrowDownToLine, Settings, X } from 'lucide-react';
+import { BarChart3, Loader2, Sparkles, Copy, Check, Trash2, ArrowDownToLine, Settings, X, ChevronDown, ChevronUp } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { useI18n } from '../../hooks/useI18n';
 import { useAiKeyboard } from '../../hooks/useAiKeyboard';
@@ -33,6 +33,9 @@ export function Nl2SqlPanel({ connectionId, database, currentTable, onApplySql, 
   const [pickerQuery, setPickerQuery] = useState('');
   const inputWrapperRef = useRef<HTMLDivElement>(null);
 
+  const hasSql = !!nl2sql.generatedSql;
+  const [sqlExpanded, setSqlExpanded] = useState(true);
+
   const { size: panelHeight, handleRef } = useResizable({
     direction: 'vertical',
     initialSize: 120,
@@ -42,7 +45,7 @@ export function Nl2SqlPanel({ connectionId, database, currentTable, onApplySql, 
   });
 
   const handleGenerate = useCallback(() => {
-    if (!nl2sql.input.trim() || nl2sql.isGenerating) return;
+    if (!nl2sql.input.trim() || nl2sql.isGenerating || !database) return;
     const ctxPaths = contextFiles.length > 0 ? contextFiles.map((f) => f.path) : undefined;
     void generateSql({ connectionId, database, currentTable, contextFiles: ctxPaths });
     setContextFiles([]);
@@ -78,50 +81,57 @@ export function Nl2SqlPanel({ connectionId, database, currentTable, onApplySql, 
   return (
     <div
       className="flex shrink-0 flex-col border-b border-edge bg-surface-alt"
-      style={{ height: panelHeight }}
+      style={hasSql && sqlExpanded ? { height: panelHeight } : undefined}
     >
-      <div className="flex min-h-0 flex-1 items-start gap-2 overflow-hidden p-2">
-        <Sparkles className="mt-1.5 h-3.5 w-3.5 shrink-0 text-blue-400" />
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-1.5 overflow-hidden">
-          {contextFiles.length > 0 && (
-            <div className="flex shrink-0 flex-wrap gap-1">
-              {contextFiles.map((f) => (
-                <span
-                  key={f.path}
-                  className="inline-flex items-center gap-1 rounded-md bg-accent/10 px-1.5 py-0.5 text-[11px] text-accent"
-                >
-                  @{f.name}
-                  <button
-                    type="button"
-                    className="rounded hover:bg-accent/20"
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => setContextFiles((prev) => prev.filter((c) => c.path !== f.path))}
-                  >
-                    <X className="h-2.5 w-2.5" />
-                  </button>
-                </span>
-              ))}
-            </div>
+      {/* Input row */}
+      <div className="flex shrink-0 items-start gap-2 p-2">
+        <div ref={inputWrapperRef} className="relative min-w-0 flex-1">
+          {showPicker && (
+            <ContextPicker
+              query={pickerQuery}
+              position="below"
+              onSelect={(entry) => {
+                if (!contextFiles.some((f) => f.path === entry.path)) {
+                  setContextFiles((prev) => [...prev, entry]);
+                }
+                const input = nl2sql.input;
+                const atStart = input.lastIndexOf('@');
+                if (atStart >= 0) {
+                  setNl2SqlInput(input.substring(0, atStart).trimEnd());
+                }
+                setShowPicker(false);
+                setPickerQuery('');
+              }}
+              onClose={() => setShowPicker(false)}
+              anchorRef={inputWrapperRef}
+            />
           )}
-          <div ref={inputWrapperRef} className="relative w-full shrink-0">
-            {showPicker && (
-              <ContextPicker
-                query={pickerQuery}
-                onSelect={(entry) => {
-                  if (!contextFiles.some((f) => f.path === entry.path)) {
-                    setContextFiles((prev) => [...prev, entry]);
-                  }
-                  const input = nl2sql.input;
-                  const atStart = input.lastIndexOf('@');
-                  if (atStart >= 0) {
-                    setNl2SqlInput(input.substring(0, atStart).trimEnd());
-                  }
-                  setShowPicker(false);
-                  setPickerQuery('');
-                }}
-                onClose={() => setShowPicker(false)}
-                anchorRef={inputWrapperRef}
-              />
+          <div
+            className={cn(
+              'flex flex-wrap items-center rounded border border-edge bg-surface',
+              'transition-colors focus-within:border-accent',
+            )}
+          >
+            {/* Context chips — inline at the start */}
+            {contextFiles.length > 0 && (
+              <div className="flex flex-wrap gap-1 pl-2 pt-1">
+                {contextFiles.map((f) => (
+                  <span
+                    key={f.path}
+                    className="inline-flex items-center gap-0.5 rounded bg-accent/10 px-1.5 py-0.5 text-[11px] text-accent"
+                  >
+                    @{f.name}
+                    <button
+                      type="button"
+                      className="rounded hover:bg-accent/20"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => setContextFiles((prev) => prev.filter((c) => c.path !== f.path))}
+                    >
+                      <X className="h-2.5 w-2.5" />
+                    </button>
+                  </span>
+                ))}
+              </div>
             )}
             <textarea
               value={nl2sql.input}
@@ -145,63 +155,21 @@ export function Nl2SqlPanel({ connectionId, database, currentTable, onApplySql, 
               }}
               onCompositionStart={aiKeyboard.onCompositionStart}
               onCompositionEnd={aiKeyboard.onCompositionEnd}
-              placeholder={t('context.placeholder')}
+              placeholder={database ? t('context.placeholder') : t('nl2sql.selectDatabaseFirst')}
               rows={1}
               className={cn(
-                'w-full resize-none rounded border border-edge bg-surface px-2 py-1.5',
+                'min-w-0 flex-1 resize-none bg-transparent px-2 py-1.5',
                 'text-sm text-fg placeholder:text-fg-muted',
-                'focus:border-accent focus:outline-none',
+                'focus:outline-none',
               )}
             />
           </div>
-          {nl2sql.generatedSql && (
-            <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded border border-edge bg-surface">
-              <pre className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap p-2 font-mono text-xs text-fg-secondary">
-                {nl2sql.generatedSql}
-              </pre>
-              {!nl2sql.isGenerating && (
-                <div className="flex shrink-0 gap-1.5 border-t border-edge p-2">
-                  <Button
-                    variant="primary"
-                    className="h-6 gap-1 px-2 text-[11px]"
-                    onClick={handleApply}
-                  >
-                    <ArrowDownToLine className="h-3 w-3" />
-                    {t('nl2sql.apply')}
-                  </Button>
-                  {onApplyAndChart && (
-                    <Button
-                      variant="primary"
-                      className="h-6 gap-1 px-2 text-[11px]"
-                      onClick={() => onApplyAndChart(nl2sql.generatedSql)}
-                    >
-                      <BarChart3 className="h-3 w-3" />
-                      {t('nl2sql.applyAndChart')}
-                    </Button>
-                  )}
-                  <Button
-                    variant="ghost"
-                    className="h-6 gap-1 px-2 text-[11px]"
-                    onClick={handleCopy}
-                  >
-                    {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-                    {t('nl2sql.copy')}
-                  </Button>
-                </div>
-              )}
-            </div>
-          )}
-          {nl2sqlError && (
-            <div className="shrink-0 rounded border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-400">
-              {nl2sqlError}
-            </div>
-          )}
         </div>
         <div className="flex shrink-0 gap-1">
           <Button
             variant="primary"
             className="h-7 gap-1 px-2 text-xs"
-            disabled={!nl2sql.input.trim() || nl2sql.isGenerating}
+            disabled={!nl2sql.input.trim() || nl2sql.isGenerating || !database}
             onClick={handleGenerate}
           >
             {nl2sql.isGenerating ? (
@@ -222,10 +190,72 @@ export function Nl2SqlPanel({ connectionId, database, currentTable, onApplySql, 
           )}
         </div>
       </div>
-      <div
-        ref={handleRef}
-        className="h-1 shrink-0 cursor-row-resize bg-transparent hover:bg-blue-500/30"
-      />
+
+      {/* Generated SQL area — only rendered when SQL exists */}
+      {hasSql && (
+        <div className="mx-2 mb-2 flex min-h-0 flex-1 flex-col overflow-hidden rounded border border-edge bg-surface">
+          {/* Header with toggle + action buttons */}
+          {!nl2sql.isGenerating && (
+            <div className="flex shrink-0 items-center gap-1.5 border-b border-edge px-2 py-1.5">
+              <button
+                type="button"
+                className="flex items-center gap-1 text-[11px] text-fg-muted hover:text-fg transition-colors"
+                onClick={() => setSqlExpanded((v) => !v)}
+              >
+                {sqlExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                SQL
+              </button>
+              <div className="flex-1" />
+              <Button
+                variant="primary"
+                className="h-6 gap-1 px-2 text-[11px]"
+                onClick={handleApply}
+              >
+                <ArrowDownToLine className="h-3 w-3" />
+                {t('nl2sql.apply')}
+              </Button>
+              {onApplyAndChart && (
+                <Button
+                  variant="primary"
+                  className="h-6 gap-1 px-2 text-[11px]"
+                  onClick={() => onApplyAndChart(nl2sql.generatedSql)}
+                >
+                  <BarChart3 className="h-3 w-3" />
+                  {t('nl2sql.applyAndChart')}
+                </Button>
+              )}
+              <Button
+                variant="ghost"
+                className="h-6 gap-1 px-2 text-[11px]"
+                onClick={handleCopy}
+              >
+                {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                {t('nl2sql.copy')}
+              </Button>
+            </div>
+          )}
+          {/* SQL content — collapsible */}
+          {(sqlExpanded || nl2sql.isGenerating) && (
+            <pre className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap p-2 font-mono text-xs text-fg-secondary">
+              {nl2sql.generatedSql}
+            </pre>
+          )}
+        </div>
+      )}
+
+      {nl2sqlError && (
+        <div className="mx-2 mb-2 shrink-0 rounded border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-400">
+          {nl2sqlError}
+        </div>
+      )}
+
+      {/* Resize handle — only when SQL is expanded */}
+      {hasSql && sqlExpanded && (
+        <div
+          ref={handleRef}
+          className="h-1 shrink-0 cursor-row-resize bg-transparent hover:bg-blue-500/30"
+        />
+      )}
     </div>
   );
 }

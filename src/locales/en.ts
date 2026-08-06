@@ -637,6 +637,7 @@ const en: Record<TranslationKey, string> = {
   'nl2sql.copy': 'Copy',
   'nl2sql.clear': 'Clear',
   'nl2sql.notConfigured': 'Please configure an AI provider in Settings first',
+  'nl2sql.selectDatabaseFirst': 'Please select a database from the sidebar first',
 
   // ── EXPLAIN Analysis ──
   'explain.title': 'EXPLAIN Analysis',

@@ -635,6 +635,7 @@ const zhCN = {
   'nl2sql.copy': '复制',
   'nl2sql.clear': '清除',
   'nl2sql.notConfigured': '请先在设置中配置 AI 服务',
+  'nl2sql.selectDatabaseFirst': '请先在左侧选择一个数据库',
 
   // ── EXPLAIN Analysis ──
   'explain.title': 'EXPLAIN 分析',

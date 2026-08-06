@@ -10,6 +10,8 @@ interface ContextPickerProps {
   onSelect: (entry: ContextEntry) => void;
   onClose: () => void;
   anchorRef: React.RefObject<HTMLElement | null>;
+  /** Where to open relative to the anchor. Default: 'above'. */
+  position?: 'above' | 'below';
 }
 
 function flattenEntries(entries: ContextEntry[], depth = 0): { entry: ContextEntry; depth: number }[] {
@@ -23,7 +25,7 @@ function flattenEntries(entries: ContextEntry[], depth = 0): { entry: ContextEnt
   return result;
 }
 
-export function ContextPicker({ query, onSelect, onClose, anchorRef }: ContextPickerProps) {
+export function ContextPicker({ query, onSelect, onClose, anchorRef, position = 'above' }: ContextPickerProps) {
   const { t } = useI18n();
   const [entries, setEntries] = useState<ContextEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -105,7 +107,8 @@ export function ContextPicker({ query, onSelect, onClose, anchorRef }: ContextPi
     <div
       ref={listRef}
       className={cn(
-        'absolute bottom-full left-0 z-50 mb-1 w-72',
+        'absolute left-0 z-50 w-72',
+        position === 'above' ? 'bottom-full mb-1' : 'top-full mt-1',
         'max-h-60 overflow-y-auto rounded-lg border border-edge bg-surface shadow-lg',
       )}
     >

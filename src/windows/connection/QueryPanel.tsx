@@ -245,10 +245,10 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
       <div className="flex min-h-0 flex-1">
         <div className="flex min-w-0 flex-1 flex-col">
           {/* NL2SQL panel (collapsible, aligned with editor) */}
-          {nl2sqlVisible && currentDatabase && (
+          {nl2sqlVisible && (
             <Nl2SqlPanel
               connectionId={connectionId}
-              database={currentDatabase}
+              database={currentDatabase ?? ''}
               onApplySql={handleApplyAiSql}
               onApplyAndChart={(sql) => void handleApplyAndChart(sql)}
             />
