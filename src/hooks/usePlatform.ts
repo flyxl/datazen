@@ -30,7 +30,11 @@ async function detectPlatform(): Promise<Platform> {
 }
 
 export function usePlatform(): Platform {
-  const [platform, setPlatform] = useState<Platform>(cachedPlatform ?? 'macos');
+  // Initialize synchronously from the user agent so the first frame on
+  // Windows/Linux renders the Windows titlebar instead of briefly
+  // mounting the macOS `data-tauri-drag-region` overlay (which can
+  // intercept clicks on WebView2 before the async detection resolves).
+  const [platform, setPlatform] = useState<Platform>(getPlatformSync());
 
   useEffect(() => {
     void detectPlatform().then(setPlatform);
