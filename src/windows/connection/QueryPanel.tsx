@@ -237,19 +237,19 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
         </Button>
       </div>
 
-      {/* NL2SQL panel (collapsible) */}
-      {nl2sqlVisible && currentDatabase && (
-        <Nl2SqlPanel
-          connectionId={connectionId}
-          database={currentDatabase}
-          onApplySql={handleApplyAiSql}
-          onApplyAndChart={(sql) => void handleApplyAndChart(sql)}
-        />
-      )}
-
       {/* Editor + results (vertical split) */}
       <div className="flex min-h-0 flex-1">
         <div className="flex min-w-0 flex-1 flex-col">
+          {/* NL2SQL panel (collapsible, aligned with editor) */}
+          {nl2sqlVisible && currentDatabase && (
+            <Nl2SqlPanel
+              connectionId={connectionId}
+              database={currentDatabase}
+              onApplySql={handleApplyAiSql}
+              onApplyAndChart={(sql) => void handleApplyAndChart(sql)}
+            />
+          )}
+
           {/* SQL editor */}
           <div className="relative min-h-[100px] border-b border-edge" style={{ height: '35%' }}>
             <SqlEditor
@@ -644,6 +644,7 @@ function ResultTable({ result }: { result: StatementResult }) {
       onCellEditCancel={() => setEditingCell(null)}
       onRowClick={setResultDetailRow}
       highlightedRow={resultDetailRowIndex}
+      exportTableName="query_result"
     />
   );
 }

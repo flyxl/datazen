@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { TitleBar } from '../../components/TitleBar';
 import { Button } from '../../components/ui/Button';
+import { PathInput } from '../../components/ui/PathInput';
 import { Select } from '../../components/ui/Select';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useAiStore } from '../../stores/aiStore';
@@ -567,12 +568,10 @@ function McpClientSection() {
             />
           </SettingRow>
           <SettingRow label={t('mcpClient.command')}>
-            <input
-              type="text"
+            <PathInput
               value={draft.command ?? ''}
-              onChange={(e) => setDraft((d) => ({ ...d, command: e.target.value }))}
+              onChange={(command) => setDraft((d) => ({ ...d, command }))}
               placeholder="/usr/local/bin/my-mcp"
-              className={inputClass}
             />
           </SettingRow>
           <SettingRow label={t('mcpClient.args')}>

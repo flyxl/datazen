@@ -30,6 +30,12 @@ pub trait DatabaseDriver: Send + Sync {
         false
     }
 
+    /// Whether the driver's SQL dialect supports `OFFSET` in pagination.
+    /// Drivers that don't (e.g. Presto/Hive via Superset) should return `false`.
+    fn supports_offset(&self) -> bool {
+        true
+    }
+
     fn format_sql_literal(&self, value: &Option<Value>) -> String {
         match value {
             None | Some(Value::Null) => "NULL".to_string(),

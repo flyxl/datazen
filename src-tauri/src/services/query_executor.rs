@@ -98,7 +98,7 @@ impl QueryExecutor {
 
         let data_sql = Self::build_select_sql(
             &cached.table_name, &cached.columns, page, page_size,
-            filters.clone(), order_by, &qi,
+            filters.clone(), order_by, &qi, driver.supports_offset(),
         );
 
         if skip_count {
@@ -172,6 +172,7 @@ impl QueryExecutor {
         filters: Option<Vec<FilterCondition>>,
         order_by: Option<OrderBy>,
         qi: &dyn Fn(&str) -> String,
+        supports_offset: bool,
     ) -> String {
         let mut sql = String::new();
         sql.push_str("SELECT ");
@@ -221,8 +222,12 @@ impl QueryExecutor {
             }
         }
 
-        let offset = page.saturating_mul(page_size);
-        sql.push_str(&format!(" LIMIT {page_size} OFFSET {offset}"));
+        if supports_offset {
+            let offset = page.saturating_mul(page_size);
+            sql.push_str(&format!(" LIMIT {page_size} OFFSET {offset}"));
+        } else {
+            sql.push_str(&format!(" LIMIT {page_size}"));
+        }
         sql
     }
 
@@ -290,7 +295,7 @@ mod tests {
             make_column("email", false),
         ];
         let sql = QueryExecutor::build_select_sql(
-            "orders", &columns, 0, 50, None, None, &simple_qi,
+            "orders", &columns, 0, 50, None, None, &simple_qi, true,
         );
         assert!(
             sql.contains("ORDER BY \"id\" ASC"),
@@ -306,7 +311,7 @@ mod tests {
             make_column("quantity", false),
         ];
         let sql = QueryExecutor::build_select_sql(
-            "order_items", &columns, 0, 50, None, None, &simple_qi,
+            "order_items", &columns, 0, 50, None, None, &simple_qi, true,
         );
         assert!(
             sql.contains("ORDER BY \"order_id\" ASC, \"product_id\" ASC"),
@@ -322,7 +327,7 @@ mod tests {
         ];
         let order = OrderBy { column: "name".to_string(), descending: true };
         let sql = QueryExecutor::build_select_sql(
-            "users", &columns, 0, 50, None, Some(order), &simple_qi,
+            "users", &columns, 0, 50, None, Some(order), &simple_qi, true,
         );
         assert!(
             sql.contains("ORDER BY \"name\" DESC"),
@@ -341,7 +346,7 @@ mod tests {
             make_column("col_b", false),
         ];
         let sql = QueryExecutor::build_select_sql(
-            "no_pk_table", &columns, 0, 50, None, None, &simple_qi,
+            "no_pk_table", &columns, 0, 50, None, None, &simple_qi, true,
         );
         assert!(
             sql.contains("ORDER BY \"col_a\" ASC"),

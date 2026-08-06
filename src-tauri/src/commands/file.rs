@@ -20,7 +20,7 @@ pub fn show_editor_context_menu(
     Ok(())
 }
 
-const ALLOWED_EXTENSIONS: &[&str] = &["csv", "json", "sql", "md", "txt", "xml", "yaml", "yml"];
+const ALLOWED_EXTENSIONS: &[&str] = &["csv", "tsv", "json", "sql", "md", "txt", "xml", "yaml", "yml"];
 
 fn validate_file_path(path: &Path) -> Result<(), CommandError> {
     let canonical = path.to_string_lossy();

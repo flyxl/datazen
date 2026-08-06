@@ -3,6 +3,7 @@ import { BarChart3, Loader2, Sparkles, Copy, Check, Trash2, ArrowDownToLine, Set
 import { Button } from '../ui/Button';
 import { useI18n } from '../../hooks/useI18n';
 import { useAiKeyboard } from '../../hooks/useAiKeyboard';
+import { useResizable } from '../../hooks/useResizable';
 import { useAiStore } from '../../stores/aiStore';
 import { cn } from '../../lib/cn';
 import { openSettingsWindow } from '../../lib/windowManager';
@@ -25,6 +26,14 @@ export function Nl2SqlPanel({ connectionId, database, currentTable, onApplySql, 
   const clearNl2Sql = useAiStore((s) => s.clearNl2Sql);
 
   const [copied, setCopied] = useState(false);
+
+  const { size: panelHeight, handleRef } = useResizable({
+    direction: 'vertical',
+    initialSize: 120,
+    minSize: 72,
+    maxSize: 320,
+    storageKey: 'nl2sql-panel-height',
+  });
 
   const handleGenerate = useCallback(() => {
     if (!nl2sql.input.trim() || nl2sql.isGenerating) return;
@@ -59,10 +68,13 @@ export function Nl2SqlPanel({ connectionId, database, currentTable, onApplySql, 
   }
 
   return (
-    <div className="border-b border-edge bg-surface-alt">
-      <div className="flex items-start gap-2 p-2">
+    <div
+      className="flex shrink-0 flex-col border-b border-edge bg-surface-alt"
+      style={{ height: panelHeight }}
+    >
+      <div className="flex min-h-0 flex-1 items-start gap-2 overflow-hidden p-2">
         <Sparkles className="mt-1.5 h-3.5 w-3.5 shrink-0 text-blue-400" />
-        <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-1.5 overflow-hidden">
           <textarea
             value={nl2sql.input}
             onChange={(e) => setNl2SqlInput(e.target.value)}
@@ -70,18 +82,18 @@ export function Nl2SqlPanel({ connectionId, database, currentTable, onApplySql, 
             placeholder={t('nl2sql.placeholder')}
             rows={1}
             className={cn(
-              'w-full resize-none rounded border border-edge bg-surface px-2 py-1.5',
+              'w-full shrink-0 resize-none rounded border border-edge bg-surface px-2 py-1.5',
               'text-sm text-fg placeholder:text-fg-muted',
               'focus:border-accent focus:outline-none',
             )}
           />
           {nl2sql.generatedSql && (
-            <div className="rounded border border-edge bg-surface p-2">
-              <pre className="whitespace-pre-wrap font-mono text-xs text-fg-secondary">
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded border border-edge bg-surface">
+              <pre className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap p-2 font-mono text-xs text-fg-secondary">
                 {nl2sql.generatedSql}
               </pre>
               {!nl2sql.isGenerating && (
-                <div className="mt-2 flex gap-1.5">
+                <div className="flex shrink-0 gap-1.5 border-t border-edge p-2">
                   <Button
                     variant="primary"
                     className="h-6 gap-1 px-2 text-[11px]"
@@ -113,7 +125,7 @@ export function Nl2SqlPanel({ connectionId, database, currentTable, onApplySql, 
             </div>
           )}
           {nl2sqlError && (
-            <div className="rounded border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-400">
+            <div className="shrink-0 rounded border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-400">
               {nl2sqlError}
             </div>
           )}
@@ -143,6 +155,10 @@ export function Nl2SqlPanel({ connectionId, database, currentTable, onApplySql, 
           )}
         </div>
       </div>
+      <div
+        ref={handleRef}
+        className="h-1 shrink-0 cursor-row-resize bg-transparent hover:bg-blue-500/30"
+      />
     </div>
   );
 }

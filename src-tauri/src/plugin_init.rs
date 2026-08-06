@@ -6,8 +6,6 @@
 
 #[cfg(feature = "plugin-superset")]
 extern crate datazen_plugin_superset;
-#[cfg(feature = "plugin-kiwi")]
-extern crate datazen_plugin_kiwi;
 use tauri::Runtime;
 
 pub fn register_plugins<R: Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> {

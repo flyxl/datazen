@@ -121,6 +121,7 @@ export function TableView({ connectionId, database, tableName }: TableViewProps)
       onSelectAll={toggleSelectAll}
         onRowClick={setDetailRow}
         highlightedRow={detailRowIndex}
+        exportTableName={tableName}
       />
     </div>
   );

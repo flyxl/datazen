@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { Input } from '../ui/Input';
+import { PathInput } from '../ui/PathInput';
 import { Button } from '../ui/Button';
 import { Select } from '../ui/Select';
 import { useI18n } from '../../hooks/useI18n';
@@ -107,11 +108,14 @@ export function FileConnectionFields({ form }: { form: ConnectionFormState }) {
       {/* File path input (always visible) */}
       <div>
         <Label required>{t('newConn.dbFilePath')}</Label>
-        <Input
+        <PathInput
           value={form.database}
-          onChange={(e) => form.setDatabase(e.target.value)}
+          onChange={form.setDatabase}
           placeholder="/path/to/db.sqlite"
-          className={form.validationErrors.database ? 'border-red-500' : ''}
+          error={!!form.validationErrors.database}
+          dialogOptions={{
+            filters: [{ name: 'SQLite Database', extensions: ['db', 'sqlite', 'sqlite3'] }],
+          }}
         />
         {form.validationErrors.database && (
           <p className="mt-1 text-xs text-red-400">{form.validationErrors.database}</p>
@@ -183,10 +187,11 @@ export function FileConnectionFields({ form }: { form: ConnectionFormState }) {
           {selectedDbPath && (
             <div>
               <Label required>{t('newConn.adbLocalPath')}</Label>
-              <Input
+              <PathInput
                 value={localSavePath}
-                onChange={(e) => setLocalSavePath(e.target.value)}
+                onChange={setLocalSavePath}
                 placeholder={t('newConn.adbLocalPathPlaceholder')}
+                dialogOptions={{ directory: true }}
               />
             </div>
           )}

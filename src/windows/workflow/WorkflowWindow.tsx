@@ -770,7 +770,7 @@ function StepDetailView({ step, t }: { step: StepExecutionResult; t: ReturnType<
         </>
       ) : hasData ? (
         <div className="flex flex-1 min-h-0">
-          <DataTable columns={columns} rows={tableRows} rowHeight={32} />
+          <DataTable columns={columns} rows={tableRows} rowHeight={32} exportTableName="workflow_result" />
         </div>
       ) : step.stepType === 'query' && !step.error ? (
         <div className="flex flex-1 items-center justify-center text-xs text-fg-muted">{t('workflows.noQueryResult')}</div>
