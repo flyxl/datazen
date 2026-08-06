@@ -394,6 +394,68 @@ function clonePlugins(plugins, registry) {
 }
 
 /**
+ * Replace content between marker comments in a file.
+ * Markers: `# --- BEGIN <tag> ---` / `# --- END <tag> ---`
+ */
+function replaceMarkerSection(filePath, tag, newContent) {
+  const begin = `# --- BEGIN ${tag} (managed by resolve-plugins.mjs, do not edit) ---`;
+  const end = `# --- END ${tag} ---`;
+  const text = readFileSync(filePath, 'utf-8');
+  const re = new RegExp(
+    escapeRegex(begin) + '[\\s\\S]*?' + escapeRegex(end),
+  );
+  if (!re.test(text)) {
+    console.warn(`[resolve-plugins] marker "${tag}" not found in ${filePath}`);
+    return;
+  }
+  const body = newContent ? `${begin}\n${newContent}\n${end}` : `${begin}\n${end}`;
+  writeFileSync(filePath, text.replace(re, body));
+}
+
+function escapeRegex(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Update Cargo.toml files to include only resolved plugins.
+ *
+ * - src-tauri/Cargo.toml: adds optional path dependencies + feature flags
+ * - Cargo.toml (root): adds [patch] entries when git-sourced plugins are
+ *   cloned locally, so Cargo uses the local checkout instead of fetching
+ */
+function updateCargoFiles(plugins, registry) {
+  const tauriCargoPath = resolve(ROOT, 'src-tauri/Cargo.toml');
+  const rootCargoPath = resolve(ROOT, 'Cargo.toml');
+
+  // --- src-tauri/Cargo.toml: plugin deps ---
+  const depLines = plugins.map(name => {
+    const crateName = `datazen-plugin-${name}`;
+    return `${crateName} = { path = "../.plugins/${name}", optional = true }`;
+  });
+  replaceMarkerSection(tauriCargoPath, 'PLUGIN DEPS', depLines.join('\n'));
+
+  // --- src-tauri/Cargo.toml: plugin features ---
+  const featureLines = plugins.map(name => {
+    const feature = registry[name]?.feature;
+    const crateName = `datazen-plugin-${name}`;
+    return feature ? `${feature} = ["dep:${crateName}"]` : null;
+  }).filter(Boolean);
+  replaceMarkerSection(tauriCargoPath, 'PLUGIN FEATURES', featureLines.join('\n'));
+
+  // --- Root Cargo.toml: [patch] entries for git-sourced plugins ---
+  const patchLines = plugins
+    .filter(name => registry[name]?.source === 'git' && registry[name]?.git)
+    .map(name => {
+      const meta = registry[name];
+      const crateName = `datazen-plugin-${name}`;
+      return `[patch."${meta.git}"]\n${crateName} = { path = ".plugins/${name}" }`;
+    });
+  replaceMarkerSection(rootCargoPath, 'PLUGIN PATCHES', patchLines.join('\n\n'));
+
+  console.log(`[resolve-plugins] updated Cargo.toml files (${plugins.length} plugin(s))`);
+}
+
+/**
  * Generate src-tauri/src/plugin_init.rs — Rust plugin Tauri-plugin registration.
  *
  * For each plugin that declares a `tauriPlugin` block in the registry,
@@ -463,6 +525,9 @@ function main() {
 
   // Clone/update plugin repos
   clonePlugins(plugins, registry);
+
+  // Update Cargo.toml files with resolved plugin deps/features/patches
+  updateCargoFiles(plugins, registry);
 
   const features = generateCargoFeatures(plugins, registry);
 
