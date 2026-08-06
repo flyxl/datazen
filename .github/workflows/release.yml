@@ -18,38 +18,32 @@ jobs:
             target: x86_64-pc-windows-msvc
             os_label: windows-x64
             plugins: "none"
-            features: ""
             variant_suffix: ""
           - platform: macos-latest
             target: aarch64-apple-darwin
             os_label: macos-arm64
             plugins: "none"
-            features: ""
             variant_suffix: ""
           - platform: macos-latest
             target: x86_64-apple-darwin
             os_label: macos-x64
             plugins: "none"
-            features: ""
             variant_suffix: ""
           # ── Pro 版（内置驱动 + Kiwi + Superset）──
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
             os_label: windows-x64
             plugins: "kiwi,superset"
-            features: "plugin-kiwi,plugin-superset"
             variant_suffix: "-pro"
           - platform: macos-latest
             target: aarch64-apple-darwin
             os_label: macos-arm64
             plugins: "kiwi,superset"
-            features: "plugin-kiwi,plugin-superset"
             variant_suffix: "-pro"
           - platform: macos-latest
             target: x86_64-apple-darwin
             os_label: macos-x64
             plugins: "kiwi,superset"
-            features: "plugin-kiwi,plugin-superset"
             variant_suffix: "-pro"
 
     runs-on: ${{ matrix.platform }}
@@ -60,22 +54,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 24
-
       - name: Install pnpm
         uses: pnpm/action-setup@v4
         with:
           version: 11
 
-      - name: Cache pnpm store
-        uses: actions/cache@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          path: ~/.pnpm-store
-          key: pnpm-${{ matrix.platform }}-${{ hashFiles('pnpm-lock.yaml') }}
-          restore-keys: pnpm-${{ matrix.platform }}-
+          node-version: 24
+          cache: 'pnpm'
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -86,9 +74,7 @@ jobs:
         uses: swatinem/rust-cache@v2
         with:
           workspaces: . -> target
-          # Share cache across base/pro builds on same target (pro adds plugins on top)
           shared-key: ${{ matrix.target }}
-          # Cache even on failure to speed up next run
           cache-on-failure: true
 
       - name: Import Windows code signing certificate
@@ -112,7 +98,7 @@ jobs:
         shell: bash
         run: |
           node scripts/resolve-plugins.mjs --plugins="${{ matrix.plugins }}"
-          FEATURES="${{ matrix.features }}"
+          FEATURES=$(node -e "const f=require('./.plugin-features.json').features; if(f.length) process.stdout.write(f.join(','))")
           if [ -n "$FEATURES" ]; then
             pnpm tauri build --target ${{ matrix.target }} -f "$FEATURES"
           else
