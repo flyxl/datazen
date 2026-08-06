@@ -58,10 +58,9 @@ reqwest = { version = "0.13.3", features = ["json", "cookies", "stream"] }
 futures-util = "0.3"
 redis = { version = "0.27", features = ["tokio-comp", "aio"] }
 
-# Plugin crates (optional — controlled by features)
-datazen-plugin-kiwi = { git = "https://github.com/flyxl/datazen-plugin-kiwi.git", optional = true }
-datazen-plugin-olap = { git = "https://github.com/flyxl/datazen-plugin-olap.git", optional = true }
-datazen-plugin-superset = { path = "../.plugins/superset", optional = true }
+# Plugin crates — injected by resolve-plugins.mjs at build time; do NOT add manually.
+# <<plugin-dependencies>>
+# <</plugin-dependencies>>
 rmcp = { version = "2.2.0", features = ["server", "client", "transport-io", "transport-child-process", "transport-streamable-http-server", "macros", "schemars"] }
 schemars = "1.2.2"
 tokio-util = { version = "0.7.19", features = ["rt"] }
@@ -72,14 +71,10 @@ regex = "1.13.1"
 [features]
 default = []
 webdriver = ["tauri-plugin-webdriver"]
-plugin-kiwi = ["dep:datazen-plugin-kiwi"]
-plugin-olap = ["dep:datazen-plugin-olap"]
-plugin-superset = ["dep:datazen-plugin-superset"]
+# Plugin features — injected by resolve-plugins.mjs at build time; do NOT add manually.
+# <<plugin-features>>
+# <</plugin-features>>
 
-[target.'cfg(target_os = "macos")'.dependencies]
-objc2 = "0.6"
-objc2-foundation = { version = "0.3", features = ["NSGeometry", "objc2-core-foundation"] }
-raw-window-handle = "0.6"
 
 [dev-dependencies]
 tempfile = "3.27.0"

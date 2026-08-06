@@ -2,8 +2,6 @@ pub mod ai;
 mod cache;
 mod commands;
 mod db;
-#[cfg(target_os = "macos")]
-mod macos;
 pub mod mcp;
 mod plugin_init;
 mod services;
@@ -11,11 +9,13 @@ pub mod ssh_tunnel;
 mod store;
 pub mod sync;
 
-use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
+#[cfg(target_os = "macos")]
+use std::collections::HashMap;
+#[cfg(target_os = "macos")]
 use tauri::menu::{CheckMenuItemBuilder, MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder};
 use tauri::{Emitter, Manager};
 use ai::{init_ai_providers, SchemaContextBuilder};
@@ -26,6 +26,7 @@ use services::ConnectionManager;
 use store::Store;
 use sync::adapters::init_sync_adapters;
 
+#[cfg(target_os = "macos")]
 pub(crate) fn menu_labels(lang: &str) -> HashMap<String, String> {
     static MENU_JSON: &str = include_str!("../resources/menu-labels.json");
 
@@ -38,6 +39,7 @@ pub(crate) fn menu_labels(lang: &str) -> HashMap<String, String> {
         .unwrap_or_default()
 }
 
+#[cfg(target_os = "macos")]
 fn setup_menu(
     handle: &tauri::AppHandle,
     theme: &str,
@@ -188,9 +190,16 @@ fn resolve_log_settings() -> (String, PathBuf) {
 #[tauri::command]
 fn rebuild_menu(handle: tauri::AppHandle, language: String) -> Result<(), String> {
     let state = handle.state::<AppState>();
-    let settings = tauri::async_runtime::block_on(state.store.get_settings());
     tauri::async_runtime::block_on(state.prompt_resolver.load_language(&language));
-    setup_menu(&handle, &settings.theme, &language).map_err(|e| e.to_string())
+    #[cfg(target_os = "macos")]
+    {
+        let settings = tauri::async_runtime::block_on(state.store.get_settings());
+        setup_menu(&handle, &settings.theme, &language).map_err(|e| e.to_string())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Ok(())
+    }
 }
 
 async fn build_app_state(store: Arc<Store>, prompts_dir: Option<PathBuf>) -> Result<AppState, String> {
@@ -363,21 +372,17 @@ pub fn run() {
 
             app.manage(app_state);
 
-            if let Some(win) = app.get_webview_window("main") {
-                #[cfg(target_os = "macos")]
-                {
-                    macos::apply_overlay_titlebar(&win);
-                    macos::apply_traffic_lights(&win);
-                }
-                #[cfg(not(target_os = "macos"))]
-                {
-                    let _ = win.set_decorations(false);
-                }
-            }
+            let _ = app.get_webview_window("main");
 
-            let t_menu = Instant::now();
-            setup_menu(&handle, &initial_settings.theme, &initial_settings.language)?;
-            tracing::info!("[startup]   build menu: {:?}", t_menu.elapsed());
+            // Native menu only on macOS (goes to system menu bar).
+            // On Windows with decorations:false, the native menu bar conflicts
+            // with the webview and blocks mouse events (tauri-apps/tauri#12074).
+            #[cfg(target_os = "macos")]
+            {
+                let t_menu = Instant::now();
+                setup_menu(&handle, &initial_settings.theme, &initial_settings.language)?;
+                tracing::info!("[startup]   build menu: {:?}", t_menu.elapsed());
+            }
 
             tracing::info!("[startup] setup complete: {:?}", t_setup.elapsed());
             Ok(())
@@ -477,8 +482,6 @@ pub fn run() {
         .on_window_event(|window, event| {
             #[cfg(target_os = "macos")]
             if let tauri::WindowEvent::Resized(size) = event {
-                macos::apply_traffic_lights(window);
-
                 let win = window.clone();
                 let size = *size;
                 std::thread::spawn(move || {

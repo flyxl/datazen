@@ -32,37 +32,24 @@ jobs:
             plugins: "none"
             features: ""
             variant_suffix: ""
-          - platform: ubuntu-22.04
-            target: x86_64-unknown-linux-gnu
-            os_label: linux-x64
-            plugins: "none"
-            features: ""
-            variant_suffix: ""
-
-          # ── Pro 版（内置驱动 + Kiwi + Presto/Trino）──
+          # ── Pro 版（内置驱动 + Kiwi）──
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
             os_label: windows-x64
-            plugins: "kiwi,olap"
-            features: "plugin-kiwi,plugin-olap"
+            plugins: "kiwi"
+            features: "plugin-kiwi"
             variant_suffix: "-pro"
           - platform: macos-latest
             target: aarch64-apple-darwin
             os_label: macos-arm64
-            plugins: "kiwi,olap"
-            features: "plugin-kiwi,plugin-olap"
+            plugins: "kiwi"
+            features: "plugin-kiwi"
             variant_suffix: "-pro"
           - platform: macos-latest
             target: x86_64-apple-darwin
             os_label: macos-x64
-            plugins: "kiwi,olap"
-            features: "plugin-kiwi,plugin-olap"
-            variant_suffix: "-pro"
-          - platform: ubuntu-22.04
-            target: x86_64-unknown-linux-gnu
-            os_label: linux-x64
-            plugins: "kiwi,olap"
-            features: "plugin-kiwi,plugin-olap"
+            plugins: "kiwi"
+            features: "plugin-kiwi"
             variant_suffix: "-pro"
 
     runs-on: ${{ matrix.platform }}
@@ -72,12 +59,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install Linux dependencies
-        if: matrix.platform == 'ubuntu-22.04'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libssl-dev
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -105,7 +86,10 @@ jobs:
         uses: swatinem/rust-cache@v2
         with:
           workspaces: . -> target
-          shared-key: ${{ matrix.target }}${{ matrix.variant_suffix }}
+          # Share cache across base/pro builds on same target (pro adds plugins on top)
+          shared-key: ${{ matrix.target }}
+          # Cache even on failure to speed up next run
+          cache-on-failure: true
 
       - name: Import Windows code signing certificate
         if: runner.os == 'Windows'
@@ -124,23 +108,10 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install
 
-      - name: Clone plugin repositories for Cargo resolution
+      - name: Resolve plugins and build Tauri app
         shell: bash
         run: |
-          mkdir -p .plugins
-          for repo in \
-            "kiwi https://github.com/flyxl/datazen-plugin-kiwi.git" \
-            "olap https://github.com/flyxl/datazen-plugin-olap.git"; do
-            name="${repo%% *}"
-            url="${repo#* }"
-            if [ ! -d ".plugins/$name/.git" ]; then
-              git clone --depth 1 "$url" ".plugins/$name"
-            fi
-          done
-
-      - name: Build Tauri app
-        shell: bash
-        run: |
+          node scripts/resolve-plugins.mjs --plugins="${{ matrix.plugins }}"
           FEATURES="${{ matrix.features }}"
           if [ -n "$FEATURES" ]; then
             pnpm tauri build --target ${{ matrix.target }} -f "$FEATURES"
@@ -162,10 +133,7 @@ jobs:
           for file in \
             "$BUNDLE_DIR"/dmg/*.dmg \
             "$BUNDLE_DIR"/nsis/*.exe \
-            "$BUNDLE_DIR"/msi/*.msi \
-            "$BUNDLE_DIR"/appimage/*.AppImage \
-            "$BUNDLE_DIR"/deb/*.deb \
-            "$BUNDLE_DIR"/rpm/*.rpm; do
+            "$BUNDLE_DIR"/msi/*.msi; do
             [ -f "$file" ] || continue
             base=$(basename "$file")
             if [[ "$base" == *.tar.gz ]]; then
@@ -190,7 +158,7 @@ jobs:
 
             本次发布包含两个版本：
             - **基础版**：内置 PostgreSQL、MySQL、SQLite、Redis 驱动
-            - **Pro 版**（文件名含 `-pro`）：额外包含 Kiwi 云数据库代理和 Presto/Trino OLAP 引擎
+            - **Pro 版**（文件名含 `-pro`）：额外包含 Kiwi 云数据库代理
 
             ## 安装说明
 
@@ -207,10 +175,5 @@ jobs:
 
             ### Windows
             直接运行 `.exe` 安装包或 `.msi` 安装包即可。
-
-            ### Linux
-            - **Debian/Ubuntu**: `sudo dpkg -i DataZen_*.deb`
-            - **Fedora/RHEL**: `sudo rpm -i DataZen-*.rpm`
-            - **AppImage**: `chmod +x DataZen_*.AppImage && ./DataZen_*.AppImage`
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
