@@ -7,7 +7,7 @@
 | # | Feature | Status | Unit tests | E2E test agent | Commit |
 |---|---------|--------|------------|----------------|--------|
 | 1 | App data ZIP export/import (replace config JSON) | ✅ merged | 4/4 pass | ✅ pass (unit + static) | `feat/zip-backup` |
-| 2 | 10 locales (en, zh-CN, zh-TW, es, fr, de, ja, pt-BR, ru, ko) | ✅ merged | ✅ pass | pending | `feat/i18n-10` |
+| 2 | 10 locales (en, zh-CN, zh-TW, es, fr, de, ja, pt-BR, ru, ko) | ✅ merged | ✅ pass | ✅ pass | `feat/i18n-10` |
 | 3 | First-run language follows system (else `en`) | ✅ merged | ✅ Rust + Vitest | ✅ pass | `feat/sys-locale` |
 | 4 | Trigger GitHub release package | ⏳ pending | n/a | n/a | — |
 
@@ -80,6 +80,48 @@ cargo test -p datazen app_data_archive   # 4 passed, 0 failed
 **Summary:** 9/9 PASS (4 fully via unit tests; 5 via static code verification — native file dialogs and app restart not automated in this run).
 
 **Bugs:** None recorded.
+
+### Feature 2 — 10 UI locales
+
+**Agent:** test-only (2026-08-07)  
+**Branch:** `feat/backup-zip-i18n`  
+**Spec:** `e2e/specs/i18n-10-locales.ts`
+
+#### Test cases (designed)
+
+| ID | Case | Steps | Expected |
+|----|------|-------|----------|
+| I18N10-001 | Settings shows 10 languages | Open `?window=settings`, open language Select dropdown. | 10 options: 简体中文, 繁體中文, English, Español, Français, Deutsch, 日本語, Português (Brasil), Русский, 한국어. |
+| I18N10-002 | `LANGUAGE_OPTIONS` ↔ `SUPPORTED_LOCALES` | Static compare `SettingsWindow.tsx` vs `src/locales/index.ts`. | Same 10 locale codes (order may differ). |
+| I18N10-003 | Switching language updates UI | `save_settings({ language })` + refresh on main window for `en`, `zh-CN`, `zh-TW`, `ja`, `de`. | `main.searchPlaceholder` reflects locale (`Find` vs `查找`). |
+| I18N10-004 | All locales key parity | Vitest `locales.test.ts`; E2E smoke-render each locale on main window. | Every locale dict matches zh-CN keys; UI renders without error. |
+| I18N10-005 | Unsupported falls back to `en` | `save_settings({ language: 'xx-XX' })`, refresh main window. | UI shows English placeholder; persisted value stays `xx-XX`. |
+| I18N10-006 | Menu rebuild all locales | `rebuild_menu({ language })` for each of 10 codes. | No error. |
+
+#### Execution results
+
+| ID | Result | Method | Evidence |
+|----|--------|--------|----------|
+| I18N10-001 | **PASS** | E2E | WDIO spec — dropdown lists 10 labels |
+| I18N10-002 | **PASS** | Static | Both arrays length 10; sets equal: `de, en, es, fr, ja, ko, pt-BR, ru, zh-CN, zh-TW` |
+| I18N10-003 | **PASS** | E2E | Placeholder updates for 5 sampled locales |
+| I18N10-004 | **PASS** | Vitest + E2E smoke | `npx vitest run src/locales/locales.test.ts` 5/5; E2E renders all 10 |
+| I18N10-005 | **PASS** | E2E | `xx-XX` → English UI, stored language unchanged |
+| I18N10-006 | **PASS** | E2E | `rebuild_menu` OK for all 10 |
+
+**Commands run**
+
+```bash
+npx vitest run src/locales/locales.test.ts                          # 5 passed, 0 failed
+pnpm tauri build --debug --features webdriver                       # required for E2E WebDriver port 4445
+pnpm e2e:skip-build -- --spec e2e/specs/i18n-10-locales.ts          # 6 passed, 0 failed
+```
+
+**Summary:** 6/6 PASS. `LANGUAGE_OPTIONS` and `SUPPORTED_LOCALES` aligned (10 codes, display order differs).
+
+**Bugs:** None recorded.
+
+**E2E harness notes (not product bugs):** Initial spec draft needed navigation fix after settings window (`openMainWindow` wait on `[data-conn-item]`) and WDIO-compatible `expect` syntax; dynamic `import()` in `browser.execute` is not WebDriver-serializable — key parity delegated to Vitest.
 
 ### Feature 3 — First-run language follows system (else `en`)
 
