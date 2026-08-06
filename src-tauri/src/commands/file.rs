@@ -8,7 +8,11 @@ pub fn show_editor_context_menu(
 ) -> Result<(), CommandError> {
     use tauri::menu::MenuBuilder;
 
-    let label_favorite = if lang == "en" { "Add to Favorites" } else { "收藏 SQL" };
+    let labels = crate::menu_labels(&lang);
+    let label_favorite = labels
+        .get("ctx-add-favorite")
+        .map(|s| s.as_str())
+        .unwrap_or("Add to Favorites");
 
     let menu = MenuBuilder::new(&window)
         .text("ctx-add-favorite", label_favorite)
