@@ -6,6 +6,6 @@ import { useSettingsStore } from '../stores/settingsStore';
  * Reads the current language from the settings store synchronously.
  */
 export function t(key: TranslationKey, params?: Record<string, string | number>): string {
-  const lang = (useSettingsStore.getState().settings.language ?? 'zh-CN') as SupportedLocale;
+  const lang = (useSettingsStore.getState().settings.language ?? 'en') as SupportedLocale;
   return getTranslation(lang, key, params);
 }

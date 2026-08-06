@@ -1185,6 +1185,7 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "sqlx",
+ "sys-locale",
  "sysinfo",
  "tauri",
  "tauri-build",

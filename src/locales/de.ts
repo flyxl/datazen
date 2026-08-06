@@ -1,7 +1,4 @@
-import type { TranslationKey } from './zh-CN';
-
-const de: Record<TranslationKey, string> = {
-  // ── Common ──
+const translations = {
   'common.ok': 'OK',
   'common.cancel': 'Cancel',
   'common.save': 'Save',
@@ -23,8 +20,6 @@ const de: Record<TranslationKey, string> = {
   'common.rows': 'rows',
   'common.columns': 'columns',
   'common.browse': 'Browse',
-
-  // ── Menu (native + Windows HTML MenuBar) ──
   'menu.file': 'File',
   'menu.newConnection': 'New Connection',
   'menu.dataSync': 'Data Sync',
@@ -51,19 +46,13 @@ const de: Record<TranslationKey, string> = {
   'menu.closeWindow': 'Close Window',
   'menu.ctxAddFavorite': 'Add to Favorites',
   'menu.help': 'Help',
-
-  // ── Theme ──
   'theme.light': 'Light',
   'theme.dark': 'Dark',
   'theme.system': 'System',
   'theme.tooltip': 'Theme: {current}',
-
-  // ── Traffic Lights ──
   'traffic.close': 'Close',
   'traffic.minimize': 'Minimize',
   'traffic.fullscreen': 'Fullscreen (⌥+Click: Maximize)',
-
-  // ── Main Window ──
   'main.searchPlaceholder': 'Find connections…',
   'main.newConnection': 'New Connection',
   'main.noConnections': 'No Connections',
@@ -73,8 +62,6 @@ const de: Record<TranslationKey, string> = {
   'main.ready': 'Ready',
   'main.connectionCount': 'Connections: {count}',
   'main.allGroups': 'All',
-
-  // ── Main / Context Menu ──
   'main.ctx.newGroup': 'New Group',
   'main.ctx.renameGroup': 'Rename Group',
   'main.ctx.deleteGroup': 'Delete Group',
@@ -87,19 +74,13 @@ const de: Record<TranslationKey, string> = {
   'main.ctx.moveToGroup': 'Move to Group',
   'main.ctx.deleteConnection': 'Delete Connection',
   'main.ctx.confirmDeleteConnection': 'Are you sure you want to delete connection "{name}"? This cannot be undone.',
-
-  // ── Main / Group Dialog ──
   'main.newGroupTitle': 'New Group',
   'main.groupNamePlaceholder': 'Enter group name',
-
-  // ── Main / Backup & Restore ──
   'main.backupSuccess': 'Database backed up successfully',
   'main.backupFailed': 'Backup failed',
   'main.restoreSuccess': 'Database restored successfully',
   'main.restoreFailed': 'Restore failed',
   'main.sidebar.resize': 'Drag to resize sidebar',
-
-  // ── Action Panel ──
   'action.backup': 'Backup Database…',
   'action.restore': 'Restore Database…',
   'action.dataSync': 'Data Sync…',
@@ -107,37 +88,11 @@ const de: Record<TranslationKey, string> = {
   'action.workflow': 'Workflow…',
   'action.exportConfig': 'Export Config…',
   'action.importConfig': 'Import Config…',
-
-  // ── Config Import / Export ──
-  'configExport.success': 'Exported {count} connections',
-  'configExport.failed': 'Export failed',
-  'configExport.passwordTitle': 'Set Export Password',
-  'configExport.passwordDesc': 'This password encrypts sensitive data in the exported file. You will need it when importing.',
-  'configExport.passwordPlaceholder': 'Enter password',
-  'configExport.passwordConfirmPlaceholder': 'Confirm password',
-  'configExport.passwordMismatch': 'Passwords do not match',
-  'configExport.passwordRequired': 'Password is required',
-  'configImport.title': 'Import Connections',
-  'configImport.description': 'The following connections conflict with existing ones. Choose how to resolve.',
-  'configImport.noConflicts': 'No conflicts, will import {count} connections directly',
-  'configImport.conflict': 'Conflict',
-  'configImport.new': 'New',
-  'configImport.skip': 'Skip',
-  'configImport.overwrite': 'Overwrite',
-  'configImport.keepBoth': 'Keep Both',
-  'configImport.existing': 'Existing',
-  'configImport.incoming': 'Incoming',
-  'configImport.applyAll': 'All',
-  'configImport.importing': 'Importing…',
-  'configImport.success': 'Imported {count} connections',
-  'configImport.invalidFile': 'Invalid config file',
-  'configImport.failed': 'Import failed',
-  'configImport.passwordTitle': 'Enter Import Password',
-  'configImport.passwordDesc': 'This file is encrypted. Enter the password used during export.',
-  'configImport.passwordPlaceholder': 'Enter password',
-  'configImport.wrongPassword': 'Wrong password, please try again',
-
-  // ── Connection Item / Card ──
+  'appData.exportSuccess': 'App data exported successfully',
+  'appData.exportFailed': 'Export failed',
+  'appData.importConfirmTitle': 'Import App Data',
+  'appData.importConfirmMessage': 'This will overwrite all application data. Existing log files will be preserved. Continue?',
+  'appData.importFailed': 'Import failed',
   'conn.connected': 'Connected',
   'conn.connecting': 'Connecting…',
   'conn.failed': 'Connection failed',
@@ -149,13 +104,9 @@ const de: Record<TranslationKey, string> = {
   'conn.delete': 'Delete Connection',
   'conn.neverConnected': 'Never connected',
   'conn.copyName': 'Copy',
-
-  // ── Connection Store errors ──
   'connStore.loadFailed': 'Failed to load connections',
   'connStore.saveFailed': 'Failed to save connection',
   'connStore.deleteFailed': 'Failed to delete connection',
-
-  // ── New Connection ──
   'newConn.title': 'New Connection',
   'newConn.editTitle': 'Edit Connection',
   'newConn.description': 'Configure database connection',
@@ -226,8 +177,6 @@ const de: Record<TranslationKey, string> = {
   'newConn.adbNoPackages': 'No third-party apps found. Ensure device is connected.',
   'newConn.adbNoDatabases': 'No database files found',
   'newConn.adbNotInstalled': 'adb is not installed or not in PATH',
-
-  // ── Settings ──
   'settings.title': 'Settings',
   'settings.general': 'General',
   'settings.theme': 'Theme',
@@ -255,8 +204,6 @@ const de: Record<TranslationKey, string> = {
   'settings.limitSelectHint': 'Automatically add a row limit to SELECT statements without LIMIT',
   'settings.confirmDeleteHint': 'Show a confirmation dialog when deleting rows',
   'settings.autoCommitHint': 'Automatically commit edits to data',
-
-  // ── Connection Window ──
   'connWin.data': 'Data',
   'connWin.structure': 'Structure',
   'connWin.indexes': 'Indexes',
@@ -281,11 +228,7 @@ const de: Record<TranslationKey, string> = {
   'connWin.editTableStructure': 'Edit Table Structure…',
   'connWin.exportData': 'Export Data…',
   'connWin.importData': 'Import Data…',
-
-  // ── Table View ──
   'tableView.loadingData': 'Loading table data…',
-
-  // ── Schema Tree ──
   'schemaTree.tables': 'Tables',
   'schemaTree.keys': 'Keys',
   'schemaTree.noMatchingTables': 'No matching tables or views',
@@ -293,8 +236,6 @@ const de: Record<TranslationKey, string> = {
   'schemaTree.noMatchingKeys': 'No matching keys',
   'schemaTree.noKeys': 'No keys',
   'schemaTree.showAll': 'Show all ({count})',
-
-  // ── ER Diagram ──
   'erDiagram.title': 'ER Diagram',
   'erDiagram.noTables': 'No tables in this database',
   'erDiagram.noRelations': 'No foreign key relationships found',
@@ -314,8 +255,6 @@ const de: Record<TranslationKey, string> = {
   'erDiagram.expand': 'Expand columns',
   'erDiagram.tableCount': '{count} tables',
   'erDiagram.relationCount': '{count} relationships',
-
-  // ── Redis ──
   'redis.items': 'Items',
   'redis.queries': 'Queries',
   'redis.history': 'History',
@@ -337,8 +276,6 @@ const de: Record<TranslationKey, string> = {
   'redis.index': 'Index',
   'redis.noExpiry': 'No expiry',
   'redis.seconds': 's',
-
-  // ── Query Panel ──
   'query.execute': 'Execute',
   'query.stop': 'Stop',
   'query.totalTime': 'Total Time',
@@ -359,41 +296,27 @@ const de: Record<TranslationKey, string> = {
   'query.addFavorite': 'Add to Favorites',
   'query.favoriteTitle': 'Title',
   'query.favoriteTitlePlaceholder': 'Enter favorite title...',
-
-  // ── Table Data ──
   'tableData.loadFailed': 'Failed to load table data',
   'tableData.noPrimaryKey': 'Cannot commit: table has no primary key',
   'tableData.commitFailed': 'Failed to commit changes',
-
-  // ── Schema Store ──
   'schema.loadDbFailed': 'Failed to load databases',
   'schema.loadTablesFailed': 'Failed to load tables',
-
-  // ── DataTable ──
   'dataTable.selectAll': 'Select All',
   'dataTable.selected': 'Selected',
   'dataTable.sort': 'Sort',
   'dataTable.selectRow': 'Select Row',
-
-  // ── Detail Panel ──
   'detail.title': 'Details',
   'detail.show': 'Show detail panel',
   'detail.hide': 'Hide detail panel',
   'detail.noSelection': 'Click a row to view field details',
-
-  // ── Pagination ──
   'pagination.perPage': 'Per page',
   'pagination.prev': 'Previous',
   'pagination.next': 'Next',
   'pagination.page': 'Page',
   'pagination.pageOf': '',
-
-  // ── Filter Bar ──
   'filter.filter': 'Filter',
   'filter.remove': 'Remove filter',
   'filter.clear': 'Clear',
-
-  // ── Import Dialog ──
   'import.title': 'Import Data',
   'import.description': 'Import data from CSV or JSON file',
   'import.selectFile': 'Select File',
@@ -407,8 +330,6 @@ const de: Record<TranslationKey, string> = {
   'import.import': 'Import',
   'import.noData': 'No data to import',
   'import.success': 'Imported {count} rows to {table}',
-
-  // ── Export Dialog ──
   'export.title': 'Export Data',
   'export.description': 'Export data from table {table}',
   'export.format': 'Export Format',
@@ -420,13 +341,9 @@ const de: Record<TranslationKey, string> = {
   'export.formatAs': 'as',
   'export.exporting': 'Exporting…',
   'export.export': 'Export',
-
-  // ── DDL View ──
   'ddl.generating': 'Generating DDL…',
   'ddl.getFailed': 'Cannot get DDL',
   'ddl.loadFailed': 'Failed to get DDL',
-
-  // ── Structure View ──
   'structView.loadFailed': 'Failed to load table structure',
   'structView.loading': 'Loading table structure…',
   'structView.editStructure': 'Edit Structure',
@@ -442,8 +359,6 @@ const de: Record<TranslationKey, string> = {
   'structView.unique': 'Unique',
   'structView.defaultValue': 'Default',
   'structView.comment': 'Comment',
-
-  // ── Table Structure Editor ──
   'structEditor.loadFailed': 'Failed to load table structure',
   'structEditor.executeFailed': 'Execution failed',
   'structEditor.loading': 'Loading table structure…',
@@ -457,8 +372,6 @@ const de: Record<TranslationKey, string> = {
   'structEditor.addColumn': 'Add Column',
   'structEditor.deleteColumn': 'Delete Column',
   'structEditor.sqlPreview': 'SQL Preview',
-
-  // ── Indexes View ──
   'indexes.newIndex': 'New Index',
   'indexes.indexName': 'Index Name',
   'indexes.selectColumns': 'Select columns (in selection order)',
@@ -482,8 +395,6 @@ const de: Record<TranslationKey, string> = {
   'indexes.colPrimary': 'Primary',
   'indexes.colActions': 'Actions',
   'indexes.deleteIndex': 'Delete Index',
-
-  // ── Foreign Keys View ──
   'fk.loadFailed': 'Failed to load foreign keys',
   'fk.loading': 'Loading foreign keys…',
   'fk.noForeignKeys': 'No foreign keys on this table',
@@ -492,8 +403,6 @@ const de: Record<TranslationKey, string> = {
   'fk.localColumn': 'Column',
   'fk.refTable': 'Ref Table',
   'fk.refColumn': 'Ref Column',
-
-  // ── Data Sync ──
   'sync.title': 'Data Sync',
   'sync.windowTitle': 'Data Sync - DataZen',
   'sync.source': 'Source',
@@ -545,8 +454,6 @@ const de: Record<TranslationKey, string> = {
   'sync.checkConflictFailed': 'Conflict check failed: ',
   'sync.originalRows': 'Original Rows',
   'sync.currentRows': 'Current Rows',
-
-  // ── Backup Window ──
   'backup.title': 'Backup Database',
   'backup.fileName': 'File name',
   'backup.fileNameHint': 'Click to change the file name pattern',
@@ -558,15 +465,9 @@ const de: Record<TranslationKey, string> = {
   'backup.startBackup': 'Start backup…',
   'backup.inProgress': 'Backing up…',
   'backup.success': 'Backup completed',
-
-  // ── Window titles ──
   'win.backup': 'Backup Database - DataZen',
-
-  // ── Connection Settings Dialog ──
   'connSettings.title': 'Connection Settings',
   'connSettings.description': 'Configure display and behavior for this connection',
-
-  // ── AI Settings ──
   'settings.ai': 'AI Assistant',
   'settings.ai.provider': 'AI Provider',
   'settings.ai.model': 'Model',
@@ -597,8 +498,6 @@ const de: Record<TranslationKey, string> = {
   'settings.ai.endpointHintOpenAiChat': 'e.g. https://api.openai.com/v1',
   'settings.ai.endpointHintOpenAiResponses': 'e.g. https://api.openai.com/v1',
   'settings.ai.endpointHintAnthropic': 'e.g. https://api.anthropic.com',
-
-  // ── Prompt Management ──
   'settings.prompts': 'Prompt Management',
   'settings.prompts.description': 'View and customize system prompts used by AI features. Each driver and scenario can be configured individually.',
   'settings.prompts.driver': 'Database Driver',
@@ -614,8 +513,6 @@ const de: Record<TranslationKey, string> = {
   'settings.prompts.saved': 'Prompt saved',
   'settings.prompts.resetDone': 'Reset to default',
   'settings.prompts.variables': 'Available Variables',
-
-  // ── AI Chat ──
   'chat.title': 'AI Assistant',
   'chat.placeholder': 'Ask a question about your database…',
   'chat.send': 'Send',
@@ -623,13 +520,11 @@ const de: Record<TranslationKey, string> = {
   'chat.stop': 'Stop generating',
   'chat.thinking': 'Thinking…',
   'chat.notConfigured': 'Please configure an AI provider in Settings first',
-  'chat.welcome': 'Hello! I\'m your database assistant. Ask me about SQL queries, database concepts, or data analysis.',
+  'chat.welcome': 'Hello! I\\\'m your database assistant. Ask me about SQL queries, database concepts, or data analysis.',
   'chat.insertSql': 'Insert to Editor',
   'chat.reasoning': 'Thinking',
   'chat.questions.customAnswer': 'Type a custom answer…',
   'chat.questions.submit': 'Submit Answers',
-
-  // ── AI Context ──
   'context.title': 'AI Context',
   'context.noFiles': 'Context directory is empty, please add files to the context directory',
   'context.noResults': 'No matching files found',
@@ -639,8 +534,6 @@ const de: Record<TranslationKey, string> = {
   'context.openDir': 'Open Context Directory',
   'context.file': 'File',
   'context.dir': 'Directory',
-
-  // ── NL2SQL ──
   'nl2sql.title': 'AI Generate SQL',
   'nl2sql.placeholder': 'Describe what you want to query in natural language…',
   'nl2sql.generate': 'Generate SQL',
@@ -650,8 +543,6 @@ const de: Record<TranslationKey, string> = {
   'nl2sql.clear': 'Clear',
   'nl2sql.notConfigured': 'Please configure an AI provider in Settings first',
   'nl2sql.selectDatabaseFirst': 'Please select a database from the sidebar first',
-
-  // ── EXPLAIN Analysis ──
   'explain.title': 'EXPLAIN Analysis',
   'explain.rawOutput': 'Execution Plan',
   'explain.analyze': 'AI Analyze',
@@ -666,8 +557,6 @@ const de: Record<TranslationKey, string> = {
   'explain.loading': 'Loading execution plan…',
   'explain.notConfigured': 'Please configure an AI provider in Settings first',
   'explain.noData': 'Run a query and click Explain to view the execution plan',
-
-  // ── SQL Diagnosis ──
   'diagnosis.title': 'AI Error Diagnosis',
   'diagnosis.diagnose': 'Diagnose',
   'diagnosis.diagnosing': 'Analyzing…',
@@ -676,8 +565,6 @@ const de: Record<TranslationKey, string> = {
   'diagnosis.changes': 'Changes Made',
   'diagnosis.applySuggested': 'Apply Suggestion',
   'diagnosis.notConfigured': 'Please configure an AI provider in Settings first',
-
-  // ── Smart Filter ──
   'smartFilter.title': 'Smart Filter',
   'smartFilter.placeholder': 'Describe filter conditions, e.g. "age > 18 and name contains John"',
   'smartFilter.parse': 'Filter',
@@ -687,8 +574,6 @@ const de: Record<TranslationKey, string> = {
   'smartFilter.notConfigured': 'Please configure an AI provider in Settings first',
   'smartFilter.noFilters': 'No filter conditions parsed',
   'smartFilter.parsed': '{count} filter condition(s) parsed',
-
-  // ── MCP Server ──
   'mcp.title': 'MCP Server',
   'mcp.description': 'Run DataZen as an MCP Server so external AI tools (Claude Desktop, Cursor, etc.) can access your databases',
   'mcp.enabled': 'Enable MCP Server',
@@ -706,8 +591,6 @@ const de: Record<TranslationKey, string> = {
   'mcp.tools.disableAll': 'Disable All',
   'mcp.tools.restartHint': 'MCP Server needs to be restarted for tool changes to take effect',
   'mcp.toggleError': 'Failed to start/stop MCP Server',
-
-  // ── MCP Client ──
   'mcpClient.title': 'External MCP Servers',
   'mcpClient.description': 'Connect to external MCP Servers to extend AI assistant capabilities.',
   'mcpClient.addServer': 'Add MCP Server',
@@ -719,8 +602,6 @@ const de: Record<TranslationKey, string> = {
   'mcpClient.disconnect': 'Disconnect',
   'mcpClient.tools': 'tools',
   'mcpClient.noServers': 'No MCP servers connected.',
-
-  // ── Workflows ──
   'workflows.title': 'Workflows',
   'workflows.loading': 'Loading workflows…',
   'workflows.empty': 'No workflows defined.',
@@ -800,8 +681,6 @@ const de: Record<TranslationKey, string> = {
   'workflows.aiCreate.parseError': 'YAML parse error',
   'workflows.aiCreate.missingField': 'Missing required field: {field}',
   'workflows.aiCreate.back': 'Back to list',
-
-  // ── Chart ──
   'chart.viewTable': 'Table',
   'chart.viewChart': 'Chart',
   'chart.type.bar': 'Bar Chart',
@@ -850,21 +729,17 @@ const de: Record<TranslationKey, string> = {
   'chart.expandTitle': 'Chart Preview',
   'chart.collapse': 'Collapse',
   'nl2sql.applyAndChart': 'Apply & Chart',
-
-  // ── Select ──
   'select.placeholder': 'Select…',
-
-  // ── Backend errors ──
-  'backend.partialFail': 'Partial failure ({success}/{total}):\n{errors}',
+  'backend.partialFail': 'Partial failure ({success}/{total}):\\n{errors}',
   'backend.unknownError': 'Unknown error',
-
-  // ── Window titles ──
   'win.editConnection': 'Edit Connection - DataZen',
   'win.newConnection': 'New Connection - DataZen',
   'win.query': 'Query - {db} - DataZen',
   'win.dataSync': 'Data Sync - DataZen',
   'win.workflow': 'Workflow - DataZen',
   'win.settings': 'Settings - DataZen',
-};
+} as const;
 
-export default de;
+export type TranslationKey = keyof typeof translations;
+export default translations;
+

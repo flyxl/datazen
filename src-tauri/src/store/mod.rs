@@ -51,11 +51,20 @@ fn default_log_level() -> String {
     "info".to_string()
 }
 
+impl AppSettings {
+    /// Defaults used on first install when `settings.json` is absent.
+    pub fn default_for_first_run() -> Self {
+        let mut settings = Self::default();
+        settings.language = crate::i18n_locale::default_ui_language();
+        settings
+    }
+}
+
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
             theme: "dark".to_string(),
-            language: "zh-CN".to_string(),
+            language: "en".to_string(),
             limit_select_results: false,
             query_result_limit: 5000,
             editor_font_size: 13,
@@ -285,10 +294,10 @@ impl Store {
             .load_json_file::<Vec<String>>("groups.json")
             .await
             .unwrap_or_default();
-        cache.settings = self
-            .load_json_file::<AppSettings>("settings.json")
-            .await
-            .unwrap_or_default();
+        cache.settings = match self.load_json_file::<AppSettings>("settings.json").await {
+            Ok(settings) => settings,
+            Err(_) => AppSettings::default_for_first_run(),
+        };
 
         // query_history / favorites / sync_tasks / ai_config stay unloaded
         // until their respective flows call ensure_* below.
