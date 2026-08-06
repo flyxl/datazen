@@ -5,6 +5,7 @@ import {
   Code2,
   Database,
   Download,
+  GitFork,
   MessageSquare,
   Pencil,
   Plus,
@@ -44,6 +45,7 @@ import { DetailPanelToggle } from '../../components/DataTable/DetailPanelToggle'
 import type { ColumnDef } from '../../components/DataTable/TableHeader';
 import { AiChatPanel } from '../../components/ai/AiChatPanel';
 import { rowToRecord } from '../../lib/rowToRecord';
+import { ErDiagramView } from './ErDiagramView';
 
 type SubTabId = 'data' | 'structure' | 'indexes' | 'foreignKeys' | 'ddl';
 
@@ -88,7 +90,13 @@ interface AlterTablePanel {
   tableName: string;
 }
 
-type Panel = TablePanel | QueryPanelInfo | CreateTablePanel | AlterTablePanel;
+interface ErDiagramPanel {
+  type: 'er-diagram';
+  id: string;
+  focusTable?: string;
+}
+
+type Panel = TablePanel | QueryPanelInfo | CreateTablePanel | AlterTablePanel | ErDiagramPanel;
 
 let panelCounter = 0;
 function nextPanelId(prefix: string) {
@@ -206,6 +214,28 @@ export function SqlConnectionView({
     setActivePanelId(panel.id);
   }, [panels]);
 
+  const handleOpenErDiagram = useCallback((focus?: string) => {
+    const existing = panels.find((p) => p.type === 'er-diagram');
+    if (existing) {
+      if (focus) {
+        setPanels((prev) =>
+          prev.map((p) =>
+            p.id === existing.id ? { ...p, focusTable: focus } as ErDiagramPanel : p,
+          ),
+        );
+      }
+      setActivePanelId(existing.id);
+      return;
+    }
+    const panel: ErDiagramPanel = {
+      type: 'er-diagram',
+      id: nextPanelId('er'),
+      focusTable: focus,
+    };
+    setPanels((prev) => [...prev, panel]);
+    setActivePanelId(panel.id);
+  }, [panels]);
+
   const handleNewQuery = useCallback(() => {
     createQueryTab();
     const latestTab = useQueryStore.getState().tabs.at(-1);
@@ -317,7 +347,7 @@ export function SqlConnectionView({
     setTableCtx({ tableName: name, x, y });
   }, []);
 
-  const handleTableCtxAction = useCallback((action: 'export' | 'import') => {
+  const handleTableCtxAction = useCallback((action: 'export' | 'import' | 'er-focus') => {
     if (!tableCtx) return;
     const name = tableCtx.tableName;
     setTableCtx(null);
@@ -325,11 +355,13 @@ export function SqlConnectionView({
       setExportTableName(name);
       handleSelectTable(name);
       setExportOpen(true);
-    } else {
+    } else if (action === 'import') {
       setImportTableName(name);
       setImportOpen(true);
+    } else if (action === 'er-focus') {
+      handleOpenErDiagram(name);
     }
-  }, [tableCtx, handleSelectTable]);
+  }, [tableCtx, handleSelectTable, handleOpenErDiagram]);
 
   useEffect(() => {
     if (!tableCtx) return;
@@ -417,6 +449,10 @@ export function SqlConnectionView({
             {t('connWin.newTable')}
           </Button>
         )}
+        <Button variant="secondary" className="h-8" onClick={() => handleOpenErDiagram()}>
+          <GitFork className="h-4 w-4" />
+          {t('erDiagram.title')}
+        </Button>
         <div className="mx-1 h-6 w-px bg-edge" />
 
         <div className="relative min-w-0 max-w-[280px] flex-1">
@@ -481,12 +517,14 @@ export function SqlConnectionView({
                       query: <Code2 className="h-3.5 w-3.5 shrink-0" />,
                       'create-table': <TableProperties className="h-3.5 w-3.5 shrink-0" />,
                       'alter-table': <Pencil className="h-3.5 w-3.5 shrink-0" />,
+                      'er-diagram': <GitFork className="h-3.5 w-3.5 shrink-0" />,
                     };
                     const labelMap: Record<string, string> = {
                       table: (panel as TablePanel).tableName,
                       query: (panel as QueryPanelInfo).title,
                       'create-table': t('connWin.newTable'),
                       'alter-table': `${t('connWin.editStructure')} · ${(panel as AlterTablePanel).tableName}`,
+                      'er-diagram': t('erDiagram.title'),
                     };
                     const icon = iconMap[panel.type];
                     const label = labelMap[panel.type];
@@ -606,6 +644,17 @@ export function SqlConnectionView({
               />
             )}
 
+            {activePanel?.type === 'er-diagram' && currentDatabase && (
+              <div className="flex min-h-0 flex-1 flex-col">
+                <ErDiagramView
+                  connectionId={connectionId}
+                  database={currentDatabase}
+                  focusTable={(activePanel as ErDiagramPanel).focusTable}
+                  onSelectTable={handleSelectTable}
+                />
+              </div>
+            )}
+
             {!activePanel && (
               <div className="flex flex-1 items-center justify-center text-fg-muted">
                 <div className="text-center">
@@ -693,6 +742,14 @@ export function SqlConnectionView({
               <div className="my-1 h-px bg-edge" />
             </>
           )}
+          <button
+            type="button"
+            className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[13px] text-fg-secondary hover:bg-surface-raised hover:text-fg"
+            onClick={() => handleTableCtxAction('er-focus')}
+          >
+            <GitFork className="h-3.5 w-3.5" />
+            {t('erDiagram.focusTable')}
+          </button>
           <button
             type="button"
             className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[13px] text-fg-secondary hover:bg-surface-raised hover:text-fg"

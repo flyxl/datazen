@@ -2,9 +2,11 @@
 
 > [返回架构总览](../README.md)
 
-## 1、连接管理服务
+## 1. 连接管理服务
 
 ### 1.1 连接池管理器
+
+> **注意**：下方代码为设计文档示例，实际实现位于 `src-tauri/src/services/connection_manager.rs`，已包含连接去重锁（`connect_locks`）等增强功能。
 
 ```rust
 // src-tauri/src/services/connection_manager.rs
@@ -192,9 +194,27 @@ pub enum ConnectionError {
 }
 ```
 
+### 1.2 连接去重锁
+
+`ConnectionManager` 使用 `connect_locks: Mutex<HashMap<String, Arc<Mutex<()>>>>` 防止对同一连接配置的并发连接请求创建重复连接。当多个窗口同时请求同一连接时，只有第一个请求实际执行连接，后续请求等待并复用已建立的连接。
+
+### 1.3 QueryExecutor
+
+`src-tauri/src/services/query_executor.rs` 负责表数据浏览的 SQL 构建：
+- `build_select_sql` — 根据驱动元数据构建 SELECT 语句（含分页、筛选、排序）
+- 条件性 `OFFSET`：通过 `DatabaseDriver::supports_offset()` 控制（Presto/Trino 不支持 OFFSET）
+- 条件性 `COUNT` 查询：通过 `skip_count_query()` 控制
+
+### 1.4 DbTools
+
+`src-tauri/src/services/db_tools.rs` — 共享数据库操作工具，被 AI Chat 工具调用和 MCP Server 复用：
+- `resolve_connection()` — 解析连接 ID 获取驱动和句柄
+- `list_connections()` — 列出所有可用连接
+- `run_query()` — 在指定连接上执行 SQL
+
 ---
 
-## 2、资源安全与防泄露
+## 2. 资源安全与防泄露
 
 ### 2.1 连接泄露防护
 

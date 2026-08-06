@@ -164,3 +164,45 @@ pub async fn get_table_data(
     tracing::info!(%connection_id, %table, rows = result.rows.len(), ms = start.elapsed().as_millis() as u64, "get_table_data OK");
     Ok(result)
 }
+
+#[tauri::command]
+pub async fn get_er_data(
+    state: State<'_, AppState>,
+    connection_id: String,
+    database: String,
+) -> Result<Vec<TableSchema>, CommandError> {
+    let start = Instant::now();
+    tracing::info!(%connection_id, %database, "get_er_data");
+    let (driver, handle) = state
+        .connection_manager
+        .get_connection(&connection_id)
+        .await
+        .cmd_err("get_er_data")?;
+
+    let tables = driver
+        .get_tables(&handle, &database)
+        .await
+        .cmd_err("get_er_data")?;
+
+    let mut schemas = Vec::with_capacity(tables.len());
+    for table in &tables {
+        match state
+            .schema_cache
+            .get_table_schema(&connection_id, &database, &table.name, &driver, &handle)
+            .await
+        {
+            Ok(schema) => schemas.push(schema),
+            Err(e) => {
+                tracing::warn!(table = %table.name, error = %e, "get_er_data: skipping table");
+            }
+        }
+    }
+
+    tracing::info!(
+        %connection_id, %database,
+        tables = schemas.len(),
+        ms = start.elapsed().as_millis() as u64,
+        "get_er_data OK"
+    );
+    Ok(schemas)
+}

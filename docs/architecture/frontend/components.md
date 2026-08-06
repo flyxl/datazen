@@ -571,8 +571,16 @@ DataTable (容器)
 │       └── CellRenderer  # 按数据类型渲染
 │           └── EditableCell  # 编辑模式
 ├── FilterBar           # 当前筛选条件展示
-└── Pagination          # 分页控制
+├── Pagination          # 分页控制
+├── DataExportDialog    # 数据导出对话框（CSV/TSV/JSON/SQL INSERT/SQL UPDATE）
+└── ContextMenu         # 右键菜单（含导出选中行）
 ```
+
+**数据导出功能**：
+- 工具栏「导出」按钮导出全部数据
+- 右键菜单导出选中行
+- 支持 5 种格式：CSV、TSV、JSON、SQL INSERT、SQL UPDATE
+- 通过 Tauri 原生对话框选择保存路径
 
 Props 接口：
 
@@ -883,6 +891,48 @@ export async function openQueryWindow(connectionId: string, database: string) {
 | 集成测试 | WebdriverIO | 窗口创建/关闭, 连接流程, 查询执行 |
 | 性能测试 | WebdriverIO + Chrome DevTools | 10 万行滚动帧率, 内存占用 |
 | 快照测试 | Storybook | 关键 UI 组件视觉回归 |
+
+## 8. ER 图（Entity-Relationship Diagram）
+
+基于 **React Flow**（`@xyflow/react`）的交互式数据库 ER 图组件。
+
+### 8.1 组件结构
+
+```
+SqlConnectionView
+├── 工具栏「ER 图」按钮 → 打开数据库级 ER 图
+├── Schema Tree 右键菜单「聚焦此表」→ 以该表为焦点的 ER 图
+└── ErDiagramView (src/windows/connection/ErDiagramView.tsx)
+    ├── ReactFlow 画布（拖拽、缩放、平移）
+    ├── TableNode — 自定义节点（表名、列列表含 PK/FK 徽章、可折叠列）
+    ├── FK 连线 — 动画箭头 + 列名标签
+    ├── 搜索栏 — 按表名搜索并高亮匹配节点（其余变暗）
+    ├── 导出 — PNG / SVG（基于 html-to-image）
+    └── 统计面板 — 表数量 + 关系数量
+```
+
+### 8.2 核心模块
+
+| 文件 | 职责 |
+|------|------|
+| `ErDiagramView.tsx` | 主视图组件，获取 ER 数据、渲染画布、导出/搜索控制 |
+| `er/TableNode.tsx` | React Flow 自定义节点，渲染表名 + 列 + PK/FK 标记，支持折叠 |
+| `er/buildErGraph.ts` | `TableSchema[]` → React Flow nodes/edges 转换，自动布局 |
+
+### 8.3 数据流
+
+1. 后端 `get_er_data(connection_id, database)` 批量获取所有表的 `TableSchema`（含外键）
+2. `buildErGraph(schemas, focusTable?)` 生成 nodes 和 edges
+3. `focusTable` 参数控制焦点模式：仅显示目标表及其直接关联表
+4. React Flow 渲染，支持交互和导出
+
+## 9. PathInput 控件
+
+`src/components/ui/PathInput.tsx` — 统一的路径输入/选择控件：
+- 左侧：文本输入框（可手动输入路径）
+- 右侧：「浏览」按钮（调用 Tauri Dialog API 选择文件或目录）
+- 支持 `mode` 属性：`file` / `directory` / `save`
+- 已在所有需要路径输入的位置替换（SQLite 数据库路径、备份路径、上下文目录等）
 
 ## 10. 开发阶段规划
 
