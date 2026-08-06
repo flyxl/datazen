@@ -196,15 +196,20 @@ export function MainWindow() {
       markConnecting(cfg.id, cfg.database ?? null);
     }
 
+    const connectPromise = connectionCommands.connect(cfg.id);
+
+    connectPromise
+      .then((connId) => useActiveConnectionStore.getState().markConnected(cfg.id, connId))
+      .catch(() => {});
+
     const FAST_THRESHOLD_MS = 300;
     void (async () => {
       try {
         const connId = await Promise.race([
-          connectionCommands.connect(cfg.id),
+          connectPromise,
           new Promise<null>((r) => setTimeout(() => r(null), FAST_THRESHOLD_MS)),
         ]);
         if (connId) {
-          useActiveConnectionStore.getState().markConnected(cfg.id, connId);
           openConnectionWindow({ connectionId: connId }, cfg.name, cfg.database, cfg.databaseType);
         } else {
           openConnectionWindow({ configId: cfg.id }, cfg.name, cfg.database, cfg.databaseType);
