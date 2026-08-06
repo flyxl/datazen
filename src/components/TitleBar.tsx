@@ -42,13 +42,40 @@ export function TitleBar({ title, leftContent, rightContent }: TitleBarProps) {
     return () => { unlisten?.(); };
   }, [isMac]);
 
-  const handleDragMouseDown = useCallback(async (e: React.MouseEvent) => {
+  /**
+   * Windows/Linux title bar dragging.
+   *
+   * Drag does not start on mousedown; we wait for a small movement
+   * threshold first. Calling startDragging() immediately on mousedown
+   * enters a native modal drag loop on Windows, which swallows the
+   * mouse-up and can leave subsequent clicks in the webview dead until
+   * focus changes. Waiting for real movement keeps plain clicks intact
+   * (same fix Wails applied for frameless-window drag).
+   */
+  const handleDragMouseDown = useCallback((e: React.MouseEvent) => {
     if (isMac) return;
     if (e.button !== 0) return;
     if ((e.target as HTMLElement).closest('button, a, input, [data-no-drag]')) return;
 
-    const { getCurrentWindow } = await import('@tauri-apps/api/window');
-    await getCurrentWindow().startDragging();
+    const startX = e.clientX;
+    const startY = e.clientY;
+
+    const cleanup = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', cleanup);
+    };
+
+    const onMove = (ev: MouseEvent) => {
+      if (Math.abs(ev.clientX - startX) < 4 && Math.abs(ev.clientY - startY) < 4) return;
+      cleanup();
+      void (async () => {
+        const { getCurrentWindow } = await import('@tauri-apps/api/window');
+        await getCurrentWindow().startDragging();
+      })();
+    };
+
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', cleanup);
   }, [isMac]);
 
   const leftPad = isMac && !isFullscreen ? 'pl-[78px]' : 'pl-3';
