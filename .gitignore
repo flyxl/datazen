@@ -60,3 +60,4 @@ src-tauri/tests/.env.test
 # Duplicate lockfiles (pnpm uses pnpm-lock.yaml; Cargo workspace uses root Cargo.lock)
 package-lock.json
 src-tauri/Cargo.lockwindows.png
+.worktrees/
