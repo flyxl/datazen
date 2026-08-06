@@ -17,13 +17,13 @@
   },
   "kiwi": {
     "source": "git",
-    "git": "https://github.com/flyxl/datazen-plugin-kiwi.git",
+    "git": "https://github.com/flyxl/datazen-driver-kiwi.git",
     "feature": "plugin-kiwi",
     "description": "Kiwi cloud database proxy"
   },
   "olap": {
     "source": "git",
-    "git": "https://github.com/flyxl/datazen-plugin-olap.git",
+    "git": "https://github.com/flyxl/datazen-driver-olap.git",
     "feature": "plugin-olap",
     "description": "Presto / Trino OLAP engines"
   },
