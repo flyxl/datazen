@@ -36,6 +36,11 @@ pub trait DatabaseDriver: Send + Sync {
         true
     }
 
+    /// Whether the driver supports EXPLAIN query plan analysis.
+    fn supports_explain(&self) -> bool {
+        true
+    }
+
     fn format_sql_literal(&self, value: &Option<Value>) -> String {
         match value {
             None | Some(Value::Null) => "NULL".to_string(),
