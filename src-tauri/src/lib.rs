@@ -17,7 +17,9 @@ use std::time::Instant;
 use std::collections::HashMap;
 #[cfg(target_os = "macos")]
 use tauri::menu::{CheckMenuItemBuilder, MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder};
-use tauri::{Emitter, Manager};
+#[cfg(target_os = "macos")]
+use tauri::Emitter;
+use tauri::Manager;
 use ai::{init_ai_providers, SchemaContextBuilder};
 use commands::AppState;
 use db::init_drivers;
@@ -26,7 +28,6 @@ use services::ConnectionManager;
 use store::Store;
 use sync::adapters::init_sync_adapters;
 
-#[cfg(target_os = "macos")]
 pub(crate) fn menu_labels(lang: &str) -> HashMap<String, String> {
     static MENU_JSON: &str = include_str!("../resources/menu-labels.json");
 
@@ -364,21 +365,17 @@ pub fn run() {
                 );
             });
 
-            let t_theme = Instant::now();
-            let initial_settings = tauri::async_runtime::block_on(
-                app_state.store.get_settings(),
-            );
-            tracing::info!("[startup]   get_settings: {:?}", t_theme.elapsed());
-
             app.manage(app_state);
 
             let _ = app.get_webview_window("main");
 
-            // Native menu only on macOS (goes to system menu bar).
-            // On Windows with decorations:false, the native menu bar conflicts
-            // with the webview and blocks mouse events (tauri-apps/tauri#12074).
             #[cfg(target_os = "macos")]
             {
+                let t_settings = Instant::now();
+                let initial_settings = tauri::async_runtime::block_on(
+                    handle.state::<AppState>().store.get_settings(),
+                );
+                tracing::info!("[startup]   get_settings: {:?}", t_settings.elapsed());
                 let t_menu = Instant::now();
                 setup_menu(&handle, &initial_settings.theme, &initial_settings.language)?;
                 tracing::info!("[startup]   build menu: {:?}", t_menu.elapsed());
@@ -479,10 +476,10 @@ pub fn run() {
             commands::workflow_history_clear,
             rebuild_menu,
         ])
-        .on_window_event(|window, event| {
+        .on_window_event(|_window, _event| {
             #[cfg(target_os = "macos")]
-            if let tauri::WindowEvent::Resized(size) = event {
-                let win = window.clone();
+            if let tauri::WindowEvent::Resized(size) = _event {
+                let win = _window.clone();
                 let size = *size;
                 std::thread::spawn(move || {
                     std::thread::sleep(std::time::Duration::from_millis(200));
