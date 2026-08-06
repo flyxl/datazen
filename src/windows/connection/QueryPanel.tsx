@@ -77,7 +77,9 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
   const loadColumnMap = useSchemaStore((s) => s.loadColumnMap);
   const loadTables = useSchemaStore((s) => s.loadTables);
 
-  const isMultiDb = !!(databaseType && DB_REGISTRY[databaseType as keyof typeof DB_REGISTRY]?.hasMultiDatabase);
+  const dbMeta = databaseType ? DB_REGISTRY[databaseType as keyof typeof DB_REGISTRY] : undefined;
+  const isMultiDb = !!dbMeta?.hasMultiDatabase;
+  const supportsExplain = dbMeta?.supportsExplain !== false;
 
   const editorSchema: SqlSchema = useMemo(() => {
     const result: SqlSchema = {};
@@ -197,15 +199,17 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
             {t('query.stop')}
           </Button>
         )}
-        <Button
-          variant="ghost"
-          className="h-7 gap-1 px-2 text-xs"
-          onClick={() => void handleExplain()}
-          disabled={tab.running || !tab.sql.trim()}
-        >
-          <FileSearch className="h-3.5 w-3.5" />
-          {t('explain.title')}
-        </Button>
+        {supportsExplain && (
+          <Button
+            variant="ghost"
+            className="h-7 gap-1 px-2 text-xs"
+            onClick={() => void handleExplain()}
+            disabled={tab.running || !tab.sql.trim()}
+          >
+            <FileSearch className="h-3.5 w-3.5" />
+            {t('explain.title')}
+          </Button>
+        )}
         <span className="text-[11px] text-fg-muted">⌘+Enter {t('query.execute')}</span>
         <div className="flex-1" />
         {tab.executionTimeMs != null && (
