@@ -22,6 +22,7 @@ const en: Record<TranslationKey, string> = {
   'common.hint': 'Hint',
   'common.rows': 'rows',
   'common.columns': 'columns',
+  'common.browse': 'Browse',
 
   // ── Menu (native) ──
   'menu.file': 'File',

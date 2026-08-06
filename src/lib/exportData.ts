@@ -1,7 +1,7 @@
 import type { ColumnSchema, DatabaseType } from '../types';
 import { escapeIdent } from './databaseTypes';
 
-export type ExportFormat = 'csv' | 'json' | 'sql_insert' | 'sql_update';
+export type ExportFormat = 'csv' | 'tsv' | 'json' | 'sql_insert' | 'sql_update';
 export type ExportScope = 'current_page' | 'selected';
 
 interface ExportOptions {
@@ -57,6 +57,19 @@ export function generateExport(options: ExportOptions): { content: string; exten
       return { content: [header, ...body].join('\n'), extension: 'csv', mimeType: 'text/csv' };
     }
 
+    case 'tsv': {
+      const escapeTSV = (v: unknown) => {
+        if (v === null || v === undefined) return '';
+        const s = typeof v === 'object' ? JSON.stringify(v) : String(v);
+        return s.replaceAll('\t', ' ').replaceAll('\n', ' ').replaceAll('\r', '');
+      };
+      const header = cols.map(escapeTSV).join('\t');
+      const body = dataRows.map((row) =>
+        cols.map((col) => escapeTSV(row[col])).join('\t'),
+      );
+      return { content: [header, ...body].join('\n'), extension: 'tsv', mimeType: 'text/tab-separated-values' };
+    }
+
     case 'json': {
       const data = dataRows.map((row) => {
         const obj: Record<string, unknown> = {};
@@ -93,7 +106,60 @@ export function generateExport(options: ExportOptions): { content: string; exten
 
 export function getDefaultFilename(tableName: string, format: ExportFormat): string {
   const ts = new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-');
-  const extMap: Record<ExportFormat, string> = { csv: 'csv', json: 'json', sql_insert: 'sql', sql_update: 'sql' };
+  const extMap: Record<ExportFormat, string> = { csv: 'csv', tsv: 'tsv', json: 'json', sql_insert: 'sql', sql_update: 'sql' };
   const ext = extMap[format];
   return `${tableName}_${ts}.${ext}`;
+}
+
+/**
+ * Generate export from array-based data (used by DataTable).
+ * Converts column names + 2D row arrays into record format and delegates to generateExport.
+ */
+export function generateExportFromArrays(options: {
+  columnNames: string[];
+  rows: unknown[][];
+  selectedRows?: Set<number>;
+  scope?: ExportScope;
+  format: ExportFormat;
+  tableName?: string;
+  databaseType?: string;
+}): { content: string; extension: string; mimeType: string } {
+  const {
+    columnNames,
+    rows,
+    selectedRows = new Set<number>(),
+    scope = 'current_page',
+    format,
+    tableName = 'data',
+    databaseType,
+  } = options;
+
+  const recordRows: Record<string, unknown>[] = rows.map((row) => {
+    const obj: Record<string, unknown> = {};
+    for (let i = 0; i < columnNames.length; i++) {
+      obj[columnNames[i]] = row[i] ?? null;
+    }
+    return obj;
+  });
+
+  const columns: ColumnSchema[] = columnNames.map((name) => ({
+    name,
+    dataType: 'text',
+    nullable: true,
+    isPrimaryKey: false,
+    isAutoIncrement: false,
+    defaultValue: undefined,
+    comment: undefined,
+  }));
+
+  return generateExport({
+    tableName,
+    columns,
+    rows: recordRows,
+    selectedRows,
+    scope,
+    selectedColumns: columnNames,
+    format,
+    databaseType,
+  });
 }

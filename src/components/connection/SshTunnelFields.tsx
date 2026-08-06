@@ -1,5 +1,6 @@
 import { FileKey2, KeyRound } from 'lucide-react';
 import { Input } from '../ui/Input';
+import { PathInput } from '../ui/PathInput';
 import { useI18n } from '../../hooks/useI18n';
 import { cn } from '../../lib/cn';
 import { Label } from './shared';
@@ -100,9 +101,9 @@ export function SshTunnelFields({ form, innerPanelClassName = 'bg-surface' }: Ss
             <>
               <div className="md:col-span-2">
                 <Label required>{t('newConn.privateKey')}</Label>
-                <Input
+                <PathInput
                   value={form.sshKeyPath}
-                  onChange={(e) => form.setSshKeyPath(e.target.value)}
+                  onChange={form.setSshKeyPath}
                   placeholder="~/.ssh/id_rsa"
                   onKeyDown={form.tabFill(form.setSshKeyPath)}
                 />

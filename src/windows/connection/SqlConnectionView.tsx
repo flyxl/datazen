@@ -562,7 +562,7 @@ export function SqlConnectionView({
                     <TableView connectionId={connectionId} database={currentDatabase ?? ''} tableName={activePanel.tableName} />
                   )}
                   {activePanel.subTab === 'structure' && (
-                    <StructureView connectionId={connectionId} tableName={activePanel.tableName} onEditStructure={handleAlterTable} />
+                    <StructureView connectionId={connectionId} tableName={activePanel.tableName} onEditStructure={isReadOnly ? undefined : handleAlterTable} />
                   )}
                   {activePanel.subTab === 'indexes' && (
                     <IndexesView connectionId={connectionId} tableName={activePanel.tableName} createIndexTrigger={createIndexTrigger} databaseType={databaseType} />

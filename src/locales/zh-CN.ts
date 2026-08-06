@@ -20,6 +20,7 @@ const zhCN = {
   'common.hint': '提示',
   'common.rows': '行',
   'common.columns': '列',
+  'common.browse': '浏览',
 
   // ── Menu (native) ──
   'menu.file': '文件',
