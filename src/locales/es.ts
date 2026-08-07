@@ -31,7 +31,7 @@ const translations = {
   'menu.redo': 'Rehacer',
   'menu.cut': 'Cortar',
   'menu.copy': 'Copiar',
-  'menu.paste': 'Pasta',
+  'menu.paste': 'Pegar',
   'menu.selectAll': 'Seleccionar todo',
   'menu.view': 'Vista',
   'menu.themeLight': 'Luz',
