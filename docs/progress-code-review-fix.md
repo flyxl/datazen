@@ -152,7 +152,7 @@
 
 - **实现**：`export_connections_with_dialog` / `import_connections_with_dialog`（空口令拒绝、按 id 覆盖合并）；原生菜单 + `MenuBar` 四项 Tools；`ConnectionShareDialog` 口令 UI
 - **单元测试**：`cargo test -p datazen --lib commands::config` — 8 passed；`pathIpcWiring` + `locales` vitest — pass
-- **提交**：待提交
+- **提交**：`4f8d2f3`
 
 ## 延期 / 范围外
 
