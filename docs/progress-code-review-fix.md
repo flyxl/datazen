@@ -15,17 +15,17 @@
 | S5 | 路径 IPC 收紧 | ✅ | ✅ | ✅ path-ipc E2E | ✅ |
 | S6 | ZIP 炸弹防护 | ✅ | ✅ 24 lib | ✅ unit+E2E | ✅ |
 | S7 | MCP query 默认/硬顶 | ✅ | ✅ resolve_query_limit | ✅ unit | ✅ |
-| C1 | MCP/GUI data dir 统一 | ⬜ | ⬜ | ⬜ | ⬜ |
+| C1 | MCP/GUI data dir 统一 | ✅ | ✅ store:: 2 | ⬜ N/A | ✅ c59281e |
 | C2 | 语系真翻译或 beta | ⬜ | ⬜ | ⬜ | ⬜ |
 | C3 | Pro 文案与插件矩阵对齐 | ⬜ | ⬜ | ⬜ | ⬜ |
 | C4 | 插件钉 commit/tag | ⬜ | ⬜ | ⬜ | ⬜ |
-| C5 | 成功/错误对话框分流 | ⬜ | ⬜ | ⬜ | ⬜ |
+| C5 | 成功/错误对话框分流 | ✅ | ✅ tsc | ⬜ UI | ✅ f28a11f |
 | C6 | connection_id 语义统一 | ⬜ | ⬜ | ⬜ | ⬜ |
 | C7 | rebuild_menu 去 block_on | ⬜ | ⬜ | ⬜ | ⬜ |
-| E1 | PR CI（vitest + cargo test） | ⬜ | ⬜ | ⬜ | ⬜ |
-| E2 | `.gitignore` 粘连拆分 | ⬜ | ⬜ | ⬜ | ⬜ |
-| E3 | AGENTS / 插件默认对齐 | ⬜ | ⬜ | ⬜ | ⬜ |
-| E4 | E2E 快速构建路径 | ⬜ | ⬜ | ⬜ | ⬜ |
+| E1 | PR CI（vitest + cargo test） | ✅ | ✅ smoke | ⬜ CI | ✅ 732e0e8 |
+| E2 | `.gitignore` 粘连拆分 | ✅ | ⬜ N/A | ⬜ N/A | ✅ cadef68 |
+| E3 | AGENTS / 插件默认对齐 | ✅ | ⬜ N/A | ⬜ N/A | ✅ 244b385 |
+| E4 | E2E 快速构建路径 | ✅ | ✅ node --check | ⬜ E2E | ✅ 0951254 |
 | E5 | Store 原子写 | ⬜ | ⬜ | ⬜ | ⬜ |
 | E6 | DB 能力显式 opt-in | ⬜ | ⬜ | ⬜ | ⬜ |
 | E7 | 死代码清理 | ⬜ | ⬜ | ⬜ | ⬜ |
@@ -82,3 +82,36 @@
 - **实现**：persist/load 加密/解密 `ssh_tunnel.password` / `passphrase`
 - **测试 Agent**：PASS（store 5 tests）
 - **已知低风险**：旧明文 SSH 字段无迁移路径（解密失败则清空）
+
+### C1 — MCP/GUI data dir 统一
+
+- **实现**：`Store::default_app_data_dir()` + `APP_IDENTIFIER`（`com.tbeasy.datazen`）；MCP stdio 与 `resolve_log_settings` 共用
+- **单元测试**：`store::tests::default_app_data_dir_*` — 2 passed
+- **提交**：`c59281e`
+
+### C5 — 成功/错误对话框分流
+
+- **实现**：MainWindow 统一 `showMessageDialog`；导出/恢复成功用 `common.success`，失败用 `common.error`
+- **冒烟**：`pnpm exec tsc --noEmit`
+- **提交**：`f28a11f`
+
+### E1 — PR CI
+
+- **实现**：`.github/workflows/ci.yml` — `pnpm test:unit`、`cargo test -p datazen --lib`、`cargo test -p datazen-ai-api --lib`
+- **提交**：`732e0e8`
+
+### E2 — `.gitignore` 粘连拆分
+
+- **实现**：`src-tauri/Cargo.lock` 与 `windows.png` 分两行
+- **提交**：`cadef68`
+
+### E3 — AGENTS / 插件默认对齐
+
+- **实现**：文档标明 `pnpm tauri:dev` 默认 `all` 插件；补充 `--plugins=none` / `DATAZEN_PLUGINS`
+- **提交**：`244b385`
+
+### E4 — E2E 快速构建路径
+
+- **实现**：`pnpm e2e:minimal`、`--minimal-plugins`、`DATAZEN_PLUGINS=none`；`docs/e2e-testing.md` 说明
+- **冒烟**：`node --check e2e/run.mjs`
+- **提交**：`0951254`
