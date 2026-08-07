@@ -7,9 +7,11 @@ mod i18n_locale;
 pub mod mcp;
 mod plugin_init;
 mod services;
+mod ssh_known_hosts;
 pub mod ssh_tunnel;
 mod store;
 pub mod sync;
+pub mod workflow;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -299,8 +301,8 @@ fn finish_app_state(
             connection_manager,
         )),
         prompt_resolver: Arc::new(ai::PromptResolver::new(&data_dir, prompts_dir)),
-        workflow_registry: Arc::new(mcp::WorkflowRegistry::new(data_dir.join("workflows"))),
-        workflow_history: Arc::new(mcp::WorkflowHistoryManager::new(
+        workflow_registry: Arc::new(workflow::WorkflowRegistry::new(data_dir.join("workflows"))),
+        workflow_history: Arc::new(workflow::WorkflowHistoryManager::new(
             data_dir.join("workflow_history"),
         )),
         mcp_client_manager: Arc::new(mcp::McpClientManager::new()),
@@ -463,16 +465,26 @@ pub fn run() {
             commands::save_settings,
             commands::get_log_path,
             commands::open_path,
+            commands::open_log_dir,
+            commands::open_workflows_dir,
+            commands::open_context_dir,
             commands::export_connections,
             commands::import_connections_preview,
             commands::export_app_data,
+            commands::export_app_data_with_dialog,
             commands::import_app_data,
+            commands::import_app_data_with_dialog,
             commands::restart_app,
             commands::write_file,
             commands::write_file_base64,
             commands::read_file,
+            commands::save_text_with_dialog,
+            commands::save_base64_with_dialog,
+            commands::open_text_with_dialog,
             commands::backup_database,
+            commands::backup_database_with_dialog,
             commands::restore_database,
+            commands::restore_database_with_dialog,
             commands::compare_databases,
             commands::sync_table,
             commands::sync_tables,
@@ -514,6 +526,7 @@ pub fn run() {
             commands::adb_list_packages,
             commands::adb_list_databases,
             commands::adb_pull_database,
+            commands::adb_pull_database_with_dialog,
             commands::prompt_list,
             commands::prompt_set_override,
             commands::prompt_remove_override,

@@ -10,9 +10,9 @@
 |----|------|------|----------|------------|------|
 | S1 | ZIP 导出排除 `.key` | ✅ | ✅ 18 lib | ✅ ADB-008 + unit | ✅ 见下 |
 | S2 | 导入原子化 / 可回滚 | ✅ | ✅ 19 lib | ✅ unit+E2E | ✅ 见下 |
-| S3 | SSH known_hosts / TOFU | ⬜ | ⬜ | ⬜ | ⬜ |
-| S4 | SSH 密码加密存储 | ⬜ | ⬜ | ⬜ | ⬜ |
-| S5 | 路径 IPC 收紧 | ✅ 先行 | ✅ | ✅ path-ipc E2E | ⬜（随后续提交） |
+| S3 | SSH known_hosts / TOFU | ✅ | ✅ 11 ssh_tunnel | ✅ unit | ✅ |
+| S4 | SSH 密码加密存储 | ✅ | ✅ store:: 5 | ✅ unit | ✅ |
+| S5 | 路径 IPC 收紧 | ✅ 先行 | ✅ | ✅ path-ipc E2E | ⬜（随后提交） |
 | S6 | ZIP 炸弹防护 | ✅ | ✅ 24 lib | ✅ unit+E2E | ✅ |
 | S7 | MCP query 默认/硬顶 | ✅ | ✅ resolve_query_limit | ✅ unit | ✅ |
 | C1 | MCP/GUI data dir 统一 | ⬜ | ⬜ | ⬜ | ⬜ |
@@ -70,6 +70,16 @@
 - **测试 Agent**：PASS（3 unit）
 - **提交**：本系列提交
 
-### S3 — （待填）
+### S3 — SSH known_hosts / TOFU
 
-（开发完成后更新）
+- **实现**：`ssh_known_hosts.json` TOFU；指纹不匹配拒绝
+- **测试 Agent**：PASS（11 unit）；E2E 定为 UNIT-COVERED
+- **已知低风险**：无 UI 指纹确认；损坏 known_hosts 会重新 TOFU
+
+### S4 — SSH 密码加密存储
+
+- **实现**：persist/load 加密/解密 `ssh_tunnel.password` / `passphrase`
+- **测试 Agent**：PASS（store 5 tests）
+- **已知低风险**：旧明文 SSH 字段无迁移路径（解密失败则清空）
+
+### S5 — （待提交先行改动）
