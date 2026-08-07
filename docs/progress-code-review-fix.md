@@ -31,7 +31,7 @@
 | E6 | DB 能力显式 opt-in | ✅ | ✅ databaseTypes | ✅ | ✅ 8129e59 |
 | E7 | 死代码清理 | ✅ | ✅ tsc | ✅ | ✅ 1c19005 |
 | E8 | 文档刷新 | ✅ | ⬜ N/A | ✅ | ✅ 4cb3328 |
-| P4 | SQL/NL 日志降级 debug | ⬜ | ⬜ | ⬜ | ⬜ |
+| P4 | SQL/NL 日志降级 debug | ✅ | ✅ log_hygiene | ⬜ | ✅ a5eeea9 |
 | P5 | splash 等 bootstrap + 错误 i18n | ⬜ | ⬜ | ⬜ | ⬜ |
 | C6R | connection_id → config_id 硬切换 | ⬜ | ⬜ | ⬜ | ⬜ |
 | S1+ | 导出后提示并另存 `.key` | ⬜ | ⬜ | ⬜ | ⬜ |
@@ -129,6 +129,12 @@
 ### Workflow 模块拆分
 
 - **提交**：`2016fbc`
+
+### P4 — SQL/NL 日志降级 debug
+
+- **实现**：`execute_query` / AI 命令 / workflow query 步骤：info 仅记录长度与元数据，SQL/NL/错误正文/工具参数预览移至 `tracing::debug!`
+- **单元测试**：`cargo test -p datazen --lib commands::query::log_hygiene_tests` — 1 passed（RED → GREEN TDD）
+- **提交**：`5fbd358`
 
 ## 延期 / 范围外
 
