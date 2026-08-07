@@ -658,6 +658,7 @@ mod tests {
     #[test]
     fn export_rejects_empty_password() {
         assert!(validate_share_password("").is_err());
+        assert!(validate_share_password("   ").is_err());
         assert!(validate_share_password("secret").is_ok());
     }
 
