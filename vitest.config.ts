@@ -13,5 +13,18 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
     include: ['src/**/*.test.{ts,tsx}'],
+    coverage: {
+      provider: 'v8',
+      include: [
+        'src/lib/resolveUiLanguage.ts',
+        'src/locales/index.ts',
+      ],
+      thresholds: {
+        lines: 75,
+        functions: 75,
+        branches: 70,
+        statements: 75,
+      },
+    },
   },
 });

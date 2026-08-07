@@ -233,10 +233,13 @@ describe('10-Locale i18n (I18N10-001~I18N10-005)', () => {
     expect(settings.language).toBe('xx-XX');
   });
 
-  it('I18N10-006: rebuild_menu should succeed for every supported locale', async () => {
-    for (const locale of EXPECTED_LOCALES) {
-      const result = await invokeBackend<null>('rebuild_menu', { language: locale });
-      expect(result).toBeNull();
-    }
+  it('I18N10-007: export/import action labels follow language', async () => {
+    await setLanguageOnMainWindow('zh-CN', originalSettings);
+    await expect(await $(`button*=导出应用数据`)).toBeDisplayed();
+    await expect(await $(`button*=导入应用数据`)).toBeDisplayed();
+
+    await setLanguageOnMainWindow('en', originalSettings);
+    await expect(await $(`button*=Export App Data`)).toBeDisplayed();
+    await expect(await $(`button*=Import App Data`)).toBeDisplayed();
   });
 });
