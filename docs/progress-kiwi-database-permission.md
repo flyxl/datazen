@@ -1,0 +1,35 @@
+# 进度：修复 Kiwi「无权限 / 加载数据库失败」
+
+> 分支：`fix/kiwi-database-permission-load`  
+> 现象：连接成功、`get_databases` 返回 8 个库后，`get_tables` 报  
+> `The user does not have permission for the database afi-ph-useraccount-dbreader.aku`
+
+## 根因（已确认）
+
+Kiwi 连接配置里 `config.database` 表示的是 **实例 domain**（如 `afi-ph-useraccount-dbreader.aku`），不是逻辑库名。
+
+F6「配置了 database 则锁定单库」之后：
+
+1. `SchemaTree` 见 `initialDatabase=domain` → 走 `StandardSchemaTree`
+2. `resolveVisibleDatabases` 把可见库锁成 `[domain]`
+3. `get_tables(database=domain)` → API 200 但业务错误无权限
+
+日志证据：`domain` 与 `database` 查询参数同为 domain 字符串。
+
+## 功能拆分
+
+| ID | 功能 | 状态 | 提交 |
+|----|------|------|------|
+| F1 | `resolveVisibleDatabases`：仅当配置库 ∈ `get_databases` 结果时才锁定 | 🧪 testing | — |
+| F2 | `databaseFieldType: 'domain'` + SchemaTree 不对 domain 做单库锁定路由；Kiwi meta | 🔲 | — |
+
+## 测试记录
+
+| ID | 测试 agent | 报告 | 结论 |
+|----|------------|------|------|
+| F1 | — | — | — |
+| F2 | — | — | — |
+
+## 变更日志
+
+（按提交追加）
