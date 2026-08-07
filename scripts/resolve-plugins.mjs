@@ -348,7 +348,19 @@ export function hasPluginCommand(pluginId: string, command: string): boolean {
 /**
  * Clone or update plugin repositories into .plugins/<name>/.
  * Supports git (clone from remote) and local (symlink from local path).
+ * Git plugins may pin `ref` (commit SHA or tag) in plugins-registry.json.
  */
+function checkoutGitRef(pluginDir, ref) {
+  if (!ref) return;
+  try {
+    execSync(`git fetch --depth 1 origin ${ref}`, { cwd: pluginDir, stdio: 'pipe' });
+  } catch {
+    // Shallow fetch by SHA can fail on some hosts; fall back to full fetch.
+    execSync('git fetch origin', { cwd: pluginDir, stdio: 'pipe' });
+  }
+  execSync(`git checkout --detach ${ref}`, { cwd: pluginDir, stdio: 'pipe' });
+}
+
 function clonePlugins(plugins, registry) {
   mkdirSync(PLUGINS_DIR, { recursive: true });
 
@@ -371,12 +383,27 @@ function clonePlugins(plugins, registry) {
       execSync(`ln -s ${localPath} ${pluginDir}`, { stdio: 'pipe' });
       console.log(`[resolve-plugins] linked ${name} → ${localPath}`);
     } else if (meta.source === 'git' && meta.git) {
+      const pinnedRef = meta.ref || meta.commit;
       if (existsSync(resolve(pluginDir, '.git'))) {
         console.log(`[resolve-plugins] updating ${name} ...`);
         try {
-          execSync('git pull --ff-only', { cwd: pluginDir, stdio: 'pipe' });
+          execSync('git fetch origin', { cwd: pluginDir, stdio: 'pipe' });
         } catch {
-          console.warn(`  [warn] git pull failed for "${name}", using existing checkout`);
+          console.warn(`  [warn] git fetch failed for "${name}", using existing checkout`);
+        }
+        if (pinnedRef) {
+          try {
+            checkoutGitRef(pluginDir, pinnedRef);
+            console.log(`  [resolve-plugins] ${name} checked out ${pinnedRef}`);
+          } catch {
+            console.warn(`  [warn] checkout ${pinnedRef} failed for "${name}", using HEAD`);
+          }
+        } else {
+          try {
+            execSync('git pull --ff-only', { cwd: pluginDir, stdio: 'pipe' });
+          } catch {
+            console.warn(`  [warn] git pull failed for "${name}", using existing checkout`);
+          }
         }
       } else if (existsSync(resolve(pluginDir, 'Cargo.toml'))) {
         // Local development: directory exists with source but no .git — keep as-is
@@ -387,7 +414,11 @@ function clonePlugins(plugins, registry) {
           execSync(`rm -rf ${pluginDir}`, { stdio: 'pipe' });
         }
         console.log(`[resolve-plugins] cloning ${name} from ${meta.git} ...`);
-        execSync(`git clone --depth 1 ${meta.git} ${pluginDir}`, { stdio: 'pipe' });
+        execSync(`git clone ${meta.git} ${pluginDir}`, { stdio: 'pipe' });
+        if (pinnedRef) {
+          checkoutGitRef(pluginDir, pinnedRef);
+          console.log(`  [resolve-plugins] ${name} pinned to ${pinnedRef}`);
+        }
       }
     }
   }
