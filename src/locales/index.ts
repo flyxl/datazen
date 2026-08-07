@@ -29,7 +29,7 @@ export type SupportedLocale = (typeof SUPPORTED_LOCALES)[number];
 /** Locales with complete translations (not English placeholders). */
 export const FULLY_TRANSLATED_LOCALES = [...SUPPORTED_LOCALES] as const satisfies readonly SupportedLocale[];
 
-/** Locales shipped as beta: UI labels show (Beta); missing keys fall back to English. */
+/** Former beta locales — now empty; all supported locales are fully translated. */
 export const BETA_LOCALES = [] as const satisfies readonly SupportedLocale[];
 
 export function isBetaLocale(locale: string): boolean {
