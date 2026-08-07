@@ -1,37 +1,62 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>DataZen — 轻量、免费、开源的人工智能数据库客户端</title>
-  <meta name="description" content="DataZen 是一款基于 Tauri 的跨平台桌面数据库客户端：AI 生成 SQL、EXPLAIN 分析、图表可视化、跨库 Workflow。支持 PostgreSQL、MySQL、SQLite、Redis。" />
-  <meta property="og:title" content="DataZen — AI 数据库客户端" />
-  <meta property="og:description" content="轻量、免费、开源。AI + 图表 + Workflow，把数据库工具带到下一个时代。" />
-  <meta property="og:image" content="https://flyxl.github.io/datazen/assets/screenshots/01-main-window.png" />
+  <title>DataZen — Lightweight, Free, Open-Source AI Database Client</title>
+  <meta name="description" content="DataZen is a Tauri-based cross-platform desktop database client: AI SQL generation, EXPLAIN analysis, charts, and cross-database Workflows. Supports PostgreSQL, MySQL, SQLite, and Redis." />
+  <link rel="canonical" href="https://flyxl.github.io/datazen/" />
+  <link rel="alternate" hreflang="en" href="https://flyxl.github.io/datazen/" />
+  <link rel="alternate" hreflang="zh-CN" href="https://flyxl.github.io/datazen/zh/" />
+  <link rel="alternate" hreflang="x-default" href="https://flyxl.github.io/datazen/" />
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="DataZen — Lightweight, Free, Open-Source AI Database Client" />
+  <meta property="og:description" content="DataZen is a Tauri-based cross-platform desktop database client: AI SQL generation, EXPLAIN analysis, charts, and cross-database Workflows. Supports PostgreSQL, MySQL, SQLite, and Redis." />
   <meta property="og:url" content="https://flyxl.github.io/datazen/" />
+  <meta property="og:image" content="https://flyxl.github.io/datazen/assets/screenshots/01-main-window.png" />
+  <meta property="og:locale" content="en_US" />
+  <meta property="og:locale:alternate" content="zh_CN" />
   <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="DataZen — Lightweight, Free, Open-Source AI Database Client" />
+  <meta name="twitter:description" content="DataZen is a Tauri-based cross-platform desktop database client: AI SQL generation, EXPLAIN analysis, charts, and cross-database Workflows. Supports PostgreSQL, MySQL, SQLite, and Redis." />
+  <meta name="twitter:image" content="https://flyxl.github.io/datazen/assets/screenshots/01-main-window.png" />
   <link rel="icon" href="assets/logo.png" />
   <link rel="stylesheet" href="assets/css/site.css" />
+  <script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "DataZen",
+  "applicationCategory": "DeveloperApplication",
+  "operatingSystem": "macOS, Windows",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+  "license": "https://www.gnu.org/licenses/gpl-3.0.html",
+  "url": "https://flyxl.github.io/datazen/",
+  "image": "https://flyxl.github.io/datazen/assets/screenshots/01-main-window.png",
+  "description": "Lightweight, free, open-source AI database client built with Tauri.",
+  "inLanguage": "en"
+}
+  </script>
 </head>
 <body>
   <header id="site-header"></header>
 
   <section class="hero">
     <div class="wrap">
-      <span class="hero-badge">v0.0.8 · 免费开源 · GPLv3</span>
-      <h1>把数据库工作交给 <span class="grad">AI</span><br />把数据变成可视化的图</h1>
+      <span class="hero-badge">v0.0.8 · Free &amp; Open Source · GPLv3</span>
+      <h1>Let <span class="grad">AI</span> handle the database work<br />Turn data into visual charts</h1>
       <p class="lead">
-        DataZen 是一款不到 10MB 的桌面数据库客户端：自然语言生成 SQL、一键诊断报错、
-        EXPLAIN 智能分析、查询结果图表化，还能用 YAML 编排跨库自动化工作流。
+        DataZen is a desktop database client under 10MB: natural-language SQL,
+        one-click error diagnosis, smart EXPLAIN analysis, charted query results,
+        and YAML workflows that span multiple databases.
       </p>
       <div class="hero-cta">
-        <a class="btn btn-primary btn-lg" href="download.html">立即下载</a>
-        <a class="btn btn-secondary btn-lg" href="https://github.com/flyxl/datazen" target="_blank" rel="noopener">GitHub 仓库</a>
+        <a class="btn btn-primary btn-lg" href="download.html">Download</a>
+        <a class="btn btn-secondary btn-lg" href="https://github.com/flyxl/datazen" target="_blank" rel="noopener">GitHub</a>
       </div>
-      <p class="hero-note">macOS · Windows · 支持 PostgreSQL / MySQL / MariaDB / SQLite / Redis</p>
-
+      <p class="hero-note">macOS · Windows · PostgreSQL / MySQL / MariaDB / SQLite / Redis</p>
       <div class="hero-shot">
-        <img src="assets/screenshots/01-main-window.png" alt="DataZen 主界面" />
+        <img src="assets/screenshots/01-main-window.png" alt="DataZen main window" />
       </div>
     </div>
   </section>
@@ -40,21 +65,21 @@
     <div class="wrap grid-3">
       <a class="card" href="ai.html" style="display:block">
         <div class="icon">🤖</div>
-        <h3>AI 助手</h3>
-        <p>自然语言生成 SQL、报错诊断、EXPLAIN 解读、AI Chat 侧栏、智能筛选，支持 OpenAI / Anthropic / DeepSeek / 自定义端点。</p>
-        <span class="tag">了解 AI 功能 →</span>
+        <h3>AI Assistant</h3>
+        <p>Natural-language SQL, error diagnosis, EXPLAIN insights, AI Chat sidebar, and smart filters. OpenAI / Anthropic / DeepSeek / custom endpoints.</p>
+        <span class="tag">Explore AI →</span>
       </a>
       <a class="card" href="charts.html" style="display:block">
         <div class="icon">📊</div>
-        <h3>图表可视化</h3>
-        <p>查询结果一键切图，自动推荐图表类型。折线、柱状、饼图、散点、面积，支持 PNG / SVG 导出。</p>
-        <span class="tag">了解图表功能 →</span>
+        <h3>Charts</h3>
+        <p>One-click chart view with smart type recommendations. Line, bar, pie, scatter, and area — export PNG / SVG.</p>
+        <span class="tag">Explore charts →</span>
       </a>
       <a class="card" href="workflow.html" style="display:block">
         <div class="icon">⚙️</div>
-        <h3>Workflow 自动化</h3>
-        <p>YAML 编排查询、AI 分析、条件分支与循环，支持跨库执行，可在界面、MCP 或 AI 对话中运行。</p>
-        <span class="tag">了解 Workflow →</span>
+        <h3>Workflow Automation</h3>
+        <p>YAML workflows for queries, AI analysis, branches, and loops. Run across databases from the UI, MCP, or chat.</p>
+        <span class="tag">Explore Workflow →</span>
       </a>
     </div>
   </section>
@@ -62,34 +87,34 @@
   <section class="section">
     <div class="wrap">
       <div class="center" style="margin-bottom:36px">
-        <h2 style="font-size:30px;margin-bottom:10px">不止是「又一个数据库客户端」</h2>
-        <p class="muted" style="font-size:16px">轻量、安全、可扩展，围绕开发者真实工作流设计</p>
+        <h2 style="font-size:30px;margin-bottom:10px">More than “yet another database client”</h2>
+        <p class="muted" style="font-size:16px">Lightweight, secure, and extensible — built around real developer workflows</p>
       </div>
       <div class="grid-4">
-        <div class="card"><div class="icon">⚡</div><h3>不到 10MB</h3><p>基于 Tauri v2 + Rust，安装包小巧，启动飞快，内存占用远低于传统 Java 客户端。</p></div>
-        <div class="card"><div class="icon">🛡️</div><h3>本地安全</h3><p>连接密码走系统钥匙串，SSH 凭据加密存储，无需云账号，数据不出本机。</p></div>
-        <div class="card"><div class="icon">🧩</div><h3>插件生态</h3><p>驱动级插件机制：kiwi、OLAP（Presto / Trino）、Superset 可编译注入，按需扩展。</p></div>
-        <div class="card"><div class="icon">🌍</div><h3>10 种语言</h3><p>en / 简体中文 / 繁体中文 / 日 / 韩 / 德 / 西 / 法 / 葡 / 俄，首次启动自动跟随系统语言。</p></div>
+        <div class="card"><div class="icon">⚡</div><h3>Under 10MB</h3><p>Tauri v2 + Rust: tiny installers, fast startup, far less memory than typical Java clients.</p></div>
+        <div class="card"><div class="icon">🛡️</div><h3>Local-first security</h3><p>Passwords in the OS keychain, encrypted SSH credentials, no cloud account — data stays on your machine.</p></div>
+        <div class="card"><div class="icon">🧩</div><h3>Plugin ecosystem</h3><p>Compile-time drivers: kiwi, OLAP (Presto / Trino), Superset — inject what you need.</p></div>
+        <div class="card"><div class="icon">🌍</div><h3>10 languages</h3><p>en / zh-CN / zh-TW / ja / ko / de / es / fr / pt / ru — follows system language on first launch.</p></div>
       </div>
     </div>
   </section>
 
   <section class="section" style="padding-top:0">
     <div class="wrap">
-      <h2 style="font-size:26px;margin-bottom:24px">产品截图</h2>
+      <h2 style="font-size:26px;margin-bottom:24px">Screenshots</h2>
       <div class="shots">
-        <img src="assets/screenshots/02-query-chart.png" alt="查询与图表" loading="lazy" />
-        <img src="assets/screenshots/03-ai-nl2sql.png" alt="AI 生成 SQL" loading="lazy" />
-        <img src="assets/screenshots/04-workflow.png" alt="Workflow" loading="lazy" />
+        <img src="assets/screenshots/02-query-chart.png" alt="Query results and charts" loading="lazy" />
+        <img src="assets/screenshots/03-ai-nl2sql.png" alt="AI-generated SQL" loading="lazy" />
+        <img src="assets/screenshots/04-workflow.png" alt="Workflow editor" loading="lazy" />
       </div>
     </div>
   </section>
 
   <section class="section">
     <div class="wrap center">
-      <h2 style="font-size:28px;margin-bottom:14px">现在就试试</h2>
-      <p class="muted" style="margin-bottom:24px">免费开源，无需注册，下载即用</p>
-      <a class="btn btn-primary btn-lg" href="download.html">前往下载页</a>
+      <h2 style="font-size:28px;margin-bottom:14px">Try it now</h2>
+      <p class="muted" style="margin-bottom:24px">Free and open source. No signup. Download and go.</p>
+      <a class="btn btn-primary btn-lg" href="download.html">Go to download</a>
     </div>
   </section>
 
