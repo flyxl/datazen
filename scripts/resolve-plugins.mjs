@@ -7,22 +7,34 @@
  *   --plugins="kiwi,olap"       (use preset registry names)
  *   --plugins="all"             (include all available plugins)
  *   --plugins="none"            (only built-in drivers: pg, mysql, sqlite, redis)
+ *   --restore                   (restore stashed clean managed files and exit)
  *
  * Environment variable alternative: DATAZEN_PLUGINS="kiwi,olap"
  *
+ * Managed files are renamed into .plugin-file-stash/ before injection, then
+ * restored with `node scripts/plugin-file-stash.mjs restore` after the build
+ * (tauri-dev / pre-commit / build wrappers call restore).
+ *
  * This script:
- * 1. Clones/updates plugin repos into .plugins/
- * 2. Generates Cargo feature flags for the Rust build
- * 3. Generates src/plugins/generated.ts for frontend integration
+ * 1. Stashes clean managed files (rename → .plugin-file-stash/)
+ * 2. Clones/updates plugin repos into .plugins/
+ * 3. Writes injected managed files + .plugin-features.json
  */
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { execSync } from 'child_process';
+import {
+  stashManagedFiles,
+  restoreManagedFiles,
+  managedReadPath,
+  workPath,
+  ROOT as STASH_ROOT,
+} from './plugin-file-stash.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const ROOT = resolve(__dirname, '..');
+const ROOT = STASH_ROOT;
 const PLUGINS_DIR = resolve(ROOT, '.plugins');
 
 function loadRegistry() {
@@ -339,7 +351,7 @@ export function hasPluginCommand(pluginId: string, command: string): boolean {
 }
 `;
 
-  const outPath = resolve(ROOT, 'src/plugins/generated.ts');
+  const outPath = workPath('src/plugins/generated.ts');
   mkdirSync(dirname(outPath), { recursive: true });
   writeFileSync(outPath, content);
   console.log(`[resolve-plugins] wrote ${outPath}`);
@@ -394,22 +406,23 @@ function clonePlugins(plugins, registry) {
 }
 
 /**
- * Replace content between marker comments in a file.
+ * Replace content between marker comments in a managed file.
+ * Reads the clean baseline from stash (when present), writes to the working path.
  * Markers: `# --- BEGIN <tag> ---` / `# --- END <tag> ---`
  */
-function replaceMarkerSection(filePath, tag, newContent) {
+function replaceMarkerSection(relPath, tag, newContent) {
   const begin = `# --- BEGIN ${tag} (managed by resolve-plugins.mjs, do not edit) ---`;
   const end = `# --- END ${tag} ---`;
-  const text = readFileSync(filePath, 'utf-8');
+  const text = readFileSync(managedReadPath(relPath), 'utf-8');
   const re = new RegExp(
     escapeRegex(begin) + '[\\s\\S]*?' + escapeRegex(end),
   );
   if (!re.test(text)) {
-    console.warn(`[resolve-plugins] marker "${tag}" not found in ${filePath}`);
+    console.warn(`[resolve-plugins] marker "${tag}" not found in ${relPath}`);
     return;
   }
   const body = newContent ? `${begin}\n${newContent}\n${end}` : `${begin}\n${end}`;
-  writeFileSync(filePath, text.replace(re, body));
+  writeFileSync(workPath(relPath), text.replace(re, body));
 }
 
 function escapeRegex(s) {
@@ -424,9 +437,6 @@ function escapeRegex(s) {
  *   cloned locally, so Cargo uses the local checkout instead of fetching
  */
 function updateCargoFiles(plugins, registry) {
-  const tauriCargoPath = resolve(ROOT, 'src-tauri/Cargo.toml');
-  const rootCargoPath = resolve(ROOT, 'Cargo.toml');
-
   // --- src-tauri/Cargo.toml: plugin deps ---
   const depLines = plugins.map(name => {
     const crateName = `datazen-plugin-${name}`;
@@ -436,7 +446,7 @@ function updateCargoFiles(plugins, registry) {
     }
     return `${crateName} = { path = "../.plugins/${name}", optional = true }`;
   });
-  replaceMarkerSection(tauriCargoPath, 'PLUGIN DEPS', depLines.join('\n'));
+  replaceMarkerSection('src-tauri/Cargo.toml', 'PLUGIN DEPS', depLines.join('\n'));
 
   // --- src-tauri/Cargo.toml: plugin features ---
   const featureLines = plugins.map(name => {
@@ -444,7 +454,7 @@ function updateCargoFiles(plugins, registry) {
     const crateName = `datazen-plugin-${name}`;
     return feature ? `${feature} = ["dep:${crateName}"]` : null;
   }).filter(Boolean);
-  replaceMarkerSection(tauriCargoPath, 'PLUGIN FEATURES', featureLines.join('\n'));
+  replaceMarkerSection('src-tauri/Cargo.toml', 'PLUGIN FEATURES', featureLines.join('\n'));
 
   // --- Root Cargo.toml: [patch] entries for git-sourced plugins ---
   const patchLines = plugins
@@ -454,7 +464,7 @@ function updateCargoFiles(plugins, registry) {
       const crateName = `datazen-plugin-${name}`;
       return `[patch."${meta.git}"]\n${crateName} = { path = ".plugins/${name}" }`;
     });
-  replaceMarkerSection(rootCargoPath, 'PLUGIN PATCHES', patchLines.join('\n\n'));
+  replaceMarkerSection('Cargo.toml', 'PLUGIN PATCHES', patchLines.join('\n\n'));
 
   console.log(`[resolve-plugins] updated Cargo.toml files (${plugins.length} plugin(s))`);
 }
@@ -512,7 +522,8 @@ ${body}
 }
 `;
 
-  const outPath = resolve(ROOT, 'src-tauri/src/plugin_init.rs');
+  const outPath = workPath('src-tauri/src/plugin_init.rs');
+  mkdirSync(dirname(outPath), { recursive: true });
   writeFileSync(outPath, content);
   console.log(`[resolve-plugins] wrote ${outPath}`);
 }
@@ -541,8 +552,8 @@ function replaceMarkerBlock(content, name, lines) {
  * so permissions/build.rs and init() are compiled in.
  */
 function injectCargoToml(plugins, registry) {
-  const cargoPath = resolve(ROOT, 'src-tauri/Cargo.toml');
-  let content = readFileSync(cargoPath, 'utf-8');
+  const relPath = 'src-tauri/Cargo.toml';
+  let content = readFileSync(managedReadPath(relPath), 'utf-8');
 
   // Build dependency lines (path-based, optional)
   const depLines = [];
@@ -571,7 +582,7 @@ function injectCargoToml(plugins, registry) {
   content = replaceMarkerBlock(content, 'plugin-dependencies', depLines);
   content = replaceMarkerBlock(content, 'plugin-features', featureLines);
 
-  writeFileSync(cargoPath, content);
+  writeFileSync(workPath(relPath), content);
   console.log(`[resolve-plugins] injected ${depLines.length} deps + ${featureLines.length} features into Cargo.toml`);
 }
 
@@ -581,15 +592,20 @@ function injectCargoToml(plugins, registry) {
  * Removes any permissions whose prefix matches a registry plugin id, then
  * appends `{tauriPlugin.id}:default` for each active plugin that exposes commands.
  * Idempotent across resolve-plugins runs.
+ *
+ * Preserves the committed file layout (compact `windows` array). No-ops when
+ * the permissions list is already correct so --plugins=none does not churn formatting.
  */
 function syncPluginCapabilities(plugins, registry) {
-  const capPath = resolve(ROOT, 'src-tauri/capabilities/default.json');
-  if (!existsSync(capPath)) {
-    console.warn(`[resolve-plugins] capabilities file not found: ${capPath}`);
+  const relPath = 'src-tauri/capabilities/default.json';
+  const readPath = managedReadPath(relPath);
+  if (!existsSync(readPath)) {
+    console.warn(`[resolve-plugins] capabilities file not found: ${relPath}`);
     return;
   }
 
-  const cap = JSON.parse(readFileSync(capPath, 'utf-8'));
+  const before = readFileSync(readPath, 'utf-8');
+  const cap = JSON.parse(before);
   if (!Array.isArray(cap.permissions)) {
     console.warn('[resolve-plugins] capabilities.permissions is not an array');
     return;
@@ -615,8 +631,22 @@ function syncPluginCapabilities(plugins, registry) {
     }
   }
 
-  cap.permissions = [...kept, ...added];
-  writeFileSync(capPath, JSON.stringify(cap, null, 2) + '\n');
+  const nextPermissions = [...kept, ...added];
+  // Always write working copy after stash (working path was renamed away).
+  cap.permissions = nextPermissions;
+  const windowsJson = `[${cap.windows.map((w) => JSON.stringify(w)).join(', ')}]`;
+  const content = [
+    `{`,
+    `  "identifier": ${JSON.stringify(cap.identifier)},`,
+    `  "description": ${JSON.stringify(cap.description)},`,
+    `  "windows": ${windowsJson},`,
+    `  "permissions": [`,
+    cap.permissions.map((p) => `    ${JSON.stringify(p)}`).join(',\n'),
+    `  ]`,
+    `}`,
+    ``,
+  ].join('\n');
+  writeFileSync(workPath(relPath), content);
   console.log(
     `[resolve-plugins] synced capabilities plugin permissions: [${added.join(', ') || 'none'}]`,
   );
@@ -627,8 +657,8 @@ function syncPluginCapabilities(plugins, registry) {
  * Uses start/end markers for idempotent injection.
  */
 function injectRootCargoPatches(plugins, registry) {
-  const cargoPath = resolve(ROOT, 'Cargo.toml');
-  let content = readFileSync(cargoPath, 'utf-8');
+  const relPath = 'Cargo.toml';
+  let content = readFileSync(managedReadPath(relPath), 'utf-8');
 
   const patchLines = [];
   for (const name of plugins) {
@@ -642,13 +672,22 @@ function injectRootCargoPatches(plugins, registry) {
 
   content = replaceMarkerBlock(content, 'plugin-patches', patchLines);
 
-  writeFileSync(cargoPath, content);
+  writeFileSync(workPath(relPath), content);
   if (patchLines.length > 0) {
     console.log(`[resolve-plugins] injected ${plugins.length} patch(es) into root Cargo.toml`);
   }
 }
 
+function wantsRestoreOnly() {
+  return process.argv.slice(2).includes('--restore');
+}
+
 function main() {
+  if (wantsRestoreOnly()) {
+    restoreManagedFiles();
+    return;
+  }
+
   const registry = loadRegistry();
   const pluginsArg = parseArgs();
 
@@ -658,53 +697,67 @@ function main() {
 
   console.log(`[resolve-plugins] resolved plugins: [${plugins.join(', ')}]`);
 
-  // Clone/update plugin repos
-  clonePlugins(plugins, registry);
+  // Rename clean managed files aside, then write injected copies at original paths.
+  stashManagedFiles();
 
-  // Update Cargo.toml files with resolved plugin deps/features/patches
-  updateCargoFiles(plugins, registry);
+  try {
+    // Clone/update plugin repos
+    clonePlugins(plugins, registry);
 
-  const features = generateCargoFeatures(plugins, registry);
+    // Update Cargo.toml files with resolved plugin deps/features/patches
+    updateCargoFiles(plugins, registry);
 
-  console.log(`[resolve-plugins] cargo features: [${features.join(', ')}]`);
+    const features = generateCargoFeatures(plugins, registry);
 
-  // Show plugin sources
-  for (const name of plugins) {
-    const meta = registry[name];
-    if (meta.source === 'git') {
-      console.log(`  ${name}: ${meta.git}`);
-    } else if (meta.source === 'workspace') {
-      console.log(`  ${name}: local (${meta.path})`);
+    console.log(`[resolve-plugins] cargo features: [${features.join(', ')}]`);
+
+    // Show plugin sources
+    for (const name of plugins) {
+      const meta = registry[name];
+      if (meta.source === 'git') {
+        console.log(`  ${name}: ${meta.git}`);
+      } else if (meta.source === 'workspace') {
+        console.log(`  ${name}: local (${meta.path})`);
+      }
     }
-  }
 
-  // Inject Cargo dependencies and features at build time
-  injectCargoToml(plugins, registry);
-  injectRootCargoPatches(plugins, registry);
-  syncPluginCapabilities(plugins, registry);
+    // Inject Cargo dependencies and features at build time
+    injectCargoToml(plugins, registry);
+    injectRootCargoPatches(plugins, registry);
+    syncPluginCapabilities(plugins, registry);
 
-  // Write the features file for the build system to consume
-  const output = {
-    plugins,
-    features,
-    cargoArgs: features.length > 0
-      ? `--features "${features.join(',')}"`
-      : '',
-  };
+    // Write the features file for the build system to consume
+    const output = {
+      plugins,
+      features,
+      cargoArgs: features.length > 0
+        ? `--features "${features.join(',')}"`
+        : '',
+    };
 
-  const outPath = resolve(ROOT, '.plugin-features.json');
-  writeFileSync(outPath, JSON.stringify(output, null, 2) + '\n');
-  console.log(`[resolve-plugins] wrote ${outPath}`);
+    const outPath = resolve(ROOT, '.plugin-features.json');
+    writeFileSync(outPath, JSON.stringify(output, null, 2) + '\n');
+    console.log(`[resolve-plugins] wrote ${outPath}`);
 
-  generateFrontendRegistry(plugins);
-  generateRustPluginInit(plugins, registry);
+    generateFrontendRegistry(plugins);
+    generateRustPluginInit(plugins, registry);
 
-  // Also output to stdout for scripts that pipe this
-  console.log(`\nCargo build command:`);
-  if (features.length > 0) {
-    console.log(`  cargo build --features "${features.join(',')}"`);
-  } else {
-    console.log(`  cargo build`);
+    // Also output to stdout for scripts that pipe this
+    console.log(`\nCargo build command:`);
+    if (features.length > 0) {
+      console.log(`  cargo build --features "${features.join(',')}"`);
+    } else {
+      console.log(`  cargo build`);
+    }
+    console.log(`[resolve-plugins] managed files are injected; run \`node scripts/plugin-file-stash.mjs restore\` after build`);
+  } catch (err) {
+    console.error('[resolve-plugins] failed; attempting stash restore...');
+    try {
+      restoreManagedFiles();
+    } catch (restoreErr) {
+      console.error('[resolve-plugins] stash restore also failed:', restoreErr instanceof Error ? restoreErr.message : restoreErr);
+    }
+    throw err;
   }
 }
 
