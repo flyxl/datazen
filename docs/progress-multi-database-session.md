@@ -8,8 +8,8 @@
 | 项 | 约定 |
 |----|------|
 | 能力标志 | `DatabaseTypeMeta.hasMultiDatabase` = 该驱动**支持**多库浏览 |
-| 会话标志 | `schemaStore.isMultiDatabase` = `hasMultiDatabase && databases.length > 1` |
-| 配置了 database | 仍列出全部可见库；preferred 预选配置库 |
+| 会话标志 | `schemaStore.isMultiDatabase` = `hasMultiDatabase && 可见库数量 > 1` |
+| 配置了 database | **只显示该库**（锁定单库 / StandardSchemaTree）；不展示其它可见库 |
 | 未配置 database | 列出全部可见库；多库树 + 懒加载表 |
 | 开发循环 | 实现 + 单元测试 → **新 agent** E2E 测试（只出报告）→ 失败则编码 agent 修复 → 通过后提交 |
 
@@ -21,9 +21,10 @@
 | F2 | 前端会话级多库（mysql/mariadb）：registry、schemaStore、SchemaTree、QueryPanel、WorkflowPanel + Vitest + E2E spec | ✅ PASS | `cf2e8b2` |
 | F3 | PostgreSQL：`get_tables` 尊重 database + `use_database` + Rust 单元测试 | ✅ PASS | `a418720` |
 | F4 | 前端启用 postgresql 多库能力 + Vitest + E2E | ✅ PASS | `9822d89` |
-| F5 | 更新必要文档 | ✅ done | —（随本分支一并提交） |
+| F5 | 更新必要文档 | ✅ done | `29f87c1` |
+| F6 | 配置了 database 时锁定单库（只显示一个） | ✅ PASS | （本提交） |
 
-## F1–F4 结论摘要
+## F1–F6 结论摘要
 
 | ID | Commit | 测试结论 |
 |----|--------|----------|
@@ -31,8 +32,9 @@
 | F2 | `cf2e8b2` feat(ui): session multi-database tree for MySQL/MariaDB | **PASS** — Vitest 20/20 + E2E 3/3（见 [f2-test](./progress-multi-database-session-f2-test.md)） |
 | F3 | `a418720` feat(postgres): multi-database get_tables and use_database | **PASS** — unit 5/5 + gated IT skip/live（见 [f3-test](./progress-multi-database-session-f3-test.md)） |
 | F4 | `9822d89` feat(ui): enable PostgreSQL session multi-database tree | **PASS** — Vitest 21/21 + E2E 3/3（见 [f4-test](./progress-multi-database-session-f4-test.md)） |
+| F6 | 配置 database → 锁定单库 | **PASS** — Vitest 19/19 + 黑盒 TC-A～D（见 [configured-lock-test](./progress-multi-database-session-configured-lock-test.md)） |
 
-**行为要点（已落地）：** `hasMultiDatabase` 为驱动能力；会话 `isMultiDatabase = hasMultiDatabase && databases.length > 1`；未配置 / 已配置 database 均列出可见库；MySQL/MariaDB/PostgreSQL 切库经 `use_database`；SchemaTree 在能力开启时走 `MultiDatabaseSchemaTree`。
+**行为要点（已落地）：** `hasMultiDatabase` 为驱动能力；未配置 database → 列出全部可见库（Multi 树）；配置了 database → 锁定单库；会话 `isMultiDatabase = hasMultiDatabase && 可见库数量 > 1`；切库经 `use_database`。
 
 ## 测试记录索引
 
@@ -42,8 +44,17 @@
 | F2 | test-agent (fresh) | [progress-multi-database-session-f2-test.md](./progress-multi-database-session-f2-test.md) | **PASS** (Vitest 20/20 + E2E 3/3) |
 | F3 | test-agent (fresh) | [progress-multi-database-session-f3-test.md](./progress-multi-database-session-f3-test.md) | **PASS** (unit 5/5 + gated IT skip + live IT) |
 | F4 | test-agent (fresh) | [progress-multi-database-session-f4-test.md](./progress-multi-database-session-f4-test.md) | **PASS** (Vitest 21/21 + E2E 3/3) |
+| F6 | test-agent (fresh) | [progress-multi-database-session-configured-lock-test.md](./progress-multi-database-session-configured-lock-test.md) | **PASS**（黑盒 TC-A～D + Vitest 19/19） |
+| 回归 | — | [progress-multi-database-session-regression.md](./progress-multi-database-session-regression.md) | 见该文件 |
 
 ## 变更日志
+
+### 2026-08-07 — 配置 database 时锁定单库（F6）
+
+- `resolveVisibleDatabases`：有配置库则 `databases = [configured]`，`isMultiDatabase = false`
+- `SchemaTree`：仅当 `hasMultiDatabase && !initialDatabase` 走 Multi 树；否则 Standard 树
+- Workflow 库选择器：连接已配 `database` 时不展示切换
+- 更新 Vitest / AGENTS / extensibility；黑盒 TC-A～D 全 PASS
 
 ### 2026-08-07 — F5 文档
 

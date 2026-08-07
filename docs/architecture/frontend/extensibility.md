@@ -44,7 +44,7 @@ src/windows/connection/
 | `connectionView` | 路由到 `CONNECTION_VIEWS`（sql / keyvalue / document） |
 | `connectionForm` | 路由到连接表单 Fields 组件（standard / kiwi / file / index） |
 | `sqlDialect` | 路由到 `sqlDialects/` 策略 |
-| `hasMultiDatabase` | 驱动**能力**标志：为真时 `SchemaTree` 路由到 `MultiDatabaseSchemaTree`（MySQL/MariaDB/PostgreSQL/Kiwi）。会话级多库 UI（库选择器等）另需 `schemaStore.isMultiDatabase = hasMultiDatabase && databases.length > 1` |
+| `hasMultiDatabase` | 驱动**能力**标志。未配置连接 `database` 时 `SchemaTree` 走 `MultiDatabaseSchemaTree`；已配置则锁定单库走 `StandardSchemaTree`。会话 `isMultiDatabase = hasMultiDatabase && 可见库数量 > 1`（库选择器等） |
 | `defaultPageSize` | 覆盖默认分页（如 Kiwi 1000 行） |
 | `supportsBackup` | BackupWindow 过滤 + 方言备份选项 |
 

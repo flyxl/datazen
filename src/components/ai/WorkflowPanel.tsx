@@ -104,13 +104,18 @@ export function WorkflowPanel({ connectionId }: WorkflowPanelProps) {
   const [tab, setTab] = useState<PanelTab>('workflows');
   const [historyItems, setHistoryItems] = useState<HistoryListItem[]>([]);
   const [historyDetail, setHistoryDetail] = useState<WorkflowExecutionResult | null>(null);
-  const [savedConnections, setSavedConnections] = useState<{ id: string; name: string; databaseType: string }[]>([]);
+  const [savedConnections, setSavedConnections] = useState<{ id: string; name: string; databaseType: string; database?: string }[]>([]);
 
   useEffect(() => {
     void loadWorkflows();
     void aiCommands.workflowGetDir().then(setWorkflowsDir);
     void connectionCommands.getConnections().then((conns) =>
-      setSavedConnections(conns.map((c) => ({ id: c.id, name: c.name, databaseType: c.databaseType }))),
+      setSavedConnections(conns.map((c) => ({
+        id: c.id,
+        name: c.name,
+        databaseType: c.databaseType,
+        database: c.database,
+      }))),
     );
   }, [loadWorkflows]);
 
@@ -756,7 +761,7 @@ function WorkflowForm({
   draft: ReturnType<typeof emptyDraft>;
   setDraft: React.Dispatch<React.SetStateAction<ReturnType<typeof emptyDraft>>>;
   editingId: string | null;
-  savedConnections: { id: string; name: string; databaseType: string }[];
+  savedConnections: { id: string; name: string; databaseType: string; database?: string }[];
   onSave: () => void;
   onCancel: () => void;
   t: TFn;
@@ -982,7 +987,7 @@ function DatabasePicker({
   inputClass,
 }: {
   step: WorkflowStepDraft;
-  savedConnections: { id: string; name: string; databaseType: string }[];
+  savedConnections: { id: string; name: string; databaseType: string; database?: string }[];
   onUpdate: (field: string, value: unknown) => void;
   t: TFn;
   inputClass: string;
@@ -995,12 +1000,15 @@ function DatabasePicker({
   const savedConn = !isVariable ? savedConnections.find((c) => c.id === connId) : undefined;
   const meta = savedConn ? DB_REGISTRY[savedConn.databaseType as keyof typeof DB_REGISTRY] : undefined;
   const hasMultiCapability = !!meta?.hasMultiDatabase;
-  // Session-style gate: only show when capability AND more than one visible DB.
-  // Workflow can target any saved connection, so compute from fetched list (same formula as schemaStore.isMultiDatabase).
-  const needsDb = hasMultiCapability && (loading || databases.length > 1);
+  const configuredDatabase = savedConn?.database?.trim() || undefined;
+  // Same gate as schemaStore: configured database locks to single DB (no picker).
+  const needsDb =
+    hasMultiCapability &&
+    !configuredDatabase &&
+    (loading || databases.length > 1);
 
   useEffect(() => {
-    if (!hasMultiCapability || !connId) {
+    if (!hasMultiCapability || !connId || configuredDatabase) {
       setDatabases([]);
       return;
     }
@@ -1017,7 +1025,7 @@ function DatabasePicker({
       }
     })();
     return () => { cancelled = true; };
-  }, [connId, hasMultiCapability]);
+  }, [connId, hasMultiCapability, configuredDatabase]);
 
   if (!needsDb && !isVariable) return null;
 
@@ -1081,7 +1089,7 @@ function StepEditor({
   onRemove: () => void;
   onUpdate: (field: string, value: unknown) => void;
   connVarNames: string[];
-  savedConnections: { id: string; name: string; databaseType: string }[];
+  savedConnections: { id: string; name: string; databaseType: string; database?: string }[];
   t: TFn;
   inputClass: string;
   textareaClass: string;

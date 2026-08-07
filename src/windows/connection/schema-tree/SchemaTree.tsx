@@ -32,7 +32,9 @@ export function SchemaTree(props: SchemaTreeProps) {
     }
   }
 
-  if (meta?.hasMultiDatabase) {
+  // Configured connection.database → single-DB tree only.
+  // Unconfigured → multi-DB tree when the driver supports it.
+  if (meta?.hasMultiDatabase && !props.initialDatabase?.trim()) {
     return <MultiDatabaseSchemaTree {...props} />;
   }
   return <StandardSchemaTree {...props} isKeyValue={meta?.isKeyValue ?? false} />;

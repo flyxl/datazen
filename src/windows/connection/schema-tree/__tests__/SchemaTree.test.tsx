@@ -72,7 +72,25 @@ const baseProps = {
 };
 
 describe('SchemaTree routing', () => {
-  it('routes mysql to MultiDatabaseSchemaTree when length > 1', async () => {
+  it('routes mysql with initialDatabase to StandardSchemaTree (single DB)', async () => {
+    mockGetDatabases.mockResolvedValueOnce(['datazen_test', 'mysql', 'information_schema']);
+
+    const { findByText, queryByText } = render(
+      <SchemaTree {...baseProps} databaseType="mysql" initialDatabase="datazen_test" />,
+    );
+
+    expect(await findByText('datazen_test')).toBeInTheDocument();
+    expect(queryByText('information_schema')).not.toBeInTheDocument();
+    expect(queryByText('mysql')).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(useSchemaStore.getState().isMultiDatabase).toBe(false);
+      expect(useSchemaStore.getState().databases).toEqual(['datazen_test']);
+      expect(mockGetTables).toHaveBeenCalled();
+    });
+    expect(await findByText(/schemaTree\.tables/)).toBeInTheDocument();
+  });
+
+  it('routes mysql without initialDatabase to MultiDatabaseSchemaTree when length > 1', async () => {
     mockGetDatabases.mockResolvedValueOnce(['datazen_test', 'mysql', 'information_schema']);
 
     const { findByText, queryByText } = render(
@@ -89,7 +107,7 @@ describe('SchemaTree routing', () => {
     });
   });
 
-  it('routes mysql to MultiDatabaseSchemaTree when length === 1', async () => {
+  it('routes mysql without initialDatabase to MultiDatabaseSchemaTree when length === 1', async () => {
     mockGetDatabases.mockResolvedValueOnce(['only_db']);
 
     const { findByText, queryByText } = render(
@@ -103,7 +121,7 @@ describe('SchemaTree routing', () => {
     });
   });
 
-  it('routes postgresql to MultiDatabaseSchemaTree when length > 1', async () => {
+  it('routes postgresql without initialDatabase to MultiDatabaseSchemaTree when length > 1', async () => {
     mockGetDatabases.mockResolvedValueOnce(['db1', 'db2']);
 
     const { findByText, queryByText } = render(
@@ -117,6 +135,22 @@ describe('SchemaTree routing', () => {
       expect(useSchemaStore.getState().isMultiDatabase).toBe(true);
       expect(useSchemaStore.getState().databases).toEqual(['db1', 'db2']);
     });
+  });
+
+  it('routes postgresql with initialDatabase to StandardSchemaTree', async () => {
+    mockGetDatabases.mockResolvedValueOnce(['db1', 'db2']);
+
+    const { findByText, queryByText } = render(
+      <SchemaTree {...baseProps} databaseType="postgresql" initialDatabase="db2" />,
+    );
+
+    expect(await findByText('db2')).toBeInTheDocument();
+    expect(queryByText('db1')).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(useSchemaStore.getState().isMultiDatabase).toBe(false);
+      expect(useSchemaStore.getState().databases).toEqual(['db2']);
+    });
+    expect(await findByText(/schemaTree\.tables/)).toBeInTheDocument();
   });
 
   it('expands a postgresql database node and loads tables', async () => {
