@@ -4,7 +4,7 @@
   "version": "0.0.8",
   "identifier": "com.tbeasy.datazen",
   "build": {
-    "beforeDevCommand": "pnpm dev",
+    "beforeDevCommand": "pnpm exec vite",
     "beforeBuildCommand": "pnpm build",
     "devUrl": "http://localhost:5173",
     "frontendDist": "../dist"

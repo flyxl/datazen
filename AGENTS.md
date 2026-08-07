@@ -59,7 +59,7 @@ datazen/
 ```bash
 pnpm tauri:dev                         # 无插件
 pnpm tauri:dev --plugins=kiwi          # 含 kiwi 插件
-DATAZEN_PLUGINS=all pnpm build         # 全部插件
+DATAZEN_PLUGINS=all pnpm tauri:build   # 全部插件
 ```
 
 ### 数据库驱动
@@ -120,8 +120,9 @@ DATAZEN_PLUGINS=all pnpm build         # 全部插件
 pnpm install                           # 安装依赖
 pnpm dev                               # Vite dev server
 pnpm tauri dev                         # 完整开发（前端 + Rust）
-pnpm build                             # 构建前端（含 resolve-plugins）
-pnpm tauri build                       # 构建完整应用
+pnpm build                             # 构建前端（不 inject；打包前由外层 resolve）
+pnpm build:with-plugins                # 单独前端构建并 inject/restore
+pnpm tauri:build                       # 完整应用（外层 inject 一次）
 npx vitest run                         # 前端单元测试
 pnpm e2e                               # E2E 测试
 cargo test -p datazen                  # Rust 单元测试
@@ -139,7 +140,7 @@ cargo test -p datazen                  # Rust 单元测试
 - 插件 Git 仓库命名使用 `datazen-driver-xxx` 格式，Rust crate 名称仍为 `datazen-plugin-xxx`
 - `Cargo.toml` 中的插件占位段（`<<plugin-dependencies>>`、`<<plugin-features>>`、`<<plugin-patches>>`）在 git 中应保持为空；`resolve-plugins.mjs` 在构建时填充
 - `src/plugins/generated.ts` 和 `src-tauri/src/plugin_init.rs` 是自动生成的，修改后会被覆盖
-- `.plugins/` 是 gitignored，`pnpm build` 或 `node scripts/resolve-plugins.mjs` 自动生成
+- `.plugins/` 是 gitignored，由 `resolve-plugins.mjs` / `tauri:build` / `tauri:dev` 生成；`pnpm build` 本身不 inject
 - `PROTOCOL_VERSION`（`packages/driver-api`）变更时需同步更新所有插件
 - `AI_PROTOCOL_VERSION`（`packages/ai-api`）变更时需同步更新所有 AI Provider 插件
 - AI 配置加密存储在 `ai_config.enc`，不会出现在日志中

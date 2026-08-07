@@ -9,7 +9,7 @@
  * Usage:
  *   node scripts/generate-menu-labels.mjs
  *
- * Wired into `pnpm build`, `pnpm tauri:build`, and `pnpm tauri:dev`.
+ * Wired into `pnpm build`, `pnpm build:with-plugins`, `pnpm tauri:build`, and `pnpm tauri:dev`.
  */
 
 import { readFileSync, writeFileSync } from 'fs';
