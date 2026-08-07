@@ -14,6 +14,9 @@ const JS_MIN_SAFE_INT: i64 = -9_007_199_254_740_991;
 
 pub struct MysqlDriver {
     pools: RwLock<HashMap<String, MySqlPool>>,
+    /// Active schema selected via `use_database` (or connect config), keyed by pool_id.
+    /// Applied with `USE` on each acquired connection so pooled sessions stay consistent.
+    active_databases: RwLock<HashMap<String, String>>,
     is_mariadb: bool,
 }
 
@@ -21,6 +24,7 @@ impl MysqlDriver {
     pub fn new(is_mariadb: bool) -> Self {
         Self {
             pools: RwLock::new(HashMap::new()),
+            active_databases: RwLock::new(HashMap::new()),
             is_mariadb,
         }
     }
@@ -34,27 +38,99 @@ impl MysqlDriver {
             .ok_or_else(|| DriverError::ConnectionFailed("Connection pool not found".into()))
     }
 
-    async fn current_database(pool: &MySqlPool) -> Result<String, DriverError> {
-        let row = sqlx::query("SELECT DATABASE()")
-            .fetch_one(pool)
+    /// Build `USE \`db\`` with identifier quoting. Rejects empty / whitespace-only names.
+    fn build_use_database_sql(database: &str) -> Result<String, DriverError> {
+        let trimmed = database.trim();
+        if trimmed.is_empty() {
+            return Err(DriverError::InvalidConfig(
+                "Database name must not be empty".into(),
+            ));
+        }
+        if trimmed.contains('\0') {
+            return Err(DriverError::InvalidConfig(
+                "Database name contains invalid characters".into(),
+            ));
+        }
+        Ok(format!("USE {}", Self::quote_identifier(trimmed)))
+    }
+
+    async fn current_database_on_conn(
+        conn: &mut sqlx::pool::PoolConnection<sqlx::MySql>,
+    ) -> Result<String, DriverError> {
+        use sqlx::Executor;
+        // Text protocol: prepared `SELECT DATABASE()` can return the schema from
+        // PREPARE time, not the current default after a later USE.
+        let row = (&mut **conn)
+            .fetch_one("SELECT DATABASE()")
             .await
             .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
         Ok(row.try_get::<String, _>(0).unwrap_or_default())
     }
 
-    async fn fetch_columns(
-        pool: &MySqlPool,
-        table: &str,
-    ) -> Result<(Vec<ColumnSchema>, Vec<String>), DriverError> {
-        let current_db = Self::current_database(pool).await?;
-        Self::fetch_columns_with_db(pool, &current_db, table).await
+    async fn current_database(pool: &MySqlPool) -> Result<String, DriverError> {
+        let mut conn = pool
+            .acquire()
+            .await
+            .map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
+        Self::current_database_on_conn(&mut conn).await
     }
 
-    async fn fetch_columns_with_db(
-        pool: &MySqlPool,
+    /// Execute `USE \`db\`` via the MySQL text protocol (COM_QUERY).
+    ///
+    /// `USE` is rejected by MySQL's prepared-statement protocol (error 1295).
+    /// Passing `&str` directly to [`sqlx::Executor::execute`] sends COM_QUERY
+    /// (`Execute::take_arguments` is `None`); `sqlx::query` always prepares.
+    ///
+    /// Also clears sqlx's statement cache: MySQL resolves unqualified table names
+    /// at PREPARE time, so cached statements would keep hitting the previous DB.
+    async fn execute_use_on_conn(
+        conn: &mut sqlx::pool::PoolConnection<sqlx::MySql>,
+        use_sql: &str,
+        db: &str,
+    ) -> Result<(), DriverError> {
+        use sqlx::{Connection, Executor};
+        (&mut **conn).execute(use_sql).await.map_err(|e| {
+            DriverError::QueryFailed(format!("Failed to USE database `{db}`: {e}"))
+        })?;
+        conn.clear_cached_statements().await.map_err(|e| {
+            DriverError::QueryFailed(format!(
+                "Failed to clear statement cache after USE `{db}`: {e}"
+            ))
+        })?;
+        Ok(())
+    }
+
+    /// Run `USE` for the handle's active database on a concrete connection.
+    async fn apply_active_database(
+        &self,
+        handle: &ConnectionHandle,
+        conn: &mut sqlx::pool::PoolConnection<sqlx::MySql>,
+    ) -> Result<(), DriverError> {
+        let db = self
+            .active_databases
+            .read()
+            .await
+            .get(&handle.pool_id)
+            .cloned();
+        let Some(db) = db else {
+            return Ok(());
+        };
+        let current = Self::current_database_on_conn(conn).await?;
+        if current == db {
+            return Ok(());
+        }
+        let sql = Self::build_use_database_sql(&db)?;
+        Self::execute_use_on_conn(conn, &sql, &db).await
+    }
+
+    async fn fetch_columns_with_db<'e, E>(
+        executor: E,
         current_db: &str,
         table: &str,
-    ) -> Result<(Vec<ColumnSchema>, Vec<String>), DriverError> {
+    ) -> Result<(Vec<ColumnSchema>, Vec<String>), DriverError>
+    where
+        E: sqlx::Executor<'e, Database = sqlx::MySql>,
+    {
         let cols = sqlx::query(
             r#"
             SELECT COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT,
@@ -66,7 +142,7 @@ impl MysqlDriver {
         )
         .bind(current_db)
         .bind(table)
-        .fetch_all(pool)
+        .fetch_all(executor)
         .await
         .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
 
@@ -457,6 +533,18 @@ impl DatabaseDriver for MysqlDriver {
         let pool_id = uuid::Uuid::new_v4().to_string();
         let connection_id = uuid::Uuid::new_v4().to_string();
 
+        if let Some(db) = config
+            .database
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        {
+            self.active_databases
+                .write()
+                .await
+                .insert(pool_id.clone(), db.to_string());
+        }
+
         self.pools.write().await.insert(pool_id.clone(), pool);
 
         Ok(ConnectionHandle {
@@ -466,6 +554,7 @@ impl DatabaseDriver for MysqlDriver {
     }
 
     async fn disconnect(&self, handle: ConnectionHandle) -> Result<(), DriverError> {
+        self.active_databases.write().await.remove(&handle.pool_id);
         if let Some(pool) = self.pools.write().await.remove(&handle.pool_id) {
             pool.close().await;
         }
@@ -530,7 +619,27 @@ impl DatabaseDriver for MysqlDriver {
     ) -> Result<(Vec<ColumnSchema>, Vec<String>), DriverError> {
         let pools = self.pools.read().await;
         let pool = Self::get_pool(&pools, handle)?;
-        Self::fetch_columns(pool, table).await
+        let mut conn = pool
+            .acquire()
+            .await
+            .map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
+        self.apply_active_database(handle, &mut conn).await?;
+
+        let current_db = {
+            let tracked = self.active_databases.read().await;
+            tracked.get(&handle.pool_id).cloned()
+        };
+        let current_db = match current_db {
+            Some(db) if !db.is_empty() => db,
+            _ => {
+                let row = sqlx::query("SELECT DATABASE()")
+                    .fetch_one(&mut *conn)
+                    .await
+                    .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+                row.try_get::<String, _>(0).unwrap_or_default()
+            }
+        };
+        Self::fetch_columns_with_db(&mut *conn, &current_db, table).await
     }
 
     async fn get_table_schema(
@@ -541,30 +650,27 @@ impl DatabaseDriver for MysqlDriver {
         let t0 = std::time::Instant::now();
         let pools = self.pools.read().await;
         let pool = Self::get_pool(&pools, handle)?;
+        let mut conn = pool
+            .acquire()
+            .await
+            .map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
+        self.apply_active_database(handle, &mut conn).await?;
 
         let q = Self::quote_identifier(table);
 
-        // All three queries in parallel using fast SHOW commands instead of information_schema
-        let (col_rows, idx_rows, create_row) = tokio::try_join!(
-            async {
-                sqlx::query(&format!("SHOW FULL COLUMNS FROM {}", q))
-                    .fetch_all(pool)
-                    .await
-                    .map_err(|e| DriverError::QueryFailed(e.to_string()))
-            },
-            async {
-                sqlx::query(&format!("SHOW INDEX FROM {}", q))
-                    .fetch_all(pool)
-                    .await
-                    .map_err(|e| DriverError::QueryFailed(e.to_string()))
-            },
-            async {
-                sqlx::query(&format!("SHOW CREATE TABLE {}", q))
-                    .fetch_one(pool)
-                    .await
-                    .map_err(|e| DriverError::QueryFailed(e.to_string()))
-            }
-        )?;
+        // Sequential on one connection so USE (active database) applies to all SHOW calls.
+        let col_rows = sqlx::query(&format!("SHOW FULL COLUMNS FROM {}", q))
+            .fetch_all(&mut *conn)
+            .await
+            .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+        let idx_rows = sqlx::query(&format!("SHOW INDEX FROM {}", q))
+            .fetch_all(&mut *conn)
+            .await
+            .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+        let create_row = sqlx::query(&format!("SHOW CREATE TABLE {}", q))
+            .fetch_one(&mut *conn)
+            .await
+            .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
 
         tracing::info!(%table, col_rows = col_rows.len(), idx_rows = idx_rows.len(),
             ms = t0.elapsed().as_millis() as u64,
@@ -643,10 +749,15 @@ impl DatabaseDriver for MysqlDriver {
     ) -> Result<QueryResult, DriverError> {
         let pools = self.pools.read().await;
         let pool = Self::get_pool(&pools, handle)?;
+        let mut conn = pool
+            .acquire()
+            .await
+            .map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
+        self.apply_active_database(handle, &mut conn).await?;
 
         let start = Instant::now();
         let rows = sqlx::query(sql)
-            .fetch_all(pool)
+            .fetch_all(&mut *conn)
             .await
             .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
         let elapsed = start.elapsed().as_millis() as u64;
@@ -670,6 +781,11 @@ impl DatabaseDriver for MysqlDriver {
     ) -> Result<MultiQueryResult, DriverError> {
         let pools = self.pools.read().await;
         let pool = Self::get_pool(&pools, handle)?;
+        let mut conn = pool
+            .acquire()
+            .await
+            .map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
+        self.apply_active_database(handle, &mut conn).await?;
 
         let statements = split_mysql_statements(sql);
         if statements.is_empty() {
@@ -696,7 +812,7 @@ impl DatabaseDriver for MysqlDriver {
 
             if is_query {
                 let rows = sqlx::query(effective_sql.as_str())
-                    .fetch_all(pool)
+                    .fetch_all(&mut *conn)
                     .await
                     .map_err(|e| DriverError::QueryFailed(format!("[{}] {}", stmt, e)))?;
                 let stmt_ms = stmt_start.elapsed().as_millis() as u64;
@@ -725,7 +841,7 @@ impl DatabaseDriver for MysqlDriver {
                 });
             } else {
                 let result = sqlx::query(effective_sql.as_str())
-                    .execute(pool)
+                    .execute(&mut *conn)
                     .await
                     .map_err(|e| DriverError::QueryFailed(format!("[{}] {}", stmt, e)))?;
                 let stmt_ms = stmt_start.elapsed().as_millis() as u64;
@@ -759,9 +875,14 @@ impl DatabaseDriver for MysqlDriver {
     async fn execute(&self, handle: &ConnectionHandle, sql: &str) -> Result<u64, DriverError> {
         let pools = self.pools.read().await;
         let pool = Self::get_pool(&pools, handle)?;
+        let mut conn = pool
+            .acquire()
+            .await
+            .map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
+        self.apply_active_database(handle, &mut conn).await?;
 
         let result = sqlx::query(sql)
-            .execute(pool)
+            .execute(&mut *conn)
             .await
             .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
 
@@ -796,10 +917,15 @@ impl DatabaseDriver for MysqlDriver {
     ) -> Result<ExplainResult, DriverError> {
         let pools = self.pools.read().await;
         let pool = Self::get_pool(&pools, handle)?;
+        let mut conn = pool
+            .acquire()
+            .await
+            .map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
+        self.apply_active_database(handle, &mut conn).await?;
 
         let explain_sql = format!("EXPLAIN {sql}");
         let rows = sqlx::query(&explain_sql)
-            .fetch_all(pool)
+            .fetch_all(&mut *conn)
             .await
             .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
 
@@ -865,7 +991,53 @@ impl DatabaseDriver for MysqlDriver {
         Ok(())
     }
 
-    // MySQL uses `database.table` syntax; no USE-database switching needed.
+    // Switch active schema for unqualified names (session + pool-safe USE).
+
+    async fn use_database(
+        &self,
+        handle: &ConnectionHandle,
+        database: &str,
+    ) -> Result<(), DriverError> {
+        let use_sql = Self::build_use_database_sql(database)?;
+        let trimmed = database.trim().to_string();
+
+        {
+            let active = self.active_databases.read().await;
+            if active.get(&handle.pool_id).map(String::as_str) == Some(trimmed.as_str()) {
+                return Ok(());
+            }
+        }
+
+        let pools = self.pools.read().await;
+        let pool = Self::get_pool(&pools, handle)?;
+
+        let current = Self::current_database(pool).await?;
+        if current == trimmed {
+            drop(pools);
+            self.active_databases
+                .write()
+                .await
+                .insert(handle.pool_id.clone(), trimmed);
+            return Ok(());
+        }
+
+        // Fail fast if the database does not exist or is inaccessible.
+        // Must use text protocol — prepared statements reject USE (MySQL 1295).
+        let mut conn = pool
+            .acquire()
+            .await
+            .map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
+        Self::execute_use_on_conn(&mut conn, &use_sql, &trimmed).await?;
+        drop(conn);
+
+        drop(pools);
+
+        self.active_databases
+            .write()
+            .await
+            .insert(handle.pool_id.clone(), trimmed);
+        Ok(())
+    }
 
     async fn get_server_info(&self, handle: &ConnectionHandle) -> Result<ServerInfo, DriverError> {
         let pools = self.pools.read().await;
@@ -1007,3 +1179,107 @@ fn apply_mysql_select_limit(stmt: &str, limit: Option<u32>) -> (String, Option<u
     let effective = format!("{} LIMIT {}", trimmed, lim + 1);
     (effective, Some(lim))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use datazen_driver_api::DatabaseDriver;
+
+    #[test]
+    fn quote_identifier_escapes_backticks() {
+        assert_eq!(MysqlDriver::quote_identifier("foo"), "`foo`");
+        assert_eq!(MysqlDriver::quote_identifier("foo`bar"), "`foo``bar`");
+        assert_eq!(MysqlDriver::quote_identifier(""), "``");
+    }
+
+    #[test]
+    fn build_use_database_sql_quotes_and_trims() {
+        assert_eq!(
+            MysqlDriver::build_use_database_sql("mydb").unwrap(),
+            "USE `mydb`"
+        );
+        assert_eq!(
+            MysqlDriver::build_use_database_sql("  my`db  ").unwrap(),
+            "USE `my``db`"
+        );
+        assert_eq!(
+            MysqlDriver::build_use_database_sql("information_schema").unwrap(),
+            "USE `information_schema`"
+        );
+    }
+
+    #[test]
+    fn build_use_database_sql_rejects_empty_or_invalid() {
+        assert!(matches!(
+            MysqlDriver::build_use_database_sql(""),
+            Err(DriverError::InvalidConfig(_))
+        ));
+        assert!(matches!(
+            MysqlDriver::build_use_database_sql("   "),
+            Err(DriverError::InvalidConfig(_))
+        ));
+        assert!(matches!(
+            MysqlDriver::build_use_database_sql("bad\0name"),
+            Err(DriverError::InvalidConfig(_))
+        ));
+    }
+
+    #[tokio::test]
+    async fn use_database_is_wired_for_mysql_and_mariadb() {
+        let mysql = MysqlDriver::new(false);
+        let mariadb = MysqlDriver::new(true);
+        assert_eq!(mysql.driver_type(), "mysql");
+        assert_eq!(mariadb.driver_type(), "mariadb");
+
+        let handle = ConnectionHandle {
+            id: "conn".into(),
+            pool_id: "missing-pool".into(),
+        };
+
+        // Empty name fails before pool lookup (validation).
+        let err = mysql.use_database(&handle, "").await.unwrap_err();
+        assert!(
+            matches!(err, DriverError::InvalidConfig(_)),
+            "expected InvalidConfig, got {err:?}"
+        );
+
+        // Missing pool surfaces ConnectionFailed — confirms trait override is invoked.
+        let err = mysql.use_database(&handle, "app_db").await.unwrap_err();
+        assert!(
+            matches!(err, DriverError::ConnectionFailed(_)),
+            "expected ConnectionFailed, got {err:?}"
+        );
+        let err = mariadb.use_database(&handle, "app_db").await.unwrap_err();
+        assert!(
+            matches!(err, DriverError::ConnectionFailed(_)),
+            "expected ConnectionFailed, got {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn use_database_noop_when_already_active() {
+        let driver = MysqlDriver::new(false);
+        let pool_id = "test-pool".to_string();
+        driver
+            .active_databases
+            .write()
+            .await
+            .insert(pool_id.clone(), "already".to_string());
+
+        let handle = ConnectionHandle {
+            id: "conn".into(),
+            pool_id,
+        };
+
+        // No pool registered — would fail if USE were attempted; no-op must short-circuit.
+        driver
+            .use_database(&handle, "already")
+            .await
+            .expect("same database should be a no-op");
+        driver
+            .use_database(&handle, "  already  ")
+            .await
+            .expect("trimmed match should be a no-op");
+    }
+}
+
