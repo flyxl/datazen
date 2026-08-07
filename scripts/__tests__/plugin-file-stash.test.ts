@@ -33,13 +33,14 @@ describe('createPluginFileStash', () => {
     resetDir(root);
   });
 
-  it('stashes all managed files (working paths gone, stash present)', () => {
+  it('stashes all managed files (working paths remain, stash present)', () => {
     stash.stashManagedFiles();
     expect(stash.allStashed()).toBe(true);
     for (const f of MANAGED_FILES) {
-      expect(existsSync(stash.workPath(f))).toBe(false);
+      expect(existsSync(stash.workPath(f))).toBe(true);
       expect(existsSync(stash.stashPath(f))).toBe(true);
       expect(readFileSync(stash.stashPath(f), 'utf-8')).toBe(CLEAN_CONTENTS[f]);
+      expect(readFileSync(stash.workPath(f), 'utf-8')).toBe(CLEAN_CONTENTS[f]);
     }
   });
 
@@ -60,7 +61,7 @@ describe('createPluginFileStash', () => {
 
   it('restore succeeds when only some working files were modified', () => {
     stash.stashManagedFiles();
-    // partially write: only capabilities + generated injected; others missing
+    // partially overwrite: only capabilities + generated injected
     mkdirSync(join(root, 'src-tauri/capabilities'), { recursive: true });
     mkdirSync(join(root, 'src/plugins'), { recursive: true });
     writeFileSync(
@@ -71,7 +72,6 @@ describe('createPluginFileStash', () => {
       stash.workPath('src/plugins/generated.ts'),
       INJECTED_CONTENTS['src/plugins/generated.ts'],
     );
-    // Cargo.toml etc. still absent (only in stash)
 
     stash.restoreManagedFiles();
     for (const f of MANAGED_FILES) {

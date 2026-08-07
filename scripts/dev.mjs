@@ -18,7 +18,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
 
 function restoreStash() {
-  console.log('[dev] restoring managed files from stash...');
+  console.log('[dev] restoring managed files from copy-stash...');
   try {
     execSync('node scripts/plugin-file-stash.mjs restore', {
       cwd: ROOT,
