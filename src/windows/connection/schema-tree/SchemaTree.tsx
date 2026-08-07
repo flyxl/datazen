@@ -1,4 +1,5 @@
 import { DB_REGISTRY } from '../../../lib/databaseTypes';
+import type { DatabaseTypeMeta } from '../../../lib/databaseMeta';
 import { getPluginSchemaTree } from '../../../plugins/generated';
 import type { DatabaseType } from '../../../types';
 import { MultiDatabaseSchemaTree } from './MultiDatabaseSchemaTree';
@@ -12,6 +13,22 @@ export interface SchemaTreeProps {
   searchQuery: string;
   onSelectTable: (table: string, schema?: string) => void;
   onTableContextMenu?: (tableName: string, x: number, y: number) => void;
+}
+
+/**
+ * Multi-DB tree when the driver supports it, unless connection.database is a
+ * *logical* DB name that should lock the sidebar.
+ *
+ * Kiwi (`databaseFieldType: 'domain'`) stores the instance domain in
+ * `connection.database` — that must not force StandardSchemaTree.
+ */
+export function shouldUseMultiDatabaseTree(
+  meta: Pick<DatabaseTypeMeta, 'hasMultiDatabase' | 'databaseFieldType'> | undefined,
+  initialDatabase?: string,
+): boolean {
+  if (!meta?.hasMultiDatabase) return false;
+  if (meta.databaseFieldType === 'domain') return true;
+  return !initialDatabase?.trim();
 }
 
 export function SchemaTree(props: SchemaTreeProps) {
@@ -32,10 +49,13 @@ export function SchemaTree(props: SchemaTreeProps) {
     }
   }
 
-  // Configured connection.database → single-DB tree only.
-  // Unconfigured → multi-DB tree when the driver supports it.
-  if (meta?.hasMultiDatabase && !props.initialDatabase?.trim()) {
-    return <MultiDatabaseSchemaTree {...props} />;
+  if (shouldUseMultiDatabaseTree(meta, props.initialDatabase)) {
+    // Domain is not a logical DB — don't pass it as preferredDatabase.
+    const treeProps =
+      meta?.databaseFieldType === 'domain'
+        ? { ...props, initialDatabase: undefined }
+        : props;
+    return <MultiDatabaseSchemaTree {...treeProps} />;
   }
   return <StandardSchemaTree {...props} isKeyValue={meta?.isKeyValue ?? false} />;
 }
