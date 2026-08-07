@@ -42,8 +42,13 @@ export interface DatabaseTypeMeta {
   connectionView: 'sql' | 'keyvalue' | 'document';
   /** SQL dialect family for DDL/index queries; undefined for non-SQL types */
   sqlDialect?: string;
-  /** How the "database" field behaves in the connection form */
-  databaseFieldType: 'name' | 'path' | 'index';
+  /** How the "database" field behaves in the connection form.
+   *  - name: logical database name (MySQL/PG)
+   *  - path: file path (SQLite)
+   *  - index: numeric index (Redis)
+   *  - domain: instance host/domain for a proxy (Kiwi) — NOT a logical DB for sidebar lock
+   */
+  databaseFieldType: 'name' | 'path' | 'index' | 'domain';
   /** Driver capability: schema tree can browse multiple databases (MySQL/MariaDB/PostgreSQL/Kiwi). Session UI uses hasMultiDatabase && databases.length > 1. */
   hasMultiDatabase?: boolean;
   /** Default page size for table data; unset uses per-table or global default */

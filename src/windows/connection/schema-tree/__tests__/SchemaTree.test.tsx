@@ -72,6 +72,34 @@ const baseProps = {
 };
 
 describe('SchemaTree routing', () => {
+  it('shouldUseMultiDatabaseTree ignores domain field as logical lock', async () => {
+    const { shouldUseMultiDatabaseTree } = await import('../SchemaTree');
+    expect(
+      shouldUseMultiDatabaseTree(
+        { hasMultiDatabase: true, databaseFieldType: 'domain' },
+        'afi-ph-useraccount-dbreader.aku',
+      ),
+    ).toBe(true);
+    expect(
+      shouldUseMultiDatabaseTree(
+        { hasMultiDatabase: true, databaseFieldType: 'name' },
+        'datazen_test',
+      ),
+    ).toBe(false);
+    expect(
+      shouldUseMultiDatabaseTree(
+        { hasMultiDatabase: true, databaseFieldType: 'name' },
+        undefined,
+      ),
+    ).toBe(true);
+    expect(
+      shouldUseMultiDatabaseTree(
+        { hasMultiDatabase: false, databaseFieldType: 'domain' },
+        'x',
+      ),
+    ).toBe(false);
+  });
+
   it('routes mysql with initialDatabase to StandardSchemaTree (single DB)', async () => {
     mockGetDatabases.mockResolvedValueOnce(['datazen_test', 'mysql', 'information_schema']);
 
