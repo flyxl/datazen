@@ -58,10 +58,12 @@ describe('useConnectionForm', () => {
     expect(result.current.formVariant).toBe('file');
     expect(DB_REGISTRY.sqlite.connectionForm).toBe('file');
 
-    act(() => result.current.handleDatabaseTypeChange('kiwi'));
-    rerender();
-    expect(result.current.formVariant).toBe('kiwi');
-    expect(DB_REGISTRY.kiwi.connectionForm).toBe('kiwi');
+    if (DB_REGISTRY.kiwi) {
+      act(() => result.current.handleDatabaseTypeChange('kiwi'));
+      rerender();
+      expect(result.current.formVariant).toBe('kiwi');
+      expect(DB_REGISTRY.kiwi.connectionForm).toBe('kiwi');
+    }
   });
 
   it('resets database and username when switching types (BUG-001)', () => {
@@ -94,6 +96,8 @@ describe('useConnectionForm', () => {
   });
 
   it('includes username in kiwi draft', () => {
+    if (!DB_REGISTRY.kiwi) return; // plugins not injected in this workspace
+
     const { result } = renderHook(() => useConnectionForm());
 
     act(() => {

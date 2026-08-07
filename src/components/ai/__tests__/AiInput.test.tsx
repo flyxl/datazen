@@ -160,14 +160,20 @@ describe('AiInput', () => {
       );
       const textarea = container.querySelector('textarea')!;
 
+      // jsdom often leaves selectionStart at 0 during change; use a getter at caret end
       Object.defineProperty(textarea, 'selectionStart', {
-        value: 1,
-        writable: true,
+        configurable: true,
+        get: () => textarea.value.length,
       });
-      fireEvent.change(textarea, { target: { value: '@', selectionStart: 1 } });
+      Object.defineProperty(textarea, 'selectionEnd', {
+        configurable: true,
+        get: () => textarea.value.length,
+      });
+      fireEvent.change(textarea, { target: { value: '@' } });
 
       await waitFor(() => {
-        const picker = container.querySelector('[class*="absolute bottom-full"]');
+        // Classes are not adjacent (e.g. "absolute left-0 … bottom-full …")
+        const picker = container.querySelector('.absolute.bottom-full');
         expect(picker).toBeInTheDocument();
       });
     });
