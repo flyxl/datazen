@@ -32,9 +32,14 @@ export const connectionCommands = {
 
   saveGroups: (groups: string[]) => invoke<void>('save_groups', { groups }),
 
+  /** @deprecated Legacy path IPC; gated to webdriver builds. Prefer app-data ZIP backup. */
   exportConnections: (path: string, password: string) =>
     invoke<number>('export_connections', { path, password }),
 
+  /** @deprecated Legacy path IPC; gated to webdriver builds. Prefer app-data ZIP backup. */
   importConnectionsPreview: (path: string, password: string) =>
-    invoke<{ connections: ConnectionConfig[]; groups: string[] }>('import_connections_preview', { path, password }),
+    invoke<{ connections: ConnectionConfig[]; groups: string[] }>('import_connections_preview', {
+      path,
+      password,
+    }),
 };

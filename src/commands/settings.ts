@@ -11,5 +11,12 @@ export const settingsCommands = {
 
   getLogPath: () => invoke<string>('get_log_path'),
 
+  /** @deprecated E2E-only; prefer openLogDir / openWorkflowsDir / openContextDir. */
   openPath: (path: string) => invoke<void>('open_path', { path }),
+
+  openLogDir: () => invoke<void>('open_log_dir'),
+
+  openWorkflowsDir: () => invoke<void>('open_workflows_dir'),
+
+  openContextDir: () => invoke<void>('open_context_dir'),
 };
