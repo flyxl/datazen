@@ -208,11 +208,12 @@ pub async fn ai_generate_sql(
         %request_id,
         %connection_id,
         %database,
-        input = %natural_language,
+        input_len = natural_language.len(),
         current_table = ?current_table,
         recent_queries_count = recent_queries.len(),
         "ai_generate_sql: start"
     );
+    tracing::debug!(%request_id, input = %natural_language, "ai_generate_sql: input");
 
     if let Some(ref ctx_files) = context_files {
         if !ctx_files.is_empty() {
@@ -352,9 +353,10 @@ pub async fn ai_diagnose_error(
         %connection_id,
         %database,
         sql_len = sql.len(),
-        error = %error_message,
+        error_len = error_message.len(),
         "ai_diagnose_error: start"
     );
+    tracing::debug!(%connection_id, error = %error_message, "ai_diagnose_error: error");
 
     let (provider, ai_config) = resolve_ai(&state).await?;
 
@@ -478,7 +480,7 @@ pub async fn ai_analyze_explain(
     inject_language_hint(&mut request.messages, &lang);
 
     for (i, msg) in request.messages.iter().enumerate() {
-        tracing::info!(
+        tracing::debug!(
             idx = i,
             role = ?msg.role,
             content_len = msg.content.len(),
@@ -500,7 +502,7 @@ pub async fn ai_analyze_explain(
         "ai_analyze_explain: response received"
     );
     if !response.content.is_empty() {
-        tracing::info!(
+        tracing::debug!(
             response_content = %truncate_str(&response.content, 500),
             "ai_analyze_explain: response content"
         );
@@ -527,9 +529,10 @@ pub async fn ai_parse_filter(
         %connection_id,
         %database,
         %table,
-        input = %natural_language,
+        input_len = natural_language.len(),
         "ai_parse_filter: start"
     );
+    tracing::debug!(%connection_id, input = %natural_language, "ai_parse_filter: input");
     let (provider, ai_config) = resolve_ai(&state).await?;
 
     let (driver, handle) = state
@@ -630,9 +633,9 @@ fn db_tool_definitions() -> Vec<ToolDefinition> {
             parameters: serde_json::json!({
                 "type": "object",
                 "properties": {
-                    "connection_id": { "type": "string", "description": "The connection ID from list_connections" }
+                    "config_id": { "type": "string", "description": "The config ID from list_connections" }
                 },
-                "required": ["connection_id"]
+                "required": ["config_id"]
             }),
         },
         ToolDefinition {
@@ -641,10 +644,10 @@ fn db_tool_definitions() -> Vec<ToolDefinition> {
             parameters: serde_json::json!({
                 "type": "object",
                 "properties": {
-                    "connection_id": { "type": "string", "description": "The connection ID" },
+                    "config_id": { "type": "string", "description": "The config ID from list_connections" },
                     "database": { "type": "string", "description": "Database name (optional for some database types)" }
                 },
-                "required": ["connection_id"]
+                "required": ["config_id"]
             }),
         },
         ToolDefinition {
@@ -653,14 +656,14 @@ fn db_tool_definitions() -> Vec<ToolDefinition> {
             parameters: serde_json::json!({
                 "type": "object",
                 "properties": {
-                    "connection_id": { "type": "string", "description": "The connection ID" },
+                    "config_id": { "type": "string", "description": "The config ID from list_connections" },
                     "tables": {
                         "type": "array",
                         "items": { "type": "string" },
                         "description": "One or more table names to get schema for"
                     }
                 },
-                "required": ["connection_id", "tables"]
+                "required": ["config_id", "tables"]
             }),
         },
     ]
@@ -672,27 +675,29 @@ fn is_db_tool(name: &str) -> bool {
 
 async fn execute_db_tool(state: &AppState, tool_call: &ToolCall) -> String {
     let args: serde_json::Value = serde_json::from_str(&tool_call.arguments).unwrap_or_default();
-    tracing::info!(tool = %tool_call.name, args = %args, "execute_db_tool");
+    let args_str = args.to_string();
+    tracing::info!(tool = %tool_call.name, args_len = args_str.len(), "execute_db_tool");
+    tracing::debug!(tool = %tool_call.name, args = %args, "execute_db_tool args");
 
     let cm = &state.connection_manager;
     let result = match tool_call.name.as_str() {
         "list_connections" => crate::services::db_tools::list_connections(&state.store).await,
         "list_databases" => {
-            let conn_id = args["connection_id"].as_str().unwrap_or("");
-            crate::services::db_tools::list_databases(cm, conn_id).await
+            let config_id = args["config_id"].as_str().unwrap_or("");
+            crate::services::db_tools::list_databases(cm, config_id).await
         }
         "list_tables" => {
-            let conn_id = args["connection_id"].as_str().unwrap_or("");
+            let config_id = args["config_id"].as_str().unwrap_or("");
             let database = args["database"].as_str().unwrap_or("");
-            crate::services::db_tools::list_tables(cm, conn_id, database).await
+            crate::services::db_tools::list_tables(cm, config_id, database).await
         }
         "get_table_schema" => {
-            let conn_id = args["connection_id"].as_str().unwrap_or("");
+            let config_id = args["config_id"].as_str().unwrap_or("");
             let tables: Vec<String> = args["tables"]
                 .as_array()
                 .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
                 .unwrap_or_default();
-            crate::services::db_tools::get_table_schema(cm, conn_id, &tables).await
+            crate::services::db_tools::get_table_schema(cm, config_id, &tables).await
         }
         other => Err(format!("Unknown tool: {other}")),
     };
@@ -727,9 +732,16 @@ pub async fn ai_chat(
         messages_count = messages.len(),
         %include_schema,
         scenario = ?scenario,
-        last_user_msg = messages.last().map(|m| truncate_str(&m.content, 100)).unwrap_or(""),
+        last_user_msg_len = messages.last().map(|m| m.content.len()).unwrap_or(0),
         "ai_chat: start"
     );
+    if let Some(last) = messages.last() {
+        tracing::debug!(
+            %request_id,
+            last_user_msg = %truncate_str(&last.content, 100),
+            "ai_chat: last user message"
+        );
+    }
     let (provider, ai_config) = resolve_ai(&state).await?;
 
     let lang = state.store.get_settings().await.language;
@@ -1002,9 +1014,15 @@ pub async fn ai_chat(
             %request_id,
             round,
             db_tool_count = db_tools.len(),
-            tools = ?db_tools.iter().map(|t| format!("{}({})", t.name, t.arguments)).collect::<Vec<_>>(),
+            tool_names = ?db_tools.iter().map(|t| t.name.as_str()).collect::<Vec<_>>(),
             response_id = ?result.response_id,
             "ai_chat: executing database tools (round {})", round
+        );
+        tracing::debug!(
+            %request_id,
+            round,
+            tools = ?db_tools.iter().map(|t| format!("{}({})", t.name, t.arguments)).collect::<Vec<_>>(),
+            "ai_chat: database tool arguments"
         );
 
         // Always use stateless mode: append assistant message (with tool_calls)
@@ -1229,7 +1247,7 @@ fn strip_markdown_fences(s: &str) -> String {
 #[tauri::command]
 pub async fn workflow_list(
     state: State<'_, AppState>,
-) -> Result<Vec<crate::mcp::WorkflowListItem>, CommandError> {
+) -> Result<Vec<crate::workflow::WorkflowListItem>, CommandError> {
     Ok(state.workflow_registry.list().await)
 }
 
@@ -1239,14 +1257,14 @@ pub async fn workflow_execute(
     workflow_id: String,
     variables: serde_json::Value,
     connection_id: Option<String>,
-) -> Result<crate::mcp::WorkflowExecutionResult, CommandError> {
+) -> Result<crate::workflow::WorkflowExecutionResult, CommandError> {
     let workflow = state
         .workflow_registry
         .get(&workflow_id)
         .await
         .ok_or_else(|| CommandError::NotFound(format!("Workflow '{workflow_id}' not found")))?;
 
-    let result = crate::mcp::WorkflowExecutor::execute(
+    let result = crate::workflow::WorkflowExecutor::execute(
         &workflow,
         &state,
         connection_id.as_deref(),
@@ -1269,7 +1287,7 @@ pub async fn workflow_execute(
 #[tauri::command]
 pub async fn workflow_save(
     state: State<'_, AppState>,
-    workflow: crate::mcp::WorkflowDefinition,
+    workflow: crate::workflow::WorkflowDefinition,
 ) -> Result<(), CommandError> {
     state
         .workflow_registry
@@ -1314,7 +1332,7 @@ pub async fn workflow_get_dir(
 pub async fn workflow_get(
     state: State<'_, AppState>,
     workflow_id: String,
-) -> Result<crate::mcp::WorkflowDefinition, CommandError> {
+) -> Result<crate::workflow::WorkflowDefinition, CommandError> {
     state
         .workflow_registry
         .get(&workflow_id)
@@ -1328,7 +1346,7 @@ pub async fn workflow_get(
 pub async fn workflow_history_list(
     state: State<'_, AppState>,
     workflow_id: Option<String>,
-) -> Result<Vec<crate::mcp::workflow_history::HistoryListItem>, CommandError> {
+) -> Result<Vec<crate::workflow::HistoryListItem>, CommandError> {
     Ok(state.workflow_history.list(workflow_id.as_deref()).await)
 }
 
@@ -1336,7 +1354,7 @@ pub async fn workflow_history_list(
 pub async fn workflow_history_get(
     state: State<'_, AppState>,
     history_id: String,
-) -> Result<crate::mcp::workflow_history::HistoryEntry, CommandError> {
+) -> Result<crate::workflow::HistoryEntry, CommandError> {
     state
         .workflow_history
         .get(&history_id)
@@ -1512,7 +1530,8 @@ pub async fn ai_diagnose_connection(
     connection_id: String,
     error_message: String,
 ) -> Result<ConnectionDiagnosis, CommandError> {
-    tracing::info!(%connection_id, error = %error_message, "ai_diagnose_connection: start");
+    tracing::info!(%connection_id, error_len = error_message.len(), "ai_diagnose_connection: start");
+    tracing::debug!(%connection_id, error = %error_message, "ai_diagnose_connection: error");
     let (provider, ai_config) = resolve_ai(&state).await?;
 
     let conn_info = state

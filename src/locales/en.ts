@@ -46,6 +46,8 @@ const en: Record<TranslationKey, string> = {
   'menu.viewLogs': 'View Logs',
   'menu.exportConfig': 'Export App Data',
   'menu.importConfig': 'Import App Data',
+  'menu.exportConnections': 'Export Connections',
+  'menu.importConnections': 'Import Connections',
   'menu.window': 'Window',
   'menu.minimize': 'Minimize',
   'menu.closeWindow': 'Close Window',
@@ -109,11 +111,29 @@ const en: Record<TranslationKey, string> = {
   'action.importConfig': 'Import App Data…',
 
   // ── Config Import / Export ──
-  'appData.exportSuccess': 'App data exported successfully',
+  'appData.exportSuccess': 'App data exported successfully. The encryption key is not included in the ZIP — back it up separately if you need to decrypt saved passwords on another machine.',
   'appData.exportFailed': 'Export failed',
   'appData.importConfirmTitle': 'Import App Data',
-  'appData.importConfirmMessage': 'This will overwrite all application data. Existing log files will be preserved. Continue?',
+  'appData.importConfirmMessage': 'This will overwrite all application data. Existing log files will be preserved. Backups do not include the encryption key — passwords remain usable only when restoring on this machine (or one with the same key). Continue?',
   'appData.importFailed': 'Import failed',
+  'appData.backupKeyTitle': 'Back Up Encryption Key',
+  'appData.backupKeyMessage': 'Save a copy of your encryption key now? Store it securely; you will need it to decrypt saved passwords after restoring on another machine.',
+  'appData.backupKeySaved': 'Encryption key saved.',
+  'appData.backupKeyFailed': 'Failed to save encryption key.',
+
+  // ── Connection Share ──
+  'connShare.exportTitle': 'Export Connections',
+  'connShare.importTitle': 'Import Connections',
+  'connShare.password': 'Password',
+  'connShare.confirmPassword': 'Confirm Password',
+  'connShare.passwordRequired': 'Password is required',
+  'connShare.passwordMismatch': 'Passwords do not match',
+  'connShare.exportAction': 'Export…',
+  'connShare.importAction': 'Import…',
+  'connShare.exportSuccess': 'Exported {count} connection(s)',
+  'connShare.importSuccess': 'Imported {imported} new, updated {overwritten}, added {groupsAdded} group(s)',
+  'connShare.exportFailed': 'Export failed',
+  'connShare.importFailed': 'Import failed',
 
   // ── Connection Item / Card ──
   'conn.connected': 'Connected',
@@ -330,6 +350,7 @@ const en: Record<TranslationKey, string> = {
   'query.resultTruncated': 'Result truncated to {limit} rows, adjustable in Settings',
   'query.tab': 'Query {n}',
   'query.notConnected': 'Not connected',
+  'query.cancelled': 'Query cancelled',
   'query.executeFailed': 'Execution failed',
   'query.favorites': 'Favorites',
   'query.favoritesTitle': 'SQL Favorites',

@@ -33,6 +33,7 @@ const BUILTIN_DB_REGISTRY: Record<string, DatabaseTypeMeta> = {
     sqlDialect: 'postgresql',
     databaseFieldType: 'name',
     connectionForm: 'standard',
+    supportsExplain: true,
   },
   mysql: {
     label: 'MySQL',
@@ -55,6 +56,7 @@ const BUILTIN_DB_REGISTRY: Record<string, DatabaseTypeMeta> = {
     sqlDialect: 'mysql',
     databaseFieldType: 'name',
     connectionForm: 'standard',
+    supportsExplain: true,
   },
   mariadb: {
     label: 'MariaDB',
@@ -77,6 +79,7 @@ const BUILTIN_DB_REGISTRY: Record<string, DatabaseTypeMeta> = {
     sqlDialect: 'mysql',
     databaseFieldType: 'name',
     connectionForm: 'standard',
+    supportsExplain: true,
   },
   sqlite: {
     label: 'SQLite',
@@ -99,6 +102,7 @@ const BUILTIN_DB_REGISTRY: Record<string, DatabaseTypeMeta> = {
     sqlDialect: 'sqlite',
     databaseFieldType: 'path',
     connectionForm: 'file',
+    supportsExplain: true,
   },
   redis: {
     label: 'Redis',

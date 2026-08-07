@@ -327,7 +327,8 @@ impl ConnectionManager {
             "Starting SSH tunnel"
         );
 
-        let tunnel = SshTunnel::start(ssh, remote_host, remote_port)
+        let known_hosts_path = self.store.data_dir().join("ssh_known_hosts.json");
+        let tunnel = SshTunnel::start(ssh, remote_host, remote_port, &known_hosts_path)
             .await
             .map_err(ConnectionError::DriverError)?;
 
