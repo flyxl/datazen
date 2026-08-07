@@ -480,6 +480,30 @@ impl Store {
         serde_json::from_str(&content).map_err(|e| StoreError::ParseError(e.to_string()))
     }
 
+    async fn write_file_atomic(path: &std::path::Path, content: impl AsRef<[u8]>) -> Result<(), StoreError> {
+        let parent = path
+            .parent()
+            .ok_or_else(|| StoreError::WriteError("path has no parent directory".into()))?;
+        tokio::fs::create_dir_all(parent)
+            .await
+            .map_err(|e| StoreError::WriteError(e.to_string()))?;
+
+        let file_name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .ok_or_else(|| StoreError::WriteError("invalid file name".into()))?;
+        let tmp_path = parent.join(format!(".{file_name}.tmp"));
+
+        tokio::fs::write(&tmp_path, content.as_ref())
+            .await
+            .map_err(|e| StoreError::WriteError(e.to_string()))?;
+        tokio::fs::rename(&tmp_path, path)
+            .await
+            .map_err(|e| StoreError::WriteError(e.to_string()))?;
+
+        Ok(())
+    }
+
     async fn save_json_file<T: Serialize + ?Sized>(
         &self,
         filename: &str,
@@ -496,11 +520,7 @@ impl Store {
         let content =
             serde_json::to_string_pretty(data).map_err(|e| StoreError::ParseError(e.to_string()))?;
 
-        tokio::fs::write(&path, content)
-            .await
-            .map_err(|e| StoreError::WriteError(e.to_string()))?;
-
-        Ok(())
+        Self::write_file_atomic(&path, content).await
     }
 
     async fn persist_connections(&self, connections: &[ConnectionConfig]) -> Result<(), StoreError> {
@@ -799,9 +819,7 @@ impl Store {
         let json =
             serde_json::to_string(data).map_err(|e| StoreError::ParseError(e.to_string()))?;
         let encrypted = self.encrypt(&json)?;
-        tokio::fs::write(&path, encrypted)
-            .await
-            .map_err(|e| StoreError::WriteError(e.to_string()))
+        Self::write_file_atomic(&path, encrypted).await
     }
 }
 
@@ -936,5 +954,55 @@ mod tests {
         let json = serde_json::to_string(&settings).unwrap();
         let parsed: AppSettings = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.language, "de");
+    }
+
+    #[tokio::test]
+    async fn save_json_file_leaves_no_tmp_artifacts() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::init_with_path(dir.path()).await.unwrap();
+        let settings = AppSettings {
+            language: "fr".into(),
+            ..AppSettings::default()
+        };
+        store.save_settings(settings).await.unwrap();
+
+        let entries: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .collect();
+        assert!(!entries.iter().any(|n| n.contains(".tmp")));
+        let content = tokio::fs::read_to_string(dir.path().join("settings.json"))
+            .await
+            .unwrap();
+        let parsed: AppSettings = serde_json::from_str(&content).unwrap();
+        assert_eq!(parsed.language, "fr");
+    }
+
+    #[tokio::test]
+    async fn save_ai_config_uses_atomic_encrypted_write() {
+        use datazen_ai_api::{AiProviderConfig, AiProviderType};
+
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::init_with_path(dir.path()).await.unwrap();
+        let config = AiProviderConfig {
+            provider_type: AiProviderType::OpenAi,
+            api_key: Some("sk-test".into()),
+            endpoint: None,
+            model: "gpt-4o".into(),
+            max_tokens: 200_000,
+            extra: serde_json::Value::Null,
+        };
+        store.save_ai_config(&config).await.unwrap();
+
+        let entries: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .collect();
+        assert!(entries.contains(&"ai_config.enc".to_string()));
+        assert!(!entries.iter().any(|n| n.contains(".tmp")));
+        let loaded = store.get_ai_config().await.unwrap();
+        assert_eq!(loaded.model, "gpt-4o");
     }
 }
