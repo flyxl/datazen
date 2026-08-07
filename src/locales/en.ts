@@ -25,6 +25,13 @@ const en: Record<TranslationKey, string> = {
   'common.browse': 'Browse',
 
   // ── Menu (native + Windows HTML MenuBar) ──
+  'menu.appName': 'DataZen',
+  'menu.about': 'About DataZen',
+  'menu.services': 'Services',
+  'menu.hide': 'Hide DataZen',
+  'menu.hideOthers': 'Hide Others',
+  'menu.showAll': 'Show All',
+  'menu.quit': 'Quit DataZen',
   'menu.file': 'File',
   'menu.newConnection': 'New Connection',
   'menu.dataSync': 'Data Sync',
@@ -39,9 +46,11 @@ const en: Record<TranslationKey, string> = {
   'menu.paste': 'Paste',
   'menu.selectAll': 'Select All',
   'menu.view': 'View',
+  'menu.theme': 'Theme',
   'menu.themeLight': 'Light',
   'menu.themeDark': 'Dark',
   'menu.themeSystem': 'System',
+  'menu.fullscreen': 'Enter Full Screen',
   'menu.tools': 'Tools',
   'menu.viewLogs': 'View Logs',
   'menu.exportConfig': 'Export App Data',
@@ -50,9 +59,13 @@ const en: Record<TranslationKey, string> = {
   'menu.importConnections': 'Import Connections',
   'menu.window': 'Window',
   'menu.minimize': 'Minimize',
+  'menu.zoom': 'Zoom',
+  'menu.bringAllToFront': 'Bring All to Front',
   'menu.closeWindow': 'Close Window',
-  'menu.ctxAddFavorite': 'Add to Favorites',
   'menu.help': 'Help',
+  'menu.documentation': 'User Guide',
+  'menu.reportIssue': 'Report an Issue',
+  'menu.ctxAddFavorite': 'Add to Favorites',
 
   // ── Theme ──
   'theme.light': 'Light',
@@ -864,6 +877,11 @@ const en: Record<TranslationKey, string> = {
   'win.dataSync': 'Data Sync - DataZen',
   'win.workflow': 'Workflow - DataZen',
   'win.settings': 'Settings - DataZen',
+  'win.docs': 'User Guide - DataZen',
+  'docs.nav': 'Contents',
+  'docs.openHelp': 'User Guide',
+  'docs.openAiHelp': 'AI & Context Help',
+  'docs.openWorkflowHelp': 'Workflow Help',
 };
 
 export default en;

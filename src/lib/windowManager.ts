@@ -154,6 +154,20 @@ export function openSettingsWindow(section?: string) {
   });
 }
 
+export function openDocsWindow(section?: string) {
+  const params: Record<string, string> = { window: 'docs' };
+  if (section) params.section = section;
+
+  openSingletonWindow('docs-singleton', {
+    params,
+    title: t('win.docs'),
+    width: 920,
+    height: 680,
+    minWidth: 640,
+    minHeight: 480,
+  });
+}
+
 // ── Multi-instance windows ──────────────────────────────────────────
 
 export function openConnectionWindow(

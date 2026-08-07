@@ -19,7 +19,10 @@ use std::time::Instant;
 
 use std::collections::HashMap;
 #[cfg(target_os = "macos")]
-use tauri::menu::{CheckMenuItemBuilder, MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder};
+use tauri::menu::{
+    AboutMetadata, CheckMenuItemBuilder, MenuBuilder, MenuItemBuilder, PredefinedMenuItem,
+    SubmenuBuilder,
+};
 #[cfg(target_os = "macos")]
 use tauri::Emitter;
 use tauri::Manager;
@@ -54,6 +57,7 @@ fn setup_menu(
         l.get(key).cloned().unwrap_or_else(|| key.to_string())
     };
 
+    // ── Shared items ──
     let theme_light = CheckMenuItemBuilder::new(t("theme-light"))
         .id("theme-light")
         .checked(theme == "light")
@@ -77,30 +81,73 @@ fn setup_menu(
         .accelerator("CmdOrCtrl+N")
         .build(handle)?;
 
-    let data_sync_item = MenuItemBuilder::new(t("data-sync"))
-        .id("data-sync")
-        .build(handle)?;
-
     let export_config_item = MenuItemBuilder::new(t("export-config"))
         .id("export-config")
         .build(handle)?;
-
     let import_config_item = MenuItemBuilder::new(t("import-config"))
         .id("import-config")
         .build(handle)?;
-
     let export_connections_item = MenuItemBuilder::new(t("export-connections"))
         .id("export-connections")
         .build(handle)?;
-
     let import_connections_item = MenuItemBuilder::new(t("import-connections"))
         .id("import-connections")
         .build(handle)?;
 
+    let data_sync_item = MenuItemBuilder::new(t("data-sync"))
+        .id("data-sync")
+        .build(handle)?;
+    let backup_item = MenuItemBuilder::new(t("backup"))
+        .id("backup")
+        .build(handle)?;
+    let restore_item = MenuItemBuilder::new(t("restore"))
+        .id("restore")
+        .build(handle)?;
     let view_logs_item = MenuItemBuilder::new(t("view-logs"))
         .id("view-logs")
         .build(handle)?;
 
+    let docs_item = MenuItemBuilder::new(t("documentation"))
+        .id("help-docs")
+        .build(handle)?;
+    let report_item = MenuItemBuilder::new(t("report-issue"))
+        .id("help-report")
+        .build(handle)?;
+
+    // ── DataZen (app menu) ──
+    let app_menu = SubmenuBuilder::new(handle, t("app-name"))
+        .about_with_text(
+            t("about"),
+            Some(AboutMetadata {
+                name: Some("DataZen".into()),
+                version: Some(env!("CARGO_PKG_VERSION").into()),
+                copyright: Some("© DataZen".into()),
+                ..Default::default()
+            }),
+        )
+        .separator()
+        .item(&settings_item)
+        .separator()
+        .services_with_text(t("services"))
+        .separator()
+        .hide_with_text(t("hide"))
+        .hide_others_with_text(t("hide-others"))
+        .show_all_with_text(t("show-all"))
+        .separator()
+        .quit_with_text(t("quit"))
+        .build()?;
+
+    // ── File ──
+    let file_menu = SubmenuBuilder::new(handle, t("file"))
+        .item(&new_conn_item)
+        .separator()
+        .item(&export_config_item)
+        .item(&import_config_item)
+        .item(&export_connections_item)
+        .item(&import_connections_item)
+        .build()?;
+
+    // ── Edit ──
     let edit_menu = SubmenuBuilder::new(handle, t("edit"))
         .item(&PredefinedMenuItem::undo(handle, Some(&t("undo")))?)
         .item(&PredefinedMenuItem::redo(handle, Some(&t("redo")))?)
@@ -111,31 +158,54 @@ fn setup_menu(
         .item(&PredefinedMenuItem::select_all(handle, Some(&t("select-all")))?)
         .build()?;
 
-    let view_menu = SubmenuBuilder::new(handle, t("view"))
+    // ── View ──
+    let theme_menu = SubmenuBuilder::new(handle, t("theme"))
         .items(&[&theme_light, &theme_dark, &theme_system])
+        .build()?;
+    let view_menu = SubmenuBuilder::new(handle, t("view"))
+        .item(&theme_menu)
         .separator()
-        .item(&settings_item)
+        .fullscreen_with_text(t("fullscreen"))
         .build()?;
 
+    // ── Tools ──
     let tools_menu = SubmenuBuilder::new(handle, t("tools"))
-        .item(&new_conn_item)
         .item(&data_sync_item)
         .separator()
-        .item(&view_logs_item)
+        .item(&backup_item)
+        .item(&restore_item)
         .separator()
-        .item(&export_config_item)
-        .item(&import_config_item)
-        .item(&export_connections_item)
-        .item(&import_connections_item)
+        .item(&view_logs_item)
         .build()?;
 
+    // ── Window ──
     let window_menu = SubmenuBuilder::new(handle, t("window"))
         .item(&PredefinedMenuItem::minimize(handle, Some(&t("minimize")))?)
+        .item(&PredefinedMenuItem::maximize(handle, Some(&t("zoom")))?)
+        .separator()
+        .bring_all_to_front_with_text(t("bring-all-to-front"))
+        .separator()
         .item(&PredefinedMenuItem::close_window(handle, Some(&t("close-window")))?)
+        .build()?;
+    let _ = window_menu.set_as_windows_menu_for_nsapp();
+
+    // ── Help ──
+    let help_menu = SubmenuBuilder::new(handle, t("help"))
+        .item(&docs_item)
+        .separator()
+        .item(&report_item)
         .build()?;
 
     let menu = MenuBuilder::new(handle)
-        .items(&[&edit_menu, &view_menu, &tools_menu, &window_menu])
+        .items(&[
+            &app_menu,
+            &file_menu,
+            &edit_menu,
+            &view_menu,
+            &tools_menu,
+            &window_menu,
+            &help_menu,
+        ])
         .build()?;
 
     handle.set_menu(menu)?;
@@ -151,17 +221,48 @@ fn setup_menu(
             let _ = td.set_checked(id == "theme-dark");
             let _ = ts.set_checked(id == "theme-system");
             let _ = app_handle.emit("menu:theme-change", theme);
+            return;
         }
         match id {
-            "open-settings" => { let _ = app_handle.emit("menu:open-settings", ()); }
-            "new-connection" => { let _ = app_handle.emit("menu:new-connection", ()); }
-            "data-sync" => { let _ = app_handle.emit("menu:data-sync", ()); }
-            "export-config" => { let _ = app_handle.emit("menu:export-config", ()); }
-            "import-config" => { let _ = app_handle.emit("menu:import-config", ()); }
-            "export-connections" => { let _ = app_handle.emit("menu:export-connections", ()); }
-            "import-connections" => { let _ = app_handle.emit("menu:import-connections", ()); }
-            "view-logs" => { let _ = app_handle.emit("menu:view-logs", ()); }
-            "ctx-add-favorite" => { let _ = app_handle.emit("menu:add-favorite", ()); }
+            "open-settings" => {
+                let _ = app_handle.emit("menu:open-settings", ());
+            }
+            "new-connection" => {
+                let _ = app_handle.emit("menu:new-connection", ());
+            }
+            "data-sync" => {
+                let _ = app_handle.emit("menu:data-sync", ());
+            }
+            "backup" => {
+                let _ = app_handle.emit("menu:backup", ());
+            }
+            "restore" => {
+                let _ = app_handle.emit("menu:restore", ());
+            }
+            "export-config" => {
+                let _ = app_handle.emit("menu:export-config", ());
+            }
+            "import-config" => {
+                let _ = app_handle.emit("menu:import-config", ());
+            }
+            "export-connections" => {
+                let _ = app_handle.emit("menu:export-connections", ());
+            }
+            "import-connections" => {
+                let _ = app_handle.emit("menu:import-connections", ());
+            }
+            "view-logs" => {
+                let _ = app_handle.emit("menu:view-logs", ());
+            }
+            "help-docs" => {
+                let _ = app_handle.emit("menu:open-docs", ());
+            }
+            "help-report" => {
+                let _ = open::that("https://github.com/flyxl/datazen/issues/new");
+            }
+            "ctx-add-favorite" => {
+                let _ = app_handle.emit("menu:add-favorite", ());
+            }
             _ => {}
         }
     });
