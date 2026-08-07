@@ -190,12 +190,12 @@ fn resolve_log_settings() -> (String, PathBuf) {
 }
 
 #[tauri::command]
-fn rebuild_menu(handle: tauri::AppHandle, language: String) -> Result<(), String> {
+async fn rebuild_menu(handle: tauri::AppHandle, language: String) -> Result<(), String> {
     let state = handle.state::<AppState>();
-    tauri::async_runtime::block_on(state.prompt_resolver.ensure_ready(&language));
+    state.prompt_resolver.ensure_ready(&language).await;
     #[cfg(target_os = "macos")]
     {
-        let settings = tauri::async_runtime::block_on(state.store.get_settings());
+        let settings = state.store.get_settings().await;
         setup_menu(&handle, &settings.theme, &language).map_err(|e| e.to_string())
     }
     #[cfg(not(target_os = "macos"))]
