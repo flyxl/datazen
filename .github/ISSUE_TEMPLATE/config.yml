@@ -10,5 +10,5 @@ contact_links:
     url: https://github.com/flyxl/datazen/releases
     about: Get the latest build for macOS, Windows, or Linux
   - name: Security vulnerability
-    url: https://github.com/flyxl/datazen/blob/main/SECURITY.md
-    about: Report security issues privately (do not file a public issue)
+    url: mailto:wuxiaolongklws@gmail.com
+    about: Report privately via email (see SECURITY.md in repo after merge)
