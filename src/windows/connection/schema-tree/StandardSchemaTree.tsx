@@ -29,6 +29,7 @@ const EMPTY_HEIGHT = 48;
 
 export function StandardSchemaTree({
   connectionId,
+  databaseType,
   initialDatabase,
   selectedTable,
   searchQuery,
@@ -49,8 +50,12 @@ export function StandardSchemaTree({
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    void loadForConnection(connectionId, { preferredDatabase: initialDatabase, skipLoadTables: false });
-  }, [connectionId, loadForConnection, initialDatabase]);
+    void loadForConnection(connectionId, {
+      preferredDatabase: initialDatabase,
+      skipLoadTables: false,
+      databaseType,
+    });
+  }, [connectionId, loadForConnection, initialDatabase, databaseType]);
 
   const query = searchQuery.toLowerCase();
   const filteredTables = useMemo(

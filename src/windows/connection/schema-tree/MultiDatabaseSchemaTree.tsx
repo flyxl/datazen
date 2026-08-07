@@ -19,6 +19,7 @@ const EMPTY_HEIGHT = 36;
 
 export function MultiDatabaseSchemaTree({
   connectionId,
+  databaseType,
   initialDatabase,
   selectedTable,
   searchQuery,
@@ -39,8 +40,12 @@ export function MultiDatabaseSchemaTree({
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    void loadForConnection(connectionId, { preferredDatabase: initialDatabase, skipLoadTables: true });
-  }, [connectionId, loadForConnection, initialDatabase]);
+    void loadForConnection(connectionId, {
+      preferredDatabase: initialDatabase,
+      skipLoadTables: true,
+      databaseType,
+    });
+  }, [connectionId, loadForConnection, initialDatabase, databaseType]);
 
   const handleToggleDb = useCallback(async (dbName: string) => {
     const wasExpanded = expandedDbs.has(dbName);
@@ -53,6 +58,12 @@ export function MultiDatabaseSchemaTree({
 
     if (!wasExpanded) {
       useSchemaStore.setState({ currentDatabase: dbName });
+      try {
+        const { databaseCommands } = await import('../../../commands/database');
+        await databaseCommands.useDatabase(connectionId, dbName);
+      } catch {
+        // Selection still updates; query path may fail until user retries.
+      }
     }
 
     if (!dbTables[dbName] && !dbLoading.has(dbName)) {

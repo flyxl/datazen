@@ -42,6 +42,33 @@ pub async fn get_databases(
 }
 
 #[tauri::command]
+pub async fn use_database(
+    state: State<'_, AppState>,
+    connection_id: String,
+    database: String,
+) -> Result<(), CommandError> {
+    let start = Instant::now();
+    tracing::info!(%connection_id, %database, "use_database");
+    let (driver, handle) = state
+        .connection_manager
+        .get_connection(&connection_id)
+        .await
+        .cmd_err("use_database")?;
+
+    driver
+        .use_database(&handle, &database)
+        .await
+        .cmd_err("use_database")?;
+    tracing::info!(
+        %connection_id,
+        %database,
+        ms = start.elapsed().as_millis() as u64,
+        "use_database OK"
+    );
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn get_tables(
     state: State<'_, AppState>,
     connection_id: String,

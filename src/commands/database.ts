@@ -25,6 +25,10 @@ export const databaseCommands = {
   getDatabases: (connectionId: string) =>
     invoke<string[]>('get_databases', { connectionId }),
 
+  /** Switch active database for subsequent unqualified queries (MySQL/MariaDB). */
+  useDatabase: (connectionId: string, database: string) =>
+    invoke<void>('use_database', { connectionId, database }),
+
   getTables: (connectionId: string, database: string) =>
     invoke<TableInfo[]>('get_tables', { connectionId, database }),
 

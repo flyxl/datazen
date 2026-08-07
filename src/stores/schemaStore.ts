@@ -1,12 +1,40 @@
 import { create } from 'zustand';
 import { databaseCommands } from '../commands/database';
+import { DB_REGISTRY } from '../lib/databaseTypes';
 import { t } from '../locales/t';
-import type { TableInfo } from '../types';
+import type { DatabaseType, TableInfo } from '../types';
+
+/** Session multi-db UI: capability flag AND more than one visible database. */
+export function computeIsMultiDatabase(
+  hasMultiDatabase: boolean | undefined,
+  databaseCount: number,
+): boolean {
+  return Boolean(hasMultiDatabase && databaseCount > 1);
+}
+
+export function resolvePreferredDatabase(
+  databases: string[],
+  preferredDatabase?: string,
+): string | null {
+  if (preferredDatabase && databases.includes(preferredDatabase)) {
+    return preferredDatabase;
+  }
+  return databases[0] ?? null;
+}
+
+export interface LoadForConnectionOptions {
+  skipLoadTables?: boolean;
+  preferredDatabase?: string;
+  /** Used to resolve hasMultiDatabase for session isMultiDatabase. */
+  databaseType?: DatabaseType | string;
+}
 
 interface SchemaStore {
   connectionId: string | null;
   currentDatabase: string | null;
   databases: string[];
+  /** True when driver supports multi-db AND connection sees more than one database. */
+  isMultiDatabase: boolean;
   tables: TableInfo[];
   views: TableInfo[];
   columnMap: Record<string, string[]>;
@@ -15,7 +43,7 @@ interface SchemaStore {
   loading: boolean;
   error: string | null;
 
-  loadForConnection: (connectionId: string, options?: { skipLoadTables?: boolean; preferredDatabase?: string }) => Promise<void>;
+  loadForConnection: (connectionId: string, options?: LoadForConnectionOptions) => Promise<void>;
   loadTables: (database: string) => Promise<void>;
   loadColumnMap: () => Promise<void>;
   toggleExpand: (id: string) => void;
@@ -27,6 +55,7 @@ export const useSchemaStore = create<SchemaStore>((set, get) => ({
   connectionId: null,
   currentDatabase: null,
   databases: [],
+  isMultiDatabase: false,
   tables: [],
   views: [],
   columnMap: {},
@@ -39,10 +68,12 @@ export const useSchemaStore = create<SchemaStore>((set, get) => ({
     set({ loading: true, error: null, connectionId });
     try {
       const databases = await databaseCommands.getDatabases(connectionId);
-      const preferred = options?.preferredDatabase && databases.includes(options.preferredDatabase)
-        ? options.preferredDatabase
-        : databases[0] ?? null;
-      set({ databases, loading: false, currentDatabase: preferred });
+      const meta = options?.databaseType
+        ? DB_REGISTRY[options.databaseType as DatabaseType]
+        : undefined;
+      const isMultiDatabase = computeIsMultiDatabase(meta?.hasMultiDatabase, databases.length);
+      const preferred = resolvePreferredDatabase(databases, options?.preferredDatabase);
+      set({ databases, isMultiDatabase, loading: false, currentDatabase: preferred });
       if (options?.skipLoadTables) return;
       if (preferred) {
         await get().loadTables(preferred);
@@ -52,6 +83,7 @@ export const useSchemaStore = create<SchemaStore>((set, get) => ({
       set({
         loading: false,
         error: e instanceof Error ? e.message : t('schema.loadDbFailed'),
+        isMultiDatabase: false,
       });
     }
   },
@@ -61,6 +93,8 @@ export const useSchemaStore = create<SchemaStore>((set, get) => ({
     if (!connectionId) return;
     set({ loading: true, error: null });
     try {
+      // Session switch for MySQL/MariaDB (and no-op for drivers without override).
+      await databaseCommands.useDatabase(connectionId, database);
       const all = await databaseCommands.getTables(connectionId, database);
       const tables = all.filter((t) => t.tableType !== 'view');
       const views = all.filter((t) => t.tableType === 'view');
@@ -104,6 +138,7 @@ export const useSchemaStore = create<SchemaStore>((set, get) => ({
       connectionId: null,
       currentDatabase: null,
       databases: [],
+      isMultiDatabase: false,
       tables: [],
       views: [],
       columnMap: {},

@@ -283,9 +283,9 @@ export function SqlConnectionView({
     if (currentDatabase) {
       void loadTables(currentDatabase);
     } else {
-      void loadForConnection(connectionId);
+      void loadForConnection(connectionId, { databaseType });
     }
-  }, [connectionId, currentDatabase, loadTables, loadForConnection]);
+  }, [connectionId, currentDatabase, databaseType, loadTables, loadForConnection]);
 
   const [createIndexTrigger, setCreateIndexTrigger] = useState(0);
 
