@@ -8,19 +8,20 @@ use crate::store::Store;
 use datazen_driver_api::{ConnectionHandle, DatabaseDriver};
 use std::sync::Arc;
 
-/// Resolve a connection ID (config ID or runtime ID) to a driver + handle.
-/// Tries to get an existing connection first, falls back to connecting.
+/// Resolve a connection from a **config_id** (persistent UUID from `list_connections`).
+/// Tries an existing runtime handle first, then connects via `get_or_connect`.
+/// Callers from MCP/AI tools should pass `config_id`; runtime `connection_id` is still accepted internally.
 pub async fn resolve_connection(
     connection_manager: &ConnectionManager,
-    id: &str,
+    config_id: &str,
 ) -> Result<(Arc<dyn DatabaseDriver>, ConnectionHandle), String> {
-    if let Ok(conn) = connection_manager.get_connection(id).await {
+    if let Ok(conn) = connection_manager.get_connection(config_id).await {
         return Ok(conn);
     }
     let conn_id = connection_manager
-        .connect(id)
+        .connect(config_id)
         .await
-        .map_err(|e| format!("Cannot connect to '{id}': {e}"))?;
+        .map_err(|e| format!("Cannot connect to '{config_id}': {e}"))?;
     connection_manager
         .get_connection(&conn_id)
         .await
@@ -45,12 +46,12 @@ pub async fn list_connections(store: &Store) -> Result<String, String> {
     serde_json::to_string_pretty(&result).map_err(|e| format!("Error: {e}"))
 }
 
-/// List all databases on a connection.
+/// List all databases on a connection identified by config_id.
 pub async fn list_databases(
     connection_manager: &ConnectionManager,
-    connection_id: &str,
+    config_id: &str,
 ) -> Result<String, String> {
-    let (driver, handle) = resolve_connection(connection_manager, connection_id).await?;
+    let (driver, handle) = resolve_connection(connection_manager, config_id).await?;
     let dbs = driver
         .get_databases(&handle)
         .await
@@ -58,13 +59,13 @@ pub async fn list_databases(
     serde_json::to_string_pretty(&dbs).map_err(|e| format!("Error: {e}"))
 }
 
-/// List all tables in a database.
+/// List all tables in a database on a connection identified by config_id.
 pub async fn list_tables(
     connection_manager: &ConnectionManager,
-    connection_id: &str,
+    config_id: &str,
     database: &str,
 ) -> Result<String, String> {
-    let (driver, handle) = resolve_connection(connection_manager, connection_id).await?;
+    let (driver, handle) = resolve_connection(connection_manager, config_id).await?;
     let tables = driver
         .get_tables(&handle, database)
         .await
@@ -72,13 +73,13 @@ pub async fn list_tables(
     serde_json::to_string_pretty(&tables).map_err(|e| format!("Error: {e}"))
 }
 
-/// Get detailed schema for one or more tables.
+/// Get detailed schema for one or more tables on a connection identified by config_id.
 pub async fn get_table_schema(
     connection_manager: &ConnectionManager,
-    connection_id: &str,
+    config_id: &str,
     tables: &[String],
 ) -> Result<String, String> {
-    let (driver, handle) = resolve_connection(connection_manager, connection_id).await?;
+    let (driver, handle) = resolve_connection(connection_manager, config_id).await?;
     let mut results = Vec::new();
     for table in tables {
         match driver.get_table_schema(&handle, table).await {
@@ -89,13 +90,13 @@ pub async fn get_table_schema(
     serde_json::to_string_pretty(&results).map_err(|e| format!("Error: {e}"))
 }
 
-/// Get a single table's schema as a JSON string.
+/// Get a single table's schema on a connection identified by config_id.
 pub async fn get_single_table_schema(
     connection_manager: &ConnectionManager,
-    connection_id: &str,
+    config_id: &str,
     table: &str,
 ) -> Result<datazen_driver_api::TableSchema, String> {
-    let (driver, handle) = resolve_connection(connection_manager, connection_id).await?;
+    let (driver, handle) = resolve_connection(connection_manager, config_id).await?;
     driver
         .get_table_schema(&handle, table)
         .await
@@ -108,14 +109,14 @@ pub fn resolve_query_limit(limit: Option<u32>) -> Option<u32> {
     Some(resolved.min(MCP_QUERY_MAX_LIMIT))
 }
 
-/// Execute a SQL query and return results as JSON.
+/// Execute a SQL query on a connection identified by config_id.
 pub async fn query(
     connection_manager: &ConnectionManager,
-    connection_id: &str,
+    config_id: &str,
     sql: &str,
     limit: Option<u32>,
 ) -> Result<String, String> {
-    let (driver, handle) = resolve_connection(connection_manager, connection_id).await?;
+    let (driver, handle) = resolve_connection(connection_manager, config_id).await?;
     let limit = resolve_query_limit(limit);
     let result = driver
         .query_multi(&handle, sql, limit)
@@ -124,13 +125,13 @@ pub async fn query(
     serde_json::to_string_pretty(&result).map_err(|e| format!("Error: {e}"))
 }
 
-/// Run EXPLAIN on a SQL query.
+/// Run EXPLAIN on a SQL query on a connection identified by config_id.
 pub async fn explain_query(
     connection_manager: &ConnectionManager,
-    connection_id: &str,
+    config_id: &str,
     sql: &str,
 ) -> Result<String, String> {
-    let (driver, handle) = resolve_connection(connection_manager, connection_id).await?;
+    let (driver, handle) = resolve_connection(connection_manager, config_id).await?;
     let result = driver
         .explain(&handle, sql)
         .await

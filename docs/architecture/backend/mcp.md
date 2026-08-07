@@ -37,6 +37,6 @@ Workflow 引擎本身在 [`workflow` 模块](./workflow.md)（若尚未拆文档
 
 MCP tools 与 GUI IPC 共用 `ConnectionManager` 语义（详见 [服务层 — 连接 ID 约定](./services.md#连接-id-约定)）：
 
-- **`config_id`**：`connections.json` 中的持久化连接 UUID；`connect` / `list_connections` 使用。
-- **`connection_id`**：`connect` 返回的运行时会话 ID；`query`、`get_schema` 等需已连接会话的工具使用。
+- **`config_id`**：`connections.json` 中的持久化连接 UUID；`list_connections` 返回值；MCP tools / prompts / AI db tools 入参。
+- **`connection_id`**：`connect` 返回的运行时会话 ID；GUI IPC（`query`、`get_schema` 等）在已连接后传此 ID。
 

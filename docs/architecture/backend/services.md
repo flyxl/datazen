@@ -9,7 +9,7 @@
 | **`config_id`** | 持久化连接配置 ID（`ConnectionConfig.id`，存于 `connections.json`） | GUI 保存的连接、`connect` IPC 入参 |
 | **`connection_id`** | 运行时活动连接句柄（`ConnectionManager` 分配，断开即失效） | `connect` 返回值、大多数查询/Schema IPC |
 
-规则：**先 `connect(config_id)` → 得到 `connection_id`，后续 SQL/Schema 调用传 `connection_id`。** MCP tools 与 GUI 共用 `ConnectionManager`；`list_connections` 返回的是 **config_id** 列表，内部按需 `get_or_connect`。
+规则：**GUI 先 `connect(config_id)` → 得到 `connection_id`，后续 SQL/Schema IPC 传 `connection_id`。** MCP tools / AI db tools 与 prompts 直接传 **`config_id`**（`list_connections` 返回值）；内部通过 `db_tools::resolve_connection` 按需连接。`resolve_connection` 仍接受运行时会话 ID，但 MCP/API 调用方应只传 config_id。
 
 ---
 
@@ -219,9 +219,9 @@ pub enum ConnectionError {
 ### 1.4 DbTools
 
 `src-tauri/src/services/db_tools.rs` — 共享数据库操作工具，被 AI Chat 工具调用和 MCP Server 复用：
-- `resolve_connection()` — 解析连接 ID 获取驱动和句柄
-- `list_connections()` — 列出所有可用连接
-- `run_query()` — 在指定连接上执行 SQL
+- `resolve_connection(config_id)` — 从 config_id（或内部兼容的运行时会话 ID）解析驱动和句柄
+- `list_connections()` — 列出所有可用连接（返回 config_id）
+- `query(config_id, …)` / `list_databases` / `list_tables` / `get_table_schema` — MCP 与 AI tools 入参均为 **config_id**
 
 ---
 
