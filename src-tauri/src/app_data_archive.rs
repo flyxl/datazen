@@ -146,17 +146,30 @@ fn extract_zip_to_dir(zip_path: &Path, dest: &Path) -> std::io::Result<()> {
 
 /// Replace `data_dir` contents from `zip_path`. Existing `logs/` and `.key` (when absent
 /// from the archive) are preserved when present locally.
+///
+/// Uses extract → validate in staging → build sibling `prepared` dir → atomic rename swap
+/// so a failed import never leaves `data_dir` empty or partially written.
 pub fn import_app_data(data_dir: &Path, zip_path: &Path) -> std::io::Result<()> {
+    let parent = data_dir.parent().ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "data_dir has no parent directory",
+        )
+    })?;
+    let dir_name = data_dir.file_name().ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "data_dir has no directory name",
+        )
+    })?;
+
     let staging = std::env::temp_dir().join(format!(
         "datazen-import-{}",
         uuid::Uuid::new_v4()
     ));
-    let logs_backup = std::env::temp_dir().join(format!(
-        "datazen-logs-{}",
-        uuid::Uuid::new_v4()
-    ));
-    let key_backup = std::env::temp_dir().join(format!(
-        "datazen-key-{}",
+    let prepared = parent.join(format!(
+        ".{}-import-{}",
+        dir_name.to_string_lossy(),
         uuid::Uuid::new_v4()
     ));
 
@@ -164,56 +177,106 @@ pub fn import_app_data(data_dir: &Path, zip_path: &Path) -> std::io::Result<()> 
         extract_zip_to_dir(zip_path, &staging)?;
 
         let zip_has_key = staging.join(".key").is_file();
-
         let logs_path = data_dir.join("logs");
         let had_logs = logs_path.is_dir();
-        if had_logs {
-            copy_dir_all(&logs_path, &logs_backup)?;
-        }
-
         let key_path = data_dir.join(".key");
         let had_key = key_path.is_file();
-        if had_key {
-            fs::copy(&key_path, &key_backup)?;
-        }
 
-        clear_dir_contents(data_dir)?;
-        copy_dir_all_filtered(&staging, data_dir, &staging, |rel| {
+        fs::create_dir_all(&prepared)?;
+        copy_dir_all_filtered(&staging, &prepared, &staging, |rel| {
             !should_exclude_on_import(rel)
         })?;
 
         if had_logs {
-            copy_dir_all(&logs_backup, &logs_path)?;
+            copy_dir_all(&logs_path, &prepared.join("logs"))?;
         }
 
         if had_key && !zip_has_key {
-            fs::copy(&key_backup, &key_path)?;
+            fs::copy(&key_path, &prepared.join(".key"))?;
         }
 
-        Ok(())
+        atomic_replace_dir(data_dir, &prepared)
     })();
 
     let _ = fs::remove_dir_all(&staging);
-    let _ = fs::remove_dir_all(&logs_backup);
-    let _ = fs::remove_file(&key_backup);
+    let _ = fs::remove_dir_all(&prepared);
     result
 }
 
-fn clear_dir_contents(dir: &Path) -> std::io::Result<()> {
-    if !dir.exists() {
-        fs::create_dir_all(dir)?;
-        return Ok(());
-    }
-    for entry in fs::read_dir(dir)? {
-        let entry = entry?;
-        let path = entry.path();
-        if path.is_dir() {
-            fs::remove_dir_all(&path)?;
+/// Atomically replace `data_dir` with the fully prepared `prepared` directory (same parent).
+fn atomic_replace_dir(data_dir: &Path, prepared: &Path) -> std::io::Result<()> {
+    let parent = data_dir.parent().ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "data_dir has no parent directory",
+        )
+    })?;
+    let name = data_dir.file_name().ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "data_dir has no directory name",
+        )
+    })?;
+    let backup = parent.join(format!("{}.bak", name.to_string_lossy()));
+
+    if backup.exists() {
+        if backup.is_dir() {
+            fs::remove_dir_all(&backup)?;
         } else {
-            fs::remove_file(&path)?;
+            fs::remove_file(&backup)?;
         }
     }
-    Ok(())
+
+    if data_dir.exists() {
+        fs::rename(data_dir, &backup)?;
+
+        #[cfg(test)]
+        if test_fail_before_swap() {
+            let restore = fs::rename(&backup, data_dir);
+            return restore.and_then(|_| {
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "injected swap failure",
+                ))
+            });
+        }
+
+        match fs::rename(prepared, data_dir) {
+            Ok(()) => {
+                let _ = fs::remove_dir_all(&backup);
+                Ok(())
+            }
+            Err(e) => {
+                let _ = fs::rename(&backup, data_dir);
+                Err(e)
+            }
+        }
+    } else {
+        fs::create_dir_all(parent)?;
+        fs::rename(prepared, data_dir)
+    }
+}
+
+#[cfg(test)]
+mod test_hooks {
+    use std::cell::Cell;
+
+    thread_local! {
+        static FAIL_BEFORE_SWAP: Cell<bool> = const { Cell::new(false) };
+    }
+
+    pub fn fail_before_swap() -> bool {
+        FAIL_BEFORE_SWAP.with(|f| f.get())
+    }
+
+    pub fn set_fail_before_swap(fail: bool) {
+        FAIL_BEFORE_SWAP.with(|f| f.set(fail));
+    }
+}
+
+#[cfg(test)]
+fn test_fail_before_swap() -> bool {
+    test_hooks::fail_before_swap()
 }
 
 fn copy_dir_all(src: &Path, dst: &Path) -> std::io::Result<()> {
@@ -422,10 +485,40 @@ mod tests {
         }
 
         let target = TempDir::new().unwrap();
+        write_file(target.path(), "keep.json", "unchanged");
         let err = import_app_data(target.path(), &zip_path).unwrap_err();
         assert!(
             err.to_string().contains("traversal") || err.kind() == std::io::ErrorKind::InvalidInput
         );
+        assert_eq!(
+            fs::read_to_string(target.path().join("keep.json")).unwrap(),
+            "unchanged"
+        );
+    }
+
+    #[test]
+    fn import_swap_failure_restores_original_data_dir() {
+        let source = TempDir::new().unwrap();
+        write_file(source.path(), "new.json", r#"{"imported":true}"#);
+        let out = TempDir::new().unwrap();
+        let zip_path = out.path().join("backup.zip");
+        export_app_data(source.path(), &zip_path).unwrap();
+
+        let target = TempDir::new().unwrap();
+        write_file(target.path(), "keep.json", "must-stay");
+
+        test_hooks::set_fail_before_swap(true);
+        let result = import_app_data(target.path(), &zip_path);
+        test_hooks::set_fail_before_swap(false);
+
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("injected swap failure"));
+
+        assert_eq!(
+            fs::read_to_string(target.path().join("keep.json")).unwrap(),
+            "must-stay"
+        );
+        assert!(!target.path().join("new.json").exists());
     }
 
     #[test]
