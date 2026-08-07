@@ -48,13 +48,13 @@ const LANGUAGE_OPTIONS = [
   { value: 'zh-CN', label: '简体中文' },
   { value: 'zh-TW', label: '繁體中文' },
   { value: 'en', label: 'English' },
-  { value: 'es', label: 'Español' },
-  { value: 'fr', label: 'Français' },
-  { value: 'de', label: 'Deutsch' },
-  { value: 'ja', label: '日本語' },
-  { value: 'pt-BR', label: 'Português (Brasil)' },
-  { value: 'ru', label: 'Русский' },
-  { value: 'ko', label: '한국어' },
+  { value: 'es', label: 'Español (Beta)' },
+  { value: 'fr', label: 'Français (Beta)' },
+  { value: 'de', label: 'Deutsch (Beta)' },
+  { value: 'ja', label: '日本語 (Beta)' },
+  { value: 'pt-BR', label: 'Português (Brasil) (Beta)' },
+  { value: 'ru', label: 'Русский (Beta)' },
+  { value: 'ko', label: '한국어 (Beta)' },
 ];
 
 type SettingsSection = 'general' | 'dataBrowsing' | 'editor' | 'behavior' | 'logging' | 'ai' | 'prompts' | 'mcpServer' | 'mcpClient';
