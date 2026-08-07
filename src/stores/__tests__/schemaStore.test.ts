@@ -13,9 +13,10 @@ vi.mock('../../commands/database', () => ({
   },
 }));
 
-describe('computeIsMultiDatabase / resolvePreferredDatabase', () => {
+describe('computeIsMultiDatabase / resolvePreferredDatabase / resolveVisibleDatabases', () => {
   it('is multi only when capability and length > 1', async () => {
-    const { computeIsMultiDatabase, resolvePreferredDatabase } = await import('../schemaStore');
+    const { computeIsMultiDatabase, resolvePreferredDatabase, resolveVisibleDatabases } =
+      await import('../schemaStore');
     expect(computeIsMultiDatabase(true, 2)).toBe(true);
     expect(computeIsMultiDatabase(true, 1)).toBe(false);
     expect(computeIsMultiDatabase(true, 0)).toBe(false);
@@ -26,6 +27,22 @@ describe('computeIsMultiDatabase / resolvePreferredDatabase', () => {
     expect(resolvePreferredDatabase(['a', 'b'], 'missing')).toBe('a');
     expect(resolvePreferredDatabase(['a', 'b'])).toBe('a');
     expect(resolvePreferredDatabase([])).toBeNull();
+
+    expect(resolveVisibleDatabases(['a', 'b', 'c'], 'b')).toEqual({
+      databases: ['b'],
+      preferred: 'b',
+      lockedToConfigured: true,
+    });
+    expect(resolveVisibleDatabases(['a', 'b'], undefined)).toEqual({
+      databases: ['a', 'b'],
+      preferred: 'a',
+      lockedToConfigured: false,
+    });
+    expect(resolveVisibleDatabases(['a', 'b'], '  ')).toEqual({
+      databases: ['a', 'b'],
+      preferred: 'a',
+      lockedToConfigured: false,
+    });
   });
 });
 
@@ -43,7 +60,7 @@ describe('schemaStore.loadForConnection isMultiDatabase', () => {
     useSchemaStore.getState().reset();
   });
 
-  it('sets isMultiDatabase true for mysql with multiple databases', async () => {
+  it('locks to configured database and disables multi-db session', async () => {
     vi.mocked(databaseCommands.getDatabases).mockResolvedValueOnce(['db_a', 'db_b', 'db_c']);
 
     await useSchemaStore.getState().loadForConnection('conn-1', {
@@ -53,10 +70,24 @@ describe('schemaStore.loadForConnection isMultiDatabase', () => {
     });
 
     const state = useSchemaStore.getState();
-    expect(state.isMultiDatabase).toBe(true);
-    expect(state.databases).toEqual(['db_a', 'db_b', 'db_c']);
+    expect(state.isMultiDatabase).toBe(false);
+    expect(state.databases).toEqual(['db_b']);
     expect(state.currentDatabase).toBe('db_b');
     expect(databaseCommands.getTables).not.toHaveBeenCalled();
+  });
+
+  it('lists all databases when none configured (mysql)', async () => {
+    vi.mocked(databaseCommands.getDatabases).mockResolvedValueOnce(['db_a', 'db_b', 'db_c']);
+
+    await useSchemaStore.getState().loadForConnection('conn-1', {
+      databaseType: 'mysql',
+      skipLoadTables: true,
+    });
+
+    const state = useSchemaStore.getState();
+    expect(state.isMultiDatabase).toBe(true);
+    expect(state.databases).toEqual(['db_a', 'db_b', 'db_c']);
+    expect(state.currentDatabase).toBe('db_a');
   });
 
   it('sets isMultiDatabase false for mysql with a single database', async () => {
@@ -84,7 +115,21 @@ describe('schemaStore.loadForConnection isMultiDatabase', () => {
     expect(useSchemaStore.getState().currentDatabase).toBe('db1');
   });
 
-  it('falls back to first database when preferred is missing', async () => {
+  it('falls back to listing all when preferred is empty string', async () => {
+    vi.mocked(databaseCommands.getDatabases).mockResolvedValueOnce(['alpha', 'beta']);
+
+    await useSchemaStore.getState().loadForConnection('conn-1', {
+      databaseType: 'mariadb',
+      preferredDatabase: '   ',
+      skipLoadTables: true,
+    });
+
+    expect(useSchemaStore.getState().databases).toEqual(['alpha', 'beta']);
+    expect(useSchemaStore.getState().currentDatabase).toBe('alpha');
+    expect(useSchemaStore.getState().isMultiDatabase).toBe(true);
+  });
+
+  it('locks even when configured database is absent from server list', async () => {
     vi.mocked(databaseCommands.getDatabases).mockResolvedValueOnce(['alpha', 'beta']);
 
     await useSchemaStore.getState().loadForConnection('conn-1', {
@@ -93,11 +138,11 @@ describe('schemaStore.loadForConnection isMultiDatabase', () => {
       skipLoadTables: true,
     });
 
-    expect(useSchemaStore.getState().currentDatabase).toBe('alpha');
-    expect(useSchemaStore.getState().isMultiDatabase).toBe(true);
+    expect(useSchemaStore.getState().databases).toEqual(['nope']);
+    expect(useSchemaStore.getState().currentDatabase).toBe('nope');
+    expect(useSchemaStore.getState().isMultiDatabase).toBe(false);
   });
 });
-
 describe('schemaStore.loadTables', () => {
   let useSchemaStore: typeof import('../../stores/schemaStore').useSchemaStore;
   let databaseCommands: typeof import('../../commands/database').databaseCommands;

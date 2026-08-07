@@ -4,7 +4,7 @@ import { DB_REGISTRY } from '../lib/databaseTypes';
 import { t } from '../locales/t';
 import type { DatabaseType, TableInfo } from '../types';
 
-/** Session multi-db UI: capability flag AND more than one visible database. */
+/** Session multi-db UI: capability flag AND more than one *visible* database. */
 export function computeIsMultiDatabase(
   hasMultiDatabase: boolean | undefined,
   databaseCount: number,
@@ -20,6 +20,29 @@ export function resolvePreferredDatabase(
     return preferredDatabase;
   }
   return databases[0] ?? null;
+}
+
+/**
+ * When the connection config specifies a database, lock the sidebar to that
+ * single database. Otherwise expose all databases returned by the driver.
+ */
+export function resolveVisibleDatabases(
+  allDatabases: string[],
+  preferredDatabase?: string,
+): { databases: string[]; preferred: string | null; lockedToConfigured: boolean } {
+  const configured = preferredDatabase?.trim();
+  if (configured) {
+    return {
+      databases: [configured],
+      preferred: configured,
+      lockedToConfigured: true,
+    };
+  }
+  return {
+    databases: allDatabases,
+    preferred: allDatabases[0] ?? null,
+    lockedToConfigured: false,
+  };
 }
 
 export interface LoadForConnectionOptions {
@@ -67,12 +90,17 @@ export const useSchemaStore = create<SchemaStore>((set, get) => ({
   loadForConnection: async (connectionId, options) => {
     set({ loading: true, error: null, connectionId });
     try {
-      const databases = await databaseCommands.getDatabases(connectionId);
+      const allDatabases = await databaseCommands.getDatabases(connectionId);
       const meta = options?.databaseType
         ? DB_REGISTRY[options.databaseType as DatabaseType]
         : undefined;
-      const isMultiDatabase = computeIsMultiDatabase(meta?.hasMultiDatabase, databases.length);
-      const preferred = resolvePreferredDatabase(databases, options?.preferredDatabase);
+      const { databases, preferred, lockedToConfigured } = resolveVisibleDatabases(
+        allDatabases,
+        options?.preferredDatabase,
+      );
+      const isMultiDatabase =
+        !lockedToConfigured &&
+        computeIsMultiDatabase(meta?.hasMultiDatabase, databases.length);
       set({ databases, isMultiDatabase, loading: false, currentDatabase: preferred });
       if (options?.skipLoadTables) return;
       if (preferred) {
