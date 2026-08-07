@@ -82,14 +82,22 @@ export function DocsWindow() {
               <div
                 className={cn(
                   'docs-prose text-sm leading-relaxed text-fg-secondary',
-                  '[&_h3]:mt-5 [&_h3]:mb-2 [&_h3]:text-[13px] [&_h3]:font-semibold [&_h3]:text-fg',
+                  '[&_h2]:mt-6 [&_h2]:mb-3 [&_h2]:scroll-mt-4 [&_h2]:border-b [&_h2]:border-edge [&_h2]:pb-1.5 [&_h2]:text-base [&_h2]:font-semibold [&_h2]:text-fg',
+                  '[&_h3]:mt-5 [&_h3]:mb-2 [&_h3]:scroll-mt-4 [&_h3]:text-[13px] [&_h3]:font-semibold [&_h3]:text-fg',
+                  '[&_h4]:mt-4 [&_h4]:mb-1.5 [&_h4]:text-[13px] [&_h4]:font-medium [&_h4]:text-fg',
                   '[&_p]:mb-3',
                   '[&_ul]:mb-3 [&_ul]:list-disc [&_ul]:pl-5',
                   '[&_ol]:mb-3 [&_ol]:list-decimal [&_ol]:pl-5',
                   '[&_li]:mb-1',
                   '[&_strong]:text-fg [&_strong]:font-medium',
+                  '[&_blockquote]:mb-3 [&_blockquote]:border-l-2 [&_blockquote]:border-edge [&_blockquote]:pl-3 [&_blockquote]:text-fg-muted',
+                  '[&_hr]:my-6 [&_hr]:border-edge',
+                  '[&_table]:mb-4 [&_table]:w-full [&_table]:border-collapse [&_table]:text-left [&_table]:text-[12px]',
+                  '[&_th]:border [&_th]:border-edge [&_th]:bg-surface-alt [&_th]:px-2 [&_th]:py-1.5 [&_th]:font-medium [&_th]:text-fg',
+                  '[&_td]:border [&_td]:border-edge [&_td]:px-2 [&_td]:py-1.5 [&_td]:align-top',
                   '[&_code]:rounded [&_code]:bg-surface-alt [&_code]:px-1 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-[12px]',
                   '[&_pre]:mb-4 [&_pre]:overflow-x-auto [&_pre]:rounded-md [&_pre]:border [&_pre]:border-edge [&_pre]:bg-surface-alt [&_pre]:p-3 [&_pre]:font-mono [&_pre]:text-[12px] [&_pre]:text-fg-secondary',
+                  '[&_pre_code]:bg-transparent [&_pre_code]:p-0',
                   '[&_a]:text-accent [&_a]:underline',
                 )}
                 dangerouslySetInnerHTML={{ __html: active.html }}

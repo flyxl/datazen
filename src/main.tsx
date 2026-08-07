@@ -48,10 +48,15 @@ if ('__TAURI_INTERNALS__' in globalThis) {
   import('@tauri-apps/api/window').then(({ getCurrentWindow }) => {
     const win = getCurrentWindow();
     if (win.label !== 'main') {
-      void win.show().then(() => {
-        win.setFocus().catch(() => {});
-      }).catch((e) => {
-        console.error(`[bootstrap] failed to show window "${win.label}"`, e);
+      // Theme + splash already applied in index.html; show only after that paint.
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          void win.show().then(() => {
+            win.setFocus().catch(() => {});
+          }).catch((e) => {
+            console.error(`[bootstrap] failed to show window "${win.label}"`, e);
+          });
+        });
       });
     }
   });

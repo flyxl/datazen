@@ -1,3 +1,7 @@
+import workflowGuideZh from '../../../docs/workflow-guide.md?raw';
+import workflowGuideEn from '../../../docs/workflow-guide.en.md?raw';
+import { renderWorkflowMarkdown } from './renderMarkdown';
+
 export type DocsSectionId =
   | 'overview'
   | 'features'
@@ -11,6 +15,9 @@ export interface DocsSection {
   /** Trusted built-in HTML (no user input). */
   html: string;
 }
+
+const WORKFLOW_HTML_ZH = renderWorkflowMarkdown(workflowGuideZh);
+const WORKFLOW_HTML_EN = renderWorkflowMarkdown(workflowGuideEn);
 
 export const DOCS_SECTIONS_ZH: DocsSection[] = [
   {
@@ -159,70 +166,7 @@ export const DOCS_SECTIONS_ZH: DocsSection[] = [
   {
     id: 'workflows',
     title: 'Workflow 工作流',
-    html: `
-<h3>是什么？</h3>
-<p>Workflow 把多个步骤串联成可复用的自动化流程，以 <strong>YAML 文件</strong> 持久化。步骤可包括 SQL 查询、AI 推理、条件分支与循环，适合日报、巡检、跨库汇总等场景。</p>
-<h3>从哪里打开</h3>
-<ul>
-  <li>首页操作区「工作流」→ 独立 Workflow 窗口</li>
-  <li>连接窗口 → AI 侧边栏 →「工作流」标签（嵌入式面板）</li>
-</ul>
-<h3>创建方式</h3>
-<ol>
-  <li><strong>界面新建</strong>：在 Workflow 窗口或侧边栏点击「新建」，填写名称、变量与步骤</li>
-  <li><strong>AI 创建</strong>：用自然语言描述流程，由 AI 生成 YAML（同样可用 <code>@</code> 上下文）</li>
-  <li><strong>直接编辑文件</strong>：把 <code>.yaml</code> / <code>.yml</code> 放进工作流目录，点击「刷新」加载</li>
-</ol>
-<p>存储目录可在界面查看，并用「打开目录」在系统中编辑。</p>
-<h3>核心概念</h3>
-<ul>
-  <li><strong>变量</strong>：执行前填写，模板中用 <code>{{变量名}}</code> 替换</li>
-  <li><strong>步骤结果</strong>：统一用 <code>{{steps.&lt;步骤id&gt;.result}}</code>；查询可写 <code>{{steps.&lt;id&gt;.result.0.字段}}</code>、<code>{{steps.&lt;id&gt;.result.*.字段}}</code>、<code>{{steps.&lt;id&gt;.result_count}}</code>（不再支持 <code>rows</code>）</li>
-  <li><strong>跨连接查询</strong>：query 步骤可指定 <code>connection</code>（及 database）绑定其他已保存连接</li>
-</ul>
-<h3>步骤类型</h3>
-<ul>
-  <li><code>query</code> — 执行 SQL，结果写入步骤上下文</li>
-  <li><code>ai</code> — 调用已配置的 AI，对上游结果做总结/分析</li>
-  <li><code>condition</code> — 按条件走不同分支</li>
-  <li><code>foreach</code> — 对列表循环执行子步骤</li>
-</ul>
-<h3>最小示例</h3>
-<pre>id: daily-report
-name: 日报查询
-variables:
-  - name: date
-    type: string
-    required: true
-steps:
-  - type: query
-    id: get_orders
-    sql: |
-      SELECT COUNT(*) AS total
-      FROM orders
-      WHERE order_date = '{{date}}'
-  - type: ai
-    id: summary
-    prompt: |
-      根据结果写一段中文摘要：
-      {{steps.get_orders.result}}
-  - type: ai
-    id: summary
-    prompt: |
-      根据结果写一段中文摘要：
-      {{steps.get_orders.result}}
-output:
-  format: text
-  template: "{{steps.summary.result}}"
-</pre>
-<h3>执行与历史</h3>
-<ol>
-  <li>选择工作流 → 填写变量 → 运行</li>
-  <li>结果在标签页中展示；失败步骤可查看错误信息</li>
-  <li>「历史」标签可回顾近期执行记录</li>
-</ol>
-<p>错误处理策略（如 abort / skip / fallback）可在 YAML 中按步骤配置。更完整的字段说明见仓库文档 <code>docs/workflow-guide.md</code>。</p>
-`,
+    html: '', // filled from docs/workflow-guide.md in getDocsSections
   },
 ];
 
@@ -306,25 +250,18 @@ export const DOCS_SECTIONS_EN: DocsSection[] = [
   {
     id: 'workflows',
     title: 'Workflows',
-    html: `
-<h3>What</h3>
-<p>Workflows chain SQL, AI, conditions, and loops as reusable YAML automations.</p>
-<h3>Where</h3>
-<ul>
-  <li>Home → Workflows (dedicated window)</li>
-  <li>Connection → AI sidebar → Workflows tab</li>
-</ul>
-<h3>Create</h3>
-<p>Use the UI form, AI Create (with optional <code>@</code> context), or drop YAML into the workflows directory and reload.</p>
-<h3>Step types</h3>
-<ul>
-  <li><code>query</code>, <code>ai</code>, <code>condition</code>, <code>foreach</code></li>
-</ul>
-<p>Variables use <code>{{name}}</code>. Step outputs use <code>{{steps.id.result}}</code> (query: row array; AI: text). Paths: <code>result.0.field</code>, <code>result.*.field</code>, <code>result_count</code>. The old <code>rows</code> path is not supported.</p>
-`,
+    html: '', // filled from docs/workflow-guide.en.md in getDocsSections
   },
 ];
 
 export function getDocsSections(lang: string): DocsSection[] {
-  return lang.startsWith('zh') ? DOCS_SECTIONS_ZH : DOCS_SECTIONS_EN;
+  const sections = lang.startsWith('zh') ? DOCS_SECTIONS_ZH : DOCS_SECTIONS_EN;
+  return sections.map((s) =>
+    s.id === 'workflows'
+      ? {
+          ...s,
+          html: lang.startsWith('zh') ? WORKFLOW_HTML_ZH : WORKFLOW_HTML_EN,
+        }
+      : s,
+  );
 }

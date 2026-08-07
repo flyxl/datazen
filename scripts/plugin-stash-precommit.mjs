@@ -5,6 +5,12 @@
  * Shared pre-commit logic for restoring plugin-injected managed files.
  * Invoked by `.husky/pre-commit`. Safe to unit-test with an injectable root.
  *
+ * Strategy:
+ *   - Detect files that still carry injection (plugin compile ran).
+ *   - For those files only: strip injection while keeping user edits
+ *     (e.g. new window labels in capabilities). Fully-generated files
+ *     (plugin_init / generated.ts) come back from stash.
+ *
  * Exit codes:
  *   0 — clean / restored successfully
  *   1 — restore required but stash missing, or restore left injection behind
@@ -19,8 +25,12 @@ import {
   MANAGED_FILES,
   ROOT,
 } from './plugin-file-stash.mjs';
+import {
+  PLUGIN_ACL_IDS,
+  isFullyGeneratedManagedFile,
+} from './plugin-deinject.mjs';
 
-export const PLUGIN_ACL_IDS = ['kiwi', 'olap', 'superset'];
+export { PLUGIN_ACL_IDS };
 
 export function hasInjectedCargoContent(content) {
   if (!content) return false;
@@ -90,7 +100,7 @@ export function fileHasInjection(relPath, content, pluginIds = PLUGIN_ACL_IDS) {
  *   restage?: (relPath: string) => void,
  *   log?: (...args: unknown[]) => void,
  * }} [opts]
- * @returns {{ status: number, reason?: string, restored?: boolean }}
+ * @returns {{ status: number, reason?: string, restored?: boolean, discardedStash?: boolean }}
  */
 export function runPluginStashPrecommit(opts = {}) {
   const root = opts.root ?? ROOT;
@@ -159,24 +169,26 @@ export function runPluginStashPrecommit(opts = {}) {
   }
 
   log(
-    `[pre-commit] Restoring ${injectedFiles.length} injected managed file(s) from .plugin-file-stash/ ...`,
+    `[pre-commit] Deinjecting ${injectedFiles.length} managed file(s) (keep user edits, strip plugin injection)...`,
   );
 
-  if (!stash.allStashed()) {
-    const missing = stash.missingStashFiles();
+  // Fully-generated files need the pre-inject stash; cargo/capabilities can strip in-place.
+  const needStash = injectedFiles.filter((f) =>
+    isFullyGeneratedManagedFile(f),
+  );
+  const missingStash = needStash.filter((f) => !existsSync(stash.stashPath(f)));
+  if (missingStash.length > 0) {
     log(
-      '[pre-commit] ERROR: injected/plugin-stash state detected but stash backups are missing.',
+      '[pre-commit] ERROR: injected generated files need .plugin-file-stash/ backups.',
     );
     log(
       '[pre-commit] Cannot safely restore. Re-checkout clean managed files or recreate the stash.',
     );
-    if (missing.length) {
-      log(`[pre-commit] missing stash: ${missing.join(', ')}`);
-    }
+    log(`[pre-commit] missing stash: ${missingStash.join(', ')}`);
     return {
       status: 1,
       reason: 'stash-missing',
-      missing,
+      missing: missingStash,
       restored: false,
     };
   }
@@ -184,7 +196,7 @@ export function runPluginStashPrecommit(opts = {}) {
   try {
     stash.restoreSelectedFiles(injectedFiles);
   } catch (e) {
-    log('[pre-commit] ERROR: stash restore failed');
+    log('[pre-commit] ERROR: deinject/restore failed');
     log(e instanceof Error ? e.message : e);
     return { status: 1, reason: 'restore-failed', restored: false };
   }
@@ -208,7 +220,9 @@ export function runPluginStashPrecommit(opts = {}) {
     return { status: 1, reason: 'stash-dir-remains', restored: true };
   }
 
-  log('[pre-commit] Restored injected plugin files; preserved non-injected edits.');
+  log(
+    '[pre-commit] Restored injected files: user edits kept, plugin injection removed.',
+  );
   return { status: 0, restored: true };
 }
 

@@ -22,6 +22,7 @@
         "decorations": true,
         "transparent": false,
         "visible": false,
+        "backgroundColor": "#0f172a",
         "acceptFirstMouse": true
       }
     ],

@@ -8,8 +8,8 @@
  *   1. `stash`  — copyFileSync clean working files → .plugin-file-stash/<path>
  *                 (working tree stays in place so editors/git keep seeing the files)
  *   2. resolve-plugins overwrites working paths with injected content
- *   3. `restore` — for each file, copy stash → temp, renameSync temp → work
- *                 (atomic replace), then remove stash copies
+ *   3. `restore` — deinject cargo/capabilities (keep user edits); stash-restore
+ *                 fully-generated files; then remove stash copies
  *
  * Usage:
  *   node scripts/plugin-file-stash.mjs stash
@@ -24,10 +24,16 @@ import {
   renameSync,
   unlinkSync,
   rmSync,
+  readFileSync,
+  writeFileSync,
 } from 'fs';
 import { resolve, dirname, relative, basename } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { randomBytes } from 'crypto';
+import {
+  deinjectManagedContent,
+  isFullyGeneratedManagedFile,
+} from './plugin-deinject.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 export const ROOT = resolve(__dirname, '..');
@@ -141,8 +147,60 @@ export function createPluginFileStash(root, options = {}) {
   }
 
   /**
-   * Restore every stashed file over the working tree (full restore).
-   * Prefer {@link restoreInjectedFiles} from pre-commit when only some files are injected.
+   * Write deinjected (or stash baseline) content to the working path.
+   * Cargo / capabilities: strip injection, keep user edits.
+   * Fully generated files: replace from stash.
+   * @param {string} relPath
+   */
+  function restoreOneManagedFile(relPath) {
+    const work = workPath(relPath);
+    const stashed = stashPath(relPath);
+    const hasStash = existsSync(stashed);
+    const hasWork = existsSync(work);
+
+    if (isFullyGeneratedManagedFile(relPath)) {
+      if (!hasStash) {
+        throw new Error(
+          `[plugin-file-stash] cannot restore; stash missing for: ${relPath}`,
+        );
+      }
+      atomicReplaceWithCopy(stashed, work);
+      return;
+    }
+
+    if (!hasWork && hasStash) {
+      atomicReplaceWithCopy(stashed, work);
+      return;
+    }
+    if (!hasWork) {
+      throw new Error(
+        `[plugin-file-stash] cannot restore; missing work and stash for: ${relPath}`,
+      );
+    }
+
+    const workContent = readFileSync(work, 'utf-8');
+    const next = deinjectManagedContent(relPath, workContent, {
+      stashContent: hasStash ? readFileSync(stashed, 'utf-8') : null,
+    });
+    if (next === workContent) return;
+    const token = randomBytes(6).toString('hex');
+    const tmp = resolve(dirname(work), `.${basename(work)}.${token}.tmp`);
+    try {
+      writeFileSync(tmp, next);
+      renameSync(tmp, work);
+    } catch (e) {
+      try {
+        if (existsSync(tmp)) unlinkSync(tmp);
+      } catch {
+        /* ignore */
+      }
+      throw e;
+    }
+  }
+
+  /**
+   * Restore managed files: strip injection from work (keep user edits),
+   * restore fully-generated files from stash. Requires full stash set.
    */
   function restoreManagedFiles() {
     const missing = missingStashFiles();
@@ -154,37 +212,49 @@ export function createPluginFileStash(root, options = {}) {
     }
 
     for (const f of MANAGED_FILES) {
-      atomicReplaceWithCopy(stashPath(f), workPath(f));
+      restoreOneManagedFile(f);
     }
 
     cleanupStashDir();
     if (!quiet) {
-      console.log(`[plugin-file-stash] restored ${MANAGED_FILES.length} file(s) from stash`);
+      console.log(
+        `[plugin-file-stash] restored ${MANAGED_FILES.length} file(s) (deinject + stash)`,
+      );
     }
   }
 
   /**
-   * Restore only the listed relative paths from stash; drop remaining stash copies.
-   * Used so legitimate edits to non-injected managed files survive pre-commit.
+   * Restore only injected paths: deinject cargo/capabilities (keep user edits),
+   * stash-restore fully generated files. Drop remaining stash copies.
    * @param {string[]} relPaths
    */
   function restoreSelectedFiles(relPaths) {
-    const missing = relPaths.filter((f) => !existsSync(stashPath(f)));
-    if (missing.length > 0) {
+    const needStash = relPaths.filter((f) => isFullyGeneratedManagedFile(f));
+    const missing = needStash.filter((f) => !existsSync(stashPath(f)));
+    // Cargo/capabilities can deinject without stash; generated files cannot.
+    const missingOptional = relPaths.filter(
+      (f) =>
+        !isFullyGeneratedManagedFile(f) &&
+        !existsSync(workPath(f)) &&
+        !existsSync(stashPath(f)),
+    );
+    if (missing.length > 0 || missingOptional.length > 0) {
       throw new Error(
-        `[plugin-file-stash] cannot restore selection; stash missing for: ${missing.join(', ')}`,
+        `[plugin-file-stash] cannot restore selection; stash missing for: ${[
+          ...missing,
+          ...missingOptional,
+        ].join(', ')}`,
       );
     }
 
     for (const f of relPaths) {
-      atomicReplaceWithCopy(stashPath(f), workPath(f));
+      restoreOneManagedFile(f);
     }
 
-    // Drop entire stash dir (including copies for files we intentionally kept).
     cleanupStashDir();
     if (!quiet) {
       console.log(
-        `[plugin-file-stash] restored ${relPaths.length} injected file(s); discarded remaining stash`,
+        `[plugin-file-stash] restored ${relPaths.length} injected file(s) via deinject; discarded remaining stash`,
       );
     }
   }

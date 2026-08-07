@@ -110,12 +110,13 @@ describe('stash inject restore workflow', () => {
     }
   });
 
-  it('deleting stash mid-flight leaves injected work and blocks restore', () => {
+  it('deleting generated stash mid-flight leaves injected work and blocks restore', () => {
     stash.stashManagedFiles();
     writeManagedFiles(root, INJECTED_CONTENTS);
-    unlinkSync(stash.stashPath('Cargo.toml'));
+    // Cargo/capabilities can deinject without stash; generated files cannot.
+    unlinkSync(stash.stashPath('src/plugins/generated.ts'));
 
-    expect(() => stash.restoreManagedFiles()).toThrow(/Cargo\.toml/);
+    expect(() => stash.restoreManagedFiles()).toThrow(/generated\.ts/);
     expect(readManaged(root, 'src/plugins/generated.ts')).toBe(
       INJECTED_CONTENTS['src/plugins/generated.ts'],
     );

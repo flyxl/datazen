@@ -36,14 +36,14 @@
     </div>
     <div id="root" class="h-full min-h-0"></div>
     <script>
-      // Show the window after theme + splash are painted.
-      // Windows start hidden (visible:false) to avoid a white flash
-      // when the system theme is light but the app theme is dark.
+      // Show after theme + splash are painted (windows start visible:false).
+      // Main: show here. Sub-windows: main.tsx show()s after the same paint
+      // (label is not known in this inline script). Native backgroundColor
+      // matches dark splash so the webview never flashes white while hidden.
       if ('__TAURI_INTERNALS__' in window) {
         (function () {
           var params = new URLSearchParams(window.location.search);
-          var isSubWindow = params.has('window');
-          if (!isSubWindow) {
+          if (!params.has('window')) {
             window.__TAURI_INTERNALS__
               .invoke('plugin:window|show', { label: 'main' })
               .catch(function () {});
