@@ -66,10 +66,13 @@ function getAppBinaryPath() {
 if (!skipBuild) {
   log('Building app with webdriver feature...');
   try {
-    execSync('pnpm tauri build --debug --features webdriver', {
-      stdio: 'inherit',
-      cwd: process.cwd(),
-    });
+    execSync(
+      'node scripts/with-plugin-inject.mjs --plugins=none -- tauri build --debug --features webdriver',
+      {
+        stdio: 'inherit',
+        cwd: process.cwd(),
+      },
+    );
   } catch {
     process.exit(1);
   }

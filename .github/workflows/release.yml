@@ -98,7 +98,7 @@ jobs:
       - name: Resolve plugins and build Tauri app
         shell: bash
         run: |
-          # Outer with-plugin-inject owns stash; nested `pnpm build` (beforeBuildCommand) skips.
+          # Inject once here; beforeBuildCommand `pnpm build` only runs tsc/vite.
           node scripts/with-plugin-inject.mjs --plugins="${{ matrix.plugins }}" -- bash -c '
             FEATURES=$(node -e "const f=require(\"./.plugin-features.json\").features; if(f.length) process.stdout.write(f.join(\",\"))")
             if [ -n "$FEATURES" ]; then

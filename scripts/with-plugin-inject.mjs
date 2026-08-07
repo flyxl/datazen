@@ -1,10 +1,12 @@
 #!/usr/bin/env node
 /**
- * with-plugin-inject.mjs — run a command after resolve-plugins, always restore stash after.
+ * with-plugin-inject.mjs — resolve-plugins once, run command, restore stash.
  *
- * Nested-safe: if `.plugin-file-stash/` already exists (outer caller already resolved),
- * skip resolve and skip restore so beforeBuildCommand `pnpm build` does not clobber
- * injected Cargo.toml / capabilities before the Rust compile.
+ * Intended as the single inject boundary for packaging (`tauri:build`, CI).
+ * `pnpm build` / beforeBuildCommand must NOT call this — they only compile the
+ * frontend against already-injected managed files.
+ *
+ * Safety: if stash already exists, skip resolve/restore (nested / re-entrant).
  *
  * Usage:
  *   node scripts/with-plugin-inject.mjs [--plugins=...] -- <cmd> [args...]
