@@ -32,7 +32,7 @@
 | E7 | 死代码清理 | ✅ | ✅ tsc | ✅ | ✅ 1c19005 |
 | E8 | 文档刷新 | ✅ | ⬜ N/A | ✅ | ✅ 4cb3328 |
 | P4 | SQL/NL 日志降级 debug | ✅ | ✅ log_hygiene | ⬜ | ✅ ddd7ed0 |
-| P5 | splash 等 bootstrap + 错误 i18n | ⬜ | ⬜ | ⬜ | ⬜ |
+| P5 | splash 等 bootstrap + 错误 i18n | ✅ | ✅ splash 1 | ⬜ | ⬜ |
 | C6R | connection_id → config_id 硬切换 | ⬜ | ⬜ | ⬜ | ⬜ |
 | S1+ | 导出后提示并另存 `.key` | ⬜ | ⬜ | ⬜ | ⬜ |
 | ConnShare | 菜单导出/导入连接 + 口令 | ⬜ | ⬜ | ⬜ | ⬜ |
@@ -135,6 +135,12 @@
 - **实现**：`execute_query` / AI 命令 / workflow query 步骤：info 仅记录长度与元数据，SQL/NL/错误正文/工具参数预览移至 `tracing::debug!`
 - **单元测试**：`cargo test -p datazen --lib commands::query::log_hygiene_tests` — 1 passed（RED → GREEN TDD）
 - **提交**：`ddd7ed0`
+
+### P5 — splash 等 bootstrap + 错误 i18n
+
+- **实现**：`hideSplash()` 提取至 `src/lib/splash.ts`；`bootstrap()` `finally` 隐藏 splash；移除顶层过早 hide；`MainWindow`/`queryStore` 硬编码错误串改 i18n（`backend.unknownError`、`query.cancelled`）
+- **单元测试**：`npx vitest run src/lib/__tests__/splash.test.ts` — 1 passed；`pnpm exec tsc --noEmit` — pass
+- **提交**：待提交
 
 ## 延期 / 范围外
 

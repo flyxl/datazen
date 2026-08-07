@@ -328,6 +328,7 @@ const zhCN = {
   'query.resultTruncated': '结果已截断，仅显示前 {limit} 条，可在设置中修改',
   'query.tab': '查询 {n}',
   'query.notConnected': '未连接数据库',
+  'query.cancelled': '查询已取消',
   'query.executeFailed': '执行失败',
   'query.favorites': '收藏',
   'query.favoritesTitle': 'SQL 收藏',

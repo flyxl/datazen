@@ -17,32 +17,32 @@ mark('App module loaded');
 import './styles/globals.css';
 mark('CSS loaded');
 
-async function bootstrap() {
-  if ('__TAURI_INTERNALS__' in globalThis) {
-    try {
-      const { useSettingsStore } = await import('./stores/settingsStore');
-      await useSettingsStore.getState().loadSettings();
-      mark('settings loaded before first paint');
-    } catch {
-      mark('settings preload skipped (load failed)');
-    }
-  }
+import { hideSplash } from './lib/splash';
 
-  ReactDOM.createRoot(document.getElementById('root')!).render(
-    <React.StrictMode>
-      <App />
-    </React.StrictMode>,
-  );
-  mark('React.render() called (Suspense shell)');
+async function bootstrap() {
+  try {
+    if ('__TAURI_INTERNALS__' in globalThis) {
+      try {
+        const { useSettingsStore } = await import('./stores/settingsStore');
+        await useSettingsStore.getState().loadSettings();
+        mark('settings loaded before first paint');
+      } catch {
+        mark('settings preload skipped (load failed)');
+      }
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')!).render(
+      <React.StrictMode>
+        <App />
+      </React.StrictMode>,
+    );
+    mark('React.render() called (Suspense shell)');
+  } finally {
+    hideSplash(document.getElementById('splash'));
+  }
 }
 
 void bootstrap();
-
-const splash = document.getElementById('splash');
-if (splash) {
-  splash.classList.add('hide');
-  setTimeout(() => splash.remove(), 350);
-}
 
 if ('__TAURI_INTERNALS__' in globalThis) {
   import('@tauri-apps/api/window').then(({ getCurrentWindow }) => {

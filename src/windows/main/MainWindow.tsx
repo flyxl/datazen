@@ -148,7 +148,7 @@ export function MainWindow() {
     listenCrossWindow('datazen:connection-failed', (payload) => {
       const data = payload as { configId?: string; error?: string } | undefined;
       if (data?.configId) {
-        useActiveConnectionStore.getState().markError(data.configId, data?.error ?? 'Unknown error');
+        useActiveConnectionStore.getState().markError(data.configId, data?.error ?? t('backend.unknownError'));
       }
     }).then((fn) => { if (cancelled) fn(); else fns.push(fn); });
     return () => { cancelled = true; fns.forEach((fn) => fn()); };
