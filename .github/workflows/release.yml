@@ -98,15 +98,9 @@ jobs:
       - name: Resolve plugins and build Tauri app
         shell: bash
         run: |
-          # Inject once here; beforeBuildCommand `pnpm build` only runs tsc/vite.
-          node scripts/with-plugin-inject.mjs --plugins="${{ matrix.plugins }}" -- bash -c '
-            FEATURES=$(node -e "const f=require(\"./.plugin-features.json\").features; if(f.length) process.stdout.write(f.join(\",\"))")
-            if [ -n "$FEATURES" ]; then
-              pnpm tauri build --target "${{ matrix.target }}" -f "$FEATURES"
-            else
-              pnpm tauri build --target "${{ matrix.target }}"
-            fi
-          '
+          # Inject once; beforeBuildCommand `pnpm build` only runs tsc/vite.
+          # Use ci-tauri-build.mjs (not bash -c) so Windows Node spawn keeps args.
+          node scripts/with-plugin-inject.mjs --plugins="${{ matrix.plugins }}" -- node scripts/ci-tauri-build.mjs --target=${{ matrix.target }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DATAZEN_PLUGINS: ${{ matrix.plugins }}

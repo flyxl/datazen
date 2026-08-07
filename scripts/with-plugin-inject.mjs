@@ -78,13 +78,24 @@ export function runWithPluginInject(options = {}) {
 
   const runCommand =
     options.runCommand ??
-    ((cmd, args) =>
-      spawnSync(cmd, args, {
+    ((cmd, args) => {
+      // On Windows, spawnSync(cmd, args, { shell: true }) mangles args (e.g. bash -c SCRIPT).
+      // Prefer shell:false; fall back to a single command line only when needed for .cmd shims.
+      if (process.platform === 'win32' && cmd !== 'bash' && cmd !== 'sh') {
+        return spawnSync(cmd, args, {
+          cwd: root,
+          stdio: 'inherit',
+          shell: true,
+          env: process.env,
+        });
+      }
+      return spawnSync(cmd, args, {
         cwd: root,
         stdio: 'inherit',
-        shell: true,
+        shell: false,
         env: process.env,
-      }));
+      });
+    });
 
   const { ownStash } = planPluginInjectLifecycle(existsFn);
 
