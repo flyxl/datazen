@@ -590,13 +590,6 @@ pub fn encryption_key_export_bytes(key_b64: &str) -> Vec<u8> {
     key_b64.trim().as_bytes().to_vec()
 }
 
-async fn read_encryption_key_b64(data_dir: &std::path::Path) -> Result<String, CommandError> {
-    let key_path = data_dir.join(".key");
-    tokio::fs::read_to_string(&key_path)
-        .await
-        .map_err(|e| CommandError::NotFound(format!("Encryption key not found: {e}")))
-}
-
 /// Native save dialog for the app encryption key (`.key` material). Path never crosses the webview.
 /// Returns `true` if saved, `false` if cancelled.
 #[tauri::command]
@@ -607,8 +600,7 @@ pub async fn save_encryption_key_with_dialog(
 ) -> Result<bool, CommandError> {
     use tauri_plugin_dialog::DialogExt;
 
-    let data_dir = state.store.data_dir();
-    let key_b64 = read_encryption_key_b64(&data_dir).await?;
+    let key_b64 = state.store.encryption_key_b64();
     let bytes = encryption_key_export_bytes(&key_b64);
 
     let picked = app
