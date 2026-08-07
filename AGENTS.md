@@ -146,6 +146,7 @@ cargo test -p datazen                  # Rust 单元测试
 
 ```bash
 pnpm e2e                               # 完整构建（webdriver）+ 跑全部 E2E（推荐首次）
+pnpm e2e:minimal                       # 更快：DATAZEN_PLUGINS=none，跳过 Git 插件
 pnpm e2e:skip-build                    # 跳过构建（仅当已有合格的 webdriver debug 二进制）
 pnpm e2e:skip-build -- --spec e2e/specs/path-ipc-hardening.ts
 pnpm e2e:core                          # 核心 UI（默认 skip-build）
