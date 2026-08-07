@@ -420,6 +420,34 @@ impl Store {
                     }
                 }
             }
+            if let Some(ref mut ssh) = conn.ssh_tunnel {
+                if let Some(enc) = &ssh.password {
+                    match self.decrypt(enc) {
+                        Ok(plain) => ssh.password = Some(plain),
+                        Err(e) => {
+                            tracing::warn!(
+                                conn_name = %conn.name,
+                                error = %e,
+                                "Failed to decrypt SSH password, clearing"
+                            );
+                            ssh.password = None;
+                        }
+                    }
+                }
+                if let Some(enc) = &ssh.passphrase {
+                    match self.decrypt(enc) {
+                        Ok(plain) => ssh.passphrase = Some(plain),
+                        Err(e) => {
+                            tracing::warn!(
+                                conn_name = %conn.name,
+                                error = %e,
+                                "Failed to decrypt SSH passphrase, clearing"
+                            );
+                            ssh.passphrase = None;
+                        }
+                    }
+                }
+            }
         }
 
         Ok(connections)
@@ -471,6 +499,18 @@ impl Store {
             let mut c = conn.clone();
             if let Some(pw) = &c.password {
                 c.password = Some(self.encrypt(pw)?);
+            }
+            if let Some(ref mut ssh) = c.ssh_tunnel {
+                if let Some(pw) = &ssh.password {
+                    if !pw.is_empty() {
+                        ssh.password = Some(self.encrypt(pw)?);
+                    }
+                }
+                if let Some(pp) = &ssh.passphrase {
+                    if !pp.is_empty() {
+                        ssh.passphrase = Some(self.encrypt(pp)?);
+                    }
+                }
             }
             to_disk.push(c);
         }
@@ -751,5 +791,120 @@ impl Store {
         tokio::fs::write(&path, encrypted)
             .await
             .map_err(|e| StoreError::WriteError(e.to_string()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::{ConnectionConfig, SslMode, SshTunnelConfig};
+
+    fn sample_connection_with_ssh() -> ConnectionConfig {
+        ConnectionConfig {
+            id: "test-ssh-1".into(),
+            name: "SSH Test".into(),
+            database_type: "postgresql".into(),
+            host: Some("localhost".into()),
+            port: Some(5432),
+            database: Some("mydb".into()),
+            schema: None,
+            username: Some("dbuser".into()),
+            password: Some("db-secret".into()),
+            ssl_mode: SslMode::Disable,
+            connection_timeout: 30,
+            ssh_tunnel: Some(SshTunnelConfig {
+                enabled: true,
+                host: "jump.example.com".into(),
+                port: 22,
+                username: "sshuser".into(),
+                auth_method: "password".into(),
+                password: Some("ssh-secret-password".into()),
+                private_key_path: None,
+                passphrase: Some("key-passphrase".into()),
+            }),
+            color_tag: None,
+            group: None,
+            last_connected_at: None,
+            server_version: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn ssh_credentials_encrypted_on_disk_and_decrypted_in_memory() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::init_with_path(dir.path()).await.unwrap();
+
+        store
+            .save_connection(sample_connection_with_ssh())
+            .await
+            .unwrap();
+
+        let disk_content =
+            tokio::fs::read_to_string(dir.path().join("connections.json"))
+                .await
+                .unwrap();
+        assert!(
+            !disk_content.contains("ssh-secret-password"),
+            "SSH password must not appear plaintext on disk"
+        );
+        assert!(
+            !disk_content.contains("key-passphrase"),
+            "SSH passphrase must not appear plaintext on disk"
+        );
+
+        let loaded = store.get_connections().await;
+        assert_eq!(loaded.len(), 1);
+        let ssh = loaded[0].ssh_tunnel.as_ref().unwrap();
+        assert_eq!(ssh.password.as_deref(), Some("ssh-secret-password"));
+        assert_eq!(ssh.passphrase.as_deref(), Some("key-passphrase"));
+    }
+
+    #[tokio::test]
+    async fn ssh_credentials_roundtrip_after_reload() {
+        let dir = tempfile::tempdir().unwrap();
+
+        {
+            let store = Store::init_with_path(dir.path()).await.unwrap();
+            store
+                .save_connection(sample_connection_with_ssh())
+                .await
+                .unwrap();
+        }
+
+        let store = Store::init_with_path(dir.path()).await.unwrap();
+        let loaded = store.get_connections().await;
+        assert_eq!(loaded.len(), 1);
+        let ssh = loaded[0].ssh_tunnel.as_ref().unwrap();
+        assert_eq!(ssh.password.as_deref(), Some("ssh-secret-password"));
+        assert_eq!(ssh.passphrase.as_deref(), Some("key-passphrase"));
+    }
+
+    #[test]
+    fn default_language_is_english() {
+        assert_eq!(AppSettings::default().language, "en");
+    }
+
+    #[test]
+    fn first_run_language_is_supported() {
+        let settings = AppSettings::default_for_first_run();
+        const OK: &[&str] = &[
+            "en", "zh-CN", "zh-TW", "es", "fr", "de", "ja", "pt-BR", "ru", "ko",
+        ];
+        assert!(
+            OK.contains(&settings.language.as_str()),
+            "unexpected {}",
+            settings.language
+        );
+    }
+
+    #[test]
+    fn settings_json_roundtrip_preserves_language() {
+        let settings = AppSettings {
+            language: "de".into(),
+            ..AppSettings::default()
+        };
+        let json = serde_json::to_string(&settings).unwrap();
+        let parsed: AppSettings = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.language, "de");
     }
 }
