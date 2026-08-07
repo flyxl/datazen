@@ -2,7 +2,7 @@ pub mod ai;
 mod app_data_archive;
 mod cache;
 mod commands;
-mod db;
+pub mod db;
 mod i18n_locale;
 pub mod mcp;
 mod plugin_init;
