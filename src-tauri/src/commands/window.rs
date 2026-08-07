@@ -1,6 +1,11 @@
 use super::error::{CmdExt, CommandError};
 use serde::Deserialize;
+use tauri::webview::PageLoadEvent;
+use tauri::window::Color;
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
+
+/// Matches `index.html` dark splash / `documentElement` background (`#0f172a`).
+const WINDOW_BG_DARK: Color = Color(0x0f, 0x17, 0x2a, 0xff);
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -53,6 +58,7 @@ pub async fn create_sub_window(
 
     let is_mac = cfg!(target_os = "macos");
     let transparent = options.transparent.unwrap_or(false);
+    let label_for_log = options.label.clone();
 
     let mut builder = WebviewWindowBuilder::new(
         &app,
@@ -64,7 +70,19 @@ pub async fn create_sub_window(
     .decorations(is_mac)
     .transparent(transparent)
     .visible(false)
-    .accept_first_mouse(options.accept_first_mouse);
+    .background_color(WINDOW_BG_DARK)
+    .accept_first_mouse(options.accept_first_mouse)
+    // Show after HTML (theme + splash) has loaded — not immediately after
+    // build() (white/light flash), and not only via frontend show() (ACL /
+    // module load failures leave the window permanently invisible).
+    .on_page_load(move |window, payload| {
+        if payload.event() == PageLoadEvent::Finished {
+            let _ = window.show();
+            let _ = window.unminimize();
+            let _ = window.set_focus();
+            tracing::info!(label = %label_for_log, "sub window shown after page load");
+        }
+    });
 
     #[cfg(target_os = "macos")]
     {
@@ -84,18 +102,11 @@ pub async fn create_sub_window(
         builder = builder.center();
     }
 
-    let window = builder
+    builder
         .build()
         .map_err(|e| CommandError::Internal(e.to_string()))
         .cmd_err("create_sub_window")?;
 
-    // Show from Rust (same as the reuse path). Frontend `main.tsx` also calls
-    // show(), but that requires the new label to be listed in capabilities —
-    // missing ACL previously left windows like `docs-singleton` invisible.
-    let _ = window.show();
-    let _ = window.unminimize();
-    let _ = window.set_focus();
-
-    tracing::info!(label = %options.label, url = %options.url, "sub window created");
+    tracing::info!(label = %options.label, url = %options.url, "sub window created (waiting for page load to show)");
     Ok(())
 }

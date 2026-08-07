@@ -59,6 +59,25 @@ describe('createPluginFileStash', () => {
     }
   });
 
+  it('restore keeps user capability edits while stripping plugin ACL', () => {
+    stash.stashManagedFiles();
+    const caps = INJECTED_CONTENTS['src-tauri/capabilities/default.json'].replace(
+      '"connection-*"',
+      '"connection-*", "docs-singleton"',
+    );
+    writeManagedFiles(root, {
+      ...INJECTED_CONTENTS,
+      'src-tauri/capabilities/default.json': caps,
+    });
+    stash.restoreManagedFiles();
+    const after = readManaged(root, 'src-tauri/capabilities/default.json');
+    expect(after).toContain('docs-singleton');
+    expect(after).not.toContain('kiwi:');
+    expect(readManaged(root, 'src/plugins/generated.ts')).toBe(
+      CLEAN_CONTENTS['src/plugins/generated.ts'],
+    );
+  });
+
   it('restore succeeds when only some working files were modified', () => {
     stash.stashManagedFiles();
     // partially overwrite: only capabilities + generated injected
