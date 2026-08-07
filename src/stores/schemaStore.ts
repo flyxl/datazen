@@ -23,15 +23,19 @@ export function resolvePreferredDatabase(
 }
 
 /**
- * When the connection config specifies a database, lock the sidebar to that
- * single database. Otherwise expose all databases returned by the driver.
+ * When the connection config specifies a *logical* database that appears in
+ * the driver list, lock the sidebar to that single database.
+ *
+ * If the preferred value is set but **not** in `allDatabases` (e.g. Kiwi stores
+ * the instance domain in `config.database`), do **not** lock — expose the full
+ * list and fall back to `resolvePreferredDatabase` semantics.
  */
 export function resolveVisibleDatabases(
   allDatabases: string[],
   preferredDatabase?: string,
 ): { databases: string[]; preferred: string | null; lockedToConfigured: boolean } {
   const configured = preferredDatabase?.trim();
-  if (configured) {
+  if (configured && allDatabases.includes(configured)) {
     return {
       databases: [configured],
       preferred: configured,
@@ -40,7 +44,7 @@ export function resolveVisibleDatabases(
   }
   return {
     databases: allDatabases,
-    preferred: allDatabases[0] ?? null,
+    preferred: resolvePreferredDatabase(allDatabases, configured || undefined),
     lockedToConfigured: false,
   };
 }
