@@ -78,7 +78,7 @@ DataZen 是一个跨平台桌面数据库管理工具，基于 **Tauri v2**（Ru
 | [IPC 命令层](backend/commands.md) | 16 个 Tauri Commands 模块、AppState 结构、CommandError 错误处理 |
 | [AI 模块](backend/ai.md) | AiProvider trait、4 内置 Provider、protocol 层、PromptResolver（资源文件 + 覆盖） |
 | [MCP 模块](backend/mcp.md) | MCP Server（Tools/Resources/Prompts）、MCP Client、双运行模式 |
-| [Workflow 模块](backend/workflow.md) | YAML Workflow 引擎、执行历史；GUI/IPC/MCP 共用 |
+| [Workflow 模块](backend/workflow.md) | YAML Workflow 引擎、执行历史；GUI/IPC/MCP 共用；用户手册见 [../workflow-guide.md](../workflow-guide.md) |
 
 ## 前端文档
 
@@ -99,6 +99,7 @@ DataZen 是一个跨平台桌面数据库管理工具，基于 **Tauri v2**（Ru
 
 ## 其他文档
 
+- [Workflow 使用手册](../workflow-guide.md)（YAML 语法、模板、跨库、排错）
 - [产品需求文档 (PRD)](../PRD.md)
 - [插件系统 RFC](../rfc-plugin-system.md)
 - [AI 功能 RFC](../rfc-ai-features.md)

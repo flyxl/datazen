@@ -4,6 +4,8 @@
 
 用户自定义 AI/SQL 工作流引擎。独立于 MCP 协议；GUI、Tauri IPC 与 MCP Server 均为调用方。
 
+**用户手册（YAML 语法与用法）：** [Workflow 使用手册](../../workflow-guide.md)
+
 ```
 src-tauri/src/workflow/
 ├── mod.rs           # 模块出口

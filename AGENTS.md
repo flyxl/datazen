@@ -89,6 +89,7 @@ DATAZEN_PLUGINS=all pnpm tauri:build   # 全部插件打包
 ### Workflows
 
 - **Workflows**（`workflow/`）：YAML 定义，步骤类型 Query/Ai/Condition/ForEach；GUI / IPC / MCP 共用引擎
+- **用户手册**：[docs/workflow-guide.md](docs/workflow-guide.md)（YAML 语法、模板、跨库、排错）
 
 ### 前端约定
 
