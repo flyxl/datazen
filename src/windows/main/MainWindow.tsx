@@ -173,6 +173,11 @@ export function MainWindow() {
     void listenCrossWindow('menu:backup', () => {
       if (!cancelled) openBackupWindow();
     }).then((u) => { if (cancelled) u(); else cleanups.push(u); });
+    void listenCrossWindow('menu:open-docs', () => {
+      if (!cancelled) {
+        void import('../../lib/windowManager').then((m) => m.openDocsWindow());
+      }
+    }).then((u) => { if (cancelled) u(); else cleanups.push(u); });
     void listenCrossWindow('menu:view-logs', () => {
       if (!cancelled) void settingsCommands.openLogDir();
     }).then((u) => { if (cancelled) u(); else cleanups.push(u); });

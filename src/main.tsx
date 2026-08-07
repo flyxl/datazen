@@ -50,6 +50,8 @@ if ('__TAURI_INTERNALS__' in globalThis) {
     if (win.label !== 'main') {
       void win.show().then(() => {
         win.setFocus().catch(() => {});
+      }).catch((e) => {
+        console.error(`[bootstrap] failed to show window "${win.label}"`, e);
       });
     }
   });

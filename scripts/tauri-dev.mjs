@@ -59,6 +59,16 @@ if (features.length > 0) {
 tauriArgs.push(...otherArgs);
 
 console.log(`[tauri:dev] running: npx ${tauriArgs.join(' ')}`);
+
+// Do not force DATAZEN_KEYRING=file here: macOS adhoc/unsigned binaries already
+// auto-select the `.key` backend in Rust (with a one-time Keychain→file export).
+// Explicit `DATAZEN_KEYRING=file` skips Keychain entirely (CI); `=keyring` forces it.
+if (process.env.DATAZEN_KEYRING) {
+  console.log(`[tauri:dev] DATAZEN_KEYRING=${process.env.DATAZEN_KEYRING}`);
+} else {
+  console.log('[tauri:dev] DATAZEN_KEYRING unset → Rust will use .key on adhoc/unsigned macOS builds');
+}
+
 const tauri = spawn('npx', tauriArgs, {
   cwd: ROOT,
   stdio: 'inherit',

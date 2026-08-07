@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   BarChart3,
+  BookOpen,
   ChevronDown,
   ChevronRight,
   Clock,
@@ -23,6 +24,7 @@ import { aiCommands } from '../../commands/ai';
 import { connectionCommands } from '../../commands/connection';
 import { databaseCommands } from '../../commands/database';
 import { DB_REGISTRY } from '../../lib/databaseTypes';
+import { openDocsWindow } from '../../lib/windowManager';
 import { ChartView } from '../chart/ChartView';
 import { isChartableResult } from '../../lib/chart/fieldInference';
 import { cn } from '../../lib/cn';
@@ -301,6 +303,14 @@ export function WorkflowPanel({ connectionId }: WorkflowPanelProps) {
               title={t('workflows.reload')}
             >
               <RefreshCw className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button" onMouseDown={(e) => e.preventDefault()}
+              onClick={() => openDocsWindow('workflows')}
+              className="p-1 text-fg-muted hover:text-fg rounded transition-colors"
+              title={t('docs.openWorkflowHelp')}
+            >
+              <BookOpen className="h-3.5 w-3.5" />
             </button>
           </div>
 
