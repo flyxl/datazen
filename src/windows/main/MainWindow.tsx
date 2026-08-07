@@ -62,8 +62,14 @@ export function MainWindow() {
   const disconnectAction = useActiveConnectionStore((s) => s.disconnect);
   const activeConnections = useActiveConnectionStore((s) => s.connections);
 
-  const [errorDialogOpen, setErrorDialogOpen] = useState(false);
-  const [errorMessage, setErrorMessage] = useState('');
+  const [messageDialogOpen, setMessageDialogOpen] = useState(false);
+  const [messageDialogText, setMessageDialogText] = useState('');
+  const [messageDialogKind, setMessageDialogKind] = useState<'error' | 'success'>('error');
+  const showMessageDialog = useCallback((text: string, kind: 'error' | 'success') => {
+    setMessageDialogText(text);
+    setMessageDialogKind(kind);
+    setMessageDialogOpen(true);
+  }, []);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
@@ -93,10 +99,9 @@ export function MainWindow() {
 
   useEffect(() => {
     if (lastError) {
-      setErrorMessage(lastError);
-      setErrorDialogOpen(true);
+      showMessageDialog(lastError, 'error');
     }
-  }, [lastError]);
+  }, [lastError, showMessageDialog]);
 
   // ── Init ──
   useEffect(() => {
@@ -387,13 +392,14 @@ export function MainWindow() {
         `datazen-backup-${date}.zip`,
       );
       if (!saved) return;
-      setErrorMessage(t('appData.exportSuccess'));
-      setErrorDialogOpen(true);
+      showMessageDialog(t('appData.exportSuccess'), 'success');
     } catch (e) {
-      setErrorMessage(e instanceof Error ? e.message : t('appData.exportFailed'));
-      setErrorDialogOpen(true);
+      showMessageDialog(
+        e instanceof Error ? e.message : t('appData.exportFailed'),
+        'error',
+      );
     }
-  }, [t]);
+  }, [t, showMessageDialog]);
 
   const handleImportConfig = useCallback(async () => {
     try {
@@ -404,10 +410,12 @@ export function MainWindow() {
       if (!imported) return;
       await backupCommands.restartApp();
     } catch (e) {
-      setErrorMessage(e instanceof Error ? e.message : t('appData.importFailed'));
-      setErrorDialogOpen(true);
+      showMessageDialog(
+        e instanceof Error ? e.message : t('appData.importFailed'),
+        'error',
+      );
     }
-  }, [t]);
+  }, [t, showMessageDialog]);
 
   // ── Menu bar events for export/import ──
   useEffect(() => {
@@ -427,8 +435,7 @@ export function MainWindow() {
   const handleRestore = useCallback(async () => {
     try {
       if (!selectedId) {
-        setErrorMessage(t('main.restoreFailed'));
-        setErrorDialogOpen(true);
+        showMessageDialog(t('main.restoreFailed'), 'error');
         return;
       }
       const conn = connections.find((c) => c.id === selectedId);
@@ -436,8 +443,7 @@ export function MainWindow() {
 
       const entry = activeConnections[conn.id];
       if (entry?.status !== 'connected' || !entry.connectionId) {
-        setErrorMessage(t('main.restoreFailed'));
-        setErrorDialogOpen(true);
+        showMessageDialog(t('main.restoreFailed'), 'error');
         return;
       }
 
@@ -446,13 +452,11 @@ export function MainWindow() {
         connectionId: entry.connectionId,
       });
       if (!restored) return;
-      setErrorMessage(t('main.restoreSuccess'));
-      setErrorDialogOpen(true);
+      showMessageDialog(t('main.restoreSuccess'), 'success');
     } catch (e) {
-      setErrorMessage(e instanceof Error ? e.message : String(e));
-      setErrorDialogOpen(true);
+      showMessageDialog(e instanceof Error ? e.message : String(e), 'error');
     }
-  }, [selectedId, connections, activeConnections, t]);
+  }, [selectedId, connections, activeConnections, t, showMessageDialog]);
 
   // ── Blank area context menu ──
 
@@ -666,19 +670,23 @@ export function MainWindow() {
         />
       </Dialog>
 
-      {/* ── Error / info dialog ── */}
+      {/* ── Message dialog (success / error) ── */}
       <Dialog
-        open={errorDialogOpen}
-        title={t('common.hint')}
-        onClose={() => setErrorDialogOpen(false)}
+        open={messageDialogOpen}
+        title={
+          messageDialogKind === 'success'
+            ? t('common.success')
+            : t('common.error')
+        }
+        onClose={() => setMessageDialogOpen(false)}
         className="max-w-xs"
         footer={
-          <Button variant="primary" onClick={() => setErrorDialogOpen(false)}>
+          <Button variant="primary" onClick={() => setMessageDialogOpen(false)}>
             {t('common.ok')}
           </Button>
         }
       >
-        <p className="whitespace-pre-wrap break-all text-sm text-fg-secondary">{errorMessage}</p>
+        <p className="whitespace-pre-wrap break-all text-sm text-fg-secondary">{messageDialogText}</p>
       </Dialog>
 
       {/* ── Status bar ── */}
