@@ -95,21 +95,45 @@ fn load_or_create_from_file(data_dir: &Path) -> Result<[u8; 32], StoreError> {
     Ok(key)
 }
 
+fn fail_closed_no_key_source(context: &str) -> StoreError {
+    StoreError::InitError(format!(
+        "Cannot load encryption key: {context}. \
+         Refusing to create a new key that would leave existing encrypted data unreadable."
+    ))
+}
+
+fn load_legacy_key_or_fail(data_dir: &Path, context: &str) -> Result<[u8; 32], StoreError> {
+    if let Some(key) = read_key_file(data_dir)? {
+        tracing::warn!(
+            "Using legacy {KEY_FILE} because {context}; \
+             set DATAZEN_KEYRING=file to silence keychain attempts in CI"
+        );
+        Ok(key)
+    } else {
+        Err(fail_closed_no_key_source(&format!(
+            "{context} and no legacy {KEY_FILE} file found"
+        )))
+    }
+}
+
 fn load_or_create_via_keyring(data_dir: &Path) -> Result<[u8; 32], StoreError> {
     let entry = match open_keyring_entry() {
         Ok(entry) => entry,
         Err(e) => {
             tracing::error!(error = %e, "Failed to open OS keychain entry for encryption key");
-            tracing::warn!(
-                "Falling back to file-based encryption key storage ({KEY_FILE}); \
-                 set DATAZEN_KEYRING=file to silence keychain attempts in CI"
+            return load_legacy_key_or_fail(
+                data_dir,
+                &format!("OS keychain unavailable ({e})"),
             );
-            return load_or_create_from_file(data_dir);
         }
     };
 
     match entry.get_password() {
-        Ok(key_b64) => decode_key_b64(&key_b64),
+        Ok(key_b64) => {
+            let key = decode_key_b64(&key_b64)?;
+            remove_key_file(data_dir);
+            Ok(key)
+        }
         Err(keyring::v1::Error::NoEntry) => {
             if let Some(key) = read_key_file(data_dir)? {
                 if let Err(e) = store_in_keyring(&entry, &key) {
@@ -135,11 +159,7 @@ fn load_or_create_via_keyring(data_dir: &Path) -> Result<[u8; 32], StoreError> {
         }
         Err(e) => {
             tracing::error!(error = %e, "Failed to read encryption key from OS keychain");
-            tracing::warn!(
-                "Falling back to file-based encryption key storage ({KEY_FILE}); \
-                 set DATAZEN_KEYRING=file to silence keychain attempts in CI"
-            );
-            load_or_create_from_file(data_dir)
+            load_legacy_key_or_fail(data_dir, &format!("OS keychain read failed ({e})"))
         }
     }
 }
@@ -156,5 +176,45 @@ pub fn keyring_is_available() -> bool {
 pub fn delete_keyring_entry_for_test() {
     if let Ok(entry) = open_keyring_entry() {
         let _ = entry.delete_credential();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    fn use_file_backend() {
+        std::env::set_var("DATAZEN_KEYRING", "file");
+    }
+
+    #[test]
+    fn file_backend_creates_key_when_missing() {
+        use_file_backend();
+        let dir = tempdir().unwrap();
+        let key = load_or_create_master_key(dir.path()).unwrap();
+        assert_ne!(key, [0u8; 32]);
+        assert!(key_file_path(dir.path()).is_file());
+    }
+
+    #[test]
+    fn file_backend_reloads_existing_key() {
+        use_file_backend();
+        let dir = tempdir().unwrap();
+        let k1 = load_or_create_master_key(dir.path()).unwrap();
+        let k2 = load_or_create_master_key(dir.path()).unwrap();
+        assert_eq!(k1, k2);
+    }
+
+    #[test]
+    fn file_backend_does_not_invent_second_key_when_dot_key_exists() {
+        use_file_backend();
+        let dir = tempdir().unwrap();
+        let known = [42u8; 32];
+        write_key_file(dir.path(), &known).unwrap();
+        let loaded = load_or_create_master_key(dir.path()).unwrap();
+        assert_eq!(loaded, known);
+        let on_disk = read_key_file(dir.path()).unwrap().unwrap();
+        assert_eq!(on_disk, known);
     }
 }
