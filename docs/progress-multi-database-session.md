@@ -19,7 +19,7 @@
 |----|------|------|------|
 | F1 | MySQL/MariaDB 实现 `use_database` + Rust 单元测试 | ✅ implemented（unit + gated live IT） | — |
 | F2 | 前端会话级多库（mysql/mariadb）：registry、schemaStore、SchemaTree、QueryPanel、WorkflowPanel + Vitest + E2E spec | ✅ implemented + tested | — |
-| F3 | PostgreSQL：`get_tables` 尊重 database + `use_database` + Rust 单元测试 | ⬜ pending | — |
+| F3 | PostgreSQL：`get_tables` 尊重 database + `use_database` + Rust 单元测试 | ✅ implemented（unit + gated live IT） | — |
 | F4 | 前端启用 postgresql 多库能力 + Vitest | ⬜ pending | — |
 | F5 | 更新必要文档并提交 | ⬜ pending | — |
 
@@ -29,10 +29,35 @@
 |----|------------|----------|------|
 | F1 | test-agent (fresh) | [progress-multi-database-session-f1-test.md](./progress-multi-database-session-f1-test.md) | **PASS** |
 | F2 | test-agent (fresh) | [progress-multi-database-session-f2-test.md](./progress-multi-database-session-f2-test.md) | **PASS** (Vitest 20/20 + E2E 3/3) |
-| F3 | — | — | — |
+| F3 | test-agent (fresh) | [progress-multi-database-session-f3-test.md](./progress-multi-database-session-f3-test.md) | **PASS** (unit 5/5 + gated IT skip + live IT) |
 | F4 | — | — | — |
 
 ## 变更日志
+
+### 2026-08-07 — F3 全量测试通过（fresh test-agent）
+
+- 单元测试：`cargo test -p datazen --lib postgres::tests` — 5/5 PASS
+- Gated IT 无 env：干净 skip（`⏭  Skipping postgres_use_database: no TEST_PG_*`）
+- Gated IT 有 env：本地 PG `goecoride` / `postgres` — live 全场景 PASS（~0.09s）
+- 报告：[progress-multi-database-session-f3-test.md](./progress-multi-database-session-f3-test.md)
+
+### 2026-08-07 — F3 PostgreSQL `get_tables` + `use_database`
+
+- `PostgresDriver`：`get_tables(handle, database)` 连接**命名**库的 catalog（active 命中复用池；否则临时 PgPool），不再忽略 `_database`
+- `use_database`：Postgres 无 `USE`，按 handle 存 `connect_configs` + `active_databases`，切库时新建 PgPool 并替换旧池；同库 no-op；空名 / NUL → `InvalidConfig`；连不上目标库 → `QueryFailed`；失败不改 active
+- 空 `config.database` 仍连默认 `postgres`（列表库）
+- 单元测试（无 live DB）：`validate_database_name`、`resolve_connect_database`、trait wiring、同库 no-op
+- 命令：`cargo test -p datazen --lib postgres::tests` — 5 passed
+- **Gated live IT**：`src-tauri/tests/postgres_use_database.rs`
+  - 无 `TEST_PG_*`（process env 或仓库根 `.env`）时干净 skip
+  - 有凭证且可连时：`connect`（无默认库 → postgres）→ `get_tables(A/B)` 分 catalog → `use_database(A)` 未限定 `users`（池内多次）→ `get_tables(B)` 不泄漏 A → 切 B 未限定失败 → 切回 A → 非法库 `QueryFailed` / 空名 `InvalidConfig`
+  - 运行示例：
+    ```bash
+    TEST_PG_HOST=127.0.0.1 TEST_PG_PORT=5432 TEST_PG_USER=goecoride \
+    TEST_PG_PASSWORD= TEST_PG_DATABASE=goecoride \
+    TEST_PG_DATABASE_B=postgres \
+    cargo test -p datazen --test postgres_use_database -- --nocapture
+    ```
 
 ### 2026-08-07 — F2 全量测试通过（fresh test-agent）
 

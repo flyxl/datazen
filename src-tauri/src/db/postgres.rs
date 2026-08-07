@@ -14,12 +14,19 @@ const JS_MIN_SAFE_INT: i64 = -9_007_199_254_740_991;
 
 pub struct PostgresDriver {
     pools: RwLock<HashMap<String, PgPool>>,
+    /// Template connection config (host/user/pass/timeout) for reconnecting to other databases.
+    /// Postgres has no session `USE`; switching means a new pool with the target database name.
+    connect_configs: RwLock<HashMap<String, ConnectionConfig>>,
+    /// Database the handle's pool is currently connected to, keyed by pool_id.
+    active_databases: RwLock<HashMap<String, String>>,
 }
 
 impl PostgresDriver {
     pub fn new() -> Self {
         Self {
             pools: RwLock::new(HashMap::new()),
+            connect_configs: RwLock::new(HashMap::new()),
+            active_databases: RwLock::new(HashMap::new()),
         }
     }
 
@@ -30,6 +37,109 @@ impl PostgresDriver {
         pools
             .get(&handle.pool_id)
             .ok_or_else(|| DriverError::ConnectionFailed("Connection pool not found".into()))
+    }
+
+    /// Trim and validate a database name for `use_database` / reconnect.
+    fn validate_database_name(database: &str) -> Result<String, DriverError> {
+        let trimmed = database.trim();
+        if trimmed.is_empty() {
+            return Err(DriverError::InvalidConfig(
+                "Database name must not be empty".into(),
+            ));
+        }
+        if trimmed.contains('\0') {
+            return Err(DriverError::InvalidConfig(
+                "Database name contains invalid characters".into(),
+            ));
+        }
+        Ok(trimmed.to_string())
+    }
+
+    /// Database used when connecting: config value, or default `postgres` when empty.
+    fn resolve_connect_database(config: &ConnectionConfig) -> &str {
+        config
+            .database
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .unwrap_or("postgres")
+    }
+
+    async fn open_pool(
+        opts: sqlx::postgres::PgConnectOptions,
+        timeout: Duration,
+        max_connections: u32,
+        min_connections: u32,
+    ) -> Result<PgPool, DriverError> {
+        let mut builder = PgPoolOptions::new()
+            .max_connections(max_connections)
+            .acquire_timeout(timeout);
+        if min_connections > 0 {
+            builder = builder.min_connections(min_connections);
+        }
+        builder
+            .connect_with(opts)
+            .await
+            .map_err(|e| DriverError::ConnectionFailed(e.to_string()))
+    }
+
+    async fn fetch_tables_from_pool(pool: &PgPool) -> Result<Vec<TableInfo>, DriverError> {
+        let rows = sqlx::query(
+            r#"
+            SELECT table_schema, table_name, table_type
+            FROM information_schema.tables
+            WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
+            ORDER BY table_schema, table_name
+            "#,
+        )
+        .fetch_all(pool)
+        .await
+        .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+
+        Ok(rows
+            .iter()
+            .map(|r| {
+                let tt: String = r.get("table_type");
+                TableInfo {
+                    schema: r.get("table_schema"),
+                    name: r.get("table_name"),
+                    table_type: match tt.as_str() {
+                        "VIEW" => TableType::View,
+                        _ => TableType::Table,
+                    },
+                    row_count: None,
+                }
+            })
+            .collect())
+    }
+
+    /// Open a pool for `database` using the handle's stored connect template.
+    async fn pool_for_named_database(
+        &self,
+        handle: &ConnectionHandle,
+        database: &str,
+        max_connections: u32,
+        min_connections: u32,
+    ) -> Result<PgPool, DriverError> {
+        let configs = self.connect_configs.read().await;
+        let config = configs.get(&handle.pool_id).ok_or_else(|| {
+            DriverError::ConnectionFailed("Connection pool not found".into())
+        })?;
+        let timeout = Duration::from_secs(config.connection_timeout as u64);
+        let opts = build_pg_options(config)?.database(database);
+        drop(configs);
+
+        Self::open_pool(opts, timeout, max_connections, min_connections)
+            .await
+            .map_err(|e| {
+                // Surface unknown-database as QueryFailed (parity with MySQL USE failures).
+                match e {
+                    DriverError::ConnectionFailed(msg) => DriverError::QueryFailed(format!(
+                        "Failed to connect to database `{database}`: {msg}"
+                    )),
+                    other => other,
+                }
+            })
     }
 
     fn safe_integer(v: i64) -> Value {
@@ -220,7 +330,7 @@ fn build_pg_options(
     let mut opts = sqlx::postgres::PgConnectOptions::new()
         .host(config.host.as_deref().unwrap_or("localhost"))
         .port(config.port.unwrap_or(5432))
-        .database(config.database.as_deref().unwrap_or("postgres"));
+        .database(PostgresDriver::resolve_connect_database(config));
 
     if let Some(username) = &config.username {
         opts = opts.username(username);
@@ -267,14 +377,9 @@ impl DatabaseDriver for PostgresDriver {
     async fn connect(&self, config: &ConnectionConfig) -> Result<ConnectionHandle, DriverError> {
         let opts = build_pg_options(config)?;
         let timeout = Duration::from_secs(config.connection_timeout as u64);
+        let resolved_db = Self::resolve_connect_database(config).to_string();
 
-        let pool = PgPoolOptions::new()
-            .max_connections(3)
-            .min_connections(2)
-            .acquire_timeout(timeout)
-            .connect_with(opts)
-            .await
-            .map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
+        let pool = Self::open_pool(opts, timeout, 3, 2).await?;
 
         {
             let _c1 = pool.acquire().await.map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
@@ -284,6 +389,14 @@ impl DatabaseDriver for PostgresDriver {
         let pool_id = uuid::Uuid::new_v4().to_string();
         let connection_id = uuid::Uuid::new_v4().to_string();
 
+        self.connect_configs
+            .write()
+            .await
+            .insert(pool_id.clone(), config.clone());
+        self.active_databases
+            .write()
+            .await
+            .insert(pool_id.clone(), resolved_db);
         self.pools.write().await.insert(pool_id.clone(), pool);
 
         Ok(ConnectionHandle {
@@ -293,6 +406,8 @@ impl DatabaseDriver for PostgresDriver {
     }
 
     async fn disconnect(&self, handle: ConnectionHandle) -> Result<(), DriverError> {
+        self.active_databases.write().await.remove(&handle.pool_id);
+        self.connect_configs.write().await.remove(&handle.pool_id);
         if let Some(pool) = self.pools.write().await.remove(&handle.pool_id) {
             pool.close().await;
         }
@@ -316,38 +431,36 @@ impl DatabaseDriver for PostgresDriver {
     async fn get_tables(
         &self,
         handle: &ConnectionHandle,
-        _database: &str,
+        database: &str,
     ) -> Result<Vec<TableInfo>, DriverError> {
-        let pools = self.pools.read().await;
-        let pool = Self::get_pool(&pools, handle)?;
+        let db = database.trim();
 
-        let rows = sqlx::query(
-            r#"
-            SELECT table_schema, table_name, table_type
-            FROM information_schema.tables
-            WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
-            ORDER BY table_schema, table_name
-            "#,
-        )
-        .fetch_all(pool)
-        .await
-        .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+        // Empty name → list tables on the currently connected database.
+        if db.is_empty() {
+            let pools = self.pools.read().await;
+            let pool = Self::get_pool(&pools, handle)?;
+            return Self::fetch_tables_from_pool(pool).await;
+        }
 
-        Ok(rows
-            .iter()
-            .map(|r| {
-                let tt: String = r.get("table_type");
-                TableInfo {
-                    schema: r.get("table_schema"),
-                    name: r.get("table_name"),
-                    table_type: match tt.as_str() {
-                        "VIEW" => TableType::View,
-                        _ => TableType::Table,
-                    },
-                    row_count: None,
-                }
-            })
-            .collect())
+        let active = self
+            .active_databases
+            .read()
+            .await
+            .get(&handle.pool_id)
+            .cloned();
+
+        if active.as_deref() == Some(db) {
+            let pools = self.pools.read().await;
+            let pool = Self::get_pool(&pools, handle)?;
+            return Self::fetch_tables_from_pool(pool).await;
+        }
+
+        // information_schema is per-database in Postgres — open a temporary pool
+        // for the named catalog without permanently switching the handle.
+        let temp = self.pool_for_named_database(handle, db, 1, 0).await?;
+        let result = Self::fetch_tables_from_pool(&temp).await;
+        temp.close().await;
+        result
     }
 
     async fn get_columns(
@@ -750,6 +863,41 @@ impl DatabaseDriver for PostgresDriver {
         Ok(())
     }
 
+    async fn use_database(
+        &self,
+        handle: &ConnectionHandle,
+        database: &str,
+    ) -> Result<(), DriverError> {
+        let trimmed = Self::validate_database_name(database)?;
+
+        {
+            let active = self.active_databases.read().await;
+            if active.get(&handle.pool_id).map(String::as_str) == Some(trimmed.as_str()) {
+                return Ok(());
+            }
+        }
+
+        // Postgres cannot USE like MySQL — reconnect the handle's pool to the target DB.
+        // Missing connect template / pool → ConnectionFailed (same shape as get_pool).
+        let new_pool = self
+            .pool_for_named_database(handle, &trimmed, 3, 2)
+            .await?;
+
+        let old = {
+            let mut pools = self.pools.write().await;
+            pools.insert(handle.pool_id.clone(), new_pool)
+        };
+        self.active_databases
+            .write()
+            .await
+            .insert(handle.pool_id.clone(), trimmed);
+
+        if let Some(old) = old {
+            old.close().await;
+        }
+        Ok(())
+    }
+
     async fn get_server_info(&self, handle: &ConnectionHandle) -> Result<ServerInfo, DriverError> {
         let pools = self.pools.read().await;
         let pool = Self::get_pool(&pools, handle)?;
@@ -996,4 +1144,114 @@ fn find_dollar_tag(bytes: &[u8], pos: usize) -> Option<usize> {
         j += 1;
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use datazen_driver_api::DatabaseDriver;
+
+    #[test]
+    fn validate_database_name_trims_and_accepts() {
+        assert_eq!(
+            PostgresDriver::validate_database_name("  mydb  ").unwrap(),
+            "mydb"
+        );
+        assert_eq!(
+            PostgresDriver::validate_database_name("postgres").unwrap(),
+            "postgres"
+        );
+    }
+
+    #[test]
+    fn validate_database_name_rejects_empty_or_invalid() {
+        assert!(matches!(
+            PostgresDriver::validate_database_name(""),
+            Err(DriverError::InvalidConfig(_))
+        ));
+        assert!(matches!(
+            PostgresDriver::validate_database_name("   "),
+            Err(DriverError::InvalidConfig(_))
+        ));
+        assert!(matches!(
+            PostgresDriver::validate_database_name("bad\0name"),
+            Err(DriverError::InvalidConfig(_))
+        ));
+    }
+
+    #[test]
+    fn resolve_connect_database_defaults_to_postgres() {
+        let mut cfg = ConnectionConfig {
+            id: "id".into(),
+            name: "n".into(),
+            database_type: "postgresql".into(),
+            host: Some("localhost".into()),
+            port: Some(5432),
+            database: None,
+            schema: None,
+            username: None,
+            password: None,
+            ssl_mode: Default::default(),
+            connection_timeout: 5,
+            ssh_tunnel: None,
+            color_tag: None,
+            group: None,
+            last_connected_at: None,
+            server_version: None,
+        };
+        assert_eq!(PostgresDriver::resolve_connect_database(&cfg), "postgres");
+
+        cfg.database = Some("  ".into());
+        assert_eq!(PostgresDriver::resolve_connect_database(&cfg), "postgres");
+
+        cfg.database = Some("  app_db  ".into());
+        assert_eq!(PostgresDriver::resolve_connect_database(&cfg), "app_db");
+    }
+
+    #[tokio::test]
+    async fn use_database_is_wired() {
+        let driver = PostgresDriver::new();
+        let handle = ConnectionHandle {
+            id: "conn".into(),
+            pool_id: "missing-pool".into(),
+        };
+
+        let err = driver.use_database(&handle, "").await.unwrap_err();
+        assert!(
+            matches!(err, DriverError::InvalidConfig(_)),
+            "expected InvalidConfig, got {err:?}"
+        );
+
+        let err = driver.use_database(&handle, "app_db").await.unwrap_err();
+        assert!(
+            matches!(err, DriverError::ConnectionFailed(_)),
+            "expected ConnectionFailed, got {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn use_database_noop_when_already_active() {
+        let driver = PostgresDriver::new();
+        let pool_id = "test-pool".to_string();
+        driver
+            .active_databases
+            .write()
+            .await
+            .insert(pool_id.clone(), "already".to_string());
+
+        let handle = ConnectionHandle {
+            id: "conn".into(),
+            pool_id,
+        };
+
+        // No pool registered — would fail if reconnect were attempted; no-op must short-circuit.
+        driver
+            .use_database(&handle, "already")
+            .await
+            .expect("same database should be a no-op");
+        driver
+            .use_database(&handle, "  already  ")
+            .await
+            .expect("trimmed match should be a no-op");
+    }
 }
