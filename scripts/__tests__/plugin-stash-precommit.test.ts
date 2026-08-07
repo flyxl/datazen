@@ -191,16 +191,57 @@ describe('runPluginStashPrecommit', () => {
     }
   });
 
-  it('restores when stash dir exists even if work looks clean', () => {
+  it('discards stash without overwriting when work looks clean', () => {
     const { root, opts, cleanup } = setup();
     try {
       const stash = createPluginFileStash(root, { quiet: true });
       stash.stashManagedFiles();
-      writeManagedFiles(root, CLEAN_CONTENTS);
+      // Legitimate edit after stash (e.g. docs-singleton) — not injection markers
+      const editedCaps = CLEAN_CONTENTS['src-tauri/capabilities/default.json'].replace(
+        '"connection-*"',
+        '"connection-*", "docs-singleton"',
+      );
+      writeManagedFiles(root, {
+        ...CLEAN_CONTENTS,
+        'src-tauri/capabilities/default.json': editedCaps,
+      });
+
+      const result = runPluginStashPrecommit(opts);
+      expect(result.status).toBe(0);
+      expect(result.restored).toBe(false);
+      expect(result.discardedStash).toBe(true);
+      expect(existsSync(join(root, '.plugin-file-stash'))).toBe(false);
+      expect(readManaged(root, 'src-tauri/capabilities/default.json')).toContain(
+        'docs-singleton',
+      );
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('restores only injected files and preserves clean edits', () => {
+    const { root, opts, staged, cleanup } = setup();
+    try {
+      const stash = createPluginFileStash(root, { quiet: true });
+      stash.stashManagedFiles();
+      const editedCaps = CLEAN_CONTENTS['src-tauri/capabilities/default.json'].replace(
+        '"connection-*"',
+        '"connection-*", "docs-singleton"',
+      );
+      writeManagedFiles(root, {
+        ...INJECTED_CONTENTS,
+        'src-tauri/capabilities/default.json': editedCaps,
+      });
+      staged.add('Cargo.toml');
+      staged.add('src-tauri/capabilities/default.json');
 
       const result = runPluginStashPrecommit(opts);
       expect(result.status).toBe(0);
       expect(result.restored).toBe(true);
+      expect(readManaged(root, 'Cargo.toml')).toBe(CLEAN_CONTENTS['Cargo.toml']);
+      expect(readManaged(root, 'src-tauri/capabilities/default.json')).toContain(
+        'docs-singleton',
+      );
       expect(existsSync(join(root, '.plugin-file-stash'))).toBe(false);
     } finally {
       cleanup();

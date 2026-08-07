@@ -2,12 +2,14 @@
 /**
  * plugin-file-stash.mjs
  *
- * Stash / restore managed files that resolve-plugins injects at build/dev time.
+ * Backup / restore managed files that resolve-plugins injects at build/dev time.
  *
- * Flow:
- *   1. `stash`  — rename clean working files → .plugin-file-stash/<path>
- *   2. resolve-plugins writes injected content at the original paths
- *   3. `restore` — rename stash back over working paths (errors if any stash missing)
+ * Flow (cp + atomic rename — working paths always remain):
+ *   1. `stash`  — copyFileSync clean working files → .plugin-file-stash/<path>
+ *                 (working tree stays in place so editors/git keep seeing the files)
+ *   2. resolve-plugins overwrites working paths with injected content
+ *   3. `restore` — for each file, copy stash → temp, renameSync temp → work
+ *                 (atomic replace), then remove stash copies
  *
  * Usage:
  *   node scripts/plugin-file-stash.mjs stash
@@ -18,12 +20,14 @@
 import {
   existsSync,
   mkdirSync,
+  copyFileSync,
   renameSync,
   unlinkSync,
   rmSync,
 } from 'fs';
-import { resolve, dirname, relative } from 'path';
+import { resolve, dirname, relative, basename } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
+import { randomBytes } from 'crypto';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 export const ROOT = resolve(__dirname, '..');
@@ -36,6 +40,29 @@ export const MANAGED_FILES = [
   'src/plugins/generated.ts',
   'src-tauri/capabilities/default.json',
 ];
+
+/**
+ * Atomically replace `dest` with contents of `src` via temp file + rename.
+ * Works across the common case where src/dest are on the same volume.
+ * @param {string} src
+ * @param {string} dest
+ */
+export function atomicReplaceWithCopy(src, dest) {
+  mkdirSync(dirname(dest), { recursive: true });
+  const token = randomBytes(6).toString('hex');
+  const tmp = resolve(dirname(dest), `.${basename(dest)}.${token}.tmp`);
+  try {
+    copyFileSync(src, tmp);
+    renameSync(tmp, dest);
+  } catch (e) {
+    try {
+      if (existsSync(tmp)) unlinkSync(tmp);
+    } catch {
+      /* ignore */
+    }
+    throw e;
+  }
+}
 
 /**
  * @param {string} root
@@ -80,6 +107,9 @@ export function createPluginFileStash(root, options = {}) {
     rmSync(STASH_DIR, { recursive: true, force: true });
   }
 
+  /**
+   * Copy clean working files into the stash dir. Working paths stay put.
+   */
   function stashManagedFiles() {
     const existing = MANAGED_FILES.filter((f) => existsSync(stashPath(f)));
     if (existing.length > 0) {
@@ -100,16 +130,20 @@ export function createPluginFileStash(root, options = {}) {
       const src = workPath(f);
       const dst = stashPath(f);
       mkdirSync(dirname(dst), { recursive: true });
-      renameSync(src, dst);
+      copyFileSync(src, dst);
     }
 
     if (!quiet) {
       console.log(
-        `[plugin-file-stash] stashed ${MANAGED_FILES.length} file(s) → ${relative(root, STASH_DIR)}/`,
+        `[plugin-file-stash] copied ${MANAGED_FILES.length} file(s) → ${relative(root, STASH_DIR)}/`,
       );
     }
   }
 
+  /**
+   * Restore every stashed file over the working tree (full restore).
+   * Prefer {@link restoreInjectedFiles} from pre-commit when only some files are injected.
+   */
   function restoreManagedFiles() {
     const missing = missingStashFiles();
     if (missing.length > 0) {
@@ -120,18 +154,38 @@ export function createPluginFileStash(root, options = {}) {
     }
 
     for (const f of MANAGED_FILES) {
-      const src = stashPath(f);
-      const dst = workPath(f);
-      mkdirSync(dirname(dst), { recursive: true });
-      if (existsSync(dst)) {
-        unlinkSync(dst);
-      }
-      renameSync(src, dst);
+      atomicReplaceWithCopy(stashPath(f), workPath(f));
     }
 
     cleanupStashDir();
     if (!quiet) {
       console.log(`[plugin-file-stash] restored ${MANAGED_FILES.length} file(s) from stash`);
+    }
+  }
+
+  /**
+   * Restore only the listed relative paths from stash; drop remaining stash copies.
+   * Used so legitimate edits to non-injected managed files survive pre-commit.
+   * @param {string[]} relPaths
+   */
+  function restoreSelectedFiles(relPaths) {
+    const missing = relPaths.filter((f) => !existsSync(stashPath(f)));
+    if (missing.length > 0) {
+      throw new Error(
+        `[plugin-file-stash] cannot restore selection; stash missing for: ${missing.join(', ')}`,
+      );
+    }
+
+    for (const f of relPaths) {
+      atomicReplaceWithCopy(stashPath(f), workPath(f));
+    }
+
+    // Drop entire stash dir (including copies for files we intentionally kept).
+    cleanupStashDir();
+    if (!quiet) {
+      console.log(
+        `[plugin-file-stash] restored ${relPaths.length} injected file(s); discarded remaining stash`,
+      );
     }
   }
 
@@ -157,6 +211,7 @@ export function createPluginFileStash(root, options = {}) {
     missingWorkFiles,
     stashManagedFiles,
     restoreManagedFiles,
+    restoreSelectedFiles,
     printStatus,
     cleanupStashDir,
   };
@@ -173,6 +228,7 @@ export const allStashed = defaultApi.allStashed;
 export const missingStashFiles = defaultApi.missingStashFiles;
 export const stashManagedFiles = defaultApi.stashManagedFiles;
 export const restoreManagedFiles = defaultApi.restoreManagedFiles;
+export const restoreSelectedFiles = defaultApi.restoreSelectedFiles;
 
 function main() {
   const cmd = process.argv[2];

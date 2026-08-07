@@ -135,21 +135,32 @@ export function runPluginStashPrecommit(opts = {}) {
       execSync(`git add -- ${relPath}`, { cwd: root, stdio: 'pipe' });
     });
 
-  let injectionDetected = false;
+  const injectedFiles = [];
   for (const f of MANAGED_FILES) {
     const content = getContent(f);
     if (content && fileHasInjection(f, content)) {
-      injectionDetected = true;
-      break;
+      injectedFiles.push(f);
     }
   }
 
   const stashDirPresent = existsSync(stash.STASH_DIR);
-  if (!injectionDetected && !stashDirPresent) {
+  if (injectedFiles.length === 0 && !stashDirPresent) {
     return { status: 0, restored: false };
   }
 
-  log('[pre-commit] Restoring managed files from .plugin-file-stash/ ...');
+  if (injectedFiles.length === 0 && stashDirPresent) {
+    // Stash leftover from a crashed/nested build, but working tree is clean
+    // (or only has legitimate non-injection edits). Drop stash; do NOT overwrite.
+    log(
+      '[pre-commit] Stash present but no injected managed files — discarding stash, keeping working tree',
+    );
+    stash.cleanupStashDir();
+    return { status: 0, restored: false, discardedStash: true };
+  }
+
+  log(
+    `[pre-commit] Restoring ${injectedFiles.length} injected managed file(s) from .plugin-file-stash/ ...`,
+  );
 
   if (!stash.allStashed()) {
     const missing = stash.missingStashFiles();
@@ -171,7 +182,7 @@ export function runPluginStashPrecommit(opts = {}) {
   }
 
   try {
-    stash.restoreManagedFiles();
+    stash.restoreSelectedFiles(injectedFiles);
   } catch (e) {
     log('[pre-commit] ERROR: stash restore failed');
     log(e instanceof Error ? e.message : e);
@@ -197,7 +208,7 @@ export function runPluginStashPrecommit(opts = {}) {
     return { status: 1, reason: 'stash-dir-remains', restored: true };
   }
 
-  log('[pre-commit] Restored and re-staged managed plugin files.');
+  log('[pre-commit] Restored injected plugin files; preserved non-injected edits.');
   return { status: 0, restored: true };
 }
 

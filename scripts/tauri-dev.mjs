@@ -19,7 +19,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
 
 function restoreStash() {
-  console.log('[tauri:dev] restoring managed files from stash...');
+  console.log('[tauri:dev] restoring managed files from copy-stash...');
   try {
     execSync('node scripts/plugin-file-stash.mjs restore', {
       cwd: ROOT,
@@ -41,7 +41,7 @@ execSync('node scripts/generate-menu-labels.mjs', {
   stdio: 'inherit',
 });
 
-console.log('[tauri:dev] resolving plugins (stash + inject)...');
+console.log('[tauri:dev] resolving plugins (copy-stash + inject)...');
 execSync(`node scripts/resolve-plugins.mjs ${pluginsStr}`, {
   cwd: ROOT,
   stdio: 'inherit',

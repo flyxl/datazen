@@ -11,12 +11,13 @@
  *
  * Environment variable alternative: DATAZEN_PLUGINS="kiwi,olap"
  *
- * Managed files are renamed into .plugin-file-stash/ before injection, then
- * restored with `node scripts/plugin-file-stash.mjs restore` after the build
+ * Managed files are **copied** into `.plugin-file-stash/` before injection
+ * (working paths stay in place), then restored with
+ * `node scripts/plugin-file-stash.mjs restore` after the build
  * (tauri-dev / pre-commit / build wrappers call restore).
  *
  * This script:
- * 1. Stashes clean managed files (rename → .plugin-file-stash/)
+ * 1. Copies clean managed files → `.plugin-file-stash/` (cp)
  * 2. Clones/updates plugin repos into .plugins/
  * 3. Writes injected managed files + .plugin-features.json
  */
