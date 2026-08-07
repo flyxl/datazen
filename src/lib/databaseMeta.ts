@@ -54,7 +54,7 @@ export interface DatabaseTypeMeta {
   schemaTreeMode?: 'standard' | 'multiDatabase' | 'custom';
   /** Whether this driver is read-only (no DDL, no create/alter table, no import) */
   readOnly?: boolean;
-  /** Whether this driver supports EXPLAIN query plan analysis */
+  /** Whether this driver supports EXPLAIN query plan analysis (opt-in; omit = unsupported). */
   supportsExplain?: boolean;
   /** Whether this driver supports ER diagram (requires FK metadata) */
   supportsErDiagram?: boolean;

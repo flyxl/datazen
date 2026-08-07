@@ -21,4 +21,9 @@ describe('DB_REGISTRY behavioral flags', () => {
     expect(DB_REGISTRY.postgresql.connectionForm).toBe('standard');
     expect(DB_REGISTRY.mysql.connectionForm).toBe('standard');
   });
+
+  it('supportsExplain is opt-in via explicit true', () => {
+    expect(DB_REGISTRY.postgresql.supportsExplain).toBe(true);
+    expect(DB_REGISTRY.redis.supportsExplain).toBeUndefined();
+  });
 });
