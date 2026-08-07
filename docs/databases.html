@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>数据库与连接 — DataZen</title>
+  <meta name="description" content="DataZen 数据库支持：PostgreSQL、MySQL、MariaDB、SQLite、Redis；会话级多数据库、SSH 隧道、插件驱动（kiwi / OLAP / Superset）、ER 图。" />
+  <link rel="icon" href="assets/logo.png" />
+  <link rel="stylesheet" href="assets/css/site.css" />
+</head>
+<body>
+  <header id="site-header"></header>
+
+  <section class="page-head">
+    <div class="wrap">
+      <p class="breadcrumb"><a href="index.html">首页</a> / 数据库与连接</p>
+      <h1>🔌 数据库与连接</h1>
+      <p>一套界面管理多种数据库：连接、浏览、查询、编辑、同步，全部原生实现。</p>
+    </div>
+  </section>
+
+  <section class="wrap">
+    <div class="grid-3">
+      <div class="card"><div class="icon">🐘</div><h3>PostgreSQL</h3><p>完整 Schema 浏览、EXPLAIN、多库会话、SSL / SSH。</p></div>
+      <div class="card"><div class="icon">🐬</div><h3>MySQL / MariaDB</h3><p>兼容分支，会话级多库切换，数据同步。</p></div>
+      <div class="card"><div class="icon">🗄️</div><h3>SQLite</h3><p>本地文件直接打开，零配置。</p></div>
+      <div class="card"><div class="icon">⚡</div><h3>Redis</h3><p>专属视图：Database 列表 + Key 浏览器，支持全部数据类型。</p></div>
+      <div class="card"><div class="icon">📡</div><h3>kiwi</h3><p>云数据库代理插件，domain 实例语义。</p></div>
+      <div class="card"><div class="icon">📊</div><h3>OLAP / Superset</h3><p>插件驱动：Presto / Trino 分析引擎与数据探索平台。</p></div>
+    </div>
+
+    <div class="feature-block">
+      <div>
+        <span class="kicker">会话级多数据库</span>
+        <h2>一个连接，浏览所有库</h2>
+        <p>PostgreSQL / MySQL / MariaDB 单个连接即可在侧栏浏览并切换多个数据库；配置了逻辑库名时自动锁定单库，避免误操作。</p>
+        <ul>
+          <li>Schema 树按库分组，虚拟滚动支持大库</li>
+          <li>use_database 级切换，无需重连</li>
+          <li>配置逻辑库名 → 锁定单库（Kiwi 的 domain 字段不参与锁定）</li>
+        </ul>
+      </div>
+      <img class="feature-shot" src="assets/screenshots/14-multidb.png" alt="多数据库会话" />
+    </div>
+
+    <div class="feature-block reverse">
+      <div>
+        <span class="kicker">Redis 专属视图</span>
+        <h2>Key 浏览器与安全连接</h2>
+        <ul>
+          <li>Database 列表 + Key 浏览器，支持 String / Hash / List / Set / ZSet / Stream</li>
+          <li>类型与 TTL 一目了然，点开即看字段值</li>
+          <li>内置 SSH 隧道（纯 Rust）、凭据加密落盘、Host Key TOFU 校验</li>
+          <li>连接密码 AES-256-GCM 加密，主密钥入系统钥匙串</li>
+        </ul>
+      </div>
+      <img class="feature-shot" src="assets/screenshots/15-redis.png" alt="Redis 专属视图" />
+    </div>
+
+    <div class="feature-block">
+      <div>
+        <span class="kicker">ER 图</span>
+        <h2>表关系一目了然</h2>
+        <p>自动生成数据库 ER 图（React Flow 渲染），外键关系、表结构可视化，适合快速理解陌生库。</p>
+      </div>
+      <img class="feature-shot" src="assets/screenshots/16-er.png" alt="ER 图" />
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap">
+      <h2 style="font-size:26px;margin-bottom:20px">插件体系</h2>
+      <p class="muted" style="margin-bottom:20px">
+        DataZen 采用编译时插件架构（类似 Caddy 2）：内置驱动始终可用，外部驱动通过
+        <code>register_driver!</code> 注册进构建，Git ref 可固定版本，保证可复现。
+      </p>
+      <table class="tbl">
+        <tr><th>驱动</th><th>类型</th><th>说明</th></tr>
+        <tr><td>PostgreSQL / MySQL / SQLite / Redis</td><td>内置</td><td>基础功能完整支持</td></tr>
+        <tr><td>kiwi</td><td>Git 插件</td><td>云数据库代理，实例 domain 语义</td></tr>
+        <tr><td>OLAP</td><td>Git 插件</td><td>Presto / Trino 分析引擎</td></tr>
+        <tr><td>Superset</td><td>Git 插件</td><td>数据探索平台集成</td></tr>
+      </table>
+      <div class="callout">
+        想接入新的数据库？实现 <code>DatabaseDriver</code> trait 即可作为插件发布，详见
+        <a href="https://github.com/flyxl/datazen/blob/main/docs/plugin-development.md" target="_blank" rel="noopener">插件开发文档</a>。
+      </div>
+    </div>
+  </section>
+
+  <footer id="site-footer"></footer>
+  <script src="assets/js/site.js"></script>
+</body>
+</html>
