@@ -25,12 +25,14 @@ const CARGO_TOML = resolve(ROOT, 'Cargo.toml');
 const TAURI_CARGO_TOML = resolve(ROOT, 'src-tauri/Cargo.toml');
 const PLUGIN_INIT_RS = resolve(ROOT, 'src-tauri/src/plugin_init.rs');
 const GENERATED_TS = resolve(ROOT, 'src/plugins/generated.ts');
+const CAPABILITIES = resolve(ROOT, 'src-tauri/capabilities/default.json');
 
 // Save original file contents before injection
 const originalCargoToml = readFileSync(CARGO_TOML, 'utf-8');
 const originalTauriCargoToml = readFileSync(TAURI_CARGO_TOML, 'utf-8');
 const originalPluginInit = readFileSync(PLUGIN_INIT_RS, 'utf-8');
 const originalGeneratedTs = readFileSync(GENERATED_TS, 'utf-8');
+const originalCapabilities = readFileSync(CAPABILITIES, 'utf-8');
 
 function restoreFiles() {
   console.log('[tauri:dev] restoring injected files...');
@@ -38,6 +40,7 @@ function restoreFiles() {
   writeFileSync(TAURI_CARGO_TOML, originalTauriCargoToml);
   writeFileSync(PLUGIN_INIT_RS, originalPluginInit);
   writeFileSync(GENERATED_TS, originalGeneratedTs);
+  writeFileSync(CAPABILITIES, originalCapabilities);
 }
 
 const args = process.argv.slice(2);
