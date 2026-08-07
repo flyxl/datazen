@@ -393,6 +393,17 @@ export function MainWindow() {
       );
       if (!saved) return;
       showMessageDialog(t('appData.exportSuccess'), 'success');
+      const { ask } = await import('@tauri-apps/plugin-dialog');
+      const wantKey = await ask(t('appData.backupKeyMessage'), {
+        title: t('appData.backupKeyTitle'),
+        kind: 'info',
+      });
+      if (wantKey) {
+        const keySaved = await backupCommands.saveEncryptionKeyWithDialog('datazen.key');
+        if (keySaved) {
+          showMessageDialog(t('appData.backupKeySaved'), 'success');
+        }
+      }
     } catch (e) {
       showMessageDialog(
         e instanceof Error ? e.message : t('appData.exportFailed'),

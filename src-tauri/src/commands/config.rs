@@ -401,6 +401,50 @@ pub async fn import_app_data_with_dialog(
     Ok(true)
 }
 
+/// Bytes written when exporting the encryption key file (base64 text, trimmed).
+pub fn encryption_key_export_bytes(key_b64: &str) -> Vec<u8> {
+    key_b64.trim().as_bytes().to_vec()
+}
+
+async fn read_encryption_key_b64(data_dir: &std::path::Path) -> Result<String, CommandError> {
+    let key_path = data_dir.join(".key");
+    tokio::fs::read_to_string(&key_path)
+        .await
+        .map_err(|e| CommandError::NotFound(format!("Encryption key not found: {e}")))
+}
+
+/// Native save dialog for the app encryption key (`.key` material). Path never crosses the webview.
+/// Returns `true` if saved, `false` if cancelled.
+#[tauri::command]
+pub async fn save_encryption_key_with_dialog(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    default_file_name: String,
+) -> Result<bool, CommandError> {
+    use tauri_plugin_dialog::DialogExt;
+
+    let data_dir = state.store.data_dir();
+    let key_b64 = read_encryption_key_b64(&data_dir).await?;
+    let bytes = encryption_key_export_bytes(&key_b64);
+
+    let picked = app
+        .dialog()
+        .file()
+        .add_filter("Encryption Key", &["key"])
+        .set_file_name(&default_file_name)
+        .blocking_save_file();
+    let Some(fp) = picked else {
+        return Ok(false);
+    };
+    let dest = fp
+        .into_path()
+        .map_err(|e| CommandError::Validation(format!("Invalid dialog path: {e}")))?;
+    tokio::fs::write(&dest, &bytes)
+        .await
+        .cmd_err("save_encryption_key_with_dialog")?;
+    Ok(true)
+}
+
 #[tauri::command]
 pub fn restart_app(app: AppHandle) {
     tracing::info!("restart_app");
@@ -451,5 +495,16 @@ mod tests {
         let cipher = encrypt_with_key("payload", &key).unwrap();
         let wrong = derive_key_from_password("wrong", &salt).unwrap();
         assert!(decrypt_with_key(&cipher, &wrong).is_err());
+    }
+
+    #[test]
+    fn encryption_key_export_bytes_roundtrip_write() {
+        let key_b64 = "  dGVzdGtleQ==  \n";
+        let bytes = encryption_key_export_bytes(key_b64);
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("datazen.key");
+        std::fs::write(&path, &bytes).unwrap();
+        let read_back = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(read_back, "dGVzdGtleQ==");
     }
 }
