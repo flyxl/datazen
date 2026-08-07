@@ -76,10 +76,17 @@ for (const file of PAGES) {
     mustInclude(zh, zhRel, `hreflang="en" href="${enCanon}"`);
     mustInclude(zh, zhRel, `hreflang="zh-CN" href="${zhCanon}"`);
     mustInclude(zh, zhRel, `hreflang="x-default" href="${enCanon}"`);
+    mustInclude(zh, zhRel, 'property="og:title"');
+    mustInclude(zh, zhRel, 'property="og:description"');
+    mustInclude(zh, zhRel, 'property="og:image"');
+    mustInclude(zh, zhRel, 'property="og:url"');
     mustInclude(zh, zhRel, 'property="og:locale" content="zh_CN"');
+    mustInclude(zh, zhRel, 'name="twitter:card" content="summary_large_image"');
     mustInclude(zh, zhRel, 'href="../assets/css/site.css"');
     mustInclude(zh, zhRel, 'src="../assets/js/site.js"');
+    mustNotInclude(zh, zhRel, "60 秒");
     mustNotInclude(zh, zhRel, "demo.mp4");
+    mustNotInclude(zh, zhRel, "video-box");
   }
 }
 
