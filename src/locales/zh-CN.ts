@@ -44,6 +44,8 @@ const zhCN = {
   'menu.viewLogs': '查看日志',
   'menu.exportConfig': '导出应用数据',
   'menu.importConfig': '导入应用数据',
+  'menu.exportConnections': '导出连接',
+  'menu.importConnections': '导入连接',
   'menu.window': '窗口',
   'menu.minimize': '最小化',
   'menu.closeWindow': '关闭窗口',
@@ -116,6 +118,20 @@ const zhCN = {
   'appData.backupKeyMessage': '是否现在另存加密密钥？请妥善保管；在其他机器恢复应用数据后，需要此密钥才能解密已保存的密码。',
   'appData.backupKeySaved': '加密密钥已保存。',
   'appData.backupKeyFailed': '加密密钥保存失败。',
+
+  // ── Connection Share ──
+  'connShare.exportTitle': '导出连接',
+  'connShare.importTitle': '导入连接',
+  'connShare.password': '密码',
+  'connShare.confirmPassword': '确认密码',
+  'connShare.passwordRequired': '请输入密码',
+  'connShare.passwordMismatch': '两次输入的密码不一致',
+  'connShare.exportAction': '导出…',
+  'connShare.importAction': '导入…',
+  'connShare.exportSuccess': '已导出 {count} 个连接',
+  'connShare.importSuccess': '导入 {imported} 个新连接，更新 {overwritten} 个，新增 {groupsAdded} 个分组',
+  'connShare.exportFailed': '导出失败',
+  'connShare.importFailed': '导入失败',
 
   // ── Connection Item / Card ──
   'conn.connected': '已连接',

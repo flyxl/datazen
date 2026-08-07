@@ -46,6 +46,8 @@ const en: Record<TranslationKey, string> = {
   'menu.viewLogs': 'View Logs',
   'menu.exportConfig': 'Export App Data',
   'menu.importConfig': 'Import App Data',
+  'menu.exportConnections': 'Export Connections',
+  'menu.importConnections': 'Import Connections',
   'menu.window': 'Window',
   'menu.minimize': 'Minimize',
   'menu.closeWindow': 'Close Window',
@@ -118,6 +120,20 @@ const en: Record<TranslationKey, string> = {
   'appData.backupKeyMessage': 'Save a copy of your encryption key now? Store it securely; you will need it to decrypt saved passwords after restoring on another machine.',
   'appData.backupKeySaved': 'Encryption key saved.',
   'appData.backupKeyFailed': 'Failed to save encryption key.',
+
+  // ── Connection Share ──
+  'connShare.exportTitle': 'Export Connections',
+  'connShare.importTitle': 'Import Connections',
+  'connShare.password': 'Password',
+  'connShare.confirmPassword': 'Confirm Password',
+  'connShare.passwordRequired': 'Password is required',
+  'connShare.passwordMismatch': 'Passwords do not match',
+  'connShare.exportAction': 'Export…',
+  'connShare.importAction': 'Import…',
+  'connShare.exportSuccess': 'Exported {count} connection(s)',
+  'connShare.importSuccess': 'Imported {imported} new, updated {overwritten}, added {groupsAdded} group(s)',
+  'connShare.exportFailed': 'Export failed',
+  'connShare.importFailed': 'Import failed',
 
   // ── Connection Item / Card ──
   'conn.connected': 'Connected',

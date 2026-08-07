@@ -35,7 +35,7 @@
 | P5 | splash 等 bootstrap + 错误 i18n | ✅ | ✅ splash 1 | ⬜ | ✅ ba83d87 |
 | C6R | connection_id → config_id 硬切换 | ✅ | ✅ mcp::server | ⬜ | ✅ 9635f73 |
 | S1+ | 导出后提示并另存 `.key` | ✅ | ✅ encryption_key | ⬜ | ✅ 381ceef |
-| ConnShare | 菜单导出/导入连接 + 口令 | ⬜ | ⬜ | ⬜ | ⬜ |
+| ConnShare | 菜单导出/导入连接 + 口令 | ✅ | ✅ config 8 | ⬜ | ⬜ |
 | P3 | Keychain 主密钥 + 测试 fallback | ⬜ | ⬜ | ⬜ | ⬜ |
 | C2F | 10 语系全量真翻译 | ⬜ | ⬜ | ⬜ | ⬜ |
 
@@ -147,6 +147,12 @@
 - **实现**：`hideSplash()` 提取至 `src/lib/splash.ts`；`bootstrap()` `finally` 隐藏 splash；移除顶层过早 hide；`MainWindow`/`queryStore` 硬编码错误串改 i18n（`backend.unknownError`、`query.cancelled`）
 - **单元测试**：`npx vitest run src/lib/__tests__/splash.test.ts` — 1 passed；`pnpm exec tsc --noEmit` — pass
 - **提交**：`ba83d87`
+
+### ConnShare — 菜单导出/导入连接 + 口令
+
+- **实现**：`export_connections_with_dialog` / `import_connections_with_dialog`（空口令拒绝、按 id 覆盖合并）；原生菜单 + `MenuBar` 四项 Tools；`ConnectionShareDialog` 口令 UI
+- **单元测试**：`cargo test -p datazen --lib commands::config` — 8 passed；`pathIpcWiring` + `locales` vitest — pass
+- **提交**：待提交
 
 ## 延期 / 范围外
 
