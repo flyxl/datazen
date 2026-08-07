@@ -2,6 +2,17 @@
 
 > [返回架构总览](../README.md)
 
+## 连接 ID 约定
+
+| 名称 | 含义 | 示例来源 |
+|------|------|----------|
+| **`config_id`** | 持久化连接配置 ID（`ConnectionConfig.id`，存于 `connections.json`） | GUI 保存的连接、`connect` IPC 入参 |
+| **`connection_id`** | 运行时活动连接句柄（`ConnectionManager` 分配，断开即失效） | `connect` 返回值、大多数查询/Schema IPC |
+
+规则：**先 `connect(config_id)` → 得到 `connection_id`，后续 SQL/Schema 调用传 `connection_id`。** MCP tools 与 GUI 共用 `ConnectionManager`；`list_connections` 返回的是 **config_id** 列表，内部按需 `get_or_connect`。
+
+---
+
 ## 1. 连接管理服务
 
 ### 1.1 连接池管理器
