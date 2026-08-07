@@ -22,10 +22,12 @@
 | Language preference storage | None — URL is the source of truth |
 | Scope of SEO | Full-site (not homepage-only) |
 | Locales in v1 | `en` + `zh-CN` only |
+| Homepage video | **Removed site-wide** — no 「60 秒快速了解」 / demo video on any page |
 
 ## Current state
 
-- Static site under `site/` (7 HTML pages + `assets/css`, `assets/js`, screenshots, video).
+- Static site under `site/` (7 HTML pages + `assets/css`, `assets/js`, screenshots).
+- Homepage 「60 秒快速了解」 demo video block and `assets/video/` **removed** (no video module on any page).
 - All copy hardcoded Chinese; nav/footer injected by `site/assets/js/site.js`.
 - Basic SEO today: per-page `title` + `description`; OG/Twitter **only on homepage**; no canonical, hreflang, sitemap, robots, or JSON-LD.
 - Deploy: `.github/workflows/pages.yml` uploads `site/` on `main` pushes.
@@ -89,8 +91,9 @@ Absolute URL prefix: `https://flyxl.github.io/datazen`
 
 1. Move current Chinese HTML bodies into `site/zh/*.html`; fix asset/script paths to `../assets/…`.
 2. Author English HTML at `site/*.html` with full translation of visible copy and meta.
-3. Keep screenshots/video shared (no locale-specific media in v1).
-4. Update any internal docs that still say `docs/` is the Pages root (e.g. `docs/marketing/GITHUB_PAGES.md`) only if touched for accuracy — optional follow-up, not blocking.
+3. Do **not** reintroduce any 「60 秒快速了解」 / demo video section when building EN or ZH pages; `assets/video/` is deleted.
+4. Keep screenshots shared (no locale-specific media in v1).
+5. Update any internal docs that still say `docs/` is the Pages root (e.g. `docs/marketing/GITHUB_PAGES.md`) only if touched for accuracy — optional follow-up, not blocking.
 
 ## Deploy / CI
 
@@ -101,7 +104,8 @@ Absolute URL prefix: `https://flyxl.github.io/datazen`
 
 - Additional locales beyond `en` / `zh-CN`
 - OS/browser language auto-redirect
-- Locale-specific screenshots or demo video
+- Locale-specific screenshots
+- Replacing the removed demo video with another media block
 - Search Console / analytics wiring
 - Build step / SSG
 
@@ -110,6 +114,7 @@ Absolute URL prefix: `https://flyxl.github.io/datazen`
 - [ ] Root URLs show English; `/zh/` URLs show Chinese
 - [ ] Nav language switch lands on the correct counterpart page
 - [ ] No auto-redirect based on `navigator.language`
+- [ ] No page contains 「60 秒快速了解」 / demo video; `assets/video/` absent
 - [ ] Every page has canonical + hreflang + OG/Twitter
 - [ ] `robots.txt` and `sitemap.xml` list all locale URLs
 - [ ] Homepage JSON-LD present on EN and ZH
