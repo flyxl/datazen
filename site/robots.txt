@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://flyxl.github.io/datazen/sitemap.xml
