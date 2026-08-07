@@ -81,6 +81,9 @@ importers:
         specifier: ^5.0.3
         version: 5.0.12(@types/react@18.3.28)(immer@11.1.15)(react@18.3.1)(use-sync-external-store@1.6.0(react@18.3.1))
     devDependencies:
+      '@iamtraction/google-translate':
+        specifier: ^3.0.0
+        version: 3.0.0
       '@tailwindcss/vite':
         specifier: ^4.1.4
         version: 4.2.2(vite@6.4.2(@types/node@25.6.0)(jiti@2.6.1)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.9.0))
@@ -135,6 +138,9 @@ importers:
       jsdom:
         specifier: ^29.0.2
         version: 29.0.2
+      opencc-js:
+        specifier: ^1.4.1
+        version: 1.4.1
       postcss:
         specifier: ^8.5.3
         version: 8.5.9
@@ -671,6 +677,10 @@ packages:
     peerDependenciesMeta:
       '@noble/hashes':
         optional: true
+
+  '@iamtraction/google-translate@3.0.0':
+    resolution: {integrity: sha512-j2b3ZU/c/qHsHPP2PPQt3vAEsfscSbpvpiI4t4l4ps+KrUEwqNBy5T2optNxn6tcV1mAY6t9J7RJzbILQUeq2Q==}
+    engines: {node: '>=22.19.0'}
 
   '@inquirer/ansi@1.0.2':
     resolution: {integrity: sha512-S8qNSZiYzFd0wAcyG5AXCvUHC5Sr7xpZ9wZ2py9XR88jUz8wooStVx5M6dRzczbBWjic9NP7+rY0Xi7qqK/aMQ==}
@@ -2808,6 +2818,9 @@ packages:
   once@1.4.0:
     resolution: {integrity: sha512-lNaJgI+2Q5URQBkccEKHTQOPaXdUxnZZElQTZY0MFUAuaEqe1E+Nyvgdz/aIyNi6Z9MzO5dv1H8n58/GELp3+w==}
 
+  opencc-js@1.4.1:
+    resolution: {integrity: sha512-2lPLcrg7cnh1ATSduOxhnk/jq6KlR6w+5Ihl4wF7Z5e5Rva4vxTyugV5rZ7EiUCOZl+EDOLetIix+BhgYDCC+A==}
+
   p-limit@3.1.0:
     resolution: {integrity: sha512-TYOanM3wGwNGsZN2cVTYPArw454xnXj5qmWF1bEoAc4+cU/ol7GVh7odevjp1FNHduHc3KZMcFduxU5Xc6uJRQ==}
     engines: {node: '>=10'}
@@ -3373,6 +3386,10 @@ packages:
   undici@7.25.0:
     resolution: {integrity: sha512-xXnp4kTyor2Zq+J1FfPI6Eq3ew5h6Vl0F/8d9XU5zZQf1tX9s2Su1/3PiMmUANFULpmksxkClamIZcaUqryHsQ==}
     engines: {node: '>=20.18.1'}
+
+  undici@8.10.0:
+    resolution: {integrity: sha512-HvltHd7avK13QIw/oLe4qoOLyoVSoafqJ2jYOrtMRBkbYT31eiBQ8O0ehRKZiEZCMEyLFQNIADpgCWC5fALvYQ==}
+    engines: {node: '>=22.19.0'}
 
   unicorn-magic@0.3.0:
     resolution: {integrity: sha512-+QBBXBCvifc56fsbuxZQ6Sic3wqqc3WWaqxs58gvJrcOuN83HGTCwz3oS5phzU9LthRNE9VrJCFCLUgHeeFnfA==}
@@ -4077,6 +4094,10 @@ snapshots:
     optional: true
 
   '@exodus/bytes@1.15.0': {}
+
+  '@iamtraction/google-translate@3.0.0':
+    dependencies:
+      undici: 8.10.0
 
   '@inquirer/ansi@1.0.2': {}
 
@@ -6285,6 +6306,8 @@ snapshots:
     dependencies:
       wrappy: 1.0.2
 
+  opencc-js@1.4.1: {}
+
   p-limit@3.1.0:
     dependencies:
       yocto-queue: 0.1.0
@@ -6898,6 +6921,8 @@ snapshots:
   undici@6.25.0: {}
 
   undici@7.25.0: {}
+
+  undici@8.10.0: {}
 
   unicorn-magic@0.3.0: {}
 

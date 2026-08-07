@@ -40,18 +40,22 @@ describe('locales', () => {
     }
   });
 
-  it('documents beta locales as mostly English with en fallback', () => {
+  it('former beta locales are not mostly English copies', () => {
     const enDict = getAllTranslations('en');
     const enKeys = Object.keys(enDict);
-    for (const locale of BETA_LOCALES) {
+    for (const locale of ['de', 'es', 'fr', 'ja', 'ko', 'pt-BR', 'ru'] as const) {
       const dict = getAllTranslations(locale);
-      let sameAsEn = 0;
+      let same = 0;
       for (const key of enKeys) {
-        if (dict[key] === enDict[key]) sameAsEn += 1;
+        if (dict[key] === enDict[key]) same += 1;
       }
-      const ratio = sameAsEn / enKeys.length;
-      expect(ratio, `${locale} English overlap`).toBeGreaterThan(0.75);
+      const ratio = same / enKeys.length;
+      expect(ratio, locale).toBeLessThan(0.35);
     }
+  });
+
+  it('marks no locales as beta', () => {
+    expect(BETA_LOCALES).toEqual([]);
   });
 
   it('fully translated locales differ from en on user-facing strings', () => {
