@@ -141,7 +141,7 @@ jobs:
 
             本次发布包含两个版本：
             - **基础版**：内置 PostgreSQL、MySQL、SQLite、Redis 驱动
-            - **Pro 版**（文件名含 `-pro`）：额外包含 Kiwi 云数据库代理
+            - **Pro 版**（文件名含 `-pro`）：额外包含 **Kiwi** 云数据库代理与 **Superset** 数据探索插件（不含 OLAP Presto/Trino；需 `DATAZEN_PLUGINS=all` 或 `--plugins=olap` 单独启用）
 
             ## 安装说明
 

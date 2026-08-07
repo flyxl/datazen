@@ -93,7 +93,7 @@ impl DbConfig {
 
 // ─── TC-01: Cross-DB Workflow YAML Parsing ─────────────────────────────────────
 
-use datazen::mcp::workflows::{WorkflowDefinition, WorkflowStep};
+use datazen::workflow::workflows::{WorkflowDefinition, WorkflowStep};
 
 #[test]
 fn tc01_cross_db_workflow_yaml_parses() {
@@ -187,7 +187,7 @@ async fn tc02_cross_db_query_and_template_resolution() {
 
 #[tokio::test]
 async fn tc03_structured_result_serialization() {
-    use datazen::mcp::workflows::{WorkflowExecutionResult, StepExecutionResult, StepStatus};
+    use datazen::workflow::workflows::{WorkflowExecutionResult, StepExecutionResult, StepStatus};
 
     let result = WorkflowExecutionResult {
         success: true,
@@ -471,8 +471,8 @@ output:
 
 #[tokio::test]
 async fn tc10_history_persistence() {
-    use datazen::mcp::workflow_history::WorkflowHistoryManager;
-    use datazen::mcp::workflows::{WorkflowExecutionResult, StepExecutionResult, StepStatus};
+    use datazen::workflow::history::WorkflowHistoryManager;
+    use datazen::workflow::workflows::{WorkflowExecutionResult, StepExecutionResult, StepStatus};
 
     let dir = tempfile::tempdir().unwrap();
     let mgr = WorkflowHistoryManager::new(dir.path().to_path_buf());

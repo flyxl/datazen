@@ -1,6 +1,14 @@
 use super::error::{CmdExt, CommandError};
 use super::AppState;
+use std::path::PathBuf;
 use tauri::State;
+
+fn require_webdriver_path_ipc(disabled_msg: &'static str) -> Result<(), CommandError> {
+    if !cfg!(feature = "webdriver") {
+        return Err(CommandError::Validation(disabled_msg.into()));
+    }
+    Ok(())
+}
 
 #[tauri::command]
 pub async fn backup_database(
@@ -11,7 +19,65 @@ pub async fn backup_database(
     options: Option<Vec<String>>,
     compress: Option<bool>,
 ) -> Result<(), CommandError> {
-    tracing::info!(%connection_id, %output_path, "backup_database");
+    require_webdriver_path_ipc("Direct path backup disabled; use backup_database_with_dialog")?;
+    backup_database_to_path(
+        &state,
+        connection_id,
+        database,
+        PathBuf::from(output_path),
+        options,
+        compress,
+    )
+    .await
+}
+
+/// Native save dialog + database backup. Returns `true` if written.
+#[tauri::command]
+pub async fn backup_database_with_dialog(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    connection_id: String,
+    database: Option<String>,
+    default_file_name: String,
+    filter_extension: String,
+    options: Option<Vec<String>>,
+    compress: Option<bool>,
+) -> Result<bool, CommandError> {
+    use tauri_plugin_dialog::DialogExt;
+
+    let ext = filter_extension.trim_start_matches('.').to_lowercase();
+    let allowed = ["sql", "gz", "dump"];
+    if !allowed.contains(&ext.as_str()) {
+        return Err(CommandError::Validation(format!(
+            "File extension '.{ext}' not allowed"
+        )));
+    }
+
+    let picked = app
+        .dialog()
+        .file()
+        .add_filter("Backup", &[ext.as_str()])
+        .set_file_name(&default_file_name)
+        .blocking_save_file();
+    let Some(fp) = picked else {
+        return Ok(false);
+    };
+    let path = fp
+        .into_path()
+        .map_err(|e| CommandError::Validation(format!("Invalid dialog path: {e}")))?;
+    backup_database_to_path(&state, connection_id, database, path, options, compress).await?;
+    Ok(true)
+}
+
+async fn backup_database_to_path(
+    state: &State<'_, AppState>,
+    connection_id: String,
+    database: Option<String>,
+    output_path: PathBuf,
+    options: Option<Vec<String>>,
+    compress: Option<bool>,
+) -> Result<(), CommandError> {
+    tracing::info!(%connection_id, path = %output_path.display(), "backup_database");
     let config = state
         .connection_manager
         .get_connection_config(&connection_id)
@@ -24,8 +90,11 @@ pub async fn backup_database(
         .await
         .cmd_err("backup_database")?;
 
-    let db_name = database.as_deref().unwrap_or(config.database.as_deref().unwrap_or(""));
-    let opts: std::collections::HashSet<String> = options.unwrap_or_default().into_iter().collect();
+    let db_name = database
+        .as_deref()
+        .unwrap_or(config.database.as_deref().unwrap_or(""));
+    let opts: std::collections::HashSet<String> =
+        options.unwrap_or_default().into_iter().collect();
     let schema_only = opts.contains("schema-only") || opts.contains("no-data");
     let data_only = opts.contains("data-only") || opts.contains("no-create-info");
     let add_drop = opts.contains("clean") || opts.contains("add-drop-table");
@@ -42,7 +111,10 @@ pub async fn backup_database(
     out.push_str(&format!("-- DataZen backup: {}\n", db_name));
     out.push_str(&format!("-- Date: {}\n", chrono::Utc::now().to_rfc3339()));
     if !opts.is_empty() {
-        out.push_str(&format!("-- Options: {}\n", opts.iter().cloned().collect::<Vec<_>>().join(", ")));
+        out.push_str(&format!(
+            "-- Options: {}\n",
+            opts.iter().cloned().collect::<Vec<_>>().join(", ")
+        ));
     }
     out.push('\n');
 
@@ -67,19 +139,29 @@ pub async fn backup_database(
         }
 
         if !data_only {
-            let cols_sql: Vec<String> = schema.columns.iter().map(|c| {
-                let mut def = format!("  {} {}", qi(&c.name), c.data_type);
-                if !c.nullable { def.push_str(" NOT NULL"); }
-                if let Some(ref dv) = c.default_value {
-                    def.push_str(&format!(" DEFAULT {}", dv));
-                }
-                def
-            }).collect();
+            let cols_sql: Vec<String> = schema
+                .columns
+                .iter()
+                .map(|c| {
+                    let mut def = format!("  {} {}", qi(&c.name), c.data_type);
+                    if !c.nullable {
+                        def.push_str(" NOT NULL");
+                    }
+                    if let Some(ref dv) = c.default_value {
+                        def.push_str(&format!(" DEFAULT {}", dv));
+                    }
+                    def
+                })
+                .collect();
 
-            let mut create = format!("CREATE TABLE IF NOT EXISTS {} (\n{}", qi(tname), cols_sql.join(",\n"));
+            let mut create = format!(
+                "CREATE TABLE IF NOT EXISTS {} (\n{}",
+                qi(tname),
+                cols_sql.join(",\n")
+            );
             if !schema.primary_keys.is_empty() {
-                let pk_cols: Vec<String> = schema.primary_keys.iter().map(|k| qi(k)).collect();
-                create.push_str(&format!(",\n  PRIMARY KEY ({})", pk_cols.join(", ")));
+                let pks: Vec<String> = schema.primary_keys.iter().map(|k| qi(k)).collect();
+                create.push_str(&format!(",\n  PRIMARY KEY ({})", pks.join(", ")));
             }
             create.push_str("\n);\n\n");
             out.push_str(&create);
@@ -92,24 +174,46 @@ pub async fn backup_database(
             match driver.query(&handle, &select_sql).await {
                 Ok(result) => {
                     for row in &result.rows {
-                        let vals: Vec<String> = row.iter().map(|v| match v {
-                            None => "NULL".to_string(),
-                            Some(crate::db::Value::Null) => "NULL".to_string(),
-                            Some(crate::db::Value::Bool(b)) => if *b { "TRUE".to_string() } else { "FALSE".to_string() },
-                            Some(crate::db::Value::Integer(n)) => n.to_string(),
-                            Some(crate::db::Value::Float(f)) => f.to_string(),
-                            Some(crate::db::Value::String(s)) => format!("'{}'", s.replace('\'', "''")),
-                            Some(crate::db::Value::Timestamp(s)) => format!("'{}'", s),
-                            Some(crate::db::Value::Json(j)) => format!("'{}'", j.to_string().replace('\'', "''")),
-                            Some(crate::db::Value::Bytes(b)) => format!("'\\x{}'", b.iter().map(|byte| format!("{:02x}", byte)).collect::<String>()),
-                        }).collect();
-                        out.push_str(&format!("INSERT INTO {} ({}) VALUES ({});\n",
-                            qi(tname), col_names.join(", "), vals.join(", ")));
+                        let vals: Vec<String> = row
+                            .iter()
+                            .map(|v| match v {
+                                None => "NULL".to_string(),
+                                Some(crate::db::Value::Null) => "NULL".to_string(),
+                                Some(crate::db::Value::Bool(b)) => {
+                                    if *b {
+                                        "TRUE".to_string()
+                                    } else {
+                                        "FALSE".to_string()
+                                    }
+                                }
+                                Some(crate::db::Value::Integer(n)) => n.to_string(),
+                                Some(crate::db::Value::Float(f)) => f.to_string(),
+                                Some(crate::db::Value::String(s)) => {
+                                    format!("'{}'", s.replace('\'', "''"))
+                                }
+                                Some(crate::db::Value::Timestamp(s)) => format!("'{s}'"),
+                                Some(crate::db::Value::Json(j)) => {
+                                    format!("'{}'", j.to_string().replace('\'', "''"))
+                                }
+                                Some(crate::db::Value::Bytes(b)) => format!(
+                                    "'\\x{}'",
+                                    b.iter()
+                                        .map(|byte| format!("{byte:02x}"))
+                                        .collect::<String>()
+                                ),
+                            })
+                            .collect();
+                        out.push_str(&format!(
+                            "INSERT INTO {} ({}) VALUES ({});\n",
+                            qi(tname),
+                            col_names.join(", "),
+                            vals.join(", ")
+                        ));
                     }
                     out.push('\n');
                 }
                 Err(e) => {
-                    out.push_str(&format!("-- Error dumping data for {}: {}\n\n", tname, e));
+                    out.push_str(&format!("-- Error dumping data for {tname}: {e}\n\n"));
                 }
             }
         }
@@ -118,17 +222,25 @@ pub async fn backup_database(
     let data = out.as_bytes();
     if compress.unwrap_or(false) {
         use std::io::Write;
-        let file = std::fs::File::create(&output_path)
-            .map_err(|e| { tracing::error!(cmd = "backup_database", error = %e); CommandError::Io(e) })?;
+        let file = std::fs::File::create(&output_path).map_err(|e| {
+            tracing::error!(cmd = "backup_database", error = %e);
+            CommandError::Io(e)
+        })?;
         let mut encoder = flate2::write::GzEncoder::new(file, flate2::Compression::default());
-        encoder.write_all(data).map_err(|e| { tracing::error!(cmd = "backup_database", error = %e); CommandError::Io(e) })?;
-        encoder.finish().map_err(|e| { tracing::error!(cmd = "backup_database", error = %e); CommandError::Io(e) })?;
+        encoder.write_all(data).map_err(|e| {
+            tracing::error!(cmd = "backup_database", error = %e);
+            CommandError::Io(e)
+        })?;
+        encoder.finish().map_err(|e| {
+            tracing::error!(cmd = "backup_database", error = %e);
+            CommandError::Io(e)
+        })?;
     } else {
         tokio::fs::write(&output_path, data)
             .await
             .cmd_err("backup_database")?;
     }
-    tracing::info!(%output_path, "backup_database OK");
+    tracing::info!(path = %output_path.display(), "backup_database OK");
     Ok(())
 }
 
@@ -138,7 +250,40 @@ pub async fn restore_database(
     connection_id: String,
     input_path: String,
 ) -> Result<(), CommandError> {
-    tracing::info!(%connection_id, %input_path, "restore_database");
+    require_webdriver_path_ipc("Direct path restore disabled; use restore_database_with_dialog")?;
+    restore_database_from_path(&state, connection_id, PathBuf::from(input_path)).await
+}
+
+/// Native open dialog + restore. Returns `true` if restored.
+#[tauri::command]
+pub async fn restore_database_with_dialog(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    connection_id: String,
+) -> Result<bool, CommandError> {
+    use tauri_plugin_dialog::DialogExt;
+
+    let picked = app
+        .dialog()
+        .file()
+        .add_filter("SQL", &["sql"])
+        .blocking_pick_file();
+    let Some(fp) = picked else {
+        return Ok(false);
+    };
+    let path = fp
+        .into_path()
+        .map_err(|e| CommandError::Validation(format!("Invalid dialog path: {e}")))?;
+    restore_database_from_path(&state, connection_id, path).await?;
+    Ok(true)
+}
+
+async fn restore_database_from_path(
+    state: &State<'_, AppState>,
+    connection_id: String,
+    input_path: PathBuf,
+) -> Result<(), CommandError> {
+    tracing::info!(%connection_id, path = %input_path.display(), "restore_database");
     let sql = tokio::fs::read_to_string(&input_path)
         .await
         .cmd_err("restore_database")?;
@@ -174,10 +319,36 @@ pub async fn restore_database(
     }
 
     if errors.is_empty() {
-        tracing::info!(%connection_id, statements = statements.len(), "restore_database OK");
+        tracing::info!(
+            %connection_id,
+            statements = statements.len(),
+            "restore_database OK"
+        );
         Ok(())
     } else {
-        let msg = format!("Partial restore failure ({}/{} statements failed):\n{}", errors.len(), statements.len(), errors.join("\n"));
+        let msg = format!(
+            "Partial restore failure ({}/{} statements failed):\n{}",
+            errors.len(),
+            statements.len(),
+            errors.join("\n")
+        );
         Err(CommandError::Internal(msg))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn require_webdriver_path_ipc_gates_without_feature() {
+        let result =
+            require_webdriver_path_ipc("Direct path backup disabled; use backup_database_with_dialog");
+        if cfg!(feature = "webdriver") {
+            assert!(result.is_ok());
+        } else {
+            assert!(result.is_err());
+            assert!(result.unwrap_err().to_string().contains("disabled"));
+        }
     }
 }

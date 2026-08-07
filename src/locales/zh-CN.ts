@@ -44,6 +44,8 @@ const zhCN = {
   'menu.viewLogs': '查看日志',
   'menu.exportConfig': '导出应用数据',
   'menu.importConfig': '导入应用数据',
+  'menu.exportConnections': '导出连接',
+  'menu.importConnections': '导入连接',
   'menu.window': '窗口',
   'menu.minimize': '最小化',
   'menu.closeWindow': '关闭窗口',
@@ -107,11 +109,29 @@ const zhCN = {
   'action.importConfig': '导入应用数据',
 
   // ── Config Import / Export ──
-  'appData.exportSuccess': '应用数据已导出',
+  'appData.exportSuccess': '应用数据已导出。ZIP 不包含加密密钥——若需在其他机器解密已保存的密码，请单独备份密钥。',
   'appData.exportFailed': '导出失败',
   'appData.importConfirmTitle': '导入应用数据',
-  'appData.importConfirmMessage': '此操作将覆盖所有应用数据（现有日志文件会保留）。是否继续？',
+  'appData.importConfirmMessage': '此操作将覆盖所有应用数据（现有日志文件会保留）。备份不含加密密钥——仅在本机（或拥有相同密钥的机器）上恢复时，已保存的密码仍可用。是否继续？',
   'appData.importFailed': '导入失败',
+  'appData.backupKeyTitle': '备份加密密钥',
+  'appData.backupKeyMessage': '是否现在另存加密密钥？请妥善保管；在其他机器恢复应用数据后，需要此密钥才能解密已保存的密码。',
+  'appData.backupKeySaved': '加密密钥已保存。',
+  'appData.backupKeyFailed': '加密密钥保存失败。',
+
+  // ── Connection Share ──
+  'connShare.exportTitle': '导出连接',
+  'connShare.importTitle': '导入连接',
+  'connShare.password': '密码',
+  'connShare.confirmPassword': '确认密码',
+  'connShare.passwordRequired': '请输入密码',
+  'connShare.passwordMismatch': '两次输入的密码不一致',
+  'connShare.exportAction': '导出…',
+  'connShare.importAction': '导入…',
+  'connShare.exportSuccess': '已导出 {count} 个连接',
+  'connShare.importSuccess': '导入 {imported} 个新连接，更新 {overwritten} 个，新增 {groupsAdded} 个分组',
+  'connShare.exportFailed': '导出失败',
+  'connShare.importFailed': '导入失败',
 
   // ── Connection Item / Card ──
   'conn.connected': '已连接',
@@ -328,6 +348,7 @@ const zhCN = {
   'query.resultTruncated': '结果已截断，仅显示前 {limit} 条，可在设置中修改',
   'query.tab': '查询 {n}',
   'query.notConnected': '未连接数据库',
+  'query.cancelled': '查询已取消',
   'query.executeFailed': '执行失败',
   'query.favorites': '收藏',
   'query.favoritesTitle': 'SQL 收藏',

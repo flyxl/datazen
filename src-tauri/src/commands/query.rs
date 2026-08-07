@@ -11,8 +11,8 @@ pub async fn execute_query(
     connection_id: String,
     sql: String,
 ) -> Result<MultiQueryResult, CommandError> {
-    let sql_preview: String = sql.chars().take(500).collect();
-    tracing::info!(%connection_id, sql_len = sql.len(), %sql_preview, "execute_query");
+    tracing::info!(%connection_id, sql_len = sql.len(), "execute_query");
+    tracing::debug!(%connection_id, sql_preview = %sql.chars().take(500).collect::<String>(), "execute_query sql");
     let settings = state.store.get_settings().await;
     let limit = if settings.limit_select_results && settings.query_result_limit > 0 {
         Some(settings.query_result_limit)
@@ -153,4 +153,23 @@ pub async fn delete_favorite_query(
 ) -> Result<(), CommandError> {
     state.store.delete_favorite_query(&id).await
         .cmd_err("delete_favorite_query")
+}
+
+#[cfg(test)]
+mod log_hygiene_tests {
+    #[test]
+    fn execute_query_source_does_not_info_log_sql_preview() {
+        let src = include_str!("query.rs");
+        // Crude but effective: the info! macro block for execute_query must not bind sql_preview
+        let start = src.find("pub async fn execute_query").expect("fn");
+        let chunk = &src[start..start + 800];
+        assert!(
+            !chunk.contains("tracing::info!(") || !chunk.contains("%sql_preview"),
+            "execute_query must not info!-log sql_preview"
+        );
+        assert!(
+            chunk.contains("sql_len") || chunk.contains("tracing::debug!"),
+            "expected sql_len and/or debug preview"
+        );
+    }
 }

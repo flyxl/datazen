@@ -25,7 +25,7 @@ datazen/
 │   ├── commands/                # Tauri IPC 封装（ai, connection, database, query, context, settings, file, adb）
 │   ├── lib/                     # 工具库（chart/, sqlDialects/, connectionViews/, exportData 等）
 │   ├── hooks/                   # React hooks（useI18n, useResizable, usePlatform 等）
-│   ├── locales/                 # i18n（zh-CN, en，~744 keys）
+│   ├── locales/                 # i18n（10 语系：en/zh-CN/zh-TW 完整，其余 Beta；~739 keys）
 │   ├── plugins/generated.ts     # 自动生成（勿手动编辑）
 │   └── plugin-sdk/              # 插件前端 SDK
 ├── src-tauri/                   # Rust 后端
@@ -33,7 +33,8 @@ datazen/
 │   │   ├── ai/                  # AI（openai, anthropic, deepseek, custom, registry, context, prompt_resolver, protocol/）
 │   │   ├── commands/            # IPC 命令（16 个模块：ai, connection, query, schema, context, mcp 等）
 │   │   ├── db/                  # 驱动（postgres, mysql, sqlite, redis_driver, registry）
-│   │   ├── mcp/                 # MCP Server/Client + Workflows
+│   │   ├── mcp/                 # MCP Server/Client
+│   │   ├── workflow/            # YAML Workflow 引擎与执行历史（独立于 mcp）
 │   │   ├── services/            # ConnectionManager, QueryExecutor, DbTools
 │   │   ├── cache/               # SchemaCache（两级 TTL）
 │   │   ├── store/               # AES-256-GCM 加密持久化
@@ -42,9 +43,9 @@ datazen/
 ├── packages/
 │   ├── driver-api/              # DatabaseDriver trait + types + inventory 宏
 │   └── ai-api/                  # AiProvider trait + AiError + factory
-├── e2e/                         # WebdriverIO E2E 测试（31 spec）
+├── e2e/                         # WebdriverIO E2E 测试（35 spec）
 ├── test/                        # 手工黑盒测试
-├── docs/                        # 架构文档、RFC、进度
+├── docs/                        # 架构文档、RFC、进度（含 [代码审查修复进度](docs/progress-code-review-fix.md)）
 └── .plugins/                    # 构建时生成（gitignored）
 ```
 
@@ -52,14 +53,16 @@ datazen/
 
 ### 插件系统（编译时，类似 Caddy 2）
 
-1. `plugins-registry.json` 定义插件（4 内置 + 3 Git 外部：kiwi, olap, superset）
-2. `scripts/resolve-plugins.mjs` 构建前执行：克隆 → 生成 `generated.ts` + `plugin_init.rs` + `.plugin-features.json`
+1. `plugins-registry.json` 定义插件（4 内置 + 3 Git 外部：kiwi, olap, superset）；Git 插件可钉 `ref`（commit/tag）
+2. `scripts/resolve-plugins.mjs` 构建前执行：克隆/检出 ref → 生成 `generated.ts` + `plugin_init.rs` + `.plugin-features.json`
 3. 通过 `inventory` crate 实现链接时自动注册
 
 ```bash
-pnpm tauri:dev                         # 无插件
+pnpm tauri:dev                         # 无插件（main 默认）
 pnpm tauri:dev --plugins=kiwi          # 含 kiwi 插件
-DATAZEN_PLUGINS=all pnpm tauri:build   # 全部插件
+pnpm tauri:dev --plugins=none          # 仅内置驱动（显式）
+DATAZEN_PLUGINS=none pnpm tauri:dev    # 环境变量同样生效
+DATAZEN_PLUGINS=all pnpm tauri:build   # 全部插件打包
 ```
 
 ### 数据库驱动
@@ -79,10 +82,13 @@ DATAZEN_PLUGINS=all pnpm tauri:build   # 全部插件
 
 ### MCP
 
-- **Server**（`mcp/server.rs`）：暴露 9 个 Tools + 4 个 Resources + 3 个 Prompts
+- **Server**（`mcp/server.rs`）：暴露 Tools/Resources/Prompts（含 `list_workflows` / `run_workflow` 适配）；DB tools/prompts 入参为 **`config_id`**（持久化连接 ID，来自 `list_connections`）
 - **Client**（`mcp/client.rs`）：连接外部 MCP Server，供 AI Chat 工具调用
-- **Workflows**（`mcp/workflows.rs`）：YAML 定义，步骤类型 Query/Ai/Condition/ForEach，支持跨库
 - **双模式**：`main.rs` 通过 `--mcp-stdio` 启动无头 MCP 服务器
+
+### Workflows
+
+- **Workflows**（`workflow/`）：YAML 定义，步骤类型 Query/Ai/Condition/ForEach；GUI / IPC / MCP 共用引擎
 
 ### 前端约定
 
@@ -111,7 +117,7 @@ DATAZEN_PLUGINS=all pnpm tauri:build   # 全部插件
 | 路径输入 | `ui/PathInput.tsx` | Tauri Dialog API |
 | AI Chat | `components/ai/AiChatPanel.tsx` | `commands/ai.rs` |
 | @ 上下文 | `components/ai/ContextPicker.tsx` | `commands/context.rs` |
-| Workflows | `windows/workflow/WorkflowWindow.tsx` | `mcp/workflows.rs` |
+| Workflows | `windows/workflow/WorkflowWindow.tsx` | `workflow/workflows.rs` |
 | 数据同步 | `windows/data-sync/` | `sync/` (IR 适配器) |
 
 ## 开发命令
@@ -119,14 +125,37 @@ DATAZEN_PLUGINS=all pnpm tauri:build   # 全部插件
 ```bash
 pnpm install                           # 安装依赖
 pnpm dev                               # Vite dev server
-pnpm tauri dev                         # 完整开发（前端 + Rust）
+pnpm tauri:dev                         # 完整开发（前端 + Rust；默认无插件）
 pnpm build                             # 构建前端（不 inject；打包前由外层 resolve）
 pnpm build:with-plugins                # 单独前端构建并 inject/restore
 pnpm tauri:build                       # 完整应用（外层 inject 一次）
 npx vitest run                         # 前端单元测试
-pnpm e2e                               # E2E 测试
 cargo test -p datazen                  # Rust 单元测试
 ```
+
+### E2E 测试（WebdriverIO）
+
+> **完整流程、排错与 Agent 检查清单见 [docs/e2e-testing.md](docs/e2e-testing.md)。**
+
+**硬性要求：**
+
+1. 必须用 **Tauri CLI** 构建：`pnpm tauri build --debug --features webdriver`
+2. **禁止**裸 `cargo build --features webdriver`（常见报错：`asset not found: index.html`）
+3. 必须启用 `webdriver` feature（监听 `127.0.0.1:4445`）
+
+```bash
+pnpm e2e                               # 完整构建（webdriver）+ 跑全部 E2E（推荐首次）
+pnpm e2e:minimal                       # 更快：DATAZEN_PLUGINS=none，跳过 Git 插件
+pnpm e2e:skip-build                    # 跳过构建（仅当已有合格的 webdriver debug 二进制）
+pnpm e2e:skip-build -- --spec e2e/specs/path-ipc-hardening.ts
+pnpm e2e:core                          # 核心 UI（默认 skip-build）
+pnpm e2e:db / e2e:ai / e2e:kiwi        # 分组
+pnpm e2e:i18n-backup / e2e:path-ipc    # 备份·i18n / 路径 IPC
+```
+
+PR 合并前：`pnpm test:unit` + `cargo test -p datazen --lib`（见 `.github/workflows/ci.yml`）。代码审查修复对照：[docs/code-review-2026-08-07-full.md](docs/code-review-2026-08-07-full.md)、[docs/progress-code-review-fix.md](docs/progress-code-review-fix.md)。
+
+编排脚本：`e2e/run.mjs`。环境变量：复制 `e2e/.env.example` → `e2e/.env`。
 
 ## 代码风格
 
@@ -147,3 +176,4 @@ cargo test -p datazen                  # Rust 单元测试
 - Prompt 模板在 `src-tauri/resources/prompts/{lang}/`，支持用户覆盖
 - 菜单翻译：前端 `src/locales/{zh-CN,en}.ts` 为唯一来源；`scripts/generate-menu-labels.mjs` 生成 `src-tauri/resources/menu-labels.json` 供 Rust 原生菜单使用（`pnpm menu:labels` / build / tauri:dev 自动执行）
 - 日志文件在 `{data_dir}/logs/`
+- E2E：详见 [docs/e2e-testing.md](docs/e2e-testing.md)；禁止用裸 `cargo build` 当 E2E 二进制

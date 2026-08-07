@@ -1,5 +1,4 @@
 import { useCallback, useMemo, useState } from 'react';
-import { save } from '@tauri-apps/plugin-dialog';
 import { Dialog } from '../ui/Dialog';
 import { Button } from '../ui/Button';
 import { Select } from '../ui/Select';
@@ -62,17 +61,16 @@ export function DataExportDialog({
       });
 
       const defaultName = getDefaultFilename(tableName, format);
-      const filePath = await save({
-        defaultPath: defaultName,
-        filters: [{ name: extension.toUpperCase(), extensions: [extension] }],
-      });
-
-      if (!filePath) {
+      const saved = await fileCommands.saveTextWithDialog(
+        content,
+        defaultName,
+        extension.toUpperCase(),
+        [extension],
+      );
+      if (!saved) {
         setExporting(false);
         return;
       }
-
-      await fileCommands.writeFile(filePath, content);
       onClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));

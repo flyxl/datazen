@@ -7,9 +7,11 @@ mod i18n_locale;
 pub mod mcp;
 mod plugin_init;
 mod services;
+mod ssh_known_hosts;
 pub mod ssh_tunnel;
 mod store;
 pub mod sync;
+pub mod workflow;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -87,6 +89,14 @@ fn setup_menu(
         .id("import-config")
         .build(handle)?;
 
+    let export_connections_item = MenuItemBuilder::new(t("export-connections"))
+        .id("export-connections")
+        .build(handle)?;
+
+    let import_connections_item = MenuItemBuilder::new(t("import-connections"))
+        .id("import-connections")
+        .build(handle)?;
+
     let view_logs_item = MenuItemBuilder::new(t("view-logs"))
         .id("view-logs")
         .build(handle)?;
@@ -115,6 +125,8 @@ fn setup_menu(
         .separator()
         .item(&export_config_item)
         .item(&import_config_item)
+        .item(&export_connections_item)
+        .item(&import_connections_item)
         .build()?;
 
     let window_menu = SubmenuBuilder::new(handle, t("window"))
@@ -146,6 +158,8 @@ fn setup_menu(
             "data-sync" => { let _ = app_handle.emit("menu:data-sync", ()); }
             "export-config" => { let _ = app_handle.emit("menu:export-config", ()); }
             "import-config" => { let _ = app_handle.emit("menu:import-config", ()); }
+            "export-connections" => { let _ = app_handle.emit("menu:export-connections", ()); }
+            "import-connections" => { let _ = app_handle.emit("menu:import-connections", ()); }
             "view-logs" => { let _ = app_handle.emit("menu:view-logs", ()); }
             "ctx-add-favorite" => { let _ = app_handle.emit("menu:add-favorite", ()); }
             _ => {}
@@ -156,9 +170,7 @@ fn setup_menu(
 }
 
 fn resolve_log_settings() -> (String, PathBuf) {
-    let data_dir = dirs::data_dir()
-        .map(|d| d.join("com.tbeasy.datazen"))
-        .unwrap_or_else(|| PathBuf::from("."));
+    let data_dir = store::Store::default_app_data_dir().unwrap_or_else(|_| PathBuf::from("."));
 
     let settings_path = data_dir.join("settings.json");
 
@@ -190,12 +202,12 @@ fn resolve_log_settings() -> (String, PathBuf) {
 }
 
 #[tauri::command]
-fn rebuild_menu(handle: tauri::AppHandle, language: String) -> Result<(), String> {
+async fn rebuild_menu(handle: tauri::AppHandle, language: String) -> Result<(), String> {
     let state = handle.state::<AppState>();
-    tauri::async_runtime::block_on(state.prompt_resolver.ensure_ready(&language));
+    state.prompt_resolver.ensure_ready(&language).await;
     #[cfg(target_os = "macos")]
     {
-        let settings = tauri::async_runtime::block_on(state.store.get_settings());
+        let settings = state.store.get_settings().await;
         setup_menu(&handle, &settings.theme, &language).map_err(|e| e.to_string())
     }
     #[cfg(not(target_os = "macos"))]
@@ -299,8 +311,8 @@ fn finish_app_state(
             connection_manager,
         )),
         prompt_resolver: Arc::new(ai::PromptResolver::new(&data_dir, prompts_dir)),
-        workflow_registry: Arc::new(mcp::WorkflowRegistry::new(data_dir.join("workflows"))),
-        workflow_history: Arc::new(mcp::WorkflowHistoryManager::new(
+        workflow_registry: Arc::new(workflow::WorkflowRegistry::new(data_dir.join("workflows"))),
+        workflow_history: Arc::new(workflow::WorkflowHistoryManager::new(
             data_dir.join("workflow_history"),
         )),
         mcp_client_manager: Arc::new(mcp::McpClientManager::new()),
@@ -323,9 +335,7 @@ pub fn run_mcp_stdio() {
         .expect("Failed to create tokio runtime");
 
     rt.block_on(async {
-        let data_dir = dirs::data_dir()
-            .expect("Cannot determine data dir")
-            .join("com.datazen.app");
+        let data_dir = Store::default_app_data_dir().expect("Cannot determine data dir");
         let store = Arc::new(
             Store::init_with_path(&data_dir).await.expect("Failed to init store"),
         );
@@ -463,16 +473,29 @@ pub fn run() {
             commands::save_settings,
             commands::get_log_path,
             commands::open_path,
+            commands::open_log_dir,
+            commands::open_workflows_dir,
+            commands::open_context_dir,
             commands::export_connections,
+            commands::export_connections_with_dialog,
             commands::import_connections_preview,
+            commands::import_connections_with_dialog,
             commands::export_app_data,
+            commands::export_app_data_with_dialog,
             commands::import_app_data,
+            commands::import_app_data_with_dialog,
+            commands::save_encryption_key_with_dialog,
             commands::restart_app,
             commands::write_file,
             commands::write_file_base64,
             commands::read_file,
+            commands::save_text_with_dialog,
+            commands::save_base64_with_dialog,
+            commands::open_text_with_dialog,
             commands::backup_database,
+            commands::backup_database_with_dialog,
             commands::restore_database,
+            commands::restore_database_with_dialog,
             commands::compare_databases,
             commands::sync_table,
             commands::sync_tables,
@@ -514,6 +537,7 @@ pub fn run() {
             commands::adb_list_packages,
             commands::adb_list_databases,
             commands::adb_pull_database,
+            commands::adb_pull_database_with_dialog,
             commands::prompt_list,
             commands::prompt_set_override,
             commands::prompt_remove_override,

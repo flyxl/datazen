@@ -177,14 +177,3 @@ export function openConnectionWindow(
     title: `${connectionName} - DataZen`,
   });
 }
-
-export function openQueryWindow(connectionId: string, database: string) {
-  openWindow(nextLabel('query'), {
-    params: { window: 'query', connectionId, database },
-    width: 1000,
-    height: 700,
-    minWidth: 600,
-    minHeight: 480,
-    title: t('win.query', { db: database }),
-  });
-}

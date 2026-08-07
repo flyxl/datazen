@@ -1,6 +1,6 @@
 //! Persists workflow execution history for auditing and replay.
 
-use super::workflows::WorkflowExecutionResult;
+use crate::workflow::workflows::WorkflowExecutionResult;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -219,7 +219,7 @@ impl WorkflowHistoryManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mcp::workflows::{StepExecutionResult, StepStatus};
+    use crate::workflow::workflows::{StepExecutionResult, StepStatus};
 
     fn make_test_result(success: bool) -> WorkflowExecutionResult {
         WorkflowExecutionResult {

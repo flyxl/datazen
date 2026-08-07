@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      DATAZEN_KEYRING: file
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Frontend unit tests
+        run: pnpm test:unit
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust compilation
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: . -> target
+          cache-on-failure: true
+
+      - name: Rust unit tests (datazen)
+        run: cargo test -p datazen --lib
+
+      - name: Rust unit tests (datazen-ai-api)
+        run: cargo test -p datazen-ai-api --lib

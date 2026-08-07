@@ -9,24 +9,79 @@
 //! 5. Return the local port so DB drivers can connect to 127.0.0.1:<local>.
 
 use crate::db::{DriverError, SshTunnelConfig};
+use crate::ssh_known_hosts::{
+    host_key_id, known_host_entry_from_key, load_known_hosts, mismatch_error_message,
+    save_known_hosts, verify_host_key, HostKeyDecision, KnownHostEntry,
+};
 use russh::client::{self, AuthResult};
 use russh::keys::{self, PrivateKeyWithHashAlg, ssh_key};
+use std::collections::HashMap;
 use std::future::Future;
-use std::sync::Arc;
+use std::path::Path;
+use std::sync::{Arc, Mutex};
 use tokio::net::TcpListener;
 
-// ── SSH client handler (accept all host keys) ───────────────────────
+// ── SSH client handler (TOFU host key verification) ─────────────────
 
-struct TunnelHandler;
+struct TunnelHandler {
+    host_id: String,
+    known_hosts_path: std::path::PathBuf,
+    known_hosts: Arc<Mutex<HashMap<String, KnownHostEntry>>>,
+    rejection: Arc<Mutex<Option<String>>>,
+}
 
 impl client::Handler for TunnelHandler {
     type Error = russh::Error;
 
     fn check_server_key(
         &mut self,
-        _key: &ssh_key::PublicKey,
+        key: &ssh_key::PublicKey,
     ) -> impl Future<Output = Result<bool, Self::Error>> + Send {
-        async { Ok(true) }
+        let host_id = self.host_id.clone();
+        let known_hosts_path = self.known_hosts_path.clone();
+        let known_hosts = self.known_hosts.clone();
+        let rejection = self.rejection.clone();
+
+        async move {
+            let observed = match known_host_entry_from_key(key) {
+                Ok(entry) => entry,
+                Err(e) => {
+                    *rejection.lock().unwrap() = Some(format!(
+                        "SSH host key verification failed for {host_id}: {e}"
+                    ));
+                    return Ok(false);
+                }
+            };
+
+            let mut map = known_hosts.lock().unwrap();
+            match verify_host_key(map.get(&host_id), &observed) {
+                HostKeyDecision::AcceptMatch => Ok(true),
+                HostKeyDecision::AcceptFirstUse { fingerprint } => {
+                    tracing::info!(
+                        host = %host_id,
+                        fingerprint = %fingerprint,
+                        algorithm = %observed.algorithm,
+                        "SSH host key accepted (TOFU)"
+                    );
+                    map.insert(host_id, observed);
+                    if let Err(e) = save_known_hosts(&known_hosts_path, &map) {
+                        tracing::warn!(error = %e, "Failed to persist SSH known host");
+                    }
+                    Ok(true)
+                }
+                HostKeyDecision::RejectMismatch { expected, received } => {
+                    tracing::warn!(
+                        host = %host_id,
+                        expected = %expected,
+                        received = %received,
+                        "SSH host key mismatch"
+                    );
+                    *rejection.lock().unwrap() =
+                        Some(mismatch_error_message(&host_id, &expected, &received));
+                    Ok(false)
+                }
+            }
+        }
     }
 }
 
@@ -44,17 +99,33 @@ impl SshTunnel {
         ssh: &SshTunnelConfig,
         remote_host: &str,
         remote_port: u16,
+        known_hosts_path: &Path,
     ) -> Result<Self, DriverError> {
         let config = Arc::new(client::Config::default());
+        let host_id = host_key_id(&ssh.host, ssh.port);
+        let rejection = Arc::new(Mutex::new(None));
+        let known_hosts = Arc::new(Mutex::new(load_known_hosts(known_hosts_path)));
+
+        let handler = TunnelHandler {
+            host_id: host_id.clone(),
+            known_hosts_path: known_hosts_path.to_path_buf(),
+            known_hosts,
+            rejection: rejection.clone(),
+        };
 
         // 1. Connect
-        let mut session = client::connect(
-            config,
-            (ssh.host.as_str(), ssh.port),
-            TunnelHandler,
-        )
-        .await
-        .map_err(|e| DriverError::SshTunnelError(format!("SSH connect to {}:{} failed: {e}", ssh.host, ssh.port)))?;
+        let mut session = client::connect(config, (ssh.host.as_str(), ssh.port), handler)
+            .await
+            .map_err(|e| {
+                if let Some(msg) = rejection.lock().unwrap().take() {
+                    DriverError::SshTunnelError(msg)
+                } else {
+                    DriverError::SshTunnelError(format!(
+                        "SSH connect to {}:{} failed: {e}",
+                        ssh.host, ssh.port
+                    ))
+                }
+            })?;
 
         // 2. Authenticate
         match ssh.auth_method.as_str() {
@@ -78,7 +149,9 @@ impl SshTunnel {
                 let expanded = expand_home(key_path);
 
                 let secret_key = keys::load_secret_key(&expanded, ssh.passphrase.as_deref())
-                    .map_err(|e| DriverError::SshTunnelError(format!("Load SSH key {expanded}: {e}")))?;
+                    .map_err(|e| {
+                        DriverError::SshTunnelError(format!("Load SSH key {expanded}: {e}"))
+                    })?;
 
                 let key_with_hash = PrivateKeyWithHashAlg::new(Arc::new(secret_key), None);
 
@@ -135,7 +208,12 @@ impl SshTunnel {
                     let channel = {
                         let session = session.lock().await;
                         match session
-                            .channel_open_direct_tcpip(rh, remote_port as u32, "127.0.0.1", lp as u32)
+                            .channel_open_direct_tcpip(
+                                rh,
+                                remote_port as u32,
+                                "127.0.0.1",
+                                lp as u32,
+                            )
                             .await
                         {
                             Ok(ch) => ch,
@@ -170,5 +248,142 @@ fn expand_home(path: &str) -> String {
             .unwrap_or_else(|_| path.to_string())
     } else {
         path.to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ssh_known_hosts::{
+        format_public_key_fingerprint, host_key_id, known_host_entry_from_key, verify_host_key,
+        HostKeyDecision, KnownHostEntry,
+    };
+    use russh::keys::ssh_key::PublicKey;
+    use std::collections::HashMap;
+    use std::str::FromStr;
+
+    const SAMPLE_ED25519: &str =
+        "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILM+rvN+ot98qgEN796jTiQfZfG1KaT0PtFDJ/XFSqti";
+
+    fn sample_ed25519_key() -> PublicKey {
+        PublicKey::from_openssh(SAMPLE_ED25519).expect("sample ed25519 key")
+    }
+
+    fn sample_ed25519_entry() -> KnownHostEntry {
+        known_host_entry_from_key(&sample_ed25519_key()).expect("sample ed25519 entry")
+    }
+
+    #[test]
+    fn host_key_id_formats_host_port() {
+        assert_eq!(host_key_id("jump.example.com", 22), "jump.example.com:22");
+        assert_eq!(host_key_id("127.0.0.1", 2222), "127.0.0.1:2222");
+    }
+
+    #[test]
+    fn fingerprint_is_stable_sha256_openssh_format() {
+        let key = sample_ed25519_key();
+        let fp = format_public_key_fingerprint(&key);
+        assert!(fp.starts_with("SHA256:"));
+        assert_eq!(fp, sample_ed25519_entry().fingerprint);
+    }
+
+    #[test]
+    fn verify_first_seen_accepts_and_reports_fingerprint() {
+        let observed = sample_ed25519_entry();
+        match verify_host_key(None, &observed) {
+            HostKeyDecision::AcceptFirstUse { fingerprint } => {
+                assert_eq!(fingerprint, observed.fingerprint);
+            }
+            other => panic!("expected AcceptFirstUse, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn verify_matching_key_accepts() {
+        let stored = sample_ed25519_entry();
+        let observed = sample_ed25519_entry();
+        assert_eq!(
+            verify_host_key(Some(&stored), &observed),
+            HostKeyDecision::AcceptMatch
+        );
+    }
+
+    #[test]
+    fn verify_changed_key_rejects_with_fingerprints() {
+        let stored = sample_ed25519_entry();
+        let mut other = stored.clone();
+        other.fingerprint = "SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".into();
+
+        match verify_host_key(Some(&stored), &other) {
+            HostKeyDecision::RejectMismatch { expected, received } => {
+                assert_eq!(expected, stored.fingerprint);
+                assert_eq!(received, other.fingerprint);
+            }
+            other => panic!("expected RejectMismatch, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn mismatch_error_message_includes_host_and_fingerprints() {
+        let msg = mismatch_error_message(
+            "evil.example.com:22",
+            "SHA256:expected",
+            "SHA256:received",
+        );
+        assert!(msg.contains("evil.example.com:22"));
+        assert!(msg.contains("SHA256:expected"));
+        assert!(msg.contains("SHA256:received"));
+        assert!(msg.contains("MITM"));
+    }
+
+    #[test]
+    fn known_hosts_roundtrip_via_tempfile() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("ssh_known_hosts.json");
+
+        assert!(load_known_hosts(&path).is_empty());
+
+        let entry = sample_ed25519_entry();
+        let mut map = HashMap::new();
+        map.insert(host_key_id("host.example", 22), entry.clone());
+        save_known_hosts(&path, &map).expect("save known hosts");
+
+        let loaded = load_known_hosts(&path);
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(
+            loaded.get("host.example:22"),
+            Some(&entry)
+        );
+    }
+
+    #[test]
+    fn load_known_hosts_ignores_missing_file() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("missing.json");
+        assert!(load_known_hosts(&path).is_empty());
+    }
+
+    #[test]
+    fn load_known_hosts_ignores_invalid_json() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("ssh_known_hosts.json");
+        std::fs::write(&path, "{ not json").expect("write invalid json");
+        assert!(load_known_hosts(&path).is_empty());
+    }
+
+    #[test]
+    fn known_host_entry_captures_algorithm_and_openssh_blob() {
+        let entry = sample_ed25519_entry();
+        assert_eq!(entry.algorithm, "ssh-ed25519");
+        assert!(entry.public_key.starts_with("ssh-ed25519 "));
+        assert!(PublicKey::from_str(&entry.public_key).is_ok());
+    }
+
+    #[test]
+    fn expand_home_expands_tilde_prefix() {
+        assert_eq!(expand_home("/absolute/path"), "/absolute/path");
+        if let Ok(home) = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")) {
+            assert_eq!(expand_home("~/keys/id_rsa"), format!("{home}/keys/id_rsa"));
+        }
     }
 }
