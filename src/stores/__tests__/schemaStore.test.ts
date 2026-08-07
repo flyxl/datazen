@@ -71,7 +71,7 @@ describe('schemaStore.loadForConnection isMultiDatabase', () => {
     expect(useSchemaStore.getState().currentDatabase).toBe('only_db');
   });
 
-  it('sets isMultiDatabase false for postgresql even with multiple databases', async () => {
+  it('sets isMultiDatabase true for postgresql with multiple databases', async () => {
     vi.mocked(databaseCommands.getDatabases).mockResolvedValueOnce(['db1', 'db2']);
 
     await useSchemaStore.getState().loadForConnection('conn-1', {
@@ -79,7 +79,9 @@ describe('schemaStore.loadForConnection isMultiDatabase', () => {
       skipLoadTables: true,
     });
 
-    expect(useSchemaStore.getState().isMultiDatabase).toBe(false);
+    expect(useSchemaStore.getState().isMultiDatabase).toBe(true);
+    expect(useSchemaStore.getState().databases).toEqual(['db1', 'db2']);
+    expect(useSchemaStore.getState().currentDatabase).toBe('db1');
   });
 
   it('falls back to first database when preferred is missing', async () => {

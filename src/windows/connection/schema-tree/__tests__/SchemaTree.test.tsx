@@ -103,24 +103,41 @@ describe('SchemaTree routing', () => {
     });
   });
 
-  it('routes postgresql to StandardSchemaTree even with multiple databases', async () => {
+  it('routes postgresql to MultiDatabaseSchemaTree when length > 1', async () => {
     mockGetDatabases.mockResolvedValueOnce(['db1', 'db2']);
-    mockGetTables.mockResolvedValueOnce([
-      { name: 'orders', tableType: 'TABLE', schema: 'public', rowCount: null },
-    ]);
 
     const { findByText, queryByText } = render(
       <SchemaTree {...baseProps} databaseType="postgresql" />,
     );
 
-    expect(await findByText(/schemaTree\.tables/)).toBeInTheDocument();
-    expect(await findByText('orders')).toBeInTheDocument();
-    // Sibling DBs are not listed as expandable multi-db nodes
-    expect(queryByText('db2')).not.toBeInTheDocument();
+    expect(await findByText('db1')).toBeInTheDocument();
+    expect(await findByText('db2')).toBeInTheDocument();
+    expect(queryByText(/schemaTree\.tables/)).not.toBeInTheDocument();
     await waitFor(() => {
-      expect(useSchemaStore.getState().isMultiDatabase).toBe(false);
+      expect(useSchemaStore.getState().isMultiDatabase).toBe(true);
       expect(useSchemaStore.getState().databases).toEqual(['db1', 'db2']);
     });
+  });
+
+  it('expands a postgresql database node and loads tables', async () => {
+    mockGetDatabases.mockResolvedValueOnce(['db1', 'db2']);
+    mockGetTables.mockResolvedValueOnce([
+      { name: 'orders', tableType: 'TABLE', schema: 'public', rowCount: null },
+    ]);
+
+    const { findByText } = render(
+      <SchemaTree {...baseProps} databaseType="postgresql" />,
+    );
+
+    const dbBtn = await findByText('db1');
+    fireEvent.click(dbBtn.closest('button')!);
+
+    await waitFor(() => {
+      expect(mockUseDatabase).toHaveBeenCalledWith('conn-1', 'db1');
+      expect(mockGetTables).toHaveBeenCalledWith('conn-1', 'db1');
+    });
+
+    expect(await findByText('orders')).toBeInTheDocument();
   });
 
   it('expands a mysql database node and loads tables', async () => {
