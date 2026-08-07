@@ -1,5 +1,7 @@
 //! Local encrypted persistence for connections, settings, and history.
 
+mod key_store;
+
 use aes_gcm::aead::{Aead, KeyInit};
 use aes_gcm::{Aes256Gcm, Key, Nonce};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
@@ -230,27 +232,22 @@ impl Store {
     }
 
     async fn get_or_create_encryption_key(data_dir: &std::path::Path) -> Result<[u8; 32], StoreError> {
-        let key_path = data_dir.join(".key");
-
-        if let Ok(key_b64) = tokio::fs::read_to_string(&key_path).await {
-            let key_bytes = BASE64
-                .decode(key_b64.trim())
-                .map_err(|e| StoreError::EncryptionError(e.to_string()))?;
-            if key_bytes.len() != 32 {
-                return Err(StoreError::EncryptionError("Invalid key length".into()));
-            }
-            let mut key = [0u8; 32];
-            key.copy_from_slice(&key_bytes);
-            return Ok(key);
-        }
-
-        let mut key = [0u8; 32];
-        rand::thread_rng().fill_bytes(&mut key);
-        let key_b64 = BASE64.encode(key);
-        tokio::fs::write(&key_path, key_b64.as_bytes())
+        let data_dir = data_dir.to_path_buf();
+        tokio::task::spawn_blocking(move || key_store::load_or_create_master_key(&data_dir))
             .await
-            .map_err(|e| StoreError::EncryptionError(e.to_string()))?;
-        Ok(key)
+            .map_err(|e| StoreError::InitError(e.to_string()))?
+    }
+
+    /// Base64 encoding of the master encryption key (for user export via S1+ dialog).
+    pub fn encryption_key_b64(&self) -> String {
+        BASE64.encode(self.encryption_key)
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn get_or_create_encryption_key_for_test(
+        data_dir: &std::path::Path,
+    ) -> Result<[u8; 32], StoreError> {
+        Self::get_or_create_encryption_key(data_dir).await
     }
 
     fn encrypt(&self, plaintext: &str) -> Result<String, StoreError> {
@@ -828,6 +825,54 @@ mod tests {
     use super::*;
     use crate::db::{ConnectionConfig, SslMode, SshTunnelConfig};
 
+    fn use_file_key_backend() {
+        std::env::set_var("DATAZEN_KEYRING", "file");
+    }
+
+    async fn init_store_for_test(dir: &std::path::Path) -> Store {
+        use_file_key_backend();
+        Store::init_with_path(dir).await.unwrap()
+    }
+
+    #[tokio::test]
+    async fn file_backend_creates_and_reloads_key() {
+        use_file_key_backend();
+        let dir = tempfile::tempdir().unwrap();
+        let k1 = Store::get_or_create_encryption_key_for_test(dir.path())
+            .await
+            .unwrap();
+        let k2 = Store::get_or_create_encryption_key_for_test(dir.path())
+            .await
+            .unwrap();
+        assert_eq!(k1, k2);
+        assert!(key_store::key_file_path(dir.path()).is_file());
+    }
+
+    #[tokio::test]
+    #[ignore = "requires OS keychain; run with: cargo test migrates_dot_key -- --ignored"]
+    async fn migrates_dot_key_into_keyring_and_deletes_file() {
+        std::env::remove_var("DATAZEN_KEYRING");
+        if !key_store::keyring_is_available() {
+            eprintln!("skip: OS keychain unavailable");
+            return;
+        }
+        key_store::delete_keyring_entry_for_test();
+
+        let dir = tempfile::tempdir().unwrap();
+        let known_key = [7u8; 32];
+        std::fs::write(
+            key_store::key_file_path(dir.path()),
+            BASE64.encode(known_key),
+        )
+        .unwrap();
+
+        let loaded = key_store::load_or_create_master_key(dir.path()).unwrap();
+        assert_eq!(loaded, known_key);
+        assert!(!key_store::key_file_path(dir.path()).exists());
+
+        key_store::delete_keyring_entry_for_test();
+    }
+
     fn sample_connection_with_ssh() -> ConnectionConfig {
         ConnectionConfig {
             id: "test-ssh-1".into(),
@@ -861,7 +906,7 @@ mod tests {
     #[tokio::test]
     async fn ssh_credentials_encrypted_on_disk_and_decrypted_in_memory() {
         let dir = tempfile::tempdir().unwrap();
-        let store = Store::init_with_path(dir.path()).await.unwrap();
+        let store = init_store_for_test(dir.path()).await;
 
         store
             .save_connection(sample_connection_with_ssh())
@@ -893,14 +938,14 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
 
         {
-            let store = Store::init_with_path(dir.path()).await.unwrap();
+            let store = init_store_for_test(dir.path()).await;
             store
                 .save_connection(sample_connection_with_ssh())
                 .await
                 .unwrap();
         }
 
-        let store = Store::init_with_path(dir.path()).await.unwrap();
+        let store = init_store_for_test(dir.path()).await;
         let loaded = store.get_connections().await;
         assert_eq!(loaded.len(), 1);
         let ssh = loaded[0].ssh_tunnel.as_ref().unwrap();
@@ -959,7 +1004,7 @@ mod tests {
     #[tokio::test]
     async fn save_json_file_leaves_no_tmp_artifacts() {
         let dir = tempfile::tempdir().unwrap();
-        let store = Store::init_with_path(dir.path()).await.unwrap();
+        let store = init_store_for_test(dir.path()).await;
         let settings = AppSettings {
             language: "fr".into(),
             ..AppSettings::default()
@@ -984,7 +1029,7 @@ mod tests {
         use datazen_ai_api::{AiProviderConfig, AiProviderType};
 
         let dir = tempfile::tempdir().unwrap();
-        let store = Store::init_with_path(dir.path()).await.unwrap();
+        let store = init_store_for_test(dir.path()).await;
         let config = AiProviderConfig {
             provider_type: AiProviderType::OpenAi,
             api_key: Some("sk-test".into()),
