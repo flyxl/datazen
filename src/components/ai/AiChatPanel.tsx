@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ChevronDown, ChevronRight, Loader2, MessageSquare, Settings, Sparkles, Trash2, Copy, Check, Wand2, Send } from 'lucide-react';
+import { BookOpen, ChevronDown, ChevronRight, Loader2, MessageSquare, Settings, Sparkles, Trash2, Copy, Check, Wand2, Send } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { AiInput } from './AiInput';
 import { useI18n } from '../../hooks/useI18n';
 import { useAiStore } from '../../stores/aiStore';
 import { cn } from '../../lib/cn';
-import { openSettingsWindow } from '../../lib/windowManager';
+import { openDocsWindow, openSettingsWindow } from '../../lib/windowManager';
 import { WorkflowPanel } from './WorkflowPanel';
 import type { AiChatMessage, AiQuestion, ContextEntry } from '../../types';
 
@@ -89,16 +89,38 @@ export function AiChatPanel({ connectionId, database, onInsertSql }: AiChatPanel
             {t('workflows.title')}
           </button>
         </div>
-        {tab === 'chat' && (
-          <Button
-            variant="ghost"
-            className="h-6 px-1.5 text-[11px]"
-            onClick={clearChat}
-            disabled={!chatSession?.messages.length}
-          >
-            <Trash2 className="h-3 w-3" />
-          </Button>
-        )}
+        <div className="flex items-center gap-0.5">
+          {tab === 'chat' && (
+            <>
+              <Button
+                variant="ghost"
+                className="h-6 px-1.5 text-[11px]"
+                title={t('docs.openAiHelp')}
+                onClick={() => openDocsWindow('context')}
+              >
+                <BookOpen className="h-3 w-3" />
+              </Button>
+              <Button
+                variant="ghost"
+                className="h-6 px-1.5 text-[11px]"
+                onClick={clearChat}
+                disabled={!chatSession?.messages.length}
+              >
+                <Trash2 className="h-3 w-3" />
+              </Button>
+            </>
+          )}
+          {tab === 'workflows' && (
+            <Button
+              variant="ghost"
+              className="h-6 px-1.5 text-[11px]"
+              title={t('docs.openWorkflowHelp')}
+              onClick={() => openDocsWindow('workflows')}
+            >
+              <BookOpen className="h-3 w-3" />
+            </Button>
+          )}
+        </div>
       </div>
 
       {tab === 'workflows' ? (

@@ -170,6 +170,9 @@ export function MainWindow() {
     void listenCrossWindow('menu:data-sync', () => {
       if (!cancelled) openDataSyncWindow();
     }).then((u) => { if (cancelled) u(); else cleanups.push(u); });
+    void listenCrossWindow('menu:backup', () => {
+      if (!cancelled) openBackupWindow();
+    }).then((u) => { if (cancelled) u(); else cleanups.push(u); });
     void listenCrossWindow('menu:view-logs', () => {
       if (!cancelled) void settingsCommands.openLogDir();
     }).then((u) => { if (cancelled) u(); else cleanups.push(u); });
@@ -514,6 +517,15 @@ export function MainWindow() {
       showMessageDialog(e instanceof Error ? e.message : String(e), 'error');
     }
   }, [selectedId, connections, activeConnections, t, showMessageDialog]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const cleanups: (() => void)[] = [];
+    void listenCrossWindow('menu:restore', () => {
+      if (!cancelled) void handleRestore();
+    }).then((u) => { if (cancelled) u(); else cleanups.push(u); });
+    return () => { cancelled = true; cleanups.forEach((fn) => fn()); };
+  }, [handleRestore]);
 
   // ── Blank area context menu ──
 

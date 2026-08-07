@@ -5,6 +5,7 @@ import { useI18n } from '../hooks/useI18n';
 import { useSettingsStore } from '../stores/settingsStore';
 import { emitCrossWindow } from '../lib/crossWindowBus';
 import { usePlatform } from '../hooks/usePlatform';
+import { settingsCommands } from '../commands/settings';
 import type { AppSettings } from '../types';
 
 interface MenuItem {
@@ -27,6 +28,20 @@ function useMenus(): Menu[] {
 
   return [
     {
+      id: 'file',
+      label: t('menu.file'),
+      items: [
+        { id: 'new-connection', label: t('menu.newConnection'), shortcut: 'Ctrl+N' },
+        { id: 'sep-f1', label: '', separator: true },
+        { id: 'export-config', label: t('menu.exportConfig') },
+        { id: 'import-config', label: t('menu.importConfig') },
+        { id: 'export-connections', label: t('menu.exportConnections') },
+        { id: 'import-connections', label: t('menu.importConnections') },
+        { id: 'sep-f2', label: '', separator: true },
+        { id: 'open-settings', label: t('menu.settings'), shortcut: 'Ctrl+,' },
+      ],
+    },
+    {
       id: 'edit',
       label: t('menu.edit'),
       items: [
@@ -43,32 +58,38 @@ function useMenus(): Menu[] {
       id: 'view',
       label: t('menu.view'),
       items: [
-        { id: 'theme-light', label: t('theme.light'), checked: theme === 'light' },
-        { id: 'theme-dark', label: t('theme.dark'), checked: theme === 'dark' },
-        { id: 'theme-system', label: t('theme.system'), checked: theme === 'system' },
+        { id: 'theme-light', label: `${t('menu.theme')}: ${t('menu.themeLight')}`, checked: theme === 'light' },
+        { id: 'theme-dark', label: `${t('menu.theme')}: ${t('menu.themeDark')}`, checked: theme === 'dark' },
+        { id: 'theme-system', label: `${t('menu.theme')}: ${t('menu.themeSystem')}`, checked: theme === 'system' },
         { id: 'sep-2', label: '', separator: true },
-        { id: 'open-settings', label: t('menu.settings'), shortcut: 'Ctrl+,' },
+        { id: 'fullscreen', label: t('menu.fullscreen') },
       ],
     },
     {
       id: 'tools',
       label: t('menu.tools'),
       items: [
-        { id: 'new-connection', label: t('menu.newConnection'), shortcut: 'Ctrl+N' },
         { id: 'data-sync', label: t('menu.dataSync') },
         { id: 'sep-3', label: '', separator: true },
-        { id: 'view-logs', label: t('menu.viewLogs') },
+        { id: 'backup', label: t('menu.backup') },
+        { id: 'restore', label: t('menu.restore') },
         { id: 'sep-4', label: '', separator: true },
-        { id: 'export-config', label: t('menu.exportConfig') },
-        { id: 'import-config', label: t('menu.importConfig') },
-        { id: 'export-connections', label: t('menu.exportConnections') },
-        { id: 'import-connections', label: t('menu.importConnections') },
+        { id: 'view-logs', label: t('menu.viewLogs') },
+      ],
+    },
+    {
+      id: 'help',
+      label: t('menu.help'),
+      items: [
+        { id: 'help-docs', label: t('menu.documentation') },
+        { id: 'sep-h1', label: '', separator: true },
+        { id: 'help-report', label: t('menu.reportIssue') },
       ],
     },
   ];
 }
 
-function handleMenuAction(id: string) {
+async function handleMenuAction(id: string) {
   if (id.startsWith('theme-')) {
     const theme = id.replace('theme-', '') as AppSettings['theme'];
     void emitCrossWindow('menu:theme-change', theme);
@@ -94,6 +115,23 @@ function handleMenuAction(id: string) {
     case 'select-all':
       document.execCommand('selectAll');
       break;
+    case 'fullscreen': {
+      try {
+        const { getCurrentWindow } = await import('@tauri-apps/api/window');
+        const win = getCurrentWindow();
+        const isFs = await win.isFullscreen();
+        await win.setFullscreen(!isFs);
+      } catch {
+        // ignore
+      }
+      break;
+    }
+    case 'help-docs':
+      void import('../lib/windowManager').then((m) => m.openDocsWindow());
+      break;
+    case 'help-report':
+      void settingsCommands.openPath('https://github.com/flyxl/datazen/issues/new');
+      break;
     default:
       void emitCrossWindow(`menu:${id}`);
   }
@@ -101,7 +139,8 @@ function handleMenuAction(id: string) {
 
 /**
  * Web-based menu bar for Windows/Linux where native menus are not available.
- * Renders in the title bar and mirrors macOS native menu structure.
+ * Renders in the title bar and mirrors macOS native menu structure
+ * (Settings lives under File because there is no app menu on Windows).
  */
 export function MenuBar() {
   const platform = usePlatform();
@@ -200,7 +239,7 @@ function MenuButton({ menu, isOpen, onOpen, onClose, onHover }: MenuButtonProps)
                 type="button"
                 className="flex w-full items-center justify-between px-3 py-1.5 text-left text-[13px] text-fg-secondary transition-colors hover:bg-surface-raised hover:text-fg"
                 onClick={() => {
-                  handleMenuAction(item.id);
+                  void handleMenuAction(item.id);
                   onClose();
                 }}
               >

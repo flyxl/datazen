@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
+  BookOpen,
   ClipboardCopy,
   Code2,
   Database,
@@ -25,6 +26,7 @@ import { useSchemaStore } from '../../stores/schemaStore';
 import { useTableDataStore } from '../../stores/tableDataStore';
 import { useQueryStore } from '../../stores/queryStore';
 import { cn } from '../../lib/cn';
+import { openDocsWindow } from '../../lib/windowManager';
 import { DB_REGISTRY, getDbLabel } from '../../lib/databaseTypes';
 import type { ConnectionViewProps } from '../../lib/connectionViews/types';
 import { SchemaTree } from './schema-tree/SchemaTree';
@@ -469,6 +471,15 @@ export function SqlConnectionView({
         </div>
 
         <div className="flex-1" />
+
+        <Button
+          variant="ghost"
+          className="h-7 gap-1 px-2 text-xs"
+          title={t('docs.openAiHelp')}
+          onClick={() => openDocsWindow('ai')}
+        >
+          <BookOpen className="h-3.5 w-3.5" />
+        </Button>
 
         <Button
           variant={aiChatOpen ? 'secondary' : 'ghost'}
