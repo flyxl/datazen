@@ -15,21 +15,21 @@
 | S5 | 路径 IPC 收紧 | ✅ | ✅ | ✅ path-ipc E2E | ✅ |
 | S6 | ZIP 炸弹防护 | ✅ | ✅ 24 lib | ✅ unit+E2E | ✅ |
 | S7 | MCP query 默认/硬顶 | ✅ | ✅ resolve_query_limit | ✅ unit | ✅ |
-| C1 | MCP/GUI data dir 统一 | ✅ | ✅ store:: 2 | ⬜ N/A | ✅ c59281e |
-| C2 | 语系真翻译或 beta | ✅ | ✅ locales 13 | ⬜ UI | ✅ 39ef4e7 |
-| C3 | Pro 文案与插件矩阵对齐 | ✅ | ⬜ N/A | ⬜ release | ✅ ced00bf |
-| C4 | 插件钉 commit/tag | ✅ | ✅ node --check | ⬜ build | ✅ 13e8514 |
-| C5 | 成功/错误对话框分流 | ✅ | ✅ tsc | ⬜ UI | ✅ f28a11f |
-| C6 | connection_id 语义统一 | ✅ | ⬜ N/A | ⬜ N/A | ✅ 58ab9db |
-| C7 | rebuild_menu 去 block_on | ✅ | ✅ cargo check | ⬜ i18n-menu | ✅ 14c95c5 |
-| E1 | PR CI（vitest + cargo test） | ✅ | ✅ smoke | ⬜ CI | ✅ 732e0e8 |
-| E2 | `.gitignore` 粘连拆分 | ✅ | ⬜ N/A | ⬜ N/A | ✅ cadef68 |
-| E3 | AGENTS / 插件默认对齐 | ✅ | ⬜ N/A | ⬜ N/A | ✅ 244b385 |
-| E4 | E2E 快速构建路径 | ✅ | ✅ node --check | ⬜ E2E | ✅ 0951254 |
-| E5 | Store 原子写 | ✅ | ✅ store:: 9 | ⬜ N/A | ✅ a0ee2b7 |
-| E6 | DB 能力显式 opt-in | ✅ | ✅ databaseTypes 5* | ⬜ UI | ✅ 8129e59 |
-| E7 | 死代码清理 | ✅ | ✅ tsc | ⬜ N/A | ✅ 1c19005 |
-| E8 | 文档刷新 | ✅ | ⬜ N/A | ⬜ N/A | ✅ 4cb3328 |
+| C1 | MCP/GUI data dir 统一 | ✅ | ✅ store:: 2 | ✅ | ✅ c59281e |
+| C2 | 语系真翻译或 beta | ✅ | ✅ locales 13 | ✅ | ✅ 39ef4e7 |
+| C3 | Pro 文案与插件矩阵对齐 | ✅ | ⬜ N/A | ✅ 静态 | ✅ ced00bf |
+| C4 | 插件钉 commit/tag | ✅ | ✅ node --check | ✅ | ✅ 13e8514 |
+| C5 | 成功/错误对话框分流 | ✅ | ✅ tsc | ✅ | ✅ f28a11f |
+| C6 | connection_id 语义统一 | ✅ | ⬜ N/A | ✅ 文档 | ✅ 58ab9db |
+| C7 | rebuild_menu 去 block_on | ✅ | ✅ cargo check | ✅ | ✅ 14c95c5 |
+| E1 | PR CI（vitest + cargo test） | ✅ | ✅ smoke | ✅ | ✅ 732e0e8 |
+| E2 | `.gitignore` 粘连拆分 | ✅ | ⬜ N/A | ✅ | ✅ cadef68 |
+| E3 | AGENTS / 插件默认对齐 | ✅ | ⬜ N/A | ✅ | ✅ 244b385 |
+| E4 | E2E 快速构建路径 | ✅ | ✅ node --check | ✅ | ✅ 0951254 |
+| E5 | Store 原子写 | ✅ | ✅ store:: 9 | ✅ | ✅ a0ee2b7 |
+| E6 | DB 能力显式 opt-in | ✅ | ✅ databaseTypes | ✅ | ✅ 8129e59 |
+| E7 | 死代码清理 | ✅ | ✅ tsc | ✅ | ✅ 1c19005 |
+| E8 | 文档刷新 | ✅ | ⬜ N/A | ✅ | ✅ 4cb3328 |
 
 图例：⬜ 未开始 · 🟡 进行中 · ✅ 完成 · ❌ 失败待修
 
