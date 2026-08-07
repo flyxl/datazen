@@ -78,9 +78,9 @@
   function counterpartHref(locale) {
     const file = currentFile();
     if (locale === "en") {
-      return "zh/" + file;
+      return file === "index.html" ? "zh/" : "zh/" + file;
     }
-    return "../" + file;
+    return file === "index.html" ? "../" : "../" + file;
   }
 
   function renderNav() {
