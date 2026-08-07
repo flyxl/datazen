@@ -20,6 +20,8 @@
   ·
   <a href="https://flyxl.github.io/datazen/">Website</a>
   ·
+  <a href="CONTRIBUTING.md">Contributing</a>
+  ·
   <a href="mailto:wuxiaolongklws@gmail.com">Contact</a>
 </p>
 
@@ -31,7 +33,7 @@
   <img src="docs/screenshots/connection-window.png" width="720" alt="DataZen data browser" />
 </p>
 
-[English](#features) · [中文](#特性) · [Install](#install) · [macOS note](#macos-first-launch) · [Contact](#contact--feedback)
+[English](#features) · [中文](#特性) · [Install](#install) · [macOS note](#macos-first-launch) · [Contributing](#contributing) · [Contact](#contact--feedback)
 
 ---
 
@@ -138,10 +140,22 @@ Then open normally. Share this step in reviews if macOS blocks launch — it is 
 | **Email** | [wuxiaolongklws@gmail.com](mailto:wuxiaolongklws@gmail.com) |
 | **Issues** | [github.com/flyxl/datazen/issues](https://github.com/flyxl/datazen/issues) |
 | **Releases** | [github.com/flyxl/datazen/releases](https://github.com/flyxl/datazen/releases) |
+| **Discussions** | [github.com/flyxl/datazen/discussions](https://github.com/flyxl/datazen/discussions) |
+| **Contributing** | [CONTRIBUTING.md](CONTRIBUTING.md) |
+| **Security** | [SECURITY.md](SECURITY.md) |
+| **Code of Conduct** | [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) |
 
 We typically respond to issues and email within a few business days. Bug reports welcome via the issue templates (version + OS required).
 
 Issue 与邮件反馈一般在几个工作日内回复；提交 Bug 请使用 Issue 模板并注明版本与系统。
+
+---
+
+<a id="contributing"></a>
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, tests, and PR expectations.
+Please follow the [Code of Conduct](CODE_OF_CONDUCT.md). Security reports go to [SECURITY.md](SECURITY.md).
 
 ---
 
