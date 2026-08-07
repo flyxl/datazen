@@ -149,29 +149,27 @@ export function BackupWindow() {
     if (!connectedId || !selectedDb) return;
 
     try {
-      const { save } = await import('@tauri-apps/plugin-dialog');
-      const ext = compressGzip ? 'sql.gz' : (enabledOptions.has('format-custom') ? 'dump' : 'sql');
-      const defaultName = `${fileName}.${ext}`;
-      const path = await save({
-        title: t('backup.title'),
-        defaultPath: defaultName,
-        filters: [{ name: 'Backup Files', extensions: [ext] }],
-      });
-      if (!path) return;
+      const ext = compressGzip ? 'gz' : (enabledOptions.has('format-custom') ? 'dump' : 'sql');
+      const defaultName = `${fileName}.${compressGzip ? 'sql.gz' : ext}`;
 
       setBacking(true);
       setStatusMessage(t('backup.inProgress'));
 
       const { invoke } = await import('@tauri-apps/api/core');
-      await invoke('backup_database', {
+      const saved = await invoke<boolean>('backup_database_with_dialog', {
         connectionId: connectedId,
         database: selectedDb,
-        outputPath: path,
+        defaultFileName: defaultName,
+        filterExtension: ext,
         options: Array.from(enabledOptions),
         compress: compressGzip,
       });
+      if (!saved) {
+        setStatusMessage('');
+        return;
+      }
 
-      setStatusMessage(`${t('backup.success')}: ${path}`);
+      setStatusMessage(t('backup.success'));
     } catch (e) {
       setStatusMessage(e instanceof Error ? e.message : String(e));
     } finally {

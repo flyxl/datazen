@@ -2,16 +2,9 @@
 
 pub mod client;
 mod server;
-pub mod workflow_history;
-pub mod workflows;
 
 pub use client::{McpClientManager, McpServerConfig, McpToolInfo};
 pub use server::{DataZenMcpServer, MCP_ALL_TOOLS};
-pub use workflow_history::WorkflowHistoryManager;
-pub use workflows::{
-    WorkflowDefinition, WorkflowExecutionResult, WorkflowExecutor, WorkflowListItem,
-    WorkflowRegistry,
-};
 
 use crate::commands::AppState;
 use std::sync::Arc;

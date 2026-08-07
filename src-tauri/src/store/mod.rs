@@ -1,5 +1,7 @@
 //! Local encrypted persistence for connections, settings, and history.
 
+mod key_store;
+
 use aes_gcm::aead::{Aead, KeyInit};
 use aes_gcm::{Aes256Gcm, Key, Nonce};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
@@ -149,6 +151,9 @@ struct StoreCache {
     ai_config_loaded: bool,
 }
 
+/// Bundle identifier — must match `tauri.conf.json` `"identifier"`.
+pub const APP_IDENTIFIER: &str = "com.tbeasy.datazen";
+
 /// Encrypted JSON store rooted at the per-app data directory.
 pub struct Store {
     data_dir: PathBuf,
@@ -177,6 +182,14 @@ pub enum StoreError {
 impl Store {
     pub fn data_dir(&self) -> &PathBuf {
         &self.data_dir
+    }
+
+    /// Default app data directory for headless entry points (MCP stdio, early logging).
+    /// Matches Tauri `app_data_dir()` for the configured bundle identifier.
+    pub fn default_app_data_dir() -> Result<PathBuf, StoreError> {
+        dirs::data_dir()
+            .map(|d| d.join(APP_IDENTIFIER))
+            .ok_or_else(|| StoreError::InitError("Cannot determine data dir".into()))
     }
 
     pub async fn init(app_handle: &tauri::AppHandle) -> Result<Self, StoreError> {
@@ -219,27 +232,22 @@ impl Store {
     }
 
     async fn get_or_create_encryption_key(data_dir: &std::path::Path) -> Result<[u8; 32], StoreError> {
-        let key_path = data_dir.join(".key");
-
-        if let Ok(key_b64) = tokio::fs::read_to_string(&key_path).await {
-            let key_bytes = BASE64
-                .decode(key_b64.trim())
-                .map_err(|e| StoreError::EncryptionError(e.to_string()))?;
-            if key_bytes.len() != 32 {
-                return Err(StoreError::EncryptionError("Invalid key length".into()));
-            }
-            let mut key = [0u8; 32];
-            key.copy_from_slice(&key_bytes);
-            return Ok(key);
-        }
-
-        let mut key = [0u8; 32];
-        rand::thread_rng().fill_bytes(&mut key);
-        let key_b64 = BASE64.encode(key);
-        tokio::fs::write(&key_path, key_b64.as_bytes())
+        let data_dir = data_dir.to_path_buf();
+        tokio::task::spawn_blocking(move || key_store::load_or_create_master_key(&data_dir))
             .await
-            .map_err(|e| StoreError::EncryptionError(e.to_string()))?;
-        Ok(key)
+            .map_err(|e| StoreError::InitError(e.to_string()))?
+    }
+
+    /// Base64 encoding of the master encryption key (for user export via S1+ dialog).
+    pub fn encryption_key_b64(&self) -> String {
+        BASE64.encode(self.encryption_key)
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn get_or_create_encryption_key_for_test(
+        data_dir: &std::path::Path,
+    ) -> Result<[u8; 32], StoreError> {
+        Self::get_or_create_encryption_key(data_dir).await
     }
 
     fn encrypt(&self, plaintext: &str) -> Result<String, StoreError> {
@@ -420,6 +428,34 @@ impl Store {
                     }
                 }
             }
+            if let Some(ref mut ssh) = conn.ssh_tunnel {
+                if let Some(enc) = &ssh.password {
+                    match self.decrypt(enc) {
+                        Ok(plain) => ssh.password = Some(plain),
+                        Err(e) => {
+                            tracing::warn!(
+                                conn_name = %conn.name,
+                                error = %e,
+                                "Failed to decrypt SSH password, clearing"
+                            );
+                            ssh.password = None;
+                        }
+                    }
+                }
+                if let Some(enc) = &ssh.passphrase {
+                    match self.decrypt(enc) {
+                        Ok(plain) => ssh.passphrase = Some(plain),
+                        Err(e) => {
+                            tracing::warn!(
+                                conn_name = %conn.name,
+                                error = %e,
+                                "Failed to decrypt SSH passphrase, clearing"
+                            );
+                            ssh.passphrase = None;
+                        }
+                    }
+                }
+            }
         }
 
         Ok(connections)
@@ -441,6 +477,30 @@ impl Store {
         serde_json::from_str(&content).map_err(|e| StoreError::ParseError(e.to_string()))
     }
 
+    async fn write_file_atomic(path: &std::path::Path, content: impl AsRef<[u8]>) -> Result<(), StoreError> {
+        let parent = path
+            .parent()
+            .ok_or_else(|| StoreError::WriteError("path has no parent directory".into()))?;
+        tokio::fs::create_dir_all(parent)
+            .await
+            .map_err(|e| StoreError::WriteError(e.to_string()))?;
+
+        let file_name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .ok_or_else(|| StoreError::WriteError("invalid file name".into()))?;
+        let tmp_path = parent.join(format!(".{file_name}.tmp"));
+
+        tokio::fs::write(&tmp_path, content.as_ref())
+            .await
+            .map_err(|e| StoreError::WriteError(e.to_string()))?;
+        tokio::fs::rename(&tmp_path, path)
+            .await
+            .map_err(|e| StoreError::WriteError(e.to_string()))?;
+
+        Ok(())
+    }
+
     async fn save_json_file<T: Serialize + ?Sized>(
         &self,
         filename: &str,
@@ -457,11 +517,7 @@ impl Store {
         let content =
             serde_json::to_string_pretty(data).map_err(|e| StoreError::ParseError(e.to_string()))?;
 
-        tokio::fs::write(&path, content)
-            .await
-            .map_err(|e| StoreError::WriteError(e.to_string()))?;
-
-        Ok(())
+        Self::write_file_atomic(&path, content).await
     }
 
     async fn persist_connections(&self, connections: &[ConnectionConfig]) -> Result<(), StoreError> {
@@ -471,6 +527,18 @@ impl Store {
             let mut c = conn.clone();
             if let Some(pw) = &c.password {
                 c.password = Some(self.encrypt(pw)?);
+            }
+            if let Some(ref mut ssh) = c.ssh_tunnel {
+                if let Some(pw) = &ssh.password {
+                    if !pw.is_empty() {
+                        ssh.password = Some(self.encrypt(pw)?);
+                    }
+                }
+                if let Some(pp) = &ssh.passphrase {
+                    if !pp.is_empty() {
+                        ssh.passphrase = Some(self.encrypt(pp)?);
+                    }
+                }
             }
             to_disk.push(c);
         }
@@ -748,8 +816,238 @@ impl Store {
         let json =
             serde_json::to_string(data).map_err(|e| StoreError::ParseError(e.to_string()))?;
         let encrypted = self.encrypt(&json)?;
-        tokio::fs::write(&path, encrypted)
+        Self::write_file_atomic(&path, encrypted).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::{ConnectionConfig, SslMode, SshTunnelConfig};
+
+    fn use_file_key_backend() {
+        std::env::set_var("DATAZEN_KEYRING", "file");
+    }
+
+    async fn init_store_for_test(dir: &std::path::Path) -> Store {
+        use_file_key_backend();
+        Store::init_with_path(dir).await.unwrap()
+    }
+
+    #[tokio::test]
+    async fn file_backend_creates_and_reloads_key() {
+        use_file_key_backend();
+        let dir = tempfile::tempdir().unwrap();
+        let k1 = Store::get_or_create_encryption_key_for_test(dir.path())
             .await
-            .map_err(|e| StoreError::WriteError(e.to_string()))
+            .unwrap();
+        let k2 = Store::get_or_create_encryption_key_for_test(dir.path())
+            .await
+            .unwrap();
+        assert_eq!(k1, k2);
+        assert!(key_store::key_file_path(dir.path()).is_file());
+    }
+
+    #[tokio::test]
+    #[ignore = "requires OS keychain; run with: cargo test migrates_dot_key -- --ignored"]
+    async fn migrates_dot_key_into_keyring_and_deletes_file() {
+        std::env::remove_var("DATAZEN_KEYRING");
+        if !key_store::keyring_is_available() {
+            eprintln!("skip: OS keychain unavailable");
+            return;
+        }
+        key_store::delete_keyring_entry_for_test();
+
+        let dir = tempfile::tempdir().unwrap();
+        let known_key = [7u8; 32];
+        std::fs::write(
+            key_store::key_file_path(dir.path()),
+            BASE64.encode(known_key),
+        )
+        .unwrap();
+
+        let loaded = key_store::load_or_create_master_key(dir.path()).unwrap();
+        assert_eq!(loaded, known_key);
+        assert!(!key_store::key_file_path(dir.path()).exists());
+
+        key_store::delete_keyring_entry_for_test();
+    }
+
+    fn sample_connection_with_ssh() -> ConnectionConfig {
+        ConnectionConfig {
+            id: "test-ssh-1".into(),
+            name: "SSH Test".into(),
+            database_type: "postgresql".into(),
+            host: Some("localhost".into()),
+            port: Some(5432),
+            database: Some("mydb".into()),
+            schema: None,
+            username: Some("dbuser".into()),
+            password: Some("db-secret".into()),
+            ssl_mode: SslMode::Disable,
+            connection_timeout: 30,
+            ssh_tunnel: Some(SshTunnelConfig {
+                enabled: true,
+                host: "jump.example.com".into(),
+                port: 22,
+                username: "sshuser".into(),
+                auth_method: "password".into(),
+                password: Some("ssh-secret-password".into()),
+                private_key_path: None,
+                passphrase: Some("key-passphrase".into()),
+            }),
+            color_tag: None,
+            group: None,
+            last_connected_at: None,
+            server_version: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn ssh_credentials_encrypted_on_disk_and_decrypted_in_memory() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = init_store_for_test(dir.path()).await;
+
+        store
+            .save_connection(sample_connection_with_ssh())
+            .await
+            .unwrap();
+
+        let disk_content =
+            tokio::fs::read_to_string(dir.path().join("connections.json"))
+                .await
+                .unwrap();
+        assert!(
+            !disk_content.contains("ssh-secret-password"),
+            "SSH password must not appear plaintext on disk"
+        );
+        assert!(
+            !disk_content.contains("key-passphrase"),
+            "SSH passphrase must not appear plaintext on disk"
+        );
+
+        let loaded = store.get_connections().await;
+        assert_eq!(loaded.len(), 1);
+        let ssh = loaded[0].ssh_tunnel.as_ref().unwrap();
+        assert_eq!(ssh.password.as_deref(), Some("ssh-secret-password"));
+        assert_eq!(ssh.passphrase.as_deref(), Some("key-passphrase"));
+    }
+
+    #[tokio::test]
+    async fn ssh_credentials_roundtrip_after_reload() {
+        let dir = tempfile::tempdir().unwrap();
+
+        {
+            let store = init_store_for_test(dir.path()).await;
+            store
+                .save_connection(sample_connection_with_ssh())
+                .await
+                .unwrap();
+        }
+
+        let store = init_store_for_test(dir.path()).await;
+        let loaded = store.get_connections().await;
+        assert_eq!(loaded.len(), 1);
+        let ssh = loaded[0].ssh_tunnel.as_ref().unwrap();
+        assert_eq!(ssh.password.as_deref(), Some("ssh-secret-password"));
+        assert_eq!(ssh.passphrase.as_deref(), Some("key-passphrase"));
+    }
+
+    #[test]
+    fn default_app_data_dir_uses_bundle_identifier() {
+        let dir = Store::default_app_data_dir().unwrap();
+        assert!(
+            dir.ends_with(APP_IDENTIFIER),
+            "expected path ending with {APP_IDENTIFIER}, got {}",
+            dir.display()
+        );
+    }
+
+    #[test]
+    fn default_app_data_dir_matches_resolve_log_settings_path() {
+        let store_dir = Store::default_app_data_dir().unwrap();
+        let log_dir = dirs::data_dir()
+            .map(|d| d.join(APP_IDENTIFIER))
+            .expect("data dir");
+        assert_eq!(store_dir, log_dir);
+    }
+
+    #[test]
+    fn default_language_is_english() {
+        assert_eq!(AppSettings::default().language, "en");
+    }
+
+    #[test]
+    fn first_run_language_is_supported() {
+        let settings = AppSettings::default_for_first_run();
+        const OK: &[&str] = &[
+            "en", "zh-CN", "zh-TW", "es", "fr", "de", "ja", "pt-BR", "ru", "ko",
+        ];
+        assert!(
+            OK.contains(&settings.language.as_str()),
+            "unexpected {}",
+            settings.language
+        );
+    }
+
+    #[test]
+    fn settings_json_roundtrip_preserves_language() {
+        let settings = AppSettings {
+            language: "de".into(),
+            ..AppSettings::default()
+        };
+        let json = serde_json::to_string(&settings).unwrap();
+        let parsed: AppSettings = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.language, "de");
+    }
+
+    #[tokio::test]
+    async fn save_json_file_leaves_no_tmp_artifacts() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = init_store_for_test(dir.path()).await;
+        let settings = AppSettings {
+            language: "fr".into(),
+            ..AppSettings::default()
+        };
+        store.save_settings(settings).await.unwrap();
+
+        let entries: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .collect();
+        assert!(!entries.iter().any(|n| n.contains(".tmp")));
+        let content = tokio::fs::read_to_string(dir.path().join("settings.json"))
+            .await
+            .unwrap();
+        let parsed: AppSettings = serde_json::from_str(&content).unwrap();
+        assert_eq!(parsed.language, "fr");
+    }
+
+    #[tokio::test]
+    async fn save_ai_config_uses_atomic_encrypted_write() {
+        use datazen_ai_api::{AiProviderConfig, AiProviderType};
+
+        let dir = tempfile::tempdir().unwrap();
+        let store = init_store_for_test(dir.path()).await;
+        let config = AiProviderConfig {
+            provider_type: AiProviderType::OpenAi,
+            api_key: Some("sk-test".into()),
+            endpoint: None,
+            model: "gpt-4o".into(),
+            max_tokens: 200_000,
+            extra: serde_json::Value::Null,
+        };
+        store.save_ai_config(&config).await.unwrap();
+
+        let entries: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .collect();
+        assert!(entries.contains(&"ai_config.enc".to_string()));
+        assert!(!entries.iter().any(|n| n.contains(".tmp")));
+        let loaded = store.get_ai_config().await.unwrap();
+        assert_eq!(loaded.model, "gpt-4o");
     }
 }

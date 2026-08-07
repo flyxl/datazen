@@ -61,8 +61,7 @@ function openWindow(label: string, options: OpenWindowOptions) {
 
 导出函数：
 - `openNewConnectionWindow(editId?)` — 新建/编辑连接
-- `openConnectionWindow(connectionId, connectionName, database?, databaseType?)` — 数据库浏览
-- `openQueryWindow(connectionId, database)` — 查询窗口
+- `openConnectionWindow(connectionId, connectionName, database?, databaseType?)` — 数据库浏览（含 SQL 查询面板）
 - `openSettingsWindow(section?)` — 设置窗口（单例模式）
 - `openDataSyncWindow()` — 数据同步
 - `openBackupWindow()` — 备份/恢复

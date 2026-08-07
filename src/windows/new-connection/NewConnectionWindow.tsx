@@ -83,24 +83,24 @@ export function NewConnectionWindow() {
           <div className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-fg-muted">
             {t('newConn.selectDbType')}
           </div>
-          <div className="flex flex-col gap-1.5">
+          <div className="flex flex-col gap-0.5">
             {dbTypes.map((db) => (
               <button
                 key={db.value}
                 type="button"
                 onClick={() => form.handleDatabaseTypeChange(db.value)}
                 className={cn(
-                  'flex items-center gap-3 rounded-lg px-3 py-3 text-left text-sm transition-colors select-none',
+                  'flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors select-none',
                   form.databaseType === db.value
                     ? 'bg-surface-raised text-fg'
                     : 'text-fg-secondary hover:bg-surface-alt hover:text-fg',
                 )}
               >
                 <div
-                  className="flex h-8 w-8 items-center justify-center rounded"
+                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded"
                   style={{ backgroundColor: `${db.color}20` }}
                 >
-                  <Database className="h-4 w-4" style={{ color: db.color }} />
+                  <Database className="h-3.5 w-3.5" style={{ color: db.color }} />
                 </div>
                 <div>
                   <div className="font-medium">{db.label}</div>

@@ -147,4 +147,36 @@ mod tests {
             assert_eq!(resolve_ui_language(code), *code);
         }
     }
+
+    #[test]
+    fn trims_whitespace_around_locale() {
+        assert_eq!(resolve_ui_language("  en-US  "), "en");
+        assert_eq!(resolve_ui_language("\tzh-CN\n"), "zh-CN");
+    }
+
+    #[test]
+    fn case_insensitive_exact_match() {
+        assert_eq!(resolve_ui_language("EN"), "en");
+        assert_eq!(resolve_ui_language("ZH-CN"), "zh-CN");
+        assert_eq!(resolve_ui_language("Pt-Br"), "pt-BR");
+        assert_eq!(resolve_ui_language("KO"), "ko");
+    }
+
+    #[test]
+    fn more_region_variants() {
+        assert_eq!(resolve_ui_language("es-AR"), "es");
+        assert_eq!(resolve_ui_language("fr_BE"), "fr");
+        assert_eq!(resolve_ui_language("de_CH"), "de");
+        assert_eq!(resolve_ui_language("en-IN"), "en");
+        assert_eq!(resolve_ui_language("zh-SG"), "zh-CN");
+    }
+
+    #[test]
+    fn default_ui_language_is_supported() {
+        let lang = super::default_ui_language();
+        assert!(
+            super::SUPPORTED.contains(&lang.as_str()),
+            "unexpected default language: {lang}"
+        );
+    }
 }

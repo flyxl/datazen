@@ -17,14 +17,20 @@
     "tauri:build": "node scripts/generate-menu-labels.mjs && node scripts/with-plugin-inject.mjs -- tauri build",
     "tauri:build:minimal": "node scripts/generate-menu-labels.mjs && node scripts/with-plugin-inject.mjs --plugins=none -- tauri build",
     "e2e": "node e2e/run.mjs",
+    "e2e:minimal": "node e2e/run.mjs --minimal-plugins",
     "e2e:skip-build": "node e2e/run.mjs --skip-build",
     "e2e:wdio": "wdio run e2e/wdio.conf.ts",
     "e2e:core": "node e2e/run.mjs --skip-build -- --spec e2e/specs/main-window.ts,e2e/specs/new-connection.ts,e2e/specs/edit-delete-connection.ts,e2e/specs/connection-search-group.ts,e2e/specs/settings.ts,e2e/specs/i18n-menu.ts,e2e/specs/homepage-features.ts,e2e/specs/drag-drop-groups.ts,e2e/specs/backup-database.ts",
     "e2e:db": "node e2e/run.mjs --skip-build -- --spec e2e/specs/connection-window.ts,e2e/specs/sql-query.ts,e2e/specs/table-data.ts,e2e/specs/table-edit.ts,e2e/specs/table-structure.ts,e2e/specs/export-import.ts,e2e/specs/data-types.ts,e2e/specs/mysql.ts,e2e/specs/mysql-multi-database.ts,e2e/specs/postgres-multi-database.ts,e2e/specs/data-sync-real.ts",
     "e2e:kiwi": "node e2e/run.mjs --skip-build -- --spec e2e/specs/kiwi.ts",
     "e2e:ai": "node e2e/run.mjs --skip-build -- --spec e2e/specs/ai-features.ts",
+    "e2e:i18n-backup": "node e2e/run.mjs --skip-build -- --spec e2e/specs/app-data-backup.ts,e2e/specs/i18n-10-locales.ts,e2e/specs/system-locale.ts,e2e/specs/i18n-menu.ts",
+    "e2e:path-ipc": "node e2e/run.mjs --skip-build -- --spec e2e/specs/path-ipc-hardening.ts,e2e/specs/workflow-window.ts,e2e/specs/app-data-backup.ts",
     "test": "vitest run",
+    "test:unit": "vitest run",
+    "test:unit:coverage": "vitest run --coverage",
     "test:scripts": "vitest run scripts/__tests__",
+    "test:rust:backup-i18n": "cargo test -p datazen --lib app_data_archive && cargo test -p datazen --lib i18n_locale && cargo test -p datazen --lib store::tests",
     "prepare": "husky"
   },
   "dependencies": {
@@ -54,6 +60,7 @@
     "zustand": "^5.0.3"
   },
   "devDependencies": {
+    "@iamtraction/google-translate": "^3.0.0",
     "@tailwindcss/vite": "^4.1.4",
     "@tauri-apps/cli": "^2.10.1",
     "@testing-library/jest-dom": "^6.9.1",
@@ -61,6 +68,7 @@
     "@types/react": "^18.3.20",
     "@types/react-dom": "^18.3.6",
     "@vitejs/plugin-react": "^4.4.1",
+    "@vitest/coverage-v8": "^4.1.10",
     "@wdio/cli": "^9.27.0",
     "@wdio/globals": "^9.27.0",
     "@wdio/local-runner": "^9.27.0",
@@ -71,10 +79,11 @@
     "expect-webdriverio": "^5.6.5",
     "husky": "^9.1.7",
     "jsdom": "^29.0.2",
+    "opencc-js": "^1.4.1",
     "postcss": "^8.5.3",
     "tailwindcss": "^4.1.4",
     "typescript": "^5.8.3",
     "vite": "^6.2.5",
-    "vitest": "^4.1.4"
+    "vitest": "^4.1.10"
   }
 }

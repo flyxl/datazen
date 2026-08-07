@@ -58,7 +58,11 @@ e2e/.env
 .env.test
 src-tauri/tests/.env.test
 
+# Vitest coverage output
+coverage/
+
 # Duplicate lockfiles (pnpm uses pnpm-lock.yaml; Cargo workspace uses root Cargo.lock)
 package-lock.json
-src-tauri/Cargo.lockwindows.png
+src-tauri/Cargo.lock
+windows.png
 .worktrees/

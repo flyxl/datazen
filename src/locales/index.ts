@@ -26,6 +26,16 @@ export const SUPPORTED_LOCALES = [
 
 export type SupportedLocale = (typeof SUPPORTED_LOCALES)[number];
 
+/** Locales with complete translations (not English placeholders). */
+export const FULLY_TRANSLATED_LOCALES = [...SUPPORTED_LOCALES] as const satisfies readonly SupportedLocale[];
+
+/** Former beta locales — now empty; all supported locales are fully translated. */
+export const BETA_LOCALES = [] as const satisfies readonly SupportedLocale[];
+
+export function isBetaLocale(locale: string): boolean {
+  return (BETA_LOCALES as readonly string[]).includes(locale);
+}
+
 const locales: Record<SupportedLocale, Record<TranslationKey, string>> = {
   en,
   'zh-CN': zhCN,

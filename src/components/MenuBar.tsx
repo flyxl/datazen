@@ -61,6 +61,8 @@ function useMenus(): Menu[] {
         { id: 'sep-4', label: '', separator: true },
         { id: 'export-config', label: t('menu.exportConfig') },
         { id: 'import-config', label: t('menu.importConfig') },
+        { id: 'export-connections', label: t('menu.exportConnections') },
+        { id: 'import-connections', label: t('menu.importConnections') },
       ],
     },
   ];

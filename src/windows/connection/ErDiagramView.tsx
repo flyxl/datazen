@@ -136,19 +136,17 @@ function ErDiagramInner({ connectionId, database, focusTable, onSelectTable }: E
     const viewport = document.querySelector('.react-flow__viewport') as HTMLElement;
     if (!viewport) return;
     try {
-      const { save } = await import('@tauri-apps/plugin-dialog');
-      const filePath = await save({
-        defaultPath: `er-diagram-${database}.png`,
-        filters: [{ name: 'PNG', extensions: ['png'] }],
-      });
-      if (!filePath) return;
-
       const dataUrl = await toPng(viewport, {
         backgroundColor: '#1a1a2e',
         quality: 1,
       });
       const base64 = dataUrl.includes(',') ? dataUrl.split(',')[1]! : dataUrl;
-      await fileCommands.writeFileBase64(filePath, base64);
+      await fileCommands.saveBase64WithDialog(
+        base64,
+        `er-diagram-${database}.png`,
+        'PNG',
+        ['png'],
+      );
     } catch (e) {
       console.error('Export failed:', e);
     }
@@ -158,17 +156,9 @@ function ErDiagramInner({ connectionId, database, focusTable, onSelectTable }: E
     const viewport = document.querySelector('.react-flow__viewport') as HTMLElement;
     if (!viewport) return;
     try {
-      const { save } = await import('@tauri-apps/plugin-dialog');
-      const filePath = await save({
-        defaultPath: `er-diagram-${database}.svg`,
-        filters: [{ name: 'SVG', extensions: ['svg'] }],
-      });
-      if (!filePath) return;
-
       const dataUrl = await toSvg(viewport, {
         backgroundColor: '#1a1a2e',
       });
-      // data:image/svg+xml;charset=utf-8,... or base64
       let svgContent: string;
       if (dataUrl.startsWith('data:image/svg+xml;base64,')) {
         svgContent = atob(dataUrl.slice('data:image/svg+xml;base64,'.length));
@@ -177,7 +167,12 @@ function ErDiagramInner({ connectionId, database, focusTable, onSelectTable }: E
       } else {
         svgContent = dataUrl;
       }
-      await fileCommands.writeFile(filePath, svgContent);
+      await fileCommands.saveTextWithDialog(
+        svgContent,
+        `er-diagram-${database}.svg`,
+        'SVG',
+        ['svg'],
+      );
     } catch (e) {
       console.error('Export failed:', e);
     }

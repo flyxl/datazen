@@ -88,8 +88,7 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
   const loadTables = useSchemaStore((s) => s.loadTables);
 
   const dbMeta = databaseType ? DB_REGISTRY[databaseType as keyof typeof DB_REGISTRY] : undefined;
-  const supportsExplain = dbMeta?.supportsExplain !== false;
-
+  const supportsExplain = dbMeta?.supportsExplain === true;
   const editorSchema: SqlSchema = useMemo(() => {
     const result: SqlSchema = {};
     for (const t of [...tables, ...views]) {

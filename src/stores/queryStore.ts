@@ -215,7 +215,9 @@ export const useQueryStore = create<QueryStore>((set, get) => ({
       // best-effort cancellation
     }
     set((s) => ({
-      tabs: s.tabs.map((t) => (t.id === tabId ? { ...t, running: false, error: 'Query cancelled' } : t)),
+      tabs: s.tabs.map((tab) =>
+        tab.id === tabId ? { ...tab, running: false, error: t('query.cancelled') } : tab,
+      ),
     }));
   },
 
