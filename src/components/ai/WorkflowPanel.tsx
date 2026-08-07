@@ -994,10 +994,13 @@ function DatabasePicker({
   const isVariable = connId.startsWith('{{');
   const savedConn = !isVariable ? savedConnections.find((c) => c.id === connId) : undefined;
   const meta = savedConn ? DB_REGISTRY[savedConn.databaseType as keyof typeof DB_REGISTRY] : undefined;
-  const needsDb = !!meta?.hasMultiDatabase;
+  const hasMultiCapability = !!meta?.hasMultiDatabase;
+  // Session-style gate: only show when capability AND more than one visible DB.
+  // Workflow can target any saved connection, so compute from fetched list (same formula as schemaStore.isMultiDatabase).
+  const needsDb = hasMultiCapability && (loading || databases.length > 1);
 
   useEffect(() => {
-    if (!needsDb || !connId) {
+    if (!hasMultiCapability || !connId) {
       setDatabases([]);
       return;
     }
@@ -1014,7 +1017,7 @@ function DatabasePicker({
       }
     })();
     return () => { cancelled = true; };
-  }, [connId, needsDb]);
+  }, [connId, hasMultiCapability]);
 
   if (!needsDb && !isVariable) return null;
 

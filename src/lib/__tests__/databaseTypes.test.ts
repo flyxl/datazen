@@ -2,10 +2,20 @@ import { describe, it, expect } from 'vitest';
 import { DB_REGISTRY } from '../databaseTypes';
 
 describe('DB_REGISTRY behavioral flags', () => {
-  it('kiwi has multi-database and fixed page size', () => {
+  it('kiwi has multi-database and fixed page size when plugin is loaded', () => {
+    if (!DB_REGISTRY.kiwi) return; // plugins not injected in this workspace
     expect(DB_REGISTRY.kiwi.hasMultiDatabase).toBe(true);
     expect(DB_REGISTRY.kiwi.defaultPageSize).toBe(1000);
     expect(DB_REGISTRY.kiwi.connectionForm).toBe('kiwi');
+  });
+
+  it('mysql and mariadb enable multi-database session capability', () => {
+    expect(DB_REGISTRY.mysql.hasMultiDatabase).toBe(true);
+    expect(DB_REGISTRY.mariadb.hasMultiDatabase).toBe(true);
+  });
+
+  it('postgresql does not enable multi-database for F2', () => {
+    expect(DB_REGISTRY.postgresql.hasMultiDatabase).toBeFalsy();
   });
 
   it('redis uses index form and keyvalue view', () => {

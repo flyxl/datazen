@@ -83,11 +83,11 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
   const columnMap = useSchemaStore((s) => s.columnMap);
   const databases = useSchemaStore((s) => s.databases);
   const currentDatabase = useSchemaStore((s) => s.currentDatabase);
+  const isMultiDb = useSchemaStore((s) => s.isMultiDatabase);
   const loadColumnMap = useSchemaStore((s) => s.loadColumnMap);
   const loadTables = useSchemaStore((s) => s.loadTables);
 
   const dbMeta = databaseType ? DB_REGISTRY[databaseType as keyof typeof DB_REGISTRY] : undefined;
-  const isMultiDb = !!dbMeta?.hasMultiDatabase;
   const supportsExplain = dbMeta?.supportsExplain !== false;
 
   const editorSchema: SqlSchema = useMemo(() => {

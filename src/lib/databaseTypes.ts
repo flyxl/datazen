@@ -55,6 +55,7 @@ const BUILTIN_DB_REGISTRY: Record<string, DatabaseTypeMeta> = {
     sqlDialect: 'mysql',
     databaseFieldType: 'name',
     connectionForm: 'standard',
+    hasMultiDatabase: true,
   },
   mariadb: {
     label: 'MariaDB',
@@ -77,6 +78,7 @@ const BUILTIN_DB_REGISTRY: Record<string, DatabaseTypeMeta> = {
     sqlDialect: 'mysql',
     databaseFieldType: 'name',
     connectionForm: 'standard',
+    hasMultiDatabase: true,
   },
   sqlite: {
     label: 'SQLite',

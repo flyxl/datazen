@@ -135,15 +135,16 @@ export async function createAndConnectMySQL(opts: {
   port?: string;
   user?: string;
   password?: string;
+  /** Pass empty string to leave the database field blank (multi-db session). */
   database?: string;
 } = {}) {
   const {
     name = 'E2E-MySQL',
-    host = '127.0.0.1',
-    port = '3306',
-    user = 'root',
-    password = '',
-    database = 'datazen_test',
+    host = process.env.E2E_MYSQL_HOST || '127.0.0.1',
+    port = process.env.E2E_MYSQL_PORT || '3306',
+    user = process.env.E2E_MYSQL_USER || 'root',
+    password = process.env.E2E_MYSQL_PASSWORD || '',
+    database = process.env.E2E_MYSQL_DB || 'datazen_test',
   } = opts;
 
   const mainWindow = await browser.getWindowHandle();
@@ -203,9 +204,12 @@ export async function createAndConnectMySQL(opts: {
     }
   }
 
-  // Database
+  // Database (optional — empty string leaves field blank for multi-db session)
   const dbInput = await $('input[placeholder="myapp_production"]');
-  await dbInput.setValue(database);
+  await dbInput.clearValue();
+  if (database) {
+    await dbInput.setValue(database);
+  }
 
   // Username
   const userInput = await $('input[placeholder="postgres"]');

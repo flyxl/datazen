@@ -18,7 +18,7 @@
 | ID | 功能 | 状态 | 提交 |
 |----|------|------|------|
 | F1 | MySQL/MariaDB 实现 `use_database` + Rust 单元测试 | ✅ implemented（unit + gated live IT） | — |
-| F2 | 前端会话级多库（mysql/mariadb）：registry、schemaStore、SchemaTree、QueryPanel、WorkflowPanel + Vitest | ⬜ pending | — |
+| F2 | 前端会话级多库（mysql/mariadb）：registry、schemaStore、SchemaTree、QueryPanel、WorkflowPanel + Vitest + E2E spec | ✅ implemented + tested | — |
 | F3 | PostgreSQL：`get_tables` 尊重 database + `use_database` + Rust 单元测试 | ⬜ pending | — |
 | F4 | 前端启用 postgresql 多库能力 + Vitest | ⬜ pending | — |
 | F5 | 更新必要文档并提交 | ⬜ pending | — |
@@ -28,11 +28,36 @@
 | ID | 测试 agent | 结果文件 | 结论 |
 |----|------------|----------|------|
 | F1 | test-agent (fresh) | [progress-multi-database-session-f1-test.md](./progress-multi-database-session-f1-test.md) | **PASS** |
-| F2 | — | — | — |
+| F2 | test-agent (fresh) | [progress-multi-database-session-f2-test.md](./progress-multi-database-session-f2-test.md) | **PASS** (Vitest 20/20 + E2E 3/3) |
 | F3 | — | — | — |
 | F4 | — | — | — |
 
 ## 变更日志
+
+### 2026-08-07 — F2 全量测试通过（fresh test-agent）
+
+- Vitest：20/20 PASS（`schemaStore` + `databaseTypes` + `SchemaTree.test.tsx`）
+- E2E：`pnpm e2e:skip-build -- --spec e2e/specs/mysql-multi-database.ts` — 3/3 PASS（webdriver debug binary + 本机 MySQL）
+- 报告：[progress-multi-database-session-f2-test.md](./progress-multi-database-session-f2-test.md)
+
+### 2026-08-07 — F2 测试缺口关闭（E2E + SchemaTree Vitest）
+
+- 新增 `e2e/specs/mysql-multi-database.ts`：无默认库连接 → 多库节点；展开加载表；多库时 QueryPanel 选择器；无 MySQL / `E2E_SKIP_MYSQL=1` 时 skip
+- `e2e/helpers.ts`：`createAndConnectMySQL` 使用 `E2E_MYSQL_*`；`database: ''` 可留空
+- `package.json` `e2e:db` 纳入该 spec
+- 新增 `SchemaTree.test.tsx`：mysql length>1 / ===1 / postgresql → 路由与 expand
+- Vitest：20/20 PASS
+- E2E `--skip-build`：现有 `target/debug/datazen` 无 `--features webdriver`（4445 未开）；需 `pnpm e2e -- --spec e2e/specs/mysql-multi-database.ts` 或先 webdriver debug build
+
+### 2026-08-07 — F2 前端会话级多库（mysql/mariadb）
+
+- `DB_REGISTRY.mysql` / `mariadb`：`hasMultiDatabase: true`（postgresql 仍关闭，留给 F4）
+- `schemaStore`：`isMultiDatabase = hasMultiDatabase && databases.length > 1`；`loadForConnection` 接受 `databaseType`；preferred DB 在列表中则预选，否则 `databases[0]`；`loadTables` 先调 `use_database` 再拉表
+- `SchemaTree`：能力标志为真时走 `MultiDatabaseSchemaTree`（含 length===1 仍展示单库节点）
+- `QueryPanel`：用 store `isMultiDatabase` 控制库选择器（非仅静态 meta）
+- `WorkflowPanel`：同公式（capability && length > 1）；workflow 可指向任意连接，按拉取到的库列表计算
+- IPC：新增 `use_database` 命令（`commands/schema.rs` + 前端 `databaseCommands.useDatabase`）
+- Vitest：`databaseTypes` mysql/mariadb 标志；`schemaStore` isMultiDatabase / preferred / useDatabase 顺序
 
 ### 2026-08-07 — F1 MySQL/MariaDB `use_database`
 
