@@ -20,16 +20,22 @@ F6「配置了 database 则锁定单库」之后：
 
 | ID | 功能 | 状态 | 提交 |
 |----|------|------|------|
-| F1 | `resolveVisibleDatabases`：仅当配置库 ∈ `get_databases` 结果时才锁定 | 🧪 testing | — |
-| F2 | `databaseFieldType: 'domain'` + SchemaTree 不对 domain 做单库锁定路由；Kiwi meta | 🔲 | — |
+| F1 | `resolveVisibleDatabases`：仅当配置库 ∈ `get_databases` 结果时才锁定 | ✅ PASS | `50820b1` |
+| F2 | `databaseFieldType: 'domain'` + SchemaTree 不对 domain 做单库锁定路由；Kiwi meta | ✅ PASS | （本提交） |
 
 ## 测试记录
 
 | ID | 测试 agent | 报告 | 结论 |
 |----|------------|------|------|
-| F1 | — | — | — |
+| F1 | [F1 test](72d6c2ef-88c1-4a71-96ea-3f444391cd01) | [f1-test](./progress-kiwi-database-permission-f1-test.md) | **PASS**（Vitest 12/12；黑盒 BLOCKED） |
 | F2 | — | — | — |
 
 ## 变更日志
 
-（按提交追加）
+### F1 — `50820b1`
+- `resolveVisibleDatabases`：仅 `allDatabases.includes(configured)` 时锁定
+- 单元测试覆盖 Kiwi domain 样例
+
+### F2 —（进行中）
+- `databaseFieldType: 'domain'`；Kiwi meta + SchemaTree `shouldUseMultiDatabaseTree`
+- kiwi 插件 commit `b9cc1bd`；registry pin 更新

@@ -5,7 +5,8 @@ describe('DB_REGISTRY behavioral flags', () => {
   it('kiwi has multi-database and fixed page size when plugin is loaded', () => {
     if (!DB_REGISTRY.kiwi) return; // plugins not injected in this workspace
     expect(DB_REGISTRY.kiwi.hasMultiDatabase).toBe(true);
-    expect(DB_REGISTRY.kiwi.defaultPageSize).toBe(1000);
+    expect(DB_REGISTRY.kiwi.databaseFieldType).toBe('domain');
+    expect(DB_REGISTRY.kiwi.defaultPageSize).toBe(999);
     expect(DB_REGISTRY.kiwi.connectionForm).toBe('kiwi');
   });
 
