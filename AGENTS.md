@@ -25,7 +25,7 @@ datazen/
 │   ├── commands/                # Tauri IPC 封装（ai, connection, database, query, context, settings, file, adb）
 │   ├── lib/                     # 工具库（chart/, sqlDialects/, connectionViews/, exportData 等）
 │   ├── hooks/                   # React hooks（useI18n, useResizable, usePlatform 等）
-│   ├── locales/                 # i18n（zh-CN, en，~744 keys）
+│   ├── locales/                 # i18n（10 语系：en/zh-CN/zh-TW 完整，其余 Beta；~739 keys）
 │   ├── plugins/generated.ts     # 自动生成（勿手动编辑）
 │   └── plugin-sdk/              # 插件前端 SDK
 ├── src-tauri/                   # Rust 后端
@@ -34,7 +34,7 @@ datazen/
 │   │   ├── commands/            # IPC 命令（16 个模块：ai, connection, query, schema, context, mcp 等）
 │   │   ├── db/                  # 驱动（postgres, mysql, sqlite, redis_driver, registry）
 │   │   ├── mcp/                 # MCP Server/Client
-│   │   ├── workflow/            # YAML Workflow 引擎与执行历史
+│   │   ├── workflow/            # YAML Workflow 引擎与执行历史（独立于 mcp）
 │   │   ├── services/            # ConnectionManager, QueryExecutor, DbTools
 │   │   ├── cache/               # SchemaCache（两级 TTL）
 │   │   ├── store/               # AES-256-GCM 加密持久化
@@ -43,9 +43,9 @@ datazen/
 ├── packages/
 │   ├── driver-api/              # DatabaseDriver trait + types + inventory 宏
 │   └── ai-api/                  # AiProvider trait + AiError + factory
-├── e2e/                         # WebdriverIO E2E 测试（31 spec）
+├── e2e/                         # WebdriverIO E2E 测试（35 spec）
 ├── test/                        # 手工黑盒测试
-├── docs/                        # 架构文档、RFC、进度
+├── docs/                        # 架构文档、RFC、进度（含 [代码审查修复进度](docs/progress-code-review-fix.md)）
 └── .plugins/                    # 构建时生成（gitignored）
 ```
 
@@ -53,8 +53,8 @@ datazen/
 
 ### 插件系统（编译时，类似 Caddy 2）
 
-1. `plugins-registry.json` 定义插件（4 内置 + 3 Git 外部：kiwi, olap, superset）
-2. `scripts/resolve-plugins.mjs` 构建前执行：克隆 → 生成 `generated.ts` + `plugin_init.rs` + `.plugin-features.json`
+1. `plugins-registry.json` 定义插件（4 内置 + 3 Git 外部：kiwi, olap, superset）；Git 插件可钉 `ref`（commit/tag）
+2. `scripts/resolve-plugins.mjs` 构建前执行：克隆/检出 ref → 生成 `generated.ts` + `plugin_init.rs` + `.plugin-features.json`
 3. 通过 `inventory` crate 实现链接时自动注册
 
 ```bash
@@ -88,9 +88,7 @@ DATAZEN_PLUGINS=all pnpm build         # 全部插件
 
 ### Workflows
 
-- **引擎**（`workflow/workflows.rs`）：YAML 定义，步骤类型 Query/Ai/Condition/ForEach，支持跨库
-- **历史**（`workflow/history.rs`）：执行历史持久化
-- **入口**：GUI / `commands/ai.rs` 的 `workflow_*` IPC；MCP 仅作协议适配
+- **Workflows**（`workflow/`）：YAML 定义，步骤类型 Query/Ai/Condition/ForEach；GUI / IPC / MCP 共用引擎
 
 ### 前端约定
 
@@ -153,6 +151,8 @@ pnpm e2e:core                          # 核心 UI（默认 skip-build）
 pnpm e2e:db / e2e:ai / e2e:kiwi        # 分组
 pnpm e2e:i18n-backup / e2e:path-ipc    # 备份·i18n / 路径 IPC
 ```
+
+PR 合并前：`pnpm test:unit` + `cargo test -p datazen --lib`（见 `.github/workflows/ci.yml`）。代码审查修复对照：[docs/code-review-2026-08-07-full.md](docs/code-review-2026-08-07-full.md)、[docs/progress-code-review-fix.md](docs/progress-code-review-fix.md)。
 
 编排脚本：`e2e/run.mjs`。环境变量：复制 `e2e/.env.example` → `e2e/.env`。
 
