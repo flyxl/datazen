@@ -44,7 +44,8 @@ src/windows/connection/
 | `connectionView` | 路由到 `CONNECTION_VIEWS`（sql / keyvalue / document） |
 | `connectionForm` | 路由到连接表单 Fields 组件（standard / kiwi / file / index） |
 | `sqlDialect` | 路由到 `sqlDialects/` 策略 |
-| `hasMultiDatabase` | 驱动**能力**标志。未配置连接 `database` 时 `SchemaTree` 走 `MultiDatabaseSchemaTree`；已配置则锁定单库走 `StandardSchemaTree`。会话 `isMultiDatabase = hasMultiDatabase && 可见库数量 > 1`（库选择器等） |
+| `hasMultiDatabase` | 驱动**能力**标志。未配置逻辑库时走 `MultiDatabaseSchemaTree`；配置了逻辑库且该库 ∈ `get_databases` 时锁定 `StandardSchemaTree`。`databaseFieldType: 'domain'`（Kiwi）时 `connection.database` 为实例域名，**不**触发锁定 |
+| `databaseFieldType` | `name` / `path` / `index` / `domain`（Kiwi 实例域名） |
 | `defaultPageSize` | 覆盖默认分页（如 Kiwi 1000 行） |
 | `supportsBackup` | BackupWindow 过滤 + 方言备份选项 |
 
