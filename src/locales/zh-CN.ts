@@ -107,10 +107,10 @@ const zhCN = {
   'action.importConfig': '导入应用数据',
 
   // ── Config Import / Export ──
-  'appData.exportSuccess': '应用数据已导出',
+  'appData.exportSuccess': '应用数据已导出。备份不包含加密密钥；已保存的密码仅能在已有相同应用数据密钥的本机解密。',
   'appData.exportFailed': '导出失败',
   'appData.importConfirmTitle': '导入应用数据',
-  'appData.importConfirmMessage': '此操作将覆盖所有应用数据（现有日志文件会保留）。是否继续？',
+  'appData.importConfirmMessage': '此操作将覆盖所有应用数据（现有日志文件会保留）。备份不含加密密钥——仅在本机（或拥有相同密钥的机器）上恢复时，已保存的密码仍可用。是否继续？',
   'appData.importFailed': '导入失败',
 
   // ── Connection Item / Card ──
