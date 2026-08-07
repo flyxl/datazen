@@ -1,10 +1,25 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>功能总览 — DataZen</title>
-  <meta name="description" content="DataZen 功能总览：SQL 编辑器、数据浏览与编辑、导出导入、备份、跨库同步、安全存储、国际化、插件系统。" />
+  <title>Features — DataZen</title>
+  <meta name="description" content="DataZen feature overview: SQL editor, data browse/edit, export/import, backup, cross-database sync, secure storage, i18n, and plugins." />
+  <link rel="canonical" href="https://flyxl.github.io/datazen/features.html" />
+  <link rel="alternate" hreflang="en" href="https://flyxl.github.io/datazen/features.html" />
+  <link rel="alternate" hreflang="zh-CN" href="https://flyxl.github.io/datazen/zh/features.html" />
+  <link rel="alternate" hreflang="x-default" href="https://flyxl.github.io/datazen/features.html" />
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="Features — DataZen" />
+  <meta property="og:description" content="DataZen feature overview: SQL editor, data browse/edit, export/import, backup, cross-database sync, secure storage, i18n, and plugins." />
+  <meta property="og:url" content="https://flyxl.github.io/datazen/features.html" />
+  <meta property="og:image" content="https://flyxl.github.io/datazen/assets/screenshots/01-main-window.png" />
+  <meta property="og:locale" content="en_US" />
+  <meta property="og:locale:alternate" content="zh_CN" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Features — DataZen" />
+  <meta name="twitter:description" content="DataZen feature overview: SQL editor, data browse/edit, export/import, backup, cross-database sync, secure storage, i18n, and plugins." />
+  <meta name="twitter:image" content="https://flyxl.github.io/datazen/assets/screenshots/01-main-window.png" />
   <link rel="icon" href="assets/logo.png" />
   <link rel="stylesheet" href="assets/css/site.css" />
 </head>
@@ -13,88 +28,88 @@
 
   <section class="page-head">
     <div class="wrap">
-      <p class="breadcrumb"><a href="index.html">首页</a> / 功能总览</p>
-      <h1>🧭 功能总览</h1>
-      <p>DataZen 的完整能力地图。核心三大亮点（AI / 图表 / Workflow）各有专属页面，这里是其余能力的索引。</p>
+      <p class="breadcrumb"><a href="index.html">Home</a> / Features</p>
+      <h1>🧭 Features</h1>
+      <p>The full capability map of DataZen. The three headline areas (AI / Charts / Workflow) each have their own page; this is the index for everything else.</p>
     </div>
   </section>
 
   <section class="wrap">
     <div class="grid-4">
-      <a class="card" href="ai.html" style="display:block"><div class="icon">🤖</div><h3>AI 助手</h3><p>NL2SQL、诊断、EXPLAIN、Chat、智能筛选</p></a>
-      <a class="card" href="charts.html" style="display:block"><div class="icon">📊</div><h3>图表可视化</h3><p>智能推荐、五种图表、PNG/SVG 导出</p></a>
-      <a class="card" href="workflow.html" style="display:block"><div class="icon">⚙️</div><h3>Workflow</h3><p>YAML 自动化、跨库编排、AI 生成</p></a>
-      <a class="card" href="databases.html" style="display:block"><div class="icon">🔌</div><h3>多数据库</h3><p>PG / MySQL / SQLite / Redis / 插件</p></a>
+      <a class="card" href="ai.html" style="display:block"><div class="icon">🤖</div><h3>AI Assistant</h3><p>NL2SQL, diagnosis, EXPLAIN, Chat, smart filters</p></a>
+      <a class="card" href="charts.html" style="display:block"><div class="icon">📊</div><h3>Charts</h3><p>Smart recommendations, five chart types, PNG/SVG export</p></a>
+      <a class="card" href="workflow.html" style="display:block"><div class="icon">⚙️</div><h3>Workflow</h3><p>YAML automation, cross-database orchestration, AI generation</p></a>
+      <a class="card" href="databases.html" style="display:block"><div class="icon">🔌</div><h3>Databases</h3><p>PG / MySQL / SQLite / Redis / plugins</p></a>
     </div>
 
     <div class="feature-block">
       <div>
-        <span class="kicker">SQL 编辑器</span>
-        <h2>为日常查询打磨</h2>
+        <span class="kicker">SQL Editor</span>
+        <h2>Built for everyday queries</h2>
         <ul>
-          <li>语法高亮 + 表名 / 列名自动补全（CodeMirror 6）</li>
-          <li>多语句执行、查询历史与收藏</li>
-          <li>SQL 方言按连接类型自动切换</li>
-          <li>查询结果上限可配，大结果集不卡界面</li>
+          <li>Syntax highlighting + table/column autocomplete (CodeMirror 6)</li>
+          <li>Multi-statement execution, query history, and favorites</li>
+          <li>SQL dialect auto-switches by connection type</li>
+          <li>Configurable result limits — large result sets won't freeze the UI</li>
         </ul>
       </div>
-      <img class="feature-shot" src="assets/screenshots/17-sql-editor.png" alt="SQL 编辑器" />
+      <img class="feature-shot" src="assets/screenshots/17-sql-editor.png" alt="SQL editor" />
     </div>
 
     <div class="feature-block reverse">
       <div>
-        <span class="kicker">数据浏览与编辑</span>
-        <h2>十万行也不卡</h2>
+        <span class="kicker">Data Browse &amp; Edit</span>
+        <h2>100K rows without lag</h2>
         <ul>
-          <li>虚拟滚动大表，10 万行级流畅滚动</li>
-          <li>行内编辑、安全批量删除、事务支持</li>
-          <li>排序、筛选、分页组合使用</li>
-          <li>导出 CSV / JSON / SQL，导入同源格式</li>
+          <li>Virtual scrolling for large tables — smooth at 100K+ rows</li>
+          <li>Inline editing, safe batch delete, transaction support</li>
+          <li>Sort, filter, and pagination work together</li>
+          <li>Export CSV / JSON / SQL; import the same formats</li>
         </ul>
       </div>
-      <img class="feature-shot" src="assets/screenshots/18-data-editor.png" alt="数据浏览与编辑" />
+      <img class="feature-shot" src="assets/screenshots/18-data-editor.png" alt="Data browse and edit" />
     </div>
 
     <div class="feature-block">
       <div>
-        <span class="kicker">备份与同步</span>
-        <h2>数据在手，心里不慌</h2>
+        <span class="kicker">Backup &amp; Sync</span>
+        <h2>Your data, under control</h2>
         <ul>
-          <li>一键备份为 SQL 文件：Schema-only / Data-only / Gzip</li>
-          <li>完整应用数据打包导出（含配置），原子写入 + ZIP 炸弹防护</li>
-          <li>PG ↔ MySQL 表结构对比与数据同步，支持断点续传</li>
-          <li>备份包自动排除密钥文件</li>
+          <li>One-click SQL backup: Schema-only / Data-only / Gzip</li>
+          <li>Full app data export (including config), atomic writes + ZIP bomb protection</li>
+          <li>PG ↔ MySQL schema compare and data sync with resume support</li>
+          <li>Backup packages automatically exclude key files</li>
         </ul>
       </div>
-      <img class="feature-shot" src="assets/screenshots/19-backup-sync.png" alt="备份与数据同步" />
+      <img class="feature-shot" src="assets/screenshots/19-backup-sync.png" alt="Backup and data sync" />
     </div>
 
     <div class="feature-block reverse">
       <div>
-        <span class="kicker">安全与隐私</span>
-        <h2>默认安全的设计</h2>
+        <span class="kicker">Security &amp; Privacy</span>
+        <h2>Secure by default</h2>
         <ul>
-          <li>连接密码 AES-256-GCM 加密存储，主密钥入系统钥匙串</li>
-          <li>SSH 凭据加密、Host Key TOFU 校验</li>
-          <li>路径 IPC 收紧，文件访问白名单</li>
-          <li>SQL / 自然语言请求默认不落 info 日志</li>
+          <li>Connection passwords encrypted with AES-256-GCM; master key in system keychain</li>
+          <li>SSH credentials encrypted; Host Key TOFU verification</li>
+          <li>Hardened path IPC; file access whitelist</li>
+          <li>SQL and natural-language requests not logged at info level by default</li>
         </ul>
       </div>
-      <img class="feature-shot" src="assets/screenshots/20-security.png" alt="安全与隐私" />
+      <img class="feature-shot" src="assets/screenshots/20-security.png" alt="Security and privacy" />
     </div>
   </section>
 
   <section class="section">
     <div class="wrap">
-      <h2 style="font-size:26px;margin-bottom:20px">数据能力一览</h2>
+      <h2 style="font-size:26px;margin-bottom:20px">Data capabilities at a glance</h2>
       <table class="tbl">
-        <tr><th>能力</th><th>说明</th></tr>
-        <tr><td>虚拟滚动大表</td><td>@tanstack/react-virtual，10 万行级</td></tr>
-        <tr><td>导出 / 导入</td><td>CSV、JSON、SQL 互转</td></tr>
-        <tr><td>备份</td><td>SQL dump（Schema / Data / Gzip）</td></tr>
-        <tr><td>数据同步</td><td>PG ↔ MySQL 结构对比 + 数据同步 + 断点续传</td></tr>
-        <tr><td>ER 图</td><td>React Flow 自动生成表关系图</td></tr>
-        <tr><td>Redis 视图</td><td>Key 浏览器：String / Hash / List / Set / ZSet / Stream</td></tr>
+        <tr><th>Capability</th><th>Description</th></tr>
+        <tr><td>Virtual scrolling</td><td>@tanstack/react-virtual, 100K+ rows</td></tr>
+        <tr><td>Export / Import</td><td>CSV, JSON, SQL interchange</td></tr>
+        <tr><td>Backup</td><td>SQL dump (Schema / Data / Gzip)</td></tr>
+        <tr><td>Data sync</td><td>PG ↔ MySQL schema compare + data sync + resume</td></tr>
+        <tr><td>ER diagram</td><td>React Flow auto-generates table relationship graph</td></tr>
+        <tr><td>Redis view</td><td>Key browser: String / Hash / List / Set / ZSet / Stream</td></tr>
       </table>
     </div>
   </section>

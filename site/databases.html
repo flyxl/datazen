@@ -1,10 +1,25 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>数据库与连接 — DataZen</title>
-  <meta name="description" content="DataZen 数据库支持：PostgreSQL、MySQL、MariaDB、SQLite、Redis；会话级多数据库、SSH 隧道、插件驱动（kiwi / OLAP / Superset）、ER 图。" />
+  <title>Databases &amp; Connections — DataZen</title>
+  <meta name="description" content="DataZen databases: PostgreSQL, MySQL, MariaDB, SQLite, Redis; multi-database sessions, SSH tunnels, plugins (kiwi / OLAP / Superset), ER diagrams." />
+  <link rel="canonical" href="https://flyxl.github.io/datazen/databases.html" />
+  <link rel="alternate" hreflang="en" href="https://flyxl.github.io/datazen/databases.html" />
+  <link rel="alternate" hreflang="zh-CN" href="https://flyxl.github.io/datazen/zh/databases.html" />
+  <link rel="alternate" hreflang="x-default" href="https://flyxl.github.io/datazen/databases.html" />
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="Databases &amp; Connections — DataZen" />
+  <meta property="og:description" content="DataZen databases: PostgreSQL, MySQL, MariaDB, SQLite, Redis; multi-database sessions, SSH tunnels, plugins (kiwi / OLAP / Superset), ER diagrams." />
+  <meta property="og:url" content="https://flyxl.github.io/datazen/databases.html" />
+  <meta property="og:image" content="https://flyxl.github.io/datazen/assets/screenshots/01-main-window.png" />
+  <meta property="og:locale" content="en_US" />
+  <meta property="og:locale:alternate" content="zh_CN" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Databases &amp; Connections — DataZen" />
+  <meta name="twitter:description" content="DataZen databases: PostgreSQL, MySQL, MariaDB, SQLite, Redis; multi-database sessions, SSH tunnels, plugins (kiwi / OLAP / Superset), ER diagrams." />
+  <meta name="twitter:image" content="https://flyxl.github.io/datazen/assets/screenshots/01-main-window.png" />
   <link rel="icon" href="assets/logo.png" />
   <link rel="stylesheet" href="assets/css/site.css" />
 </head>
@@ -13,77 +28,77 @@
 
   <section class="page-head">
     <div class="wrap">
-      <p class="breadcrumb"><a href="index.html">首页</a> / 数据库与连接</p>
-      <h1>🔌 数据库与连接</h1>
-      <p>一套界面管理多种数据库：连接、浏览、查询、编辑、同步，全部原生实现。</p>
+      <p class="breadcrumb"><a href="index.html">Home</a> / Databases &amp; Connections</p>
+      <h1>🔌 Databases &amp; Connections</h1>
+      <p>One interface for many databases: connect, browse, query, edit, and sync — all natively implemented.</p>
     </div>
   </section>
 
   <section class="wrap">
     <div class="grid-3">
-      <div class="card"><div class="icon">🐘</div><h3>PostgreSQL</h3><p>完整 Schema 浏览、EXPLAIN、多库会话、SSL / SSH。</p></div>
-      <div class="card"><div class="icon">🐬</div><h3>MySQL / MariaDB</h3><p>兼容分支，会话级多库切换，数据同步。</p></div>
-      <div class="card"><div class="icon">🗄️</div><h3>SQLite</h3><p>本地文件直接打开，零配置。</p></div>
-      <div class="card"><div class="icon">⚡</div><h3>Redis</h3><p>专属视图：Database 列表 + Key 浏览器，支持全部数据类型。</p></div>
-      <div class="card"><div class="icon">📡</div><h3>kiwi</h3><p>云数据库代理插件，domain 实例语义。</p></div>
-      <div class="card"><div class="icon">📊</div><h3>OLAP / Superset</h3><p>插件驱动：Presto / Trino 分析引擎与数据探索平台。</p></div>
+      <div class="card"><div class="icon">🐘</div><h3>PostgreSQL</h3><p>Full schema browsing, EXPLAIN, multi-database sessions, SSL / SSH.</p></div>
+      <div class="card"><div class="icon">🐬</div><h3>MySQL / MariaDB</h3><p>Compatible branches, session-level multi-database switching, data sync.</p></div>
+      <div class="card"><div class="icon">🗄️</div><h3>SQLite</h3><p>Open local files directly — zero configuration.</p></div>
+      <div class="card"><div class="icon">⚡</div><h3>Redis</h3><p>Dedicated view: database list + key browser, all data types supported.</p></div>
+      <div class="card"><div class="icon">📡</div><h3>kiwi</h3><p>Cloud database proxy plugin with domain instance semantics.</p></div>
+      <div class="card"><div class="icon">📊</div><h3>OLAP / Superset</h3><p>Plugin drivers: Presto / Trino analytics engines and data exploration platforms.</p></div>
     </div>
 
     <div class="feature-block">
       <div>
-        <span class="kicker">会话级多数据库</span>
-        <h2>一个连接，浏览所有库</h2>
-        <p>PostgreSQL / MySQL / MariaDB 单个连接即可在侧栏浏览并切换多个数据库；配置了逻辑库名时自动锁定单库，避免误操作。</p>
+        <span class="kicker">Session-Level Multi-Database</span>
+        <h2>One connection, browse all databases</h2>
+        <p>PostgreSQL / MySQL / MariaDB: a single connection lets you browse and switch multiple databases in the sidebar. When a logical database name is configured, it locks to that database to prevent mistakes.</p>
         <ul>
-          <li>Schema 树按库分组，虚拟滚动支持大库</li>
-          <li>use_database 级切换，无需重连</li>
-          <li>配置逻辑库名 → 锁定单库（Kiwi 的 domain 字段不参与锁定）</li>
+          <li>Schema tree grouped by database; virtual scrolling for large catalogs</li>
+          <li>Switch via use_database — no reconnect needed</li>
+          <li>Configure logical database name → lock to single database (Kiwi's domain field does not participate in locking)</li>
         </ul>
       </div>
-      <img class="feature-shot" src="assets/screenshots/14-multidb.png" alt="多数据库会话" />
+      <img class="feature-shot" src="assets/screenshots/14-multidb.png" alt="Multi-database session" />
     </div>
 
     <div class="feature-block reverse">
       <div>
-        <span class="kicker">Redis 专属视图</span>
-        <h2>Key 浏览器与安全连接</h2>
+        <span class="kicker">Redis Dedicated View</span>
+        <h2>Key browser and secure connections</h2>
         <ul>
-          <li>Database 列表 + Key 浏览器，支持 String / Hash / List / Set / ZSet / Stream</li>
-          <li>类型与 TTL 一目了然，点开即看字段值</li>
-          <li>内置 SSH 隧道（纯 Rust）、凭据加密落盘、Host Key TOFU 校验</li>
-          <li>连接密码 AES-256-GCM 加密，主密钥入系统钥匙串</li>
+          <li>Database list + key browser — String / Hash / List / Set / ZSet / Stream</li>
+          <li>Type and TTL at a glance; click to view field values</li>
+          <li>Built-in SSH tunnel (pure Rust), encrypted credentials on disk, Host Key TOFU verification</li>
+          <li>Connection passwords encrypted with AES-256-GCM; master key in system keychain</li>
         </ul>
       </div>
-      <img class="feature-shot" src="assets/screenshots/15-redis.png" alt="Redis 专属视图" />
+      <img class="feature-shot" src="assets/screenshots/15-redis.png" alt="Redis dedicated view" />
     </div>
 
     <div class="feature-block">
       <div>
-        <span class="kicker">ER 图</span>
-        <h2>表关系一目了然</h2>
-        <p>自动生成数据库 ER 图（React Flow 渲染），外键关系、表结构可视化，适合快速理解陌生库。</p>
+        <span class="kicker">ER Diagram</span>
+        <h2>Table relationships at a glance</h2>
+        <p>Auto-generates database ER diagrams (React Flow rendering) — foreign key relationships and table structure visualized, ideal for understanding unfamiliar databases quickly.</p>
       </div>
-      <img class="feature-shot" src="assets/screenshots/16-er.png" alt="ER 图" />
+      <img class="feature-shot" src="assets/screenshots/16-er.png" alt="ER diagram" />
     </div>
   </section>
 
   <section class="section">
     <div class="wrap">
-      <h2 style="font-size:26px;margin-bottom:20px">插件体系</h2>
+      <h2 style="font-size:26px;margin-bottom:20px">Plugin system</h2>
       <p class="muted" style="margin-bottom:20px">
-        DataZen 采用编译时插件架构（类似 Caddy 2）：内置驱动始终可用，外部驱动通过
-        <code>register_driver!</code> 注册进构建，Git ref 可固定版本，保证可复现。
+        DataZen uses a compile-time plugin architecture (similar to Caddy 2): built-in drivers are always available;
+        external drivers register at build time via <code>register_driver!</code>, with Git refs pinned for reproducible builds.
       </p>
       <table class="tbl">
-        <tr><th>驱动</th><th>类型</th><th>说明</th></tr>
-        <tr><td>PostgreSQL / MySQL / SQLite / Redis</td><td>内置</td><td>基础功能完整支持</td></tr>
-        <tr><td>kiwi</td><td>Git 插件</td><td>云数据库代理，实例 domain 语义</td></tr>
-        <tr><td>OLAP</td><td>Git 插件</td><td>Presto / Trino 分析引擎</td></tr>
-        <tr><td>Superset</td><td>Git 插件</td><td>数据探索平台集成</td></tr>
+        <tr><th>Driver</th><th>Type</th><th>Description</th></tr>
+        <tr><td>PostgreSQL / MySQL / SQLite / Redis</td><td>Built-in</td><td>Full core feature support</td></tr>
+        <tr><td>kiwi</td><td>Git plugin</td><td>Cloud database proxy with domain instance semantics</td></tr>
+        <tr><td>OLAP</td><td>Git plugin</td><td>Presto / Trino analytics engines</td></tr>
+        <tr><td>Superset</td><td>Git plugin</td><td>Data exploration platform integration</td></tr>
       </table>
       <div class="callout">
-        想接入新的数据库？实现 <code>DatabaseDriver</code> trait 即可作为插件发布，详见
-        <a href="https://github.com/flyxl/datazen/blob/main/docs/plugin-development.md" target="_blank" rel="noopener">插件开发文档</a>。
+        Want to add a new database? Implement the <code>DatabaseDriver</code> trait as a plugin — see the
+        <a href="https://github.com/flyxl/datazen/blob/main/docs/plugin-development.md" target="_blank" rel="noopener">plugin development guide</a>.
       </div>
     </div>
   </section>

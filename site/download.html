@@ -1,10 +1,25 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>下载 — DataZen</title>
-  <meta name="description" content="下载 DataZen：macOS（Apple Silicon / Intel）与 Windows 安装包，免费开源。" />
+  <title>Download — DataZen</title>
+  <meta name="description" content="Download DataZen for macOS (Apple Silicon / Intel) and Windows. Free and open source." />
+  <link rel="canonical" href="https://flyxl.github.io/datazen/download.html" />
+  <link rel="alternate" hreflang="en" href="https://flyxl.github.io/datazen/download.html" />
+  <link rel="alternate" hreflang="zh-CN" href="https://flyxl.github.io/datazen/zh/download.html" />
+  <link rel="alternate" hreflang="x-default" href="https://flyxl.github.io/datazen/download.html" />
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="Download — DataZen" />
+  <meta property="og:description" content="Download DataZen for macOS (Apple Silicon / Intel) and Windows. Free and open source." />
+  <meta property="og:url" content="https://flyxl.github.io/datazen/download.html" />
+  <meta property="og:image" content="https://flyxl.github.io/datazen/assets/screenshots/01-main-window.png" />
+  <meta property="og:locale" content="en_US" />
+  <meta property="og:locale:alternate" content="zh_CN" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Download — DataZen" />
+  <meta name="twitter:description" content="Download DataZen for macOS (Apple Silicon / Intel) and Windows. Free and open source." />
+  <meta name="twitter:image" content="https://flyxl.github.io/datazen/assets/screenshots/01-main-window.png" />
   <link rel="icon" href="assets/logo.png" />
   <link rel="stylesheet" href="assets/css/site.css" />
 </head>
@@ -13,9 +28,9 @@
 
   <section class="page-head">
     <div class="wrap">
-      <p class="breadcrumb"><a href="index.html">首页</a> / 下载</p>
-      <h1>⬇️ 下载 DataZen</h1>
-      <p>免费、开源、无需注册。当前版本 v0.0.8。</p>
+      <p class="breadcrumb"><a href="index.html">Home</a> / Download</p>
+      <h1>⬇️ Download DataZen</h1>
+      <p>Free, open source, no signup. Current version v0.0.8.</p>
     </div>
   </section>
 
@@ -25,39 +40,39 @@
         <div class="card">
           <div class="icon">🍎</div>
           <h3>macOS</h3>
-          <p style="margin:8px 0 16px">支持 Apple Silicon（M 系列）与 Intel，dmg 安装包。</p>
-          <a class="btn btn-primary" href="https://github.com/flyxl/datazen/releases" target="_blank" rel="noopener">前往 Releases 下载</a>
+          <p style="margin:8px 0 16px">Apple Silicon (M series) and Intel supported — dmg installer.</p>
+          <a class="btn btn-primary" href="https://github.com/flyxl/datazen/releases" target="_blank" rel="noopener">Download from Releases</a>
         </div>
         <div class="card">
           <div class="icon">🪟</div>
           <h3>Windows</h3>
-          <p style="margin:8px 0 16px">x64，提供 exe 安装包与 msi 两种格式。</p>
-          <a class="btn btn-primary" href="https://github.com/flyxl/datazen/releases" target="_blank" rel="noopener">前往 Releases 下载</a>
+          <p style="margin:8px 0 16px">x64 — exe and msi installers available.</p>
+          <a class="btn btn-primary" href="https://github.com/flyxl/datazen/releases" target="_blank" rel="noopener">Download from Releases</a>
         </div>
       </div>
       <p class="muted mt-2" style="font-size:13px">
-        所有安装包：<a href="https://github.com/flyxl/datazen/releases" target="_blank" rel="noopener">github.com/flyxl/datazen/releases</a>
+        All installers: <a href="https://github.com/flyxl/datazen/releases" target="_blank" rel="noopener">github.com/flyxl/datazen/releases</a>
       </p>
     </div>
   </section>
 
   <section class="section-tight">
     <div class="wrap">
-      <h2 style="font-size:24px;margin-bottom:16px">安装说明</h2>
+      <h2 style="font-size:24px;margin-bottom:16px">Installation notes</h2>
       <div class="steps">
         <div class="step">
-          <div><h4>macOS 首次打开</h4>
-          <p>应用未经 Apple 公证，首次打开若提示「已损坏」或「无法验证」，请执行：</p>
+          <div><h4>First launch on macOS</h4>
+          <p>The app is not Apple-notarized. If macOS shows "damaged" or "cannot verify" on first open, run:</p>
           <pre><code>xattr -cr /Applications/DataZen.app</code></pre>
-          <p>或右键应用 → 打开 → 在弹出的对话框中点击「打开」。</p></div>
+          <p>Or right-click the app → Open → click "Open" in the dialog.</p></div>
         </div>
         <div class="step">
           <div><h4>Windows</h4>
-          <p>运行 <code>.exe</code> 安装包或 <code>.msi</code> 安装包即可；SmartScreen 提示时选择「仍要运行」。</p></div>
+          <p>Run the <code>.exe</code> or <code>.msi</code> installer; when SmartScreen warns, choose "Run anyway".</p></div>
         </div>
         <div class="step">
-          <div><h4>连接你的数据库</h4>
-          <p>启动后点击「新建连接」，选择数据库类型并填写地址；支持 PostgreSQL、MySQL / MariaDB、SQLite、Redis 以及插件驱动。</p></div>
+          <div><h4>Connect your database</h4>
+          <p>After launch, click "New Connection", choose a database type, and enter host details. Supports PostgreSQL, MySQL / MariaDB, SQLite, Redis, and plugin drivers.</p></div>
         </div>
       </div>
     </div>
@@ -65,13 +80,13 @@
 
   <section class="section-tight">
     <div class="wrap">
-      <h2 style="font-size:24px;margin-bottom:16px">运行环境</h2>
+      <h2 style="font-size:24px;margin-bottom:16px">System requirements</h2>
       <table class="tbl">
-        <tr><th>项目</th><th>要求</th></tr>
-        <tr><td>macOS</td><td>10.15 及以上（Apple Silicon / Intel）</td></tr>
-        <tr><td>Windows</td><td>Windows 10 / 11（x64）</td></tr>
-        <tr><td>安装包大小</td><td>约 10MB</td></tr>
-        <tr><td>许可证</td><td>GPLv3，源码公开</td></tr>
+        <tr><th>Item</th><th>Requirement</th></tr>
+        <tr><td>macOS</td><td>10.15 or later (Apple Silicon / Intel)</td></tr>
+        <tr><td>Windows</td><td>Windows 10 / 11 (x64)</td></tr>
+        <tr><td>Installer size</td><td>~10MB</td></tr>
+        <tr><td>License</td><td>GPLv3, source available</td></tr>
       </table>
     </div>
   </section>

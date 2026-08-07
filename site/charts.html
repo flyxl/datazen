@@ -1,10 +1,25 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>图表可视化 — DataZen</title>
-  <meta name="description" content="DataZen 图表可视化：查询结果一键切换图表，智能推荐类型，支持折线、柱状、饼图、散点、面积，可导出 PNG / SVG。" />
+  <title>Charts — DataZen</title>
+  <meta name="description" content="DataZen charts: one-click chart view for query results with smart type recommendations. Line, bar, pie, scatter, area. Export PNG/SVG." />
+  <link rel="canonical" href="https://flyxl.github.io/datazen/charts.html" />
+  <link rel="alternate" hreflang="en" href="https://flyxl.github.io/datazen/charts.html" />
+  <link rel="alternate" hreflang="zh-CN" href="https://flyxl.github.io/datazen/zh/charts.html" />
+  <link rel="alternate" hreflang="x-default" href="https://flyxl.github.io/datazen/charts.html" />
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="Charts — DataZen" />
+  <meta property="og:description" content="DataZen charts: one-click chart view for query results with smart type recommendations. Line, bar, pie, scatter, area. Export PNG/SVG." />
+  <meta property="og:url" content="https://flyxl.github.io/datazen/charts.html" />
+  <meta property="og:image" content="https://flyxl.github.io/datazen/assets/screenshots/01-main-window.png" />
+  <meta property="og:locale" content="en_US" />
+  <meta property="og:locale:alternate" content="zh_CN" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Charts — DataZen" />
+  <meta name="twitter:description" content="DataZen charts: one-click chart view for query results with smart type recommendations. Line, bar, pie, scatter, area. Export PNG/SVG." />
+  <meta name="twitter:image" content="https://flyxl.github.io/datazen/assets/screenshots/01-main-window.png" />
   <link rel="icon" href="assets/logo.png" />
   <link rel="stylesheet" href="assets/css/site.css" />
 </head>
@@ -13,70 +28,70 @@
 
   <section class="page-head">
     <div class="wrap">
-      <p class="breadcrumb"><a href="index.html">首页</a> / 图表可视化</p>
-      <h1>📊 图表可视化</h1>
-      <p>查询结果不用导出到 Excel，点一下就从表格变成图。字段类型自动推断、图表智能推荐，数据探索零门槛。</p>
+      <p class="breadcrumb"><a href="index.html">Home</a> / Charts</p>
+      <h1>📊 Charts</h1>
+      <p>No need to export query results to Excel — one click turns a table into a chart. Field types are inferred automatically and chart types are recommended smartly for effortless data exploration.</p>
     </div>
   </section>
 
   <section class="wrap">
     <div class="feature-block">
       <div>
-        <span class="kicker">一键切换</span>
-        <h2>表格 ↔ 图表，零配置</h2>
-        <p>执行查询后，在结果上方一键切到图表视图。首次切换自动运行智能推荐：根据字段类型和行数，给出最合适的图表与坐标轴配置。</p>
+        <span class="kicker">One-Click Switch</span>
+        <h2>Table ↔ chart, zero config</h2>
+        <p>After running a query, switch to chart view with one click above the results. On first switch, smart recommendations run automatically: based on field types and row count, the best chart type and axis configuration are suggested.</p>
         <ul>
-          <li>时间列 + 数值列 → 折线图（时间序列）</li>
-          <li>分类列 + 数值列 → 柱状图 / 饼图（对比与分布）</li>
-          <li>多个数值列 → 散点图（相关性）</li>
-          <li>单个数值列 → 面积图（趋势）</li>
+          <li>Time column + numeric column → line chart (time series)</li>
+          <li>Category column + numeric column → bar / pie chart (comparison and distribution)</li>
+          <li>Multiple numeric columns → scatter plot (correlation)</li>
+          <li>Single numeric column → area chart (trend)</li>
         </ul>
       </div>
-      <img class="feature-shot" src="assets/screenshots/02-query-chart.png" alt="一键切换图表" />
+      <img class="feature-shot" src="assets/screenshots/02-query-chart.png" alt="One-click chart switch" />
     </div>
 
     <div class="feature-block reverse">
       <div>
-        <span class="kicker">五种图表</span>
-        <h2>覆盖常见分析场景</h2>
-        <p>折线、柱状、饼图、散点、面积五种图表类型，轴、聚合方式与分组维度都可配置，工具栏随时调整。</p>
+        <span class="kicker">Five Chart Types</span>
+        <h2>Covers common analysis scenarios</h2>
+        <p>Line, bar, pie, scatter, and area charts — axes, aggregation, and grouping dimensions are all configurable via the toolbar.</p>
         <ul>
-          <li>数值聚合：sum / avg / count / min / max</li>
-          <li>多维度分组：按第二个分类列分系列</li>
-          <li>Tooltip 展示字段名、数值与百分比（饼图）</li>
-          <li>5 套预置调色板 + 暗色主题适配</li>
+          <li>Numeric aggregation: sum / avg / count / min / max</li>
+          <li>Multi-dimension grouping: series by a second category column</li>
+          <li>Tooltips show field names, values, and percentages (pie charts)</li>
+          <li>5 preset color palettes + dark theme support</li>
         </ul>
       </div>
-      <img class="feature-shot" src="assets/screenshots/10-chart-types.png" alt="多种图表类型" />
+      <img class="feature-shot" src="assets/screenshots/10-chart-types.png" alt="Multiple chart types" />
     </div>
 
     <div class="feature-block">
       <div>
-        <span class="kicker">导出与复用</span>
-        <h2>结果带走，汇报无忧</h2>
-        <p>图表可以导出为高清 PNG 或矢量 SVG，直接用于文档、PPT 与报表。图表配置按查询记忆，切回表格再切回来也不丢。</p>
+        <span class="kicker">Export &amp; Reuse</span>
+        <h2>Take results with you</h2>
+        <p>Export charts as high-resolution PNG or vector SVG — ready for documents, slides, and reports. Chart configuration is remembered per query; switch back to table and return without losing settings.</p>
         <ul>
-          <li>PNG（含暗色背景）/ SVG 两种导出格式</li>
-          <li>图表配置随查询持久化记忆</li>
-          <li>Workflow 步骤结果同样支持图表化</li>
+          <li>PNG (with dark background) / SVG export formats</li>
+          <li>Chart config persisted per query</li>
+          <li>Workflow step results also support charting</li>
         </ul>
       </div>
-      <img class="feature-shot" src="assets/screenshots/11-chart-export.png" alt="图表导出" />
+      <img class="feature-shot" src="assets/screenshots/11-chart-export.png" alt="Chart export" />
     </div>
   </section>
 
   <section class="section">
     <div class="wrap">
-      <h2 style="font-size:26px;margin-bottom:20px">图表类型速览</h2>
+      <h2 style="font-size:26px;margin-bottom:20px">Chart types at a glance</h2>
       <div class="grid-4">
-        <div class="card"><div class="icon">📈</div><h3>折线图</h3><p>时间序列趋势，多条数值列对比。</p></div>
-        <div class="card"><div class="icon">📊</div><h3>柱状图</h3><p>分类对比，支持分组与堆叠式探索。</p></div>
-        <div class="card"><div class="icon">🥧</div><h3>饼图</h3><p>占比分布，小样本分类一目了然。</p></div>
-        <div class="card"><div class="icon">✨</div><h3>散点 / 面积</h3><p>相关性分析 / 单值趋势。</p></div>
+        <div class="card"><div class="icon">📈</div><h3>Line</h3><p>Time series trends; compare multiple numeric columns.</p></div>
+        <div class="card"><div class="icon">📊</div><h3>Bar</h3><p>Category comparison; supports grouping and stacked exploration.</p></div>
+        <div class="card"><div class="icon">🥧</div><h3>Pie</h3><p>Proportion distribution; small category sets at a glance.</p></div>
+        <div class="card"><div class="icon">✨</div><h3>Scatter / Area</h3><p>Correlation analysis / single-value trends.</p></div>
       </div>
       <div class="callout">
-        <strong>设计取舍：</strong>图表基于 Recharts 构建，轻量且与 React 风格一致；
-        相比 ECharts（约 400KB）只引入必要的渲染能力，保证应用依然轻快。
+        <strong>Design trade-off:</strong> charts are built on Recharts — lightweight and consistent with React;
+        compared to ECharts (~400KB), only the necessary rendering capabilities are included to keep the app fast.
       </div>
     </div>
   </section>
