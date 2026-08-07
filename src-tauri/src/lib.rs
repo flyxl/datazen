@@ -158,9 +158,7 @@ fn setup_menu(
 }
 
 fn resolve_log_settings() -> (String, PathBuf) {
-    let data_dir = dirs::data_dir()
-        .map(|d| d.join("com.tbeasy.datazen"))
-        .unwrap_or_else(|| PathBuf::from("."));
+    let data_dir = store::Store::default_app_data_dir().unwrap_or_else(|_| PathBuf::from("."));
 
     let settings_path = data_dir.join("settings.json");
 
@@ -325,9 +323,7 @@ pub fn run_mcp_stdio() {
         .expect("Failed to create tokio runtime");
 
     rt.block_on(async {
-        let data_dir = dirs::data_dir()
-            .expect("Cannot determine data dir")
-            .join("com.datazen.app");
+        let data_dir = Store::default_app_data_dir().expect("Cannot determine data dir");
         let store = Arc::new(
             Store::init_with_path(&data_dir).await.expect("Failed to init store"),
         );

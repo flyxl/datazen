@@ -149,6 +149,9 @@ struct StoreCache {
     ai_config_loaded: bool,
 }
 
+/// Bundle identifier — must match `tauri.conf.json` `"identifier"`.
+pub const APP_IDENTIFIER: &str = "com.tbeasy.datazen";
+
 /// Encrypted JSON store rooted at the per-app data directory.
 pub struct Store {
     data_dir: PathBuf,
@@ -177,6 +180,14 @@ pub enum StoreError {
 impl Store {
     pub fn data_dir(&self) -> &PathBuf {
         &self.data_dir
+    }
+
+    /// Default app data directory for headless entry points (MCP stdio, early logging).
+    /// Matches Tauri `app_data_dir()` for the configured bundle identifier.
+    pub fn default_app_data_dir() -> Result<PathBuf, StoreError> {
+        dirs::data_dir()
+            .map(|d| d.join(APP_IDENTIFIER))
+            .ok_or_else(|| StoreError::InitError("Cannot determine data dir".into()))
     }
 
     pub async fn init(app_handle: &tauri::AppHandle) -> Result<Self, StoreError> {
@@ -877,6 +888,25 @@ mod tests {
         let ssh = loaded[0].ssh_tunnel.as_ref().unwrap();
         assert_eq!(ssh.password.as_deref(), Some("ssh-secret-password"));
         assert_eq!(ssh.passphrase.as_deref(), Some("key-passphrase"));
+    }
+
+    #[test]
+    fn default_app_data_dir_uses_bundle_identifier() {
+        let dir = Store::default_app_data_dir().unwrap();
+        assert!(
+            dir.ends_with(APP_IDENTIFIER),
+            "expected path ending with {APP_IDENTIFIER}, got {}",
+            dir.display()
+        );
+    }
+
+    #[test]
+    fn default_app_data_dir_matches_resolve_log_settings_path() {
+        let store_dir = Store::default_app_data_dir().unwrap();
+        let log_dir = dirs::data_dir()
+            .map(|d| d.join(APP_IDENTIFIER))
+            .expect("data dir");
+        assert_eq!(store_dir, log_dir);
     }
 
     #[test]
