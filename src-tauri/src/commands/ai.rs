@@ -1229,7 +1229,7 @@ fn strip_markdown_fences(s: &str) -> String {
 #[tauri::command]
 pub async fn workflow_list(
     state: State<'_, AppState>,
-) -> Result<Vec<crate::mcp::WorkflowListItem>, CommandError> {
+) -> Result<Vec<crate::workflow::WorkflowListItem>, CommandError> {
     Ok(state.workflow_registry.list().await)
 }
 
@@ -1239,14 +1239,14 @@ pub async fn workflow_execute(
     workflow_id: String,
     variables: serde_json::Value,
     connection_id: Option<String>,
-) -> Result<crate::mcp::WorkflowExecutionResult, CommandError> {
+) -> Result<crate::workflow::WorkflowExecutionResult, CommandError> {
     let workflow = state
         .workflow_registry
         .get(&workflow_id)
         .await
         .ok_or_else(|| CommandError::NotFound(format!("Workflow '{workflow_id}' not found")))?;
 
-    let result = crate::mcp::WorkflowExecutor::execute(
+    let result = crate::workflow::WorkflowExecutor::execute(
         &workflow,
         &state,
         connection_id.as_deref(),
@@ -1269,7 +1269,7 @@ pub async fn workflow_execute(
 #[tauri::command]
 pub async fn workflow_save(
     state: State<'_, AppState>,
-    workflow: crate::mcp::WorkflowDefinition,
+    workflow: crate::workflow::WorkflowDefinition,
 ) -> Result<(), CommandError> {
     state
         .workflow_registry
@@ -1314,7 +1314,7 @@ pub async fn workflow_get_dir(
 pub async fn workflow_get(
     state: State<'_, AppState>,
     workflow_id: String,
-) -> Result<crate::mcp::WorkflowDefinition, CommandError> {
+) -> Result<crate::workflow::WorkflowDefinition, CommandError> {
     state
         .workflow_registry
         .get(&workflow_id)
@@ -1328,7 +1328,7 @@ pub async fn workflow_get(
 pub async fn workflow_history_list(
     state: State<'_, AppState>,
     workflow_id: Option<String>,
-) -> Result<Vec<crate::mcp::workflow_history::HistoryListItem>, CommandError> {
+) -> Result<Vec<crate::workflow::HistoryListItem>, CommandError> {
     Ok(state.workflow_history.list(workflow_id.as_deref()).await)
 }
 
@@ -1336,7 +1336,7 @@ pub async fn workflow_history_list(
 pub async fn workflow_history_get(
     state: State<'_, AppState>,
     history_id: String,
-) -> Result<crate::mcp::workflow_history::HistoryEntry, CommandError> {
+) -> Result<crate::workflow::HistoryEntry, CommandError> {
     state
         .workflow_history
         .get(&history_id)
