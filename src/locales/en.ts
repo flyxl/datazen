@@ -109,11 +109,14 @@ const en: Record<TranslationKey, string> = {
   'action.importConfig': 'Import App Data…',
 
   // ── Config Import / Export ──
-  'appData.exportSuccess': 'App data exported successfully. The encryption key is not included; saved passwords can only be decrypted on a machine that already has the same app data key.',
+  'appData.exportSuccess': 'App data exported successfully. The encryption key is not included in the ZIP — back it up separately if you need to decrypt saved passwords on another machine.',
   'appData.exportFailed': 'Export failed',
   'appData.importConfirmTitle': 'Import App Data',
   'appData.importConfirmMessage': 'This will overwrite all application data. Existing log files will be preserved. Backups do not include the encryption key — passwords remain usable only when restoring on this machine (or one with the same key). Continue?',
   'appData.importFailed': 'Import failed',
+  'appData.backupKeyTitle': 'Back Up Encryption Key',
+  'appData.backupKeyMessage': 'Save a copy of your encryption key now? Store it securely; you will need it to decrypt saved passwords after restoring on another machine.',
+  'appData.backupKeySaved': 'Encryption key saved.',
 
   // ── Connection Item / Card ──
   'conn.connected': 'Connected',

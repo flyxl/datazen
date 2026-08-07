@@ -470,6 +470,7 @@ pub fn run() {
             commands::export_app_data_with_dialog,
             commands::import_app_data,
             commands::import_app_data_with_dialog,
+            commands::save_encryption_key_with_dialog,
             commands::restart_app,
             commands::write_file,
             commands::write_file_base64,

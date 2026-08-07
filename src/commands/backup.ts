@@ -16,5 +16,8 @@ export const backupCommands = {
       confirmMessage,
     }),
 
+  saveEncryptionKeyWithDialog: (defaultFileName: string) =>
+    invoke<boolean>('save_encryption_key_with_dialog', { defaultFileName }),
+
   restartApp: () => invoke<void>('restart_app'),
 };

@@ -33,4 +33,14 @@ describe('path IPC frontend wiring', () => {
     expect(src).toContain("'adb_pull_database_with_dialog'");
     expect(src).toContain('adbPullDatabaseWithDialog');
   });
+
+  it('backup command wrapper exposes encryption key dialog IPC', () => {
+    const backup = readSrc('commands/backup.ts');
+    expect(backup).toContain("'save_encryption_key_with_dialog'");
+    expect(backup).toContain('saveEncryptionKeyWithDialog');
+
+    const main = readSrc('windows/main/MainWindow.tsx');
+    expect(main).toContain('saveEncryptionKeyWithDialog');
+    expect(main).toContain('appData.backupKeyTitle');
+  });
 });
