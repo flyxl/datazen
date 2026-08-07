@@ -1,7 +1,7 @@
 //! Pure helpers for exporting/importing the application data directory as ZIP.
 
 use std::fs::{self, File};
-use std::io::{copy, Write};
+use std::io::{copy, Read, Write};
 use std::path::{Component, Path, PathBuf};
 
 use zip::write::SimpleFileOptions;
@@ -120,12 +120,158 @@ pub fn validate_zip_entry_path(name: &str) -> std::io::Result<PathBuf> {
     Ok(path)
 }
 
+/// Maximum total uncompressed bytes allowed when extracting app-data ZIP archives.
+pub const MAX_UNCOMPRESSED_BYTES: u64 = 512 * 1024 * 1024;
+
+/// Reject when `uncompressed / compressed` exceeds this value (per entry or globally).
+pub const MAX_COMPRESSION_RATIO: u64 = 100;
+
+/// Maximum number of entries in an app-data ZIP archive.
+pub const MAX_ZIP_ENTRIES: usize = 100_000;
+
+#[derive(Clone, Copy, Debug)]
+struct ZipExtractLimits {
+    max_uncompressed_bytes: u64,
+    max_compression_ratio: u64,
+    max_entries: usize,
+}
+
+impl Default for ZipExtractLimits {
+    fn default() -> Self {
+        Self {
+            max_uncompressed_bytes: MAX_UNCOMPRESSED_BYTES,
+            max_compression_ratio: MAX_COMPRESSION_RATIO,
+            max_entries: MAX_ZIP_ENTRIES,
+        }
+    }
+}
+
+fn zip_bomb_err(message: impl Into<String>) -> std::io::Error {
+    std::io::Error::new(std::io::ErrorKind::InvalidData, message.into())
+}
+
+fn ratio_exceeds_limit(uncompressed: u64, compressed: u64, max_ratio: u64) -> bool {
+    if compressed == 0 {
+        return uncompressed > 0;
+    }
+    (uncompressed as u128) > (compressed as u128) * max_ratio as u128
+}
+
+fn check_compression_ratio(
+    uncompressed: u64,
+    compressed: u64,
+    max_ratio: u64,
+    context: &str,
+) -> std::io::Result<()> {
+    if ratio_exceeds_limit(uncompressed, compressed, max_ratio) {
+        return Err(zip_bomb_err(format!(
+            "zip bomb: compression ratio exceeded ({context})"
+        )));
+    }
+    Ok(())
+}
+
+fn check_uncompressed_total(total: u64, max_bytes: u64) -> std::io::Result<()> {
+    if total > max_bytes {
+        return Err(zip_bomb_err(format!(
+            "zip bomb: uncompressed size limit exceeded ({total} > {max_bytes})"
+        )));
+    }
+    Ok(())
+}
+
+struct LimitedZipReader<'a, R: Read> {
+    inner: R,
+    entry_remaining: u64,
+    total_written: &'a mut u64,
+    max_uncompressed_bytes: u64,
+}
+
+impl<R: Read> Read for LimitedZipReader<'_, R> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let n = self.inner.read(buf)?;
+        if n == 0 {
+            return Ok(0);
+        }
+
+        let n = n as u64;
+        *self.total_written = self.total_written.checked_add(n).ok_or_else(|| {
+            zip_bomb_err("zip bomb: uncompressed size limit exceeded (overflow)")
+        })?;
+        check_uncompressed_total(*self.total_written, self.max_uncompressed_bytes)?;
+
+        if n > self.entry_remaining {
+            return Err(zip_bomb_err(format!(
+                "zip bomb: entry exceeded declared uncompressed size ({n} bytes over limit)"
+            )));
+        }
+        self.entry_remaining -= n;
+        Ok(n as usize)
+    }
+}
+
 fn extract_zip_to_dir(zip_path: &Path, dest: &Path) -> std::io::Result<()> {
+    extract_zip_to_dir_with_limits(zip_path, dest, ZipExtractLimits::default())
+}
+
+fn extract_zip_to_dir_with_limits(
+    zip_path: &Path,
+    dest: &Path,
+    limits: ZipExtractLimits,
+) -> std::io::Result<()> {
     fs::create_dir_all(dest)?;
     let file = File::open(zip_path)?;
     let mut archive = ZipArchive::new(file)?;
 
-    for i in 0..archive.len() {
+    let entry_count = archive.len();
+    if entry_count > limits.max_entries {
+        return Err(zip_bomb_err(format!(
+            "zip bomb: too many entries ({entry_count} > {})",
+            limits.max_entries
+        )));
+    }
+
+    let mut total_uncompressed: u64 = 0;
+    let mut total_compressed: u64 = 0;
+
+    for i in 0..entry_count {
+        let entry = archive.by_index(i)?;
+        let entry_name = entry.name().to_string();
+        let is_dir = entry_name.ends_with('/') || entry.is_dir();
+
+        if !is_dir {
+            let uncompressed = entry.size();
+            let compressed = entry.compressed_size();
+
+            check_compression_ratio(
+                uncompressed,
+                compressed,
+                limits.max_compression_ratio,
+                &format!("entry `{entry_name}`"),
+            )?;
+
+            total_uncompressed = total_uncompressed.checked_add(uncompressed).ok_or_else(|| {
+                zip_bomb_err("zip bomb: uncompressed size limit exceeded (overflow)")
+            })?;
+            total_compressed = total_compressed.checked_add(compressed).ok_or_else(|| {
+                zip_bomb_err("zip bomb: compressed size overflow")
+            })?;
+            check_uncompressed_total(total_uncompressed, limits.max_uncompressed_bytes)?;
+        }
+    }
+
+    if total_compressed > 0 {
+        check_compression_ratio(
+            total_uncompressed,
+            total_compressed,
+            limits.max_compression_ratio,
+            "archive total",
+        )?;
+    }
+
+    let mut bytes_written: u64 = 0;
+
+    for i in 0..entry_count {
         let mut entry = archive.by_index(i)?;
         let entry_name = entry.name().to_string();
         let rel = validate_zip_entry_path(&entry_name)?;
@@ -138,9 +284,17 @@ fn extract_zip_to_dir(zip_path: &Path, dest: &Path) -> std::io::Result<()> {
                 fs::create_dir_all(parent)?;
             }
             let mut out_file = File::create(&out_path)?;
-            copy(&mut entry, &mut out_file)?;
+            let entry_size = entry.size();
+            let mut limited = LimitedZipReader {
+                inner: &mut entry,
+                entry_remaining: entry_size,
+                total_written: &mut bytes_written,
+                max_uncompressed_bytes: limits.max_uncompressed_bytes,
+            };
+            copy(&mut limited, &mut out_file)?;
         }
     }
+
     Ok(())
 }
 
@@ -674,5 +828,133 @@ mod tests {
         import_app_data(target.path(), &zip_path).unwrap();
         assert!(target.path().join("keep.json").exists());
         assert!(!target.path().join("drop.tmp").exists());
+    }
+
+    fn write_zero_payload_zip(zip_path: &Path, entry_name: &str, zero_bytes: usize) {
+        let file = File::create(zip_path).unwrap();
+        let mut zip = ZipWriter::new(file);
+        let options =
+            SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+        zip.start_file(entry_name, options).unwrap();
+        zip.write_all(&vec![0u8; zero_bytes]).unwrap();
+        zip.finish().unwrap();
+    }
+
+    #[test]
+    fn rejects_zip_bomb_high_compression_ratio() {
+        let dir = TempDir::new().unwrap();
+        let zip_path = dir.path().join("ratio-bomb.zip");
+        // Highly compressible payload; ratio far above MAX_COMPRESSION_RATIO (100).
+        write_zero_payload_zip(&zip_path, "bomb.bin", 512 * 1024);
+
+        let dest = TempDir::new().unwrap();
+        let err = extract_zip_to_dir(&zip_path, dest.path()).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("zip bomb") && msg.contains("ratio"),
+            "unexpected error: {msg}"
+        );
+    }
+
+    #[test]
+    fn rejects_zip_bomb_uncompressed_size_limit() {
+        let dir = TempDir::new().unwrap();
+        let zip_path = dir.path().join("size-bomb.zip");
+        {
+            let file = File::create(&zip_path).unwrap();
+            let mut zip = ZipWriter::new(file);
+            let options =
+                SimpleFileOptions::default().compression_method(CompressionMethod::Stored);
+            zip.start_file("big.bin", options).unwrap();
+            zip.write_all(&vec![b'a'; 64 * 1024]).unwrap();
+            zip.finish().unwrap();
+        }
+
+        let dest = TempDir::new().unwrap();
+        let limits = ZipExtractLimits {
+            max_uncompressed_bytes: 32 * 1024,
+            max_compression_ratio: MAX_COMPRESSION_RATIO,
+            max_entries: MAX_ZIP_ENTRIES,
+        };
+        let err = extract_zip_to_dir_with_limits(&zip_path, dest.path(), limits).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("zip bomb") && msg.contains("uncompressed size limit"),
+            "unexpected error: {msg}"
+        );
+    }
+
+    #[test]
+    fn rejects_zip_bomb_too_many_entries() {
+        let dir = TempDir::new().unwrap();
+        let zip_path = dir.path().join("many-entries.zip");
+        {
+            let file = File::create(&zip_path).unwrap();
+            let mut zip = ZipWriter::new(file);
+            let options =
+                SimpleFileOptions::default().compression_method(CompressionMethod::Stored);
+            for i in 0..5 {
+                zip.start_file(format!("file{i}.txt"), options)
+                    .unwrap();
+                zip.write_all(b"x").unwrap();
+            }
+            zip.finish().unwrap();
+        }
+
+        let dest = TempDir::new().unwrap();
+        let limits = ZipExtractLimits {
+            max_uncompressed_bytes: MAX_UNCOMPRESSED_BYTES,
+            max_compression_ratio: MAX_COMPRESSION_RATIO,
+            max_entries: 4,
+        };
+        let err = extract_zip_to_dir_with_limits(&zip_path, dest.path(), limits).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("zip bomb") && msg.contains("too many entries"),
+            "unexpected error: {msg}"
+        );
+    }
+
+    #[test]
+    fn normal_small_backup_imports_after_zip_bomb_checks() {
+        let source = TempDir::new().unwrap();
+        write_file(source.path(), "connections.json", r#"{"connections":[]}"#);
+        write_file(source.path(), "settings.json", r#"{"theme":"dark"}"#);
+        write_file(source.path(), "workflows/daily.yaml", "id: daily\n");
+
+        let out = TempDir::new().unwrap();
+        let zip_path = out.path().join("backup.zip");
+        export_app_data(source.path(), &zip_path).unwrap();
+
+        let target = TempDir::new().unwrap();
+        import_app_data(target.path(), &zip_path).unwrap();
+
+        assert!(target.path().join("connections.json").exists());
+        assert!(target.path().join("settings.json").exists());
+        assert_eq!(
+            fs::read_to_string(target.path().join("workflows/daily.yaml")).unwrap(),
+            "id: daily\n"
+        );
+    }
+
+    #[test]
+    fn import_rejects_zip_bomb_via_import_app_data() {
+        let dir = TempDir::new().unwrap();
+        let zip_path = dir.path().join("ratio-bomb.zip");
+        write_zero_payload_zip(&zip_path, "bomb.bin", 512 * 1024);
+
+        let target = TempDir::new().unwrap();
+        write_file(target.path(), "keep.json", "unchanged");
+
+        let err = import_app_data(target.path(), &zip_path).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("zip bomb") && msg.contains("ratio"),
+            "unexpected error: {msg}"
+        );
+        assert_eq!(
+            fs::read_to_string(target.path().join("keep.json")).unwrap(),
+            "unchanged"
+        );
     }
 }

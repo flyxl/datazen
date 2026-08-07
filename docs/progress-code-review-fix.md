@@ -13,8 +13,8 @@
 | S3 | SSH known_hosts / TOFU | ⬜ | ⬜ | ⬜ | ⬜ |
 | S4 | SSH 密码加密存储 | ⬜ | ⬜ | ⬜ | ⬜ |
 | S5 | 路径 IPC 收紧 | ✅ 先行 | ✅ | ✅ path-ipc E2E | ⬜（随后续提交） |
-| S6 | ZIP 炸弹防护 | ⬜ | ⬜ | ⬜ | ⬜ |
-| S7 | MCP query 默认/硬顶 | ⬜ | ⬜ | ⬜ | ⬜ |
+| S6 | ZIP 炸弹防护 | ✅ | ✅ 24 lib | ✅ unit+E2E | ✅ |
+| S7 | MCP query 默认/硬顶 | ✅ | ✅ resolve_query_limit | ✅ unit | ✅ |
 | C1 | MCP/GUI data dir 统一 | ⬜ | ⬜ | ⬜ | ⬜ |
 | C2 | 语系真翻译或 beta | ⬜ | ⬜ | ⬜ | ⬜ |
 | C3 | Pro 文案与插件矩阵对齐 | ⬜ | ⬜ | ⬜ | ⬜ |
@@ -57,6 +57,18 @@
 - **测试 Agent**：PASS（unit + app-data-backup 8/8）
 - **Bug**：无
 - **提交**：本提交
+
+### S6 — ZIP 炸弹防护
+
+- **实现**：512MiB 未压缩上限、压缩比 100、条目数 10 万；预扫描 + 流式限流
+- **测试 Agent**：PASS（24 unit + app-data-backup 8/8）
+- **提交**：本系列提交
+
+### S7 — MCP query 默认/硬顶
+
+- **实现**：`resolve_query_limit`：None→100，硬顶 50000；工具描述同步
+- **测试 Agent**：PASS（3 unit）
+- **提交**：本系列提交
 
 ### S3 — （待填）
 
