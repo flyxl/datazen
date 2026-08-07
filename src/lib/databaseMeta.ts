@@ -44,7 +44,7 @@ export interface DatabaseTypeMeta {
   sqlDialect?: string;
   /** How the "database" field behaves in the connection form */
   databaseFieldType: 'name' | 'path' | 'index';
-  /** Whether the schema tree supports multiple databases/instances (e.g. Kiwi) */
+  /** Driver capability: schema tree can browse multiple databases (MySQL/MariaDB/PostgreSQL/Kiwi). Session UI uses hasMultiDatabase && databases.length > 1. */
   hasMultiDatabase?: boolean;
   /** Default page size for table data; unset uses per-table or global default */
   defaultPageSize?: number;

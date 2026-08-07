@@ -17,11 +17,22 @@
 
 | ID | 功能 | 状态 | 提交 |
 |----|------|------|------|
-| F1 | MySQL/MariaDB 实现 `use_database` + Rust 单元测试 | ✅ implemented（unit + gated live IT） | — |
-| F2 | 前端会话级多库（mysql/mariadb）：registry、schemaStore、SchemaTree、QueryPanel、WorkflowPanel + Vitest + E2E spec | ✅ implemented + tested | — |
-| F3 | PostgreSQL：`get_tables` 尊重 database + `use_database` + Rust 单元测试 | ✅ implemented（unit + gated live IT） | — |
-| F4 | 前端启用 postgresql 多库能力 + Vitest + E2E | ✅ implemented + tested | — |
-| F5 | 更新必要文档并提交 | ⬜ pending | — |
+| F1 | MySQL/MariaDB 实现 `use_database` + Rust 单元测试 | ✅ PASS | `892be3d` |
+| F2 | 前端会话级多库（mysql/mariadb）：registry、schemaStore、SchemaTree、QueryPanel、WorkflowPanel + Vitest + E2E spec | ✅ PASS | `cf2e8b2` |
+| F3 | PostgreSQL：`get_tables` 尊重 database + `use_database` + Rust 单元测试 | ✅ PASS | `a418720` |
+| F4 | 前端启用 postgresql 多库能力 + Vitest + E2E | ✅ PASS | `9822d89` |
+| F5 | 更新必要文档 | ✅ done | —（随本分支一并提交） |
+
+## F1–F4 结论摘要
+
+| ID | Commit | 测试结论 |
+|----|--------|----------|
+| F1 | `892be3d` feat(mysql): implement session use_database with gated IT | **PASS** — unit 12 + gated live IT（见 [f1-test](./progress-multi-database-session-f1-test.md)） |
+| F2 | `cf2e8b2` feat(ui): session multi-database tree for MySQL/MariaDB | **PASS** — Vitest 20/20 + E2E 3/3（见 [f2-test](./progress-multi-database-session-f2-test.md)） |
+| F3 | `a418720` feat(postgres): multi-database get_tables and use_database | **PASS** — unit 5/5 + gated IT skip/live（见 [f3-test](./progress-multi-database-session-f3-test.md)） |
+| F4 | `9822d89` feat(ui): enable PostgreSQL session multi-database tree | **PASS** — Vitest 21/21 + E2E 3/3（见 [f4-test](./progress-multi-database-session-f4-test.md)） |
+
+**行为要点（已落地）：** `hasMultiDatabase` 为驱动能力；会话 `isMultiDatabase = hasMultiDatabase && databases.length > 1`；未配置 / 已配置 database 均列出可见库；MySQL/MariaDB/PostgreSQL 切库经 `use_database`；SchemaTree 在能力开启时走 `MultiDatabaseSchemaTree`。
 
 ## 测试记录索引
 
@@ -33,6 +44,13 @@
 | F4 | test-agent (fresh) | [progress-multi-database-session-f4-test.md](./progress-multi-database-session-f4-test.md) | **PASS** (Vitest 21/21 + E2E 3/3) |
 
 ## 变更日志
+
+### 2026-08-07 — F5 文档
+
+- 进度表 F1–F5 标为完成，并写入 F1–F4 commit SHA + 测试结论摘要
+- `AGENTS.md`：前端约定补充会话级多库 / `use_database`
+- `docs/architecture/frontend/extensibility.md`：`hasMultiDatabase` 说明改为能力标志 + 会话公式（非仅 Kiwi）
+- `src/lib/databaseMeta.ts`：`hasMultiDatabase` 注释去掉 Kiwi-only 措辞
 
 ### 2026-08-07 — F4 全量测试通过（fresh test-agent）
 
