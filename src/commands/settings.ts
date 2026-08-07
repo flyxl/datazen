@@ -4,8 +4,6 @@ import type { AppSettings } from '../types';
 export const settingsCommands = {
   getSettings: () => invoke<AppSettings>('get_settings'),
 
-  getSystemUiLanguage: () => invoke<string>('get_system_ui_language'),
-
   saveSettings: (settings: AppSettings) =>
     invoke<void>('save_settings', { settings }),
 
