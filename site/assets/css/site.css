@@ -213,7 +213,6 @@ pre code { background: none; padding: 0; color: inherit; }
 .footer .copy { border-top: 1px solid var(--border); padding-top: 20px; font-size: 13px; }
 @media (max-width: 700px) { .footer-grid { grid-template-columns: 1fr; } }
 
-/* ---------- Video ---------- */
 /* ---------- Misc ---------- */
 .center { text-align: center; }
 .mt-2 { margin-top: 20px; } .mt-4 { margin-top: 40px; }
