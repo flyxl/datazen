@@ -12,40 +12,19 @@ jobs:
       contents: write
     strategy:
       fail-fast: false
+      # One job per platform (parallel across platforms).
+      # Within each job: base then Pro, so Pro reuses the same runner target/ tree.
       matrix:
         include:
-          # ── 基础版（仅内置驱动：PostgreSQL, MySQL, SQLite, Redis）──
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
             os_label: windows-x64
-            plugins: "none"
-            variant_suffix: ""
           - platform: macos-latest
             target: aarch64-apple-darwin
             os_label: macos-arm64
-            plugins: "none"
-            variant_suffix: ""
           - platform: macos-latest
             target: x86_64-apple-darwin
             os_label: macos-x64
-            plugins: "none"
-            variant_suffix: ""
-          # ── Pro 版（内置驱动 + Kiwi + Superset）──
-          - platform: windows-latest
-            target: x86_64-pc-windows-msvc
-            os_label: windows-x64
-            plugins: "kiwi,superset"
-            variant_suffix: "-pro"
-          - platform: macos-latest
-            target: aarch64-apple-darwin
-            os_label: macos-arm64
-            plugins: "kiwi,superset"
-            variant_suffix: "-pro"
-          - platform: macos-latest
-            target: x86_64-apple-darwin
-            os_label: macos-x64
-            plugins: "kiwi,superset"
-            variant_suffix: "-pro"
 
     runs-on: ${{ matrix.platform }}
 
@@ -95,27 +74,64 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install
 
-      - name: Resolve plugins and build Tauri app
+      - name: Build base variant
         shell: bash
         run: |
-          node scripts/resolve-plugins.mjs --plugins="${{ matrix.plugins }}"
+          set -euo pipefail
+          PLUGINS="none"
+          VARIANT_SUFFIX=""
+          node scripts/resolve-plugins.mjs --plugins="$PLUGINS"
           FEATURES=$(node -e "const f=require('./.plugin-features.json').features; if(f.length) process.stdout.write(f.join(','))")
           if [ -n "$FEATURES" ]; then
             pnpm tauri build --target ${{ matrix.target }} -f "$FEATURES"
           else
             pnpm tauri build --target ${{ matrix.target }}
           fi
+
+          BUNDLE_DIR="target/${{ matrix.target }}/release/bundle"
+          LABEL="${{ matrix.os_label }}${VARIANT_SUFFIX}"
+          mkdir -p artifacts
+          shopt -s nullglob
+          for file in \
+            "$BUNDLE_DIR"/dmg/*.dmg \
+            "$BUNDLE_DIR"/nsis/*.exe \
+            "$BUNDLE_DIR"/msi/*.msi; do
+            [ -f "$file" ] || continue
+            base=$(basename "$file")
+            if [[ "$base" == *.tar.gz ]]; then
+              stem="${base%.tar.gz}"
+              newname="${stem}-${LABEL}.tar.gz"
+            else
+              stem="${base%.*}"
+              ext="${base##*.}"
+              newname="${stem}-${LABEL}.${ext}"
+            fi
+            cp "$file" "artifacts/$newname"
+          done
+          # Avoid labeling leftover base bundles as -pro on the next build.
+          rm -rf "$BUNDLE_DIR"
+          ls -la artifacts/ || true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          DATAZEN_PLUGINS: ${{ matrix.plugins }}
+          DATAZEN_PLUGINS: none
 
-      - name: Rename artifacts with platform and variant label
+      - name: Build Pro variant
         shell: bash
         run: |
-          BUNDLE_DIR="target/${{ matrix.target }}/release/bundle"
-          LABEL="${{ matrix.os_label }}${{ matrix.variant_suffix }}"
-          mkdir -p artifacts
+          set -euo pipefail
+          PLUGINS="kiwi,superset"
+          VARIANT_SUFFIX="-pro"
+          node scripts/resolve-plugins.mjs --plugins="$PLUGINS"
+          FEATURES=$(node -e "const f=require('./.plugin-features.json').features; if(f.length) process.stdout.write(f.join(','))")
+          if [ -n "$FEATURES" ]; then
+            pnpm tauri build --target ${{ matrix.target }} -f "$FEATURES"
+          else
+            pnpm tauri build --target ${{ matrix.target }}
+          fi
 
+          BUNDLE_DIR="target/${{ matrix.target }}/release/bundle"
+          LABEL="${{ matrix.os_label }}${VARIANT_SUFFIX}"
+          mkdir -p artifacts
           shopt -s nullglob
           for file in \
             "$BUNDLE_DIR"/dmg/*.dmg \
@@ -134,6 +150,9 @@ jobs:
             cp "$file" "artifacts/$newname"
           done
           ls -la artifacts/ || true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DATAZEN_PLUGINS: kiwi,superset
 
       - name: Upload artifacts to release
         uses: softprops/action-gh-release@v2
@@ -145,7 +164,7 @@ jobs:
 
             本次发布包含两个版本：
             - **基础版**：内置 PostgreSQL、MySQL、SQLite、Redis 驱动
-            - **Pro 版**（文件名含 `-pro`）：额外包含 Kiwi 云数据库代理
+            - **Pro 版**（文件名含 `-pro`）：额外包含 **Kiwi** 云数据库代理与 **Superset** 数据探索插件（不含 OLAP Presto/Trino；需 `DATAZEN_PLUGINS=all` 或 `--plugins=olap` 单独启用）
 
             ## 安装说明
 
