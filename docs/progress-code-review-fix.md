@@ -35,7 +35,7 @@
 | P5 | splash 等 bootstrap + 错误 i18n | ✅ | ✅ splash 1 | ⬜ | ✅ ba83d87 |
 | C6R | connection_id → config_id 硬切换 | ✅ | ✅ mcp::server | ⬜ | ✅ 9635f73 |
 | S1+ | 导出后提示并另存 `.key` | ✅ | ✅ encryption_key | ⬜ | ✅ 381ceef |
-| ConnShare | 菜单导出/导入连接 + 口令 | ✅ | ✅ config 8 | ⬜ | ⬜ |
+| ConnShare | 菜单导出/导入连接 + 口令 | ✅ | ✅ config 8 | ⬜ | ✅ 4f8d2f3 |
 | P3 | Keychain 主密钥 + 测试 fallback | ⬜ | ⬜ | ⬜ | ⬜ |
 | C2F | 10 语系全量真翻译 | ⬜ | ⬜ | ⬜ | ⬜ |
 
