@@ -33,7 +33,8 @@ datazen/
 │   │   ├── ai/                  # AI（openai, anthropic, deepseek, custom, registry, context, prompt_resolver, protocol/）
 │   │   ├── commands/            # IPC 命令（16 个模块：ai, connection, query, schema, context, mcp 等）
 │   │   ├── db/                  # 驱动（postgres, mysql, sqlite, redis_driver, registry）
-│   │   ├── mcp/                 # MCP Server/Client + Workflows
+│   │   ├── mcp/                 # MCP Server/Client
+│   │   ├── workflow/            # YAML Workflow 引擎与执行历史
 │   │   ├── services/            # ConnectionManager, QueryExecutor, DbTools
 │   │   ├── cache/               # SchemaCache（两级 TTL）
 │   │   ├── store/               # AES-256-GCM 加密持久化
@@ -57,8 +58,10 @@ datazen/
 3. 通过 `inventory` crate 实现链接时自动注册
 
 ```bash
-pnpm tauri:dev                         # 无插件
-pnpm tauri:dev --plugins=kiwi          # 含 kiwi 插件
+pnpm tauri:dev                         # 全部插件（默认）
+pnpm tauri:dev --plugins=none          # 仅内置驱动
+pnpm tauri:dev --plugins=kiwi          # 仅 kiwi 插件
+DATAZEN_PLUGINS=none pnpm tauri:dev    # 环境变量同样生效
 DATAZEN_PLUGINS=all pnpm build         # 全部插件
 ```
 
@@ -79,10 +82,15 @@ DATAZEN_PLUGINS=all pnpm build         # 全部插件
 
 ### MCP
 
-- **Server**（`mcp/server.rs`）：暴露 9 个 Tools + 4 个 Resources + 3 个 Prompts
+- **Server**（`mcp/server.rs`）：暴露 Tools/Resources/Prompts（含 `list_workflows` / `run_workflow` 适配）
 - **Client**（`mcp/client.rs`）：连接外部 MCP Server，供 AI Chat 工具调用
-- **Workflows**（`mcp/workflows.rs`）：YAML 定义，步骤类型 Query/Ai/Condition/ForEach，支持跨库
 - **双模式**：`main.rs` 通过 `--mcp-stdio` 启动无头 MCP 服务器
+
+### Workflows
+
+- **引擎**（`workflow/workflows.rs`）：YAML 定义，步骤类型 Query/Ai/Condition/ForEach，支持跨库
+- **历史**（`workflow/history.rs`）：执行历史持久化
+- **入口**：GUI / `commands/ai.rs` 的 `workflow_*` IPC；MCP 仅作协议适配
 
 ### 前端约定
 
@@ -111,7 +119,7 @@ DATAZEN_PLUGINS=all pnpm build         # 全部插件
 | 路径输入 | `ui/PathInput.tsx` | Tauri Dialog API |
 | AI Chat | `components/ai/AiChatPanel.tsx` | `commands/ai.rs` |
 | @ 上下文 | `components/ai/ContextPicker.tsx` | `commands/context.rs` |
-| Workflows | `windows/workflow/WorkflowWindow.tsx` | `mcp/workflows.rs` |
+| Workflows | `windows/workflow/WorkflowWindow.tsx` | `workflow/workflows.rs` |
 | 数据同步 | `windows/data-sync/` | `sync/` (IR 适配器) |
 
 ## 开发命令
@@ -119,13 +127,33 @@ DATAZEN_PLUGINS=all pnpm build         # 全部插件
 ```bash
 pnpm install                           # 安装依赖
 pnpm dev                               # Vite dev server
-pnpm tauri dev                         # 完整开发（前端 + Rust）
+pnpm tauri:dev                         # 完整开发（默认全部插件；--plugins=none 仅内置）
 pnpm build                             # 构建前端（含 resolve-plugins）
-pnpm tauri build                       # 构建完整应用
+pnpm tauri build                       # 构建完整应用（发布）
 npx vitest run                         # 前端单元测试
-pnpm e2e                               # E2E 测试
 cargo test -p datazen                  # Rust 单元测试
 ```
+
+### E2E 测试（WebdriverIO）
+
+> **完整流程、排错与 Agent 检查清单见 [docs/e2e-testing.md](docs/e2e-testing.md)。**
+
+**硬性要求：**
+
+1. 必须用 **Tauri CLI** 构建：`pnpm tauri build --debug --features webdriver`
+2. **禁止**裸 `cargo build --features webdriver`（常见报错：`asset not found: index.html`）
+3. 必须启用 `webdriver` feature（监听 `127.0.0.1:4445`）
+
+```bash
+pnpm e2e                               # 完整构建（webdriver）+ 跑全部 E2E（推荐首次）
+pnpm e2e:skip-build                    # 跳过构建（仅当已有合格的 webdriver debug 二进制）
+pnpm e2e:skip-build -- --spec e2e/specs/path-ipc-hardening.ts
+pnpm e2e:core                          # 核心 UI（默认 skip-build）
+pnpm e2e:db / e2e:ai / e2e:kiwi        # 分组
+pnpm e2e:i18n-backup / e2e:path-ipc    # 备份·i18n / 路径 IPC
+```
+
+编排脚本：`e2e/run.mjs`。环境变量：复制 `e2e/.env.example` → `e2e/.env`。
 
 ## 代码风格
 
@@ -146,3 +174,4 @@ cargo test -p datazen                  # Rust 单元测试
 - Prompt 模板在 `src-tauri/resources/prompts/{lang}/`，支持用户覆盖
 - 菜单翻译：前端 `src/locales/{zh-CN,en}.ts` 为唯一来源；`scripts/generate-menu-labels.mjs` 生成 `src-tauri/resources/menu-labels.json` 供 Rust 原生菜单使用（`pnpm menu:labels` / build / tauri:dev 自动执行）
 - 日志文件在 `{data_dir}/logs/`
+- E2E：详见 [docs/e2e-testing.md](docs/e2e-testing.md)；禁止用裸 `cargo build` 当 E2E 二进制
