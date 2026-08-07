@@ -165,7 +165,7 @@
 
 - **实现**：de/es/fr/ja/ko/pt-BR/ru 自 en 全量翻译（Google Translate + 手工 override）；zh-TW 自 zh-CN OpenCC 繁化 + 手工修正；`FULLY_TRANSLATED_LOCALES` = 全部 10；`BETA_LOCALES` = []；Settings 语言下拉移除 `(Beta)`；`menu-labels.json` 重新生成
 - **单元测试**：`npx vitest run src/locales/locales.test.ts` — 14 passed（former-beta ratio < 0.35、BETA 空）；`pnpm exec tsc --noEmit` — pass
-- **提交**：待提交
+- **提交**：`85e32f2`
 
 ## 延期 / 范围外
 
