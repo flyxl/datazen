@@ -32,3 +32,11 @@ Workflow 引擎本身在 [`workflow` 模块](./workflow.md)（若尚未拆文档
 - stdio transport 支持（TokioChildProcess）
 - 30s 连接超时保护
 - connect 失败时自动进程清理
+
+### 1.3 连接 ID（config_id vs connection_id）
+
+MCP tools 与 GUI IPC 共用 `ConnectionManager` 语义（详见 [服务层 — 连接 ID 约定](./services.md#连接-id-约定)）：
+
+- **`config_id`**：`connections.json` 中的持久化连接 UUID；`connect` / `list_connections` 使用。
+- **`connection_id`**：`connect` 返回的运行时会话 ID；`query`、`get_schema` 等需已连接会话的工具使用。
+
