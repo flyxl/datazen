@@ -29,6 +29,7 @@ import { ActionPanel } from './ActionPanel';
 import { ConnectionItem } from './ConnectionItem';
 import { backupCommands } from '../../commands/backup';
 import { settingsCommands } from '../../commands/settings';
+import { ConnectionShareDialog, type ConnectionShareMode } from '../../components/connection/ConnectionShareDialog';
 import type { ConnectionConfig } from '../../types';
 
 // ─── Main Window ────────────────────────────────────────────────────
@@ -62,8 +63,14 @@ export function MainWindow() {
   const disconnectAction = useActiveConnectionStore((s) => s.disconnect);
   const activeConnections = useActiveConnectionStore((s) => s.connections);
 
-  const [errorDialogOpen, setErrorDialogOpen] = useState(false);
-  const [errorMessage, setErrorMessage] = useState('');
+  const [messageDialogOpen, setMessageDialogOpen] = useState(false);
+  const [messageDialogText, setMessageDialogText] = useState('');
+  const [messageDialogKind, setMessageDialogKind] = useState<'error' | 'success'>('error');
+  const showMessageDialog = useCallback((text: string, kind: 'error' | 'success') => {
+    setMessageDialogText(text);
+    setMessageDialogKind(kind);
+    setMessageDialogOpen(true);
+  }, []);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
@@ -74,6 +81,9 @@ export function MainWindow() {
   // New group dialog state
   const [newGroupDialogOpen, setNewGroupDialogOpen] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
+
+  const [connShareOpen, setConnShareOpen] = useState(false);
+  const [connShareMode, setConnShareMode] = useState<ConnectionShareMode>('export');
 
   // ── Pointer-based drag state ──
   const [draggingConnId, setDraggingConnId] = useState<string | null>(null);
@@ -93,10 +103,9 @@ export function MainWindow() {
 
   useEffect(() => {
     if (lastError) {
-      setErrorMessage(lastError);
-      setErrorDialogOpen(true);
+      showMessageDialog(lastError, 'error');
     }
-  }, [lastError]);
+  }, [lastError, showMessageDialog]);
 
   // ── Init ──
   useEffect(() => {
@@ -143,7 +152,7 @@ export function MainWindow() {
     listenCrossWindow('datazen:connection-failed', (payload) => {
       const data = payload as { configId?: string; error?: string } | undefined;
       if (data?.configId) {
-        useActiveConnectionStore.getState().markError(data.configId, data?.error ?? 'Unknown error');
+        useActiveConnectionStore.getState().markError(data.configId, data?.error ?? t('backend.unknownError'));
       }
     }).then((fn) => { if (cancelled) fn(); else fns.push(fn); });
     return () => { cancelled = true; fns.forEach((fn) => fn()); };
@@ -162,7 +171,7 @@ export function MainWindow() {
       if (!cancelled) openDataSyncWindow();
     }).then((u) => { if (cancelled) u(); else cleanups.push(u); });
     void listenCrossWindow('menu:view-logs', () => {
-      if (!cancelled) void settingsCommands.getLogPath().then((p) => settingsCommands.openPath(p));
+      if (!cancelled) void settingsCommands.openLogDir();
     }).then((u) => { if (cancelled) u(); else cleanups.push(u); });
     return () => { cancelled = true; cleanups.forEach((fn) => fn()); };
   }, []);
@@ -381,48 +390,83 @@ export function MainWindow() {
   // ── Export / Import app data handlers ──
 
   const handleExportConfig = useCallback(async () => {
+    let saved: boolean;
     try {
-      const { save } = await import('@tauri-apps/plugin-dialog');
       const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-      const path = await save({
-        title: t('action.exportConfig'),
-        defaultPath: `datazen-backup-${date}.zip`,
-        filters: [{ name: 'ZIP', extensions: ['zip'] }],
-      });
-      if (!path) return;
-      await backupCommands.exportAppData(path);
-      setErrorMessage(t('appData.exportSuccess'));
-      setErrorDialogOpen(true);
+      saved = await backupCommands.exportAppDataWithDialog(
+        `datazen-backup-${date}.zip`,
+      );
     } catch (e) {
-      setErrorMessage(e instanceof Error ? e.message : t('appData.exportFailed'));
-      setErrorDialogOpen(true);
+      showMessageDialog(
+        e instanceof Error ? e.message : t('appData.exportFailed'),
+        'error',
+      );
+      return;
     }
-  }, [t]);
+    if (!saved) return;
+    showMessageDialog(t('appData.exportSuccess'), 'success');
+
+    try {
+      const { ask } = await import('@tauri-apps/plugin-dialog');
+      const wantKey = await ask(t('appData.backupKeyMessage'), {
+        title: t('appData.backupKeyTitle'),
+        kind: 'info',
+      });
+      if (wantKey) {
+        const keySaved = await backupCommands.saveEncryptionKeyWithDialog('datazen.key');
+        if (keySaved) {
+          showMessageDialog(t('appData.backupKeySaved'), 'success');
+        }
+      }
+    } catch (e) {
+      showMessageDialog(
+        e instanceof Error ? e.message : t('appData.backupKeyFailed'),
+        'error',
+      );
+    }
+  }, [t, showMessageDialog]);
 
   const handleImportConfig = useCallback(async () => {
     try {
-      const { open, ask } = await import('@tauri-apps/plugin-dialog');
-      const path = await open({
-        title: t('action.importConfig'),
-        filters: [{ name: 'ZIP', extensions: ['zip'] }],
-        multiple: false,
-      });
-      if (!path) return;
-      const filePath = typeof path === 'string' ? path : (path as unknown as string);
-
-      const confirmed = await ask(t('appData.importConfirmMessage'), {
-        title: t('appData.importConfirmTitle'),
-        kind: 'warning',
-      });
-      if (!confirmed) return;
-
-      await backupCommands.importAppData(filePath);
+      const imported = await backupCommands.importAppDataWithDialog(
+        t('appData.importConfirmTitle'),
+        t('appData.importConfirmMessage'),
+      );
+      if (!imported) return;
       await backupCommands.restartApp();
     } catch (e) {
-      setErrorMessage(e instanceof Error ? e.message : t('appData.importFailed'));
-      setErrorDialogOpen(true);
+      showMessageDialog(
+        e instanceof Error ? e.message : t('appData.importFailed'),
+        'error',
+      );
     }
-  }, [t]);
+  }, [t, showMessageDialog]);
+
+  const openConnShare = useCallback((mode: ConnectionShareMode) => {
+    setConnShareMode(mode);
+    setConnShareOpen(true);
+  }, []);
+
+  const handleConnShareExportSuccess = useCallback((count: number) => {
+    showMessageDialog(t('connShare.exportSuccess', { count }), 'success');
+  }, [showMessageDialog, t]);
+
+  const handleConnShareImportSuccess = useCallback(async (result: {
+    imported: number;
+    overwritten: number;
+    groupsAdded: number;
+  }) => {
+    await fetchConnections();
+    await fetchGroups();
+    showMessageDialog(
+      t('connShare.importSuccess', {
+        imported: result.imported,
+        overwritten: result.overwritten,
+        groupsAdded: result.groupsAdded,
+      }),
+      'success',
+    );
+  }, [fetchConnections, fetchGroups, showMessageDialog, t]);
 
   // ── Menu bar events for export/import ──
   useEffect(() => {
@@ -434,24 +478,21 @@ export function MainWindow() {
     void listenCrossWindow('menu:import-config', () => {
       if (!cancelled) void handleImportConfig();
     }).then((u) => { if (cancelled) u(); else cleanups.push(u); });
+    void listenCrossWindow('menu:export-connections', () => {
+      if (!cancelled) openConnShare('export');
+    }).then((u) => { if (cancelled) u(); else cleanups.push(u); });
+    void listenCrossWindow('menu:import-connections', () => {
+      if (!cancelled) openConnShare('import');
+    }).then((u) => { if (cancelled) u(); else cleanups.push(u); });
     return () => { cancelled = true; cleanups.forEach((fn) => fn()); };
-  }, [handleExportConfig, handleImportConfig]);
+  }, [handleExportConfig, handleImportConfig, openConnShare]);
 
   // ── Backup / Restore handlers ──
 
   const handleRestore = useCallback(async () => {
     try {
-      const { open } = await import('@tauri-apps/plugin-dialog');
-      const path = await open({
-        title: t('action.restore'),
-        filters: [{ name: 'SQL Files', extensions: ['sql'] }],
-        multiple: false,
-      });
-      if (!path) return;
-
       if (!selectedId) {
-        setErrorMessage(t('main.restoreFailed'));
-        setErrorDialogOpen(true);
+        showMessageDialog(t('main.restoreFailed'), 'error');
         return;
       }
       const conn = connections.find((c) => c.id === selectedId);
@@ -459,23 +500,20 @@ export function MainWindow() {
 
       const entry = activeConnections[conn.id];
       if (entry?.status !== 'connected' || !entry.connectionId) {
-        setErrorMessage(t('main.restoreFailed'));
-        setErrorDialogOpen(true);
+        showMessageDialog(t('main.restoreFailed'), 'error');
         return;
       }
 
       const { invoke } = await import('@tauri-apps/api/core');
-      await invoke('restore_database', {
+      const restored = await invoke<boolean>('restore_database_with_dialog', {
         connectionId: entry.connectionId,
-        inputPath: typeof path === 'string' ? path : (path as unknown as string),
       });
-      setErrorMessage(t('main.restoreSuccess'));
-      setErrorDialogOpen(true);
+      if (!restored) return;
+      showMessageDialog(t('main.restoreSuccess'), 'success');
     } catch (e) {
-      setErrorMessage(e instanceof Error ? e.message : String(e));
-      setErrorDialogOpen(true);
+      showMessageDialog(e instanceof Error ? e.message : String(e), 'error');
     }
-  }, [selectedId, connections, activeConnections]);
+  }, [selectedId, connections, activeConnections, t, showMessageDialog]);
 
   // ── Blank area context menu ──
 
@@ -689,19 +727,32 @@ export function MainWindow() {
         />
       </Dialog>
 
-      {/* ── Error / info dialog ── */}
+      <ConnectionShareDialog
+        open={connShareOpen}
+        mode={connShareMode}
+        onClose={() => setConnShareOpen(false)}
+        onExportSuccess={handleConnShareExportSuccess}
+        onImportSuccess={(result) => void handleConnShareImportSuccess(result)}
+        onError={(message) => showMessageDialog(message, 'error')}
+      />
+
+      {/* ── Message dialog (success / error) ── */}
       <Dialog
-        open={errorDialogOpen}
-        title={t('common.hint')}
-        onClose={() => setErrorDialogOpen(false)}
+        open={messageDialogOpen}
+        title={
+          messageDialogKind === 'success'
+            ? t('common.success')
+            : t('common.error')
+        }
+        onClose={() => setMessageDialogOpen(false)}
         className="max-w-xs"
         footer={
-          <Button variant="primary" onClick={() => setErrorDialogOpen(false)}>
+          <Button variant="primary" onClick={() => setMessageDialogOpen(false)}>
             {t('common.ok')}
           </Button>
         }
       >
-        <p className="whitespace-pre-wrap break-all text-sm text-fg-secondary">{errorMessage}</p>
+        <p className="whitespace-pre-wrap break-all text-sm text-fg-secondary">{messageDialogText}</p>
       </Dialog>
 
       {/* ── Status bar ── */}

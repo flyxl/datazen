@@ -9,7 +9,7 @@ import type { ConnectionFormState } from './useConnectionForm';
 import {
   adbListPackages,
   adbListDatabases,
-  adbPullDatabase,
+  adbPullDatabaseWithDialog,
   type AdbPackage,
   type AdbDatabaseFile,
 } from '../../commands/adb';
@@ -21,7 +21,6 @@ export function FileConnectionFields({ form }: { form: ConnectionFormState }) {
   const [databases, setDatabases] = useState<AdbDatabaseFile[]>([]);
   const [selectedPackage, setSelectedPackage] = useState('');
   const [selectedDbPath, setSelectedDbPath] = useState('');
-  const [localSavePath, setLocalSavePath] = useState('');
   const [packageFilter, setPackageFilter] = useState('');
   const [loadingPackages, setLoadingPackages] = useState(false);
   const [loadingDatabases, setLoadingDatabases] = useState(false);
@@ -72,13 +71,14 @@ export function FileConnectionFields({ form }: { form: ConnectionFormState }) {
   );
 
   const handlePull = useCallback(async () => {
-    if (!selectedPackage || !selectedDbPath || !localSavePath) return;
+    if (!selectedPackage || !selectedDbPath) return;
 
     setPulling(true);
     setError(null);
     setSuccess(null);
     try {
-      const saved = await adbPullDatabase(selectedPackage, selectedDbPath, localSavePath);
+      const saved = await adbPullDatabaseWithDialog(selectedPackage, selectedDbPath);
+      if (!saved) return;
       setSuccess(t('newConn.adbPullSuccess'));
       form.setDatabase(saved);
     } catch (e) {
@@ -87,7 +87,7 @@ export function FileConnectionFields({ form }: { form: ConnectionFormState }) {
     } finally {
       setPulling(false);
     }
-  }, [selectedPackage, selectedDbPath, localSavePath, form, t]);
+  }, [selectedPackage, selectedDbPath, form, t]);
 
   const handleToggleAdb = useCallback(() => {
     const next = !adbMode;
@@ -183,21 +183,8 @@ export function FileConnectionFields({ form }: { form: ConnectionFormState }) {
             </div>
           )}
 
-          {/* Local save path */}
-          {selectedDbPath && (
-            <div>
-              <Label required>{t('newConn.adbLocalPath')}</Label>
-              <PathInput
-                value={localSavePath}
-                onChange={setLocalSavePath}
-                placeholder={t('newConn.adbLocalPathPlaceholder')}
-                dialogOptions={{ directory: true }}
-              />
-            </div>
-          )}
-
-          {/* Pull button */}
-          {selectedPackage && selectedDbPath && localSavePath && (
+          {/* Pull button — save path chosen in native dialog */}
+          {selectedPackage && selectedDbPath && (
             <Button
               onClick={handlePull}
               disabled={pulling}

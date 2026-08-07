@@ -174,6 +174,8 @@ pnpm tauri:build:minimal
 pnpm tauri:build --plugins=kiwi,olap
 ```
 
+GitHub Release 构建两个安装包：**基础版**（`DATAZEN_PLUGINS=none`，仅内置 PG/MySQL/SQLite/Redis）与 **Pro 版**（`kiwi,superset`；不含 OLAP Presto/Trino，需 `--plugins=all` 或单独加 `olap`）。
+
 ### 运行 E2E 测试
 
 ```bash

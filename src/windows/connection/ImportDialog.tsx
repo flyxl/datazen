@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState } from 'react';
-import { open } from '@tauri-apps/plugin-dialog';
 import { AlertTriangle, FileText, Loader2 } from 'lucide-react';
 import { Dialog } from '../../components/ui/Dialog';
 import { Button } from '../../components/ui/Button';
@@ -38,19 +37,14 @@ export function ImportDialog({ open: isOpen, onClose, connectionId, tableName, o
     setParsedData(null);
     setResult(null);
     try {
-      const selected = await open({
-        multiple: false,
-        filters: [
-          { name: 'Data Files', extensions: ['csv', 'json'] },
-        ],
-      });
-      if (!selected) return;
-      setFilePath(selected);
       setLoading(true);
-
-      const content = await fileCommands.readFile(selected);
-      const ext: 'csv' | 'json' = selected.toLowerCase().endsWith('.json') ? 'json' : 'csv';
-      const data = parseImportData(content, ext);
+      const opened = await fileCommands.openTextWithDialog('Data Files', ['csv', 'json']);
+      if (!opened) return;
+      setFilePath(opened.fileName);
+      const ext: 'csv' | 'json' = opened.fileName.toLowerCase().endsWith('.json')
+        ? 'json'
+        : 'csv';
+      const data = parseImportData(opened.content, ext);
       setParsedData(data);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));

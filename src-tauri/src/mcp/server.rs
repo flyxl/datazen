@@ -14,50 +14,50 @@ use std::sync::Arc;
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct QueryInput {
-    /// The connection ID (from list_connections)
-    pub connection_id: String,
+    /// Persistent connection config id (from list_connections)
+    pub config_id: String,
     /// SQL query to execute
     pub sql: String,
-    /// Maximum rows to return (default: 100)
+    /// Maximum rows to return (default: 100, max: 50000)
     pub limit: Option<u32>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ListTablesInput {
-    /// The connection ID
-    pub connection_id: String,
+    /// Persistent connection config id (from list_connections)
+    pub config_id: String,
     /// Optional database name
     pub database: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct GetSchemaInput {
-    /// The connection ID
-    pub connection_id: String,
+    /// Persistent connection config id (from list_connections)
+    pub config_id: String,
     /// Table name
     pub table: String,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ExplainQueryInput {
-    /// The connection ID
-    pub connection_id: String,
+    /// Persistent connection config id (from list_connections)
+    pub config_id: String,
     /// SQL query to analyze
     pub sql: String,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct DescribeTableInput {
-    /// The connection ID
-    pub connection_id: String,
+    /// Persistent connection config id (from list_connections)
+    pub config_id: String,
     /// Table name
     pub table: String,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ListDatabasesInput {
-    /// The connection ID
-    pub connection_id: String,
+    /// Persistent connection config id (from list_connections)
+    pub config_id: String,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -67,16 +67,16 @@ pub struct RunWorkflowInput {
     /// Input variables for the workflow (JSON object)
     #[serde(default)]
     pub variables: serde_json::Value,
-    /// Optional connection ID (some workflows require a database connection)
-    pub connection_id: Option<String>,
+    /// Optional persistent connection config id (some workflows require a database connection)
+    pub config_id: Option<String>,
 }
 
 // ─── Prompt Argument Types ───
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct Nl2SqlArgs {
-    /// Database connection ID for schema context
-    pub connection_id: String,
+    /// Persistent connection config id for schema context
+    pub config_id: String,
     /// Natural language description of the query
     pub question: String,
     /// Optional database name
@@ -85,8 +85,8 @@ pub struct Nl2SqlArgs {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct DiagnoseErrorArgs {
-    /// Database connection ID
-    pub connection_id: String,
+    /// Persistent connection config id
+    pub config_id: String,
     /// The SQL that caused the error
     pub sql: String,
     /// The error message
@@ -95,8 +95,8 @@ pub struct DiagnoseErrorArgs {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct ExplainPlanArgs {
-    /// Database connection ID
-    pub connection_id: String,
+    /// Persistent connection config id
+    pub config_id: String,
     /// The SQL query to explain
     pub sql: String,
 }
@@ -160,7 +160,7 @@ impl DataZenMcpServer {
 
 #[tool_router]
 impl DataZenMcpServer {
-    #[tool(description = "List all configured database connections. Returns connection IDs, names, database types, and hosts.")]
+    #[tool(description = "List all configured database connections. Returns config IDs, names, database types, and hosts.")]
     async fn list_connections(&self) -> Result<String, McpError> {
         crate::services::db_tools::list_connections(&self.app_state.store)
             .await
@@ -172,7 +172,7 @@ impl DataZenMcpServer {
         &self,
         Parameters(input): Parameters<ListDatabasesInput>,
     ) -> Result<String, McpError> {
-        crate::services::db_tools::list_databases(&self.app_state.connection_manager, &input.connection_id)
+        crate::services::db_tools::list_databases(&self.app_state.connection_manager, &input.config_id)
             .await
             .map_err(Self::map_err)
     }
@@ -183,17 +183,17 @@ impl DataZenMcpServer {
         Parameters(input): Parameters<ListTablesInput>,
     ) -> Result<String, McpError> {
         let db = input.database.as_deref().unwrap_or("");
-        crate::services::db_tools::list_tables(&self.app_state.connection_manager, &input.connection_id, db)
+        crate::services::db_tools::list_tables(&self.app_state.connection_manager, &input.config_id, db)
             .await
             .map_err(Self::map_err)
     }
 
-    #[tool(description = "Execute a SQL query on a connected database. Returns results as JSON. Use list_connections first to get valid connection IDs.")]
+    #[tool(description = "Execute a SQL query on a connected database. Returns results as JSON. Use list_connections first to get valid config IDs. Default row limit is 100 (max 50000).")]
     async fn query(
         &self,
         Parameters(input): Parameters<QueryInput>,
     ) -> Result<String, McpError> {
-        crate::services::db_tools::query(&self.app_state.connection_manager, &input.connection_id, &input.sql, input.limit)
+        crate::services::db_tools::query(&self.app_state.connection_manager, &input.config_id, &input.sql, input.limit)
             .await
             .map_err(Self::map_err)
     }
@@ -204,7 +204,7 @@ impl DataZenMcpServer {
         Parameters(input): Parameters<GetSchemaInput>,
     ) -> Result<String, McpError> {
         let tables = vec![input.table.clone()];
-        crate::services::db_tools::get_table_schema(&self.app_state.connection_manager, &input.connection_id, &tables)
+        crate::services::db_tools::get_table_schema(&self.app_state.connection_manager, &input.config_id, &tables)
             .await
             .map_err(Self::map_err)
     }
@@ -214,7 +214,7 @@ impl DataZenMcpServer {
         &self,
         Parameters(input): Parameters<ExplainQueryInput>,
     ) -> Result<String, McpError> {
-        crate::services::db_tools::explain_query(&self.app_state.connection_manager, &input.connection_id, &input.sql)
+        crate::services::db_tools::explain_query(&self.app_state.connection_manager, &input.config_id, &input.sql)
             .await
             .map_err(Self::map_err)
     }
@@ -226,7 +226,7 @@ impl DataZenMcpServer {
     ) -> Result<String, McpError> {
         let schema = crate::services::db_tools::get_single_table_schema(
             &self.app_state.connection_manager,
-            &input.connection_id,
+            &input.config_id,
             &input.table,
         )
         .await
@@ -299,10 +299,10 @@ impl DataZenMcpServer {
                 McpError::invalid_params(format!("Workflow '{}' not found", input.workflow_id), None)
             })?;
 
-        let result = super::WorkflowExecutor::execute(
+        let result = crate::workflow::WorkflowExecutor::execute(
             &workflow,
             &self.app_state,
-            input.connection_id.as_deref(),
+            input.config_id.as_deref(),
             &input.variables,
         )
         .await
@@ -324,7 +324,7 @@ impl DataZenMcpServer {
         &self,
         Parameters(args): Parameters<Nl2SqlArgs>,
     ) -> Result<GetPromptResult, McpError> {
-        let (conn_id, driver, _handle) = self.resolve_connection(&args.connection_id).await?;
+        let (conn_id, driver, _handle) = self.resolve_connection(&args.config_id).await?;
 
         let db_type = format!("{:?}", driver.driver_type());
         let db = args.database.as_deref().unwrap_or("");
@@ -356,7 +356,7 @@ impl DataZenMcpServer {
         &self,
         Parameters(args): Parameters<DiagnoseErrorArgs>,
     ) -> Result<GetPromptResult, McpError> {
-        let (_conn_id, driver, _handle) = self.resolve_connection(&args.connection_id).await?;
+        let (_conn_id, driver, _handle) = self.resolve_connection(&args.config_id).await?;
 
         let db_type = format!("{:?}", driver.driver_type());
 
@@ -378,7 +378,7 @@ impl DataZenMcpServer {
         &self,
         Parameters(args): Parameters<ExplainPlanArgs>,
     ) -> Result<GetPromptResult, McpError> {
-        let (_conn_id, driver, handle) = self.resolve_connection(&args.connection_id).await?;
+        let (_conn_id, driver, handle) = self.resolve_connection(&args.config_id).await?;
 
         let db_type = format!("{:?}", driver.driver_type());
 
@@ -598,25 +598,63 @@ mod tests {
     }
 
     #[test]
+    fn query_input_rejects_legacy_connection_id_field() {
+        let json = r#"{"connection_id":"c1","sql":"SELECT 1"}"#;
+        let parsed = serde_json::from_str::<QueryInput>(json);
+        assert!(parsed.is_err(), "legacy connection_id must not deserialize");
+    }
+
+    #[test]
+    fn query_input_accepts_config_id() {
+        let json = r#"{"config_id":"c1","sql":"SELECT 1"}"#;
+        let parsed: QueryInput = serde_json::from_str(json).unwrap();
+        assert_eq!(parsed.config_id, "c1");
+    }
+
+    #[test]
     fn test_list_databases_input_deserialization() {
-        let json = r#"{"connection_id": "test-id"}"#;
+        let json = r#"{"config_id": "test-id"}"#;
         let input: ListDatabasesInput = serde_json::from_str(json).unwrap();
-        assert_eq!(input.connection_id, "test-id");
+        assert_eq!(input.config_id, "test-id");
     }
 
     #[test]
     fn test_query_input_defaults() {
-        let json = r#"{"connection_id": "c1", "sql": "SELECT 1"}"#;
+        let json = r#"{"config_id": "c1", "sql": "SELECT 1"}"#;
         let input: QueryInput = serde_json::from_str(json).unwrap();
-        assert_eq!(input.connection_id, "c1");
+        assert_eq!(input.config_id, "c1");
         assert_eq!(input.sql, "SELECT 1");
         assert_eq!(input.limit, None);
     }
 
     #[test]
     fn test_query_input_with_limit() {
-        let json = r#"{"connection_id": "c1", "sql": "SELECT 1", "limit": 50}"#;
+        let json = r#"{"config_id": "c1", "sql": "SELECT 1", "limit": 50}"#;
         let input: QueryInput = serde_json::from_str(json).unwrap();
         assert_eq!(input.limit, Some(50));
+    }
+
+    #[test]
+    fn test_resolve_query_limit_none_defaults_to_100() {
+        assert_eq!(
+            crate::services::db_tools::resolve_query_limit(None),
+            Some(100)
+        );
+    }
+
+    #[test]
+    fn test_resolve_query_limit_some_passthrough() {
+        assert_eq!(
+            crate::services::db_tools::resolve_query_limit(Some(50)),
+            Some(50)
+        );
+    }
+
+    #[test]
+    fn test_resolve_query_limit_some_capped_at_max() {
+        assert_eq!(
+            crate::services::db_tools::resolve_query_limit(Some(999_999)),
+            Some(50_000)
+        );
     }
 }

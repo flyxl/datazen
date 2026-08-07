@@ -269,12 +269,11 @@ export function WorkflowWindow() {
   }, [loadWorkflows]);
 
   const handleOpenDir = useCallback(async () => {
-    if (!workflowsDir) return;
     try {
       const { settingsCommands } = await import('../../commands/settings');
-      await settingsCommands.openPath(workflowsDir);
+      await settingsCommands.openWorkflowsDir();
     } catch { /* browser mode */ }
-  }, [workflowsDir]);
+  }, []);
 
   const openEditPanel = useCallback((editingId: string | null, draft: WorkflowDraft) => {
     const existing = panels.find((p) => p.type === 'edit' && (p as EditPanel).editingId === editingId);

@@ -1,6 +1,7 @@
 # 测试策略
 
-> [返回架构总览](README.md)
+> [返回架构总览](README.md)  
+> 代码审查修复进度：[progress-code-review-fix.md](../progress-code-review-fix.md) · 审查报告：[code-review-2026-08-07-full.md](../code-review-2026-08-07-full.md)
 
 ## 1. 测试分层
 
@@ -9,7 +10,7 @@
 | Rust 单元测试 | `cargo test` | 各模块 `#[cfg(test)]` |
 | Rust 集成测试 | `cargo test` | `src-tauri/tests/` |
 | 前端单元测试 | Vitest | `src/**/__tests__/` |
-| E2E 测试 | WebdriverIO | `e2e/specs/` |
+| E2E 测试 | WebdriverIO | `e2e/specs/`（35 spec） |
 | 手工黑盒测试 | computer-use-mcp | `test/` |
 
 ## 2. 运行命令
@@ -21,15 +22,18 @@ cargo test -p datazen-ai-api       # AI API 单元测试
 cargo test -p datazen-driver-api   # Driver API 单元测试
 
 # 前端测试
-npx vitest run                     # 所有前端单元测试
+pnpm test:unit                     # package.json 脚本（vitest run）
+npx vitest run                     # 同上
 npx vitest run --reporter=verbose  # 详细输出
 
-# E2E 测试
-pnpm e2e                           # 全部 E2E
-pnpm e2e:core                     # 仅核心 UI
-pnpm e2e:db                       # 仅数据库驱动
-pnpm e2e:ai                       # 仅 AI 功能
+# E2E 测试（详见 docs/e2e-testing.md — 必须 Tauri + webdriver 构建）
+pnpm e2e                           # 完整构建 + 全部 E2E（推荐）
+pnpm e2e:skip-build                # 仅当已有合格 webdriver 二进制
+pnpm e2e:core / e2e:db / e2e:ai    # 分组（默认 skip-build）
 ```
+
+> ⚠️ **禁止** `cargo build --features webdriver` 作为 E2E 二进制来源。  
+> 正确命令：`pnpm tauri build --debug --features webdriver`。完整说明：[e2e-testing.md](../e2e-testing.md)。
 
 ## 3. Rust 测试覆盖
 
@@ -45,7 +49,7 @@ pnpm e2e:ai                       # 仅 AI 功能
 | `src-tauri/src/ai/anthropic.rs` | Anthropic Provider（5 tests） |
 | `src-tauri/src/ai/prompt_resolver.rs` | PromptResolver 解析优先级、多语言 fallback |
 | `src-tauri/src/mcp/server.rs` | MCP Server tools（6 tests） |
-| `src-tauri/src/mcp/workflows.rs` | Workflows 系统（9 tests） |
+| `src-tauri/src/workflow/workflows.rs` | Workflows 系统 |
 | `src-tauri/src/mcp/client.rs` | MCP Client（3 tests） |
 | `src-tauri/src/commands/context.rs` | AI 上下文文件（路径遍历防护、扩展名白名单、大小限制，14 tests） |
 | `src-tauri/src/sync/adapters/roundtrip_tests.rs` | 跨库类型映射 roundtrip 测试 |
@@ -81,7 +85,8 @@ pnpm e2e:ai                       # 仅 AI 功能
 
 | 测试文件 | 覆盖范围 |
 |---------|---------|
-| `lib/__tests__/databaseTypes.test.ts` | DB_REGISTRY 元数据验证 |
+| `lib/__tests__/databaseTypes.test.ts` | DB_REGISTRY 元数据、能力 opt-in 标志 |
+| `locales/locales.test.ts` | 10 语系 key parity、Beta 语系 English 占位检测 |
 | `lib/__tests__/formatters.test.ts` | 数据格式化工具 |
 | `lib/__tests__/rowToRecord.test.ts` | 行数据转换 |
 | `lib/__tests__/extractSql.test.ts` | SQL 提取 |
@@ -104,7 +109,9 @@ pnpm e2e:ai                       # 仅 AI 功能
 
 ## 5. E2E 测试
 
-31 个 WebdriverIO E2E spec 文件（`e2e/specs/`）：
+> **Agent / 开发者操作手册（构建、排错、检查清单）：[docs/e2e-testing.md](../e2e-testing.md)**
+
+WebdriverIO E2E spec（`e2e/specs/`，**35 个文件**）：
 
 | 领域 | Spec 文件 |
 |------|----------|
@@ -113,17 +120,23 @@ pnpm e2e:ai                       # 仅 AI 功能
 | **SQL / 数据** | `sql-query.ts`, `table-data.ts`, `table-edit.ts`, `table-structure.ts`, `data-types.ts`, `export-import.ts`, `er-diagram.ts`, `chart-expand.ts` |
 | **数据库驱动** | `sqlite.ts`, `mysql.ts`, `redis.ts`, `kiwi.ts` |
 | **AI / Workflow** | `ai-features.ts`, `ai-ask-question.ts`, `ai-context.ts`, `workflow.ts`, `workflow-window.ts` |
+| **路径 IPC / 备份·i18n** | `path-ipc-hardening.ts`, `app-data-backup.ts`, `i18n-10-locales.ts`, `system-locale.ts` |
 | **运维** | `backup-database.ts`, `data-sync-real.ts`, `bugfix-verification.ts` |
 
 配置文件：`e2e/.env`（`e2e/.env.example` 示例）
 
+**构建要求：** `pnpm tauri build --debug --features webdriver`（禁止裸 `cargo build`）。
+
 快捷运行：
 ```bash
-pnpm e2e                # 全部
+pnpm e2e                # 完整构建 + 全部
+pnpm e2e:skip-build     # 已有合格二进制时
 pnpm e2e:core           # 核心 UI
 pnpm e2e:db             # 数据库驱动
 pnpm e2e:kiwi           # Kiwi 插件
 pnpm e2e:ai             # AI 功能
+pnpm e2e:i18n-backup    # 备份 + 10 语言
+pnpm e2e:path-ipc       # 路径 IPC 加固
 ```
 
 ## 6. 手工黑盒测试

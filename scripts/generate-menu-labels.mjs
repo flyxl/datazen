@@ -46,6 +46,8 @@ const RUST_TO_LOCALE = {
   'data-sync': 'menu.dataSync',
   'export-config': 'menu.exportConfig',
   'import-config': 'menu.importConfig',
+  'export-connections': 'menu.exportConnections',
+  'import-connections': 'menu.importConnections',
   'view-logs': 'menu.viewLogs',
   'ctx-add-favorite': 'menu.ctxAddFavorite',
 };
