@@ -700,9 +700,9 @@ mod deepseek_workflow_tests {
                 parameters: serde_json::json!({
                     "type": "object",
                     "properties": {
-                        "connection_id": { "type": "string" }
+                        "config_id": { "type": "string" }
                     },
-                    "required": ["connection_id"]
+                    "required": ["config_id"]
                 }),
             },
             ToolDefinition {
@@ -711,10 +711,10 @@ mod deepseek_workflow_tests {
                 parameters: serde_json::json!({
                     "type": "object",
                     "properties": {
-                        "connection_id": { "type": "string" },
+                        "config_id": { "type": "string" },
                         "database": { "type": "string" }
                     },
-                    "required": ["connection_id"]
+                    "required": ["config_id"]
                 }),
             },
             ToolDefinition {
@@ -723,13 +723,13 @@ mod deepseek_workflow_tests {
                 parameters: serde_json::json!({
                     "type": "object",
                     "properties": {
-                        "connection_id": { "type": "string" },
+                        "config_id": { "type": "string" },
                         "tables": {
                             "type": "array",
                             "items": { "type": "string" }
                         }
                     },
-                    "required": ["connection_id", "tables"]
+                    "required": ["config_id", "tables"]
                 }),
             },
         ]
@@ -743,7 +743,7 @@ mod deepseek_workflow_tests {
                 { "id": "conn_my01", "name": "MySQL Test", "databaseType": "MySQL", "host": "localhost" }
             ]).to_string(),
             "list_databases" => {
-                let conn_id = args["connection_id"].as_str().unwrap_or("");
+                let conn_id = args["config_id"].as_str().unwrap_or("");
                 if conn_id.contains("pg") {
                     serde_json::json!(["test_orders", "postgres"]).to_string()
                 } else {
@@ -751,7 +751,7 @@ mod deepseek_workflow_tests {
                 }
             }
             "list_tables" => {
-                let conn_id = args["connection_id"].as_str().unwrap_or("");
+                let conn_id = args["config_id"].as_str().unwrap_or("");
                 if conn_id.contains("pg") {
                     serde_json::json!([
                         { "name": "orders", "type": "table", "row_count": 15000 },
@@ -768,7 +768,7 @@ mod deepseek_workflow_tests {
                 let tables = args["tables"].as_array()
                     .map(|a| a.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>())
                     .unwrap_or_default();
-                let conn_id = args["connection_id"].as_str().unwrap_or("");
+                let conn_id = args["config_id"].as_str().unwrap_or("");
                 let mut schemas = serde_json::Map::new();
                 for table in tables {
                     let cols = if conn_id.contains("pg") {

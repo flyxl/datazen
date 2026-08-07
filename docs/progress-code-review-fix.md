@@ -33,7 +33,7 @@
 | E8 | 文档刷新 | ✅ | ⬜ N/A | ✅ | ✅ 4cb3328 |
 | P4 | SQL/NL 日志降级 debug | ✅ | ✅ log_hygiene | ⬜ | ✅ ddd7ed0 |
 | P5 | splash 等 bootstrap + 错误 i18n | ✅ | ✅ splash 1 | ⬜ | ✅ ba83d87 |
-| C6R | connection_id → config_id 硬切换 | ✅ | ✅ mcp::server | ⬜ | ✅ ddc6a7c |
+| C6R | connection_id → config_id 硬切换 | ✅ | ✅ mcp::server | ⬜ | ✅ 9635f73 |
 | S1+ | 导出后提示并另存 `.key` | ⬜ | ⬜ | ⬜ | ⬜ |
 | ConnShare | 菜单导出/导入连接 + 口令 | ⬜ | ⬜ | ⬜ | ⬜ |
 | P3 | Keychain 主密钥 + 测试 fallback | ⬜ | ⬜ | ⬜ | ⬜ |
@@ -97,7 +97,7 @@
 
 - **实现**：MCP tool/prompt structs、`commands/ai.rs` db tool schemas/arg readers、`db_tools` 文档；legacy `connection_id` JSON 字段拒绝（负测）
 - **单元测试**：`cargo test -p datazen --lib mcp::server::tests` — 11 passed
-- **提交**：`c397415`
+- **提交**：`9635f73`
 
 ### C7 — rebuild_menu async
 
