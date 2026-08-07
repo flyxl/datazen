@@ -289,6 +289,7 @@ const translations = {
   'query.resultTruncated': '結果已截斷，僅顯示前 {limit} 條，可在設置中修改',
   'query.tab': '查询 {n}',
   'query.notConnected': '未連接數據庫',
+  'query.cancelled': '查詢已取消',
   'query.executeFailed': '執列失败',
   'query.favorites': '收藏',
   'query.favoritesTitle': 'SQL 收藏',

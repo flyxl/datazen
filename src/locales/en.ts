@@ -330,6 +330,7 @@ const en: Record<TranslationKey, string> = {
   'query.resultTruncated': 'Result truncated to {limit} rows, adjustable in Settings',
   'query.tab': 'Query {n}',
   'query.notConnected': 'Not connected',
+  'query.cancelled': 'Query cancelled',
   'query.executeFailed': 'Execution failed',
   'query.favorites': 'Favorites',
   'query.favoritesTitle': 'SQL Favorites',
