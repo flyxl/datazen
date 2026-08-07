@@ -282,7 +282,7 @@ export function SettingsWindow() {
                 </SettingRow>
 
                 <div className="flex items-center gap-3">
-                  <Button variant="secondary" onClick={() => void settingsCommands.getLogPath().then((p) => settingsCommands.openPath(p))}>
+                  <Button variant="secondary" onClick={() => void settingsCommands.openLogDir()}>
                     {t('settings.viewLogs')}
                   </Button>
                 </div>
@@ -1034,10 +1034,7 @@ function ContextDirSetting() {
       <Button
         variant="ghost"
         className="shrink-0 h-9 text-xs"
-        onClick={() => {
-          const dir = localDir || defaultDir;
-          if (dir) void settingsCommands.openPath(dir);
-        }}
+        onClick={() => void settingsCommands.openContextDir()}
       >
         {t('context.openDir')}
       </Button>

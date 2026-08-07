@@ -21,6 +21,18 @@ export async function adbListDatabases(
   });
 }
 
+/** Pull DB via native save dialog (XSS-safe). Returns saved path or null if cancelled. */
+export async function adbPullDatabaseWithDialog(
+  packageName: string,
+  dbPath: string,
+): Promise<string | null> {
+  return invoke<string | null>('adb_pull_database_with_dialog', {
+    package: packageName,
+    dbPath,
+  });
+}
+
+/** @deprecated E2E-only; prefer adbPullDatabaseWithDialog. */
 export async function adbPullDatabase(
   packageName: string,
   dbPath: string,

@@ -1,6 +1,7 @@
 use super::error::{CmdExt, CommandError};
 use serde::Serialize;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use tauri::AppHandle;
 use tokio::process::Command;
 
 #[derive(Debug, Serialize)]
@@ -50,6 +51,15 @@ fn validate_package_name(pkg: &str) -> Result<(), CommandError> {
     Ok(())
 }
 
+fn validate_db_path(db_path: &str) -> Result<(), CommandError> {
+    if db_path.contains("..") || db_path.contains('\0') {
+        return Err(CommandError::Validation(format!(
+            "Invalid database path: {db_path}"
+        )));
+    }
+    Ok(())
+}
+
 fn validate_local_path(path: &str) -> Result<(), CommandError> {
     if path.is_empty() {
         return Err(CommandError::Validation(
@@ -80,10 +90,9 @@ pub async fn adb_list_packages() -> Result<Vec<AdbPackage>, CommandError> {
     let packages: Vec<AdbPackage> = output
         .lines()
         .filter_map(|line| {
-            line.strip_prefix("package:")
-                .map(|name| AdbPackage {
-                    package_name: name.trim().to_string(),
-                })
+            line.strip_prefix("package:").map(|name| AdbPackage {
+                package_name: name.trim().to_string(),
+            })
         })
         .collect();
 
@@ -123,23 +132,9 @@ pub async fn adb_list_databases(package: String) -> Result<Vec<AdbDatabaseFile>,
     Ok(files)
 }
 
-/// Pull a database file from the Android device to a local path.
-#[tauri::command]
-pub async fn adb_pull_database(
-    package: String,
-    db_path: String,
-    local_path: String,
-) -> Result<String, CommandError> {
-    validate_package_name(&package)?;
-    validate_local_path(&local_path)?;
-
-    if db_path.contains("..") || db_path.contains('\0') {
-        return Err(CommandError::Validation(format!(
-            "Invalid database path: {db_path}"
-        )));
-    }
-
-    tracing::info!("[adb_pull_database] package={package}, db={db_path}, local={local_path}");
+async fn pull_database_bytes(package: &str, db_path: &str) -> Result<Vec<u8>, CommandError> {
+    validate_package_name(package)?;
+    validate_db_path(db_path)?;
 
     let output = Command::new("adb")
         .args(["exec-out", &format!("run-as {package} cat {db_path}")])
@@ -169,17 +164,74 @@ pub async fn adb_pull_database(
         ));
     }
 
-    tokio::fs::write(&local_path, &output.stdout)
+    Ok(output.stdout)
+}
+
+async fn write_pulled_database(local_path: &Path, data: &[u8]) -> Result<String, CommandError> {
+    tokio::fs::write(local_path, data)
         .await
         .cmd_err("adb_pull_database")?;
-
-    let size_kb = output.stdout.len() / 1024;
+    let size_kb = data.len() / 1024;
     tracing::info!(
-        "[adb_pull_database] saved {} bytes ({size_kb} KB) to {local_path}",
-        output.stdout.len()
+        "[adb_pull_database] saved {} bytes ({size_kb} KB) to {}",
+        data.len(),
+        local_path.display()
     );
+    Ok(local_path.to_string_lossy().into_owned())
+}
 
-    Ok(local_path)
+fn default_pull_file_name(db_path: &str) -> String {
+    Path::new(db_path)
+        .file_name()
+        .map(|f| f.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "pulled.db".into())
+}
+
+/// Pull via native save dialog (XSS-safe). Returns the saved absolute path.
+#[tauri::command]
+pub async fn adb_pull_database_with_dialog(
+    app: AppHandle,
+    package: String,
+    db_path: String,
+) -> Result<Option<String>, CommandError> {
+    use tauri_plugin_dialog::DialogExt;
+
+    let default_name = default_pull_file_name(&db_path);
+
+    let data = pull_database_bytes(&package, &db_path).await?;
+
+    let picked = app
+        .dialog()
+        .file()
+        .add_filter("SQLite Database", &["db", "sqlite", "sqlite3"])
+        .set_file_name(&default_name)
+        .blocking_save_file();
+    let Some(fp) = picked else {
+        return Ok(None);
+    };
+    let local_path: PathBuf = fp
+        .into_path()
+        .map_err(|e| CommandError::Validation(format!("Invalid dialog path: {e}")))?;
+
+    let saved = write_pulled_database(&local_path, &data).await?;
+    Ok(Some(saved))
+}
+
+/// Legacy path-based pull — E2E / webdriver builds only.
+#[tauri::command]
+pub async fn adb_pull_database(
+    package: String,
+    db_path: String,
+    local_path: String,
+) -> Result<String, CommandError> {
+    if !cfg!(feature = "webdriver") {
+        return Err(CommandError::Validation(
+            "Direct path adb pull disabled; use adb_pull_database_with_dialog".into(),
+        ));
+    }
+    validate_local_path(&local_path)?;
+    let data = pull_database_bytes(&package, &db_path).await?;
+    write_pulled_database(Path::new(&local_path), &data).await
 }
 
 #[cfg(test)]
@@ -213,15 +265,27 @@ mod tests {
 
     #[test]
     fn test_db_path_traversal_rejected() {
-        let result = tokio::runtime::Runtime::new().unwrap().block_on(
-            adb_pull_database(
-                "com.example.app".into(),
-                "../../../etc/passwd".into(),
-                "/tmp/test.db".into(),
-            ),
-        );
+        assert!(validate_db_path("../../../etc/passwd").is_err());
+        assert!(validate_db_path("./databases/app.db").is_ok());
+    }
+
+    #[test]
+    fn test_default_pull_file_name() {
+        assert_eq!(default_pull_file_name("./databases/app.db"), "app.db");
+        assert_eq!(default_pull_file_name(""), "pulled.db");
+    }
+
+    #[test]
+    fn test_path_ipc_gated_without_webdriver() {
+        if cfg!(feature = "webdriver") {
+            return;
+        }
+        let result = tokio::runtime::Runtime::new().unwrap().block_on(adb_pull_database(
+            "com.example.app".into(),
+            "./databases/app.db".into(),
+            "/tmp/test.db".into(),
+        ));
         assert!(result.is_err());
-        let err = result.unwrap_err().to_string();
-        assert!(err.contains("Invalid database path"));
+        assert!(result.unwrap_err().to_string().contains("disabled"));
     }
 }

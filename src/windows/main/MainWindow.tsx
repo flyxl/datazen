@@ -162,7 +162,7 @@ export function MainWindow() {
       if (!cancelled) openDataSyncWindow();
     }).then((u) => { if (cancelled) u(); else cleanups.push(u); });
     void listenCrossWindow('menu:view-logs', () => {
-      if (!cancelled) void settingsCommands.getLogPath().then((p) => settingsCommands.openPath(p));
+      if (!cancelled) void settingsCommands.openLogDir();
     }).then((u) => { if (cancelled) u(); else cleanups.push(u); });
     return () => { cancelled = true; cleanups.forEach((fn) => fn()); };
   }, []);
@@ -382,15 +382,11 @@ export function MainWindow() {
 
   const handleExportConfig = useCallback(async () => {
     try {
-      const { save } = await import('@tauri-apps/plugin-dialog');
       const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-      const path = await save({
-        title: t('action.exportConfig'),
-        defaultPath: `datazen-backup-${date}.zip`,
-        filters: [{ name: 'ZIP', extensions: ['zip'] }],
-      });
-      if (!path) return;
-      await backupCommands.exportAppData(path);
+      const saved = await backupCommands.exportAppDataWithDialog(
+        `datazen-backup-${date}.zip`,
+      );
+      if (!saved) return;
       setErrorMessage(t('appData.exportSuccess'));
       setErrorDialogOpen(true);
     } catch (e) {
@@ -401,22 +397,11 @@ export function MainWindow() {
 
   const handleImportConfig = useCallback(async () => {
     try {
-      const { open, ask } = await import('@tauri-apps/plugin-dialog');
-      const path = await open({
-        title: t('action.importConfig'),
-        filters: [{ name: 'ZIP', extensions: ['zip'] }],
-        multiple: false,
-      });
-      if (!path) return;
-      const filePath = typeof path === 'string' ? path : (path as unknown as string);
-
-      const confirmed = await ask(t('appData.importConfirmMessage'), {
-        title: t('appData.importConfirmTitle'),
-        kind: 'warning',
-      });
-      if (!confirmed) return;
-
-      await backupCommands.importAppData(filePath);
+      const imported = await backupCommands.importAppDataWithDialog(
+        t('appData.importConfirmTitle'),
+        t('appData.importConfirmMessage'),
+      );
+      if (!imported) return;
       await backupCommands.restartApp();
     } catch (e) {
       setErrorMessage(e instanceof Error ? e.message : t('appData.importFailed'));
@@ -441,14 +426,6 @@ export function MainWindow() {
 
   const handleRestore = useCallback(async () => {
     try {
-      const { open } = await import('@tauri-apps/plugin-dialog');
-      const path = await open({
-        title: t('action.restore'),
-        filters: [{ name: 'SQL Files', extensions: ['sql'] }],
-        multiple: false,
-      });
-      if (!path) return;
-
       if (!selectedId) {
         setErrorMessage(t('main.restoreFailed'));
         setErrorDialogOpen(true);
@@ -465,17 +442,17 @@ export function MainWindow() {
       }
 
       const { invoke } = await import('@tauri-apps/api/core');
-      await invoke('restore_database', {
+      const restored = await invoke<boolean>('restore_database_with_dialog', {
         connectionId: entry.connectionId,
-        inputPath: typeof path === 'string' ? path : (path as unknown as string),
       });
+      if (!restored) return;
       setErrorMessage(t('main.restoreSuccess'));
       setErrorDialogOpen(true);
     } catch (e) {
       setErrorMessage(e instanceof Error ? e.message : String(e));
       setErrorDialogOpen(true);
     }
-  }, [selectedId, connections, activeConnections]);
+  }, [selectedId, connections, activeConnections, t]);
 
   // ── Blank area context menu ──
 

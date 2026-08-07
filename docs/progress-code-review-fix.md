@@ -12,7 +12,7 @@
 | S2 | 导入原子化 / 可回滚 | ✅ | ✅ 19 lib | ✅ unit+E2E | ✅ 见下 |
 | S3 | SSH known_hosts / TOFU | ✅ | ✅ 11 ssh_tunnel | ✅ unit | ✅ |
 | S4 | SSH 密码加密存储 | ✅ | ✅ store:: 5 | ✅ unit | ✅ |
-| S5 | 路径 IPC 收紧 | ✅ 先行 | ✅ | ✅ path-ipc E2E | ⬜（随后提交） |
+| S5 | 路径 IPC 收紧 | ✅ | ✅ | ✅ path-ipc E2E | ✅ |
 | S6 | ZIP 炸弹防护 | ✅ | ✅ 24 lib | ✅ unit+E2E | ✅ |
 | S7 | MCP query 默认/硬顶 | ✅ | ✅ resolve_query_limit | ✅ unit | ✅ |
 | C1 | MCP/GUI data dir 统一 | ⬜ | ⬜ | ⬜ | ⬜ |
@@ -43,12 +43,13 @@
 - **Bug**：无（初测「ZIP 仍含 .key」为过期二进制，非源码缺陷）
 - **提交**：本提交
 
-### S5 — 路径 IPC（先行完成，待本分支提交）
+### S5 — 路径 IPC 收紧
 
 - **实现**：`*_with_dialog` 原子命令；路径 IPC 门控 `webdriver`；`open_log_dir` / `open_workflows_dir` / `open_context_dir`
 - **单元测试**：`commands::file` / `adb` / `config` / `backup` 门控与校验
 - **测试 Agent 结果**：`path-ipc-hardening` 6/6、`app-data-backup` 7/7→8/8 通过
 - **Bug**：无
+- **提交**：本提交
 
 ### S2 — 导入原子化 / 可回滚
 
@@ -81,5 +82,3 @@
 - **实现**：persist/load 加密/解密 `ssh_tunnel.password` / `passphrase`
 - **测试 Agent**：PASS（store 5 tests）
 - **已知低风险**：旧明文 SSH 字段无迁移路径（解密失败则清空）
-
-### S5 — （待提交先行改动）
