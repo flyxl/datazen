@@ -43,6 +43,12 @@ describe('computeIsMultiDatabase / resolvePreferredDatabase / resolveVisibleData
       preferred: 'a',
       lockedToConfigured: false,
     });
+    // Kiwi-style: preferred is instance domain, not in logical DB list → do not lock
+    expect(resolveVisibleDatabases(['app_db', 'other'], 'afi-ph-useraccount-dbreader.aku')).toEqual({
+      databases: ['app_db', 'other'],
+      preferred: 'app_db',
+      lockedToConfigured: false,
+    });
   });
 });
 
@@ -129,7 +135,7 @@ describe('schemaStore.loadForConnection isMultiDatabase', () => {
     expect(useSchemaStore.getState().isMultiDatabase).toBe(true);
   });
 
-  it('locks even when configured database is absent from server list', async () => {
+  it('does not lock when configured database is absent from server list (e.g. Kiwi domain)', async () => {
     vi.mocked(databaseCommands.getDatabases).mockResolvedValueOnce(['alpha', 'beta']);
 
     await useSchemaStore.getState().loadForConnection('conn-1', {
@@ -138,9 +144,9 @@ describe('schemaStore.loadForConnection isMultiDatabase', () => {
       skipLoadTables: true,
     });
 
-    expect(useSchemaStore.getState().databases).toEqual(['nope']);
-    expect(useSchemaStore.getState().currentDatabase).toBe('nope');
-    expect(useSchemaStore.getState().isMultiDatabase).toBe(false);
+    expect(useSchemaStore.getState().databases).toEqual(['alpha', 'beta']);
+    expect(useSchemaStore.getState().currentDatabase).toBe('alpha');
+    expect(useSchemaStore.getState().isMultiDatabase).toBe(true);
   });
 });
 describe('schemaStore.loadTables', () => {
