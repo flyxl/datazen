@@ -430,6 +430,10 @@ function updateCargoFiles(plugins, registry) {
   // --- src-tauri/Cargo.toml: plugin deps ---
   const depLines = plugins.map(name => {
     const crateName = `datazen-plugin-${name}`;
+    const meta = registry[name];
+    if (meta?.tauriPlugin) {
+      return `${crateName} = { path = "../.plugins/${name}", optional = true, features = ["tauri-plugin"] }`;
+    }
     return `${crateName} = { path = "../.plugins/${name}", optional = true }`;
   });
   replaceMarkerSection(tauriCargoPath, 'PLUGIN DEPS', depLines.join('\n'));
@@ -532,6 +536,9 @@ function replaceMarkerBlock(content, name, lines) {
 /**
  * Inject plugin dependencies and features into src-tauri/Cargo.toml at build time.
  * Uses start/end markers for idempotent injection.
+ *
+ * Plugins that declare `tauriPlugin` also enable the crate's `tauri-plugin` feature
+ * so permissions/build.rs and init() are compiled in.
  */
 function injectCargoToml(plugins, registry) {
   const cargoPath = resolve(ROOT, 'src-tauri/Cargo.toml');
@@ -543,7 +550,13 @@ function injectCargoToml(plugins, registry) {
     const meta = registry[name];
     if (!meta.feature) continue;
     const crateName = `datazen-plugin-${name}`;
-    depLines.push(`${crateName} = { path = "../.plugins/${name}", optional = true }`);
+    if (meta.tauriPlugin) {
+      depLines.push(
+        `${crateName} = { path = "../.plugins/${name}", optional = true, features = ["tauri-plugin"] }`,
+      );
+    } else {
+      depLines.push(`${crateName} = { path = "../.plugins/${name}", optional = true }`);
+    }
   }
 
   // Build feature lines
@@ -560,6 +573,53 @@ function injectCargoToml(plugins, registry) {
 
   writeFileSync(cargoPath, content);
   console.log(`[resolve-plugins] injected ${depLines.length} deps + ${featureLines.length} features into Cargo.toml`);
+}
+
+/**
+ * Sync Tauri ACL capabilities for plugin commands.
+ *
+ * Removes any permissions whose prefix matches a registry plugin id, then
+ * appends `{tauriPlugin.id}:default` for each active plugin that exposes commands.
+ * Idempotent across resolve-plugins runs.
+ */
+function syncPluginCapabilities(plugins, registry) {
+  const capPath = resolve(ROOT, 'src-tauri/capabilities/default.json');
+  if (!existsSync(capPath)) {
+    console.warn(`[resolve-plugins] capabilities file not found: ${capPath}`);
+    return;
+  }
+
+  const cap = JSON.parse(readFileSync(capPath, 'utf-8'));
+  if (!Array.isArray(cap.permissions)) {
+    console.warn('[resolve-plugins] capabilities.permissions is not an array');
+    return;
+  }
+
+  const pluginIds = new Set(
+    Object.keys(registry).filter((name) => Boolean(registry[name]?.feature)),
+  );
+
+  const kept = cap.permissions.filter((entry) => {
+    if (typeof entry !== 'string') return true;
+    const prefix = entry.split(':')[0];
+    return !pluginIds.has(prefix);
+  });
+
+  const added = [];
+  for (const name of plugins) {
+    const tp = registry[name]?.tauriPlugin;
+    if (!tp?.id) continue;
+    const perm = `${tp.id}:default`;
+    if (!kept.includes(perm) && !added.includes(perm)) {
+      added.push(perm);
+    }
+  }
+
+  cap.permissions = [...kept, ...added];
+  writeFileSync(capPath, JSON.stringify(cap, null, 2) + '\n');
+  console.log(
+    `[resolve-plugins] synced capabilities plugin permissions: [${added.join(', ') || 'none'}]`,
+  );
 }
 
 /**
@@ -621,6 +681,7 @@ function main() {
   // Inject Cargo dependencies and features at build time
   injectCargoToml(plugins, registry);
   injectRootCargoPatches(plugins, registry);
+  syncPluginCapabilities(plugins, registry);
 
   // Write the features file for the build system to consume
   const output = {
