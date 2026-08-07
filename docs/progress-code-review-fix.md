@@ -36,7 +36,7 @@
 | C6R | connection_id → config_id 硬切换 | ✅ | ✅ mcp::server | ⬜ | ✅ 9635f73 |
 | S1+ | 导出后提示并另存 `.key` | ✅ | ✅ encryption_key | ⬜ | ✅ 381ceef |
 | ConnShare | 菜单导出/导入连接 + 口令 | ✅ | ✅ config 8 | ⬜ | ✅ 4f8d2f3 |
-| P3 | Keychain 主密钥 + 测试 fallback | ✅ | ✅ store:: 11 | ⬜ | ⬜ |
+| P3 | Keychain 主密钥 + 测试 fallback | ✅ | ✅ store:: 11 | ⬜ | ✅ 9a81507 |
 | C2F | 10 语系全量真翻译 | ⬜ | ⬜ | ⬜ | ⬜ |
 
 图例：⬜ 未开始 · 🟡 进行中 · ✅ 完成 · ❌ 失败待修
@@ -159,7 +159,7 @@
 - **实现**：`store/key_store.rs` — OS keychain（`com.tbeasy.datazen` / `app-encryption-key`）优先；legacy `.key` 迁移后删除；`DATAZEN_KEYRING=file` 强制文件后端；keyring 失败时 warn + 文件回退；S1+ `save_encryption_key_with_dialog` 改读 `Store::encryption_key_b64()`
 - **单元测试**：`DATAZEN_KEYRING=file cargo test -p datazen --lib store::` — 10 passed + 1 ignored（keyring 迁移）；全库 262 passed
 - **CI**：`.github/workflows/ci.yml` 增加 `DATAZEN_KEYRING=file`
-- **提交**：待提交
+- **提交**：`9a81507`
 
 ## 延期 / 范围外
 
