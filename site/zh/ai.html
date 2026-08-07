@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AI 助手 — DataZen</title>
+  <meta name="description" content="DataZen 的 AI 能力：自然语言生成 SQL、SQL 报错诊断、EXPLAIN 智能分析、AI Chat 侧栏、自然语言筛选、Schema 文档生成、连接故障排查。" />
+  <link rel="canonical" href="https://flyxl.github.io/datazen/zh/ai.html" />
+  <link rel="alternate" hreflang="en" href="https://flyxl.github.io/datazen/ai.html" />
+  <link rel="alternate" hreflang="zh-CN" href="https://flyxl.github.io/datazen/zh/ai.html" />
+  <link rel="alternate" hreflang="x-default" href="https://flyxl.github.io/datazen/ai.html" />
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="AI 助手 — DataZen" />
+  <meta property="og:description" content="DataZen 的 AI 能力：自然语言生成 SQL、SQL 报错诊断、EXPLAIN 智能分析、AI Chat 侧栏、自然语言筛选、Schema 文档生成、连接故障排查。" />
+  <meta property="og:url" content="https://flyxl.github.io/datazen/zh/ai.html" />
+  <meta property="og:image" content="https://flyxl.github.io/datazen/assets/screenshots/01-main-window.png" />
+  <meta property="og:locale" content="zh_CN" />
+  <meta property="og:locale:alternate" content="en_US" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="AI 助手 — DataZen" />
+  <meta name="twitter:description" content="DataZen 的 AI 能力：自然语言生成 SQL、SQL 报错诊断、EXPLAIN 智能分析、AI Chat 侧栏、自然语言筛选、Schema 文档生成、连接故障排查。" />
+  <meta name="twitter:image" content="https://flyxl.github.io/datazen/assets/screenshots/01-main-window.png" />
+  <link rel="icon" href="../assets/logo.png" />
+  <link rel="stylesheet" href="../assets/css/site.css" />
+</head>
+<body>
+  <header id="site-header"></header>
+
+  <section class="page-head">
+    <div class="wrap">
+      <p class="breadcrumb"><a href="index.html">首页</a> / AI 助手</p>
+      <h1>🤖 AI 助手</h1>
+      <p>从「写 SQL」到「读懂数据」，AI 贯穿查询、诊断、分析与自动化的每一步。</p>
+    </div>
+  </section>
+
+  <section class="wrap">
+    <!-- NL2SQL -->
+    <div class="feature-block">
+      <div>
+        <span class="kicker">NL2SQL</span>
+        <h2>用自然语言生成 SQL</h2>
+        <p>想不起来表名或函数？直接用中文描述需求，AI 结合当前库的表结构生成 SQL，流式输出，点击即可执行。生成结果可以直接带入查询编辑器继续修改。</p>
+        <ul>
+          <li>自动注入当前库的表结构作为上下文（紧凑 DDL + Token 预算控制）</li>
+          <li>流式返回，边生成边看，支持随时停止</li>
+          <li>生成的 SQL 一键执行 / 一键回填编辑器</li>
+          <li>支持 OpenAI、Anthropic、DeepSeek 与自定义端点</li>
+        </ul>
+      </div>
+      <img class="feature-shot" src="../assets/screenshots/03-ai-nl2sql.png" alt="NL2SQL 自然语言生成 SQL" />
+    </div>
+
+    <!-- Diagnosis -->
+    <div class="feature-block reverse">
+      <div>
+        <span class="kicker">SQL 错误诊断</span>
+        <h2>报错之后，不再对着文档猜</h2>
+        <p>查询报错时点击「诊断」，AI 会结合错误信息和库结构定位原因，给出修正后的 SQL，一键应用到编辑器。</p>
+        <ul>
+          <li>错误原文 + AI 分析 + 修改建议结构化展示</li>
+          <li>修正 SQL 一键应用，省去手改</li>
+          <li>常见的语法、列名、类型不匹配问题覆盖良好</li>
+        </ul>
+      </div>
+      <img class="feature-shot" src="../assets/screenshots/05-ai-diagnosis.png" alt="SQL 错误诊断" />
+    </div>
+
+    <!-- EXPLAIN -->
+    <div class="feature-block">
+      <div>
+        <span class="kicker">EXPLAIN 分析</span>
+        <h2>执行计划可视化 + AI 解读</h2>
+        <p>一条慢查询，执行计划是什么、瓶颈在哪、索引有没有命中？DataZen 把 EXPLAIN 结果可视化，并让 AI 直接告诉你该怎么优化。</p>
+        <ul>
+          <li>执行计划树形可视化，扫描方式、行数、代价一目了然</li>
+          <li>AI 定位瓶颈节点并给出优化建议</li>
+          <li>支持 PG / MySQL 等内置驱动的 EXPLAIN</li>
+        </ul>
+      </div>
+      <img class="feature-shot" src="../assets/screenshots/06-ai-explain.png" alt="EXPLAIN 智能分析" />
+    </div>
+
+    <!-- Chat -->
+    <div class="feature-block reverse">
+      <div>
+        <span class="kicker">AI Chat 侧栏</span>
+        <h2>带着库上下文对话</h2>
+        <p>侧边栏随时唤起 AI 对话，自动带上当前连接的库表结构，回答里的 SQL 可一键插入编辑器；还支持用 <code>@</code> 引用本地文件作为上下文。</p>
+        <ul>
+          <li>自动注入 Schema 上下文，无需手动粘贴建表语句</li>
+          <li><code>@</code> 引用本地文件（白名单 + 512KB 上限 + 路径遍历防护）</li>
+          <li>代码块一键提取为 SQL 插入编辑器</li>
+          <li>流式响应，思维链与回答分离展示</li>
+        </ul>
+      </div>
+      <img class="feature-shot" src="../assets/screenshots/07-ai-chat.png" alt="AI Chat 侧栏" />
+    </div>
+
+    <!-- Smart filter -->
+    <div class="feature-block">
+      <div>
+        <span class="kicker">智能筛选</span>
+        <h2>表格筛选也能说人话</h2>
+        <p>「金额大于 1000 且状态是已发货」——在筛选框里直接输入自然语言，AI 解析成结构化的筛选条件并应用，列名校验与空值运算符自动处理。</p>
+        <ul>
+          <li>自然语言 → 结构化过滤条件，可随时查看 / 修改</li>
+          <li>基于当前表列名做校验，避免字段写错</li>
+          <li>与排序、分页、虚拟滚动无缝配合</li>
+        </ul>
+      </div>
+      <img class="feature-shot" src="../assets/screenshots/08-ai-filter.png" alt="自然语言筛选" />
+    </div>
+
+    <!-- More AI -->
+    <div class="feature-block reverse">
+      <div>
+        <span class="kicker">更多 AI 能力</span>
+        <h2>不止于查询</h2>
+        <ul>
+          <li><strong>Schema 文档生成</strong>：一键为库结构生成 Markdown 文档</li>
+          <li><strong>连接故障排查</strong>：连接失败时，结合 SSL / SSH / 超时等参数定位原因</li>
+          <li><strong>查询历史分析</strong>：自动归纳历史查询的分类与用途</li>
+          <li><strong>Prompt 可配置</strong>：驱动级 + 用户级覆盖，AI 回答跟随界面语言</li>
+        </ul>
+      </div>
+      <img class="feature-shot" src="../assets/screenshots/09-ai-more.png" alt="更多 AI 能力" />
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap">
+      <h2 style="font-size:26px;margin-bottom:20px">模型与协议支持</h2>
+      <table class="tbl">
+        <tr><th>Provider</th><th>协议</th><th>说明</th></tr>
+        <tr><td>OpenAI</td><td>Responses / Chat Completions</td><td>官方 API 或兼容网关</td></tr>
+        <tr><td>Anthropic</td><td>Messages</td><td>Claude 系列模型</td></tr>
+        <tr><td>DeepSeek</td><td>Chat Completions</td><td>支持 reasoning 输出</td></tr>
+        <tr><td>自定义端点</td><td>三种协议可选</td><td>任何 OpenAI 兼容服务（如本地推理）</td></tr>
+      </table>
+      <div class="callout">
+        <strong>模型列表动态拉取：</strong>配置好 API Key 后自动获取可用模型，无需手填模型名；
+        支持流式输出、reasoning 内容与可配置的 max_tokens。
+      </div>
+
+      <h2 style="font-size:26px;margin:40px 0 20px">MCP 能力</h2>
+      <div class="grid-2">
+        <div class="card">
+          <div class="icon">🖥️</div>
+          <h3>MCP Server</h3>
+          <p>内置 9 个工具（查询、Schema、EXPLAIN、Workflow 等）+ 资源 + Prompts，支持 <code>--mcp-stdio</code> 无头模式，可接入任意 MCP 客户端，让外部 AI 直接操作你的数据库。</p>
+        </div>
+        <div class="card">
+          <div class="icon">🔌</div>
+          <h3>MCP Client</h3>
+          <p>在 AI Chat 中连接外部 MCP Server，把文件系统、搜索、第三方工具等能力带进对话，扩展 AI 的可用工具集。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer id="site-footer"></footer>
+  <script src="../assets/js/site.js"></script>
+</body>
+</html>
