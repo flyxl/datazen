@@ -104,6 +104,8 @@ describe('App Data Backup (ADB-001~ADB-005)', () => {
     expect(mainSrc).toContain('importAppDataWithDialog');
     expect(mainSrc).toContain('menu:export-config');
     expect(mainSrc).toContain('menu:import-config');
+    expect(mainSrc).toContain('menu:export-connections');
+    expect(mainSrc).toContain('menu:import-connections');
 
     const zh = fs.readFileSync(
       path.resolve(import.meta.dirname, '../../src/locales/zh-CN.ts'),

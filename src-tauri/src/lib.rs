@@ -89,6 +89,14 @@ fn setup_menu(
         .id("import-config")
         .build(handle)?;
 
+    let export_connections_item = MenuItemBuilder::new(t("export-connections"))
+        .id("export-connections")
+        .build(handle)?;
+
+    let import_connections_item = MenuItemBuilder::new(t("import-connections"))
+        .id("import-connections")
+        .build(handle)?;
+
     let view_logs_item = MenuItemBuilder::new(t("view-logs"))
         .id("view-logs")
         .build(handle)?;
@@ -117,6 +125,8 @@ fn setup_menu(
         .separator()
         .item(&export_config_item)
         .item(&import_config_item)
+        .item(&export_connections_item)
+        .item(&import_connections_item)
         .build()?;
 
     let window_menu = SubmenuBuilder::new(handle, t("window"))
@@ -148,6 +158,8 @@ fn setup_menu(
             "data-sync" => { let _ = app_handle.emit("menu:data-sync", ()); }
             "export-config" => { let _ = app_handle.emit("menu:export-config", ()); }
             "import-config" => { let _ = app_handle.emit("menu:import-config", ()); }
+            "export-connections" => { let _ = app_handle.emit("menu:export-connections", ()); }
+            "import-connections" => { let _ = app_handle.emit("menu:import-connections", ()); }
             "view-logs" => { let _ = app_handle.emit("menu:view-logs", ()); }
             "ctx-add-favorite" => { let _ = app_handle.emit("menu:add-favorite", ()); }
             _ => {}
@@ -465,7 +477,9 @@ pub fn run() {
             commands::open_workflows_dir,
             commands::open_context_dir,
             commands::export_connections,
+            commands::export_connections_with_dialog,
             commands::import_connections_preview,
+            commands::import_connections_with_dialog,
             commands::export_app_data,
             commands::export_app_data_with_dialog,
             commands::import_app_data,

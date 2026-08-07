@@ -43,4 +43,21 @@ describe('path IPC frontend wiring', () => {
     expect(main).toContain('saveEncryptionKeyWithDialog');
     expect(main).toContain('appData.backupKeyTitle');
   });
+
+  it('connection share uses dialog IPC and menu events', () => {
+    const connection = readSrc('commands/connection.ts');
+    expect(connection).toContain("'export_connections_with_dialog'");
+    expect(connection).toContain('exportConnectionsWithDialog');
+    expect(connection).toContain("'import_connections_with_dialog'");
+    expect(connection).toContain('importConnectionsWithDialog');
+
+    const main = readSrc('windows/main/MainWindow.tsx');
+    expect(main).toContain('ConnectionShareDialog');
+    expect(main).toContain('menu:export-connections');
+    expect(main).toContain('menu:import-connections');
+
+    const menuBar = readSrc('components/MenuBar.tsx');
+    expect(menuBar).toContain('export-connections');
+    expect(menuBar).toContain('import-connections');
+  });
 });

@@ -29,6 +29,7 @@ import { ActionPanel } from './ActionPanel';
 import { ConnectionItem } from './ConnectionItem';
 import { backupCommands } from '../../commands/backup';
 import { settingsCommands } from '../../commands/settings';
+import { ConnectionShareDialog, type ConnectionShareMode } from '../../components/connection/ConnectionShareDialog';
 import type { ConnectionConfig } from '../../types';
 
 // ─── Main Window ────────────────────────────────────────────────────
@@ -80,6 +81,9 @@ export function MainWindow() {
   // New group dialog state
   const [newGroupDialogOpen, setNewGroupDialogOpen] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
+
+  const [connShareOpen, setConnShareOpen] = useState(false);
+  const [connShareMode, setConnShareMode] = useState<ConnectionShareMode>('export');
 
   // ── Pointer-based drag state ──
   const [draggingConnId, setDraggingConnId] = useState<string | null>(null);
@@ -438,6 +442,32 @@ export function MainWindow() {
     }
   }, [t, showMessageDialog]);
 
+  const openConnShare = useCallback((mode: ConnectionShareMode) => {
+    setConnShareMode(mode);
+    setConnShareOpen(true);
+  }, []);
+
+  const handleConnShareExportSuccess = useCallback((count: number) => {
+    showMessageDialog(t('connShare.exportSuccess', { count }), 'success');
+  }, [showMessageDialog, t]);
+
+  const handleConnShareImportSuccess = useCallback(async (result: {
+    imported: number;
+    overwritten: number;
+    groupsAdded: number;
+  }) => {
+    await fetchConnections();
+    await fetchGroups();
+    showMessageDialog(
+      t('connShare.importSuccess', {
+        imported: result.imported,
+        overwritten: result.overwritten,
+        groupsAdded: result.groupsAdded,
+      }),
+      'success',
+    );
+  }, [fetchConnections, fetchGroups, showMessageDialog, t]);
+
   // ── Menu bar events for export/import ──
   useEffect(() => {
     let cancelled = false;
@@ -448,8 +478,14 @@ export function MainWindow() {
     void listenCrossWindow('menu:import-config', () => {
       if (!cancelled) void handleImportConfig();
     }).then((u) => { if (cancelled) u(); else cleanups.push(u); });
+    void listenCrossWindow('menu:export-connections', () => {
+      if (!cancelled) openConnShare('export');
+    }).then((u) => { if (cancelled) u(); else cleanups.push(u); });
+    void listenCrossWindow('menu:import-connections', () => {
+      if (!cancelled) openConnShare('import');
+    }).then((u) => { if (cancelled) u(); else cleanups.push(u); });
     return () => { cancelled = true; cleanups.forEach((fn) => fn()); };
-  }, [handleExportConfig, handleImportConfig]);
+  }, [handleExportConfig, handleImportConfig, openConnShare]);
 
   // ── Backup / Restore handlers ──
 
@@ -690,6 +726,15 @@ export function MainWindow() {
           autoCorrect="off"
         />
       </Dialog>
+
+      <ConnectionShareDialog
+        open={connShareOpen}
+        mode={connShareMode}
+        onClose={() => setConnShareOpen(false)}
+        onExportSuccess={handleConnShareExportSuccess}
+        onImportSuccess={(result) => void handleConnShareImportSuccess(result)}
+        onError={(message) => showMessageDialog(message, 'error')}
+      />
 
       {/* ── Message dialog (success / error) ── */}
       <Dialog

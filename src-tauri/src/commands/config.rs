@@ -1,8 +1,11 @@
 use super::error::{CmdExt, CommandError};
 use super::AppState;
 use crate::app_data_archive;
+use crate::db::ConnectionConfig;
 use crate::i18n_locale;
 use crate::store::AppSettings;
+use serde::{Deserialize, Serialize};
+use std::collections::{BTreeSet, HashSet};
 use aes_gcm::aead::{Aead, KeyInit};
 use aes_gcm::{Aes256Gcm, Key, Nonce};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
@@ -171,39 +174,60 @@ fn encrypt_with_key(plaintext: &str, key: &[u8; 32]) -> Result<String, CommandEr
     Ok(BASE64.encode(combined))
 }
 
-fn decrypt_with_key(encrypted: &str, key: &[u8; 32]) -> Result<String, CommandError> {
-    let combined = BASE64.decode(encrypted)
-        .map_err(|e| CommandError::Internal(format!("Base64 decode failed: {}", e)))?;
-    if combined.len() < 12 {
-        return Err(CommandError::Validation("Invalid encrypted data".into()));
-    }
-    let (nonce_bytes, ciphertext) = combined.split_at(12);
-    let nonce = Nonce::from_slice(nonce_bytes);
-    let cipher_key = Key::<Aes256Gcm>::from_slice(key);
-    let cipher = Aes256Gcm::new(cipher_key);
-    let plaintext = cipher.decrypt(nonce, ciphertext)
-        .map_err(|_| CommandError::Internal("Decryption failed: wrong password".into()))?;
-    String::from_utf8(plaintext).map_err(|e| CommandError::Internal(format!("UTF-8 decode failed: {}", e)))
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportConnectionsResult {
+    pub imported: u32,
+    pub overwritten: u32,
+    pub groups_added: u32,
 }
 
-#[tauri::command]
-pub async fn export_connections(
-    state: State<'_, AppState>,
-    path: String,
-    password: String,
-) -> Result<u32, CommandError> {
-    require_webdriver_path_ipc("Direct path connection export disabled")?;
-    tracing::info!(%path, "export_connections");
-    let connections = state.store.get_connections().await;
-    let groups = state.store.get_groups().await;
-    let count = connections.len() as u32;
+fn validate_share_password(password: &str) -> Result<(), CommandError> {
+    if password.is_empty() {
+        return Err(CommandError::Validation("Password is required".into()));
+    }
+    Ok(())
+}
+
+fn merge_connection_import_stats(
+    existing_ids: &HashSet<String>,
+    incoming: &[ConnectionConfig],
+) -> (u32, u32) {
+    let mut imported = 0u32;
+    let mut overwritten = 0u32;
+    for conn in incoming {
+        if existing_ids.contains(&conn.id) {
+            overwritten += 1;
+        } else {
+            imported += 1;
+        }
+    }
+    (imported, overwritten)
+}
+
+fn merge_group_lists(existing: &[String], incoming: &[String]) -> (Vec<String>, u32) {
+    let before = existing.len();
+    let mut set: BTreeSet<String> = existing.iter().cloned().collect();
+    for g in incoming {
+        set.insert(g.clone());
+    }
+    let groups_added = set.len().saturating_sub(before) as u32;
+    (set.into_iter().collect(), groups_added)
+}
+
+fn build_encrypted_connections_export(
+    connections: &[ConnectionConfig],
+    groups: &[String],
+    password: &str,
+) -> Result<String, CommandError> {
+    validate_share_password(password)?;
 
     let mut salt = [0u8; 16];
     rand::RngCore::fill_bytes(&mut rand::thread_rng(), &mut salt);
-    let key = derive_key_from_password(&password, &salt)?;
+    let key = derive_key_from_password(password, &salt)?;
 
     let mut export_conns = Vec::new();
-    for conn in &connections {
+    for conn in connections {
         let mut c = conn.clone();
         if let Some(pw) = &c.password {
             if !pw.is_empty() {
@@ -235,14 +259,160 @@ pub async fn export_connections(
         "groups": groups,
     });
 
-    let json = serde_json::to_string_pretty(&export_data)
-        .cmd_err("export_connections")?;
+    serde_json::to_string_pretty(&export_data).cmd_err("build_encrypted_connections_export")
+}
+
+fn decrypt_connections_import(
+    content: &str,
+    password: &str,
+) -> Result<(Vec<ConnectionConfig>, Vec<String>), CommandError> {
+    validate_share_password(password)?;
+
+    let mut data: serde_json::Value =
+        serde_json::from_str(content).cmd_err("decrypt_connections_import")?;
+
+    if data.get("connections").is_none() {
+        return Err(CommandError::Validation(
+            "Invalid import file: missing 'connections' field".into(),
+        ));
+    }
+
+    let is_encrypted = data
+        .get("encrypted")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+
+    if is_encrypted {
+        let salt_b64 = data.get("salt").and_then(|v| v.as_str()).unwrap_or("");
+        let salt = BASE64
+            .decode(salt_b64)
+            .map_err(|e| CommandError::Internal(format!("Base64 decode failed: {e}")))?;
+        let key = derive_key_from_password(password, &salt)?;
+
+        if let Some(conns) = data.get_mut("connections").and_then(|v| v.as_array_mut()) {
+            for conn in conns.iter_mut() {
+                if let Some(pw) = conn
+                    .get("password")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
+                {
+                    if !pw.is_empty() {
+                        let decrypted = decrypt_with_key(&pw, &key)?;
+                        conn["password"] = serde_json::Value::String(decrypted);
+                    }
+                }
+                if let Some(ssh) = conn.get_mut("sshTunnel") {
+                    if let Some(pw) = ssh
+                        .get("password")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string())
+                    {
+                        if !pw.is_empty() {
+                            let decrypted = decrypt_with_key(&pw, &key)?;
+                            ssh["password"] = serde_json::Value::String(decrypted);
+                        }
+                    }
+                    if let Some(pp) = ssh
+                        .get("passphrase")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string())
+                    {
+                        if !pp.is_empty() {
+                            let decrypted = decrypt_with_key(&pp, &key)?;
+                            ssh["passphrase"] = serde_json::Value::String(decrypted);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let connections: Vec<ConnectionConfig> = serde_json::from_value(
+        data.get("connections")
+            .cloned()
+            .ok_or_else(|| CommandError::Validation("missing connections".into()))?,
+    )
+    .cmd_err("decrypt_connections_import")?;
+
+    let groups: Vec<String> = data
+        .get("groups")
+        .and_then(|v| serde_json::from_value(v.clone()).ok())
+        .unwrap_or_default();
+
+    Ok((connections, groups))
+}
+
+fn decrypt_with_key(encrypted: &str, key: &[u8; 32]) -> Result<String, CommandError> {
+    let combined = BASE64.decode(encrypted)
+        .map_err(|e| CommandError::Internal(format!("Base64 decode failed: {}", e)))?;
+    if combined.len() < 12 {
+        return Err(CommandError::Validation("Invalid encrypted data".into()));
+    }
+    let (nonce_bytes, ciphertext) = combined.split_at(12);
+    let nonce = Nonce::from_slice(nonce_bytes);
+    let cipher_key = Key::<Aes256Gcm>::from_slice(key);
+    let cipher = Aes256Gcm::new(cipher_key);
+    let plaintext = cipher.decrypt(nonce, ciphertext)
+        .map_err(|_| CommandError::Internal("Decryption failed: wrong password".into()))?;
+    String::from_utf8(plaintext).map_err(|e| CommandError::Internal(format!("UTF-8 decode failed: {}", e)))
+}
+
+#[tauri::command]
+pub async fn export_connections(
+    state: State<'_, AppState>,
+    path: String,
+    password: String,
+) -> Result<u32, CommandError> {
+    require_webdriver_path_ipc("Direct path connection export disabled")?;
+    tracing::info!(%path, "export_connections");
+    let connections = state.store.get_connections().await;
+    let groups = state.store.get_groups().await;
+    let count = connections.len() as u32;
+
+    let json = build_encrypted_connections_export(&connections, &groups, &password)?;
 
     tokio::fs::write(PathBuf::from(&path), json.as_bytes())
         .await
         .cmd_err("export_connections")?;
 
     tracing::info!(%path, count, "export_connections OK");
+    Ok(count)
+}
+
+#[tauri::command]
+pub async fn export_connections_with_dialog(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    password: String,
+    default_file_name: String,
+) -> Result<u32, CommandError> {
+    use tauri_plugin_dialog::DialogExt;
+
+    validate_share_password(&password)?;
+
+    let connections = state.store.get_connections().await;
+    let groups = state.store.get_groups().await;
+    let count = connections.len() as u32;
+    let json = build_encrypted_connections_export(&connections, &groups, &password)?;
+
+    let picked = app
+        .dialog()
+        .file()
+        .add_filter("JSON", &["json"])
+        .set_file_name(&default_file_name)
+        .blocking_save_file();
+    let Some(fp) = picked else {
+        return Err(CommandError::Validation("Export cancelled".into()));
+    };
+    let dest = fp
+        .into_path()
+        .map_err(|e| CommandError::Validation(format!("Invalid dialog path: {e}")))?;
+
+    tokio::fs::write(dest, json.as_bytes())
+        .await
+        .cmd_err("export_connections_with_dialog")?;
+
+    tracing::info!(count, "export_connections_with_dialog OK");
     Ok(count)
 }
 
@@ -257,48 +427,60 @@ pub async fn import_connections_preview(
         .await
         .cmd_err("import_connections_preview")?;
 
-    let mut data: serde_json::Value = serde_json::from_str(&content)
-        .cmd_err("import_connections_preview")?;
+    let (connections, groups) = decrypt_connections_import(&content, &password)?;
 
-    if data.get("connections").is_none() {
-        return Err(CommandError::Validation("Invalid import file: missing 'connections' field".into()));
+    Ok(serde_json::json!({
+        "connections": connections,
+        "groups": groups,
+    }))
+}
+
+#[tauri::command]
+pub async fn import_connections_with_dialog(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    password: String,
+) -> Result<ImportConnectionsResult, CommandError> {
+    use tauri_plugin_dialog::DialogExt;
+
+    validate_share_password(&password)?;
+
+    let picked = app
+        .dialog()
+        .file()
+        .add_filter("JSON", &["json"])
+        .blocking_pick_file();
+    let Some(fp) = picked else {
+        return Err(CommandError::Validation("Import cancelled".into()));
+    };
+    let source = fp
+        .into_path()
+        .map_err(|e| CommandError::Validation(format!("Invalid dialog path: {e}")))?;
+
+    let content = tokio::fs::read_to_string(&source)
+        .await
+        .cmd_err("import_connections_with_dialog")?;
+
+    let (incoming, incoming_groups) = decrypt_connections_import(&content, &password)?;
+
+    let existing = state.store.get_connections().await;
+    let existing_ids: HashSet<String> = existing.iter().map(|c| c.id.clone()).collect();
+    let (imported, overwritten) = merge_connection_import_stats(&existing_ids, &incoming);
+
+    for conn in incoming {
+        state.store.save_connection(conn).await?;
     }
 
-    let is_encrypted = data.get("encrypted").and_then(|v| v.as_bool()).unwrap_or(false);
+    let existing_groups = state.store.get_groups().await;
+    let (merged_groups, groups_added) = merge_group_lists(&existing_groups, &incoming_groups);
+    state.store.save_groups(merged_groups).await?;
 
-    if is_encrypted {
-        let salt_b64 = data.get("salt").and_then(|v| v.as_str()).unwrap_or("");
-        let salt = BASE64.decode(salt_b64)
-            .map_err(|e| CommandError::Internal(format!("Base64 decode failed: {e}")))?;
-        let key = derive_key_from_password(&password, &salt)?;
-
-        if let Some(conns) = data.get_mut("connections").and_then(|v| v.as_array_mut()) {
-            for conn in conns.iter_mut() {
-                if let Some(pw) = conn.get("password").and_then(|v| v.as_str()).map(|s| s.to_string()) {
-                    if !pw.is_empty() {
-                        let decrypted = decrypt_with_key(&pw, &key)?;
-                        conn["password"] = serde_json::Value::String(decrypted);
-                    }
-                }
-                if let Some(ssh) = conn.get_mut("sshTunnel") {
-                    if let Some(pw) = ssh.get("password").and_then(|v| v.as_str()).map(|s| s.to_string()) {
-                        if !pw.is_empty() {
-                            let decrypted = decrypt_with_key(&pw, &key)?;
-                            ssh["password"] = serde_json::Value::String(decrypted);
-                        }
-                    }
-                    if let Some(pp) = ssh.get("passphrase").and_then(|v| v.as_str()).map(|s| s.to_string()) {
-                        if !pp.is_empty() {
-                            let decrypted = decrypt_with_key(&pp, &key)?;
-                            ssh["passphrase"] = serde_json::Value::String(decrypted);
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    Ok(data)
+    tracing::info!(imported, overwritten, groups_added, "import_connections_with_dialog OK");
+    Ok(ImportConnectionsResult {
+        imported,
+        overwritten,
+        groups_added,
+    })
 }
 
 #[tauri::command]
@@ -477,6 +659,54 @@ mod tests {
             assert!(result.is_err());
             assert!(result.unwrap_err().to_string().contains("disabled"));
         }
+    }
+
+    #[test]
+    fn export_rejects_empty_password() {
+        assert!(validate_share_password("").is_err());
+        assert!(validate_share_password("secret").is_ok());
+    }
+
+    #[test]
+    fn merge_connections_overwrites_by_id() {
+        use crate::db::{ConnectionConfig, SslMode};
+
+        fn conn(id: &str) -> ConnectionConfig {
+            ConnectionConfig {
+                id: id.into(),
+                name: id.into(),
+                database_type: "postgresql".into(),
+                host: None,
+                port: None,
+                database: None,
+                schema: None,
+                username: None,
+                password: None,
+                ssl_mode: SslMode::default(),
+                connection_timeout: 30,
+                ssh_tunnel: None,
+                color_tag: None,
+                group: None,
+                last_connected_at: None,
+                server_version: None,
+            }
+        }
+
+        let existing_ids: HashSet<String> = ["a", "b"].into_iter().map(String::from).collect();
+        let incoming = vec![conn("b"), conn("c"), conn("d")];
+        let (imported, overwritten) = merge_connection_import_stats(&existing_ids, &incoming);
+        assert_eq!(imported, 2);
+        assert_eq!(overwritten, 1);
+    }
+
+    #[test]
+    fn merge_group_lists_unions_and_counts_new() {
+        let (merged, added) = merge_group_lists(
+            &["alpha".into(), "beta".into()],
+            &["beta".into(), "gamma".into()],
+        );
+        assert_eq!(merged, vec!["alpha", "beta", "gamma"]);
+        assert_eq!(added, 1);
     }
 
     #[test]

@@ -20,6 +20,8 @@
     "data-sync": "数据同步",
     "export-config": "导出应用数据",
     "import-config": "导入应用数据",
+    "export-connections": "导出连接",
+    "import-connections": "导入连接",
     "view-logs": "查看日志",
     "ctx-add-favorite": "收藏 SQL"
   },
@@ -44,6 +46,8 @@
     "data-sync": "Data Sync",
     "export-config": "Export App Data",
     "import-config": "Import App Data",
+    "export-connections": "Export Connections",
+    "import-connections": "Import Connections",
     "view-logs": "View Logs",
     "ctx-add-favorite": "Add to Favorites"
   },
@@ -66,8 +70,10 @@
     "open-settings": "偏好設置",
     "new-connection": "新建連接",
     "data-sync": "數據同步",
-    "export-config": "導出設定",
-    "import-config": "導入設定",
+    "export-config": "導出應用數據",
+    "import-config": "導入應用數據",
+    "export-connections": "導出連接",
+    "import-connections": "導入連接",
     "view-logs": "檢視日誌",
     "ctx-add-favorite": "收藏 SQL"
   },
@@ -92,6 +98,8 @@
     "data-sync": "Data Sync",
     "export-config": "Export Config",
     "import-config": "Import Config",
+    "export-connections": "Export Connections",
+    "import-connections": "Import Connections",
     "view-logs": "View Logs",
     "ctx-add-favorite": "Add to Favorites"
   },
@@ -116,6 +124,8 @@
     "data-sync": "Data Sync",
     "export-config": "Export Config",
     "import-config": "Import Config",
+    "export-connections": "Export Connections",
+    "import-connections": "Import Connections",
     "view-logs": "View Logs",
     "ctx-add-favorite": "Add to Favorites"
   },
@@ -140,6 +150,8 @@
     "data-sync": "Data Sync",
     "export-config": "Export Config",
     "import-config": "Import Config",
+    "export-connections": "Export Connections",
+    "import-connections": "Import Connections",
     "view-logs": "View Logs",
     "ctx-add-favorite": "Add to Favorites"
   },
@@ -164,6 +176,8 @@
     "data-sync": "Data Sync",
     "export-config": "Export Config",
     "import-config": "Import Config",
+    "export-connections": "Export Connections",
+    "import-connections": "Import Connections",
     "view-logs": "View Logs",
     "ctx-add-favorite": "Add to Favorites"
   },
@@ -188,6 +202,8 @@
     "data-sync": "Data Sync",
     "export-config": "Export Config",
     "import-config": "Import Config",
+    "export-connections": "Export Connections",
+    "import-connections": "Import Connections",
     "view-logs": "View Logs",
     "ctx-add-favorite": "Add to Favorites"
   },
@@ -212,6 +228,8 @@
     "data-sync": "Data Sync",
     "export-config": "Export Config",
     "import-config": "Import Config",
+    "export-connections": "Export Connections",
+    "import-connections": "Import Connections",
     "view-logs": "View Logs",
     "ctx-add-favorite": "Add to Favorites"
   },
@@ -236,6 +254,8 @@
     "data-sync": "Data Sync",
     "export-config": "Export Config",
     "import-config": "Import Config",
+    "export-connections": "Export Connections",
+    "import-connections": "Import Connections",
     "view-logs": "View Logs",
     "ctx-add-favorite": "Add to Favorites"
   }
