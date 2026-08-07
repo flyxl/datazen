@@ -183,7 +183,7 @@ pub struct ImportConnectionsResult {
 }
 
 fn validate_share_password(password: &str) -> Result<(), CommandError> {
-    if password.is_empty() {
+    if password.trim().is_empty() {
         return Err(CommandError::Validation("Password is required".into()));
     }
     Ok(())
