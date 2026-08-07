@@ -82,7 +82,7 @@ DATAZEN_PLUGINS=all pnpm build         # 全部插件
 
 ### MCP
 
-- **Server**（`mcp/server.rs`）：暴露 Tools/Resources/Prompts（含 `list_workflows` / `run_workflow` 适配）
+- **Server**（`mcp/server.rs`）：暴露 Tools/Resources/Prompts（含 `list_workflows` / `run_workflow` 适配）；DB tools/prompts 入参为 **`config_id`**（持久化连接 ID，来自 `list_connections`）
 - **Client**（`mcp/client.rs`）：连接外部 MCP Server，供 AI Chat 工具调用
 - **双模式**：`main.rs` 通过 `--mcp-stdio` 启动无头 MCP 服务器
 
