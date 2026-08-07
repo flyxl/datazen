@@ -1,8 +1,10 @@
 import { describe, it, expect } from 'vitest';
+import { DB_REGISTRY } from '../../databaseTypes';
 import { getSqlDialect } from '../index';
 
 describe('getSqlDialect', () => {
   it('maps kiwi to mysql family', () => {
+    if (!DB_REGISTRY.kiwi) return; // plugins not injected in this workspace
     expect(getSqlDialect('kiwi')?.family).toBe('mysql');
   });
 

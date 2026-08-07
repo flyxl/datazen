@@ -57,7 +57,7 @@ export const AiInput = forwardRef<HTMLTextAreaElement, AiInputProps>(function Ai
 
       if (!hasContext) return;
 
-      const cursorPos = e.target.selectionStart;
+      const cursorPos = e.target.selectionStart ?? newValue.length;
       const textBefore = newValue.substring(0, cursorPos);
       const atMatch = textBefore.match(/@([^\s@]*)$/);
 

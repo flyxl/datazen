@@ -94,8 +94,10 @@ export function useConnectionForm(options: UseConnectionFormOptions = {}) {
   );
 
   function handleDatabaseTypeChange(newType: DatabaseType) {
-    setDatabaseType(newType);
     const meta = DB_REGISTRY[newType];
+    if (!meta) return;
+
+    setDatabaseType(newType);
 
     setHost(meta.defaultHost || '127.0.0.1');
     setPort(meta.defaultPort ? String(meta.defaultPort) : '');
@@ -194,8 +196,8 @@ export function useConnectionForm(options: UseConnectionFormOptions = {}) {
     : undefined;
 
   const meta = DB_REGISTRY[databaseType];
-  const formVariant = meta.connectionForm;
-  const hasUsername = !!meta.defaultUser || formVariant === 'kiwi';
+  const formVariant = meta?.connectionForm ?? 'standard';
+  const hasUsername = !!meta?.defaultUser || formVariant === 'kiwi';
 
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
 
@@ -209,7 +211,7 @@ export function useConnectionForm(options: UseConnectionFormOptions = {}) {
 
     const errors: Record<string, string> = {};
 
-    if (meta.connectionMode === 'file') {
+    if (meta?.connectionMode === 'file') {
       if (!database.trim()) errors.database = t('newConn.required');
     } else if (formVariant !== 'kiwi' && formVariant !== 'catalog') {
       if (!host.trim()) errors.host = t('newConn.required');
@@ -218,7 +220,7 @@ export function useConnectionForm(options: UseConnectionFormOptions = {}) {
 
     setValidationErrors(errors);
     return Object.keys(errors).length === 0;
-  }, [database, formVariant, host, meta.connectionMode, password, port, schema, t, username]);
+  }, [database, formVariant, host, meta?.connectionMode, password, port, schema, t, username]);
 
   const draft = useMemo((): ConnectionConfig => {
     const base: ConnectionConfig = {
@@ -232,7 +234,7 @@ export function useConnectionForm(options: UseConnectionFormOptions = {}) {
     };
 
     const draftMeta = DB_REGISTRY[databaseType];
-    if (draftMeta.connectionMode === 'file') {
+    if (!draftMeta || draftMeta.connectionMode === 'file') {
       return { ...base, database };
     }
 
