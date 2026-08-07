@@ -99,6 +99,7 @@ DataZen 是一个跨平台桌面数据库管理工具，基于 **Tauri v2**（Ru
 
 ## 其他文档
 
+- [竞品对比：Navicat / TablePlus / DataGrip](../competitive-comparison.md)
 - [Workflow 使用手册](../workflow-guide.md)（YAML 语法、模板、跨库、排错）
 - [产品需求文档 (PRD)](../PRD.md)
 - [插件系统 RFC](../rfc-plugin-system.md)
