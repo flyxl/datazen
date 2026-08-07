@@ -1,8 +1,9 @@
-# 代码审查修复进度（一期～三期）
+# 代码审查修复进度（一期～四期+）
 
-> 对照计划：[`code-review-2026-08-07-full.md`](./code-review-2026-08-07-full.md)  
+> 对照计划：[`code-review-2026-08-07-full.md`](./code-review-2026-08-07-full.md) · 四期+：[`2026-08-07-code-review-phase4-plus.md`](./superpowers/plans/2026-08-07-code-review-phase4-plus.md)  
 > 分支：`fix/code-review-phase-1-3`  
-> 流程：开发（含单元测试）→ **独立测试 Agent** 出 E2E/结果 → 失败则编码 Agent 修复 → 通过后提交。
+> 流程：开发（含单元测试）→ **独立测试 Agent** 出 E2E/结果 → 失败则编码 Agent 修复 → 通过后提交。  
+> **四期+ 已开始**（2026-08-07）。
 
 ## 总表
 
@@ -30,6 +31,13 @@
 | E6 | DB 能力显式 opt-in | ✅ | ✅ databaseTypes | ✅ | ✅ 8129e59 |
 | E7 | 死代码清理 | ✅ | ✅ tsc | ✅ | ✅ 1c19005 |
 | E8 | 文档刷新 | ✅ | ⬜ N/A | ✅ | ✅ 4cb3328 |
+| P4 | SQL/NL 日志降级 debug | ⬜ | ⬜ | ⬜ | ⬜ |
+| P5 | splash 等 bootstrap + 错误 i18n | ⬜ | ⬜ | ⬜ | ⬜ |
+| C6R | connection_id → config_id 硬切换 | ⬜ | ⬜ | ⬜ | ⬜ |
+| S1+ | 导出后提示并另存 `.key` | ⬜ | ⬜ | ⬜ | ⬜ |
+| ConnShare | 菜单导出/导入连接 + 口令 | ⬜ | ⬜ | ⬜ | ⬜ |
+| P3 | Keychain 主密钥 + 测试 fallback | ⬜ | ⬜ | ⬜ | ⬜ |
+| C2F | 10 语系全量真翻译 | ⬜ | ⬜ | ⬜ | ⬜ |
 
 图例：⬜ 未开始 · 🟡 进行中 · ✅ 完成 · ❌ 失败待修
 
@@ -122,12 +130,10 @@
 
 - **提交**：`2016fbc`
 
-## 延期 / 未做（四期或范围外）
+## 延期 / 范围外
 
 | ID | 说明 |
 |----|------|
-| P1–P5 | 四期体验/性能，本次不执行 |
-| C6 rename | 全库 `config_id`/`connection_id` 重命名未做，仅文档约定 |
-| C2 真翻译 | 8 个 Beta 语系未逐条翻译，English fallback + UI Beta |
+| P1–P2 | 四期性能（LTO/CI、`max_tokens` 默认），本次不执行 |
 | E6 其余标志 | `supportsErDiagram` 仍为 `!== false`，仅 EXPLAIN 改为 opt-in |
 | E5 流式备份 | 仅 Store JSON/加密文件原子写；整库 ZIP 流式/`pg_dump` 未做 |
