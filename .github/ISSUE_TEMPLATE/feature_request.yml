@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        We welcome feature ideas. Email **wuxiaolongklws@gmail.com** if you prefer a private discussion.
+        We welcome feature ideas. Share ideas in [Discussions](https://github.com/flyxl/datazen/discussions) or email **wuxiaolongklws@gmail.com** for a private discussion.
 
   - type: textarea
     id: problem

@@ -1,8 +1,14 @@
 blank_issues_enabled: false
 contact_links:
+  - name: Ask a question (Discussions)
+    url: https://github.com/flyxl/datazen/discussions
+    about: General questions, ideas, and community discussion
   - name: Email support
     url: mailto:wuxiaolongklws@gmail.com
-    about: Questions, partnership, or feedback via email
+    about: Questions, partnership, or private feedback via email
   - name: Download releases
     url: https://github.com/flyxl/datazen/releases
     about: Get the latest build for macOS, Windows, or Linux
+  - name: Security vulnerability
+    url: https://github.com/flyxl/datazen/blob/main/SECURITY.md
+    about: Report security issues privately (do not file a public issue)
