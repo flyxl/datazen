@@ -89,6 +89,7 @@ DATAZEN_PLUGINS=all pnpm tauri:build   # 全部插件
 - **零硬编码**：行为差异通过 `DB_REGISTRY` + `DatabaseTypeMeta` 元数据驱动
 - **表单路由**：`ConnectionFormBody.tsx` 通过 `connectionForm` 字段选择表单组件
 - **视图路由**：`connectionViews/index.ts` 映射 `connectionMode` → 视图组件
+- **多库会话**：`hasMultiDatabase` 为驱动能力；Connection Window 多库 UI 由 `schemaStore.isMultiDatabase`（`hasMultiDatabase && databases.length > 1`）决定；切库走 `use_database`（MySQL/MariaDB/PostgreSQL）
 - **多窗口**：`windowManager.ts` + `windowKind.ts` URL 参数路由，`App.tsx` 按 kind 懒加载
 - **IPC 约定**：前端 `invoke()` 传参使用 `snake_case` key 与后端对齐
 
