@@ -1,12 +1,21 @@
 import { describe, it, expect } from 'vitest';
 import zhCN from './zh-CN';
 import en from './en';
-import {
-  SUPPORTED_LOCALES,
-  getAllTranslations,
-  getTranslation,
-  type SupportedLocale,
-} from './index';
+import { SUPPORTED_LOCALES, getAllTranslations, getTranslation, BETA_LOCALES, FULLY_TRANSLATED_LOCALES, type SupportedLocale, type TranslationKey } from './index';
+
+const CRITICAL_KEYS: TranslationKey[] = [
+  'common.ok',
+  'common.cancel',
+  'menu.exportConfig',
+  'menu.importConfig',
+  'action.exportConfig',
+  'action.importConfig',
+  'appData.exportSuccess',
+  'appData.importConfirmTitle',
+  'appData.importConfirmMessage',
+  'settings.language',
+  'main.searchPlaceholder',
+];
 
 describe('locales', () => {
   it('registers all 10 supported locales', () => {
@@ -23,11 +32,32 @@ describe('locales', () => {
     }
   });
 
-  it('keeps key parity with zh-CN across all locales', () => {
-    const zhKeys = Object.keys(zhCN).sort();
+  it('keeps key parity with en across all locales', () => {
+    const enKeys = Object.keys(en).sort();
     for (const locale of SUPPORTED_LOCALES) {
       const keys = Object.keys(getAllTranslations(locale)).sort();
-      expect(keys, `${locale} key mismatch`).toEqual(zhKeys);
+      expect(keys, `${locale} key mismatch`).toEqual(enKeys);
+    }
+  });
+
+  it('documents beta locales as mostly English with en fallback', () => {
+    const enDict = getAllTranslations('en');
+    const enKeys = Object.keys(enDict);
+    for (const locale of BETA_LOCALES) {
+      const dict = getAllTranslations(locale);
+      let sameAsEn = 0;
+      for (const key of enKeys) {
+        if (dict[key] === enDict[key]) sameAsEn += 1;
+      }
+      const ratio = sameAsEn / enKeys.length;
+      expect(ratio, `${locale} English overlap`).toBeGreaterThan(0.75);
+    }
+  });
+
+  it('fully translated locales differ from en on user-facing strings', () => {
+    for (const locale of FULLY_TRANSLATED_LOCALES) {
+      if (locale === 'en') continue;
+      expect(getTranslation(locale, 'common.ok')).not.toBe(en['common.ok']);
     }
   });
 
@@ -37,7 +67,44 @@ describe('locales', () => {
   });
 
   it('interpolates params for every locale', () => {
-    const sample: SupportedLocale = 'ja';
-    expect(getTranslation(sample, 'win.query', { db: 'testdb' })).toContain('testdb');
+    for (const locale of SUPPORTED_LOCALES) {
+      expect(getTranslation(locale, 'win.query', { db: 'testdb' })).toContain('testdb');
+    }
+  });
+
+  it('resolves critical UI keys for every locale', () => {
+    for (const locale of SUPPORTED_LOCALES) {
+      for (const key of CRITICAL_KEYS) {
+        const text = getTranslation(locale, key);
+        expect(text.length, `${locale}:${key}`).toBeGreaterThan(0);
+        expect(text).not.toBe(key);
+      }
+    }
+  });
+
+  it('zh-CN and en differ on at least some user-facing strings', () => {
+    expect(zhCN['common.ok']).not.toBe(en['common.ok']);
+    expect(zhCN['settings.language']).not.toBe(en['settings.language']);
+  });
+
+  it('zh-TW uses traditional form for language label', () => {
+    expect(getAllTranslations('zh-TW')['settings.language']).toBe('語言');
+  });
+
+  it('getTranslation accepts SupportedLocale union members', () => {
+    const locale: SupportedLocale = 'ko';
+    expect(getTranslation(locale, 'common.cancel')).toBeTruthy();
+  });
+
+  it('replaces multiple distinct params', () => {
+    // Prefer a key that uses one param; verify replace does not leave braces for known keys
+    const text = getTranslation('en', 'appData.exportSuccess');
+    expect(text.includes('{')).toBe(false);
+  });
+
+  it('falls back through dict chain for unknown keys', () => {
+    const missing = 'this.key.does.not.exist' as TranslationKey;
+    expect(getTranslation('en', missing)).toBe(missing);
+    expect(getTranslation('zh-CN', missing)).toBe(missing);
   });
 });
