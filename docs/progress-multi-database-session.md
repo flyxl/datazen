@@ -20,7 +20,7 @@
 | F1 | MySQL/MariaDB 实现 `use_database` + Rust 单元测试 | ✅ implemented（unit + gated live IT） | — |
 | F2 | 前端会话级多库（mysql/mariadb）：registry、schemaStore、SchemaTree、QueryPanel、WorkflowPanel + Vitest + E2E spec | ✅ implemented + tested | — |
 | F3 | PostgreSQL：`get_tables` 尊重 database + `use_database` + Rust 单元测试 | ✅ implemented（unit + gated live IT） | — |
-| F4 | 前端启用 postgresql 多库能力 + Vitest | ⬜ pending | — |
+| F4 | 前端启用 postgresql 多库能力 + Vitest + E2E | ✅ implemented + tested | — |
 | F5 | 更新必要文档并提交 | ⬜ pending | — |
 
 ## 测试记录索引
@@ -30,9 +30,23 @@
 | F1 | test-agent (fresh) | [progress-multi-database-session-f1-test.md](./progress-multi-database-session-f1-test.md) | **PASS** |
 | F2 | test-agent (fresh) | [progress-multi-database-session-f2-test.md](./progress-multi-database-session-f2-test.md) | **PASS** (Vitest 20/20 + E2E 3/3) |
 | F3 | test-agent (fresh) | [progress-multi-database-session-f3-test.md](./progress-multi-database-session-f3-test.md) | **PASS** (unit 5/5 + gated IT skip + live IT) |
-| F4 | — | — | — |
+| F4 | test-agent (fresh) | [progress-multi-database-session-f4-test.md](./progress-multi-database-session-f4-test.md) | **PASS** (Vitest 21/21 + E2E 3/3) |
 
 ## 变更日志
+
+### 2026-08-07 — F4 全量测试通过（fresh test-agent）
+
+- Vitest：`databaseTypes` / `schemaStore` / `SchemaTree.test.tsx` — 21/21 PASS
+- E2E：`pnpm e2e:skip-build -- --spec e2e/specs/postgres-multi-database.ts` — 3/3 PASS（webdriver debug binary + 本机 PostgreSQL，9 库可见）
+- 报告：[progress-multi-database-session-f4-test.md](./progress-multi-database-session-f4-test.md)
+
+### 2026-08-07 — F4 前端启用 postgresql 多库
+
+- `DB_REGISTRY.postgresql`：`hasMultiDatabase: true`（复用 F2 会话公式与 MultiDatabaseSchemaTree）
+- Vitest：`databaseTypes` / `schemaStore` / `SchemaTree` 期望改为 postgresql 走多库路由与 expand→`use_database`
+- 新增 `e2e/specs/postgres-multi-database.ts`：无默认库连接 → 多库节点；展开加载表；QueryPanel 选择器；无 PG / `E2E_SKIP_PG=1` 时 skip
+- `e2e/helpers.ts`：`createAndConnectPostgreSQL`（`database: ''` 可留空）
+- `package.json` `e2e:db` 纳入该 spec
 
 ### 2026-08-07 — F3 全量测试通过（fresh test-agent）
 

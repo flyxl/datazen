@@ -259,6 +259,130 @@ export async function createAndConnectMySQL(opts: {
 }
 
 /**
+ * Create a PostgreSQL connection via the new-connection UI and connect to it.
+ * Returns { mainWindow, connWindow }.
+ * Assumes we start on the main window.
+ */
+export async function createAndConnectPostgreSQL(opts: {
+  name?: string;
+  host?: string;
+  port?: string;
+  user?: string;
+  password?: string;
+  /** Pass empty string to leave the database field blank (multi-db session). */
+  database?: string;
+} = {}) {
+  const {
+    name = 'E2E-PostgreSQL',
+    host = process.env.E2E_PG_HOST || '127.0.0.1',
+    port = process.env.E2E_PG_PORT || '5432',
+    user = process.env.E2E_PG_USER || 'postgres',
+    password = process.env.E2E_PG_PASSWORD || '',
+    database = process.env.E2E_PG_DB || 'postgres',
+  } = opts;
+
+  const mainWindow = await browser.getWindowHandle();
+
+  await expandAllGroups();
+
+  const existingItem = await findCardByName(name);
+  if (existingItem) {
+    await browser.execute((n: string) => {
+      const items = document.querySelectorAll('[data-conn-item]');
+      for (const item of items) {
+        if (item.textContent?.includes(n)) {
+          item.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+          return;
+        }
+      }
+    }, name);
+    await browser.waitUntil(
+      async () => (await browser.getWindowHandles()).length > 1,
+      { timeout: 30000, timeoutMsg: '等待 PostgreSQL 连接窗口打开超时' },
+    );
+    const handles = await browser.getWindowHandles();
+    const connWindow = handles.find((h) => h !== mainWindow)!;
+    await browser.switchToWindow(connWindow);
+    await $('button*=新建查询').waitForDisplayed({ timeout: 20000 });
+    await browser.pause(2000);
+    return { mainWindow, connWindow };
+  }
+
+  const newConnBtn = await $('button*=新建连接');
+  await newConnBtn.click();
+  const newConnWindow = await switchToNewWindow(mainWindow);
+
+  // PostgreSQL is the default type; ensure it is selected
+  const pgBtn = await $('button*=PostgreSQL');
+  await pgBtn.click();
+  await browser.pause(300);
+
+  const nameInput = await $('input[placeholder="例如：主数据库"]');
+  await nameInput.setValue(name);
+
+  const hostInput = await $('input[placeholder="prod-db.example.com"]');
+  await hostInput.clearValue();
+  await hostInput.setValue(host);
+
+  const allInputs = await $$('input');
+  for (const inp of allInputs) {
+    if ((await inp.getValue()) === '5432') {
+      await inp.clearValue();
+      await inp.setValue(port);
+      break;
+    }
+  }
+
+  const dbInput = await $('input[placeholder="myapp_production"]');
+  await dbInput.clearValue();
+  if (database) {
+    await dbInput.setValue(database);
+  }
+
+  const userInput = await $('input[placeholder="postgres"]');
+  await userInput.clearValue();
+  await userInput.setValue(user);
+
+  if (password) {
+    const pwInput = await $('input[type="password"]');
+    await pwInput.setValue(password);
+  }
+
+  const saveBtn = await $('button*=保存');
+  await saveBtn.click();
+  await browser.waitUntil(
+    async () => (await browser.getWindowHandles()).length === 1,
+    { timeout: 10000, timeoutMsg: '保存连接后窗口未关闭' },
+  );
+  await browser.switchToWindow(mainWindow);
+  await browser.pause(1000);
+
+  const card = await findCardByName(name);
+  if (!card) throw new Error(`未找到 PostgreSQL 连接 "${name}"`);
+  await browser.execute((n: string) => {
+    const items = document.querySelectorAll('[data-conn-item]');
+    for (const item of items) {
+      if (item.textContent?.includes(n)) {
+        item.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+        return;
+      }
+    }
+  }, name);
+
+  await browser.waitUntil(
+    async () => (await browser.getWindowHandles()).length > 1,
+    { timeout: 30000, timeoutMsg: '等待 PostgreSQL 连接窗口打开超时' },
+  );
+  const handles = await browser.getWindowHandles();
+  const connWindow = handles.find((h) => h !== mainWindow)!;
+  await browser.switchToWindow(connWindow);
+  await $('button*=新建查询').waitForDisplayed({ timeout: 20000 });
+  await browser.pause(2000);
+
+  return { mainWindow, connWindow };
+}
+
+/**
  * Connect to a named connection card (any DB type) from the main window.
  */
 export async function connectToCard(cardName: string) {

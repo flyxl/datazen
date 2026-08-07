@@ -14,8 +14,8 @@ describe('DB_REGISTRY behavioral flags', () => {
     expect(DB_REGISTRY.mariadb.hasMultiDatabase).toBe(true);
   });
 
-  it('postgresql does not enable multi-database for F2', () => {
-    expect(DB_REGISTRY.postgresql.hasMultiDatabase).toBeFalsy();
+  it('postgresql enables multi-database session capability', () => {
+    expect(DB_REGISTRY.postgresql.hasMultiDatabase).toBe(true);
   });
 
   it('redis uses index form and keyvalue view', () => {
