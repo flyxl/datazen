@@ -2,6 +2,10 @@
 /**
  * with-plugin-inject.mjs — run a command after resolve-plugins, always restore stash after.
  *
+ * Nested-safe: if `.plugin-file-stash/` already exists (outer caller already resolved),
+ * skip resolve and skip restore so beforeBuildCommand `pnpm build` does not clobber
+ * injected Cargo.toml / capabilities before the Rust compile.
+ *
  * Usage:
  *   node scripts/with-plugin-inject.mjs [--plugins=...] -- <cmd> [args...]
  *   node scripts/with-plugin-inject.mjs -- tauri build
@@ -9,46 +13,106 @@
 
 import { execSync, spawnSync } from 'child_process';
 import { resolve, dirname } from 'path';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
+import { stashExists } from './plugin-file-stash.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
 
-const argv = process.argv.slice(2);
-const sep = argv.indexOf('--');
-const ahead = sep === -1 ? argv : argv.slice(0, sep);
-const behind = sep === -1 ? [] : argv.slice(sep + 1);
+/**
+ * Decide whether this wrapper owns stash lifecycle.
+ * @param {() => boolean} [exists]
+ * @returns {{ ownStash: boolean, nested: boolean }}
+ */
+export function planPluginInjectLifecycle(exists = stashExists) {
+  const nested = exists();
+  return { ownStash: !nested, nested };
+}
 
-const pluginsArgs = ahead.filter((a) => a.startsWith('--plugins'));
-const resolveArgs = pluginsArgs.join(' ');
+/**
+ * @param {{
+ *   argv?: string[],
+ *   root?: string,
+ *   stashExistsFn?: () => boolean,
+ *   runResolve?: (args: string) => void,
+ *   runRestore?: () => void,
+ *   runCommand?: (cmd: string, args: string[]) => { status: number | null },
+ *   log?: (msg: string) => void,
+ * }} [options]
+ */
+export function runWithPluginInject(options = {}) {
+  const argv = options.argv ?? process.argv.slice(2);
+  const root = options.root ?? ROOT;
+  const existsFn = options.stashExistsFn ?? stashExists;
+  const log = options.log ?? console.log.bind(console);
 
-function restore() {
-  try {
-    execSync('node scripts/plugin-file-stash.mjs restore', {
-      cwd: ROOT,
-      stdio: 'inherit',
+  const sep = argv.indexOf('--');
+  const ahead = sep === -1 ? argv : argv.slice(0, sep);
+  const behind = sep === -1 ? [] : argv.slice(sep + 1);
+  const pluginsArgs = ahead.filter((a) => a.startsWith('--plugins'));
+  const resolveArgs = pluginsArgs.join(' ');
+
+  const runResolve =
+    options.runResolve ??
+    ((args) => {
+      execSync(`node scripts/resolve-plugins.mjs ${args}`, {
+        cwd: root,
+        stdio: 'inherit',
+      });
     });
-  } catch {
-    console.error('[with-plugin-inject] stash restore failed');
+
+  const runRestore =
+    options.runRestore ??
+    (() => {
+      try {
+        execSync('node scripts/plugin-file-stash.mjs restore', {
+          cwd: root,
+          stdio: 'inherit',
+        });
+      } catch {
+        console.error('[with-plugin-inject] stash restore failed');
+      }
+    });
+
+  const runCommand =
+    options.runCommand ??
+    ((cmd, args) =>
+      spawnSync(cmd, args, {
+        cwd: root,
+        stdio: 'inherit',
+        shell: true,
+        env: process.env,
+      }));
+
+  const { ownStash } = planPluginInjectLifecycle(existsFn);
+
+  if (ownStash) {
+    runResolve(resolveArgs);
+  } else {
+    log(
+      '[with-plugin-inject] stash already present; skipping resolve/restore (nested)',
+    );
   }
+
+  if (behind.length === 0) {
+    if (ownStash) runRestore();
+    return { status: 0, ownStash, nested: !ownStash };
+  }
+
+  const result = runCommand(behind[0], behind.slice(1));
+  if (ownStash) runRestore();
+  return {
+    status: result.status ?? 1,
+    ownStash,
+    nested: !ownStash,
+  };
 }
 
-execSync(`node scripts/resolve-plugins.mjs ${resolveArgs}`, {
-  cwd: ROOT,
-  stdio: 'inherit',
-});
-
-if (behind.length === 0) {
-  restore();
-  process.exit(0);
+function main() {
+  const result = runWithPluginInject();
+  process.exit(result.status);
 }
 
-const result = spawnSync(behind[0], behind.slice(1), {
-  cwd: ROOT,
-  stdio: 'inherit',
-  shell: true,
-  env: process.env,
-});
-
-restore();
-process.exit(result.status ?? 1);
+if (import.meta.url === pathToFileURL(resolve(process.argv[1] ?? '')).href) {
+  main();
+}

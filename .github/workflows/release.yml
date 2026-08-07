@@ -98,13 +98,15 @@ jobs:
       - name: Resolve plugins and build Tauri app
         shell: bash
         run: |
-          node scripts/resolve-plugins.mjs --plugins="${{ matrix.plugins }}"
-          FEATURES=$(node -e "const f=require('./.plugin-features.json').features; if(f.length) process.stdout.write(f.join(','))")
-          if [ -n "$FEATURES" ]; then
-            pnpm tauri build --target ${{ matrix.target }} -f "$FEATURES"
-          else
-            pnpm tauri build --target ${{ matrix.target }}
-          fi
+          # Outer with-plugin-inject owns stash; nested `pnpm build` (beforeBuildCommand) skips.
+          node scripts/with-plugin-inject.mjs --plugins="${{ matrix.plugins }}" -- bash -c '
+            FEATURES=$(node -e "const f=require(\"./.plugin-features.json\").features; if(f.length) process.stdout.write(f.join(\",\"))")
+            if [ -n "$FEATURES" ]; then
+              pnpm tauri build --target "${{ matrix.target }}" -f "$FEATURES"
+            else
+              pnpm tauri build --target "${{ matrix.target }}"
+            fi
+          '
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DATAZEN_PLUGINS: ${{ matrix.plugins }}

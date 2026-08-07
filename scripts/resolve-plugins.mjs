@@ -30,6 +30,7 @@ import {
   restoreManagedFiles,
   managedReadPath,
   workPath,
+  allStashed,
   ROOT as STASH_ROOT,
 } from './plugin-file-stash.mjs';
 
@@ -698,7 +699,14 @@ function main() {
   console.log(`[resolve-plugins] resolved plugins: [${plugins.join(', ')}]`);
 
   // Rename clean managed files aside, then write injected copies at original paths.
-  stashManagedFiles();
+  // Idempotent: if an outer caller already stashed, re-inject over working copies.
+  if (allStashed()) {
+    console.log(
+      '[resolve-plugins] stash already present; re-injecting without re-stash',
+    );
+  } else {
+    stashManagedFiles();
+  }
 
   try {
     // Clone/update plugin repos
