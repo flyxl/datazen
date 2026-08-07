@@ -77,7 +77,8 @@ DataZen 是一个跨平台桌面数据库管理工具，基于 **Tauri v2**（Ru
 | [持久化存储](backend/store.md) | AES-256-GCM 加密本地文件存储、配置/历史/收藏/Prompt覆盖管理 |
 | [IPC 命令层](backend/commands.md) | 16 个 Tauri Commands 模块、AppState 结构、CommandError 错误处理 |
 | [AI 模块](backend/ai.md) | AiProvider trait、4 内置 Provider、protocol 层、PromptResolver（资源文件 + 覆盖） |
-| [MCP 模块](backend/mcp.md) | MCP Server（Tools/Resources/Prompts）、MCP Client、Workflows 系统、双运行模式 |
+| [MCP 模块](backend/mcp.md) | MCP Server（Tools/Resources/Prompts）、MCP Client、双运行模式 |
+| [Workflow 模块](backend/workflow.md) | YAML Workflow 引擎、执行历史；GUI/IPC/MCP 共用 |
 
 ## 前端文档
 
@@ -94,7 +95,7 @@ DataZen 是一个跨平台桌面数据库管理工具，基于 **Tauri v2**（Ru
 |------|------|
 | [安全措施](security.md) | AES-256-GCM 加密、CSP、路径遍历防护、文件扩展名白名单、AI Key 安全 |
 | [窗口管理](windows.md) | 多窗口架构、Rust 端窗口创建、macOS acceptFirstMouse、windowKind URL 路由 |
-| [测试策略](testing.md) | Rust 单元/集成测试、Vitest 前端测试（25 文件）、WebdriverIO E2E（31 spec）、手工黑盒测试 |
+| [测试策略](testing.md) | Rust / Vitest / E2E 概览；**跑通 E2E 必读** [../e2e-testing.md](../e2e-testing.md) |
 
 ## 其他文档
 
