@@ -9,7 +9,7 @@
 | ID | 标题 | 开发 | 单元测试 | 测试 Agent | 提交 |
 |----|------|------|----------|------------|------|
 | S1 | ZIP 导出排除 `.key` | ✅ | ✅ 18 lib | ✅ ADB-008 + unit | ✅ 见下 |
-| S2 | 导入原子化 / 可回滚 | ⬜ | ⬜ | ⬜ | ⬜ |
+| S2 | 导入原子化 / 可回滚 | ✅ | ✅ 19 lib | ✅ unit+E2E | ✅ 见下 |
 | S3 | SSH known_hosts / TOFU | ⬜ | ⬜ | ⬜ | ⬜ |
 | S4 | SSH 密码加密存储 | ⬜ | ⬜ | ⬜ | ⬜ |
 | S5 | 路径 IPC 收紧 | ✅ 先行 | ✅ | ✅ path-ipc E2E | ⬜（随后续提交） |
@@ -50,6 +50,14 @@
 - **测试 Agent 结果**：`path-ipc-hardening` 6/6、`app-data-backup` 7/7→8/8 通过
 - **Bug**：无
 
-### S2 — （待填）
+### S2 — 导入原子化 / 可回滚
+
+- **实现**：staging → sibling prepared → `rename` 交换；失败回滚；移除就地 `clear_dir_contents`
+- **单元测试**：19 passed（含 `import_swap_failure_restores_original_data_dir`）
+- **测试 Agent**：PASS（unit + app-data-backup 8/8）
+- **Bug**：无
+- **提交**：本提交
+
+### S3 — （待填）
 
 （开发完成后更新）
