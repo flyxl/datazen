@@ -386,13 +386,23 @@ export function MainWindow() {
   // ── Export / Import app data handlers ──
 
   const handleExportConfig = useCallback(async () => {
+    let saved: boolean;
     try {
       const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-      const saved = await backupCommands.exportAppDataWithDialog(
+      saved = await backupCommands.exportAppDataWithDialog(
         `datazen-backup-${date}.zip`,
       );
-      if (!saved) return;
-      showMessageDialog(t('appData.exportSuccess'), 'success');
+    } catch (e) {
+      showMessageDialog(
+        e instanceof Error ? e.message : t('appData.exportFailed'),
+        'error',
+      );
+      return;
+    }
+    if (!saved) return;
+    showMessageDialog(t('appData.exportSuccess'), 'success');
+
+    try {
       const { ask } = await import('@tauri-apps/plugin-dialog');
       const wantKey = await ask(t('appData.backupKeyMessage'), {
         title: t('appData.backupKeyTitle'),
@@ -406,7 +416,7 @@ export function MainWindow() {
       }
     } catch (e) {
       showMessageDialog(
-        e instanceof Error ? e.message : t('appData.exportFailed'),
+        e instanceof Error ? e.message : t('appData.backupKeyFailed'),
         'error',
       );
     }

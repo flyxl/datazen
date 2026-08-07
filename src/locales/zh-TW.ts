@@ -96,6 +96,7 @@ const translations = {
   'appData.backupKeyTitle': '備份加密密鑰',
   'appData.backupKeyMessage': '是否現在另存加密密鑰？請妥善保管；在其他機器恢復應用數據後，需要此密鑰才能解密已保存的密碼。',
   'appData.backupKeySaved': '加密密鑰已保存。',
+  'appData.backupKeyFailed': '加密密鑰保存失敗。',
   'conn.connected': '已連接',
   'conn.connecting': '連接中…',
   'conn.failed': '連接失败',
