@@ -41,14 +41,12 @@ pnpm tauri:dev --plugins=kiwi
 
 ### Tests (PR baseline)
 
+Run all of the following (same as CI):
+
 ```bash
 pnpm test:unit
 cargo test -p datazen --lib
-```
-
-Optional site SEO structural check (marketing site under `site/`):
-
-```bash
+cargo test -p datazen-ai-api --lib
 node scripts/check-site-seo.mjs
 ```
 
@@ -68,7 +66,7 @@ Frontend IPC args use `snake_case` keys to match the Rust commands. Avoid editin
 
 External drivers use the compile-time plugin system (`plugins-registry.json`,
 `register_driver!`). See [`docs/plugin-development.md`](docs/plugin-development.md)
-if present, or `AGENTS.md` for an overview.
+or `AGENTS.md` for an overview.
 
 ## License
 
