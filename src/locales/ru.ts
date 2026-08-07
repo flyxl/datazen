@@ -29,7 +29,7 @@ const translations = {
   'menu.edit': 'Редактировать',
   'menu.undo': 'Отменить',
   'menu.redo': 'Повторить',
-  'menu.cut': 'Резать',
+  'menu.cut': 'Вырезать',
   'menu.copy': 'Копировать',
   'menu.paste': 'Вставить',
   'menu.selectAll': 'Выбрать все',

@@ -37,7 +37,7 @@
 | S1+ | 导出后提示并另存 `.key` | ✅ | ✅ encryption_key | ⬜ | ✅ 381ceef |
 | ConnShare | 菜单导出/导入连接 + 口令 | ✅ | ✅ config 8 | ⬜ | ✅ 4f8d2f3 |
 | P3 | Keychain 主密钥 + 测试 fallback | ✅ | ✅ store:: 11 | ⬜ | ✅ 9a81507 |
-| C2F | 10 语系全量真翻译 | ✅ | ✅ locales 14 | ⬜ | ⬜ |
+| C2F | 10 语系全量真翻译 | ✅ | ✅ locales 14 | ⬜ | ✅ 85e32f2 |
 
 图例：⬜ 未开始 · 🟡 进行中 · ✅ 完成 · ❌ 失败待修
 
