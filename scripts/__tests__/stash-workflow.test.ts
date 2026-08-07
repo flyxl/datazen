@@ -85,6 +85,31 @@ describe('stash inject restore workflow', () => {
     stash.restoreManagedFiles();
   });
 
+  it('CI-like nest: outer stash stays while nested inject skips restore', async () => {
+    const { runWithPluginInject } = await import('../with-plugin-inject.mjs');
+    stash.stashManagedFiles();
+    writeManagedFiles(root, INJECTED_CONTENTS);
+
+    const result = runWithPluginInject({
+      argv: ['--', 'true'],
+      stashExistsFn: () => stash.stashExists(),
+      runResolve: () => {
+        throw new Error('nested must not resolve');
+      },
+      runRestore: () => {
+        throw new Error('nested must not restore');
+      },
+      runCommand: () => ({ status: 0 }),
+      log: () => {},
+    });
+
+    expect(result.nested).toBe(true);
+    expect(stash.allStashed()).toBe(true);
+    for (const f of MANAGED_FILES) {
+      expect(readManaged(root, f)).toBe(INJECTED_CONTENTS[f]);
+    }
+  });
+
   it('deleting stash mid-flight leaves injected work and blocks restore', () => {
     stash.stashManagedFiles();
     writeManagedFiles(root, INJECTED_CONTENTS);
