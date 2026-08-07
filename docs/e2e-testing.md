@@ -29,6 +29,10 @@ pnpm tauri build --debug --features webdriver
 # 首次 / 改过 Rust 或前端后：完整构建 + 跑全部 E2E
 pnpm e2e
 
+# 更快构建：跳过 Git 插件（仅内置驱动；多数 UI/路径 IPC spec 足够）
+pnpm e2e:minimal
+# 等价：DATAZEN_PLUGINS=none pnpm e2e
+
 # 已有正确的 webdriver debug 构建后：跳过构建，只跑 WDIO
 pnpm e2e:skip-build
 
@@ -82,8 +86,9 @@ cp e2e/.env.example e2e/.env
 | `E2E_REDIS_*` | Redis |
 | `E2E_KIWI_*` | Kiwi 插件 |
 | `E2E_AI_*` | AI 功能 E2E |
+| `DATAZEN_PLUGINS=none` | E2E 构建时跳过 Git 插件（见 `pnpm e2e:minimal`） |
 
-无数据库时，仅 UI/设置类 spec（如 `settings.ts`、`i18n-*`、部分 `path-ipc-hardening`）仍可能通过；依赖真实连接的 suite 会失败。
+无数据库时，仅 UI/设置类 spec（如 `settings.ts`、`i18n-*`、部分 `path-ipc-hardening`）仍可能通过；依赖真实连接的 suite 会失败。需要 Kiwi / OLAP 等插件驱动的 spec 必须用默认 `pnpm e2e`（全部插件）构建。
 
 ## 5. 架构说明
 
