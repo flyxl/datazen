@@ -166,3 +166,43 @@ cargo test --lib feature3_e2e  # ephemeral harness in store/mod.rs     # 3 passe
 - OBS-001: `get_system_ui_language` IPC registered but unused on frontend; first-run uses `get_settings` (no functional impact).
 - OBS-002: `settingsStore` `DEFAULT_SETTINGS.limitSelectResults: true` vs Rust `false` — pre-existing; dev-only fallback path.
 - OBS-003: Dev catch uses `navigator.language` vs Rust `sys_locale` — may diverge outside Tauri; production path consistent.
+
+---
+
+## Coverage & expanded regression suite (2026-08-07)
+
+### Unit coverage (≥75% target on feature modules)
+
+| Module | Line coverage | Notes |
+|--------|---------------|-------|
+| `src-tauri/src/app_data_archive.rs` | **95.15%** (353/371) | `cargo llvm-cov` HTML report |
+| `src-tauri/src/i18n_locale.rs` | **98.51%** (132/134) | same report |
+| `src/lib/resolveUiLanguage.ts` + `src/locales/index.ts` | **100%** lines / **92.85%** branches | Vitest `@vitest/coverage-v8`, threshold 75% |
+
+**Bug found by tests:** `copy_dir_all_filtered` nested-path join bug — recursive copy used `dst.join(rel)` so nested files landed under duplicated path segments (e.g. `workflows/workflows/x.yaml`). Fixed to always join relative paths onto `dst_root`.
+
+**Commands**
+
+```bash
+pnpm test:rust:backup-i18n
+# app_data_archive 14; i18n_locale 12; store::tests 3
+
+pnpm test:unit:coverage -- src/locales/locales.test.ts src/lib/__tests__/resolveUiLanguage.test.ts
+# thresholds: lines/functions/statements ≥75, branches ≥70
+
+cargo llvm-cov -p datazen --lib --html --output-dir target/llvm-cov-backup
+# inspect app_data_archive.rs / i18n_locale.rs rows in HTML index
+```
+
+### WebdriverIO E2E (typical user scenarios)
+
+| Spec | Cases | Scenario focus |
+|------|-------|----------------|
+| `e2e/specs/app-data-backup.ts` | ADB-001~007 | Homepage export/import buttons; ZIP export IPC; re-import; path-traversal reject; system UI language; ZIP excludes logs/tmp; label follows language |
+| `e2e/specs/i18n-10-locales.ts` | I18N10-001~005, 007 | 10-locale dropdown; UI switch; key parity smoke; EN fallback; zh-CN/en backup labels |
+| `e2e/specs/system-locale.ts` | SYS-001~004 | System language probe; persisted language not overwritten; refresh persistence; unsupported → English UI |
+
+```bash
+pnpm e2e:i18n-backup
+# specs: app-data-backup, i18n-10-locales, system-locale, i18n-menu
+```
