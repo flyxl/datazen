@@ -84,10 +84,17 @@ pub async fn create_sub_window(
         builder = builder.center();
     }
 
-    builder
+    let window = builder
         .build()
         .map_err(|e| CommandError::Internal(e.to_string()))
         .cmd_err("create_sub_window")?;
+
+    // Show from Rust (same as the reuse path). Frontend `main.tsx` also calls
+    // show(), but that requires the new label to be listed in capabilities —
+    // missing ACL previously left windows like `docs-singleton` invisible.
+    let _ = window.show();
+    let _ = window.unminimize();
+    let _ = window.set_focus();
 
     tracing::info!(label = %options.label, url = %options.url, "sub window created");
     Ok(())

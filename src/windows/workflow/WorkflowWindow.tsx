@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   BarChart3,
+  BookOpen,
   Clock,
   FolderOpen,
   History,
@@ -33,6 +34,7 @@ import { useSettingsStore } from '../../stores/settingsStore';
 import { aiCommands } from '../../commands/ai';
 import { connectionCommands } from '../../commands/connection';
 import { cn } from '../../lib/cn';
+import { openDocsWindow } from '../../lib/windowManager';
 import { WorkflowForm, emptyDraft } from './WorkflowForm';
 import type { WorkflowDraft } from './WorkflowForm';
 import type {
@@ -379,6 +381,14 @@ export function WorkflowWindow() {
                 <FolderOpen className="h-3 w-3" />
               </Button>
             )}
+            <Button
+              variant="secondary"
+              className="h-6 w-6 !px-0"
+              title={t('docs.openWorkflowHelp')}
+              onClick={() => openDocsWindow('workflows')}
+            >
+              <BookOpen className="h-3 w-3" />
+            </Button>
           </div>
         }
       />

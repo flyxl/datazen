@@ -16,6 +16,22 @@ function nextLabel(prefix: string) {
   return `${prefix}-${Date.now()}-${counter}`;
 }
 
+/**
+ * Representative window labels that must match
+ * `src-tauri/capabilities/default.json` → `windows` globs.
+ * Keep in sync when adding open*Window helpers.
+ */
+export const WINDOW_CAPABILITY_LABEL_SAMPLES = [
+  'main',
+  'new-connection-singleton',
+  'data-sync-singleton',
+  'backup-singleton',
+  'workflow-singleton',
+  'settings-singleton',
+  'docs-singleton',
+  'connection-0-1',
+] as const;
+
 interface OpenWindowOptions {
   params?: Record<string, string>;
   width?: number;

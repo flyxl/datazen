@@ -147,16 +147,8 @@ fn setup_menu(
         .item(&import_connections_item)
         .build()?;
 
-    // ── Edit ──
-    let edit_menu = SubmenuBuilder::new(handle, t("edit"))
-        .item(&PredefinedMenuItem::undo(handle, Some(&t("undo")))?)
-        .item(&PredefinedMenuItem::redo(handle, Some(&t("redo")))?)
-        .separator()
-        .item(&PredefinedMenuItem::cut(handle, Some(&t("cut")))?)
-        .item(&PredefinedMenuItem::copy(handle, Some(&t("copy")))?)
-        .item(&PredefinedMenuItem::paste(handle, Some(&t("paste")))?)
-        .item(&PredefinedMenuItem::select_all(handle, Some(&t("select-all")))?)
-        .build()?;
+    // Edit menu omitted: predefined undo/redo/cut/copy do not target CodeMirror;
+    // keep locale keys for a future editor-aware Edit menu.
 
     // ── View ──
     let theme_menu = SubmenuBuilder::new(handle, t("theme"))
@@ -200,7 +192,6 @@ fn setup_menu(
         .items(&[
             &app_menu,
             &file_menu,
-            &edit_menu,
             &view_menu,
             &tools_menu,
             &window_menu,

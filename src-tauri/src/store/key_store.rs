@@ -1,8 +1,15 @@
-//! Master encryption key storage: OS keychain (default) or `.key` file fallback.
+//! Master encryption key storage: OS keychain (default when properly signed) or `.key` file.
+//!
+//! Backend selection:
+//! - `DATAZEN_KEYRING=file` → always `.key` (dev / CI)
+//! - `DATAZEN_KEYRING=keyring` → always OS keychain
+//! - unset → OS keychain, except macOS adhoc/unsigned builds prefer `.key`
+//!   (avoids Keychain ACL re-prompts after every `tauri:dev` re-link)
 
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use rand::RngCore;
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 use super::{StoreError, APP_IDENTIFIER};
 
@@ -15,13 +22,71 @@ pub enum KeyBackend {
     File,
 }
 
-/// `DATAZEN_KEYRING=file` forces the legacy `.key` file backend (CI/tests).
+/// Resolve which backend stores the AES master key.
 pub fn key_backend() -> KeyBackend {
-    if std::env::var("DATAZEN_KEYRING").ok().as_deref() == Some("file") {
-        KeyBackend::File
-    } else {
-        KeyBackend::Keyring
+    match std::env::var("DATAZEN_KEYRING").ok().as_deref() {
+        Some("file") => KeyBackend::File,
+        Some("keyring") => KeyBackend::Keyring,
+        _ => {
+            if should_prefer_file_backend() {
+                KeyBackend::File
+            } else {
+                KeyBackend::Keyring
+            }
+        }
     }
+}
+
+fn should_prefer_file_backend() -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        static ADHOC: OnceLock<bool> = OnceLock::new();
+        let adhoc = *ADHOC.get_or_init(macos_codesign_is_adhoc_or_unsigned);
+        if adhoc {
+            tracing::info!(
+                "Using {KEY_FILE} key backend (macOS adhoc/unsigned binary); \
+                 set DATAZEN_KEYRING=keyring to force OS Keychain"
+            );
+        }
+        adhoc
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        false
+    }
+}
+
+/// True when the running binary is unsigned or adhoc-signed (typical for `tauri:dev`
+/// and local unsigned `tauri:build` bundles). Proper Developer ID / App Store
+/// signatures return false.
+#[cfg(target_os = "macos")]
+fn macos_codesign_is_adhoc_or_unsigned() -> bool {
+    let Ok(exe) = std::env::current_exe() else {
+        return true;
+    };
+    let path = std::fs::canonicalize(&exe).unwrap_or(exe);
+    let output = std::process::Command::new("/usr/bin/codesign")
+        .args(["-dv", "--verbose=4"])
+        .arg(&path)
+        .output();
+    let Ok(out) = output else {
+        return true;
+    };
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stderr),
+        String::from_utf8_lossy(&out.stdout)
+    );
+    if text.contains("code object is not signed") {
+        return true;
+    }
+    if text.contains("Signature=adhoc")
+        || text.contains("flags=0x2(adhoc)")
+        || text.contains("flags=0x2 (adhoc)")
+    {
+        return true;
+    }
+    false
 }
 
 pub fn key_file_path(data_dir: &Path) -> PathBuf {
@@ -86,9 +151,35 @@ fn remove_key_file(data_dir: &Path) {
     }
 }
 
+/// Prefer `.key`. If missing and not in explicit `DATAZEN_KEYRING=file` mode,
+/// try exporting from the OS keychain once (covers adhoc auto-fallback after a
+/// prior keyring migration). Explicit file mode never touches Keychain so CI
+/// and hermetic tests cannot hang on ACL prompts.
 fn load_or_create_from_file(data_dir: &Path) -> Result<[u8; 32], StoreError> {
     if let Some(key) = read_key_file(data_dir)? {
         return Ok(key);
+    }
+    let explicit_file = std::env::var("DATAZEN_KEYRING").ok().as_deref() == Some("file");
+    if !explicit_file {
+        if let Ok(entry) = open_keyring_entry() {
+            match entry.get_password() {
+                Ok(key_b64) => {
+                    let key = decode_key_b64(&key_b64)?;
+                    write_key_file(data_dir, &key)?;
+                    tracing::info!(
+                        "Exported encryption key from OS keychain to {KEY_FILE} for file backend"
+                    );
+                    return Ok(key);
+                }
+                Err(keyring::v1::Error::NoEntry) => {}
+                Err(e) => {
+                    tracing::warn!(
+                        error = %e,
+                        "Could not read OS keychain while using file backend; creating {KEY_FILE} if needed"
+                    );
+                }
+            }
+        }
     }
     let key = generate_key();
     write_key_file(data_dir, &key)?;
@@ -182,15 +273,16 @@ pub fn delete_keyring_entry_for_test() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
     use tempfile::tempdir;
 
-    fn use_file_backend() {
-        std::env::set_var("DATAZEN_KEYRING", "file");
-    }
+    /// `DATAZEN_KEYRING` is process-global; serialize tests that mutate it.
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn file_backend_creates_key_when_missing() {
-        use_file_backend();
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        std::env::set_var("DATAZEN_KEYRING", "file");
         let dir = tempdir().unwrap();
         let key = load_or_create_master_key(dir.path()).unwrap();
         assert_ne!(key, [0u8; 32]);
@@ -199,7 +291,8 @@ mod tests {
 
     #[test]
     fn file_backend_reloads_existing_key() {
-        use_file_backend();
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        std::env::set_var("DATAZEN_KEYRING", "file");
         let dir = tempdir().unwrap();
         let k1 = load_or_create_master_key(dir.path()).unwrap();
         let k2 = load_or_create_master_key(dir.path()).unwrap();
@@ -208,7 +301,8 @@ mod tests {
 
     #[test]
     fn file_backend_does_not_invent_second_key_when_dot_key_exists() {
-        use_file_backend();
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        std::env::set_var("DATAZEN_KEYRING", "file");
         let dir = tempdir().unwrap();
         let known = [42u8; 32];
         write_key_file(dir.path(), &known).unwrap();
@@ -216,5 +310,20 @@ mod tests {
         assert_eq!(loaded, known);
         let on_disk = read_key_file(dir.path()).unwrap().unwrap();
         assert_eq!(on_disk, known);
+    }
+
+    #[test]
+    fn env_file_forces_file_backend() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        std::env::set_var("DATAZEN_KEYRING", "file");
+        assert_eq!(key_backend(), KeyBackend::File);
+    }
+
+    #[test]
+    fn env_keyring_forces_keyring_backend() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        std::env::set_var("DATAZEN_KEYRING", "keyring");
+        assert_eq!(key_backend(), KeyBackend::Keyring);
+        std::env::set_var("DATAZEN_KEYRING", "file");
     }
 }

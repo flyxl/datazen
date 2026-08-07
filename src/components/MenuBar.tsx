@@ -42,19 +42,6 @@ function useMenus(): Menu[] {
       ],
     },
     {
-      id: 'edit',
-      label: t('menu.edit'),
-      items: [
-        { id: 'undo', label: t('menu.undo'), shortcut: 'Ctrl+Z' },
-        { id: 'redo', label: t('menu.redo'), shortcut: 'Ctrl+Y' },
-        { id: 'sep-1', label: '', separator: true },
-        { id: 'cut', label: t('menu.cut'), shortcut: 'Ctrl+X' },
-        { id: 'copy', label: t('menu.copy'), shortcut: 'Ctrl+C' },
-        { id: 'paste', label: t('menu.paste'), shortcut: 'Ctrl+V' },
-        { id: 'select-all', label: t('menu.selectAll'), shortcut: 'Ctrl+A' },
-      ],
-    },
-    {
       id: 'view',
       label: t('menu.view'),
       items: [
@@ -97,24 +84,6 @@ async function handleMenuAction(id: string) {
   }
 
   switch (id) {
-    case 'undo':
-      document.execCommand('undo');
-      break;
-    case 'redo':
-      document.execCommand('redo');
-      break;
-    case 'cut':
-      document.execCommand('cut');
-      break;
-    case 'copy':
-      document.execCommand('copy');
-      break;
-    case 'paste':
-      document.execCommand('paste');
-      break;
-    case 'select-all':
-      document.execCommand('selectAll');
-      break;
     case 'fullscreen': {
       try {
         const { getCurrentWindow } = await import('@tauri-apps/api/window');

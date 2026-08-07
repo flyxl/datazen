@@ -9,11 +9,13 @@ DataZen 采用 Tauri 的多窗口模型，每个主要功能区域在独立的�
 | 窗口 | 用途 | Label 模式 |
 |------|------|-----------|
 | main | 连接管理主页 | `main` |
-| new-connection | 新建/编辑连接 | `new-connection-{ts}-{n}` |
+| new-connection | 新建/编辑连接（单例） | `new-connection-singleton` |
 | connection | 数据库浏览/编辑 | `connection-{ts}-{n}` |
 | settings | 应用设置（单例） | `settings-singleton` |
-| backup | 备份/恢复 | `backup-{ts}-{n}` |
-| data-sync | 数据同步 | `data-sync-{ts}-{n}` |
+| docs | 内置使用说明（单例） | `docs-singleton` |
+| backup | 备份/恢复（单例） | `backup-singleton` |
+| data-sync | 数据同步（单例） | `data-sync-singleton` |
+| workflow | Workflow 管理（单例） | `workflow-singleton` |
 
 ## 2. Rust 端窗口创建
 
