@@ -208,11 +208,12 @@ pub async fn ai_generate_sql(
         %request_id,
         %connection_id,
         %database,
-        input = %natural_language,
+        input_len = natural_language.len(),
         current_table = ?current_table,
         recent_queries_count = recent_queries.len(),
         "ai_generate_sql: start"
     );
+    tracing::debug!(%request_id, input = %natural_language, "ai_generate_sql: input");
 
     if let Some(ref ctx_files) = context_files {
         if !ctx_files.is_empty() {
@@ -352,9 +353,10 @@ pub async fn ai_diagnose_error(
         %connection_id,
         %database,
         sql_len = sql.len(),
-        error = %error_message,
+        error_len = error_message.len(),
         "ai_diagnose_error: start"
     );
+    tracing::debug!(%connection_id, error = %error_message, "ai_diagnose_error: error");
 
     let (provider, ai_config) = resolve_ai(&state).await?;
 
@@ -478,7 +480,7 @@ pub async fn ai_analyze_explain(
     inject_language_hint(&mut request.messages, &lang);
 
     for (i, msg) in request.messages.iter().enumerate() {
-        tracing::info!(
+        tracing::debug!(
             idx = i,
             role = ?msg.role,
             content_len = msg.content.len(),
@@ -500,7 +502,7 @@ pub async fn ai_analyze_explain(
         "ai_analyze_explain: response received"
     );
     if !response.content.is_empty() {
-        tracing::info!(
+        tracing::debug!(
             response_content = %truncate_str(&response.content, 500),
             "ai_analyze_explain: response content"
         );
@@ -527,9 +529,10 @@ pub async fn ai_parse_filter(
         %connection_id,
         %database,
         %table,
-        input = %natural_language,
+        input_len = natural_language.len(),
         "ai_parse_filter: start"
     );
+    tracing::debug!(%connection_id, input = %natural_language, "ai_parse_filter: input");
     let (provider, ai_config) = resolve_ai(&state).await?;
 
     let (driver, handle) = state
@@ -672,7 +675,9 @@ fn is_db_tool(name: &str) -> bool {
 
 async fn execute_db_tool(state: &AppState, tool_call: &ToolCall) -> String {
     let args: serde_json::Value = serde_json::from_str(&tool_call.arguments).unwrap_or_default();
-    tracing::info!(tool = %tool_call.name, args = %args, "execute_db_tool");
+    let args_str = args.to_string();
+    tracing::info!(tool = %tool_call.name, args_len = args_str.len(), "execute_db_tool");
+    tracing::debug!(tool = %tool_call.name, args = %args, "execute_db_tool args");
 
     let cm = &state.connection_manager;
     let result = match tool_call.name.as_str() {
@@ -727,9 +732,16 @@ pub async fn ai_chat(
         messages_count = messages.len(),
         %include_schema,
         scenario = ?scenario,
-        last_user_msg = messages.last().map(|m| truncate_str(&m.content, 100)).unwrap_or(""),
+        last_user_msg_len = messages.last().map(|m| m.content.len()).unwrap_or(0),
         "ai_chat: start"
     );
+    if let Some(last) = messages.last() {
+        tracing::debug!(
+            %request_id,
+            last_user_msg = %truncate_str(&last.content, 100),
+            "ai_chat: last user message"
+        );
+    }
     let (provider, ai_config) = resolve_ai(&state).await?;
 
     let lang = state.store.get_settings().await.language;
@@ -1002,9 +1014,15 @@ pub async fn ai_chat(
             %request_id,
             round,
             db_tool_count = db_tools.len(),
-            tools = ?db_tools.iter().map(|t| format!("{}({})", t.name, t.arguments)).collect::<Vec<_>>(),
+            tool_names = ?db_tools.iter().map(|t| t.name.as_str()).collect::<Vec<_>>(),
             response_id = ?result.response_id,
             "ai_chat: executing database tools (round {})", round
+        );
+        tracing::debug!(
+            %request_id,
+            round,
+            tools = ?db_tools.iter().map(|t| format!("{}({})", t.name, t.arguments)).collect::<Vec<_>>(),
+            "ai_chat: database tool arguments"
         );
 
         // Always use stateless mode: append assistant message (with tool_calls)
@@ -1512,7 +1530,8 @@ pub async fn ai_diagnose_connection(
     connection_id: String,
     error_message: String,
 ) -> Result<ConnectionDiagnosis, CommandError> {
-    tracing::info!(%connection_id, error = %error_message, "ai_diagnose_connection: start");
+    tracing::info!(%connection_id, error_len = error_message.len(), "ai_diagnose_connection: start");
+    tracing::debug!(%connection_id, error = %error_message, "ai_diagnose_connection: error");
     let (provider, ai_config) = resolve_ai(&state).await?;
 
     let conn_info = state

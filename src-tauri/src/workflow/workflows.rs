@@ -742,7 +742,7 @@ impl WorkflowExecutor {
                 ..
             } => {
                 let resolved_sql = context.resolve_template(sql)?;
-                tracing::info!("[workflow] step '{}' resolved sql: {}", id, resolved_sql);
+                tracing::debug!("[workflow] step '{}' resolved sql: {}", id, resolved_sql);
 
                 let conn_ref = if let Some(conn_tmpl) = connection {
                     Some(context.resolve_template(conn_tmpl)?)
@@ -798,7 +798,7 @@ impl WorkflowExecutor {
                     id, col_names, result.rows.len()
                 );
                 if let Some(first) = data.first() {
-                    tracing::info!("[workflow] step '{}' first_row: {}", id, first);
+                    tracing::debug!("[workflow] step '{}' first_row: {}", id, first);
                 }
 
                 context.set_step_result(id, structured.clone());
