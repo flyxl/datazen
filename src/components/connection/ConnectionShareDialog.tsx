@@ -16,11 +16,6 @@ interface ConnectionShareDialogProps {
   onError: (message: string) => void;
 }
 
-function isCancelledError(e: unknown): boolean {
-  const msg = e instanceof Error ? e.message : String(e);
-  return /cancelled/i.test(msg);
-}
-
 export function ConnectionShareDialog({
   open,
   mode,
@@ -65,18 +60,18 @@ export function ConnectionShareDialog({
           password,
           `datazen-connections-${date}.json`,
         );
-        onExportSuccess(count);
         onClose();
+        if (count !== null) {
+          onExportSuccess(count);
+        }
       } else {
         const result = await connectionCommands.importConnectionsWithDialog(password);
-        onImportSuccess(result);
         onClose();
+        if (result !== null) {
+          onImportSuccess(result);
+        }
       }
     } catch (e) {
-      if (isCancelledError(e)) {
-        onClose();
-        return;
-      }
       const message =
         e instanceof Error
           ? e.message

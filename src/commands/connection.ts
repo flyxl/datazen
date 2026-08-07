@@ -37,7 +37,7 @@ export const connectionCommands = {
     invoke<number>('export_connections', { path, password }),
 
   exportConnectionsWithDialog: (password: string, defaultFileName: string) =>
-    invoke<number>('export_connections_with_dialog', { password, defaultFileName }),
+    invoke<number | null>('export_connections_with_dialog', { password, defaultFileName }),
 
   /** @deprecated Legacy path IPC; gated to webdriver builds. Prefer importConnectionsWithDialog. */
   importConnectionsPreview: (path: string, password: string) =>
@@ -47,7 +47,7 @@ export const connectionCommands = {
     }),
 
   importConnectionsWithDialog: (password: string) =>
-    invoke<{ imported: number; overwritten: number; groupsAdded: number }>(
+    invoke<{ imported: number; overwritten: number; groupsAdded: number } | null>(
       'import_connections_with_dialog',
       { password },
     ),

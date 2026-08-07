@@ -379,21 +379,17 @@ pub async fn export_connections(
     Ok(count)
 }
 
+/// Native save dialog + encrypted JSON export. Returns connection count if saved, `None` if cancelled.
 #[tauri::command]
 pub async fn export_connections_with_dialog(
     app: AppHandle,
     state: State<'_, AppState>,
     password: String,
     default_file_name: String,
-) -> Result<u32, CommandError> {
+) -> Result<Option<u32>, CommandError> {
     use tauri_plugin_dialog::DialogExt;
 
     validate_share_password(&password)?;
-
-    let connections = state.store.get_connections().await;
-    let groups = state.store.get_groups().await;
-    let count = connections.len() as u32;
-    let json = build_encrypted_connections_export(&connections, &groups, &password)?;
 
     let picked = app
         .dialog()
@@ -402,18 +398,23 @@ pub async fn export_connections_with_dialog(
         .set_file_name(&default_file_name)
         .blocking_save_file();
     let Some(fp) = picked else {
-        return Err(CommandError::Validation("Export cancelled".into()));
+        return Ok(None);
     };
     let dest = fp
         .into_path()
         .map_err(|e| CommandError::Validation(format!("Invalid dialog path: {e}")))?;
+
+    let connections = state.store.get_connections().await;
+    let groups = state.store.get_groups().await;
+    let count = connections.len() as u32;
+    let json = build_encrypted_connections_export(&connections, &groups, &password)?;
 
     tokio::fs::write(dest, json.as_bytes())
         .await
         .cmd_err("export_connections_with_dialog")?;
 
     tracing::info!(count, "export_connections_with_dialog OK");
-    Ok(count)
+    Ok(Some(count))
 }
 
 #[tauri::command]
@@ -435,12 +436,13 @@ pub async fn import_connections_preview(
     }))
 }
 
+/// Native open dialog + decrypt/merge import. Returns stats if imported, `None` if cancelled.
 #[tauri::command]
 pub async fn import_connections_with_dialog(
     app: AppHandle,
     state: State<'_, AppState>,
     password: String,
-) -> Result<ImportConnectionsResult, CommandError> {
+) -> Result<Option<ImportConnectionsResult>, CommandError> {
     use tauri_plugin_dialog::DialogExt;
 
     validate_share_password(&password)?;
@@ -451,7 +453,7 @@ pub async fn import_connections_with_dialog(
         .add_filter("JSON", &["json"])
         .blocking_pick_file();
     let Some(fp) = picked else {
-        return Err(CommandError::Validation("Import cancelled".into()));
+        return Ok(None);
     };
     let source = fp
         .into_path()
@@ -476,11 +478,11 @@ pub async fn import_connections_with_dialog(
     state.store.save_groups(merged_groups).await?;
 
     tracing::info!(imported, overwritten, groups_added, "import_connections_with_dialog OK");
-    Ok(ImportConnectionsResult {
+    Ok(Some(ImportConnectionsResult {
         imported,
         overwritten,
         groups_added,
-    })
+    }))
 }
 
 #[tauri::command]
