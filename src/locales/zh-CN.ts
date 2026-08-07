@@ -115,6 +115,7 @@ const zhCN = {
   'appData.backupKeyTitle': '备份加密密钥',
   'appData.backupKeyMessage': '是否现在另存加密密钥？请妥善保管；在其他机器恢复应用数据后，需要此密钥才能解密已保存的密码。',
   'appData.backupKeySaved': '加密密钥已保存。',
+  'appData.backupKeyFailed': '加密密钥保存失败。',
 
   // ── Connection Item / Card ──
   'conn.connected': '已连接',

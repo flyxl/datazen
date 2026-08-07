@@ -96,6 +96,7 @@ const translations = {
   'appData.backupKeyTitle': 'Back Up Encryption Key',
   'appData.backupKeyMessage': 'Save a copy of your encryption key now? Store it securely; you will need it to decrypt saved passwords after restoring on another machine.',
   'appData.backupKeySaved': 'Encryption key saved.',
+  'appData.backupKeyFailed': 'Failed to save encryption key.',
   'conn.connected': 'Connected',
   'conn.connecting': 'Connecting…',
   'conn.failed': 'Connection failed',
