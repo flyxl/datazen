@@ -18,7 +18,7 @@ pub struct QueryInput {
     pub connection_id: String,
     /// SQL query to execute
     pub sql: String,
-    /// Maximum rows to return (default: 100)
+    /// Maximum rows to return (default: 100, max: 50000)
     pub limit: Option<u32>,
 }
 
@@ -188,7 +188,7 @@ impl DataZenMcpServer {
             .map_err(Self::map_err)
     }
 
-    #[tool(description = "Execute a SQL query on a connected database. Returns results as JSON. Use list_connections first to get valid connection IDs.")]
+    #[tool(description = "Execute a SQL query on a connected database. Returns results as JSON. Use list_connections first to get valid connection IDs. Default row limit is 100 (max 50000).")]
     async fn query(
         &self,
         Parameters(input): Parameters<QueryInput>,
@@ -299,7 +299,7 @@ impl DataZenMcpServer {
                 McpError::invalid_params(format!("Workflow '{}' not found", input.workflow_id), None)
             })?;
 
-        let result = super::WorkflowExecutor::execute(
+        let result = crate::workflow::WorkflowExecutor::execute(
             &workflow,
             &self.app_state,
             input.connection_id.as_deref(),
@@ -618,5 +618,29 @@ mod tests {
         let json = r#"{"connection_id": "c1", "sql": "SELECT 1", "limit": 50}"#;
         let input: QueryInput = serde_json::from_str(json).unwrap();
         assert_eq!(input.limit, Some(50));
+    }
+
+    #[test]
+    fn test_resolve_query_limit_none_defaults_to_100() {
+        assert_eq!(
+            crate::services::db_tools::resolve_query_limit(None),
+            Some(100)
+        );
+    }
+
+    #[test]
+    fn test_resolve_query_limit_some_passthrough() {
+        assert_eq!(
+            crate::services::db_tools::resolve_query_limit(Some(50)),
+            Some(50)
+        );
+    }
+
+    #[test]
+    fn test_resolve_query_limit_some_capped_at_max() {
+        assert_eq!(
+            crate::services::db_tools::resolve_query_limit(Some(999_999)),
+            Some(50_000)
+        );
     }
 }

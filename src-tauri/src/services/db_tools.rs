@@ -1,5 +1,8 @@
 //! Shared database tool helpers used by both ai_chat tool execution and MCP Server tools.
 
+pub const MCP_QUERY_DEFAULT_LIMIT: u32 = 100;
+pub const MCP_QUERY_MAX_LIMIT: u32 = 50_000;
+
 use crate::services::ConnectionManager;
 use crate::store::Store;
 use datazen_driver_api::{ConnectionHandle, DatabaseDriver};
@@ -99,6 +102,12 @@ pub async fn get_single_table_schema(
         .map_err(|e| format!("Error getting schema: {e}"))
 }
 
+/// Resolve MCP query row limit: default 100 when omitted, hard cap 50_000.
+pub fn resolve_query_limit(limit: Option<u32>) -> Option<u32> {
+    let resolved = limit.unwrap_or(MCP_QUERY_DEFAULT_LIMIT);
+    Some(resolved.min(MCP_QUERY_MAX_LIMIT))
+}
+
 /// Execute a SQL query and return results as JSON.
 pub async fn query(
     connection_manager: &ConnectionManager,
@@ -107,6 +116,7 @@ pub async fn query(
     limit: Option<u32>,
 ) -> Result<String, String> {
     let (driver, handle) = resolve_connection(connection_manager, connection_id).await?;
+    let limit = resolve_query_limit(limit);
     let result = driver
         .query_multi(&handle, sql, limit)
         .await
