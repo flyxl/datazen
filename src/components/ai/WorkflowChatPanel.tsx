@@ -20,7 +20,8 @@ import { aiCommands } from '../../commands/ai';
 import { cn } from '../../lib/cn';
 import { openSettingsWindow } from '../../lib/windowManager';
 import { extractWorkflowYaml, parseWorkflowYaml, validateWorkflowFields } from '../../lib/workflowYaml';
-import type { AiChatMessage, ContextEntry, WorkflowDefinition } from '../../types';
+import { splitContextItems } from '../../lib/contextItems';
+import type { AiChatMessage, ContextItem, WorkflowDefinition } from '../../types';
 import { QuestionBlock } from './AiChatPanel';
 
 interface WorkflowChatPanelProps {
@@ -39,7 +40,7 @@ export function WorkflowChatPanel({ connections, onSaved, onBack }: WorkflowChat
 
   const [input, setInput] = useState('');
   const [selectedConnection, setSelectedConnection] = useState('');
-  const [contextFiles, setContextFiles] = useState<ContextEntry[]>([]);
+  const [contextItems, setContextItems] = useState<ContextItem[]>([]);
   const [saving, setSaving] = useState(false);
   const [saveOk, setSaveOk] = useState(false);
   const [saveError, setSaveError] = useState('');
@@ -56,16 +57,17 @@ export function WorkflowChatPanel({ connections, onSaved, onBack }: WorkflowChat
   const handleSend = useCallback(() => {
     if (!input.trim() || workflowChat?.isStreaming) return;
     const conn = selectedConnection || undefined;
-    const ctxPaths = contextFiles.length > 0 ? contextFiles.map((f) => f.path) : undefined;
+    const { contextFiles, contextTables } = splitContextItems(contextItems);
     void sendMessage({
       connectionId: conn,
       content: input.trim(),
       includeSchema: !!conn,
-      contextFiles: ctxPaths,
+      contextFiles: contextFiles.length > 0 ? contextFiles : undefined,
+      contextTables: contextTables.length > 0 ? contextTables : undefined,
     });
     setInput('');
-    setContextFiles([]);
-  }, [input, workflowChat, sendMessage, selectedConnection, contextFiles]);
+    setContextItems([]);
+  }, [input, workflowChat, sendMessage, selectedConnection, contextItems]);
 
   const handleNewChat = useCallback(() => {
     clearChat();
@@ -226,8 +228,9 @@ export function WorkflowChatPanel({ connections, onSaved, onBack }: WorkflowChat
           rows={3}
           isLoading={workflowChat?.isStreaming}
           onStop={handleStop}
-          contextFiles={contextFiles}
-          onContextFilesChange={setContextFiles}
+          connectionId={selectedConnection || undefined}
+          contextItems={contextItems}
+          onContextItemsChange={setContextItems}
         />
       </div>
     </div>
