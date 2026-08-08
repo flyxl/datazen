@@ -16,12 +16,11 @@ import { ConnectionFormBody } from '../../components/connection/ConnectionFormBo
 import { useConnectionForm } from '../../components/connection/useConnectionForm';
 import type { DatabaseType } from '../../types';
 
-const ALL_DB_TYPES: { value: DatabaseType; label: string; color: string }[] = (
+const ALL_DB_TYPES: { value: DatabaseType; label: string }[] = (
   Object.entries(DB_REGISTRY) as [DatabaseType, (typeof DB_REGISTRY)[DatabaseType]][]
 ).map(([value, meta]) => ({
   value,
   label: meta.label,
-  color: meta.iconBg,
 }));
 
 function closeWindow() {

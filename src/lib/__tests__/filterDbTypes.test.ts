@@ -20,4 +20,8 @@ describe('filterDbTypesByQuery', () => {
   it('matches databaseType id', () => {
     expect(filterDbTypesByQuery(items, 'SQL')).toEqual([items[0], items[1]]);
   });
+
+  it('returns empty array when nothing matches', () => {
+    expect(filterDbTypesByQuery(items, 'oracle')).toEqual([]);
+  });
 });
