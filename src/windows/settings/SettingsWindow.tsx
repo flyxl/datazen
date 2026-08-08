@@ -18,6 +18,7 @@ import { settingsSectionIconId } from '../../lib/hostLucideMap';
 import type { AppSettings, AiProviderConfig, AiProviderType, DatabaseType, McpServerConfig } from '../../types';
 import type { ThemeMode } from '../../types/theme';
 import type { TranslationKey } from '../../locales';
+import { ThemePackSection } from './ThemePackSection';
 
 const PAGE_SIZE_OPTIONS = [25, 50, 100, 200, 500];
 const RESULT_LIMIT_OPTIONS = [1000, 2000, 5000, 10000, 50000];
@@ -171,6 +172,8 @@ export function SettingsWindow() {
                     }
                   />
                 </SettingRow>
+
+                <ThemePackSection />
               </>
             )}
 
