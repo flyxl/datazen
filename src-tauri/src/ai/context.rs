@@ -69,14 +69,25 @@ impl SchemaContextBuilder {
                 .get_table_schema(connection_id, database, table_name, &driver, &handle)
                 .await;
 
-            if let Ok(schema) = schema {
-                let ddl_line = format_compact_ddl(table_name, &schema);
-                let line_tokens = ddl_line.len() / 4;
-                if token_estimate + line_tokens > max_tokens_budget {
-                    break;
+            match schema {
+                Ok(schema) => {
+                    let ddl_line = format_compact_ddl(table_name, &schema);
+                    let line_tokens = ddl_line.len() / 4;
+                    if token_estimate + line_tokens > max_tokens_budget {
+                        break;
+                    }
+                    token_estimate += line_tokens;
+                    ddl_parts.push(ddl_line);
                 }
-                token_estimate += line_tokens;
-                ddl_parts.push(ddl_line);
+                Err(e) => {
+                    tracing::warn!(
+                        connection_id = %connection_id,
+                        database = %database,
+                        table = %table_name,
+                        error = %e,
+                        "build_selective_context: skipping pinned table (schema fetch failed)"
+                    );
+                }
             }
         }
 

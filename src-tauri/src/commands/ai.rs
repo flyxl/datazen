@@ -946,43 +946,55 @@ pub async fn ai_chat(
                 let pinned = context_tables.clone().unwrap_or_default();
                 let supports_tools = provider.supports_tools();
                 let pipeline = SchemaContextPipeline::new(state.schema_context_builder.clone());
-                if let Ok(seed) = pipeline
+                match pipeline
                     .resolve(conn_id, db, &pinned, supports_tools, 4000, 4000)
                     .await
                 {
-                    attach_db_tools = seed.attach_db_tools;
-                    let db_type = seed.database_type.clone();
-                    let suffix = compose_schema_system_suffix(&seed);
+                    Ok(seed) => {
+                        attach_db_tools = seed.attach_db_tools;
+                        let db_type = seed.database_type.clone();
+                        let suffix = compose_schema_system_suffix(&seed);
 
-                    let mut vars = HashMap::new();
-                    vars.insert("db_type", db_type.as_str());
-                    vars.insert("schema", "");
+                        let mut vars = HashMap::new();
+                        vars.insert("db_type", db_type.as_str());
+                        vars.insert("schema", "");
 
-                    let connections_ctx = if is_workflow {
-                        build_connections_context(&state, &lang).await
-                    } else {
-                        String::new()
-                    };
-                    vars.insert("connections", connections_ctx.as_str());
+                        let connections_ctx = if is_workflow {
+                            build_connections_context(&state, &lang).await
+                        } else {
+                            String::new()
+                        };
+                        vars.insert("connections", connections_ctx.as_str());
 
-                    let base_tpl = state.prompt_resolver.resolve(prompt_scenario, Some(driver.as_ref()), &lang).await;
-                    let base = crate::ai::prompt_resolver::render_template(&base_tpl, &vars);
+                        let base_tpl = state.prompt_resolver.resolve(prompt_scenario, Some(driver.as_ref()), &lang).await;
+                        let base = crate::ai::prompt_resolver::render_template(&base_tpl, &vars);
 
-                    let desc = if is_workflow {
-                        base
-                    } else if lang.starts_with("zh") {
-                        format!("{base}\n\n用户已连接到 {db_type} 数据库。")
-                    } else {
-                        format!("{base}\n\nThe user is connected to a {db_type} database.")
-                    };
+                        let desc = if is_workflow {
+                            base
+                        } else if lang.starts_with("zh") {
+                            format!("{base}\n\n用户已连接到 {db_type} 数据库。")
+                        } else {
+                            format!("{base}\n\nThe user is connected to a {db_type} database.")
+                        };
 
-                    full_messages.push(ChatMessage {
-                        role: MessageRole::System,
-                        content: format!("{desc}\n\n{suffix}"),
-                        reasoning: None,
-                        tool_calls: None,
-                        tool_call_id: None,
-                    });
+                        full_messages.push(ChatMessage {
+                            role: MessageRole::System,
+                            content: format!("{desc}\n\n{suffix}"),
+                            reasoning: None,
+                            tool_calls: None,
+                            tool_call_id: None,
+                        });
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            %request_id,
+                            connection_id = %conn_id,
+                            database = %db,
+                            error = %e,
+                            "ai_chat: schema context pipeline resolve failed; disabling DB tools"
+                        );
+                        attach_db_tools = false;
+                    }
                 }
             }
         }
