@@ -4,6 +4,7 @@ members = [
     "src-tauri",
     "packages/driver-api",
     "packages/ai-api",
+    "packages/drivers/*",
 ]
 exclude = [
     ".plugins/*",
@@ -21,6 +22,6 @@ opt-level = "s"
 [patch."https://github.com/flyxl/datazen-driver-api.git"]
 datazen-driver-api = { path = "packages/driver-api" }
 
-# Plugin patches — injected by resolve-plugins.mjs at build time; do NOT add manually.
+# Plugin patches — injected by resolve-drivers.mjs at build time; do NOT add manually.
 # <<plugin-patches>>
 # <</plugin-patches>>

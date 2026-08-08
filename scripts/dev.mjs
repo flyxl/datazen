@@ -1,13 +1,12 @@
 #!/usr/bin/env node
 /**
- * dev.mjs — wrapper for `pnpm dev` that resolves plugins then restores stash on exit.
+ * dev.mjs — wrapper for `pnpm dev` that resolves drivers then restores stash on exit.
  *
  * Usage:
- *   pnpm dev                        # all plugins (default)
- *   pnpm dev --plugins=kiwi         # only kiwi
- *   pnpm dev --plugins=kiwi,olap    # kiwi + olap
- *   pnpm dev --plugins=none         # no plugins
- *   DATAZEN_PLUGINS=kiwi pnpm dev   # env var also works
+ *   pnpm dev                          # all drivers (default)
+ *   pnpm dev --drivers=kiwi           # only kiwi
+ *   pnpm dev --drivers=basic          # four core path drivers
+ *   DATAZEN_DRIVERS=basic pnpm dev    # env var also works
  */
 
 import { execSync, spawn } from 'child_process';
@@ -30,16 +29,22 @@ function restoreStash() {
 }
 
 const args = process.argv.slice(2);
-const pluginsArgs = args.filter(a => a.startsWith('--plugins'));
+if (args.some((a) => a === '--plugins' || a.startsWith('--plugins=')) || process.env.DATAZEN_PLUGINS) {
+  console.error('[dev] --plugins / DATAZEN_PLUGINS are no longer supported. Use --drivers=... or DATAZEN_DRIVERS.');
+  process.exit(1);
+}
 
-const resolveArgs = pluginsArgs.length > 0
-  ? pluginsArgs.join(' ')
-  : process.env.DATAZEN_PLUGINS
-    ? `--plugins=${process.env.DATAZEN_PLUGINS}`
-    : '';
+const driversArgs = args.filter((a) => a.startsWith('--drivers'));
 
-console.log('[dev] resolving plugins (stash + inject)...');
-execSync(`node scripts/resolve-plugins.mjs ${resolveArgs}`, {
+const resolveArgs =
+  driversArgs.length > 0
+    ? driversArgs.join(' ')
+    : process.env.DATAZEN_DRIVERS
+      ? `--drivers=${process.env.DATAZEN_DRIVERS}`
+      : '';
+
+console.log('[dev] resolving drivers (stash + inject)...');
+execSync(`node scripts/resolve-drivers.mjs ${resolveArgs}`, {
   cwd: ROOT,
   stdio: 'inherit',
 });
@@ -51,8 +56,14 @@ const vite = spawn('npx', ['vite'], {
   shell: true,
 });
 
-process.on('SIGINT', () => { restoreStash(); process.exit(130); });
-process.on('SIGTERM', () => { restoreStash(); process.exit(143); });
+process.on('SIGINT', () => {
+  restoreStash();
+  process.exit(130);
+});
+process.on('SIGTERM', () => {
+  restoreStash();
+  process.exit(143);
+});
 
 vite.on('exit', (code) => {
   restoreStash();

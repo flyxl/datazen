@@ -1,25 +1,20 @@
 #!/usr/bin/env node
 /**
- * resolve-plugins.mjs
+ * resolve-drivers.mjs
  *
- * Pre-build script that resolves which database driver plugins to include
- * in the DataZen build. Controlled via:
- *   --plugins="kiwi,olap"       (use preset registry names)
- *   --plugins="all"             (include all available plugins)
- *   --plugins="none"            (only built-in drivers: pg, mysql, sqlite, redis)
- *   --restore                   (restore stashed clean managed files and exit)
+ * Pre-build script that resolves which database drivers to include.
+ * Controlled via:
+ *   --drivers="postgres,mysql"   (explicit registry names)
+ *   --drivers="basic"            (postgres, mysql, sqlite, redis)
+ *   --drivers="all"              (all path + git drivers)
+ *   --restore                    (restore stashed clean managed files and exit)
  *
- * Environment variable alternative: DATAZEN_PLUGINS="kiwi,olap"
+ * Environment variable: DATAZEN_DRIVERS="basic"
  *
- * Managed files are **copied** into `.plugin-file-stash/` before injection
- * (working paths stay in place), then restored with
- * `node scripts/plugin-file-stash.mjs restore` after the build
- * (tauri-dev / pre-commit / build wrappers call restore).
+ * Hard cutover: --plugins / DATAZEN_PLUGINS / presets none|core are rejected.
  *
- * This script:
- * 1. Copies clean managed files → `.plugin-file-stash/` (cp)
- * 2. Clones/updates plugin repos into .plugins/
- * 3. Writes injected managed files + .plugin-features.json
+ * Managed files are copied into `.plugin-file-stash/` before injection,
+ * then restored with `node scripts/plugin-file-stash.mjs restore` after build.
  */
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
@@ -40,17 +35,17 @@ const ROOT = STASH_ROOT;
 const PLUGINS_DIR = resolve(ROOT, '.plugins');
 
 function loadRegistry() {
-  const raw = readFileSync(resolve(ROOT, 'plugins-registry.json'), 'utf-8');
+  const raw = readFileSync(resolve(ROOT, 'drivers-registry.json'), 'utf-8');
   const registry = JSON.parse(raw);
 
-  // Allow local development overrides via .plugins-dev.json (gitignored)
-  const devOverridePath = resolve(ROOT, '.plugins-dev.json');
+  // Allow local development overrides via .drivers-dev.json (gitignored)
+  const devOverridePath = resolve(ROOT, '.drivers-dev.json');
   if (existsSync(devOverridePath)) {
     const overrides = JSON.parse(readFileSync(devOverridePath, 'utf-8'));
     for (const [name, override] of Object.entries(overrides)) {
       if (registry[name]) {
         Object.assign(registry[name], override);
-        console.log(`[resolve-plugins] dev override: ${name} → ${override.path || override.git}`);
+        console.log(`[resolve-drivers] dev override: ${name} → ${override.path || override.git}`);
       }
     }
   }
@@ -60,54 +55,68 @@ function loadRegistry() {
 
 function parseArgs() {
   const args = process.argv.slice(2);
-  let plugins = null;
 
+  const hasOldFlag = args.some((a) => a === '--plugins' || a.startsWith('--plugins='));
+  if (hasOldFlag || process.env.DATAZEN_PLUGINS) {
+    console.error(
+      '[resolve-drivers] --plugins / DATAZEN_PLUGINS are no longer supported. Use --drivers=... or DATAZEN_DRIVERS.',
+    );
+    process.exit(1);
+  }
+
+  let drivers = null;
   for (const arg of args) {
-    if (arg.startsWith('--plugins=')) {
-      plugins = arg.slice('--plugins='.length);
+    if (arg.startsWith('--drivers=')) {
+      drivers = arg.slice('--drivers='.length);
     }
   }
 
-  if (!plugins && process.env.DATAZEN_PLUGINS) {
-    plugins = process.env.DATAZEN_PLUGINS;
+  if (!drivers && process.env.DATAZEN_DRIVERS) {
+    drivers = process.env.DATAZEN_DRIVERS;
   }
 
-  // Default: all plugins
-  if (!plugins) {
-    plugins = 'all';
+  // Default: all drivers
+  if (!drivers) {
+    drivers = 'all';
   }
 
-  return plugins;
+  return drivers;
 }
 
-function resolvePlugins(pluginsArg, registry) {
-  if (pluginsArg === 'none') return [];
-  if (pluginsArg === 'all') {
-    return Object.entries(registry)
-      .filter(([_, meta]) => meta.source !== 'builtin')
-      .map(([id]) => id);
+const BASIC_DRIVERS = ['postgres', 'mysql', 'sqlite', 'redis'];
+
+function resolveDrivers(driversArg, registry) {
+  if (driversArg === 'none' || driversArg === 'core') {
+    console.error(
+      `[resolve-drivers] preset "${driversArg}" is no longer supported. Use --drivers=basic for the four core drivers.`,
+    );
+    process.exit(1);
   }
 
-  const requested = pluginsArg.split(',').map(s => s.trim()).filter(Boolean);
+  if (driversArg === 'basic') {
+    return [...BASIC_DRIVERS];
+  }
+
+  if (driversArg === 'all') {
+    return Object.keys(registry);
+  }
+
+  const requested = driversArg.split(',').map((x) => x.trim()).filter(Boolean);
   const resolved = [];
 
   for (const name of requested) {
-    if (registry[name]) {
-      if (registry[name].source === 'builtin') {
-        console.log(`  [skip] "${name}" is always included (builtin)`);
-      } else {
-        resolved.push(name);
-      }
-    } else {
-      console.warn(`  [warn] Unknown plugin "${name}" — not in registry`);
+    if (!registry[name]) {
+      console.error(`[resolve-drivers] Unknown driver "${name}" — not in drivers-registry.json`);
+      process.exit(1);
     }
+    resolved.push(name);
   }
 
   return resolved;
 }
 
-function generateCargoFeatures(plugins, registry) {
-  return plugins
+function generateCargoFeatures(drivers, registry) {
+  return drivers
     .map(name => registry[name]?.feature)
     .filter(Boolean);
 }
@@ -121,7 +130,85 @@ function generateCargoFeatures(plugins, registry) {
  * - connectionForm: { component, path, formVariant } — custom connection form (optional)
  * - sqlDialects: array of { family, export, path } — SQL dialect strategies (optional)
  */
-const FRONTEND_PLUGIN_CONFIG = {
+const BASIC_PATH_FRONTEND = {
+  postgres: {
+    dbTypes: [
+      { id: 'postgresql', metaExport: 'postgresqlMeta' },
+      { id: 'questdb', metaExport: 'questdbMeta' },
+      { id: 'cloudberry', metaExport: 'cloudberryMeta' },
+    ],
+    metaPath: '../../packages/drivers/postgres/ui/meta',
+  },
+  mysql: {
+    dbTypes: [
+      { id: 'mysql', metaExport: 'mysqlMeta' },
+      { id: 'mariadb', metaExport: 'mariadbMeta' },
+      { id: 'doris', metaExport: 'dorisMeta' },
+      { id: 'starrocks', metaExport: 'starrocksMeta' },
+      { id: 'manticore', metaExport: 'manticoreMeta' },
+      { id: 'ob_oracle', metaExport: 'obOracleMeta' },
+    ],
+    metaPath: '../../packages/drivers/mysql/ui/meta',
+  },
+  sqlite: {
+    dbTypes: [{ id: 'sqlite', metaExport: 'sqliteMeta' }],
+    metaPath: '../../packages/drivers/sqlite/ui/meta',
+  },
+  redis: {
+    dbTypes: [{ id: 'redis', metaExport: 'redisMeta' }],
+    metaPath: '../../packages/drivers/redis/ui/meta',
+  },
+  mongodb: {
+    dbTypes: [{ id: 'mongodb', metaExport: 'mongodbMeta' }],
+    metaPath: '../../packages/drivers/mongodb/ui/meta',
+  },
+  sqlserver: {
+    dbTypes: [{ id: 'sqlserver', metaExport: 'sqlserverMeta' }],
+    metaPath: '../../packages/drivers/sqlserver/ui/meta',
+  },
+  clickhouse: {
+    dbTypes: [{ id: 'clickhouse', metaExport: 'clickhouseMeta' }],
+    metaPath: '../../packages/drivers/clickhouse/ui/meta',
+  },
+  duckdb: {
+    dbTypes: [{ id: 'duckdb', metaExport: 'duckdbMeta' }],
+    metaPath: '../../packages/drivers/duckdb/ui/meta',
+  },
+  elasticsearch: {
+    dbTypes: [{ id: 'elasticsearch', metaExport: 'elasticsearchMeta' }],
+    metaPath: '../../packages/drivers/elasticsearch/ui/meta',
+  },
+  rqlite: {
+    dbTypes: [{ id: 'rqlite', metaExport: 'rqliteMeta' }],
+    metaPath: '../../packages/drivers/rqlite/ui/meta',
+  },
+  turso: {
+    dbTypes: [{ id: 'turso', metaExport: 'tursoMeta' }],
+    metaPath: '../../packages/drivers/turso/ui/meta',
+  },
+  influxdb: {
+    dbTypes: [{ id: 'influxdb', metaExport: 'influxdbMeta' }],
+    metaPath: '../../packages/drivers/influxdb/ui/meta',
+  },
+  victoriametrics: {
+    dbTypes: [{ id: 'victoriametrics', metaExport: 'victoriametricsMeta' }],
+    metaPath: '../../packages/drivers/victoriametrics/ui/meta',
+  },
+  hbase: {
+    dbTypes: [{ id: 'hbase', metaExport: 'hbaseMeta' }],
+    metaPath: '../../packages/drivers/hbase/ui/meta',
+  },
+  vector: {
+    dbTypes: [{ id: 'vector', metaExport: 'vectorMeta' }],
+    metaPath: '../../packages/drivers/vector/ui/meta',
+  },
+};
+
+/**
+ * Frontend driver configuration (path + git).
+ */
+const FRONTEND_DRIVER_CONFIG = {
+  ...BASIC_PATH_FRONTEND,
   kiwi: {
     dbTypes: [{ id: 'kiwi', metaExport: 'kiwiMeta' }],
     metaPath: '../../.plugins/kiwi/ui/plugin-meta',
@@ -175,7 +262,7 @@ function generateFrontendRegistry(plugins) {
   const pluginDbTypes = [];
 
   for (const id of plugins) {
-    const cfg = FRONTEND_PLUGIN_CONFIG[id];
+    const cfg = FRONTEND_DRIVER_CONFIG[id];
     if (!cfg) continue;
 
     // Import meta exports
@@ -229,9 +316,9 @@ function generateFrontendRegistry(plugins) {
   // Plugin commands registry
   const pluginCommandLines = [];
   for (const id of plugins) {
-    const cfg = FRONTEND_PLUGIN_CONFIG[id];
+    const cfg = FRONTEND_DRIVER_CONFIG[id];
     if (!cfg) continue;
-    const registryEntry = JSON.parse(readFileSync(resolve(ROOT, 'plugins-registry.json'), 'utf-8'));
+    const registryEntry = JSON.parse(readFileSync(resolve(ROOT, 'drivers-registry.json'), 'utf-8'));
     const meta = registryEntry[id];
     if (meta?.tauriPlugin?.commands?.length > 0) {
       const cmds = meta.tauriPlugin.commands.map(c => `'${c}'`).join(', ');
@@ -242,10 +329,10 @@ function generateFrontendRegistry(plugins) {
   }
 
   const content = `/**
- * AUTO-GENERATED by resolve-plugins.mjs — DO NOT EDIT MANUALLY
+ * AUTO-GENERATED by resolve-drivers.mjs — DO NOT EDIT MANUALLY
  *
  * This file registers frontend components and metadata for active plugins.
- * Regenerated every time the build runs with different --plugins args.
+ * Regenerated every time the build runs with different --drivers args.
  */
 ${importLines.length > 0 ? importLines.join('\n') + '\n' : ''}import { invoke } from '@tauri-apps/api/core';
 import type { DatabaseTypeMeta } from '@datazen/plugin-sdk';
@@ -260,13 +347,19 @@ import type { ComponentType } from 'react';
  */
 export const PLUGIN_PROTOCOL_VERSION = 1;
 
-/** Database types contributed by active plugins. */
-export type PluginDatabaseType = ${typeUnion};
+/** Database types contributed by active drivers in this build. */
+export type DatabaseType = ${typeUnion};
 
-/** Plugin DB metadata entries (merged into DB_REGISTRY at runtime). */
-export const PLUGIN_DB_ENTRIES: Record<string, DatabaseTypeMeta> = {
+/** Driver DB metadata entries (merged into DB_REGISTRY at runtime). */
+export const DRIVER_DB_ENTRIES: Record<string, DatabaseTypeMeta> = {
 ${dbEntryLines.join('\n')}
 };
+
+/** @deprecated Use DatabaseType */
+export type PluginDatabaseType = DatabaseType;
+
+/** @deprecated Use DRIVER_DB_ENTRIES */
+export const PLUGIN_DB_ENTRIES = DRIVER_DB_ENTRIES;
 
 /** Plugin-provided SQL dialect strategies (merged into DIALECTS). */
 export const PLUGIN_SQL_DIALECTS: Record<string, SqlDialectStrategy> = {
@@ -356,13 +449,13 @@ export function hasPluginCommand(pluginId: string, command: string): boolean {
   const outPath = workPath('src/plugins/generated.ts');
   mkdirSync(dirname(outPath), { recursive: true });
   writeFileSync(outPath, content);
-  console.log(`[resolve-plugins] wrote ${outPath}`);
+  console.log(`[resolve-drivers] wrote ${outPath}`);
 }
 
 /**
  * Clone or update plugin repositories into .plugins/<name>/.
  * Supports git (clone from remote) and local (symlink from local path).
- * Git plugins may pin `ref` (commit SHA or tag) in plugins-registry.json.
+ * Git plugins may pin `ref` (commit SHA or tag) in drivers-registry.json.
  */
 function checkoutGitRef(pluginDir, ref) {
   if (!ref) return;
@@ -375,19 +468,19 @@ function checkoutGitRef(pluginDir, ref) {
   execSync(`git checkout --detach ${ref}`, { cwd: pluginDir, stdio: 'pipe' });
 }
 
-function clonePlugins(plugins, registry) {
+function cloneDrivers(drivers, registry) {
   mkdirSync(PLUGINS_DIR, { recursive: true });
 
-  for (const name of plugins) {
+  for (const name of drivers) {
     const meta = registry[name];
-    if (meta.source === 'builtin') continue;
+    if (meta.source === 'path' || meta.source === 'builtin') continue;
 
     const pluginDir = resolve(PLUGINS_DIR, name);
 
     if (meta.source === 'local' && meta.path) {
       const localPath = resolve(ROOT, meta.path);
       if (!existsSync(localPath)) {
-        console.error(`[resolve-plugins] local plugin path not found: ${localPath}`);
+        console.error(`[resolve-drivers] local plugin path not found: ${localPath}`);
         continue;
       }
       // Create symlink for local development
@@ -395,11 +488,11 @@ function clonePlugins(plugins, registry) {
         execSync(`rm -rf ${pluginDir}`, { stdio: 'pipe' });
       }
       execSync(`ln -s ${localPath} ${pluginDir}`, { stdio: 'pipe' });
-      console.log(`[resolve-plugins] linked ${name} → ${localPath}`);
+      console.log(`[resolve-drivers] linked ${name} → ${localPath}`);
     } else if (meta.source === 'git' && meta.git) {
       const pinnedRef = meta.ref || meta.commit;
       if (existsSync(resolve(pluginDir, '.git'))) {
-        console.log(`[resolve-plugins] updating ${name} ...`);
+        console.log(`[resolve-drivers] updating ${name} ...`);
         try {
           execSync('git fetch origin', { cwd: pluginDir, stdio: 'pipe' });
         } catch {
@@ -408,7 +501,7 @@ function clonePlugins(plugins, registry) {
         if (pinnedRef) {
           try {
             checkoutGitRef(pluginDir, pinnedRef);
-            console.log(`  [resolve-plugins] ${name} checked out ${pinnedRef}`);
+            console.log(`  [resolve-drivers] ${name} checked out ${pinnedRef}`);
           } catch {
             console.warn(`  [warn] checkout ${pinnedRef} failed for "${name}", using HEAD`);
           }
@@ -421,17 +514,17 @@ function clonePlugins(plugins, registry) {
         }
       } else if (existsSync(resolve(pluginDir, 'Cargo.toml'))) {
         // Local development: directory exists with source but no .git — keep as-is
-        console.log(`[resolve-plugins] using local ${name} (no .git, has Cargo.toml)`);
+        console.log(`[resolve-drivers] using local ${name} (no .git, has Cargo.toml)`);
       } else {
         // Remove stale symlink or directory if source type changed
         if (existsSync(pluginDir)) {
           execSync(`rm -rf ${pluginDir}`, { stdio: 'pipe' });
         }
-        console.log(`[resolve-plugins] cloning ${name} from ${meta.git} ...`);
+        console.log(`[resolve-drivers] cloning ${name} from ${meta.git} ...`);
         execSync(`git clone ${meta.git} ${pluginDir}`, { stdio: 'pipe' });
         if (pinnedRef) {
           checkoutGitRef(pluginDir, pinnedRef);
-          console.log(`  [resolve-plugins] ${name} pinned to ${pinnedRef}`);
+          console.log(`  [resolve-drivers] ${name} pinned to ${pinnedRef}`);
         }
       }
     }
@@ -444,14 +537,14 @@ function clonePlugins(plugins, registry) {
  * Markers: `# --- BEGIN <tag> ---` / `# --- END <tag> ---`
  */
 function replaceMarkerSection(relPath, tag, newContent) {
-  const begin = `# --- BEGIN ${tag} (managed by resolve-plugins.mjs, do not edit) ---`;
+  const begin = `# --- BEGIN ${tag} (managed by resolve-drivers.mjs, do not edit) ---`;
   const end = `# --- END ${tag} ---`;
   const text = readFileSync(managedReadPath(relPath), 'utf-8');
   const re = new RegExp(
     escapeRegex(begin) + '[\\s\\S]*?' + escapeRegex(end),
   );
   if (!re.test(text)) {
-    console.warn(`[resolve-plugins] marker "${tag}" not found in ${relPath}`);
+    console.warn(`[resolve-drivers] marker "${tag}" not found in ${relPath}`);
     return;
   }
   const body = newContent ? `${begin}\n${newContent}\n${end}` : `${begin}\n${end}`;
@@ -469,22 +562,44 @@ function escapeRegex(s) {
  * - Cargo.toml (root): adds [patch] entries when git-sourced plugins are
  *   cloned locally, so Cargo uses the local checkout instead of fetching
  */
+function crateDepPath(name, meta) {
+  if (meta.source === 'path' && meta.path) {
+    // src-tauri/Cargo.toml → ../packages/drivers/X
+    return `../${meta.path}`;
+  }
+  return `../.plugins/${name}`;
+}
+
+/** Path drivers use datazen-driver-*; git drivers keep their published crate name (usually datazen-plugin-*). */
+function cratePackageName(name, meta) {
+  if (meta?.source === 'path') {
+    return `datazen-driver-${name}`;
+  }
+  return `datazen-plugin-${name}`;
+}
+
+function crateRustIdent(name, meta) {
+  return cratePackageName(name, meta).replaceAll('-', '_');
+}
+
 function updateCargoFiles(plugins, registry) {
   // --- src-tauri/Cargo.toml: plugin deps ---
   const depLines = plugins.map(name => {
-    const crateName = `datazen-plugin-${name}`;
     const meta = registry[name];
+    const crateName = cratePackageName(name, meta || {});
+    const depPath = crateDepPath(name, meta || {});
     if (meta?.tauriPlugin) {
-      return `${crateName} = { path = "../.plugins/${name}", optional = true, features = ["tauri-plugin"] }`;
+      return `${crateName} = { path = "${depPath}", optional = true, features = ["tauri-plugin"] }`;
     }
-    return `${crateName} = { path = "../.plugins/${name}", optional = true }`;
+    return `${crateName} = { path = "${depPath}", optional = true }`;
   });
   replaceMarkerSection('src-tauri/Cargo.toml', 'PLUGIN DEPS', depLines.join('\n'));
 
   // --- src-tauri/Cargo.toml: plugin features ---
   const featureLines = plugins.map(name => {
-    const feature = registry[name]?.feature;
-    const crateName = `datazen-plugin-${name}`;
+    const meta = registry[name];
+    const feature = meta?.feature;
+    const crateName = cratePackageName(name, meta || {});
     return feature ? `${feature} = ["dep:${crateName}"]` : null;
   }).filter(Boolean);
   replaceMarkerSection('src-tauri/Cargo.toml', 'PLUGIN FEATURES', featureLines.join('\n'));
@@ -494,12 +609,12 @@ function updateCargoFiles(plugins, registry) {
     .filter(name => registry[name]?.source === 'git' && registry[name]?.git)
     .map(name => {
       const meta = registry[name];
-      const crateName = `datazen-plugin-${name}`;
+      const crateName = cratePackageName(name, meta);
       return `[patch."${meta.git}"]\n${crateName} = { path = ".plugins/${name}" }`;
     });
   replaceMarkerSection('Cargo.toml', 'PLUGIN PATCHES', patchLines.join('\n\n'));
 
-  console.log(`[resolve-plugins] updated Cargo.toml files (${plugins.length} plugin(s))`);
+  console.log(`[resolve-drivers] updated Cargo.toml files (${plugins.length} plugin(s))`);
 }
 
 /**
@@ -517,7 +632,7 @@ function generateRustPluginInit(plugins, registry) {
     if (!meta.feature) continue;
 
     const feature = meta.feature;
-    const crateName = `datazen_plugin_${name}`;
+    const crateName = crateRustIdent(name, meta);
 
     externCrateLines.push(`#[cfg(feature = "${feature}")]`);
     externCrateLines.push(`extern crate ${crateName};`);
@@ -538,7 +653,7 @@ function generateRustPluginInit(plugins, registry) {
     ? pluginInitLines.join('\n')
     : '    // No plugins with Tauri commands enabled';
 
-  const content = `// AUTO-GENERATED by resolve-plugins.mjs — DO NOT EDIT MANUALLY
+  const content = `// AUTO-GENERATED by resolve-drivers.mjs — DO NOT EDIT MANUALLY
 //
 // Ensures plugin crates are linked into the binary (extern crate)
 // so that inventory-based driver registration takes effect.
@@ -558,7 +673,7 @@ ${body}
   const outPath = workPath('src-tauri/src/plugin_init.rs');
   mkdirSync(dirname(outPath), { recursive: true });
   writeFileSync(outPath, content);
-  console.log(`[resolve-plugins] wrote ${outPath}`);
+  console.log(`[resolve-drivers] wrote ${outPath}`);
 }
 
 /**
@@ -593,13 +708,14 @@ function injectCargoToml(plugins, registry) {
   for (const name of plugins) {
     const meta = registry[name];
     if (!meta.feature) continue;
-    const crateName = `datazen-plugin-${name}`;
+    const crateName = cratePackageName(name, meta);
+    const depPath = crateDepPath(name, meta);
     if (meta.tauriPlugin) {
       depLines.push(
-        `${crateName} = { path = "../.plugins/${name}", optional = true, features = ["tauri-plugin"] }`,
+        `${crateName} = { path = "${depPath}", optional = true, features = ["tauri-plugin"] }`,
       );
     } else {
-      depLines.push(`${crateName} = { path = "../.plugins/${name}", optional = true }`);
+      depLines.push(`${crateName} = { path = "${depPath}", optional = true }`);
     }
   }
 
@@ -608,7 +724,7 @@ function injectCargoToml(plugins, registry) {
   for (const name of plugins) {
     const meta = registry[name];
     if (!meta.feature) continue;
-    const crateName = `datazen-plugin-${name}`;
+    const crateName = cratePackageName(name, meta);
     featureLines.push(`${meta.feature} = ["dep:${crateName}"]`);
   }
 
@@ -616,7 +732,7 @@ function injectCargoToml(plugins, registry) {
   content = replaceMarkerBlock(content, 'plugin-features', featureLines);
 
   writeFileSync(workPath(relPath), content);
-  console.log(`[resolve-plugins] injected ${depLines.length} deps + ${featureLines.length} features into Cargo.toml`);
+  console.log(`[resolve-drivers] injected ${depLines.length} deps + ${featureLines.length} features into Cargo.toml`);
 }
 
 /**
@@ -624,23 +740,23 @@ function injectCargoToml(plugins, registry) {
  *
  * Removes any permissions whose prefix matches a registry plugin id, then
  * appends `{tauriPlugin.id}:default` for each active plugin that exposes commands.
- * Idempotent across resolve-plugins runs.
+ * Idempotent across resolve-drivers runs.
  *
  * Preserves the committed file layout (compact `windows` array). No-ops when
- * the permissions list is already correct so --plugins=none does not churn formatting.
+ * the permissions list is already correct so --drivers=basic does not churn formatting.
  */
 function syncPluginCapabilities(plugins, registry) {
   const relPath = 'src-tauri/capabilities/default.json';
   const readPath = managedReadPath(relPath);
   if (!existsSync(readPath)) {
-    console.warn(`[resolve-plugins] capabilities file not found: ${relPath}`);
+    console.warn(`[resolve-drivers] capabilities file not found: ${relPath}`);
     return;
   }
 
   const before = readFileSync(readPath, 'utf-8');
   const cap = JSON.parse(before);
   if (!Array.isArray(cap.permissions)) {
-    console.warn('[resolve-plugins] capabilities.permissions is not an array');
+    console.warn('[resolve-drivers] capabilities.permissions is not an array');
     return;
   }
 
@@ -681,7 +797,7 @@ function syncPluginCapabilities(plugins, registry) {
   ].join('\n');
   writeFileSync(workPath(relPath), content);
   console.log(
-    `[resolve-plugins] synced capabilities plugin permissions: [${added.join(', ') || 'none'}]`,
+    `[resolve-drivers] synced capabilities plugin permissions: [${added.join(', ') || 'none'}]`,
   );
 }
 
@@ -697,7 +813,7 @@ function injectRootCargoPatches(plugins, registry) {
   for (const name of plugins) {
     const meta = registry[name];
     if (meta.source !== 'git' || !meta.git) continue;
-    const crateName = `datazen-plugin-${name}`;
+    const crateName = cratePackageName(name, meta);
     patchLines.push('');
     patchLines.push(`[patch."${meta.git}"]`);
     patchLines.push(`${crateName} = { path = ".plugins/${name}" }`);
@@ -707,7 +823,7 @@ function injectRootCargoPatches(plugins, registry) {
 
   writeFileSync(workPath(relPath), content);
   if (patchLines.length > 0) {
-    console.log(`[resolve-plugins] injected ${plugins.length} patch(es) into root Cargo.toml`);
+    console.log(`[resolve-drivers] injected ${plugins.length} patch(es) into root Cargo.toml`);
   }
 }
 
@@ -722,42 +838,39 @@ function main() {
   }
 
   const registry = loadRegistry();
-  const pluginsArg = parseArgs();
+  const driversArg = parseArgs();
 
-  console.log(`[resolve-plugins] plugins arg: "${pluginsArg}"`);
+  console.log(`[resolve-drivers] drivers arg: "${driversArg}"`);
 
-  const plugins = resolvePlugins(pluginsArg, registry);
+  const plugins = resolveDrivers(driversArg, registry);
 
-  console.log(`[resolve-plugins] resolved plugins: [${plugins.join(', ')}]`);
+  console.log(`[resolve-drivers] resolved drivers: [${plugins.join(', ')}]`);
 
   // Rename clean managed files aside, then write injected copies at original paths.
   // Idempotent: if an outer caller already stashed, re-inject over working copies.
   if (allStashed()) {
     console.log(
-      '[resolve-plugins] stash already present; re-injecting without re-stash',
+      '[resolve-drivers] stash already present; re-injecting without re-stash',
     );
   } else {
     stashManagedFiles();
   }
 
   try {
-    // Clone/update plugin repos
-    clonePlugins(plugins, registry);
-
-    // Update Cargo.toml files with resolved plugin deps/features/patches
-    updateCargoFiles(plugins, registry);
+    // Clone/update git driver repos (path drivers use workspace members)
+    cloneDrivers(plugins, registry);
 
     const features = generateCargoFeatures(plugins, registry);
 
-    console.log(`[resolve-plugins] cargo features: [${features.join(', ')}]`);
+    console.log(`[resolve-drivers] cargo features: [${features.join(', ')}]`);
 
     // Show plugin sources
     for (const name of plugins) {
       const meta = registry[name];
       if (meta.source === 'git') {
         console.log(`  ${name}: ${meta.git}`);
-      } else if (meta.source === 'workspace') {
-        console.log(`  ${name}: local (${meta.path})`);
+      } else if (meta.source === 'path' || meta.source === 'workspace') {
+        console.log(`  ${name}: path (${meta.path})`);
       }
     }
 
@@ -777,7 +890,7 @@ function main() {
 
     const outPath = resolve(ROOT, '.plugin-features.json');
     writeFileSync(outPath, JSON.stringify(output, null, 2) + '\n');
-    console.log(`[resolve-plugins] wrote ${outPath}`);
+    console.log(`[resolve-drivers] wrote ${outPath}`);
 
     generateFrontendRegistry(plugins);
     generateRustPluginInit(plugins, registry);
@@ -789,13 +902,13 @@ function main() {
     } else {
       console.log(`  cargo build`);
     }
-    console.log(`[resolve-plugins] managed files are injected; run \`node scripts/plugin-file-stash.mjs restore\` after build`);
+    console.log(`[resolve-drivers] managed files are injected; run \`node scripts/plugin-file-stash.mjs restore\` after build`);
   } catch (err) {
-    console.error('[resolve-plugins] failed; attempting stash restore...');
+    console.error('[resolve-drivers] failed; attempting stash restore...');
     try {
       restoreManagedFiles();
     } catch (restoreErr) {
-      console.error('[resolve-plugins] stash restore also failed:', restoreErr instanceof Error ? restoreErr.message : restoreErr);
+      console.error('[resolve-drivers] stash restore also failed:', restoreErr instanceof Error ? restoreErr.message : restoreErr);
     }
     throw err;
   }

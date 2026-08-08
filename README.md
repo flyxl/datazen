@@ -33,7 +33,7 @@
   <img src="docs/screenshots/connection-window.png" width="720" alt="DataZen data browser" />
 </p>
 
-[English](#features) · [中文](#特性) · [Install](#install) · [macOS note](#macos-first-launch) · [Contributing](#contributing) · [Contact](#contact--feedback)
+[English](#features) · [中文](#特性) · [Install](#install) · [macOS note](#macos-first-launch) · [Linux note](#linux-install) · [Contributing](#contributing) · [Contact](#contact--feedback)
 
 ---
 
@@ -113,7 +113,9 @@ Download from [Releases](https://github.com/flyxl/datazen/releases) · 从 [Rele
 | macOS (Apple Silicon) | `.dmg` (文件名含 `macos-arm64`) |
 | macOS (Intel) | `.dmg` (文件名含 `macos-x64`) |
 | Windows | `.exe` / `.msi` (文件名含 `windows-x64`) |
-| Linux | `.deb` / `.rpm` / `.AppImage` (文件名含 `linux-x64`) |
+| Linux (x86_64) | `.deb` / `.rpm` / `.AppImage` (文件名含 `linux-x64`) |
+
+GitHub Release 会同时发布 **基础版** 与 **Pro 版**（`-pro`）的上述平台安装包。
 
 <a id="macos-first-launch"></a>
 ### macOS first launch / 首次打开
@@ -129,6 +131,23 @@ xattr -cr /Applications/DataZen.app
 ```
 
 Then open normally. Share this step in reviews if macOS blocks launch — it is expected, not corruption.
+
+<a id="linux-install"></a>
+### Linux install / Linux 安装
+
+Official builds are **x86_64** (`.deb` / `.rpm` / `.AppImage`). Prefer AppImage for a quick try:
+
+官方提供 **x86_64** 安装包（`.deb` / `.rpm` / `.AppImage`）。快速试用推荐 AppImage：
+
+```bash
+chmod +x DataZen-*-linux-x64.AppImage
+./DataZen-*-linux-x64.AppImage
+```
+
+- Some distros need `libfuse2` for AppImage. / 部分发行版运行 AppImage 需安装 `libfuse2`
+- Runtime needs WebKitGTK (e.g. `libwebkit2gtk-4.1-0` / `webkit2gtk4.1`). / 运行时依赖 WebKitGTK
+- Debian/Ubuntu: `sudo apt install ./DataZen-*-linux-x64.deb`
+- Fedora/RHEL: `sudo rpm -i ./DataZen-*-linux-x64.rpm`
 
 ---
 
@@ -185,10 +204,10 @@ pnpm tauri build
 pnpm tauri:build:minimal
 
 # 指定插件
-pnpm tauri:build --plugins=kiwi,olap
+pnpm tauri:build --drivers=kiwi,olap
 ```
 
-GitHub Release 构建两个安装包：**基础版**（`DATAZEN_PLUGINS=none`，仅内置 PG/MySQL/SQLite/Redis）与 **Pro 版**（`kiwi,superset`；不含 OLAP Presto/Trino，需 `--plugins=all` 或单独加 `olap`）。
+GitHub Release 构建两个安装包：**基础版**（`DATAZEN_DRIVERS=basic`，仅 PG/MySQL/SQLite/Redis）与 **Pro 版**（含更多 path/git 驱动；全量用 `--drivers=all`）。
 
 ### 运行 E2E 测试
 
@@ -212,11 +231,11 @@ DataZen 支持两种方式添加新数据库驱动：
 
 ```bash
 # 构建时指定包含的插件
-DATAZEN_PLUGINS=kiwi,olap pnpm tauri build
+DATAZEN_DRIVERS=kiwi,olap pnpm tauri build
 
 # 或使用全部/无插件模式
-DATAZEN_PLUGINS=all pnpm tauri build
-DATAZEN_PLUGINS=none pnpm tauri build
+DATAZEN_DRIVERS=all pnpm tauri build
+DATAZEN_DRIVERS=basic pnpm tauri build
 ```
 
 ### 方式 2：作为内置驱动
@@ -249,7 +268,7 @@ datazen/
 │   ├── stores/                  # Zustand 状态管理
 │   ├── commands/                # Tauri IPC 命令封装
 │   ├── lib/                     # DB_REGISTRY, sqlDialects, connectionViews
-│   ├── plugins/generated.ts     # 自动生成的插件注册（resolve-plugins.mjs 产出）
+│   ├── plugins/generated.ts     # 自动生成的驱动注册（resolve-drivers.mjs 产出）
 │   ├── locales/                 # 国际化（中/英）
 │   └── types/                   # TypeScript 类型定义
 ├── src-tauri/                   # Rust 后端
@@ -259,8 +278,8 @@ datazen/
 │   │   └── store/               # 本地持久化
 │   └── Cargo.toml
 ├── packages/driver-api/         # 插件公共 API crate（traits + types + inventory）
-├── scripts/resolve-plugins.mjs  # 插件解析 + 代码生成
-├── plugins-registry.json        # 插件注册表（git/builtin/local）
+├── scripts/resolve-drivers.mjs  # 驱动选型 + 代码生成
+├── drivers-registry.json        # 驱动注册表（path/git/local）
 ├── .plugins/                    # 构建时克隆的插件目录（gitignored）
 ├── e2e/                         # E2E 测试
 ├── docs/                        # 文档

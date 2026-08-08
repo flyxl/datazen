@@ -1,9 +1,6 @@
-/** Built-in database engine identifiers. */
-export type BuiltinDatabaseType = 'postgresql' | 'mysql' | 'mariadb' | 'sqlite' | 'redis';
-
-/** All database types: built-in + plugin-provided. */
-import type { PluginDatabaseType } from '../plugins/generated';
-export type DatabaseType = BuiltinDatabaseType | PluginDatabaseType;
+/** Database engine identifiers for the current build (injected via resolve-drivers). */
+export type { DatabaseType } from '../plugins/generated';
+import type { DatabaseType } from '../plugins/generated';
 
 export type SslMode = 'disable' | 'prefer' | 'require' | 'verifyCa' | 'verifyFull';
 

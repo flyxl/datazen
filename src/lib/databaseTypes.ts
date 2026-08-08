@@ -1,12 +1,12 @@
 /**
  * Unified database type registry.
  *
- * Built-in types are defined here. Plugin types are merged in from
- * src/plugins/generated.ts at import time.
+ * Driver metadata is injected at build/dev time into src/plugins/generated.ts
+ * (path + git drivers selected via --drivers / DATAZEN_DRIVERS).
  */
 
 import type { DatabaseType } from '../types';
-import { PLUGIN_DB_ENTRIES } from '../plugins/generated';
+import { DRIVER_DB_ENTRIES } from '../plugins/generated';
 import type { IconSourceMap } from './iconResolver';
 
 import postgresqlIconUrl from '../assets/db-icons/postgresql.svg?url';
@@ -18,129 +18,8 @@ import redisIconUrl from '../assets/db-icons/redis.svg?url';
 export type { ConnectionMode, DatabaseTypeMeta } from './databaseMeta';
 import type { DatabaseTypeMeta } from './databaseMeta';
 
-const BUILTIN_DB_REGISTRY: Record<string, DatabaseTypeMeta> = {
-  postgresql: {
-    label: 'PostgreSQL',
-    shortLabel: 'Pg',
-    iconBg: 'bg-blue-600',
-    iconColor: 'text-blue-400',
-    defaultPort: 5432,
-    defaultHost: '127.0.0.1',
-    defaultUser: 'postgres',
-    quoteChar: '"',
-    connectionMode: 'server',
-    supportsSSH: true,
-    supportsSSL: true,
-    supportsBackup: true,
-    supportsTables: true,
-    isKeyValue: false,
-    supportsSQL: true,
-    category: 'sql',
-    connectionView: 'sql',
-    sqlDialect: 'postgresql',
-    databaseFieldType: 'name',
-    connectionForm: 'standard',
-    supportsExplain: true,
-    hasMultiDatabase: true,
-    namespaceEnsure: 'postgresql',
-  },
-  mysql: {
-    label: 'MySQL',
-    shortLabel: 'My',
-    iconBg: 'bg-orange-500',
-    iconColor: 'text-orange-400',
-    defaultPort: 3306,
-    defaultHost: '127.0.0.1',
-    defaultUser: 'root',
-    quoteChar: '`',
-    connectionMode: 'server',
-    supportsSSH: true,
-    supportsSSL: true,
-    supportsBackup: true,
-    supportsTables: true,
-    isKeyValue: false,
-    supportsSQL: true,
-    category: 'sql',
-    connectionView: 'sql',
-    sqlDialect: 'mysql',
-    databaseFieldType: 'name',
-    connectionForm: 'standard',
-    supportsExplain: true,
-    hasMultiDatabase: true,
-  },
-  mariadb: {
-    label: 'MariaDB',
-    shortLabel: 'Ma',
-    iconBg: 'bg-sky-600',
-    iconColor: 'text-amber-500',
-    defaultPort: 3306,
-    defaultHost: '127.0.0.1',
-    defaultUser: 'root',
-    quoteChar: '`',
-    connectionMode: 'server',
-    supportsSSH: true,
-    supportsSSL: true,
-    supportsBackup: true,
-    supportsTables: true,
-    isKeyValue: false,
-    supportsSQL: true,
-    category: 'sql',
-    connectionView: 'sql',
-    sqlDialect: 'mysql',
-    databaseFieldType: 'name',
-    connectionForm: 'standard',
-    supportsExplain: true,
-    hasMultiDatabase: true,
-  },
-  sqlite: {
-    label: 'SQLite',
-    shortLabel: 'Lt',
-    iconBg: 'bg-emerald-600',
-    iconColor: 'text-green-400',
-    defaultPort: 0,
-    defaultHost: '',
-    defaultUser: '',
-    quoteChar: '"',
-    connectionMode: 'file',
-    supportsSSH: false,
-    supportsSSL: false,
-    supportsBackup: false,
-    supportsTables: true,
-    isKeyValue: false,
-    supportsSQL: true,
-    category: 'sql',
-    connectionView: 'sql',
-    sqlDialect: 'sqlite',
-    databaseFieldType: 'path',
-    connectionForm: 'file',
-    supportsExplain: true,
-  },
-  redis: {
-    label: 'Redis',
-    shortLabel: 'Rd',
-    iconBg: 'bg-red-600',
-    iconColor: 'text-red-400',
-    defaultPort: 6379,
-    defaultHost: '127.0.0.1',
-    defaultUser: '',
-    quoteChar: '',
-    connectionMode: 'server',
-    supportsSSH: true,
-    supportsSSL: false,
-    supportsBackup: false,
-    supportsTables: false,
-    isKeyValue: true,
-    supportsSQL: false,
-    category: 'kv',
-    connectionView: 'keyvalue',
-    databaseFieldType: 'index',
-    connectionForm: 'index',
-  },
-};
-
 export const DB_REGISTRY: Record<DatabaseType, DatabaseTypeMeta> = {
-  ...BUILTIN_DB_REGISTRY,
-  ...PLUGIN_DB_ENTRIES,
+  ...DRIVER_DB_ENTRIES,
 } as Record<DatabaseType, DatabaseTypeMeta>;
 
 /** All database types available for the "new connection" UI. */

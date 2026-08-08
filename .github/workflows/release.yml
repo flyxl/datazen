@@ -20,37 +20,47 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # ── 基础版（仅内置驱动：PostgreSQL, MySQL, SQLite, Redis）──
+          # ── 基础版（postgres/mysql/sqlite/redis）──
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
             os_label: windows-x64
-            plugins: "none"
+            drivers: "basic"
             variant_suffix: ""
           - platform: macos-latest
             target: aarch64-apple-darwin
             os_label: macos-arm64
-            plugins: "none"
+            drivers: "basic"
             variant_suffix: ""
           - platform: macos-latest
             target: x86_64-apple-darwin
             os_label: macos-x64
-            plugins: "none"
+            drivers: "basic"
             variant_suffix: ""
-          # ── Pro 版（内置驱动 + Kiwi + Superset）──
+          - platform: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            os_label: linux-x64
+            drivers: "basic"
+            variant_suffix: ""
+          # ── Pro 版（基础四驱动 + Kiwi + Superset）──
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
             os_label: windows-x64
-            plugins: "kiwi,superset"
+            drivers: "postgres,mysql,sqlite,redis,kiwi,superset"
             variant_suffix: "-pro"
           - platform: macos-latest
             target: aarch64-apple-darwin
             os_label: macos-arm64
-            plugins: "kiwi,superset"
+            drivers: "postgres,mysql,sqlite,redis,kiwi,superset"
             variant_suffix: "-pro"
           - platform: macos-latest
             target: x86_64-apple-darwin
             os_label: macos-x64
-            plugins: "kiwi,superset"
+            drivers: "postgres,mysql,sqlite,redis,kiwi,superset"
+            variant_suffix: "-pro"
+          - platform: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            os_label: linux-x64
+            drivers: "postgres,mysql,sqlite,redis,kiwi,superset"
             variant_suffix: "-pro"
 
     runs-on: ${{ matrix.platform }}
@@ -76,6 +86,26 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
+
+      - name: Install Linux system deps (Tauri / webkit2gtk)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            pkg-config \
+            libglib2.0-dev \
+            libgtk-3-dev \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libssl-dev \
+            patchelf \
+            libfuse2
 
       - name: Cache Rust compilation
         uses: swatinem/rust-cache@v2
@@ -122,15 +152,15 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install
 
-      - name: Resolve plugins and build Tauri app
+      - name: Resolve drivers and build Tauri app
         shell: bash
         run: |
           # Inject once; beforeBuildCommand `pnpm build` only runs tsc/vite.
           # Use ci-tauri-build.mjs (not bash -c) so Windows Node spawn keeps args.
-          node scripts/with-plugin-inject.mjs --plugins="${{ matrix.plugins }}" -- node scripts/ci-tauri-build.mjs --target=${{ matrix.target }}
+          node scripts/with-plugin-inject.mjs --drivers="${{ matrix.drivers }}" -- node scripts/ci-tauri-build.mjs --target=${{ matrix.target }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          DATAZEN_PLUGINS: ${{ matrix.plugins }}
+          DATAZEN_DRIVERS: ${{ matrix.drivers }}
 
       - name: Rename artifacts with platform and variant label
         shell: bash
@@ -143,12 +173,18 @@ jobs:
           for file in \
             "$BUNDLE_DIR"/dmg/*.dmg \
             "$BUNDLE_DIR"/nsis/*.exe \
-            "$BUNDLE_DIR"/msi/*.msi; do
+            "$BUNDLE_DIR"/msi/*.msi \
+            "$BUNDLE_DIR"/deb/*.deb \
+            "$BUNDLE_DIR"/rpm/*.rpm \
+            "$BUNDLE_DIR"/appimage/*.AppImage; do
             [ -f "$file" ] || continue
             base=$(basename "$file")
             if [[ "$base" == *.tar.gz ]]; then
               stem="${base%.tar.gz}"
               newname="${stem}-${LABEL}.tar.gz"
+            elif [[ "$base" == *.AppImage ]]; then
+              stem="${base%.AppImage}"
+              newname="${stem}-${LABEL}.AppImage"
             else
               stem="${base%.*}"
               ext="${base##*.}"
@@ -168,7 +204,7 @@ jobs:
 
             本次发布包含两个版本：
             - **基础版**：内置 PostgreSQL、MySQL、SQLite、Redis 驱动
-            - **Pro 版**（文件名含 `-pro`）：额外包含 **Kiwi** 云数据库代理与 **Superset** 数据探索插件（不含 OLAP Presto/Trino；需 `DATAZEN_PLUGINS=all` 或 `--plugins=olap` 单独启用）
+            - **Pro 版**（文件名含 `-pro`）：额外包含 **Kiwi** 云数据库代理与 **Superset** 数据探索插件（不含 OLAP Presto/Trino；需 `DATAZEN_DRIVERS=all` 或显式加 `olap`）
 
             ## 安装说明
 
@@ -185,5 +221,11 @@ jobs:
 
             ### Windows
             直接运行 `.exe` 安装包或 `.msi` 安装包即可。
+
+            ### Linux (x86_64)
+            - **AppImage**：`chmod +x *.AppImage` 后直接运行（部分发行版需安装 `libfuse2`）
+            - **deb**：`sudo apt install ./DataZen-*-linux-x64.deb`
+            - **rpm**：`sudo rpm -i ./DataZen-*-linux-x64.rpm`（或发行版对应的包管理器）
+            运行时依赖 WebKitGTK（常见包名：`libwebkit2gtk-4.1-0` / `webkit2gtk4.1`）。
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -22,7 +22,7 @@ const target = targetArg ? targetArg.slice('--target='.length) : null;
 
 const featuresPath = resolve(ROOT, '.plugin-features.json');
 if (!existsSync(featuresPath)) {
-  console.error('[ci-tauri-build] missing .plugin-features.json — run resolve-plugins first');
+  console.error('[ci-tauri-build] missing .plugin-features.json — run resolve-drivers first');
   process.exit(1);
 }
 

@@ -10,10 +10,12 @@ pub use inventory;
 mod types;
 mod traits;
 mod factory;
+mod reuse;
 
 pub use types::*;
 pub use traits::*;
 pub use factory::*;
+pub use reuse::ReuseDriver;
 
 /// Protocol version for the driver API.
 ///

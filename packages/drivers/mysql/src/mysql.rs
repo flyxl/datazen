@@ -1,6 +1,6 @@
 //! MySQL / MariaDB driver backed by sqlx MySqlPool.
 
-use super::*;
+use datazen_driver_api::*;
 use async_trait::async_trait;
 use rust_decimal::prelude::ToPrimitive;
 use sqlx::mysql::MySqlPoolOptions;
