@@ -157,23 +157,29 @@ async function resetAiInput() {
   }
 }
 
+/** Tauri v2 freezes `__TAURI_INTERNALS__.invoke`; capture runs in `src/commands/ai.ts` when this array exists. */
 async function installInvokeSpy() {
   await browser.execute(() => {
-    const w = window as any;
-    w.__invokeCalls = [];
-    const inv = w.__TAURI_INTERNALS__.invoke.bind(w.__TAURI_INTERNALS__);
-    w.__TAURI_INTERNALS__.invoke = (cmd: string, args: unknown) => {
-      w.__invokeCalls.push({ cmd, args });
-      if (cmd === 'ai_chat' || cmd === 'ai_generate_sql') {
-        return Promise.resolve('');
-      }
-      return inv(cmd, args);
-    };
+    (window as any).__invokeCalls = [];
   });
 }
 
 async function getInvokeCalls(): Promise<Array<{ cmd: string; args: Record<string, unknown> }>> {
   return browser.execute(() => (window as any).__invokeCalls ?? []);
+}
+
+async function setReactTextareaValue(text: string) {
+  const ok = await browser.execute((value: string) => {
+    const textarea = document.querySelector('aside textarea') as HTMLTextAreaElement | null;
+    if (!textarea) return false;
+    const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set;
+    if (!setter) return false;
+    setter.call(textarea, value);
+    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    textarea.dispatchEvent(new Event('change', { bubbles: true }));
+    return true;
+  }, text);
+  expect(ok).toBe(true);
 }
 
 async function selectFirstTableItem() {
@@ -331,7 +337,7 @@ describe('AI context tables (CTX-T01~T06)', () => {
     await waitForPicker();
     await selectFirstTableItem();
 
-    await textarea.setValue('list rows from pinned table');
+    await setReactTextareaValue('list rows from pinned table');
     await browser.pause(200);
 
     const sendClicked = await browser.execute(() => {
