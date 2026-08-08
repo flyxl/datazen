@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Database } from 'lucide-react';
 import { TitleBar } from '../../components/TitleBar';
 import { Button } from '../../components/ui/Button';
+import { Input } from '../../components/ui/Input';
+import { DbTypeBadge } from '../../components/DbTypeBadge';
 import { useConnectionStore } from '../../stores/connectionStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useThemeListener } from '../../hooks/useThemeListener';
@@ -9,6 +10,7 @@ import { useI18n } from '../../hooks/useI18n';
 import { cn } from '../../lib/cn';
 import { getUrlParam } from '../../lib/windowKind';
 import { DB_REGISTRY } from '../../lib/databaseTypes';
+import { filterDbTypesByQuery } from '../../lib/filterDbTypes';
 import { connectionCommands } from '../../commands/connection';
 import { ConnectionFormBody } from '../../components/connection/ConnectionFormBody';
 import { useConnectionForm } from '../../components/connection/useConnectionForm';
@@ -46,6 +48,7 @@ export function NewConnectionWindow() {
 
   const [editId] = useState(() => getUrlParam('editId'));
   const [availableDrivers, setAvailableDrivers] = useState<string[] | null>(null);
+  const [driverQuery, setDriverQuery] = useState('');
 
   useEffect(() => {
     void fetchConnections();
@@ -56,9 +59,11 @@ export function NewConnectionWindow() {
   }, [fetchConnections, fetchGroups]);
 
   const dbTypes = useMemo(() => {
-    if (!availableDrivers) return ALL_DB_TYPES;
-    return ALL_DB_TYPES.filter((db) => availableDrivers.includes(db.value));
-  }, [availableDrivers]);
+    const available = !availableDrivers
+      ? ALL_DB_TYPES
+      : ALL_DB_TYPES.filter((db) => availableDrivers.includes(db.value));
+    return filterDbTypesByQuery(available, driverQuery);
+  }, [availableDrivers, driverQuery]);
 
   const form = useConnectionForm({
     editId,
@@ -75,43 +80,53 @@ export function NewConnectionWindow() {
   );
 
   return (
-    <div className="flex h-screen min-h-0 flex-col bg-surface-alt text-fg">
+    <div className="flex h-screen min-h-0 flex-col overflow-hidden bg-surface-alt text-fg">
       <TitleBar title={editId ? t('newConn.editTitle') : t('newConn.title')} />
 
       <div className="flex min-h-0 flex-1">
-        <aside className="flex w-[200px] shrink-0 flex-col border-r border-edge bg-surface p-4">
-          <div className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-fg-muted">
-            {t('newConn.selectDbType')}
+        <aside className="flex w-[220px] shrink-0 min-h-0 flex-col border-r border-edge bg-surface">
+          <div className="shrink-0 space-y-2 p-4 pb-2">
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-fg-muted">
+              {t('newConn.selectDbType')}
+            </div>
+            <Input
+              value={driverQuery}
+              onChange={(e) => setDriverQuery(e.target.value)}
+              placeholder={t('newConn.searchDrivers')}
+              aria-label={t('newConn.searchDrivers')}
+              className="h-8 text-sm"
+            />
           </div>
-          <div className="flex flex-col gap-0.5">
-            {dbTypes.map((db) => (
-              <button
-                key={db.value}
-                type="button"
-                onClick={() => form.handleDatabaseTypeChange(db.value)}
-                className={cn(
-                  'flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors select-none',
-                  form.databaseType === db.value
-                    ? 'bg-surface-raised text-fg'
-                    : 'text-fg-secondary hover:bg-surface-alt hover:text-fg',
-                )}
-              >
-                <div
-                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded"
-                  style={{ backgroundColor: `${db.color}20` }}
-                >
-                  <Database className="h-3.5 w-3.5" style={{ color: db.color }} />
+          <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
+            <div className="flex flex-col gap-0.5">
+              {dbTypes.length === 0 ? (
+                <div className="px-2.5 py-2 text-sm text-fg-muted">
+                  {t('newConn.noDriversMatch')}
                 </div>
-                <div>
-                  <div className="font-medium">{db.label}</div>
-                </div>
-              </button>
-            ))}
+              ) : (
+                dbTypes.map((db) => (
+                  <button
+                    key={db.value}
+                    type="button"
+                    onClick={() => form.handleDatabaseTypeChange(db.value)}
+                    className={cn(
+                      'flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors select-none',
+                      form.databaseType === db.value
+                        ? 'bg-surface-raised text-fg'
+                        : 'text-fg-secondary hover:bg-surface-alt hover:text-fg',
+                    )}
+                  >
+                    <DbTypeBadge databaseType={db.value} size={24} />
+                    <div className="font-medium">{db.label}</div>
+                  </button>
+                ))
+              )}
+            </div>
           </div>
         </aside>
 
-        <main className="flex min-w-0 flex-1 flex-col">
-          <div className="flex-1 overflow-y-auto p-6">
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col">
+          <div className="min-h-0 flex-1 overflow-y-auto p-6">
             <div className="mb-4 text-[11px] font-semibold uppercase tracking-wider text-fg-muted">
               {t('newConn.connectionConfig')}
             </div>
