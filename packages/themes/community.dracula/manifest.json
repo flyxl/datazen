@@ -1,0 +1,9 @@
+{
+  "id": "community.dracula",
+  "name": "Dracula",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "modes": ["dark"],
+  "author": "DataZen Community",
+  "description": "Classic Dracula palette — purple accents on a deep charcoal surface"
+}

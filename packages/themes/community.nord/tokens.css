@@ -1,0 +1,31 @@
+/* Nord — dark mode tokens (Polar Night + Frost) */
+.dark {
+  --c-surface: #2e3440;
+  --c-surface-alt: #3b4252;
+  --c-surface-raised: #434c5e;
+  --c-surface-inset: #242933;
+  --c-edge: #4c566a;
+  --c-fg: #eceff4;
+  --c-fg-secondary: #d8dee9;
+  --c-fg-muted: #818b9c;
+  --c-accent: #88c0d0;
+  --c-success: #a3be8c;
+  --c-warning: #ebcb8b;
+  --c-danger: #bf616a;
+  --c-titlebar: #3b4252;
+
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "Fira Code", Menlo, Monaco, Consolas, monospace;
+  --font-editor: var(--font-mono);
+
+  --cm-keyword: #81a1c1;
+  --cm-string: #a3be8c;
+  --cm-number: #b48ead;
+  --cm-comment: #616e88;
+  --cm-operator: #81a1c1;
+  --cm-punctuation: #d8dee9;
+  --cm-foreground: #eceff4;
+  --cm-background: #2e3440;
+  --cm-selection: rgba(136, 192, 208, 0.25);
+  --cm-cursor: #eceff4;
+}
