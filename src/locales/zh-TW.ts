@@ -142,6 +142,8 @@ const translations = {
   'newConn.editTitle': '編輯連接',
   'newConn.description': '配置數據庫連接信息',
   'newConn.selectDbType': '選擇數據庫類型',
+  'newConn.searchDrivers': '搜尋驅動…',
+  'newConn.noDriversMatch': '無匹配驅動',
   'newConn.planned': '計劃中',
   'newConn.connectionConfig': '連接配置',
   'newConn.connName': '連接名稱',
