@@ -6,7 +6,7 @@ import { useSettingsStore } from '../stores/settingsStore';
 import { emitCrossWindow } from '../lib/crossWindowBus';
 import { usePlatform } from '../hooks/usePlatform';
 import { settingsCommands } from '../commands/settings';
-import type { AppSettings } from '../types';
+import type { ThemeMode } from '../types/theme';
 
 interface MenuItem {
   id: string;
@@ -24,7 +24,7 @@ interface Menu {
 
 function useMenus(): Menu[] {
   const { t } = useI18n();
-  const theme = useSettingsStore((s) => s.settings.theme);
+  const theme = useSettingsStore((s) => s.settings.theme.mode);
 
   return [
     {
@@ -78,7 +78,7 @@ function useMenus(): Menu[] {
 
 async function handleMenuAction(id: string) {
   if (id.startsWith('theme-')) {
-    const theme = id.replace('theme-', '') as AppSettings['theme'];
+    const theme = id.replace('theme-', '') as ThemeMode;
     void emitCrossWindow('menu:theme-change', theme);
     return;
   }

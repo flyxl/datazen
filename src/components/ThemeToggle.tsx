@@ -2,11 +2,11 @@ import { useState, useRef, useEffect } from 'react';
 import { Sun, Moon, Monitor } from 'lucide-react';
 import { useSettingsStore } from '../stores/settingsStore';
 import { cn } from '../lib/cn';
-import type { AppSettings } from '../types';
+import type { ThemeMode } from '../types/theme';
 import type { TranslationKey } from '../locales';
 import { useI18n } from '../hooks/useI18n';
 
-const OPTIONS: { value: AppSettings['theme']; key: TranslationKey; Icon: typeof Sun }[] = [
+const OPTIONS: { value: ThemeMode; key: TranslationKey; Icon: typeof Sun }[] = [
   { value: 'light', key: 'theme.light', Icon: Sun },
   { value: 'dark', key: 'theme.dark', Icon: Moon },
   { value: 'system', key: 'theme.system', Icon: Monitor },
@@ -28,7 +28,7 @@ export function ThemeToggle() {
     return () => document.removeEventListener('mousedown', onClick);
   }, [open]);
 
-  const current = OPTIONS.find((o) => o.value === theme) ?? OPTIONS[2];
+  const current = OPTIONS.find((o) => o.value === theme.mode) ?? OPTIONS[2];
   const CurrentIcon = current.Icon;
 
   return (
@@ -49,12 +49,12 @@ export function ThemeToggle() {
               key={opt.value}
               type="button"
               onClick={() => {
-                void updateSettings({ theme: opt.value });
+                void updateSettings({ theme: { ...theme, mode: opt.value } });
                 setOpen(false);
               }}
               className={cn(
                 'flex w-full items-center gap-2 px-3 py-2 text-xs transition-colors',
-                theme === opt.value
+                theme.mode === opt.value
                   ? 'bg-blue-500/10 text-blue-500'
                   : 'text-fg-secondary hover:bg-surface-raised hover:text-fg',
               )}
