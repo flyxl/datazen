@@ -57,6 +57,16 @@ function resolveSupersetDbId(dbName: string, supersetDbIds: Record<string, strin
   return supersetDbIds[dbName] ?? null;
 }
 
+async function registerSupersetDatabaseEntries(
+  deps: EnsureDeps,
+): Promise<{ name: string; id: string }[]> {
+  const entries = await deps.getDatabases(deps.connectionId);
+  const parsed = entries.map(parseSupersetDatabaseEntry);
+  const registered = parsed.map((p) => ({ name: p.name, id: p.id }));
+  deps.registerSupersetDatabases(registered);
+  return registered;
+}
+
 function buildSupersetFetchPath(segments: string[], dbId: string): string | null {
   if (segments.length === 0) return null;
   if (segments.length === 1) return dbId;
@@ -67,15 +77,17 @@ async function ensureSuperset(segments: string[], deps: EnsureDeps): Promise<voi
   const { connectionId, supersetDbIds } = deps;
 
   if (segments.length === 0) {
-    const entries = await deps.getDatabases(connectionId);
-    const parsed = entries.map(parseSupersetDatabaseEntry);
-    deps.registerSupersetDatabases(parsed.map((p) => ({ name: p.name, id: p.id })));
+    await registerSupersetDatabaseEntries(deps);
     return;
   }
 
   const dbName = segments[0];
-  const dbId = resolveSupersetDbId(dbName, supersetDbIds);
-  if (!dbId) return;
+  let dbId = resolveSupersetDbId(dbName, supersetDbIds);
+  if (!dbId) {
+    const registered = await registerSupersetDatabaseEntries(deps);
+    dbId = registered.find((entry) => entry.name === dbName)?.id ?? null;
+    if (!dbId) return;
+  }
 
   const fetchPath = buildSupersetFetchPath(segments, dbId);
   if (!fetchPath) return;

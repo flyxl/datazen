@@ -53,6 +53,26 @@ describe('ensureNamespacePath — superset', () => {
     expect(deps.loadedPaths.has('')).toBe(true);
   });
 
+  it("['presto'] lazily resolves db id when supersetDbIds empty but root loaded", async () => {
+    const deps = makeDeps({
+      supersetDbIds: {},
+      getDatabases: vi.fn().mockResolvedValue(['558:presto (hive)']),
+      getTables: vi.fn().mockResolvedValue([
+        { name: '558/hive', schema: 'CATALOG', tableType: 'table', rowCount: null },
+        { name: '558/iceberg', schema: 'CATALOG', tableType: 'table', rowCount: null },
+      ] satisfies TableInfo[]),
+    });
+    deps.loadedPaths.add('');
+
+    await ensureNamespacePath(['presto'], deps);
+
+    expect(deps.getDatabases).toHaveBeenCalledWith('conn-1');
+    expect(deps.registerSupersetDatabases).toHaveBeenCalledWith([{ name: 'presto', id: '558' }]);
+    expect(deps.getTables).toHaveBeenCalledWith('conn-1', '558');
+    expect(deps.mergeNamespace).toHaveBeenCalledWith(['presto'], 'branch', ['hive', 'iceberg']);
+    expect(deps.loadedPaths.has('presto')).toBe(true);
+  });
+
   it("['presto'] fetches catalogs with db id and merges CATALOG segments", async () => {
     const deps = makeDeps({
       getTables: vi.fn().mockResolvedValue([
