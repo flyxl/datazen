@@ -1,9 +1,9 @@
 # 设计：运行时主题包（外观插件）
 
 **日期：** 2026-08-08  
-**状态：** 已批准  
+**状态：** 已批准（阶段 1–2 已实现：Host 加固 + 本地 ThemePack 安装/启用；商店 CDN 另计）  
 **实现分支：** `feat/runtime-theme-packs`（worktree: `.worktrees/runtime-theme-packs`）  
-**实现计划：** [docs/superpowers/plans/2026-08-09-runtime-theme-packs.md](../plans/2026-08-09-runtime-theme-packs.md)（阶段 1–2：Host 加固 + 本地包；商店另计）
+**实现计划：** [docs/superpowers/plans/2026-08-09-runtime-theme-packs.md](../plans/2026-08-09-runtime-theme-packs.md)
 
 ## 目标
 

@@ -275,43 +275,15 @@ mod tests {
         fs::write(path, content).unwrap();
     }
 
-    fn zip_dir(source: &Path, zip_path: &Path) {
-        let file = fs::File::create(zip_path).unwrap();
-        let mut zip = ZipWriter::new(file);
-        let options =
-            SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
-        add_dir(&mut zip, source, source, options);
-        zip.finish().unwrap();
-    }
-
-    fn add_dir<W: Write + std::io::Seek>(
-        zip: &mut ZipWriter<W>,
-        root: &Path,
-        dir: &Path,
-        options: SimpleFileOptions,
-    ) {
-        for entry in fs::read_dir(dir).unwrap() {
-            let entry = entry.unwrap();
-            let path = entry.path();
-            let rel = path.strip_prefix(root).unwrap();
-            let name = rel.to_string_lossy().replace('\\', "/");
-            if path.is_dir() {
-                add_dir(zip, root, &path, options);
-            } else {
-                zip.start_file(name, options).unwrap();
-                let mut f = fs::File::open(&path).unwrap();
-                std::io::copy(&mut f, zip).unwrap();
-            }
-        }
-    }
-
     #[test]
     fn install_theme_zip_from_fixture() {
-        let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../fixtures/themes/community.fixture-dark");
-        let tmp = TempDir::new().unwrap();
-        let zip_path = tmp.path().join("pack.zip");
-        zip_dir(&fixture, &zip_path);
+        let zip_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../fixtures/themes/community.fixture-dark.zip");
+        assert!(
+            zip_path.is_file(),
+            "missing {}; run `node scripts/pack-theme-fixture.mjs`",
+            zip_path.display()
+        );
 
         let themes_root = TempDir::new().unwrap();
         let manifest = install_theme_zip(&zip_path, themes_root.path()).unwrap();
@@ -321,6 +293,7 @@ mod tests {
         assert!(installed.join("manifest.json").is_file());
         assert!(installed.join("tokens.css").is_file());
         assert!(installed.join("icons/nav.settings.svg").is_file());
+        validate_pack_dir(&installed).unwrap();
     }
 
     #[test]
