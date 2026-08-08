@@ -2,7 +2,7 @@
 
 **日期：** 2026-08-08  
 **状态：** 已批准  
-**实现分支：** 待定（建议使用独立 worktree）
+**实现分支：** `feat/runtime-theme-packs`（worktree: `.worktrees/runtime-theme-packs`）
 
 ## 目标
 
@@ -11,7 +11,9 @@
 3. 支持**可定制图标**：
    - 功能 UI 图标（语义 ID）
    - 数据库类型角标（`db.<databaseType>`）
-4. **禁止**主题包修改操作系统 / 安装包 / 托盘等**应用图标**。
+   - 格式：**SVG / PNG / WebP**（见「图标资源格式」）
+4. 支持主题包**定制字体**（UI 与等宽/编辑器族；见「字体」）。
+5. **禁止**主题包修改操作系统 / 安装包 / 托盘等**应用图标**。
 
 ## 非目标
 
@@ -28,10 +30,11 @@
 | 分发方式 | 运行时商店下载 → 安装到应用数据目录 |
 | 与驱动关系 | 独立通道；不共享 registry |
 | 包模型 | **声明式 ThemePack（方案 A）** |
-| UI 图标 | 语义 ID → SVG（主题可覆盖） |
-| DB 角标 | 驱动自带默认 → 主题有则覆盖 |
+| UI 图标 | 语义 ID → **SVG / PNG / WebP**（主题可覆盖） |
+| DB 角标 | 驱动自带默认 → 主题有则覆盖（同样支持 SVG / PNG / WebP） |
+| 字体 | **UI + 编辑器默认**：主题包提供 `@font-face` + CSS 变量；用户显式设置优先 |
 | 应用图标 | 主题永久不可修改 |
-| 代码执行 | v1 不允许主题 JS（仅 CSS + JSON + SVG） |
+| 代码执行 | v1 不允许主题 JS（仅 CSS + JSON + 图像/字体静态资源） |
 
 ## 图标解析顺序
 
@@ -59,17 +62,76 @@
 
 任何指向应用 / bundle / 托盘 / `.icns` / `.ico` 的包字段，在校验时忽略并拒绝。
 
+### 图标资源格式
+
+同一语义 ID / `db.<type>` 可提供多种扩展名；Host 按优先级选用**一个**文件：
+
+```
+.svg  →  .webp  →  .png
+```
+
+| 格式 | 用途 | 说明 |
+|------|------|------|
+| **SVG** | 首选 | 可跟随 `currentColor` / CSS 着色（若资源如此制作） |
+| **WebP** | 等价位图 | 需约定基准尺寸（建议 20×20 逻辑像素，可带 `@2x` 命名约定） |
+| **PNG** | 等价位图 | 同上；不保证可像 SVG 一样染色 |
+| **ICO / ICNS** | 禁止 | 属于应用图标范畴 |
+
+驱动默认图标同样允许 SVG / PNG / WebP，解析优先级一致。
+
+## 字体
+
+**支持范围（已确认）：UI + 编辑器默认。** 主题包可同时设定界面无衬线族与 SQL/代码编辑器等宽默认族；不取代用户在设置中的显式选择。
+
+### 包内结构
+
+```
+fonts/
+  UISans.woff2
+  UIMono.woff2
+tokens.css          # 含 @font-face 与 --font-sans / --font-mono / --font-editor 等
+```
+
+或单独 `fonts.css`，由 Host 与 `tokens.css` 一并注入。
+
+### 契约（v1）
+
+| CSS 变量 | 用途 |
+|----------|------|
+| `--font-sans` | 通用 UI 文案 |
+| `--font-mono` | 等宽场景（表格、日志等） |
+| `--font-editor` | SQL / CodeMirror 编辑器默认族（未设置 `editorFontFamily` 时生效） |
+
+`editor.json` 可不含字体字段；编辑器默认字体走 CSS 变量，与现有设置项 `editorFontFamily` / `editorFontSize` 配合。
+
+### 优先级
+
+```
+用户设置中已保存的 editorFontFamily /（若有）UI 字体偏好
+  → 当前启用主题包的 --font-sans / --font-mono / --font-editor
+  → Host 内置默认栈
+```
+
+即：**用户显式字体设置优先于主题包**；用户未改字体时，启用主题即同时改变 UI 与编辑器外观。
+
+### 安全与格式
+
+- 字体白名单：`.woff2`（首选）、`.woff`；v1 默认**不收** `.ttf` / `.otf` / `.eot`（体积与兼容性），可后续放开。
+- `@font-face` 的 `src` 仅允许包内相对路径（经 Host 解析为本地/`blob:`），禁止远程 URL。
+- 限制字体文件总大小。
+
 ## 包格式
 
 ```
 {packId}/
   manifest.json
-  tokens.css          # 覆盖 --c-*（及文档化的别名）
+  tokens.css          # 覆盖 --c-*、--font-*（及文档化的别名）；可含 @font-face
+  fonts/              # 可选：.woff2 / .woff
   icons/
-    nav.settings.svg
+    nav.settings.svg  # 或 .webp / .png
     query.run.svg
     db.postgresql.svg
-    db.kiwi.svg
+    db.kiwi.webp
     …
   editor.json         # 可选：CodeMirror 语法色
   charts.json         # 可选：图表系列色板
@@ -102,12 +164,13 @@
 ThemeService
     → listInstalled() / enable(id) / disable()
     → apply(mode × pack)：
-         从 tokens.css 注入 <style id="datazen-theme-pack">
-         向 IconResolver 注册图标映射
+         从 tokens.css（及 fonts.css）注入 <style id="datazen-theme-pack">
+         向 IconResolver 注册图标映射（SVG / WebP / PNG）
          若存在则重配 CodeMirror + 图表色板
 Settings
     → mode: light | dark | system  （已有）
     → packId: string | null        （新增；null = 内置默认）
+    → editorFontFamily 等用户字体设置优先于主题
 ```
 
 ### 与驱动插件的独立性
@@ -115,7 +178,7 @@ Settings
 | | 驱动 | 主题包 |
 |--|------|--------|
 | 安装 | 编译期 / `plugins-registry` | 运行时 `{appData}/themes` |
-| 代码 | Rust + UI 模块 | 仅 CSS / SVG / JSON |
+| 代码 | Rust + UI 模块 | 仅 CSS / SVG·PNG·WebP / JSON / WOFF2 字体 |
 | 发现 | `generated.ts` / inventory | `ThemeService` 扫描 + 设置 |
 | 失败 | 缺少驱动 = 无该连接类型 | 缺少主题 = 回退内置外观 |
 
@@ -129,7 +192,8 @@ Settings
 2. CodeMirror / SqlCodeBlock 从 CSS 变量或 `editor.json` 契约读色。  
 3. 图表 / ER 变量对齐 `--c-*`；可选 `charts.json`。  
 4. `applyTheme()` 支持 `mode × pack`；同步 webview 背景（不是 OS 应用图标）。  
-5. 引入按语义 ID 的 `IconResolver`（工具栏 / 导航）；DB 角标组件使用解析器 + 驱动默认。
+5. 引入按语义 ID 的 `IconResolver`（工具栏 / 导航；支持 SVG/WebP/PNG）；DB 角标组件使用解析器 + 驱动默认。
+6. UI / 等宽 / 编辑器默认字体走 `--font-sans` / `--font-mono` / `--font-editor`；用户显式设置优先。
 
 分期：
 
@@ -139,11 +203,11 @@ Settings
 
 ## 安全
 
-- 白名单：`.css`、`.svg`、`.json`、`.png`、`.webp`（预览）。
-- 拒绝：`.js`、`.mjs`、`.ts`、`.wasm`、原生二进制、逃逸根目录的符号链接。
-- 限制解压体积与文件数量。
+- 白名单：`.css`、`.svg`、`.png`、`.webp`、`.json`、`.woff2`、`.woff`。
+- 拒绝：`.js`、`.mjs`、`.ts`、`.wasm`、`.ico`、`.icns`、原生二进制、逃逸根目录的符号链接。
+- 限制解压体积与文件数量（含字体总大小）。
 - 净化 SVG（v1 无 `<script>`、无外链请求）。
-- CSP：优先注入本地文件内联样式；默认不允许远程 stylesheet URL。
+- CSP：优先注入本地文件内联样式 / `blob:` 字体；默认不允许远程 stylesheet 或远程字体 URL。
 
 ## 设置 / 持久化
 
@@ -168,9 +232,9 @@ theme: {
 ## 成功标准
 
 - 用户无需重新编译即可安装主题包。
-- 启用后改变 CSS token，并覆盖所列语义 / `db.*` 图标。
+- 启用后改变 CSS token / 字体变量，并覆盖所列语义 / `db.*` 图标（含 PNG/WebP）。
 - 无主题美术的驱动仍显示自带默认图标。
-- 任意主题包下应用图标不变。
+- 任意主题包下应用图标不变；用户显式字体设置不被主题静默覆盖。
 - 禁用 / 删除主题包恢复内置外观，且不影响驱动安装。
 
 ## 后续（v1 之后）
