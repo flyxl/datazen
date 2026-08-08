@@ -25,7 +25,7 @@ import type { AiChatMessage, ContextItem, WorkflowDefinition } from '../../types
 import { QuestionBlock } from './AiChatPanel';
 
 interface WorkflowChatPanelProps {
-  connections: { id: string; name: string; databaseType: string }[];
+  connections: { id: string; name: string; databaseType: string; database?: string }[];
   onSaved?: () => void;
   onBack?: () => void;
 }
@@ -134,6 +134,10 @@ export function WorkflowChatPanel({ connections, onSaved, onBack }: WorkflowChat
     ...connections.map((c) => ({ value: c.id, label: `${c.name} (${c.databaseType})` })),
   ];
 
+  const selectedDatabase = selectedConnection
+    ? connections.find((c) => c.id === selectedConnection)?.database
+    : undefined;
+
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
@@ -229,6 +233,7 @@ export function WorkflowChatPanel({ connections, onSaved, onBack }: WorkflowChat
           isLoading={workflowChat?.isStreaming}
           onStop={handleStop}
           connectionId={selectedConnection || undefined}
+          database={selectedDatabase}
           contextItems={contextItems}
           onContextItemsChange={setContextItems}
         />
