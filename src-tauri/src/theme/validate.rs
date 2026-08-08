@@ -51,7 +51,8 @@ pub fn validate_theme_zip_path(name: &str) -> Result<(), String> {
     crate::app_data_archive::validate_zip_entry_path(name).map(|_| ()).map_err(|e| e.to_string())
 }
 
-pub fn validate_pack_dir(dir: &Path) -> Result<ThemeManifest, String> {
+/// Validate pack contents (manifest, tokens, file whitelist) without checking folder name.
+pub fn validate_pack_contents(dir: &Path) -> Result<ThemeManifest, String> {
     let manifest_path = dir.join("manifest.json");
     let tokens_path = dir.join("tokens.css");
 
@@ -70,6 +71,25 @@ pub fn validate_pack_dir(dir: &Path) -> Result<ThemeManifest, String> {
     let mut total_bytes = 0u64;
     let mut font_bytes = 0u64;
     scan_pack_files(dir, dir, &mut file_count, &mut total_bytes, &mut font_bytes)?;
+
+    Ok(manifest)
+}
+
+/// Validate an installed pack directory; folder name must equal `manifest.id`.
+pub fn validate_pack_dir(dir: &Path) -> Result<ThemeManifest, String> {
+    let manifest = validate_pack_contents(dir)?;
+
+    let folder_name = dir
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or_else(|| "invalid pack directory path".to_string())?;
+
+    if folder_name != manifest.id {
+        return Err(format!(
+            "pack directory name `{folder_name}` does not match manifest id `{}`",
+            manifest.id
+        ));
+    }
 
     Ok(manifest)
 }
@@ -245,17 +265,29 @@ mod tests {
     }
 
     #[test]
-    fn validate_pack_dir_requires_manifest_and_tokens() {
+    fn validate_pack_contents_requires_manifest_and_tokens() {
         let dir = TempDir::new().unwrap();
-        assert!(validate_pack_dir(dir.path()).is_err());
+        assert!(validate_pack_contents(dir.path()).is_err());
 
         write_file(dir.path(), "manifest.json", MINIMAL_MANIFEST);
-        assert!(validate_pack_dir(dir.path()).is_err());
+        assert!(validate_pack_contents(dir.path()).is_err());
 
         write_file(dir.path(), "tokens.css", ":root { --c-accent: red; }");
-        let manifest = validate_pack_dir(dir.path()).unwrap();
+        let manifest = validate_pack_contents(dir.path()).unwrap();
         assert_eq!(manifest.id, "test.theme");
         assert_eq!(manifest.api_version, THEME_API_VERSION);
+    }
+
+    #[test]
+    fn validate_pack_dir_rejects_folder_name_mismatch() {
+        let dir = TempDir::new().unwrap();
+        write_file(dir.path(), "manifest.json", MINIMAL_MANIFEST);
+        write_file(dir.path(), "tokens.css", ":root { --c-accent: red; }");
+        let err = validate_pack_dir(dir.path()).unwrap_err();
+        assert!(
+            err.contains("does not match manifest id"),
+            "unexpected: {err}"
+        );
     }
 
     #[test]
@@ -274,7 +306,7 @@ mod tests {
 }"#,
         );
         write_file(dir.path(), "tokens.css", ":root {}");
-        let err = validate_pack_dir(dir.path()).unwrap_err();
+        let err = validate_pack_contents(dir.path()).unwrap_err();
         assert!(err.contains("appIcon"), "unexpected: {err}");
     }
 
@@ -293,7 +325,7 @@ mod tests {
 }"#,
         );
         write_file(dir.path(), "tokens.css", ":root {}");
-        assert!(validate_pack_dir(dir.path()).is_err());
+        assert!(validate_pack_contents(dir.path()).is_err());
     }
 
     #[test]
@@ -306,7 +338,7 @@ mod tests {
             "icons/evil.svg",
             r#"<svg><script>alert(1)</script></svg>"#,
         );
-        assert!(validate_pack_dir(dir.path()).is_err());
+        assert!(validate_pack_contents(dir.path()).is_err());
     }
 
     #[test]
