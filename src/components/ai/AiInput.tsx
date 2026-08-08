@@ -4,7 +4,7 @@ import { cn } from '../../lib/cn';
 import { useAiKeyboard } from '../../hooks/useAiKeyboard';
 import { useI18n } from '../../hooks/useI18n';
 import { ContextPicker } from './ContextPicker';
-import type { ContextEntry } from '../../types';
+import type { ContextEntry, ContextItem } from '../../types';
 
 interface AiInputProps {
   value: string;
@@ -84,8 +84,15 @@ export const AiInput = forwardRef<HTMLTextAreaElement, AiInputProps>(function Ai
   );
 
   const handleSelect = useCallback(
-    (entry: ContextEntry) => {
+    (item: ContextItem) => {
       if (!onContextFilesChange || !contextFiles) return;
+      if (item.kind !== 'file' && item.kind !== 'dir') return;
+
+      const entry: ContextEntry = {
+        name: item.name,
+        path: item.path ?? item.id,
+        isDir: item.kind === 'dir',
+      };
 
       if (!contextFiles.some((f) => f.path === entry.path)) {
         onContextFilesChange([...contextFiles, entry]);
