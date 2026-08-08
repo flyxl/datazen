@@ -1,5 +1,7 @@
 import { cn } from '../lib/cn';
+import { getDbIcon } from '../lib/databaseTypes';
 import { getActiveIconResolver, type IconResolver } from '../lib/iconResolver';
+import type { DatabaseType } from '../types';
 
 export interface DbTypeBadgeProps {
   databaseType: string;
@@ -39,17 +41,25 @@ export function DbTypeBadge({
     );
   }
 
+  const { label, bgClass } =
+    resolved.kind === 'placeholder'
+      ? resolved
+      : (() => {
+          const { label: dbLabel, bg } = getDbIcon(databaseType as DatabaseType);
+          return { label: dbLabel, bgClass: bg };
+        })();
+
   return (
     <span
       style={{ ...dimensionStyle, fontSize: badgeFontSize(size) }}
       className={cn(
         'inline-flex shrink-0 items-center justify-center rounded-lg font-bold text-white shadow-sm',
-        resolved.bgClass,
+        bgClass,
         className,
       )}
       aria-hidden
     >
-      {resolved.label}
+      {label}
     </span>
   );
 }
