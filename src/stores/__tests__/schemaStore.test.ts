@@ -188,6 +188,22 @@ describe('schemaStore.loadTables', () => {
     expect(state.tables).toHaveLength(3);
     expect(Object.keys(state.columnMap)).toHaveLength(0);
   });
+
+  it('setLoadedTables partitions views and clears columnMap', async () => {
+    useSchemaStore.setState({
+      columnMap: { old: ['a'] },
+      currentDatabase: 'other',
+    });
+    useSchemaStore.getState().setLoadedTables('db1', [
+      { name: 't1', tableType: 'table', schema: null, rowCount: null },
+      { name: 'v1', tableType: 'view', schema: null, rowCount: null },
+    ]);
+    const state = useSchemaStore.getState();
+    expect(state.currentDatabase).toBe('db1');
+    expect(state.tables.map((t) => t.name)).toEqual(['t1']);
+    expect(state.views.map((t) => t.name)).toEqual(['v1']);
+    expect(state.columnMap).toEqual({});
+  });
 });
 
 describe('schemaStore.loadColumnMap', () => {
@@ -223,5 +239,54 @@ describe('schemaStore.loadColumnMap', () => {
     useSchemaStore.setState({ connectionId: null });
     await useSchemaStore.getState().loadColumnMap();
     expect(databaseCommands.getColumns).not.toHaveBeenCalled();
+  });
+});
+
+describe('schemaStore namespace merge APIs', () => {
+  let useSchemaStore: typeof import('../schemaStore').useSchemaStore;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    const storeMod = await import('../schemaStore');
+    useSchemaStore = storeMod.useSchemaStore;
+    useSchemaStore.getState().reset();
+  });
+
+  it('mergeNamespace updates namespaceTree and loadedPaths', async () => {
+    useSchemaStore.getState().mergeNamespace(['db'], 'branch', ['hive']);
+    expect(useSchemaStore.getState().namespaceTree).toEqual({ db: { hive: {} } });
+    expect(useSchemaStore.getState().loadedPaths.has('db')).toBe(true);
+  });
+
+  it('registerSupersetDatabases maps name to id', async () => {
+    useSchemaStore.getState().registerSupersetDatabases([{ name: 'presto_afi_data', id: '558' }]);
+    expect(useSchemaStore.getState().supersetDbIds).toEqual({ presto_afi_data: '558' });
+    expect(useSchemaStore.getState().namespaceTree).toEqual({ presto_afi_data: {} });
+  });
+
+  it('setLoadedTables merges mysql-style database.table namespace', async () => {
+    useSchemaStore.setState({ isMultiDatabase: true });
+    useSchemaStore.getState().setLoadedTables('app', [
+      { name: 'users', tableType: 'table', schema: null, rowCount: null },
+    ]);
+    expect(useSchemaStore.getState().namespaceTree).toEqual({ app: { users: [] } });
+  });
+
+  it('setLoadedTables groups postgresql schemas under database when multi-db', async () => {
+    useSchemaStore.setState({ isMultiDatabase: true });
+    useSchemaStore.getState().setLoadedTables('warehouse', [
+      { name: 't', tableType: 'table', schema: 'public', rowCount: null },
+    ]);
+    expect(useSchemaStore.getState().namespaceTree).toEqual({
+      warehouse: { public: { t: [] } },
+    });
+  });
+
+  it('setLoadedTables uses schema.table when single-db postgresql', async () => {
+    useSchemaStore.setState({ isMultiDatabase: false });
+    useSchemaStore.getState().setLoadedTables('warehouse', [
+      { name: 't', tableType: 'table', schema: 'public', rowCount: null },
+    ]);
+    expect(useSchemaStore.getState().namespaceTree).toEqual({ public: { t: [] } });
   });
 });
