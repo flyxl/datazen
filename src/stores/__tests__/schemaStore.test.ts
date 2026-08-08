@@ -148,6 +148,30 @@ describe('schemaStore.loadForConnection isMultiDatabase', () => {
     expect(useSchemaStore.getState().currentDatabase).toBe('alpha');
     expect(useSchemaStore.getState().isMultiDatabase).toBe(true);
   });
+
+  it('seeds top-level database branches only when multi-db', async () => {
+    vi.mocked(databaseCommands.getDatabases).mockResolvedValueOnce(['db1', 'db2']);
+
+    await useSchemaStore.getState().loadForConnection('conn-1', {
+      databaseType: 'postgresql',
+      skipLoadTables: true,
+    });
+
+    expect(useSchemaStore.getState().isMultiDatabase).toBe(true);
+    expect(useSchemaStore.getState().namespaceTree).toEqual({ db1: {}, db2: {} });
+  });
+
+  it('does not seed database names as top-level branches for single-db', async () => {
+    vi.mocked(databaseCommands.getDatabases).mockResolvedValueOnce(['only_db']);
+
+    await useSchemaStore.getState().loadForConnection('conn-1', {
+      databaseType: 'postgresql',
+      skipLoadTables: true,
+    });
+
+    expect(useSchemaStore.getState().isMultiDatabase).toBe(false);
+    expect(useSchemaStore.getState().namespaceTree).toEqual({});
+  });
 });
 describe('schemaStore.loadTables', () => {
   let useSchemaStore: typeof import('../../stores/schemaStore').useSchemaStore;
@@ -301,5 +325,15 @@ describe('schemaStore namespace merge APIs', () => {
       { name: 't', tableType: 'table', schema: 'public', rowCount: null },
     ]);
     expect(useSchemaStore.getState().namespaceTree).toEqual({ public: { t: [] } });
+  });
+
+  it('setLoadedTables includes views in namespace table leaves', async () => {
+    useSchemaStore.setState({ isMultiDatabase: false });
+    useSchemaStore.getState().setLoadedTables('warehouse', [
+      { name: 't', tableType: 'table', schema: 'public', rowCount: null },
+      { name: 'v', tableType: 'view', schema: 'public', rowCount: null },
+    ]);
+    expect(useSchemaStore.getState().namespaceTree).toEqual({ public: { t: [], v: [] } });
+    expect(useSchemaStore.getState().views.map((v) => v.name)).toEqual(['v']);
   });
 });

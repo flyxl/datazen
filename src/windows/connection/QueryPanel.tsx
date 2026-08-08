@@ -116,6 +116,10 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
   }, [connectionId, setConnectionId, loadHistory, loadFavorites]);
 
   useEffect(() => {
+    useSchemaStore.setState({ connectionId, databaseType: databaseType ?? null });
+  }, [connectionId, databaseType]);
+
+  useEffect(() => {
     if (tables.length > 0 && Object.keys(columnMap).length === 0) {
       void loadColumnMap();
     }

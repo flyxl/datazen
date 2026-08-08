@@ -143,7 +143,9 @@ export const useSchemaStore = create<SchemaStore>((set, get) => ({
         !lockedToConfigured &&
         computeIsMultiDatabase(meta?.hasMultiDatabase, databases.length);
       set({ databases, isMultiDatabase, loading: false, currentDatabase: preferred });
-      get().mergeNamespace([], 'branch', databases);
+      if (isMultiDatabase) {
+        get().mergeNamespace([], 'branch', databases);
+      }
       if (options?.skipLoadTables) return;
       if (preferred) {
         await get().loadTables(preferred);
@@ -229,7 +231,7 @@ export const useSchemaStore = create<SchemaStore>((set, get) => ({
 
       if (hasSchemaGrouping) {
         const bySchema = new Map<string, string[]>();
-        for (const item of tables) {
+        for (const item of all) {
           if (!isSchemaGroupingSchema(item.schema)) continue;
           const list = bySchema.get(item.schema!) ?? [];
           list.push(item.name);
@@ -242,7 +244,7 @@ export const useSchemaStore = create<SchemaStore>((set, get) => ({
           nextLoadedPaths.add(pathKey(segments));
         }
       } else {
-        const tableNames = tables.map((item) => item.name);
+        const tableNames = all.map((item) => item.name);
         nextTree = mergeNamespacePath(nextTree, [database], 'tables', tableNames);
         nextLoadedPaths = new Set(loadedPaths).add(pathKey([database]));
       }
