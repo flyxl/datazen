@@ -7,7 +7,7 @@ import { useAiStore } from '../../stores/aiStore';
 import { cn } from '../../lib/cn';
 import { openSettingsWindow } from '../../lib/windowManager';
 import { ContextPicker } from './ContextPicker';
-import type { ContextEntry } from '../../types';
+import type { ContextEntry, ContextItem } from '../../types';
 
 interface Nl2SqlPanelProps {
   connectionId: string;
@@ -72,7 +72,15 @@ export function Nl2SqlPanel({ connectionId, database, currentTable, onSqlChange 
             <ContextPicker
               query={pickerQuery}
               position="below"
-              onSelect={(entry) => {
+              connectionId={connectionId}
+              database={database}
+              onSelect={(item: ContextItem) => {
+                if (item.kind !== 'file' && item.kind !== 'dir') return;
+                const entry: ContextEntry = {
+                  name: item.name,
+                  path: item.path ?? item.id,
+                  isDir: item.kind === 'dir',
+                };
                 if (!contextFiles.some((f) => f.path === entry.path)) {
                   setContextFiles((prev) => [...prev, entry]);
                 }
