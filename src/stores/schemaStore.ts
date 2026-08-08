@@ -189,7 +189,7 @@ export const useSchemaStore = create<SchemaStore>((set, get) => ({
       nextIds[name] = id;
       names.push(name);
     }
-    set({ supersetDbIds: nextIds });
+    set({ supersetDbIds: nextIds, databaseType: 'superset' });
     get().mergeNamespace([], 'branch', names);
   },
 

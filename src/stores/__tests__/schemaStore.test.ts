@@ -262,6 +262,19 @@ describe('schemaStore namespace merge APIs', () => {
     useSchemaStore.getState().registerSupersetDatabases([{ name: 'presto_afi_data', id: '558' }]);
     expect(useSchemaStore.getState().supersetDbIds).toEqual({ presto_afi_data: '558' });
     expect(useSchemaStore.getState().namespaceTree).toEqual({ presto_afi_data: {} });
+    expect(useSchemaStore.getState().databaseType).toBe('superset');
+  });
+
+  it('setLoadedTables does not flatten namespace after registerSupersetDatabases', async () => {
+    useSchemaStore.getState().registerSupersetDatabases([{ name: 'presto', id: '558' }]);
+    useSchemaStore.getState().mergeNamespace(['presto', 'hive', 'snap'], 'tables', ['t1']);
+    const before = structuredClone(useSchemaStore.getState().namespaceTree);
+    useSchemaStore.getState().setLoadedTables('558/hive/snap', [
+      { name: 't1', tableType: 'table', schema: 'snap', rowCount: null },
+    ]);
+    expect(useSchemaStore.getState().databaseType).toBe('superset');
+    expect(useSchemaStore.getState().namespaceTree).toEqual(before);
+    expect(useSchemaStore.getState().tables.map((t) => t.name)).toEqual(['t1']);
   });
 
   it('setLoadedTables merges mysql-style database.table namespace', async () => {
