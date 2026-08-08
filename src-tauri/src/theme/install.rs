@@ -293,6 +293,7 @@ mod tests {
         assert!(installed.join("manifest.json").is_file());
         assert!(installed.join("tokens.css").is_file());
         assert!(installed.join("icons/nav.settings.svg").is_file());
+        assert!(installed.join("icons/db.postgresql.svg").is_file());
         validate_pack_dir(&installed).unwrap();
     }
 
