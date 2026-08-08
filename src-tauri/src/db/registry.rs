@@ -1,45 +1,12 @@
 //! Driver registry — resolves `DatabaseType` to a concrete `DatabaseDriver`.
 //!
-//! Drivers are registered lazily: only types present in the saved connection
-//! list (at startup) and types used by connect / test / new-connection flows
-//! are instantiated.
+//! Drivers are discovered via `inventory` factories from optional path/git
+//! driver crates linked into the host binary.
 
 use datazen_driver_api::*;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-
-use super::mysql::MysqlDriver;
-use super::postgres::PostgresDriver;
-use super::redis_driver::RedisDriver;
-use super::reuse::ReuseDriver;
-use super::sqlite::SqliteDriver;
-
-/// Built-in database types that ship with the host binary.
-const BUILTIN_TYPES: &[&str] = &[
-    "postgresql",
-    "mysql",
-    "mariadb",
-    "sqlite",
-    "redis",
-    "mongodb",
-    "sqlserver",
-    "clickhouse",
-    "duckdb",
-    "elasticsearch",
-    "doris",
-    "starrocks",
-    "manticore",
-    "ob_oracle",
-    "questdb",
-    "cloudberry",
-    "rqlite",
-    "turso",
-    "influxdb",
-    "victoriametrics",
-    "hbase",
-    "vector",
-];
 
 /// Holds registered drivers. Starts empty; call [`DriverRegistry::ensure_type`]
 /// (or rely on [`DriverRegistry::get`]) to load a type on demand.
@@ -56,10 +23,10 @@ impl DriverRegistry {
         }
     }
 
-    /// Catalog of types this build can provide (builtins + plugin factories).
+    /// Catalog of types this build can provide (inventory factories only).
     /// Does **not** instantiate any driver.
     pub fn available_types(&self) -> Vec<DatabaseType> {
-        let mut types: Vec<DatabaseType> = BUILTIN_TYPES.iter().map(|s| (*s).to_string()).collect();
+        let mut types: Vec<DatabaseType> = Vec::new();
         for factory in iter_driver_factories() {
             let id = factory.driver_id().to_string();
             if !types.iter().any(|t| t == &id) {
@@ -97,130 +64,12 @@ impl DriverRegistry {
             return Ok(());
         }
 
-        self.register_builtin_or_plugin(db_type, &mut drivers).await?;
+        self.register_from_inventory(db_type, &mut drivers).await?;
         tracing::info!(db_type, "Registered driver on demand");
         Ok(())
     }
 
-    async fn register_builtin_or_plugin(
-        &self,
-        db_type: &str,
-        drivers: &mut HashMap<DatabaseType, Arc<dyn DatabaseDriver>>,
-    ) -> Result<(), String> {
-        match db_type {
-            "postgresql" => {
-                drivers.insert(db_type.to_string(), Arc::new(PostgresDriver::new()));
-            }
-            "mysql" => {
-                drivers.insert(db_type.to_string(), Arc::new(MysqlDriver::new(false)));
-            }
-            "mariadb" => {
-                drivers.insert(db_type.to_string(), Arc::new(MysqlDriver::new(true)));
-            }
-            "sqlite" => {
-                drivers.insert(db_type.to_string(), Arc::new(SqliteDriver::new()));
-            }
-            "redis" => {
-                let redis_driver = Arc::new(RedisDriver::new());
-                drivers.insert(
-                    db_type.to_string(),
-                    redis_driver.clone() as Arc<dyn DatabaseDriver>,
-                );
-                let mut kv = self.kv_drivers.write().await;
-                kv.insert(db_type.to_string(), redis_driver as Arc<dyn KeyValueDriver>);
-            }
-            // MySQL wire-protocol compatible engines.
-            "doris" | "starrocks" | "manticore" | "ob_oracle" => {
-                let inner = Arc::new(MysqlDriver::new(false));
-                drivers.insert(
-                    db_type.to_string(),
-                    Arc::new(ReuseDriver::new(inner, db_type)) as Arc<dyn DatabaseDriver>,
-                );
-            }
-            // PostgreSQL wire-protocol compatible engines.
-            "questdb" | "cloudberry" => {
-                let inner = Arc::new(PostgresDriver::new());
-                drivers.insert(
-                    db_type.to_string(),
-                    Arc::new(ReuseDriver::new(inner, db_type)) as Arc<dyn DatabaseDriver>,
-                );
-            }
-            "mongodb" => {
-                drivers.insert(
-                    db_type.to_string(),
-                    Arc::new(super::mongodb::MongodbDriver::new()) as Arc<dyn DatabaseDriver>,
-                );
-            }
-            "sqlserver" => {
-                drivers.insert(
-                    db_type.to_string(),
-                    Arc::new(super::sqlserver::SqlServerDriver::new()) as Arc<dyn DatabaseDriver>,
-                );
-            }
-            "clickhouse" => {
-                drivers.insert(
-                    db_type.to_string(),
-                    Arc::new(super::clickhouse::ClickHouseDriver::new()) as Arc<dyn DatabaseDriver>,
-                );
-            }
-            "duckdb" => {
-                drivers.insert(
-                    db_type.to_string(),
-                    Arc::new(super::duckdb::DuckDbDriver::new()) as Arc<dyn DatabaseDriver>,
-                );
-            }
-            "elasticsearch" => {
-                drivers.insert(
-                    db_type.to_string(),
-                    Arc::new(super::elasticsearch::ElasticsearchDriver::new())
-                        as Arc<dyn DatabaseDriver>,
-                );
-            }
-            "rqlite" => {
-                drivers.insert(
-                    db_type.to_string(),
-                    Arc::new(super::rqlite::RqliteDriver::new()) as Arc<dyn DatabaseDriver>,
-                );
-            }
-            "turso" => {
-                drivers.insert(
-                    db_type.to_string(),
-                    Arc::new(super::turso::TursoDriver::new()) as Arc<dyn DatabaseDriver>,
-                );
-            }
-            "influxdb" => {
-                drivers.insert(
-                    db_type.to_string(),
-                    Arc::new(super::influxdb::InfluxDbDriver::new()) as Arc<dyn DatabaseDriver>,
-                );
-            }
-            "victoriametrics" => {
-                drivers.insert(
-                    db_type.to_string(),
-                    Arc::new(super::victoriametrics::VictoriaMetricsDriver::new())
-                        as Arc<dyn DatabaseDriver>,
-                );
-            }
-            "hbase" => {
-                drivers.insert(
-                    db_type.to_string(),
-                    Arc::new(super::hbase::HBaseDriver::new()) as Arc<dyn DatabaseDriver>,
-                );
-            }
-            "vector" => {
-                drivers.insert(
-                    db_type.to_string(),
-                    Arc::new(super::vector::VectorDriver::new()) as Arc<dyn DatabaseDriver>,
-                );
-            }
-            other => {
-                self.register_plugin(other, drivers).await?;
-            }
-        }
-        Ok(())
-    }
-
-    async fn register_plugin(
+    async fn register_from_inventory(
         &self,
         db_type: &str,
         drivers: &mut HashMap<DatabaseType, Arc<dyn DatabaseDriver>>,
@@ -259,7 +108,6 @@ impl DriverRegistry {
             }
 
             let driver = factory.create();
-            // Index under the requested type (matches connection configs / driver_id).
             let actual = driver.driver_type();
             if let Some(kv) = factory.create_kv() {
                 let mut kv_map = self.kv_drivers.write().await;

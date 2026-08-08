@@ -1,31 +1,6 @@
-/** Built-in database engine identifiers. */
-export type BuiltinDatabaseType =
-  | 'postgresql'
-  | 'mysql'
-  | 'mariadb'
-  | 'sqlite'
-  | 'redis'
-  | 'mongodb'
-  | 'sqlserver'
-  | 'clickhouse'
-  | 'duckdb'
-  | 'elasticsearch'
-  | 'doris'
-  | 'starrocks'
-  | 'manticore'
-  | 'ob_oracle'
-  | 'questdb'
-  | 'cloudberry'
-  | 'rqlite'
-  | 'turso'
-  | 'influxdb'
-  | 'victoriametrics'
-  | 'hbase'
-  | 'vector';
-
-/** All database types: built-in + plugin-provided. */
-import type { PluginDatabaseType } from '../plugins/generated';
-export type DatabaseType = BuiltinDatabaseType | PluginDatabaseType;
+/** Database engine identifiers for the current build (injected via resolve-drivers). */
+export type { DatabaseType } from '../plugins/generated';
+import type { DatabaseType } from '../plugins/generated';
 
 export type SslMode = 'disable' | 'prefer' | 'require' | 'verifyCa' | 'verifyFull';
 

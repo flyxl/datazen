@@ -25,7 +25,7 @@ describe('runWithPluginInject nested ownership', () => {
   it('outer: resolves, runs command, restores', () => {
     const calls: string[] = [];
     const result = runWithPluginInject({
-      argv: ['--plugins=none', '--', 'echo', 'ok'],
+      argv: ['--drivers=basic', '--', 'echo', 'ok'],
       stashExistsFn: () => false,
       runResolve: (args) => {
         calls.push(`resolve:${args}`);
@@ -42,7 +42,7 @@ describe('runWithPluginInject nested ownership', () => {
 
     expect(result).toEqual({ status: 0, ownStash: true, nested: false });
     expect(calls).toEqual([
-      'resolve:--plugins=none',
+      'resolve:--drivers=basic',
       'cmd:echo ok',
       'restore',
     ]);
@@ -75,7 +75,7 @@ describe('runWithPluginInject nested ownership', () => {
   it('nested with no command still does not restore', () => {
     const calls: string[] = [];
     const result = runWithPluginInject({
-      argv: ['--plugins=kiwi'],
+      argv: ['--drivers=kiwi'],
       stashExistsFn: () => true,
       runResolve: () => {
         calls.push('resolve');

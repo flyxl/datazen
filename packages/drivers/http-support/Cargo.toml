@@ -1,0 +1,12 @@
+[package]
+name = "datazen-driver-http-support"
+version = "0.0.8"
+edition = "2021"
+description = "Shared HTTP helpers for DataZen path drivers"
+license = "GPL-3.0-or-later"
+
+[dependencies]
+datazen-driver-api = { path = "../../driver-api" }
+reqwest = { version = "0.13.3", features = ["json", "cookies", "stream", "query", "form"] }
+base64 = "0.22"
+serde_json = "1"
