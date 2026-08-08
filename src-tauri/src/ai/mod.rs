@@ -13,7 +13,9 @@ pub mod openai;
 pub mod prompt_resolver;
 pub mod protocol;
 pub mod registry;
+pub mod schema_pipeline;
 
 pub use context::SchemaContextBuilder;
+pub use schema_pipeline::{PromptSeed, SchemaContextPipeline, compose_schema_system_suffix};
 pub use prompt_resolver::PromptResolver;
 pub use registry::{init_ai_providers, register_ai_providers, AiProviderRegistry};
