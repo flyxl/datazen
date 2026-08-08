@@ -1,0 +1,87 @@
+import type { LucideIcon } from 'lucide-react';
+import {
+  Bot,
+  Database,
+  DatabaseBackup,
+  MessageSquareText,
+  Monitor,
+  Moon,
+  Play,
+  Plus,
+  RefreshCcw,
+  Settings,
+  Square,
+  Sun,
+  Workflow,
+} from 'lucide-react';
+import { cn } from '../lib/cn';
+import { getActiveIconResolver, type IconResolver } from '../lib/iconResolver';
+
+/** Lucide components referenced by v1 semantic icon catalog defaults. */
+const LUCIDE_MAP: Record<string, LucideIcon> = {
+  Bot,
+  Database,
+  DatabaseBackup,
+  MessageSquareText,
+  Monitor,
+  Moon,
+  Play,
+  Plus,
+  RefreshCcw,
+  Settings,
+  Square,
+  Sun,
+  Workflow,
+};
+
+export interface ThemedIconProps {
+  id: string;
+  className?: string;
+  resolver?: IconResolver;
+}
+
+export function ThemedIcon({ id, className, resolver }: ThemedIconProps) {
+  const resolved = (resolver ?? getActiveIconResolver()).resolve(id);
+
+  if (resolved.kind === 'url') {
+    return (
+      <img
+        src={resolved.href}
+        alt=""
+        className={cn('inline-block shrink-0 object-contain', className)}
+        draggable={false}
+      />
+    );
+  }
+
+  if (resolved.kind === 'lucide') {
+    const Icon = LUCIDE_MAP[resolved.name];
+    if (Icon) {
+      return <Icon className={cn('shrink-0', className)} aria-hidden />;
+    }
+    return (
+      <span
+        className={cn(
+          'inline-flex shrink-0 items-center justify-center rounded bg-slate-600 text-[10px] font-semibold text-white',
+          className,
+        )}
+        aria-hidden
+      >
+        ?
+      </span>
+    );
+  }
+
+  return (
+    <span
+      className={cn(
+        'inline-flex shrink-0 items-center justify-center rounded text-[10px] font-semibold text-white',
+        resolved.bgClass,
+        className,
+      )}
+      aria-hidden
+    >
+      {resolved.label}
+    </span>
+  );
+}
