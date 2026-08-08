@@ -19,9 +19,10 @@ pub fn install_theme_zip(zip_path: &Path, themes_root: &Path) -> Result<ThemeMan
 
     let result = (|| -> Result<ThemeManifest, String> {
         extract_theme_zip(zip_path, &staging)?;
-        let manifest = validate_pack_contents(&staging)?;
+        let pack_root = resolve_pack_root(&staging)?;
+        let manifest = validate_pack_contents(&pack_root)?;
         let dest = themes_root.join(&manifest.id);
-        atomic_replace_dir(&dest, &staging)?;
+        atomic_replace_dir(&dest, &pack_root)?;
         validate_pack_dir(&dest)?;
         Ok(manifest)
     })();
@@ -224,6 +225,32 @@ fn reject_forbidden_zip_extension(entry_name: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// If `dir` has no manifest at root but exactly one subdirectory (and no root files), use it.
+fn resolve_pack_root(dir: &Path) -> Result<PathBuf, String> {
+    if dir.join("manifest.json").is_file() {
+        return Ok(dir.to_path_buf());
+    }
+
+    let mut subdirs = Vec::new();
+    let mut root_files = 0usize;
+
+    for entry in fs::read_dir(dir).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let path = entry.path();
+        if path.is_dir() {
+            subdirs.push(path);
+        } else if path.is_file() {
+            root_files += 1;
+        }
+    }
+
+    if subdirs.len() == 1 && root_files == 0 {
+        return Ok(subdirs.into_iter().next().unwrap());
+    }
+
+    Err("missing manifest.json".into())
+}
+
 /// Atomically replace `dest` with the fully prepared `staging` directory.
 fn atomic_replace_dir(dest: &Path, staging: &Path) -> Result<(), String> {
     let parent = dest
@@ -314,6 +341,39 @@ mod tests {
         let themes_root = TempDir::new().unwrap();
         write_file(themes_root.path(), "keep.txt", "unchanged");
         assert!(install_theme_zip(&zip_path, themes_root.path()).is_err());
+    }
+
+    #[test]
+    fn install_accepts_single_root_subdirectory_zip() {
+        let tmp = TempDir::new().unwrap();
+        let zip_path = tmp.path().join("nested.zip");
+        {
+            let file = fs::File::create(&zip_path).unwrap();
+            let mut zip = ZipWriter::new(file);
+            let options =
+                SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+            let manifest = r#"{
+  "id": "nested.theme",
+  "name": "Nested Theme",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "modes": ["dark"]
+}"#;
+            zip.start_file("nested.theme/manifest.json", options).unwrap();
+            zip.write_all(manifest.as_bytes()).unwrap();
+            zip.start_file("nested.theme/tokens.css", options).unwrap();
+            zip.write_all(b":root { --c-accent: red; }").unwrap();
+            zip.finish().unwrap();
+        }
+
+        let themes_root = TempDir::new().unwrap();
+        let manifest = install_theme_zip(&zip_path, themes_root.path()).unwrap();
+        assert_eq!(manifest.id, "nested.theme");
+
+        let installed = themes_root.path().join("nested.theme");
+        assert!(installed.join("manifest.json").is_file());
+        assert!(installed.join("tokens.css").is_file());
+        validate_pack_dir(&installed).unwrap();
     }
 
     #[test]

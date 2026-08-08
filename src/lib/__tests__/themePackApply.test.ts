@@ -69,7 +69,8 @@ describe('applyThemePack(null)', () => {
 
   it('clears #datazen-theme-pack without Tauri IPC', async () => {
     injectThemePackCss(':root { --c-accent: #ff00ff; }');
-    await applyThemePack(null);
+    const result = await applyThemePack(null);
+    expect(result).toEqual({ ok: true });
     expect(document.getElementById('datazen-theme-pack')).toBeNull();
   });
 });
