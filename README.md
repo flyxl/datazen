@@ -33,7 +33,7 @@
   <img src="docs/screenshots/connection-window.png" width="720" alt="DataZen data browser" />
 </p>
 
-[English](#features) · [中文](#特性) · [Install](#install) · [macOS note](#macos-first-launch) · [Contributing](#contributing) · [Contact](#contact--feedback)
+[English](#features) · [中文](#特性) · [Install](#install) · [macOS note](#macos-first-launch) · [Linux note](#linux-install) · [Contributing](#contributing) · [Contact](#contact--feedback)
 
 ---
 
@@ -113,7 +113,9 @@ Download from [Releases](https://github.com/flyxl/datazen/releases) · 从 [Rele
 | macOS (Apple Silicon) | `.dmg` (文件名含 `macos-arm64`) |
 | macOS (Intel) | `.dmg` (文件名含 `macos-x64`) |
 | Windows | `.exe` / `.msi` (文件名含 `windows-x64`) |
-| Linux | `.deb` / `.rpm` / `.AppImage` (文件名含 `linux-x64`) |
+| Linux (x86_64) | `.deb` / `.rpm` / `.AppImage` (文件名含 `linux-x64`) |
+
+GitHub Release 会同时发布 **基础版** 与 **Pro 版**（`-pro`）的上述平台安装包。
 
 <a id="macos-first-launch"></a>
 ### macOS first launch / 首次打开
@@ -129,6 +131,23 @@ xattr -cr /Applications/DataZen.app
 ```
 
 Then open normally. Share this step in reviews if macOS blocks launch — it is expected, not corruption.
+
+<a id="linux-install"></a>
+### Linux install / Linux 安装
+
+Official builds are **x86_64** (`.deb` / `.rpm` / `.AppImage`). Prefer AppImage for a quick try:
+
+官方提供 **x86_64** 安装包（`.deb` / `.rpm` / `.AppImage`）。快速试用推荐 AppImage：
+
+```bash
+chmod +x DataZen-*-linux-x64.AppImage
+./DataZen-*-linux-x64.AppImage
+```
+
+- Some distros need `libfuse2` for AppImage. / 部分发行版运行 AppImage 需安装 `libfuse2`
+- Runtime needs WebKitGTK (e.g. `libwebkit2gtk-4.1-0` / `webkit2gtk4.1`). / 运行时依赖 WebKitGTK
+- Debian/Ubuntu: `sudo apt install ./DataZen-*-linux-x64.deb`
+- Fedora/RHEL: `sudo rpm -i ./DataZen-*-linux-x64.rpm`
 
 ---
 
