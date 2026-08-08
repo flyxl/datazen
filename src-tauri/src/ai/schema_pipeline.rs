@@ -77,11 +77,23 @@ impl SchemaContextPipeline {
         let pinned_schema_ddl = if pinned_tables.is_empty() {
             String::new()
         } else {
-            self.builder
+            match self
+                .builder
                 .build_selective_context(connection_id, database, pinned_tables, pinned_budget)
                 .await
-                .map(|c| c.schema_ddl)
-                .unwrap_or_default()
+            {
+                Ok(c) => c.schema_ddl,
+                Err(e) => {
+                    tracing::warn!(
+                        connection_id = %connection_id,
+                        database = %database,
+                        pinned_count = pinned_tables.len(),
+                        error = %e,
+                        "schema_pipeline: selective context build failed"
+                    );
+                    String::new()
+                }
+            }
         };
 
         let fallback_schema_ddl = if supports_tools {
