@@ -9,6 +9,7 @@ import {
   normalizeThemePreference,
   type ThemeMode,
 } from '../types/theme';
+import { applyThemePack, syncWebviewBackgroundFromTokens } from '../lib/themePackApply';
 
 const DEFAULT_SETTINGS: AppSettings = {
   theme: DEFAULT_THEME_PREFERENCE,
@@ -36,10 +37,11 @@ function resolveIsDark(mode: ThemeMode): boolean {
   return mode === 'dark';
 }
 
-function applyTheme(mode: ThemeMode) {
+async function applyTheme(mode: ThemeMode, packId: string | null) {
   const isDark = resolveIsDark(mode);
   document.documentElement.classList.toggle('dark', isDark);
-  document.documentElement.style.backgroundColor = isDark ? '#0f172a' : '#ffffff';
+  await applyThemePack(packId);
+  syncWebviewBackgroundFromTokens();
   try {
     localStorage.setItem(THEME_STORAGE_KEY, mode);
   } catch {
@@ -62,7 +64,10 @@ function watchSystemTheme(mode: ThemeMode) {
   if (mode !== 'system') return;
 
   const mq = window.matchMedia('(prefers-color-scheme: dark)');
-  const handler = () => applyTheme('system');
+  const handler = () => {
+    const { mode, packId } = useSettingsStore.getState().settings.theme;
+    void applyTheme(mode, packId);
+  };
   mq.addEventListener('change', handler);
   systemThemeCleanup = () => mq.removeEventListener('change', handler);
 }
@@ -72,7 +77,8 @@ function watchSystemTheme(mode: ThemeMode) {
  * Used by cross-window / menu event listeners.
  */
 export function applyThemeLocally(mode: ThemeMode) {
-  applyTheme(mode);
+  const packId = useSettingsStore.getState().settings.theme.packId;
+  void applyTheme(mode, packId);
   watchSystemTheme(mode);
   useSettingsStore.setState((state) => ({
     settings: {
@@ -87,7 +93,7 @@ export function applyThemeLocally(mode: ThemeMode) {
  */
 export function applySettingsLocally(incoming: AppSettings) {
   const theme = normalizeThemePreference(incoming.theme);
-  applyTheme(theme.mode);
+  void applyTheme(theme.mode, theme.packId);
   watchSystemTheme(theme.mode);
   useSettingsStore.setState({ settings: { ...incoming, theme } });
 }
@@ -106,11 +112,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       const raw = await settingsCommands.getSettings();
       const theme = normalizeThemePreference(raw.theme);
       const settings = { ...raw, theme };
-      applyTheme(theme.mode);
+      await applyTheme(theme.mode, theme.packId);
       watchSystemTheme(theme.mode);
       set({ settings });
     } catch {
-      applyTheme(DEFAULT_SETTINGS.theme.mode);
+      await applyTheme(DEFAULT_SETTINGS.theme.mode, DEFAULT_SETTINGS.theme.packId);
       const language = resolveUiLanguage(navigator.language);
       set({ settings: { ...DEFAULT_SETTINGS, language } });
     }
@@ -123,7 +129,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       : merged.theme;
     const next: AppSettings = { ...merged, theme };
     await settingsCommands.saveSettings(next);
-    applyTheme(theme.mode);
+    await applyTheme(theme.mode, theme.packId);
     watchSystemTheme(theme.mode);
     set({ settings: next });
 

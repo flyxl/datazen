@@ -7,7 +7,19 @@ export const COLOR_PALETTES: Record<string, string[]> = {
   mono:    ['#6b7280', '#4b5563', '#374151', '#1f2937', '#9ca3af', '#d1d5db', '#e5e7eb', '#f3f4f6'],
 };
 
+let chartPaletteOverride: Record<string, string[]> | null = null;
+
+export function setChartPaletteOverride(palettes: Record<string, string[]> | null): void {
+  chartPaletteOverride = palettes;
+}
+
+export function clearChartPaletteOverride(): void {
+  chartPaletteOverride = null;
+}
+
 export function getColorPalette(name: string): string[] {
+  const override = chartPaletteOverride?.[name];
+  if (override?.length) return override;
   return COLOR_PALETTES[name] ?? COLOR_PALETTES.default;
 }
 

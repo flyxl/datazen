@@ -43,6 +43,25 @@ export const DEFAULT_EDITOR_COLORS: EditorColorContract = {
 
 const EDITOR_JSON_KEYS = new Set<string>(Object.keys(CM_VARS));
 
+let packEditorOverlay: Partial<EditorColorContract> | null = null;
+
+export function setPackEditorColorOverlay(overlay: Partial<EditorColorContract> | null): void {
+  packEditorOverlay = overlay;
+}
+
+export function parsePackEditorOverlay(json: unknown): Partial<EditorColorContract> | null {
+  if (!json || typeof json !== 'object') return null;
+  const overlay: Partial<EditorColorContract> = {};
+  let hasAny = false;
+  for (const [key, value] of Object.entries(json as Record<string, unknown>)) {
+    if (EDITOR_JSON_KEYS.has(key) && typeof value === 'string' && value.trim()) {
+      overlay[key as keyof EditorColorContract] = value.trim();
+      hasAny = true;
+    }
+  }
+  return hasAny ? overlay : null;
+}
+
 function normalizeColor(value: string, fallback: string): string {
   const trimmed = value.trim();
   return trimmed || fallback;
@@ -58,7 +77,9 @@ export function readEditorColors(getVar: (name: string) => string): EditorColorC
 
 export function readEditorColorsFromElement(el: Element = document.documentElement): EditorColorContract {
   const style = getComputedStyle(el);
-  return readEditorColors((name) => style.getPropertyValue(name));
+  const colors = readEditorColors((name) => style.getPropertyValue(name));
+  if (!packEditorOverlay) return colors;
+  return { ...colors, ...packEditorOverlay };
 }
 
 export function editorColorsFromJson(json: unknown, base: EditorColorContract): EditorColorContract {
