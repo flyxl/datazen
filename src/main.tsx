@@ -18,6 +18,9 @@ import './styles/globals.css';
 mark('CSS loaded');
 
 import { hideSplash } from './lib/splash';
+import { bootstrapDefaultIconResolver } from './lib/bootstrapIconResolver';
+
+bootstrapDefaultIconResolver();
 
 async function bootstrap() {
   try {

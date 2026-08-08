@@ -260,8 +260,13 @@ interface QueryStore {
 #### settingsStore — 全局设置
 
 ```typescript
+interface ThemePreference {
+  mode: 'light' | 'dark' | 'system';
+  packId: string | null;
+}
+
 interface AppSettings {
-  theme: 'light' | 'dark' | 'system';
+  theme: ThemePreference;
   language: string;
   queryResultLimit: number;
   editorFontSize: number;

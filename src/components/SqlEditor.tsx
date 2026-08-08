@@ -4,51 +4,19 @@ import { EditorState, Compartment } from '@codemirror/state';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { sql, PostgreSQL, MySQL, MariaSQL, SQLite, StandardSQL } from '@codemirror/lang-sql';
 import type { SQLDialect } from '@codemirror/lang-sql';
-import { syntaxHighlighting, HighlightStyle } from '@codemirror/language';
-import { tags } from '@lezer/highlight';
 import { autocompletion, closeBrackets, acceptCompletion } from '@codemirror/autocomplete';
 import { searchKeymap } from '@codemirror/search';
+import { resolveEditorFontFamily, HOST_DEFAULT_EDITOR_FONT } from '../lib/resolveEditorFontFamily';
+import {
+  editorSyntaxHighlighting,
+  readEditorColorsFromElement,
+  type EditorColorContract,
+} from '../lib/themeEditorColors';
 import { useSettingsStore } from '../stores/settingsStore';
 import { DB_REGISTRY } from '../lib/databaseTypes';
 import { parseQualifiedPathParents } from '../lib/sqlPathPrefix';
 import type { SqlNamespace } from '../lib/sqlNamespace';
 import type { DatabaseType } from '../types';
-
-const darkHighlight = HighlightStyle.define([
-  { tag: tags.keyword, color: '#c678dd' },
-  { tag: tags.operatorKeyword, color: '#c678dd' },
-  { tag: tags.typeName, color: '#e5c07b' },
-  { tag: tags.string, color: '#98c379' },
-  { tag: tags.number, color: '#d19a66' },
-  { tag: tags.bool, color: '#d19a66' },
-  { tag: tags.null, color: '#d19a66' },
-  { tag: tags.comment, color: '#5c6370', fontStyle: 'italic' },
-  { tag: tags.punctuation, color: '#abb2bf' },
-  { tag: tags.bracket, color: '#abb2bf' },
-  { tag: tags.operator, color: '#56b6c2' },
-  { tag: tags.propertyName, color: '#61afef' },
-  { tag: tags.function(tags.variableName), color: '#61afef' },
-  { tag: tags.variableName, color: '#e06c75' },
-  { tag: tags.name, color: '#abb2bf' },
-]);
-
-const lightHighlight = HighlightStyle.define([
-  { tag: tags.keyword, color: '#7c3aed' },
-  { tag: tags.operatorKeyword, color: '#7c3aed' },
-  { tag: tags.typeName, color: '#b45309' },
-  { tag: tags.string, color: '#16a34a' },
-  { tag: tags.number, color: '#c2410c' },
-  { tag: tags.bool, color: '#c2410c' },
-  { tag: tags.null, color: '#c2410c' },
-  { tag: tags.comment, color: '#94a3b8', fontStyle: 'italic' },
-  { tag: tags.punctuation, color: '#475569' },
-  { tag: tags.bracket, color: '#475569' },
-  { tag: tags.operator, color: '#0891b2' },
-  { tag: tags.propertyName, color: '#2563eb' },
-  { tag: tags.function(tags.variableName), color: '#2563eb' },
-  { tag: tags.variableName, color: '#dc2626' },
-  { tag: tags.name, color: '#0f172a' },
-]);
 
 interface ThemeConfig {
   dark: boolean;
@@ -56,28 +24,28 @@ interface ThemeConfig {
   fontFamily: string;
 }
 
-function makeEditorTheme({ dark, fontSize, fontFamily }: ThemeConfig) {
+function makeEditorTheme({ dark, fontSize, fontFamily }: ThemeConfig, colors: EditorColorContract) {
   return EditorView.theme(
     {
       '&': {
         height: '100%',
         fontSize: `${fontSize}px`,
-        backgroundColor: dark ? '#0f172a' : '#ffffff',
-        color: dark ? '#f1f5f9' : '#0f172a',
+        backgroundColor: colors.background,
+        color: colors.foreground,
       },
       '.cm-content': {
         fontFamily: `${fontFamily}, ui-monospace, SFMono-Regular, Menlo, monospace`,
         padding: '12px 0',
-        caretColor: dark ? '#f1f5f9' : '#0f172a',
+        caretColor: colors.cursor,
       },
       '.cm-cursor': {
-        borderLeftColor: dark ? '#f1f5f9' : '#0f172a',
+        borderLeftColor: colors.cursor,
       },
       '.cm-activeLine': {
         backgroundColor: dark ? 'rgba(30,41,59,0.5)' : 'rgba(241,245,249,0.5)',
       },
       '.cm-selectionBackground, &.cm-focused .cm-selectionBackground': {
-        backgroundColor: dark ? 'rgba(59,130,246,0.25)' : 'rgba(59,130,246,0.15)',
+        backgroundColor: colors.selection,
       },
       '.cm-gutters': {
         backgroundColor: dark ? '#1e293b' : '#f8fafc',
@@ -122,9 +90,10 @@ function makeEditorTheme({ dark, fontSize, fontFamily }: ThemeConfig) {
 }
 
 function themeExtensions(config: ThemeConfig) {
+  const colors = readEditorColorsFromElement();
   return [
-    makeEditorTheme(config),
-    syntaxHighlighting(config.dark ? darkHighlight : lightHighlight),
+    makeEditorTheme(config, colors),
+    editorSyntaxHighlighting(colors, config.dark),
   ];
 }
 
@@ -201,10 +170,13 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
 
   function currentThemeConfig(): ThemeConfig {
     const { editorFontSize: fs, editorFontFamily: ff } = useSettingsStore.getState().settings;
+    const computedEditorVar = getComputedStyle(document.documentElement)
+      .getPropertyValue('--font-editor')
+      .trim();
     return {
       dark: document.documentElement.classList.contains('dark'),
       fontSize: fs,
-      fontFamily: ff,
+      fontFamily: resolveEditorFontFamily(ff, computedEditorVar, HOST_DEFAULT_EDITOR_FONT),
     };
   }
 
@@ -314,6 +286,19 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
       effects: themeCompartment.current.reconfigure(themeExtensions(currentThemeConfig())),
     });
   }, [editorFontSize, editorFontFamily]);
+
+  // Reconfigure when theme pack CSS / editor.json overlay changes
+  useEffect(() => {
+    const reconfigure = () => {
+      const view = viewRef.current;
+      if (!view) return;
+      view.dispatch({
+        effects: themeCompartment.current.reconfigure(themeExtensions(currentThemeConfig())),
+      });
+    };
+    document.addEventListener('datazen:theme-pack-changed', reconfigure);
+    return () => document.removeEventListener('datazen:theme-pack-changed', reconfigure);
+  }, []);
 
   // Dynamically update schema when it changes
   useEffect(() => {

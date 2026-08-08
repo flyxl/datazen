@@ -11,6 +11,7 @@
 | [服务层](architecture/backend/services.md) | ConnectionManager、资源安全、连接泄露防护 |
 | [持久化存储](architecture/backend/store.md) | 本地文件存储、AES-256-GCM 加密 |
 | [IPC 命令层](architecture/backend/commands.md) | Tauri Commands、AppState、CommandError |
+| [运行时主题包](architecture/backend/theme.md) | 本地 ZIP 安装、`{appData}/themes/`、theme IPC、与驱动插件独立 |
 | [AI 模块](architecture/backend/ai.md) | AiProvider trait、Provider 实现、Prompt 管理 |
 | [MCP 模块](architecture/backend/mcp.md) | MCP Server/Client |
 | [Workflow 模块](architecture/backend/workflow.md) | YAML Workflow 引擎 |

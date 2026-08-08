@@ -2,7 +2,8 @@ import { useCallback } from 'react';
 import type { ConnectionConfig } from '../../types';
 import type { ConnectionStatus } from '../../stores/activeConnectionStore';
 import { cn } from '../../lib/cn';
-import { getDbIcon, formatConnectionAddr } from '../../lib/databaseTypes';
+import { formatConnectionAddr } from '../../lib/databaseTypes';
+import { DbTypeBadge } from '../../components/DbTypeBadge';
 import { useI18n } from '../../hooks/useI18n';
 
 export interface ConnectionItemProps {
@@ -27,7 +28,6 @@ export function ConnectionItem({
   onPointerDown,
 }: ConnectionItemProps) {
   const { t } = useI18n();
-  const { label, bg } = getDbIcon(connection.databaseType);
   const isConnected = status === 'connected';
   const hasSSH = connection.sshTunnel?.enabled === true;
   const isLocal = !hasSSH && (connection.host === 'localhost' || connection.host === '127.0.0.1');
@@ -56,14 +56,7 @@ export function ConnectionItem({
       onContextMenu={(e) => onContextMenu(e, connection)}
       onPointerDown={(e) => onPointerDown(e, connection)}
     >
-      <div
-        className={cn(
-          'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[11px] font-bold text-white shadow-sm',
-          bg,
-        )}
-      >
-        {label}
-      </div>
+      <DbTypeBadge databaseType={connection.databaseType} size={36} />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className="truncate text-[13px] font-medium text-fg">{connection.name}</span>

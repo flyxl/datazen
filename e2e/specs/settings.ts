@@ -21,7 +21,7 @@ describe('Settings (SS-001~SS-006)', () => {
   before(async () => {
     await invokeBackend('save_settings', {
       settings: {
-        theme: 'dark',
+        theme: { mode: 'dark', packId: null },
         language: 'zh-CN',
         limitSelectResults: true,
         queryResultLimit: 5000,
@@ -94,7 +94,7 @@ describe('Settings (SS-001~SS-006)', () => {
   it('SS-003: settings should persist theme changes', async () => {
     await invokeBackend('save_settings', {
       settings: {
-        theme: 'light',
+        theme: { mode: 'light', packId: null },
         language: 'zh-CN',
         limitSelectResults: true,
         queryResultLimit: 5000,
@@ -107,13 +107,13 @@ describe('Settings (SS-001~SS-006)', () => {
     });
 
     const loaded = await invokeBackend<any>('get_settings');
-    expect(loaded.theme).toBe('light');
+    expect(loaded.theme.mode).toBe('light');
   });
 
   it('SS-004: settings should persist page size', async () => {
     await invokeBackend('save_settings', {
       settings: {
-        theme: 'dark',
+        theme: { mode: 'dark', packId: null },
         language: 'zh-CN',
         limitSelectResults: true,
         queryResultLimit: 5000,
@@ -132,7 +132,7 @@ describe('Settings (SS-001~SS-006)', () => {
   it('SS-005: settings should persist query result limit', async () => {
     await invokeBackend('save_settings', {
       settings: {
-        theme: 'dark',
+        theme: { mode: 'dark', packId: null },
         language: 'zh-CN',
         limitSelectResults: true,
         queryResultLimit: 10000,
@@ -151,7 +151,7 @@ describe('Settings (SS-001~SS-006)', () => {
   it('SS-006: settings should persist editor preferences', async () => {
     await invokeBackend('save_settings', {
       settings: {
-        theme: 'dark',
+        theme: { mode: 'dark', packId: null },
         language: 'zh-CN',
         limitSelectResults: true,
         queryResultLimit: 5000,
@@ -175,7 +175,7 @@ describe('Settings (SS-001~SS-006)', () => {
   after(async () => {
     await invokeBackend('save_settings', {
       settings: {
-        theme: 'dark',
+        theme: { mode: 'dark', packId: null },
         language: 'zh-CN',
         limitSelectResults: true,
         queryResultLimit: 5000,
