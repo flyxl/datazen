@@ -35,6 +35,7 @@ const BUILTIN_DB_REGISTRY: Record<string, DatabaseTypeMeta> = {
     connectionForm: 'standard',
     supportsExplain: true,
     hasMultiDatabase: true,
+    namespaceEnsure: 'postgresql',
   },
   mysql: {
     label: 'MySQL',

@@ -56,14 +56,18 @@ export function syncSchemaNamespace(
   useSchemaStore.getState().mergeNamespace(segments, kind, names);
 }
 
-export function registerSupersetDatabases(
+/**
+ * Register SQL display-name → fetch-path-root aliases and seed top-level namespace branches.
+ * Plugins that use opaque path roots (e.g. numeric ids) call this after listing databases.
+ */
+export function registerPathAliases(
   entries: { name: string; id: string }[],
   connectionId?: string,
 ): void {
   if (connectionId) {
     useSchemaStore.setState({ connectionId });
   }
-  useSchemaStore.getState().registerSupersetDatabases(entries);
+  useSchemaStore.getState().registerPathAliases(entries);
 }
 
 /**
