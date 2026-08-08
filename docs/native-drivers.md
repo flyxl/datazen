@@ -84,8 +84,8 @@
 
 ### 3.3 建议的下一步
 
-1. 为高价值驱动补真实冒烟测试（MongoDB、SQL Server、ClickHouse、DuckDB 至少各一个用例）。
-2. 实现 SQL Server 的 EXPLAIN（SHOWPLAN）与事务。
+1. 为 MongoDB / SQL Server / ClickHouse 补真实实例冒烟（DuckDB 已有）。
+2. 实现 SQL Server 事务。
 3. MongoDB document 视图（前端新增 `connectionView: 'document'`）。
 4. 抽公共 HTTP 驱动基类，消除样板。
 5. 评估把重依赖拆成可选 feature，控制包体。
