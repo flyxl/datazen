@@ -36,10 +36,21 @@ struct StoreCache {
     favorites: Vec<FavoriteQuery>,
 }
 
+/// 浅色 / 深色 / 跟随系统，以及可选的已安装主题包 ID
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ThemePreference {
+    pub mode: String,
+    #[serde(default)]
+    pub pack_id: Option<String>,
+}
+
 /// 应用设置
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AppSettings {
-    pub theme: String,
+    #[serde(deserialize_with = "deserialize_theme", default)]
+    pub theme: ThemePreference,
     pub language: String,
     pub query_result_limit: u32,
     pub auto_save: bool,
@@ -51,7 +62,10 @@ pub struct AppSettings {
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
-            theme: "dark".to_string(),
+            theme: ThemePreference {
+                mode: "dark".into(),
+                pack_id: None,
+            },
             language: "zh-CN".to_string(),
             query_result_limit: 1000,
             auto_save: true,
