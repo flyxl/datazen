@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { databaseCommands } from '../commands/database';
 import { DB_REGISTRY } from '../lib/databaseTypes';
+import { ensureNamespacePath as ensureNamespacePathImpl } from '../lib/ensureNamespace';
 import {
   mergeNamespacePath,
   pathKey,
@@ -95,6 +96,7 @@ interface SchemaStore {
   setLoadedTables: (database: string, all: TableInfo[]) => void;
   mergeNamespace: (segments: string[], kind: NamespaceMergeKind, names: string[]) => void;
   registerSupersetDatabases: (entries: { name: string; id: string }[]) => void;
+  ensureNamespacePath: (segments: string[]) => Promise<void>;
   loadColumnMap: () => Promise<void>;
   toggleExpand: (id: string) => void;
   setSelected: (id: string | null) => void;
@@ -191,6 +193,27 @@ export const useSchemaStore = create<SchemaStore>((set, get) => ({
     }
     set({ supersetDbIds: nextIds, databaseType: 'superset' });
     get().mergeNamespace([], 'branch', names);
+  },
+
+  ensureNamespacePath: async (segments) => {
+    const s = get();
+    if (!s.connectionId) return;
+    await ensureNamespacePathImpl(segments, {
+      connectionId: s.connectionId,
+      databaseType: s.databaseType,
+      isMultiDatabase: s.isMultiDatabase,
+      loadedPaths: s.loadedPaths,
+      supersetDbIds: s.supersetDbIds,
+      namespaceTree: s.namespaceTree,
+      tables: s.tables,
+      databases: s.databases,
+      currentDatabase: s.currentDatabase,
+      mergeNamespace: get().mergeNamespace,
+      registerSupersetDatabases: get().registerSupersetDatabases,
+      getDatabases: databaseCommands.getDatabases,
+      getTables: databaseCommands.getTables,
+      useDatabase: databaseCommands.useDatabase,
+    });
   },
 
   setLoadedTables: (database, all) => {
