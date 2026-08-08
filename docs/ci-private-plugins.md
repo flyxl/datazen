@@ -25,8 +25,8 @@ ssh-keygen -t ed25519 -C "datazen-ci-superset" -f ./datazen-ci-superset -N ""
 在 **datazen** 仓库：
 
 1. Settings → Environments → **New environment** → 名称：`release`
-2. **Deployment protection rules**
-   - 勾选 **Required reviewers**，加入维护者（打 tag / `workflow_dispatch` 后需人工批准才注入 Secrets）
+2. **Deployment protection rules**（可选）
+   - 当前未启用 Required reviewers（发版自动注入 Secrets，无需每次 Approve）
    - 可选：Deployment branches → 限制为 tags（如 `v*`）或受保护分支
 3. **Environment secrets**（在该 Environment 下添加，不要放在 Repository secrets）：
 
@@ -43,7 +43,7 @@ ssh-keygen -t ed25519 -C "datazen-ci-superset" -f ./datazen-ci-superset -N ""
 
 `.github/workflows/release.yml`：
 
-- `environment: release` — 仅批准后才拿到上述 Secrets
+- `environment: release` — 从此 Environment 读取上述 Secrets（无审批门禁时自动注入）
 - `permissions: {}` 顶层 + job 内 `contents: write`（仅用于 draft Release）
 - `matrix.plugins != 'none'` 时：`webfactory/ssh-agent` 加载两把私钥，并用  
   `url."git@github.com:".insteadOf "https://github.com/"`  
