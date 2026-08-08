@@ -3,6 +3,7 @@ import { listenCrossWindow } from '../lib/crossWindowBus';
 import { settingsCommands } from '../commands/settings';
 import { applySettingsLocally, applyThemeLocally, useSettingsStore } from '../stores/settingsStore';
 import type { AppSettings } from '../types';
+import type { ThemeMode } from '../types/theme';
 
 /**
  * Listens for theme and settings changes from native menu and other windows.
@@ -20,9 +21,9 @@ export function useThemeListener() {
           'menu:theme-change',
           (payload) => {
             if (cancelled) return;
-            const theme = payload as AppSettings['theme'];
-            if (theme === useSettingsStore.getState().settings.theme) return;
-            applyThemeLocally(theme);
+            const mode = payload as ThemeMode;
+            if (mode === useSettingsStore.getState().settings.theme.mode) return;
+            applyThemeLocally(mode);
             void settingsCommands.saveSettings(useSettingsStore.getState().settings);
           },
         );
@@ -38,9 +39,9 @@ export function useThemeListener() {
           'datazen:theme-changed',
           (payload) => {
             if (cancelled) return;
-            const theme = payload as AppSettings['theme'];
-            if (theme === useSettingsStore.getState().settings.theme) return;
-            applyThemeLocally(theme);
+            const mode = payload as ThemeMode;
+            if (mode === useSettingsStore.getState().settings.theme.mode) return;
+            applyThemeLocally(mode);
           },
         );
         if (cancelled) unlisten();

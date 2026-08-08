@@ -300,7 +300,7 @@ async fn rebuild_menu(handle: tauri::AppHandle, language: String) -> Result<(), 
     #[cfg(target_os = "macos")]
     {
         let settings = state.store.get_settings().await;
-        setup_menu(&handle, &settings.theme, &language).map_err(|e| e.to_string())
+        setup_menu(&handle, &settings.theme.mode, &language).map_err(|e| e.to_string())
     }
     #[cfg(not(target_os = "macos"))]
     {
@@ -523,7 +523,7 @@ pub fn run() {
                 );
                 tracing::info!("[startup]   get_settings: {:?}", t_settings.elapsed());
                 let t_menu = Instant::now();
-                setup_menu(&handle, &initial_settings.theme, &initial_settings.language)?;
+                setup_menu(&handle, &initial_settings.theme.mode, &initial_settings.language)?;
                 tracing::info!("[startup]   build menu: {:?}", t_menu.elapsed());
             }
 

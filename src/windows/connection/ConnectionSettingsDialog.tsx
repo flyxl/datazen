@@ -4,6 +4,7 @@ import { Button } from '../../components/ui/Button';
 import { Select } from '../../components/ui/Select';
 import { useSettingsStore } from '../../stores/settingsStore';
 import type { AppSettings } from '../../types';
+import type { ThemeMode } from '../../types/theme';
 import { useI18n } from '../../hooks/useI18n';
 
 interface ConnectionSettingsDialogProps {
@@ -52,13 +53,15 @@ export function ConnectionSettingsDialog({ open, onClose }: ConnectionSettingsDi
         <div>
           <label className="mb-1 block text-xs font-medium text-fg-secondary">{t('settings.theme')}</label>
           <Select
-            value={draft.theme}
+            value={draft.theme.mode}
             options={[
               { value: 'light', label: t('menu.themeLight') },
               { value: 'dark', label: t('menu.themeDark') },
               { value: 'system', label: t('menu.themeSystem') },
             ]}
-            onChange={(v) => updateField('theme', v as AppSettings['theme'])}
+            onChange={(v) =>
+              updateField('theme', { ...draft.theme, mode: v as ThemeMode })
+            }
           />
         </div>
 
