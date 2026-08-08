@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, afterEach, beforeEach } from 'vitest';
 import { render, cleanup, fireEvent, waitFor } from '@testing-library/react';
 import { AiInput } from '../AiInput';
-import type { ContextEntry } from '../../../types';
+import type { ContextItem } from '../../../types';
 
 vi.mock('../../../hooks/useI18n', () => ({
   useI18n: () => ({ t: (key: string) => key }),
@@ -89,47 +89,56 @@ describe('AiInput', () => {
     expect(onStop).toHaveBeenCalledTimes(1);
   });
 
-  describe('context files', () => {
-    const sampleFiles: ContextEntry[] = [
-      { name: 'schema.sql', path: 'schema.sql', isDir: false, size: 100 },
-      { name: 'notes.md', path: 'notes.md', isDir: false, size: 200 },
+  describe('context items', () => {
+    const sampleItems: ContextItem[] = [
+      { kind: 'file', id: 'schema.sql', name: 'schema.sql', path: 'schema.sql' },
+      { kind: 'table', id: 'users', name: 'users', database: 'mydb' },
     ];
 
-    it('renders context file chips', () => {
-      const { getByText } = render(
+    it('renders inline tokens without remove buttons', () => {
+      const { getAllByTestId } = render(
         <AiInput
           value=""
           onChange={vi.fn()}
           onSubmit={vi.fn()}
-          contextFiles={sampleFiles}
-          onContextFilesChange={vi.fn()}
+          contextItems={sampleItems}
+          onContextItemsChange={vi.fn()}
         />,
       );
-      expect(getByText('@schema.sql')).toBeInTheDocument();
-      expect(getByText('@notes.md')).toBeInTheDocument();
+      const tokens = getAllByTestId('context-token');
+      expect(tokens).toHaveLength(2);
+      expect(tokens[0]).toHaveAttribute('data-kind', 'file');
+      expect(tokens[0]).toHaveAttribute('data-id', 'schema.sql');
+      expect(tokens[1]).toHaveAttribute('data-kind', 'table');
+      expect(tokens[1]).toHaveAttribute('data-id', 'users');
+      for (const token of tokens) {
+        expect(token.querySelector('button')).toBeNull();
+      }
     });
 
-    it('removes context file when chip X is clicked', () => {
-      const onContextFilesChange = vi.fn();
+    it('Backspace at start removes last token', () => {
+      const onContextItemsChange = vi.fn();
       const { container } = render(
         <AiInput
           value=""
           onChange={vi.fn()}
           onSubmit={vi.fn()}
-          contextFiles={sampleFiles}
-          onContextFilesChange={onContextFilesChange}
+          contextItems={sampleItems}
+          onContextItemsChange={onContextItemsChange}
         />,
       );
-      const removeButtons = container.querySelectorAll('span button');
-      fireEvent.click(removeButtons[0]);
-      expect(onContextFilesChange).toHaveBeenCalledWith([sampleFiles[1]]);
+      const textarea = container.querySelector('textarea')!;
+      Object.defineProperty(textarea, 'selectionStart', { configurable: true, get: () => 0 });
+      Object.defineProperty(textarea, 'selectionEnd', { configurable: true, get: () => 0 });
+      fireEvent.keyDown(textarea, { key: 'Backspace' });
+      expect(onContextItemsChange).toHaveBeenCalledWith([sampleItems[0]]);
     });
 
-    it('does not render chips when contextFiles is undefined', () => {
-      const { container } = render(
+    it('does not render tokens when contextItems is undefined', () => {
+      const { queryAllByTestId } = render(
         <AiInput value="" onChange={vi.fn()} onSubmit={vi.fn()} />,
       );
-      expect(container.querySelectorAll('span').length).toBe(0);
+      expect(queryAllByTestId('context-token')).toHaveLength(0);
     });
 
     it('uses context.placeholder when context is enabled', () => {
@@ -138,8 +147,8 @@ describe('AiInput', () => {
           value=""
           onChange={vi.fn()}
           onSubmit={vi.fn()}
-          contextFiles={[]}
-          onContextFilesChange={vi.fn()}
+          contextItems={[]}
+          onContextItemsChange={vi.fn()}
           placeholder="regular placeholder"
         />,
       );
@@ -154,13 +163,12 @@ describe('AiInput', () => {
           value=""
           onChange={onChange}
           onSubmit={vi.fn()}
-          contextFiles={[]}
-          onContextFilesChange={vi.fn()}
+          contextItems={[]}
+          onContextItemsChange={vi.fn()}
         />,
       );
       const textarea = container.querySelector('textarea')!;
 
-      // jsdom often leaves selectionStart at 0 during change; use a getter at caret end
       Object.defineProperty(textarea, 'selectionStart', {
         configurable: true,
         get: () => textarea.value.length,
@@ -172,7 +180,6 @@ describe('AiInput', () => {
       fireEvent.change(textarea, { target: { value: '@' } });
 
       await waitFor(() => {
-        // Classes are not adjacent (e.g. "absolute left-0 … bottom-full …")
         const picker = container.querySelector('.absolute.bottom-full');
         expect(picker).toBeInTheDocument();
       });
