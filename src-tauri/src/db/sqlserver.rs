@@ -4,7 +4,7 @@ use super::*;
 use async_trait::async_trait;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
-use tiberius::{AuthMethod, Client, ColumnData, Config, QueryItem};
+use tiberius::{AuthMethod, Client, ColumnData, Config, EncryptionLevel, QueryItem};
 use tokio::net::TcpStream;
 use tokio::sync::RwLock;
 use tokio_util::compat::{Compat, TokioAsyncWriteCompatExt};
@@ -20,6 +20,36 @@ impl SqlServerDriver {
         Self {
             clients: RwLock::new(HashMap::new()),
         }
+    }
+
+    /// Map DataZen SSL mode → (tiberius encryption, trust server certificate).
+    ///
+    /// - `Disable`: plaintext TDS (no TLS)
+    /// - `Prefer` / `Require`: encrypt, trust server cert (common for self-signed)
+    /// - `VerifyCa` / `VerifyFull`: encrypt and verify the certificate chain
+    fn ssl_settings(mode: &SslMode) -> (EncryptionLevel, bool) {
+        match mode {
+            SslMode::Disable => (EncryptionLevel::NotSupported, false),
+            SslMode::Prefer => (EncryptionLevel::On, true),
+            SslMode::Require => (EncryptionLevel::Required, true),
+            SslMode::VerifyCa | SslMode::VerifyFull => (EncryptionLevel::Required, false),
+        }
+    }
+
+    fn build_use_database_sql(database: &str) -> Result<String, DriverError> {
+        let trimmed = database.trim();
+        if trimmed.is_empty() {
+            return Err(DriverError::InvalidConfig(
+                "Database name must not be empty".into(),
+            ));
+        }
+        if trimmed.contains('\0') {
+            return Err(DriverError::InvalidConfig(
+                "Database name contains invalid characters".into(),
+            ));
+        }
+        // Bracket quoting; escape `]` by doubling.
+        Ok(format!("USE [{}]", trimmed.replace(']', "]]")))
     }
 
     fn build_config(config: &ConnectionConfig) -> Result<Config, DriverError> {
@@ -44,7 +74,11 @@ impl SqlServerDriver {
                 cfg.database(db);
             }
         }
-        cfg.trust_cert();
+        let (encryption, trust) = Self::ssl_settings(&config.ssl_mode);
+        cfg.encryption(encryption);
+        if trust {
+            cfg.trust_cert();
+        }
         Ok(cfg)
     }
 
@@ -388,5 +422,66 @@ impl DatabaseDriver for SqlServerDriver {
 
     async fn cancel_query(&self, _handle: &ConnectionHandle) -> Result<(), DriverError> {
         Ok(())
+    }
+
+    fn supports_explain(&self) -> bool {
+        false
+    }
+
+    async fn use_database(
+        &self,
+        handle: &ConnectionHandle,
+        database: &str,
+    ) -> Result<(), DriverError> {
+        let sql = Self::build_use_database_sql(database)?;
+        let mut map = self.clients.write().await;
+        let client = map
+            .get_mut(&handle.pool_id)
+            .ok_or_else(|| DriverError::ConnectionFailed("Connection pool not found".into()))?;
+        Self::run(client, &sql).await.map(|_| ())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tiberius::EncryptionLevel;
+
+    #[test]
+    fn ssl_disable_is_plaintext() {
+        assert_eq!(
+            SqlServerDriver::ssl_settings(&SslMode::Disable),
+            (EncryptionLevel::NotSupported, false)
+        );
+    }
+
+    #[test]
+    fn ssl_require_trusts_cert() {
+        assert_eq!(
+            SqlServerDriver::ssl_settings(&SslMode::Require),
+            (EncryptionLevel::Required, true)
+        );
+    }
+
+    #[test]
+    fn ssl_verify_full_requires_encryption_without_trust() {
+        assert_eq!(
+            SqlServerDriver::ssl_settings(&SslMode::VerifyFull),
+            (EncryptionLevel::Required, false)
+        );
+    }
+
+    #[test]
+    fn build_use_database_sql_brackets_and_escapes() {
+        assert_eq!(
+            SqlServerDriver::build_use_database_sql(" sales ").unwrap(),
+            "USE [sales]"
+        );
+        assert_eq!(
+            SqlServerDriver::build_use_database_sql("a]b").unwrap(),
+            "USE [a]]b]"
+        );
+        assert!(SqlServerDriver::build_use_database_sql("  ").is_err());
+        assert!(SqlServerDriver::build_use_database_sql("bad\0name").is_err());
     }
 }

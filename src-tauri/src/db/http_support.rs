@@ -86,3 +86,63 @@ pub fn value_display(v: &Value) -> String {
         other => format!("{other:?}"),
     }
 }
+
+/// Format a tabular EXPLAIN result into the shared `ExplainResult` shape.
+pub fn explain_result_from_query(result: QueryResult) -> ExplainResult {
+    let plan_lines: Vec<String> = result
+        .rows
+        .iter()
+        .map(|row| {
+            row.iter()
+                .filter_map(|v| {
+                    v.as_ref().map(|val| match val {
+                        Value::String(s) => s.clone(),
+                        Value::Integer(n) => n.to_string(),
+                        Value::Float(f) => f.to_string(),
+                        Value::Bool(b) => b.to_string(),
+                        other => format!("{other:?}"),
+                    })
+                })
+                .collect::<Vec<_>>()
+                .join(" | ")
+        })
+        .collect();
+    ExplainResult {
+        plan_text: plan_lines.join("\n"),
+        plan_json: None,
+        total_cost: None,
+        estimated_rows: None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn explain_result_joins_row_cells() {
+        let result = QueryResult {
+            columns: vec![
+                ColumnInfo {
+                    name: "a".into(),
+                    data_type: "Int".into(),
+                    nullable: true,
+                },
+                ColumnInfo {
+                    name: "b".into(),
+                    data_type: "String".into(),
+                    nullable: true,
+                },
+            ],
+            rows: vec![vec![
+                Some(Value::Integer(1)),
+                Some(Value::String("scan".into())),
+            ]],
+            rows_affected: None,
+            execution_time_ms: 0,
+        };
+        let explain = explain_result_from_query(result);
+        assert_eq!(explain.plan_text, "1 | scan");
+        assert!(explain.plan_json.is_none());
+    }
+}

@@ -174,7 +174,7 @@ const BUILTIN_DB_REGISTRY: Record<string, DatabaseTypeMeta> = {
     sqlDialect: 'sqlserver',
     databaseFieldType: 'name',
     connectionForm: 'standard',
-    supportsExplain: true,
+    supportsExplain: false,
     hasMultiDatabase: true,
   },
   clickhouse: {
@@ -327,7 +327,7 @@ const BUILTIN_DB_REGISTRY: Record<string, DatabaseTypeMeta> = {
     defaultPort: 2881,
     defaultHost: '127.0.0.1',
     defaultUser: 'root',
-    quoteChar: '"',
+    quoteChar: '`',
     connectionMode: 'server',
     supportsSSH: true,
     supportsSSL: true,

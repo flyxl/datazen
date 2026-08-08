@@ -284,6 +284,21 @@ impl DatabaseDriver for RqliteDriver {
             .unwrap_or(0))
     }
 
+    fn supports_explain(&self) -> bool {
+        true
+    }
+
+    async fn explain(
+        &self,
+        handle: &ConnectionHandle,
+        sql: &str,
+    ) -> Result<ExplainResult, DriverError> {
+        let result = self
+            .query(handle, &format!("EXPLAIN QUERY PLAN {sql}"))
+            .await?;
+        Ok(explain_result_from_query(result))
+    }
+
     async fn cancel_query(&self, _handle: &ConnectionHandle) -> Result<(), DriverError> {
         Ok(())
     }
