@@ -113,8 +113,31 @@ async function ensurePostgresql(segments: string[], deps: EnsureDeps): Promise<v
   const { connectionId, isMultiDatabase, tables, databases, currentDatabase } = deps;
 
   if (segments.length === 0) {
-    const dbs = await deps.getDatabases(connectionId);
-    deps.mergeNamespace([], 'branch', dbs);
+    if (isMultiDatabase) {
+      const dbs = await deps.getDatabases(connectionId);
+      deps.mergeNamespace([], 'branch', dbs);
+      return;
+    }
+
+    const preferred =
+      (currentDatabase && databases.includes(currentDatabase) ? currentDatabase : null) ??
+      databases[0];
+    if (!preferred) return;
+
+    await deps.useDatabase(connectionId, preferred);
+    const all = await deps.getTables(connectionId, preferred);
+    const bySchema = new Map<string, string[]>();
+    for (const item of all) {
+      if (!isSchemaGroupingSchema(item.schema)) continue;
+      const list = bySchema.get(item.schema!) ?? [];
+      list.push(item.name);
+      bySchema.set(item.schema!, list);
+    }
+    const schemaNames = [...bySchema.keys()];
+    deps.mergeNamespace([], 'branch', schemaNames);
+    for (const [schema, names] of bySchema) {
+      deps.mergeNamespace([schema], 'tables', names);
+    }
     return;
   }
 

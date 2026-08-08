@@ -121,6 +121,49 @@ describe('ensureNamespacePath — superset', () => {
   });
 });
 
+describe('ensureNamespacePath — postgresql', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('[] single-db fetches schemas from current database', async () => {
+    const deps = makeDeps({
+      databaseType: 'postgresql',
+      isMultiDatabase: false,
+      supersetDbIds: {},
+      databases: ['app'],
+      currentDatabase: 'app',
+      getTables: vi.fn().mockResolvedValue([
+        { name: 'users', tableType: 'table', schema: 'public', rowCount: null },
+        { name: 'orders', tableType: 'table', schema: 'sales', rowCount: null },
+      ] satisfies TableInfo[]),
+    });
+
+    await ensureNamespacePath([], deps);
+
+    expect(deps.useDatabase).toHaveBeenCalledWith('conn-1', 'app');
+    expect(deps.getTables).toHaveBeenCalledWith('conn-1', 'app');
+    expect(deps.mergeNamespace).toHaveBeenCalledWith([], 'branch', ['public', 'sales']);
+    expect(deps.mergeNamespace).toHaveBeenCalledWith(['public'], 'tables', ['users']);
+    expect(deps.mergeNamespace).toHaveBeenCalledWith(['sales'], 'tables', ['orders']);
+  });
+
+  it('[] multi-db loads database branches', async () => {
+    const deps = makeDeps({
+      databaseType: 'postgresql',
+      isMultiDatabase: true,
+      supersetDbIds: {},
+      getDatabases: vi.fn().mockResolvedValue(['db1', 'db2']),
+    });
+
+    await ensureNamespacePath([], deps);
+
+    expect(deps.getDatabases).toHaveBeenCalledWith('conn-1');
+    expect(deps.mergeNamespace).toHaveBeenCalledWith([], 'branch', ['db1', 'db2']);
+    expect(deps.getTables).not.toHaveBeenCalled();
+  });
+});
+
 describe('ensureNamespacePath — mysql', () => {
   beforeEach(() => {
     vi.clearAllMocks();
