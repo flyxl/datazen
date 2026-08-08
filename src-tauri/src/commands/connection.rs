@@ -114,6 +114,7 @@ pub async fn get_connection_info(
         .await;
     let driver_category = match driver.as_ref().map(|d| d.driver_category()) {
         Some(DriverCategory::KeyValue) => "keyvalue",
+        Some(DriverCategory::Document) => "document",
         _ => "sql",
     };
 

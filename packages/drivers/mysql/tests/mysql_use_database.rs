@@ -1,28 +1,29 @@
-//! Gated live integration test for `PostgresDriver::use_database` and
-//! `get_tables` catalog targeting.
+//! Gated live integration test for `MysqlDriver::use_database`.
 //!
-//! Skips cleanly when PostgreSQL is unavailable. Credentials come from process
-//! env and/or the repo-root `.env` file (`TEST_PG_*` keys, same as workflow tests).
+//! Skips cleanly when MySQL is unavailable. Credentials come from process env
+//! and/or the repo-root `.env` file (same `TEST_MYSQL_*` keys as workflow tests).
 //!
-//! Run (skip if no Postgres):
-//!   cargo test -p datazen --test postgres_use_database -- --nocapture
+//! Run (skip if no MySQL):
+//!   cargo test -p datazen --test mysql_use_database -- --nocapture
 //!
 //! Force live run with env (example — use your own secrets, do not commit them):
-//!   TEST_PG_HOST=127.0.0.1 TEST_PG_PORT=5432 TEST_PG_USER=goecoride \
-//!   TEST_PG_PASSWORD= TEST_PG_DATABASE=goecoride \
-//!   TEST_PG_DATABASE_B=postgres \
-//!   cargo test -p datazen --test postgres_use_database -- --nocapture
+//!   TEST_MYSQL_HOST=127.0.0.1 TEST_MYSQL_PORT=3306 TEST_MYSQL_USER=root \
+//!   TEST_MYSQL_PASSWORD= TEST_MYSQL_DATABASE=datazen_test \
+//!   TEST_MYSQL_DATABASE_B=datazen_sync_mysql_tgt \
+//!   cargo test -p datazen --test mysql_use_database -- --nocapture
 //!
-//! Fixture assumption: database_a has a `users` table; database_b does not.
+//! Note: do not verify the active schema with prepared `SELECT DATABASE()` —
+//! MySQL can return the database from PREPARE time after a later `USE`. This
+//! test uses unqualified table access (and text-protocol checks in the driver).
 
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use datazen::db::postgres::PostgresDriver;
-use datazen::db::{ConnectionConfig, DatabaseDriver, DriverError, Value};
+use datazen_driver_mysql::MysqlDriver;
+use datazen_driver_api::{ConnectionConfig, DatabaseDriver, DriverError, Value};
 
 #[derive(Clone, Debug)]
-struct PgTestConfig {
+struct MysqlTestConfig {
     host: String,
     port: u16,
     user: String,
@@ -31,15 +32,15 @@ struct PgTestConfig {
     database_b: String,
 }
 
-impl Default for PgTestConfig {
+impl Default for MysqlTestConfig {
     fn default() -> Self {
         Self {
             host: "127.0.0.1".into(),
-            port: 5432,
-            user: "goecoride".into(),
+            port: 3306,
+            user: "root".into(),
             password: String::new(),
-            database_a: "goecoride".into(),
-            database_b: "postgres".into(),
+            database_a: "datazen_test".into(),
+            database_b: "datazen_sync_mysql_tgt".into(),
         }
     }
 }
@@ -74,53 +75,54 @@ fn env_or_file(file: &HashMap<String, String>, key: &str) -> Option<String> {
         .or_else(|| file.get(key).cloned().filter(|v| !v.is_empty()))
 }
 
-/// Gate on `TEST_PG_*` in process env or repo-root `.env`.
+/// Gate on `TEST_MYSQL_*` in process env or repo-root `.env`.
 /// Password may be intentionally empty.
-fn load_pg_config() -> Option<PgTestConfig> {
+fn load_mysql_config() -> Option<MysqlTestConfig> {
     let file = load_dotenv_file();
-    let has_marker = std::env::vars().any(|(k, _)| k.starts_with("TEST_PG_"))
-        || file.keys().any(|k| k.starts_with("TEST_PG_"));
+    let has_marker = std::env::vars().any(|(k, _)| k.starts_with("TEST_MYSQL_"))
+        || file.keys().any(|k| k.starts_with("TEST_MYSQL_"));
 
     if !has_marker {
-        eprintln!("⏭  Skipping postgres_use_database: no TEST_PG_* in env or .env");
+        eprintln!("⏭  Skipping mysql_use_database: no TEST_MYSQL_* in env or .env");
         return None;
     }
 
-    let mut cfg = PgTestConfig::default();
+    let mut cfg = MysqlTestConfig::default();
 
-    if let Some(v) = env_or_file(&file, "TEST_PG_HOST") {
+    // Prefer explicit TEST_MYSQL_* (process env wins over .env).
+    if let Some(v) = env_or_file(&file, "TEST_MYSQL_HOST") {
         cfg.host = v;
     }
-    if let Some(v) = env_or_file(&file, "TEST_PG_PORT") {
-        cfg.port = v.parse().unwrap_or(5432);
+    if let Some(v) = env_or_file(&file, "TEST_MYSQL_PORT") {
+        cfg.port = v.parse().unwrap_or(3306);
     }
-    if let Some(v) = env_or_file(&file, "TEST_PG_USER") {
+    if let Some(v) = env_or_file(&file, "TEST_MYSQL_USER") {
         cfg.user = v;
     }
-    if let Ok(v) = std::env::var("TEST_PG_PASSWORD") {
+    // Empty password is valid; allow override from env including empty string.
+    if let Ok(v) = std::env::var("TEST_MYSQL_PASSWORD") {
         cfg.password = v;
-    } else if let Some(v) = file.get("TEST_PG_PASSWORD") {
+    } else if let Some(v) = file.get("TEST_MYSQL_PASSWORD") {
         cfg.password = v.clone();
     }
-    if let Some(v) = env_or_file(&file, "TEST_PG_DATABASE") {
+    if let Some(v) = env_or_file(&file, "TEST_MYSQL_DATABASE") {
         cfg.database_a = v;
     }
-    if let Some(v) = env_or_file(&file, "TEST_PG_DATABASE_B") {
+    if let Some(v) = env_or_file(&file, "TEST_MYSQL_DATABASE_B") {
         cfg.database_b = v;
     }
 
     Some(cfg)
 }
 
-fn connection_config(cfg: &PgTestConfig) -> ConnectionConfig {
+fn connection_config(cfg: &MysqlTestConfig) -> ConnectionConfig {
     ConnectionConfig {
-        id: "pg-use-database-it".into(),
-        name: "postgres use_database integration".into(),
-        database_type: "postgresql".into(),
+        id: "mysql-use-database-it".into(),
+        name: "mysql use_database integration".into(),
+        database_type: "mysql".into(),
         host: Some(cfg.host.clone()),
         port: Some(cfg.port),
-        // Connect without a default database so use_database is the switcher
-        // (driver falls back to `postgres` for the initial listing connection).
+        // Connect without a default database so use_database is the switcher.
         database: None,
         schema: None,
         username: Some(cfg.user.clone()),
@@ -143,54 +145,46 @@ fn cell_as_i64(value: &Option<Value>) -> Option<i64> {
     }
 }
 
-async fn assert_users_visible(
-    driver: &PostgresDriver,
-    handle: &datazen::db::ConnectionHandle,
-    label: &str,
-) {
+/// `datazen_test.users` exists; proves unqualified names resolve after USE.
+async fn assert_users_visible(driver: &MysqlDriver, handle: &datazen_driver_api::ConnectionHandle, label: &str) {
     let result = driver
         .query(handle, "SELECT COUNT(*) FROM users")
         .await
         .unwrap_or_else(|e| panic!("{label}: unqualified users query failed: {e}"));
     assert_eq!(result.rows.len(), 1, "{label}: expected one count row");
     let count = cell_as_i64(&result.rows[0][0]).unwrap_or(-1);
-    assert!(
-        count >= 0,
-        "{label}: expected non-negative users count, got {count}"
-    );
+    assert!(count >= 0, "{label}: expected non-negative users count, got {count}");
 }
 
 #[tokio::test]
-async fn use_database_switches_and_get_tables_respects_catalog() {
-    let Some(cfg) = load_pg_config() else {
+async fn use_database_switches_and_rejects_invalid() {
+    let Some(cfg) = load_mysql_config() else {
         return;
     };
 
     if cfg.database_a == cfg.database_b {
         eprintln!(
-            "⏭  Skipping: TEST_PG_DATABASE and TEST_PG_DATABASE_B must differ (got {})",
+            "⏭  Skipping: TEST_MYSQL_DATABASE and TEST_MYSQL_DATABASE_B must differ (got {})",
             cfg.database_a
         );
         return;
     }
 
-    let driver = PostgresDriver::new();
+    let driver = MysqlDriver::new(false);
     let handle = match driver.connect(&connection_config(&cfg)).await {
         Ok(h) => h,
         Err(e) => {
-            eprintln!(
-                "⏭  Skipping: cannot connect to PostgreSQL at {}:{}: {e}",
-                cfg.host, cfg.port
-            );
+            eprintln!("⏭  Skipping: cannot connect to MySQL at {}:{}: {e}", cfg.host, cfg.port);
             return;
         }
     };
 
+    // Confirm both target databases exist (skip if fixture DBs missing).
     let dbs = match driver.get_databases(&handle).await {
         Ok(d) => d,
         Err(e) => {
             let _ = driver.disconnect(handle).await;
-            eprintln!("⏭  Skipping: list databases failed: {e}");
+            eprintln!("⏭  Skipping: SHOW DATABASES failed: {e}");
             return;
         }
     };
@@ -205,7 +199,7 @@ async fn use_database_switches_and_get_tables_respects_catalog() {
         }
     }
 
-    // get_tables must target the *named* catalog even before use_database.
+    // Fixture assumption: database_a has `users`; database_b does not.
     let a_tables = driver
         .get_tables(&handle, &cfg.database_a)
         .await
@@ -213,7 +207,7 @@ async fn use_database_switches_and_get_tables_respects_catalog() {
     if !a_tables.iter().any(|t| t.name == "users") {
         let _ = driver.disconnect(handle).await;
         eprintln!(
-            "⏭  Skipping: `{}.users` missing (needed to verify catalog targeting / use_database)",
+            "⏭  Skipping: `{}.users` missing (needed to verify unqualified USE)",
             cfg.database_a
         );
         return;
@@ -241,6 +235,7 @@ async fn use_database_switches_and_get_tables_respects_catalog() {
         .await
         .unwrap_or_else(|e| panic!("use_database({}) failed: {e}", cfg.database_a));
 
+    // Pool re-apply: several acquires must all resolve unqualified `users`.
     for i in 0..5 {
         assert_users_visible(
             &driver,
@@ -249,16 +244,6 @@ async fn use_database_switches_and_get_tables_respects_catalog() {
         )
         .await;
     }
-
-    // After switching to A, get_tables(B) must still return B's catalog (not A's).
-    let b_after = driver
-        .get_tables(&handle, &cfg.database_b)
-        .await
-        .unwrap_or_else(|e| panic!("get_tables({}) after switch to A: {e}", cfg.database_b));
-    assert!(
-        !b_after.iter().any(|t| t.name == "users"),
-        "get_tables(B) must not leak A's users table"
-    );
 
     driver
         .use_database(&handle, &cfg.database_b)
@@ -279,14 +264,16 @@ async fn use_database_switches_and_get_tables_respects_catalog() {
         );
     }
 
+    // Switch back to A and confirm pool re-apply again.
     driver
         .use_database(&handle, &cfg.database_a)
         .await
         .unwrap_or_else(|e| panic!("use_database({}) again failed: {e}", cfg.database_a));
     assert_users_visible(&driver, &handle, "after switching back to A").await;
 
+    // Invalid database → QueryFailed (mapped from MySQL unknown-database).
     let err = driver
-        .use_database(&handle, "nonexistent_db_xyz_f3_test")
+        .use_database(&handle, "nonexistent_db_xyz_f1_test")
         .await
         .expect_err("use_database(invalid) should error");
     assert!(
@@ -295,15 +282,14 @@ async fn use_database_switches_and_get_tables_respects_catalog() {
     );
     let msg = err.to_string();
     assert!(
-        msg.contains("nonexistent_db_xyz_f3_test")
-            || msg.to_lowercase().contains("does not exist")
-            || msg.to_lowercase().contains("failed to connect"),
+        msg.contains("nonexistent_db_xyz_f1_test") || msg.to_lowercase().contains("unknown"),
         "error should mention the bad database name: {msg}"
     );
 
-    // Active DB should remain A after failed switch.
+    // Active DB should remain A after failed switch (unqualified users still works).
     assert_users_visible(&driver, &handle, "after failed use_database(invalid)").await;
 
+    // Empty name → InvalidConfig (no round-trip to server required).
     let empty_err = driver
         .use_database(&handle, "   ")
         .await
@@ -314,5 +300,5 @@ async fn use_database_switches_and_get_tables_respects_catalog() {
     );
 
     driver.disconnect(handle).await.expect("disconnect");
-    println!("✅  PostgresDriver::use_database live checks passed");
+    println!("✅  MysqlDriver::use_database live checks passed");
 }

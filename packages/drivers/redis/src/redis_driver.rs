@@ -6,7 +6,7 @@
 //! - "query" → raw Redis command execution (e.g. `GET key`, `"HGETALL" key` with quotes)
 //! - `scan_keys_with_info` / `get_key_detail` — KV browser commands
 
-use super::*;
+use datazen_driver_api::*;
 use redis::aio::MultiplexedConnection;
 use redis::AsyncCommands;
 use redis::Client;

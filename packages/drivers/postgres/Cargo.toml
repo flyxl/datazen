@@ -1,0 +1,17 @@
+[package]
+name = "datazen-driver-postgres"
+version = "0.0.8"
+edition = "2021"
+description = "DataZen postgres database driver"
+license = "GPL-3.0-or-later"
+
+[dependencies]
+datazen-driver-api = { path = "../../driver-api" }
+async-trait = "0.1"
+tokio = { version = "1", features = ["full"] }
+sqlx = { version = "0.7", features = ["runtime-tokio", "tls-rustls", "postgres", "chrono", "json", "rust_decimal", "uuid"] }
+rust_decimal = "1"
+serde_json = "1"
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+tracing = "0.1"
