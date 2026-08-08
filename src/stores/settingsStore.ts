@@ -3,9 +3,14 @@ import { settingsCommands } from '../commands/settings';
 import { emitCrossWindow } from '../lib/crossWindowBus';
 import { resolveUiLanguage } from '../lib/resolveUiLanguage';
 import type { AppSettings } from '../types';
+import {
+  DEFAULT_THEME_PREFERENCE,
+  normalizeThemePreference,
+  type ThemeMode,
+} from '../types/theme';
 
 const DEFAULT_SETTINGS: AppSettings = {
-  theme: 'dark',
+  theme: DEFAULT_THEME_PREFERENCE,
   language: 'en',
   limitSelectResults: true,
   queryResultLimit: 5000,
@@ -23,19 +28,19 @@ const DEFAULT_SETTINGS: AppSettings = {
 
 const THEME_STORAGE_KEY = 'datazen-theme';
 
-function resolveIsDark(theme: AppSettings['theme']): boolean {
-  if (theme === 'system') {
+function resolveIsDark(mode: ThemeMode): boolean {
+  if (mode === 'system') {
     return window.matchMedia('(prefers-color-scheme: dark)').matches;
   }
-  return theme === 'dark';
+  return mode === 'dark';
 }
 
-function applyTheme(theme: AppSettings['theme']) {
-  const isDark = resolveIsDark(theme);
+function applyTheme(mode: ThemeMode) {
+  const isDark = resolveIsDark(mode);
   document.documentElement.classList.toggle('dark', isDark);
   document.documentElement.style.backgroundColor = isDark ? '#0f172a' : '#ffffff';
   try {
-    localStorage.setItem(THEME_STORAGE_KEY, theme);
+    localStorage.setItem(THEME_STORAGE_KEY, mode);
   } catch {
     // localStorage might be unavailable
   }
@@ -47,13 +52,13 @@ export function currentIsDark(): boolean {
 
 let systemThemeCleanup: (() => void) | null = null;
 
-function watchSystemTheme(theme: AppSettings['theme']) {
+function watchSystemTheme(mode: ThemeMode) {
   if (systemThemeCleanup) {
     systemThemeCleanup();
     systemThemeCleanup = null;
   }
 
-  if (theme !== 'system') return;
+  if (mode !== 'system') return;
 
   const mq = window.matchMedia('(prefers-color-scheme: dark)');
   const handler = () => applyTheme('system');
@@ -65,11 +70,14 @@ function watchSystemTheme(theme: AppSettings['theme']) {
  * Apply a theme to the current window without persisting to backend.
  * Used by cross-window / menu event listeners.
  */
-export function applyThemeLocally(theme: AppSettings['theme']) {
-  applyTheme(theme);
-  watchSystemTheme(theme);
+export function applyThemeLocally(mode: ThemeMode) {
+  applyTheme(mode);
+  watchSystemTheme(mode);
   useSettingsStore.setState((state) => ({
-    settings: { ...state.settings, theme },
+    settings: {
+      ...state.settings,
+      theme: { ...state.settings.theme, mode },
+    },
   }));
 }
 
@@ -77,9 +85,10 @@ export function applyThemeLocally(theme: AppSettings['theme']) {
  * Apply all settings from another window without persisting.
  */
 export function applySettingsLocally(incoming: AppSettings) {
-  applyTheme(incoming.theme);
-  watchSystemTheme(incoming.theme);
-  useSettingsStore.setState({ settings: incoming });
+  const theme = normalizeThemePreference(incoming.theme);
+  applyTheme(theme.mode);
+  watchSystemTheme(theme.mode);
+  useSettingsStore.setState({ settings: { ...incoming, theme } });
 }
 
 interface SettingsStore {
@@ -93,26 +102,32 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
 
   loadSettings: async () => {
     try {
-      const settings = await settingsCommands.getSettings();
-      applyTheme(settings.theme);
-      watchSystemTheme(settings.theme);
+      const raw = await settingsCommands.getSettings();
+      const theme = normalizeThemePreference(raw.theme);
+      const settings = { ...raw, theme };
+      applyTheme(theme.mode);
+      watchSystemTheme(theme.mode);
       set({ settings });
     } catch {
-      applyTheme(DEFAULT_SETTINGS.theme);
+      applyTheme(DEFAULT_SETTINGS.theme.mode);
       const language = resolveUiLanguage(navigator.language);
       set({ settings: { ...DEFAULT_SETTINGS, language } });
     }
   },
 
   updateSettings: async (partial) => {
-    const next = { ...get().settings, ...partial };
+    const merged = { ...get().settings, ...partial };
+    const theme = partial.theme
+      ? normalizeThemePreference(partial.theme)
+      : merged.theme;
+    const next: AppSettings = { ...merged, theme };
     await settingsCommands.saveSettings(next);
-    applyTheme(next.theme);
-    watchSystemTheme(next.theme);
+    applyTheme(theme.mode);
+    watchSystemTheme(theme.mode);
     set({ settings: next });
 
     if (partial.theme) {
-      void emitCrossWindow('datazen:theme-changed', partial.theme);
+      void emitCrossWindow('datazen:theme-changed', theme.mode);
     }
     if (partial.language) {
       void import('@tauri-apps/api/core').then(({ invoke }) =>

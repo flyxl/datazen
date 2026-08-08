@@ -25,6 +25,7 @@ import { settingsCommands } from '../../commands/settings';
 import { DB_REGISTRY } from '../../lib/databaseTypes';
 import { isKnownProviderType } from '../../lib/aiProviders';
 import type { AppSettings, AiProviderConfig, AiProviderType, DatabaseType, McpServerConfig } from '../../types';
+import type { ThemeMode } from '../../types/theme';
 import type { TranslationKey } from '../../locales';
 
 const PAGE_SIZE_OPTIONS = [25, 50, 100, 200, 500];
@@ -38,7 +39,7 @@ const LOG_LEVEL_OPTIONS: { value: AppSettings['logLevel']; label: string }[] = [
   { value: 'error', label: 'Error' },
 ];
 
-const THEME_KEYS: { value: AppSettings['theme']; key: TranslationKey }[] = [
+const THEME_KEYS: { value: ThemeMode; key: TranslationKey }[] = [
   { value: 'light', key: 'theme.light' },
   { value: 'dark', key: 'theme.dark' },
   { value: 'system', key: 'theme.system' },
@@ -173,9 +174,11 @@ export function SettingsWindow() {
 
                 <SettingRow label={t('settings.theme')}>
                   <Select
-                    value={draft.theme}
+                    value={draft.theme.mode}
                     options={themeOptions}
-                    onChange={(v) => updateField('theme', v as AppSettings['theme'])}
+                    onChange={(v) =>
+                      updateField('theme', { ...draft.theme, mode: v as ThemeMode })
+                    }
                   />
                 </SettingRow>
               </>
