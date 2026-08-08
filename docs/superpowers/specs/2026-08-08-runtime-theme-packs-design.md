@@ -1,13 +1,16 @@
 # 设计：运行时主题包（外观插件）
 
 **日期：** 2026-08-08  
-**状态：** 已批准（阶段 1–2 已实现：Host 加固 + 本地 ThemePack 安装/启用；商店 CDN 另计）  
+**状态：** 已实现（本地 ThemePack 安装/启用；商店 CDN 延后）  
 **实现分支：** `feat/runtime-theme-packs`（worktree: `.worktrees/runtime-theme-packs`）  
 **实现计划：** [docs/superpowers/plans/2026-08-09-runtime-theme-packs.md](../plans/2026-08-09-runtime-theme-packs.md)
 
+> **已交付（v1）：** 从本地 ZIP 安装到 `{appData}/themes/{id}/`，在设置中启用；CSS token、字体、语义图标与 DB 角标。  
+> **未交付：** 商店浏览 / CDN 下载 / 更新 / 签名（见「后续」）。
+
 ## 目标
 
-1. 用户可从商店**运行时下载并启用**外观包（无需重新编译应用）。
+1. 用户可从**本地 ZIP**运行时安装并启用外观包（无需重新编译应用）。商店 CDN 下载为后续计划。
 2. **驱动插件与主题包完全独立**（安装路径、注册表、生命周期分离）。
 3. 支持**可定制图标**：
    - 功能 UI 图标（语义 ID）
@@ -28,7 +31,7 @@
 
 | 议题 | 选择 |
 |------|------|
-| 分发方式 | 运行时商店下载 → 安装到应用数据目录 |
+| 分发方式 | 运行时本地 ZIP 安装 → `{appData}/themes/`（商店 CDN 延后） |
 | 与驱动关系 | 独立通道；不共享 registry |
 | 包模型 | **声明式 ThemePack（方案 A）** |
 | UI 图标 | 语义 ID → **SVG / PNG / WebP**（主题可覆盖） |
