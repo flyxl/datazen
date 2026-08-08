@@ -9,6 +9,7 @@ describe('createIconResolver', () => {
     placeholderForDb: (t) => ({ label: t.slice(0, 2), bgClass: 'bg-slate-600' }),
   });
 
+  // Fixture semantic id: icons/nav.settings.svg in community.fixture-dark
   it('prefers pack over lucide for UI icons', () => {
     expect(resolver.resolve('nav.settings')).toEqual({ kind: 'url', href: 'blob:pack-settings' });
   });
@@ -17,6 +18,7 @@ describe('createIconResolver', () => {
     expect(resolver.resolve('query.run')).toEqual({ kind: 'lucide', name: 'Play' });
   });
 
+  // Fixture semantic ids: icons/db.postgresql.svg; driver fallback for db.mysql
   it('resolves db pack → driver → placeholder', () => {
     expect(resolver.resolve('db.postgresql')).toEqual({ kind: 'url', href: 'blob:pack-pg' });
     expect(resolver.resolve('db.mysql')).toEqual({ kind: 'url', href: 'asset:driver-mysql' });
