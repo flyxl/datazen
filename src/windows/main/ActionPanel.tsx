@@ -1,6 +1,6 @@
-import { DatabaseBackup, Download, Plus, RefreshCcw, Workflow } from 'lucide-react';
 import { cn } from '../../lib/cn';
 import { useI18n } from '../../hooks/useI18n';
+import { ThemedIcon } from '../../components/ThemedIcon';
 
 export interface ActionPanelProps {
   onNewConnection: () => void;
@@ -13,11 +13,11 @@ export interface ActionPanelProps {
 export function ActionPanel({ onNewConnection, onBackup, onRestore, onDataSync, onWorkflow }: Readonly<ActionPanelProps>) {
   const { t } = useI18n();
   const items = [
-    { icon: DatabaseBackup, label: t('action.backup'), action: onBackup },
-    { icon: Download, label: t('action.restore'), action: onRestore },
-    { icon: RefreshCcw, label: t('action.dataSync'), action: onDataSync },
-    { icon: Plus, label: t('action.newConnection'), action: onNewConnection },
-    { icon: Workflow, label: t('action.workflow'), action: onWorkflow },
+    { iconId: 'action.backup', label: t('action.backup'), action: onBackup },
+    { iconId: 'action.sync', label: t('action.restore'), action: onRestore },
+    { iconId: 'action.refresh', label: t('action.dataSync'), action: onDataSync },
+    { iconId: 'action.newConnection', label: t('action.newConnection'), action: onNewConnection },
+    { iconId: 'action.workflow', label: t('action.workflow'), action: onWorkflow },
   ];
 
   return (
@@ -46,7 +46,7 @@ export function ActionPanel({ onNewConnection, onBackup, onRestore, onDataSync, 
               'hover:bg-surface-raised hover:text-fg',
             )}
           >
-            <item.icon className="h-4 w-4 shrink-0" />
+            <ThemedIcon id={item.iconId} className="h-4 w-4 shrink-0" />
             {item.label}
           </button>
         ))}
