@@ -8,6 +8,7 @@ import { syntaxHighlighting, HighlightStyle } from '@codemirror/language';
 import { tags } from '@lezer/highlight';
 import { autocompletion, closeBrackets, acceptCompletion } from '@codemirror/autocomplete';
 import { searchKeymap } from '@codemirror/search';
+import { resolveEditorFontFamily, HOST_DEFAULT_EDITOR_FONT } from '../lib/resolveEditorFontFamily';
 import { useSettingsStore } from '../stores/settingsStore';
 import { DB_REGISTRY } from '../lib/databaseTypes';
 import { parseQualifiedPathParents } from '../lib/sqlPathPrefix';
@@ -201,10 +202,13 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
 
   function currentThemeConfig(): ThemeConfig {
     const { editorFontSize: fs, editorFontFamily: ff } = useSettingsStore.getState().settings;
+    const computedEditorVar = getComputedStyle(document.documentElement)
+      .getPropertyValue('--font-editor')
+      .trim();
     return {
       dark: document.documentElement.classList.contains('dark'),
       fontSize: fs,
-      fontFamily: ff,
+      fontFamily: resolveEditorFontFamily(ff, computedEditorVar, HOST_DEFAULT_EDITOR_FONT),
     };
   }
 
