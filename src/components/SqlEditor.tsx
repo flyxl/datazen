@@ -9,6 +9,10 @@ import { tags } from '@lezer/highlight';
 import { autocompletion, closeBrackets, acceptCompletion } from '@codemirror/autocomplete';
 import { searchKeymap } from '@codemirror/search';
 import { useSettingsStore } from '../stores/settingsStore';
+import { DB_REGISTRY } from '../lib/databaseTypes';
+import { parseQualifiedPathParents } from '../lib/sqlPathPrefix';
+import type { SqlNamespace } from '../lib/sqlNamespace';
+import type { DatabaseType } from '../types';
 
 const darkHighlight = HighlightStyle.define([
   { tag: tags.keyword, color: '#c678dd' },
@@ -124,8 +128,8 @@ function themeExtensions(config: ThemeConfig) {
   ];
 }
 
-/** Table name → column names mapping for autocompletion */
-export type SqlSchema = Record<string, string[]>;
+/** Nested schema for CodeMirror SQL autocompletion */
+export type SqlSchema = SqlNamespace;
 
 export interface SqlEditorHandle {
   getSelection: () => string;
@@ -138,9 +142,13 @@ const CM_DIALECT_MAP: Record<string, SQLDialect> = {
   sqlite: SQLite,
 };
 
-function resolveCmDialect(dbType?: string): SQLDialect {
+/** Resolve CodeMirror SQL dialect; plugins may map via `sqlDialect` (e.g. kiwi → mysql). */
+export function resolveCmDialect(dbType?: string): SQLDialect {
   if (!dbType) return StandardSQL;
-  return CM_DIALECT_MAP[dbType] ?? StandardSQL;
+  if (CM_DIALECT_MAP[dbType]) return CM_DIALECT_MAP[dbType];
+  const mapped = DB_REGISTRY[dbType as DatabaseType]?.sqlDialect;
+  if (mapped && CM_DIALECT_MAP[mapped]) return CM_DIALECT_MAP[mapped];
+  return StandardSQL;
 }
 
 interface SqlEditorProps {
@@ -149,12 +157,17 @@ interface SqlEditorProps {
   onExecute?: () => void;
   onExecuteSelection?: (sql: string) => void;
   onContextMenu?: (e: MouseEvent, selectedSql: string) => void;
+  onQualifiedPath?: (parents: string[]) => void;
   placeholder?: string;
   schema?: SqlSchema;
   databaseType?: string;
 }
 
-export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function SqlEditor({ value, onChange, onExecute, onExecuteSelection, onContextMenu: onCtxMenu, placeholder, schema, databaseType }, ref) {
+function parentsEqual(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((seg, i) => seg === b[i]);
+}
+
+export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function SqlEditor({ value, onChange, onExecute, onExecuteSelection, onContextMenu: onCtxMenu, onQualifiedPath, placeholder, schema, databaseType }, ref) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const themeCompartment = useRef(new Compartment());
@@ -163,6 +176,8 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
   const onExecuteRef = useRef(onExecute);
   const onExecuteSelectionRef = useRef(onExecuteSelection);
   const onCtxMenuRef = useRef(onCtxMenu);
+  const onQualifiedPathRef = useRef(onQualifiedPath);
+  const lastParentsRef = useRef<string[]>([]);
 
   const editorFontSize = useSettingsStore((s) => s.settings.editorFontSize);
   const editorFontFamily = useSettingsStore((s) => s.settings.editorFontFamily);
@@ -171,6 +186,7 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
   onExecuteRef.current = onExecute;
   onExecuteSelectionRef.current = onExecuteSelection;
   onCtxMenuRef.current = onCtxMenu;
+  onQualifiedPathRef.current = onQualifiedPath;
 
   useImperativeHandle(ref, () => ({
     getSelection: () => {
@@ -256,6 +272,16 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
         EditorView.updateListener.of((update) => {
           if (update.docChanged) {
             onChangeRef.current(update.state.doc.toString());
+          }
+          if (update.docChanged || update.selectionSet) {
+            const parents = parseQualifiedPathParents(
+              update.state.doc.toString(),
+              update.state.selection.main.head,
+            );
+            if (!parentsEqual(lastParentsRef.current, parents)) {
+              lastParentsRef.current = parents;
+              onQualifiedPathRef.current?.(parents);
+            }
           }
         }),
         ...(placeholder ? [cmPlaceholder(placeholder)] : []),

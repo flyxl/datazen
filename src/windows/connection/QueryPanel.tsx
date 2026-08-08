@@ -5,7 +5,8 @@ import { listen } from '@tauri-apps/api/event';
 import { Button } from '../../components/ui/Button';
 import { Select } from '../../components/ui/Select';
 import { SqlEditor } from '../../components/SqlEditor';
-import type { SqlEditorHandle, SqlSchema } from '../../components/SqlEditor';
+import type { SqlEditorHandle } from '../../components/SqlEditor';
+import { buildEditorSchema } from '../../lib/buildEditorSchema';
 import { DataTable } from '../../components/DataTable/DataTable';
 import type { ColumnDef } from '../../components/DataTable/TableHeader';
 import { ChartView } from '../../components/chart/ChartView';
@@ -81,21 +82,28 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
   const tables = useSchemaStore((s) => s.tables);
   const views = useSchemaStore((s) => s.views);
   const columnMap = useSchemaStore((s) => s.columnMap);
+  const namespaceTree = useSchemaStore((s) => s.namespaceTree);
   const databases = useSchemaStore((s) => s.databases);
   const currentDatabase = useSchemaStore((s) => s.currentDatabase);
   const isMultiDb = useSchemaStore((s) => s.isMultiDatabase);
   const loadColumnMap = useSchemaStore((s) => s.loadColumnMap);
   const loadTables = useSchemaStore((s) => s.loadTables);
+  const ensureNamespacePath = useSchemaStore((s) => s.ensureNamespacePath);
 
   const dbMeta = databaseType ? DB_REGISTRY[databaseType as keyof typeof DB_REGISTRY] : undefined;
   const supportsExplain = dbMeta?.supportsExplain === true;
-  const editorSchema: SqlSchema = useMemo(() => {
-    const result: SqlSchema = {};
-    for (const t of [...tables, ...views]) {
-      result[t.name] = columnMap[t.name] ?? [];
-    }
-    return result;
-  }, [tables, views, columnMap]);
+  const editorSchema = useMemo(
+    () => buildEditorSchema({ namespaceTree, tables, views, columnMap }),
+    [namespaceTree, tables, views, columnMap],
+  );
+
+  const ensureTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleQualifiedPath = useCallback((parents: string[]) => {
+    if (ensureTimer.current) clearTimeout(ensureTimer.current);
+    ensureTimer.current = setTimeout(() => {
+      void ensureNamespacePath(parents);
+    }, 120);
+  }, [ensureNamespacePath]);
 
   useEffect(() => {
     setConnectionId(connectionId);
@@ -266,6 +274,7 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
               onExecute={handleExecute}
               onExecuteSelection={handleExecuteSelection}
               onContextMenu={handleEditorContextMenu}
+              onQualifiedPath={handleQualifiedPath}
               placeholder={t('query.placeholder')}
               schema={editorSchema}
               databaseType={databaseType}
