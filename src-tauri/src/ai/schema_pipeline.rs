@@ -59,7 +59,69 @@ impl SchemaContextPipeline {
         Self { builder }
     }
 
-    // resolve implemented in Task 2
+    pub async fn resolve(
+        &self,
+        connection_id: &str,
+        database: &str,
+        pinned_tables: &[String],
+        supports_tools: bool,
+        pinned_budget: usize,
+        fallback_budget: usize,
+    ) -> Result<PromptSeed, String> {
+        let (db_type, table_names) = self
+            .builder
+            .get_table_names(connection_id, database)
+            .await
+            .unwrap_or_else(|_| (String::new(), Vec::new()));
+
+        let pinned_schema_ddl = if pinned_tables.is_empty() {
+            String::new()
+        } else {
+            self.builder
+                .build_selective_context(connection_id, database, pinned_tables, pinned_budget)
+                .await
+                .map(|c| c.schema_ddl)
+                .unwrap_or_default()
+        };
+
+        let fallback_schema_ddl = if supports_tools {
+            None
+        } else {
+            let ctx = self
+                .builder
+                .build_sql_context(connection_id, database, None, &[], fallback_budget)
+                .await?;
+            Some(ctx.schema_ddl)
+        };
+
+        Ok(assemble_seed(
+            db_type,
+            table_names,
+            pinned_schema_ddl,
+            supports_tools,
+            fallback_schema_ddl,
+        ))
+    }
+}
+
+fn assemble_seed(
+    database_type: String,
+    table_names: Vec<String>,
+    pinned_schema_ddl: String,
+    supports_tools: bool,
+    fallback_schema_ddl: Option<String>,
+) -> PromptSeed {
+    PromptSeed {
+        database_type,
+        table_names,
+        pinned_schema_ddl,
+        attach_db_tools: supports_tools,
+        fallback_schema_ddl: if supports_tools {
+            None
+        } else {
+            fallback_schema_ddl
+        },
+    }
 }
 
 #[cfg(test)]
@@ -91,6 +153,33 @@ mod tests {
         assert!(text.contains("users (id int PK)"));
         assert!(text.contains("get_table_schema"));
         assert!(!text.contains("FULL SCHEMA FALLBACK"));
+    }
+
+    #[test]
+    fn decide_seed_fields_tools_on() {
+        let seed = assemble_seed(
+            "Postgres".into(),
+            vec!["u".into()],
+            "  u (id int)".into(),
+            true,
+            Some("SHOULD_NOT_USE".into()),
+        );
+        assert!(seed.attach_db_tools);
+        assert!(seed.fallback_schema_ddl.is_none());
+        assert_eq!(seed.pinned_schema_ddl, "  u (id int)");
+    }
+
+    #[test]
+    fn decide_seed_fields_tools_off_keeps_fallback() {
+        let seed = assemble_seed(
+            "Postgres".into(),
+            vec!["u".into()],
+            String::new(),
+            false,
+            Some("  u (id int)".into()),
+        );
+        assert!(!seed.attach_db_tools);
+        assert_eq!(seed.fallback_schema_ddl.as_deref(), Some("  u (id int)"));
     }
 
     #[test]
