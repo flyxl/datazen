@@ -8,6 +8,9 @@
  * 任何修改都应保持向后兼容，或同步 bump PROTOCOL_VERSION。
  */
 
+import { useSchemaStore } from '../stores/schemaStore';
+import type { TableInfo } from '../types';
+
 // === UI Components ===
 export { Input } from '../components/ui/Input';
 export { Select } from '../components/ui/Select';
@@ -25,6 +28,43 @@ export type { DatabaseTypeMeta, ConnectionMode } from '../lib/databaseMeta';
 export type { ConnectionFormState } from '../components/connection/useConnectionForm';
 export type { SqlDialectStrategy, SqlDialectFamily } from '../lib/sqlDialects/types';
 export type { TableInfo, TableType } from '../types';
+
+/**
+ * Sync fetched tables into the host schema store (SQL editor autocomplete).
+ * Pass `connectionId` for custom schema trees that never call `loadForConnection`.
+ */
+export function syncSchemaTables(
+  database: string,
+  tables: TableInfo[],
+  connectionId?: string,
+): void {
+  if (connectionId) {
+    useSchemaStore.setState({ connectionId });
+  }
+  useSchemaStore.getState().setLoadedTables(database, tables);
+}
+
+export function syncSchemaNamespace(
+  segments: string[],
+  kind: 'branch' | 'tables',
+  names: string[],
+  options?: { connectionId?: string },
+): void {
+  if (options?.connectionId) {
+    useSchemaStore.setState({ connectionId: options.connectionId });
+  }
+  useSchemaStore.getState().mergeNamespace(segments, kind, names);
+}
+
+export function registerSupersetDatabases(
+  entries: { name: string; id: string }[],
+  connectionId?: string,
+): void {
+  if (connectionId) {
+    useSchemaStore.setState({ connectionId });
+  }
+  useSchemaStore.getState().registerSupersetDatabases(entries);
+}
 
 /**
  * Plugin form validator: receives raw field values and i18n `t()`,
