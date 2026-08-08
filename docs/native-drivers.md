@@ -1,8 +1,8 @@
 # 原生内置驱动（codex/native-drivers 分支）
 
-> 状态：开发中（v1 已可编译、测试通过，未推送）
-> 分支：`codex/native-drivers`（在独立 worktree 中开发，与主工作区其他分支隔离）
-> 提交：`a606654`（脚手架）、`df9a84c`（驱动实现）
+> 状态：开发中（已 rebase main；审计 P0/P1 已修，未推送）
+> 分支：`codex/native-drivers`（独立 worktree：`.worktrees/native-drivers`）
+> 基线：脚手架 + 驱动实现 + 设计文档；本轮补 EXPLAIN / TLS / 多库切换对齐
 
 ## 一、为什么做
 
@@ -65,13 +65,13 @@
 
 1. **冒烟/集成测试缺失**：各新驱动没有针对真实服务的测试（需要本地起 MongoDB / SQL Server / ClickHouse 等实例）。目前只有编译与单元测试保证。
 2. **事务**：HTTP 类驱动无事务；SQL Server 驱动也**未接通** `begin_transaction/commit/rollback`（tiberius 单连接，留待后续）。
-3. **EXPLAIN**：前端对 ClickHouse/DuckDB/SQL Server 标记了 `supportsExplain`，但后端只有 ClickHouse/DuckDB 可用；**SQL Server 的 explain 实际未实现**（trait 默认返回"不支持"），需要补 `SET SHOWPLAN_ALL ON` 之类实现或去掉前端标记。
+3. **EXPLAIN**：ClickHouse / DuckDB / RQLite / Turso 已接通 `EXPLAIN` / `EXPLAIN QUERY PLAN`；**SQL Server** 前端已关掉 `supportsExplain`（SHOWPLAN 尚未实现）。
 4. **MongoDB 没有专属 document 视图**：前端目前只有 `sql` / `keyvalue` 两种 connectionView，MongoDB 暂用 SQL 视图 + JSON 命令，交互不如原生 document 浏览器。
 5. **Schema 浏览精度**：
    - Elasticsearch mapping 只解析顶层字段；
    - InfluxDB / VictoriaMetrics / HBase / Vector 的"表结构"是简化视图（DDL 无意义，返回空）；
    - SQL Server 主键/索引/外键未填充（`is_primary_key` 恒 false，PK 列表为空）。
-6. **连接表单高级字段**：部分新类型前端表单仍走 `standard`，SSH/SSL 等选项后端未全部按引擎区分处理（如 MongoDB 的 TLS 参数已接，ClickHouse 的 SSL 模式已接，其余 HTTP 驱动走默认 http/https 判断）。
+6. **连接表单高级字段**：部分新类型前端表单仍走 `standard`。MongoDB / ClickHouse / SQL Server 的 SSL 已按 `ssl_mode` 处理；其余 HTTP 驱动走默认 http/https 判断。SQL Server / ClickHouse 已接通 `use_database` 多库切换。
 7. **驱动分发**：全部编译进包（用户明确要求 builtin），**没有** dbx 那种"按需下载驱动 + JRE 管理"机制；代价是包体翻倍（9.4MB → 19MB DMG）。如果后续要控制体积，可以考虑把 HTTP 类驱动保留内置、把 mongodb/tiberius/duckdb 这类重依赖做成可选 feature。
 8. **未做 E2E**：没有 WebdriverIO 用例覆盖新类型的连接/浏览流程。
 
@@ -79,14 +79,14 @@
 
 - 未推送远程分支（`codex/native-drivers` 目前只在本地 worktree）。
 - 各 HTTP 驱动存在重复样板（连接池 map、query_multi 包装），后续可抽公共 `HttpSqlDriver` 基类。
-- DuckDB / SQL Server 的 `get_table_schema` 未填主键/索引/外键元数据。
+- DuckDB 已填主键，索引/外键仍空；SQL Server 主键/索引/外键仍未填充。
 - `docs/competitive-comparison-dbx.md`（竞品分析）已入库，但未链接到文档索引。
 
 ### 3.3 建议的下一步
 
 1. 为高价值驱动补真实冒烟测试（MongoDB、SQL Server、ClickHouse、DuckDB 至少各一个用例）。
-2. 实现 SQL Server 的 EXPLAIN 与事务，或修正前端能力标记。
+2. 实现 SQL Server 的 EXPLAIN（SHOWPLAN）与事务。
 3. MongoDB document 视图（前端新增 `connectionView: 'document'`）。
 4. 抽公共 HTTP 驱动基类，消除样板。
 5. 评估把重依赖拆成可选 feature，控制包体。
-6. 推送分支并开 PR，接入 CI（ci.yml 的 cargo test / vitest 已在本地验证通过，可直接复用）。
+6. 推送分支并开 PR（已 rebase main；本地 `cargo test --lib` 282 / vitest 通过）。

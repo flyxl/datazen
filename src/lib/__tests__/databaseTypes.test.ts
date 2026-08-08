@@ -37,4 +37,18 @@ describe('DB_REGISTRY behavioral flags', () => {
     expect(DB_REGISTRY.postgresql.supportsExplain).toBe(true);
     expect(DB_REGISTRY.redis.supportsExplain).toBeUndefined();
   });
+
+  it('native SQL engines advertise explain only when backend implements it', () => {
+    expect(DB_REGISTRY.clickhouse.supportsExplain).toBe(true);
+    expect(DB_REGISTRY.duckdb.supportsExplain).toBe(true);
+    expect(DB_REGISTRY.rqlite.supportsExplain).toBe(true);
+    expect(DB_REGISTRY.turso.supportsExplain).toBe(true);
+    // SQL Server SHOWPLAN is not wired yet — UI must not show a broken button
+    expect(DB_REGISTRY.sqlserver.supportsExplain).toBe(false);
+  });
+
+  it('ob_oracle reuses MySQL wire protocol quoting', () => {
+    expect(DB_REGISTRY.ob_oracle.quoteChar).toBe('`');
+    expect(DB_REGISTRY.ob_oracle.sqlDialect).toBe('mysql');
+  });
 });

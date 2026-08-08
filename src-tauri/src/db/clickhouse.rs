@@ -35,15 +35,32 @@ impl ClickHouseDriver {
             .ok_or_else(|| DriverError::ConnectionFailed("Connection pool not found".into()))
     }
 
+    fn get_mut<'a>(
+        pools: &'a mut HashMap<String, PoolEntry>,
+        handle: &ConnectionHandle,
+    ) -> Result<&'a mut PoolEntry, DriverError> {
+        pools
+            .get_mut(&handle.pool_id)
+            .ok_or_else(|| DriverError::ConnectionFailed("Connection pool not found".into()))
+    }
+
     async fn http_query(
         client: &reqwest::Client,
         base: &str,
         sql: &str,
+        database: Option<&str>,
     ) -> Result<serde_json::Value, DriverError> {
         let url = format!("{base}/");
-        let resp = client
+        let mut req = client
             .post(&url)
-            .query(&[("default_format", "JSON"), ("max_result_rows", "100000")])
+            .query(&[("default_format", "JSON"), ("max_result_rows", "100000")]);
+        if let Some(db) = database {
+            let trimmed = db.trim();
+            if !trimmed.is_empty() {
+                req = req.query(&[("database", trimmed)]);
+            }
+        }
+        let resp = req
             .body(sql.to_string())
             .send()
             .await
@@ -116,7 +133,13 @@ impl DatabaseDriver for ClickHouseDriver {
         let client =
             build_http_client(config.connection_timeout, config.username.as_deref(), config.password.as_deref())?;
         let base = base_url(config)?;
-        let v = Self::http_query(&client, &base, "SELECT version()").await?;
+        let v = Self::http_query(
+            &client,
+            &base,
+            "SELECT version()",
+            config.database.as_deref(),
+        )
+        .await?;
         let version = v
             .get("data")
             .and_then(|d| d.as_array())
@@ -162,6 +185,7 @@ impl DatabaseDriver for ClickHouseDriver {
             &entry.client,
             &entry.base,
             "SELECT name FROM system.databases ORDER BY name",
+            None,
         )
         .await?;
         Ok(v.get("data")
@@ -188,7 +212,7 @@ impl DatabaseDriver for ClickHouseDriver {
             "SELECT name, engine FROM system.tables WHERE database = '{}' AND is_temporary = 0 ORDER BY name",
             db.replace('\'', "''")
         );
-        let v = Self::http_query(&entry.client, &entry.base, &sql).await?;
+        let v = Self::http_query(&entry.client, &entry.base, &sql, Some(&db)).await?;
         Ok(v.get("data")
             .and_then(|d| d.as_array())
             .into_iter()
@@ -217,7 +241,7 @@ impl DatabaseDriver for ClickHouseDriver {
             db.replace('\'', "''"),
             table.replace('\'', "''")
         );
-        let v = Self::http_query(&entry.client, &entry.base, &sql).await?;
+        let v = Self::http_query(&entry.client, &entry.base, &sql, Some(&db)).await?;
         let columns: Vec<ColumnSchema> = v
             .get("data")
             .and_then(|d| d.as_array())
@@ -255,7 +279,13 @@ impl DatabaseDriver for ClickHouseDriver {
         let pools = self.pools.read().await;
         let entry = Self::get(&pools, handle)?;
         let start = Instant::now();
-        let v = Self::http_query(&entry.client, &entry.base, sql).await?;
+        let v = Self::http_query(
+            &entry.client,
+            &entry.base,
+            sql,
+            entry.database.as_deref(),
+        )
+        .await?;
         let mut result = Self::result_from_json(&v);
         result.execution_time_ms = start.elapsed().as_millis() as u64;
         Ok(result)
@@ -293,8 +323,45 @@ impl DatabaseDriver for ClickHouseDriver {
     async fn execute(&self, handle: &ConnectionHandle, sql: &str) -> Result<u64, DriverError> {
         let pools = self.pools.read().await;
         let entry = Self::get(&pools, handle)?;
-        let v = Self::http_query(&entry.client, &entry.base, sql).await?;
+        let v = Self::http_query(
+            &entry.client,
+            &entry.base,
+            sql,
+            entry.database.as_deref(),
+        )
+        .await?;
         Ok(v.get("rows").and_then(|r| r.as_u64()).unwrap_or(0))
+    }
+
+    async fn explain(
+        &self,
+        handle: &ConnectionHandle,
+        sql: &str,
+    ) -> Result<ExplainResult, DriverError> {
+        let result = self.query(handle, &format!("EXPLAIN {sql}")).await?;
+        Ok(explain_result_from_query(result))
+    }
+
+    async fn use_database(
+        &self,
+        handle: &ConnectionHandle,
+        database: &str,
+    ) -> Result<(), DriverError> {
+        let trimmed = database.trim();
+        if trimmed.is_empty() {
+            return Err(DriverError::InvalidConfig(
+                "Database name must not be empty".into(),
+            ));
+        }
+        if trimmed.contains('\0') {
+            return Err(DriverError::InvalidConfig(
+                "Database name contains invalid characters".into(),
+            ));
+        }
+        let mut pools = self.pools.write().await;
+        let entry = Self::get_mut(&mut pools, handle)?;
+        entry.database = Some(trimmed.to_string());
+        Ok(())
     }
 
     async fn cancel_query(&self, _handle: &ConnectionHandle) -> Result<(), DriverError> {
