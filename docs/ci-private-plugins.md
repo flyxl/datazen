@@ -1,0 +1,72 @@
+# CI：私有插件仓库（Deploy Key + Environment）
+
+Pro 构建会通过 `resolve-plugins.mjs` clone `datazen-driver-kiwi` / `datazen-driver-superset`。仓库改为 private 后，Release workflow 使用 **只读 Deploy Key（SSH）** 拉取；凭据放在 GitHub Environment **`release`**，而不是仓库级 Secrets。
+
+日常 PR CI（`.github/workflows/ci.yml`）**不**拉取插件，也**不**挂这些密钥。
+
+## 1. 生成两把 Deploy Key
+
+同一公钥不能挂到多个仓库，需各生成一对：
+
+```bash
+ssh-keygen -t ed25519 -C "datazen-ci-kiwi" -f ./datazen-ci-kiwi -N ""
+ssh-keygen -t ed25519 -C "datazen-ci-superset" -f ./datazen-ci-superset -N ""
+```
+
+- 公钥：`datazen-ci-kiwi.pub` → kiwi 仓库  
+  Settings → Deploy keys → Add deploy key → **只勾选 Read**（不要 Allow write）
+- 公钥：`datazen-ci-superset.pub` → superset 仓库（同上）
+- 私钥：`datazen-ci-kiwi` / `datazen-ci-superset` → 下一步写入 Environment Secrets（**不要**提交进 git）
+
+本地用完后删除磁盘上的私钥副本。
+
+## 2. 创建 Environment `release`
+
+在 **datazen** 仓库：
+
+1. Settings → Environments → **New environment** → 名称：`release`
+2. **Deployment protection rules**
+   - 勾选 **Required reviewers**，加入维护者（打 tag / `workflow_dispatch` 后需人工批准才注入 Secrets）
+   - 可选：Deployment branches → 限制为 tags（如 `v*`）或受保护分支
+3. **Environment secrets**（在该 Environment 下添加，不要放在 Repository secrets）：
+
+| Name | Value |
+|------|--------|
+| `KIWI_DEPLOY_KEY` | `datazen-ci-kiwi` 私钥全文（含 `BEGIN/END` 行） |
+| `SUPERSET_DEPLOY_KEY` | `datazen-ci-superset` 私钥全文 |
+| `WINDOWS_CERTIFICATE` | （若已有）从原 Repository secret 迁过来 |
+| `WINDOWS_CERTIFICATE_PASSWORD` | （若已有）一并迁入 |
+
+迁完后可删除仓库级同名 Secrets，避免双份、范围过大。
+
+## 3. Workflow 行为摘要
+
+`.github/workflows/release.yml`：
+
+- `environment: release` — 仅批准后才拿到上述 Secrets
+- `permissions: {}` 顶层 + job 内 `contents: write`（仅用于 draft Release）
+- `matrix.plugins != 'none'` 时：`webfactory/ssh-agent` 加载两把私钥，并用  
+  `url."git@github.com:".insteadOf "https://github.com/"`  
+  让 `plugins-registry.json` 里的 HTTPS URL 走 SSH
+
+公钥出现在文档或插件仓 Deploy keys 页面**不会**让外人 clone 私有仓；只有私钥可以。
+
+## 4. 本地 Pro 构建
+
+Deploy Key 仅供 CI。本地需要：
+
+- 被加为 kiwi / superset 私有仓 collaborator，或
+- 使用自己的 SSH key / HTTPS 凭据
+
+```bash
+pnpm tauri:build --plugins=kiwi,superset
+# 或
+DATAZEN_PLUGINS=kiwi,superset pnpm tauri:build
+```
+
+## 5. 仓库侧建议（可选但推荐）
+
+- `main` 开启 branch protection + PR review
+- `CODEOWNERS` 要求 `.github/workflows/` 由维护者审
+- Settings → Actions → Fork PR workflows：**Require approval for first-time contributors**
+- Settings → Actions → Workflow permissions：默认 **Read repository contents**

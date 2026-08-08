@@ -6,6 +6,11 @@ on:
   push:
     branches: [main]
 
+# Least privilege: unit tests only need to read the repo. Do not attach
+# plugin Deploy Key secrets here (forks / PRs must never see them).
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
