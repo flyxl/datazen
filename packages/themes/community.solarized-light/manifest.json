@@ -1,0 +1,9 @@
+{
+  "id": "community.solarized-light",
+  "name": "Solarized Light",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "modes": ["light"],
+  "author": "DataZen Community",
+  "description": "Solarized Light — warm paper base with carefully balanced accents"
+}
