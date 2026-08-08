@@ -1,0 +1,18 @@
+[package]
+name = "datazen-driver-sqlserver"
+version = "0.0.8"
+edition = "2021"
+description = "DataZen sqlserver database driver"
+license = "GPL-3.0-or-later"
+
+[dependencies]
+datazen-driver-api = { path = "../../driver-api" }
+datazen-driver-http-support = { path = "../http-support" }
+async-trait = "0.1"
+tokio = { version = "1", features = ["full"] }
+tiberius = { version = "0.12", default-features = false, features = ["tds73", "chrono", "rust_decimal", "rustls", "sql-browser-tokio"] }
+tokio-util = { version = "0.7", features = ["compat"] }
+serde_json = "1"
+tracing = "0.1"
+uuid = { version = "1", features = ["v4"] }
+futures-util = "0.3"

@@ -43,7 +43,7 @@
 - `src-tauri/src/db/http_support.rs`：HTTP 驱动共享的客户端构建（超时、Basic 认证走 default headers）、URL 拼接、JSON→Value 转换。
 - `src-tauri/src/db/registry.rs`：`BUILTIN_TYPES` 扩到 22 个；`register_builtin_or_plugin` 增加各类型分支。
 - 每个驱动独立模块，实现 `DatabaseDriver` trait（connect / test / schema / query / execute 等）。
-- 前端：`src/types/index.ts` 的 `BuiltinDatabaseType` 联合类型、`src/lib/databaseTypes.ts` 的 `DB_REGISTRY` 元数据（端口、表单、方言、能力）、`src/lib/sqlDialects/extra.ts` 新增 6 个方言族（sqlserver / clickhouse / duckdb / elasticsearch / mongodb / generic）。
+- 前端：`src/types/index.ts` 的 `DatabaseType` 联合类型、`packages/drivers/*/ui/meta.ts` + `generated.ts` 的 `DRIVER_DB_ENTRIES` / `DB_REGISTRY` 元数据（端口、表单、方言、能力）、`src/lib/sqlDialects/extra.ts` 新增 6 个方言族（sqlserver / clickhouse / duckdb / elasticsearch / mongodb / generic）。
 
 ### 2.3 各驱动查询/浏览能力说明
 

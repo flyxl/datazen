@@ -20,18 +20,6 @@ datazen-ai-api = { path = "../packages/ai-api" }
 inventory = "0.3"
 tauri = { version = "2", features = ["macos-private-api"] }
 tokio = { version = "1", features = ["full"] }
-sqlx = { version = "0.7", features = [
-    "runtime-tokio",
-    "tls-rustls",
-    "postgres",
-    "mysql",
-    "sqlite",
-    "chrono",
-    "json",
-    "rust_decimal",
-    "uuid",
-] }
-rust_decimal = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 aes-gcm = "0.10"
@@ -57,12 +45,8 @@ flate2 = "1.1.9"
 russh = "0.60"
 reqwest = { version = "0.13.3", features = ["json", "cookies", "stream", "query", "form"] }
 futures-util = "0.3"
-redis = { version = "0.27", features = ["tokio-comp", "aio"] }
-mongodb = "3"
-tiberius = { version = "0.12", default-features = false, features = ["tds73", "chrono", "rust_decimal", "rustls", "sql-browser-tokio"] }
-duckdb = { version = "1", features = ["bundled"] }
 
-# Plugin crates — injected by resolve-plugins.mjs at build time; do NOT add manually.
+# Driver crates — injected by resolve-drivers.mjs at build time; do NOT add manually.
 # <<plugin-dependencies>>
 # <</plugin-dependencies>>
 rmcp = { version = "2.2.0", features = ["server", "client", "transport-io", "transport-child-process", "transport-streamable-http-server", "macros", "schemars"] }
@@ -77,7 +61,7 @@ zip = { version = "2", default-features = false, features = ["deflate"] }
 [features]
 default = []
 webdriver = ["tauri-plugin-webdriver"]
-# Plugin features — injected by resolve-plugins.mjs at build time; do NOT add manually.
+# Driver features — injected by resolve-drivers.mjs at build time; do NOT add manually.
 # <<plugin-features>>
 # <</plugin-features>>
 

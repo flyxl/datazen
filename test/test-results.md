@@ -17,7 +17,7 @@
 
 | 项目 | 配置 |
 |------|------|
-| **构建模式** | `pnpm tauri:dev --plugins=kiwi`（开发模式） |
+| **构建模式** | `pnpm tauri:dev --drivers=kiwi`（开发模式） |
 | **桌面自动化** | computer-use-mcp（macOS AX 辅助功能 + 截图 + 坐标点击） |
 | **PostgreSQL** | 127.0.0.1:5432, 用户: goecoride, 数据库: goecoride (128 张表) |
 | **MySQL** | 127.0.0.1:3306, 用户: root, 数据库: datazen_test, 版本: 9.3.0 |

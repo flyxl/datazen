@@ -25,15 +25,15 @@ const DIST_INDEX = path.join(ROOT, 'dist', 'index.html');
 
 const args = process.argv.slice(2);
 const skipBuild = args.includes('--skip-build');
-const minimalPlugins =
-  process.env.DATAZEN_PLUGINS === 'none' || args.includes('--minimal-plugins');
-const BUILD_CMD = minimalPlugins
-  ? 'node scripts/generate-menu-labels.mjs && node scripts/resolve-plugins.mjs --plugins=none && pnpm tauri build --debug --features webdriver'
+const minimalDrivers =
+  process.env.DATAZEN_DRIVERS === 'basic' || args.includes('--minimal-drivers');
+const BUILD_CMD = minimalDrivers
+  ? 'node scripts/generate-menu-labels.mjs && node scripts/resolve-drivers.mjs --drivers=basic && pnpm tauri build --debug --features webdriver'
   : 'pnpm tauri build --debug --features webdriver';
 const wdioArgs = [];
 {
   const filtered = args.filter(
-    (a) => a !== '--skip-build' && a !== '--minimal-plugins' && a !== '--',
+    (a) => a !== '--skip-build' && a !== '--minimal-drivers' && a !== '--minimal-plugins' && a !== '--',
   );
   for (let i = 0; i < filtered.length; i++) {
     if (filtered[i] === '--spec' && filtered[i + 1]) {
@@ -132,13 +132,13 @@ function assertBinaryReady(binaryPath) {
 // Step 1: Build
 if (!skipBuild) {
   log(`Building app with webdriver feature via Tauri CLI...`);
-  if (minimalPlugins) {
-    log('Using minimal plugin set (DATAZEN_PLUGINS=none / --minimal-plugins).');
+  if (minimalDrivers) {
+    log('Using basic driver set (DATAZEN_DRIVERS=basic / --minimal-drivers).');
   }
   log(`Command: ${BUILD_CMD}`);
   try {
-    const buildCmd = minimalPlugins
-      ? 'node scripts/with-plugin-inject.mjs --plugins=none -- tauri build --debug --features webdriver'
+    const buildCmd = minimalDrivers
+      ? 'node scripts/with-plugin-inject.mjs --drivers=basic -- tauri build --debug --features webdriver'
       : BUILD_CMD;
     execSync(buildCmd, {
       stdio: 'inherit',
