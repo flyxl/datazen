@@ -52,6 +52,30 @@ impl SqlServerDriver {
         Ok(format!("USE [{}]", trimmed.replace(']', "]]")))
     }
 
+    fn build_table_schema_sql(table: &str) -> String {
+        let escaped = table.replace('\'', "''");
+        format!(
+            "SELECT c.name AS column_name, t.name AS data_type, c.is_nullable, c.is_identity, \
+             dc.definition AS default_value, CAST(ep.value AS nvarchar(max)) AS comment, \
+             CAST(CASE WHEN pk.column_id IS NULL THEN 0 ELSE 1 END AS bit) AS is_pk \
+             FROM sys.columns c \
+             JOIN sys.types t ON c.user_type_id = t.user_type_id \
+             LEFT JOIN sys.default_constraints dc ON c.default_object_id = dc.object_id \
+             LEFT JOIN sys.extended_properties ep ON ep.major_id = c.object_id AND ep.minor_id = c.column_id AND ep.name = 'MS_Description' \
+             LEFT JOIN ( \
+               SELECT ic.object_id, ic.column_id \
+               FROM sys.index_columns ic \
+               INNER JOIN sys.indexes i ON ic.object_id = i.object_id AND ic.index_id = i.index_id \
+               WHERE i.is_primary_key = 1 \
+             ) pk ON pk.object_id = c.object_id AND pk.column_id = c.column_id \
+             WHERE c.object_id = OBJECT_ID('{escaped}') ORDER BY c.column_id"
+        )
+    }
+
+    fn bit_true(v: &Option<Value>) -> bool {
+        matches!(v, Some(Value::Bool(true)) | Some(Value::Integer(1)))
+    }
+
     fn build_config(config: &ConnectionConfig) -> Result<Config, DriverError> {
         let mut cfg = Config::new();
         cfg.host(
@@ -282,21 +306,13 @@ impl DatabaseDriver for SqlServerDriver {
         let client = map
             .get_mut(&handle.pool_id)
             .ok_or_else(|| DriverError::ConnectionFailed("Connection pool not found".into()))?;
-        let escaped = table.replace('\'', "''");
-        let sql = format!(
-            "SELECT c.name AS column_name, t.name AS data_type, c.is_nullable, c.is_identity, \
-             dc.definition AS default_value, CAST(ep.value AS nvarchar(max)) AS comment \
-             FROM sys.columns c \
-             JOIN sys.types t ON c.user_type_id = t.user_type_id \
-             LEFT JOIN sys.default_constraints dc ON c.default_object_id = dc.object_id \
-             LEFT JOIN sys.extended_properties ep ON ep.major_id = c.object_id AND ep.minor_id = c.column_id AND ep.name = 'MS_Description' \
-             WHERE c.object_id = OBJECT_ID('{escaped}') ORDER BY c.column_id"
-        );
+        let sql = Self::build_table_schema_sql(table);
         let result = Self::run(client, &sql).await?;
-        let columns = result
+        let columns: Vec<ColumnSchema> = result
             .rows
             .into_iter()
             .filter_map(|r| {
+                let is_pk = Self::bit_true(&r.get(6).cloned().flatten());
                 Some(ColumnSchema {
                     name: r
                         .get(0)
@@ -313,7 +329,7 @@ impl DatabaseDriver for SqlServerDriver {
                         .get(2)
                         .cloned()
                         .flatten()
-                        .map(|v| matches!(v, Value::Bool(true)))
+                        .map(|v| Self::bit_true(&Some(v)))
                         .unwrap_or(true),
                     default_value: r
                         .get(4)
@@ -325,20 +341,20 @@ impl DatabaseDriver for SqlServerDriver {
                         .cloned()
                         .flatten()
                         .map(|v| super::http_support::value_display(&v)),
-                    is_primary_key: false,
-                    is_auto_increment: r
-                        .get(3)
-                        .cloned()
-                        .flatten()
-                        .map(|v| matches!(v, Value::Bool(true)))
-                        .unwrap_or(false),
+                    is_primary_key: is_pk,
+                    is_auto_increment: Self::bit_true(&r.get(3).cloned().flatten()),
                 })
             })
+            .collect();
+        let primary_keys: Vec<String> = columns
+            .iter()
+            .filter(|c| c.is_primary_key)
+            .map(|c| c.name.clone())
             .collect();
         Ok(TableSchema {
             table_name: table.to_string(),
             columns,
-            primary_keys: Vec::new(),
+            primary_keys,
             indexes: Vec::new(),
             foreign_keys: Vec::new(),
         })
@@ -425,7 +441,29 @@ impl DatabaseDriver for SqlServerDriver {
     }
 
     fn supports_explain(&self) -> bool {
-        false
+        true
+    }
+
+    async fn explain(
+        &self,
+        handle: &ConnectionHandle,
+        sql: &str,
+    ) -> Result<ExplainResult, DriverError> {
+        let mut map = self.clients.write().await;
+        let client = map
+            .get_mut(&handle.pool_id)
+            .ok_or_else(|| DriverError::ConnectionFailed("Connection pool not found".into()))?;
+        // SHOWPLAN_TEXT returns the plan without executing; always clear session flag.
+        let enable = Self::run(client, "SET SHOWPLAN_TEXT ON").await;
+        if let Err(e) = enable {
+            let _ = Self::run(client, "SET SHOWPLAN_TEXT OFF").await;
+            return Err(e);
+        }
+        let plan = Self::run(client, sql).await;
+        let disable = Self::run(client, "SET SHOWPLAN_TEXT OFF").await;
+        let result = plan?;
+        disable?;
+        Ok(super::http_support::explain_result_from_query(result))
     }
 
     async fn use_database(
@@ -483,5 +521,13 @@ mod tests {
         );
         assert!(SqlServerDriver::build_use_database_sql("  ").is_err());
         assert!(SqlServerDriver::build_use_database_sql("bad\0name").is_err());
+    }
+
+    #[test]
+    fn build_table_schema_sql_includes_primary_key_join() {
+        let sql = SqlServerDriver::build_table_schema_sql("dbo.users");
+        assert!(sql.contains("is_primary_key = 1"));
+        assert!(sql.contains("OBJECT_ID('dbo.users')"));
+        assert!(sql.contains("is_pk"));
     }
 }

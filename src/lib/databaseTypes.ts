@@ -174,7 +174,7 @@ const BUILTIN_DB_REGISTRY: Record<string, DatabaseTypeMeta> = {
     sqlDialect: 'sqlserver',
     databaseFieldType: 'name',
     connectionForm: 'standard',
-    supportsExplain: false,
+    supportsExplain: true,
     hasMultiDatabase: true,
   },
   clickhouse: {
