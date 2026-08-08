@@ -162,19 +162,23 @@ tokens.css          # 含 @font-face 与 --font-sans / --font-mono / --font-edit
 ## Host 架构
 
 ```
-商店下载
+设置页 ThemePackSection / 文件对话框
+    → install_theme_pack_with_dialog（本地 ZIP）
     → 校验 zip（大小、扩展名白名单、无路径穿越、无 .js/.wasm）
     → 解压到 {appData}/themes/{id}/
-ThemeService
-    → listInstalled() / enable(id) / disable()
-    → apply(mode × pack)：
-         从 tokens.css（及 fonts.css）注入 <style id="datazen-theme-pack">
-         向 IconResolver 注册图标映射（SVG / WebP / PNG）
-         若存在则重配 CodeMirror + 图表色板
-Settings
-    → mode: light | dark | system  （已有）
-    → packId: string | null        （新增；null = 内置默认）
+Rust commands/theme.rs
+    → list_theme_packs / remove_theme_pack / read_theme_pack_file
+前端 themePackApply.ts + settingsStore
+    → applyTheme(mode × packId)：
+         toggle .dark（mode: light | dark | system）
+         read_theme_pack_file → 注入 <style id="datazen-theme-pack">
+         注册 pack 图标 blob URL + fonts.css @font-face
+         可选 editor.json / charts.json overlay
+    → settings.theme: { mode, packId }（packId null = 内置默认）
+    → updateSettings 持久化；applyThemeLocally 跨窗口同步 mode
     → editorFontFamily 等用户字体设置优先于主题
+
+后续：商店浏览 / CDN 下载 / 更新 / 签名
 ```
 
 ### 与驱动插件的独立性
