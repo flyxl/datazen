@@ -30,6 +30,15 @@ export default {
         accent: {
           DEFAULT: 'var(--c-accent)',
         },
+        success: {
+          DEFAULT: 'var(--c-success)',
+        },
+        warning: {
+          DEFAULT: 'var(--c-warning)',
+        },
+        danger: {
+          DEFAULT: 'var(--c-danger)',
+        },
       },
     },
   },

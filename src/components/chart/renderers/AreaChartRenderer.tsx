@@ -18,31 +18,31 @@ export function AreaChartRenderer({ data, config, onDataPointClick }: AreaChartR
     } : undefined}>
       <CartesianGrid
         strokeDasharray="3 3"
-        stroke="var(--border-edge, #333)"
+        stroke="var(--c-edge, #333)"
         opacity={config.showGrid ? 0.3 : 0}
       />
       <XAxis
         dataKey={config.xAxis ?? '__index'}
-        tick={{ fontSize: 12, fill: 'var(--text-secondary, #999)' }}
-        stroke="var(--border-edge, #333)"
+        tick={{ fontSize: 12, fill: 'var(--c-fg-secondary, #999)' }}
+        stroke="var(--c-edge, #333)"
         tickFormatter={formatAxisTick}
       />
       <YAxis
-        tick={{ fontSize: 12, fill: 'var(--text-secondary, #999)' }}
-        stroke="var(--border-edge, #333)"
+        tick={{ fontSize: 12, fill: 'var(--c-fg-secondary, #999)' }}
+        stroke="var(--c-edge, #333)"
         tickFormatter={(v: number) => formatNumber(v)}
       />
       <Tooltip
         contentStyle={{
-          background: 'var(--bg-surface, #1e1e2e)',
-          border: '1px solid var(--border-edge, #333)',
+          background: 'var(--c-surface-alt, #1e1e2e)',
+          border: '1px solid var(--c-edge, #333)',
           borderRadius: 6,
-          color: 'var(--text-primary, #eee)',
+          color: 'var(--c-fg, #eee)',
           fontSize: 12,
         }}
       />
       {config.showLegend && config.yAxes.length > 1 && (
-        <Legend wrapperStyle={{ fontSize: 12, color: 'var(--text-primary, #eee)' }} />
+        <Legend wrapperStyle={{ fontSize: 12, color: 'var(--c-fg, #eee)' }} />
       )}
       {config.yAxes.map((yKey, i) => (
         <Area

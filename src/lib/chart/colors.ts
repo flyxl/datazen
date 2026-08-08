@@ -1,3 +1,4 @@
+/** Series colors remain fixed hex values; chart chrome uses --c-* CSS variables. */
 export const COLOR_PALETTES: Record<string, string[]> = {
   default: ['#6366f1', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6', '#06b6d4', '#f97316', '#84cc16'],
   ocean:   ['#0ea5e9', '#0284c7', '#0369a1', '#075985', '#0c4a6e', '#164e63', '#155e75', '#0e7490'],
@@ -8,4 +9,14 @@ export const COLOR_PALETTES: Record<string, string[]> = {
 
 export function getColorPalette(name: string): string[] {
   return COLOR_PALETTES[name] ?? COLOR_PALETTES.default;
+}
+
+/** Read a CSS custom property from :root, with fallback when unset or empty. */
+export function readCssColor(
+  varName: string,
+  fallback: string,
+  el: Element = document.documentElement,
+): string {
+  const value = getComputedStyle(el).getPropertyValue(varName).trim();
+  return value || fallback;
 }
