@@ -12,10 +12,34 @@ use tokio::sync::RwLock;
 use super::mysql::MysqlDriver;
 use super::postgres::PostgresDriver;
 use super::redis_driver::RedisDriver;
+use super::reuse::ReuseDriver;
 use super::sqlite::SqliteDriver;
 
 /// Built-in database types that ship with the host binary.
-const BUILTIN_TYPES: &[&str] = &["postgresql", "mysql", "mariadb", "sqlite", "redis"];
+const BUILTIN_TYPES: &[&str] = &[
+    "postgresql",
+    "mysql",
+    "mariadb",
+    "sqlite",
+    "redis",
+    "mongodb",
+    "sqlserver",
+    "clickhouse",
+    "duckdb",
+    "elasticsearch",
+    "doris",
+    "starrocks",
+    "manticore",
+    "ob_oracle",
+    "questdb",
+    "cloudberry",
+    "rqlite",
+    "turso",
+    "influxdb",
+    "victoriametrics",
+    "hbase",
+    "vector",
+];
 
 /// Holds registered drivers. Starts empty; call [`DriverRegistry::ensure_type`]
 /// (or rely on [`DriverRegistry::get`]) to load a type on demand.
@@ -104,6 +128,90 @@ impl DriverRegistry {
                 );
                 let mut kv = self.kv_drivers.write().await;
                 kv.insert(db_type.to_string(), redis_driver as Arc<dyn KeyValueDriver>);
+            }
+            // MySQL wire-protocol compatible engines.
+            "doris" | "starrocks" | "manticore" | "ob_oracle" => {
+                let inner = Arc::new(MysqlDriver::new(false));
+                drivers.insert(
+                    db_type.to_string(),
+                    Arc::new(ReuseDriver::new(inner, db_type)) as Arc<dyn DatabaseDriver>,
+                );
+            }
+            // PostgreSQL wire-protocol compatible engines.
+            "questdb" | "cloudberry" => {
+                let inner = Arc::new(PostgresDriver::new());
+                drivers.insert(
+                    db_type.to_string(),
+                    Arc::new(ReuseDriver::new(inner, db_type)) as Arc<dyn DatabaseDriver>,
+                );
+            }
+            "mongodb" => {
+                drivers.insert(
+                    db_type.to_string(),
+                    Arc::new(super::mongodb::MongodbDriver::new()) as Arc<dyn DatabaseDriver>,
+                );
+            }
+            "sqlserver" => {
+                drivers.insert(
+                    db_type.to_string(),
+                    Arc::new(super::sqlserver::SqlServerDriver::new()) as Arc<dyn DatabaseDriver>,
+                );
+            }
+            "clickhouse" => {
+                drivers.insert(
+                    db_type.to_string(),
+                    Arc::new(super::clickhouse::ClickHouseDriver::new()) as Arc<dyn DatabaseDriver>,
+                );
+            }
+            "duckdb" => {
+                drivers.insert(
+                    db_type.to_string(),
+                    Arc::new(super::duckdb::DuckDbDriver::new()) as Arc<dyn DatabaseDriver>,
+                );
+            }
+            "elasticsearch" => {
+                drivers.insert(
+                    db_type.to_string(),
+                    Arc::new(super::elasticsearch::ElasticsearchDriver::new())
+                        as Arc<dyn DatabaseDriver>,
+                );
+            }
+            "rqlite" => {
+                drivers.insert(
+                    db_type.to_string(),
+                    Arc::new(super::rqlite::RqliteDriver::new()) as Arc<dyn DatabaseDriver>,
+                );
+            }
+            "turso" => {
+                drivers.insert(
+                    db_type.to_string(),
+                    Arc::new(super::turso::TursoDriver::new()) as Arc<dyn DatabaseDriver>,
+                );
+            }
+            "influxdb" => {
+                drivers.insert(
+                    db_type.to_string(),
+                    Arc::new(super::influxdb::InfluxDbDriver::new()) as Arc<dyn DatabaseDriver>,
+                );
+            }
+            "victoriametrics" => {
+                drivers.insert(
+                    db_type.to_string(),
+                    Arc::new(super::victoriametrics::VictoriaMetricsDriver::new())
+                        as Arc<dyn DatabaseDriver>,
+                );
+            }
+            "hbase" => {
+                drivers.insert(
+                    db_type.to_string(),
+                    Arc::new(super::hbase::HBaseDriver::new()) as Arc<dyn DatabaseDriver>,
+                );
+            }
+            "vector" => {
+                drivers.insert(
+                    db_type.to_string(),
+                    Arc::new(super::vector::VectorDriver::new()) as Arc<dyn DatabaseDriver>,
+                );
             }
             other => {
                 self.register_plugin(other, drivers).await?;
