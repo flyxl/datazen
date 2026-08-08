@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { cn } from '../lib/cn';
 import { getDbIcon } from '../lib/databaseTypes';
 import { getActiveIconResolver, type IconResolver } from '../lib/iconResolver';
@@ -23,6 +24,13 @@ export function DbTypeBadge({
   size = 24,
   resolver,
 }: DbTypeBadgeProps) {
+  const [, bump] = useState(0);
+  useEffect(() => {
+    const onPackChanged = () => bump((n) => n + 1);
+    document.addEventListener('datazen:theme-pack-changed', onPackChanged);
+    return () => document.removeEventListener('datazen:theme-pack-changed', onPackChanged);
+  }, []);
+
   const resolved = (resolver ?? getActiveIconResolver()).resolve(`db.${databaseType}`);
   const dimensionStyle = { width: size, height: size };
 

@@ -90,7 +90,7 @@ async function readPackFile(packId: string, relativePath: string): Promise<numbe
   }
 }
 
-async function rewriteFontUrls(css: string, packId: string): Promise<string> {
+export async function rewriteFontUrls(css: string, packId: string): Promise<string> {
   const replacements: { start: number; end: number; url: string }[] = [];
   let match: RegExpExecArray | null;
   const re = new RegExp(FONT_URL_RE.source, 'gi');
@@ -216,8 +216,12 @@ export async function applyThemePack(packId: string | null): Promise<void> {
 
     const editorBytes = await readPackFile(packId, 'editor.json');
     if (editorBytes) {
-      const overlay = parsePackEditorOverlay(JSON.parse(decodeUtf8(editorBytes)) as unknown);
-      setPackEditorColorOverlay(overlay);
+      try {
+        const overlay = parsePackEditorOverlay(JSON.parse(decodeUtf8(editorBytes)) as unknown);
+        setPackEditorColorOverlay(overlay);
+      } catch (err) {
+        console.warn('[theme] failed to parse editor.json', err);
+      }
     }
 
     const chartsBytes = await readPackFile(packId, 'charts.json');
