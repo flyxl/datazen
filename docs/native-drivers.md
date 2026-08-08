@@ -66,7 +66,7 @@
 1. **冒烟/集成测试**：DuckDB 已有进程内冒烟（query/explain/PK）；MongoDB / SQL Server / ClickHouse 仍需真实实例。
 2. **事务**：HTTP 类驱动无事务；SQL Server 驱动也**未接通** `begin_transaction/commit/rollback`（tiberius 单连接，留待后续）。
 3. **EXPLAIN**：ClickHouse / DuckDB / RQLite / Turso / SQL Server（`SHOWPLAN_TEXT`）已接通。
-4. **MongoDB 没有专属 document 视图**：前端目前只有 `sql` / `keyvalue` 两种 connectionView，MongoDB 暂用 SQL 视图 + JSON 命令，交互不如原生 document 浏览器。
+4. **MongoDB document 视图**：已新增 `connectionView: 'document'`（集合浏览 + filter + JSON 命令 Tab）；尚无内联编辑 / aggregation builder / NL2Mongo。
 5. **Schema 浏览精度**：
    - Elasticsearch mapping 只解析顶层字段；
    - InfluxDB / VictoriaMetrics / HBase / Vector 的"表结构"是简化视图（DDL 无意义，返回空）；
@@ -86,7 +86,7 @@
 
 1. 为 MongoDB / SQL Server / ClickHouse 补真实实例冒烟（DuckDB 已有）。
 2. 实现 SQL Server 事务。
-3. MongoDB document 视图（前端新增 `connectionView: 'document'`）。
+3. MongoDB document 视图增强（内联编辑 / aggregation builder / NL2Mongo）。
 4. 抽公共 HTTP 驱动基类，消除样板。
 5. 评估把重依赖拆成可选 feature，控制包体。
-6. 推送分支并开 PR（已 rebase main；本地 `cargo test --lib` 282 / vitest 通过）。
+6. 推送分支并开 PR（已 rebase main；本地 `cargo test --lib` 285 / vitest 通过）。

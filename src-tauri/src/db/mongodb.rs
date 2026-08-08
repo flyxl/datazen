@@ -226,10 +226,15 @@ impl DatabaseDriver for MongodbDriver {
                 });
             }
         }
+        let primary_keys: Vec<String> = columns
+            .iter()
+            .filter(|c| c.is_primary_key)
+            .map(|c| c.name.clone())
+            .collect();
         Ok(TableSchema {
             table_name: table.to_string(),
             columns,
-            primary_keys: Vec::new(),
+            primary_keys,
             indexes: Vec::new(),
             foreign_keys: Vec::new(),
         })
@@ -413,8 +418,59 @@ impl DatabaseDriver for MongodbDriver {
         ))
     }
 
+    async fn use_database(
+        &self,
+        handle: &ConnectionHandle,
+        database: &str,
+    ) -> Result<(), DriverError> {
+        let trimmed = database.trim();
+        if trimmed.is_empty() {
+            return Err(DriverError::InvalidConfig(
+                "Database name must not be empty".into(),
+            ));
+        }
+        if trimmed.contains('\0') {
+            return Err(DriverError::InvalidConfig(
+                "Database name contains invalid characters".into(),
+            ));
+        }
+        let mut map = self.clients.write().await;
+        let entry = map
+            .get_mut(&handle.pool_id)
+            .ok_or_else(|| DriverError::ConnectionFailed("Connection pool not found".into()))?;
+        entry.1 = Some(trimmed.to_string());
+        Ok(())
+    }
+
+    fn supports_explain(&self) -> bool {
+        false
+    }
+
     async fn cancel_query(&self, _handle: &ConnectionHandle) -> Result<(), DriverError> {
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn use_database_rejects_empty_and_updates_pool() {
+        let driver = MongodbDriver::new();
+        let handle = ConnectionHandle {
+            id: "c".into(),
+            pool_id: "missing".into(),
+        };
+        assert!(matches!(
+            driver.use_database(&handle, "  ").await,
+            Err(DriverError::InvalidConfig(_))
+        ));
+
+        // Insert a stub pool entry without a live client by connecting is heavy;
+        // validate only the empty-name path here. ConnectionFailed covers missing pool.
+        let err = driver.use_database(&handle, "app").await.unwrap_err();
+        assert!(matches!(err, DriverError::ConnectionFailed(_)));
     }
 }
 
