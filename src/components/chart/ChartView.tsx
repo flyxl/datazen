@@ -49,6 +49,13 @@ export function ChartView({ result, onDataPointClick, savedConfig, onConfigChang
   const fields = useMemo(() => inferAllFields(result), [result]);
   const recommendation = useMemo(() => recommendChart(fields, result.rows.length), [fields, result.rows.length]);
   const [expanded, setExpanded] = useState(false);
+  const [paletteEpoch, setPaletteEpoch] = useState(0);
+
+  useEffect(() => {
+    const onPackChanged = () => setPaletteEpoch((n) => n + 1);
+    document.addEventListener('datazen:theme-pack-changed', onPackChanged);
+    return () => document.removeEventListener('datazen:theme-pack-changed', onPackChanged);
+  }, []);
 
   const [config, setConfigState] = useState<ChartConfig>(() =>
     savedConfig ?? (recommendation ? recommendationToConfig(recommendation) : defaultConfig(fields)),
@@ -103,13 +110,14 @@ export function ChartView({ result, onDataPointClick, savedConfig, onConfigChang
           {showEmptyCanvas ? (
             <ChartEmptyState reason="noConfig" />
           ) : (
-            <ChartCanvas data={data} config={renderConfig} onDataPointClick={onDataPointClick} />
+            <ChartCanvas key={paletteEpoch} data={data} config={renderConfig} onDataPointClick={onDataPointClick} />
           )}
         </div>
       </div>
 
       {expanded && createPortal(
         <ChartExpandOverlay
+          paletteEpoch={paletteEpoch}
           data={data}
           config={config}
           renderConfig={renderConfig}
@@ -127,6 +135,7 @@ export function ChartView({ result, onDataPointClick, savedConfig, onConfigChang
 }
 
 function ChartExpandOverlay({
+  paletteEpoch,
   data,
   config,
   renderConfig,
@@ -137,6 +146,7 @@ function ChartExpandOverlay({
   onConfigChange,
   onClose,
 }: {
+  paletteEpoch: number;
   data: ReturnType<typeof transformData>['data'];
   config: ChartConfig;
   renderConfig: ChartConfig;
@@ -203,7 +213,7 @@ function ChartExpandOverlay({
           recommendation={recommendation}
         />
         <div ref={chartRef as React.RefObject<HTMLDivElement>} className="relative flex-1 min-h-0">
-          <ChartCanvas data={data} config={renderConfig} />
+          <ChartCanvas key={paletteEpoch} data={data} config={renderConfig} />
         </div>
       </div>
     </div>

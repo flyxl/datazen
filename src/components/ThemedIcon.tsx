@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import {
   Bot,
@@ -57,6 +58,13 @@ export interface ThemedIconProps {
 }
 
 export function ThemedIcon({ id, className, resolver }: ThemedIconProps) {
+  const [, bump] = useState(0);
+  useEffect(() => {
+    const onPackChanged = () => bump((n) => n + 1);
+    document.addEventListener('datazen:theme-pack-changed', onPackChanged);
+    return () => document.removeEventListener('datazen:theme-pack-changed', onPackChanged);
+  }, []);
+
   const resolved = (resolver ?? getActiveIconResolver()).resolve(id);
 
   if (resolved.kind === 'url') {
