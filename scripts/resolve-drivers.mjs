@@ -18,7 +18,7 @@
  */
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
-import { resolve, dirname } from 'path';
+import { resolve, dirname, join, relative } from 'path';
 import { fileURLToPath } from 'url';
 import { execSync } from 'child_process';
 import {
@@ -130,6 +130,36 @@ function generateCargoFeatures(drivers, registry) {
  * - connectionForm: { component, path, formVariant } — custom connection form (optional)
  * - sqlDialects: array of { family, export, path } — SQL dialect strategies (optional)
  */
+const DRIVER_ICON_ALIASES = {
+  questdb: 'postgresql',
+  cloudberry: 'postgresql',
+  doris: 'mysql',
+  starrocks: 'mysql',
+  manticore: 'mysql',
+  ob_oracle: 'mysql',
+};
+
+function driverUiDirFromMetaPath(metaPath) {
+  // metaPath like '../../packages/drivers/postgres/ui/meta' (from src/plugins)
+  const absMetaTs = resolve(ROOT, 'src/plugins', `${metaPath}.ts`);
+  return dirname(absMetaTs);
+}
+
+function resolveDriverIconImport(metaPath, dbTypeId) {
+  const uiDir = driverUiDirFromMetaPath(metaPath);
+  const candidates = [dbTypeId, DRIVER_ICON_ALIASES[dbTypeId]].filter(Boolean);
+  for (const name of candidates) {
+    const abs = join(uiDir, 'icons', `${name}.svg`);
+    if (existsSync(abs)) {
+      // import path relative to src/plugins/generated.ts
+      const relFromPlugins = relative(resolve(ROOT, 'src/plugins'), abs).replaceAll('\\', '/');
+      const importPath = relFromPlugins.startsWith('.') ? relFromPlugins : `./${relFromPlugins}`;
+      return { abs, importPath: `${importPath}?url`, fileKey: name };
+    }
+  }
+  return null;
+}
+
 const BASIC_PATH_FRONTEND = {
   postgres: {
     dbTypes: [
@@ -254,12 +284,15 @@ const FRONTEND_DRIVER_CONFIG = {
 
 function generateFrontendRegistry(plugins) {
   const importLines = [];
+  const iconImportLines = [];
   const dbEntryLines = [];
+  const iconEntryLines = [];
   const formEntryLines = [];
   const validatorEntryLines = [];
   const dialectEntryLines = [];
   const schemaTreeEntryLines = [];
   const pluginDbTypes = [];
+  const iconImportByAbs = new Map();
 
   for (const id of plugins) {
     const cfg = FRONTEND_DRIVER_CONFIG[id];
@@ -273,6 +306,23 @@ function generateFrontendRegistry(plugins) {
     for (const dt of cfg.dbTypes) {
       pluginDbTypes.push(dt.id);
       dbEntryLines.push(`  ${dt.id}: ${dt.metaExport},`);
+
+      const resolved = resolveDriverIconImport(cfg.metaPath, dt.id);
+      if (resolved) {
+        let binding = iconImportByAbs.get(resolved.abs);
+        if (!binding) {
+          binding = `driverIcon_${resolved.fileKey.replace(/[^a-zA-Z0-9]/g, '_')}`;
+          let n = binding;
+          let i = 2;
+          while ([...iconImportByAbs.values()].includes(n)) {
+            n = `${binding}_${i++}`;
+          }
+          binding = n;
+          iconImportByAbs.set(resolved.abs, binding);
+          iconImportLines.push(`import ${binding} from '${resolved.importPath}';`);
+        }
+        iconEntryLines.push(`  'db.${dt.id}': ${binding},`);
+      }
     }
 
     // Connection form
@@ -334,7 +384,7 @@ function generateFrontendRegistry(plugins) {
  * This file registers frontend components and metadata for active plugins.
  * Regenerated every time the build runs with different --drivers args.
  */
-${importLines.length > 0 ? importLines.join('\n') + '\n' : ''}import { invoke } from '@tauri-apps/api/core';
+${importLines.length > 0 ? importLines.join('\n') + '\n' : ''}${iconImportLines.length > 0 ? iconImportLines.join('\n') + '\n' : ''}import { invoke } from '@tauri-apps/api/core';
 import type { DatabaseTypeMeta } from '@datazen/plugin-sdk';
 import type { SqlDialectStrategy } from '@datazen/plugin-sdk';
 import type { PluginFormValidator } from '@datazen/plugin-sdk';
@@ -353,6 +403,11 @@ export type DatabaseType = ${typeUnion};
 /** Driver DB metadata entries (merged into DB_REGISTRY at runtime). */
 export const DRIVER_DB_ENTRIES: Record<string, DatabaseTypeMeta> = {
 ${dbEntryLines.join('\n')}
+};
+
+/** Default driver badge icon URLs keyed by semantic id (\`db.<type>\`). */
+export const DRIVER_ICON_ENTRIES: Record<string, string> = {
+${iconEntryLines.join('\n')}
 };
 
 /** @deprecated Use DatabaseType */
