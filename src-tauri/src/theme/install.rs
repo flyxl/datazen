@@ -9,8 +9,8 @@ use zip::write::SimpleFileOptions;
 use zip::CompressionMethod;
 
 use super::validate::{
-    validate_pack_dir, validate_theme_zip_path, ThemeManifest, MAX_THEME_FILES,
-    MAX_THEME_UNCOMPRESSED,
+    allowed_theme_extension, validate_pack_contents, validate_pack_dir, validate_theme_zip_path,
+    ThemeManifest, MAX_THEME_FILES, MAX_THEME_UNCOMPRESSED,
 };
 use crate::app_data_archive::{self, MAX_COMPRESSION_RATIO};
 
@@ -19,9 +19,10 @@ pub fn install_theme_zip(zip_path: &Path, themes_root: &Path) -> Result<ThemeMan
 
     let result = (|| -> Result<ThemeManifest, String> {
         extract_theme_zip(zip_path, &staging)?;
-        let manifest = validate_pack_dir(&staging)?;
+        let manifest = validate_pack_contents(&staging)?;
         let dest = themes_root.join(&manifest.id);
         atomic_replace_dir(&dest, &staging)?;
+        validate_pack_dir(&dest)?;
         Ok(manifest)
     })();
 
@@ -147,6 +148,7 @@ fn extract_theme_zip_with_limits(
 
         let is_dir = entry_name.ends_with('/') || entry.is_dir();
         if !is_dir {
+            reject_forbidden_zip_extension(&entry_name)?;
             let uncompressed = entry.size();
             let compressed = entry.compressed_size();
             check_compression_ratio(
@@ -187,6 +189,7 @@ fn extract_theme_zip_with_limits(
         if entry_name.ends_with('/') {
             fs::create_dir_all(&out_path).map_err(|e| e.to_string())?;
         } else {
+            reject_forbidden_zip_extension(&entry_name)?;
             if let Some(parent) = out_path.parent() {
                 fs::create_dir_all(parent).map_err(|e| e.to_string())?;
             }
@@ -202,6 +205,22 @@ fn extract_theme_zip_with_limits(
         }
     }
 
+    Ok(())
+}
+
+fn reject_forbidden_zip_extension(entry_name: &str) -> Result<(), String> {
+    let ext = Path::new(entry_name)
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(str::to_ascii_lowercase)
+        .unwrap_or_default();
+
+    if ext.is_empty() {
+        return Err(format!("file without extension: {entry_name}"));
+    }
+    if !allowed_theme_extension(&ext) {
+        return Err(format!("forbidden extension .{ext}: {entry_name}"));
+    }
     Ok(())
 }
 
@@ -321,5 +340,24 @@ mod tests {
         let themes_root = TempDir::new().unwrap();
         write_file(themes_root.path(), "keep.txt", "unchanged");
         assert!(install_theme_zip(&zip_path, themes_root.path()).is_err());
+    }
+
+    #[test]
+    fn extract_rejects_forbidden_extension() {
+        let tmp = TempDir::new().unwrap();
+        let zip_path = tmp.path().join("evil.zip");
+        {
+            let file = fs::File::create(&zip_path).unwrap();
+            let mut zip = ZipWriter::new(file);
+            let options =
+                SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+            zip.start_file("evil.js", options).unwrap();
+            zip.write_all(b"alert(1)").unwrap();
+            zip.finish().unwrap();
+        }
+
+        let dest = tmp.path().join("extract");
+        let err = extract_theme_zip(&zip_path, &dest).unwrap_err();
+        assert!(err.contains("forbidden extension .js"), "unexpected: {err}");
     }
 }
