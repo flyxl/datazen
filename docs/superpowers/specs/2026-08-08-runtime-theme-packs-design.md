@@ -2,7 +2,8 @@
 
 **日期：** 2026-08-08  
 **状态：** 已批准  
-**实现分支：** `feat/runtime-theme-packs`（worktree: `.worktrees/runtime-theme-packs`）
+**实现分支：** `feat/runtime-theme-packs`（worktree: `.worktrees/runtime-theme-packs`）  
+**实现计划：** [docs/superpowers/plans/2026-08-09-runtime-theme-packs.md](../plans/2026-08-09-runtime-theme-packs.md)（阶段 1–2：Host 加固 + 本地包；商店另计）
 
 ## 目标
 
