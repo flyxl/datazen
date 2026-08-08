@@ -14,6 +14,7 @@ pub mod mcp;
 mod query;
 mod schema;
 mod sync;
+mod theme;
 mod window;
 
 pub use adb::*;
@@ -29,6 +30,7 @@ pub use mcp::*;
 pub use query::*;
 pub use schema::*;
 pub use sync::*;
+pub use theme::*;
 pub use window::*;
 
 use crate::ai::{AiProviderRegistry, PromptResolver, SchemaContextBuilder};
