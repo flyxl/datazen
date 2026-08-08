@@ -73,6 +73,7 @@ DATAZEN_DRIVERS=all pnpm tauri:build   # 全部 path + git 驱动打包
 - Path 驱动：`packages/drivers/*`（crate 名 `datazen-driver-<id>`），经 optional Cargo feature 注入
 - Git 驱动：克隆到 `.plugins/`，同样 inventory 注册
 - 前端 `DB_REGISTRY`：仅合并 `generated.ts` 的 `DRIVER_DB_ENTRIES`（无 Builtin 二分）
+- **默认 DB 角标**：`packages/drivers/*/ui/icons/{dbType}.svg`；`resolve-drivers.mjs` 生成 `DRIVER_ICON_ENTRIES`（`getDriverIconMap()`）
 - **关键 trait 方法**：`supports_offset()`（默认 true）、`supports_explain()`（默认 true）、`prompt_overrides()`
 
 ### AI 模块
