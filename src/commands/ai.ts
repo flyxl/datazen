@@ -77,6 +77,7 @@ export const aiCommands = {
     currentTable?: string;
     recentQueries?: string[];
     contextFiles?: string[];
+    contextTables?: string[];
   }) => invoke<string>('ai_generate_sql', params),
 
   diagnoseError: (params: {
@@ -100,6 +101,7 @@ export const aiCommands = {
     includeSchema?: boolean;
     scenario?: PromptScenario;
     contextFiles?: string[];
+    contextTables?: string[];
   }) => invoke<string>('ai_chat', params),
 
   parseFilter: (params: {
