@@ -32,7 +32,7 @@ export function MultiDatabaseSchemaTree({
   const databases = useSchemaStore((s) => s.databases);
   const currentDatabase = useSchemaStore((s) => s.currentDatabase);
   const loadForConnection = useSchemaStore((s) => s.loadForConnection);
-  const loadTables = useSchemaStore((s) => s.loadTables);
+  const setLoadedTables = useSchemaStore((s) => s.setLoadedTables);
 
   const [expandedDbs, setExpandedDbs] = useState<Set<string>>(new Set());
   const [dbTables, setDbTables] = useState<Record<string, TableInfo[]>>({});
@@ -47,6 +47,16 @@ export function MultiDatabaseSchemaTree({
     });
   }, [connectionId, loadForConnection, initialDatabase, databaseType]);
 
+  const activateDatabase = useCallback(async (dbName: string, tables: TableInfo[]) => {
+    setLoadedTables(dbName, tables);
+    try {
+      const { databaseCommands } = await import('../../../commands/database');
+      await databaseCommands.useDatabase(connectionId, dbName);
+    } catch {
+      // Selection still updates; query path may fail until user retries.
+    }
+  }, [connectionId, setLoadedTables]);
+
   const handleToggleDb = useCallback(async (dbName: string) => {
     const wasExpanded = expandedDbs.has(dbName);
     setExpandedDbs((prev) => {
@@ -56,33 +66,37 @@ export function MultiDatabaseSchemaTree({
       return next;
     });
 
-    if (!wasExpanded) {
-      useSchemaStore.setState({ currentDatabase: dbName });
-      try {
-        const { databaseCommands } = await import('../../../commands/database');
-        await databaseCommands.useDatabase(connectionId, dbName);
-      } catch {
-        // Selection still updates; query path may fail until user retries.
-      }
+    if (wasExpanded) return;
+
+    const cached = dbTables[dbName];
+    if (cached) {
+      await activateDatabase(dbName, cached);
+      return;
     }
 
-    if (!dbTables[dbName] && !dbLoading.has(dbName)) {
-      setDbLoading((prev) => new Set(prev).add(dbName));
-      try {
-        const { databaseCommands } = await import('../../../commands/database');
-        const all = await databaseCommands.getTables(connectionId, dbName);
-        setDbTables((prev) => ({ ...prev, [dbName]: all }));
-      } catch {
-        setDbTables((prev) => ({ ...prev, [dbName]: [] }));
-      } finally {
-        setDbLoading((prev) => {
-          const next = new Set(prev);
-          next.delete(dbName);
-          return next;
-        });
-      }
+    if (dbLoading.has(dbName)) {
+      useSchemaStore.setState({ currentDatabase: dbName });
+      return;
     }
-  }, [connectionId, dbTables, dbLoading, expandedDbs]);
+
+    setDbLoading((prev) => new Set(prev).add(dbName));
+    try {
+      const { databaseCommands } = await import('../../../commands/database');
+      await databaseCommands.useDatabase(connectionId, dbName);
+      const all = await databaseCommands.getTables(connectionId, dbName);
+      setDbTables((prev) => ({ ...prev, [dbName]: all }));
+      setLoadedTables(dbName, all);
+    } catch {
+      setDbTables((prev) => ({ ...prev, [dbName]: [] }));
+      setLoadedTables(dbName, []);
+    } finally {
+      setDbLoading((prev) => {
+        const next = new Set(prev);
+        next.delete(dbName);
+        return next;
+      });
+    }
+  }, [connectionId, dbTables, dbLoading, expandedDbs, activateDatabase, setLoadedTables]);
 
   const query = searchQuery.toLowerCase();
 
@@ -214,7 +228,10 @@ export function MultiDatabaseSchemaTree({
                     selectedTable === row.item.name ? 'bg-surface-raised text-fg' : 'text-fg-secondary',
                   )}
                   onClick={() => {
-                    if (currentDatabase !== row.dbName) void loadTables(row.dbName);
+                    if (currentDatabase !== row.dbName) {
+                      const cached = dbTables[row.dbName];
+                      if (cached) void activateDatabase(row.dbName, cached);
+                    }
                     onSelectTable(row.item.name, row.item.schema);
                   }}
                   onContextMenu={(e) => {
