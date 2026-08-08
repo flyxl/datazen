@@ -185,10 +185,10 @@ pnpm tauri build
 pnpm tauri:build:minimal
 
 # 指定插件
-pnpm tauri:build --plugins=kiwi,olap
+pnpm tauri:build --drivers=kiwi,olap
 ```
 
-GitHub Release 构建两个安装包：**基础版**（`DATAZEN_PLUGINS=none`，仅内置 PG/MySQL/SQLite/Redis）与 **Pro 版**（`kiwi,superset`；不含 OLAP Presto/Trino，需 `--plugins=all` 或单独加 `olap`）。
+GitHub Release 构建两个安装包：**基础版**（`DATAZEN_DRIVERS=basic`，仅 PG/MySQL/SQLite/Redis）与 **Pro 版**（含更多 path/git 驱动；全量用 `--drivers=all`）。
 
 ### 运行 E2E 测试
 
@@ -212,11 +212,11 @@ DataZen 支持两种方式添加新数据库驱动：
 
 ```bash
 # 构建时指定包含的插件
-DATAZEN_PLUGINS=kiwi,olap pnpm tauri build
+DATAZEN_DRIVERS=kiwi,olap pnpm tauri build
 
 # 或使用全部/无插件模式
-DATAZEN_PLUGINS=all pnpm tauri build
-DATAZEN_PLUGINS=none pnpm tauri build
+DATAZEN_DRIVERS=all pnpm tauri build
+DATAZEN_DRIVERS=basic pnpm tauri build
 ```
 
 ### 方式 2：作为内置驱动
@@ -249,7 +249,7 @@ datazen/
 │   ├── stores/                  # Zustand 状态管理
 │   ├── commands/                # Tauri IPC 命令封装
 │   ├── lib/                     # DB_REGISTRY, sqlDialects, connectionViews
-│   ├── plugins/generated.ts     # 自动生成的插件注册（resolve-plugins.mjs 产出）
+│   ├── plugins/generated.ts     # 自动生成的驱动注册（resolve-drivers.mjs 产出）
 │   ├── locales/                 # 国际化（中/英）
 │   └── types/                   # TypeScript 类型定义
 ├── src-tauri/                   # Rust 后端
@@ -259,8 +259,8 @@ datazen/
 │   │   └── store/               # 本地持久化
 │   └── Cargo.toml
 ├── packages/driver-api/         # 插件公共 API crate（traits + types + inventory）
-├── scripts/resolve-plugins.mjs  # 插件解析 + 代码生成
-├── plugins-registry.json        # 插件注册表（git/builtin/local）
+├── scripts/resolve-drivers.mjs  # 驱动选型 + 代码生成
+├── drivers-registry.json        # 驱动注册表（path/git/local）
 ├── .plugins/                    # 构建时克隆的插件目录（gitignored）
 ├── e2e/                         # E2E 测试
 ├── docs/                        # 文档

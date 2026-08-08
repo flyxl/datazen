@@ -1607,26 +1607,25 @@ dependencies = [
  "chrono",
  "datazen-ai-api",
  "datazen-driver-api",
+ "datazen-driver-mysql",
+ "datazen-driver-postgres",
+ "datazen-driver-redis",
+ "datazen-driver-sqlite",
  "dirs",
- "duckdb",
  "flate2",
  "futures-util",
  "inventory",
  "keyring",
- "mongodb",
  "open",
  "rand 0.8.7",
- "redis",
  "regex",
  "reqwest",
  "rmcp",
  "russh",
- "rust_decimal",
  "schemars 1.2.2",
  "serde",
  "serde_json",
  "serde_yaml",
- "sqlx",
  "sys-locale",
  "sysinfo",
  "tauri",
@@ -1636,7 +1635,6 @@ dependencies = [
  "tauri-plugin-webdriver",
  "tempfile",
  "thiserror 1.0.69",
- "tiberius",
  "tokio",
  "tokio-util",
  "tracing",
@@ -1668,6 +1666,235 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 1.0.69",
+]
+
+[[package]]
+name = "datazen-driver-clickhouse"
+version = "0.0.8"
+dependencies = [
+ "async-trait",
+ "datazen-driver-api",
+ "datazen-driver-http-support",
+ "reqwest",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "datazen-driver-duckdb"
+version = "0.0.8"
+dependencies = [
+ "async-trait",
+ "datazen-driver-api",
+ "datazen-driver-http-support",
+ "duckdb",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "datazen-driver-elasticsearch"
+version = "0.0.8"
+dependencies = [
+ "async-trait",
+ "datazen-driver-api",
+ "datazen-driver-http-support",
+ "reqwest",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "urlencoding",
+ "uuid",
+]
+
+[[package]]
+name = "datazen-driver-hbase"
+version = "0.0.8"
+dependencies = [
+ "async-trait",
+ "datazen-driver-api",
+ "datazen-driver-http-support",
+ "reqwest",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "urlencoding",
+ "uuid",
+]
+
+[[package]]
+name = "datazen-driver-http-support"
+version = "0.0.8"
+dependencies = [
+ "base64 0.22.1",
+ "datazen-driver-api",
+ "reqwest",
+ "serde_json",
+]
+
+[[package]]
+name = "datazen-driver-influxdb"
+version = "0.0.8"
+dependencies = [
+ "async-trait",
+ "datazen-driver-api",
+ "datazen-driver-http-support",
+ "reqwest",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "datazen-driver-mongodb"
+version = "0.0.8"
+dependencies = [
+ "async-trait",
+ "datazen-driver-api",
+ "futures-util",
+ "mongodb",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "datazen-driver-mysql"
+version = "0.0.8"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "datazen-driver-api",
+ "rust_decimal",
+ "serde_json",
+ "sqlx",
+ "tokio",
+ "tracing",
+ "urlencoding",
+ "uuid",
+]
+
+[[package]]
+name = "datazen-driver-postgres"
+version = "0.0.8"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "datazen-driver-api",
+ "rust_decimal",
+ "serde_json",
+ "sqlx",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "datazen-driver-redis"
+version = "0.0.8"
+dependencies = [
+ "async-trait",
+ "datazen-driver-api",
+ "redis",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "urlencoding",
+ "uuid",
+]
+
+[[package]]
+name = "datazen-driver-rqlite"
+version = "0.0.8"
+dependencies = [
+ "async-trait",
+ "datazen-driver-api",
+ "datazen-driver-http-support",
+ "reqwest",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "datazen-driver-sqlite"
+version = "0.0.8"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "datazen-driver-api",
+ "serde_json",
+ "sqlx",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "datazen-driver-sqlserver"
+version = "0.0.8"
+dependencies = [
+ "async-trait",
+ "datazen-driver-api",
+ "datazen-driver-http-support",
+ "futures-util",
+ "serde_json",
+ "tiberius",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "datazen-driver-turso"
+version = "0.0.8"
+dependencies = [
+ "async-trait",
+ "datazen-driver-api",
+ "datazen-driver-http-support",
+ "reqwest",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "datazen-driver-vector"
+version = "0.0.8"
+dependencies = [
+ "async-trait",
+ "datazen-driver-api",
+ "datazen-driver-http-support",
+ "reqwest",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "urlencoding",
+ "uuid",
+]
+
+[[package]]
+name = "datazen-driver-victoriametrics"
+version = "0.0.8"
+dependencies = [
+ "async-trait",
+ "datazen-driver-api",
+ "datazen-driver-http-support",
+ "reqwest",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "urlencoding",
+ "uuid",
 ]
 
 [[package]]

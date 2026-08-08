@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Strip resolve-plugins injection from managed files while keeping user edits.
+ * Strip resolve-drivers injection from managed files while keeping user edits.
  *
  * - Cargo.toml: empty `# <<plugin-*>>` (and legacy BEGIN/END) marker bodies
  * - capabilities: drop `kiwi:` / `olap:` / `superset:` permissions; keep windows etc.
@@ -45,7 +45,7 @@ export function emptyMarkerBlock(content, name) {
  * @param {string} tag
  */
 export function emptyBeginEndSection(content, tag) {
-  const begin = `# --- BEGIN ${tag} (managed by resolve-plugins.mjs, do not edit) ---`;
+  const begin = `# --- BEGIN ${tag} (managed by resolve-drivers.mjs, do not edit) ---`;
   const end = `# --- END ${tag} ---`;
   const re = new RegExp(
     escapeRegex(begin) + '[\\s\\S]*?' + escapeRegex(end),
@@ -74,7 +74,7 @@ export function deinjectCargoContent(content) {
 
 /**
  * Remove plugin ACL permission strings; preserve windows and other fields.
- * Layout matches resolve-plugins syncPluginCapabilities.
+ * Layout matches resolve-drivers syncPluginCapabilities.
  * @param {string} content
  * @param {string[]} [pluginIds]
  */

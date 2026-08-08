@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * with-plugin-inject.mjs — resolve-plugins once, run command, restore stash.
+ * with-plugin-inject.mjs — resolve-drivers once, run command, restore stash.
  *
  * Intended as the single inject boundary for packaging (`tauri:build`, CI).
  * `pnpm build` / beforeBuildCommand must NOT call this — they only compile the
@@ -9,7 +9,7 @@
  * Safety: if stash already exists, skip resolve/restore (nested / re-entrant).
  *
  * Usage:
- *   node scripts/with-plugin-inject.mjs [--plugins=...] -- <cmd> [args...]
+ *   node scripts/with-plugin-inject.mjs [--drivers=...] -- <cmd> [args...]
  *   node scripts/with-plugin-inject.mjs -- tauri build
  */
 
@@ -51,13 +51,23 @@ export function runWithPluginInject(options = {}) {
   const sep = argv.indexOf('--');
   const ahead = sep === -1 ? argv : argv.slice(0, sep);
   const behind = sep === -1 ? [] : argv.slice(sep + 1);
-  const pluginsArgs = ahead.filter((a) => a.startsWith('--plugins'));
-  const resolveArgs = pluginsArgs.join(' ');
+  if (
+    ahead.some((a) => a === '--plugins' || a.startsWith('--plugins=')) ||
+    process.env.DATAZEN_PLUGINS
+  ) {
+    console.error(
+      '[with-plugin-inject] --plugins / DATAZEN_PLUGINS are no longer supported. Use --drivers=... or DATAZEN_DRIVERS.',
+    );
+    process.exit(1);
+  }
+
+  const driversArgs = ahead.filter((a) => a.startsWith('--drivers'));
+  const resolveArgs = driversArgs.join(' ');
 
   const runResolve =
     options.runResolve ??
     ((args) => {
-      execSync(`node scripts/resolve-plugins.mjs ${args}`, {
+      execSync(`node scripts/resolve-drivers.mjs ${args}`, {
         cwd: root,
         stdio: 'inherit',
       });

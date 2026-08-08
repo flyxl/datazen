@@ -1,0 +1,1257 @@
+//! PostgreSQL driver backed by sqlx PgPool.
+
+use datazen_driver_api::*;
+use async_trait::async_trait;
+use rust_decimal::prelude::ToPrimitive;
+use sqlx::postgres::PgPoolOptions;
+use sqlx::{Column, PgPool, Row};
+use std::collections::HashMap;
+use std::time::{Duration, Instant};
+use tokio::sync::RwLock;
+
+const JS_MAX_SAFE_INT: i64 = 9_007_199_254_740_991;
+const JS_MIN_SAFE_INT: i64 = -9_007_199_254_740_991;
+
+pub struct PostgresDriver {
+    pools: RwLock<HashMap<String, PgPool>>,
+    /// Template connection config (host/user/pass/timeout) for reconnecting to other databases.
+    /// Postgres has no session `USE`; switching means a new pool with the target database name.
+    connect_configs: RwLock<HashMap<String, ConnectionConfig>>,
+    /// Database the handle's pool is currently connected to, keyed by pool_id.
+    active_databases: RwLock<HashMap<String, String>>,
+}
+
+impl PostgresDriver {
+    pub fn new() -> Self {
+        Self {
+            pools: RwLock::new(HashMap::new()),
+            connect_configs: RwLock::new(HashMap::new()),
+            active_databases: RwLock::new(HashMap::new()),
+        }
+    }
+
+    fn get_pool<'a>(
+        pools: &'a HashMap<String, PgPool>,
+        handle: &ConnectionHandle,
+    ) -> Result<&'a PgPool, DriverError> {
+        pools
+            .get(&handle.pool_id)
+            .ok_or_else(|| DriverError::ConnectionFailed("Connection pool not found".into()))
+    }
+
+    /// Trim and validate a database name for `use_database` / reconnect.
+    fn validate_database_name(database: &str) -> Result<String, DriverError> {
+        let trimmed = database.trim();
+        if trimmed.is_empty() {
+            return Err(DriverError::InvalidConfig(
+                "Database name must not be empty".into(),
+            ));
+        }
+        if trimmed.contains('\0') {
+            return Err(DriverError::InvalidConfig(
+                "Database name contains invalid characters".into(),
+            ));
+        }
+        Ok(trimmed.to_string())
+    }
+
+    /// Database used when connecting: config value, or default `postgres` when empty.
+    fn resolve_connect_database(config: &ConnectionConfig) -> &str {
+        config
+            .database
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .unwrap_or("postgres")
+    }
+
+    async fn open_pool(
+        opts: sqlx::postgres::PgConnectOptions,
+        timeout: Duration,
+        max_connections: u32,
+        min_connections: u32,
+    ) -> Result<PgPool, DriverError> {
+        let mut builder = PgPoolOptions::new()
+            .max_connections(max_connections)
+            .acquire_timeout(timeout);
+        if min_connections > 0 {
+            builder = builder.min_connections(min_connections);
+        }
+        builder
+            .connect_with(opts)
+            .await
+            .map_err(|e| DriverError::ConnectionFailed(e.to_string()))
+    }
+
+    async fn fetch_tables_from_pool(pool: &PgPool) -> Result<Vec<TableInfo>, DriverError> {
+        let rows = sqlx::query(
+            r#"
+            SELECT table_schema, table_name, table_type
+            FROM information_schema.tables
+            WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
+            ORDER BY table_schema, table_name
+            "#,
+        )
+        .fetch_all(pool)
+        .await
+        .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+
+        Ok(rows
+            .iter()
+            .map(|r| {
+                let tt: String = r.get("table_type");
+                TableInfo {
+                    schema: r.get("table_schema"),
+                    name: r.get("table_name"),
+                    table_type: match tt.as_str() {
+                        "VIEW" => TableType::View,
+                        _ => TableType::Table,
+                    },
+                    row_count: None,
+                }
+            })
+            .collect())
+    }
+
+    /// Open a pool for `database` using the handle's stored connect template.
+    async fn pool_for_named_database(
+        &self,
+        handle: &ConnectionHandle,
+        database: &str,
+        max_connections: u32,
+        min_connections: u32,
+    ) -> Result<PgPool, DriverError> {
+        let configs = self.connect_configs.read().await;
+        let config = configs.get(&handle.pool_id).ok_or_else(|| {
+            DriverError::ConnectionFailed("Connection pool not found".into())
+        })?;
+        let timeout = Duration::from_secs(config.connection_timeout as u64);
+        let opts = build_pg_options(config)?.database(database);
+        drop(configs);
+
+        Self::open_pool(opts, timeout, max_connections, min_connections)
+            .await
+            .map_err(|e| {
+                // Surface unknown-database as QueryFailed (parity with MySQL USE failures).
+                match e {
+                    DriverError::ConnectionFailed(msg) => DriverError::QueryFailed(format!(
+                        "Failed to connect to database `{database}`: {msg}"
+                    )),
+                    other => other,
+                }
+            })
+    }
+
+    fn safe_integer(v: i64) -> Value {
+        if v > JS_MAX_SAFE_INT || v < JS_MIN_SAFE_INT {
+            Value::String(v.to_string())
+        } else {
+            Value::Integer(v)
+        }
+    }
+
+    fn decode_rows(rows: &[sqlx::postgres::PgRow]) -> (Vec<ColumnInfo>, Vec<Vec<Option<Value>>>) {
+        let columns: Vec<ColumnInfo> = if let Some(first) = rows.first() {
+            first
+                .columns()
+                .iter()
+                .map(|c| ColumnInfo {
+                    name: c.name().to_string(),
+                    data_type: c.type_info().to_string(),
+                    nullable: true,
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
+
+        let result_rows: Vec<Vec<Option<Value>>> = rows
+            .iter()
+            .map(|row| {
+                row.columns()
+                    .iter()
+                    .enumerate()
+                    .map(|(i, col)| {
+                        let type_name = col.type_info().to_string().to_uppercase();
+                        match type_name.as_str() {
+                            "INT8" | "BIGINT" | "BIGSERIAL" => {
+                                row.try_get::<i64, _>(i).ok().map(Self::safe_integer)
+                            }
+                            "INT4" | "INT" | "INTEGER" | "SERIAL" => {
+                                row.try_get::<i32, _>(i)
+                                    .ok()
+                                    .map(|v| Value::Integer(v as i64))
+                                    .or_else(|| row.try_get::<i64, _>(i).ok().map(Self::safe_integer))
+                            }
+                            "INT2" | "SMALLINT" | "SMALLSERIAL" => {
+                                row.try_get::<i16, _>(i)
+                                    .ok()
+                                    .map(|v| Value::Integer(v as i64))
+                                    .or_else(|| row.try_get::<i32, _>(i).ok().map(|v| Value::Integer(v as i64)))
+                            }
+                            "FLOAT4" | "REAL" => {
+                                row.try_get::<f32, _>(i)
+                                    .ok()
+                                    .map(|v| Value::Float(v as f64))
+                                    .or_else(|| row.try_get::<f64, _>(i).ok().map(Value::Float))
+                            }
+                            "FLOAT8" | "DOUBLE PRECISION" => {
+                                row.try_get::<f64, _>(i).ok().map(Value::Float)
+                            }
+                            "NUMERIC" | "DECIMAL" => {
+                                row.try_get::<rust_decimal::Decimal, _>(i)
+                                    .ok()
+                                    .map(|d| {
+                                        if d.scale() == 0 {
+                                            if let Some(n) = d.to_i64() {
+                                                return Self::safe_integer(n);
+                                            }
+                                        }
+                                        d.to_f64()
+                                            .map(Value::Float)
+                                            .unwrap_or_else(|| Value::String(d.to_string()))
+                                    })
+                                    .or_else(|| row.try_get::<f64, _>(i).ok().map(Value::Float))
+                                    .or_else(|| row.try_get::<String, _>(i).ok().map(Value::String))
+                            }
+                            "BOOL" | "BOOLEAN" => {
+                                row.try_get::<bool, _>(i).ok().map(Value::Bool)
+                            }
+                            "DATE" => {
+                                row.try_get::<chrono::NaiveDate, _>(i)
+                                    .ok()
+                                    .map(|d| Value::String(d.format("%Y-%m-%d").to_string()))
+                                    .or_else(|| row.try_get::<String, _>(i).ok().map(Value::String))
+                            }
+                            "TIME" | "TIME WITHOUT TIME ZONE" => {
+                                row.try_get::<chrono::NaiveTime, _>(i)
+                                    .ok()
+                                    .map(|t| Value::String(t.format("%H:%M:%S").to_string()))
+                                    .or_else(|| row.try_get::<String, _>(i).ok().map(Value::String))
+                            }
+                            "TIMETZ" | "TIME WITH TIME ZONE" => {
+                                row.try_get::<String, _>(i).ok().map(Value::String)
+                            }
+                            "TIMESTAMP" | "TIMESTAMP WITHOUT TIME ZONE" => {
+                                row.try_get::<chrono::NaiveDateTime, _>(i)
+                                    .ok()
+                                    .map(|dt| Value::String(dt.format("%Y-%m-%d %H:%M:%S").to_string()))
+                                    .or_else(|| row.try_get::<String, _>(i).ok().map(Value::String))
+                            }
+                            "TIMESTAMPTZ" | "TIMESTAMP WITH TIME ZONE" => {
+                                row.try_get::<chrono::DateTime<chrono::Utc>, _>(i)
+                                    .ok()
+                                    .map(|dt| Value::String(dt.to_rfc3339()))
+                                    .or_else(|| {
+                                        row.try_get::<chrono::NaiveDateTime, _>(i)
+                                            .ok()
+                                            .map(|dt| Value::String(dt.format("%Y-%m-%d %H:%M:%S").to_string()))
+                                    })
+                                    .or_else(|| row.try_get::<String, _>(i).ok().map(Value::String))
+                            }
+                            "UUID" => {
+                                row.try_get::<uuid::Uuid, _>(i)
+                                    .ok()
+                                    .map(|u| Value::String(u.to_string()))
+                                    .or_else(|| row.try_get::<String, _>(i).ok().map(Value::String))
+                            }
+                            "JSON" | "JSONB" => {
+                                row.try_get::<serde_json::Value, _>(i)
+                                    .ok()
+                                    .map(Value::Json)
+                                    .or_else(|| row.try_get::<String, _>(i).ok().map(Value::String))
+                            }
+                            s @ ("INET" | "CIDR" | "MACADDR" | "MACADDR8") => {
+                                // These PG network types need ipnetwork/ipnet feature for native decode.
+                                // Fallback: read text representation via cast in a sub-query,
+                                // or simply try the generic fallback chain.
+                                row.try_get::<String, _>(i)
+                                    .ok()
+                                    .map(Value::String)
+                                    .or_else(|| {
+                                        // sqlx might not implement Decode<String> for these types,
+                                        // so we return a placeholder.
+                                        Some(Value::String(format!("<{}>", s.to_lowercase())))
+                                    })
+                            }
+                            "INTERVAL" => {
+                                row.try_get::<sqlx::postgres::types::PgInterval, _>(i)
+                                    .ok()
+                                    .map(|iv| {
+                                        let mut parts = Vec::new();
+                                        if iv.months != 0 {
+                                            let years = iv.months / 12;
+                                            let months = iv.months % 12;
+                                            if years != 0 { parts.push(format!("{} years", years)); }
+                                            if months != 0 { parts.push(format!("{} mons", months)); }
+                                        }
+                                        if iv.days != 0 { parts.push(format!("{} days", iv.days)); }
+                                        if iv.microseconds != 0 {
+                                            let total_secs = iv.microseconds / 1_000_000;
+                                            let h = total_secs / 3600;
+                                            let m = (total_secs % 3600) / 60;
+                                            let s = total_secs % 60;
+                                            parts.push(format!("{:02}:{:02}:{:02}", h, m, s));
+                                        }
+                                        Value::String(if parts.is_empty() { "00:00:00".into() } else { parts.join(" ") })
+                                    })
+                                    .or_else(|| row.try_get::<String, _>(i).ok().map(Value::String))
+                            }
+                            "BYTEA" => {
+                                row.try_get::<Vec<u8>, _>(i)
+                                    .ok()
+                                    .map(|bytes| {
+                                        let hex: String = bytes.iter().map(|b| format!("{:02x}", b)).collect();
+                                        Value::String(format!("\\x{}", hex))
+                                    })
+                            }
+                            _ => {
+                                row.try_get::<String, _>(i)
+                                    .ok()
+                                    .map(Value::String)
+                                    .or_else(|| row.try_get::<i64, _>(i).ok().map(Self::safe_integer))
+                                    .or_else(|| row.try_get::<f64, _>(i).ok().map(Value::Float))
+                                    .or_else(|| row.try_get::<bool, _>(i).ok().map(Value::Bool))
+                            }
+                        }
+                    })
+                    .collect()
+            })
+            .collect();
+
+        (columns, result_rows)
+    }
+}
+
+fn build_pg_options(
+    config: &ConnectionConfig,
+) -> Result<sqlx::postgres::PgConnectOptions, DriverError> {
+    use sqlx::ConnectOptions;
+    let mut opts = sqlx::postgres::PgConnectOptions::new()
+        .host(config.host.as_deref().unwrap_or("localhost"))
+        .port(config.port.unwrap_or(5432))
+        .database(PostgresDriver::resolve_connect_database(config));
+
+    if let Some(username) = &config.username {
+        opts = opts.username(username);
+    }
+    if let Some(password) = &config.password {
+        opts = opts.password(password);
+    }
+
+    opts = opts.log_statements(tracing::log::LevelFilter::Warn);
+    Ok(opts)
+}
+
+#[async_trait]
+impl DatabaseDriver for PostgresDriver {
+    fn driver_type(&self) -> DatabaseType {
+        "postgresql".to_string()
+    }
+
+    async fn test_connection(&self, config: &ConnectionConfig) -> Result<ServerInfo, DriverError> {
+        let opts = build_pg_options(config)?;
+        let timeout = Duration::from_secs(config.connection_timeout as u64);
+
+        let pool = PgPoolOptions::new()
+            .max_connections(1)
+            .acquire_timeout(timeout)
+            .connect_with(opts)
+            .await
+            .map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
+
+        let row = sqlx::query("SELECT version()")
+            .fetch_one(&pool)
+            .await
+            .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+
+        let version: String = row.try_get(0).unwrap_or_default();
+        pool.close().await;
+
+        Ok(ServerInfo {
+            server_version: version,
+            server_type: "PostgreSQL".to_string(),
+        })
+    }
+
+    async fn connect(&self, config: &ConnectionConfig) -> Result<ConnectionHandle, DriverError> {
+        let opts = build_pg_options(config)?;
+        let timeout = Duration::from_secs(config.connection_timeout as u64);
+        let resolved_db = Self::resolve_connect_database(config).to_string();
+
+        let pool = Self::open_pool(opts, timeout, 3, 2).await?;
+
+        {
+            let _c1 = pool.acquire().await.map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
+            let _c2 = pool.acquire().await.map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
+        }
+
+        let pool_id = uuid::Uuid::new_v4().to_string();
+        let connection_id = uuid::Uuid::new_v4().to_string();
+
+        self.connect_configs
+            .write()
+            .await
+            .insert(pool_id.clone(), config.clone());
+        self.active_databases
+            .write()
+            .await
+            .insert(pool_id.clone(), resolved_db);
+        self.pools.write().await.insert(pool_id.clone(), pool);
+
+        Ok(ConnectionHandle {
+            id: connection_id,
+            pool_id,
+        })
+    }
+
+    async fn disconnect(&self, handle: ConnectionHandle) -> Result<(), DriverError> {
+        self.active_databases.write().await.remove(&handle.pool_id);
+        self.connect_configs.write().await.remove(&handle.pool_id);
+        if let Some(pool) = self.pools.write().await.remove(&handle.pool_id) {
+            pool.close().await;
+        }
+        Ok(())
+    }
+
+    async fn get_databases(&self, handle: &ConnectionHandle) -> Result<Vec<String>, DriverError> {
+        let pools = self.pools.read().await;
+        let pool = Self::get_pool(&pools, handle)?;
+
+        let rows = sqlx::query(
+            "SELECT datname FROM pg_database WHERE datistemplate = false ORDER BY datname",
+        )
+        .fetch_all(pool)
+        .await
+        .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+
+        Ok(rows.iter().map(|r| r.get::<String, _>(0)).collect())
+    }
+
+    async fn get_tables(
+        &self,
+        handle: &ConnectionHandle,
+        database: &str,
+    ) -> Result<Vec<TableInfo>, DriverError> {
+        let db = database.trim();
+
+        // Empty name → list tables on the currently connected database.
+        if db.is_empty() {
+            let pools = self.pools.read().await;
+            let pool = Self::get_pool(&pools, handle)?;
+            return Self::fetch_tables_from_pool(pool).await;
+        }
+
+        let active = self
+            .active_databases
+            .read()
+            .await
+            .get(&handle.pool_id)
+            .cloned();
+
+        if active.as_deref() == Some(db) {
+            let pools = self.pools.read().await;
+            let pool = Self::get_pool(&pools, handle)?;
+            return Self::fetch_tables_from_pool(pool).await;
+        }
+
+        // information_schema is per-database in Postgres — open a temporary pool
+        // for the named catalog without permanently switching the handle.
+        let temp = self.pool_for_named_database(handle, db, 1, 0).await?;
+        let result = Self::fetch_tables_from_pool(&temp).await;
+        temp.close().await;
+        result
+    }
+
+    async fn get_columns(
+        &self,
+        handle: &ConnectionHandle,
+        table: &str,
+    ) -> Result<(Vec<ColumnSchema>, Vec<String>), DriverError> {
+        let pools = self.pools.read().await;
+        let pool = Self::get_pool(&pools, handle)?;
+
+        let (cols, pk_rows) = tokio::try_join!(
+            async {
+                sqlx::query(
+                    r#"
+                    SELECT column_name, data_type, is_nullable, column_default,
+                           col_description((quote_ident(table_schema)||'.'||quote_ident(table_name))::regclass, ordinal_position) as comment
+                    FROM information_schema.columns
+                    WHERE table_name = $1
+                    ORDER BY ordinal_position
+                    "#,
+                )
+                .bind(table)
+                .fetch_all(pool)
+                .await
+                .map_err(|e| DriverError::QueryFailed(e.to_string()))
+            },
+            async {
+                sqlx::query(
+                    r#"
+                    SELECT a.attname
+                    FROM pg_index i
+                    JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
+                    WHERE i.indrelid = quote_ident($1)::regclass AND i.indisprimary
+                    "#,
+                )
+                .bind(table)
+                .fetch_all(pool)
+                .await
+                .map_err(|e| DriverError::QueryFailed(e.to_string()))
+            },
+        )?;
+
+        let pk_names: Vec<String> = pk_rows.iter().map(|r| r.get::<String, _>(0)).collect();
+        let columns: Vec<ColumnSchema> = cols
+            .iter()
+            .map(|r| {
+                let name: String = r.get("column_name");
+                let nullable: String = r.get("is_nullable");
+                ColumnSchema {
+                    is_primary_key: pk_names.contains(&name),
+                    name,
+                    data_type: r.get("data_type"),
+                    nullable: nullable == "YES",
+                    default_value: r.get("column_default"),
+                    comment: r.get("comment"),
+                    is_auto_increment: false,
+                }
+            })
+            .collect();
+
+        Ok((columns, pk_names))
+    }
+
+    async fn get_table_schema(
+        &self,
+        handle: &ConnectionHandle,
+        table: &str,
+    ) -> Result<TableSchema, DriverError> {
+        let pools = self.pools.read().await;
+        let pool = Self::get_pool(&pools, handle)?;
+
+        let cols = sqlx::query(
+            r#"
+            SELECT column_name, data_type, is_nullable, column_default,
+                   col_description((quote_ident(table_schema)||'.'||quote_ident(table_name))::regclass, ordinal_position) as comment
+            FROM information_schema.columns
+            WHERE table_name = $1
+            ORDER BY ordinal_position
+            "#,
+        )
+        .bind(table)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+
+        let pk_rows = sqlx::query(
+            r#"
+            SELECT a.attname
+            FROM pg_index i
+            JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
+            WHERE i.indrelid = quote_ident($1)::regclass AND i.indisprimary
+            "#,
+        )
+        .bind(table)
+        .fetch_all(pool)
+        .await
+        .unwrap_or_default();
+
+        let pk_names: Vec<String> = pk_rows.iter().map(|r| r.get::<String, _>(0)).collect();
+
+        let columns: Vec<ColumnSchema> = cols
+            .iter()
+            .map(|r| {
+                let name: String = r.get("column_name");
+                let nullable: String = r.get("is_nullable");
+                ColumnSchema {
+                    is_primary_key: pk_names.contains(&name),
+                    name,
+                    data_type: r.get("data_type"),
+                    nullable: nullable == "YES",
+                    default_value: r.get("column_default"),
+                    comment: r.get("comment"),
+                    is_auto_increment: false,
+                }
+            })
+            .collect();
+
+        // ── indexes ──
+        let idx_rows = sqlx::query(
+            r#"
+            SELECT i.relname::text                                AS index_name,
+                   array_agg(a.attname::text ORDER BY k.n)        AS columns,
+                   ix.indisunique                                  AS is_unique,
+                   ix.indisprimary                                 AS is_primary,
+                   am.amname::text                                 AS index_type
+            FROM pg_index ix
+            JOIN pg_class i  ON i.oid  = ix.indexrelid
+            JOIN pg_class t  ON t.oid  = ix.indrelid
+            JOIN pg_am   am ON am.oid  = i.relam
+            JOIN LATERAL unnest(ix.indkey) WITH ORDINALITY AS k(attnum, n) ON true
+            JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = k.attnum
+            WHERE ix.indrelid = quote_ident($1)::regclass
+            GROUP BY i.relname, ix.indisunique, ix.indisprimary, am.amname
+            ORDER BY ix.indisprimary DESC, i.relname
+            "#,
+        )
+        .bind(table)
+        .fetch_all(pool)
+        .await
+        .unwrap_or_default();
+
+        let indexes: Vec<IndexInfo> = idx_rows
+            .iter()
+            .map(|r| IndexInfo {
+                name: r.get("index_name"),
+                columns: r.get::<Vec<String>, _>("columns"),
+                is_unique: r.get("is_unique"),
+                is_primary: r.get("is_primary"),
+                index_type: r.get("index_type"),
+            })
+            .collect();
+
+        // ── foreign keys ──
+        let fk_rows = sqlx::query(
+            r#"
+            SELECT
+                tc.constraint_name::text                                             AS fk_name,
+                array_agg(kcu.column_name::text ORDER BY kcu.ordinal_position)       AS columns,
+                ccu.table_name::text                                                 AS ref_table,
+                array_agg(ccu.column_name::text ORDER BY kcu.ordinal_position)       AS ref_columns,
+                rc.update_rule::text,
+                rc.delete_rule::text
+            FROM information_schema.table_constraints tc
+            JOIN information_schema.key_column_usage kcu
+              ON kcu.constraint_name = tc.constraint_name
+             AND kcu.table_schema   = tc.table_schema
+            JOIN information_schema.constraint_column_usage ccu
+              ON ccu.constraint_name = tc.constraint_name
+             AND ccu.table_schema   = tc.table_schema
+            JOIN information_schema.referential_constraints rc
+              ON rc.constraint_name = tc.constraint_name
+             AND rc.constraint_schema = tc.table_schema
+            WHERE tc.constraint_type = 'FOREIGN KEY'
+              AND tc.table_name = $1
+            GROUP BY tc.constraint_name, ccu.table_name, rc.update_rule, rc.delete_rule
+            ORDER BY tc.constraint_name
+            "#,
+        )
+        .bind(table)
+        .fetch_all(pool)
+        .await
+        .unwrap_or_default();
+
+        let foreign_keys: Vec<ForeignKeyInfo> = fk_rows
+            .iter()
+            .map(|r| ForeignKeyInfo {
+                name: r.get("fk_name"),
+                columns: r.get::<Vec<String>, _>("columns"),
+                referenced_table: r.get("ref_table"),
+                referenced_columns: r.get::<Vec<String>, _>("ref_columns"),
+                on_update: r.get("update_rule"),
+                on_delete: r.get("delete_rule"),
+            })
+            .collect();
+
+        Ok(TableSchema {
+            table_name: table.to_string(),
+            columns,
+            primary_keys: pk_names,
+            indexes,
+            foreign_keys,
+        })
+    }
+
+    async fn query(
+        &self,
+        handle: &ConnectionHandle,
+        sql: &str,
+    ) -> Result<QueryResult, DriverError> {
+        let pools = self.pools.read().await;
+        let pool = Self::get_pool(&pools, handle)?;
+
+        let start = Instant::now();
+        let rows = sqlx::query(sql)
+            .fetch_all(pool)
+            .await
+            .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+        let elapsed = start.elapsed().as_millis() as u64;
+
+        let (columns, result_rows) = Self::decode_rows(&rows);
+        let row_count = result_rows.len() as u64;
+
+        Ok(QueryResult {
+            columns,
+            rows: result_rows,
+            rows_affected: Some(row_count),
+            execution_time_ms: elapsed,
+        })
+    }
+
+    async fn query_multi(
+        &self,
+        handle: &ConnectionHandle,
+        sql: &str,
+        limit: Option<u32>,
+    ) -> Result<MultiQueryResult, DriverError> {
+        let pools = self.pools.read().await;
+        let pool = Self::get_pool(&pools, handle)?;
+
+        let statements = split_sql_statements(sql);
+        if statements.is_empty() {
+            return Ok(MultiQueryResult {
+                results: Vec::new(),
+                total_time_ms: 0,
+            });
+        }
+
+        let total_start = Instant::now();
+        let mut results = Vec::with_capacity(statements.len());
+
+        for stmt in &statements {
+            let (effective_sql, applied_limit) = apply_select_limit(stmt, limit);
+            let trimmed_upper = effective_sql.trim().to_ascii_uppercase();
+            let is_query = trimmed_upper.starts_with("SELECT")
+                || trimmed_upper.starts_with("WITH")
+                || trimmed_upper.starts_with("SHOW")
+                || trimmed_upper.starts_with("EXPLAIN");
+
+            let stmt_start = Instant::now();
+
+            if is_query {
+                let rows = sqlx::query(effective_sql.as_str())
+                    .fetch_all(pool)
+                    .await
+                    .map_err(|e| DriverError::QueryFailed(format!("[{}] {}", stmt, e)))?;
+                let stmt_ms = stmt_start.elapsed().as_millis() as u64;
+
+                let (columns, mut result_rows) = Self::decode_rows(&rows);
+                let truncated = if let Some(lim) = applied_limit {
+                    let fetched = result_rows.len() as u32;
+                    if fetched > lim {
+                        result_rows.truncate(lim as usize);
+                        true
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                };
+                let row_count = result_rows.len() as u64;
+
+                results.push(StatementResult {
+                    sql: stmt.clone(),
+                    columns,
+                    rows: result_rows,
+                    rows_affected: Some(row_count),
+                    execution_time_ms: stmt_ms,
+                    truncated,
+                });
+            } else {
+                let result = sqlx::query(effective_sql.as_str())
+                    .execute(pool)
+                    .await
+                    .map_err(|e| DriverError::QueryFailed(format!("[{}] {}", stmt, e)))?;
+                let stmt_ms = stmt_start.elapsed().as_millis() as u64;
+
+                results.push(StatementResult {
+                    sql: stmt.clone(),
+                    columns: Vec::new(),
+                    rows: Vec::new(),
+                    rows_affected: Some(result.rows_affected()),
+                    execution_time_ms: stmt_ms,
+                    truncated: false,
+                });
+            }
+        }
+
+        Ok(MultiQueryResult {
+            results,
+            total_time_ms: total_start.elapsed().as_millis() as u64,
+        })
+    }
+
+    async fn query_with_params(
+        &self,
+        handle: &ConnectionHandle,
+        sql: &str,
+        _params: &[Value],
+    ) -> Result<QueryResult, DriverError> {
+        self.query(handle, sql).await
+    }
+
+    async fn execute(&self, handle: &ConnectionHandle, sql: &str) -> Result<u64, DriverError> {
+        let pools = self.pools.read().await;
+        let pool = Self::get_pool(&pools, handle)?;
+
+        let result = sqlx::query(sql)
+            .execute(pool)
+            .await
+            .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+
+        Ok(result.rows_affected())
+    }
+
+    async fn begin_transaction(
+        &self,
+        _handle: &ConnectionHandle,
+    ) -> Result<TransactionHandle, DriverError> {
+        Err(DriverError::TransactionError(
+            "Transactions not yet implemented".into(),
+        ))
+    }
+
+    async fn commit(&self, _tx: TransactionHandle) -> Result<(), DriverError> {
+        Err(DriverError::TransactionError(
+            "Transactions not yet implemented".into(),
+        ))
+    }
+
+    async fn rollback(&self, _tx: TransactionHandle) -> Result<(), DriverError> {
+        Err(DriverError::TransactionError(
+            "Transactions not yet implemented".into(),
+        ))
+    }
+
+    async fn explain(
+        &self,
+        handle: &ConnectionHandle,
+        sql: &str,
+    ) -> Result<ExplainResult, DriverError> {
+        let pools = self.pools.read().await;
+        let pool = Self::get_pool(&pools, handle)?;
+
+        let explain_sql = format!("EXPLAIN (FORMAT TEXT) {sql}");
+        let rows = sqlx::query(&explain_sql)
+            .fetch_all(pool)
+            .await
+            .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+
+        let plan: String = rows
+            .iter()
+            .map(|r| r.get::<String, _>(0))
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        Ok(ExplainResult {
+            plan_text: plan,
+            plan_json: None,
+            total_cost: None,
+            estimated_rows: None,
+        })
+    }
+
+    async fn cancel_query(&self, handle: &ConnectionHandle) -> Result<(), DriverError> {
+        let pools = self.pools.read().await;
+        let pool = Self::get_pool(&pools, handle)?;
+
+        let rows = sqlx::query(
+            "SELECT pg_cancel_backend(pid) \
+             FROM pg_stat_activity \
+             WHERE pid != pg_backend_pid() \
+               AND state = 'active' \
+               AND datname = current_database()",
+        )
+        .fetch_all(pool)
+        .await
+        .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+
+        tracing::info!(cancelled = rows.len(), "pg: cancelled active queries");
+        Ok(())
+    }
+
+    async fn use_database(
+        &self,
+        handle: &ConnectionHandle,
+        database: &str,
+    ) -> Result<(), DriverError> {
+        let trimmed = Self::validate_database_name(database)?;
+
+        {
+            let active = self.active_databases.read().await;
+            if active.get(&handle.pool_id).map(String::as_str) == Some(trimmed.as_str()) {
+                return Ok(());
+            }
+        }
+
+        // Postgres cannot USE like MySQL — reconnect the handle's pool to the target DB.
+        // Missing connect template / pool → ConnectionFailed (same shape as get_pool).
+        let new_pool = self
+            .pool_for_named_database(handle, &trimmed, 3, 2)
+            .await?;
+
+        let old = {
+            let mut pools = self.pools.write().await;
+            pools.insert(handle.pool_id.clone(), new_pool)
+        };
+        self.active_databases
+            .write()
+            .await
+            .insert(handle.pool_id.clone(), trimmed);
+
+        if let Some(old) = old {
+            old.close().await;
+        }
+        Ok(())
+    }
+
+    async fn get_server_info(&self, handle: &ConnectionHandle) -> Result<ServerInfo, DriverError> {
+        let pools = self.pools.read().await;
+        let pool = Self::get_pool(&pools, handle)?;
+        let row = sqlx::query("SELECT version()")
+            .fetch_one(pool)
+            .await
+            .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+        let version: String = row.try_get(0).unwrap_or_default();
+        Ok(ServerInfo {
+            server_version: version,
+            server_type: "PostgreSQL".to_string(),
+        })
+    }
+}
+
+/// Split a SQL text into individual statements, respecting single-quoted strings,
+/// double-quoted identifiers, dollar-quoted strings, `--` line comments, and `/* */`
+/// block comments so that semicolons inside those constructs are not treated as
+/// statement terminators.
+fn split_sql_statements(input: &str) -> Vec<String> {
+    let bytes = input.as_bytes();
+    let len = bytes.len();
+    let mut stmts: Vec<String> = Vec::new();
+    let mut start = 0;
+    let mut i = 0;
+
+    while i < len {
+        match bytes[i] {
+            b'\'' => {
+                i += 1;
+                while i < len {
+                    if bytes[i] == b'\'' {
+                        i += 1;
+                        if i < len && bytes[i] == b'\'' {
+                            i += 1; // escaped ''
+                        } else {
+                            break;
+                        }
+                    } else {
+                        i += 1;
+                    }
+                }
+            }
+            b'"' => {
+                i += 1;
+                while i < len {
+                    if bytes[i] == b'"' {
+                        i += 1;
+                        if i < len && bytes[i] == b'"' {
+                            i += 1;
+                        } else {
+                            break;
+                        }
+                    } else {
+                        i += 1;
+                    }
+                }
+            }
+            b'$' => {
+                if let Some(tag_end) = find_dollar_tag(bytes, i) {
+                    let tag = &input[i..tag_end];
+                    i = tag_end;
+                    loop {
+                        if i >= len {
+                            break;
+                        }
+                        if bytes[i] == b'$' && input[i..].starts_with(tag) {
+                            i += tag.len();
+                            break;
+                        }
+                        i += 1;
+                    }
+                } else {
+                    i += 1;
+                }
+            }
+            b'-' if i + 1 < len && bytes[i + 1] == b'-' => {
+                while i < len && bytes[i] != b'\n' {
+                    i += 1;
+                }
+            }
+            b'/' if i + 1 < len && bytes[i + 1] == b'*' => {
+                i += 2;
+                let mut depth = 1u32;
+                while i + 1 < len && depth > 0 {
+                    if bytes[i] == b'/' && bytes[i + 1] == b'*' {
+                        depth += 1;
+                        i += 2;
+                    } else if bytes[i] == b'*' && bytes[i + 1] == b'/' {
+                        depth -= 1;
+                        i += 2;
+                    } else {
+                        i += 1;
+                    }
+                }
+            }
+            b';' => {
+                let fragment = input[start..i].trim();
+                if !fragment.is_empty() {
+                    stmts.push(fragment.to_string());
+                }
+                i += 1;
+                start = i;
+            }
+            _ => {
+                i += 1;
+            }
+        }
+    }
+
+    let tail = input[start..].trim();
+    if !tail.is_empty() {
+        stmts.push(tail.to_string());
+    }
+    stmts
+}
+
+/// If the statement is a SELECT without an existing LIMIT clause, returns a
+/// modified SQL with `LIMIT limit+1` appended (the extra row lets us detect
+/// truncation).  If the statement already has a LIMIT, the SQL is unchanged
+/// but the cap is still returned so the caller can truncate over-limit results.
+fn apply_select_limit(stmt: &str, limit: Option<u32>) -> (String, Option<u32>) {
+    let Some(lim) = limit else {
+        return (stmt.to_string(), None);
+    };
+
+    let trimmed = stmt.trim();
+    let upper = trimmed.to_ascii_uppercase();
+    let is_select = upper.starts_with("SELECT") || upper.starts_with("WITH");
+    if !is_select {
+        return (stmt.to_string(), None);
+    }
+
+    if has_top_level_limit(trimmed) {
+        return (stmt.to_string(), Some(lim));
+    }
+
+    let effective = format!("{} LIMIT {}", trimmed, lim + 1);
+    (effective, Some(lim))
+}
+
+/// Rough heuristic: scan the SQL outside of string literals, dollar-quotes,
+/// and parenthesised sub-expressions for the keyword `LIMIT`.
+fn has_top_level_limit(sql: &str) -> bool {
+    let bytes = sql.as_bytes();
+    let len = bytes.len();
+    let mut i = 0usize;
+    let mut depth: i32 = 0; // parenthesis nesting
+
+    while i < len {
+        match bytes[i] {
+            b'\'' => {
+                i += 1;
+                while i < len {
+                    if bytes[i] == b'\'' {
+                        i += 1;
+                        if i < len && bytes[i] == b'\'' {
+                            i += 1; // escaped quote
+                        } else {
+                            break;
+                        }
+                    } else {
+                        i += 1;
+                    }
+                }
+            }
+            b'"' => {
+                i += 1;
+                while i < len && bytes[i] != b'"' {
+                    i += 1;
+                }
+                if i < len { i += 1; }
+            }
+            b'$' => {
+                if let Some(tag_end) = find_dollar_tag(bytes, i) {
+                    let tag = &sql[i..tag_end];
+                    i = tag_end;
+                    loop {
+                        if i >= len { break; }
+                        if bytes[i] == b'$' {
+                            if sql[i..].starts_with(tag) {
+                                i += tag.len();
+                                break;
+                            }
+                        }
+                        i += 1;
+                    }
+                } else {
+                    i += 1;
+                }
+            }
+            b'-' if i + 1 < len && bytes[i + 1] == b'-' => {
+                i += 2;
+                while i < len && bytes[i] != b'\n' {
+                    i += 1;
+                }
+            }
+            b'/' if i + 1 < len && bytes[i + 1] == b'*' => {
+                i += 2;
+                let mut cd = 1i32;
+                while i + 1 < len && cd > 0 {
+                    if bytes[i] == b'/' && bytes[i + 1] == b'*' {
+                        cd += 1; i += 2;
+                    } else if bytes[i] == b'*' && bytes[i + 1] == b'/' {
+                        cd -= 1; i += 2;
+                    } else {
+                        i += 1;
+                    }
+                }
+            }
+            b'(' => { depth += 1; i += 1; }
+            b')' => { depth -= 1; i += 1; }
+            b'L' | b'l' if depth == 0 => {
+                if i + 5 <= len
+                    && sql[i..i + 5].eq_ignore_ascii_case("LIMIT")
+                    && (i == 0 || !bytes[i - 1].is_ascii_alphanumeric())
+                    && (i + 5 >= len || !bytes[i + 5].is_ascii_alphanumeric())
+                {
+                    return true;
+                }
+                i += 1;
+            }
+            _ => { i += 1; }
+        }
+    }
+
+    false
+}
+
+/// Try to match a `$tag$` dollar-quote opener starting at position `pos`.
+/// Returns `Some(end)` where `end` is the byte index past the closing `$`.
+fn find_dollar_tag(bytes: &[u8], pos: usize) -> Option<usize> {
+    if pos >= bytes.len() || bytes[pos] != b'$' {
+        return None;
+    }
+    let mut j = pos + 1;
+    while j < bytes.len() {
+        if bytes[j] == b'$' {
+            return Some(j + 1);
+        }
+        if !bytes[j].is_ascii_alphanumeric() && bytes[j] != b'_' {
+            return None;
+        }
+        j += 1;
+    }
+    None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use datazen_driver_api::DatabaseDriver;
+
+    #[test]
+    fn validate_database_name_trims_and_accepts() {
+        assert_eq!(
+            PostgresDriver::validate_database_name("  mydb  ").unwrap(),
+            "mydb"
+        );
+        assert_eq!(
+            PostgresDriver::validate_database_name("postgres").unwrap(),
+            "postgres"
+        );
+    }
+
+    #[test]
+    fn validate_database_name_rejects_empty_or_invalid() {
+        assert!(matches!(
+            PostgresDriver::validate_database_name(""),
+            Err(DriverError::InvalidConfig(_))
+        ));
+        assert!(matches!(
+            PostgresDriver::validate_database_name("   "),
+            Err(DriverError::InvalidConfig(_))
+        ));
+        assert!(matches!(
+            PostgresDriver::validate_database_name("bad\0name"),
+            Err(DriverError::InvalidConfig(_))
+        ));
+    }
+
+    #[test]
+    fn resolve_connect_database_defaults_to_postgres() {
+        let mut cfg = ConnectionConfig {
+            id: "id".into(),
+            name: "n".into(),
+            database_type: "postgresql".into(),
+            host: Some("localhost".into()),
+            port: Some(5432),
+            database: None,
+            schema: None,
+            username: None,
+            password: None,
+            ssl_mode: Default::default(),
+            connection_timeout: 5,
+            ssh_tunnel: None,
+            color_tag: None,
+            group: None,
+            last_connected_at: None,
+            server_version: None,
+        };
+        assert_eq!(PostgresDriver::resolve_connect_database(&cfg), "postgres");
+
+        cfg.database = Some("  ".into());
+        assert_eq!(PostgresDriver::resolve_connect_database(&cfg), "postgres");
+
+        cfg.database = Some("  app_db  ".into());
+        assert_eq!(PostgresDriver::resolve_connect_database(&cfg), "app_db");
+    }
+
+    #[tokio::test]
+    async fn use_database_is_wired() {
+        let driver = PostgresDriver::new();
+        let handle = ConnectionHandle {
+            id: "conn".into(),
+            pool_id: "missing-pool".into(),
+        };
+
+        let err = driver.use_database(&handle, "").await.unwrap_err();
+        assert!(
+            matches!(err, DriverError::InvalidConfig(_)),
+            "expected InvalidConfig, got {err:?}"
+        );
+
+        let err = driver.use_database(&handle, "app_db").await.unwrap_err();
+        assert!(
+            matches!(err, DriverError::ConnectionFailed(_)),
+            "expected ConnectionFailed, got {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn use_database_noop_when_already_active() {
+        let driver = PostgresDriver::new();
+        let pool_id = "test-pool".to_string();
+        driver
+            .active_databases
+            .write()
+            .await
+            .insert(pool_id.clone(), "already".to_string());
+
+        let handle = ConnectionHandle {
+            id: "conn".into(),
+            pool_id,
+        };
+
+        // No pool registered — would fail if reconnect were attempted; no-op must short-circuit.
+        driver
+            .use_database(&handle, "already")
+            .await
+            .expect("same database should be a no-op");
+        driver
+            .use_database(&handle, "  already  ")
+            .await
+            .expect("trimmed match should be a no-op");
+    }
+}

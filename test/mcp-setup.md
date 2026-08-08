@@ -111,7 +111,7 @@ focus_strategy: "strict" | "best_effort" | "none"
 
 ```bash
 cd /Users/wuxiaolong/code/rust-projects/datazen
-pnpm tauri:dev --plugins=kiwi
+pnpm tauri:dev --drivers=kiwi
 ```
 
 ### 2. 确认 MCP Server 可用

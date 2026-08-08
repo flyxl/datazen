@@ -2,12 +2,12 @@
 /**
  * plugin-file-stash.mjs
  *
- * Backup / restore managed files that resolve-plugins injects at build/dev time.
+ * Backup / restore managed files that resolve-drivers injects at build/dev time.
  *
  * Flow (cp + atomic rename — working paths always remain):
  *   1. `stash`  — copyFileSync clean working files → .plugin-file-stash/<path>
  *                 (working tree stays in place so editors/git keep seeing the files)
- *   2. resolve-plugins overwrites working paths with injected content
+ *   2. resolve-drivers overwrites working paths with injected content
  *   3. `restore` — deinject cargo/capabilities (keep user edits); stash-restore
  *                 fully-generated files; then remove stash copies
  *
@@ -38,7 +38,7 @@ import {
 const __dirname = dirname(fileURLToPath(import.meta.url));
 export const ROOT = resolve(__dirname, '..');
 
-/** Paths relative to repo root — keep in sync with resolve-plugins / pre-commit. */
+/** Paths relative to repo root — keep in sync with resolve-drivers / pre-commit. */
 export const MANAGED_FILES = [
   'Cargo.toml',
   'src-tauri/Cargo.toml',

@@ -59,9 +59,11 @@ export function hasInjectedPluginInit(content) {
 
 export function hasInjectedGeneratedTs(content) {
   if (!content) return false;
-  const typeLine = content
-    .split('\n')
-    .find((l) => l.includes('PluginDatabaseType = '));
+  // Prefer DatabaseType (current stub/generated). Fall back to legacy PluginDatabaseType.
+  const lines = content.split('\n');
+  const typeLine =
+    lines.find((l) => /^export type DatabaseType = /.test(l)) ||
+    lines.find((l) => l.includes('PluginDatabaseType = '));
   if (!typeLine) return false;
   return !/=\s*never\b/.test(typeLine);
 }

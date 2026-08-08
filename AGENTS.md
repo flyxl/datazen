@@ -32,7 +32,7 @@ datazen/
 │   ├── src/
 │   │   ├── ai/                  # AI（openai, anthropic, deepseek, custom, registry, context, prompt_resolver, protocol/）
 │   │   ├── commands/            # IPC 命令（16 个模块：ai, connection, query, schema, context, mcp 等）
-│   │   ├── db/                  # 驱动（postgres, mysql, sqlite, redis_driver, registry）
+│   │   ├── db/                  # DriverRegistry（inventory-only；实现见 packages/drivers）
 │   │   ├── mcp/                 # MCP Server/Client
 │   │   ├── workflow/            # YAML Workflow 引擎与执行历史（独立于 mcp）
 │   │   ├── services/            # ConnectionManager, QueryExecutor, DbTools
@@ -41,8 +41,10 @@ datazen/
 │   │   └── sync/                # 跨库同步（IR 中间表示 + 适配器）
 │   └── resources/               # 菜单翻译（menu-labels.json）、Prompt 模板（prompts/）
 ├── packages/
-│   ├── driver-api/              # DatabaseDriver trait + types + inventory 宏
-│   └── ai-api/                  # AiProvider trait + AiError + factory
+│   ├── driver-api/              # DatabaseDriver trait + types + inventory 宏 + ReuseDriver
+│   ├── ai-api/                  # AiProvider trait + AiError + factory
+│   ├── drivers/                 # 可选 path 驱动（postgres/mysql/…）+ http-support
+│   └── themes/                  # 主题包预留
 ├── e2e/                         # WebdriverIO E2E 测试（35 spec）
 ├── test/                        # 手工黑盒测试
 ├── docs/                        # 架构文档、RFC、进度（含 [代码审查修复进度](docs/progress-code-review-fix.md)）
@@ -51,25 +53,25 @@ datazen/
 
 ## 核心架构模式
 
-### 插件系统（编译时，类似 Caddy 2）
+### 驱动选型（编译时，类似 Caddy 2）
 
-1. `plugins-registry.json` 定义插件（4 内置 + 3 Git 外部：kiwi, olap, superset）；Git 插件可钉 `ref`（commit/tag）
-2. `scripts/resolve-plugins.mjs` 构建前执行：克隆/检出 ref → 生成 `generated.ts` + `plugin_init.rs` + `.plugin-features.json`
-3. 通过 `inventory` crate 实现链接时自动注册
+1. `drivers-registry.json` 定义 path 驱动 + git 驱动（kiwi, olap, superset）；Git 可钉 `ref`
+2. `scripts/resolve-drivers.mjs` 构建前执行：选型 →（git 则克隆）→ 生成 `generated.ts` + `plugin_init.rs` + `.plugin-features.json`
+3. 通过 `inventory` crate 实现链接时自动注册；宿主 `DriverRegistry` 仅走 factories
 
 ```bash
-pnpm tauri:dev                         # 无插件（main 默认）
-pnpm tauri:dev --plugins=kiwi          # 含 kiwi 插件
-pnpm tauri:dev --plugins=none          # 仅内置驱动（显式）
-DATAZEN_PLUGINS=none pnpm tauri:dev    # 环境变量同样生效
-DATAZEN_PLUGINS=all pnpm tauri:build   # 全部插件打包
+pnpm tauri:dev                         # 全部驱动（默认 all）
+pnpm tauri:dev --drivers=basic         # 仅 postgres/mysql/sqlite/redis
+pnpm tauri:dev --drivers=postgres,mongodb,kiwi
+DATAZEN_DRIVERS=basic pnpm tauri:dev   # 环境变量同样生效
+DATAZEN_DRIVERS=all pnpm tauri:build   # 全部 path + git 驱动打包
 ```
 
 ### 数据库驱动
 
-- 内置：PostgreSQL, MySQL, MariaDB, SQLite, Redis（`src-tauri/src/db/registry.rs`）
-- 插件：通过 `register_driver!` 宏 + `inventory` 注册
-- 前端 `DB_REGISTRY`：`databaseTypes.ts`（内置）+ `generated.ts`（插件）合并
+- Path 驱动：`packages/drivers/*`（crate 名 `datazen-driver-<id>`），经 optional Cargo feature 注入
+- Git 驱动：克隆到 `.plugins/`，同样 inventory 注册
+- 前端 `DB_REGISTRY`：仅合并 `generated.ts` 的 `DRIVER_DB_ENTRIES`（无 Builtin 二分）
 - **关键 trait 方法**：`supports_offset()`（默认 true）、`supports_explain()`（默认 true）、`prompt_overrides()`
 
 ### AI 模块
@@ -129,7 +131,7 @@ pnpm install                           # 安装依赖
 pnpm dev                               # Vite dev server
 pnpm tauri:dev                         # 完整开发（前端 + Rust；默认无插件）
 pnpm build                             # 构建前端（不 inject；打包前由外层 resolve）
-pnpm build:with-plugins                # 单独前端构建并 inject/restore
+pnpm build:with-drivers                # 单独前端构建并 inject/restore
 pnpm tauri:build                       # 完整应用（外层 inject 一次）
 npx vitest run                         # 前端单元测试
 cargo test -p datazen                  # Rust 单元测试
@@ -147,7 +149,7 @@ cargo test -p datazen                  # Rust 单元测试
 
 ```bash
 pnpm e2e                               # 完整构建（webdriver）+ 跑全部 E2E（推荐首次）
-pnpm e2e:minimal                       # 更快：DATAZEN_PLUGINS=none，跳过 Git 插件
+pnpm e2e:minimal                       # 更快：DATAZEN_DRIVERS=basic，跳过 Git / 非核心 path 驱动
 pnpm e2e:skip-build                    # 跳过构建（仅当已有合格的 webdriver debug 二进制）
 pnpm e2e:skip-build -- --spec e2e/specs/path-ipc-hardening.ts
 pnpm e2e:core                          # 核心 UI（默认 skip-build）
@@ -168,10 +170,10 @@ PR 合并前：`pnpm test:unit` + `cargo test -p datazen --lib`（见 `.github/w
 
 ## 重要注意事项
 
-- 插件 Git 仓库命名使用 `datazen-driver-xxx` 格式，Rust crate 名称仍为 `datazen-plugin-xxx`
-- `Cargo.toml` 中的插件占位段（`<<plugin-dependencies>>`、`<<plugin-features>>`、`<<plugin-patches>>`）在 git 中应保持为空；`resolve-plugins.mjs` 在构建时填充
+- Path 驱动 Rust crate：`datazen-driver-<id>`；Git 驱动仓库名 `datazen-driver-xxx`，其 Rust crate 名仍可能为 `datazen-plugin-xxx`（以插件仓库为准）
+- `Cargo.toml` 中的插件占位段（`<<plugin-dependencies>>`、`<<plugin-features>>`、`<<plugin-patches>>`）在 git 中应保持为空；`resolve-drivers.mjs` 在构建时填充
 - `src/plugins/generated.ts` 和 `src-tauri/src/plugin_init.rs` 是自动生成的，修改后会被覆盖
-- `.plugins/` 是 gitignored，由 `resolve-plugins.mjs` / `tauri:build` / `tauri:dev` 生成；`pnpm build` 本身不 inject
+- `.plugins/` 是 gitignored，由 `resolve-drivers.mjs` / `tauri:build` / `tauri:dev` 生成；`pnpm build` 本身不 inject
 - `PROTOCOL_VERSION`（`packages/driver-api`）变更时需同步更新所有插件
 - `AI_PROTOCOL_VERSION`（`packages/ai-api`）变更时需同步更新所有 AI Provider 插件
 - AI 配置加密存储在 `ai_config.enc`，不会出现在日志中

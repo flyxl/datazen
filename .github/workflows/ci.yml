@@ -46,8 +46,20 @@ jobs:
           workspaces: . -> target
           cache-on-failure: true
 
+      - name: Resolve drivers (basic)
+        run: node scripts/resolve-drivers.mjs --drivers=basic
+
       - name: Rust unit tests (datazen)
-        run: cargo test -p datazen --lib
+        run: |
+          FEATURES=$(node -e "console.log(JSON.parse(require('fs').readFileSync('.plugin-features.json','utf8')).features.join(','))")
+          cargo test -p datazen --lib --features "$FEATURES"
+
+      - name: Rust unit tests (basic path drivers)
+        run: cargo test -p datazen-driver-postgres -p datazen-driver-mysql -p datazen-driver-sqlite -p datazen-driver-redis --lib
+
+      - name: Restore managed files
+        if: always()
+        run: node scripts/plugin-file-stash.mjs restore
 
       - name: Rust unit tests (datazen-ai-api)
         run: cargo test -p datazen-ai-api --lib

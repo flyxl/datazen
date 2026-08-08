@@ -7,13 +7,50 @@ vi.mock('../../../../hooks/useI18n', () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));
 
-vi.mock('../../../../plugins/generated', () => ({
-  PLUGIN_DB_ENTRIES: {},
-  PLUGIN_SQL_DIALECTS: {},
-  getPluginSchemaTree: () => undefined,
-  getPluginConnectionForm: () => undefined,
-  getPluginValidator: () => undefined,
-}));
+vi.mock('../../../../plugins/generated', () => {
+  const sqlMulti = {
+    label: 'SQL',
+    shortLabel: 'SQL',
+    iconBg: 'bg-blue-600',
+    iconColor: 'text-blue-400',
+    defaultPort: 5432,
+    defaultHost: '127.0.0.1',
+    defaultUser: '',
+    quoteChar: '"',
+    connectionMode: 'server',
+    supportsSSH: true,
+    supportsSSL: true,
+    supportsBackup: true,
+    supportsTables: true,
+    isKeyValue: false,
+    supportsSQL: true,
+    category: 'sql',
+    connectionView: 'sql',
+    sqlDialect: 'postgresql',
+    databaseFieldType: 'name',
+    connectionForm: 'standard',
+    supportsExplain: true,
+    hasMultiDatabase: true,
+  };
+  const DRIVER_DB_ENTRIES = {
+    postgresql: { ...sqlMulti, label: 'PostgreSQL', quoteChar: '"', sqlDialect: 'postgresql' },
+    mysql: {
+      ...sqlMulti,
+      label: 'MySQL',
+      quoteChar: '`',
+      sqlDialect: 'mysql',
+      defaultPort: 3306,
+    },
+  };
+  return {
+    DRIVER_DB_ENTRIES,
+    PLUGIN_DB_ENTRIES: DRIVER_DB_ENTRIES,
+    PLUGIN_SQL_DIALECTS: {},
+    getPluginSchemaTree: () => undefined,
+    getPluginConnectionForm: () => undefined,
+    getPluginValidator: () => undefined,
+  };
+});
 
 /** jsdom has no layout; render all virtual rows so tree content is visible. */
 vi.mock('@tanstack/react-virtual', () => ({
