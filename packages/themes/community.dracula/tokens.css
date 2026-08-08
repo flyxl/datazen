@@ -1,0 +1,31 @@
+/* Dracula — dark mode tokens */
+.dark {
+  --c-surface: #282a36;
+  --c-surface-alt: #21222c;
+  --c-surface-raised: #44475a;
+  --c-surface-inset: #191a21;
+  --c-edge: #44475a;
+  --c-fg: #f8f8f2;
+  --c-fg-secondary: #bd93f9;
+  --c-fg-muted: #6272a4;
+  --c-accent: #bd93f9;
+  --c-success: #50fa7b;
+  --c-warning: #ffb86c;
+  --c-danger: #ff5555;
+  --c-titlebar: #21222c;
+
+  --font-sans: "SF Pro Text", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", Menlo, Monaco, Consolas, monospace;
+  --font-editor: var(--font-mono);
+
+  --cm-keyword: #ff79c6;
+  --cm-string: #f1fa8c;
+  --cm-number: #bd93f9;
+  --cm-comment: #6272a4;
+  --cm-operator: #ff79c6;
+  --cm-punctuation: #f8f8f2;
+  --cm-foreground: #f8f8f2;
+  --cm-background: #282a36;
+  --cm-selection: rgba(68, 71, 90, 0.9);
+  --cm-cursor: #f8f8f2;
+}
