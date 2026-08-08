@@ -1,17 +1,25 @@
 import type { LucideIcon } from 'lucide-react';
 import {
   Bot,
+  Code2,
   Database,
   DatabaseBackup,
+  Download,
+  FileText,
+  Globe,
   MessageSquareText,
   Monitor,
   Moon,
+  MousePointerClick,
   Play,
+  Plug,
   Plus,
   RefreshCcw,
+  Server,
   Settings,
   Square,
   Sun,
+  Table2,
   Workflow,
 } from 'lucide-react';
 import { cn } from '../lib/cn';
@@ -20,17 +28,25 @@ import { getActiveIconResolver, type IconResolver } from '../lib/iconResolver';
 /** Lucide components referenced by v1 semantic icon catalog defaults. */
 const LUCIDE_MAP: Record<string, LucideIcon> = {
   Bot,
+  Code2,
   Database,
   DatabaseBackup,
+  Download,
+  FileText,
+  Globe,
   MessageSquareText,
   Monitor,
   Moon,
+  MousePointerClick,
   Play,
+  Plug,
   Plus,
   RefreshCcw,
+  Server,
   Settings,
   Square,
   Sun,
+  Table2,
   Workflow,
 };
 

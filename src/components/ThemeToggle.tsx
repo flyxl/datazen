@@ -1,15 +1,15 @@
 import { useState, useRef, useEffect } from 'react';
-import { Sun, Moon, Monitor } from 'lucide-react';
 import { useSettingsStore } from '../stores/settingsStore';
 import { cn } from '../lib/cn';
 import type { ThemeMode } from '../types/theme';
 import type { TranslationKey } from '../locales';
 import { useI18n } from '../hooks/useI18n';
+import { ThemedIcon } from './ThemedIcon';
 
-const OPTIONS: { value: ThemeMode; key: TranslationKey; Icon: typeof Sun }[] = [
-  { value: 'light', key: 'theme.light', Icon: Sun },
-  { value: 'dark', key: 'theme.dark', Icon: Moon },
-  { value: 'system', key: 'theme.system', Icon: Monitor },
+const OPTIONS: { value: ThemeMode; key: TranslationKey; iconId: string }[] = [
+  { value: 'light', key: 'theme.light', iconId: 'theme.light' },
+  { value: 'dark', key: 'theme.dark', iconId: 'theme.dark' },
+  { value: 'system', key: 'theme.system', iconId: 'theme.system' },
 ];
 
 export function ThemeToggle() {
@@ -29,7 +29,6 @@ export function ThemeToggle() {
   }, [open]);
 
   const current = OPTIONS.find((o) => o.value === theme.mode) ?? OPTIONS[2];
-  const CurrentIcon = current.Icon;
 
   return (
     <div ref={ref} className="relative">
@@ -39,7 +38,7 @@ export function ThemeToggle() {
         className="inline-flex h-8 w-8 items-center justify-center rounded-md text-fg-muted hover:bg-surface-raised hover:text-fg transition-colors"
         title={t('theme.tooltip', { current: t(current.key) })}
       >
-        <CurrentIcon className="h-4 w-4" />
+        <ThemedIcon id={current.iconId} className="h-4 w-4" />
       </button>
 
       {open && (
@@ -59,7 +58,7 @@ export function ThemeToggle() {
                   : 'text-fg-secondary hover:bg-surface-raised hover:text-fg',
               )}
             >
-              <opt.Icon className="h-3.5 w-3.5" />
+              <ThemedIcon id={opt.iconId} className="h-3.5 w-3.5" />
               {t(opt.key)}
             </button>
           ))}

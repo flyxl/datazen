@@ -1,16 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import {
-  Bot,
-  Code2,
-  FileText,
-  Globe,
-  MessageSquareText,
-  MousePointerClick,
-  Plug,
-  Server,
-  Table2,
-} from 'lucide-react';
 import { TitleBar } from '../../components/TitleBar';
+import { ThemedIcon } from '../../components/ThemedIcon';
 import { Button } from '../../components/ui/Button';
 import { PathInput } from '../../components/ui/PathInput';
 import { Select } from '../../components/ui/Select';
@@ -24,6 +14,7 @@ import { aiCommands, type PromptInfo, type PromptOverrideEntry, type PromptScena
 import { settingsCommands } from '../../commands/settings';
 import { DB_REGISTRY } from '../../lib/databaseTypes';
 import { isKnownProviderType } from '../../lib/aiProviders';
+import { settingsSectionIconId } from '../../lib/hostLucideMap';
 import type { AppSettings, AiProviderConfig, AiProviderType, DatabaseType, McpServerConfig } from '../../types';
 import type { ThemeMode } from '../../types/theme';
 import type { TranslationKey } from '../../locales';
@@ -60,16 +51,16 @@ const LANGUAGE_OPTIONS = [
 
 type SettingsSection = 'general' | 'dataBrowsing' | 'editor' | 'behavior' | 'logging' | 'ai' | 'prompts' | 'mcpServer' | 'mcpClient';
 
-const SECTIONS: { id: SettingsSection; labelKey: TranslationKey; icon: React.ComponentType<{ className?: string }> }[] = [
-  { id: 'general', labelKey: 'settings.general', icon: Globe },
-  { id: 'dataBrowsing', labelKey: 'settings.dataBrowsing', icon: Table2 },
-  { id: 'editor', labelKey: 'settings.editor', icon: Code2 },
-  { id: 'behavior', labelKey: 'settings.behavior', icon: MousePointerClick },
-  { id: 'logging', labelKey: 'settings.logging', icon: FileText },
-  { id: 'ai', labelKey: 'settings.ai', icon: Bot },
-  { id: 'prompts', labelKey: 'settings.prompts', icon: MessageSquareText },
-  { id: 'mcpServer', labelKey: 'mcp.title', icon: Server },
-  { id: 'mcpClient', labelKey: 'mcpClient.title', icon: Plug },
+const SECTIONS: { id: SettingsSection; labelKey: TranslationKey }[] = [
+  { id: 'general', labelKey: 'settings.general' },
+  { id: 'dataBrowsing', labelKey: 'settings.dataBrowsing' },
+  { id: 'editor', labelKey: 'settings.editor' },
+  { id: 'behavior', labelKey: 'settings.behavior' },
+  { id: 'logging', labelKey: 'settings.logging' },
+  { id: 'ai', labelKey: 'settings.ai' },
+  { id: 'prompts', labelKey: 'settings.prompts' },
+  { id: 'mcpServer', labelKey: 'mcp.title' },
+  { id: 'mcpClient', labelKey: 'mcpClient.title' },
 ];
 
 export function SettingsWindow() {
@@ -136,7 +127,6 @@ export function SettingsWindow() {
         {/* Sidebar */}
         <nav className="flex w-[180px] shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-edge bg-surface-alt px-2 py-3">
           {SECTIONS.map((sec) => {
-            const Icon = sec.icon;
             const isActive = activeSection === sec.id;
             return (
               <button
@@ -150,7 +140,7 @@ export function SettingsWindow() {
                     : 'text-fg-secondary hover:bg-surface-raised hover:text-fg',
                 )}
               >
-                <Icon className="h-4 w-4 shrink-0" />
+                <ThemedIcon id={settingsSectionIconId(sec.id)} className="h-4 w-4 shrink-0" />
                 {t(sec.labelKey)}
               </button>
             );
