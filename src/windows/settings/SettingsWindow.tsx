@@ -1,16 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
-import {
-  Bot,
-  Code2,
-  FileText,
-  Globe,
-  MessageSquareText,
-  MousePointerClick,
-  Plug,
-  Server,
-  Table2,
-} from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { TitleBar } from '../../components/TitleBar';
+import { ThemedIcon } from '../../components/ThemedIcon';
 import { Button } from '../../components/ui/Button';
 import { PathInput } from '../../components/ui/PathInput';
 import { Select } from '../../components/ui/Select';
@@ -24,8 +14,11 @@ import { aiCommands, type PromptInfo, type PromptOverrideEntry, type PromptScena
 import { settingsCommands } from '../../commands/settings';
 import { DB_REGISTRY } from '../../lib/databaseTypes';
 import { isKnownProviderType } from '../../lib/aiProviders';
+import { settingsSectionIconId } from '../../lib/hostLucideMap';
 import type { AppSettings, AiProviderConfig, AiProviderType, DatabaseType, McpServerConfig } from '../../types';
+import type { ThemeMode } from '../../types/theme';
 import type { TranslationKey } from '../../locales';
+import { ThemePackSection } from './ThemePackSection';
 
 const PAGE_SIZE_OPTIONS = [25, 50, 100, 200, 500];
 const RESULT_LIMIT_OPTIONS = [1000, 2000, 5000, 10000, 50000];
@@ -38,7 +31,7 @@ const LOG_LEVEL_OPTIONS: { value: AppSettings['logLevel']; label: string }[] = [
   { value: 'error', label: 'Error' },
 ];
 
-const THEME_KEYS: { value: AppSettings['theme']; key: TranslationKey }[] = [
+const THEME_KEYS: { value: ThemeMode; key: TranslationKey }[] = [
   { value: 'light', key: 'theme.light' },
   { value: 'dark', key: 'theme.dark' },
   { value: 'system', key: 'theme.system' },
@@ -59,16 +52,16 @@ const LANGUAGE_OPTIONS = [
 
 type SettingsSection = 'general' | 'dataBrowsing' | 'editor' | 'behavior' | 'logging' | 'ai' | 'prompts' | 'mcpServer' | 'mcpClient';
 
-const SECTIONS: { id: SettingsSection; labelKey: TranslationKey; icon: React.ComponentType<{ className?: string }> }[] = [
-  { id: 'general', labelKey: 'settings.general', icon: Globe },
-  { id: 'dataBrowsing', labelKey: 'settings.dataBrowsing', icon: Table2 },
-  { id: 'editor', labelKey: 'settings.editor', icon: Code2 },
-  { id: 'behavior', labelKey: 'settings.behavior', icon: MousePointerClick },
-  { id: 'logging', labelKey: 'settings.logging', icon: FileText },
-  { id: 'ai', labelKey: 'settings.ai', icon: Bot },
-  { id: 'prompts', labelKey: 'settings.prompts', icon: MessageSquareText },
-  { id: 'mcpServer', labelKey: 'mcp.title', icon: Server },
-  { id: 'mcpClient', labelKey: 'mcpClient.title', icon: Plug },
+const SECTIONS: { id: SettingsSection; labelKey: TranslationKey }[] = [
+  { id: 'general', labelKey: 'settings.general' },
+  { id: 'dataBrowsing', labelKey: 'settings.dataBrowsing' },
+  { id: 'editor', labelKey: 'settings.editor' },
+  { id: 'behavior', labelKey: 'settings.behavior' },
+  { id: 'logging', labelKey: 'settings.logging' },
+  { id: 'ai', labelKey: 'settings.ai' },
+  { id: 'prompts', labelKey: 'settings.prompts' },
+  { id: 'mcpServer', labelKey: 'mcp.title' },
+  { id: 'mcpClient', labelKey: 'mcpClient.title' },
 ];
 
 export function SettingsWindow() {
@@ -82,6 +75,7 @@ export function SettingsWindow() {
   const [draft, setDraft] = useState<AppSettings>(settings);
   const [saved, setSaved] = useState(false);
   const [defaultLogPath, setDefaultLogPath] = useState('');
+  const settingsHydrated = useRef(false);
 
   const [activeSection, setActiveSection] = useState<SettingsSection>(() => {
     const fromUrl = getUrlParam('section');
@@ -92,16 +86,24 @@ export function SettingsWindow() {
   });
 
   useEffect(() => {
-    void loadSettings();
+    void loadSettings().then(() => {
+      setDraft(useSettingsStore.getState().settings);
+      settingsHydrated.current = true;
+    });
   }, [loadSettings]);
 
   useEffect(() => {
     void settingsCommands.getLogPath().then(setDefaultLogPath).catch(() => {});
   }, []);
 
+  // Theme pack applies immediately via updateSettings; merge packId only so other draft edits persist.
   useEffect(() => {
-    setDraft(settings);
-  }, [settings]);
+    if (!settingsHydrated.current) return;
+    setDraft((prev) => ({
+      ...prev,
+      theme: { ...prev.theme, packId: settings.theme.packId },
+    }));
+  }, [settings.theme.packId]);
 
   const updateField = <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
     setDraft((prev) => ({ ...prev, [key]: value }));
@@ -110,6 +112,7 @@ export function SettingsWindow() {
 
   const handleSave = useCallback(async () => {
     await updateSettings(draft);
+    setDraft(useSettingsStore.getState().settings);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   }, [draft, updateSettings]);
@@ -135,7 +138,6 @@ export function SettingsWindow() {
         {/* Sidebar */}
         <nav className="flex w-[180px] shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-edge bg-surface-alt px-2 py-3">
           {SECTIONS.map((sec) => {
-            const Icon = sec.icon;
             const isActive = activeSection === sec.id;
             return (
               <button
@@ -149,7 +151,7 @@ export function SettingsWindow() {
                     : 'text-fg-secondary hover:bg-surface-raised hover:text-fg',
                 )}
               >
-                <Icon className="h-4 w-4 shrink-0" />
+                <ThemedIcon id={settingsSectionIconId(sec.id)} className="h-4 w-4 shrink-0" />
                 {t(sec.labelKey)}
               </button>
             );
@@ -173,11 +175,15 @@ export function SettingsWindow() {
 
                 <SettingRow label={t('settings.theme')}>
                   <Select
-                    value={draft.theme}
+                    value={draft.theme.mode}
                     options={themeOptions}
-                    onChange={(v) => updateField('theme', v as AppSettings['theme'])}
+                    onChange={(v) =>
+                      updateField('theme', { ...draft.theme, mode: v as ThemeMode })
+                    }
                   />
                 </SettingRow>
+
+                <ThemePackSection />
               </>
             )}
 

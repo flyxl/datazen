@@ -1,0 +1,9 @@
+{
+  "id": "community.fixture-dark",
+  "name": "Fixture Dark",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "modes": ["dark"],
+  "author": "DataZen",
+  "description": "Sample community theme pack for tests"
+}
