@@ -1,0 +1,5 @@
+/* Fixture theme tokens — overrides for test assertions */
+:root {
+  --c-accent: #7c3aed;
+  --font-mono: "Fixture Mono", ui-monospace, monospace;
+}

@@ -37,15 +37,15 @@ export function PieChartRenderer({ data, config, onDataPointClick }: PieChartRen
       </Pie>
       <Tooltip
         contentStyle={{
-          background: 'var(--bg-surface, #1e1e2e)',
-          border: '1px solid var(--border-edge, #333)',
+          background: 'var(--c-surface-alt, #1e1e2e)',
+          border: '1px solid var(--c-edge, #333)',
           borderRadius: 6,
-          color: 'var(--text-primary, #eee)',
+          color: 'var(--c-fg, #eee)',
           fontSize: 12,
         }}
       />
       {config.showLegend && (
-        <Legend wrapperStyle={{ fontSize: 12, color: 'var(--text-primary, #eee)' }} />
+        <Legend wrapperStyle={{ fontSize: 12, color: 'var(--c-fg, #eee)' }} />
       )}
     </PieChart>
   );

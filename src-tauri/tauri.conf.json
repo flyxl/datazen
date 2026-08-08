@@ -31,7 +31,8 @@
         "default-src": "'self'",
         "script-src": "'self'",
         "style-src": "'self' 'unsafe-inline'",
-        "img-src": "'self' data: asset: tauri:",
+        "img-src": "'self' data: asset: tauri: blob:",
+        "font-src": "'self' blob: data:",
         "connect-src": "'self' https: http: ipc: http://ipc.localhost"
       },
       "dangerousDisableAssetCspModification": [
