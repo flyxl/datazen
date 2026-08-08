@@ -386,19 +386,58 @@ export default {
 };
 ```
 
-### 7.3 主题切换
+### 7.3 模式切换（light / dark / system）
+
+`settings.theme` 为 `{ mode, packId }`；`packId` 为 `null` 时仅使用 Host 内置 token。
 
 ```typescript
-// settingsStore.ts
-updateTheme(theme: 'light' | 'dark' | 'system') {
-  if (theme === 'system') {
-    const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    document.documentElement.classList.toggle('dark', isDark);
-  } else {
-    document.documentElement.classList.toggle('dark', theme === 'dark');
-  }
+// settingsStore.ts — applyTheme(mode × packId)
+async function applyTheme(mode: ThemeMode, packId: string | null) {
+  document.documentElement.classList.toggle('dark', resolveIsDark(mode));
+  await applyThemePack(packId);           // 注入 pack CSS / 图标 / 字体
+  syncWebviewBackgroundFromTokens();
 }
+
+// 跨窗口 / 菜单同步 mode，不写后端
+export async function applyThemeLocally(mode: ThemeMode) {
+  const packId = useSettingsStore.getState().settings.theme.packId;
+  await applyTheme(mode, packId);
+  watchSystemTheme(mode);                 // system 模式监听 prefers-color-scheme
+}
+
+// updateSettings({ theme: { mode, packId } }) → 持久化 + applyTheme + 跨窗口广播
 ```
+
+### 7.4 运行时主题包
+
+用户从设置页（`ThemePackSection`）安装本地 ZIP，启用后由 `themePackApply.ts` 加载：
+
+```
+settings.theme.packId  →  read_theme_pack_file (IPC)
+                      →  injectThemePackCss (<style id="datazen-theme-pack">)
+                      →  register pack icon blob URLs + font faces
+                      →  optional editor.json / charts.json overlays
+```
+
+| 模块 | 路径 | 职责 |
+|------|------|------|
+| IPC 封装 | `src/commands/theme.ts` | `listThemePacks`, `installThemePackWithDialog`, `removeThemePack`, `readThemePackFile` |
+| 应用逻辑 | `src/lib/themePackApply.ts` | 注入/移除 pack CSS、字体、通知跨窗口刷新 |
+| 图标解析 | `src/lib/iconResolver.ts` | pack → Lucide/驱动 → 占位 |
+| 组件 | `ThemedIcon`, `DbTypeBadge` | 消费 IconResolver |
+| 设置 UI | `windows/settings/ThemePackSection.tsx` | 安装、启用、删除主题包 |
+
+**图标解析顺序**
+
+- 功能 UI：`pack icons[id]` → Host Lucide → 占位
+- DB 角标：`pack icons["db." + type]` → 驱动默认 SVG → shortLabel 色块（`DbTypeBadge`）
+
+**字体**
+
+- Host 定义 `--font-sans`、`--font-mono`、`--font-editor`（`themes.css`）。
+- 主题包可通过 `fonts.css` 覆盖；用户显式设置的 `editorFontFamily` **优先于** 主题 `--font-editor`。
+
+后端安装与校验见 [运行时主题包](../backend/theme.md)。
 
 ## 4. Tauri IPC 通信层
 

@@ -156,8 +156,10 @@ export interface ContextEntry {
   children?: ContextEntry[];
 }
 
+import type { ThemePreference } from './theme';
+
 export interface AppSettings {
-  theme: 'light' | 'dark' | 'system';
+  theme: ThemePreference;
   language: string;
   limitSelectResults: boolean;
   queryResultLimit: number;

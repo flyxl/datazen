@@ -17,11 +17,46 @@ use tokio::sync::RwLock;
 use crate::ai::AiProviderConfig;
 use crate::db::ConnectionConfig;
 
+/// Light / dark / system mode plus optional installed theme pack.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ThemePreference {
+    pub mode: String,
+    #[serde(default)]
+    pub pack_id: Option<String>,
+}
+
+impl Default for ThemePreference {
+    fn default() -> Self {
+        Self {
+            mode: "dark".into(),
+            pack_id: None,
+        }
+    }
+}
+
+fn deserialize_theme<'de, D>(deserializer: D) -> Result<ThemePreference, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = serde_json::Value::deserialize(deserializer)?;
+    match value {
+        serde_json::Value::String(s) if matches!(s.as_str(), "light" | "dark" | "system") => {
+            Ok(ThemePreference {
+                mode: s,
+                pack_id: None,
+            })
+        }
+        other => serde_json::from_value(other).map_err(serde::de::Error::custom),
+    }
+}
+
 /// Application settings persisted on disk.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppSettings {
-    pub theme: String,
+    #[serde(deserialize_with = "deserialize_theme", default)]
+    pub theme: ThemePreference,
     pub language: String,
     #[serde(default = "default_limit_select")]
     pub limit_select_results: bool,
@@ -65,7 +100,7 @@ impl AppSettings {
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
-            theme: "dark".to_string(),
+            theme: ThemePreference::default(),
             language: "en".to_string(),
             limit_select_results: false,
             query_result_limit: 5000,
@@ -970,6 +1005,34 @@ mod tests {
             .map(|d| d.join(APP_IDENTIFIER))
             .expect("data dir");
         assert_eq!(store_dir, log_dir);
+    }
+
+    #[test]
+    fn theme_deserializes_legacy_string_and_object() {
+        #[derive(Deserialize)]
+        struct ThemeField {
+            #[serde(deserialize_with = "deserialize_theme", default)]
+            theme: ThemePreference,
+        }
+
+        let legacy: ThemeField = serde_json::from_str(r#"{"theme":"dark"}"#).unwrap();
+        assert_eq!(
+            legacy.theme,
+            ThemePreference {
+                mode: "dark".into(),
+                pack_id: None,
+            }
+        );
+
+        let nested: ThemeField =
+            serde_json::from_str(r#"{"theme":{"mode":"dark","packId":null}}"#).unwrap();
+        assert_eq!(
+            nested.theme,
+            ThemePreference {
+                mode: "dark".into(),
+                pack_id: None,
+            }
+        );
     }
 
     #[test]

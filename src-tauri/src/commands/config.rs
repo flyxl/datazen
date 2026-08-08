@@ -38,7 +38,7 @@ pub fn get_system_ui_language() -> String {
 
 #[tauri::command]
 pub async fn save_settings(state: State<'_, AppState>, settings: AppSettings) -> Result<(), CommandError> {
-    tracing::debug!(theme = %settings.theme, "save_settings");
+    tracing::debug!(theme_mode = %settings.theme.mode, "save_settings");
     state
         .store
         .save_settings(settings)
