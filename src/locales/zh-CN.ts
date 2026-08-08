@@ -347,6 +347,21 @@ const zhCN = {
   'redis.noExpiry': '无过期',
   'redis.seconds': '秒',
 
+  // ── Document (MongoDB) ──
+  'document.documents': '文档浏览',
+  'document.queries': '命令',
+  'document.databases': '数据库',
+  'document.collections': '集合',
+  'document.searchCollections': '搜索集合…',
+  'document.noCollections': '该库没有集合',
+  'document.selectCollection': '选择一个集合',
+  'document.filter': 'Filter',
+  'document.applyFilter': '应用',
+  'document.docCount': '{count} 条',
+  'document.noDocuments': '没有匹配的文档',
+  'document.documentDetail': '文档详情',
+  'document.queryHint': '输入 MongoDB JSON 命令并按 ⌘+Enter 执行',
+
   // ── Query Panel ──
   'query.execute': '执行',
   'query.stop': '停止',

@@ -50,4 +50,11 @@ describe('DB_REGISTRY behavioral flags', () => {
     expect(DB_REGISTRY.ob_oracle.quoteChar).toBe('`');
     expect(DB_REGISTRY.ob_oracle.sqlDialect).toBe('mysql');
   });
+
+  it('mongodb uses document connection view', () => {
+    expect(DB_REGISTRY.mongodb.connectionView).toBe('document');
+    expect(DB_REGISTRY.mongodb.category).toBe('document');
+    expect(DB_REGISTRY.mongodb.supportsSQL).toBe(false);
+    expect(DB_REGISTRY.mongodb.hasMultiDatabase).toBe(true);
+  });
 });
