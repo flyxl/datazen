@@ -63,4 +63,17 @@ export interface DatabaseTypeMeta {
   supportsExplain?: boolean;
   /** Whether this driver supports ER diagram (requires FK metadata) */
   supportsErDiagram?: boolean;
+  /**
+   * On-demand SQL namespace completion strategy (host is plugin-agnostic).
+   * - `default-sql`: database → tables (MySQL/MariaDB/Kiwi/…)
+   * - `postgresql`: database → schema → table (or schema → table when single-db)
+   * - `path-hierarchy`: slash-path levels via `get_tables` + optional name→id aliases
+   *   (plugins that use catalog/schema navigation rows with schema CATALOG|SCHEMA)
+   */
+  namespaceEnsure?: 'default-sql' | 'postgresql' | 'path-hierarchy';
+  /**
+   * When true, host `setLoadedTables` does not merge into `namespaceTree`
+   * (plugin owns hierarchy via SDK `syncSchemaNamespace` / aliases).
+   */
+  namespaceOwnedByPlugin?: boolean;
 }

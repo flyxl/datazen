@@ -1,18 +1,21 @@
 import { pathKey, namespaceHasChild, type SqlNamespace } from './sqlNamespace';
-import type { TableInfo } from '../types';
+import { DB_REGISTRY } from './databaseTypes';
+import type { DatabaseType, TableInfo } from '../types';
+import type { DatabaseTypeMeta } from './databaseMeta';
 
 export interface EnsureDeps {
   connectionId: string;
   databaseType: string | null;
   isMultiDatabase: boolean;
   loadedPaths: Set<string>;
-  supersetDbIds: Record<string, string>;
+  /** SQL display name → fetch path root (e.g. numeric id). Filled by plugins via SDK. */
+  pathAliases: Record<string, string>;
   namespaceTree: SqlNamespace;
   tables: TableInfo[];
   databases: string[];
   currentDatabase: string | null;
   mergeNamespace: (segments: string[], kind: 'branch' | 'tables', names: string[]) => void;
-  registerSupersetDatabases: (entries: { name: string; id: string }[]) => void;
+  registerPathAliases: (entries: { name: string; id: string }[]) => void;
   getDatabases: (connectionId: string) => Promise<string[]>;
   getTables: (connectionId: string, database: string) => Promise<TableInfo[]>;
   useDatabase: (connectionId: string, database: string) => Promise<void>;
@@ -24,26 +27,14 @@ function isSchemaGroupingSchema(schema: string | null | undefined): boolean {
   return schema != null && schema !== 'CATALOG' && schema !== 'SCHEMA';
 }
 
-function isSupersetNav(item: TableInfo): boolean {
+/** Navigation sentinel rows used by path-hierarchy drivers (catalog/schema browsers). */
+function isPathNav(item: TableInfo): boolean {
   return item.schema === 'CATALOG' || item.schema === 'SCHEMA';
 }
 
-/** Parse Superset `get_databases` entry: `558:presto (Presto)` → { id, name }. */
-export function parseSupersetDatabaseEntry(entry: string): { id: string; name: string } {
-  const colonIdx = entry.indexOf(':');
-  if (colonIdx < 0) return { id: entry, name: entry };
-  const id = entry.slice(0, colonIdx);
-  const rest = entry.slice(colonIdx + 1);
-  const backendMatch = rest.match(/^(.*?)\s*\(([^)]+)\)$/);
-  if (backendMatch) {
-    return { id, name: backendMatch[1].trim() };
-  }
-  return { id, name: rest };
-}
-
-/** SQL segment name for a Superset navigation row under dbId. */
-export function supersetNavSegment(item: TableInfo, dbId: string): string {
-  const prefix = `${dbId}/`;
+/** Last slash-path segment, optionally stripping `${rootId}/` prefix. */
+export function pathNavSegment(item: TableInfo, rootId: string): string {
+  const prefix = `${rootId}/`;
   const path = item.name.startsWith(prefix) ? item.name.slice(prefix.length) : item.name;
   const segments = path.split('/').filter(Boolean);
   return segments[segments.length - 1] ?? item.name;
@@ -53,60 +44,58 @@ function tableNames(items: TableInfo[]): string[] {
   return items.filter((item) => item.tableType !== 'view').map((item) => item.name);
 }
 
-function resolveSupersetDbId(dbName: string, supersetDbIds: Record<string, string>): string | null {
-  return supersetDbIds[dbName] ?? null;
+function resolvePathRoot(name: string, pathAliases: Record<string, string>): string {
+  return pathAliases[name] ?? name;
 }
 
-async function registerSupersetDatabaseEntries(
-  deps: EnsureDeps,
-): Promise<{ name: string; id: string }[]> {
-  const entries = await deps.getDatabases(deps.connectionId);
-  const parsed = entries.map(parseSupersetDatabaseEntry);
-  const registered = parsed.map((p) => ({ name: p.name, id: p.id }));
-  deps.registerSupersetDatabases(registered);
-  return registered;
-}
-
-function buildSupersetFetchPath(segments: string[], dbId: string): string | null {
+function buildSlashFetchPath(segments: string[], rootId: string): string | null {
   if (segments.length === 0) return null;
-  if (segments.length === 1) return dbId;
-  return [dbId, ...segments.slice(1)].join('/');
+  if (segments.length === 1) return rootId;
+  return [rootId, ...segments.slice(1)].join('/');
 }
 
-async function ensureSuperset(segments: string[], deps: EnsureDeps): Promise<void> {
-  const { connectionId, supersetDbIds } = deps;
+function resolveEnsureStrategy(databaseType: string | null): DatabaseTypeMeta['namespaceEnsure'] {
+  if (!databaseType) return 'default-sql';
+  const meta = DB_REGISTRY[databaseType as DatabaseType];
+  if (meta?.namespaceEnsure) return meta.namespaceEnsure;
+  if (databaseType === 'postgresql') return 'postgresql';
+  return 'default-sql';
+}
+
+/**
+ * Path-hierarchy ensure: uses plugin-registered pathAliases for the root segment,
+ * then `get_tables(rootId[/…])`. Does not parse plugin-specific database list formats.
+ */
+async function ensurePathHierarchy(segments: string[], deps: EnsureDeps): Promise<void> {
+  const { connectionId, pathAliases } = deps;
 
   if (segments.length === 0) {
-    await registerSupersetDatabaseEntries(deps);
+    const names = Object.keys(pathAliases);
+    if (names.length > 0) {
+      deps.mergeNamespace([], 'branch', names);
+    }
     return;
   }
 
-  const dbName = segments[0];
-  let dbId = resolveSupersetDbId(dbName, supersetDbIds);
-  if (!dbId) {
-    const registered = await registerSupersetDatabaseEntries(deps);
-    dbId = registered.find((entry) => entry.name === dbName)?.id ?? null;
-    if (!dbId) return;
-  }
-
-  const fetchPath = buildSupersetFetchPath(segments, dbId);
+  const rootId = resolvePathRoot(segments[0], pathAliases);
+  const fetchPath = buildSlashFetchPath(segments, rootId);
   if (!fetchPath) return;
 
   const items = await deps.getTables(connectionId, fetchPath);
 
   if (segments.length === 1) {
-    const catalogs = items.filter(isSupersetNav).map((item) => supersetNavSegment(item, dbId));
-    deps.mergeNamespace(segments, 'branch', catalogs);
+    const children = items.filter(isPathNav).map((item) => pathNavSegment(item, rootId));
+    deps.mergeNamespace(segments, 'branch', children);
     return;
   }
 
-  if (segments.length === 2) {
-    const schemas = items.filter(isSupersetNav).map((item) => supersetNavSegment(item, dbId));
-    deps.mergeNamespace(segments, 'branch', schemas);
+  if (items.some(isPathNav) && segments.length === 2) {
+    const children = items.filter(isPathNav).map((item) => pathNavSegment(item, rootId));
+    deps.mergeNamespace(segments, 'branch', children);
     return;
   }
 
-  deps.mergeNamespace(segments, 'tables', tableNames(items.filter((item) => !isSupersetNav(item))));
+  deps.mergeNamespace(segments, 'tables', tableNames(items.filter((item) => !isPathNav(item))));
 }
 
 async function ensurePostgresql(segments: string[], deps: EnsureDeps): Promise<void> {
@@ -206,9 +195,10 @@ async function runEnsure(segments: string[], deps: EnsureDeps): Promise<void> {
   if (deps.loadedPaths.has(pathKey(segments))) return;
 
   try {
-    switch (deps.databaseType) {
-      case 'superset':
-        await ensureSuperset(segments, deps);
+    const strategy = resolveEnsureStrategy(deps.databaseType);
+    switch (strategy) {
+      case 'path-hierarchy':
+        await ensurePathHierarchy(segments, deps);
         break;
       case 'postgresql':
         await ensurePostgresql(segments, deps);
