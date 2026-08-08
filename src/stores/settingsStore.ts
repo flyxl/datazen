@@ -3,6 +3,7 @@ import { settingsCommands } from '../commands/settings';
 import { emitCrossWindow } from '../lib/crossWindowBus';
 import { resolveUiLanguage } from '../lib/resolveUiLanguage';
 import type { AppSettings } from '../types';
+import { HOST_DEFAULT_EDITOR_FONT } from '../lib/resolveEditorFontFamily';
 import {
   DEFAULT_THEME_PREFERENCE,
   normalizeThemePreference,
@@ -15,7 +16,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   limitSelectResults: true,
   queryResultLimit: 5000,
   editorFontSize: 13,
-  editorFontFamily: 'Menlo, Monaco, Consolas, "Courier New", monospace',
+  editorFontFamily: HOST_DEFAULT_EDITOR_FONT,
   confirmOnDelete: true,
   autoCommit: true,
   defaultPageSize: 50,
