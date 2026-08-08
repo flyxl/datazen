@@ -1,6 +1,6 @@
 //! PostgreSQL driver backed by sqlx PgPool.
 
-use super::*;
+use datazen_driver_api::*;
 use async_trait::async_trait;
 use rust_decimal::prelude::ToPrimitive;
 use sqlx::postgres::PgPoolOptions;

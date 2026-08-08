@@ -1,6 +1,6 @@
 //! SQLite driver backed by sqlx SqlitePool.
 
-use super::*;
+use datazen_driver_api::*;
 use async_trait::async_trait;
 use sqlx::sqlite::SqlitePoolOptions;
 use sqlx::{Column, Row, SqlitePool};

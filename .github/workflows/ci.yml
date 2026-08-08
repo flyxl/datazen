@@ -45,14 +45,40 @@ jobs:
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Install Linux system deps (Tauri / webkit2gtk)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            pkg-config \
+            libglib2.0-dev \
+            libgtk-3-dev \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libssl-dev \
+            patchelf
+
       - name: Cache Rust compilation
         uses: swatinem/rust-cache@v2
         with:
           workspaces: . -> target
           cache-on-failure: true
 
+      - name: Resolve drivers (basic)
+        run: node scripts/resolve-drivers.mjs --drivers=basic
+
       - name: Rust unit tests (datazen)
-        run: cargo test -p datazen --lib
+        run: |
+          FEATURES=$(node -e "console.log(JSON.parse(require('fs').readFileSync('.plugin-features.json','utf8')).features.join(','))")
+          cargo test -p datazen --lib --features "$FEATURES"
+
+      - name: Rust unit tests (basic path drivers)
+        run: cargo test -p datazen-driver-postgres -p datazen-driver-mysql -p datazen-driver-sqlite -p datazen-driver-redis --lib
+
+      - name: Restore managed files
+        if: always()
+        run: node scripts/plugin-file-stash.mjs restore
 
       - name: Rust unit tests (datazen-ai-api)
         run: cargo test -p datazen-ai-api --lib

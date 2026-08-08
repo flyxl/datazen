@@ -1,0 +1,16 @@
+[package]
+name = "datazen-driver-mongodb"
+version = "0.0.8"
+edition = "2021"
+description = "DataZen mongodb database driver"
+license = "GPL-3.0-or-later"
+
+[dependencies]
+datazen-driver-api = { path = "../../driver-api" }
+async-trait = "0.1"
+tokio = { version = "1", features = ["full"] }
+mongodb = "3"
+futures-util = "0.3"
+serde_json = "1"
+tracing = "0.1"
+uuid = { version = "1", features = ["v4"] }

@@ -356,6 +356,21 @@ const en: Record<TranslationKey, string> = {
   'redis.noExpiry': 'No expiry',
   'redis.seconds': 's',
 
+  // ── Document (MongoDB) ──
+  'document.documents': 'Documents',
+  'document.queries': 'Queries',
+  'document.databases': 'Databases',
+  'document.collections': 'Collections',
+  'document.searchCollections': 'Search collections…',
+  'document.noCollections': 'No collections in this database',
+  'document.selectCollection': 'Select a collection',
+  'document.filter': 'Filter',
+  'document.applyFilter': 'Apply',
+  'document.docCount': '{count} docs',
+  'document.noDocuments': 'No matching documents',
+  'document.documentDetail': 'Document',
+  'document.queryHint': 'Enter a MongoDB JSON command and press ⌘+Enter',
+
   // ── Query Panel ──
   'query.execute': 'Execute',
   'query.stop': 'Stop',

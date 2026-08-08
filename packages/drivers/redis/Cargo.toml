@@ -1,0 +1,16 @@
+[package]
+name = "datazen-driver-redis"
+version = "0.0.8"
+edition = "2021"
+description = "DataZen redis database driver"
+license = "GPL-3.0-or-later"
+
+[dependencies]
+datazen-driver-api = { path = "../../driver-api" }
+async-trait = "0.1"
+tokio = { version = "1", features = ["full"] }
+redis = { version = "0.27", features = ["tokio-comp", "aio"] }
+serde_json = "1"
+tracing = "0.1"
+uuid = { version = "1", features = ["v4"] }
+urlencoding = "2"

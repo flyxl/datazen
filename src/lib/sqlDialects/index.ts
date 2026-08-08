@@ -3,6 +3,14 @@ import type { DatabaseType } from '../../types';
 import { postgresqlDialect } from './postgresql';
 import { mysqlDialect } from './mysql';
 import { sqliteDialect } from './sqlite';
+import {
+  sqlserverDialect,
+  clickhouseDialect,
+  duckdbDialect,
+  elasticsearchDialect,
+  mongodbDialect,
+  genericDialect,
+} from './extra';
 import { PLUGIN_SQL_DIALECTS } from '../../plugins/generated';
 import type { SqlDialectStrategy } from './types';
 
@@ -10,6 +18,12 @@ const BUILTIN_DIALECTS: Record<string, SqlDialectStrategy> = {
   postgresql: postgresqlDialect,
   mysql: mysqlDialect,
   sqlite: sqliteDialect,
+  sqlserver: sqlserverDialect,
+  clickhouse: clickhouseDialect,
+  duckdb: duckdbDialect,
+  elasticsearch: elasticsearchDialect,
+  mongodb: mongodbDialect,
+  generic: genericDialect,
 };
 
 const DIALECTS: Record<string, SqlDialectStrategy> = {
