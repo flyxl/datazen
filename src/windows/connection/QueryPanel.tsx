@@ -105,6 +105,10 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
     }, 120);
   }, [ensureNamespacePath]);
 
+  useEffect(() => () => {
+    if (ensureTimer.current) clearTimeout(ensureTimer.current);
+  }, []);
+
   useEffect(() => {
     setConnectionId(connectionId);
     void loadHistory();
