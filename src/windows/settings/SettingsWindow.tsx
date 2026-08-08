@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { TitleBar } from '../../components/TitleBar';
 import { ThemedIcon } from '../../components/ThemedIcon';
 import { Button } from '../../components/ui/Button';
@@ -75,6 +75,7 @@ export function SettingsWindow() {
   const [draft, setDraft] = useState<AppSettings>(settings);
   const [saved, setSaved] = useState(false);
   const [defaultLogPath, setDefaultLogPath] = useState('');
+  const settingsHydrated = useRef(false);
 
   const [activeSection, setActiveSection] = useState<SettingsSection>(() => {
     const fromUrl = getUrlParam('section');
@@ -85,16 +86,24 @@ export function SettingsWindow() {
   });
 
   useEffect(() => {
-    void loadSettings();
+    void loadSettings().then(() => {
+      setDraft(useSettingsStore.getState().settings);
+      settingsHydrated.current = true;
+    });
   }, [loadSettings]);
 
   useEffect(() => {
     void settingsCommands.getLogPath().then(setDefaultLogPath).catch(() => {});
   }, []);
 
+  // Theme pack applies immediately via updateSettings; merge packId only so other draft edits persist.
   useEffect(() => {
-    setDraft(settings);
-  }, [settings]);
+    if (!settingsHydrated.current) return;
+    setDraft((prev) => ({
+      ...prev,
+      theme: { ...prev.theme, packId: settings.theme.packId },
+    }));
+  }, [settings.theme.packId]);
 
   const updateField = <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
     setDraft((prev) => ({ ...prev, [key]: value }));
@@ -103,6 +112,7 @@ export function SettingsWindow() {
 
   const handleSave = useCallback(async () => {
     await updateSettings(draft);
+    setDraft(useSettingsStore.getState().settings);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   }, [draft, updateSettings]);
