@@ -287,6 +287,19 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
     });
   }, [editorFontSize, editorFontFamily]);
 
+  // Reconfigure when theme pack CSS / editor.json overlay changes
+  useEffect(() => {
+    const reconfigure = () => {
+      const view = viewRef.current;
+      if (!view) return;
+      view.dispatch({
+        effects: themeCompartment.current.reconfigure(themeExtensions(currentThemeConfig())),
+      });
+    };
+    document.addEventListener('datazen:theme-pack-changed', reconfigure);
+    return () => document.removeEventListener('datazen:theme-pack-changed', reconfigure);
+  }, []);
+
   // Dynamically update schema when it changes
   useEffect(() => {
     const view = viewRef.current;
