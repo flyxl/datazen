@@ -36,6 +36,18 @@ export type PromptScenario =
 
 export type PromptSource = 'default' | 'driver' | 'user';
 
+/** E2E: when `window.__invokeCalls` is an array, capture args and stub (Tauri v2 freezes invoke). */
+type E2eInvokeCall = { cmd: string; args: unknown };
+
+function e2eStubInvoke<T>(cmd: string, args: unknown, real: () => Promise<T>): Promise<T> {
+  const calls = (globalThis as typeof globalThis & { __invokeCalls?: E2eInvokeCall[] }).__invokeCalls;
+  if (Array.isArray(calls)) {
+    calls.push({ cmd, args });
+    return Promise.resolve('' as T);
+  }
+  return real();
+}
+
 export interface PromptInfo {
   scenario: PromptScenario;
   label: string;
@@ -78,7 +90,7 @@ export const aiCommands = {
     recentQueries?: string[];
     contextFiles?: string[];
     contextTables?: string[];
-  }) => invoke<string>('ai_generate_sql', params),
+  }) => e2eStubInvoke('ai_generate_sql', params, () => invoke<string>('ai_generate_sql', params)),
 
   diagnoseError: (params: {
     connectionId: string;
@@ -102,7 +114,7 @@ export const aiCommands = {
     scenario?: PromptScenario;
     contextFiles?: string[];
     contextTables?: string[];
-  }) => invoke<string>('ai_chat', params),
+  }) => e2eStubInvoke('ai_chat', params, () => invoke<string>('ai_chat', params)),
 
   parseFilter: (params: {
     connectionId: string;
