@@ -1,6 +1,12 @@
 import { create } from 'zustand';
 import { databaseCommands } from '../commands/database';
 import { DB_REGISTRY } from '../lib/databaseTypes';
+import {
+  mergeNamespacePath,
+  pathKey,
+  type NamespaceMergeKind,
+  type SqlNamespace,
+} from '../lib/sqlNamespace';
 import { t } from '../locales/t';
 import type { DatabaseType, TableInfo } from '../types';
 
@@ -49,6 +55,12 @@ export function resolveVisibleDatabases(
   };
 }
 
+const EMPTY_NAMESPACE: SqlNamespace = {};
+
+function isSchemaGroupingSchema(schema: string | null | undefined): boolean {
+  return schema != null && schema !== 'CATALOG' && schema !== 'SCHEMA';
+}
+
 export interface LoadForConnectionOptions {
   skipLoadTables?: boolean;
   preferredDatabase?: string;
@@ -60,11 +72,15 @@ interface SchemaStore {
   connectionId: string | null;
   currentDatabase: string | null;
   databases: string[];
+  databaseType: string | null;
   /** True when driver supports multi-db AND connection sees more than one database. */
   isMultiDatabase: boolean;
   tables: TableInfo[];
   views: TableInfo[];
   columnMap: Record<string, string[]>;
+  namespaceTree: SqlNamespace;
+  loadedPaths: Set<string>;
+  supersetDbIds: Record<string, string>;
   expanded: Set<string>;
   selectedId: string | null;
   loading: boolean;
@@ -72,6 +88,13 @@ interface SchemaStore {
 
   loadForConnection: (connectionId: string, options?: LoadForConnectionOptions) => Promise<void>;
   loadTables: (database: string) => Promise<void>;
+  /**
+   * Apply an already-fetched table list into the store (for multi-db / custom
+   * trees that keep local caches but must feed SQL editor autocomplete).
+   */
+  setLoadedTables: (database: string, all: TableInfo[]) => void;
+  mergeNamespace: (segments: string[], kind: NamespaceMergeKind, names: string[]) => void;
+  registerSupersetDatabases: (entries: { name: string; id: string }[]) => void;
   loadColumnMap: () => Promise<void>;
   toggleExpand: (id: string) => void;
   setSelected: (id: string | null) => void;
@@ -82,17 +105,29 @@ export const useSchemaStore = create<SchemaStore>((set, get) => ({
   connectionId: null,
   currentDatabase: null,
   databases: [],
+  databaseType: null,
   isMultiDatabase: false,
   tables: [],
   views: [],
   columnMap: {},
+  namespaceTree: EMPTY_NAMESPACE,
+  loadedPaths: new Set(),
+  supersetDbIds: {},
   expanded: new Set(),
   selectedId: null,
   loading: false,
   error: null,
 
   loadForConnection: async (connectionId, options) => {
-    set({ loading: true, error: null, connectionId });
+    set({
+      loading: true,
+      error: null,
+      connectionId,
+      databaseType: options?.databaseType ?? null,
+      namespaceTree: EMPTY_NAMESPACE,
+      loadedPaths: new Set(),
+      supersetDbIds: {},
+    });
     try {
       const allDatabases = await databaseCommands.getDatabases(connectionId);
       const meta = options?.databaseType
@@ -106,6 +141,7 @@ export const useSchemaStore = create<SchemaStore>((set, get) => ({
         !lockedToConfigured &&
         computeIsMultiDatabase(meta?.hasMultiDatabase, databases.length);
       set({ databases, isMultiDatabase, loading: false, currentDatabase: preferred });
+      get().mergeNamespace([], 'branch', databases);
       if (options?.skipLoadTables) return;
       if (preferred) {
         await get().loadTables(preferred);
@@ -128,9 +164,8 @@ export const useSchemaStore = create<SchemaStore>((set, get) => ({
       // Session switch for MySQL/MariaDB (and no-op for drivers without override).
       await databaseCommands.useDatabase(connectionId, database);
       const all = await databaseCommands.getTables(connectionId, database);
-      const tables = all.filter((t) => t.tableType !== 'view');
-      const views = all.filter((t) => t.tableType === 'view');
-      set({ tables, views, loading: false, currentDatabase: database });
+      get().setLoadedTables(database, all);
+      set({ loading: false });
     } catch (e) {
       set({
         loading: false,
@@ -139,10 +174,71 @@ export const useSchemaStore = create<SchemaStore>((set, get) => ({
     }
   },
 
+  mergeNamespace: (segments, kind, names) => {
+    const { namespaceTree, loadedPaths } = get();
+    set({
+      namespaceTree: mergeNamespacePath(namespaceTree, segments, kind, names),
+      loadedPaths: new Set(loadedPaths).add(pathKey(segments)),
+    });
+  },
+
+  registerSupersetDatabases: (entries) => {
+    const nextIds = { ...get().supersetDbIds };
+    const names: string[] = [];
+    for (const { name, id } of entries) {
+      nextIds[name] = id;
+      names.push(name);
+    }
+    set({ supersetDbIds: nextIds });
+    get().mergeNamespace([], 'branch', names);
+  },
+
+  setLoadedTables: (database, all) => {
+    const { databaseType, isMultiDatabase, namespaceTree, loadedPaths } = get();
+    const tables = all.filter((item) => item.tableType !== 'view');
+    const views = all.filter((item) => item.tableType === 'view');
+
+    let nextTree = namespaceTree;
+    let nextLoadedPaths = loadedPaths;
+
+    if (databaseType !== 'superset') {
+      const hasSchemaGrouping = all.some((item) => isSchemaGroupingSchema(item.schema));
+
+      if (hasSchemaGrouping) {
+        const bySchema = new Map<string, string[]>();
+        for (const item of tables) {
+          if (!isSchemaGroupingSchema(item.schema)) continue;
+          const list = bySchema.get(item.schema!) ?? [];
+          list.push(item.name);
+          bySchema.set(item.schema!, list);
+        }
+        nextLoadedPaths = new Set(loadedPaths);
+        for (const [schema, names] of bySchema) {
+          const segments = isMultiDatabase ? [database, schema] : [schema];
+          nextTree = mergeNamespacePath(nextTree, segments, 'tables', names);
+          nextLoadedPaths.add(pathKey(segments));
+        }
+      } else {
+        const tableNames = tables.map((item) => item.name);
+        nextTree = mergeNamespacePath(nextTree, [database], 'tables', tableNames);
+        nextLoadedPaths = new Set(loadedPaths).add(pathKey([database]));
+      }
+    }
+
+    set({
+      tables,
+      views,
+      currentDatabase: database,
+      columnMap: {},
+      namespaceTree: nextTree,
+      loadedPaths: nextLoadedPaths,
+    });
+  },
+
   loadColumnMap: async () => {
     const { connectionId, tables, views } = get();
     if (!connectionId) return;
-    const allNames = [...tables, ...views].map((t) => t.name);
+    const allNames = [...tables, ...views].map((item) => item.name);
     const results = await Promise.all(
       allNames.map((name) =>
         databaseCommands.getColumns(connectionId, name).catch(() => [] as string[]),
@@ -170,10 +266,14 @@ export const useSchemaStore = create<SchemaStore>((set, get) => ({
       connectionId: null,
       currentDatabase: null,
       databases: [],
+      databaseType: null,
       isMultiDatabase: false,
       tables: [],
       views: [],
       columnMap: {},
+      namespaceTree: EMPTY_NAMESPACE,
+      loadedPaths: new Set(),
+      supersetDbIds: {},
       expanded: new Set(),
       selectedId: null,
       loading: false,
