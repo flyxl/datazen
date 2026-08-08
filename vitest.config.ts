@@ -4,6 +4,9 @@ import { resolve } from 'path';
 
 export default defineConfig({
   plugins: [react()],
+  build: {
+    assetsInlineLimit: 0,
+  },
   resolve: {
     alias: {
       '@datazen/plugin-sdk': resolve(__dirname, 'src/plugin-sdk'),
