@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Loader2, Sparkles, Trash2, Settings, X } from 'lucide-react';
+import { Loader2, Sparkles, Trash2, Settings } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { useI18n } from '../../hooks/useI18n';
 import { useAiKeyboard } from '../../hooks/useAiKeyboard';
@@ -7,7 +7,8 @@ import { useAiStore } from '../../stores/aiStore';
 import { cn } from '../../lib/cn';
 import { openSettingsWindow } from '../../lib/windowManager';
 import { ContextPicker } from './ContextPicker';
-import type { ContextEntry, ContextItem } from '../../types';
+import { splitContextItems } from '../../lib/contextItems';
+import type { ContextItem } from '../../types';
 
 interface Nl2SqlPanelProps {
   connectionId: string;
@@ -15,6 +16,10 @@ interface Nl2SqlPanelProps {
   currentTable?: string;
   /** Stream / write generated SQL into the SQL editor. */
   onSqlChange: (sql: string) => void;
+}
+
+function itemKey(item: ContextItem): string {
+  return `${item.kind}:${item.id}`;
 }
 
 export function Nl2SqlPanel({ connectionId, database, currentTable, onSqlChange }: Nl2SqlPanelProps) {
@@ -26,10 +31,11 @@ export function Nl2SqlPanel({ connectionId, database, currentTable, onSqlChange 
   const generateSql = useAiStore((s) => s.generateSql);
   const clearNl2Sql = useAiStore((s) => s.clearNl2Sql);
 
-  const [contextFiles, setContextFiles] = useState<ContextEntry[]>([]);
+  const [contextItems, setContextItems] = useState<ContextItem[]>([]);
   const [showPicker, setShowPicker] = useState(false);
   const [pickerQuery, setPickerQuery] = useState('');
   const inputWrapperRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const lastWrittenRef = useRef('');
 
   // Write SQL into the editor only when generation finishes (not streaming).
@@ -43,13 +49,41 @@ export function Nl2SqlPanel({ connectionId, database, currentTable, onSqlChange 
 
   const handleGenerate = useCallback(() => {
     if (!nl2sql.input.trim() || nl2sql.isGenerating || !database) return;
-    const ctxPaths = contextFiles.length > 0 ? contextFiles.map((f) => f.path) : undefined;
+    const { contextFiles, contextTables } = splitContextItems(contextItems);
     lastWrittenRef.current = '';
-    void generateSql({ connectionId, database, currentTable, contextFiles: ctxPaths });
-    setContextFiles([]);
-  }, [generateSql, connectionId, database, currentTable, nl2sql.input, nl2sql.isGenerating, contextFiles]);
+    void generateSql({
+      connectionId,
+      database,
+      currentTable,
+      contextFiles: contextFiles.length > 0 ? contextFiles : undefined,
+      contextTables: contextTables.length > 0 ? contextTables : undefined,
+    });
+    setContextItems([]);
+  }, [generateSql, connectionId, database, currentTable, nl2sql.input, nl2sql.isGenerating, contextItems]);
 
   const aiKeyboard = useAiKeyboard(handleGenerate);
+
+  const handleSelect = useCallback(
+    (item: ContextItem) => {
+      if (!contextItems.some((i) => itemKey(i) === itemKey(item))) {
+        setContextItems((prev) => [...prev, item]);
+      }
+      const input = nl2sql.input;
+      const textarea = textareaRef.current;
+      const cursorPos = textarea?.selectionStart ?? input.length;
+      const textBefore = input.substring(0, cursorPos);
+      const textAfter = input.substring(cursorPos);
+      const atStart = textBefore.lastIndexOf('@');
+      if (atStart >= 0) {
+        const newValue = textBefore.substring(0, atStart) + textAfter.replace(/^\s*/, '');
+        setNl2SqlInput(newValue.trimStart() === '' ? '' : newValue);
+      }
+      setShowPicker(false);
+      setPickerQuery('');
+      textarea?.focus();
+    },
+    [contextItems, nl2sql.input, setNl2SqlInput],
+  );
 
   if (!isConfigured) {
     return (
@@ -74,24 +108,7 @@ export function Nl2SqlPanel({ connectionId, database, currentTable, onSqlChange 
               position="below"
               connectionId={connectionId}
               database={database}
-              onSelect={(item: ContextItem) => {
-                if (item.kind !== 'file' && item.kind !== 'dir') return;
-                const entry: ContextEntry = {
-                  name: item.name,
-                  path: item.path ?? item.id,
-                  isDir: item.kind === 'dir',
-                };
-                if (!contextFiles.some((f) => f.path === entry.path)) {
-                  setContextFiles((prev) => [...prev, entry]);
-                }
-                const input = nl2sql.input;
-                const atStart = input.lastIndexOf('@');
-                if (atStart >= 0) {
-                  setNl2SqlInput(input.substring(0, atStart).trimEnd());
-                }
-                setShowPicker(false);
-                setPickerQuery('');
-              }}
+              onSelect={handleSelect}
               onClose={() => setShowPicker(false)}
               anchorRef={inputWrapperRef}
             />
@@ -102,27 +119,23 @@ export function Nl2SqlPanel({ connectionId, database, currentTable, onSqlChange 
               'transition-colors focus-within:border-accent',
             )}
           >
-            {contextFiles.length > 0 && (
+            {contextItems.length > 0 && (
               <div className="flex flex-wrap gap-1 pl-2 pt-1">
-                {contextFiles.map((f) => (
+                {contextItems.map((item) => (
                   <span
-                    key={f.path}
-                    className="inline-flex items-center gap-0.5 rounded bg-accent/10 px-1.5 py-0.5 text-[11px] text-accent"
+                    key={itemKey(item)}
+                    data-testid="context-token"
+                    data-kind={item.kind}
+                    data-id={item.id}
+                    className="inline-flex items-center rounded bg-accent/10 px-1.5 py-0.5 text-[11px] text-accent"
                   >
-                    @{f.name}
-                    <button
-                      type="button"
-                      className="rounded hover:bg-accent/20"
-                      onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => setContextFiles((prev) => prev.filter((c) => c.path !== f.path))}
-                    >
-                      <X className="h-2.5 w-2.5" />
-                    </button>
+                    @{item.name}
                   </span>
                 ))}
               </div>
             )}
             <textarea
+              ref={textareaRef}
               value={nl2sql.input}
               onChange={(e) => {
                 const val = e.target.value;
@@ -140,6 +153,20 @@ export function Nl2SqlPanel({ connectionId, database, currentTable, onSqlChange 
               }}
               onKeyDown={(e) => {
                 if (showPicker && ['ArrowUp', 'ArrowDown', 'Enter', 'Escape'].includes(e.key)) return;
+                const textarea = textareaRef.current;
+                if (
+                  contextItems.length > 0 &&
+                  textarea &&
+                  (e.key === 'Backspace' || (e.key === 'Delete' && nl2sql.input.length === 0))
+                ) {
+                  const start = textarea.selectionStart ?? 0;
+                  const end = textarea.selectionEnd ?? 0;
+                  if (start === 0 && end === 0) {
+                    e.preventDefault();
+                    setContextItems((prev) => prev.slice(0, -1));
+                    return;
+                  }
+                }
                 aiKeyboard.onKeyDown?.(e);
               }}
               onCompositionStart={aiKeyboard.onCompositionStart}

@@ -1,10 +1,10 @@
 import { forwardRef, useCallback, useImperativeHandle, useRef, useState } from 'react';
-import { ArrowUp, Square, X } from 'lucide-react';
+import { ArrowUp, Square } from 'lucide-react';
 import { cn } from '../../lib/cn';
 import { useAiKeyboard } from '../../hooks/useAiKeyboard';
 import { useI18n } from '../../hooks/useI18n';
 import { ContextPicker } from './ContextPicker';
-import type { ContextEntry, ContextItem } from '../../types';
+import type { ContextItem } from '../../types';
 
 interface AiInputProps {
   value: string;
@@ -16,8 +16,14 @@ interface AiInputProps {
   isLoading?: boolean;
   onStop?: () => void;
   className?: string;
-  contextFiles?: ContextEntry[];
-  onContextFilesChange?: (files: ContextEntry[]) => void;
+  contextItems?: ContextItem[];
+  onContextItemsChange?: (items: ContextItem[]) => void;
+  connectionId?: string;
+  database?: string;
+}
+
+function itemKey(item: ContextItem): string {
+  return `${item.kind}:${item.id}`;
 }
 
 export const AiInput = forwardRef<HTMLTextAreaElement, AiInputProps>(function AiInput(
@@ -31,8 +37,10 @@ export const AiInput = forwardRef<HTMLTextAreaElement, AiInputProps>(function Ai
     isLoading,
     onStop,
     className,
-    contextFiles,
-    onContextFilesChange,
+    contextItems,
+    onContextItemsChange,
+    connectionId,
+    database,
   },
   ref,
 ) {
@@ -48,7 +56,7 @@ export const AiInput = forwardRef<HTMLTextAreaElement, AiInputProps>(function Ai
 
   const canSend = value.trim().length > 0 && !isLoading;
   const showStop = isLoading && onStop;
-  const hasContext = onContextFilesChange !== undefined;
+  const hasContext = onContextItemsChange !== undefined;
 
   const handleChange = useCallback(
     (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -78,24 +86,35 @@ export const AiInput = forwardRef<HTMLTextAreaElement, AiInputProps>(function Ai
         return;
       }
       if (disabled) return;
+
+      const textarea = textareaRef.current;
+      if (
+        onContextItemsChange &&
+        contextItems &&
+        contextItems.length > 0 &&
+        textarea &&
+        (e.key === 'Backspace' || (e.key === 'Delete' && value.length === 0))
+      ) {
+        const start = textarea.selectionStart ?? 0;
+        const end = textarea.selectionEnd ?? 0;
+        if (start === 0 && end === 0) {
+          e.preventDefault();
+          onContextItemsChange(contextItems.slice(0, -1));
+          return;
+        }
+      }
+
       aiKeyboard.onKeyDown?.(e as unknown as React.KeyboardEvent<HTMLTextAreaElement>);
     },
-    [showPicker, disabled, aiKeyboard],
+    [showPicker, disabled, aiKeyboard, onContextItemsChange, contextItems, value.length],
   );
 
   const handleSelect = useCallback(
     (item: ContextItem) => {
-      if (!onContextFilesChange || !contextFiles) return;
-      if (item.kind !== 'file' && item.kind !== 'dir') return;
+      if (!onContextItemsChange || !contextItems) return;
 
-      const entry: ContextEntry = {
-        name: item.name,
-        path: item.path ?? item.id,
-        isDir: item.kind === 'dir',
-      };
-
-      if (!contextFiles.some((f) => f.path === entry.path)) {
-        onContextFilesChange([...contextFiles, entry]);
+      if (!contextItems.some((i) => itemKey(i) === itemKey(item))) {
+        onContextItemsChange([...contextItems, item]);
       }
 
       const textarea = textareaRef.current;
@@ -114,19 +133,10 @@ export const AiInput = forwardRef<HTMLTextAreaElement, AiInputProps>(function Ai
       setPickerQuery('');
       textarea?.focus();
     },
-    [onContextFilesChange, contextFiles, value, onChange],
+    [onContextItemsChange, contextItems, value, onChange],
   );
 
-  const handleRemoveContext = useCallback(
-    (path: string) => {
-      if (onContextFilesChange && contextFiles) {
-        onContextFilesChange(contextFiles.filter((f) => f.path !== path));
-      }
-    },
-    [onContextFilesChange, contextFiles],
-  );
-
-  const hasChips = contextFiles && contextFiles.length > 0;
+  const hasTokens = contextItems && contextItems.length > 0;
 
   return (
     <div ref={wrapperRef} className={cn('relative', className)}>
@@ -143,26 +153,22 @@ export const AiInput = forwardRef<HTMLTextAreaElement, AiInputProps>(function Ai
             onSelect={handleSelect}
             onClose={() => setShowPicker(false)}
             anchorRef={wrapperRef}
+            connectionId={connectionId}
+            database={database}
           />
         )}
 
-        {/* Context chips — inline at the start of the input */}
-        {hasChips && (
+        {hasTokens && (
           <div className="flex flex-wrap gap-1 pl-2 pt-2">
-            {contextFiles.map((f) => (
+            {contextItems.map((item) => (
               <span
-                key={f.path}
-                className="inline-flex items-center gap-0.5 rounded bg-accent/10 px-1.5 py-0.5 text-[11px] text-accent"
+                key={itemKey(item)}
+                data-testid="context-token"
+                data-kind={item.kind}
+                data-id={item.id}
+                className="inline-flex items-center rounded bg-accent/10 px-1.5 py-0.5 text-[11px] text-accent"
               >
-                @{f.name}
-                <button
-                  type="button"
-                  className="rounded hover:bg-accent/20"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => handleRemoveContext(f.path)}
-                >
-                  <X className="h-2.5 w-2.5" />
-                </button>
+                @{item.name}
               </span>
             ))}
           </div>
