@@ -717,6 +717,7 @@ pub async fn ai_chat(
     include_schema: bool,
     scenario: Option<String>,
     context_files: Option<Vec<String>>,
+    context_tables: Option<Vec<String>>,
 ) -> Result<String, CommandError> {
     let is_workflow = scenario.as_deref() == Some("workflow_generate");
     let prompt_scenario = if is_workflow {
@@ -732,6 +733,7 @@ pub async fn ai_chat(
         messages_count = messages.len(),
         %include_schema,
         scenario = ?scenario,
+        context_tables_count = context_tables.as_ref().map(|t| t.len()).unwrap_or(0),
         last_user_msg_len = messages.last().map(|m| m.content.len()).unwrap_or(0),
         "ai_chat: start"
     );
@@ -746,6 +748,7 @@ pub async fn ai_chat(
 
     let lang = state.store.get_settings().await.language;
     let mut full_messages: Vec<ChatMessage> = Vec::new();
+    let mut attach_db_tools = true;
 
     if include_schema {
         if let Some(ref conn_id) = connection_id {
@@ -753,15 +756,20 @@ pub async fn ai_chat(
             if let Ok((driver, _handle)) =
                 state.connection_manager.get_connection(conn_id).await
             {
-                let db_type = format!("{:?}", driver.driver_type());
-                if let Ok(context) = state
-                    .schema_context_builder
-                    .build_sql_context(conn_id, db, None, &[], 4000)
+                let pinned = context_tables.clone().unwrap_or_default();
+                let supports_tools = provider.supports_tools();
+                let pipeline = SchemaContextPipeline::new(state.schema_context_builder.clone());
+                if let Ok(seed) = pipeline
+                    .resolve(conn_id, db, &pinned, supports_tools, 4000, 4000)
                     .await
                 {
+                    attach_db_tools = seed.attach_db_tools;
+                    let db_type = seed.database_type.clone();
+                    let suffix = compose_schema_system_suffix(&seed);
+
                     let mut vars = HashMap::new();
                     vars.insert("db_type", db_type.as_str());
-                    vars.insert("schema", context.schema_ddl.as_str());
+                    vars.insert("schema", "");
 
                     let connections_ctx = if is_workflow {
                         build_connections_context(&state, &lang).await
@@ -783,11 +791,7 @@ pub async fn ai_chat(
 
                     full_messages.push(ChatMessage {
                         role: MessageRole::System,
-                        content: if is_workflow {
-                            desc
-                        } else {
-                            format!("{desc}\n\nSchema:\n{}", context.schema_ddl)
-                        },
+                        content: format!("{desc}\n\n{suffix}"),
                         reasoning: None,
                         tool_calls: None,
                         tool_call_id: None,
@@ -898,7 +902,9 @@ pub async fn ai_chat(
     };
 
     let mut all_tools = vec![ask_questions_tool];
-    all_tools.extend(db_tool_definitions());
+    if attach_db_tools {
+        all_tools.extend(db_tool_definitions());
+    }
 
     let mut request = CompletionRequest {
         request_id: request_id.clone(),
