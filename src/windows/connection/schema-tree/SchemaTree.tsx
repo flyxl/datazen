@@ -1,6 +1,8 @@
+import { useEffect, type ComponentType } from 'react';
 import { DB_REGISTRY } from '../../../lib/databaseTypes';
 import type { DatabaseTypeMeta } from '../../../lib/databaseMeta';
 import { getPluginSchemaTree } from '../../../plugins/generated';
+import { useSchemaStore } from '../../../stores/schemaStore';
 import type { DatabaseType } from '../../../types';
 import { MultiDatabaseSchemaTree } from './MultiDatabaseSchemaTree';
 import { StandardSchemaTree } from './StandardSchemaTree';
@@ -37,15 +39,7 @@ export function SchemaTree(props: SchemaTreeProps) {
   if (meta?.schemaTreeMode === 'custom') {
     const PluginTree = getPluginSchemaTree(props.databaseType);
     if (PluginTree) {
-      return (
-        <PluginTree
-          connectionId={props.connectionId}
-          databaseType={props.databaseType}
-          onSelectTable={props.onSelectTable}
-          selectedTable={props.selectedTable}
-          searchQuery={props.searchQuery}
-        />
-      );
+      return <CustomSchemaTreeHost PluginTree={PluginTree} {...props} />;
     }
   }
 
@@ -58,4 +52,27 @@ export function SchemaTree(props: SchemaTreeProps) {
     return <MultiDatabaseSchemaTree {...treeProps} />;
   }
   return <StandardSchemaTree {...props} isKeyValue={meta?.isKeyValue ?? false} />;
+}
+
+/** Ensure schemaStore.connectionId is set for custom trees (column autocomplete). */
+function CustomSchemaTreeHost({
+  PluginTree,
+  ...props
+}: SchemaTreeProps & { PluginTree: ComponentType<Record<string, unknown>> }) {
+  useEffect(() => {
+    useSchemaStore.setState({
+      connectionId: props.connectionId,
+      databaseType: props.databaseType,
+    });
+  }, [props.connectionId, props.databaseType]);
+
+  return (
+    <PluginTree
+      connectionId={props.connectionId}
+      databaseType={props.databaseType}
+      onSelectTable={props.onSelectTable}
+      selectedTable={props.selectedTable}
+      searchQuery={props.searchQuery}
+    />
+  );
 }
