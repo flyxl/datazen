@@ -142,6 +142,8 @@ const translations = {
   'newConn.editTitle': '연결 편집',
   'newConn.description': '데이터베이스 연결 구성',
   'newConn.selectDbType': '데이터베이스 유형 선택',
+  'newConn.searchDrivers': '드라이버 검색…',
+  'newConn.noDriversMatch': '일치하는 드라이버 없음',
   'newConn.planned': '예정',
   'newConn.connectionConfig': '연결 설정',
   'newConn.connName': '연결 이름',

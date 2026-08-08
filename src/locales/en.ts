@@ -171,6 +171,8 @@ const en: Record<TranslationKey, string> = {
   'newConn.editTitle': 'Edit Connection',
   'newConn.description': 'Configure database connection',
   'newConn.selectDbType': 'Select Database Type',
+  'newConn.searchDrivers': 'Search drivers…',
+  'newConn.noDriversMatch': 'No matching drivers',
   'newConn.planned': 'Planned',
   'newConn.connectionConfig': 'Connection Settings',
   'newConn.connName': 'Connection Name',
