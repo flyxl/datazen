@@ -1,0 +1,54 @@
+import { describe, expect, it } from 'vitest';
+import {
+  mergeNamespacePath,
+  overlayColumnMap,
+  pathKey,
+  namespaceHasChild,
+} from '../sqlNamespace';
+
+describe('pathKey', () => {
+  it('joins segments with /', () => {
+    expect(pathKey([])).toBe('');
+    expect(pathKey(['a', 'b'])).toBe('a/b');
+  });
+});
+
+describe('mergeNamespacePath', () => {
+  it('merges branch children under a path', () => {
+    let tree = mergeNamespacePath({}, ['db'], 'branch', ['hive', 'iceberg']);
+    expect(tree).toEqual({ db: { hive: {}, iceberg: {} } });
+    tree = mergeNamespacePath(tree, ['db', 'hive'], 'branch', ['snap']);
+    expect(tree).toEqual({ db: { hive: { snap: {} }, iceberg: {} } });
+  });
+
+  it('merges table leaves as empty column arrays', () => {
+    const tree = mergeNamespacePath({ db: { hive: { snap: {} } } }, ['db', 'hive', 'snap'], 'tables', [
+      't1',
+      't2',
+    ]);
+    expect(tree).toEqual({ db: { hive: { snap: { t1: [], t2: [] } } } });
+  });
+
+  it('does not wipe existing siblings', () => {
+    const tree = mergeNamespacePath({ a: { x: [] }, b: {} }, [], 'branch', ['a', 'c']);
+    expect(tree).toEqual({ a: { x: [] }, b: {}, c: {} });
+  });
+});
+
+describe('overlayColumnMap', () => {
+  it('fills matching table leaves with columns', () => {
+    const tree = { app: { users: [] as string[], orders: [] as string[] } };
+    expect(overlayColumnMap(tree, { users: ['id', 'name'] })).toEqual({
+      app: { users: ['id', 'name'], orders: [] },
+    });
+  });
+});
+
+describe('namespaceHasChild', () => {
+  it('detects loaded branch vs missing', () => {
+    const tree = { db: { hive: {} } };
+    expect(namespaceHasChild(tree, ['db'])).toBe(true);
+    expect(namespaceHasChild(tree, ['db', 'hive'])).toBe(true);
+    expect(namespaceHasChild(tree, ['db', 'missing'])).toBe(false);
+  });
+});
