@@ -388,21 +388,27 @@ export default {
 
 ### 7.3 模式切换（light / dark / system）
 
-```typescript
-// settingsStore.ts — theme.mode 控制 document.documentElement.classList
-updateThemeMode(mode: 'light' | 'dark' | 'system') {
-  if (mode === 'system') {
-    const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    document.documentElement.classList.toggle('dark', isDark);
-  } else {
-    document.documentElement.classList.toggle('dark', mode === 'dark');
-  }
-}
-```
-
 `settings.theme` 为 `{ mode, packId }`；`packId` 为 `null` 时仅使用 Host 内置 token。
 
-### 3.2 运行时主题包
+```typescript
+// settingsStore.ts — applyTheme(mode × packId)
+async function applyTheme(mode: ThemeMode, packId: string | null) {
+  document.documentElement.classList.toggle('dark', resolveIsDark(mode));
+  await applyThemePack(packId);           // 注入 pack CSS / 图标 / 字体
+  syncWebviewBackgroundFromTokens();
+}
+
+// 跨窗口 / 菜单同步 mode，不写后端
+export async function applyThemeLocally(mode: ThemeMode) {
+  const packId = useSettingsStore.getState().settings.theme.packId;
+  await applyTheme(mode, packId);
+  watchSystemTheme(mode);                 // system 模式监听 prefers-color-scheme
+}
+
+// updateSettings({ theme: { mode, packId } }) → 持久化 + applyTheme + 跨窗口广播
+```
+
+### 7.4 运行时主题包
 
 用户从设置页（`ThemePackSection`）安装本地 ZIP，启用后由 `themePackApply.ts` 加载：
 
