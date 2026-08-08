@@ -76,9 +76,9 @@ function watchSystemTheme(mode: ThemeMode) {
  * Apply a theme to the current window without persisting to backend.
  * Used by cross-window / menu event listeners.
  */
-export function applyThemeLocally(mode: ThemeMode) {
+export async function applyThemeLocally(mode: ThemeMode) {
   const packId = useSettingsStore.getState().settings.theme.packId;
-  void applyTheme(mode, packId);
+  await applyTheme(mode, packId);
   watchSystemTheme(mode);
   useSettingsStore.setState((state) => ({
     settings: {
@@ -91,9 +91,9 @@ export function applyThemeLocally(mode: ThemeMode) {
 /**
  * Apply all settings from another window without persisting.
  */
-export function applySettingsLocally(incoming: AppSettings) {
+export async function applySettingsLocally(incoming: AppSettings) {
   const theme = normalizeThemePreference(incoming.theme);
-  void applyTheme(theme.mode, theme.packId);
+  await applyTheme(theme.mode, theme.packId);
   watchSystemTheme(theme.mode);
   useSettingsStore.setState({ settings: { ...incoming, theme } });
 }

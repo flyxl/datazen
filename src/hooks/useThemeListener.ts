@@ -23,8 +23,10 @@ export function useThemeListener() {
             if (cancelled) return;
             const mode = payload as ThemeMode;
             if (mode === useSettingsStore.getState().settings.theme.mode) return;
-            applyThemeLocally(mode);
-            void settingsCommands.saveSettings(useSettingsStore.getState().settings);
+            void (async () => {
+              await applyThemeLocally(mode);
+              void settingsCommands.saveSettings(useSettingsStore.getState().settings);
+            })();
           },
         );
         if (cancelled) unlisten();
@@ -41,7 +43,7 @@ export function useThemeListener() {
             if (cancelled) return;
             const mode = payload as ThemeMode;
             if (mode === useSettingsStore.getState().settings.theme.mode) return;
-            applyThemeLocally(mode);
+            void applyThemeLocally(mode);
           },
         );
         if (cancelled) unlisten();
@@ -57,7 +59,7 @@ export function useThemeListener() {
           (payload) => {
             if (cancelled) return;
             const incoming = payload as AppSettings;
-            applySettingsLocally(incoming);
+            void applySettingsLocally(incoming);
           },
         );
         if (cancelled) unlisten();
