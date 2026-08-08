@@ -30,6 +30,11 @@ jobs:
             os_label: macos-x64
             drivers: "basic"
             variant_suffix: ""
+          - platform: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            os_label: linux-x64
+            drivers: "basic"
+            variant_suffix: ""
           # ── Pro 版（基础四驱动 + Kiwi + Superset）──
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
@@ -44,6 +49,11 @@ jobs:
           - platform: macos-latest
             target: x86_64-apple-darwin
             os_label: macos-x64
+            drivers: "postgres,mysql,sqlite,redis,kiwi,superset"
+            variant_suffix: "-pro"
+          - platform: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            os_label: linux-x64
             drivers: "postgres,mysql,sqlite,redis,kiwi,superset"
             variant_suffix: "-pro"
 
@@ -70,6 +80,26 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
+
+      - name: Install Linux system deps (Tauri / webkit2gtk)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            pkg-config \
+            libglib2.0-dev \
+            libgtk-3-dev \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libssl-dev \
+            patchelf \
+            libfuse2
 
       - name: Cache Rust compilation
         uses: swatinem/rust-cache@v2
@@ -116,12 +146,18 @@ jobs:
           for file in \
             "$BUNDLE_DIR"/dmg/*.dmg \
             "$BUNDLE_DIR"/nsis/*.exe \
-            "$BUNDLE_DIR"/msi/*.msi; do
+            "$BUNDLE_DIR"/msi/*.msi \
+            "$BUNDLE_DIR"/deb/*.deb \
+            "$BUNDLE_DIR"/rpm/*.rpm \
+            "$BUNDLE_DIR"/appimage/*.AppImage; do
             [ -f "$file" ] || continue
             base=$(basename "$file")
             if [[ "$base" == *.tar.gz ]]; then
               stem="${base%.tar.gz}"
               newname="${stem}-${LABEL}.tar.gz"
+            elif [[ "$base" == *.AppImage ]]; then
+              stem="${base%.AppImage}"
+              newname="${stem}-${LABEL}.AppImage"
             else
               stem="${base%.*}"
               ext="${base##*.}"
@@ -158,5 +194,11 @@ jobs:
 
             ### Windows
             直接运行 `.exe` 安装包或 `.msi` 安装包即可。
+
+            ### Linux (x86_64)
+            - **AppImage**：`chmod +x *.AppImage` 后直接运行（部分发行版需安装 `libfuse2`）
+            - **deb**：`sudo apt install ./DataZen-*-linux-x64.deb`
+            - **rpm**：`sudo rpm -i ./DataZen-*-linux-x64.rpm`（或发行版对应的包管理器）
+            运行时依赖 WebKitGTK（常见包名：`libwebkit2gtk-4.1-0` / `webkit2gtk4.1`）。
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
