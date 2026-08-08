@@ -197,6 +197,11 @@ describe('SchemaTree routing', () => {
     await waitFor(() => {
       expect(mockUseDatabase).toHaveBeenCalledWith('conn-1', 'db1');
       expect(mockGetTables).toHaveBeenCalledWith('conn-1', 'db1');
+      expect(useSchemaStore.getState().currentDatabase).toBe('db1');
+      expect(useSchemaStore.getState().tables.map((t) => t.name)).toEqual(['orders']);
+      expect(useSchemaStore.getState().namespaceTree).toMatchObject({
+        db1: { public: { orders: [] } },
+      });
     });
 
     expect(await findByText('orders')).toBeInTheDocument();
@@ -219,6 +224,11 @@ describe('SchemaTree routing', () => {
     await waitFor(() => {
       expect(mockUseDatabase).toHaveBeenCalledWith('conn-1', 'alpha');
       expect(mockGetTables).toHaveBeenCalledWith('conn-1', 'alpha');
+      expect(useSchemaStore.getState().currentDatabase).toBe('alpha');
+      expect(useSchemaStore.getState().tables.map((t) => t.name)).toEqual(['t1', 't2']);
+      expect(useSchemaStore.getState().namespaceTree).toMatchObject({
+        alpha: { t1: [], t2: [] },
+      });
     });
 
     expect(await findByText('t1')).toBeInTheDocument();
