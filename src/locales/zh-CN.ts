@@ -169,6 +169,8 @@ const zhCN = {
   'newConn.editTitle': '编辑连接',
   'newConn.description': '配置数据库连接信息',
   'newConn.selectDbType': '选择数据库类型',
+  'newConn.searchDrivers': '搜索驱动…',
+  'newConn.noDriversMatch': '无匹配驱动',
   'newConn.planned': '计划中',
   'newConn.connectionConfig': '连接配置',
   'newConn.connName': '连接名称',
