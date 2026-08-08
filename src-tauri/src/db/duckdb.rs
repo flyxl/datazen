@@ -325,6 +325,15 @@ impl DatabaseDriver for DuckDbDriver {
         .await
     }
 
+    async fn explain(
+        &self,
+        handle: &ConnectionHandle,
+        sql: &str,
+    ) -> Result<ExplainResult, DriverError> {
+        let result = self.query(handle, &format!("EXPLAIN {sql}")).await?;
+        Ok(super::http_support::explain_result_from_query(result))
+    }
+
     async fn cancel_query(&self, _handle: &ConnectionHandle) -> Result<(), DriverError> {
         Ok(())
     }
