@@ -7,6 +7,13 @@
 
 import type { DatabaseType } from '../types';
 import { PLUGIN_DB_ENTRIES } from '../plugins/generated';
+import type { IconSourceMap } from './iconResolver';
+
+import postgresqlIconUrl from '../assets/db-icons/postgresql.svg?url';
+import mysqlIconUrl from '../assets/db-icons/mysql.svg?url';
+import mariadbIconUrl from '../assets/db-icons/mariadb.svg?url';
+import sqliteIconUrl from '../assets/db-icons/sqlite.svg?url';
+import redisIconUrl from '../assets/db-icons/redis.svg?url';
 
 export type { ConnectionMode, DatabaseTypeMeta } from './databaseMeta';
 import type { DatabaseTypeMeta } from './databaseMeta';
@@ -158,6 +165,17 @@ export function escapeIdent(name: string, dbType?: DatabaseType): string {
 /** Get the display label for a database type. */
 export function getDbLabel(dbType: DatabaseType): string {
   return DB_REGISTRY[dbType]?.label ?? dbType;
+}
+
+/** Built-in driver SVG URLs keyed by semantic icon id (`db.<type>`). */
+export function getDriverIconMap(): IconSourceMap {
+  return {
+    'db.postgresql': postgresqlIconUrl,
+    'db.mysql': mysqlIconUrl,
+    'db.mariadb': mariadbIconUrl,
+    'db.sqlite': sqliteIconUrl,
+    'db.redis': redisIconUrl,
+  };
 }
 
 /** Get the icon info (short label + bg class) for a database type. */
