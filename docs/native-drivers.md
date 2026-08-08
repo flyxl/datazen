@@ -63,14 +63,14 @@
 
 ### 3.1 功能边界（v1 有意为之）
 
-1. **冒烟/集成测试缺失**：各新驱动没有针对真实服务的测试（需要本地起 MongoDB / SQL Server / ClickHouse 等实例）。目前只有编译与单元测试保证。
+1. **冒烟/集成测试**：DuckDB 已有进程内冒烟（query/explain/PK）；MongoDB / SQL Server / ClickHouse 仍需真实实例。
 2. **事务**：HTTP 类驱动无事务；SQL Server 驱动也**未接通** `begin_transaction/commit/rollback`（tiberius 单连接，留待后续）。
-3. **EXPLAIN**：ClickHouse / DuckDB / RQLite / Turso 已接通 `EXPLAIN` / `EXPLAIN QUERY PLAN`；**SQL Server** 前端已关掉 `supportsExplain`（SHOWPLAN 尚未实现）。
+3. **EXPLAIN**：ClickHouse / DuckDB / RQLite / Turso / SQL Server（`SHOWPLAN_TEXT`）已接通。
 4. **MongoDB 没有专属 document 视图**：前端目前只有 `sql` / `keyvalue` 两种 connectionView，MongoDB 暂用 SQL 视图 + JSON 命令，交互不如原生 document 浏览器。
 5. **Schema 浏览精度**：
    - Elasticsearch mapping 只解析顶层字段；
    - InfluxDB / VictoriaMetrics / HBase / Vector 的"表结构"是简化视图（DDL 无意义，返回空）；
-   - SQL Server 主键/索引/外键未填充（`is_primary_key` 恒 false，PK 列表为空）。
+   - SQL Server 主键已填充；索引/外键仍空。
 6. **连接表单高级字段**：部分新类型前端表单仍走 `standard`。MongoDB / ClickHouse / SQL Server 的 SSL 已按 `ssl_mode` 处理；其余 HTTP 驱动走默认 http/https 判断。SQL Server / ClickHouse 已接通 `use_database` 多库切换。
 7. **驱动分发**：全部编译进包（用户明确要求 builtin），**没有** dbx 那种"按需下载驱动 + JRE 管理"机制；代价是包体翻倍（9.4MB → 19MB DMG）。如果后续要控制体积，可以考虑把 HTTP 类驱动保留内置、把 mongodb/tiberius/duckdb 这类重依赖做成可选 feature。
 8. **未做 E2E**：没有 WebdriverIO 用例覆盖新类型的连接/浏览流程。
@@ -79,7 +79,7 @@
 
 - 未推送远程分支（`codex/native-drivers` 目前只在本地 worktree）。
 - 各 HTTP 驱动存在重复样板（连接池 map、query_multi 包装），后续可抽公共 `HttpSqlDriver` 基类。
-- DuckDB 已填主键，索引/外键仍空；SQL Server 主键/索引/外键仍未填充。
+- DuckDB / SQL Server 已填主键，索引/外键仍空。
 - `docs/competitive-comparison-dbx.md`（竞品分析）已入库，但未链接到文档索引。
 
 ### 3.3 建议的下一步

@@ -69,6 +69,14 @@ impl DuckDbDriver {
             .collect()
     }
 
+    /// DuckDB `PRAGMA table_info` flags may arrive as bool or integer.
+    fn pragma_flag(row: &::duckdb::Row<'_>, idx: usize) -> bool {
+        if let Ok(b) = row.get::<_, bool>(idx) {
+            return b;
+        }
+        row.get::<_, i64>(idx).map(|i| i != 0).unwrap_or(false)
+    }
+
     async fn with_conn<T, F>(&self, handle: &ConnectionHandle, f: F) -> Result<T, DriverError>
     where
         T: Send + 'static,
@@ -185,13 +193,14 @@ impl DatabaseDriver for DuckDbDriver {
                 .map_err(|e| DriverError::QueryFailed(format!("DuckDB prepare failed: {e}")))?;
             let rows = stmt
                 .query_map([], |row| {
+                    let not_null = Self::pragma_flag(row, 3);
                     Ok(ColumnSchema {
                         name: row.get::<_, String>(1)?,
                         data_type: row.get::<_, String>(2).unwrap_or_default(),
-                        nullable: row.get::<_, i64>(3).unwrap_or(1) == 0,
+                        nullable: !not_null,
                         default_value: row.get::<_, Option<String>>(4).ok().flatten(),
                         comment: None,
-                        is_primary_key: row.get::<_, i64>(5).unwrap_or(0) > 0,
+                        is_primary_key: Self::pragma_flag(row, 5),
                         is_auto_increment: false,
                     })
                 })
@@ -221,10 +230,14 @@ impl DatabaseDriver for DuckDbDriver {
             let mut stmt = conn
                 .prepare(&sql)
                 .map_err(|e| DriverError::QueryFailed(format!("DuckDB prepare failed: {e}")))?;
-            let columns = Self::columns_from_schema(&stmt);
+            // duckdb-rs requires the statement to be executed before schema() is available.
             let mut rows = stmt
                 .query([])
                 .map_err(|e| DriverError::QueryFailed(format!("DuckDB query failed: {e}")))?;
+            let columns = rows
+                .as_ref()
+                .map(Self::columns_from_schema)
+                .unwrap_or_default();
             let mut result_rows = Vec::new();
             while let Some(row) = rows
                 .next()
@@ -275,10 +288,13 @@ impl DatabaseDriver for DuckDbDriver {
                 let mut st = conn
                     .prepare(&limited)
                     .map_err(|e| DriverError::QueryFailed(format!("DuckDB prepare failed: {e}")))?;
-                let columns = Self::columns_from_schema(&st);
                 let mut rows = st
                     .query([])
                     .map_err(|e| DriverError::QueryFailed(format!("DuckDB query failed: {e}")))?;
+                let columns = rows
+                    .as_ref()
+                    .map(Self::columns_from_schema)
+                    .unwrap_or_default();
                 let mut result_rows = Vec::new();
                 while let Some(row) = rows
                     .next()
@@ -336,5 +352,98 @@ impl DatabaseDriver for DuckDbDriver {
 
     async fn cancel_query(&self, _handle: &ConnectionHandle) -> Result<(), DriverError> {
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn memory_config() -> ConnectionConfig {
+        ConnectionConfig {
+            id: "duckdb-smoke".into(),
+            name: "duckdb-smoke".into(),
+            database_type: "duckdb".into(),
+            host: None,
+            port: None,
+            database: Some(":memory:".into()),
+            schema: None,
+            username: None,
+            password: None,
+            ssl_mode: Default::default(),
+            connection_timeout: 5,
+            ssh_tunnel: None,
+            color_tag: None,
+            group: None,
+            last_connected_at: None,
+            server_version: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn in_memory_smoke_query_explain_and_primary_keys() {
+        let driver = DuckDbDriver::new();
+        let handle = driver
+            .connect(&memory_config())
+            .await
+            .expect("connect :memory:");
+
+        driver
+            .execute(
+                &handle,
+                "CREATE TABLE items (id INTEGER PRIMARY KEY, name VARCHAR)",
+            )
+            .await
+            .expect("create table");
+        driver
+            .execute(&handle, "INSERT INTO items VALUES (1, 'a'), (2, 'b')")
+            .await
+            .expect("insert");
+
+        let rows = driver
+            .query(&handle, "SELECT id, name FROM items ORDER BY id")
+            .await
+            .expect("query");
+        assert_eq!(rows.rows.len(), 2);
+
+        let tables = driver
+            .get_tables(&handle, "main")
+            .await
+            .expect("tables");
+        assert!(
+            tables.iter().any(|t| t.name == "items"),
+            "expected items table, got {tables:?}"
+        );
+
+        let schema = driver
+            .get_table_schema(&handle, "items")
+            .await
+            .expect("schema");
+        assert!(
+            !schema.columns.is_empty(),
+            "expected columns for items, got {schema:?}"
+        );
+        assert_eq!(
+            schema.primary_keys,
+            vec!["id".to_string()],
+            "schema={schema:?}"
+        );
+        assert!(
+            schema
+                .columns
+                .iter()
+                .any(|c| c.name == "id" && c.is_primary_key)
+        );
+
+        let plan = driver
+            .explain(&handle, "SELECT * FROM items WHERE id = 1")
+            .await
+            .expect("explain");
+        assert!(
+            !plan.plan_text.is_empty(),
+            "expected non-empty explain plan"
+        );
+
+        driver.disconnect(handle).await.expect("disconnect");
     }
 }

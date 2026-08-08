@@ -43,8 +43,7 @@ describe('DB_REGISTRY behavioral flags', () => {
     expect(DB_REGISTRY.duckdb.supportsExplain).toBe(true);
     expect(DB_REGISTRY.rqlite.supportsExplain).toBe(true);
     expect(DB_REGISTRY.turso.supportsExplain).toBe(true);
-    // SQL Server SHOWPLAN is not wired yet — UI must not show a broken button
-    expect(DB_REGISTRY.sqlserver.supportsExplain).toBe(false);
+    expect(DB_REGISTRY.sqlserver.supportsExplain).toBe(true);
   });
 
   it('ob_oracle reuses MySQL wire protocol quoting', () => {
