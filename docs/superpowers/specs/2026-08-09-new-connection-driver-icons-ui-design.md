@@ -1,8 +1,9 @@
 # 设计：新建连接窗口 — 驱动图标、侧栏滚动与搜索
 
 **日期：** 2026-08-09  
-**状态：** 设计已确认；实现计划见下  
-**分支建议：** `feat/new-connection-driver-icons-ui`（worktree）
+**状态：** 已实现  
+**实现分支：** `feat/new-connection-driver-icons-ui`  
+**实现计划：** [docs/superpowers/plans/2026-08-09-new-connection-driver-icons-ui.md](../plans/2026-08-09-new-connection-driver-icons-ui.md)
 
 ## 目标
 
@@ -132,4 +133,4 @@ Traffic lights「透出」随整页滚动消失；TitleBar 保持 `bg-titlebar` 
 
 ## 实现计划
 
-见 [`docs/superpowers/plans/2026-08-09-new-connection-driver-icons-ui.md`](../plans/2026-08-09-new-connection-driver-icons-ui.md)。
+见文首 [实现计划](../plans/2026-08-09-new-connection-driver-icons-ui.md)。
