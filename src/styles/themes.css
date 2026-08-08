@@ -29,6 +29,23 @@
 
   /* Title bar background (TrafficLights area) */
   --c-titlebar: #f1f5f9;
+
+  /* Font stacks (overridable by theme packs) */
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --font-mono: Menlo, Monaco, Consolas, "Courier New", ui-monospace, monospace;
+  --font-editor: var(--font-mono);
+
+  /* CodeMirror syntax colors (light) */
+  --cm-keyword: #7c3aed;
+  --cm-string: #16a34a;
+  --cm-number: #c2410c;
+  --cm-comment: #94a3b8;
+  --cm-operator: #0891b2;
+  --cm-punctuation: #475569;
+  --cm-foreground: #0f172a;
+  --cm-background: #ffffff;
+  --cm-selection: rgba(59, 130, 246, 0.15);
+  --cm-cursor: #0f172a;
 }
 
 .dark {
@@ -44,4 +61,16 @@
   --c-fg-muted: #64748b;
 
   --c-titlebar: #1e293b;
+
+  /* CodeMirror syntax colors (dark, One Dark–ish) */
+  --cm-keyword: #c678dd;
+  --cm-string: #98c379;
+  --cm-number: #d19a66;
+  --cm-comment: #5c6370;
+  --cm-operator: #56b6c2;
+  --cm-punctuation: #abb2bf;
+  --cm-foreground: #f1f5f9;
+  --cm-background: #0f172a;
+  --cm-selection: rgba(59, 130, 246, 0.25);
+  --cm-cursor: #f1f5f9;
 }

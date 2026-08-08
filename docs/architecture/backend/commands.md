@@ -398,6 +398,7 @@ pub struct AppState {
 | 备份 | `backup.rs` | `backup_database`, `restore_database` |
 | 同步 | `sync.rs` | `sync_compare`, `sync_tables`, `sync_task_*` |
 | 配置 | `config.rs` | `get_settings`, `save_settings`, `get_groups`, `get_log_path`, `export_connections`, `import_connections` |
+| 主题包 | `theme.rs` | `list_theme_packs`, `install_theme_pack_with_dialog`, `remove_theme_pack`, `read_theme_pack_file` |
 | AI | `ai.rs` | `ai_generate_sql`, `ai_chat`, `ai_diagnose_error`, `ai_analyze_explain`, `ai_parse_filter`, `workflow_*`, `prompt_*`（约 30 个命令） |
 | 上下文 | `context.rs` | `context_get_dir`, `context_list_files`, `context_read_files` |
 | MCP | `mcp.rs` | `mcp_start`, `mcp_stop`, `mcp_status`, `mcp_client_connect`, `mcp_client_call_tool` |

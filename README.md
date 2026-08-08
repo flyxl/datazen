@@ -57,7 +57,7 @@
 - **Backup** — One-click SQL dump (schema-only, data-only, gzip)
 - **Cross-DB sync** — PG ↔ MySQL schema compare and data sync with resume
 - **Bilingual UI** — English & Chinese
-- **Dark theme** — Native dark UI
+- **Appearance** — Light / dark / system mode; install local **theme packs** (ZIP) from Settings for custom colors, fonts, and icons
 
 <a id="特性"></a>
 ## 特性
@@ -71,7 +71,7 @@
 - **数据库备份** — 一键备份为 SQL 文件（Schema / Data / Gzip）
 - **数据同步** — PG ↔ MySQL 表结构对比与数据同步，支持断点续传
 - **中英双语** — 界面语言自动跟随系统，支持手动切换
-- **暗色主题** — 原生暗色 UI，护眼舒适
+- **外观主题** — 浅色 / 深色 / 跟随系统；可在设置中安装本地**主题包**（ZIP），定制配色、字体与图标
 
 <p align="center">
   <img src="docs/screenshots/main-window.png" width="360" alt="主窗口" />

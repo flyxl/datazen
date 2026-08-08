@@ -7,20 +7,13 @@ import { useThemeListener } from '../../hooks/useThemeListener';
 import { useI18n } from '../../hooks/useI18n';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { cn } from '../../lib/cn';
-import { getDbLabel, getDbIcon, getDbIconColor, DB_REGISTRY } from '../../lib/databaseTypes';
+import { DbTypeBadge } from '../../components/DbTypeBadge';
+import { getDbLabel, DB_REGISTRY } from '../../lib/databaseTypes';
 import { getSqlDialect } from '../../lib/sqlDialects';
-import type { ConnectionConfig, DatabaseType } from '../../types';
+import type { ConnectionConfig } from '../../types';
 
 interface DatabaseInfo {
   name: string;
-}
-
-function getDbIconCompact(dbType: DatabaseType) {
-  return getDbIconColor(dbType);
-}
-
-function getDbShortLabel(dbType: DatabaseType) {
-  return getDbIcon(dbType).label;
 }
 
 export function BackupWindow() {
@@ -242,9 +235,7 @@ export function BackupWindow() {
                       )}
                       onClick={() => void handleSelectConnection(conn)}
                     >
-                      <span className={cn('flex h-5 w-5 items-center justify-center rounded text-[9px] font-bold', getDbIconCompact(conn.databaseType))}>
-                        {getDbShortLabel(conn.databaseType)}
-                      </span>
+                      <DbTypeBadge databaseType={conn.databaseType} size={20} />
                       <div className="min-w-0 flex-1">
                         <div className="truncate text-xs font-medium">
                           {conn.name}

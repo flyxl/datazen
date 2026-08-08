@@ -57,3 +57,15 @@ src/windows/connection/
 4. （可选）`connectionViews/` — 注册新视图组件
 5. （可选）`sqlDialects/` — 新方言策略文件
 6. （可选）`schema-tree/` — 新 Schema 树变体
+
+### 1.5 主题包 vs 驱动插件
+
+主题包与驱动插件**不共享**安装路径或注册表：
+
+| | 驱动插件 | 主题包 |
+|---|---------|--------|
+| 路径 | `.plugins/`（构建时） | `{appData}/themes/{id}/`（运行时 ZIP） |
+| 注册 | `plugins-registry.json` + `DB_REGISTRY` | 文件系统 + `manifest.json` |
+| 扩展 | Rust crate + 前端 meta | CSS / JSON / SVG\|PNG\|WebP / 字体（无 JS） |
+
+驱动在无主题包（`packId: null`）下正常工作；主题包可覆盖 `db.<type>` 图标但不改变驱动协议。

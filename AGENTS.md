@@ -22,8 +22,8 @@ datazen/
 │   ├── windows/                 # 窗口页面（main, connection, settings, workflow, backup, data-sync）
 │   │   └── connection/er/       # ER 图模块（React Flow）
 │   ├── stores/                  # Zustand stores（8 个：ai, connection, query, schema, settings 等）
-│   ├── commands/                # Tauri IPC 封装（ai, connection, database, query, context, settings, file, adb）
-│   ├── lib/                     # 工具库（chart/, sqlDialects/, connectionViews/, exportData 等）
+│   ├── commands/                # Tauri IPC 封装（ai, connection, database, query, context, settings, theme, file, adb）
+│   ├── lib/                     # 工具库（chart/, sqlDialects/, connectionViews/, themePackApply, iconResolver 等）
 │   ├── hooks/                   # React hooks（useI18n, useResizable, usePlatform 等）
 │   ├── locales/                 # i18n（10 语系：en/zh-CN/zh-TW 完整，其余 Beta；~739 keys）
 │   ├── plugins/generated.ts     # 自动生成（勿手动编辑）
@@ -31,8 +31,9 @@ datazen/
 ├── src-tauri/                   # Rust 后端
 │   ├── src/
 │   │   ├── ai/                  # AI（openai, anthropic, deepseek, custom, registry, context, prompt_resolver, protocol/）
-│   │   ├── commands/            # IPC 命令（16 个模块：ai, connection, query, schema, context, mcp 等）
+│   │   ├── commands/            # IPC 命令（17 个模块：ai, connection, query, schema, context, theme, mcp 等）
 │   │   ├── db/                  # DriverRegistry（inventory-only；实现见 packages/drivers）
+│   │   ├── theme/               # 运行时主题包校验与安装（validate, install）
 │   │   ├── mcp/                 # MCP Server/Client
 │   │   ├── workflow/            # YAML Workflow 引擎与执行历史（独立于 mcp）
 │   │   ├── services/            # ConnectionManager, QueryExecutor, DbTools
@@ -93,6 +94,20 @@ DATAZEN_DRIVERS=all pnpm tauri:build   # 全部 path + git 驱动打包
 - **Workflows**（`workflow/`）：YAML 定义，步骤类型 Query/Ai/Condition/ForEach；GUI / IPC / MCP 共用引擎
 - **用户手册**：[docs/workflow-guide.md](docs/workflow-guide.md)（YAML 语法、模板、跨库、排错）
 
+### 运行时主题包
+
+与驱动选型**完全独立**（安装路径、注册表、生命周期分离；不受 `drivers-registry.json` / `.plugins` / `DATAZEN_DRIVERS` 影响）：
+
+- **安装路径**：`{appData}/themes/{id}/`（ZIP 解压；仅 CSS / JSON / SVG|PNG|WebP / WOFF2|WOFF，**无 JS**）
+- **设置**：`theme: { mode: 'light'|'dark'|'system', packId: string | null }`（旧版扁平字符串自动迁移）
+- **IPC**：`list_theme_packs`, `install_theme_pack_with_dialog`, `remove_theme_pack`, `read_theme_pack_file`
+- **Rust**：`src-tauri/src/theme/`（validate/install）、`commands/theme.rs`
+- **前端**：`src/commands/theme.ts`、`src/lib/themePackApply.ts`（注入 `<style id="datazen-theme-pack">`）、`src/lib/iconResolver.ts`、`ThemedIcon`、`DbTypeBadge`；设置页 `ThemePackSection`
+- **图标解析**：pack → Lucide/驱动 → 占位；`db.*` 走 pack → 驱动 SVG → shortLabel 色块
+- **字体**：`--font-sans` / `--font-mono` / `--font-editor`；用户 `editorFontFamily` 显式设置优先
+- **设计 / 计划 / 样例**：[spec](docs/superpowers/specs/2026-08-08-runtime-theme-packs-design.md)、[plan](docs/superpowers/plans/2026-08-09-runtime-theme-packs.md)、`fixtures/themes/community.fixture-dark/`
+- **商店 / CDN 下载**：未实现（后续独立计划）
+
 ### 前端约定
 
 - **零硬编码**：行为差异通过 `DB_REGISTRY` + `DatabaseTypeMeta` 元数据驱动
@@ -105,7 +120,7 @@ DATAZEN_DRIVERS=all pnpm tauri:build   # 全部 path + git 驱动打包
 ### IPC 通信
 
 前端 `src/commands/` ↔ 后端 `src-tauri/src/commands/`，按领域对齐：
-`connection`, `database/schema`, `query`, `ai`, `context`, `settings/config`, `file`, `adb`, `kv`, `backup`, `sync`, `mcp`, `window`
+`connection`, `database/schema`, `query`, `ai`, `context`, `settings/config`, `theme`, `file`, `adb`, `kv`, `backup`, `sync`, `mcp`, `window`
 
 ### 错误处理
 
@@ -123,6 +138,7 @@ DATAZEN_DRIVERS=all pnpm tauri:build   # 全部 path + git 驱动打包
 | @ 上下文 | `components/ai/ContextPicker.tsx` | `commands/context.rs` |
 | Workflows | `windows/workflow/WorkflowWindow.tsx` | `workflow/workflows.rs` |
 | 数据同步 | `windows/data-sync/` | `sync/` (IR 适配器) |
+| 主题包 | `windows/settings/ThemePackSection.tsx` + `lib/themePackApply.ts` | `theme/` + `commands/theme.rs` |
 
 ## 开发命令
 
@@ -181,3 +197,4 @@ PR 合并前：`pnpm test:unit` + `cargo test -p datazen --lib`（见 `.github/w
 - 菜单翻译：前端 `src/locales/{zh-CN,en}.ts` 为唯一来源；`scripts/generate-menu-labels.mjs` 生成 `src-tauri/resources/menu-labels.json` 供 Rust 原生菜单使用（`pnpm menu:labels` / build / tauri:dev 自动执行）
 - 日志文件在 `{data_dir}/logs/`
 - E2E：详见 [docs/e2e-testing.md](docs/e2e-testing.md)；禁止用裸 `cargo build` 当 E2E 二进制
+- 主题包与驱动选型独立：`{appData}/themes/` 不由 `resolve-drivers.mjs` 管理；删除主题包不影响 `.plugins/`

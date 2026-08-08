@@ -6,8 +6,14 @@ on:
     tags:
       - 'v*'
 
+# Default: no token scopes. Job below opts into contents:write for draft releases.
+permissions: {}
+
 jobs:
   build:
+    # Secrets (Deploy Keys, Windows signing) live in Environment "release"
+    # — see docs/ci-private-plugins.md
+    environment: release
     permissions:
       contents: write
     strategy:
@@ -107,6 +113,27 @@ jobs:
           workspaces: . -> target
           shared-key: ${{ matrix.target }}
           cache-on-failure: true
+
+      # Pro matrix only: read-only Deploy Keys for private plugin repos.
+      # Public key exposure is harmless; private keys must stay in Environment secrets.
+      - name: Setup SSH agent for private plugins
+        if: matrix.plugins != 'none'
+        uses: webfactory/ssh-agent@v0.9.1
+        with:
+          ssh-private-key: |
+            ${{ secrets.KIWI_DEPLOY_KEY }}
+            ${{ secrets.SUPERSET_DEPLOY_KEY }}
+
+      - name: Configure git to clone GitHub over SSH
+        if: matrix.plugins != 'none'
+        shell: bash
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -t ed25519,rsa github.com >> ~/.ssh/known_hosts 2>/dev/null
+          chmod 644 ~/.ssh/known_hosts
+          # plugins-registry.json keeps https:// URLs; rewrite to SSH for auth.
+          git config --global url."git@github.com:".insteadOf "https://github.com/"
 
       - name: Import Windows code signing certificate
         if: runner.os == 'Windows'

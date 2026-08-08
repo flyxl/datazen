@@ -57,7 +57,7 @@ DataZen 是一个跨平台桌面数据库管理工具，基于 **Tauri v2**（Ru
 
 | 层级 | 职责 | 关键特性 |
 |------|------|----------|
-| **Commands 层** | 处理前端 IPC 调用 | 16 个命令模块、参数验证、结构化错误、日志记录 |
+| **Commands 层** | 处理前端 IPC 调用 | 17 个命令模块、参数验证、结构化错误、日志记录 |
 | **Services 层** | 业务逻辑处理 | 连接管理（含去重锁）、查询执行、DbTools 共享工具 |
 | **Drivers 层** | 数据库驱动抽象 | 统一接口、连接池管理、编译时插件扩展（inventory） |
 | **AI 层** | LLM 集成 | 4 内置 Provider、协议层复用、流式输出、Prompt 资源文件 + 覆盖 |
@@ -75,7 +75,8 @@ DataZen 是一个跨平台桌面数据库管理工具，基于 **Tauri v2**（Ru
 | [Schema 缓存](backend/cache.md) | 两级 TTL 缓存架构、缓存失效策略、查询执行优化 |
 | [服务层](backend/services.md) | ConnectionManager（连接去重锁）、QueryExecutor（分页）、DbTools（共享工具） |
 | [持久化存储](backend/store.md) | AES-256-GCM 加密本地文件存储、配置/历史/收藏/Prompt覆盖管理 |
-| [IPC 命令层](backend/commands.md) | 16 个 Tauri Commands 模块、AppState 结构、CommandError 错误处理 |
+| [IPC 命令层](backend/commands.md) | 17 个 Tauri Commands 模块、AppState 结构、CommandError 错误处理 |
+| [运行时主题包](backend/theme.md) | 本地 ZIP 安装、`{appData}/themes/`、校验白名单、theme IPC、与驱动插件独立 |
 | [AI 模块](backend/ai.md) | AiProvider trait、4 内置 Provider、protocol 层、PromptResolver（资源文件 + 覆盖） |
 | [MCP 模块](backend/mcp.md) | MCP Server（Tools/Resources/Prompts）、MCP Client、双运行模式 |
 | [Workflow 模块](backend/workflow.md) | YAML Workflow 引擎、执行历史；GUI/IPC/MCP 共用；用户手册见 [../workflow-guide.md](../workflow-guide.md) |
@@ -85,7 +86,7 @@ DataZen 是一个跨平台桌面数据库管理工具，基于 **Tauri v2**（Ru
 | 文档 | 内容 |
 |------|------|
 | [状态管理](frontend/state.md) | 8 个 Zustand stores、事件处理、跨窗口通信 |
-| [组件与布局](frontend/components.md) | DataTable（含数据导出）、ER 图（React Flow）、PathInput、虚拟滚动、图表可视化 |
+| [组件与布局](frontend/components.md) | DataTable、ER 图、PathInput、虚拟滚动、图表；**主题系统**（内置 token + 运行时 ThemePack） |
 | [AI 功能](frontend/ai.md) | AI 组件（AiInput、ContextPicker、Chat、NL2SQL）、@ 上下文引用、SQL 编辑器方言 |
 | [扩展性](frontend/extensibility.md) | DB 类型扩展、DatabaseTypeMeta、插件系统、plugin-sdk |
 
@@ -107,5 +108,6 @@ DataZen 是一个跨平台桌面数据库管理工具，基于 **Tauri v2**（Ru
 - [AI 功能开发进度](../ai-features-progress.md)
 - [数据同步 IR 设计](../plan-sync-ir.md)
 - [插件开发指南](../plugin-development.md)
+- [运行时主题包设计](../superpowers/specs/2026-08-08-runtime-theme-packs-design.md)（本地安装已实现；商店延后）
 - [图表可视化设计](../chart-visualization-design.md)
 - [代码审查报告](../code-review-2026-08-01-958f1b6.md)
