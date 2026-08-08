@@ -185,14 +185,16 @@ export function clearThemePack(): void {
   notifyThemePackChanged();
 }
 
-export async function applyThemePack(packId: string | null): Promise<void> {
+export type ApplyThemePackResult = { ok: true } | { ok: false; error: string };
+
+export async function applyThemePack(packId: string | null): Promise<ApplyThemePackResult> {
   resetPackState();
 
   if (!packId) {
     syncWebviewBackgroundFromTokens();
     notifyThemePackChanged();
     void emitCrossWindow('datazen:theme-pack-changed', packId);
-    return;
+    return { ok: true };
   }
 
   try {
@@ -231,11 +233,15 @@ export async function applyThemePack(packId: string | null): Promise<void> {
 
     syncWebviewBackgroundFromTokens();
     notifyThemePackChanged();
+    void emitCrossWindow('datazen:theme-pack-changed', packId);
+    return { ok: true };
   } catch (err) {
     console.warn('[theme] failed to apply pack', packId, err);
     resetPackState();
     syncWebviewBackgroundFromTokens();
     notifyThemePackChanged();
+    void emitCrossWindow('datazen:theme-pack-changed', null);
+    const message = err instanceof Error ? err.message : String(err);
+    return { ok: false, error: message };
   }
-  void emitCrossWindow('datazen:theme-pack-changed', packId);
 }

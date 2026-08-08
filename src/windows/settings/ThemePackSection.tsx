@@ -7,6 +7,7 @@ import { useSettingsStore } from '../../stores/settingsStore';
 import type { ThemePackSummary } from '../../types/themePack';
 
 const BUILTIN_PACK_VALUE = '';
+const MISSING_PACK_VALUE = '__missing__';
 
 function SettingRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -50,19 +51,37 @@ export function ThemePackSection() {
   }, [loadPacks]);
 
   const packId = settings.theme.packId;
+  const isOrphanPack = packId != null && !packs.some((p) => p.id === packId);
   const packOptions = [
     { value: BUILTIN_PACK_VALUE, label: t('settings.theme.packDefault') },
+    ...(isOrphanPack && packId
+      ? [{ value: MISSING_PACK_VALUE, label: t('settings.theme.packMissing', { id: packId }) }]
+      : []),
     ...packs.map((p) => ({ value: p.id, label: p.name })),
   ];
+  const selectValue = isOrphanPack ? MISSING_PACK_VALUE : (packId ?? BUILTIN_PACK_VALUE);
 
   const handlePackChange = async (value: string) => {
-    const nextPackId = value === BUILTIN_PACK_VALUE ? null : value;
+    const nextPackId =
+      value === BUILTIN_PACK_VALUE || value === MISSING_PACK_VALUE ? null : value;
     const theme = useSettingsStore.getState().settings.theme;
     if (nextPackId === theme.packId) return;
 
     setError(null);
     try {
       await updateSettings({ theme: { ...theme, packId: nextPackId } });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const handleResetOrphan = async () => {
+    const theme = useSettingsStore.getState().settings.theme;
+    if (!theme.packId) return;
+
+    setError(null);
+    try {
+      await updateSettings({ theme: { ...theme, packId: null } });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -107,12 +126,21 @@ export function ThemePackSection() {
     <>
       <SettingRow label={t('settings.theme.pack')}>
         <Select
-          value={packId ?? BUILTIN_PACK_VALUE}
+          value={selectValue}
           options={packOptions}
           onChange={(v) => void handlePackChange(v)}
           disabled={loading || busy}
         />
       </SettingRow>
+
+      {isOrphanPack && (
+        <div className="flex items-center gap-3">
+          <p className="text-xs text-amber-500">{t('settings.theme.packMissingHint')}</p>
+          <Button variant="secondary" disabled={busy} onClick={() => void handleResetOrphan()}>
+            {t('settings.theme.packReset')}
+          </Button>
+        </div>
+      )}
 
       <div className="flex items-center gap-3">
         <Button variant="secondary" disabled={busy} onClick={() => void handleImport()}>

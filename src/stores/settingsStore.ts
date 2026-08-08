@@ -40,7 +40,10 @@ function resolveIsDark(mode: ThemeMode): boolean {
 async function applyTheme(mode: ThemeMode, packId: string | null) {
   const isDark = resolveIsDark(mode);
   document.documentElement.classList.toggle('dark', isDark);
-  await applyThemePack(packId);
+  const result = await applyThemePack(packId);
+  if (!result.ok) {
+    throw new Error(result.error);
+  }
   syncWebviewBackgroundFromTokens();
   try {
     localStorage.setItem(THEME_STORAGE_KEY, mode);
@@ -111,8 +114,19 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     try {
       const raw = await settingsCommands.getSettings();
       const theme = normalizeThemePreference(raw.theme);
-      const settings = { ...raw, theme };
-      await applyTheme(theme.mode, theme.packId);
+      let settings = { ...raw, theme };
+      try {
+        await applyTheme(theme.mode, theme.packId);
+      } catch {
+        if (theme.packId) {
+          const recoveredTheme = { ...theme, packId: null };
+          settings = { ...settings, theme: recoveredTheme };
+          await settingsCommands.saveSettings(settings);
+          await applyTheme(recoveredTheme.mode, null);
+        } else {
+          throw new Error('failed to apply theme');
+        }
+      }
       watchSystemTheme(theme.mode);
       set({ settings });
     } catch {
@@ -128,9 +142,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       ? normalizeThemePreference(partial.theme)
       : merged.theme;
     const next: AppSettings = { ...merged, theme };
+    if (partial.theme) {
+      await applyTheme(theme.mode, theme.packId);
+      watchSystemTheme(theme.mode);
+    }
     await settingsCommands.saveSettings(next);
-    await applyTheme(theme.mode, theme.packId);
-    watchSystemTheme(theme.mode);
     set({ settings: next });
 
     if (partial.theme) {
