@@ -1,0 +1,31 @@
+/* Solarized Light — light mode tokens */
+:root {
+  --c-surface: #fdf6e3;
+  --c-surface-alt: #eee8d5;
+  --c-surface-raised: #e7dfc6;
+  --c-surface-inset: #f5efdc;
+  --c-edge: #93a1a1;
+  --c-fg: #657b83;
+  --c-fg-secondary: #586e75;
+  --c-fg-muted: #839496;
+  --c-accent: #268bd2;
+  --c-success: #859900;
+  --c-warning: #b58900;
+  --c-danger: #dc322f;
+  --c-titlebar: #eee8d5;
+
+  --font-sans: "Source Sans 3", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "Source Code Pro", Menlo, Monaco, Consolas, monospace;
+  --font-editor: var(--font-mono);
+
+  --cm-keyword: #859900;
+  --cm-string: #2aa198;
+  --cm-number: #d33682;
+  --cm-comment: #93a1a1;
+  --cm-operator: #859900;
+  --cm-punctuation: #586e75;
+  --cm-foreground: #657b83;
+  --cm-background: #fdf6e3;
+  --cm-selection: rgba(38, 139, 210, 0.18);
+  --cm-cursor: #657b83;
+}

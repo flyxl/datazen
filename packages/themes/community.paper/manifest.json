@@ -1,0 +1,9 @@
+{
+  "id": "community.paper",
+  "name": "Paper",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "modes": ["light"],
+  "author": "DataZen Community",
+  "description": "Clean paper UI — soft gray surfaces with ink-blue accents for daytime work"
+}
