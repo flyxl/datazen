@@ -2,8 +2,38 @@ use std::collections::HashMap;
 use std::time::Instant;
 
 use crate::dashboard::types::{
-    AlertMetricAgg, AlertMetricKind, AlertRule,
+    AlertMetricAgg, AlertMetricKind, AlertOperator, AlertRule, DashboardWidget, WidgetRun,
+    WidgetRunStatus,
 };
+
+pub fn alert_op_str(op: AlertOperator) -> &'static str {
+    match op {
+        AlertOperator::Gt => ">",
+        AlertOperator::Gte => ">=",
+        AlertOperator::Lt => "<",
+        AlertOperator::Lte => "<=",
+        AlertOperator::Eq => "==",
+        AlertOperator::Ne => "!=",
+    }
+}
+
+/// Apply alert evaluation to a completed run (sets `alertValue` / `alertFired`).
+pub fn evaluate_run_alert(run: &mut WidgetRun, widget: &DashboardWidget) {
+    let Some(rule) = widget.alert.as_ref() else {
+        return;
+    };
+    if run.status != WidgetRunStatus::Ok {
+        return;
+    }
+    if let Some(value) = extract_metric(&run.columns, &run.rows, rule) {
+        run.alert_value = Some(value);
+        run.alert_fired = Some(eval_threshold(
+            value,
+            alert_op_str(rule.op),
+            rule.threshold,
+        ));
+    }
+}
 
 /// Extract a numeric metric from query result rows per the alert rule.
 pub fn extract_metric(
