@@ -211,11 +211,11 @@ it('prefers commands then keys', () => {
 - Modify: `e2e/specs/redis.ts`, `docs/competitive-comparison-dbx.md`
 - Spec status: mark E2 subsection done in plan progress only; keep joint spec Status until all phases done
 
-- [ ] **Step 1: Add RD-022+** — Monitor tab visible; console executes `PING`; skip-safe
+- [x] **Step 1: Add RD-022+** — Monitor tab visible; console executes `PING`; skip-safe
 
-- [ ] **Step 2: Run** `pnpm e2e:skip-build -- --spec e2e/specs/redis.ts` when webdriver binary exists (else document)
+- [x] **Step 2: Run** `pnpm e2e:skip-build -- --spec e2e/specs/redis.ts` when webdriver binary exists (else document)
 
-- [ ] **Step 3: Commit** `test(e2e): Redis E2 console and monitor smoke`
+- [x] **Step 3: Commit** `test(e2e): Redis E2 console and monitor smoke`
 
 ---
 
