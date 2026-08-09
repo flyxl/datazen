@@ -143,6 +143,16 @@ export function WidgetEditorDrawer({
             <span className="text-[11px] text-fg-muted">{t('dashboard.refreshSecHint', { min: MIN_REFRESH_SEC })}</span>
           </label>
 
+          <label className="flex items-center gap-2 text-xs text-fg">
+            <input
+              type="checkbox"
+              checked={draft.enabled}
+              onChange={(e) => setDraft((d) => ({ ...d, enabled: e.target.checked }))}
+              className="rounded border-edge"
+            />
+            {t('dashboard.widgetEnabled')}
+          </label>
+
           <label className="block space-y-1">
             <span className="text-xs text-fg-muted">{t('dashboard.chartType')}</span>
             <Select

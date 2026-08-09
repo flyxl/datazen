@@ -230,6 +230,17 @@ pub async fn import_dashboard_with_dialog(
     Ok(Some(dashboard))
 }
 
+#[tauri::command]
+pub fn get_monitor_paused(state: State<'_, AppState>) -> bool {
+    state.monitor_engine.is_paused()
+}
+
+#[tauri::command]
+pub fn set_monitor_paused(app: AppHandle, state: State<'_, AppState>, paused: bool) {
+    state.monitor_engine.set_paused(paused);
+    crate::tray::sync_tray(&app);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

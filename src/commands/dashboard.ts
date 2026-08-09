@@ -24,4 +24,9 @@ export const dashboardCommands = {
     invoke<boolean>('export_dashboard_with_dialog', { dashboardId, defaultFileName }),
 
   importWithDialog: () => invoke<Dashboard | null>('import_dashboard_with_dialog'),
+
+  getMonitorPaused: () => invoke<boolean>('get_monitor_paused'),
+
+  setMonitorPaused: (paused: boolean) =>
+    invoke<void>('set_monitor_paused', { paused }),
 };

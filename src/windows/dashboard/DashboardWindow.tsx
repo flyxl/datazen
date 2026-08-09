@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { LayoutDashboard, Loader2, Plus, RefreshCw } from 'lucide-react';
+import { Download, LayoutDashboard, Loader2, Pause, Play, Plus, RefreshCw, Upload } from 'lucide-react';
 import { TitleBar } from '../../components/TitleBar';
 import { StatusBar } from '../../components/StatusBar';
 import { Button } from '../../components/ui/Button';
@@ -7,6 +7,8 @@ import { Input } from '../../components/ui/Input';
 import { useThemeListener } from '../../hooks/useThemeListener';
 import { useI18n } from '../../hooks/useI18n';
 import { getUrlParam } from '../../lib/windowKind';
+import { openDashboardWindow } from '../../lib/windowManager';
+import { dashboardCommands } from '../../commands/dashboard';
 import { useDashboardStore } from '../../stores/dashboardStore';
 import { DEFAULT_CHART_CONFIG } from '../../types/chart';
 import type { Dashboard, DashboardWidget } from '../../types/dashboard';
@@ -56,6 +58,7 @@ export function DashboardWindow() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [isNewWidget, setIsNewWidget] = useState(false);
   const [refreshingAll, setRefreshingAll] = useState(false);
+  const [monitorPaused, setMonitorPaused] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [nameDraft, setNameDraft] = useState('');
 
@@ -69,6 +72,10 @@ export function DashboardWindow() {
   useEffect(() => {
     if (current) setNameDraft(current.name);
   }, [current]);
+
+  useEffect(() => {
+    void dashboardCommands.getMonitorPaused().then(setMonitorPaused);
+  }, []);
 
   const handleRefreshAll = useCallback(async () => {
     if (!current) return;
@@ -116,6 +123,28 @@ export function DashboardWindow() {
     await saveDashboard({ ...current, name: nameDraft.trim() });
     setRenaming(false);
   }, [current, nameDraft, saveDashboard]);
+
+  const handleExport = useCallback(async () => {
+    if (!current) return;
+    const safeName = current.name.replace(/[^\w.-]+/g, '_') || 'dashboard';
+    await dashboardCommands.exportWithDialog(current.id, `${safeName}.json`);
+  }, [current]);
+
+  const handleImport = useCallback(async () => {
+    const imported = await dashboardCommands.importWithDialog();
+    if (!imported) return;
+    if (imported.id === dashboardId) {
+      await loadDashboard(dashboardId);
+    } else {
+      openDashboardWindow(imported.id, imported.name);
+    }
+  }, [dashboardId, loadDashboard]);
+
+  const handleToggleMonitorPause = useCallback(async () => {
+    const next = !monitorPaused;
+    await dashboardCommands.setMonitorPaused(next);
+    setMonitorPaused(next);
+  }, [monitorPaused]);
 
   const titleContent = useMemo(() => {
     if (!current) return t('win.dashboard');
@@ -165,6 +194,36 @@ export function DashboardWindow() {
         leftContent={<LayoutDashboard className="h-4 w-4 text-fg-muted" />}
         rightContent={
           <div className="flex items-center gap-1" data-no-drag>
+            <Button
+              variant="ghost"
+              className="h-7 gap-1 px-2 text-xs"
+              onClick={() => void handleToggleMonitorPause()}
+              title={monitorPaused ? t('dashboard.resumeMonitoring') : t('dashboard.pauseMonitoring')}
+            >
+              {monitorPaused ? (
+                <Play className="h-3.5 w-3.5" />
+              ) : (
+                <Pause className="h-3.5 w-3.5" />
+              )}
+            </Button>
+            <Button
+              variant="ghost"
+              className="h-7 gap-1 px-2 text-xs"
+              onClick={() => void handleImport()}
+              disabled={loading}
+              title={t('dashboard.import')}
+            >
+              <Upload className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              variant="ghost"
+              className="h-7 gap-1 px-2 text-xs"
+              onClick={() => void handleExport()}
+              disabled={!current || loading}
+              title={t('dashboard.export')}
+            >
+              <Download className="h-3.5 w-3.5" />
+            </Button>
             <Button
               variant="ghost"
               className="h-7 gap-1 px-2 text-xs"
