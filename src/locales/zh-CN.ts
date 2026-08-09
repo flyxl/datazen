@@ -524,6 +524,8 @@ const zhCN = {
   'redis.wizard.tlsKey': '客户端私钥',
   'redis.wizard.tlsKeyPassphrase': '私钥口令',
   'redis.wizard.tlsInsecureSkipVerify': '跳过证书验证（不安全）',
+  'redis.wizard.sentinelMtlsLimitation':
+    'redis-rs 0.27 无法将自定义 CA 或客户端证书用于 Sentinel 连接。启用 TLS 时 Sentinel 仅使用系统信任库；主从 mTLS 的 PEM 路径会被忽略。',
   'redis.wizard.sentinelMasterRequired': '必须填写 Sentinel 主节点名称',
   'redis.wizard.sentinelNodesRequired': '至少需要一个 Sentinel 节点',
   'redis.wizard.invalidNodeFormat': '每个节点必须为 host:port 格式',

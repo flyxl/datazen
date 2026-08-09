@@ -245,6 +245,12 @@ export function RedisConnectionWizard({ form }: { form: ConnectionFormState }) {
 
       {step === 'tls' && (
         <div className="space-y-3">
+          {topology === 'sentinel' &&
+            (redisOptions.tls?.caPath || redisOptions.tls?.certPath) && (
+              <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
+                {t('redis.wizard.sentinelMtlsLimitation')}
+              </div>
+            )}
           <label className="flex items-start gap-2 text-sm">
             <input
               type="checkbox"

@@ -19,6 +19,7 @@ fn main() {
         "flush_db",
         "flush_all",
         "count_matching",
+        "cluster_nodes",
         "info",
         "memory_sample",
         "slowlog_get",

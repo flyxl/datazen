@@ -471,6 +471,8 @@ const translations = {
   'redis.wizard.tlsKey': 'Client private key',
   'redis.wizard.tlsKeyPassphrase': 'Key passphrase',
   'redis.wizard.tlsInsecureSkipVerify': 'Skip certificate verification (insecure)',
+  'redis.wizard.sentinelMtlsLimitation':
+    'Custom CA or client certificates cannot be applied to Sentinel connections in redis-rs 0.27. Sentinel uses the system trust store when TLS is enabled; master/replica mTLS PEM paths are ignored.',
   'redis.wizard.sentinelMasterRequired': 'Sentinel master name is required',
   'redis.wizard.sentinelNodesRequired': 'At least one sentinel node is required',
   'redis.wizard.invalidNodeFormat': 'Each node must be host:port',

@@ -470,6 +470,8 @@ const translations = {
   'redis.wizard.tlsKey': '用戶端私鑰',
   'redis.wizard.tlsKeyPassphrase': '私鑰口令',
   'redis.wizard.tlsInsecureSkipVerify': '跳過憑證驗證（不安全）',
+  'redis.wizard.sentinelMtlsLimitation':
+    'redis-rs 0.27 無法將自訂 CA 或客戶端憑證用於 Sentinel 連線。啟用 TLS 時 Sentinel 僅使用系統信任庫；主從 mTLS 的 PEM 路徑會被忽略。',
   'redis.wizard.sentinelMasterRequired': '必須填寫 Sentinel 主節點名稱',
   'redis.wizard.sentinelNodesRequired': '至少需要一個 Sentinel 節點',
   'redis.wizard.invalidNodeFormat': '每個節點必須為 host:port 格式',

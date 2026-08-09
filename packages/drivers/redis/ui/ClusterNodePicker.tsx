@@ -23,9 +23,16 @@ interface ClusterNodesResponse {
 export interface ClusterNodePickerProps {
   connectionId: string;
   compact?: boolean;
+  value?: string;
+  onChange?: (addr: string) => void;
 }
 
-export function ClusterNodePicker({ connectionId, compact = false }: ClusterNodePickerProps) {
+export function ClusterNodePicker({
+  connectionId,
+  compact = false,
+  value,
+  onChange,
+}: ClusterNodePickerProps) {
   const { t } = useI18n();
   const connection = useConnectionStore((s) =>
     s.connections.find((c) => c.id === connectionId),
@@ -38,15 +45,17 @@ export function ClusterNodePicker({ connectionId, compact = false }: ClusterNode
 
   const [nodes, setNodes] = useState<ClusterNode[]>([]);
   const [loading, setLoading] = useState(false);
-  const [pinnedNodeAddr, setPinnedNodeAddr] = useState(() =>
+  const [internalPinned, setInternalPinned] = useState(() =>
     readSessionPinnedNode(connectionId, connection?.options),
   );
+  const pinnedNodeAddr = value ?? internalPinned;
 
   const showPicker = clusterRouting === 'pinnedNode' && topology === 'cluster';
 
   useEffect(() => {
-    setPinnedNodeAddr(readSessionPinnedNode(connectionId, connection?.options));
-  }, [connection?.options, connectionId]);
+    if (value !== undefined) return;
+    setInternalPinned(readSessionPinnedNode(connectionId, connection?.options));
+  }, [connection?.options, connectionId, value]);
 
   useEffect(() => {
     if (!showPicker) return;
@@ -82,14 +91,17 @@ export function ClusterNodePicker({ connectionId, compact = false }: ClusterNode
 
   const persistPinnedNode = useCallback(
     (addr: string) => {
-      setPinnedNodeAddr(addr);
+      if (value === undefined) {
+        setInternalPinned(addr);
+      }
+      onChange?.(addr);
       try {
         sessionStorage.setItem(`${SESSION_PREFIX}${connectionId}`, addr);
       } catch {
         // ignore quota / private mode
       }
     },
-    [connectionId],
+    [connectionId, onChange, value],
   );
 
   if (!showPicker) return null;

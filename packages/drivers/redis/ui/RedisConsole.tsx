@@ -26,10 +26,27 @@ import {
 } from './redisCommands';
 import { ClusterNodePicker } from './ClusterNodePicker';
 
+function readClusterRouting(raw: unknown): 'auto' | 'pinnedNode' {
+  if (!raw || typeof raw !== 'object') return 'auto';
+  const value = (raw as { clusterRouting?: unknown }).clusterRouting;
+  return value === 'pinnedNode' ? 'pinnedNode' : 'auto';
+}
+
+function resolvePinnedNodeAddr(
+  clusterRouting: 'auto' | 'pinnedNode',
+  pinnedNodeAddr?: string,
+): string | null {
+  if (clusterRouting !== 'pinnedNode') return null;
+  const addr = pinnedNodeAddr?.trim();
+  return addr ? addr : null;
+}
+
 export interface RedisConsoleProps {
   connectionId: string;
   dbIndex?: number;
   keySuggestions?: string[];
+  pinnedNodeAddr?: string;
+  onPinnedNodeAddrChange?: (addr: string) => void;
 }
 
 interface ExecResult {
@@ -63,8 +80,13 @@ export function RedisConsole({
   connectionId,
   dbIndex = 0,
   keySuggestions = [],
+  pinnedNodeAddr = '',
+  onPinnedNodeAddrChange,
 }: RedisConsoleProps) {
   const { t } = useI18n();
+  const pluginSettings = useSettingsStore((s) => s.settings.pluginSettings);
+  const clusterRouting = readClusterRouting(pluginSettings?.redis);
+  const nodeAddr = resolvePinnedNodeAddr(clusterRouting, pinnedNodeAddr);
   const editorFontFamily = useSettingsStore(
     (s) => s.settings.editorFontFamily || HOST_DEFAULT_EDITOR_FONT,
   );
@@ -126,6 +148,7 @@ export function RedisConsole({
         connectionId,
         dbIndex,
         commands: trimmed,
+        nodeAddr,
       });
       setResults(response.results ?? []);
       setHistory(pushConsoleHistory(connectionId, trimmed));
@@ -134,7 +157,7 @@ export function RedisConsole({
     } finally {
       setRunning(false);
     }
-  }, [commands, connectionId, dbIndex, running]);
+  }, [commands, connectionId, dbIndex, nodeAddr, running]);
 
   const handleKeyDown = useCallback(
     (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -223,7 +246,12 @@ export function RedisConsole({
         </Button>
         <span className="text-[11px] text-fg-muted">{t('redis.console.hint')}</span>
         <div className="flex-1" />
-        <ClusterNodePicker connectionId={connectionId} compact />
+        <ClusterNodePicker
+          connectionId={connectionId}
+          compact
+          value={pinnedNodeAddr}
+          onChange={onPinnedNodeAddrChange}
+        />
         {completions.length > 0 && completionPrefix && (
           <span className="max-w-[240px] truncate text-[11px] text-fg-muted">
             {completions[completionIdx] ?? completions[0]}

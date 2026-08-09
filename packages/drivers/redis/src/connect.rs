@@ -491,6 +491,26 @@ fn open_standalone_client(url: &str, tls: &TlsPlan) -> Result<Client, DriverErro
     Client::open(url).map_err(|e| DriverError::ConnectionFailed(e.to_string()))
 }
 
+/// Open a standalone multiplexed connection to a specific `host:port` node,
+/// reusing TLS and credentials from the active connection plan (cluster pin routing).
+pub async fn open_pinned_node_conn(
+    plan: &ConnectionPlan,
+    node_addr: &str,
+) -> Result<MultiplexedConnection, DriverError> {
+    let (host, port) = parse_host_port(node_addr)?;
+    let (tls, username, password) = match plan {
+        ConnectionPlan::Cluster(p) => (&p.tls, p.username.as_deref(), p.password.as_deref()),
+        ConnectionPlan::Standalone(p) => (&p.tls, None, None),
+        ConnectionPlan::Sentinel(p) => (&p.tls, p.username.as_deref(), p.password.as_deref()),
+    };
+    let url = build_node_url(tls, &host, port, username, password, None);
+    let client = open_standalone_client(&url, tls)?;
+    client
+        .get_multiplexed_async_connection()
+        .await
+        .map_err(|e| DriverError::ConnectionFailed(e.to_string()))
+}
+
 /// Sentinel TLS in redis 0.27: `SentinelNodeConnectionInfo` only exposes `tls_mode`
 /// (Secure/Insecure). Custom CA/client PEM paths cannot be applied to master/replica
 /// connections — `create_connection_info` always sets `tls_params: None`. Sentinel

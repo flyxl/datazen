@@ -1,8 +1,11 @@
 //! Pub/Sub subscribe loop, publish helper, and subscription registry.
 
 use std::collections::HashMap;
-use std::sync::{Arc, OnceLock};
+use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
+
+#[cfg(feature = "tauri-plugin")]
+use std::sync::Arc;
 
 use futures_util::StreamExt;
 use redis::aio::ConnectionLike;
@@ -11,8 +14,10 @@ use serde::Serialize;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 
-use crate::connect::{open_pubsub_connection, ConnectionPlan, RedisLiveConn};
+use crate::connect::{open_pubsub_connection, ConnectionPlan};
+#[cfg(feature = "tauri-plugin")]
 use crate::redis_driver::RedisDriver;
+#[cfg(feature = "tauri-plugin")]
 use tauri::Emitter;
 
 const EVENT_NAME: &str = "redis-pubsub-message";
@@ -102,7 +107,7 @@ where
 }
 
 pub async fn publish_on_live(
-    live: &mut RedisLiveConn,
+    live: &mut crate::connect::RedisLiveConn,
     channel: &str,
     message: &str,
 ) -> Result<u64, String> {
@@ -139,6 +144,7 @@ pub async fn cleanup_connection_subscriptions(connection_id: &str) {
     }
 }
 
+#[cfg(feature = "tauri-plugin")]
 pub async fn start_subscription<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     driver: Arc<RedisDriver>,
