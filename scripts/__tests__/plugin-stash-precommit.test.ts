@@ -161,20 +161,26 @@ describe('runPluginStashPrecommit', () => {
     }
   });
 
-  it('fails when injection present but stash missing', () => {
+  it('restores stubs when injection present but stash missing', () => {
     const { root, opts, cleanup } = setup();
     try {
       writeManagedFiles(root, INJECTED_CONTENTS);
       const result = runPluginStashPrecommit(opts);
-      expect(result.status).toBe(1);
-      expect(result.reason).toBe('stash-missing');
-      expect(readManaged(root, 'Cargo.toml')).toBe(INJECTED_CONTENTS['Cargo.toml']);
+      expect(result.status).toBe(0);
+      expect(result.restored).toBe(true);
+      expect(hasInjectedGeneratedTs(readManaged(root, 'src/plugins/generated.ts'))).toBe(
+        false,
+      );
+      expect(hasInjectedPluginInit(readManaged(root, 'src-tauri/src/plugin_init.rs'))).toBe(
+        false,
+      );
+      expect(hasInjectedCargoContent(readManaged(root, 'Cargo.toml'))).toBe(false);
     } finally {
       cleanup();
     }
   });
 
-  it('fails when stash is incomplete (one file deleted)', () => {
+  it('restores stub when stash is incomplete (one generated file deleted)', () => {
     const { root, opts, cleanup } = setup();
     try {
       const stash = createPluginFileStash(root, { quiet: true });
@@ -183,9 +189,11 @@ describe('runPluginStashPrecommit', () => {
       unlinkSync(stash.stashPath('src-tauri/src/plugin_init.rs'));
 
       const result = runPluginStashPrecommit(opts);
-      expect(result.status).toBe(1);
-      expect(result.reason).toBe('stash-missing');
-      expect(result.missing).toContain('src-tauri/src/plugin_init.rs');
+      expect(result.status).toBe(0);
+      expect(result.restored).toBe(true);
+      expect(hasInjectedPluginInit(readManaged(root, 'src-tauri/src/plugin_init.rs'))).toBe(
+        false,
+      );
     } finally {
       cleanup();
     }

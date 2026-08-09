@@ -36,6 +36,10 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
+      # generated.ts / plugin_init must stay as empty stubs in git; resolve-drivers injects at build.
+      - name: Guard managed driver stubs are not injected
+        run: node scripts/check-managed-stubs.mjs
+
       - name: Frontend unit tests
         run: pnpm test:unit
 

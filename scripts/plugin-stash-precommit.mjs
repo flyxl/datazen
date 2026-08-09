@@ -174,25 +174,15 @@ export function runPluginStashPrecommit(opts = {}) {
     `[pre-commit] Deinjecting ${injectedFiles.length} managed file(s) (keep user edits, strip plugin injection)...`,
   );
 
-  // Fully-generated files need the pre-inject stash; cargo/capabilities can strip in-place.
+  // Fully-generated files prefer stash; if missing, restore writes a canonical stub.
   const needStash = injectedFiles.filter((f) =>
     isFullyGeneratedManagedFile(f),
   );
   const missingStash = needStash.filter((f) => !existsSync(stash.stashPath(f)));
   if (missingStash.length > 0) {
     log(
-      '[pre-commit] ERROR: injected generated files need .plugin-file-stash/ backups.',
+      `[pre-commit] stash missing for ${missingStash.join(', ')} — restoring git-safe stubs`,
     );
-    log(
-      '[pre-commit] Cannot safely restore. Re-checkout clean managed files or recreate the stash.',
-    );
-    log(`[pre-commit] missing stash: ${missingStash.join(', ')}`);
-    return {
-      status: 1,
-      reason: 'stash-missing',
-      missing: missingStash,
-      restored: false,
-    };
   }
 
   try {

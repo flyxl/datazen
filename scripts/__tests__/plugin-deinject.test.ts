@@ -1,6 +1,8 @@
 /** @vitest-environment node */
 import { describe, expect, it } from 'vitest';
 import {
+  cleanGeneratedTsContent,
+  cleanPluginInitContent,
   deinjectCargoContent,
   deinjectCapabilities,
   deinjectManagedContent,
@@ -36,5 +38,22 @@ describe('plugin-deinject', () => {
         { stashContent: CLEAN_CONTENTS['src/plugins/generated.ts'] },
       ),
     ).toBe(CLEAN_CONTENTS['src/plugins/generated.ts']);
+  });
+
+  it('falls back to canonical stubs when stash is missing', () => {
+    expect(
+      deinjectManagedContent(
+        'src/plugins/generated.ts',
+        INJECTED_CONTENTS['src/plugins/generated.ts'],
+        { stashContent: null },
+      ),
+    ).toBe(cleanGeneratedTsContent());
+    expect(
+      deinjectManagedContent(
+        'src-tauri/src/plugin_init.rs',
+        INJECTED_CONTENTS['src-tauri/src/plugin_init.rs'],
+        { stashContent: null },
+      ),
+    ).toBe(cleanPluginInitContent());
   });
 });
