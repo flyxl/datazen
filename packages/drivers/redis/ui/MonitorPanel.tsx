@@ -12,13 +12,14 @@ import { useI18n } from '../../../../src/hooks/useI18n';
 import { cn } from '../../../../src/lib/cn';
 import { pluginInvoke } from '../../../../src/plugins/generated';
 import { parseInfoSections, type InfoSection } from './infoParse';
+import { StreamOverview } from './StreamOverview';
 
 export interface MonitorPanelProps {
   connectionId: string;
   dbIndex?: number;
 }
 
-type MonitorSubPage = 'info' | 'memory' | 'slowlog';
+type MonitorSubPage = 'info' | 'memory' | 'slowlog' | 'streams';
 
 interface MemorySample {
   key: string;
@@ -76,6 +77,7 @@ export function MonitorPanel({ connectionId, dbIndex = 0 }: MonitorPanelProps) {
         { id: 'info' as const, label: t('redis.info') },
         { id: 'memory' as const, label: t('redis.memory') },
         { id: 'slowlog' as const, label: t('redis.slowlog') },
+        { id: 'streams' as const, label: t('redis.streamOverview') },
       ] satisfies Array<{ id: MonitorSubPage; label: string }>,
     [t],
   );
@@ -104,8 +106,10 @@ export function MonitorPanel({ connectionId, dbIndex = 0 }: MonitorPanelProps) {
         <InfoPane connectionId={connectionId} />
       ) : subPage === 'memory' ? (
         <MemoryPane connectionId={connectionId} dbIndex={dbIndex} />
-      ) : (
+      ) : subPage === 'slowlog' ? (
         <SlowlogPane connectionId={connectionId} />
+      ) : (
+        <StreamOverview connectionId={connectionId} dbIndex={dbIndex} />
       )}
     </div>
   );

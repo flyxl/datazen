@@ -21,7 +21,7 @@ import { pluginInvoke } from '../../../../src/plugins/generated';
 export interface StreamEditorProps {
   connectionId: string;
   dbIndex: number;
-  key: string;
+  redisKey: string;
 }
 
 interface StreamEntry {
@@ -163,7 +163,7 @@ function formatFields(fields: Record<string, string>): string {
     .join(' · ');
 }
 
-export function StreamEditor({ connectionId, dbIndex, key }: StreamEditorProps) {
+export function StreamEditor({ connectionId, dbIndex, redisKey }: StreamEditorProps) {
   const { t } = useI18n();
   const [tab, setTab] = useState<StreamTab>('entries');
   const [entries, setEntries] = useState<StreamEntry[]>([]);
@@ -195,7 +195,7 @@ export function StreamEditor({ connectionId, dbIndex, key }: StreamEditorProps) 
       const result = await invokeXrange(
         connectionId,
         dbIndex,
-        key,
+        redisKey,
         '-',
         '+',
         ENTRY_PAGE_SIZE,
@@ -207,13 +207,13 @@ export function StreamEditor({ connectionId, dbIndex, key }: StreamEditorProps) 
     } finally {
       setLoading(false);
     }
-  }, [connectionId, dbIndex, key]);
+  }, [connectionId, dbIndex, redisKey]);
 
   const loadGroups = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const result = await invokeXinfoGroups(connectionId, dbIndex, key);
+      const result = await invokeXinfoGroups(connectionId, dbIndex, redisKey);
       setGroups(result);
       if (selectedGroup && !result.some((g) => g.name === selectedGroup)) {
         setSelectedGroup(null);
@@ -226,14 +226,14 @@ export function StreamEditor({ connectionId, dbIndex, key }: StreamEditorProps) 
     } finally {
       setLoading(false);
     }
-  }, [connectionId, dbIndex, key, selectedGroup]);
+  }, [connectionId, dbIndex, redisKey, selectedGroup]);
 
   const loadPending = useCallback(
     async (group: string) => {
       setBusy(true);
       setError(null);
       try {
-        const result = await invokeXpending(connectionId, dbIndex, key, group);
+        const result = await invokeXpending(connectionId, dbIndex, redisKey, group);
         setPending(result.entries);
         setSelectedPending(new Set());
       } catch (e) {
@@ -243,7 +243,7 @@ export function StreamEditor({ connectionId, dbIndex, key }: StreamEditorProps) 
         setBusy(false);
       }
     },
-    [connectionId, dbIndex, key],
+    [connectionId, dbIndex, redisKey],
   );
 
   useEffect(() => {
@@ -376,7 +376,7 @@ export function StreamEditor({ connectionId, dbIndex, key }: StreamEditorProps) 
               disabled={busy || !newField.trim()}
               onClick={() =>
                 void runAction(async () => {
-                  await invokeXadd(connectionId, dbIndex, key, {
+                  await invokeXadd(connectionId, dbIndex, redisKey, {
                     [newField.trim()]: newValue,
                   });
                   setNewField('');
@@ -437,7 +437,7 @@ export function StreamEditor({ connectionId, dbIndex, key }: StreamEditorProps) 
                           await invokeXgroupDestroy(
                             connectionId,
                             dbIndex,
-                            key,
+                            redisKey,
                             group.name,
                           );
                           if (selectedGroup === group.name) {
@@ -480,7 +480,7 @@ export function StreamEditor({ connectionId, dbIndex, key }: StreamEditorProps) 
                   await invokeXgroupCreate(
                     connectionId,
                     dbIndex,
-                    key,
+                    redisKey,
                     newGroup.trim(),
                     groupStartId.trim() || '$',
                   );
@@ -509,7 +509,7 @@ export function StreamEditor({ connectionId, dbIndex, key }: StreamEditorProps) 
                       await invokeXack(
                         connectionId,
                         dbIndex,
-                        key,
+                        redisKey,
                         selectedGroup,
                         [...selectedPending],
                       );

@@ -9,6 +9,7 @@ import {
 } from 'react';
 import {
   Database,
+  FolderInput,
   Key,
   Loader2,
   Plus,
@@ -29,6 +30,9 @@ import { readBooleanField } from '../../../../src/plugin-sdk/settings';
 import { pluginInvoke } from '../../../../src/plugins/generated';
 import type { KeyDetail, KeyEntry } from '../../../../src/types';
 import { BatchBar } from './BatchBar';
+import { hasRedisJson } from './hasRedisJson';
+import { ImportExport } from './ImportExport';
+import { invokeModulesList } from './JsonEditor';
 import { KeyDetailEditor, invokeCreateKey } from './KeyEditors';
 
 const ROW_HEIGHT = 32;
@@ -100,10 +104,35 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
     const [flushConfirm, setFlushConfirm] = useState('');
     const [flushBusy, setFlushBusy] = useState(false);
     const [flushError, setFlushError] = useState<string | null>(null);
+    const [modules, setModules] = useState<string[] | null>(null);
+    const [importExportOpen, setImportExportOpen] = useState(false);
 
     useEffect(() => {
       void loadForConnection(connectionId, { skipLoadTables: true });
     }, [connectionId, loadForConnection]);
+
+    useEffect(() => {
+      let cancelled = false;
+      setModules(null);
+      void invokeModulesList(connectionId)
+        .then((list) => {
+          if (!cancelled) setModules(list);
+        })
+        .catch(() => {
+          if (!cancelled) setModules([]);
+        });
+      return () => {
+        cancelled = true;
+      };
+    }, [connectionId]);
+
+    const createTypes = useMemo(() => {
+      const base = ['string', 'hash', 'list', 'set', 'zset'];
+      if (modules && hasRedisJson(modules)) {
+        return [...base, 'ReJSON'];
+      }
+      return base;
+    }, [modules]);
 
     const loadKeys = useCallback(
       async (idx: number, pattern: string, cur: number, reset: boolean) => {
@@ -345,6 +374,14 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
                   <Plus className="h-3.5 w-3.5" />
                   {t('redis.createKey')}
                 </Button>
+                <Button
+                  variant="secondary"
+                  className="h-7 gap-1 px-2 text-xs"
+                  onClick={() => setImportExportOpen(true)}
+                >
+                  <FolderInput className="h-3.5 w-3.5" />
+                  {t('redis.importExportTitle')}
+                </Button>
                 {allowFlush && (
                   <>
                     <Button
@@ -439,6 +476,7 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
                           connectionId={connectionId}
                           dbIndex={dbIndex}
                           detail={keyDetail}
+                          modules={modules}
                           onRefresh={reloadDetail}
                           onRenamed={(newKey) => {
                             setSelectedKey(newKey);
@@ -503,7 +541,7 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
               onChange={(e) => setCreateType(e.target.value)}
               className="h-8 w-full rounded-md border border-edge bg-surface px-2 text-xs"
             >
-              {['string', 'hash', 'list', 'set', 'zset'].map((type) => (
+              {createTypes.map((type) => (
                 <option key={type} value={type}>
                   {type}
                 </option>
@@ -518,6 +556,17 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
             {createError && <p className="text-red-400">{createError}</p>}
           </div>
         </Dialog>
+
+        <ImportExport
+          connectionId={connectionId}
+          dbIndex={dbIndex}
+          selectedKeys={[...selectedKeys]}
+          searchPattern={searchPattern}
+          open={importExportOpen}
+          onOpenChange={setImportExportOpen}
+          onRefresh={refreshKeys}
+          onSummary={setBatchSummary}
+        />
 
         <Dialog
           open={flushDialog !== null}
