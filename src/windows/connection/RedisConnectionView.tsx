@@ -11,15 +11,20 @@ import {
 } from '../../../packages/drivers/redis/ui/RedisWorkbench';
 import { RedisConsole } from '../../../packages/drivers/redis/ui/RedisConsole';
 import { MonitorPanel } from '../../../packages/drivers/redis/ui/MonitorPanel';
+import { PubSubPanel } from '../../../packages/drivers/redis/ui/PubSubPanel';
 
-type ActiveTab = 'items' | 'console' | 'monitor';
+type ActiveTab = 'items' | 'console' | 'monitor' | 'pubsub';
 
-const TABS: ActiveTab[] = ['items', 'console', 'monitor'];
+const TABS: ActiveTab[] = ['items', 'console', 'monitor', 'pubsub'];
 
-const TAB_LABEL_KEYS: Record<ActiveTab, 'redis.items' | 'redis.console' | 'redis.monitor'> = {
+const TAB_LABEL_KEYS: Record<
+  ActiveTab,
+  'redis.items' | 'redis.console' | 'redis.monitor' | 'redis.pubsub'
+> = {
   items: 'redis.items',
   console: 'redis.console',
   monitor: 'redis.monitor',
+  pubsub: 'redis.pubsub',
 };
 
 export function RedisConnectionView({
@@ -83,6 +88,9 @@ export function RedisConnectionView({
       )}
       {activeTab === 'monitor' && (
         <MonitorPanel connectionId={connectionId} dbIndex={0} />
+      )}
+      {activeTab === 'pubsub' && (
+        <PubSubPanel connectionId={connectionId} />
       )}
     </div>
   );

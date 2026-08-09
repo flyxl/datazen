@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-pubsub-subscribe"
+description = "Enables the pubsub_subscribe command without any pre-configured scope."
+commands.allow = ["pubsub_subscribe"]
+
+[[permission]]
+identifier = "deny-pubsub-subscribe"
+description = "Denies the pubsub_subscribe command without any pre-configured scope."
+commands.deny = ["pubsub_subscribe"]

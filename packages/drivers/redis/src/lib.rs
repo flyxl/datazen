@@ -8,6 +8,7 @@ mod connect;
 mod ops;
 mod ops_exec;
 mod ops_observe;
+mod ops_pubsub;
 mod redis_driver;
 pub use connect::{build_connection_plan, ConnectionPlan, RedisLiveConn, Topology, TlsPlan};
 pub use redis_driver::*;

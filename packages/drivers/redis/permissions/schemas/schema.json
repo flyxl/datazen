@@ -487,6 +487,42 @@
           "markdownDescription": "Denies the modules_list command without any pre-configured scope."
         },
         {
+          "description": "Enables the pubsub_publish command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-pubsub-publish",
+          "markdownDescription": "Enables the pubsub_publish command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the pubsub_publish command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-pubsub-publish",
+          "markdownDescription": "Denies the pubsub_publish command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the pubsub_subscribe command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-pubsub-subscribe",
+          "markdownDescription": "Enables the pubsub_subscribe command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the pubsub_subscribe command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-pubsub-subscribe",
+          "markdownDescription": "Denies the pubsub_subscribe command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the pubsub_unsubscribe command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-pubsub-unsubscribe",
+          "markdownDescription": "Enables the pubsub_unsubscribe command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the pubsub_unsubscribe command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-pubsub-unsubscribe",
+          "markdownDescription": "Denies the pubsub_unsubscribe command without any pre-configured scope."
+        },
+        {
           "description": "Enables the rename command without any pre-configured scope.",
           "type": "string",
           "const": "allow-rename",
@@ -595,10 +631,10 @@
           "markdownDescription": "Denies the zset_remove command without any pre-configured scope."
         },
         {
-          "description": "Default permissions for the redis plugin (mutate + batch ops)\n#### This default permission set includes:\n\n- `allow-set-string`\n- `allow-hash-set`\n- `allow-hash-del`\n- `allow-list-push`\n- `allow-list-set`\n- `allow-list-pop`\n- `allow-set-add`\n- `allow-set-remove`\n- `allow-zset-add`\n- `allow-zset-remove`\n- `allow-delete-keys`\n- `allow-rename`\n- `allow-set-ttl`\n- `allow-batch-delete-pattern`\n- `allow-batch-set-ttl`\n- `allow-batch-rename-prefix`\n- `allow-flush-db`\n- `allow-flush-all`\n- `allow-count-matching`\n- `allow-info`\n- `allow-memory-sample`\n- `allow-slowlog-get`\n- `allow-slowlog-reset`\n- `allow-modules-list`\n- `allow-exec`",
+          "description": "Default permissions for the redis plugin (mutate + batch ops)\n#### This default permission set includes:\n\n- `allow-set-string`\n- `allow-hash-set`\n- `allow-hash-del`\n- `allow-list-push`\n- `allow-list-set`\n- `allow-list-pop`\n- `allow-set-add`\n- `allow-set-remove`\n- `allow-zset-add`\n- `allow-zset-remove`\n- `allow-delete-keys`\n- `allow-rename`\n- `allow-set-ttl`\n- `allow-batch-delete-pattern`\n- `allow-batch-set-ttl`\n- `allow-batch-rename-prefix`\n- `allow-flush-db`\n- `allow-flush-all`\n- `allow-count-matching`\n- `allow-info`\n- `allow-memory-sample`\n- `allow-slowlog-get`\n- `allow-slowlog-reset`\n- `allow-modules-list`\n- `allow-exec`\n- `allow-pubsub-subscribe`\n- `allow-pubsub-unsubscribe`\n- `allow-pubsub-publish`",
           "type": "string",
           "const": "default",
-          "markdownDescription": "Default permissions for the redis plugin (mutate + batch ops)\n#### This default permission set includes:\n\n- `allow-set-string`\n- `allow-hash-set`\n- `allow-hash-del`\n- `allow-list-push`\n- `allow-list-set`\n- `allow-list-pop`\n- `allow-set-add`\n- `allow-set-remove`\n- `allow-zset-add`\n- `allow-zset-remove`\n- `allow-delete-keys`\n- `allow-rename`\n- `allow-set-ttl`\n- `allow-batch-delete-pattern`\n- `allow-batch-set-ttl`\n- `allow-batch-rename-prefix`\n- `allow-flush-db`\n- `allow-flush-all`\n- `allow-count-matching`\n- `allow-info`\n- `allow-memory-sample`\n- `allow-slowlog-get`\n- `allow-slowlog-reset`\n- `allow-modules-list`\n- `allow-exec`"
+          "markdownDescription": "Default permissions for the redis plugin (mutate + batch ops)\n#### This default permission set includes:\n\n- `allow-set-string`\n- `allow-hash-set`\n- `allow-hash-del`\n- `allow-list-push`\n- `allow-list-set`\n- `allow-list-pop`\n- `allow-set-add`\n- `allow-set-remove`\n- `allow-zset-add`\n- `allow-zset-remove`\n- `allow-delete-keys`\n- `allow-rename`\n- `allow-set-ttl`\n- `allow-batch-delete-pattern`\n- `allow-batch-set-ttl`\n- `allow-batch-rename-prefix`\n- `allow-flush-db`\n- `allow-flush-all`\n- `allow-count-matching`\n- `allow-info`\n- `allow-memory-sample`\n- `allow-slowlog-get`\n- `allow-slowlog-reset`\n- `allow-modules-list`\n- `allow-exec`\n- `allow-pubsub-subscribe`\n- `allow-pubsub-unsubscribe`\n- `allow-pubsub-publish`"
         }
       ]
     }

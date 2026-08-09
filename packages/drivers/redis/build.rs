@@ -25,6 +25,9 @@ fn main() {
         "slowlog_reset",
         "modules_list",
         "exec",
+        "pubsub_subscribe",
+        "pubsub_unsubscribe",
+        "pubsub_publish",
     ])
     .build();
 }

@@ -4,7 +4,7 @@ use datazen_driver_api::{ConnectionConfig, DriverError, SslMode};
 use redis::aio::MultiplexedConnection;
 use redis::cluster::{ClusterClient, TlsMode};
 use redis::cluster_async::ClusterConnection;
-use redis::sentinel::{SentinelClient, SentinelNodeConnectionInfo, SentinelServerType};
+use redis::sentinel::{Sentinel, SentinelClient, SentinelNodeConnectionInfo, SentinelServerType};
 use redis::{Client, ClientTlsConfig, RedisConnectionInfo, TlsCertificates as RedisTlsCertificates};
 use serde_json::Map;
 use std::fs;
@@ -147,6 +147,47 @@ pub fn build_connection_plan(config: &ConnectionConfig) -> Result<ConnectionPlan
                 tls,
                 db_index: parse_db_index(config.database.as_deref())?,
             }))
+        }
+    }
+}
+
+/// Open a dedicated Pub/Sub connection for SUBSCRIBE / PSUBSCRIBE.
+///
+/// Cluster topology uses the first seed node as a standalone client (Pub/Sub is
+/// node-local on Cluster).
+pub async fn open_pubsub_connection(
+    plan: &ConnectionPlan,
+) -> Result<redis::aio::PubSub, DriverError> {
+    match plan {
+        ConnectionPlan::Standalone(p) => {
+            let client = open_standalone_client(&p.url, &p.tls)?;
+            client
+                .get_async_pubsub()
+                .await
+                .map_err(|e| DriverError::ConnectionFailed(e.to_string()))
+        }
+        ConnectionPlan::Cluster(p) => {
+            let url = p.node_urls.first().ok_or_else(|| {
+                DriverError::InvalidConfig("cluster topology requires at least one cluster node".into())
+            })?;
+            let client = open_standalone_client(url, &p.tls)?;
+            client
+                .get_async_pubsub()
+                .await
+                .map_err(|e| DriverError::ConnectionFailed(e.to_string()))
+        }
+        ConnectionPlan::Sentinel(p) => {
+            let node_info = sentinel_node_info(p);
+            let mut sentinel = Sentinel::build(p.sentinel_urls.clone())
+                .map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
+            let master_client = sentinel
+                .async_master_for(&p.master_name, Some(&node_info))
+                .await
+                .map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
+            master_client
+                .get_async_pubsub()
+                .await
+                .map_err(|e| DriverError::ConnectionFailed(e.to_string()))
         }
     }
 }
