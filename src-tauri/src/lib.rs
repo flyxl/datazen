@@ -1,5 +1,6 @@
 pub mod ai;
 mod app_data_archive;
+mod dashboard;
 mod theme;
 mod cache;
 mod commands;
