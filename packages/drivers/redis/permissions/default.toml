@@ -27,4 +27,5 @@ permissions = [
   "allow-slowlog-get",
   "allow-slowlog-reset",
   "allow-modules-list",
+  "allow-exec",
 ]

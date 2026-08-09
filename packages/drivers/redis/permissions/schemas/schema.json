@@ -355,6 +355,18 @@
           "markdownDescription": "Denies the delete_keys command without any pre-configured scope."
         },
         {
+          "description": "Enables the exec command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-exec",
+          "markdownDescription": "Enables the exec command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the exec command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-exec",
+          "markdownDescription": "Denies the exec command without any pre-configured scope."
+        },
+        {
           "description": "Enables the flush_all command without any pre-configured scope.",
           "type": "string",
           "const": "allow-flush-all",
@@ -583,10 +595,10 @@
           "markdownDescription": "Denies the zset_remove command without any pre-configured scope."
         },
         {
-          "description": "Default permissions for the redis plugin (mutate + batch ops)\n#### This default permission set includes:\n\n- `allow-set-string`\n- `allow-hash-set`\n- `allow-hash-del`\n- `allow-list-push`\n- `allow-list-set`\n- `allow-list-pop`\n- `allow-set-add`\n- `allow-set-remove`\n- `allow-zset-add`\n- `allow-zset-remove`\n- `allow-delete-keys`\n- `allow-rename`\n- `allow-set-ttl`\n- `allow-batch-delete-pattern`\n- `allow-batch-set-ttl`\n- `allow-batch-rename-prefix`\n- `allow-flush-db`\n- `allow-flush-all`\n- `allow-count-matching`\n- `allow-info`\n- `allow-memory-sample`\n- `allow-slowlog-get`\n- `allow-slowlog-reset`\n- `allow-modules-list`",
+          "description": "Default permissions for the redis plugin (mutate + batch ops)\n#### This default permission set includes:\n\n- `allow-set-string`\n- `allow-hash-set`\n- `allow-hash-del`\n- `allow-list-push`\n- `allow-list-set`\n- `allow-list-pop`\n- `allow-set-add`\n- `allow-set-remove`\n- `allow-zset-add`\n- `allow-zset-remove`\n- `allow-delete-keys`\n- `allow-rename`\n- `allow-set-ttl`\n- `allow-batch-delete-pattern`\n- `allow-batch-set-ttl`\n- `allow-batch-rename-prefix`\n- `allow-flush-db`\n- `allow-flush-all`\n- `allow-count-matching`\n- `allow-info`\n- `allow-memory-sample`\n- `allow-slowlog-get`\n- `allow-slowlog-reset`\n- `allow-modules-list`\n- `allow-exec`",
           "type": "string",
           "const": "default",
-          "markdownDescription": "Default permissions for the redis plugin (mutate + batch ops)\n#### This default permission set includes:\n\n- `allow-set-string`\n- `allow-hash-set`\n- `allow-hash-del`\n- `allow-list-push`\n- `allow-list-set`\n- `allow-list-pop`\n- `allow-set-add`\n- `allow-set-remove`\n- `allow-zset-add`\n- `allow-zset-remove`\n- `allow-delete-keys`\n- `allow-rename`\n- `allow-set-ttl`\n- `allow-batch-delete-pattern`\n- `allow-batch-set-ttl`\n- `allow-batch-rename-prefix`\n- `allow-flush-db`\n- `allow-flush-all`\n- `allow-count-matching`\n- `allow-info`\n- `allow-memory-sample`\n- `allow-slowlog-get`\n- `allow-slowlog-reset`\n- `allow-modules-list`"
+          "markdownDescription": "Default permissions for the redis plugin (mutate + batch ops)\n#### This default permission set includes:\n\n- `allow-set-string`\n- `allow-hash-set`\n- `allow-hash-del`\n- `allow-list-push`\n- `allow-list-set`\n- `allow-list-pop`\n- `allow-set-add`\n- `allow-set-remove`\n- `allow-zset-add`\n- `allow-zset-remove`\n- `allow-delete-keys`\n- `allow-rename`\n- `allow-set-ttl`\n- `allow-batch-delete-pattern`\n- `allow-batch-set-ttl`\n- `allow-batch-rename-prefix`\n- `allow-flush-db`\n- `allow-flush-all`\n- `allow-count-matching`\n- `allow-info`\n- `allow-memory-sample`\n- `allow-slowlog-get`\n- `allow-slowlog-reset`\n- `allow-modules-list`\n- `allow-exec`"
         }
       ]
     }

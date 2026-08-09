@@ -28,6 +28,7 @@ Default permissions for the redis plugin (mutate + batch ops)
 - `allow-slowlog-get`
 - `allow-slowlog-reset`
 - `allow-modules-list`
+- `allow-exec`
 
 ## Permission Table
 
@@ -164,6 +165,32 @@ Enables the delete_keys command without any pre-configured scope.
 <td>
 
 Denies the delete_keys command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`datazen-driver-redis:allow-exec`
+
+</td>
+<td>
+
+Enables the exec command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`datazen-driver-redis:deny-exec`
+
+</td>
+<td>
+
+Denies the exec command without any pre-configured scope.
 
 </td>
 </tr>

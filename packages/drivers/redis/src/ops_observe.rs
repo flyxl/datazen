@@ -94,32 +94,31 @@ pub async fn memory_sample(
 
     let mut keys = Vec::new();
     let mut cursor = 0u64;
-    let mut scan_exhausted = true;
-    loop {
-        let raw: redis::Value = redis::cmd("SCAN")
-            .arg(cursor)
-            .arg("COUNT")
-            .arg(200)
-            .query_async(conn)
-            .await
-            .map_err(|e| e.to_string())?;
-        let (next, batch) = parse_scan_result(&raw);
-        for key in batch {
-            keys.push(key);
+    let scan_exhausted = 'scan: {
+        loop {
+            let raw: redis::Value = redis::cmd("SCAN")
+                .arg(cursor)
+                .arg("COUNT")
+                .arg(200)
+                .query_async(conn)
+                .await
+                .map_err(|e| e.to_string())?;
+            let (next, batch) = parse_scan_result(&raw);
+            for key in batch {
+                keys.push(key);
+                if keys.len() >= limit {
+                    break;
+                }
+            }
+            cursor = next;
             if keys.len() >= limit {
-                break;
+                break 'scan cursor == 0;
+            }
+            if cursor == 0 {
+                break 'scan true;
             }
         }
-        cursor = next;
-        if keys.len() >= limit {
-            scan_exhausted = cursor == 0;
-            break;
-        }
-        if cursor == 0 {
-            scan_exhausted = true;
-            break;
-        }
-    }
+    };
 
     let mut samples = Vec::with_capacity(keys.len());
     for key in keys {

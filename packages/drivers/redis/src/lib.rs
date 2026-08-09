@@ -5,6 +5,7 @@ use std::sync::{Arc, OnceLock};
 use datazen_driver_api::*;
 
 mod ops;
+mod ops_exec;
 mod ops_observe;
 mod redis_driver;
 pub use redis_driver::*;

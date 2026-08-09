@@ -1,6 +1,7 @@
 //! Tauri plugin commands for Redis deep ops (`plugin:redis|*`).
 
 use crate::ops::{self, ZsetMember};
+use crate::ops_exec::ExecResponse;
 use crate::ops_observe::{self, MemorySampleResult, SlowlogEntry};
 use crate::shared_driver;
 use datazen_driver_api::DriverError;
@@ -302,6 +303,18 @@ async fn modules_list(connection_id: String) -> Result<Vec<String>, String> {
         .map_err(map_err)
 }
 
+#[tauri::command]
+async fn exec(
+    connection_id: String,
+    db_index: u32,
+    commands: String,
+) -> Result<ExecResponse, String> {
+    shared_driver()
+        .plugin_exec(&connection_id, db_index, &commands)
+        .await
+        .map_err(map_err)
+}
+
 /// Register Redis IPC commands as a Tauri plugin (`plugin:redis|*`).
 pub fn init<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
     tauri::plugin::Builder::new("redis")
@@ -330,6 +343,7 @@ pub fn init<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
             slowlog_get,
             slowlog_reset,
             modules_list,
+            exec,
         ])
         .build()
 }
