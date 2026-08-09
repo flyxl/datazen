@@ -179,4 +179,19 @@ impl DatabaseDriver for ReuseDriver {
     fn prompt_overrides(&self) -> HashMap<PromptScenario, PromptTemplate> {
         self.inner.prompt_overrides()
     }
+
+    async fn structure_capabilities(
+        &self,
+        handle: &ConnectionHandle,
+    ) -> Result<StructureCapabilities, DriverError> {
+        self.inner.structure_capabilities(handle).await
+    }
+
+    async fn plan_structure_changes(
+        &self,
+        handle: &ConnectionHandle,
+        request: &StructureChangeRequest,
+    ) -> Result<StructureChangePlan, DriverError> {
+        self.inner.plan_structure_changes(handle, request).await
+    }
 }
