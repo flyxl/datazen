@@ -29,6 +29,9 @@ Default permissions for the redis plugin (mutate + batch ops)
 - `allow-slowlog-reset`
 - `allow-modules-list`
 - `allow-exec`
+- `allow-pubsub-subscribe`
+- `allow-pubsub-unsubscribe`
+- `allow-pubsub-publish`
 
 ## Permission Table
 
@@ -451,6 +454,84 @@ Enables the modules_list command without any pre-configured scope.
 <td>
 
 Denies the modules_list command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`datazen-driver-redis:allow-pubsub-publish`
+
+</td>
+<td>
+
+Enables the pubsub_publish command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`datazen-driver-redis:deny-pubsub-publish`
+
+</td>
+<td>
+
+Denies the pubsub_publish command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`datazen-driver-redis:allow-pubsub-subscribe`
+
+</td>
+<td>
+
+Enables the pubsub_subscribe command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`datazen-driver-redis:deny-pubsub-subscribe`
+
+</td>
+<td>
+
+Denies the pubsub_subscribe command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`datazen-driver-redis:allow-pubsub-unsubscribe`
+
+</td>
+<td>
+
+Enables the pubsub_unsubscribe command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`datazen-driver-redis:deny-pubsub-unsubscribe`
+
+</td>
+<td>
+
+Denies the pubsub_unsubscribe command without any pre-configured scope.
 
 </td>
 </tr>

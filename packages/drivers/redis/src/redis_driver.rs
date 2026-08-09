@@ -288,6 +288,27 @@ impl RedisDriver {
             crate::ops_exec::exec_commands(conn, &commands).await
         })
     }
+
+    pub async fn connection_plan(&self, connection_id: &str) -> Result<ConnectionPlan, DriverError> {
+        let conns = self.connections.read().await;
+        conns
+            .get(connection_id)
+            .map(|rc| rc.plan.clone())
+            .ok_or_else(|| DriverError::ConnectionFailed("Redis connection not found".into()))
+    }
+
+    pub async fn plugin_pubsub_publish(
+        &self,
+        connection_id: &str,
+        channel: &str,
+        message: &str,
+    ) -> Result<u64, DriverError> {
+        let channel = channel.to_string();
+        let message = message.to_string();
+        with_live_any_op!(self, connection_id, |conn| {
+            crate::ops_pubsub::publish(conn, &channel, &message).await
+        })
+    }
 }
 
 async fn select_db_on<C>(conn: &mut C, db_index: u32) -> Result<(), String>
