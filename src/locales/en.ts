@@ -359,6 +359,7 @@ const en: Record<TranslationKey, string> = {
   // ── Redis ──
   'redis.items': 'Items',
   'redis.queries': 'Queries',
+  'redis.console': 'Console',
   'redis.history': 'History',
   'redis.searchKeys': 'Search keys…',
   'redis.dbSize': '{count} keys',
