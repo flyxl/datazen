@@ -130,6 +130,8 @@ export function SqlConnectionView({
   const tableCtxRef = useRef<HTMLDivElement>(null);
 
   const currentDatabase = useSchemaStore((s) => s.currentDatabase);
+  const schemaTables = useSchemaStore((s) => s.tables);
+  const schemaViews = useSchemaStore((s) => s.views);
   const loadForConnection = useSchemaStore((s) => s.loadForConnection);
   const loadTables = useSchemaStore((s) => s.loadTables);
   const tableColumns = useTableDataStore((s) => s.columns);
@@ -151,6 +153,16 @@ export function SqlConnectionView({
   const updateResultCell = useQueryStore((s) => s.updateResultCell);
 
   const activePanel = panels.find((p) => p.id === activePanelId) ?? null;
+
+  const resolveTableSchema = useCallback(
+    (tableName: string): string | null => {
+      const hit = [...schemaTables, ...schemaViews].find((t) => t.name === tableName);
+      return hit?.schema ?? currentDatabase ?? null;
+    },
+    [schemaTables, schemaViews, currentDatabase],
+  );
+
+  const createTableSchema = currentDatabase ?? null;
 
   const { size: sidebarWidth, handleRef } = useResizable({
     direction: 'horizontal',
@@ -637,6 +649,7 @@ export function SqlConnectionView({
               <TableStructureEditor
                 connectionId={connectionId}
                 databaseType={databaseType}
+                schema={createTableSchema}
                 mode="create"
                 onSuccess={() => {
                   handleClosePanel(activePanel.id);
@@ -650,6 +663,7 @@ export function SqlConnectionView({
               <TableStructureEditor
                 connectionId={connectionId}
                 databaseType={databaseType}
+                schema={resolveTableSchema(activePanel.tableName)}
                 mode="alter"
                 tableName={activePanel.tableName}
                 onSuccess={() => {

@@ -710,6 +710,7 @@ const en: Record<TranslationKey, string> = {
   'structEditor.newTable': 'New Table',
   'structEditor.editTable': 'Edit Table Structure',
   'structEditor.previewSQL': 'Preview SQL',
+  'structEditor.previewing': 'Generating preview…',
   'structEditor.executing': 'Executing…',
   'structEditor.createTable': 'Create Table',
   'structEditor.saveChanges': 'Save Changes',
