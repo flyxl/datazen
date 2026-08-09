@@ -1,10 +1,17 @@
 import { forwardRef, useCallback, useImperativeHandle, useRef, useState } from 'react';
-import { ArrowUp, Square } from 'lucide-react';
+import { ArrowUp, File, Folder, Square, Table2 } from 'lucide-react';
 import { cn } from '../../lib/cn';
 import { useAiKeyboard } from '../../hooks/useAiKeyboard';
 import { useI18n } from '../../hooks/useI18n';
 import { ContextPicker } from './ContextPicker';
 import type { ContextItem } from '../../types';
+
+function TokenIcon({ kind }: { kind: ContextItem['kind'] }) {
+  const className = 'h-3 w-3 shrink-0 opacity-80';
+  if (kind === 'table') return <Table2 className={className} aria-hidden />;
+  if (kind === 'dir') return <Folder className={className} aria-hidden />;
+  return <File className={className} aria-hidden />;
+}
 
 interface AiInputProps {
   value: string;
@@ -166,16 +173,17 @@ export const AiInput = forwardRef<HTMLTextAreaElement, AiInputProps>(function Ai
         )}
 
         {hasTokens && (
-          <div className="flex flex-wrap gap-1 pl-2 pt-2">
+          <div className="flex flex-wrap items-center gap-1.5 pl-2 pt-2">
             {contextItems.map((item) => (
               <span
                 key={itemKey(item)}
                 data-testid="context-token"
                 data-kind={item.kind}
                 data-id={item.id}
-                className="inline-flex items-center rounded bg-accent/10 px-1.5 py-0.5 text-[11px] text-accent"
+                className="inline-flex items-center gap-1 text-[12px] text-fg-secondary"
               >
-                @{item.name}
+                <TokenIcon kind={item.kind} />
+                <span className="truncate">{item.name}</span>
               </span>
             ))}
           </div>
