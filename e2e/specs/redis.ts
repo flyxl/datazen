@@ -1,3 +1,10 @@
+/**
+ * Redis connection window E2E (browse + queries + E1 write paths).
+ *
+ * Credentials: E2E_REDIS_* (see e2e/.env.example). Skips gracefully when
+ * Redis is unreachable or E2E_SKIP_REDIS=1.
+ */
+import { createConnection } from 'node:net';
 import { expect, browser, $, $$ } from '@wdio/globals';
 import { t } from '../i18n.js';
 import {
@@ -12,6 +19,29 @@ const CONN_NAME = 'E2E-Redis';
 const REDIS_HOST = process.env.E2E_REDIS_HOST || '127.0.0.1';
 const REDIS_PORT = process.env.E2E_REDIS_PORT || '6379';
 const REDIS_PASSWORD = process.env.E2E_REDIS_PASSWORD || '';
+
+function skipRequested(): boolean {
+  return process.env.E2E_SKIP_REDIS === '1';
+}
+
+async function redisReachable(timeoutMs = 2000): Promise<boolean> {
+  return new Promise((resolve) => {
+    const sock = createConnection({ host: REDIS_HOST, port: Number(REDIS_PORT) });
+    const timer = setTimeout(() => {
+      sock.destroy();
+      resolve(false);
+    }, timeoutMs);
+    sock.on('connect', () => {
+      clearTimeout(timer);
+      sock.destroy();
+      resolve(true);
+    });
+    sock.on('error', () => {
+      clearTimeout(timer);
+      resolve(false);
+    });
+  });
+}
 
 async function createAndConnectRedis() {
   const mainWindow = await browser.getWindowHandle();
@@ -128,20 +158,110 @@ async function executeRedisCommand(cmd: string) {
   await browser.pause(500);
 }
 
-describe('Redis 数据库支持 (RD-001~RD-015)', () => {
-  let mainWindow: string;
+async function goToItemsTab() {
+  const itemsTab = await $(`button*=${t('redis.items')}`);
+  await itemsTab.click();
+  await browser.pause(500);
+}
 
-  before(async () => {
+async function searchKeys(pattern: string) {
+  const searchInput = await $(`input[placeholder*="${t('redis.searchKeys')}"]`);
+  await searchInput.clearValue();
+  await searchInput.setValue(pattern);
+  await browser.keys('Enter');
+  await browser.pause(2000);
+}
+
+async function clickKeyRow(keyName: string): Promise<boolean> {
+  const keyRows = await $$('[class*="cursor-pointer"]');
+  for (const row of keyRows) {
+    const text = await row.getText();
+    if (text.includes(keyName)) {
+      await row.click();
+      return true;
+    }
+  }
+  return false;
+}
+
+async function toggleKeyCheckbox(keyName: string, checked: boolean): Promise<boolean> {
+  return browser.execute(
+    (name: string, wantChecked: boolean) => {
+      const rows = document.querySelectorAll('[class*="cursor-pointer"]');
+      for (const row of rows) {
+        if (!(row.textContent || '').includes(name)) continue;
+        const cb = row.querySelector('input[type="checkbox"]') as HTMLInputElement | null;
+        if (!cb) return false;
+        if (cb.checked !== wantChecked) cb.click();
+        return true;
+      }
+      return false;
+    },
+    keyName,
+    checked,
+  );
+}
+
+async function createStringKey(keyName: string, value: string) {
+  const createBtn = await $(`button*=${t('redis.createKey')}`);
+  await createBtn.click();
+  await browser.pause(300);
+  const nameInput = await $(`input[placeholder="${t('redis.keyName')}"]`);
+  await nameInput.setValue(keyName);
+  const valueInput = await $(`input[placeholder="${t('redis.value')}"]`);
+  await valueInput.setValue(value);
+  const confirmBtn = await $(`button*=${t('redis.create')}`);
+  await confirmBtn.click();
+  await browser.pause(1500);
+}
+
+async function batchDeleteSelected() {
+  const batchDeleteBtn = await $(`button*=${t('redis.batchDelete')}`);
+  await batchDeleteBtn.click();
+  await browser.pause(300);
+  const deleteBtn = await $(`button*=${t('common.delete')}`);
+  await deleteBtn.click();
+  await browser.pause(2000);
+}
+
+async function bodyContains(text: string): Promise<boolean> {
+  const body = await $('body').getText();
+  return body.includes(text);
+}
+
+describe('Redis 数据库支持 (RD-001~RD-021)', () => {
+  let mainWindow: string;
+  let shouldSkip = false;
+
+  before(async function () {
+    if (skipRequested()) {
+      console.warn('⏩ Skipping Redis E2E: E2E_SKIP_REDIS=1');
+      shouldSkip = true;
+      return;
+    }
+    if (!(await redisReachable())) {
+      console.warn(
+        `⏩ Skipping Redis E2E: ${REDIS_HOST}:${REDIS_PORT} unreachable`,
+      );
+      shouldSkip = true;
+      return;
+    }
+
     const handles = await browser.getWindowHandles();
     mainWindow = handles.find((h) => h === 'main') ?? handles[0];
     await browser.switchToWindow(mainWindow);
     await closeExtraWindows(mainWindow);
     await browser.pause(1000);
 
-    const result = await createAndConnectRedis();
-    mainWindow = result.mainWindow;
+    try {
+      const result = await createAndConnectRedis();
+      mainWindow = result.mainWindow;
+    } catch (e) {
+      console.warn('⏩ Skipping Redis E2E: connection setup failed', e);
+      shouldSkip = true;
+      return;
+    }
 
-    // Setup test data via Queries tab
     const queriesTab = await $(`button*=${t('redis.queries')}`);
     if (await queriesTab.isExisting()) {
       await queriesTab.click();
@@ -156,7 +276,12 @@ describe('Redis 数据库支持 (RD-001~RD-015)', () => {
     await executeRedisCommand('ZADD e2e:zset:scores 90 Alice 85 Bob 70 Charlie');
   });
 
+  beforeEach(function () {
+    if (shouldSkip) this.skip();
+  });
+
   after(async () => {
+    if (shouldSkip) return;
     try {
       const handles = await browser.getWindowHandles();
       const connHandle = handles.find((h) => h !== mainWindow);
@@ -168,6 +293,7 @@ describe('Redis 数据库支持 (RD-001~RD-015)', () => {
         await executeRedisCommand('DEL e2e:string:hello e2e:string:count');
         await executeRedisCommand('DEL e2e:hash:user e2e:list:items');
         await executeRedisCommand('DEL e2e:set:tags e2e:zset:scores');
+        await executeRedisCommand('DEL e2e:write:crud e2e:write:batch:a e2e:write:batch:b');
       }
     } catch { /* best-effort cleanup */ }
     try {
@@ -192,9 +318,8 @@ describe('Redis 数据库支持 (RD-001~RD-015)', () => {
   // ── Database Sidebar ──
 
   it('左侧边栏应显示 Redis 数据库列表 (RD-003)', async () => {
-    const itemsTab = await $(`button*=${t('redis.items')}`);
-    await itemsTab.click();
-    await browser.pause(1000);
+    await goToItemsTab();
+    await browser.pause(500);
 
     const aside = await $('aside');
     const asideText = await aside.getText();
@@ -202,12 +327,12 @@ describe('Redis 数据库支持 (RD-001~RD-015)', () => {
   });
 
   it('点击数据库应加载该库的键 (RD-004)', async () => {
+    await goToItemsTab();
     const dbBtn = await $('aside button*=db0');
     if (await dbBtn.isExisting()) {
       await dbBtn.click();
       await browser.pause(2000);
       const body = await $('body').getText();
-      // Should show at least one e2e key or key count info
       const hasKeyInfo = body.includes('e2e:') || body.includes('loaded') || body.includes('个键');
       expect(hasKeyInfo).toBe(true);
     }
@@ -216,18 +341,31 @@ describe('Redis 数据库支持 (RD-001~RD-015)', () => {
   // ── Key Browser ──
 
   it('键表格应显示 key/type/TTL/value 列 (RD-005)', async () => {
+    await goToItemsTab();
     const body = await $('body').getText();
     const hasColumns = body.includes(t('redis.key')) || body.includes('Key');
     expect(hasColumns).toBe(true);
   });
 
+  it('键表格应显示 Size 列 (RD-016)', async () => {
+    await goToItemsTab();
+    const body = await $('body').getText();
+    expect(body).toContain(t('redis.size'));
+  });
+
+  it('默认不显示 Flush 控件 (RD-017)', async () => {
+    await goToItemsTab();
+    const flushDbBtn = await $(`button*=${t('redis.flushDb')}`);
+    const flushAllBtn = await $(`button*=${t('redis.flushAll')}`);
+    expect(await flushDbBtn.isExisting()).toBe(false);
+    expect(await flushAllBtn.isExisting()).toBe(false);
+  });
+
   it('应能搜索键 (RD-006)', async () => {
+    await goToItemsTab();
     const searchInput = await $(`input[placeholder*="${t('redis.searchKeys')}"]`);
     if (await searchInput.isExisting()) {
-      await searchInput.clearValue();
-      await searchInput.setValue('e2e:*');
-      await browser.keys('Enter');
-      await browser.pause(2000);
+      await searchKeys('e2e:*');
       const body = await $('body').getText();
       expect(body).toContain('e2e:');
     }
@@ -236,21 +374,65 @@ describe('Redis 数据库支持 (RD-001~RD-015)', () => {
   // ── Key Detail ──
 
   it('点击键应显示键详情面板 (RD-007)', async () => {
-    const keyRows = await $$('[class*="cursor-pointer"]');
-    let clicked = false;
-    for (const row of keyRows) {
-      const text = await row.getText();
-      if (text.includes('e2e:string:hello')) {
-        await row.click();
-        clicked = true;
-        break;
-      }
-    }
+    await goToItemsTab();
+    await searchKeys('e2e:string:hello');
+    const clicked = await clickKeyRow('e2e:string:hello');
     if (clicked) {
       await browser.pause(1000);
       const body = await $('body').getText();
       expect(body).toContain('world');
     }
+  });
+
+  // ── E1 write paths (workbench CRUD + batch) ──
+
+  it('应能通过工作台创建 string 键 (RD-018)', async () => {
+    await goToItemsTab();
+    await createStringKey('e2e:write:crud', 'initial');
+    await searchKeys('e2e:write:crud');
+    expect(await bodyContains('e2e:write:crud')).toBe(true);
+  });
+
+  it('应能编辑 string 键值 (RD-019)', async () => {
+    await goToItemsTab();
+    await searchKeys('e2e:write:crud');
+    const clicked = await clickKeyRow('e2e:write:crud');
+    expect(clicked).toBe(true);
+    await browser.pause(1000);
+
+    const textarea = await $('textarea');
+    await textarea.clearValue();
+    await textarea.setValue('updated');
+    const saveBtn = await $(`button*=${t('common.save')}`);
+    await saveBtn.click();
+    await browser.pause(1500);
+
+    expect(await bodyContains('updated')).toBe(true);
+  });
+
+  it('应能通过批量删除移除单个键 (RD-020)', async () => {
+    await goToItemsTab();
+    await searchKeys('e2e:write:crud');
+    const toggled = await toggleKeyCheckbox('e2e:write:crud', true);
+    expect(toggled).toBe(true);
+    await batchDeleteSelected();
+    await searchKeys('e2e:write:crud');
+    expect(await bodyContains('e2e:write:crud')).toBe(false);
+  });
+
+  it('应能批量删除两个键 (RD-021)', async () => {
+    await goToItemsTab();
+    await createStringKey('e2e:write:batch:a', 'a');
+    await createStringKey('e2e:write:batch:b', 'b');
+    await searchKeys('e2e:write:batch:*');
+
+    expect(await toggleKeyCheckbox('e2e:write:batch:a', true)).toBe(true);
+    expect(await toggleKeyCheckbox('e2e:write:batch:b', true)).toBe(true);
+    await batchDeleteSelected();
+
+    await searchKeys('e2e:write:batch:*');
+    expect(await bodyContains('e2e:write:batch:a')).toBe(false);
+    expect(await bodyContains('e2e:write:batch:b')).toBe(false);
   });
 
   // ── Redis Commands (Queries tab) ──

@@ -1,6 +1,6 @@
 # Redis Deep Ops E1 + Plugin Settings Extension Points
 
-> **Status:** Approved  
+> **Status:** Implemented  
 > **Plan:** `docs/superpowers/plans/2026-08-09-redis-deep-ops-e1.md`  
 > **Date:** 2026-08-09  
 > **Scope of this spec:** E1 only (shippable). Later milestones are listed for roadmap clarity, each with its own future spec/plan.
