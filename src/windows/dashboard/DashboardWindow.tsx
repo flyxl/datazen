@@ -11,6 +11,7 @@ import { useDashboardStore } from '../../stores/dashboardStore';
 import { DEFAULT_CHART_CONFIG } from '../../types/chart';
 import type { Dashboard, DashboardWidget } from '../../types/dashboard';
 import { ChartWidgetTile } from './ChartWidgetTile';
+import { RunHistoryDrawer } from './RunHistoryDrawer';
 import { WidgetEditorDrawer } from './WidgetEditorDrawer';
 
 function createEmptyDashboard(name: string): Dashboard {
@@ -51,6 +52,8 @@ export function DashboardWindow() {
 
   const [editingWidget, setEditingWidget] = useState<DashboardWidget | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
+  const [historyWidget, setHistoryWidget] = useState<DashboardWidget | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [isNewWidget, setIsNewWidget] = useState(false);
   const [refreshingAll, setRefreshingAll] = useState(false);
   const [renaming, setRenaming] = useState(false);
@@ -230,7 +233,8 @@ export function DashboardWindow() {
                   setEditorOpen(true);
                 }}
                 onHistory={() => {
-                  /* Task 7: RunHistoryDrawer */
+                  setHistoryWidget(widget);
+                  setHistoryOpen(true);
                 }}
                 onRefresh={() => void refreshWidget(current.id, widget.id)}
               />
@@ -251,6 +255,16 @@ export function DashboardWindow() {
           setIsNewWidget(false);
         }}
         onSave={(w) => void handleSaveWidget(w)}
+      />
+
+      <RunHistoryDrawer
+        open={historyOpen}
+        dashboardId={dashboardId}
+        widget={historyWidget}
+        onClose={() => {
+          setHistoryOpen(false);
+          setHistoryWidget(null);
+        }}
       />
     </div>
   );

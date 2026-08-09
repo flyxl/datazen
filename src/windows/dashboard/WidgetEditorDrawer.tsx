@@ -6,7 +6,7 @@ import { Select } from '../../components/ui/Select';
 import { useI18n } from '../../hooks/useI18n';
 import { useConnectionStore } from '../../stores/connectionStore';
 import { clampRefreshSec, MIN_REFRESH_SEC } from '../../types/dashboard';
-import type { DashboardWidget } from '../../types/dashboard';
+import type { AlertMetricAgg, AlertOperator, DashboardWidget } from '../../types/dashboard';
 import type { ChartType } from '../../types/chart';
 import { DEFAULT_CHART_CONFIG } from '../../types/chart';
 
@@ -19,6 +19,18 @@ export interface WidgetEditorDrawerProps {
 }
 
 const CHART_TYPES: ChartType[] = ['bar', 'line', 'pie', 'scatter', 'area'];
+
+const ALERT_OPS: AlertOperator[] = ['>', '>=', '<', '<=', '==', '!='];
+
+const ALERT_AGGS: AlertMetricAgg[] = ['last', 'max', 'min', 'avg', 'sum'];
+
+const DEFAULT_ALERT: NonNullable<DashboardWidget['alert']> = {
+  metric: { kind: 'column', column: '' },
+  op: '>',
+  threshold: 0,
+  cooldownSec: 300,
+  channels: ['desktop'],
+};
 
 function emptyDraft(): DashboardWidget {
   return {
@@ -175,6 +187,130 @@ export function WidgetEditorDrawer({
               placeholder={t('dashboard.xAxisOptional')}
             />
           </label>
+
+          <div className="space-y-3 rounded-md border border-edge p-3">
+            <label className="flex items-center gap-2 text-xs text-fg">
+              <input
+                type="checkbox"
+                checked={!!draft.alert}
+                onChange={(e) =>
+                  setDraft((d) => ({
+                    ...d,
+                    alert: e.target.checked ? (d.alert ?? { ...DEFAULT_ALERT }) : undefined,
+                  }))
+                }
+                className="rounded border-edge"
+              />
+              {t('dashboard.alertEnabled')}
+            </label>
+
+            {draft.alert && (
+              <div className="space-y-3">
+                <label className="block space-y-1">
+                  <span className="text-xs text-fg-muted">{t('dashboard.alertColumn')}</span>
+                  <Input
+                    value={draft.alert.metric.column}
+                    onChange={(e) =>
+                      setDraft((d) => ({
+                        ...d,
+                        alert: {
+                          ...d.alert!,
+                          metric: { ...d.alert!.metric, column: e.target.value },
+                        },
+                      }))
+                    }
+                    placeholder="v"
+                  />
+                </label>
+
+                <label className="block space-y-1">
+                  <span className="text-xs text-fg-muted">{t('dashboard.alertMetricKind')}</span>
+                  <Select
+                    value={draft.alert.metric.kind}
+                    onChange={(v) =>
+                      setDraft((d) => ({
+                        ...d,
+                        alert: {
+                          ...d.alert!,
+                          metric: {
+                            ...d.alert!.metric,
+                            kind: v as 'column' | 'aggregation',
+                            agg: v === 'aggregation' ? (d.alert!.metric.agg ?? 'last') : undefined,
+                          },
+                        },
+                      }))
+                    }
+                    options={[
+                      { value: 'column', label: t('dashboard.alertKindColumn') },
+                      { value: 'aggregation', label: t('dashboard.alertKindAggregation') },
+                    ]}
+                  />
+                </label>
+
+                {draft.alert.metric.kind === 'aggregation' && (
+                  <label className="block space-y-1">
+                    <span className="text-xs text-fg-muted">{t('dashboard.alertAggregation')}</span>
+                    <Select
+                      value={draft.alert.metric.agg ?? 'last'}
+                      onChange={(v) =>
+                        setDraft((d) => ({
+                          ...d,
+                          alert: {
+                            ...d.alert!,
+                            metric: { ...d.alert!.metric, agg: v as AlertMetricAgg },
+                          },
+                        }))
+                      }
+                      options={ALERT_AGGS.map((a) => ({ value: a, label: a }))}
+                    />
+                  </label>
+                )}
+
+                <label className="block space-y-1">
+                  <span className="text-xs text-fg-muted">{t('dashboard.alertOperator')}</span>
+                  <Select
+                    value={draft.alert.op}
+                    onChange={(v) =>
+                      setDraft((d) => ({
+                        ...d,
+                        alert: { ...d.alert!, op: v as AlertOperator },
+                      }))
+                    }
+                    options={ALERT_OPS.map((op) => ({ value: op, label: op }))}
+                  />
+                </label>
+
+                <label className="block space-y-1">
+                  <span className="text-xs text-fg-muted">{t('dashboard.alertThreshold')}</span>
+                  <Input
+                    type="number"
+                    value={draft.alert.threshold}
+                    onChange={(e) =>
+                      setDraft((d) => ({
+                        ...d,
+                        alert: { ...d.alert!, threshold: Number(e.target.value) || 0 },
+                      }))
+                    }
+                  />
+                </label>
+
+                <label className="block space-y-1">
+                  <span className="text-xs text-fg-muted">{t('dashboard.alertCooldown')}</span>
+                  <Input
+                    type="number"
+                    min={0}
+                    value={draft.alert.cooldownSec}
+                    onChange={(e) =>
+                      setDraft((d) => ({
+                        ...d,
+                        alert: { ...d.alert!, cooldownSec: Number(e.target.value) || 0 },
+                      }))
+                    }
+                  />
+                </label>
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="flex shrink-0 justify-end gap-2 border-t border-edge px-4 py-3">
