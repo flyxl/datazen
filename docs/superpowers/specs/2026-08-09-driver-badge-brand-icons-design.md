@@ -1,7 +1,8 @@
 # 设计：驱动角标 — 品牌标优先，无品牌时父图 + 简写叠加
 
 **日期：** 2026-08-09  
-**状态：** 待审阅  
+**状态：** 已实现  
+**实现计划：** [docs/superpowers/plans/2026-08-09-driver-badge-brand-icons.md](../plans/2026-08-09-driver-badge-brand-icons.md)  
 **关联：** [新建连接驱动图标](2026-08-09-new-connection-driver-icons-ui-design.md)、主题包 `db.*` 解析链
 
 ## 目标
@@ -127,16 +128,16 @@ else:
 
 在下列路径新增 **独立** `{dbType}.svg`（风格对齐现有：`viewBox="0 0 24 24"`、圆角色底 + 居中浅色 mark）：
 
-| 文件 | 建议品牌色底（可与 meta 协调） |
-|------|--------------------------------|
-| `packages/drivers/postgres/ui/icons/questdb.svg` | QuestDB 品牌色 |
-| `packages/drivers/postgres/ui/icons/cloudberry.svg` | Cloudberry 品牌色 |
-| `packages/drivers/mysql/ui/icons/doris.svg` | Apache Doris 品牌色 |
-| `packages/drivers/mysql/ui/icons/starrocks.svg` | StarRocks 品牌色 |
-| `packages/drivers/mysql/ui/icons/manticore.svg` | Manticore 品牌色 |
-| `packages/drivers/mysql/ui/icons/ob_oracle.svg` | OceanBase 品牌色 |
+| 文件 | 实现结果 |
+|------|----------|
+| `packages/drivers/postgres/ui/icons/questdb.svg` | 已加入（QuestDB 公开 logo 嵌套） |
+| `packages/drivers/postgres/ui/icons/cloudberry.svg` | 已加入（Cloudberry artwork white logomark） |
+| `packages/drivers/mysql/ui/icons/ob_oracle.svg` | 已加入（OceanBase filled mark） |
+| `packages/drivers/mysql/ui/icons/doris.svg` | **未加入**（无可合法嵌入的官方 mark；走父图+`Do`） |
+| `packages/drivers/mysql/ui/icons/starrocks.svg` | **未加入**（同上；走父图+`Sr`） |
+| `packages/drivers/mysql/ui/icons/manticore.svg` | **未加入**（同上；走父图+`Mc`） |
 
-素材优先级：
+素材优先级（实现时遵循）：
 
 1. 项目官方 brand / artwork 仓库或官网提供的 SVG mark（必要时裁切/单色化以适配 24×24）。
 2. 若某类型 **无法** 取得可合法嵌入的品牌 mark：不硬画仿冒商标；留给 `DRIVER_ICON_PARENTS` + 右下角简写。
