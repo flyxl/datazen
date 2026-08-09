@@ -15,6 +15,7 @@ use thiserror::Error;
 use tokio::sync::RwLock;
 
 use crate::ai::AiProviderConfig;
+use crate::dashboard::types::MonitorSettings;
 use crate::db::ConnectionConfig;
 use crate::mcp::permission::McpPermissionMode;
 
@@ -85,6 +86,9 @@ pub struct AppSettings {
     /// When true, GUI checks for app updates on startup (default off).
     #[serde(default)]
     pub check_for_updates_on_startup: bool,
+    /// Dashboard monitor / tray / retention settings (nested for settings UI).
+    #[serde(default)]
+    pub monitor: MonitorSettings,
 }
 
 fn default_limit_select() -> bool {
@@ -123,6 +127,7 @@ impl Default for AppSettings {
             mcp_permission_mode: McpPermissionMode::default(),
             context_dir: String::new(),
             check_for_updates_on_startup: false,
+            monitor: MonitorSettings::default(),
         }
     }
 }
