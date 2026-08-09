@@ -84,7 +84,7 @@ export function UpdateSection({
       setStatus(t('settings.updater.upToDate'));
     } else if (result.status === 'available') {
       setStatus(t('settings.updater.available').replace('{version}', result.version));
-    } else {
+    } else if (result.status === 'error') {
       setError(result.message);
       setStatus(null);
     }
