@@ -252,14 +252,14 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
       try {
         if (flushDialog === 'db') {
           await pluginInvoke('redis', 'flush_db', {
-            connection_id: connectionId,
-            db_index: dbIndex,
-            allow_flush: allowFlush,
+            connectionId: connectionId,
+            dbIndex: dbIndex,
+            allowFlush: allowFlush,
           });
         } else if (flushDialog === 'all') {
           await pluginInvoke('redis', 'flush_all', {
-            connection_id: connectionId,
-            allow_flush: allowFlush,
+            connectionId: connectionId,
+            allowFlush: allowFlush,
           });
         }
         setFlushDialog(null);

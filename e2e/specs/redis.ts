@@ -80,7 +80,9 @@ async function createAndConnectRedis() {
   const nameInput = await $(`input[placeholder="${t('newConn.namePlaceholder')}"]`);
   await nameInput.setValue(CONN_NAME);
 
-  const hostInput = await $('input[placeholder="127.0.0.1"]');
+  // New-connection window uses the "isWindow" host placeholder (same as MySQL/PG helpers).
+  const hostInput = await $('input[placeholder="prod-db.example.com"]');
+  await hostInput.waitForDisplayed({ timeout: 10000 });
   await hostInput.clearValue();
   await hostInput.setValue(REDIS_HOST);
 
@@ -172,16 +174,37 @@ async function searchKeys(pattern: string) {
   await browser.pause(2000);
 }
 
-async function clickKeyRow(keyName: string): Promise<boolean> {
-  const keyRows = await $$('[class*="cursor-pointer"]');
-  for (const row of keyRows) {
-    const text = await row.getText();
-    if (text.includes(keyName)) {
-      await row.click();
+async function setReactInputByPlaceholder(placeholder: string, value: string) {
+  const ok = await browser.execute(
+    (ph: string, val: string) => {
+      const inputs = Array.from(document.querySelectorAll('input'));
+      const el = inputs.find((i) => i.getAttribute('placeholder') === ph) as
+        | HTMLInputElement
+        | undefined;
+      if (!el) return false;
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+      setter?.call(el, val);
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
       return true;
+    },
+    placeholder,
+    value,
+  );
+  if (!ok) throw new Error(`input placeholder="${placeholder}" not found`);
+}
+
+async function clickKeyRow(keyName: string): Promise<boolean> {
+  return browser.execute((name: string) => {
+    const rows = document.querySelectorAll('[class*="cursor-pointer"]');
+    for (const row of rows) {
+      if ((row.textContent || '').includes(name)) {
+        (row as HTMLElement).click();
+        return true;
+      }
     }
-  }
-  return false;
+    return false;
+  }, keyName);
 }
 
 async function toggleKeyCheckbox(keyName: string, checked: boolean): Promise<boolean> {
@@ -202,17 +225,41 @@ async function toggleKeyCheckbox(keyName: string, checked: boolean): Promise<boo
   );
 }
 
-async function createStringKey(keyName: string, value: string) {
-  const createBtn = await $(`button*=${t('redis.createKey')}`);
-  await createBtn.click();
-  await browser.pause(300);
-  const nameInput = await $(`input[placeholder="${t('redis.keyName')}"]`);
-  await nameInput.setValue(keyName);
-  const valueInput = await $(`input[placeholder="${t('redis.value')}"]`);
-  await valueInput.setValue(value);
-  const confirmBtn = await $(`button*=${t('redis.create')}`);
-  await confirmBtn.click();
+async function ensureDbSelected() {
+  await goToItemsTab();
+  const selected = await browser.execute(() => {
+    const aside = document.querySelector('aside');
+    if (!aside) return false;
+    const active = aside.querySelector('button.font-medium, button[class*="bg-blue"]');
+    return Boolean(active && (active.textContent || '').includes('db'));
+  });
+  if (selected) return;
+  await browser.execute(() => {
+    const aside = document.querySelector('aside');
+    const buttons = aside ? Array.from(aside.querySelectorAll('button')) : [];
+    const db0 = buttons.find((b) => (b.textContent || '').trim() === 'db0');
+    (db0 as HTMLElement | undefined)?.click();
+  });
   await browser.pause(1500);
+}
+
+async function createStringKey(keyName: string, value: string) {
+  await ensureDbSelected();
+  const createBtn = await $(`button*=${t('redis.createKey')}`);
+  await createBtn.waitForDisplayed({ timeout: 10000 });
+  await createBtn.click();
+  await browser.pause(400);
+  await setReactInputByPlaceholder(t('redis.keyName'), keyName);
+  await setReactInputByPlaceholder(t('redis.value'), value);
+  // Prefer the dialog primary button (footer), not any other "创建" match.
+  await browser.execute((label: string) => {
+    const buttons = Array.from(document.querySelectorAll('button'));
+    const confirm = buttons
+      .filter((b) => (b.textContent || '').trim() === label)
+      .pop();
+    (confirm as HTMLElement | undefined)?.click();
+  }, t('redis.create'));
+  await browser.pause(2000);
 }
 
 async function batchDeleteSelected() {
@@ -327,15 +374,13 @@ describe('Redis 数据库支持 (RD-001~RD-021)', () => {
   });
 
   it('点击数据库应加载该库的键 (RD-004)', async () => {
-    await goToItemsTab();
-    const dbBtn = await $('aside button*=db0');
-    if (await dbBtn.isExisting()) {
-      await dbBtn.click();
-      await browser.pause(2000);
-      const body = await $('body').getText();
-      const hasKeyInfo = body.includes('e2e:') || body.includes('loaded') || body.includes('个键');
-      expect(hasKeyInfo).toBe(true);
-    }
+    await ensureDbSelected();
+    const body = await $('body').getText();
+    const hasKeyInfo =
+      body.includes('e2e:') ||
+      body.includes(t('redis.loadedCount').split('{')[0]) ||
+      body.includes('个键');
+    expect(hasKeyInfo).toBe(true);
   });
 
   // ── Key Browser ──
@@ -400,9 +445,16 @@ describe('Redis 数据库支持 (RD-001~RD-021)', () => {
     expect(clicked).toBe(true);
     await browser.pause(1000);
 
-    const textarea = await $('textarea');
-    await textarea.clearValue();
-    await textarea.setValue('updated');
+    const setOk = await browser.execute(() => {
+      const el = document.querySelector('textarea') as HTMLTextAreaElement | null;
+      if (!el) return false;
+      const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set;
+      setter?.call(el, 'updated');
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+      return true;
+    });
+    expect(setOk).toBe(true);
     const saveBtn = await $(`button*=${t('common.save')}`);
     await saveBtn.click();
     await browser.pause(1500);
