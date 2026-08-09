@@ -203,6 +203,22 @@ impl ConnectionManager {
         self.reconnect(connection_id).await
     }
 
+    /// Resolve a session from either a runtime connection id or a persistent config id.
+    ///
+    /// - Runtime id already live (or reconnectable via `config_id_map`) → returned as-is.
+    /// - Otherwise treat `id` as a config id and `get_or_connect`, then return that runtime id.
+    pub async fn resolve_session(
+        &self,
+        id: &str,
+    ) -> Result<(String, Arc<dyn DatabaseDriver>, ConnectionHandle), ConnectionError> {
+        if let Ok((driver, handle)) = self.get_connection(id).await {
+            return Ok((id.to_string(), driver, handle));
+        }
+        let runtime_id = self.get_or_connect(id).await?;
+        let (driver, handle) = self.get_connection(&runtime_id).await?;
+        Ok((runtime_id, driver, handle))
+    }
+
     /// Transparently re-establish an evicted connection.
     /// Reads the latest config from the persistent Store via `config_id_map`.
     async fn reconnect(
@@ -386,5 +402,192 @@ impl ConnectionManager {
         tunneled.ssh_tunnel = None;
 
         Ok((tunneled, Some(tunnel)))
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn insert_test_session(
+        &self,
+        runtime_id: &str,
+        config_id: &str,
+        config: ConnectionConfig,
+        handle: ConnectionHandle,
+    ) {
+        self.config_id_map
+            .write()
+            .await
+            .insert(runtime_id.to_string(), config_id.to_string());
+        self.connections.write().await.insert(
+            runtime_id.to_string(),
+            ActiveConnection {
+                handle,
+                config,
+                created_at: Instant::now(),
+                last_used: Instant::now(),
+                _tunnel: None,
+            },
+        );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::registry::DriverRegistry;
+    use crate::db::SslMode;
+    use async_trait::async_trait;
+
+    struct StubDriver(String);
+
+    #[async_trait]
+    impl DatabaseDriver for StubDriver {
+        fn driver_type(&self) -> DatabaseType {
+            self.0.clone()
+        }
+
+        async fn connect(
+            &self,
+            _config: &ConnectionConfig,
+        ) -> Result<ConnectionHandle, DriverError> {
+            Err(DriverError::QueryFailed("stub".into()))
+        }
+
+        async fn test_connection(
+            &self,
+            _config: &ConnectionConfig,
+        ) -> Result<ServerInfo, DriverError> {
+            Err(DriverError::QueryFailed("stub".into()))
+        }
+
+        async fn disconnect(&self, _handle: ConnectionHandle) -> Result<(), DriverError> {
+            Ok(())
+        }
+
+        async fn get_databases(
+            &self,
+            _handle: &ConnectionHandle,
+        ) -> Result<Vec<String>, DriverError> {
+            Ok(vec![])
+        }
+
+        async fn get_tables(
+            &self,
+            _handle: &ConnectionHandle,
+            _database: &str,
+        ) -> Result<Vec<crate::db::TableInfo>, DriverError> {
+            Ok(vec![])
+        }
+
+        async fn get_table_schema(
+            &self,
+            _handle: &ConnectionHandle,
+            _table: &str,
+        ) -> Result<crate::db::TableSchema, DriverError> {
+            Err(DriverError::QueryFailed("stub".into()))
+        }
+
+        async fn query(
+            &self,
+            _handle: &ConnectionHandle,
+            _sql: &str,
+        ) -> Result<crate::db::QueryResult, DriverError> {
+            Err(DriverError::QueryFailed("stub".into()))
+        }
+
+        async fn query_multi(
+            &self,
+            _handle: &ConnectionHandle,
+            _sql: &str,
+            _limit: Option<u32>,
+        ) -> Result<crate::db::MultiQueryResult, DriverError> {
+            Err(DriverError::QueryFailed("stub".into()))
+        }
+
+        async fn query_with_params(
+            &self,
+            _handle: &ConnectionHandle,
+            _sql: &str,
+            _params: &[crate::db::Value],
+        ) -> Result<crate::db::QueryResult, DriverError> {
+            Err(DriverError::QueryFailed("stub".into()))
+        }
+
+        async fn execute(
+            &self,
+            _handle: &ConnectionHandle,
+            _sql: &str,
+        ) -> Result<u64, DriverError> {
+            Ok(0)
+        }
+
+        async fn cancel_query(&self, _handle: &ConnectionHandle) -> Result<(), DriverError> {
+            Ok(())
+        }
+    }
+
+    async fn test_manager() -> ConnectionManager {
+        std::env::set_var("DATAZEN_KEYRING", "file");
+        let dir = tempfile::tempdir().unwrap();
+        // Keep tempdir alive for the store path lifetime of this test helper call site.
+        let path = dir.path().to_path_buf();
+        std::mem::forget(dir);
+        let store = Arc::new(Store::init_with_path(&path).await.unwrap());
+        let registry = Arc::new(DriverRegistry::new());
+        registry
+            .register_test_driver(Arc::new(StubDriver("postgresql".into())))
+            .await;
+        ConnectionManager::new(registry, store)
+    }
+
+    fn test_config(config_id: &str) -> ConnectionConfig {
+        ConnectionConfig {
+            id: config_id.to_string(),
+            name: "test".into(),
+            database_type: "postgresql".into(),
+            host: Some("127.0.0.1".into()),
+            port: Some(5432),
+            database: Some("db".into()),
+            schema: None,
+            username: None,
+            password: None,
+            ssl_mode: SslMode::Prefer,
+            connection_timeout: 30,
+            ssh_tunnel: None,
+            color_tag: None,
+            group: None,
+            last_connected_at: None,
+            server_version: None,
+            options: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn resolve_session_passthrough_runtime_id() {
+        let mgr = test_manager().await;
+        let handle = ConnectionHandle {
+            id: "rt-1".into(),
+            pool_id: "pool-1".into(),
+        };
+        mgr.insert_test_session("rt-1", "cfg-1", test_config("cfg-1"), handle.clone())
+            .await;
+
+        let (runtime_id, driver, returned) = mgr.resolve_session("rt-1").await.unwrap();
+        assert_eq!(runtime_id, "rt-1");
+        assert_eq!(returned.id, "rt-1");
+        assert_eq!(driver.driver_type(), "postgresql");
+    }
+
+    #[tokio::test]
+    async fn resolve_session_config_id_reuses_existing_runtime() {
+        let mgr = test_manager().await;
+        let handle = ConnectionHandle {
+            id: "rt-2".into(),
+            pool_id: "pool-2".into(),
+        };
+        mgr.insert_test_session("rt-2", "cfg-2", test_config("cfg-2"), handle)
+            .await;
+
+        let (runtime_id, _driver, returned) = mgr.resolve_session("cfg-2").await.unwrap();
+        assert_eq!(runtime_id, "rt-2");
+        assert_eq!(returned.id, "rt-2");
     }
 }

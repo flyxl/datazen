@@ -810,8 +810,17 @@ impl WorkflowExecutor {
                 let conn_id =
                     conn_id_str.ok_or("Query step requires a database connection")?;
 
-                let (driver, handle, conn_name) =
-                    resolve_connection(conn_id, app_state).await?;
+                let (runtime_id, driver, handle) = app_state
+                    .connection_manager
+                    .resolve_session(conn_id)
+                    .await
+                    .map_err(|e| format!("Failed to connect '{conn_id}': {e}"))?;
+                let conn_name = app_state
+                    .connection_manager
+                    .get_connection_config(&runtime_id)
+                    .await
+                    .map(|c| c.name)
+                    .unwrap_or_else(|_| conn_id.to_string());
 
                 if let Some(db_tmpl) = database {
                     let resolved_db = context.resolve_template(db_tmpl)?;
@@ -935,46 +944,6 @@ impl WorkflowExecutor {
             _ => unreachable!("Condition/ForEach handled in execute_steps"),
         }
     }
-}
-
-/// Resolve a connection identifier (either runtime connectionId or persistent configId).
-async fn resolve_connection(
-    id: &str,
-    app_state: &AppState,
-) -> Result<(std::sync::Arc<dyn crate::db::DatabaseDriver>, crate::db::ConnectionHandle, String), String>
-{
-    // Try as runtime connectionId first
-    if let Ok((driver, handle)) = app_state.connection_manager.get_connection(id).await {
-        let name = app_state
-            .connection_manager
-            .get_connection_config(id)
-            .await
-            .map(|c| c.name)
-            .unwrap_or_else(|_| id.to_string());
-        return Ok((driver, handle, name));
-    }
-
-    // Try as persistent configId — reuses existing connection or creates new one
-    let conn_id = app_state
-        .connection_manager
-        .get_or_connect(id)
-        .await
-        .map_err(|e| format!("Failed to connect '{id}': {e}"))?;
-
-    let (driver, handle) = app_state
-        .connection_manager
-        .get_connection(&conn_id)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    let name = app_state
-        .connection_manager
-        .get_connection_config(&conn_id)
-        .await
-        .map(|c| c.name)
-        .unwrap_or_else(|_| id.to_string());
-
-    Ok((driver, handle, name))
 }
 
 // ─── Context (Phase 2: structured results + deep path resolution) ────────────

@@ -13,25 +13,11 @@ pub async fn get_databases(
     let start = Instant::now();
     tracing::info!(%connection_id, "get_databases");
 
-    let (driver, handle) = match state
+    let (_runtime_id, driver, handle) = state
         .connection_manager
-        .get_connection(&connection_id)
+        .resolve_session(&connection_id)
         .await
-    {
-        Ok(pair) => pair,
-        Err(_) => {
-            let runtime_id = state
-                .connection_manager
-                .get_or_connect(&connection_id)
-                .await
-                .cmd_err("get_databases")?;
-            state
-                .connection_manager
-                .get_connection(&runtime_id)
-                .await
-                .cmd_err("get_databases")?
-        }
-    };
+        .cmd_err("get_databases")?;
 
     let dbs = driver
         .get_databases(&handle)
