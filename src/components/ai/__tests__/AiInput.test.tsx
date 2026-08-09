@@ -109,8 +109,13 @@ describe('AiInput', () => {
       expect(tokens).toHaveLength(2);
       expect(tokens[0]).toHaveAttribute('data-kind', 'file');
       expect(tokens[0]).toHaveAttribute('data-id', 'schema.sql');
+      expect(tokens[0].textContent).toBe('schema.sql');
+      expect(tokens[0].textContent).not.toContain('@');
+      expect(tokens[0].querySelector('svg')).toBeTruthy();
       expect(tokens[1]).toHaveAttribute('data-kind', 'table');
       expect(tokens[1]).toHaveAttribute('data-id', 'users');
+      expect(tokens[1].textContent).toBe('users');
+      expect(tokens[1].querySelector('svg')).toBeTruthy();
       for (const token of tokens) {
         expect(token.querySelector('button')).toBeNull();
       }
