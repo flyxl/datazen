@@ -2,8 +2,7 @@ import { useMemo } from 'react';
 import { AlertTriangle, History, Loader2, Pencil, RefreshCw } from 'lucide-react';
 import { ChartCanvas } from '../../components/chart/ChartCanvas';
 import { Button } from '../../components/ui/Button';
-import { transformData } from '../../lib/chart/transform';
-import { widgetRunToStatementResult } from '../../lib/dashboard/runToResult';
+import { hasRenderableChart, widgetRunToChartData } from '../../lib/dashboard/runToChart';
 import { cn } from '../../lib/cn';
 import { useI18n } from '../../hooks/useI18n';
 import type { DashboardWidget, WidgetRun } from '../../types/dashboard';
@@ -27,17 +26,12 @@ export function ChartWidgetTile({
 }: Readonly<ChartWidgetTileProps>) {
   const { t } = useI18n();
 
-  const chartData = useMemo(() => {
-    if (!run || run.status !== 'ok' || run.rowCount === 0) return null;
-    try {
-      const sr = widgetRunToStatementResult(run);
-      return transformData(sr, widget.chartConfig);
-    } catch {
-      return null;
-    }
-  }, [run, widget.chartConfig]);
+  const chartData = useMemo(
+    () => (run ? widgetRunToChartData(run, widget.chartConfig) : null),
+    [run, widget.chartConfig],
+  );
 
-  const hasChart = chartData && chartData.data.length > 0 && widget.chartConfig.yAxes.length > 0;
+  const hasChart = hasRenderableChart(chartData, widget.chartConfig);
 
   return (
     <div
