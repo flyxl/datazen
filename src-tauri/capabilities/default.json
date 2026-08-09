@@ -1,7 +1,7 @@
 {
   "identifier": "default",
   "description": "Default capability set for DataZen",
-  "windows": ["main", "new-connection-*", "connection-*", "query-*", "data-sync-*", "backup-*", "settings-singleton", "workflow-*", "docs-singleton", "dashboard-*"],
+  "windows": ["main", "new-connection-*", "connection-*", "query-*", "data-sync-*", "schema-diff-*", "backup-*", "settings-singleton", "workflow-*", "docs-singleton", "dashboard-*"],
   "permissions": [
     "core:default",
     "core:window:allow-create",

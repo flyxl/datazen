@@ -1,0 +1,36 @@
+id: builtin-ai-summarize
+name: AI summarize query
+description: Run a SQL query then ask AI to summarize the result (requires AI provider).
+timeout_secs: 120
+error_handling:
+  strategy: abort
+variables:
+  - name: conn
+    type: connection
+    description: Database connection
+    required: true
+  - name: sql
+    type: string
+    description: SQL to run
+    required: true
+    default: "SELECT 1 AS n"
+steps:
+  - type: query
+    id: data
+    connection: "{{conn}}"
+    sql: "{{sql}}"
+    timeout_secs: 30
+  - type: ai
+    id: summarize
+    prompt: |
+      Summarize the following SQL result in a few bullet points for a developer.
+      SQL:
+      {{sql}}
+      Result JSON:
+      {{steps.data.result}}
+    timeout_secs: 60
+output:
+  format: markdown
+  template: |
+    ## Summary
+    {{steps.summarize.result}}

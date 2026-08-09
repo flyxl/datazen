@@ -20,5 +20,12 @@ export const redisMeta = {
     connectionView: 'keyvalue',
     databaseFieldType: 'index',
     connectionForm: 'redis',
+    structureEditor: {
+      enabled: false,
+      columnTypes: [],
+      defaultColumnType: '',
+      fields: {},
+      indexMethods: [],
+    },
   } satisfies DatabaseTypeMeta;
 

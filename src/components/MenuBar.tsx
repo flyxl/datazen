@@ -57,6 +57,7 @@ function useMenus(): Menu[] {
       label: t('menu.tools'),
       items: [
         { id: 'data-sync', label: t('menu.dataSync') },
+        { id: 'schema-diff', label: t('menu.schemaDiff') },
         { id: 'sep-3', label: '', separator: true },
         { id: 'backup', label: t('menu.backup') },
         { id: 'restore', label: t('menu.restore') },

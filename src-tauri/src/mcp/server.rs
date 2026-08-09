@@ -1,6 +1,7 @@
 //! DataZen MCP Server handler — tools + resources + prompts.
 
 use crate::commands::AppState;
+use crate::mcp::allowlist;
 use crate::mcp::permission::{self, McpPermissionMode};
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::*;
@@ -109,6 +110,8 @@ pub struct DataZenMcpServer {
     app_state: Arc<AppState>,
     disabled_tools: HashSet<String>,
     permission_mode: McpPermissionMode,
+    /// Empty = all saved connections are exposed to MCP.
+    allowed_connection_ids: Vec<String>,
 }
 
 pub const MCP_ALL_TOOLS: &[&str] = &[
@@ -129,6 +132,7 @@ impl DataZenMcpServer {
             app_state,
             disabled_tools: HashSet::new(),
             permission_mode: McpPermissionMode::default(),
+            allowed_connection_ids: Vec::new(),
         }
     }
 
@@ -142,8 +146,18 @@ impl DataZenMcpServer {
         self
     }
 
+    pub fn with_allowed_connections(mut self, allowed: &[String]) -> Self {
+        self.allowed_connection_ids = allowed.to_vec();
+        self
+    }
+
     fn map_err(e: String) -> McpError {
         McpError::internal_error(e, None)
+    }
+
+    fn ensure_allowed(&self, config_id: &str) -> Result<(), McpError> {
+        allowlist::ensure_connection_allowed(config_id, &self.allowed_connection_ids)
+            .map_err(|e| McpError::invalid_params(e, None))
     }
 
     async fn resolve_connection(
@@ -157,6 +171,7 @@ impl DataZenMcpServer {
         ),
         McpError,
     > {
+        self.ensure_allowed(id)?;
         let (driver, handle) = crate::services::db_tools::resolve_connection(
             &self.app_state.connection_manager,
             id,
@@ -221,9 +236,21 @@ pub(crate) fn format_table_description(table: &str, schema: &datazen_driver_api:
 impl DataZenMcpServer {
     #[tool(description = "List all configured database connections. Returns config IDs, names, database types, and hosts.")]
     async fn list_connections(&self) -> Result<String, McpError> {
-        crate::services::db_tools::list_connections(&self.app_state.store)
-            .await
-            .map_err(Self::map_err)
+        let connections = self.app_state.store.get_connections().await;
+        let result: Vec<serde_json::Value> = connections
+            .iter()
+            .filter(|c| allowlist::is_connection_allowed(&c.id, &self.allowed_connection_ids))
+            .map(|c| {
+                serde_json::json!({
+                    "id": c.id,
+                    "name": c.name,
+                    "databaseType": format!("{:?}", c.database_type),
+                    "host": c.host,
+                    "database": c.database,
+                })
+            })
+            .collect();
+        serde_json::to_string_pretty(&result).map_err(|e| Self::map_err(format!("Error: {e}")))
     }
 
     #[tool(description = "List all databases on a connected server.")]
@@ -231,6 +258,7 @@ impl DataZenMcpServer {
         &self,
         Parameters(input): Parameters<ListDatabasesInput>,
     ) -> Result<String, McpError> {
+        self.ensure_allowed(&input.config_id)?;
         crate::services::db_tools::list_databases(&self.app_state.connection_manager, &input.config_id)
             .await
             .map_err(Self::map_err)
@@ -241,6 +269,7 @@ impl DataZenMcpServer {
         &self,
         Parameters(input): Parameters<ListTablesInput>,
     ) -> Result<String, McpError> {
+        self.ensure_allowed(&input.config_id)?;
         let db = input.database.as_deref().unwrap_or("");
         crate::services::db_tools::list_tables(&self.app_state.connection_manager, &input.config_id, db)
             .await
@@ -252,6 +281,7 @@ impl DataZenMcpServer {
         &self,
         Parameters(input): Parameters<QueryInput>,
     ) -> Result<String, McpError> {
+        self.ensure_allowed(&input.config_id)?;
         permission::check_sql_allowed(&input.sql, self.permission_mode).map_err(|e| {
             McpError::invalid_params(e, None)
         })?;
@@ -271,6 +301,7 @@ impl DataZenMcpServer {
         &self,
         Parameters(input): Parameters<GetSchemaInput>,
     ) -> Result<String, McpError> {
+        self.ensure_allowed(&input.config_id)?;
         let tables = vec![input.table.clone()];
         crate::services::db_tools::get_table_schema(&self.app_state.connection_manager, &input.config_id, &tables)
             .await
@@ -282,6 +313,7 @@ impl DataZenMcpServer {
         &self,
         Parameters(input): Parameters<ExplainQueryInput>,
     ) -> Result<String, McpError> {
+        self.ensure_allowed(&input.config_id)?;
         crate::services::db_tools::explain_query(&self.app_state.connection_manager, &input.config_id, &input.sql)
             .await
             .map_err(Self::map_err)
@@ -292,6 +324,7 @@ impl DataZenMcpServer {
         &self,
         Parameters(input): Parameters<DescribeTableInput>,
     ) -> Result<String, McpError> {
+        self.ensure_allowed(&input.config_id)?;
         let schema = crate::services::db_tools::get_single_table_schema(
             &self.app_state.connection_manager,
             &input.config_id,
@@ -432,6 +465,7 @@ impl DataZenMcpServer {
             let connections = self.app_state.store.get_connections().await;
             let result: Vec<serde_json::Value> = connections
                 .iter()
+                .filter(|c| allowlist::is_connection_allowed(&c.id, &self.allowed_connection_ids))
                 .map(|c| {
                     serde_json::json!({
                         "id": c.id,
@@ -625,6 +659,12 @@ impl ServerHandler for DataZenMcpServer {
             request.arguments.as_ref(),
         )
         .map_err(|e| McpError::invalid_params(e, None))?;
+
+        if let Some(args) = request.arguments.as_ref() {
+            if let Some(config_id) = args.get("config_id").and_then(|v| v.as_str()) {
+                self.ensure_allowed(config_id)?;
+            }
+        }
 
         let tcc = rmcp::handler::server::tool::ToolCallContext::new(self, request, context);
         Self::tool_router().call(tcc).await
