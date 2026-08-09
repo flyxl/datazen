@@ -20,8 +20,8 @@ export async function invokeSetString(
   invoke: PluginInvokeFn = pluginInvoke,
 ) {
   await invoke('redis', 'set_string', {
-    connection_id: connectionId,
-    db_index: dbIndex,
+    connectionId: connectionId,
+    dbIndex: dbIndex,
     key,
     value,
   });
@@ -36,8 +36,8 @@ export async function invokeHashSet(
   invoke: PluginInvokeFn = pluginInvoke,
 ) {
   await invoke('redis', 'hash_set', {
-    connection_id: connectionId,
-    db_index: dbIndex,
+    connectionId: connectionId,
+    dbIndex: dbIndex,
     key,
     field,
     value,
@@ -52,8 +52,8 @@ export async function invokeHashDel(
   invoke: PluginInvokeFn = pluginInvoke,
 ) {
   await invoke('redis', 'hash_del', {
-    connection_id: connectionId,
-    db_index: dbIndex,
+    connectionId: connectionId,
+    dbIndex: dbIndex,
     key,
     fields,
   });
@@ -68,8 +68,8 @@ export async function invokeListPush(
   invoke: PluginInvokeFn = pluginInvoke,
 ) {
   await invoke('redis', 'list_push', {
-    connection_id: connectionId,
-    db_index: dbIndex,
+    connectionId: connectionId,
+    dbIndex: dbIndex,
     key,
     side,
     values,
@@ -85,8 +85,8 @@ export async function invokeListSet(
   invoke: PluginInvokeFn = pluginInvoke,
 ) {
   await invoke('redis', 'list_set', {
-    connection_id: connectionId,
-    db_index: dbIndex,
+    connectionId: connectionId,
+    dbIndex: dbIndex,
     key,
     index,
     value,
@@ -101,8 +101,8 @@ export async function invokeListPop(
   invoke: PluginInvokeFn = pluginInvoke,
 ) {
   await invoke('redis', 'list_pop', {
-    connection_id: connectionId,
-    db_index: dbIndex,
+    connectionId: connectionId,
+    dbIndex: dbIndex,
     key,
     side,
   });
@@ -116,8 +116,8 @@ export async function invokeSetAdd(
   invoke: PluginInvokeFn = pluginInvoke,
 ) {
   await invoke('redis', 'set_add', {
-    connection_id: connectionId,
-    db_index: dbIndex,
+    connectionId: connectionId,
+    dbIndex: dbIndex,
     key,
     members,
   });
@@ -131,8 +131,8 @@ export async function invokeSetRemove(
   invoke: PluginInvokeFn = pluginInvoke,
 ) {
   await invoke('redis', 'set_remove', {
-    connection_id: connectionId,
-    db_index: dbIndex,
+    connectionId: connectionId,
+    dbIndex: dbIndex,
     key,
     members,
   });
@@ -146,8 +146,8 @@ export async function invokeZsetAdd(
   invoke: PluginInvokeFn = pluginInvoke,
 ) {
   await invoke('redis', 'zset_add', {
-    connection_id: connectionId,
-    db_index: dbIndex,
+    connectionId: connectionId,
+    dbIndex: dbIndex,
     key,
     members,
   });
@@ -161,8 +161,8 @@ export async function invokeZsetRemove(
   invoke: PluginInvokeFn = pluginInvoke,
 ) {
   await invoke('redis', 'zset_remove', {
-    connection_id: connectionId,
-    db_index: dbIndex,
+    connectionId: connectionId,
+    dbIndex: dbIndex,
     key,
     members,
   });
@@ -176,10 +176,10 @@ export async function invokeRename(
   invoke: PluginInvokeFn = pluginInvoke,
 ) {
   await invoke('redis', 'rename', {
-    connection_id: connectionId,
-    db_index: dbIndex,
+    connectionId: connectionId,
+    dbIndex: dbIndex,
     key,
-    new_key: newKey,
+    newKey: newKey,
   });
 }
 
@@ -191,10 +191,10 @@ export async function invokeSetTtl(
   invoke: PluginInvokeFn = pluginInvoke,
 ) {
   await invoke('redis', 'set_ttl', {
-    connection_id: connectionId,
-    db_index: dbIndex,
+    connectionId: connectionId,
+    dbIndex: dbIndex,
     key,
-    ttl_seconds: ttlSeconds,
+    ttlSeconds: ttlSeconds,
   });
 }
 
