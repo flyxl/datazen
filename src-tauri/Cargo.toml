@@ -57,6 +57,12 @@ keyring = { version = "4", features = ["v1"] }
 serde_yaml = "0.9.34"
 regex = "1.13.1"
 zip = { version = "2", default-features = false, features = ["deflate"] }
+pbkdf2 = "0.12"
+sha1 = "0.10"
+hmac = "0.12"
+aes = "0.8"
+cbc = "0.1"
+sha2 = "0.10"
 
 [features]
 default = []

@@ -12,7 +12,13 @@ interface ConnectionShareDialogProps {
   mode: ConnectionShareMode;
   onClose: () => void;
   onExportSuccess: (count: number) => void;
-  onImportSuccess: (result: { imported: number; overwritten: number; groupsAdded: number }) => void;
+  onImportSuccess: (result: {
+    imported: number;
+    overwritten: number;
+    groupsAdded: number;
+    skipped?: string[];
+    sourceFormat?: string;
+  }) => void;
   onError: (message: string) => void;
 }
 
@@ -42,14 +48,15 @@ export function ConnectionShareDialog({
   const handleSubmit = useCallback(async () => {
     setLocalError(null);
 
-    if (!password.trim()) {
-      setLocalError(t('connShare.passwordRequired'));
-      return;
-    }
-
-    if (mode === 'export' && password !== confirmPassword) {
-      setLocalError(t('connShare.passwordMismatch'));
-      return;
+    if (mode === 'export') {
+      if (!password.trim()) {
+        setLocalError(t('connShare.passwordRequired'));
+        return;
+      }
+      if (password !== confirmPassword) {
+        setLocalError(t('connShare.passwordMismatch'));
+        return;
+      }
     }
 
     setSubmitting(true);
@@ -112,9 +119,16 @@ export function ConnectionShareDialog({
       }
     >
       <div className="space-y-4">
+        {mode === 'import' && (
+          <p className="text-xs leading-relaxed text-fg-muted">{t('connShare.importFormatsHint')}</p>
+        )}
+
         <div>
           <label className="mb-1 block text-xs font-medium text-fg-secondary">
             {t('connShare.password')}
+            {mode === 'import' ? (
+              <span className="ml-1 font-normal text-fg-muted">({t('connShare.passwordOptional')})</span>
+            ) : null}
           </label>
           <Input
             type="password"
@@ -122,6 +136,7 @@ export function ConnectionShareDialog({
             onChange={(e) => setPassword(e.target.value)}
             autoComplete="new-password"
             disabled={submitting}
+            placeholder={mode === 'import' ? t('connShare.passwordImportPlaceholder') : undefined}
           />
         </div>
 
