@@ -3,6 +3,7 @@
 use crate::ops::{self, ZsetMember};
 use crate::ops_exec::ExecResponse;
 use crate::ops_observe::{self, MemorySampleResult, SlowlogEntry};
+use crate::ops_io::{DumpKeysResult, RestoreKeyEntry, RestoreKeysResult};
 use crate::ops_json::{JsonDelResult, JsonGetResult};
 use crate::ops_pubsub;
 use crate::ops_stream;
@@ -506,6 +507,31 @@ async fn stream_overview(
         .map_err(map_err)
 }
 
+#[tauri::command]
+async fn dump_keys(
+    connection_id: String,
+    db_index: u32,
+    keys: Vec<String>,
+) -> Result<DumpKeysResult, String> {
+    shared_driver()
+        .plugin_dump_keys(&connection_id, db_index, &keys)
+        .await
+        .map_err(map_err)
+}
+
+#[tauri::command]
+async fn restore_keys(
+    connection_id: String,
+    db_index: u32,
+    entries: Vec<RestoreKeyEntry>,
+    replace: bool,
+) -> Result<RestoreKeysResult, String> {
+    shared_driver()
+        .plugin_restore_keys(&connection_id, db_index, entries, replace)
+        .await
+        .map_err(map_err)
+}
+
 /// Register Redis IPC commands as a Tauri plugin (`plugin:redis|*`).
 pub fn init<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
     tauri::plugin::Builder::new("redis")
@@ -549,6 +575,8 @@ pub fn init<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
             xpending,
             xack,
             stream_overview,
+            dump_keys,
+            restore_keys,
         ])
         .build()
 }

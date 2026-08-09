@@ -39,6 +39,8 @@ fn main() {
         "xpending",
         "xack",
         "stream_overview",
+        "dump_keys",
+        "restore_keys",
     ])
     .build();
 }

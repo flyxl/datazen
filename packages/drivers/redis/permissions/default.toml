@@ -42,4 +42,6 @@ permissions = [
   "allow-xpending",
   "allow-xack",
   "allow-stream-overview",
+  "allow-dump-keys",
+  "allow-restore-keys",
 ]
