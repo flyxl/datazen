@@ -1206,4 +1206,241 @@ mod tests {
         let loaded = store.get_ai_config().await.unwrap();
         assert_eq!(loaded.model, "gpt-4o");
     }
+
+    fn sample_history_entry(sql: &str) -> QueryHistoryEntry {
+        QueryHistoryEntry {
+            id: uuid::Uuid::new_v4().to_string(),
+            connection_id: "conn-1".into(),
+            database: "db".into(),
+            sql: sql.into(),
+            executed_at: Utc::now(),
+            execution_time_ms: 10,
+            rows_affected: Some(1),
+            success: true,
+            error_message: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn store_data_dir_and_encryption_key_b64() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = init_store_for_test(dir.path()).await;
+        assert_eq!(store.data_dir(), &dir.path().to_path_buf());
+        let b64 = store.encryption_key_b64();
+        assert!(!b64.is_empty());
+        let roundtrip = store.decrypt_password(&store.encrypt("secret").unwrap()).unwrap();
+        assert_eq!(roundtrip, "secret");
+    }
+
+    #[tokio::test]
+    async fn connection_crud_and_groups() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = init_store_for_test(dir.path()).await;
+
+        let mut conn = sample_connection_with_ssh();
+        conn.id = "c1".into();
+        conn.group = Some("prod".into());
+        store.save_connection(conn.clone()).await.unwrap();
+        assert_eq!(store.get_connections().await.len(), 1);
+        assert_eq!(store.get_connection("c1").await.unwrap().name, "SSH Test");
+        assert!(store.get_connection("missing").await.is_none());
+
+        conn.name = "Updated".into();
+        store.save_connection(conn).await.unwrap();
+        assert_eq!(store.get_connection("c1").await.unwrap().name, "Updated");
+
+        store.save_groups(vec!["dev".into()]).await.unwrap();
+        let groups = store.get_groups().await;
+        assert!(groups.contains(&"dev".to_string()));
+        assert!(groups.contains(&"prod".to_string()));
+
+        store.delete_connection("c1").await.unwrap();
+        assert!(store.get_connections().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn groups_merge_connection_groups_without_groups_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = init_store_for_test(dir.path()).await;
+        let mut conn = sample_connection_with_ssh();
+        conn.id = "g1".into();
+        conn.group = Some("from-conn".into());
+        store.save_connection(conn).await.unwrap();
+        let groups = store.get_groups().await;
+        assert_eq!(groups, vec!["from-conn".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn query_history_dedup_and_clear() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = init_store_for_test(dir.path()).await;
+
+        store
+            .add_query_history(sample_history_entry("SELECT 1"))
+            .await
+            .unwrap();
+        store
+            .add_query_history(sample_history_entry("SELECT 2"))
+            .await
+            .unwrap();
+        assert_eq!(store.get_query_history(10).await.len(), 2);
+
+        // Dedup only applies when SQL matches the most recent entry.
+        let mut dup = sample_history_entry("SELECT 2");
+        dup.execution_time_ms = 99;
+        store.add_query_history(dup).await.unwrap();
+        let history = store.get_query_history(10).await;
+        assert_eq!(history.len(), 2);
+        assert_eq!(history[0].execution_time_ms, 99);
+
+        store.clear_query_history().await.unwrap();
+        assert!(store.get_query_history(10).await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn favorite_queries_crud() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = init_store_for_test(dir.path()).await;
+
+        let fav = FavoriteQuery {
+            id: "f1".into(),
+            title: "Users".into(),
+            sql: "SELECT * FROM users".into(),
+            created_at: Utc::now(),
+        };
+        store.add_favorite_query(fav).await.unwrap();
+        assert_eq!(store.get_favorite_queries().await.len(), 1);
+
+        store.delete_favorite_query("f1").await.unwrap();
+        assert!(store.get_favorite_queries().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn sync_tasks_crud() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = init_store_for_test(dir.path()).await;
+        let now = Utc::now();
+        let task = SyncTask {
+            id: "t1".into(),
+            source_connection_id: "s".into(),
+            target_connection_id: "t".into(),
+            source_config_id: "sc".into(),
+            target_config_id: "tc".into(),
+            tables: vec!["users".into()],
+            completed_tables: vec![],
+            current_table: None,
+            current_table_offset: 0,
+            source_row_counts: Default::default(),
+            strategy: "full".into(),
+            status: "running".into(),
+            error_message: None,
+            created_at: now,
+            updated_at: now,
+        };
+        store.save_sync_task(task.clone()).await.unwrap();
+        assert_eq!(store.get_sync_tasks().await.len(), 1);
+
+        let mut updated = task;
+        updated.status = "completed".into();
+        store.save_sync_task(updated).await.unwrap();
+        assert_eq!(store.get_sync_tasks().await[0].status, "completed");
+
+        store.delete_sync_task("t1").await.unwrap();
+        assert!(store.get_sync_tasks().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn delete_ai_config_removes_file() {
+        use datazen_ai_api::{AiProviderConfig, AiProviderType};
+
+        let dir = tempfile::tempdir().unwrap();
+        let store = init_store_for_test(dir.path()).await;
+        let config = AiProviderConfig {
+            provider_type: AiProviderType::OpenAi,
+            api_key: Some("sk-x".into()),
+            endpoint: None,
+            model: "gpt-4o".into(),
+            max_tokens: 1000,
+            extra: serde_json::Value::Null,
+        };
+        store.save_ai_config(&config).await.unwrap();
+        assert!(store.get_ai_config().await.is_some());
+
+        store.delete_ai_config().await.unwrap();
+        assert!(store.get_ai_config().await.is_none());
+        assert!(!dir.path().join("ai_config.enc").exists());
+    }
+
+    #[tokio::test]
+    async fn reload_clears_bad_encrypted_password() {
+        let dir = tempfile::tempdir().unwrap();
+        {
+            let store = init_store_for_test(dir.path()).await;
+            store.save_connection(sample_connection_with_ssh()).await.unwrap();
+        }
+
+        let mut raw: serde_json::Value =
+            serde_json::from_str(&tokio::fs::read_to_string(dir.path().join("connections.json")).await.unwrap()).unwrap();
+        raw[0]["password"] = serde_json::json!("not-valid-ciphertext");
+        tokio::fs::write(
+            dir.path().join("connections.json"),
+            serde_json::to_string_pretty(&raw).unwrap(),
+        )
+        .await
+        .unwrap();
+
+        let store = init_store_for_test(dir.path()).await;
+        let conn = store.get_connections().await.into_iter().next().unwrap();
+        assert!(conn.password.is_none());
+    }
+
+    #[tokio::test]
+    async fn reload_clears_bad_encrypted_ssh_password() {
+        let dir = tempfile::tempdir().unwrap();
+        {
+            let store = init_store_for_test(dir.path()).await;
+            store.save_connection(sample_connection_with_ssh()).await.unwrap();
+        }
+
+        let mut raw: serde_json::Value =
+            serde_json::from_str(&tokio::fs::read_to_string(dir.path().join("connections.json")).await.unwrap()).unwrap();
+        raw[0]["sshTunnel"]["password"] = serde_json::json!("not-valid-ciphertext");
+        tokio::fs::write(
+            dir.path().join("connections.json"),
+            serde_json::to_string_pretty(&raw).unwrap(),
+        )
+        .await
+        .unwrap();
+
+        let store = init_store_for_test(dir.path()).await;
+        let conn = store.get_connections().await.into_iter().next().unwrap();
+        let ssh = conn.ssh_tunnel.as_ref().unwrap();
+        assert!(ssh.password.is_none());
+    }
+
+    #[test]
+    fn theme_deserializes_light_and_system_strings() {
+        #[derive(Deserialize)]
+        struct ThemeField {
+            #[serde(deserialize_with = "deserialize_theme", default)]
+            theme: ThemePreference,
+        }
+
+        for mode in ["light", "system"] {
+            let legacy: ThemeField =
+                serde_json::from_str(&format!(r#"{{"theme":"{mode}"}}"#)).unwrap();
+            assert_eq!(legacy.theme.mode, mode);
+            assert!(legacy.theme.pack_id.is_none());
+        }
+    }
+
+    #[test]
+    fn decrypt_rejects_short_payload() {
+        use_file_key_backend();
+        let dir = tempfile::tempdir().unwrap();
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let store = rt.block_on(Store::init_with_path(dir.path())).unwrap();
+        let err = store.decrypt_password("AAAA").unwrap_err();
+        assert!(matches!(err, StoreError::EncryptionError(_)));
+    }
 }

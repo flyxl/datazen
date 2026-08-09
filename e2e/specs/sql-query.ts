@@ -11,7 +11,7 @@ import {
  * SQL query module tests.
  * Requires a PostgreSQL connection (seeded by wdio.conf.ts before hook).
  */
-describe('SQL 查询模块 (SQ-001~SQ-012)', () => {
+describe('SQL 查询模块 (SQ-001~SQ-012, TC-QUERY-006/008)', () => {
   let mainWindow: string;
 
   before(async () => {
@@ -203,7 +203,7 @@ describe('SQL 查询模块 (SQ-001~SQ-012)', () => {
     }
   });
 
-  it('关闭历史面板 (SQ-005)', async () => {
+  it('关闭历史面板 (SQ-005, TC-QUERY-008)', async () => {
     const histBtn = await $(`button*=${t('query.history')}`);
     await histBtn.click();
     await browser.pause(300);
@@ -211,7 +211,7 @@ describe('SQL 查询模块 (SQ-001~SQ-012)', () => {
 
   // ── 取消查询 ───────────────────────────────────────────────────
 
-  it('执行长查询时应能取消 (SQ-006)', async () => {
+  it('执行长查询时应能取消 (SQ-006, TC-QUERY-006)', async () => {
     await setEditorContent('SELECT pg_sleep(10)');
     const execBtn = await $(`button*=${t('query.execute')}`);
     await execBtn.click();

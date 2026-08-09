@@ -2,7 +2,7 @@
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    if args.iter().any(|a| a == "--mcp" || a == "--mcp-stdio") {
+    if datazen::is_mcp_stdio_mode(&args) {
         datazen::run_mcp_stdio();
     } else {
         datazen::run();

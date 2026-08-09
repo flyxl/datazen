@@ -4,7 +4,6 @@ import { Select } from '../../../../src/components/ui/Select';
 import { useI18n } from '../../../../src/hooks/useI18n';
 import { useConnectionStore } from '../../../../src/stores/connectionStore';
 import { useSettingsStore } from '../../../../src/stores/settingsStore';
-import { readBooleanField } from '../../../../src/plugin-sdk/settings';
 import { hasPluginCommand, pluginInvoke } from '../../../../src/plugins/generated';
 import { readRedisOptions } from './connectionOptions';
 

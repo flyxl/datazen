@@ -323,4 +323,64 @@ mod tests {
         assert_eq!(parsed.status, WidgetRunStatus::Timeout);
         assert!(parsed.error.unwrap().contains("60s"));
     }
+
+    #[test]
+    fn cell_to_json_maps_value_variants() {
+        assert_eq!(cell_to_json(&None), serde_json::Value::Null);
+        assert_eq!(cell_to_json(&Some(Value::Bool(true))), serde_json::json!(true));
+        assert_eq!(cell_to_json(&Some(Value::Integer(7))), serde_json::json!(7));
+        assert_eq!(
+            cell_to_json(&Some(Value::String("x".into()))),
+            serde_json::json!("x")
+        );
+    }
+
+    #[test]
+    fn statement_to_run_fields_extracts_columns_and_rows() {
+        use crate::db::{ColumnInfo, StatementResult};
+
+        let stmt = StatementResult {
+            sql: "SELECT 1".into(),
+            columns: vec![
+                ColumnInfo {
+                    name: "id".into(),
+                    data_type: "int".into(),
+                    nullable: false,
+                },
+                ColumnInfo {
+                    name: "name".into(),
+                    data_type: "text".into(),
+                    nullable: true,
+                },
+            ],
+            rows: vec![vec![
+                Some(Value::Integer(1)),
+                Some(Value::String("alice".into())),
+            ]],
+            rows_affected: None,
+            execution_time_ms: 0,
+            truncated: false,
+        };
+
+        let (cols, rows, count) = statement_to_run_fields(&stmt);
+        assert_eq!(cols, vec!["id", "name"]);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn build_error_run_sets_status_and_message() {
+        let started = Utc::now();
+        let finished = started + chrono::Duration::seconds(2);
+        let run = build_error_run(
+            "run-1".into(),
+            "d1",
+            "w1",
+            started,
+            finished,
+            "boom",
+        );
+        assert_eq!(run.status, WidgetRunStatus::Error);
+        assert_eq!(run.error.as_deref(), Some("boom"));
+    }
 }

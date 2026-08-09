@@ -62,8 +62,12 @@ pub(crate) fn truncate_str(s: &str, max_bytes: usize) -> &str {
 }
 
 #[cfg(test)]
+mod test_support;
+
+#[cfg(test)]
 mod tests {
     use super::*;
+    use datazen_ai_api::AiError;
 
     #[test]
     fn test_normalize_base_url() {
@@ -87,5 +91,26 @@ mod tests {
             normalize_base_url("https://api.anthropic.com/v1/messages"),
             "https://api.anthropic.com"
         );
+    }
+
+    #[test]
+    fn map_http_error_status_codes() {
+        assert!(matches!(
+            map_http_error(reqwest::StatusCode::UNAUTHORIZED, "bad key"),
+            AiError::InvalidApiKey
+        ));
+        assert!(matches!(
+            map_http_error(reqwest::StatusCode::TOO_MANY_REQUESTS, "slow down"),
+            AiError::RateLimited { .. }
+        ));
+        let err = map_http_error(reqwest::StatusCode::BAD_REQUEST, "invalid");
+        assert!(matches!(err, AiError::RequestFailed(_)));
+    }
+
+    #[test]
+    fn truncate_str_respects_char_boundaries() {
+        assert_eq!(truncate_str("hello", 10), "hello");
+        assert_eq!(truncate_str("héllo", 2), "h");
+        assert_eq!(truncate_str("héllo", 3), "hé");
     }
 }

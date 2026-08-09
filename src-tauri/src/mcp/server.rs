@@ -167,6 +167,54 @@ impl DataZenMcpServer {
     }
 }
 
+/// Human-readable table description for MCP `describe_table` tool output.
+pub(crate) fn format_table_description(table: &str, schema: &datazen_driver_api::TableSchema) -> String {
+    let mut desc = format!("Table: {table}\n\nColumns:\n");
+    for col in &schema.columns {
+        desc.push_str(&format!(
+            "  - {} {} {}{}\n",
+            col.name,
+            col.data_type,
+            if col.is_primary_key { "PK " } else { "" },
+            if col.nullable { "" } else { "NOT NULL " },
+        ));
+    }
+
+    if !schema.primary_keys.is_empty() {
+        desc.push_str(&format!(
+            "\nPrimary Key: ({})\n",
+            schema.primary_keys.join(", ")
+        ));
+    }
+
+    if !schema.indexes.is_empty() {
+        desc.push_str("\nIndexes:\n");
+        for idx in &schema.indexes {
+            desc.push_str(&format!(
+                "  - {} ({}) {}\n",
+                idx.name,
+                idx.columns.join(", "),
+                if idx.is_unique { "UNIQUE" } else { "" }
+            ));
+        }
+    }
+
+    if !schema.foreign_keys.is_empty() {
+        desc.push_str("\nForeign Keys:\n");
+        for fk in &schema.foreign_keys {
+            desc.push_str(&format!(
+                "  - {} ({}) → {}.{}\n",
+                fk.name,
+                fk.columns.join(", "),
+                fk.referenced_table,
+                fk.referenced_columns.join(", ")
+            ));
+        }
+    }
+
+    desc
+}
+
 // ─── Tools ───
 
 #[tool_router]
@@ -252,50 +300,7 @@ impl DataZenMcpServer {
         .await
         .map_err(Self::map_err)?;
 
-        let mut desc = format!("Table: {}\n\nColumns:\n", input.table);
-        for col in &schema.columns {
-            desc.push_str(&format!(
-                "  - {} {} {}{}\n",
-                col.name,
-                col.data_type,
-                if col.is_primary_key { "PK " } else { "" },
-                if col.nullable { "" } else { "NOT NULL " },
-            ));
-        }
-
-        if !schema.primary_keys.is_empty() {
-            desc.push_str(&format!(
-                "\nPrimary Key: ({})\n",
-                schema.primary_keys.join(", ")
-            ));
-        }
-
-        if !schema.indexes.is_empty() {
-            desc.push_str("\nIndexes:\n");
-            for idx in &schema.indexes {
-                desc.push_str(&format!(
-                    "  - {} ({}) {}\n",
-                    idx.name,
-                    idx.columns.join(", "),
-                    if idx.is_unique { "UNIQUE" } else { "" }
-                ));
-            }
-        }
-
-        if !schema.foreign_keys.is_empty() {
-            desc.push_str("\nForeign Keys:\n");
-            for fk in &schema.foreign_keys {
-                desc.push_str(&format!(
-                    "  - {} ({}) → {}.{}\n",
-                    fk.name,
-                    fk.columns.join(", "),
-                    fk.referenced_table,
-                    fk.referenced_columns.join(", ")
-                ));
-            }
-        }
-
-        Ok(desc)
+        Ok(format_table_description(&input.table, &schema))
     }
 
     #[tool(description = "List all available user-defined workflows. Workflows are reusable AI automations combining prompts and database operations.")]
@@ -421,6 +426,176 @@ impl DataZenMcpServer {
     }
 }
 
+impl DataZenMcpServer {
+    pub(crate) async fn read_resource_inner(&self, uri: &str) -> Result<ReadResourceResult, McpError> {
+        if uri == "datazen://connections" {
+            let connections = self.app_state.store.get_connections().await;
+            let result: Vec<serde_json::Value> = connections
+                .iter()
+                .map(|c| {
+                    serde_json::json!({
+                        "id": c.id,
+                        "name": c.name,
+                        "databaseType": format!("{:?}", c.database_type),
+                        "host": c.host,
+                        "database": c.database,
+                    })
+                })
+                .collect();
+            let json = serde_json::to_string_pretty(&result)
+                .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            return Ok(ReadResourceResult::new(vec![ResourceContents::text(
+                json,
+                uri,
+            )]));
+        }
+
+        if uri == "datazen://workflows" {
+            let workflows = self.app_state.workflow_registry.list().await;
+            let json = serde_json::to_string_pretty(&workflows)
+                .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            return Ok(ReadResourceResult::new(vec![ResourceContents::text(
+                json,
+                uri,
+            )]));
+        }
+
+        if uri == "datazen://query-history" {
+            let history = self.app_state.store.get_query_history(50).await;
+            let json = serde_json::to_string_pretty(&history)
+                .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            return Ok(ReadResourceResult::new(vec![ResourceContents::text(
+                json,
+                uri,
+            )]));
+        }
+
+        if let Some(rest) = uri.strip_prefix("datazen://schema/") {
+            let decoded = urlencoding::decode(rest)
+                .map_err(|e| McpError::invalid_params(format!("Invalid URI encoding: {e}"), None))?;
+            let parts: Vec<&str> = decoded.splitn(2, '/').collect();
+            let config_id = parts
+                .first()
+                .ok_or_else(|| McpError::invalid_params("Missing connection ID in URI", None))?;
+            let db = parts.get(1).copied().unwrap_or("");
+
+            let (runtime_id, _driver, _handle) = self.resolve_connection(config_id).await?;
+
+            let context = self
+                .app_state
+                .schema_context_builder
+                .build_sql_context(&runtime_id, db, None, &[], 8000)
+                .await
+                .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+
+            return Ok(ReadResourceResult::new(vec![ResourceContents::text(
+                context.schema_ddl,
+                uri,
+            )]));
+        }
+
+        Err(McpError::resource_not_found(
+            format!("Unknown resource: {uri}"),
+            None,
+        ))
+    }
+
+    pub(crate) async fn call_tool_inner(
+        &self,
+        name: &str,
+        arguments: Option<serde_json::Value>,
+    ) -> Result<CallToolResult, McpError> {
+        let arg_map = arguments.as_ref().and_then(|v| v.as_object());
+        permission::check_tool_call(name, self.permission_mode, &self.disabled_tools, arg_map)
+            .map_err(|e| McpError::invalid_params(e, None))?;
+
+        let text = match name {
+            "list_connections" => self.list_connections().await?,
+            "list_databases" => {
+                let config_id = arguments
+                    .as_ref()
+                    .and_then(|a| a.get("config_id"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                self.list_databases(rmcp::handler::server::wrapper::Parameters(
+                    ListDatabasesInput {
+                        config_id: config_id.into(),
+                    },
+                ))
+                .await?
+            }
+            "list_tables" => {
+                let config_id = arguments
+                    .as_ref()
+                    .and_then(|a| a.get("config_id"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let database = arguments
+                    .as_ref()
+                    .and_then(|a| a.get("database"))
+                    .and_then(|v| v.as_str())
+                    .map(String::from);
+                self.list_tables(rmcp::handler::server::wrapper::Parameters(
+                    ListTablesInput {
+                        config_id: config_id.into(),
+                        database,
+                    },
+                ))
+                .await?
+            }
+            "query" => {
+                let config_id = arguments
+                    .as_ref()
+                    .and_then(|a| a.get("config_id"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let sql = arguments
+                    .as_ref()
+                    .and_then(|a| a.get("sql"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let limit = arguments
+                    .as_ref()
+                    .and_then(|a| a.get("limit"))
+                    .and_then(|v| v.as_u64())
+                    .map(|n| n as u32);
+                self.query(rmcp::handler::server::wrapper::Parameters(QueryInput {
+                    config_id: config_id.into(),
+                    sql: sql.into(),
+                    limit,
+                }))
+                .await?
+            }
+            other => {
+                return Err(McpError::invalid_params(
+                    format!("Unknown tool: {other}"),
+                    None,
+                ));
+            }
+        };
+
+        Ok(CallToolResult::success(vec![ContentBlock::text(text)]))
+    }
+
+    pub(crate) fn list_tools_inner(&self) -> Vec<Tool> {
+        let mut router = Self::tool_router();
+        for name in MCP_ALL_TOOLS {
+            if !permission::is_tool_listed(name, self.permission_mode, &self.disabled_tools) {
+                router.disable_route(name.to_string());
+            }
+        }
+        router.list_all()
+    }
+
+    pub(crate) fn list_resources_inner(&self) -> Vec<Resource> {
+        vec![
+            Resource::new("datazen://connections", "Database Connections"),
+            Resource::new("datazen://query-history", "Query History"),
+            Resource::new("datazen://workflows", "Available Workflows"),
+        ]
+    }
+}
+
 // ─── ServerHandler (resources + capabilities) ───
 
 #[tool_handler]
@@ -431,14 +606,8 @@ impl ServerHandler for DataZenMcpServer {
         _request: Option<PaginatedRequestParams>,
         _context: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, McpError> {
-        let mut router = Self::tool_router();
-        for name in MCP_ALL_TOOLS {
-            if !permission::is_tool_listed(name, self.permission_mode, &self.disabled_tools) {
-                router.disable_route(name.to_string());
-            }
-        }
         Ok(ListToolsResult {
-            tools: router.list_all(),
+            tools: self.list_tools_inner(),
             next_cursor: None,
             meta: None,
         })
@@ -479,11 +648,7 @@ impl ServerHandler for DataZenMcpServer {
         _context: RequestContext<RoleServer>,
     ) -> Result<ListResourcesResult, McpError> {
         Ok(ListResourcesResult {
-            resources: vec![
-                Resource::new("datazen://connections", "Database Connections"),
-                Resource::new("datazen://query-history", "Query History"),
-                Resource::new("datazen://workflows", "Available Workflows"),
-            ],
+            resources: self.list_resources_inner(),
             next_cursor: None,
             meta: None,
         })
@@ -509,78 +674,7 @@ impl ServerHandler for DataZenMcpServer {
         request: ReadResourceRequestParams,
         _context: RequestContext<RoleServer>,
     ) -> Result<ReadResourceResult, McpError> {
-        let uri = request.uri.as_str();
-
-        if uri == "datazen://connections" {
-            let connections = self.app_state.store.get_connections().await;
-            let result: Vec<serde_json::Value> = connections
-                .iter()
-                .map(|c| {
-                    serde_json::json!({
-                        "id": c.id,
-                        "name": c.name,
-                        "databaseType": format!("{:?}", c.database_type),
-                        "host": c.host,
-                        "database": c.database,
-                    })
-                })
-                .collect();
-            let json = serde_json::to_string_pretty(&result)
-                .map_err(|e| McpError::internal_error(e.to_string(), None))?;
-            return Ok(ReadResourceResult::new(vec![ResourceContents::text(
-                json,
-                &request.uri,
-            )]));
-        }
-
-        if uri == "datazen://workflows" {
-            let workflows = self.app_state.workflow_registry.list().await;
-            let json = serde_json::to_string_pretty(&workflows)
-                .map_err(|e| McpError::internal_error(e.to_string(), None))?;
-            return Ok(ReadResourceResult::new(vec![ResourceContents::text(
-                json,
-                &request.uri,
-            )]));
-        }
-
-        if uri == "datazen://query-history" {
-            let history = self.app_state.store.get_query_history(50).await;
-            let json = serde_json::to_string_pretty(&history)
-                .map_err(|e| McpError::internal_error(e.to_string(), None))?;
-            return Ok(ReadResourceResult::new(vec![ResourceContents::text(
-                json,
-                &request.uri,
-            )]));
-        }
-
-        if let Some(rest) = uri.strip_prefix("datazen://schema/") {
-            let decoded = urlencoding::decode(rest)
-                .map_err(|e| McpError::invalid_params(format!("Invalid URI encoding: {e}"), None))?;
-            let parts: Vec<&str> = decoded.splitn(2, '/').collect();
-            let config_id = parts
-                .first()
-                .ok_or_else(|| McpError::invalid_params("Missing connection ID in URI", None))?;
-            let db = parts.get(1).copied().unwrap_or("");
-
-            let (runtime_id, _driver, _handle) = self.resolve_connection(config_id).await?;
-
-            let context = self
-                .app_state
-                .schema_context_builder
-                .build_sql_context(&runtime_id, db, None, &[], 8000)
-                .await
-                .map_err(|e| McpError::internal_error(e.to_string(), None))?;
-
-            return Ok(ReadResourceResult::new(vec![ResourceContents::text(
-                context.schema_ddl,
-                &request.uri,
-            )]));
-        }
-
-        Err(McpError::resource_not_found(
-            format!("Unknown resource: {uri}"),
-            None,
-        ))
+        self.read_resource_inner(request.uri.as_str()).await
     }
 }
 
@@ -680,5 +774,375 @@ mod tests {
             crate::services::db_tools::resolve_query_limit(Some(999_999)),
             Some(50_000)
         );
+    }
+
+    #[test]
+    fn mcp_all_tools_list_is_stable() {
+        assert_eq!(MCP_ALL_TOOLS.len(), 9);
+        assert!(MCP_ALL_TOOLS.contains(&"list_connections"));
+        assert!(MCP_ALL_TOOLS.contains(&"run_workflow"));
+    }
+
+    #[test]
+    fn list_tables_input_deserializes_optional_database() {
+        let json = r#"{"config_id":"c1","database":"mydb"}"#;
+        let input: ListTablesInput = serde_json::from_str(json).unwrap();
+        assert_eq!(input.config_id, "c1");
+        assert_eq!(input.database.as_deref(), Some("mydb"));
+    }
+
+    #[test]
+    fn run_workflow_input_defaults_variables_to_null() {
+        let json = r#"{"workflow_id":"wf-1"}"#;
+        let input: RunWorkflowInput = serde_json::from_str(json).unwrap();
+        assert_eq!(input.workflow_id, "wf-1");
+        assert!(input.variables.is_null());
+        assert!(input.config_id.is_none());
+    }
+
+    #[test]
+    fn nl2sql_args_deserialize() {
+        let json = r#"{"config_id":"c1","question":"count users","database":"app"}"#;
+        let args: Nl2SqlArgs = serde_json::from_str(json).unwrap();
+        assert_eq!(args.config_id, "c1");
+        assert_eq!(args.question, "count users");
+        assert_eq!(args.database.as_deref(), Some("app"));
+    }
+
+    #[test]
+    fn format_table_description_includes_columns_and_pk() {
+        use datazen_driver_api::{ColumnSchema, IndexInfo, TableSchema};
+
+        let schema = TableSchema {
+            table_name: "users".into(),
+            columns: vec![ColumnSchema {
+                name: "id".into(),
+                data_type: "integer".into(),
+                nullable: false,
+                default_value: None,
+                comment: None,
+                is_primary_key: true,
+                is_auto_increment: true,
+            }],
+            primary_keys: vec!["id".into()],
+            indexes: vec![IndexInfo {
+                name: "users_pkey".into(),
+                columns: vec!["id".into()],
+                is_unique: true,
+                is_primary: true,
+                index_type: "btree".into(),
+            }],
+            foreign_keys: vec![],
+        };
+
+        let desc = format_table_description("users", &schema);
+        assert!(desc.contains("Table: users"));
+        assert!(desc.contains("id integer PK NOT NULL"));
+        assert!(desc.contains("Primary Key: (id)"));
+        assert!(desc.contains("users_pkey"));
+    }
+
+    #[tokio::test]
+    async fn mcp_tool_handlers_with_mock_driver() {
+        use crate::testing::app_state::TestAppState;
+        use std::sync::Arc;
+
+        let test = TestAppState::with_tables().await;
+        test.save_connection("mcp-cfg").await;
+        let server = DataZenMcpServer::new(Arc::new(test.state));
+
+        let conns = server.list_connections().await.unwrap();
+        assert!(conns.contains("mcp-cfg"));
+
+        let dbs = server
+            .list_databases(rmcp::handler::server::wrapper::Parameters(
+                ListDatabasesInput {
+                    config_id: "mcp-cfg".into(),
+                },
+            ))
+            .await
+            .unwrap();
+        assert!(dbs.contains("app"));
+
+        let tables = server
+            .list_tables(rmcp::handler::server::wrapper::Parameters(
+                ListTablesInput {
+                    config_id: "mcp-cfg".into(),
+                    database: Some("app".into()),
+                },
+            ))
+            .await
+            .unwrap();
+        assert!(tables.contains("users"));
+
+        let schema = server
+            .get_schema(rmcp::handler::server::wrapper::Parameters(
+                GetSchemaInput {
+                    config_id: "mcp-cfg".into(),
+                    table: "users".into(),
+                },
+            ))
+            .await
+            .unwrap();
+        assert!(schema.contains("users"));
+
+        let desc = server
+            .describe_table(rmcp::handler::server::wrapper::Parameters(
+                DescribeTableInput {
+                    config_id: "mcp-cfg".into(),
+                    table: "users".into(),
+                },
+            ))
+            .await
+            .unwrap();
+        assert!(desc.contains("Table: users"));
+
+        let explain = server
+            .explain_query(rmcp::handler::server::wrapper::Parameters(
+                ExplainQueryInput {
+                    config_id: "mcp-cfg".into(),
+                    sql: "SELECT 1".into(),
+                },
+            ))
+            .await
+            .unwrap();
+        assert!(!explain.is_empty());
+
+        let query_out = server
+            .query(rmcp::handler::server::wrapper::Parameters(QueryInput {
+                config_id: "mcp-cfg".into(),
+                sql: "SELECT 1".into(),
+                limit: Some(10),
+            }))
+            .await
+            .unwrap();
+        assert!(query_out.contains("alice") || query_out.contains("1"));
+
+        let workflows = server.list_workflows().await.unwrap();
+        assert!(workflows.contains("[]") || workflows.contains("workflows"));
+    }
+
+    #[tokio::test]
+    async fn mcp_prompt_handlers_build_messages() {
+        use crate::testing::app_state::TestAppState;
+        use std::sync::Arc;
+
+        let test = TestAppState::with_tables().await;
+        let (_, conn_id) = test.save_and_connect("mcp-prompt").await;
+        let server = DataZenMcpServer::new(Arc::new(test.state));
+
+        let nl2sql = server
+            .nl2sql_prompt(rmcp::handler::server::wrapper::Parameters(
+                Nl2SqlArgs {
+                    config_id: conn_id.clone(),
+                    question: "count users".into(),
+                    database: Some("app".into()),
+                },
+            ))
+            .await
+            .unwrap();
+        assert!(nl2sql.messages[0].content.as_text().unwrap().text.contains("count users"));
+
+        let diag = server
+            .diagnose_error_prompt(rmcp::handler::server::wrapper::Parameters(
+                DiagnoseErrorArgs {
+                    config_id: conn_id.clone(),
+                    sql: "SELECT bad".into(),
+                    error: "column missing".into(),
+                },
+            ))
+            .await
+            .unwrap();
+        assert!(diag.messages[0].content.as_text().unwrap().text.contains("column missing"));
+
+        let plan = server
+            .explain_plan_prompt(rmcp::handler::server::wrapper::Parameters(
+                ExplainPlanArgs {
+                    config_id: conn_id,
+                    sql: "SELECT 1".into(),
+                },
+            ))
+            .await
+            .unwrap();
+        assert!(plan.messages[0].content.as_text().unwrap().text.contains("EXPLAIN"));
+    }
+
+    #[tokio::test]
+    async fn mcp_tool_router_lists_registered_tools() {
+        let tools = DataZenMcpServer::tool_router().list_all();
+        assert_eq!(tools.len(), MCP_ALL_TOOLS.len());
+        assert!(tools.iter().any(|t| t.name == "query"));
+    }
+
+    #[tokio::test]
+    async fn mcp_read_resource_inner_paths() {
+        use crate::testing::app_state::TestAppState;
+        use std::sync::Arc;
+
+        let test = TestAppState::with_tables().await;
+        test.save_connection("res-inner").await;
+        let (_, conn_id) = test.save_and_connect("res-inner").await;
+        let server = DataZenMcpServer::new(Arc::new(test.state));
+
+        let conns = server.read_resource_inner("datazen://connections").await.unwrap();
+        match &conns.contents[0] {
+            ResourceContents::TextResourceContents { text, .. } => {
+                assert!(text.contains("res-inner"));
+            }
+            _ => panic!("expected text resource"),
+        }
+
+        let hist = server.read_resource_inner("datazen://query-history").await.unwrap();
+        assert!(!hist.contents.is_empty());
+
+        let schema_uri = format!("datazen://schema/{conn_id}/app");
+        let schema = server.read_resource_inner(&schema_uri).await.unwrap();
+        match &schema.contents[0] {
+            ResourceContents::TextResourceContents { text, .. } => {
+                assert!(!text.is_empty());
+            }
+            _ => panic!("expected text resource"),
+        }
+
+        let err = server.read_resource_inner("datazen://missing").await.unwrap_err();
+        assert!(err.to_string().contains("Unknown resource"));
+    }
+
+    #[tokio::test]
+    async fn mcp_query_rejects_disallowed_sql_in_readonly() {
+        use crate::testing::app_state::TestAppState;
+        use crate::mcp::permission::McpPermissionMode;
+        use std::sync::Arc;
+
+        let test = TestAppState::with_tables().await;
+        test.save_connection("ro-cfg").await;
+        let server = DataZenMcpServer::new(Arc::new(test.state))
+            .with_permission_mode(McpPermissionMode::ReadOnly);
+
+        let err = server
+            .query(rmcp::handler::server::wrapper::Parameters(QueryInput {
+                config_id: "ro-cfg".into(),
+                sql: "DELETE FROM users".into(),
+                limit: None,
+            }))
+            .await
+            .unwrap_err();
+        assert!(err.to_string().to_lowercase().contains("delete")
+            || err.to_string().contains("not allowed")
+            || err.to_string().contains("permission"));
+    }
+
+    #[tokio::test]
+    async fn mcp_get_info_exposes_capabilities() {
+        use crate::testing::app_state::TestAppState;
+        use rmcp::ServerHandler;
+        use std::sync::Arc;
+
+        let test = TestAppState::new().await;
+        let server = DataZenMcpServer::new(Arc::new(test.state));
+        let info = server.get_info();
+        assert_eq!(info.server_info.name, "datazen");
+        assert!(info.capabilities.tools.is_some());
+    }
+
+    #[tokio::test]
+    async fn mcp_disabled_tools_and_permission_mode() {
+        use crate::testing::app_state::TestAppState;
+        use crate::mcp::permission::McpPermissionMode;
+        use std::sync::Arc;
+
+        let test = TestAppState::new().await;
+        let server = DataZenMcpServer::new(Arc::new(test.state))
+            .with_disabled_tools(&["query".into()])
+            .with_permission_mode(McpPermissionMode::ReadOnly);
+
+        let mut router = DataZenMcpServer::tool_router();
+        for name in MCP_ALL_TOOLS {
+            if !crate::mcp::permission::is_tool_listed(
+                name,
+                McpPermissionMode::ReadOnly,
+                &server.disabled_tools,
+            ) {
+                router.disable_route(name.to_string());
+            }
+        }
+        let listed = router.list_all();
+        assert!(!listed.iter().any(|t| t.name == "query"));
+        assert!(listed.iter().any(|t| t.name == "list_connections"));
+    }
+
+    #[tokio::test]
+    async fn mcp_list_tools_and_resources_inner() {
+        use crate::testing::app_state::TestAppState;
+        use std::sync::Arc;
+
+        let test = TestAppState::new().await;
+        let server = DataZenMcpServer::new(Arc::new(test.state));
+        assert_eq!(server.list_tools_inner().len(), MCP_ALL_TOOLS.len());
+        assert_eq!(server.list_resources_inner().len(), 3);
+    }
+
+    #[tokio::test]
+    async fn mcp_call_tool_inner_database_tools() {
+        use crate::testing::app_state::TestAppState;
+        use std::sync::Arc;
+
+        let test = TestAppState::with_tables().await;
+        test.save_connection("cti-cfg").await;
+        let server = DataZenMcpServer::new(Arc::new(test.state));
+
+        let dbs = server
+            .call_tool_inner(
+                "list_databases",
+                Some(serde_json::json!({"config_id":"cti-cfg"})),
+            )
+            .await
+            .unwrap();
+        assert!(dbs.content[0].as_text().unwrap().text.contains("app"));
+
+        let tables = server
+            .call_tool_inner(
+                "list_tables",
+                Some(serde_json::json!({"config_id":"cti-cfg","database":"app"})),
+            )
+            .await
+            .unwrap();
+        assert!(tables.content[0].as_text().unwrap().text.contains("users"));
+
+        let query = server
+            .call_tool_inner(
+                "query",
+                Some(serde_json::json!({"config_id":"cti-cfg","sql":"SELECT 1","limit":5})),
+            )
+            .await
+            .unwrap();
+        assert!(!query.content[0].as_text().unwrap().text.is_empty());
+
+        assert!(
+            server
+                .call_tool_inner("missing_tool", None)
+                .await
+                .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn mcp_run_workflow_not_found() {
+        use crate::testing::app_state::TestAppState;
+        use std::sync::Arc;
+
+        let test = TestAppState::new().await;
+        let server = DataZenMcpServer::new(Arc::new(test.state));
+        let err = server
+            .run_workflow(rmcp::handler::server::wrapper::Parameters(
+                RunWorkflowInput {
+                    workflow_id: "missing".into(),
+                    variables: serde_json::json!({}),
+                    config_id: None,
+                },
+            ))
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("not found"));
     }
 }

@@ -45,17 +45,17 @@ fn map_export_error(err: DashboardExportError) -> CommandError {
     }
 }
 
-#[tauri::command]
-pub async fn list_dashboards(state: State<'_, AppState>) -> Result<Vec<Dashboard>, CommandError> {
+pub(crate) async fn list_dashboards_impl(
+    state: &AppState,
+) -> Result<Vec<Dashboard>, CommandError> {
     let data_dir = state.store.data_dir();
     store_list_dashboards(data_dir)
         .map_err(map_store_error)
         .cmd_err("list_dashboards")
 }
 
-#[tauri::command]
-pub async fn get_dashboard(
-    state: State<'_, AppState>,
+pub(crate) async fn get_dashboard_impl(
+    state: &AppState,
     id: String,
 ) -> Result<Dashboard, CommandError> {
     tracing::debug!(%id, "get_dashboard");
@@ -65,9 +65,8 @@ pub async fn get_dashboard(
         .cmd_err("get_dashboard")
 }
 
-#[tauri::command]
-pub async fn save_dashboard(
-    state: State<'_, AppState>,
+pub(crate) async fn save_dashboard_impl(
+    state: &AppState,
     dashboard: Dashboard,
 ) -> Result<Dashboard, CommandError> {
     tracing::info!(id = %dashboard.id, "save_dashboard");
@@ -87,9 +86,8 @@ pub async fn save_dashboard(
         .cmd_err("save_dashboard")
 }
 
-#[tauri::command]
-pub async fn delete_dashboard(
-    state: State<'_, AppState>,
+pub(crate) async fn delete_dashboard_impl(
+    state: &AppState,
     id: String,
 ) -> Result<(), CommandError> {
     tracing::info!(%id, "delete_dashboard");
@@ -105,9 +103,45 @@ pub async fn delete_dashboard(
         .cmd_err("delete_dashboard")
 }
 
+pub(crate) fn get_monitor_paused_impl(state: &AppState) -> bool {
+    state.monitor_engine.is_paused()
+}
+
+pub(crate) fn set_monitor_paused_impl(state: &AppState, paused: bool) {
+    state.monitor_engine.set_paused(paused);
+}
+
 #[tauri::command]
-pub async fn list_widget_runs(
+pub async fn list_dashboards(state: State<'_, AppState>) -> Result<Vec<Dashboard>, CommandError> {
+    list_dashboards_impl(&state).await
+}
+
+#[tauri::command]
+pub async fn get_dashboard(
     state: State<'_, AppState>,
+    id: String,
+) -> Result<Dashboard, CommandError> {
+    get_dashboard_impl(&state, id).await
+}
+
+#[tauri::command]
+pub async fn save_dashboard(
+    state: State<'_, AppState>,
+    dashboard: Dashboard,
+) -> Result<Dashboard, CommandError> {
+    save_dashboard_impl(&state, dashboard).await
+}
+
+#[tauri::command]
+pub async fn delete_dashboard(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<(), CommandError> {
+    delete_dashboard_impl(&state, id).await
+}
+
+pub(crate) async fn list_widget_runs_impl(
+    state: &AppState,
     dashboard_id: String,
     widget_id: String,
     limit: usize,
@@ -118,9 +152,8 @@ pub async fn list_widget_runs(
         .cmd_err("list_widget_runs")
 }
 
-#[tauri::command]
-pub async fn get_widget_run(
-    state: State<'_, AppState>,
+pub(crate) async fn get_widget_run_impl(
+    state: &AppState,
     dashboard_id: String,
     widget_id: String,
     run_id: String,
@@ -132,8 +165,27 @@ pub async fn get_widget_run(
 }
 
 #[tauri::command]
-pub async fn run_dashboard_widget(
+pub async fn list_widget_runs(
     state: State<'_, AppState>,
+    dashboard_id: String,
+    widget_id: String,
+    limit: usize,
+) -> Result<Vec<RunIndexEntry>, CommandError> {
+    list_widget_runs_impl(&state, dashboard_id, widget_id, limit).await
+}
+
+#[tauri::command]
+pub async fn get_widget_run(
+    state: State<'_, AppState>,
+    dashboard_id: String,
+    widget_id: String,
+    run_id: String,
+) -> Result<WidgetRun, CommandError> {
+    get_widget_run_impl(&state, dashboard_id, widget_id, run_id).await
+}
+
+pub(crate) async fn run_dashboard_widget_impl(
+    state: &AppState,
     dashboard_id: String,
     widget_id: String,
 ) -> Result<WidgetRun, CommandError> {
@@ -153,6 +205,15 @@ pub async fn run_dashboard_widget(
         .await
         .map_err(map_execute_error)
         .cmd_err("run_dashboard_widget")
+}
+
+#[tauri::command]
+pub async fn run_dashboard_widget(
+    state: State<'_, AppState>,
+    dashboard_id: String,
+    widget_id: String,
+) -> Result<WidgetRun, CommandError> {
+    run_dashboard_widget_impl(&state, dashboard_id, widget_id).await
 }
 
 /// Native save dialog + single-file dashboard JSON export.
@@ -232,12 +293,12 @@ pub async fn import_dashboard_with_dialog(
 
 #[tauri::command]
 pub fn get_monitor_paused(state: State<'_, AppState>) -> bool {
-    state.monitor_engine.is_paused()
+    get_monitor_paused_impl(&state)
 }
 
 #[tauri::command]
 pub fn set_monitor_paused(app: AppHandle, state: State<'_, AppState>, paused: bool) {
-    state.monitor_engine.set_paused(paused);
+    set_monitor_paused_impl(&state, paused);
     crate::tray::sync_tray(&app);
 }
 
@@ -320,5 +381,118 @@ mod tests {
             .ok_or_else(|| CommandError::NotFound(format!("widget {widget_id}")))
             .unwrap_err();
         assert!(matches!(err, CommandError::NotFound(msg) if msg == "widget w-missing"));
+    }
+
+    #[test]
+    fn map_export_error_validation() {
+        use crate::dashboard::export::DashboardExportError;
+
+        let err = map_export_error(DashboardExportError::Validation("bad json".into()));
+        assert!(matches!(err, CommandError::Validation(msg) if msg == "bad json"));
+    }
+
+    fn sample_dashboard(id: &str) -> Dashboard {
+        use crate::dashboard::types::{
+            AggregationType, ChartConfig, ChartSortBy, ChartType, DashboardLayout, WidgetLayout,
+        };
+
+        Dashboard {
+            id: id.into(),
+            name: "Test".into(),
+            created_at: "2026-01-01T00:00:00Z".into(),
+            updated_at: "2026-01-01T00:00:00Z".into(),
+            layout: DashboardLayout {
+                cols: 12,
+                row_height: 80,
+            },
+            widgets: vec![crate::dashboard::types::DashboardWidget {
+                id: "w1".into(),
+                title: "Widget".into(),
+                config_id: "cfg-1".into(),
+                sql: "SELECT 1".into(),
+                chart_config: ChartConfig {
+                    chart_type: ChartType::Line,
+                    x_axis: None,
+                    y_axes: vec![],
+                    group_by: None,
+                    aggregation: AggregationType::None,
+                    sort_by: ChartSortBy::None,
+                    show_legend: true,
+                    show_grid: true,
+                    show_values: false,
+                    color_scheme: "default".into(),
+                },
+                layout: WidgetLayout {
+                    x: 0,
+                    y: 0,
+                    w: 4,
+                    h: 3,
+                },
+                refresh_sec: 60,
+                alert: None,
+                enabled: true,
+            }],
+            enabled: true,
+        }
+    }
+
+    #[tokio::test]
+    async fn dashboard_crud_via_impl() {
+        use crate::testing::app_state::TestAppState;
+
+        let test = TestAppState::new().await;
+        assert!(list_dashboards_impl(&test.state).await.unwrap().is_empty());
+
+        let dash = sample_dashboard("dash-1");
+        save_dashboard_impl(&test.state, dash.clone())
+            .await
+            .unwrap();
+        let loaded = get_dashboard_impl(&test.state, "dash-1".into())
+            .await
+            .unwrap();
+        assert_eq!(loaded.name, "Test");
+
+        assert!(!get_monitor_paused_impl(&test.state));
+        set_monitor_paused_impl(&test.state, true);
+        assert!(get_monitor_paused_impl(&test.state));
+
+        delete_dashboard_impl(&test.state, "dash-1".into())
+            .await
+            .unwrap();
+        assert!(get_dashboard_impl(&test.state, "dash-1".into())
+            .await
+            .is_err());
+    }
+
+    #[tokio::test]
+    async fn run_dashboard_widget_with_connected_config() {
+        use crate::testing::app_state::TestAppState;
+
+        let test = TestAppState::with_tables().await;
+        test.save_connection("widget-cfg").await;
+        test.connect_config("widget-cfg").await;
+
+        let mut dash = sample_dashboard("dash-run");
+        dash.widgets[0].config_id = "widget-cfg".into();
+        save_dashboard_impl(&test.state, dash).await.unwrap();
+
+        let run = run_dashboard_widget_impl(&test.state, "dash-run".into(), "w1".into())
+            .await
+            .unwrap();
+        assert!(!run.id.is_empty());
+
+        let runs = list_widget_runs_impl(&test.state, "dash-run".into(), "w1".into(), 10)
+            .await
+            .unwrap();
+        assert_eq!(runs.len(), 1);
+        let fetched = get_widget_run_impl(
+            &test.state,
+            "dash-run".into(),
+            "w1".into(),
+            runs[0].id.clone(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(fetched.id, runs[0].id);
     }
 }
