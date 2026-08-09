@@ -13,6 +13,7 @@ mod services;
 mod ssh_known_hosts;
 pub mod ssh_tunnel;
 mod store;
+mod tray;
 pub mod sync;
 pub mod workflow;
 
@@ -521,6 +522,7 @@ pub fn run() {
             {
                 let state = handle.state::<AppState>();
                 state.monitor_engine.start(handle.clone());
+                tray::sync_tray(&handle);
             }
 
             let _ = app.get_webview_window("main");
@@ -679,10 +681,16 @@ pub fn run() {
             commands::import_dashboard_with_dialog,
             rebuild_menu,
         ])
-        .on_window_event(|_window, _event| {
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if tray::should_close_to_tray(window.app_handle()) {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+            }
             #[cfg(target_os = "macos")]
-            if let tauri::WindowEvent::Resized(size) = _event {
-                let win = _window.clone();
+            if let tauri::WindowEvent::Resized(size) = event {
+                let win = window.clone();
                 let size = *size;
                 std::thread::spawn(move || {
                     std::thread::sleep(std::time::Duration::from_millis(200));
@@ -697,7 +705,11 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app_handle, event| {
-            if let tauri::RunEvent::ExitRequested { .. } = event {
+            if let tauri::RunEvent::ExitRequested { api, .. } = event {
+                if tray::should_prevent_exit(app_handle) {
+                    api.prevent_exit();
+                    return;
+                }
                 let state = app_handle.state::<AppState>();
                 let mgr = state.mcp_client_manager.clone();
                 tauri::async_runtime::block_on(mgr.disconnect_all());
