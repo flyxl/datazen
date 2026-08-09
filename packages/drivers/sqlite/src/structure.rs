@@ -239,6 +239,9 @@ fn render_column_def_for_create(col: &StructureColumnDraft) -> String {
     } else if !col.nullable {
         s.push_str(" NOT NULL");
     }
+    if col.is_unique && !col.is_primary_key {
+        s.push_str(" UNIQUE");
+    }
     if let Some(ref default) = col.default_value {
         s.push_str(&format!(" DEFAULT {default}"));
     }
@@ -636,6 +639,28 @@ mod tests {
             "CREATE TABLE \"users\" (\n  \"id\" INTEGER PRIMARY KEY AUTOINCREMENT,\n  \"name\" TEXT\n)"
         );
         assert_eq!(sql.matches("PRIMARY KEY").count(), 1);
+    }
+
+    #[test]
+    fn plan_create_table_column_unique() {
+        let request = StructureChangeRequest {
+            mode: StructureChangeMode::Create,
+            schema: None,
+            table: "users".into(),
+            original_columns: vec![],
+            current_columns: vec![
+                col("c1", "id", "INTEGER"),
+                StructureColumnDraft {
+                    is_unique: true,
+                    ..col("c2", "email", "TEXT")
+                },
+            ],
+            original_indexes: vec![],
+            current_indexes: vec![],
+        };
+
+        let plan = plan_changes(&request, &sqlite_caps()).unwrap();
+        assert!(plan.statements[0].sql.contains(r#""email" TEXT UNIQUE"#));
     }
 
     #[test]
