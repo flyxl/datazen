@@ -2,11 +2,21 @@
 //!
 //! Adapters are registered lazily: only the source/target types needed for a
 //! sync job are created, the first time that pair is requested.
+//!
+//! Concrete adapters self-register via [`SyncAdapterFactory`] + `inventory`.
 
 use super::adapter::{SyncSourceAdapter, SyncTargetAdapter};
 use crate::db::DatabaseType;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
+
+/// Host sync-adapter factory discovered via `inventory`.
+pub struct SyncAdapterFactory {
+    pub db_types: &'static [&'static str],
+    pub register: fn(registry: &SyncAdapterRegistry, db_type: DatabaseType),
+}
+
+inventory::collect!(SyncAdapterFactory);
 
 pub struct SyncAdapterRegistry {
     sources: RwLock<HashMap<DatabaseType, Arc<dyn SyncSourceAdapter>>>,
@@ -46,39 +56,21 @@ impl SyncAdapterRegistry {
     }
 
     fn register_builtin(&self, db_type: &DatabaseType) -> Result<(), String> {
-        use super::adapters::{mysql, postgresql, sqlite, trino};
+        // Touch adapter modules so their `inventory::submit!` statics are linked.
+        crate::sync::adapters::force_link();
 
-        match db_type.as_str() {
-            "postgresql" => {
-                self.register_both(db_type.clone(), Arc::new(postgresql::PgSyncAdapter));
-            }
-            "mysql" => {
-                self.register_both(
-                    db_type.clone(),
-                    Arc::new(mysql::MysqlSyncAdapter { is_mariadb: false }),
-                );
-            }
-            "mariadb" => {
-                self.register_both(
-                    db_type.clone(),
-                    Arc::new(mysql::MysqlSyncAdapter { is_mariadb: true }),
-                );
-            }
-            "sqlite" => {
-                self.register_both(db_type.clone(), Arc::new(sqlite::SqliteSyncAdapter));
-            }
-            "trino" | "presto" => {
-                self.register_both(db_type.clone(), Arc::new(trino::TrinoSyncAdapter));
-            }
-            other => {
-                return Err(format!("No sync adapter for database type '{other}'"));
+        let key = db_type.as_str();
+        for factory in inventory::iter::<SyncAdapterFactory> {
+            if factory.db_types.iter().any(|t| *t == key) {
+                (factory.register)(self, db_type.clone());
+                tracing::info!(db_type = %db_type, "Registered sync adapter on demand");
+                return Ok(());
             }
         }
-        tracing::info!(db_type = %db_type, "Registered sync adapter on demand");
-        Ok(())
+        Err(format!("No sync adapter for database type '{key}'"))
     }
 
-    fn register_both<T>(&self, db_type: DatabaseType, adapter: Arc<T>)
+    pub(crate) fn register_both<T>(&self, db_type: DatabaseType, adapter: Arc<T>)
     where
         T: SyncSourceAdapter + SyncTargetAdapter + 'static,
     {
@@ -100,5 +92,27 @@ impl SyncAdapterRegistry {
 impl Default for SyncAdapterRegistry {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ensure_type_postgresql_succeeds() {
+        let registry = SyncAdapterRegistry::new();
+        assert!(registry.ensure_type(&"postgresql".to_string()).is_ok());
+        assert!(registry.get_source(&"postgresql".to_string()).is_some());
+        assert!(registry.get_target(&"postgresql".to_string()).is_some());
+    }
+
+    #[test]
+    fn ensure_type_unknown_fails() {
+        let registry = SyncAdapterRegistry::new();
+        let err = registry
+            .ensure_type(&"nosuchdb".to_string())
+            .expect_err("unknown type must fail");
+        assert!(err.contains("No sync adapter"));
     }
 }

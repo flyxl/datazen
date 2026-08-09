@@ -19,6 +19,7 @@ import {
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { Button } from '../../../../src/components/ui/Button';
 import { Input } from '../../../../src/components/ui/Input';
+import { Select } from '../../../../src/components/ui/Select';
 import { Dialog } from '../../../../src/components/ui/Dialog';
 import { useSchemaStore } from '../../../../src/stores/schemaStore';
 import { useSettingsStore } from '../../../../src/stores/settingsStore';
@@ -543,17 +544,12 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
               placeholder={t('redis.keyName')}
               className="h-8 font-mono text-xs"
             />
-            <select
+            <Select
               value={createType}
-              onChange={(e) => setCreateType(e.target.value)}
-              className="h-8 w-full rounded-md border border-edge bg-surface px-2 text-xs"
-            >
-              {createTypes.map((type) => (
-                <option key={type} value={type}>
-                  {type}
-                </option>
-              ))}
-            </select>
+              onChange={setCreateType}
+              className="h-8 w-full text-xs"
+              options={createTypes.map((type) => ({ value: type, label: type }))}
+            />
             <Input
               value={createValue}
               onChange={(e) => setCreateValue(e.target.value)}
