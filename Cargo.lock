@@ -1817,6 +1817,7 @@ version = "0.0.8"
 dependencies = [
  "async-trait",
  "datazen-driver-api",
+ "futures-util",
  "redis",
  "serde",
  "serde_json",

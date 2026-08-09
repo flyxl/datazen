@@ -3,6 +3,7 @@
 use crate::ops::{self, ZsetMember};
 use crate::ops_exec::ExecResponse;
 use crate::ops_observe::{self, MemorySampleResult, SlowlogEntry};
+use crate::ops_pubsub;
 use crate::shared_driver;
 use datazen_driver_api::DriverError;
 
@@ -315,6 +316,33 @@ async fn exec(
         .map_err(map_err)
 }
 
+#[tauri::command]
+async fn pubsub_subscribe<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    connection_id: String,
+    channels: Vec<String>,
+    patterns: Vec<String>,
+) -> Result<String, String> {
+    ops_pubsub::start_subscription(app, shared_driver(), connection_id, channels, patterns).await
+}
+
+#[tauri::command]
+async fn pubsub_unsubscribe(subscription_id: String) -> Result<(), String> {
+    ops_pubsub::unsubscribe(&subscription_id).await
+}
+
+#[tauri::command]
+async fn pubsub_publish(
+    connection_id: String,
+    channel: String,
+    message: String,
+) -> Result<u64, String> {
+    shared_driver()
+        .plugin_pubsub_publish(&connection_id, &channel, &message)
+        .await
+        .map_err(map_err)
+}
+
 /// Register Redis IPC commands as a Tauri plugin (`plugin:redis|*`).
 pub fn init<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
     tauri::plugin::Builder::new("redis")
@@ -344,6 +372,9 @@ pub fn init<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
             slowlog_reset,
             modules_list,
             exec,
+            pubsub_subscribe,
+            pubsub_unsubscribe,
+            pubsub_publish,
         ])
         .build()
 }

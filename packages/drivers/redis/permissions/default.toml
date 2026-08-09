@@ -28,4 +28,7 @@ permissions = [
   "allow-slowlog-reset",
   "allow-modules-list",
   "allow-exec",
+  "allow-pubsub-subscribe",
+  "allow-pubsub-unsubscribe",
+  "allow-pubsub-publish",
 ]
