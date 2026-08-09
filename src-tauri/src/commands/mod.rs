@@ -40,6 +40,7 @@ use crate::ai::{AiProviderRegistry, PromptResolver, SchemaContextBuilder};
 use crate::cache::SchemaCache;
 use crate::db::registry::DriverRegistry;
 use crate::mcp::McpClientManager;
+use crate::monitor::MonitorConnectionRegistry;
 use crate::workflow::{WorkflowHistoryManager, WorkflowRegistry};
 use crate::services::ConnectionManager;
 use crate::store::Store;
@@ -51,6 +52,7 @@ pub struct AppState {
     #[allow(dead_code)]
     pub driver_registry: Arc<DriverRegistry>,
     pub connection_manager: Arc<ConnectionManager>,
+    pub monitor_connections: Arc<MonitorConnectionRegistry>,
     pub store: Arc<Store>,
     pub schema_cache: Arc<SchemaCache>,
     pub sync_adapters: Arc<SyncAdapterRegistry>,
