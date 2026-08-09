@@ -10,8 +10,9 @@ use tokio::sync::{RwLock, Semaphore};
 use tokio_util::sync::CancellationToken;
 
 use crate::dashboard::execute::{execute_widget_once, DashboardExecuteError};
-use crate::dashboard::store::list_dashboards;
+use crate::dashboard::store::{list_dashboards, load_monitor_settings};
 use crate::dashboard::types::{clamp_refresh_sec, Dashboard, DashboardWidget, WidgetRun};
+use crate::monitor::channels::AlertChannelState;
 use crate::monitor::MonitorConnectionRegistry;
 use crate::store::Store;
 
@@ -66,6 +67,8 @@ pub struct MonitorEngine {
     app_handle: Mutex<Option<AppHandle>>,
     paused: AtomicBool,
     schedule: RwLock<Vec<ScheduleEntry>>,
+    dashboard_names: RwLock<HashMap<String, String>>,
+    alert_channels: tokio::sync::Mutex<AlertChannelState>,
     last_run: RwLock<HashMap<(String, String), Instant>>,
     config_locks: Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
     semaphore: RwLock<Arc<Semaphore>>,
@@ -80,6 +83,8 @@ impl MonitorEngine {
             app_handle: Mutex::new(None),
             paused: AtomicBool::new(false),
             schedule: RwLock::new(Vec::new()),
+            dashboard_names: RwLock::new(HashMap::new()),
+            alert_channels: tokio::sync::Mutex::new(AlertChannelState::new()),
             last_run: RwLock::new(HashMap::new()),
             config_locks: Mutex::new(HashMap::new()),
             semaphore: RwLock::new(Arc::new(Semaphore::new(2))),
@@ -114,7 +119,9 @@ impl MonitorEngine {
         let table = build_schedule_table(&dashboards);
 
         let mut schedule = Vec::with_capacity(table.len());
+        let mut names = HashMap::new();
         for dashboard in &dashboards {
+            names.insert(dashboard.id.clone(), dashboard.name.clone());
             if !dashboard.enabled {
                 continue;
             }
@@ -130,9 +137,10 @@ impl MonitorEngine {
             }
         }
         *self.schedule.write().await = schedule;
+        *self.dashboard_names.write().await = names;
 
         let settings = self.store.get_settings().await;
-        let max = crate::dashboard::store::load_monitor_settings(&settings)
+        let max = load_monitor_settings(&settings)
             .max_concurrent_queries
             .max(1) as usize;
         *self.semaphore.write().await = Arc::new(Semaphore::new(max));
@@ -192,11 +200,43 @@ impl MonitorEngine {
         )
         .await?;
 
+        self.dispatch_alert_channels(dashboard_id, widget, &run, &settings)
+            .await;
+
         if emit_event {
             self.emit_run_updated(dashboard_id, &widget.id, &run);
         }
 
         Ok(run)
+    }
+
+    async fn dispatch_alert_channels(
+        &self,
+        dashboard_id: &str,
+        widget: &DashboardWidget,
+        run: &WidgetRun,
+        settings: &crate::store::AppSettings,
+    ) {
+        let dashboard_name = self
+            .dashboard_names
+            .read()
+            .await
+            .get(dashboard_id)
+            .cloned()
+            .unwrap_or_else(|| dashboard_id.to_string());
+        let monitor_settings = load_monitor_settings(settings);
+        let app = self.app_handle.lock().expect("monitor app_handle lock").clone();
+        let mut channels = self.alert_channels.lock().await;
+        channels
+            .process_run(
+                app.as_ref(),
+                &monitor_settings,
+                dashboard_id,
+                &dashboard_name,
+                widget,
+                run,
+            )
+            .await;
     }
 
     fn emit_run_updated(&self, dashboard_id: &str, widget_id: &str, run: &WidgetRun) {
