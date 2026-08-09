@@ -15,6 +15,7 @@ datazen-driver-api = { path = "../../driver-api" }
 async-trait = "0.1"
 tokio = { version = "1", features = ["full"] }
 redis = { version = "0.27", features = ["tokio-comp", "aio"] }
+serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tracing = "0.1"
 uuid = { version = "1", features = ["v4"] }
