@@ -24,6 +24,7 @@ import {
   getCompletionPrefix,
   REDIS_COMMANDS,
 } from './redisCommands';
+import { ClusterNodePicker } from './ClusterNodePicker';
 
 export interface RedisConsoleProps {
   connectionId: string;
@@ -222,6 +223,7 @@ export function RedisConsole({
         </Button>
         <span className="text-[11px] text-fg-muted">{t('redis.console.hint')}</span>
         <div className="flex-1" />
+        <ClusterNodePicker connectionId={connectionId} compact />
         {completions.length > 0 && completionPrefix && (
           <span className="max-w-[240px] truncate text-[11px] text-fg-muted">
             {completions[completionIdx] ?? completions[0]}
