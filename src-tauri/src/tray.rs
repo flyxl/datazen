@@ -27,7 +27,7 @@ pub fn should_prevent_exit(app: &AppHandle) -> bool {
 pub fn should_close_to_tray(app: &AppHandle) -> bool {
     let state = app.state::<AppState>();
     let settings = tauri::async_runtime::block_on(state.store.get_settings());
-    if !settings.monitor.close_to_tray {
+    if !settings.monitor.tray_enabled || !settings.monitor.close_to_tray {
         return false;
     }
     state.monitor_engine.is_monitoring_active()

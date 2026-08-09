@@ -683,7 +683,7 @@ pub fn run() {
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                if tray::should_close_to_tray(window.app_handle()) {
+                if window.label() == "main" && tray::should_close_to_tray(window.app_handle()) {
                     api.prevent_close();
                     let _ = window.hide();
                 }
