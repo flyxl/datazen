@@ -1232,6 +1232,7 @@ mod tests {
             group: None,
             last_connected_at: None,
             server_version: None,
+            options: None,
         };
         assert_eq!(PostgresDriver::resolve_connect_database(&cfg), "postgres");
 

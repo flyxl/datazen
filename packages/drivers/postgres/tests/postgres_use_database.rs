@@ -132,6 +132,7 @@ fn connection_config(cfg: &PgTestConfig) -> ConnectionConfig {
         group: None,
         last_connected_at: None,
         server_version: None,
+        options: None,
     }
 }
 

@@ -238,7 +238,7 @@ fn connection_options_roundtrip() {
 }
 ```
 
-- [ ] **Steps 1–5: TDD add `options: Option<Map<String, Value>>` / `options?: Record<string, unknown>` with `#[serde(default)]`; commit** `feat(config): opaque connection options bag`
+- [x] **Steps 1–5: TDD add `options: Option<Map<String, Value>>` / `options?: Record<string, unknown>` with `#[serde(default)]`; commit** `feat(config): opaque connection options bag`
 
 ### Task 7: Connect builder (TLS / Cluster / Sentinel)
 

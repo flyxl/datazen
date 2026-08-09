@@ -69,5 +69,6 @@ pub fn base_connection(
         group,
         last_connected_at: None,
         server_version: None,
+        options: None,
     }
 }
