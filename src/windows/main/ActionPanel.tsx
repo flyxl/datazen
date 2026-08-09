@@ -42,6 +42,7 @@ export function ActionPanel({ onNewConnection, onBackup, onRestore, onDataSync, 
           <button
             key={item.label}
             type="button"
+            data-testid={item.iconId}
             onClick={item.action}
             className={cn(
               'flex items-center gap-2.5 rounded-lg px-3 py-2 text-left text-[13px] text-fg-secondary transition-colors',

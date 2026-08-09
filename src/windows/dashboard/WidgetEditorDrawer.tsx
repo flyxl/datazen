@@ -82,7 +82,7 @@ export function WidgetEditorDrawer({
   const connOptions = connections.map((c) => ({ value: c.id, label: c.name }));
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end" data-no-drag>
+    <div className="fixed inset-0 z-50 flex justify-end" data-no-drag data-testid="widget-editor-drawer">
       <button
         type="button"
         className="absolute inset-0 bg-black/40"
