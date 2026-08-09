@@ -689,4 +689,164 @@ mod tests {
         assert_eq!(input[0]["type"], "function_call_output");
         assert_eq!(input[0]["call_id"], "tc_1");
     }
+
+    #[test]
+    fn parse_output_tool_calls_from_function_call_items() {
+        let output = vec![
+            OutputItem {
+                item_type: "message".into(),
+                content: None,
+                id: None,
+                name: None,
+                arguments: None,
+                call_id: None,
+            },
+            OutputItem {
+                item_type: "function_call".into(),
+                content: None,
+                id: Some("fc_1".into()),
+                name: Some("list_tables".into()),
+                arguments: Some("{}".into()),
+                call_id: Some("fc_1".into()),
+            },
+        ];
+        let calls = parse_output_tool_calls(&output).unwrap();
+        assert_eq!(calls[0].name, "list_tables");
+    }
+
+    #[test]
+    fn build_request_body_with_previous_response_id() {
+        use crate::ai::protocol::test_support::protocol_config;
+
+        let cfg = protocol_config("http://localhost");
+        let req = CompletionRequest {
+            request_id: "r".into(),
+            model: "m".into(),
+            messages: vec![
+                ChatMessage {
+                    role: MessageRole::System,
+                    content: "sys".into(),
+                    reasoning: None,
+                    tool_calls: None,
+                    tool_call_id: None,
+                },
+                ChatMessage {
+                    role: MessageRole::User,
+                    content: "follow up".into(),
+                    reasoning: None,
+                    tool_calls: None,
+                    tool_call_id: None,
+                },
+            ],
+            temperature: None,
+            stop: None,
+            tools: None,
+            previous_response_id: Some("resp_prev".into()),
+        };
+        let body = build_request_body(&cfg, &req, false);
+        assert_eq!(body["previous_response_id"], "resp_prev");
+        assert!(body["store"].as_bool().unwrap());
+        assert!(body.get("instructions").is_none());
+        assert_eq!(body["input"][0]["content"], "follow up");
+    }
+
+    #[tokio::test]
+    async fn complete_success_parses_output() {
+        use crate::ai::protocol::test_support::{protocol_config, sample_request};
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/responses"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "resp_1",
+                "model": "gpt-test",
+                "usage": {"input_tokens": 4, "output_tokens": 6, "total_tokens": 10},
+                "output": [
+                    {
+                        "type": "reasoning",
+                        "content": [{"type": "reasoning_text", "text": "why"}]
+                    },
+                    {
+                        "type": "message",
+                        "content": [{"type": "output_text", "text": "Done"}]
+                    },
+                    {
+                        "type": "function_call",
+                        "id": "fc_1",
+                        "name": "search",
+                        "arguments": "{}",
+                        "call_id": "fc_1"
+                    }
+                ]
+            })))
+            .mount(&server)
+            .await;
+
+        let cfg = protocol_config(&server.uri());
+        let resp = complete(&cfg, &sample_request()).await.unwrap();
+        assert_eq!(resp.content, "Done");
+        assert_eq!(resp.reasoning.as_deref(), Some("why"));
+        assert_eq!(resp.response_id.as_deref(), Some("resp_1"));
+        assert_eq!(resp.finish_reason.as_deref(), Some("tool_calls"));
+    }
+
+    #[tokio::test]
+    async fn stream_complete_parses_responses_sse() {
+        use crate::ai::protocol::test_support::{collect_stream, protocol_config, sample_request};
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        let sse = concat!(
+            "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_stream\"}}\n\n",
+            "data: {\"type\":\"response.output_text.delta\",\"delta\":\"Hel\"}\n\n",
+            "data: {\"type\":\"response.reasoning_text.delta\",\"delta\":\"think\"}\n\n",
+            "data: {\"type\":\"response.output_item.added\",\"item\":{\"type\":\"function_call\",\"id\":\"fc_1\",\"name\":\"fn\",\"call_id\":\"fc_1\"}}\n\n",
+            "data: {\"type\":\"response.function_call_arguments.delta\",\"delta\":\"{\\\"a\\\":1}\"}\n\n",
+            "data: {\"type\":\"response.function_call_arguments.done\"}\n\n",
+            "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_stream\",\"usage\":{\"input_tokens\":2,\"output_tokens\":3,\"total_tokens\":5}}}\n\n",
+        );
+        Mock::given(method("POST"))
+            .and(path("/v1/responses"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("content-type", "text/event-stream")
+                    .set_body_string(sse),
+            )
+            .mount(&server)
+            .await;
+
+        let cfg = protocol_config(&server.uri());
+        let req = sample_request();
+        let chunks = collect_stream(|tx| stream_complete(&cfg, &req, tx)).await;
+        let ok: Vec<_> = chunks.into_iter().filter_map(Result::ok).collect();
+        assert!(ok.iter().any(|c| c.content == "Hel"));
+        assert!(ok.iter().any(|c| c.reasoning.as_deref() == Some("think")));
+        let done = ok.iter().find(|c| c.done).unwrap();
+        assert_eq!(done.response_id.as_deref(), Some("resp_stream"));
+        assert_eq!(done.tool_calls.as_ref().unwrap()[0].arguments, r#"{"a":1}"#);
+    }
+
+    #[tokio::test]
+    async fn probe_success() {
+        use crate::ai::protocol::test_support::protocol_config;
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/responses"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "resp_1",
+                "model": "gpt-test",
+                "output": []
+            })))
+            .mount(&server)
+            .await;
+
+        let cfg = protocol_config(&server.uri());
+        probe(&cfg, "gpt-test").await.unwrap();
+    }
 }

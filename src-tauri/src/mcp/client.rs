@@ -238,4 +238,32 @@ mod tests {
         assert!(json.contains("serverName"));
         assert!(json.contains("toolName"));
     }
+
+    #[test]
+    fn default_true_enables_servers_by_default() {
+        assert!(default_true());
+    }
+
+    #[tokio::test]
+    async fn new_manager_starts_empty() {
+        let mgr = McpClientManager::new();
+        assert!(mgr.connected_servers().await.is_empty());
+        assert!(mgr.all_tools().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn disconnect_unknown_server_is_noop() {
+        let mgr = McpClientManager::new();
+        mgr.disconnect("missing").await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn call_tool_errors_when_server_not_connected() {
+        let mgr = McpClientManager::new();
+        let err = mgr
+            .call_tool("nope", "tool", serde_json::json!({}))
+            .await
+            .unwrap_err();
+        assert!(err.contains("not connected"));
+    }
 }

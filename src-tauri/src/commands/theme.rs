@@ -66,9 +66,10 @@ fn pack_dir(state: &AppState, id: &str) -> Result<PathBuf, CommandError> {
     Ok(themes_root(state).join(id))
 }
 
-#[tauri::command]
-pub async fn list_theme_packs(state: State<'_, AppState>) -> Result<Vec<ThemePackSummary>, CommandError> {
-    let root = themes_root(&state);
+pub(crate) async fn list_theme_packs_impl(
+    state: &AppState,
+) -> Result<Vec<ThemePackSummary>, CommandError> {
+    let root = themes_root(state);
     if !root.is_dir() {
         return Ok(Vec::new());
     }
@@ -88,6 +89,65 @@ pub async fn list_theme_packs(state: State<'_, AppState>) -> Result<Vec<ThemePac
     }
     packs.sort_by(|a, b| a.name.cmp(&b.name));
     Ok(packs)
+}
+
+pub(crate) async fn remove_theme_pack_impl(
+    state: &AppState,
+    id: String,
+) -> Result<(), CommandError> {
+    validate_pack_id(&id)?;
+    let dir = pack_dir(state, &id)?;
+    if !dir.is_dir() {
+        return Err(CommandError::NotFound(format!("theme pack not found: {id}")));
+    }
+
+    let mut settings = state.store.get_settings().await;
+    if settings.theme.pack_id.as_deref() == Some(id.as_str()) {
+        settings.theme.pack_id = None;
+        state.store.save_settings(settings).await?;
+    }
+
+    tokio::task::spawn_blocking(move || fs::remove_dir_all(&dir))
+        .await
+        .map_err(|e| CommandError::Internal(format!("remove_theme_pack task: {e}")))?
+        .cmd_err("remove_theme_pack")?;
+
+    tracing::info!(%id, "remove_theme_pack OK");
+    Ok(())
+}
+
+pub(crate) async fn read_theme_pack_file_impl(
+    state: &AppState,
+    id: String,
+    relative_path: String,
+) -> Result<Vec<u8>, CommandError> {
+    let rel = safe_pack_rel_path(&relative_path)?;
+    let pack = pack_dir(state, &id)?;
+    if !pack.is_dir() {
+        return Err(CommandError::NotFound(format!("theme pack not found: {id}")));
+    }
+
+    let file_path = pack.join(&rel);
+    if !file_path.is_file() {
+        return Err(CommandError::NotFound(format!(
+            "theme pack file not found: {relative_path}"
+        )));
+    }
+
+    let canonical_pack = fs::canonicalize(&pack).cmd_err("read_theme_pack_file")?;
+    let canonical_file = fs::canonicalize(&file_path).cmd_err("read_theme_pack_file")?;
+    if !canonical_file.starts_with(&canonical_pack) {
+        return Err(CommandError::Validation("path traversal not allowed".into()));
+    }
+
+    tokio::fs::read(&file_path)
+        .await
+        .cmd_err("read_theme_pack_file")
+}
+
+#[tauri::command]
+pub async fn list_theme_packs(state: State<'_, AppState>) -> Result<Vec<ThemePackSummary>, CommandError> {
+    list_theme_packs_impl(&state).await
 }
 
 #[tauri::command]
@@ -119,25 +179,7 @@ pub async fn install_theme_pack_with_dialog(
 
 #[tauri::command]
 pub async fn remove_theme_pack(state: State<'_, AppState>, id: String) -> Result<(), CommandError> {
-    validate_pack_id(&id)?;
-    let dir = pack_dir(&state, &id)?;
-    if !dir.is_dir() {
-        return Err(CommandError::NotFound(format!("theme pack not found: {id}")));
-    }
-
-    let mut settings = state.store.get_settings().await;
-    if settings.theme.pack_id.as_deref() == Some(id.as_str()) {
-        settings.theme.pack_id = None;
-        state.store.save_settings(settings).await?;
-    }
-
-    tokio::task::spawn_blocking(move || fs::remove_dir_all(&dir))
-        .await
-        .map_err(|e| CommandError::Internal(format!("remove_theme_pack task: {e}")))?
-        .cmd_err("remove_theme_pack")?;
-
-    tracing::info!(%id, "remove_theme_pack OK");
-    Ok(())
+    remove_theme_pack_impl(&state, id).await
 }
 
 #[tauri::command]
@@ -146,29 +188,7 @@ pub async fn read_theme_pack_file(
     id: String,
     relative_path: String,
 ) -> Result<Vec<u8>, CommandError> {
-    let rel = safe_pack_rel_path(&relative_path)?;
-    let pack = pack_dir(&state, &id)?;
-    if !pack.is_dir() {
-        return Err(CommandError::NotFound(format!("theme pack not found: {id}")));
-    }
-
-    let file_path = pack.join(&rel);
-    if !file_path.is_file() {
-        return Err(CommandError::NotFound(format!(
-            "theme pack file not found: {relative_path}"
-        )));
-    }
-
-    // Defense in depth: resolved path must stay under pack root.
-    let canonical_pack = fs::canonicalize(&pack).cmd_err("read_theme_pack_file")?;
-    let canonical_file = fs::canonicalize(&file_path).cmd_err("read_theme_pack_file")?;
-    if !canonical_file.starts_with(&canonical_pack) {
-        return Err(CommandError::Validation("path traversal not allowed".into()));
-    }
-
-    tokio::fs::read(&file_path)
-        .await
-        .cmd_err("read_theme_pack_file")
+    read_theme_pack_file_impl(&state, id, relative_path).await
 }
 
 #[cfg(test)]
@@ -187,5 +207,57 @@ mod tests {
         assert!(validate_pack_id("community.fixture-dark").is_ok());
         assert!(validate_pack_id("../evil").is_err());
         assert!(validate_pack_id("a/b").is_err());
+    }
+
+    #[tokio::test]
+    async fn theme_pack_list_read_remove() {
+        use crate::store::AppSettings;
+        use crate::testing::app_state::TestAppState;
+
+        let test = TestAppState::new().await;
+        assert!(list_theme_packs_impl(&test.state).await.unwrap().is_empty());
+
+        let pack_root = test.state.store.data_dir().join("themes/community.fixture-dark");
+        std::fs::create_dir_all(&pack_root).unwrap();
+        std::fs::write(
+            pack_root.join("manifest.json"),
+            r#"{
+  "id": "community.fixture-dark",
+  "name": "Fixture Dark",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "modes": ["dark"]
+}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            pack_root.join("tokens.css"),
+            ":root { --color-accent: #6366f1; }\n",
+        )
+        .unwrap();
+
+        let packs = list_theme_packs_impl(&test.state).await.unwrap();
+        assert_eq!(packs.len(), 1);
+        assert_eq!(packs[0].id, "community.fixture-dark");
+
+        let css = read_theme_pack_file_impl(
+            &test.state,
+            "community.fixture-dark".into(),
+            "tokens.css".into(),
+        )
+        .await
+        .unwrap();
+        assert!(!css.is_empty());
+
+        let mut settings = AppSettings::default();
+        settings.theme.pack_id = Some("community.fixture-dark".into());
+        test.state.store.save_settings(settings).await.unwrap();
+
+        remove_theme_pack_impl(&test.state, "community.fixture-dark".into())
+            .await
+            .unwrap();
+        assert!(list_theme_packs_impl(&test.state).await.unwrap().is_empty());
+        let settings = test.state.store.get_settings().await;
+        assert!(settings.theme.pack_id.is_none());
     }
 }

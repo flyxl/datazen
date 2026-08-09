@@ -50,8 +50,8 @@ describe('useConnectionForm', () => {
 
     act(() => result.current.handleDatabaseTypeChange('redis'));
     rerender();
-    expect(result.current.formVariant).toBe('index');
-    expect(DB_REGISTRY.redis.connectionForm).toBe('index');
+    expect(result.current.formVariant).toBe('redis');
+    expect(DB_REGISTRY.redis.connectionForm).toBe('redis');
 
     act(() => result.current.handleDatabaseTypeChange('sqlite'));
     rerender();

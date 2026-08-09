@@ -78,6 +78,32 @@ fn validate_local_path(path: &str) -> Result<(), CommandError> {
     Ok(())
 }
 
+pub(crate) fn parse_adb_package_list(output: &str) -> Vec<AdbPackage> {
+    output
+        .lines()
+        .filter_map(|line| {
+            line.strip_prefix("package:").map(|name| AdbPackage {
+                package_name: name.trim().to_string(),
+            })
+        })
+        .collect()
+}
+
+pub(crate) fn parse_adb_database_lines(output: &str) -> Vec<AdbDatabaseFile> {
+    output
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| {
+            let path = line.trim().to_string();
+            let name = Path::new(&path)
+                .file_name()
+                .map(|f| f.to_string_lossy().to_string())
+                .unwrap_or_else(|| path.clone());
+            AdbDatabaseFile { path, name }
+        })
+        .collect()
+}
+
 /// List third-party packages installed on the connected Android device.
 #[tauri::command]
 pub async fn adb_list_packages() -> Result<Vec<AdbPackage>, CommandError> {
@@ -87,14 +113,7 @@ pub async fn adb_list_packages() -> Result<Vec<AdbPackage>, CommandError> {
         .await
         .cmd_err("adb_list_packages")?;
 
-    let packages: Vec<AdbPackage> = output
-        .lines()
-        .filter_map(|line| {
-            line.strip_prefix("package:").map(|name| AdbPackage {
-                package_name: name.trim().to_string(),
-            })
-        })
-        .collect();
+    let packages = parse_adb_package_list(&output);
 
     tracing::info!("[adb_list_packages] found {} packages", packages.len());
     Ok(packages)
@@ -115,18 +134,7 @@ pub async fn adb_list_databases(package: String) -> Result<Vec<AdbDatabaseFile>,
     .await
     .cmd_err("adb_list_databases")?;
 
-    let files: Vec<AdbDatabaseFile> = output
-        .lines()
-        .filter(|line| !line.trim().is_empty())
-        .map(|line| {
-            let path = line.trim().to_string();
-            let name = Path::new(&path)
-                .file_name()
-                .map(|f| f.to_string_lossy().to_string())
-                .unwrap_or_else(|| path.clone());
-            AdbDatabaseFile { path, name }
-        })
-        .collect();
+    let files = parse_adb_database_lines(&output);
 
     tracing::info!("[adb_list_databases] found {} db files", files.len());
     Ok(files)
@@ -237,6 +245,24 @@ pub async fn adb_pull_database(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_parse_adb_package_list() {
+        let output = "package:com.example.app\npackage:com.android.chrome\nignored\n";
+        let packages = parse_adb_package_list(output);
+        assert_eq!(packages.len(), 2);
+        assert_eq!(packages[0].package_name, "com.example.app");
+        assert_eq!(packages[1].package_name, "com.android.chrome");
+    }
+
+    #[test]
+    fn test_parse_adb_database_lines() {
+        let output = "./databases/app.db\n\n./databases/cache.sqlite3\n";
+        let files = parse_adb_database_lines(output);
+        assert_eq!(files.len(), 2);
+        assert_eq!(files[0].name, "app.db");
+        assert_eq!(files[1].name, "cache.sqlite3");
+    }
 
     #[test]
     fn test_validate_package_name_valid() {

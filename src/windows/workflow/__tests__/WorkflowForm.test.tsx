@@ -1,0 +1,235 @@
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import { useState } from 'react';
+import { render, cleanup, fireEvent, screen } from '@testing-library/react';
+import { WorkflowForm, emptyDraft } from '../WorkflowForm';
+import type { WorkflowDraft } from '../WorkflowForm';
+
+vi.mock('../../../hooks/useI18n', () => ({
+  useI18n: () => ({ t: (key: string) => key }),
+}));
+
+vi.mock('../../../components/ui/Select', () => ({
+  Select: ({
+    value,
+    options,
+    onChange,
+    className,
+  }: {
+    value: string;
+    options: { value: string; label: string }[];
+    onChange: (v: string) => void;
+    className?: string;
+  }) => (
+    <select
+      data-testid="mock-select"
+      className={className}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+    >
+      {options.map((o) => (
+        <option key={o.value} value={o.value}>
+          {o.label}
+        </option>
+      ))}
+    </select>
+  ),
+}));
+
+const connections = [{ id: 'c1', name: 'PG', databaseType: 'postgresql' }];
+
+function StatefulForm({
+  initialDraft,
+  editingId = null,
+  conns = connections,
+  onSave = vi.fn(),
+  onCancel = vi.fn(),
+}: {
+  initialDraft: WorkflowDraft;
+  editingId?: string | null;
+  conns?: typeof connections;
+  onSave?: ReturnType<typeof vi.fn>;
+  onCancel?: ReturnType<typeof vi.fn>;
+}) {
+  const [draft, setDraft] = useState(initialDraft);
+  return (
+    <WorkflowForm
+      draft={draft}
+      editingId={editingId}
+      connections={conns}
+      onDraftChange={setDraft}
+      onSave={onSave}
+      onCancel={onCancel}
+    />
+  );
+}
+
+function renderForm(
+  draft: WorkflowDraft,
+  opts: {
+    editingId?: string | null;
+    onDraftChange?: ReturnType<typeof vi.fn>;
+    onSave?: ReturnType<typeof vi.fn>;
+    onCancel?: ReturnType<typeof vi.fn>;
+    conns?: typeof connections;
+    stateful?: boolean;
+  } = {},
+) {
+  const onDraftChange = opts.onDraftChange ?? vi.fn();
+  const onSave = opts.onSave ?? vi.fn();
+  const onCancel = opts.onCancel ?? vi.fn();
+  if (opts.stateful) {
+    render(
+      <StatefulForm
+        initialDraft={draft}
+        editingId={opts.editingId ?? null}
+        conns={opts.conns ?? connections}
+        onSave={onSave}
+        onCancel={onCancel}
+      />,
+    );
+  } else {
+    render(
+      <WorkflowForm
+        draft={draft}
+        editingId={opts.editingId ?? null}
+        connections={opts.conns ?? connections}
+        onDraftChange={onDraftChange}
+        onSave={onSave}
+        onCancel={onCancel}
+      />,
+    );
+  }
+  return { onDraftChange, onSave, onCancel };
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
+
+afterEach(cleanup);
+
+describe('WorkflowForm', () => {
+  it('emptyDraft seeds one query step', () => {
+    const d = emptyDraft();
+    expect(d.steps).toHaveLength(1);
+    expect(d.steps[0].type).toBe('query');
+    expect(d.id).toBe('');
+    expect(d.variables).toHaveLength(0);
+  });
+
+  it('edits id, name and description via onDraftChange', () => {
+    const { onDraftChange } = renderForm(emptyDraft());
+    const inputs = document.querySelectorAll('input');
+
+    fireEvent.change(inputs[0], { target: { value: 'my-wf' } });
+    expect(onDraftChange.mock.calls.at(-1)?.[0].id).toBe('my-wf');
+
+    fireEvent.change(inputs[1], { target: { value: 'My WF' } });
+    expect(onDraftChange.mock.calls.at(-1)?.[0].name).toBe('My WF');
+
+    fireEvent.change(inputs[2], { target: { value: 'desc' } });
+    expect(onDraftChange.mock.calls.at(-1)?.[0].description).toBe('desc');
+  });
+
+  it('disables id field while editing', () => {
+    renderForm({ ...emptyDraft(), id: 'wf-1' }, { editingId: 'wf-1' });
+    expect(screen.getByDisplayValue('wf-1')).toBeDisabled();
+  });
+
+  it('adds, edits, and removes a variable row', () => {
+    renderForm(emptyDraft(), { stateful: true });
+
+    fireEvent.click(screen.getByText('+ workflows.form.addVariable'));
+    expect(screen.getByPlaceholderText('workflows.form.varName')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByPlaceholderText('workflows.form.varName'), { target: { value: 'connVar' } });
+    expect(screen.getByDisplayValue('connVar')).toBeInTheDocument();
+
+    const typeSelect = screen.getAllByRole('combobox')[0];
+    fireEvent.change(typeSelect, { target: { value: 'connection' } });
+    expect(typeSelect).toHaveValue('connection');
+
+    fireEvent.change(screen.getByPlaceholderText('workflows.form.varDesc'), { target: { value: 'pick conn' } });
+    expect(screen.getByDisplayValue('pick conn')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('checkbox'));
+    expect(screen.getByRole('checkbox')).toBeChecked();
+
+    const trashBtn = Array.from(document.querySelectorAll('button')).find((b) =>
+      b.querySelector('.lucide-trash2'),
+    );
+    expect(trashBtn).toBeTruthy();
+    fireEvent.click(trashBtn!);
+    expect(screen.queryByPlaceholderText('workflows.form.varName')).not.toBeInTheDocument();
+  });
+
+  it('adds a step and edits step fields', () => {
+    renderForm(emptyDraft(), { stateful: true });
+
+    fireEvent.click(screen.getByText('+ workflows.addStep'));
+    const stepIdInputs = screen.getAllByPlaceholderText('step_id');
+    expect(stepIdInputs).toHaveLength(2);
+
+    fireEvent.change(stepIdInputs[1], { target: { value: 'step2' } });
+    expect(screen.getByDisplayValue('step2')).toBeInTheDocument();
+
+    const typeSelects = screen.getAllByTestId('mock-select');
+    fireEvent.change(typeSelects[0], { target: { value: 'ai' } });
+    expect(typeSelects[0]).toHaveValue('ai');
+    expect(screen.getByPlaceholderText('AI prompt...')).toBeInTheDocument();
+
+    fireEvent.change(typeSelects[1], { target: { value: 'c1' } });
+    expect(typeSelects[1]).toHaveValue('c1');
+  });
+
+  it('edits query SQL and ai prompt textareas', () => {
+    const draft: WorkflowDraft = {
+      ...emptyDraft(),
+      steps: [
+        { type: 'query', id: 'q1', sql: '' },
+        { type: 'ai', id: 'a1', prompt: '' },
+      ],
+    };
+    const { onDraftChange } = renderForm(draft);
+
+    const textareas = document.querySelectorAll('textarea');
+    fireEvent.change(textareas[0], { target: { value: 'SELECT 1' } });
+    expect(onDraftChange.mock.calls.at(-1)?.[0].steps[0].sql).toBe('SELECT 1');
+
+    fireEvent.change(textareas[1], { target: { value: 'Summarize data' } });
+    expect(onDraftChange.mock.calls.at(-1)?.[0].steps[1].prompt).toBe('Summarize data');
+  });
+
+  it('removes a step when more than one exists', () => {
+    const draft: WorkflowDraft = {
+      ...emptyDraft(),
+      steps: [
+        { type: 'query', id: 'step1', sql: '' },
+        { type: 'query', id: 'step2', sql: '' },
+      ],
+    };
+    renderForm(draft, { stateful: true });
+
+    const stepDeleteButtons = Array.from(document.querySelectorAll('button')).filter(
+      (b) => b.className.includes('text-red-400') && b.querySelector('svg'),
+    );
+    expect(stepDeleteButtons.length).toBeGreaterThan(0);
+    fireEvent.click(stepDeleteButtons[0]);
+    expect(screen.getAllByPlaceholderText('step_id')).toHaveLength(1);
+  });
+
+  it('hides connection select when no connections provided', () => {
+    renderForm(emptyDraft(), { conns: [] });
+    expect(screen.queryAllByTestId('mock-select')).toHaveLength(1);
+  });
+
+  it('save and cancel buttons fire handlers', () => {
+    const onSave = vi.fn();
+    const onCancel = vi.fn();
+    renderForm(emptyDraft(), { onSave, onCancel });
+    fireEvent.click(screen.getByText('common.save'));
+    fireEvent.click(screen.getByText('common.cancel'));
+    expect(onSave).toHaveBeenCalled();
+    expect(onCancel).toHaveBeenCalled();
+  });
+});

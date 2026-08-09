@@ -353,4 +353,98 @@ mod tests {
             "Expected fallback ORDER BY first column, got: {sql}"
         );
     }
+
+    #[test]
+    fn build_count_sql_with_eq_filter() {
+        let columns = vec![make_column("status", false)];
+        let filters = vec![FilterCondition {
+            column: "status".into(),
+            operator: FilterOperator::Eq,
+            value: Value::String("active".into()),
+        }];
+        let sql = QueryExecutor::build_count_sql("users", &columns, &Some(filters), &simple_qi);
+        assert!(sql.contains("WHERE \"status\" = 'active'"));
+    }
+
+    #[test]
+    fn build_select_sql_without_offset_when_unsupported() {
+        let columns = vec![make_column("id", true)];
+        let sql = QueryExecutor::build_select_sql(
+            "users", &columns, 2, 25, None, None, &simple_qi, false,
+        );
+        assert!(sql.contains("LIMIT 25"));
+        assert!(!sql.contains("OFFSET"));
+    }
+
+    #[test]
+    fn format_condition_in_and_is_null() {
+        let in_filter = FilterCondition {
+            column: "id".into(),
+            operator: FilterOperator::In,
+            value: Value::Json(serde_json::json!([1, 2, 3])),
+        };
+        let null_filter = FilterCondition {
+            column: "deleted_at".into(),
+            operator: FilterOperator::IsNull,
+            value: Value::Null,
+        };
+        assert_eq!(
+            QueryExecutor::format_condition(&in_filter, &simple_qi),
+            "\"id\" IN (1, 2, 3)"
+        );
+        assert_eq!(
+            QueryExecutor::format_condition(&null_filter, &simple_qi),
+            "\"deleted_at\" IS NULL"
+        );
+    }
+
+    #[tokio::test]
+    async fn get_table_data_uses_schema_cache_and_returns_total() {
+        use crate::cache::SchemaCache;
+        use crate::db::registry::DriverRegistry;
+        use crate::testing::mock_driver::{MockDriver, MockDriverOptions};
+
+        let registry = Arc::new(DriverRegistry::new());
+        let mock = MockDriver::new(
+            "postgres",
+            MockDriverOptions {
+                count_total: 99,
+                query_rows: vec![vec![
+                    Some(Value::Integer(1)),
+                    Some(Value::String("alice".into())),
+                ]],
+                ..Default::default()
+            },
+        );
+        registry
+            .register_test_driver("postgres", mock.clone())
+            .await;
+        let cache = Arc::new(SchemaCache::new(registry));
+        let executor = QueryExecutor::new(cache);
+        let driver = mock.clone() as Arc<dyn crate::db::DatabaseDriver>;
+        let handle = ConnectionHandle {
+            id: "h1".into(),
+            pool_id: "p1".into(),
+        };
+
+        let result = executor
+            .get_table_data(
+                &driver,
+                &handle,
+                "conn1",
+                "db1",
+                "users",
+                0,
+                50,
+                None,
+                None,
+                false,
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(result.total_rows, Some(99));
+        assert_eq!(result.rows.len(), 1);
+        assert_eq!(mock.query_calls(), 2, "count + data queries");
+    }
 }

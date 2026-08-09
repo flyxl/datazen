@@ -17,6 +17,9 @@ mod tray;
 pub mod sync;
 pub mod workflow;
 
+#[cfg(test)]
+pub(crate) mod testing;
+
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
@@ -51,29 +54,148 @@ pub(crate) fn menu_labels(lang: &str) -> HashMap<String, String> {
         .unwrap_or_default()
 }
 
+/// Resolve a single menu label key for the given locale (falls back to the key itself).
+pub(crate) fn menu_label(lang: &str, key: &str) -> String {
+    menu_labels(lang)
+        .get(key)
+        .cloned()
+        .unwrap_or_else(|| key.to_string())
+}
+
+/// Whether a theme submenu check item should be checked for the active theme mode.
+pub(crate) fn theme_menu_item_checked(current_theme: &str, item_id: &str) -> bool {
+    matches!(
+        (current_theme, item_id),
+        ("light", "theme-light") | ("dark", "theme-dark") | ("system", "theme-system")
+    )
+}
+
+/// Pure mapping from native menu item id to an action the frontend or host should perform.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum MenuAction {
+    ThemeChange(String),
+    Emit(&'static str),
+    OpenDocs,
+    OpenReportIssue,
+    AddFavorite,
+    Ignore,
+}
+
+pub(crate) fn menu_action_for_id(id: &str) -> MenuAction {
+    if let Some(theme) = id.strip_prefix("theme-") {
+        return MenuAction::ThemeChange(theme.to_string());
+    }
+    match id {
+        "open-settings" => MenuAction::Emit("menu:open-settings"),
+        "new-connection" => MenuAction::Emit("menu:new-connection"),
+        "data-sync" => MenuAction::Emit("menu:data-sync"),
+        "backup" => MenuAction::Emit("menu:backup"),
+        "restore" => MenuAction::Emit("menu:restore"),
+        "export-config" => MenuAction::Emit("menu:export-config"),
+        "import-config" => MenuAction::Emit("menu:import-config"),
+        "export-connections" => MenuAction::Emit("menu:export-connections"),
+        "import-connections" => MenuAction::Emit("menu:import-connections"),
+        "view-logs" => MenuAction::Emit("menu:view-logs"),
+        "help-docs" => MenuAction::OpenDocs,
+        "help-report" => MenuAction::OpenReportIssue,
+        "ctx-add-favorite" => MenuAction::AddFavorite,
+        _ => MenuAction::Ignore,
+    }
+}
+
+/// Collect unique driver type ids from saved connections (stable insertion order).
+pub(crate) fn unique_driver_types(connections: &[crate::db::ConnectionConfig]) -> Vec<String> {
+    let mut seen = std::collections::HashSet::new();
+    connections
+        .iter()
+        .filter_map(|c| seen.insert(c.database_type.clone()).then_some(c.database_type.clone()))
+        .collect()
+}
+
+/// Parse log level and custom log path from a settings JSON value.
+pub(crate) fn parse_log_settings_fields(v: &serde_json::Value) -> (String, String) {
+    let level = v
+        .get("logLevel")
+        .and_then(|v| v.as_str())
+        .unwrap_or("info")
+        .to_string();
+    let path = v
+        .get("logPath")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    (level, path)
+}
+
+/// Resolve the directory used for application logs.
+pub(crate) fn resolve_log_dir(data_dir: &std::path::Path, custom_log_path: &str) -> PathBuf {
+    if custom_log_path.is_empty() {
+        data_dir.join("logs")
+    } else {
+        PathBuf::from(custom_log_path)
+    }
+}
+
+/// Resolve the AI context files directory.
+pub(crate) fn resolve_context_dir(data_dir: &std::path::Path, context_dir_setting: &str) -> PathBuf {
+    if context_dir_setting.is_empty() {
+        data_dir.join("contexts")
+    } else {
+        PathBuf::from(context_dir_setting)
+    }
+}
+
+/// Whether CLI args request headless MCP stdio mode (`--mcp` / `--mcp-stdio`).
+pub(crate) fn is_mcp_stdio_mode(args: &[String]) -> bool {
+    args.iter().any(|a| a == "--mcp" || a == "--mcp-stdio")
+}
+
+/// Build the tracing env filter: honor `RUST_LOG` when set, else use settings log level.
+pub(crate) fn build_tracing_env_filter(log_level: &str) -> tracing_subscriber::EnvFilter {
+    tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(log_level))
+}
+
+/// True when a window's logical size covers the full monitor (used for fullscreen-changed emit).
+pub(crate) fn is_fullscreen_for_monitor(
+    window_width: u32,
+    window_height: u32,
+    monitor_width: u32,
+    monitor_height: u32,
+) -> bool {
+    window_width >= monitor_width && window_height >= monitor_height
+}
+
+/// Resolve bundled prompt templates directory from Tauri resource dir when available.
+pub(crate) fn resolve_prompts_dir(resource_dir: Option<PathBuf>) -> Option<PathBuf> {
+    resource_dir.map(|d| d.join("prompts"))
+}
+
+/// Whether embedded MCP server should auto-start during GUI setup.
+pub(crate) fn should_auto_start_embedded_mcp(mcp_server_enabled: bool) -> bool {
+    mcp_server_enabled
+}
+
 #[cfg(target_os = "macos")]
 fn setup_menu(
     handle: &tauri::AppHandle,
     theme: &str,
     lang: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let l = menu_labels(lang);
-    let t = |key: &str| -> String {
-        l.get(key).cloned().unwrap_or_else(|| key.to_string())
-    };
+    let t = |key: &str| menu_label(lang, key);
 
     // ── Shared items ──
     let theme_light = CheckMenuItemBuilder::new(t("theme-light"))
         .id("theme-light")
-        .checked(theme == "light")
+        .checked(theme_menu_item_checked(theme, "theme-light"))
         .build(handle)?;
     let theme_dark = CheckMenuItemBuilder::new(t("theme-dark"))
         .id("theme-dark")
-        .checked(theme == "dark")
+        .checked(theme_menu_item_checked(theme, "theme-dark"))
         .build(handle)?;
     let theme_system = CheckMenuItemBuilder::new(t("theme-system"))
         .id("theme-system")
-        .checked(theme == "system")
+        .checked(theme_menu_item_checked(theme, "theme-system"))
         .build(handle)?;
 
     let settings_item = MenuItemBuilder::new(t("open-settings"))
@@ -212,47 +334,17 @@ fn setup_menu(
 
     handle.on_menu_event(move |app_handle, event| {
         let id = event.id().as_ref();
-        if let Some(theme) = id.strip_prefix("theme-") {
-            let _ = tl.set_checked(id == "theme-light");
-            let _ = td.set_checked(id == "theme-dark");
-            let _ = ts.set_checked(id == "theme-system");
-            let _ = app_handle.emit("menu:theme-change", theme);
-            return;
-        }
-        match id {
-            "open-settings" => {
-                let _ = app_handle.emit("menu:open-settings", ());
+        match menu_action_for_id(id) {
+            MenuAction::ThemeChange(theme) => {
+                let _ = tl.set_checked(theme_menu_item_checked(&theme, "theme-light"));
+                let _ = td.set_checked(theme_menu_item_checked(&theme, "theme-dark"));
+                let _ = ts.set_checked(theme_menu_item_checked(&theme, "theme-system"));
+                let _ = app_handle.emit("menu:theme-change", theme);
             }
-            "new-connection" => {
-                let _ = app_handle.emit("menu:new-connection", ());
+            MenuAction::Emit(event) => {
+                let _ = app_handle.emit(event, ());
             }
-            "data-sync" => {
-                let _ = app_handle.emit("menu:data-sync", ());
-            }
-            "backup" => {
-                let _ = app_handle.emit("menu:backup", ());
-            }
-            "restore" => {
-                let _ = app_handle.emit("menu:restore", ());
-            }
-            "export-config" => {
-                let _ = app_handle.emit("menu:export-config", ());
-            }
-            "import-config" => {
-                let _ = app_handle.emit("menu:import-config", ());
-            }
-            "export-connections" => {
-                let _ = app_handle.emit("menu:export-connections", ());
-            }
-            "import-connections" => {
-                let _ = app_handle.emit("menu:import-connections", ());
-            }
-            "view-logs" => {
-                let _ = app_handle.emit("menu:view-logs", ());
-            }
-            "help-docs" => {
-                // Open directly in Rust — do not emit to every webview (that
-                // previously caused concurrent create_sub_window races).
+            MenuAction::OpenDocs => {
                 let app = app_handle.clone();
                 tauri::async_runtime::spawn(async move {
                     if let Err(e) = commands::open_docs_window(app, None).await {
@@ -260,20 +352,20 @@ fn setup_menu(
                     }
                 });
             }
-            "help-report" => {
+            MenuAction::OpenReportIssue => {
                 let _ = open::that("https://github.com/flyxl/datazen/issues/new");
             }
-            "ctx-add-favorite" => {
+            MenuAction::AddFavorite => {
                 let _ = app_handle.emit("menu:add-favorite", ());
             }
-            _ => {}
+            MenuAction::Ignore => {}
         }
     });
 
     Ok(())
 }
 
-fn resolve_log_settings() -> (String, PathBuf) {
+pub(crate) fn resolve_log_settings() -> (String, PathBuf) {
     let data_dir = store::Store::default_app_data_dir().unwrap_or_else(|_| PathBuf::from("."));
 
     let settings_path = data_dir.join("settings.json");
@@ -281,26 +373,10 @@ fn resolve_log_settings() -> (String, PathBuf) {
     let (level, custom_path) = std::fs::read_to_string(&settings_path)
         .ok()
         .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
-        .map(|v| {
-            let level = v
-                .get("logLevel")
-                .and_then(|v| v.as_str())
-                .unwrap_or("info")
-                .to_string();
-            let path = v
-                .get("logPath")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-            (level, path)
-        })
+        .map(|v| parse_log_settings_fields(&v))
         .unwrap_or_else(|| ("info".to_string(), String::new()));
 
-    let log_dir = if custom_path.is_empty() {
-        data_dir.join("logs")
-    } else {
-        PathBuf::from(custom_path)
-    };
+    let log_dir = resolve_log_dir(&data_dir, &custom_path);
 
     (level, log_dir)
 }
@@ -332,15 +408,7 @@ async fn build_gui_app_state(
 
     let t_drv = Instant::now();
     let registry = Arc::new(init_drivers());
-    let needed: Vec<String> = {
-        let mut seen = std::collections::HashSet::new();
-        store
-            .get_connections()
-            .await
-            .into_iter()
-            .filter_map(|c| seen.insert(c.database_type.clone()).then_some(c.database_type))
-            .collect()
-    };
+    let needed = unique_driver_types(&store.get_connections().await);
     registry.ensure_types(&needed).await;
     tracing::info!(
         "[startup]   drivers ({} types): {:?}",
@@ -363,15 +431,7 @@ async fn build_app_state(
 ) -> Result<AppState, String> {
     let t_drv = Instant::now();
     let registry = Arc::new(init_drivers());
-    let needed: Vec<String> = {
-        let mut seen = std::collections::HashSet::new();
-        store
-            .get_connections()
-            .await
-            .into_iter()
-            .filter_map(|c| seen.insert(c.database_type.clone()).then_some(c.database_type))
-            .collect()
-    };
+    let needed = unique_driver_types(&store.get_connections().await);
     registry.ensure_types(&needed).await;
     tracing::info!(
         "[startup]   drivers ({} types): {:?}",
@@ -386,7 +446,7 @@ async fn build_app_state(
     ))
 }
 
-fn finish_app_state(
+pub(crate) fn finish_app_state(
     store: Arc<Store>,
     registry: Arc<db::DriverRegistry>,
     sync_adapters: Arc<sync::adapter_registry::SyncAdapterRegistry>,
@@ -472,10 +532,9 @@ pub fn run() {
     let file_appender = tracing_appender::rolling::daily(&log_dir, "datazen.log");
     let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
 
-    use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+    use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
-    let filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new(&log_level));
+    let filter = build_tracing_env_filter(&log_level);
 
     tracing_subscriber::registry()
         .with(filter)
@@ -510,7 +569,7 @@ pub fn run() {
             let handle = app.handle().clone();
 
             let t0 = Instant::now();
-            let prompts_dir = handle.path().resource_dir().ok().map(|d| d.join("prompts"));
+            let prompts_dir = resolve_prompts_dir(handle.path().resource_dir().ok());
             let app_state = tauri::async_runtime::block_on(build_gui_app_state(&handle, prompts_dir))?;
             tracing::info!("[startup]   block_on total: {:?}", t0.elapsed());
 
@@ -538,7 +597,7 @@ pub fn run() {
             {
                 let state = handle.state::<AppState>();
                 let enabled = tauri::async_runtime::block_on(state.store.get_settings()).mcp_server_enabled;
-                if enabled {
+                if should_auto_start_embedded_mcp(enabled) {
                     if let Err(e) = tauri::async_runtime::block_on(commands::start_embedded_mcp(state.inner())) {
                         tracing::warn!(error = %e, "Failed to auto-start embedded MCP Server");
                     }
@@ -705,7 +764,12 @@ pub fn run() {
                     std::thread::sleep(std::time::Duration::from_millis(200));
                     if let Some(monitor) = win.current_monitor().ok().flatten() {
                         let mon = monitor.size();
-                        let is_fs = size.width >= mon.width && size.height >= mon.height;
+                        let is_fs = is_fullscreen_for_monitor(
+                            size.width,
+                            size.height,
+                            mon.width,
+                            mon.height,
+                        );
                         let _ = win.emit("fullscreen-changed", is_fs);
                     }
                 });
@@ -724,4 +788,265 @@ pub fn run() {
                 tauri::async_runtime::block_on(mgr.disconnect_all());
             }
         });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+    use crate::store::Store;
+
+    #[test]
+    fn menu_labels_en_contains_core_keys() {
+        let labels = menu_labels("en");
+        assert!(labels.contains_key("app-name"));
+        assert!(labels.contains_key("quit"));
+        assert!(!labels["app-name"].is_empty());
+    }
+
+    #[test]
+    fn menu_labels_unknown_falls_back_to_en() {
+        let fallback = menu_labels("xx-not-a-locale");
+        let en = menu_labels("en");
+        assert_eq!(fallback.get("app-name"), en.get("app-name"));
+    }
+
+    #[test]
+    fn menu_labels_zh_cn_localizes_file_menu() {
+        let en = menu_labels("en");
+        let zh = menu_labels("zh-CN");
+        assert_ne!(en.get("file"), zh.get("file"));
+    }
+
+    #[test]
+    fn resolve_log_settings_defaults_without_settings_file() {
+        let data_dir = Store::default_app_data_dir().unwrap();
+        let settings_path = data_dir.join("settings.json");
+        let backup = settings_path.exists().then(|| std::fs::read(&settings_path).unwrap());
+        let _ = std::fs::remove_file(&settings_path);
+
+        let (level, log_dir) = resolve_log_settings();
+        assert_eq!(level, "info");
+        assert_eq!(log_dir, data_dir.join("logs"));
+
+        if let Some(bytes) = backup {
+            std::fs::write(settings_path, bytes).unwrap();
+        }
+    }
+
+    #[test]
+    fn resolve_log_settings_reads_custom_level_and_path() {
+        let data_dir = Store::default_app_data_dir().unwrap();
+        std::fs::create_dir_all(&data_dir).unwrap();
+        let settings_path = data_dir.join("settings.json");
+        let backup = settings_path.exists().then(|| std::fs::read(&settings_path).unwrap());
+        let custom_log = tempfile::tempdir().unwrap().path().join("custom-logs");
+        let settings = serde_json::json!({
+            "logLevel": "debug",
+            "logPath": custom_log.to_string_lossy(),
+        });
+        std::fs::write(&settings_path, settings.to_string()).unwrap();
+
+        let (level, log_dir) = resolve_log_settings();
+        assert_eq!(level, "debug");
+        assert_eq!(log_dir, custom_log);
+
+        if let Some(bytes) = backup {
+            std::fs::write(settings_path, bytes).unwrap();
+        } else {
+            let _ = std::fs::remove_file(settings_path);
+        }
+    }
+
+    #[test]
+    fn menu_label_resolves_or_falls_back() {
+        assert_eq!(menu_label("en", "app-name"), menu_labels("en")["app-name"]);
+        assert_eq!(menu_label("en", "missing-menu-key"), "missing-menu-key");
+    }
+
+    #[test]
+    fn theme_menu_item_checked_matches_mode() {
+        assert!(theme_menu_item_checked("light", "theme-light"));
+        assert!(!theme_menu_item_checked("light", "theme-dark"));
+        assert!(theme_menu_item_checked("dark", "theme-dark"));
+        assert!(theme_menu_item_checked("system", "theme-system"));
+        assert!(!theme_menu_item_checked("system", "theme-light"));
+    }
+
+    #[test]
+    fn menu_action_for_id_maps_known_items() {
+        assert_eq!(
+            menu_action_for_id("theme-dark"),
+            MenuAction::ThemeChange("dark".into())
+        );
+        assert_eq!(
+            menu_action_for_id("open-settings"),
+            MenuAction::Emit("menu:open-settings")
+        );
+        assert_eq!(menu_action_for_id("help-docs"), MenuAction::OpenDocs);
+        assert_eq!(menu_action_for_id("help-report"), MenuAction::OpenReportIssue);
+        assert_eq!(menu_action_for_id("ctx-add-favorite"), MenuAction::AddFavorite);
+        assert_eq!(menu_action_for_id("unknown-id"), MenuAction::Ignore);
+    }
+
+    #[test]
+    fn unique_driver_types_deduplicates_preserving_order() {
+        use crate::db::{ConnectionConfig, SslMode};
+
+        fn conn(id: &str, db_type: &str) -> ConnectionConfig {
+            ConnectionConfig {
+                id: id.into(),
+                name: id.into(),
+                database_type: db_type.into(),
+                host: None,
+                port: None,
+                database: None,
+                schema: None,
+                username: None,
+                password: None,
+                ssl_mode: SslMode::default(),
+                connection_timeout: 30,
+                ssh_tunnel: None,
+                color_tag: None,
+                group: None,
+                last_connected_at: None,
+                server_version: None,
+                options: None,
+            }
+        }
+
+        let connections = vec![
+            conn("a", "postgres"),
+            conn("b", "mysql"),
+            conn("c", "postgres"),
+            conn("d", "redis"),
+            conn("e", "mysql"),
+        ];
+        assert_eq!(
+            unique_driver_types(&connections),
+            vec!["postgres", "mysql", "redis"]
+        );
+    }
+
+    #[test]
+    fn parse_log_settings_fields_defaults() {
+        let (level, path) = parse_log_settings_fields(&serde_json::json!({}));
+        assert_eq!(level, "info");
+        assert_eq!(path, "");
+        let (level, path) = parse_log_settings_fields(&serde_json::json!({
+            "logLevel": "warn",
+            "logPath": "/var/log/datazen"
+        }));
+        assert_eq!(level, "warn");
+        assert_eq!(path, "/var/log/datazen");
+    }
+
+    #[test]
+    fn resolve_log_dir_uses_default_or_custom() {
+        let data = PathBuf::from("/data/app");
+        assert_eq!(resolve_log_dir(&data, ""), PathBuf::from("/data/app/logs"));
+        assert_eq!(
+            resolve_log_dir(&data, "/tmp/custom"),
+            PathBuf::from("/tmp/custom")
+        );
+    }
+
+    #[test]
+    fn resolve_context_dir_uses_default_or_custom() {
+        let data = PathBuf::from("/data/app");
+        assert_eq!(
+            resolve_context_dir(&data, ""),
+            PathBuf::from("/data/app/contexts")
+        );
+        assert_eq!(
+            resolve_context_dir(&data, "/home/user/ctx"),
+            PathBuf::from("/home/user/ctx")
+        );
+    }
+
+    #[test]
+    fn is_mcp_stdio_mode_detects_flags() {
+        assert!(!is_mcp_stdio_mode(&["datazen".into()]));
+        assert!(is_mcp_stdio_mode(&["datazen".into(), "--mcp".into()]));
+        assert!(is_mcp_stdio_mode(&["datazen".into(), "--mcp-stdio".into()]));
+        assert!(!is_mcp_stdio_mode(&["datazen".into(), "--other".into()]));
+    }
+
+    #[test]
+    fn build_tracing_env_filter_uses_log_level_when_env_unset() {
+        let filter = build_tracing_env_filter("warn");
+        assert!(filter.to_string().contains("warn") || filter.to_string().contains("WARN"));
+    }
+
+    #[test]
+    fn is_fullscreen_for_monitor_compares_dimensions() {
+        assert!(is_fullscreen_for_monitor(1920, 1080, 1920, 1080));
+        assert!(is_fullscreen_for_monitor(2000, 1200, 1920, 1080));
+        assert!(!is_fullscreen_for_monitor(800, 600, 1920, 1080));
+        assert!(!is_fullscreen_for_monitor(1920, 900, 1920, 1080));
+    }
+
+    #[test]
+    fn resolve_prompts_dir_appends_prompts_subdir() {
+        assert_eq!(resolve_prompts_dir(None), None);
+        assert_eq!(
+            resolve_prompts_dir(Some(PathBuf::from("/app/resources"))),
+            Some(PathBuf::from("/app/resources/prompts"))
+        );
+    }
+
+    #[test]
+    fn should_auto_start_embedded_mcp_follows_setting() {
+        assert!(should_auto_start_embedded_mcp(true));
+        assert!(!should_auto_start_embedded_mcp(false));
+    }
+
+    #[test]
+    fn menu_action_for_id_covers_all_emit_events() {
+        for id in [
+            "open-settings",
+            "new-connection",
+            "data-sync",
+            "backup",
+            "restore",
+            "export-config",
+            "import-config",
+            "export-connections",
+            "import-connections",
+            "view-logs",
+        ] {
+            match menu_action_for_id(id) {
+                MenuAction::Emit(_) => {}
+                other => panic!("expected Emit for {id}, got {other:?}"),
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn finish_app_state_wires_core_services() {
+        use crate::db::registry::DriverRegistry;
+        use crate::sync::adapter_registry::SyncAdapterRegistry;
+        use crate::testing::mock_driver::{MockDriver, MockDriverOptions};
+
+        let temp = tempfile::tempdir().unwrap();
+        let store = Arc::new(
+            Store::init_with_path(temp.path())
+                .await
+                .expect("store init"),
+        );
+        let registry = Arc::new(DriverRegistry::new());
+        let mock = MockDriver::new("postgres", MockDriverOptions::default());
+        registry
+            .register_test_driver("postgres", mock)
+            .await;
+
+        let state = finish_app_state(
+            store.clone(),
+            registry,
+            Arc::new(SyncAdapterRegistry::new()),
+            None,
+        );
+        assert!(state.workflow_registry.workflows_dir().starts_with(temp.path()));
+        assert_eq!(state.store.data_dir(), temp.path());
+    }
 }

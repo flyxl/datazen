@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { formatCell, formatResultCell } from '../formatters';
+import {
+  displayValueForTitle,
+  formatCell,
+  formatLastConnected,
+  formatResultCell,
+  formatTimestamp,
+} from '../formatters';
 
 describe('formatCell', () => {
   it('returns "NULL" for null', () => {
@@ -71,5 +77,36 @@ describe('formatResultCell', () => {
   it('converts booleans to string', () => {
     expect(formatResultCell(true)).toBe('true');
     expect(formatResultCell(false)).toBe('false');
+  });
+});
+
+describe('formatTimestamp', () => {
+  it('formats valid ISO strings', () => {
+    expect(formatTimestamp('2024-01-15T10:00:00Z')).toMatch(/2024-01-15/);
+  });
+
+  it('returns NULL for nullish', () => {
+    expect(formatTimestamp(null)).toBe('NULL');
+  });
+
+  it('returns raw string for invalid dates', () => {
+    expect(formatTimestamp('not-a-date')).toBe('not-a-date');
+  });
+});
+
+describe('formatLastConnected', () => {
+  it('returns never-connected label when missing', () => {
+    expect(formatLastConnected()).toMatch(/never|Never|未/i);
+  });
+
+  it('formats valid ISO timestamp', () => {
+    const formatted = formatLastConnected('2024-06-01T12:00:00.000Z');
+    expect(formatted.length).toBeGreaterThan(4);
+  });
+});
+
+describe('displayValueForTitle', () => {
+  it('delegates to formatCell', () => {
+    expect(displayValueForTitle({ a: 1 })).toBe('{"a":1}');
   });
 });
