@@ -1071,6 +1071,7 @@ const en: Record<TranslationKey, string> = {
   'docs.openHelp': 'User Guide',
   'docs.openAiHelp': 'AI & Context Help',
   'docs.openWorkflowHelp': 'Workflow Help',
+  'docs.openDashboardHelp': 'Ops Dashboard Help',
 };
 
 export default en;

@@ -897,6 +897,7 @@ const translations = {
   'docs.openHelp': '사용 설명서',
   'docs.openAiHelp': 'AI 및 컨텍스트 도움말',
   'docs.openWorkflowHelp': '워크플로 도움말',
+  'docs.openDashboardHelp': 'Ops Dashboard Help',
   'settings.updater.title': 'Updates',
   'settings.updater.description': 'Check GitHub Releases for signed Basic build updates.',
   'settings.updater.check': 'Check for updates',

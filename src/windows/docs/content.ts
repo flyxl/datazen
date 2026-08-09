@@ -1,5 +1,7 @@
 import workflowGuideZh from '../../../docs/workflow-guide.md?raw';
 import workflowGuideEn from '../../../docs/workflow-guide.en.md?raw';
+import opsDashboardGuideZh from '../../../docs/ops-dashboard-guide.md?raw';
+import opsDashboardGuideEn from '../../../docs/ops-dashboard-guide.en.md?raw';
 import { renderWorkflowMarkdown } from './renderMarkdown';
 
 export type DocsSectionId =
@@ -7,7 +9,8 @@ export type DocsSectionId =
   | 'features'
   | 'ai'
   | 'context'
-  | 'workflows';
+  | 'workflows'
+  | 'opsDashboard';
 
 export interface DocsSection {
   id: DocsSectionId;
@@ -18,6 +21,8 @@ export interface DocsSection {
 
 const WORKFLOW_HTML_ZH = renderWorkflowMarkdown(workflowGuideZh);
 const WORKFLOW_HTML_EN = renderWorkflowMarkdown(workflowGuideEn);
+const OPS_DASHBOARD_HTML_ZH = renderWorkflowMarkdown(opsDashboardGuideZh);
+const OPS_DASHBOARD_HTML_EN = renderWorkflowMarkdown(opsDashboardGuideEn);
 
 export const DOCS_SECTIONS_ZH: DocsSection[] = [
   {
@@ -32,6 +37,7 @@ export const DOCS_SECTIONS_ZH: DocsSection[] = [
   <li>用自然语言生成 SQL、诊断错误、分析执行计划</li>
   <li>通过上下文文件把业务规则、表说明等注入 AI</li>
   <li>用 Workflow 把「查询 + AI + 条件/循环」串成可复用流程</li>
+  <li>用<strong>运营看板</strong>多图盯盘：后台定时刷新、阈值告警、历史回看与托盘常驻</li>
   <li>数据同步、备份恢复、配置导入导出、MCP 对接外部 AI 客户端</li>
 </ul>
 <h3>典型使用路径</h3>
@@ -41,6 +47,7 @@ export const DOCS_SECTIONS_ZH: DocsSection[] = [
   <li>在查询编辑器或 AI 侧边栏使用 NL2SQL / 对话</li>
   <li>需要时添加上下文文件，提升生成准确度</li>
   <li>把重复分析沉淀为 Workflow，一键执行</li>
+  <li>把核心业务指标做成运营看板组件，开启监控与告警</li>
 </ol>
 `,
   },
@@ -63,6 +70,13 @@ export const DOCS_SECTIONS_ZH: DocsSection[] = [
   <li><strong>错误诊断 / 执行计划分析</strong></li>
   <li><strong>上下文文件</strong>：把本地文档注入提示词</li>
   <li><strong>Workflow</strong>：YAML 编排查询与 AI 步骤</li>
+</ul>
+<h3>运营看板与监控</h3>
+<ul>
+  <li>独立窗口多图网格，组件绑定 SQL + 图表配置</li>
+  <li>后台 MonitorEngine 定时刷新；监控连接与 UI 会话隔离</li>
+  <li>桌面通知 / Webhook 阈值告警；运行历史落盘可回看</li>
+  <li>可选系统托盘：关主窗仍可继续监控（详见「运营看板」专章）</li>
 </ul>
 <h3>运维与生态</h3>
 <ul>
@@ -168,6 +182,11 @@ export const DOCS_SECTIONS_ZH: DocsSection[] = [
     title: 'Workflow 工作流',
     html: '', // filled from docs/workflow-guide.md in getDocsSections
   },
+  {
+    id: 'opsDashboard',
+    title: '运营看板',
+    html: '', // filled from docs/ops-dashboard-guide.md in getDocsSections
+  },
 ];
 
 export const DOCS_SECTIONS_EN: DocsSection[] = [
@@ -183,6 +202,7 @@ export const DOCS_SECTIONS_EN: DocsSection[] = [
   <li>Generate SQL from natural language, diagnose errors, analyze plans</li>
   <li>Inject business docs via context files</li>
   <li>Automate “query + AI + branching/loops” with Workflows</li>
+  <li>Monitor metrics on an <strong>Ops Dashboard</strong> with background refresh, threshold alerts, history, and an optional system tray</li>
   <li>Sync data, backup/restore, import/export config, and expose MCP to external AI apps</li>
 </ul>
 `,
@@ -203,6 +223,13 @@ export const DOCS_SECTIONS_EN: DocsSection[] = [
 <ul>
   <li>NL2SQL, chat with schema context, diagnostics, plan analysis</li>
   <li>Context files and YAML Workflows</li>
+</ul>
+<h3>Ops Dashboard &amp; monitoring</h3>
+<ul>
+  <li>Multi-chart grid in a dedicated window; each widget binds SQL + chart config</li>
+  <li>Background MonitorEngine with connection isolation from UI sessions</li>
+  <li>Desktop / webhook threshold alerts and persisted run history</li>
+  <li>Optional system tray so monitoring can continue after closing the main window (see the Ops Dashboard chapter)</li>
 </ul>
 `,
   },
@@ -252,16 +279,23 @@ export const DOCS_SECTIONS_EN: DocsSection[] = [
     title: 'Workflows',
     html: '', // filled from docs/workflow-guide.en.md in getDocsSections
   },
+  {
+    id: 'opsDashboard',
+    title: 'Ops Dashboard',
+    html: '', // filled from docs/ops-dashboard-guide.en.md in getDocsSections
+  },
 ];
 
 export function getDocsSections(lang: string): DocsSection[] {
   const sections = lang.startsWith('zh') ? DOCS_SECTIONS_ZH : DOCS_SECTIONS_EN;
-  return sections.map((s) =>
-    s.id === 'workflows'
-      ? {
-          ...s,
-          html: lang.startsWith('zh') ? WORKFLOW_HTML_ZH : WORKFLOW_HTML_EN,
-        }
-      : s,
-  );
+  const zh = lang.startsWith('zh');
+  return sections.map((s) => {
+    if (s.id === 'workflows') {
+      return { ...s, html: zh ? WORKFLOW_HTML_ZH : WORKFLOW_HTML_EN };
+    }
+    if (s.id === 'opsDashboard') {
+      return { ...s, html: zh ? OPS_DASHBOARD_HTML_ZH : OPS_DASHBOARD_HTML_EN };
+    }
+    return s;
+  });
 }
