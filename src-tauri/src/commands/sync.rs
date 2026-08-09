@@ -958,11 +958,12 @@ mod tests {
             vec!["id".into()],
         );
 
-        let diff = diff_table_schemas(&src, &tgt);
+        // Source = desired state: columns on src missing from tgt are "added" (to target).
+        let diff = diff_table_schemas("users", &src, &tgt);
         assert_eq!(diff.added.len(), 1);
-        assert_eq!(diff.added[0].name, "email");
+        assert_eq!(diff.added[0].name, "legacy");
         assert_eq!(diff.removed.len(), 1);
-        assert_eq!(diff.removed[0].name, "legacy");
+        assert_eq!(diff.removed[0].name, "email");
         assert_eq!(diff.changed.len(), 1);
         assert_eq!(diff.changed[0].name, "name");
         assert!(diff.changed[0].changes.contains(&"dataType".into()));
