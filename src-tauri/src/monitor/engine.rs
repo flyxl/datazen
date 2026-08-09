@@ -171,8 +171,14 @@ impl MonitorEngine {
 
         tracing::debug!(count = table.len(), "monitor schedule reloaded");
 
-        if let Some(app) = self.app_handle.lock().expect("monitor app_handle lock").clone() {
-            crate::tray::sync_tray(&app);
+        // Use async tray sync — sync_tray() block_on would panic inside this runtime.
+        let app = self
+            .app_handle
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+        if let Some(app) = app {
+            crate::tray::sync_tray_async(&app).await;
         }
 
         Ok(())

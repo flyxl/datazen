@@ -87,10 +87,24 @@ fn handle_tray_menu_event(app: &AppHandle, id: &str) {
     }
 }
 
-/// Create, update, or remove the monitor tray icon based on settings and schedule.
+/// Sync tray from a non-async context (window/menu handlers).
+/// Prefer [`sync_tray_async`] when already inside a Tokio/Tauri async runtime —
+/// calling this from async code will panic (`block_on` nested in a runtime).
 pub fn sync_tray(app: &AppHandle) {
     let state = app.state::<AppState>();
     let settings = tauri::async_runtime::block_on(state.store.get_settings());
+    apply_tray(app, &settings);
+}
+
+/// Async tray sync — safe to call from `MonitorEngine` and other async paths.
+pub async fn sync_tray_async(app: &AppHandle) {
+    let state = app.state::<AppState>();
+    let settings = state.store.get_settings().await;
+    apply_tray(app, &settings);
+}
+
+fn apply_tray(app: &AppHandle, settings: &crate::store::AppSettings) {
+    let state = app.state::<AppState>();
     let show = settings.monitor.tray_enabled && state.monitor_engine.is_monitoring_active();
 
     if !show {
