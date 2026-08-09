@@ -186,6 +186,8 @@ export interface AppSettings {
   contextDir: string;
   /** Check GitHub for app updates on startup (Basic builds only). Default false. */
   checkForUpdatesOnStartup: boolean;
+  /** Opaque per-plugin settings keyed by plugin id (e.g. `"redis"`). */
+  pluginSettings: Record<string, unknown>;
 }
 
 export type FilterOperator =
