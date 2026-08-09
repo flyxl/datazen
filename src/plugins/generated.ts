@@ -8,6 +8,7 @@ import { invoke } from '@tauri-apps/api/core';
 import type { DatabaseTypeMeta } from '@datazen/plugin-sdk';
 import type { SqlDialectStrategy } from '@datazen/plugin-sdk';
 import type { PluginFormValidator } from '@datazen/plugin-sdk';
+import type { PluginSettingsContribution } from '@datazen/plugin-sdk';
 import type { ComponentType } from 'react';
 
 /**
@@ -96,6 +97,13 @@ export function getPluginSchemaTree(dbType: string): ComponentType<any> | undefi
   }
   return undefined;
 }
+
+// ===== Plugin Settings (Extensions UI) =====
+
+/** Plugin-provided settings sections and/or JSON Schema forms. */
+export const PLUGIN_SETTINGS_ENTRIES: PluginSettingsContribution[] = [
+
+];
 
 // ===== Plugin Commands =====
 

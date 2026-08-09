@@ -249,6 +249,8 @@ const en: Record<TranslationKey, string> = {
   // ── Settings ──
   'settings.title': 'Settings',
   'settings.general': 'General',
+  'settings.extensions.title': 'Extensions',
+  'settings.extensions.empty': 'No plugin extensions are available in this build.',
   'settings.theme': 'Theme',
   'settings.theme.pack': 'Theme pack',
   'settings.theme.packDefault': 'Built-in default',
