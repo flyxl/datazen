@@ -161,4 +161,63 @@ mod tests {
         let cmd_err = map_runs_error(err);
         assert!(matches!(cmd_err, CommandError::NotFound(msg) if msg == "run-x"));
     }
+
+    #[test]
+    fn unknown_widget_maps_to_not_found() {
+        use crate::dashboard::store::save_dashboard;
+        use crate::dashboard::types::{
+            AggregationType, ChartConfig, ChartSortBy, ChartType, Dashboard, DashboardLayout,
+            WidgetLayout,
+        };
+
+        let dir = tempfile::tempdir().unwrap();
+        let dashboard = Dashboard {
+            id: "d1".into(),
+            name: "Test".into(),
+            created_at: "2026-01-01T00:00:00Z".into(),
+            updated_at: "2026-01-01T00:00:00Z".into(),
+            layout: DashboardLayout {
+                cols: 12,
+                row_height: 80,
+            },
+            widgets: vec![crate::dashboard::types::DashboardWidget {
+                id: "w-known".into(),
+                title: "Known".into(),
+                config_id: "cfg-1".into(),
+                sql: "SELECT 1".into(),
+                chart_config: ChartConfig {
+                    chart_type: ChartType::Line,
+                    x_axis: None,
+                    y_axes: vec![],
+                    group_by: None,
+                    aggregation: AggregationType::None,
+                    sort_by: ChartSortBy::None,
+                    show_legend: true,
+                    show_grid: true,
+                    show_values: false,
+                    color_scheme: "default".into(),
+                },
+                layout: WidgetLayout {
+                    x: 0,
+                    y: 0,
+                    w: 4,
+                    h: 3,
+                },
+                refresh_sec: 60,
+                alert: None,
+                enabled: true,
+            }],
+            enabled: true,
+        };
+        save_dashboard(dir.path(), dashboard.clone()).unwrap();
+
+        let widget_id = "w-missing".to_string();
+        let err = dashboard
+            .widgets
+            .iter()
+            .find(|w| w.id == widget_id)
+            .ok_or_else(|| CommandError::NotFound(format!("widget {widget_id}")))
+            .unwrap_err();
+        assert!(matches!(err, CommandError::NotFound(msg) if msg == "widget w-missing"));
+    }
 }

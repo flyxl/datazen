@@ -7,7 +7,7 @@
 
 use std::path::Path;
 
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 use crate::dashboard::runs::{write_run, MAX_RUN_ROWS};
@@ -45,6 +45,54 @@ fn cell_to_json(value: &Option<Value>) -> serde_json::Value {
     }
 }
 
+fn build_error_run(
+    run_id: String,
+    dashboard_id: &str,
+    widget_id: &str,
+    started_at: DateTime<Utc>,
+    finished_at: DateTime<Utc>,
+    error: &str,
+) -> WidgetRun {
+    WidgetRun {
+        id: run_id,
+        dashboard_id: dashboard_id.to_string(),
+        widget_id: widget_id.to_string(),
+        started_at: started_at.to_rfc3339(),
+        finished_at: finished_at.to_rfc3339(),
+        status: WidgetRunStatus::Error,
+        error: Some(error.to_string()),
+        row_count: 0,
+        columns: Vec::new(),
+        rows: Vec::new(),
+        alert_fired: None,
+        alert_value: None,
+    }
+}
+
+/// Build and persist an error-status run using monitor retention settings.
+pub(crate) fn persist_error_run(
+    data_dir: &Path,
+    settings: &AppSettings,
+    dashboard_id: &str,
+    widget: &DashboardWidget,
+    run_id: &str,
+    started_at: DateTime<Utc>,
+    finished_at: DateTime<Utc>,
+    error: &str,
+) -> Result<WidgetRun, DashboardExecuteError> {
+    let run = build_error_run(
+        run_id.to_string(),
+        dashboard_id,
+        &widget.id,
+        started_at,
+        finished_at,
+        error,
+    );
+    let retention = load_monitor_settings(settings);
+    write_run(data_dir, &run, &retention)?;
+    Ok(run)
+}
+
 fn statement_to_run_fields(stmt: &StatementResult) -> (Vec<String>, Vec<Vec<serde_json::Value>>, u32) {
     let columns: Vec<String> = stmt.columns.iter().map(|c| c.name.clone()).collect();
     let rows: Vec<Vec<serde_json::Value>> = stmt
@@ -68,7 +116,21 @@ pub async fn execute_widget_once(
     let run_id = Uuid::new_v4().to_string();
 
     // Dedicated handle — do not reuse UI sessions via get_or_connect.
-    let connection_id = connection_manager.connect(&widget.config_id).await?;
+    let connection_id = match connection_manager.connect(&widget.config_id).await {
+        Ok(id) => id,
+        Err(err) => {
+            return persist_error_run(
+                data_dir,
+                settings,
+                dashboard_id,
+                widget,
+                &run_id,
+                started_at,
+                Utc::now(),
+                &err.to_string(),
+            );
+        }
+    };
     let query_result = async {
         let (driver, handle) = connection_manager
             .get_connection(&connection_id)
@@ -83,7 +145,13 @@ pub async fn execute_widget_once(
     }
     .await;
 
-    let _ = connection_manager.disconnect(&connection_id).await;
+    if let Err(err) = connection_manager.disconnect(&connection_id).await {
+        tracing::warn!(
+            connection_id = %connection_id,
+            error = %err,
+            "failed to disconnect monitor connection"
+        );
+    }
 
     let finished_at = Utc::now();
 
@@ -129,24 +197,94 @@ pub async fn execute_widget_once(
                 },
             }
         }
-        Err(err) => WidgetRun {
-            id: run_id,
-            dashboard_id: dashboard_id.to_string(),
-            widget_id: widget.id.clone(),
-            started_at: started_at.to_rfc3339(),
-            finished_at: finished_at.to_rfc3339(),
-            status: WidgetRunStatus::Error,
-            error: Some(err.to_string()),
-            row_count: 0,
-            columns: Vec::new(),
-            rows: Vec::new(),
-            alert_fired: None,
-            alert_value: None,
-        },
+        Err(err) => build_error_run(
+            run_id,
+            dashboard_id,
+            &widget.id,
+            started_at,
+            finished_at,
+            &err.to_string(),
+        ),
     };
 
     let retention = load_monitor_settings(settings);
     write_run(data_dir, &run, &retention)?;
 
     Ok(run)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::dashboard::runs::{get_run, list_run_index};
+    use crate::dashboard::types::{
+        AggregationType, ChartConfig, ChartSortBy, ChartType, WidgetLayout,
+    };
+    use crate::store::AppSettings;
+
+    fn sample_widget() -> DashboardWidget {
+        DashboardWidget {
+            id: "w1".into(),
+            title: "Test".into(),
+            config_id: "cfg-missing".into(),
+            sql: "SELECT 1".into(),
+            chart_config: ChartConfig {
+                chart_type: ChartType::Line,
+                x_axis: None,
+                y_axes: vec![],
+                group_by: None,
+                aggregation: AggregationType::None,
+                sort_by: ChartSortBy::None,
+                show_legend: true,
+                show_grid: true,
+                show_values: false,
+                color_scheme: "default".into(),
+            },
+            layout: WidgetLayout {
+                x: 0,
+                y: 0,
+                w: 4,
+                h: 3,
+            },
+            refresh_sec: 60,
+            alert: None,
+            enabled: true,
+        }
+    }
+
+    #[test]
+    fn persist_error_run_writes_index_and_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let widget = sample_widget();
+        let started_at = Utc::now();
+        let finished_at = started_at + chrono::Duration::seconds(1);
+        let settings = AppSettings::default();
+
+        let run = persist_error_run(
+            dir.path(),
+            &settings,
+            "d1",
+            &widget,
+            "run-connect-err",
+            started_at,
+            finished_at,
+            "Connection error: config not found",
+        )
+        .unwrap();
+
+        assert_eq!(run.status, WidgetRunStatus::Error);
+        assert_eq!(
+            run.error.as_deref(),
+            Some("Connection error: config not found")
+        );
+
+        let index = list_run_index(dir.path(), "d1", "w1", 10).unwrap();
+        assert_eq!(index.len(), 1);
+        assert_eq!(index[0].id, "run-connect-err");
+        assert_eq!(index[0].status, WidgetRunStatus::Error);
+
+        let loaded = get_run(dir.path(), "d1", "w1", "run-connect-err").unwrap();
+        assert_eq!(loaded.status, WidgetRunStatus::Error);
+        assert_eq!(loaded.error, run.error);
+    }
 }
