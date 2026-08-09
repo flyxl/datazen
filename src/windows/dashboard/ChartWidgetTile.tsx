@@ -39,6 +39,8 @@ export function ChartWidgetTile({
         'flex min-h-0 flex-col overflow-hidden rounded-lg border border-edge bg-surface-raised',
         !widget.enabled && 'opacity-60',
       )}
+      data-testid="dashboard-tile"
+      data-widget-id={widget.id}
       style={{
         gridColumn: `${widget.layout.x + 1} / span ${widget.layout.w}`,
         gridRow: `${widget.layout.y + 1} / span ${widget.layout.h}`,
@@ -54,16 +56,29 @@ export function ChartWidgetTile({
         <Button
           variant="ghost"
           className="h-6 w-6 px-0"
+          data-testid="dashboard-tile-refresh"
           title={t('dashboard.refreshWidget')}
           disabled={busy}
           onClick={onRefresh}
         >
           {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
         </Button>
-        <Button variant="ghost" className="h-6 w-6 px-0" title={t('dashboard.history')} onClick={onHistory}>
+        <Button
+          variant="ghost"
+          className="h-6 w-6 px-0"
+          data-testid="dashboard-tile-history"
+          title={t('dashboard.history')}
+          onClick={onHistory}
+        >
           <History className="h-3.5 w-3.5" />
         </Button>
-        <Button variant="ghost" className="h-6 w-6 px-0" title={t('dashboard.editWidget')} onClick={onEdit}>
+        <Button
+          variant="ghost"
+          className="h-6 w-6 px-0"
+          data-testid="dashboard-tile-edit"
+          title={t('dashboard.editWidget')}
+          onClick={onEdit}
+        >
           <Pencil className="h-3.5 w-3.5" />
         </Button>
       </div>

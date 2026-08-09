@@ -779,13 +779,13 @@ export function MainWindow() {
             <Button variant="ghost" onClick={() => setDashboardDialogOpen(false)}>
               {t('common.close')}
             </Button>
-            <Button onClick={() => void handleCreateDashboard()}>
+            <Button data-testid="dashboard-create" onClick={() => void handleCreateDashboard()}>
               {t('dashboard.create')}
             </Button>
           </>
         }
       >
-        <div className="space-y-3">
+        <div className="space-y-3" data-testid="dashboard-dialog">
           {listError && (
             <div className="rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
               {listError}
@@ -794,6 +794,7 @@ export function MainWindow() {
           <label className="block space-y-1">
             <span className="text-xs text-fg-muted">{t('dashboard.name')}</span>
             <Input
+              data-testid="dashboard-name-input"
               value={newDashboardName}
               onChange={(e) => setNewDashboardName(e.target.value)}
               placeholder={t('dashboard.defaultName')}
@@ -810,9 +811,10 @@ export function MainWindow() {
               <span className="text-xs text-fg-muted">{t('dashboard.existing')}</span>
               <ul className="max-h-48 space-y-1 overflow-auto rounded-md border border-edge p-1">
                 {dashboards.map((d) => (
-                  <li key={d.id} className="flex items-center gap-1">
+                  <li key={d.id} className="flex items-center gap-1" data-testid={`dashboard-list-item-${d.id}`}>
                     <button
                       type="button"
+                      data-testid={`dashboard-open-${d.id}`}
                       className="min-w-0 flex-1 truncate rounded px-2 py-1.5 text-left text-sm hover:bg-surface-raised"
                       onClick={() => {
                         setDashboardDialogOpen(false);
@@ -824,6 +826,7 @@ export function MainWindow() {
                     <Button
                       variant="ghost"
                       className="h-7 shrink-0 px-2 text-xs text-red-400"
+                      data-testid={`dashboard-delete-${d.id}`}
                       onClick={() => void deleteDashboard(d.id)}
                     >
                       {t('common.delete')}
