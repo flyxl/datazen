@@ -346,7 +346,7 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
               className={cn(
                 'flex items-center gap-2 px-3 py-2 text-left text-sm transition-colors',
                 selectedDb === db
-                  ? 'bg-blue-500/10 text-blue-400 font-medium'
+                  ? 'bg-accent/10 text-accent font-medium'
                   : 'text-fg-secondary hover:bg-surface-raised hover:text-fg',
               )}
               onClick={() => handleSelectDb(db)}
@@ -393,7 +393,7 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
                   <>
                     <Button
                       variant="secondary"
-                      className="h-7 px-2 text-xs text-red-400"
+                      className="h-7 px-2 text-xs text-danger"
                       onClick={() => {
                         setFlushConfirm('');
                         setFlushError(null);
@@ -404,7 +404,7 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
                     </Button>
                     <Button
                       variant="secondary"
-                      className="h-7 px-2 text-xs text-red-400"
+                      className="h-7 px-2 text-xs text-danger"
                       onClick={() => {
                         setFlushConfirm('');
                         setFlushError(null);
@@ -560,7 +560,7 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
               placeholder={t('redis.value')}
               className="h-8 font-mono text-xs"
             />
-            {createError && <p className="text-red-400">{createError}</p>}
+            {createError && <p className="text-danger">{createError}</p>}
           </div>
         </Dialog>
 
@@ -605,7 +605,7 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
               </Button>
               <Button
                 variant="primary"
-                className="h-8 px-3 text-xs text-red-400"
+                className="h-8 px-3 text-xs text-danger"
                 disabled={!flushConfirmOk || flushBusy}
                 onClick={() => void handleFlush()}
               >
@@ -621,7 +621,7 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
               placeholder={t('redis.typeConfirmPlaceholder')}
               className="h-8 font-mono text-xs"
             />
-            {flushError && <p className="text-red-400">{flushError}</p>}
+            {flushError && <p className="text-danger">{flushError}</p>}
           </div>
         </Dialog>
       </div>
@@ -662,12 +662,12 @@ function KeyTable({
   });
 
   const TYPE_COLORS: Record<string, string> = {
-    string: 'text-green-400',
-    hash: 'text-blue-400',
-    list: 'text-orange-400',
-    set: 'text-purple-400',
-    zset: 'text-yellow-400',
-    stream: 'text-cyan-400',
+    string: 'text-success',
+    hash: 'text-accent',
+    list: 'text-warning',
+    set: 'text-fg-secondary',
+    zset: 'text-danger',
+    stream: 'text-fg-muted',
   };
 
   const columns = [
@@ -729,7 +729,7 @@ function KeyTable({
                 >
                   <button
                     type="button"
-                    className="text-xs text-blue-400 hover:underline"
+                    className="text-xs text-accent hover:underline"
                     onClick={onLoadMore}
                     disabled={loading}
                   >
@@ -753,11 +753,11 @@ function KeyTable({
                 className={cn(
                   'absolute left-0 flex w-full cursor-pointer border-b border-edge',
                   isSelected
-                    ? 'bg-blue-500/10'
+                    ? 'bg-accent/10'
                     : vRow.index % 2 === 0
                       ? 'bg-surface'
                       : 'bg-surface-raised/50',
-                  'hover:bg-blue-500/5',
+                  'hover:bg-accent/5',
                 )}
                 style={{ top: vRow.start, height: ROW_HEIGHT }}
                 onClick={() => onSelectKey(entry.key)}

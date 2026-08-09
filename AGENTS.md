@@ -78,6 +78,16 @@ DATAZEN_DRIVERS=all pnpm tauri:build   # 全部 path 原生驱动（不含 kiwi/
 - **默认 DB 角标**：`packages/drivers/*/ui/icons/{dbType}.svg`；`resolve-drivers.mjs` 生成 `DRIVER_ICON_ENTRIES`（`getDriverIconMap()`）
 - **关键 trait 方法**：`supports_offset()`（默认 true）、`supports_explain()`（默认 true）、`prompt_overrides()`
 
+### Redis 驱动（E1–E4）
+
+深度能力集中在 `packages/drivers/redis`（UI + `plugin:redis|*`），宿主 `RedisConnectionView` 仅为薄 Tab 壳；**禁止** Host 按 `pluginId === 'redis'` 写设置分支。
+
+- **Tabs**：数据浏览（Workbench）/ 命令台（Console）/ Monitor（Info·Memory·Slowlog·Stream 概览）/ Pub/Sub
+- **拓扑**：Standalone / Cluster / Sentinel + mTLS；连接扩展字段走 `ConnectionConfig.options`（opaque bag，Host 原样 round-trip）
+- **设置**：`AppSettings.pluginSettings.redis`（如 `allowFlush`、`clusterRouting: auto|pinnedNode`）
+- **主题**：UI 用语义色（`accent` / `danger` / `success` / `warning` / `surface` / `fg`）；主题包可覆盖 `icons/db.redis.*`；与全局换肤一致
+- **设计 / 计划**：[E1](docs/superpowers/specs/2026-08-09-redis-deep-ops-e1-design.md)、[E2–E4](docs/superpowers/specs/2026-08-09-redis-deep-ops-e2-e4-design.md)
+
 ### AI 模块
 
 - **Provider**：OpenAI / Anthropic / DeepSeek / Custom（三种协议：Chat/Responses/Anthropic 兼容）
@@ -106,8 +116,9 @@ DATAZEN_DRIVERS=all pnpm tauri:build   # 全部 path 原生驱动（不含 kiwi/
 - **IPC**：`list_theme_packs`, `install_theme_pack_with_dialog`, `remove_theme_pack`, `read_theme_pack_file`
 - **Rust**：`src-tauri/src/theme/`（validate/install）、`commands/theme.rs`
 - **前端**：`src/commands/theme.ts`、`src/lib/themePackApply.ts`（注入 `<style id="datazen-theme-pack">`）、`src/lib/iconResolver.ts`、`ThemedIcon`、`DbTypeBadge`；设置页 `ThemePackSection`
-- **图标解析**：pack → Lucide/驱动 → 占位；`db.*` 走 pack → 驱动 SVG → shortLabel 色块
+- **图标解析**：pack → Lucide/驱动 → 占位；`db.*` 走 pack → 驱动 SVG → shortLabel 色块（含 `db.redis`）
 - **字体**：`--font-sans` / `--font-mono` / `--font-editor`；用户 `editorFontFamily` 显式设置优先
+- **与驱动 UI**：驱动页面应使用语义 Tailwind（`bg-surface` / `text-accent` / `text-danger` 等），勿写死 `blue-400` / `red-400` 调色板类，以便换 pack 时与主应用一致
 - **设计 / 计划 / 样例**：[spec](docs/superpowers/specs/2026-08-08-runtime-theme-packs-design.md)、[plan](docs/superpowers/plans/2026-08-09-runtime-theme-packs.md)、`fixtures/themes/community.fixture-dark/`
 - **商店 / CDN 下载**：未实现（后续独立计划）
 
@@ -141,6 +152,7 @@ DATAZEN_DRIVERS=all pnpm tauri:build   # 全部 path 原生驱动（不含 kiwi/
 | @ 上下文 | `components/ai/ContextPicker.tsx` | `commands/context.rs` |
 | Workflows | `windows/workflow/WorkflowWindow.tsx` | `workflow/workflows.rs` |
 | 数据同步 | `windows/data-sync/` | `sync/` (IR 适配器) |
+| Redis 深度运维 | `packages/drivers/redis/ui/*` + 薄壳 `RedisConnectionView` | `plugin:redis|*`（drivers/redis） |
 | 主题包 | `windows/settings/ThemePackSection.tsx` + `lib/themePackApply.ts` | `theme/` + `commands/theme.rs` |
 
 ## 开发命令
@@ -172,7 +184,7 @@ pnpm e2e:minimal                       # 更快：DATAZEN_DRIVERS=basic，跳过
 pnpm e2e:skip-build                    # 跳过构建（仅当已有合格的 webdriver debug 二进制）
 pnpm e2e:skip-build -- --spec e2e/specs/path-ipc-hardening.ts
 pnpm e2e:core                          # 核心 UI（默认 skip-build）
-pnpm e2e:db / e2e:ai / e2e:kiwi        # 分组
+pnpm e2e:db / e2e:ai / e2e:kiwi / e2e:redis  # 分组（redis 含 topology 可选用例）
 pnpm e2e:i18n-backup / e2e:path-ipc    # 备份·i18n / 路径 IPC
 ```
 

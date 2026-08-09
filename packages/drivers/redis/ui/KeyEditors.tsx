@@ -255,7 +255,7 @@ export function KeyDetailEditor({
     <div className="space-y-3 text-xs">
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-medium text-fg-muted">{t('redis.type')}:</span>
-        <span className="rounded bg-blue-500/10 px-1.5 py-0.5 text-blue-400">
+        <span className="rounded bg-accent/10 px-1.5 py-0.5 text-accent">
           {detail.keyType}
         </span>
         <span className="font-medium text-fg-muted">TTL:</span>
@@ -329,7 +329,7 @@ export function KeyDetailEditor({
       </div>
 
       {error && (
-        <div className="rounded-md border border-red-500/20 bg-red-500/10 px-2 py-1.5 text-red-400">
+        <div className="rounded-md border border-danger/20 bg-danger/10 px-2 py-1.5 text-danger">
           {error}
         </div>
       )}
@@ -526,7 +526,7 @@ function HashEditor({
                   </Button>
                   <button
                     type="button"
-                    className="rounded p-1 text-red-400 hover:bg-red-500/10"
+                    className="rounded p-1 text-danger hover:bg-danger/10"
                     onClick={() =>
                       void invokeHashDel(connectionId, dbIndex, detail.key, [field]).then(
                         onChanged,
@@ -671,7 +671,7 @@ function ListEditor({
                 ) : (
                   <button
                     type="button"
-                    className="text-xs text-blue-400 hover:underline"
+                    className="text-xs text-accent hover:underline"
                     onClick={() => {
                       setEditIndex(i);
                       setEditValue(String(item));
@@ -764,7 +764,7 @@ function SetEditor({
               <td className="px-2 py-1.5">
                 <button
                   type="button"
-                  className="rounded p-1 text-red-400 hover:bg-red-500/10"
+                  className="rounded p-1 text-danger hover:bg-danger/10"
                   onClick={() =>
                     void invokeSetRemove(connectionId, dbIndex, detail.key, [member]).then(
                       onChanged,
@@ -845,7 +845,7 @@ function ZsetEditor({
               <td className="px-2 py-1.5">
                 <button
                   type="button"
-                  className="rounded p-1 text-red-400 hover:bg-red-500/10"
+                  className="rounded p-1 text-danger hover:bg-danger/10"
                   onClick={() =>
                     void invokeZsetRemove(connectionId, dbIndex, detail.key, [
                       item.member,

@@ -198,7 +198,7 @@ export function PubSubPanel({ connectionId }: PubSubPanelProps) {
           <label className="block text-xs text-fg-secondary">
             {t('redis.pubsubChannels')}
             <textarea
-              className="mt-1 w-full rounded-md border border-edge bg-surface px-3 py-2 font-mono text-xs text-fg outline-none focus:border-blue-500"
+              className="mt-1 w-full rounded-md border border-edge bg-surface px-3 py-2 font-mono text-xs text-fg outline-none focus:border-accent"
               rows={3}
               placeholder={t('redis.pubsubChannelsPlaceholder')}
               value={channelsInput}
@@ -209,7 +209,7 @@ export function PubSubPanel({ connectionId }: PubSubPanelProps) {
           <label className="block text-xs text-fg-secondary">
             {t('redis.pubsubPatterns')}
             <textarea
-              className="mt-1 w-full rounded-md border border-edge bg-surface px-3 py-2 font-mono text-xs text-fg outline-none focus:border-blue-500"
+              className="mt-1 w-full rounded-md border border-edge bg-surface px-3 py-2 font-mono text-xs text-fg outline-none focus:border-accent"
               rows={2}
               placeholder={t('redis.pubsubPatternsPlaceholder')}
               value={patternsInput}
@@ -236,13 +236,13 @@ export function PubSubPanel({ connectionId }: PubSubPanelProps) {
           <h3 className="text-sm font-medium text-fg">{t('redis.pubsubPublish')}</h3>
           <div className="mt-3 space-y-2">
             <input
-              className="w-full rounded-md border border-edge bg-surface px-3 py-2 font-mono text-xs text-fg outline-none focus:border-blue-500"
+              className="w-full rounded-md border border-edge bg-surface px-3 py-2 font-mono text-xs text-fg outline-none focus:border-accent"
               placeholder={t('redis.pubsubPublishChannelPlaceholder')}
               value={publishChannel}
               onChange={(e) => setPublishChannel(e.target.value)}
             />
             <textarea
-              className="w-full rounded-md border border-edge bg-surface px-3 py-2 font-mono text-xs text-fg outline-none focus:border-blue-500"
+              className="w-full rounded-md border border-edge bg-surface px-3 py-2 font-mono text-xs text-fg outline-none focus:border-accent"
               rows={3}
               placeholder={t('redis.pubsubPublishMessagePlaceholder')}
               value={publishMessage}
@@ -321,7 +321,7 @@ export function PubSubPanel({ connectionId }: PubSubPanelProps) {
         </div>
 
         {error && (
-          <div className="border-b border-red-500/20 bg-red-500/10 px-4 py-2 text-sm text-red-400">
+          <div className="border-b border-danger/20 bg-danger/10 px-4 py-2 text-sm text-danger">
             {error}
           </div>
         )}

@@ -337,7 +337,7 @@ export function BatchBar({
           </>
         }
       >
-        {error && <p className="text-red-400">{error}</p>}
+        {error && <p className="text-danger">{error}</p>}
       </Dialog>
 
       <Dialog
@@ -376,7 +376,7 @@ export function BatchBar({
               {t('redis.matchCount').replace('{count}', String(matchCount))}
             </p>
           )}
-          {error && <p className="text-red-400">{error}</p>}
+          {error && <p className="text-danger">{error}</p>}
         </div>
       </Dialog>
 
@@ -417,7 +417,7 @@ export function BatchBar({
               className="h-8 text-xs"
             />
           )}
-          {error && <p className="text-red-400">{error}</p>}
+          {error && <p className="text-danger">{error}</p>}
         </div>
       </Dialog>
 
@@ -459,7 +459,7 @@ export function BatchBar({
               {t('redis.selectedCount').replace('{count}', String(selectedKeys.length))}
             </p>
           )}
-          {error && <p className="text-red-400">{error}</p>}
+          {error && <p className="text-danger">{error}</p>}
         </div>
       </Dialog>
     </>

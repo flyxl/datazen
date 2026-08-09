@@ -83,7 +83,9 @@ cp e2e/.env.example e2e/.env
 |----------|------|
 | `E2E_PG_*` / `PG_*` | PostgreSQL（多数核心 / DB spec 需要） |
 | `E2E_MYSQL_*` | MySQL |
-| `E2E_REDIS_*` | Redis |
+| `E2E_REDIS_*` | Redis Standalone（`redis.ts`）：`HOST` / `PORT` / `PASSWORD` |
+| `E2E_REDIS_CLUSTER_*` | 可选 Cluster（`redis-topology.ts`）：`CLUSTER_NODES`、`CLUSTER_PASSWORD`；未设置则跳过 |
+| `E2E_REDIS_SENTINEL_*` | 可选 Sentinel（`redis-topology.ts`）：`SENTINEL_NODES`、`SENTINEL_MASTER_NAME`、密码等；未设置则跳过 |
 | `E2E_KIWI_*` | Kiwi 插件 |
 | `E2E_AI_*` | AI 功能 E2E |
 | `DATAZEN_DRIVERS=basic` | E2E 构建时仅 basic 四核心驱动（跳过 Git / 其余 path 驱动）（见 `pnpm e2e:minimal`） |
@@ -118,7 +120,7 @@ e2e/wdio.conf.ts
 | 路径 IPC / 备份 | `path-ipc-hardening.ts`, `app-data-backup.ts`, `backup-database.ts` |
 | i18n | `i18n-10-locales.ts`, `system-locale.ts` |
 | AI / Workflow | `ai-features.ts`, `ai-context.ts`, `workflow.ts`, `workflow-window.ts` |
-| 驱动 | `sqlite.ts`, `mysql.ts`, `redis.ts`, `kiwi.ts` |
+| 驱动 | `sqlite.ts`, `mysql.ts`, `redis.ts`, `redis-topology.ts`（可选 Cluster/Sentinel）, `kiwi.ts` |
 
 完整列表与分层测试见 [architecture/testing.md](./architecture/testing.md)。
 

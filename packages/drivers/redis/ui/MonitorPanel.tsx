@@ -298,7 +298,7 @@ function MemoryPane({
       emptyMessage={t('redis.memoryEmpty')}
     >
       {result?.truncated && (
-        <div className="border-b border-amber-500/20 bg-amber-500/10 px-4 py-2 text-xs text-amber-300">
+        <div className="border-b border-warning/20 bg-warning/10 px-4 py-2 text-xs text-warning">
           {t('redis.memoryTruncated')}
         </div>
       )}
@@ -384,7 +384,7 @@ function SlowlogPane({ connectionId }: { connectionId: string }) {
         toolbar={
           <Button
             variant="secondary"
-            className="h-7 gap-1 px-2 text-xs text-red-400 hover:text-red-300"
+            className="h-7 gap-1 px-2 text-xs text-danger hover:text-danger"
             onClick={() => {
               setResetError(null);
               setResetOpen(true);
@@ -463,7 +463,7 @@ function SlowlogPane({ connectionId }: { connectionId: string }) {
         }
       >
         {resetError ? (
-          <div className="rounded-md border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-400">
+          <div className="rounded-md border border-danger/20 bg-danger/10 px-3 py-2 text-sm text-danger">
             {resetError}
           </div>
         ) : null}
@@ -512,7 +512,7 @@ function MonitorPaneShell({
       </div>
 
       {error && (
-        <div className="border-b border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+        <div className="border-b border-danger/20 bg-danger/10 px-4 py-3 text-sm text-danger">
           {error}
         </div>
       )}

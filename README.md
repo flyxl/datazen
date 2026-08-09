@@ -53,7 +53,7 @@
 - **SSH tunneling** — Connect via bastion; pure Rust, no local `ssh` client required
 - **SQL editor** — Syntax highlighting, table/column autocomplete, multi-statement runs, EXPLAIN viz
 - **Data browser** — Virtual scrolling, inline edit, sort/filter, pagination
-- **Redis view** — Database list + key browser (String / Hash / List / Set / ZSet / Stream)
+- **Redis deep ops** — Key browser (all types + batch + Size + gated Flush); command console; Monitor (Info / Memory / Slowlog / Stream); Standalone / Cluster / Sentinel + mTLS; Pub/Sub; RedisJSON (module probe); DUMP/RESTORE import/export
 - **Import / export** — CSV, JSON, SQL
 - **Backup** — One-click SQL dump (schema-only, data-only, gzip)
 - **Cross-DB sync** — PG ↔ MySQL schema compare and data sync with resume
@@ -68,7 +68,7 @@
 - **SSH 隧道** — 通过跳板机安全连接远程数据库，纯 Rust 实现，无需本地安装 SSH 客户端
 - **智能 SQL 编辑器** — 语法高亮、自动补全（表名 + 列名）、多语句执行、执行计划可视化
 - **数据浏览与编辑** — 虚拟滚动表格、行内编辑、排序/筛选、分页导航
-- **Redis 专属视图** — 左侧 Database 列表 + 右侧 Key 浏览器，支持所有数据类型
+- **Redis 深度运维** — Key 浏览（全类型 + 批量 + Size + 门控 Flush）；命令台；Monitor（Info / Memory / Slowlog / Stream）；Standalone / Cluster / Sentinel + mTLS；Pub/Sub；RedisJSON（模块探测）；DUMP/RESTORE 导入导出
 - **数据导入/导出** — CSV、JSON、SQL 格式互转
 - **数据库备份** — 一键备份为 SQL 文件（Schema / Data / Gzip）
 - **数据同步** — PG ↔ MySQL 表结构对比与数据同步，支持断点续传

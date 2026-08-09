@@ -71,7 +71,7 @@ DataGrip 强在 **IDE 级数据库开发**，不是「轻量看表」：
 
 ## 4. DataGrip 有、DataZen 没有（或不对等）的能力
 
-以下以 2026-08 仓库能力为准。DataZen **已有**且本节不当作缺口的能力包括：多窗口、表浏览/行内编辑、基础表列补全、多语句执行、EXPLAIN 可视化、ER 图、备份、PG↔MySQL 同步、Redis、导入导出、AI / Workflow / MCP 等。
+以下以 2026-08 仓库能力为准。DataZen **已有**且本节不当作缺口的能力包括：多窗口、表浏览/行内编辑、基础表列补全、多语句执行、EXPLAIN 可视化、ER 图、备份、PG↔MySQL 同步、Redis 深度运维（E1–E4：Workbench / Console / Monitor / Cluster·Sentinel·mTLS / Pub/Sub / RedisJSON / Stream / DUMP·RESTORE）、导入导出、AI / Workflow / MCP 等。
 
 ### 4.1 SQL / IDE 智能（差距最大）
 
