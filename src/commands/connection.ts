@@ -47,8 +47,11 @@ export const connectionCommands = {
     }),
 
   importConnectionsWithDialog: (password: string) =>
-    invoke<{ imported: number; overwritten: number; groupsAdded: number } | null>(
-      'import_connections_with_dialog',
-      { password },
-    ),
+    invoke<{
+      imported: number;
+      overwritten: number;
+      groupsAdded: number;
+      skipped?: string[];
+      sourceFormat?: string;
+    } | null>('import_connections_with_dialog', { password }),
 };

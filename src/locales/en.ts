@@ -141,10 +141,16 @@ const en: Record<TranslationKey, string> = {
   'connShare.confirmPassword': 'Confirm Password',
   'connShare.passwordRequired': 'Password is required',
   'connShare.passwordMismatch': 'Passwords do not match',
+  'connShare.passwordOptional': 'optional for DataGrip / Navicat / DBeaver / DBX plain',
+  'connShare.passwordImportPlaceholder': 'Required for DataZen / DBX encrypted / TablePlus',
+  'connShare.importFormatsHint':
+    'Supports DataZen, DBX, DataGrip (dataSources.xml), Navicat (.ncx), DBeaver (data-sources.json), and TablePlus (.tableplusconnection). Place credentials-config.json beside data-sources.json to import DBeaver passwords when possible.',
   'connShare.exportAction': 'Export…',
   'connShare.importAction': 'Import…',
   'connShare.exportSuccess': 'Exported {count} connection(s)',
   'connShare.importSuccess': 'Imported {imported} new, updated {overwritten}, added {groupsAdded} group(s)',
+  'connShare.importSuccessWithSkipped':
+    'Imported {imported} new, updated {overwritten}, added {groupsAdded} group(s), skipped {skipped} unsupported',
   'connShare.exportFailed': 'Export failed',
   'connShare.importFailed': 'Import failed',
 

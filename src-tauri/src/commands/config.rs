@@ -1,3 +1,4 @@
+use super::connection_import::{self, format_label, parse_import_file};
 use super::error::{CmdExt, CommandError};
 use super::AppState;
 use crate::app_data_archive;
@@ -6,9 +7,6 @@ use crate::i18n_locale;
 use crate::store::AppSettings;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeSet, HashSet};
-use aes_gcm::aead::{Aead, KeyInit};
-use aes_gcm::{Aes256Gcm, Key, Nonce};
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use std::path::PathBuf;
 use tauri::{AppHandle, State};
 
@@ -151,35 +149,16 @@ pub async fn open_path(state: State<'_, AppState>, path: String) -> Result<(), C
     open::that(&canonical).map_err(|e| CommandError::Internal(format!("open_path: {e}")))
 }
 
-fn derive_key_from_password(password: &str, salt: &[u8]) -> Result<[u8; 32], CommandError> {
-    use argon2::Argon2;
-
-    let mut key = [0u8; 32];
-    Argon2::default()
-        .hash_password_into(password.as_bytes(), salt, &mut key)
-        .map_err(|e| CommandError::Internal(format!("Key derivation failed: {e}")))?;
-    Ok(key)
-}
-
-fn encrypt_with_key(plaintext: &str, key: &[u8; 32]) -> Result<String, CommandError> {
-    let cipher_key = Key::<Aes256Gcm>::from_slice(key);
-    let cipher = Aes256Gcm::new(cipher_key);
-    let mut nonce_bytes = [0u8; 12];
-    rand::RngCore::fill_bytes(&mut rand::thread_rng(), &mut nonce_bytes);
-    let nonce = Nonce::from_slice(&nonce_bytes);
-    let ciphertext = cipher.encrypt(nonce, plaintext.as_bytes())
-        .map_err(|e| CommandError::Internal(format!("Encryption failed: {}", e)))?;
-    let mut combined = nonce_bytes.to_vec();
-    combined.extend(ciphertext);
-    Ok(BASE64.encode(combined))
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ImportConnectionsResult {
     pub imported: u32,
     pub overwritten: u32,
     pub groups_added: u32,
+    #[serde(default)]
+    pub skipped: Vec<String>,
+    #[serde(default)]
+    pub source_format: String,
 }
 
 fn validate_share_password(password: &str) -> Result<(), CommandError> {
@@ -221,140 +200,7 @@ fn build_encrypted_connections_export(
     password: &str,
 ) -> Result<String, CommandError> {
     validate_share_password(password)?;
-
-    let mut salt = [0u8; 16];
-    rand::RngCore::fill_bytes(&mut rand::thread_rng(), &mut salt);
-    let key = derive_key_from_password(password, &salt)?;
-
-    let mut export_conns = Vec::new();
-    for conn in connections {
-        let mut c = conn.clone();
-        if let Some(pw) = &c.password {
-            if !pw.is_empty() {
-                c.password = Some(encrypt_with_key(pw, &key)?);
-            }
-        }
-        if let Some(ref mut ssh) = c.ssh_tunnel {
-            if let Some(pw) = &ssh.password {
-                if !pw.is_empty() {
-                    ssh.password = Some(encrypt_with_key(pw, &key)?);
-                }
-            }
-            if let Some(pp) = &ssh.passphrase {
-                if !pp.is_empty() {
-                    ssh.passphrase = Some(encrypt_with_key(pp, &key)?);
-                }
-            }
-        }
-        export_conns.push(c);
-    }
-
-    let export_data = serde_json::json!({
-        "version": 2,
-        "encrypted": true,
-        "salt": BASE64.encode(salt),
-        "exportedAt": chrono::Utc::now().to_rfc3339(),
-        "app": "DataZen",
-        "connections": export_conns,
-        "groups": groups,
-    });
-
-    serde_json::to_string_pretty(&export_data).cmd_err("build_encrypted_connections_export")
-}
-
-fn decrypt_connections_import(
-    content: &str,
-    password: &str,
-) -> Result<(Vec<ConnectionConfig>, Vec<String>), CommandError> {
-    validate_share_password(password)?;
-
-    let mut data: serde_json::Value =
-        serde_json::from_str(content).cmd_err("decrypt_connections_import")?;
-
-    if data.get("connections").is_none() {
-        return Err(CommandError::Validation(
-            "Invalid import file: missing 'connections' field".into(),
-        ));
-    }
-
-    let is_encrypted = data
-        .get("encrypted")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-
-    if is_encrypted {
-        let salt_b64 = data.get("salt").and_then(|v| v.as_str()).unwrap_or("");
-        let salt = BASE64
-            .decode(salt_b64)
-            .map_err(|e| CommandError::Internal(format!("Base64 decode failed: {e}")))?;
-        let key = derive_key_from_password(password, &salt)?;
-
-        if let Some(conns) = data.get_mut("connections").and_then(|v| v.as_array_mut()) {
-            for conn in conns.iter_mut() {
-                if let Some(pw) = conn
-                    .get("password")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string())
-                {
-                    if !pw.is_empty() {
-                        let decrypted = decrypt_with_key(&pw, &key)?;
-                        conn["password"] = serde_json::Value::String(decrypted);
-                    }
-                }
-                if let Some(ssh) = conn.get_mut("sshTunnel") {
-                    if let Some(pw) = ssh
-                        .get("password")
-                        .and_then(|v| v.as_str())
-                        .map(|s| s.to_string())
-                    {
-                        if !pw.is_empty() {
-                            let decrypted = decrypt_with_key(&pw, &key)?;
-                            ssh["password"] = serde_json::Value::String(decrypted);
-                        }
-                    }
-                    if let Some(pp) = ssh
-                        .get("passphrase")
-                        .and_then(|v| v.as_str())
-                        .map(|s| s.to_string())
-                    {
-                        if !pp.is_empty() {
-                            let decrypted = decrypt_with_key(&pp, &key)?;
-                            ssh["passphrase"] = serde_json::Value::String(decrypted);
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    let connections: Vec<ConnectionConfig> = serde_json::from_value(
-        data.get("connections")
-            .cloned()
-            .ok_or_else(|| CommandError::Validation("missing connections".into()))?,
-    )
-    .cmd_err("decrypt_connections_import")?;
-
-    let groups: Vec<String> = data
-        .get("groups")
-        .and_then(|v| serde_json::from_value(v.clone()).ok())
-        .unwrap_or_default();
-
-    Ok((connections, groups))
-}
-
-fn decrypt_with_key(encrypted: &str, key: &[u8; 32]) -> Result<String, CommandError> {
-    let combined = BASE64.decode(encrypted)
-        .map_err(|e| CommandError::Internal(format!("Base64 decode failed: {}", e)))?;
-    if combined.len() < 12 {
-        return Err(CommandError::Validation("Invalid encrypted data".into()));
-    }
-    let (nonce_bytes, ciphertext) = combined.split_at(12);
-    let nonce = Nonce::from_slice(nonce_bytes);
-    let cipher_key = Key::<Aes256Gcm>::from_slice(key);
-    let cipher = Aes256Gcm::new(cipher_key);
-    let plaintext = cipher.decrypt(nonce, ciphertext)
-        .map_err(|_| CommandError::Internal("Decryption failed: wrong password".into()))?;
-    String::from_utf8(plaintext).map_err(|e| CommandError::Internal(format!("UTF-8 decode failed: {}", e)))
+    connection_import::build_encrypted_export(connections, groups, password)
 }
 
 #[tauri::command]
@@ -424,19 +270,28 @@ pub async fn import_connections_preview(
 ) -> Result<serde_json::Value, CommandError> {
     require_webdriver_path_ipc("Direct path connection import disabled")?;
     tracing::info!(%path, "import_connections_preview");
-    let content = tokio::fs::read_to_string(PathBuf::from(&path))
+    let source = PathBuf::from(&path);
+    let bytes = tokio::fs::read(&source)
         .await
         .cmd_err("import_connections_preview")?;
 
-    let (connections, groups) = decrypt_connections_import(&content, &password)?;
+    let password_opt = if password.trim().is_empty() {
+        None
+    } else {
+        Some(password.as_str())
+    };
+    let parsed = parse_import_file(&source, &bytes, password_opt)?;
 
     Ok(serde_json::json!({
-        "connections": connections,
-        "groups": groups,
+        "connections": parsed.connections,
+        "groups": parsed.groups,
+        "skipped": parsed.skipped,
+        "sourceFormat": format_label(parsed.format),
     }))
 }
 
 /// Native open dialog + decrypt/merge import. Returns stats if imported, `None` if cancelled.
+/// Password may be empty for DataGrip / Navicat / DBeaver / DBX plain JSON.
 #[tauri::command]
 pub async fn import_connections_with_dialog(
     app: AppHandle,
@@ -445,12 +300,18 @@ pub async fn import_connections_with_dialog(
 ) -> Result<Option<ImportConnectionsResult>, CommandError> {
     use tauri_plugin_dialog::DialogExt;
 
-    validate_share_password(&password)?;
-
     let picked = app
         .dialog()
         .file()
-        .add_filter("JSON", &["json"])
+        .add_filter(
+            "Connections",
+            &["json", "xml", "ncx", "tableplusconnection"],
+        )
+        .add_filter("DataZen / DBX JSON", &["json"])
+        .add_filter("DataGrip XML", &["xml"])
+        .add_filter("Navicat NCX", &["ncx", "xml"])
+        .add_filter("DBeaver JSON", &["json"])
+        .add_filter("TablePlus", &["tableplusconnection"])
         .blocking_pick_file();
     let Some(fp) = picked else {
         return Ok(None);
@@ -459,11 +320,20 @@ pub async fn import_connections_with_dialog(
         .into_path()
         .map_err(|e| CommandError::Validation(format!("Invalid dialog path: {e}")))?;
 
-    let content = tokio::fs::read_to_string(&source)
+    let bytes = tokio::fs::read(&source)
         .await
         .cmd_err("import_connections_with_dialog")?;
 
-    let (incoming, incoming_groups) = decrypt_connections_import(&content, &password)?;
+    let password_opt = if password.trim().is_empty() {
+        None
+    } else {
+        Some(password.as_str())
+    };
+    let parsed = parse_import_file(&source, &bytes, password_opt)?;
+    let incoming = parsed.connections;
+    let incoming_groups = parsed.groups;
+    let skipped = parsed.skipped;
+    let source_format = format_label(parsed.format).to_string();
 
     let existing = state.store.get_connections().await;
     let existing_ids: HashSet<String> = existing.iter().map(|c| c.id.clone()).collect();
@@ -477,11 +347,20 @@ pub async fn import_connections_with_dialog(
     let (merged_groups, groups_added) = merge_group_lists(&existing_groups, &incoming_groups);
     state.store.save_groups(merged_groups).await?;
 
-    tracing::info!(imported, overwritten, groups_added, "import_connections_with_dialog OK");
+    tracing::info!(
+        imported,
+        overwritten,
+        groups_added,
+        skipped = skipped.len(),
+        %source_format,
+        "import_connections_with_dialog OK"
+    );
     Ok(Some(ImportConnectionsResult {
         imported,
         overwritten,
         groups_added,
+        skipped,
+        source_format,
     }))
 }
 
@@ -706,20 +585,35 @@ mod tests {
 
     #[test]
     fn encrypt_decrypt_roundtrip() {
+        use super::connection_import::{decrypt_datazen_fields, derive_argon2_key, encrypt_field};
+        use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
+
         let salt = [7u8; 16];
-        let key = derive_key_from_password("unit-test-password", &salt).unwrap();
-        let cipher = encrypt_with_key("secret-db-password", &key).unwrap();
-        let plain = decrypt_with_key(&cipher, &key).unwrap();
-        assert_eq!(plain, "secret-db-password");
+        let key = derive_argon2_key("unit-test-password", &salt).unwrap();
+        let cipher = encrypt_field("secret-db-password", &key).unwrap();
+        let mut data = serde_json::json!({
+            "encrypted": true,
+            "salt": BASE64.encode(salt),
+            "connections": [{ "password": cipher }]
+        });
+        decrypt_datazen_fields(&mut data, "unit-test-password").unwrap();
+        assert_eq!(data["connections"][0]["password"], "secret-db-password");
     }
 
     #[test]
     fn decrypt_rejects_wrong_password() {
+        use super::connection_import::{decrypt_datazen_fields, derive_argon2_key, encrypt_field};
+        use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
+
         let salt = [9u8; 16];
-        let key = derive_key_from_password("correct", &salt).unwrap();
-        let cipher = encrypt_with_key("payload", &key).unwrap();
-        let wrong = derive_key_from_password("wrong", &salt).unwrap();
-        assert!(decrypt_with_key(&cipher, &wrong).is_err());
+        let key = derive_argon2_key("correct", &salt).unwrap();
+        let cipher = encrypt_field("payload", &key).unwrap();
+        let mut data = serde_json::json!({
+            "encrypted": true,
+            "salt": BASE64.encode(salt),
+            "connections": [{ "password": cipher }]
+        });
+        assert!(decrypt_datazen_fields(&mut data, "wrong").is_err());
     }
 
     #[test]
