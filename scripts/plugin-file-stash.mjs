@@ -31,6 +31,7 @@ import { resolve, dirname, relative, basename } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { randomBytes } from 'crypto';
 import {
+  cleanFullyGeneratedContent,
   deinjectManagedContent,
   isFullyGeneratedManagedFile,
 } from './plugin-deinject.mjs';
@@ -159,12 +160,24 @@ export function createPluginFileStash(root, options = {}) {
     const hasWork = existsSync(work);
 
     if (isFullyGeneratedManagedFile(relPath)) {
-      if (!hasStash) {
-        throw new Error(
-          `[plugin-file-stash] cannot restore; stash missing for: ${relPath}`,
-        );
+      if (hasStash) {
+        atomicReplaceWithCopy(stashed, work);
+        return;
       }
-      atomicReplaceWithCopy(stashed, work);
+      // Stash missing (e.g. injected generated.ts was committed): write git-safe stub.
+      const token = randomBytes(6).toString('hex');
+      const tmp = resolve(dirname(work), `.${basename(work)}.${token}.tmp`);
+      try {
+        writeFileSync(tmp, cleanFullyGeneratedContent(relPath));
+        renameSync(tmp, work);
+      } catch (e) {
+        try {
+          if (existsSync(tmp)) unlinkSync(tmp);
+        } catch {
+          /* ignore */
+        }
+        throw e;
+      }
       return;
     }
 
@@ -200,13 +213,19 @@ export function createPluginFileStash(root, options = {}) {
 
   /**
    * Restore managed files: strip injection from work (keep user edits),
-   * restore fully-generated files from stash. Requires full stash set.
+   * restore fully-generated files from stash (or canonical stub if stash missing).
    */
   function restoreManagedFiles() {
-    const missing = missingStashFiles();
-    if (missing.length > 0) {
+    const missingNonGenerated = missingStashFiles().filter(
+      (f) => !isFullyGeneratedManagedFile(f),
+    );
+    // Cargo/capabilities can deinject without stash when work copies exist.
+    const blocking = missingNonGenerated.filter(
+      (f) => !existsSync(workPath(f)),
+    );
+    if (blocking.length > 0) {
       throw new Error(
-        `[plugin-file-stash] cannot restore; stash missing for: ${missing.join(', ')}. ` +
+        `[plugin-file-stash] cannot restore; stash missing for: ${blocking.join(', ')}. ` +
           `Injected files may be dirty — restore the clean versions manually.`,
       );
     }
@@ -225,25 +244,19 @@ export function createPluginFileStash(root, options = {}) {
 
   /**
    * Restore only injected paths: deinject cargo/capabilities (keep user edits),
-   * stash-restore fully generated files. Drop remaining stash copies.
+   * stash-restore fully generated files (canonical stub if stash missing).
    * @param {string[]} relPaths
    */
   function restoreSelectedFiles(relPaths) {
-    const needStash = relPaths.filter((f) => isFullyGeneratedManagedFile(f));
-    const missing = needStash.filter((f) => !existsSync(stashPath(f)));
-    // Cargo/capabilities can deinject without stash; generated files cannot.
     const missingOptional = relPaths.filter(
       (f) =>
         !isFullyGeneratedManagedFile(f) &&
         !existsSync(workPath(f)) &&
         !existsSync(stashPath(f)),
     );
-    if (missing.length > 0 || missingOptional.length > 0) {
+    if (missingOptional.length > 0) {
       throw new Error(
-        `[plugin-file-stash] cannot restore selection; stash missing for: ${[
-          ...missing,
-          ...missingOptional,
-        ].join(', ')}`,
+        `[plugin-file-stash] cannot restore selection; stash missing for: ${missingOptional.join(', ')}`,
       );
     }
 

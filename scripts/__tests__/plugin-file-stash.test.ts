@@ -110,20 +110,26 @@ describe('createPluginFileStash', () => {
     expect(() => stash.stashManagedFiles()).toThrow(/missing working files.*Cargo\.toml/);
   });
 
-  it('errors when any stash backup is missing on restore', () => {
+  it('writes git-safe stub when generated stash backup is missing', () => {
     stash.stashManagedFiles();
     writeManagedFiles(root, INJECTED_CONTENTS);
     unlinkSync(stash.stashPath('src/plugins/generated.ts'));
-    expect(() => stash.restoreManagedFiles()).toThrow(
-      /cannot restore; stash missing.*generated\.ts/,
+    stash.restoreManagedFiles();
+    expect(readManaged(root, 'src/plugins/generated.ts')).toContain(
+      'export type DatabaseType = never',
     );
+    expect(existsSync(join(root, '.plugin-file-stash'))).toBe(false);
   });
 
-  it('errors when entire stash dir is gone but restore is requested', () => {
+  it('deinjects when stash dir is gone but working copies remain', () => {
     stash.stashManagedFiles();
     writeManagedFiles(root, INJECTED_CONTENTS);
     stash.cleanupStashDir();
-    expect(() => stash.restoreManagedFiles()).toThrow(/cannot restore; stash missing/);
+    stash.restoreManagedFiles();
+    expect(readManaged(root, 'src/plugins/generated.ts')).toContain(
+      'export type DatabaseType = never',
+    );
+    expect(readManaged(root, 'Cargo.toml')).toBe(CLEAN_CONTENTS['Cargo.toml']);
   });
 
   it('managedReadPath prefers stash when present', () => {
@@ -137,11 +143,14 @@ describe('createPluginFileStash', () => {
     );
   });
 
-  it('double restore after successful restore fails (no stash)', () => {
+  it('double restore after successful restore is idempotent (stub fallback)', () => {
     stash.stashManagedFiles();
     writeManagedFiles(root, INJECTED_CONTENTS);
     stash.restoreManagedFiles();
-    expect(() => stash.restoreManagedFiles()).toThrow(/cannot restore; stash missing/);
+    expect(() => stash.restoreManagedFiles()).not.toThrow();
+    expect(readManaged(root, 'src/plugins/generated.ts')).toContain(
+      'export type DatabaseType = never',
+    );
   });
 
   it('stashExists is true if any file is stashed', () => {
