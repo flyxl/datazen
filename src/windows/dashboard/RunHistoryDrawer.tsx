@@ -41,22 +41,32 @@ export function RunHistoryDrawer({
   const [loadedRun, setLoadedRun] = useState<WidgetRun | null>(null);
   const [loadingIndex, setLoadingIndex] = useState(false);
   const [loadingRun, setLoadingRun] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [indexError, setIndexError] = useState<string | null>(null);
+  const [runError, setRunError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open || !widget) return;
+    let cancelled = false;
     setSelectedId(null);
     setLoadedRun(null);
-    setError(null);
+    setIndexError(null);
+    setRunError(null);
     setLoadingIndex(true);
     void dashboardCommands
       .listWidgetRuns(dashboardId, widget.id, HISTORY_LIMIT)
       .then((entries) => {
+        if (cancelled) return;
         setIndex(entries);
         if (entries.length > 0) setSelectedId(entries[0].id);
       })
-      .catch((e) => setError(String(e)))
-      .finally(() => setLoadingIndex(false));
+      .catch((e) => {
+        if (cancelled) return;
+        setIndexError(String(e));
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingIndex(false);
+      });
+    return () => { cancelled = true; };
   }, [open, dashboardId, widget]);
 
   useEffect(() => {
@@ -64,16 +74,24 @@ export function RunHistoryDrawer({
       setLoadedRun(null);
       return;
     }
+    let cancelled = false;
     setLoadingRun(true);
-    setError(null);
+    setRunError(null);
     void dashboardCommands
       .getWidgetRun(dashboardId, widget.id, selectedId)
-      .then(setLoadedRun)
-      .catch((e) => {
-        setLoadedRun(null);
-        setError(String(e));
+      .then((run) => {
+        if (cancelled) return;
+        setLoadedRun(run);
       })
-      .finally(() => setLoadingRun(false));
+      .catch((e) => {
+        if (cancelled) return;
+        setLoadedRun(null);
+        setRunError(String(e));
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingRun(false);
+      });
+    return () => { cancelled = true; };
   }, [open, dashboardId, widget, selectedId]);
 
   const chartData = useMemo(() => {
@@ -106,9 +124,9 @@ export function RunHistoryDrawer({
           </Button>
         </div>
 
-        {error && (
+        {indexError && (
           <div className="mx-4 mt-3 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-400">
-            {error}
+            {indexError}
           </div>
         )}
 
@@ -156,7 +174,12 @@ export function RunHistoryDrawer({
           </div>
 
           <div className="relative min-h-0 min-w-0 flex-1">
-            {!selectedId && !loadingIndex && (
+            {runError && (
+              <div className="absolute inset-0 flex items-center justify-center px-4 text-center text-xs text-red-400">
+                {runError}
+              </div>
+            )}
+            {!runError && !selectedId && !loadingIndex && (
               <div className="absolute inset-0 flex items-center justify-center px-4 text-center text-xs text-fg-muted">
                 {t('dashboard.selectRun')}
               </div>
