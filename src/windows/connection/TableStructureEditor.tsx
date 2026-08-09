@@ -1,206 +1,133 @@
-import { useCallback, useEffect, useState } from 'react';
-import { GripVertical, Loader2, Plus, Trash2 } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Loader2, Plus } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
-import { Select } from '../../components/ui/Select';
 import { databaseCommands } from '../../commands/database';
 import { queryCommands } from '../../commands/query';
-import { cn } from '../../lib/cn';
+import { structureCommands } from '../../commands/structure';
+import { DB_REGISTRY } from '../../lib/databaseTypes';
+import { buildStructureChangeRequest } from '../../lib/structureEditor/buildStructureChangeRequest';
+import { capEnabled } from '../../lib/structureEditor/controlHints';
+import {
+  defaultCreateColumns,
+  emptyColumnDraft,
+  emptyIndexDraft,
+} from '../../lib/structureEditor/draftDefaults';
+import { schemaToDraft } from '../../lib/structureEditor/schemaToDraft';
+import type {
+  StructureCapabilities,
+  StructureChangePlan,
+  StructureColumnDraft,
+  StructureEditorUiConfig,
+  StructureIndexDraft,
+} from '../../lib/structureEditor/types';
 import { useI18n } from '../../hooks/useI18n';
-
-const PG_TYPES = [
-  { value: 'integer', label: 'integer' },
-  { value: 'bigint', label: 'bigint' },
-  { value: 'smallint', label: 'smallint' },
-  { value: 'serial', label: 'serial' },
-  { value: 'bigserial', label: 'bigserial' },
-  { value: 'numeric', label: 'numeric' },
-  { value: 'real', label: 'real' },
-  { value: 'double precision', label: 'double precision' },
-  { value: 'boolean', label: 'boolean' },
-  { value: 'varchar(255)', label: 'varchar(255)' },
-  { value: 'varchar(50)', label: 'varchar(50)' },
-  { value: 'varchar(100)', label: 'varchar(100)' },
-  { value: 'text', label: 'text' },
-  { value: 'char(1)', label: 'char(1)' },
-  { value: 'date', label: 'date' },
-  { value: 'time', label: 'time' },
-  { value: 'timestamp', label: 'timestamp' },
-  { value: 'timestamptz', label: 'timestamptz' },
-  { value: 'uuid', label: 'uuid' },
-  { value: 'json', label: 'json' },
-  { value: 'jsonb', label: 'jsonb' },
-  { value: 'bytea', label: 'bytea' },
-  { value: 'text[]', label: 'text[]' },
-  { value: 'integer[]', label: 'integer[]' },
-  { value: 'inet', label: 'inet' },
-  { value: 'cidr', label: 'cidr' },
-  { value: 'money', label: 'money' },
-];
-
-interface ColumnDef {
-  id: string;
-  name: string;
-  type: string;
-  nullable: boolean;
-  defaultValue: string;
-  isPrimaryKey: boolean;
-  isUnique: boolean;
-  comment: string;
-}
-
-function newColumnId() {
-  return `col_${Math.random().toString(36).slice(2, 8)}`;
-}
-
-function emptyColumn(): ColumnDef {
-  return {
-    id: newColumnId(),
-    name: '',
-    type: 'varchar(255)',
-    nullable: true,
-    defaultValue: '',
-    isPrimaryKey: false,
-    isUnique: false,
-    comment: '',
-  };
-}
+import type { DatabaseType } from '../../types';
+import { StructureColumnTable } from './structure/StructureColumnTable';
+import { StructureIndexTable } from './structure/StructureIndexTable';
+import { StructurePlanPreview } from './structure/StructurePlanPreview';
 
 interface TableStructureEditorProps {
   connectionId: string;
+  databaseType: DatabaseType;
   mode: 'create' | 'alter';
   tableName?: string;
-  initialColumns?: ColumnDef[];
   onSuccess: () => void;
   onCancel: () => void;
 }
 
-function quoteIdent(s: string): string {
-  return `"${s.replaceAll('"', '""')}"`;
+function resolveUiConfig(databaseType: DatabaseType): StructureEditorUiConfig | null {
+  const meta = DB_REGISTRY[databaseType];
+  if (!meta?.supportsSQL) return null;
+  const cfg = meta.structureEditor;
+  if (!cfg || cfg.enabled === false) return null;
+  return cfg;
 }
 
-function generateCreateSQL(name: string, columns: ColumnDef[]): string {
-  const lines: string[] = [];
-  const pks = columns.filter((c) => c.isPrimaryKey).map((c) => quoteIdent(c.name));
-
-  for (const col of columns) {
-    if (!col.name.trim()) continue;
-    let line = `  ${quoteIdent(col.name)} ${col.type}`;
-    if (!col.nullable) line += ' NOT NULL';
-    if (col.defaultValue.trim()) line += ` DEFAULT ${col.defaultValue}`;
-    if (col.isUnique && !col.isPrimaryKey) line += ' UNIQUE';
-    lines.push(line);
-  }
-
-  if (pks.length > 0) {
-    lines.push(`  PRIMARY KEY (${pks.join(', ')})`);
-  }
-
-  let sql = `CREATE TABLE ${quoteIdent(name)} (\n${lines.join(',\n')}\n);`;
-
-  for (const col of columns) {
-    if (col.comment.trim()) {
-      sql += `\nCOMMENT ON COLUMN ${quoteIdent(name)}.${quoteIdent(col.name)} IS '${col.comment.replaceAll("'", "''")}';`;
-    }
-  }
-
-  return sql;
+function resolveIndexMethods(
+  uiConfig: StructureEditorUiConfig,
+  caps: StructureCapabilities | null,
+): string[] {
+  if (caps?.indexMethods?.length) return caps.indexMethods;
+  return uiConfig.indexMethods;
 }
 
-function generateAlterSQL(name: string, original: ColumnDef[], current: ColumnDef[]): string {
-  const stmts: string[] = [];
-  const qName = quoteIdent(name);
-  const origMap = new Map(original.map((c) => [c.id, c]));
-  const currMap = new Map(current.map((c) => [c.id, c]));
-
-  // Dropped columns
-  for (const orig of original) {
-    if (!currMap.has(orig.id) && orig.name.trim()) {
-      stmts.push(`ALTER TABLE ${qName} DROP COLUMN ${quoteIdent(orig.name)};`);
+async function executePlanStatements(
+  connectionId: string,
+  plan: StructureChangePlan,
+): Promise<{ executed: number; error?: string }> {
+  let executed = 0;
+  for (const stmt of plan.statements) {
+    try {
+      await queryCommands.executeQuery(connectionId, stmt.sql);
+      executed += 1;
+    } catch (e) {
+      const msg =
+        typeof e === 'string' ? e : e instanceof Error ? e.message : 'Execution failed';
+      return { executed, error: msg };
     }
   }
-
-  // Added or modified columns
-  for (const col of current) {
-    if (!col.name.trim()) continue;
-    const orig = origMap.get(col.id);
-    if (!orig?.name.trim()) {
-      let line = `ALTER TABLE ${qName} ADD COLUMN ${quoteIdent(col.name)} ${col.type}`;
-      if (!col.nullable) line += ' NOT NULL';
-      if (col.defaultValue.trim()) line += ` DEFAULT ${col.defaultValue}`;
-      if (col.isUnique) line += ' UNIQUE';
-      stmts.push(`${line};`);
-      if (col.comment.trim()) {
-        stmts.push(`COMMENT ON COLUMN ${qName}.${quoteIdent(col.name)} IS '${col.comment.replaceAll("'", "''")}';`);
-      }
-    } else {
-      if (col.type !== orig.type) {
-        stmts.push(`ALTER TABLE ${qName} ALTER COLUMN ${quoteIdent(col.name)} TYPE ${col.type};`);
-      }
-      if (col.nullable !== orig.nullable) {
-        stmts.push(`ALTER TABLE ${qName} ALTER COLUMN ${quoteIdent(col.name)} ${col.nullable ? 'DROP NOT NULL' : 'SET NOT NULL'};`);
-      }
-      if (col.defaultValue !== orig.defaultValue) {
-        if (col.defaultValue.trim()) {
-          stmts.push(`ALTER TABLE ${qName} ALTER COLUMN ${quoteIdent(col.name)} SET DEFAULT ${col.defaultValue};`);
-        } else {
-          stmts.push(`ALTER TABLE ${qName} ALTER COLUMN ${quoteIdent(col.name)} DROP DEFAULT;`);
-        }
-      }
-      if (col.comment !== orig.comment && col.comment.trim()) {
-        stmts.push(`COMMENT ON COLUMN ${qName}.${quoteIdent(col.name)} IS '${col.comment.replaceAll("'", "''")}';`);
-      }
-    }
-  }
-
-  return stmts.join('\n');
+  return { executed };
 }
 
 export function TableStructureEditor({
   connectionId,
+  databaseType,
   mode,
   tableName: initialTableName,
-  initialColumns,
   onSuccess,
   onCancel,
 }: TableStructureEditorProps) {
   const { t } = useI18n();
+  const uiConfig = useMemo(() => resolveUiConfig(databaseType), [databaseType]);
+
   const [tableName, setTableName] = useState(initialTableName ?? '');
-  const [columns, setColumns] = useState<ColumnDef[]>(
-    initialColumns?.length ? initialColumns : [
-      { ...emptyColumn(), name: 'id', type: 'bigserial', nullable: false, isPrimaryKey: true },
-      { ...emptyColumn(), name: '', type: 'varchar(255)', nullable: true },
-    ],
-  );
-  const [originalColumns, setOriginalColumns] = useState<ColumnDef[]>([]);
-  const [loadingSchema, setLoadingSchema] = useState(false);
+  const [columns, setColumns] = useState<StructureColumnDraft[]>([]);
+  const [indexes, setIndexes] = useState<StructureIndexDraft[]>([]);
+  const [originalColumns, setOriginalColumns] = useState<StructureColumnDraft[]>([]);
+  const [originalIndexes, setOriginalIndexes] = useState<StructureIndexDraft[]>([]);
+  const [caps, setCaps] = useState<StructureCapabilities | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [previewing, setPreviewing] = useState(false);
   const [executing, setExecuting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [previewSql, setPreviewSql] = useState<string | null>(null);
+  const [previewPlan, setPreviewPlan] = useState<StructureChangePlan | null>(null);
   const [dragIdx, setDragIdx] = useState<number | null>(null);
 
-  // Load existing table schema in alter mode
   useEffect(() => {
-    if (mode !== 'alter' || !initialTableName) return;
+    if (!uiConfig) {
+      setLoading(false);
+      return;
+    }
+
     let cancelled = false;
-    setLoadingSchema(true);
-    databaseCommands
-      .getTableSchema(connectionId, initialTableName)
-      .then((schema) => {
+    setLoading(true);
+    setError(null);
+
+    const capsPromise = structureCommands.getStructureCapabilities(connectionId);
+    const schemaPromise =
+      mode === 'alter' && initialTableName
+        ? databaseCommands.getTableSchema(connectionId, initialTableName)
+        : Promise.resolve(null);
+
+    Promise.all([capsPromise, schemaPromise])
+      .then(([loadedCaps, schema]) => {
         if (cancelled) return;
-        const cols: ColumnDef[] = schema.columns.map((c) => ({
-          id: newColumnId(),
-          name: c.name,
-          type: c.dataType,
-          nullable: c.nullable,
-          defaultValue: c.defaultValue ?? '',
-          isPrimaryKey: schema.primaryKeys.includes(c.name),
-          isUnique: schema.indexes.some((idx) => idx.isUnique && !idx.isPrimary && idx.columns.includes(c.name)),
-          comment: c.comment ?? '',
-        }));
-        setColumns(cols);
-        setOriginalColumns(cols.map((c) => ({ ...c })));
-        setLoadingSchema(false);
+        setCaps(loadedCaps);
+
+        if (schema) {
+          const draft = schemaToDraft(schema);
+          setColumns(draft.columns);
+          setIndexes(draft.indexes);
+          setOriginalColumns(draft.columns.map((c) => ({ ...c })));
+          setOriginalIndexes(draft.indexes.map((i) => ({ ...i })));
+        } else {
+          setColumns(defaultCreateColumns(uiConfig));
+          setIndexes([]);
+          setOriginalColumns([]);
+          setOriginalIndexes([]);
+        }
+        setLoading(false);
       })
       .catch((e) => {
         if (cancelled) return;
@@ -208,71 +135,158 @@ export function TableStructureEditor({
         if (typeof e === 'string') msg = e;
         else if (e instanceof Error) msg = e.message;
         setError(msg);
-        setLoadingSchema(false);
+        setLoading(false);
       });
-    return () => { cancelled = true; };
-  }, [mode, connectionId, initialTableName, t]);
 
-  const updateColumn = useCallback((id: string, patch: Partial<ColumnDef>) => {
+    return () => {
+      cancelled = true;
+    };
+  }, [connectionId, mode, initialTableName, uiConfig, t]);
+
+  const originalById = useMemo(
+    () => new Map(originalColumns.map((c) => [c.id, c])),
+    [originalColumns],
+  );
+
+  const indexMethods = useMemo(
+    () => (uiConfig ? resolveIndexMethods(uiConfig, caps) : []),
+    [uiConfig, caps],
+  );
+
+  const reorderEnabled = capEnabled(caps, 'reorderColumn');
+  const validColumns = columns.filter((c) => c.name.trim());
+  const columnNames = validColumns.map((c) => c.name.trim());
+  const isValid = tableName.trim().length > 0 && validColumns.length > 0;
+
+  const buildRequest = useCallback(() => {
+    if (!isValid) return null;
+    return buildStructureChangeRequest({
+      mode,
+      table: tableName.trim(),
+      originalColumns,
+      currentColumns: columns,
+      originalIndexes,
+      currentIndexes: indexes,
+    });
+  }, [mode, tableName, originalColumns, columns, originalIndexes, indexes, isValid]);
+
+  const updateColumn = useCallback((id: string, patch: Partial<StructureColumnDraft>) => {
     setColumns((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c)));
+    setPreviewPlan(null);
   }, []);
 
   const addColumn = useCallback(() => {
-    setColumns((prev) => [...prev, emptyColumn()]);
-  }, []);
+    if (!uiConfig) return;
+    setColumns((prev) => [...prev, emptyColumnDraft(uiConfig.defaultColumnType)]);
+    setPreviewPlan(null);
+  }, [uiConfig]);
 
   const removeColumn = useCallback((id: string) => {
     setColumns((prev) => prev.filter((c) => c.id !== id));
+    setPreviewPlan(null);
+  }, []);
+
+  const updateIndex = useCallback((id: string, patch: Partial<StructureIndexDraft>) => {
+    setIndexes((prev) => prev.map((i) => (i.id === id ? { ...i, ...patch } : i)));
+    setPreviewPlan(null);
+  }, []);
+
+  const addIndex = useCallback(() => {
+    setIndexes((prev) => [...prev, emptyIndexDraft(indexMethods[0] ?? 'btree')]);
+    setPreviewPlan(null);
+  }, [indexMethods]);
+
+  const removeIndex = useCallback((id: string) => {
+    setIndexes((prev) => prev.filter((i) => i.id !== id));
+    setPreviewPlan(null);
   }, []);
 
   const handleDragStart = useCallback((idx: number) => {
     setDragIdx(idx);
   }, []);
 
-  const handleDragOver = useCallback((e: React.DragEvent, targetIdx: number) => {
-    e.preventDefault();
-    if (dragIdx === null || dragIdx === targetIdx) return;
-    setColumns((prev) => {
-      const next = [...prev];
-      const [moved] = next.splice(dragIdx, 1);
-      next.splice(targetIdx, 0, moved);
-      return next;
-    });
-    setDragIdx(targetIdx);
-  }, [dragIdx]);
+  const handleDragOver = useCallback(
+    (e: React.DragEvent, targetIdx: number) => {
+      e.preventDefault();
+      if (dragIdx === null || dragIdx === targetIdx) return;
+      setColumns((prev) => {
+        const next = [...prev];
+        const [moved] = next.splice(dragIdx, 1);
+        next.splice(targetIdx, 0, moved);
+        return next;
+      });
+      setDragIdx(targetIdx);
+      setPreviewPlan(null);
+    },
+    [dragIdx],
+  );
 
-  const validColumns = columns.filter((c) => c.name.trim());
-
-  const buildSql = useCallback(() => {
-    if (!tableName.trim() || validColumns.length === 0) return '';
-    if (mode === 'alter') return generateAlterSQL(tableName.trim(), originalColumns, columns);
-    return generateCreateSQL(tableName.trim(), validColumns);
-  }, [mode, tableName, validColumns, columns, originalColumns]);
-
-  const handlePreview = useCallback(() => {
-    const sql = buildSql();
-    if (sql) setPreviewSql(sql);
-  }, [buildSql]);
+  const handlePreview = useCallback(async () => {
+    const request = buildRequest();
+    if (!request) return;
+    setError(null);
+    setPreviewing(true);
+    try {
+      const plan = await structureCommands.planTableStructureChanges(connectionId, request);
+      setPreviewPlan(plan);
+    } catch (e) {
+      const msg =
+        typeof e === 'string' ? e : e instanceof Error ? e.message : t('structEditor.previewFailed');
+      setError(msg);
+    } finally {
+      setPreviewing(false);
+    }
+  }, [buildRequest, connectionId, t]);
 
   const handleExecute = useCallback(async () => {
-    const sql = buildSql();
-    if (!sql) return;
+    const request = buildRequest();
+    if (!request) return;
     setError(null);
     setExecuting(true);
     try {
-      await queryCommands.executeQuery(connectionId, sql);
+      const plan = await structureCommands.planTableStructureChanges(connectionId, request);
+      if (plan.statements.length === 0) {
+        setError(t('structEditor.noChanges'));
+        return;
+      }
+      const result = await executePlanStatements(connectionId, plan);
+      if (result.error) {
+        if (result.executed > 0) {
+          setError(
+            t('structEditor.executePartial', {
+              executed: result.executed,
+              total: plan.statements.length,
+              error: result.error,
+            }),
+          );
+        } else {
+          setError(result.error);
+        }
+        return;
+      }
       onSuccess();
     } catch (e) {
-      const msg = typeof e === 'string' ? e : (e instanceof Error ? e.message : t('structEditor.executeFailed'));
+      const msg =
+        typeof e === 'string' ? e : e instanceof Error ? e.message : t('structEditor.executeFailed');
       setError(msg);
     } finally {
       setExecuting(false);
     }
-  }, [connectionId, buildSql, onSuccess]);
+  }, [buildRequest, connectionId, onSuccess, t]);
 
-  const isValid = tableName.trim().length > 0 && validColumns.length > 0;
+  const canAddColumn =
+    mode === 'create' ? capEnabled(caps, 'createTable') : capEnabled(caps, 'addColumn');
+  const canAddIndex = capEnabled(caps, 'createIndex');
 
-  if (loadingSchema) {
+  if (!uiConfig) {
+    return (
+      <div className="flex flex-1 items-center justify-center px-6 text-sm text-fg-muted">
+        {t('structEditor.notSupported')}
+      </div>
+    );
+  }
+
+  if (loading) {
     return (
       <div className="flex flex-1 items-center justify-center gap-2 text-fg-muted">
         <Loader2 className="h-5 w-5 animate-spin" />
@@ -283,14 +297,20 @@ export function TableStructureEditor({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {/* Header */}
       <div className="flex items-center gap-4 border-b border-edge bg-surface-alt px-4 py-3">
         <span className="text-base font-semibold text-fg">
-          {mode === 'create' ? t('structEditor.newTable') : `${t('structEditor.editTable')} · ${initialTableName}`}
+          {mode === 'create'
+            ? t('structEditor.newTable')
+            : `${t('structEditor.editTable')} · ${initialTableName}`}
         </span>
         <div className="flex-1" />
-        <Button variant="secondary" className="h-8 text-xs" onClick={handlePreview} disabled={!isValid}>
-          {t('structEditor.previewSQL')}
+        <Button
+          variant="secondary"
+          className="h-8 text-xs"
+          onClick={() => void handlePreview()}
+          disabled={!isValid || previewing}
+        >
+          {previewing ? t('structEditor.executing') : t('structEditor.previewSQL')}
         </Button>
         <Button variant="secondary" className="h-8 text-xs" onClick={onCancel}>
           {t('common.cancel')}
@@ -301,159 +321,91 @@ export function TableStructureEditor({
           disabled={!isValid || executing}
           onClick={() => void handleExecute()}
         >
-          {executing ? t('structEditor.executing') : (mode === 'create' ? t('structEditor.createTable') : t('structEditor.saveChanges'))}
+          {executing
+            ? t('structEditor.executing')
+            : mode === 'create'
+              ? t('structEditor.createTable')
+              : t('structEditor.saveChanges')}
         </Button>
       </div>
 
-      {/* Table name */}
       {mode === 'create' && (
         <div className="flex items-center gap-3 border-b border-edge px-4 py-3">
           <label className="text-sm text-fg-secondary">{t('structEditor.tableName')}</label>
           <Input
             value={tableName}
-            onChange={(e) => setTableName(e.target.value)}
+            onChange={(e) => {
+              setTableName(e.target.value);
+              setPreviewPlan(null);
+            }}
             placeholder="new_table"
             className="h-8 max-w-xs text-sm"
           />
         </div>
       )}
 
-      {/* Column editor */}
       <div className="min-h-0 flex-1 overflow-auto">
-        <table className="w-full border-collapse text-[13px]">
-          <thead className="sticky top-0 z-10">
-            <tr className="bg-surface-alt text-left text-xs font-medium text-fg-secondary">
-              <th className="w-8 border-b border-edge px-1 py-2.5" />
-              <th className="min-w-[140px] border-b border-edge px-2 py-2.5 font-medium">{t('structView.fieldName')}</th>
-              <th className="min-w-[160px] border-b border-edge px-2 py-2.5 font-medium">{t('structView.type')}</th>
-              <th className="w-[60px] border-b border-edge px-2 py-2.5 text-center font-medium">{t('structView.nullable')}</th>
-              <th className="w-[60px] border-b border-edge px-2 py-2.5 text-center font-medium">{t('structView.primaryKey')}</th>
-              <th className="w-[60px] border-b border-edge px-2 py-2.5 text-center font-medium">{t('structView.unique')}</th>
-              <th className="min-w-[120px] border-b border-edge px-2 py-2.5 font-medium">{t('structView.defaultValue')}</th>
-              <th className="min-w-[120px] border-b border-edge px-2 py-2.5 font-medium">{t('structView.comment')}</th>
-              <th className="w-10 border-b border-edge px-1 py-2.5" />
-            </tr>
-          </thead>
-          <tbody>
-            {columns.map((col, idx) => (
-              <tr
-                key={col.id}
-                draggable
-                onDragStart={() => handleDragStart(idx)}
-                onDragOver={(e) => handleDragOver(e, idx)}
-                onDragEnd={() => setDragIdx(null)}
-                className={cn(
-                  'border-b border-edge bg-surface transition-colors hover:bg-surface-alt/50',
-                  dragIdx === idx && 'opacity-50',
-                )}
-              >
-                <td className="px-1 py-1.5 text-center">
-                  <GripVertical className="mx-auto h-3.5 w-3.5 cursor-grab text-fg-muted" />
-                </td>
-                <td className="px-2 py-1.5">
-                  <Input
-                    value={col.name}
-                    onChange={(e) => updateColumn(col.id, { name: e.target.value })}
-                    placeholder="column_name"
-                    className="h-7 text-xs"
-                  />
-                </td>
-                <td className="px-2 py-1.5">
-                  <Select
-                    value={col.type}
-                    options={PG_TYPES}
-                    onChange={(v) => updateColumn(col.id, { type: v })}
-                    className="h-7 text-xs"
-                  />
-                </td>
-                <td className="px-2 py-1.5 text-center">
-                  <input
-                    type="checkbox"
-                    checked={col.nullable}
-                    onChange={(e) => updateColumn(col.id, { nullable: e.target.checked })}
-                    className="h-3.5 w-3.5 accent-accent"
-                  />
-                </td>
-                <td className="px-2 py-1.5 text-center">
-                  <input
-                    type="checkbox"
-                    checked={col.isPrimaryKey}
-                    onChange={(e) => updateColumn(col.id, { isPrimaryKey: e.target.checked, nullable: e.target.checked ? false : col.nullable })}
-                    className="h-3.5 w-3.5 accent-accent"
-                  />
-                </td>
-                <td className="px-2 py-1.5 text-center">
-                  <input
-                    type="checkbox"
-                    checked={col.isUnique}
-                    onChange={(e) => updateColumn(col.id, { isUnique: e.target.checked })}
-                    className="h-3.5 w-3.5 accent-accent"
-                  />
-                </td>
-                <td className="px-2 py-1.5">
-                  <Input
-                    value={col.defaultValue}
-                    onChange={(e) => updateColumn(col.id, { defaultValue: e.target.value })}
-                    placeholder="NULL"
-                    className="h-7 text-xs"
-                  />
-                </td>
-                <td className="px-2 py-1.5">
-                  <Input
-                    value={col.comment}
-                    onChange={(e) => updateColumn(col.id, { comment: e.target.value })}
-                    placeholder=""
-                    className="h-7 text-xs"
-                  />
-                </td>
-                <td className="px-1 py-1.5 text-center">
-                  <button
-                    type="button"
-                    className="rounded p-1 text-fg-muted hover:bg-red-500/10 hover:text-red-400"
-                    onClick={() => removeColumn(col.id)}
-                    title={t('structEditor.deleteColumn')}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <StructureColumnTable
+          mode={mode}
+          caps={caps}
+          uiConfig={uiConfig}
+          columns={columns}
+          originalById={originalById}
+          reorderEnabled={reorderEnabled}
+          dragIdx={dragIdx}
+          onDragStart={handleDragStart}
+          onDragOver={handleDragOver}
+          onDragEnd={() => setDragIdx(null)}
+          onUpdate={updateColumn}
+          onRemove={removeColumn}
+        />
 
-        {/* Add column */}
         <div className="px-4 py-3">
-          <Button variant="secondary" className="h-8 gap-1 text-xs" onClick={addColumn}>
+          <Button
+            variant="secondary"
+            className="h-8 gap-1 text-xs"
+            onClick={addColumn}
+            disabled={!canAddColumn}
+            title={!canAddColumn ? t('structEditor.capDisabled') : undefined}
+          >
             <Plus className="h-3.5 w-3.5" />
             {t('structEditor.addColumn')}
           </Button>
         </div>
+
+        <div className="border-t border-edge px-4 py-2">
+          <div className="flex items-center justify-between py-2">
+            <span className="text-xs font-medium text-fg-secondary">{t('structEditor.indexes')}</span>
+            <Button
+              variant="secondary"
+              className="h-7 gap-1 text-xs"
+              onClick={addIndex}
+              disabled={!canAddIndex}
+              title={!canAddIndex ? t('structEditor.capDisabled') : undefined}
+            >
+              <Plus className="h-3 w-3" />
+              {t('structEditor.addIndex')}
+            </Button>
+          </div>
+          <StructureIndexTable
+            caps={caps}
+            indexMethods={indexMethods}
+            columnNames={columnNames}
+            indexes={indexes}
+            onUpdate={updateIndex}
+            onRemove={removeIndex}
+          />
+        </div>
       </div>
 
-      {/* Error */}
       {error && (
-        <div className="border-t border-red-500/20 bg-red-500/10 px-4 py-2.5 text-xs text-red-400">
+        <div className="border-t border-danger/20 bg-danger/10 px-4 py-2.5 text-xs text-danger">
           {error}
         </div>
       )}
 
-      {/* SQL Preview */}
-      {previewSql && (
-        <div className="border-t border-edge bg-surface-alt">
-          <div className="flex items-center justify-between px-4 py-2">
-            <span className="text-xs font-medium text-fg-secondary">{t('structEditor.sqlPreview')}</span>
-            <button
-              type="button"
-              className="text-xs text-fg-muted hover:text-fg"
-              onClick={() => setPreviewSql(null)}
-            >
-              {t('common.close')}
-            </button>
-          </div>
-          <pre className="max-h-40 overflow-auto px-4 pb-3 font-mono text-xs leading-relaxed text-fg-secondary">
-            {previewSql}
-          </pre>
-        </div>
+      {previewPlan && (
+        <StructurePlanPreview plan={previewPlan} onClose={() => setPreviewPlan(null)} />
       )}
     </div>
   );

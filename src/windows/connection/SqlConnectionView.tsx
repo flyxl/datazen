@@ -636,6 +636,7 @@ export function SqlConnectionView({
             {activePanel?.type === 'create-table' && (
               <TableStructureEditor
                 connectionId={connectionId}
+                databaseType={databaseType}
                 mode="create"
                 onSuccess={() => {
                   handleClosePanel(activePanel.id);
@@ -648,6 +649,7 @@ export function SqlConnectionView({
             {activePanel?.type === 'alter-table' && (
               <TableStructureEditor
                 connectionId={connectionId}
+                databaseType={databaseType}
                 mode="alter"
                 tableName={activePanel.tableName}
                 onSuccess={() => {
