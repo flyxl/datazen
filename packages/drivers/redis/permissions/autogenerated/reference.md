@@ -35,6 +35,14 @@ Default permissions for the redis plugin (mutate + batch ops)
 - `allow-json-get`
 - `allow-json-set`
 - `allow-json-del`
+- `allow-xrange`
+- `allow-xadd`
+- `allow-xgroup-create`
+- `allow-xgroup-destroy`
+- `allow-xinfo-groups`
+- `allow-xpending`
+- `allow-xack`
+- `allow-stream-overview`
 
 ## Permission Table
 
