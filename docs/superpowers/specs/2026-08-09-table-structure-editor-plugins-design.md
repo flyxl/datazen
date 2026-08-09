@@ -1,7 +1,9 @@
 # 表结构编辑器 — 插件配置 + 驱动自报能力 设计
 
 > 日期：2026-08-09  
-> 状态：待审阅草案  
+> 状态：已批准  
+> 实现计划：[../plans/2026-08-09-table-structure-editor-plugins.md](../plans/2026-08-09-table-structure-editor-plugins.md)  
+
 > 分支上下文：`feat/abc-competitive-parity`  
 > 相关：[Schema Diff Deploy](../plans/2026-08-09-schema-diff-deploy.md)、DBX 表结构文档 / `tableStructureCapabilities.ts`
 
