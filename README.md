@@ -223,15 +223,15 @@ pnpm tauri dev
 ### 构建发行版
 
 ```bash
-# 全部 path 原生驱动（默认 all；不含 kiwi/superset/olap）
-pnpm tauri build
+# 默认 Basic 四核心（postgres/mysql/sqlite/redis）
+pnpm tauri:build
 
-# Basic 四核心（最小体积）
-pnpm tauri:build:minimal
+# 全部 path 原生驱动（不含 kiwi/superset/olap）
+DATAZEN_DRIVERS=all pnpm tauri:build
 
 # 自定义：只编译需要的类型（不为大而全买单）
-pnpm tauri:build --drivers=postgres,mongodb
-pnpm tauri:build --drivers=postgres,mysql,sqlite,redis,mongodb,kiwi,superset
+DATAZEN_DRIVERS=postgres,mongodb pnpm tauri:build
+DATAZEN_DRIVERS=postgres,mysql,sqlite,redis,mongodb,kiwi,superset pnpm tauri:build
 ```
 
 GitHub Release：**Basic** / **All**（path）/ **Akulaku**（CI 显式驱动列表，非脚本预设）。

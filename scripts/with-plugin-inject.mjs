@@ -6,7 +6,10 @@
  * `pnpm build` / beforeBuildCommand must NOT call this — they only compile the
  * frontend against already-injected managed files.
  *
- * Safety: if stash already exists, skip resolve/restore (nested / re-entrant).
+ * Nesting: set DATAZEN_PLUGIN_INJECT_ACTIVE=1 on child processes. Inner
+ * with-plugin-inject sees that and skips resolve/restore. A leftover
+ * `.plugin-file-stash/` without that env is treated as orphaned and cleaned
+ * before this wrapper takes ownership (avoids leaving generated.ts injected).
  *
  * Usage:
  *   node scripts/with-plugin-inject.mjs [--drivers=...] -- <cmd> [args...]
@@ -21,14 +24,31 @@ import { stashExists } from './plugin-file-stash.mjs';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
 
+/** Child processes of an owning inject wrapper set this so nested wrappers skip. */
+export const INJECT_ACTIVE_ENV = 'DATAZEN_PLUGIN_INJECT_ACTIVE';
+
 /**
  * Decide whether this wrapper owns stash lifecycle.
- * @param {() => boolean} [exists]
- * @returns {{ ownStash: boolean, nested: boolean }}
+ * @param {{
+ *   exists?: () => boolean,
+ *   env?: NodeJS.ProcessEnv,
+ * }} [opts]
+ * @returns {{ ownStash: boolean, nested: boolean, orphanStash: boolean }}
  */
-export function planPluginInjectLifecycle(exists = stashExists) {
-  const nested = exists();
-  return { ownStash: !nested, nested };
+export function planPluginInjectLifecycle(opts = {}) {
+  const exists = typeof opts === 'function' ? opts : (opts.exists ?? stashExists);
+  const env = typeof opts === 'function' ? process.env : (opts.env ?? process.env);
+  const markedNested = env[INJECT_ACTIVE_ENV] === '1';
+  const stashPresent = exists();
+
+  if (markedNested) {
+    return { ownStash: false, nested: true, orphanStash: false };
+  }
+  if (stashPresent) {
+    // Leftover from bare resolve-drivers / crashed wrapper — take ownership.
+    return { ownStash: true, nested: false, orphanStash: true };
+  }
+  return { ownStash: true, nested: false, orphanStash: false };
 }
 
 /**
@@ -36,9 +56,10 @@ export function planPluginInjectLifecycle(exists = stashExists) {
  *   argv?: string[],
  *   root?: string,
  *   stashExistsFn?: () => boolean,
+ *   env?: NodeJS.ProcessEnv,
  *   runResolve?: (args: string) => void,
  *   runRestore?: () => void,
- *   runCommand?: (cmd: string, args: string[]) => { status: number | null },
+ *   runCommand?: (cmd: string, args: string[], env: NodeJS.ProcessEnv) => { status: number | null },
  *   log?: (msg: string) => void,
  * }} [options]
  */
@@ -46,6 +67,7 @@ export function runWithPluginInject(options = {}) {
   const argv = options.argv ?? process.argv.slice(2);
   const root = options.root ?? ROOT;
   const existsFn = options.stashExistsFn ?? stashExists;
+  const baseEnv = options.env ?? process.env;
   const log = options.log ?? console.log.bind(console);
 
   const sep = argv.indexOf('--');
@@ -53,7 +75,7 @@ export function runWithPluginInject(options = {}) {
   const behind = sep === -1 ? [] : argv.slice(sep + 1);
   if (
     ahead.some((a) => a === '--plugins' || a.startsWith('--plugins=')) ||
-    process.env.DATAZEN_PLUGINS
+    baseEnv.DATAZEN_PLUGINS
   ) {
     console.error(
       '[with-plugin-inject] --plugins / DATAZEN_PLUGINS are no longer supported. Use --drivers=... or DATAZEN_DRIVERS.',
@@ -70,6 +92,7 @@ export function runWithPluginInject(options = {}) {
       execSync(`node scripts/resolve-drivers.mjs ${args}`, {
         cwd: root,
         stdio: 'inherit',
+        env: baseEnv,
       });
     });
 
@@ -80,6 +103,7 @@ export function runWithPluginInject(options = {}) {
         execSync('node scripts/plugin-file-stash.mjs restore', {
           cwd: root,
           stdio: 'inherit',
+          env: baseEnv,
         });
       } catch {
         console.error('[with-plugin-inject] stash restore failed');
@@ -88,46 +112,59 @@ export function runWithPluginInject(options = {}) {
 
   const runCommand =
     options.runCommand ??
-    ((cmd, args) => {
-      // On Windows, spawnSync(cmd, args, { shell: true }) mangles args (e.g. bash -c SCRIPT).
-      // Prefer shell:false; fall back to a single command line only when needed for .cmd shims.
+    ((cmd, args, env) => {
       if (process.platform === 'win32' && cmd !== 'bash' && cmd !== 'sh') {
         return spawnSync(cmd, args, {
           cwd: root,
           stdio: 'inherit',
           shell: true,
-          env: process.env,
+          env,
         });
       }
       return spawnSync(cmd, args, {
         cwd: root,
         stdio: 'inherit',
         shell: false,
-        env: process.env,
+        env,
       });
     });
 
-  const { ownStash } = planPluginInjectLifecycle(existsFn);
+  const { ownStash, nested, orphanStash } = planPluginInjectLifecycle({
+    exists: existsFn,
+    env: baseEnv,
+  });
+
+  if (nested) {
+    log(
+      `[with-plugin-inject] ${INJECT_ACTIVE_ENV}=1; skipping resolve/restore (nested)`,
+    );
+  } else if (orphanStash) {
+    log(
+      '[with-plugin-inject] orphan .plugin-file-stash/ detected; restoring before resolve',
+    );
+    runRestore();
+  }
 
   if (ownStash) {
     runResolve(resolveArgs);
-  } else {
-    log(
-      '[with-plugin-inject] stash already present; skipping resolve/restore (nested)',
-    );
   }
+
+  const childEnv = ownStash
+    ? { ...baseEnv, [INJECT_ACTIVE_ENV]: '1' }
+    : { ...baseEnv };
 
   if (behind.length === 0) {
     if (ownStash) runRestore();
-    return { status: 0, ownStash, nested: !ownStash };
+    return { status: 0, ownStash, nested, orphanStash };
   }
 
-  const result = runCommand(behind[0], behind.slice(1));
+  const result = runCommand(behind[0], behind.slice(1), childEnv);
   if (ownStash) runRestore();
   return {
     status: result.status ?? 1,
     ownStash,
-    nested: !ownStash,
+    nested,
+    orphanStash,
   };
 }
 

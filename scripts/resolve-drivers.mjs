@@ -5,13 +5,14 @@
  * Pre-build script that resolves which database drivers to include.
  * Controlled via:
  *   --drivers="postgres,mysql"   (explicit registry names)
- *   --drivers="basic"            (postgres, mysql, sqlite, redis)
+ *   --drivers="basic"            (postgres, mysql, sqlite, redis) — default when omitted
  *   --drivers="all"              (all path drivers only; excludes git drivers)
  *   --drivers="stub"             (empty selection; git-safe generated.ts / plugin_init)
+ *   --drivers=                   (same as stub — explicit empty value)
  *   --drivers="postgres,mongodb,kiwi"  (explicit list; use this for custom SKUs)
  *   --restore                    (restore stashed clean managed files and exit)
  *
- * Environment variable: DATAZEN_DRIVERS="basic"
+ * Environment variable: DATAZEN_DRIVERS="basic" (overrides default when no --drivers flag)
  *
  * Hard cutover: --plugins / DATAZEN_PLUGINS / presets none|core are rejected.
  * Custom release SKUs (e.g. akulaku) must pass an explicit comma list in CI —
@@ -81,10 +82,9 @@ function parseArgs() {
     drivers = process.env.DATAZEN_DRIVERS;
   }
 
-  // Default: all path drivers (excludes git drivers).
-  // Explicit `--drivers=` (empty) is stub mode — do not fall through to all.
+  // Default: basic (four core path drivers). Explicit `--drivers=` (empty) is stub.
   if (!driversFlagSeen && (drivers == null || drivers === '')) {
-    drivers = 'all';
+    drivers = 'basic';
   }
   if (driversFlagSeen && drivers === '') {
     drivers = 'stub';

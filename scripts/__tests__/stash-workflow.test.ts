@@ -86,13 +86,16 @@ describe('stash inject restore workflow', () => {
   });
 
   it('CI-like nest: outer stash stays while nested inject skips restore', async () => {
-    const { runWithPluginInject } = await import('../with-plugin-inject.mjs');
+    const { INJECT_ACTIVE_ENV, runWithPluginInject } = await import(
+      '../with-plugin-inject.mjs'
+    );
     stash.stashManagedFiles();
     writeManagedFiles(root, INJECTED_CONTENTS);
 
     const result = runWithPluginInject({
       argv: ['--', 'true'],
       stashExistsFn: () => stash.stashExists(),
+      env: { [INJECT_ACTIVE_ENV]: '1' },
       runResolve: () => {
         throw new Error('nested must not resolve');
       },

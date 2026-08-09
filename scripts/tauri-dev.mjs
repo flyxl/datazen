@@ -4,10 +4,10 @@
  * restores stashed clean managed files on exit.
  *
  * Usage:
- *   pnpm tauri:dev                         # all path drivers (default; no git)
+ *   pnpm tauri:dev                         # basic (postgres/mysql/sqlite/redis)
+ *   pnpm tauri:dev --drivers=all           # all path drivers (no git)
  *   pnpm tauri:dev --drivers=kiwi          # only kiwi (+ no path drivers unless listed)
- *   pnpm tauri:dev --drivers=basic         # postgres, mysql, sqlite, redis
- *   DATAZEN_DRIVERS=basic pnpm tauri:dev   # env var also works
+ *   DATAZEN_DRIVERS=all pnpm tauri:dev     # env var also works
  */
 
 import { execSync, spawn } from 'child_process';
@@ -80,7 +80,7 @@ const tauri = spawn('npx', tauriArgs, {
     DATAZEN_DRIVERS:
       process.env.DATAZEN_DRIVERS ||
       driversArgs.map((a) => a.split('=')[1]).join(',') ||
-      'all',
+      'basic',
   },
 });
 
