@@ -7,7 +7,7 @@
  * - plugin_init.rs / generated.ts: fully generated → use stash baseline
  */
 
-export const PLUGIN_ACL_IDS = ['kiwi', 'olap', 'superset'];
+export const PLUGIN_ACL_IDS = ['kiwi', 'olap', 'superset', 'redis'];
 
 export const FULLY_GENERATED_MANAGED = [
   'src-tauri/src/plugin_init.rs',
