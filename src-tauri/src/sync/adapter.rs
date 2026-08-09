@@ -50,6 +50,12 @@ pub trait SyncSourceAdapter: Send + Sync {
             primary_keys: schema.primary_keys.clone(),
         }
     }
+
+    /// Optional SQL returning `(col_name, full_type)` rows for precision-preserving sync.
+    /// Default: none (host uses `column.data_type` only).
+    fn full_column_types_query(&self, _table: &str) -> Option<String> {
+        None
+    }
 }
 
 /// Renders IR back into native DDL fragments (used for the *target* side of a sync).

@@ -99,6 +99,13 @@ async fn backup_database_to_path(
     let data_only = opts.contains("data-only") || opts.contains("no-create-info");
     let add_drop = opts.contains("clean") || opts.contains("add-drop-table");
     let add_create_db = opts.contains("create");
+    // Host-side CREATE DATABASE / \connect is dialect-mixed and unsafe across
+    // engines. Refuse until backup moves into DatabaseDriver dump APIs.
+    if add_create_db {
+        return Err(CommandError::Validation(
+            "Backup option 'create' is not supported; use a dump without create, or wait for driver-native backup".into(),
+        ));
+    }
 
     let tables = driver
         .get_tables(&handle, db_name)
@@ -117,12 +124,6 @@ async fn backup_database_to_path(
         ));
     }
     out.push('\n');
-
-    if add_create_db {
-        let q_db = qi(db_name);
-        out.push_str(&format!("CREATE DATABASE IF NOT EXISTS {};\n", q_db));
-        out.push_str(&format!("\\connect {};\n\n", q_db));
-    }
 
     for table in &tables {
         let tname = &table.name;
@@ -176,32 +177,7 @@ async fn backup_database_to_path(
                     for row in &result.rows {
                         let vals: Vec<String> = row
                             .iter()
-                            .map(|v| match v {
-                                None => "NULL".to_string(),
-                                Some(crate::db::Value::Null) => "NULL".to_string(),
-                                Some(crate::db::Value::Bool(b)) => {
-                                    if *b {
-                                        "TRUE".to_string()
-                                    } else {
-                                        "FALSE".to_string()
-                                    }
-                                }
-                                Some(crate::db::Value::Integer(n)) => n.to_string(),
-                                Some(crate::db::Value::Float(f)) => f.to_string(),
-                                Some(crate::db::Value::String(s)) => {
-                                    format!("'{}'", s.replace('\'', "''"))
-                                }
-                                Some(crate::db::Value::Timestamp(s)) => format!("'{s}'"),
-                                Some(crate::db::Value::Json(j)) => {
-                                    format!("'{}'", j.to_string().replace('\'', "''"))
-                                }
-                                Some(crate::db::Value::Bytes(b)) => format!(
-                                    "'\\x{}'",
-                                    b.iter()
-                                        .map(|byte| format!("{byte:02x}"))
-                                        .collect::<String>()
-                                ),
-                            })
+                            .map(|v| driver.format_sql_literal(v))
                             .collect();
                         out.push_str(&format!(
                             "INSERT INTO {} ({}) VALUES ({});\n",

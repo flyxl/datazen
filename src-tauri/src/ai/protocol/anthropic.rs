@@ -265,7 +265,7 @@ pub async fn complete(
         tools,
     };
 
-    tracing::info!(%url, "anthropic: request\n{}", serde_json::to_string(&body).unwrap_or_default());
+    tracing::debug!(%url, "anthropic: request\n{}", serde_json::to_string(&body).unwrap_or_default());
 
     let resp = cfg
         .http_client
@@ -280,7 +280,7 @@ pub async fn complete(
 
     let status = resp.status();
     let raw = resp.text().await.unwrap_or_default();
-    tracing::info!(%status, "anthropic: response\n{}", raw);
+    tracing::debug!(%status, "anthropic: response\n{}", raw);
     if !status.is_success() {
         return Err(map_http_error(status, &raw));
     }
@@ -351,7 +351,7 @@ pub async fn stream_complete(
         tools,
     };
 
-    tracing::info!(%url, "anthropic: stream request\n{}", serde_json::to_string(&body).unwrap_or_default());
+    tracing::debug!(%url, "anthropic: stream request\n{}", serde_json::to_string(&body).unwrap_or_default());
 
     let resp = cfg
         .http_client

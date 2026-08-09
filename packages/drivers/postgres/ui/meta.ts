@@ -24,6 +24,7 @@ export const postgresqlMeta = {
     supportsExplain: true,
     hasMultiDatabase: true,
     namespaceEnsure: 'postgresql',
+    defaultDatabase: 'postgres',
   } satisfies DatabaseTypeMeta;
 
 export const questdbMeta = {

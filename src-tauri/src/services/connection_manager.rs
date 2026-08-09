@@ -262,6 +262,22 @@ impl ConnectionManager {
         Ok(active.config.clone())
     }
 
+    /// Update the active logical database for a live session (after `use_database`).
+    /// Keeps schema-cache keys and metadata lookups aligned with the session.
+    pub async fn set_active_database(
+        &self,
+        connection_id: &str,
+        database: &str,
+    ) -> Result<(), ConnectionError> {
+        let mut connections = self.connections.write().await;
+        let active = connections
+            .get_mut(connection_id)
+            .ok_or_else(|| ConnectionError::ConnectionNotFound(connection_id.to_string()))?;
+        active.config.database = Some(database.to_string());
+        active.last_used = Instant::now();
+        Ok(())
+    }
+
     pub async fn test_connection(&self, config: &ConnectionConfig) -> Result<ServerInfo, ConnectionError> {
         let (effective_config, _tunnel) = self.maybe_start_tunnel(config.clone()).await?;
 

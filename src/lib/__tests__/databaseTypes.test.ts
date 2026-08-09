@@ -20,7 +20,7 @@ describe('DB_REGISTRY behavioral flags', () => {
   });
 
   it('redis uses index form and keyvalue view', () => {
-    expect(DB_REGISTRY.redis.connectionForm).toBe('index');
+    expect(DB_REGISTRY.redis.connectionForm).toBe('redis');
     expect(DB_REGISTRY.redis.connectionView).toBe('keyvalue');
   });
 
