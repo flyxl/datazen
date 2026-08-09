@@ -6,6 +6,7 @@ import { PathInput } from '../../components/ui/PathInput';
 import { Select } from '../../components/ui/Select';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useAiStore } from '../../stores/aiStore';
+import { useConnectionStore } from '../../stores/connectionStore';
 import { useThemeListener } from '../../hooks/useThemeListener';
 import { useI18n } from '../../hooks/useI18n';
 import { getUrlParam } from '../../lib/windowKind';
@@ -15,6 +16,10 @@ import { settingsCommands } from '../../commands/settings';
 import { DB_REGISTRY } from '../../lib/databaseTypes';
 import { isKnownProviderType } from '../../lib/aiProviders';
 import { settingsSectionIconId } from '../../lib/hostLucideMap';
+import {
+  buildMcpAgentSnippet,
+  type McpAgentTarget,
+} from '../../lib/mcpAgentConfig';
 import type { AppSettings, AiProviderConfig, AiProviderType, DatabaseType, McpPermissionMode, McpServerConfig } from '../../types';
 import { DEFAULT_MONITOR_SETTINGS } from '../../types/dashboard';
 import type { ThemeMode } from '../../types/theme';
@@ -230,6 +235,13 @@ export function SettingsWindow() {
                     />
                   </SettingRow>
                 )}
+
+                <ToggleRow
+                  label={t('settings.autoChartOnQuery')}
+                  checked={draft.autoChartOnQuery !== false}
+                  onChange={(v) => updateField('autoChartOnQuery', v)}
+                />
+                <p className="text-xs text-fg-muted -mt-2">{t('settings.autoChartOnQueryHint')}</p>
               </>
             )}
 
@@ -502,20 +514,30 @@ function McpSettingsSection() {
   const { t } = useI18n();
   const settings = useSettingsStore((s) => s.settings);
   const updateSettings = useSettingsStore((s) => s.updateSettings);
+  const connections = useConnectionStore((s) => s.connections);
+  const fetchConnections = useConnectionStore((s) => s.fetchConnections);
   const [allTools, setAllTools] = useState<string[]>([]);
   const [disabledTools, setDisabledTools] = useState<string[]>([]);
+  const [allowedIds, setAllowedIds] = useState<string[]>([]);
   const [saved, setSaved] = useState(false);
   const [running, setRunning] = useState(false);
   const [toggling, setToggling] = useState(false);
   const [toggleError, setToggleError] = useState<string | null>(null);
+  const [agentTarget, setAgentTarget] = useState<McpAgentTarget>('cursor');
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     void aiCommands.mcpListAllTools().then(setAllTools).catch(() => {});
-  }, []);
+    void fetchConnections().catch(() => {});
+  }, [fetchConnections]);
 
   useEffect(() => {
     setDisabledTools(settings.mcpDisabledTools ?? []);
   }, [settings.mcpDisabledTools]);
+
+  useEffect(() => {
+    setAllowedIds(settings.mcpAllowedConnectionIds ?? []);
+  }, [settings.mcpAllowedConnectionIds]);
 
   const refreshStatus = async () => {
     try {
@@ -556,12 +578,22 @@ function McpSettingsSection() {
 
   const toggleTool = (toolName: string) => {
     setDisabledTools((prev) =>
-      prev.includes(toolName) ? prev.filter((t) => t !== toolName) : [...prev, toolName],
+      prev.includes(toolName) ? prev.filter((n) => n !== toolName) : [...prev, toolName],
+    );
+  };
+
+  const toggleAllowed = (id: string) => {
+    setAllowedIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
     );
   };
 
   const handleSaveTools = async () => {
-    await updateSettings({ ...settings, mcpDisabledTools: disabledTools });
+    await updateSettings({
+      ...settings,
+      mcpDisabledTools: disabledTools,
+      mcpAllowedConnectionIds: allowedIds,
+    });
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
@@ -569,7 +601,22 @@ function McpSettingsSection() {
   const handleEnableAll = () => setDisabledTools([]);
   const handleDisableAll = () => setDisabledTools([...allTools]);
 
-  const toolsDirty = JSON.stringify([...disabledTools].sort()) !== JSON.stringify([...(settings.mcpDisabledTools ?? [])].sort());
+  const toolsDirty =
+    JSON.stringify([...disabledTools].sort()) !==
+      JSON.stringify([...(settings.mcpDisabledTools ?? [])].sort()) ||
+    JSON.stringify([...allowedIds].sort()) !==
+      JSON.stringify([...(settings.mcpAllowedConnectionIds ?? [])].sort());
+
+  const snippet = buildMcpAgentSnippet(agentTarget);
+  const handleCopySnippet = async () => {
+    try {
+      await navigator.clipboard.writeText(snippet.json);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      /* ignore */
+    }
+  };
 
   return (
     <>
@@ -630,18 +677,72 @@ function McpSettingsSection() {
       </SettingRow>
       <p className="text-xs text-fg-muted -mt-3">{t('mcp.permission.restartHint')}</p>
 
-      <div className="rounded-md border border-edge bg-surface p-3">
+      <SettingRow label={t('mcp.allowlist.title')}>
+        <div className="space-y-2 pt-1">
+          <p className="text-xs text-fg-muted">{t('mcp.allowlist.description')}</p>
+          {connections.length === 0 ? (
+            <p className="text-xs text-fg-muted">{t('mcp.allowlist.empty')}</p>
+          ) : (
+            <div className="max-h-48 space-y-1 overflow-y-auto">
+              {connections.map((c) => {
+                const checked = allowedIds.includes(c.id);
+                return (
+                  <label
+                    key={c.id}
+                    className="flex cursor-pointer items-center gap-2 rounded-md border border-edge bg-surface px-3 py-2"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggleAllowed(c.id)}
+                      className="accent-accent"
+                    />
+                    <span className="min-w-0 truncate text-sm text-fg">
+                      {c.name}
+                      <span className="ml-2 font-mono text-xs text-fg-muted">{c.id.slice(0, 8)}</span>
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          )}
+          <p className="text-xs text-fg-muted">{t('mcp.allowlist.restartHint')}</p>
+        </div>
+      </SettingRow>
+
+      <div className="rounded-md border border-edge bg-surface p-3 space-y-2">
         <p className="text-xs text-fg-muted">{t('mcp.usage')}</p>
-        <pre className="mt-2 text-xs font-mono text-fg-secondary whitespace-pre-wrap break-all">
-{`{
-  "mcpServers": {
-    "datazen": {
-      "command": "datazen",
-      "args": ["--mcp"]
-    }
-  }
-}`}
+        <div className="flex items-center gap-2">
+          {(['cursor', 'claude'] as const).map((target) => (
+            <button
+              key={target}
+              type="button"
+              onClick={() => setAgentTarget(target)}
+              className={cn(
+                'rounded px-2 py-1 text-xs',
+                agentTarget === target
+                  ? 'bg-accent text-white'
+                  : 'bg-surface-raised text-fg-secondary hover:text-fg',
+              )}
+            >
+              {t(target === 'cursor' ? 'mcp.config.cursor' : 'mcp.config.claude')}
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() => void handleCopySnippet()}
+            className="ml-auto text-xs text-accent hover:underline"
+          >
+            {copied ? t('mcp.config.copied') : t('mcp.config.copy')}
+          </button>
+        </div>
+        <p className="text-xs text-fg-muted">
+          {t('mcp.config.pathHint', { path: snippet.configPathHint })}
+        </p>
+        <pre className="text-xs font-mono text-fg-secondary whitespace-pre-wrap break-all">
+          {snippet.json}
         </pre>
+        <p className="text-xs text-fg-muted">{t('mcp.config.commandHint')}</p>
       </div>
 
       {allTools.length > 0 && (
@@ -695,6 +796,15 @@ function McpSettingsSection() {
             </Button>
           </div>
         </>
+      )}
+
+      {allTools.length === 0 && toolsDirty && (
+        <div className="flex items-center gap-3">
+          {saved && <span className="text-xs text-green-500">{t('settings.saved')}</span>}
+          <Button variant="primary" onClick={() => void handleSaveTools()}>
+            {t('common.save')}
+          </Button>
+        </div>
       )}
     </>
   );
@@ -909,6 +1019,7 @@ function AiSettingsSection() {
   }, [config]);
 
   const isCustom = aiDraft.providerType === 'custom';
+  const isOllama = aiDraft.providerType === 'ollama';
 
   const selectedProvider = providers.find(
     (p) => p.providerType === aiDraft.providerType,
@@ -945,12 +1056,12 @@ function AiSettingsSection() {
 
   const handleFetchModels = async () => {
     const endpoint = aiDraft.endpoint?.trim();
-    const apiKey = aiDraft.apiKey?.trim();
-    if (!endpoint || !apiKey) return;
+    const apiKey = aiDraft.apiKey?.trim() || (isOllama ? 'ollama' : '');
+    if (!endpoint || (!apiKey && !isOllama)) return;
     const protocol = isCustom
       ? customProtocol
       : (selectedProvider?.defaultProtocol ?? 'open_ai_compatible');
-    await fetchRemoteModels(protocol, endpoint, apiKey);
+    await fetchRemoteModels(protocol, endpoint, apiKey || 'ollama');
   };
 
   const handleValidate = async () => {
@@ -1004,7 +1115,8 @@ function AiSettingsSection() {
 
   const modelOptions = remoteModels.map((m) => ({ value: m.id, label: m.displayName }));
 
-  const canFetchModels = !!(aiDraft.endpoint?.trim()) && !!(aiDraft.apiKey?.trim());
+  const canFetchModels =
+    !!(aiDraft.endpoint?.trim()) && (!!aiDraft.apiKey?.trim() || isOllama);
 
   const endpointPlaceholder = isCustom
     ? customProtocol === 'anthropic_compatible'

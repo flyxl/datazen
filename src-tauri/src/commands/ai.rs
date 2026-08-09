@@ -73,6 +73,7 @@ fn provider_defaults(pt: AiProviderType) -> (&'static str, &'static str) {
         AiProviderType::OpenAi => ("https://api.openai.com/v1", "open_ai_compatible"),
         AiProviderType::Anthropic => ("https://api.anthropic.com", "anthropic_compatible"),
         AiProviderType::DeepSeek => ("https://api.deepseek.com", "open_ai_responses"),
+        AiProviderType::Ollama => ("http://127.0.0.1:11434/v1", "open_ai_compatible"),
         AiProviderType::Custom => ("", "open_ai_compatible"),
     }
 }

@@ -15,6 +15,7 @@ pub mod ssh_tunnel;
 mod store;
 mod tray;
 pub mod sync;
+pub mod schema_diff;
 pub mod workflow;
 
 use std::path::PathBuf;
@@ -102,6 +103,9 @@ fn setup_menu(
     let data_sync_item = MenuItemBuilder::new(t("data-sync"))
         .id("data-sync")
         .build(handle)?;
+    let schema_diff_item = MenuItemBuilder::new(t("schema-diff"))
+        .id("schema-diff")
+        .build(handle)?;
     let backup_item = MenuItemBuilder::new(t("backup"))
         .id("backup")
         .build(handle)?;
@@ -168,6 +172,7 @@ fn setup_menu(
     // ── Tools ──
     let tools_menu = SubmenuBuilder::new(handle, t("tools"))
         .item(&data_sync_item)
+        .item(&schema_diff_item)
         .separator()
         .item(&backup_item)
         .item(&restore_item)
@@ -228,6 +233,9 @@ fn setup_menu(
             }
             "data-sync" => {
                 let _ = app_handle.emit("menu:data-sync", ());
+            }
+            "schema-diff" => {
+                let _ = app_handle.emit("menu:schema-diff", ());
             }
             "backup" => {
                 let _ = app_handle.emit("menu:backup", ());
@@ -623,6 +631,8 @@ pub fn run() {
             commands::compare_databases,
             commands::compare_table_schemas,
             commands::compare_table_data,
+            commands::prepare_schema_diff_plan,
+            commands::execute_schema_diff_deploy,
             commands::sync_table,
             commands::sync_tables,
             commands::get_sync_tasks,

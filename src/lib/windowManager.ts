@@ -25,6 +25,7 @@ export const WINDOW_CAPABILITY_LABEL_SAMPLES = [
   'main',
   'new-connection-singleton',
   'data-sync-singleton',
+  'schema-diff-singleton',
   'backup-singleton',
   'workflow-singleton',
   'settings-singleton',
@@ -136,6 +137,17 @@ export function openDataSyncWindow() {
     minWidth: 600,
     minHeight: 480,
     title: t('win.dataSync'),
+  });
+}
+
+export function openSchemaDiffWindow() {
+  openSingletonWindow('schema-diff-singleton', {
+    params: { window: 'schema-diff' },
+    width: 900,
+    height: 640,
+    minWidth: 560,
+    minHeight: 420,
+    title: t('win.schemaDiff'),
   });
 }
 

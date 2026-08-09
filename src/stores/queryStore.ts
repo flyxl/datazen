@@ -134,6 +134,8 @@ export const useQueryStore = create<QueryStore>((set, get) => ({
 
     try {
       const multi = await queryCommands.executeQuery(connectionId, tab.sql);
+      const { resolvePostQueryViewMode } = await import('../lib/chart/postQueryView');
+      const viewMode = resolvePostQueryViewMode(multi.results[0]);
       set((s) => ({
         tabs: s.tabs.map((t) =>
           t.id === tabId
@@ -144,6 +146,7 @@ export const useQueryStore = create<QueryStore>((set, get) => ({
                 activeResultIdx: 0,
                 error: null,
                 executionTimeMs: multi.totalTimeMs ?? null,
+                resultViewMode: viewMode,
               }
             : t,
         ),
@@ -174,6 +177,8 @@ export const useQueryStore = create<QueryStore>((set, get) => ({
     });
     try {
       const multi = await queryCommands.executeQuery(connectionId, sql);
+      const { resolvePostQueryViewMode } = await import('../lib/chart/postQueryView');
+      const viewMode = resolvePostQueryViewMode(multi.results[0]);
       set((s) => ({
         tabs: s.tabs.map((t) =>
           t.id === tabId
@@ -184,6 +189,7 @@ export const useQueryStore = create<QueryStore>((set, get) => ({
                 activeResultIdx: 0,
                 error: null,
                 executionTimeMs: multi.totalTimeMs ?? null,
+                resultViewMode: viewMode,
               }
             : t,
         ),

@@ -9,11 +9,23 @@ DataZen 作为 MCP Server 暴露数据库操作能力给外部 LLM 应用（Clau
 ```
 src-tauri/src/mcp/
 ├── mod.rs          # MCP 启动/停止, 状态管理
+├── allowlist.rs    # 连接白名单（空 = 全部暴露）
+├── permission.rs   # 三档权限 + SQL/工具门控
 ├── server.rs       # MCP Server 实现（含 workflow tools 适配）
 └── client.rs       # MCP Client 管理
 ```
 
 Workflow 引擎本身在 [`workflow` 模块](./workflow.md)（若尚未拆文档，见 `src-tauri/src/workflow/`），MCP 仅通过 Tools/Resources 暴露。
+
+**信任模型（Settings → MCP Server）：**
+
+| 控制 | 说明 |
+|------|------|
+| `mcpPermissionMode` | `read_only` / `safe_write`（默认）/ `high_risk_write` |
+| `mcpDisabledTools` | 工具 denylist |
+| `mcpAllowedConnectionIds` | 连接白名单；**空数组 = 暴露全部已保存连接** |
+
+修改权限/白名单/工具后需重启 MCP（或重新运行 `datazen --mcp`）。
 
 **Server Tools:**
 - `list_connections` / `list_databases` / `list_tables` / `query` / `get_schema`

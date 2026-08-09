@@ -9,6 +9,8 @@ import workflowGuideZh from '../../../docs/workflow-guide.md?raw';
 import workflowGuideEn from '../../../docs/workflow-guide.en.md?raw';
 import opsDashboardGuideZh from '../../../docs/ops-dashboard-guide.md?raw';
 import opsDashboardGuideEn from '../../../docs/ops-dashboard-guide.en.md?raw';
+import schemaDiffGuideZh from '../../../docs/schema-diff-guide.md?raw';
+import schemaDiffGuideEn from '../../../docs/schema-diff-guide.en.md?raw';
 
 describe('renderMarkdown', () => {
   it('slugs headings like GFM (drop punctuation)', () => {
@@ -45,5 +47,19 @@ describe('renderMarkdown', () => {
     const html = renderWorkflowMarkdown(opsDashboardGuideEn);
     expect(html).toContain('id="3-quick-start"');
     expect(html).toContain('configId');
+  });
+
+  it('renders Chinese schema diff guide with anchors and tables', () => {
+    const html = renderWorkflowMarkdown(schemaDiffGuideZh);
+    expect(html).toContain('id="2-快速入门"');
+    expect(html).toContain('<table');
+    expect(html).toContain('DEPLOY');
+    expect(html).not.toMatch(/^<h1/);
+  });
+
+  it('renders English schema diff guide', () => {
+    const html = renderWorkflowMarkdown(schemaDiffGuideEn);
+    expect(html).toContain('id="2-quick-start"');
+    expect(html).toContain('additive-only');
   });
 });

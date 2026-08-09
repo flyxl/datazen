@@ -9,6 +9,7 @@ pub mod anthropic;
 pub mod context;
 pub mod custom;
 pub mod deepseek;
+pub mod ollama;
 pub mod openai;
 pub mod prompt_resolver;
 pub mod protocol;
