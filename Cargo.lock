@@ -1816,6 +1816,7 @@ name = "datazen-driver-redis"
 version = "0.0.8"
 dependencies = [
  "async-trait",
+ "base64 0.22.1",
  "datazen-driver-api",
  "futures-util",
  "redis",

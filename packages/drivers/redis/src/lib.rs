@@ -7,6 +7,7 @@ use datazen_driver_api::*;
 mod connect;
 mod ops;
 mod ops_exec;
+mod ops_io;
 mod ops_json;
 mod ops_observe;
 mod ops_pubsub;
