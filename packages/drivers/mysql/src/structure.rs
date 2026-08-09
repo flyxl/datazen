@@ -51,13 +51,14 @@ fn plan_create_table(
         return Err(unsupported("create table requires at least one column"));
     }
 
+    validate_column_drafts(caps, &request.current_columns)?;
     validate_index_drafts(caps, &request.current_indexes)?;
 
     let table = quote_table(request.schema.as_deref(), &request.table);
     let mut col_defs: Vec<String> = request
         .current_columns
         .iter()
-        .map(|col| format_column_definition(col, true, false))
+        .map(|col| format_column_definition(col, true, false, caps))
         .collect();
 
     let pk_cols: Vec<String> = request
@@ -74,7 +75,7 @@ fn plan_create_table(
         if idx.is_primary {
             continue;
         }
-        col_defs.push(format_index_definition(idx));
+        col_defs.push(format_index_definition(idx, caps));
     }
 
     let sql = format!("CREATE TABLE {} (\n  {}\n)", table, col_defs.join(",\n  "));
@@ -93,6 +94,8 @@ fn plan_alter_table(
     caps: &StructureCapabilities,
     request: &StructureChangeRequest,
 ) -> Result<StructureChangePlan, DriverError> {
+    check_reorder(caps, &request.original_columns, &request.current_columns)?;
+
     let original_cols = index_columns_by_id(&request.original_columns);
     let current_cols = index_columns_by_id(&request.current_columns);
     let original_idx = index_indexes_by_id(&request.original_indexes);
@@ -144,9 +147,10 @@ fn plan_alter_table(
                 if !caps.add_column {
                     return Err(unsupported("add_column is not supported"));
                 }
+                validate_column_draft(caps, col)?;
                 let mut clause = format!(
                     "ADD COLUMN {}",
-                    format_column_definition(col, true, false)
+                    format_column_definition(col, true, false, caps)
                 );
                 if caps.reorder_column {
                     if let Some(after) =
@@ -212,13 +216,13 @@ fn plan_alter_table(
                         alter_clauses.push(format!(
                             "CHANGE COLUMN {} {}{}",
                             quote_ident(&orig.name),
-                            format_column_definition(col, true, false),
+                            format_column_definition(col, true, false, caps),
                             positioning
                         ));
                     } else {
                         alter_clauses.push(format!(
                             "MODIFY COLUMN {}{}",
-                            format_column_definition(col, true, false),
+                            format_column_definition(col, true, false, caps),
                             positioning
                         ));
                     }
@@ -243,16 +247,6 @@ fn plan_alter_table(
         let table = quote_table(request.schema.as_deref(), &request.table);
         let unique = if idx.is_unique { "UNIQUE " } else { "" };
         let method = normalize_index_method(&idx.index_type);
-        if !caps.index_methods.is_empty()
-            && !caps
-                .index_methods
-                .iter()
-                .any(|m| m.eq_ignore_ascii_case(&method))
-        {
-            return Err(unsupported(format!(
-                "index method `{method}` is not supported"
-            )));
-        }
 
         let cols = idx
             .columns
@@ -267,14 +261,12 @@ fn plan_alter_table(
             table,
             cols
         );
-        if caps.index_type && !method.is_empty() {
+        if caps.index_type && !idx.index_type.trim().is_empty() {
             sql.push_str(&format!(" USING {method}"));
         }
-        if caps.index_comment {
-            if let Some(comment) = &idx.comment {
-                if !comment.is_empty() {
-                    sql.push_str(&format!(" COMMENT {}", quote_string_literal(comment)));
-                }
+        if let Some(comment) = &idx.comment {
+            if !comment.is_empty() {
+                sql.push_str(&format!(" COMMENT {}", quote_string_literal(comment)));
             }
         }
 
@@ -321,6 +313,26 @@ fn plan_alter_table(
     })
 }
 
+fn validate_column_drafts(
+    caps: &StructureCapabilities,
+    columns: &[StructureColumnDraft],
+) -> Result<(), DriverError> {
+    for col in columns {
+        validate_column_draft(caps, col)?;
+    }
+    Ok(())
+}
+
+fn validate_column_draft(
+    caps: &StructureCapabilities,
+    col: &StructureColumnDraft,
+) -> Result<(), DriverError> {
+    if col.comment.as_ref().is_some_and(|c| !c.is_empty()) && !caps.comment {
+        return Err(unsupported("comment is not supported"));
+    }
+    Ok(())
+}
+
 fn validate_index_drafts(
     caps: &StructureCapabilities,
     indexes: &[StructureIndexDraft],
@@ -340,6 +352,57 @@ fn validate_index_draft(
     }
     if idx.filter.is_some() && !caps.index_filter {
         return Err(unsupported("index_filter is not supported"));
+    }
+    if !idx.index_type.trim().is_empty() && !caps.index_type {
+        return Err(unsupported("index_type is not supported"));
+    }
+    if idx.comment.as_ref().is_some_and(|c| !c.is_empty()) && !caps.index_comment {
+        return Err(unsupported("index_comment is not supported"));
+    }
+
+    let method = normalize_index_method(&idx.index_type);
+    if !caps.index_methods.is_empty() {
+        if !caps
+            .index_methods
+            .iter()
+            .any(|m| m.eq_ignore_ascii_case(&method))
+        {
+            return Err(unsupported(format!(
+                "index method `{method}` is not supported"
+            )));
+        }
+    } else if !idx.index_type.trim().is_empty() {
+        return Err(unsupported(format!(
+            "index method `{method}` is not supported"
+        )));
+    }
+
+    Ok(())
+}
+
+fn check_reorder(
+    caps: &StructureCapabilities,
+    original: &[StructureColumnDraft],
+    current: &[StructureColumnDraft],
+) -> Result<(), DriverError> {
+    if caps.reorder_column {
+        return Ok(());
+    }
+    let orig_ids: Vec<&str> = original.iter().map(|c| c.id.as_str()).collect();
+    let curr_ids: Vec<&str> = current.iter().map(|c| c.id.as_str()).collect();
+    let orig_set: std::collections::HashSet<&str> = orig_ids.iter().copied().collect();
+    let shared_orig: Vec<&str> = orig_ids
+        .iter()
+        .copied()
+        .filter(|id| current.iter().any(|c| c.id.as_str() == *id))
+        .collect();
+    let shared_curr: Vec<&str> = curr_ids
+        .iter()
+        .copied()
+        .filter(|id| orig_set.contains(id))
+        .collect();
+    if shared_orig != shared_curr {
+        return Err(unsupported("reorder_column is not supported"));
     }
     Ok(())
 }
@@ -410,7 +473,7 @@ fn column_position_suffix(
     }
 }
 
-fn format_index_definition(idx: &StructureIndexDraft) -> String {
+fn format_index_definition(idx: &StructureIndexDraft, caps: &StructureCapabilities) -> String {
     let cols = idx
         .columns
         .iter()
@@ -419,14 +482,7 @@ fn format_index_definition(idx: &StructureIndexDraft) -> String {
         .join(", ");
     let unique = if idx.is_unique { "UNIQUE " } else { "" };
     let method = normalize_index_method(&idx.index_type);
-    if method.is_empty() {
-        format!(
-            "{}KEY {} ({})",
-            unique,
-            quote_ident(&idx.name),
-            cols
-        )
-    } else {
+    let mut sql = if caps.index_type && !idx.index_type.trim().is_empty() {
         format!(
             "{}KEY {} ({}) USING {}",
             unique,
@@ -434,13 +490,22 @@ fn format_index_definition(idx: &StructureIndexDraft) -> String {
             cols,
             method
         )
+    } else {
+        format!("{}KEY {} ({})", unique, quote_ident(&idx.name), cols)
+    };
+    if let Some(comment) = &idx.comment {
+        if !comment.is_empty() {
+            sql.push_str(&format!(" COMMENT {}", quote_string_literal(comment)));
+        }
     }
+    sql
 }
 
 fn format_column_definition(
     col: &StructureColumnDraft,
     include_name: bool,
     inline_primary: bool,
+    caps: &StructureCapabilities,
 ) -> String {
     let mut parts: Vec<String> = Vec::new();
     if include_name {
@@ -469,9 +534,11 @@ fn format_column_definition(
         parts.push("PRIMARY KEY".into());
     }
 
-    if let Some(comment) = &col.comment {
-        if !comment.is_empty() {
-            parts.push(format!("COMMENT {}", quote_string_literal(comment)));
+    if caps.comment {
+        if let Some(comment) = &col.comment {
+            if !comment.is_empty() {
+                parts.push(format!("COMMENT {}", quote_string_literal(comment)));
+            }
         }
     }
 
@@ -778,5 +845,137 @@ mod tests {
         assert!(plan.statements[0]
             .sql
             .contains("MODIFY COLUMN `name` VARCHAR(100) NOT NULL AFTER `email`"));
+    }
+
+    #[test]
+    fn plan_rejects_column_reorder_when_cap_disabled() {
+        let mut caps = baseline_capabilities("mysql");
+        caps.reorder_column = false;
+        let request = StructureChangeRequest {
+            mode: StructureChangeMode::Alter,
+            schema: None,
+            table: "users".into(),
+            original_columns: vec![
+                sample_col("1", "id", "INT"),
+                sample_col("2", "name", "VARCHAR(100)"),
+            ],
+            current_columns: vec![
+                sample_col("2", "name", "VARCHAR(100)"),
+                sample_col("1", "id", "INT"),
+            ],
+            original_indexes: vec![],
+            current_indexes: vec![],
+        };
+
+        let err = plan_structure_changes(&caps, &request).unwrap_err();
+        assert!(matches!(err, DriverError::Unsupported(msg) if msg == "reorder_column is not supported"));
+    }
+
+    #[test]
+    fn plan_rejects_column_comment_on_add_when_cap_disabled() {
+        let mut caps = baseline_capabilities("mysql");
+        caps.comment = false;
+        let request = StructureChangeRequest {
+            mode: StructureChangeMode::Alter,
+            schema: None,
+            table: "users".into(),
+            original_columns: vec![sample_col("1", "id", "INT")],
+            current_columns: vec![
+                sample_col("1", "id", "INT"),
+                StructureColumnDraft {
+                    comment: Some("note".into()),
+                    ..sample_col("2", "email", "VARCHAR(255)")
+                },
+            ],
+            original_indexes: vec![],
+            current_indexes: vec![],
+        };
+
+        let err = plan_structure_changes(&caps, &request).unwrap_err();
+        assert!(matches!(err, DriverError::Unsupported(msg) if msg == "comment is not supported"));
+    }
+
+    #[test]
+    fn plan_rejects_column_comment_on_create_when_cap_disabled() {
+        let mut caps = baseline_capabilities("mysql");
+        caps.comment = false;
+        let request = StructureChangeRequest {
+            mode: StructureChangeMode::Create,
+            schema: None,
+            table: "users".into(),
+            original_columns: vec![],
+            current_columns: vec![StructureColumnDraft {
+                comment: Some("identifier".into()),
+                ..sample_col("1", "id", "INT")
+            }],
+            original_indexes: vec![],
+            current_indexes: vec![],
+        };
+
+        let err = plan_structure_changes(&caps, &request).unwrap_err();
+        assert!(matches!(err, DriverError::Unsupported(msg) if msg == "comment is not supported"));
+    }
+
+    #[test]
+    fn plan_rejects_index_type_when_cap_disabled() {
+        let mut caps = baseline_capabilities("mysql");
+        caps.index_type = false;
+        let request = StructureChangeRequest {
+            mode: StructureChangeMode::Alter,
+            schema: None,
+            table: "users".into(),
+            original_columns: vec![sample_col("1", "id", "INT")],
+            current_columns: vec![sample_col("1", "id", "INT")],
+            original_indexes: vec![],
+            current_indexes: vec![StructureIndexDraft {
+                index_type: "hash".into(),
+                ..sample_idx("i1", "idx_email", vec!["email"])
+            }],
+        };
+
+        let err = plan_structure_changes(&caps, &request).unwrap_err();
+        assert!(matches!(err, DriverError::Unsupported(msg) if msg == "index_type is not supported"));
+    }
+
+    #[test]
+    fn plan_rejects_index_comment_when_cap_disabled() {
+        let mut caps = baseline_capabilities("mysql");
+        caps.index_comment = false;
+        let request = StructureChangeRequest {
+            mode: StructureChangeMode::Alter,
+            schema: None,
+            table: "users".into(),
+            original_columns: vec![sample_col("1", "id", "INT")],
+            current_columns: vec![sample_col("1", "id", "INT")],
+            original_indexes: vec![],
+            current_indexes: vec![StructureIndexDraft {
+                comment: Some("lookup".into()),
+                ..sample_idx("i1", "idx_email", vec!["email"])
+            }],
+        };
+
+        let err = plan_structure_changes(&caps, &request).unwrap_err();
+        assert!(matches!(err, DriverError::Unsupported(msg) if msg == "index_comment is not supported"));
+    }
+
+    #[test]
+    fn plan_rejects_index_method_when_not_allowed() {
+        let mut caps = baseline_capabilities("mysql");
+        caps.index_methods = vec!["BTREE".into()];
+        let request = StructureChangeRequest {
+            mode: StructureChangeMode::Alter,
+            schema: None,
+            table: "users".into(),
+            original_columns: vec![sample_col("1", "id", "INT")],
+            current_columns: vec![sample_col("1", "id", "INT")],
+            original_indexes: vec![],
+            current_indexes: vec![StructureIndexDraft {
+                index_type: "hash".into(),
+                ..sample_idx("i1", "idx_email", vec!["email"])
+            }],
+        };
+
+        let err = plan_structure_changes(&caps, &request).unwrap_err();
+        assert!(matches!(err, DriverError::Unsupported(msg) if msg == "index method `HASH` is not supported"));
     }
 }
