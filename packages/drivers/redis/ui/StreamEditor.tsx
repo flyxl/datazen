@@ -317,7 +317,7 @@ export function StreamEditor({ connectionId, dbIndex, redisKey }: StreamEditorPr
       </div>
 
       {error && (
-        <div className="rounded-md border border-red-500/20 bg-red-500/10 px-2 py-1.5 text-red-400">
+        <div className="rounded-md border border-danger/20 bg-danger/10 px-2 py-1.5 text-danger">
           {error}
         </div>
       )}
@@ -416,7 +416,7 @@ export function StreamEditor({ connectionId, dbIndex, redisKey }: StreamEditorPr
                   key={group.name}
                   className={cn(
                     'border-b border-edge cursor-pointer',
-                    selectedGroup === group.name && 'bg-blue-500/5',
+                    selectedGroup === group.name && 'bg-accent/5',
                   )}
                   onClick={() => setSelectedGroup(group.name)}
                 >
@@ -429,7 +429,7 @@ export function StreamEditor({ connectionId, dbIndex, redisKey }: StreamEditorPr
                   <td className="px-2 py-1.5">
                     <button
                       type="button"
-                      className="rounded p-1 text-red-400 hover:bg-red-500/10"
+                      className="rounded p-1 text-danger hover:bg-danger/10"
                       title={t('redis.streamDestroyGroup')}
                       onClick={(e) => {
                         e.stopPropagation();

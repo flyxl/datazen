@@ -290,7 +290,7 @@ export function RedisConsole({
 
         {error && !running && (
           <div className="flex-1 overflow-auto p-4">
-            <div className="rounded-md border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+            <div className="rounded-md border border-danger/20 bg-danger/10 px-4 py-3 text-sm text-danger">
               {error}
             </div>
           </div>
@@ -317,7 +317,7 @@ export function RedisConsole({
                     <span
                       className={cn(
                         'ml-1.5 text-[10px]',
-                        result.ok ? 'text-emerald-500/80' : 'text-red-400',
+                        result.ok ? 'text-success/80' : 'text-danger',
                       )}
                     >
                       {result.ok ? 'OK' : 'ERR'}
@@ -335,7 +335,7 @@ export function RedisConsole({
                 <div className="flex items-center gap-3 border-b border-edge bg-surface-alt px-3 py-1.5 text-xs text-fg-secondary">
                   <span className="font-mono">{activeResult.command}</span>
                   <span className="text-edge">|</span>
-                  <span className={activeResult.ok ? 'text-emerald-500/90' : 'text-red-400'}>
+                  <span className={activeResult.ok ? 'text-success/90' : 'text-danger'}>
                     {activeResult.ok ? t('redis.console.ok') : t('redis.console.failed')}
                   </span>
                 </div>
@@ -345,7 +345,7 @@ export function RedisConsole({
                       {activeResult.value ?? '(nil)'}
                     </pre>
                   ) : (
-                    <div className="rounded-md border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+                    <div className="rounded-md border border-danger/20 bg-danger/10 px-4 py-3 text-sm text-danger">
                       {activeResult.error}
                     </div>
                   )}

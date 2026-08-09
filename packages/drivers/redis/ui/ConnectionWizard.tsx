@@ -72,7 +72,7 @@ export function RedisConnectionWizard({ form }: { form: ConnectionFormState }) {
               type="button"
               className={`rounded-md border px-3 py-3 text-left text-sm transition-colors ${
                 topology === value
-                  ? 'border-blue-500/50 bg-blue-500/10 text-fg'
+                  ? 'border-accent/50 bg-accent/10 text-fg'
                   : 'border-edge bg-surface-alt text-fg-secondary hover:border-edge-strong hover:text-fg'
               }`}
               onClick={() => setTopology(value)}
@@ -94,10 +94,10 @@ export function RedisConnectionWizard({ form }: { form: ConnectionFormState }) {
               value={form.host}
               onChange={(e) => form.setHost(e.target.value)}
               placeholder="127.0.0.1"
-              className={form.validationErrors.host ? 'border-red-500' : ''}
+              className={form.validationErrors.host ? 'border-danger' : ''}
             />
             {form.validationErrors.host && (
-              <p className="mt-1 text-xs text-red-400">{form.validationErrors.host}</p>
+              <p className="mt-1 text-xs text-danger">{form.validationErrors.host}</p>
             )}
           </div>
           <div>
@@ -105,10 +105,10 @@ export function RedisConnectionWizard({ form }: { form: ConnectionFormState }) {
             <Input
               value={form.port}
               onChange={(e) => form.setPort(e.target.value)}
-              className={form.validationErrors.port ? 'border-red-500' : ''}
+              className={form.validationErrors.port ? 'border-danger' : ''}
             />
             {form.validationErrors.port && (
-              <p className="mt-1 text-xs text-red-400">{form.validationErrors.port}</p>
+              <p className="mt-1 text-xs text-danger">{form.validationErrors.port}</p>
             )}
           </div>
           <div>
@@ -149,11 +149,11 @@ export function RedisConnectionWizard({ form }: { form: ConnectionFormState }) {
               rows={4}
               placeholder={'10.0.0.1:7000\n10.0.0.2:7000'}
               className={`w-full rounded-md border bg-surface px-3 py-2 font-mono text-xs text-fg outline-none ${
-                form.validationErrors.clusterNodes ? 'border-red-500' : 'border-edge'
+                form.validationErrors.clusterNodes ? 'border-danger' : 'border-edge'
               }`}
             />
             {form.validationErrors.clusterNodes && (
-              <p className="mt-1 text-xs text-red-400">{form.validationErrors.clusterNodes}</p>
+              <p className="mt-1 text-xs text-danger">{form.validationErrors.clusterNodes}</p>
             )}
             <p className="mt-1 text-xs text-fg-muted">{t('redis.wizard.nodeListHint')}</p>
           </div>
@@ -182,10 +182,10 @@ export function RedisConnectionWizard({ form }: { form: ConnectionFormState }) {
               value={redisOptions.sentinelMasterName ?? ''}
               onChange={(e) => updateOptions({ sentinelMasterName: e.target.value })}
               placeholder="mymaster"
-              className={form.validationErrors.sentinelMasterName ? 'border-red-500' : ''}
+              className={form.validationErrors.sentinelMasterName ? 'border-danger' : ''}
             />
             {form.validationErrors.sentinelMasterName && (
-              <p className="mt-1 text-xs text-red-400">
+              <p className="mt-1 text-xs text-danger">
                 {form.validationErrors.sentinelMasterName}
               </p>
             )}
@@ -200,11 +200,11 @@ export function RedisConnectionWizard({ form }: { form: ConnectionFormState }) {
               rows={4}
               placeholder={'127.0.0.1:26379\n127.0.0.1:26380'}
               className={`w-full rounded-md border bg-surface px-3 py-2 font-mono text-xs text-fg outline-none ${
-                form.validationErrors.sentinelNodes ? 'border-red-500' : 'border-edge'
+                form.validationErrors.sentinelNodes ? 'border-danger' : 'border-edge'
               }`}
             />
             {form.validationErrors.sentinelNodes && (
-              <p className="mt-1 text-xs text-red-400">{form.validationErrors.sentinelNodes}</p>
+              <p className="mt-1 text-xs text-danger">{form.validationErrors.sentinelNodes}</p>
             )}
           </div>
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -247,7 +247,7 @@ export function RedisConnectionWizard({ form }: { form: ConnectionFormState }) {
         <div className="space-y-3">
           {topology === 'sentinel' &&
             (redisOptions.tls?.caPath || redisOptions.tls?.certPath) && (
-              <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
+              <div className="rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">
                 {t('redis.wizard.sentinelMtlsLimitation')}
               </div>
             )}
@@ -292,7 +292,7 @@ export function RedisConnectionWizard({ form }: { form: ConnectionFormState }) {
               onChange={(e) => updateOptions({ tls: { keyPassphrase: e.target.value } })}
             />
           </div>
-          <label className="flex items-start gap-2 text-sm text-amber-400/90">
+          <label className="flex items-start gap-2 text-sm text-warning">
             <input
               type="checkbox"
               checked={redisOptions.tls?.insecureSkipVerify === true}
