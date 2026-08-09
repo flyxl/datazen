@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { useSchemaStore } from '../../stores/schemaStore';
@@ -12,6 +12,7 @@ import {
 import { RedisConsole } from '../../../packages/drivers/redis/ui/RedisConsole';
 import { MonitorPanel } from '../../../packages/drivers/redis/ui/MonitorPanel';
 import { PubSubPanel } from '../../../packages/drivers/redis/ui/PubSubPanel';
+import { readPinnedNodeAddr } from '../../../packages/drivers/redis/ui/ClusterNodePicker';
 
 type ActiveTab = 'items' | 'console' | 'monitor' | 'pubsub';
 
@@ -35,7 +36,18 @@ export function RedisConnectionView({
   const { t } = useI18n();
   const loadForConnection = useSchemaStore((s) => s.loadForConnection);
   const [activeTab, setActiveTab] = useState<ActiveTab>('items');
+  const [dbIndex, setDbIndex] = useState(0);
+  const [keySuggestions, setKeySuggestions] = useState<string[]>([]);
+  const [pinnedNodeAddr, setPinnedNodeAddr] = useState(() =>
+    readPinnedNodeAddr(connectionId),
+  );
   const workbenchRef = useRef<RedisWorkbenchHandle>(null);
+
+  useEffect(() => {
+    setDbIndex(0);
+    setKeySuggestions([]);
+    setPinnedNodeAddr(readPinnedNodeAddr(connectionId));
+  }, [connectionId]);
 
   const handleRefresh = useCallback(() => {
     void loadForConnection(connectionId, { skipLoadTables: true });
@@ -81,13 +93,26 @@ export function RedisConnectionView({
           ref={workbenchRef}
           connectionId={connectionId}
           initialDatabase={initialDatabase}
+          onDbIndexChange={setDbIndex}
+          onKeysChange={setKeySuggestions}
         />
       )}
       {activeTab === 'console' && (
-        <RedisConsole connectionId={connectionId} dbIndex={0} />
+        <RedisConsole
+          connectionId={connectionId}
+          dbIndex={dbIndex}
+          keySuggestions={keySuggestions}
+          pinnedNodeAddr={pinnedNodeAddr}
+          onPinnedNodeAddrChange={setPinnedNodeAddr}
+        />
       )}
       {activeTab === 'monitor' && (
-        <MonitorPanel connectionId={connectionId} dbIndex={0} />
+        <MonitorPanel
+          connectionId={connectionId}
+          dbIndex={dbIndex}
+          pinnedNodeAddr={pinnedNodeAddr}
+          onPinnedNodeAddrChange={setPinnedNodeAddr}
+        />
       )}
       {activeTab === 'pubsub' && (
         <PubSubPanel connectionId={connectionId} />

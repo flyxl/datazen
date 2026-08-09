@@ -259,6 +259,16 @@ async fn count_matching(
 }
 
 #[tauri::command]
+async fn cluster_nodes(
+    connection_id: String,
+) -> Result<crate::ops_cluster::ClusterNodesResult, String> {
+    shared_driver()
+        .plugin_cluster_nodes(&connection_id)
+        .await
+        .map_err(map_err)
+}
+
+#[tauri::command]
 async fn info(
     connection_id: String,
     section: Option<String>,
@@ -312,9 +322,10 @@ async fn exec(
     connection_id: String,
     db_index: u32,
     commands: String,
+    node_addr: Option<String>,
 ) -> Result<ExecResponse, String> {
     shared_driver()
-        .plugin_exec(&connection_id, db_index, &commands)
+        .plugin_exec(&connection_id, db_index, &commands, node_addr)
         .await
         .map_err(map_err)
 }
@@ -555,6 +566,7 @@ pub fn init<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
             flush_db,
             flush_all,
             count_matching,
+            cluster_nodes,
             info,
             memory_sample,
             slowlog_get,
