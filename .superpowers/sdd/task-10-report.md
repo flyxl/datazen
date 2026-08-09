@@ -18,6 +18,13 @@
 | `cargo test -p datazen-driver-sqlite structure` | 11 passed |
 | `rg -n "capabilityByType\|structure_capabilities_by" src src-tauri` | no matches |
 
+## Review fixes
+
+1. **Guardrail** — Extended `check-structure-editor-guardrails.mjs` with `structureCapabilitiesBy` and `StructureCapabilities\s*\{[^}]*postgres` (dialect-keyed inline cap maps). The brace pattern intentionally excludes plain `interface StructureCapabilities { createTable: … }` in `types.ts` (no dialect key inside).
+2. **e2e TS-006b** — Requires `connWin.editTableStructure` visible via `waitForDisplayed`; no silent skip.
+
+Re-run: `node scripts/check-structure-editor-guardrails.mjs` → ok.
+
 ## Deferred (P1)
 
 - MySQL charset / unsigned column UI
