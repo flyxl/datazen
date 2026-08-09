@@ -41,6 +41,15 @@ pub async fn save_settings(state: State<'_, AppState>, settings: AppSettings) ->
         .store
         .save_settings(settings)
         .await
+        .cmd_err("save_settings")?;
+    state
+        .monitor_engine
+        .reload_from_store()
+        .await
+        .map_err(|e| CommandError::Io(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            e.to_string(),
+        )))
         .cmd_err("save_settings")
 }
 

@@ -33,6 +33,7 @@ use ai::SchemaContextBuilder;
 use commands::AppState;
 use db::init_drivers;
 use cache::SchemaCache;
+use monitor::MonitorEngine;
 use services::ConnectionManager;
 use store::Store;
 use sync::adapter_registry::SyncAdapterRegistry;
@@ -392,6 +393,7 @@ fn finish_app_state(
     let monitor_connections = Arc::new(monitor::MonitorConnectionRegistry::new(
         connection_manager.clone(),
     ));
+    let monitor_engine = MonitorEngine::new(store.clone(), monitor_connections.clone());
 
     let data_dir = store.data_dir().to_path_buf();
 
@@ -401,6 +403,7 @@ fn finish_app_state(
         driver_registry: registry,
         connection_manager: connection_manager.clone(),
         monitor_connections,
+        monitor_engine,
         store,
         schema_cache: schema_cache.clone(),
         sync_adapters,
@@ -513,6 +516,11 @@ pub fn run() {
             });
 
             app.manage(app_state);
+
+            {
+                let state = handle.state::<AppState>();
+                state.monitor_engine.start(handle.clone());
+            }
 
             let _ = app.get_webview_window("main");
 

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { dashboardCommands } from '../commands/dashboard';
+import { listenCrossWindow } from '../lib/crossWindowBus';
 import type { Dashboard, WidgetRun } from '../types/dashboard';
 
 export interface DashboardEntry {
@@ -48,6 +49,24 @@ function patchEntry(
   return { ...dashboardsById, [id]: { ...prev, ...patch } };
 }
 
+let runUpdatedListenerReady = false;
+
+function ensureRunUpdatedListener() {
+  if (runUpdatedListenerReady) return;
+  runUpdatedListenerReady = true;
+  void listenCrossWindow('dashboard:run-updated', (payload) => {
+    const data = payload as {
+      dashboardId?: string;
+      widgetId?: string;
+      run?: WidgetRun;
+    } | undefined;
+    if (!data?.dashboardId || !data.widgetId || !data.run) return;
+    const entry = useDashboardStore.getState().dashboardsById[data.dashboardId];
+    if (!entry || entry.refCount <= 0) return;
+    useDashboardStore.getState().setRun(data.dashboardId, data.widgetId, data.run);
+  });
+}
+
 async function loadLatestRun(
   dashboardId: string,
   widgetId: string,
@@ -78,6 +97,7 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
   },
 
   mountDashboard: (id: string) => {
+    ensureRunUpdatedListener();
     set((s) => {
       const prev = s.dashboardsById[id] ?? emptyEntry();
       return {

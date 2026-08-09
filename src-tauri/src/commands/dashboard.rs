@@ -4,7 +4,6 @@ use tauri::{AppHandle, State};
 
 use super::error::{CmdExt, CommandError};
 use super::AppState;
-use crate::dashboard::execute::execute_widget_once;
 use crate::dashboard::export::{export_dashboard_json, import_dashboard, DashboardExportError};
 use crate::dashboard::runs::{get_run, list_run_index, DashboardRunsError, RunIndexEntry};
 use crate::dashboard::store::{
@@ -77,6 +76,12 @@ pub async fn save_dashboard(
     store_save_dashboard(data_dir, dashboard)
         .map_err(map_store_error)
         .cmd_err("save_dashboard")?;
+    state
+        .monitor_engine
+        .reload_from_store()
+        .await
+        .map_err(map_store_error)
+        .cmd_err("save_dashboard")?;
     store_get_dashboard(data_dir, &id)
         .map_err(map_store_error)
         .cmd_err("save_dashboard")
@@ -136,17 +141,12 @@ pub async fn run_dashboard_widget(
         .ok_or_else(|| CommandError::NotFound(format!("widget {widget_id}")))?
         .clone();
 
-    let settings = state.store.get_settings().await;
-    execute_widget_once(
-        &state.monitor_connections,
-        data_dir,
-        &settings,
-        &dashboard_id,
-        &widget,
-    )
-    .await
-    .map_err(map_execute_error)
-    .cmd_err("run_dashboard_widget")
+    state
+        .monitor_engine
+        .tick_widget(&dashboard_id, &widget)
+        .await
+        .map_err(map_execute_error)
+        .cmd_err("run_dashboard_widget")
 }
 
 /// Native save dialog + single-file dashboard JSON export.
