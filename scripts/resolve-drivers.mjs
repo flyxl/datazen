@@ -7,6 +7,7 @@
  *   --drivers="postgres,mysql"   (explicit registry names)
  *   --drivers="basic"            (postgres, mysql, sqlite, redis) — default when omitted
  *   --drivers="all"              (all path drivers only; excludes git drivers)
+ *   --drivers="all,kiwi,superset"   (all / :all expands to all path drivers, then adds listed ids)
  *   --drivers="stub"             (empty selection; git-safe generated.ts / plugin_init)
  *   --drivers=                   (same as stub — explicit empty value)
  *   --drivers="postgres,mongodb,kiwi"  (explicit list; use this for custom SKUs)
@@ -24,7 +25,7 @@
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
 import { resolve, dirname, join, relative } from 'path';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 import { execSync } from 'child_process';
 import {
   stashManagedFiles,
@@ -95,7 +96,19 @@ function parseArgs() {
 
 const BASIC_DRIVERS = ['postgres', 'mysql', 'sqlite', 'redis'];
 
-function resolveDrivers(driversArg, registry) {
+function pathDriverIds(registry) {
+  return Object.entries(registry)
+    .filter(([, entry]) => entry?.source === 'path')
+    .map(([name]) => name);
+}
+
+/**
+ * Resolve a --drivers / DATAZEN_DRIVERS value to registry ids.
+ * Supports presets `basic` | `all` | `stub`, comma lists, and expanders `all` / `:all`
+ * (all path drivers) so e.g. `all,kiwi,superset` includes git drivers without
+ * baking them into the bare `all` preset alone.
+ */
+export function resolveDrivers(driversArg, registry) {
   if (driversArg === 'none' || driversArg === 'core') {
     console.error(
       `[resolve-drivers] preset "${driversArg}" is no longer supported. Use --drivers=basic for the four core drivers, or --drivers=stub for an empty git baseline.`,
@@ -112,23 +125,35 @@ function resolveDrivers(driversArg, registry) {
     return [...BASIC_DRIVERS];
   }
 
-  // Path-only: users/devs can opt into git drivers via an explicit list
-  // (e.g. CI akulaku SKU). Never bake kiwi/superset/olap into `all`.
-  if (driversArg === 'all') {
-    return Object.entries(registry)
-      .filter(([, entry]) => entry?.source === 'path')
-      .map(([name]) => name);
+  // Bare `all` remains path-only (same as expander below without extra ids).
+  if (driversArg === 'all' || driversArg === ':all') {
+    return pathDriverIds(registry);
   }
 
   const requested = driversArg.split(',').map((x) => x.trim()).filter(Boolean);
   const resolved = [];
+  const seen = new Set();
 
-  for (const name of requested) {
-    if (!registry[name]) {
-      console.error(`[resolve-drivers] Unknown driver "${name}" — not in drivers-registry.json`);
+  for (const token of requested) {
+    let names;
+    if (token === 'all' || token === ':all') {
+      names = pathDriverIds(registry);
+    } else if (token.startsWith(':')) {
+      console.error(
+        `[resolve-drivers] Unknown expander "${token}". Supported expanders: all, :all`,
+      );
       process.exit(1);
+    } else if (!registry[token]) {
+      console.error(`[resolve-drivers] Unknown driver "${token}" — not in drivers-registry.json`);
+      process.exit(1);
+    } else {
+      names = [token];
     }
-    resolved.push(name);
+    for (const name of names) {
+      if (seen.has(name)) continue;
+      seen.add(name);
+      resolved.push(name);
+    }
   }
 
   return resolved;
@@ -1045,4 +1070,6 @@ function main() {
   }
 }
 
-main();
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+  main();
+}

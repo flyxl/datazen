@@ -5,9 +5,10 @@
  *
  * Usage:
  *   pnpm tauri:dev                         # basic (postgres/mysql/sqlite/redis)
- *   pnpm tauri:dev --drivers=all           # all path drivers (no git)
- *   pnpm tauri:dev --drivers=kiwi          # only kiwi (+ no path drivers unless listed)
- *   DATAZEN_DRIVERS=all pnpm tauri:dev     # env var also works
+ *   pnpm tauri:dev --drivers=all                 # all path drivers (no git)
+ *   pnpm tauri:dev --drivers=all,kiwi,superset   # all path + listed git drivers
+ *   pnpm tauri:dev --drivers=kiwi                # only kiwi (+ no path drivers unless listed)
+ *   DATAZEN_DRIVERS=all pnpm tauri:dev           # env var also works
  */
 
 import { execSync, spawn } from 'child_process';

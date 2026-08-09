@@ -116,7 +116,7 @@
   "superset": {
     "source": "git",
     "git": "https://github.com/flyxl/datazen-driver-superset.git",
-    "ref": "f87fb6d5ae2be5675d0a25b5f63cd2ed94b3f718",
+    "ref": "dad4927714c7fbc0d53586f979950eff1f0b245d",
     "feature": "plugin-superset",
     "description": "Superset data exploration platform"
   }
