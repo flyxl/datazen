@@ -191,7 +191,7 @@ PR 合并前：`pnpm test:unit` + `cargo test -p datazen --lib`（见 `.github/w
 
 - Path 驱动 Rust crate：`datazen-driver-<id>`；Git 驱动仓库名 `datazen-driver-xxx`，其 Rust crate 名仍可能为 `datazen-plugin-xxx`（以插件仓库为准）
 - `Cargo.toml` 中的插件占位段（`<<plugin-dependencies>>`、`<<plugin-features>>`、`<<plugin-patches>>`）在 git 中应保持为空；`resolve-drivers.mjs` 在构建时填充
-- `src/plugins/generated.ts` 和 `src-tauri/src/plugin_init.rs` 是自动生成的，修改后会被覆盖
+- `src/plugins/generated.ts` 和 `src-tauri/src/plugin_init.rs` 是自动生成的，修改后会被覆盖；**git 中必须是空 stub**（`DatabaseType = never` / 无 `extern crate`）。用 `node scripts/resolve-drivers.mjs --drivers=stub` 刷新 baseline；本地/CI 构建前再 inject。禁止提交已注入内容（CI：`scripts/check-managed-stubs.mjs`）
 - `.plugins/` 是 gitignored，由 `resolve-drivers.mjs` / `tauri:build` / `tauri:dev` 生成；`pnpm build` 本身不 inject
 - `PROTOCOL_VERSION`（`packages/driver-api`）变更时需同步更新所有插件
 - `AI_PROTOCOL_VERSION`（`packages/ai-api`）变更时需同步更新所有 AI Provider 插件

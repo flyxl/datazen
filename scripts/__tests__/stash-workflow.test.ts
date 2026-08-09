@@ -110,17 +110,17 @@ describe('stash inject restore workflow', () => {
     }
   });
 
-  it('deleting generated stash mid-flight leaves injected work and blocks restore', () => {
+  it('deleting generated stash mid-flight restores a git-safe stub', () => {
     stash.stashManagedFiles();
     writeManagedFiles(root, INJECTED_CONTENTS);
-    // Cargo/capabilities can deinject without stash; generated files cannot.
     unlinkSync(stash.stashPath('src/plugins/generated.ts'));
 
-    expect(() => stash.restoreManagedFiles()).toThrow(/generated\.ts/);
-    expect(readManaged(root, 'src/plugins/generated.ts')).toBe(
-      INJECTED_CONTENTS['src/plugins/generated.ts'],
+    stash.restoreManagedFiles();
+    expect(readManaged(root, 'src/plugins/generated.ts')).toContain(
+      'export type DatabaseType = never',
     );
 
+    writeManagedFiles(root, INJECTED_CONTENTS);
     const result = runPluginStashPrecommit({
       root,
       quiet: true,
@@ -129,7 +129,10 @@ describe('stash inject restore workflow', () => {
       restage: () => {},
       log: () => {},
     });
-    expect(result.status).toBe(1);
-    expect(result.reason).toBe('stash-missing');
+    expect(result.status).toBe(0);
+    expect(result.restored).toBe(true);
+    expect(readManaged(root, 'src/plugins/generated.ts')).toContain(
+      'export type DatabaseType = never',
+    );
   });
 });

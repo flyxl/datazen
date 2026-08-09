@@ -7,6 +7,7 @@
  *   --drivers="postgres,mysql"   (explicit registry names)
  *   --drivers="basic"            (postgres, mysql, sqlite, redis)
  *   --drivers="all"              (all path drivers only; excludes git drivers)
+ *   --drivers="stub"             (empty selection; git-safe generated.ts / plugin_init)
  *   --drivers="postgres,mongodb,kiwi"  (explicit list; use this for custom SKUs)
  *   --restore                    (restore stashed clean managed files and exit)
  *
@@ -68,19 +69,25 @@ function parseArgs() {
   }
 
   let drivers = null;
+  let driversFlagSeen = false;
   for (const arg of args) {
     if (arg.startsWith('--drivers=')) {
       drivers = arg.slice('--drivers='.length);
+      driversFlagSeen = true;
     }
   }
 
-  if (!drivers && process.env.DATAZEN_DRIVERS) {
+  if (!driversFlagSeen && process.env.DATAZEN_DRIVERS) {
     drivers = process.env.DATAZEN_DRIVERS;
   }
 
-  // Default: all path drivers (excludes git drivers)
-  if (!drivers) {
+  // Default: all path drivers (excludes git drivers).
+  // Explicit `--drivers=` (empty) is stub mode — do not fall through to all.
+  if (!driversFlagSeen && (drivers == null || drivers === '')) {
     drivers = 'all';
+  }
+  if (driversFlagSeen && drivers === '') {
+    drivers = 'stub';
   }
 
   return drivers;
@@ -91,9 +98,14 @@ const BASIC_DRIVERS = ['postgres', 'mysql', 'sqlite', 'redis'];
 function resolveDrivers(driversArg, registry) {
   if (driversArg === 'none' || driversArg === 'core') {
     console.error(
-      `[resolve-drivers] preset "${driversArg}" is no longer supported. Use --drivers=basic for the four core drivers.`,
+      `[resolve-drivers] preset "${driversArg}" is no longer supported. Use --drivers=basic for the four core drivers, or --drivers=stub for an empty git baseline.`,
     );
     process.exit(1);
+  }
+
+  // Empty / stub: commit-safe generated.ts (DatabaseType = never). Do not use as a runtime SKU.
+  if (driversArg === 'stub' || driversArg === '') {
+    return [];
   }
 
   if (driversArg === 'basic') {
