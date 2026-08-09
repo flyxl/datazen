@@ -202,6 +202,14 @@ const BASIC_PATH_FRONTEND = {
   redis: {
     dbTypes: [{ id: 'redis', metaExport: 'redisMeta' }],
     metaPath: '../../packages/drivers/redis/ui/meta',
+    settings: {
+      pluginId: 'redis',
+      label: 'Redis',
+      sectionExport: 'RedisSettingsSection',
+      sectionPath: '../../packages/drivers/redis/ui/settings',
+      schemaExport: 'redisSettingsSchema',
+      schemaPath: '../../packages/drivers/redis/ui/settings',
+    },
   },
   mongodb: {
     dbTypes: [{ id: 'mongodb', metaExport: 'mongodbMeta' }],
