@@ -1,5 +1,5 @@
 /**
- * Redis connection window E2E (browse + queries + E1 write paths).
+ * Redis connection window E2E (browse + console + monitor + E1 write paths).
  *
  * Credentials: E2E_REDIS_* (see e2e/.env.example). Skips gracefully when
  * Redis is unreachable or E2E_SKIP_REDIS=1.
@@ -12,7 +12,6 @@ import {
   switchToNewWindow,
   findCardByName,
   expandAllGroups,
-  setEditorContent,
 } from '../helpers.js';
 
 const CONN_NAME = 'E2E-Redis';
@@ -146,14 +145,47 @@ async function createAndConnectRedis() {
   return { mainWindow, connWindow };
 }
 
+async function goToConsoleTab() {
+  const consoleTab = await $(`button*=${t('redis.console')}`);
+  await consoleTab.click();
+  await browser.pause(500);
+}
+
+async function goToMonitorTab() {
+  const monitorTab = await $(`button*=${t('redis.monitor')}`);
+  await monitorTab.click();
+  await browser.pause(500);
+}
+
+async function setConsoleCommand(cmd: string) {
+  const ok = await browser.execute((val: string) => {
+    const textareas = Array.from(document.querySelectorAll('textarea'));
+    const el = (textareas.find((ta) => ta.className.includes('resize-none')) ??
+      textareas[0]) as HTMLTextAreaElement | undefined;
+    if (!el) return false;
+    const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set;
+    setter?.call(el, val);
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+    return true;
+  }, cmd);
+  if (!ok) throw new Error('Redis console textarea not found');
+}
+
 async function executeRedisCommand(cmd: string) {
-  await setEditorContent(cmd);
+  await goToConsoleTab();
+  await setConsoleCommand(cmd);
   const execBtn = await $(`button*=${t('query.execute')}`);
   await execBtn.click();
   await browser.waitUntil(
     async () => {
       const body = await $('body').getText();
-      return body.includes('ms') || body.includes('text-red-400');
+      return (
+        body.includes(t('redis.console.ok')) ||
+        body.includes(t('redis.console.failed')) ||
+        body.includes('PONG') ||
+        body.includes('OK')
+      );
     },
     { timeout: 15000, timeoutMsg: `Timed out waiting for Redis command: ${cmd}` },
   );
@@ -295,7 +327,7 @@ async function bodyContains(text: string): Promise<boolean> {
   return body.includes(text);
 }
 
-describe('Redis 数据库支持 (RD-001~RD-021)', () => {
+describe('Redis 数据库支持 (RD-001~RD-023)', () => {
   let mainWindow: string;
   let shouldSkip = false;
 
@@ -328,11 +360,7 @@ describe('Redis 数据库支持 (RD-001~RD-021)', () => {
       return;
     }
 
-    const queriesTab = await $(`button*=${t('redis.queries')}`);
-    if (await queriesTab.isExisting()) {
-      await queriesTab.click();
-      await browser.pause(500);
-    }
+    await goToConsoleTab();
 
     await executeRedisCommand('SET e2e:string:hello world');
     await executeRedisCommand('SET e2e:string:count 42');
@@ -353,9 +381,7 @@ describe('Redis 数据库支持 (RD-001~RD-021)', () => {
       const connHandle = handles.find((h) => h !== mainWindow);
       if (connHandle) {
         await browser.switchToWindow(connHandle);
-        const queriesTab = await $(`button*=${t('redis.queries')}`);
-        if (await queriesTab.isExisting()) await queriesTab.click();
-        await browser.pause(300);
+        await goToConsoleTab();
         await executeRedisCommand('DEL e2e:string:hello e2e:string:count');
         await executeRedisCommand('DEL e2e:hash:user e2e:list:items');
         await executeRedisCommand('DEL e2e:set:tags e2e:zset:scores');
@@ -369,10 +395,11 @@ describe('Redis 数据库支持 (RD-001~RD-021)', () => {
 
   // ── Connection Window Layout ──
 
-  it('Redis 连接窗口应显示"数据浏览"和"命令"标签 (RD-001)', async () => {
+  it('Redis 连接窗口应显示"数据浏览"、"命令"和"监控"标签 (RD-001)', async () => {
     const body = await $('body').getText();
-    expect(body).toContain('数据浏览');
-    expect(body).toContain('命令');
+    expect(body).toContain(t('redis.items'));
+    expect(body).toContain(t('redis.console'));
+    expect(body).toContain(t('redis.monitor'));
   });
 
   it('标题栏应显示 Redis 类型 (RD-002)', async () => {
@@ -506,14 +533,12 @@ describe('Redis 数据库支持 (RD-001~RD-021)', () => {
     expect(await bodyContains('e2e:write:batch:b')).toBe(false);
   });
 
-  // ── Redis Commands (Queries tab) ──
+  // ── Redis Console (E2) ──
 
-  it('切换到命令标签应显示编辑器 (RD-008)', async () => {
-    const queriesTab = await $(`button*=${t('redis.queries')}`);
-    await queriesTab.click();
-    await browser.pause(500);
-    const editor = await $('.cm-editor');
-    await expect(editor).toBeDisplayed();
+  it('切换到命令标签应显示控制台编辑器 (RD-008)', async () => {
+    await goToConsoleTab();
+    const textarea = await $('textarea.resize-none');
+    await expect(textarea).toBeDisplayed();
   });
 
   it('应能执行 GET 命令 (RD-009)', async () => {
@@ -559,5 +584,41 @@ describe('Redis 数据库支持 (RD-001~RD-021)', () => {
     const body = await $('body').getText();
     const hasResults = body.includes('world') || body.includes('42');
     expect(hasResults).toBe(true);
+  });
+
+  it('应能执行 PING 命令 (RD-023)', async () => {
+    await executeRedisCommand('PING');
+    const body = await $('body').getText();
+    expect(body).toContain('PONG');
+  });
+
+  // ── Redis Monitor (E2) ──
+
+  it('监控标签应显示 Info/Memory/Slowlog 子页 (RD-022)', async () => {
+    await goToMonitorTab();
+    const body = await $('body').getText();
+    expect(body).toContain(t('redis.info'));
+    expect(body).toContain(t('redis.memory'));
+    expect(body).toContain(t('redis.slowlog'));
+
+    const memoryTab = await $(`button*=${t('redis.memory')}`);
+    await memoryTab.click();
+    await browser.pause(1500);
+    const afterMemory = await $('body').getText();
+    expect(
+      afterMemory.includes(t('redis.memoryEmpty')) ||
+        afterMemory.includes(t('redis.bytes')) ||
+        afterMemory.includes('e2e:'),
+    ).toBe(true);
+
+    const slowlogTab = await $(`button*=${t('redis.slowlog')}`);
+    await slowlogTab.click();
+    await browser.pause(1500);
+    const afterSlowlog = await $('body').getText();
+    expect(
+      afterSlowlog.includes(t('redis.slowlogEmpty')) ||
+        afterSlowlog.includes(t('redis.slowlogId')) ||
+        afterSlowlog.includes(t('redis.slowlogCommand')),
+    ).toBe(true);
   });
 });
