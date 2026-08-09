@@ -654,6 +654,13 @@ pub fn run() {
             commands::install_theme_pack_with_dialog,
             commands::remove_theme_pack,
             commands::read_theme_pack_file,
+            commands::list_dashboards,
+            commands::get_dashboard,
+            commands::save_dashboard,
+            commands::delete_dashboard,
+            commands::list_widget_runs,
+            commands::get_widget_run,
+            commands::run_dashboard_widget,
             rebuild_menu,
         ])
         .on_window_event(|_window, _event| {
