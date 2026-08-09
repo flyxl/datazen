@@ -16,16 +16,63 @@ export const DB_REGISTRY: Record<DatabaseType, DatabaseTypeMeta> = {
   ...DRIVER_DB_ENTRIES,
 } as Record<DatabaseType, DatabaseTypeMeta>;
 
+/**
+ * New-connection sidebar order: most commonly used types first (not wire-protocol family).
+ * Types absent from this list sort after, by id.
+ */
+export const DB_TYPE_POPULARITY_ORDER: readonly string[] = [
+  'mysql',
+  'postgresql',
+  'mariadb',
+  'sqlite',
+  'redis',
+  'mongodb',
+  'sqlserver',
+  'clickhouse',
+  'doris',
+  'starrocks',
+  'ob_oracle',
+  'elasticsearch',
+  'duckdb',
+  'questdb',
+  'cloudberry',
+  'turso',
+  'rqlite',
+  'influxdb',
+  'victoriametrics',
+  'hbase',
+  'manticore',
+  'vector',
+  'kiwi',
+  'presto',
+  'trino',
+  'superset',
+];
+
+const dbTypePopularityRank = new Map(
+  DB_TYPE_POPULARITY_ORDER.map((id, index) => [id, index]),
+);
+
+/** Sort db type picker entries by {@link DB_TYPE_POPULARITY_ORDER}. */
+export function sortDbTypesByPopularity<T extends { value: string }>(items: T[]): T[] {
+  return [...items].sort((a, b) => {
+    const ra = dbTypePopularityRank.get(a.value) ?? Number.MAX_SAFE_INTEGER;
+    const rb = dbTypePopularityRank.get(b.value) ?? Number.MAX_SAFE_INTEGER;
+    if (ra !== rb) return ra - rb;
+    return a.value.localeCompare(b.value);
+  });
+}
+
 /** All database types available for the "new connection" UI. */
-export const DB_TYPE_LIST: { value: DatabaseType; label: string; color: string }[] = (
-  Object.entries(DB_REGISTRY) as [DatabaseType, DatabaseTypeMeta][]
-).map(([value, meta]) => ({
-  value,
-  label: meta.label,
-  color: meta.iconBg.replace('bg-', '').split('-').length > 1
-    ? `#${meta.iconBg}` // fallback; real colors below
-    : meta.iconBg,
-}));
+export const DB_TYPE_LIST: { value: DatabaseType; label: string; color: string }[] = sortDbTypesByPopularity(
+  (Object.entries(DB_REGISTRY) as [DatabaseType, DatabaseTypeMeta][]).map(([value, meta]) => ({
+    value,
+    label: meta.label,
+    color: meta.iconBg.replace('bg-', '').split('-').length > 1
+      ? `#${meta.iconBg}` // fallback; real colors below
+      : meta.iconBg,
+  })),
+);
 
 /** Get the identifier quoting function for a given database type. */
 export function escapeIdent(name: string, dbType?: DatabaseType): string {
