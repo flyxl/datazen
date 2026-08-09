@@ -14,6 +14,7 @@ const VALID_IDS = new Set<DocsSectionId>([
   'ai',
   'context',
   'workflows',
+  'opsDashboard',
 ]);
 
 export function DocsWindow() {

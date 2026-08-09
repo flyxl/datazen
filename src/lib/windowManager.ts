@@ -103,6 +103,10 @@ function openWindow(label: string, options: OpenWindowOptions) {
  * existing window with the same label. Resolving it here instead would
  * only focus the window, which silently does nothing when the window
  * exists but never became visible.
+ *
+ * Native Help → Documentation opens docs from Rust (`open_docs_window`) so
+ * it never fans out through every webview. In-app buttons still use this
+ * helper via `invoke('create_sub_window')`.
  */
 function openSingletonWindow(label: string, options: OpenWindowOptions) {
   openWindow(label, options);

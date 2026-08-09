@@ -1,7 +1,6 @@
 import type { ReactNode } from 'react';
 import { useCallback, useEffect } from 'react';
 import { usePlatform } from '../hooks/usePlatform';
-import { useDocsMenuListener } from '../hooks/useDocsMenuListener';
 import { useUiStore } from '../stores/uiStore';
 import { WindowControls } from './WindowControls';
 
@@ -27,7 +26,6 @@ export function TitleBar({ title, leftContent, rightContent }: TitleBarProps) {
   const platform = usePlatform();
   const isMac = platform === 'macos';
   const isFullscreen = useUiStore((s) => s.isFullscreen);
-  useDocsMenuListener();
 
   useEffect(() => {
     if (!isMac || !('__TAURI_INTERNALS__' in window)) return;
