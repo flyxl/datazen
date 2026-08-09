@@ -32,12 +32,12 @@ export async function invokeDeleteKeys(
   dbIndex: number,
   keys: string[],
   invoke: PluginInvokeFn = pluginInvoke,
-) {
-  await invoke('redis', 'delete_keys', {
+): Promise<number> {
+  return (await invoke('redis', 'delete_keys', {
     connection_id: connectionId,
     db_index: dbIndex,
     keys,
-  });
+  })) as number;
 }
 
 export async function invokeBatchDeletePattern(
@@ -162,10 +162,8 @@ export function BatchBar({
     setBusy(true);
     setError(null);
     try {
-      await invokeDeleteKeys(connectionId, dbIndex, selectedKeys);
-      showSummary([
-        t('redis.deleted').replace('{count}', String(selectedKeys.length)),
-      ]);
+      const deleted = await invokeDeleteKeys(connectionId, dbIndex, selectedKeys);
+      showSummary([t('redis.deleted').replace('{count}', String(deleted))]);
       onClearSelection();
       closeDialog();
       await onRefresh();
