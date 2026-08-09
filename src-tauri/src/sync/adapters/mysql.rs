@@ -2,10 +2,34 @@
 
 use crate::db::{ColumnSchema, Value};
 use crate::sync::adapter::{SyncSourceAdapter, SyncTargetAdapter};
+use crate::sync::adapter_registry::{SyncAdapterFactory, SyncAdapterRegistry};
 use crate::sync::ir::{IRColumn, IRDefault, IRType};
+use std::sync::Arc;
 
 pub struct MysqlSyncAdapter {
     pub is_mariadb: bool,
+}
+
+fn register_mysql(registry: &SyncAdapterRegistry, db_type: crate::db::DatabaseType) {
+    registry.register_both(db_type, Arc::new(MysqlSyncAdapter { is_mariadb: false }));
+}
+
+fn register_mariadb(registry: &SyncAdapterRegistry, db_type: crate::db::DatabaseType) {
+    registry.register_both(db_type, Arc::new(MysqlSyncAdapter { is_mariadb: true }));
+}
+
+inventory::submit! {
+    SyncAdapterFactory {
+        db_types: &["mysql"],
+        register: register_mysql,
+    }
+}
+
+inventory::submit! {
+    SyncAdapterFactory {
+        db_types: &["mariadb"],
+        register: register_mariadb,
+    }
 }
 
 // ── helpers ────────────────────────────────────────────────────────
