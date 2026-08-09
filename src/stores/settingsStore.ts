@@ -28,6 +28,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   mcpPermissionMode: 'safe_write',
   contextDir: '',
   checkForUpdatesOnStartup: false,
+  pluginSettings: {},
 };
 
 const THEME_STORAGE_KEY = 'datazen-theme';
