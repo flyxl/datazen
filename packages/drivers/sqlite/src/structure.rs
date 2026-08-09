@@ -60,7 +60,7 @@ fn plan_create(
     let pk_cols: Vec<&str> = request
         .current_columns
         .iter()
-        .filter(|c| c.is_primary_key)
+        .filter(|c| c.is_primary_key && !column_has_inline_primary_key(c))
         .map(|c| c.name.as_str())
         .collect();
     if !pk_cols.is_empty() {
@@ -226,6 +226,10 @@ fn unsupported(message: &str) -> DriverError {
 
 fn quote_ident(name: &str) -> String {
     format!("\"{}\"", name.replace('"', "\"\""))
+}
+
+fn column_has_inline_primary_key(col: &StructureColumnDraft) -> bool {
+    col.is_auto_increment
 }
 
 fn render_column_def_for_create(col: &StructureColumnDraft) -> String {
@@ -626,9 +630,54 @@ mod tests {
 
         let plan = plan_changes(&request, &sqlite_caps()).unwrap();
         assert_eq!(plan.statements.len(), 1);
-        assert!(plan.statements[0].sql.starts_with("CREATE TABLE \"users\" ("));
-        assert!(plan.statements[0].sql.contains("\"id\" INTEGER PRIMARY KEY AUTOINCREMENT"));
-        assert!(plan.statements[0].sql.contains("\"name\" TEXT"));
+        let sql = &plan.statements[0].sql;
+        assert_eq!(
+            sql,
+            "CREATE TABLE \"users\" (\n  \"id\" INTEGER PRIMARY KEY AUTOINCREMENT,\n  \"name\" TEXT\n)"
+        );
+        assert_eq!(sql.matches("PRIMARY KEY").count(), 1);
+    }
+
+    #[test]
+    fn plan_create_table_composite_primary_key_uses_table_level_constraint() {
+        let request = StructureChangeRequest {
+            mode: StructureChangeMode::Create,
+            schema: None,
+            table: "pairs".into(),
+            original_columns: vec![],
+            current_columns: vec![
+                StructureColumnDraft {
+                    id: "c1".into(),
+                    name: "a".into(),
+                    data_type: "INTEGER".into(),
+                    nullable: false,
+                    default_value: None,
+                    comment: None,
+                    is_primary_key: true,
+                    is_auto_increment: false,
+                    is_unique: false,
+                },
+                StructureColumnDraft {
+                    id: "c2".into(),
+                    name: "b".into(),
+                    data_type: "INTEGER".into(),
+                    nullable: false,
+                    default_value: None,
+                    comment: None,
+                    is_primary_key: true,
+                    is_auto_increment: false,
+                    is_unique: false,
+                },
+            ],
+            original_indexes: vec![],
+            current_indexes: vec![],
+        };
+
+        let plan = plan_changes(&request, &sqlite_caps()).unwrap();
+        assert_eq!(
+            plan.statements[0].sql,
+            "CREATE TABLE \"pairs\" (\n  \"a\" INTEGER NOT NULL,\n  \"b\" INTEGER NOT NULL,\n  PRIMARY KEY (\"a\", \"b\")\n)"
+        );
     }
 
     #[test]
