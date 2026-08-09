@@ -9,6 +9,7 @@ export const UI_ICON_IDS = [
   'action.refresh',
   'action.newConnection',
   'action.workflow',
+  'action.dashboard',
   'theme.light',
   'theme.dark',
   'theme.system',
