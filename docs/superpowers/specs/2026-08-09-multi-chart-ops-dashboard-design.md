@@ -1,9 +1,9 @@
 # 设计：多图运营看板（定时监控）
 
 **日期：** 2026-08-09  
-**状态：** 已批准（待实现计划）  
+**状态：** 已批准  
 **分析分支：** `docs/multi-chart-ops-dashboard-feasibility`（worktree: `.worktrees/multi-chart-ops-dashboard`）  
-**实现计划：** （待 `writing-plans` 产出）
+**实现计划：** [docs/superpowers/plans/2026-08-09-multi-chart-ops-dashboard.md](../plans/2026-08-09-multi-chart-ops-dashboard.md)（M1+M2；M3 另案）
 
 ## 目标
 
