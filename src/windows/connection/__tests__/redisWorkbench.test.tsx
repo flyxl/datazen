@@ -59,9 +59,10 @@ describe('redis editor invoke helpers', () => {
 describe('redis batch invoke helpers', () => {
   const invoke = vi.fn<PluginInvokeFn>();
 
-  it('invokeDeleteKeys passes key list', async () => {
-    invoke.mockResolvedValue(undefined);
-    await invokeDeleteKeys('c', 3, ['a', 'b'], invoke);
+  it('invokeDeleteKeys passes key list and returns deleted count', async () => {
+    invoke.mockResolvedValue(2);
+    const deleted = await invokeDeleteKeys('c', 3, ['a', 'b'], invoke);
+    expect(deleted).toBe(2);
     expect(invoke).toHaveBeenCalledWith('redis', 'delete_keys', {
       connection_id: 'c',
       db_index: 3,
