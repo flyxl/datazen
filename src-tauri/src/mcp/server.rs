@@ -1,5 +1,6 @@
 //! DataZen MCP Server handler — tools + resources + prompts.
 
+use crate::ai::budget;
 use crate::ai::prompt_resolver;
 use crate::commands::AppState;
 use crate::mcp::permission::{self, McpPermissionMode};
@@ -159,13 +160,12 @@ impl DataZenMcpServer {
         ),
         McpError,
     > {
-        let (driver, handle) = crate::services::db_tools::resolve_connection(
+        crate::services::db_tools::resolve_connection_with_id(
             &self.app_state.connection_manager,
             id,
         )
         .await
-        .map_err(Self::map_err)?;
-        Ok((id.to_string(), driver, handle))
+        .map_err(Self::map_err)
     }
 }
 
@@ -358,7 +358,7 @@ impl DataZenMcpServer {
         let context = self
             .app_state
             .schema_context_builder
-            .build_sql_context(&conn_id, db, None, &[], 4000)
+            .build_sql_context(&conn_id, db, None, &[], budget::FALLBACK_DDL)
             .await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
@@ -559,7 +559,7 @@ impl ServerHandler for DataZenMcpServer {
                     serde_json::json!({
                         "id": c.id,
                         "name": c.name,
-                        "databaseType": format!("{:?}", c.database_type),
+                        "databaseType": c.database_type,
                         "host": c.host,
                         "database": c.database,
                     })
@@ -607,7 +607,7 @@ impl ServerHandler for DataZenMcpServer {
             let context = self
                 .app_state
                 .schema_context_builder
-                .build_sql_context(&runtime_id, db, None, &[], 8000)
+                .build_sql_context(&runtime_id, db, None, &[], budget::MCP_RESOURCE)
                 .await
                 .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 

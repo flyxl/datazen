@@ -6,6 +6,7 @@
 pub use datazen_ai_api::*;
 
 pub mod anthropic;
+pub mod budget;
 pub mod context;
 pub mod custom;
 pub mod deepseek;
@@ -15,7 +16,7 @@ pub mod protocol;
 pub mod registry;
 pub mod schema_pipeline;
 
-pub use context::SchemaContextBuilder;
+pub use context::{prompt_db_type, SchemaContextBuilder};
 pub use schema_pipeline::{PromptSeed, SchemaContextPipeline, compose_schema_system_suffix};
 pub use prompt_resolver::PromptResolver;
 pub use registry::{init_ai_providers, register_ai_providers, AiProviderRegistry};

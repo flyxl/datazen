@@ -119,7 +119,7 @@ mod tests {
     #[test]
     fn ensure_type_wire_aliases_succeed() {
         let registry = SyncAdapterRegistry::new();
-        for db in ["cloudberry", "rqlite", "turso"] {
+        for db in ["cloudberry", "rqlite", "turso", "doris", "starrocks"] {
             assert!(
                 registry.ensure_type(&db.to_string()).is_ok(),
                 "expected sync adapter for {db}"

@@ -152,6 +152,12 @@ impl DriverRegistry {
     pub async fn get_sql_driver_by_name(&self, name: &str) -> Option<Arc<dyn DatabaseDriver>> {
         self.get(&name.to_string()).await
     }
+
+    #[cfg(test)]
+    pub async fn register_test_driver(&self, driver: Arc<dyn DatabaseDriver>) {
+        let db_type = driver.driver_type();
+        self.drivers.write().await.insert(db_type, driver);
+    }
 }
 
 impl Default for DriverRegistry {

@@ -3,7 +3,7 @@
 use crate::commands::error::{CmdExt, CommandError};
 use crate::commands::AppState;
 use serde::Serialize;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tauri::State;
 
 const ALLOWED_EXTENSIONS: &[&str] = &[
@@ -152,21 +152,20 @@ fn filter_entries(entries: &[ContextEntry], query: &str) -> Vec<ContextEntry> {
     result
 }
 
-#[tauri::command]
-pub async fn context_read_files(
-    state: State<'_, AppState>,
-    paths: Vec<String>,
+/// Read allowed context files under `dir`, enforcing canonicalize + path-traversal guards.
+pub(crate) async fn read_context_paths(
+    dir: &Path,
+    paths: &[String],
 ) -> Result<Vec<(String, String)>, CommandError> {
-    let dir = resolve_context_dir(&state).await?;
     let mut results = Vec::new();
+    let canonical_base = dir.canonicalize().cmd_err("context_read_files")?;
 
-    for rel_path in &paths {
+    for rel_path in paths {
         let full_path = dir.join(rel_path);
         // Security: ensure resolved path is under context_dir
         let canonical = full_path.canonicalize().map_err(|e| {
             CommandError::Validation(format!("Cannot resolve path {rel_path}: {e}"))
         })?;
-        let canonical_base = dir.canonicalize().cmd_err("context_read_files")?;
         if !canonical.starts_with(&canonical_base) {
             return Err(CommandError::Validation(
                 "Path traversal not allowed".into(),
@@ -192,6 +191,24 @@ pub async fn context_read_files(
     }
 
     Ok(results)
+}
+
+/// Format file entries as a prompt context block (`[Context: path]\\ncontent`, joined by blank lines).
+pub(crate) fn format_context_block(entries: &[(String, String)]) -> String {
+    entries
+        .iter()
+        .map(|(path, content)| format!("[Context: {path}]\n{content}"))
+        .collect::<Vec<_>>()
+        .join("\n\n")
+}
+
+#[tauri::command]
+pub async fn context_read_files(
+    state: State<'_, AppState>,
+    paths: Vec<String>,
+) -> Result<Vec<(String, String)>, CommandError> {
+    let dir = resolve_context_dir(&state).await?;
+    read_context_paths(&dir, &paths).await
 }
 
 pub(crate) fn collect_files_in_dir(dir: &std::path::Path) -> Vec<PathBuf> {
@@ -462,5 +479,65 @@ mod tests {
     async fn test_read_single_file_not_found() {
         let result = read_single_file(std::path::Path::new("/nonexistent/path.txt")).await;
         assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_read_context_paths_rejects_dotdot_traversal() {
+        let root = tempfile::tempdir().unwrap();
+        let ctx = root.path().join("ctx");
+        std::fs::create_dir(&ctx).unwrap();
+        std::fs::write(ctx.join("ok.txt"), "inside").unwrap();
+        std::fs::write(root.path().join("secret.txt"), "leak").unwrap();
+
+        let result = read_context_paths(&ctx, &["../secret.txt".into()]).await;
+        assert!(result.is_err(), "expected error for ../ traversal");
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("Path traversal not allowed"),
+            "got: {err}"
+        );
+    }
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn test_read_context_paths_rejects_symlink_escape() {
+        let root = tempfile::tempdir().unwrap();
+        let ctx = root.path().join("ctx");
+        let outside = root.path().join("outside");
+        std::fs::create_dir(&ctx).unwrap();
+        std::fs::create_dir(&outside).unwrap();
+        std::fs::write(outside.join("secret.txt"), "leak").unwrap();
+        std::os::unix::fs::symlink(&outside, ctx.join("escape_link")).unwrap();
+
+        let result = read_context_paths(&ctx, &["escape_link/secret.txt".into()]).await;
+        assert!(result.is_err(), "expected traversal rejection via symlink");
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("Path traversal not allowed"),
+            "got: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_read_context_paths_reads_allowed_file() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("notes.md"), "# hello").unwrap();
+
+        let entries = read_context_paths(dir.path(), &["notes.md".into()])
+            .await
+            .unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].0, "notes.md");
+        assert_eq!(entries[0].1, "# hello");
+    }
+
+    #[test]
+    fn test_format_context_block() {
+        let entries = vec![
+            ("a.sql".into(), "SELECT 1".into()),
+            ("b.md".into(), "# doc".into()),
+        ];
+        let block = format_context_block(&entries);
+        assert_eq!(block, "[Context: a.sql]\nSELECT 1\n\n[Context: b.md]\n# doc");
     }
 }

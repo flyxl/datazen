@@ -9,24 +9,27 @@ use crate::store::Store;
 use datazen_driver_api::{ConnectionHandle, DatabaseDriver};
 use std::sync::Arc;
 
-/// Resolve a connection from a **config_id** (persistent UUID from `list_connections`).
-/// Tries an existing runtime handle first, then connects via `get_or_connect`.
-/// Callers from MCP/AI tools should pass `config_id`; runtime `connection_id` is still accepted internally.
+/// Resolve a connection from a **config_id** (persistent UUID from `list_connections`)
+/// or a runtime connection id. Uses [`ConnectionManager::resolve_session`].
 pub async fn resolve_connection(
     connection_manager: &ConnectionManager,
     config_id: &str,
 ) -> Result<(Arc<dyn DatabaseDriver>, ConnectionHandle), String> {
-    if let Ok(conn) = connection_manager.get_connection(config_id).await {
-        return Ok(conn);
-    }
-    let conn_id = connection_manager
-        .connect(config_id)
-        .await
-        .map_err(|e| format!("Cannot connect to '{config_id}': {e}"))?;
+    let (_runtime_id, driver, handle) =
+        resolve_connection_with_id(connection_manager, config_id).await?;
+    Ok((driver, handle))
+}
+
+/// Like [`resolve_connection`], but also returns the **runtime** connection id
+/// (which may differ from the input when a config id was supplied).
+pub async fn resolve_connection_with_id(
+    connection_manager: &ConnectionManager,
+    id: &str,
+) -> Result<(String, Arc<dyn DatabaseDriver>, ConnectionHandle), String> {
     connection_manager
-        .get_connection(&conn_id)
+        .resolve_session(id)
         .await
-        .map_err(|e| format!("Connection error: {e}"))
+        .map_err(|e| format!("Cannot resolve connection '{id}': {e}"))
 }
 
 /// List all configured connections as a JSON string.
@@ -38,7 +41,7 @@ pub async fn list_connections(store: &Store) -> Result<String, String> {
             serde_json::json!({
                 "id": c.id,
                 "name": c.name,
-                "databaseType": format!("{:?}", c.database_type),
+                "databaseType": c.database_type,
                 "host": c.host,
                 "database": c.database,
             })
