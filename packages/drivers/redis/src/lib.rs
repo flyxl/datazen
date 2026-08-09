@@ -7,6 +7,12 @@ use datazen_driver_api::*;
 mod redis_driver;
 pub use redis_driver::*;
 
+#[cfg(feature = "tauri-plugin")]
+mod plugin;
+
+#[cfg(feature = "tauri-plugin")]
+pub use plugin::init;
+
 struct RedisFactory;
 impl DatabaseDriverFactory for RedisFactory {
     fn create(&self) -> Arc<dyn DatabaseDriver> {

@@ -4,6 +4,11 @@ version = "0.0.8"
 edition = "2021"
 description = "DataZen redis database driver"
 license = "GPL-3.0-or-later"
+links = "redis"
+
+[features]
+default = []
+tauri-plugin = ["dep:tauri"]
 
 [dependencies]
 datazen-driver-api = { path = "../../driver-api" }
@@ -14,3 +19,7 @@ serde_json = "1"
 tracing = "0.1"
 uuid = { version = "1", features = ["v4"] }
 urlencoding = "2"
+tauri = { version = "2", optional = true }
+
+[build-dependencies]
+tauri-plugin = { version = "2", features = ["build"] }
