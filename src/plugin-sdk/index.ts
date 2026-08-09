@@ -79,6 +79,16 @@ export type PluginFormValidator = (
   t: (key: string) => string,
 ) => Record<string, string>;
 
+// === Plugin Settings ===
+export type { PluginSettingsContribution } from './settings';
+export {
+  mergePluginSettings,
+  readBooleanField,
+  applySchemaDefaults,
+  listBooleanSchemaFields,
+  listSchemaPropertyEntries,
+} from './settings';
+
 // === Plugin Commands ===
 export { pluginInvoke, hasPluginCommand } from '../plugins/generated';
 export type { PluginCommandMeta } from '../plugins/generated';

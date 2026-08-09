@@ -8,6 +8,7 @@ import { invoke } from '@tauri-apps/api/core';
 import type { DatabaseTypeMeta } from '@datazen/plugin-sdk';
 import type { SqlDialectStrategy } from '@datazen/plugin-sdk';
 import type { PluginFormValidator } from '@datazen/plugin-sdk';
+import type { PluginSettingsContribution } from '@datazen/plugin-sdk';
 import type { ComponentType } from 'react';
 
 /**
@@ -27,6 +28,11 @@ export const DRIVER_DB_ENTRIES: Record<string, DatabaseTypeMeta> = {
 
 /** Default driver badge icon URLs keyed by semantic id (`db.<type>`). */
 export const DRIVER_ICON_ENTRIES: Record<string, string> = {
+
+};
+
+/** Protocol-reuse types without own badge SVG: parent dbType for composite badge. */
+export const DRIVER_ICON_PARENTS: Record<string, string> = {
 
 };
 
@@ -91,6 +97,13 @@ export function getPluginSchemaTree(dbType: string): ComponentType<any> | undefi
   }
   return undefined;
 }
+
+// ===== Plugin Settings (Extensions UI) =====
+
+/** Plugin-provided settings sections and/or JSON Schema forms. */
+export const PLUGIN_SETTINGS_ENTRIES: PluginSettingsContribution[] = [
+
+];
 
 // ===== Plugin Commands =====
 

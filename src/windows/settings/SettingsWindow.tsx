@@ -21,6 +21,7 @@ import type { ThemeMode } from '../../types/theme';
 import type { TranslationKey } from '../../locales';
 import { ThemePackSection } from './ThemePackSection';
 import { UpdateSection } from './UpdateSection';
+import { PluginSettingsSection } from './PluginSettingsSection';
 
 const MCP_PERMISSION_MODES: { value: McpPermissionMode; labelKey: TranslationKey; hintKey: TranslationKey }[] = [
   { value: 'read_only', labelKey: 'mcp.permission.readOnly', hintKey: 'mcp.permission.readOnlyHint' },
@@ -58,7 +59,7 @@ const LANGUAGE_OPTIONS = [
   { value: 'ko', label: '한국어' },
 ];
 
-type SettingsSection = 'general' | 'dataBrowsing' | 'editor' | 'behavior' | 'logging' | 'monitor' | 'ai' | 'prompts' | 'mcpServer' | 'mcpClient';
+type SettingsSection = 'general' | 'dataBrowsing' | 'editor' | 'behavior' | 'logging' | 'monitor' | 'ai' | 'prompts' | 'mcpServer' | 'mcpClient' | 'extensions';
 
 const SECTIONS: { id: SettingsSection; labelKey: TranslationKey }[] = [
   { id: 'general', labelKey: 'settings.general' },
@@ -71,6 +72,7 @@ const SECTIONS: { id: SettingsSection; labelKey: TranslationKey }[] = [
   { id: 'prompts', labelKey: 'settings.prompts' },
   { id: 'mcpServer', labelKey: 'mcp.title' },
   { id: 'mcpClient', labelKey: 'mcpClient.title' },
+  { id: 'extensions', labelKey: 'settings.extensions.title' },
 ];
 
 export function SettingsWindow() {
@@ -434,6 +436,7 @@ export function SettingsWindow() {
             {activeSection === 'prompts' && <PromptSettingsSection />}
             {activeSection === 'mcpServer' && <McpSettingsSection />}
             {activeSection === 'mcpClient' && <McpClientSection />}
+            {activeSection === 'extensions' && <PluginSettingsSection />}
           </div>
         </div>
       </div>

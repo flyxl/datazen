@@ -30,6 +30,7 @@ export const SETTINGS_SECTION_LUCIDE_MAP: Record<string, string> = {
   mcpServer: 'Server',
   mcpClient: 'Plug',
   monitor: 'Activity',
+  extensions: 'Puzzle',
 };
 
 export function settingsSectionIconId(section: keyof typeof SETTINGS_SECTION_LUCIDE_MAP): string {

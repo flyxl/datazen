@@ -6,7 +6,7 @@
  */
 
 import type { DatabaseType } from '../types';
-import { DRIVER_DB_ENTRIES, DRIVER_ICON_ENTRIES } from '../plugins/generated';
+import { DRIVER_DB_ENTRIES, DRIVER_ICON_ENTRIES, DRIVER_ICON_PARENTS } from '../plugins/generated';
 import type { IconSourceMap } from './iconResolver';
 
 export type { ConnectionMode, DatabaseTypeMeta } from './databaseMeta';
@@ -43,6 +43,11 @@ export function getDbLabel(dbType: DatabaseType): string {
 /** Built-in driver SVG URLs keyed by semantic icon id (`db.<type>`). */
 export function getDriverIconMap(): IconSourceMap {
   return { ...DRIVER_ICON_ENTRIES };
+}
+
+/** Parent dbType for protocol-reuse badges that lack their own SVG. */
+export function getDriverIconParents(): Record<string, string> {
+  return { ...DRIVER_ICON_PARENTS };
 }
 
 /** Get the icon info (short label + bg class) for a database type. */

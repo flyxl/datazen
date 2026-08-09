@@ -1,0 +1,24 @@
+fn main() {
+    tauri_plugin::Builder::new(&[
+        "set_string",
+        "hash_set",
+        "hash_del",
+        "list_push",
+        "list_set",
+        "list_pop",
+        "set_add",
+        "set_remove",
+        "zset_add",
+        "zset_remove",
+        "delete_keys",
+        "rename",
+        "set_ttl",
+        "batch_delete_pattern",
+        "batch_set_ttl",
+        "batch_rename_prefix",
+        "flush_db",
+        "flush_all",
+        "count_matching",
+    ])
+    .build();
+}

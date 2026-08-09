@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-batch-rename-prefix"
+description = "Enables the batch_rename_prefix command without any pre-configured scope."
+commands.allow = ["batch_rename_prefix"]
+
+[[permission]]
+identifier = "deny-batch-rename-prefix"
+description = "Denies the batch_rename_prefix command without any pre-configured scope."
+commands.deny = ["batch_rename_prefix"]

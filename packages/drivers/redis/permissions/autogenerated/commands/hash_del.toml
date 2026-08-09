@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-hash-del"
+description = "Enables the hash_del command without any pre-configured scope."
+commands.allow = ["hash_del"]
+
+[[permission]]
+identifier = "deny-hash-del"
+description = "Denies the hash_del command without any pre-configured scope."
+commands.deny = ["hash_del"]

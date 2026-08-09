@@ -89,6 +89,9 @@ pub struct AppSettings {
     /// Dashboard monitor / tray / retention settings (nested for settings UI).
     #[serde(default)]
     pub monitor: MonitorSettings,
+    /// Opaque per-plugin settings keyed by plugin id (e.g. `"redis"`).
+    #[serde(default)]
+    pub plugin_settings: serde_json::Map<String, serde_json::Value>,
 }
 
 fn default_limit_select() -> bool {
@@ -128,6 +131,7 @@ impl Default for AppSettings {
             context_dir: String::new(),
             check_for_updates_on_startup: false,
             monitor: MonitorSettings::default(),
+            plugin_settings: serde_json::Map::new(),
         }
     }
 }
@@ -1065,6 +1069,33 @@ mod tests {
             "unexpected {}",
             settings.language
         );
+    }
+
+    #[test]
+    fn plugin_settings_defaults_when_key_missing() {
+        let mut value = serde_json::to_value(AppSettings::default()).unwrap();
+        value
+            .as_object_mut()
+            .unwrap()
+            .remove("pluginSettings");
+        let parsed: AppSettings = serde_json::from_value(value).unwrap();
+        assert!(parsed.plugin_settings.is_empty());
+    }
+
+    #[test]
+    fn plugin_settings_roundtrip_opaque() {
+        let settings = AppSettings {
+            plugin_settings: {
+                let mut m = serde_json::Map::new();
+                m.insert("redis".into(), serde_json::json!({ "allowFlush": true }));
+                m
+            },
+            ..AppSettings::default()
+        };
+        let json = serde_json::to_string(&settings).unwrap();
+        assert!(json.contains("pluginSettings"));
+        let parsed: AppSettings = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.plugin_settings.get("redis").unwrap()["allowFlush"], true);
     }
 
     #[test]
