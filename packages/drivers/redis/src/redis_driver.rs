@@ -21,6 +21,31 @@ struct RedisConn {
     connection: MultiplexedConnection,
 }
 
+macro_rules! plugin_on_db {
+    ($name:ident, ($($arg:ident: $arg_ty:ty),*) -> $ret:ty, |$conn:ident| $body:expr) => {
+        pub async fn $name(
+            &self,
+            connection_id: &str,
+            db_index: u32,
+            $($arg: $arg_ty,)*
+        ) -> Result<$ret, DriverError> {
+            let handle = ConnectionHandle {
+                id: connection_id.to_string(),
+                pool_id: connection_id.to_string(),
+            };
+            let mut conns = self.connections.write().await;
+            let rc = Self::get_conn(&mut conns, &handle)?;
+            let $conn = &mut rc.connection;
+            let _: () = redis::cmd("SELECT")
+                .arg(db_index)
+                .query_async($conn)
+                .await
+                .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+            $body.await.map_err(DriverError::QueryFailed)
+        }
+    };
+}
+
 pub struct RedisDriver {
     connections: RwLock<HashMap<String, RedisConn>>,
 }
@@ -275,6 +300,54 @@ impl RedisDriver {
         Ok((next_cursor, keys, db_size))
     }
 
+    /// Run an async closure against the live multiplexed connection for `connection_id`
+    /// after selecting `db_index`. Used by plugin mutate commands.
+    pub async fn with_conn<F, Fut, T>(
+        &self,
+        connection_id: &str,
+        db_index: u32,
+        f: F,
+    ) -> Result<T, DriverError>
+    where
+        F: FnOnce(&mut MultiplexedConnection) -> Fut,
+        Fut: std::future::Future<Output = Result<T, String>>,
+    {
+        let handle = ConnectionHandle {
+            id: connection_id.to_string(),
+            pool_id: connection_id.to_string(),
+        };
+        let mut conns = self.connections.write().await;
+        let rc = Self::get_conn(&mut conns, &handle)?;
+        let conn = &mut rc.connection;
+
+        let _: () = redis::cmd("SELECT")
+            .arg(db_index)
+            .query_async(conn)
+            .await
+            .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+
+        f(conn).await.map_err(DriverError::QueryFailed)
+    }
+
+    /// Run a closure without selecting a logical database (e.g. FLUSHALL).
+    pub async fn with_conn_any_db<F, Fut, T>(
+        &self,
+        connection_id: &str,
+        f: F,
+    ) -> Result<T, DriverError>
+    where
+        F: FnOnce(&mut MultiplexedConnection) -> Fut,
+        Fut: std::future::Future<Output = Result<T, String>>,
+    {
+        let handle = ConnectionHandle {
+            id: connection_id.to_string(),
+            pool_id: connection_id.to_string(),
+        };
+        let mut conns = self.connections.write().await;
+        let rc = Self::get_conn(&mut conns, &handle)?;
+        f(&mut rc.connection).await.map_err(DriverError::QueryFailed)
+    }
+
     /// Load the full value for a key in `db_index`.
     pub async fn get_key_detail(
         &self,
@@ -396,6 +469,61 @@ impl RedisDriver {
             value,
         })
     }
+
+    plugin_on_db!(plugin_set_string, (key: &str, value: &str) -> (), |conn| crate::ops::set_string(conn, key, value));
+    plugin_on_db!(plugin_hash_set, (key: &str, field: &str, value: &str) -> (), |conn| crate::ops::hash_set(conn, key, field, value));
+    plugin_on_db!(plugin_hash_del, (key: &str, fields: &[String]) -> (), |conn| crate::ops::hash_del(conn, key, fields));
+    plugin_on_db!(plugin_list_push, (key: &str, side: &str, values: &[String]) -> (), |conn| crate::ops::list_push(conn, key, side, values));
+    plugin_on_db!(plugin_list_set, (key: &str, index: i64, value: &str) -> (), |conn| crate::ops::list_set(conn, key, index, value));
+    plugin_on_db!(plugin_list_pop, (key: &str, side: &str) -> Option<String>, |conn| crate::ops::list_pop(conn, key, side));
+    plugin_on_db!(plugin_set_add, (key: &str, members: &[String]) -> (), |conn| crate::ops::set_add(conn, key, members));
+    plugin_on_db!(plugin_set_remove, (key: &str, members: &[String]) -> (), |conn| crate::ops::set_remove(conn, key, members));
+    plugin_on_db!(plugin_zset_add, (key: &str, members: &[crate::ops::ZsetMember]) -> (), |conn| crate::ops::zset_add(conn, key, members));
+    plugin_on_db!(plugin_zset_remove, (key: &str, members: &[String]) -> (), |conn| crate::ops::zset_remove(conn, key, members));
+    plugin_on_db!(plugin_delete_keys, (keys: &[String]) -> u64, |conn| crate::ops::delete_keys(conn, keys));
+    plugin_on_db!(plugin_rename_key, (key: &str, new_key: &str) -> (), |conn| crate::ops::rename_key(conn, key, new_key));
+    plugin_on_db!(plugin_set_ttl, (key: &str, ttl_seconds: i64) -> (), |conn| crate::ops::set_ttl(conn, key, ttl_seconds));
+    plugin_on_db!(plugin_batch_delete_pattern, (pattern: &str) -> crate::ops::BatchDeleteResult, |conn| crate::ops::batch_delete_pattern(conn, pattern));
+    plugin_on_db!(plugin_batch_set_ttl, (keys: &[String], ttl_seconds: i64) -> crate::ops::BatchSetTtlResult, |conn| crate::ops::batch_set_ttl(conn, keys, ttl_seconds));
+    plugin_on_db!(plugin_count_matching, (pattern: &str) -> u64, |conn| crate::ops::count_matching(conn, pattern));
+    plugin_on_db!(plugin_flush_db, () -> (), |conn| crate::ops::flush_db(conn));
+
+    pub async fn plugin_batch_rename_prefix(
+        &self,
+        connection_id: &str,
+        db_index: u32,
+        old_prefix: &str,
+        new_prefix: &str,
+        keys: Option<Vec<String>>,
+    ) -> Result<crate::ops::BatchRenameResult, DriverError> {
+        let handle = ConnectionHandle {
+            id: connection_id.to_string(),
+            pool_id: connection_id.to_string(),
+        };
+        let mut conns = self.connections.write().await;
+        let rc = Self::get_conn(&mut conns, &handle)?;
+        let conn = &mut rc.connection;
+        let _: () = redis::cmd("SELECT")
+            .arg(db_index)
+            .query_async(conn)
+            .await
+            .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+        crate::ops::batch_rename_prefix(conn, old_prefix, new_prefix, keys)
+            .await
+            .map_err(DriverError::QueryFailed)
+    }
+
+    pub async fn plugin_flush_all(&self, connection_id: &str) -> Result<(), DriverError> {
+        let handle = ConnectionHandle {
+            id: connection_id.to_string(),
+            pool_id: connection_id.to_string(),
+        };
+        let mut conns = self.connections.write().await;
+        let rc = Self::get_conn(&mut conns, &handle)?;
+        crate::ops::flush_all(&mut rc.connection)
+            .await
+            .map_err(DriverError::QueryFailed)
+    }
 }
 
 /// Safely extract a string from a redis::Value, handling non-UTF-8 bytes via lossy conversion.
@@ -412,7 +540,7 @@ fn value_to_string(v: &redis::Value) -> String {
 
 /// Parse a SCAN result (Array of [cursor, Array of keys]) into (next_cursor, Vec<String>).
 /// Tolerates non-UTF-8 keys by using lossy conversion.
-fn parse_scan_result(v: &redis::Value) -> (u64, Vec<String>) {
+pub(crate) fn parse_scan_result(v: &redis::Value) -> (u64, Vec<String>) {
     match v {
         redis::Value::Array(items) if items.len() >= 2 => {
             let next_cursor: u64 = match &items[0] {
