@@ -215,6 +215,7 @@ const translations = {
   'newConn.adbNoPackages': 'Nenhum aplicativo de terceiros encontrado. Certifique-se de que o dispositivo esteja conectado.',
   'newConn.adbNoDatabases': 'Nenhum arquivo de banco de dados encontrado',
   'newConn.adbNotInstalled': 'adb não está instalado ou não está em PATH',
+
   'settings.title': 'Configurações',
   'settings.general': 'Em geral',
   'settings.extensions.title': 'Extensões',

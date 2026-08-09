@@ -215,6 +215,7 @@ const translations = {
   'newConn.adbNoPackages': 'Сторонних приложений не обнаружено. Убедитесь, что устройство подключено.',
   'newConn.adbNoDatabases': 'Файлы базы данных не найдены',
   'newConn.adbNotInstalled': 'adb не установлен или отсутствует в PATH',
+
   'settings.title': 'Настройки',
   'settings.general': 'Общий',
   'settings.extensions.title': 'Расширения',

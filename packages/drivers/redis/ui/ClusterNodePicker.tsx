@@ -7,6 +7,7 @@ import { useSettingsStore } from '../../../../src/stores/settingsStore';
 import { readBooleanField } from '../../../../src/plugin-sdk/settings';
 import { hasPluginCommand, pluginInvoke } from '../../../../src/plugins/generated';
 import { readRedisOptions } from './connectionOptions';
+import { readClusterRouting } from './settingsHelpers';
 
 const SESSION_PREFIX = 'datazen:redis:pinned-node:';
 
@@ -129,12 +130,6 @@ export function ClusterNodePicker({
       )}
     </div>
   );
-}
-
-function readClusterRouting(raw: unknown): 'auto' | 'pinnedNode' {
-  if (!raw || typeof raw !== 'object') return 'auto';
-  const value = (raw as { clusterRouting?: unknown }).clusterRouting;
-  return value === 'pinnedNode' ? 'pinnedNode' : 'auto';
 }
 
 function readSessionPinnedNode(

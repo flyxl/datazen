@@ -2,10 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
 import { useConnectionStore } from '../../stores/connectionStore';
 import { useI18n } from '../../hooks/useI18n';
-import { DB_REGISTRY, normalizeRedisDatabaseField } from '../../lib/databaseTypes';
+import { DB_REGISTRY, normalizeIndexDatabaseField } from '../../lib/databaseTypes';
 import { newId } from './shared';
 import type { ConnectionConfig, DatabaseType, SslMode, SshTunnelConfig } from '../../types';
-import { pluginInvoke, getPluginConnectionForm, getPluginValidator } from '../../plugins/generated';
+import { getPluginConnectionForm, getPluginValidator } from '../../plugins/generated';
 
 export interface UseConnectionFormOptions {
   editId?: string | null;
@@ -45,11 +45,6 @@ export function useConnectionForm(options: UseConnectionFormOptions = {}) {
   const [testOk, setTestOk] = useState<string | null>(null);
   const [testErr, setTestErr] = useState<string | null>(null);
   const testResultRef = useRef<HTMLDivElement>(null);
-
-  const [kiwiInstances, setKiwiInstances] = useState<{ name: string; alias: string; short: string }[]>([]);
-  const [loadingInstances, setLoadingInstances] = useState(false);
-  const [kiwiToken, setKiwiToken] = useState('');
-  const [kiwiLoggingIn, setKiwiLoggingIn] = useState(false);
 
   const [connectionOptions, setConnectionOptions] = useState<Record<string, unknown>>({});
 
@@ -109,90 +104,18 @@ export function useConnectionForm(options: UseConnectionFormOptions = {}) {
     if (!meta.supportsSSH) setSshEnabled(false);
 
     if (meta.databaseFieldType === 'index') {
-      setDatabase('0');
+      setDatabase(meta.defaultDatabase ?? '0');
     } else if (meta.connectionMode === 'file') {
       setDatabase('');
     } else {
-      const defaultDb = newType === 'postgresql' ? 'postgres' : '';
-      setDatabase(defaultDb);
+      setDatabase(meta.defaultDatabase ?? '');
     }
 
-    if (meta.connectionForm === 'kiwi') {
-      setHost(meta.defaultHost);
-      setDatabase('');
-      setPort(String(meta.defaultPort));
-    }
-    if (meta.connectionForm === 'catalog') {
-      setHost(meta.defaultHost);
-      setPort(String(meta.defaultPort));
-      setDatabase('');
+    if (meta.connectionIncludesSchema) {
       setSchema('default');
-      setUsername('');
     }
-    if (meta.connectionForm === 'redis') {
-      setHost(meta.defaultHost || '127.0.0.1');
-      setPort(String(meta.defaultPort ?? 6379));
-      setDatabase('0');
-      setUsername('');
-      setPassword('');
-      setConnectionOptions({ topology: 'standalone' });
-    } else if (getPluginConnectionForm(meta.connectionForm)) {
-      setConnectionOptions({});
-    }
-  }
 
-  async function loadKiwiInstances(baseUrl: string, token: string) {
-    setLoadingInstances(true);
-    try {
-      const data = await pluginInvoke<any>('kiwi', 'list_instances', {
-        baseUrl,
-        token,
-        sourceType: Number(port) || 4,
-        userName: username || undefined,
-      });
-      if (data?.code === 0 && Array.isArray(data.result)) {
-        setKiwiInstances(data.result.map((r: any) => ({
-          name: r.name,
-          alias: r.alias_name || '',
-          short: r.short_domain || '',
-        })));
-        if (data.result.length === 0) {
-          setTestErr('未找到任何实例');
-        }
-      } else {
-        setTestErr(`加载实例失败: ${data?.msg || JSON.stringify(data)}`);
-      }
-    } catch (e: any) {
-      const msg = typeof e === 'string' ? e : e?.message || JSON.stringify(e);
-      setTestErr(`加载实例出错: ${msg}`);
-    } finally {
-      setLoadingInstances(false);
-    }
-  }
-
-  async function handleKiwiLogin() {
-    if (!host || !username || !password) return;
-    setKiwiLoggingIn(true);
-    setTestErr(null);
-    setTestOk(null);
-    try {
-      const result = await pluginInvoke<any>('kiwi', 'login', {
-        baseUrl: host,
-        username,
-        password,
-      });
-      if (result?.token) {
-        setKiwiToken(result.token);
-        setTestOk(`登录成功 (${result.username})`);
-        void loadKiwiInstances(host, result.token);
-      } else {
-        setTestErr('登录失败：未获取到 token');
-      }
-    } catch (e) {
-      setTestErr(typeof e === 'string' ? e : e instanceof Error ? e.message : '登录失败');
-    } finally {
-      setKiwiLoggingIn(false);
-    }
+    setConnectionOptions({ ...(meta.defaultOptions ?? {}) });
   }
 
   const sshTunnel: SshTunnelConfig | undefined = sshEnabled
@@ -210,7 +133,8 @@ export function useConnectionForm(options: UseConnectionFormOptions = {}) {
 
   const meta = DB_REGISTRY[databaseType];
   const formVariant = meta?.connectionForm ?? 'standard';
-  const hasUsername = !!meta?.defaultUser || formVariant === 'kiwi';
+  const isPluginForm = !!getPluginConnectionForm(formVariant);
+  const hasUsername = !!meta?.defaultUser || !!meta?.requiresUsername || isPluginForm;
 
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
 
@@ -229,14 +153,14 @@ export function useConnectionForm(options: UseConnectionFormOptions = {}) {
 
     if (meta?.connectionMode === 'file') {
       if (!database.trim()) errors.database = t('newConn.required');
-    } else if (formVariant !== 'kiwi' && formVariant !== 'catalog') {
+    } else if (!isPluginForm) {
       if (!host.trim()) errors.host = t('newConn.required');
       if (!port.trim() || isNaN(Number(port))) errors.port = t('newConn.required');
     }
 
     setValidationErrors(errors);
     return Object.keys(errors).length === 0;
-  }, [connectionOptions, database, formVariant, host, meta?.connectionMode, password, port, schema, t, username]);
+  }, [connectionOptions, database, formVariant, host, isPluginForm, meta?.connectionMode, password, port, schema, t, username]);
 
   const draft = useMemo((): ConnectionConfig => {
     const base: ConnectionConfig = {
@@ -258,14 +182,17 @@ export function useConnectionForm(options: UseConnectionFormOptions = {}) {
       ...base,
       host: host || draftMeta.defaultHost || undefined,
       port: Number(port) || draftMeta.defaultPort || undefined,
-      database: draftMeta.databaseFieldType === 'index' ? normalizeRedisDatabaseField(database) : database || undefined,
+      database:
+        draftMeta.databaseFieldType === 'index'
+          ? normalizeIndexDatabaseField(database, draftMeta.maxDatabaseIndex ?? 15)
+          : database || undefined,
       password: password || undefined,
     };
-    const isPluginForm = !!getPluginConnectionForm(draftMeta.connectionForm);
-    if (draftMeta.defaultUser || draftMeta.connectionForm === 'kiwi' || draftMeta.connectionForm === 'catalog' || isPluginForm) {
+    const pluginForm = !!getPluginConnectionForm(draftMeta.connectionForm);
+    if (draftMeta.defaultUser || draftMeta.requiresUsername || pluginForm) {
       conn.username = username || draftMeta.defaultUser || undefined;
     }
-    if (draftMeta.connectionForm === 'catalog') {
+    if (draftMeta.connectionIncludesSchema) {
       conn.schema = schema.trim() || 'default';
     }
     if (Object.keys(connectionOptions).length > 0) {
@@ -346,23 +273,19 @@ export function useConnectionForm(options: UseConnectionFormOptions = {}) {
     setSshKeyPath,
     sshPassphrase,
     setSshPassphrase,
-    kiwiInstances,
-    loadingInstances,
-    kiwiToken,
-    kiwiLoggingIn,
     meta,
     formVariant,
     hasUsername,
     sslOptions,
     draft,
     handleDatabaseTypeChange,
-    handleKiwiLogin,
-    loadKiwiInstances,
     onTest,
     onSave,
     testing,
     testOk,
+    setTestOk,
     testErr,
+    setTestErr,
     testResultRef,
     showAdvanced,
     setShowAdvanced,

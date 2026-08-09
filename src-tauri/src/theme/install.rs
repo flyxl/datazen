@@ -4,9 +4,7 @@ use std::fs::{self, File};
 use std::io::{copy, Read};
 use std::path::{Path, PathBuf};
 
-use zip::{ZipArchive, ZipWriter};
-use zip::write::SimpleFileOptions;
-use zip::CompressionMethod;
+use zip::ZipArchive;
 
 use super::validate::{
     allowed_theme_extension, validate_pack_contents, validate_pack_dir, validate_theme_zip_path,
@@ -292,7 +290,10 @@ fn atomic_replace_dir(dest: &Path, staging: &Path) -> Result<(), String> {
 mod tests {
     use super::*;
     use std::io::Write;
+    use std::path::PathBuf;
     use tempfile::TempDir;
+    use zip::write::SimpleFileOptions;
+    use zip::{CompressionMethod, ZipWriter};
 
     fn write_file(dir: &Path, rel: &str, content: &str) {
         let path = dir.join(rel);

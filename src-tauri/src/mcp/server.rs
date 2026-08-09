@@ -1,14 +1,16 @@
 //! DataZen MCP Server handler — tools + resources + prompts.
 
+use crate::ai::prompt_resolver;
 use crate::commands::AppState;
 use crate::mcp::permission::{self, McpPermissionMode};
+use datazen_driver_api::PromptScenario;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::*;
 use rmcp::service::RequestContext;
 use rmcp::{prompt, prompt_handler, prompt_router, tool, tool_handler, tool_router, ErrorData as McpError, RoleServer, ServerHandler};
 use schemars::JsonSchema;
 use serde::Deserialize;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 // ─── Tool Input Types ───
@@ -319,11 +321,15 @@ impl DataZenMcpServer {
                 McpError::invalid_params(format!("Workflow '{}' not found", input.workflow_id), None)
             })?;
 
-        let result = crate::workflow::WorkflowExecutor::execute(
+        let result = crate::workflow::WorkflowExecutor::execute_with_options(
             &workflow,
             &self.app_state,
             input.config_id.as_deref(),
             &input.variables,
+            crate::workflow::WorkflowExecuteOptions {
+                permission_mode: Some(self.permission_mode),
+                query_row_limit: Some(crate::workflow::WORKFLOW_QUERY_ROW_LIMIT),
+            },
         )
         .await
         .map_err(|e| McpError::internal_error(e, None))?;
@@ -345,8 +351,8 @@ impl DataZenMcpServer {
         Parameters(args): Parameters<Nl2SqlArgs>,
     ) -> Result<GetPromptResult, McpError> {
         let (conn_id, driver, _handle) = self.resolve_connection(&args.config_id).await?;
-
-        let db_type = format!("{:?}", driver.driver_type());
+        let lang = self.app_state.store.get_settings().await.language;
+        let db_type = driver.driver_type();
         let db = args.database.as_deref().unwrap_or("");
 
         let context = self
@@ -356,14 +362,21 @@ impl DataZenMcpServer {
             .await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
+        let mut vars = HashMap::new();
+        vars.insert("db_type", db_type.as_str());
+        vars.insert("version", "");
+        vars.insert("schema", context.schema_ddl.as_str());
+        vars.insert("recent", "");
+        let system = self
+            .app_state
+            .prompt_resolver
+            .resolve(PromptScenario::Nl2Sql, Some(driver.as_ref()), &lang)
+            .await;
+        let system_content = prompt_resolver::render_template(&system, &vars);
+
         Ok(GetPromptResult::new(vec![
-            PromptMessage::new_text(
-                Role::User,
-                format!(
-                    "Database: {db_type}\nSchema:\n{}\n\nGenerate SQL for: {}",
-                    context.schema_ddl, args.question
-                ),
-            ),
+            PromptMessage::new_text(Role::User, system_content),
+            PromptMessage::new_text(Role::User, args.question.clone()),
         ])
         .with_description("Natural language to SQL conversion with schema context"))
     }
@@ -377,16 +390,28 @@ impl DataZenMcpServer {
         Parameters(args): Parameters<DiagnoseErrorArgs>,
     ) -> Result<GetPromptResult, McpError> {
         let (_conn_id, driver, _handle) = self.resolve_connection(&args.config_id).await?;
+        let lang = self.app_state.store.get_settings().await.language;
+        let db_type = driver.driver_type();
 
-        let db_type = format!("{:?}", driver.driver_type());
+        let mut vars = HashMap::new();
+        vars.insert("db_type", db_type.as_str());
+        vars.insert("version", "");
+        vars.insert("schema", "");
+        vars.insert("recent", "");
+        let system = self
+            .app_state
+            .prompt_resolver
+            .resolve(PromptScenario::Diagnose, Some(driver.as_ref()), &lang)
+            .await;
+        let system_content = prompt_resolver::render_template(&system, &vars);
 
-        Ok(GetPromptResult::new(vec![PromptMessage::new_text(
-            Role::User,
-            format!(
-                "Database: {db_type}\nSQL:\n```\n{}\n```\n\nError: {}\n\nDiagnose this error and suggest a fix.",
-                args.sql, args.error
+        Ok(GetPromptResult::new(vec![
+            PromptMessage::new_text(Role::User, system_content),
+            PromptMessage::new_text(
+                Role::User,
+                format!("SQL:\n```\n{}\n```\n\nError:\n{}", args.sql, args.error),
             ),
-        )])
+        ])
         .with_description("SQL error diagnosis with fix suggestions"))
     }
 
@@ -399,8 +424,8 @@ impl DataZenMcpServer {
         Parameters(args): Parameters<ExplainPlanArgs>,
     ) -> Result<GetPromptResult, McpError> {
         let (_conn_id, driver, handle) = self.resolve_connection(&args.config_id).await?;
-
-        let db_type = format!("{:?}", driver.driver_type());
+        let lang = self.app_state.store.get_settings().await.language;
+        let db_type = driver.driver_type();
 
         let explain_result = driver
             .explain(&handle, &args.sql)
@@ -410,13 +435,28 @@ impl DataZenMcpServer {
         let explain_text = serde_json::to_string_pretty(&explain_result)
             .unwrap_or_else(|_| "Failed to serialize EXPLAIN output".to_string());
 
-        Ok(GetPromptResult::new(vec![PromptMessage::new_text(
-            Role::User,
-            format!(
-                "Database: {db_type}\nSQL:\n```\n{}\n```\n\nEXPLAIN output:\n```\n{}\n```\n\nAnalyze this execution plan and suggest optimizations.",
-                args.sql, explain_text
+        let mut vars = HashMap::new();
+        vars.insert("db_type", db_type.as_str());
+        vars.insert("version", "");
+        vars.insert("schema", "");
+        vars.insert("recent", "");
+        let system = self
+            .app_state
+            .prompt_resolver
+            .resolve(PromptScenario::ExplainAnalysis, Some(driver.as_ref()), &lang)
+            .await;
+        let system_content = prompt_resolver::render_template(&system, &vars);
+
+        Ok(GetPromptResult::new(vec![
+            PromptMessage::new_text(Role::User, system_content),
+            PromptMessage::new_text(
+                Role::User,
+                format!(
+                    "SQL:\n```\n{}\n```\n\nEXPLAIN output:\n```\n{}\n```",
+                    args.sql, explain_text
+                ),
             ),
-        )])
+        ])
         .with_description("Query execution plan analysis"))
     }
 }

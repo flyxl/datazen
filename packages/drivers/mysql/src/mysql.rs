@@ -4,10 +4,11 @@ use datazen_driver_api::*;
 use async_trait::async_trait;
 use rust_decimal::prelude::ToPrimitive;
 use sqlx::mysql::MySqlPoolOptions;
-use sqlx::{Column, MySqlPool, Row};
+use sqlx::pool::PoolConnection;
+use sqlx::{Column, MySql, MySqlPool, Row};
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex, RwLock};
 
 const JS_MAX_SAFE_INT: i64 = 9_007_199_254_740_991;
 const JS_MIN_SAFE_INT: i64 = -9_007_199_254_740_991;
@@ -17,6 +18,8 @@ pub struct MysqlDriver {
     /// Active schema selected via `use_database` (or connect config), keyed by pool_id.
     /// Applied with `USE` on each acquired connection so pooled sessions stay consistent.
     active_databases: RwLock<HashMap<String, String>>,
+    /// Open transactions: connection held for the lifetime of BEGIN…COMMIT/ROLLBACK, keyed by handle.id.
+    transactions: Mutex<HashMap<String, PoolConnection<MySql>>>,
     is_mariadb: bool,
 }
 
@@ -25,6 +28,7 @@ impl MysqlDriver {
         Self {
             pools: RwLock::new(HashMap::new()),
             active_databases: RwLock::new(HashMap::new()),
+            transactions: Mutex::new(HashMap::new()),
             is_mariadb,
         }
     }
@@ -588,6 +592,9 @@ impl DatabaseDriver for MysqlDriver {
     }
 
     async fn disconnect(&self, handle: ConnectionHandle) -> Result<(), DriverError> {
+        if let Some(mut conn) = self.transactions.lock().await.remove(&handle.id) {
+            let _ = sqlx::query("ROLLBACK").execute(&mut *conn).await;
+        }
         self.active_databases.write().await.remove(&handle.pool_id);
         if let Some(pool) = self.pools.write().await.remove(&handle.pool_id) {
             pool.close().await;
@@ -781,6 +788,26 @@ impl DatabaseDriver for MysqlDriver {
         handle: &ConnectionHandle,
         sql: &str,
     ) -> Result<QueryResult, DriverError> {
+        {
+            let mut txs = self.transactions.lock().await;
+            if let Some(conn) = txs.get_mut(&handle.id) {
+                let start = Instant::now();
+                let rows = sqlx::query(sql)
+                    .fetch_all(&mut **conn)
+                    .await
+                    .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+                let elapsed = start.elapsed().as_millis() as u64;
+                let (columns, result_rows) = Self::decode_rows(&rows);
+                let row_count = result_rows.len() as u64;
+                return Ok(QueryResult {
+                    columns,
+                    rows: result_rows,
+                    rows_affected: Some(row_count),
+                    execution_time_ms: elapsed,
+                });
+            }
+        }
+
         let pools = self.pools.read().await;
         let pool = Self::get_pool(&pools, handle)?;
         let mut conn = pool
@@ -813,14 +840,6 @@ impl DatabaseDriver for MysqlDriver {
         sql: &str,
         limit: Option<u32>,
     ) -> Result<MultiQueryResult, DriverError> {
-        let pools = self.pools.read().await;
-        let pool = Self::get_pool(&pools, handle)?;
-        let mut conn = pool
-            .acquire()
-            .await
-            .map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
-        self.apply_active_database(handle, &mut conn).await?;
-
         let statements = split_mysql_statements(sql);
         if statements.is_empty() {
             return Ok(MultiQueryResult {
@@ -831,6 +850,82 @@ impl DatabaseDriver for MysqlDriver {
 
         let total_start = Instant::now();
         let mut results = Vec::with_capacity(statements.len());
+
+        let mut txs = self.transactions.lock().await;
+        if let Some(conn) = txs.get_mut(&handle.id) {
+            for stmt in &statements {
+                let (effective_sql, applied_limit) = apply_mysql_select_limit(stmt, limit);
+                let trimmed_upper = effective_sql.trim().to_ascii_uppercase();
+                let is_query = trimmed_upper.starts_with("SELECT")
+                    || trimmed_upper.starts_with("WITH")
+                    || trimmed_upper.starts_with("SHOW")
+                    || trimmed_upper.starts_with("DESCRIBE")
+                    || trimmed_upper.starts_with("DESC")
+                    || trimmed_upper.starts_with("EXPLAIN");
+
+                let stmt_start = Instant::now();
+
+                if is_query {
+                    let rows = sqlx::query(effective_sql.as_str())
+                        .fetch_all(&mut **conn)
+                        .await
+                        .map_err(|e| DriverError::QueryFailed(format!("[{}] {}", stmt, e)))?;
+                    let stmt_ms = stmt_start.elapsed().as_millis() as u64;
+
+                    let (columns, mut result_rows) = Self::decode_rows(&rows);
+                    let truncated = if let Some(lim) = applied_limit {
+                        let fetched = result_rows.len() as u32;
+                        if fetched > lim {
+                            result_rows.truncate(lim as usize);
+                            true
+                        } else {
+                            false
+                        }
+                    } else {
+                        false
+                    };
+                    let row_count = result_rows.len() as u64;
+
+                    results.push(StatementResult {
+                        sql: stmt.clone(),
+                        columns,
+                        rows: result_rows,
+                        rows_affected: Some(row_count),
+                        execution_time_ms: stmt_ms,
+                        truncated,
+                    });
+                } else {
+                    let result = sqlx::query(effective_sql.as_str())
+                        .execute(&mut **conn)
+                        .await
+                        .map_err(|e| DriverError::QueryFailed(format!("[{}] {}", stmt, e)))?;
+                    let stmt_ms = stmt_start.elapsed().as_millis() as u64;
+
+                    results.push(StatementResult {
+                        sql: stmt.clone(),
+                        columns: Vec::new(),
+                        rows: Vec::new(),
+                        rows_affected: Some(result.rows_affected()),
+                        execution_time_ms: stmt_ms,
+                        truncated: false,
+                    });
+                }
+            }
+
+            return Ok(MultiQueryResult {
+                results,
+                total_time_ms: total_start.elapsed().as_millis() as u64,
+            });
+        }
+        drop(txs);
+
+        let pools = self.pools.read().await;
+        let pool = Self::get_pool(&pools, handle)?;
+        let mut conn = pool
+            .acquire()
+            .await
+            .map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
+        self.apply_active_database(handle, &mut conn).await?;
 
         for stmt in &statements {
             let (effective_sql, applied_limit) = apply_mysql_select_limit(stmt, limit);
@@ -907,6 +1002,17 @@ impl DatabaseDriver for MysqlDriver {
     }
 
     async fn execute(&self, handle: &ConnectionHandle, sql: &str) -> Result<u64, DriverError> {
+        {
+            let mut txs = self.transactions.lock().await;
+            if let Some(conn) = txs.get_mut(&handle.id) {
+                let result = sqlx::query(sql)
+                    .execute(&mut **conn)
+                    .await
+                    .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+                return Ok(result.rows_affected());
+            }
+        }
+
         let pools = self.pools.read().await;
         let pool = Self::get_pool(&pools, handle)?;
         let mut conn = pool
@@ -925,23 +1031,69 @@ impl DatabaseDriver for MysqlDriver {
 
     async fn begin_transaction(
         &self,
-        _handle: &ConnectionHandle,
+        handle: &ConnectionHandle,
     ) -> Result<TransactionHandle, DriverError> {
-        Err(DriverError::TransactionError(
-            "Transactions not yet implemented".into(),
-        ))
+        let mut txs = self.transactions.lock().await;
+        if txs.contains_key(&handle.id) {
+            return Err(DriverError::TransactionError(
+                "A transaction is already open on this connection".into(),
+            ));
+        }
+
+        let pools = self.pools.read().await;
+        let pool = Self::get_pool(&pools, handle)?;
+        let mut conn = pool
+            .acquire()
+            .await
+            .map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
+        drop(pools);
+
+        self.apply_active_database(handle, &mut conn).await?;
+
+        sqlx::query("BEGIN")
+            .execute(&mut *conn)
+            .await
+            .map_err(|e| DriverError::TransactionError(e.to_string()))?;
+
+        txs.insert(handle.id.clone(), conn);
+        Ok(TransactionHandle {
+            id: format!("mysql_tx_{}", uuid::Uuid::new_v4()),
+            connection_id: handle.id.clone(),
+        })
     }
 
-    async fn commit(&self, _tx: TransactionHandle) -> Result<(), DriverError> {
-        Err(DriverError::TransactionError(
-            "Transactions not yet implemented".into(),
-        ))
+    async fn commit(&self, tx: TransactionHandle) -> Result<(), DriverError> {
+        let mut conn = self
+            .transactions
+            .lock()
+            .await
+            .remove(&tx.connection_id)
+            .ok_or_else(|| {
+                DriverError::TransactionError("Transaction not found or already ended".into())
+            })?;
+
+        sqlx::query("COMMIT")
+            .execute(&mut *conn)
+            .await
+            .map_err(|e| DriverError::TransactionError(e.to_string()))?;
+        Ok(())
     }
 
-    async fn rollback(&self, _tx: TransactionHandle) -> Result<(), DriverError> {
-        Err(DriverError::TransactionError(
-            "Transactions not yet implemented".into(),
-        ))
+    async fn rollback(&self, tx: TransactionHandle) -> Result<(), DriverError> {
+        let mut conn = self
+            .transactions
+            .lock()
+            .await
+            .remove(&tx.connection_id)
+            .ok_or_else(|| {
+                DriverError::TransactionError("Transaction not found or already ended".into())
+            })?;
+
+        sqlx::query("ROLLBACK")
+            .execute(&mut *conn)
+            .await
+            .map_err(|e| DriverError::TransactionError(e.to_string()))?;
+        Ok(())
     }
 
     async fn explain(
@@ -1053,6 +1205,12 @@ impl DatabaseDriver for MysqlDriver {
             if active.get(&handle.pool_id).map(String::as_str) == Some(trimmed.as_str()) {
                 return Ok(());
             }
+        }
+
+        if self.transactions.lock().await.contains_key(&handle.id) {
+            return Err(DriverError::TransactionError(
+                "Cannot switch database while a transaction is open".into(),
+            ));
         }
 
         let pools = self.pools.read().await;
@@ -1327,6 +1485,44 @@ mod tests {
             .use_database(&handle, "  already  ")
             .await
             .expect("trimmed match should be a no-op");
+    }
+
+    #[tokio::test]
+    async fn begin_transaction_requires_pool() {
+        let driver = MysqlDriver::new(false);
+        let handle = ConnectionHandle {
+            id: "conn".into(),
+            pool_id: "missing-pool".into(),
+        };
+        let err = driver.begin_transaction(&handle).await.unwrap_err();
+        assert!(
+            matches!(err, DriverError::ConnectionFailed(_)),
+            "expected ConnectionFailed, got {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn commit_and_rollback_without_begin_error() {
+        let driver = MysqlDriver::new(false);
+        let tx = TransactionHandle {
+            id: "mysql_tx_missing".into(),
+            connection_id: "conn".into(),
+        };
+        let err = driver.commit(tx).await.unwrap_err();
+        assert!(
+            matches!(err, DriverError::TransactionError(_)),
+            "expected TransactionError, got {err:?}"
+        );
+
+        let tx = TransactionHandle {
+            id: "mysql_tx_missing".into(),
+            connection_id: "conn".into(),
+        };
+        let err = driver.rollback(tx).await.unwrap_err();
+        assert!(
+            matches!(err, DriverError::TransactionError(_)),
+            "expected TransactionError, got {err:?}"
+        );
     }
 }
 

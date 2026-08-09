@@ -288,7 +288,7 @@ pub async fn complete(
     let url = chat_completions_url(&cfg.api_base);
     let body = build_request_body(cfg, request, false);
 
-    tracing::info!("openai_chat: request\n{}", serde_json::to_string(&body).unwrap_or_default());
+    tracing::debug!("openai_chat: request\n{}", serde_json::to_string(&body).unwrap_or_default());
 
     let resp = cfg
         .http_client
@@ -302,7 +302,7 @@ pub async fn complete(
 
     let status = resp.status();
     let raw = resp.text().await.unwrap_or_default();
-    tracing::info!(%status, "openai_chat: response\n{}", raw);
+    tracing::debug!(%status, "openai_chat: response\n{}", raw);
 
     if !status.is_success() {
         return Err(map_http_error(status, &raw));
@@ -359,7 +359,7 @@ pub async fn stream_complete(
     let url = chat_completions_url(&cfg.api_base);
     let body = build_request_body(cfg, request, true);
 
-    tracing::info!(
+    tracing::debug!(
         "openai_chat: stream request\n{}",
         serde_json::to_string(&body).unwrap_or_default()
     );
