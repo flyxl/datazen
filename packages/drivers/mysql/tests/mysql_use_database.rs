@@ -134,6 +134,7 @@ fn connection_config(cfg: &MysqlTestConfig) -> ConnectionConfig {
         group: None,
         last_connected_at: None,
         server_version: None,
+        options: None,
     }
 }
 

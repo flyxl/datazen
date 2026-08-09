@@ -948,6 +948,7 @@ mod tests {
             group: None,
             last_connected_at: None,
             server_version: None,
+            options: None,
         }
     }
 
@@ -979,6 +980,32 @@ mod tests {
         let ssh = loaded[0].ssh_tunnel.as_ref().unwrap();
         assert_eq!(ssh.password.as_deref(), Some("ssh-secret-password"));
         assert_eq!(ssh.passphrase.as_deref(), Some("key-passphrase"));
+    }
+
+    #[tokio::test]
+    async fn connection_options_persist_and_reload() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = init_store_for_test(dir.path()).await;
+
+        let mut conn = sample_connection_with_ssh();
+        let mut opts = serde_json::Map::new();
+        opts.insert("topology".into(), serde_json::json!("cluster"));
+        conn.options = Some(opts);
+        store.save_connection(conn).await.unwrap();
+
+        let loaded = store.get_connections().await;
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(
+            loaded[0].options.as_ref().unwrap()["topology"],
+            serde_json::json!("cluster")
+        );
+
+        let store2 = init_store_for_test(dir.path()).await;
+        let reloaded = store2.get_connections().await;
+        assert_eq!(
+            reloaded[0].options.as_ref().unwrap()["topology"],
+            serde_json::json!("cluster")
+        );
     }
 
     #[tokio::test]

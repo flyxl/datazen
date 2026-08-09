@@ -69,10 +69,70 @@ pub struct ConnectionConfig {
     pub group: Option<String>,
     pub last_connected_at: Option<String>,
     pub server_version: Option<String>,
+    /// Opaque per-driver connection options (e.g. Redis topology/TLS).
+    #[serde(default)]
+    pub options: Option<serde_json::Map<String, serde_json::Value>>,
 }
 
 fn default_connection_timeout() -> u32 {
     30
+}
+
+#[cfg(test)]
+mod connection_config_tests {
+    use super::*;
+    use serde_json::json;
+
+    fn dummy_connection_config() -> ConnectionConfig {
+        ConnectionConfig {
+            id: "test-id".into(),
+            name: "Test".into(),
+            database_type: "redis".into(),
+            host: Some("127.0.0.1".into()),
+            port: Some(6379),
+            database: Some("0".into()),
+            schema: None,
+            username: None,
+            password: None,
+            ssl_mode: SslMode::Disable,
+            connection_timeout: 30,
+            ssh_tunnel: None,
+            color_tag: None,
+            group: None,
+            last_connected_at: None,
+            server_version: None,
+            options: None,
+        }
+    }
+
+    #[test]
+    fn connection_options_roundtrip() {
+        let mut opts = serde_json::Map::new();
+        opts.insert("topology".into(), json!("cluster"));
+        let c = ConnectionConfig {
+            options: Some(opts),
+            ..dummy_connection_config()
+        };
+        let v = serde_json::to_value(&c).unwrap();
+        assert_eq!(v["options"]["topology"], "cluster");
+
+        let restored: ConnectionConfig = serde_json::from_value(v).unwrap();
+        assert_eq!(
+            restored.options.as_ref().unwrap()["topology"],
+            json!("cluster")
+        );
+    }
+
+    #[test]
+    fn connection_options_default_missing() {
+        let json = json!({
+            "id": "x",
+            "name": "n",
+            "databaseType": "redis",
+        });
+        let c: ConnectionConfig = serde_json::from_value(json).unwrap();
+        assert!(c.options.is_none());
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
