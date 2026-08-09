@@ -1,7 +1,7 @@
 //! Background scheduler for dashboard widget refresh.
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -66,6 +66,7 @@ pub struct MonitorEngine {
     monitor_connections: Arc<MonitorConnectionRegistry>,
     app_handle: Mutex<Option<AppHandle>>,
     paused: AtomicBool,
+    active_widget_count: AtomicUsize,
     schedule: RwLock<Vec<ScheduleEntry>>,
     dashboard_names: RwLock<HashMap<String, String>>,
     alert_channels: tokio::sync::Mutex<AlertChannelState>,
@@ -82,6 +83,7 @@ impl MonitorEngine {
             monitor_connections,
             app_handle: Mutex::new(None),
             paused: AtomicBool::new(false),
+            active_widget_count: AtomicUsize::new(0),
             schedule: RwLock::new(Vec::new()),
             dashboard_names: RwLock::new(HashMap::new()),
             alert_channels: tokio::sync::Mutex::new(AlertChannelState::new()),
@@ -136,8 +138,11 @@ impl MonitorEngine {
                 });
             }
         }
+        let count = schedule.len();
         *self.schedule.write().await = schedule;
         *self.dashboard_names.write().await = names;
+        self.active_widget_count
+            .store(count, Ordering::Relaxed);
 
         let settings = self.store.get_settings().await;
         let max = load_monitor_settings(&settings)
@@ -146,7 +151,16 @@ impl MonitorEngine {
         *self.semaphore.write().await = Arc::new(Semaphore::new(max));
 
         tracing::debug!(count = table.len(), "monitor schedule reloaded");
+
+        if let Some(app) = self.app_handle.lock().expect("monitor app_handle lock").clone() {
+            crate::tray::sync_tray(&app);
+        }
+
         Ok(())
+    }
+
+    pub fn is_monitoring_active(&self) -> bool {
+        self.active_widget_count.load(Ordering::Relaxed) > 0
     }
 
     pub fn set_paused(&self, paused: bool) {
@@ -156,6 +170,10 @@ impl MonitorEngine {
 
     pub fn is_paused(&self) -> bool {
         self.paused.load(Ordering::Relaxed)
+    }
+
+    pub fn app_handle(&self) -> Option<AppHandle> {
+        self.app_handle.lock().expect("monitor app_handle lock").clone()
     }
 
     /// Execute one widget refresh (shared by manual refresh and the scheduler).

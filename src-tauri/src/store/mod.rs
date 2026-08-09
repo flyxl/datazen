@@ -1078,6 +1078,27 @@ mod tests {
         assert_eq!(parsed.language, "de");
     }
 
+    #[test]
+    fn monitor_settings_json_roundtrip() {
+        use crate::dashboard::types::MonitorSettings;
+
+        let settings = AppSettings {
+            monitor: MonitorSettings {
+                max_concurrent_queries: 4,
+                run_retention_count: 100,
+                tray_enabled: false,
+                ..MonitorSettings::default()
+            },
+            ..AppSettings::default()
+        };
+        let json = serde_json::to_string(&settings).unwrap();
+        let parsed: AppSettings = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.monitor.max_concurrent_queries, 4);
+        assert_eq!(parsed.monitor.run_retention_count, 100);
+        assert!(!parsed.monitor.tray_enabled);
+        assert!(parsed.monitor.close_to_tray);
+    }
+
     #[tokio::test]
     async fn save_json_file_leaves_no_tmp_artifacts() {
         let dir = tempfile::tempdir().unwrap();

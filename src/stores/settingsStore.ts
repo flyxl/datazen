@@ -9,6 +9,7 @@ import {
   normalizeThemePreference,
   type ThemeMode,
 } from '../types/theme';
+import { DEFAULT_MONITOR_SETTINGS } from '../types/dashboard';
 import { applyThemePack, syncWebviewBackgroundFromTokens } from '../lib/themePackApply';
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -28,6 +29,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   mcpPermissionMode: 'safe_write',
   contextDir: '',
   checkForUpdatesOnStartup: false,
+  monitor: DEFAULT_MONITOR_SETTINGS,
 };
 
 const THEME_STORAGE_KEY = 'datazen-theme';
@@ -116,7 +118,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     try {
       const raw = await settingsCommands.getSettings();
       const theme = normalizeThemePreference(raw.theme);
-      let settings = { ...raw, theme };
+      let settings = {
+        ...raw,
+        theme,
+        monitor: { ...DEFAULT_MONITOR_SETTINGS, ...raw.monitor },
+      };
       try {
         await applyTheme(theme.mode, theme.packId);
       } catch {
