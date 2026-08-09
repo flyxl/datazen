@@ -608,6 +608,29 @@ impl RedisDriver {
             .await
             .map_err(DriverError::QueryFailed)
     }
+
+    pub async fn plugin_exec(
+        &self,
+        connection_id: &str,
+        db_index: u32,
+        commands: &str,
+    ) -> Result<crate::ops_exec::ExecResponse, DriverError> {
+        let handle = ConnectionHandle {
+            id: connection_id.to_string(),
+            pool_id: connection_id.to_string(),
+        };
+        let mut conns = self.connections.write().await;
+        let rc = Self::get_conn(&mut conns, &handle)?;
+        let conn = &mut rc.connection;
+        let _: () = redis::cmd("SELECT")
+            .arg(db_index)
+            .query_async(conn)
+            .await
+            .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+        crate::ops_exec::exec_commands(conn, commands)
+            .await
+            .map_err(DriverError::QueryFailed)
+    }
 }
 
 /// Safely extract a string from a redis::Value, handling non-UTF-8 bytes via lossy conversion.
@@ -872,7 +895,7 @@ fn truncate_preview(s: &str, max: usize) -> String {
 }
 
 /// Split a Redis command line, respecting double-quoted arguments (spaces inside quotes).
-fn parse_redis_command_args(s: &str) -> Result<Vec<String>, DriverError> {
+pub(crate) fn parse_redis_command_args(s: &str) -> Result<Vec<String>, DriverError> {
     let s = s.trim();
     if s.is_empty() {
         return Err(DriverError::QueryFailed("Empty command".into()));

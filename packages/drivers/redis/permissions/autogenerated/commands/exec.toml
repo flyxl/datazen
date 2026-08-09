@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-exec"
+description = "Enables the exec command without any pre-configured scope."
+commands.allow = ["exec"]
+
+[[permission]]
+identifier = "deny-exec"
+description = "Denies the exec command without any pre-configured scope."
+commands.deny = ["exec"]

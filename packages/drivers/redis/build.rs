@@ -24,6 +24,7 @@ fn main() {
         "slowlog_get",
         "slowlog_reset",
         "modules_list",
+        "exec",
     ])
     .build();
 }
