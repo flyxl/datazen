@@ -235,9 +235,17 @@ impl MonitorEngine {
             let dashboard_id = entry.dashboard_id.clone();
             let widget = entry.widget.clone();
             tokio::spawn(async move {
-                let _ = engine
+                if let Err(e) = engine
                     .tick_widget_inner(&dashboard_id, &widget, true)
-                    .await;
+                    .await
+                {
+                    tracing::warn!(
+                        dashboard_id = %dashboard_id,
+                        widget_id = %widget.id,
+                        error = %e,
+                        "monitor scheduler tick failed"
+                    );
+                }
             });
         }
     }

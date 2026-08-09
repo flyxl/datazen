@@ -96,6 +96,12 @@ pub async fn delete_dashboard(
     let data_dir = state.store.data_dir();
     store_delete_dashboard(data_dir, &id)
         .map_err(map_store_error)
+        .cmd_err("delete_dashboard")?;
+    state
+        .monitor_engine
+        .reload_from_store()
+        .await
+        .map_err(map_store_error)
         .cmd_err("delete_dashboard")
 }
 
@@ -213,6 +219,12 @@ pub async fn import_dashboard_with_dialog(
         .await
         .map_err(|e| CommandError::Internal(format!("import_dashboard_with_dialog task: {e}")))?
         .map_err(map_export_error)
+        .cmd_err("import_dashboard_with_dialog")?;
+    state
+        .monitor_engine
+        .reload_from_store()
+        .await
+        .map_err(map_store_error)
         .cmd_err("import_dashboard_with_dialog")?;
     tracing::info!(id = %dashboard.id, "import_dashboard_with_dialog OK");
     Ok(Some(dashboard))
