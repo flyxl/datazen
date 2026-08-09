@@ -95,9 +95,11 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
     const [createType, setCreateType] = useState('string');
     const [createValue, setCreateValue] = useState('');
     const [createBusy, setCreateBusy] = useState(false);
+    const [createError, setCreateError] = useState<string | null>(null);
     const [flushDialog, setFlushDialog] = useState<'db' | 'all' | null>(null);
     const [flushConfirm, setFlushConfirm] = useState('');
     const [flushBusy, setFlushBusy] = useState(false);
+    const [flushError, setFlushError] = useState<string | null>(null);
 
     useEffect(() => {
       void loadForConnection(connectionId, { skipLoadTables: true });
@@ -228,15 +230,17 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
       const name = createName.trim();
       if (!name) return;
       setCreateBusy(true);
+      setCreateError(null);
       try {
         await invokeCreateKey(connectionId, dbIndex, name, createType, createValue);
         setCreateOpen(false);
         setCreateName('');
         setCreateValue('');
+        setCreateError(null);
         refreshKeys();
         await handleSelectKey(name);
       } catch (e) {
-        console.error('create key failed:', e);
+        setCreateError(e instanceof Error ? e.message : String(e));
       } finally {
         setCreateBusy(false);
       }
@@ -244,6 +248,7 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
 
     const handleFlush = async () => {
       setFlushBusy(true);
+      setFlushError(null);
       try {
         if (flushDialog === 'db') {
           await pluginInvoke('redis', 'flush_db', {
@@ -259,9 +264,10 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
         }
         setFlushDialog(null);
         setFlushConfirm('');
+        setFlushError(null);
         refreshKeys();
       } catch (e) {
-        console.error('flush failed:', e);
+        setFlushError(e instanceof Error ? e.message : String(e));
       } finally {
         setFlushBusy(false);
       }
@@ -331,7 +337,10 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
                 <Button
                   variant="secondary"
                   className="h-7 gap-1 px-2 text-xs"
-                  onClick={() => setCreateOpen(true)}
+                  onClick={() => {
+                    setCreateError(null);
+                    setCreateOpen(true);
+                  }}
                 >
                   <Plus className="h-3.5 w-3.5" />
                   {t('redis.createKey')}
@@ -343,6 +352,7 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
                       className="h-7 px-2 text-xs text-red-400"
                       onClick={() => {
                         setFlushConfirm('');
+                        setFlushError(null);
                         setFlushDialog('db');
                       }}
                     >
@@ -353,6 +363,7 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
                       className="h-7 px-2 text-xs text-red-400"
                       onClick={() => {
                         setFlushConfirm('');
+                        setFlushError(null);
                         setFlushDialog('all');
                       }}
                     >
@@ -453,13 +464,19 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
         <Dialog
           open={createOpen}
           title={t('redis.createKey')}
-          onClose={() => setCreateOpen(false)}
+          onClose={() => {
+            setCreateOpen(false);
+            setCreateError(null);
+          }}
           footer={
             <>
               <Button
                 variant="secondary"
                 className="h-8 px-3 text-xs"
-                onClick={() => setCreateOpen(false)}
+                onClick={() => {
+                  setCreateOpen(false);
+                  setCreateError(null);
+                }}
               >
                 {t('common.cancel')}
               </Button>
@@ -498,6 +515,7 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
               placeholder={t('redis.value')}
               className="h-8 font-mono text-xs"
             />
+            {createError && <p className="text-red-400">{createError}</p>}
           </div>
         </Dialog>
 
@@ -514,6 +532,7 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
           onClose={() => {
             setFlushDialog(null);
             setFlushConfirm('');
+            setFlushError(null);
           }}
           footer={
             <>
@@ -523,6 +542,7 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
                 onClick={() => {
                   setFlushDialog(null);
                   setFlushConfirm('');
+                  setFlushError(null);
                 }}
               >
                 {t('common.cancel')}
@@ -538,12 +558,15 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
             </>
           }
         >
-          <Input
-            value={flushConfirm}
-            onChange={(e) => setFlushConfirm(e.target.value)}
-            placeholder={t('redis.typeConfirmPlaceholder')}
-            className="h-8 font-mono text-xs"
-          />
+          <div className="space-y-3">
+            <Input
+              value={flushConfirm}
+              onChange={(e) => setFlushConfirm(e.target.value)}
+              placeholder={t('redis.typeConfirmPlaceholder')}
+              className="h-8 font-mono text-xs"
+            />
+            {flushError && <p className="text-red-400">{flushError}</p>}
+          </div>
         </Dialog>
       </div>
     );
