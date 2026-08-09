@@ -309,6 +309,10 @@ impl RedisDriver {
             crate::ops_pubsub::publish(conn, &channel, &message).await
         })
     }
+
+    plugin_on_db!(plugin_json_get, (key: &str, path: &str) -> crate::ops_json::JsonGetResult, |conn| crate::ops_json::json_get(conn, key, path));
+    plugin_on_db!(plugin_json_set, (key: &str, path: &str, value: &str) -> (), |conn| crate::ops_json::json_set(conn, key, path, value));
+    plugin_on_db!(plugin_json_del, (key: &str, path: &str) -> crate::ops_json::JsonDelResult, |conn| crate::ops_json::json_del(conn, key, path));
 }
 
 async fn select_db_on<C>(conn: &mut C, db_index: u32) -> Result<(), String>

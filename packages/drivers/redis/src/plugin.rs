@@ -3,7 +3,9 @@
 use crate::ops::{self, ZsetMember};
 use crate::ops_exec::ExecResponse;
 use crate::ops_observe::{self, MemorySampleResult, SlowlogEntry};
+use crate::ops_json::{JsonDelResult, JsonGetResult};
 use crate::ops_pubsub;
+use crate::ops_stream;
 use crate::shared_driver;
 use datazen_driver_api::DriverError;
 
@@ -343,6 +345,47 @@ async fn pubsub_publish(
         .map_err(map_err)
 }
 
+#[tauri::command]
+async fn json_get(
+    connection_id: String,
+    db_index: u32,
+    key: String,
+    path: Option<String>,
+) -> Result<JsonGetResult, String> {
+    let path = path.unwrap_or_else(|| "$".into());
+    shared_driver()
+        .plugin_json_get(&connection_id, db_index, &key, &path)
+        .await
+        .map_err(map_err)
+}
+
+#[tauri::command]
+async fn json_set(
+    connection_id: String,
+    db_index: u32,
+    key: String,
+    path: String,
+    value: String,
+) -> Result<(), String> {
+    shared_driver()
+        .plugin_json_set(&connection_id, db_index, &key, &path, &value)
+        .await
+        .map_err(map_err)
+}
+
+#[tauri::command]
+async fn json_del(
+    connection_id: String,
+    db_index: u32,
+    key: String,
+    path: String,
+) -> Result<JsonDelResult, String> {
+    shared_driver()
+        .plugin_json_del(&connection_id, db_index, &key, &path)
+        .await
+        .map_err(map_err)
+}
+
 /// Register Redis IPC commands as a Tauri plugin (`plugin:redis|*`).
 pub fn init<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
     tauri::plugin::Builder::new("redis")
@@ -375,6 +418,9 @@ pub fn init<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
             pubsub_subscribe,
             pubsub_unsubscribe,
             pubsub_publish,
+            json_get,
+            json_set,
+            json_del,
         ])
         .build()
 }
