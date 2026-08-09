@@ -22,4 +22,9 @@ permissions = [
   "allow-flush-db",
   "allow-flush-all",
   "allow-count-matching",
+  "allow-info",
+  "allow-memory-sample",
+  "allow-slowlog-get",
+  "allow-slowlog-reset",
+  "allow-modules-list",
 ]

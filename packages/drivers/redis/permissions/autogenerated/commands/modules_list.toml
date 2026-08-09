@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-modules-list"
+description = "Enables the modules_list command without any pre-configured scope."
+commands.allow = ["modules_list"]
+
+[[permission]]
+identifier = "deny-modules-list"
+description = "Denies the modules_list command without any pre-configured scope."
+commands.deny = ["modules_list"]

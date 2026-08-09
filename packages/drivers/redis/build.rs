@@ -19,6 +19,11 @@ fn main() {
         "flush_db",
         "flush_all",
         "count_matching",
+        "info",
+        "memory_sample",
+        "slowlog_get",
+        "slowlog_reset",
+        "modules_list",
     ])
     .build();
 }

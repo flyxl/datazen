@@ -524,6 +524,90 @@ impl RedisDriver {
             .await
             .map_err(DriverError::QueryFailed)
     }
+
+    pub async fn plugin_info(
+        &self,
+        connection_id: &str,
+        section: Option<String>,
+        _node_addr: Option<String>,
+    ) -> Result<String, DriverError> {
+        let handle = ConnectionHandle {
+            id: connection_id.to_string(),
+            pool_id: connection_id.to_string(),
+        };
+        let mut conns = self.connections.write().await;
+        let rc = Self::get_conn(&mut conns, &handle)?;
+        crate::ops_observe::fetch_info(&mut rc.connection, section.as_deref())
+            .await
+            .map_err(DriverError::QueryFailed)
+    }
+
+    pub async fn plugin_memory_sample(
+        &self,
+        connection_id: &str,
+        db_index: u32,
+        limit: Option<u32>,
+    ) -> Result<crate::ops_observe::MemorySampleResult, DriverError> {
+        let limit = crate::ops_observe::resolve_memory_sample_limit(limit);
+        let handle = ConnectionHandle {
+            id: connection_id.to_string(),
+            pool_id: connection_id.to_string(),
+        };
+        let mut conns = self.connections.write().await;
+        let rc = Self::get_conn(&mut conns, &handle)?;
+        let conn = &mut rc.connection;
+        let _: () = redis::cmd("SELECT")
+            .arg(db_index)
+            .query_async(conn)
+            .await
+            .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+        crate::ops_observe::memory_sample(conn, limit)
+            .await
+            .map_err(DriverError::QueryFailed)
+    }
+
+    pub async fn plugin_slowlog_get(
+        &self,
+        connection_id: &str,
+        count: u32,
+    ) -> Result<Vec<crate::ops_observe::SlowlogEntry>, DriverError> {
+        let handle = ConnectionHandle {
+            id: connection_id.to_string(),
+            pool_id: connection_id.to_string(),
+        };
+        let mut conns = self.connections.write().await;
+        let rc = Self::get_conn(&mut conns, &handle)?;
+        crate::ops_observe::slowlog_get(&mut rc.connection, count)
+            .await
+            .map_err(DriverError::QueryFailed)
+    }
+
+    pub async fn plugin_slowlog_reset(&self, connection_id: &str) -> Result<(), DriverError> {
+        let handle = ConnectionHandle {
+            id: connection_id.to_string(),
+            pool_id: connection_id.to_string(),
+        };
+        let mut conns = self.connections.write().await;
+        let rc = Self::get_conn(&mut conns, &handle)?;
+        crate::ops_observe::slowlog_reset(&mut rc.connection)
+            .await
+            .map_err(DriverError::QueryFailed)
+    }
+
+    pub async fn plugin_modules_list(
+        &self,
+        connection_id: &str,
+    ) -> Result<Vec<String>, DriverError> {
+        let handle = ConnectionHandle {
+            id: connection_id.to_string(),
+            pool_id: connection_id.to_string(),
+        };
+        let mut conns = self.connections.write().await;
+        let rc = Self::get_conn(&mut conns, &handle)?;
+        crate::ops_observe::modules_list(&mut rc.connection)
+            .await
+            .map_err(DriverError::QueryFailed)
+    }
 }
 
 /// Safely extract a string from a redis::Value, handling non-UTF-8 bytes via lossy conversion.
