@@ -153,6 +153,16 @@ export interface ContextEntry {
   children?: ContextEntry[];
 }
 
+export type ContextKind = 'file' | 'dir' | 'table';
+
+export interface ContextItem {
+  kind: ContextKind;
+  id: string;
+  name: string;
+  path?: string;
+  database?: string;
+}
+
 import type { ThemePreference } from './theme';
 
 export type McpPermissionMode = 'read_only' | 'safe_write' | 'high_risk_write';

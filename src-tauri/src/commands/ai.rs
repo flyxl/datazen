@@ -201,6 +201,7 @@ pub async fn ai_generate_sql(
     current_table: Option<String>,
     recent_queries: Option<Vec<String>>,
     context_files: Option<Vec<String>>,
+    context_tables: Option<Vec<String>>,
 ) -> Result<String, CommandError> {
     let recent_queries = recent_queries.unwrap_or_default();
     let mut natural_language = natural_language;
@@ -245,23 +246,6 @@ pub async fn ai_generate_sql(
 
     let (provider, ai_config) = resolve_ai(&state).await?;
 
-    let context = state
-        .schema_context_builder
-        .build_sql_context(
-            &connection_id,
-            &database,
-            current_table.as_deref(),
-            &recent_queries,
-            4000,
-        )
-        .await
-        .cmd_err("ai_generate_sql")?;
-
-    tracing::debug!(
-        schema_ddl_len = context.schema_ddl.len(),
-        "ai_generate_sql: schema context built"
-    );
-
     let lang = state.store.get_settings().await.language;
 
     let (driver_ref, _) = state
@@ -270,24 +254,48 @@ pub async fn ai_generate_sql(
         .await
         .cmd_err("ai_generate_sql")?;
 
-    let version_str = context
-        .database_version
-        .as_deref()
-        .map(|v| format!(" {v}"))
-        .unwrap_or_default();
-    let recent = if context.recent_queries.is_empty() {
+    let mut pinned = context_tables.unwrap_or_default();
+    if let Some(ref t) = current_table {
+        if !pinned.iter().any(|p| p == t) {
+            pinned.insert(0, t.clone());
+        }
+    }
+
+    let supports_tools = provider.supports_tools();
+    let pipeline = SchemaContextPipeline::new(state.schema_context_builder.clone());
+    let seed = pipeline
+        .resolve(
+            &connection_id,
+            &database,
+            &pinned,
+            supports_tools,
+            4000,
+            4000,
+        )
+        .await
+        .cmd_err("ai_generate_sql")?;
+
+    tracing::debug!(
+        schema_suffix_len = compose_schema_system_suffix(&seed).len(),
+        attach_db_tools = seed.attach_db_tools,
+        pinned_count = pinned.len(),
+        "ai_generate_sql: schema context built"
+    );
+
+    let schema_suffix = compose_schema_system_suffix(&seed);
+    let recent = if recent_queries.is_empty() {
         String::new()
     } else {
         let label = if lang.starts_with("zh") { "近期查询（供风格参考）" } else { "Recent queries (for style reference)" };
         format!(
             "\n\n{label}:\n{}",
-            context.recent_queries.iter().map(|q| format!("- {q}")).collect::<Vec<_>>().join("\n")
+            recent_queries.iter().map(|q| format!("- {q}")).collect::<Vec<_>>().join("\n")
         )
     };
     let mut vars = HashMap::new();
-    vars.insert("db_type", context.database_type.as_str());
-    vars.insert("version", version_str.as_str());
-    vars.insert("schema", context.schema_ddl.as_str());
+    vars.insert("db_type", seed.database_type.as_str());
+    vars.insert("version", "");
+    vars.insert("schema", schema_suffix.as_str());
     vars.insert("recent", recent.as_str());
     let tpl = state.prompt_resolver.resolve(PromptScenario::Nl2Sql, Some(driver_ref.as_ref()), &lang).await;
     let system_content = prompt_resolver::render_template(&tpl, &vars);
@@ -301,13 +309,11 @@ pub async fn ai_generate_sql(
         tool_call_id: None,
     };
 
-    let (tx, mut rx) = mpsc::channel::<Result<StreamChunk, AiError>>(32);
     let mut request = CompletionRequest {
         request_id: request_id.clone(),
         model: ai_config.model.clone(),
         messages: vec![system_msg, user_msg],
         temperature: Some(0.0),
-
         stop: None,
         tools: None,
         previous_response_id: None,
@@ -319,9 +325,25 @@ pub async fn ai_generate_sql(
         model = %request.model,
         messages_count = request.messages.len(),
         system_prompt_len = request.messages.first().map(|m| m.content.len()).unwrap_or(0),
+        attach_db_tools = seed.attach_db_tools,
         "ai_generate_sql: sending to provider (stream)"
     );
 
+    if seed.attach_db_tools {
+        request.tools = Some(db_tool_definitions());
+        return run_streaming_tool_loop(
+            provider,
+            &state,
+            &window,
+            &request_id,
+            request,
+            10,
+            "ai_generate_sql",
+        )
+        .await;
+    }
+
+    let (tx, mut rx) = mpsc::channel::<Result<StreamChunk, AiError>>(32);
     let req_id_clone = request_id.clone();
     let window_clone = window.clone();
 
@@ -704,6 +726,171 @@ async fn execute_db_tool(state: &AppState, tool_call: &ToolCall) -> String {
     result.unwrap_or_else(|e| e)
 }
 
+struct StreamRoundResult {
+    content: String,
+    reasoning: String,
+    tool_calls: Option<Vec<ToolCall>>,
+    usage: Option<TokenUsage>,
+    had_error: bool,
+    response_id: Option<String>,
+}
+
+async fn run_streaming_tool_loop(
+    provider: Arc<dyn AiProvider>,
+    state: &AppState,
+    window: &WebviewWindow,
+    request_id: &str,
+    mut request: CompletionRequest,
+    max_rounds: usize,
+    cmd_label: &str,
+) -> Result<String, CommandError> {
+    for round in 0..max_rounds {
+        let (tx, mut rx) = mpsc::channel::<Result<StreamChunk, AiError>>(32);
+
+        let (result_tx, result_rx) = tokio::sync::oneshot::channel::<StreamRoundResult>();
+        let window_c = window.clone();
+        let rid_c = request_id.to_string();
+
+        tokio::spawn(async move {
+            let mut full_content = String::new();
+            let mut full_reasoning = String::new();
+            let mut final_tool_calls: Option<Vec<ToolCall>> = None;
+            let mut final_usage = None;
+            let mut final_response_id = None;
+            let mut had_error = false;
+
+            while let Some(chunk_result) = rx.recv().await {
+                match chunk_result {
+                    Ok(chunk) => {
+                        if chunk.done {
+                            let content = chunk.content;
+                            let reasoning = chunk.reasoning;
+                            full_content.push_str(&content);
+                            if let Some(r) = &reasoning {
+                                full_reasoning.push_str(r);
+                            }
+                            final_tool_calls = chunk.tool_calls;
+                            final_usage = chunk.usage;
+                            final_response_id = chunk.response_id;
+                            if !content.is_empty() || reasoning.is_some() {
+                                emit_stream_chunk_or_error(&window_c, &rid_c, Ok(StreamChunk {
+                                    content,
+                                    reasoning,
+                                    done: false,
+                                    usage: None,
+                                    tool_calls: None,
+                                    response_id: None,
+                                }));
+                            }
+                        } else {
+                            full_content.push_str(&chunk.content);
+                            if let Some(r) = &chunk.reasoning {
+                                full_reasoning.push_str(r);
+                            }
+                            emit_stream_chunk_or_error(&window_c, &rid_c, Ok(chunk));
+                        }
+                    }
+                    Err(e) => {
+                        emit_stream_chunk_or_error(&window_c, &rid_c, Err(e));
+                        had_error = true;
+                        break;
+                    }
+                }
+            }
+
+            let _ = result_tx.send(StreamRoundResult {
+                content: full_content,
+                reasoning: full_reasoning,
+                tool_calls: final_tool_calls,
+                usage: final_usage,
+                had_error,
+                response_id: final_response_id,
+            });
+        });
+
+        provider
+            .stream_complete(&request, tx)
+            .await
+            .cmd_err(cmd_label)?;
+
+        let result = result_rx
+            .await
+            .map_err(|_| CommandError::Internal("Stream result channel closed".into()))?;
+
+        if result.had_error {
+            return Ok(request_id.to_string());
+        }
+
+        let db_tools: Vec<ToolCall> = result
+            .tool_calls
+            .as_ref()
+            .map(|tcs| tcs.iter().filter(|tc| is_db_tool(&tc.name)).cloned().collect())
+            .unwrap_or_default();
+
+        if db_tools.is_empty() {
+            emit_stream_chunk_or_error(window, request_id, Ok(StreamChunk {
+                content: String::new(),
+                reasoning: None,
+                done: true,
+                usage: result.usage,
+                tool_calls: result.tool_calls,
+                response_id: result.response_id,
+            }));
+            return Ok(request_id.to_string());
+        }
+
+        tracing::info!(
+            %request_id,
+            round,
+            db_tool_count = db_tools.len(),
+            tool_names = ?db_tools.iter().map(|t| t.name.as_str()).collect::<Vec<_>>(),
+            response_id = ?result.response_id,
+            "{cmd_label}: executing database tools (round {round})"
+        );
+        tracing::debug!(
+            %request_id,
+            round,
+            tools = ?db_tools.iter().map(|t| format!("{}({})", t.name, t.arguments)).collect::<Vec<_>>(),
+            "{cmd_label}: database tool arguments"
+        );
+
+        request.messages.push(ChatMessage {
+            role: MessageRole::Assistant,
+            content: result.content,
+            reasoning: if result.reasoning.is_empty() { None } else { Some(result.reasoning) },
+            tool_calls: result.tool_calls.clone(),
+            tool_call_id: None,
+        });
+
+        let all_tcs = result.tool_calls.unwrap_or_default();
+        for tc in &all_tcs {
+            let tool_result = if is_db_tool(&tc.name) {
+                execute_db_tool(state, tc).await
+            } else {
+                "Pending: waiting for user response.".to_string()
+            };
+            request.messages.push(ChatMessage {
+                role: MessageRole::Tool,
+                content: tool_result,
+                reasoning: None,
+                tool_calls: None,
+                tool_call_id: Some(tc.id.clone()),
+            });
+        }
+    }
+
+    tracing::warn!(%request_id, "{cmd_label}: reached max tool rounds");
+    emit_stream_chunk_or_error(window, request_id, Ok(StreamChunk {
+        content: String::new(),
+        reasoning: None,
+        done: true,
+        usage: None,
+        tool_calls: None,
+        response_id: None,
+    }));
+    Ok(request_id.to_string())
+}
+
 // ─── AI Chat ───
 
 #[tauri::command]
@@ -717,6 +904,7 @@ pub async fn ai_chat(
     include_schema: bool,
     scenario: Option<String>,
     context_files: Option<Vec<String>>,
+    context_tables: Option<Vec<String>>,
 ) -> Result<String, CommandError> {
     let is_workflow = scenario.as_deref() == Some("workflow_generate");
     let prompt_scenario = if is_workflow {
@@ -732,6 +920,7 @@ pub async fn ai_chat(
         messages_count = messages.len(),
         %include_schema,
         scenario = ?scenario,
+        context_tables_count = context_tables.as_ref().map(|t| t.len()).unwrap_or(0),
         last_user_msg_len = messages.last().map(|m| m.content.len()).unwrap_or(0),
         "ai_chat: start"
     );
@@ -746,6 +935,7 @@ pub async fn ai_chat(
 
     let lang = state.store.get_settings().await.language;
     let mut full_messages: Vec<ChatMessage> = Vec::new();
+    let mut attach_db_tools = true;
 
     if include_schema {
         if let Some(ref conn_id) = connection_id {
@@ -753,45 +943,58 @@ pub async fn ai_chat(
             if let Ok((driver, _handle)) =
                 state.connection_manager.get_connection(conn_id).await
             {
-                let db_type = format!("{:?}", driver.driver_type());
-                if let Ok(context) = state
-                    .schema_context_builder
-                    .build_sql_context(conn_id, db, None, &[], 4000)
+                let pinned = context_tables.clone().unwrap_or_default();
+                let supports_tools = provider.supports_tools();
+                let pipeline = SchemaContextPipeline::new(state.schema_context_builder.clone());
+                match pipeline
+                    .resolve(conn_id, db, &pinned, supports_tools, 4000, 4000)
                     .await
                 {
-                    let mut vars = HashMap::new();
-                    vars.insert("db_type", db_type.as_str());
-                    vars.insert("schema", context.schema_ddl.as_str());
+                    Ok(seed) => {
+                        attach_db_tools = seed.attach_db_tools;
+                        let db_type = seed.database_type.clone();
+                        let suffix = compose_schema_system_suffix(&seed);
 
-                    let connections_ctx = if is_workflow {
-                        build_connections_context(&state, &lang).await
-                    } else {
-                        String::new()
-                    };
-                    vars.insert("connections", connections_ctx.as_str());
+                        let mut vars = HashMap::new();
+                        vars.insert("db_type", db_type.as_str());
+                        vars.insert("schema", "");
 
-                    let base_tpl = state.prompt_resolver.resolve(prompt_scenario, Some(driver.as_ref()), &lang).await;
-                    let base = crate::ai::prompt_resolver::render_template(&base_tpl, &vars);
-
-                    let desc = if is_workflow {
-                        base
-                    } else if lang.starts_with("zh") {
-                        format!("{base}\n\n用户已连接到 {db_type} 数据库。")
-                    } else {
-                        format!("{base}\n\nThe user is connected to a {db_type} database.")
-                    };
-
-                    full_messages.push(ChatMessage {
-                        role: MessageRole::System,
-                        content: if is_workflow {
-                            desc
+                        let connections_ctx = if is_workflow {
+                            build_connections_context(&state, &lang).await
                         } else {
-                            format!("{desc}\n\nSchema:\n{}", context.schema_ddl)
-                        },
-                        reasoning: None,
-                        tool_calls: None,
-                        tool_call_id: None,
-                    });
+                            String::new()
+                        };
+                        vars.insert("connections", connections_ctx.as_str());
+
+                        let base_tpl = state.prompt_resolver.resolve(prompt_scenario, Some(driver.as_ref()), &lang).await;
+                        let base = crate::ai::prompt_resolver::render_template(&base_tpl, &vars);
+
+                        let desc = if is_workflow {
+                            base
+                        } else if lang.starts_with("zh") {
+                            format!("{base}\n\n用户已连接到 {db_type} 数据库。")
+                        } else {
+                            format!("{base}\n\nThe user is connected to a {db_type} database.")
+                        };
+
+                        full_messages.push(ChatMessage {
+                            role: MessageRole::System,
+                            content: format!("{desc}\n\n{suffix}"),
+                            reasoning: None,
+                            tool_calls: None,
+                            tool_call_id: None,
+                        });
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            %request_id,
+                            connection_id = %conn_id,
+                            database = %db,
+                            error = %e,
+                            "ai_chat: schema context pipeline resolve failed; disabling DB tools"
+                        );
+                        attach_db_tools = false;
+                    }
                 }
             }
         }
@@ -898,7 +1101,9 @@ pub async fn ai_chat(
     };
 
     let mut all_tools = vec![ask_questions_tool];
-    all_tools.extend(db_tool_definitions());
+    if attach_db_tools {
+        all_tools.extend(db_tool_definitions());
+    }
 
     let mut request = CompletionRequest {
         request_id: request_id.clone(),
@@ -911,167 +1116,16 @@ pub async fn ai_chat(
     };
     inject_language_hint(&mut request.messages, &lang);
 
-    // ─── Streaming loop with automatic database tool execution ───
-    const MAX_TOOL_ROUNDS: usize = 10;
-
-    for round in 0..MAX_TOOL_ROUNDS {
-        let (tx, mut rx) = mpsc::channel::<Result<StreamChunk, AiError>>(32);
-
-        // Consumer task: forwards chunks to frontend, collects final state
-        let (result_tx, result_rx) = tokio::sync::oneshot::channel::<StreamRoundResult>();
-        let window_c = window.clone();
-        let rid_c = request_id.clone();
-
-        tokio::spawn(async move {
-            let mut full_content = String::new();
-            let mut full_reasoning = String::new();
-            let mut final_tool_calls: Option<Vec<ToolCall>> = None;
-            let mut final_usage = None;
-            let mut final_response_id = None;
-            let mut had_error = false;
-
-            while let Some(chunk_result) = rx.recv().await {
-                match chunk_result {
-                    Ok(chunk) => {
-                        if chunk.done {
-                            let content = chunk.content;
-                            let reasoning = chunk.reasoning;
-                            full_content.push_str(&content);
-                            if let Some(r) = &reasoning {
-                                full_reasoning.push_str(r);
-                            }
-                            final_tool_calls = chunk.tool_calls;
-                            final_usage = chunk.usage;
-                            final_response_id = chunk.response_id;
-                            if !content.is_empty() || reasoning.is_some() {
-                                emit_stream_chunk_or_error(&window_c, &rid_c, Ok(StreamChunk {
-                                    content,
-                                    reasoning,
-                                    done: false,
-                                    usage: None,
-                                    tool_calls: None,
-                                    response_id: None,
-                                }));
-                            }
-                        } else {
-                            full_content.push_str(&chunk.content);
-                            if let Some(r) = &chunk.reasoning {
-                                full_reasoning.push_str(r);
-                            }
-                            emit_stream_chunk_or_error(&window_c, &rid_c, Ok(chunk));
-                        }
-                    }
-                    Err(e) => {
-                        emit_stream_chunk_or_error(&window_c, &rid_c, Err(e));
-                        had_error = true;
-                        break;
-                    }
-                }
-            }
-
-            let _ = result_tx.send(StreamRoundResult {
-                content: full_content,
-                reasoning: full_reasoning,
-                tool_calls: final_tool_calls,
-                usage: final_usage,
-                had_error,
-                response_id: final_response_id,
-            });
-        });
-
-        provider
-            .stream_complete(&request, tx)
-            .await
-            .cmd_err("ai_chat")?;
-
-        let result = result_rx
-            .await
-            .map_err(|_| CommandError::Internal("Stream result channel closed".into()))?;
-
-        if result.had_error {
-            return Ok(request_id);
-        }
-
-        let db_tools: Vec<ToolCall> = result
-            .tool_calls
-            .as_ref()
-            .map(|tcs| tcs.iter().filter(|tc| is_db_tool(&tc.name)).cloned().collect())
-            .unwrap_or_default();
-
-        if db_tools.is_empty() {
-            emit_stream_chunk_or_error(&window, &request_id, Ok(StreamChunk {
-                content: String::new(),
-                reasoning: None,
-                done: true,
-                usage: result.usage,
-                tool_calls: result.tool_calls,
-                response_id: result.response_id,
-            }));
-            return Ok(request_id);
-        }
-
-        tracing::info!(
-            %request_id,
-            round,
-            db_tool_count = db_tools.len(),
-            tool_names = ?db_tools.iter().map(|t| t.name.as_str()).collect::<Vec<_>>(),
-            response_id = ?result.response_id,
-            "ai_chat: executing database tools (round {})", round
-        );
-        tracing::debug!(
-            %request_id,
-            round,
-            tools = ?db_tools.iter().map(|t| format!("{}({})", t.name, t.arguments)).collect::<Vec<_>>(),
-            "ai_chat: database tool arguments"
-        );
-
-        // Always use stateless mode: append assistant message (with tool_calls)
-        // to the full history. Not all Responses API providers (e.g. DeepSeek)
-        // support previous_response_id for server-side state management.
-        request.messages.push(ChatMessage {
-            role: MessageRole::Assistant,
-            content: result.content,
-            reasoning: if result.reasoning.is_empty() { None } else { Some(result.reasoning) },
-            tool_calls: result.tool_calls.clone(),
-            tool_call_id: None,
-        });
-
-        let all_tcs = result.tool_calls.unwrap_or_default();
-        for tc in &all_tcs {
-            let tool_result = if is_db_tool(&tc.name) {
-                execute_db_tool(&state, tc).await
-            } else {
-                "Pending: waiting for user response.".to_string()
-            };
-            request.messages.push(ChatMessage {
-                role: MessageRole::Tool,
-                content: tool_result,
-                reasoning: None,
-                tool_calls: None,
-                tool_call_id: Some(tc.id.clone()),
-            });
-        }
-    }
-
-    tracing::warn!(%request_id, "ai_chat: reached max tool rounds");
-    emit_stream_chunk_or_error(&window, &request_id, Ok(StreamChunk {
-        content: String::new(),
-        reasoning: None,
-        done: true,
-        usage: None,
-        tool_calls: None,
-        response_id: None,
-    }));
-    Ok(request_id)
-}
-
-struct StreamRoundResult {
-    content: String,
-    reasoning: String,
-    tool_calls: Option<Vec<ToolCall>>,
-    usage: Option<TokenUsage>,
-    had_error: bool,
-    response_id: Option<String>,
+    run_streaming_tool_loop(
+        provider,
+        &state,
+        &window,
+        &request_id,
+        request,
+        10,
+        "ai_chat",
+    )
+    .await
 }
 
 async fn build_connections_context(state: &AppState, lang: &str) -> String {
