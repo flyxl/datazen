@@ -1,0 +1,37 @@
+id: builtin-cross-db-sample
+name: Cross-DB sample
+description: Starter cross-database workflow — query one connection, then optionally another.
+timeout_secs: 60
+error_handling:
+  strategy: abort
+variables:
+  - name: primary_conn
+    type: connection
+    description: Primary database
+    required: true
+  - name: secondary_conn
+    type: connection
+    description: Secondary database
+    required: true
+  - name: key
+    type: string
+    description: Lookup key
+    required: true
+    default: "1"
+steps:
+  - type: query
+    id: primary
+    connection: "{{primary_conn}}"
+    sql: "SELECT '{{key}}' AS lookup_key"
+    timeout_secs: 10
+  - type: query
+    id: secondary
+    connection: "{{secondary_conn}}"
+    sql: "SELECT '{{key}}' AS lookup_key, '{{steps.primary.rows_count}}' AS primary_rows"
+    timeout_secs: 10
+output:
+  format: markdown
+  template: |
+    ## Cross-DB sample
+    Primary rows: {{steps.primary.rows_count}}
+    Secondary rows: {{steps.secondary.rows_count}}

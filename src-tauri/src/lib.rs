@@ -15,6 +15,7 @@ pub mod ssh_tunnel;
 mod store;
 mod tray;
 pub mod sync;
+pub mod schema_diff;
 pub mod workflow;
 
 #[cfg(test)]
@@ -89,6 +90,7 @@ pub(crate) fn menu_action_for_id(id: &str) -> MenuAction {
         "open-settings" => MenuAction::Emit("menu:open-settings"),
         "new-connection" => MenuAction::Emit("menu:new-connection"),
         "data-sync" => MenuAction::Emit("menu:data-sync"),
+        "schema-diff" => MenuAction::Emit("menu:schema-diff"),
         "backup" => MenuAction::Emit("menu:backup"),
         "restore" => MenuAction::Emit("menu:restore"),
         "export-config" => MenuAction::Emit("menu:export-config"),
@@ -224,6 +226,9 @@ fn setup_menu(
     let data_sync_item = MenuItemBuilder::new(t("data-sync"))
         .id("data-sync")
         .build(handle)?;
+    let schema_diff_item = MenuItemBuilder::new(t("schema-diff"))
+        .id("schema-diff")
+        .build(handle)?;
     let backup_item = MenuItemBuilder::new(t("backup"))
         .id("backup")
         .build(handle)?;
@@ -290,6 +295,7 @@ fn setup_menu(
     // ── Tools ──
     let tools_menu = SubmenuBuilder::new(handle, t("tools"))
         .item(&data_sync_item)
+        .item(&schema_diff_item)
         .separator()
         .item(&backup_item)
         .item(&restore_item)
@@ -345,6 +351,8 @@ fn setup_menu(
                 let _ = app_handle.emit(event, ());
             }
             MenuAction::OpenDocs => {
+                // Open directly in Rust — do not emit to every webview (that
+                // previously caused concurrent create_sub_window races).
                 let app = app_handle.clone();
                 tauri::async_runtime::spawn(async move {
                     if let Err(e) = commands::open_docs_window(app, None).await {
@@ -638,6 +646,8 @@ pub fn run() {
             commands::kv_get_key,
             commands::get_columns,
             commands::get_table_schema,
+            commands::get_structure_capabilities,
+            commands::plan_table_structure_changes,
             commands::get_er_data,
             commands::get_table_data,
             commands::commit_row_updates,
@@ -682,6 +692,8 @@ pub fn run() {
             commands::compare_databases,
             commands::compare_table_schemas,
             commands::compare_table_data,
+            commands::prepare_schema_diff_plan,
+            commands::execute_schema_diff_deploy,
             commands::sync_table,
             commands::sync_tables,
             commands::get_sync_tasks,
@@ -1007,6 +1019,7 @@ mod tests {
             "open-settings",
             "new-connection",
             "data-sync",
+            "schema-diff",
             "backup",
             "restore",
             "export-config",

@@ -2,6 +2,8 @@ import workflowGuideZh from '../../../docs/workflow-guide.md?raw';
 import workflowGuideEn from '../../../docs/workflow-guide.en.md?raw';
 import opsDashboardGuideZh from '../../../docs/ops-dashboard-guide.md?raw';
 import opsDashboardGuideEn from '../../../docs/ops-dashboard-guide.en.md?raw';
+import schemaDiffGuideZh from '../../../docs/schema-diff-guide.md?raw';
+import schemaDiffGuideEn from '../../../docs/schema-diff-guide.en.md?raw';
 import { renderWorkflowMarkdown } from './renderMarkdown';
 
 export type DocsSectionId =
@@ -10,7 +12,8 @@ export type DocsSectionId =
   | 'ai'
   | 'context'
   | 'workflows'
-  | 'opsDashboard';
+  | 'opsDashboard'
+  | 'schemaDiff';
 
 export interface DocsSection {
   id: DocsSectionId;
@@ -23,6 +26,8 @@ const WORKFLOW_HTML_ZH = renderWorkflowMarkdown(workflowGuideZh);
 const WORKFLOW_HTML_EN = renderWorkflowMarkdown(workflowGuideEn);
 const OPS_DASHBOARD_HTML_ZH = renderWorkflowMarkdown(opsDashboardGuideZh);
 const OPS_DASHBOARD_HTML_EN = renderWorkflowMarkdown(opsDashboardGuideEn);
+const SCHEMA_DIFF_HTML_ZH = renderWorkflowMarkdown(schemaDiffGuideZh);
+const SCHEMA_DIFF_HTML_EN = renderWorkflowMarkdown(schemaDiffGuideEn);
 
 export const DOCS_SECTIONS_ZH: DocsSection[] = [
   {
@@ -39,6 +44,7 @@ export const DOCS_SECTIONS_ZH: DocsSection[] = [
   <li>用 Workflow 把「查询 + AI + 条件/循环」串成可复用流程</li>
   <li>用<strong>运营看板</strong>多图盯盘：后台定时刷新、阈值告警、历史回看与托盘常驻</li>
   <li>数据同步、备份恢复、配置导入导出、MCP 对接外部 AI 客户端</li>
+  <li>用 <strong>Schema Diff</strong> 以源库为目标态对比结构，生成并受控部署 DDL</li>
 </ul>
 <h3>典型使用路径</h3>
 <ol>
@@ -48,6 +54,7 @@ export const DOCS_SECTIONS_ZH: DocsSection[] = [
   <li>需要时添加上下文文件，提升生成准确度</li>
   <li>把重复分析沉淀为 Workflow，一键执行</li>
   <li>把核心业务指标做成运营看板组件，开启监控与告警</li>
+  <li>环境对齐时用 Schema Diff：对比 → 计划 → 审阅 → 部署</li>
 </ol>
 `,
   },
@@ -62,6 +69,7 @@ export const DOCS_SECTIONS_ZH: DocsSection[] = [
   <li>多语句执行、查询历史与收藏</li>
   <li>结果表与图表双视图（柱/线/饼/散点/面积），支持自然语言调整图表配置</li>
   <li>EXPLAIN 可视化与 AI 解读</li>
+  <li><strong>表结构编辑器</strong>：新建/改表、列与索引同草稿、SQL 预览后保存；控件启用由驱动按版本自报能力（不支持项会禁用并提示）；执行按语句逐步应用，非单事务</li>
 </ul>
 <h3>AI 辅助</h3>
 <ul>
@@ -81,6 +89,7 @@ export const DOCS_SECTIONS_ZH: DocsSection[] = [
 <h3>运维与生态</h3>
 <ul>
   <li>跨库数据同步、备份与恢复</li>
+  <li><strong>Schema Diff Deploy</strong>：源=期望态 → DDL 计划 → 审阅部署（详见专章）</li>
   <li>可作为 MCP Server 被 Claude Desktop / Cursor 等调用（推荐 <code>datazen --mcp</code>）</li>
   <li>也可作为 MCP Client 连接外部工具</li>
 </ul>
@@ -187,6 +196,11 @@ export const DOCS_SECTIONS_ZH: DocsSection[] = [
     title: '运营看板',
     html: '', // filled from docs/ops-dashboard-guide.md in getDocsSections
   },
+  {
+    id: 'schemaDiff',
+    title: 'Schema Diff',
+    html: '', // filled from docs/schema-diff-guide.md in getDocsSections
+  },
 ];
 
 export const DOCS_SECTIONS_EN: DocsSection[] = [
@@ -204,6 +218,7 @@ export const DOCS_SECTIONS_EN: DocsSection[] = [
   <li>Automate “query + AI + branching/loops” with Workflows</li>
   <li>Monitor metrics on an <strong>Ops Dashboard</strong> with background refresh, threshold alerts, history, and an optional system tray</li>
   <li>Sync data, backup/restore, import/export config, and expose MCP to external AI apps</li>
+  <li>Align schemas with <strong>Schema Diff</strong> (source = desired → plan → review → deploy)</li>
 </ul>
 `,
   },
@@ -218,6 +233,7 @@ export const DOCS_SECTIONS_EN: DocsSection[] = [
   <li>Multi-statement execution, history, and favorites</li>
   <li>Table/chart views with NL chart tweaks</li>
   <li>EXPLAIN visualization and AI analysis</li>
+  <li><strong>Table structure editor</strong>: create/alter tables with columns and indexes in one draft, preview SQL then save; controls follow driver-reported version caps (unsupported actions are disabled with a hint); execution applies statements step-by-step, not as one atomic transaction</li>
 </ul>
 <h3>AI</h3>
 <ul>
@@ -230,6 +246,12 @@ export const DOCS_SECTIONS_EN: DocsSection[] = [
   <li>Background MonitorEngine with connection isolation from UI sessions</li>
   <li>Desktop / webhook threshold alerts and persisted run history</li>
   <li>Optional system tray so monitoring can continue after closing the main window (see the Ops Dashboard chapter)</li>
+</ul>
+<h3>Ops &amp; ecosystem</h3>
+<ul>
+  <li>Cross-database sync, backup/restore</li>
+  <li><strong>Schema Diff Deploy</strong>: source = desired → DDL plan → gated deploy (see dedicated chapter)</li>
+  <li>MCP Server for Claude Desktop / Cursor (<code>datazen --mcp</code>) and MCP Client</li>
 </ul>
 `,
   },
@@ -284,6 +306,11 @@ export const DOCS_SECTIONS_EN: DocsSection[] = [
     title: 'Ops Dashboard',
     html: '', // filled from docs/ops-dashboard-guide.en.md in getDocsSections
   },
+  {
+    id: 'schemaDiff',
+    title: 'Schema Diff',
+    html: '', // filled from docs/schema-diff-guide.en.md in getDocsSections
+  },
 ];
 
 export function getDocsSections(lang: string): DocsSection[] {
@@ -295,6 +322,9 @@ export function getDocsSections(lang: string): DocsSection[] {
     }
     if (s.id === 'opsDashboard') {
       return { ...s, html: zh ? OPS_DASHBOARD_HTML_ZH : OPS_DASHBOARD_HTML_EN };
+    }
+    if (s.id === 'schemaDiff') {
+      return { ...s, html: zh ? SCHEMA_DIFF_HTML_ZH : SCHEMA_DIFF_HTML_EN };
     }
     return s;
   });

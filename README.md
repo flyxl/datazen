@@ -54,10 +54,13 @@
 - **SQL editor** — Syntax highlighting, table/column autocomplete, multi-statement runs, EXPLAIN viz
 - **Data browser** — Virtual scrolling, inline edit, sort/filter, pagination
 - **Redis deep ops** — Key browser (all types + batch + Size + gated Flush); command console; Monitor (Info / Memory / Slowlog / Stream); Standalone / Cluster / Sentinel + mTLS; Pub/Sub; RedisJSON (module probe); DUMP/RESTORE import/export
-- **Import / export** — CSV, JSON, SQL
+- **Import / export** — CSV, JSON, SQL, Markdown, XLSX
 - **Backup** — One-click SQL dump (schema-only, data-only, gzip)
 - **Cross-DB sync** — PG ↔ MySQL schema compare and data sync with resume
-- **Bilingual UI** — English & Chinese
+- **AI + MCP** — Multi-provider AI chat; MCP Server (`datazen --mcp`) with permission tiers + connection allowlist; MCP Client for external tools
+- **YAML Workflows** — Cross-database automations (query / AI / condition / foreach), also exposed via MCP
+- **Charts** — Query-result charts with smart recommendations
+- **Bilingual UI** — 10 locales
 - **Appearance** — Light / dark / system mode; install local **theme packs** (ZIP) from Settings for custom colors, fonts, and icons
 
 <a id="特性"></a>
@@ -69,10 +72,13 @@
 - **智能 SQL 编辑器** — 语法高亮、自动补全（表名 + 列名）、多语句执行、执行计划可视化
 - **数据浏览与编辑** — 虚拟滚动表格、行内编辑、排序/筛选、分页导航
 - **Redis 深度运维** — Key 浏览（全类型 + 批量 + Size + 门控 Flush）；命令台；Monitor（Info / Memory / Slowlog / Stream）；Standalone / Cluster / Sentinel + mTLS；Pub/Sub；RedisJSON（模块探测）；DUMP/RESTORE 导入导出
-- **数据导入/导出** — CSV、JSON、SQL 格式互转
+- **数据导入/导出** — CSV、JSON、SQL、Markdown、XLSX
 - **数据库备份** — 一键备份为 SQL 文件（Schema / Data / Gzip）
 - **数据同步** — PG ↔ MySQL 表结构对比与数据同步，支持断点续传
-- **中英双语** — 界面语言自动跟随系统，支持手动切换
+- **AI + MCP** — 多 Provider AI；MCP Server（`datazen --mcp`，权限分档 + 连接白名单）；MCP Client 接入外部工具
+- **YAML Workflow** — 跨库自动化（query / AI / condition / foreach），并可通过 MCP 调用
+- **图表** — 查询结果智能推荐图表
+- **多语言** — 10 语系
 - **外观主题** — 浅色 / 深色 / 跟随系统；可在设置中安装本地**主题包**（ZIP），定制配色、字体与图标
 
 <p align="center">

@@ -1,5 +1,6 @@
 //! MCP Server module — exposes DataZen's database capabilities via MCP protocol.
 
+pub mod allowlist;
 pub mod client;
 pub mod permission;
 mod server;
@@ -15,7 +16,8 @@ pub async fn start_mcp_stdio(app_state: Arc<AppState>, cancel: CancellationToken
     let settings = app_state.store.get_settings().await;
     let server = DataZenMcpServer::new(app_state)
         .with_disabled_tools(&settings.mcp_disabled_tools)
-        .with_permission_mode(settings.mcp_permission_mode);
+        .with_permission_mode(settings.mcp_permission_mode)
+        .with_allowed_connections(&settings.mcp_allowed_connection_ids);
 
     use rmcp::ServiceExt;
     use tokio::io::{stdin, stdout};
