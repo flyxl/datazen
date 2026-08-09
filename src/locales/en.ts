@@ -703,9 +703,14 @@ const en: Record<TranslationKey, string> = {
 
   // ── AI Context ──
   'context.title': 'AI Context',
+  'context.tables': 'Tables',
+  'context.files': 'Files',
+  'context.recent': 'Recent',
+  'context.back': 'Back',
+  'context.noTables': 'No tables',
   'context.noFiles': 'Context directory is empty, please add files to the context directory',
   'context.noResults': 'No matching files found',
-  'context.placeholder': 'Type @ to reference context files…',
+  'context.placeholder': 'Type @ for tables or files…',
   'context.dirSetting': 'AI Context Directory',
   'context.dirSettingDesc': 'Directory path for AI context files, leave empty for default',
   'context.openDir': 'Open Context Directory',

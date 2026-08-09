@@ -115,7 +115,9 @@ export function WorkflowWindow() {
 
   const [workflowsDir, setWorkflowsDir] = useState('');
   const [feedback, setFeedback] = useState('');
-  const [savedConnections, setSavedConnections] = useState<{ id: string; name: string; databaseType: string }[]>([]);
+  const [savedConnections, setSavedConnections] = useState<
+    { id: string; name: string; databaseType: string; database?: string }[]
+  >([]);
   const [sideTab, setSideTab] = useState<'workflows' | 'history'>('workflows');
   const [historyItems, setHistoryItems] = useState<HistoryListItem[]>([]);
   const { size: sidebarWidth, handleRef: sidebarHandleRef } = useResizable({
@@ -132,7 +134,14 @@ export function WorkflowWindow() {
     void loadWorkflows();
     void aiCommands.workflowGetDir().then(setWorkflowsDir);
     void connectionCommands.getConnections().then((conns) =>
-      setSavedConnections(conns.map((c) => ({ id: c.id, name: c.name, databaseType: c.databaseType }))),
+      setSavedConnections(
+        conns.map((c) => ({
+          id: c.id,
+          name: c.name,
+          databaseType: c.databaseType,
+          database: c.database,
+        })),
+      ),
     );
     const cleanup = setupAiListeners();
     return () => { void cleanup.then((fn) => fn()); };

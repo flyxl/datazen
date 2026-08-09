@@ -7,7 +7,8 @@ import { useAiStore } from '../../stores/aiStore';
 import { cn } from '../../lib/cn';
 import { openDocsWindow, openSettingsWindow } from '../../lib/windowManager';
 import { WorkflowPanel } from './WorkflowPanel';
-import type { AiChatMessage, AiQuestion, ContextEntry } from '../../types';
+import { splitContextItems } from '../../lib/contextItems';
+import type { AiChatMessage, AiQuestion, ContextItem } from '../../types';
 
 interface AiChatPanelProps {
   connectionId: string;
@@ -25,7 +26,7 @@ export function AiChatPanel({ connectionId, database, onInsertSql }: AiChatPanel
 
   const [input, setInput] = useState('');
   const [tab, setTab] = useState<'chat' | 'workflows'>('chat');
-  const [contextFiles, setContextFiles] = useState<ContextEntry[]>([]);
+  const [contextItems, setContextItems] = useState<ContextItem[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -40,11 +41,17 @@ export function AiChatPanel({ connectionId, database, onInsertSql }: AiChatPanel
 
   const handleSend = useCallback(() => {
     if (!input.trim() || chatSession?.isStreaming) return;
-    const ctxPaths = contextFiles.length > 0 ? contextFiles.map((f) => f.path) : undefined;
-    void sendMessage({ connectionId, database, content: input.trim(), contextFiles: ctxPaths });
+    const { contextFiles, contextTables } = splitContextItems(contextItems);
+    void sendMessage({
+      connectionId,
+      database,
+      content: input.trim(),
+      contextFiles: contextFiles.length > 0 ? contextFiles : undefined,
+      contextTables: contextTables.length > 0 ? contextTables : undefined,
+    });
     setInput('');
-    setContextFiles([]);
-  }, [input, chatSession, sendMessage, connectionId, database, contextFiles]);
+    setContextItems([]);
+  }, [input, chatSession, sendMessage, connectionId, database, contextItems]);
 
   if (!isConfigured) {
     return (
@@ -183,8 +190,10 @@ export function AiChatPanel({ connectionId, database, onInsertSql }: AiChatPanel
               placeholder={t('chat.placeholder')}
               disabled={chatSession?.isStreaming}
               isLoading={chatSession?.isStreaming}
-              contextFiles={contextFiles}
-              onContextFilesChange={setContextFiles}
+              connectionId={connectionId}
+              database={database}
+              contextItems={contextItems}
+              onContextItemsChange={setContextItems}
             />
           </div>
         </>

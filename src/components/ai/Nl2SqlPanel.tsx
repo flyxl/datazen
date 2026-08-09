@@ -1,13 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Loader2, Sparkles, Trash2, Settings, X } from 'lucide-react';
+import { Loader2, Sparkles, Trash2, Settings } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { useI18n } from '../../hooks/useI18n';
-import { useAiKeyboard } from '../../hooks/useAiKeyboard';
 import { useAiStore } from '../../stores/aiStore';
-import { cn } from '../../lib/cn';
 import { openSettingsWindow } from '../../lib/windowManager';
-import { ContextPicker } from './ContextPicker';
-import type { ContextEntry } from '../../types';
+import { AiInput } from './AiInput';
+import { splitContextItems } from '../../lib/contextItems';
+import type { ContextItem } from '../../types';
 
 interface Nl2SqlPanelProps {
   connectionId: string;
@@ -26,10 +25,7 @@ export function Nl2SqlPanel({ connectionId, database, currentTable, onSqlChange 
   const generateSql = useAiStore((s) => s.generateSql);
   const clearNl2Sql = useAiStore((s) => s.clearNl2Sql);
 
-  const [contextFiles, setContextFiles] = useState<ContextEntry[]>([]);
-  const [showPicker, setShowPicker] = useState(false);
-  const [pickerQuery, setPickerQuery] = useState('');
-  const inputWrapperRef = useRef<HTMLDivElement>(null);
+  const [contextItems, setContextItems] = useState<ContextItem[]>([]);
   const lastWrittenRef = useRef('');
 
   // Write SQL into the editor only when generation finishes (not streaming).
@@ -43,13 +39,17 @@ export function Nl2SqlPanel({ connectionId, database, currentTable, onSqlChange 
 
   const handleGenerate = useCallback(() => {
     if (!nl2sql.input.trim() || nl2sql.isGenerating || !database) return;
-    const ctxPaths = contextFiles.length > 0 ? contextFiles.map((f) => f.path) : undefined;
+    const { contextFiles, contextTables } = splitContextItems(contextItems);
     lastWrittenRef.current = '';
-    void generateSql({ connectionId, database, currentTable, contextFiles: ctxPaths });
-    setContextFiles([]);
-  }, [generateSql, connectionId, database, currentTable, nl2sql.input, nl2sql.isGenerating, contextFiles]);
-
-  const aiKeyboard = useAiKeyboard(handleGenerate);
+    void generateSql({
+      connectionId,
+      database,
+      currentTable,
+      contextFiles: contextFiles.length > 0 ? contextFiles : undefined,
+      contextTables: contextTables.length > 0 ? contextTables : undefined,
+    });
+    setContextItems([]);
+  }, [generateSql, connectionId, database, currentTable, nl2sql.input, nl2sql.isGenerating, contextItems]);
 
   if (!isConfigured) {
     return (
@@ -67,85 +67,21 @@ export function Nl2SqlPanel({ connectionId, database, currentTable, onSqlChange 
   return (
     <div className="flex shrink-0 flex-col border-b border-edge bg-surface-alt">
       <div className="flex shrink-0 items-start gap-2 p-2">
-        <div ref={inputWrapperRef} className="relative min-w-0 flex-1">
-          {showPicker && (
-            <ContextPicker
-              query={pickerQuery}
-              position="below"
-              onSelect={(entry) => {
-                if (!contextFiles.some((f) => f.path === entry.path)) {
-                  setContextFiles((prev) => [...prev, entry]);
-                }
-                const input = nl2sql.input;
-                const atStart = input.lastIndexOf('@');
-                if (atStart >= 0) {
-                  setNl2SqlInput(input.substring(0, atStart).trimEnd());
-                }
-                setShowPicker(false);
-                setPickerQuery('');
-              }}
-              onClose={() => setShowPicker(false)}
-              anchorRef={inputWrapperRef}
-            />
-          )}
-          <div
-            className={cn(
-              'flex flex-wrap items-center rounded border border-edge bg-surface',
-              'transition-colors focus-within:border-accent',
-            )}
-          >
-            {contextFiles.length > 0 && (
-              <div className="flex flex-wrap gap-1 pl-2 pt-1">
-                {contextFiles.map((f) => (
-                  <span
-                    key={f.path}
-                    className="inline-flex items-center gap-0.5 rounded bg-accent/10 px-1.5 py-0.5 text-[11px] text-accent"
-                  >
-                    @{f.name}
-                    <button
-                      type="button"
-                      className="rounded hover:bg-accent/20"
-                      onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => setContextFiles((prev) => prev.filter((c) => c.path !== f.path))}
-                    >
-                      <X className="h-2.5 w-2.5" />
-                    </button>
-                  </span>
-                ))}
-              </div>
-            )}
-            <textarea
-              value={nl2sql.input}
-              onChange={(e) => {
-                const val = e.target.value;
-                setNl2SqlInput(val);
-                const cursorPos = e.target.selectionStart;
-                const before = val.substring(0, cursorPos);
-                const atMatch = before.match(/@([^\s@]*)$/);
-                if (atMatch) {
-                  setShowPicker(true);
-                  setPickerQuery(atMatch[1]);
-                } else {
-                  setShowPicker(false);
-                  setPickerQuery('');
-                }
-              }}
-              onKeyDown={(e) => {
-                if (showPicker && ['ArrowUp', 'ArrowDown', 'Enter', 'Escape'].includes(e.key)) return;
-                aiKeyboard.onKeyDown?.(e);
-              }}
-              onCompositionStart={aiKeyboard.onCompositionStart}
-              onCompositionEnd={aiKeyboard.onCompositionEnd}
-              placeholder={database ? t('context.placeholder') : t('nl2sql.selectDatabaseFirst')}
-              rows={1}
-              className={cn(
-                'min-w-0 flex-1 resize-none bg-transparent px-2 py-1.5',
-                'text-sm text-fg placeholder:text-fg-muted',
-                'focus:outline-none',
-              )}
-            />
-          </div>
-        </div>
+        <AiInput
+          className="min-w-0 flex-1 [&_>div]:rounded [&_>div]:border"
+          value={nl2sql.input}
+          onChange={setNl2SqlInput}
+          onSubmit={handleGenerate}
+          placeholder={database ? undefined : t('nl2sql.selectDatabaseFirst')}
+          disabled={!database || nl2sql.isGenerating}
+          isLoading={nl2sql.isGenerating}
+          contextItems={contextItems}
+          onContextItemsChange={setContextItems}
+          connectionId={connectionId}
+          database={database}
+          pickerPosition="below"
+          hideSubmit
+        />
         <div className="flex shrink-0 gap-1">
           <Button
             variant="primary"
