@@ -33,6 +33,33 @@ fn default_width() -> f64 { 800.0 }
 fn default_height() -> f64 { 640.0 }
 fn default_true() -> bool { true }
 
+/// Open (or focus) the in-app docs singleton. Prefer calling this from Rust
+/// menu handlers instead of `emit` → frontend → IPC round-trips.
+pub async fn open_docs_window(app: AppHandle, section: Option<&str>) -> Result<(), CommandError> {
+    let mut qs = String::from("window=docs");
+    if let Some(section) = section.map(str::trim).filter(|s| !s.is_empty()) {
+        // Section ids are app-controlled (`overview`, `workflows`, …).
+        qs.push_str("&section=");
+        qs.push_str(section);
+    }
+    create_sub_window(
+        app,
+        CreateWindowOptions {
+            label: "docs-singleton".into(),
+            url: format!("index.html?{qs}"),
+            title: "DataZen".into(),
+            width: 920.0,
+            height: 680.0,
+            min_width: Some(640.0),
+            min_height: Some(480.0),
+            center: true,
+            accept_first_mouse: true,
+            transparent: None,
+        },
+    )
+    .await
+}
+
 /// Create (or focus) a sub-window.
 ///
 /// **Must be `async` on Windows.** Tauri/WebView2 deadlocks when
@@ -48,11 +75,7 @@ pub async fn create_sub_window(
 
     // Singleton windows are requested repeatedly. Reuse here (not only in
     // JS) so a window that exists but stayed hidden can still be shown.
-    if let Some(existing) = app.get_webview_window(&options.label) {
-        let _ = existing.show();
-        let _ = existing.unminimize();
-        let _ = existing.set_focus();
-        tracing::info!(label = %options.label, "create_sub_window reused existing");
+    if focus_existing_window(&app, &options.label, &options.url) {
         return Ok(());
     }
 
@@ -102,11 +125,54 @@ pub async fn create_sub_window(
         builder = builder.center();
     }
 
-    builder
-        .build()
-        .map_err(|e| CommandError::Internal(e.to_string()))
-        .cmd_err("create_sub_window")?;
+    match builder.build() {
+        Ok(_) => {
+            tracing::info!(
+                label = %options.label,
+                url = %options.url,
+                "sub window created (waiting for page load to show)"
+            );
+            Ok(())
+        }
+        Err(e) => {
+            // Defense in depth: label may already be taken when multiple
+            // webviews handled the same menu emit (historically TitleBar +
+            // MainWindow both listened), or during a brief close/recreate
+            // window. Prefer focusing the survivor over surfacing an error.
+            let msg = e.to_string();
+            if msg.to_ascii_lowercase().contains("already exists")
+                && focus_existing_window(&app, &options.label, &options.url)
+            {
+                tracing::info!(
+                    label = %options.label,
+                    "create_sub_window recovered from already-exists"
+                );
+                return Ok(());
+            }
+            Err(CommandError::Internal(msg)).cmd_err("create_sub_window")
+        }
+    }
+}
 
-    tracing::info!(label = %options.label, url = %options.url, "sub window created (waiting for page load to show)");
-    Ok(())
+/// Show/focus an existing labeled window. Reloads when `url` query differs so
+/// singleton reopen with a new query (e.g. docs `section`) takes effect.
+fn focus_existing_window(app: &AppHandle, label: &str, url: &str) -> bool {
+    let Some(existing) = app.get_webview_window(label) else {
+        return false;
+    };
+    let marker = url.strip_prefix("index.html").unwrap_or(url);
+    let needs_nav = existing
+        .url()
+        .map(|current| !current.as_str().contains(marker))
+        .unwrap_or(true);
+    if needs_nav {
+        if let Ok(href) = serde_json::to_string(url) {
+            let _ = existing.eval(format!("window.location.replace({href})"));
+        }
+    }
+    let _ = existing.show();
+    let _ = existing.unminimize();
+    let _ = existing.set_focus();
+    tracing::info!(label = %label, "create_sub_window reused existing");
+    true
 }

@@ -1,5 +1,7 @@
 pub mod ai;
 mod app_data_archive;
+mod dashboard;
+mod monitor;
 mod theme;
 mod cache;
 mod commands;
@@ -11,6 +13,7 @@ mod services;
 mod ssh_known_hosts;
 pub mod ssh_tunnel;
 mod store;
+mod tray;
 pub mod sync;
 pub mod workflow;
 
@@ -31,6 +34,7 @@ use ai::SchemaContextBuilder;
 use commands::AppState;
 use db::init_drivers;
 use cache::SchemaCache;
+use monitor::MonitorEngine;
 use services::ConnectionManager;
 use store::Store;
 use sync::adapter_registry::SyncAdapterRegistry;
@@ -247,7 +251,14 @@ fn setup_menu(
                 let _ = app_handle.emit("menu:view-logs", ());
             }
             "help-docs" => {
-                let _ = app_handle.emit("menu:open-docs", ());
+                // Open directly in Rust — do not emit to every webview (that
+                // previously caused concurrent create_sub_window races).
+                let app = app_handle.clone();
+                tauri::async_runtime::spawn(async move {
+                    if let Err(e) = commands::open_docs_window(app, None).await {
+                        tracing::warn!(error = %e, "menu help-docs: open docs window failed");
+                    }
+                });
             }
             "help-report" => {
                 let _ = open::that("https://github.com/flyxl/datazen/issues/new");
@@ -387,6 +398,10 @@ fn finish_app_state(
         store.clone(),
     ));
     connection_manager.clone().start_cleanup_task();
+    let monitor_connections = Arc::new(monitor::MonitorConnectionRegistry::new(
+        connection_manager.clone(),
+    ));
+    let monitor_engine = MonitorEngine::new(store.clone(), monitor_connections.clone());
 
     let data_dir = store.data_dir().to_path_buf();
 
@@ -395,6 +410,8 @@ fn finish_app_state(
     AppState {
         driver_registry: registry,
         connection_manager: connection_manager.clone(),
+        monitor_connections,
+        monitor_engine,
         store,
         schema_cache: schema_cache.clone(),
         sync_adapters,
@@ -468,6 +485,7 @@ pub fn run() {
 
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_os::init());
 
     #[cfg(desktop)]
@@ -507,6 +525,12 @@ pub fn run() {
             });
 
             app.manage(app_state);
+
+            {
+                let state = handle.state::<AppState>();
+                state.monitor_engine.start(handle.clone());
+                tray::sync_tray(&handle);
+            }
 
             let _ = app.get_webview_window("main");
 
@@ -653,12 +677,29 @@ pub fn run() {
             commands::install_theme_pack_with_dialog,
             commands::remove_theme_pack,
             commands::read_theme_pack_file,
+            commands::list_dashboards,
+            commands::get_dashboard,
+            commands::save_dashboard,
+            commands::delete_dashboard,
+            commands::list_widget_runs,
+            commands::get_widget_run,
+            commands::run_dashboard_widget,
+            commands::export_dashboard_with_dialog,
+            commands::import_dashboard_with_dialog,
+            commands::get_monitor_paused,
+            commands::set_monitor_paused,
             rebuild_menu,
         ])
-        .on_window_event(|_window, _event| {
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if window.label() == "main" && tray::should_close_to_tray(window.app_handle()) {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+            }
             #[cfg(target_os = "macos")]
-            if let tauri::WindowEvent::Resized(size) = _event {
-                let win = _window.clone();
+            if let tauri::WindowEvent::Resized(size) = event {
+                let win = window.clone();
                 let size = *size;
                 std::thread::spawn(move || {
                     std::thread::sleep(std::time::Duration::from_millis(200));
@@ -673,7 +714,11 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app_handle, event| {
-            if let tauri::RunEvent::ExitRequested { .. } = event {
+            if let tauri::RunEvent::ExitRequested { api, .. } = event {
+                if tray::should_prevent_exit(app_handle) {
+                    api.prevent_exit();
+                    return;
+                }
                 let state = app_handle.state::<AppState>();
                 let mgr = state.mcp_client_manager.clone();
                 tauri::async_runtime::block_on(mgr.disconnect_all());
