@@ -11,6 +11,7 @@ mod types;
 mod traits;
 mod factory;
 mod reuse;
+pub mod sql_dump;
 
 pub use types::*;
 pub use traits::*;

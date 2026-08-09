@@ -1679,6 +1679,7 @@ name = "datazen-driver-api"
 version = "0.0.7"
 dependencies = [
  "async-trait",
+ "chrono",
  "inventory",
  "serde",
  "serde_json",

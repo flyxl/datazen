@@ -1262,6 +1262,66 @@ impl DatabaseDriver for MysqlDriver {
             server_type: server_type.to_string(),
         })
     }
+
+    async fn dump_table_ddl(
+        &self,
+        handle: &ConnectionHandle,
+        table: &str,
+    ) -> Result<String, DriverError> {
+        let sql = format!("SHOW CREATE TABLE {}", self.quote_ident(table));
+        match self.query(handle, &sql).await {
+            Ok(result) => {
+                if let Some(create) = extract_show_create_table(&result) {
+                    let mut ddl = create;
+                    let trimmed = ddl.trim_end();
+                    if !trimmed.ends_with(';') {
+                        ddl = format!("{};\n", trimmed);
+                    } else if !ddl.ends_with('\n') {
+                        ddl.push('\n');
+                    }
+                    return Ok(ddl);
+                }
+                sql_dump::dump_table_ddl_from_schema(self, handle, table).await
+            }
+            Err(_) => sql_dump::dump_table_ddl_from_schema(self, handle, table).await,
+        }
+    }
+
+    async fn dump_database(
+        &self,
+        handle: &ConnectionHandle,
+        database: &str,
+        opts: &BackupDumpOptions,
+    ) -> Result<String, DriverError> {
+        let mut out = String::new();
+        if opts.create_database {
+            let q = self.quote_ident(database);
+            out.push_str(&format!("CREATE DATABASE IF NOT EXISTS {};\nUSE {};\n\n", q, q));
+        }
+        out.push_str(&sql_dump::dump_sql_database(self, handle, database, opts).await?);
+        Ok(out)
+    }
+}
+
+/// Extract the `Create Table` column from `SHOW CREATE TABLE` result rows.
+fn extract_show_create_table(result: &QueryResult) -> Option<String> {
+    let col_idx = result
+        .columns
+        .iter()
+        .position(|c| c.name.eq_ignore_ascii_case("Create Table"))
+        .or_else(|| {
+            if result.columns.len() >= 2 {
+                Some(1)
+            } else {
+                None
+            }
+        })?;
+    let row = result.rows.first()?;
+    let cell = row.get(col_idx)?.as_ref()?;
+    match cell {
+        Value::String(s) if !s.is_empty() => Some(s.clone()),
+        _ => None,
+    }
 }
 
 /// Split SQL into statements, respecting strings, comments, and backtick identifiers.

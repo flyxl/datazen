@@ -115,4 +115,15 @@ mod tests {
             .expect_err("unknown type must fail");
         assert!(err.contains("No sync adapter"));
     }
+
+    #[test]
+    fn ensure_type_wire_aliases_succeed() {
+        let registry = SyncAdapterRegistry::new();
+        for db in ["cloudberry", "rqlite", "turso"] {
+            assert!(
+                registry.ensure_type(&db.to_string()).is_ok(),
+                "expected sync adapter for {db}"
+            );
+        }
+    }
 }
