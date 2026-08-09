@@ -1,6 +1,5 @@
 //! Pure helpers and Redis mutate/batch operations for plugin commands.
 
-use redis::aio::MultiplexedConnection;
 use redis::AsyncCommands;
 use serde::Serialize;
 
@@ -64,10 +63,13 @@ pub struct BatchRenameResult {
     pub errors: Vec<KeyError>,
 }
 
-pub async fn scan_matching_keys(
-    conn: &mut MultiplexedConnection,
+pub async fn scan_matching_keys<C>(
+    conn: &mut C,
     pattern: &str,
-) -> Result<Vec<String>, String> {
+) -> Result<Vec<String>, String>
+where
+    C: AsyncCommands + redis::aio::ConnectionLike + Send,
+{
     let mut keys = Vec::new();
     let mut cursor = 0u64;
     loop {
@@ -90,40 +92,52 @@ pub async fn scan_matching_keys(
     Ok(keys)
 }
 
-pub async fn count_matching(
-    conn: &mut MultiplexedConnection,
+pub async fn count_matching<C>(
+    conn: &mut C,
     pattern: &str,
-) -> Result<u64, String> {
+) -> Result<u64, String>
+where
+    C: AsyncCommands + redis::aio::ConnectionLike + Send,
+{
     let keys = scan_matching_keys(conn, pattern).await?;
     Ok(keys.len() as u64)
 }
 
-pub async fn set_string(
-    conn: &mut MultiplexedConnection,
+pub async fn set_string<C>(
+    conn: &mut C,
     key: &str,
     value: &str,
-) -> Result<(), String> {
+) -> Result<(), String>
+where
+    C: AsyncCommands + redis::aio::ConnectionLike + Send,
+{
     conn.set(key, value)
         .await
         .map_err(|e| e.to_string())
 }
 
-pub async fn hash_set(
-    conn: &mut MultiplexedConnection,
+pub async fn hash_set<C>(
+    conn: &mut C,
     key: &str,
     field: &str,
     value: &str,
-) -> Result<(), String> {
+) -> Result<(), String>
+where
+    C: AsyncCommands + redis::aio::ConnectionLike + Send,
+{
     conn.hset(key, field, value)
         .await
         .map_err(|e| e.to_string())
 }
 
-pub async fn hash_del(
-    conn: &mut MultiplexedConnection,
+pub async fn hash_del<C>(
+    conn: &mut C,
     key: &str,
     fields: &[String],
-) -> Result<(), String> {
+) -> Result<(), String>
+where
+    C: AsyncCommands + redis::aio::ConnectionLike + Send,
+{
     if fields.is_empty() {
         return Ok(());
     }
@@ -133,12 +147,15 @@ pub async fn hash_del(
         .map_err(|e| e.to_string())
 }
 
-pub async fn list_push(
-    conn: &mut MultiplexedConnection,
+pub async fn list_push<C>(
+    conn: &mut C,
     key: &str,
     side: &str,
     values: &[String],
-) -> Result<(), String> {
+) -> Result<(), String>
+where
+    C: AsyncCommands + redis::aio::ConnectionLike + Send,
+{
     if values.is_empty() {
         return Ok(());
     }
@@ -157,12 +174,15 @@ pub async fn list_push(
     }
 }
 
-pub async fn list_set(
-    conn: &mut MultiplexedConnection,
+pub async fn list_set<C>(
+    conn: &mut C,
     key: &str,
     index: i64,
     value: &str,
-) -> Result<(), String> {
+) -> Result<(), String>
+where
+    C: AsyncCommands + redis::aio::ConnectionLike + Send,
+{
     redis::cmd("LSET")
         .arg(key)
         .arg(index)
@@ -172,11 +192,14 @@ pub async fn list_set(
         .map_err(|e| e.to_string())
 }
 
-pub async fn list_pop(
-    conn: &mut MultiplexedConnection,
+pub async fn list_pop<C>(
+    conn: &mut C,
     key: &str,
     side: &str,
-) -> Result<Option<String>, String> {
+) -> Result<Option<String>, String>
+where
+    C: AsyncCommands + redis::aio::ConnectionLike + Send,
+{
     let raw: redis::Value = match side {
         "left" => redis::cmd("LPOP").arg(key).query_async(conn).await,
         "right" => redis::cmd("RPOP").arg(key).query_async(conn).await,
@@ -191,11 +214,14 @@ pub async fn list_pop(
     })
 }
 
-pub async fn set_add(
-    conn: &mut MultiplexedConnection,
+pub async fn set_add<C>(
+    conn: &mut C,
     key: &str,
     members: &[String],
-) -> Result<(), String> {
+) -> Result<(), String>
+where
+    C: AsyncCommands + redis::aio::ConnectionLike + Send,
+{
     if members.is_empty() {
         return Ok(());
     }
@@ -205,11 +231,14 @@ pub async fn set_add(
         .map_err(|e| e.to_string())
 }
 
-pub async fn set_remove(
-    conn: &mut MultiplexedConnection,
+pub async fn set_remove<C>(
+    conn: &mut C,
     key: &str,
     members: &[String],
-) -> Result<(), String> {
+) -> Result<(), String>
+where
+    C: AsyncCommands + redis::aio::ConnectionLike + Send,
+{
     if members.is_empty() {
         return Ok(());
     }
@@ -225,11 +254,14 @@ pub struct ZsetMember {
     pub score: f64,
 }
 
-pub async fn zset_add(
-    conn: &mut MultiplexedConnection,
+pub async fn zset_add<C>(
+    conn: &mut C,
     key: &str,
     members: &[ZsetMember],
-) -> Result<(), String> {
+) -> Result<(), String>
+where
+    C: AsyncCommands + redis::aio::ConnectionLike + Send,
+{
     if members.is_empty() {
         return Ok(());
     }
@@ -242,11 +274,14 @@ pub async fn zset_add(
         .map_err(|e| e.to_string())
 }
 
-pub async fn zset_remove(
-    conn: &mut MultiplexedConnection,
+pub async fn zset_remove<C>(
+    conn: &mut C,
     key: &str,
     members: &[String],
-) -> Result<(), String> {
+) -> Result<(), String>
+where
+    C: AsyncCommands + redis::aio::ConnectionLike + Send,
+{
     if members.is_empty() {
         return Ok(());
     }
@@ -256,10 +291,13 @@ pub async fn zset_remove(
         .map_err(|e| e.to_string())
 }
 
-pub async fn delete_keys(
-    conn: &mut MultiplexedConnection,
+pub async fn delete_keys<C>(
+    conn: &mut C,
     keys: &[String],
-) -> Result<u64, String> {
+) -> Result<u64, String>
+where
+    C: AsyncCommands + redis::aio::ConnectionLike + Send,
+{
     if keys.is_empty() {
         return Ok(0);
     }
@@ -268,11 +306,14 @@ pub async fn delete_keys(
         .map_err(|e| e.to_string())
 }
 
-pub async fn rename_key(
-    conn: &mut MultiplexedConnection,
+pub async fn rename_key<C>(
+    conn: &mut C,
     key: &str,
     new_key: &str,
-) -> Result<(), String> {
+) -> Result<(), String>
+where
+    C: AsyncCommands + redis::aio::ConnectionLike + Send,
+{
     redis::cmd("RENAME")
         .arg(key)
         .arg(new_key)
@@ -281,11 +322,14 @@ pub async fn rename_key(
         .map_err(|e| e.to_string())
 }
 
-pub async fn set_ttl(
-    conn: &mut MultiplexedConnection,
+pub async fn set_ttl<C>(
+    conn: &mut C,
     key: &str,
     ttl_seconds: i64,
-) -> Result<(), String> {
+) -> Result<(), String>
+where
+    C: AsyncCommands + redis::aio::ConnectionLike + Send,
+{
     match resolve_ttl(ttl_seconds)? {
         TtlCommand::Persist => conn
             .persist::<_, i64>(key)
@@ -300,10 +344,13 @@ pub async fn set_ttl(
     }
 }
 
-pub async fn batch_delete_pattern(
-    conn: &mut MultiplexedConnection,
+pub async fn batch_delete_pattern<C>(
+    conn: &mut C,
     pattern: &str,
-) -> Result<BatchDeleteResult, String> {
+) -> Result<BatchDeleteResult, String>
+where
+    C: AsyncCommands + redis::aio::ConnectionLike + Send,
+{
     let keys = scan_matching_keys(conn, pattern).await?;
     let mut deleted = 0u64;
     let mut errors = Vec::new();
@@ -319,11 +366,14 @@ pub async fn batch_delete_pattern(
     Ok(BatchDeleteResult { deleted, errors })
 }
 
-pub async fn batch_set_ttl(
-    conn: &mut MultiplexedConnection,
+pub async fn batch_set_ttl<C>(
+    conn: &mut C,
     keys: &[String],
     ttl_seconds: i64,
-) -> Result<BatchSetTtlResult, String> {
+) -> Result<BatchSetTtlResult, String>
+where
+    C: AsyncCommands + redis::aio::ConnectionLike + Send,
+{
     let cmd = resolve_ttl(ttl_seconds)?;
     let mut updated = 0u64;
     let mut errors = Vec::new();
@@ -347,12 +397,15 @@ pub async fn batch_set_ttl(
     Ok(BatchSetTtlResult { updated, errors })
 }
 
-pub async fn batch_rename_prefix(
-    conn: &mut MultiplexedConnection,
+pub async fn batch_rename_prefix<C>(
+    conn: &mut C,
     old_prefix: &str,
     new_prefix: &str,
     keys: Option<Vec<String>>,
-) -> Result<BatchRenameResult, String> {
+) -> Result<BatchRenameResult, String>
+where
+    C: AsyncCommands + redis::aio::ConnectionLike + Send,
+{
     let source_keys = match keys {
         Some(k) => k,
         None => scan_matching_keys(conn, &format!("{old_prefix}*")).await?,
@@ -372,14 +425,20 @@ pub async fn batch_rename_prefix(
     Ok(BatchRenameResult { renamed, errors })
 }
 
-pub async fn flush_db(conn: &mut MultiplexedConnection) -> Result<(), String> {
+pub async fn flush_db<C>(conn: &mut C) -> Result<(), String>
+where
+    C: AsyncCommands + redis::aio::ConnectionLike + Send,
+{
     redis::cmd("FLUSHDB")
         .query_async::<()>(conn)
         .await
         .map_err(|e| e.to_string())
 }
 
-pub async fn flush_all(conn: &mut MultiplexedConnection) -> Result<(), String> {
+pub async fn flush_all<C>(conn: &mut C) -> Result<(), String>
+where
+    C: AsyncCommands + redis::aio::ConnectionLike + Send,
+{
     redis::cmd("FLUSHALL")
         .query_async::<()>(conn)
         .await

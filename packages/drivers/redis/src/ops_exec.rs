@@ -1,6 +1,6 @@
 //! Multi-line Redis console command execution for the `exec` plugin command.
 
-use redis::aio::MultiplexedConnection;
+use redis::AsyncCommands;
 use serde::Serialize;
 
 use crate::redis_driver::parse_redis_command_args;
@@ -32,10 +32,13 @@ pub struct ExecResponse {
     pub results: Vec<ExecResult>,
 }
 
-pub async fn exec_commands(
-    conn: &mut MultiplexedConnection,
+pub async fn exec_commands<C>(
+    conn: &mut C,
     commands: &str,
-) -> Result<ExecResponse, String> {
+) -> Result<ExecResponse, String>
+where
+    C: AsyncCommands + redis::aio::ConnectionLike + Send,
+{
     let lines = split_redis_commands(commands);
     let mut results = Vec::with_capacity(lines.len());
     for line in lines {
@@ -44,7 +47,10 @@ pub async fn exec_commands(
     Ok(ExecResponse { results })
 }
 
-async fn exec_one(conn: &mut MultiplexedConnection, line: &str) -> ExecResult {
+async fn exec_one<C>(conn: &mut C, line: &str) -> ExecResult
+where
+    C: AsyncCommands + redis::aio::ConnectionLike + Send,
+{
     match parse_redis_command_args(line) {
         Ok(parts) => {
             let mut cmd = redis::cmd(&parts[0]);
