@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ensureNamespacePath, type EnsureDeps } from '../ensureNamespace';
+import {
+  ensureNamespacePath,
+  namespacePathLoaded,
+  pathNavSegment,
+  type EnsureDeps,
+} from '../ensureNamespace';
 import type { TableInfo } from '../../types';
 
 function makeDeps(overrides: Partial<EnsureDeps> = {}): EnsureDeps {
@@ -145,7 +150,43 @@ describe('ensureNamespacePath — path-hierarchy', () => {
   });
 });
 
+describe('pathNavSegment', () => {
+  it('returns last path segment with optional root prefix strip', () => {
+    expect(
+      pathNavSegment(
+        { name: '558/hive/snap', schema: 'SCHEMA', tableType: 'table', rowCount: null },
+        '558',
+      ),
+    ).toBe('snap');
+    expect(
+      pathNavSegment({ name: 'catalog', schema: 'CATALOG', tableType: 'table', rowCount: null }, '558'),
+    ).toBe('catalog');
+  });
+});
+
+describe('namespacePathLoaded', () => {
+  it('returns true when path loaded or tree has child', () => {
+    const deps = makeDeps({ loadedPaths: new Set(['app']) });
+    expect(namespacePathLoaded(deps, ['app'])).toBe(true);
+    const treeDeps = makeDeps({
+      loadedPaths: new Set(),
+      namespaceTree: { other: { kind: 'branch', children: {} } },
+    });
+    expect(namespacePathLoaded(treeDeps, [])).toBe(true);
+  });
+});
+
 describe('ensureNamespacePath — default-sql (mysql)', () => {
+  it('[] lists databases via getDatabases', async () => {
+    const deps = makeDeps({
+      databaseType: 'mysql',
+      pathAliases: {},
+      getDatabases: vi.fn().mockResolvedValue(['app', 'test']),
+    });
+    await ensureNamespacePath([], deps);
+    expect(deps.mergeNamespace).toHaveBeenCalledWith([], 'branch', ['app', 'test']);
+  });
+
   it("['app'] uses useDatabase + getTables and excludes views", async () => {
     const deps = makeDeps({
       databaseType: 'mysql',
@@ -161,5 +202,107 @@ describe('ensureNamespacePath — default-sql (mysql)', () => {
     expect(deps.useDatabase).toHaveBeenCalledWith('conn-1', 'app');
     expect(deps.getTables).toHaveBeenCalledWith('conn-1', 'app');
     expect(deps.mergeNamespace).toHaveBeenCalledWith(['app'], 'tables', ['users']);
+  });
+});
+
+describe('ensureNamespacePath — postgresql', () => {
+  it('[] multi-db lists databases', async () => {
+    const deps = makeDeps({
+      databaseType: 'postgresql',
+      pathAliases: {},
+      isMultiDatabase: true,
+      getDatabases: vi.fn().mockResolvedValue(['db1', 'db2']),
+    });
+    await ensureNamespacePath([], deps);
+    expect(deps.mergeNamespace).toHaveBeenCalledWith([], 'branch', ['db1', 'db2']);
+  });
+
+  it('[] single-db groups tables by schema', async () => {
+    const deps = makeDeps({
+      databaseType: 'postgresql',
+      pathAliases: {},
+      isMultiDatabase: false,
+      databases: ['app'],
+      currentDatabase: 'app',
+      getTables: vi.fn().mockResolvedValue([
+        { name: 'users', schema: 'public', tableType: 'table', rowCount: null },
+        { name: 'v_users', schema: 'public', tableType: 'view', rowCount: null },
+        { name: 'logs', schema: 'audit', tableType: 'table', rowCount: null },
+      ] satisfies TableInfo[]),
+    });
+    await ensureNamespacePath([], deps);
+    expect(deps.useDatabase).toHaveBeenCalledWith('conn-1', 'app');
+    expect(deps.mergeNamespace).toHaveBeenCalledWith([], 'branch', ['public', 'audit']);
+    expect(deps.mergeNamespace).toHaveBeenCalledWith(['public'], 'tables', ['users', 'v_users']);
+    expect(deps.mergeNamespace).toHaveBeenCalledWith(['audit'], 'tables', ['logs']);
+  });
+
+  it("['db1'] multi-db loads schemas under database", async () => {
+    const deps = makeDeps({
+      databaseType: 'postgresql',
+      pathAliases: {},
+      isMultiDatabase: true,
+      getTables: vi.fn().mockResolvedValue([
+        { name: 't1', schema: 'public', tableType: 'table', rowCount: null },
+      ] satisfies TableInfo[]),
+    });
+    await ensureNamespacePath(['db1'], deps);
+    expect(deps.useDatabase).toHaveBeenCalledWith('conn-1', 'db1');
+    expect(deps.mergeNamespace).toHaveBeenCalledWith(['db1'], 'branch', ['public']);
+    expect(deps.mergeNamespace).toHaveBeenCalledWith(['db1', 'public'], 'tables', ['t1']);
+  });
+
+  it("['public'] single-db uses in-memory tables when available", async () => {
+    const deps = makeDeps({
+      databaseType: 'postgresql',
+      pathAliases: {},
+      isMultiDatabase: false,
+      tables: [{ name: 'users', schema: 'public', tableType: 'table', rowCount: null }],
+      databases: ['app'],
+    });
+    await ensureNamespacePath(['public'], deps);
+    expect(deps.getTables).not.toHaveBeenCalled();
+    expect(deps.mergeNamespace).toHaveBeenCalledWith(['public'], 'tables', ['users']);
+  });
+
+  it("['public'] single-db fetches tables when not in memory", async () => {
+    const deps = makeDeps({
+      databaseType: 'postgresql',
+      pathAliases: {},
+      isMultiDatabase: false,
+      tables: [],
+      databases: ['app'],
+      currentDatabase: 'app',
+      getTables: vi.fn().mockResolvedValue([
+        { name: 'users', schema: 'public', tableType: 'table', rowCount: null },
+        { name: 'v_users', schema: 'public', tableType: 'view', rowCount: null },
+        { name: 'other', schema: 'audit', tableType: 'table', rowCount: null },
+      ] satisfies TableInfo[]),
+    });
+    await ensureNamespacePath(['public'], deps);
+    expect(deps.useDatabase).toHaveBeenCalledWith('conn-1', 'app');
+    expect(deps.getTables).toHaveBeenCalledWith('conn-1', 'app');
+    expect(deps.mergeNamespace).toHaveBeenCalledWith(['public'], 'tables', ['users']);
+  });
+
+  it('falls back to postgresql strategy when meta missing', async () => {
+    const deps = makeDeps({
+      databaseType: 'postgresql',
+      pathAliases: {},
+      isMultiDatabase: true,
+      getDatabases: vi.fn().mockResolvedValue(['only']),
+    });
+    await ensureNamespacePath([], deps);
+    expect(deps.getDatabases).toHaveBeenCalled();
+  });
+
+  it('uses default-sql when databaseType is null', async () => {
+    const deps = makeDeps({
+      databaseType: null,
+      pathAliases: {},
+      getDatabases: vi.fn().mockResolvedValue(['db']),
+    });
+    await ensureNamespacePath([], deps);
+    expect(deps.mergeNamespace).toHaveBeenCalledWith([], 'branch', ['db']);
   });
 });

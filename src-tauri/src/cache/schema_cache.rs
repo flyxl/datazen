@@ -238,3 +238,125 @@ impl SchemaCache {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::registry::DriverRegistry;
+    use crate::testing::mock_driver::{MockDriver, MockDriverOptions};
+
+    fn test_handle() -> ConnectionHandle {
+        ConnectionHandle {
+            id: "h1".into(),
+            pool_id: "p1".into(),
+        }
+    }
+
+    async fn cache_with_mock() -> (SchemaCache, Arc<MockDriver>, ConnectionHandle) {
+        let registry = Arc::new(DriverRegistry::new());
+        let mock = MockDriver::new("postgres", MockDriverOptions::default());
+        registry
+            .register_test_driver("postgres", mock.clone())
+            .await;
+        let cache = SchemaCache::new(registry);
+        (cache, mock, test_handle())
+    }
+
+    #[tokio::test]
+    async fn get_columns_fetches_and_caches_on_miss() {
+        let (cache, mock, handle) = cache_with_mock().await;
+        let driver = mock.clone() as Arc<dyn DatabaseDriver>;
+
+        let first = cache
+            .get_columns("conn1", "db1", "users", &driver, &handle)
+            .await
+            .unwrap();
+        assert_eq!(first.table_name, "users");
+        assert_eq!(mock.get_columns_calls(), 1);
+
+        cache
+            .get_columns("conn1", "db1", "users", &driver, &handle)
+            .await
+            .unwrap();
+        assert_eq!(mock.get_columns_calls(), 1, "second call should hit cache");
+    }
+
+    #[tokio::test]
+    async fn get_table_schema_populates_both_cache_tiers() {
+        let (cache, mock, handle) = cache_with_mock().await;
+        let driver = mock.clone() as Arc<dyn DatabaseDriver>;
+
+        let schema = cache
+            .get_table_schema("conn1", "db1", "orders", &driver, &handle)
+            .await
+            .unwrap();
+        assert_eq!(schema.table_name, "orders");
+        assert_eq!(mock.get_schema_calls(), 1);
+
+        mock.reset_columns_calls();
+        let cols = cache
+            .get_columns("conn1", "db1", "orders", &driver, &handle)
+            .await
+            .unwrap();
+        assert_eq!(cols.columns.len(), schema.columns.len());
+        assert_eq!(mock.get_columns_calls(), 0, "columns served from full schema cache");
+    }
+
+    #[tokio::test]
+    async fn invalidate_table_forces_refetch() {
+        let (cache, mock, handle) = cache_with_mock().await;
+        let driver = mock.clone() as Arc<dyn DatabaseDriver>;
+
+        cache
+            .get_columns("conn1", "db1", "users", &driver, &handle)
+            .await
+            .unwrap();
+        cache.invalidate("conn1", "db1", Some("users")).await;
+
+        cache
+            .get_columns("conn1", "db1", "users", &driver, &handle)
+            .await
+            .unwrap();
+        assert_eq!(mock.get_columns_calls(), 2);
+    }
+
+    #[tokio::test]
+    async fn invalidate_all_tables_clears_database_cache() {
+        let (cache, mock, handle) = cache_with_mock().await;
+        let driver = mock.clone() as Arc<dyn DatabaseDriver>;
+
+        cache
+            .get_columns("conn1", "db1", "users", &driver, &handle)
+            .await
+            .unwrap();
+        cache
+            .get_columns("conn1", "db1", "orders", &driver, &handle)
+            .await
+            .unwrap();
+        cache.invalidate("conn1", "db1", None).await;
+
+        cache
+            .get_columns("conn1", "db1", "users", &driver, &handle)
+            .await
+            .unwrap();
+        assert!(mock.get_columns_calls() >= 3);
+    }
+
+    #[tokio::test]
+    async fn clear_connection_removes_all_databases() {
+        let (cache, mock, handle) = cache_with_mock().await;
+        let driver = mock.clone() as Arc<dyn DatabaseDriver>;
+
+        cache
+            .get_columns("conn1", "db1", "users", &driver, &handle)
+            .await
+            .unwrap();
+        cache.clear_connection("conn1").await;
+
+        cache
+            .get_columns("conn1", "db2", "users", &driver, &handle)
+            .await
+            .unwrap();
+        assert_eq!(mock.get_columns_calls(), 2);
+    }
+}

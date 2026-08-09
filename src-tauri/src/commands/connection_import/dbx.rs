@@ -200,3 +200,58 @@ pub fn parse_plain(content: &str) -> Result<ParsedImport, CommandError> {
         skipped,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_plain_maps_postgres_with_ssh() {
+        let json = serde_json::json!({
+            "connections": [{
+                "id": "pg1",
+                "name": "Remote PG",
+                "db_type": "postgresql",
+                "host": "127.0.0.1",
+                "port": 5432,
+                "username": "alice",
+                "password": "secret",
+                "database": "app",
+                "transport_layers": [{
+                    "type": "ssh",
+                    "enabled": true,
+                    "host": "bastion.example",
+                    "port": 22,
+                    "user": "deploy",
+                    "password": "jump"
+                }]
+            }],
+            "layout": { "groups": ["Prod"] }
+        })
+        .to_string();
+
+        let parsed = parse_plain(&json).unwrap();
+        assert_eq!(parsed.connections.len(), 1);
+        assert_eq!(parsed.groups, vec!["Prod".to_string()]);
+        let ssh = parsed.connections[0].ssh_tunnel.as_ref().unwrap();
+        assert_eq!(ssh.host, "bastion.example");
+        assert_eq!(ssh.port, 22);
+        assert_eq!(ssh.username, "deploy");
+        assert_eq!(ssh.auth_method, "password");
+    }
+
+    #[test]
+    fn parse_plain_skips_unknown_db_type() {
+        let json = r#"{"connections":[{"name":"x","db_type":"oracle","host":"h"}]}"#;
+        let parsed = parse_plain(json).unwrap();
+        assert!(parsed.connections.is_empty());
+        assert_eq!(parsed.skipped.len(), 1);
+    }
+
+    #[test]
+    fn extract_connection_array_accepts_root_array() {
+        let value = serde_json::json!([{"name": "a", "db_type": "mysql", "host": "h"}]);
+        let list = extract_connection_array(&value).unwrap();
+        assert_eq!(list.len(), 1);
+    }
+}

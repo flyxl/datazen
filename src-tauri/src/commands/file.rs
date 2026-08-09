@@ -4,6 +4,10 @@ use std::path::{Path, PathBuf};
 use tauri::AppHandle;
 use tauri_plugin_dialog::DialogExt;
 
+pub(crate) fn editor_context_menu_label(lang: &str) -> String {
+    crate::menu_label(lang, "ctx-add-favorite")
+}
+
 #[tauri::command]
 pub fn show_editor_context_menu(
     window: tauri::Window,
@@ -11,11 +15,7 @@ pub fn show_editor_context_menu(
 ) -> Result<(), CommandError> {
     use tauri::menu::MenuBuilder;
 
-    let labels = crate::menu_labels(&lang);
-    let label_favorite = labels
-        .get("ctx-add-favorite")
-        .map(|s| s.as_str())
-        .unwrap_or("Add to Favorites");
+    let label_favorite = editor_context_menu_label(&lang);
 
     let menu = MenuBuilder::new(&window)
         .text("ctx-add-favorite", label_favorite)
@@ -237,14 +237,7 @@ pub async fn open_text_with_dialog(
 /// Legacy path-based write — only available in webdriver/E2E builds.
 #[tauri::command]
 pub async fn write_file(path: String, contents: String) -> Result<(), CommandError> {
-    if !cfg!(feature = "webdriver") {
-        return Err(deny_path_ipc());
-    }
-    let p = PathBuf::from(&path);
-    validate_file_path(&p)?;
-    tokio::fs::write(&p, contents.as_bytes())
-        .await
-        .cmd_err("write_file")
+    write_file_impl(path, contents).await
 }
 
 #[tauri::command]
@@ -263,8 +256,7 @@ pub async fn write_file_base64(path: String, data_base64: String) -> Result<(), 
         .cmd_err("write_file_base64")
 }
 
-#[tauri::command]
-pub async fn read_file(path: String) -> Result<String, CommandError> {
+pub(crate) async fn read_file_impl(path: String) -> Result<String, CommandError> {
     if !cfg!(feature = "webdriver") {
         return Err(deny_path_ipc());
     }
@@ -275,9 +267,51 @@ pub async fn read_file(path: String) -> Result<String, CommandError> {
         .cmd_err("read_file")
 }
 
+pub(crate) async fn write_file_impl(path: String, contents: String) -> Result<(), CommandError> {
+    if !cfg!(feature = "webdriver") {
+        return Err(deny_path_ipc());
+    }
+    let p = PathBuf::from(&path);
+    validate_file_path(&p)?;
+    tokio::fs::write(&p, contents.as_bytes())
+        .await
+        .cmd_err("write_file")
+}
+
+#[tauri::command]
+pub async fn read_file(path: String) -> Result<String, CommandError> {
+    read_file_impl(path).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ext_refs_accepts_dot_prefix_and_normalizes() {
+        let extensions = [".json".into(), "SQL".into()];
+        let refs = ext_refs(&extensions).unwrap();
+        assert_eq!(refs, vec!["json", "SQL"]);
+    }
+
+    #[test]
+    fn ext_refs_rejects_empty_list() {
+        assert!(ext_refs(&[]).is_err());
+    }
+
+    #[test]
+    fn editor_context_menu_label_localizes_or_falls_back() {
+        let en = editor_context_menu_label("en");
+        assert!(!en.is_empty());
+        assert_ne!(en, "ctx-add-favorite");
+        // Unknown locale falls back to English menu labels (not the raw key).
+        assert_eq!(editor_context_menu_label("xx-unknown"), en);
+    }
+
+    #[test]
+    fn validate_extension_accepts_case_insensitive() {
+        assert!(validate_extension(Path::new("/tmp/file.JSON"), &["json"]).is_ok());
+    }
 
     #[test]
     fn validate_file_path_accepts_allowed_extensions() {

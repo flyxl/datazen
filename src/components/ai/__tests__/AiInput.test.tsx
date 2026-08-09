@@ -26,6 +26,31 @@ vi.mock('../../../commands/context', () => ({
   },
 }));
 
+vi.mock('../ContextPicker', () => ({
+  ContextPicker: ({
+    onSelect,
+    onClose,
+    position,
+  }: {
+    onSelect: (item: ContextItem) => void;
+    onClose: () => void;
+    position?: 'above' | 'below';
+  }) => (
+    <div
+      data-testid="mock-context-picker"
+      className={position === 'below' ? 'absolute top-full' : 'absolute bottom-full'}
+    >
+      <button
+        type="button"
+        onClick={() => onSelect({ kind: 'dir', id: '/tmp', name: 'tmp', path: '/tmp' })}
+      >
+        pick-dir
+      </button>
+      <button type="button" onClick={onClose}>close-picker</button>
+    </div>
+  ),
+}));
+
 afterEach(cleanup);
 
 beforeEach(() => {
@@ -203,5 +228,142 @@ describe('AiInput', () => {
         expect(picker).toBeInTheDocument();
       });
     });
+  });
+
+  it('submits on send button click', () => {
+    const onSubmit = vi.fn();
+    const { container } = render(
+      <AiInput value="go" onChange={vi.fn()} onSubmit={onSubmit} />,
+    );
+    fireEvent.click(container.querySelectorAll('button')[0]);
+    expect(onSubmit).toHaveBeenCalled();
+  });
+
+  it('hides submit button when hideSubmit is true', () => {
+    const { container } = render(
+      <AiInput value="x" onChange={vi.fn()} onSubmit={vi.fn()} hideSubmit />,
+    );
+    expect(container.querySelectorAll('button')).toHaveLength(0);
+  });
+
+  it('renders picker below when pickerPosition is below', async () => {
+    const { container } = render(
+      <AiInput
+        value=""
+        onChange={vi.fn()}
+        onSubmit={vi.fn()}
+        contextItems={[]}
+        onContextItemsChange={vi.fn()}
+        pickerPosition="below"
+      />,
+    );
+    const textarea = container.querySelector('textarea')!;
+    Object.defineProperty(textarea, 'selectionStart', { configurable: true, get: () => 1 });
+    fireEvent.change(textarea, { target: { value: '@' } });
+    await waitFor(() => {
+      expect(container.querySelector('.absolute.top-full')).toBeInTheDocument();
+    });
+  });
+
+  it('does not handle keyboard when disabled', () => {
+    const onSubmit = vi.fn();
+    const { container } = render(
+      <AiInput value="x" onChange={vi.fn()} onSubmit={onSubmit} disabled />,
+    );
+    const textarea = container.querySelector('textarea')!;
+    fireEvent.keyDown(textarea, { key: 'Enter' });
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it('selects context item from picker and closes @ query', async () => {
+    const onChange = vi.fn();
+    const onContextItemsChange = vi.fn();
+    const { container, getByText, getByTestId, queryByTestId } = render(
+      <AiInput
+        value=""
+        onChange={onChange}
+        onSubmit={vi.fn()}
+        contextItems={[]}
+        onContextItemsChange={onContextItemsChange}
+      />,
+    );
+    const textarea = container.querySelector('textarea')!;
+    Object.defineProperty(textarea, 'selectionStart', {
+      configurable: true,
+      get: () => textarea.value.length,
+    });
+    Object.defineProperty(textarea, 'selectionEnd', {
+      configurable: true,
+      get: () => textarea.value.length,
+    });
+    fireEvent.change(textarea, { target: { value: '@sch' } });
+    await waitFor(() => expect(getByTestId('mock-context-picker')).toBeInTheDocument());
+    fireEvent.click(getByText('pick-dir'));
+    expect(onContextItemsChange).toHaveBeenCalledWith([
+      { kind: 'dir', id: '/tmp', name: 'tmp', path: '/tmp' },
+    ]);
+    expect(queryByTestId('mock-context-picker')).not.toBeInTheDocument();
+  });
+
+  it('renders dir token icon and removes token on Delete at empty input', () => {
+    const onContextItemsChange = vi.fn();
+    const items: ContextItem[] = [{ kind: 'dir', id: '/x', name: 'x', path: '/x' }];
+    const { container } = render(
+      <AiInput
+        value=""
+        onChange={vi.fn()}
+        onSubmit={vi.fn()}
+        contextItems={items}
+        onContextItemsChange={onContextItemsChange}
+      />,
+    );
+    expect(container.querySelector('.lucide-folder')).toBeInTheDocument();
+    const textarea = container.querySelector('textarea')!;
+    Object.defineProperty(textarea, 'selectionStart', { configurable: true, get: () => 0 });
+    Object.defineProperty(textarea, 'selectionEnd', { configurable: true, get: () => 0 });
+    fireEvent.keyDown(textarea, { key: 'Delete' });
+    expect(onContextItemsChange).toHaveBeenCalledWith([]);
+  });
+
+  it('closes picker without selecting', async () => {
+    const { container, getByTestId, getByText, queryByTestId } = render(
+      <AiInput
+        value=""
+        onChange={vi.fn()}
+        onSubmit={vi.fn()}
+        contextItems={[]}
+        onContextItemsChange={vi.fn()}
+      />,
+    );
+    const textarea = container.querySelector('textarea')!;
+    Object.defineProperty(textarea, 'selectionStart', {
+      configurable: true,
+      get: () => textarea.value.length,
+    });
+    fireEvent.change(textarea, { target: { value: '@x' } });
+    await waitFor(() => expect(getByTestId('mock-context-picker')).toBeInTheDocument());
+    fireEvent.click(getByText('close-picker'));
+    expect(queryByTestId('mock-context-picker')).not.toBeInTheDocument();
+  });
+  it('ignores submit keyboard while picker is open', async () => {
+    const onSubmit = vi.fn();
+    const { container, getByTestId } = render(
+      <AiInput
+        value=""
+        onChange={vi.fn()}
+        onSubmit={onSubmit}
+        contextItems={[]}
+        onContextItemsChange={vi.fn()}
+      />,
+    );
+    const textarea = container.querySelector('textarea')!;
+    Object.defineProperty(textarea, 'selectionStart', {
+      configurable: true,
+      get: () => textarea.value.length,
+    });
+    fireEvent.change(textarea, { target: { value: '@' } });
+    await waitFor(() => expect(getByTestId('mock-context-picker')).toBeInTheDocument());
+    fireEvent.keyDown(textarea, { key: 'Enter' });
+    expect(onSubmit).not.toHaveBeenCalled();
   });
 });

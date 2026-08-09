@@ -644,3 +644,207 @@ pub async fn probe(cfg: &ProtocolConfig, model: &str) -> Result<(), AiError> {
     tracing::info!("anthropic: probe success");
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ai::protocol::test_support::{collect_stream, protocol_config_anthropic, sample_request};
+    use datazen_ai_api::AiError;
+    use wiremock::matchers::{header, method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    #[test]
+    fn build_url_appends_messages_path() {
+        assert_eq!(
+            build_url("https://api.anthropic.com"),
+            "https://api.anthropic.com/v1/messages"
+        );
+        assert_eq!(
+            build_url("https://api.anthropic.com/v1/messages"),
+            "https://api.anthropic.com/v1/messages"
+        );
+        assert_eq!(
+            build_url("https://api.anthropic.com/"),
+            "https://api.anthropic.com/v1/messages"
+        );
+    }
+
+    #[test]
+    fn build_messages_splits_system_and_roles() {
+        let messages = vec![
+            ChatMessage {
+                role: MessageRole::System,
+                content: "You are helpful".into(),
+                reasoning: None,
+                tool_calls: None,
+                tool_call_id: None,
+            },
+            ChatMessage {
+                role: MessageRole::User,
+                content: "Hello".into(),
+                reasoning: None,
+                tool_calls: None,
+                tool_call_id: None,
+            },
+            ChatMessage {
+                role: MessageRole::Assistant,
+                content: "Hi there".into(),
+                reasoning: Some("thinking".into()),
+                tool_calls: Some(vec![ToolCall {
+                    id: "tu_1".into(),
+                    name: "lookup".into(),
+                    arguments: r#"{"q":"x"}"#.into(),
+                }]),
+                tool_call_id: None,
+            },
+            ChatMessage {
+                role: MessageRole::Tool,
+                content: "result".into(),
+                reasoning: None,
+                tool_calls: None,
+                tool_call_id: Some("tu_1".into()),
+            },
+        ];
+        let (system, api_messages) = build_messages(&messages);
+        assert_eq!(system.as_deref(), Some("You are helpful"));
+        assert_eq!(api_messages.len(), 3);
+        assert_eq!(api_messages[0]["role"], "user");
+        assert_eq!(api_messages[1]["role"], "assistant");
+        assert!(api_messages[1]["content"].is_array());
+        assert_eq!(api_messages[2]["role"], "user");
+        assert_eq!(api_messages[2]["content"][0]["type"], "tool_result");
+    }
+
+    #[test]
+    fn parse_tool_use_blocks_extracts_calls() {
+        let blocks = vec![
+            ContentBlock {
+                block_type: "text".into(),
+                text: Some("done".into()),
+                id: None,
+                name: None,
+                input: None,
+            },
+            ContentBlock {
+                block_type: "tool_use".into(),
+                text: None,
+                id: Some("id1".into()),
+                name: Some("fn".into()),
+                input: Some(serde_json::json!({"a": 1})),
+            },
+        ];
+        let calls = parse_tool_use_blocks(&blocks).unwrap();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].name, "fn");
+        assert!(calls[0].arguments.contains("\"a\":1"));
+    }
+
+    #[tokio::test]
+    async fn complete_success_parses_text_tools_and_reasoning() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/messages"))
+            .and(header("x-api-key", "test-api-key"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "content": [
+                    {"type": "thinking", "text": "hmm"},
+                    {"type": "text", "text": "Answer"},
+                    {"type": "tool_use", "id": "tu_1", "name": "search", "input": {"q": "x"}}
+                ],
+                "model": "claude-test",
+                "stop_reason": "end_turn",
+                "usage": {"input_tokens": 10, "output_tokens": 5}
+            })))
+            .mount(&server)
+            .await;
+
+        let cfg = protocol_config_anthropic(&server.uri());
+        let resp = complete(&cfg, &sample_request()).await.unwrap();
+        assert_eq!(resp.content, "Answer");
+        assert_eq!(resp.reasoning.as_deref(), Some("hmm"));
+        assert_eq!(resp.finish_reason.as_deref(), Some("tool_calls"));
+        assert!(resp.tool_calls.is_some());
+        assert_eq!(resp.usage.total_tokens, 15);
+    }
+
+    #[tokio::test]
+    async fn complete_maps_http_errors() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/messages"))
+            .respond_with(ResponseTemplate::new(401).set_body_string("unauthorized"))
+            .mount(&server)
+            .await;
+
+        let cfg = protocol_config_anthropic(&server.uri());
+        let err = complete(&cfg, &sample_request()).await.unwrap_err();
+        assert!(matches!(err, AiError::InvalidApiKey));
+    }
+
+    #[tokio::test]
+    async fn stream_complete_emits_text_thinking_tools_and_done() {
+        let server = MockServer::start().await;
+        let sse = concat!(
+            "data: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":12,\"output_tokens\":0}}}\n\n",
+            "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Hel\"}}\n\n",
+            "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"thinking_delta\",\"thinking\":\"think\"}}\n\n",
+            "data: {\"type\":\"content_block_start\",\"index\":1,\"content_block\":{\"type\":\"tool_use\",\"id\":\"tu_1\",\"name\":\"fn\"}}\n\n",
+            "data: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"a\\\":1}\"}}\n\n",
+            "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\"},\"usage\":{\"input_tokens\":12,\"output_tokens\":3}}\n\n",
+            "data: {\"type\":\"message_stop\"}\n\n",
+        );
+        Mock::given(method("POST"))
+            .and(path("/v1/messages"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("content-type", "text/event-stream")
+                    .set_body_string(sse),
+            )
+            .mount(&server)
+            .await;
+
+        let cfg = protocol_config_anthropic(&server.uri());
+        let req = sample_request();
+        let chunks = collect_stream(|tx| stream_complete(&cfg, &req, tx)).await;
+        let ok: Vec<_> = chunks.into_iter().filter_map(Result::ok).collect();
+        assert!(ok.iter().any(|c| c.content == "Hel" && !c.done));
+        assert!(ok.iter().any(|c| c.reasoning.as_deref() == Some("think")));
+        let done = ok.iter().find(|c| c.done).expect("done chunk");
+        assert_eq!(done.usage.as_ref().unwrap().total_tokens, 15);
+        assert_eq!(done.tool_calls.as_ref().unwrap()[0].arguments, r#"{"a":1}"#);
+    }
+
+    #[tokio::test]
+    async fn fetch_models_returns_list() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/v1/models"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "data": [{"id": "claude-sonnet"}]
+            })))
+            .mount(&server)
+            .await;
+
+        let cfg = protocol_config_anthropic(&server.uri());
+        let models = fetch_models(&cfg).await.unwrap();
+        assert_eq!(models.len(), 1);
+        assert_eq!(models[0].id, "claude-sonnet");
+    }
+
+    #[tokio::test]
+    async fn probe_success() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/messages"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "content": [{"type": "text", "text": "."}],
+                "model": "claude-test",
+                "usage": {"input_tokens": 1, "output_tokens": 1}
+            })))
+            .mount(&server)
+            .await;
+
+        let cfg = protocol_config_anthropic(&server.uri());
+        probe(&cfg, "claude-test").await.unwrap();
+    }
+}

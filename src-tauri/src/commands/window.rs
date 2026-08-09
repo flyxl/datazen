@@ -176,3 +176,41 @@ fn focus_existing_window(app: &AppHandle, label: &str, url: &str) -> bool {
     tracing::info!(label = %label, "create_sub_window reused existing");
     true
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn create_window_options_defaults() {
+        let json = r#"{"label":"w1","url":"index.html?window=main"}"#;
+        let opts: CreateWindowOptions = serde_json::from_str(json).unwrap();
+        assert_eq!(opts.label, "w1");
+        assert_eq!(opts.title, "DataZen");
+        assert_eq!(opts.width, 800.0);
+        assert_eq!(opts.height, 640.0);
+        assert!(opts.center);
+        assert!(opts.accept_first_mouse);
+        assert!(opts.transparent.is_none());
+    }
+
+    #[test]
+    fn create_window_options_respects_overrides() {
+        let json = r#"{
+            "label":"w2",
+            "url":"index.html?window=settings",
+            "title":"Settings",
+            "width":1024,
+            "height":768,
+            "center":false,
+            "acceptFirstMouse":false,
+            "transparent":true
+        }"#;
+        let opts: CreateWindowOptions = serde_json::from_str(json).unwrap();
+        assert_eq!(opts.title, "Settings");
+        assert_eq!(opts.width, 1024.0);
+        assert!(!opts.center);
+        assert!(!opts.accept_first_mouse);
+        assert_eq!(opts.transparent, Some(true));
+    }
+}

@@ -40,11 +40,7 @@
     "export-connections": "导出连接",
     "import-connections": "导入连接",
     "view-logs": "查看日志",
-    "ctx-add-favorite": "收藏 SQL",
-    "tray-open-dashboards": "打开看板",
-    "tray-pause-monitoring": "暂停监控",
-    "tray-resume-monitoring": "恢复监控",
-    "tray-quit": "退出"
+    "ctx-add-favorite": "收藏 SQL"
   },
   "en": {
     "app-name": "DataZen",
@@ -87,11 +83,7 @@
     "export-connections": "Export Connections",
     "import-connections": "Import Connections",
     "view-logs": "View Logs",
-    "ctx-add-favorite": "Add to Favorites",
-    "tray-open-dashboards": "Open dashboards",
-    "tray-pause-monitoring": "Pause monitoring",
-    "tray-resume-monitoring": "Resume monitoring",
-    "tray-quit": "Quit"
+    "ctx-add-favorite": "Add to Favorites"
   },
   "zh-TW": {
     "app-name": "DataZen",

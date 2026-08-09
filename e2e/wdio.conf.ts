@@ -40,27 +40,21 @@ export const config: WebdriverIO.Config = {
         .catch((e: unknown) => done(String(e)));
     });
 
-    // Seed a PostgreSQL connection if none exist (required by most test suites)
-    const connCount = await browser.executeAsync((done: (r: number) => void) => {
-      (window as any).__TAURI_INTERNALS__
-        .invoke('get_connections')
-        .then((conns: any[]) => done(conns.length))
-        .catch(() => done(0));
-    });
-
-    if (connCount === 0) {
-      const pgHost = process.env.PG_HOST || '127.0.0.1';
-      const pgUser = process.env.PG_USER || 'postgres';
-      const pgPassword = process.env.PG_PASSWORD || '';
-      const pgDatabase = process.env.PG_DATABASE || 'postgres';
+    // Ensure a PostgreSQL connection with env credentials exists (upsert)
+    {
+      const pgHost = process.env.E2E_PG_HOST || process.env.PG_HOST || '127.0.0.1';
+      const pgPort = Number(process.env.E2E_PG_PORT || process.env.PG_PORT) || 5432;
+      const pgUser = process.env.E2E_PG_USER || process.env.PG_USER || 'postgres';
+      const pgPassword = process.env.E2E_PG_PASSWORD || process.env.PG_PASSWORD || '';
+      const pgDatabase = process.env.E2E_PG_DB || process.env.PG_DATABASE || 'postgres';
       await browser.executeAsync(
-        (host: string, user: string, pw: string, db: string, done: (r: unknown) => void) => {
+        (host: string, port: number, user: string, pw: string, db: string, done: (r: unknown) => void) => {
           const config = {
             id: 'conn_e2e_pg',
             name: '本地 PostgreSQL',
             databaseType: 'postgresql',
             host,
-            port: 5432,
+            port,
             username: user,
             password: pw,
             database: db,
@@ -74,6 +68,7 @@ export const config: WebdriverIO.Config = {
             .catch((e: unknown) => done(String(e)));
         },
         pgHost,
+        pgPort,
         pgUser,
         pgPassword,
         pgDatabase,

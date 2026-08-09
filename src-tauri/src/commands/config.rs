@@ -10,13 +10,14 @@ use std::collections::{BTreeSet, HashSet};
 use std::path::PathBuf;
 use tauri::{AppHandle, State};
 
-#[tauri::command]
-pub async fn get_groups(state: State<'_, AppState>) -> Result<Vec<String>, CommandError> {
+pub(crate) async fn get_groups_impl(state: &AppState) -> Result<Vec<String>, CommandError> {
     Ok(state.store.get_groups().await)
 }
 
-#[tauri::command]
-pub async fn save_groups(state: State<'_, AppState>, groups: Vec<String>) -> Result<(), CommandError> {
+pub(crate) async fn save_groups_impl(
+    state: &AppState,
+    groups: Vec<String>,
+) -> Result<(), CommandError> {
     tracing::info!(count = groups.len(), "save_groups");
     state
         .store
@@ -24,18 +25,15 @@ pub async fn save_groups(state: State<'_, AppState>, groups: Vec<String>) -> Res
         .await
         .cmd_err("save_groups")
 }
-#[tauri::command]
-pub async fn get_settings(state: State<'_, AppState>) -> Result<AppSettings, CommandError> {
+
+pub(crate) async fn get_settings_impl(state: &AppState) -> Result<AppSettings, CommandError> {
     Ok(state.store.get_settings().await)
 }
 
-#[tauri::command]
-pub fn get_system_ui_language() -> String {
-    i18n_locale::default_ui_language()
-}
-
-#[tauri::command]
-pub async fn save_settings(state: State<'_, AppState>, settings: AppSettings) -> Result<(), CommandError> {
+pub(crate) async fn save_settings_impl(
+    state: &AppState,
+    settings: AppSettings,
+) -> Result<(), CommandError> {
     tracing::debug!(theme_mode = %settings.theme.mode, "save_settings");
     state
         .store
@@ -46,10 +44,12 @@ pub async fn save_settings(state: State<'_, AppState>, settings: AppSettings) ->
         .monitor_engine
         .reload_from_store()
         .await
-        .map_err(|e| CommandError::Io(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            e.to_string(),
-        )))
+        .map_err(|e| {
+            CommandError::Io(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                e.to_string(),
+            ))
+        })
         .cmd_err("save_settings")?;
     if let Some(app) = state.monitor_engine.app_handle() {
         crate::tray::sync_tray_async(&app).await;
@@ -57,16 +57,40 @@ pub async fn save_settings(state: State<'_, AppState>, settings: AppSettings) ->
     Ok(())
 }
 
-#[tauri::command]
-pub async fn get_log_path(state: State<'_, AppState>) -> Result<String, CommandError> {
+pub(crate) async fn get_log_path_impl(state: &AppState) -> Result<String, CommandError> {
     let settings = state.store.get_settings().await;
     let data_dir = state.store.data_dir();
-    let log_dir = if settings.log_path.is_empty() {
-        data_dir.join("logs")
-    } else {
-        PathBuf::from(&settings.log_path)
-    };
+    let log_dir = crate::resolve_log_dir(data_dir, &settings.log_path);
     Ok(log_dir.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+pub async fn get_groups(state: State<'_, AppState>) -> Result<Vec<String>, CommandError> {
+    get_groups_impl(&state).await
+}
+
+#[tauri::command]
+pub async fn save_groups(state: State<'_, AppState>, groups: Vec<String>) -> Result<(), CommandError> {
+    save_groups_impl(&state, groups).await
+}
+#[tauri::command]
+pub async fn get_settings(state: State<'_, AppState>) -> Result<AppSettings, CommandError> {
+    get_settings_impl(&state).await
+}
+
+#[tauri::command]
+pub fn get_system_ui_language() -> String {
+    i18n_locale::default_ui_language()
+}
+
+#[tauri::command]
+pub async fn save_settings(state: State<'_, AppState>, settings: AppSettings) -> Result<(), CommandError> {
+    save_settings_impl(&state, settings).await
+}
+
+#[tauri::command]
+pub async fn get_log_path(state: State<'_, AppState>) -> Result<String, CommandError> {
+    get_log_path_impl(&state).await
 }
 
 fn path_is_under(child: &std::path::Path, root: &std::path::Path) -> bool {
@@ -86,11 +110,7 @@ fn require_webdriver_path_ipc(disabled_msg: &'static str) -> Result<(), CommandE
 pub async fn open_log_dir(state: State<'_, AppState>) -> Result<(), CommandError> {
     let settings = state.store.get_settings().await;
     let data_dir = state.store.data_dir();
-    let log_dir = if settings.log_path.is_empty() {
-        data_dir.join("logs")
-    } else {
-        PathBuf::from(&settings.log_path)
-    };
+    let log_dir = crate::resolve_log_dir(data_dir, &settings.log_path);
     std::fs::create_dir_all(&log_dir).map_err(CommandError::from)?;
     open::that(&log_dir).map_err(|e| CommandError::Internal(format!("open_log_dir: {e}")))
 }
@@ -108,19 +128,14 @@ pub async fn open_workflows_dir(state: State<'_, AppState>) -> Result<(), Comman
 pub async fn open_context_dir(state: State<'_, AppState>) -> Result<(), CommandError> {
     let settings = state.store.get_settings().await;
     let data_dir = state.store.data_dir();
-    let context_dir = if settings.context_dir.is_empty() {
-        data_dir.join("contexts")
-    } else {
-        PathBuf::from(&settings.context_dir)
-    };
+    let context_dir = crate::resolve_context_dir(data_dir, &settings.context_dir);
     std::fs::create_dir_all(&context_dir).map_err(CommandError::from)?;
     open::that(&context_dir).map_err(|e| CommandError::Internal(format!("open_context_dir: {e}")))
 }
 
 /// Open a path only if it lies under the app data dir or configured context dir.
 /// Prefer open_log_dir / open_workflows_dir / open_context_dir when possible.
-#[tauri::command]
-pub async fn open_path(state: State<'_, AppState>, path: String) -> Result<(), CommandError> {
+pub(crate) async fn open_path_impl(state: &AppState, path: String) -> Result<(), CommandError> {
     require_webdriver_path_ipc(
         "open_path disabled; use open_log_dir / open_workflows_dir / open_context_dir",
     )?;
@@ -137,16 +152,10 @@ pub async fn open_path(state: State<'_, AppState>, path: String) -> Result<(), C
     let canonical = requested
         .canonicalize()
         .map_err(|e| CommandError::Validation(format!("Cannot resolve path: {e}")))?;
-    let data_canon = data_dir
-        .canonicalize()
-        .unwrap_or(data_dir.clone());
+    let data_canon = data_dir.canonicalize().unwrap_or(data_dir.clone());
 
     let settings = state.store.get_settings().await;
-    let context_root = if settings.context_dir.is_empty() {
-        data_dir.join("contexts")
-    } else {
-        PathBuf::from(&settings.context_dir)
-    };
+    let context_root = crate::resolve_context_dir(&data_dir, &settings.context_dir);
     let context_canon = context_root.canonicalize().ok();
 
     let allowed = path_is_under(&canonical, &data_canon)
@@ -160,6 +169,11 @@ pub async fn open_path(state: State<'_, AppState>, path: String) -> Result<(), C
     }
 
     open::that(&canonical).map_err(|e| CommandError::Internal(format!("open_path: {e}")))
+}
+
+#[tauri::command]
+pub async fn open_path(state: State<'_, AppState>, path: String) -> Result<(), CommandError> {
+    open_path_impl(&state, path).await
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -276,6 +290,59 @@ pub async fn export_connections_with_dialog(
     Ok(Some(count))
 }
 
+fn import_password_option(password: &str) -> Option<&str> {
+    if password.trim().is_empty() {
+        None
+    } else {
+        Some(password)
+    }
+}
+
+fn build_import_preview_json(
+    parsed: &connection_import::ParsedImport,
+) -> serde_json::Value {
+    serde_json::json!({
+        "connections": parsed.connections,
+        "groups": parsed.groups,
+        "skipped": parsed.skipped,
+        "sourceFormat": format_label(parsed.format),
+    })
+}
+
+pub(crate) fn export_options_from_settings(settings: &AppSettings) -> app_data_archive::ExportOptions {
+    app_data_archive::ExportOptions {
+        include_dashboard_runs: settings.monitor.export_include_dashboard_runs,
+    }
+}
+
+pub(crate) async fn apply_connection_import_impl(
+    state: &AppState,
+    incoming: Vec<ConnectionConfig>,
+    incoming_groups: Vec<String>,
+    skipped: Vec<String>,
+    source_format: String,
+) -> Result<ImportConnectionsResult, CommandError> {
+    let existing = state.store.get_connections().await;
+    let existing_ids: HashSet<String> = existing.iter().map(|c| c.id.clone()).collect();
+    let (imported, overwritten) = merge_connection_import_stats(&existing_ids, &incoming);
+
+    for conn in incoming {
+        state.store.save_connection(conn).await?;
+    }
+
+    let existing_groups = state.store.get_groups().await;
+    let (merged_groups, groups_added) = merge_group_lists(&existing_groups, &incoming_groups);
+    state.store.save_groups(merged_groups).await?;
+
+    Ok(ImportConnectionsResult {
+        imported,
+        overwritten,
+        groups_added,
+        skipped,
+        source_format,
+    })
+}
+
 #[tauri::command]
 pub async fn import_connections_preview(
     path: String,
@@ -288,19 +355,9 @@ pub async fn import_connections_preview(
         .await
         .cmd_err("import_connections_preview")?;
 
-    let password_opt = if password.trim().is_empty() {
-        None
-    } else {
-        Some(password.as_str())
-    };
-    let parsed = parse_import_file(&source, &bytes, password_opt)?;
+    let parsed = parse_import_file(&source, &bytes, import_password_option(&password))?;
 
-    Ok(serde_json::json!({
-        "connections": parsed.connections,
-        "groups": parsed.groups,
-        "skipped": parsed.skipped,
-        "sourceFormat": format_label(parsed.format),
-    }))
+    Ok(build_import_preview_json(&parsed))
 }
 
 /// Native open dialog + decrypt/merge import. Returns stats if imported, `None` if cancelled.
@@ -337,44 +394,30 @@ pub async fn import_connections_with_dialog(
         .await
         .cmd_err("import_connections_with_dialog")?;
 
-    let password_opt = if password.trim().is_empty() {
-        None
-    } else {
-        Some(password.as_str())
-    };
-    let parsed = parse_import_file(&source, &bytes, password_opt)?;
+    let parsed = parse_import_file(&source, &bytes, import_password_option(&password))?;
     let incoming = parsed.connections;
     let incoming_groups = parsed.groups;
     let skipped = parsed.skipped;
     let source_format = format_label(parsed.format).to_string();
 
-    let existing = state.store.get_connections().await;
-    let existing_ids: HashSet<String> = existing.iter().map(|c| c.id.clone()).collect();
-    let (imported, overwritten) = merge_connection_import_stats(&existing_ids, &incoming);
-
-    for conn in incoming {
-        state.store.save_connection(conn).await?;
-    }
-
-    let existing_groups = state.store.get_groups().await;
-    let (merged_groups, groups_added) = merge_group_lists(&existing_groups, &incoming_groups);
-    state.store.save_groups(merged_groups).await?;
+    let result = apply_connection_import_impl(
+        &state,
+        incoming,
+        incoming_groups,
+        skipped,
+        source_format.clone(),
+    )
+    .await?;
 
     tracing::info!(
-        imported,
-        overwritten,
-        groups_added,
-        skipped = skipped.len(),
+        imported = result.imported,
+        overwritten = result.overwritten,
+        groups_added = result.groups_added,
+        skipped = result.skipped.len(),
         %source_format,
         "import_connections_with_dialog OK"
     );
-    Ok(Some(ImportConnectionsResult {
-        imported,
-        overwritten,
-        groups_added,
-        skipped,
-        source_format,
-    }))
+    Ok(Some(result))
 }
 
 #[tauri::command]
@@ -383,9 +426,7 @@ pub async fn export_app_data(state: State<'_, AppState>, path: String) -> Result
     tracing::info!(%path, "export_app_data");
     let data_dir = state.store.data_dir().clone();
     let settings = state.store.get_settings().await;
-    let options = app_data_archive::ExportOptions {
-        include_dashboard_runs: settings.monitor.export_include_dashboard_runs,
-    };
+    let options = export_options_from_settings(&settings);
     let dest = PathBuf::from(path);
     tokio::task::spawn_blocking(move || {
         app_data_archive::export_app_data_with_options(&data_dir, &dest, options)
@@ -421,9 +462,7 @@ pub async fn export_app_data_with_dialog(
         .map_err(|e| CommandError::Validation(format!("Invalid dialog path: {e}")))?;
     let data_dir = state.store.data_dir().clone();
     let settings = state.store.get_settings().await;
-    let options = app_data_archive::ExportOptions {
-        include_dashboard_runs: settings.monitor.export_include_dashboard_runs,
-    };
+    let options = export_options_from_settings(&settings);
     tokio::task::spawn_blocking(move || {
         app_data_archive::export_app_data_with_options(&data_dir, &dest, options)
     })
@@ -651,5 +690,189 @@ mod tests {
         std::fs::write(&path, &bytes).unwrap();
         let read_back = std::fs::read_to_string(&path).unwrap();
         assert_eq!(read_back, "dGVzdGtleQ==");
+    }
+
+    #[test]
+    fn build_encrypted_connections_export_roundtrip() {
+        use crate::db::{ConnectionConfig, SslMode};
+
+        let conn = ConnectionConfig {
+            id: "c1".into(),
+            name: "Demo".into(),
+            database_type: "postgresql".into(),
+            host: Some("localhost".into()),
+            port: Some(5432),
+            database: Some("app".into()),
+            schema: None,
+            username: Some("alice".into()),
+            password: Some("pw".into()),
+            ssl_mode: SslMode::default(),
+            connection_timeout: 30,
+            ssh_tunnel: None,
+            color_tag: None,
+            group: Some("Prod".into()),
+            last_connected_at: None,
+            server_version: None,
+            options: None,
+        };
+        let json = build_encrypted_connections_export(&[conn], &["Prod".into()], "share-secret")
+            .unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed["encrypted"], true);
+        assert!(parsed["connections"].is_array());
+        assert!(parsed["groups"].is_array());
+    }
+
+    #[tokio::test]
+    async fn config_store_commands_via_impl() {
+        use crate::store::AppSettings;
+        use crate::testing::app_state::TestAppState;
+
+        let test = TestAppState::new().await;
+        save_groups_impl(&test.state, vec!["alpha".into(), "beta".into()])
+            .await
+            .unwrap();
+        assert_eq!(
+            get_groups_impl(&test.state).await.unwrap(),
+            vec!["alpha", "beta"]
+        );
+
+        let mut settings = AppSettings::default();
+        settings.language = "zh-CN".into();
+        save_settings_impl(&test.state, settings.clone())
+            .await
+            .unwrap();
+        assert_eq!(get_settings_impl(&test.state).await.unwrap().language, "zh-CN");
+
+        let log_path = get_log_path_impl(&test.state).await.unwrap();
+        assert!(log_path.contains("logs"));
+    }
+
+    #[tokio::test]
+    async fn open_path_validation_without_webdriver() {
+        use crate::testing::app_state::TestAppState;
+
+        let test = TestAppState::new().await;
+        if cfg!(feature = "webdriver") {
+            return;
+        }
+        let err = open_path_impl(&test.state, "../etc/passwd".into())
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("disabled") || err.to_string().contains("traversal"));
+    }
+
+    #[test]
+    fn import_password_option_treats_blank_as_none() {
+        assert_eq!(import_password_option(""), None);
+        assert_eq!(import_password_option("   "), None);
+        assert_eq!(import_password_option("secret"), Some("secret"));
+    }
+
+    #[test]
+    fn build_import_preview_json_includes_source_format() {
+        use crate::commands::connection_import::{ImportFormat, ParsedImport};
+
+        let preview = build_import_preview_json(&ParsedImport {
+            connections: vec![],
+            groups: vec!["Prod".into()],
+            skipped: vec!["bad".into()],
+            format: ImportFormat::DataZen,
+        });
+        assert_eq!(preview["groups"], serde_json::json!(["Prod"]));
+        assert_eq!(preview["skipped"], serde_json::json!(["bad"]));
+        assert_eq!(preview["sourceFormat"], "DataZen");
+    }
+
+    #[tokio::test]
+    async fn apply_connection_import_impl_merges_connections_and_groups() {
+        use crate::db::{ConnectionConfig, SslMode};
+        use crate::testing::app_state::TestAppState;
+
+        fn conn(id: &str, group: Option<&str>) -> ConnectionConfig {
+            ConnectionConfig {
+                id: id.into(),
+                name: id.into(),
+                database_type: "postgresql".into(),
+                host: None,
+                port: None,
+                database: None,
+                schema: None,
+                username: None,
+                password: None,
+                ssl_mode: SslMode::default(),
+                connection_timeout: 30,
+                ssh_tunnel: None,
+                color_tag: None,
+                group: group.map(str::to_string),
+                last_connected_at: None,
+                server_version: None,
+                options: None,
+            }
+        }
+
+        let test = TestAppState::new().await;
+        test.store.save_connection(conn("existing", Some("Alpha"))).await.unwrap();
+        test.store.save_groups(vec!["Alpha".into()]).await.unwrap();
+
+        let result = apply_connection_import_impl(
+            &test.state,
+            vec![conn("existing", Some("Beta")), conn("new-one", Some("Beta"))],
+            vec!["Beta".into(), "Gamma".into()],
+            vec!["skipped-row".into()],
+            "DataZen".into(),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(result.imported, 1);
+        assert_eq!(result.overwritten, 1);
+        // "Beta" may already be present from connection save before group merge.
+        assert!(result.groups_added >= 1);
+        assert_eq!(result.skipped, vec!["skipped-row"]);
+        assert_eq!(result.source_format, "DataZen");
+
+        let groups = get_groups_impl(&test.state).await.unwrap();
+        assert!(groups.contains(&"Alpha".into()));
+        assert!(groups.contains(&"Beta".into()));
+        assert!(groups.contains(&"Gamma".into()));
+        assert_eq!(test.store.get_connections().await.len(), 2);
+    }
+
+    #[test]
+    fn export_options_from_settings_reflects_monitor_flag() {
+        use crate::store::AppSettings;
+
+        let mut settings = AppSettings::default();
+        settings.monitor.export_include_dashboard_runs = false;
+        assert!(!export_options_from_settings(&settings).include_dashboard_runs);
+        settings.monitor.export_include_dashboard_runs = true;
+        assert!(export_options_from_settings(&settings).include_dashboard_runs);
+    }
+
+    #[test]
+    fn resolve_log_and_context_dirs_via_crate_helpers() {
+        let data = Path::new("/data/app");
+        assert_eq!(
+            crate::resolve_log_dir(data, ""),
+            Path::new("/data/app/logs")
+        );
+        assert_eq!(
+            crate::resolve_context_dir(data, "/ctx"),
+            Path::new("/ctx")
+        );
+    }
+
+    #[tokio::test]
+    async fn get_log_path_honors_custom_log_path_setting() {
+        use crate::store::AppSettings;
+        use crate::testing::app_state::TestAppState;
+
+        let test = TestAppState::new().await;
+        let mut settings = AppSettings::default();
+        settings.log_path = test._temp.path().join("custom-logs").to_string_lossy().into();
+        save_settings_impl(&test.state, settings).await.unwrap();
+        let log_path = get_log_path_impl(&test.state).await.unwrap();
+        assert!(log_path.contains("custom-logs"));
     }
 }

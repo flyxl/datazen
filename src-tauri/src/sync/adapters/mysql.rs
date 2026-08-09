@@ -264,4 +264,49 @@ mod tests {
             "0"
         );
     }
+
+    #[test]
+    fn mysql_mediumint_set_varbinary_bit() {
+        let ir = adapter().column_to_ir(&col("n", "mediumint"), None);
+        assert_eq!(ir.ir_type, IRType::Int32);
+        let ir = adapter().column_to_ir(&col("s", "set('a','b')"), None);
+        assert_eq!(ir.ir_type, IRType::Text);
+        let ir = adapter().column_to_ir(&col("b", "varbinary(255)"), None);
+        assert_eq!(ir.ir_type, IRType::Binary { length: Some(255) });
+        let ir = adapter().column_to_ir(&col("f", "bit(8)"), None);
+        assert_eq!(ir.ir_type, IRType::Bit { length: 8 });
+    }
+
+    #[test]
+    fn mysql_default_and_other_type() {
+        let mut c = col("ts", "timestamp");
+        c.default_value = Some("current_timestamp()".into());
+        let ir = adapter().column_to_ir(&c, None);
+        assert_eq!(ir.default_expr, Some(IRDefault::CurrentTimestamp));
+
+        let ir = adapter().column_to_ir(&col("x", "geometry"), None);
+        assert_eq!(ir.ir_type, IRType::Other("geometry".into()));
+    }
+
+    #[test]
+    fn mysql_target_and_format_helpers() {
+        let a = adapter();
+        assert_eq!(a.ir_type_to_native(&IRType::Int8), "TINYINT");
+        assert_eq!(a.ir_type_to_native(&IRType::Decimal { precision: 0, scale: 0 }), "DECIMAL(65,30)");
+        assert_eq!(a.ir_type_to_native(&IRType::Varchar { length: None }), "VARCHAR(255)");
+        assert_eq!(a.ir_type_to_native(&IRType::Binary { length: Some(16) }), "VARBINARY(16)");
+        assert_eq!(a.ir_type_to_native(&IRType::Bit { length: 4 }), "BIT(4)");
+        assert_eq!(
+            a.format_default(&IRDefault::Literal("0".into())),
+            Some("0".into())
+        );
+        assert!(a.format_default(&IRDefault::RawExpression("x".into())).is_none());
+        assert_eq!(a.quote_char(), '`');
+        assert_eq!(a.auto_increment_keyword(), Some("AUTO_INCREMENT"));
+        assert_eq!(a.format_literal(&None, &IRType::Int32), "NULL");
+        assert_eq!(
+            a.format_literal(&Some(Value::Bytes(vec![0xFF])), &IRType::Blob),
+            "X'ff'"
+        );
+    }
 }
