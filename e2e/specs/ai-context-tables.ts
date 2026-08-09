@@ -266,21 +266,36 @@ describe('AI context tables (CTX-T01~T06)', () => {
     await expect($('[data-testid="context-cat-tables"]')).toBeExisting();
   });
 
-  it('CTX-T03: filter narrows items', async () => {
+  it('CTX-T03: nested Tables filter narrows by keyboard', async () => {
     const textarea = await aiChatTextarea();
     await textarea.click();
-    await textarea.setValue('@users');
+    await textarea.setValue('@');
     await waitForPicker();
 
-    const items = await $$('[data-testid="context-item"]');
+    // @ only opens categories (no cross-list dump at root).
+    await expect($('[data-testid="context-cat-tables"]')).toBeExisting();
+    await $('[data-testid="context-cat-tables"]').click();
+    await expect($('[data-testid="context-picker-back"]')).toBeExisting();
+
+    const before = await $$('[data-testid="context-item"][data-kind="table"]');
+    expect(before.length).toBeGreaterThan(1);
+
+    // Same single @: query text filters after drill-in (no second @).
+    // Re-open with @users then enter Tables — nested list is filtered.
+    await textarea.setValue('@users');
+    await waitForPicker();
+    await expect($('[data-testid="context-cat-tables"]')).toBeExisting();
+    await $('[data-testid="context-cat-tables"]').click();
+    await expect($('[data-testid="context-picker-back"]')).toBeExisting();
+
+    const items = await $$('[data-testid="context-item"][data-kind="table"]');
     expect(items.length).toBeGreaterThan(0);
-    expect(items.length).toBeLessThan(6);
+    expect(items.length).toBeLessThan(before.length);
 
     let hasUsersTable = false;
     for (const item of items) {
-      const kind = await item.getAttribute('data-kind');
       const id = await item.getAttribute('data-id');
-      if (kind === 'table' && id?.includes('users')) {
+      if (id?.includes('users')) {
         hasUsersTable = true;
       }
     }

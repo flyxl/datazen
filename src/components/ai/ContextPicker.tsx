@@ -97,14 +97,19 @@ export function ContextPicker({
   const [activeIndex, setActiveIndex] = useState(0);
   const listRef = useRef<HTMLDivElement>(null);
 
-  const isRootFiltering = view === 'root' && query.length > 0;
+  // `@` only opens the picker at root (categories). Typing after `@` filters
+  // once the user drills into Tables/Files — no second `@` for nested levels.
   const showTablesCategory = Boolean(connectionId);
-  const needsTables = (isRootFiltering || view === 'tables') && showTablesCategory;
-  const needsFiles = isRootFiltering || view === 'files';
+  const needsTables = view === 'tables' && showTablesCategory;
+  const needsFiles = view === 'files';
 
   useEffect(() => {
     setRecent(loadRecent());
   }, [view]);
+
+  useEffect(() => {
+    setActiveIndex(0);
+  }, [query, view]);
 
   useEffect(() => {
     if (!needsTables) return;
@@ -156,14 +161,6 @@ export function ContextPicker({
   }, [needsFiles]);
 
   const rows: Row[] = useMemo(() => {
-    if (isRootFiltering) {
-      const filtered = [
-        ...(showTablesCategory ? tables.filter((item) => matchesQuery(item, query)) : []),
-        ...files.filter((item) => matchesQuery(item, query)),
-      ];
-      return filtered.map((item) => ({ type: 'item' as const, item }));
-    }
-
     if (view === 'tables') {
       const list = query
         ? tables.filter((item) => matchesQuery(item, query))
@@ -178,19 +175,23 @@ export function ContextPicker({
       return list.map((item) => ({ type: 'item' as const, item }));
     }
 
+    // Root: categories + recent (optionally narrowed by the same @query).
     const result: Row[] = [];
     if (showTablesCategory) {
       result.push({ type: 'category', id: 'tables', label: t('context.tables') });
     }
     result.push({ type: 'category', id: 'files', label: t('context.files') });
-    if (recent.length > 0) {
+    const recentRows = query
+      ? recent.filter((item) => matchesQuery(item, query))
+      : recent;
+    if (recentRows.length > 0) {
       result.push({ type: 'section', label: t('context.recent') });
-      for (const item of recent) {
+      for (const item of recentRows) {
         result.push({ type: 'item', item });
       }
     }
     return result;
-  }, [isRootFiltering, view, showTablesCategory, tables, files, recent, query, t]);
+  }, [view, showTablesCategory, tables, files, recent, query, t]);
 
   useEffect(() => {
     setActiveIndex((prev) => Math.min(prev, Math.max(rows.length - 1, 0)));
@@ -271,8 +272,7 @@ export function ContextPicker({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [onClose, anchorRef]);
 
-  const loading =
-    (needsTables && loadingTables) || (needsFiles && loadingFiles);
+  const loading = (needsTables && loadingTables) || (needsFiles && loadingFiles);
 
   return (
     <div

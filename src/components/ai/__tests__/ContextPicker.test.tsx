@@ -121,27 +121,25 @@ describe('ContextPicker', () => {
     expect(items[1]).toHaveAttribute('data-id', 'orders');
   });
 
-  it('filters across categories when query set at root', async () => {
+  it('keeps root categories when query is set (@ only opens picker)', async () => {
     mockGetTables.mockResolvedValue(sampleTables);
     mockListFiles.mockResolvedValue(sampleFiles);
 
-    const { queryAllByTestId } = renderPicker('users', vi.fn(), vi.fn(), {
+    const { getByTestId, queryAllByTestId } = renderPicker('users', vi.fn(), vi.fn(), {
       connectionId: 'conn-1',
       database: 'mydb',
     });
 
     await waitFor(() => {
-      const items = queryAllByTestId('context-item');
-      expect(items).toHaveLength(2);
-      expect(items.some((el) => el.getAttribute('data-kind') === 'table')).toBe(true);
-      expect(items.some((el) => el.getAttribute('data-kind') === 'file')).toBe(true);
+      expect(getByTestId('context-cat-tables')).toBeInTheDocument();
+      expect(getByTestId('context-cat-files')).toBeInTheDocument();
     });
-
-    expect(mockGetTables).toHaveBeenCalledWith('conn-1', 'mydb');
-    expect(mockListFiles).toHaveBeenCalledWith(undefined);
+    // Root does not fetch/list all tables for cross-filter — drill-in does.
+    expect(mockGetTables).not.toHaveBeenCalled();
+    expect(queryAllByTestId('context-item')).toHaveLength(0);
   });
 
-  it('filters nested Tables list by query without leaving drill-in', async () => {
+  it('filters nested Tables list by keyboard query without leaving drill-in', async () => {
     mockGetTables.mockResolvedValue(sampleTables);
     const anchorRef = { current: document.createElement('div') };
 
