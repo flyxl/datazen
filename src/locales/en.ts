@@ -717,6 +717,15 @@ const en: Record<TranslationKey, string> = {
   'structEditor.addColumn': 'Add Column',
   'structEditor.deleteColumn': 'Delete Column',
   'structEditor.sqlPreview': 'SQL Preview',
+  'structEditor.capDisabled': 'Not supported by this database or version',
+  'structEditor.notSupported': 'Table structure editing is not available for this connection type',
+  'structEditor.indexes': 'Indexes',
+  'structEditor.addIndex': 'Add Index',
+  'structEditor.deleteIndex': 'Delete Index',
+  'structEditor.noIndexes': 'No indexes in draft',
+  'structEditor.noChanges': 'No changes to apply',
+  'structEditor.previewFailed': 'Failed to generate SQL preview',
+  'structEditor.executePartial': '{executed}/{total} statements succeeded; stopped: {error}',
 
   // ── Indexes View ──
   'indexes.newIndex': 'New Index',

@@ -714,6 +714,15 @@ const zhCN = {
   'structEditor.addColumn': '添加列',
   'structEditor.deleteColumn': '删除列',
   'structEditor.sqlPreview': 'SQL 预览',
+  'structEditor.capDisabled': '当前数据库或版本不支持此操作',
+  'structEditor.notSupported': '此连接类型不支持表结构编辑',
+  'structEditor.indexes': '索引',
+  'structEditor.addIndex': '添加索引',
+  'structEditor.deleteIndex': '删除索引',
+  'structEditor.noIndexes': '草稿中暂无索引',
+  'structEditor.noChanges': '没有可应用的更改',
+  'structEditor.previewFailed': '生成 SQL 预览失败',
+  'structEditor.executePartial': '已执行 {executed}/{total} 条语句后停止：{error}',
 
   // ── Indexes View ──
   'indexes.newIndex': '新建索引',
