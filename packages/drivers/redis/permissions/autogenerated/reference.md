@@ -32,6 +32,9 @@ Default permissions for the redis plugin (mutate + batch ops)
 - `allow-pubsub-subscribe`
 - `allow-pubsub-unsubscribe`
 - `allow-pubsub-publish`
+- `allow-json-get`
+- `allow-json-set`
+- `allow-json-del`
 
 ## Permission Table
 
@@ -168,6 +171,32 @@ Enables the delete_keys command without any pre-configured scope.
 <td>
 
 Denies the delete_keys command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`datazen-driver-redis:allow-dump-keys`
+
+</td>
+<td>
+
+Enables the dump_keys command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`datazen-driver-redis:deny-dump-keys`
+
+</td>
+<td>
+
+Denies the dump_keys command without any pre-configured scope.
 
 </td>
 </tr>
@@ -324,6 +353,84 @@ Enables the info command without any pre-configured scope.
 <td>
 
 Denies the info command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`datazen-driver-redis:allow-json-del`
+
+</td>
+<td>
+
+Enables the json_del command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`datazen-driver-redis:deny-json-del`
+
+</td>
+<td>
+
+Denies the json_del command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`datazen-driver-redis:allow-json-get`
+
+</td>
+<td>
+
+Enables the json_get command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`datazen-driver-redis:deny-json-get`
+
+</td>
+<td>
+
+Denies the json_get command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`datazen-driver-redis:allow-json-set`
+
+</td>
+<td>
+
+Enables the json_set command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`datazen-driver-redis:deny-json-set`
+
+</td>
+<td>
+
+Denies the json_set command without any pre-configured scope.
 
 </td>
 </tr>
@@ -565,6 +672,32 @@ Denies the rename command without any pre-configured scope.
 <tr>
 <td>
 
+`datazen-driver-redis:allow-restore-keys`
+
+</td>
+<td>
+
+Enables the restore_keys command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`datazen-driver-redis:deny-restore-keys`
+
+</td>
+<td>
+
+Denies the restore_keys command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
 `datazen-driver-redis:allow-set-add`
 
 </td>
@@ -714,6 +847,214 @@ Enables the slowlog_reset command without any pre-configured scope.
 <td>
 
 Denies the slowlog_reset command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`datazen-driver-redis:allow-stream-overview`
+
+</td>
+<td>
+
+Enables the stream_overview command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`datazen-driver-redis:deny-stream-overview`
+
+</td>
+<td>
+
+Denies the stream_overview command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`datazen-driver-redis:allow-xack`
+
+</td>
+<td>
+
+Enables the xack command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`datazen-driver-redis:deny-xack`
+
+</td>
+<td>
+
+Denies the xack command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`datazen-driver-redis:allow-xadd`
+
+</td>
+<td>
+
+Enables the xadd command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`datazen-driver-redis:deny-xadd`
+
+</td>
+<td>
+
+Denies the xadd command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`datazen-driver-redis:allow-xgroup-create`
+
+</td>
+<td>
+
+Enables the xgroup_create command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`datazen-driver-redis:deny-xgroup-create`
+
+</td>
+<td>
+
+Denies the xgroup_create command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`datazen-driver-redis:allow-xgroup-destroy`
+
+</td>
+<td>
+
+Enables the xgroup_destroy command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`datazen-driver-redis:deny-xgroup-destroy`
+
+</td>
+<td>
+
+Denies the xgroup_destroy command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`datazen-driver-redis:allow-xinfo-groups`
+
+</td>
+<td>
+
+Enables the xinfo_groups command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`datazen-driver-redis:deny-xinfo-groups`
+
+</td>
+<td>
+
+Denies the xinfo_groups command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`datazen-driver-redis:allow-xpending`
+
+</td>
+<td>
+
+Enables the xpending command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`datazen-driver-redis:deny-xpending`
+
+</td>
+<td>
+
+Denies the xpending command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`datazen-driver-redis:allow-xrange`
+
+</td>
+<td>
+
+Enables the xrange command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`datazen-driver-redis:deny-xrange`
+
+</td>
+<td>
+
+Denies the xrange command without any pre-configured scope.
 
 </td>
 </tr>

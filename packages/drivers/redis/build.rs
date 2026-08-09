@@ -28,6 +28,9 @@ fn main() {
         "pubsub_subscribe",
         "pubsub_unsubscribe",
         "pubsub_publish",
+        "json_get",
+        "json_set",
+        "json_del",
     ])
     .build();
 }
