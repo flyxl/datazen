@@ -1,9 +1,6 @@
 //! One-shot widget SQL execution for dashboard monitor runs.
 //!
-//! Uses a dedicated `ConnectionManager::connect` handle — never `get_or_connect` —
-//! so UI session pools are not stolen. Task 7 will introduce a `monitor:{config_id}`
-//! registry to reuse monitor handles across scheduled refreshes; Task 8 may refine
-//! disconnect/lifecycle policy.
+//! Uses [`MonitorConnectionRegistry`] — never UI session pools via `get_or_connect`.
 
 use std::path::Path;
 
@@ -14,7 +11,7 @@ use crate::dashboard::runs::{write_run, MAX_RUN_ROWS};
 use crate::dashboard::store::load_monitor_settings;
 use crate::dashboard::types::{DashboardWidget, WidgetRun, WidgetRunStatus};
 use crate::db::{StatementResult, Value};
-use crate::services::ConnectionManager;
+use crate::monitor::MonitorConnectionRegistry;
 use crate::store::AppSettings;
 
 #[derive(Debug, thiserror::Error)]
@@ -104,9 +101,9 @@ fn statement_to_run_fields(stmt: &StatementResult) -> (Vec<String>, Vec<Vec<serd
     (columns, rows, row_count)
 }
 
-/// Execute a widget query once using a dedicated monitor connection handle.
+/// Execute a widget query once using the monitor connection registry.
 pub async fn execute_widget_once(
-    connection_manager: &ConnectionManager,
+    monitor_connections: &MonitorConnectionRegistry,
     data_dir: &Path,
     settings: &AppSettings,
     dashboard_id: &str,
@@ -115,25 +112,9 @@ pub async fn execute_widget_once(
     let started_at = Utc::now();
     let run_id = Uuid::new_v4().to_string();
 
-    // Dedicated handle — do not reuse UI sessions via get_or_connect.
-    let connection_id = match connection_manager.connect(&widget.config_id).await {
-        Ok(id) => id,
-        Err(err) => {
-            return persist_error_run(
-                data_dir,
-                settings,
-                dashboard_id,
-                widget,
-                &run_id,
-                started_at,
-                Utc::now(),
-                &err.to_string(),
-            );
-        }
-    };
     let query_result = async {
-        let (driver, handle) = connection_manager
-            .get_connection(&connection_id)
+        let (driver, handle) = monitor_connections
+            .get_or_connect_monitor(&widget.config_id)
             .await
             .map_err(DashboardExecuteError::Connection)?;
 
@@ -144,14 +125,6 @@ pub async fn execute_widget_once(
             .map_err(DashboardExecuteError::Driver)
     }
     .await;
-
-    if let Err(err) = connection_manager.disconnect(&connection_id).await {
-        tracing::warn!(
-            connection_id = %connection_id,
-            error = %err,
-            "failed to disconnect monitor connection"
-        );
-    }
 
     let finished_at = Utc::now();
 
