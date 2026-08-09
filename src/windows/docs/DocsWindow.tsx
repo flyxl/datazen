@@ -15,6 +15,7 @@ const VALID_IDS = new Set<DocsSectionId>([
   'context',
   'workflows',
   'opsDashboard',
+  'schemaDiff',
 ]);
 
 export function DocsWindow() {

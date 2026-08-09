@@ -225,6 +225,7 @@ impl MonitorConnectionRegistry {
                     group: None,
                     last_connected_at: None,
                     server_version: None,
+                    options: None,
                 },
                 last_used: Instant::now(),
                 _tunnel: None,

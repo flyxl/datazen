@@ -9,6 +9,7 @@ use tokio::sync::{Mutex, RwLock};
 use super::anthropic::AnthropicProvider;
 use super::custom::CustomProvider;
 use super::deepseek::DeepSeekProvider;
+use super::ollama::OllamaProvider;
 use super::openai::OpenAiProvider;
 use crate::store::Store;
 
@@ -178,6 +179,9 @@ pub async fn register_ai_providers(registry: &AiProviderRegistry) {
         .await;
     registry
         .register(Arc::new(DeepSeekProvider::new()))
+        .await;
+    registry
+        .register(Arc::new(OllamaProvider::new()))
         .await;
     registry
         .register(Arc::new(CustomProvider::new()))

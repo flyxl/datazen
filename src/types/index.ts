@@ -186,9 +186,13 @@ export interface AppSettings {
   mcpServerEnabled: boolean;
   mcpDisabledTools: string[];
   mcpPermissionMode: McpPermissionMode;
+  /** Persistent connection IDs exposed to MCP. Empty = all connections. */
+  mcpAllowedConnectionIds: string[];
   contextDir: string;
   /** Check GitHub for app updates on startup (Basic builds only). Default false. */
   checkForUpdatesOnStartup: boolean;
+  /** Switch to chart view after query when the result is chartable. Default true. */
+  autoChartOnQuery: boolean;
   /** Dashboard monitor / tray / retention settings. */
   monitor: MonitorSettings;
   /** Opaque per-plugin settings keyed by plugin id (e.g. `"redis"`). */
@@ -252,7 +256,7 @@ export interface TableDataResult {
 
 // ── AI Types ──
 
-export type AiProviderType = 'open_ai' | 'deep_seek' | 'custom';
+export type AiProviderType = 'open_ai' | 'deep_seek' | 'ollama' | 'custom';
 
 export interface AiProviderConfig {
   providerType: AiProviderType;
@@ -518,7 +522,13 @@ export interface ChangedColumnDiff {
 
 export interface TableSchemaDiff {
   table: string;
+  /** Present on source, missing on target → ADD on deploy. */
+  missingOnTarget?: ColumnDiffEntry[];
+  /** Present on target only → DROP on deploy. */
+  extraOnTarget?: ColumnDiffEntry[];
+  /** Alias of missingOnTarget (legacy). */
   added: ColumnDiffEntry[];
+  /** Alias of extraOnTarget (legacy). */
   removed: ColumnDiffEntry[];
   changed: ChangedColumnDiff[];
   sourceDdl?: string;
