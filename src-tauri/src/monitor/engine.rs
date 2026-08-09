@@ -12,7 +12,7 @@ use tokio_util::sync::CancellationToken;
 use crate::dashboard::execute::{execute_widget_once, DashboardExecuteError};
 use crate::dashboard::store::{list_dashboards, load_monitor_settings};
 use crate::dashboard::types::{clamp_refresh_sec, Dashboard, DashboardWidget, WidgetRun};
-use crate::monitor::channels::AlertChannelState;
+use crate::monitor::channels::{dispatch_notifications, AlertChannelState};
 use crate::monitor::MonitorConnectionRegistry;
 use crate::store::Store;
 
@@ -226,17 +226,18 @@ impl MonitorEngine {
             .unwrap_or_else(|| dashboard_id.to_string());
         let monitor_settings = load_monitor_settings(settings);
         let app = self.app_handle.lock().expect("monitor app_handle lock").clone();
-        let mut channels = self.alert_channels.lock().await;
-        channels
-            .process_run(
-                app.as_ref(),
-                &monitor_settings,
+        let (notifications, client) = {
+            let mut channels = self.alert_channels.lock().await;
+            let notifications = channels.process_run_state(
                 dashboard_id,
                 &dashboard_name,
                 widget,
                 run,
-            )
-            .await;
+            );
+            let client = channels.http_client().clone();
+            (notifications, client)
+        };
+        dispatch_notifications(app.as_ref(), &monitor_settings, &client, &notifications).await;
     }
 
     fn emit_run_updated(&self, dashboard_id: &str, widget_id: &str, run: &WidgetRun) {
