@@ -1,10 +1,11 @@
 //! Dashboard IPC: CRUD, widget run history, and manual widget execution.
 
-use tauri::State;
+use tauri::{AppHandle, State};
 
 use super::error::{CmdExt, CommandError};
 use super::AppState;
 use crate::dashboard::execute::execute_widget_once;
+use crate::dashboard::export::{export_dashboard_json, import_dashboard, DashboardExportError};
 use crate::dashboard::runs::{get_run, list_run_index, DashboardRunsError, RunIndexEntry};
 use crate::dashboard::store::{
     delete_dashboard as store_delete_dashboard, get_dashboard as store_get_dashboard,
@@ -34,6 +35,14 @@ fn map_execute_error(err: crate::dashboard::execute::DashboardExecuteError) -> C
         crate::dashboard::execute::DashboardExecuteError::Connection(e) => CommandError::Connection(e),
         crate::dashboard::execute::DashboardExecuteError::Driver(e) => CommandError::Driver(e),
         crate::dashboard::execute::DashboardExecuteError::Runs(e) => map_runs_error(e),
+    }
+}
+
+fn map_export_error(err: DashboardExportError) -> CommandError {
+    match err {
+        DashboardExportError::Validation(msg) => CommandError::Validation(msg),
+        DashboardExportError::Io(e) => CommandError::Io(e),
+        DashboardExportError::Store(e) => map_store_error(e),
     }
 }
 
@@ -138,6 +147,75 @@ pub async fn run_dashboard_widget(
     .await
     .map_err(map_execute_error)
     .cmd_err("run_dashboard_widget")
+}
+
+/// Native save dialog + single-file dashboard JSON export.
+/// Returns `true` if exported, `false` if cancelled.
+#[tauri::command]
+pub async fn export_dashboard_with_dialog(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    dashboard_id: String,
+    default_file_name: String,
+) -> Result<bool, CommandError> {
+    use tauri_plugin_dialog::DialogExt;
+
+    let data_dir = state.store.data_dir();
+    let dashboard = store_get_dashboard(data_dir, &dashboard_id).map_err(map_store_error)?;
+
+    let picked = app
+        .dialog()
+        .file()
+        .add_filter("DataZen Dashboard", &["json"])
+        .set_file_name(&default_file_name)
+        .blocking_save_file();
+    let Some(fp) = picked else {
+        return Ok(false);
+    };
+    let dest = fp
+        .into_path()
+        .map_err(|e| CommandError::Validation(format!("Invalid dialog path: {e}")))?;
+
+    let json = export_dashboard_json(&dashboard).map_err(map_export_error)?;
+    tokio::fs::write(&dest, json.as_bytes())
+        .await
+        .cmd_err("export_dashboard_with_dialog")?;
+    tracing::info!(%dashboard_id, "export_dashboard_with_dialog OK");
+    Ok(true)
+}
+
+/// Native open dialog + single-file dashboard JSON import.
+/// Returns the imported dashboard if saved, `None` if cancelled.
+#[tauri::command]
+pub async fn import_dashboard_with_dialog(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Option<Dashboard>, CommandError> {
+    use tauri_plugin_dialog::DialogExt;
+
+    let picked = app
+        .dialog()
+        .file()
+        .add_filter("DataZen Dashboard", &["json"])
+        .blocking_pick_file();
+    let Some(fp) = picked else {
+        return Ok(None);
+    };
+    let source = fp
+        .into_path()
+        .map_err(|e| CommandError::Validation(format!("Invalid dialog path: {e}")))?;
+
+    let bytes = tokio::fs::read(&source)
+        .await
+        .cmd_err("import_dashboard_with_dialog")?;
+    let data_dir = state.store.data_dir().clone();
+    let dashboard = tokio::task::spawn_blocking(move || import_dashboard(&data_dir, &bytes))
+        .await
+        .map_err(|e| CommandError::Internal(format!("import_dashboard_with_dialog task: {e}")))?
+        .map_err(map_export_error)
+        .cmd_err("import_dashboard_with_dialog")?;
+    tracing::info!(id = %dashboard.id, "import_dashboard_with_dialog OK");
+    Ok(Some(dashboard))
 }
 
 #[cfg(test)]

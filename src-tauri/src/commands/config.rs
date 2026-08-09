@@ -369,8 +369,14 @@ pub async fn export_app_data(state: State<'_, AppState>, path: String) -> Result
     require_webdriver_path_ipc("Direct path export disabled; use export_app_data_with_dialog")?;
     tracing::info!(%path, "export_app_data");
     let data_dir = state.store.data_dir().clone();
+    let settings = state.store.get_settings().await;
+    let options = app_data_archive::ExportOptions {
+        include_dashboard_runs: settings.monitor.export_include_dashboard_runs,
+    };
     let dest = PathBuf::from(path);
-    tokio::task::spawn_blocking(move || app_data_archive::export_app_data(&data_dir, &dest))
+    tokio::task::spawn_blocking(move || {
+        app_data_archive::export_app_data_with_options(&data_dir, &dest, options)
+    })
         .await
         .map_err(|e| CommandError::Internal(format!("export_app_data task: {e}")))?
         .cmd_err("export_app_data")?;
@@ -401,7 +407,13 @@ pub async fn export_app_data_with_dialog(
         .into_path()
         .map_err(|e| CommandError::Validation(format!("Invalid dialog path: {e}")))?;
     let data_dir = state.store.data_dir().clone();
-    tokio::task::spawn_blocking(move || app_data_archive::export_app_data(&data_dir, &dest))
+    let settings = state.store.get_settings().await;
+    let options = app_data_archive::ExportOptions {
+        include_dashboard_runs: settings.monitor.export_include_dashboard_runs,
+    };
+    tokio::task::spawn_blocking(move || {
+        app_data_archive::export_app_data_with_options(&data_dir, &dest, options)
+    })
         .await
         .map_err(|e| CommandError::Internal(format!("export_app_data_with_dialog task: {e}")))?
         .cmd_err("export_app_data_with_dialog")?;

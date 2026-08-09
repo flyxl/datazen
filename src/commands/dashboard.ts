@@ -19,4 +19,9 @@ export const dashboardCommands = {
 
   runDashboardWidget: (dashboardId: string, widgetId: string) =>
     invoke<WidgetRun>('run_dashboard_widget', { dashboardId, widgetId }),
+
+  exportWithDialog: (dashboardId: string, defaultFileName: string) =>
+    invoke<boolean>('export_dashboard_with_dialog', { dashboardId, defaultFileName }),
+
+  importWithDialog: () => invoke<Dashboard | null>('import_dashboard_with_dialog'),
 };

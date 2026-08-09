@@ -32,9 +32,40 @@ fn should_exclude_common(rel_path: &Path) -> bool {
     false
 }
 
+/// Options controlling app-data ZIP export.
+#[derive(Clone, Copy, Debug)]
+pub struct ExportOptions {
+    pub include_dashboard_runs: bool,
+}
+
+impl Default for ExportOptions {
+    fn default() -> Self {
+        Self {
+            include_dashboard_runs: true,
+        }
+    }
+}
+
+fn is_dashboard_runs_path(rel_path: &Path) -> bool {
+    rel_path.components().next().is_some_and(|c| {
+        matches!(c, Component::Normal(name) if name == "dashboard-runs")
+    })
+}
+
 /// Returns true if `rel_path` (relative to the data dir root) should be skipped on export.
 pub fn should_exclude(rel_path: &Path) -> bool {
-    should_exclude_common(rel_path) || has_key_component(rel_path)
+    should_exclude_with_options(rel_path, ExportOptions::default())
+}
+
+/// Like [`should_exclude`] but respects export options (e.g. skip `dashboard-runs/`).
+pub fn should_exclude_with_options(rel_path: &Path, options: ExportOptions) -> bool {
+    if should_exclude_common(rel_path) || has_key_component(rel_path) {
+        return true;
+    }
+    if !options.include_dashboard_runs && is_dashboard_runs_path(rel_path) {
+        return true;
+    }
+    false
 }
 
 /// Import filter: same as export except `.key` may be restored from legacy backups.
@@ -44,10 +75,19 @@ fn should_exclude_on_import(rel_path: &Path) -> bool {
 
 /// Recursively zip `data_dir` into `zip_path`, preserving relative paths.
 pub fn export_app_data(data_dir: &Path, zip_path: &Path) -> std::io::Result<()> {
+    export_app_data_with_options(data_dir, zip_path, ExportOptions::default())
+}
+
+/// Like [`export_app_data`] with explicit export options.
+pub fn export_app_data_with_options(
+    data_dir: &Path,
+    zip_path: &Path,
+    options: ExportOptions,
+) -> std::io::Result<()> {
     let file = File::create(zip_path)?;
     let mut zip = ZipWriter::new(file);
-    let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
-    add_dir_to_zip(&mut zip, data_dir, data_dir, options)?;
+    let zip_options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+    add_dir_to_zip(&mut zip, data_dir, data_dir, zip_options, options)?;
     zip.finish()?;
     Ok(())
 }
@@ -57,6 +97,7 @@ fn add_dir_to_zip<W: Write + std::io::Seek>(
     root: &Path,
     dir: &Path,
     options: SimpleFileOptions,
+    export_options: ExportOptions,
 ) -> std::io::Result<()> {
     for entry in fs::read_dir(dir)? {
         let entry = entry?;
@@ -64,11 +105,11 @@ fn add_dir_to_zip<W: Write + std::io::Seek>(
         let rel = path.strip_prefix(root).map_err(|e| {
             std::io::Error::new(std::io::ErrorKind::InvalidInput, e)
         })?;
-        if should_exclude(rel) {
+        if should_exclude_with_options(rel, export_options) {
             continue;
         }
         if path.is_dir() {
-            add_dir_to_zip(zip, root, &path, options)?;
+            add_dir_to_zip(zip, root, &path, options, export_options)?;
         } else {
             let name = rel.to_string_lossy().replace('\\', "/");
             zip.start_file(name, options)?;
@@ -913,6 +954,58 @@ mod tests {
             msg.contains("zip bomb") && msg.contains("too many entries"),
             "unexpected error: {msg}"
         );
+    }
+
+    #[test]
+    fn export_skips_dashboard_runs_when_disabled() {
+        let source = TempDir::new().unwrap();
+        write_file(source.path(), "dashboards.json", "[]");
+        write_file(
+            source.path(),
+            "dashboard-runs/d1/w1/run.json",
+            r#"{"id":"run-1"}"#,
+        );
+
+        let out = TempDir::new().unwrap();
+        let zip_path = out.path().join("backup.zip");
+        export_app_data_with_options(
+            source.path(),
+            &zip_path,
+            ExportOptions {
+                include_dashboard_runs: false,
+            },
+        )
+        .unwrap();
+
+        let file = File::open(&zip_path).unwrap();
+        let mut archive = ZipArchive::new(file).unwrap();
+        let names: Vec<String> = (0..archive.len())
+            .map(|i| archive.by_index(i).unwrap().name().to_string())
+            .collect();
+        assert!(names.iter().any(|n| n == "dashboards.json"));
+        assert!(!names.iter().any(|n| n.starts_with("dashboard-runs/")));
+    }
+
+    #[test]
+    fn export_includes_dashboard_runs_by_default() {
+        let source = TempDir::new().unwrap();
+        write_file(source.path(), "dashboards.json", "[]");
+        write_file(
+            source.path(),
+            "dashboard-runs/d1/w1/run.json",
+            r#"{"id":"run-1"}"#,
+        );
+
+        let out = TempDir::new().unwrap();
+        let zip_path = out.path().join("backup.zip");
+        export_app_data(source.path(), &zip_path).unwrap();
+
+        let file = File::open(&zip_path).unwrap();
+        let mut archive = ZipArchive::new(file).unwrap();
+        let names: Vec<String> = (0..archive.len())
+            .map(|i| archive.by_index(i).unwrap().name().to_string())
+            .collect();
+        assert!(names.iter().any(|n| n.starts_with("dashboard-runs/")));
     }
 
     #[test]

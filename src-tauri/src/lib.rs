@@ -661,6 +661,8 @@ pub fn run() {
             commands::list_widget_runs,
             commands::get_widget_run,
             commands::run_dashboard_widget,
+            commands::export_dashboard_with_dialog,
+            commands::import_dashboard_with_dialog,
             rebuild_menu,
         ])
         .on_window_event(|_window, _event| {
