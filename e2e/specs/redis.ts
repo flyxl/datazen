@@ -215,7 +215,14 @@ async function toggleKeyCheckbox(keyName: string, checked: boolean): Promise<boo
         if (!(row.textContent || '').includes(name)) continue;
         const cb = row.querySelector('input[type="checkbox"]') as HTMLInputElement | null;
         if (!cb) return false;
-        if (cb.checked !== wantChecked) cb.click();
+        if (cb.checked === wantChecked) return true;
+        // Fire a proper change event so React controlled onChange runs.
+        cb.click();
+        if (cb.checked !== wantChecked) {
+          cb.checked = wantChecked;
+          cb.dispatchEvent(new Event('input', { bubbles: true }));
+          cb.dispatchEvent(new Event('change', { bubbles: true }));
+        }
         return true;
       }
       return false;
@@ -262,12 +269,24 @@ async function createStringKey(keyName: string, value: string) {
   await browser.pause(2000);
 }
 
+async function clickButtonExact(label: string) {
+  const ok = await browser.execute((text: string) => {
+    const buttons = Array.from(document.querySelectorAll('button'));
+    // Prefer the last exact match (dialog footer is portaled after toolbar).
+    const matches = buttons.filter((b) => (b.textContent || '').trim() === text);
+    const btn = matches[matches.length - 1] as HTMLElement | undefined;
+    if (!btn || (btn as HTMLButtonElement).disabled) return false;
+    btn.click();
+    return true;
+  }, label);
+  if (!ok) throw new Error(`enabled button "${label}" not found`);
+}
+
 async function batchDeleteSelected() {
-  const batchDeleteBtn = await $(`button*=${t('redis.batchDelete')}`);
-  await batchDeleteBtn.click();
-  await browser.pause(300);
-  const deleteBtn = await $(`button*=${t('common.delete')}`);
-  await deleteBtn.click();
+  await clickButtonExact(t('redis.batchDelete'));
+  await browser.pause(400);
+  // Do NOT use button*=删除 — it also matches「批量删除」.
+  await clickButtonExact(t('common.delete'));
   await browser.pause(2000);
 }
 
