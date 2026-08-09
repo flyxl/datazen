@@ -1,6 +1,6 @@
 use super::error::{CmdExt, CommandError};
 use super::AppState;
-use crate::db::Value;
+use crate::db::{DriverError, Value};
 use tauri::State;
 
 #[derive(serde::Deserialize)]
@@ -31,10 +31,20 @@ pub async fn commit_row_updates(
         .await
         .cmd_err("commit_row_updates")?;
 
-    driver
-        .execute(&handle, "BEGIN")
-        .await
-        .cmd_err("commit_row_updates")?;
+    // Prefer DatabaseDriver transaction API; fall back to BEGIN/COMMIT strings
+    // for drivers that still stub the trait (most SQL engines today).
+    let trait_tx = match driver.begin_transaction(&handle).await {
+        Ok(tx) => Some(tx),
+        Err(DriverError::TransactionError(_)) => None,
+        Err(e) => return Err(CommandError::Driver(e)),
+    };
+
+    if trait_tx.is_none() {
+        driver
+            .execute(&handle, "BEGIN")
+            .await
+            .cmd_err("commit_row_updates")?;
+    }
 
     let result: Result<(), CommandError> = async {
         for batch in &updates {
@@ -60,15 +70,23 @@ pub async fn commit_row_updates(
 
     match result {
         Ok(()) => {
-            driver
-                .execute(&handle, "COMMIT")
-                .await
-                .cmd_err("commit_row_updates")?;
+            if let Some(tx) = trait_tx {
+                driver.commit(tx).await.cmd_err("commit_row_updates")?;
+            } else {
+                driver
+                    .execute(&handle, "COMMIT")
+                    .await
+                    .cmd_err("commit_row_updates")?;
+            }
             tracing::info!(%connection_id, %table, batch_count = updates.len(), "commit_row_updates OK");
             Ok(())
         }
         Err(e) => {
-            if let Err(rb_err) = driver.execute(&handle, "ROLLBACK").await {
+            if let Some(tx) = trait_tx {
+                if let Err(rb_err) = driver.rollback(tx).await {
+                    tracing::warn!("rollback failed: {rb_err}");
+                }
+            } else if let Err(rb_err) = driver.execute(&handle, "ROLLBACK").await {
                 tracing::warn!("rollback failed: {rb_err}");
             }
             Err(e)

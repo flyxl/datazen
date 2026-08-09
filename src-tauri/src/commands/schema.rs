@@ -59,6 +59,11 @@ pub async fn use_database(
         .use_database(&handle, &database)
         .await
         .cmd_err("use_database")?;
+    state
+        .connection_manager
+        .set_active_database(&connection_id, &database)
+        .await
+        .cmd_err("use_database")?;
     tracing::info!(
         %connection_id,
         %database,
@@ -163,6 +168,13 @@ pub async fn get_table_data(
         .await
         .cmd_err("get_table_data")?;
 
+    let config = state
+        .connection_manager
+        .get_connection_config(&connection_id)
+        .await
+        .cmd_err("get_table_data")?;
+    let database = config.database.as_deref().unwrap_or("default");
+
     let order = sorts
         .and_then(|list| list.into_iter().next())
         .map(|s| OrderBy {
@@ -178,7 +190,7 @@ pub async fn get_table_data(
             &driver,
             &handle,
             &connection_id,
-            "",
+            database,
             &table,
             page,
             page_size,

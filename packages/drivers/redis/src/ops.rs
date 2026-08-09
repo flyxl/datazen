@@ -2,6 +2,7 @@
 
 use redis::AsyncCommands;
 use serde::Serialize;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::redis_driver::parse_scan_result;
 
@@ -63,6 +64,43 @@ pub struct BatchRenameResult {
     pub errors: Vec<KeyError>,
 }
 
+/// Shared SCAN loop used by key browser, pattern deletes, and counts.
+pub async fn scan_keys<C>(
+    conn: &mut C,
+    pattern: Option<&str>,
+    max_keys: Option<usize>,
+) -> Result<Vec<String>, String>
+where
+    C: AsyncCommands + redis::aio::ConnectionLike + Send,
+{
+    let mut keys = Vec::new();
+    let mut cursor = 0u64;
+    loop {
+        let mut cmd = redis::cmd("SCAN");
+        cmd.arg(cursor).arg("COUNT").arg(200);
+        if let Some(pat) = pattern {
+            cmd.arg("MATCH").arg(pat);
+        }
+        let raw: redis::Value = cmd
+            .query_async(conn)
+            .await
+            .map_err(|e| e.to_string())?;
+        let (next, batch) = parse_scan_result(&raw);
+        keys.extend(batch);
+        cursor = next;
+        if cursor == 0 {
+            break;
+        }
+        if let Some(max) = max_keys {
+            if keys.len() >= max {
+                keys.truncate(max);
+                break;
+            }
+        }
+    }
+    Ok(keys)
+}
+
 pub async fn scan_matching_keys<C>(
     conn: &mut C,
     pattern: &str,
@@ -70,7 +108,25 @@ pub async fn scan_matching_keys<C>(
 where
     C: AsyncCommands + redis::aio::ConnectionLike + Send,
 {
-    let mut keys = Vec::new();
+    scan_keys(conn, Some(pattern), None).await
+}
+
+pub async fn count_matching<C>(
+    conn: &mut C,
+    pattern: &str,
+) -> Result<u64, String>
+where
+    C: AsyncCommands + redis::aio::ConnectionLike + Send,
+{
+    // Count during SCAN without materializing every key (large keyspaces).
+    if pattern == "*" {
+        let dbsize: i64 = redis::cmd("DBSIZE")
+            .query_async(conn)
+            .await
+            .map_err(|e| e.to_string())?;
+        return Ok(dbsize.max(0) as u64);
+    }
+    let mut total = 0u64;
     let mut cursor = 0u64;
     loop {
         let raw: redis::Value = redis::cmd("SCAN")
@@ -83,24 +139,13 @@ where
             .await
             .map_err(|e| e.to_string())?;
         let (next, batch) = parse_scan_result(&raw);
-        keys.extend(batch);
+        total += batch.len() as u64;
         cursor = next;
         if cursor == 0 {
             break;
         }
     }
-    Ok(keys)
-}
-
-pub async fn count_matching<C>(
-    conn: &mut C,
-    pattern: &str,
-) -> Result<u64, String>
-where
-    C: AsyncCommands + redis::aio::ConnectionLike + Send,
-{
-    let keys = scan_matching_keys(conn, pattern).await?;
-    Ok(keys.len() as u64)
+    Ok(total)
 }
 
 pub async fn set_string<C>(
@@ -445,9 +490,27 @@ where
         .map_err(|e| e.to_string())
 }
 
-/// Reject destructive flush commands unless the frontend passes `allow_flush: true`.
-pub fn ensure_flush_allowed(allow_flush: bool) -> Result<(), String> {
-    if !allow_flush {
+/// Host-synced mirror of `AppSettings.pluginSettings.redis.allowFlush`.
+static SETTINGS_ALLOW_FLUSH: AtomicBool = AtomicBool::new(false);
+
+/// Called by the host when settings are loaded or saved (feature `plugin-redis`).
+pub fn set_settings_allow_flush(allow: bool) {
+    SETTINGS_ALLOW_FLUSH.store(allow, Ordering::Relaxed);
+}
+
+/// Whether settings currently allow flush (for tests / diagnostics).
+pub fn settings_allow_flush() -> bool {
+    SETTINGS_ALLOW_FLUSH.load(Ordering::Relaxed)
+}
+
+/// Reject destructive flush unless **settings** allow it.
+/// The IPC `allow_flush` flag is treated as an additional UI confirmation and
+/// cannot bypass a disabled settings toggle.
+pub fn ensure_flush_allowed(client_allow_flush: bool) -> Result<(), String> {
+    if !SETTINGS_ALLOW_FLUSH.load(Ordering::Relaxed) {
+        return Err("Flush is disabled in Redis extension settings".into());
+    }
+    if !client_allow_flush {
         return Err("Flush is disabled in Redis extension settings".into());
     }
     Ok(())
@@ -488,9 +551,16 @@ mod tests {
     }
 
     #[test]
-    fn flush_gate_rejects_when_disabled() {
-        let err = ensure_flush_allowed(false).unwrap_err();
-        assert!(err.contains("Flush is disabled"));
+    fn flush_gate_requires_settings_and_client_flag() {
+        set_settings_allow_flush(false);
+        assert!(ensure_flush_allowed(true).is_err());
+        assert!(ensure_flush_allowed(false).is_err());
+
+        set_settings_allow_flush(true);
+        assert!(ensure_flush_allowed(false).is_err());
         assert!(ensure_flush_allowed(true).is_ok());
+
+        // Reset so other tests see the secure default.
+        set_settings_allow_flush(false);
     }
 }

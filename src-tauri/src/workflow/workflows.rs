@@ -5,6 +5,7 @@
 //! Supports cross-database workflows with per-step connection binding.
 
 use crate::commands::AppState;
+use crate::mcp::permission::{self, McpPermissionMode};
 use datazen_ai_api::{ChatMessage, CompletionRequest, MessageRole};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -13,6 +14,38 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 use tokio::sync::{Mutex, RwLock};
 use uuid::Uuid;
+
+/// Documented workflow query row cap (`docs/architecture/security.md`).
+pub const WORKFLOW_QUERY_ROW_LIMIT: u32 = 1000;
+
+/// Options that differ between GUI and MCP invocation surfaces.
+#[derive(Debug, Clone)]
+pub struct WorkflowExecuteOptions {
+    /// When set, each query step is checked with MCP SQL permission rules.
+    pub permission_mode: Option<McpPermissionMode>,
+    /// Max rows per query step (defaults to [`WORKFLOW_QUERY_ROW_LIMIT`]).
+    pub query_row_limit: Option<u32>,
+}
+
+impl Default for WorkflowExecuteOptions {
+    fn default() -> Self {
+        Self {
+            permission_mode: None,
+            query_row_limit: Some(WORKFLOW_QUERY_ROW_LIMIT),
+        }
+    }
+}
+
+/// Shared guard used by query steps (also unit-tested in isolation).
+pub fn enforce_workflow_query_guards(
+    sql: &str,
+    permission_mode: Option<McpPermissionMode>,
+) -> Result<(), String> {
+    if let Some(mode) = permission_mode {
+        permission::check_sql_allowed(sql, mode)?;
+    }
+    Ok(())
+}
 
 // ─── Data Model (Phase 1) ───────────────────────────────────────────────────
 
@@ -363,6 +396,23 @@ impl WorkflowExecutor {
         connection_id: Option<&str>,
         variables: &serde_json::Value,
     ) -> Result<WorkflowExecutionResult, String> {
+        Self::execute_with_options(
+            workflow,
+            app_state,
+            connection_id,
+            variables,
+            WorkflowExecuteOptions::default(),
+        )
+        .await
+    }
+
+    pub async fn execute_with_options(
+        workflow: &WorkflowDefinition,
+        app_state: &AppState,
+        connection_id: Option<&str>,
+        variables: &serde_json::Value,
+        options: WorkflowExecuteOptions,
+    ) -> Result<WorkflowExecutionResult, String> {
         let start = Instant::now();
         let global_timeout = workflow.timeout_secs.unwrap_or(300);
         let default_strategy = workflow
@@ -404,6 +454,7 @@ impl WorkflowExecutor {
             &default_strategy,
             global_timeout,
             &start,
+            &options,
         )
         .await;
 
@@ -451,6 +502,7 @@ impl WorkflowExecutor {
         default_strategy: &'a ErrorStrategy,
         global_timeout_secs: u64,
         global_start: &'a Instant,
+        options: &'a WorkflowExecuteOptions,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), String>> + Send + 'a>> {
         Box::pin(async move {
         for step in steps {
@@ -495,6 +547,7 @@ impl WorkflowExecutor {
                         default_strategy,
                         global_timeout_secs,
                         global_start,
+                        options,
                     )
                     .await?;
                 }
@@ -549,6 +602,7 @@ impl WorkflowExecutor {
                             default_strategy,
                             global_timeout_secs,
                             global_start,
+                            options,
                         )
                         .await;
 
@@ -602,7 +656,7 @@ impl WorkflowExecutor {
 
                     let result = tokio::time::timeout(
                         std::time::Duration::from_secs(step_timeout),
-                        Self::execute_single_step(step, app_state, connection_id, context),
+                        Self::execute_single_step(step, app_state, connection_id, context, options),
                     )
                     .await;
 
@@ -659,6 +713,7 @@ impl WorkflowExecutor {
                                         default_strategy,
                                         global_timeout_secs,
                                         global_start,
+                                        options,
                                     )
                                     .await?;
                                 }
@@ -714,6 +769,7 @@ impl WorkflowExecutor {
                                         default_strategy,
                                         global_timeout_secs,
                                         global_start,
+                                        options,
                                     )
                                     .await?;
                                 }
@@ -732,6 +788,7 @@ impl WorkflowExecutor {
         app_state: &AppState,
         global_connection_id: Option<&str>,
         context: &mut WorkflowContext,
+        options: &WorkflowExecuteOptions,
     ) -> Result<StepExecutionResult, String> {
         match step {
             WorkflowStep::Query {
@@ -767,11 +824,20 @@ impl WorkflowExecutor {
                 }
 
                 let clean_sql = resolved_sql.trim_end_matches(';').trim().to_string();
+                enforce_workflow_query_guards(&clean_sql, options.permission_mode)?;
 
-                let result = driver
-                    .query(&handle, &clean_sql)
+                let row_limit = options
+                    .query_row_limit
+                    .unwrap_or(WORKFLOW_QUERY_ROW_LIMIT);
+                let multi = driver
+                    .query_multi(&handle, &clean_sql, Some(row_limit))
                     .await
                     .map_err(|e| e.to_string())?;
+                let result = multi
+                    .results
+                    .into_iter()
+                    .next()
+                    .ok_or_else(|| "Query step returned no statement result".to_string())?;
 
                 let col_names: Vec<&str> = result.columns.iter().map(|c| c.name.as_str()).collect();
                 let data: Vec<serde_json::Value> = result.rows.iter().map(|row| {
@@ -791,6 +857,7 @@ impl WorkflowExecutor {
                     "rows_count": data.len(),
                     "columns": result.columns,
                     "execution_time_ms": result.execution_time_ms,
+                    "truncated": result.truncated,
                 });
 
                 tracing::info!(
@@ -1215,6 +1282,30 @@ fn evaluate_condition(expr: &str, context: &WorkflowContext) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn workflow_query_guards_block_drop_in_safe_write() {
+        let err = enforce_workflow_query_guards(
+            "DROP TABLE users",
+            Some(McpPermissionMode::SafeWrite),
+        )
+        .unwrap_err();
+        assert!(!err.is_empty());
+    }
+
+    #[test]
+    fn workflow_query_guards_allow_select_in_safe_write() {
+        assert!(enforce_workflow_query_guards(
+            "SELECT 1",
+            Some(McpPermissionMode::SafeWrite),
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn workflow_query_guards_skip_when_mode_absent() {
+        assert!(enforce_workflow_query_guards("DROP TABLE users", None).is_ok());
+    }
 
     #[test]
     fn test_skill_definition_yaml_parsing() {

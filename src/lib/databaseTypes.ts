@@ -110,11 +110,16 @@ export function getDbIconColor(dbType: DatabaseType): string {
   return DB_REGISTRY[dbType]?.iconColor ?? 'text-fg-muted';
 }
 
-/** Redis logical DB index (0–15); invalid input becomes `"0"`. */
-export function normalizeRedisDatabaseField(s: string): string {
+/** Clamp numeric DB index fields (Redis etc.); invalid input becomes `"0"`. */
+export function normalizeIndexDatabaseField(s: string, maxIndex = 15): string {
   const u = s.trim();
   if (u === '' || !/^\d+$/.test(u)) return '0';
-  return String(Math.min(15, Math.max(0, parseInt(u, 10))));
+  return String(Math.min(maxIndex, Math.max(0, parseInt(u, 10))));
+}
+
+/** @deprecated Use normalizeIndexDatabaseField */
+export function normalizeRedisDatabaseField(s: string): string {
+  return normalizeIndexDatabaseField(s, 15);
 }
 
 /** Build a display address string for a connection. */

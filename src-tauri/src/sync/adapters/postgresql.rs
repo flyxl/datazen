@@ -50,6 +50,19 @@ fn parse_pg_default(raw: &str, col: &ColumnSchema) -> Option<IRDefault> {
 // ── SyncSourceAdapter ──────────────────────────────────────────────
 
 impl SyncSourceAdapter for PgSyncAdapter {
+    fn full_column_types_query(&self, table: &str) -> Option<String> {
+        let escaped = table.replace('\'', "''");
+        Some(format!(
+            r#"SELECT a.attname::text AS col_name,
+                  format_type(a.atttypid, a.atttypmod) AS full_type
+           FROM pg_attribute a
+           WHERE a.attrelid = '{escaped}'::regclass
+             AND a.attnum > 0
+             AND NOT a.attisdropped
+           ORDER BY a.attnum"#
+        ))
+    }
+
     fn column_to_ir(
         &self,
         column: &ColumnSchema,
@@ -263,6 +276,15 @@ mod tests {
             ir.default_expr,
             Some(IRDefault::Literal("'active'".into()))
         );
+    }
+
+    #[test]
+    fn pg_full_column_types_query_uses_format_type() {
+        let adapter = PgSyncAdapter;
+        let sql = adapter.full_column_types_query("public.users").unwrap();
+        assert!(sql.contains("format_type"));
+        assert!(sql.contains("public.users"));
+        assert!(!sql.contains("database_type"));
     }
 
     #[test]

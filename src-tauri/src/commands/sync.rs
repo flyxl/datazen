@@ -156,16 +156,18 @@ pub async fn compare_table_schemas(
         if let (Some(src_adapter), Some(tgt_src_adapter), Some(src_tgt_adapter), Some(tgt_adapter)) =
             (src_source, tgt_source, src_target, tgt_target)
         {
-            let src_full_types = if src_config.database_type == "postgresql" {
-                pg_full_column_types(src_driver.as_ref(), &src_handle, &table_name).await.ok()
-            } else {
-                None
-            };
-            let tgt_full_types = if tgt_config.database_type == "postgresql" {
-                pg_full_column_types(tgt_driver.as_ref(), &tgt_handle, &table_name).await.ok()
-            } else {
-                None
-            };
+            let src_full_types =
+                fetch_full_column_types(src_adapter.as_ref(), src_driver.as_ref(), &src_handle, &table_name)
+                    .await
+                    .ok();
+            let tgt_full_types = fetch_full_column_types(
+                tgt_src_adapter.as_ref(),
+                tgt_driver.as_ref(),
+                &tgt_handle,
+                &table_name,
+            )
+            .await
+            .ok();
 
             let src_ir = src_adapter.table_to_ir(&src_schema, src_full_types.as_ref());
             let tgt_ir = tgt_src_adapter.table_to_ir(&tgt_schema, tgt_full_types.as_ref());
@@ -290,24 +292,20 @@ pub async fn compare_table_data(
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
-/// Query full column types with precision from PostgreSQL using format_type().
-async fn pg_full_column_types(
+/// Run adapter-provided full-type SQL (if any) and map `(name, full_type)` rows.
+async fn fetch_full_column_types(
+    adapter: &dyn crate::sync::adapter::SyncSourceAdapter,
     driver: &dyn crate::db::DatabaseDriver,
     handle: &crate::db::ConnectionHandle,
     table: &str,
 ) -> Result<std::collections::HashMap<String, String>, CommandError> {
-    let sql = format!(
-        r#"SELECT a.attname::text AS col_name,
-                  format_type(a.atttypid, a.atttypmod) AS full_type
-           FROM pg_attribute a
-           WHERE a.attrelid = '{}'::regclass
-             AND a.attnum > 0
-             AND NOT a.attisdropped
-           ORDER BY a.attnum"#,
-        table.replace('\'', "''")
-    );
-    let result = driver.query(handle, &sql).await
-        .cmd_err("pg_full_column_types")?;
+    let Some(sql) = adapter.full_column_types_query(table) else {
+        return Ok(std::collections::HashMap::new());
+    };
+    let result = driver
+        .query(handle, &sql)
+        .await
+        .cmd_err("fetch_full_column_types")?;
     let mut map = std::collections::HashMap::new();
     for row in &result.rows {
         if let (Some(Some(crate::db::Value::String(name))), Some(Some(crate::db::Value::String(ft)))) =
@@ -602,8 +600,11 @@ where
     let src_schema: TableSchema = src_driver.get_table_schema(&src_handle, table_name).await
         .cmd_err("sync_one_table")?;
 
-    let full_types = if src_type == "postgresql" {
-        Some(pg_full_column_types(src_driver.as_ref(), &src_handle, table_name).await?)
+    let full_types = if src_adapter.full_column_types_query(table_name).is_some() {
+        Some(
+            fetch_full_column_types(src_adapter, src_driver.as_ref(), &src_handle, table_name)
+                .await?,
+        )
     } else {
         None
     };

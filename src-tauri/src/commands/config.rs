@@ -39,9 +39,10 @@ pub async fn save_settings(state: State<'_, AppState>, settings: AppSettings) ->
     tracing::debug!(theme_mode = %settings.theme.mode, "save_settings");
     state
         .store
-        .save_settings(settings)
+        .save_settings(settings.clone())
         .await
         .cmd_err("save_settings")?;
+    crate::redis_flush_gate::sync_from_settings(&settings);
     state
         .monitor_engine
         .reload_from_store()

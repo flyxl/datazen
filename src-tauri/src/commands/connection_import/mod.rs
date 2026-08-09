@@ -14,9 +14,9 @@ use super::error::CommandError;
 use crate::db::ConnectionConfig;
 use std::path::Path;
 
-pub use datazen::{
-    build_encrypted_export, decrypt_datazen_fields, derive_argon2_key, encrypt_field,
-};
+pub use datazen::build_encrypted_export;
+#[cfg(test)]
+pub use datazen::{decrypt_datazen_fields, derive_argon2_key, encrypt_field};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ImportFormat {
@@ -80,6 +80,7 @@ fn looks_like_dbx_plain(value: &serde_json::Value) -> bool {
 }
 
 /// Text-only entry (legacy / webdriver preview). Binary TablePlus needs [`parse_import_file`].
+#[cfg(test)]
 pub fn parse_connections_import(
     content: &str,
     password: Option<&str>,

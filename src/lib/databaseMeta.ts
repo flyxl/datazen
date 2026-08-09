@@ -20,6 +20,10 @@ export interface DatabaseTypeMeta {
   defaultHost: string;
   /** Default username (empty string = no username field in form) */
   defaultUser: string;
+  /** Force username into the connection draft even when `defaultUser` is empty */
+  requiresUsername?: boolean;
+  /** Persist `schema` on the connection config (e.g. catalog engines) */
+  connectionIncludesSchema?: boolean;
   /** Identifier quoting character (`"` for SQL standard, `` ` `` for MySQL) */
   quoteChar: string;
   /** Connection mode: server (host:port), file (path), url (connection string) */
@@ -46,10 +50,16 @@ export interface DatabaseTypeMeta {
    *  - name: logical database name (MySQL/PG)
    *  - path: file path (SQLite)
    *  - index: numeric index (Redis)
-   *  - domain: instance host/domain for a proxy (Kiwi) — NOT a logical DB for sidebar lock
+   *  - domain: instance host/domain for a proxy — NOT a logical DB for sidebar lock
    */
   databaseFieldType: 'name' | 'path' | 'index' | 'domain';
-  /** Driver capability: schema tree can browse multiple databases (MySQL/MariaDB/PostgreSQL/Kiwi). Session UI uses hasMultiDatabase && databases.length > 1. */
+  /** Default database / index / path when switching type in the connection form */
+  defaultDatabase?: string;
+  /** Default opaque connection options (e.g. Redis topology) */
+  defaultOptions?: Record<string, unknown>;
+  /** Inclusive max when `databaseFieldType === 'index'` (default 15) */
+  maxDatabaseIndex?: number;
+  /** Driver capability: schema tree can browse multiple databases. Session UI uses hasMultiDatabase && databases.length > 1. */
   hasMultiDatabase?: boolean;
   /** Default page size for table data; unset uses per-table or global default */
   defaultPageSize?: number;
@@ -65,7 +75,7 @@ export interface DatabaseTypeMeta {
   supportsErDiagram?: boolean;
   /**
    * On-demand SQL namespace completion strategy (host is plugin-agnostic).
-   * - `default-sql`: database → tables (MySQL/MariaDB/Kiwi/…)
+   * - `default-sql`: database → tables (MySQL/MariaDB/…)
    * - `postgresql`: database → schema → table (or schema → table when single-db)
    * - `path-hierarchy`: slash-path levels via `get_tables` + optional name→id aliases
    *   (plugins that use catalog/schema navigation rows with schema CATALOG|SCHEMA)

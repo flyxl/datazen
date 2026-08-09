@@ -435,11 +435,22 @@ impl DatabaseDriver for SqliteDriver {
         })
     }
 
-    async fn commit(&self, _tx: TransactionHandle) -> Result<(), DriverError> {
+    async fn commit(&self, tx: TransactionHandle) -> Result<(), DriverError> {
+        // SQLite connect() uses the same value for handle.id and handle.pool_id.
+        let handle = ConnectionHandle {
+            id: tx.connection_id.clone(),
+            pool_id: tx.connection_id,
+        };
+        self.execute(&handle, "COMMIT").await?;
         Ok(())
     }
 
-    async fn rollback(&self, _tx: TransactionHandle) -> Result<(), DriverError> {
+    async fn rollback(&self, tx: TransactionHandle) -> Result<(), DriverError> {
+        let handle = ConnectionHandle {
+            id: tx.connection_id.clone(),
+            pool_id: tx.connection_id,
+        };
+        self.execute(&handle, "ROLLBACK").await?;
         Ok(())
     }
 
@@ -487,5 +498,78 @@ impl DatabaseDriver for SqliteDriver {
             server_version: version,
             server_type: "SQLite".to_string(),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_config(path: &str) -> ConnectionConfig {
+        ConnectionConfig {
+            id: "sqlite-test".into(),
+            name: "test".into(),
+            database_type: "sqlite".into(),
+            host: None,
+            port: None,
+            database: Some(path.into()),
+            schema: None,
+            username: None,
+            password: None,
+            ssl_mode: SslMode::Prefer,
+            connection_timeout: 30,
+            ssh_tunnel: None,
+            color_tag: None,
+            group: None,
+            last_connected_at: None,
+            server_version: None,
+            options: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn commit_and_rollback_end_transaction() {
+        let dir = std::env::temp_dir().join(format!("datazen-sqlite-tx-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("tx.db");
+        let path_str = path.to_string_lossy().to_string();
+        // Ensure the file exists so sqlx can open it without mode=rwc quirks.
+        std::fs::File::create(&path).unwrap();
+
+        let driver = SqliteDriver::new();
+        let handle = driver.connect(&test_config(&path_str)).await.unwrap();
+
+        driver
+            .execute(&handle, "CREATE TABLE t (id INTEGER PRIMARY KEY, v TEXT)")
+            .await
+            .unwrap();
+
+        let tx = driver.begin_transaction(&handle).await.unwrap();
+        driver
+            .execute(&handle, "INSERT INTO t (v) VALUES ('a')")
+            .await
+            .unwrap();
+        driver.rollback(tx).await.unwrap();
+
+        let after_rollback = driver.query(&handle, "SELECT COUNT(*) FROM t").await.unwrap();
+        match &after_rollback.rows[0][0] {
+            Some(Value::Integer(0)) => {}
+            other => panic!("rollback should discard insert, got {other:?}"),
+        }
+
+        let tx = driver.begin_transaction(&handle).await.unwrap();
+        driver
+            .execute(&handle, "INSERT INTO t (v) VALUES ('b')")
+            .await
+            .unwrap();
+        driver.commit(tx).await.unwrap();
+
+        let after_commit = driver.query(&handle, "SELECT COUNT(*) FROM t").await.unwrap();
+        match &after_commit.rows[0][0] {
+            Some(Value::Integer(1)) => {}
+            other => panic!("commit should persist insert, got {other:?}"),
+        }
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

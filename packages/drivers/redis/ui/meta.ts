@@ -11,7 +11,7 @@ export const redisMeta = {
     quoteChar: '',
     connectionMode: 'server',
     supportsSSH: true,
-    supportsSSL: false,
+    supportsSSL: true,
     supportsBackup: false,
     supportsTables: false,
     isKeyValue: true,
@@ -20,5 +20,8 @@ export const redisMeta = {
     connectionView: 'keyvalue',
     databaseFieldType: 'index',
     connectionForm: 'redis',
+    defaultDatabase: '0',
+    maxDatabaseIndex: 15,
+    defaultOptions: { topology: 'standalone' },
   } satisfies DatabaseTypeMeta;
 

@@ -1,7 +1,7 @@
 //! Theme pack directory and content validation.
 
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use regex::Regex;
 use serde::Deserialize;
@@ -230,6 +230,7 @@ fn validate_svg_content(content: &str) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
     use tempfile::TempDir;
 
     fn write_file(dir: &Path, rel: &str, content: &str) {
