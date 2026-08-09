@@ -5,13 +5,10 @@ use redis::aio::MultiplexedConnection;
 use redis::cluster::{ClusterClient, TlsMode};
 use redis::cluster_async::ClusterConnection;
 use redis::sentinel::{SentinelClient, SentinelNodeConnectionInfo, SentinelServerType};
-use redis::{Client, RedisConnectionInfo};
+use redis::{Client, ClientTlsConfig, RedisConnectionInfo, TlsCertificates as RedisTlsCertificates};
 use serde_json::Map;
 use std::fs;
 use std::path::Path;
-
-#[cfg(feature = "tls-rustls")]
-use redis::tls::{ClientTlsConfig, TlsCertificates as RedisTlsCertificates};
 
 /// Parsed TLS material paths and flags (no network I/O).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -174,7 +171,6 @@ pub async fn open_live_conn(plan: &ConnectionPlan) -> Result<RedisLiveConn, Driv
             }
             if let Some(mode) = tls_mode_for_plan(&p.tls) {
                 builder = builder.tls(mode);
-                #[cfg(feature = "tls-rustls")]
                 if let Some(certs) = load_tls_certificates(&p.tls)? {
                     builder = builder.certs(certs);
                 }
@@ -416,7 +412,6 @@ fn read_pem(path: &str, label: &str) -> Result<Vec<u8>, DriverError> {
     })
 }
 
-#[cfg(feature = "tls-rustls")]
 fn load_tls_certificates(tls: &TlsPlan) -> Result<Option<RedisTlsCertificates>, DriverError> {
     if !tls.enabled {
         return Ok(None);
@@ -438,6 +433,9 @@ fn load_tls_certificates(tls: &TlsPlan) -> Result<Option<RedisTlsCertificates>, 
         .as_ref()
         .map(|p| read_pem(p, "CA certificate"))
         .transpose()?;
+    if client_tls.is_none() && root_cert.is_none() {
+        return Ok(None);
+    }
     Ok(Some(RedisTlsCertificates {
         client_tls,
         root_cert,
@@ -445,17 +443,17 @@ fn load_tls_certificates(tls: &TlsPlan) -> Result<Option<RedisTlsCertificates>, 
 }
 
 fn open_standalone_client(url: &str, tls: &TlsPlan) -> Result<Client, DriverError> {
-    #[cfg(feature = "tls-rustls")]
-    {
-        if let Some(certs) = load_tls_certificates(tls)? {
-            return Client::build_with_tls(url, certs)
-                .map_err(|e| DriverError::ConnectionFailed(e.to_string()));
-        }
+    if let Some(certs) = load_tls_certificates(tls)? {
+        return Client::build_with_tls(url, certs)
+            .map_err(|e| DriverError::ConnectionFailed(e.to_string()));
     }
-    let _ = tls;
     Client::open(url).map_err(|e| DriverError::ConnectionFailed(e.to_string()))
 }
 
+/// Sentinel TLS in redis 0.27: `SentinelNodeConnectionInfo` only exposes `tls_mode`
+/// (Secure/Insecure). Custom CA/client PEM paths cannot be applied to master/replica
+/// connections — `create_connection_info` always sets `tls_params: None`. Sentinel
+/// node URLs use `rediss://` when TLS is enabled (system trust store only).
 fn sentinel_node_info(plan: &SentinelPlan) -> SentinelNodeConnectionInfo {
     let tls_mode = tls_mode_for_plan(&plan.tls).map(|m| match m {
         TlsMode::Insecure => redis::TlsMode::Insecure,
