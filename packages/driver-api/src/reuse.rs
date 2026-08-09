@@ -179,4 +179,29 @@ impl DatabaseDriver for ReuseDriver {
     fn prompt_overrides(&self) -> HashMap<PromptScenario, PromptTemplate> {
         self.inner.prompt_overrides()
     }
+
+    async fn dump_table_ddl(
+        &self,
+        handle: &ConnectionHandle,
+        table: &str,
+    ) -> Result<String, DriverError> {
+        self.inner.dump_table_ddl(handle, table).await
+    }
+
+    async fn dump_database(
+        &self,
+        handle: &ConnectionHandle,
+        database: &str,
+        opts: &BackupDumpOptions,
+    ) -> Result<String, DriverError> {
+        self.inner.dump_database(handle, database, opts).await
+    }
+
+    async fn restore_sql(
+        &self,
+        handle: &ConnectionHandle,
+        sql: &str,
+    ) -> Result<(), DriverError> {
+        self.inner.restore_sql(handle, sql).await
+    }
 }

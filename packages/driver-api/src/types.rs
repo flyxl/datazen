@@ -388,6 +388,17 @@ pub struct PromptTemplate {
     pub system_en: String,
 }
 
+/// Options for driver-native SQL database dumps.
+#[derive(Debug, Clone, Default)]
+pub struct BackupDumpOptions {
+    pub schema_only: bool,
+    pub data_only: bool,
+    /// Emit `DROP TABLE IF EXISTS` before each table.
+    pub clean: bool,
+    /// Emit a driver-specific `CREATE DATABASE` preamble.
+    pub create_database: bool,
+}
+
 #[derive(Debug, Error)]
 pub enum DriverError {
     #[error("Connection failed: {0}")]
@@ -419,4 +430,28 @@ pub enum DriverError {
 
     #[error("Transaction error: {0}")]
     TransactionError(String),
+
+    #[error("Not supported: {0}")]
+    NotSupported(String),
+}
+
+#[cfg(test)]
+mod backup_dump_options_tests {
+    use super::*;
+
+    #[test]
+    fn backup_dump_options_default_is_all_false() {
+        let opts = BackupDumpOptions::default();
+        assert!(!opts.schema_only);
+        assert!(!opts.data_only);
+        assert!(!opts.clean);
+        assert!(!opts.create_database);
+    }
+
+    #[test]
+    fn not_supported_display() {
+        let err = DriverError::NotSupported("create_database".into());
+        assert!(err.to_string().contains("Not supported"));
+        assert!(err.to_string().contains("create_database"));
+    }
 }

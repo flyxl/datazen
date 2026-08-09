@@ -14,7 +14,8 @@ fn register(registry: &SyncAdapterRegistry, db_type: crate::db::DatabaseType) {
 
 inventory::submit! {
     SyncAdapterFactory {
-        db_types: &["sqlite"],
+        // rqlite / turso: SQLite-compatible schema (PRAGMA table_info)
+        db_types: &["sqlite", "rqlite", "turso"],
         register,
     }
 }

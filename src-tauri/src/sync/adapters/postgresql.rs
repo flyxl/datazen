@@ -14,7 +14,8 @@ fn register(registry: &SyncAdapterRegistry, db_type: crate::db::DatabaseType) {
 
 inventory::submit! {
     SyncAdapterFactory {
-        db_types: &["postgresql"],
+        // cloudberry: PG wire + catalogs; safe alias of PgSyncAdapter
+        db_types: &["postgresql", "cloudberry"],
         register,
     }
 }

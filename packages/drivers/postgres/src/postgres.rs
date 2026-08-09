@@ -1100,6 +1100,24 @@ impl DatabaseDriver for PostgresDriver {
             server_type: "PostgreSQL".to_string(),
         })
     }
+
+    async fn dump_database(
+        &self,
+        handle: &ConnectionHandle,
+        database: &str,
+        opts: &BackupDumpOptions,
+    ) -> Result<String, DriverError> {
+        let mut out = String::new();
+        if opts.create_database {
+            // No `\connect` — restore runs against the existing session.
+            out.push_str(&format!(
+                "CREATE DATABASE {};\n",
+                self.quote_ident(database)
+            ));
+        }
+        out.push_str(&sql_dump::dump_sql_database(self, handle, database, opts).await?);
+        Ok(out)
+    }
 }
 
 /// Split a SQL text into individual statements, respecting single-quoted strings,
