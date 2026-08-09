@@ -102,7 +102,7 @@ export function ChartWidgetTile({
           </div>
         )}
         {hasChart && chartData && (
-          <ChartCanvas data={chartData.data} config={widget.chartConfig} />
+          <ChartCanvas data={chartData.data} config={widget.chartConfig} compact />
         )}
       </div>
     </div>

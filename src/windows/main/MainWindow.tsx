@@ -89,7 +89,9 @@ export function MainWindow() {
 
   const [dashboardDialogOpen, setDashboardDialogOpen] = useState(false);
   const [newDashboardName, setNewDashboardName] = useState('');
-  const dashboards = useDashboardStore((s) => s.dashboards);
+  const dashboards = useDashboardStore((s) => s.list);
+  const listLoading = useDashboardStore((s) => s.listLoading);
+  const listError = useDashboardStore((s) => s.listError);
   const fetchDashboards = useDashboardStore((s) => s.fetchDashboards);
   const saveDashboard = useDashboardStore((s) => s.saveDashboard);
   const deleteDashboard = useDashboardStore((s) => s.deleteDashboard);
@@ -784,6 +786,11 @@ export function MainWindow() {
         }
       >
         <div className="space-y-3">
+          {listError && (
+            <div className="rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
+              {listError}
+            </div>
+          )}
           <label className="block space-y-1">
             <span className="text-xs text-fg-muted">{t('dashboard.name')}</span>
             <Input
@@ -795,7 +802,10 @@ export function MainWindow() {
               }}
             />
           </label>
-          {dashboards.length > 0 && (
+          {listLoading && (
+            <p className="text-xs text-fg-muted">{t('common.loading')}</p>
+          )}
+          {!listLoading && dashboards.length > 0 && (
             <div className="space-y-1">
               <span className="text-xs text-fg-muted">{t('dashboard.existing')}</span>
               <ul className="max-h-48 space-y-1 overflow-auto rounded-md border border-edge p-1">

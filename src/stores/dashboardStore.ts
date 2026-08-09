@@ -2,24 +2,50 @@ import { create } from 'zustand';
 import { dashboardCommands } from '../commands/dashboard';
 import type { Dashboard, WidgetRun } from '../types/dashboard';
 
-interface DashboardStore {
-  dashboards: Dashboard[];
-  current: Dashboard | null;
-  /** Latest run per widget id for the active dashboard. */
+export interface DashboardEntry {
+  dashboard: Dashboard | null;
   runs: Record<string, WidgetRun | null>;
-  /** Widget ids currently refreshing. */
-  busyWidgets: Set<string>;
-  loading: boolean;
-  error: string | null;
+  busyWidgets: Record<string, boolean>;
+  loading?: boolean;
+  error?: string | null;
+  refCount: number;
+}
+
+interface DashboardStore {
+  dashboardsById: Record<string, DashboardEntry>;
+  list: Dashboard[];
+  listError?: string | null;
+  listLoading?: boolean;
 
   fetchDashboards: () => Promise<void>;
+  mountDashboard: (id: string) => void;
+  releaseDashboard: (id: string) => void;
   loadDashboard: (id: string) => Promise<void>;
   saveDashboard: (dashboard: Dashboard) => Promise<Dashboard>;
   deleteDashboard: (id: string) => Promise<void>;
   refreshWidget: (dashboardId: string, widgetId: string) => Promise<WidgetRun>;
   refreshAllWidgets: (dashboardId: string) => Promise<void>;
-  setRun: (widgetId: string, run: WidgetRun | null) => void;
-  clearCurrent: () => void;
+  setRun: (dashboardId: string, widgetId: string, run: WidgetRun | null) => void;
+}
+
+function emptyEntry(): DashboardEntry {
+  return {
+    dashboard: null,
+    runs: {},
+    busyWidgets: {},
+    loading: false,
+    error: null,
+    refCount: 0,
+  };
+}
+
+function patchEntry(
+  dashboardsById: Record<string, DashboardEntry>,
+  id: string,
+  patch: Partial<DashboardEntry>,
+): Record<string, DashboardEntry> {
+  const prev = dashboardsById[id] ?? emptyEntry();
+  return { ...dashboardsById, [id]: { ...prev, ...patch } };
 }
 
 async function loadLatestRun(
@@ -33,28 +59,58 @@ async function loadLatestRun(
 }
 
 export const useDashboardStore = create<DashboardStore>((set, get) => ({
-  dashboards: [],
-  current: null,
-  runs: {},
-  busyWidgets: new Set(),
-  loading: false,
-  error: null,
+  dashboardsById: {},
+  list: [],
+  listError: null,
+  listLoading: false,
 
   fetchDashboards: async () => {
-    set({ loading: true, error: null });
+    set({ listLoading: true, listError: null });
     try {
-      const dashboards = await dashboardCommands.listDashboards();
-      set({ dashboards, loading: false });
+      const list = await dashboardCommands.listDashboards();
+      set({ list, listLoading: false });
     } catch (e) {
       set({
-        loading: false,
-        error: e instanceof Error ? e.message : String(e),
+        listLoading: false,
+        listError: e instanceof Error ? e.message : String(e),
       });
     }
   },
 
+  mountDashboard: (id: string) => {
+    set((s) => {
+      const prev = s.dashboardsById[id] ?? emptyEntry();
+      return {
+        dashboardsById: {
+          ...s.dashboardsById,
+          [id]: { ...prev, refCount: prev.refCount + 1 },
+        },
+      };
+    });
+  },
+
+  releaseDashboard: (id: string) => {
+    set((s) => {
+      const prev = s.dashboardsById[id];
+      if (!prev) return s;
+      const nextRef = prev.refCount - 1;
+      if (nextRef <= 0) {
+        const { [id]: _, ...rest } = s.dashboardsById;
+        return { dashboardsById: rest };
+      }
+      return {
+        dashboardsById: {
+          ...s.dashboardsById,
+          [id]: { ...prev, refCount: nextRef },
+        },
+      };
+    });
+  },
+
   loadDashboard: async (id: string) => {
-    set({ loading: true, error: null, current: null, runs: {} });
+    set((s) => ({
+      dashboardsById: patchEntry(s.dashboardsById, id, { loading: true, error: null }),
+    }));
     try {
       const dashboard = await dashboardCommands.getDashboard(id);
       const runs: Record<string, WidgetRun | null> = {};
@@ -67,12 +123,20 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
           }
         }),
       );
-      set({ current: dashboard, runs, loading: false });
+      set((s) => ({
+        dashboardsById: patchEntry(s.dashboardsById, id, {
+          dashboard,
+          runs,
+          loading: false,
+        }),
+      }));
     } catch (e) {
-      set({
-        loading: false,
-        error: e instanceof Error ? e.message : String(e),
-      });
+      set((s) => ({
+        dashboardsById: patchEntry(s.dashboardsById, id, {
+          loading: false,
+          error: e instanceof Error ? e.message : String(e),
+        }),
+      }));
     }
   },
 
@@ -81,56 +145,99 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
       ...dashboard,
       updatedAt: new Date().toISOString(),
     });
-    set((s) => ({
-      current: s.current?.id === saved.id ? saved : s.current,
-      dashboards: s.dashboards.some((d) => d.id === saved.id)
-        ? s.dashboards.map((d) => (d.id === saved.id ? saved : d))
-        : [...s.dashboards, saved],
-    }));
+    set((s) => {
+      const hasEntry = s.dashboardsById[saved.id] != null;
+      const dashboardsById = hasEntry
+        ? patchEntry(s.dashboardsById, saved.id, { dashboard: saved })
+        : s.dashboardsById;
+      const list = s.list.some((d) => d.id === saved.id)
+        ? s.list.map((d) => (d.id === saved.id ? saved : d))
+        : [...s.list, saved];
+      return { dashboardsById, list };
+    });
     return saved;
   },
 
   deleteDashboard: async (id: string) => {
     await dashboardCommands.deleteDashboard(id);
-    set((s) => ({
-      dashboards: s.dashboards.filter((d) => d.id !== id),
-      current: s.current?.id === id ? null : s.current,
-    }));
+    set((s) => {
+      const { [id]: _, ...rest } = s.dashboardsById;
+      return {
+        dashboardsById: rest,
+        list: s.list.filter((d) => d.id !== id),
+      };
+    });
   },
 
   refreshWidget: async (dashboardId: string, widgetId: string) => {
-    set((s) => ({
-      busyWidgets: new Set([...s.busyWidgets, widgetId]),
-    }));
+    set((s) => {
+      const entry = s.dashboardsById[dashboardId] ?? emptyEntry();
+      return {
+        dashboardsById: {
+          ...s.dashboardsById,
+          [dashboardId]: {
+            ...entry,
+            busyWidgets: { ...entry.busyWidgets, [widgetId]: true },
+          },
+        },
+      };
+    });
     try {
       const run = await dashboardCommands.runDashboardWidget(dashboardId, widgetId);
-      set((s) => ({
-        runs: { ...s.runs, [widgetId]: run },
-        busyWidgets: new Set([...s.busyWidgets].filter((id) => id !== widgetId)),
-      }));
+      set((s) => {
+        const entry = s.dashboardsById[dashboardId] ?? emptyEntry();
+        const busyWidgets = { ...entry.busyWidgets };
+        delete busyWidgets[widgetId];
+        return {
+          dashboardsById: {
+            ...s.dashboardsById,
+            [dashboardId]: {
+              ...entry,
+              runs: { ...entry.runs, [widgetId]: run },
+              busyWidgets,
+            },
+          },
+        };
+      });
       return run;
     } catch (e) {
-      set((s) => ({
-        busyWidgets: new Set([...s.busyWidgets].filter((id) => id !== widgetId)),
-        error: e instanceof Error ? e.message : String(e),
-      }));
+      set((s) => {
+        const entry = s.dashboardsById[dashboardId] ?? emptyEntry();
+        const busyWidgets = { ...entry.busyWidgets };
+        delete busyWidgets[widgetId];
+        return {
+          dashboardsById: {
+            ...s.dashboardsById,
+            [dashboardId]: {
+              ...entry,
+              busyWidgets,
+              error: e instanceof Error ? e.message : String(e),
+            },
+          },
+        };
+      });
       throw e;
     }
   },
 
   refreshAllWidgets: async (dashboardId: string) => {
-    const { current } = get();
-    if (!current || current.id !== dashboardId) return;
+    const entry = get().dashboardsById[dashboardId];
+    if (!entry?.dashboard) return;
     await Promise.all(
-      current.widgets.filter((w) => w.enabled).map((w) => get().refreshWidget(dashboardId, w.id)),
+      entry.dashboard.widgets
+        .filter((w) => w.enabled)
+        .map((w) => get().refreshWidget(dashboardId, w.id)),
     );
   },
 
-  setRun: (widgetId, run) => {
-    set((s) => ({ runs: { ...s.runs, [widgetId]: run } }));
-  },
-
-  clearCurrent: () => {
-    set({ current: null, runs: {}, error: null });
+  setRun: (dashboardId, widgetId, run) => {
+    set((s) => {
+      const entry = s.dashboardsById[dashboardId] ?? emptyEntry();
+      return {
+        dashboardsById: patchEntry(s.dashboardsById, dashboardId, {
+          runs: { ...entry.runs, [widgetId]: run },
+        }),
+      };
+    });
   },
 }));
