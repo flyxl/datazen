@@ -7,6 +7,7 @@
  *   --drivers="postgres,mysql"   (explicit registry names)
  *   --drivers="basic"            (postgres, mysql, sqlite, redis) — default when omitted
  *   --drivers="all"              (all path drivers only; excludes git drivers)
+ *   --drivers="all,kiwi,superset"   (all / :all expands to all path drivers, then adds listed ids)
  *   --drivers="stub"             (empty selection; git-safe generated.ts / plugin_init)
  *   --drivers=                   (same as stub — explicit empty value)
  *   --drivers="postgres,mongodb,kiwi"  (explicit list; use this for custom SKUs)
@@ -24,7 +25,7 @@
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
 import { resolve, dirname, join, relative } from 'path';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 import { execSync } from 'child_process';
 import {
   stashManagedFiles,
@@ -95,7 +96,19 @@ function parseArgs() {
 
 const BASIC_DRIVERS = ['postgres', 'mysql', 'sqlite', 'redis'];
 
-function resolveDrivers(driversArg, registry) {
+function pathDriverIds(registry) {
+  return Object.entries(registry)
+    .filter(([, entry]) => entry?.source === 'path')
+    .map(([name]) => name);
+}
+
+/**
+ * Resolve a --drivers / DATAZEN_DRIVERS value to registry ids.
+ * Supports presets `basic` | `all` | `stub`, comma lists, and expanders `all` / `:all`
+ * (all path drivers) so e.g. `all,kiwi,superset` includes git drivers without
+ * baking them into the bare `all` preset alone.
+ */
+export function resolveDrivers(driversArg, registry) {
   if (driversArg === 'none' || driversArg === 'core') {
     console.error(
       `[resolve-drivers] preset "${driversArg}" is no longer supported. Use --drivers=basic for the four core drivers, or --drivers=stub for an empty git baseline.`,
@@ -112,23 +125,35 @@ function resolveDrivers(driversArg, registry) {
     return [...BASIC_DRIVERS];
   }
 
-  // Path-only: users/devs can opt into git drivers via an explicit list
-  // (e.g. CI akulaku SKU). Never bake kiwi/superset/olap into `all`.
-  if (driversArg === 'all') {
-    return Object.entries(registry)
-      .filter(([, entry]) => entry?.source === 'path')
-      .map(([name]) => name);
+  // Bare `all` remains path-only (same as expander below without extra ids).
+  if (driversArg === 'all' || driversArg === ':all') {
+    return pathDriverIds(registry);
   }
 
   const requested = driversArg.split(',').map((x) => x.trim()).filter(Boolean);
   const resolved = [];
+  const seen = new Set();
 
-  for (const name of requested) {
-    if (!registry[name]) {
-      console.error(`[resolve-drivers] Unknown driver "${name}" — not in drivers-registry.json`);
+  for (const token of requested) {
+    let names;
+    if (token === 'all' || token === ':all') {
+      names = pathDriverIds(registry);
+    } else if (token.startsWith(':')) {
+      console.error(
+        `[resolve-drivers] Unknown expander "${token}". Supported expanders: all, :all`,
+      );
       process.exit(1);
+    } else if (!registry[token]) {
+      console.error(`[resolve-drivers] Unknown driver "${token}" — not in drivers-registry.json`);
+      process.exit(1);
+    } else {
+      names = [token];
     }
-    resolved.push(name);
+    for (const name of names) {
+      if (seen.has(name)) continue;
+      seen.add(name);
+      resolved.push(name);
+    }
   }
 
   return resolved;
@@ -149,7 +174,8 @@ function generateCargoFeatures(drivers, registry) {
  * - connectionForm: { component, path, formVariant } — custom connection form (optional)
  * - sqlDialects: array of { family, export, path } — SQL dialect strategies (optional)
  */
-const DRIVER_ICON_ALIASES = {
+/** Protocol-reuse dbTypes → parent dbType used for composite badges when own SVG is missing. */
+const DRIVER_ICON_PARENT = {
   questdb: 'postgresql',
   cloudberry: 'postgresql',
   doris: 'mysql',
@@ -166,17 +192,12 @@ function driverUiDirFromMetaPath(metaPath) {
 
 function resolveDriverIconImport(metaPath, dbTypeId) {
   const uiDir = driverUiDirFromMetaPath(metaPath);
-  const candidates = [dbTypeId, DRIVER_ICON_ALIASES[dbTypeId]].filter(Boolean);
-  for (const name of candidates) {
-    const abs = join(uiDir, 'icons', `${name}.svg`);
-    if (existsSync(abs)) {
-      // import path relative to src/plugins/generated.ts
-      const relFromPlugins = relative(resolve(ROOT, 'src/plugins'), abs).replaceAll('\\', '/');
-      const importPath = relFromPlugins.startsWith('.') ? relFromPlugins : `./${relFromPlugins}`;
-      return { abs, importPath: `${importPath}?url`, fileKey: name };
-    }
-  }
-  return null;
+  const abs = join(uiDir, 'icons', `${dbTypeId}.svg`);
+  if (!existsSync(abs)) return null;
+  // import path relative to src/plugins/generated.ts
+  const relFromPlugins = relative(resolve(ROOT, 'src/plugins'), abs).replaceAll('\\', '/');
+  const importPath = relFromPlugins.startsWith('.') ? relFromPlugins : `./${relFromPlugins}`;
+  return { abs, importPath: `${importPath}?url`, fileKey: dbTypeId };
 }
 
 const BASIC_PATH_FRONTEND = {
@@ -206,6 +227,14 @@ const BASIC_PATH_FRONTEND = {
   redis: {
     dbTypes: [{ id: 'redis', metaExport: 'redisMeta' }],
     metaPath: '../../packages/drivers/redis/ui/meta',
+    settings: {
+      pluginId: 'redis',
+      label: 'Redis',
+      sectionExport: 'RedisSettingsSection',
+      sectionPath: '../../packages/drivers/redis/ui/settings',
+      schemaExport: 'redisSettingsSchema',
+      schemaPath: '../../packages/drivers/redis/ui/settings',
+    },
   },
   mongodb: {
     dbTypes: [{ id: 'mongodb', metaExport: 'mongodbMeta' }],
@@ -306,10 +335,12 @@ function generateFrontendRegistry(plugins) {
   const iconImportLines = [];
   const dbEntryLines = [];
   const iconEntryLines = [];
+  const iconParentEntryLines = [];
   const formEntryLines = [];
   const validatorEntryLines = [];
   const dialectEntryLines = [];
   const schemaTreeEntryLines = [];
+  const settingsEntryLines = [];
   const pluginDbTypes = [];
   const iconImportByAbs = new Map();
 
@@ -341,6 +372,8 @@ function generateFrontendRegistry(plugins) {
           iconImportLines.push(`import ${binding} from '${resolved.importPath}';`);
         }
         iconEntryLines.push(`  'db.${dt.id}': ${binding},`);
+      } else if (DRIVER_ICON_PARENT[dt.id]) {
+        iconParentEntryLines.push(`  ${dt.id}: '${DRIVER_ICON_PARENT[dt.id]}',`);
       }
     }
 
@@ -376,6 +409,31 @@ function generateFrontendRegistry(plugins) {
       importLines.push(`import { ${dial.export} } from '${dial.path}';`);
       dialectEntryLines.push(`  ${dial.family}: ${dial.export},`);
     }
+
+    // Plugin settings (Extensions UI)
+    if (cfg.settings) {
+      const s = cfg.settings;
+      const settingsImports = new Set();
+      if (s.sectionExport) settingsImports.add(s.sectionExport);
+      if (s.schemaExport) settingsImports.add(s.schemaExport);
+      const settingsPath = s.sectionPath || s.schemaPath;
+      if (settingsPath && settingsImports.size > 0) {
+        importLines.push(
+          `import { ${[...settingsImports].join(', ')} } from '${settingsPath}';`,
+        );
+      }
+      const entryParts = [
+        `pluginId: '${s.pluginId}'`,
+        `label: '${s.label.replace(/'/g, "\\'")}'`,
+      ];
+      if (s.sectionExport) {
+        entryParts.push(`SettingsSection: ${s.sectionExport}`);
+      }
+      if (s.schemaExport) {
+        entryParts.push(`schema: ${s.schemaExport}`);
+      }
+      settingsEntryLines.push(`  { ${entryParts.join(', ')} },`);
+    }
   }
 
   const typeUnion = pluginDbTypes.length > 0
@@ -407,6 +465,7 @@ ${importLines.length > 0 ? importLines.join('\n') + '\n' : ''}${iconImportLines.
 import type { DatabaseTypeMeta } from '@datazen/plugin-sdk';
 import type { SqlDialectStrategy } from '@datazen/plugin-sdk';
 import type { PluginFormValidator } from '@datazen/plugin-sdk';
+import type { PluginSettingsContribution } from '@datazen/plugin-sdk';
 import type { ComponentType } from 'react';
 
 /**
@@ -427,6 +486,11 @@ ${dbEntryLines.join('\n')}
 /** Default driver badge icon URLs keyed by semantic id (\`db.<type>\`). */
 export const DRIVER_ICON_ENTRIES: Record<string, string> = {
 ${iconEntryLines.join('\n')}
+};
+
+/** Protocol-reuse types without own badge SVG: parent dbType for composite badge. */
+export const DRIVER_ICON_PARENTS: Record<string, string> = {
+${iconParentEntryLines.join('\n')}
 };
 
 /** @deprecated Use DatabaseType */
@@ -490,6 +554,13 @@ export function getPluginSchemaTree(dbType: string): ComponentType<any> | undefi
   }
   return undefined;
 }
+
+// ===== Plugin Settings (Extensions UI) =====
+
+/** Plugin-provided settings sections and/or JSON Schema forms. */
+export const PLUGIN_SETTINGS_ENTRIES: PluginSettingsContribution[] = [
+${settingsEntryLines.join('\n')}
+];
 
 // ===== Plugin Commands =====
 
@@ -805,6 +876,17 @@ function injectCargoToml(plugins, registry) {
   content = replaceMarkerBlock(content, 'plugin-dependencies', depLines);
   content = replaceMarkerBlock(content, 'plugin-features', featureLines);
 
+  // Enable injected drivers by default so `tauri build --features webdriver` (and
+  // other builds that only pass extra flags) still compile plugin crates and register
+  // their Tauri ACL manifests (e.g. redis:default).
+  const defaultFeatureNames = featureLines.map((line) => line.split('=')[0].trim());
+  content = content.replace(
+    /^default = \[[^\]]*\]/m,
+    defaultFeatureNames.length > 0
+      ? `default = [${defaultFeatureNames.map((f) => `"${f}"`).join(', ')}]`
+      : 'default = []',
+  );
+
   writeFileSync(workPath(relPath), content);
   console.log(`[resolve-drivers] injected ${depLines.length} deps + ${featureLines.length} features into Cargo.toml`);
 }
@@ -988,4 +1070,6 @@ function main() {
   }
 }
 
-main();
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+  main();
+}

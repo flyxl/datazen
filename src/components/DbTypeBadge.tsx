@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { cn } from '../lib/cn';
-import { getDbIcon } from '../lib/databaseTypes';
+import { getDbIcon, getDriverIconParents } from '../lib/databaseTypes';
 import { getActiveIconResolver, type IconResolver } from '../lib/iconResolver';
 import type { DatabaseType } from '../types';
 
@@ -18,6 +18,10 @@ function badgeFontSize(size: number): number {
   return 11;
 }
 
+function cornerFontSize(size: number): number {
+  return Math.min(11, Math.max(8, Math.round(size * 0.38)));
+}
+
 export function DbTypeBadge({
   databaseType,
   className,
@@ -31,7 +35,8 @@ export function DbTypeBadge({
     return () => document.removeEventListener('datazen:theme-pack-changed', onPackChanged);
   }, []);
 
-  const resolved = (resolver ?? getActiveIconResolver()).resolve(`db.${databaseType}`);
+  const activeResolver = resolver ?? getActiveIconResolver();
+  const resolved = activeResolver.resolve(`db.${databaseType}`);
   const dimensionStyle = { width: size, height: size };
 
   if (resolved.kind === 'url') {
@@ -46,6 +51,35 @@ export function DbTypeBadge({
           className,
         )}
       />
+    );
+  }
+
+  const parentId = getDriverIconParents()[databaseType];
+  const parentResolved = parentId ? activeResolver.resolve(`db.${parentId}`) : null;
+  if (parentResolved?.kind === 'url') {
+    const { label, bg } = getDbIcon(databaseType as DatabaseType);
+    return (
+      <span
+        style={dimensionStyle}
+        className={cn('relative inline-flex shrink-0', className)}
+        aria-hidden
+      >
+        <img
+          src={parentResolved.href}
+          alt=""
+          draggable={false}
+          className="h-full w-full rounded-lg object-contain shadow-sm"
+        />
+        <span
+          style={{ fontSize: cornerFontSize(size) }}
+          className={cn(
+            'absolute -right-0.5 -bottom-0.5 flex items-center justify-center rounded px-0.5 font-bold leading-none text-white shadow',
+            bg,
+          )}
+        >
+          {label}
+        </span>
+      </span>
     );
   }
 

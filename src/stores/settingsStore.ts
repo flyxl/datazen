@@ -30,6 +30,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   contextDir: '',
   checkForUpdatesOnStartup: false,
   monitor: DEFAULT_MONITOR_SETTINGS,
+  pluginSettings: {},
 };
 
 const THEME_STORAGE_KEY = 'datazen-theme';
