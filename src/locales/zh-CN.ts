@@ -741,6 +741,7 @@ const zhCN = {
   'indexes.loading': '加载索引信息…',
   'indexes.count': '{count} 个索引',
   'indexes.noIndexes': '该表没有索引',
+  'indexes.editInStructure': '在表结构中编辑',
   'indexes.createFirst': '创建第一个索引',
   'indexes.colName': '索引名',
   'indexes.colColumns': '列',
