@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-xgroup-destroy"
+description = "Enables the xgroup_destroy command without any pre-configured scope."
+commands.allow = ["xgroup_destroy"]
+
+[[permission]]
+identifier = "deny-xgroup-destroy"
+description = "Denies the xgroup_destroy command without any pre-configured scope."
+commands.deny = ["xgroup_destroy"]

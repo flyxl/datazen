@@ -313,6 +313,109 @@ impl RedisDriver {
     plugin_on_db!(plugin_json_get, (key: &str, path: &str) -> crate::ops_json::JsonGetResult, |conn| crate::ops_json::json_get(conn, key, path));
     plugin_on_db!(plugin_json_set, (key: &str, path: &str, value: &str) -> (), |conn| crate::ops_json::json_set(conn, key, path, value));
     plugin_on_db!(plugin_json_del, (key: &str, path: &str) -> crate::ops_json::JsonDelResult, |conn| crate::ops_json::json_del(conn, key, path));
+
+    plugin_on_db!(
+        plugin_xrange,
+        (key: &str, start: &str, end: &str, count: Option<u32>) -> crate::ops_stream::XrangeResult,
+        |conn| crate::ops_stream::xrange(conn, key, start, end, count)
+    );
+
+    pub async fn plugin_xadd(
+        &self,
+        connection_id: &str,
+        db_index: u32,
+        key: &str,
+        fields: &std::collections::HashMap<String, String>,
+        id: Option<String>,
+    ) -> Result<crate::ops_stream::XaddResult, DriverError> {
+        let key = key.to_string();
+        let fields = fields.clone();
+        with_live_op!(self, connection_id, db_index, |conn| {
+            crate::ops_stream::xadd(conn, &key, &fields, id.as_deref()).await
+        })
+    }
+
+    pub async fn plugin_xgroup_create(
+        &self,
+        connection_id: &str,
+        db_index: u32,
+        key: &str,
+        group: &str,
+        start_id: Option<String>,
+    ) -> Result<(), DriverError> {
+        let key = key.to_string();
+        let group = group.to_string();
+        with_live_op!(self, connection_id, db_index, |conn| {
+            crate::ops_stream::xgroup_create(conn, &key, &group, start_id.as_deref()).await
+        })
+    }
+
+    plugin_on_db!(
+        plugin_xgroup_destroy,
+        (key: &str, group: &str) -> (),
+        |conn| crate::ops_stream::xgroup_destroy(conn, key, group)
+    );
+
+    plugin_on_db!(
+        plugin_xinfo_groups,
+        (key: &str) -> Vec<crate::ops_stream::StreamGroupInfo>,
+        |conn| crate::ops_stream::xinfo_groups(conn, key)
+    );
+
+    pub async fn plugin_xpending(
+        &self,
+        connection_id: &str,
+        db_index: u32,
+        key: &str,
+        group: &str,
+        start: Option<String>,
+        end: Option<String>,
+        count: Option<u32>,
+        consumer: Option<String>,
+    ) -> Result<crate::ops_stream::XpendingResult, DriverError> {
+        let key = key.to_string();
+        let group = group.to_string();
+        with_live_op!(self, connection_id, db_index, |conn| {
+            crate::ops_stream::xpending(
+                conn,
+                &key,
+                &group,
+                start.as_deref(),
+                end.as_deref(),
+                count,
+                consumer.as_deref(),
+            )
+            .await
+        })
+    }
+
+    pub async fn plugin_xack(
+        &self,
+        connection_id: &str,
+        db_index: u32,
+        key: &str,
+        group: &str,
+        ids: &[String],
+    ) -> Result<u64, DriverError> {
+        let key = key.to_string();
+        let group = group.to_string();
+        let ids = ids.to_vec();
+        with_live_op!(self, connection_id, db_index, |conn| {
+            crate::ops_stream::xack(conn, &key, &group, &ids).await
+        })
+    }
+
+    pub async fn plugin_stream_overview(
+        &self,
+        connection_id: &str,
+        db_index: u32,
+        limit: Option<u32>,
+    ) -> Result<crate::ops_stream::StreamOverviewResult, DriverError> {
+        let limit = crate::ops_stream::resolve_stream_overview_limit(limit);
+        with_live_op!(self, connection_id, db_index, |conn| {
+            crate::ops_stream::stream_overview(conn, limit).await
+        })
+    }
 }
 
 async fn select_db_on<C>(conn: &mut C, db_index: u32) -> Result<(), String>
