@@ -1,3 +1,4 @@
+pub mod alert;
 pub mod execute;
 pub mod export;
 pub mod runs;
