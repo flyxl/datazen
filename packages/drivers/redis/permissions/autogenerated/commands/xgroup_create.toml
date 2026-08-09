@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-xgroup-create"
+description = "Enables the xgroup_create command without any pre-configured scope."
+commands.allow = ["xgroup_create"]
+
+[[permission]]
+identifier = "deny-xgroup-create"
+description = "Denies the xgroup_create command without any pre-configured scope."
+commands.deny = ["xgroup_create"]

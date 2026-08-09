@@ -386,6 +386,126 @@ async fn json_del(
         .map_err(map_err)
 }
 
+#[tauri::command]
+async fn xrange(
+    connection_id: String,
+    db_index: u32,
+    key: String,
+    start: String,
+    end: String,
+    count: Option<u32>,
+) -> Result<ops_stream::XrangeResult, String> {
+    shared_driver()
+        .plugin_xrange(&connection_id, db_index, &key, &start, &end, count)
+        .await
+        .map_err(map_err)
+}
+
+#[tauri::command]
+async fn xadd(
+    connection_id: String,
+    db_index: u32,
+    key: String,
+    fields: std::collections::HashMap<String, String>,
+    id: Option<String>,
+) -> Result<ops_stream::XaddResult, String> {
+    shared_driver()
+        .plugin_xadd(&connection_id, db_index, &key, &fields, id)
+        .await
+        .map_err(map_err)
+}
+
+#[tauri::command]
+async fn xgroup_create(
+    connection_id: String,
+    db_index: u32,
+    key: String,
+    group: String,
+    start_id: Option<String>,
+) -> Result<(), String> {
+    shared_driver()
+        .plugin_xgroup_create(&connection_id, db_index, &key, &group, start_id)
+        .await
+        .map_err(map_err)
+}
+
+#[tauri::command]
+async fn xgroup_destroy(
+    connection_id: String,
+    db_index: u32,
+    key: String,
+    group: String,
+) -> Result<(), String> {
+    shared_driver()
+        .plugin_xgroup_destroy(&connection_id, db_index, &key, &group)
+        .await
+        .map_err(map_err)
+}
+
+#[tauri::command]
+async fn xinfo_groups(
+    connection_id: String,
+    db_index: u32,
+    key: String,
+) -> Result<Vec<ops_stream::StreamGroupInfo>, String> {
+    shared_driver()
+        .plugin_xinfo_groups(&connection_id, db_index, &key)
+        .await
+        .map_err(map_err)
+}
+
+#[tauri::command]
+async fn xpending(
+    connection_id: String,
+    db_index: u32,
+    key: String,
+    group: String,
+    start: Option<String>,
+    end: Option<String>,
+    count: Option<u32>,
+    consumer: Option<String>,
+) -> Result<ops_stream::XpendingResult, String> {
+    shared_driver()
+        .plugin_xpending(
+            &connection_id,
+            db_index,
+            &key,
+            &group,
+            start,
+            end,
+            count,
+            consumer,
+        )
+        .await
+        .map_err(map_err)
+}
+
+#[tauri::command]
+async fn xack(
+    connection_id: String,
+    db_index: u32,
+    key: String,
+    group: String,
+    ids: Vec<String>,
+) -> Result<u64, String> {
+    shared_driver()
+        .plugin_xack(&connection_id, db_index, &key, &group, &ids)
+        .await
+        .map_err(map_err)
+}
+
+#[tauri::command]
+async fn stream_overview(
+    connection_id: String,
+    db_index: u32,
+    limit: Option<u32>,
+) -> Result<ops_stream::StreamOverviewResult, String> {
+    shared_driver()
+        .plugin_stream_overview(&connection_id, db_index, limit)
+        .await
+        .map_err(map_err)
+}
+
 /// Register Redis IPC commands as a Tauri plugin (`plugin:redis|*`).
 pub fn init<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
     tauri::plugin::Builder::new("redis")
@@ -421,6 +541,14 @@ pub fn init<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
             json_get,
             json_set,
             json_del,
+            xrange,
+            xadd,
+            xgroup_create,
+            xgroup_destroy,
+            xinfo_groups,
+            xpending,
+            xack,
+            stream_overview,
         ])
         .build()
 }

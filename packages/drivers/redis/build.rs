@@ -31,6 +31,14 @@ fn main() {
         "json_get",
         "json_set",
         "json_del",
+        "xrange",
+        "xadd",
+        "xgroup_create",
+        "xgroup_destroy",
+        "xinfo_groups",
+        "xpending",
+        "xack",
+        "stream_overview",
     ])
     .build();
 }
