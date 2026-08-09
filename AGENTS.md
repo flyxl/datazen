@@ -61,12 +61,14 @@ datazen/
 3. 通过 `inventory` crate 实现链接时自动注册；宿主 `DriverRegistry` 仅走 factories
 
 ```bash
-pnpm tauri:dev                         # 全部驱动（默认 all）
+pnpm tauri:dev                         # 全部 path 驱动（默认 all；不含 git）
 pnpm tauri:dev --drivers=basic         # 仅 postgres/mysql/sqlite/redis
-pnpm tauri:dev --drivers=postgres,mongodb,kiwi
+pnpm tauri:dev --drivers=postgres,mongodb,kiwi   # 显式列表（git 需列出）
 DATAZEN_DRIVERS=basic pnpm tauri:dev   # 环境变量同样生效
-DATAZEN_DRIVERS=all pnpm tauri:build   # 全部 path + git 驱动打包
+DATAZEN_DRIVERS=all pnpm tauri:build   # 全部 path 原生驱动（不含 kiwi/superset/olap）
 ```
+
+发布 SKU（CI，非 `resolve-drivers` 预设）：**Basic** / **All**（path）/ **Akulaku**（CI 显式 `postgres,mysql,sqlite,redis,mongodb,kiwi,superset`）。自定义包只在 CI 传逗号列表，不要在脚本里加新的与 `basic`/`all` 同级预设名。
 
 ### 数据库驱动
 

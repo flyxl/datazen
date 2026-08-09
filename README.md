@@ -39,16 +39,17 @@
 
 ## About
 
-**DataZen** is a free, [GPLv3-licensed](LICENSE) database GUI for developers. Built with **Tauri + Rust** (&lt;10 MB installer), it manages **PostgreSQL, MySQL, SQLite, and Redis** in one app—with multi-window workflow, built-in **SSH tunnels**, SQL editor with autocomplete, backups, and PG↔MySQL sync. Credentials stay on your machine (AES-256-GCM); no cloud account required. UI supports **English and Chinese**.
+**DataZen** is a free, [GPLv3-licensed](LICENSE) database GUI for developers. Built with **Tauri + Rust**, it ships **Basic** (PostgreSQL / MySQL / SQLite / Redis — small default) and **All** (extra native engines such as MongoDB, SQL Server, ClickHouse, DuckDB). Compile from source with only the drivers you need (`DATAZEN_DRIVERS=…`) — you never pay for bloat you will not use. Multi-window workflow, **SSH tunnels**, SQL editor, backups, and PG↔MySQL sync included. Credentials stay on your machine (AES-256-GCM).
 
-**DataZen** 是一款免费开源（GPLv3）的桌面数据库客户端，基于 **Tauri + Rust** 构建，安装包小于 10 MB。在一个应用中管理 **PostgreSQL、MySQL、SQLite、Redis**，支持多窗口、内置 **SSH 隧道**、SQL 自动补全、备份与 PG↔MySQL 同步。连接密码本地加密存储，无需云端账号，界面支持**中英文**。
+**DataZen** 是一款免费开源（GPLv3）的桌面数据库客户端，基于 **Tauri + Rust**。发布提供 **Basic**（PostgreSQL / MySQL / SQLite / Redis，默认小包）与 **All**（额外原生引擎：MongoDB、SQL Server、ClickHouse、DuckDB 等）。源码构建可用 `DATAZEN_DRIVERS=…` **只编译需要的类型**，不为大而全买单。支持多窗口、**SSH 隧道**、SQL 编辑器、备份与 PG↔MySQL 同步；连接密码本地加密存储。
 
 ---
 
 <a id="features"></a>
 ## Features
 
-- **Multi-database** — PostgreSQL, MySQL / MariaDB, SQLite, Redis in one app
+- **Pay only for what you use** — download **Basic** or **All**; or compile a custom driver set with `DATAZEN_DRIVERS`
+- **Multi-database** — Basic: PostgreSQL, MySQL / MariaDB, SQLite, Redis; All adds MongoDB, SQL Server, ClickHouse, DuckDB, and more native engines
 - **SSH tunneling** — Connect via bastion; pure Rust, no local `ssh` client required
 - **SQL editor** — Syntax highlighting, table/column autocomplete, multi-statement runs, EXPLAIN viz
 - **Data browser** — Virtual scrolling, inline edit, sort/filter, pagination
@@ -62,7 +63,8 @@
 <a id="特性"></a>
 ## 特性
 
-- **多数据库支持** — PostgreSQL、MySQL / MariaDB、SQLite、Redis，统一管理
+- **按需选用，不为大而全买单** — 下载 **Basic** 或 **All**；源码可用 `DATAZEN_DRIVERS` 只编进需要的驱动
+- **多数据库支持** — Basic：PostgreSQL、MySQL / MariaDB、SQLite、Redis；All 另含 MongoDB、SQL Server、ClickHouse、DuckDB 等原生引擎
 - **SSH 隧道** — 通过跳板机安全连接远程数据库，纯 Rust 实现，无需本地安装 SSH 客户端
 - **智能 SQL 编辑器** — 语法高亮、自动补全（表名 + 列名）、多语句执行、执行计划可视化
 - **数据浏览与编辑** — 虚拟滚动表格、行内编辑、排序/筛选、分页导航
@@ -95,7 +97,7 @@
 | **代码编辑器** | CodeMirror 6 | SQL 语法高亮 + 自动补全 |
 | **虚拟化** | @tanstack/react-virtual | 十万行级数据流畅滚动 |
 | **后端语言** | Rust | 内存安全，高性能异步 I/O |
-| **数据库驱动** | sqlx (PG/MySQL/SQLite) + redis crate | 原生异步驱动，连接池管理 |
+| **数据库驱动** | `packages/drivers/*`（编译时选型） | Basic / All / 自定义列表，进程内原生驱动 |
 | **SSH** | russh | 纯 Rust SSH 客户端，无系统依赖 |
 | **加密** | AES-256-GCM | 本地加密存储连接密码 |
 | **E2E 测试** | WebdriverIO | 跨平台自动化测试 |
@@ -115,7 +117,31 @@ Download from [Releases](https://github.com/flyxl/datazen/releases) · 从 [Rele
 | Windows | `.exe` / `.msi` (文件名含 `windows-x64`) |
 | Linux (x86_64) | `.deb` / `.rpm` / `.AppImage` (文件名含 `linux-x64`) |
 
-GitHub Release 会同时发布 **基础版** 与 **Pro 版**（`-pro`）的上述平台安装包。
+GitHub Release 为上述平台同时发布：
+
+| 变体 | 文件名后缀 | 内容 |
+|------|------------|------|
+| **Basic** | （无） | PostgreSQL / MySQL / SQLite / Redis |
+| **All** | `-all` | 全部 **path 原生驱动**（不含 Kiwi / Superset / OLAP） |
+| **Akulaku** | `-akulaku` | Basic + MongoDB + Kiwi + Superset（特定部署） |
+
+### Package managers / 包管理器
+
+Homebrew (macOS Basic, tap template in `packaging/homebrew/datazen.rb`):
+
+```bash
+brew tap flyxl/datazen
+brew install --cask datazen
+# If macOS blocks launch: xattr -cr /Applications/DataZen.app
+```
+
+WinGet (Windows Basic x64, manifest template in `packaging/winget/`):
+
+```powershell
+winget install Flyxl.DataZen
+```
+
+Release checksums for packaging are appended to each GitHub release body (Basic assets only). See [docs/updater.md](docs/updater.md) for signed auto-update setup.
 
 <a id="macos-first-launch"></a>
 ### macOS first launch / 首次打开
@@ -197,17 +223,18 @@ pnpm tauri dev
 ### 构建发行版
 
 ```bash
-# 包含所有插件（默认）
+# 全部 path 原生驱动（默认 all；不含 kiwi/superset/olap）
 pnpm tauri build
 
-# 仅内置驱动（最小体积）
+# Basic 四核心（最小体积）
 pnpm tauri:build:minimal
 
-# 指定插件
-pnpm tauri:build --drivers=kiwi,olap
+# 自定义：只编译需要的类型（不为大而全买单）
+pnpm tauri:build --drivers=postgres,mongodb
+pnpm tauri:build --drivers=postgres,mysql,sqlite,redis,mongodb,kiwi,superset
 ```
 
-GitHub Release 构建两个安装包：**基础版**（`DATAZEN_DRIVERS=basic`，仅 PG/MySQL/SQLite/Redis）与 **Pro 版**（含更多 path/git 驱动；全量用 `--drivers=all`）。
+GitHub Release：**Basic** / **All**（path）/ **Akulaku**（CI 显式驱动列表，非脚本预设）。
 
 ### 运行 E2E 测试
 
@@ -230,21 +257,21 @@ DataZen 支持两种方式添加新数据库驱动：
 在独立仓库中开发，构建时按需组合。详见 **[插件开发指南](docs/plugin-development.md)**。
 
 ```bash
-# 构建时指定包含的插件
+# 构建时指定包含的驱动（path 与/或 git）
 DATAZEN_DRIVERS=kiwi,olap pnpm tauri build
 
-# 或使用全部/无插件模式
+# 预设：all = 全部 path；basic = 四核心
 DATAZEN_DRIVERS=all pnpm tauri build
 DATAZEN_DRIVERS=basic pnpm tauri build
 ```
 
-### 方式 2：作为内置驱动
+### 方式 2：作为 path 原生驱动
 
-适用于核心数据库（PostgreSQL、MySQL、SQLite、Redis）。
+在 `packages/drivers/<id>/` 实现并登记到 `drivers-registry.json`（`source: path`）。
 
 **后端**：
-1. 在 `src-tauri/src/db/` 实现 `DatabaseDriver` trait
-2. 在 `registry.rs` 的 `init_drivers()` 中注册
+1. 在 `packages/drivers/<id>/` 实现 `DatabaseDriver` trait 并用 `register_driver!` 注册
+2. 构建前由 `resolve-drivers.mjs` 注入 Cargo feature
 
 **前端**：
 1. 在 `src/lib/databaseTypes.ts` 的 `BUILTIN_DB_REGISTRY` 添加元数据

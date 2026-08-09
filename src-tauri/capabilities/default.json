@@ -23,6 +23,8 @@
     "core:menu:default",
     "dialog:default",
     "os:default",
+    "updater:default",
+    "process:default",
     "core:window:allow-is-maximized",
     "core:window:allow-maximize",
     "core:window:allow-unmaximize",

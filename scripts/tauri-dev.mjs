@@ -4,7 +4,7 @@
  * restores stashed clean managed files on exit.
  *
  * Usage:
- *   pnpm tauri:dev                         # all drivers (default)
+ *   pnpm tauri:dev                         # all path drivers (default; no git)
  *   pnpm tauri:dev --drivers=kiwi          # only kiwi (+ no path drivers unless listed)
  *   pnpm tauri:dev --drivers=basic         # postgres, mysql, sqlite, redis
  *   DATAZEN_DRIVERS=basic pnpm tauri:dev   # env var also works

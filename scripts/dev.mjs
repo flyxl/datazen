@@ -3,7 +3,7 @@
  * dev.mjs — wrapper for `pnpm dev` that resolves drivers then restores stash on exit.
  *
  * Usage:
- *   pnpm dev                          # all drivers (default)
+ *   pnpm dev                          # all path drivers (default; no git)
  *   pnpm dev --drivers=kiwi           # only kiwi
  *   pnpm dev --drivers=basic          # four core path drivers
  *   DATAZEN_DRIVERS=basic pnpm dev    # env var also works

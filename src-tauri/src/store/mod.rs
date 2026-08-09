@@ -16,6 +16,7 @@ use tokio::sync::RwLock;
 
 use crate::ai::AiProviderConfig;
 use crate::db::ConnectionConfig;
+use crate::mcp::permission::McpPermissionMode;
 
 /// Light / dark / system mode plus optional installed theme pack.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -76,8 +77,14 @@ pub struct AppSettings {
     pub mcp_server_enabled: bool,
     #[serde(default)]
     pub mcp_disabled_tools: Vec<String>,
+    /// MCP tool permission tier for external AI clients (default: safe_write).
+    #[serde(default)]
+    pub mcp_permission_mode: McpPermissionMode,
     #[serde(default)]
     pub context_dir: String,
+    /// When true, GUI checks for app updates on startup (default off).
+    #[serde(default)]
+    pub check_for_updates_on_startup: bool,
 }
 
 fn default_limit_select() -> bool {
@@ -113,7 +120,9 @@ impl Default for AppSettings {
             log_path: String::new(),
             mcp_server_enabled: false,
             mcp_disabled_tools: Vec::new(),
+            mcp_permission_mode: McpPermissionMode::default(),
             context_dir: String::new(),
+            check_for_updates_on_startup: false,
         }
     }
 }

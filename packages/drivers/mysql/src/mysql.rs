@@ -425,6 +425,40 @@ impl MysqlDriver {
 
         (columns, result_rows)
     }
+
+    fn extract_mysql_plan_metrics(plan_json: &serde_json::Value) -> (Option<f64>, Option<i64>) {
+        let query_cost = plan_json
+            .get("query_block")
+            .and_then(|block| block.get("cost_info"))
+            .and_then(|info| info.get("query_cost"))
+            .and_then(|value| {
+                value
+                    .as_f64()
+                    .or_else(|| value.as_str().and_then(|s| s.parse().ok()))
+            });
+        let estimated_rows = plan_json
+            .get("query_block")
+            .and_then(|block| block.get("table"))
+            .and_then(|table| table.get("rows_examined_per_scan"))
+            .and_then(|value| {
+                value
+                    .as_i64()
+                    .or_else(|| value.as_str().and_then(|s| s.parse().ok()))
+            });
+        (query_cost, estimated_rows)
+    }
+
+    fn extract_json_from_explain_row(rows: &[sqlx::mysql::MySqlRow]) -> Option<serde_json::Value> {
+        rows.first().and_then(|row| {
+            row.try_get::<serde_json::Value, _>(0)
+                .ok()
+                .or_else(|| {
+                    row.try_get::<String, _>(0)
+                        .ok()
+                        .and_then(|s| serde_json::from_str(&s).ok())
+                })
+        })
+    }
 }
 
 fn build_mysql_url(config: &ConnectionConfig) -> Result<String, DriverError> {
@@ -923,8 +957,15 @@ impl DatabaseDriver for MysqlDriver {
             .map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
         self.apply_active_database(handle, &mut conn).await?;
 
-        let explain_sql = format!("EXPLAIN {sql}");
-        let rows = sqlx::query(&explain_sql)
+        let json_sql = format!("EXPLAIN FORMAT=JSON {sql}");
+        let json_rows = sqlx::query(&json_sql)
+            .fetch_all(&mut *conn)
+            .await
+            .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+        let plan_json = Self::extract_json_from_explain_row(&json_rows);
+
+        let text_sql = format!("EXPLAIN {sql}");
+        let rows = sqlx::query(&text_sql)
             .fetch_all(&mut *conn)
             .await
             .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
@@ -944,6 +985,7 @@ impl DatabaseDriver for MysqlDriver {
                                 Some(Value::Integer(n)) => n.to_string(),
                                 Some(Value::Float(f)) => f.to_string(),
                                 Some(Value::Bool(b)) => b.to_string(),
+                                Some(Value::Json(j)) => j.to_string(),
                                 _ => "NULL".to_string(),
                             };
                             format!("{}: {}", col.name, v)
@@ -954,11 +996,16 @@ impl DatabaseDriver for MysqlDriver {
                 .collect()
         };
 
+        let (total_cost, estimated_rows) = plan_json
+            .as_ref()
+            .map(Self::extract_mysql_plan_metrics)
+            .unwrap_or((None, None));
+
         Ok(ExplainResult {
             plan_text: plan_lines.join("\n"),
-            plan_json: None,
-            total_cost: None,
-            estimated_rows: None,
+            plan_json,
+            total_cost,
+            estimated_rows,
         })
     }
 

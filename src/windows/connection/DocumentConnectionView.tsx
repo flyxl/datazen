@@ -3,8 +3,10 @@ import {
   Database,
   FileJson,
   Loader2,
+  Plus,
   RefreshCw,
   Search,
+  Trash2,
   X,
 } from 'lucide-react';
 import { useVirtualizer } from '@tanstack/react-virtual';
@@ -18,8 +20,13 @@ import { useI18n } from '../../hooks/useI18n';
 import { databaseCommands } from '../../commands/database';
 import { cn } from '../../lib/cn';
 import {
+  buildMongoDeleteCommand,
   buildMongoFindCommand,
+  buildMongoInsertCommand,
+  buildMongoUpdateCommand,
   cellToDisplay,
+  getDocumentId,
+  parseMongoDocumentJson,
   parseMongoFilterJson,
   rowToDocument,
 } from '../../lib/mongodbFind';
@@ -53,6 +60,10 @@ export function DocumentConnectionView({
   const [result, setResult] = useState<StatementResult | null>(null);
   const [selectedRowIdx, setSelectedRowIdx] = useState<number | null>(null);
   const [collectionFilter, setCollectionFilter] = useState('');
+  const [editText, setEditText] = useState('');
+  const [editError, setEditError] = useState<string | null>(null);
+  const [mutating, setMutating] = useState(false);
+  const [insertMode, setInsertMode] = useState(false);
 
   useEffect(() => {
     void loadForConnection(connectionId, { skipLoadTables: true });
@@ -88,6 +99,9 @@ export function DocumentConnectionView({
       setSelectedCollection(null);
       setResult(null);
       setSelectedRowIdx(null);
+      setInsertMode(false);
+      setEditText('');
+      setEditError(null);
       setDocsError(null);
       await loadCollections(db);
     },
@@ -95,7 +109,7 @@ export function DocumentConnectionView({
   );
 
   const loadDocuments = useCallback(
-    async (collection: string, filter: string) => {
+    async (collection: string, filter: string, opts?: { preserveId?: unknown }) => {
       if (!selectedDb) return;
       setDocsLoading(true);
       setDocsError(null);
@@ -109,8 +123,26 @@ export function DocumentConnectionView({
           database: selectedDb,
         });
         const multi = await databaseCommands.executeSQL(connectionId, sql);
-        setResult(multi.results[0] ?? null);
+        const nextResult = multi.results[0] ?? null;
+        setResult(nextResult);
+
+        if (opts?.preserveId !== undefined && nextResult) {
+          const cols = nextResult.columns.map((c) => c.name);
+          const matchIdx = nextResult.rows.findIndex((row) => {
+            const doc = rowToDocument(cols, row);
+            return JSON.stringify(getDocumentId(doc)) === JSON.stringify(opts.preserveId);
+          });
+          if (matchIdx >= 0) {
+            setSelectedRowIdx(matchIdx);
+            setInsertMode(false);
+            return;
+          }
+        }
+
         setSelectedRowIdx(null);
+        setInsertMode(false);
+        setEditText('');
+        setEditError(null);
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         if (msg.includes('Filter must be') || msg.includes('JSON')) {
@@ -129,6 +161,9 @@ export function DocumentConnectionView({
   const handleSelectCollection = useCallback(
     (name: string) => {
       setSelectedCollection(name);
+      setInsertMode(false);
+      setEditText('');
+      setEditError(null);
       void loadDocuments(name, filterText);
     },
     [filterText, loadDocuments],
@@ -167,6 +202,168 @@ export function DocumentConnectionView({
       row,
     );
   }, [result, selectedRowIdx]);
+
+  useEffect(() => {
+    if (selectedDoc) {
+      setEditText(JSON.stringify(selectedDoc, null, 2));
+      setEditError(null);
+      setInsertMode(false);
+    } else if (!insertMode) {
+      setEditText('');
+      setEditError(null);
+    }
+  }, [selectedDoc, insertMode]);
+
+  const handleSelectRow = useCallback((idx: number) => {
+    setSelectedRowIdx(idx);
+    setInsertMode(false);
+  }, []);
+
+  const handleCloseEditor = useCallback(() => {
+    setSelectedRowIdx(null);
+    setInsertMode(false);
+    setEditText('');
+    setEditError(null);
+  }, []);
+
+  const handleInsertNew = useCallback(() => {
+    setSelectedRowIdx(null);
+    setInsertMode(true);
+    setEditText('{}');
+    setEditError(null);
+  }, []);
+
+  const handleSaveDocument = useCallback(async () => {
+    if (!selectedCollection || !selectedDb) return;
+    setEditError(null);
+    let doc: Record<string, unknown>;
+    try {
+      doc = parseMongoDocumentJson(editText);
+    } catch (e) {
+      setEditError(e instanceof Error ? e.message : String(e));
+      return;
+    }
+    const id = getDocumentId(doc);
+    if (id === undefined) {
+      setEditError(t('document.noIdHint'));
+      return;
+    }
+    const setFields = { ...doc };
+    delete setFields._id;
+    setMutating(true);
+    try {
+      const sql = buildMongoUpdateCommand({
+        collection: selectedCollection,
+        database: selectedDb,
+        filter: { _id: id },
+        setFields,
+      });
+      await databaseCommands.executeSQL(connectionId, sql);
+      if (selectedCollection) {
+        await loadDocuments(selectedCollection, filterText, { preserveId: id });
+      }
+    } catch (e) {
+      setEditError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setMutating(false);
+    }
+  }, [
+    connectionId,
+    editText,
+    filterText,
+    loadDocuments,
+    selectedCollection,
+    selectedDb,
+    t,
+  ]);
+
+  const handleInsertDocument = useCallback(async () => {
+    if (!selectedCollection || !selectedDb) return;
+    setEditError(null);
+    let doc: Record<string, unknown>;
+    try {
+      doc = parseMongoDocumentJson(editText);
+    } catch (e) {
+      setEditError(e instanceof Error ? e.message : String(e));
+      return;
+    }
+    setMutating(true);
+    try {
+      const sql = buildMongoInsertCommand({
+        collection: selectedCollection,
+        database: selectedDb,
+        documents: [doc],
+      });
+      await databaseCommands.executeSQL(connectionId, sql);
+      setInsertMode(false);
+      setEditText('');
+      if (selectedCollection) await loadDocuments(selectedCollection, filterText);
+    } catch (e) {
+      setEditError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setMutating(false);
+    }
+  }, [
+    connectionId,
+    editText,
+    filterText,
+    loadDocuments,
+    selectedCollection,
+    selectedDb,
+  ]);
+
+  const handleDeleteDocument = useCallback(async () => {
+    if (!selectedCollection || !selectedDb) return;
+    setEditError(null);
+    let doc: Record<string, unknown>;
+    try {
+      doc = selectedDoc ?? parseMongoDocumentJson(editText);
+    } catch (e) {
+      setEditError(e instanceof Error ? e.message : String(e));
+      return;
+    }
+    const id = getDocumentId(doc);
+    if (id === undefined) {
+      setEditError(t('document.noIdHint'));
+      return;
+    }
+    setMutating(true);
+    try {
+      const sql = buildMongoDeleteCommand({
+        collection: selectedCollection,
+        database: selectedDb,
+        filter: { _id: id },
+      });
+      await databaseCommands.executeSQL(connectionId, sql);
+      handleCloseEditor();
+      if (selectedCollection) await loadDocuments(selectedCollection, filterText);
+    } catch (e) {
+      setEditError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setMutating(false);
+    }
+  }, [
+    connectionId,
+    editText,
+    filterText,
+    handleCloseEditor,
+    loadDocuments,
+    selectedCollection,
+    selectedDb,
+    selectedDoc,
+    t,
+  ]);
+
+  const parsedEditDoc = useMemo(() => {
+    try {
+      return parseMongoDocumentJson(editText);
+    } catch {
+      return null;
+    }
+  }, [editText]);
+
+  const hasDocumentId = parsedEditDoc ? getDocumentId(parsedEditDoc) !== undefined : false;
+  const showEditor = selectedDoc !== null || insertMode;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -303,6 +500,15 @@ export function DocumentConnectionView({
                   >
                     {t('document.applyFilter')}
                   </Button>
+                  <Button
+                    variant="secondary"
+                    className="h-7 gap-1 px-2 text-xs"
+                    onClick={handleInsertNew}
+                    disabled={docsLoading || mutating}
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    {t('document.insert')}
+                  </Button>
                   {result && (
                     <span className="text-xs text-fg-muted">
                       {t('document.docCount', { count: result.rows.length })}
@@ -330,7 +536,7 @@ export function DocumentConnectionView({
                       <DocumentResultTable
                         result={result}
                         selectedRowIdx={selectedRowIdx}
-                        onSelectRow={setSelectedRowIdx}
+                        onSelectRow={handleSelectRow}
                       />
                     ) : (
                       <div className="flex flex-1 items-center justify-center text-sm text-fg-muted">
@@ -338,26 +544,21 @@ export function DocumentConnectionView({
                       </div>
                     )}
                   </div>
-                  {selectedDoc && (
-                    <div className="flex w-[420px] shrink-0 flex-col border-l border-edge">
-                      <div className="flex items-center justify-between border-b border-edge bg-surface-alt px-3 py-2">
-                        <span className="text-xs font-medium text-fg">
-                          {t('document.documentDetail')}
-                        </span>
-                        <button
-                          type="button"
-                          className="rounded p-1 text-fg-muted hover:bg-surface-raised hover:text-fg"
-                          onClick={() => setSelectedRowIdx(null)}
-                        >
-                          <X className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                      <div className="flex-1 overflow-auto p-3">
-                        <pre className="whitespace-pre-wrap break-all font-mono text-xs text-fg-secondary">
-                          {JSON.stringify(selectedDoc, null, 2)}
-                        </pre>
-                      </div>
-                    </div>
+                  {showEditor && (
+                    <DocumentDetailEditor
+                      editText={editText}
+                      editError={editError}
+                      mutating={mutating}
+                      insertMode={insertMode}
+                      canSave={hasDocumentId && !insertMode}
+                      canDelete={hasDocumentId && !insertMode}
+                      onEditTextChange={setEditText}
+                      onClose={handleCloseEditor}
+                      onSave={() => void handleSaveDocument()}
+                      onInsert={() => void handleInsertDocument()}
+                      onInsertNew={handleInsertNew}
+                      onDelete={() => void handleDeleteDocument()}
+                    />
                   )}
                 </div>
               </>
@@ -374,6 +575,112 @@ export function DocumentConnectionView({
       ) : (
         <DocumentQueryPanel connectionId={connectionId} />
       )}
+    </div>
+  );
+}
+
+function DocumentDetailEditor({
+  editText,
+  editError,
+  mutating,
+  insertMode,
+  canSave,
+  canDelete,
+  onEditTextChange,
+  onClose,
+  onSave,
+  onInsert,
+  onInsertNew,
+  onDelete,
+}: {
+  editText: string;
+  editError: string | null;
+  mutating: boolean;
+  insertMode: boolean;
+  canSave: boolean;
+  canDelete: boolean;
+  onEditTextChange: (value: string) => void;
+  onClose: () => void;
+  onSave: () => void;
+  onInsert: () => void;
+  onInsertNew: () => void;
+  onDelete: () => void;
+}) {
+  const { t } = useI18n();
+
+  return (
+    <div className="flex w-[420px] shrink-0 flex-col border-l border-edge">
+      <div className="flex shrink-0 items-center gap-1 border-b border-edge bg-surface-alt px-2 py-1.5">
+        <span className="min-w-0 flex-1 truncate px-1 text-xs font-medium text-fg">
+          {insertMode ? t('document.insert') : t('document.documentDetail')}
+        </span>
+        <Button
+          variant={insertMode ? 'primary' : 'secondary'}
+          className="h-7 gap-1 px-2 text-xs"
+          onClick={insertMode ? onInsert : onInsertNew}
+          disabled={mutating}
+        >
+          {mutating && insertMode ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Plus className="h-3.5 w-3.5" />
+          )}
+          {t('document.insert')}
+        </Button>
+        {!insertMode && (
+          <Button
+            variant="primary"
+            className="h-7 px-2 text-xs"
+            onClick={onSave}
+            disabled={mutating || !canSave}
+            title={!canSave ? t('document.noIdHint') : undefined}
+          >
+            {mutating ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              t('common.save')
+            )}
+          </Button>
+        )}
+        {!insertMode && (
+          <Button
+            variant="secondary"
+            className="h-7 gap-1 px-2 text-xs text-red-400 hover:text-red-300"
+            onClick={onDelete}
+            disabled={mutating || !canDelete}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            {t('common.delete')}
+          </Button>
+        )}
+        <button
+          type="button"
+          className="rounded p-1 text-fg-muted hover:bg-surface-raised hover:text-fg"
+          onClick={onClose}
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
+      {!canSave && !insertMode && (
+        <div className="shrink-0 border-b border-edge/50 bg-surface-raised/30 px-3 py-1.5 text-[11px] text-fg-muted">
+          {t('document.noIdHint')}
+        </div>
+      )}
+      {editError && (
+        <div className="shrink-0 border-b border-red-500/20 bg-red-500/10 px-3 py-1.5 text-xs text-red-400">
+          {editError}
+        </div>
+      )}
+      <div className="min-h-0 flex-1 p-2">
+        <textarea
+          value={editText}
+          onChange={(e) => onEditTextChange(e.target.value)}
+          spellCheck={false}
+          autoCapitalize="off"
+          autoCorrect="off"
+          className="h-full w-full resize-none rounded-md border border-edge bg-surface px-3 py-2 font-mono text-xs text-fg outline-none focus:border-blue-500"
+        />
+      </div>
     </div>
   );
 }

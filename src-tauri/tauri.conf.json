@@ -43,8 +43,20 @@
       ]
     }
   },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IFJFUExBQ0VfQkVGT1JFX0ZJUlNUX1JFTEVBU0UKUldRL1JlcGxhY2Ugd2l0aCBvdXRwdXQgb2YgdGF1cmkgc2lnbmVyIGdlbmVyYXRl",
+      "endpoints": [
+        "https://github.com/flyxl/datazen/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  },
   "bundle": {
     "active": true,
+    "createUpdaterArtifacts": false,
     "targets": "all",
     "resources": {
       "resources/prompts": "prompts"

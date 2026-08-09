@@ -25,7 +25,9 @@ const DEFAULT_SETTINGS: AppSettings = {
   logPath: '',
   mcpServerEnabled: false,
   mcpDisabledTools: [],
+  mcpPermissionMode: 'safe_write',
   contextDir: '',
+  checkForUpdatesOnStartup: false,
 };
 
 const THEME_STORAGE_KEY = 'datazen-theme';

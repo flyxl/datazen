@@ -19,6 +19,8 @@ mark('CSS loaded');
 
 import { hideSplash } from './lib/splash';
 import { bootstrapDefaultIconResolver } from './lib/bootstrapIconResolver';
+import { maybeCheckOnStartup } from './lib/updater';
+import { getWindowKind } from './lib/windowKind';
 
 bootstrapDefaultIconResolver();
 
@@ -29,6 +31,10 @@ async function bootstrap() {
         const { useSettingsStore } = await import('./stores/settingsStore');
         await useSettingsStore.getState().loadSettings();
         mark('settings loaded before first paint');
+        if (getWindowKind() === 'main') {
+          const { checkForUpdatesOnStartup } = useSettingsStore.getState().settings;
+          void maybeCheckOnStartup(checkForUpdatesOnStartup);
+        }
       } catch {
         mark('settings preload skipped (load failed)');
       }

@@ -1,8 +1,8 @@
 # CI：私有插件仓库（Deploy Key + Environment）
 
-Pro 构建会通过 `resolve-plugins.mjs` clone `datazen-driver-kiwi` / `datazen-driver-superset`。仓库改为 private 后，Release workflow 使用 **只读 Deploy Key（SSH）** 拉取；凭据放在 GitHub Environment **`release`**，而不是仓库级 Secrets。
+**Akulaku** 等含 git 驱动的发布变体会通过 `resolve-drivers.mjs` clone `datazen-driver-kiwi` / `datazen-driver-superset`。仓库为 private 时，Release workflow 使用 **只读 Deploy Key（SSH）** 拉取；凭据放在 GitHub Environment **`release`**，而不是仓库级 Secrets。
 
-日常 PR CI（`.github/workflows/ci.yml`）**不**拉取插件，也**不**挂这些密钥。
+日常 PR CI（`.github/workflows/ci.yml`）与 **Basic / All** 发布变体**不**拉取 git 驱动，也**不**挂这些密钥。`all` 预设仅为 path 原生驱动。
 
 ## 1. 生成两把 Deploy Key
 
@@ -45,13 +45,14 @@ ssh-keygen -t ed25519 -C "datazen-ci-superset" -f ./datazen-ci-superset -N ""
 
 - `environment: release` — 从此 Environment 读取上述 Secrets（无审批门禁时自动注入）
 - `permissions: {}` 顶层 + job 内 `contents: write`（仅用于 draft Release）
-- `matrix.plugins != 'none'` 时：`webfactory/ssh-agent` 加载两把私钥，并用  
+- `matrix.needs_git == true` 时（当前为 **Akulaku**）：`webfactory/ssh-agent` 加载两把私钥，并用  
   `url."git@github.com:".insteadOf "https://github.com/"`  
-  让 `plugins-registry.json` 里的 HTTPS URL 走 SSH
+  让 `drivers-registry.json` 里的 HTTPS URL 走 SSH
+- Akulaku 驱动列表在 CI 中写死为显式逗号串（`postgres,mysql,sqlite,redis,mongodb,kiwi,superset`），**不是** `resolve-drivers` 的命名预设
 
 公钥出现在文档或插件仓 Deploy keys 页面**不会**让外人 clone 私有仓；只有私钥可以。
 
-## 4. 本地 Pro 构建
+## 4. 本地含 git 驱动的构建
 
 Deploy Key 仅供 CI。本地需要：
 
@@ -59,9 +60,10 @@ Deploy Key 仅供 CI。本地需要：
 - 使用自己的 SSH key / HTTPS 凭据
 
 ```bash
-pnpm tauri:build --plugins=kiwi,superset
+# 与 Akulaku SKU 对齐的显式列表（勿新增与 basic/all 同级的预设名）
+pnpm tauri:build --drivers=postgres,mysql,sqlite,redis,mongodb,kiwi,superset
 # 或
-DATAZEN_PLUGINS=kiwi,superset pnpm tauri:build
+DATAZEN_DRIVERS=postgres,mysql,sqlite,redis,mongodb,kiwi,superset pnpm tauri:build
 ```
 
 ## 5. 仓库侧建议（可选但推荐）

@@ -5,6 +5,11 @@ export interface OpenedTextFile {
   content: string;
 }
 
+export interface OpenedBinaryFile {
+  fileName: string;
+  dataBase64: string;
+}
+
 /**
  * File IO that never accepts a path from JS (XSS-safe).
  * Dialog + read/write happen atomically in Rust.
@@ -52,6 +57,13 @@ export const fileCommands = {
   /** Open a text file via native dialog; returns basename + content (no path). */
   openTextWithDialog: (filterName: string, extensions: string[]) =>
     invoke<OpenedTextFile | null>('open_text_with_dialog', {
+      filterName,
+      extensions,
+    }),
+
+  /** Open a binary file via native dialog; returns basename + base64 (no path). */
+  openBase64WithDialog: (filterName: string, extensions: string[]) =>
+    invoke<OpenedBinaryFile | null>('open_base64_with_dialog', {
       filterName,
       extensions,
     }),

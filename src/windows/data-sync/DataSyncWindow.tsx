@@ -5,7 +5,10 @@ import {
   AlertTriangle,
   ArrowRight,
   CheckCircle2,
+  ChevronDown,
+  ChevronRight,
   Clock,
+  Code2,
   Loader2,
   MinusCircle,
   Pause,
@@ -13,6 +16,7 @@ import {
   PlusCircle,
   RefreshCcw,
   Trash2,
+  X,
   XCircle,
 } from 'lucide-react';
 import { TitleBar } from '../../components/TitleBar';
@@ -20,36 +24,18 @@ import { StatusBar } from '../../components/StatusBar';
 import { Button } from '../../components/ui/Button';
 import { Select } from '../../components/ui/Select';
 import { Dialog } from '../../components/ui/Dialog';
+import { syncCommands, type SyncTask } from '../../commands/sync';
 import { useThemeListener } from '../../hooks/useThemeListener';
 import { useI18n } from '../../hooks/useI18n';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { cn } from '../../lib/cn';
-import type { ConnectionConfig } from '../../types';
-
-interface TableComparison {
-  table: string;
-  status: 'identical' | 'different' | 'source_only' | 'target_only';
-  sourceRows: number | null;
-  targetRows: number | null;
-}
-
-interface SyncTask {
-  id: string;
-  sourceConnectionId: string;
-  targetConnectionId: string;
-  sourceConfigId: string;
-  targetConfigId: string;
-  tables: string[];
-  completedTables: string[];
-  currentTable: string | null;
-  currentTableOffset: number;
-  sourceRowCounts: Record<string, number>;
-  strategy: string;
-  status: string;
-  errorMessage: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
+import type {
+  ConnectionConfig,
+  RowMismatch,
+  TableComparison,
+  TableDataCompare,
+  TableSchemaDiff,
+} from '../../types';
 
 interface SyncProgress {
   taskId: string;
@@ -107,6 +93,15 @@ export function DataSyncWindow() {
   const [conflicts, setConflicts] = useState<ConflictInfo[]>([]);
   const [conflictDialogOpen, setConflictDialogOpen] = useState(false);
 
+  // Detail panel
+  const [detailTable, setDetailTable] = useState<string | null>(null);
+  const [schemaDiff, setSchemaDiff] = useState<TableSchemaDiff | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [showDdl, setShowDdl] = useState(false);
+  const [expandedTables, setExpandedTables] = useState<Set<string>>(new Set());
+  const [dataCompareCache, setDataCompareCache] = useState<Record<string, TableDataCompare>>({});
+  const [dataCompareLoading, setDataCompareLoading] = useState<Set<string>>(new Set());
+
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => { void loadSettings(); }, [loadSettings]);
@@ -116,7 +111,7 @@ export function DataSyncWindow() {
       try {
         const conns = await invoke<ConnectionConfig[]>('get_connections');
         setConnections(conns);
-        const tasks = await invoke<SyncTask[]>('get_sync_tasks');
+        const tasks = await syncCommands.getSyncTasks();
         setSavedTasks(tasks.filter((t) => t.status !== 'completed'));
       } catch (e) {
         console.error('Failed to load', e);
@@ -183,6 +178,10 @@ export function DataSyncWindow() {
     setSyncState('comparing');
     setComparisons([]);
     setSelectedTables(new Set());
+    setDetailTable(null);
+    setSchemaDiff(null);
+    setExpandedTables(new Set());
+    setDataCompareCache({});
 
     try {
       const srcConnId = await ensureConnected(sourceId);
@@ -192,10 +191,7 @@ export function DataSyncWindow() {
         return;
       }
 
-      const results = await invoke<TableComparison[]>('compare_databases', {
-        sourceConnectionId: srcConnId,
-        targetConnectionId: tgtConnId,
-      });
+      const results = await syncCommands.compareDatabases(srcConnId, tgtConnId);
       setComparisons(results);
       const autoSelect = new Set(
         results
@@ -356,6 +352,87 @@ export function DataSyncWindow() {
     setSelectedTables(new Set());
   }, []);
 
+  const openTableDetail = useCallback(async (table: string) => {
+    const srcConnId = activeConns[sourceId];
+    const tgtConnId = activeConns[targetId];
+    if (!srcConnId || !tgtConnId) return;
+
+    setDetailTable(table);
+    setSchemaDiff(null);
+    setShowDdl(false);
+    setDetailLoading(true);
+
+    try {
+      const diff = await syncCommands.compareTableSchemas(srcConnId, tgtConnId, table);
+      setSchemaDiff(diff);
+    } catch (e) {
+      setErrorMsg(e instanceof Error ? e.message : String(e));
+      setErrorOpen(true);
+      setDetailTable(null);
+    } finally {
+      setDetailLoading(false);
+    }
+  }, [activeConns, sourceId, targetId]);
+
+  const toggleExpandTable = useCallback(async (table: string) => {
+    const srcConnId = activeConns[sourceId];
+    const tgtConnId = activeConns[targetId];
+    if (!srcConnId || !tgtConnId) return;
+
+    setExpandedTables((prev) => {
+      const next = new Set(prev);
+      if (next.has(table)) next.delete(table);
+      else next.add(table);
+      return next;
+    });
+
+    if (dataCompareCache[table] || dataCompareLoading.has(table)) return;
+
+    setDataCompareLoading((prev) => new Set(prev).add(table));
+    try {
+      const result = await syncCommands.compareTableData(srcConnId, tgtConnId, table);
+      setDataCompareCache((prev) => ({ ...prev, [table]: result }));
+    } catch (e) {
+      setErrorMsg(e instanceof Error ? e.message : String(e));
+      setErrorOpen(true);
+      setExpandedTables((prev) => {
+        const next = new Set(prev);
+        next.delete(table);
+        return next;
+      });
+    } finally {
+      setDataCompareLoading((prev) => {
+        const next = new Set(prev);
+        next.delete(table);
+        return next;
+      });
+    }
+  }, [activeConns, sourceId, targetId, dataCompareCache, dataCompareLoading]);
+
+  const renderMismatchRows = (mismatches: RowMismatch[]) => {
+    if (mismatches.length === 0) {
+      return <div className="px-3 py-2 text-xs text-fg-muted">{t('sync.noMismatches')}</div>;
+    }
+    return mismatches.map((m) => (
+      <div key={m.key} className="border-t border-edge px-3 py-2 text-xs">
+        <div className="mb-1 flex items-center gap-2">
+          <span className="rounded bg-surface-raised px-1.5 py-0.5 font-mono text-[10px] text-fg-muted">{m.key}</span>
+          <span className="text-fg-secondary">{t(`sync.mismatch.${m.kind}`)}</span>
+        </div>
+        {m.source && (
+          <div className="mb-1 font-mono text-[11px] text-blue-600 dark:text-blue-400">
+            {t('sync.source')}: {JSON.stringify(m.source)}
+          </div>
+        )}
+        {m.target && (
+          <div className="font-mono text-[11px] text-amber-600 dark:text-amber-400">
+            {t('sync.target')}: {JSON.stringify(m.target)}
+          </div>
+        )}
+      </div>
+    ));
+  };
+
   const statusIcon = (status: string) => {
     switch (status) {
       case 'identical': return <CheckCircle2 className="h-4 w-4 text-green-500" />;
@@ -463,7 +540,8 @@ export function DataSyncWindow() {
         )}
 
         {(syncState === 'compared' || syncState === 'syncing' || syncState === 'done') && (
-          <div className="p-4">
+          <div className="flex h-full min-h-0">
+            <div className={cn('min-h-0 flex-1 overflow-auto p-4', detailTable && 'border-r border-edge')}>
             <div className="mb-3 flex items-center gap-2">
               <Button variant="ghost" className="text-xs" onClick={selectAll}>{t('common.selectAll')}</Button>
               <Button variant="ghost" className="text-xs" onClick={deselectAll}>{t('common.deselectAll')}</Button>
@@ -479,6 +557,7 @@ export function DataSyncWindow() {
             <div className="flex items-center gap-3 rounded-t-lg border border-edge bg-surface-alt px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-fg-muted">
               <div className="w-6" />
               <div className="w-6" />
+              <div className="w-6" />
               <div className="min-w-0 flex-1">{t('sync.tableName')}</div>
               <div className="w-20 text-right">{t('sync.sourceRows')}</div>
               <div className="w-20 text-right">{t('sync.targetRows')}</div>
@@ -488,28 +567,188 @@ export function DataSyncWindow() {
             {comparisons.map((row) => {
               const isSelected = selectedTables.has(row.table);
               const disabled = row.status === 'target_only';
+              const isExpanded = expandedTables.has(row.table);
+              const canExpand = row.status === 'different';
+              const isDetail = detailTable === row.table;
+              const dataCompare = dataCompareCache[row.table];
+              const isDataLoading = dataCompareLoading.has(row.table);
+
               return (
-                <div
-                  key={row.table}
-                  className={cn(
-                    'flex items-center gap-3 border-x border-b border-edge px-3 py-2 text-[13px] transition-colors',
-                    isSelected && !disabled && 'bg-blue-500/5',
-                    !disabled && 'cursor-pointer hover:bg-surface-raised/50',
-                    disabled && 'opacity-50',
-                  )}
-                  onClick={() => !disabled && toggleTable(row.table)}
-                >
-                  <div className="w-6 shrink-0">
-                    <input type="checkbox" checked={isSelected} disabled={disabled} onChange={() => toggleTable(row.table)} className="h-3.5 w-3.5 rounded border-edge" />
+                <div key={row.table}>
+                  <div
+                    className={cn(
+                      'flex items-center gap-3 border-x border-b border-edge px-3 py-2 text-[13px] transition-colors',
+                      isSelected && !disabled && 'bg-blue-500/5',
+                      isDetail && 'bg-surface-raised/70',
+                      !disabled && 'hover:bg-surface-raised/50',
+                      disabled && 'opacity-50',
+                    )}
+                  >
+                    <div className="w-6 shrink-0">
+                      {canExpand ? (
+                        <button
+                          type="button"
+                          className="flex h-4 w-4 items-center justify-center text-fg-muted hover:text-fg"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (!isExpanded) void toggleExpandTable(row.table);
+                            else {
+                              setExpandedTables((prev) => {
+                                const next = new Set(prev);
+                                next.delete(row.table);
+                                return next;
+                              });
+                            }
+                          }}
+                        >
+                          {isDataLoading ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : isExpanded ? (
+                            <ChevronDown className="h-3.5 w-3.5" />
+                          ) : (
+                            <ChevronRight className="h-3.5 w-3.5" />
+                          )}
+                        </button>
+                      ) : null}
+                    </div>
+                    <div className="w-6 shrink-0">
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        disabled={disabled}
+                        onChange={() => toggleTable(row.table)}
+                        onClick={(e) => e.stopPropagation()}
+                        className="h-3.5 w-3.5 rounded border-edge"
+                      />
+                    </div>
+                    <div className="w-6 shrink-0">{statusIcon(row.status)}</div>
+                    <button
+                      type="button"
+                      className="min-w-0 flex-1 truncate text-left font-mono text-fg"
+                      onClick={() => { if (!disabled) void openTableDetail(row.table); }}
+                    >
+                      {row.table}
+                    </button>
+                    <div className="w-20 text-right tabular-nums text-fg-secondary">{row.sourceRows ?? '-'}</div>
+                    <div className="w-20 text-right tabular-nums text-fg-secondary">{row.targetRows ?? '-'}</div>
+                    <div className="w-20 text-center text-xs text-fg-muted">{statusLabel(row.status)}</div>
                   </div>
-                  <div className="w-6 shrink-0">{statusIcon(row.status)}</div>
-                  <div className="min-w-0 flex-1 truncate font-mono text-fg">{row.table}</div>
-                  <div className="w-20 text-right tabular-nums text-fg-secondary">{row.sourceRows ?? '-'}</div>
-                  <div className="w-20 text-right tabular-nums text-fg-secondary">{row.targetRows ?? '-'}</div>
-                  <div className="w-20 text-center text-xs text-fg-muted">{statusLabel(row.status)}</div>
+
+                  {canExpand && isExpanded && (
+                    <div className="border-x border-b border-edge bg-surface-alt/50">
+                      {isDataLoading && (
+                        <div className="flex items-center gap-2 px-4 py-3 text-xs text-fg-muted">
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          {t('sync.loadingDataCompare')}
+                        </div>
+                      )}
+                      {dataCompare && (
+                        <>
+                          <div className="flex items-center gap-3 border-b border-edge px-3 py-1.5 text-[11px] text-fg-muted">
+                            <span>{t('sync.sampledRows', { count: dataCompare.sampledRows })}</span>
+                            <span>{t('sync.mismatchCount', { count: dataCompare.mismatches.length })}{dataCompare.truncated ? '+' : ''}</span>
+                          </div>
+                          {renderMismatchRows(dataCompare.mismatches)}
+                        </>
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })}
+            </div>
+
+            {detailTable && (
+              <div className="flex w-[380px] shrink-0 flex-col bg-surface">
+                <div className="flex items-center gap-2 border-b border-edge px-3 py-2">
+                  <span className="min-w-0 flex-1 truncate font-mono text-sm font-medium text-fg">{detailTable}</span>
+                  {schemaDiff?.sourceDdl && (
+                    <Button
+                      variant="ghost"
+                      className="h-7 px-2 text-xs"
+                      onClick={() => setShowDdl((v) => !v)}
+                    >
+                      <Code2 className="h-3.5 w-3.5" />
+                      {t('sync.showDdl')}
+                    </Button>
+                  )}
+                  <Button
+                    variant="ghost"
+                    className="h-7 w-7 p-0"
+                    onClick={() => { setDetailTable(null); setSchemaDiff(null); setShowDdl(false); }}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+
+                <div className="min-h-0 flex-1 overflow-auto p-3">
+                  {detailLoading && (
+                    <div className="flex items-center gap-2 text-sm text-fg-muted">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      {t('sync.loadingSchemaDiff')}
+                    </div>
+                  )}
+
+                  {!detailLoading && schemaDiff && !showDdl && (
+                    <div className="space-y-4 text-xs">
+                      {schemaDiff.added.length > 0 && (
+                        <section>
+                          <h4 className="mb-1.5 font-semibold text-green-600 dark:text-green-400">{t('sync.colAdded')}</h4>
+                          {schemaDiff.added.map((col) => (
+                            <div key={col.name} className="mb-1 font-mono text-fg-secondary">
+                              + {col.name} ({col.dataType}{col.nullable ? '' : ', NOT NULL'}{col.isPrimaryKey ? ', PK' : ''})
+                            </div>
+                          ))}
+                        </section>
+                      )}
+                      {schemaDiff.removed.length > 0 && (
+                        <section>
+                          <h4 className="mb-1.5 font-semibold text-red-500">{t('sync.colRemoved')}</h4>
+                          {schemaDiff.removed.map((col) => (
+                            <div key={col.name} className="mb-1 font-mono text-fg-secondary">
+                              - {col.name} ({col.dataType}{col.nullable ? '' : ', NOT NULL'}{col.isPrimaryKey ? ', PK' : ''})
+                            </div>
+                          ))}
+                        </section>
+                      )}
+                      {schemaDiff.changed.length > 0 && (
+                        <section>
+                          <h4 className="mb-1.5 font-semibold text-amber-600 dark:text-amber-400">{t('sync.colChanged')}</h4>
+                          {schemaDiff.changed.map((col) => (
+                            <div key={col.name} className="mb-2 rounded border border-edge bg-surface-alt p-2 font-mono text-[11px]">
+                              <div className="font-medium text-fg">{col.name}</div>
+                              <div className="mt-1 text-blue-600 dark:text-blue-400">{t('sync.source')}: {col.source.dataType}{col.source.nullable ? '' : ', NOT NULL'}{col.source.isPrimaryKey ? ', PK' : ''}</div>
+                              <div className="text-amber-600 dark:text-amber-400">{t('sync.target')}: {col.target.dataType}{col.target.nullable ? '' : ', NOT NULL'}{col.target.isPrimaryKey ? ', PK' : ''}</div>
+                              <div className="mt-1 text-fg-muted">{col.changes.join(', ')}</div>
+                            </div>
+                          ))}
+                        </section>
+                      )}
+                      {schemaDiff.added.length === 0 && schemaDiff.removed.length === 0 && schemaDiff.changed.length === 0 && (
+                        <div className="text-fg-muted">{t('sync.schemaIdentical')}</div>
+                      )}
+                    </div>
+                  )}
+
+                  {!detailLoading && schemaDiff && showDdl && (
+                    <div className="space-y-3 text-xs">
+                      {schemaDiff.sourceDdl && (
+                        <section>
+                          <h4 className="mb-1 font-semibold text-fg">{t('sync.sourceDdl')}</h4>
+                          <pre className="overflow-x-auto rounded border border-edge bg-surface-alt p-2 font-mono text-[10px] text-fg-secondary">{schemaDiff.sourceDdl}</pre>
+                        </section>
+                      )}
+                      {schemaDiff.targetDdl && (
+                        <section>
+                          <h4 className="mb-1 font-semibold text-fg">{t('sync.targetDdl')}</h4>
+                          <pre className="overflow-x-auto rounded border border-edge bg-surface-alt p-2 font-mono text-[10px] text-fg-secondary">{schemaDiff.targetDdl}</pre>
+                        </section>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
