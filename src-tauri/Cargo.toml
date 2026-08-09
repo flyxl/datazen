@@ -39,6 +39,7 @@ async-trait = "0.1"
 urlencoding = "2"
 tauri-plugin-webdriver = { version = "0.2", optional = true }
 tauri-plugin-dialog = "2"
+tauri-plugin-notification = "2"
 tauri-plugin-os = "2.3.2"
 sys-locale = "0.3.2"
 flate2 = "1.1.9"

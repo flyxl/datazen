@@ -22,6 +22,7 @@
     "core:event:default",
     "core:menu:default",
     "dialog:default",
+    "notification:default",
     "os:default",
     "updater:default",
     "process:default",
