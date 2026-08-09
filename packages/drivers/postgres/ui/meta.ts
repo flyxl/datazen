@@ -1,5 +1,40 @@
 import type { DatabaseTypeMeta } from '@datazen/plugin-sdk';
 
+const postgresqlStructureEditor = {
+  columnTypes: [
+    { value: 'integer', label: 'integer' },
+    { value: 'bigint', label: 'bigint' },
+    { value: 'smallint', label: 'smallint' },
+    { value: 'serial', label: 'serial' },
+    { value: 'bigserial', label: 'bigserial' },
+    { value: 'numeric', label: 'numeric' },
+    { value: 'real', label: 'real' },
+    { value: 'double precision', label: 'double precision' },
+    { value: 'boolean', label: 'boolean' },
+    { value: 'varchar(255)', label: 'varchar(255)' },
+    { value: 'varchar(50)', label: 'varchar(50)' },
+    { value: 'varchar(100)', label: 'varchar(100)' },
+    { value: 'text', label: 'text' },
+    { value: 'char(1)', label: 'char(1)' },
+    { value: 'date', label: 'date' },
+    { value: 'time', label: 'time' },
+    { value: 'timestamp', label: 'timestamp' },
+    { value: 'timestamptz', label: 'timestamptz' },
+    { value: 'uuid', label: 'uuid' },
+    { value: 'json', label: 'json' },
+    { value: 'jsonb', label: 'jsonb' },
+    { value: 'bytea', label: 'bytea' },
+    { value: 'text[]', label: 'text[]' },
+    { value: 'integer[]', label: 'integer[]' },
+    { value: 'inet', label: 'inet' },
+    { value: 'cidr', label: 'cidr' },
+    { value: 'money', label: 'money' },
+  ],
+  defaultColumnType: 'varchar(255)',
+  fields: { comment: true },
+  indexMethods: ['btree', 'hash', 'gist', 'gin', 'spgist', 'brin'],
+} satisfies NonNullable<DatabaseTypeMeta['structureEditor']>;
+
 export const postgresqlMeta = {
     label: 'PostgreSQL',
     shortLabel: 'Pg',
@@ -24,6 +59,7 @@ export const postgresqlMeta = {
     supportsExplain: true,
     hasMultiDatabase: true,
     namespaceEnsure: 'postgresql',
+    structureEditor: postgresqlStructureEditor,
   } satisfies DatabaseTypeMeta;
 
 export const questdbMeta = {
@@ -49,6 +85,7 @@ export const questdbMeta = {
     connectionForm: 'standard',
     supportsExplain: true,
     hasMultiDatabase: true,
+    structureEditor: postgresqlStructureEditor,
   } satisfies DatabaseTypeMeta;
 
 export const cloudberryMeta = {
@@ -74,5 +111,6 @@ export const cloudberryMeta = {
     connectionForm: 'standard',
     supportsExplain: true,
     hasMultiDatabase: true,
+    structureEditor: postgresqlStructureEditor,
   } satisfies DatabaseTypeMeta;
 
