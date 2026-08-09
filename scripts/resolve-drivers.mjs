@@ -851,6 +851,17 @@ function injectCargoToml(plugins, registry) {
   content = replaceMarkerBlock(content, 'plugin-dependencies', depLines);
   content = replaceMarkerBlock(content, 'plugin-features', featureLines);
 
+  // Enable injected drivers by default so `tauri build --features webdriver` (and
+  // other builds that only pass extra flags) still compile plugin crates and register
+  // their Tauri ACL manifests (e.g. redis:default).
+  const defaultFeatureNames = featureLines.map((line) => line.split('=')[0].trim());
+  content = content.replace(
+    /^default = \[[^\]]*\]/m,
+    defaultFeatureNames.length > 0
+      ? `default = [${defaultFeatureNames.map((f) => `"${f}"`).join(', ')}]`
+      : 'default = []',
+  );
+
   writeFileSync(workPath(relPath), content);
   console.log(`[resolve-drivers] injected ${depLines.length} deps + ${featureLines.length} features into Cargo.toml`);
 }
