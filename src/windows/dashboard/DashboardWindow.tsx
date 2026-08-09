@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Download, LayoutDashboard, Loader2, Pause, Play, Plus, RefreshCw, Upload } from 'lucide-react';
+import { BookOpen, Download, Gauge, Loader2, Pause, Play, Plus, RefreshCw, Upload } from 'lucide-react';
 import { TitleBar } from '../../components/TitleBar';
 import { StatusBar } from '../../components/StatusBar';
 import { Button } from '../../components/ui/Button';
@@ -7,7 +7,7 @@ import { Input } from '../../components/ui/Input';
 import { useThemeListener } from '../../hooks/useThemeListener';
 import { useI18n } from '../../hooks/useI18n';
 import { getUrlParam } from '../../lib/windowKind';
-import { openDashboardWindow } from '../../lib/windowManager';
+import { openDashboardWindow, openDocsWindow } from '../../lib/windowManager';
 import { dashboardCommands } from '../../commands/dashboard';
 import { useDashboardStore } from '../../stores/dashboardStore';
 import { DEFAULT_CHART_CONFIG } from '../../types/chart';
@@ -191,7 +191,7 @@ export function DashboardWindow() {
     <div className="flex h-screen min-h-0 flex-col bg-surface text-fg" data-testid="dashboard-window">
       <TitleBar
         title={titleContent}
-        leftContent={<LayoutDashboard className="h-4 w-4 text-fg-muted" />}
+        leftContent={<Gauge className="h-4 w-4 text-fg-muted" />}
         rightContent={
           <div className="flex items-center gap-1" data-no-drag>
             <Button
@@ -251,6 +251,15 @@ export function DashboardWindow() {
               )}
               {t('dashboard.refreshAll')}
             </Button>
+            <Button
+              variant="ghost"
+              className="h-7 w-7 !px-0"
+              data-testid="dashboard-docs-help"
+              title={t('docs.openDashboardHelp')}
+              onClick={() => openDocsWindow('opsDashboard')}
+            >
+              <BookOpen className="h-3.5 w-3.5" />
+            </Button>
           </div>
         }
       />
@@ -269,7 +278,7 @@ export function DashboardWindow() {
         )}
         {current && current.widgets.length === 0 && (
           <div className="flex h-full flex-col items-center justify-center gap-3 text-sm text-fg-muted">
-            <LayoutDashboard className="h-10 w-10 opacity-40" />
+            <Gauge className="h-10 w-10 opacity-40" />
             <p>{t('dashboard.empty')}</p>
             <Button className="h-7 gap-1 px-2 text-xs" onClick={handleAddWidget}>
               <Plus className="mr-1 h-3.5 w-3.5" />

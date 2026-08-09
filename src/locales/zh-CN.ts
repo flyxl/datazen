@@ -1069,6 +1069,7 @@ const zhCN = {
   'docs.openHelp': '使用说明',
   'docs.openAiHelp': 'AI 与上下文说明',
   'docs.openWorkflowHelp': '工作流说明',
+  'docs.openDashboardHelp': '运营看板说明',
 } as const;
 
 export default zhCN;

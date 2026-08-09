@@ -251,7 +251,14 @@ fn setup_menu(
                 let _ = app_handle.emit("menu:view-logs", ());
             }
             "help-docs" => {
-                let _ = app_handle.emit("menu:open-docs", ());
+                // Open directly in Rust — do not emit to every webview (that
+                // previously caused concurrent create_sub_window races).
+                let app = app_handle.clone();
+                tauri::async_runtime::spawn(async move {
+                    if let Err(e) = commands::open_docs_window(app, None).await {
+                        tracing::warn!(error = %e, "menu help-docs: open docs window failed");
+                    }
+                });
             }
             "help-report" => {
                 let _ = open::that("https://github.com/flyxl/datazen/issues/new");

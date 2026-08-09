@@ -7,6 +7,8 @@ import {
 } from './renderMarkdown';
 import workflowGuideZh from '../../../docs/workflow-guide.md?raw';
 import workflowGuideEn from '../../../docs/workflow-guide.en.md?raw';
+import opsDashboardGuideZh from '../../../docs/ops-dashboard-guide.md?raw';
+import opsDashboardGuideEn from '../../../docs/ops-dashboard-guide.en.md?raw';
 
 describe('renderMarkdown', () => {
   it('slugs headings like GFM (drop punctuation)', () => {
@@ -29,5 +31,19 @@ describe('renderMarkdown', () => {
     const html = renderWorkflowMarkdown(workflowGuideEn);
     expect(html).toContain('id="7-condition-expressions"');
     expect(html).toContain('snake_case');
+  });
+
+  it('renders Chinese ops dashboard guide with anchors and tables', () => {
+    const html = renderWorkflowMarkdown(opsDashboardGuideZh);
+    expect(html).toContain('id="3-快速入门"');
+    expect(html).toContain('<table');
+    expect(html).toContain('MonitorEngine');
+    expect(html).not.toMatch(/^<h1/);
+  });
+
+  it('renders English ops dashboard guide', () => {
+    const html = renderWorkflowMarkdown(opsDashboardGuideEn);
+    expect(html).toContain('id="3-quick-start"');
+    expect(html).toContain('configId');
   });
 });

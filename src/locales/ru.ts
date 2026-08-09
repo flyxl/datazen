@@ -897,6 +897,7 @@ const translations = {
   'docs.openHelp': 'Руководство',
   'docs.openAiHelp': 'Справка по ИИ и контексту',
   'docs.openWorkflowHelp': 'Справка по workflow',
+  'docs.openDashboardHelp': 'Ops Dashboard Help',
   'settings.updater.title': 'Updates',
   'settings.updater.description': 'Check GitHub Releases for signed Basic build updates.',
   'settings.updater.check': 'Check for updates',

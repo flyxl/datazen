@@ -897,6 +897,7 @@ const translations = {
   'docs.openHelp': '使用說明',
   'docs.openAiHelp': 'AI 與上下文說明',
   'docs.openWorkflowHelp': '工作流說明',
+  'docs.openDashboardHelp': '營運看板說明',
   'settings.updater.title': 'Updates',
   'settings.updater.description': 'Check GitHub Releases for signed Basic build updates.',
   'settings.updater.check': 'Check for updates',
