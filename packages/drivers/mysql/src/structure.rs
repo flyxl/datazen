@@ -534,6 +534,10 @@ fn format_column_definition(
         parts.push("PRIMARY KEY".into());
     }
 
+    if col.is_unique && !col.is_primary_key {
+        parts.push("UNIQUE".into());
+    }
+
     if caps.comment {
         if let Some(comment) = &col.comment {
             if !comment.is_empty() {
@@ -667,6 +671,29 @@ mod tests {
             "ALTER TABLE `app`.`users` ADD COLUMN `email` VARCHAR(255) NOT NULL DEFAULT '' COMMENT 'contact email' AFTER `id`"
         );
         assert_eq!(plan.statements[0].risk, StatementRisk::Additive);
+    }
+
+    #[test]
+    fn plan_create_table_column_unique() {
+        let caps = baseline_capabilities("mysql");
+        let request = StructureChangeRequest {
+            mode: StructureChangeMode::Create,
+            schema: Some("app".into()),
+            table: "users".into(),
+            original_columns: vec![],
+            current_columns: vec![
+                sample_col("1", "id", "INT"),
+                StructureColumnDraft {
+                    is_unique: true,
+                    ..sample_col("2", "email", "VARCHAR(255)")
+                },
+            ],
+            original_indexes: vec![],
+            current_indexes: vec![],
+        };
+
+        let plan = plan_structure_changes(&caps, &request).unwrap();
+        assert!(plan.statements[0].sql.contains("`email` VARCHAR(255) NOT NULL UNIQUE"));
     }
 
     #[test]

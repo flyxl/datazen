@@ -29,6 +29,7 @@ import { cn } from '../../lib/cn';
 import { openDocsWindow } from '../../lib/windowManager';
 import { DB_REGISTRY, getDbLabel } from '../../lib/databaseTypes';
 import { canOpenStructureEditor } from '../../lib/structureEditor/canOpenStructureEditor';
+import { resolveCreateTableSchema } from '../../lib/structureEditor/resolveCreateTableSchema';
 import type { ConnectionViewProps } from '../../lib/connectionViews/types';
 import { SchemaTree } from './schema-tree/SchemaTree';
 import { StructureView } from './StructureView';
@@ -130,6 +131,7 @@ export function SqlConnectionView({
   const [exportTableName, setExportTableName] = useState<string | null>(null);
   const [importTableName, setImportTableName] = useState<string | null>(null);
   const [tableCtx, setTableCtx] = useState<{ tableName: string; x: number; y: number } | null>(null);
+  const [lastTableSchema, setLastTableSchema] = useState<string | null>(null);
   const tableCtxRef = useRef<HTMLDivElement>(null);
 
   const currentDatabase = useSchemaStore((s) => s.currentDatabase);
@@ -165,7 +167,21 @@ export function SqlConnectionView({
     [schemaTables, schemaViews, currentDatabase],
   );
 
-  const createTableSchema = currentDatabase ?? null;
+  const createTableContextSchema = useMemo(() => {
+    if (activePanel?.type === 'table') {
+      return resolveTableSchema(activePanel.tableName);
+    }
+    return lastTableSchema;
+  }, [activePanel, lastTableSchema, resolveTableSchema]);
+
+  const createTableSchema = useMemo(
+    () =>
+      resolveCreateTableSchema(databaseType, {
+        currentDatabase,
+        contextSchema: createTableContextSchema,
+      }),
+    [databaseType, currentDatabase, createTableContextSchema],
+  );
 
   const { size: sidebarWidth, handleRef } = useResizable({
     direction: 'horizontal',
@@ -191,7 +207,8 @@ export function SqlConnectionView({
     setDbType(databaseType);
   }, [databaseType, setDbType]);
 
-  const handleSelectTable = useCallback((table: string) => {
+  const handleSelectTable = useCallback((table: string, schema?: string) => {
+    if (schema) setLastTableSchema(schema);
     console.log('[SqlConnectionView] select table', table);
     setPanels((prev) => {
       const existing = prev.find((p) => p.type === 'table' && p.tableName === table);
