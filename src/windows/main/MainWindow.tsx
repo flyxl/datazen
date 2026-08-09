@@ -22,7 +22,7 @@ import { useUiStore } from '../../stores/uiStore';
 import { useActiveConnectionStore } from '../../stores/activeConnectionStore';
 import { cn } from '../../lib/cn';
 import { listenCrossWindow } from '../../lib/crossWindowBus';
-import { openBackupWindow, openConnectionWindow, openDataSyncWindow, openNewConnectionWindow, openSettingsWindow, openWorkflowWindow } from '../../lib/windowManager';
+import { openBackupWindow, openConnectionWindow, openDashboardWindow, openDataSyncWindow, openNewConnectionWindow, openSettingsWindow, openWorkflowWindow } from '../../lib/windowManager';
 import { ThemeToggle } from '../../components/ThemeToggle';
 import { useI18n } from '../../hooks/useI18n';
 import { ActionPanel } from './ActionPanel';
@@ -30,6 +30,8 @@ import { ConnectionItem } from './ConnectionItem';
 import { backupCommands } from '../../commands/backup';
 import { settingsCommands } from '../../commands/settings';
 import { ConnectionShareDialog, type ConnectionShareMode } from '../../components/connection/ConnectionShareDialog';
+import { useDashboardStore } from '../../stores/dashboardStore';
+import { createEmptyDashboard } from '../dashboard/DashboardWindow';
 import type { ConnectionConfig } from '../../types';
 
 // ─── Main Window ────────────────────────────────────────────────────
@@ -84,6 +86,15 @@ export function MainWindow() {
 
   const [connShareOpen, setConnShareOpen] = useState(false);
   const [connShareMode, setConnShareMode] = useState<ConnectionShareMode>('export');
+
+  const [dashboardDialogOpen, setDashboardDialogOpen] = useState(false);
+  const [newDashboardName, setNewDashboardName] = useState('');
+  const dashboards = useDashboardStore((s) => s.list);
+  const listLoading = useDashboardStore((s) => s.listLoading);
+  const listError = useDashboardStore((s) => s.listError);
+  const fetchDashboards = useDashboardStore((s) => s.fetchDashboards);
+  const saveDashboard = useDashboardStore((s) => s.saveDashboard);
+  const deleteDashboard = useDashboardStore((s) => s.deleteDashboard);
 
   // ── Pointer-based drag state ──
   const [draggingConnId, setDraggingConnId] = useState<string | null>(null);
@@ -446,6 +457,20 @@ export function MainWindow() {
     showMessageDialog(t('connShare.exportSuccess', { count }), 'success');
   }, [showMessageDialog, t]);
 
+  const handleOpenDashboardDialog = useCallback(() => {
+    setNewDashboardName('');
+    setDashboardDialogOpen(true);
+    void fetchDashboards();
+  }, [fetchDashboards]);
+
+  const handleCreateDashboard = useCallback(async () => {
+    const name = newDashboardName.trim() || t('dashboard.defaultName');
+    const dashboard = createEmptyDashboard(name);
+    await saveDashboard(dashboard);
+    setDashboardDialogOpen(false);
+    openDashboardWindow(dashboard.id, dashboard.name);
+  }, [newDashboardName, saveDashboard, t]);
+
   const handleConnShareImportSuccess = useCallback(async (result: {
     imported: number;
     overwritten: number;
@@ -564,6 +589,7 @@ export function MainWindow() {
             onRestore={() => void handleRestore()}
             onDataSync={() => openDataSyncWindow()}
             onWorkflow={() => openWorkflowWindow()}
+            onDashboard={() => handleOpenDashboardDialog()}
           />
         </aside>
         <div
@@ -741,6 +767,76 @@ export function MainWindow() {
           autoCapitalize="off"
           autoCorrect="off"
         />
+      </Dialog>
+
+      <Dialog
+        open={dashboardDialogOpen}
+        title={t('dashboard.title')}
+        onClose={() => setDashboardDialogOpen(false)}
+        className="max-w-md"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setDashboardDialogOpen(false)}>
+              {t('common.close')}
+            </Button>
+            <Button data-testid="dashboard-create" onClick={() => void handleCreateDashboard()}>
+              {t('dashboard.create')}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-3" data-testid="dashboard-dialog">
+          {listError && (
+            <div className="rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
+              {listError}
+            </div>
+          )}
+          <label className="block space-y-1">
+            <span className="text-xs text-fg-muted">{t('dashboard.name')}</span>
+            <Input
+              data-testid="dashboard-name-input"
+              value={newDashboardName}
+              onChange={(e) => setNewDashboardName(e.target.value)}
+              placeholder={t('dashboard.defaultName')}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') void handleCreateDashboard();
+              }}
+            />
+          </label>
+          {listLoading && (
+            <p className="text-xs text-fg-muted">{t('common.loading')}</p>
+          )}
+          {!listLoading && dashboards.length > 0 && (
+            <div className="space-y-1">
+              <span className="text-xs text-fg-muted">{t('dashboard.existing')}</span>
+              <ul className="max-h-48 space-y-1 overflow-auto rounded-md border border-edge p-1">
+                {dashboards.map((d) => (
+                  <li key={d.id} className="flex items-center gap-1" data-testid={`dashboard-list-item-${d.id}`}>
+                    <button
+                      type="button"
+                      data-testid={`dashboard-open-${d.id}`}
+                      className="min-w-0 flex-1 truncate rounded px-2 py-1.5 text-left text-sm hover:bg-surface-raised"
+                      onClick={() => {
+                        setDashboardDialogOpen(false);
+                        openDashboardWindow(d.id, d.name);
+                      }}
+                    >
+                      {d.name}
+                    </button>
+                    <Button
+                      variant="ghost"
+                      className="h-7 shrink-0 px-2 text-xs text-red-400"
+                      data-testid={`dashboard-delete-${d.id}`}
+                      onClick={() => void deleteDashboard(d.id)}
+                    >
+                      {t('common.delete')}
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
       </Dialog>
 
       <ConnectionShareDialog
