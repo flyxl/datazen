@@ -587,6 +587,8 @@ pub fn run() {
             commands::kv_get_key,
             commands::get_columns,
             commands::get_table_schema,
+            commands::get_structure_capabilities,
+            commands::plan_table_structure_changes,
             commands::get_er_data,
             commands::get_table_data,
             commands::commit_row_updates,
