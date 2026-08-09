@@ -19,6 +19,6 @@ export const redisMeta = {
     category: 'kv',
     connectionView: 'keyvalue',
     databaseFieldType: 'index',
-    connectionForm: 'index',
+    connectionForm: 'redis',
   } satisfies DatabaseTypeMeta;
 

@@ -75,7 +75,15 @@ export function registerPathAliases(
  * returns a map of field→error message (empty = valid).
  */
 export type PluginFormValidator = (
-  fields: { host: string; port: string; database: string; username: string; password: string; schema: string },
+  fields: {
+    host: string;
+    port: string;
+    database: string;
+    username: string;
+    password: string;
+    schema: string;
+    options?: Record<string, unknown>;
+  },
   t: (key: string) => string,
 ) => Record<string, string>;
 

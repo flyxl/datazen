@@ -51,6 +51,8 @@ export function useConnectionForm(options: UseConnectionFormOptions = {}) {
   const [kiwiToken, setKiwiToken] = useState('');
   const [kiwiLoggingIn, setKiwiLoggingIn] = useState(false);
 
+  const [connectionOptions, setConnectionOptions] = useState<Record<string, unknown>>({});
+
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
@@ -68,6 +70,7 @@ export function useConnectionForm(options: UseConnectionFormOptions = {}) {
     setSslMode(existing.sslMode);
     setGroup(existing.group ?? '');
     setColorTag(existing.colorTag ?? '#3b82f6');
+    setConnectionOptions(existing.options ?? {});
     if (existing.sshTunnel?.enabled) {
       setSshEnabled(true);
       setSshHost(existing.sshTunnel.host);
@@ -125,6 +128,16 @@ export function useConnectionForm(options: UseConnectionFormOptions = {}) {
       setDatabase('');
       setSchema('default');
       setUsername('');
+    }
+    if (meta.connectionForm === 'redis') {
+      setHost(meta.defaultHost || '127.0.0.1');
+      setPort(String(meta.defaultPort ?? 6379));
+      setDatabase('0');
+      setUsername('');
+      setPassword('');
+      setConnectionOptions({ topology: 'standalone' });
+    } else if (getPluginConnectionForm(meta.connectionForm)) {
+      setConnectionOptions({});
     }
   }
 
@@ -204,7 +217,10 @@ export function useConnectionForm(options: UseConnectionFormOptions = {}) {
   const validate = useCallback((): boolean => {
     const pluginValidator = getPluginValidator(formVariant);
     if (pluginValidator) {
-      const errors = pluginValidator({ host, port, database, username, password, schema }, t as (key: string) => string);
+      const errors = pluginValidator(
+        { host, port, database, username, password, schema, options: connectionOptions },
+        t as (key: string) => string,
+      );
       setValidationErrors(errors);
       return Object.keys(errors).length === 0;
     }
@@ -220,7 +236,7 @@ export function useConnectionForm(options: UseConnectionFormOptions = {}) {
 
     setValidationErrors(errors);
     return Object.keys(errors).length === 0;
-  }, [database, formVariant, host, meta?.connectionMode, password, port, schema, t, username]);
+  }, [connectionOptions, database, formVariant, host, meta?.connectionMode, password, port, schema, t, username]);
 
   const draft = useMemo((): ConnectionConfig => {
     const base: ConnectionConfig = {
@@ -252,8 +268,11 @@ export function useConnectionForm(options: UseConnectionFormOptions = {}) {
     if (draftMeta.connectionForm === 'catalog') {
       conn.schema = schema.trim() || 'default';
     }
+    if (Object.keys(connectionOptions).length > 0) {
+      conn.options = connectionOptions;
+    }
     return conn;
-  }, [colorTag, database, databaseType, editId, group, host, name, password, port, schema, sslMode, sshTunnel, t, username]);
+  }, [colorTag, connectionOptions, database, databaseType, editId, group, host, name, password, port, schema, sslMode, sshTunnel, t, username]);
 
   async function onTest() {
     if (!validate()) return;
@@ -350,6 +369,8 @@ export function useConnectionForm(options: UseConnectionFormOptions = {}) {
     tabFill,
     validationErrors,
     validate,
+    options: connectionOptions,
+    setOptions: setConnectionOptions,
   };
 }
 
