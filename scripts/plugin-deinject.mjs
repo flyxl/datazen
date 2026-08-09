@@ -238,6 +238,7 @@ export function deinjectCargoContent(content) {
   for (const tag of ['PLUGIN DEPS', 'PLUGIN FEATURES', 'PLUGIN PATCHES']) {
     out = emptyBeginEndSection(out, tag);
   }
+  out = out.replace(/^default = \[[^\]]*\]/m, 'default = []');
   return out;
 }
 

@@ -4,6 +4,7 @@ version = "0.0.8"
 edition = "2021"
 description = "DataZen redis database driver"
 license = "GPL-3.0-or-later"
+build = "build.rs"
 links = "redis"
 
 [features]
