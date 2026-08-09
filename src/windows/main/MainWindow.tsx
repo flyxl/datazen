@@ -94,19 +94,6 @@ export function MainWindow() {
   const dragActiveRef = useRef(false);
   const groupRectsRef = useRef<Map<string, DOMRect>>(new Map());
 
-  const lastError = useMemo(() => {
-    for (const entry of Object.values(activeConnections)) {
-      if (entry.status === 'error' && entry.error) return entry.error;
-    }
-    return null;
-  }, [activeConnections]);
-
-  useEffect(() => {
-    if (lastError) {
-      showMessageDialog(lastError, 'error');
-    }
-  }, [lastError, showMessageDialog]);
-
   // ── Init ──
   useEffect(() => {
     void fetchConnections();
