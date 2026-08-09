@@ -55,7 +55,7 @@ DBX 与 DataZen 是同一条赛道的直接竞品：同为「Tauri 2 + Rust + �
 | 备份 | 全库导出 | SQL dump（schema/data/gzip）+ 应用数据 ZIP |
 | 文件预览 | ✅（Parquet/CSV/JSON，DuckDB） | ❌ |
 | 连接导入 | ✅（DBeaver / Navicat 配置） | ❌ |
-| Redis 浏览器 | ✅（全部类型 + 批量操作 + 命令台） | ✅ E1（五类型 CRUD + 批量 + Size + 门控 Flush）；命令台/INFO 等 E2；Cluster/TLS E3；Pub/Sub·Stream 写入 E4 |
+| Redis 浏览器 | ✅（全部类型 + 批量操作 + 命令台） | ✅ E1（五类型 CRUD + 批量 + Size + 门控 Flush）+ E2（命令台 + Monitor Info/Memory/Slowlog）；Cluster/TLS E3；Pub/Sub·Stream 写入 E4 |
 | MongoDB | ✅ | ✅（path 原生 + Document 视图；All / 自定义构建） |
 | SSH 隧道 | ✅ | ✅（纯 Rust + TOFU） |
 | 连接加密 | ✅ 加密导出/导入 | ✅ AES-256-GCM + 系统钥匙串 |
