@@ -30,6 +30,15 @@ pub fn build_create_table_ddl(ir_table: &IRTable, tgt: &dyn SyncTargetAdapter) -
                 }
             }
 
+            if let Some(ref comment) = c.comment {
+                if !comment.is_empty() {
+                    // Portable SQL comment after column; engines that need COMMENT '…'
+                    // syntax should override via adapter-specific DDL later.
+                    let escaped = comment.replace("*/", "* /");
+                    def.push_str(&format!(" /* {escaped} */"));
+                }
+            }
+
             def
         })
         .collect();
@@ -133,5 +142,24 @@ mod tests {
 
         let ddl = build_create_table_ddl(&table, &DummyTarget);
         assert!(!ddl.contains("PRIMARY KEY"));
+    }
+
+    #[test]
+    fn ddl_emits_column_comment() {
+        let table = IRTable {
+            name: "t".into(),
+            columns: vec![IRColumn {
+                name: "note".into(),
+                ir_type: IRType::Varchar { length: None },
+                nullable: true,
+                default_expr: None,
+                is_primary_key: false,
+                is_auto_increment: false,
+                comment: Some("user note".into()),
+            }],
+            primary_keys: vec![],
+        };
+        let ddl = build_create_table_ddl(&table, &DummyTarget);
+        assert!(ddl.contains("/* user note */"), "ddl={ddl}");
     }
 }

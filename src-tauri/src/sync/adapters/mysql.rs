@@ -20,7 +20,8 @@ fn register_mariadb(registry: &SyncAdapterRegistry, db_type: crate::db::Database
 
 inventory::submit! {
     SyncAdapterFactory {
-        db_types: &["mysql"],
+        // doris / starrocks: MySQL wire + information_schema (source-first)
+        db_types: &["mysql", "doris", "starrocks"],
         register: register_mysql,
     }
 }
