@@ -7,8 +7,20 @@ export const redisSettingsSchema = {
       description: 'Dangerous. Off by default.',
       default: false,
     },
+    clusterRouting: {
+      type: 'string',
+      title: 'Cluster routing',
+      description: 'How Redis Cluster connections route commands.',
+      enum: ['auto', 'pinnedNode'],
+      default: 'auto',
+    },
   },
 } as const;
+
+type RedisPluginSettings = {
+  allowFlush?: boolean;
+  clusterRouting?: 'auto' | 'pinnedNode';
+};
 
 export function RedisSettingsSection({
   value,
@@ -17,15 +29,36 @@ export function RedisSettingsSection({
   value: unknown;
   onChange: (next: unknown) => void;
 }) {
-  const v = (value && typeof value === 'object' ? value : {}) as { allowFlush?: boolean };
+  const v = (value && typeof value === 'object' ? value : {}) as RedisPluginSettings;
+  const clusterRouting = v.clusterRouting === 'pinnedNode' ? 'pinnedNode' : 'auto';
+
   return (
-    <label className="flex items-start gap-2 text-sm">
-      <input
-        type="checkbox"
-        checked={v.allowFlush === true}
-        onChange={(e) => onChange({ ...v, allowFlush: e.target.checked })}
-      />
-      <span>Allow FLUSHDB / FLUSHALL</span>
-    </label>
+    <div className="space-y-3 text-sm">
+      <label className="flex items-start gap-2">
+        <input
+          type="checkbox"
+          checked={v.allowFlush === true}
+          onChange={(e) => onChange({ ...v, allowFlush: e.target.checked })}
+        />
+        <span>Allow FLUSHDB / FLUSHALL</span>
+      </label>
+
+      <div>
+        <div className="mb-1 font-medium">Cluster routing</div>
+        <select
+          value={clusterRouting}
+          onChange={(e) =>
+            onChange({
+              ...v,
+              clusterRouting: e.target.value === 'pinnedNode' ? 'pinnedNode' : 'auto',
+            })
+          }
+          className="h-8 w-full rounded-md border border-edge bg-surface px-2 text-xs"
+        >
+          <option value="auto">Auto — follow MOVED / ASK</option>
+          <option value="pinnedNode">Pinned node — target one cluster node</option>
+        </select>
+      </div>
+    </div>
   );
 }

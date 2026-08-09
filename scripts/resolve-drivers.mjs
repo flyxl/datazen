@@ -227,6 +227,12 @@ const BASIC_PATH_FRONTEND = {
   redis: {
     dbTypes: [{ id: 'redis', metaExport: 'redisMeta' }],
     metaPath: '../../packages/drivers/redis/ui/meta',
+    connectionForm: {
+      component: 'RedisConnectionWizard',
+      path: '../../packages/drivers/redis/ui/ConnectionWizard',
+      formVariant: 'redis',
+      validator: { export: 'redisValidate' },
+    },
     settings: {
       pluginId: 'redis',
       label: 'Redis',
