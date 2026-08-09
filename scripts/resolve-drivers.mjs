@@ -307,6 +307,7 @@ function generateFrontendRegistry(plugins) {
   const validatorEntryLines = [];
   const dialectEntryLines = [];
   const schemaTreeEntryLines = [];
+  const settingsEntryLines = [];
   const pluginDbTypes = [];
   const iconImportByAbs = new Map();
 
@@ -375,6 +376,31 @@ function generateFrontendRegistry(plugins) {
       importLines.push(`import { ${dial.export} } from '${dial.path}';`);
       dialectEntryLines.push(`  ${dial.family}: ${dial.export},`);
     }
+
+    // Plugin settings (Extensions UI)
+    if (cfg.settings) {
+      const s = cfg.settings;
+      const settingsImports = new Set();
+      if (s.sectionExport) settingsImports.add(s.sectionExport);
+      if (s.schemaExport) settingsImports.add(s.schemaExport);
+      const settingsPath = s.sectionPath || s.schemaPath;
+      if (settingsPath && settingsImports.size > 0) {
+        importLines.push(
+          `import { ${[...settingsImports].join(', ')} } from '${settingsPath}';`,
+        );
+      }
+      const entryParts = [
+        `pluginId: '${s.pluginId}'`,
+        `label: '${s.label.replace(/'/g, "\\'")}'`,
+      ];
+      if (s.sectionExport) {
+        entryParts.push(`SettingsSection: ${s.sectionExport}`);
+      }
+      if (s.schemaExport) {
+        entryParts.push(`schema: ${s.schemaExport}`);
+      }
+      settingsEntryLines.push(`  { ${entryParts.join(', ')} },`);
+    }
   }
 
   const typeUnion = pluginDbTypes.length > 0
@@ -406,6 +432,7 @@ ${importLines.length > 0 ? importLines.join('\n') + '\n' : ''}${iconImportLines.
 import type { DatabaseTypeMeta } from '@datazen/plugin-sdk';
 import type { SqlDialectStrategy } from '@datazen/plugin-sdk';
 import type { PluginFormValidator } from '@datazen/plugin-sdk';
+import type { PluginSettingsContribution } from '@datazen/plugin-sdk';
 import type { ComponentType } from 'react';
 
 /**
@@ -494,6 +521,13 @@ export function getPluginSchemaTree(dbType: string): ComponentType<any> | undefi
   }
   return undefined;
 }
+
+// ===== Plugin Settings (Extensions UI) =====
+
+/** Plugin-provided settings sections and/or JSON Schema forms. */
+export const PLUGIN_SETTINGS_ENTRIES: PluginSettingsContribution[] = [
+${settingsEntryLines.join('\n')}
+];
 
 // ===== Plugin Commands =====
 
