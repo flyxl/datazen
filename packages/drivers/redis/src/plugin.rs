@@ -1,6 +1,7 @@
 //! Tauri plugin commands for Redis deep ops (`plugin:redis|*`).
 
 use crate::ops::{self, ZsetMember};
+use crate::ops_observe::{self, MemorySampleResult, SlowlogEntry};
 use crate::shared_driver;
 use datazen_driver_api::DriverError;
 
@@ -252,6 +253,55 @@ async fn count_matching(
         .map_err(map_err)
 }
 
+#[tauri::command]
+async fn info(
+    connection_id: String,
+    section: Option<String>,
+    node_addr: Option<String>,
+) -> Result<String, String> {
+    shared_driver()
+        .plugin_info(&connection_id, section, node_addr)
+        .await
+        .map_err(map_err)
+}
+
+#[tauri::command]
+async fn memory_sample(
+    connection_id: String,
+    db_index: u32,
+    limit: Option<u32>,
+) -> Result<MemorySampleResult, String> {
+    shared_driver()
+        .plugin_memory_sample(&connection_id, db_index, limit)
+        .await
+        .map_err(map_err)
+}
+
+#[tauri::command]
+async fn slowlog_get(connection_id: String, count: u32) -> Result<Vec<SlowlogEntry>, String> {
+    shared_driver()
+        .plugin_slowlog_get(&connection_id, count)
+        .await
+        .map_err(map_err)
+}
+
+#[tauri::command]
+async fn slowlog_reset(connection_id: String, confirm: bool) -> Result<(), String> {
+    ops_observe::ensure_slowlog_reset_confirmed(confirm)?;
+    shared_driver()
+        .plugin_slowlog_reset(&connection_id)
+        .await
+        .map_err(map_err)
+}
+
+#[tauri::command]
+async fn modules_list(connection_id: String) -> Result<Vec<String>, String> {
+    shared_driver()
+        .plugin_modules_list(&connection_id)
+        .await
+        .map_err(map_err)
+}
+
 /// Register Redis IPC commands as a Tauri plugin (`plugin:redis|*`).
 pub fn init<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
     tauri::plugin::Builder::new("redis")
@@ -275,6 +325,11 @@ pub fn init<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
             flush_db,
             flush_all,
             count_matching,
+            info,
+            memory_sample,
+            slowlog_get,
+            slowlog_reset,
+            modules_list,
         ])
         .build()
 }
