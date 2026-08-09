@@ -216,6 +216,8 @@ const translations = {
   'newConn.adbNotInstalled': 'adb가 설치되지 않았거나 PATH에 없습니다.',
   'settings.title': '설정',
   'settings.general': '일반적인',
+  'settings.extensions.title': '확장',
+  'settings.extensions.empty': '이 빌드에서는 사용 가능한 플러그인 확장이 없습니다.',
   'settings.theme': '주제',
   'settings.theme.pack': '테마 팩',
   'settings.theme.packDefault': '내장 기본값',
