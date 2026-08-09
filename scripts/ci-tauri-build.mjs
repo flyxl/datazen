@@ -31,6 +31,9 @@ const args = ['tauri', 'build'];
 if (target) {
   args.push('--target', target);
 }
+if (process.argv.includes('--updater')) {
+  args.push('--config', JSON.stringify({ bundle: { createUpdaterArtifacts: true } }));
+}
 if (Array.isArray(features) && features.length > 0) {
   args.push('-f', features.join(','));
 }

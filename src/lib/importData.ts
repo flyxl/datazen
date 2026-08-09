@@ -1,3 +1,4 @@
+import * as XLSX from 'xlsx';
 import type { DatabaseType } from '../types';
 import { escapeIdent } from './databaseTypes';
 
@@ -5,6 +6,8 @@ export interface ParsedData {
   columns: string[];
   rows: Record<string, unknown>[];
 }
+
+export type ImportFormat = 'csv' | 'json' | 'xlsx';
 
 function parseCSV(text: string): ParsedData {
   const lines = text.split('\n').filter((l) => l.trim().length > 0);
@@ -74,8 +77,40 @@ function parseJSON(text: string): ParsedData {
   return { columns, rows };
 }
 
+export function parseXLSX(dataBase64: string): ParsedData {
+  const wb = XLSX.read(dataBase64, { type: 'base64' });
+  const firstSheetName = wb.SheetNames[0];
+  if (!firstSheetName) return { columns: [], rows: [] };
+
+  const ws = wb.Sheets[firstSheetName];
+  const rawRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: null });
+  if (rawRows.length === 0) return { columns: [], rows: [] };
+
+  const columnSet = new Set<string>();
+  for (const row of rawRows) {
+    for (const key of Object.keys(row)) columnSet.add(key);
+  }
+  const columns = Array.from(columnSet);
+
+  const rows = rawRows.map((item) => {
+    const record: Record<string, unknown> = {};
+    for (const col of columns) record[col] = item[col] ?? null;
+    return record;
+  });
+
+  return { columns, rows };
+}
+
 export function parseImportData(content: string, format: 'csv' | 'json'): ParsedData {
   return format === 'csv' ? parseCSV(content) : parseJSON(content);
+}
+
+export function detectImportFormat(fileName: string): ImportFormat | null {
+  const lower = fileName.toLowerCase();
+  if (lower.endsWith('.json')) return 'json';
+  if (lower.endsWith('.csv')) return 'csv';
+  if (lower.endsWith('.xlsx')) return 'xlsx';
+  return null;
 }
 
 function escapeSQLValue(value: unknown): string {

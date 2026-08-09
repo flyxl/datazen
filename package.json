@@ -51,7 +51,9 @@
     "@tauri-apps/api": "^2.11.1",
     "@tauri-apps/plugin-dialog": "^2.7.0",
     "@tauri-apps/plugin-os": "^2.3.2",
+    "@tauri-apps/plugin-process": "^2.3.1",
     "@tauri-apps/plugin-shell": "^2.2.1",
+    "@tauri-apps/plugin-updater": "^2.10.1",
     "@xyflow/react": "^12.11.2",
     "clsx": "^2.1.1",
     "html-to-image": "^1.11.13",
@@ -61,6 +63,7 @@
     "react-dom": "^18.3.1",
     "recharts": "^3.10.1",
     "tailwind-merge": "^2.6.0",
+    "xlsx": "^0.18.5",
     "yaml": "^2.9.0",
     "zustand": "^5.0.3"
   },

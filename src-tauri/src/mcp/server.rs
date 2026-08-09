@@ -1,6 +1,7 @@
 //! DataZen MCP Server handler — tools + resources + prompts.
 
 use crate::commands::AppState;
+use crate::mcp::permission::{self, McpPermissionMode};
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::*;
 use rmcp::service::RequestContext;
@@ -107,6 +108,7 @@ pub struct ExplainPlanArgs {
 pub struct DataZenMcpServer {
     app_state: Arc<AppState>,
     disabled_tools: HashSet<String>,
+    permission_mode: McpPermissionMode,
 }
 
 pub const MCP_ALL_TOOLS: &[&str] = &[
@@ -123,11 +125,20 @@ pub const MCP_ALL_TOOLS: &[&str] = &[
 
 impl DataZenMcpServer {
     pub fn new(app_state: Arc<AppState>) -> Self {
-        Self { app_state, disabled_tools: HashSet::new() }
+        Self {
+            app_state,
+            disabled_tools: HashSet::new(),
+            permission_mode: McpPermissionMode::default(),
+        }
     }
 
     pub fn with_disabled_tools(mut self, disabled: &[String]) -> Self {
         self.disabled_tools = disabled.iter().cloned().collect();
+        self
+    }
+
+    pub fn with_permission_mode(mut self, mode: McpPermissionMode) -> Self {
+        self.permission_mode = mode;
         self
     }
 
@@ -193,7 +204,16 @@ impl DataZenMcpServer {
         &self,
         Parameters(input): Parameters<QueryInput>,
     ) -> Result<String, McpError> {
-        crate::services::db_tools::query(&self.app_state.connection_manager, &input.config_id, &input.sql, input.limit)
+        permission::check_sql_allowed(&input.sql, self.permission_mode).map_err(|e| {
+            McpError::invalid_params(e, None)
+        })?;
+        crate::services::db_tools::query(
+            &self.app_state.connection_manager,
+            &input.config_id,
+            &input.sql,
+            input.limit,
+            Some(self.permission_mode),
+        )
             .await
             .map_err(Self::map_err)
     }
@@ -412,8 +432,10 @@ impl ServerHandler for DataZenMcpServer {
         _context: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, McpError> {
         let mut router = Self::tool_router();
-        for name in &self.disabled_tools {
-            router.disable_route(name.clone());
+        for name in MCP_ALL_TOOLS {
+            if !permission::is_tool_listed(name, self.permission_mode, &self.disabled_tools) {
+                router.disable_route(name.to_string());
+            }
         }
         Ok(ListToolsResult {
             tools: router.list_all(),
@@ -427,12 +449,14 @@ impl ServerHandler for DataZenMcpServer {
         request: CallToolRequestParams,
         context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, McpError> {
-        if self.disabled_tools.contains(request.name.as_ref()) {
-            return Err(McpError::invalid_params(
-                format!("Tool '{}' is disabled in DataZen settings", request.name),
-                None,
-            ));
-        }
+        permission::check_tool_call(
+            request.name.as_ref(),
+            self.permission_mode,
+            &self.disabled_tools,
+            request.arguments.as_ref(),
+        )
+        .map_err(|e| McpError::invalid_params(e, None))?;
+
         let tcc = rmcp::handler::server::tool::ToolCallContext::new(self, request, context);
         Self::tool_router().call(tcc).await
     }

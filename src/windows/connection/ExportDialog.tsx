@@ -21,6 +21,8 @@ interface ExportDialogProps {
 const FORMAT_OPTIONS: { value: ExportFormat; label: string }[] = [
   { value: 'csv', label: 'CSV' },
   { value: 'json', label: 'JSON' },
+  { value: 'markdown', label: 'Markdown' },
+  { value: 'xlsx', label: 'Excel (XLSX)' },
   { value: 'sql_insert', label: 'SQL INSERT' },
   { value: 'sql_update', label: 'SQL UPDATE' },
 ];
@@ -59,7 +61,7 @@ export function ExportDialog({ open, onClose, tableName, columns, rows, selected
     setExporting(true);
     try {
       const colNames = columns.map((c) => c.name).filter((n) => selectedCols.has(n));
-      const { content, extension } = generateExport({
+      const result = generateExport({
         tableName,
         columns,
         rows,
@@ -71,12 +73,19 @@ export function ExportDialog({ open, onClose, tableName, columns, rows, selected
       });
 
       const defaultName = getDefaultFilename(tableName, format);
-      const saved = await fileCommands.saveTextWithDialog(
-        content,
-        defaultName,
-        extension.toUpperCase(),
-        [extension],
-      );
+      const saved = result.kind === 'binary'
+        ? await fileCommands.saveBase64WithDialog(
+            result.dataBase64,
+            defaultName,
+            result.extension.toUpperCase(),
+            [result.extension],
+          )
+        : await fileCommands.saveTextWithDialog(
+            result.content,
+            defaultName,
+            result.extension.toUpperCase(),
+            [result.extension],
+          );
       if (!saved) {
         setExporting(false);
         return;

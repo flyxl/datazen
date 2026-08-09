@@ -1,17 +1,17 @@
 # 竞品分析：DBX（t8y2/dbx） vs DataZen
 
-> 分析日期：2026-08-08。数据来源：GitHub 仓库 README 与 GitHub API。
+> 分析日期：2026-08-09（随 native-drivers + Basic/All/Akulaku SKU 更新）。数据来源：本仓库与 GitHub API。
 > DBX: https://github.com/t8y2/dbx ｜ DataZen: https://github.com/flyxl/datazen
 
 ## 1. 结论摘要
 
 DBX 与 DataZen 是同一条赛道的直接竞品：同为「Tauri 2 + Rust + 轻量安装包的桌面数据库客户端」，都在做内置 AI 与 MCP 集成。
 
-**DBX 的强项**：数据库覆盖广度（70+，含 MongoDB/Oracle/SQL Server/达梦/ClickHouse）、发布形态（桌面 + Docker/Web + CLI + MCP）、社区规模（13.7k star、1.4k fork、日更发布）、数据运维能力（导入/迁移/对比/导出/文件预览）、Apache-2.0 宽松许可。
+**DBX 的强项**：数据库覆盖广度（70+，含 JDBC/Agent 长尾）、发布形态（桌面 + Docker/Web + CLI + MCP）、社区规模、数据运维工具箱、Apache-2.0。
 
-**DataZen 的差异化**：YAML Workflow 跨库自动化引擎、查询结果图表可视化、内置 MCP Client + Server、10 语系、驱动插件系统（kiwi/OLAP/Superset）、更小的安装包（<10MB）。
+**DataZen 的差异化**：YAML Workflow、查询结果图表、MCP Client + Server、10 语系、**按需编译 / Basic·All 双 SKU（不为大而全买单）**、进程内原生驱动（无 JRE）。
 
-**总体判断**：在「通用数据库客户端」这个面上 DBX 已形成规模优势，DataZen 不应正面拼广度，而应把「AI + 自动化 + 可视化」的纵深做成不可替代的卖点。
+**总体判断**：不与 DBX 正面拼「70+」数量；用 **Basic（小包）+ All（path 原生全量）+ 源码自定义驱动列表** 对抗「一个包装所有」，并把「AI + Workflow + 图表」做成纵深卖点。
 
 ## 2. 基本数据
 
@@ -31,10 +31,11 @@ DBX 与 DataZen 是同一条赛道的直接竞品：同为「Tauri 2 + Rust + �
 | 框架 | Tauri 2 | Tauri 2 |
 | 前端 | Vue 3 + shadcn-vue + Tailwind | React 18 + Zustand + Tailwind |
 | 后端 | Rust（sqlx / tiberius / redis-rs / mongodb） | Rust（sqlx / redis crate） |
-| 安装包 | ~20MB | <10MB |
-| 平台 | macOS / Windows / Linux（Flatpak） | macOS / Windows |
+| 安装包 | ~20MB 一体包 | **Basic**（小）/ **All**（path 全量，更大）；源码可再裁剪 |
+| 平台 | macOS / Windows / Linux（Flatpak） | macOS / Windows / Linux（deb/rpm/AppImage） |
 | 运行形态 | 桌面 + Docker/Web + CLI + MCP | 桌面 + MCP（--mcp-stdio） |
-| 数据库 | 70+（含 MongoDB、Oracle、SQL Server、达梦、ClickHouse、DuckDB 等） | PG / MySQL / MariaDB / SQLite / Redis + 插件（kiwi / OLAP Presto·Trino / Superset） |
+| 数据库 | 70+（原生 + JDBC/Agent 长尾） | Path 原生约 20+ 类型（Mongo/SQL Server/CH/DuckDB…）；git 插件按需；**不做 JDBC 堆量** |
+| 驱动分发 | 一体包 + 驱动商店 / JDBC | 编译时选型：`basic` / `all`(path) / 显式列表；发布另有 Akulaku SKU |
 | 许可 | Apache-2.0 | GPL-3.0 |
 
 ## 4. 功能对比
@@ -55,7 +56,7 @@ DBX 与 DataZen 是同一条赛道的直接竞品：同为「Tauri 2 + Rust + �
 | 文件预览 | ✅（Parquet/CSV/JSON，DuckDB） | ❌ |
 | 连接导入 | ✅（DBeaver / Navicat 配置） | ❌ |
 | Redis 浏览器 | ✅（全部类型 + 批量操作 + 命令台） | ✅（全部类型） |
-| MongoDB | ✅ | ❌ |
+| MongoDB | ✅ | ✅（path 原生 + Document 视图；All / 自定义构建） |
 | SSH 隧道 | ✅ | ✅（纯 Rust + TOFU） |
 | 连接加密 | ✅ 加密导出/导入 | ✅ AES-256-GCM + 系统钥匙串 |
 | 多语言 | 3 种（en / zh / es） | 10 种 |
@@ -89,19 +90,18 @@ DBX 与 DataZen 是同一条赛道的直接竞品：同为「Tauri 2 + Rust + �
 
 ## 7. DBX 的优势与 DataZen 的短板
 
-1. **数据库覆盖差距最大**：70+（MongoDB / Oracle / SQL Server / 达梦 / ClickHouse / DuckDB / 时序 / 向量库）vs 7 个左右。企业用户选型时这一条几乎是决定性的。
-2. **发布形态**：Docker/Web 化让团队共享和浏览器环境可用；CLI 面向脚本与 Codex 工作流。DataZen 只有桌面。
-3. **数据运维**：导入（CSV/Excel）、迁移、数据对比、SQL 文件执行、Parquet 预览等更接近 DBeaver 的完整度。
-4. **工程配套**：日更发布、Homebrew/Scoop/WinGet/Flatpak、自动更新、官方文档站、赞助商。
-5. **许可与社区**：Apache-2.0 更友好，13.7k star 的社区势能形成正循环。
+1. **长尾覆盖仍弱**：Oracle / 达梦 / 金仓 / 通用 JDBC / MQ 等仍是 DBX 护城河；DataZen 刻意用 path 原生 + 按需 SKU，不追数量。
+2. **发布形态**：Docker/Web、独立 CLI、包管理器分发、自动更新仍领先于 DataZen。
+3. **数据运维工具箱**：Excel 导入、Schema Diff、字段血缘、连接导入（DBeaver/Navicat/DBX）等仍有缺口。
+4. **社区与许可**：Apache-2.0 + 高 star 势能。
 
 ## 8. 建议（DataZen 应对策略）
 
-1. **别拼广度，拼纵深**：官网与软文明确主打「AI + Workflow + 图表」的组合，避开「支持的数据库数量」正面战场。
-2. **补齐「小而关键」的差距**：Linux 支持、CLI、自动更新、连接配置导入（DBeaver/Navicat）成本低、感知强。
-3. **把 Workflow 做成护城河**：DBX 的 data transfer/compare 是数据搬运，DataZen 的 Workflow 是「查询→AI→分支→循环」的编排，可进一步做模板市场/分享。
-4. **考虑 Docker/Web 形态**：团队协作和 CI 场景需要它，MCP + CLI 也可先补。
-5. **跟进 MCP 生态叙事**：DBX 已经用「AI coding agent 直接查库」讲故事，DataZen 的 MCP Server 同样具备，应突出 + 提供现成的 agent 配置示例。
+1. **强调「不为大而全买单」**：Basic / All 双下载 + `DATAZEN_DRIVERS` 源码裁剪；对照 DBX 一体包叙事。
+2. **别拼 JDBC 数量，拼纵深**：AI + Workflow + 图表 + MCP Client。
+3. **补齐迁移与信任**：连接导入（含 DBX 导出）、MCP 权限分档、自动更新、Homebrew/WinGet。
+4. **把 Workflow 做成护城河**：编排 vs 纯数据搬运。
+5. **MCP 生态叙事**：提供现成的 agent 配置示例。
 
 ## 9. 相关文档
 

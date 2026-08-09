@@ -31,7 +31,7 @@ pub fn show_editor_context_menu(
 
 const ALLOWED_EXTENSIONS: &[&str] = &[
     "csv", "tsv", "json", "sql", "md", "txt", "xml", "yaml", "yml", "png", "svg", "zip",
-    "gz", "dump",
+    "gz", "dump", "xlsx",
 ];
 
 fn deny_path_ipc() -> CommandError {
@@ -165,6 +165,47 @@ pub struct OpenedTextFile {
     pub content: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OpenedBinaryFile {
+    /// Basename only — safe to show in UI; do not use for subsequent IO.
+    pub file_name: String,
+    pub data_base64: String,
+}
+
+/// Open a binary file via native dialog and return base64 contents (no path to JS).
+#[tauri::command]
+pub async fn open_base64_with_dialog(
+    app: AppHandle,
+    filter_name: String,
+    extensions: Vec<String>,
+) -> Result<Option<OpenedBinaryFile>, CommandError> {
+    use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
+    let ext_list = ext_refs(&extensions)?;
+    let picked = app
+        .dialog()
+        .file()
+        .add_filter(&filter_name, &ext_list)
+        .blocking_pick_file();
+    let Some(fp) = picked else {
+        return Ok(None);
+    };
+    let path = dialog_path_to_buf(fp)?;
+    validate_extension(&path, &ext_list)?;
+    let bytes = tokio::fs::read(&path)
+        .await
+        .cmd_err("open_base64_with_dialog")?;
+    let file_name = path
+        .file_name()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "file".into());
+    let data_base64 = BASE64.encode(bytes);
+    Ok(Some(OpenedBinaryFile {
+        file_name,
+        data_base64,
+    }))
+}
+
 /// Open a text file via native dialog and return its contents (no path to JS).
 #[tauri::command]
 pub async fn open_text_with_dialog(
@@ -252,6 +293,7 @@ mod tests {
             "diagram.png",
             "diagram.svg",
             "backup.zip",
+            "data.xlsx",
         ];
         for path in valid {
             assert!(

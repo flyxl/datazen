@@ -208,9 +208,7 @@ describe('数据同步: PG→PG 基础功能 (SYNC-REAL)', () => {
     expect(users!.status).toBe('identical');
   });
 
-  it('SYNC-REAL-004: compare — same schema different rows reports identical (known limitation)', async () => {
-    // row_count is always None in get_tables, so compare_databases cannot
-    // detect row-count-only differences when schemas are identical.
+  it('SYNC-REAL-004: compare — same schema different rows reports different', async () => {
     await runSQL(srcConnId, `
       INSERT INTO sync_users (id, name, email) VALUES
         (4, 'Dave', 'dave@example.com'),
@@ -224,8 +222,9 @@ describe('数据同步: PG→PG 基础功能 (SYNC-REAL)', () => {
 
     const users = results.find((r) => r.table === 'sync_users');
     expect(users).toBeDefined();
-    // Documents current behavior: schemas match → identical, even if row counts differ
-    expect(users!.status).toBe('identical');
+    expect(users!.status).toBe('different');
+    expect(users!.sourceRows).toBe(5);
+    expect(users!.targetRows).toBe(3);
   });
 
   it('SYNC-REAL-005: compare — different schemas → different', async () => {

@@ -396,6 +396,7 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
                     connectionId={connectionId}
                     sql={tab.sql}
                     explainOutput={explainResult.planText}
+                    planJson={explainResult.planJson}
                     onApplySql={handleApplyAiSql}
                   />
                 )}

@@ -6,12 +6,15 @@
  * Controlled via:
  *   --drivers="postgres,mysql"   (explicit registry names)
  *   --drivers="basic"            (postgres, mysql, sqlite, redis)
- *   --drivers="all"              (all path + git drivers)
+ *   --drivers="all"              (all path drivers only; excludes git drivers)
+ *   --drivers="postgres,mongodb,kiwi"  (explicit list; use this for custom SKUs)
  *   --restore                    (restore stashed clean managed files and exit)
  *
  * Environment variable: DATAZEN_DRIVERS="basic"
  *
  * Hard cutover: --plugins / DATAZEN_PLUGINS / presets none|core are rejected.
+ * Custom release SKUs (e.g. akulaku) must pass an explicit comma list in CI —
+ * do not add more named presets here.
  *
  * Managed files are copied into `.plugin-file-stash/` before injection,
  * then restored with `node scripts/plugin-file-stash.mjs restore` after build.
@@ -75,7 +78,7 @@ function parseArgs() {
     drivers = process.env.DATAZEN_DRIVERS;
   }
 
-  // Default: all drivers
+  // Default: all path drivers (excludes git drivers)
   if (!drivers) {
     drivers = 'all';
   }
@@ -97,8 +100,12 @@ function resolveDrivers(driversArg, registry) {
     return [...BASIC_DRIVERS];
   }
 
+  // Path-only: users/devs can opt into git drivers via an explicit list
+  // (e.g. CI akulaku SKU). Never bake kiwi/superset/olap into `all`.
   if (driversArg === 'all') {
-    return Object.keys(registry);
+    return Object.entries(registry)
+      .filter(([, entry]) => entry?.source === 'path')
+      .map(([name]) => name);
   }
 
   const requested = driversArg.split(',').map((x) => x.trim()).filter(Boolean);

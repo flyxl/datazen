@@ -470,6 +470,11 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_os::init());
 
+    #[cfg(desktop)]
+    let builder = builder
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init());
+
     #[cfg(feature = "webdriver")]
     let builder = builder.plugin(tauri_plugin_webdriver::init());
 
@@ -586,11 +591,14 @@ pub fn run() {
             commands::save_text_with_dialog,
             commands::save_base64_with_dialog,
             commands::open_text_with_dialog,
+            commands::open_base64_with_dialog,
             commands::backup_database,
             commands::backup_database_with_dialog,
             commands::restore_database,
             commands::restore_database_with_dialog,
             commands::compare_databases,
+            commands::compare_table_schemas,
+            commands::compare_table_data,
             commands::sync_table,
             commands::sync_tables,
             commands::get_sync_tasks,

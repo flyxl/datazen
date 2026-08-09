@@ -1,6 +1,7 @@
 import { useCallback, useEffect } from 'react';
 import { AlertTriangle, ArrowDownToLine, Loader2, Settings, Sparkles, Zap } from 'lucide-react';
 import { Button } from '../ui/Button';
+import { ExplainPlanTree } from '../query/ExplainPlanTree';
 import { useI18n } from '../../hooks/useI18n';
 import { useAiStore } from '../../stores/aiStore';
 import { cn } from '../../lib/cn';
@@ -10,6 +11,7 @@ interface ExplainPanelProps {
   connectionId: string;
   sql: string;
   explainOutput: string;
+  planJson?: unknown;
   onApplySql?: (sql: string) => void;
 }
 
@@ -25,7 +27,7 @@ const severityIcons: Record<string, string> = {
   low: 'bg-blue-500',
 };
 
-export function ExplainPanel({ connectionId, sql, explainOutput, onApplySql }: ExplainPanelProps) {
+export function ExplainPanel({ connectionId, sql, explainOutput, planJson, onApplySql }: ExplainPanelProps) {
   const { t } = useI18n();
   const analysis = useAiStore((s) => s.explainAnalysis);
   const isAnalyzing = useAiStore((s) => s.isAnalyzingExplain);
@@ -46,6 +48,12 @@ export function ExplainPanel({ connectionId, sql, explainOutput, onApplySql }: E
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-auto">
+      {planJson != null && (
+        <div className="border-b border-edge p-3">
+          <ExplainPlanTree planJson={planJson} />
+        </div>
+      )}
+
       {/* Raw EXPLAIN output */}
       <div className="border-b border-edge p-3">
         <div className="mb-1.5 flex items-center justify-between">

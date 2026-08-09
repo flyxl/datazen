@@ -56,3 +56,81 @@ export function rowToDocument(
   });
   return doc;
 }
+
+export function parseMongoDocumentJson(raw: string): Record<string, unknown> {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    throw new Error('Document must be a JSON object');
+  }
+  const parsed: unknown = JSON.parse(trimmed);
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('Document must be a JSON object');
+  }
+  return parsed as Record<string, unknown>;
+}
+
+export function getDocumentId(doc: Record<string, unknown>): unknown | undefined {
+  if (!('_id' in doc)) return undefined;
+  const id = doc._id;
+  if (id === null || id === undefined) return undefined;
+  return id;
+}
+
+function withDatabase(
+  cmd: Record<string, unknown>,
+  database?: string | null,
+): Record<string, unknown> {
+  if (database) {
+    cmd.database = database;
+  }
+  return cmd;
+}
+
+export function buildMongoUpdateCommand(opts: {
+  collection: string;
+  filter: Record<string, unknown>;
+  setFields: Record<string, unknown>;
+  database?: string | null;
+}): string {
+  const cmd = withDatabase(
+    {
+      collection: opts.collection,
+      update: {
+        filter: opts.filter,
+        update: { $set: opts.setFields },
+      },
+    },
+    opts.database,
+  );
+  return JSON.stringify(cmd, null, 2);
+}
+
+export function buildMongoInsertCommand(opts: {
+  collection: string;
+  documents: Record<string, unknown>[];
+  database?: string | null;
+}): string {
+  const cmd = withDatabase(
+    {
+      collection: opts.collection,
+      insert: opts.documents,
+    },
+    opts.database,
+  );
+  return JSON.stringify(cmd, null, 2);
+}
+
+export function buildMongoDeleteCommand(opts: {
+  collection: string;
+  filter: Record<string, unknown>;
+  database?: string | null;
+}): string {
+  const cmd = withDatabase(
+    {
+      collection: opts.collection,
+      delete: { filter: opts.filter },
+    },
+    opts.database,
+  );
+  return JSON.stringify(cmd, null, 2);
+}

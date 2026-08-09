@@ -15,10 +15,17 @@ import { settingsCommands } from '../../commands/settings';
 import { DB_REGISTRY } from '../../lib/databaseTypes';
 import { isKnownProviderType } from '../../lib/aiProviders';
 import { settingsSectionIconId } from '../../lib/hostLucideMap';
-import type { AppSettings, AiProviderConfig, AiProviderType, DatabaseType, McpServerConfig } from '../../types';
+import type { AppSettings, AiProviderConfig, AiProviderType, DatabaseType, McpPermissionMode, McpServerConfig } from '../../types';
 import type { ThemeMode } from '../../types/theme';
 import type { TranslationKey } from '../../locales';
 import { ThemePackSection } from './ThemePackSection';
+import { UpdateSection } from './UpdateSection';
+
+const MCP_PERMISSION_MODES: { value: McpPermissionMode; labelKey: TranslationKey; hintKey: TranslationKey }[] = [
+  { value: 'read_only', labelKey: 'mcp.permission.readOnly', hintKey: 'mcp.permission.readOnlyHint' },
+  { value: 'safe_write', labelKey: 'mcp.permission.safeWrite', hintKey: 'mcp.permission.safeWriteHint' },
+  { value: 'high_risk_write', labelKey: 'mcp.permission.highRiskWrite', hintKey: 'mcp.permission.highRiskWriteHint' },
+];
 
 const PAGE_SIZE_OPTIONS = [25, 50, 100, 200, 500];
 const RESULT_LIMIT_OPTIONS = [1000, 2000, 5000, 10000, 50000];
@@ -184,6 +191,11 @@ export function SettingsWindow() {
                 </SettingRow>
 
                 <ThemePackSection />
+
+                <UpdateSection
+                  checkOnStartup={draft.checkForUpdatesOnStartup}
+                  onCheckOnStartupChange={(v) => updateField('checkForUpdatesOnStartup', v)}
+                />
               </>
             )}
 
@@ -463,6 +475,36 @@ function McpSettingsSection() {
       {toggleError && (
         <p className="text-xs text-red-500">{toggleError}</p>
       )}
+
+      <SettingRow label={t('mcp.permission.title')}>
+        <div className="space-y-2 pt-1">
+          {MCP_PERMISSION_MODES.map(({ value, labelKey, hintKey }) => {
+            const selected = (settings.mcpPermissionMode ?? 'safe_write') === value;
+            return (
+              <label
+                key={value}
+                className={`flex cursor-pointer items-start gap-3 rounded-md border px-3 py-2 transition-colors ${
+                  selected ? 'border-accent bg-accent/5' : 'border-edge bg-surface'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="mcp-permission-mode"
+                  value={value}
+                  checked={selected}
+                  onChange={() => void updateSettings({ mcpPermissionMode: value })}
+                  className="mt-0.5 accent-accent"
+                />
+                <span className="min-w-0">
+                  <span className="block text-sm text-fg">{t(labelKey)}</span>
+                  <span className="block text-xs text-fg-muted">{t(hintKey)}</span>
+                </span>
+              </label>
+            );
+          })}
+        </div>
+      </SettingRow>
+      <p className="text-xs text-fg-muted -mt-3">{t('mcp.permission.restartHint')}</p>
 
       <div className="rounded-md border border-edge bg-surface p-3">
         <p className="text-xs text-fg-muted">{t('mcp.usage')}</p>

@@ -3,7 +3,7 @@ import { AlertTriangle, FileText, Loader2 } from 'lucide-react';
 import { Dialog } from '../../components/ui/Dialog';
 import { Button } from '../../components/ui/Button';
 import { fileCommands } from '../../commands/file';
-import { parseImportData, generateInsertSQL } from '../../lib/importData';
+import { parseImportData, parseXLSX, detectImportFormat, generateInsertSQL } from '../../lib/importData';
 import type { ParsedData } from '../../lib/importData';
 import { queryCommands } from '../../commands/query';
 import { cn } from '../../lib/cn';
@@ -38,13 +38,20 @@ export function ImportDialog({ open: isOpen, onClose, connectionId, tableName, o
     setResult(null);
     try {
       setLoading(true);
-      const opened = await fileCommands.openTextWithDialog('Data Files', ['csv', 'json']);
+      const opened = await fileCommands.openBase64WithDialog('Data Files', ['csv', 'json', 'xlsx']);
       if (!opened) return;
       setFilePath(opened.fileName);
-      const ext: 'csv' | 'json' = opened.fileName.toLowerCase().endsWith('.json')
-        ? 'json'
-        : 'csv';
-      const data = parseImportData(opened.content, ext);
+      const format = detectImportFormat(opened.fileName);
+      if (!format) {
+        setError('Unsupported file format');
+        return;
+      }
+      const data = format === 'xlsx'
+        ? parseXLSX(opened.dataBase64)
+        : parseImportData(
+            new TextDecoder().decode(Uint8Array.from(atob(opened.dataBase64), (c) => c.charCodeAt(0))),
+            format,
+          );
       setParsedData(data);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));

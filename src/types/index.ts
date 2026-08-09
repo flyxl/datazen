@@ -155,6 +155,8 @@ export interface ContextEntry {
 
 import type { ThemePreference } from './theme';
 
+export type McpPermissionMode = 'read_only' | 'safe_write' | 'high_risk_write';
+
 export interface AppSettings {
   theme: ThemePreference;
   language: string;
@@ -170,7 +172,10 @@ export interface AppSettings {
   /** When true, GUI may start embedded MCP on launch. Default false. */
   mcpServerEnabled: boolean;
   mcpDisabledTools: string[];
+  mcpPermissionMode: McpPermissionMode;
   contextDir: string;
+  /** Check GitHub for app updates on startup (Basic builds only). Default false. */
+  checkForUpdatesOnStartup: boolean;
 }
 
 export type FilterOperator =
@@ -467,6 +472,58 @@ export interface QueryAnalysis {
   insights: string[];
   frequentTables: string[];
   recommendations: string[];
+}
+
+// ── Data Sync types ──
+
+export type TableCompareStatus = 'identical' | 'different' | 'source_only' | 'target_only';
+
+export interface TableComparison {
+  table: string;
+  status: TableCompareStatus;
+  sourceRows: number | null;
+  targetRows: number | null;
+}
+
+export interface ColumnDiffEntry {
+  name: string;
+  dataType: string;
+  nullable: boolean;
+  isPrimaryKey: boolean;
+}
+
+export interface ChangedColumnDiff {
+  name: string;
+  source: ColumnDiffEntry;
+  target: ColumnDiffEntry;
+  changes: string[];
+}
+
+export interface TableSchemaDiff {
+  table: string;
+  added: ColumnDiffEntry[];
+  removed: ColumnDiffEntry[];
+  changed: ChangedColumnDiff[];
+  sourceDdl?: string;
+  targetDdl?: string;
+}
+
+export type RowMismatchKind = 'source_only' | 'target_only' | 'different';
+
+export interface RowMismatch {
+  key: string;
+  kind: RowMismatchKind;
+  source?: Record<string, unknown>;
+  target?: Record<string, unknown>;
+}
+
+export interface TableDataCompare {
+  table: string;
+  sourceRowCount: number;
+  targetRowCount: number;
+  sampledRows: number;
+  mismatches: RowMismatch[];
+  truncated: boolean;
 }
 
 // ── MCP Client types ──
