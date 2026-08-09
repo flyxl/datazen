@@ -52,7 +52,7 @@ pub async fn save_settings(state: State<'_, AppState>, settings: AppSettings) ->
         )))
         .cmd_err("save_settings")?;
     if let Some(app) = state.monitor_engine.app_handle() {
-        crate::tray::sync_tray(&app);
+        crate::tray::sync_tray_async(&app).await;
     }
     Ok(())
 }
