@@ -4,10 +4,12 @@ use std::sync::{Arc, OnceLock};
 
 use datazen_driver_api::*;
 
+mod connect;
 mod ops;
 mod ops_exec;
 mod ops_observe;
 mod redis_driver;
+pub use connect::{build_connection_plan, ConnectionPlan, RedisLiveConn, Topology, TlsPlan};
 pub use redis_driver::*;
 
 #[cfg(feature = "tauri-plugin")]

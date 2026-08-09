@@ -15,7 +15,7 @@ tauri-plugin = ["dep:tauri"]
 datazen-driver-api = { path = "../../driver-api" }
 async-trait = "0.1"
 tokio = { version = "1", features = ["full"] }
-redis = { version = "0.27", features = ["tokio-comp", "aio"] }
+redis = { version = "0.27", features = ["tokio-comp", "aio", "cluster-async", "sentinel", "tls-rustls", "tls-rustls-insecure", "tokio-rustls-comp"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tracing = "0.1"

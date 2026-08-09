@@ -7,18 +7,66 @@
 //! - `scan_keys_with_info` / `get_key_detail` — KV browser commands
 
 use datazen_driver_api::*;
-use redis::aio::MultiplexedConnection;
 use redis::AsyncCommands;
-use redis::Client;
 use redis::FromRedisValue;
 use std::collections::HashMap;
 use std::time::Instant;
 use tokio::sync::RwLock;
 
+use crate::connect::{
+    build_connection_plan, looks_like_connection_loss, open_live_conn, ConnectionPlan, RedisLiveConn,
+};
+use crate::with_redis_conn;
+
 struct RedisConn {
-    #[allow(dead_code)]
-    client: Client,
-    connection: MultiplexedConnection,
+    plan: ConnectionPlan,
+    live: RedisLiveConn,
+}
+
+macro_rules! with_live_op {
+    ($self:expr, $connection_id:expr, $db_index:expr, |$conn:ident| $body:expr) => {{
+        let handle = ConnectionHandle {
+            id: $connection_id.to_string(),
+            pool_id: $connection_id.to_string(),
+        };
+        let mut conns = $self.connections.write().await;
+        let rc = RedisDriver::get_conn(&mut conns, &handle)?;
+        RedisDriver::select_db(&mut rc.live, $db_index)
+            .await
+            .map_err(DriverError::QueryFailed)?;
+        let mut result = with_redis_conn!(&mut rc.live, |$conn| $body);
+        if result.is_err()
+            && rc.live.is_sentinel()
+            && looks_like_connection_loss(result.as_ref().unwrap_err())
+        {
+            rc.live.rediscover_sentinel_master().await?;
+            RedisDriver::select_db(&mut rc.live, $db_index)
+                .await
+                .map_err(DriverError::QueryFailed)?;
+            result = with_redis_conn!(&mut rc.live, |$conn| $body);
+        }
+        result.map_err(DriverError::QueryFailed)
+    }};
+}
+
+macro_rules! with_live_any_op {
+    ($self:expr, $connection_id:expr, |$conn:ident| $body:expr) => {{
+        let handle = ConnectionHandle {
+            id: $connection_id.to_string(),
+            pool_id: $connection_id.to_string(),
+        };
+        let mut conns = $self.connections.write().await;
+        let rc = RedisDriver::get_conn(&mut conns, &handle)?;
+        let mut result = with_redis_conn!(&mut rc.live, |$conn| $body);
+        if result.is_err()
+            && rc.live.is_sentinel()
+            && looks_like_connection_loss(result.as_ref().unwrap_err())
+        {
+            rc.live.rediscover_sentinel_master().await?;
+            result = with_redis_conn!(&mut rc.live, |$conn| $body);
+        }
+        result.map_err(DriverError::QueryFailed)
+    }};
 }
 
 macro_rules! plugin_on_db {
@@ -29,19 +77,7 @@ macro_rules! plugin_on_db {
             db_index: u32,
             $($arg: $arg_ty,)*
         ) -> Result<$ret, DriverError> {
-            let handle = ConnectionHandle {
-                id: connection_id.to_string(),
-                pool_id: connection_id.to_string(),
-            };
-            let mut conns = self.connections.write().await;
-            let rc = Self::get_conn(&mut conns, &handle)?;
-            let $conn = &mut rc.connection;
-            let _: () = redis::cmd("SELECT")
-                .arg(db_index)
-                .query_async($conn)
-                .await
-                .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
-            $body.await.map_err(DriverError::QueryFailed)
+            with_live_op!(self, connection_id, db_index, |$conn| ($body).await)
         }
     };
 }
@@ -66,42 +102,29 @@ impl RedisDriver {
             .ok_or_else(|| DriverError::ConnectionFailed("Redis connection not found".into()))
     }
 
-    /// Redis only accepts a numeric db index in the URL path; non-numeric values default to `0`.
-    fn redis_db_index(raw: Option<&str>) -> String {
-        let s = raw.map(str::trim).unwrap_or("");
-        if s.is_empty() {
-            return "0".into();
-        }
-        if s.chars().all(|c| c.is_ascii_digit()) {
-            s.to_string()
-        } else {
-            "0".into()
+    fn build_url(config: &ConnectionConfig) -> String {
+        match build_connection_plan(config) {
+            Ok(ConnectionPlan::Standalone(p)) => p.url,
+            Ok(ConnectionPlan::Cluster(p)) => p
+                .node_urls
+                .first()
+                .cloned()
+                .unwrap_or_else(|| "redis://127.0.0.1:6379".into()),
+            Ok(ConnectionPlan::Sentinel(p)) => p
+                .sentinel_urls
+                .first()
+                .cloned()
+                .unwrap_or_else(|| "redis://127.0.0.1:26379".into()),
+            Err(_) => {
+                let host = config.host.as_deref().unwrap_or("127.0.0.1");
+                let port = config.port.unwrap_or(6379);
+                format!("redis://{host}:{port}/0")
+            }
         }
     }
 
-    fn build_url(config: &ConnectionConfig) -> String {
-        let host = config.host.as_deref().unwrap_or("127.0.0.1");
-        let port = config.port.unwrap_or(6379);
-        let db = Self::redis_db_index(config.database.as_deref());
-        let password = config
-            .password
-            .as_deref()
-            .map(|p| urlencoding::encode(p));
-        let username = config
-            .username
-            .as_deref()
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .map(|u| urlencoding::encode(u));
-
-        match (username, password) {
-            (Some(user), Some(pass)) => {
-                format!("redis://{}:{}@{}:{}/{}", user, pass, host, port, db)
-            }
-            (None, Some(pass)) => format!("redis://:{}@{}:{}/{}", pass, host, port, db),
-            (Some(user), None) => format!("redis://{}@{}:{}/{}", user, host, port, db),
-            (None, None) => format!("redis://{}:{}/{}", host, port, db),
-        }
+    async fn select_db(live: &mut RedisLiveConn, db_index: u32) -> Result<(), String> {
+        with_redis_conn!(live, |conn| select_db_on(conn, db_index).await)
     }
 
     /// Parse a logical database name (`db0`, `db7`) or a bare number into a Redis DB index.
@@ -134,218 +157,14 @@ impl RedisDriver {
         let mut conns = self.connections.write().await;
         tracing::info!(lock_ms = t0.elapsed().as_millis() as u64, "redis scan_keys_with_info: lock acquired");
         let rc = Self::get_conn(&mut conns, handle)?;
-        let conn = &mut rc.connection;
-
-        let _: () = redis::cmd("SELECT")
-            .arg(db_index)
-            .query_async(conn)
+        Self::select_db(&mut rc.live, db_index)
             .await
-            .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
-        let db_size: u64 = redis::cmd("DBSIZE")
-            .query_async(conn)
-            .await
-            .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
-        tracing::info!(db_index, db_size, ms = t0.elapsed().as_millis() as u64, "redis scan_keys_with_info: SELECT+DBSIZE done");
-
-        let scan_raw: redis::Value = redis::cmd("SCAN")
-            .arg(cursor)
-            .arg("MATCH")
-            .arg(pattern)
-            .arg("COUNT")
-            .arg(count.max(1))
-            .query_async(conn)
-            .await
-            .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
-        let (next_cursor, key_names) = parse_scan_result(&scan_raw);
-        tracing::info!(key_count = key_names.len(), next_cursor, ms = t0.elapsed().as_millis() as u64, "redis scan_keys_with_info: SCAN done");
-
-        if key_names.is_empty() {
-            return Ok((next_cursor, vec![], db_size));
-        }
-
-        // TYPE + TTL for each key
-        let mut pipe1 = redis::pipe();
-        for k in &key_names {
-            pipe1.cmd("TYPE").arg(k);
-            pipe1.cmd("TTL").arg(k);
-        }
-        let r1: Vec<redis::Value> = pipe1
-            .query_async(conn)
-            .await
-            .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
-
-        let mut types: Vec<String> = Vec::with_capacity(key_names.len());
-        let mut ttls: Vec<i64> = Vec::with_capacity(key_names.len());
-        for i in 0..key_names.len() {
-            let tval = r1
-                .get(2 * i)
-                .ok_or_else(|| DriverError::QueryFailed("TYPE pipeline: missing value".into()))?;
-            let ttlval = r1
-                .get(2 * i + 1)
-                .ok_or_else(|| DriverError::QueryFailed("TTL pipeline: missing value".into()))?;
-            let tk = value_to_type_string(tval);
-            let ttl: i64 = FromRedisValue::from_redis_value(ttlval)
-                .map_err(|e| DriverError::QueryFailed(format!("TTL: {e}")))?;
-            types.push(tk);
-            ttls.push(ttl);
-        }
-
-        tracing::info!(key_count = key_names.len(), ms = t0.elapsed().as_millis() as u64, "redis scan_keys_with_info: TYPE+TTL done");
-
-        // Size
-        let mut pipe2 = redis::pipe();
-        for (k, tk) in key_names.iter().zip(&types) {
-            match tk.as_str() {
-                "string" => {
-                    pipe2.cmd("STRLEN").arg(k);
-                }
-                "hash" => {
-                    pipe2.cmd("HLEN").arg(k);
-                }
-                "list" => {
-                    pipe2.cmd("LLEN").arg(k);
-                }
-                "set" => {
-                    pipe2.cmd("SCARD").arg(k);
-                }
-                "zset" => {
-                    pipe2.cmd("ZCARD").arg(k);
-                }
-                "stream" => {
-                    pipe2.cmd("XLEN").arg(k);
-                }
-                "none" | _ => {
-                    pipe2.cmd("PING");
-                }
-            }
-        }
-        let r2: Vec<redis::Value> = pipe2
-            .query_async(conn)
-            .await
-            .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
-
-        tracing::info!(key_count = key_names.len(), ms = t0.elapsed().as_millis() as u64, "redis scan_keys_with_info: SIZE done");
-
-        // Preview
-        let mut pipe3 = redis::pipe();
-        for (k, tk) in key_names.iter().zip(&types) {
-            match tk.as_str() {
-                "string" => {
-                    // Only fetch first 256 bytes instead of full value
-                    pipe3.cmd("GETRANGE").arg(k).arg(0i64).arg(255i64);
-                }
-                "hash" => {
-                    // HSCAN with small COUNT instead of HGETALL (which fetches ALL fields)
-                    pipe3.cmd("HSCAN").arg(k).arg(0i64).arg("COUNT").arg(3i64);
-                }
-                "list" => {
-                    pipe3.cmd("LINDEX").arg(k).arg(0i64);
-                }
-                "set" => {
-                    pipe3.cmd("SRANDMEMBER").arg(k);
-                }
-                "zset" => {
-                    pipe3
-                        .cmd("ZRANGE")
-                        .arg(k)
-                        .arg(0i64)
-                        .arg(0i64)
-                        .arg("WITHSCORES");
-                }
-                "stream" => {
-                    pipe3
-                        .cmd("XREVRANGE")
-                        .arg(k)
-                        .arg("+")
-                        .arg("-")
-                        .arg("COUNT")
-                        .arg(1i64);
-                }
-                "none" | _ => {
-                    pipe3.cmd("PING");
-                }
-            }
-        }
-        let r3: Vec<redis::Value> = pipe3
-            .query_async(conn)
-            .await
-            .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
-
-        tracing::info!(key_count = key_names.len(), ms = t0.elapsed().as_millis() as u64, "redis scan_keys_with_info: PREVIEW done");
-
-        let mut keys = Vec::with_capacity(key_names.len());
-        for i in 0..key_names.len() {
-            let k = &key_names[i];
-            let tk = &types[i];
-            let ttl = ttls[i];
-            let size = if matches!(tk.as_str(), "none") {
-                0u64
-            } else {
-                value_to_u64(r2.get(i).ok_or_else(|| DriverError::QueryFailed("size pipeline".into()))?)
-            };
-            let preview = if tk == "none" {
-                String::new()
-            } else {
-                preview_value_to_string(r3.get(i).ok_or_else(|| DriverError::QueryFailed("preview pipeline".into()))?, tk)
-            };
-            keys.push(KeyEntry {
-                key: k.clone(),
-                key_type: tk.clone(),
-                ttl,
-                size,
-                preview: truncate_preview(&preview, 512),
-            });
-        }
-
-        Ok((next_cursor, keys, db_size))
-    }
-
-    /// Run an async closure against the live multiplexed connection for `connection_id`
-    /// after selecting `db_index`. Used by plugin mutate commands.
-    pub async fn with_conn<F, Fut, T>(
-        &self,
-        connection_id: &str,
-        db_index: u32,
-        f: F,
-    ) -> Result<T, DriverError>
-    where
-        F: FnOnce(&mut MultiplexedConnection) -> Fut,
-        Fut: std::future::Future<Output = Result<T, String>>,
-    {
-        let handle = ConnectionHandle {
-            id: connection_id.to_string(),
-            pool_id: connection_id.to_string(),
-        };
-        let mut conns = self.connections.write().await;
-        let rc = Self::get_conn(&mut conns, &handle)?;
-        let conn = &mut rc.connection;
-
-        let _: () = redis::cmd("SELECT")
-            .arg(db_index)
-            .query_async(conn)
-            .await
-            .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
-
-        f(conn).await.map_err(DriverError::QueryFailed)
-    }
-
-    /// Run a closure without selecting a logical database (e.g. FLUSHALL).
-    pub async fn with_conn_any_db<F, Fut, T>(
-        &self,
-        connection_id: &str,
-        f: F,
-    ) -> Result<T, DriverError>
-    where
-        F: FnOnce(&mut MultiplexedConnection) -> Fut,
-        Fut: std::future::Future<Output = Result<T, String>>,
-    {
-        let handle = ConnectionHandle {
-            id: connection_id.to_string(),
-            pool_id: connection_id.to_string(),
-        };
-        let mut conns = self.connections.write().await;
-        let rc = Self::get_conn(&mut conns, &handle)?;
-        f(&mut rc.connection).await.map_err(DriverError::QueryFailed)
+            .map_err(DriverError::QueryFailed)?;
+        let pattern = pattern.to_string();
+        with_redis_conn!(
+            &mut rc.live,
+            |conn| scan_keys_with_info_on(conn, db_index, &pattern, cursor, count, t0).await
+        )
     }
 
     /// Load the full value for a key in `db_index`.
@@ -360,114 +179,11 @@ impl RedisDriver {
         let mut conns = self.connections.write().await;
         tracing::info!(lock_ms = t0.elapsed().as_millis() as u64, "redis get_key_detail: lock acquired");
         let rc = Self::get_conn(&mut conns, handle)?;
-        let conn = &mut rc.connection;
-
-        let _: () = redis::cmd("SELECT")
-            .arg(db_index)
-            .query_async(conn)
+        Self::select_db(&mut rc.live, db_index)
             .await
-            .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
-        let key_type: String = conn
-            .key_type(key)
-            .await
-            .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
-        let ttl: i64 = conn
-            .ttl(key)
-            .await
-            .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
-
-        if key_type == "none" {
-            return Err(DriverError::QueryFailed("Key does not exist".into()));
-        }
-
-        let value = match key_type.as_str() {
-            "string" => {
-                let raw: redis::Value = redis::cmd("GET")
-                    .arg(key)
-                    .query_async(conn)
-                    .await
-                    .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
-                let s = value_to_string(&raw);
-                serde_json::json!({ "value": s })
-            }
-            "hash" => {
-                let raw: redis::Value = redis::cmd("HGETALL")
-                    .arg(key)
-                    .query_async(conn)
-                    .await
-                    .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
-                let obj = redis_flat_pairs_to_map(&raw);
-                serde_json::json!({ "fields": serde_json::Value::Object(obj) })
-            }
-            "list" => {
-                let raw: redis::Value = redis::cmd("LRANGE")
-                    .arg(key)
-                    .arg(0i64)
-                    .arg(-1i64)
-                    .query_async(conn)
-                    .await
-                    .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
-                let arr = redis_array_to_json_strings(&raw);
-                serde_json::json!({ "items": arr })
-            }
-            "set" => {
-                let raw: redis::Value = redis::cmd("SMEMBERS")
-                    .arg(key)
-                    .query_async(conn)
-                    .await
-                    .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
-                let arr = redis_array_to_json_strings(&raw);
-                serde_json::json!({ "members": arr })
-            }
-            "zset" => {
-                let raw: redis::Value = redis::cmd("ZRANGE")
-                    .arg(key)
-                    .arg(0i64)
-                    .arg(-1i64)
-                    .arg("WITHSCORES")
-                    .query_async(conn)
-                    .await
-                    .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
-                let members = redis_zset_to_json(&raw);
-                serde_json::json!({ "members": members })
-            }
-            "stream" => {
-                let len: u64 = redis::cmd("XLEN")
-                    .arg(key)
-                    .query_async(conn)
-                    .await
-                    .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
-                // Pull up to 10k stream entries
-                let raw: Vec<redis::Value> = redis::cmd("XRANGE")
-                    .arg(key)
-                    .arg("-")
-                    .arg("+")
-                    .arg("COUNT")
-                    .arg(10_000i64)
-                    .query_async(conn)
-                    .await
-                    .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
-                let entries: Vec<serde_json::Value> = raw
-                    .iter()
-                    .filter_map(|v| stream_entry_to_json(v).ok())
-                    .collect();
-                serde_json::json!({ "length": len, "entries": entries })
-            }
-            _ => {
-                let u: String = conn
-                    .key_type(key)
-                    .await
-                    .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
-                serde_json::json!({ "raw": format!("(unsupported or module type) {u}") })
-            }
-        };
-
-        Ok(KeyDetail {
-            key: key.to_string(),
-            key_type: key_type.clone(),
-            ttl,
-            value,
-        })
+            .map_err(DriverError::QueryFailed)?;
+        let key = key.to_string();
+        with_redis_conn!(&mut rc.live, |conn| get_key_detail_on(conn, &key).await)
     }
 
     plugin_on_db!(plugin_set_string, (key: &str, value: &str) -> (), |conn| crate::ops::set_string(conn, key, value));
@@ -496,33 +212,21 @@ impl RedisDriver {
         new_prefix: &str,
         keys: Option<Vec<String>>,
     ) -> Result<crate::ops::BatchRenameResult, DriverError> {
-        let handle = ConnectionHandle {
-            id: connection_id.to_string(),
-            pool_id: connection_id.to_string(),
-        };
-        let mut conns = self.connections.write().await;
-        let rc = Self::get_conn(&mut conns, &handle)?;
-        let conn = &mut rc.connection;
-        let _: () = redis::cmd("SELECT")
-            .arg(db_index)
-            .query_async(conn)
+        let old_prefix = old_prefix.to_string();
+        let new_prefix = new_prefix.to_string();
+        with_live_op!(self, connection_id, db_index, |conn| {
+            crate::ops::batch_rename_prefix(
+                conn,
+                &old_prefix,
+                &new_prefix,
+                keys.clone(),
+            )
             .await
-            .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
-        crate::ops::batch_rename_prefix(conn, old_prefix, new_prefix, keys)
-            .await
-            .map_err(DriverError::QueryFailed)
+        })
     }
 
     pub async fn plugin_flush_all(&self, connection_id: &str) -> Result<(), DriverError> {
-        let handle = ConnectionHandle {
-            id: connection_id.to_string(),
-            pool_id: connection_id.to_string(),
-        };
-        let mut conns = self.connections.write().await;
-        let rc = Self::get_conn(&mut conns, &handle)?;
-        crate::ops::flush_all(&mut rc.connection)
-            .await
-            .map_err(DriverError::QueryFailed)
+        with_live_any_op!(self, connection_id, |conn| crate::ops::flush_all(conn).await)
     }
 
     pub async fn plugin_info(
@@ -531,15 +235,9 @@ impl RedisDriver {
         section: Option<String>,
         _node_addr: Option<String>,
     ) -> Result<String, DriverError> {
-        let handle = ConnectionHandle {
-            id: connection_id.to_string(),
-            pool_id: connection_id.to_string(),
-        };
-        let mut conns = self.connections.write().await;
-        let rc = Self::get_conn(&mut conns, &handle)?;
-        crate::ops_observe::fetch_info(&mut rc.connection, section.as_deref())
-            .await
-            .map_err(DriverError::QueryFailed)
+        with_live_any_op!(self, connection_id, |conn| {
+            crate::ops_observe::fetch_info(conn, section.as_deref()).await
+        })
     }
 
     pub async fn plugin_memory_sample(
@@ -549,21 +247,9 @@ impl RedisDriver {
         limit: Option<u32>,
     ) -> Result<crate::ops_observe::MemorySampleResult, DriverError> {
         let limit = crate::ops_observe::resolve_memory_sample_limit(limit);
-        let handle = ConnectionHandle {
-            id: connection_id.to_string(),
-            pool_id: connection_id.to_string(),
-        };
-        let mut conns = self.connections.write().await;
-        let rc = Self::get_conn(&mut conns, &handle)?;
-        let conn = &mut rc.connection;
-        let _: () = redis::cmd("SELECT")
-            .arg(db_index)
-            .query_async(conn)
-            .await
-            .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
-        crate::ops_observe::memory_sample(conn, limit)
-            .await
-            .map_err(DriverError::QueryFailed)
+        with_live_op!(self, connection_id, db_index, |conn| {
+            crate::ops_observe::memory_sample(conn, limit).await
+        })
     }
 
     pub async fn plugin_slowlog_get(
@@ -571,42 +257,24 @@ impl RedisDriver {
         connection_id: &str,
         count: u32,
     ) -> Result<Vec<crate::ops_observe::SlowlogEntry>, DriverError> {
-        let handle = ConnectionHandle {
-            id: connection_id.to_string(),
-            pool_id: connection_id.to_string(),
-        };
-        let mut conns = self.connections.write().await;
-        let rc = Self::get_conn(&mut conns, &handle)?;
-        crate::ops_observe::slowlog_get(&mut rc.connection, count)
-            .await
-            .map_err(DriverError::QueryFailed)
+        with_live_any_op!(self, connection_id, |conn| {
+            crate::ops_observe::slowlog_get(conn, count).await
+        })
     }
 
     pub async fn plugin_slowlog_reset(&self, connection_id: &str) -> Result<(), DriverError> {
-        let handle = ConnectionHandle {
-            id: connection_id.to_string(),
-            pool_id: connection_id.to_string(),
-        };
-        let mut conns = self.connections.write().await;
-        let rc = Self::get_conn(&mut conns, &handle)?;
-        crate::ops_observe::slowlog_reset(&mut rc.connection)
-            .await
-            .map_err(DriverError::QueryFailed)
+        with_live_any_op!(self, connection_id, |conn| {
+            crate::ops_observe::slowlog_reset(conn).await
+        })
     }
 
     pub async fn plugin_modules_list(
         &self,
         connection_id: &str,
     ) -> Result<Vec<String>, DriverError> {
-        let handle = ConnectionHandle {
-            id: connection_id.to_string(),
-            pool_id: connection_id.to_string(),
-        };
-        let mut conns = self.connections.write().await;
-        let rc = Self::get_conn(&mut conns, &handle)?;
-        crate::ops_observe::modules_list(&mut rc.connection)
-            .await
-            .map_err(DriverError::QueryFailed)
+        with_live_any_op!(self, connection_id, |conn| {
+            crate::ops_observe::modules_list(conn).await
+        })
     }
 
     pub async fn plugin_exec(
@@ -615,22 +283,354 @@ impl RedisDriver {
         db_index: u32,
         commands: &str,
     ) -> Result<crate::ops_exec::ExecResponse, DriverError> {
-        let handle = ConnectionHandle {
-            id: connection_id.to_string(),
-            pool_id: connection_id.to_string(),
-        };
-        let mut conns = self.connections.write().await;
-        let rc = Self::get_conn(&mut conns, &handle)?;
-        let conn = &mut rc.connection;
-        let _: () = redis::cmd("SELECT")
-            .arg(db_index)
+        let commands = commands.to_string();
+        with_live_op!(self, connection_id, db_index, |conn| {
+            crate::ops_exec::exec_commands(conn, &commands).await
+        })
+    }
+}
+
+async fn select_db_on<C>(conn: &mut C, db_index: u32) -> Result<(), String>
+where
+    C: AsyncCommands + redis::aio::ConnectionLike + Send,
+{
+    redis::cmd("SELECT")
+        .arg(db_index)
+        .query_async(conn)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+async fn info_server_on<C>(conn: &mut C) -> Result<String, String>
+where
+    C: AsyncCommands + redis::aio::ConnectionLike + Send,
+{
+    redis::cmd("INFO")
+        .arg("server")
+        .query_async(conn)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+async fn info_keyspace_on<C>(conn: &mut C) -> Result<redis::Value, String>
+where
+    C: AsyncCommands + redis::aio::ConnectionLike + Send,
+{
+    redis::cmd("INFO")
+        .arg("keyspace")
+        .query_async(conn)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+async fn query_cmd_on<C>(
+    conn: &mut C,
+    cmd_name: &str,
+    cmd_args: &[String],
+) -> Result<redis::Value, DriverError>
+where
+    C: AsyncCommands + redis::aio::ConnectionLike + Send,
+{
+    let mut cmd = redis::cmd(cmd_name);
+    for part in cmd_args {
+        cmd.arg(part.as_str());
+    }
+    cmd.query_async(conn)
+        .await
+        .map_err(|e| DriverError::QueryFailed(e.to_string()))
+}
+
+async fn get_tables_on<C>(
+    conn: &mut C,
+    database: &str,
+    t0: Instant,
+) -> Result<Vec<TableInfo>, DriverError>
+where
+    C: AsyncCommands + redis::aio::ConnectionLike + Send,
+{
+    const MAX_KEYS: usize = 10_000;
+    let mut keys: Vec<String> = Vec::new();
+    let mut cursor: u64 = 0;
+    loop {
+        let raw: redis::Value = redis::cmd("SCAN")
+            .arg(cursor)
+            .arg("COUNT")
+            .arg(200)
             .query_async(conn)
             .await
             .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
-        crate::ops_exec::exec_commands(conn, commands)
-            .await
-            .map_err(DriverError::QueryFailed)
+        let (next_cursor, batch) = parse_scan_result(&raw);
+        keys.extend(batch);
+        cursor = next_cursor;
+        if cursor == 0 || keys.len() >= MAX_KEYS {
+            break;
+        }
     }
+    tracing::info!(%database, key_count = keys.len(), ms = t0.elapsed().as_millis() as u64, "redis get_tables: scan done");
+    keys.sort();
+    Ok(keys
+        .into_iter()
+        .map(|key| TableInfo {
+            name: key,
+            schema: None,
+            table_type: TableType::Table,
+            row_count: None,
+        })
+        .collect())
+}
+
+async fn scan_keys_with_info_on<C>(
+    conn: &mut C,
+    db_index: u32,
+    pattern: &str,
+    cursor: u64,
+    count: u32,
+    t0: Instant,
+) -> Result<(u64, Vec<KeyEntry>, u64), DriverError>
+where
+    C: AsyncCommands + redis::aio::ConnectionLike + Send,
+{
+    let db_size: u64 = redis::cmd("DBSIZE")
+        .query_async(conn)
+        .await
+        .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+    tracing::info!(db_index, db_size, ms = t0.elapsed().as_millis() as u64, "redis scan_keys_with_info: SELECT+DBSIZE done");
+
+    let scan_raw: redis::Value = redis::cmd("SCAN")
+        .arg(cursor)
+        .arg("MATCH")
+        .arg(pattern)
+        .arg("COUNT")
+        .arg(count.max(1))
+        .query_async(conn)
+        .await
+        .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+    let (next_cursor, key_names) = parse_scan_result(&scan_raw);
+
+    if key_names.is_empty() {
+        return Ok((next_cursor, vec![], db_size));
+    }
+
+    let mut pipe1 = redis::pipe();
+    for k in &key_names {
+        pipe1.cmd("TYPE").arg(k);
+        pipe1.cmd("TTL").arg(k);
+    }
+    let r1: Vec<redis::Value> = pipe1
+        .query_async(conn)
+        .await
+        .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+
+    let mut types: Vec<String> = Vec::with_capacity(key_names.len());
+    let mut ttls: Vec<i64> = Vec::with_capacity(key_names.len());
+    for i in 0..key_names.len() {
+        let tval = r1
+            .get(2 * i)
+            .ok_or_else(|| DriverError::QueryFailed("TYPE pipeline: missing value".into()))?;
+        let ttlval = r1
+            .get(2 * i + 1)
+            .ok_or_else(|| DriverError::QueryFailed("TTL pipeline: missing value".into()))?;
+        types.push(value_to_type_string(tval));
+        ttls.push(
+            i64::from_redis_value(ttlval)
+                .map_err(|e| DriverError::QueryFailed(format!("TTL: {e}")))?,
+        );
+    }
+
+    let mut pipe2 = redis::pipe();
+    for (k, tk) in key_names.iter().zip(&types) {
+        match tk.as_str() {
+            "string" => {
+                pipe2.cmd("STRLEN").arg(k);
+            }
+            "hash" => {
+                pipe2.cmd("HLEN").arg(k);
+            }
+            "list" => {
+                pipe2.cmd("LLEN").arg(k);
+            }
+            "set" => {
+                pipe2.cmd("SCARD").arg(k);
+            }
+            "zset" => {
+                pipe2.cmd("ZCARD").arg(k);
+            }
+            "stream" => {
+                pipe2.cmd("XLEN").arg(k);
+            }
+            _ => {
+                pipe2.cmd("PING");
+            }
+        }
+    }
+    let r2: Vec<redis::Value> = pipe2
+        .query_async(conn)
+        .await
+        .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+
+    let mut pipe3 = redis::pipe();
+    for (k, tk) in key_names.iter().zip(&types) {
+        match tk.as_str() {
+            "string" => {
+                pipe3.cmd("GETRANGE").arg(k).arg(0i64).arg(255i64);
+            }
+            "hash" => {
+                pipe3.cmd("HSCAN").arg(k).arg(0i64).arg("COUNT").arg(3i64);
+            }
+            "list" => {
+                pipe3.cmd("LINDEX").arg(k).arg(0i64);
+            }
+            "set" => {
+                pipe3.cmd("SRANDMEMBER").arg(k);
+            }
+            "zset" => {
+                pipe3.cmd("ZRANGE").arg(k).arg(0i64).arg(0i64).arg("WITHSCORES");
+            }
+            "stream" => {
+                pipe3
+                    .cmd("XREVRANGE")
+                    .arg(k)
+                    .arg("+")
+                    .arg("-")
+                    .arg("COUNT")
+                    .arg(1i64);
+            }
+            _ => {
+                pipe3.cmd("PING");
+            }
+        }
+    }
+    let r3: Vec<redis::Value> = pipe3
+        .query_async(conn)
+        .await
+        .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+
+    let mut keys = Vec::with_capacity(key_names.len());
+    for i in 0..key_names.len() {
+        let tk = &types[i];
+        let size = if matches!(tk.as_str(), "none") {
+            0u64
+        } else {
+            value_to_u64(r2.get(i).ok_or_else(|| DriverError::QueryFailed("size pipeline".into()))?)
+        };
+        let preview = if tk == "none" {
+            String::new()
+        } else {
+            preview_value_to_string(
+                r3.get(i).ok_or_else(|| DriverError::QueryFailed("preview pipeline".into()))?,
+                tk,
+            )
+        };
+        keys.push(KeyEntry {
+            key: key_names[i].clone(),
+            key_type: tk.clone(),
+            ttl: ttls[i],
+            size,
+            preview: truncate_preview(&preview, 512),
+        });
+    }
+
+    Ok((next_cursor, keys, db_size))
+}
+
+async fn get_key_detail_on<C>(conn: &mut C, key: &str) -> Result<KeyDetail, DriverError>
+where
+    C: AsyncCommands + redis::aio::ConnectionLike + Send,
+{
+    let key_type: String = conn
+        .key_type(key)
+        .await
+        .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+    let ttl: i64 = conn
+        .ttl(key)
+        .await
+        .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+    if key_type == "none" {
+        return Err(DriverError::QueryFailed("Key does not exist".into()));
+    }
+
+    let value = match key_type.as_str() {
+        "string" => {
+            let raw: redis::Value = redis::cmd("GET")
+                .arg(key)
+                .query_async(conn)
+                .await
+                .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+            serde_json::json!({ "value": value_to_string(&raw) })
+        }
+        "hash" => {
+            let raw: redis::Value = redis::cmd("HGETALL")
+                .arg(key)
+                .query_async(conn)
+                .await
+                .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+            serde_json::json!({ "fields": serde_json::Value::Object(redis_flat_pairs_to_map(&raw)) })
+        }
+        "list" => {
+            let raw: redis::Value = redis::cmd("LRANGE")
+                .arg(key)
+                .arg(0i64)
+                .arg(-1i64)
+                .query_async(conn)
+                .await
+                .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+            serde_json::json!({ "items": redis_array_to_json_strings(&raw) })
+        }
+        "set" => {
+            let raw: redis::Value = redis::cmd("SMEMBERS")
+                .arg(key)
+                .query_async(conn)
+                .await
+                .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+            serde_json::json!({ "members": redis_array_to_json_strings(&raw) })
+        }
+        "zset" => {
+            let raw: redis::Value = redis::cmd("ZRANGE")
+                .arg(key)
+                .arg(0i64)
+                .arg(-1i64)
+                .arg("WITHSCORES")
+                .query_async(conn)
+                .await
+                .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+            serde_json::json!({ "members": redis_zset_to_json(&raw) })
+        }
+        "stream" => {
+            let len: u64 = redis::cmd("XLEN")
+                .arg(key)
+                .query_async(conn)
+                .await
+                .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+            let raw: Vec<redis::Value> = redis::cmd("XRANGE")
+                .arg(key)
+                .arg("-")
+                .arg("+")
+                .arg("COUNT")
+                .arg(10_000i64)
+                .query_async(conn)
+                .await
+                .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+            let entries: Vec<serde_json::Value> = raw
+                .iter()
+                .filter_map(|v| stream_entry_to_json(v).ok())
+                .collect();
+            serde_json::json!({ "length": len, "entries": entries })
+        }
+        _ => {
+            let u: String = conn
+                .key_type(key)
+                .await
+                .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+            serde_json::json!({ "raw": format!("(unsupported or module type) {u}") })
+        }
+    };
+
+    Ok(KeyDetail {
+        key: key.to_string(),
+        key_type,
+        ttl,
+        value,
+    })
 }
 
 /// Safely extract a string from a redis::Value, handling non-UTF-8 bytes via lossy conversion.
@@ -960,20 +960,20 @@ impl DatabaseDriver for RedisDriver {
     }
 
     async fn test_connection(&self, config: &ConnectionConfig) -> Result<ServerInfo, DriverError> {
-        let url = Self::build_url(config);
-        let client = Client::open(url)
-            .map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
+        let plan = build_connection_plan(config)?;
+        let mut live = open_live_conn(&plan).await?;
+        if let ConnectionPlan::Standalone(p) = &plan {
+            Self::select_db(&mut live, p.db_index)
+                .await
+                .map_err(DriverError::QueryFailed)?;
+        } else if let ConnectionPlan::Sentinel(p) = &plan {
+            Self::select_db(&mut live, p.db_index)
+                .await
+                .map_err(DriverError::QueryFailed)?;
+        }
 
-        let mut conn = client
-            .get_multiplexed_async_connection()
-            .await
-            .map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
-
-        let info: String = redis::cmd("INFO")
-            .arg("server")
-            .query_async(&mut conn)
-            .await
-            .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+        let info: String = with_redis_conn!(&mut live, |conn| info_server_on(conn).await)
+            .map_err(DriverError::QueryFailed)?;
 
         let version = info
             .lines()
@@ -988,19 +988,18 @@ impl DatabaseDriver for RedisDriver {
     }
 
     async fn connect(&self, config: &ConnectionConfig) -> Result<ConnectionHandle, DriverError> {
-        let url = Self::build_url(config);
+        let plan = build_connection_plan(config)?;
         let pool_id = format!("redis_{}", uuid::Uuid::new_v4());
-
-        let client = Client::open(url)
-            .map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
-
-        let connection = client
-            .get_multiplexed_async_connection()
-            .await
-            .map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
+        let live = open_live_conn(&plan).await?;
 
         let mut conns = self.connections.write().await;
-        conns.insert(pool_id.clone(), RedisConn { client, connection });
+        conns.insert(
+            pool_id.clone(),
+            RedisConn {
+                plan,
+                live,
+            },
+        );
 
         Ok(ConnectionHandle {
             id: pool_id.clone(),
@@ -1027,11 +1026,8 @@ impl DatabaseDriver for RedisDriver {
 
         // Single-command approach: INFO keyspace returns all non-empty dbs at once
         // e.g. "# Keyspace\r\ndb0:keys=732,expires=0\r\ndb1:keys=3886,expires=100\r\n"
-        let info_raw: redis::Value = redis::cmd("INFO")
-            .arg("keyspace")
-            .query_async(&mut rc.connection)
-            .await
-            .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+        let info_raw: redis::Value = with_redis_conn!(&mut rc.live, |conn| info_keyspace_on(conn).await)
+            .map_err(DriverError::QueryFailed)?;
 
         let info_str = value_to_string(&info_raw);
         let mut out = Vec::new();
@@ -1061,48 +1057,11 @@ impl DatabaseDriver for RedisDriver {
         let mut conns = self.connections.write().await;
         tracing::info!(lock_ms = t0.elapsed().as_millis() as u64, "redis get_tables: lock acquired");
         let rc = Self::get_conn(&mut conns, handle)?;
-        let conn = &mut rc.connection;
-
-        let _: () = redis::cmd("SELECT")
-            .arg(db_index)
-            .query_async(conn)
+        Self::select_db(&mut rc.live, db_index)
             .await
-            .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
-
-        const MAX_KEYS: usize = 10_000;
-        let mut keys: Vec<String> = Vec::new();
-        let mut cursor: u64 = 0;
-        loop {
-            let raw: redis::Value = redis::cmd("SCAN")
-                .arg(cursor)
-                .arg("COUNT")
-                .arg(200)
-                .query_async(conn)
-                .await
-                .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
-
-            let (next_cursor, batch) = parse_scan_result(&raw);
-            keys.extend(batch);
-            cursor = next_cursor;
-            if cursor == 0 || keys.len() >= MAX_KEYS {
-                break;
-            }
-        }
-        tracing::info!(%database, key_count = keys.len(), ms = t0.elapsed().as_millis() as u64, "redis get_tables: scan done");
-
-        keys.sort();
-
-        let tables: Vec<TableInfo> = keys
-            .into_iter()
-            .map(|key| TableInfo {
-                name: key,
-                schema: None,
-                table_type: TableType::Table,
-                row_count: None,
-            })
-            .collect();
-
-        Ok(tables)
+            .map_err(DriverError::QueryFailed)?;
+        let database = database.to_string();
+        with_redis_conn!(&mut rc.live, |conn| get_tables_on(conn, &database, t0).await)
     }
 
     async fn get_table_schema(
@@ -1113,11 +1072,12 @@ impl DatabaseDriver for RedisDriver {
         let mut conns = self.connections.write().await;
         let rc = Self::get_conn(&mut conns, handle)?;
 
-        let key_type: String = rc
-            .connection
-            .key_type(table)
-            .await
-            .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+        let table_name = table.to_string();
+        let key_type: String = with_redis_conn!(&mut rc.live, |conn| {
+            conn.key_type(&table_name)
+                .await
+                .map_err(|e| DriverError::QueryFailed(e.to_string()))
+        })?;
 
         let columns = match key_type.as_str() {
             "hash" => vec![
@@ -1175,7 +1135,7 @@ impl DatabaseDriver for RedisDriver {
         };
 
         Ok(TableSchema {
-            table_name: table.to_string(),
+            table_name: table_name.clone(),
             columns,
             primary_keys: vec![],
             indexes: vec![],
@@ -1192,15 +1152,13 @@ impl DatabaseDriver for RedisDriver {
         tracing::info!(lock_ms = start.elapsed().as_millis() as u64, "redis query: lock acquired");
         let rc = Self::get_conn(&mut conns, handle)?;
 
-        let mut cmd = redis::cmd(parts[0].as_str());
-        for part in &parts[1..] {
-            cmd.arg(part as &str);
-        }
+        let cmd_name = parts[0].clone();
+        let cmd_args: Vec<String> = parts[1..].to_vec();
 
-        let result: redis::Value = cmd
-            .query_async(&mut rc.connection)
-            .await
-            .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+        let result: redis::Value = with_redis_conn!(
+            &mut rc.live,
+            |conn| query_cmd_on(conn, &cmd_name, &cmd_args).await
+        )?;
 
         let (columns, rows) = redis_value_to_rows(&result);
 
@@ -1277,11 +1235,8 @@ impl DatabaseDriver for RedisDriver {
     async fn get_server_info(&self, handle: &ConnectionHandle) -> Result<ServerInfo, DriverError> {
         let mut conns = self.connections.write().await;
         let redis_conn = Self::get_conn(&mut conns, handle)?;
-        let info: String = redis::cmd("INFO")
-            .arg("server")
-            .query_async(&mut redis_conn.connection)
-            .await
-            .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+        let info: String = with_redis_conn!(&mut redis_conn.live, |conn| info_server_on(conn).await)
+            .map_err(DriverError::QueryFailed)?;
         let version = info
             .lines()
             .find(|l| l.starts_with("redis_version:"))
