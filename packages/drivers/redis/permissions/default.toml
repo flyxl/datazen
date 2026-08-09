@@ -1,0 +1,25 @@
+"$schema" = "schemas/schema.json"
+
+[default]
+description = "Default permissions for the redis plugin (mutate + batch ops)"
+permissions = [
+  "allow-set-string",
+  "allow-hash-set",
+  "allow-hash-del",
+  "allow-list-push",
+  "allow-list-set",
+  "allow-list-pop",
+  "allow-set-add",
+  "allow-set-remove",
+  "allow-zset-add",
+  "allow-zset-remove",
+  "allow-delete-keys",
+  "allow-rename",
+  "allow-set-ttl",
+  "allow-batch-delete-pattern",
+  "allow-batch-set-ttl",
+  "allow-batch-rename-prefix",
+  "allow-flush-db",
+  "allow-flush-all",
+  "allow-count-matching",
+]

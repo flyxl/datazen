@@ -1813,6 +1813,8 @@ dependencies = [
  "datazen-driver-api",
  "redis",
  "serde_json",
+ "tauri",
+ "tauri-plugin",
  "tokio",
  "tracing",
  "urlencoding",
