@@ -43,6 +43,8 @@ Default permissions for the redis plugin (mutate + batch ops)
 - `allow-xpending`
 - `allow-xack`
 - `allow-stream-overview`
+- `allow-dump-keys`
+- `allow-restore-keys`
 
 ## Permission Table
 

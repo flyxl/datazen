@@ -416,6 +416,30 @@ impl RedisDriver {
             crate::ops_stream::stream_overview(conn, limit).await
         })
     }
+
+    pub async fn plugin_dump_keys(
+        &self,
+        connection_id: &str,
+        db_index: u32,
+        keys: &[String],
+    ) -> Result<crate::ops_io::DumpKeysResult, DriverError> {
+        let keys = keys.to_vec();
+        with_live_op!(self, connection_id, db_index, |conn| {
+            crate::ops_io::dump_keys(conn, &keys).await
+        })
+    }
+
+    pub async fn plugin_restore_keys(
+        &self,
+        connection_id: &str,
+        db_index: u32,
+        entries: Vec<crate::ops_io::RestoreKeyEntry>,
+        replace: bool,
+    ) -> Result<crate::ops_io::RestoreKeysResult, DriverError> {
+        with_live_op!(self, connection_id, db_index, |conn| {
+            crate::ops_io::restore_keys(conn, &entries, replace).await
+        })
+    }
 }
 
 async fn select_db_on<C>(conn: &mut C, db_index: u32) -> Result<(), String>
