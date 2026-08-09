@@ -30,6 +30,11 @@ export const DRIVER_ICON_ENTRIES: Record<string, string> = {
 
 };
 
+/** Protocol-reuse types without own badge SVG: parent dbType for composite badge. */
+export const DRIVER_ICON_PARENTS: Record<string, string> = {
+
+};
+
 /** @deprecated Use DatabaseType */
 export type PluginDatabaseType = DatabaseType;
 

@@ -149,7 +149,8 @@ function generateCargoFeatures(drivers, registry) {
  * - connectionForm: { component, path, formVariant } — custom connection form (optional)
  * - sqlDialects: array of { family, export, path } — SQL dialect strategies (optional)
  */
-const DRIVER_ICON_ALIASES = {
+/** Protocol-reuse dbTypes → parent dbType used for composite badges when own SVG is missing. */
+const DRIVER_ICON_PARENT = {
   questdb: 'postgresql',
   cloudberry: 'postgresql',
   doris: 'mysql',
@@ -166,17 +167,12 @@ function driverUiDirFromMetaPath(metaPath) {
 
 function resolveDriverIconImport(metaPath, dbTypeId) {
   const uiDir = driverUiDirFromMetaPath(metaPath);
-  const candidates = [dbTypeId, DRIVER_ICON_ALIASES[dbTypeId]].filter(Boolean);
-  for (const name of candidates) {
-    const abs = join(uiDir, 'icons', `${name}.svg`);
-    if (existsSync(abs)) {
-      // import path relative to src/plugins/generated.ts
-      const relFromPlugins = relative(resolve(ROOT, 'src/plugins'), abs).replaceAll('\\', '/');
-      const importPath = relFromPlugins.startsWith('.') ? relFromPlugins : `./${relFromPlugins}`;
-      return { abs, importPath: `${importPath}?url`, fileKey: name };
-    }
-  }
-  return null;
+  const abs = join(uiDir, 'icons', `${dbTypeId}.svg`);
+  if (!existsSync(abs)) return null;
+  // import path relative to src/plugins/generated.ts
+  const relFromPlugins = relative(resolve(ROOT, 'src/plugins'), abs).replaceAll('\\', '/');
+  const importPath = relFromPlugins.startsWith('.') ? relFromPlugins : `./${relFromPlugins}`;
+  return { abs, importPath: `${importPath}?url`, fileKey: dbTypeId };
 }
 
 const BASIC_PATH_FRONTEND = {
@@ -306,6 +302,7 @@ function generateFrontendRegistry(plugins) {
   const iconImportLines = [];
   const dbEntryLines = [];
   const iconEntryLines = [];
+  const iconParentEntryLines = [];
   const formEntryLines = [];
   const validatorEntryLines = [];
   const dialectEntryLines = [];
@@ -341,6 +338,8 @@ function generateFrontendRegistry(plugins) {
           iconImportLines.push(`import ${binding} from '${resolved.importPath}';`);
         }
         iconEntryLines.push(`  'db.${dt.id}': ${binding},`);
+      } else if (DRIVER_ICON_PARENT[dt.id]) {
+        iconParentEntryLines.push(`  ${dt.id}: '${DRIVER_ICON_PARENT[dt.id]}',`);
       }
     }
 
@@ -427,6 +426,11 @@ ${dbEntryLines.join('\n')}
 /** Default driver badge icon URLs keyed by semantic id (\`db.<type>\`). */
 export const DRIVER_ICON_ENTRIES: Record<string, string> = {
 ${iconEntryLines.join('\n')}
+};
+
+/** Protocol-reuse types without own badge SVG: parent dbType for composite badge. */
+export const DRIVER_ICON_PARENTS: Record<string, string> = {
+${iconParentEntryLines.join('\n')}
 };
 
 /** @deprecated Use DatabaseType */
