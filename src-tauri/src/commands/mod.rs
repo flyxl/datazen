@@ -4,6 +4,7 @@ mod adb;
 pub mod ai;
 mod backup;
 mod config;
+mod connection_import;
 mod context;
 mod connection;
 mod data;

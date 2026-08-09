@@ -463,17 +463,29 @@ export function MainWindow() {
     imported: number;
     overwritten: number;
     groupsAdded: number;
+    skipped?: string[];
+    sourceFormat?: string;
   }) => {
     await fetchConnections();
     await fetchGroups();
-    showMessageDialog(
-      t('connShare.importSuccess', {
-        imported: result.imported,
-        overwritten: result.overwritten,
-        groupsAdded: result.groupsAdded,
-      }),
-      'success',
-    );
+    const skippedCount = result.skipped?.length ?? 0;
+    const base =
+      skippedCount > 0
+        ? t('connShare.importSuccessWithSkipped', {
+            imported: result.imported,
+            overwritten: result.overwritten,
+            groupsAdded: result.groupsAdded,
+            skipped: skippedCount,
+          })
+        : t('connShare.importSuccess', {
+            imported: result.imported,
+            overwritten: result.overwritten,
+            groupsAdded: result.groupsAdded,
+          });
+    const message = result.sourceFormat
+      ? `${base} (${result.sourceFormat})`
+      : base;
+    showMessageDialog(message, 'success');
   }, [fetchConnections, fetchGroups, showMessageDialog, t]);
 
   // ── Menu bar events for export/import ──

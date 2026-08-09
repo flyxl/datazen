@@ -1,0 +1,292 @@
+//! Multi-format connection import:
+//! DataZen / DBX / DBeaver / Navicat / DataGrip / TablePlus.
+
+mod datagrip;
+mod datazen;
+mod dbeaver;
+mod dbx;
+mod map;
+mod navicat;
+mod rncryptor;
+mod tableplus;
+
+use super::error::CommandError;
+use crate::db::ConnectionConfig;
+use std::path::Path;
+
+pub use datazen::{
+    build_encrypted_export, decrypt_datazen_fields, derive_argon2_key, encrypt_field,
+};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ImportFormat {
+    DataZen,
+    DbxEncrypted,
+    DbxPlain,
+    DBeaver,
+    Navicat,
+    DataGrip,
+    TablePlus,
+}
+
+#[derive(Debug, Clone)]
+pub struct ParsedImport {
+    pub format: ImportFormat,
+    pub connections: Vec<ConnectionConfig>,
+    pub groups: Vec<String>,
+    pub skipped: Vec<String>,
+}
+
+pub fn format_label(format: ImportFormat) -> &'static str {
+    match format {
+        ImportFormat::DataZen => "DataZen",
+        ImportFormat::DbxEncrypted | ImportFormat::DbxPlain => "DBX",
+        ImportFormat::DBeaver => "DBeaver",
+        ImportFormat::Navicat => "Navicat",
+        ImportFormat::DataGrip => "DataGrip",
+        ImportFormat::TablePlus => "TablePlus",
+    }
+}
+
+fn looks_like_rncryptor_v3(bytes: &[u8]) -> bool {
+    bytes.len() >= 66 && bytes[0] == 0x03 && bytes[1] == 0x01
+}
+
+fn looks_like_datazen_json(value: &serde_json::Value) -> bool {
+    if value.get("app").and_then(|v| v.as_str()) == Some("DataZen") {
+        return true;
+    }
+    value.get("encrypted").and_then(|v| v.as_bool()) == Some(true)
+        && value.get("connections").is_some()
+        && value.get("salt").is_some()
+}
+
+fn looks_like_dbx_plain(value: &serde_json::Value) -> bool {
+    if value.get("format").and_then(|v| v.as_str()) == Some("dbx-config") {
+        return true;
+    }
+    let Some(arr) = value
+        .get("connections")
+        .and_then(|v| v.as_array())
+        .or_else(|| value.as_array())
+    else {
+        return false;
+    };
+    arr.iter().any(|c| {
+        c.get("db_type").is_some()
+            || c.get("dbType").is_some()
+            || c.get("transport_layers").is_some()
+    })
+}
+
+/// Text-only entry (legacy / webdriver preview). Binary TablePlus needs [`parse_import_file`].
+pub fn parse_connections_import(
+    content: &str,
+    password: Option<&str>,
+) -> Result<ParsedImport, CommandError> {
+    parse_import_file(Path::new("import.json"), content.as_bytes(), password)
+}
+
+/// Detect format from path + bytes, then parse.
+pub fn parse_import_file(
+    path: &Path,
+    bytes: &[u8],
+    password: Option<&str>,
+) -> Result<ParsedImport, CommandError> {
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    let file_name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    let pw = password.unwrap_or("").trim();
+
+    if ext == "tableplusconnection" || looks_like_rncryptor_v3(bytes) {
+        if pw.is_empty() {
+            return Err(CommandError::Validation(
+                "Password is required for TablePlus import".into(),
+            ));
+        }
+        return tableplus::parse(bytes, pw);
+    }
+
+    let text = std::str::from_utf8(bytes).map_err(|_| {
+        CommandError::Validation(
+            "Import file is not valid UTF-8 text (for TablePlus use .tableplusconnection)".into(),
+        )
+    })?;
+
+    if ext == "ncx"
+        || text.contains("ConnType=")
+        || (text.contains("<Connection") && text.contains("ConnectionName="))
+    {
+        return navicat::parse(text);
+    }
+
+    if text.contains("<data-source") || text.contains("jdbc-url")
+        || (file_name.contains("datasources") && ext == "xml")
+    {
+        if text.contains("<data-source") || text.contains("jdbc-url") {
+            return datagrip::parse(text);
+        }
+    }
+
+    if dbeaver::looks_like_dbeaver_xml(text) {
+        return dbeaver::parse_xml(text);
+    }
+
+    // JSON formats
+    if let Ok(value) = serde_json::from_str::<serde_json::Value>(text) {
+        if value.get("format").and_then(|v| v.as_str()) == Some("dbx-encrypted") {
+            if pw.is_empty() {
+                return Err(CommandError::Validation(
+                    "Password is required for DBX encrypted import".into(),
+                ));
+            }
+            return dbx::parse_encrypted(text, pw);
+        }
+        if value.get("format").and_then(|v| v.as_str()) == Some("dbx-config") {
+            return dbx::parse_plain(text);
+        }
+        if looks_like_datazen_json(&value)
+            || (value.get("version").is_some()
+                && value.get("salt").is_some()
+                && value.get("connections").is_some())
+        {
+            if pw.is_empty() {
+                return Err(CommandError::Validation(
+                    "Password is required for DataZen encrypted import".into(),
+                ));
+            }
+            let (connections, groups) = datazen::parse(text, pw)?;
+            return Ok(ParsedImport {
+                format: ImportFormat::DataZen,
+                connections,
+                groups,
+                skipped: vec![],
+            });
+        }
+        if file_name.contains("data-sources")
+            || file_name == "credentials-config.json"
+            || dbeaver::looks_like_dbeaver_json(text)
+        {
+            return dbeaver::parse_json(path, text);
+        }
+        if looks_like_dbx_plain(&value) {
+            return dbx::parse_plain(text);
+        }
+        // DataZen plain (encrypted:false) still requires password in legacy API.
+        if value.get("connections").is_some() && value.get("app").is_none() {
+            // Could be DataZen without app field
+            if value.get("encrypted").is_some() || value.get("groups").is_some() {
+                if pw.is_empty() {
+                    return Err(CommandError::Validation(
+                        "Password is required for DataZen import".into(),
+                    ));
+                }
+                let (connections, groups) = datazen::parse(text, pw)?;
+                return Ok(ParsedImport {
+                    format: ImportFormat::DataZen,
+                    connections,
+                    groups,
+                    skipped: vec![],
+                });
+            }
+        }
+    }
+
+    // Fallbacks by extension / heuristics
+    if ext == "xml" && text.contains("<Connections") {
+        return navicat::parse(text);
+    }
+
+    Err(CommandError::Validation(
+        "Unrecognized connection import format".into(),
+    ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn detect_datagrip() {
+        let xml = r#"<?xml version="1.0"?>
+<data-sources>
+  <data-source name="local" uuid="aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee">
+    <driver-ref>postgresql</driver-ref>
+    <jdbc-url>jdbc:postgresql://localhost:5432/demo</jdbc-url>
+    <user-name>postgres</user-name>
+  </data-source>
+</data-sources>"#;
+        let parsed = parse_import_file(Path::new("dataSources.xml"), xml.as_bytes(), None).unwrap();
+        assert_eq!(parsed.format, ImportFormat::DataGrip);
+        assert_eq!(parsed.connections[0].database_type, "postgresql");
+    }
+
+    #[test]
+    fn detect_navicat() {
+        let xml = r#"<?xml version="1.0"?>
+<Connections>
+  <Connection ConnectionName="PG" ConnType="POSTGRESQL" Host="h" Port="5432" UserName="u" Database="d" />
+</Connections>"#;
+        let parsed = parse_import_file(Path::new("c.ncx"), xml.as_bytes(), None).unwrap();
+        assert_eq!(parsed.format, ImportFormat::Navicat);
+    }
+
+    #[test]
+    fn detect_dbeaver() {
+        let json = r#"{"connections":{"pg1":{"provider":"postgresql","driver":"postgres-jdbc","name":"PG","configuration":{"host":"h","port":5432,"database":"d"}}}}"#;
+        let parsed =
+            parse_import_file(Path::new("data-sources.json"), json.as_bytes(), None).unwrap();
+        assert_eq!(parsed.format, ImportFormat::DBeaver);
+    }
+
+    #[test]
+    fn detect_dbx_encrypted_label() {
+        let json = r#"{"format":"dbx-encrypted","version":1,"salt":"a","iv":"b","data":"c"}"#;
+        let err = parse_connections_import(json, None).unwrap_err();
+        assert!(err.to_string().contains("Password"));
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(json)
+                .ok()
+                .and_then(|v| v.get("format").and_then(|x| x.as_str().map(|s| s.to_string())))
+                .as_deref(),
+            Some("dbx-encrypted")
+        );
+    }
+
+    #[test]
+    fn dbx_plain_maps_mysql() {
+        let json = serde_json::json!({
+            "connections": [{
+                "id": "c1",
+                "name": "demo",
+                "db_type": "mysql",
+                "host": "127.0.0.1",
+                "port": 3306,
+                "username": "root",
+                "password": "secret",
+                "database": "app",
+                "color": "#ff0000"
+            }]
+        })
+        .to_string();
+        let parsed = parse_connections_import(&json, None).unwrap();
+        assert_eq!(parsed.format, ImportFormat::DbxPlain);
+        assert_eq!(parsed.connections[0].database_type, "mysql");
+        assert_eq!(parsed.connections[0].color_tag.as_deref(), Some("#ff0000"));
+    }
+
+    #[test]
+    fn dbx_skips_unknown_types() {
+        let json = r#"{"connections":[{"id":"1","name":"x","db_type":"oracle","host":"h","port":1521,"username":"u","password":""}]}"#;
+        let parsed = parse_connections_import(json, None).unwrap();
+        assert!(parsed.connections.is_empty());
+        assert_eq!(parsed.skipped.len(), 1);
+    }
+}
