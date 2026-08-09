@@ -20,6 +20,10 @@ interface AiInputProps {
   onContextItemsChange?: (items: ContextItem[]) => void;
   connectionId?: string;
   database?: string;
+  /** Where the @ picker opens relative to the input. Default: above. */
+  pickerPosition?: 'above' | 'below';
+  /** Hide the built-in send/stop control (e.g. NL2SQL uses an external Generate button). */
+  hideSubmit?: boolean;
 }
 
 function itemKey(item: ContextItem): string {
@@ -41,6 +45,8 @@ export const AiInput = forwardRef<HTMLTextAreaElement, AiInputProps>(function Ai
     onContextItemsChange,
     connectionId,
     database,
+    pickerPosition = 'above',
+    hideSubmit = false,
   },
   ref,
 ) {
@@ -153,6 +159,7 @@ export const AiInput = forwardRef<HTMLTextAreaElement, AiInputProps>(function Ai
             onSelect={handleSelect}
             onClose={() => setShowPicker(false)}
             anchorRef={wrapperRef}
+            position={pickerPosition}
             connectionId={connectionId}
             database={database}
           />
@@ -181,7 +188,13 @@ export const AiInput = forwardRef<HTMLTextAreaElement, AiInputProps>(function Ai
           onKeyDown={handleKeyDown}
           onCompositionStart={aiKeyboard.onCompositionStart}
           onCompositionEnd={aiKeyboard.onCompositionEnd}
-          placeholder={hasContext ? t('context.placeholder') : placeholder}
+          placeholder={
+            placeholder !== undefined
+              ? placeholder
+              : hasContext
+                ? t('context.placeholder')
+                : undefined
+          }
           rows={rows}
           disabled={disabled}
           autoCapitalize="off"
@@ -193,38 +206,40 @@ export const AiInput = forwardRef<HTMLTextAreaElement, AiInputProps>(function Ai
             'disabled:cursor-not-allowed',
           )}
         />
-        <div className="absolute bottom-1.5 right-1.5 flex items-end">
-          {showStop ? (
-            <button
-              type="button"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={onStop}
-              title={t('chat.stop')}
-              className={cn(
-                'flex h-6 w-6 items-center justify-center rounded-md',
-                'bg-fg-muted/20 text-fg-muted hover:bg-fg-muted/30 hover:text-fg',
-                'transition-colors',
-              )}
-            >
-              <Square className="h-3 w-3" />
-            </button>
-          ) : (
-            <button
-              type="button"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={onSubmit}
-              disabled={!canSend}
-              className={cn(
-                'flex h-6 w-6 items-center justify-center rounded-md transition-colors',
-                canSend
-                  ? 'bg-accent text-white hover:bg-accent/90'
-                  : 'bg-fg-muted/10 text-fg-muted/40 cursor-not-allowed',
-              )}
-            >
-              <ArrowUp className="h-3.5 w-3.5" />
-            </button>
-          )}
-        </div>
+        {!hideSubmit && (
+          <div className="absolute bottom-1.5 right-1.5 flex items-end">
+            {showStop ? (
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={onStop}
+                title={t('chat.stop')}
+                className={cn(
+                  'flex h-6 w-6 items-center justify-center rounded-md',
+                  'bg-fg-muted/20 text-fg-muted hover:bg-fg-muted/30 hover:text-fg',
+                  'transition-colors',
+                )}
+              >
+                <Square className="h-3 w-3" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={onSubmit}
+                disabled={!canSend}
+                className={cn(
+                  'flex h-6 w-6 items-center justify-center rounded-md transition-colors',
+                  canSend
+                    ? 'bg-accent text-white hover:bg-accent/90'
+                    : 'bg-fg-muted/10 text-fg-muted/40 cursor-not-allowed',
+                )}
+              >
+                <ArrowUp className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

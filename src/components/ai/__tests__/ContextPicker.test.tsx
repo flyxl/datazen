@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { describe, expect, it, vi, afterEach, beforeEach } from 'vitest';
 import { render, cleanup, fireEvent, waitFor } from '@testing-library/react';
 import { ContextPicker } from '../ContextPicker';
@@ -138,6 +139,51 @@ describe('ContextPicker', () => {
 
     expect(mockGetTables).toHaveBeenCalledWith('conn-1', 'mydb');
     expect(mockListFiles).toHaveBeenCalledWith(undefined);
+  });
+
+  it('filters nested Tables list by query without leaving drill-in', async () => {
+    mockGetTables.mockResolvedValue(sampleTables);
+    const anchorRef = { current: document.createElement('div') };
+
+    function Harness({ initialQuery = '' }: { initialQuery?: string }) {
+      const [query, setQuery] = useState(initialQuery);
+      return (
+        <div>
+          <button type="button" data-testid="set-query" onClick={() => setQuery('user')}>
+            set
+          </button>
+          <ContextPicker
+            query={query}
+            onSelect={vi.fn()}
+            onClose={vi.fn()}
+            anchorRef={anchorRef}
+            connectionId="conn-1"
+            database="mydb"
+          />
+        </div>
+      );
+    }
+
+    const { getByTestId, queryAllByTestId } = render(<Harness />);
+
+    await waitFor(() => {
+      expect(getByTestId('context-cat-tables')).toBeInTheDocument();
+    });
+    fireEvent.click(getByTestId('context-cat-tables'));
+
+    await waitFor(() => {
+      expect(queryAllByTestId('context-item')).toHaveLength(2);
+      expect(getByTestId('context-picker-back')).toBeInTheDocument();
+    });
+
+    fireEvent.click(getByTestId('set-query'));
+
+    await waitFor(() => {
+      const items = queryAllByTestId('context-item');
+      expect(items).toHaveLength(1);
+      expect(items[0]).toHaveAttribute('data-id', 'users');
+      expect(getByTestId('context-picker-back')).toBeInTheDocument();
+    });
   });
 
   it('back returns to root', async () => {

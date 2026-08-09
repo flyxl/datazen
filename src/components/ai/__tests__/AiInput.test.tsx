@@ -141,7 +141,21 @@ describe('AiInput', () => {
       expect(queryAllByTestId('context-token')).toHaveLength(0);
     });
 
-    it('uses context.placeholder when context is enabled', () => {
+    it('uses context.placeholder when context is enabled and placeholder omitted', () => {
+      const { container } = render(
+        <AiInput
+          value=""
+          onChange={vi.fn()}
+          onSubmit={vi.fn()}
+          contextItems={[]}
+          onContextItemsChange={vi.fn()}
+        />,
+      );
+      const textarea = container.querySelector('textarea')!;
+      expect(textarea.placeholder).toBe('context.placeholder');
+    });
+
+    it('prefers explicit placeholder over context default', () => {
       const { container } = render(
         <AiInput
           value=""
@@ -153,7 +167,7 @@ describe('AiInput', () => {
         />,
       );
       const textarea = container.querySelector('textarea')!;
-      expect(textarea.placeholder).toBe('context.placeholder');
+      expect(textarea.placeholder).toBe('regular placeholder');
     });
 
     it('detects @ in input and opens picker', async () => {

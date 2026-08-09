@@ -97,20 +97,17 @@ export function ContextPicker({
   const [activeIndex, setActiveIndex] = useState(0);
   const listRef = useRef<HTMLDivElement>(null);
 
-  const isFiltering = view === 'root' && query.length > 0;
+  const isRootFiltering = view === 'root' && query.length > 0;
   const showTablesCategory = Boolean(connectionId);
-
-  useEffect(() => {
-    setView('root');
-    setActiveIndex(0);
-  }, [query]);
+  const needsTables = (isRootFiltering || view === 'tables') && showTablesCategory;
+  const needsFiles = isRootFiltering || view === 'files';
 
   useEffect(() => {
     setRecent(loadRecent());
   }, [view]);
 
   useEffect(() => {
-    if (!isFiltering && view !== 'tables') return;
+    if (!needsTables) return;
     if (!connectionId || !database) return;
 
     let cancelled = false;
@@ -132,10 +129,10 @@ export function ContextPicker({
     return () => {
       cancelled = true;
     };
-  }, [isFiltering, view, connectionId, database]);
+  }, [needsTables, connectionId, database]);
 
   useEffect(() => {
-    if (!isFiltering && view !== 'files') return;
+    if (!needsFiles) return;
 
     let cancelled = false;
     setLoadingFiles(true);
@@ -156,10 +153,10 @@ export function ContextPicker({
     return () => {
       cancelled = true;
     };
-  }, [isFiltering, view]);
+  }, [needsFiles]);
 
   const rows: Row[] = useMemo(() => {
-    if (isFiltering) {
+    if (isRootFiltering) {
       const filtered = [
         ...(showTablesCategory ? tables.filter((item) => matchesQuery(item, query)) : []),
         ...files.filter((item) => matchesQuery(item, query)),
@@ -168,11 +165,17 @@ export function ContextPicker({
     }
 
     if (view === 'tables') {
-      return tables.map((item) => ({ type: 'item' as const, item }));
+      const list = query
+        ? tables.filter((item) => matchesQuery(item, query))
+        : tables;
+      return list.map((item) => ({ type: 'item' as const, item }));
     }
 
     if (view === 'files') {
-      return files.map((item) => ({ type: 'item' as const, item }));
+      const list = query
+        ? files.filter((item) => matchesQuery(item, query))
+        : files;
+      return list.map((item) => ({ type: 'item' as const, item }));
     }
 
     const result: Row[] = [];
@@ -187,7 +190,7 @@ export function ContextPicker({
       }
     }
     return result;
-  }, [isFiltering, view, showTablesCategory, tables, files, recent, query, t]);
+  }, [isRootFiltering, view, showTablesCategory, tables, files, recent, query, t]);
 
   useEffect(() => {
     setActiveIndex((prev) => Math.min(prev, Math.max(rows.length - 1, 0)));
@@ -269,9 +272,7 @@ export function ContextPicker({
   }, [onClose, anchorRef]);
 
   const loading =
-    (view === 'tables' || isFiltering) && showTablesCategory && loadingTables
-      ? true
-      : (view === 'files' || isFiltering) && loadingFiles;
+    (needsTables && loadingTables) || (needsFiles && loadingFiles);
 
   return (
     <div
@@ -283,7 +284,7 @@ export function ContextPicker({
         'max-h-60 overflow-y-auto rounded-lg border border-edge bg-surface shadow-lg',
       )}
     >
-      {view !== 'root' && !isFiltering && (
+      {view !== 'root' && (
         <button
           type="button"
           data-testid="context-picker-back"
