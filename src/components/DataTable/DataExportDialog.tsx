@@ -2,9 +2,13 @@ import { useCallback, useMemo, useState } from 'react';
 import { Dialog } from '../ui/Dialog';
 import { Button } from '../ui/Button';
 import { Select } from '../ui/Select';
-import { fileCommands } from '../../commands/file';
-import { generateExportFromArrays, getDefaultFilename } from '../../lib/exportData';
+import { generateExportFromArrays } from '../../lib/exportData';
 import type { ExportFormat, ExportScope } from '../../lib/exportData';
+import {
+  ARRAY_EXPORT_FORMAT_OPTIONS,
+  buildExportScopeOptions,
+  saveExportResultWithDialog,
+} from '../../lib/exportDialogShared';
 import { useI18n } from '../../hooks/useI18n';
 import type { ColumnDef } from './TableHeader';
 
@@ -17,15 +21,6 @@ interface DataExportDialogProps {
   tableName?: string;
   databaseType?: string;
 }
-
-const FORMAT_OPTIONS: { value: ExportFormat; label: string }[] = [
-  { value: 'csv', label: 'CSV' },
-  { value: 'tsv', label: 'TSV' },
-  { value: 'json', label: 'JSON' },
-  { value: 'markdown', label: 'Markdown' },
-  { value: 'xlsx', label: 'Excel (XLSX)' },
-  { value: 'sql_insert', label: 'SQL INSERT' },
-];
 
 export function DataExportDialog({
   open,
@@ -47,6 +42,11 @@ export function DataExportDialog({
     return rows.length;
   }, [scope, selectedRows, rows]);
 
+  const scopeOptions = useMemo(
+    () => buildExportScopeOptions(t, rows.length, selectedRows.size),
+    [t, rows.length, selectedRows.size],
+  );
+
   const handleExport = useCallback(async () => {
     setError(null);
     setExporting(true);
@@ -62,20 +62,7 @@ export function DataExportDialog({
         databaseType,
       });
 
-      const defaultName = getDefaultFilename(tableName, format);
-      const saved = result.kind === 'binary'
-        ? await fileCommands.saveBase64WithDialog(
-            result.dataBase64,
-            defaultName,
-            result.extension.toUpperCase(),
-            [result.extension],
-          )
-        : await fileCommands.saveTextWithDialog(
-            result.content,
-            defaultName,
-            result.extension.toUpperCase(),
-            [result.extension],
-          );
+      const saved = await saveExportResultWithDialog(result, tableName, format);
       if (!saved) {
         setExporting(false);
         return;
@@ -112,7 +99,7 @@ export function DataExportDialog({
           <label className="mb-1 block text-xs font-medium text-fg-secondary">{t('export.format')}</label>
           <Select
             value={format}
-            options={FORMAT_OPTIONS}
+            options={ARRAY_EXPORT_FORMAT_OPTIONS}
             onChange={(v) => setFormat(v as ExportFormat)}
           />
         </div>
@@ -121,10 +108,7 @@ export function DataExportDialog({
           <label className="mb-1 block text-xs font-medium text-fg-secondary">{t('export.range')}</label>
           <Select
             value={scope}
-            options={[
-              { value: 'current_page', label: `${t('export.currentPage')} (${rows.length} ${t('common.rows')})` },
-              { value: 'selected', label: `${t('export.selectedRows')} (${selectedRows.size} ${t('common.rows')})`, disabled: selectedRows.size === 0 },
-            ]}
+            options={scopeOptions}
             onChange={(v) => setScope(v as ExportScope)}
           />
         </div>
@@ -133,7 +117,7 @@ export function DataExportDialog({
           {t('export.willExport', { rows: rowCount, cols: columns.length })}
           , {t('export.formatAs')}{' '}
           <span className="font-medium text-fg-secondary">
-            {FORMAT_OPTIONS.find((o) => o.value === format)?.label}
+            {ARRAY_EXPORT_FORMAT_OPTIONS.find((o) => o.value === format)?.label}
           </span>
         </div>
 

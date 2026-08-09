@@ -154,6 +154,25 @@ impl PostgresDriver {
         }
     }
 
+    /// Bind `Value` params into a sqlx Postgres query (`$1`, `$2`, … placeholders).
+    fn bind_values<'q>(
+        mut query: sqlx::query::Query<'q, Postgres, sqlx::postgres::PgArguments>,
+        params: &'q [Value],
+    ) -> sqlx::query::Query<'q, Postgres, sqlx::postgres::PgArguments> {
+        for p in params {
+            query = match p {
+                Value::Null => query.bind(Option::<String>::None),
+                Value::Bool(b) => query.bind(*b),
+                Value::Integer(i) => query.bind(*i),
+                Value::Float(f) => query.bind(*f),
+                Value::String(s) | Value::Timestamp(s) => query.bind(s.as_str()),
+                Value::Bytes(b) => query.bind(b.as_slice()),
+                Value::Json(j) => query.bind(j),
+            };
+        }
+        query
+    }
+
     fn decode_rows(rows: &[sqlx::postgres::PgRow]) -> (Vec<ColumnInfo>, Vec<Vec<Option<Value>>>) {
         let columns: Vec<ColumnInfo> = if let Some(first) = rows.first() {
             first
@@ -884,9 +903,47 @@ impl DatabaseDriver for PostgresDriver {
         &self,
         handle: &ConnectionHandle,
         sql: &str,
-        _params: &[Value],
+        params: &[Value],
     ) -> Result<QueryResult, DriverError> {
-        self.query(handle, sql).await
+        {
+            let mut txs = self.transactions.lock().await;
+            if let Some(conn) = txs.get_mut(&handle.id) {
+                let start = Instant::now();
+                let rows = Self::bind_values(sqlx::query(sql), params)
+                    .fetch_all(&mut **conn)
+                    .await
+                    .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+                let elapsed = start.elapsed().as_millis() as u64;
+                let (columns, result_rows) = Self::decode_rows(&rows);
+                let row_count = result_rows.len() as u64;
+                return Ok(QueryResult {
+                    columns,
+                    rows: result_rows,
+                    rows_affected: Some(row_count),
+                    execution_time_ms: elapsed,
+                });
+            }
+        }
+
+        let pools = self.pools.read().await;
+        let pool = Self::get_pool(&pools, handle)?;
+
+        let start = Instant::now();
+        let rows = Self::bind_values(sqlx::query(sql), params)
+            .fetch_all(pool)
+            .await
+            .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+        let elapsed = start.elapsed().as_millis() as u64;
+
+        let (columns, result_rows) = Self::decode_rows(&rows);
+        let row_count = result_rows.len() as u64;
+
+        Ok(QueryResult {
+            columns,
+            rows: result_rows,
+            rows_affected: Some(row_count),
+            execution_time_ms: elapsed,
+        })
     }
 
     async fn execute(&self, handle: &ConnectionHandle, sql: &str) -> Result<u64, DriverError> {
@@ -1498,6 +1555,51 @@ mod tests {
         assert!(
             matches!(err, DriverError::TransactionError(_)),
             "expected TransactionError, got {err:?}"
+        );
+    }
+
+    /// Postgres / sqlx use 1-based `$N` placeholders (not `?`).
+    #[test]
+    fn postgres_placeholders_are_dollar_n() {
+        assert_eq!(
+            (1..=3).map(|i| format!("${i}")).collect::<Vec<_>>(),
+            vec!["$1", "$2", "$3"]
+        );
+    }
+
+    #[test]
+    fn bind_values_accepts_all_value_variants() {
+        let params = [
+            Value::Null,
+            Value::Bool(true),
+            Value::Integer(42),
+            Value::Float(1.5),
+            Value::String("hi".into()),
+            Value::Timestamp("2024-01-01T00:00:00Z".into()),
+            Value::Bytes(vec![1, 2, 3]),
+            Value::Json(serde_json::json!({"a": 1})),
+        ];
+        // Compiles and builds a bound query for every Value variant.
+        let _q = PostgresDriver::bind_values(
+            sqlx::query("SELECT $1, $2, $3, $4, $5, $6, $7, $8"),
+            &params,
+        );
+    }
+
+    #[tokio::test]
+    async fn query_with_params_requires_pool() {
+        let driver = PostgresDriver::new();
+        let handle = ConnectionHandle {
+            id: "conn".into(),
+            pool_id: "missing-pool".into(),
+        };
+        let err = driver
+            .query_with_params(&handle, "SELECT $1::int", &[Value::Integer(1)])
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(err, DriverError::ConnectionFailed(_)),
+            "expected ConnectionFailed, got {err:?}"
         );
     }
 }

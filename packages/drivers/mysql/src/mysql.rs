@@ -271,6 +271,25 @@ impl MysqlDriver {
         }
     }
 
+    /// Bind `Value` params into a sqlx MySQL query (`?` placeholders).
+    fn bind_values<'q>(
+        mut query: sqlx::query::Query<'q, MySql, sqlx::mysql::MySqlArguments>,
+        params: &'q [Value],
+    ) -> sqlx::query::Query<'q, MySql, sqlx::mysql::MySqlArguments> {
+        for p in params {
+            query = match p {
+                Value::Null => query.bind(Option::<String>::None),
+                Value::Bool(b) => query.bind(*b),
+                Value::Integer(i) => query.bind(*i),
+                Value::Float(f) => query.bind(*f),
+                Value::String(s) | Value::Timestamp(s) => query.bind(s.as_str()),
+                Value::Bytes(b) => query.bind(b.as_slice()),
+                Value::Json(j) => query.bind(j),
+            };
+        }
+        query
+    }
+
     fn decode_rows(rows: &[sqlx::mysql::MySqlRow]) -> (Vec<ColumnInfo>, Vec<Vec<Option<Value>>>) {
         let columns: Vec<ColumnInfo> = if let Some(first) = rows.first() {
             first
@@ -996,9 +1015,52 @@ impl DatabaseDriver for MysqlDriver {
         &self,
         handle: &ConnectionHandle,
         sql: &str,
-        _params: &[Value],
+        params: &[Value],
     ) -> Result<QueryResult, DriverError> {
-        self.query(handle, sql).await
+        {
+            let mut txs = self.transactions.lock().await;
+            if let Some(conn) = txs.get_mut(&handle.id) {
+                let start = Instant::now();
+                let rows = Self::bind_values(sqlx::query(sql), params)
+                    .fetch_all(&mut **conn)
+                    .await
+                    .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+                let elapsed = start.elapsed().as_millis() as u64;
+                let (columns, result_rows) = Self::decode_rows(&rows);
+                let row_count = result_rows.len() as u64;
+                return Ok(QueryResult {
+                    columns,
+                    rows: result_rows,
+                    rows_affected: Some(row_count),
+                    execution_time_ms: elapsed,
+                });
+            }
+        }
+
+        let pools = self.pools.read().await;
+        let pool = Self::get_pool(&pools, handle)?;
+        let mut conn = pool
+            .acquire()
+            .await
+            .map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
+        self.apply_active_database(handle, &mut conn).await?;
+
+        let start = Instant::now();
+        let rows = Self::bind_values(sqlx::query(sql), params)
+            .fetch_all(&mut *conn)
+            .await
+            .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+        let elapsed = start.elapsed().as_millis() as u64;
+
+        let (columns, result_rows) = Self::decode_rows(&rows);
+        let row_count = result_rows.len() as u64;
+
+        Ok(QueryResult {
+            columns,
+            rows: result_rows,
+            rows_affected: Some(row_count),
+            execution_time_ms: elapsed,
+        })
     }
 
     async fn execute(&self, handle: &ConnectionHandle, sql: &str) -> Result<u64, DriverError> {
@@ -1582,6 +1644,47 @@ mod tests {
         assert!(
             matches!(err, DriverError::TransactionError(_)),
             "expected TransactionError, got {err:?}"
+        );
+    }
+
+    /// MySQL / sqlx use positional `?` placeholders (not `$N`).
+    #[test]
+    fn mysql_placeholders_are_question_marks() {
+        let sql = "SELECT ?, ?, ?";
+        assert_eq!(sql.matches('?').count(), 3);
+        assert!(!sql.contains('$'));
+    }
+
+    #[test]
+    fn bind_values_accepts_all_value_variants() {
+        let params = [
+            Value::Null,
+            Value::Bool(true),
+            Value::Integer(42),
+            Value::Float(1.5),
+            Value::String("hi".into()),
+            Value::Timestamp("2024-01-01T00:00:00Z".into()),
+            Value::Bytes(vec![1, 2, 3]),
+            Value::Json(serde_json::json!({"a": 1})),
+        ];
+        // Compiles and builds a bound query for every Value variant.
+        let _q = MysqlDriver::bind_values(sqlx::query("SELECT ?, ?, ?, ?, ?, ?, ?, ?"), &params);
+    }
+
+    #[tokio::test]
+    async fn query_with_params_requires_pool() {
+        let driver = MysqlDriver::new(false);
+        let handle = ConnectionHandle {
+            id: "conn".into(),
+            pool_id: "missing-pool".into(),
+        };
+        let err = driver
+            .query_with_params(&handle, "SELECT ?", &[Value::Integer(1)])
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(err, DriverError::ConnectionFailed(_)),
+            "expected ConnectionFailed, got {err:?}"
         );
     }
 }

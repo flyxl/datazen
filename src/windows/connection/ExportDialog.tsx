@@ -2,9 +2,13 @@ import { useCallback, useMemo, useState } from 'react';
 import { Dialog } from '../../components/ui/Dialog';
 import { Button } from '../../components/ui/Button';
 import { Select } from '../../components/ui/Select';
-import { fileCommands } from '../../commands/file';
-import { generateExport, getDefaultFilename } from '../../lib/exportData';
+import { generateExport } from '../../lib/exportData';
 import type { ExportFormat, ExportScope } from '../../lib/exportData';
+import {
+  OBJECT_EXPORT_FORMAT_OPTIONS,
+  buildExportScopeOptions,
+  saveExportResultWithDialog,
+} from '../../lib/exportDialogShared';
 import type { ColumnSchema } from '../../types';
 import { useI18n } from '../../hooks/useI18n';
 
@@ -17,15 +21,6 @@ interface ExportDialogProps {
   selectedRows: Set<number>;
   databaseType?: string;
 }
-
-const FORMAT_OPTIONS: { value: ExportFormat; label: string }[] = [
-  { value: 'csv', label: 'CSV' },
-  { value: 'json', label: 'JSON' },
-  { value: 'markdown', label: 'Markdown' },
-  { value: 'xlsx', label: 'Excel (XLSX)' },
-  { value: 'sql_insert', label: 'SQL INSERT' },
-  { value: 'sql_update', label: 'SQL UPDATE' },
-];
 
 export function ExportDialog({ open, onClose, tableName, columns, rows, selectedRows, databaseType }: ExportDialogProps) {
   const { t } = useI18n();
@@ -56,6 +51,11 @@ export function ExportDialog({ open, onClose, tableName, columns, rows, selected
     return rows.length;
   }, [scope, selectedRows, rows]);
 
+  const scopeOptions = useMemo(
+    () => buildExportScopeOptions(t, rows.length, selectedRows.size),
+    [t, rows.length, selectedRows.size],
+  );
+
   const handleExport = useCallback(async () => {
     setError(null);
     setExporting(true);
@@ -72,20 +72,7 @@ export function ExportDialog({ open, onClose, tableName, columns, rows, selected
         databaseType,
       });
 
-      const defaultName = getDefaultFilename(tableName, format);
-      const saved = result.kind === 'binary'
-        ? await fileCommands.saveBase64WithDialog(
-            result.dataBase64,
-            defaultName,
-            result.extension.toUpperCase(),
-            [result.extension],
-          )
-        : await fileCommands.saveTextWithDialog(
-            result.content,
-            defaultName,
-            result.extension.toUpperCase(),
-            [result.extension],
-          );
+      const saved = await saveExportResultWithDialog(result, tableName, format);
       if (!saved) {
         setExporting(false);
         return;
@@ -96,7 +83,7 @@ export function ExportDialog({ open, onClose, tableName, columns, rows, selected
     } finally {
       setExporting(false);
     }
-  }, [columns, selectedCols, tableName, rows, selectedRows, scope, format, onClose]);
+  }, [columns, selectedCols, tableName, rows, selectedRows, scope, format, databaseType, onClose]);
 
   return (
     <Dialog
@@ -123,7 +110,7 @@ export function ExportDialog({ open, onClose, tableName, columns, rows, selected
           <label className="mb-1 block text-xs font-medium text-fg-secondary">{t('export.format')}</label>
           <Select
             value={format}
-            options={FORMAT_OPTIONS}
+            options={OBJECT_EXPORT_FORMAT_OPTIONS}
             onChange={(v) => setFormat(v as ExportFormat)}
           />
         </div>
@@ -133,10 +120,7 @@ export function ExportDialog({ open, onClose, tableName, columns, rows, selected
           <label className="mb-1 block text-xs font-medium text-fg-secondary">{t('export.range')}</label>
           <Select
             value={scope}
-            options={[
-              { value: 'current_page', label: `${t('export.currentPage')} (${rows.length} ${t('common.rows')})` },
-              { value: 'selected', label: `${t('export.selectedRows')} (${selectedRows.size} ${t('common.rows')})`, disabled: selectedRows.size === 0 },
-            ]}
+            options={scopeOptions}
             onChange={(v) => setScope(v as ExportScope)}
           />
         </div>
@@ -170,7 +154,7 @@ export function ExportDialog({ open, onClose, tableName, columns, rows, selected
           {t('export.willExport', { rows: rowCount, cols: selectedCols.size })}
           , {t('export.formatAs')}{' '}
           <span className="font-medium text-fg-secondary">
-            {FORMAT_OPTIONS.find((o) => o.value === format)?.label}
+            {OBJECT_EXPORT_FORMAT_OPTIONS.find((o) => o.value === format)?.label}
           </span>
         </div>
 
