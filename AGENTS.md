@@ -61,10 +61,10 @@ datazen/
 3. 通过 `inventory` crate 实现链接时自动注册；宿主 `DriverRegistry` 仅走 factories
 
 ```bash
-pnpm tauri:dev                         # 全部 path 驱动（默认 all；不含 git）
-pnpm tauri:dev --drivers=basic         # 仅 postgres/mysql/sqlite/redis
+pnpm tauri:dev                         # 默认 basic（postgres/mysql/sqlite/redis）
+pnpm tauri:dev --drivers=all           # 全部 path 驱动（不含 git）
 pnpm tauri:dev --drivers=postgres,mongodb,kiwi   # 显式列表（git 需列出）
-DATAZEN_DRIVERS=basic pnpm tauri:dev   # 环境变量同样生效
+DATAZEN_DRIVERS=all pnpm tauri:dev     # 环境变量同样生效
 DATAZEN_DRIVERS=all pnpm tauri:build   # 全部 path 原生驱动（不含 kiwi/superset/olap）
 ```
 
@@ -148,7 +148,7 @@ DATAZEN_DRIVERS=all pnpm tauri:build   # 全部 path 原生驱动（不含 kiwi/
 ```bash
 pnpm install                           # 安装依赖
 pnpm dev                               # Vite dev server
-pnpm tauri:dev                         # 完整开发（前端 + Rust；默认无插件）
+pnpm tauri:dev                         # 完整开发（前端 + Rust；默认 basic 驱动）
 pnpm build                             # 构建前端（不 inject；打包前由外层 resolve）
 pnpm build:with-drivers                # 单独前端构建并 inject/restore
 pnpm tauri:build                       # 完整应用（外层 inject 一次）
@@ -191,7 +191,7 @@ PR 合并前：`pnpm test:unit` + `cargo test -p datazen --lib`（见 `.github/w
 
 - Path 驱动 Rust crate：`datazen-driver-<id>`；Git 驱动仓库名 `datazen-driver-xxx`，其 Rust crate 名仍可能为 `datazen-plugin-xxx`（以插件仓库为准）
 - `Cargo.toml` 中的插件占位段（`<<plugin-dependencies>>`、`<<plugin-features>>`、`<<plugin-patches>>`）在 git 中应保持为空；`resolve-drivers.mjs` 在构建时填充
-- `src/plugins/generated.ts` 和 `src-tauri/src/plugin_init.rs` 是自动生成的，修改后会被覆盖；**git 中必须是空 stub**（`DatabaseType = never` / 无 `extern crate`）。用 `node scripts/resolve-drivers.mjs --drivers=stub` 刷新 baseline；本地/CI 构建前再 inject。禁止提交已注入内容（CI：`scripts/check-managed-stubs.mjs`）
+- `src/plugins/generated.ts` 和 `src-tauri/src/plugin_init.rs` 是自动生成的，修改后会被覆盖；**git 中必须是空 stub**（`DatabaseType = never` / 无 `extern crate`）。用 `node scripts/resolve-drivers.mjs --drivers=stub` 刷新 baseline；本地/CI 构建前再 inject。禁止提交已注入内容（CI：`scripts/check-managed-stubs.mjs`）。裸跑 `resolve-drivers` 后请 `pnpm drivers:restore`；`with-plugin-inject` / `tauri:dev` / `dev` 会在结束时 restore（残留 `.plugin-file-stash/` 会被当作 orphan 先清再 inject）
 - `.plugins/` 是 gitignored，由 `resolve-drivers.mjs` / `tauri:build` / `tauri:dev` 生成；`pnpm build` 本身不 inject
 - `PROTOCOL_VERSION`（`packages/driver-api`）变更时需同步更新所有插件
 - `AI_PROTOCOL_VERSION`（`packages/ai-api`）变更时需同步更新所有 AI Provider 插件

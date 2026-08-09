@@ -1,22 +1,48 @@
 /** @vitest-environment node */
 import { describe, expect, it } from 'vitest';
 import {
+  INJECT_ACTIVE_ENV,
   planPluginInjectLifecycle,
   runWithPluginInject,
 } from '../with-plugin-inject.mjs';
 
 describe('planPluginInjectLifecycle', () => {
   it('owns stash when none exists', () => {
-    expect(planPluginInjectLifecycle(() => false)).toEqual({
+    expect(planPluginInjectLifecycle({ exists: () => false })).toEqual({
       ownStash: true,
       nested: false,
+      orphanStash: false,
     });
   });
 
-  it('is nested when stash already exists', () => {
-    expect(planPluginInjectLifecycle(() => true)).toEqual({
+  it('treats leftover stash without env as orphan (take ownership)', () => {
+    expect(
+      planPluginInjectLifecycle({ exists: () => true, env: {} }),
+    ).toEqual({
+      ownStash: true,
+      nested: false,
+      orphanStash: true,
+    });
+  });
+
+  it('is nested only when inject-active env is set', () => {
+    expect(
+      planPluginInjectLifecycle({
+        exists: () => true,
+        env: { [INJECT_ACTIVE_ENV]: '1' },
+      }),
+    ).toEqual({
       ownStash: false,
       nested: true,
+      orphanStash: false,
+    });
+  });
+
+  it('accepts legacy function form for exists', () => {
+    expect(planPluginInjectLifecycle(() => false)).toEqual({
+      ownStash: true,
+      nested: false,
+      orphanStash: false,
     });
   });
 });
@@ -27,20 +53,27 @@ describe('runWithPluginInject nested ownership', () => {
     const result = runWithPluginInject({
       argv: ['--drivers=basic', '--', 'echo', 'ok'],
       stashExistsFn: () => false,
+      env: {},
       runResolve: (args) => {
         calls.push(`resolve:${args}`);
       },
       runRestore: () => {
         calls.push('restore');
       },
-      runCommand: (cmd, args) => {
+      runCommand: (cmd, args, env) => {
         calls.push(`cmd:${cmd} ${args.join(' ')}`);
+        expect(env[INJECT_ACTIVE_ENV]).toBe('1');
         return { status: 0 };
       },
       log: () => {},
     });
 
-    expect(result).toEqual({ status: 0, ownStash: true, nested: false });
+    expect(result).toEqual({
+      status: 0,
+      ownStash: true,
+      nested: false,
+      orphanStash: false,
+    });
     expect(calls).toEqual([
       'resolve:--drivers=basic',
       'cmd:echo ok',
@@ -48,12 +81,40 @@ describe('runWithPluginInject nested ownership', () => {
     ]);
   });
 
-  it('nested: skips resolve and restore so outer stash stays for rust build', () => {
+  it('orphan stash: restore then resolve/command/restore', () => {
+    const calls: string[] = [];
+    const logs: string[] = [];
+    const result = runWithPluginInject({
+      argv: ['--', 'echo', 'ok'],
+      stashExistsFn: () => true,
+      env: {},
+      runResolve: (args) => {
+        calls.push(`resolve:${args}`);
+      },
+      runRestore: () => {
+        calls.push('restore');
+      },
+      runCommand: (cmd) => {
+        calls.push(`cmd:${cmd}`);
+        return { status: 0 };
+      },
+      log: (msg) => logs.push(msg),
+    });
+
+    expect(result.ownStash).toBe(true);
+    expect(result.orphanStash).toBe(true);
+    expect(result.nested).toBe(false);
+    expect(calls).toEqual(['restore', 'resolve:', 'cmd:echo', 'restore']);
+    expect(logs.some((l) => /orphan/.test(l))).toBe(true);
+  });
+
+  it('nested via env: skips resolve and restore', () => {
     const calls: string[] = [];
     const logs: string[] = [];
     const result = runWithPluginInject({
       argv: ['--', 'tsc'],
       stashExistsFn: () => true,
+      env: { [INJECT_ACTIVE_ENV]: '1' },
       runResolve: () => {
         calls.push('resolve');
       },
@@ -67,7 +128,12 @@ describe('runWithPluginInject nested ownership', () => {
       log: (msg) => logs.push(msg),
     });
 
-    expect(result).toEqual({ status: 0, ownStash: false, nested: true });
+    expect(result).toEqual({
+      status: 0,
+      ownStash: false,
+      nested: true,
+      orphanStash: false,
+    });
     expect(calls).toEqual(['cmd:tsc']);
     expect(logs.some((l) => /skipping resolve\/restore/.test(l))).toBe(true);
   });
@@ -77,6 +143,7 @@ describe('runWithPluginInject nested ownership', () => {
     const result = runWithPluginInject({
       argv: ['--drivers=kiwi'],
       stashExistsFn: () => true,
+      env: { [INJECT_ACTIVE_ENV]: '1' },
       runResolve: () => {
         calls.push('resolve');
       },
