@@ -5,6 +5,9 @@ import { Input } from '../../../../src/components/ui/Input';
 import { useI18n } from '../../../../src/hooks/useI18n';
 import { pluginInvoke } from '../../../../src/plugins/generated';
 import type { KeyDetail } from '../../../../src/types';
+import { hasRedisJson, isJsonKeyType, looksLikeJsonModuleDetail } from './hasRedisJson';
+import { JsonEditor } from './JsonEditor';
+import { StreamEditor } from './StreamEditor';
 
 export type PluginInvokeFn = (
   pluginId: string,
@@ -202,6 +205,7 @@ export interface KeyDetailEditorProps {
   connectionId: string;
   dbIndex: number;
   detail: KeyDetail;
+  modules?: string[] | null;
   onRefresh: () => void | Promise<void>;
   onRenamed?: (newKey: string) => void;
 }
@@ -210,6 +214,7 @@ export function KeyDetailEditor({
   connectionId,
   dbIndex,
   detail,
+  modules = null,
   onRefresh,
   onRenamed,
 }: KeyDetailEditorProps) {
@@ -241,6 +246,10 @@ export function KeyDetailEditor({
     detail.ttl < 0
       ? t('redis.noExpiry')
       : `${detail.ttl} ${t('redis.seconds')}`;
+
+  const showJsonEditor =
+    isJsonKeyType(detail.keyType) ||
+    (modules !== null && hasRedisJson(modules) && looksLikeJsonModuleDetail(detail));
 
   return (
     <div className="space-y-3 text-xs">
@@ -378,17 +387,25 @@ export function KeyDetailEditor({
       )}
 
       {detail.keyType === 'stream' && (
-        <div className="space-y-2">
-          <p className="text-fg-muted">{t('redis.streamReadOnly')}</p>
-          <div className="rounded-md border border-edge bg-surface-alt p-3">
-            <pre className="whitespace-pre-wrap break-all font-mono text-fg-secondary">
-              {JSON.stringify(detail.value, null, 2)}
-            </pre>
-          </div>
-        </div>
+        <StreamEditor
+          key={detail.key}
+          connectionId={connectionId}
+          dbIndex={dbIndex}
+          redisKey={detail.key}
+        />
       )}
 
-      {!['string', 'hash', 'list', 'set', 'zset', 'stream'].includes(detail.keyType) && (
+      {showJsonEditor && (
+        <JsonEditor
+          key={detail.key}
+          connectionId={connectionId}
+          dbIndex={dbIndex}
+          redisKey={detail.key}
+        />
+      )}
+
+      {!['string', 'hash', 'list', 'set', 'zset', 'stream'].includes(detail.keyType) &&
+        !showJsonEditor && (
         <div className="rounded-md border border-edge bg-surface-alt p-3">
           <pre className="whitespace-pre-wrap break-all font-mono text-fg-secondary">
             {JSON.stringify(detail.value, null, 2)}
@@ -913,6 +930,26 @@ export async function invokeCreateKey(
         invoke,
       );
       break;
+    case 'ReJSON': {
+      const trimmed = initialValue.trim();
+      let jsonValue = '{}';
+      if (trimmed) {
+        try {
+          JSON.parse(trimmed);
+          jsonValue = trimmed;
+        } catch {
+          jsonValue = JSON.stringify(trimmed);
+        }
+      }
+      await invoke('redis', 'json_set', {
+        connectionId: connectionId,
+        dbIndex: dbIndex,
+        key,
+        path: '$',
+        value: jsonValue,
+      });
+      break;
+    }
     default:
       throw new Error(`Unsupported key type: ${keyType}`);
   }

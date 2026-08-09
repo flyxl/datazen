@@ -21,7 +21,7 @@ import { hasRedisJson } from './hasRedisJson';
 export interface JsonEditorProps {
   connectionId: string;
   dbIndex: number;
-  key: string;
+  redisKey: string;
 }
 
 interface JsonGetResult {
@@ -352,7 +352,7 @@ function JsonTreeNode({
   );
 }
 
-export function JsonEditor({ connectionId, dbIndex, key }: JsonEditorProps) {
+export function JsonEditor({ connectionId, dbIndex, redisKey }: JsonEditorProps) {
   const { t } = useI18n();
   const [modules, setModules] = useState<string[] | null>(null);
   const [root, setRoot] = useState<JsonValue | null>(null);
@@ -367,7 +367,7 @@ export function JsonEditor({ connectionId, dbIndex, key }: JsonEditorProps) {
     setLoading(true);
     setError(null);
     try {
-      const result = await invokeJsonGet(connectionId, dbIndex, key, '$');
+      const result = await invokeJsonGet(connectionId, dbIndex, redisKey, '$');
       setRoot((result.value as JsonValue | null) ?? null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -375,7 +375,7 @@ export function JsonEditor({ connectionId, dbIndex, key }: JsonEditorProps) {
     } finally {
       setLoading(false);
     }
-  }, [capable, connectionId, dbIndex, key]);
+  }, [capable, connectionId, dbIndex, redisKey]);
 
   useEffect(() => {
     let cancelled = false;
@@ -393,7 +393,7 @@ export function JsonEditor({ connectionId, dbIndex, key }: JsonEditorProps) {
           setLoading(false);
           return;
         }
-        const result = await invokeJsonGet(connectionId, dbIndex, key, '$');
+        const result = await invokeJsonGet(connectionId, dbIndex, redisKey, '$');
         if (cancelled) return;
         setRoot((result.value as JsonValue | null) ?? null);
       } catch (e) {
@@ -408,12 +408,12 @@ export function JsonEditor({ connectionId, dbIndex, key }: JsonEditorProps) {
     return () => {
       cancelled = true;
     };
-  }, [connectionId, dbIndex, key]);
+  }, [connectionId, dbIndex, redisKey]);
 
   const initRoot = () => {
     setInitBusy(true);
     setError(null);
-    void invokeJsonSet(connectionId, dbIndex, key, '$', {})
+    void invokeJsonSet(connectionId, dbIndex, redisKey, '$', {})
       .then(() => reload())
       .catch((e) => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setInitBusy(false));
@@ -459,9 +459,9 @@ export function JsonEditor({ connectionId, dbIndex, key }: JsonEditorProps) {
           <JsonTreeNode
             connectionId={connectionId}
             dbIndex={dbIndex}
-            redisKey={key}
+            redisKey={redisKey}
             path="$"
-            name={key}
+            name={redisKey}
             value={root}
             depth={0}
             onChanged={() => void reload()}
