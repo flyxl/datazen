@@ -12,6 +12,7 @@ export const HOST_LUCIDE_MAP: Record<UiIconId, string> = {
   'action.refresh': 'RefreshCcw',
   'action.newConnection': 'Plus',
   'action.workflow': 'Workflow',
+  'action.dashboard': 'Gauge',
   'theme.light': 'Sun',
   'theme.dark': 'Moon',
   'theme.system': 'Monitor',
@@ -28,6 +29,7 @@ export const SETTINGS_SECTION_LUCIDE_MAP: Record<string, string> = {
   prompts: 'MessageSquareText',
   mcpServer: 'Server',
   mcpClient: 'Plug',
+  monitor: 'Activity',
   extensions: 'Puzzle',
 };
 

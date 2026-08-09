@@ -30,6 +30,7 @@ export const WINDOW_CAPABILITY_LABEL_SAMPLES = [
   'settings-singleton',
   'docs-singleton',
   'connection-0-1',
+  'dashboard-sample-id',
 ] as const;
 
 interface OpenWindowOptions {
@@ -102,6 +103,10 @@ function openWindow(label: string, options: OpenWindowOptions) {
  * existing window with the same label. Resolving it here instead would
  * only focus the window, which silently does nothing when the window
  * exists but never became visible.
+ *
+ * Native Help → Documentation opens docs from Rust (`open_docs_window`) so
+ * it never fans out through every webview. In-app buttons still use this
+ * helper via `invoke('create_sub_window')`.
  */
 function openSingletonWindow(label: string, options: OpenWindowOptions) {
   openWindow(label, options);
@@ -185,6 +190,17 @@ export function openDocsWindow(section?: string) {
 }
 
 // ── Multi-instance windows ──────────────────────────────────────────
+
+export function openDashboardWindow(dashboardId: string, dashboardName?: string) {
+  openWindow(`dashboard-${dashboardId}`, {
+    params: { window: 'dashboard', dashboardId },
+    width: 1200,
+    height: 800,
+    minWidth: 800,
+    minHeight: 500,
+    title: dashboardName ? `${dashboardName} - DataZen` : t('win.dashboard'),
+  });
+}
 
 export function openConnectionWindow(
   opts: { connectionId?: string; configId?: string },

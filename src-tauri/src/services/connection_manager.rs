@@ -62,21 +62,8 @@ impl ConnectionManager {
     }
 
     pub async fn connect(&self, config_id: &str) -> Result<String, ConnectionError> {
-        let config = self
-            .store
-            .get_connection(config_id)
-            .await
-            .ok_or_else(|| ConnectionError::ConfigNotFound(config_id.to_string()))?;
-
-        let (mut effective_config, tunnel) = self.maybe_start_tunnel(config).await?;
-
-        let driver = self
-            .registry
-            .get(&effective_config.database_type)
-            .await
-            .ok_or(ConnectionError::DriverNotFound(effective_config.database_type.clone()))?;
-
-        let handle = driver.connect(&effective_config).await?;
+        let (driver, handle, mut effective_config, tunnel) =
+            self.establish_connection(config_id).await?;
         let connection_id = handle.id.clone();
 
         if effective_config.server_version.is_none() {
@@ -106,6 +93,51 @@ impl ConnectionManager {
         );
 
         Ok(connection_id)
+    }
+
+    /// Open a driver connection without registering in the UI session map.
+    pub(crate) async fn establish_connection(
+        &self,
+        config_id: &str,
+    ) -> Result<
+        (
+            Arc<dyn DatabaseDriver>,
+            ConnectionHandle,
+            ConnectionConfig,
+            Option<SshTunnel>,
+        ),
+        ConnectionError,
+    > {
+        let config = self
+            .store
+            .get_connection(config_id)
+            .await
+            .ok_or_else(|| ConnectionError::ConfigNotFound(config_id.to_string()))?;
+
+        let (effective_config, tunnel) = self.maybe_start_tunnel(config).await?;
+
+        let driver = self
+            .driver_for_type(&effective_config.database_type)
+            .await?;
+
+        let handle = driver.connect(&effective_config).await?;
+
+        Ok((driver, handle, effective_config, tunnel))
+    }
+
+    pub(crate) async fn driver_for_type(
+        &self,
+        database_type: &DatabaseType,
+    ) -> Result<Arc<dyn DatabaseDriver>, ConnectionError> {
+        self.registry
+            .get(database_type)
+            .await
+            .ok_or_else(|| ConnectionError::DriverNotFound(database_type.clone()))
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn ui_session_map_len(&self) -> usize {
+        self.config_id_map.read().await.len()
     }
 
     /// Return an existing connection for the given config_id, or create a new one.

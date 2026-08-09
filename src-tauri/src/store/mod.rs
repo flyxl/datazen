@@ -15,6 +15,7 @@ use thiserror::Error;
 use tokio::sync::RwLock;
 
 use crate::ai::AiProviderConfig;
+use crate::dashboard::types::MonitorSettings;
 use crate::db::ConnectionConfig;
 use crate::mcp::permission::McpPermissionMode;
 
@@ -85,6 +86,9 @@ pub struct AppSettings {
     /// When true, GUI checks for app updates on startup (default off).
     #[serde(default)]
     pub check_for_updates_on_startup: bool,
+    /// Dashboard monitor / tray / retention settings (nested for settings UI).
+    #[serde(default)]
+    pub monitor: MonitorSettings,
     /// Opaque per-plugin settings keyed by plugin id (e.g. `"redis"`).
     #[serde(default)]
     pub plugin_settings: serde_json::Map<String, serde_json::Value>,
@@ -126,6 +130,7 @@ impl Default for AppSettings {
             mcp_permission_mode: McpPermissionMode::default(),
             context_dir: String::new(),
             check_for_updates_on_startup: false,
+            monitor: MonitorSettings::default(),
             plugin_settings: serde_json::Map::new(),
         }
     }
@@ -1129,6 +1134,27 @@ mod tests {
         let json = serde_json::to_string(&settings).unwrap();
         let parsed: AppSettings = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.language, "de");
+    }
+
+    #[test]
+    fn monitor_settings_json_roundtrip() {
+        use crate::dashboard::types::MonitorSettings;
+
+        let settings = AppSettings {
+            monitor: MonitorSettings {
+                max_concurrent_queries: 4,
+                run_retention_count: 100,
+                tray_enabled: false,
+                ..MonitorSettings::default()
+            },
+            ..AppSettings::default()
+        };
+        let json = serde_json::to_string(&settings).unwrap();
+        let parsed: AppSettings = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.monitor.max_concurrent_queries, 4);
+        assert_eq!(parsed.monitor.run_retention_count, 100);
+        assert!(!parsed.monitor.tray_enabled);
+        assert!(parsed.monitor.close_to_tray);
     }
 
     #[tokio::test]
