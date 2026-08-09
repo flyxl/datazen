@@ -1812,6 +1812,7 @@ dependencies = [
  "async-trait",
  "datazen-driver-api",
  "redis",
+ "serde",
  "serde_json",
  "tauri",
  "tauri-plugin",
