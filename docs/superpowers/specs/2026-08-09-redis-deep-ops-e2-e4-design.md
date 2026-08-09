@@ -1,6 +1,7 @@
 # Redis Deep Ops E2–E4
 
-> **Status:** Draft for review  
+> **Status:** Approved  
+> **Plan:** `docs/superpowers/plans/2026-08-09-redis-deep-ops-e2-e4.md`  
 > **Date:** 2026-08-09  
 > **Depends on:** E1 Implemented (`docs/superpowers/specs/2026-08-09-redis-deep-ops-e1-design.md`)  
 > **Scope:** One joint design for E2 + E3 + E4. Implementation may land as sequential PRs (E2 → E3 → E4) on the same branch series.
