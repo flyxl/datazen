@@ -1,6 +1,6 @@
 //! Background scheduler for dashboard widget refresh.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -46,6 +46,23 @@ pub fn build_schedule_table(dashboards: &[Dashboard]) -> Vec<ScheduledWidget> {
     entries
 }
 
+/// Whether the scheduler should spawn a tick for a widget.
+pub(crate) fn should_spawn_widget_tick(due: bool, in_flight: bool) -> bool {
+    due && !in_flight
+}
+
+/// Returns true when `refresh_sec` has elapsed since `last_run` (or never run).
+pub(crate) fn is_widget_refresh_due(
+    last_run: Option<Instant>,
+    now: Instant,
+    refresh_sec: u32,
+) -> bool {
+    match last_run {
+        None => true,
+        Some(t) => now.duration_since(t).as_secs() >= refresh_sec as u64,
+    }
+}
+
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct RunUpdatedPayload {
@@ -71,6 +88,7 @@ pub struct MonitorEngine {
     dashboard_names: RwLock<HashMap<String, String>>,
     alert_channels: tokio::sync::Mutex<AlertChannelState>,
     last_run: RwLock<HashMap<(String, String), Instant>>,
+    in_flight: RwLock<HashSet<(String, String)>>,
     config_locks: Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
     semaphore: RwLock<Arc<Semaphore>>,
     cancel_token: CancellationToken,
@@ -88,6 +106,7 @@ impl MonitorEngine {
             dashboard_names: RwLock::new(HashMap::new()),
             alert_channels: tokio::sync::Mutex::new(AlertChannelState::new()),
             last_run: RwLock::new(HashMap::new()),
+            in_flight: RwLock::new(HashSet::new()),
             config_locks: Mutex::new(HashMap::new()),
             semaphore: RwLock::new(Arc::new(Semaphore::new(2))),
             cancel_token: CancellationToken::new(),
@@ -277,27 +296,37 @@ impl MonitorEngine {
 
         for entry in schedule {
             let key = (entry.dashboard_id.clone(), entry.widget.id.clone());
-            let due = {
+            let (due, already_in_flight) = {
                 let last = self.last_run.read().await;
-                match last.get(&key) {
-                    None => true,
-                    Some(t) => now.duration_since(*t).as_secs() >= entry.refresh_sec as u64,
-                }
+                let in_flight = self.in_flight.read().await;
+                let due = is_widget_refresh_due(last.get(&key).copied(), now, entry.refresh_sec);
+                (due, in_flight.contains(&key))
             };
-            if !due {
+            if !should_spawn_widget_tick(due, already_in_flight) {
                 continue;
             }
 
-            self.last_run.write().await.insert(key, now);
+            self.in_flight.write().await.insert(key.clone());
 
             let engine = Arc::clone(self);
             let dashboard_id = entry.dashboard_id.clone();
             let widget = entry.widget.clone();
             tokio::spawn(async move {
-                if let Err(e) = engine
+                let result = engine
                     .tick_widget_inner(&dashboard_id, &widget, true)
-                    .await
+                    .await;
+
                 {
+                    let clear_key = (dashboard_id.clone(), widget.id.clone());
+                    engine.in_flight.write().await.remove(&clear_key);
+                    engine
+                        .last_run
+                        .write()
+                        .await
+                        .insert(clear_key, Instant::now());
+                }
+
+                if let Err(e) = result {
                     tracing::warn!(
                         dashboard_id = %dashboard_id,
                         widget_id = %widget.id,
@@ -416,5 +445,30 @@ mod tests {
         assert!(ids.contains(&"w1"));
         assert!(ids.contains(&"w2"));
         assert_eq!(table[0].config_id, "cfg-1");
+    }
+
+    #[test]
+    fn should_spawn_widget_tick_skips_when_in_flight() {
+        assert!(should_spawn_widget_tick(true, false));
+        assert!(!should_spawn_widget_tick(true, true));
+        assert!(!should_spawn_widget_tick(false, false));
+        assert!(!should_spawn_widget_tick(false, true));
+    }
+
+    #[test]
+    fn is_widget_refresh_due_respects_interval() {
+        let t0 = Instant::now();
+        assert!(is_widget_refresh_due(None, t0, 60));
+        assert!(!is_widget_refresh_due(Some(t0), t0, 60));
+        assert!(is_widget_refresh_due(
+            Some(t0),
+            t0 + Duration::from_secs(60),
+            60
+        ));
+        assert!(!is_widget_refresh_due(
+            Some(t0),
+            t0 + Duration::from_secs(59),
+            60
+        ));
     }
 }
