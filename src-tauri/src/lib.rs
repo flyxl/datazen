@@ -679,6 +679,8 @@ pub fn run() {
             commands::run_dashboard_widget,
             commands::export_dashboard_with_dialog,
             commands::import_dashboard_with_dialog,
+            commands::get_monitor_paused,
+            commands::set_monitor_paused,
             rebuild_menu,
         ])
         .on_window_event(|window, event| {
