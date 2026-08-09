@@ -1,6 +1,6 @@
 //! INFO / MEMORY / Slowlog helpers for Redis Monitor plugin commands.
 
-use redis::aio::MultiplexedConnection;
+use redis::AsyncCommands;
 use redis::FromRedisValue;
 use serde::Serialize;
 
@@ -69,10 +69,13 @@ pub struct SlowlogEntry {
     pub client_name: Option<String>,
 }
 
-pub async fn fetch_info(
-    conn: &mut MultiplexedConnection,
+pub async fn fetch_info<C>(
+    conn: &mut C,
     section: Option<&str>,
-) -> Result<String, String> {
+) -> Result<String, String>
+where
+    C: AsyncCommands + redis::aio::ConnectionLike + Send,
+{
     let mut cmd = redis::cmd("INFO");
     if let Some(sec) = section.filter(|s| !s.is_empty()) {
         cmd.arg(sec);
@@ -82,10 +85,13 @@ pub async fn fetch_info(
         .map_err(|e| e.to_string())
 }
 
-pub async fn memory_sample(
-    conn: &mut MultiplexedConnection,
+pub async fn memory_sample<C>(
+    conn: &mut C,
     limit: u32,
-) -> Result<MemorySampleResult, String> {
+) -> Result<MemorySampleResult, String>
+where
+    C: AsyncCommands + redis::aio::ConnectionLike + Send,
+{
     let limit = limit.max(1) as usize;
     let db_size: u64 = redis::cmd("DBSIZE")
         .query_async(conn)
@@ -143,10 +149,13 @@ pub async fn memory_sample(
     })
 }
 
-pub async fn slowlog_get(
-    conn: &mut MultiplexedConnection,
+pub async fn slowlog_get<C>(
+    conn: &mut C,
     count: u32,
-) -> Result<Vec<SlowlogEntry>, String> {
+) -> Result<Vec<SlowlogEntry>, String>
+where
+    C: AsyncCommands + redis::aio::ConnectionLike + Send,
+{
     let count = count.max(1);
     let raw: redis::Value = redis::cmd("SLOWLOG")
         .arg("GET")
@@ -157,7 +166,10 @@ pub async fn slowlog_get(
     parse_slowlog_entries(&raw)
 }
 
-pub async fn slowlog_reset(conn: &mut MultiplexedConnection) -> Result<(), String> {
+pub async fn slowlog_reset<C>(conn: &mut C) -> Result<(), String>
+where
+    C: AsyncCommands + redis::aio::ConnectionLike + Send,
+{
     redis::cmd("SLOWLOG")
         .arg("RESET")
         .query_async::<()>(conn)
@@ -165,7 +177,10 @@ pub async fn slowlog_reset(conn: &mut MultiplexedConnection) -> Result<(), Strin
         .map_err(|e| e.to_string())
 }
 
-pub async fn modules_list(conn: &mut MultiplexedConnection) -> Result<Vec<String>, String> {
+pub async fn modules_list<C>(conn: &mut C) -> Result<Vec<String>, String>
+where
+    C: AsyncCommands + redis::aio::ConnectionLike + Send,
+{
     let raw: redis::Value = redis::cmd("MODULE")
         .arg("LIST")
         .query_async(conn)
