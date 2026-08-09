@@ -2,6 +2,11 @@ export type SqlNamespace = { [name: string]: SqlNamespace } | readonly string[];
 
 export type NamespaceMergeKind = 'branch' | 'tables';
 
+/** True when `schema` is a real grouping label (not a path-nav sentinel). */
+export function isSchemaGroupingSchema(schema: string | null | undefined): boolean {
+  return schema != null && schema !== 'CATALOG' && schema !== 'SCHEMA';
+}
+
 export function pathKey(segments: string[]): string {
   return segments.join('/');
 }

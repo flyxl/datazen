@@ -4,6 +4,7 @@ use crate::db::{ColumnSchema, DatabaseType, TableSchema, Value};
 use crate::store::SyncTask;
 use crate::sync::adapter::{SyncSourceAdapter, SyncTargetAdapter};
 use crate::sync::ddl::build_create_table_ddl;
+use crate::sync::ir::{IRColumn, IRTable, IRType};
 use chrono::Utc;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
@@ -135,14 +136,9 @@ pub async fn compare_table_schemas(
     let tgt_schema = tgt_driver.get_table_schema(&tgt_handle, &table_name).await
         .cmd_err("compare_table_schemas")?;
 
-    let diff = diff_table_schemas(&src_schema, &tgt_schema);
-
-    let mut result = serde_json::json!({
-        "table": table_name,
-        "added": diff.added,
-        "removed": diff.removed,
-        "changed": diff.changed,
-    });
+    let mut source_ddl: Option<String> = None;
+    let mut target_ddl: Option<String> = None;
+    let mut ir_diff: Option<SchemaDiff> = None;
 
     if state.sync_adapters
         .ensure_pair(&src_config.database_type, &tgt_config.database_type)
@@ -171,11 +167,25 @@ pub async fn compare_table_schemas(
 
             let src_ir = src_adapter.table_to_ir(&src_schema, src_full_types.as_ref());
             let tgt_ir = tgt_src_adapter.table_to_ir(&tgt_schema, tgt_full_types.as_ref());
-            result["sourceDdl"] =
-                serde_json::Value::String(build_create_table_ddl(&src_ir, src_tgt_adapter.as_ref()));
-            result["targetDdl"] =
-                serde_json::Value::String(build_create_table_ddl(&tgt_ir, tgt_adapter.as_ref()));
+            ir_diff = Some(diff_table_schemas_ir(&src_ir, &tgt_ir));
+            source_ddl = Some(build_create_table_ddl(&src_ir, src_tgt_adapter.as_ref()));
+            target_ddl = Some(build_create_table_ddl(&tgt_ir, tgt_adapter.as_ref()));
         }
+    }
+
+    let diff = ir_diff.unwrap_or_else(|| diff_table_schemas(&src_schema, &tgt_schema));
+
+    let mut result = serde_json::json!({
+        "table": table_name,
+        "added": diff.added,
+        "removed": diff.removed,
+        "changed": diff.changed,
+    });
+    if let Some(ddl) = source_ddl {
+        result["sourceDdl"] = serde_json::Value::String(ddl);
+    }
+    if let Some(ddl) = target_ddl {
+        result["targetDdl"] = serde_json::Value::String(ddl);
     }
 
     tracing::info!(%table_name, "compare_table_schemas OK");
@@ -404,6 +414,41 @@ fn column_snapshot(col: &ColumnSchema) -> ColumnSnapshot {
     }
 }
 
+/// Stable display string for IR types in schema-diff snapshots.
+fn format_ir_type(t: &IRType) -> String {
+    match t {
+        IRType::Bool => "Bool".into(),
+        IRType::Int8 => "Int8".into(),
+        IRType::Int16 => "Int16".into(),
+        IRType::Int32 => "Int32".into(),
+        IRType::Int64 => "Int64".into(),
+        IRType::Float32 => "Float32".into(),
+        IRType::Float64 => "Float64".into(),
+        IRType::Decimal { precision, scale } => format!("Decimal({precision},{scale})"),
+        IRType::Char { length } => format!("Char({length})"),
+        IRType::Varchar { length } => format!("Varchar({length:?})"),
+        IRType::Text => "Text".into(),
+        IRType::Binary { length } => format!("Binary({length:?})"),
+        IRType::Blob => "Blob".into(),
+        IRType::Date => "Date".into(),
+        IRType::Time { with_timezone } => format!("Time(tz={with_timezone})"),
+        IRType::Timestamp { with_timezone } => format!("Timestamp(tz={with_timezone})"),
+        IRType::Json => "Json".into(),
+        IRType::Uuid => "Uuid".into(),
+        IRType::Bit { length } => format!("Bit({length})"),
+        IRType::Other(s) => format!("Other({s})"),
+    }
+}
+
+fn ir_column_snapshot(col: &IRColumn) -> ColumnSnapshot {
+    ColumnSnapshot {
+        name: col.name.clone(),
+        data_type: format_ir_type(&col.ir_type),
+        nullable: col.nullable,
+        is_primary_key: col.is_primary_key,
+    }
+}
+
 fn diff_table_schemas(src: &TableSchema, tgt: &TableSchema) -> SchemaDiff {
     let src_map: HashMap<&str, &ColumnSchema> =
         src.columns.iter().map(|c| (c.name.as_str(), c)).collect();
@@ -443,6 +488,62 @@ fn diff_table_schemas(src: &TableSchema, tgt: &TableSchema) -> SchemaDiff {
                     name: col.name.clone(),
                     source: column_snapshot(col),
                     target: column_snapshot(tgt_col),
+                    changes,
+                });
+            }
+        }
+    }
+
+    SchemaDiff { added, removed, changed }
+}
+
+/// Compare schemas using IR types so dialect aliases (e.g. `character varying` vs `varchar`)
+/// that map to the same [`IRType`] are not reported as dataType changes.
+fn diff_table_schemas_ir(src_ir: &IRTable, tgt_ir: &IRTable) -> SchemaDiff {
+    let src_map: HashMap<&str, &IRColumn> = src_ir
+        .columns
+        .iter()
+        .map(|c| (c.name.as_str(), c))
+        .collect();
+    let tgt_map: HashMap<&str, &IRColumn> = tgt_ir
+        .columns
+        .iter()
+        .map(|c| (c.name.as_str(), c))
+        .collect();
+
+    let mut added = Vec::new();
+    let mut removed = Vec::new();
+    let mut changed = Vec::new();
+
+    for col in &tgt_ir.columns {
+        if !src_map.contains_key(col.name.as_str()) {
+            added.push(ir_column_snapshot(col));
+        }
+    }
+
+    for col in &src_ir.columns {
+        if !tgt_map.contains_key(col.name.as_str()) {
+            removed.push(ir_column_snapshot(col));
+        }
+    }
+
+    for col in &src_ir.columns {
+        if let Some(tgt_col) = tgt_map.get(col.name.as_str()) {
+            let mut changes = Vec::new();
+            if col.ir_type != tgt_col.ir_type {
+                changes.push("dataType".into());
+            }
+            if col.nullable != tgt_col.nullable {
+                changes.push("nullable".into());
+            }
+            if col.is_primary_key != tgt_col.is_primary_key {
+                changes.push("isPrimaryKey".into());
+            }
+            if !changes.is_empty() {
+                changed.push(ChangedColumnDiff {
+                    name: col.name.clone(),
+                    source: ir_column_snapshot(col),
+                    target: ir_column_snapshot(tgt_col),
                     changes,
                 });
             }
@@ -916,4 +1017,144 @@ pub async fn check_sync_conflicts(
         "hasConflicts": !conflicts.is_empty(),
         "conflicts": conflicts,
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::sync::ir::IRColumn;
+
+    fn ir_col(name: &str, ir_type: IRType, nullable: bool, is_primary_key: bool) -> IRColumn {
+        IRColumn {
+            name: name.into(),
+            ir_type,
+            nullable,
+            default_expr: None,
+            is_primary_key,
+            is_auto_increment: false,
+            comment: None,
+        }
+    }
+
+    #[test]
+    fn ir_diff_treats_equivalent_varchar_as_same() {
+        // Postgres `character varying(100)` and MySQL `varchar(100)` both map to
+        // IRType::Varchar { length: Some(100) } — must not report dataType change.
+        let src = IRTable {
+            name: "t".into(),
+            columns: vec![ir_col(
+                "name",
+                IRType::Varchar { length: Some(100) },
+                true,
+                false,
+            )],
+            primary_keys: vec![],
+        };
+        let tgt = IRTable {
+            name: "t".into(),
+            columns: vec![ir_col(
+                "name",
+                IRType::Varchar { length: Some(100) },
+                true,
+                false,
+            )],
+            primary_keys: vec![],
+        };
+
+        let diff = diff_table_schemas_ir(&src, &tgt);
+        assert!(diff.added.is_empty());
+        assert!(diff.removed.is_empty());
+        assert!(diff.changed.is_empty());
+    }
+
+    #[test]
+    fn ir_diff_detects_type_nullable_and_pk_changes() {
+        let src = IRTable {
+            name: "t".into(),
+            columns: vec![
+                ir_col("id", IRType::Int32, false, true),
+                ir_col("name", IRType::Varchar { length: Some(50) }, true, false),
+            ],
+            primary_keys: vec!["id".into()],
+        };
+        let tgt = IRTable {
+            name: "t".into(),
+            columns: vec![
+                ir_col("id", IRType::Int64, false, false),
+                ir_col("name", IRType::Varchar { length: Some(50) }, false, false),
+                ir_col("extra", IRType::Text, true, false),
+            ],
+            primary_keys: vec![],
+        };
+
+        let diff = diff_table_schemas_ir(&src, &tgt);
+        assert_eq!(diff.added.len(), 1);
+        assert_eq!(diff.added[0].name, "extra");
+        assert_eq!(diff.added[0].data_type, "Text");
+        assert!(diff.removed.is_empty());
+        assert_eq!(diff.changed.len(), 2);
+
+        let id = diff.changed.iter().find(|c| c.name == "id").unwrap();
+        assert!(id.changes.contains(&"dataType".into()));
+        assert!(id.changes.contains(&"isPrimaryKey".into()));
+        assert_eq!(id.source.data_type, "Int32");
+        assert_eq!(id.target.data_type, "Int64");
+
+        let name = diff.changed.iter().find(|c| c.name == "name").unwrap();
+        assert_eq!(name.changes, vec!["nullable".to_string()]);
+    }
+
+    #[test]
+    fn format_ir_type_is_stable() {
+        assert_eq!(
+            format_ir_type(&IRType::Varchar { length: Some(255) }),
+            "Varchar(Some(255))"
+        );
+        assert_eq!(format_ir_type(&IRType::Varchar { length: None }), "Varchar(None)");
+        assert_eq!(
+            format_ir_type(&IRType::Decimal {
+                precision: 10,
+                scale: 2
+            }),
+            "Decimal(10,2)"
+        );
+    }
+
+    #[test]
+    fn raw_diff_still_flags_native_string_mismatch() {
+        let src = TableSchema {
+            table_name: "t".into(),
+            columns: vec![ColumnSchema {
+                name: "name".into(),
+                data_type: "character varying(100)".into(),
+                nullable: true,
+                default_value: None,
+                comment: None,
+                is_primary_key: false,
+                is_auto_increment: false,
+            }],
+            primary_keys: vec![],
+            indexes: vec![],
+            foreign_keys: vec![],
+        };
+        let tgt = TableSchema {
+            table_name: "t".into(),
+            columns: vec![ColumnSchema {
+                name: "name".into(),
+                data_type: "varchar(100)".into(),
+                nullable: true,
+                default_value: None,
+                comment: None,
+                is_primary_key: false,
+                is_auto_increment: false,
+            }],
+            primary_keys: vec![],
+            indexes: vec![],
+            foreign_keys: vec![],
+        };
+
+        let diff = diff_table_schemas(&src, &tgt);
+        assert_eq!(diff.changed.len(), 1);
+        assert!(diff.changed[0].changes.contains(&"dataType".into()));
+    }
 }

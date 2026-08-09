@@ -3,6 +3,7 @@ import { databaseCommands } from '../commands/database';
 import { DB_REGISTRY } from '../lib/databaseTypes';
 import { ensureNamespacePath as ensureNamespacePathImpl } from '../lib/ensureNamespace';
 import {
+  isSchemaGroupingSchema,
   mergeNamespacePath,
   pathKey,
   type NamespaceMergeKind,
@@ -57,10 +58,6 @@ export function resolveVisibleDatabases(
 }
 
 const EMPTY_NAMESPACE: SqlNamespace = {};
-
-function isSchemaGroupingSchema(schema: string | null | undefined): boolean {
-  return schema != null && schema !== 'CATALOG' && schema !== 'SCHEMA';
-}
 
 export interface LoadForConnectionOptions {
   skipLoadTables?: boolean;
