@@ -34,8 +34,8 @@ export async function invokeDeleteKeys(
   invoke: PluginInvokeFn = pluginInvoke,
 ): Promise<number> {
   return (await invoke('redis', 'delete_keys', {
-    connection_id: connectionId,
-    db_index: dbIndex,
+    connectionId: connectionId,
+    dbIndex: dbIndex,
     keys,
   })) as number;
 }
@@ -47,8 +47,8 @@ export async function invokeBatchDeletePattern(
   invoke: PluginInvokeFn = pluginInvoke,
 ): Promise<BatchDeleteResult> {
   return (await invoke('redis', 'batch_delete_pattern', {
-    connection_id: connectionId,
-    db_index: dbIndex,
+    connectionId: connectionId,
+    dbIndex: dbIndex,
     pattern,
   })) as BatchDeleteResult;
 }
@@ -61,10 +61,10 @@ export async function invokeBatchSetTtl(
   invoke: PluginInvokeFn = pluginInvoke,
 ): Promise<BatchSetTtlResult> {
   return (await invoke('redis', 'batch_set_ttl', {
-    connection_id: connectionId,
-    db_index: dbIndex,
+    connectionId: connectionId,
+    dbIndex: dbIndex,
     keys,
-    ttl_seconds: ttlSeconds,
+    ttlSeconds: ttlSeconds,
   })) as BatchSetTtlResult;
 }
 
@@ -77,10 +77,10 @@ export async function invokeBatchRenamePrefix(
   invoke: PluginInvokeFn = pluginInvoke,
 ): Promise<BatchRenameResult> {
   return (await invoke('redis', 'batch_rename_prefix', {
-    connection_id: connectionId,
-    db_index: dbIndex,
-    old_prefix: oldPrefix,
-    new_prefix: newPrefix,
+    connectionId: connectionId,
+    dbIndex: dbIndex,
+    oldPrefix: oldPrefix,
+    newPrefix: newPrefix,
     keys: keys ?? null,
   })) as BatchRenameResult;
 }
@@ -92,8 +92,8 @@ export async function invokeCountMatching(
   invoke: PluginInvokeFn = pluginInvoke,
 ): Promise<number> {
   return (await invoke('redis', 'count_matching', {
-    connection_id: connectionId,
-    db_index: dbIndex,
+    connectionId: connectionId,
+    dbIndex: dbIndex,
     pattern,
   })) as number;
 }
