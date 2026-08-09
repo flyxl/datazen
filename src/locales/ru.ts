@@ -216,6 +216,8 @@ const translations = {
   'newConn.adbNotInstalled': 'adb не установлен или отсутствует в PATH',
   'settings.title': 'Настройки',
   'settings.general': 'Общий',
+  'settings.extensions.title': 'Расширения',
+  'settings.extensions.empty': 'В этой сборке нет доступных расширений плагинов.',
   'settings.theme': 'Тема',
   'settings.theme.pack': 'Пакет тем',
   'settings.theme.packDefault': 'Встроенная по умолчанию',

@@ -23,13 +23,14 @@ export function PluginSettingsSection() {
 
   const handlePluginChange = useCallback(
     async (pluginId: string, next: unknown) => {
+      const latest = useSettingsStore.getState().settings.pluginSettings;
       await updateSettings({
-        pluginSettings: mergePluginSettings(settings.pluginSettings, pluginId, next),
+        pluginSettings: mergePluginSettings(latest, pluginId, next),
       });
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     },
-    [settings.pluginSettings, updateSettings],
+    [updateSettings],
   );
 
   const readPluginValue = (pluginId: string): unknown => {

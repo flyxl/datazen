@@ -28,6 +28,7 @@ export const SETTINGS_SECTION_LUCIDE_MAP: Record<string, string> = {
   prompts: 'MessageSquareText',
   mcpServer: 'Server',
   mcpClient: 'Plug',
+  extensions: 'Puzzle',
 };
 
 export function settingsSectionIconId(section: keyof typeof SETTINGS_SECTION_LUCIDE_MAP): string {
