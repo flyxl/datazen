@@ -27,6 +27,7 @@ fn clone_app_state(state: &AppState) -> Arc<AppState> {
     Arc::new(AppState {
         driver_registry: state.driver_registry.clone(),
         connection_manager: state.connection_manager.clone(),
+        monitor_connections: state.monitor_connections.clone(),
         store: state.store.clone(),
         schema_cache: state.schema_cache.clone(),
         sync_adapters: state.sync_adapters.clone(),

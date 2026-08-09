@@ -1,6 +1,7 @@
 pub mod ai;
 mod app_data_archive;
 mod dashboard;
+mod monitor;
 mod theme;
 mod cache;
 mod commands;
@@ -388,6 +389,9 @@ fn finish_app_state(
         store.clone(),
     ));
     connection_manager.clone().start_cleanup_task();
+    let monitor_connections = Arc::new(monitor::MonitorConnectionRegistry::new(
+        connection_manager.clone(),
+    ));
 
     let data_dir = store.data_dir().to_path_buf();
 
@@ -396,6 +400,7 @@ fn finish_app_state(
     AppState {
         driver_registry: registry,
         connection_manager: connection_manager.clone(),
+        monitor_connections,
         store,
         schema_cache: schema_cache.clone(),
         sync_adapters,

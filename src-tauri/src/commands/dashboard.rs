@@ -138,7 +138,7 @@ pub async fn run_dashboard_widget(
 
     let settings = state.store.get_settings().await;
     execute_widget_once(
-        &state.connection_manager,
+        &state.monitor_connections,
         data_dir,
         &settings,
         &dashboard_id,
