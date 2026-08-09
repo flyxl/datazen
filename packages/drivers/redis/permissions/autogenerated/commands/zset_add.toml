@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-zset-add"
+description = "Enables the zset_add command without any pre-configured scope."
+commands.allow = ["zset_add"]
+
+[[permission]]
+identifier = "deny-zset-add"
+description = "Denies the zset_add command without any pre-configured scope."
+commands.deny = ["zset_add"]

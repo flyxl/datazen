@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-batch-set-ttl"
+description = "Enables the batch_set_ttl command without any pre-configured scope."
+commands.allow = ["batch_set_ttl"]
+
+[[permission]]
+identifier = "deny-batch-set-ttl"
+description = "Denies the batch_set_ttl command without any pre-configured scope."
+commands.deny = ["batch_set_ttl"]

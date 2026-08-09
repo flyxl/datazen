@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-set-ttl"
+description = "Enables the set_ttl command without any pre-configured scope."
+commands.allow = ["set_ttl"]
+
+[[permission]]
+identifier = "deny-set-ttl"
+description = "Denies the set_ttl command without any pre-configured scope."
+commands.deny = ["set_ttl"]

@@ -189,6 +189,8 @@ export interface AppSettings {
   checkForUpdatesOnStartup: boolean;
   /** Dashboard monitor / tray / retention settings. */
   monitor: MonitorSettings;
+  /** Opaque per-plugin settings keyed by plugin id (e.g. `"redis"`). */
+  pluginSettings: Record<string, unknown>;
 }
 
 export type FilterOperator =
