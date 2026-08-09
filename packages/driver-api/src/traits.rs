@@ -204,6 +204,46 @@ pub trait DatabaseDriver: Send + Sync {
     fn prompt_overrides(&self) -> HashMap<PromptScenario, PromptTemplate> {
         HashMap::new()
     }
+
+    /// Emit `CREATE TABLE` DDL for a single table.
+    ///
+    /// Default builds DDL from [`Self::get_table_schema`].
+    async fn dump_table_ddl(
+        &self,
+        handle: &ConnectionHandle,
+        table: &str,
+    ) -> Result<String, DriverError> {
+        crate::sql_dump::dump_table_ddl_from_schema::<Self>(self, handle, table).await
+    }
+
+    /// Dump an entire database to SQL text.
+    ///
+    /// Default refuses `create_database` with [`DriverError::NotSupported`] and
+    /// otherwise delegates to [`crate::sql_dump::dump_sql_database`].
+    async fn dump_database(
+        &self,
+        handle: &ConnectionHandle,
+        database: &str,
+        opts: &BackupDumpOptions,
+    ) -> Result<String, DriverError> {
+        if opts.create_database {
+            return Err(DriverError::NotSupported(
+                "Backup option 'create' (CREATE DATABASE) is not supported for this driver".into(),
+            ));
+        }
+        crate::sql_dump::dump_sql_database::<Self>(self, handle, database, opts).await
+    }
+
+    /// Restore a SQL dump by executing statements against the live connection.
+    ///
+    /// Default splits on `;` (same as the former host restore loop).
+    async fn restore_sql(
+        &self,
+        handle: &ConnectionHandle,
+        sql: &str,
+    ) -> Result<(), DriverError> {
+        crate::sql_dump::restore_sql_statements::<Self>(self, handle, sql).await
+    }
 }
 
 #[async_trait]

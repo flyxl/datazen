@@ -1,5 +1,6 @@
 use super::error::{CmdExt, CommandError};
 use super::AppState;
+use crate::db::{BackupDumpOptions, DriverError};
 use std::path::PathBuf;
 use tauri::State;
 
@@ -8,6 +9,13 @@ fn require_webdriver_path_ipc(disabled_msg: &'static str) -> Result<(), CommandE
         return Err(CommandError::Validation(disabled_msg.into()));
     }
     Ok(())
+}
+
+fn map_driver_err(e: DriverError) -> CommandError {
+    match e {
+        DriverError::NotSupported(msg) => CommandError::Validation(msg),
+        other => CommandError::Driver(other),
+    }
 }
 
 #[tauri::command]
@@ -92,108 +100,25 @@ async fn backup_database_to_path(
 
     let db_name = database
         .as_deref()
-        .unwrap_or(config.database.as_deref().unwrap_or(""));
-    let opts: std::collections::HashSet<String> =
+        .unwrap_or(config.database.as_deref().unwrap_or(""))
+        .to_string();
+    let opt_set: std::collections::HashSet<String> =
         options.unwrap_or_default().into_iter().collect();
-    let schema_only = opts.contains("schema-only") || opts.contains("no-data");
-    let data_only = opts.contains("data-only") || opts.contains("no-create-info");
-    let add_drop = opts.contains("clean") || opts.contains("add-drop-table");
-    let add_create_db = opts.contains("create");
-    // Host-side CREATE DATABASE / \connect is dialect-mixed and unsafe across
-    // engines. Refuse until backup moves into DatabaseDriver dump APIs.
-    if add_create_db {
-        return Err(CommandError::Validation(
-            "Backup option 'create' is not supported; use a dump without create, or wait for driver-native backup".into(),
-        ));
-    }
+    let opts = BackupDumpOptions {
+        schema_only: opt_set.contains("schema-only") || opt_set.contains("no-data"),
+        data_only: opt_set.contains("data-only") || opt_set.contains("no-create-info"),
+        clean: opt_set.contains("clean") || opt_set.contains("add-drop-table"),
+        create_database: opt_set.contains("create"),
+    };
 
-    let tables = driver
-        .get_tables(&handle, db_name)
+    let out = driver
+        .dump_database(&handle, &db_name, &opts)
         .await
-        .cmd_err("backup_database")?;
-
-    let qi = |name: &str| driver.quote_ident(name);
-
-    let mut out = String::new();
-    out.push_str(&format!("-- DataZen backup: {}\n", db_name));
-    out.push_str(&format!("-- Date: {}\n", chrono::Utc::now().to_rfc3339()));
-    if !opts.is_empty() {
-        out.push_str(&format!(
-            "-- Options: {}\n",
-            opts.iter().cloned().collect::<Vec<_>>().join(", ")
-        ));
-    }
-    out.push('\n');
-
-    for table in &tables {
-        let tname = &table.name;
-
-        let schema = driver
-            .get_table_schema(&handle, tname)
-            .await
-            .cmd_err("backup_database")?;
-
-        out.push_str(&format!("-- Table: {}\n", tname));
-
-        if add_drop {
-            out.push_str(&format!("DROP TABLE IF EXISTS {};\n", qi(tname)));
-        }
-
-        if !data_only {
-            let cols_sql: Vec<String> = schema
-                .columns
-                .iter()
-                .map(|c| {
-                    let mut def = format!("  {} {}", qi(&c.name), c.data_type);
-                    if !c.nullable {
-                        def.push_str(" NOT NULL");
-                    }
-                    if let Some(ref dv) = c.default_value {
-                        def.push_str(&format!(" DEFAULT {}", dv));
-                    }
-                    def
-                })
-                .collect();
-
-            let mut create = format!(
-                "CREATE TABLE IF NOT EXISTS {} (\n{}",
-                qi(tname),
-                cols_sql.join(",\n")
-            );
-            if !schema.primary_keys.is_empty() {
-                let pks: Vec<String> = schema.primary_keys.iter().map(|k| qi(k)).collect();
-                create.push_str(&format!(",\n  PRIMARY KEY ({})", pks.join(", ")));
-            }
-            create.push_str("\n);\n\n");
-            out.push_str(&create);
-        }
-
-        if !schema_only {
-            let col_names: Vec<String> = schema.columns.iter().map(|c| qi(&c.name)).collect();
-            let select_sql = format!("SELECT {} FROM {}", col_names.join(", "), qi(tname));
-
-            match driver.query(&handle, &select_sql).await {
-                Ok(result) => {
-                    for row in &result.rows {
-                        let vals: Vec<String> = row
-                            .iter()
-                            .map(|v| driver.format_sql_literal(v))
-                            .collect();
-                        out.push_str(&format!(
-                            "INSERT INTO {} ({}) VALUES ({});\n",
-                            qi(tname),
-                            col_names.join(", "),
-                            vals.join(", ")
-                        ));
-                    }
-                    out.push('\n');
-                }
-                Err(e) => {
-                    out.push_str(&format!("-- Error dumping data for {tname}: {e}\n\n"));
-                }
-            }
-        }
-    }
+        .map_err(|e| {
+            let err = map_driver_err(e);
+            tracing::error!(cmd = "backup_database", error = %err);
+            err
+        })?;
 
     let data = out.as_bytes();
     if compress.unwrap_or(false) {
@@ -270,46 +195,17 @@ async fn restore_database_from_path(
         .await
         .cmd_err("restore_database")?;
 
-    let statements: Vec<&str> = sql
-        .split(';')
-        .map(|s| s.trim())
-        .filter(|s| !s.is_empty() && !s.starts_with("--"))
-        .collect();
+    driver
+        .restore_sql(&handle, &sql)
+        .await
+        .map_err(|e| {
+            let err = map_driver_err(e);
+            tracing::error!(cmd = "restore_database", error = %err);
+            err
+        })?;
 
-    let mut errors = Vec::new();
-    for stmt in &statements {
-        let full = format!("{};", stmt);
-        if let Err(e) = driver.execute(&handle, &full).await {
-            let max = 80;
-            let end = if stmt.len() <= max {
-                stmt.len()
-            } else {
-                let mut e = max;
-                while e > 0 && !stmt.is_char_boundary(e) {
-                    e -= 1;
-                }
-                e
-            };
-            errors.push(format!("Error executing: {}... -> {e}", &stmt[..end]));
-        }
-    }
-
-    if errors.is_empty() {
-        tracing::info!(
-            %connection_id,
-            statements = statements.len(),
-            "restore_database OK"
-        );
-        Ok(())
-    } else {
-        let msg = format!(
-            "Partial restore failure ({}/{} statements failed):\n{}",
-            errors.len(),
-            statements.len(),
-            errors.join("\n")
-        );
-        Err(CommandError::Internal(msg))
-    }
+    tracing::info!(%connection_id, "restore_database OK");
+    Ok(())
 }
 
 #[cfg(test)]
@@ -326,5 +222,17 @@ mod tests {
             assert!(result.is_err());
             assert!(result.unwrap_err().to_string().contains("disabled"));
         }
+    }
+
+    #[test]
+    fn map_driver_err_not_supported_is_validation() {
+        let err = map_driver_err(DriverError::NotSupported("create".into()));
+        assert!(matches!(err, CommandError::Validation(msg) if msg == "create"));
+    }
+
+    #[test]
+    fn map_driver_err_other_stays_driver() {
+        let err = map_driver_err(DriverError::QueryFailed("boom".into()));
+        assert!(matches!(err, CommandError::Driver(_)));
     }
 }
