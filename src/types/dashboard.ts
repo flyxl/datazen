@@ -58,6 +58,13 @@ export interface Dashboard {
 
 export type WidgetRunStatus = 'ok' | 'error' | 'timeout';
 
+export interface RunIndexEntry {
+  id: string;
+  startedAt: string;
+  status: WidgetRunStatus;
+  alertFired?: boolean;
+}
+
 export interface WidgetRun {
   id: string;
   dashboardId: string;
