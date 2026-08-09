@@ -41,6 +41,7 @@ export function StructureColumnTable({
 }: StructureColumnTableProps) {
   const { t } = useI18n();
   const showComment = uiConfig.fields.comment === true;
+  const showColumnUnique = mode === 'create';
   const columnTypes = uiConfig.columnTypes;
 
   const disabledTitle = (control: Parameters<typeof capEnabled>[1]) => {
@@ -57,7 +58,9 @@ export function StructureColumnTable({
           <th className="min-w-[160px] border-b border-edge px-2 py-2.5 font-medium">{t('structView.type')}</th>
           <th className="w-[60px] border-b border-edge px-2 py-2.5 text-center font-medium">{t('structView.nullable')}</th>
           <th className="w-[60px] border-b border-edge px-2 py-2.5 text-center font-medium">{t('structView.primaryKey')}</th>
-          <th className="w-[60px] border-b border-edge px-2 py-2.5 text-center font-medium">{t('structView.unique')}</th>
+          {showColumnUnique && (
+            <th className="w-[60px] border-b border-edge px-2 py-2.5 text-center font-medium">{t('structView.unique')}</th>
+          )}
           <th className="min-w-[120px] border-b border-edge px-2 py-2.5 font-medium">{t('structView.defaultValue')}</th>
           {showComment && (
             <th className="min-w-[120px] border-b border-edge px-2 py-2.5 font-medium">{t('structView.comment')}</th>
@@ -155,16 +158,18 @@ export function StructureColumnTable({
                   className="h-3.5 w-3.5 accent-accent disabled:opacity-40"
                 />
               </td>
-              <td className="px-2 py-1.5 text-center">
-                <input
-                  type="checkbox"
-                  checked={col.isUnique ?? false}
-                  disabled={!canAlterUnique}
-                  title={!canAlterUnique ? disabledTitle('createIndex') : undefined}
-                  onChange={(e) => onUpdate(col.id, { isUnique: e.target.checked })}
-                  className="h-3.5 w-3.5 accent-accent disabled:opacity-40"
-                />
-              </td>
+              {showColumnUnique && (
+                <td className="px-2 py-1.5 text-center">
+                  <input
+                    type="checkbox"
+                    checked={col.isUnique ?? false}
+                    disabled={!canAlterUnique}
+                    title={!canAlterUnique ? disabledTitle('createIndex') : undefined}
+                    onChange={(e) => onUpdate(col.id, { isUnique: e.target.checked })}
+                    className="h-3.5 w-3.5 accent-accent disabled:opacity-40"
+                  />
+                </td>
+              )}
               <td className="px-2 py-1.5">
                 <Input
                   value={col.defaultValue ?? ''}

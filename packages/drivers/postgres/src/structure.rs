@@ -81,6 +81,9 @@ fn column_def(col: &StructureColumnDraft) -> String {
     if !col.nullable {
         parts.push("NOT NULL".to_string());
     }
+    if col.is_unique && !col.is_primary_key {
+        parts.push("UNIQUE".to_string());
+    }
     if let Some(default) = &col.default_value {
         parts.push(format!("DEFAULT {default}"));
     }
@@ -643,6 +646,28 @@ mod tests {
         assert!(plan.statements[0].sql.starts_with(r#"CREATE TABLE "public"."users" ("#));
         assert!(plan.statements[0].sql.contains(r#""id" integer NOT NULL"#));
         assert!(plan.statements[0].sql.contains(r#"PRIMARY KEY ("id")"#));
+    }
+
+    #[test]
+    fn plan_create_table_column_unique() {
+        let caps = caps_for_version("14.5");
+        let request = StructureChangeRequest {
+            mode: StructureChangeMode::Create,
+            schema: Some("public".into()),
+            table: "users".into(),
+            original_columns: vec![],
+            current_columns: vec![
+                sample_column("c1", "id"),
+                StructureColumnDraft {
+                    is_unique: true,
+                    ..sample_column("c2", "email")
+                },
+            ],
+            original_indexes: vec![],
+            current_indexes: vec![],
+        };
+        let plan = plan_structure_changes_with_caps(&caps, &request).unwrap();
+        assert!(plan.statements[0].sql.contains(r#""email" text UNIQUE"#));
     }
 
     #[test]
