@@ -7,6 +7,7 @@ use std::path::Path;
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
+use crate::dashboard::alert::evaluate_run_alert;
 use crate::dashboard::runs::{write_run, MAX_RUN_ROWS};
 use crate::dashboard::store::load_monitor_settings;
 use crate::dashboard::types::{DashboardWidget, WidgetRun, WidgetRunStatus};
@@ -128,7 +129,7 @@ pub async fn execute_widget_once(
 
     let finished_at = Utc::now();
 
-    let run = match query_result {
+    let mut run = match query_result {
         Ok(multi) => {
             let results = multi.results;
             let stmt = results
@@ -179,6 +180,8 @@ pub async fn execute_widget_once(
             &err.to_string(),
         ),
     };
+
+    evaluate_run_alert(&mut run, widget);
 
     let retention = load_monitor_settings(settings);
     write_run(data_dir, &run, &retention)?;
