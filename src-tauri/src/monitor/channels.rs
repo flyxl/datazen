@@ -1,7 +1,7 @@
 //! Alert notification channels: desktop, webhook, email stub.
 
 use std::collections::HashMap;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use tauri::AppHandle;
 use tauri_plugin_notification::NotificationExt;
@@ -12,6 +12,7 @@ use crate::dashboard::types::{
 };
 
 const CONSECUTIVE_FAILURE_THRESHOLD: u32 = 3;
+const WEBHOOK_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Debug, Clone, serde::Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -53,12 +54,28 @@ enum AlertEdge {
     Recovered,
 }
 
+/// Notification computed under lock; dispatched after the lock is released.
+#[derive(Debug, Clone, PartialEq)]
+pub enum PendingNotification {
+    Alert {
+        payload: AlertPayload,
+        title: String,
+        body: String,
+        channels: Vec<AlertChannel>,
+    },
+    QueryFailureWarning {
+        title: String,
+        body: String,
+    },
+}
+
 /// Tracks alert edges, cooldowns, and consecutive query failures for channel dispatch.
 pub struct AlertChannelState {
     cooldown: CooldownBook,
     prev_alert_fired: HashMap<(String, String), bool>,
     consecutive_failures: HashMap<(String, String), u32>,
     failure_warning_sent: HashMap<(String, String), bool>,
+    http_client: reqwest::Client,
 }
 
 impl AlertChannelState {
@@ -68,31 +85,49 @@ impl AlertChannelState {
             prev_alert_fired: HashMap::new(),
             consecutive_failures: HashMap::new(),
             failure_warning_sent: HashMap::new(),
+            http_client: reqwest::Client::builder()
+                .timeout(WEBHOOK_TIMEOUT)
+                .build()
+                .expect("reqwest client"),
         }
     }
 
-    pub async fn process_run(
+    pub fn http_client(&self) -> &reqwest::Client {
+        &self.http_client
+    }
+
+    /// Updates alert/failure state under lock. Returns notifications to send afterward.
+    pub fn process_run_state(
         &mut self,
-        app: Option<&AppHandle>,
-        settings: &MonitorSettings,
         dashboard_id: &str,
         dashboard_name: &str,
         widget: &DashboardWidget,
         run: &WidgetRun,
-    ) {
+    ) -> Vec<PendingNotification> {
         let key = (dashboard_id.to_string(), widget.id.clone());
         let now = Instant::now();
+        let mut out = Vec::new();
 
-        self.track_query_failures(app, dashboard_name, widget, run, &key)
-            .await;
+        if let Some((title, body)) =
+            self.track_query_failures(dashboard_name, widget, run, &key)
+        {
+            out.push(PendingNotification::QueryFailureWarning { title, body });
+        }
 
         let Some(rule) = widget.alert.as_ref() else {
-            return;
+            return out;
         };
 
-        let current_fired = run.status == WidgetRunStatus::Ok && run.alert_fired == Some(true);
+        if run.status != WidgetRunStatus::Ok {
+            return out;
+        }
+
+        let Some(current_fired) = run.alert_fired else {
+            return out;
+        };
+
         let prev_fired = self.prev_alert_fired.get(&key).copied().unwrap_or(false);
-        self.prev_alert_fired.insert(key.clone(), current_fired);
+        self.prev_alert_fired.insert(key, current_fired);
 
         let edge = if !prev_fired && current_fired {
             Some(AlertEdge::Fired)
@@ -103,13 +138,13 @@ impl AlertChannelState {
         };
 
         let Some(edge) = edge else {
-            return;
+            return out;
         };
 
         if edge == AlertEdge::Fired {
             let cooldown = rule.cooldown_sec as u64;
             if !self.cooldown.should_notify(&widget.id, cooldown, now) {
-                return;
+                return out;
             }
             self.cooldown.mark_sent(&widget.id, now);
         }
@@ -132,17 +167,22 @@ impl AlertChannelState {
             ),
         };
 
-        dispatch_channels(app, settings, rule, &payload, &title, &body).await;
+        out.push(PendingNotification::Alert {
+            payload,
+            title,
+            body,
+            channels: rule.channels.clone(),
+        });
+        out
     }
 
-    async fn track_query_failures(
+    fn track_query_failures(
         &mut self,
-        app: Option<&AppHandle>,
         dashboard_name: &str,
         widget: &DashboardWidget,
         run: &WidgetRun,
         key: &(String, String),
-    ) {
+    ) -> Option<(String, String)> {
         let failed = run.status != WidgetRunStatus::Ok;
         if failed {
             let count = self
@@ -153,14 +193,6 @@ impl AlertChannelState {
             if *count >= CONSECUTIVE_FAILURE_THRESHOLD
                 && !self.failure_warning_sent.get(key).copied().unwrap_or(false)
             {
-                let title = format!("Query failed: {}", widget.title);
-                let body = format!(
-                    "{}: {} consecutive query failures",
-                    dashboard_name, count
-                );
-                if let Some(app) = app {
-                    notify_desktop(app, &title, &body).await;
-                }
                 self.failure_warning_sent.insert(key.clone(), true);
                 tracing::warn!(
                     dashboard_id = %key.0,
@@ -168,11 +200,19 @@ impl AlertChannelState {
                     failures = *count,
                     "monitor widget consecutive query failures"
                 );
+                return Some((
+                    format!("Query failed: {}", widget.title),
+                    format!(
+                        "{}: {} consecutive query failures",
+                        dashboard_name, count
+                    ),
+                ));
             }
         } else {
             self.consecutive_failures.remove(key);
             self.failure_warning_sent.remove(key);
         }
+        None
     }
 }
 
@@ -182,15 +222,41 @@ impl Default for AlertChannelState {
     }
 }
 
+pub async fn dispatch_notifications(
+    app: Option<&AppHandle>,
+    settings: &MonitorSettings,
+    client: &reqwest::Client,
+    notifications: &[PendingNotification],
+) {
+    for notification in notifications {
+        match notification {
+            PendingNotification::QueryFailureWarning { title, body } => {
+                if let Some(app) = app {
+                    notify_desktop(app, title, body).await;
+                }
+            }
+            PendingNotification::Alert {
+                payload,
+                title,
+                body,
+                channels,
+            } => {
+                dispatch_channels(app, settings, client, channels, payload, title, body).await;
+            }
+        }
+    }
+}
+
 async fn dispatch_channels(
     app: Option<&AppHandle>,
     settings: &MonitorSettings,
-    rule: &AlertRule,
+    client: &reqwest::Client,
+    channels: &[AlertChannel],
     payload: &AlertPayload,
     title: &str,
     body: &str,
 ) {
-    for channel in &rule.channels {
+    for channel in channels {
         match channel {
             AlertChannel::Desktop => {
                 if let Some(app) = app {
@@ -199,7 +265,7 @@ async fn dispatch_channels(
             }
             AlertChannel::Webhook => {
                 if let Some(url) = settings.default_webhook_url.as_deref() {
-                    if let Err(e) = notify_webhook(url, payload).await {
+                    if let Err(e) = notify_webhook(client, url, payload).await {
                         tracing::warn!(error = %e, url = %url, "webhook alert failed");
                     }
                 } else {
@@ -225,8 +291,12 @@ pub async fn notify_desktop(app: &AppHandle, title: &str, body: &str) {
     }
 }
 
-pub async fn notify_webhook(url: &str, payload: &AlertPayload) -> Result<(), reqwest::Error> {
-    reqwest::Client::new()
+pub async fn notify_webhook(
+    client: &reqwest::Client,
+    url: &str,
+    payload: &AlertPayload,
+) -> Result<(), reqwest::Error> {
+    client
         .post(url)
         .json(payload)
         .send()
@@ -296,24 +366,47 @@ mod tests {
         }
     }
 
-    #[test]
-    fn alert_payload_serializes_expected_camel_case_fields() {
-        let widget = sample_widget();
-        let rule = sample_rule();
-        let run = WidgetRun {
+    fn widget_with_alert(cooldown_sec: u32) -> DashboardWidget {
+        let mut widget = sample_widget();
+        let mut rule = sample_rule();
+        rule.cooldown_sec = cooldown_sec;
+        widget.alert = Some(rule);
+        widget
+    }
+
+    fn make_run(status: WidgetRunStatus, alert_fired: Option<bool>) -> WidgetRun {
+        WidgetRun {
             id: "run-1".into(),
             dashboard_id: "d1".into(),
             widget_id: "w1".into(),
             started_at: "2026-01-01T00:00:00Z".into(),
             finished_at: "2026-01-01T00:01:00Z".into(),
-            status: WidgetRunStatus::Ok,
-            error: None,
+            status,
+            error: if status == WidgetRunStatus::Ok {
+                None
+            } else {
+                Some("query failed".into())
+            },
             row_count: 1,
             columns: vec!["v".into()],
             rows: vec![vec![serde_json::json!(95.0)]],
-            alert_fired: Some(true),
+            alert_fired,
             alert_value: Some(95.0),
-        };
+        }
+    }
+
+    fn alert_notifications(notifications: &[PendingNotification]) -> Vec<&PendingNotification> {
+        notifications
+            .iter()
+            .filter(|n| matches!(n, PendingNotification::Alert { .. }))
+            .collect()
+    }
+
+    #[test]
+    fn alert_payload_serializes_expected_camel_case_fields() {
+        let widget = sample_widget();
+        let rule = sample_rule();
+        let run = make_run(WidgetRunStatus::Ok, Some(true));
 
         let payload = AlertPayload::from_run("d1", "Ops Board", &widget, &rule, &run);
         let json = serde_json::to_value(&payload).unwrap();
@@ -353,5 +446,82 @@ mod tests {
         assert!(json.contains("\"widgetId\""));
         assert!(json.contains("\"widgetTitle\""));
         assert!(json.contains("\"threshold\""));
+    }
+
+    #[test]
+    fn fire_edge_emits_alert_notification() {
+        let mut state = AlertChannelState::new();
+        let widget = widget_with_alert(300);
+
+        let notes = state.process_run_state("d1", "Board", &widget, &make_run(WidgetRunStatus::Ok, Some(false)));
+        assert!(alert_notifications(&notes).is_empty());
+
+        let notes = state.process_run_state("d1", "Board", &widget, &make_run(WidgetRunStatus::Ok, Some(true)));
+        let alerts = alert_notifications(&notes);
+        assert_eq!(alerts.len(), 1);
+        assert!(matches!(alerts[0], PendingNotification::Alert { title, .. } if title.starts_with("Alert:")));
+    }
+
+    #[test]
+    fn query_error_does_not_recover_while_alerting() {
+        let mut state = AlertChannelState::new();
+        let widget = widget_with_alert(300);
+
+        state.process_run_state("d1", "Board", &widget, &make_run(WidgetRunStatus::Ok, Some(true)));
+
+        let notes = state.process_run_state("d1", "Board", &widget, &make_run(WidgetRunStatus::Error, None));
+        assert!(alert_notifications(&notes).is_empty());
+
+        let notes = state.process_run_state("d1", "Board", &widget, &make_run(WidgetRunStatus::Ok, Some(false)));
+        let alerts = alert_notifications(&notes);
+        assert_eq!(alerts.len(), 1);
+        assert!(matches!(alerts[0], PendingNotification::Alert { title, .. } if title.starts_with("Recovered:")));
+    }
+
+    #[test]
+    fn ok_with_none_alert_fired_leaves_state_unchanged() {
+        let mut state = AlertChannelState::new();
+        let widget = widget_with_alert(300);
+
+        state.process_run_state("d1", "Board", &widget, &make_run(WidgetRunStatus::Ok, Some(true)));
+
+        let notes = state.process_run_state("d1", "Board", &widget, &make_run(WidgetRunStatus::Ok, None));
+        assert!(alert_notifications(&notes).is_empty());
+
+        let notes = state.process_run_state("d1", "Board", &widget, &make_run(WidgetRunStatus::Ok, Some(false)));
+        assert_eq!(alert_notifications(&notes).len(), 1);
+    }
+
+    #[test]
+    fn consecutive_failures_emit_warning_on_third_streak() {
+        let mut state = AlertChannelState::new();
+        let widget = sample_widget();
+
+        for _ in 0..2 {
+            let notes = state.process_run_state("d1", "Board", &widget, &make_run(WidgetRunStatus::Error, None));
+            assert!(!notes.iter().any(|n| matches!(n, PendingNotification::QueryFailureWarning { .. })));
+        }
+
+        let notes = state.process_run_state("d1", "Board", &widget, &make_run(WidgetRunStatus::Error, None));
+        assert!(notes.iter().any(|n| matches!(
+            n,
+            PendingNotification::QueryFailureWarning { title, .. } if title.starts_with("Query failed:")
+        )));
+
+        let notes = state.process_run_state("d1", "Board", &widget, &make_run(WidgetRunStatus::Error, None));
+        assert!(!notes.iter().any(|n| matches!(n, PendingNotification::QueryFailureWarning { .. })));
+    }
+
+    #[test]
+    fn cooldown_blocks_second_fire() {
+        let mut state = AlertChannelState::new();
+        let widget = widget_with_alert(300);
+
+        state.process_run_state("d1", "Board", &widget, &make_run(WidgetRunStatus::Ok, Some(false)));
+        state.process_run_state("d1", "Board", &widget, &make_run(WidgetRunStatus::Ok, Some(true)));
+
+        state.process_run_state("d1", "Board", &widget, &make_run(WidgetRunStatus::Ok, Some(false)));
+        let notes = state.process_run_state("d1", "Board", &widget, &make_run(WidgetRunStatus::Ok, Some(true)));
+        assert!(alert_notifications(&notes).is_empty());
     }
 }
