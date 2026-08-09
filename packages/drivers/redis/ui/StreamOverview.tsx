@@ -85,7 +85,7 @@ export function StreamOverview({
 
       <div className="min-h-0 flex-1 overflow-auto p-3">
         {error && (
-          <div className="mb-3 rounded-md border border-red-500/20 bg-red-500/10 px-2 py-1.5 text-xs text-red-400">
+          <div className="mb-3 rounded-md border border-danger/20 bg-danger/10 px-2 py-1.5 text-xs text-danger">
             {error}
           </div>
         )}

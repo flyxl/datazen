@@ -293,7 +293,7 @@ function JsonTreeNode({
           {path !== '$' && (
             <Button
               variant="ghost"
-              className="h-6 px-1.5 text-[10px] text-red-400"
+              className="h-6 px-1.5 text-[10px] text-danger"
               disabled={busy}
               onClick={deleteNode}
             >
@@ -304,7 +304,7 @@ function JsonTreeNode({
       </div>
 
       {error && (
-        <p className="text-[10px] text-red-400" style={{ paddingLeft: depth * 12 + 24 }}>
+        <p className="text-[10px] text-danger" style={{ paddingLeft: depth * 12 + 24 }}>
           {error}
         </p>
       )}
@@ -440,7 +440,7 @@ export function JsonEditor({ connectionId, dbIndex, redisKey }: JsonEditorProps)
         </Button>
       </div>
 
-      {error && <p className="text-red-400">{error}</p>}
+      {error && <p className="text-danger">{error}</p>}
 
       {loading ? (
         <div className="flex items-center gap-2 text-fg-muted">

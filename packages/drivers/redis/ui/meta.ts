@@ -3,8 +3,8 @@ import type { DatabaseTypeMeta } from '@datazen/plugin-sdk';
 export const redisMeta = {
     label: 'Redis',
     shortLabel: 'Rd',
-    iconBg: 'bg-red-600',
-    iconColor: 'text-red-400',
+    iconBg: 'bg-danger',
+    iconColor: 'text-danger',
     defaultPort: 6379,
     defaultHost: '127.0.0.1',
     defaultUser: '',
