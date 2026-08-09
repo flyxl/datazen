@@ -1,5 +1,6 @@
 //! SQLite driver backed by sqlx SqlitePool.
 
+use crate::structure;
 use datazen_driver_api::*;
 use async_trait::async_trait;
 use sqlx::sqlite::SqlitePoolOptions;
@@ -487,5 +488,21 @@ impl DatabaseDriver for SqliteDriver {
             server_version: version,
             server_type: "SQLite".to_string(),
         })
+    }
+
+    async fn structure_capabilities(
+        &self,
+        _handle: &ConnectionHandle,
+    ) -> Result<StructureCapabilities, DriverError> {
+        Ok(structure::capabilities(&self.driver_type()))
+    }
+
+    async fn plan_structure_changes(
+        &self,
+        _handle: &ConnectionHandle,
+        request: &StructureChangeRequest,
+    ) -> Result<StructureChangePlan, DriverError> {
+        let caps = structure::capabilities(&self.driver_type());
+        structure::plan_changes(request, &caps)
     }
 }
