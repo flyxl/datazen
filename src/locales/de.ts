@@ -303,6 +303,7 @@ const translations = {
   'erDiagram.relationCount': '{count} Beziehungen',
   'redis.items': 'Artikel',
   'redis.queries': 'Abfragen',
+  'redis.console': 'Konsole',
   'redis.history': 'Geschichte',
   'redis.searchKeys': 'Suchschlüssel…',
   'redis.dbSize': '{count} Schlüssel',

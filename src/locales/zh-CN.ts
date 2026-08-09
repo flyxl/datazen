@@ -357,6 +357,7 @@ const zhCN = {
   // ── Redis ──
   'redis.items': '数据浏览',
   'redis.queries': '命令',
+  'redis.console': '命令',
   'redis.history': '历史',
   'redis.searchKeys': '搜索键…',
   'redis.dbSize': '共 {count} 个键',
