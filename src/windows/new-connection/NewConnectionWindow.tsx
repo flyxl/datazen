@@ -9,19 +9,21 @@ import { useThemeListener } from '../../hooks/useThemeListener';
 import { useI18n } from '../../hooks/useI18n';
 import { cn } from '../../lib/cn';
 import { getUrlParam } from '../../lib/windowKind';
-import { DB_REGISTRY } from '../../lib/databaseTypes';
+import { DB_REGISTRY, sortDbTypesByPopularity } from '../../lib/databaseTypes';
 import { filterDbTypesByQuery } from '../../lib/filterDbTypes';
 import { connectionCommands } from '../../commands/connection';
 import { ConnectionFormBody } from '../../components/connection/ConnectionFormBody';
 import { useConnectionForm } from '../../components/connection/useConnectionForm';
 import type { DatabaseType } from '../../types';
 
-const ALL_DB_TYPES: { value: DatabaseType; label: string }[] = (
-  Object.entries(DB_REGISTRY) as [DatabaseType, (typeof DB_REGISTRY)[DatabaseType]][]
-).map(([value, meta]) => ({
-  value,
-  label: meta.label,
-}));
+const ALL_DB_TYPES: { value: DatabaseType; label: string }[] = sortDbTypesByPopularity(
+  (Object.entries(DB_REGISTRY) as [DatabaseType, (typeof DB_REGISTRY)[DatabaseType]][]).map(
+    ([value, meta]) => ({
+      value,
+      label: meta.label,
+    }),
+  ),
+);
 
 function closeWindow() {
   if ('__TAURI_INTERNALS__' in window) {
