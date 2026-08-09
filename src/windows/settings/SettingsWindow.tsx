@@ -16,6 +16,7 @@ import { DB_REGISTRY } from '../../lib/databaseTypes';
 import { isKnownProviderType } from '../../lib/aiProviders';
 import { settingsSectionIconId } from '../../lib/hostLucideMap';
 import type { AppSettings, AiProviderConfig, AiProviderType, DatabaseType, McpPermissionMode, McpServerConfig } from '../../types';
+import { DEFAULT_MONITOR_SETTINGS } from '../../types/dashboard';
 import type { ThemeMode } from '../../types/theme';
 import type { TranslationKey } from '../../locales';
 import { ThemePackSection } from './ThemePackSection';
@@ -57,7 +58,7 @@ const LANGUAGE_OPTIONS = [
   { value: 'ko', label: '한국어' },
 ];
 
-type SettingsSection = 'general' | 'dataBrowsing' | 'editor' | 'behavior' | 'logging' | 'ai' | 'prompts' | 'mcpServer' | 'mcpClient';
+type SettingsSection = 'general' | 'dataBrowsing' | 'editor' | 'behavior' | 'logging' | 'monitor' | 'ai' | 'prompts' | 'mcpServer' | 'mcpClient';
 
 const SECTIONS: { id: SettingsSection; labelKey: TranslationKey }[] = [
   { id: 'general', labelKey: 'settings.general' },
@@ -65,6 +66,7 @@ const SECTIONS: { id: SettingsSection; labelKey: TranslationKey }[] = [
   { id: 'editor', labelKey: 'settings.editor' },
   { id: 'behavior', labelKey: 'settings.behavior' },
   { id: 'logging', labelKey: 'settings.logging' },
+  { id: 'monitor', labelKey: 'settings.monitor' },
   { id: 'ai', labelKey: 'settings.ai' },
   { id: 'prompts', labelKey: 'settings.prompts' },
   { id: 'mcpServer', labelKey: 'mcp.title' },
@@ -309,6 +311,125 @@ export function SettingsWindow() {
               </>
             )}
 
+            {activeSection === 'monitor' && (
+              <>
+                <SectionTitle>{t('settings.monitor')}</SectionTitle>
+                <p className="text-xs text-fg-muted">{t('settings.monitor.description')}</p>
+
+                <ToggleRow
+                  label={t('settings.monitor.trayEnabled')}
+                  checked={draft.monitor?.trayEnabled ?? DEFAULT_MONITOR_SETTINGS.trayEnabled}
+                  onChange={(v) =>
+                    updateField('monitor', { ...(draft.monitor ?? DEFAULT_MONITOR_SETTINGS), trayEnabled: v })
+                  }
+                />
+                <p className="text-xs text-fg-muted -mt-1">{t('settings.monitor.trayEnabledHint')}</p>
+
+                <ToggleRow
+                  label={t('settings.monitor.closeToTray')}
+                  checked={draft.monitor?.closeToTray ?? DEFAULT_MONITOR_SETTINGS.closeToTray}
+                  onChange={(v) =>
+                    updateField('monitor', { ...(draft.monitor ?? DEFAULT_MONITOR_SETTINGS), closeToTray: v })
+                  }
+                />
+                <p className="text-xs text-fg-muted -mt-1">{t('settings.monitor.closeToTrayHint')}</p>
+
+                <SettingRow label={t('settings.monitor.defaultWebhookUrl')}>
+                  <input
+                    type="url"
+                    value={draft.monitor?.defaultWebhookUrl ?? ''}
+                    onChange={(e) =>
+                      updateField('monitor', {
+                        ...(draft.monitor ?? DEFAULT_MONITOR_SETTINGS),
+                        defaultWebhookUrl: e.target.value || undefined,
+                      })
+                    }
+                    placeholder="https://hooks.example.com/..."
+                    className="h-9 w-full rounded-md border border-edge bg-surface px-3 text-sm text-fg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/25"
+                  />
+                </SettingRow>
+
+                <SettingRow label={t('settings.monitor.maxConcurrentQueries')}>
+                  <Select
+                    value={String(draft.monitor?.maxConcurrentQueries ?? DEFAULT_MONITOR_SETTINGS.maxConcurrentQueries)}
+                    options={[1, 2, 3, 4, 6, 8].map((v) => ({ value: String(v), label: String(v) }))}
+                    onChange={(v) =>
+                      updateField('monitor', {
+                        ...(draft.monitor ?? DEFAULT_MONITOR_SETTINGS),
+                        maxConcurrentQueries: Number(v),
+                      })
+                    }
+                  />
+                </SettingRow>
+
+                <SettingRow label={t('settings.monitor.runRetentionCount')}>
+                  <input
+                    type="number"
+                    min={10}
+                    max={10000}
+                    value={draft.monitor?.runRetentionCount ?? DEFAULT_MONITOR_SETTINGS.runRetentionCount}
+                    onChange={(e) =>
+                      updateField('monitor', {
+                        ...(draft.monitor ?? DEFAULT_MONITOR_SETTINGS),
+                        runRetentionCount: Math.max(10, Number(e.target.value) || 200),
+                      })
+                    }
+                    className="h-9 w-full rounded-md border border-edge bg-surface px-3 text-sm text-fg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/25"
+                  />
+                </SettingRow>
+
+                <SettingRow label={t('settings.monitor.runRetentionDays')}>
+                  <input
+                    type="number"
+                    min={1}
+                    max={3650}
+                    value={draft.monitor?.runRetentionDays ?? DEFAULT_MONITOR_SETTINGS.runRetentionDays}
+                    onChange={(e) =>
+                      updateField('monitor', {
+                        ...(draft.monitor ?? DEFAULT_MONITOR_SETTINGS),
+                        runRetentionDays: Math.max(1, Number(e.target.value) || 30),
+                      })
+                    }
+                    className="h-9 w-full rounded-md border border-edge bg-surface px-3 text-sm text-fg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/25"
+                  />
+                </SettingRow>
+
+                <ToggleRow
+                  label={t('settings.monitor.exportIncludeDashboardRuns')}
+                  checked={draft.monitor?.exportIncludeDashboardRuns ?? DEFAULT_MONITOR_SETTINGS.exportIncludeDashboardRuns}
+                  onChange={(v) =>
+                    updateField('monitor', {
+                      ...(draft.monitor ?? DEFAULT_MONITOR_SETTINGS),
+                      exportIncludeDashboardRuns: v,
+                    })
+                  }
+                />
+                <p className="text-xs text-fg-muted -mt-1">{t('settings.monitor.exportIncludeDashboardRunsHint')}</p>
+
+                <div className="rounded-md border border-edge bg-surface-alt p-3 space-y-3 opacity-60">
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-medium text-fg">{t('settings.monitor.email')}</h3>
+                    <span className="rounded-full bg-edge px-2 py-0.5 text-[10px] font-medium text-fg-muted">
+                      {t('settings.monitor.comingSoon')}
+                    </span>
+                  </div>
+                  <p className="text-xs text-fg-muted">{t('settings.monitor.emailHint')}</p>
+                  <SettingRow label={t('settings.monitor.emailHost')}>
+                    <input type="text" disabled className="h-9 w-full rounded-md border border-edge bg-surface px-3 text-sm text-fg-muted" />
+                  </SettingRow>
+                  <SettingRow label={t('settings.monitor.emailPort')}>
+                    <input type="number" disabled placeholder="587" className="h-9 w-full rounded-md border border-edge bg-surface px-3 text-sm text-fg-muted" />
+                  </SettingRow>
+                  <SettingRow label={t('settings.monitor.emailFrom')}>
+                    <input type="email" disabled className="h-9 w-full rounded-md border border-edge bg-surface px-3 text-sm text-fg-muted" />
+                  </SettingRow>
+                  <SettingRow label={t('settings.monitor.emailTo')}>
+                    <input type="text" disabled placeholder="ops@example.com" className="h-9 w-full rounded-md border border-edge bg-surface px-3 text-sm text-fg-muted" />
+                  </SettingRow>
+                </div>
+              </>
+            )}
+
             {activeSection === 'ai' && <AiSettingsSection />}
             {activeSection === 'prompts' && <PromptSettingsSection />}
             {activeSection === 'mcpServer' && <McpSettingsSection />}
@@ -318,7 +439,7 @@ export function SettingsWindow() {
       </div>
 
       {/* Footer - only show for general settings that use draft/save */}
-      {['general', 'dataBrowsing', 'editor', 'behavior', 'logging'].includes(activeSection) && (
+      {['general', 'dataBrowsing', 'editor', 'behavior', 'logging', 'monitor'].includes(activeSection) && (
         <footer className="flex shrink-0 items-center justify-end gap-3 border-t border-edge px-8 py-3">
           {saved && <span className="text-xs text-green-500">{t('settings.saved')}</span>}
           <Button variant="secondary" onClick={() => void handleClose()}>{t('common.close')}</Button>

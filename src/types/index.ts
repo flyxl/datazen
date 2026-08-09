@@ -164,6 +164,7 @@ export interface ContextItem {
 }
 
 import type { ThemePreference } from './theme';
+import type { MonitorSettings } from './dashboard';
 
 export type McpPermissionMode = 'read_only' | 'safe_write' | 'high_risk_write';
 
@@ -186,6 +187,8 @@ export interface AppSettings {
   contextDir: string;
   /** Check GitHub for app updates on startup (Basic builds only). Default false. */
   checkForUpdatesOnStartup: boolean;
+  /** Dashboard monitor / tray / retention settings. */
+  monitor: MonitorSettings;
 }
 
 export type FilterOperator =

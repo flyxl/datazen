@@ -50,7 +50,11 @@ pub async fn save_settings(state: State<'_, AppState>, settings: AppSettings) ->
             std::io::ErrorKind::Other,
             e.to_string(),
         )))
-        .cmd_err("save_settings")
+        .cmd_err("save_settings")?;
+    if let Some(app) = state.monitor_engine.app_handle() {
+        crate::tray::sync_tray(&app);
+    }
+    Ok(())
 }
 
 #[tauri::command]
