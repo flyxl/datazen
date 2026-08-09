@@ -239,6 +239,7 @@ pub fn parse(bytes: &[u8], password: &str) -> Result<ParsedImport, CommandError>
             group: None,
             last_connected_at: None,
             server_version: None,
+            options: None,
         });
     }
 

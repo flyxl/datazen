@@ -33,6 +33,8 @@ export interface ConnectionConfig {
   group?: string;
   lastConnectedAt?: string;
   serverVersion?: string;
+  /** Opaque per-driver connection options (e.g. Redis topology/TLS). */
+  options?: Record<string, unknown>;
 }
 
 export interface ServerInfo {
