@@ -51,6 +51,12 @@ const DocsWindow = lazy(() =>
     return { default: m.DocsWindow };
   }),
 );
+const DashboardWindow = lazy(() =>
+  import('./windows/dashboard/DashboardWindow').then((m) => {
+    mark('DashboardWindow chunk loaded');
+    return { default: m.DashboardWindow };
+  }),
+);
 
 const windowKind = getWindowKind();
 mark(`windowKind resolved: "${windowKind}"`);
@@ -75,6 +81,8 @@ function WindowContent() {
       return <WorkflowWindow />;
     case 'docs':
       return <DocsWindow />;
+    case 'dashboard':
+      return <DashboardWindow />;
     case 'main':
     default:
       return <MainWindow />;

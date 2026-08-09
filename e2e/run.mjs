@@ -27,9 +27,10 @@ const args = process.argv.slice(2);
 const skipBuild = args.includes('--skip-build');
 const minimalDrivers =
   process.env.DATAZEN_DRIVERS === 'basic' || args.includes('--minimal-drivers');
+/** Inject drivers then build with webdriver + plugin Cargo features (see scripts/e2e-tauri-build.mjs). */
 const BUILD_CMD = minimalDrivers
-  ? 'node scripts/generate-menu-labels.mjs && node scripts/resolve-drivers.mjs --drivers=basic && pnpm tauri build --debug --features webdriver'
-  : 'pnpm tauri build --debug --features webdriver';
+  ? 'node scripts/generate-menu-labels.mjs && node scripts/with-plugin-inject.mjs --drivers=basic -- node scripts/e2e-tauri-build.mjs'
+  : 'node scripts/generate-menu-labels.mjs && node scripts/with-plugin-inject.mjs -- node scripts/e2e-tauri-build.mjs';
 const wdioArgs = [];
 {
   const filtered = args.filter(
@@ -137,10 +138,7 @@ if (!skipBuild) {
   }
   log(`Command: ${BUILD_CMD}`);
   try {
-    const buildCmd = minimalDrivers
-      ? 'node scripts/with-plugin-inject.mjs --drivers=basic -- tauri build --debug --features webdriver'
-      : BUILD_CMD;
-    execSync(buildCmd, {
+    execSync(BUILD_CMD, {
       stdio: 'inherit',
       cwd: ROOT,
     });

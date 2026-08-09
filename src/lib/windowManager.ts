@@ -30,6 +30,7 @@ export const WINDOW_CAPABILITY_LABEL_SAMPLES = [
   'settings-singleton',
   'docs-singleton',
   'connection-0-1',
+  'dashboard-sample-id',
 ] as const;
 
 interface OpenWindowOptions {
@@ -185,6 +186,17 @@ export function openDocsWindow(section?: string) {
 }
 
 // ── Multi-instance windows ──────────────────────────────────────────
+
+export function openDashboardWindow(dashboardId: string, dashboardName?: string) {
+  openWindow(`dashboard-${dashboardId}`, {
+    params: { window: 'dashboard', dashboardId },
+    width: 1200,
+    height: 800,
+    minWidth: 800,
+    minHeight: 500,
+    title: dashboardName ? `${dashboardName} - DataZen` : t('win.dashboard'),
+  });
+}
 
 export function openConnectionWindow(
   opts: { connectionId?: string; configId?: string },
