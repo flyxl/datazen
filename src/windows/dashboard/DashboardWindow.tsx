@@ -36,16 +36,18 @@ export function DashboardWindow() {
   const { t } = useI18n();
   const dashboardId = getUrlParam('dashboardId') ?? '';
 
-  const current = useDashboardStore((s) => s.current);
-  const runs = useDashboardStore((s) => s.runs);
-  const busyWidgets = useDashboardStore((s) => s.busyWidgets);
-  const loading = useDashboardStore((s) => s.loading);
-  const error = useDashboardStore((s) => s.error);
+  const entry = useDashboardStore((s) => s.dashboardsById[dashboardId]);
+  const current = entry?.dashboard ?? null;
+  const runs = entry?.runs ?? {};
+  const busyWidgets = entry?.busyWidgets ?? {};
+  const loading = entry?.loading ?? false;
+  const error = entry?.error ?? null;
+  const mountDashboard = useDashboardStore((s) => s.mountDashboard);
   const loadDashboard = useDashboardStore((s) => s.loadDashboard);
   const saveDashboard = useDashboardStore((s) => s.saveDashboard);
   const refreshWidget = useDashboardStore((s) => s.refreshWidget);
   const refreshAllWidgets = useDashboardStore((s) => s.refreshAllWidgets);
-  const clearCurrent = useDashboardStore((s) => s.clearCurrent);
+  const releaseDashboard = useDashboardStore((s) => s.releaseDashboard);
 
   const [editingWidget, setEditingWidget] = useState<DashboardWidget | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
@@ -56,9 +58,10 @@ export function DashboardWindow() {
 
   useEffect(() => {
     if (!dashboardId) return;
+    mountDashboard(dashboardId);
     void loadDashboard(dashboardId);
-    return () => { clearCurrent(); };
-  }, [dashboardId, loadDashboard, clearCurrent]);
+    return () => { releaseDashboard(dashboardId); };
+  }, [dashboardId, mountDashboard, loadDashboard, releaseDashboard]);
 
   useEffect(() => {
     if (current) setNameDraft(current.name);
@@ -99,8 +102,11 @@ export function DashboardWindow() {
     await saveDashboard({ ...current, widgets });
     setEditorOpen(false);
     setEditingWidget(null);
+    if (isNewWidget) {
+      void refreshWidget(current.id, widget.id);
+    }
     setIsNewWidget(false);
-  }, [current, isNewWidget, saveDashboard]);
+  }, [current, isNewWidget, saveDashboard, refreshWidget]);
 
   const handleRename = useCallback(async () => {
     if (!current || !nameDraft.trim()) return;
@@ -217,7 +223,7 @@ export function DashboardWindow() {
                 key={widget.id}
                 widget={widget}
                 run={runs[widget.id] ?? null}
-                busy={busyWidgets.has(widget.id)}
+                busy={!!busyWidgets[widget.id]}
                 onEdit={() => {
                   setEditingWidget(widget);
                   setIsNewWidget(false);
