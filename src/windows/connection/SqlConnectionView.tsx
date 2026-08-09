@@ -28,6 +28,7 @@ import { useQueryStore } from '../../stores/queryStore';
 import { cn } from '../../lib/cn';
 import { openDocsWindow } from '../../lib/windowManager';
 import { DB_REGISTRY, getDbLabel } from '../../lib/databaseTypes';
+import { canOpenStructureEditor } from '../../lib/structureEditor/canOpenStructureEditor';
 import type { ConnectionViewProps } from '../../lib/connectionViews/types';
 import { SchemaTree } from './schema-tree/SchemaTree';
 import { StructureView } from './StructureView';
@@ -113,8 +114,10 @@ export function SqlConnectionView({
   initialDatabase,
 }: ConnectionViewProps) {
   const { t } = useI18n();
-  const isReadOnly = DB_REGISTRY[databaseType]?.readOnly === true;
-  const supportsErDiagram = DB_REGISTRY[databaseType]?.supportsErDiagram !== false;
+  const dbMeta = DB_REGISTRY[databaseType];
+  const isReadOnly = dbMeta?.readOnly === true;
+  const showStructureEditor = canOpenStructureEditor(dbMeta) && !isReadOnly;
+  const supportsErDiagram = dbMeta?.supportsErDiagram !== false;
 
   const [panels, setPanels] = useState<Panel[]>([]);
   const [activePanelId, setActivePanelId] = useState<string | null>(null);
@@ -301,8 +304,6 @@ export function SqlConnectionView({
     }
   }, [connectionId, currentDatabase, databaseType, loadTables, loadForConnection]);
 
-  const [createIndexTrigger, setCreateIndexTrigger] = useState(0);
-
   const contextMenuItems: ContextMenuEntry[] = useMemo(() => {
     if (!activePanel) {
       return [{ id: 'new-query', label: t('connWin.newQuery'), icon: <Plus className="h-3.5 w-3.5" /> }];
@@ -319,10 +320,11 @@ export function SqlConnectionView({
         case 'data':
           return [{ id: 'copy-cell', label: t('connWin.copyCell'), icon: <ClipboardCopy className="h-3.5 w-3.5" /> }, sep, ...common];
         case 'structure':
-          if (isReadOnly) return common;
+          if (!showStructureEditor) return common;
           return [{ id: 'edit-structure', label: t('connWin.editStructure'), icon: <Pencil className="h-3.5 w-3.5" /> }, sep, ...common];
         case 'indexes':
-          return [{ id: 'create-index', label: t('connWin.newIndex'), icon: <Plus className="h-3.5 w-3.5" /> }, sep, ...common];
+          if (!showStructureEditor) return common;
+          return [{ id: 'edit-structure', label: t('connWin.editStructure'), icon: <Pencil className="h-3.5 w-3.5" /> }, sep, ...common];
         case 'ddl':
           return [{ id: 'copy-ddl', label: t('connWin.copyDDL'), icon: <ClipboardCopy className="h-3.5 w-3.5" /> }, sep, ...common];
         default:
@@ -331,7 +333,7 @@ export function SqlConnectionView({
     }
 
     return common;
-  }, [activePanel, isReadOnly, t]);
+  }, [activePanel, showStructureEditor, t]);
 
   const handleContextAction = useCallback((id: string) => {
     switch (id) {
@@ -349,10 +351,6 @@ export function SqlConnectionView({
       }
       case 'edit-structure': {
         if (activePanel?.type === 'table') handleAlterTable(activePanel.tableName);
-        break;
-      }
-      case 'create-index': {
-        setCreateIndexTrigger((v) => v + 1);
         break;
       }
     }
@@ -458,7 +456,7 @@ export function SqlConnectionView({
           <Plus className="h-4 w-4" />
           {t('connWin.newQuery')}
         </Button>
-        {!isReadOnly && (
+        {showStructureEditor && (
           <Button variant="secondary" className="h-8" onClick={handleCreateTable}>
             <TableProperties className="h-4 w-4" />
             {t('connWin.newTable')}
@@ -626,10 +624,18 @@ export function SqlConnectionView({
                     <TableView connectionId={connectionId} database={currentDatabase ?? ''} tableName={activePanel.tableName} />
                   )}
                   {activePanel.subTab === 'structure' && (
-                    <StructureView connectionId={connectionId} tableName={activePanel.tableName} onEditStructure={isReadOnly ? undefined : handleAlterTable} />
+                    <StructureView
+                      connectionId={connectionId}
+                      tableName={activePanel.tableName}
+                      onEditStructure={showStructureEditor ? handleAlterTable : undefined}
+                    />
                   )}
                   {activePanel.subTab === 'indexes' && (
-                    <IndexesView connectionId={connectionId} tableName={activePanel.tableName} createIndexTrigger={createIndexTrigger} databaseType={databaseType} />
+                    <IndexesView
+                      connectionId={connectionId}
+                      tableName={activePanel.tableName}
+                      onEditStructure={showStructureEditor ? handleAlterTable : undefined}
+                    />
                   )}
                   {activePanel.subTab === 'foreignKeys' && (
                     <ForeignKeysView connectionId={connectionId} tableName={activePanel.tableName} />
@@ -759,7 +765,7 @@ export function SqlConnectionView({
           className="fixed z-[9999] min-w-[180px] rounded-lg border border-edge bg-surface-alt py-1 shadow-xl"
           style={{ left: tableCtx.x, top: tableCtx.y }}
         >
-          {!isReadOnly && (
+          {showStructureEditor && (
             <>
               <button
                 type="button"

@@ -744,6 +744,7 @@ const en: Record<TranslationKey, string> = {
   'indexes.loading': 'Loading indexes…',
   'indexes.count': '{count} indexes',
   'indexes.noIndexes': 'No indexes on this table',
+  'indexes.editInStructure': 'Edit in Table Structure',
   'indexes.createFirst': 'Create First Index',
   'indexes.colName': 'Index',
   'indexes.colColumns': 'Columns',

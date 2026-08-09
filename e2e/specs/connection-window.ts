@@ -205,170 +205,18 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
     expect(body).toContain('score');
   });
 
-  it('索引标签应显示新建索引按钮 (DB-004)', async () => {
-    const createBtn = await $(`button*=${t('indexes.newIndex')}`);
-    await expect(createBtn).toBeDisplayed();
+  it('索引标签应显示在表结构中编辑按钮 (DB-004)', async () => {
+    const editBtn = await $(`button*=${t('indexes.editInStructure')}`);
+    await expect(editBtn).toBeDisplayed();
   });
 
-  it('索引标签非主键行应显示删除按钮 (DB-004)', async () => {
-    const deleteBtn = await $(`button[title="${t('indexes.deleteIndex')}"]`);
-    await expect(deleteBtn).toBeExisting();
-  });
-
-  // ── 新建索引 ────────────────────────────────────────────────────
-
-  it('点击新建索引应打开创建对话框 (DB-004a)', async () => {
-    const createBtn = await $(`button*=${t('indexes.newIndex')}`);
-    await createBtn.click();
-    await browser.pause(500);
-
-    const dialog = await $('[role="dialog"]');
-    await expect(dialog).toBeDisplayed();
-    expect(await dialog.getText()).toContain('新建索引');
-  });
-
-  it('创建索引对话框应显示列列表 (DB-004a)', async () => {
-    const dialog = await $('[role="dialog"]');
-    const text = await dialog.getText();
-    expect(text).toContain('id');
-    expect(text).toContain('name');
-    expect(text).toContain('email');
-  });
-
-  it('选择列后应显示 SQL 预览 (DB-004a)', async () => {
-    // Click the 'score' column checkbox via DOM
-    await browser.execute(() => {
-      const dialog = document.querySelector('[role="dialog"]');
-      if (!dialog) return;
-      const labels = dialog.querySelectorAll('label');
-      for (const label of labels) {
-        if (label.textContent?.includes('score') && label.textContent?.includes('integer')) {
-          const cb = label.querySelector('input[type="checkbox"]') as HTMLInputElement;
-          if (cb) cb.click();
-          break;
-        }
-      }
-    });
-    await browser.pause(500);
-
-    const body = await $('body').getText();
-    expect(body).toContain(t('structEditor.sqlPreview'));
-    expect(body).toContain('CREATE INDEX');
-  });
-
-  it('点击取消应关闭创建对话框 (DB-004a)', async () => {
-    await browser.execute(() => {
-      const dialog = document.querySelector('[role="dialog"]');
-      if (!dialog) return;
-      const btns = dialog.querySelectorAll('button');
-      for (const btn of btns) {
-        if (btn.textContent?.trim() === t('common.cancel')) { btn.click(); break; }
-      }
-    });
-    await browser.pause(500);
-
-    const dialogExists = await browser.execute(() => !!document.querySelector('[role="dialog"]'));
-    expect(dialogExists).toBe(false);
-  });
-
-  it('应能创建新索引 (DB-004b)', async () => {
-    const createBtn = await $(`button*=${t('indexes.newIndex')}`);
-    await createBtn.click();
-    await browser.pause(500);
-
-    // Input custom index name
-    await browser.execute(() => {
-      const input = document.querySelector('#idx-name') as HTMLInputElement;
-      if (input) {
-        const nativeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
-        nativeSetter?.call(input, 'idx_e2e_test_score');
-        input.dispatchEvent(new Event('input', { bubbles: true }));
-      }
-    });
-    await browser.pause(300);
-
-    // Select the 'score' column checkbox
-    await browser.execute(() => {
-      const dialog = document.querySelector('[role="dialog"]');
-      if (!dialog) return;
-      const labels = dialog.querySelectorAll('label');
-      for (const label of labels) {
-        if (label.textContent?.includes('score') && label.textContent?.includes('integer')) {
-          const cb = label.querySelector('input[type="checkbox"]') as HTMLInputElement;
-          if (cb && !cb.checked) cb.click();
-          break;
-        }
-      }
-    });
-    await browser.pause(500);
-
-    // Click create button
-    await browser.execute(() => {
-      const dialog = document.querySelector('[role="dialog"]');
-      if (!dialog) return;
-      const btns = dialog.querySelectorAll('button');
-      for (const btn of btns) {
-        if (btn.textContent?.includes(t('indexes.createIndex'))) { btn.click(); break; }
-      }
-    });
-
-    await browser.waitUntil(
-      async () => {
-        const body = await $('body').getText();
-        return body.includes('idx_e2e_test_score');
-      },
-      { timeout: 10000, timeoutMsg: 'Timed out waiting for new index' },
-    );
-  });
-
-  // ── 删除索引 ────────────────────────────────────────────────────
-
-  it('点击删除按钮应显示确认对话框 (DB-004c)', async () => {
-    // Wait for the row with data-index-name, then click its delete button
-    await browser.waitUntil(async () => {
-      return browser.execute(() => !!document.querySelector('tr[data-index-name="idx_e2e_test_score"]'));
-    }, { timeout: 5000, timeoutMsg: 'Timed out waiting for idx_e2e_test_score row' });
-
-    await browser.execute(() => {
-      const row = document.querySelector('tr[data-index-name="idx_e2e_test_score"]');
-      if (!row) return;
-      row.scrollIntoView();
-      const btn = row.querySelector('button') as HTMLElement;
-      if (btn) btn.click();
-    });
+  it('点击在表结构中编辑应打开结构编辑器 (DB-004a)', async () => {
+    const editBtn = await $(`button*=${t('indexes.editInStructure')}`);
+    await editBtn.click();
     await browser.pause(800);
 
     const body = await $('body').getText();
-    expect(body).toContain(t('indexes.confirmDeleteTitle'));
-    expect(body).toContain('idx_e2e_test_score');
-  });
-
-  it('确认删除应移除索引 (DB-004c)', async () => {
-    // Click the confirm delete button in the dialog
-    await browser.execute(() => {
-      const dialog = document.querySelector('[role="dialog"]');
-      if (!dialog) return;
-      const btns = dialog.querySelectorAll('button');
-      for (const btn of btns) {
-        const text = btn.textContent?.trim() ?? '';
-        if (text === t('common.delete') || (text.includes(t('common.delete')) && !text.includes('取消'))) {
-          (btn as HTMLElement).click();
-          break;
-        }
-      }
-    });
-
-    await browser.waitUntil(
-      async () => {
-        const body = await $('body').getText();
-        return !body.includes('idx_e2e_test_score');
-      },
-      { timeout: 10000, timeoutMsg: 'Timed out waiting for index deletion' },
-    );
-
-    const body = await $('body').getText();
-    expect(body).not.toContain('idx_e2e_test_score');
-    expect(body).toContain('idx_child_name');
+    expect(body).toContain(t('structEditor.editTable'));
   });
 
   // ── 外键 tab ────────────────────────────────────────────────────
@@ -452,7 +300,7 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
     expect(body).toContain(t('connWin.refresh'));
     expect(body).toContain(t('connWin.newQuery'));
     expect(body).not.toContain(t('connWin.editStructure'));
-    expect(body).not.toContain(t('indexes.newIndex'));
+    expect(body).not.toContain(t('indexes.editInStructure'));
     expect(body).not.toContain(t('connWin.copyDDL'));
 
     await browser.execute(() => document.dispatchEvent(new MouseEvent('mousedown')));
@@ -476,14 +324,14 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
     expect(body).toContain(t('connWin.refresh'));
     expect(body).toContain(t('connWin.newQuery'));
     expect(body).not.toContain(t('connWin.copyCell'));
-    expect(body).not.toContain(t('indexes.newIndex'));
+    expect(body).not.toContain(t('indexes.editInStructure'));
     expect(body).not.toContain(t('connWin.copyDDL'));
 
     await browser.execute(() => document.dispatchEvent(new MouseEvent('mousedown')));
     await browser.pause(300);
   });
 
-  it('索引标签右键菜单应包含新建索引 (CTX-003)', async () => {
+  it('索引标签右键菜单应包含编辑结构 (CTX-003)', async () => {
     await switchSubTab(t('connWin.indexes'));
     await browser.pause(2000);
 
@@ -496,11 +344,11 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
     await browser.pause(500);
 
     const body = await $('body').getText();
-    expect(body).toContain('新建索引');
+    expect(body).toContain(t('connWin.editStructure'));
     expect(body).toContain(t('connWin.refresh'));
     expect(body).toContain(t('connWin.newQuery'));
     expect(body).not.toContain(t('connWin.copyCell'));
-    expect(body).not.toContain(t('connWin.editStructure'));
+    expect(body).not.toContain(t('indexes.editInStructure'));
     expect(body).not.toContain(t('connWin.copyDDL'));
 
     await browser.execute(() => document.dispatchEvent(new MouseEvent('mousedown')));
@@ -524,7 +372,7 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
     expect(body).toContain(t('connWin.newQuery'));
     expect(body).not.toContain(t('connWin.copyCell'));
     expect(body).not.toContain(t('connWin.editStructure'));
-    expect(body).not.toContain(t('indexes.newIndex'));
+    expect(body).not.toContain(t('indexes.editInStructure'));
     expect(body).not.toContain(t('connWin.copyDDL'));
 
     await browser.execute(() => document.dispatchEvent(new MouseEvent('mousedown')));
@@ -549,13 +397,13 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
     expect(body).toContain(t('connWin.newQuery'));
     expect(body).not.toContain(t('connWin.copyCell'));
     expect(body).not.toContain(t('connWin.editStructure'));
-    expect(body).not.toContain(t('indexes.newIndex'));
+    expect(body).not.toContain(t('indexes.editInStructure'));
 
     await browser.execute(() => document.dispatchEvent(new MouseEvent('mousedown')));
     await browser.pause(300);
   });
 
-  it('索引标签右键菜单新建索引应打开创建对话框 (CTX-006)', async () => {
+  it('索引标签右键菜单编辑结构应打开结构编辑器 (CTX-006)', async () => {
     await switchSubTab(t('connWin.indexes'));
     await browser.pause(2000);
 
@@ -570,27 +418,16 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
     await browser.execute(() => {
       const menuItems = document.querySelectorAll('.fixed.z-\\[9999\\] button');
       for (const item of menuItems) {
-        if (item.textContent?.includes(t('indexes.newIndex'))) {
+        if (item.textContent?.includes(t('connWin.editStructure'))) {
           (item as HTMLElement).click();
           break;
         }
       }
     });
-    await browser.pause(500);
+    await browser.pause(800);
 
-    const dialog = await $('[role="dialog"]');
-    await expect(dialog).toBeDisplayed();
-    expect(await dialog.getText()).toContain('新建索引');
-
-    await browser.execute(() => {
-      const d = document.querySelector('[role="dialog"]');
-      if (!d) return;
-      const btns = d.querySelectorAll('button');
-      for (const btn of btns) {
-        if (btn.textContent?.trim() === t('common.cancel')) { btn.click(); break; }
-      }
-    });
-    await browser.pause(300);
+    const body = await $('body').getText();
+    expect(body).toContain(t('structEditor.editTable'));
   });
 
   // ── 搜索表 ─────────────────────────────────────────────────────
