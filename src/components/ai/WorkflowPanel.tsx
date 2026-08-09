@@ -28,6 +28,7 @@ import { openDocsWindow } from '../../lib/windowManager';
 import { ChartView } from '../chart/ChartView';
 import { isChartableResult } from '../../lib/chart/fieldInference';
 import { cn } from '../../lib/cn';
+import { Select } from '../ui/Select';
 import type { TranslationKey } from '../../locales';
 import type {
   ColumnInfo,
@@ -399,19 +400,18 @@ export function WorkflowPanel({ connectionId }: WorkflowPanelProps) {
                     )}
                   </label>
                   {v.type === 'connection' ? (
-                    <select
+                    <Select
                       value={variables[v.name] ?? ''}
-                      onChange={(e) =>
-                        setVariables((prev) => ({ ...prev, [v.name]: e.target.value }))
+                      onChange={(val) =>
+                        setVariables((prev) => ({ ...prev, [v.name]: val }))
                       }
-                      className={inputClass}
+                      className="!h-8 !text-xs"
                       disabled={isExecuting}
-                    >
-                      <option value="">{t('workflows.form.selectConnection')}</option>
-                      {savedConnections.map((c) => (
-                        <option key={c.id} value={c.id}>{c.name}</option>
-                      ))}
-                    </select>
+                      options={[
+                        { value: '', label: t('workflows.form.selectConnection') },
+                        ...savedConnections.map((c) => ({ value: c.id, label: c.name })),
+                      ]}
+                    />
                   ) : (
                     <input
                       type="text"
@@ -885,20 +885,20 @@ function WorkflowForm({
               placeholder={t('workflows.form.varName')}
               style={{ width: '25%' }}
             />
-            <select
+            <Select
               value={v.varType}
-              onChange={(e) => {
+              onChange={(val) => {
                 const vars = [...draft.variables];
-                vars[i] = { ...vars[i], varType: e.target.value };
+                vars[i] = { ...vars[i], varType: val };
                 setDraft((p) => ({ ...p, variables: vars }));
               }}
-              className={inputClass}
-              style={{ width: '20%' }}
-            >
-              <option value="string">string</option>
-              <option value="number">number</option>
-              <option value="connection">{t('workflows.form.varTypeConnection')}</option>
-            </select>
+              className="!h-8 !text-xs w-[20%]"
+              options={[
+                { value: 'string', label: 'string' },
+                { value: 'number', label: 'number' },
+                { value: 'connection', label: t('workflows.form.varTypeConnection') },
+              ]}
+            />
             <input
               type="text"
               value={v.description}
@@ -1060,16 +1060,15 @@ function DatabasePicker({
       {loading ? (
         <span className="text-[10px] text-fg-muted">{t('workflows.loading')}</span>
       ) : databases.length > 0 ? (
-        <select
+        <Select
           value={step.database ?? ''}
-          onChange={(e) => onUpdate('database', e.target.value || undefined)}
-          className={inputClass}
-        >
-          <option value="">{t('workflows.form.selectDatabase')}</option>
-          {databases.map((db) => (
-            <option key={db} value={db}>{db}</option>
-          ))}
-        </select>
+          onChange={(val) => onUpdate('database', val || undefined)}
+          className="!h-8 !text-xs"
+          options={[
+            { value: '', label: t('workflows.form.selectDatabase') },
+            ...databases.map((db) => ({ value: db, label: db })),
+          ]}
+        />
       ) : (
         <input
           type="text"
@@ -1135,21 +1134,19 @@ function StepEditor({
         <>
           <div className="flex items-center gap-1">
             <label className="text-[10px] text-fg-muted w-12 shrink-0">{t('workflows.form.connection')}</label>
-            <select
+            <Select
               value={step.connection ?? ''}
-              onChange={(e) => onUpdate('connection', e.target.value || undefined)}
-              className={inputClass}
-            >
-              <option value="">{t('workflows.form.defaultConnection')}</option>
-              {connVarNames.map((name) => (
-                <option key={`var:${name}`} value={`{{${name}}}`}>
-                  {'{{' + name + '}}'}
-                </option>
-              ))}
-              {savedConnections.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
-            </select>
+              onChange={(val) => onUpdate('connection', val || undefined)}
+              className="!h-8 !text-xs"
+              options={[
+                { value: '', label: t('workflows.form.defaultConnection') },
+                ...connVarNames.map((name) => ({
+                  value: `{{${name}}}`,
+                  label: `{{${name}}}`,
+                })),
+                ...savedConnections.map((c) => ({ value: c.id, label: c.name })),
+              ]}
+            />
           </div>
           <DatabasePicker
             step={step}

@@ -1,3 +1,5 @@
+import { Select } from '@datazen/plugin-sdk';
+
 export const redisSettingsSchema = {
   type: 'object',
   properties: {
@@ -45,19 +47,20 @@ export function RedisSettingsSection({
 
       <div>
         <div className="mb-1 font-medium">Cluster routing</div>
-        <select
+        <Select
           value={clusterRouting}
-          onChange={(e) =>
+          onChange={(val) =>
             onChange({
               ...v,
-              clusterRouting: e.target.value === 'pinnedNode' ? 'pinnedNode' : 'auto',
+              clusterRouting: val === 'pinnedNode' ? 'pinnedNode' : 'auto',
             })
           }
-          className="h-8 w-full rounded-md border border-edge bg-surface px-2 text-xs"
-        >
-          <option value="auto">Auto — follow MOVED / ASK</option>
-          <option value="pinnedNode">Pinned node — target one cluster node</option>
-        </select>
+          className="h-8 w-full text-xs"
+          options={[
+            { value: 'auto', label: 'Auto — follow MOVED / ASK' },
+            { value: 'pinnedNode', label: 'Pinned node — target one cluster node' },
+          ]}
+        />
       </div>
     </div>
   );

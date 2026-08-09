@@ -2,9 +2,22 @@
 
 use crate::db::{ColumnSchema, Value};
 use crate::sync::adapter::{SyncSourceAdapter, SyncTargetAdapter};
+use crate::sync::adapter_registry::{SyncAdapterFactory, SyncAdapterRegistry};
 use crate::sync::ir::{IRColumn, IRDefault, IRType};
+use std::sync::Arc;
 
 pub struct SqliteSyncAdapter;
+
+fn register(registry: &SyncAdapterRegistry, db_type: crate::db::DatabaseType) {
+    registry.register_both(db_type, Arc::new(SqliteSyncAdapter));
+}
+
+inventory::submit! {
+    SyncAdapterFactory {
+        db_types: &["sqlite"],
+        register,
+    }
+}
 
 // ── SyncSourceAdapter ──────────────────────────────────────────────
 

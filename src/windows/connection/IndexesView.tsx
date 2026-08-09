@@ -5,6 +5,7 @@ import { getCachedTableSchema, invalidateSchemaCache } from '../../lib/schemaCac
 import type { IndexInfo, TableSchema, ColumnSchema, DatabaseType } from '../../types';
 import { cn } from '../../lib/cn';
 import { Button } from '../../components/ui/Button';
+import { Select } from '../../components/ui/Select';
 import { useI18n } from '../../hooks/useI18n';
 import { DB_REGISTRY } from '../../lib/databaseTypes';
 import { getSqlDialect } from '../../lib/sqlDialects';
@@ -144,15 +145,15 @@ function CreateIndexDialog({ columns, tableName, onSubmit, onCancel, submitting,
 
           <div className="flex items-center gap-2">
             <span className="text-xs text-fg-secondary">{t('indexes.indexType')}</span>
-            <select
-              className="h-7 rounded border border-edge bg-surface-alt px-2 text-xs text-fg outline-none"
+            <Select
+              className="!h-7 !text-xs w-28"
               value={indexType}
-              onChange={(e) => setIndexType(e.target.value as typeof indexType)}
-            >
-              {supportedMethods.map((method) => (
-                <option key={method} value={method}>{INDEX_METHOD_LABELS[method]}</option>
-              ))}
-            </select>
+              options={supportedMethods.map((method) => ({
+                value: method,
+                label: INDEX_METHOD_LABELS[method],
+              }))}
+              onChange={(v) => setIndexType(v as typeof indexType)}
+            />
           </div>
         </div>
 
