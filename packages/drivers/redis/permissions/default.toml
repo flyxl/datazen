@@ -31,4 +31,7 @@ permissions = [
   "allow-pubsub-subscribe",
   "allow-pubsub-unsubscribe",
   "allow-pubsub-publish",
+  "allow-json-get",
+  "allow-json-set",
+  "allow-json-del",
 ]

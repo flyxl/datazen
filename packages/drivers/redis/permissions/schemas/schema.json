@@ -355,6 +355,18 @@
           "markdownDescription": "Denies the delete_keys command without any pre-configured scope."
         },
         {
+          "description": "Enables the dump_keys command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-dump-keys",
+          "markdownDescription": "Enables the dump_keys command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the dump_keys command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-dump-keys",
+          "markdownDescription": "Denies the dump_keys command without any pre-configured scope."
+        },
+        {
           "description": "Enables the exec command without any pre-configured scope.",
           "type": "string",
           "const": "allow-exec",
@@ -425,6 +437,42 @@
           "type": "string",
           "const": "deny-info",
           "markdownDescription": "Denies the info command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the json_del command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-json-del",
+          "markdownDescription": "Enables the json_del command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the json_del command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-json-del",
+          "markdownDescription": "Denies the json_del command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the json_get command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-json-get",
+          "markdownDescription": "Enables the json_get command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the json_get command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-json-get",
+          "markdownDescription": "Denies the json_get command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the json_set command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-json-set",
+          "markdownDescription": "Enables the json_set command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the json_set command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-json-set",
+          "markdownDescription": "Denies the json_set command without any pre-configured scope."
         },
         {
           "description": "Enables the list_pop command without any pre-configured scope.",
@@ -535,6 +583,18 @@
           "markdownDescription": "Denies the rename command without any pre-configured scope."
         },
         {
+          "description": "Enables the restore_keys command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-restore-keys",
+          "markdownDescription": "Enables the restore_keys command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the restore_keys command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-restore-keys",
+          "markdownDescription": "Denies the restore_keys command without any pre-configured scope."
+        },
+        {
           "description": "Enables the set_add command without any pre-configured scope.",
           "type": "string",
           "const": "allow-set-add",
@@ -607,6 +667,102 @@
           "markdownDescription": "Denies the slowlog_reset command without any pre-configured scope."
         },
         {
+          "description": "Enables the stream_overview command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-stream-overview",
+          "markdownDescription": "Enables the stream_overview command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the stream_overview command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-stream-overview",
+          "markdownDescription": "Denies the stream_overview command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the xack command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-xack",
+          "markdownDescription": "Enables the xack command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the xack command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-xack",
+          "markdownDescription": "Denies the xack command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the xadd command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-xadd",
+          "markdownDescription": "Enables the xadd command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the xadd command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-xadd",
+          "markdownDescription": "Denies the xadd command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the xgroup_create command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-xgroup-create",
+          "markdownDescription": "Enables the xgroup_create command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the xgroup_create command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-xgroup-create",
+          "markdownDescription": "Denies the xgroup_create command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the xgroup_destroy command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-xgroup-destroy",
+          "markdownDescription": "Enables the xgroup_destroy command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the xgroup_destroy command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-xgroup-destroy",
+          "markdownDescription": "Denies the xgroup_destroy command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the xinfo_groups command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-xinfo-groups",
+          "markdownDescription": "Enables the xinfo_groups command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the xinfo_groups command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-xinfo-groups",
+          "markdownDescription": "Denies the xinfo_groups command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the xpending command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-xpending",
+          "markdownDescription": "Enables the xpending command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the xpending command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-xpending",
+          "markdownDescription": "Denies the xpending command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the xrange command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-xrange",
+          "markdownDescription": "Enables the xrange command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the xrange command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-xrange",
+          "markdownDescription": "Denies the xrange command without any pre-configured scope."
+        },
+        {
           "description": "Enables the zset_add command without any pre-configured scope.",
           "type": "string",
           "const": "allow-zset-add",
@@ -631,10 +787,10 @@
           "markdownDescription": "Denies the zset_remove command without any pre-configured scope."
         },
         {
-          "description": "Default permissions for the redis plugin (mutate + batch ops)\n#### This default permission set includes:\n\n- `allow-set-string`\n- `allow-hash-set`\n- `allow-hash-del`\n- `allow-list-push`\n- `allow-list-set`\n- `allow-list-pop`\n- `allow-set-add`\n- `allow-set-remove`\n- `allow-zset-add`\n- `allow-zset-remove`\n- `allow-delete-keys`\n- `allow-rename`\n- `allow-set-ttl`\n- `allow-batch-delete-pattern`\n- `allow-batch-set-ttl`\n- `allow-batch-rename-prefix`\n- `allow-flush-db`\n- `allow-flush-all`\n- `allow-count-matching`\n- `allow-info`\n- `allow-memory-sample`\n- `allow-slowlog-get`\n- `allow-slowlog-reset`\n- `allow-modules-list`\n- `allow-exec`\n- `allow-pubsub-subscribe`\n- `allow-pubsub-unsubscribe`\n- `allow-pubsub-publish`",
+          "description": "Default permissions for the redis plugin (mutate + batch ops)\n#### This default permission set includes:\n\n- `allow-set-string`\n- `allow-hash-set`\n- `allow-hash-del`\n- `allow-list-push`\n- `allow-list-set`\n- `allow-list-pop`\n- `allow-set-add`\n- `allow-set-remove`\n- `allow-zset-add`\n- `allow-zset-remove`\n- `allow-delete-keys`\n- `allow-rename`\n- `allow-set-ttl`\n- `allow-batch-delete-pattern`\n- `allow-batch-set-ttl`\n- `allow-batch-rename-prefix`\n- `allow-flush-db`\n- `allow-flush-all`\n- `allow-count-matching`\n- `allow-info`\n- `allow-memory-sample`\n- `allow-slowlog-get`\n- `allow-slowlog-reset`\n- `allow-modules-list`\n- `allow-exec`\n- `allow-pubsub-subscribe`\n- `allow-pubsub-unsubscribe`\n- `allow-pubsub-publish`\n- `allow-json-get`\n- `allow-json-set`\n- `allow-json-del`",
           "type": "string",
           "const": "default",
-          "markdownDescription": "Default permissions for the redis plugin (mutate + batch ops)\n#### This default permission set includes:\n\n- `allow-set-string`\n- `allow-hash-set`\n- `allow-hash-del`\n- `allow-list-push`\n- `allow-list-set`\n- `allow-list-pop`\n- `allow-set-add`\n- `allow-set-remove`\n- `allow-zset-add`\n- `allow-zset-remove`\n- `allow-delete-keys`\n- `allow-rename`\n- `allow-set-ttl`\n- `allow-batch-delete-pattern`\n- `allow-batch-set-ttl`\n- `allow-batch-rename-prefix`\n- `allow-flush-db`\n- `allow-flush-all`\n- `allow-count-matching`\n- `allow-info`\n- `allow-memory-sample`\n- `allow-slowlog-get`\n- `allow-slowlog-reset`\n- `allow-modules-list`\n- `allow-exec`\n- `allow-pubsub-subscribe`\n- `allow-pubsub-unsubscribe`\n- `allow-pubsub-publish`"
+          "markdownDescription": "Default permissions for the redis plugin (mutate + batch ops)\n#### This default permission set includes:\n\n- `allow-set-string`\n- `allow-hash-set`\n- `allow-hash-del`\n- `allow-list-push`\n- `allow-list-set`\n- `allow-list-pop`\n- `allow-set-add`\n- `allow-set-remove`\n- `allow-zset-add`\n- `allow-zset-remove`\n- `allow-delete-keys`\n- `allow-rename`\n- `allow-set-ttl`\n- `allow-batch-delete-pattern`\n- `allow-batch-set-ttl`\n- `allow-batch-rename-prefix`\n- `allow-flush-db`\n- `allow-flush-all`\n- `allow-count-matching`\n- `allow-info`\n- `allow-memory-sample`\n- `allow-slowlog-get`\n- `allow-slowlog-reset`\n- `allow-modules-list`\n- `allow-exec`\n- `allow-pubsub-subscribe`\n- `allow-pubsub-unsubscribe`\n- `allow-pubsub-publish`\n- `allow-json-get`\n- `allow-json-set`\n- `allow-json-del`"
         }
       ]
     }
