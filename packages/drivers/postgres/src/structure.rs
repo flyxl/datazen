@@ -23,13 +23,13 @@ pub fn caps_for_version(version: &str) -> StructureCapabilities {
     let index_include = major.is_some_and(|m| m >= 11);
 
     let mut index_methods = vec!["btree".to_string(), "hash".to_string()];
-    if major.is_none_or(|m| m >= 8) {
-        index_methods.push("gist".to_string());
-        index_methods.push("gin".to_string());
-    }
-    if major.is_none_or(|m| m >= 9) {
-        index_methods.push("spgist".to_string());
-        if major.is_none_or(|m| m >= 9) {
+    if let Some(m) = major {
+        if m >= 8 {
+            index_methods.push("gist".to_string());
+            index_methods.push("gin".to_string());
+        }
+        if m >= 9 {
+            index_methods.push("spgist".to_string());
             index_methods.push("brin".to_string());
         }
     }
@@ -195,6 +195,15 @@ fn build_create_index_sql(
     } else {
         idx.index_type.clone()
     };
+    if !caps
+        .index_methods
+        .iter()
+        .any(|m| m.eq_ignore_ascii_case(&method))
+    {
+        return Err(DriverError::Unsupported(format!(
+            "PostgreSQL driver does not support index method '{method}' for this server version"
+        )));
+    }
     let cols = idx
         .columns
         .iter()
@@ -479,6 +488,22 @@ mod tests {
     }
 
     #[test]
+    fn caps_index_methods_conservative_on_unparseable_version() {
+        let caps = caps_for_version("unknown server");
+        assert_eq!(
+            caps.index_methods,
+            vec!["btree".to_string(), "hash".to_string()]
+        );
+    }
+
+    #[test]
+    fn caps_index_methods_include_gin_on_pg14() {
+        let caps = caps_for_version("14.5");
+        assert!(caps.index_methods.iter().any(|m| m == "gin"));
+        assert!(caps.index_methods.iter().any(|m| m == "brin"));
+    }
+
+    #[test]
     fn caps_parses_postgresql_version_string() {
         let caps = caps_for_version("PostgreSQL 14.5 on aarch64-unknown-linux-gnu, compiled by gcc");
         assert!(caps.index_include);
@@ -660,5 +685,57 @@ mod tests {
         );
         let err = plan_structure_changes_with_caps(&caps, &request).unwrap_err();
         assert!(matches!(err, DriverError::Unsupported(msg) if msg.contains("INCLUDE")));
+    }
+
+    #[test]
+    fn plan_rejects_unsupported_index_method() {
+        let caps = caps_for_version("14.5");
+        let request = alter_request(
+            vec![sample_column("c1", "email")],
+            vec![sample_column("c1", "email")],
+            vec![],
+            vec![StructureIndexDraft {
+                id: "i1".into(),
+                name: "users_email_idx".into(),
+                columns: vec!["email".into()],
+                is_unique: false,
+                is_primary: false,
+                index_type: "rum".into(),
+                include_columns: vec![],
+                filter: None,
+                comment: None,
+            }],
+        );
+        let err = plan_structure_changes_with_caps(&caps, &request).unwrap_err();
+        assert!(matches!(
+            err,
+            DriverError::Unsupported(msg) if msg.contains("index method 'rum'")
+        ));
+    }
+
+    #[test]
+    fn plan_rejects_gin_index_on_unparseable_version() {
+        let caps = caps_for_version("unknown server");
+        let request = alter_request(
+            vec![sample_column("c1", "email")],
+            vec![sample_column("c1", "email")],
+            vec![],
+            vec![StructureIndexDraft {
+                id: "i1".into(),
+                name: "users_email_idx".into(),
+                columns: vec!["email".into()],
+                is_unique: false,
+                is_primary: false,
+                index_type: "gin".into(),
+                include_columns: vec![],
+                filter: None,
+                comment: None,
+            }],
+        );
+        let err = plan_structure_changes_with_caps(&caps, &request).unwrap_err();
+        assert!(matches!(
+            err,
+            DriverError::Unsupported(msg) if msg.contains("index method 'gin'")
+        ));
     }
 }
