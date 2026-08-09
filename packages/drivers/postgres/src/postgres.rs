@@ -321,6 +321,19 @@ impl PostgresDriver {
 
         (columns, result_rows)
     }
+
+    fn extract_pg_plan_metrics(plan_json: &serde_json::Value) -> (Option<f64>, Option<i64>) {
+        let plan = plan_json
+            .as_array()
+            .and_then(|rows| rows.first())
+            .and_then(|row| row.get("Plan"));
+        let Some(plan) = plan else {
+            return (None, None);
+        };
+        let total_cost = plan.get("Total Cost").and_then(|v| v.as_f64());
+        let estimated_rows = plan.get("Plan Rows").and_then(|v| v.as_i64());
+        (total_cost, estimated_rows)
+    }
 }
 
 fn build_pg_options(
@@ -824,23 +837,44 @@ impl DatabaseDriver for PostgresDriver {
         let pools = self.pools.read().await;
         let pool = Self::get_pool(&pools, handle)?;
 
-        let explain_sql = format!("EXPLAIN (FORMAT TEXT) {sql}");
-        let rows = sqlx::query(&explain_sql)
+        let json_sql = format!("EXPLAIN (FORMAT JSON) {sql}");
+        let json_rows = sqlx::query(&json_sql)
             .fetch_all(pool)
             .await
             .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
 
-        let plan: String = rows
+        let plan_json = json_rows.first().and_then(|row| {
+            row.try_get::<serde_json::Value, _>(0)
+                .ok()
+                .or_else(|| {
+                    row.try_get::<String, _>(0)
+                        .ok()
+                        .and_then(|s| serde_json::from_str(&s).ok())
+                })
+        });
+
+        let text_sql = format!("EXPLAIN (FORMAT TEXT) {sql}");
+        let text_rows = sqlx::query(&text_sql)
+            .fetch_all(pool)
+            .await
+            .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+
+        let plan_text: String = text_rows
             .iter()
             .map(|r| r.get::<String, _>(0))
             .collect::<Vec<_>>()
             .join("\n");
 
+        let (total_cost, estimated_rows) = plan_json
+            .as_ref()
+            .map(Self::extract_pg_plan_metrics)
+            .unwrap_or((None, None));
+
         Ok(ExplainResult {
-            plan_text: plan,
-            plan_json: None,
-            total_cost: None,
-            estimated_rows: None,
+            plan_text,
+            plan_json,
+            total_cost,
+            estimated_rows,
         })
     }
 

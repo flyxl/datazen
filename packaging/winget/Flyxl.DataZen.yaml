@@ -1,0 +1,34 @@
+# WinGet manifest template for DataZen Basic (Windows x64).
+# Replace PackageVersion and InstallerSha256 after each release.
+# Submit via winget-pkgs or: winget install Flyxl.DataZen
+#
+# Installer URL must match Basic release artifact (no -all / -akulaku suffix).
+
+PackageIdentifier: Flyxl.DataZen
+PackageVersion: VERSION
+PackageLocale: en-US
+Publisher: Flyxl
+PublisherUrl: https://github.com/flyxl
+PublisherSupportUrl: https://github.com/flyxl/datazen/issues
+PackageName: DataZen
+PackageUrl: https://github.com/flyxl/datazen
+License: GPL-3.0-or-later
+LicenseUrl: https://github.com/flyxl/datazen/blob/main/LICENSE
+ShortDescription: Cross-platform desktop database client with AI assistance
+Moniker: datazen
+Tags:
+  - database
+  - sql
+  - mysql
+  - postgresql
+  - sqlite
+  - redis
+Installers:
+  - Architecture: x64
+    InstallerType: nullsoft
+    InstallerUrl: https://github.com/flyxl/datazen/releases/download/vVERSION/DataZen_VERSION_x64-setup-windows-x64.exe
+    InstallerSha256: SHA256
+    Scope: user
+    UpgradeBehavior: install
+ManifestType: singleton
+ManifestVersion: 1.6.0

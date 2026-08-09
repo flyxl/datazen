@@ -20,48 +20,82 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # ── 基础版（postgres/mysql/sqlite/redis）──
+          # ── Basic：四核心 path 驱动 ──
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
             os_label: windows-x64
             drivers: "basic"
             variant_suffix: ""
+            needs_git: false
           - platform: macos-latest
             target: aarch64-apple-darwin
             os_label: macos-arm64
             drivers: "basic"
             variant_suffix: ""
+            needs_git: false
           - platform: macos-latest
             target: x86_64-apple-darwin
             os_label: macos-x64
             drivers: "basic"
             variant_suffix: ""
+            needs_git: false
           - platform: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             os_label: linux-x64
             drivers: "basic"
             variant_suffix: ""
-          # ── Pro 版（基础四驱动 + Kiwi + Superset）──
+            needs_git: false
+          # ── All：全部 path 原生驱动（不含 kiwi / superset / olap）──
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
             os_label: windows-x64
-            drivers: "postgres,mysql,sqlite,redis,kiwi,superset"
-            variant_suffix: "-pro"
+            drivers: "all"
+            variant_suffix: "-all"
+            needs_git: false
           - platform: macos-latest
             target: aarch64-apple-darwin
             os_label: macos-arm64
-            drivers: "postgres,mysql,sqlite,redis,kiwi,superset"
-            variant_suffix: "-pro"
+            drivers: "all"
+            variant_suffix: "-all"
+            needs_git: false
           - platform: macos-latest
             target: x86_64-apple-darwin
             os_label: macos-x64
-            drivers: "postgres,mysql,sqlite,redis,kiwi,superset"
-            variant_suffix: "-pro"
+            drivers: "all"
+            variant_suffix: "-all"
+            needs_git: false
           - platform: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             os_label: linux-x64
-            drivers: "postgres,mysql,sqlite,redis,kiwi,superset"
-            variant_suffix: "-pro"
+            drivers: "all"
+            variant_suffix: "-all"
+            needs_git: false
+          # ── Akulaku：CI 显式列表（非 resolve-drivers 预设）──
+          # basic + mongodb + kiwi + superset
+          - platform: windows-latest
+            target: x86_64-pc-windows-msvc
+            os_label: windows-x64
+            drivers: "postgres,mysql,sqlite,redis,mongodb,kiwi,superset"
+            variant_suffix: "-akulaku"
+            needs_git: true
+          - platform: macos-latest
+            target: aarch64-apple-darwin
+            os_label: macos-arm64
+            drivers: "postgres,mysql,sqlite,redis,mongodb,kiwi,superset"
+            variant_suffix: "-akulaku"
+            needs_git: true
+          - platform: macos-latest
+            target: x86_64-apple-darwin
+            os_label: macos-x64
+            drivers: "postgres,mysql,sqlite,redis,mongodb,kiwi,superset"
+            variant_suffix: "-akulaku"
+            needs_git: true
+          - platform: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            os_label: linux-x64
+            drivers: "postgres,mysql,sqlite,redis,mongodb,kiwi,superset"
+            variant_suffix: "-akulaku"
+            needs_git: true
 
     runs-on: ${{ matrix.platform }}
 
@@ -114,10 +148,10 @@ jobs:
           shared-key: ${{ matrix.target }}
           cache-on-failure: true
 
-      # Pro matrix only: read-only Deploy Keys for private plugin repos.
+      # Git-driver SKUs only: read-only Deploy Keys for private plugin repos.
       # Public key exposure is harmless; private keys must stay in Environment secrets.
       - name: Setup SSH agent for private plugins
-        if: matrix.plugins != 'none'
+        if: matrix.needs_git
         uses: webfactory/ssh-agent@v0.9.1
         with:
           ssh-private-key: |
@@ -125,14 +159,14 @@ jobs:
             ${{ secrets.SUPERSET_DEPLOY_KEY }}
 
       - name: Configure git to clone GitHub over SSH
-        if: matrix.plugins != 'none'
+        if: matrix.needs_git
         shell: bash
         run: |
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
           ssh-keyscan -t ed25519,rsa github.com >> ~/.ssh/known_hosts 2>/dev/null
           chmod 644 ~/.ssh/known_hosts
-          # plugins-registry.json keeps https:// URLs; rewrite to SSH for auth.
+          # drivers-registry.json keeps https:// URLs; rewrite to SSH for auth.
           git config --global url."git@github.com:".insteadOf "https://github.com/"
 
       - name: Import Windows code signing certificate
@@ -152,15 +186,31 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install
 
+      - name: Configure updater signing (Basic only)
+        if: matrix.variant_suffix == ''
+        shell: bash
+        run: |
+          if [ -n "${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}" ]; then
+            echo "TAURI signing key present — updater artifacts will be generated"
+            echo "UPDATER_BUILD=1" >> "$GITHUB_ENV"
+          else
+            echo "::warning::TAURI_SIGNING_PRIVATE_KEY not set — skipping updater artifact generation for Basic build"
+            echo "UPDATER_BUILD=0" >> "$GITHUB_ENV"
+          fi
+
       - name: Resolve drivers and build Tauri app
         shell: bash
         run: |
-          # Inject once; beforeBuildCommand `pnpm build` only runs tsc/vite.
-          # Use ci-tauri-build.mjs (not bash -c) so Windows Node spawn keeps args.
-          node scripts/with-plugin-inject.mjs --drivers="${{ matrix.drivers }}" -- node scripts/ci-tauri-build.mjs --target=${{ matrix.target }}
+          UPDATER_FLAG=""
+          if [ "${UPDATER_BUILD}" = "1" ]; then
+            UPDATER_FLAG="--updater"
+          fi
+          node scripts/with-plugin-inject.mjs --drivers="${{ matrix.drivers }}" -- node scripts/ci-tauri-build.mjs --target=${{ matrix.target }} ${UPDATER_FLAG}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DATAZEN_DRIVERS: ${{ matrix.drivers }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ matrix.variant_suffix == '' && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
       - name: Rename artifacts with platform and variant label
         shell: bash
@@ -172,11 +222,16 @@ jobs:
           shopt -s nullglob
           for file in \
             "$BUNDLE_DIR"/dmg/*.dmg \
+            "$BUNDLE_DIR"/macos/*.tar.gz \
+            "$BUNDLE_DIR"/macos/*.sig \
             "$BUNDLE_DIR"/nsis/*.exe \
+            "$BUNDLE_DIR"/nsis/*.sig \
             "$BUNDLE_DIR"/msi/*.msi \
+            "$BUNDLE_DIR"/msi/*.sig \
             "$BUNDLE_DIR"/deb/*.deb \
             "$BUNDLE_DIR"/rpm/*.rpm \
-            "$BUNDLE_DIR"/appimage/*.AppImage; do
+            "$BUNDLE_DIR"/appimage/*.AppImage \
+            "$BUNDLE_DIR"/appimage/*.sig; do
             [ -f "$file" ] || continue
             base=$(basename "$file")
             if [[ "$base" == *.tar.gz ]]; then
@@ -202,9 +257,13 @@ jobs:
           body: |
             ## 版本说明
 
-            本次发布包含两个版本：
-            - **基础版**：内置 PostgreSQL、MySQL、SQLite、Redis 驱动
-            - **Pro 版**（文件名含 `-pro`）：额外包含 **Kiwi** 云数据库代理与 **Superset** 数据探索插件（不含 OLAP Presto/Trino；需 `DATAZEN_DRIVERS=all` 或显式加 `olap`）
+            本次发布包含三个安装包变体（按需选用，不为大而全买单）：
+
+            - **Basic**（无后缀）：PostgreSQL、MySQL、SQLite、Redis — 默认推荐，体积最小
+            - **All**（文件名含 `-all`）：全部 **path 原生驱动**（MongoDB、SQL Server、ClickHouse、DuckDB 等；**不含** Kiwi / Superset / OLAP）
+            - **Akulaku**（文件名含 `-akulaku`）：Basic + MongoDB + Kiwi + Superset（面向特定部署）
+
+            源码构建可进一步裁剪：`DATAZEN_DRIVERS=postgres,mongodb` 等显式列表，只编译需要的类型。
 
             ## 安装说明
 
@@ -229,3 +288,71 @@ jobs:
             运行时依赖 WebKitGTK（常见包名：`libwebkit2gtk-4.1-0` / `webkit2gtk4.1`）。
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  release-checksums:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      - name: Download release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p assets
+          gh release download "${GITHUB_REF_NAME}" --dir assets --clobber
+          ls -la assets/
+
+      - name: Compute SHA256 for Basic installers
+        id: checksums
+        shell: bash
+        run: |
+          {
+            echo "## Basic installer checksums (SHA256)"
+            echo ""
+            echo "For Homebrew / WinGet templates in \`packaging/\`. Excludes \`-all\` and \`-akulaku\` variants."
+            echo ""
+            echo "| File | SHA256 |"
+            echo "|------|--------|"
+          } > checksums.md
+
+          found=0
+          for f in assets/*; do
+            base=$(basename "$f")
+            case "$base" in
+              *-all.*|*-akulaku.*) continue ;;
+              *.sig|latest.json) continue ;;
+            esac
+            case "$base" in
+              *-macos-arm64.dmg|*-macos-x64.dmg|*-windows-x64.exe|*-windows-x64.msi|*-linux-x64.deb|*-linux-x64.rpm|*-linux-x64.AppImage)
+                sha=$(sha256sum "$f" | awk '{print $1}')
+                echo "| \`$base\` | \`$sha\` |" >> checksums.md
+                found=$((found + 1))
+                ;;
+            esac
+          done
+
+          if [ "$found" -eq 0 ]; then
+            echo "| _(no Basic installers matched yet)_ | |" >> checksums.md
+          fi
+
+          echo "table<<EOF" >> "$GITHUB_OUTPUT"
+          cat checksums.md >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+      - name: Append checksums to release body
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          existing=$(gh release view "${GITHUB_REF_NAME}" --json body --jq .body)
+          marker="## Basic installer checksums (SHA256)"
+          if echo "$existing" | grep -qF "$marker"; then
+            body=$(echo "$existing" | awk -v marker="$marker" '
+              { if ($0 ~ marker) { skip=1 } else if (skip && /^## /) { skip=0 } if (!skip) print }
+            ')
+          else
+            body="$existing"
+          fi
+          body="${body}"$'\n\n'"${{ steps.checksums.outputs.table }}"
+          gh release edit "${GITHUB_REF_NAME}" --notes "$body"

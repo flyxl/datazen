@@ -3,6 +3,7 @@
 pub const MCP_QUERY_DEFAULT_LIMIT: u32 = 100;
 pub const MCP_QUERY_MAX_LIMIT: u32 = 50_000;
 
+use crate::mcp::permission::{self, McpPermissionMode};
 use crate::services::ConnectionManager;
 use crate::store::Store;
 use datazen_driver_api::{ConnectionHandle, DatabaseDriver};
@@ -110,12 +111,17 @@ pub fn resolve_query_limit(limit: Option<u32>) -> Option<u32> {
 }
 
 /// Execute a SQL query on a connection identified by config_id.
+/// When `permission_mode` is `Some`, SQL is checked against MCP permission rules.
 pub async fn query(
     connection_manager: &ConnectionManager,
     config_id: &str,
     sql: &str,
     limit: Option<u32>,
+    permission_mode: Option<McpPermissionMode>,
 ) -> Result<String, String> {
+    if let Some(mode) = permission_mode {
+        permission::check_sql_allowed(sql, mode)?;
+    }
     let (driver, handle) = resolve_connection(connection_manager, config_id).await?;
     let limit = resolve_query_limit(limit);
     let result = driver

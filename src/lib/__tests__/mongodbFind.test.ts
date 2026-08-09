@@ -1,7 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import {
+  buildMongoDeleteCommand,
   buildMongoFindCommand,
+  buildMongoInsertCommand,
+  buildMongoUpdateCommand,
   cellToDisplay,
+  getDocumentId,
+  parseMongoDocumentJson,
   parseMongoFilterJson,
   rowToDocument,
 } from '../mongodbFind';
@@ -41,6 +46,40 @@ describe('mongodbFind helpers', () => {
     expect(rowToDocument(['_id', 'name'], ['1', 'alice'])).toEqual({
       _id: '1',
       name: 'alice',
+    });
+  });
+
+  it('parses document JSON and extracts _id', () => {
+    const doc = parseMongoDocumentJson('{"_id":"abc","name":"bob"}');
+    expect(getDocumentId(doc)).toBe('abc');
+    expect(getDocumentId({})).toBeUndefined();
+    expect(getDocumentId({ _id: null })).toBeUndefined();
+  });
+
+  it('builds update/insert/delete commands', () => {
+    expect(JSON.parse(buildMongoUpdateCommand({
+      collection: 'orders',
+      database: 'shop',
+      filter: { _id: '1' },
+      setFields: { status: 'paid' },
+    }))).toEqual({
+      collection: 'orders',
+      database: 'shop',
+      update: { filter: { _id: '1' }, update: { $set: { status: 'paid' } } },
+    });
+    expect(JSON.parse(buildMongoInsertCommand({
+      collection: 'orders',
+      documents: [{ name: 'new' }],
+    }))).toEqual({
+      collection: 'orders',
+      insert: [{ name: 'new' }],
+    });
+    expect(JSON.parse(buildMongoDeleteCommand({
+      collection: 'orders',
+      filter: { _id: '1' },
+    }))).toEqual({
+      collection: 'orders',
+      delete: { filter: { _id: '1' } },
     });
   });
 });

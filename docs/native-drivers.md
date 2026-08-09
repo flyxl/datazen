@@ -72,7 +72,7 @@
    - InfluxDB / VictoriaMetrics / HBase / Vector 的"表结构"是简化视图（DDL 无意义，返回空）；
    - SQL Server 主键已填充；索引/外键仍空。
 6. **连接表单高级字段**：部分新类型前端表单仍走 `standard`。MongoDB / ClickHouse / SQL Server 的 SSL 已按 `ssl_mode` 处理；其余 HTTP 驱动走默认 http/https 判断。SQL Server / ClickHouse 已接通 `use_database` 多库切换。
-7. **驱动分发**：全部编译进包（用户明确要求 builtin），**没有** dbx 那种"按需下载驱动 + JRE 管理"机制；代价是包体翻倍（9.4MB → 19MB DMG）。如果后续要控制体积，可以考虑把 HTTP 类驱动保留内置、把 mongodb/tiberius/duckdb 这类重依赖做成可选 feature。
+7. **驱动分发**：path 驱动编译进所选 SKU（**没有** JDBC/JRE 按需下载）。发布用 **Basic**（小）与 **All**（全部 path；**不含** kiwi/superset/olap）；源码/`DATAZEN_DRIVERS` 可再裁剪。All 包体显著大于 Basic（约 9MB → ~19MB 量级 DMG，视平台而定）。
 8. **未做 E2E**：没有 WebdriverIO 用例覆盖新类型的连接/浏览流程。
 
 ### 3.2 工程遗留

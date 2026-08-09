@@ -1,8 +1,13 @@
+import * as XLSX from 'xlsx';
 import type { ColumnSchema, DatabaseType } from '../types';
 import { escapeIdent } from './databaseTypes';
 
-export type ExportFormat = 'csv' | 'tsv' | 'json' | 'sql_insert' | 'sql_update';
+export type ExportFormat = 'csv' | 'tsv' | 'json' | 'markdown' | 'xlsx' | 'sql_insert' | 'sql_update';
 export type ExportScope = 'current_page' | 'selected';
+
+export type ExportResult =
+  | { kind: 'text'; content: string; extension: string; mimeType: string }
+  | { kind: 'binary'; dataBase64: string; extension: string; mimeType: string };
 
 interface ExportOptions {
   tableName: string;
@@ -24,6 +29,12 @@ function escapeCSV(value: unknown): string {
   return str;
 }
 
+function escapeMarkdownCell(value: unknown): string {
+  if (value === null || value === undefined) return '';
+  const str = typeof value === 'object' ? JSON.stringify(value) : String(value);
+  return str.replaceAll('|', '\\|').replaceAll('\n', ' ').replaceAll('\r', '');
+}
+
 function escapeSQLValue(value: unknown): string {
   if (value === null || value === undefined) return 'NULL';
   if (typeof value === 'number') return String(value);
@@ -43,7 +54,7 @@ function getRows(rows: Record<string, unknown>[], selectedRows: Set<number>, sco
   return rows;
 }
 
-export function generateExport(options: ExportOptions): { content: string; extension: string; mimeType: string } {
+export function generateExport(options: ExportOptions): ExportResult {
   const { tableName, rows, selectedRows, scope, selectedColumns, format, databaseType } = options;
   const dataRows = getRows(rows, selectedRows, scope);
   const cols = selectedColumns;
@@ -54,7 +65,7 @@ export function generateExport(options: ExportOptions): { content: string; exten
       const body = dataRows.map((row) =>
         cols.map((col) => escapeCSV(row[col])).join(','),
       );
-      return { content: [header, ...body].join('\n'), extension: 'csv', mimeType: 'text/csv' };
+      return { kind: 'text', content: [header, ...body].join('\n'), extension: 'csv', mimeType: 'text/csv' };
     }
 
     case 'tsv': {
@@ -67,7 +78,7 @@ export function generateExport(options: ExportOptions): { content: string; exten
       const body = dataRows.map((row) =>
         cols.map((col) => escapeTSV(row[col])).join('\t'),
       );
-      return { content: [header, ...body].join('\n'), extension: 'tsv', mimeType: 'text/tab-separated-values' };
+      return { kind: 'text', content: [header, ...body].join('\n'), extension: 'tsv', mimeType: 'text/tab-separated-values' };
     }
 
     case 'json': {
@@ -76,7 +87,39 @@ export function generateExport(options: ExportOptions): { content: string; exten
         for (const col of cols) obj[col] = row[col] ?? null;
         return obj;
       });
-      return { content: JSON.stringify(data, null, 2), extension: 'json', mimeType: 'application/json' };
+      return { kind: 'text', content: JSON.stringify(data, null, 2), extension: 'json', mimeType: 'application/json' };
+    }
+
+    case 'markdown': {
+      const header = `| ${cols.join(' | ')} |`;
+      const separator = `| ${cols.map(() => '---').join(' | ')} |`;
+      const body = dataRows.map((row) =>
+        `| ${cols.map((col) => escapeMarkdownCell(row[col])).join(' | ')} |`,
+      );
+      return {
+        kind: 'text',
+        content: [header, separator, ...body].join('\n'),
+        extension: 'md',
+        mimeType: 'text/markdown',
+      };
+    }
+
+    case 'xlsx': {
+      const sheetRows = dataRows.map((row) => {
+        const obj: Record<string, unknown> = {};
+        for (const col of cols) obj[col] = row[col] ?? null;
+        return obj;
+      });
+      const ws = XLSX.utils.json_to_sheet(sheetRows, { header: cols });
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
+      const dataBase64 = XLSX.write(wb, { type: 'base64', bookType: 'xlsx' });
+      return {
+        kind: 'binary',
+        dataBase64,
+        extension: 'xlsx',
+        mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      };
     }
 
     case 'sql_insert': {
@@ -85,7 +128,7 @@ export function generateExport(options: ExportOptions): { content: string; exten
         const values = cols.map((col) => escapeSQLValue(row[col])).join(', ');
         return `INSERT INTO ${escapeSQLIdent(tableName, databaseType)} (${colList}) VALUES (${values});`;
       });
-      return { content: statements.join('\n'), extension: 'sql', mimeType: 'text/sql' };
+      return { kind: 'text', content: statements.join('\n'), extension: 'sql', mimeType: 'text/sql' };
     }
 
     case 'sql_update': {
@@ -99,14 +142,22 @@ export function generateExport(options: ExportOptions): { content: string; exten
         const where = `${escapeSQLIdent(pkName, databaseType)} = ${escapeSQLValue(row[pkName])}`;
         return `UPDATE ${escapeSQLIdent(tableName, databaseType)} SET ${setClauses} WHERE ${where};`;
       });
-      return { content: statements.join('\n'), extension: 'sql', mimeType: 'text/sql' };
+      return { kind: 'text', content: statements.join('\n'), extension: 'sql', mimeType: 'text/sql' };
     }
   }
 }
 
 export function getDefaultFilename(tableName: string, format: ExportFormat): string {
   const ts = new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-');
-  const extMap: Record<ExportFormat, string> = { csv: 'csv', tsv: 'tsv', json: 'json', sql_insert: 'sql', sql_update: 'sql' };
+  const extMap: Record<ExportFormat, string> = {
+    csv: 'csv',
+    tsv: 'tsv',
+    json: 'json',
+    markdown: 'md',
+    xlsx: 'xlsx',
+    sql_insert: 'sql',
+    sql_update: 'sql',
+  };
   const ext = extMap[format];
   return `${tableName}_${ts}.${ext}`;
 }
@@ -123,7 +174,7 @@ export function generateExportFromArrays(options: {
   format: ExportFormat;
   tableName?: string;
   databaseType?: string;
-}): { content: string; extension: string; mimeType: string } {
+}): ExportResult {
   const {
     columnNames,
     rows,
