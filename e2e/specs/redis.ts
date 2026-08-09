@@ -1,5 +1,5 @@
 /**
- * Redis connection window E2E (browse + console + monitor + E1 write paths).
+ * Redis connection window E2E (browse + console + monitor + pub/sub + E1 write paths).
  *
  * Credentials: E2E_REDIS_* (see e2e/.env.example). Skips gracefully when
  * Redis is unreachable or E2E_SKIP_REDIS=1.
@@ -157,6 +157,32 @@ async function goToMonitorTab() {
   const monitorTab = await $(`button*=${t('redis.monitor')}`);
   await monitorTab.click();
   await browser.pause(500);
+}
+
+async function goToPubSubTab() {
+  const pubsubTab = await $(`button*=${t('redis.pubsub')}`);
+  await pubsubTab.click();
+  await browser.pause(500);
+}
+
+async function setTextareaByPlaceholder(placeholder: string, value: string) {
+  const ok = await browser.execute(
+    (ph: string, val: string) => {
+      const textareas = Array.from(document.querySelectorAll('textarea'));
+      const el = textareas.find((ta) => ta.getAttribute('placeholder') === ph) as
+        | HTMLTextAreaElement
+        | undefined;
+      if (!el) return false;
+      const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set;
+      setter?.call(el, val);
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+      return true;
+    },
+    placeholder,
+    value,
+  );
+  if (!ok) throw new Error(`textarea placeholder="${placeholder}" not found`);
 }
 
 async function setConsoleCommand(cmd: string) {
@@ -397,11 +423,12 @@ describe('Redis 数据库支持 (RD-001~RD-023)', () => {
 
   // ── Connection Window Layout ──
 
-  it('Redis 连接窗口应显示"数据浏览"、"命令"和"监控"标签 (RD-001)', async () => {
+  it('Redis 连接窗口应显示"数据浏览"、"命令"、"监控"和"Pub/Sub"标签 (RD-001)', async () => {
     const body = await $('body').getText();
     expect(body).toContain(t('redis.items'));
     expect(body).toContain(t('redis.console'));
     expect(body).toContain(t('redis.monitor'));
+    expect(body).toContain(t('redis.pubsub'));
   });
 
   it('标题栏应显示 Redis 类型 (RD-002)', async () => {
@@ -592,6 +619,43 @@ describe('Redis 数据库支持 (RD-001~RD-023)', () => {
     await executeRedisCommand('PING');
     const body = await $('body').getText();
     expect(body).toContain('PONG');
+  });
+
+  // ── Redis Monitor (E2) ──
+
+  // ── Redis Pub/Sub (E4) ──
+
+  it('Pub/Sub 标签应支持订阅与发布 (RD-024)', async () => {
+    const channel = 'e2e:pubsub:smoke';
+    const message = `hello-${Date.now()}`;
+
+    await goToPubSubTab();
+    const body = await $('body').getText();
+    expect(body).toContain(t('redis.pubsubSubscribe'));
+    expect(body).toContain(t('redis.pubsubPublish'));
+    expect(body).toContain(t('redis.pubsubMessages'));
+
+    await setTextareaByPlaceholder(t('redis.pubsubChannelsPlaceholder'), channel);
+    const subscribeBtn = await $(`button*=${t('redis.pubsubSubscribeAction')}`);
+    await subscribeBtn.click();
+    await browser.waitUntil(
+      async () => {
+        const afterSub = await $('body').getText();
+        return afterSub.includes(t('redis.pubsubActiveSubscriptions'));
+      },
+      { timeout: 10000, timeoutMsg: 'Timed out waiting for Pub/Sub subscription' },
+    );
+    await browser.pause(500);
+
+    await setReactInputByPlaceholder(t('redis.pubsubPublishChannelPlaceholder'), channel);
+    await setTextareaByPlaceholder(t('redis.pubsubPublishMessagePlaceholder'), message);
+    await clickButtonExact(t('redis.pubsubPublishAction'));
+
+    await browser.waitUntil(
+      async () => bodyContains(message),
+      { timeout: 15000, timeoutMsg: 'Timed out waiting for Pub/Sub message delivery' },
+    );
+    expect(await bodyContains(channel)).toBe(true);
   });
 
   // ── Redis Monitor (E2) ──
