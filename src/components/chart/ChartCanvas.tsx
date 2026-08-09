@@ -4,12 +4,15 @@ import { LineChartRenderer } from './renderers/LineChartRenderer';
 import { PieChartRenderer } from './renderers/PieChartRenderer';
 import { ScatterChartRenderer } from './renderers/ScatterChartRenderer';
 import { AreaChartRenderer } from './renderers/AreaChartRenderer';
+import { cn } from '../../lib/cn';
 import type { ChartConfig, ChartDataPoint, ChartType } from '../../types/chart';
 
 interface ChartCanvasProps {
   data: ChartDataPoint[];
   config: ChartConfig;
   onDataPointClick?: (rowIndex: number) => void;
+  /** Reduce padding for compact tile layouts. */
+  compact?: boolean;
 }
 
 const RENDERERS: Record<ChartType, React.ComponentType<{ data: ChartDataPoint[]; config: ChartConfig; onDataPointClick?: (rowIndex: number) => void }>> = {
@@ -20,11 +23,11 @@ const RENDERERS: Record<ChartType, React.ComponentType<{ data: ChartDataPoint[];
   area: AreaChartRenderer,
 };
 
-export function ChartCanvas({ data, config, onDataPointClick }: ChartCanvasProps) {
+export function ChartCanvas({ data, config, onDataPointClick, compact }: ChartCanvasProps) {
   const Renderer = RENDERERS[config.chartType];
 
   return (
-    <div className="absolute inset-0 p-4">
+    <div className={cn('absolute inset-0', compact ? 'p-1' : 'p-4')}>
       <ResponsiveContainer width="100%" height="100%">
         <Renderer data={data} config={config} onDataPointClick={onDataPointClick} />
       </ResponsiveContainer>
