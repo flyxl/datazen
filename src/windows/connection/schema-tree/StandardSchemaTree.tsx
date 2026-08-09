@@ -4,6 +4,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { useSchemaStore } from '../../../stores/schemaStore';
 import { useI18n } from '../../../hooks/useI18n';
 import { cn } from '../../../lib/cn';
+import { matchingColumns, tableMatchesObjectSearch } from '../../../lib/schemaObjectSearch';
 import type { DatabaseType, TableInfo } from '../../../types';
 import { formatRowCount } from './formatRowCount';
 
@@ -40,10 +41,12 @@ export function StandardSchemaTree({
   const { t } = useI18n();
   const tables = useSchemaStore((s) => s.tables);
   const views = useSchemaStore((s) => s.views);
+  const columnMap = useSchemaStore((s) => s.columnMap);
   const loading = useSchemaStore((s) => s.loading);
   const error = useSchemaStore((s) => s.error);
   const currentDatabase = useSchemaStore((s) => s.currentDatabase);
   const loadForConnection = useSchemaStore((s) => s.loadForConnection);
+  const loadColumnMap = useSchemaStore((s) => s.loadColumnMap);
 
   const [tablesExpanded, setTablesExpanded] = useState(true);
   const [viewsExpanded, setViewsExpanded] = useState(true);
@@ -57,14 +60,26 @@ export function StandardSchemaTree({
     });
   }, [connectionId, loadForConnection, initialDatabase, databaseType]);
 
-  const query = searchQuery.toLowerCase();
+  const query = searchQuery.trim();
+  useEffect(() => {
+    if (query.length >= 2 && (tables.length > 0 || views.length > 0)) {
+      void loadColumnMap();
+    }
+  }, [query, tables.length, views.length, loadColumnMap]);
+
   const filteredTables = useMemo(
-    () => query ? tables.filter((tbl) => tbl.name.toLowerCase().includes(query)) : tables,
-    [tables, query],
+    () =>
+      query
+        ? tables.filter((tbl) => tableMatchesObjectSearch(tbl.name, query, columnMap[tbl.name]))
+        : tables,
+    [tables, query, columnMap],
   );
   const filteredViews = useMemo(
-    () => query ? views.filter((v) => v.name.toLowerCase().includes(query)) : views,
-    [views, query],
+    () =>
+      query
+        ? views.filter((v) => tableMatchesObjectSearch(v.name, query, columnMap[v.name]))
+        : views,
+    [views, query, columnMap],
   );
 
   const flatRows = useMemo<FlatRow[]>(() => {
@@ -162,7 +177,11 @@ export function StandardSchemaTree({
                   </button>
                 )}
 
-                {row.type === 'item' && (
+                {row.type === 'item' && (() => {
+                  const colHits = query.length >= 2
+                    ? matchingColumns(query, columnMap[row.item.name])
+                    : [];
+                  return (
                   <button
                     type="button"
                     className={cn(
@@ -175,18 +194,25 @@ export function StandardSchemaTree({
                       e.stopPropagation();
                       onTableContextMenu?.(row.item.name, e.clientX, e.clientY);
                     }}
+                    title={colHits.length > 0 ? colHits.slice(0, 8).join(', ') : undefined}
                   >
                     {row.section === 'tables'
                       ? <Table2 className="h-3.5 w-3.5 shrink-0 text-fg-secondary" />
                       : <Eye className="h-3.5 w-3.5 shrink-0 text-fg-secondary" />}
                     <span className="min-w-0 truncate">{row.item.name}</span>
+                    {colHits.length > 0 && (
+                      <span className="shrink-0 text-[10px] text-accent">
+                        {colHits.length === 1 ? colHits[0] : `${colHits.length} cols`}
+                      </span>
+                    )}
                     {row.item.rowCount != null && (
                       <span className="ml-auto shrink-0 text-[11px] text-fg-muted">
                         {formatRowCount(row.item.rowCount)}
                       </span>
                     )}
                   </button>
-                )}
+                  );
+                })()}
 
                 {row.type === 'empty' && (
                   <div className="px-3 py-3 text-center text-xs text-fg-muted">

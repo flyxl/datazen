@@ -24,6 +24,7 @@ import { StatusBar } from '../../components/StatusBar';
 import { Button } from '../../components/ui/Button';
 import { Select } from '../../components/ui/Select';
 import { Dialog } from '../../components/ui/Dialog';
+import { SchemaDiffPanel } from '../../components/schema/SchemaDiffPanel';
 import { syncCommands, type SyncTask } from '../../commands/sync';
 import { useThemeListener } from '../../hooks/useThemeListener';
 import { useI18n } from '../../hooks/useI18n';
@@ -690,44 +691,7 @@ export function DataSyncWindow() {
                   )}
 
                   {!detailLoading && schemaDiff && !showDdl && (
-                    <div className="space-y-4 text-xs">
-                      {schemaDiff.added.length > 0 && (
-                        <section>
-                          <h4 className="mb-1.5 font-semibold text-green-600 dark:text-green-400">{t('sync.colAdded')}</h4>
-                          {schemaDiff.added.map((col) => (
-                            <div key={col.name} className="mb-1 font-mono text-fg-secondary">
-                              + {col.name} ({col.dataType}{col.nullable ? '' : ', NOT NULL'}{col.isPrimaryKey ? ', PK' : ''})
-                            </div>
-                          ))}
-                        </section>
-                      )}
-                      {schemaDiff.removed.length > 0 && (
-                        <section>
-                          <h4 className="mb-1.5 font-semibold text-red-500">{t('sync.colRemoved')}</h4>
-                          {schemaDiff.removed.map((col) => (
-                            <div key={col.name} className="mb-1 font-mono text-fg-secondary">
-                              - {col.name} ({col.dataType}{col.nullable ? '' : ', NOT NULL'}{col.isPrimaryKey ? ', PK' : ''})
-                            </div>
-                          ))}
-                        </section>
-                      )}
-                      {schemaDiff.changed.length > 0 && (
-                        <section>
-                          <h4 className="mb-1.5 font-semibold text-amber-600 dark:text-amber-400">{t('sync.colChanged')}</h4>
-                          {schemaDiff.changed.map((col) => (
-                            <div key={col.name} className="mb-2 rounded border border-edge bg-surface-alt p-2 font-mono text-[11px]">
-                              <div className="font-medium text-fg">{col.name}</div>
-                              <div className="mt-1 text-blue-600 dark:text-blue-400">{t('sync.source')}: {col.source.dataType}{col.source.nullable ? '' : ', NOT NULL'}{col.source.isPrimaryKey ? ', PK' : ''}</div>
-                              <div className="text-amber-600 dark:text-amber-400">{t('sync.target')}: {col.target.dataType}{col.target.nullable ? '' : ', NOT NULL'}{col.target.isPrimaryKey ? ', PK' : ''}</div>
-                              <div className="mt-1 text-fg-muted">{col.changes.join(', ')}</div>
-                            </div>
-                          ))}
-                        </section>
-                      )}
-                      {schemaDiff.added.length === 0 && schemaDiff.removed.length === 0 && schemaDiff.changed.length === 0 && (
-                        <div className="text-fg-muted">{t('sync.schemaIdentical')}</div>
-                      )}
-                    </div>
+                    <SchemaDiffPanel diff={schemaDiff} />
                   )}
 
                   {!detailLoading && schemaDiff && showDdl && (

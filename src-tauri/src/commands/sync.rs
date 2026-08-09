@@ -1,6 +1,7 @@
 use super::error::{CmdExt, CommandError};
 use super::AppState;
-use crate::db::{ColumnSchema, DatabaseType, TableSchema, Value};
+use crate::db::{DatabaseType, TableSchema, Value};
+use crate::schema_diff::diff_table_schemas;
 use crate::store::SyncTask;
 use crate::sync::adapter::{SyncSourceAdapter, SyncTargetAdapter};
 use crate::sync::ddl::build_create_table_ddl;
@@ -135,10 +136,14 @@ pub async fn compare_table_schemas(
     let tgt_schema = tgt_driver.get_table_schema(&tgt_handle, &table_name).await
         .cmd_err("compare_table_schemas")?;
 
-    let diff = diff_table_schemas(&src_schema, &tgt_schema);
+    // Source = desired: missingOnTarget → ADD, extraOnTarget → DROP.
+    // `added`/`removed` kept as aliases for one release.
+    let diff = diff_table_schemas(&table_name, &src_schema, &tgt_schema);
 
     let mut result = serde_json::json!({
         "table": table_name,
+        "missingOnTarget": diff.missing_on_target,
+        "extraOnTarget": diff.extra_on_target,
         "added": diff.added,
         "removed": diff.removed,
         "changed": diff.changed,
@@ -371,87 +376,6 @@ async fn count_rows(
         }
     }
     Ok(0)
-}
-
-#[derive(Debug, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ColumnSnapshot {
-    name: String,
-    data_type: String,
-    nullable: bool,
-    is_primary_key: bool,
-}
-
-#[derive(Debug, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ChangedColumnDiff {
-    name: String,
-    source: ColumnSnapshot,
-    target: ColumnSnapshot,
-    changes: Vec<String>,
-}
-
-struct SchemaDiff {
-    added: Vec<ColumnSnapshot>,
-    removed: Vec<ColumnSnapshot>,
-    changed: Vec<ChangedColumnDiff>,
-}
-
-fn column_snapshot(col: &ColumnSchema) -> ColumnSnapshot {
-    ColumnSnapshot {
-        name: col.name.clone(),
-        data_type: col.data_type.clone(),
-        nullable: col.nullable,
-        is_primary_key: col.is_primary_key,
-    }
-}
-
-fn diff_table_schemas(src: &TableSchema, tgt: &TableSchema) -> SchemaDiff {
-    let src_map: HashMap<&str, &ColumnSchema> =
-        src.columns.iter().map(|c| (c.name.as_str(), c)).collect();
-    let tgt_map: HashMap<&str, &ColumnSchema> =
-        tgt.columns.iter().map(|c| (c.name.as_str(), c)).collect();
-
-    let mut added = Vec::new();
-    let mut removed = Vec::new();
-    let mut changed = Vec::new();
-
-    for col in &tgt.columns {
-        if !src_map.contains_key(col.name.as_str()) {
-            added.push(column_snapshot(col));
-        }
-    }
-
-    for col in &src.columns {
-        if !tgt_map.contains_key(col.name.as_str()) {
-            removed.push(column_snapshot(col));
-        }
-    }
-
-    for col in &src.columns {
-        if let Some(tgt_col) = tgt_map.get(col.name.as_str()) {
-            let mut changes = Vec::new();
-            if col.data_type != tgt_col.data_type {
-                changes.push("dataType".into());
-            }
-            if col.nullable != tgt_col.nullable {
-                changes.push("nullable".into());
-            }
-            if col.is_primary_key != tgt_col.is_primary_key {
-                changes.push("isPrimaryKey".into());
-            }
-            if !changes.is_empty() {
-                changed.push(ChangedColumnDiff {
-                    name: col.name.clone(),
-                    source: column_snapshot(col),
-                    target: column_snapshot(tgt_col),
-                    changes,
-                });
-            }
-        }
-    }
-
-    SchemaDiff { added, removed, changed }
 }
 
 fn resolve_pk_columns(schema: &TableSchema) -> Vec<String> {
