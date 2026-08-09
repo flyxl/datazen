@@ -331,6 +331,18 @@
           "markdownDescription": "Denies the batch_set_ttl command without any pre-configured scope."
         },
         {
+          "description": "Enables the cluster_nodes command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-cluster-nodes",
+          "markdownDescription": "Enables the cluster_nodes command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the cluster_nodes command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-cluster-nodes",
+          "markdownDescription": "Denies the cluster_nodes command without any pre-configured scope."
+        },
+        {
           "description": "Enables the count_matching command without any pre-configured scope.",
           "type": "string",
           "const": "allow-count-matching",
@@ -787,10 +799,10 @@
           "markdownDescription": "Denies the zset_remove command without any pre-configured scope."
         },
         {
-          "description": "Default permissions for the redis plugin (mutate + batch ops)\n#### This default permission set includes:\n\n- `allow-set-string`\n- `allow-hash-set`\n- `allow-hash-del`\n- `allow-list-push`\n- `allow-list-set`\n- `allow-list-pop`\n- `allow-set-add`\n- `allow-set-remove`\n- `allow-zset-add`\n- `allow-zset-remove`\n- `allow-delete-keys`\n- `allow-rename`\n- `allow-set-ttl`\n- `allow-batch-delete-pattern`\n- `allow-batch-set-ttl`\n- `allow-batch-rename-prefix`\n- `allow-flush-db`\n- `allow-flush-all`\n- `allow-count-matching`\n- `allow-info`\n- `allow-memory-sample`\n- `allow-slowlog-get`\n- `allow-slowlog-reset`\n- `allow-modules-list`\n- `allow-exec`\n- `allow-pubsub-subscribe`\n- `allow-pubsub-unsubscribe`\n- `allow-pubsub-publish`\n- `allow-json-get`\n- `allow-json-set`\n- `allow-json-del`\n- `allow-xrange`\n- `allow-xadd`\n- `allow-xgroup-create`\n- `allow-xgroup-destroy`\n- `allow-xinfo-groups`\n- `allow-xpending`\n- `allow-xack`\n- `allow-stream-overview`",
+          "description": "Default permissions for the redis plugin (mutate + batch ops)\n#### This default permission set includes:\n\n- `allow-set-string`\n- `allow-hash-set`\n- `allow-hash-del`\n- `allow-list-push`\n- `allow-list-set`\n- `allow-list-pop`\n- `allow-set-add`\n- `allow-set-remove`\n- `allow-zset-add`\n- `allow-zset-remove`\n- `allow-delete-keys`\n- `allow-rename`\n- `allow-set-ttl`\n- `allow-batch-delete-pattern`\n- `allow-batch-set-ttl`\n- `allow-batch-rename-prefix`\n- `allow-flush-db`\n- `allow-flush-all`\n- `allow-count-matching`\n- `allow-cluster-nodes`\n- `allow-info`\n- `allow-memory-sample`\n- `allow-slowlog-get`\n- `allow-slowlog-reset`\n- `allow-modules-list`\n- `allow-exec`\n- `allow-pubsub-subscribe`\n- `allow-pubsub-unsubscribe`\n- `allow-pubsub-publish`\n- `allow-json-get`\n- `allow-json-set`\n- `allow-json-del`\n- `allow-xrange`\n- `allow-xadd`\n- `allow-xgroup-create`\n- `allow-xgroup-destroy`\n- `allow-xinfo-groups`\n- `allow-xpending`\n- `allow-xack`\n- `allow-stream-overview`\n- `allow-dump-keys`\n- `allow-restore-keys`",
           "type": "string",
           "const": "default",
-          "markdownDescription": "Default permissions for the redis plugin (mutate + batch ops)\n#### This default permission set includes:\n\n- `allow-set-string`\n- `allow-hash-set`\n- `allow-hash-del`\n- `allow-list-push`\n- `allow-list-set`\n- `allow-list-pop`\n- `allow-set-add`\n- `allow-set-remove`\n- `allow-zset-add`\n- `allow-zset-remove`\n- `allow-delete-keys`\n- `allow-rename`\n- `allow-set-ttl`\n- `allow-batch-delete-pattern`\n- `allow-batch-set-ttl`\n- `allow-batch-rename-prefix`\n- `allow-flush-db`\n- `allow-flush-all`\n- `allow-count-matching`\n- `allow-info`\n- `allow-memory-sample`\n- `allow-slowlog-get`\n- `allow-slowlog-reset`\n- `allow-modules-list`\n- `allow-exec`\n- `allow-pubsub-subscribe`\n- `allow-pubsub-unsubscribe`\n- `allow-pubsub-publish`\n- `allow-json-get`\n- `allow-json-set`\n- `allow-json-del`\n- `allow-xrange`\n- `allow-xadd`\n- `allow-xgroup-create`\n- `allow-xgroup-destroy`\n- `allow-xinfo-groups`\n- `allow-xpending`\n- `allow-xack`\n- `allow-stream-overview`"
+          "markdownDescription": "Default permissions for the redis plugin (mutate + batch ops)\n#### This default permission set includes:\n\n- `allow-set-string`\n- `allow-hash-set`\n- `allow-hash-del`\n- `allow-list-push`\n- `allow-list-set`\n- `allow-list-pop`\n- `allow-set-add`\n- `allow-set-remove`\n- `allow-zset-add`\n- `allow-zset-remove`\n- `allow-delete-keys`\n- `allow-rename`\n- `allow-set-ttl`\n- `allow-batch-delete-pattern`\n- `allow-batch-set-ttl`\n- `allow-batch-rename-prefix`\n- `allow-flush-db`\n- `allow-flush-all`\n- `allow-count-matching`\n- `allow-cluster-nodes`\n- `allow-info`\n- `allow-memory-sample`\n- `allow-slowlog-get`\n- `allow-slowlog-reset`\n- `allow-modules-list`\n- `allow-exec`\n- `allow-pubsub-subscribe`\n- `allow-pubsub-unsubscribe`\n- `allow-pubsub-publish`\n- `allow-json-get`\n- `allow-json-set`\n- `allow-json-del`\n- `allow-xrange`\n- `allow-xadd`\n- `allow-xgroup-create`\n- `allow-xgroup-destroy`\n- `allow-xinfo-groups`\n- `allow-xpending`\n- `allow-xack`\n- `allow-stream-overview`\n- `allow-dump-keys`\n- `allow-restore-keys`"
         }
       ]
     }

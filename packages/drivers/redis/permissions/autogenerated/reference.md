@@ -23,6 +23,7 @@ Default permissions for the redis plugin (mutate + batch ops)
 - `allow-flush-db`
 - `allow-flush-all`
 - `allow-count-matching`
+- `allow-cluster-nodes`
 - `allow-info`
 - `allow-memory-sample`
 - `allow-slowlog-get`
@@ -129,6 +130,32 @@ Enables the batch_set_ttl command without any pre-configured scope.
 <td>
 
 Denies the batch_set_ttl command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`datazen-driver-redis:allow-cluster-nodes`
+
+</td>
+<td>
+
+Enables the cluster_nodes command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`datazen-driver-redis:deny-cluster-nodes`
+
+</td>
+<td>
+
+Denies the cluster_nodes command without any pre-configured scope.
 
 </td>
 </tr>

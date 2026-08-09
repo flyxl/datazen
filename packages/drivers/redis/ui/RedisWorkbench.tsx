@@ -42,6 +42,8 @@ const REDIS_DB_COUNT = 16;
 export interface RedisWorkbenchProps {
   connectionId: string;
   initialDatabase?: string;
+  onDbIndexChange?: (dbIndex: number) => void;
+  onKeysChange?: (keys: string[]) => void;
 }
 
 export interface RedisWorkbenchHandle {
@@ -65,7 +67,7 @@ function formatSize(size: number): string {
 }
 
 export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchProps>(
-  function RedisWorkbench({ connectionId, initialDatabase }, ref) {
+  function RedisWorkbench({ connectionId, initialDatabase, onDbIndexChange, onKeysChange }, ref) {
     const { t } = useI18n();
     const databasesFromStore = useSchemaStore((s) => s.databases);
     const loading = useSchemaStore((s) => s.loading);
@@ -166,6 +168,7 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
         const idx = parseInt(db.replace('db', ''), 10) || 0;
         setSelectedDb(db);
         setDbIndex(idx);
+        onDbIndexChange?.(idx);
         setKeys([]);
         setCursor(0);
         setDbSize(0);
@@ -175,8 +178,12 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
         setSearchPattern('*');
         void loadKeys(idx, '*', 0, true);
       },
-      [loadKeys],
+      [loadKeys, onDbIndexChange],
     );
+
+    useEffect(() => {
+      onKeysChange?.(keys.map((entry) => entry.key));
+    }, [keys, onKeysChange]);
 
     useEffect(() => {
       if (databases.length > 0 && !selectedDb) {

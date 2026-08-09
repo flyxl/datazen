@@ -14,7 +14,8 @@ use std::time::Instant;
 use tokio::sync::RwLock;
 
 use crate::connect::{
-    build_connection_plan, looks_like_connection_loss, open_live_conn, ConnectionPlan, RedisLiveConn,
+    build_connection_plan, looks_like_connection_loss, open_live_conn, open_pinned_node_conn,
+    ConnectionPlan, RedisLiveConn,
 };
 use crate::with_redis_conn;
 
@@ -233,10 +234,26 @@ impl RedisDriver {
         &self,
         connection_id: &str,
         section: Option<String>,
-        _node_addr: Option<String>,
+        node_addr: Option<String>,
     ) -> Result<String, DriverError> {
+        if let Some(addr) = node_addr.filter(|s| !s.trim().is_empty()) {
+            let plan = self.connection_plan(connection_id).await?;
+            let mut conn = open_pinned_node_conn(&plan, addr.trim()).await?;
+            return crate::ops_observe::fetch_info(&mut conn, section.as_deref())
+                .await
+                .map_err(DriverError::QueryFailed);
+        }
         with_live_any_op!(self, connection_id, |conn| {
             crate::ops_observe::fetch_info(conn, section.as_deref()).await
+        })
+    }
+
+    pub async fn plugin_cluster_nodes(
+        &self,
+        connection_id: &str,
+    ) -> Result<crate::ops_cluster::ClusterNodesResult, DriverError> {
+        with_live_any_op!(self, connection_id, |conn| {
+            crate::ops_cluster::cluster_nodes(conn).await
         })
     }
 
@@ -282,8 +299,19 @@ impl RedisDriver {
         connection_id: &str,
         db_index: u32,
         commands: &str,
+        node_addr: Option<String>,
     ) -> Result<crate::ops_exec::ExecResponse, DriverError> {
         let commands = commands.to_string();
+        if let Some(addr) = node_addr.filter(|s| !s.trim().is_empty()) {
+            let plan = self.connection_plan(connection_id).await?;
+            let mut conn = open_pinned_node_conn(&plan, addr.trim()).await?;
+            select_db_on(&mut conn, db_index)
+                .await
+                .map_err(DriverError::QueryFailed)?;
+            return crate::ops_exec::exec_commands(&mut conn, &commands)
+                .await
+                .map_err(DriverError::QueryFailed);
+        }
         with_live_op!(self, connection_id, db_index, |conn| {
             crate::ops_exec::exec_commands(conn, &commands).await
         })

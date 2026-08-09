@@ -11,12 +11,31 @@ import { Dialog } from '../../../../src/components/ui/Dialog';
 import { useI18n } from '../../../../src/hooks/useI18n';
 import { cn } from '../../../../src/lib/cn';
 import { pluginInvoke } from '../../../../src/plugins/generated';
+import { useSettingsStore } from '../../../../src/stores/settingsStore';
 import { parseInfoSections, type InfoSection } from './infoParse';
 import { StreamOverview } from './StreamOverview';
+import { ClusterNodePicker } from './ClusterNodePicker';
+
+function readClusterRouting(raw: unknown): 'auto' | 'pinnedNode' {
+  if (!raw || typeof raw !== 'object') return 'auto';
+  const value = (raw as { clusterRouting?: unknown }).clusterRouting;
+  return value === 'pinnedNode' ? 'pinnedNode' : 'auto';
+}
+
+function resolvePinnedNodeAddr(
+  clusterRouting: 'auto' | 'pinnedNode',
+  pinnedNodeAddr?: string,
+): string | null {
+  if (clusterRouting !== 'pinnedNode') return null;
+  const addr = pinnedNodeAddr?.trim();
+  return addr ? addr : null;
+}
 
 export interface MonitorPanelProps {
   connectionId: string;
   dbIndex?: number;
+  pinnedNodeAddr?: string;
+  onPinnedNodeAddrChange?: (addr: string) => void;
 }
 
 type MonitorSubPage = 'info' | 'memory' | 'slowlog' | 'streams';
@@ -67,8 +86,16 @@ function formatSlowlogClient(entry: SlowlogEntry): string {
   return parts.join(' · ') || '—';
 }
 
-export function MonitorPanel({ connectionId, dbIndex = 0 }: MonitorPanelProps) {
+export function MonitorPanel({
+  connectionId,
+  dbIndex = 0,
+  pinnedNodeAddr = '',
+  onPinnedNodeAddrChange,
+}: MonitorPanelProps) {
   const { t } = useI18n();
+  const pluginSettings = useSettingsStore((s) => s.settings.pluginSettings);
+  const clusterRouting = readClusterRouting(pluginSettings?.redis);
+  const nodeAddr = resolvePinnedNodeAddr(clusterRouting, pinnedNodeAddr);
   const [subPage, setSubPage] = useState<MonitorSubPage>('info');
 
   const subPages = useMemo(
@@ -100,10 +127,17 @@ export function MonitorPanel({ connectionId, dbIndex = 0 }: MonitorPanelProps) {
             {page.label}
           </button>
         ))}
+        <div className="flex-1" />
+        <ClusterNodePicker
+          connectionId={connectionId}
+          compact
+          value={pinnedNodeAddr}
+          onChange={onPinnedNodeAddrChange}
+        />
       </div>
 
       {subPage === 'info' ? (
-        <InfoPane connectionId={connectionId} />
+        <InfoPane connectionId={connectionId} nodeAddr={nodeAddr} />
       ) : subPage === 'memory' ? (
         <MemoryPane connectionId={connectionId} dbIndex={dbIndex} />
       ) : subPage === 'slowlog' ? (
@@ -115,7 +149,13 @@ export function MonitorPanel({ connectionId, dbIndex = 0 }: MonitorPanelProps) {
   );
 }
 
-function InfoPane({ connectionId }: { connectionId: string }) {
+function InfoPane({
+  connectionId,
+  nodeAddr,
+}: {
+  connectionId: string;
+  nodeAddr: string | null;
+}) {
   const { t } = useI18n();
   const [sections, setSections] = useState<InfoSection[]>([]);
   const [loading, setLoading] = useState(false);
@@ -129,7 +169,7 @@ function InfoPane({ connectionId }: { connectionId: string }) {
       const raw = await pluginInvoke<string>('redis', 'info', {
         connectionId,
         section: null,
-        nodeAddr: null,
+        nodeAddr,
       });
       const parsed = parseInfoSections(raw);
       setSections(parsed);
@@ -140,7 +180,7 @@ function InfoPane({ connectionId }: { connectionId: string }) {
     } finally {
       setLoading(false);
     }
-  }, [connectionId]);
+  }, [connectionId, nodeAddr]);
 
   useEffect(() => {
     void load();

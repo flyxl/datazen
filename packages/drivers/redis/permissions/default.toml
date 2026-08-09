@@ -22,6 +22,7 @@ permissions = [
   "allow-flush-db",
   "allow-flush-all",
   "allow-count-matching",
+  "allow-cluster-nodes",
   "allow-info",
   "allow-memory-sample",
   "allow-slowlog-get",
