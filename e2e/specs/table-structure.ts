@@ -125,6 +125,7 @@ describe('表结构编辑 (TS-001~TS-008)', () => {
       const body = await $('body').getText();
       const hasCreateSQL = body.toUpperCase().includes('CREATE TABLE');
       expect(hasCreateSQL).toBe(true);
+      expect(body).toContain(t('structEditor.sqlPreview'));
 
       // Close preview if there's a close button
       const closeBtn = await $(`button*=${t('common.close')}`);
@@ -133,6 +134,11 @@ describe('表结构编辑 (TS-001~TS-008)', () => {
         await browser.pause(300);
       }
     }
+  });
+
+  it('新建表编辑器应显示创建表按钮 (TS-004b)', async () => {
+    const createBtn = await $(`button*=${t('structEditor.createTable')}`);
+    await expect(createBtn).toBeDisplayed();
   });
 
   it('应能通过创建表按钮创建表 (TS-005)', async () => {
@@ -179,6 +185,16 @@ describe('表结构编辑 (TS-001~TS-008)', () => {
     const hasStructureInfo = body.includes(t('connWin.editTableStructure')) || body.includes('integer') ||
       body.includes('varchar') || body.includes('NOT NULL');
     expect(hasStructureInfo).toBe(true);
+  });
+
+  it('编辑表结构应显示保存更改按钮 (TS-006b)', async () => {
+    const editBtn = await $(`button*=${t('connWin.editTableStructure')}`);
+    if (await editBtn.isExisting() && (await editBtn.isDisplayed())) {
+      await editBtn.click();
+      await browser.pause(1000);
+      const saveBtn = await $(`button*=${t('structEditor.saveChanges')}`);
+      await expect(saveBtn).toBeDisplayed();
+    }
   });
 
   it('应能查看表的完整列信息 (TS-007)', async () => {

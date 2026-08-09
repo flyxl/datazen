@@ -69,6 +69,7 @@ export const DOCS_SECTIONS_ZH: DocsSection[] = [
   <li>多语句执行、查询历史与收藏</li>
   <li>结果表与图表双视图（柱/线/饼/散点/面积），支持自然语言调整图表配置</li>
   <li>EXPLAIN 可视化与 AI 解读</li>
+  <li><strong>表结构编辑器</strong>：新建/改表、列与索引同草稿、SQL 预览后保存；控件启用由驱动按版本自报能力（不支持项会禁用并提示）；执行按语句逐步应用，非单事务</li>
 </ul>
 <h3>AI 辅助</h3>
 <ul>
@@ -232,6 +233,7 @@ export const DOCS_SECTIONS_EN: DocsSection[] = [
   <li>Multi-statement execution, history, and favorites</li>
   <li>Table/chart views with NL chart tweaks</li>
   <li>EXPLAIN visualization and AI analysis</li>
+  <li><strong>Table structure editor</strong>: create/alter tables with columns and indexes in one draft, preview SQL then save; controls follow driver-reported version caps (unsupported actions are disabled with a hint); execution applies statements step-by-step, not as one atomic transaction</li>
 </ul>
 <h3>AI</h3>
 <ul>

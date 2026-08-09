@@ -43,7 +43,7 @@ ABC 与 Schema Diff Deploy 已把「信任面 / 每日 SQL 主路径 / 结构部
 | 主题 / SKU | 暗色 + 编辑器主题；~20MB 一体 | 运行时主题包；Basic/All/自定义列表 | **DZ 独有** |
 | DB 广度 | 70+（含 JDBC/Agent/MQ） | Path + git；不做 JDBC | **DBX 护城河** |
 | 字段血缘 | ✅ | ❌ | **仍落后** |
-| 表结构编辑器 | ✅（列+索引一体；多方言 capability；rename/reorder） | ✅（新建/改表 + SQL 预览；索引在独立 Tab；DDL 偏 PG 方言） | **有，深度/方言覆盖有差** |
+| 表结构编辑器 | ✅（列+索引一体；多方言 capability；rename/reorder） | ✅（列+索引同草稿 + SQL 预览；**驱动自报 caps**，Host 无中央对照表；PG/MySQL/SQLite T0） | **有，深度/方言覆盖有差**（P1：MySQL charset/unsigned、索引 INCLUDE UI） |
 | 库内全局搜索 | ✅ | 侧栏表·视图·列搜索 | 部分追平 |
 | 文件预览（Parquet 等） | ✅ DuckDB | DuckDB 在 All SKU，无拖放预览产品化 | 仍弱 |
 | AI Provider | Claude / OpenAI / Ollama / 兼容 | OpenAI / Anthropic / DeepSeek / Ollama / Custom | 接近 |
