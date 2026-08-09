@@ -701,9 +701,14 @@ const zhCN = {
 
   // ── AI Context ──
   'context.title': 'AI 上下文',
+  'context.tables': '表',
+  'context.files': '文件',
+  'context.recent': '最近',
+  'context.back': '返回',
+  'context.noTables': '暂无表',
   'context.noFiles': '上下文目录为空，请将文件放入上下文目录',
   'context.noResults': '未找到匹配的文件',
-  'context.placeholder': '输入 @ 引用上下文文件…',
+  'context.placeholder': '输入 @ 引用表或文件…',
   'context.dirSetting': 'AI 上下文目录',
   'context.dirSettingDesc': '用于存放 AI 上下文文件的目录路径，留空使用默认目录',
   'context.openDir': '打开上下文目录',

@@ -1,10 +1,17 @@
 import { forwardRef, useCallback, useImperativeHandle, useRef, useState } from 'react';
-import { ArrowUp, Square, X } from 'lucide-react';
+import { ArrowUp, File, Folder, Square, Table2 } from 'lucide-react';
 import { cn } from '../../lib/cn';
 import { useAiKeyboard } from '../../hooks/useAiKeyboard';
 import { useI18n } from '../../hooks/useI18n';
 import { ContextPicker } from './ContextPicker';
-import type { ContextEntry } from '../../types';
+import type { ContextItem } from '../../types';
+
+function TokenIcon({ kind }: { kind: ContextItem['kind'] }) {
+  const className = 'h-3 w-3 shrink-0 opacity-80';
+  if (kind === 'table') return <Table2 className={className} aria-hidden />;
+  if (kind === 'dir') return <Folder className={className} aria-hidden />;
+  return <File className={className} aria-hidden />;
+}
 
 interface AiInputProps {
   value: string;
@@ -16,8 +23,18 @@ interface AiInputProps {
   isLoading?: boolean;
   onStop?: () => void;
   className?: string;
-  contextFiles?: ContextEntry[];
-  onContextFilesChange?: (files: ContextEntry[]) => void;
+  contextItems?: ContextItem[];
+  onContextItemsChange?: (items: ContextItem[]) => void;
+  connectionId?: string;
+  database?: string;
+  /** Where the @ picker opens relative to the input. Default: above. */
+  pickerPosition?: 'above' | 'below';
+  /** Hide the built-in send/stop control (e.g. NL2SQL uses an external Generate button). */
+  hideSubmit?: boolean;
+}
+
+function itemKey(item: ContextItem): string {
+  return `${item.kind}:${item.id}`;
 }
 
 export const AiInput = forwardRef<HTMLTextAreaElement, AiInputProps>(function AiInput(
@@ -31,8 +48,12 @@ export const AiInput = forwardRef<HTMLTextAreaElement, AiInputProps>(function Ai
     isLoading,
     onStop,
     className,
-    contextFiles,
-    onContextFilesChange,
+    contextItems,
+    onContextItemsChange,
+    connectionId,
+    database,
+    pickerPosition = 'above',
+    hideSubmit = false,
   },
   ref,
 ) {
@@ -48,7 +69,7 @@ export const AiInput = forwardRef<HTMLTextAreaElement, AiInputProps>(function Ai
 
   const canSend = value.trim().length > 0 && !isLoading;
   const showStop = isLoading && onStop;
-  const hasContext = onContextFilesChange !== undefined;
+  const hasContext = onContextItemsChange !== undefined;
 
   const handleChange = useCallback(
     (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -78,17 +99,35 @@ export const AiInput = forwardRef<HTMLTextAreaElement, AiInputProps>(function Ai
         return;
       }
       if (disabled) return;
+
+      const textarea = textareaRef.current;
+      if (
+        onContextItemsChange &&
+        contextItems &&
+        contextItems.length > 0 &&
+        textarea &&
+        (e.key === 'Backspace' || (e.key === 'Delete' && value.length === 0))
+      ) {
+        const start = textarea.selectionStart ?? 0;
+        const end = textarea.selectionEnd ?? 0;
+        if (start === 0 && end === 0) {
+          e.preventDefault();
+          onContextItemsChange(contextItems.slice(0, -1));
+          return;
+        }
+      }
+
       aiKeyboard.onKeyDown?.(e as unknown as React.KeyboardEvent<HTMLTextAreaElement>);
     },
-    [showPicker, disabled, aiKeyboard],
+    [showPicker, disabled, aiKeyboard, onContextItemsChange, contextItems, value.length],
   );
 
   const handleSelect = useCallback(
-    (entry: ContextEntry) => {
-      if (!onContextFilesChange || !contextFiles) return;
+    (item: ContextItem) => {
+      if (!onContextItemsChange || !contextItems) return;
 
-      if (!contextFiles.some((f) => f.path === entry.path)) {
-        onContextFilesChange([...contextFiles, entry]);
+      if (!contextItems.some((i) => itemKey(i) === itemKey(item))) {
+        onContextItemsChange([...contextItems, item]);
       }
 
       const textarea = textareaRef.current;
@@ -107,19 +146,10 @@ export const AiInput = forwardRef<HTMLTextAreaElement, AiInputProps>(function Ai
       setPickerQuery('');
       textarea?.focus();
     },
-    [onContextFilesChange, contextFiles, value, onChange],
+    [onContextItemsChange, contextItems, value, onChange],
   );
 
-  const handleRemoveContext = useCallback(
-    (path: string) => {
-      if (onContextFilesChange && contextFiles) {
-        onContextFilesChange(contextFiles.filter((f) => f.path !== path));
-      }
-    },
-    [onContextFilesChange, contextFiles],
-  );
-
-  const hasChips = contextFiles && contextFiles.length > 0;
+  const hasTokens = contextItems && contextItems.length > 0;
 
   return (
     <div ref={wrapperRef} className={cn('relative', className)}>
@@ -136,26 +166,24 @@ export const AiInput = forwardRef<HTMLTextAreaElement, AiInputProps>(function Ai
             onSelect={handleSelect}
             onClose={() => setShowPicker(false)}
             anchorRef={wrapperRef}
+            position={pickerPosition}
+            connectionId={connectionId}
+            database={database}
           />
         )}
 
-        {/* Context chips — inline at the start of the input */}
-        {hasChips && (
-          <div className="flex flex-wrap gap-1 pl-2 pt-2">
-            {contextFiles.map((f) => (
+        {hasTokens && (
+          <div className="flex flex-wrap items-center gap-1.5 pl-2 pt-2">
+            {contextItems.map((item) => (
               <span
-                key={f.path}
-                className="inline-flex items-center gap-0.5 rounded bg-accent/10 px-1.5 py-0.5 text-[11px] text-accent"
+                key={itemKey(item)}
+                data-testid="context-token"
+                data-kind={item.kind}
+                data-id={item.id}
+                className="inline-flex items-center gap-1 text-[12px] text-fg-secondary"
               >
-                @{f.name}
-                <button
-                  type="button"
-                  className="rounded hover:bg-accent/20"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => handleRemoveContext(f.path)}
-                >
-                  <X className="h-2.5 w-2.5" />
-                </button>
+                <TokenIcon kind={item.kind} />
+                <span className="truncate">{item.name}</span>
               </span>
             ))}
           </div>
@@ -168,7 +196,13 @@ export const AiInput = forwardRef<HTMLTextAreaElement, AiInputProps>(function Ai
           onKeyDown={handleKeyDown}
           onCompositionStart={aiKeyboard.onCompositionStart}
           onCompositionEnd={aiKeyboard.onCompositionEnd}
-          placeholder={hasContext ? t('context.placeholder') : placeholder}
+          placeholder={
+            placeholder !== undefined
+              ? placeholder
+              : hasContext
+                ? t('context.placeholder')
+                : undefined
+          }
           rows={rows}
           disabled={disabled}
           autoCapitalize="off"
@@ -180,38 +214,40 @@ export const AiInput = forwardRef<HTMLTextAreaElement, AiInputProps>(function Ai
             'disabled:cursor-not-allowed',
           )}
         />
-        <div className="absolute bottom-1.5 right-1.5 flex items-end">
-          {showStop ? (
-            <button
-              type="button"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={onStop}
-              title={t('chat.stop')}
-              className={cn(
-                'flex h-6 w-6 items-center justify-center rounded-md',
-                'bg-fg-muted/20 text-fg-muted hover:bg-fg-muted/30 hover:text-fg',
-                'transition-colors',
-              )}
-            >
-              <Square className="h-3 w-3" />
-            </button>
-          ) : (
-            <button
-              type="button"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={onSubmit}
-              disabled={!canSend}
-              className={cn(
-                'flex h-6 w-6 items-center justify-center rounded-md transition-colors',
-                canSend
-                  ? 'bg-accent text-white hover:bg-accent/90'
-                  : 'bg-fg-muted/10 text-fg-muted/40 cursor-not-allowed',
-              )}
-            >
-              <ArrowUp className="h-3.5 w-3.5" />
-            </button>
-          )}
-        </div>
+        {!hideSubmit && (
+          <div className="absolute bottom-1.5 right-1.5 flex items-end">
+            {showStop ? (
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={onStop}
+                title={t('chat.stop')}
+                className={cn(
+                  'flex h-6 w-6 items-center justify-center rounded-md',
+                  'bg-fg-muted/20 text-fg-muted hover:bg-fg-muted/30 hover:text-fg',
+                  'transition-colors',
+                )}
+              >
+                <Square className="h-3 w-3" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={onSubmit}
+                disabled={!canSend}
+                className={cn(
+                  'flex h-6 w-6 items-center justify-center rounded-md transition-colors',
+                  canSend
+                    ? 'bg-accent text-white hover:bg-accent/90'
+                    : 'bg-fg-muted/10 text-fg-muted/40 cursor-not-allowed',
+                )}
+              >
+                <ArrowUp className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
