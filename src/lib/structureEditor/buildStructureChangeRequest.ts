@@ -19,6 +19,7 @@ export function buildStructureChangeRequest(
   params: BuildStructureChangeRequestParams,
 ): StructureChangeRequest {
   const namedColumns = params.currentColumns.filter((c) => c.name.trim());
+  const namedIndexes = params.currentIndexes.filter((i) => i.name.trim());
 
   return {
     mode: params.mode,
@@ -27,6 +28,6 @@ export function buildStructureChangeRequest(
     originalColumns: params.mode === 'alter' ? params.originalColumns : [],
     currentColumns: namedColumns,
     originalIndexes: params.mode === 'alter' ? params.originalIndexes : [],
-    currentIndexes: params.currentIndexes,
+    currentIndexes: namedIndexes,
   };
 }

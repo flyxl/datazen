@@ -30,6 +30,8 @@ import { StructurePlanPreview } from './structure/StructurePlanPreview';
 interface TableStructureEditorProps {
   connectionId: string;
   databaseType: DatabaseType;
+  /** SQL schema namespace for plan IPC (PG schema, MySQL database, etc.). */
+  schema?: string | null;
   mode: 'create' | 'alter';
   tableName?: string;
   onSuccess: () => void;
@@ -73,6 +75,7 @@ async function executePlanStatements(
 export function TableStructureEditor({
   connectionId,
   databaseType,
+  schema: requestSchema = null,
   mode,
   tableName: initialTableName,
   onSuccess,
@@ -163,12 +166,22 @@ export function TableStructureEditor({
     return buildStructureChangeRequest({
       mode,
       table: tableName.trim(),
+      schema: requestSchema,
       originalColumns,
       currentColumns: columns,
       originalIndexes,
       currentIndexes: indexes,
     });
-  }, [mode, tableName, originalColumns, columns, originalIndexes, indexes, isValid]);
+  }, [
+    mode,
+    tableName,
+    requestSchema,
+    originalColumns,
+    columns,
+    originalIndexes,
+    indexes,
+    isValid,
+  ]);
 
   const updateColumn = useCallback((id: string, patch: Partial<StructureColumnDraft>) => {
     setColumns((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c)));
@@ -310,7 +323,7 @@ export function TableStructureEditor({
           onClick={() => void handlePreview()}
           disabled={!isValid || previewing}
         >
-          {previewing ? t('structEditor.executing') : t('structEditor.previewSQL')}
+          {previewing ? t('structEditor.previewing') : t('structEditor.previewSQL')}
         </Button>
         <Button variant="secondary" className="h-8 text-xs" onClick={onCancel}>
           {t('common.cancel')}

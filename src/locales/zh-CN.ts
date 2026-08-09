@@ -707,6 +707,7 @@ const zhCN = {
   'structEditor.newTable': '新建表',
   'structEditor.editTable': '编辑表结构',
   'structEditor.previewSQL': '预览 SQL',
+  'structEditor.previewing': '生成预览中…',
   'structEditor.executing': '执行中…',
   'structEditor.createTable': '创建表',
   'structEditor.saveChanges': '保存更改',

@@ -51,6 +51,32 @@ describe('buildStructureChangeRequest', () => {
     expect(request.currentIndexes).toHaveLength(1);
   });
 
+  it('omits blank index names from currentIndexes', () => {
+    const request = buildStructureChangeRequest({
+      mode: 'create',
+      table: 'users',
+      originalColumns: [],
+      currentColumns: [sampleColumn('c1', 'id')],
+      originalIndexes: [],
+      currentIndexes: [sampleIndex('i1', 'idx_email'), sampleIndex('i2', '  ')],
+    });
+    expect(request.currentIndexes).toHaveLength(1);
+    expect(request.currentIndexes[0]?.name).toBe('idx_email');
+  });
+
+  it('passes schema through to the request', () => {
+    const request = buildStructureChangeRequest({
+      mode: 'create',
+      table: 'users',
+      schema: 'app',
+      originalColumns: [],
+      currentColumns: [sampleColumn('c1', 'id')],
+      originalIndexes: [],
+      currentIndexes: [],
+    });
+    expect(request.schema).toBe('app');
+  });
+
   it('preserves original snapshots in alter mode', () => {
     const origCol = sampleColumn('c1', 'email');
     const origIdx = sampleIndex('i1', 'idx_email');
