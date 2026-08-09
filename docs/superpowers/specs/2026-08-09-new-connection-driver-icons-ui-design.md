@@ -26,7 +26,7 @@
 |------|------|
 | 图标归属 | **方案 A**：`packages/drivers/*/ui/icons/{dbType}.svg`，经 `resolve-drivers` 生成 |
 | Host 中央 `src/assets/db-icons/` | 逐步由生成条目替代；`getDriverIconMap()` 以 generated 为准 |
-| 协议复用类型 | doris/starrocks/… 可共用 mysql 图标；questdb/cloudberry 可共用 postgresql；也可各自 SVG |
+| 协议复用类型 | **已由** [driver-badge-brand-icons](2026-08-09-driver-badge-brand-icons-design.md) **取代**：优先自有品牌 SVG；无则父图 + 右下角 shortLabel（不再静默整图 alias） |
 | 列表渲染 | `DbTypeBadge`（解析链：主题包 → 驱动默认 → shortLabel 占位） |
 | 搜索 UI | **无 label**；`placeholder` 承载提示（i18n key） |
 | 搜索匹配 | `label` 与 `databaseType` id，不区分大小写；子串匹配 |
