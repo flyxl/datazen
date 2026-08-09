@@ -403,6 +403,18 @@
           "markdownDescription": "Denies the hash_set command without any pre-configured scope."
         },
         {
+          "description": "Enables the info command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-info",
+          "markdownDescription": "Enables the info command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the info command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-info",
+          "markdownDescription": "Denies the info command without any pre-configured scope."
+        },
+        {
           "description": "Enables the list_pop command without any pre-configured scope.",
           "type": "string",
           "const": "allow-list-pop",
@@ -437,6 +449,30 @@
           "type": "string",
           "const": "deny-list-set",
           "markdownDescription": "Denies the list_set command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the memory_sample command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-memory-sample",
+          "markdownDescription": "Enables the memory_sample command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the memory_sample command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-memory-sample",
+          "markdownDescription": "Denies the memory_sample command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the modules_list command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-modules-list",
+          "markdownDescription": "Enables the modules_list command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the modules_list command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-modules-list",
+          "markdownDescription": "Denies the modules_list command without any pre-configured scope."
         },
         {
           "description": "Enables the rename command without any pre-configured scope.",
@@ -499,6 +535,30 @@
           "markdownDescription": "Denies the set_ttl command without any pre-configured scope."
         },
         {
+          "description": "Enables the slowlog_get command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-slowlog-get",
+          "markdownDescription": "Enables the slowlog_get command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the slowlog_get command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-slowlog-get",
+          "markdownDescription": "Denies the slowlog_get command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the slowlog_reset command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-slowlog-reset",
+          "markdownDescription": "Enables the slowlog_reset command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the slowlog_reset command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-slowlog-reset",
+          "markdownDescription": "Denies the slowlog_reset command without any pre-configured scope."
+        },
+        {
           "description": "Enables the zset_add command without any pre-configured scope.",
           "type": "string",
           "const": "allow-zset-add",
@@ -523,10 +583,10 @@
           "markdownDescription": "Denies the zset_remove command without any pre-configured scope."
         },
         {
-          "description": "Default permissions for the redis plugin (mutate + batch ops)\n#### This default permission set includes:\n\n- `allow-set-string`\n- `allow-hash-set`\n- `allow-hash-del`\n- `allow-list-push`\n- `allow-list-set`\n- `allow-list-pop`\n- `allow-set-add`\n- `allow-set-remove`\n- `allow-zset-add`\n- `allow-zset-remove`\n- `allow-delete-keys`\n- `allow-rename`\n- `allow-set-ttl`\n- `allow-batch-delete-pattern`\n- `allow-batch-set-ttl`\n- `allow-batch-rename-prefix`\n- `allow-flush-db`\n- `allow-flush-all`\n- `allow-count-matching`",
+          "description": "Default permissions for the redis plugin (mutate + batch ops)\n#### This default permission set includes:\n\n- `allow-set-string`\n- `allow-hash-set`\n- `allow-hash-del`\n- `allow-list-push`\n- `allow-list-set`\n- `allow-list-pop`\n- `allow-set-add`\n- `allow-set-remove`\n- `allow-zset-add`\n- `allow-zset-remove`\n- `allow-delete-keys`\n- `allow-rename`\n- `allow-set-ttl`\n- `allow-batch-delete-pattern`\n- `allow-batch-set-ttl`\n- `allow-batch-rename-prefix`\n- `allow-flush-db`\n- `allow-flush-all`\n- `allow-count-matching`\n- `allow-info`\n- `allow-memory-sample`\n- `allow-slowlog-get`\n- `allow-slowlog-reset`\n- `allow-modules-list`",
           "type": "string",
           "const": "default",
-          "markdownDescription": "Default permissions for the redis plugin (mutate + batch ops)\n#### This default permission set includes:\n\n- `allow-set-string`\n- `allow-hash-set`\n- `allow-hash-del`\n- `allow-list-push`\n- `allow-list-set`\n- `allow-list-pop`\n- `allow-set-add`\n- `allow-set-remove`\n- `allow-zset-add`\n- `allow-zset-remove`\n- `allow-delete-keys`\n- `allow-rename`\n- `allow-set-ttl`\n- `allow-batch-delete-pattern`\n- `allow-batch-set-ttl`\n- `allow-batch-rename-prefix`\n- `allow-flush-db`\n- `allow-flush-all`\n- `allow-count-matching`"
+          "markdownDescription": "Default permissions for the redis plugin (mutate + batch ops)\n#### This default permission set includes:\n\n- `allow-set-string`\n- `allow-hash-set`\n- `allow-hash-del`\n- `allow-list-push`\n- `allow-list-set`\n- `allow-list-pop`\n- `allow-set-add`\n- `allow-set-remove`\n- `allow-zset-add`\n- `allow-zset-remove`\n- `allow-delete-keys`\n- `allow-rename`\n- `allow-set-ttl`\n- `allow-batch-delete-pattern`\n- `allow-batch-set-ttl`\n- `allow-batch-rename-prefix`\n- `allow-flush-db`\n- `allow-flush-all`\n- `allow-count-matching`\n- `allow-info`\n- `allow-memory-sample`\n- `allow-slowlog-get`\n- `allow-slowlog-reset`\n- `allow-modules-list`"
         }
       ]
     }

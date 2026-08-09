@@ -23,6 +23,11 @@ Default permissions for the redis plugin (mutate + batch ops)
 - `allow-flush-db`
 - `allow-flush-all`
 - `allow-count-matching`
+- `allow-info`
+- `allow-memory-sample`
+- `allow-slowlog-get`
+- `allow-slowlog-reset`
+- `allow-modules-list`
 
 ## Permission Table
 
@@ -270,6 +275,32 @@ Denies the hash_set command without any pre-configured scope.
 <tr>
 <td>
 
+`datazen-driver-redis:allow-info`
+
+</td>
+<td>
+
+Enables the info command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`datazen-driver-redis:deny-info`
+
+</td>
+<td>
+
+Denies the info command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
 `datazen-driver-redis:allow-list-pop`
 
 </td>
@@ -341,6 +372,58 @@ Enables the list_set command without any pre-configured scope.
 <td>
 
 Denies the list_set command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`datazen-driver-redis:allow-memory-sample`
+
+</td>
+<td>
+
+Enables the memory_sample command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`datazen-driver-redis:deny-memory-sample`
+
+</td>
+<td>
+
+Denies the memory_sample command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`datazen-driver-redis:allow-modules-list`
+
+</td>
+<td>
+
+Enables the modules_list command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`datazen-driver-redis:deny-modules-list`
+
+</td>
+<td>
+
+Denies the modules_list command without any pre-configured scope.
 
 </td>
 </tr>
@@ -471,6 +554,58 @@ Enables the set_ttl command without any pre-configured scope.
 <td>
 
 Denies the set_ttl command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`datazen-driver-redis:allow-slowlog-get`
+
+</td>
+<td>
+
+Enables the slowlog_get command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`datazen-driver-redis:deny-slowlog-get`
+
+</td>
+<td>
+
+Denies the slowlog_get command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`datazen-driver-redis:allow-slowlog-reset`
+
+</td>
+<td>
+
+Enables the slowlog_reset command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`datazen-driver-redis:deny-slowlog-reset`
+
+</td>
+<td>
+
+Denies the slowlog_reset command without any pre-configured scope.
 
 </td>
 </tr>
