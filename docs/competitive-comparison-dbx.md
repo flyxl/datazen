@@ -13,7 +13,7 @@ ABC 与 Schema Diff Deploy 已把「信任面 / 每日 SQL 主路径 / 结构部
 |------|------|
 | **已收口** | Schema Diff Deploy；MCP allowlist + agent 片段；列级侧栏搜索；Workflow 模板 / 自动图表 / Ollama |
 | **仍独有** | YAML Workflow、查询图表、MCP Client、运行时主题包、Basic/All SKU、Redis E1–E4 |
-| **仍落后** | 70+ 长尾（JDBC/Agent）、Docker/Web/CLI/npm MCP、安装渠道实际上架、字段血缘 / 全局库搜 / 表结构编辑器 |
+| **仍落后** | 70+ 长尾（JDBC/Agent）、Docker/Web/CLI/npm MCP、安装渠道实际上架、字段血缘 / 全局库搜 |
 | **势能** | DBX ~13.7k★ / v0.5.77 vs DataZen ~12★ / v0.0.8；Apache-2.0 vs GPL-3.0 |
 
 **策略不变**：不拼「70+」；用纵深差异化赢细分用户；下一刀优先 **分发落地** 与 **Schema Diff 产品化深度**，而不是再堆对标 checklist。
@@ -42,7 +42,9 @@ ABC 与 Schema Diff Deploy 已把「信任面 / 每日 SQL 主路径 / 结构部
 | Redis | 浏览 + 命令台 | E1–E4 深运维 | **DZ 更深** |
 | 主题 / SKU | 暗色 + 编辑器主题；~20MB 一体 | 运行时主题包；Basic/All/自定义列表 | **DZ 独有** |
 | DB 广度 | 70+（含 JDBC/Agent/MQ） | Path + git；不做 JDBC | **DBX 护城河** |
-| 字段血缘 / 结构编辑器 | ✅ | ❌ | **仍落后** |
+| 字段血缘 | ✅ | ❌ | **仍落后** |
+| 表结构编辑器 | ✅（列+索引一体；多方言 capability；rename/reorder） | ✅（新建/改表 + SQL 预览；索引在独立 Tab；DDL 偏 PG 方言） | **有，深度/方言覆盖有差** |
+| 库内全局搜索 | ✅ | 侧栏表·视图·列搜索 | 部分追平 |
 | 文件预览（Parquet 等） | ✅ DuckDB | DuckDB 在 All SKU，无拖放预览产品化 | 仍弱 |
 | AI Provider | Claude / OpenAI / Ollama / 兼容 | OpenAI / Anthropic / DeepSeek / Ollama / Custom | 接近 |
 
@@ -51,13 +53,13 @@ ABC 与 Schema Diff Deploy 已把「信任面 / 每日 SQL 主路径 / 结构部
 | 路径 | 已做 | 仍缺 |
 |------|------|------|
 | **A 分发与信任** | MCP allowlist、agent 片段、packaging 文档 | Homebrew/WinGet 实际上架、独立 MCP 包、Docker/Web |
-| **B 每日 SQL** | 列搜索、独立 Schema Diff + Deploy | 血缘、对象浏览器、可视化表结构编辑 |
+| **B 每日 SQL** | 列搜索、独立 Schema Diff + Deploy、表结构编辑器（已有） | 血缘、对象浏览器、结构编辑器多方言/索引一体深化 |
 | **C 差异化包装** | 内置 Workflow、自动图表、Ollama | 官网/演示叙事统一 |
 
 ## 5. 建议的下一刀
 
 1. **高 · 分发落地**：渠道上架 + MCP 安装摩擦（不必先做 Web）。  
-2. **高 · Schema Diff 产品化**：改列预览 DDL / 影响面；先「敢在预发用」。  
+2. **高 · Schema Diff / 结构编辑产品化**：多方言 capability、索引与列同屏、rename/reorder 完备；血缘可后置。  
 3. **中 · 强化独有叙事**：Workflow + 图表 + MCP Client + Redis + SKU。  
 4. **纪律 · 明确不做**：JDBC 堆量、完整 Docker/Web 复刻、MQ 控制台（无合同则不做）。
 
