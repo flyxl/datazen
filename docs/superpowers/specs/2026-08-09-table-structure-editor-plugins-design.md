@@ -11,7 +11,7 @@ DataZen already has a **Table Structure Editor** (`TableStructureEditor.tsx`) an
 
 - DDL and type lists are effectively **PostgreSQL-shaped** in the Host editor.
 - Indexes are not planned in the same draft / SQL preview as columns.
-- There is no shared **capability matrix** (per dialect / server version).
+- Drivers do not yet **self-report** structure capabilities / plan DDL for the editor (Host invents PG-shaped SQL instead).
 - Competitive docs incorrectly implied DataZen lacked a structure editor; the real gap is **depth and dialect coverage**, not presence.
 
 We will close that gap without per-driver React editor components, and without forcing document/KV engines into a SQL table metaphor.
