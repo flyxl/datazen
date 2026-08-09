@@ -21,9 +21,10 @@ We will close that gap without per-driver React editor components, and without f
 1. **Single Host shell** for create/alter table: columns + indexes in one draft, SQL preview, execute.
 2. **UI is configuration-driven**: drivers export config (types, field visibility, index methods), **not** custom React structure-editor components.
 3. **Backend owns truth for safety**: each SQL driver implements `structure_capabilities` (connection-aware, including server version) and `plan_structure_changes` (intent diff → dialect DDL).
-4. **All `supportsSQL` dialects can attach**: missing adapters use a **conservative default** (most edit actions disabled with clear UX).
-5. **Version-aware capabilities**: same driver id, different server major/minor → different caps; unknown version → conservative baseline.
-6. **Opt-out for non-tabular models**: MongoDB, Redis, etc. do not enter this shell (same product split as DBX specialized workspaces).
+4. **No Host-side capability lookup table** (unlike DBX’s `capabilityByType` map). Caps are **returned by the live driver** for the open connection; Host only renders whatever the driver reports. There is no central `match db_type { … }` registry of structure features in the app crate.
+5. **All `supportsSQL` dialects can attach**: drivers that do not override the trait keep the **default unsupported** implementation (most edit actions disabled with clear UX).
+6. **Version-aware capabilities**: encoded **inside the driver** (e.g. read `server_info`, then set fields on the returned struct). Same driver id, different server major/minor → different returned caps; unknown version → that driver’s conservative baseline. Host never branches on version.
+7. **Opt-out for non-tabular models**: MongoDB, Redis, etc. do not enter this shell (same product split as DBX specialized workspaces).
 
 ## 3. Non-goals (P1)
 
@@ -44,28 +45,25 @@ We will close that gap without per-driver React editor components, and without f
 | Indexes | Same screen / same draft as columns in P1 |
 | FK | Read-only in P1 |
 | MongoDB / Redis / document / KV | Opt-out of structure shell |
-| Version differences | Resolved in driver via connection `server_info`; frontend never parses version strings |
-| Unknown / unsupported | Conservative caps (fail closed) |
+| Version differences | Resolved **inside the driver** via connection `server_info`; frontend never parses version strings |
+| Unknown / unsupported | Driver default trait impl = all-false / empty plan (fail closed) |
+| Caps source of truth | **Driver method return value only** — no parallel Host table to keep in sync |
 
 ## 5. Architecture
 
 ### 5.1 Layers
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│ Host: TableStructureEditor (columns + indexes draft UI)     │
-│  - renders from StructureEditorUiConfig                     │
-│  - enables/disables from StructureCapabilities (IPC)        │
-│  - preview/execute via plan_table_structure_changes         │
-└───────────────────────────�)        │
-│  - preview/execute via plan_table_structure_changes         │
-└───────────────────────────┬─────────────────────────────────┘
-                            │
-     ┌──────────────────────┼──────────────────────┐
-     ▼                      ▼                      ▼
- Frontend driver config   IPC                   DatabaseDriver
- structureEditor: {…}     get_structure_*       structure_capabilities(handle)
- (types, fields, …)       plan_structure_*      plan_structure_changes(diff)
+Host TableStructureEditor (columns + indexes draft)
+  - UI from StructureEditorUiConfig (driver meta)
+  - enable/disable from StructureCapabilities (IPC)
+  - preview/execute via plan_table_structure_changes
+           |
+     +-----+-----+
+     |           |
+ Frontend     Backend DatabaseDriver
+ structureEditor  structure_capabilities(handle)  // version-aware
+ config only      plan_structure_changes(diff)    // dialect DDL
 ```
 
 ### 5.2 Frontend config (plugin, no components)
@@ -116,13 +114,14 @@ fn plan_structure_changes(
 - Meta: `alterStrategy` (`none` | `direct` | `sqlite_rebuild`), `dialectId` (for diagnostics)
 - Optional overlays returned with caps: `indexMethods: Vec<String>` (version-filtered)
 
-**Version handling (required):**
+**Version handling (required, driver-local only):**
 
-1. Driver reads server version from the live connection (reuse / extend `ServerInfo` or equivalent).
-2. Start from a **baseline** capability set for that engine family.
-3. Apply **version patches** (e.g. PostgreSQL ≥ 11 → `indexInclude = true`).
-4. If version cannot be parsed → keep baseline (conservative).
-5. Frontend **must not** parse version strings; it only applies the returned caps (and optional `indexMethods` overlay).
+1. Inside the driver impl, read server version from the live connection (reuse / extend `ServerInfo` or equivalent).
+2. Build the `StructureCapabilities` value in that driver (baseline + version patches, e.g. PostgreSQL ≥ 11 → `index_include = true`).
+3. If version cannot be parsed → that driver’s conservative baseline.
+4. Host/frontend **must not** maintain a second map of type→caps and **must not** parse version strings; they only apply the IPC payload.
+
+**Anti-pattern (explicitly forbidden):** a Host module like `structure_capabilities_by_db_type: HashMap<DatabaseType, Caps>` that duplicates driver knowledge. DBX uses that style in the desktop app; DataZen does **not**.
 
 **`StructureChangeRequest`** is an intent diff (stable column ids, original vs current columns/indexes, create vs alter mode, table name). Drivers reject intents that violate caps with a clear validation error (do not silently emit wrong SQL).
 
@@ -150,9 +149,14 @@ Column reorder:
 | `IndexesView` | Can remain as convenience tab or thin wrapper; must not diverge SQL generation (call same plan API or become read-only list + “Edit in structure”) |
 | Schema Diff Deploy | Cross-connection desired→target deploy; structure editor is single-connection authoring |
 
-### 5.6 DBX alignment (reference only)
+### 5.6 DBX contrast (reference only)
 
-DBX uses a **capability lookup table** keyed by database type, plus small runtime branches (SQLite rebuild strategy, PostgreSQL major version). MongoDB uses a **specialized workspace**, not the table structure editor. DataZen mirrors that product split and the table-driven capability idea, but places generation in **driver plugins** instead of a Host-central dialect mega-module.
+| Topic | DBX | DataZen (this design) |
+|-------|-----|------------------------|
+| Caps storage | Desktop `capabilityByType` map + helpers | **No Host map** — `DatabaseDriver::structure_capabilities(handle)` |
+| Version forks | Host helper adjusts caps (e.g. PG major) | Driver impl adjusts returned struct |
+| MongoDB | Specialized workspace, not table editor | Same product split (opt-out) |
+| DDL generation | Desktop dialect SQL helpers + caps | Driver `plan_structure_changes` |
 
 ## 6. IPC (snake_case args from frontend invoke keys per project convention / existing camelCase bridge)
 
@@ -176,7 +180,8 @@ Shipping P1 code may land T0 complete + default unsupported for others in the sa
 
 ## 8. Testing
 
-- Unit: capability version patches (e.g. PG 10 vs 14 `indexInclude`); plan SQL snapshots for PG/MySQL/SQLite add/drop/rename/index.
+- Unit (in driver crates / datazen tests calling driver fakes): version patches live **in the postgres driver** (e.g. PG 10 vs 14 `index_include`); plan SQL snapshots for PG/MySQL/SQLite add/drop/rename/index.
+- Guardrail: Host crate must not grow a `capabilityByType`-style structure-caps table (code review / optional `rg` check in plan).
 - Unit: Host helper `isControlEnabled(caps, 'renameColumn')`.
 - Integration / e2e (existing `e2e/specs/table-structure.ts`): preview + save still work on PG; MySQL path when available.
 - Regression: Mongo/Redis connections do not offer misleading「编辑表结构」that opens empty SQL shell.
