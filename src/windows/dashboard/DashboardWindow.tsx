@@ -188,7 +188,7 @@ export function DashboardWindow() {
   }
 
   return (
-    <div className="flex h-screen min-h-0 flex-col bg-surface text-fg">
+    <div className="flex h-screen min-h-0 flex-col bg-surface text-fg" data-testid="dashboard-window">
       <TitleBar
         title={titleContent}
         leftContent={<LayoutDashboard className="h-4 w-4 text-fg-muted" />}
@@ -197,6 +197,7 @@ export function DashboardWindow() {
             <Button
               variant="ghost"
               className="h-7 gap-1 px-2 text-xs"
+              data-testid="dashboard-pause-toggle"
               onClick={() => void handleToggleMonitorPause()}
               title={monitorPaused ? t('dashboard.resumeMonitoring') : t('dashboard.pauseMonitoring')}
             >
@@ -209,6 +210,7 @@ export function DashboardWindow() {
             <Button
               variant="ghost"
               className="h-7 gap-1 px-2 text-xs"
+              data-testid="dashboard-import"
               onClick={() => void handleImport()}
               disabled={loading}
               title={t('dashboard.import')}
@@ -218,6 +220,7 @@ export function DashboardWindow() {
             <Button
               variant="ghost"
               className="h-7 gap-1 px-2 text-xs"
+              data-testid="dashboard-export"
               onClick={() => void handleExport()}
               disabled={!current || loading}
               title={t('dashboard.export')}
@@ -227,6 +230,7 @@ export function DashboardWindow() {
             <Button
               variant="ghost"
               className="h-7 gap-1 px-2 text-xs"
+              data-testid="dashboard-add-widget"
               onClick={handleAddWidget}
               disabled={!current || loading}
             >
@@ -236,6 +240,7 @@ export function DashboardWindow() {
             <Button
               variant="ghost"
               className="h-7 gap-1 px-2 text-xs"
+              data-testid="dashboard-refresh-all"
               onClick={() => void handleRefreshAll()}
               disabled={!current || refreshingAll}
             >
@@ -250,7 +255,7 @@ export function DashboardWindow() {
         }
       />
 
-      <main className="min-h-0 flex-1 overflow-auto p-4">
+      <main className="min-h-0 flex-1 overflow-auto p-4" data-testid="dashboard-main">
         {loading && !current && (
           <div className="flex h-full items-center justify-center text-sm text-fg-muted">
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -275,6 +280,7 @@ export function DashboardWindow() {
         {current && current.widgets.length > 0 && (
           <div
             className="grid gap-3"
+            data-testid="dashboard-grid"
             style={{
               gridTemplateColumns: `repeat(${current.layout.cols}, 1fr)`,
               gridAutoRows: `${current.layout.rowHeight}px`,
