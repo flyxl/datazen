@@ -1,6 +1,6 @@
 # Redis Deep Ops E2–E4
 
-> **Status:** Approved  
+> **Status:** Implemented  
 > **Plan:** `docs/superpowers/plans/2026-08-09-redis-deep-ops-e2-e4.md`  
 > **Date:** 2026-08-09  
 > **Depends on:** E1 Implemented (`docs/superpowers/specs/2026-08-09-redis-deep-ops-e1-design.md`)  
