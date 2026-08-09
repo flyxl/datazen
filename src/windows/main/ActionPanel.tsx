@@ -8,9 +8,10 @@ export interface ActionPanelProps {
   onRestore: () => void;
   onDataSync: () => void;
   onWorkflow: () => void;
+  onDashboard: () => void;
 }
 
-export function ActionPanel({ onNewConnection, onBackup, onRestore, onDataSync, onWorkflow }: Readonly<ActionPanelProps>) {
+export function ActionPanel({ onNewConnection, onBackup, onRestore, onDataSync, onWorkflow, onDashboard }: Readonly<ActionPanelProps>) {
   const { t } = useI18n();
   const items = [
     { iconId: 'action.backup', label: t('action.backup'), action: onBackup },
@@ -18,6 +19,7 @@ export function ActionPanel({ onNewConnection, onBackup, onRestore, onDataSync, 
     { iconId: 'action.refresh', label: t('action.dataSync'), action: onDataSync },
     { iconId: 'action.newConnection', label: t('action.newConnection'), action: onNewConnection },
     { iconId: 'action.workflow', label: t('action.workflow'), action: onWorkflow },
+    { iconId: 'action.dashboard', label: t('action.dashboard'), action: onDashboard },
   ];
 
   return (
