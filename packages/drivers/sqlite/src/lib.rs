@@ -5,6 +5,7 @@ use std::sync::Arc;
 use datazen_driver_api::*;
 
 mod sqlite;
+mod structure;
 pub use sqlite::*;
 
 struct SqliteFactory;

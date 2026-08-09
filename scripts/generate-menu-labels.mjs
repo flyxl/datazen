@@ -59,6 +59,7 @@ const RUST_TO_LOCALE = {
   'open-settings': 'menu.settings',
   'new-connection': 'menu.newConnection',
   'data-sync': 'menu.dataSync',
+  'schema-diff': 'menu.schemaDiff',
   backup: 'menu.backup',
   restore: 'menu.restore',
   'export-config': 'menu.exportConfig',

@@ -1,0 +1,22 @@
+id: builtin-hello-query
+name: Hello Query
+description: Run a simple SELECT 1 against a chosen connection (starter template).
+timeout_secs: 30
+error_handling:
+  strategy: abort
+variables:
+  - name: conn
+    type: connection
+    description: Target database connection
+    required: true
+steps:
+  - type: query
+    id: ping
+    connection: "{{conn}}"
+    sql: "SELECT 1 AS ok"
+    timeout_secs: 10
+output:
+  format: markdown
+  template: |
+    ## Ping result
+    {{steps.ping.result}}

@@ -1,5 +1,51 @@
 import type { DatabaseTypeMeta } from '@datazen/plugin-sdk';
 
+const mysqlStructureEditor = {
+  columnTypes: [
+    { value: 'TINYINT', label: 'TINYINT' },
+    { value: 'SMALLINT', label: 'SMALLINT' },
+    { value: 'MEDIUMINT', label: 'MEDIUMINT' },
+    { value: 'INT', label: 'INT' },
+    { value: 'BIGINT', label: 'BIGINT' },
+    { value: 'TINYINT UNSIGNED', label: 'TINYINT UNSIGNED' },
+    { value: 'SMALLINT UNSIGNED', label: 'SMALLINT UNSIGNED' },
+    { value: 'MEDIUMINT UNSIGNED', label: 'MEDIUMINT UNSIGNED' },
+    { value: 'INT UNSIGNED', label: 'INT UNSIGNED' },
+    { value: 'BIGINT UNSIGNED', label: 'BIGINT UNSIGNED' },
+    { value: 'DECIMAL(10,2)', label: 'DECIMAL(10,2)' },
+    { value: 'FLOAT', label: 'FLOAT' },
+    { value: 'DOUBLE', label: 'DOUBLE' },
+    { value: 'BOOLEAN', label: 'BOOLEAN' },
+    { value: 'VARCHAR(255)', label: 'VARCHAR(255)' },
+    { value: 'VARCHAR(50)', label: 'VARCHAR(50)' },
+    { value: 'VARCHAR(100)', label: 'VARCHAR(100)' },
+    { value: 'CHAR(1)', label: 'CHAR(1)' },
+    { value: 'TEXT', label: 'TEXT' },
+    { value: 'MEDIUMTEXT', label: 'MEDIUMTEXT' },
+    { value: 'LONGTEXT', label: 'LONGTEXT' },
+    { value: 'DATE', label: 'DATE' },
+    { value: 'TIME', label: 'TIME' },
+    { value: 'DATETIME', label: 'DATETIME' },
+    { value: 'TIMESTAMP', label: 'TIMESTAMP' },
+    { value: 'YEAR', label: 'YEAR' },
+    { value: 'JSON', label: 'JSON' },
+    { value: 'BLOB', label: 'BLOB' },
+    { value: 'MEDIUMBLOB', label: 'MEDIUMBLOB' },
+    { value: 'LONGBLOB', label: 'LONGBLOB' },
+  ],
+  defaultColumnType: 'VARCHAR(255)',
+  fields: {
+    comment: true,
+    charset: true,
+    collation: true,
+    unsigned: true,
+    length: true,
+  },
+  indexMethods: ['BTREE', 'HASH'],
+} satisfies NonNullable<DatabaseTypeMeta['structureEditor']>;
+
+const mysqlStructureEditorSpread = { structureEditor: mysqlStructureEditor } as const;
+
 export const mysqlMeta = {
     label: 'MySQL',
     shortLabel: 'My',
@@ -23,6 +69,7 @@ export const mysqlMeta = {
     connectionForm: 'standard',
     supportsExplain: true,
     hasMultiDatabase: true,
+    ...mysqlStructureEditorSpread,
   } satisfies DatabaseTypeMeta;
 
 export const mariadbMeta = {
@@ -48,6 +95,7 @@ export const mariadbMeta = {
     connectionForm: 'standard',
     supportsExplain: true,
     hasMultiDatabase: true,
+    ...mysqlStructureEditorSpread,
   } satisfies DatabaseTypeMeta;
 
 export const dorisMeta = {
@@ -73,6 +121,7 @@ export const dorisMeta = {
     connectionForm: 'standard',
     supportsExplain: true,
     hasMultiDatabase: true,
+    ...mysqlStructureEditorSpread,
   } satisfies DatabaseTypeMeta;
 
 export const starrocksMeta = {
@@ -98,6 +147,7 @@ export const starrocksMeta = {
     connectionForm: 'standard',
     supportsExplain: true,
     hasMultiDatabase: true,
+    ...mysqlStructureEditorSpread,
   } satisfies DatabaseTypeMeta;
 
 export const manticoreMeta = {
@@ -123,6 +173,7 @@ export const manticoreMeta = {
     connectionForm: 'standard',
     supportsExplain: true,
     hasMultiDatabase: true,
+    ...mysqlStructureEditorSpread,
   } satisfies DatabaseTypeMeta;
 
 export const obOracleMeta = {
@@ -148,5 +199,6 @@ export const obOracleMeta = {
     connectionForm: 'standard',
     supportsExplain: true,
     hasMultiDatabase: true,
+    ...mysqlStructureEditorSpread,
   } satisfies DatabaseTypeMeta;
 

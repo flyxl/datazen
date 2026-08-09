@@ -27,8 +27,10 @@ const DEFAULT_SETTINGS: AppSettings = {
   mcpServerEnabled: false,
   mcpDisabledTools: [],
   mcpPermissionMode: 'safe_write',
+  mcpAllowedConnectionIds: [],
   contextDir: '',
   checkForUpdatesOnStartup: false,
+  autoChartOnQuery: true,
   monitor: DEFAULT_MONITOR_SETTINGS,
   pluginSettings: {},
 };

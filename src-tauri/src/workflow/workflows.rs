@@ -250,9 +250,8 @@ impl WorkflowRegistry {
     async fn load_all_unlocked(&self) -> Result<(), String> {
         if !self.workflows_dir.exists() {
             std::fs::create_dir_all(&self.workflows_dir).map_err(|e| e.to_string())?;
-            self.workflows.write().await.clear();
-            return Ok(());
         }
+        Self::seed_builtins_if_empty(&self.workflows_dir)?;
 
         let mut workflows = self.workflows.write().await;
         workflows.clear();
@@ -280,6 +279,43 @@ impl WorkflowRegistry {
         }
 
         tracing::info!("Loaded {} workflows", workflows.len());
+        Ok(())
+    }
+
+    /// When the user workflows directory has no YAML files, copy starter templates.
+    fn seed_builtins_if_empty(dir: &std::path::Path) -> Result<(), String> {
+        let has_yaml = std::fs::read_dir(dir)
+            .map_err(|e| e.to_string())?
+            .filter_map(|e| e.ok())
+            .any(|e| {
+                e.path()
+                    .extension()
+                    .map_or(false, |ext| ext == "yaml" || ext == "yml")
+            });
+        if has_yaml {
+            return Ok(());
+        }
+
+        const BUILTINS: &[(&str, &str)] = &[
+            (
+                "builtin-hello-query.yaml",
+                include_str!("../../resources/builtin-workflows/hello-query.yaml"),
+            ),
+            (
+                "builtin-cross-db-sample.yaml",
+                include_str!("../../resources/builtin-workflows/cross-db-sample.yaml"),
+            ),
+            (
+                "builtin-ai-summarize.yaml",
+                include_str!("../../resources/builtin-workflows/ai-summarize.yaml"),
+            ),
+        ];
+        for (name, content) in BUILTINS {
+            let path = dir.join(name);
+            std::fs::write(&path, content)
+                .map_err(|e| format!("Failed to seed builtin workflow {name}: {e}"))?;
+            tracing::info!("Seeded builtin workflow {}", name);
+        }
         Ok(())
     }
 

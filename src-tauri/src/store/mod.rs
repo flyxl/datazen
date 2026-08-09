@@ -81,11 +81,17 @@ pub struct AppSettings {
     /// MCP tool permission tier for external AI clients (default: safe_write).
     #[serde(default)]
     pub mcp_permission_mode: McpPermissionMode,
+    /// Persistent connection config IDs exposed to MCP. Empty = all connections.
+    #[serde(default)]
+    pub mcp_allowed_connection_ids: Vec<String>,
     #[serde(default)]
     pub context_dir: String,
     /// When true, GUI checks for app updates on startup (default off).
     #[serde(default)]
     pub check_for_updates_on_startup: bool,
+    /// After a successful query, switch to chart view when the result is chartable.
+    #[serde(default = "default_true")]
+    pub auto_chart_on_query: bool,
     /// Dashboard monitor / tray / retention settings (nested for settings UI).
     #[serde(default)]
     pub monitor: MonitorSettings,
@@ -96,6 +102,10 @@ pub struct AppSettings {
 
 fn default_limit_select() -> bool {
     false
+}
+
+fn default_true() -> bool {
+    true
 }
 
 fn default_log_level() -> String {
@@ -128,8 +138,10 @@ impl Default for AppSettings {
             mcp_server_enabled: false,
             mcp_disabled_tools: Vec::new(),
             mcp_permission_mode: McpPermissionMode::default(),
+            mcp_allowed_connection_ids: Vec::new(),
             context_dir: String::new(),
             check_for_updates_on_startup: false,
+            auto_chart_on_query: true,
             monitor: MonitorSettings::default(),
             plugin_settings: serde_json::Map::new(),
         }
