@@ -3,9 +3,13 @@
 //! Uses [`MonitorConnectionRegistry`] — never UI session pools via `get_or_connect`.
 
 use std::path::Path;
+use std::time::Duration;
 
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
+
+/// Default per-widget query timeout (seconds). Matches plan default.
+pub const DEFAULT_QUERY_TIMEOUT_SEC: u64 = 60;
 
 use crate::dashboard::alert::evaluate_run_alert;
 use crate::dashboard::runs::{write_run, MAX_RUN_ROWS};
@@ -67,6 +71,30 @@ fn build_error_run(
     }
 }
 
+fn build_timeout_run(
+    run_id: String,
+    dashboard_id: &str,
+    widget_id: &str,
+    started_at: DateTime<Utc>,
+    finished_at: DateTime<Utc>,
+    timeout_sec: u64,
+) -> WidgetRun {
+    WidgetRun {
+        id: run_id,
+        dashboard_id: dashboard_id.to_string(),
+        widget_id: widget_id.to_string(),
+        started_at: started_at.to_rfc3339(),
+        finished_at: finished_at.to_rfc3339(),
+        status: WidgetRunStatus::Timeout,
+        error: Some(format!("Query timed out after {timeout_sec}s")),
+        row_count: 0,
+        columns: Vec::new(),
+        rows: Vec::new(),
+        alert_fired: None,
+        alert_value: None,
+    }
+}
+
 /// Build and persist an error-status run using monitor retention settings.
 pub(crate) fn persist_error_run(
     data_dir: &Path,
@@ -112,25 +140,29 @@ pub async fn execute_widget_once(
 ) -> Result<WidgetRun, DashboardExecuteError> {
     let started_at = Utc::now();
     let run_id = Uuid::new_v4().to_string();
+    let timeout_sec = DEFAULT_QUERY_TIMEOUT_SEC;
 
-    let query_result = async {
-        let (driver, handle) = monitor_connections
-            .get_or_connect_monitor(&widget.config_id)
-            .await
-            .map_err(DashboardExecuteError::Connection)?;
+    let query_result = tokio::time::timeout(
+        Duration::from_secs(timeout_sec),
+        async {
+            let (driver, handle) = monitor_connections
+                .get_or_connect_monitor(&widget.config_id)
+                .await
+                .map_err(DashboardExecuteError::Connection)?;
 
-        let limit = Some(MAX_RUN_ROWS as u32);
-        driver
-            .query_multi(&handle, &widget.sql, limit)
-            .await
-            .map_err(DashboardExecuteError::Driver)
-    }
+            let limit = Some(MAX_RUN_ROWS as u32);
+            driver
+                .query_multi(&handle, &widget.sql, limit)
+                .await
+                .map_err(DashboardExecuteError::Driver)
+        },
+    )
     .await;
 
     let finished_at = Utc::now();
 
     let mut run = match query_result {
-        Ok(multi) => {
+        Ok(Ok(multi)) => {
             let results = multi.results;
             let stmt = results
                 .iter()
@@ -171,13 +203,21 @@ pub async fn execute_widget_once(
                 },
             }
         }
-        Err(err) => build_error_run(
+        Ok(Err(err)) => build_error_run(
             run_id,
             dashboard_id,
             &widget.id,
             started_at,
             finished_at,
             &err.to_string(),
+        ),
+        Err(_elapsed) => build_timeout_run(
+            run_id,
+            dashboard_id,
+            &widget.id,
+            started_at,
+            finished_at,
+            timeout_sec,
         ),
     };
 
@@ -262,5 +302,25 @@ mod tests {
         let loaded = get_run(dir.path(), "d1", "w1", "run-connect-err").unwrap();
         assert_eq!(loaded.status, WidgetRunStatus::Error);
         assert_eq!(loaded.error, run.error);
+    }
+
+    #[test]
+    fn timeout_run_status_serializes_as_lowercase() {
+        let started_at = Utc::now();
+        let finished_at = started_at + chrono::Duration::seconds(60);
+        let run = build_timeout_run(
+            "run-timeout".into(),
+            "d1",
+            "w1",
+            started_at,
+            finished_at,
+            DEFAULT_QUERY_TIMEOUT_SEC,
+        );
+        assert_eq!(run.status, WidgetRunStatus::Timeout);
+        let json = serde_json::to_string(&run).unwrap();
+        assert!(json.contains("\"status\":\"timeout\""));
+        let parsed: WidgetRun = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.status, WidgetRunStatus::Timeout);
+        assert!(parsed.error.unwrap().contains("60s"));
     }
 }
