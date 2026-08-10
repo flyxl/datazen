@@ -329,7 +329,7 @@ describe('数据同步窗口 (SYNC)', () => {
     await openSyncWindow();
     const body = await $('body').getText();
     expect(body).toContain(t('sync.title'));
-    expect(body).toContain('DataZen v0.0.8');
+    expect(body).toContain('DataZen v0.0.9');
   });
 
   it('SYNC-008: 连接下拉应列出已有连接', async () => {
