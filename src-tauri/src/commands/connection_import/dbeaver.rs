@@ -817,4 +817,35 @@ mod tests {
         assert_eq!(parsed.connections[0].database_type, "postgresql");
         assert_eq!(parsed.connections[0].password.as_deref(), Some("postgres"));
     }
+
+    #[test]
+    fn map_driver_recognizes_common_providers() {
+        assert_eq!(
+            map_driver("postgresql", "postgres-jdbc", "", ""),
+            Some("postgresql")
+        );
+        assert_eq!(map_driver("mysql", "mysql8", "", ""), Some("mysql"));
+        assert_eq!(map_driver("oracle", "thin", "", ""), None);
+    }
+
+    #[test]
+    fn parse_jdbc_bits_postgres_and_sqlite() {
+        let (host, port, db) =
+            parse_jdbc_bits("jdbc:postgresql://db.example:5433/myapp?ssl=true");
+        assert_eq!(host, "db.example");
+        assert_eq!(port, 5433);
+        assert_eq!(db, "myapp");
+
+        let (path, port, db) = parse_jdbc_bits("jdbc:sqlite:/tmp/local.db");
+        assert_eq!(path, "/tmp/local.db");
+        assert_eq!(port, 0);
+        assert_eq!(db, "/tmp/local.db");
+    }
+
+    #[test]
+    fn default_port_known_types() {
+        assert_eq!(default_port("postgresql"), Some(5432));
+        assert_eq!(default_port("redis"), Some(6379));
+        assert_eq!(default_port("duckdb"), None);
+    }
 }

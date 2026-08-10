@@ -101,9 +101,8 @@ pub async fn mcp_list_all_tools() -> Result<Vec<String>, CommandError> {
 
 // ─── MCP Client commands ───
 
-#[tauri::command]
-pub async fn mcp_client_connect(
-    state: State<'_, AppState>,
+pub(crate) async fn mcp_client_connect_impl(
+    state: &AppState,
     config: mcp::McpServerConfig,
 ) -> Result<(), CommandError> {
     state
@@ -113,26 +112,19 @@ pub async fn mcp_client_connect(
         .cmd_err("mcp_client_connect")
 }
 
-#[tauri::command]
-pub async fn mcp_client_disconnect(
-    state: State<'_, AppState>,
+pub(crate) async fn mcp_client_disconnect_impl(
+    state: &AppState,
     server_id: String,
 ) -> Result<(), CommandError> {
-    state.mcp_client_manager.disconnect(&server_id).await
+    state
+        .mcp_client_manager
+        .disconnect(&server_id)
+        .await
         .map_err(CommandError::Internal)
 }
 
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct McpClientStatus {
-    pub server_id: String,
-    pub server_name: String,
-    pub tools_count: usize,
-}
-
-#[tauri::command]
-pub async fn mcp_client_list(
-    state: State<'_, AppState>,
+pub(crate) async fn mcp_client_list_impl(
+    state: &AppState,
 ) -> Result<Vec<McpClientStatus>, CommandError> {
     Ok(state
         .mcp_client_manager
@@ -147,11 +139,48 @@ pub async fn mcp_client_list(
         .collect())
 }
 
+pub(crate) async fn mcp_client_tools_impl(
+    state: &AppState,
+) -> Result<Vec<mcp::McpToolInfo>, CommandError> {
+    Ok(state.mcp_client_manager.all_tools().await)
+}
+
+#[tauri::command]
+pub async fn mcp_client_connect(
+    state: State<'_, AppState>,
+    config: mcp::McpServerConfig,
+) -> Result<(), CommandError> {
+    mcp_client_connect_impl(&state, config).await
+}
+
+#[tauri::command]
+pub async fn mcp_client_disconnect(
+    state: State<'_, AppState>,
+    server_id: String,
+) -> Result<(), CommandError> {
+    mcp_client_disconnect_impl(&state, server_id).await
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpClientStatus {
+    pub server_id: String,
+    pub server_name: String,
+    pub tools_count: usize,
+}
+
+#[tauri::command]
+pub async fn mcp_client_list(
+    state: State<'_, AppState>,
+) -> Result<Vec<McpClientStatus>, CommandError> {
+    mcp_client_list_impl(&state).await
+}
+
 #[tauri::command]
 pub async fn mcp_client_tools(
     state: State<'_, AppState>,
 ) -> Result<Vec<mcp::McpToolInfo>, CommandError> {
-    Ok(state.mcp_client_manager.all_tools().await)
+    mcp_client_tools_impl(&state).await
 }
 
 #[tauri::command]
@@ -185,4 +214,35 @@ pub async fn mcp_client_call_tool(
     }
 
     Ok(output)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn mcp_get_status_when_stopped() {
+        let status = mcp_get_status().await.unwrap();
+        assert!(!status.running);
+        assert_eq!(status.transport, "none");
+    }
+
+    #[tokio::test]
+    async fn mcp_list_all_tools_non_empty() {
+        let tools = mcp_list_all_tools().await.unwrap();
+        assert!(!tools.is_empty());
+        assert!(tools.iter().any(|t| t.contains("connection") || t.contains("query")));
+    }
+
+    #[tokio::test]
+    async fn mcp_client_list_empty_and_disconnect_unknown() {
+        use crate::testing::app_state::TestAppState;
+
+        let test = TestAppState::new().await;
+        assert!(mcp_client_list_impl(&test.state).await.unwrap().is_empty());
+        assert!(mcp_client_tools_impl(&test.state).await.unwrap().is_empty());
+        assert!(mcp_client_disconnect_impl(&test.state, "missing".into())
+            .await
+            .is_ok());
+    }
 }

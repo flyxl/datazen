@@ -80,6 +80,7 @@ DataZen 是一个跨平台桌面数据库管理工具，基于 **Tauri v2**（Ru
 | [AI 模块](backend/ai.md) | AiProvider trait、4 内置 Provider、protocol 层、PromptResolver（资源文件 + 覆盖） |
 | [MCP 模块](backend/mcp.md) | MCP Server（Tools/Resources/Prompts）、MCP Client、双运行模式 |
 | [Workflow 模块](backend/workflow.md) | YAML Workflow 引擎、执行历史；GUI/IPC/MCP 共用；用户手册见 [../workflow-guide.md](../workflow-guide.md) |
+| [Schema Diff Deploy](backend/schema-diff.md) | 源=目标态 → DDL 计划 → 审阅部署；与 sync IR 联动；用户手册见 [../schema-diff-deploy.md](../schema-diff-deploy.md) |
 
 ## 前端文档
 

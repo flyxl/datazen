@@ -133,3 +133,117 @@ describe('queryStore favorites', () => {
     expect(useQueryStore.getState().favoritesVisible).toBe(false);
   });
 });
+
+describe('queryStore tabs and execution', () => {
+  let useQueryStore: typeof import('../../stores/queryStore').useQueryStore;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    vi.clearAllMocks();
+    const mod = await import('../../stores/queryStore');
+    useQueryStore = mod.useQueryStore;
+    useQueryStore.getState().reset();
+  });
+
+  it('createTab adds tab and sets active', () => {
+    useQueryStore.getState().createTab();
+    expect(useQueryStore.getState().tabs).toHaveLength(1);
+    expect(useQueryStore.getState().activeTabId).toBe(useQueryStore.getState().tabs[0].id);
+  });
+
+  it('closeTab removes tab but keeps last one', () => {
+    useQueryStore.getState().createTab();
+    useQueryStore.getState().createTab();
+    const firstId = useQueryStore.getState().tabs[0].id;
+    useQueryStore.getState().closeTab(firstId);
+    expect(useQueryStore.getState().tabs).toHaveLength(1);
+    useQueryStore.getState().closeTab(useQueryStore.getState().tabs[0].id);
+    expect(useQueryStore.getState().tabs).toHaveLength(1);
+  });
+
+  it('updateSql and setActiveResult', () => {
+    useQueryStore.getState().createTab();
+    const tabId = useQueryStore.getState().tabs[0].id;
+    useQueryStore.getState().updateSql(tabId, 'SELECT 1');
+    expect(useQueryStore.getState().tabs[0].sql).toBe('SELECT 1');
+    useQueryStore.getState().setActiveResult(tabId, 2);
+    expect(useQueryStore.getState().tabs[0].activeResultIdx).toBe(2);
+  });
+
+  it('executeQuery success and error', async () => {
+    useQueryStore.getState().setConnectionId('conn-1');
+    useQueryStore.getState().createTab();
+    const tabId = useQueryStore.getState().tabs[0].id;
+    useQueryStore.getState().updateSql(tabId, 'SELECT 1');
+
+    mockQueryCommands.executeQuery.mockResolvedValueOnce({
+      results: [{ sql: 'SELECT 1', columns: [{ name: 'v', dataType: 'int' }], rows: [[1]], executionTimeMs: 10 }],
+      totalTimeMs: 10,
+    });
+    await useQueryStore.getState().executeQuery(tabId);
+    expect(useQueryStore.getState().tabs[0].results).toHaveLength(1);
+    expect(useQueryStore.getState().tabs[0].running).toBe(false);
+
+    mockQueryCommands.executeQuery.mockRejectedValueOnce(new Error('syntax error'));
+    await useQueryStore.getState().executeQuery(tabId);
+    expect(useQueryStore.getState().tabs[0].error).toBe('syntax error');
+  });
+
+  it('executeQuery sets error when not connected', async () => {
+    useQueryStore.getState().createTab();
+    const tabId = useQueryStore.getState().tabs[0].id;
+    await useQueryStore.getState().executeQuery(tabId);
+    expect(useQueryStore.getState().tabs[0].error).toBeTruthy();
+  });
+
+  it('cancelQuery cancels and marks tab', async () => {
+    useQueryStore.getState().setConnectionId('conn-1');
+    useQueryStore.getState().createTab();
+    const tabId = useQueryStore.getState().tabs[0].id;
+    useQueryStore.setState({
+      tabs: [{ ...useQueryStore.getState().tabs[0], running: true }],
+    });
+    mockQueryCommands.cancelQuery.mockResolvedValueOnce(undefined);
+    await useQueryStore.getState().cancelQuery(tabId);
+    expect(useQueryStore.getState().tabs[0].running).toBe(false);
+    expect(useQueryStore.getState().tabs[0].error).toBeTruthy();
+  });
+
+  it('loadHistory and toggleHistory', async () => {
+    mockQueryCommands.getQueryHistory.mockResolvedValueOnce([
+      { id: 'h1', sql: 'SELECT 1', executedAt: '2026-01-01', durationMs: 5 },
+    ]);
+    await useQueryStore.getState().loadHistory();
+    expect(useQueryStore.getState().history).toHaveLength(1);
+    useQueryStore.getState().toggleHistory();
+    expect(useQueryStore.getState().historyVisible).toBe(true);
+  });
+
+  it('updateResultCell mutates result grid', () => {
+    useQueryStore.getState().createTab();
+    const tabId = useQueryStore.getState().tabs[0].id;
+    useQueryStore.setState({
+      tabs: [{
+        ...useQueryStore.getState().tabs[0],
+        results: [{
+          sql: 'SELECT 1',
+          columns: [{ name: 'v', dataType: 'int' }],
+          rows: [[1]],
+          executionTimeMs: 1,
+        }],
+      }],
+    });
+    useQueryStore.getState().updateResultCell(tabId, 0, 0, 'v', 99);
+    expect(useQueryStore.getState().tabs[0].results[0].rows[0][0]).toBe(99);
+  });
+
+  it('setChartConfig and setResultViewMode', () => {
+    useQueryStore.getState().createTab();
+    const tabId = useQueryStore.getState().tabs[0].id;
+    const config = { chartType: 'bar' as const, xAxis: 'x', yAxes: ['y'], series: [] };
+    useQueryStore.getState().setChartConfig(tabId, config);
+    expect(useQueryStore.getState().tabs[0].chartConfig).toEqual(config);
+    useQueryStore.getState().setResultViewMode(tabId, 'chart');
+    expect(useQueryStore.getState().tabs[0].resultViewMode).toBe('chart');
+  });
+});

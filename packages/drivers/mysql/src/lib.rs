@@ -5,6 +5,7 @@ use std::sync::Arc;
 use datazen_driver_api::*;
 
 mod mysql;
+mod structure;
 pub use mysql::*;
 
 struct MysqlFactory;

@@ -30,4 +30,42 @@ describe('getSqlDialect', () => {
     const sql = getSqlDialect('postgresql')!.index.getDropIndexSql('idx_foo', 'users', '"');
     expect(sql).not.toContain('ON');
   });
+
+  it('mysql create index supports hash method and unique', () => {
+    const sql = getSqlDialect('mysql')!.index.getCreateIndexSql({
+      indexName: 'idx_email',
+      tableName: 'users',
+      columns: ['email'],
+      unique: true,
+      method: 'hash',
+      quoteChar: '`',
+    });
+    expect(sql).toContain('UNIQUE INDEX');
+    expect(sql).toContain('USING hash');
+  });
+
+  it('postgresql create index supports gin method', () => {
+    const sql = getSqlDialect('postgresql')!.index.getCreateIndexSql({
+      indexName: 'idx_data',
+      tableName: 'docs',
+      columns: ['data'],
+      unique: false,
+      method: 'gin',
+      quoteChar: '"',
+    });
+    expect(sql).toContain('USING gin');
+  });
+
+  it('sqlite create index omits method clause', () => {
+    const sql = getSqlDialect('sqlite')!.index.getCreateIndexSql({
+      indexName: 'idx_name',
+      tableName: 'items',
+      columns: ['name'],
+      unique: false,
+      method: 'btree',
+      quoteChar: '"',
+    });
+    expect(sql).not.toContain('USING');
+    expect(sql).toContain('CREATE INDEX');
+  });
 });

@@ -23,5 +23,12 @@ export const mongodbMeta = {
     connectionForm: 'standard',
     supportsExplain: false,
     hasMultiDatabase: true,
+    structureEditor: {
+      enabled: false,
+      columnTypes: [],
+      defaultColumnType: '',
+      fields: {},
+      indexMethods: [],
+    },
   } satisfies DatabaseTypeMeta;
 

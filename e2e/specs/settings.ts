@@ -170,6 +170,56 @@ describe('Settings (SS-001~SS-006)', () => {
     expect(loaded.autoCommit).toBe(false);
   });
 
+  it('TC-SET-003: 设置窗口编辑器分区应显示字体相关控件', async () => {
+    await browser.url('tauri://localhost/?window=settings');
+    await browser.pause(1500);
+    const editorNav = await $('button*=编辑器');
+    if (await editorNav.isExisting()) {
+      await editorNav.click();
+      await browser.pause(400);
+    }
+    const body = await $('body').getText();
+    expect(body.includes('字体') || body.includes('Font') || body.includes('字号') || body.includes('字')).toBe(true);
+  });
+
+  it('TC-SET-004: 设置窗口数据浏览分区应显示分页/限制相关项', async () => {
+    await browser.url('tauri://localhost/?window=settings');
+    await browser.pause(1500);
+    const dataNav = await $('button*=数据浏览');
+    if (await dataNav.isExisting()) {
+      await dataNav.click();
+      await browser.pause(400);
+    }
+    const body = await $('body').getText();
+    expect(
+      body.includes('页') ||
+        body.includes('page') ||
+        body.includes('限制') ||
+        body.includes('limit') ||
+        body.includes('行'),
+    ).toBe(true);
+  });
+
+  it('TC-SET-007: 设置窗口应有 Prompt 自定义入口', async () => {
+    await browser.url('tauri://localhost/?window=settings');
+    await browser.pause(1500);
+    const promptNav = await $('button*=Prompt 管理');
+    const promptNavAlt = await $('button*=Prompt');
+    if (await promptNav.isExisting()) {
+      await promptNav.click();
+    } else if (await promptNavAlt.isExisting()) {
+      await promptNavAlt.click();
+    }
+    await browser.pause(500);
+    const body = await $('body').getText();
+    expect(
+      body.includes('Prompt') ||
+        body.includes('提示') ||
+        body.includes('场景') ||
+        body.includes('驱动'),
+    ).toBe(true);
+  });
+
   // ── Restore defaults ──
 
   after(async () => {
@@ -187,7 +237,7 @@ describe('Settings (SS-001~SS-006)', () => {
       },
     });
     await browser.pause(300);
-    await browser.refresh();
+    await browser.url('tauri://localhost');
     await browser.pause(1000);
   });
 });

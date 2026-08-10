@@ -348,4 +348,26 @@ mod tests {
         let ddl = format_compact_ddl("empty", &schema);
         assert_eq!(ddl, "  empty ()");
     }
+
+    #[test]
+    fn test_format_compact_ddl_pk_without_not_null_flag() {
+        let schema = TableSchema {
+            table_name: "t".to_string(),
+            columns: vec![ColumnSchema {
+                name: "id".into(),
+                data_type: "int".into(),
+                nullable: true,
+                default_value: None,
+                is_primary_key: true,
+                is_auto_increment: false,
+                comment: None,
+            }],
+            primary_keys: vec!["id".into()],
+            indexes: vec![],
+            foreign_keys: vec![],
+        };
+        let ddl = format_compact_ddl("t", &schema);
+        assert!(ddl.contains("id int PK"));
+        assert!(!ddl.contains("NOT NULL"));
+    }
 }

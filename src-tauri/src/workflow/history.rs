@@ -315,4 +315,49 @@ mod tests {
         mgr2.load().await.unwrap();
         assert_eq!(mgr2.list(None).await.len(), 1);
     }
+
+    #[tokio::test]
+    async fn test_get_missing_returns_none() {
+        let dir = tempfile::tempdir().unwrap();
+        let mgr = WorkflowHistoryManager::new(dir.path().to_path_buf());
+        mgr.load().await.unwrap();
+        assert!(mgr.get("missing-id").await.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_legacy_skill_history_migration() {
+        let dir = tempfile::tempdir().unwrap();
+        let legacy = dir.path().join("skill_history");
+        std::fs::create_dir(&legacy).unwrap();
+        std::fs::write(legacy.join("note.txt"), "legacy").unwrap();
+
+        let new_dir = dir.path().join("workflow_history");
+        let mgr = WorkflowHistoryManager::new(new_dir.clone());
+        assert!(new_dir.is_dir());
+        assert!(!legacy.exists());
+    }
+
+    #[tokio::test]
+    async fn test_history_truncates_beyond_limit() {
+        let dir = tempfile::tempdir().unwrap();
+        let mgr = WorkflowHistoryManager::new(dir.path().to_path_buf());
+        mgr.load().await.unwrap();
+        let r = make_test_result(true);
+
+        for i in 0..105 {
+            mgr.record(&format!("w{i}"), "W", &serde_json::json!({}), &r)
+                .await
+                .unwrap();
+        }
+        assert!(mgr.list(None).await.len() <= 100);
+    }
+
+    #[tokio::test]
+    async fn test_load_skips_invalid_json_files() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("bad.json"), "{not json").unwrap();
+        let mgr = WorkflowHistoryManager::new(dir.path().to_path_buf());
+        mgr.load().await.unwrap();
+        assert!(mgr.list(None).await.is_empty());
+    }
 }

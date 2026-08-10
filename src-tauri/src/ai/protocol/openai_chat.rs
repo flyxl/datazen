@@ -731,4 +731,191 @@ mod tests {
         assert_eq!(calls[0].name, "fn");
         assert_eq!(calls[0].arguments, r#"{"a":1}"#);
     }
+
+    #[test]
+    fn chat_completions_url_normalizes_base() {
+        assert_eq!(
+            chat_completions_url("https://api.openai.com/v1/chat/completions"),
+            "https://api.openai.com/v1/chat/completions"
+        );
+        assert_eq!(
+            chat_completions_url("https://api.openai.com/v1"),
+            "https://api.openai.com/v1/chat/completions"
+        );
+    }
+
+    #[test]
+    fn parse_oai_tool_calls_empty_is_none() {
+        assert!(parse_oai_tool_calls(None).is_none());
+        assert!(parse_oai_tool_calls(Some(vec![])).is_none());
+    }
+
+    #[test]
+    fn finalize_tool_calls_sorts_by_index() {
+        let mut acc = HashMap::new();
+        acc.insert(
+            1,
+            AccumulatedToolCall {
+                id: "b".into(),
+                name: "second".into(),
+                arguments: "{}".into(),
+            },
+        );
+        acc.insert(
+            0,
+            AccumulatedToolCall {
+                id: "a".into(),
+                name: "first".into(),
+                arguments: "{}".into(),
+            },
+        );
+        let calls = finalize_tool_calls(&acc).unwrap();
+        assert_eq!(calls[0].id, "a");
+        assert_eq!(calls[1].id, "b");
+    }
+
+    #[tokio::test]
+    async fn complete_success_with_reasoning_and_tools() {
+        use crate::ai::protocol::test_support::{protocol_config, sample_request};
+        use wiremock::matchers::{header, method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .and(header("Authorization", "Bearer test-api-key"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "choices": [{
+                    "message": {
+                        "content": "Answer",
+                        "reasoning_content": "thought",
+                        "tool_calls": [{
+                            "id": "call_1",
+                            "function": {"name": "lookup", "arguments": "{}"}
+                        }]
+                    },
+                    "finish_reason": "tool_calls"
+                }],
+                "model": "gpt-test",
+                "usage": {"prompt_tokens": 5, "completion_tokens": 7, "total_tokens": 12}
+            })))
+            .mount(&server)
+            .await;
+
+        let cfg = protocol_config(&server.uri());
+        let mut req = sample_request();
+        req.messages[0].content = "Question".into();
+        let resp = complete(&cfg, &req).await.unwrap();
+        assert_eq!(resp.content, "Answer");
+        assert_eq!(resp.reasoning.as_deref(), Some("thought"));
+        assert!(resp.tool_calls.is_some());
+        assert_eq!(resp.usage.total_tokens, 12);
+    }
+
+    #[tokio::test]
+    async fn complete_no_choices_is_error() {
+        use crate::ai::protocol::test_support::{protocol_config, sample_request};
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "choices": [],
+                "model": "gpt-test"
+            })))
+            .mount(&server)
+            .await;
+
+        let cfg = protocol_config(&server.uri());
+        let err = complete(&cfg, &sample_request()).await.unwrap_err();
+        assert!(matches!(err, AiError::RequestFailed(_)));
+    }
+
+    #[tokio::test]
+    async fn stream_complete_parses_sse() {
+        use crate::ai::protocol::test_support::{collect_stream, protocol_config, sample_request};
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        let sse = r#"data: {"choices":[{"delta":{"content":"Hi","reasoning_content":"r"}}]}
+
+data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","function":{"name":"fn","arguments":"{\"x\":"}}]}}]}
+
+data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"1}"}}]}}]}
+
+data: {"choices":[{"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":1,"completion_tokens":2,"total_tokens":3}}
+
+data: [DONE]
+
+"#;
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("content-type", "text/event-stream")
+                    .set_body_string(sse),
+            )
+            .mount(&server)
+            .await;
+
+        let cfg = protocol_config(&server.uri());
+        let req = sample_request();
+        let chunks = collect_stream(|tx| stream_complete(&cfg, &req, tx)).await;
+        let ok: Vec<_> = chunks.into_iter().filter_map(Result::ok).collect();
+        assert!(ok.iter().any(|c| c.content == "Hi"));
+        assert!(ok.iter().any(|c| c.reasoning.as_deref() == Some("r")));
+        let done = ok.iter().find(|c| c.done).unwrap();
+        assert_eq!(done.usage.as_ref().unwrap().total_tokens, 3);
+        assert_eq!(done.tool_calls.as_ref().unwrap()[0].arguments, r#"{"x":1}"#);
+    }
+
+    #[tokio::test]
+    async fn fetch_models_and_probe() {
+        use crate::ai::protocol::test_support::protocol_config;
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/v1/models"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "data": [{"id": "gpt-test"}]
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "choices": [{"message": {"content": "."}, "finish_reason": "stop"}],
+                "model": "gpt-test"
+            })))
+            .mount(&server)
+            .await;
+
+        let cfg = protocol_config(&server.uri());
+        let models = fetch_models(&cfg).await.unwrap();
+        assert_eq!(models[0].id, "gpt-test");
+        // Wiremock can flake under high parallel load; retry probe briefly.
+        let mut last_err = None;
+        for attempt in 0..3 {
+            match probe(&cfg, "gpt-test").await {
+                Ok(()) => {
+                    last_err = None;
+                    break;
+                }
+                Err(e) => {
+                    last_err = Some(e);
+                    if attempt < 2 {
+                        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                    }
+                }
+            }
+        }
+        if let Some(e) = last_err {
+            panic!("probe failed after retries: {e}");
+        }
+    }
 }

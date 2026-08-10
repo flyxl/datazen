@@ -40,6 +40,9 @@ jobs:
       - name: Guard managed driver stubs are not injected
         run: node scripts/check-managed-stubs.mjs
 
+      - name: Guard Host structure caps registry absent
+        run: node scripts/check-structure-editor-guardrails.mjs
+
       - name: Frontend unit tests
         run: pnpm test:unit
 

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Loader2, Plus, Trash2, AlertTriangle } from 'lucide-react';
+import { Loader2, Plus, Trash2, AlertTriangle, Pencil } from 'lucide-react';
 import { databaseCommands } from '../../commands/database';
 import { getCachedTableSchema, invalidateSchemaCache } from '../../lib/schemaCache';
 import type { IndexInfo, TableSchema, ColumnSchema, DatabaseType } from '../../types';
@@ -15,6 +15,7 @@ interface IndexesViewProps {
   tableName: string;
   createIndexTrigger?: number;
   databaseType?: string;
+  onEditStructure?: (tableName: string) => void;
 }
 
 function TypeBadge({ type: t }: { type: string }) {
@@ -222,7 +223,7 @@ function DeleteConfirmDialog({ indexName, onConfirm, onCancel, submitting }: Del
 
 // ── Main IndexesView ─────────────────────────────────────────────
 
-export function IndexesView({ connectionId, tableName, createIndexTrigger, databaseType }: IndexesViewProps) {
+export function IndexesView({ connectionId, tableName, createIndexTrigger, databaseType, onEditStructure }: IndexesViewProps) {
   const { t } = useI18n();
   const dbMeta = DB_REGISTRY[databaseType as DatabaseType];
   const indexDialect = databaseType ? getSqlDialect(databaseType as DatabaseType)?.index : null;
@@ -325,6 +326,16 @@ export function IndexesView({ connectionId, tableName, createIndexTrigger, datab
         <span className="text-base font-semibold text-fg">{tableName}</span>
         <span className="text-sm text-fg-muted">· {t('indexes.count', { count: indexes.length })}</span>
         <div className="flex-1" />
+        {onEditStructure && (
+          <Button
+            variant="secondary"
+            className="h-7 gap-1 px-2 text-xs"
+            onClick={() => onEditStructure(tableName)}
+          >
+            <Pencil className="h-3.5 w-3.5" />
+            {t('indexes.editInStructure')}
+          </Button>
+        )}
         <Button
           variant="secondary"
           className="h-7 gap-1 px-2 text-xs"
@@ -339,6 +350,16 @@ export function IndexesView({ connectionId, tableName, createIndexTrigger, datab
       {indexes.length === 0 ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-3 text-fg-muted">
           <span className="text-sm">{t('indexes.noIndexes')}</span>
+          {onEditStructure && (
+            <Button
+              variant="secondary"
+              className="h-8 gap-1 text-xs"
+              onClick={() => onEditStructure(tableName)}
+            >
+              <Pencil className="h-3.5 w-3.5" />
+              {t('indexes.editInStructure')}
+            </Button>
+          )}
           <Button
             variant="secondary"
             className="h-8 gap-1 text-xs"

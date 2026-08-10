@@ -23,5 +23,12 @@ export const redisMeta = {
     defaultDatabase: '0',
     maxDatabaseIndex: 15,
     defaultOptions: { topology: 'standalone' },
+    structureEditor: {
+      enabled: false,
+      columnTypes: [],
+      defaultColumnType: '',
+      fields: {},
+      indexMethods: [],
+    },
   } satisfies DatabaseTypeMeta;
 

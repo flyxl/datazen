@@ -314,4 +314,78 @@ mod tests {
             "character varying(100)"
         );
     }
+
+    #[test]
+    fn pg_char_and_bit_types() {
+        let adapter = PgSyncAdapter;
+        let char_col = col("code", "character(3)");
+        let ir = adapter.column_to_ir(&char_col, Some("character(3)"));
+        assert_eq!(ir.ir_type, IRType::Char { length: 3 });
+
+        let bit_col = col("flags", "bit(4)");
+        let ir = adapter.column_to_ir(&bit_col, Some("bit(4)"));
+        assert_eq!(ir.ir_type, IRType::Bit { length: 4 });
+    }
+
+    #[test]
+    fn pg_inet_and_money_map_to_ir() {
+        let adapter = PgSyncAdapter;
+        let inet = adapter.column_to_ir(&col("ip", "inet"), None);
+        assert_eq!(
+            inet.ir_type,
+            IRType::Varchar { length: Some(45) }
+        );
+        let money = adapter.column_to_ir(&col("price", "money"), None);
+        assert_eq!(
+            money.ir_type,
+            IRType::Decimal {
+                precision: 19,
+                scale: 2
+            }
+        );
+    }
+
+    #[test]
+    fn pg_unknown_type_becomes_other() {
+        let adapter = PgSyncAdapter;
+        let ir = adapter.column_to_ir(&col("x", "hstore"), Some("hstore"));
+        assert_eq!(ir.ir_type, IRType::Other("hstore".into()));
+    }
+
+    #[test]
+    fn pg_format_default_and_literal() {
+        use crate::db::Value;
+
+        let adapter = PgSyncAdapter;
+        assert_eq!(
+            adapter.format_default(&IRDefault::CurrentTimestamp),
+            Some("now()".into())
+        );
+        assert_eq!(
+            adapter.format_default(&IRDefault::Literal("'x'".into())),
+            Some("'x'".into())
+        );
+        assert_eq!(adapter.format_literal(&None, &IRType::Text), "NULL");
+        assert_eq!(
+            adapter.format_literal(&Some(Value::Bool(true)), &IRType::Bool),
+            "TRUE"
+        );
+        assert_eq!(
+            adapter.format_literal(&Some(Value::String("O'Brien".into())), &IRType::Text),
+            "'O''Brien'"
+        );
+        assert_eq!(
+            adapter.format_literal(&Some(Value::Bytes(vec![0xde, 0xad])), &IRType::Blob),
+            "'\\xdead'"
+        );
+    }
+
+    #[test]
+    fn pg_time_types_with_and_without_tz() {
+        let adapter = PgSyncAdapter;
+        let time = adapter.column_to_ir(&col("t", "time"), Some("time without time zone"));
+        assert_eq!(time.ir_type, IRType::Time { with_timezone: false });
+        let timetz = adapter.column_to_ir(&col("tz", "timetz"), Some("time with time zone"));
+        assert_eq!(timetz.ir_type, IRType::Time { with_timezone: true });
+    }
 }

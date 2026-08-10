@@ -516,4 +516,73 @@ mod tests {
             assert!(!p.default_en.is_empty());
         }
     }
+
+    #[tokio::test]
+    async fn test_load_language_from_prompts_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let prompts_dir = tmp.path().join("prompts");
+        let en_dir = prompts_dir.join("en");
+        std::fs::create_dir_all(&en_dir).unwrap();
+        std::fs::write(en_dir.join("chat.txt"), "Custom chat prompt from file").unwrap();
+
+        let data_dir = tmp.path().join("data");
+        let resolver = PromptResolver::new(&data_dir, Some(prompts_dir));
+        resolver.load_language("en").await;
+        let result = resolver.resolve(PromptScenario::Chat, None, "en").await;
+        assert_eq!(result, "Custom chat prompt from file");
+    }
+
+    #[tokio::test]
+    async fn test_ensure_ready_loads_templates() {
+        let tmp = tempfile::tempdir().unwrap();
+        let prompts_dir = tmp.path().join("prompts");
+        let en_dir = prompts_dir.join("en");
+        std::fs::create_dir_all(&en_dir).unwrap();
+        std::fs::write(en_dir.join("nl2sql.txt"), "File-backed NL2SQL").unwrap();
+
+        let data_dir = tmp.path().join("data");
+        let resolver = PromptResolver::new(&data_dir, Some(prompts_dir));
+        resolver.ensure_ready("en").await;
+        let result = resolver.resolve(PromptScenario::Nl2Sql, None, "en").await;
+        assert_eq!(result, "File-backed NL2SQL");
+    }
+
+    #[tokio::test]
+    async fn test_resolver_driver_specific_override() {
+        let tmp = tempfile::tempdir().unwrap();
+        let resolver = PromptResolver::new(tmp.path(), None);
+        resolver
+            .set_override(PromptOverrideEntry {
+                driver_type: "PostgreSQL".into(),
+                scenario: PromptScenario::Chat,
+                system_zh: "PG中文".into(),
+                system_en: "PG English".into(),
+            })
+            .await
+            .unwrap();
+
+        let result = resolver
+            .resolve(PromptScenario::Chat, None, "en")
+            .await;
+        // Without a driver instance, driver-specific override is not matched; global default applies.
+        assert!(result.contains("database assistant"));
+
+        resolver
+            .set_override(PromptOverrideEntry {
+                driver_type: "*".into(),
+                scenario: PromptScenario::Diagnose,
+                system_zh: "全局诊断".into(),
+                system_en: "Global diagnose".into(),
+            })
+            .await
+            .unwrap();
+        let result = resolver.resolve(PromptScenario::Diagnose, None, "en").await;
+        assert_eq!(result, "Global diagnose");
+    }
+
+    #[test]
+    fn test_scenario_to_key() {
+        assert_eq!(scenario_to_key(PromptScenario::Nl2Sql), "nl2sql");
+        assert_eq!(scenario_to_key(PromptScenario::Chat), "chat");
+    }
 }

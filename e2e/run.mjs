@@ -23,6 +23,27 @@ const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
 const DIST_INDEX = path.join(ROOT, 'dist', 'index.html');
 
+/** Load e2e/.env into process.env without overriding existing vars. */
+function loadDotEnv(filePath) {
+  if (!fs.existsSync(filePath)) return;
+  for (const raw of fs.readFileSync(filePath, 'utf8').split('\n')) {
+    const line = raw.trim();
+    if (!line || line.startsWith('#')) continue;
+    const eq = line.indexOf('=');
+    if (eq <= 0) continue;
+    const key = line.slice(0, eq).trim();
+    let val = line.slice(eq + 1).trim();
+    if (
+      (val.startsWith('"') && val.endsWith('"')) ||
+      (val.startsWith("'") && val.endsWith("'"))
+    ) {
+      val = val.slice(1, -1);
+    }
+    if (process.env[key] === undefined) process.env[key] = val;
+  }
+}
+loadDotEnv(path.join(__dirname, '.env'));
+
 const args = process.argv.slice(2);
 const skipBuild = args.includes('--skip-build');
 const minimalDrivers =

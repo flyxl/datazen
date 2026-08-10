@@ -204,4 +204,19 @@ impl DatabaseDriver for ReuseDriver {
     ) -> Result<(), DriverError> {
         self.inner.restore_sql(handle, sql).await
     }
+
+    async fn structure_capabilities(
+        &self,
+        handle: &ConnectionHandle,
+    ) -> Result<StructureCapabilities, DriverError> {
+        self.inner.structure_capabilities(handle).await
+    }
+
+    async fn plan_structure_changes(
+        &self,
+        handle: &ConnectionHandle,
+        request: &StructureChangeRequest,
+    ) -> Result<StructureChangePlan, DriverError> {
+        self.inner.plan_structure_changes(handle, request).await
+    }
 }

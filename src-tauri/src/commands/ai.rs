@@ -33,6 +33,16 @@ fn inject_language_hint(messages: &mut [ChatMessage], lang: &str) {
 use std::sync::Arc;
 use datazen_ai_api::AiProviderConfig;
 
+/// Delivers streaming chunks to the UI (or test collector).
+pub(crate) type StreamCallback = Arc<dyn Fn(&str, Result<StreamChunk, AiError>) + Send + Sync>;
+
+pub(crate) fn window_stream_callback(window: &WebviewWindow) -> StreamCallback {
+    let window = window.clone();
+    Arc::new(move |request_id, result| {
+        emit_stream_chunk_or_error(&window, request_id, result);
+    })
+}
+
 async fn resolve_ai(state: &AppState) -> Result<(Arc<dyn AiProvider>, AiProviderConfig), CommandError> {
     state.ensure_ai_ready().await;
 
@@ -74,13 +84,13 @@ fn provider_defaults(pt: AiProviderType) -> (&'static str, &'static str) {
         AiProviderType::OpenAi => ("https://api.openai.com/v1", "open_ai_compatible"),
         AiProviderType::Anthropic => ("https://api.anthropic.com", "anthropic_compatible"),
         AiProviderType::DeepSeek => ("https://api.deepseek.com", "open_ai_responses"),
+        AiProviderType::Ollama => ("http://127.0.0.1:11434/v1", "open_ai_compatible"),
         AiProviderType::Custom => ("", "open_ai_compatible"),
     }
 }
 
-#[tauri::command]
-pub async fn ai_get_providers(
-    state: State<'_, AppState>,
+pub(crate) async fn ai_get_providers_impl(
+    state: &AppState,
 ) -> Result<Vec<ProviderListItem>, CommandError> {
     state.ensure_ai_ready().await;
     let providers = state.ai_registry.all_providers().await;
@@ -102,6 +112,13 @@ pub async fn ai_get_providers(
 }
 
 #[tauri::command]
+pub async fn ai_get_providers(
+    state: State<'_, AppState>,
+) -> Result<Vec<ProviderListItem>, CommandError> {
+    ai_get_providers_impl(&state).await
+}
+
+#[tauri::command]
 pub async fn ai_fetch_remote_models(
     protocol: String,
     endpoint: String,
@@ -119,9 +136,8 @@ pub async fn ai_fetch_remote_models(
         .cmd_err("ai_fetch_remote_models")
 }
 
-#[tauri::command]
-pub async fn ai_validate_config(
-    state: State<'_, AppState>,
+pub(crate) async fn ai_validate_config_impl(
+    state: &AppState,
     config: AiProviderConfig,
 ) -> Result<(), CommandError> {
     state.ensure_ai_ready().await;
@@ -137,9 +153,15 @@ pub async fn ai_validate_config(
 }
 
 #[tauri::command]
-pub async fn ai_save_config(
-    handle: AppHandle,
+pub async fn ai_validate_config(
     state: State<'_, AppState>,
+    config: AiProviderConfig,
+) -> Result<(), CommandError> {
+    ai_validate_config_impl(&state, config).await
+}
+
+pub(crate) async fn ai_save_config_impl(
+    state: &AppState,
     config: AiProviderConfig,
 ) -> Result<(), CommandError> {
     state.ensure_ai_ready().await;
@@ -158,24 +180,34 @@ pub async fn ai_save_config(
         .store
         .save_ai_config(&config)
         .await
-        .cmd_err("ai_save_config")?;
+        .cmd_err("ai_save_config")
+}
 
+#[tauri::command]
+pub async fn ai_save_config(
+    handle: AppHandle,
+    state: State<'_, AppState>,
+    config: AiProviderConfig,
+) -> Result<(), CommandError> {
+    ai_save_config_impl(&state, config).await?;
     let _ = handle.emit("ai:config-changed", true);
     Ok(())
+}
+
+pub(crate) async fn ai_get_config_impl(
+    state: &AppState,
+) -> Result<Option<AiProviderConfig>, CommandError> {
+    Ok(state.store.get_ai_config().await)
 }
 
 #[tauri::command]
 pub async fn ai_get_config(
     state: State<'_, AppState>,
 ) -> Result<Option<AiProviderConfig>, CommandError> {
-    Ok(state.store.get_ai_config().await)
+    ai_get_config_impl(&state).await
 }
 
-#[tauri::command]
-pub async fn ai_delete_config(
-    handle: AppHandle,
-    state: State<'_, AppState>,
-) -> Result<(), CommandError> {
+pub(crate) async fn ai_delete_config_impl(state: &AppState) -> Result<(), CommandError> {
     for provider in state.ai_registry.all_providers().await {
         provider.reset().await;
     }
@@ -183,18 +215,24 @@ pub async fn ai_delete_config(
         .store
         .delete_ai_config()
         .await
-        .cmd_err("ai_delete_config")?;
+        .cmd_err("ai_delete_config")
+}
 
+#[tauri::command]
+pub async fn ai_delete_config(
+    handle: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), CommandError> {
+    ai_delete_config_impl(&state).await?;
     let _ = handle.emit("ai:config-changed", false);
     Ok(())
 }
 
 // ─── NL2SQL ───
 
-#[tauri::command]
-pub async fn ai_generate_sql(
-    state: State<'_, AppState>,
-    window: WebviewWindow,
+pub(crate) async fn ai_generate_sql_impl(
+    state: &AppState,
+    on_chunk: StreamCallback,
     connection_id: String,
     database: String,
     natural_language: String,
@@ -317,8 +355,8 @@ pub async fn ai_generate_sql(
         request.tools = Some(db_tool_definitions());
         return run_streaming_tool_loop(
             provider,
-            &state,
-            &window,
+            state,
+            on_chunk,
             &request_id,
             request,
             10,
@@ -329,11 +367,11 @@ pub async fn ai_generate_sql(
 
     let (tx, mut rx) = mpsc::channel::<Result<StreamChunk, AiError>>(32);
     let req_id_clone = request_id.clone();
-    let window_clone = window.clone();
+    let on_chunk_bg = on_chunk.clone();
 
     tokio::spawn(async move {
         while let Some(chunk_result) = rx.recv().await {
-            emit_stream_chunk_or_error(&window_clone, &req_id_clone, chunk_result);
+            on_chunk_bg(&req_id_clone, chunk_result);
         }
     });
 
@@ -345,11 +383,38 @@ pub async fn ai_generate_sql(
     Ok(request_id)
 }
 
+#[tauri::command]
+pub async fn ai_generate_sql(
+    state: State<'_, AppState>,
+    window: WebviewWindow,
+    connection_id: String,
+    database: String,
+    natural_language: String,
+    request_id: String,
+    current_table: Option<String>,
+    recent_queries: Option<Vec<String>>,
+    context_files: Option<Vec<String>>,
+    context_tables: Option<Vec<String>>,
+) -> Result<String, CommandError> {
+    ai_generate_sql_impl(
+        &state,
+        window_stream_callback(&window),
+        connection_id,
+        database,
+        natural_language,
+        request_id,
+        current_table,
+        recent_queries,
+        context_files,
+        context_tables,
+    )
+    .await
+}
+
 // ─── SQL Error Diagnosis ───
 
-#[tauri::command]
-pub async fn ai_diagnose_error(
-    state: State<'_, AppState>,
+pub(crate) async fn ai_diagnose_error_impl(
+    state: &AppState,
     connection_id: String,
     database: String,
     sql: String,
@@ -431,11 +496,21 @@ pub async fn ai_diagnose_error(
     )
 }
 
+#[tauri::command]
+pub async fn ai_diagnose_error(
+    state: State<'_, AppState>,
+    connection_id: String,
+    database: String,
+    sql: String,
+    error_message: String,
+) -> Result<DiagnosisResult, CommandError> {
+    ai_diagnose_error_impl(&state, connection_id, database, sql, error_message).await
+}
+
 // ─── EXPLAIN Analysis ───
 
-#[tauri::command]
-pub async fn ai_analyze_explain(
-    state: State<'_, AppState>,
+pub(crate) async fn ai_analyze_explain_impl(
+    state: &AppState,
     connection_id: String,
     explain_output: String,
     original_sql: String,
@@ -521,11 +596,20 @@ pub async fn ai_analyze_explain(
     )
 }
 
+#[tauri::command]
+pub async fn ai_analyze_explain(
+    state: State<'_, AppState>,
+    connection_id: String,
+    explain_output: String,
+    original_sql: String,
+) -> Result<ExplainAnalysis, CommandError> {
+    ai_analyze_explain_impl(&state, connection_id, explain_output, original_sql).await
+}
+
 // ─── Smart Filter ───
 
-#[tauri::command]
-pub async fn ai_parse_filter(
-    state: State<'_, AppState>,
+pub(crate) async fn ai_parse_filter_impl(
+    state: &AppState,
     connection_id: String,
     database: String,
     table: String,
@@ -618,6 +702,17 @@ pub async fn ai_parse_filter(
     }
 
     Ok(filters)
+}
+
+#[tauri::command]
+pub async fn ai_parse_filter(
+    state: State<'_, AppState>,
+    connection_id: String,
+    database: String,
+    table: String,
+    natural_language: String,
+) -> Result<Vec<crate::services::query_executor::FilterCondition>, CommandError> {
+    ai_parse_filter_impl(&state, connection_id, database, table, natural_language).await
 }
 
 // ─── Database Tool Definitions & Execution ───
@@ -722,7 +817,7 @@ struct StreamRoundResult {
 async fn run_streaming_tool_loop(
     provider: Arc<dyn AiProvider>,
     state: &AppState,
-    window: &WebviewWindow,
+    on_chunk: StreamCallback,
     request_id: &str,
     mut request: CompletionRequest,
     max_rounds: usize,
@@ -732,7 +827,7 @@ async fn run_streaming_tool_loop(
         let (tx, mut rx) = mpsc::channel::<Result<StreamChunk, AiError>>(32);
 
         let (result_tx, result_rx) = tokio::sync::oneshot::channel::<StreamRoundResult>();
-        let window_c = window.clone();
+        let on_chunk_c = on_chunk.clone();
         let rid_c = request_id.to_string();
 
         tokio::spawn(async move {
@@ -757,7 +852,7 @@ async fn run_streaming_tool_loop(
                             final_usage = chunk.usage;
                             final_response_id = chunk.response_id;
                             if !content.is_empty() || reasoning.is_some() {
-                                emit_stream_chunk_or_error(&window_c, &rid_c, Ok(StreamChunk {
+                                on_chunk_c(&rid_c, Ok(StreamChunk {
                                     content,
                                     reasoning,
                                     done: false,
@@ -771,11 +866,11 @@ async fn run_streaming_tool_loop(
                             if let Some(r) = &chunk.reasoning {
                                 full_reasoning.push_str(r);
                             }
-                            emit_stream_chunk_or_error(&window_c, &rid_c, Ok(chunk));
+                            on_chunk_c(&rid_c, Ok(chunk));
                         }
                     }
                     Err(e) => {
-                        emit_stream_chunk_or_error(&window_c, &rid_c, Err(e));
+                        on_chunk_c(&rid_c, Err(e));
                         had_error = true;
                         break;
                     }
@@ -812,7 +907,7 @@ async fn run_streaming_tool_loop(
             .unwrap_or_default();
 
         if db_tools.is_empty() {
-            emit_stream_chunk_or_error(window, request_id, Ok(StreamChunk {
+            on_chunk(request_id, Ok(StreamChunk {
                 content: String::new(),
                 reasoning: None,
                 done: true,
@@ -864,7 +959,7 @@ async fn run_streaming_tool_loop(
     }
 
     tracing::warn!(%request_id, "{cmd_label}: reached max tool rounds");
-    emit_stream_chunk_or_error(window, request_id, Ok(StreamChunk {
+    on_chunk(request_id, Ok(StreamChunk {
         content: String::new(),
         reasoning: None,
         done: true,
@@ -877,10 +972,9 @@ async fn run_streaming_tool_loop(
 
 // ─── AI Chat ───
 
-#[tauri::command]
-pub async fn ai_chat(
-    state: State<'_, AppState>,
-    window: WebviewWindow,
+pub(crate) async fn ai_chat_impl(
+    state: &AppState,
+    on_chunk: StreamCallback,
     connection_id: Option<String>,
     database: Option<String>,
     messages: Vec<ChatMessage>,
@@ -1085,12 +1179,40 @@ pub async fn ai_chat(
 
     run_streaming_tool_loop(
         provider,
-        &state,
-        &window,
+        state,
+        on_chunk,
         &request_id,
         request,
         10,
         "ai_chat",
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn ai_chat(
+    state: State<'_, AppState>,
+    window: WebviewWindow,
+    connection_id: Option<String>,
+    database: Option<String>,
+    messages: Vec<ChatMessage>,
+    request_id: String,
+    include_schema: bool,
+    scenario: Option<String>,
+    context_files: Option<Vec<String>>,
+    context_tables: Option<Vec<String>>,
+) -> Result<String, CommandError> {
+    ai_chat_impl(
+        &state,
+        window_stream_callback(&window),
+        connection_id,
+        database,
+        messages,
+        request_id,
+        include_schema,
+        scenario,
+        context_files,
+        context_tables,
     )
     .await
 }
@@ -1216,7 +1338,7 @@ fn extract_json_boundary(s: &str) -> Option<&str> {
     None
 }
 
-fn emit_stream_chunk_or_error<R: tauri::Runtime>(
+pub(crate) fn emit_stream_chunk_or_error<R: tauri::Runtime>(
     emitter: &impl Emitter<R>,
     request_id: &str,
     result: Result<StreamChunk, AiError>,
@@ -1265,16 +1387,21 @@ fn strip_markdown_fences(s: &str) -> String {
 
 // ─── Workflow IPC commands ───
 
-#[tauri::command]
-pub async fn workflow_list(
-    state: State<'_, AppState>,
+pub(crate) async fn workflow_list_impl(
+    state: &AppState,
 ) -> Result<Vec<crate::workflow::WorkflowListItem>, CommandError> {
     Ok(state.workflow_registry.list().await)
 }
 
 #[tauri::command]
-pub async fn workflow_execute(
+pub async fn workflow_list(
     state: State<'_, AppState>,
+) -> Result<Vec<crate::workflow::WorkflowListItem>, CommandError> {
+    workflow_list_impl(&state).await
+}
+
+pub(crate) async fn workflow_execute_impl(
+    state: &AppState,
     workflow_id: String,
     variables: serde_json::Value,
     connection_id: Option<String>,
@@ -1287,7 +1414,7 @@ pub async fn workflow_execute(
 
     let result = crate::workflow::WorkflowExecutor::execute(
         &workflow,
-        &state,
+        state,
         connection_id.as_deref(),
         &variables,
     )
@@ -1303,6 +1430,16 @@ pub async fn workflow_execute(
     }
 
     Ok(result)
+}
+
+#[tauri::command]
+pub async fn workflow_execute(
+    state: State<'_, AppState>,
+    workflow_id: String,
+    variables: serde_json::Value,
+    connection_id: Option<String>,
+) -> Result<crate::workflow::WorkflowExecutionResult, CommandError> {
+    workflow_execute_impl(&state, workflow_id, variables, connection_id).await
 }
 
 #[tauri::command]
@@ -1397,9 +1534,8 @@ pub async fn workflow_history_clear(
 
 // ─── Phase 8: Schema documentation ───
 
-#[tauri::command]
-pub async fn ai_generate_schema_doc(
-    state: State<'_, AppState>,
+pub(crate) async fn ai_generate_schema_doc_impl(
+    state: &AppState,
     connection_id: String,
     database: String,
 ) -> Result<String, CommandError> {
@@ -1527,6 +1663,15 @@ pub async fn ai_generate_schema_doc(
     Ok(stripped)
 }
 
+#[tauri::command]
+pub async fn ai_generate_schema_doc(
+    state: State<'_, AppState>,
+    connection_id: String,
+    database: String,
+) -> Result<String, CommandError> {
+    ai_generate_schema_doc_impl(&state, connection_id, database).await
+}
+
 // ─── Phase 8: Connection diagnostics ───
 
 #[derive(Debug, Clone, Serialize, serde::Deserialize)]
@@ -1548,6 +1693,14 @@ pub struct ConnectionSolution {
 #[tauri::command]
 pub async fn ai_diagnose_connection(
     state: State<'_, AppState>,
+    connection_id: String,
+    error_message: String,
+) -> Result<ConnectionDiagnosis, CommandError> {
+    ai_diagnose_connection_impl(&state, connection_id, error_message).await
+}
+
+pub(crate) async fn ai_diagnose_connection_impl(
+    state: &AppState,
     connection_id: String,
     error_message: String,
 ) -> Result<ConnectionDiagnosis, CommandError> {
@@ -1633,9 +1786,8 @@ pub struct QueryCategory {
     pub examples: Vec<String>,
 }
 
-#[tauri::command]
-pub async fn ai_analyze_queries(
-    state: State<'_, AppState>,
+pub(crate) async fn ai_analyze_queries_impl(
+    state: &AppState,
     connection_id: Option<String>,
 ) -> Result<QueryAnalysis, CommandError> {
     tracing::info!(connection_id = ?connection_id, "ai_analyze_queries: start");
@@ -1701,11 +1853,18 @@ pub async fn ai_analyze_queries(
     )
 }
 
+#[tauri::command]
+pub async fn ai_analyze_queries(
+    state: State<'_, AppState>,
+    connection_id: Option<String>,
+) -> Result<QueryAnalysis, CommandError> {
+    ai_analyze_queries_impl(&state, connection_id).await
+}
+
 // ─── Prompt management IPC commands ───
 
-#[tauri::command]
-pub async fn prompt_list(
-    state: State<'_, AppState>,
+pub(crate) async fn prompt_list_impl(
+    state: &AppState,
     driver_type: Option<String>,
 ) -> Result<Vec<PromptInfo>, CommandError> {
     state.ensure_ai_ready().await;
@@ -1720,6 +1879,14 @@ pub async fn prompt_list(
         .list_prompts(driver.as_deref())
         .await;
     Ok(prompts)
+}
+
+#[tauri::command]
+pub async fn prompt_list(
+    state: State<'_, AppState>,
+    driver_type: Option<String>,
+) -> Result<Vec<PromptInfo>, CommandError> {
+    prompt_list_impl(&state, driver_type).await
 }
 
 #[tauri::command]
@@ -1746,6 +1913,14 @@ pub async fn prompt_remove_override(
         .await
         .map_err(CommandError::Internal)
 }
+
+#[cfg(test)]
+#[path = "ai_integration_tests.rs"]
+mod ai_integration_tests;
+
+#[cfg(test)]
+#[path = "ai_mock_provider_tests.rs"]
+mod ai_mock_provider_tests;
 
 #[cfg(test)]
 mod tests {
@@ -1909,5 +2084,218 @@ mod tests {
             let obj = tool.parameters.as_object().unwrap();
             assert_eq!(obj.get("type").and_then(|v| v.as_str()), Some("object"));
         }
+    }
+
+    #[test]
+    fn test_language_hint_known_locales() {
+        assert!(language_hint("zh-CN").contains("Chinese (Simplified)"));
+        assert!(language_hint("zh-TW").contains("Chinese (Traditional)"));
+        assert!(language_hint("en").contains("English"));
+        assert!(language_hint("ja").contains("Japanese"));
+        assert!(language_hint("ko").contains("Korean"));
+        assert!(language_hint("fr").contains("fr"));
+    }
+
+    #[test]
+    fn test_inject_language_hint_appends_to_system() {
+        let mut messages = vec![
+            ChatMessage {
+                role: MessageRole::System,
+                content: "Base prompt".into(),
+                reasoning: None,
+                tool_calls: None,
+                tool_call_id: None,
+            },
+            ChatMessage {
+                role: MessageRole::User,
+                content: "Hi".into(),
+                reasoning: None,
+                tool_calls: None,
+                tool_call_id: None,
+            },
+        ];
+        inject_language_hint(&mut messages, "zh-CN");
+        assert!(messages[0].content.contains("Base prompt"));
+        assert!(messages[0].content.contains("Chinese (Simplified)"));
+        assert!(!messages[1].content.contains("Chinese"));
+    }
+
+    #[test]
+    fn test_provider_defaults_all_types() {
+        assert_eq!(
+            provider_defaults(AiProviderType::OpenAi),
+            ("https://api.openai.com/v1", "open_ai_compatible")
+        );
+        assert_eq!(
+            provider_defaults(AiProviderType::Anthropic),
+            ("https://api.anthropic.com", "anthropic_compatible")
+        );
+        assert_eq!(
+            provider_defaults(AiProviderType::DeepSeek),
+            ("https://api.deepseek.com", "open_ai_responses")
+        );
+        assert_eq!(provider_defaults(AiProviderType::Custom), ("", "open_ai_compatible"));
+    }
+
+    #[test]
+    fn test_truncate_str_multibyte() {
+        assert_eq!(truncate_str("héllo", 3), "hé");
+        assert_eq!(truncate_str("你好世界", 7), "你好");
+    }
+
+    #[test]
+    fn test_parse_ai_json_empty_response() {
+        #[derive(Debug, serde::Deserialize)]
+        struct Simple {
+            key: String,
+        }
+        let err = parse_ai_json::<Simple>("   ", None, "test").unwrap_err();
+        assert!(err.to_string().contains("empty"));
+    }
+
+    #[test]
+    fn test_parse_ai_json_truncated_finish_reason() {
+        #[derive(Debug, serde::Deserialize)]
+        struct Simple {
+            items: Vec<String>,
+        }
+        let raw = r#"{"items": ["unclosed"#;
+        let err = parse_ai_json::<Simple>(raw, Some("length"), "test").unwrap_err();
+        assert!(err.to_string().contains("truncated"));
+    }
+
+    #[test]
+    fn test_parse_ai_json_invalid_with_reason() {
+        #[derive(Debug, serde::Deserialize)]
+        struct NeedsField {
+            required_field: String,
+        }
+        let raw = r#"{"wrong": "field"}"#;
+        let err = parse_ai_json::<NeedsField>(raw, Some("stop"), "test").unwrap_err();
+        assert!(err.to_string().contains("schema"));
+    }
+
+    #[test]
+    fn test_language_hint_unknown_locale_uses_code() {
+        assert!(language_hint("de").contains("de"));
+    }
+
+    #[test]
+    fn test_emit_stream_chunk_builds_payload_via_callback() {
+        use std::sync::{Arc, Mutex};
+
+        #[derive(Default)]
+        struct Captured {
+            events: Vec<(String, serde_json::Value)>,
+        }
+
+        let captured = Arc::new(Mutex::new(Captured::default()));
+        let cap = captured.clone();
+        let cb: StreamCallback = Arc::new(move |request_id, result| {
+            match result {
+                Ok(chunk) => {
+                    let mut payload = serde_json::json!({
+                        "requestId": request_id,
+                        "content": chunk.content,
+                        "done": chunk.done,
+                    });
+                    if let Some(reasoning) = &chunk.reasoning {
+                        payload["reasoning"] = serde_json::Value::String(reasoning.clone());
+                    }
+                    cap.lock().unwrap().events.push(("ai:stream-chunk".into(), payload));
+                }
+                Err(e) => {
+                    cap.lock().unwrap().events.push((
+                        "ai:stream-error".into(),
+                        serde_json::json!({ "requestId": request_id, "error": e.to_string() }),
+                    ));
+                }
+            }
+        });
+
+        cb(
+            "req-1",
+            Ok(StreamChunk {
+                content: "hello".into(),
+                reasoning: Some("think".into()),
+                done: false,
+                usage: None,
+                tool_calls: None,
+                response_id: None,
+            }),
+        );
+        cb("req-2", Err(AiError::RequestFailed("bad".into())));
+
+        let events = captured.lock().unwrap();
+        assert_eq!(events.events.len(), 2);
+        assert_eq!(events.events[0].0, "ai:stream-chunk");
+        assert_eq!(events.events[0].1["content"], "hello");
+        assert_eq!(events.events[0].1["reasoning"], "think");
+        assert_eq!(events.events[1].0, "ai:stream-error");
+    }
+
+    #[tokio::test]
+    async fn ai_providers_config_prompt_workflow_impl() {
+        use crate::testing::app_state::TestAppState;
+        use datazen_ai_api::AiProviderConfig;
+        use datazen_ai_api::AiProviderType;
+
+        let test = TestAppState::new().await;
+        assert!(ai_get_config_impl(&test.state).await.unwrap().is_none());
+
+        let providers = ai_get_providers_impl(&test.state).await.unwrap();
+        assert!(!providers.is_empty());
+
+        let prompts = prompt_list_impl(&test.state, None).await.unwrap();
+        assert!(!prompts.is_empty());
+
+        let workflows = workflow_list_impl(&test.state).await.unwrap();
+        assert!(
+            workflows.iter().any(|w| w.id.starts_with("builtin-")),
+            "empty workflow dir should be seeded with builtin workflows, got: {workflows:?}"
+        );
+
+        let cfg = AiProviderConfig {
+            provider_type: AiProviderType::OpenAi,
+            api_key: Some("test-key".into()),
+            model: "gpt-4".into(),
+            endpoint: None,
+            max_tokens: 4096,
+            extra: serde_json::json!({}),
+        };
+        test.state.store.save_ai_config(&cfg).await.unwrap();
+        assert!(ai_get_config_impl(&test.state).await.unwrap().is_some());
+        ai_delete_config_impl(&test.state).await.unwrap();
+        assert!(ai_get_config_impl(&test.state).await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn ai_fetch_remote_models_rejects_unknown_protocol() {
+        let err = ai_fetch_remote_models(
+            "unknown_proto".into(),
+            "https://example.com".into(),
+            "key".into(),
+        )
+        .await
+        .unwrap_err();
+        assert!(err.to_string().contains("Unknown protocol"));
+    }
+
+    #[tokio::test]
+    async fn ai_validate_config_rejects_missing_api_key() {
+        use crate::testing::app_state::TestAppState;
+        use datazen_ai_api::AiProviderConfig;
+        use datazen_ai_api::AiProviderType;
+
+        let test = TestAppState::new().await;
+        let cfg = AiProviderConfig {
+            provider_type: AiProviderType::OpenAi,
+            api_key: None,
+            model: "gpt-4".into(),
+            endpoint: None,
+            max_tokens: 4096,
+            extra: serde_json::json!({}),
+        };
+        assert!(ai_validate_config_impl(&test.state, cfg).await.is_err());
     }
 }

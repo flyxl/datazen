@@ -254,7 +254,7 @@ pnpm tauri dev
 
 ## 协议版本
 
-`datazen-driver-api` 定义了 `PROTOCOL_VERSION` 常量（当前为 `1`）。
+`datazen-driver-api` 定义了 `PROTOCOL_VERSION` 常量（当前为 `2`）。
 
 - 每个插件工厂通过 `protocol_version()` 方法声明其编译时的协议版本
 - 主应用在注册插件时验证版本匹配，不匹配时拒绝加载并记录错误日志

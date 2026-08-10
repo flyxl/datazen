@@ -1,65 +1,49 @@
-# Task 8 Report — Wizard form + clusterRouting setting
+# Task 8 Report — TableStructureEditor refactor
 
-**Branch:** `feat/redis-deep-ops-e2-e4`  
-**Commit message:** `feat(redis): topology wizard and clusterRouting setting`
+**Status:** Complete
 
 ## Summary
 
-Implemented the Redis connection topology wizard, `clusterRouting` plugin setting, and cluster node picker UI for pinned routing mode.
+Refactored `TableStructureEditor` to consume driver UI config (`DB_REGISTRY.structureEditor`), runtime caps (`getStructureCapabilities`), and DDL planning (`planTableStructureChanges`). Removed all Host-side PG SQL generation (`PG_TYPES`, `generateCreateSQL`, `generateAlterSQL`).
 
-## Deliverables
+## Changes
 
-### 1. Connection wizard (`packages/drivers/redis/ui/ConnectionWizard.tsx`)
+| Area | Detail |
+|------|--------|
+| `TableStructureEditor.tsx` | Parallel load schema + caps on open; draft columns + indexes; preview via plan IPC; execute statements one-by-one with stop-on-failure + partial count message |
+| `structure/` subcomponents | Wired `StructureColumnTable`, `StructureIndexTable`, `StructurePlanPreview` |
+| `SqlConnectionView.tsx` | Passes `databaseType` into editor |
+| `draftDefaults.ts` | Pure helpers for empty/default draft rows |
+| `controlHints.ts` | Single i18n key `structEditor.capDisabled` for disabled controls |
+| Locales (`en`, `zh-CN`) | Added cap/disabled, indexes section, partial execute, not-supported keys |
 
-Multi-step form registered as plugin connection form variant `redis`:
+## Behavior checklist
 
-| Step | Contents |
-|------|----------|
-| Topology | Standalone / Cluster / Sentinel |
-| Endpoints | Host/port + DB index (standalone); seed nodes + auth (cluster); master name + sentinel nodes + auth (sentinel) |
-| TLS / mTLS | `options.tls.*` paths and flags matching `connect.rs` |
+- [x] Open: schema + caps + meta in parallel (alter) / caps + defaults (create)
+- [x] Draft includes columns and indexes on same screen
+- [x] Controls disabled via `capEnabled` + tooltip reason
+- [x] `reorderColumn === false` disables drag reorder
+- [x] Preview → `planTableStructureChanges` with sql/summary/risk
+- [x] Execute one statement at a time; stop on failure; show executed count on partial failure
+- [x] No Host PG SQL hardcoding
+- [x] `buildStructureChangeRequest` helper + vitest (pre-existing)
+- [x] Missing/disabled `structureEditor` → clear message, no crash
+- [x] E2E selectors preserved (`new_table`, `column_name`, preview button text)
 
-Supporting modules:
-
-- `connectionOptions.ts` — read/build options bag keys (`topology`, `clusterNodes`, `sentinelNodes`, `sentinelMasterName`, `sentinelNodePassword`, `tls`, `pinnedNodeAddr`)
-- `connectionWizardValidate.ts` — `validateRedisConnection` + exported `redisValidate` for plugin form validation
-
-### 2. Plugin registration
-
-- `meta.ts`: `connectionForm: 'redis'`
-- `scripts/resolve-drivers.mjs`: `connectionForm` entry for redis (Kiwi pattern) → `getPluginConnectionForm('redis')` after inject
-- `useConnectionForm.ts`: `options` / `setOptions` state, load on edit, include in draft, pass to plugin validators
-
-### 3. `clusterRouting` setting
-
-- `settings.tsx`: schema property `clusterRouting: 'auto' | 'pinnedNode'` (default `auto`) + Section UI
-- Vitest: `packages/drivers/redis/ui/__tests__/settings.test.ts`
-
-### 4. Pinned node picker
-
-- `ClusterNodePicker.tsx` — shown when `pluginSettings.redis.clusterRouting === 'pinnedNode'` and connection `options.topology === 'cluster'`
-- Uses `cluster_nodes` plugin command when available (`hasPluginCommand`); otherwise free-text `host:port`
-- Session persistence via `sessionStorage` key `datazen:redis:pinned-node:{connectionId}`
-- Integrated into `RedisConsole` toolbar (compact mode)
-
-### 5. Tests
-
-- `packages/drivers/redis/ui/__tests__/connectionWizardValidate.test.ts` — sentinel requires master name + ≥1 node; standalone/cluster cases
-- `vitest.config.ts` — include `packages/drivers/**/*.test.{ts,tsx}`
-
-### 6. i18n
-
-Added 29 keys under `redis.wizard.*`, `redis.settings.*`, `redis.clusterNode*` in all 10 locales (`en`, `zh-CN`, `zh-TW`, `ja`, `ko`, `de`, `fr`, `es`, `pt-BR`, `ru`).
-
-## Verification
+## Tests
 
 ```bash
-npx vitest run packages/drivers/redis/ui/__tests__/ src/locales/locales.test.ts
-node scripts/resolve-drivers.mjs --drivers=basic  # confirms RedisConnectionWizard + redisValidate in generated.ts
+npx vitest run src/lib/structureEditor/   # 5 passed
 ```
 
-## Notes / follow-ups
+## Concerns / follow-ups
 
-- `cluster_nodes` backend command not implemented yet (Task 8 UI falls back to text input until present).
-- Pinned routing exec path (passing `pinnedNodeAddr` to plugin commands) is UI-only in this task; driver routing honor is a later milestone.
-- `pnpm drivers:restore` / stash restore required after local `resolve-drivers` inject.
+- Task 9 (IndexesView opt-out / entry guards) not in scope; create-table entry in sidebar still shown for all SQL types — guard belongs to Task 9.
+- Create-mode default column template uses generic `id` + PK checkbox; dialect-specific serial types come from driver plan, not Host defaults.
+- No dedicated vitest for `draftDefaults.ts` (trivial); mapping covered by `buildStructureChangeRequest.test.ts`.
+
+## Commit
+
+```
+refactor(ui): TableStructureEditor consumes driver caps and plan IPC
+```

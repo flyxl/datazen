@@ -1,5 +1,6 @@
 //! PostgreSQL driver backed by sqlx PgPool.
 
+use crate::structure::{caps_for_version, plan_structure_changes_with_caps};
 use datazen_driver_api::*;
 use async_trait::async_trait;
 use rust_decimal::prelude::ToPrimitive;
@@ -1174,6 +1175,23 @@ impl DatabaseDriver for PostgresDriver {
         }
         out.push_str(&sql_dump::dump_sql_database(self, handle, database, opts).await?);
         Ok(out)
+    }
+
+    async fn structure_capabilities(
+        &self,
+        handle: &ConnectionHandle,
+    ) -> Result<StructureCapabilities, DriverError> {
+        let info = self.get_server_info(handle).await?;
+        Ok(caps_for_version(&info.server_version))
+    }
+
+    async fn plan_structure_changes(
+        &self,
+        handle: &ConnectionHandle,
+        request: &StructureChangeRequest,
+    ) -> Result<StructureChangePlan, DriverError> {
+        let caps = self.structure_capabilities(handle).await?;
+        plan_structure_changes_with_caps(&caps, request)
     }
 }
 

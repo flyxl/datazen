@@ -395,4 +395,76 @@ mod tests {
         let err = extract_theme_zip(&zip_path, &dest).unwrap_err();
         assert!(err.contains("forbidden extension .js"), "unexpected: {err}");
     }
+
+    #[test]
+    fn resolve_pack_root_prefers_manifest_at_root() {
+        let dir = TempDir::new().unwrap();
+        write_file(dir.path(), "manifest.json", "{}");
+        assert_eq!(resolve_pack_root(dir.path()).unwrap(), dir.path());
+    }
+
+    #[test]
+    fn resolve_pack_root_accepts_single_subdirectory() {
+        let dir = TempDir::new().unwrap();
+        let nested = dir.path().join("pack.theme");
+        write_file(&nested, "manifest.json", "{}");
+        assert_eq!(resolve_pack_root(dir.path()).unwrap(), nested);
+    }
+
+    #[test]
+    fn resolve_pack_root_rejects_multiple_subdirs() {
+        let dir = TempDir::new().unwrap();
+        fs::create_dir(dir.path().join("a")).unwrap();
+        fs::create_dir(dir.path().join("b")).unwrap();
+        let err = resolve_pack_root(dir.path()).unwrap_err();
+        assert!(err.contains("missing manifest.json"), "unexpected: {err}");
+    }
+
+    #[test]
+    fn atomic_replace_dir_installs_new_pack() {
+        let parent = TempDir::new().unwrap();
+        let dest = parent.path().join("installed");
+        let staging = parent.path().join("staging");
+        write_file(&staging, "manifest.json", r#"{"id":"x"}"#);
+        atomic_replace_dir(&dest, &staging).unwrap();
+        assert!(dest.join("manifest.json").is_file());
+        assert!(!staging.exists());
+    }
+
+    #[test]
+    fn atomic_replace_dir_replaces_existing() {
+        let parent = TempDir::new().unwrap();
+        let dest = parent.path().join("installed");
+        write_file(&dest, "old.txt", "old");
+        let staging = parent.path().join("staging");
+        write_file(&staging, "new.txt", "new");
+        atomic_replace_dir(&dest, &staging).unwrap();
+        assert!(!dest.join("old.txt").exists());
+        assert_eq!(fs::read_to_string(dest.join("new.txt")).unwrap(), "new");
+    }
+
+    #[test]
+    fn extract_rejects_zip_bomb_too_many_entries() {
+        let tmp = TempDir::new().unwrap();
+        let zip_path = tmp.path().join("many.zip");
+        {
+            let file = fs::File::create(&zip_path).unwrap();
+            let mut zip = ZipWriter::new(file);
+            let options =
+                SimpleFileOptions::default().compression_method(CompressionMethod::Stored);
+            for i in 0..3 {
+                zip.start_file(format!("file{i}.css"), options).unwrap();
+                zip.write_all(b"x").unwrap();
+            }
+            zip.finish().unwrap();
+        }
+        let dest = tmp.path().join("out");
+        let limits = ThemeZipLimits {
+            max_entries: 2,
+            max_uncompressed_bytes: MAX_THEME_UNCOMPRESSED,
+            max_compression_ratio: MAX_COMPRESSION_RATIO,
+        };
+        let err = extract_theme_zip_with_limits(&zip_path, &dest, limits).unwrap_err();
+        assert!(err.contains("too many entries"), "unexpected: {err}");
+    }
 }
