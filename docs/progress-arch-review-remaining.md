@@ -1,10 +1,10 @@
-# 全库架构审查 — 剩余待办
+# 全库架构审查 — 进度
 
 > 对照会话审查结论（Critical / Important / Minor）。  
-> 分支：`fix/critical-arch-review`  
+> 分支：`fix/critical-arch-review`（已与远程同步）  
 > 更新日期：2026-08-10
 
-## 已完成（摘要）
+## 已完成
 
 ### Critical（全部完成）
 
@@ -17,32 +17,33 @@
 | 5 | Redis flush 仅信前端 | 进程门控 |
 | 6 | Host 自拼备份 SQL | `dump_database` / `sql_dump` |
 
-### Important / 后续已落地（节选）
+### Important / 架构债收尾
 
-- Sync：`inventory` 注册；IR compare；PG `full_column_types_query`；别名；SQL Server / ClickHouse / DuckDB adapter；DDL 列 comment + `table_options` 后缀
-- `query_with_params` 真绑定；PG/MySQL 连接级事务
-- Redis 视图进驱动包；连接分组 `preset:*`；语义色；IPC camelCase 文档
-- Backup：智能切分、options、PG catalog `dump_table_ddl`、MySQL SHOW CREATE / routines·triggers
-- God modules：`commands/sync/`、`store/`、`aiStore`、Settings / DataSync 窗口拆分
+| 领域 | 内容 |
+|------|------|
+| **Sync 下沉** | IR/traits → `datazen-driver-api::sync`；适配器在驱动包 `inventory` 自注册；宿主仅保留 registry + DDL + orchestration |
+| **Sync IR 覆盖** | 见下方「IR 注册表」 |
+| **Backup** | 智能 SQL 切分；options 扩展；PG catalog `dump_table_ddl`；MySQL `SHOW CREATE` + routines/triggers |
+| **一致性** | 驱动 meta 语义色；IPC 文档 camelCase；连接分组 `preset:*` |
+| **God modules** | `commands/sync/`、`store/`、`aiStore` 类型、Settings / DataSync 窗口拆分 |
+| **高级 Sync** | `transform_value`；表级断点 + 行级 `resume_offset` |
 
-### 本轮收尾（2026-08-10 续）
+相关计划：`docs/superpowers/plans/2026-08-10-arch-review-remaining.md`。  
+近期提交（节选）：`1766380` → `a4ad700` → `e4864cf` → `f72f591`。
 
-| 项 | 状态 |
-|----|------|
-| ClickHouse Sync + ENGINE/ORDER BY（`table_options` / `create_table_suffix` / `table_options_query`） | ✅ |
-| DuckDB Sync adapter | ✅ |
-| `transform_value` 钩子 + 表级断点 + **行级 resume_offset**（失败保存 offset，继续跳过已插入行） | ✅ |
-| PG `dump_table_ddl` catalog 保真 | ✅ |
-| SettingsWindow / DataSyncWindow 拆分 | ✅ |
-| Elasticsearch Sync | ✅ 最小 IR（schema compare / 导出到 SQL 目标）；完整 SQL 往返仍可能失败 |
-| DuckDB / ClickHouse / 协议别名 questdb·manticore·ob_oracle | ✅ |
-| MongoDB / Influx / VictoriaMetrics / HBase / Vector Sync IR | ✅ 最小 IR |
-| Redis / Kiwi / Superset Sync IR | ❌ 非表模型或代理，不接关系 IR |
-| Trino/Presto Sync adapter 下沉 olap git 驱动包 | ✅（`datazen-driver-olap@58b5bd2`） |
-| 外部 `pg_dump` / custom format | ❌ 有意不做（不 shell-out） |
-| 与 `main` 合并 | ⏸ 按需求单独处理（本轮不合并） |
+### Sync IR 注册表（`databaseType`）
 
-相关计划：`docs/superpowers/plans/2026-08-10-arch-review-remaining.md`。
+| 来源 | 类型 |
+|------|------|
+| postgres 包 | `postgresql`, `cloudberry`, `questdb` |
+| mysql 包 | `mysql`, `mariadb`, `doris`, `starrocks`, `manticore`, `ob_oracle` |
+| sqlite 包 | `sqlite`, `rqlite`, `turso` |
+| 其它 path | `sqlserver`, `clickhouse`, `duckdb`, `elasticsearch`, `mongodb`, `influxdb`, `victoriametrics`, `hbase`, `vector` |
+| olap git 包 | `trino`, `presto`（`datazen-driver-olap@58b5bd2`） |
+
+**不接关系 IR（有意）：** `redis`、`kiwi`、`superset`。
+
+> 非 SQL 引擎（ES / Mongo / 时序 / HBase / Vector）为**最小 IR**：用于 schema compare / 导出到 SQL 目标；完整 `DROP/CREATE/INSERT` 往返仍可能失败。
 
 ---
 
@@ -50,14 +51,23 @@
 
 ### 流程债
 
-1. **与 `main` 合并** — 需要时再单独处理（曾有冲突史）。  
-2. **推远程** — 提交后 push `fix/critical-arch-review`（见最新 commit）。
+1. **与 `main` 合并** — 曾有冲突史；需单独处理（当前未合并）。
+
+### 有意不做
+
+| 项 | 原因 |
+|----|------|
+| 外部 `pg_dump` / `--format=custom` | 不做 shell-out；用进程内 dump |
+| Redis / Kiwi / Superset Sync IR | 非表模型或代理 |
 
 ### 可选后续（非阻塞）
 
-- ClickHouse：更复杂 ENGINE 族（Replicated* / Distributed）专项测试  
-- Elasticsearch / 其它非表模型「同步」另开产品设计  
-- Settings 更细粒度懒加载
+- ClickHouse：Replicated* / Distributed 等 ENGINE 专项保真与测试  
+- ES / Mongo 等「完整数据同步」产品设计（非仅 IR 类型映射）  
+- Backup：`no-owner` / dump 侧 `single-transaction` 仍偏 header 记录  
+- Settings 更细粒度懒加载  
+
+---
 
 ## 相关文档
 
