@@ -638,6 +638,14 @@ const zhCN = {
   'detail.show': '显示详情面板',
   'detail.hide': '隐藏详情面板',
   'detail.noSelection': '点击一行以查看字段详情',
+  'detail.searchColumns': '搜索列…',
+  'detail.clearSearch': '清除搜索',
+  'detail.noColumnsFound': '没有匹配的列',
+  'detail.editingRows': '正在编辑 {count} 行',
+  'detail.quickLook': '快速查看',
+  'detail.save': '保存',
+  'detail.blobData': 'BLOB 数据',
+  'detail.bytes': '字节',
 
   // ── Pagination ──
   'pagination.perPage': '每页',

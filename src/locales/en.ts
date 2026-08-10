@@ -641,6 +641,14 @@ const en: Record<TranslationKey, string> = {
   'detail.show': 'Show detail panel',
   'detail.hide': 'Hide detail panel',
   'detail.noSelection': 'Click a row to view field details',
+  'detail.searchColumns': 'Search columns…',
+  'detail.clearSearch': 'Clear search',
+  'detail.noColumnsFound': 'No matching columns',
+  'detail.editingRows': 'Editing {count} rows',
+  'detail.quickLook': 'Quick Look',
+  'detail.save': 'Save',
+  'detail.blobData': 'BLOB data',
+  'detail.bytes': 'bytes',
 
   // ── Pagination ──
   'pagination.perPage': 'Per page',
