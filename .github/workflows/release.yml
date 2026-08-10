@@ -329,8 +329,10 @@ jobs:
       - name: Download release assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
         run: |
           mkdir -p assets
+          # Draft releases are still addressable by tag; GH_REPO avoids needing a checkout.
           gh release download "${GITHUB_REF_NAME}" --dir assets --clobber
           ls -la assets/
 
@@ -374,6 +376,7 @@ jobs:
       - name: Append checksums to release body
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
         run: |
           existing=$(gh release view "${GITHUB_REF_NAME}" --json body --jq .body)
           marker="## Basic installer checksums (SHA256)"
