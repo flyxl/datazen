@@ -757,7 +757,7 @@ impl DatabaseDriver for PostgresDriver {
         sql: &str,
         limit: Option<u32>,
     ) -> Result<MultiQueryResult, DriverError> {
-        let statements = split_sql_statements(sql);
+        let statements = sql_dump::split_sql_statements(sql);
         if statements.is_empty() {
             return Ok(MultiQueryResult {
                 results: Vec::new(),
@@ -1195,108 +1195,6 @@ impl DatabaseDriver for PostgresDriver {
     }
 }
 
-/// Split a SQL text into individual statements, respecting single-quoted strings,
-/// double-quoted identifiers, dollar-quoted strings, `--` line comments, and `/* */`
-/// block comments so that semicolons inside those constructs are not treated as
-/// statement terminators.
-fn split_sql_statements(input: &str) -> Vec<String> {
-    let bytes = input.as_bytes();
-    let len = bytes.len();
-    let mut stmts: Vec<String> = Vec::new();
-    let mut start = 0;
-    let mut i = 0;
-
-    while i < len {
-        match bytes[i] {
-            b'\'' => {
-                i += 1;
-                while i < len {
-                    if bytes[i] == b'\'' {
-                        i += 1;
-                        if i < len && bytes[i] == b'\'' {
-                            i += 1; // escaped ''
-                        } else {
-                            break;
-                        }
-                    } else {
-                        i += 1;
-                    }
-                }
-            }
-            b'"' => {
-                i += 1;
-                while i < len {
-                    if bytes[i] == b'"' {
-                        i += 1;
-                        if i < len && bytes[i] == b'"' {
-                            i += 1;
-                        } else {
-                            break;
-                        }
-                    } else {
-                        i += 1;
-                    }
-                }
-            }
-            b'$' => {
-                if let Some(tag_end) = find_dollar_tag(bytes, i) {
-                    let tag = &input[i..tag_end];
-                    i = tag_end;
-                    loop {
-                        if i >= len {
-                            break;
-                        }
-                        if bytes[i] == b'$' && input[i..].starts_with(tag) {
-                            i += tag.len();
-                            break;
-                        }
-                        i += 1;
-                    }
-                } else {
-                    i += 1;
-                }
-            }
-            b'-' if i + 1 < len && bytes[i + 1] == b'-' => {
-                while i < len && bytes[i] != b'\n' {
-                    i += 1;
-                }
-            }
-            b'/' if i + 1 < len && bytes[i + 1] == b'*' => {
-                i += 2;
-                let mut depth = 1u32;
-                while i + 1 < len && depth > 0 {
-                    if bytes[i] == b'/' && bytes[i + 1] == b'*' {
-                        depth += 1;
-                        i += 2;
-                    } else if bytes[i] == b'*' && bytes[i + 1] == b'/' {
-                        depth -= 1;
-                        i += 2;
-                    } else {
-                        i += 1;
-                    }
-                }
-            }
-            b';' => {
-                let fragment = input[start..i].trim();
-                if !fragment.is_empty() {
-                    stmts.push(fragment.to_string());
-                }
-                i += 1;
-                start = i;
-            }
-            _ => {
-                i += 1;
-            }
-        }
-    }
-
-    let tail = input[start..].trim();
-    if !tail.is_empty() {
-        stmts.push(tail.to_string());
-    }
-    stmts
-}
-
 /// If the statement is a SELECT without an existing LIMIT clause, returns a
 /// modified SQL with `LIMIT limit+1` appended (the extra row lets us detect
 /// truncation).  If the statement already has a LIMIT, the SQL is unchanged
@@ -1354,7 +1252,7 @@ fn has_top_level_limit(sql: &str) -> bool {
                 if i < len { i += 1; }
             }
             b'$' => {
-                if let Some(tag_end) = find_dollar_tag(bytes, i) {
+                if let Some(tag_end) = sql_dump::find_dollar_tag(bytes, i) {
                     let tag = &sql[i..tag_end];
                     i = tag_end;
                     loop {
@@ -1407,25 +1305,6 @@ fn has_top_level_limit(sql: &str) -> bool {
     }
 
     false
-}
-
-/// Try to match a `$tag$` dollar-quote opener starting at position `pos`.
-/// Returns `Some(end)` where `end` is the byte index past the closing `$`.
-fn find_dollar_tag(bytes: &[u8], pos: usize) -> Option<usize> {
-    if pos >= bytes.len() || bytes[pos] != b'$' {
-        return None;
-    }
-    let mut j = pos + 1;
-    while j < bytes.len() {
-        if bytes[j] == b'$' {
-            return Some(j + 1);
-        }
-        if !bytes[j].is_ascii_alphanumeric() && bytes[j] != b'_' {
-            return None;
-        }
-        j += 1;
-    }
-    None
 }
 
 #[cfg(test)]

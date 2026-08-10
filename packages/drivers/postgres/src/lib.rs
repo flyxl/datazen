@@ -6,8 +6,10 @@ use datazen_driver_api::*;
 
 mod postgres;
 mod structure;
+mod sync_adapter;
 pub use postgres::*;
 pub use structure::{caps_for_version, plan_structure_changes_with_caps};
+pub use sync_adapter::PgSyncAdapter;
 
 struct PostgresFactory;
 impl DatabaseDriverFactory for PostgresFactory {

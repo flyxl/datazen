@@ -443,8 +443,22 @@ settings.theme.packId  →  read_theme_pack_file (IPC)
 
 ### 8.1 参数名序列化约定
 
-Tauri 使用 serde 反序列化前端传入的参数。后端 Rust 使用 `snake_case`，前端 TypeScript 使用 `camelCase`。
-**统一方案**：前端 `invoke` 传参时使用 `snake_case` key 与后端保持一致，避免序列化歧义。
+Tauri 使用 serde 反序列化前端传入的参数。
+
+- **命令名**：Rust 侧 `#[tauri::command]` 函数名使用 `snake_case`（如 `get_connections`、`execute_query`）。
+- **Rust 形参**：命令函数参数在 Rust 源码中为 `snake_case` 标识符（如 `connection_id`、`default_file_name`）。
+- **前端 `invoke` 键名**：`src/commands/*` 中传参对象键名使用 **camelCase**（如 `{ connectionId, sql }`、`{ defaultFileName }`）。Tauri 2 会将 camelCase 键名映射到 Rust 的 snake_case 形参。
+- **嵌套结构体**：请求/响应 DTO 在 Rust 侧通常标注 `#[serde(rename_all = "camelCase")]`，前后端字段均为 camelCase（如 `ConnectionConfig`、`MultiQueryResult`）。
+
+**约定**：新增 IPC 时，前端 `invoke` 第二参数与 TypeScript 类型保持一致（camelCase）；Rust 命令形参保持 snake_case；复杂 struct 在 Rust 侧显式 `rename_all = "camelCase"`。不要在前端混用 snake_case 键名（如 `connection_id`），现有 `src/commands/` 中已无此类用法。
+
+示例（摘自 `commands/query.ts` / `commands/connection.ts`）：
+
+```typescript
+invoke<MultiQueryResult>('execute_query', { connectionId, sql });
+invoke<string>('connect', { configId });
+invoke<number | null>('export_connections_with_dialog', { password, defaultFileName });
+```
 
 ### 8.2 命令封装
 

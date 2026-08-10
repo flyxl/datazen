@@ -1,22 +1,21 @@
 //! PostgreSQL sync adapter.
 
-use crate::db::{ColumnSchema, Value};
-use crate::sync::adapter::{SyncSourceAdapter, SyncTargetAdapter};
-use crate::sync::adapter_registry::{SyncAdapterFactory, SyncAdapterRegistry};
-use crate::sync::ir::{IRColumn, IRDefault, IRType};
-use std::sync::Arc;
+use datazen_driver_api::{
+    BoxedSyncAdapter, ColumnSchema, IRColumn, IRDefault, IRType, SyncAdapterFactory,
+    SyncSourceAdapter, SyncTargetAdapter, Value,
+};
 
 pub struct PgSyncAdapter;
 
-fn register(registry: &SyncAdapterRegistry, db_type: crate::db::DatabaseType) {
-    registry.register_both(db_type, Arc::new(PgSyncAdapter));
+fn create() -> BoxedSyncAdapter {
+    BoxedSyncAdapter::both(PgSyncAdapter)
 }
 
-inventory::submit! {
+datazen_driver_api::inventory::submit! {
     SyncAdapterFactory {
         // cloudberry: PG wire + catalogs; safe alias of PgSyncAdapter
         db_types: &["postgresql", "cloudberry"],
-        register,
+        create,
     }
 }
 
@@ -354,8 +353,6 @@ mod tests {
 
     #[test]
     fn pg_format_default_and_literal() {
-        use crate::db::Value;
-
         let adapter = PgSyncAdapter;
         assert_eq!(
             adapter.format_default(&IRDefault::CurrentTimestamp),

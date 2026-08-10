@@ -76,6 +76,10 @@ webdriver = ["tauri-plugin-webdriver"]
 [dev-dependencies]
 tempfile = "3.27.0"
 wiremock = "0.6"
+datazen-driver-postgres = { path = "../packages/drivers/postgres" }
+datazen-driver-mysql = { path = "../packages/drivers/mysql" }
+datazen-driver-sqlite = { path = "../packages/drivers/sqlite" }
+datazen-driver-sqlserver = { path = "../packages/drivers/sqlserver" }
 
 [target.'cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))'.dependencies]
 tauri-plugin-process = "2.3.1"

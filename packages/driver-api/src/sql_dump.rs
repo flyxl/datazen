@@ -84,8 +84,23 @@ where
     if opts.create_database {
         opt_flags.push("create");
     }
+    if opts.no_owner {
+        opt_flags.push("no-owner");
+    }
+    if opts.single_transaction {
+        opt_flags.push("single-transaction");
+    }
+    if opts.routines {
+        opt_flags.push("routines");
+    }
+    if opts.triggers {
+        opt_flags.push("triggers");
+    }
     if !opt_flags.is_empty() {
         out.push_str(&format!("-- Options: {}\n", opt_flags.join(", ")));
+    }
+    if opts.no_owner {
+        out.push_str("-- no-owner: OWNER clauses omitted\n");
     }
     out.push('\n');
 
@@ -148,25 +163,205 @@ where
     Ok(out)
 }
 
-/// Default restore: split on `;`, execute each non-empty / non-comment statement.
+/// Split SQL text into individual statements, respecting single-quoted strings,
+/// double-quoted identifiers, dollar-quoted strings, `--` line comments, and
+/// `/* */` block comments so semicolons inside those constructs are not treated
+/// as statement terminators.
+pub fn split_sql_statements(input: &str) -> Vec<String> {
+    let bytes = input.as_bytes();
+    let len = bytes.len();
+    let mut stmts: Vec<String> = Vec::new();
+    let mut start = 0;
+    let mut i = 0;
+
+    while i < len {
+        match bytes[i] {
+            b'\'' => {
+                i += 1;
+                while i < len {
+                    if bytes[i] == b'\'' {
+                        i += 1;
+                        if i < len && bytes[i] == b'\'' {
+                            i += 1; // escaped ''
+                        } else {
+                            break;
+                        }
+                    } else {
+                        i += 1;
+                    }
+                }
+            }
+            b'"' => {
+                i += 1;
+                while i < len {
+                    if bytes[i] == b'"' {
+                        i += 1;
+                        if i < len && bytes[i] == b'"' {
+                            i += 1;
+                        } else {
+                            break;
+                        }
+                    } else {
+                        i += 1;
+                    }
+                }
+            }
+            b'$' => {
+                if let Some(tag_end) = find_dollar_tag(bytes, i) {
+                    let tag = &input[i..tag_end];
+                    i = tag_end;
+                    loop {
+                        if i >= len {
+                            break;
+                        }
+                        if bytes[i] == b'$' && input[i..].starts_with(tag) {
+                            i += tag.len();
+                            break;
+                        }
+                        i += 1;
+                    }
+                } else {
+                    i += 1;
+                }
+            }
+            b'-' if i + 1 < len && bytes[i + 1] == b'-' => {
+                while i < len && bytes[i] != b'\n' {
+                    i += 1;
+                }
+            }
+            b'/' if i + 1 < len && bytes[i + 1] == b'*' => {
+                i += 2;
+                let mut depth = 1u32;
+                while i + 1 < len && depth > 0 {
+                    if bytes[i] == b'/' && bytes[i + 1] == b'*' {
+                        depth += 1;
+                        i += 2;
+                    } else if bytes[i] == b'*' && bytes[i + 1] == b'/' {
+                        depth -= 1;
+                        i += 2;
+                    } else {
+                        i += 1;
+                    }
+                }
+            }
+            b';' => {
+                let fragment = input[start..i].trim();
+                if !fragment.is_empty() {
+                    stmts.push(fragment.to_string());
+                }
+                i += 1;
+                start = i;
+            }
+            _ => {
+                i += 1;
+            }
+        }
+    }
+
+    let tail = input[start..].trim();
+    if !tail.is_empty() {
+        stmts.push(tail.to_string());
+    }
+    stmts
+}
+
+/// Try to match a `$tag$` dollar-quote opener starting at position `pos`.
+/// Returns `Some(end)` where `end` is the byte index past the closing `$`.
+pub fn find_dollar_tag(bytes: &[u8], pos: usize) -> Option<usize> {
+    if pos >= bytes.len() || bytes[pos] != b'$' {
+        return None;
+    }
+    let mut j = pos + 1;
+    while j < bytes.len() {
+        if bytes[j] == b'$' {
+            return Some(j + 1);
+        }
+        if !bytes[j].is_ascii_alphanumeric() && bytes[j] != b'_' {
+            return None;
+        }
+        j += 1;
+    }
+    None
+}
+
+/// Returns true when `stmt` is empty or contains only SQL comments / whitespace.
+fn is_comment_only_or_empty(stmt: &str) -> bool {
+    let bytes = stmt.as_bytes();
+    let len = bytes.len();
+    let mut i = 0;
+
+    while i < len {
+        while i < len && bytes[i].is_ascii_whitespace() {
+            i += 1;
+        }
+        if i >= len {
+            return true;
+        }
+        if i + 1 < len && bytes[i] == b'-' && bytes[i + 1] == b'-' {
+            while i < len && bytes[i] != b'\n' {
+                i += 1;
+            }
+            continue;
+        }
+        if i + 1 < len && bytes[i] == b'/' && bytes[i + 1] == b'*' {
+            i += 2;
+            while i + 1 < len {
+                if bytes[i] == b'*' && bytes[i + 1] == b'/' {
+                    i += 2;
+                    break;
+                }
+                i += 1;
+            }
+            continue;
+        }
+        return false;
+    }
+
+    true
+}
+
+/// Parse `-- Options:` header line from a DataZen dump for `single-transaction`.
+pub fn dump_header_requests_single_transaction(sql: &str) -> bool {
+    for line in sql.lines().take(20) {
+        let trimmed = line.trim();
+        if let Some(rest) = trimmed.strip_prefix("-- Options:") {
+            return rest.split(',').any(|part| part.trim() == "single-transaction");
+        }
+    }
+    false
+}
+
+/// Default restore: split statements intelligently, execute each non-empty one.
 pub async fn restore_sql_statements<D>(
     driver: &D,
     handle: &ConnectionHandle,
     sql: &str,
+    opts: Option<&BackupRestoreOptions>,
 ) -> Result<(), DriverError>
 where
     D: DatabaseDriver + ?Sized,
 {
-    let statements: Vec<&str> = sql
-        .split(';')
-        .map(|s| s.trim())
-        .filter(|s| !s.is_empty() && !s.starts_with("--"))
+    let statements: Vec<String> = split_sql_statements(sql)
+        .into_iter()
+        .filter(|s| !is_comment_only_or_empty(s))
         .collect();
+
+    let use_tx = opts
+        .map(|o| o.single_transaction)
+        .unwrap_or(false)
+        || dump_header_requests_single_transaction(sql);
+
+    if use_tx {
+        driver.execute(handle, "BEGIN").await?;
+    }
 
     let mut errors = Vec::new();
     for stmt in &statements {
         let full = format!("{};", stmt);
         if let Err(e) = driver.execute(handle, &full).await {
+            if use_tx {
+                let _ = driver.execute(handle, "ROLLBACK").await;
+            }
             let max = 80;
             let end = if stmt.len() <= max {
                 stmt.len()
@@ -181,16 +376,20 @@ where
         }
     }
 
-    if errors.is_empty() {
-        Ok(())
-    } else {
-        Err(DriverError::QueryFailed(format!(
+    if !errors.is_empty() {
+        return Err(DriverError::QueryFailed(format!(
             "Partial restore failure ({}/{} statements failed):\n{}",
             errors.len(),
             statements.len(),
             errors.join("\n")
-        )))
+        )));
     }
+
+    if use_tx {
+        driver.execute(handle, "COMMIT").await?;
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -231,5 +430,51 @@ mod tests {
         assert!(sql.contains("DEFAULT 'anon'"));
         assert!(sql.contains("PRIMARY KEY (\"id\")"));
         assert!(sql.ends_with(";\n"));
+    }
+
+    #[test]
+    fn split_sql_respects_semicolon_in_single_quotes() {
+        let stmts = split_sql_statements("SELECT 'a;b'; SELECT 1;");
+        assert_eq!(stmts.len(), 2);
+        assert_eq!(stmts[0], "SELECT 'a;b'");
+        assert_eq!(stmts[1], "SELECT 1");
+    }
+
+    #[test]
+    fn split_sql_respects_dollar_quoted_body_with_semicolon() {
+        let stmts = split_sql_statements("SELECT $$foo;bar$$; SELECT 1;");
+        assert_eq!(stmts.len(), 2);
+        assert_eq!(stmts[0], "SELECT $$foo;bar$$");
+        assert_eq!(stmts[1], "SELECT 1");
+    }
+
+    #[test]
+    fn split_sql_respects_line_comment_with_semicolon() {
+        let stmts = split_sql_statements("SELECT 1; -- trailing; comment\nSELECT 2;");
+        assert_eq!(stmts.len(), 2);
+        assert_eq!(stmts[0], "SELECT 1");
+        assert_eq!(stmts[1], "-- trailing; comment\nSELECT 2");
+    }
+
+    #[test]
+    fn split_sql_respects_block_comment_with_semicolon() {
+        let stmts = split_sql_statements("SELECT 1; /* block; comment */ SELECT 2;");
+        assert_eq!(stmts.len(), 2);
+        assert_eq!(stmts[0], "SELECT 1");
+        assert_eq!(stmts[1], "/* block; comment */ SELECT 2");
+    }
+
+    #[test]
+    fn is_comment_only_or_empty_detects_comment_statements() {
+        assert!(is_comment_only_or_empty("-- only a comment"));
+        assert!(is_comment_only_or_empty("/* block */"));
+        assert!(!is_comment_only_or_empty("SELECT 1"));
+    }
+
+    #[test]
+    fn dump_header_single_transaction_flag() {
+        let sql = "-- DataZen backup: app\n-- Options: clean, single-transaction\n";
+        assert!(dump_header_requests_single_transaction(sql));
+        assert!(!dump_header_requests_single_transaction("-- Options: clean\n"));
     }
 }
