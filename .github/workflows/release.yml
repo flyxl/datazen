@@ -170,18 +170,18 @@ jobs:
           printf '%s\n' "$SUPERSET_DEPLOY_KEY" > ~/.ssh/datazen_superset
           chmod 600 ~/.ssh/datazen_kiwi ~/.ssh/datazen_superset
 
-          cat > ~/.ssh/config <<'EOF'
-Host github.com-kiwi
-  HostName github.com
-  User git
-  IdentityFile ~/.ssh/datazen_kiwi
-  IdentitiesOnly yes
-Host github.com-superset
-  HostName github.com
-  User git
-  IdentityFile ~/.ssh/datazen_superset
-  IdentitiesOnly yes
-EOF
+          printf '%s\n' \
+            'Host github.com-kiwi' \
+            '  HostName github.com' \
+            '  User git' \
+            '  IdentityFile ~/.ssh/datazen_kiwi' \
+            '  IdentitiesOnly yes' \
+            'Host github.com-superset' \
+            '  HostName github.com' \
+            '  User git' \
+            '  IdentityFile ~/.ssh/datazen_superset' \
+            '  IdentitiesOnly yes' \
+            > ~/.ssh/config
           chmod 600 ~/.ssh/config
 
           # drivers-registry.json keeps https:// URLs; rewrite per-repo to the
