@@ -4,7 +4,7 @@
 //! sync job are created, the first time that pair is requested.
 //!
 //! Concrete adapters self-register via [`SyncAdapterFactory`] + `inventory`
-//! (from path drivers and residual host adapters such as Trino).
+//! (from path / git driver crates).
 
 use crate::db::{
     BoxedSyncAdapter, DatabaseType, SyncAdapterFactory, SyncSourceAdapter, SyncTargetAdapter,
@@ -50,7 +50,7 @@ impl SyncAdapterRegistry {
     }
 
     fn register_from_inventory(&self, db_type: &DatabaseType) -> Result<(), String> {
-        // Residual host adapters (Trino / Presto) — path drivers link via features.
+        // Touch residual module; path/git driver crates link via Cargo features / tests.
         crate::sync::adapters::force_link();
         #[cfg(test)]
         force_link_driver_sync_adapters();
@@ -106,6 +106,7 @@ fn force_link_driver_sync_adapters() {
         std::any::type_name::<datazen_driver_victoriametrics::VictoriaMetricsSyncAdapter>(),
         std::any::type_name::<datazen_driver_hbase::HBaseSyncAdapter>(),
         std::any::type_name::<datazen_driver_vector::VectorSyncAdapter>(),
+        std::any::type_name::<datazen_plugin_olap::TrinoSyncAdapter>(),
     );
 }
 

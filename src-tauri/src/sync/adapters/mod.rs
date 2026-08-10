@@ -1,12 +1,10 @@
-//! Residual host sync adapters (no path driver crate yet).
+//! Host-side sync adapter leftovers (roundtrip tests only).
+//!
+//! Concrete adapters live in path/git driver crates and self-register via inventory.
 
-pub mod trino;
-
-/// Ensure adapter modules stay linked so their `inventory::submit!` statics are present.
+/// No residual host adapters; path/git drivers register via `inventory`.
 #[inline(never)]
-pub fn force_link() {
-    let _ = std::any::type_name::<trino::TrinoSyncAdapter>();
-}
+pub fn force_link() {}
 
 #[cfg(test)]
 mod roundtrip_tests;
