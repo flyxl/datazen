@@ -150,24 +150,46 @@ jobs:
 
       # Git-driver SKUs only: read-only Deploy Keys for private plugin repos.
       # Public key exposure is harmless; private keys must stay in Environment secrets.
-      - name: Setup SSH agent for private plugins
-        if: matrix.needs_git
-        uses: webfactory/ssh-agent@v0.9.1
-        with:
-          ssh-private-key: |
-            ${{ secrets.KIWI_DEPLOY_KEY }}
-            ${{ secrets.SUPERSET_DEPLOY_KEY }}
-
-      - name: Configure git to clone GitHub over SSH
+      # Do NOT rely on webfactory/ssh-agent comment→repo mapping: keys commented
+      # `datazen-ci-*` are not auto-mapped, so GitHub accepts only the first key and
+      # the second private repo fails with "Repository not found".
+      - name: Setup SSH for private plugins
         if: matrix.needs_git
         shell: bash
+        env:
+          KIWI_DEPLOY_KEY: ${{ secrets.KIWI_DEPLOY_KEY }}
+          SUPERSET_DEPLOY_KEY: ${{ secrets.SUPERSET_DEPLOY_KEY }}
         run: |
+          set -euo pipefail
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
           ssh-keyscan -t ed25519,rsa github.com >> ~/.ssh/known_hosts 2>/dev/null
           chmod 644 ~/.ssh/known_hosts
-          # drivers-registry.json keeps https:// URLs; rewrite to SSH for auth.
-          git config --global url."git@github.com:".insteadOf "https://github.com/"
+
+          printf '%s\n' "$KIWI_DEPLOY_KEY" > ~/.ssh/datazen_kiwi
+          printf '%s\n' "$SUPERSET_DEPLOY_KEY" > ~/.ssh/datazen_superset
+          chmod 600 ~/.ssh/datazen_kiwi ~/.ssh/datazen_superset
+
+          cat > ~/.ssh/config <<'EOF'
+Host github.com-kiwi
+  HostName github.com
+  User git
+  IdentityFile ~/.ssh/datazen_kiwi
+  IdentitiesOnly yes
+Host github.com-superset
+  HostName github.com
+  User git
+  IdentityFile ~/.ssh/datazen_superset
+  IdentitiesOnly yes
+EOF
+          chmod 600 ~/.ssh/config
+
+          # drivers-registry.json keeps https:// URLs; rewrite per-repo to the
+          # Host alias that selects the matching deploy key.
+          git config --global url."git@github.com-kiwi:flyxl/datazen-driver-kiwi.git".insteadOf "https://github.com/flyxl/datazen-driver-kiwi.git"
+          git config --global url."git@github.com-kiwi:flyxl/datazen-driver-kiwi.git".insteadOf "git@github.com:flyxl/datazen-driver-kiwi.git"
+          git config --global url."git@github.com-superset:flyxl/datazen-driver-superset.git".insteadOf "https://github.com/flyxl/datazen-driver-superset.git"
+          git config --global url."git@github.com-superset:flyxl/datazen-driver-superset.git".insteadOf "git@github.com:flyxl/datazen-driver-superset.git"
 
       - name: Import Windows code signing certificate
         if: runner.os == 'Windows'
