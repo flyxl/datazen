@@ -7,17 +7,19 @@
  *   --drivers="postgres,mysql"   (explicit registry names)
  *   --drivers="basic"            (postgres, mysql, sqlite, redis) — default when omitted
  *   --drivers="all"              (all path drivers only; excludes git drivers)
+ *   --drivers="basic,kiwi,superset"  (basic / :basic expands core path drivers, then adds listed ids)
  *   --drivers="all,kiwi,superset"   (all / :all expands to all path drivers, then adds listed ids)
  *   --drivers="stub"             (empty selection; git-safe generated.ts / plugin_init)
  *   --drivers=                   (same as stub — explicit empty value)
  *   --drivers="postgres,mongodb,kiwi"  (explicit list; use this for custom SKUs)
+ *   --drivers="kiwi" / --drivers="superset"  (single git driver id from the registry)
  *   --restore                    (restore stashed clean managed files and exit)
  *
  * Environment variable: DATAZEN_DRIVERS="basic" (overrides default when no --drivers flag)
  *
  * Hard cutover: --plugins / DATAZEN_PLUGINS / presets none|core are rejected.
  * Custom release SKUs (e.g. akulaku) must pass an explicit comma list in CI —
- * do not add more named presets here.
+ * do not add more named presets beyond basic|all|stub; use expanders in lists instead.
  *
  * Managed files are copied into `.plugin-file-stash/` before injection,
  * then restored with `node scripts/plugin-file-stash.mjs restore` after build.
@@ -104,9 +106,10 @@ function pathDriverIds(registry) {
 
 /**
  * Resolve a --drivers / DATAZEN_DRIVERS value to registry ids.
- * Supports presets `basic` | `all` | `stub`, comma lists, and expanders `all` / `:all`
- * (all path drivers) so e.g. `all,kiwi,superset` includes git drivers without
- * baking them into the bare `all` preset alone.
+ * Supports presets `basic` | `all` | `stub`, comma lists, and expanders
+ * `basic` / `:basic` (core path drivers) and `all` / `:all` (all path drivers)
+ * so e.g. `basic,kiwi,superset` or `all,kiwi,superset` include git drivers without
+ * baking them into the bare presets alone.
  */
 export function resolveDrivers(driversArg, registry) {
   if (driversArg === 'none' || driversArg === 'core') {
@@ -121,7 +124,7 @@ export function resolveDrivers(driversArg, registry) {
     return [];
   }
 
-  if (driversArg === 'basic') {
+  if (driversArg === 'basic' || driversArg === ':basic') {
     return [...BASIC_DRIVERS];
   }
 
@@ -138,9 +141,11 @@ export function resolveDrivers(driversArg, registry) {
     let names;
     if (token === 'all' || token === ':all') {
       names = pathDriverIds(registry);
+    } else if (token === 'basic' || token === ':basic') {
+      names = [...BASIC_DRIVERS];
     } else if (token.startsWith(':')) {
       console.error(
-        `[resolve-drivers] Unknown expander "${token}". Supported expanders: all, :all`,
+        `[resolve-drivers] Unknown expander "${token}". Supported expanders: basic, :basic, all, :all`,
       );
       process.exit(1);
     } else if (!registry[token]) {

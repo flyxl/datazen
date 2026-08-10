@@ -14,6 +14,21 @@ const registry = {
 } as const;
 
 describe('resolveDrivers', () => {
+  it('resolves bare basic to the four core path drivers', () => {
+    expect(resolveDrivers('basic', registry)).toEqual([
+      'postgres',
+      'mysql',
+      'sqlite',
+      'redis',
+    ]);
+    expect(resolveDrivers(':basic', registry)).toEqual([
+      'postgres',
+      'mysql',
+      'sqlite',
+      'redis',
+    ]);
+  });
+
   it('keeps bare all as path-only', () => {
     expect(resolveDrivers('all', registry)).toEqual([
       'postgres',
@@ -21,6 +36,26 @@ describe('resolveDrivers', () => {
       'sqlite',
       'redis',
       'mongodb',
+    ]);
+  });
+
+  it('expands basic / :basic in a list then appends git drivers without duplicates', () => {
+    const expected = [
+      'postgres',
+      'mysql',
+      'sqlite',
+      'redis',
+      'superset',
+      'kiwi',
+    ];
+    expect(resolveDrivers('basic,superset,kiwi', registry)).toEqual(expected);
+    expect(resolveDrivers(':basic,kiwi,superset', registry)).toEqual([
+      'postgres',
+      'mysql',
+      'sqlite',
+      'redis',
+      'kiwi',
+      'superset',
     ]);
   });
 
@@ -47,5 +82,10 @@ describe('resolveDrivers', () => {
       'mongodb',
       'superset',
     ]);
+  });
+
+  it('accepts bare kiwi or superset as single registry ids', () => {
+    expect(resolveDrivers('kiwi', registry)).toEqual(['kiwi']);
+    expect(resolveDrivers('superset', registry)).toEqual(['superset']);
   });
 });

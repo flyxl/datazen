@@ -5,6 +5,7 @@
  * Usage:
  *   pnpm dev                          # basic (postgres/mysql/sqlite/redis)
  *   pnpm dev --drivers=all                 # all path drivers (no git)
+ *   pnpm dev --drivers=basic,kiwi,superset # basic expander + listed git drivers
  *   pnpm dev --drivers=all,kiwi,superset   # all path + listed git drivers
  *   pnpm dev --drivers=kiwi                # only kiwi
  *   DATAZEN_DRIVERS=all pnpm dev           # env var also works
