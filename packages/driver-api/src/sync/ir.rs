@@ -69,6 +69,9 @@ pub struct IRTable {
     pub name: String,
     pub columns: Vec<IRColumn>,
     pub primary_keys: Vec<String>,
+    /// Dialect-specific CREATE TABLE suffix (e.g. ClickHouse `ENGINE = MergeTree ORDER BY (...)`).
+    /// None means target adapter may apply its own default suffix.
+    pub table_options: Option<String>,
 }
 
 #[cfg(test)]

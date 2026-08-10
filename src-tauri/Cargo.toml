@@ -80,6 +80,8 @@ datazen-driver-postgres = { path = "../packages/drivers/postgres" }
 datazen-driver-mysql = { path = "../packages/drivers/mysql" }
 datazen-driver-sqlite = { path = "../packages/drivers/sqlite" }
 datazen-driver-sqlserver = { path = "../packages/drivers/sqlserver" }
+datazen-driver-clickhouse = { path = "../packages/drivers/clickhouse" }
+datazen-driver-duckdb = { path = "../packages/drivers/duckdb" }
 
 [target.'cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))'.dependencies]
 tauri-plugin-process = "2.3.1"

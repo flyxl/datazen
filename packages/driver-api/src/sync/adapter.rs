@@ -49,12 +49,20 @@ pub trait SyncSourceAdapter: Send + Sync {
             name: schema.table_name.clone(),
             columns,
             primary_keys: schema.primary_keys.clone(),
+            table_options: None,
         }
     }
 
     /// Optional SQL returning `(col_name, full_type)` rows for precision-preserving sync.
     /// Default: none (host uses `column.data_type` only).
     fn full_column_types_query(&self, _table: &str) -> Option<String> {
+        None
+    }
+
+    /// Optional SQL returning a single row whose first column is a CREATE TABLE suffix
+    /// (e.g. ClickHouse `ENGINE = MergeTree\nORDER BY (id)`).
+    /// Default: none.
+    fn table_options_query(&self, _table: &str) -> Option<String> {
         None
     }
 }
@@ -95,6 +103,16 @@ pub trait SyncTargetAdapter: Send + Sync {
     /// Return `None` if the engine uses a different mechanism (e.g. PG SERIAL/IDENTITY).
     fn auto_increment_keyword(&self) -> Option<&str> {
         None
+    }
+
+    /// Appended after `CREATE TABLE (...)` closing paren. Default: use `ir_table.table_options` if present.
+    fn create_table_suffix(&self, ir_table: &IRTable) -> Option<String> {
+        ir_table.table_options.clone()
+    }
+
+    /// Optional value transform before formatting literals (identity by default).
+    fn transform_value(&self, value: &Option<Value>, _ir_type: &IRType) -> Option<Value> {
+        value.clone()
     }
 }
 

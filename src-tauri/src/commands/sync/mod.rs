@@ -72,6 +72,8 @@ pub async fn sync_tables(
     tables: Vec<String>,
     skip_tables: Vec<String>,
     strategy: String,
+    resume_table: Option<String>,
+    resume_offset: Option<u64>,
 ) -> Result<serde_json::Value, CommandError> {
     sync_tables_impl(
         &state,
@@ -84,6 +86,8 @@ pub async fn sync_tables(
         tables,
         skip_tables,
         strategy,
+        resume_table,
+        resume_offset.unwrap_or(0),
     )
     .await
 }
