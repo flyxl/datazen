@@ -55,6 +55,9 @@ pub fn build_create_table_ddl(ir_table: &IRTable, tgt: &dyn SyncTargetAdapter) -
     }
 
     ddl.push_str("\n)");
+    if let Some(suffix) = tgt.create_table_suffix(ir_table) {
+        ddl.push_str(&format!("\n{suffix}"));
+    }
     ddl
 }
 
@@ -64,9 +67,22 @@ mod tests {
     use crate::db::Value;
     use crate::sync::ir::{IRColumn, IRDefault, IRType};
 
-    struct DummyTarget;
+    struct DummyTarget {
+        suffix: Option<String>,
+    }
+
+    impl DummyTarget {
+        fn new() -> Self {
+            Self { suffix: None }
+        }
+    }
 
     impl SyncTargetAdapter for DummyTarget {
+        fn create_table_suffix(&self, ir_table: &IRTable) -> Option<String> {
+            self.suffix
+                .clone()
+                .or_else(|| ir_table.table_options.clone())
+        }
         fn ir_type_to_native(&self, ir: &IRType) -> String {
             match ir {
                 IRType::Int32 => "INT".into(),
@@ -114,9 +130,10 @@ mod tests {
                 },
             ],
             primary_keys: vec!["id".into()],
+            table_options: None,
         };
 
-        let ddl = build_create_table_ddl(&table, &DummyTarget);
+        let ddl = build_create_table_ddl(&table, &DummyTarget::new());
         assert!(ddl.contains("CREATE TABLE \"users\""));
         assert!(ddl.contains("\"id\" INT NOT NULL"));
         assert!(ddl.contains("\"name\" VARCHAR(100)"));
@@ -138,10 +155,32 @@ mod tests {
                 comment: None,
             }],
             primary_keys: vec![],
+            table_options: None,
         };
 
-        let ddl = build_create_table_ddl(&table, &DummyTarget);
+        let ddl = build_create_table_ddl(&table, &DummyTarget::new());
         assert!(!ddl.contains("PRIMARY KEY"));
+    }
+
+    #[test]
+    fn ddl_emits_table_suffix() {
+        let table = IRTable {
+            name: "events".into(),
+            columns: vec![IRColumn {
+                name: "ts".into(),
+                ir_type: IRType::Timestamp { with_timezone: false },
+                nullable: false,
+                default_expr: None,
+                is_primary_key: false,
+                is_auto_increment: false,
+                comment: None,
+            }],
+            primary_keys: vec![],
+            table_options: Some("ENGINE = MergeTree\nORDER BY (ts)".into()),
+        };
+
+        let ddl = build_create_table_ddl(&table, &DummyTarget::new());
+        assert!(ddl.ends_with("ENGINE = MergeTree\nORDER BY (ts)"), "ddl={ddl}");
     }
 
     #[test]
@@ -158,8 +197,9 @@ mod tests {
                 comment: Some("user note".into()),
             }],
             primary_keys: vec![],
+            table_options: None,
         };
-        let ddl = build_create_table_ddl(&table, &DummyTarget);
+        let ddl = build_create_table_ddl(&table, &DummyTarget::new());
         assert!(ddl.contains("/* user note */"), "ddl={ddl}");
     }
 }

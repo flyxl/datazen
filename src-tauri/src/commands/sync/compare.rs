@@ -325,6 +325,29 @@ pub(super) async fn fetch_full_column_types(
     Ok(map)
 }
 
+/// Fetch dialect-specific CREATE TABLE suffix (ENGINE / ORDER BY, etc.).
+pub(super) async fn fetch_table_options(
+    adapter: &dyn crate::sync::adapter::SyncSourceAdapter,
+    driver: &dyn crate::db::DatabaseDriver,
+    handle: &crate::db::ConnectionHandle,
+    table: &str,
+) -> Result<Option<String>, CommandError> {
+    let Some(sql) = adapter.table_options_query(table) else {
+        return Ok(None);
+    };
+    let result = driver
+        .query(handle, &sql)
+        .await
+        .cmd_err("fetch_table_options")?;
+    let Some(row) = result.rows.first() else {
+        return Ok(None);
+    };
+    match row.first() {
+        Some(Some(crate::db::Value::String(s))) if !s.trim().is_empty() => Ok(Some(s.clone())),
+        _ => Ok(None),
+    }
+}
+
 /// Resolve source and target sync adapters for a given pair of database types.
 /// Registers only those two types (or one if they match) on first use.
 pub(super) fn resolve_adapters(

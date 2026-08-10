@@ -2,22 +2,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import {
-  AlertTriangle,
   ArrowRight,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
-  Clock,
   Code2,
   Loader2,
   MinusCircle,
-  Pause,
-  Play,
   PlusCircle,
   RefreshCcw,
-  Trash2,
   X,
-  XCircle,
 } from 'lucide-react';
 import { TitleBar } from '../../components/TitleBar';
 import { StatusBar } from '../../components/StatusBar';
@@ -37,34 +31,10 @@ import type {
   TableDataCompare,
   TableSchemaDiff,
 } from '../../types';
-
-interface SyncProgress {
-  taskId: string;
-  phase: string;
-  tableIndex: number;
-  totalTables: number;
-  currentTable: string;
-  sourceRowCount: number;
-  syncedRows: number;
-  completedTables: string[];
-  error: string | null;
-}
-
-interface ConflictInfo {
-  table: string;
-  originalRows: number;
-  currentRows: number;
-}
-
-type SyncState = 'idle' | 'comparing' | 'compared' | 'syncing' | 'done';
-
-function formatDuration(ms: number): string {
-  const secs = Math.floor(ms / 1000);
-  if (secs < 60) return `${secs}s`;
-  const mins = Math.floor(secs / 60);
-  const rem = secs % 60;
-  return `${mins}m ${rem}s`;
-}
+import { SavedTasksBanner } from './SavedTasksBanner';
+import { SyncProgressPanel } from './SyncProgressPanel';
+import { ConflictSyncDialog, ResumeSyncDialog } from './ResumeSyncDialog';
+import type { ConflictInfo, SyncProgress, SyncState } from './utils';
 
 export function DataSyncWindow() {
   useThemeListener();
@@ -299,6 +269,14 @@ export function DataSyncWindow() {
 
     const skip = restartFromZero ? [] : resumeTask.completedTables;
     const strategy = restartFromZero ? 'full' : 'continue';
+    const resumeTable =
+      !restartFromZero && resumeTask.currentTable && resumeTask.currentTableOffset > 0
+        ? resumeTask.currentTable
+        : null;
+    const resumeOffset =
+      !restartFromZero && resumeTask.currentTable && resumeTask.currentTableOffset > 0
+        ? resumeTask.currentTableOffset
+        : 0;
 
     const taskId = crypto.randomUUID();
     setSyncState('syncing');
@@ -317,6 +295,8 @@ export function DataSyncWindow() {
         tables: resumeTask.tables,
         skipTables: skip,
         strategy,
+        resumeTable,
+        resumeOffset,
       });
       const tasks = await invoke<SyncTask[]>('get_sync_tasks');
       setSavedTasks(tasks.filter((t) => t.status !== 'completed'));
@@ -454,57 +434,18 @@ export function DataSyncWindow() {
     }
   };
 
-  const tableProgress = progress
-    ? (progress.sourceRowCount > 0
-      ? Math.round((progress.syncedRows / progress.sourceRowCount) * 100)
-      : 0)
-    : 0;
-
-  const overallProgress = progress
-    ? Math.round(((progress.completedTables.length + (progress.sourceRowCount > 0 ? progress.syncedRows / progress.sourceRowCount : 0)) / progress.totalTables) * 100)
-    : 0;
-
   return (
     <div className="flex h-screen min-h-0 flex-col bg-surface text-fg">
       {/* Title bar */}
       <TitleBar title={t('sync.windowTitle')} />
 
-      {/* Saved tasks banner */}
-      {savedTasks.length > 0 && syncState !== 'syncing' && (
-        <div className="border-b border-edge bg-amber-500/5 px-6 py-3">
-          <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-amber-600 dark:text-amber-400">
-            <Pause className="h-3.5 w-3.5" />
-            {t('sync.savedTasks', { count: savedTasks.length })}
-          </div>
-          <div className="space-y-2">
-            {savedTasks.map((task) => {
-              const srcName = connections.find((c) => c.id === task.sourceConfigId)?.name ?? task.sourceConfigId;
-              const tgtName = connections.find((c) => c.id === task.targetConfigId)?.name ?? task.targetConfigId;
-              return (
-                <div key={task.id} className="flex items-center gap-3 rounded-lg border border-edge bg-surface px-3 py-2 text-xs">
-                  <div className="min-w-0 flex-1">
-                    <span className="font-medium text-fg">{srcName}</span>
-                    <span className="mx-1 text-fg-muted">→</span>
-                    <span className="font-medium text-fg">{tgtName}</span>
-                    <span className="ml-2 text-fg-muted">
-                      ({t('sync.tablesCompleted', { done: task.completedTables.length, total: task.tables.length })})
-                    </span>
-                    {task.status === 'failed' && task.errorMessage && (
-                      <span className="ml-2 text-red-500">{t('sync.failedMsg')} {task.errorMessage.slice(0, 60)}…</span>
-                    )}
-                  </div>
-                  <Button variant="ghost" className="h-7 gap-1 px-2 text-xs" onClick={() => void handleResumeClick(task)}>
-                    <Play className="h-3 w-3" /> {t('sync.continue')}
-                  </Button>
-                  <Button variant="ghost" className="h-7 px-2 text-xs text-red-500 hover:text-red-600" onClick={() => void handleDeleteTask(task.id)}>
-                    <Trash2 className="h-3 w-3" />
-                  </Button>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
+      <SavedTasksBanner
+        savedTasks={savedTasks}
+        syncState={syncState}
+        connections={connections}
+        onResume={handleResumeClick}
+        onDelete={handleDeleteTask}
+      />
 
       {/* Connection selectors */}
       <div className="flex shrink-0 items-center gap-4 border-b border-edge px-6 py-4">
@@ -734,169 +675,26 @@ export function DataSyncWindow() {
         right={<span className="tabular-nums">DataZen v0.0.8</span>}
       />
 
-      {/* ── Progress Dialog ── */}
-      <Dialog
+      <SyncProgressPanel
         open={progressOpen}
-        title={t('sync.progressTitle')}
-        onClose={() => { if (progress?.phase === 'done' || progress?.phase === 'error') setProgressOpen(false); }}
-        className="max-w-lg"
-        footer={
-          (progress?.phase === 'done' || progress?.phase === 'error') ? (
-            <Button variant="primary" onClick={() => setProgressOpen(false)}>{t('common.close')}</Button>
-          ) : undefined
-        }
-      >
-        <div className="space-y-4">
-          {/* Overall progress */}
-          <div>
-            <div className="mb-1.5 flex items-center justify-between text-xs text-fg-muted">
-              <span>{t('sync.overallProgress')}</span>
-              <span>{t('sync.tableCount', { done: progress?.completedTables.length ?? 0, total: progress?.totalTables ?? 0 })}</span>
-            </div>
-            <div className="h-2.5 overflow-hidden rounded-full bg-surface-raised">
-              <div
-                className={cn(
-                  'h-full rounded-full transition-all duration-300',
-                  progress?.phase === 'error' ? 'bg-red-500' : progress?.phase === 'done' ? 'bg-green-500' : 'bg-blue-500',
-                )}
-                style={{ width: `${Math.min(overallProgress, 100)}%` }}
-              />
-            </div>
-          </div>
+        progress={progress}
+        elapsed={elapsed}
+        onClose={() => setProgressOpen(false)}
+      />
 
-          {/* Current table */}
-          {progress && progress.phase === 'syncing' && (
-            <div className="rounded-lg border border-edge bg-surface-alt p-3">
-              <div className="mb-1 flex items-center justify-between">
-                <span className="truncate font-mono text-sm text-fg">{progress.currentTable}</span>
-                <span className="ml-2 shrink-0 text-xs tabular-nums text-fg-muted">
-                  {t('sync.rowProgress', { synced: progress.syncedRows.toLocaleString(), total: progress.sourceRowCount.toLocaleString() })}
-                </span>
-              </div>
-              <div className="h-1.5 overflow-hidden rounded-full bg-surface-raised">
-                <div className="h-full rounded-full bg-blue-400 transition-all duration-200" style={{ width: `${Math.min(tableProgress, 100)}%` }} />
-              </div>
-            </div>
-          )}
-
-          {/* Phase-specific info */}
-          {progress?.phase === 'counting' && (
-            <div className="flex items-center gap-2 text-sm text-fg-muted">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              {t('sync.countingRows')}
-            </div>
-          )}
-
-          {progress?.phase === 'done' && (
-            <div className="flex items-center gap-2 text-sm text-green-500">
-              <CheckCircle2 className="h-4 w-4" />
-              {t('sync.syncDone', { count: progress.completedTables.length })}
-            </div>
-          )}
-
-          {progress?.phase === 'error' && (
-            <div className="flex items-start gap-2 text-sm text-red-500">
-              <XCircle className="mt-0.5 h-4 w-4 shrink-0" />
-              <span className="break-all">{progress.error}</span>
-            </div>
-          )}
-
-          {/* Elapsed time */}
-          <div className="flex items-center gap-1.5 text-xs text-fg-muted">
-            <Clock className="h-3.5 w-3.5" />
-            {t('sync.elapsed')} {formatDuration(elapsed)}
-          </div>
-
-          {/* Completed tables list */}
-          {progress && progress.completedTables.length > 0 && (
-            <details className="text-xs">
-              <summary className="cursor-pointer text-fg-muted hover:text-fg">
-                {t('sync.completedTables')} ({progress.completedTables.length})
-              </summary>
-              <div className="mt-1 max-h-32 overflow-auto rounded border border-edge bg-surface p-2 font-mono text-fg-secondary">
-                {progress.completedTables.map((tableName) => (
-                  <div key={tableName} className="flex items-center gap-1">
-                    <CheckCircle2 className="h-3 w-3 text-green-500" /> {tableName}
-                  </div>
-                ))}
-              </div>
-            </details>
-          )}
-        </div>
-      </Dialog>
-
-      {/* ── Resume Dialog (no conflicts) ── */}
-      <Dialog
+      <ResumeSyncDialog
         open={resumeDialogOpen}
-        title={t('sync.resumeTitle')}
-        description={resumeTask ? t('sync.resumeDesc', { done: resumeTask.completedTables.length, total: resumeTask.tables.length }) : ''}
+        resumeTask={resumeTask}
         onClose={() => setResumeDialogOpen(false)}
-        footer={
-          <>
-            <Button variant="ghost" onClick={() => setResumeDialogOpen(false)}>{t('common.cancel')}</Button>
-            <Button variant="ghost" onClick={() => void handleResumeConfirm(true)}>
-              <RefreshCcw className="h-3.5 w-3.5" /> {t('sync.resumeRestart')}
-            </Button>
-            <Button variant="primary" onClick={() => void handleResumeConfirm(false)}>
-              <Play className="h-3.5 w-3.5" /> {t('sync.resumeContinue')}
-            </Button>
-          </>
-        }
-      >
-        <div className="space-y-3 text-sm text-fg-secondary">
-          <p>{t('sync.resumeExplain')}</p>
-          <div className="rounded-lg border border-edge bg-surface p-3 text-xs">
-            <div><span className="font-semibold text-fg">{t('sync.resumeContinue')}</span>：{t('sync.resumeContinueDesc', { count: resumeTask?.completedTables.length ?? 0 })}</div>
-            <div className="mt-2"><span className="font-semibold text-fg">{t('sync.resumeRestart')}</span>：{t('sync.resumeRestartDesc', { count: resumeTask?.tables.length ?? 0 })}</div>
-          </div>
-        </div>
-      </Dialog>
+        onConfirm={handleResumeConfirm}
+      />
 
-      {/* ── Conflict Dialog ── */}
-      <Dialog
+      <ConflictSyncDialog
         open={conflictDialogOpen}
-        title={t('sync.conflictTitle')}
-        description={t('sync.conflictDesc')}
+        conflicts={conflicts}
         onClose={() => setConflictDialogOpen(false)}
-        footer={
-          <>
-            <Button variant="ghost" onClick={() => setConflictDialogOpen(false)}>{t('common.cancel')}</Button>
-            <Button variant="ghost" onClick={() => void handleResumeConfirm(true)}>
-              <RefreshCcw className="h-3.5 w-3.5" /> {t('sync.resumeRestart')}
-            </Button>
-            <Button variant="primary" onClick={() => void handleResumeConfirm(false)}>
-              <Play className="h-3.5 w-3.5" /> {t('sync.conflictContinue')}
-            </Button>
-          </>
-        }
-      >
-        <div className="space-y-3 text-sm">
-          <div className="flex items-start gap-2 rounded-lg border border-amber-300/30 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-300">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-            <span>{t('sync.conflictWarning')}</span>
-          </div>
-
-          <div className="overflow-hidden rounded-lg border border-edge">
-            <div className="flex items-center gap-3 bg-surface-alt px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-fg-muted">
-              <div className="min-w-0 flex-1">{t('sync.tableName')}</div>
-              <div className="w-24 text-right">{t('sync.originalRows')}</div>
-              <div className="w-24 text-right">{t('sync.currentRows')}</div>
-            </div>
-            {conflicts.map((c) => (
-              <div key={c.table} className="flex items-center gap-3 border-t border-edge px-3 py-1.5 text-xs">
-                <div className="min-w-0 flex-1 truncate font-mono text-fg">{c.table}</div>
-                <div className="w-24 text-right tabular-nums text-fg-secondary">{c.originalRows.toLocaleString()}</div>
-                <div className="w-24 text-right tabular-nums text-amber-600 dark:text-amber-400">{c.currentRows.toLocaleString()}</div>
-              </div>
-            ))}
-          </div>
-
-          <div className="rounded-lg border border-edge bg-surface p-3 text-xs text-fg-muted">
-            <div><span className="font-semibold text-fg">{t('sync.conflictContinue')}</span>：{t('sync.conflictContinueDesc')}</div>
-            <div className="mt-1"><span className="font-semibold text-fg">{t('sync.resumeRestart')}</span>：{t('sync.conflictRestartDesc')}</div>
-          </div>
-        </div>
-      </Dialog>
+        onConfirm={handleResumeConfirm}
+      />
 
       {/* ── Error Dialog ── */}
       <Dialog
