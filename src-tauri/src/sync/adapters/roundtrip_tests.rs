@@ -5,10 +5,10 @@
 mod tests {
     use crate::db::ColumnSchema;
     use crate::sync::{SyncSourceAdapter, SyncTargetAdapter};
-    use crate::sync::adapters::trino::TrinoSyncAdapter;
     use datazen_driver_mysql::MysqlSyncAdapter;
     use datazen_driver_postgres::PgSyncAdapter;
     use datazen_driver_sqlite::SqliteSyncAdapter;
+    use datazen_plugin_olap::TrinoSyncAdapter;
 
     fn col(name: &str, data_type: &str) -> ColumnSchema {
         ColumnSchema {

@@ -38,6 +38,7 @@
 | DuckDB / ClickHouse / 协议别名 questdb·manticore·ob_oracle | ✅ |
 | MongoDB / Influx / VictoriaMetrics / HBase / Vector Sync IR | ✅ 最小 IR |
 | Redis / Kiwi / Superset Sync IR | ❌ 非表模型或代理，不接关系 IR |
+| Trino/Presto Sync adapter 下沉 olap git 驱动包 | ✅（`datazen-driver-olap@58b5bd2`） |
 | 外部 `pg_dump` / custom format | ❌ 有意不做（不 shell-out） |
 | 与 `main` 合并 | ⏸ 按需求单独处理（本轮不合并） |
 
