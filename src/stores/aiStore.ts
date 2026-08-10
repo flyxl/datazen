@@ -3,7 +3,7 @@ import { aiCommands, onAiStreamChunk, onAiStreamError, onAiConfigChanged } from 
 import { extractSqlFromResponse } from '../lib/extractSql';
 import { normalizeAiProviders } from '../lib/aiProviders';
 import { extractQuestions, parseToolCallQuestions } from '../lib/extractQuestions';
-import type { AiChatMessage, AiProviderConfig, StreamChunkPayload } from '../types';
+import type { AiChatMessage } from '../types';
 import { initialNl2Sql, type AiStore } from './ai/types';
 
 export type { AiStore } from './ai/types';

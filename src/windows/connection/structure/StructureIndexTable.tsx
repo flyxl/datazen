@@ -2,11 +2,7 @@ import { Trash2 } from 'lucide-react';
 import { Input } from '../../../components/ui/Input';
 import { Select } from '../../../components/ui/Select';
 import { capEnabled, controlDisabledKey } from '../../../lib/structureEditor/controlHints';
-import type {
-  StructureCapabilities,
-  StructureColumnDraft,
-  StructureIndexDraft,
-} from '../../../lib/structureEditor/types';
+import type { StructureCapabilities, StructureIndexDraft } from '../../../lib/structureEditor/types';
 import { useI18n } from '../../../hooks/useI18n';
 
 interface StructureIndexTableProps {
