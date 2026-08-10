@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { normalizeRedisDatabaseField, DB_REGISTRY } from '../../../lib/databaseTypes';
+import { PRESET_GROUPS } from '../../../lib/connectionGroups';
 import { useConnectionForm } from '../useConnectionForm';
 
 vi.mock('../../../hooks/useI18n', () => ({
@@ -41,6 +42,33 @@ describe('normalizeRedisDatabaseField', () => {
 describe('useConnectionForm', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it('defaults group to stable development preset key', () => {
+    const { result } = renderHook(() => useConnectionForm());
+    expect(result.current.group).toBe(PRESET_GROUPS.development);
+    expect(result.current.draft.group).toBe(PRESET_GROUPS.development);
+  });
+
+  it('normalizes legacy group labels when loading an existing connection', () => {
+    const { result } = renderHook(() =>
+      useConnectionForm({
+        editId: 'c1',
+        existingConnections: [
+          {
+            id: 'c1',
+            name: 'legacy',
+            databaseType: 'postgresql',
+            host: '127.0.0.1',
+            port: 5432,
+            sslMode: 'prefer',
+            group: '开发环境',
+          },
+        ],
+      }),
+    );
+    expect(result.current.group).toBe(PRESET_GROUPS.development);
+    expect(result.current.draft.group).toBe(PRESET_GROUPS.development);
   });
 
   it('detects formVariant from DB_REGISTRY', () => {

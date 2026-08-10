@@ -514,7 +514,7 @@ export function SqlConnectionView({
 
             <div
               ref={handleRef}
-              className="w-1 shrink-0 cursor-col-resize bg-transparent hover:bg-blue-500/30"
+              className="w-1 shrink-0 cursor-col-resize bg-transparent hover:bg-accent/30"
             />
           </>
         )}
@@ -569,7 +569,7 @@ export function SqlConnectionView({
                           <X className="h-3 w-3" />
                         </button>
                         {isActive && (
-                          <span className="absolute inset-x-0 bottom-0 h-0.5 bg-blue-500" />
+                          <span className="absolute inset-x-0 bottom-0 h-0.5 bg-accent" />
                         )}
                       </div>
                     );
@@ -603,7 +603,7 @@ export function SqlConnectionView({
                     >
                       {tab.label}
                       {activePanel.subTab === tab.id && (
-                        <span className="absolute inset-x-0 bottom-0 h-0.5 bg-blue-500" />
+                        <span className="absolute inset-x-0 bottom-0 h-0.5 bg-accent" />
                       )}
                     </button>
                   ))}
@@ -697,7 +697,7 @@ export function SqlConnectionView({
           <>
             <div
               ref={aiHandleRef}
-              className="w-1 shrink-0 cursor-col-resize bg-transparent hover:bg-blue-500/30"
+              className="w-1 shrink-0 cursor-col-resize bg-transparent hover:bg-accent/30"
             />
             <aside style={{ width: aiSidebarWidth }} className="shrink-0 border-l border-edge bg-surface">
               <AiChatPanel

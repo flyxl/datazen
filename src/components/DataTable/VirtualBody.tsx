@@ -57,10 +57,10 @@ export function VirtualBody({
             tabIndex={0}
             className={cn(
               'absolute left-0 flex w-full cursor-pointer outline-none',
-              selected && nextSelected ? 'border-b border-blue-500/10' : 'border-b border-edge/30',
+              selected && nextSelected ? 'border-b border-accent/10' : 'border-b border-edge/30',
               vRow.index % 2 === 1 ? 'bg-surface-raised/50' : 'bg-surface',
               selected
-                ? 'bg-blue-500/15 dark:bg-blue-500/20'
+                ? 'bg-accent/15 dark:bg-accent/20'
                 : highlighted
                   ? 'bg-accent/8 dark:bg-accent/12'
                   : 'hover:bg-surface-raised/50',
@@ -87,7 +87,7 @@ export function VirtualBody({
               type="button"
               className={cn(
                 'flex w-10 shrink-0 items-center justify-center border-r border-edge/30 text-xs text-fg-muted',
-                selected && 'border-l-2 border-l-blue-500 text-blue-400 dark:text-blue-300',
+                selected && 'border-l-2 border-l-accent text-accent',
               )}
               onClick={(e) => {
                 e.stopPropagation();
