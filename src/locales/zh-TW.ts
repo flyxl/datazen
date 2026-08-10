@@ -216,6 +216,7 @@ const translations = {
   'newConn.adbNoPackages': '未找到第三方應用，請確保設備已連接',
   'newConn.adbNoDatabases': '未找到數據庫文件',
   'newConn.adbNotInstalled': 'adb 未安裝或不在 PATH 中',
+
   'settings.title': '偏好設置',
   'settings.general': '通用',
   'settings.extensions.title': '擴充功能',

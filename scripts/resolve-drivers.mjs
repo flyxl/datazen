@@ -172,6 +172,7 @@ function generateCargoFeatures(drivers, registry) {
  * - dbTypes: array of { id, metaExport } — database types provided by this plugin
  * - metaPath: path to the file exporting meta objects
  * - connectionForm: { component, path, formVariant } — custom connection form (optional)
+ * - connectionView: { component, path, viewMode } — custom connection window view (optional)
  * - sqlDialects: array of { family, export, path } — SQL dialect strategies (optional)
  */
 /** Protocol-reuse dbTypes → parent dbType used for composite badges when own SVG is missing. */
@@ -232,6 +233,11 @@ const BASIC_PATH_FRONTEND = {
       path: '../../packages/drivers/redis/ui/ConnectionWizard',
       formVariant: 'redis',
       validator: { export: 'redisValidate' },
+    },
+    connectionView: {
+      component: 'RedisConnectionView',
+      path: '../../packages/drivers/redis/ui/RedisConnectionView',
+      viewMode: 'keyvalue',
     },
     settings: {
       pluginId: 'redis',
@@ -346,6 +352,7 @@ function generateFrontendRegistry(plugins) {
   const validatorEntryLines = [];
   const dialectEntryLines = [];
   const schemaTreeEntryLines = [];
+  const connectionViewEntryLines = [];
   const settingsEntryLines = [];
   const pluginDbTypes = [];
   const iconImportByAbs = new Map();
@@ -407,6 +414,16 @@ function generateFrontendRegistry(plugins) {
       );
       schemaTreeEntryLines.push(
         `  { dbType: '${cfg.schemaTree.dbType}', component: ${cfg.schemaTree.component} },`
+      );
+    }
+
+    // Connection view (e.g. Redis keyvalue shell)
+    if (cfg.connectionView) {
+      importLines.push(
+        `import { ${cfg.connectionView.component} } from '${cfg.connectionView.path}';`
+      );
+      connectionViewEntryLines.push(
+        `  { viewMode: '${cfg.connectionView.viewMode}', component: ${cfg.connectionView.component} },`
       );
     }
 
@@ -555,6 +572,27 @@ ${schemaTreeEntryLines.join('\n')}
 export function getPluginSchemaTree(dbType: string): ComponentType<any> | undefined {
   for (const entry of PLUGIN_SCHEMA_TREES) {
     if (entry.dbType === dbType) {
+      return entry.component;
+    }
+  }
+  return undefined;
+}
+
+// ===== Plugin Connection Views =====
+
+interface PluginConnectionViewEntry {
+  viewMode: string;
+  component: ComponentType<any>;
+}
+
+const PLUGIN_CONNECTION_VIEWS: PluginConnectionViewEntry[] = [
+${connectionViewEntryLines.join('\n')}
+];
+
+/** Lookup plugin-provided connection view by connectionView mode (e.g. 'keyvalue'). */
+export function getPluginConnectionView(viewMode: string): ComponentType<any> | undefined {
+  for (const entry of PLUGIN_CONNECTION_VIEWS) {
+    if (entry.viewMode === viewMode) {
       return entry.component;
     }
   }

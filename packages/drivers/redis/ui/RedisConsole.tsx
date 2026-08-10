@@ -25,21 +25,7 @@ import {
   REDIS_COMMANDS,
 } from './redisCommands';
 import { ClusterNodePicker } from './ClusterNodePicker';
-
-function readClusterRouting(raw: unknown): 'auto' | 'pinnedNode' {
-  if (!raw || typeof raw !== 'object') return 'auto';
-  const value = (raw as { clusterRouting?: unknown }).clusterRouting;
-  return value === 'pinnedNode' ? 'pinnedNode' : 'auto';
-}
-
-function resolvePinnedNodeAddr(
-  clusterRouting: 'auto' | 'pinnedNode',
-  pinnedNodeAddr?: string,
-): string | null {
-  if (clusterRouting !== 'pinnedNode') return null;
-  const addr = pinnedNodeAddr?.trim();
-  return addr ? addr : null;
-}
+import { readClusterRouting, resolvePinnedNodeAddr } from './settingsHelpers';
 
 export interface RedisConsoleProps {
   connectionId: string;

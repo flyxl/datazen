@@ -4,7 +4,7 @@ use crate::structure;
 use datazen_driver_api::*;
 use async_trait::async_trait;
 use sqlx::sqlite::SqlitePoolOptions;
-use sqlx::{Column, Row, SqlitePool};
+use sqlx::{Column, Row, Sqlite, SqlitePool};
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
@@ -27,6 +27,25 @@ impl SqliteDriver {
         pools
             .get(&handle.pool_id)
             .ok_or_else(|| DriverError::ConnectionFailed("Connection pool not found".into()))
+    }
+
+    /// Bind `Value` params into a sqlx SQLite query (`?` placeholders).
+    fn bind_values<'q>(
+        mut query: sqlx::query::Query<'q, Sqlite, sqlx::sqlite::SqliteArguments<'q>>,
+        params: &'q [Value],
+    ) -> sqlx::query::Query<'q, Sqlite, sqlx::sqlite::SqliteArguments<'q>> {
+        for p in params {
+            query = match p {
+                Value::Null => query.bind(Option::<String>::None),
+                Value::Bool(b) => query.bind(*b),
+                Value::Integer(i) => query.bind(*i),
+                Value::Float(f) => query.bind(*f),
+                Value::String(s) | Value::Timestamp(s) => query.bind(s.as_str()),
+                Value::Bytes(b) => query.bind(b.as_slice()),
+                Value::Json(j) => query.bind(j),
+            };
+        }
+        query
     }
 
     fn decode_rows(rows: &[sqlx::sqlite::SqliteRow]) -> (Vec<ColumnInfo>, Vec<Vec<Option<Value>>>) {
@@ -385,15 +404,7 @@ impl DatabaseDriver for SqliteDriver {
                     });
                 }
                 Err(e) => {
-                    results.push(StatementResult {
-                        sql: stmt.to_string(),
-                        columns: vec![],
-                        rows: vec![],
-                        rows_affected: None,
-                        execution_time_ms: start.elapsed().as_millis() as u64,
-                        truncated: false,
-                    });
-                    tracing::warn!(stmt, error = %e, "sqlite query_multi statement failed");
+                    return Err(DriverError::QueryFailed(format!("[{stmt}] {e}")));
                 }
             }
         }
@@ -408,9 +419,24 @@ impl DatabaseDriver for SqliteDriver {
         &self,
         handle: &ConnectionHandle,
         sql: &str,
-        _params: &[Value],
+        params: &[Value],
     ) -> Result<QueryResult, DriverError> {
-        self.query(handle, sql).await
+        let pools = self.pools.read().await;
+        let pool = Self::get_pool(&pools, handle)?;
+
+        let start = Instant::now();
+        let rows = Self::bind_values(sqlx::query(sql), params)
+            .fetch_all(pool)
+            .await
+            .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+
+        let (columns, result_rows) = Self::decode_rows(&rows);
+        Ok(QueryResult {
+            columns,
+            rows: result_rows,
+            rows_affected: None,
+            execution_time_ms: start.elapsed().as_millis() as u64,
+        })
     }
 
     async fn execute(&self, handle: &ConnectionHandle, sql: &str) -> Result<u64, DriverError> {
@@ -436,11 +462,22 @@ impl DatabaseDriver for SqliteDriver {
         })
     }
 
-    async fn commit(&self, _tx: TransactionHandle) -> Result<(), DriverError> {
+    async fn commit(&self, tx: TransactionHandle) -> Result<(), DriverError> {
+        // SQLite connect() uses the same value for handle.id and handle.pool_id.
+        let handle = ConnectionHandle {
+            id: tx.connection_id.clone(),
+            pool_id: tx.connection_id,
+        };
+        self.execute(&handle, "COMMIT").await?;
         Ok(())
     }
 
-    async fn rollback(&self, _tx: TransactionHandle) -> Result<(), DriverError> {
+    async fn rollback(&self, tx: TransactionHandle) -> Result<(), DriverError> {
+        let handle = ConnectionHandle {
+            id: tx.connection_id.clone(),
+            pool_id: tx.connection_id,
+        };
+        self.execute(&handle, "ROLLBACK").await?;
         Ok(())
     }
 
@@ -504,5 +541,134 @@ impl DatabaseDriver for SqliteDriver {
     ) -> Result<StructureChangePlan, DriverError> {
         let caps = structure::capabilities(&self.driver_type());
         structure::plan_changes(request, &caps)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_config(path: &str) -> ConnectionConfig {
+        ConnectionConfig {
+            id: "sqlite-test".into(),
+            name: "test".into(),
+            database_type: "sqlite".into(),
+            host: None,
+            port: None,
+            database: Some(path.into()),
+            schema: None,
+            username: None,
+            password: None,
+            ssl_mode: SslMode::Prefer,
+            connection_timeout: 30,
+            ssh_tunnel: None,
+            color_tag: None,
+            group: None,
+            last_connected_at: None,
+            server_version: None,
+            options: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn commit_and_rollback_end_transaction() {
+        let dir = std::env::temp_dir().join(format!("datazen-sqlite-tx-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("tx.db");
+        let path_str = path.to_string_lossy().to_string();
+        // Ensure the file exists so sqlx can open it without mode=rwc quirks.
+        std::fs::File::create(&path).unwrap();
+
+        let driver = SqliteDriver::new();
+        let handle = driver.connect(&test_config(&path_str)).await.unwrap();
+
+        driver
+            .execute(&handle, "CREATE TABLE t (id INTEGER PRIMARY KEY, v TEXT)")
+            .await
+            .unwrap();
+
+        let tx = driver.begin_transaction(&handle).await.unwrap();
+        driver
+            .execute(&handle, "INSERT INTO t (v) VALUES ('a')")
+            .await
+            .unwrap();
+        driver.rollback(tx).await.unwrap();
+
+        let after_rollback = driver.query(&handle, "SELECT COUNT(*) FROM t").await.unwrap();
+        match &after_rollback.rows[0][0] {
+            Some(Value::Integer(0)) => {}
+            other => panic!("rollback should discard insert, got {other:?}"),
+        }
+
+        let tx = driver.begin_transaction(&handle).await.unwrap();
+        driver
+            .execute(&handle, "INSERT INTO t (v) VALUES ('b')")
+            .await
+            .unwrap();
+        driver.commit(tx).await.unwrap();
+
+        let after_commit = driver.query(&handle, "SELECT COUNT(*) FROM t").await.unwrap();
+        match &after_commit.rows[0][0] {
+            Some(Value::Integer(1)) => {}
+            other => panic!("commit should persist insert, got {other:?}"),
+        }
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn bind_values_accepts_all_value_variants() {
+        let params = [
+            Value::Null,
+            Value::Bool(true),
+            Value::Integer(42),
+            Value::Float(1.5),
+            Value::String("hi".into()),
+            Value::Timestamp("2024-01-01T00:00:00Z".into()),
+            Value::Bytes(vec![1, 2, 3]),
+            Value::Json(serde_json::json!({"a": 1})),
+        ];
+        let _q = SqliteDriver::bind_values(sqlx::query("SELECT ?, ?, ?, ?, ?, ?, ?, ?"), &params);
+    }
+
+    #[tokio::test]
+    async fn query_with_params_binds_values() {
+        let dir = std::env::temp_dir().join(format!("datazen-sqlite-params-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("params.db");
+        let path_str = path.to_string_lossy().to_string();
+        std::fs::File::create(&path).unwrap();
+
+        let driver = SqliteDriver::new();
+        let handle = driver.connect(&test_config(&path_str)).await.unwrap();
+
+        driver
+            .execute(
+                &handle,
+                "CREATE TABLE t (id INTEGER PRIMARY KEY, name TEXT, n INTEGER)",
+            )
+            .await
+            .unwrap();
+        driver
+            .execute(&handle, "INSERT INTO t (name, n) VALUES ('alice', 1), ('bob', 2)")
+            .await
+            .unwrap();
+
+        let result = driver
+            .query_with_params(
+                &handle,
+                "SELECT name FROM t WHERE n = ? AND name = ?",
+                &[Value::Integer(2), Value::String("bob".into())],
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(result.rows.len(), 1);
+        match &result.rows[0][0] {
+            Some(Value::String(s)) if s == "bob" => {}
+            other => panic!("expected bob, got {other:?}"),
+        }
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

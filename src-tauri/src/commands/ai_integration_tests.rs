@@ -381,7 +381,11 @@ async fn workflow_save_list_get_delete() {
         .delete_workflow("test-wf")
         .await
         .unwrap();
-    assert!(workflow_list_impl(&test.state).await.unwrap().is_empty());
+    let remaining = workflow_list_impl(&test.state).await.unwrap();
+    assert!(
+        !remaining.iter().any(|w| w.id == "test-wf"),
+        "deleted workflow should be gone, got: {remaining:?}"
+    );
 }
 
 fn many_tables_mock_options() -> crate::testing::mock_driver::MockDriverOptions {

@@ -15,6 +15,7 @@ mod ops_pubsub;
 mod ops_stream;
 mod redis_driver;
 pub use connect::{build_connection_plan, ConnectionPlan, RedisLiveConn, Topology, TlsPlan};
+pub use ops::{set_settings_allow_flush, settings_allow_flush};
 pub use redis_driver::*;
 
 #[cfg(feature = "tauri-plugin")]

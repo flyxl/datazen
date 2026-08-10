@@ -53,6 +53,9 @@ fn is_dashboard_runs_path(rel_path: &Path) -> bool {
 }
 
 /// Returns true if `rel_path` (relative to the data dir root) should be skipped on export.
+/// Like [`should_exclude_with_options`] with default export options.
+/// Used by unit tests and as a convenience wrapper around the options API.
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn should_exclude(rel_path: &Path) -> bool {
     should_exclude_with_options(rel_path, ExportOptions::default())
 }
@@ -74,6 +77,8 @@ fn should_exclude_on_import(rel_path: &Path) -> bool {
 }
 
 /// Recursively zip `data_dir` into `zip_path`, preserving relative paths.
+/// Like [`export_app_data_with_options`] with default export options.
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn export_app_data(data_dir: &Path, zip_path: &Path) -> std::io::Result<()> {
     export_app_data_with_options(data_dir, zip_path, ExportOptions::default())
 }

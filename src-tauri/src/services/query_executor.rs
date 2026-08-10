@@ -2,8 +2,7 @@
 
 use crate::cache::SchemaCache;
 use crate::db::{
-    ColumnSchema, ConnectionHandle, DatabaseDriver, DriverError, TableDataResult,
-    Value,
+    ColumnSchema, ConnectionHandle, DatabaseDriver, DriverError, TableDataResult, Value,
 };
 use std::sync::Arc;
 
@@ -66,16 +65,6 @@ impl QueryExecutor {
         driver.query(handle, sql).await
     }
 
-    fn format_json_scalar(v: &serde_json::Value) -> String {
-        match v {
-            serde_json::Value::Null => "NULL".into(),
-            serde_json::Value::Bool(b) => b.to_string(),
-            serde_json::Value::Number(n) => n.to_string(),
-            serde_json::Value::String(s) => format!("'{}'", s.replace('\'', "''")),
-            _ => "NULL".into(),
-        }
-    }
-
     pub async fn get_table_data(
         &self,
         driver: &Arc<dyn DatabaseDriver>,
@@ -95,10 +84,18 @@ impl QueryExecutor {
             .await?;
 
         let qi = |name: &str| driver.quote_ident(name);
+        let format_lit = |v: &Value| driver.format_sql_literal(&Some(v.clone()));
 
         let data_sql = Self::build_select_sql(
-            &cached.table_name, &cached.columns, page, page_size,
-            filters.clone(), order_by, &qi, driver.supports_offset(),
+            &cached.table_name,
+            &cached.columns,
+            page,
+            page_size,
+            filters.clone(),
+            order_by,
+            &qi,
+            &format_lit,
+            driver.supports_offset(),
         );
 
         if skip_count {
@@ -113,9 +110,8 @@ impl QueryExecutor {
             });
         }
 
-        let count_sql = Self::build_count_sql(
-            &cached.table_name, &cached.columns, &filters, &qi,
-        );
+        let count_sql =
+            Self::build_count_sql(&cached.table_name, &cached.columns, &filters, &qi, &format_lit);
         tracing::info!(%table, %count_sql, "query_executor: count query");
 
         let (count_res, data_res) = tokio::try_join!(
@@ -123,7 +119,9 @@ impl QueryExecutor {
             driver.query(handle, &data_sql),
         )?;
 
-        let total_rows = count_res.rows.first()
+        let total_rows = count_res
+            .rows
+            .first()
             .and_then(|row| row.first())
             .and_then(|cell| cell.as_ref())
             .and_then(|v| match v {
@@ -145,6 +143,7 @@ impl QueryExecutor {
         columns: &[ColumnSchema],
         filters: &Option<Vec<FilterCondition>>,
         qi: &dyn Fn(&str) -> String,
+        format_lit: &dyn Fn(&Value) -> String,
     ) -> String {
         let _ = columns;
         let mut sql = format!("SELECT COUNT(*) FROM {}", qi(table_name));
@@ -152,7 +151,7 @@ impl QueryExecutor {
         if let Some(conditions) = filters {
             let parts: Vec<String> = conditions
                 .iter()
-                .map(|c| Self::format_condition(c, qi))
+                .map(|c| Self::format_condition(c, qi, format_lit))
                 .filter(|s| !s.is_empty())
                 .collect();
             if !parts.is_empty() {
@@ -172,6 +171,7 @@ impl QueryExecutor {
         filters: Option<Vec<FilterCondition>>,
         order_by: Option<OrderBy>,
         qi: &dyn Fn(&str) -> String,
+        format_lit: &dyn Fn(&Value) -> String,
         supports_offset: bool,
     ) -> String {
         let mut sql = String::new();
@@ -191,7 +191,10 @@ impl QueryExecutor {
         sql.push_str(&format!(" FROM {}", qi(table_name)));
 
         if let Some(conditions) = filters {
-            let parts: Vec<String> = conditions.iter().map(|c| Self::format_condition(c, qi)).collect();
+            let parts: Vec<String> = conditions
+                .iter()
+                .map(|c| Self::format_condition(c, qi, format_lit))
+                .collect();
             let parts: Vec<String> = parts.into_iter().filter(|s| !s.is_empty()).collect();
             if !parts.is_empty() {
                 sql.push_str(" WHERE ");
@@ -212,12 +215,18 @@ impl QueryExecutor {
                 .map(|c| c.name.as_str())
                 .collect();
             let order_cols = if pk_cols.is_empty() {
-                columns.first().map(|c| vec![c.name.as_str()]).unwrap_or_default()
+                columns
+                    .first()
+                    .map(|c| vec![c.name.as_str()])
+                    .unwrap_or_default()
             } else {
                 pk_cols
             };
             if !order_cols.is_empty() {
-                let parts: Vec<String> = order_cols.iter().map(|c| format!("{} ASC", qi(c))).collect();
+                let parts: Vec<String> = order_cols
+                    .iter()
+                    .map(|c| format!("{} ASC", qi(c)))
+                    .collect();
                 sql.push_str(&format!(" ORDER BY {}", parts.join(", ")));
             }
         }
@@ -231,38 +240,32 @@ impl QueryExecutor {
         sql
     }
 
-    fn format_condition(condition: &FilterCondition, qi: &dyn Fn(&str) -> String) -> String {
+    fn format_condition(
+        condition: &FilterCondition,
+        qi: &dyn Fn(&str) -> String,
+        format_lit: &dyn Fn(&Value) -> String,
+    ) -> String {
         let col = qi(&condition.column);
         match condition.operator {
-            FilterOperator::Eq => format!("{col} = {}", Self::format_value(&condition.value)),
-            FilterOperator::Ne => format!("{col} != {}", Self::format_value(&condition.value)),
-            FilterOperator::Gt => format!("{col} > {}", Self::format_value(&condition.value)),
-            FilterOperator::Lt => format!("{col} < {}", Self::format_value(&condition.value)),
-            FilterOperator::Gte => format!("{col} >= {}", Self::format_value(&condition.value)),
-            FilterOperator::Lte => format!("{col} <= {}", Self::format_value(&condition.value)),
-            FilterOperator::Like => format!("{col} LIKE {}", Self::format_value(&condition.value)),
+            FilterOperator::Eq => format!("{col} = {}", format_lit(&condition.value)),
+            FilterOperator::Ne => format!("{col} != {}", format_lit(&condition.value)),
+            FilterOperator::Gt => format!("{col} > {}", format_lit(&condition.value)),
+            FilterOperator::Lt => format!("{col} < {}", format_lit(&condition.value)),
+            FilterOperator::Gte => format!("{col} >= {}", format_lit(&condition.value)),
+            FilterOperator::Lte => format!("{col} <= {}", format_lit(&condition.value)),
+            FilterOperator::Like => format!("{col} LIKE {}", format_lit(&condition.value)),
             FilterOperator::In => match &condition.value {
                 Value::Json(serde_json::Value::Array(arr)) => {
-                    let parts: Vec<String> = arr.iter().map(Self::format_json_scalar).collect();
+                    let parts: Vec<String> = arr
+                        .iter()
+                        .map(|j| format_lit(&Value::Json(j.clone())))
+                        .collect();
                     format!("{col} IN ({})", parts.join(", "))
                 }
                 _ => format!("{col} IN (NULL)"),
             },
             FilterOperator::IsNull => format!("{col} IS NULL"),
             FilterOperator::IsNotNull => format!("{col} IS NOT NULL"),
-        }
-    }
-
-    fn format_value(value: &Value) -> String {
-        match value {
-            Value::Null => "NULL".to_string(),
-            Value::Bool(b) => b.to_string(),
-            Value::Integer(i) => i.to_string(),
-            Value::Float(f) => f.to_string(),
-            Value::String(s) => format!("'{}'", s.replace('\'', "''")),
-            Value::Bytes(_) => "NULL".to_string(),
-            Value::Timestamp(s) => format!("'{}'", s.replace('\'', "''")),
-            Value::Json(v) => format!("'{}'", v.to_string().replace('\'', "''")),
         }
     }
 }
@@ -273,6 +276,25 @@ mod tests {
 
     fn simple_qi(name: &str) -> String {
         format!("\"{}\"", name)
+    }
+
+    fn simple_lit(value: &Value) -> String {
+        match value {
+            Value::Null => "NULL".to_string(),
+            Value::Bool(b) => {
+                if *b {
+                    "TRUE".to_string()
+                } else {
+                    "FALSE".to_string()
+                }
+            }
+            Value::Integer(i) => i.to_string(),
+            Value::Float(f) => f.to_string(),
+            Value::String(s) => format!("'{}'", s.replace('\'', "''")),
+            Value::Bytes(_) => "NULL".to_string(),
+            Value::Timestamp(s) => format!("'{}'", s.replace('\'', "''")),
+            Value::Json(v) => format!("'{}'", v.to_string().replace('\'', "''")),
+        }
     }
 
     fn make_column(name: &str, is_pk: bool) -> ColumnSchema {
@@ -295,7 +317,15 @@ mod tests {
             make_column("email", false),
         ];
         let sql = QueryExecutor::build_select_sql(
-            "orders", &columns, 0, 50, None, None, &simple_qi, true,
+            "orders",
+            &columns,
+            0,
+            50,
+            None,
+            None,
+            &simple_qi,
+            &simple_lit,
+            true,
         );
         assert!(
             sql.contains("ORDER BY \"id\" ASC"),
@@ -311,7 +341,15 @@ mod tests {
             make_column("quantity", false),
         ];
         let sql = QueryExecutor::build_select_sql(
-            "order_items", &columns, 0, 50, None, None, &simple_qi, true,
+            "order_items",
+            &columns,
+            0,
+            50,
+            None,
+            None,
+            &simple_qi,
+            &simple_lit,
+            true,
         );
         assert!(
             sql.contains("ORDER BY \"order_id\" ASC, \"product_id\" ASC"),
@@ -321,13 +359,21 @@ mod tests {
 
     #[test]
     fn explicit_sort_overrides_default_pk_order() {
-        let columns = vec![
-            make_column("id", true),
-            make_column("name", false),
-        ];
-        let order = OrderBy { column: "name".to_string(), descending: true };
+        let columns = vec![make_column("id", true), make_column("name", false)];
+        let order = OrderBy {
+            column: "name".to_string(),
+            descending: true,
+        };
         let sql = QueryExecutor::build_select_sql(
-            "users", &columns, 0, 50, None, Some(order), &simple_qi, true,
+            "users",
+            &columns,
+            0,
+            50,
+            None,
+            Some(order),
+            &simple_qi,
+            &simple_lit,
+            true,
         );
         assert!(
             sql.contains("ORDER BY \"name\" DESC"),
@@ -341,16 +387,46 @@ mod tests {
 
     #[test]
     fn no_pk_no_explicit_sort_still_has_order_by_first_column() {
-        let columns = vec![
-            make_column("col_a", false),
-            make_column("col_b", false),
-        ];
+        let columns = vec![make_column("col_a", false), make_column("col_b", false)];
         let sql = QueryExecutor::build_select_sql(
-            "no_pk_table", &columns, 0, 50, None, None, &simple_qi, true,
+            "no_pk_table",
+            &columns,
+            0,
+            50,
+            None,
+            None,
+            &simple_qi,
+            &simple_lit,
+            true,
         );
         assert!(
             sql.contains("ORDER BY \"col_a\" ASC"),
             "Expected fallback ORDER BY first column, got: {sql}"
+        );
+    }
+
+    #[test]
+    fn filter_literals_use_formatter() {
+        let columns = vec![make_column("flag", false)];
+        let filters = vec![FilterCondition {
+            column: "flag".into(),
+            operator: FilterOperator::Eq,
+            value: Value::Bool(true),
+        }];
+        let sql = QueryExecutor::build_select_sql(
+            "t",
+            &columns,
+            0,
+            10,
+            Some(filters),
+            None,
+            &simple_qi,
+            &simple_lit,
+            true,
+        );
+        assert!(
+            sql.contains("WHERE \"flag\" = TRUE"),
+            "Expected driver-style TRUE literal, got: {sql}"
         );
     }
 
@@ -362,7 +438,7 @@ mod tests {
             operator: FilterOperator::Eq,
             value: Value::String("active".into()),
         }];
-        let sql = QueryExecutor::build_count_sql("users", &columns, &Some(filters), &simple_qi);
+        let sql = QueryExecutor::build_count_sql("users", &columns, &Some(filters), &simple_qi, &simple_lit);
         assert!(sql.contains("WHERE \"status\" = 'active'"));
     }
 
@@ -370,7 +446,7 @@ mod tests {
     fn build_select_sql_without_offset_when_unsupported() {
         let columns = vec![make_column("id", true)];
         let sql = QueryExecutor::build_select_sql(
-            "users", &columns, 2, 25, None, None, &simple_qi, false,
+            "users", &columns, 2, 25, None, None, &simple_qi, &simple_lit, false,
         );
         assert!(sql.contains("LIMIT 25"));
         assert!(!sql.contains("OFFSET"));
@@ -389,11 +465,11 @@ mod tests {
             value: Value::Null,
         };
         assert_eq!(
-            QueryExecutor::format_condition(&in_filter, &simple_qi),
-            "\"id\" IN (1, 2, 3)"
+            QueryExecutor::format_condition(&in_filter, &simple_qi, &simple_lit),
+            "\"id\" IN ('1', '2', '3')"
         );
         assert_eq!(
-            QueryExecutor::format_condition(&null_filter, &simple_qi),
+            QueryExecutor::format_condition(&null_filter, &simple_qi, &simple_lit),
             "\"deleted_at\" IS NULL"
         );
     }

@@ -1,10 +1,24 @@
 //! PostgreSQL sync adapter.
 
-use crate::db::{ColumnSchema, Value};
-use crate::sync::adapter::{SyncSourceAdapter, SyncTargetAdapter};
-use crate::sync::ir::{IRColumn, IRDefault, IRType};
+use datazen_driver_api::{
+    BoxedSyncAdapter, ColumnSchema, IRColumn, IRDefault, IRType, SyncAdapterFactory,
+    SyncSourceAdapter, SyncTargetAdapter, Value,
+};
 
 pub struct PgSyncAdapter;
+
+fn create() -> BoxedSyncAdapter {
+    BoxedSyncAdapter::both(PgSyncAdapter)
+}
+
+datazen_driver_api::inventory::submit! {
+    SyncAdapterFactory {
+        // cloudberry: PG wire + catalogs; safe alias of PgSyncAdapter
+        // questdb: PG wire + catalogs (ReuseDriver); cloudberry same family
+        db_types: &["postgresql", "cloudberry", "questdb"],
+        create,
+    }
+}
 
 // ── helpers ────────────────────────────────────────────────────────
 
@@ -50,6 +64,19 @@ fn parse_pg_default(raw: &str, col: &ColumnSchema) -> Option<IRDefault> {
 // ── SyncSourceAdapter ──────────────────────────────────────────────
 
 impl SyncSourceAdapter for PgSyncAdapter {
+    fn full_column_types_query(&self, table: &str) -> Option<String> {
+        let escaped = table.replace('\'', "''");
+        Some(format!(
+            r#"SELECT a.attname::text AS col_name,
+                  format_type(a.atttypid, a.atttypmod) AS full_type
+           FROM pg_attribute a
+           WHERE a.attrelid = '{escaped}'::regclass
+             AND a.attnum > 0
+             AND NOT a.attisdropped
+           ORDER BY a.attnum"#
+        ))
+    }
+
     fn column_to_ir(
         &self,
         column: &ColumnSchema,
@@ -266,6 +293,15 @@ mod tests {
     }
 
     #[test]
+    fn pg_full_column_types_query_uses_format_type() {
+        let adapter = PgSyncAdapter;
+        let sql = adapter.full_column_types_query("public.users").unwrap();
+        assert!(sql.contains("format_type"));
+        assert!(sql.contains("public.users"));
+        assert!(!sql.contains("database_type"));
+    }
+
+    #[test]
     fn pg_target_roundtrip() {
         let adapter = PgSyncAdapter;
         assert_eq!(adapter.ir_type_to_native(&IRType::Bool), "boolean");
@@ -318,8 +354,6 @@ mod tests {
 
     #[test]
     fn pg_format_default_and_literal() {
-        use crate::db::Value;
-
         let adapter = PgSyncAdapter;
         assert_eq!(
             adapter.format_default(&IRDefault::CurrentTimestamp),

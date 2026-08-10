@@ -125,6 +125,27 @@ export function getPluginSchemaTree(dbType: string): ComponentType<any> | undefi
   return undefined;
 }
 
+// ===== Plugin Connection Views =====
+
+interface PluginConnectionViewEntry {
+  viewMode: string;
+  component: ComponentType<any>;
+}
+
+const PLUGIN_CONNECTION_VIEWS: PluginConnectionViewEntry[] = [
+
+];
+
+/** Lookup plugin-provided connection view by connectionView mode (e.g. 'keyvalue'). */
+export function getPluginConnectionView(viewMode: string): ComponentType<any> | undefined {
+  for (const entry of PLUGIN_CONNECTION_VIEWS) {
+    if (entry.viewMode === viewMode) {
+      return entry.component;
+    }
+  }
+  return undefined;
+}
+
 // ===== Plugin Settings (Extensions UI) =====
 
 /** Plugin-provided settings sections and/or JSON Schema forms. */

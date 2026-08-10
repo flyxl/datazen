@@ -3,8 +3,8 @@ import type { DatabaseTypeMeta } from '@datazen/plugin-sdk';
 export const sqlserverMeta = {
     label: 'SQL Server',
     shortLabel: 'Ss',
-    iconBg: 'bg-red-700',
-    iconColor: 'text-red-400',
+    iconBg: 'bg-danger',
+    iconColor: 'text-danger',
     defaultPort: 1433,
     defaultHost: '127.0.0.1',
     defaultUser: 'sa',

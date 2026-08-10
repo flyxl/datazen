@@ -2,9 +2,13 @@
 //!
 //! Adapters are registered lazily: only the source/target types needed for a
 //! sync job are created, the first time that pair is requested.
+//!
+//! Concrete adapters self-register via [`SyncAdapterFactory`] + `inventory`
+//! (from path / git driver crates).
 
-use super::adapter::{SyncSourceAdapter, SyncTargetAdapter};
-use crate::db::DatabaseType;
+use crate::db::{
+    BoxedSyncAdapter, DatabaseType, SyncAdapterFactory, SyncSourceAdapter, SyncTargetAdapter,
+};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
@@ -41,51 +45,33 @@ impl SyncAdapterRegistry {
             }
         }
 
-        self.register_builtin(db_type)?;
+        self.register_from_inventory(db_type)?;
         Ok(())
     }
 
-    fn register_builtin(&self, db_type: &DatabaseType) -> Result<(), String> {
-        use super::adapters::{mysql, postgresql, sqlite, trino};
+    fn register_from_inventory(&self, db_type: &DatabaseType) -> Result<(), String> {
+        // Touch residual module; path/git driver crates link via Cargo features / tests.
+        crate::sync::adapters::force_link();
+        #[cfg(test)]
+        force_link_driver_sync_adapters();
 
-        match db_type.as_str() {
-            "postgresql" => {
-                self.register_both(db_type.clone(), Arc::new(postgresql::PgSyncAdapter));
-            }
-            "mysql" => {
-                self.register_both(
-                    db_type.clone(),
-                    Arc::new(mysql::MysqlSyncAdapter { is_mariadb: false }),
-                );
-            }
-            "mariadb" => {
-                self.register_both(
-                    db_type.clone(),
-                    Arc::new(mysql::MysqlSyncAdapter { is_mariadb: true }),
-                );
-            }
-            "sqlite" => {
-                self.register_both(db_type.clone(), Arc::new(sqlite::SqliteSyncAdapter));
-            }
-            "trino" | "presto" => {
-                self.register_both(db_type.clone(), Arc::new(trino::TrinoSyncAdapter));
-            }
-            other => {
-                return Err(format!("No sync adapter for database type '{other}'"));
+        let key = db_type.as_str();
+        for factory in inventory::iter::<SyncAdapterFactory> {
+            if factory.db_types.iter().any(|t| *t == key) {
+                let boxed: BoxedSyncAdapter = (factory.create)();
+                self.insert_pair(db_type.clone(), boxed);
+                tracing::info!(db_type = %db_type, "Registered sync adapter on demand");
+                return Ok(());
             }
         }
-        tracing::info!(db_type = %db_type, "Registered sync adapter on demand");
-        Ok(())
+        Err(format!("No sync adapter for database type '{key}'"))
     }
 
-    fn register_both<T>(&self, db_type: DatabaseType, adapter: Arc<T>)
-    where
-        T: SyncSourceAdapter + SyncTargetAdapter + 'static,
-    {
+    fn insert_pair(&self, db_type: DatabaseType, boxed: BoxedSyncAdapter) {
         let mut sources = self.sources.write().expect("sync sources lock");
         let mut targets = self.targets.write().expect("sync targets lock");
-        sources.insert(db_type.clone(), adapter.clone() as Arc<dyn SyncSourceAdapter>);
-        targets.insert(db_type, adapter as Arc<dyn SyncTargetAdapter>);
+        sources.insert(db_type.clone(), boxed.source);
+        targets.insert(db_type, boxed.target);
     }
 
     pub fn get_source(&self, db_type: &DatabaseType) -> Option<Arc<dyn SyncSourceAdapter>> {
@@ -100,5 +86,83 @@ impl SyncAdapterRegistry {
 impl Default for SyncAdapterRegistry {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// Keep path-driver sync adapter inventory linked in unit tests (dev-dependencies).
+#[cfg(test)]
+#[inline(never)]
+fn force_link_driver_sync_adapters() {
+    let _ = (
+        std::any::type_name::<datazen_driver_postgres::PgSyncAdapter>(),
+        std::any::type_name::<datazen_driver_mysql::MysqlSyncAdapter>(),
+        std::any::type_name::<datazen_driver_sqlite::SqliteSyncAdapter>(),
+        std::any::type_name::<datazen_driver_sqlserver::SqlServerSyncAdapter>(),
+        std::any::type_name::<datazen_driver_clickhouse::ClickHouseSyncAdapter>(),
+        std::any::type_name::<datazen_driver_duckdb::DuckDbSyncAdapter>(),
+        std::any::type_name::<datazen_driver_elasticsearch::ElasticsearchSyncAdapter>(),
+        std::any::type_name::<datazen_driver_mongodb::MongodbSyncAdapter>(),
+        std::any::type_name::<datazen_driver_influxdb::InfluxDbSyncAdapter>(),
+        std::any::type_name::<datazen_driver_victoriametrics::VictoriaMetricsSyncAdapter>(),
+        std::any::type_name::<datazen_driver_hbase::HBaseSyncAdapter>(),
+        std::any::type_name::<datazen_driver_vector::VectorSyncAdapter>(),
+        std::any::type_name::<datazen_plugin_olap::TrinoSyncAdapter>(),
+    );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ensure_type_postgresql_succeeds() {
+        let registry = SyncAdapterRegistry::new();
+        assert!(registry.ensure_type(&"postgresql".to_string()).is_ok());
+        assert!(registry.get_source(&"postgresql".to_string()).is_some());
+        assert!(registry.get_target(&"postgresql".to_string()).is_some());
+    }
+
+    #[test]
+    fn ensure_type_unknown_fails() {
+        let registry = SyncAdapterRegistry::new();
+        let err = registry
+            .ensure_type(&"nosuchdb".to_string())
+            .expect_err("unknown type must fail");
+        assert!(err.contains("No sync adapter"));
+    }
+
+    #[test]
+    fn ensure_type_wire_aliases_succeed() {
+        let registry = SyncAdapterRegistry::new();
+        for db in [
+            "postgresql",
+            "mysql",
+            "mariadb",
+            "sqlite",
+            "cloudberry",
+            "questdb",
+            "rqlite",
+            "turso",
+            "doris",
+            "starrocks",
+            "manticore",
+            "ob_oracle",
+            "sqlserver",
+            "clickhouse",
+            "duckdb",
+            "elasticsearch",
+            "mongodb",
+            "influxdb",
+            "victoriametrics",
+            "hbase",
+            "vector",
+            "trino",
+            "presto",
+        ] {
+            assert!(
+                registry.ensure_type(&db.to_string()).is_ok(),
+                "expected sync adapter for {db}"
+            );
+        }
     }
 }

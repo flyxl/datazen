@@ -1,10 +1,23 @@
 //! SQLite sync adapter.
 
-use crate::db::{ColumnSchema, Value};
-use crate::sync::adapter::{SyncSourceAdapter, SyncTargetAdapter};
-use crate::sync::ir::{IRColumn, IRDefault, IRType};
+use datazen_driver_api::{
+    BoxedSyncAdapter, ColumnSchema, IRColumn, IRDefault, IRType, SyncAdapterFactory,
+    SyncSourceAdapter, SyncTargetAdapter, Value,
+};
 
 pub struct SqliteSyncAdapter;
+
+fn create() -> BoxedSyncAdapter {
+    BoxedSyncAdapter::both(SqliteSyncAdapter)
+}
+
+datazen_driver_api::inventory::submit! {
+    SyncAdapterFactory {
+        // rqlite / turso: SQLite-compatible schema (PRAGMA table_info)
+        db_types: &["sqlite", "rqlite", "turso"],
+        create,
+    }
+}
 
 // ── SyncSourceAdapter ──────────────────────────────────────────────
 

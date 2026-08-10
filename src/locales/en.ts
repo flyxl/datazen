@@ -248,6 +248,7 @@ const en: Record<TranslationKey, string> = {
   'newConn.adbNoDatabases': 'No database files found',
   'newConn.adbNotInstalled': 'adb is not installed or not in PATH',
 
+
   // ── Settings ──
   'settings.title': 'Settings',
   'settings.general': 'General',

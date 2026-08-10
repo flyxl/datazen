@@ -3,8 +3,8 @@ import type { DatabaseTypeMeta } from '@datazen/plugin-sdk';
 export const tursoMeta = {
     label: 'Turso / libSQL',
     shortLabel: 'Tu',
-    iconBg: 'bg-fuchsia-700',
-    iconColor: 'text-fuchsia-400',
+    iconBg: 'bg-success',
+    iconColor: 'text-success',
     defaultPort: 8080,
     defaultHost: '127.0.0.1',
     defaultUser: '',

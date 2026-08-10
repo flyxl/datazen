@@ -12,25 +12,11 @@ pub(crate) async fn get_databases_impl(
     let start = Instant::now();
     tracing::info!(%connection_id, "get_databases");
 
-    let (driver, handle) = match state
+    let (_runtime_id, driver, handle) = state
         .connection_manager
-        .get_connection(&connection_id)
+        .resolve_session(&connection_id)
         .await
-    {
-        Ok(pair) => pair,
-        Err(_) => {
-            let runtime_id = state
-                .connection_manager
-                .get_or_connect(&connection_id)
-                .await
-                .cmd_err("get_databases")?;
-            state
-                .connection_manager
-                .get_connection(&runtime_id)
-                .await
-                .cmd_err("get_databases")?
-        }
-    };
+        .cmd_err("get_databases")?;
 
     let dbs = driver
         .get_databases(&handle)
@@ -55,6 +41,11 @@ pub(crate) async fn use_database_impl(
 
     driver
         .use_database(&handle, &database)
+        .await
+        .cmd_err("use_database")?;
+    state
+        .connection_manager
+        .set_active_database(&connection_id, &database)
         .await
         .cmd_err("use_database")?;
     tracing::info!(
@@ -156,6 +147,13 @@ pub(crate) async fn get_table_data_impl(
         .await
         .cmd_err("get_table_data")?;
 
+    let config = state
+        .connection_manager
+        .get_connection_config(&connection_id)
+        .await
+        .cmd_err("get_table_data")?;
+    let database = config.database.as_deref().unwrap_or("default");
+
     let order = sorts
         .and_then(|list| list.into_iter().next())
         .map(|s| OrderBy {
@@ -171,7 +169,7 @@ pub(crate) async fn get_table_data_impl(
             &driver,
             &handle,
             &connection_id,
-            "",
+            database,
             &table,
             page,
             page_size,

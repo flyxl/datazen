@@ -1,11 +1,35 @@
 //! MySQL / MariaDB sync adapter.
 
-use crate::db::{ColumnSchema, Value};
-use crate::sync::adapter::{SyncSourceAdapter, SyncTargetAdapter};
-use crate::sync::ir::{IRColumn, IRDefault, IRType};
+use datazen_driver_api::{
+    BoxedSyncAdapter, ColumnSchema, IRColumn, IRDefault, IRType, SyncAdapterFactory,
+    SyncSourceAdapter, SyncTargetAdapter, Value,
+};
 
 pub struct MysqlSyncAdapter {
     pub is_mariadb: bool,
+}
+
+fn create_mysql() -> BoxedSyncAdapter {
+    BoxedSyncAdapter::both(MysqlSyncAdapter { is_mariadb: false })
+}
+
+fn create_mariadb() -> BoxedSyncAdapter {
+    BoxedSyncAdapter::both(MysqlSyncAdapter { is_mariadb: true })
+}
+
+datazen_driver_api::inventory::submit! {
+    SyncAdapterFactory {
+        // doris / starrocks / manticore / ob_oracle: MySQL wire + information_schema
+        db_types: &["mysql", "doris", "starrocks", "manticore", "ob_oracle"],
+        create: create_mysql,
+    }
+}
+
+datazen_driver_api::inventory::submit! {
+    SyncAdapterFactory {
+        db_types: &["mariadb"],
+        create: create_mariadb,
+    }
 }
 
 // ── helpers ────────────────────────────────────────────────────────

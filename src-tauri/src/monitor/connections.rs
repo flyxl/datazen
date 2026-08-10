@@ -11,6 +11,7 @@ use crate::services::connection_manager::{ConnectionError, ConnectionManager};
 use crate::ssh_tunnel::SshTunnel;
 
 /// Logical registry key for a monitor connection (`monitor:{config_id}`).
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn monitor_registry_key(config_id: &str) -> String {
     format!("monitor:{config_id}")
 }

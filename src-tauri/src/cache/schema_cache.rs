@@ -242,7 +242,6 @@ impl SchemaCache {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::registry::DriverRegistry;
     use crate::testing::mock_driver::{MockDriver, MockDriverOptions};
 
     fn test_handle() -> ConnectionHandle {
@@ -358,5 +357,48 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(mock.get_columns_calls(), 2);
+    }
+
+    fn sample_columns(table: &str) -> CachedColumns {
+        CachedColumns {
+            columns: vec![],
+            primary_keys: vec![],
+            table_name: table.to_string(),
+            cached_at: Instant::now(),
+        }
+    }
+
+    #[tokio::test]
+    async fn invalidate_removes_one_table() {
+        let cache = SchemaCache::new(Arc::new(DriverRegistry::new()));
+        {
+            let mut caches = cache.caches.write().await;
+            let db = SchemaCache::get_db_cache_mut(&mut caches, "conn-1", "db-a");
+            db.columns.insert("t1".into(), sample_columns("t1"));
+            db.columns.insert("t2".into(), sample_columns("t2"));
+        }
+
+        cache.invalidate("conn-1", "db-a", Some("t1")).await;
+
+        let caches = cache.caches.read().await;
+        let db = caches.get("conn-1").unwrap().get("db-a").unwrap();
+        assert!(!db.columns.contains_key("t1"));
+        assert!(db.columns.contains_key("t2"));
+    }
+
+    #[tokio::test]
+    async fn invalidate_clears_whole_database_when_table_omitted() {
+        let cache = SchemaCache::new(Arc::new(DriverRegistry::new()));
+        {
+            let mut caches = cache.caches.write().await;
+            let db = SchemaCache::get_db_cache_mut(&mut caches, "conn-1", "db-a");
+            db.columns.insert("t1".into(), sample_columns("t1"));
+        }
+
+        cache.invalidate("conn-1", "db-a", None).await;
+
+        let caches = cache.caches.read().await;
+        let db = caches.get("conn-1").unwrap().get("db-a").unwrap();
+        assert!(db.columns.is_empty());
     }
 }

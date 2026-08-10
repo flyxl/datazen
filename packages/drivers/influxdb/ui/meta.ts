@@ -3,8 +3,8 @@ import type { DatabaseTypeMeta } from '@datazen/plugin-sdk';
 export const influxdbMeta = {
     label: 'InfluxDB',
     shortLabel: 'If',
-    iconBg: 'bg-sky-700',
-    iconColor: 'text-sky-400',
+    iconBg: 'bg-warning',
+    iconColor: 'text-warning',
     defaultPort: 8086,
     defaultHost: '127.0.0.1',
     defaultUser: '',
