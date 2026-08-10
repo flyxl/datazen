@@ -50,7 +50,7 @@ describe('useConnectionForm', () => {
     expect(result.current.draft.group).toBe(PRESET_GROUPS.development);
   });
 
-  it('normalizes legacy group labels when loading an existing connection', () => {
+  it('keeps stored group name as-is when loading an existing connection', () => {
     const { result } = renderHook(() =>
       useConnectionForm({
         editId: 'c1',
@@ -67,8 +67,8 @@ describe('useConnectionForm', () => {
         ],
       }),
     );
-    expect(result.current.group).toBe(PRESET_GROUPS.development);
-    expect(result.current.draft.group).toBe(PRESET_GROUPS.development);
+    expect(result.current.group).toBe('开发环境');
+    expect(result.current.draft.group).toBe('开发环境');
   });
 
   it('detects formVariant from DB_REGISTRY', () => {

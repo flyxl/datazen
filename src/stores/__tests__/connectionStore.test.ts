@@ -65,11 +65,12 @@ describe('connectionStore actions', () => {
     });
   });
 
-  it('fetchConnections success and error', async () => {
-    const conns = [makeConn()];
+  it('fetchConnections loads as-is without group write-backs', async () => {
+    const conns = [makeConn({ group: '开发环境' })];
     mockConnectionCommands.getConnections.mockResolvedValueOnce(conns);
     await useConnectionStore.getState().fetchConnections();
     expect(useConnectionStore.getState().connections).toEqual(conns);
+    expect(mockConnectionCommands.saveConnection).not.toHaveBeenCalled();
     expect(useConnectionStore.getState().loading).toBe(false);
 
     mockConnectionCommands.getConnections.mockRejectedValueOnce(new Error('network'));
@@ -77,10 +78,11 @@ describe('connectionStore actions', () => {
     expect(useConnectionStore.getState().error).toBe('network');
   });
 
-  it('fetchGroups loads groups', async () => {
-    mockConnectionCommands.getGroups.mockResolvedValueOnce(['a', 'b']);
+  it('fetchGroups loads groups as-is without write-backs', async () => {
+    mockConnectionCommands.getGroups.mockResolvedValueOnce(['开发环境', 'E2E 测试']);
     await useConnectionStore.getState().fetchGroups();
-    expect(useConnectionStore.getState().groups).toEqual(['a', 'b']);
+    expect(useConnectionStore.getState().groups).toEqual(['开发环境', 'E2E 测试']);
+    expect(mockConnectionCommands.saveGroups).not.toHaveBeenCalled();
   });
 
   it('saveConnection refreshes and emits on success', async () => {

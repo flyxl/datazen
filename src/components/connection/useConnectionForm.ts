@@ -3,7 +3,7 @@ import type { KeyboardEvent } from 'react';
 import { useConnectionStore } from '../../stores/connectionStore';
 import { useI18n } from '../../hooks/useI18n';
 import { DB_REGISTRY, normalizeIndexDatabaseField } from '../../lib/databaseTypes';
-import { PRESET_GROUPS, normalizeGroupKey } from '../../lib/connectionGroups';
+import { PRESET_GROUPS } from '../../lib/connectionGroups';
 import { newId } from './shared';
 import type { ConnectionConfig, DatabaseType, SslMode, SshTunnelConfig } from '../../types';
 import { getPluginConnectionForm, getPluginValidator } from '../../plugins/generated';
@@ -64,7 +64,7 @@ export function useConnectionForm(options: UseConnectionFormOptions = {}) {
     setUsername(existing.username ?? '');
     setPassword(existing.password ?? '');
     setSslMode(existing.sslMode);
-    setGroup(normalizeGroupKey(existing.group) ?? '');
+    setGroup(existing.group ?? '');
     setColorTag(existing.colorTag ?? '#3b82f6');
     setConnectionOptions(existing.options ?? {});
     if (existing.sshTunnel?.enabled) {
@@ -169,7 +169,7 @@ export function useConnectionForm(options: UseConnectionFormOptions = {}) {
       name: name || t('newConn.unnamed'),
       databaseType,
       sslMode,
-      group: normalizeGroupKey(group),
+      group: group || undefined,
       colorTag: colorTag || undefined,
       sshTunnel,
     };
