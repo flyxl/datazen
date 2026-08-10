@@ -16,11 +16,12 @@ export interface SelectProps {
   readonly placeholder?: string;
   readonly disabled?: boolean;
   readonly className?: string;
+  readonly title?: string;
 }
 
 const LIST_ID = 'dz-select-listbox';
 
-export function Select({ value, options, onChange, placeholder, disabled, className }: SelectProps) {
+export function Select({ value, options, onChange, placeholder, disabled, className, title }: SelectProps) {
   const [open, setOpen] = useState(false);
   const [highlightIdx, setHighlightIdx] = useState(-1);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -128,6 +129,7 @@ export function Select({ value, options, onChange, placeholder, disabled, classN
         aria-haspopup="listbox"
         aria-controls={open ? LIST_ID : undefined}
         disabled={disabled}
+        title={title}
         className={cn(
           'flex h-9 w-full items-center justify-between gap-1 rounded-md border border-edge bg-surface px-2.5 text-left text-sm text-fg outline-none',
           'focus:border-blue-500 focus:ring-2 focus:ring-blue-500/25',

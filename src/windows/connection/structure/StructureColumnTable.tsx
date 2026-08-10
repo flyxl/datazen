@@ -105,13 +105,15 @@ export function StructureColumnTable({
               )}
             >
               <td className="px-1 py-1.5 text-center">
-                <GripVertical
+                <span
                   className={cn(
-                    'mx-auto h-3.5 w-3.5 text-fg-muted',
+                    'mx-auto inline-flex',
                     reorderEnabled ? 'cursor-grab' : 'cursor-not-allowed opacity-40',
                   )}
                   title={reorderEnabled ? undefined : disabledTitle('reorderColumn')}
-                />
+                >
+                  <GripVertical className="h-3.5 w-3.5 text-fg-muted" />
+                </span>
               </td>
               <td className="px-2 py-1.5">
                 <Input

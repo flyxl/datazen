@@ -186,10 +186,18 @@ jobs:
 
           # drivers-registry.json keeps https:// URLs; rewrite per-repo to the
           # Host alias that selects the matching deploy key.
-          git config --global url."git@github.com-kiwi:flyxl/datazen-driver-kiwi.git".insteadOf "https://github.com/flyxl/datazen-driver-kiwi.git"
-          git config --global url."git@github.com-kiwi:flyxl/datazen-driver-kiwi.git".insteadOf "git@github.com:flyxl/datazen-driver-kiwi.git"
-          git config --global url."git@github.com-superset:flyxl/datazen-driver-superset.git".insteadOf "https://github.com/flyxl/datazen-driver-superset.git"
-          git config --global url."git@github.com-superset:flyxl/datazen-driver-superset.git".insteadOf "git@github.com:flyxl/datazen-driver-superset.git"
+          # Use --add: a second insteadOf without --add overwrites the first.
+          git config --global --unset-all url."git@github.com-kiwi:flyxl/datazen-driver-kiwi.git".insteadOf || true
+          git config --global --add url."git@github.com-kiwi:flyxl/datazen-driver-kiwi.git".insteadOf "https://github.com/flyxl/datazen-driver-kiwi.git"
+          git config --global --add url."git@github.com-kiwi:flyxl/datazen-driver-kiwi.git".insteadOf "https://github.com/flyxl/datazen-driver-kiwi"
+          git config --global --add url."git@github.com-kiwi:flyxl/datazen-driver-kiwi.git".insteadOf "git@github.com:flyxl/datazen-driver-kiwi.git"
+          git config --global --unset-all url."git@github.com-superset:flyxl/datazen-driver-superset.git".insteadOf || true
+          git config --global --add url."git@github.com-superset:flyxl/datazen-driver-superset.git".insteadOf "https://github.com/flyxl/datazen-driver-superset.git"
+          git config --global --add url."git@github.com-superset:flyxl/datazen-driver-superset.git".insteadOf "https://github.com/flyxl/datazen-driver-superset"
+          git config --global --add url."git@github.com-superset:flyxl/datazen-driver-superset.git".insteadOf "git@github.com:flyxl/datazen-driver-superset.git"
+          git config --global --get-regexp '^url\..*\.insteadof$' || true
+          # Smoke-test rewrite (does not need network auth for ls-remote if config wrong — fail early).
+          echo "GIT_SSH rewrite smoke: $(git config --get-regexp 'url\..*kiwi.*insteadof' | tr '\n' ' ')"
 
       - name: Import Windows code signing certificate
         if: runner.os == 'Windows'

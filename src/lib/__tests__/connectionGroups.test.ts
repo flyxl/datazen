@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { TranslationKey } from '../../locales';
 import {
   PRESET_GROUPS,
   PRESET_GROUP_OPTIONS,
@@ -62,7 +63,7 @@ describe('normalizeGroupKey', () => {
 });
 
 describe('formatGroupLabel', () => {
-  const t = (k: string) => `i18n:${k}`;
+  const t = (k: TranslationKey) => `i18n:${k}`;
 
   it('localizes preset keys', () => {
     expect(formatGroupLabel(PRESET_GROUPS.production, t)).toBe('i18n:newConn.groupProd');
