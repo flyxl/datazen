@@ -88,6 +88,7 @@ datazen-driver-influxdb = { path = "../packages/drivers/influxdb" }
 datazen-driver-victoriametrics = { path = "../packages/drivers/victoriametrics" }
 datazen-driver-hbase = { path = "../packages/drivers/hbase" }
 datazen-driver-vector = { path = "../packages/drivers/vector" }
+datazen-plugin-olap = { path = "../.plugins/olap" }
 
 [target.'cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))'.dependencies]
 tauri-plugin-process = "2.3.1"
