@@ -61,6 +61,7 @@ fn ir_col(name: &str, ir_type: IRType, nullable: bool, is_primary_key: bool) -> 
                 false,
             )],
             primary_keys: vec![],
+            table_options: None,
         };
         let tgt = IRTable {
             name: "t".into(),
@@ -71,6 +72,7 @@ fn ir_col(name: &str, ir_type: IRType, nullable: bool, is_primary_key: bool) -> 
                 false,
             )],
             primary_keys: vec![],
+            table_options: None,
         };
 
         let diff = diff_table_schemas_ir("t", &src, &tgt);
@@ -88,6 +90,7 @@ fn ir_col(name: &str, ir_type: IRType, nullable: bool, is_primary_key: bool) -> 
                 ir_col("name", IRType::Varchar { length: Some(50) }, true, false),
             ],
             primary_keys: vec!["id".into()],
+            table_options: None,
         };
         let tgt = IRTable {
             name: "t".into(),
@@ -97,6 +100,7 @@ fn ir_col(name: &str, ir_type: IRType, nullable: bool, is_primary_key: bool) -> 
                 ir_col("extra", IRType::Text, true, false),
             ],
             primary_keys: vec![],
+            table_options: None,
         };
 
         let diff = diff_table_schemas_ir("t", &src, &tgt);

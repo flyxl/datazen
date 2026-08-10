@@ -1159,6 +1159,22 @@ impl DatabaseDriver for PostgresDriver {
         })
     }
 
+    async fn dump_table_ddl(
+        &self,
+        handle: &ConnectionHandle,
+        table: &str,
+    ) -> Result<String, DriverError> {
+        let catalog_result = {
+            let pools = self.pools.read().await;
+            let pool = Self::get_pool(&pools, handle)?;
+            fetch_pg_table_ddl_from_catalog(pool, table, |n| self.quote_ident(n)).await
+        };
+        match catalog_result {
+            Ok(ddl) => Ok(ddl),
+            Err(_) => sql_dump::dump_table_ddl_from_schema(self, handle, table).await,
+        }
+    }
+
     async fn dump_database(
         &self,
         handle: &ConnectionHandle,
@@ -1305,6 +1321,116 @@ fn has_top_level_limit(sql: &str) -> bool {
     }
 
     false
+}
+
+/// One column line for CREATE TABLE assembly (catalog-backed DDL).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct PgColumnDdl {
+    pub name: String,
+    pub data_type: String,
+    pub not_null: bool,
+    pub default_expr: Option<String>,
+}
+
+/// Build `CREATE TABLE schema.table (...)` from catalog-derived column metadata.
+pub(crate) fn build_pg_create_table_ddl(
+    qualified_name: &str,
+    columns: &[PgColumnDdl],
+    pk_columns: &[String],
+    quote_ident: &dyn Fn(&str) -> String,
+) -> String {
+    let mut parts: Vec<String> = columns
+        .iter()
+        .map(|c| {
+            let mut line = format!("  {} {}", quote_ident(&c.name), c.data_type);
+            if c.not_null {
+                line.push_str(" NOT NULL");
+            }
+            if let Some(ref def) = c.default_expr {
+                if !def.is_empty() {
+                    line.push_str(&format!(" DEFAULT {def}"));
+                }
+            }
+            line
+        })
+        .collect();
+
+    if !pk_columns.is_empty() {
+        let pk_list: Vec<String> = pk_columns.iter().map(|n| quote_ident(n)).collect();
+        parts.push(format!("  PRIMARY KEY ({})", pk_list.join(", ")));
+    }
+
+    format!("CREATE TABLE {qualified_name} (\n{}\n);\n", parts.join(",\n"))
+}
+
+async fn fetch_pg_table_ddl_from_catalog(
+    pool: &PgPool,
+    table: &str,
+    quote_ident: impl Fn(&str) -> String,
+) -> Result<String, DriverError> {
+    let col_rows = sqlx::query(
+        r#"
+        SELECT
+          quote_ident(n.nspname) || '.' || quote_ident(c.relname) AS qualified_name,
+          a.attname,
+          format_type(a.atttypid, a.atttypmod) AS col_type,
+          a.attnotnull AS not_null,
+          pg_get_expr(d.adbin, d.adrelid) AS col_default
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        JOIN pg_attribute a ON a.attrelid = c.oid
+        LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
+        WHERE c.oid = $1::regclass
+          AND a.attnum > 0
+          AND NOT a.attisdropped
+        ORDER BY a.attnum
+        "#,
+    )
+    .bind(table)
+    .fetch_all(pool)
+    .await
+    .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+
+    if col_rows.is_empty() {
+        return Err(DriverError::QueryFailed(format!(
+            "Table not found or has no columns: {table}"
+        )));
+    }
+
+    let qualified_name: String = col_rows[0].get("qualified_name");
+    let columns: Vec<PgColumnDdl> = col_rows
+        .iter()
+        .map(|r| PgColumnDdl {
+            name: r.get("attname"),
+            data_type: r.get("col_type"),
+            not_null: r.get("not_null"),
+            default_expr: r.try_get("col_default").ok(),
+        })
+        .collect();
+
+    let pk_rows = sqlx::query(
+        r#"
+        SELECT a.attname
+        FROM pg_constraint con
+        JOIN pg_attribute a ON a.attrelid = con.conrelid AND a.attnum = ANY(con.conkey)
+        WHERE con.contype = 'p'
+          AND con.conrelid = $1::regclass
+        ORDER BY array_position(con.conkey, a.attnum)
+        "#,
+    )
+    .bind(table)
+    .fetch_all(pool)
+    .await
+    .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+
+    let pk_columns: Vec<String> = pk_rows.iter().map(|r| r.get("attname")).collect();
+
+    Ok(build_pg_create_table_ddl(
+        &qualified_name,
+        &columns,
+        &pk_columns,
+        &quote_ident,
+    ))
 }
 
 #[cfg(test)]
@@ -1498,5 +1624,53 @@ mod tests {
             matches!(err, DriverError::ConnectionFailed(_)),
             "expected ConnectionFailed, got {err:?}"
         );
+    }
+
+    #[test]
+    fn build_pg_create_table_ddl_includes_types_not_null_default_and_pk() {
+        let columns = vec![
+            PgColumnDdl {
+                name: "id".into(),
+                data_type: "integer".into(),
+                not_null: true,
+                default_expr: None,
+            },
+            PgColumnDdl {
+                name: "email".into(),
+                data_type: "character varying(255)".into(),
+                not_null: true,
+                default_expr: None,
+            },
+            PgColumnDdl {
+                name: "status".into(),
+                data_type: "text".into(),
+                not_null: false,
+                default_expr: Some("'active'::text".into()),
+            },
+        ];
+        let sql = build_pg_create_table_ddl(
+            "\"public\".\"users\"",
+            &columns,
+            &["id".into()],
+            &|n| format!("\"{n}\""),
+        );
+        assert!(sql.starts_with("CREATE TABLE \"public\".\"users\" ("));
+        assert!(sql.contains("\"id\" integer NOT NULL"));
+        assert!(sql.contains("\"email\" character varying(255) NOT NULL"));
+        assert!(sql.contains("\"status\" text DEFAULT 'active'::text"));
+        assert!(sql.contains("PRIMARY KEY (\"id\")"));
+        assert!(sql.ends_with(");\n"));
+    }
+
+    #[test]
+    fn build_pg_create_table_ddl_omits_pk_when_empty() {
+        let columns = vec![PgColumnDdl {
+            name: "x".into(),
+            data_type: "text".into(),
+            not_null: false,
+            default_expr: None,
+        }];
+        let sql = build_pg_create_table_ddl("t", &columns, &[], &|n| n.to_string());
+        assert!(!sql.contains("PRIMARY KEY"));
     }
 }

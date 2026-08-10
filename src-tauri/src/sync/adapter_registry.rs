@@ -98,6 +98,8 @@ fn force_link_driver_sync_adapters() {
         std::any::type_name::<datazen_driver_mysql::MysqlSyncAdapter>(),
         std::any::type_name::<datazen_driver_sqlite::SqliteSyncAdapter>(),
         std::any::type_name::<datazen_driver_sqlserver::SqlServerSyncAdapter>(),
+        std::any::type_name::<datazen_driver_clickhouse::ClickHouseSyncAdapter>(),
+        std::any::type_name::<datazen_driver_duckdb::DuckDbSyncAdapter>(),
     );
 }
 
@@ -125,7 +127,16 @@ mod tests {
     #[test]
     fn ensure_type_wire_aliases_succeed() {
         let registry = SyncAdapterRegistry::new();
-        for db in ["cloudberry", "rqlite", "turso", "doris", "starrocks", "sqlserver"] {
+        for db in [
+            "cloudberry",
+            "rqlite",
+            "turso",
+            "doris",
+            "starrocks",
+            "sqlserver",
+            "clickhouse",
+            "duckdb",
+        ] {
             assert!(
                 registry.ensure_type(&db.to_string()).is_ok(),
                 "expected sync adapter for {db}"
