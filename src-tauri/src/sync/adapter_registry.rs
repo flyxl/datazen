@@ -100,6 +100,12 @@ fn force_link_driver_sync_adapters() {
         std::any::type_name::<datazen_driver_sqlserver::SqlServerSyncAdapter>(),
         std::any::type_name::<datazen_driver_clickhouse::ClickHouseSyncAdapter>(),
         std::any::type_name::<datazen_driver_duckdb::DuckDbSyncAdapter>(),
+        std::any::type_name::<datazen_driver_elasticsearch::ElasticsearchSyncAdapter>(),
+        std::any::type_name::<datazen_driver_mongodb::MongodbSyncAdapter>(),
+        std::any::type_name::<datazen_driver_influxdb::InfluxDbSyncAdapter>(),
+        std::any::type_name::<datazen_driver_victoriametrics::VictoriaMetricsSyncAdapter>(),
+        std::any::type_name::<datazen_driver_hbase::HBaseSyncAdapter>(),
+        std::any::type_name::<datazen_driver_vector::VectorSyncAdapter>(),
     );
 }
 
@@ -128,14 +134,29 @@ mod tests {
     fn ensure_type_wire_aliases_succeed() {
         let registry = SyncAdapterRegistry::new();
         for db in [
+            "postgresql",
+            "mysql",
+            "mariadb",
+            "sqlite",
             "cloudberry",
+            "questdb",
             "rqlite",
             "turso",
             "doris",
             "starrocks",
+            "manticore",
+            "ob_oracle",
             "sqlserver",
             "clickhouse",
             "duckdb",
+            "elasticsearch",
+            "mongodb",
+            "influxdb",
+            "victoriametrics",
+            "hbase",
+            "vector",
+            "trino",
+            "presto",
         ] {
             assert!(
                 registry.ensure_type(&db.to_string()).is_ok(),

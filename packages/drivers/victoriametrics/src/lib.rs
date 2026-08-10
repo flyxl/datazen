@@ -5,7 +5,9 @@ use std::sync::Arc;
 use datazen_driver_api::*;
 
 mod victoriametrics;
+mod sync_adapter;
 pub use victoriametrics::*;
+pub use sync_adapter::VictoriaMetricsSyncAdapter;
 
 struct VictoriaMetricsFactory;
 impl DatabaseDriverFactory for VictoriaMetricsFactory {

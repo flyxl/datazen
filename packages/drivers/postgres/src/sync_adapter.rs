@@ -14,7 +14,8 @@ fn create() -> BoxedSyncAdapter {
 datazen_driver_api::inventory::submit! {
     SyncAdapterFactory {
         // cloudberry: PG wire + catalogs; safe alias of PgSyncAdapter
-        db_types: &["postgresql", "cloudberry"],
+        // questdb: PG wire + catalogs (ReuseDriver); cloudberry same family
+        db_types: &["postgresql", "cloudberry", "questdb"],
         create,
     }
 }
