@@ -1,10 +1,25 @@
 import { describe, expect, it } from 'vitest';
 import {
+  isSchemaGroupingSchema,
   mergeNamespacePath,
   overlayColumnMap,
   pathKey,
   namespaceHasChild,
 } from '../sqlNamespace';
+
+describe('isSchemaGroupingSchema', () => {
+  it('rejects nullish and path-nav sentinels', () => {
+    expect(isSchemaGroupingSchema(null)).toBe(false);
+    expect(isSchemaGroupingSchema(undefined)).toBe(false);
+    expect(isSchemaGroupingSchema('CATALOG')).toBe(false);
+    expect(isSchemaGroupingSchema('SCHEMA')).toBe(false);
+  });
+
+  it('accepts real schema labels', () => {
+    expect(isSchemaGroupingSchema('public')).toBe(true);
+    expect(isSchemaGroupingSchema('dbo')).toBe(true);
+  });
+});
 
 describe('pathKey', () => {
   it('joins segments with /', () => {

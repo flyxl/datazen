@@ -4,11 +4,11 @@
 #[cfg(test)]
 mod tests {
     use crate::db::ColumnSchema;
-    use crate::sync::adapter::{SyncSourceAdapter, SyncTargetAdapter};
-    use crate::sync::adapters::mysql::MysqlSyncAdapter;
-    use crate::sync::adapters::postgresql::PgSyncAdapter;
-    use crate::sync::adapters::sqlite::SqliteSyncAdapter;
-    use crate::sync::adapters::trino::TrinoSyncAdapter;
+    use crate::sync::{SyncSourceAdapter, SyncTargetAdapter};
+    use datazen_driver_mysql::MysqlSyncAdapter;
+    use datazen_driver_postgres::PgSyncAdapter;
+    use datazen_driver_sqlite::SqliteSyncAdapter;
+    use datazen_plugin_olap::TrinoSyncAdapter;
 
     fn col(name: &str, data_type: &str) -> ColumnSchema {
         ColumnSchema {

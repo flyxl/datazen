@@ -3,8 +3,8 @@ import type { DatabaseTypeMeta } from '@datazen/plugin-sdk';
 export const rqliteMeta = {
     label: 'RQLite',
     shortLabel: 'Rq',
-    iconBg: 'bg-pink-700',
-    iconColor: 'text-pink-400',
+    iconBg: 'bg-accent',
+    iconColor: 'text-accent',
     defaultPort: 4001,
     defaultHost: '127.0.0.1',
     defaultUser: '',

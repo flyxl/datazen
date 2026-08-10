@@ -64,6 +64,8 @@ export const syncCommands = {
     tables: string[];
     skipTables: string[];
     strategy: string;
+    resumeTable?: string | null;
+    resumeOffset?: number;
   }) => invoke<{ taskId: string; completedTables: string[]; totalTables: number }>('sync_tables', params),
 
   getSyncTasks: () => invoke<SyncTask[]>('get_sync_tasks'),

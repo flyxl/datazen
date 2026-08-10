@@ -1,4 +1,9 @@
-import { pathKey, namespaceHasChild, type SqlNamespace } from './sqlNamespace';
+import {
+  isSchemaGroupingSchema,
+  pathKey,
+  namespaceHasChild,
+  type SqlNamespace,
+} from './sqlNamespace';
 import { DB_REGISTRY } from './databaseTypes';
 import type { DatabaseType, TableInfo } from '../types';
 import type { DatabaseTypeMeta } from './databaseMeta';
@@ -22,10 +27,6 @@ export interface EnsureDeps {
 }
 
 const inflight = new Map<string, Promise<void>>();
-
-function isSchemaGroupingSchema(schema: string | null | undefined): boolean {
-  return schema != null && schema !== 'CATALOG' && schema !== 'SCHEMA';
-}
 
 /** Navigation sentinel rows used by path-hierarchy drivers (catalog/schema browsers). */
 function isPathNav(item: TableInfo): boolean {

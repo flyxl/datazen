@@ -5,7 +5,9 @@ use std::sync::Arc;
 use datazen_driver_api::*;
 
 mod influxdb;
+mod sync_adapter;
 pub use influxdb::*;
+pub use sync_adapter::InfluxDbSyncAdapter;
 
 struct InfluxDbFactory;
 impl DatabaseDriverFactory for InfluxDbFactory {

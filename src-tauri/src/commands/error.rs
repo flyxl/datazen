@@ -58,7 +58,10 @@ impl From<ConnectionError> for CommandError {
 
 impl From<DriverError> for CommandError {
     fn from(e: DriverError) -> Self {
-        Self::Driver(e)
+        match e {
+            DriverError::NotSupported(msg) => Self::Validation(msg),
+            other => Self::Driver(other),
+        }
     }
 }
 

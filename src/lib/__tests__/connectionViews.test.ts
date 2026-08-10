@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { getConnectionView } from '../connectionViews';
 import { SqlConnectionView } from '../../windows/connection/SqlConnectionView';
-import { RedisConnectionView } from '../../windows/connection/RedisConnectionView';
 import { DocumentConnectionView } from '../../windows/connection/DocumentConnectionView';
+import { getPluginConnectionView } from '../../plugins/generated';
 
 describe('getConnectionView', () => {
   it('returns mapped views by mode', () => {
     expect(getConnectionView('sql')).toBe(SqlConnectionView);
-    expect(getConnectionView('keyvalue')).toBe(RedisConnectionView);
+    expect(getConnectionView('keyvalue')).toBe(getPluginConnectionView('keyvalue'));
     expect(getConnectionView('document')).toBe(DocumentConnectionView);
   });
 

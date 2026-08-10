@@ -1,18 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
-import { Button } from '../../components/ui/Button';
-import { useSchemaStore } from '../../stores/schemaStore';
-import { useI18n } from '../../hooks/useI18n';
-import { cn } from '../../lib/cn';
-import type { ConnectionViewProps } from '../../lib/connectionViews/types';
-import {
-  RedisWorkbench,
-  type RedisWorkbenchHandle,
-} from '../../../packages/drivers/redis/ui/RedisWorkbench';
-import { RedisConsole } from '../../../packages/drivers/redis/ui/RedisConsole';
-import { MonitorPanel } from '../../../packages/drivers/redis/ui/MonitorPanel';
-import { PubSubPanel } from '../../../packages/drivers/redis/ui/PubSubPanel';
-import { readPinnedNodeAddr } from '../../../packages/drivers/redis/ui/ClusterNodePicker';
+import { Button } from '../../../../src/components/ui/Button';
+import { useSchemaStore } from '../../../../src/stores/schemaStore';
+import { useI18n } from '../../../../src/hooks/useI18n';
+import { cn } from '../../../../src/lib/cn';
+import type { ConnectionViewProps } from '../../../../src/lib/connectionViews/types';
+import { RedisWorkbench, type RedisWorkbenchHandle } from './RedisWorkbench';
+import { RedisConsole } from './RedisConsole';
+import { MonitorPanel } from './MonitorPanel';
+import { PubSubPanel } from './PubSubPanel';
+import { readPinnedNodeAddr } from './ClusterNodePicker';
 
 type ActiveTab = 'items' | 'console' | 'monitor' | 'pubsub';
 
@@ -80,7 +77,7 @@ export function RedisConnectionView({
           >
             {t(TAB_LABEL_KEYS[tab])}
             {activeTab === tab && (
-              <span className="absolute inset-x-0 bottom-0 h-0.5 bg-blue-500" />
+              <span className="absolute inset-x-0 bottom-0 h-0.5 bg-accent" />
             )}
           </button>
         ))}

@@ -529,23 +529,9 @@ where
     C: AsyncCommands + redis::aio::ConnectionLike + Send,
 {
     const MAX_KEYS: usize = 10_000;
-    let mut keys: Vec<String> = Vec::new();
-    let mut cursor: u64 = 0;
-    loop {
-        let raw: redis::Value = redis::cmd("SCAN")
-            .arg(cursor)
-            .arg("COUNT")
-            .arg(200)
-            .query_async(conn)
-            .await
-            .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
-        let (next_cursor, batch) = parse_scan_result(&raw);
-        keys.extend(batch);
-        cursor = next_cursor;
-        if cursor == 0 || keys.len() >= MAX_KEYS {
-            break;
-        }
-    }
+    let mut keys = crate::ops::scan_keys(conn, None, Some(MAX_KEYS))
+        .await
+        .map_err(DriverError::QueryFailed)?;
     tracing::info!(%database, key_count = keys.len(), ms = t0.elapsed().as_millis() as u64, "redis get_tables: scan done");
     keys.sort();
     Ok(keys

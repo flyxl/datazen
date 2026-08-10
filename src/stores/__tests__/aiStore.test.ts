@@ -85,7 +85,9 @@ describe('aiStore', () => {
     it('loadProviders normalizes providers', async () => {
       mockAiCommands.getProviders.mockResolvedValueOnce([{ id: 'openai', name: 'OpenAI' }]);
       await useAiStore.getState().loadProviders();
-      expect(useAiStore.getState().providers).toHaveLength(1);
+      const providers = useAiStore.getState().providers;
+      expect(providers.map((p) => p.providerType)).toContain('deep_seek');
+      expect(providers.map((p) => p.providerType)).toContain('ollama');
     });
 
     it('fetchRemoteModels success and error', async () => {

@@ -9,6 +9,7 @@ pub mod db;
 mod i18n_locale;
 pub mod mcp;
 mod plugin_init;
+mod redis_flush_gate;
 mod services;
 mod ssh_known_hosts;
 pub mod ssh_tunnel;
@@ -148,7 +149,7 @@ pub(crate) fn resolve_context_dir(data_dir: &std::path::Path, context_dir_settin
 }
 
 /// Whether CLI args request headless MCP stdio mode (`--mcp` / `--mcp-stdio`).
-pub(crate) fn is_mcp_stdio_mode(args: &[String]) -> bool {
+pub fn is_mcp_stdio_mode(args: &[String]) -> bool {
     args.iter().any(|a| a == "--mcp" || a == "--mcp-stdio")
 }
 
@@ -412,6 +413,7 @@ async fn build_gui_app_state(
 ) -> Result<AppState, String> {
     let t_core = Instant::now();
     let store = Arc::new(Store::init(handle).await.map_err(|e| e.to_string())?);
+    redis_flush_gate::sync_from_settings(&store.get_settings().await);
     tracing::info!("[startup]   store: {:?}", t_core.elapsed());
 
     let t_drv = Instant::now();
@@ -437,6 +439,7 @@ async fn build_app_state(
     store: Arc<Store>,
     prompts_dir: Option<PathBuf>,
 ) -> Result<AppState, String> {
+    redis_flush_gate::sync_from_settings(&store.get_settings().await);
     let t_drv = Instant::now();
     let registry = Arc::new(init_drivers());
     let needed = unique_driver_types(&store.get_connections().await);

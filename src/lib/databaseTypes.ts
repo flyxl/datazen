@@ -18,7 +18,8 @@ export const DB_REGISTRY: Record<DatabaseType, DatabaseTypeMeta> = {
 
 /**
  * New-connection sidebar order: most commonly used types first (not wire-protocol family).
- * Types absent from this list sort after, by id.
+ * Includes drivers that may be absent from the basic SKU build; missing registry entries
+ * simply do not appear in the picker. Types absent from this list sort after, by id.
  */
 export const DB_TYPE_POPULARITY_ORDER: readonly string[] = [
   'mysql',
@@ -63,17 +64,6 @@ export function sortDbTypesByPopularity<T extends { value: string }>(items: T[])
   });
 }
 
-/** All database types available for the "new connection" UI. */
-export const DB_TYPE_LIST: { value: DatabaseType; label: string; color: string }[] = sortDbTypesByPopularity(
-  (Object.entries(DB_REGISTRY) as [DatabaseType, DatabaseTypeMeta][]).map(([value, meta]) => ({
-    value,
-    label: meta.label,
-    color: meta.iconBg.replace('bg-', '').split('-').length > 1
-      ? `#${meta.iconBg}` // fallback; real colors below
-      : meta.iconBg,
-  })),
-);
-
 /** Get the identifier quoting function for a given database type. */
 export function escapeIdent(name: string, dbType?: DatabaseType): string {
   const q = dbType ? DB_REGISTRY[dbType]?.quoteChar ?? '"' : '"';
@@ -110,11 +100,16 @@ export function getDbIconColor(dbType: DatabaseType): string {
   return DB_REGISTRY[dbType]?.iconColor ?? 'text-fg-muted';
 }
 
-/** Redis logical DB index (0–15); invalid input becomes `"0"`. */
-export function normalizeRedisDatabaseField(s: string): string {
+/** Clamp numeric DB index fields (Redis etc.); invalid input becomes `"0"`. */
+export function normalizeIndexDatabaseField(s: string, maxIndex = 15): string {
   const u = s.trim();
   if (u === '' || !/^\d+$/.test(u)) return '0';
-  return String(Math.min(15, Math.max(0, parseInt(u, 10))));
+  return String(Math.min(maxIndex, Math.max(0, parseInt(u, 10))));
+}
+
+/** @deprecated Use normalizeIndexDatabaseField */
+export function normalizeRedisDatabaseField(s: string): string {
+  return normalizeIndexDatabaseField(s, 15);
 }
 
 /** Build a display address string for a connection. */

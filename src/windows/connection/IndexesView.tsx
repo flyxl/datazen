@@ -1,14 +1,20 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Loader2, Pencil } from 'lucide-react';
-import { getCachedTableSchema } from '../../lib/schemaCache';
-import type { IndexInfo, TableSchema } from '../../types';
+import { Loader2, Plus, Trash2, AlertTriangle, Pencil } from 'lucide-react';
+import { databaseCommands } from '../../commands/database';
+import { getCachedTableSchema, invalidateSchemaCache } from '../../lib/schemaCache';
+import type { IndexInfo, TableSchema, ColumnSchema, DatabaseType } from '../../types';
 import { cn } from '../../lib/cn';
 import { Button } from '../../components/ui/Button';
+import { Select } from '../../components/ui/Select';
 import { useI18n } from '../../hooks/useI18n';
+import { DB_REGISTRY } from '../../lib/databaseTypes';
+import { getSqlDialect } from '../../lib/sqlDialects';
 
 interface IndexesViewProps {
   connectionId: string;
   tableName: string;
+  createIndexTrigger?: number;
+  databaseType?: string;
   onEditStructure?: (tableName: string) => void;
 }
 
@@ -20,11 +26,215 @@ function TypeBadge({ type: t }: { type: string }) {
   );
 }
 
-export function IndexesView({ connectionId, tableName, onEditStructure }: IndexesViewProps) {
+// ── Create Index Dialog ──────────────────────────────────────────
+
+interface CreateIndexDialogProps {
+  columns: ColumnSchema[];
+  tableName: string;
+  onSubmit: (sql: string) => void;
+  onCancel: () => void;
+  submitting: boolean;
+  databaseType?: string;
+}
+
+const INDEX_METHOD_LABELS: Record<'btree' | 'hash' | 'gin' | 'gist', string> = {
+  btree: 'B-Tree',
+  hash: 'Hash',
+  gin: 'GIN',
+  gist: 'GiST',
+};
+
+function CreateIndexDialog({ columns, tableName, onSubmit, onCancel, submitting, databaseType }: CreateIndexDialogProps) {
   const { t } = useI18n();
+  const meta = DB_REGISTRY[databaseType as DatabaseType];
+  const indexDialect = databaseType ? getSqlDialect(databaseType as DatabaseType)?.index : null;
+  const [indexName, setIndexName] = useState('');
+  const [selectedCols, setSelectedCols] = useState<string[]>([]);
+  const [isUnique, setIsUnique] = useState(false);
+  const [indexType, setIndexType] = useState<'btree' | 'hash' | 'gin' | 'gist'>('btree');
+
+  const autoName = `idx_${tableName}_${selectedCols.join('_')}`;
+  const q = meta?.quoteChar || '"';
+  const supportedMethods = indexDialect?.supportedIndexMethods ?? ['btree'];
+
+  const buildCreateIndexSql = (name: string, cols: string[]) => {
+    if (!indexDialect) return '';
+    return indexDialect.getCreateIndexSql({
+      indexName: name,
+      tableName,
+      columns: cols,
+      unique: isUnique,
+      method: indexType,
+      quoteChar: q,
+    });
+  };
+
+  const toggleColumn = (col: string) => {
+    setSelectedCols((prev) =>
+      prev.includes(col) ? prev.filter((c) => c !== col) : [...prev, col],
+    );
+  };
+
+  const handleSubmit = () => {
+    if (selectedCols.length === 0 || !indexDialect) return;
+    const name = indexName.trim() || autoName;
+    onSubmit(buildCreateIndexSql(name, selectedCols));
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" role="dialog" aria-modal="true">
+      <div className="w-[480px] rounded-lg border border-edge bg-surface p-5 shadow-xl">
+        <h3 className="mb-4 text-base font-semibold text-fg">{t('indexes.newIndex')}</h3>
+
+        {/* Index name */}
+        <div className="mb-3">
+          <label htmlFor="idx-name" className="mb-1 block text-xs text-fg-secondary">{t('indexes.indexName')}</label>
+          <input
+            id="idx-name"
+            className="h-8 w-full rounded border border-edge bg-surface-alt px-2.5 text-sm text-fg outline-none focus:border-blue-500"
+            placeholder={autoName || 'idx_...'}
+            value={indexName}
+            onChange={(e) => setIndexName(e.target.value)}
+          />
+        </div>
+
+        {/* Column selection */}
+        <div className="mb-3">
+          <label htmlFor="idx-cols" className="mb-1 block text-xs text-fg-secondary">{t('indexes.selectColumns')}</label>
+          <div id="idx-cols" className="max-h-40 overflow-auto rounded border border-edge bg-surface-alt p-2">
+            {columns.map((col) => {
+              const checked = selectedCols.includes(col.name);
+              const order = checked ? selectedCols.indexOf(col.name) + 1 : null;
+              return (
+                <label
+                  key={col.name}
+                  className={cn(
+                    'flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-surface-raised',
+                    checked && 'bg-blue-500/10',
+                  )}
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => toggleColumn(col.name)}
+                    className="accent-blue-500"
+                  />
+                  <span className="font-mono text-fg">{col.name}</span>
+                  <span className="text-xs text-fg-muted">{col.dataType}</span>
+                  {order && (
+                    <span className="ml-auto rounded bg-blue-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-blue-400">
+                      #{order}
+                    </span>
+                  )}
+                </label>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Options row */}
+        <div className="mb-4 flex items-center gap-4">
+          <label className="flex items-center gap-2 text-sm text-fg">
+            <input
+              type="checkbox"
+              checked={isUnique}
+              onChange={(e) => setIsUnique(e.target.checked)}
+              className="accent-blue-500"
+            />
+            {t('indexes.unique')}
+          </label>
+
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-fg-secondary">{t('indexes.indexType')}</span>
+            <Select
+              className="!h-7 !text-xs w-28"
+              value={indexType}
+              options={supportedMethods.map((method) => ({
+                value: method,
+                label: INDEX_METHOD_LABELS[method],
+              }))}
+              onChange={(v) => setIndexType(v as typeof indexType)}
+            />
+          </div>
+        </div>
+
+        {/* SQL preview */}
+        {selectedCols.length > 0 && (
+          <div className="mb-4 rounded border border-edge bg-surface-alt p-2.5">
+            <div className="mb-1 text-[10px] font-medium uppercase text-fg-muted">{t('indexes.sqlPreview')}</div>
+            <code className="block whitespace-pre-wrap text-xs text-green-400">
+              {buildCreateIndexSql(indexName.trim() || autoName, selectedCols)}
+            </code>
+          </div>
+        )}
+
+        {/* Actions */}
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" onClick={onCancel} disabled={submitting}>
+            {t('common.cancel')}
+          </Button>
+          <Button
+            onClick={handleSubmit}
+            disabled={selectedCols.length === 0 || submitting}
+          >
+            {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+            {t('indexes.createIndex')}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Delete Confirm Dialog ────────────────────────────────────────
+
+interface DeleteConfirmProps {
+  indexName: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+  submitting: boolean;
+}
+
+function DeleteConfirmDialog({ indexName, onConfirm, onCancel, submitting }: DeleteConfirmProps) {
+  const { t } = useI18n();
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" role="dialog" aria-modal="true">
+      <div className="w-[400px] rounded-lg border border-edge bg-surface p-5 shadow-xl">
+        <div className="mb-3 flex items-center gap-2 text-amber-400">
+          <AlertTriangle className="h-5 w-5" />
+          <h3 className="text-base font-semibold">{t('indexes.confirmDeleteTitle')}</h3>
+        </div>
+        <p className="mb-4 text-sm text-fg-secondary">
+          {t('indexes.confirmDeleteMsg', { name: indexName })}
+        </p>
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" onClick={onCancel} disabled={submitting}>
+            {t('common.cancel')}
+          </Button>
+          <Button variant="danger" onClick={onConfirm} disabled={submitting}>
+            {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+            {t('common.delete')}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Main IndexesView ─────────────────────────────────────────────
+
+export function IndexesView({ connectionId, tableName, createIndexTrigger, databaseType, onEditStructure }: IndexesViewProps) {
+  const { t } = useI18n();
+  const dbMeta = DB_REGISTRY[databaseType as DatabaseType];
+  const indexDialect = databaseType ? getSqlDialect(databaseType as DatabaseType)?.index : null;
+  const q = dbMeta?.quoteChar || '"';
   const [indexes, setIndexes] = useState<IndexInfo[]>([]);
+  const [columns, setColumns] = useState<ColumnSchema[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
   const [version, setVersion] = useState(0);
 
   const loadSchema = useCallback(() => {
@@ -36,6 +246,7 @@ export function IndexesView({ connectionId, tableName, onEditStructure }: Indexe
       .then((schema: TableSchema) => {
         if (!cancelled) {
           setIndexes(schema.indexes);
+          setColumns(schema.columns);
           setLoading(false);
         }
       })
@@ -50,6 +261,43 @@ export function IndexesView({ connectionId, tableName, onEditStructure }: Indexe
   }, [connectionId, tableName, version, t]);
 
   useEffect(() => loadSchema(), [loadSchema]);
+
+  useEffect(() => {
+    if (createIndexTrigger && createIndexTrigger > 0) setShowCreate(true);
+  }, [createIndexTrigger]);
+
+  const handleCreateIndex = async (sql: string) => {
+    setSubmitting(true);
+    try {
+      await databaseCommands.executeSQL(connectionId, sql);
+      invalidateSchemaCache(connectionId, tableName);
+      setShowCreate(false);
+      setVersion((v) => v + 1);
+    } catch (e) {
+      const msg = typeof e === 'string' ? e : e instanceof Error ? e.message : t('indexes.createFailed');
+      setError(msg);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDropIndex = async () => {
+    if (!deleteTarget) return;
+    setSubmitting(true);
+    try {
+      const dropSql = indexDialect?.getDropIndexSql(deleteTarget, tableName, q)
+        ?? `DROP INDEX ${q}${deleteTarget}${q}`;
+      await databaseCommands.executeSQL(connectionId, dropSql);
+      invalidateSchemaCache(connectionId, tableName);
+      setDeleteTarget(null);
+      setVersion((v) => v + 1);
+    } catch (e) {
+      const msg = typeof e === 'string' ? e : e instanceof Error ? e.message : t('indexes.deleteFailed');
+      setError(msg);
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -73,6 +321,7 @@ export function IndexesView({ connectionId, tableName, onEditStructure }: Indexe
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
+      {/* Header */}
       <div className="flex items-center gap-2 px-4 py-3">
         <span className="text-base font-semibold text-fg">{tableName}</span>
         <span className="text-sm text-fg-muted">· {t('indexes.count', { count: indexes.length })}</span>
@@ -87,8 +336,17 @@ export function IndexesView({ connectionId, tableName, onEditStructure }: Indexe
             {t('indexes.editInStructure')}
           </Button>
         )}
+        <Button
+          variant="secondary"
+          className="h-7 gap-1 px-2 text-xs"
+          onClick={() => setShowCreate(true)}
+        >
+          <Plus className="h-3.5 w-3.5" />
+          {t('indexes.newIndex')}
+        </Button>
       </div>
 
+      {/* Table or empty state */}
       {indexes.length === 0 ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-3 text-fg-muted">
           <span className="text-sm">{t('indexes.noIndexes')}</span>
@@ -102,6 +360,14 @@ export function IndexesView({ connectionId, tableName, onEditStructure }: Indexe
               {t('indexes.editInStructure')}
             </Button>
           )}
+          <Button
+            variant="secondary"
+            className="h-8 gap-1 text-xs"
+            onClick={() => setShowCreate(true)}
+          >
+            <Plus className="h-3.5 w-3.5" />
+            {t('indexes.createFirst')}
+          </Button>
         </div>
       ) : (
         <div className="min-h-0 flex-1 overflow-auto">
@@ -113,11 +379,12 @@ export function IndexesView({ connectionId, tableName, onEditStructure }: Indexe
                 <th className="border-b border-edge px-4 py-2.5 font-medium">{t('indexes.colType')}</th>
                 <th className="border-b border-edge px-4 py-2.5 font-medium">{t('indexes.colUnique')}</th>
                 <th className="border-b border-edge px-4 py-2.5 font-medium">{t('indexes.colPrimary')}</th>
+                <th className="border-b border-edge px-4 py-2.5 font-medium w-16">{t('indexes.colActions')}</th>
               </tr>
             </thead>
             <tbody>
               {indexes.map((idx) => (
-                <tr key={idx.name} data-index-name={idx.name} className="border-b border-edge bg-surface hover:bg-surface-alt/50">
+                <tr key={idx.name} data-index-name={idx.name} className="group border-b border-edge bg-surface hover:bg-surface-alt/50">
                   <td className="px-4 py-2.5 font-mono text-fg">{idx.name}</td>
                   <td className="px-4 py-2.5">
                     <div className="flex flex-wrap gap-1">
@@ -139,11 +406,44 @@ export function IndexesView({ connectionId, tableName, onEditStructure }: Indexe
                       {idx.isPrimary ? 'YES' : 'NO'}
                     </span>
                   </td>
+                  <td className="px-4 py-2.5">
+                    {!idx.isPrimary && (
+                      <button
+                        className="rounded p-1 text-fg-muted opacity-0 transition hover:bg-red-500/10 hover:text-red-400 group-hover:opacity-100"
+                        title={t('indexes.deleteIndex')}
+                        onClick={() => setDeleteTarget(idx.name)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+      )}
+
+      {/* Create Index Dialog */}
+      {showCreate && (
+        <CreateIndexDialog
+          columns={columns}
+          tableName={tableName}
+          onSubmit={handleCreateIndex}
+          onCancel={() => setShowCreate(false)}
+          submitting={submitting}
+          databaseType={databaseType}
+        />
+      )}
+
+      {/* Delete Confirm Dialog */}
+      {deleteTarget && (
+        <DeleteConfirmDialog
+          indexName={deleteTarget}
+          onConfirm={handleDropIndex}
+          onCancel={() => setDeleteTarget(null)}
+          submitting={submitting}
+        />
       )}
     </div>
   );

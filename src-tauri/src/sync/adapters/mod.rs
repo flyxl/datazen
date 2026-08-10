@@ -1,9 +1,10 @@
-//! Concrete sync adapters for each supported database type.
+//! Host-side sync adapter leftovers (roundtrip tests only).
+//!
+//! Concrete adapters live in path/git driver crates and self-register via inventory.
 
-pub mod mysql;
-pub mod postgresql;
-pub mod sqlite;
-pub mod trino;
+/// No residual host adapters; path/git drivers register via `inventory`.
+#[inline(never)]
+pub fn force_link() {}
 
 #[cfg(test)]
 mod roundtrip_tests;

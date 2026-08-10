@@ -45,7 +45,7 @@ describe('normalizeAiProviders', () => {
   it('removes anthropic and adds deep_seek with defaults', () => {
     const result = normalizeAiProviders([openAi, anthropic, custom]);
 
-    expect(result.map((p) => p.providerType)).toEqual(['open_ai', 'deep_seek', 'custom']);
+    expect(result.map((p) => p.providerType)).toEqual(['open_ai', 'deep_seek', 'ollama', 'custom']);
     expect(result.find((p) => p.providerType === 'deep_seek')).toEqual(DEEP_SEEK_PROVIDER);
   });
 
