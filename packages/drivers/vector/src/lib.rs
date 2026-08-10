@@ -5,7 +5,9 @@ use std::sync::Arc;
 use datazen_driver_api::*;
 
 mod vector;
+mod sync_adapter;
 pub use vector::*;
+pub use sync_adapter::VectorSyncAdapter;
 
 struct VectorFactory;
 impl DatabaseDriverFactory for VectorFactory {

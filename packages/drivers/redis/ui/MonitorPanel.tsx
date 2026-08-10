@@ -15,21 +15,7 @@ import { useSettingsStore } from '../../../../src/stores/settingsStore';
 import { parseInfoSections, type InfoSection } from './infoParse';
 import { StreamOverview } from './StreamOverview';
 import { ClusterNodePicker } from './ClusterNodePicker';
-
-function readClusterRouting(raw: unknown): 'auto' | 'pinnedNode' {
-  if (!raw || typeof raw !== 'object') return 'auto';
-  const value = (raw as { clusterRouting?: unknown }).clusterRouting;
-  return value === 'pinnedNode' ? 'pinnedNode' : 'auto';
-}
-
-function resolvePinnedNodeAddr(
-  clusterRouting: 'auto' | 'pinnedNode',
-  pinnedNodeAddr?: string,
-): string | null {
-  if (clusterRouting !== 'pinnedNode') return null;
-  const addr = pinnedNodeAddr?.trim();
-  return addr ? addr : null;
-}
+import { readClusterRouting, resolvePinnedNodeAddr } from './settingsHelpers';
 
 export interface MonitorPanelProps {
   connectionId: string;

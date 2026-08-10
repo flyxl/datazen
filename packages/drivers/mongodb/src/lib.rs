@@ -5,7 +5,9 @@ use std::sync::Arc;
 use datazen_driver_api::*;
 
 mod mongodb;
+mod sync_adapter;
 pub use mongodb::*;
+pub use sync_adapter::MongodbSyncAdapter;
 
 struct MongodbFactory;
 impl DatabaseDriverFactory for MongodbFactory {

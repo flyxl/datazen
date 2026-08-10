@@ -33,6 +33,10 @@ pub(crate) async fn execute_query_impl(
                 ms = result.total_time_ms,
                 "execute_query OK"
             );
+            if crate::cache::sql_may_mutate_schema(&sql) {
+                state.schema_cache.clear_connection(&connection_id).await;
+                tracing::debug!(%connection_id, "schema cache cleared after DDL");
+            }
             let total_rows: u64 = result
                 .results
                 .iter()

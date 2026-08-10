@@ -6,7 +6,7 @@ const PG_OPTIONS = [
   { id: 'create', label: '--create' },
   { id: 'no-owner', label: '--no-owner' },
   { id: 'schema-only', label: '--schema-only' },
-  { id: 'format-custom', label: '--format=custom' },
+  // format-custom removed: requires pg_dump binary format, not supported in-process
 ];
 
 export const postgresqlDialect: SqlDialectStrategy = {

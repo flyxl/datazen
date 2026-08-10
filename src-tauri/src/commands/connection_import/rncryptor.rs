@@ -2,14 +2,13 @@
 
 use super::super::error::CommandError;
 use aes::Aes256;
-use cbc::cipher::{block_padding::Pkcs7, BlockDecryptMut, BlockEncryptMut, KeyIvInit};
+use cbc::cipher::{block_padding::Pkcs7, BlockDecryptMut, KeyIvInit};
 use hmac::{Hmac, Mac};
 use pbkdf2::pbkdf2_hmac;
 use sha1::Sha1;
 use sha2::Sha256;
 
 type Aes256CbcDec = cbc::Decryptor<Aes256>;
-type Aes256CbcEnc = cbc::Encryptor<Aes256>;
 type HmacSha256 = Hmac<Sha256>;
 
 const PBKDF2_ITERS: u32 = 10_000;
@@ -70,7 +69,10 @@ pub fn decrypt_password(data: &[u8], password: &str) -> Result<Vec<u8>, CommandE
 /// Encrypt for unit tests / fixtures.
 #[cfg(test)]
 pub fn encrypt_password(plaintext: &[u8], password: &str) -> Result<Vec<u8>, CommandError> {
+    use cbc::cipher::BlockEncryptMut;
     use rand::RngCore;
+
+    type Aes256CbcEnc = cbc::Encryptor<Aes256>;
 
     if password.is_empty() {
         return Err(CommandError::Validation("Password is required".into()));

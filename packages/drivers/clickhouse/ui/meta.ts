@@ -3,8 +3,8 @@ import type { DatabaseTypeMeta } from '@datazen/plugin-sdk';
 export const clickhouseMeta = {
     label: 'ClickHouse',
     shortLabel: 'Ch',
-    iconBg: 'bg-yellow-600',
-    iconColor: 'text-yellow-400',
+    iconBg: 'bg-warning',
+    iconColor: 'text-warning',
     defaultPort: 8123,
     defaultHost: '127.0.0.1',
     defaultUser: 'default',

@@ -3,8 +3,8 @@ import type { DatabaseTypeMeta } from '@datazen/plugin-sdk';
 export const duckdbMeta = {
     label: 'DuckDB',
     shortLabel: 'Dk',
-    iconBg: 'bg-violet-600',
-    iconColor: 'text-violet-400',
+    iconBg: 'bg-accent',
+    iconColor: 'text-accent',
     defaultPort: 0,
     defaultHost: '',
     defaultUser: '',

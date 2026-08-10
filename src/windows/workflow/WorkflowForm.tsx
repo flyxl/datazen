@@ -76,12 +76,16 @@ export function WorkflowForm({
           <div key={i} className="mb-2 flex items-center gap-2">
             <input className={inputClass} value={v.name} placeholder={t('workflows.form.varName')} style={{ width: '25%' }}
               onChange={(e) => { const vars = [...draft.variables]; vars[i] = { ...vars[i], name: e.target.value }; onDraftChange({ ...draft, variables: vars }); }} />
-            <select className={inputClass} value={v.varType} style={{ width: '20%' }}
-              onChange={(e) => { const vars = [...draft.variables]; vars[i] = { ...vars[i], varType: e.target.value }; onDraftChange({ ...draft, variables: vars }); }}>
-              <option value="string">string</option>
-              <option value="number">number</option>
-              <option value="connection">{t('workflows.form.varTypeConnection')}</option>
-            </select>
+            <Select
+              value={v.varType}
+              options={[
+                { value: 'string', label: 'string' },
+                { value: 'number', label: 'number' },
+                { value: 'connection', label: t('workflows.form.varTypeConnection') },
+              ]}
+              onChange={(val) => { const vars = [...draft.variables]; vars[i] = { ...vars[i], varType: val }; onDraftChange({ ...draft, variables: vars }); }}
+              className="!h-8 !text-xs w-[20%]"
+            />
             <input className={inputClass} value={v.description} placeholder={t('workflows.form.varDesc')} style={{ width: '35%' }}
               onChange={(e) => { const vars = [...draft.variables]; vars[i] = { ...vars[i], description: e.target.value }; onDraftChange({ ...draft, variables: vars }); }} />
             <label className="flex items-center gap-1 text-xs text-fg-muted whitespace-nowrap">

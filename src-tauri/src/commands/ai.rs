@@ -1,6 +1,7 @@
 //! AI-related Tauri IPC commands.
 
 use crate::ai::*;
+use crate::ai::budget;
 use crate::ai::prompt_resolver::{PromptInfo, PromptOverrideEntry};
 use crate::commands::error::{CmdExt, CommandError};
 use crate::commands::AppState;
@@ -257,26 +258,9 @@ pub(crate) async fn ai_generate_sql_impl(
     if let Some(ref ctx_files) = context_files {
         if !ctx_files.is_empty() {
             let ctx_dir = super::context::resolve_context_dir_from_state(&state).await?;
-            let mut ctx_parts = Vec::new();
-            for rel_path in ctx_files {
-                let full_path = ctx_dir.join(rel_path);
-                if full_path.is_dir() {
-                    let files = super::context::collect_files_in_dir(&full_path);
-                    for file_path in files {
-                        if let Ok(content) = super::context::read_single_file(&file_path).await {
-                            let display = file_path
-                                .strip_prefix(&ctx_dir)
-                                .unwrap_or(&file_path)
-                                .to_string_lossy();
-                            ctx_parts.push(format!("[Context: {display}]\n{content}"));
-                        }
-                    }
-                } else if let Ok(content) = super::context::read_single_file(&full_path).await {
-                    ctx_parts.push(format!("[Context: {rel_path}]\n{content}"));
-                }
-            }
-            if !ctx_parts.is_empty() {
-                let context_block = ctx_parts.join("\n\n");
+            let entries = super::context::read_context_paths(&ctx_dir, ctx_files).await?;
+            if !entries.is_empty() {
+                let context_block = super::context::format_context_block(&entries);
                 natural_language = format!("{context_block}\n\n{natural_language}");
             }
         }
@@ -307,8 +291,8 @@ pub(crate) async fn ai_generate_sql_impl(
             &database,
             &pinned,
             supports_tools,
-            4000,
-            4000,
+            budget::PINNED_DDL,
+            budget::FALLBACK_DDL,
         )
         .await
         .cmd_err("ai_generate_sql")?;
@@ -449,7 +433,7 @@ pub(crate) async fn ai_diagnose_error_impl(
 
     let context = state
         .schema_context_builder
-        .build_sql_context(&connection_id, &database, None, &[], 3000)
+        .build_sql_context(&connection_id, &database, None, &[], budget::DIAGNOSE)
         .await
         .cmd_err("ai_diagnose_error")?;
 
@@ -545,7 +529,7 @@ pub(crate) async fn ai_analyze_explain_impl(
         .await
         .cmd_err("ai_analyze_explain")?;
 
-    let db_type = format!("{:?}", driver.driver_type());
+    let db_type = prompt_db_type(driver.as_ref());
 
     let lang = state.store.get_settings().await.language;
     let mut vars = HashMap::new();
@@ -647,7 +631,7 @@ pub(crate) async fn ai_parse_filter_impl(
         .await
         .cmd_err("ai_parse_filter")?;
 
-    let db_type = format!("{:?}", driver.driver_type());
+    let db_type = prompt_db_type(driver.as_ref());
 
     let cached = state
         .schema_cache
@@ -1041,7 +1025,7 @@ pub(crate) async fn ai_chat_impl(
                 let supports_tools = provider.supports_tools();
                 let pipeline = SchemaContextPipeline::new(state.schema_context_builder.clone());
                 match pipeline
-                    .resolve(conn_id, db, &pinned, supports_tools, 4000, 4000)
+                    .resolve(conn_id, db, &pinned, supports_tools, budget::PINNED_DDL, budget::FALLBACK_DDL)
                     .await
                 {
                     Ok(seed) => {
@@ -1128,31 +1112,14 @@ pub(crate) async fn ai_chat_impl(
     if let Some(ref ctx_files) = context_files {
         if !ctx_files.is_empty() {
             let ctx_dir = super::context::resolve_context_dir_from_state(&state).await?;
-            let mut ctx_parts = Vec::new();
-            for rel_path in ctx_files {
-                let full_path = ctx_dir.join(rel_path);
-                if full_path.is_dir() {
-                    let files = super::context::collect_files_in_dir(&full_path);
-                    for file_path in files {
-                        if let Ok(content) = super::context::read_single_file(&file_path).await {
-                            let display = file_path
-                                .strip_prefix(&ctx_dir)
-                                .unwrap_or(&file_path)
-                                .to_string_lossy();
-                            ctx_parts.push(format!("[Context: {display}]\n{content}"));
-                        }
-                    }
-                } else if let Ok(content) = super::context::read_single_file(&full_path).await {
-                    ctx_parts.push(format!("[Context: {rel_path}]\n{content}"));
-                }
-            }
-            if !ctx_parts.is_empty() {
+            let entries = super::context::read_context_paths(&ctx_dir, ctx_files).await?;
+            if !entries.is_empty() {
                 if let Some(last_user) = full_messages
                     .iter_mut()
                     .rev()
                     .find(|m| m.role == MessageRole::User)
                 {
-                    let context_block = ctx_parts.join("\n\n");
+                    let context_block = super::context::format_context_block(&entries);
                     last_user.content = format!("{context_block}\n\n{}", last_user.content);
                 }
             }
@@ -1646,7 +1613,7 @@ pub(crate) async fn ai_generate_schema_doc_impl(
     // Step 2: Get detailed schema for selected tables only
     let context = state
         .schema_context_builder
-        .build_selective_context(&connection_id, &database, &selected_tables, 8000)
+        .build_selective_context(&connection_id, &database, &selected_tables, budget::SCHEMA_DOC)
         .await
         .cmd_err("ai_generate_schema_doc")?;
 
@@ -2283,7 +2250,10 @@ mod tests {
         assert!(!prompts.is_empty());
 
         let workflows = workflow_list_impl(&test.state).await.unwrap();
-        assert!(workflows.is_empty());
+        assert!(
+            workflows.iter().any(|w| w.id.starts_with("builtin-")),
+            "empty workflow dir should be seeded with builtin workflows, got: {workflows:?}"
+        );
 
         let cfg = AiProviderConfig {
             provider_type: AiProviderType::OpenAi,

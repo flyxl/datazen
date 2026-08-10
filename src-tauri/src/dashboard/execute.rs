@@ -96,6 +96,7 @@ fn build_timeout_run(
 }
 
 /// Build and persist an error-status run using monitor retention settings.
+#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn persist_error_run(
     data_dir: &Path,
     settings: &AppSettings,

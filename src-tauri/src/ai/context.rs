@@ -6,6 +6,11 @@ use datazen_ai_api::SqlGenerationContext;
 use datazen_driver_api::TableSchema;
 use std::sync::Arc;
 
+/// Stable prompt-facing database type string (no Debug quotes).
+pub fn prompt_db_type(driver: &dyn crate::db::DatabaseDriver) -> String {
+    driver.driver_type()
+}
+
 pub struct SchemaContextBuilder {
     schema_cache: Arc<SchemaCache>,
     connection_manager: Arc<ConnectionManager>,
@@ -34,7 +39,7 @@ impl SchemaContextBuilder {
             .await
             .map_err(|e| e.to_string())?;
 
-        let db_type = format!("{:?}", driver.driver_type());
+        let db_type = prompt_db_type(driver.as_ref());
 
         let tables = driver
             .get_tables(&handle, database)
@@ -59,7 +64,7 @@ impl SchemaContextBuilder {
             .await
             .map_err(|e| e.to_string())?;
 
-        let db_type = format!("{:?}", driver.driver_type());
+        let db_type = prompt_db_type(driver.as_ref());
         let mut ddl_parts = Vec::new();
         let mut token_estimate = 0;
 
@@ -114,7 +119,7 @@ impl SchemaContextBuilder {
             .await
             .map_err(|e| e.to_string())?;
 
-        let db_type = format!("{:?}", driver.driver_type());
+        let db_type = prompt_db_type(driver.as_ref());
 
         let tables = driver
             .get_tables(&handle, database)
@@ -182,7 +187,107 @@ fn format_compact_ddl(table_name: &str, schema: &TableSchema) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use datazen_driver_api::ColumnSchema;
+    use async_trait::async_trait;
+    use datazen_driver_api::{
+        ColumnSchema, ConnectionConfig, ConnectionHandle, DatabaseDriver, DriverError,
+        MultiQueryResult, QueryResult, ServerInfo, TableInfo, TableSchema, Value,
+    };
+
+    struct StubDriver;
+
+    #[async_trait]
+    impl DatabaseDriver for StubDriver {
+        fn driver_type(&self) -> String {
+            "postgresql".into()
+        }
+
+        async fn connect(
+            &self,
+            _config: &ConnectionConfig,
+        ) -> Result<ConnectionHandle, DriverError> {
+            Err(DriverError::QueryFailed("stub".into()))
+        }
+
+        async fn test_connection(
+            &self,
+            _config: &ConnectionConfig,
+        ) -> Result<ServerInfo, DriverError> {
+            Err(DriverError::QueryFailed("stub".into()))
+        }
+
+        async fn disconnect(&self, _handle: ConnectionHandle) -> Result<(), DriverError> {
+            Ok(())
+        }
+
+        async fn get_databases(
+            &self,
+            _handle: &ConnectionHandle,
+        ) -> Result<Vec<String>, DriverError> {
+            Ok(vec![])
+        }
+
+        async fn get_tables(
+            &self,
+            _handle: &ConnectionHandle,
+            _database: &str,
+        ) -> Result<Vec<TableInfo>, DriverError> {
+            Ok(vec![])
+        }
+
+        async fn get_table_schema(
+            &self,
+            _handle: &ConnectionHandle,
+            _table: &str,
+        ) -> Result<TableSchema, DriverError> {
+            Err(DriverError::QueryFailed("stub".into()))
+        }
+
+        async fn query(
+            &self,
+            _handle: &ConnectionHandle,
+            _sql: &str,
+        ) -> Result<QueryResult, DriverError> {
+            Err(DriverError::QueryFailed("stub".into()))
+        }
+
+        async fn query_multi(
+            &self,
+            _handle: &ConnectionHandle,
+            _sql: &str,
+            _limit: Option<u32>,
+        ) -> Result<MultiQueryResult, DriverError> {
+            Err(DriverError::QueryFailed("stub".into()))
+        }
+
+        async fn query_with_params(
+            &self,
+            _handle: &ConnectionHandle,
+            _sql: &str,
+            _params: &[Value],
+        ) -> Result<QueryResult, DriverError> {
+            Err(DriverError::QueryFailed("stub".into()))
+        }
+
+        async fn execute(
+            &self,
+            _handle: &ConnectionHandle,
+            _sql: &str,
+        ) -> Result<u64, DriverError> {
+            Ok(0)
+        }
+
+        async fn cancel_query(&self, _handle: &ConnectionHandle) -> Result<(), DriverError> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn prompt_db_type_has_no_debug_quotes() {
+        let driver = StubDriver;
+        let db_type = prompt_db_type(&driver);
+        assert_eq!(db_type, "postgresql");
+        assert!(!db_type.contains('"'));
+    }
 
     #[test]
     fn test_format_compact_ddl_basic() {

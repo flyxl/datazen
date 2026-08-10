@@ -321,6 +321,8 @@ export function SqlConnectionView({
     }
   }, [connectionId, currentDatabase, databaseType, loadTables, loadForConnection]);
 
+  const [createIndexTrigger, setCreateIndexTrigger] = useState(0);
+
   const contextMenuItems: ContextMenuEntry[] = useMemo(() => {
     if (!activePanel) {
       return [{ id: 'new-query', label: t('connWin.newQuery'), icon: <Plus className="h-3.5 w-3.5" /> }];
@@ -339,9 +341,17 @@ export function SqlConnectionView({
         case 'structure':
           if (!showStructureEditor) return common;
           return [{ id: 'edit-structure', label: t('connWin.editStructure'), icon: <Pencil className="h-3.5 w-3.5" /> }, sep, ...common];
-        case 'indexes':
-          if (!showStructureEditor) return common;
-          return [{ id: 'edit-structure', label: t('connWin.editStructure'), icon: <Pencil className="h-3.5 w-3.5" /> }, sep, ...common];
+        case 'indexes': {
+          const entries: ContextMenuEntry[] = [];
+          if (!isReadOnly) {
+            entries.push({ id: 'create-index', label: t('connWin.newIndex'), icon: <Plus className="h-3.5 w-3.5" /> });
+          }
+          if (showStructureEditor) {
+            entries.push({ id: 'edit-structure', label: t('connWin.editStructure'), icon: <Pencil className="h-3.5 w-3.5" /> });
+          }
+          if (entries.length === 0) return common;
+          return [...entries, sep, ...common];
+        }
         case 'ddl':
           return [{ id: 'copy-ddl', label: t('connWin.copyDDL'), icon: <ClipboardCopy className="h-3.5 w-3.5" /> }, sep, ...common];
         default:
@@ -350,7 +360,7 @@ export function SqlConnectionView({
     }
 
     return common;
-  }, [activePanel, showStructureEditor, t]);
+  }, [activePanel, showStructureEditor, isReadOnly, t]);
 
   const handleContextAction = useCallback((id: string) => {
     switch (id) {
@@ -368,6 +378,10 @@ export function SqlConnectionView({
       }
       case 'edit-structure': {
         if (activePanel?.type === 'table') handleAlterTable(activePanel.tableName);
+        break;
+      }
+      case 'create-index': {
+        setCreateIndexTrigger((v) => v + 1);
         break;
       }
     }
@@ -541,7 +555,7 @@ export function SqlConnectionView({
 
             <div
               ref={handleRef}
-              className="w-1 shrink-0 cursor-col-resize bg-transparent hover:bg-blue-500/30"
+              className="w-1 shrink-0 cursor-col-resize bg-transparent hover:bg-accent/30"
             />
           </>
         )}
@@ -596,7 +610,7 @@ export function SqlConnectionView({
                           <X className="h-3 w-3" />
                         </button>
                         {isActive && (
-                          <span className="absolute inset-x-0 bottom-0 h-0.5 bg-blue-500" />
+                          <span className="absolute inset-x-0 bottom-0 h-0.5 bg-accent" />
                         )}
                       </div>
                     );
@@ -630,7 +644,7 @@ export function SqlConnectionView({
                     >
                       {tab.label}
                       {activePanel.subTab === tab.id && (
-                        <span className="absolute inset-x-0 bottom-0 h-0.5 bg-blue-500" />
+                        <span className="absolute inset-x-0 bottom-0 h-0.5 bg-accent" />
                       )}
                     </button>
                   ))}
@@ -651,6 +665,8 @@ export function SqlConnectionView({
                     <IndexesView
                       connectionId={connectionId}
                       tableName={activePanel.tableName}
+                      createIndexTrigger={createIndexTrigger}
+                      databaseType={databaseType}
                       onEditStructure={showStructureEditor ? handleAlterTable : undefined}
                     />
                   )}
@@ -736,7 +752,7 @@ export function SqlConnectionView({
           <>
             <div
               ref={aiHandleRef}
-              className="w-1 shrink-0 cursor-col-resize bg-transparent hover:bg-blue-500/30"
+              className="w-1 shrink-0 cursor-col-resize bg-transparent hover:bg-accent/30"
             />
             <aside style={{ width: aiSidebarWidth }} className="shrink-0 border-l border-edge bg-surface">
               <AiChatPanel

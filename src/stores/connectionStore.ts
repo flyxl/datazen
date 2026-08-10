@@ -1,8 +1,13 @@
 import { create } from 'zustand';
 import { connectionCommands } from '../commands/connection';
 import { emitCrossWindow } from '../lib/crossWindowBus';
+import { normalizeGroupKey, normalizeGroupList } from '../lib/connectionGroups';
 import { t } from '../locales/t';
 import type { ConnectionConfig, ServerInfo } from '../types';
+
+function storedGroupEquals(a: string | undefined, b: string | undefined): boolean {
+  return (a || undefined) === (b || undefined);
+}
 
 const EVENT_CONNECTIONS_CHANGED = 'datazen:connections-changed';
 
@@ -92,7 +97,16 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
     set({ loading: true, error: null });
     try {
       const connections = await connectionCommands.getConnections();
-      set({ connections, loading: false });
+      const normalized = connections.map((c) => {
+        const group = normalizeGroupKey(c.group);
+        return storedGroupEquals(c.group, group) ? c : { ...c, group };
+      });
+      for (let i = 0; i < connections.length; i++) {
+        if (!storedGroupEquals(connections[i].group, normalized[i].group)) {
+          await connectionCommands.saveConnection(normalized[i]);
+        }
+      }
+      set({ connections: normalized, loading: false });
     } catch (e) {
       set({
         loading: false,
@@ -104,7 +118,14 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
   fetchGroups: async () => {
     try {
       const groups = await connectionCommands.getGroups();
-      set({ groups });
+      const normalized = normalizeGroupList(groups);
+      const changed =
+        normalized.length !== groups.length ||
+        normalized.some((g, i) => g !== groups[i]);
+      if (changed) {
+        await connectionCommands.saveGroups(normalized);
+      }
+      set({ groups: normalized });
     } catch (e) {
       console.error('[connectionStore] fetchGroups failed', e);
     }
@@ -113,7 +134,8 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
   saveConnection: async (config) => {
     set({ loading: true, error: null });
     try {
-      await connectionCommands.saveConnection(config);
+      const normalized = { ...config, group: normalizeGroupKey(config.group) };
+      await connectionCommands.saveConnection(normalized);
       await get().fetchConnections();
       await get().fetchGroups();
       void emitCrossWindow(EVENT_CONNECTIONS_CHANGED);
@@ -158,7 +180,7 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
   },
 
   addGroup: async (name) => {
-    const trimmed = name.trim();
+    const trimmed = normalizeGroupKey(name.trim());
     if (!trimmed) return;
     const { groups } = get();
     if (groups.includes(trimmed)) return;
@@ -168,10 +190,10 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
   },
 
   renameGroup: async (oldName, newName) => {
-    const trimmed = newName.trim();
+    const trimmed = normalizeGroupKey(newName.trim());
     if (!trimmed || trimmed === oldName) return;
     const { groups, connections } = get();
-    const updated = groups.map((g) => (g === oldName ? trimmed : g));
+    const updated = normalizeGroupList(groups.map((g) => (g === oldName ? trimmed : g)));
     await connectionCommands.saveGroups(updated);
     for (const c of connections) {
       if (c.group === oldName) {
@@ -199,7 +221,7 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
     const { connections } = get();
     const conn = connections.find((c) => c.id === connectionId);
     if (!conn) return;
-    await connectionCommands.saveConnection({ ...conn, group });
+    await connectionCommands.saveConnection({ ...conn, group: normalizeGroupKey(group) });
     await get().fetchConnections();
     void emitCrossWindow(EVENT_CONNECTIONS_CHANGED);
   },

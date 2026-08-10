@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { FolderPlus } from 'lucide-react';
 import { cn } from '../../lib/cn';
+import { formatGroupLabel } from '../../lib/connectionGroups';
 import { Input } from '../../components/ui/Input';
 import { useI18n } from '../../hooks/useI18n';
 
@@ -64,7 +65,7 @@ export function GroupPanel({ groups, selectedGroup, onSelectGroup, onAddGroup }:
                   : 'text-fg-secondary hover:bg-surface/50 hover:text-fg',
               )}
             >
-              {g}
+              {formatGroupLabel(g, t)}
             </button>
           ))}
 

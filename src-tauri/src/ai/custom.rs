@@ -107,6 +107,12 @@ impl AiProvider for CustomProvider {
         true
     }
 
+    fn supports_tools(&self) -> bool {
+        // Custom providers share Chat / Responses / Anthropic-compatible protocols
+        // that already implement tool calling in `ai/protocol/`.
+        true
+    }
+
     async fn validate_config(&self, config: &AiProviderConfig) -> Result<(), AiError> {
         let key = config
             .api_key

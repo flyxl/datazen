@@ -129,7 +129,7 @@ DATAZEN_DRIVERS=all pnpm tauri:build   # 全部 path 原生驱动（不含 kiwi/
 - **视图路由**：`connectionViews/index.ts` 映射 `connectionMode` → 视图组件
 - **多库会话**：`hasMultiDatabase` 为驱动能力；未配置逻辑库时列出全部可见库（`MultiDatabaseSchemaTree`）；配置了**逻辑库名**（且出现在 `get_databases` 列表）时锁定单库。Kiwi 的 `database` 字段是实例 **domain**（`databaseFieldType: 'domain'`），不参与锁定。会话 `isMultiDatabase = hasMultiDatabase && 可见库数量 > 1`；切库走 `use_database`
 - **多窗口**：`windowManager.ts` + `windowKind.ts` URL 参数路由，`App.tsx` 按 kind 懒加载
-- **IPC 约定**：前端 `invoke()` 传参使用 `snake_case` key 与后端对齐
+- **IPC 约定**：前端 `invoke()` 传参对象键名使用 camelCase（如 `connectionId`）；Rust 命令形参为 snake_case，Tauri 自动映射；嵌套 DTO 通常 `#[serde(rename_all = "camelCase")]`
 
 ### IPC 通信
 

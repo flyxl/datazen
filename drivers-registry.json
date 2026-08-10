@@ -97,7 +97,7 @@
   "kiwi": {
     "source": "git",
     "git": "https://github.com/flyxl/datazen-driver-kiwi.git",
-    "ref": "b9cc1bdd2884ef9f95287c0b038664ec9f4f3598",
+    "ref": "5a3f0dedb0cd65cee709d4283c1a1ae8c025c8e3",
     "feature": "plugin-kiwi",
     "description": "Kiwi cloud database proxy",
     "tauriPlugin": {
@@ -109,7 +109,7 @@
   "olap": {
     "source": "git",
     "git": "https://github.com/flyxl/datazen-driver-olap.git",
-    "ref": "3c378556544a5aca93a95cede6a839a41b547425",
+    "ref": "58b5bd2ce8306f0086534ba512a59c221e913546",
     "feature": "plugin-olap",
     "description": "Presto / Trino OLAP engines"
   },

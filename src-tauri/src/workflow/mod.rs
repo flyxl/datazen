@@ -8,6 +8,7 @@ pub mod workflows;
 
 pub use history::{HistoryEntry, HistoryListItem, WorkflowHistoryManager};
 pub use workflows::{
-    StepExecutionResult, StepStatus, WorkflowDefinition, WorkflowExecutionResult, WorkflowExecutor,
-    WorkflowListItem, WorkflowRegistry, WorkflowStep,
+    enforce_workflow_query_guards, StepExecutionResult, StepStatus, WorkflowDefinition,
+    WorkflowExecuteOptions, WorkflowExecutionResult, WorkflowExecutor, WorkflowListItem,
+    WorkflowRegistry, WorkflowStep, WORKFLOW_QUERY_ROW_LIMIT,
 };

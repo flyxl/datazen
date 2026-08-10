@@ -1,8 +1,9 @@
 //! Sync adapter traits — the bridge between native types and the IR.
 
 use super::ir::{IRColumn, IRDefault, IRTable, IRType};
-use crate::db::{ColumnSchema, TableSchema, Value};
+use crate::{ColumnSchema, TableSchema, Value};
 use std::collections::HashMap;
+use std::sync::Arc;
 
 /// Converts native column metadata into IR (used for the *source* side of a sync).
 pub trait SyncSourceAdapter: Send + Sync {
@@ -48,7 +49,21 @@ pub trait SyncSourceAdapter: Send + Sync {
             name: schema.table_name.clone(),
             columns,
             primary_keys: schema.primary_keys.clone(),
+            table_options: None,
         }
+    }
+
+    /// Optional SQL returning `(col_name, full_type)` rows for precision-preserving sync.
+    /// Default: none (host uses `column.data_type` only).
+    fn full_column_types_query(&self, _table: &str) -> Option<String> {
+        None
+    }
+
+    /// Optional SQL returning a single row whose first column is a CREATE TABLE suffix
+    /// (e.g. ClickHouse `ENGINE = MergeTree\nORDER BY (id)`).
+    /// Default: none.
+    fn table_options_query(&self, _table: &str) -> Option<String> {
+        None
     }
 }
 
@@ -89,4 +104,56 @@ pub trait SyncTargetAdapter: Send + Sync {
     fn auto_increment_keyword(&self) -> Option<&str> {
         None
     }
+
+    /// Appended after `CREATE TABLE (...)` closing paren. Default: use `ir_table.table_options` if present.
+    fn create_table_suffix(&self, ir_table: &IRTable) -> Option<String> {
+        ir_table.table_options.clone()
+    }
+
+    /// Optional value transform before formatting literals (identity by default).
+    fn transform_value(&self, value: &Option<Value>, _ir_type: &IRType) -> Option<Value> {
+        value.clone()
+    }
+}
+
+/// Type-erased sync adapter pair produced by driver crates.
+pub struct BoxedSyncAdapter {
+    pub source: Arc<dyn SyncSourceAdapter>,
+    pub target: Arc<dyn SyncTargetAdapter>,
+}
+
+impl BoxedSyncAdapter {
+    pub fn both<T>(adapter: T) -> Self
+    where
+        T: SyncSourceAdapter + SyncTargetAdapter + 'static,
+    {
+        let arc = Arc::new(adapter);
+        Self {
+            source: arc.clone(),
+            target: arc,
+        }
+    }
+}
+
+/// Inventory factory discovered by the host sync registry.
+pub struct SyncAdapterFactory {
+    pub db_types: &'static [&'static str],
+    pub create: fn() -> BoxedSyncAdapter,
+}
+
+inventory::collect!(SyncAdapterFactory);
+
+/// Helper: submit a sync adapter factory at link time.
+///
+/// ```ignore
+/// datazen_driver_api::register_sync_adapter!(SyncAdapterFactory {
+///     db_types: &["postgresql"],
+///     create: || BoxedSyncAdapter::both(PgSyncAdapter),
+/// });
+/// ```
+#[macro_export]
+macro_rules! register_sync_adapter {
+    ($factory:expr) => {
+        $crate::inventory::submit! { $factory }
+    };
 }

@@ -246,6 +246,7 @@ const zhCN = {
   'newConn.adbNoDatabases': '未找到数据库文件',
   'newConn.adbNotInstalled': 'adb 未安装或不在 PATH 中',
 
+
   // ── Settings ──
   'settings.title': '偏好设置',
   'settings.general': '通用',

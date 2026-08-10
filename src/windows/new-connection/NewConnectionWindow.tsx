@@ -10,6 +10,7 @@ import { useI18n } from '../../hooks/useI18n';
 import { cn } from '../../lib/cn';
 import { getUrlParam } from '../../lib/windowKind';
 import { DB_REGISTRY, sortDbTypesByPopularity } from '../../lib/databaseTypes';
+import { formatGroupLabel } from '../../lib/connectionGroups';
 import { filterDbTypesByQuery } from '../../lib/filterDbTypes';
 import { connectionCommands } from '../../commands/connection';
 import { ConnectionFormBody } from '../../components/connection/ConnectionFormBody';
@@ -75,7 +76,7 @@ export function NewConnectionWindow() {
   const groupOptions = useMemo(
     () => [
       { value: '', label: t('newConn.noGroup') },
-      ...groups.map((g) => ({ value: g, label: g })),
+      ...groups.map((g) => ({ value: g, label: formatGroupLabel(g, t) })),
     ],
     [groups, t],
   );

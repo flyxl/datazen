@@ -216,6 +216,7 @@ const translations = {
   'newConn.adbNoPackages': '타사 앱을 찾을 수 없습니다. 장치가 연결되어 있는지 확인하세요.',
   'newConn.adbNoDatabases': '데이터베이스 파일을 찾을 수 없습니다.',
   'newConn.adbNotInstalled': 'adb가 설치되지 않았거나 PATH에 없습니다.',
+
   'settings.title': '설정',
   'settings.general': '일반적인',
   'settings.extensions.title': '확장',

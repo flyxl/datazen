@@ -5,7 +5,9 @@ use std::sync::Arc;
 use datazen_driver_api::*;
 
 mod elasticsearch;
+mod sync_adapter;
 pub use elasticsearch::*;
+pub use sync_adapter::ElasticsearchSyncAdapter;
 
 struct ElasticsearchFactory;
 impl DatabaseDriverFactory for ElasticsearchFactory {

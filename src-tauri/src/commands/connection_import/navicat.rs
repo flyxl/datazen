@@ -4,13 +4,12 @@ use super::super::error::CommandError;
 use super::{ImportFormat, ParsedImport};
 use crate::db::{ConnectionConfig, SslMode, SshTunnelConfig};
 use aes::Aes128;
-use cbc::cipher::{block_padding::Pkcs7, BlockDecryptMut, BlockEncryptMut, KeyIvInit};
+use cbc::cipher::{block_padding::Pkcs7, BlockDecryptMut, KeyIvInit};
 use regex::Regex;
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
 type Aes128CbcDec = cbc::Decryptor<Aes128>;
-type Aes128CbcEnc = cbc::Encryptor<Aes128>;
 
 const NAVICAT_KEY: &[u8; 16] = b"libcckeylibcckey";
 const NAVICAT_IV: &[u8; 16] = b"libcciv libcciv ";
@@ -72,6 +71,9 @@ pub fn decrypt_password(hex: &str) -> String {
 
 #[cfg(test)]
 pub fn encrypt_password(plain: &str) -> String {
+    use cbc::cipher::BlockEncryptMut;
+    type Aes128CbcEnc = cbc::Encryptor<Aes128>;
+
     let mut buf = plain.as_bytes().to_vec();
     let pad = 16 - (buf.len() % 16);
     buf.extend(std::iter::repeat(0u8).take(pad));
