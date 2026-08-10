@@ -34,7 +34,10 @@
 | `transform_value` 钩子 + 表级断点 + **行级 resume_offset**（失败保存 offset，继续跳过已插入行） | ✅ |
 | PG `dump_table_ddl` catalog 保真 | ✅ |
 | SettingsWindow / DataSyncWindow 拆分 | ✅ |
-| Elasticsearch Sync | ❌ 有意不做（文档型存储，无关系表 IR 路径；无 adapter 时 `ensure_type` 明确报错） |
+| Elasticsearch Sync | ✅ 最小 IR（schema compare / 导出到 SQL 目标）；完整 SQL 往返仍可能失败 |
+| DuckDB / ClickHouse / 协议别名 questdb·manticore·ob_oracle | ✅ |
+| MongoDB / Influx / VictoriaMetrics / HBase / Vector Sync IR | ✅ 最小 IR |
+| Redis / Kiwi / Superset Sync IR | ❌ 非表模型或代理，不接关系 IR |
 | 外部 `pg_dump` / custom format | ❌ 有意不做（不 shell-out） |
 | 与 `main` 合并 | ⏸ 按需求单独处理（本轮不合并） |
 

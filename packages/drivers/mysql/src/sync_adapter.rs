@@ -19,8 +19,8 @@ fn create_mariadb() -> BoxedSyncAdapter {
 
 datazen_driver_api::inventory::submit! {
     SyncAdapterFactory {
-        // doris / starrocks: MySQL wire + information_schema (source-first)
-        db_types: &["mysql", "doris", "starrocks"],
+        // doris / starrocks / manticore / ob_oracle: MySQL wire + information_schema
+        db_types: &["mysql", "doris", "starrocks", "manticore", "ob_oracle"],
         create: create_mysql,
     }
 }
