@@ -2,7 +2,7 @@ import type { StructureCapabilities, StructureCapabilityFlag } from './types';
 import { isControlEnabled } from './isControlEnabled';
 
 /** i18n key shown as title/tooltip when a control is disabled by driver caps. */
-export function controlDisabledKey(_control: StructureCapabilityFlag): string {
+export function controlDisabledKey(_control: StructureCapabilityFlag): 'structEditor.capDisabled' {
   return 'structEditor.capDisabled';
 }
 
