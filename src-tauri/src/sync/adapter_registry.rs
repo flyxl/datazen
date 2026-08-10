@@ -106,6 +106,7 @@ fn force_link_driver_sync_adapters() {
         std::any::type_name::<datazen_driver_victoriametrics::VictoriaMetricsSyncAdapter>(),
         std::any::type_name::<datazen_driver_hbase::HBaseSyncAdapter>(),
         std::any::type_name::<datazen_driver_vector::VectorSyncAdapter>(),
+        #[cfg(feature = "plugin-olap")]
         std::any::type_name::<datazen_plugin_olap::TrinoSyncAdapter>(),
     );
 }
@@ -156,7 +157,9 @@ mod tests {
             "victoriametrics",
             "hbase",
             "vector",
+            #[cfg(feature = "plugin-olap")]
             "trino",
+            #[cfg(feature = "plugin-olap")]
             "presto",
         ] {
             assert!(
