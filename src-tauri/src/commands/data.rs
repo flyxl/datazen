@@ -17,9 +17,8 @@ pub struct RowUpdateBatch {
     pub pk_columns: Vec<CellUpdate>,
 }
 
-#[tauri::command]
-pub async fn commit_row_updates(
-    state: State<'_, AppState>,
+pub(crate) async fn commit_row_updates_impl(
+    state: &AppState,
     connection_id: String,
     table: String,
     updates: Vec<RowUpdateBatch>,
@@ -91,5 +90,57 @@ pub async fn commit_row_updates(
             }
             Err(e)
         }
+    }
+}
+
+#[tauri::command]
+pub async fn commit_row_updates(
+    state: State<'_, AppState>,
+    connection_id: String,
+    table: String,
+    updates: Vec<RowUpdateBatch>,
+) -> Result<(), CommandError> {
+    commit_row_updates_impl(&state, connection_id, table, updates).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::testing::app_state::TestAppState;
+
+    #[tokio::test]
+    async fn commit_row_updates_success() {
+        let test = TestAppState::with_tables().await;
+        let (_, conn_id) = test.save_and_connect("data-cfg").await;
+        commit_row_updates_impl(
+            &test.state,
+            conn_id,
+            "users".into(),
+            vec![RowUpdateBatch {
+                set_columns: vec![CellUpdate {
+                    column: "name".into(),
+                    value: Some(Value::String("Alice".into())),
+                }],
+                pk_columns: vec![CellUpdate {
+                    column: "id".into(),
+                    value: Some(Value::Integer(1)),
+                }],
+            }],
+        )
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn commit_row_updates_not_connected_errors() {
+        let test = TestAppState::new().await;
+        assert!(commit_row_updates_impl(
+            &test.state,
+            "missing".into(),
+            "users".into(),
+            vec![],
+        )
+        .await
+        .is_err());
     }
 }

@@ -170,5 +170,74 @@ mod tests {
         assert_eq!(a.ir_type_to_native(&IRType::Blob), "BLOB");
         assert_eq!(a.ir_type_to_native(&IRType::Json), "TEXT");
         assert_eq!(a.ir_type_to_native(&IRType::Uuid), "TEXT");
+        assert_eq!(a.ir_type_to_native(&IRType::Bool), "INTEGER");
+        assert_eq!(a.ir_type_to_native(&IRType::Decimal { precision: 10, scale: 2 }), "REAL");
+        assert_eq!(a.ir_type_to_native(&IRType::Bit { length: 8 }), "INTEGER");
+        assert_eq!(a.ir_type_to_native(&IRType::Other("custom".into())), "TEXT");
+    }
+
+    #[test]
+    fn sqlite_real_and_bool_affinity() {
+        let ir = SqliteSyncAdapter.column_to_ir(&col("price", "REAL"), None);
+        assert_eq!(ir.ir_type, IRType::Float64);
+        let ir = SqliteSyncAdapter.column_to_ir(&col("flag", "BOOLEAN"), None);
+        assert_eq!(ir.ir_type, IRType::Bool);
+    }
+
+    #[test]
+    fn sqlite_date_time_decimal_affinity() {
+        let ir = SqliteSyncAdapter.column_to_ir(&col("d", "DATE"), None);
+        assert_eq!(ir.ir_type, IRType::Text);
+        let ir = SqliteSyncAdapter.column_to_ir(&col("t", "DATETIME"), None);
+        assert_eq!(ir.ir_type, IRType::Text);
+        let ir = SqliteSyncAdapter.column_to_ir(&col("n", "NUMERIC(10,2)"), None);
+        assert_eq!(ir.ir_type, IRType::Decimal { precision: 0, scale: 0 });
+    }
+
+    #[test]
+    fn sqlite_empty_type_is_blob() {
+        let ir = SqliteSyncAdapter.column_to_ir(&col("x", ""), None);
+        assert_eq!(ir.ir_type, IRType::Blob);
+    }
+
+    #[test]
+    fn sqlite_default_parsing() {
+        let mut c = col("ts", "TEXT");
+        c.default_value = Some("CURRENT_TIMESTAMP".into());
+        let ir = SqliteSyncAdapter.column_to_ir(&c, None);
+        assert_eq!(ir.default_expr, Some(IRDefault::CurrentTimestamp));
+
+        c.default_value = Some("  ".into());
+        let ir = SqliteSyncAdapter.column_to_ir(&c, None);
+        assert!(ir.default_expr.is_none());
+
+        c.default_value = Some("'hello'".into());
+        let ir = SqliteSyncAdapter.column_to_ir(&c, None);
+        assert_eq!(ir.default_expr, Some(IRDefault::Literal("'hello'".into())));
+    }
+
+    #[test]
+    fn sqlite_format_default_and_literal() {
+        let a = SqliteSyncAdapter;
+        assert_eq!(
+            a.format_default(&IRDefault::CurrentTimestamp),
+            Some("CURRENT_TIMESTAMP".into())
+        );
+        assert_eq!(
+            a.format_default(&IRDefault::Literal("42".into())),
+            Some("42".into())
+        );
+        assert!(a.format_default(&IRDefault::RawExpression("x".into())).is_none());
+        assert_eq!(a.format_literal(&None, &IRType::Text), "NULL");
+        assert_eq!(a.format_literal(&Some(Value::Bool(true)), &IRType::Bool), "1");
+        assert_eq!(
+            a.format_literal(&Some(Value::String("O'Brien".into())), &IRType::Text),
+            "'O''Brien'"
+        );
+        assert_eq!(
+            a.format_literal(&Some(Value::Bytes(vec![0xAB, 0xCD])), &IRType::Blob),
+            "X'abcd'"
+        );
+        assert_eq!(a.auto_increment_keyword(), Some("AUTOINCREMENT"));
     }
 }

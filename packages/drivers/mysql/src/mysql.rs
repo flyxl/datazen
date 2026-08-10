@@ -1,5 +1,6 @@
 //! MySQL / MariaDB driver backed by sqlx MySqlPool.
 
+use crate::structure;
 use datazen_driver_api::*;
 use async_trait::async_trait;
 use rust_decimal::prelude::ToPrimitive;
@@ -1362,6 +1363,22 @@ impl DatabaseDriver for MysqlDriver {
         }
         out.push_str(&sql_dump::dump_sql_database(self, handle, database, opts).await?);
         Ok(out)
+    }
+
+    async fn structure_capabilities(
+        &self,
+        _handle: &ConnectionHandle,
+    ) -> Result<StructureCapabilities, DriverError> {
+        Ok(structure::baseline_capabilities(&self.driver_type()))
+    }
+
+    async fn plan_structure_changes(
+        &self,
+        handle: &ConnectionHandle,
+        request: &StructureChangeRequest,
+    ) -> Result<StructureChangePlan, DriverError> {
+        let caps = self.structure_capabilities(handle).await?;
+        structure::plan_structure_changes(&caps, request)
     }
 }
 

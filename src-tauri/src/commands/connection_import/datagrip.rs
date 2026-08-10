@@ -440,4 +440,37 @@ mod tests {
         assert_eq!(lite.database_type, "sqlite");
         assert!(lite.database.as_ref().unwrap().contains("test.db"));
     }
+
+    #[test]
+    fn profile_for_redshift_uses_postgres_port() {
+        let p = profile_for("redshift", "Amazon Redshift", "", "redshift").unwrap();
+        assert_eq!(p.db_type, "postgresql");
+        assert_eq!(p.default_port, 5439);
+    }
+
+    #[test]
+    fn profile_for_mysql_via_driver_class() {
+        let p = profile_for("", "", "com.mysql.cj.jdbc.Driver", "").unwrap();
+        assert_eq!(p.db_type, "mysql");
+        assert_eq!(p.default_port, 3306);
+    }
+
+    #[test]
+    fn parse_sqlserver_jdbc_url() {
+        let xml = r#"
+<data-sources>
+  <data-source name="MSSQL" uuid="aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee">
+    <driver-ref>sqlserver</driver-ref>
+    <jdbc-url>jdbc:sqlserver://sql.example:1433;databaseName=Northwind</jdbc-url>
+    <user-name>sa</user-name>
+  </data-source>
+</data-sources>"#;
+        let parsed = parse(xml).unwrap();
+        assert_eq!(parsed.connections.len(), 1);
+        let c = &parsed.connections[0];
+        assert_eq!(c.database_type, "sqlserver");
+        assert_eq!(c.host.as_deref(), Some("sql.example"));
+        assert_eq!(c.port, Some(1433));
+        assert_eq!(c.database.as_deref(), Some("Northwind"));
+    }
 }

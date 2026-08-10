@@ -350,4 +350,120 @@ mod tests {
         assert_eq!(manifest.id, "community.fixture-dark");
         assert!(manifest.modes.contains(&"dark".to_string()));
     }
+
+    #[test]
+    fn rejects_unsupported_api_version() {
+        let dir = TempDir::new().unwrap();
+        write_file(
+            dir.path(),
+            "manifest.json",
+            r#"{
+  "id": "test.theme",
+  "name": "Test",
+  "version": "1.0.0",
+  "apiVersion": 99,
+  "modes": ["dark"]
+}"#,
+        );
+        write_file(dir.path(), "tokens.css", ":root {}");
+        let err = validate_pack_contents(dir.path()).unwrap_err();
+        assert!(err.contains("unsupported apiVersion"), "unexpected: {err}");
+    }
+
+    #[test]
+    fn rejects_empty_modes() {
+        let dir = TempDir::new().unwrap();
+        write_file(
+            dir.path(),
+            "manifest.json",
+            r#"{
+  "id": "test.theme",
+  "name": "Test",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "modes": []
+}"#,
+        );
+        write_file(dir.path(), "tokens.css", ":root {}");
+        let err = validate_pack_contents(dir.path()).unwrap_err();
+        assert!(err.contains("modes must not be empty"), "unexpected: {err}");
+    }
+
+    #[test]
+    fn rejects_invalid_mode_value() {
+        let dir = TempDir::new().unwrap();
+        write_file(
+            dir.path(),
+            "manifest.json",
+            r#"{
+  "id": "test.theme",
+  "name": "Test",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "modes": ["sepia"]
+}"#,
+        );
+        write_file(dir.path(), "tokens.css", ":root {}");
+        let err = validate_pack_contents(dir.path()).unwrap_err();
+        assert!(err.contains("invalid mode"), "unexpected: {err}");
+    }
+
+    #[test]
+    fn rejects_file_without_extension() {
+        let dir = TempDir::new().unwrap();
+        write_file(dir.path(), "manifest.json", MINIMAL_MANIFEST);
+        write_file(dir.path(), "tokens.css", ":root {}");
+        write_file(dir.path(), "noext", "bad");
+        let err = validate_pack_contents(dir.path()).unwrap_err();
+        assert!(err.contains("without extension"), "unexpected: {err}");
+    }
+
+    #[test]
+    fn rejects_svg_javascript_url_and_event_handlers() {
+        let dir = TempDir::new().unwrap();
+        write_file(dir.path(), "manifest.json", MINIMAL_MANIFEST);
+        write_file(dir.path(), "tokens.css", ":root {}");
+
+        write_file(
+            dir.path(),
+            "js.svg",
+            r#"<svg><a href="javascript:alert(1)"/></svg>"#,
+        );
+        assert!(
+            validate_pack_contents(dir.path())
+                .unwrap_err()
+                .contains("javascript:"),
+            "expected javascript: rejection"
+        );
+
+        let dir2 = TempDir::new().unwrap();
+        write_file(dir2.path(), "manifest.json", MINIMAL_MANIFEST);
+        write_file(dir2.path(), "tokens.css", ":root {}");
+        write_file(dir2.path(), "onload.svg", r#"<svg onload="x()"></svg>"#);
+        let err = validate_pack_contents(dir2.path()).unwrap_err();
+        assert!(err.contains("event handler"), "unexpected: {err}");
+    }
+
+    #[test]
+    fn rejects_symlink_in_pack() {
+        let dir = TempDir::new().unwrap();
+        write_file(dir.path(), "manifest.json", MINIMAL_MANIFEST);
+        write_file(dir.path(), "tokens.css", ":root {}");
+        let target = dir.path().join("real.css");
+        fs::write(&target, ":root {}").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::symlink;
+            symlink(&target, dir.path().join("link.css")).unwrap();
+            let err = validate_pack_contents(dir.path()).unwrap_err();
+            assert!(err.contains("symlink not allowed"), "unexpected: {err}");
+        }
+    }
+
+    #[test]
+    fn validate_theme_zip_path_rejects_empty_and_null() {
+        assert!(validate_theme_zip_path("").is_err());
+        assert!(validate_theme_zip_path("icons\0evil.css").is_err());
+        assert!(validate_theme_zip_path("a -> b").is_err());
+    }
 }

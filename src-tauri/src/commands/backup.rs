@@ -18,6 +18,27 @@ fn map_driver_err(e: DriverError) -> CommandError {
     }
 }
 
+pub(crate) fn parse_backup_options(options: &[String]) -> BackupDumpOptions {
+    let opts: std::collections::HashSet<String> = options.iter().cloned().collect();
+    BackupDumpOptions {
+        schema_only: opts.contains("schema-only") || opts.contains("no-data"),
+        data_only: opts.contains("data-only") || opts.contains("no-create-info"),
+        clean: opts.contains("clean") || opts.contains("add-drop-table"),
+        create_database: opts.contains("create"),
+    }
+}
+
+pub(crate) fn validate_backup_filter_extension(filter_extension: &str) -> Result<String, CommandError> {
+    let ext = filter_extension.trim_start_matches('.').to_lowercase();
+    let allowed = ["sql", "gz", "dump"];
+    if !allowed.contains(&ext.as_str()) {
+        return Err(CommandError::Validation(format!(
+            "File extension '.{ext}' not allowed"
+        )));
+    }
+    Ok(ext)
+}
+
 #[tauri::command]
 pub async fn backup_database(
     state: State<'_, AppState>,
@@ -53,13 +74,7 @@ pub async fn backup_database_with_dialog(
 ) -> Result<bool, CommandError> {
     use tauri_plugin_dialog::DialogExt;
 
-    let ext = filter_extension.trim_start_matches('.').to_lowercase();
-    let allowed = ["sql", "gz", "dump"];
-    if !allowed.contains(&ext.as_str()) {
-        return Err(CommandError::Validation(format!(
-            "File extension '.{ext}' not allowed"
-        )));
-    }
+    let ext = validate_backup_filter_extension(&filter_extension)?;
 
     let picked = app
         .dialog()
@@ -78,7 +93,7 @@ pub async fn backup_database_with_dialog(
 }
 
 async fn backup_database_to_path(
-    state: &State<'_, AppState>,
+    state: &AppState,
     connection_id: String,
     database: Option<String>,
     output_path: PathBuf,
@@ -102,14 +117,7 @@ async fn backup_database_to_path(
         .as_deref()
         .unwrap_or(config.database.as_deref().unwrap_or(""))
         .to_string();
-    let opt_set: std::collections::HashSet<String> =
-        options.unwrap_or_default().into_iter().collect();
-    let opts = BackupDumpOptions {
-        schema_only: opt_set.contains("schema-only") || opt_set.contains("no-data"),
-        data_only: opt_set.contains("data-only") || opt_set.contains("no-create-info"),
-        clean: opt_set.contains("clean") || opt_set.contains("add-drop-table"),
-        create_database: opt_set.contains("create"),
-    };
+    let opts = parse_backup_options(&options.unwrap_or_default());
 
     let out = driver
         .dump_database(&handle, &db_name, &opts)
@@ -180,7 +188,7 @@ pub async fn restore_database_with_dialog(
 }
 
 async fn restore_database_from_path(
-    state: &State<'_, AppState>,
+    state: &AppState,
     connection_id: String,
     input_path: PathBuf,
 ) -> Result<(), CommandError> {
@@ -213,6 +221,34 @@ mod tests {
     use super::*;
 
     #[test]
+    fn parse_backup_options_recognizes_aliases() {
+        let opts = parse_backup_options(&[
+            "schema-only".into(),
+            "clean".into(),
+            "create".into(),
+        ]);
+        assert_eq!(
+            opts,
+            BackupDumpOptions {
+                schema_only: true,
+                data_only: false,
+                clean: true,
+                create_database: true,
+            }
+        );
+        let opts = parse_backup_options(&["no-data".into(), "no-create-info".into()]);
+        assert!(opts.schema_only);
+        assert!(opts.data_only);
+    }
+
+    #[test]
+    fn validate_backup_filter_extension_accepts_sql_gz_dump() {
+        assert_eq!(validate_backup_filter_extension("sql").unwrap(), "sql");
+        assert_eq!(validate_backup_filter_extension(".GZ").unwrap(), "gz");
+        assert!(validate_backup_filter_extension("exe").is_err());
+    }
+
+    #[test]
     fn require_webdriver_path_ipc_gates_without_feature() {
         let result =
             require_webdriver_path_ipc("Direct path backup disabled; use backup_database_with_dialog");
@@ -234,5 +270,52 @@ mod tests {
     fn map_driver_err_other_stays_driver() {
         let err = map_driver_err(DriverError::QueryFailed("boom".into()));
         assert!(matches!(err, CommandError::Driver(_)));
+    }
+
+    #[tokio::test]
+    async fn backup_and_restore_roundtrip() {
+        use crate::testing::app_state::TestAppState;
+
+        let test = TestAppState::with_tables().await;
+        let (_, conn_id) = test.save_and_connect("backup-cfg").await;
+        let backup_path = test._temp.path().join("backup.sql");
+
+        backup_database_to_path(
+            &test.state,
+            conn_id.clone(),
+            Some("app".into()),
+            backup_path.clone(),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+        let sql = std::fs::read_to_string(&backup_path).unwrap();
+        assert!(sql.contains("INSERT INTO"));
+
+        restore_database_from_path(&test.state, conn_id, backup_path)
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn backup_database_errors_when_not_connected() {
+        use crate::testing::app_state::TestAppState;
+
+        let test = TestAppState::with_tables().await;
+        let path = test._temp.path().join("fail.sql");
+        assert!(
+            backup_database_to_path(
+                &test.state,
+                "missing".into(),
+                None,
+                path,
+                None,
+                None,
+            )
+            .await
+            .is_err()
+        );
     }
 }

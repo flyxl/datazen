@@ -5,7 +5,9 @@ use std::sync::Arc;
 use datazen_driver_api::*;
 
 mod postgres;
+mod structure;
 pub use postgres::*;
+pub use structure::{caps_for_version, plan_structure_changes_with_caps};
 
 struct PostgresFactory;
 impl DatabaseDriverFactory for PostgresFactory {

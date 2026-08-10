@@ -33,6 +33,12 @@ const DataSyncWindow = lazy(() =>
     return { default: m.DataSyncWindow };
   }),
 );
+const SchemaDiffWindow = lazy(() =>
+  import('./windows/schema-diff/SchemaDiffWindow').then((m) => {
+    mark('SchemaDiffWindow chunk loaded');
+    return { default: m.SchemaDiffWindow };
+  }),
+);
 const BackupWindow = lazy(() =>
   import('./windows/backup/BackupWindow').then((m) => {
     mark('BackupWindow chunk loaded');
@@ -75,6 +81,8 @@ function WindowContent() {
       return <SettingsWindow />;
     case 'data-sync':
       return <DataSyncWindow />;
+    case 'schema-diff':
+      return <SchemaDiffWindow />;
     case 'backup':
       return <BackupWindow />;
     case 'workflow':

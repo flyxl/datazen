@@ -51,7 +51,7 @@ async function scanKeysForPattern(
   do {
     const page = await databaseCommands.kvScanKeys(connectionId, dbIndex, pattern, cursor, 500);
     keys.push(...page.keys.map((entry) => entry.key));
-    cursor = page.nextCursor;
+    cursor = page.cursor;
   } while (cursor !== 0);
   return keys;
 }
@@ -252,7 +252,7 @@ export function ImportExport({
           <div className="flex flex-wrap gap-2">
             <Button
               type="button"
-              size="sm"
+              className="h-7 px-2 text-xs"
               variant={exportMode === 'selected' ? 'primary' : 'ghost'}
               onClick={() => setExportMode('selected')}
               disabled={busy}
@@ -262,7 +262,7 @@ export function ImportExport({
             </Button>
             <Button
               type="button"
-              size="sm"
+              className="h-7 px-2 text-xs"
               variant={exportMode === 'pattern' ? 'primary' : 'ghost'}
               onClick={() => setExportMode('pattern')}
               disabled={busy}
@@ -283,7 +283,7 @@ export function ImportExport({
                 disabled={busy}
               />
               <div className="flex items-center gap-2">
-                <Button type="button" size="sm" variant="ghost" onClick={() => void loadPatternCount()} disabled={busy}>
+                <Button type="button" className="h-7 px-2 text-xs" variant="ghost" onClick={() => void loadPatternCount()} disabled={busy}>
                   {t('redis.matchCount').replace('{count}', matchCount == null ? '…' : String(matchCount))}
                 </Button>
               </div>
@@ -291,11 +291,11 @@ export function ImportExport({
           ) : null}
 
           <div className="flex flex-wrap gap-2">
-            <Button type="button" size="sm" onClick={() => void handleExportZip()} disabled={busy}>
+            <Button type="button" className="h-7 px-2 text-xs" onClick={() => void handleExportZip()} disabled={busy}>
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
               {t('redis.importExportZip')}
             </Button>
-            <Button type="button" size="sm" variant="ghost" onClick={() => void handleExportJson()} disabled={busy}>
+            <Button type="button" className="h-7 px-2 text-xs" variant="ghost" onClick={() => void handleExportJson()} disabled={busy}>
               {t('redis.importExportJson')}
             </Button>
           </div>
@@ -313,7 +313,7 @@ export function ImportExport({
             {t('redis.importExportReplace')}
           </label>
           <p className="text-xs text-fg-muted">{t('redis.importExportReplaceHint')}</p>
-          <Button type="button" size="sm" onClick={() => void handleImportZip()} disabled={busy}>
+          <Button type="button" className="h-7 px-2 text-xs" onClick={() => void handleImportZip()} disabled={busy}>
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
             {t('redis.importExportImportZip')}
           </Button>

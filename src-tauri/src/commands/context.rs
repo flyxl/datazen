@@ -540,4 +540,172 @@ mod tests {
         let block = format_context_block(&entries);
         assert_eq!(block, "[Context: a.sql]\nSELECT 1\n\n[Context: b.md]\n# doc");
     }
+
+    #[test]
+    fn test_filter_entries_matches_dir_name_when_children_empty() {
+        let entries = vec![ContextEntry {
+            name: "schemas".into(),
+            path: "schemas".into(),
+            is_dir: true,
+            size: None,
+            children: Some(vec![ContextEntry {
+                name: "other.sql".into(),
+                path: "schemas/other.sql".into(),
+                is_dir: false,
+                size: Some(10),
+                children: None,
+            }]),
+        }];
+        let result = filter_entries(&entries, "schemas");
+        assert_eq!(result.len(), 1);
+        assert!(result[0].is_dir);
+    }
+
+    #[tokio::test]
+    async fn test_resolve_context_dir_from_state_uses_default_subdir() {
+        use crate::ai::{AiProviderRegistry, PromptResolver, SchemaContextBuilder};
+        use crate::cache::SchemaCache;
+        use crate::commands::AppState;
+        use crate::db::DriverRegistry;
+        use crate::mcp::client::McpClientManager;
+        use crate::monitor::{MonitorConnectionRegistry, MonitorEngine};
+        use crate::services::ConnectionManager;
+        use crate::store::Store;
+        use crate::SyncAdapterRegistry;
+        use crate::workflow::{WorkflowHistoryManager, WorkflowRegistry};
+        use std::sync::Arc;
+
+        let dir = tempfile::tempdir().unwrap();
+        std::env::set_var("DATAZEN_KEYRING", "file");
+        let store = Arc::new(Store::init_with_path(dir.path()).await.unwrap());
+        let registry = Arc::new(DriverRegistry::new());
+        let connection_manager = Arc::new(ConnectionManager::new(registry.clone(), store.clone()));
+        let monitor_connections =
+            Arc::new(MonitorConnectionRegistry::new(connection_manager.clone()));
+        let monitor_engine = MonitorEngine::new(store.clone(), monitor_connections.clone());
+        let schema_cache = Arc::new(SchemaCache::new(registry.clone()));
+        let data_dir = store.data_dir().to_path_buf();
+
+        let state = AppState {
+            driver_registry: registry,
+            connection_manager: connection_manager.clone(),
+            monitor_connections,
+            monitor_engine,
+            store,
+            schema_cache: schema_cache.clone(),
+            sync_adapters: Arc::new(SyncAdapterRegistry::new()),
+            ai_registry: Arc::new(AiProviderRegistry::new()),
+            schema_context_builder: Arc::new(SchemaContextBuilder::new(
+                schema_cache,
+                connection_manager,
+            )),
+            prompt_resolver: Arc::new(PromptResolver::new(&data_dir, None)),
+            workflow_registry: Arc::new(WorkflowRegistry::new(data_dir.join("workflows"))),
+            workflow_history: Arc::new(WorkflowHistoryManager::new(
+                data_dir.join("workflow_history"),
+            )),
+            mcp_client_manager: Arc::new(McpClientManager::new()),
+        };
+
+        let ctx_dir = resolve_context_dir_from_state(&state).await.unwrap();
+        assert!(ctx_dir.ends_with("contexts"));
+        assert!(ctx_dir.exists());
+    }
+
+    #[tokio::test]
+    async fn test_resolve_context_dir_honors_custom_setting() {
+        use crate::ai::{AiProviderRegistry, PromptResolver, SchemaContextBuilder};
+        use crate::cache::SchemaCache;
+        use crate::commands::AppState;
+        use crate::db::DriverRegistry;
+        use crate::mcp::client::McpClientManager;
+        use crate::monitor::{MonitorConnectionRegistry, MonitorEngine};
+        use crate::services::ConnectionManager;
+        use crate::store::{AppSettings, Store};
+        use crate::SyncAdapterRegistry;
+        use crate::workflow::{WorkflowHistoryManager, WorkflowRegistry};
+        use std::sync::Arc;
+
+        let dir = tempfile::tempdir().unwrap();
+        let custom = dir.path().join("my-contexts");
+        std::env::set_var("DATAZEN_KEYRING", "file");
+        let store = Arc::new(Store::init_with_path(dir.path()).await.unwrap());
+        store
+            .save_settings(AppSettings {
+                context_dir: custom.display().to_string(),
+                ..AppSettings::default()
+            })
+            .await
+            .unwrap();
+
+        let registry = Arc::new(DriverRegistry::new());
+        let connection_manager = Arc::new(ConnectionManager::new(registry.clone(), store.clone()));
+        let monitor_connections =
+            Arc::new(MonitorConnectionRegistry::new(connection_manager.clone()));
+        let monitor_engine = MonitorEngine::new(store.clone(), monitor_connections.clone());
+        let schema_cache = Arc::new(SchemaCache::new(registry.clone()));
+        let data_dir = store.data_dir().to_path_buf();
+
+        let state = AppState {
+            driver_registry: registry,
+            connection_manager: connection_manager.clone(),
+            monitor_connections,
+            monitor_engine,
+            store,
+            schema_cache: schema_cache.clone(),
+            sync_adapters: Arc::new(SyncAdapterRegistry::new()),
+            ai_registry: Arc::new(AiProviderRegistry::new()),
+            schema_context_builder: Arc::new(SchemaContextBuilder::new(
+                schema_cache,
+                connection_manager,
+            )),
+            prompt_resolver: Arc::new(PromptResolver::new(&data_dir, None)),
+            workflow_registry: Arc::new(WorkflowRegistry::new(data_dir.join("workflows"))),
+            workflow_history: Arc::new(WorkflowHistoryManager::new(
+                data_dir.join("workflow_history"),
+            )),
+            mcp_client_manager: Arc::new(McpClientManager::new()),
+        };
+
+        let ctx_dir = resolve_context_dir_from_state(&state).await.unwrap();
+        assert_eq!(ctx_dir, custom);
+    }
+
+    #[test]
+    fn test_path_traversal_guard_rejects_escape() {
+        let dir = tempfile::tempdir().unwrap();
+        let base = dir.path().join("contexts");
+        std::fs::create_dir_all(&base).unwrap();
+        std::fs::write(base.join("safe.txt"), "ok").unwrap();
+        std::fs::write(dir.path().join("outside.txt"), "secret").unwrap();
+
+        let rel = "../outside.txt";
+        let full = base.join(rel);
+        let canonical = full.canonicalize().expect("resolve outside");
+        let canonical_base = base.canonicalize().unwrap();
+        assert!(
+            !canonical.starts_with(&canonical_base),
+            "traversal path must escape context root"
+        );
+    }
+
+    #[test]
+    fn test_scan_dir_unreadable_returns_empty() {
+        #[cfg(unix)]
+        {
+            let dir = tempfile::tempdir().unwrap();
+            let restricted = dir.path().join("locked");
+            std::fs::create_dir(&restricted).unwrap();
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = std::fs::metadata(&restricted).unwrap().permissions();
+            perms.set_mode(0o000);
+            std::fs::set_permissions(&restricted, perms).unwrap();
+            let entries = scan_dir(&restricted, dir.path());
+            assert!(entries.is_empty());
+            // restore for cleanup
+            let mut perms = std::fs::metadata(&restricted).unwrap().permissions();
+            perms.set_mode(0o700);
+            let _ = std::fs::set_permissions(&restricted, perms);
+        }
+    }
 }

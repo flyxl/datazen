@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { generateExport, generateExportFromArrays } from '../exportData';
+import { generateExport, generateExportFromArrays, getDefaultFilename } from '../exportData';
 import { parseXLSX } from '../importData';
 
 describe('generateExport markdown', () => {
@@ -47,6 +47,71 @@ describe('generateExport markdown', () => {
     if (result.kind !== 'text') return;
 
     expect(result.content).toContain('| 3 |  |');
+  });
+});
+
+describe('generateExport csv/tsv/json/sql', () => {
+  const base = {
+    tableName: 'users',
+    columns: [
+      { name: 'id', dataType: 'int', nullable: false, isPrimaryKey: true, isAutoIncrement: true },
+      { name: 'name', dataType: 'text', nullable: true, isPrimaryKey: false, isAutoIncrement: false },
+      { name: 'active', dataType: 'bool', nullable: true, isPrimaryKey: false, isAutoIncrement: false },
+    ],
+    rows: [
+      { id: 1, name: 'Alice, "A"', active: true },
+      { id: 2, name: 'Bob', active: false },
+      { id: 3, name: null, active: null },
+    ],
+    selectedRows: new Set([1]),
+    scope: 'selected' as const,
+    selectedColumns: ['id', 'name', 'active'],
+    databaseType: 'postgresql',
+  };
+
+  it('exports csv with quoting', () => {
+    const result = generateExport({ ...base, format: 'csv', scope: 'current_page', selectedRows: new Set() });
+    expect(result.kind).toBe('text');
+    if (result.kind !== 'text') return;
+    expect(result.content).toContain('"Alice, ""A"""');
+    expect(result.extension).toBe('csv');
+  });
+
+  it('exports tsv', () => {
+    const result = generateExport({ ...base, format: 'tsv', scope: 'current_page', selectedRows: new Set() });
+    expect(result.kind).toBe('text');
+    if (result.kind !== 'text') return;
+    expect(result.content.split('\n')[0]).toContain('\t');
+  });
+
+  it('exports json with nulls', () => {
+    const result = generateExport({ ...base, format: 'json', scope: 'current_page', selectedRows: new Set() });
+    expect(result.kind).toBe('text');
+    if (result.kind !== 'text') return;
+    const parsed = JSON.parse(result.content);
+    expect(parsed[2].name).toBeNull();
+  });
+
+  it('exports sql_insert with postgres quoting', () => {
+    const result = generateExport({ ...base, format: 'sql_insert', scope: 'current_page', selectedRows: new Set() });
+    expect(result.kind).toBe('text');
+    if (result.kind !== 'text') return;
+    expect(result.content).toContain('INSERT INTO "users"');
+    expect(result.content).toContain('TRUE');
+    expect(result.content).toContain('NULL');
+  });
+
+  it('exports sql_update using primary key', () => {
+    const result = generateExport({ ...base, format: 'sql_update' });
+    expect(result.kind).toBe('text');
+    if (result.kind !== 'text') return;
+    expect(result.content).toContain('UPDATE "users" SET');
+    expect(result.content).toContain('WHERE "id" = 2');
+  });
+
+  it('getDefaultFilename includes table and extension', () => {
+    const name = getDefaultFilename('orders', 'xlsx');
+    expect(name).toMatch(/^orders_\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}\.xlsx$/);
   });
 });
 

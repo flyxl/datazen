@@ -326,4 +326,201 @@ mod tests {
         assert_eq!(key_backend(), KeyBackend::Keyring);
         std::env::set_var("DATAZEN_KEYRING", "file");
     }
+
+    #[test]
+    fn key_file_path_joins_data_dir() {
+        let dir = std::path::Path::new("/tmp/datazen-test");
+        assert_eq!(key_file_path(dir), dir.join(KEY_FILE));
+    }
+
+    #[test]
+    fn decode_key_b64_rejects_invalid_base64() {
+        let err = decode_key_b64("not-valid-base64!!!").unwrap_err();
+        assert!(matches!(err, StoreError::EncryptionError(_)));
+    }
+
+    #[test]
+    fn decode_key_b64_rejects_wrong_length() {
+        let short = BASE64.encode([1u8; 16]);
+        let err = decode_key_b64(&short).unwrap_err();
+        assert!(matches!(err, StoreError::EncryptionError(_)));
+    }
+
+    #[test]
+    fn read_key_file_returns_none_when_missing() {
+        let dir = tempdir().unwrap();
+        assert!(read_key_file(dir.path()).unwrap().is_none());
+    }
+
+    #[test]
+    fn read_key_file_returns_err_on_invalid_content() {
+        let dir = tempdir().unwrap();
+        std::fs::write(key_file_path(dir.path()), "garbage").unwrap();
+        assert!(read_key_file(dir.path()).is_err());
+    }
+
+    #[test]
+    fn write_and_read_key_file_roundtrip() {
+        let dir = tempdir().unwrap();
+        let key = [99u8; 32];
+        write_key_file(dir.path(), &key).unwrap();
+        assert_eq!(read_key_file(dir.path()).unwrap().unwrap(), key);
+    }
+
+    #[test]
+    fn decode_key_b64_accepts_valid_key_with_whitespace() {
+        let key = [7u8; 32];
+        let encoded = format!("  {}  ", BASE64.encode(key));
+        assert_eq!(decode_key_b64(&encoded).unwrap(), key);
+    }
+
+    #[test]
+    fn key_backend_unset_uses_file_or_keyring_by_platform() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        std::env::remove_var("DATAZEN_KEYRING");
+        let backend = key_backend();
+        #[cfg(target_os = "macos")]
+        {
+            // Dev/unsigned macOS builds prefer file to avoid Keychain ACL prompts.
+            assert_eq!(backend, KeyBackend::File);
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            assert_eq!(backend, KeyBackend::Keyring);
+        }
+    }
+
+    #[test]
+    fn keyring_forced_without_legacy_key_fails_closed_when_keyring_unavailable() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        std::env::set_var("DATAZEN_KEYRING", "keyring");
+        delete_keyring_entry_for_test();
+
+        let dir = tempdir().unwrap();
+        let result = load_or_create_master_key(dir.path());
+        match result {
+            Ok(_) => {
+                // Keychain is usable in this environment — clean up and skip assertion.
+                delete_keyring_entry_for_test();
+            }
+            Err(err) => {
+                assert!(
+                    matches!(&err, StoreError::InitError(msg) if msg.contains("Refusing to create")),
+                    "unexpected: {err:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn keyring_forced_falls_back_to_legacy_dot_key_when_keyring_unavailable() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        std::env::set_var("DATAZEN_KEYRING", "keyring");
+        delete_keyring_entry_for_test();
+
+        if keyring_is_available() {
+            return;
+        }
+
+        let dir = tempdir().unwrap();
+        let known = [11u8; 32];
+        write_key_file(dir.path(), &known).unwrap();
+        let loaded = load_or_create_master_key(dir.path()).unwrap();
+        assert_eq!(loaded, known);
+    }
+
+    #[test]
+    fn remove_key_file_deletes_existing_file() {
+        let dir = tempdir().unwrap();
+        let key = [5u8; 32];
+        write_key_file(dir.path(), &key).unwrap();
+        assert!(key_file_path(dir.path()).is_file());
+        remove_key_file(dir.path());
+        assert!(!key_file_path(dir.path()).exists());
+    }
+
+    #[test]
+    fn remove_key_file_no_op_when_missing() {
+        let dir = tempdir().unwrap();
+        remove_key_file(dir.path());
+        assert!(!key_file_path(dir.path()).exists());
+    }
+
+    #[test]
+    fn generate_key_produces_nonzero_bytes() {
+        let k1 = generate_key();
+        let k2 = generate_key();
+        assert_ne!(k1, [0u8; 32]);
+        assert_ne!(k1, k2);
+    }
+
+    #[test]
+    fn fail_closed_error_includes_context() {
+        let err = fail_closed_no_key_source("unit test context");
+        match err {
+            StoreError::InitError(msg) => {
+                assert!(msg.contains("unit test context"));
+                assert!(msg.contains("Refusing to create"));
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn load_legacy_key_or_fail_reads_dot_key() {
+        let dir = tempdir().unwrap();
+        let known = [22u8; 32];
+        write_key_file(dir.path(), &known).unwrap();
+        let loaded = load_legacy_key_or_fail(dir.path(), "test context").unwrap();
+        assert_eq!(loaded, known);
+    }
+
+    #[test]
+    fn load_legacy_key_or_fail_without_file_is_fail_closed() {
+        let dir = tempdir().unwrap();
+        let err = load_legacy_key_or_fail(dir.path(), "missing key").unwrap_err();
+        assert!(
+            matches!(&err, StoreError::InitError(msg) if msg.contains("Refusing to create")),
+            "unexpected: {err:?}"
+        );
+    }
+
+    #[test]
+    fn load_or_create_from_file_explicit_mode_skips_keyring() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        std::env::set_var("DATAZEN_KEYRING", "file");
+        let dir = tempdir().unwrap();
+        let k1 = load_or_create_from_file(dir.path()).unwrap();
+        assert_ne!(k1, [0u8; 32]);
+        assert!(key_file_path(dir.path()).is_file());
+    }
+
+    #[test]
+    fn macos_codesign_detect_runs_without_panic() {
+        #[cfg(target_os = "macos")]
+        {
+            let _ = macos_codesign_is_adhoc_or_unsigned();
+        }
+    }
+
+    #[test]
+    #[ignore = "requires OS keychain; run with: cargo test keyring_creates_new_key -- --ignored"]
+    fn keyring_creates_and_reloads_master_key() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        std::env::set_var("DATAZEN_KEYRING", "keyring");
+        delete_keyring_entry_for_test();
+
+        if !keyring_is_available() {
+            eprintln!("skip: OS keychain unavailable");
+            return;
+        }
+
+        let dir = tempdir().unwrap();
+        let k1 = load_or_create_master_key(dir.path()).unwrap();
+        assert_ne!(k1, [0u8; 32]);
+        let k2 = load_or_create_master_key(dir.path()).unwrap();
+        assert_eq!(k1, k2);
+
+        delete_keyring_entry_for_test();
+    }
 }

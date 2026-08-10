@@ -228,4 +228,61 @@ mod tests {
             None
         );
     }
+
+    #[test]
+    fn trino_char_decimal_time_types() {
+        let ir = TrinoSyncAdapter.column_to_ir(&col("c", "char(5)"), None);
+        assert_eq!(ir.ir_type, IRType::Char { length: 5 });
+        let ir = TrinoSyncAdapter.column_to_ir(&col("d", "decimal(12,3)"), None);
+        assert_eq!(ir.ir_type, IRType::Decimal { precision: 12, scale: 3 });
+        let ir = TrinoSyncAdapter.column_to_ir(&col("t", "time with time zone"), None);
+        assert_eq!(ir.ir_type, IRType::Time { with_timezone: true });
+        let ir = TrinoSyncAdapter.column_to_ir(&col("m", "map(varchar, integer)"), None);
+        assert_eq!(ir.ir_type, IRType::Json);
+        let ir = TrinoSyncAdapter.column_to_ir(&col("r", "row(x integer)"), None);
+        assert_eq!(ir.ir_type, IRType::Json);
+        let ir = TrinoSyncAdapter.column_to_ir(&col("u", "unknown_type"), None);
+        assert_eq!(ir.ir_type, IRType::Other("unknown_type".into()));
+    }
+
+    #[test]
+    fn trino_target_native_edge_cases() {
+        let a = TrinoSyncAdapter;
+        assert_eq!(a.ir_type_to_native(&IRType::Int8), "tinyint");
+        assert_eq!(a.ir_type_to_native(&IRType::Decimal { precision: 0, scale: 0 }), "decimal");
+        assert_eq!(a.ir_type_to_native(&IRType::Char { length: 10 }), "char(10)");
+        assert_eq!(
+            a.ir_type_to_native(&IRType::Varchar { length: Some(200) }),
+            "varchar(200)"
+        );
+        assert_eq!(
+            a.ir_type_to_native(&IRType::Time { with_timezone: false }),
+            "time"
+        );
+        assert_eq!(
+            a.ir_type_to_native(&IRType::Timestamp { with_timezone: false }),
+            "timestamp"
+        );
+        assert_eq!(a.ir_type_to_native(&IRType::Bit { length: 1 }), "boolean");
+        assert_eq!(a.ir_type_to_native(&IRType::Other("custom".into())), "varchar");
+    }
+
+    #[test]
+    fn trino_format_literal() {
+        let a = TrinoSyncAdapter;
+        assert_eq!(a.format_literal(&None, &IRType::Text), "NULL");
+        assert_eq!(a.format_literal(&Some(Value::Bool(true)), &IRType::Bool), "TRUE");
+        assert_eq!(
+            a.format_literal(&Some(Value::Timestamp("2024-01-01".into())), &IRType::Timestamp { with_timezone: false }),
+            "TIMESTAMP '2024-01-01'"
+        );
+        assert_eq!(
+            a.format_literal(&Some(Value::Json(serde_json::json!({"a":1}))), &IRType::Json),
+            "JSON '{\"a\":1}'"
+        );
+        assert_eq!(
+            a.format_literal(&Some(Value::Bytes(vec![0x01])), &IRType::Blob),
+            "X'01'"
+        );
+    }
 }

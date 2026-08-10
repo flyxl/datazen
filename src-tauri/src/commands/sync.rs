@@ -1,6 +1,8 @@
 use super::error::{CmdExt, CommandError};
 use super::AppState;
-use crate::db::{ColumnSchema, DatabaseType, TableSchema, Value};
+use crate::db::{DatabaseType, TableSchema, Value};
+use crate::schema_diff::diff_table_schemas;
+use crate::schema_diff::types::{ChangedColumnDiff, ColumnSnapshot, TableColumnDiff};
 use crate::store::SyncTask;
 use crate::sync::adapter::{SyncSourceAdapter, SyncTargetAdapter};
 use crate::sync::ddl::build_create_table_ddl;
@@ -15,9 +17,8 @@ const DATA_COMPARE_SAMPLE_LIMIT: usize = 1000;
 const DATA_COMPARE_MISMATCH_LIMIT: usize = 50;
 
 /// Compare two databases for data sync.
-#[tauri::command]
-pub async fn compare_databases(
-    state: State<'_, AppState>,
+pub(crate) async fn compare_databases_impl(
+    state: &AppState,
     source_connection_id: String,
     target_connection_id: String,
 ) -> Result<Vec<serde_json::Value>, CommandError> {
@@ -107,10 +108,18 @@ pub async fn compare_databases(
     Ok(results)
 }
 
-/// Compare column-level schema differences for a single table.
 #[tauri::command]
-pub async fn compare_table_schemas(
+pub async fn compare_databases(
     state: State<'_, AppState>,
+    source_connection_id: String,
+    target_connection_id: String,
+) -> Result<Vec<serde_json::Value>, CommandError> {
+    compare_databases_impl(&state, source_connection_id, target_connection_id).await
+}
+
+/// Compare column-level schema differences for a single table.
+pub(crate) async fn compare_table_schemas_impl(
+    state: &AppState,
     source_connection_id: String,
     target_connection_id: String,
     table_name: String,
@@ -136,9 +145,11 @@ pub async fn compare_table_schemas(
     let tgt_schema = tgt_driver.get_table_schema(&tgt_handle, &table_name).await
         .cmd_err("compare_table_schemas")?;
 
+    // Source = desired: missingOnTarget → ADD, extraOnTarget → DROP.
+    // `added`/`removed` kept as aliases for one release.
     let mut source_ddl: Option<String> = None;
     let mut target_ddl: Option<String> = None;
-    let mut ir_diff: Option<SchemaDiff> = None;
+    let mut ir_diff: Option<TableColumnDiff> = None;
 
     if state.sync_adapters
         .ensure_pair(&src_config.database_type, &tgt_config.database_type)
@@ -167,16 +178,18 @@ pub async fn compare_table_schemas(
 
             let src_ir = src_adapter.table_to_ir(&src_schema, src_full_types.as_ref());
             let tgt_ir = tgt_src_adapter.table_to_ir(&tgt_schema, tgt_full_types.as_ref());
-            ir_diff = Some(diff_table_schemas_ir(&src_ir, &tgt_ir));
+            ir_diff = Some(diff_table_schemas_ir(&table_name, &src_ir, &tgt_ir));
             source_ddl = Some(build_create_table_ddl(&src_ir, src_tgt_adapter.as_ref()));
             target_ddl = Some(build_create_table_ddl(&tgt_ir, tgt_adapter.as_ref()));
         }
     }
 
-    let diff = ir_diff.unwrap_or_else(|| diff_table_schemas(&src_schema, &tgt_schema));
+    let diff = ir_diff.unwrap_or_else(|| diff_table_schemas(&table_name, &src_schema, &tgt_schema));
 
     let mut result = serde_json::json!({
         "table": table_name,
+        "missingOnTarget": diff.missing_on_target,
+        "extraOnTarget": diff.extra_on_target,
         "added": diff.added,
         "removed": diff.removed,
         "changed": diff.changed,
@@ -192,10 +205,19 @@ pub async fn compare_table_schemas(
     Ok(result)
 }
 
-/// Sample row-level data differences for a single table.
 #[tauri::command]
-pub async fn compare_table_data(
+pub async fn compare_table_schemas(
     state: State<'_, AppState>,
+    source_connection_id: String,
+    target_connection_id: String,
+    table_name: String,
+) -> Result<serde_json::Value, CommandError> {
+    compare_table_schemas_impl(&state, source_connection_id, target_connection_id, table_name).await
+}
+
+/// Sample row-level data differences for a single table.
+pub(crate) async fn compare_table_data_impl(
+    state: &AppState,
     source_connection_id: String,
     target_connection_id: String,
     table_name: String,
@@ -300,6 +322,16 @@ pub async fn compare_table_data(
     }))
 }
 
+#[tauri::command]
+pub async fn compare_table_data(
+    state: State<'_, AppState>,
+    source_connection_id: String,
+    target_connection_id: String,
+    table_name: String,
+) -> Result<serde_json::Value, CommandError> {
+    compare_table_data_impl(&state, source_connection_id, target_connection_id, table_name).await
+}
+
 // ── Helpers ─────────────────────────────────────────────────────────
 
 /// Run adapter-provided full-type SQL (if any) and map `(name, full_type)` rows.
@@ -381,39 +413,6 @@ async fn count_rows(
     Ok(0)
 }
 
-#[derive(Debug, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ColumnSnapshot {
-    name: String,
-    data_type: String,
-    nullable: bool,
-    is_primary_key: bool,
-}
-
-#[derive(Debug, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ChangedColumnDiff {
-    name: String,
-    source: ColumnSnapshot,
-    target: ColumnSnapshot,
-    changes: Vec<String>,
-}
-
-struct SchemaDiff {
-    added: Vec<ColumnSnapshot>,
-    removed: Vec<ColumnSnapshot>,
-    changed: Vec<ChangedColumnDiff>,
-}
-
-fn column_snapshot(col: &ColumnSchema) -> ColumnSnapshot {
-    ColumnSnapshot {
-        name: col.name.clone(),
-        data_type: col.data_type.clone(),
-        nullable: col.nullable,
-        is_primary_key: col.is_primary_key,
-    }
-}
-
 /// Stable display string for IR types in schema-diff snapshots.
 fn format_ir_type(t: &IRType) -> String {
     match t {
@@ -449,57 +448,13 @@ fn ir_column_snapshot(col: &IRColumn) -> ColumnSnapshot {
     }
 }
 
-fn diff_table_schemas(src: &TableSchema, tgt: &TableSchema) -> SchemaDiff {
-    let src_map: HashMap<&str, &ColumnSchema> =
-        src.columns.iter().map(|c| (c.name.as_str(), c)).collect();
-    let tgt_map: HashMap<&str, &ColumnSchema> =
-        tgt.columns.iter().map(|c| (c.name.as_str(), c)).collect();
-
-    let mut added = Vec::new();
-    let mut removed = Vec::new();
-    let mut changed = Vec::new();
-
-    for col in &tgt.columns {
-        if !src_map.contains_key(col.name.as_str()) {
-            added.push(column_snapshot(col));
-        }
-    }
-
-    for col in &src.columns {
-        if !tgt_map.contains_key(col.name.as_str()) {
-            removed.push(column_snapshot(col));
-        }
-    }
-
-    for col in &src.columns {
-        if let Some(tgt_col) = tgt_map.get(col.name.as_str()) {
-            let mut changes = Vec::new();
-            if col.data_type != tgt_col.data_type {
-                changes.push("dataType".into());
-            }
-            if col.nullable != tgt_col.nullable {
-                changes.push("nullable".into());
-            }
-            if col.is_primary_key != tgt_col.is_primary_key {
-                changes.push("isPrimaryKey".into());
-            }
-            if !changes.is_empty() {
-                changed.push(ChangedColumnDiff {
-                    name: col.name.clone(),
-                    source: column_snapshot(col),
-                    target: column_snapshot(tgt_col),
-                    changes,
-                });
-            }
-        }
-    }
-
-    SchemaDiff { added, removed, changed }
-}
-
 /// Compare schemas using IR types so dialect aliases (e.g. `character varying` vs `varchar`)
 /// that map to the same [`IRType`] are not reported as dataType changes.
-fn diff_table_schemas_ir(src_ir: &IRTable, tgt_ir: &IRTable) -> SchemaDiff {
+///
+/// Same contract as [`crate::schema_diff::diff_table_schemas`]: source is the desired
+/// state, so `missing_on_target`/`added` are columns to ADD to the target and
+/// `extra_on_target`/`removed` are columns to DROP from the target.
+fn diff_table_schemas_ir(table: &str, src_ir: &IRTable, tgt_ir: &IRTable) -> TableColumnDiff {
     let src_map: HashMap<&str, &IRColumn> = src_ir
         .columns
         .iter()
@@ -511,19 +466,19 @@ fn diff_table_schemas_ir(src_ir: &IRTable, tgt_ir: &IRTable) -> SchemaDiff {
         .map(|c| (c.name.as_str(), c))
         .collect();
 
-    let mut added = Vec::new();
-    let mut removed = Vec::new();
+    let mut missing_on_target = Vec::new();
+    let mut extra_on_target = Vec::new();
     let mut changed = Vec::new();
 
-    for col in &tgt_ir.columns {
+    for col in &src_ir.columns {
         if !src_map.contains_key(col.name.as_str()) {
-            added.push(ir_column_snapshot(col));
+            missing_on_target.push(ir_column_snapshot(col));
         }
     }
 
-    for col in &src_ir.columns {
-        if !tgt_map.contains_key(col.name.as_str()) {
-            removed.push(ir_column_snapshot(col));
+    for col in &tgt_ir.columns {
+        if !src_map.contains_key(col.name.as_str()) {
+            extra_on_target.push(ir_column_snapshot(col));
         }
     }
 
@@ -550,7 +505,14 @@ fn diff_table_schemas_ir(src_ir: &IRTable, tgt_ir: &IRTable) -> SchemaDiff {
         }
     }
 
-    SchemaDiff { added, removed, changed }
+    TableColumnDiff {
+        table: table.to_string(),
+        added: missing_on_target.clone(),
+        removed: extra_on_target.clone(),
+        missing_on_target,
+        extra_on_target,
+        changed,
+    }
 }
 
 fn resolve_pk_columns(schema: &TableSchema) -> Vec<String> {
@@ -758,9 +720,8 @@ where
 // ── Tauri Commands ──────────────────────────────────────────────────
 
 /// Sync a single table from source to target (drop+recreate+insert).
-#[tauri::command]
-pub async fn sync_table(
-    state: State<'_, AppState>,
+pub(crate) async fn sync_table_impl(
+    state: &AppState,
     source_connection_id: String,
     target_connection_id: String,
     table_name: String,
@@ -793,6 +754,16 @@ pub async fn sync_table(
 
     tracing::info!(%table_name, total, "sync_table OK");
     Ok(total)
+}
+
+#[tauri::command]
+pub async fn sync_table(
+    state: State<'_, AppState>,
+    source_connection_id: String,
+    target_connection_id: String,
+    table_name: String,
+) -> Result<u64, CommandError> {
+    sync_table_impl(&state, source_connection_id, target_connection_id, table_name).await
 }
 
 /// Sync multiple tables with progress events and checkpoint support.
@@ -963,43 +934,54 @@ pub async fn sync_tables(
 }
 
 /// Get all saved sync tasks.
-#[tauri::command]
-pub async fn get_sync_tasks(state: State<'_, AppState>) -> Result<Vec<SyncTask>, CommandError> {
+pub(crate) async fn get_sync_tasks_impl(state: &AppState) -> Result<Vec<SyncTask>, CommandError> {
     Ok(state.store.get_sync_tasks().await)
 }
 
-/// Save a sync task directly (used for resume/testing).
-#[tauri::command]
-pub async fn save_sync_task_direct(state: State<'_, AppState>, task: SyncTask) -> Result<(), CommandError> {
-    state.store.save_sync_task(task).await
+pub(crate) async fn save_sync_task_direct_impl(
+    state: &AppState,
+    task: SyncTask,
+) -> Result<(), CommandError> {
+    state
+        .store
+        .save_sync_task(task)
+        .await
         .cmd_err("save_sync_task_direct")
 }
 
-/// Delete a sync task.
-#[tauri::command]
-pub async fn delete_sync_task(state: State<'_, AppState>, task_id: String) -> Result<(), CommandError> {
-    state.store.delete_sync_task(&task_id).await
+pub(crate) async fn delete_sync_task_impl(
+    state: &AppState,
+    task_id: String,
+) -> Result<(), CommandError> {
+    state
+        .store
+        .delete_sync_task(&task_id)
+        .await
         .cmd_err("delete_sync_task")
 }
 
-/// Check if source data has changed since the task was created.
-#[tauri::command]
-pub async fn check_sync_conflicts(
-    state: State<'_, AppState>,
+pub(crate) async fn check_sync_conflicts_impl(
+    state: &AppState,
     task_id: String,
 ) -> Result<serde_json::Value, CommandError> {
     let tasks = state.store.get_sync_tasks().await;
-    let task = tasks.iter().find(|t| t.id == task_id)
+    let task = tasks
+        .iter()
+        .find(|t| t.id == task_id)
         .ok_or_else(|| CommandError::NotFound("Sync task not found".into()))?;
 
-    let (src_driver, src_handle) = state.connection_manager
-        .get_connection(&task.source_connection_id).await
+    let (src_driver, src_handle) = state
+        .connection_manager
+        .get_connection(&task.source_connection_id)
+        .await
         .cmd_err("check_sync_conflicts")?;
 
     let mut conflicts = Vec::<serde_json::Value>::new();
 
     for table in &task.tables {
-        if task.completed_tables.contains(table) { continue; }
+        if task.completed_tables.contains(table) {
+            continue;
+        }
 
         let original_count = task.source_row_counts.get(table).copied().unwrap_or(0);
         let current_count = count_rows(src_driver.as_ref(), &src_handle, table).await?;
@@ -1019,9 +1001,33 @@ pub async fn check_sync_conflicts(
     }))
 }
 
+#[tauri::command]
+pub async fn get_sync_tasks(state: State<'_, AppState>) -> Result<Vec<SyncTask>, CommandError> {
+    get_sync_tasks_impl(&state).await
+}
+
+#[tauri::command]
+pub async fn save_sync_task_direct(state: State<'_, AppState>, task: SyncTask) -> Result<(), CommandError> {
+    save_sync_task_direct_impl(&state, task).await
+}
+
+#[tauri::command]
+pub async fn delete_sync_task(state: State<'_, AppState>, task_id: String) -> Result<(), CommandError> {
+    delete_sync_task_impl(&state, task_id).await
+}
+
+#[tauri::command]
+pub async fn check_sync_conflicts(
+    state: State<'_, AppState>,
+    task_id: String,
+) -> Result<serde_json::Value, CommandError> {
+    check_sync_conflicts_impl(&state, task_id).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::db::{ColumnSchema, TableSchema, Value};
     use crate::sync::ir::IRColumn;
 
     fn ir_col(name: &str, ir_type: IRType, nullable: bool, is_primary_key: bool) -> IRColumn {
@@ -1033,6 +1039,28 @@ mod tests {
             is_primary_key,
             is_auto_increment: false,
             comment: None,
+        }
+    }
+
+    fn col(name: &str, data_type: &str, nullable: bool, pk: bool) -> ColumnSchema {
+        ColumnSchema {
+            name: name.into(),
+            data_type: data_type.into(),
+            nullable,
+            default_value: None,
+            comment: None,
+            is_primary_key: pk,
+            is_auto_increment: false,
+        }
+    }
+
+    fn table(name: &str, columns: Vec<ColumnSchema>, primary_keys: Vec<String>) -> TableSchema {
+        TableSchema {
+            table_name: name.into(),
+            columns,
+            primary_keys,
+            indexes: vec![],
+            foreign_keys: vec![],
         }
     }
 
@@ -1061,7 +1089,7 @@ mod tests {
             primary_keys: vec![],
         };
 
-        let diff = diff_table_schemas_ir(&src, &tgt);
+        let diff = diff_table_schemas_ir("t", &src, &tgt);
         assert!(diff.added.is_empty());
         assert!(diff.removed.is_empty());
         assert!(diff.changed.is_empty());
@@ -1087,11 +1115,11 @@ mod tests {
             primary_keys: vec![],
         };
 
-        let diff = diff_table_schemas_ir(&src, &tgt);
-        assert_eq!(diff.added.len(), 1);
-        assert_eq!(diff.added[0].name, "extra");
-        assert_eq!(diff.added[0].data_type, "Text");
-        assert!(diff.removed.is_empty());
+        let diff = diff_table_schemas_ir("t", &src, &tgt);
+        assert!(diff.added.is_empty(), "source columns are all present on target");
+        assert_eq!(diff.removed.len(), 1);
+        assert_eq!(diff.removed[0].name, "extra");
+        assert_eq!(diff.removed[0].data_type, "Text");
         assert_eq!(diff.changed.len(), 2);
 
         let id = diff.changed.iter().find(|c| c.name == "id").unwrap();
@@ -1153,8 +1181,290 @@ mod tests {
             foreign_keys: vec![],
         };
 
-        let diff = diff_table_schemas(&src, &tgt);
+        let diff = diff_table_schemas("t", &src, &tgt);
         assert_eq!(diff.changed.len(), 1);
         assert!(diff.changed[0].changes.contains(&"dataType".into()));
+    }
+
+    fn diff_table_schemas_detects_added_removed_changed() {
+        let src = table(
+            "users",
+            vec![
+                col("id", "integer", false, true),
+                col("name", "text", true, false),
+                col("legacy", "text", true, false),
+            ],
+            vec!["id".into()],
+        );
+        let tgt = table(
+            "users",
+            vec![
+                col("id", "integer", false, true),
+                col("name", "varchar", true, false),
+                col("email", "text", false, false),
+            ],
+            vec!["id".into()],
+        );
+
+        // Source = desired state: columns on src missing from tgt are "added" (to target).
+        let diff = diff_table_schemas("users", &src, &tgt);
+        assert_eq!(diff.added.len(), 1);
+        assert_eq!(diff.added[0].name, "legacy");
+        assert_eq!(diff.removed.len(), 1);
+        assert_eq!(diff.removed[0].name, "email");
+        assert_eq!(diff.changed.len(), 1);
+        assert_eq!(diff.changed[0].name, "name");
+        assert!(diff.changed[0].changes.contains(&"dataType".into()));
+    }
+
+    #[test]
+    fn resolve_pk_columns_prefers_primary_keys_list() {
+        let schema = table(
+            "t",
+            vec![col("a", "int", false, true), col("b", "int", false, false)],
+            vec!["b".into()],
+        );
+        assert_eq!(resolve_pk_columns(&schema), vec!["b".to_string()]);
+    }
+
+    #[test]
+    fn resolve_pk_columns_falls_back_to_column_flags() {
+        let schema = table(
+            "t",
+            vec![col("a", "int", false, true), col("b", "int", false, false)],
+            vec![],
+        );
+        assert_eq!(resolve_pk_columns(&schema), vec!["a".to_string()]);
+    }
+
+    #[test]
+    fn row_key_uses_pk_values() {
+        let cols = vec!["id".into(), "name".into()];
+        let row = vec![
+            Some(Value::Integer(42)),
+            Some(Value::String("alice".into())),
+        ];
+        let key = row_key(&cols, &["id".into()], &row);
+        assert!(key.contains("42"));
+        assert!(!key.starts_with("h:"));
+    }
+
+    #[test]
+    fn row_key_hashes_when_no_pk() {
+        let cols = vec!["name".into()];
+        let row = vec![Some(Value::String("bob".into()))];
+        let key = row_key(&cols, &[], &row);
+        assert!(key.starts_with("h:"));
+        assert_eq!(key, row_key(&cols, &[], &row));
+    }
+
+    #[test]
+    fn value_key_part_serializes_null_and_values() {
+        assert_eq!(value_key_part(&None), "\\N");
+        assert_eq!(
+            value_key_part(&Some(Value::Integer(1))),
+            serde_json::to_string(&Value::Integer(1)).unwrap()
+        );
+    }
+
+    #[test]
+    fn rows_to_key_map_last_row_wins_duplicate_keys() {
+        let cols = vec!["id".into()];
+        let rows = vec![
+            vec![Some(Value::Integer(1))],
+            vec![Some(Value::Integer(1))],
+        ];
+        let map = rows_to_key_map(&cols, &["id".into()], &rows);
+        assert_eq!(map.len(), 1);
+    }
+
+    #[test]
+    fn row_to_json_map_aligns_columns() {
+        let cols = vec!["id".into(), "name".into()];
+        let row = vec![
+            Some(Value::Integer(7)),
+            Some(Value::String("x".into())),
+        ];
+        let json = row_to_json_map(&cols, &row);
+        assert_eq!(json["id"], 7);
+        assert_eq!(json["name"], "x");
+    }
+
+    #[test]
+    fn rows_equal_requires_matching_values_for_all_source_columns() {
+        let src_cols = vec!["id".into(), "name".into()];
+        let tgt_cols = vec!["id".into(), "extra".into()];
+        let src_row = vec![Some(Value::Integer(1)), Some(Value::String("a".into()))];
+        let tgt_row = vec![Some(Value::Integer(1)), Some(Value::String("ignored".into()))];
+        assert!(!rows_equal(&src_cols, &src_row, &tgt_cols, &tgt_row));
+    }
+
+    #[test]
+    fn rows_equal_true_when_columns_align() {
+        let cols = vec!["id".into(), "name".into()];
+        let a = vec![Some(Value::Integer(1)), Some(Value::String("a".into()))];
+        let b = vec![Some(Value::Integer(1)), Some(Value::String("a".into()))];
+        assert!(rows_equal(&cols, &a, &cols, &b));
+    }
+
+    #[test]
+    fn rows_equal_detects_mismatch() {
+        let cols = vec!["id".into()];
+        let a = vec![Some(Value::Integer(1))];
+        let b = vec![Some(Value::Integer(2))];
+        assert!(!rows_equal(&cols, &a, &cols, &b));
+    }
+
+    #[test]
+    fn values_equal_treats_missing_and_null_as_distinct() {
+        assert!(values_equal(Some(&None), Some(&None)));
+        assert!(!values_equal(None, Some(&Some(Value::Null))));
+        assert!(values_equal(
+            Some(&Some(Value::String("a".into()))),
+            Some(&Some(Value::String("a".into())))
+        ));
+    }
+
+    #[tokio::test]
+    async fn sync_task_crud_and_compare() {
+        use crate::testing::app_state::{sample_postgres_config, TestAppState};
+        use chrono::Utc;
+
+        let test = TestAppState::with_tables().await;
+        test.store
+            .save_connection(sample_postgres_config("src-cfg"))
+            .await
+            .unwrap();
+        test.store
+            .save_connection({
+                let mut c = sample_postgres_config("tgt-cfg");
+                c.name = "Target".into();
+                c
+            })
+            .await
+            .unwrap();
+
+        let src_conn = test.connect_config("src-cfg").await;
+        let tgt_conn = test.connect_config("tgt-cfg").await;
+
+        let results = compare_databases_impl(&test.state, src_conn.clone(), tgt_conn.clone())
+            .await
+            .unwrap();
+        assert!(!results.is_empty());
+        assert_eq!(results[0]["status"], "identical");
+
+        let task = SyncTask {
+            id: "task-1".into(),
+            source_connection_id: src_conn.clone(),
+            target_connection_id: tgt_conn,
+            source_config_id: "src-cfg".into(),
+            target_config_id: "tgt-cfg".into(),
+            tables: vec!["users".into()],
+            completed_tables: vec![],
+            current_table: None,
+            current_table_offset: 0,
+            source_row_counts: [("users".to_string(), 2u64)]
+                .into_iter()
+                .collect(),
+            strategy: "full".into(),
+            status: "running".into(),
+            error_message: None,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+        save_sync_task_direct_impl(&test.state, task).await.unwrap();
+        assert_eq!(get_sync_tasks_impl(&test.state).await.unwrap().len(), 1);
+
+        let conflicts = check_sync_conflicts_impl(&test.state, "task-1".into())
+            .await
+            .unwrap();
+        assert_eq!(conflicts["hasConflicts"], false);
+
+        delete_sync_task_impl(&test.state, "task-1".into())
+            .await
+            .unwrap();
+        assert!(get_sync_tasks_impl(&test.state).await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn compare_table_schemas_and_data_impl() {
+        use crate::db::Value;
+        use crate::testing::app_state::{sample_postgres_config, TestAppState};
+        use crate::testing::mock_driver::MockDriverOptions;
+
+        let opts = MockDriverOptions {
+            count_total: 1,
+            query_rows: vec![vec![
+                Some(Value::Integer(1)),
+                Some(Value::String("alice".into())),
+            ]],
+            ..Default::default()
+        };
+        let test = TestAppState::with_options(opts).await;
+        test.store
+            .save_connection(sample_postgres_config("src"))
+            .await
+            .unwrap();
+        test.store
+            .save_connection(sample_postgres_config("tgt"))
+            .await
+            .unwrap();
+        let src = test.connect_config("src").await;
+        let tgt = test.connect_config("tgt").await;
+
+        let schema_diff = compare_table_schemas_impl(
+            &test.state,
+            src.clone(),
+            tgt.clone(),
+            "users".into(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(schema_diff["table"], "users");
+
+        let data_diff = compare_table_data_impl(
+            &test.state,
+            src,
+            tgt,
+            "users".into(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(data_diff["table"], "users");
+    }
+
+    #[tokio::test]
+    async fn sync_table_impl_copies_rows() {
+        use crate::testing::app_state::{sample_postgres_config, TestAppState};
+
+        let test = TestAppState::with_tables().await;
+        test.registry
+            .register_test_driver("postgresql", test.mock.clone())
+            .await;
+
+        let mut src_cfg = sample_postgres_config("src-sync");
+        src_cfg.database_type = "postgresql".into();
+        let mut tgt_cfg = sample_postgres_config("tgt-sync");
+        tgt_cfg.database_type = "postgresql".into();
+
+        test.store.save_connection(src_cfg).await.unwrap();
+        test.store.save_connection(tgt_cfg).await.unwrap();
+        let src = test.connect_config("src-sync").await;
+        let tgt = test.connect_config("tgt-sync").await;
+
+        let rows = sync_table_impl(&test.state, src, tgt, "users".into())
+            .await
+            .unwrap();
+        assert!(rows >= 1);
+    }
+
+    #[tokio::test]
+    async fn check_sync_conflicts_missing_task_errors() {
+        use crate::testing::app_state::TestAppState;
+
+        let test = TestAppState::new().await;
+        assert!(check_sync_conflicts_impl(&test.state, "missing".into())
+            .await
+            .is_err());
     }
 }

@@ -22,5 +22,25 @@ export const sqliteMeta = {
     databaseFieldType: 'path',
     connectionForm: 'file',
     supportsExplain: true,
+    structureEditor: {
+      columnTypes: [
+        { value: 'INTEGER', label: 'INTEGER' },
+        { value: 'INT', label: 'INT' },
+        { value: 'BIGINT', label: 'BIGINT' },
+        { value: 'REAL', label: 'REAL' },
+        { value: 'TEXT', label: 'TEXT' },
+        { value: 'BLOB', label: 'BLOB' },
+        { value: 'NUMERIC', label: 'NUMERIC' },
+        { value: 'BOOLEAN', label: 'BOOLEAN' },
+        { value: 'VARCHAR(255)', label: 'VARCHAR(255)' },
+        { value: 'VARCHAR(50)', label: 'VARCHAR(50)' },
+        { value: 'CHAR(1)', label: 'CHAR(1)' },
+        { value: 'DATE', label: 'DATE' },
+        { value: 'DATETIME', label: 'DATETIME' },
+      ],
+      defaultColumnType: 'TEXT',
+      fields: {},
+      indexMethods: ['btree'],
+    },
   } satisfies DatabaseTypeMeta;
 
