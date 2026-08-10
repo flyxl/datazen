@@ -18,7 +18,8 @@ export const DB_REGISTRY: Record<DatabaseType, DatabaseTypeMeta> = {
 
 /**
  * New-connection sidebar order: most commonly used types first (not wire-protocol family).
- * Types absent from this list sort after, by id.
+ * Includes drivers that may be absent from the basic SKU build; missing registry entries
+ * simply do not appear in the picker. Types absent from this list sort after, by id.
  */
 export const DB_TYPE_POPULARITY_ORDER: readonly string[] = [
   'mysql',
@@ -62,17 +63,6 @@ export function sortDbTypesByPopularity<T extends { value: string }>(items: T[])
     return a.value.localeCompare(b.value);
   });
 }
-
-/** All database types available for the "new connection" UI. */
-export const DB_TYPE_LIST: { value: DatabaseType; label: string; color: string }[] = sortDbTypesByPopularity(
-  (Object.entries(DB_REGISTRY) as [DatabaseType, DatabaseTypeMeta][]).map(([value, meta]) => ({
-    value,
-    label: meta.label,
-    color: meta.iconBg.replace('bg-', '').split('-').length > 1
-      ? `#${meta.iconBg}` // fallback; real colors below
-      : meta.iconBg,
-  })),
-);
 
 /** Get the identifier quoting function for a given database type. */
 export function escapeIdent(name: string, dbType?: DatabaseType): string {

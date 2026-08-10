@@ -21,6 +21,7 @@ import { useSettingsStore } from '../../stores/settingsStore';
 import { useUiStore } from '../../stores/uiStore';
 import { useActiveConnectionStore } from '../../stores/activeConnectionStore';
 import { cn } from '../../lib/cn';
+import { formatGroupLabel } from '../../lib/connectionGroups';
 import { listenCrossWindow } from '../../lib/crossWindowBus';
 import { openBackupWindow, openConnectionWindow, openDashboardWindow, openDataSyncWindow, openNewConnectionWindow, openSettingsWindow, openWorkflowWindow } from '../../lib/windowManager';
 import { ThemeToggle } from '../../components/ThemeToggle';
@@ -251,13 +252,19 @@ export function MainWindow() {
     if (!isUngrouped) {
       items.push(
         await PredefinedMenuItem.new({ item: 'Separator' }),
-        await MenuItem.new({ text: t('main.ctx.renameGroup'), action: () => { setRenamingGroup(groupName); setRenameValue(groupName); } }),
+        await MenuItem.new({
+          text: t('main.ctx.renameGroup'),
+          action: () => {
+            setRenamingGroup(groupName);
+            setRenameValue(formatGroupLabel(groupName, t));
+          },
+        }),
         await MenuItem.new({ text: t('main.ctx.deleteGroup'), action: () => { void deleteGroup(groupName); } }),
       );
     }
     const menu = await Menu.new({ items });
     await menu.popup();
-  }, [deleteGroup]);
+  }, [deleteGroup, t]);
 
   const handleConnectionContextMenu = useCallback(async (e: React.MouseEvent, conn: ConnectionConfig) => {
     e.preventDefault();
@@ -280,7 +287,12 @@ export function MainWindow() {
     if (moveTargets.length > 0 || conn.group) {
       const subItems: MenuItem[] = [];
       for (const g of moveTargets) {
-        subItems.push(await MenuItem.new({ text: g, action: () => { void moveConnectionToGroup(conn.id, g); } }));
+        subItems.push(
+          await MenuItem.new({
+            text: formatGroupLabel(g, t),
+            action: () => { void moveConnectionToGroup(conn.id, g); },
+          }),
+        );
       }
       if (conn.group) {
         subItems.push(await MenuItem.new({ text: t('main.ctx.removeFromGroup'), action: () => { void moveConnectionToGroup(conn.id, undefined); } }));
@@ -304,7 +316,7 @@ export function MainWindow() {
     }));
     const menu = await Menu.new({ items });
     await menu.popup();
-  }, [activeConnections, groups, disconnectAction, handleConnect, duplicateConnection, deleteConnection, moveConnectionToGroup]);
+  }, [activeConnections, groups, disconnectAction, handleConnect, duplicateConnection, deleteConnection, moveConnectionToGroup, t]);
 
   // ── Pointer-based drag & drop ──
 
@@ -589,7 +601,7 @@ export function MainWindow() {
         </aside>
         <div
           ref={handleRef}
-          className="w-1 shrink-0 cursor-col-resize bg-transparent hover:bg-blue-500/30"
+          className="w-1 shrink-0 cursor-col-resize bg-transparent hover:bg-accent/30"
           title={t('main.sidebar.resize')}
         />
 
@@ -636,7 +648,7 @@ export function MainWindow() {
             )}
             {grouped.map(({ group: groupName, connections: groupConns }) => {
               const expanded = expandedGroups.has(groupName);
-              const displayName = groupName || t('main.ungrouped');
+              const displayName = groupName ? formatGroupLabel(groupName, t) : t('main.ungrouped');
               const isDragOver = dragOverGroup === groupName;
 
               return (
@@ -645,7 +657,7 @@ export function MainWindow() {
                   data-group-name={groupName}
                   className={cn(
                     'transition-colors',
-                    isDragOver && draggingConnId && 'bg-blue-500/10 ring-1 ring-inset ring-blue-500/30',
+                    isDragOver && draggingConnId && 'bg-accent/10 ring-1 ring-inset ring-accent/30',
                   )}
                 >
                   {/* ── Group header ── */}
@@ -710,7 +722,7 @@ export function MainWindow() {
             if (!conn) return null;
             return (
               <div
-                className="pointer-events-none fixed z-[9999] rounded-lg border border-blue-500/40 bg-surface-alt px-3 py-2 text-[13px] font-medium text-fg shadow-xl"
+                className="pointer-events-none fixed z-[9999] rounded-lg border border-accent/40 bg-surface-alt px-3 py-2 text-[13px] font-medium text-fg shadow-xl"
                 style={{ left: dragGhostPos.x + 12, top: dragGhostPos.y + 12 }}
               >
                 {conn.name}

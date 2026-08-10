@@ -2,6 +2,7 @@ import { Input } from '../ui/Input';
 import { Select } from '../ui/Select';
 import { useI18n } from '../../hooks/useI18n';
 import { DB_REGISTRY } from '../../lib/databaseTypes';
+import { PRESET_GROUP_OPTIONS } from '../../lib/connectionGroups';
 import { Label } from './shared';
 import { ConnectionAdvancedSettings } from './ConnectionAdvancedSettings';
 import { FileConnectionFields } from './FileConnectionFields';
@@ -59,9 +60,11 @@ export function ConnectionFormBody({
               <Select
                 value={form.group}
                 options={[
-                  { value: '生产环境', label: t('newConn.groupProd') },
-                  { value: '开发环境', label: t('newConn.groupDev') },
-                  { value: '测试环境', label: t('newConn.groupTest') },
+                  { value: '', label: t('newConn.noGroup') },
+                  ...PRESET_GROUP_OPTIONS.map(({ key, i18nKey }) => ({
+                    value: key,
+                    label: t(i18nKey),
+                  })),
                 ]}
                 onChange={form.setGroup}
               />

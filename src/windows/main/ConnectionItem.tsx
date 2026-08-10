@@ -48,7 +48,7 @@ export function ConnectionItem({
         'group flex cursor-default select-none items-center gap-3 rounded-lg px-3 py-2.5 transition-colors',
         isDragging && 'opacity-40',
         selected
-          ? 'bg-blue-500/10 ring-1 ring-blue-500/30'
+          ? 'bg-accent/10 ring-1 ring-accent/30'
           : 'hover:bg-surface-raised/60',
       )}
       onClick={handleClick}
@@ -64,7 +64,7 @@ export function ConnectionItem({
             <span className="text-[11px] font-medium text-green-500">(local)</span>
           )}
           {hasSSH && (
-            <span className="text-[11px] font-medium text-blue-400">(SSH)</span>
+            <span className="text-[11px] font-medium text-accent">(SSH)</span>
           )}
         </div>
         <div className="mt-0.5 truncate text-[11px] text-fg-muted">{addr}</div>
