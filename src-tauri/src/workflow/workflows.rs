@@ -283,9 +283,8 @@ impl WorkflowRegistry {
     async fn load_all_unlocked(&self) -> Result<(), String> {
         if !self.workflows_dir.exists() {
             std::fs::create_dir_all(&self.workflows_dir).map_err(|e| e.to_string())?;
-            self.workflows.write().await.clear();
-            return Ok(());
         }
+        Self::seed_builtins_if_empty(&self.workflows_dir)?;
 
         let mut workflows = self.workflows.write().await;
         workflows.clear();
@@ -313,6 +312,43 @@ impl WorkflowRegistry {
         }
 
         tracing::info!("Loaded {} workflows", workflows.len());
+        Ok(())
+    }
+
+    /// When the user workflows directory has no YAML files, copy starter templates.
+    fn seed_builtins_if_empty(dir: &std::path::Path) -> Result<(), String> {
+        let has_yaml = std::fs::read_dir(dir)
+            .map_err(|e| e.to_string())?
+            .filter_map(|e| e.ok())
+            .any(|e| {
+                e.path()
+                    .extension()
+                    .map_or(false, |ext| ext == "yaml" || ext == "yml")
+            });
+        if has_yaml {
+            return Ok(());
+        }
+
+        const BUILTINS: &[(&str, &str)] = &[
+            (
+                "builtin-hello-query.yaml",
+                include_str!("../../resources/builtin-workflows/hello-query.yaml"),
+            ),
+            (
+                "builtin-cross-db-sample.yaml",
+                include_str!("../../resources/builtin-workflows/cross-db-sample.yaml"),
+            ),
+            (
+                "builtin-ai-summarize.yaml",
+                include_str!("../../resources/builtin-workflows/ai-summarize.yaml"),
+            ),
+        ];
+        for (name, content) in BUILTINS {
+            let path = dir.join(name);
+            std::fs::write(&path, content)
+                .map_err(|e| format!("Failed to seed builtin workflow {name}: {e}"))?;
+            tracing::info!("Seeded builtin workflow {}", name);
+        }
         Ok(())
     }
 
@@ -1797,5 +1833,812 @@ on_error:
         }
     }
 
-    
+    #[test]
+    fn test_workflow_step_accessors() {
+        let query = WorkflowStep::Query {
+            id: "q1".into(),
+            sql: "SELECT 1".into(),
+            connection: None,
+            database: None,
+            timeout_secs: Some(5),
+            on_error: Some(ErrorHandlingConfig {
+                strategy: ErrorStrategyKind::Skip,
+                fallback_steps: None,
+            }),
+        };
+        assert_eq!(query.step_id(), "q1");
+
+        let ai = WorkflowStep::Ai {
+            id: "a1".into(),
+            prompt: "hi".into(),
+            timeout_secs: None,
+            on_error: None,
+        };
+        assert_eq!(ai.step_id(), "a1");
+
+        let cond = WorkflowStep::Condition {
+            id: "c1".into(),
+            expr: "true".into(),
+            then_steps: vec![],
+            else_steps: None,
+        };
+        assert_eq!(cond.step_id(), "c1");
+
+        let fe = WorkflowStep::ForEach {
+            id: "f1".into(),
+            items: "[]".into(),
+            as_var: "x".into(),
+            steps: vec![],
+            max_iterations: Some(10),
+        };
+        assert_eq!(fe.step_id(), "f1");
+    }
+
+    #[test]
+    fn test_error_handling_fallback_strategy() {
+        let cfg = ErrorHandlingConfig {
+            strategy: ErrorStrategyKind::Fallback,
+            fallback_steps: Some(vec![WorkflowStep::Ai {
+                id: "fb".into(),
+                prompt: "fallback".into(),
+                timeout_secs: None,
+                on_error: None,
+            }]),
+        };
+        match cfg.to_strategy() {
+            ErrorStrategy::Fallback { steps } => assert_eq!(steps.len(), 1),
+            _ => panic!("expected fallback"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_workflow_registry_save_load_delete() {
+        let dir = tempfile::tempdir().unwrap();
+        let registry = WorkflowRegistry::new(dir.path().to_path_buf());
+
+        let workflow = WorkflowDefinition {
+            id: "demo".into(),
+            name: "Demo".into(),
+            description: "Test workflow".into(),
+            version: None,
+            author: None,
+            variables: vec![],
+            steps: vec![WorkflowStep::Query {
+                id: "q".into(),
+                sql: "SELECT 1".into(),
+                connection: None,
+                database: None,
+                timeout_secs: None,
+                on_error: None,
+            }],
+            output: None,
+            timeout_secs: None,
+            error_handling: None,
+        };
+
+        registry.save_workflow(&workflow).await.unwrap();
+        assert!(dir.path().join("demo.yaml").exists());
+
+        let list = registry.list().await;
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].id, "demo");
+
+        let loaded = registry.get("demo").await.unwrap();
+        assert_eq!(loaded.name, "Demo");
+
+        registry.delete_workflow("demo").await.unwrap();
+        assert!(registry.get("demo").await.is_none());
+        assert!(!dir.path().join("demo.yaml").exists());
+    }
+
+    #[tokio::test]
+    async fn test_workflow_registry_load_all_creates_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let workflows_dir = dir.path().join("workflows");
+        let registry = WorkflowRegistry::new(workflows_dir.clone());
+        registry.load_all().await.unwrap();
+        assert!(workflows_dir.is_dir());
+        let ids: Vec<String> = registry.list().await.into_iter().map(|w| w.id).collect();
+        for builtin in ["builtin-hello-query", "builtin-cross-db-sample", "builtin-ai-summarize"] {
+            assert!(
+                ids.iter().any(|id| id == builtin),
+                "empty workflow dir should be seeded with builtin starter workflow {builtin}, got: {ids:?}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn test_workflow_registry_skips_invalid_yaml() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("bad.yaml"), "not: valid: workflow").unwrap();
+        let good = r#"
+id: good
+name: Good
+description: ok
+variables: []
+steps:
+  - type: query
+    id: q
+    sql: "SELECT 1"
+"#;
+        std::fs::write(dir.path().join("good.yaml"), good).unwrap();
+
+        let registry = WorkflowRegistry::new(dir.path().to_path_buf());
+        registry.load_all().await.unwrap();
+        assert_eq!(registry.list().await.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_workflow_registry_delete_missing_is_ok() {
+        let dir = tempfile::tempdir().unwrap();
+        let registry = WorkflowRegistry::new(dir.path().to_path_buf());
+        registry.delete_workflow("nope").await.unwrap();
+    }
+
+    #[test]
+    fn test_workflow_registry_workflows_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let registry = WorkflowRegistry::new(dir.path().to_path_buf());
+        assert_eq!(registry.workflows_dir(), dir.path());
+    }
+
+    #[test]
+    fn test_resolve_template_unknown_variable_is_empty() {
+        let ctx = WorkflowContext::new(&serde_json::json!({}));
+        let result = ctx.resolve_template("Hello {{missing}}").unwrap();
+        assert_eq!(result, "Hello ");
+    }
+
+    #[test]
+    fn test_resolve_template_array_index_path() {
+        let input = serde_json::json!({});
+        let mut ctx = WorkflowContext::new(&input);
+        ctx.set_step_result(
+            "s1",
+            serde_json::json!({"rows": [{"name": "a"}, {"name": "b"}]}),
+        );
+        let result = ctx
+            .resolve_template("Name: {{steps.s1.rows[1].name}}")
+            .unwrap();
+        assert_eq!(result, "Name: b");
+    }
+
+    #[test]
+    fn test_clear_loop_var_removes_binding() {
+        let mut ctx = WorkflowContext::new(&serde_json::json!({}));
+        ctx.set_loop_var("item", serde_json::json!({"id": 1}));
+        assert_eq!(ctx.resolve_template("{{item.id}}").unwrap(), "1");
+        ctx.clear_loop_var("item");
+        assert_eq!(ctx.resolve_template("{{item.id}}").unwrap(), "");
+    }
+
+    #[test]
+    fn test_get_last_result_non_string_uses_pretty_json() {
+        let mut ctx = WorkflowContext::new(&serde_json::json!({}));
+        ctx.set_step_result("s1", serde_json::json!({"rows": [1, 2]}));
+        let last = ctx.get_last_result().unwrap();
+        assert!(last.contains("rows"));
+    }
+
+    #[test]
+    fn test_json_value_to_string_variants() {
+        assert_eq!(json_value_to_string(&serde_json::json!("x")), "x");
+        assert_eq!(json_value_to_string(&serde_json::json!(null)), "");
+        assert_eq!(json_value_to_string(&serde_json::json!(true)), "true");
+        assert_eq!(json_value_to_string(&serde_json::json!(42)), "42");
+        assert_eq!(json_value_to_string(&serde_json::json!([1, 2])), "[1,2]");
+    }
+
+    #[test]
+    fn test_condition_evaluator_lexicographic_fallback() {
+        let input = serde_json::json!({"label": "beta"});
+        let ctx = WorkflowContext::new(&input);
+        assert!(evaluate_condition("label > 'alpha'", &ctx));
+        assert!(!evaluate_condition("label < 'alpha'", &ctx));
+    }
+
+    #[test]
+    fn test_condition_evaluator_falsey_values() {
+        let input = serde_json::json!({"flag": "false", "zero": "0"});
+        let ctx = WorkflowContext::new(&input);
+        assert!(!evaluate_condition("flag", &ctx));
+        assert!(!evaluate_condition("zero", &ctx));
+    }
+
+    #[test]
+    fn test_resolve_deep_path_missing_step_returns_none() {
+        let ctx = WorkflowContext::new(&serde_json::json!({}));
+        assert!(ctx.resolve_deep_path("steps.missing.rows").is_none());
+    }
+
+    #[test]
+    fn test_wildcard_path_empty_when_not_array() {
+        let mut ctx = WorkflowContext::new(&serde_json::json!({}));
+        ctx.set_step_result("s1", serde_json::json!({"rows": "not-array"}));
+        let result = ctx
+            .resolve_template("{{steps.s1.rows.*.id}}")
+            .unwrap();
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_workflow_step_type_timeout_and_on_error() {
+        let query = WorkflowStep::Query {
+            id: "q1".into(),
+            sql: "SELECT 1".into(),
+            connection: None,
+            database: None,
+            timeout_secs: Some(15),
+            on_error: Some(ErrorHandlingConfig {
+                strategy: ErrorStrategyKind::Abort,
+                fallback_steps: None,
+            }),
+        };
+        assert_eq!(query.step_type_str(), "query");
+        assert_eq!(query.timeout_secs(), Some(15));
+        assert!(matches!(
+            query.on_error_strategy(),
+            Some(ErrorStrategy::Abort)
+        ));
+
+        let ai = WorkflowStep::Ai {
+            id: "a1".into(),
+            prompt: "hi".into(),
+            timeout_secs: Some(5),
+            on_error: None,
+        };
+        assert_eq!(ai.step_type_str(), "ai");
+        assert_eq!(ai.timeout_secs(), Some(5));
+        assert!(ai.on_error_strategy().is_none());
+
+        let cond = WorkflowStep::Condition {
+            id: "c1".into(),
+            expr: "true".into(),
+            then_steps: vec![],
+            else_steps: None,
+        };
+        assert_eq!(cond.step_type_str(), "condition");
+        assert!(cond.on_error_strategy().is_none());
+        assert!(cond.timeout_secs().is_none());
+    }
+
+    #[test]
+    fn test_error_handling_abort_and_skip_strategies() {
+        let abort = ErrorHandlingConfig {
+            strategy: ErrorStrategyKind::Abort,
+            fallback_steps: None,
+        };
+        assert!(matches!(abort.to_strategy(), ErrorStrategy::Abort));
+
+        let skip = ErrorHandlingConfig {
+            strategy: ErrorStrategyKind::Skip,
+            fallback_steps: None,
+        };
+        assert!(matches!(skip.to_strategy(), ErrorStrategy::Skip));
+
+        let fallback = ErrorHandlingConfig {
+            strategy: ErrorStrategyKind::Fallback,
+            fallback_steps: None,
+        };
+        assert!(matches!(
+            fallback.to_strategy(),
+            ErrorStrategy::Fallback { steps } if steps.is_empty()
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_workflow_registry_ensure_loaded_is_idempotent() {
+        let dir = tempfile::tempdir().unwrap();
+        let good = r#"
+id: once
+name: Once
+description: ok
+variables: []
+steps:
+  - type: query
+    id: q
+    sql: "SELECT 1"
+"#;
+        std::fs::write(dir.path().join("once.yaml"), good).unwrap();
+        let registry = WorkflowRegistry::new(dir.path().to_path_buf());
+        registry.ensure_loaded().await.unwrap();
+        registry.ensure_loaded().await.unwrap();
+        assert_eq!(registry.list().await.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_workflow_registry_loads_yml_extension() {
+        let dir = tempfile::tempdir().unwrap();
+        let yaml = r#"
+id: yml-id
+name: YML
+description: ok
+variables: []
+steps:
+  - type: query
+    id: q
+    sql: "SELECT 1"
+"#;
+        std::fs::write(dir.path().join("yml-id.yml"), yaml).unwrap();
+        let registry = WorkflowRegistry::new(dir.path().to_path_buf());
+        registry.load_all().await.unwrap();
+        assert!(registry.get("yml-id").await.is_some());
+    }
+
+    async fn build_executor_test_app_state() -> (
+        std::sync::Arc<crate::commands::AppState>,
+        String,
+        tempfile::TempDir,
+    ) {
+        use crate::ai::{AiProviderRegistry, PromptResolver, SchemaContextBuilder};
+        use crate::cache::SchemaCache;
+        use crate::commands::AppState;
+        use crate::db::registry::DriverRegistry;
+        use crate::db::{ConnectionConfig, SslMode};
+        use crate::mcp::client::McpClientManager;
+        use crate::monitor::{MonitorConnectionRegistry, MonitorEngine};
+        use crate::services::ConnectionManager;
+        use crate::store::Store;
+        use crate::SyncAdapterRegistry;
+        use crate::workflow::{WorkflowHistoryManager, WorkflowRegistry};
+        use std::sync::Arc;
+
+        let dir = tempfile::tempdir().unwrap();
+        std::env::set_var("DATAZEN_KEYRING", "file");
+        let store = Arc::new(Store::init_with_path(dir.path()).await.unwrap());
+        let db_path = dir.path().join("workflow_exec.db");
+        // Touch the file so SQLite can open it in sandboxed/temp environments.
+        std::fs::write(&db_path, []).expect("create sqlite db file");
+
+        let config_id = "wf-sqlite";
+        store
+            .save_connection(ConnectionConfig {
+                id: config_id.into(),
+                name: "Workflow SQLite".into(),
+                database_type: "sqlite".into(),
+                host: None,
+                port: None,
+                database: Some(db_path.display().to_string()),
+                schema: None,
+                username: None,
+                password: None,
+                ssl_mode: SslMode::Disable,
+                connection_timeout: 30,
+                ssh_tunnel: None,
+                color_tag: None,
+                group: None,
+                last_connected_at: None,
+                server_version: None,
+                options: None,
+            })
+            .await
+            .unwrap();
+
+        let registry = Arc::new(DriverRegistry::new());
+        let connection_manager =
+            Arc::new(ConnectionManager::new(registry.clone(), store.clone()));
+        let monitor_connections =
+            Arc::new(MonitorConnectionRegistry::new(connection_manager.clone()));
+        let monitor_engine = MonitorEngine::new(store.clone(), monitor_connections.clone());
+        let schema_cache = Arc::new(SchemaCache::new(registry.clone()));
+        let data_dir = store.data_dir().to_path_buf();
+
+        let state = Arc::new(AppState {
+            driver_registry: registry.clone(),
+            connection_manager: connection_manager.clone(),
+            monitor_connections,
+            monitor_engine,
+            store,
+            schema_cache: schema_cache.clone(),
+            sync_adapters: Arc::new(SyncAdapterRegistry::new()),
+            ai_registry: Arc::new(AiProviderRegistry::new()),
+            schema_context_builder: Arc::new(SchemaContextBuilder::new(
+                schema_cache,
+                connection_manager.clone(),
+            )),
+            prompt_resolver: Arc::new(PromptResolver::new(&data_dir, None)),
+            workflow_registry: Arc::new(WorkflowRegistry::new(data_dir.join("workflows"))),
+            workflow_history: Arc::new(WorkflowHistoryManager::new(
+                data_dir.join("workflow_history"),
+            )),
+            mcp_client_manager: Arc::new(McpClientManager::new()),
+        });
+
+        connection_manager
+            .connect(config_id)
+            .await
+            .expect("sqlite test connection");
+
+        (state, config_id.to_string(), dir)
+    }
+
+    #[tokio::test]
+    async fn executor_runs_sqlite_query_step() {
+        let (state, config_id, _dir) = build_executor_test_app_state().await;
+        let workflow = WorkflowDefinition {
+            id: "exec-query".into(),
+            name: "Exec Query".into(),
+            description: String::new(),
+            version: None,
+            author: None,
+            variables: vec![],
+            steps: vec![WorkflowStep::Query {
+                id: "q1".into(),
+                sql: "SELECT 42 AS answer".into(),
+                connection: None,
+                database: None,
+                timeout_secs: None,
+                on_error: None,
+            }],
+            output: None,
+            timeout_secs: None,
+            error_handling: None,
+        };
+
+        let result = WorkflowExecutor::execute(
+            &workflow,
+            &state,
+            Some(&config_id),
+            &serde_json::json!({}),
+        )
+        .await
+        .unwrap();
+        assert!(result.success, "{:?}", result.error);
+        assert_eq!(result.steps.len(), 1);
+        assert_eq!(result.steps[0].status, StepStatus::Success);
+        assert_eq!(result.steps[0].step_type, "query");
+        assert!(result.steps[0].connection_name.is_some());
+    }
+
+    #[tokio::test]
+    async fn executor_required_variable_missing_returns_err() {
+        let (state, config_id, _dir) = build_executor_test_app_state().await;
+        let workflow = WorkflowDefinition {
+            id: "req-var".into(),
+            name: "Required".into(),
+            description: String::new(),
+            version: None,
+            author: None,
+            variables: vec![WorkflowVariable {
+                name: "uid".into(),
+                var_type: "string".into(),
+                description: String::new(),
+                required: Some(true),
+                default: None,
+            }],
+            steps: vec![],
+            output: None,
+            timeout_secs: None,
+            error_handling: None,
+        };
+
+        let err = WorkflowExecutor::execute(
+            &workflow,
+            &state,
+            Some(&config_id),
+            &serde_json::json!({}),
+        )
+        .await
+        .unwrap_err();
+        assert!(err.contains("Required variable 'uid' is missing"));
+    }
+
+    #[tokio::test]
+    async fn executor_applies_variable_defaults() {
+        let (state, config_id, _dir) = build_executor_test_app_state().await;
+        let workflow = WorkflowDefinition {
+            id: "defaults".into(),
+            name: "Defaults".into(),
+            description: String::new(),
+            version: None,
+            author: None,
+            variables: vec![WorkflowVariable {
+                name: "limit".into(),
+                var_type: "number".into(),
+                description: String::new(),
+                required: Some(true),
+                default: Some(serde_json::json!(5)),
+            }],
+            steps: vec![WorkflowStep::Query {
+                id: "q1".into(),
+                sql: "SELECT {{limit}} AS n".into(),
+                connection: None,
+                database: None,
+                timeout_secs: None,
+                on_error: None,
+            }],
+            output: None,
+            timeout_secs: None,
+            error_handling: None,
+        };
+
+        let result = WorkflowExecutor::execute(
+            &workflow,
+            &state,
+            Some(&config_id),
+            &serde_json::json!({}),
+        )
+        .await
+        .unwrap();
+        assert!(result.success);
+    }
+
+    #[tokio::test]
+    async fn executor_condition_runs_then_branch_query() {
+        let (state, config_id, _dir) = build_executor_test_app_state().await;
+        let workflow = WorkflowDefinition {
+            id: "cond".into(),
+            name: "Condition".into(),
+            description: String::new(),
+            version: None,
+            author: None,
+            variables: vec![],
+            steps: vec![WorkflowStep::Condition {
+                id: "check".into(),
+                expr: "flag == 'yes'".into(),
+                then_steps: vec![WorkflowStep::Query {
+                    id: "inner".into(),
+                    sql: "SELECT 1 AS ok".into(),
+                    connection: None,
+                    database: None,
+                    timeout_secs: None,
+                    on_error: None,
+                }],
+                else_steps: None,
+            }],
+            output: None,
+            timeout_secs: None,
+            error_handling: None,
+        };
+
+        let result = WorkflowExecutor::execute(
+            &workflow,
+            &state,
+            Some(&config_id),
+            &serde_json::json!({"flag": "yes"}),
+        )
+        .await
+        .unwrap();
+        assert!(result.success);
+        assert!(
+            result
+                .steps
+                .iter()
+                .any(|s| s.step_id == "inner" && s.status == StepStatus::Success)
+        );
+    }
+
+    #[tokio::test]
+    async fn executor_foreach_skips_when_items_not_array() {
+        let (state, config_id, _dir) = build_executor_test_app_state().await;
+        let workflow = WorkflowDefinition {
+            id: "foreach-skip".into(),
+            name: "ForEach Skip".into(),
+            description: String::new(),
+            version: None,
+            author: None,
+            variables: vec![],
+            steps: vec![WorkflowStep::ForEach {
+                id: "loop".into(),
+                items: "not-json-array".into(),
+                as_var: "item".into(),
+                steps: vec![],
+                max_iterations: None,
+            }],
+            output: None,
+            timeout_secs: None,
+            error_handling: None,
+        };
+
+        let result = WorkflowExecutor::execute(
+            &workflow,
+            &state,
+            Some(&config_id),
+            &serde_json::json!({}),
+        )
+        .await
+        .unwrap();
+        assert!(result.success);
+        assert!(
+            result
+                .steps
+                .iter()
+                .any(|s| s.step_id == "loop" && s.status == StepStatus::Skipped)
+        );
+    }
+
+    #[tokio::test]
+    async fn executor_foreach_iterates_json_array() {
+        let (state, config_id, _dir) = build_executor_test_app_state().await;
+        let workflow = WorkflowDefinition {
+            id: "foreach-ok".into(),
+            name: "ForEach".into(),
+            description: String::new(),
+            version: None,
+            author: None,
+            variables: vec![],
+            steps: vec![WorkflowStep::ForEach {
+                id: "loop".into(),
+                items: "[1, 2]".into(),
+                as_var: "item".into(),
+                steps: vec![],
+                max_iterations: Some(10),
+            }],
+            output: None,
+            timeout_secs: None,
+            error_handling: None,
+        };
+
+        let result = WorkflowExecutor::execute(
+            &workflow,
+            &state,
+            Some(&config_id),
+            &serde_json::json!({}),
+        )
+        .await
+        .unwrap();
+        assert!(result.success);
+        let fe = result
+            .steps
+            .iter()
+            .find(|s| s.step_id == "loop" && s.status == StepStatus::Success)
+            .expect("foreach success step");
+        assert_eq!(fe.result.as_ref().unwrap()["iterations_completed"], 2);
+    }
+
+    #[tokio::test]
+    async fn executor_query_without_connection_fails() {
+        let (state, _config_id, _dir) = build_executor_test_app_state().await;
+        let workflow = WorkflowDefinition {
+            id: "no-conn".into(),
+            name: "No Conn".into(),
+            description: String::new(),
+            version: None,
+            author: None,
+            variables: vec![],
+            steps: vec![WorkflowStep::Query {
+                id: "q1".into(),
+                sql: "SELECT 1".into(),
+                connection: None,
+                database: None,
+                timeout_secs: None,
+                on_error: None,
+            }],
+            output: None,
+            timeout_secs: None,
+            error_handling: None,
+        };
+
+        let result = WorkflowExecutor::execute(&workflow, &state, None, &serde_json::json!({}))
+            .await
+            .unwrap();
+        assert!(!result.success);
+        assert!(result.error.is_some());
+    }
+
+    #[tokio::test]
+    async fn executor_on_error_skip_continues_after_bad_query() {
+        let (state, config_id, _dir) = build_executor_test_app_state().await;
+        let workflow = WorkflowDefinition {
+            id: "skip-err".into(),
+            name: "Skip Error".into(),
+            description: String::new(),
+            version: None,
+            author: None,
+            variables: vec![],
+            steps: vec![
+                WorkflowStep::Query {
+                    id: "bad".into(),
+                    sql: "SELECT * FROM __no_such_table_xyz".into(),
+                    connection: None,
+                    database: None,
+                    timeout_secs: None,
+                    on_error: Some(ErrorHandlingConfig {
+                        strategy: ErrorStrategyKind::Skip,
+                        fallback_steps: None,
+                    }),
+                },
+                WorkflowStep::Query {
+                    id: "good".into(),
+                    sql: "SELECT 1 AS ok".into(),
+                    connection: None,
+                    database: None,
+                    timeout_secs: None,
+                    on_error: None,
+                },
+            ],
+            output: None,
+            timeout_secs: None,
+            error_handling: None,
+        };
+
+        let result = WorkflowExecutor::execute(
+            &workflow,
+            &state,
+            Some(&config_id),
+            &serde_json::json!({}),
+        )
+        .await
+        .unwrap();
+        assert!(result.success);
+        assert!(
+            result
+                .steps
+                .iter()
+                .any(|s| s.step_id == "bad" && s.status == StepStatus::Skipped)
+        );
+        assert!(
+            result
+                .steps
+                .iter()
+                .any(|s| s.step_id == "good" && s.status == StepStatus::Success)
+        );
+    }
+
+    #[tokio::test]
+    async fn executor_output_template_uses_step_results() {
+        let (state, config_id, _dir) = build_executor_test_app_state().await;
+        let workflow = WorkflowDefinition {
+            id: "output-tmpl".into(),
+            name: "Output".into(),
+            description: String::new(),
+            version: None,
+            author: None,
+            variables: vec![],
+            steps: vec![WorkflowStep::Query {
+                id: "q1".into(),
+                sql: "SELECT 99 AS n".into(),
+                connection: None,
+                database: None,
+                timeout_secs: None,
+                on_error: None,
+            }],
+            output: Some(WorkflowOutput {
+                format: "text".into(),
+                template: Some("rows={{steps.q1.rows_count}}".into()),
+            }),
+            timeout_secs: None,
+            error_handling: None,
+        };
+
+        let result = WorkflowExecutor::execute(
+            &workflow,
+            &state,
+            Some(&config_id),
+            &serde_json::json!({}),
+        )
+        .await
+        .unwrap();
+        assert!(result.success);
+        assert_eq!(result.final_output, "rows=1");
+    }
+
+    #[tokio::test]
+    async fn executor_resolves_connection_by_config_id() {
+        let (state, config_id, _dir) = build_executor_test_app_state().await;
+        let workflow = WorkflowDefinition {
+            id: "conn-tmpl".into(),
+            name: "Conn Template".into(),
+            description: String::new(),
+            version: None,
+            author: None,
+            variables: vec![],
+            steps: vec![WorkflowStep::Query {
+                id: "q1".into(),
+                sql: "SELECT 1".into(),
+                connection: Some(config_id.clone()),
+                database: None,
+                timeout_secs: None,
+                on_error: None,
+            }],
+            output: None,
+            timeout_secs: None,
+            error_handling: None,
+        };
+
+        let result = WorkflowExecutor::execute(&workflow, &state, None, &serde_json::json!({}))
+            .await
+            .unwrap();
+        assert!(result.success, "{:?}", result.error);
+    }
 }

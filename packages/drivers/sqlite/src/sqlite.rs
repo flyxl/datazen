@@ -1,5 +1,6 @@
 //! SQLite driver backed by sqlx SqlitePool.
 
+use crate::structure;
 use datazen_driver_api::*;
 use async_trait::async_trait;
 use sqlx::sqlite::SqlitePoolOptions;
@@ -403,15 +404,7 @@ impl DatabaseDriver for SqliteDriver {
                     });
                 }
                 Err(e) => {
-                    results.push(StatementResult {
-                        sql: stmt.to_string(),
-                        columns: vec![],
-                        rows: vec![],
-                        rows_affected: None,
-                        execution_time_ms: start.elapsed().as_millis() as u64,
-                        truncated: false,
-                    });
-                    tracing::warn!(stmt, error = %e, "sqlite query_multi statement failed");
+                    return Err(DriverError::QueryFailed(format!("[{stmt}] {e}")));
                 }
             }
         }
@@ -532,6 +525,22 @@ impl DatabaseDriver for SqliteDriver {
             server_version: version,
             server_type: "SQLite".to_string(),
         })
+    }
+
+    async fn structure_capabilities(
+        &self,
+        _handle: &ConnectionHandle,
+    ) -> Result<StructureCapabilities, DriverError> {
+        Ok(structure::capabilities(&self.driver_type()))
+    }
+
+    async fn plan_structure_changes(
+        &self,
+        _handle: &ConnectionHandle,
+        request: &StructureChangeRequest,
+    ) -> Result<StructureChangePlan, DriverError> {
+        let caps = structure::capabilities(&self.driver_type());
+        structure::plan_changes(request, &caps)
     }
 }
 

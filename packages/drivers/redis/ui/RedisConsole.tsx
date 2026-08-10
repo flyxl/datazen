@@ -76,7 +76,7 @@ export function RedisConsole({
   const editorFontFamily = useSettingsStore(
     (s) => s.settings.editorFontFamily || HOST_DEFAULT_EDITOR_FONT,
   );
-  const fontFamily = resolveEditorFontFamily(editorFontFamily);
+  const fontFamily = resolveEditorFontFamily(editorFontFamily, '', HOST_DEFAULT_EDITOR_FONT);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [commands, setCommands] = useState('');

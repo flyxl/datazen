@@ -351,6 +351,8 @@ mod tests {
     use crate::dashboard::types::{
         AggregationType, ChartConfig, ChartSortBy, ChartType, DashboardLayout, WidgetLayout,
     };
+    use crate::monitor::MonitorConnectionRegistry;
+    use crate::services::ConnectionManager;
 
     fn sample_widget(id: &str, refresh_sec: u32, enabled: bool) -> DashboardWidget {
         DashboardWidget {
@@ -476,5 +478,86 @@ mod tests {
             t0 + Duration::from_secs(59),
             60
         ));
+    }
+
+    async fn test_engine() -> (crate::testing::FileKeyringGuard, Arc<MonitorEngine>) {
+        let keyring = crate::testing::FileKeyringGuard::set();
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(Store::init_with_path(dir.path()).await.unwrap());
+        let registry = Arc::new(crate::db::registry::DriverRegistry::new());
+        let connection_manager = Arc::new(ConnectionManager::new(registry, store.clone()));
+        let monitor_connections =
+            Arc::new(MonitorConnectionRegistry::new(connection_manager));
+        (keyring, MonitorEngine::new(store, monitor_connections))
+    }
+
+    #[tokio::test]
+    async fn monitor_engine_pause_and_active_flags() {
+        let (_keyring, engine) = test_engine().await;
+        assert!(!engine.is_monitoring_active());
+        assert!(!engine.is_paused());
+
+        engine.set_paused(true);
+        assert!(engine.is_paused());
+
+        engine.set_paused(false);
+        assert!(!engine.is_paused());
+    }
+
+    #[tokio::test]
+    async fn monitor_engine_reload_from_store_with_dashboard() {
+        use crate::dashboard::store::save_dashboard;
+        use crate::dashboard::types::{
+            AggregationType, ChartConfig, ChartSortBy, ChartType, Dashboard, DashboardLayout,
+            WidgetLayout,
+        };
+        use crate::testing::app_state::TestAppState;
+
+        let test = TestAppState::new().await;
+        let dashboard = Dashboard {
+            id: "mon-dash".into(),
+            name: "Monitor".into(),
+            created_at: "2026-01-01T00:00:00Z".into(),
+            updated_at: "2026-01-01T00:00:00Z".into(),
+            layout: DashboardLayout {
+                cols: 12,
+                row_height: 80,
+            },
+            widgets: vec![crate::dashboard::types::DashboardWidget {
+                id: "w1".into(),
+                title: "Q".into(),
+                config_id: "cfg".into(),
+                sql: "SELECT 1".into(),
+                chart_config: ChartConfig {
+                    chart_type: ChartType::Line,
+                    x_axis: None,
+                    y_axes: vec![],
+                    group_by: None,
+                    aggregation: AggregationType::None,
+                    sort_by: ChartSortBy::None,
+                    show_legend: true,
+                    show_grid: true,
+                    show_values: false,
+                    color_scheme: "default".into(),
+                },
+                layout: WidgetLayout {
+                    x: 0,
+                    y: 0,
+                    w: 4,
+                    h: 3,
+                },
+                refresh_sec: 60,
+                alert: None,
+                enabled: true,
+            }],
+            enabled: true,
+        };
+        save_dashboard(test.state.store.data_dir(), dashboard).unwrap();
+        test.state
+            .monitor_engine
+            .reload_from_store()
+            .await
+            .unwrap();
+        assert!(test.state.monitor_engine.is_monitoring_active());
     }
 }

@@ -271,7 +271,7 @@ function JsonTreeNode({
                 setEditing(true);
               }}
             >
-              {t('common.edit')}
+              {t('menu.edit')}
             </Button>
           )}
           {!isContainer && editing && (

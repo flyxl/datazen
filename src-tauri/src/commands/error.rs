@@ -110,3 +110,53 @@ impl<T, E: Into<CommandError>> CmdExt<T> for Result<T, E> {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn display_and_serialize_variants() {
+        let cases: Vec<CommandError> = vec![
+            CommandError::Store(StoreError::ReadError("x".into())),
+            CommandError::Connection(ConnectionError::ConfigNotFound("c".into())),
+            CommandError::Driver(DriverError::QueryFailed("q".into())),
+            CommandError::Ai(AiError::NotConfigured("ai".into())),
+            CommandError::Io(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "file",
+            )),
+            CommandError::Json(serde_json::from_str::<serde_json::Value>("{").unwrap_err()),
+            CommandError::NotFound("n".into()),
+            CommandError::NotConfigured("nc".into()),
+            CommandError::Validation("v".into()),
+            CommandError::Internal("i".into()),
+        ];
+        for err in cases {
+            let s = err.to_string();
+            assert!(!s.is_empty());
+            let json = serde_json::to_string(&err).unwrap();
+            assert!(json.starts_with('"') && json.ends_with('"'));
+        }
+    }
+
+    #[test]
+    fn from_conversions_work() {
+        let _: CommandError = ConnectionError::ConnectionNotFound("id".into()).into();
+        let _: CommandError = DriverError::ConnectionFailed("x".into()).into();
+        let _: CommandError = AiError::RequestFailed("fail".into()).into();
+        let _: CommandError = std::io::Error::new(std::io::ErrorKind::Other, "io").into();
+        let _: CommandError = "msg".into();
+        let _: CommandError = "msg".to_string().into();
+    }
+
+    #[test]
+    fn cmd_ext_logs_and_wraps() {
+        let ok: Result<i32, ConnectionError> = Ok(7);
+        assert_eq!(ok.cmd_err("test_cmd").unwrap(), 7);
+
+        let err: Result<i32, ConnectionError> =
+            Err(ConnectionError::ConnectionNotFound("gone".into()));
+        assert!(err.cmd_err("test_cmd").is_err());
+    }
+}

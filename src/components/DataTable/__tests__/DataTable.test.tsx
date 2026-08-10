@@ -1,0 +1,187 @@
+import { describe, expect, it, vi, afterEach, beforeEach } from 'vitest';
+import { render, fireEvent, cleanup, waitFor } from '@testing-library/react';
+import { DataTable } from '../DataTable';
+
+vi.mock('../../../hooks/useI18n', () => ({
+  useI18n: () => ({ t: (key: string) => key }),
+}));
+
+vi.mock('../../../hooks/useColumnResize', () => ({
+  useColumnResize: () => ({
+    columnWidths: [160, 200],
+    onResizeStart: vi.fn(),
+  }),
+  adjustWidthsForSort: (widths: number[]) => widths,
+}));
+
+vi.mock('../../FilterBar', () => ({
+  FilterBar: ({ onClear }: { onClear: () => void }) => (
+    <div data-testid="filter-bar">
+      <button type="button" onClick={onClear}>clear-filters</button>
+    </div>
+  ),
+}));
+
+vi.mock('../../../hooks/useVirtualTable', () => ({
+  useVirtualTable: ({ rows }: { rows: unknown[][] }) => ({
+    virtualRows: rows.map((_, index) => ({ index, key: String(index), start: index * 40 })),
+    totalHeight: rows.length * 40,
+  }),
+}));
+
+const COLS = [
+  { id: 'id', name: 'id', type: 'integer' },
+  { id: 'name', name: 'name', type: 'varchar' },
+];
+
+const saveTextWithDialog = vi.fn().mockResolvedValue(true);
+
+vi.mock('../../../commands/file', () => ({
+  fileCommands: {
+    saveTextWithDialog: (...args: unknown[]) => saveTextWithDialog(...args),
+    saveBase64WithDialog: vi.fn().mockResolvedValue(true),
+  },
+}));
+
+afterEach(cleanup);
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
+
+describe('DataTable', () => {
+  const rows = [[1, 'Alice'], [2, 'Bob']];
+
+  it('renders header and body rows', () => {
+    const { getByText } = render(<DataTable columns={COLS} rows={rows} />);
+    expect(getByText('id')).toBeInTheDocument();
+    expect(getByText('Alice')).toBeInTheDocument();
+  });
+
+  it('shows filter bar and pagination when props provided', () => {
+    const onPageChange = vi.fn();
+    const onClearFilters = vi.fn();
+    const { getByTestId, getByText } = render(
+      <DataTable
+        columns={COLS}
+        rows={rows}
+        filters={[{ column: 'name', operator: 'eq', value: 'Alice' }]}
+        onRemoveFilter={vi.fn()}
+        onClearFilters={onClearFilters}
+        page={0}
+        pageSize={25}
+        totalRows={100}
+        onPageChange={onPageChange}
+        onPageSizeChange={vi.fn()}
+      />,
+    );
+    expect(getByTestId('filter-bar')).toBeInTheDocument();
+    fireEvent.click(getByText('clear-filters'));
+    expect(onClearFilters).toHaveBeenCalled();
+    expect(getByText('1-25 / 100')).toBeInTheDocument();
+  });
+
+  it('shows selection bar and select-all checkbox', () => {
+    const onSelectAll = vi.fn();
+    const onRowSelect = vi.fn();
+    const { container } = render(
+      <DataTable
+        columns={COLS}
+        rows={rows}
+        selectedRows={new Set([0])}
+        onSelectAll={onSelectAll}
+        onRowSelect={onRowSelect}
+        exportTableName="users"
+      />,
+    );
+    const checkbox = container.querySelector('input[type="checkbox"]')!;
+    fireEvent.click(checkbox);
+    expect(onSelectAll).toHaveBeenCalled();
+    expect(container.textContent).toContain('dataTable.selected');
+  });
+
+  it('opens export dialog from toolbar button', async () => {
+    const { getByTitle, getByText } = render(
+      <DataTable
+        columns={COLS}
+        rows={rows}
+        selectedRows={new Set()}
+        onSelectAll={vi.fn()}
+        onRowSelect={vi.fn()}
+        exportTableName="users"
+      />,
+    );
+    fireEvent.click(getByTitle('export.export'));
+    await waitFor(() => {
+      expect(getByText('export.title')).toBeInTheDocument();
+    });
+  });
+
+  it('shows bottom export bar when no selection handlers', async () => {
+    const { getAllByTitle, getByText, getAllByText } = render(
+      <DataTable columns={COLS} rows={rows} exportTableName="users" />,
+    );
+    const exportBtns = getAllByTitle('export.export');
+    expect(exportBtns.length).toBeGreaterThan(0);
+    fireEvent.click(exportBtns[0]);
+    await waitFor(() => expect(getByText('export.title')).toBeInTheDocument());
+    const dialogExportBtns = getAllByText('export.export');
+    fireEvent.click(dialogExportBtns[dialogExportBtns.length - 1]);
+    await waitFor(() => expect(saveTextWithDialog).toHaveBeenCalled());
+  });
+
+  it('opens context menu and exports selected rows label', async () => {
+    const { container, getByText, getAllByText } = render(
+      <DataTable
+        columns={COLS}
+        rows={rows}
+        selectedRows={new Set([0, 1])}
+        onSelectAll={vi.fn()}
+        onRowSelect={vi.fn()}
+        exportTableName="users"
+      />,
+    );
+    const scrollArea = container.querySelector('.overflow-auto')!;
+    fireEvent.contextMenu(scrollArea, { clientX: 10, clientY: 10 });
+    await waitFor(() => {
+      expect(getByText(/export.selectedRows/)).toBeInTheDocument();
+    });
+    fireEvent.click(getByText(/export.selectedRows/));
+    await waitFor(() => expect(getByText('export.title')).toBeInTheDocument());
+    const dialogExportBtns = getAllByText('export.export');
+    fireEvent.click(dialogExportBtns[dialogExportBtns.length - 1]);
+    await waitFor(() => expect(saveTextWithDialog).toHaveBeenCalled());
+  });
+
+  it('calls row click handlers', () => {
+    const onRowClick = vi.fn();
+    const onRowSelect = vi.fn();
+    const { container } = render(
+      <DataTable
+        columns={COLS}
+        rows={rows}
+        onRowClick={onRowClick}
+        onRowSelect={onRowSelect}
+        highlightedRow={0}
+      />,
+    );
+    const row = container.querySelector('[tabindex="0"]')!;
+    fireEvent.click(row);
+    expect(onRowClick).toHaveBeenCalledWith(0);
+    expect(onRowSelect).toHaveBeenCalledWith(0, { multi: false, range: false });
+  });
+
+  it('shows loading indicator in selection bar', () => {
+    const { getByText } = render(
+      <DataTable
+        columns={COLS}
+        rows={rows}
+        loading
+        selectedRows={new Set()}
+        onSelectAll={vi.fn()}
+        onRowSelect={vi.fn()}
+      />,
+    );
+    expect(getByText('common.loading')).toBeInTheDocument();
+  });
+});

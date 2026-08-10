@@ -433,7 +433,9 @@ impl ConnectionManager {
 mod tests {
     use super::*;
     use crate::db::registry::DriverRegistry;
-    use crate::db::SslMode;
+    use crate::db::{ConnectionConfig, SslMode};
+    use crate::store::Store;
+    use crate::testing::mock_driver::{MockDriver, MockDriverOptions};
     use async_trait::async_trait;
 
     struct StubDriver(String);
@@ -524,7 +526,7 @@ mod tests {
         }
     }
 
-    async fn test_manager() -> ConnectionManager {
+    async fn test_manager_stub() -> ConnectionManager {
         std::env::set_var("DATAZEN_KEYRING", "file");
         let dir = tempfile::tempdir().unwrap();
         // Keep tempdir alive for the store path lifetime of this test helper call site.
@@ -533,7 +535,7 @@ mod tests {
         let store = Arc::new(Store::init_with_path(&path).await.unwrap());
         let registry = Arc::new(DriverRegistry::new());
         registry
-            .register_test_driver(Arc::new(StubDriver("postgresql".into())))
+            .register_test_driver("postgresql", Arc::new(StubDriver("postgresql".into())))
             .await;
         ConnectionManager::new(registry, store)
     }
@@ -562,7 +564,7 @@ mod tests {
 
     #[tokio::test]
     async fn resolve_session_passthrough_runtime_id() {
-        let mgr = test_manager().await;
+        let mgr = test_manager_stub().await;
         let handle = ConnectionHandle {
             id: "rt-1".into(),
             pool_id: "pool-1".into(),
@@ -578,7 +580,7 @@ mod tests {
 
     #[tokio::test]
     async fn resolve_session_config_id_reuses_existing_runtime() {
-        let mgr = test_manager().await;
+        let mgr = test_manager_stub().await;
         let handle = ConnectionHandle {
             id: "rt-2".into(),
             pool_id: "pool-2".into(),
@@ -589,5 +591,141 @@ mod tests {
         let (runtime_id, _driver, returned) = mgr.resolve_session("cfg-2").await.unwrap();
         assert_eq!(runtime_id, "rt-2");
         assert_eq!(returned.id, "rt-2");
+    }
+
+    async fn test_manager() -> (
+        crate::testing::FileKeyringGuard,
+        Arc<ConnectionManager>,
+        Arc<Store>,
+        Arc<MockDriver>,
+    ) {
+        let keyring = crate::testing::FileKeyringGuard::set();
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(Store::init_with_path(dir.path()).await.unwrap());
+        let registry = Arc::new(DriverRegistry::new());
+        let mock = MockDriver::new(
+            "postgres",
+            MockDriverOptions {
+                server_version: "PostgreSQL 16".into(),
+                ..Default::default()
+            },
+        );
+        registry
+            .register_test_driver("postgres", mock.clone())
+            .await;
+        let mgr = Arc::new(ConnectionManager::new(registry, store.clone()));
+        (keyring, mgr, store, mock)
+    }
+
+    fn sample_config(id: &str) -> ConnectionConfig {
+        ConnectionConfig {
+            id: id.into(),
+            name: "Test".into(),
+            database_type: "postgres".into(),
+            host: Some("localhost".into()),
+            port: Some(5432),
+            database: Some("app".into()),
+            schema: None,
+            username: None,
+            password: None,
+            ssl_mode: SslMode::Prefer,
+            connection_timeout: 30,
+            ssh_tunnel: None,
+            color_tag: None,
+            group: None,
+            last_connected_at: None,
+            server_version: None,
+            options: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn connect_registers_session_and_returns_runtime_id() {
+        let (_keyring, mgr, store, _) = test_manager().await;
+        store.save_connection(sample_config("cfg-1")).await.unwrap();
+        let conn_id = mgr.connect("cfg-1").await.unwrap();
+        assert!(conn_id.starts_with("mock-cfg-1"));
+        assert_eq!(mgr.ui_session_map_len().await, 1);
+    }
+
+    #[tokio::test]
+    async fn get_or_connect_reuses_existing_session() {
+        let (_keyring, mgr, store, mock) = test_manager().await;
+        store.save_connection(sample_config("cfg-1")).await.unwrap();
+        let first = mgr.get_or_connect("cfg-1").await.unwrap();
+        let second = mgr.get_or_connect("cfg-1").await.unwrap();
+        assert_eq!(first, second);
+        assert_eq!(mock.get_columns_calls(), 0);
+    }
+
+    #[tokio::test]
+    async fn get_connection_returns_driver_and_updates_last_used() {
+        let (_keyring, mgr, store, _) = test_manager().await;
+        store.save_connection(sample_config("cfg-1")).await.unwrap();
+        let conn_id = mgr.connect("cfg-1").await.unwrap();
+        let (driver, handle) = mgr.get_connection(&conn_id).await.unwrap();
+        assert_eq!(driver.driver_type(), "postgres");
+        assert_eq!(handle.id, conn_id);
+    }
+
+    #[tokio::test]
+    async fn disconnect_removes_session() {
+        let (_keyring, mgr, store, _) = test_manager().await;
+        store.save_connection(sample_config("cfg-1")).await.unwrap();
+        let conn_id = mgr.connect("cfg-1").await.unwrap();
+        mgr.disconnect(&conn_id).await.unwrap();
+        assert_eq!(mgr.ui_session_map_len().await, 0);
+    }
+
+    #[tokio::test]
+    async fn ping_returns_true_for_active_connection() {
+        let (_keyring, mgr, store, _) = test_manager().await;
+        store.save_connection(sample_config("cfg-1")).await.unwrap();
+        let conn_id = mgr.connect("cfg-1").await.unwrap();
+        assert!(mgr.ping(&conn_id).await);
+        assert!(!mgr.ping("missing").await);
+    }
+
+    #[tokio::test]
+    async fn get_connection_config_returns_stored_config() {
+        let (_keyring, mgr, store, _) = test_manager().await;
+        store.save_connection(sample_config("cfg-1")).await.unwrap();
+        let conn_id = mgr.connect("cfg-1").await.unwrap();
+        let cfg = mgr.get_connection_config(&conn_id).await.unwrap();
+        assert_eq!(cfg.id, "cfg-1");
+        assert_eq!(cfg.name, "Test");
+    }
+
+    #[tokio::test]
+    async fn test_connection_uses_driver() {
+        let (_keyring, mgr, _, _) = test_manager().await;
+        let info = mgr.test_connection(&sample_config("cfg-1")).await.unwrap();
+        assert_eq!(info.server_version, "PostgreSQL 16");
+    }
+
+    #[tokio::test]
+    async fn connect_errors_when_config_missing() {
+        let (_keyring, mgr, _, _) = test_manager().await;
+        let err = mgr.connect("missing").await.unwrap_err();
+        assert!(matches!(err, ConnectionError::ConfigNotFound(_)));
+    }
+
+    #[tokio::test]
+    async fn driver_not_found_when_type_unregistered() {
+        let (_keyring, mgr, store, _) = test_manager().await;
+        let mut cfg = sample_config("cfg-x");
+        cfg.database_type = "unknown-db".into();
+        store.save_connection(cfg).await.unwrap();
+        let err = mgr.connect("cfg-x").await.unwrap_err();
+        assert!(matches!(err, ConnectionError::DriverNotFound(_)));
+    }
+
+    #[tokio::test]
+    async fn shutdown_disconnects_all() {
+        let (_keyring, mgr, store, _) = test_manager().await;
+        store.save_connection(sample_config("cfg-1")).await.unwrap();
+        let _ = mgr.connect("cfg-1").await.unwrap();
+        mgr.shutdown().await;
+        assert_eq!(mgr.ui_session_map_len().await, 0);
     }
 }

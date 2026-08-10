@@ -23,7 +23,7 @@ import { useActiveConnectionStore } from '../../stores/activeConnectionStore';
 import { cn } from '../../lib/cn';
 import { formatGroupLabel } from '../../lib/connectionGroups';
 import { listenCrossWindow } from '../../lib/crossWindowBus';
-import { openBackupWindow, openConnectionWindow, openDashboardWindow, openDataSyncWindow, openNewConnectionWindow, openSettingsWindow, openWorkflowWindow } from '../../lib/windowManager';
+import { openBackupWindow, openConnectionWindow, openDashboardWindow, openDataSyncWindow, openNewConnectionWindow, openSchemaDiffWindow, openSettingsWindow, openWorkflowWindow } from '../../lib/windowManager';
 import { ThemeToggle } from '../../components/ThemeToggle';
 import { useI18n } from '../../hooks/useI18n';
 import { ActionPanel } from './ActionPanel';
@@ -168,6 +168,9 @@ export function MainWindow() {
     }).then((u) => { if (cancelled) u(); else cleanups.push(u); });
     void listenCrossWindow('menu:data-sync', () => {
       if (!cancelled) openDataSyncWindow();
+    }).then((u) => { if (cancelled) u(); else cleanups.push(u); });
+    void listenCrossWindow('menu:schema-diff', () => {
+      if (!cancelled) openSchemaDiffWindow();
     }).then((u) => { if (cancelled) u(); else cleanups.push(u); });
     void listenCrossWindow('menu:backup', () => {
       if (!cancelled) openBackupWindow();

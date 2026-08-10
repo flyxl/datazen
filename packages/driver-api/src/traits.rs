@@ -244,6 +244,221 @@ pub trait DatabaseDriver: Send + Sync {
     ) -> Result<(), DriverError> {
         crate::sql_dump::restore_sql_statements::<Self>(self, handle, sql).await
     }
+
+    async fn structure_capabilities(
+        &self,
+        _handle: &ConnectionHandle,
+    ) -> Result<StructureCapabilities, DriverError> {
+        Ok(StructureCapabilities {
+            dialect_id: self.driver_type(),
+            ..Default::default()
+        })
+    }
+
+    async fn plan_structure_changes(
+        &self,
+        _handle: &ConnectionHandle,
+        _request: &StructureChangeRequest,
+    ) -> Result<StructureChangePlan, DriverError> {
+        Err(DriverError::Unsupported(
+            "table structure planning is not supported by this driver".into(),
+        ))
+    }
+}
+
+#[cfg(test)]
+mod structure_defaults_tests {
+    use super::*;
+    use crate::ReuseDriver;
+    use std::sync::Arc;
+
+    struct StubDriver;
+
+    #[async_trait]
+    impl DatabaseDriver for StubDriver {
+        fn driver_type(&self) -> DatabaseType {
+            "stub".to_string()
+        }
+
+        async fn connect(
+            &self,
+            _config: &ConnectionConfig,
+        ) -> Result<ConnectionHandle, DriverError> {
+            Ok(ConnectionHandle {
+                id: "conn".into(),
+                pool_id: "pool".into(),
+            })
+        }
+
+        async fn test_connection(
+            &self,
+            _config: &ConnectionConfig,
+        ) -> Result<ServerInfo, DriverError> {
+            Ok(ServerInfo {
+                server_version: String::new(),
+                server_type: self.driver_type(),
+            })
+        }
+
+        async fn disconnect(&self, _handle: ConnectionHandle) -> Result<(), DriverError> {
+            Ok(())
+        }
+
+        async fn get_databases(
+            &self,
+            _handle: &ConnectionHandle,
+        ) -> Result<Vec<String>, DriverError> {
+            Ok(vec![])
+        }
+
+        async fn get_tables(
+            &self,
+            _handle: &ConnectionHandle,
+            _database: &str,
+        ) -> Result<Vec<TableInfo>, DriverError> {
+            Ok(vec![])
+        }
+
+        async fn get_table_schema(
+            &self,
+            _handle: &ConnectionHandle,
+            _table: &str,
+        ) -> Result<TableSchema, DriverError> {
+            Ok(TableSchema {
+                table_name: String::new(),
+                columns: vec![],
+                primary_keys: vec![],
+                indexes: vec![],
+                foreign_keys: vec![],
+            })
+        }
+
+        async fn query(
+            &self,
+            _handle: &ConnectionHandle,
+            _sql: &str,
+        ) -> Result<QueryResult, DriverError> {
+            Ok(QueryResult {
+                columns: vec![],
+                rows: vec![],
+                rows_affected: None,
+                execution_time_ms: 0,
+            })
+        }
+
+        async fn query_multi(
+            &self,
+            _handle: &ConnectionHandle,
+            _sql: &str,
+            _limit: Option<u32>,
+        ) -> Result<MultiQueryResult, DriverError> {
+            Ok(MultiQueryResult {
+                results: vec![],
+                total_time_ms: 0,
+            })
+        }
+
+        async fn query_with_params(
+            &self,
+            _handle: &ConnectionHandle,
+            _sql: &str,
+            _params: &[Value],
+        ) -> Result<QueryResult, DriverError> {
+            Ok(QueryResult {
+                columns: vec![],
+                rows: vec![],
+                rows_affected: None,
+                execution_time_ms: 0,
+            })
+        }
+
+        async fn execute(&self, _handle: &ConnectionHandle, _sql: &str) -> Result<u64, DriverError> {
+            Ok(0)
+        }
+
+        async fn cancel_query(&self, _handle: &ConnectionHandle) -> Result<(), DriverError> {
+            Ok(())
+        }
+    }
+
+    fn sample_request() -> StructureChangeRequest {
+        StructureChangeRequest {
+            mode: StructureChangeMode::Alter,
+            schema: Some("public".into()),
+            table: "users".into(),
+            original_columns: vec![],
+            current_columns: vec![],
+            original_indexes: vec![],
+            current_indexes: vec![],
+        }
+    }
+
+    #[tokio::test]
+    async fn default_structure_capabilities_are_disabled() {
+        let driver = StubDriver;
+        let handle = ConnectionHandle {
+            id: "conn".into(),
+            pool_id: "pool".into(),
+        };
+
+        let caps = driver.structure_capabilities(&handle).await.unwrap();
+        assert_eq!(caps.dialect_id, "stub");
+        assert_eq!(caps.alter_strategy, AlterStrategy::None);
+        assert!(!caps.create_table);
+        assert!(!caps.add_column);
+        assert!(!caps.drop_column);
+        assert!(!caps.rename_column);
+        assert!(!caps.alter_type);
+        assert!(!caps.alter_nullability);
+        assert!(!caps.alter_default);
+        assert!(!caps.alter_primary_key);
+        assert!(!caps.reorder_column);
+        assert!(!caps.comment);
+        assert!(!caps.create_index);
+        assert!(!caps.drop_index);
+        assert!(!caps.rebuild_index);
+        assert!(!caps.index_type);
+        assert!(!caps.index_include);
+        assert!(!caps.index_filter);
+        assert!(!caps.index_comment);
+        assert!(caps.index_methods.is_empty());
+    }
+
+    #[tokio::test]
+    async fn default_plan_structure_changes_is_unsupported() {
+        let driver = StubDriver;
+        let handle = ConnectionHandle {
+            id: "conn".into(),
+            pool_id: "pool".into(),
+        };
+        let request = sample_request();
+
+        let err = driver
+            .plan_structure_changes(&handle, &request)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, DriverError::Unsupported(msg) if msg == "table structure planning is not supported by this driver"));
+    }
+
+    #[tokio::test]
+    async fn reuse_driver_forwards_structure_methods() {
+        let inner: Arc<dyn DatabaseDriver> = Arc::new(StubDriver);
+        let driver = ReuseDriver::new(inner, "reuse-stub");
+        let handle = ConnectionHandle {
+            id: "conn".into(),
+            pool_id: "pool".into(),
+        };
+
+        let caps = driver.structure_capabilities(&handle).await.unwrap();
+        assert_eq!(caps.dialect_id, "stub");
+        assert_eq!(driver.driver_type(), "reuse-stub");
+
+        let err = driver
+            .plan_structure_changes(&handle, &sample_request())
+            .await
+            .unwrap_err();
+        assert!(matches!(err, DriverError::Unsupported(_)));
+    }
 }
 
 #[async_trait]

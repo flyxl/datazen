@@ -9,6 +9,7 @@ pub enum AiProviderType {
     OpenAi,
     Anthropic,
     DeepSeek,
+    Ollama,
     Custom,
 }
 
@@ -18,6 +19,7 @@ impl std::fmt::Display for AiProviderType {
             Self::OpenAi => write!(f, "OpenAI"),
             Self::Anthropic => write!(f, "Anthropic"),
             Self::DeepSeek => write!(f, "DeepSeek"),
+            Self::Ollama => write!(f, "Ollama"),
             Self::Custom => write!(f, "Custom"),
         }
     }

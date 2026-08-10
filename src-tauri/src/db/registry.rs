@@ -153,10 +153,24 @@ impl DriverRegistry {
         self.get(&name.to_string()).await
     }
 
+    /// Register a driver instance for unit tests (bypasses inventory).
     #[cfg(test)]
-    pub async fn register_test_driver(&self, driver: Arc<dyn DatabaseDriver>) {
-        let db_type = driver.driver_type();
-        self.drivers.write().await.insert(db_type, driver);
+    pub async fn register_test_driver(
+        &self,
+        db_type: impl Into<DatabaseType>,
+        driver: Arc<dyn DatabaseDriver>,
+    ) {
+        self.drivers.write().await.insert(db_type.into(), driver);
+    }
+
+    /// Register a KV driver instance for unit tests (bypasses inventory).
+    #[cfg(test)]
+    pub async fn register_test_kv_driver(
+        &self,
+        db_type: impl Into<DatabaseType>,
+        kv: Arc<dyn KeyValueDriver>,
+    ) {
+        self.kv_drivers.write().await.insert(db_type.into(), kv);
     }
 }
 

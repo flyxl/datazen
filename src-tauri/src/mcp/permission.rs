@@ -400,6 +400,97 @@ mod tests {
     }
 
     #[test]
+    fn safe_write_blocks_create_or_replace_view() {
+        assert!(check_sql_allowed(
+            "CREATE OR REPLACE VIEW v AS SELECT 1",
+            McpPermissionMode::SafeWrite
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn safe_write_blocks_multiple_statements() {
+        assert!(check_sql_allowed(
+            "SELECT 1; DROP TABLE t",
+            McpPermissionMode::SafeWrite
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn sql_main_keyword_empty_returns_none() {
+        assert_eq!(sql_main_keyword("   "), None);
+        assert_eq!(sql_main_keyword("-- only comment"), None);
+    }
+
+    #[test]
+    fn sql_main_keyword_respects_quoted_identifiers() {
+        assert_eq!(
+            sql_main_keyword("SELECT `DROP` FROM t"),
+            Some("SELECT".to_string())
+        );
+    }
+
+    #[test]
+    fn safe_write_allows_create_temp_table() {
+        assert!(check_sql_allowed(
+            "CREATE TEMPORARY TABLE t (id INT)",
+            McpPermissionMode::SafeWrite
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn check_tool_call_query_without_sql_arg_is_ok() {
+        let none = disabled(&[]);
+        let args = serde_json::json!({}).as_object().cloned();
+        assert!(check_tool_call(
+            "query",
+            McpPermissionMode::SafeWrite,
+            &none,
+            args.as_ref()
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn safe_write_blocks_create_database() {
+        assert!(check_sql_allowed(
+            "CREATE DATABASE prod",
+            McpPermissionMode::SafeWrite
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn safe_write_allows_single_statement_with_trailing_semicolon() {
+        assert!(check_sql_allowed("SELECT 1;", McpPermissionMode::SafeWrite).is_ok());
+    }
+
+    #[test]
+    fn sql_main_keyword_block_comment_stripped() {
+        assert_eq!(
+            sql_main_keyword("/* DROP */ SELECT 1"),
+            Some("SELECT".to_string())
+        );
+    }
+
+    #[test]
+    fn safe_write_blocks_create_index() {
+        assert!(check_sql_allowed(
+            "CREATE INDEX idx ON t (c)",
+            McpPermissionMode::SafeWrite
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn read_only_allows_non_blocked_tools() {
+        let none = disabled(&[]);
+        assert!(check_tool_call("list_connections", McpPermissionMode::ReadOnly, &none, None).is_ok());
+    }
+
+    #[test]
     fn high_risk_write_allows_ddl() {
         assert!(check_sql_allowed("DROP TABLE t", McpPermissionMode::HighRiskWrite).is_ok());
     }
