@@ -45,12 +45,15 @@ ssh-keygen -t ed25519 -C "datazen-ci-superset" -f ./datazen-ci-superset -N ""
 
 - `environment: release` — 从此 Environment 读取上述 Secrets（无审批门禁时自动注入）
 - `permissions: {}` 顶层 + job 内 `contents: write`（仅用于 draft Release）
-- `matrix.needs_git == true` 时（当前为 **Akulaku**）：`webfactory/ssh-agent` 加载两把私钥，并用  
-  `url."git@github.com:".insteadOf "https://github.com/"`  
-  让 `drivers-registry.json` 里的 HTTPS URL 走 SSH
+- `matrix.needs_git == true` 时（当前为 **Akulaku**）：把两把私钥写成 `~/.ssh/datazen_{kiwi,superset}`，用 **Host 别名 + IdentitiesOnly** 做 per-repo 选钥，再用  
+  `url."git@github.com-<id>:flyxl/datazen-driver-<id>.git".insteadOf`  
+  把 `drivers-registry.json` 里的 HTTPS（及同名 SSH）URL 改写到对应别名。  
+  （不要用「单条 `git@github.com:` insteadOf」+ 多把 Deploy Key：GitHub 只认第一把已知钥，另一仓会报 `Repository not found`。）
 - Akulaku 驱动列表在 CI 中写死为显式逗号串（`postgres,mysql,sqlite,redis,mongodb,kiwi,superset`），**不是** `resolve-drivers` 的命名预设
 
 公钥出现在文档或插件仓 Deploy keys 页面**不会**让外人 clone 私有仓；只有私钥可以。
+
+可选：若希望继续用 `webfactory/ssh-agent` 的自动映射，生成密钥时把 comment 设为仓库 URL（`-C "git@github.com:flyxl/datazen-driver-kiwi.git"`）；当前 workflow **不依赖**该 comment。
 
 ## 4. 本地含 git 驱动的构建
 

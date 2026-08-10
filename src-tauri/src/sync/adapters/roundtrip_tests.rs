@@ -8,6 +8,7 @@ mod tests {
     use datazen_driver_mysql::MysqlSyncAdapter;
     use datazen_driver_postgres::PgSyncAdapter;
     use datazen_driver_sqlite::SqliteSyncAdapter;
+    #[cfg(feature = "plugin-olap")]
     use datazen_plugin_olap::TrinoSyncAdapter;
 
     fn col(name: &str, data_type: &str) -> ColumnSchema {
@@ -352,6 +353,7 @@ mod tests {
 
     // ── Cross-database roundtrip: PG → IR → Trino ──────────────────
 
+    #[cfg(feature = "plugin-olap")]
     #[test]
     fn pg_to_trino_common_types() {
         let pg = PgSyncAdapter;
