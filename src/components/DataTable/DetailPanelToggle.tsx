@@ -18,7 +18,7 @@ export function DetailPanelToggle({ open, onToggle }: DetailPanelToggleProps) {
       className={cn(
         'inline-flex h-7 w-7 items-center justify-center rounded-md transition-colors',
         open
-          ? 'bg-blue-500/15 text-blue-500 hover:bg-blue-500/25 dark:text-blue-300'
+          ? 'bg-accent/15 text-accent hover:bg-accent/25'
           : 'text-fg-muted hover:bg-surface-raised hover:text-fg',
       )}
     >

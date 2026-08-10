@@ -103,6 +103,7 @@ interface TableDataStore {
   setSort: (sort: SortCondition) => void;
   startEdit: (row: number, col: string) => void;
   updateCell: (row: number, col: string, value: unknown) => void;
+  applyColumnToRows: (col: string, value: unknown, rows: number[]) => void;
   cancelEdit: () => void;
   commitChanges: () => Promise<void>;
   discardChanges: () => void;
@@ -307,6 +308,39 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
     const nextRows = [...ts.rows];
     nextRows[row] = { ...rowObj, [col]: value as Value };
 
+    const next = new Map(tableStates);
+    next.set(activeTable, { ...ts, rows: nextRows, editBuffer: nextBuffer, editingCell: null });
+    set({ tableStates: next, ...syncFlat(activeTable, next) });
+    void get().commitChanges();
+  },
+
+  applyColumnToRows: (col, value, rows) => {
+    const { activeTable, tableStates } = get();
+    if (!activeTable) return;
+    const ts = getState(tableStates, activeTable);
+    const pkCols = ts.columns.filter((c) => c.isPrimaryKey);
+    const nextBuffer = new Map(ts.editBuffer);
+    const nextRows = [...ts.rows];
+
+    for (const row of rows) {
+      const rowObj = nextRows[row];
+      if (!rowObj) continue;
+      const pkSnapshot: Record<string, unknown> = {};
+      for (const pk of pkCols) {
+        pkSnapshot[pk.name] = rowObj[pk.name];
+      }
+      const key = editKey(row, col);
+      nextBuffer.set(key, {
+        rowIndex: row,
+        columnName: col,
+        originalValue: rowObj[col],
+        newValue: value,
+        pkSnapshot,
+      });
+      nextRows[row] = { ...rowObj, [col]: value as Value };
+    }
+
+    if (nextBuffer.size === 0) return;
     const next = new Map(tableStates);
     next.set(activeTable, { ...ts, rows: nextRows, editBuffer: nextBuffer, editingCell: null });
     set({ tableStates: next, ...syncFlat(activeTable, next) });
