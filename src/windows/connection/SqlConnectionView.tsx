@@ -147,6 +147,7 @@ export function SqlConnectionView({
   const setDbType = useTableDataStore((s) => s.setDatabaseType);
   const detailRowIndex = useTableDataStore((s) => s.detailRowIndex);
   const updateCell = useTableDataStore((s) => s.updateCell);
+  const applyColumnToRows = useTableDataStore((s) => s.applyColumnToRows);
   const [detailOpen, setDetailOpen] = useState(false);
 
   const createQueryTab = useQueryStore((s) => s.createTab);
@@ -158,6 +159,11 @@ export function SqlConnectionView({
   const updateResultCell = useQueryStore((s) => s.updateResultCell);
 
   const activePanel = panels.find((p) => p.id === activePanelId) ?? null;
+
+  // The detail panel only makes sense while viewing row data (table "data" sub-tab
+  // or query results); hide it on structure/indexes/foreign keys/DDL tabs.
+  const detailPanelApplicable =
+    activePanel != null && (activePanel.type !== 'table' || activePanel.subTab === 'data');
 
   const resolveTableSchema = useCallback(
     (tableName: string): string | null => {
@@ -437,6 +443,30 @@ export function SqlConnectionView({
     },
   ]);
 
+  // TablePlus-style Space shortcut: toggle the detail (right sidebar) panel.
+  // Skip when focus is in a text field or on an interactive control.
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key !== ' ' || e.repeat) return;
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName?.toLowerCase();
+      if (
+        tag === 'input' ||
+        tag === 'textarea' ||
+        tag === 'select' ||
+        tag === 'button' ||
+        target?.isContentEditable === true
+      ) {
+        return;
+      }
+      if (!detailPanelApplicable) return;
+      e.preventDefault();
+      setDetailOpen((v) => !v);
+    }
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [detailPanelApplicable]);
+
   const activeQueryTab = activePanel?.type === 'query'
     ? queryTabs.find((tab) => tab.id === (activePanel as QueryPanelInfo).queryTabId)
     : null;
@@ -469,12 +499,16 @@ export function SqlConnectionView({
   const handleDetailFieldEdit = useCallback(
     (row: number, col: string, value: unknown) => {
       if (activePanel?.type === 'table') {
-        updateCell(row, col, value);
+        if (selectedRows.size > 1) {
+          applyColumnToRows(col, value, [...selectedRows]);
+        } else {
+          updateCell(row, col, value);
+        }
       } else if (activePanel?.type === 'query' && activeQueryTab) {
         updateResultCell(activeQueryTab.id, activeQueryTab.activeResultIdx, row, col, value);
       }
     },
-    [activePanel, activeQueryTab, updateCell, updateResultCell],
+    [activePanel, activeQueryTab, updateCell, updateResultCell, applyColumnToRows, selectedRows],
   );
 
   return (
@@ -530,7 +564,7 @@ export function SqlConnectionView({
           <MessageSquare className="h-3.5 w-3.5" />
         </Button>
 
-        {activePanel && (
+        {detailPanelApplicable && (
           <DetailPanelToggle open={detailOpen} onToggle={() => setDetailOpen((p) => !p)} />
         )}
       </div>
@@ -737,12 +771,13 @@ export function SqlConnectionView({
           </div>
         </ContextMenu>
 
-        {activePanel && (
+        {detailPanelApplicable && (
           <DetailPanel
             open={detailOpen}
             columns={detailColumnDefs}
             row={detailRow}
             rowIndex={detailRowIdx}
+            selectedRows={activePanel?.type === 'table' ? selectedRows : undefined}
             editable
             onFieldEdit={handleDetailFieldEdit}
           />
@@ -788,7 +823,7 @@ export function SqlConnectionView({
             .join(' · ')}
         </div>
         <div className="shrink-0 text-fg-muted">
-          <kbd className="font-mono">⌘N</kbd> {t('connWin.newQuery')} · <kbd className="font-mono">⌘R</kbd> {t('connWin.refresh')} · <kbd className="font-mono">⌘W</kbd> {t('common.close')}
+          <kbd className="font-mono">⌘N</kbd> {t('connWin.newQuery')} · <kbd className="font-mono">⌘R</kbd> {t('connWin.refresh')} · <kbd className="font-mono">⌘W</kbd> {t('common.close')} · <kbd className="font-mono">Space</kbd> {t('detail.title')}
         </div>
       </footer>
 
