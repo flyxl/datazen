@@ -3,20 +3,14 @@
 //! Adapters are registered lazily: only the source/target types needed for a
 //! sync job are created, the first time that pair is requested.
 //!
-//! Concrete adapters self-register via [`SyncAdapterFactory`] + `inventory`.
+//! Concrete adapters self-register via [`SyncAdapterFactory`] + `inventory`
+//! (from path drivers and residual host adapters such as Trino).
 
-use super::adapter::{SyncSourceAdapter, SyncTargetAdapter};
-use crate::db::DatabaseType;
+use crate::db::{
+    BoxedSyncAdapter, DatabaseType, SyncAdapterFactory, SyncSourceAdapter, SyncTargetAdapter,
+};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
-
-/// Host sync-adapter factory discovered via `inventory`.
-pub struct SyncAdapterFactory {
-    pub db_types: &'static [&'static str],
-    pub register: fn(registry: &SyncAdapterRegistry, db_type: DatabaseType),
-}
-
-inventory::collect!(SyncAdapterFactory);
 
 pub struct SyncAdapterRegistry {
     sources: RwLock<HashMap<DatabaseType, Arc<dyn SyncSourceAdapter>>>,
@@ -51,18 +45,21 @@ impl SyncAdapterRegistry {
             }
         }
 
-        self.register_builtin(db_type)?;
+        self.register_from_inventory(db_type)?;
         Ok(())
     }
 
-    fn register_builtin(&self, db_type: &DatabaseType) -> Result<(), String> {
-        // Touch adapter modules so their `inventory::submit!` statics are linked.
+    fn register_from_inventory(&self, db_type: &DatabaseType) -> Result<(), String> {
+        // Residual host adapters (Trino / Presto) — path drivers link via features.
         crate::sync::adapters::force_link();
+        #[cfg(test)]
+        force_link_driver_sync_adapters();
 
         let key = db_type.as_str();
         for factory in inventory::iter::<SyncAdapterFactory> {
             if factory.db_types.iter().any(|t| *t == key) {
-                (factory.register)(self, db_type.clone());
+                let boxed: BoxedSyncAdapter = (factory.create)();
+                self.insert_pair(db_type.clone(), boxed);
                 tracing::info!(db_type = %db_type, "Registered sync adapter on demand");
                 return Ok(());
             }
@@ -70,14 +67,11 @@ impl SyncAdapterRegistry {
         Err(format!("No sync adapter for database type '{key}'"))
     }
 
-    pub(crate) fn register_both<T>(&self, db_type: DatabaseType, adapter: Arc<T>)
-    where
-        T: SyncSourceAdapter + SyncTargetAdapter + 'static,
-    {
+    fn insert_pair(&self, db_type: DatabaseType, boxed: BoxedSyncAdapter) {
         let mut sources = self.sources.write().expect("sync sources lock");
         let mut targets = self.targets.write().expect("sync targets lock");
-        sources.insert(db_type.clone(), adapter.clone() as Arc<dyn SyncSourceAdapter>);
-        targets.insert(db_type, adapter as Arc<dyn SyncTargetAdapter>);
+        sources.insert(db_type.clone(), boxed.source);
+        targets.insert(db_type, boxed.target);
     }
 
     pub fn get_source(&self, db_type: &DatabaseType) -> Option<Arc<dyn SyncSourceAdapter>> {
@@ -93,6 +87,18 @@ impl Default for SyncAdapterRegistry {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// Keep path-driver sync adapter inventory linked in unit tests (dev-dependencies).
+#[cfg(test)]
+#[inline(never)]
+fn force_link_driver_sync_adapters() {
+    let _ = (
+        std::any::type_name::<datazen_driver_postgres::PgSyncAdapter>(),
+        std::any::type_name::<datazen_driver_mysql::MysqlSyncAdapter>(),
+        std::any::type_name::<datazen_driver_sqlite::SqliteSyncAdapter>(),
+        std::any::type_name::<datazen_driver_sqlserver::SqlServerSyncAdapter>(),
+    );
 }
 
 #[cfg(test)]

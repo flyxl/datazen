@@ -1,35 +1,34 @@
 //! MySQL / MariaDB sync adapter.
 
-use crate::db::{ColumnSchema, Value};
-use crate::sync::adapter::{SyncSourceAdapter, SyncTargetAdapter};
-use crate::sync::adapter_registry::{SyncAdapterFactory, SyncAdapterRegistry};
-use crate::sync::ir::{IRColumn, IRDefault, IRType};
-use std::sync::Arc;
+use datazen_driver_api::{
+    BoxedSyncAdapter, ColumnSchema, IRColumn, IRDefault, IRType, SyncAdapterFactory,
+    SyncSourceAdapter, SyncTargetAdapter, Value,
+};
 
 pub struct MysqlSyncAdapter {
     pub is_mariadb: bool,
 }
 
-fn register_mysql(registry: &SyncAdapterRegistry, db_type: crate::db::DatabaseType) {
-    registry.register_both(db_type, Arc::new(MysqlSyncAdapter { is_mariadb: false }));
+fn create_mysql() -> BoxedSyncAdapter {
+    BoxedSyncAdapter::both(MysqlSyncAdapter { is_mariadb: false })
 }
 
-fn register_mariadb(registry: &SyncAdapterRegistry, db_type: crate::db::DatabaseType) {
-    registry.register_both(db_type, Arc::new(MysqlSyncAdapter { is_mariadb: true }));
+fn create_mariadb() -> BoxedSyncAdapter {
+    BoxedSyncAdapter::both(MysqlSyncAdapter { is_mariadb: true })
 }
 
-inventory::submit! {
+datazen_driver_api::inventory::submit! {
     SyncAdapterFactory {
         // doris / starrocks: MySQL wire + information_schema (source-first)
         db_types: &["mysql", "doris", "starrocks"],
-        register: register_mysql,
+        create: create_mysql,
     }
 }
 
-inventory::submit! {
+datazen_driver_api::inventory::submit! {
     SyncAdapterFactory {
         db_types: &["mariadb"],
-        register: register_mariadb,
+        create: create_mariadb,
     }
 }
 

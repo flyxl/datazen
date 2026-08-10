@@ -3,8 +3,8 @@ import type { DatabaseTypeMeta } from '@datazen/plugin-sdk';
 export const sqliteMeta = {
     label: 'SQLite',
     shortLabel: 'Lt',
-    iconBg: 'bg-emerald-600',
-    iconColor: 'text-green-400',
+    iconBg: 'bg-success',
+    iconColor: 'text-success',
     defaultPort: 0,
     defaultHost: '',
     defaultUser: '',

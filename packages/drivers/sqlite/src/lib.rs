@@ -6,7 +6,9 @@ use datazen_driver_api::*;
 
 mod sqlite;
 mod structure;
+mod sync_adapter;
 pub use sqlite::*;
+pub use sync_adapter::SqliteSyncAdapter;
 
 struct SqliteFactory;
 impl DatabaseDriverFactory for SqliteFactory {

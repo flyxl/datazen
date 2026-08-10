@@ -3,8 +3,8 @@ import type { DatabaseTypeMeta } from '@datazen/plugin-sdk';
 export const mongodbMeta = {
     label: 'MongoDB',
     shortLabel: 'Mb',
-    iconBg: 'bg-green-700',
-    iconColor: 'text-green-400',
+    iconBg: 'bg-success',
+    iconColor: 'text-success',
     defaultPort: 27017,
     defaultHost: '127.0.0.1',
     defaultUser: '',

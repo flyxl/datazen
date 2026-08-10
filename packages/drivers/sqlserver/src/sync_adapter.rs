@@ -1,21 +1,20 @@
 //! SQL Server sync adapter.
 
-use crate::db::{ColumnSchema, Value};
-use crate::sync::adapter::{SyncSourceAdapter, SyncTargetAdapter};
-use crate::sync::adapter_registry::{SyncAdapterFactory, SyncAdapterRegistry};
-use crate::sync::ir::{IRColumn, IRDefault, IRType};
-use std::sync::Arc;
+use datazen_driver_api::{
+    BoxedSyncAdapter, ColumnSchema, IRColumn, IRDefault, IRType, SyncAdapterFactory,
+    SyncSourceAdapter, SyncTargetAdapter, Value,
+};
 
 pub struct SqlServerSyncAdapter;
 
-fn register(registry: &SyncAdapterRegistry, db_type: crate::db::DatabaseType) {
-    registry.register_both(db_type, Arc::new(SqlServerSyncAdapter));
+fn create() -> BoxedSyncAdapter {
+    BoxedSyncAdapter::both(SqlServerSyncAdapter)
 }
 
-inventory::submit! {
+datazen_driver_api::inventory::submit! {
     SyncAdapterFactory {
         db_types: &["sqlserver"],
-        register,
+        create,
     }
 }
 

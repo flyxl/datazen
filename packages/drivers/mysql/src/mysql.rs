@@ -1362,6 +1362,14 @@ impl DatabaseDriver for MysqlDriver {
             out.push_str(&format!("CREATE DATABASE IF NOT EXISTS {};\nUSE {};\n\n", q, q));
         }
         out.push_str(&sql_dump::dump_sql_database(self, handle, database, opts).await?);
+        if !opts.data_only {
+            if opts.routines {
+                out.push_str(&dump_mysql_routines(self, handle).await);
+            }
+            if opts.triggers {
+                out.push_str(&dump_mysql_triggers(self, handle).await);
+            }
+        }
         Ok(out)
     }
 
@@ -1382,25 +1390,130 @@ impl DatabaseDriver for MysqlDriver {
     }
 }
 
-/// Extract the `Create Table` column from `SHOW CREATE TABLE` result rows.
-fn extract_show_create_table(result: &QueryResult) -> Option<String> {
+/// Best-effort dump of stored procedures and functions via SHOW CREATE.
+async fn dump_mysql_routines(driver: &MysqlDriver, handle: &ConnectionHandle) -> String {
+    let mut out = String::new();
+    for (show_status, kind) in [
+        ("SHOW PROCEDURE STATUS WHERE Db = DATABASE()", "PROCEDURE"),
+        ("SHOW FUNCTION STATUS WHERE Db = DATABASE()", "FUNCTION"),
+    ] {
+        let Ok(result) = driver.query(handle, show_status).await else {
+            continue;
+        };
+        let name_idx = result
+            .columns
+            .iter()
+            .position(|c| c.name.eq_ignore_ascii_case("Name"));
+        let Some(name_idx) = name_idx else {
+            continue;
+        };
+        for row in &result.rows {
+            let Some(Value::String(name)) = row.get(name_idx).and_then(|v| v.as_ref()) else {
+                continue;
+            };
+            if name.is_empty() {
+                continue;
+            }
+            let create_sql = format!("SHOW CREATE {kind} {}", driver.quote_ident(name));
+            let Ok(create_result) = driver.query(handle, &create_sql).await else {
+                out.push_str(&format!("-- Error dumping {kind} {name}\n"));
+                continue;
+            };
+            let col_name = if kind == "PROCEDURE" {
+                "Create Procedure"
+            } else {
+                "Create Function"
+            };
+            if let Some(ddl) = extract_named_create_column(&create_result, col_name) {
+                out.push_str(&format!("-- {kind}: {name}\n"));
+                let trimmed = ddl.trim_end();
+                if trimmed.ends_with(';') {
+                    out.push_str(trimmed);
+                    out.push('\n');
+                } else {
+                    out.push_str(trimmed);
+                    out.push_str(";\n");
+                }
+                out.push('\n');
+            }
+        }
+    }
+    out
+}
+
+/// Best-effort dump of triggers via SHOW TRIGGERS + SHOW CREATE TRIGGER.
+async fn dump_mysql_triggers(driver: &MysqlDriver, handle: &ConnectionHandle) -> String {
+    let mut out = String::new();
+    let Ok(result) = driver.query(handle, "SHOW TRIGGERS").await else {
+        return out;
+    };
+    let name_idx = result
+        .columns
+        .iter()
+        .position(|c| c.name.eq_ignore_ascii_case("Trigger"));
+    let Some(name_idx) = name_idx else {
+        return out;
+    };
+    for row in &result.rows {
+        let Some(Value::String(name)) = row.get(name_idx).and_then(|v| v.as_ref()) else {
+            continue;
+        };
+        if name.is_empty() {
+            continue;
+        }
+        let create_sql = format!("SHOW CREATE TRIGGER {}", driver.quote_ident(name));
+        match driver.query(handle, &create_sql).await {
+            Ok(create_result) => {
+                if let Some(ddl) = extract_named_create_column(&create_result, "SQL Original Statement")
+                    .or_else(|| extract_named_create_column(&create_result, "Create Trigger"))
+                {
+                    out.push_str(&format!("-- TRIGGER: {name}\n"));
+                    let trimmed = ddl.trim_end();
+                    if trimmed.ends_with(';') {
+                        out.push_str(trimmed);
+                        out.push('\n');
+                    } else {
+                        out.push_str(trimmed);
+                        out.push_str(";\n");
+                    }
+                    out.push('\n');
+                }
+            }
+            Err(e) => {
+                out.push_str(&format!("-- Error dumping trigger {name}: {e}\n"));
+            }
+        }
+    }
+    out
+}
+
+fn extract_named_create_column(result: &QueryResult, col_name: &str) -> Option<String> {
     let col_idx = result
         .columns
         .iter()
-        .position(|c| c.name.eq_ignore_ascii_case("Create Table"))
-        .or_else(|| {
-            if result.columns.len() >= 2 {
-                Some(1)
-            } else {
-                None
-            }
-        })?;
+        .position(|c| c.name.eq_ignore_ascii_case(col_name))?;
     let row = result.rows.first()?;
     let cell = row.get(col_idx)?.as_ref()?;
     match cell {
         Value::String(s) if !s.is_empty() => Some(s.clone()),
         _ => None,
     }
+}
+
+/// Extract the `Create Table` column from `SHOW CREATE TABLE` result rows.
+fn extract_show_create_table(result: &QueryResult) -> Option<String> {
+    extract_named_create_column(result, "Create Table").or_else(|| {
+        if result.columns.len() >= 2 {
+            let row = result.rows.first()?;
+            let cell = row.get(1)?.as_ref()?;
+            match cell {
+                Value::String(s) if !s.is_empty() => Some(s.clone()),
+                _ => None,
+            }
+        } else {
+            None
+        }
+    })
 }
 
 /// Split SQL into statements, respecting strings, comments, and backtick identifiers.

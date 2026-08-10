@@ -38,8 +38,8 @@ const postgresqlStructureEditor = {
 export const postgresqlMeta = {
     label: 'PostgreSQL',
     shortLabel: 'Pg',
-    iconBg: 'bg-blue-600',
-    iconColor: 'text-blue-400',
+    iconBg: 'bg-accent',
+    iconColor: 'text-accent',
     defaultPort: 5432,
     defaultHost: '127.0.0.1',
     defaultUser: 'postgres',
@@ -66,8 +66,8 @@ export const postgresqlMeta = {
 export const questdbMeta = {
     label: 'QuestDB',
     shortLabel: 'Qd',
-    iconBg: 'bg-rose-700',
-    iconColor: 'text-rose-400',
+    iconBg: 'bg-accent',
+    iconColor: 'text-accent',
     defaultPort: 8812,
     defaultHost: '127.0.0.1',
     defaultUser: 'admin',
@@ -92,8 +92,8 @@ export const questdbMeta = {
 export const cloudberryMeta = {
     label: 'Cloudberry',
     shortLabel: 'Cb',
-    iconBg: 'bg-teal-700',
-    iconColor: 'text-teal-400',
+    iconBg: 'bg-accent',
+    iconColor: 'text-accent',
     defaultPort: 5432,
     defaultHost: '127.0.0.1',
     defaultUser: 'postgres',

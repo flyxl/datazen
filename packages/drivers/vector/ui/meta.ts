@@ -3,8 +3,8 @@ import type { DatabaseTypeMeta } from '@datazen/plugin-sdk';
 export const vectorMeta = {
     label: 'Vector DB',
     shortLabel: 'Vc',
-    iconBg: 'bg-emerald-700',
-    iconColor: 'text-emerald-400',
+    iconBg: 'bg-success',
+    iconColor: 'text-success',
     defaultPort: 6333,
     defaultHost: '127.0.0.1',
     defaultUser: '',

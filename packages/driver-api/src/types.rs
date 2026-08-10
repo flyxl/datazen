@@ -397,6 +397,21 @@ pub struct BackupDumpOptions {
     pub clean: bool,
     /// Emit a driver-specific `CREATE DATABASE` preamble.
     pub create_database: bool,
+    /// Omit `OWNER` clauses (PostgreSQL); documented no-op when not emitted.
+    pub no_owner: bool,
+    /// Hint to wrap restore in a transaction (MySQL `--single-transaction` parity).
+    pub single_transaction: bool,
+    /// Include stored procedures and functions (MySQL).
+    pub routines: bool,
+    /// Include triggers (MySQL).
+    pub triggers: bool,
+}
+
+/// Options for SQL restore operations.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct BackupRestoreOptions {
+    /// Execute the restore inside `BEGIN`/`COMMIT` (rolls back on failure).
+    pub single_transaction: bool,
 }
 
 #[derive(Debug, Error)]
@@ -570,6 +585,16 @@ mod backup_dump_options_tests {
         assert!(!opts.data_only);
         assert!(!opts.clean);
         assert!(!opts.create_database);
+        assert!(!opts.no_owner);
+        assert!(!opts.single_transaction);
+        assert!(!opts.routines);
+        assert!(!opts.triggers);
+    }
+
+    #[test]
+    fn backup_restore_options_default_is_all_false() {
+        let opts = BackupRestoreOptions::default();
+        assert!(!opts.single_transaction);
     }
 
     #[test]

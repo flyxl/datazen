@@ -1,6 +1,6 @@
 use super::error::{CmdExt, CommandError};
 use super::AppState;
-use crate::db::{BackupDumpOptions, DriverError};
+use crate::db::{BackupDumpOptions, BackupRestoreOptions, DriverError};
 use std::path::PathBuf;
 use tauri::State;
 
@@ -18,13 +18,30 @@ fn map_driver_err(e: DriverError) -> CommandError {
     }
 }
 
-pub(crate) fn parse_backup_options(options: &[String]) -> BackupDumpOptions {
+pub(crate) fn parse_backup_options(options: &[String]) -> Result<BackupDumpOptions, CommandError> {
+    if options.iter().any(|o| o == "format-custom") {
+        return Err(CommandError::Validation(
+            "Backup option 'format-custom' requires pg_dump custom binary format and is not supported"
+                .into(),
+        ));
+    }
     let opts: std::collections::HashSet<String> = options.iter().cloned().collect();
-    BackupDumpOptions {
+    Ok(BackupDumpOptions {
         schema_only: opts.contains("schema-only") || opts.contains("no-data"),
         data_only: opts.contains("data-only") || opts.contains("no-create-info"),
         clean: opts.contains("clean") || opts.contains("add-drop-table"),
         create_database: opts.contains("create"),
+        no_owner: opts.contains("no-owner"),
+        single_transaction: opts.contains("single-transaction"),
+        routines: opts.contains("routines"),
+        triggers: opts.contains("triggers"),
+    })
+}
+
+pub(crate) fn parse_restore_options(options: &[String]) -> BackupRestoreOptions {
+    let opts: std::collections::HashSet<String> = options.iter().cloned().collect();
+    BackupRestoreOptions {
+        single_transaction: opts.contains("single-transaction"),
     }
 }
 
@@ -117,7 +134,7 @@ async fn backup_database_to_path(
         .as_deref()
         .unwrap_or(config.database.as_deref().unwrap_or(""))
         .to_string();
-    let opts = parse_backup_options(&options.unwrap_or_default());
+    let opts = parse_backup_options(&options.unwrap_or_default())?;
 
     let out = driver
         .dump_database(&handle, &db_name, &opts)
@@ -158,9 +175,16 @@ pub async fn restore_database(
     state: State<'_, AppState>,
     connection_id: String,
     input_path: String,
+    options: Option<Vec<String>>,
 ) -> Result<(), CommandError> {
     require_webdriver_path_ipc("Direct path restore disabled; use restore_database_with_dialog")?;
-    restore_database_from_path(&state, connection_id, PathBuf::from(input_path)).await
+    restore_database_from_path(
+        &state,
+        connection_id,
+        PathBuf::from(input_path),
+        options,
+    )
+    .await
 }
 
 /// Native open dialog + restore. Returns `true` if restored.
@@ -169,6 +193,7 @@ pub async fn restore_database_with_dialog(
     app: tauri::AppHandle,
     state: State<'_, AppState>,
     connection_id: String,
+    options: Option<Vec<String>>,
 ) -> Result<bool, CommandError> {
     use tauri_plugin_dialog::DialogExt;
 
@@ -183,7 +208,7 @@ pub async fn restore_database_with_dialog(
     let path = fp
         .into_path()
         .map_err(|e| CommandError::Validation(format!("Invalid dialog path: {e}")))?;
-    restore_database_from_path(&state, connection_id, path).await?;
+    restore_database_from_path(&state, connection_id, path, options).await?;
     Ok(true)
 }
 
@@ -191,6 +216,7 @@ async fn restore_database_from_path(
     state: &AppState,
     connection_id: String,
     input_path: PathBuf,
+    options: Option<Vec<String>>,
 ) -> Result<(), CommandError> {
     tracing::info!(%connection_id, path = %input_path.display(), "restore_database");
     let sql = tokio::fs::read_to_string(&input_path)
@@ -203,8 +229,10 @@ async fn restore_database_from_path(
         .await
         .cmd_err("restore_database")?;
 
+    let restore_opts = parse_restore_options(&options.unwrap_or_default());
+
     driver
-        .restore_sql(&handle, &sql)
+        .restore_sql(&handle, &sql, Some(&restore_opts))
         .await
         .map_err(|e| {
             let err = map_driver_err(e);
@@ -226,7 +254,12 @@ mod tests {
             "schema-only".into(),
             "clean".into(),
             "create".into(),
-        ]);
+            "no-owner".into(),
+            "single-transaction".into(),
+            "routines".into(),
+            "triggers".into(),
+        ])
+        .unwrap();
         assert_eq!(
             opts,
             BackupDumpOptions {
@@ -234,11 +267,28 @@ mod tests {
                 data_only: false,
                 clean: true,
                 create_database: true,
+                no_owner: true,
+                single_transaction: true,
+                routines: true,
+                triggers: true,
             }
         );
-        let opts = parse_backup_options(&["no-data".into(), "no-create-info".into()]);
+        let opts = parse_backup_options(&["no-data".into(), "no-create-info".into()]).unwrap();
         assert!(opts.schema_only);
         assert!(opts.data_only);
+    }
+
+    #[test]
+    fn parse_backup_options_rejects_format_custom() {
+        let err = parse_backup_options(&["format-custom".into()]).unwrap_err();
+        assert!(matches!(err, CommandError::Validation(msg) if msg.contains("format-custom")));
+    }
+
+    #[test]
+    fn parse_restore_options_recognizes_single_transaction() {
+        let opts = parse_restore_options(&["single-transaction".into()]);
+        assert!(opts.single_transaction);
+        assert!(!parse_restore_options(&[]).single_transaction);
     }
 
     #[test]
@@ -294,7 +344,7 @@ mod tests {
         let sql = std::fs::read_to_string(&backup_path).unwrap();
         assert!(sql.contains("INSERT INTO"));
 
-        restore_database_from_path(&test.state, conn_id, backup_path)
+        restore_database_from_path(&test.state, conn_id, backup_path, None)
             .await
             .unwrap();
     }

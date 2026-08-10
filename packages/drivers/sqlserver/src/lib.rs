@@ -5,7 +5,9 @@ use std::sync::Arc;
 use datazen_driver_api::*;
 
 mod sqlserver;
+mod sync_adapter;
 pub use sqlserver::*;
+pub use sync_adapter::SqlServerSyncAdapter;
 
 struct SqlServerFactory;
 impl DatabaseDriverFactory for SqlServerFactory {
