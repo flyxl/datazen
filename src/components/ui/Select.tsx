@@ -78,7 +78,7 @@ export function Select({ value, options, onChange, placeholder, disabled, classN
   useEffect(() => {
     if (!open || highlightIdx < 0 || !listRef.current) return;
     const item = listRef.current.children[highlightIdx] as HTMLElement | undefined;
-    item?.scrollIntoView({ block: 'nearest' });
+    item?.scrollIntoView?.({ block: 'nearest' });
   }, [open, highlightIdx]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {

@@ -1,5 +1,5 @@
 /** @vitest-environment node */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   INJECT_ACTIVE_ENV,
   planPluginInjectLifecycle,
@@ -8,7 +8,7 @@ import {
 
 describe('planPluginInjectLifecycle', () => {
   it('owns stash when none exists', () => {
-    expect(planPluginInjectLifecycle({ exists: () => false })).toEqual({
+    expect(planPluginInjectLifecycle({ exists: () => false, env: {} })).toEqual({
       ownStash: true,
       nested: false,
       orphanStash: false,
@@ -39,11 +39,16 @@ describe('planPluginInjectLifecycle', () => {
   });
 
   it('accepts legacy function form for exists', () => {
-    expect(planPluginInjectLifecycle(() => false)).toEqual({
-      ownStash: true,
-      nested: false,
-      orphanStash: false,
-    });
+    vi.stubEnv(INJECT_ACTIVE_ENV, '');
+    try {
+      expect(planPluginInjectLifecycle(() => false)).toEqual({
+        ownStash: true,
+        nested: false,
+        orphanStash: false,
+      });
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });
 
