@@ -96,6 +96,12 @@ vi.mock('../../../commands/database', () => ({
   },
 }));
 
+vi.mock('../../../lib/databaseTypes', () => ({
+  DB_REGISTRY: {
+    mysql: { hasMultiDatabase: true },
+  },
+}));
+
 vi.mock('../../../lib/windowManager', () => ({
   openDocsWindow: (...a: unknown[]) => openDocsWindowMock(...a),
 }));
@@ -239,10 +245,11 @@ describe('WorkflowPanel', () => {
     render(<WorkflowPanel />);
     await waitFor(() => screen.getByTitle('workflows.create'));
     fireEvent.click(screen.getByTitle('workflows.create'));
-    const connSelect = document.querySelector('select')!;
-    fireEvent.change(connSelect, { target: { value: 'c2' } });
+    fireEvent.click(screen.getByRole('button', { name: 'workflows.form.defaultConnection' }));
+    fireEvent.mouseDown(await screen.findByText('My'));
     await waitFor(() => expect(getDatabasesMock).toHaveBeenCalledWith('c2'));
-    await waitFor(() => expect(screen.getByText('db1')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: 'workflows.form.selectDatabase' }));
+    expect(await screen.findByText('db1')).toBeInTheDocument();
   });
 
   it('edits workflow with nested step types', async () => {
@@ -370,8 +377,13 @@ describe('WorkflowPanel', () => {
     render(<WorkflowPanel connectionId="c1" />);
     await waitFor(() => screen.getByText('With Vars'));
     fireEvent.click(screen.getByText('With Vars'));
-    const selects = document.querySelectorAll('select');
-    expect(selects.length).toBeGreaterThan(0);
-    fireEvent.change(selects[0], { target: { value: 'c1' } });
+    fireEvent.click(screen.getByRole('button', { name: 'workflows.form.selectConnection' }));
+    fireEvent.mouseDown(await screen.findByText('PG'));
+    fireEvent.click(screen.getByText('workflows.run'));
+    await waitFor(() => expect(executeWorkflowMock).toHaveBeenCalledWith({
+      workflowId: 'wf2',
+      variables: { q: 'x', conn: 'c1' },
+      connectionId: 'c1',
+    }));
   });
 });
