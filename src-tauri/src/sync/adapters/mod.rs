@@ -5,6 +5,7 @@
 pub mod mysql;
 pub mod postgresql;
 pub mod sqlite;
+pub mod sqlserver;
 pub mod trino;
 
 /// Ensure adapter modules stay linked so their `inventory::submit!` statics are present.
@@ -14,6 +15,7 @@ pub fn force_link() {
         std::any::type_name::<postgresql::PgSyncAdapter>(),
         std::any::type_name::<mysql::MysqlSyncAdapter>(),
         std::any::type_name::<sqlite::SqliteSyncAdapter>(),
+        std::any::type_name::<sqlserver::SqlServerSyncAdapter>(),
         std::any::type_name::<trino::TrinoSyncAdapter>(),
     );
 }

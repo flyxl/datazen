@@ -3,6 +3,7 @@ import type { KeyboardEvent } from 'react';
 import { useConnectionStore } from '../../stores/connectionStore';
 import { useI18n } from '../../hooks/useI18n';
 import { DB_REGISTRY, normalizeIndexDatabaseField } from '../../lib/databaseTypes';
+import { PRESET_GROUPS, normalizeGroupKey } from '../../lib/connectionGroups';
 import { newId } from './shared';
 import type { ConnectionConfig, DatabaseType, SslMode, SshTunnelConfig } from '../../types';
 import { getPluginConnectionForm, getPluginValidator } from '../../plugins/generated';
@@ -27,7 +28,7 @@ export function useConnectionForm(options: UseConnectionFormOptions = {}) {
   const [username, setUsername] = useState('postgres');
   const [password, setPassword] = useState('');
   const [sslMode, setSslMode] = useState<SslMode>('prefer');
-  const [group, setGroup] = useState<string>(() => t('newConn.defaultGroup'));
+  const [group, setGroup] = useState<string>(() => PRESET_GROUPS.development);
   const [colorTag, setColorTag] = useState<string>('#3b82f6');
 
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -63,7 +64,7 @@ export function useConnectionForm(options: UseConnectionFormOptions = {}) {
     setUsername(existing.username ?? '');
     setPassword(existing.password ?? '');
     setSslMode(existing.sslMode);
-    setGroup(existing.group ?? '');
+    setGroup(normalizeGroupKey(existing.group) ?? '');
     setColorTag(existing.colorTag ?? '#3b82f6');
     setConnectionOptions(existing.options ?? {});
     if (existing.sshTunnel?.enabled) {
@@ -168,7 +169,7 @@ export function useConnectionForm(options: UseConnectionFormOptions = {}) {
       name: name || t('newConn.unnamed'),
       databaseType,
       sslMode,
-      group: group || undefined,
+      group: normalizeGroupKey(group),
       colorTag: colorTag || undefined,
       sshTunnel,
     };

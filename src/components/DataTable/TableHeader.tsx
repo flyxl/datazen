@@ -58,7 +58,7 @@ export function TableHeader({ columns, sorts, onSort, columnWidths, onResizeStar
                 type="button"
                 data-sort-icon
                 className={cn(
-                  'inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-blue-400 hover:bg-surface hover:text-blue-300',
+                  'inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-accent hover:bg-surface hover:text-accent/80',
                 )}
                 onClick={(e) => {
                   e.stopPropagation();
