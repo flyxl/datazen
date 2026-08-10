@@ -6,7 +6,9 @@ use datazen_driver_api::*;
 
 mod mysql;
 mod structure;
+mod sync_adapter;
 pub use mysql::*;
+pub use sync_adapter::MysqlSyncAdapter;
 
 struct MysqlFactory;
 impl DatabaseDriverFactory for MysqlFactory {

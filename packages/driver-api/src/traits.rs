@@ -236,13 +236,15 @@ pub trait DatabaseDriver: Send + Sync {
 
     /// Restore a SQL dump by executing statements against the live connection.
     ///
-    /// Default splits on `;` (same as the former host restore loop).
+    /// Default uses [`crate::sql_dump::split_sql_statements`] and honors
+    /// [`BackupRestoreOptions::single_transaction`] / dump header flags.
     async fn restore_sql(
         &self,
         handle: &ConnectionHandle,
         sql: &str,
+        opts: Option<&BackupRestoreOptions>,
     ) -> Result<(), DriverError> {
-        crate::sql_dump::restore_sql_statements::<Self>(self, handle, sql).await
+        crate::sql_dump::restore_sql_statements::<Self>(self, handle, sql, opts).await
     }
 
     async fn structure_capabilities(
