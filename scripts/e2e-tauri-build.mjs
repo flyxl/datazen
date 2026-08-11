@@ -28,11 +28,13 @@ const { features } = JSON.parse(readFileSync(featuresPath, 'utf-8'));
 const featureList = ['webdriver', ...(Array.isArray(features) ? features : [])];
 const args = ['tauri', 'build', '--debug', '-f', featureList.join(',')];
 
-console.log(`[e2e-tauri-build] pnpm ${args.join(' ')}`);
-const result = spawnSync('pnpm', args, {
+const pnpmCmd = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
+console.log(`[e2e-tauri-build] ${pnpmCmd} ${args.join(' ')}`);
+const result = spawnSync(pnpmCmd, args, {
   cwd: ROOT,
   stdio: 'inherit',
-  shell: true,
+  shell: false,
   env: process.env,
+  windowsHide: true,
 });
 process.exit(result.status ?? 1);

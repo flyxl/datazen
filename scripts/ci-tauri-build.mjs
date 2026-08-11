@@ -12,37 +12,61 @@
 import { readFileSync, existsSync } from 'fs';
 import { spawnSync } from 'child_process';
 import { resolve, dirname } from 'path';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
 
-const targetArg = process.argv.find((a) => a.startsWith('--target='));
-const target = targetArg ? targetArg.slice('--target='.length) : null;
+export const UPDATER_CONFIG = { bundle: { createUpdaterArtifacts: true } };
 
-const featuresPath = resolve(ROOT, '.plugin-features.json');
-if (!existsSync(featuresPath)) {
-  console.error('[ci-tauri-build] missing .plugin-features.json — run resolve-drivers first');
-  process.exit(1);
+export function pnpmBin() {
+  return process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
 }
 
-const { features } = JSON.parse(readFileSync(featuresPath, 'utf-8'));
-const args = ['tauri', 'build'];
-if (target) {
-  args.push('--target', target);
-}
-if (process.argv.includes('--updater')) {
-  args.push('--config', JSON.stringify({ bundle: { createUpdaterArtifacts: true } }));
-}
-if (Array.isArray(features) && features.length > 0) {
-  args.push('-f', features.join(','));
+export function buildTauriArgs({ target = null, updater = false, features = [] } = {}) {
+  const args = ['tauri', 'build'];
+  if (target) {
+    args.push('--target', target);
+  }
+  if (updater) {
+    args.push('--config', JSON.stringify(UPDATER_CONFIG));
+  }
+  if (Array.isArray(features) && features.length > 0) {
+    args.push('-f', features.join(','));
+  }
+  return args;
 }
 
-console.log(`[ci-tauri-build] pnpm ${args.join(' ')}`);
-const result = spawnSync('pnpm', args, {
-  cwd: ROOT,
-  stdio: 'inherit',
-  shell: true,
-  env: process.env,
-});
-process.exit(result.status ?? 1);
+function main() {
+  const targetArg = process.argv.find((a) => a.startsWith('--target='));
+  const target = targetArg ? targetArg.slice('--target='.length) : null;
+
+  const featuresPath = resolve(ROOT, '.plugin-features.json');
+  if (!existsSync(featuresPath)) {
+    console.error('[ci-tauri-build] missing .plugin-features.json — run resolve-drivers first');
+    process.exit(1);
+  }
+
+  const { features } = JSON.parse(readFileSync(featuresPath, 'utf-8'));
+  const args = buildTauriArgs({
+    target,
+    updater: process.argv.includes('--updater'),
+    features,
+  });
+
+  console.log(`[ci-tauri-build] ${pnpmBin()} ${args.join(' ')}`);
+  const result = spawnSync(pnpmBin(), args, {
+    cwd: ROOT,
+    stdio: 'inherit',
+    // Do not use a shell: `shell: true` strips quotes from `--config '{"bundle":...}'`,
+    // and Tauri then rejects the unquoted object as invalid JSON.
+    shell: false,
+    env: process.env,
+    windowsHide: true,
+  });
+  process.exit(result.status ?? 1);
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+  main();
+}
