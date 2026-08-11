@@ -1,8 +1,9 @@
 # 插件自有测试（Host 默认不拉）设计
 
 > 日期：2026-08-11  
-> 状态：待审阅  
+> 状态：已批准  
 > 分支：`refactor/plugin-owned-tests`  
+> 实现计划：[../plans/2026-08-11-plugin-owned-tests.md](../plans/2026-08-11-plugin-owned-tests.md)  
 > 决策：方案 **C** — 插件相关测试在插件包 / 插件仓执行；**Host 默认 CI 与默认命令永不拉**这些测试。  
 > 补充锁定：Redis **单元测试也不进入** Host `pnpm test:unit`。
 
@@ -116,4 +117,4 @@ Host 套件（Vitest / `cargo test -p datazen` / WebdriverIO E2E）混入了：
 
 ---
 
-**审阅请回复**：批准本 spec / 需修改的条款。批准后编写 `docs/superpowers/plans/2026-08-11-plugin-owned-tests.md` 并实现。
+已批准；实现见计划文档。
