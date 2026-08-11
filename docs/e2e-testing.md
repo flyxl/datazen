@@ -46,10 +46,21 @@ pnpm e2e:skip-build -- --spec e2e/specs/path-ipc-hardening.ts
 pnpm e2e:core
 pnpm e2e:db
 pnpm e2e:ai
-pnpm e2e:kiwi
+pnpm e2e:redis          # 显式：packages/drivers/redis/e2e/（不进默认 pnpm e2e）
 pnpm e2e:i18n-backup
 pnpm e2e:path-ipc
+# Kiwi：在 datazen-driver-kiwi 仓 `pnpm e2e:kiwi`（Host 同名脚本会 exit 1）
 ```
+
+## 插件自有测试（Host 默认不拉）
+
+| 类型 | 命令 / 位置 |
+|------|-------------|
+| Path 驱动 UI 单测 | `pnpm test:unit:drivers`（**不是** `pnpm test:unit`） |
+| Redis E2E | `pnpm e2e:redis` → `packages/drivers/redis/e2e/` |
+| Kiwi E2E | 在 `datazen-driver-kiwi` 执行 `pnpm e2e:kiwi`（定位 Host 后跑本仓 spec） |
+
+设计：[superpowers/specs/2026-08-11-plugin-owned-tests-design.md](./superpowers/specs/2026-08-11-plugin-owned-tests-design.md)
 
 **Agent 推荐流程：**
 
@@ -80,16 +91,20 @@ pnpm e2e:skip-build -- --spec e2e/specs/main-window.ts
 
 ```bash
 cp e2e/.env.example e2e/.env
+# Creates datazen_e2e + product seed, sync DBs, and RO users (idempotent)
+bash e2e/setup-e2e-env.sh
 ```
+
+`e2e/run.mjs` 在启动 WDIO 前也会调用 `setup-e2e-env.sh`；失败只警告，不中止整套 UI spec。
 
 | 变量前缀 | 用途 |
 |----------|------|
-| `E2E_PG_*` / `PG_*` | PostgreSQL（多数核心 / DB spec 需要） |
+| `E2E_PG_*` / `PG_*` | PostgreSQL。`E2E_PG_DB` 默认 `datazen_e2e`（由 setup 创建并锁定到 Host 连接） |
 | `E2E_MYSQL_*` | MySQL |
 | `E2E_REDIS_*` | Redis Standalone（`redis.ts`）：`HOST` / `PORT` / `PASSWORD` |
 | `E2E_REDIS_CLUSTER_*` | 可选 Cluster（`redis-topology.ts`）：`CLUSTER_NODES`、`CLUSTER_PASSWORD`；未设置则跳过 |
 | `E2E_REDIS_SENTINEL_*` | 可选 Sentinel（`redis-topology.ts`）：`SENTINEL_NODES`、`SENTINEL_MASTER_NAME`、密码等；未设置则跳过 |
-| `E2E_KIWI_*` | Kiwi 插件 |
+| `E2E_KIWI_*` | Kiwi 插件 E2E（在 kiwi 仓 `pnpm e2e:kiwi`；可写 kiwi `e2e/.env`） |
 | `E2E_AI_*` | AI 功能 E2E |
 | `DATAZEN_DRIVERS=basic` | E2E 构建时仅 basic 四核心驱动（跳过 Git / 其余 path 驱动）（见 `pnpm e2e:minimal`） |
 
@@ -123,7 +138,9 @@ e2e/wdio.conf.ts
 | 路径 IPC / 备份 | `path-ipc-hardening.ts`, `app-data-backup.ts`, `backup-database.ts` |
 | i18n | `i18n-10-locales.ts`, `system-locale.ts` |
 | AI / Workflow | `ai-features.ts`, `ai-context.ts`, `workflow.ts`, `workflow-window.ts`, `driver-commands.ts` |
-| 驱动 | `sqlite.ts`, `mysql.ts`, `redis.ts`, `redis-topology.ts`（可选 Cluster/Sentinel）, `kiwi.ts` |
+| 驱动（Host） | `sqlite.ts`, `mysql.ts`（及其他 SQL Host specs） |
+| Redis E2E（插件包，非默认） | `packages/drivers/redis/e2e/redis.ts`, `redis-topology.ts` — `pnpm e2e:redis` |
+| Kiwi E2E（插件仓，非默认） | `datazen-driver-kiwi`：`pnpm e2e:kiwi` |
 
 完整列表与分层测试见 [architecture/testing.md](./architecture/testing.md)。
 
@@ -178,4 +195,5 @@ Tauri 2 前端传参为 **camelCase**（如 `defaultFileName`），不要用 sna
 | `e2e/helpers.ts` | 公共 UI/窗口助手 |
 | `e2e/specs/` | 用例 |
 | `e2e/.env.example` | 环境变量模板 |
+| `e2e/setup-e2e-env.sh` | 创建 E2E 库、seed `product`、RO 用户 |
 | `src-tauri/Cargo.toml` → `webdriver` feature | 启用 `tauri-plugin-webdriver` |
