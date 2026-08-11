@@ -21,6 +21,7 @@ export const clickhouseMeta = {
     sqlDialect: 'clickhouse',
     databaseFieldType: 'name',
     connectionForm: 'standard',
+    clipboardSchemes: ['clickhouse'],
     supportsExplain: true,
     hasMultiDatabase: true,
   } satisfies DatabaseTypeMeta;

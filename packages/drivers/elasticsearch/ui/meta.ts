@@ -21,6 +21,7 @@ export const elasticsearchMeta = {
     sqlDialect: 'elasticsearch',
     databaseFieldType: 'name',
     connectionForm: 'standard',
+    clipboardSchemes: ['elasticsearch'],
     supportsExplain: false,
   } satisfies DatabaseTypeMeta;
 

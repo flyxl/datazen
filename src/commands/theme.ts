@@ -11,4 +11,7 @@ export const themeCommands = {
 
   readThemePackFile: (id: string, relativePath: string) =>
     invoke<number[]>('read_theme_pack_file', { id, relativePath }),
+
+  setSurfaceBackground: (hex: string, dark: boolean) =>
+    invoke<void>('set_surface_background', { hex, dark }),
 };

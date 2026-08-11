@@ -21,6 +21,7 @@ export const vectorMeta = {
     sqlDialect: 'generic',
     databaseFieldType: 'name',
     connectionForm: 'standard',
+    clipboardSchemes: ['vector'],
     supportsExplain: false,
   } satisfies DatabaseTypeMeta;
 

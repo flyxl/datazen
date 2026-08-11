@@ -21,6 +21,7 @@ export const influxdbMeta = {
     sqlDialect: 'generic',
     databaseFieldType: 'name',
     connectionForm: 'standard',
+    clipboardSchemes: ['influxdb', 'influx'],
     supportsExplain: false,
   } satisfies DatabaseTypeMeta;
 

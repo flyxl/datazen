@@ -1,0 +1,56 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+const mockSetSurfaceBackground = vi.fn().mockResolvedValue(undefined);
+
+vi.mock('../../commands/theme', () => ({
+  themeCommands: {
+    setSurfaceBackground: (...args: unknown[]) => mockSetSurfaceBackground(...args),
+  },
+}));
+
+import {
+  DEFAULT_SURFACE_DARK,
+  cssColorToHex,
+  isSafeCssHex,
+  persistSurfaceBackground,
+} from '../surfaceBgCache';
+
+describe('cssColorToHex', () => {
+  it('normalizes hex3 / hex6 / rgb', () => {
+    expect(cssColorToHex('#0f172a')).toBe('#0f172a');
+    expect(cssColorToHex('#ABC')).toBe('#aabbcc');
+    expect(cssColorToHex('rgb(17, 34, 51)')).toBe('#112233');
+    expect(cssColorToHex('rgba(15, 23, 42, 0.9)')).toBe('#0f172a');
+  });
+
+  it('rejects non-hex / non-rgb', () => {
+    expect(cssColorToHex('oklch(0.5 0.1 200)')).toBeNull();
+    expect(cssColorToHex('red')).toBeNull();
+    expect(isSafeCssHex('#112233')).toBe(true);
+    expect(isSafeCssHex('rgb(1,2,3)')).toBe(false);
+  });
+});
+
+describe('persistSurfaceBackground', () => {
+  beforeEach(() => {
+    mockSetSurfaceBackground.mockClear();
+    delete (window as Record<string, unknown>).__TAURI_INTERNALS__;
+  });
+
+  afterEach(() => {
+    delete (window as Record<string, unknown>).__TAURI_INTERNALS__;
+  });
+
+  it('no-ops without Tauri', () => {
+    persistSurfaceBackground(true, DEFAULT_SURFACE_DARK);
+    expect(mockSetSurfaceBackground).not.toHaveBeenCalled();
+  });
+
+  it('sends sanitized hex to Rust when Tauri is present', () => {
+    (window as Record<string, unknown>).__TAURI_INTERNALS__ = {};
+    persistSurfaceBackground(true, 'rgb(26, 10, 46)');
+    expect(mockSetSurfaceBackground).toHaveBeenCalledWith('#1a0a2e', true);
+    persistSurfaceBackground(false, 'not-a-color');
+    expect(mockSetSurfaceBackground).toHaveBeenCalledTimes(1);
+  });
+});

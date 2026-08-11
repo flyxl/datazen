@@ -8,6 +8,11 @@ import type { KeyDetail } from '../../../../src/types';
 import { hasRedisJson, isJsonKeyType, looksLikeJsonModuleDetail } from './hasRedisJson';
 import { JsonEditor } from './JsonEditor';
 import { StreamEditor } from './StreamEditor';
+import {
+  initialStringEditorValue,
+  looksLikeJsonText,
+  tryPrettyJson,
+} from './stringKeyValue';
 
 export type PluginInvokeFn = RedisInvokeFn;
 
@@ -424,33 +429,71 @@ function StringEditor({
   onSaved: () => void;
 }) {
   const { t } = useI18n();
-  const initial =
-    typeof detail.value === 'object'
-      ? JSON.stringify(detail.value, null, 2)
-      : String(detail.value ?? '');
-  const [value, setValue] = useState(initial);
+  const [value, setValue] = useState(() => initialStringEditorValue(detail.value));
   const [saving, setSaving] = useState(false);
+  const [jsonError, setJsonError] = useState<string | null>(null);
+  const jsonMode = looksLikeJsonText(value);
+
+  const save = () => {
+    if (jsonMode) {
+      try {
+        JSON.parse(value);
+      } catch {
+        setJsonError(t('redis.invalidJson'));
+        return;
+      }
+      setJsonError(null);
+    }
+    setSaving(true);
+    void invokeSetString(connectionId, dbIndex, detail.key, value)
+      .then(onSaved)
+      .finally(() => setSaving(false));
+  };
 
   return (
     <div className="space-y-2">
       <textarea
         value={value}
-        onChange={(e) => setValue(e.target.value)}
-        className="min-h-[120px] w-full rounded-md border border-edge bg-surface-alt p-3 font-mono text-fg-secondary"
-      />
-      <Button
-        variant="primary"
-        className="h-7 px-2 text-xs"
-        disabled={saving}
-        onClick={() => {
-          setSaving(true);
-          void invokeSetString(connectionId, dbIndex, detail.key, value)
-            .then(onSaved)
-            .finally(() => setSaving(false));
+        onChange={(e) => {
+          setValue(e.target.value);
+          setJsonError(null);
         }}
-      >
-        {t('common.save')}
-      </Button>
+        className="min-h-[160px] w-full rounded-md border border-edge bg-surface-alt p-3 font-mono text-xs text-fg-secondary"
+        spellCheck={false}
+      />
+      {jsonError && (
+        <div className="rounded-md border border-danger/20 bg-danger/10 px-2 py-1.5 text-danger">
+          {jsonError}
+        </div>
+      )}
+      <div className="flex items-center justify-end gap-2">
+        {jsonMode && (
+          <Button
+            variant="secondary"
+            className="h-7 px-2 text-xs"
+            disabled={saving}
+            onClick={() => {
+              const pretty = tryPrettyJson(value);
+              if (!pretty) {
+                setJsonError(t('redis.invalidJson'));
+                return;
+              }
+              setJsonError(null);
+              setValue(pretty);
+            }}
+          >
+            {t('redis.formatJson')}
+          </Button>
+        )}
+        <Button
+          variant="primary"
+          className="h-7 px-2 text-xs"
+          disabled={saving}
+          onClick={save}
+        >
+          {t('common.save')}
+        </Button>
+      </div>
     </div>
   );
 }

@@ -40,7 +40,7 @@ import {
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = STASH_ROOT;
-const PLUGINS_DIR = resolve(ROOT, '.plugins');
+const DRIVERS_DIR = resolve(ROOT, 'packages/drivers');
 
 function loadRegistry() {
   const raw = readFileSync(resolve(ROOT, 'drivers-registry.json'), 'utf-8');
@@ -176,7 +176,7 @@ function generateCargoFeatures(drivers, registry) {
  * Each plugin declares:
  * - dbTypes: array of { id, metaExport } — database types provided by this plugin
  * - metaPath: path to the file exporting meta objects
- * - connectionForm: { component, path, formVariant } — custom connection form (optional)
+ * - connectionForm: { component, path, formVariant, advanced? } — custom connection form (optional)
  * - connectionView: { component, path, viewMode } — custom connection window view (optional)
  * - sqlDialects: array of { family, export, path } — SQL dialect strategies (optional)
  */
@@ -237,8 +237,16 @@ const BASIC_PATH_FRONTEND = {
       component: 'RedisConnectionWizard',
       path: '../../packages/drivers/redis/ui/ConnectionWizard',
       formVariant: 'redis',
+      advanced: 'RedisTlsFields',
       validator: { export: 'redisValidate' },
     },
+    clipboardParsers: [
+      {
+        dbType: 'redis',
+        export: 'parseRedisConnectionClipboard',
+        path: '../../packages/drivers/redis/ui/parseRedisClipboard',
+      },
+    ],
     connectionView: {
       component: 'RedisConnectionView',
       path: '../../packages/drivers/redis/ui/RedisConnectionView',
@@ -306,10 +314,10 @@ const FRONTEND_DRIVER_CONFIG = {
   ...BASIC_PATH_FRONTEND,
   kiwi: {
     dbTypes: [{ id: 'kiwi', metaExport: 'kiwiMeta' }],
-    metaPath: '../../.plugins/kiwi/ui/plugin-meta',
+    metaPath: '../../packages/drivers/kiwi/ui/plugin-meta',
     connectionForm: {
       component: 'KiwiConnectionFields',
-      path: '../../.plugins/kiwi/ui/KiwiConnectionFields',
+      path: '../../packages/drivers/kiwi/ui/KiwiConnectionFields',
       formVariant: 'kiwi',
     },
     sqlDialects: [],
@@ -319,28 +327,28 @@ const FRONTEND_DRIVER_CONFIG = {
       { id: 'presto', metaExport: 'prestoMeta' },
       { id: 'trino', metaExport: 'trinoMeta' },
     ],
-    metaPath: '../../.plugins/olap/ui/plugin-meta',
+    metaPath: '../../packages/drivers/olap/ui/plugin-meta',
     connectionForm: {
       component: 'CatalogConnectionFields',
-      path: '../../.plugins/olap/ui/CatalogConnectionFields',
+      path: '../../packages/drivers/olap/ui/CatalogConnectionFields',
       formVariant: 'catalog',
     },
     sqlDialects: [
-      { family: 'trino', export: 'trinoDialect', path: '../../.plugins/olap/ui/trinoDialect' },
+      { family: 'trino', export: 'trinoDialect', path: '../../packages/drivers/olap/ui/trinoDialect' },
     ],
   },
   superset: {
     dbTypes: [{ id: 'superset', metaExport: 'supersetMeta' }],
-    metaPath: '../../.plugins/superset/ui/plugin-meta',
+    metaPath: '../../packages/drivers/superset/ui/plugin-meta',
     connectionForm: {
       component: 'SupersetConnectionFields',
-      path: '../../.plugins/superset/ui/SupersetConnectionFields',
+      path: '../../packages/drivers/superset/ui/SupersetConnectionFields',
       formVariant: 'superset',
       validator: { export: 'supersetValidate' },
     },
     schemaTree: {
       component: 'SupersetSchemaTree',
-      path: '../../.plugins/superset/ui/SupersetSchemaTree',
+      path: '../../packages/drivers/superset/ui/SupersetSchemaTree',
       dbType: 'superset',
     },
     sqlDialects: [],
@@ -434,6 +442,7 @@ function generateFrontendRegistry(plugins) {
   const iconParentEntryLines = [];
   const formEntryLines = [];
   const validatorEntryLines = [];
+  const clipboardParserEntryLines = [];
   const dialectEntryLines = [];
   const schemaTreeEntryLines = [];
   const connectionViewEntryLines = [];
@@ -477,6 +486,9 @@ function generateFrontendRegistry(plugins) {
     // Connection form
     if (cfg.connectionForm) {
       const formImports = [cfg.connectionForm.component];
+      if (cfg.connectionForm.advanced) {
+        formImports.push(cfg.connectionForm.advanced);
+      }
       if (cfg.connectionForm.validator) {
         formImports.push(cfg.connectionForm.validator.export);
         validatorEntryLines.push(
@@ -486,8 +498,11 @@ function generateFrontendRegistry(plugins) {
       importLines.push(
         `import { ${formImports.join(', ')} } from '${cfg.connectionForm.path}';`
       );
+      const advancedPart = cfg.connectionForm.advanced
+        ? `, advanced: ${cfg.connectionForm.advanced}`
+        : '';
       formEntryLines.push(
-        `  { formVariant: '${cfg.connectionForm.formVariant}', component: ${cfg.connectionForm.component} },`
+        `  { formVariant: '${cfg.connectionForm.formVariant}', component: ${cfg.connectionForm.component}${advancedPart} },`
       );
     }
 
@@ -508,6 +523,14 @@ function generateFrontendRegistry(plugins) {
       );
       connectionViewEntryLines.push(
         `  { viewMode: '${cfg.connectionView.viewMode}', component: ${cfg.connectionView.component} },`
+      );
+    }
+
+    // Clipboard parsers (new-connection auto-detect)
+    for (const parser of cfg.clipboardParsers || []) {
+      importLines.push(`import { ${parser.export} } from '${parser.path}';`);
+      clipboardParserEntryLines.push(
+        `  { dbType: '${parser.dbType}', parse: ${parser.export} },`,
       );
     }
 
@@ -572,6 +595,7 @@ ${importLines.length > 0 ? importLines.join('\n') + '\n' : ''}${iconImportLines.
 import type { DatabaseTypeMeta } from '@datazen/plugin-sdk';
 import type { SqlDialectStrategy } from '@datazen/plugin-sdk';
 import type { PluginFormValidator } from '@datazen/plugin-sdk';
+import type { ConnectionClipboardParser } from '@datazen/plugin-sdk';
 import type { PluginSettingsContribution } from '@datazen/plugin-sdk';
 import type { ComponentType } from 'react';
 
@@ -615,6 +639,7 @@ ${dialectEntryLines.join('\n')}
 interface PluginFormEntry {
   formVariant: string;
   component: ComponentType<any>;
+  advanced?: ComponentType<any>;
 }
 
 const PLUGIN_FORMS: PluginFormEntry[] = [
@@ -631,6 +656,16 @@ export function getPluginConnectionForm(formVariant: string): ComponentType<any>
   return undefined;
 }
 
+/** Lookup plugin-provided Advanced-settings fields by form variant. */
+export function getPluginConnectionAdvanced(formVariant: string): ComponentType<any> | undefined {
+  for (const entry of PLUGIN_FORMS) {
+    if (entry.formVariant === formVariant) {
+      return entry.advanced;
+    }
+  }
+  return undefined;
+}
+
 /** Plugin-provided form validators, keyed by form variant. */
 const PLUGIN_VALIDATORS: Record<string, PluginFormValidator> = {
 ${validatorEntryLines.join('\n')}
@@ -639,6 +674,15 @@ ${validatorEntryLines.join('\n')}
 /** Lookup plugin-provided form validator by form variant. */
 export function getPluginValidator(formVariant: string): PluginFormValidator | undefined {
   return PLUGIN_VALIDATORS[formVariant];
+}
+
+/** Plugin-provided clipboard parsers for new-connection auto-detect. */
+const PLUGIN_CLIPBOARD_PARSERS: { dbType: string; parse: ConnectionClipboardParser }[] = [
+${clipboardParserEntryLines.join('\n')}
+];
+
+export function getPluginClipboardParsers(): { dbType: string; parse: ConnectionClipboardParser }[] {
+  return PLUGIN_CLIPBOARD_PARSERS;
 }
 
 // ===== Plugin Schema Trees =====
@@ -726,9 +770,10 @@ export function hasPluginCommand(pluginId: string, command: string): boolean {
 }
 
 /**
- * Clone or update plugin repositories into .plugins/<name>/.
+ * Clone or update git/local drivers into packages/drivers/<name>/.
  * Supports git (clone from remote) and local (symlink from local path).
  * Git plugins may pin `ref` (commit SHA or tag) in drivers-registry.json.
+ * These checkouts are gitignored and excluded from the Cargo workspace.
  */
 function checkoutGitRef(pluginDir, ref) {
   if (!ref) return;
@@ -742,13 +787,13 @@ function checkoutGitRef(pluginDir, ref) {
 }
 
 function cloneDrivers(drivers, registry) {
-  mkdirSync(PLUGINS_DIR, { recursive: true });
+  mkdirSync(DRIVERS_DIR, { recursive: true });
 
   for (const name of drivers) {
     const meta = registry[name];
     if (meta.source === 'path' || meta.source === 'builtin') continue;
 
-    const pluginDir = resolve(PLUGINS_DIR, name);
+    const pluginDir = resolve(DRIVERS_DIR, name);
 
     if (meta.source === 'local' && meta.path) {
       const localPath = resolve(ROOT, meta.path);
@@ -840,7 +885,7 @@ function crateDepPath(name, meta) {
     // src-tauri/Cargo.toml → ../packages/drivers/X
     return `../${meta.path}`;
   }
-  return `../.plugins/${name}`;
+  return `../packages/drivers/${name}`;
 }
 
 /** Path drivers use datazen-driver-*; git drivers keep their published crate name (usually datazen-plugin-*). */
@@ -883,7 +928,7 @@ function updateCargoFiles(plugins, registry) {
     .map(name => {
       const meta = registry[name];
       const crateName = cratePackageName(name, meta);
-      return `[patch."${meta.git}"]\n${crateName} = { path = ".plugins/${name}" }`;
+      return `[patch."${meta.git}"]\n${crateName} = { path = "packages/drivers/${name}" }`;
     });
   replaceMarkerSection('Cargo.toml', 'PLUGIN PATCHES', patchLines.join('\n\n'));
 
@@ -1100,7 +1145,7 @@ function injectRootCargoPatches(plugins, registry) {
     const crateName = cratePackageName(name, meta);
     patchLines.push('');
     patchLines.push(`[patch."${meta.git}"]`);
-    patchLines.push(`${crateName} = { path = ".plugins/${name}" }`);
+    patchLines.push(`${crateName} = { path = "packages/drivers/${name}" }`);
   }
 
   content = replaceMarkerBlock(content, 'plugin-patches', patchLines);

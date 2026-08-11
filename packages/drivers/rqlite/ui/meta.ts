@@ -21,6 +21,7 @@ export const rqliteMeta = {
     sqlDialect: 'sqlite',
     databaseFieldType: 'name',
     connectionForm: 'standard',
+    clipboardSchemes: ['rqlite'],
     supportsExplain: true,
   } satisfies DatabaseTypeMeta;
 

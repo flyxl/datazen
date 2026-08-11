@@ -4,11 +4,12 @@ use std::fs;
 use std::path::PathBuf;
 
 use serde::Serialize;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 use tauri_plugin_dialog::DialogExt;
 
 use super::error::{CmdExt, CommandError};
 use super::AppState;
+use crate::theme::surface_bg::SurfaceBgCache;
 use crate::theme::{install_theme_zip, validate_pack_dir, ThemeManifest};
 
 #[derive(Debug, Clone, Serialize)]
@@ -189,6 +190,17 @@ pub async fn read_theme_pack_file(
     relative_path: String,
 ) -> Result<Vec<u8>, CommandError> {
     read_theme_pack_file_impl(&state, id, relative_path).await
+}
+
+#[tauri::command]
+pub fn set_surface_background(app: AppHandle, hex: String, dark: bool) -> Result<(), CommandError> {
+    let cache = app
+        .try_state::<SurfaceBgCache>()
+        .ok_or_else(|| CommandError::Internal("surface background cache missing".into()))?;
+    cache
+        .set(&hex, dark)
+        .map_err(CommandError::Validation)?;
+    Ok(())
 }
 
 #[cfg(test)]

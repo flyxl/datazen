@@ -3,6 +3,7 @@ import { Button } from '../../components/ui/Button';
 import { useI18n } from '../../hooks/useI18n';
 import { ConnectionFormBody } from '../../components/connection/ConnectionFormBody';
 import { useConnectionForm } from '../../components/connection/useConnectionForm';
+import { useConnectionClipboardFill } from '../../components/connection/useConnectionClipboardFill';
 
 export interface NewConnectionDialogProps {
   open: boolean;
@@ -12,6 +13,7 @@ export interface NewConnectionDialogProps {
 export function NewConnectionDialog({ open, onClose }: NewConnectionDialogProps) {
   const { t } = useI18n();
   const form = useConnectionForm({ onAfterSave: onClose });
+  useConnectionClipboardFill(form, { enabled: open });
 
   return (
     <Dialog
