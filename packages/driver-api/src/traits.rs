@@ -166,35 +166,7 @@ pub trait DatabaseDriver: Send + Sync {
         command: &str,
         input: serde_json::Value,
     ) -> Result<CommandResult, DriverError> {
-        match command {
-            "query" => {
-                let sql = input
-                    .get("sql")
-                    .and_then(|v| v.as_str())
-                    .ok_or_else(|| DriverError::InvalidConfig("command 'query' requires string input 'sql'".into()))?;
-                let limit = input
-                    .get("limit")
-                    .and_then(|v| v.as_u64())
-                    .map(|v| v.min(u32::MAX as u64) as u32);
-                let result = self.query_multi(handle, sql, limit).await?;
-                let data = serde_json::to_value(result)
-                    .map_err(|e| DriverError::QueryFailed(format!("failed to serialize query result: {e}")))?;
-                Ok(CommandResult::new(data))
-            }
-            "execute" => {
-                let sql = input
-                    .get("sql")
-                    .and_then(|v| v.as_str())
-                    .ok_or_else(|| DriverError::InvalidConfig("command 'execute' requires string input 'sql'".into()))?;
-                let rows_affected = self.execute(handle, sql).await?;
-                Ok(CommandResult::new(serde_json::json!({
-                    "rowsAffected": rows_affected
-                })))
-            }
-            other => Err(DriverError::Unsupported(format!(
-                "unsupported driver command: {other}"
-            ))),
-        }
+        execute_standard_sql_command(self, handle, command, input).await
     }
 
     async fn begin_transaction(
@@ -318,6 +290,44 @@ pub trait DatabaseDriver: Send + Sync {
         Err(DriverError::Unsupported(
             "table structure planning is not supported by this driver".into(),
         ))
+    }
+}
+
+/// Default `query` / `execute` command dispatch shared by SQL drivers.
+pub async fn execute_standard_sql_command<D: DatabaseDriver + ?Sized>(
+    driver: &D,
+    handle: &ConnectionHandle,
+    command: &str,
+    input: serde_json::Value,
+) -> Result<CommandResult, DriverError> {
+    match command {
+        "query" => {
+            let sql = input
+                .get("sql")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| DriverError::InvalidConfig("command 'query' requires string input 'sql'".into()))?;
+            let limit = input
+                .get("limit")
+                .and_then(|v| v.as_u64())
+                .map(|v| v.min(u32::MAX as u64) as u32);
+            let result = driver.query_multi(handle, sql, limit).await?;
+            let data = serde_json::to_value(result)
+                .map_err(|e| DriverError::QueryFailed(format!("failed to serialize query result: {e}")))?;
+            Ok(CommandResult::new(data))
+        }
+        "execute" => {
+            let sql = input
+                .get("sql")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| DriverError::InvalidConfig("command 'execute' requires string input 'sql'".into()))?;
+            let rows_affected = driver.execute(handle, sql).await?;
+            Ok(CommandResult::new(serde_json::json!({
+                "rowsAffected": rows_affected
+            })))
+        }
+        other => Err(DriverError::Unsupported(format!(
+            "unsupported driver command: {other}"
+        ))),
     }
 }
 

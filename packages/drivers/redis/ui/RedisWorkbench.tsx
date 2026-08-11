@@ -28,7 +28,7 @@ import { useI18n } from '../../../../src/hooks/useI18n';
 import { databaseCommands } from '../../../../src/commands/database';
 import { cn } from '../../../../src/lib/cn';
 import { readBooleanField } from '../../../../src/plugin-sdk/settings';
-import { pluginInvoke } from '../../../../src/plugins/generated';
+import { redisCommandInvoke } from './redisInvoke';
 import type { KeyDetail, KeyEntry } from '../../../../src/types';
 import { BatchBar } from './BatchBar';
 import { hasRedisJson } from './hasRedisJson';
@@ -288,13 +288,13 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
       setFlushError(null);
       try {
         if (flushDialog === 'db') {
-          await pluginInvoke('redis', 'flush_db', {
+          await redisCommandInvoke('redis', 'flush_db', {
             connectionId: connectionId,
             dbIndex: dbIndex,
             allowFlush: allowFlush,
           });
         } else if (flushDialog === 'all') {
-          await pluginInvoke('redis', 'flush_all', {
+          await redisCommandInvoke('redis', 'flush_all', {
             connectionId: connectionId,
             allowFlush: allowFlush,
           });

@@ -101,7 +101,7 @@ DatabaseDriver
 
 ### Redis 驱动（E1–E4）
 
-深度能力集中在 `packages/drivers/redis`（UI + `plugin:redis|*`），宿主 `RedisConnectionView` 仅为薄 Tab 壳；**禁止** Host 按 `pluginId === 'redis'` 写设置分支。
+深度能力集中在 `packages/drivers/redis`（UI + Driver Command API），宿主 `RedisConnectionView` 仅为薄 Tab 壳；**禁止** Host 按 `pluginId === 'redis'` 写设置分支。 Redis Tauri plugin 仅用于安装 Pub/Sub 事件 sink，操作一律走 `execute_command` / `execute_driver_command`。
 
 - Tabs：Workbench / Console / Monitor / Pub/Sub
 - 拓扑：Standalone / Cluster / Sentinel + mTLS
@@ -246,7 +246,7 @@ Driver Command IPC 负责：
 | AI Chat | `components/ai/AiChatPanel.tsx` | `commands/ai.rs` |
 | Workflows | `windows/workflow/WorkflowWindow.tsx` | `workflow/executor.rs` / `workflow/command_runtime.rs` |
 | 数据同步 | `windows/data-sync/` | `sync/` |
-| Redis 深度运维 | `packages/drivers/redis/ui/*` | `plugin:redis|*` |
+| Redis 深度运维 | `packages/drivers/redis/ui/*` | `execute_command` / `execute_driver_command` |
 | 主题包 | `windows/settings/ThemePackSection.tsx` | `theme/` + `commands/theme.rs` |
 
 ## 开发命令
