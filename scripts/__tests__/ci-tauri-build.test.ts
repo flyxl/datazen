@@ -1,29 +1,48 @@
 /** @vitest-environment node */
+import { mkdtempSync, readFileSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 import { describe, expect, it } from 'vitest';
-import { buildTauriArgs, pnpmBin, UPDATER_CONFIG } from '../ci-tauri-build.mjs';
+import {
+  buildTauriArgs,
+  resolveTauriCli,
+  UPDATER_CONFIG,
+  writeUpdaterConfigFile,
+} from '../ci-tauri-build.mjs';
 
 describe('ci-tauri-build args', () => {
-  it('passes updater config as parseable JSON with quoted keys', () => {
-    const args = buildTauriArgs({ updater: true, target: 'aarch64-apple-darwin' });
-    const configIdx = args.indexOf('--config');
-    expect(configIdx).toBeGreaterThanOrEqual(0);
-    const raw = args[configIdx + 1];
-    expect(raw.startsWith('{')).toBe(true);
-    expect(JSON.parse(raw)).toEqual(UPDATER_CONFIG);
-    expect(raw).toContain('"bundle"');
-    expect(raw).toContain('"createUpdaterArtifacts"');
+  it('passes updater config as a JSON file path, not an inline object', () => {
+    const configPath = join(tmpdir(), 'datazen-updater-test.json');
+    const args = buildTauriArgs({
+      updater: true,
+      target: 'x86_64-pc-windows-msvc',
+      updaterConfigPath: configPath,
+    });
+    expect(args).toEqual([
+      'build',
+      '--target',
+      'x86_64-pc-windows-msvc',
+      '--config',
+      configPath,
+    ]);
+    expect(args[args.indexOf('--config') + 1].startsWith('{')).toBe(false);
+  });
+
+  it('writes updater config that Tauri can parse as JSON', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'datazen-ci-tauri-'));
+    const file = writeUpdaterConfigFile(dir);
+    expect(JSON.parse(readFileSync(file, 'utf-8'))).toEqual(UPDATER_CONFIG);
   });
 
   it('omits --config unless updater is requested', () => {
     expect(buildTauriArgs({ features: ['plugin-redis'] })).toEqual([
-      'tauri',
       'build',
       '-f',
       'plugin-redis',
     ]);
   });
 
-  it('uses a real binary name rather than going through a shell', () => {
-    expect(pnpmBin() === 'pnpm' || pnpmBin() === 'pnpm.cmd').toBe(true);
+  it('resolves the JS CLI entry instead of pnpm.cmd', () => {
+    expect(resolveTauriCli().replaceAll('\\', '/')).toMatch(/@tauri-apps\/cli\/tauri\.js$/);
   });
 });
