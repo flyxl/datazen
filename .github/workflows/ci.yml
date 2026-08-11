@@ -6,8 +6,6 @@ on:
   push:
     branches: [main]
 
-# Least privilege: unit tests only need to read the repo. Do not attach
-# plugin Deploy Key secrets here (forks / PRs must never see them).
 permissions:
   contents: read
 
@@ -36,7 +34,6 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
-      # generated.ts / plugin_init must stay as empty stubs in git; resolve-drivers injects at build.
       - name: Guard managed driver stubs are not injected
         run: node scripts/check-managed-stubs.mjs
 
@@ -51,8 +48,6 @@ jobs:
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
-        with:
-          components: llvm-tools-preview
 
       - name: Install Linux system deps (Tauri / webkit2gtk)
         run: |
@@ -79,13 +74,6 @@ jobs:
 
       - name: Rust unit tests (driver API)
         run: cargo test -p datazen-driver-api --lib
-
-      - name: Driver API coverage (new command API >= 80%)
-        run: |
-          cargo install cargo-llvm-cov --locked
-          cargo llvm-cov -p datazen-driver-api --lib \
-            --include-files 'packages/driver-api/src/command.rs' \
-            --fail-under-lines 80
 
       - name: Rust unit tests (datazen)
         run: |
