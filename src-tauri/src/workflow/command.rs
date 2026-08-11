@@ -41,18 +41,29 @@ impl WorkflowCommandStep {
     /// Normalize the existing workflow `query` representation without changing
     /// the on-disk YAML. This is the compatibility boundary between the old
     /// configuration format and the generic command runtime.
+    ///
+    /// Legacy `database` selection is preserved as a command input so the
+    /// migration does not silently lose the existing per-step database
+    /// semantics. The workflow executor can apply it before dispatching the
+    /// command through the Driver API.
     pub fn from_legacy_query(
         id: impl Into<String>,
         sql: impl Into<String>,
         connection: Option<String>,
+        database: Option<String>,
         timeout_secs: Option<u64>,
         on_error: Option<super::workflows::ErrorHandlingConfig>,
     ) -> Self {
+        let mut input = serde_json::json!({ "sql": sql.into() });
+        if let Some(database) = database {
+            input["database"] = serde_json::Value::String(database);
+        }
+
         Self {
             id: id.into(),
             command: "query".into(),
             connection,
-            input: serde_json::json!({ "sql": sql.into() }),
+            input,
             timeout_secs,
             on_error,
         }
@@ -77,6 +88,7 @@ mod tests {
             "users",
             "SELECT id FROM users",
             Some("mysql-prod".into()),
+            None,
             Some(10),
             None,
         );
@@ -85,7 +97,24 @@ mod tests {
         assert_eq!(step.command, "query");
         assert_eq!(step.connection.as_deref(), Some("mysql-prod"));
         assert_eq!(step.input["sql"], "SELECT id FROM users");
+        assert_eq!(step.input.get("database"), None);
         assert_eq!(step.timeout_secs, Some(10));
+    }
+
+    #[test]
+    fn legacy_query_preserves_database_selection() {
+        let step = WorkflowCommandStep::from_legacy_query(
+            "users",
+            "SELECT id FROM users",
+            Some("mysql-prod".into()),
+            Some("reporting".into()),
+            None,
+            None,
+        );
+
+        assert_eq!(step.command, "query");
+        assert_eq!(step.input["database"], "reporting");
+        assert_eq!(step.input["sql"], "SELECT id FROM users");
     }
 
     #[test]
