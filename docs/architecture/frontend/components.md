@@ -463,7 +463,7 @@ invoke<number | null>('export_connections_with_dialog', { password, defaultFileN
 
 ### 8.2 命令封装
 
-> 以下接口与后端 `backend-architecture.md` 第六节 Tauri Commands 层逐一对齐。
+> 以下接口与后端 [IPC 命令层](../backend/commands.md) 逐一对齐。
 
 ```typescript
 // commands/connection.ts
@@ -558,41 +558,7 @@ export const settingsCommands = {
 };
 ```
 
-### 8.3 后端需补齐的 Command
-
-前端需要以下两个 Command，但后端 `backend-architecture.md` 第六节未定义，需要补充：
-
-```rust
-/// 获取表数据（带分页、筛选、排序）
-#[tauri::command]
-pub async fn get_table_data(
-    state: State<'_, AppState>,
-    connection_id: String,
-    table: String,
-    page: u32,
-    page_size: u32,
-    filters: Option<Vec<FilterCondition>>,
-    sorts: Option<Vec<SortCondition>>,
-) -> Result<TableDataResult, String> {
-    // 调用 QueryExecutor.get_table_data(...)
-}
-
-/// 取消正在执行的查询
-#[tauri::command]
-pub async fn cancel_query(
-    state: State<'_, AppState>,
-    connection_id: String,
-) -> Result<(), String> {
-    let (driver, handle) = state.connection_manager
-        .get_connection(&connection_id).await
-        .map_err(|e| e.to_string())?;
-
-    driver.cancel_query(&handle).await
-        .map_err(|e| e.to_string())
-}
-```
-
-### 8.4 错误处理统一
+### 8.3 错误处理统一
 
 ```typescript
 // lib/tauri.ts

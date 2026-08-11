@@ -67,5 +67,3 @@ ABC 与 Schema Diff Deploy 已把「信任面 / 每日 SQL 主路径 / 结构部
 
 - [Schema Diff 使用手册](schema-diff-guide.md) · [Deploy 摘要](schema-diff-deploy.md)
 - [Packaging](packaging.md) · [Updater](updater.md)
-- [ABC 计划](superpowers/plans/2026-08-09-abc-competitive-parity.md)
-- [Schema Diff Deploy 计划](superpowers/plans/2026-08-09-schema-diff-deploy.md)

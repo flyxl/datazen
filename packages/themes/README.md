@@ -2,7 +2,7 @@
 
 Source tree for declarative ThemePacks (v1). These are **not** compiled into the app; zip a pack directory and import it from **Settings → Theme pack → Import…**.
 
-Spec: [`docs/superpowers/specs/2026-08-08-runtime-theme-packs-design.md`](../../docs/superpowers/specs/2026-08-08-runtime-theme-packs-design.md)
+See [`docs/architecture/backend/theme.md`](../../docs/architecture/backend/theme.md).
 
 ## Packs
 

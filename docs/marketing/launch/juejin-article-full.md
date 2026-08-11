@@ -23,7 +23,7 @@
 
 ## 架构要点
 
-后端采用 **注册表驱动** 的 `DatabaseDriver` trait：新增一种数据库只需实现 trait 并在 `init_drivers()` 注册，前端在 `DB_REGISTRY` 增加元数据即可。详细设计见仓库内 `docs/backend-architecture.md`。
+后端采用 **注册表驱动** 的 `DatabaseDriver` trait：新增一种数据库只需实现 trait 并在 `init_drivers()` 注册，前端在 `DB_REGISTRY` 增加元数据即可。详细设计见仓库内 `docs/architecture/README.md`。
 
 数据流：`React → Tauri IPC → Rust services → 数据库驱动`，结果经事件回推前端。
 

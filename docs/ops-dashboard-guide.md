@@ -1,7 +1,7 @@
 # DataZen 运营看板使用手册
 
 > 本文档说明 DataZen **运营看板（Ops Dashboard）** 的完整用法：多图布局、后台定时刷新、告警、历史回看、托盘与导入导出。  
-> 事实来源：`src-tauri/src/dashboard/`、`src-tauri/src/monitor/`、前端 `src/windows/dashboard/`，以及设计文档 `docs/superpowers/specs/2026-08-09-multi-chart-ops-dashboard-design.md`。  
+> 事实来源：`src-tauri/src/dashboard/`、`src-tauri/src/monitor/`、前端 `src/windows/dashboard/`。  
 > 看板只引用已保存连接的 **`configId`**（与 MCP 一致），不会在看板文件里保存数据库密码。
 
 ---
@@ -304,4 +304,3 @@ WHERE state = 'active'
 | 打开看板列表 | 主窗口 → 运营看板 |
 | 监控设置 | 设置 → 监控 |
 | 使用说明本节 | 帮助 / 使用说明 → 运营看板 |
-| 设计说明（开发） | `docs/superpowers/specs/2026-08-09-multi-chart-ops-dashboard-design.md` |

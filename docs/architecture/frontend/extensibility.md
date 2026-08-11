@@ -65,7 +65,7 @@ src/windows/connection/
 | | 驱动插件 | 主题包 |
 |---|---------|--------|
 | 路径 | `packages/drivers/<id>/`（path 已提交；git 构建时 clone，gitignored） | `{appData}/themes/{id}/`（运行时 ZIP） |
-| 注册 | `plugins-registry.json` + `DB_REGISTRY` | 文件系统 + `manifest.json` |
+| 注册 | `drivers-registry.json` + `DB_REGISTRY` | 文件系统 + `manifest.json` |
 | 扩展 | Rust crate + 前端 meta | CSS / JSON / SVG\|PNG\|WebP / 字体（无 JS） |
 
 驱动在无主题包（`packId: null`）下正常工作；主题包可覆盖 `db.<type>` 图标但不改变驱动协议。

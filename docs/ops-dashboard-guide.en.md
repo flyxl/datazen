@@ -1,7 +1,7 @@
 # DataZen Ops Dashboard Guide
 
 > This document describes how to use DataZen **Ops Dashboards**: multi-chart layouts, background refresh, alerts, run history, the system tray, and import/export.  
-> Source of truth: `src-tauri/src/dashboard/`, `src-tauri/src/monitor/`, `src/windows/dashboard/`, and the design doc `docs/superpowers/specs/2026-08-09-multi-chart-ops-dashboard-design.md`.  
+> Source of truth: `src-tauri/src/dashboard/`, `src-tauri/src/monitor/`, `src/windows/dashboard/`.  
 > Dashboards reference saved connections by **`configId`** (same as MCP). Dashboard files never store database passwords.
 
 ---
@@ -259,4 +259,3 @@ They complement each other (e.g. Workflow writes aggregates; dashboard SQL reads
 | Dashboard list | Main window → Dashboards |
 | Monitor settings | Settings → Monitor |
 | This guide | Help / Docs → Ops Dashboard |
-| Design (developers) | `docs/superpowers/specs/2026-08-09-multi-chart-ops-dashboard-design.md` |

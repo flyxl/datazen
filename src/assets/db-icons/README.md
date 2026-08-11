@@ -8,4 +8,4 @@ At build time, `scripts/resolve-drivers.mjs` scans those files and injects `DRIV
 
 Icons follow a 24×24 viewBox with `rx="5"` rounded rect background and a centered mark (Simple Icons CC0 paths, official brand marks, or parent+shortLabel when no mark exists).
 
-See also: `docs/superpowers/specs/2026-08-09-driver-badge-brand-icons-design.md`.
+See also: [`docs/architecture/frontend/components.md`](../../../docs/architecture/frontend/components.md).

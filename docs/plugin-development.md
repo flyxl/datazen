@@ -18,7 +18,7 @@ DataZen 采用**编译时插件系统**（类似 Caddy 2），插件在独立仓
 | **Git 仓库** | `datazen-driver-xxx` | `datazen-driver-kiwi` |
 | **Rust crate** | `datazen-plugin-xxx` | `datazen-plugin-kiwi` |
 
-- `plugins-registry.json` 中的 `git` 字段使用 **Git 仓库名**（`datazen-driver-xxx`）
+- `drivers-registry.json` 中的 `git` 字段使用 **Git 仓库名**（`datazen-driver-xxx`）
 - 插件 `Cargo.toml` 的 `[package].name` 以及主项目 `src-tauri/Cargo.toml` 中的依赖名使用 **Rust crate 名**（`datazen-plugin-xxx`）
 
 ## 快速开始
@@ -172,7 +172,7 @@ export const mydbMeta: DatabaseTypeMeta = {
 
 ### 5. 注册到主项目
 
-在主项目的 `plugins-registry.json` 添加：
+在主项目的 `drivers-registry.json` 添加：
 
 ```json
 {
@@ -195,12 +195,12 @@ datazen-plugin-mydb = { git = "https://github.com/yourname/datazen-driver-mydb.g
 plugin-mydb = ["dep:datazen-plugin-mydb"]
 ```
 
-在 `scripts/resolve-plugins.mjs` 的 `FRONTEND_PLUGIN_CONFIG` 中添加前端配置。
+在 `scripts/resolve-drivers.mjs` 的 `FRONTEND_DRIVER_CONFIG` 中添加前端配置。
 
 ### 6. 构建验证
 
 ```bash
-pnpm tauri:build --plugins=mydb
+pnpm tauri:build --drivers=mydb
 ```
 
 ---

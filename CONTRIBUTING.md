@@ -35,8 +35,8 @@ pnpm tauri:dev
 Plugin selection examples:
 
 ```bash
-pnpm tauri:dev --plugins=none
-pnpm tauri:dev --plugins=kiwi
+pnpm tauri:dev --drivers=basic
+pnpm tauri:dev --drivers=basic,kiwi
 ```
 
 ### Tests (PR baseline)
@@ -64,7 +64,7 @@ Frontend IPC args use `snake_case` keys to match the Rust commands. Avoid editin
 
 ## Plugins
 
-External drivers use the compile-time plugin system (`plugins-registry.json`,
+External drivers use the compile-time plugin system (`drivers-registry.json`,
 `register_driver!`). See [`docs/plugin-development.md`](docs/plugin-development.md)
 or `AGENTS.md` for an overview.
 
