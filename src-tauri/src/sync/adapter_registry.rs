@@ -101,7 +101,6 @@ fn force_link_driver_sync_adapters() {
         std::any::type_name::<datazen_driver_postgres::PgSyncAdapter>(),
         std::any::type_name::<datazen_driver_mysql::MysqlSyncAdapter>(),
         std::any::type_name::<datazen_driver_sqlite::SqliteSyncAdapter>(),
-        std::any::type_name::<datazen_driver_redis::RedisSyncAdapter>(),
     );
 }
 
