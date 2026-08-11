@@ -4,9 +4,6 @@ use std::collections::HashMap;
 use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-#[cfg(feature = "tauri-plugin")]
-use std::sync::Arc;
-
 use futures_util::StreamExt;
 use redis::aio::ConnectionLike;
 use redis::AsyncCommands;
@@ -15,12 +12,24 @@ use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 
 use crate::connect::{open_pubsub_connection, ConnectionPlan};
-#[cfg(feature = "tauri-plugin")]
 use crate::redis_driver::RedisDriver;
-#[cfg(feature = "tauri-plugin")]
-use tauri::Emitter;
 
-const EVENT_NAME: &str = "redis-pubsub-message";
+pub const EVENT_NAME: &str = "redis-pubsub-message";
+
+pub type PubSubEmitter = std::sync::Arc<dyn Fn(RedisPubSubMessageEvent) + Send + Sync>;
+
+static PUBSUB_EMITTER: OnceLock<PubSubEmitter> = OnceLock::new();
+
+/// Install the frontend event sink. Called once from the Redis plugin setup hook.
+pub fn set_pubsub_emitter(emitter: PubSubEmitter) {
+    let _ = PUBSUB_EMITTER.set(emitter);
+}
+
+fn emit_pubsub_message(event: RedisPubSubMessageEvent) {
+    if let Some(emitter) = PUBSUB_EMITTER.get() {
+        emitter(event);
+    }
+}
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -144,10 +153,8 @@ pub async fn cleanup_connection_subscriptions(connection_id: &str) {
     }
 }
 
-#[cfg(feature = "tauri-plugin")]
-pub async fn start_subscription<R: tauri::Runtime>(
-    app: tauri::AppHandle<R>,
-    driver: Arc<RedisDriver>,
+pub async fn start_subscription(
+    driver: &RedisDriver,
     connection_id: String,
     channels: Vec<String>,
     patterns: Vec<String>,
@@ -172,14 +179,13 @@ pub async fn start_subscription<R: tauri::Runtime>(
             &channels,
             &patterns,
             move |channel, payload| {
-                let event = RedisPubSubMessageEvent {
+                emit_pubsub_message(RedisPubSubMessageEvent {
                     connection_id: conn_id_for_task.clone(),
                     subscription_id: sub_id_for_task.clone(),
                     channel,
                     payload,
                     ts: now_millis(),
-                };
-                let _ = app.emit(EVENT_NAME, &event);
+                });
             },
         )
         .await;

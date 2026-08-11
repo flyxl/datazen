@@ -3,24 +3,20 @@ import { Loader2, Plus, Trash2 } from 'lucide-react';
 import { Button } from '../../../../src/components/ui/Button';
 import { Input } from '../../../../src/components/ui/Input';
 import { useI18n } from '../../../../src/hooks/useI18n';
-import { pluginInvoke } from '../../../../src/plugins/generated';
+import { redisCommandInvoke, type RedisInvokeFn } from './redisInvoke';
 import type { KeyDetail } from '../../../../src/types';
 import { hasRedisJson, isJsonKeyType, looksLikeJsonModuleDetail } from './hasRedisJson';
 import { JsonEditor } from './JsonEditor';
 import { StreamEditor } from './StreamEditor';
 
-export type PluginInvokeFn = (
-  pluginId: string,
-  command: string,
-  args?: Record<string, unknown>,
-) => Promise<unknown>;
+export type PluginInvokeFn = RedisInvokeFn;
 
 export async function invokeSetString(
   connectionId: string,
   dbIndex: number,
   key: string,
   value: string,
-  invoke: PluginInvokeFn = pluginInvoke,
+  invoke: PluginInvokeFn = redisCommandInvoke,
 ) {
   await invoke('redis', 'set_string', {
     connectionId: connectionId,
@@ -36,7 +32,7 @@ export async function invokeHashSet(
   key: string,
   field: string,
   value: string,
-  invoke: PluginInvokeFn = pluginInvoke,
+  invoke: PluginInvokeFn = redisCommandInvoke,
 ) {
   await invoke('redis', 'hash_set', {
     connectionId: connectionId,
@@ -52,7 +48,7 @@ export async function invokeHashDel(
   dbIndex: number,
   key: string,
   fields: string[],
-  invoke: PluginInvokeFn = pluginInvoke,
+  invoke: PluginInvokeFn = redisCommandInvoke,
 ) {
   await invoke('redis', 'hash_del', {
     connectionId: connectionId,
@@ -68,7 +64,7 @@ export async function invokeListPush(
   key: string,
   side: 'left' | 'right',
   values: string[],
-  invoke: PluginInvokeFn = pluginInvoke,
+  invoke: PluginInvokeFn = redisCommandInvoke,
 ) {
   await invoke('redis', 'list_push', {
     connectionId: connectionId,
@@ -85,7 +81,7 @@ export async function invokeListSet(
   key: string,
   index: number,
   value: string,
-  invoke: PluginInvokeFn = pluginInvoke,
+  invoke: PluginInvokeFn = redisCommandInvoke,
 ) {
   await invoke('redis', 'list_set', {
     connectionId: connectionId,
@@ -101,7 +97,7 @@ export async function invokeListPop(
   dbIndex: number,
   key: string,
   side: 'left' | 'right',
-  invoke: PluginInvokeFn = pluginInvoke,
+  invoke: PluginInvokeFn = redisCommandInvoke,
 ) {
   await invoke('redis', 'list_pop', {
     connectionId: connectionId,
@@ -116,7 +112,7 @@ export async function invokeSetAdd(
   dbIndex: number,
   key: string,
   members: string[],
-  invoke: PluginInvokeFn = pluginInvoke,
+  invoke: PluginInvokeFn = redisCommandInvoke,
 ) {
   await invoke('redis', 'set_add', {
     connectionId: connectionId,
@@ -131,7 +127,7 @@ export async function invokeSetRemove(
   dbIndex: number,
   key: string,
   members: string[],
-  invoke: PluginInvokeFn = pluginInvoke,
+  invoke: PluginInvokeFn = redisCommandInvoke,
 ) {
   await invoke('redis', 'set_remove', {
     connectionId: connectionId,
@@ -146,7 +142,7 @@ export async function invokeZsetAdd(
   dbIndex: number,
   key: string,
   members: { member: string; score: number }[],
-  invoke: PluginInvokeFn = pluginInvoke,
+  invoke: PluginInvokeFn = redisCommandInvoke,
 ) {
   await invoke('redis', 'zset_add', {
     connectionId: connectionId,
@@ -161,7 +157,7 @@ export async function invokeZsetRemove(
   dbIndex: number,
   key: string,
   members: string[],
-  invoke: PluginInvokeFn = pluginInvoke,
+  invoke: PluginInvokeFn = redisCommandInvoke,
 ) {
   await invoke('redis', 'zset_remove', {
     connectionId: connectionId,
@@ -176,7 +172,7 @@ export async function invokeRename(
   dbIndex: number,
   key: string,
   newKey: string,
-  invoke: PluginInvokeFn = pluginInvoke,
+  invoke: PluginInvokeFn = redisCommandInvoke,
 ) {
   await invoke('redis', 'rename', {
     connectionId: connectionId,
@@ -191,7 +187,7 @@ export async function invokeSetTtl(
   dbIndex: number,
   key: string,
   ttlSeconds: number,
-  invoke: PluginInvokeFn = pluginInvoke,
+  invoke: PluginInvokeFn = redisCommandInvoke,
 ) {
   await invoke('redis', 'set_ttl', {
     connectionId: connectionId,
@@ -899,7 +895,7 @@ export async function invokeCreateKey(
   key: string,
   keyType: string,
   initialValue: string,
-  invoke: PluginInvokeFn = pluginInvoke,
+  invoke: PluginInvokeFn = redisCommandInvoke,
 ) {
   switch (keyType) {
     case 'string':

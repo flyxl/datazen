@@ -285,7 +285,7 @@ impl WorkflowExecutor {
                 input["limit"] = serde_json::Value::Number(limit.into());
                 let step = WorkflowCommandStep { input, ..step };
                 let conn_name = effective_connection_name(app_state, &step, workflow_connection).await?;
-                let result = command_runtime::execute_command(app_state, &step, workflow_connection).await?;
+                let result = command_runtime::execute_command_with_mode(app_state, &step, workflow_connection, options.permission_mode).await?;
                 let structured = normalize_query_result(&result.data)?;
                 context.set_step_result(&step.id, structured.clone());
                 return Ok(StepExecutionResult {
@@ -298,7 +298,7 @@ impl WorkflowExecutor {
         }
 
         let conn_name = effective_connection_name(app_state, &step, workflow_connection).await?;
-        let result = command_runtime::execute_command(app_state, &step, workflow_connection).await?;
+        let result = command_runtime::execute_command_with_mode(app_state, &step, workflow_connection, options.permission_mode).await?;
         context.set_step_result(&step.id, result.data.clone());
         Ok(StepExecutionResult {
             step_id: step.id, step_type: "command".into(), status: StepStatus::Success,
@@ -310,7 +310,8 @@ impl WorkflowExecutor {
 
 async fn effective_connection_name(app_state: &AppState, step: &WorkflowCommandStep, workflow_connection: Option<&str>) -> Result<String, String> {
     let id = command_runtime::resolve_connection_id(step, workflow_connection)?;
-    app_state.connection_manager.get_connection_config(id).await
+    let (runtime_id, _, _) = app_state.connection_manager.resolve_session(id).await.map_err(|e| e.to_string())?;
+    app_state.connection_manager.get_connection_config(&runtime_id).await
         .map(|c| c.name).map_err(|e| e.to_string())
 }
 
@@ -344,4 +345,74 @@ fn normalize_query_result(data: &serde_json::Value) -> Result<serde_json::Value,
         "execution_time_ms": result.execution_time_ms,
         "truncated": result.truncated,
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::workflow::model::WorkflowDefinition;
+
+    #[tokio::test]
+    async fn workflow_default_connection_is_inherited_by_legacy_query() {
+        let test = crate::testing::app_state::TestAppState::new().await;
+        test.save_connection("wf-default").await;
+        let workflow = WorkflowDefinition {
+            id: "inherit".into(),
+            name: "Inherit".into(),
+            description: String::new(),
+            version: None,
+            author: None,
+            variables: vec![],
+            connection: Some("wf-default".into()),
+            steps: vec![WorkflowStep::Query {
+                id: "q1".into(),
+                sql: "SELECT 1".into(),
+                connection: None,
+                database: None,
+                timeout_secs: None,
+                on_error: None,
+            }],
+            output: None,
+            timeout_secs: None,
+            error_handling: None,
+        };
+        let result = WorkflowExecutor::execute(&workflow, &test.state, None, &serde_json::json!({}))
+            .await
+            .unwrap();
+        assert!(result.success, "{:?}", result.error);
+        assert_eq!(result.steps[0].step_type, "query");
+        assert_eq!(result.steps[0].status, StepStatus::Success);
+    }
+
+    #[tokio::test]
+    async fn step_connection_override_executes_command() {
+        let test = crate::testing::app_state::TestAppState::new().await;
+        test.save_connection("wf-default").await;
+        test.save_connection("wf-override").await;
+        let workflow = WorkflowDefinition {
+            id: "override".into(),
+            name: "Override".into(),
+            description: String::new(),
+            version: None,
+            author: None,
+            variables: vec![],
+            connection: Some("wf-default".into()),
+            steps: vec![WorkflowStep::Command {
+                id: "c1".into(),
+                command: "query".into(),
+                connection: Some("wf-override".into()),
+                input: serde_json::json!({ "sql": "SELECT 1" }),
+                timeout_secs: None,
+                on_error: None,
+            }],
+            output: None,
+            timeout_secs: None,
+            error_handling: None,
+        };
+        let result = WorkflowExecutor::execute(&workflow, &test.state, None, &serde_json::json!({}))
+            .await
+            .unwrap();
+        assert!(result.success, "{:?}", result.error);
+        assert_eq!(result.steps[0].step_type, "query");
+    }
 }

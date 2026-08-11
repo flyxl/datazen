@@ -27,50 +27,30 @@ This document tracks the migration of DataZen from Driver-specific/query-oriente
 
 ## CI Status
 
-The original failing CI run was `31474270276` / job `93724251779`.
-
-A follow-up run is `31475495899` / job `93728124924` for the latest fixes on `agent/driver-command-workflow`.
-
-The follow-up run has already passed:
-
-- frontend unit tests;
-- Site SEO/i18n checks;
-- Rust toolchain setup;
-- Linux Tauri/WebKit dependency setup.
-
-It is currently in the Rust compilation/cache stage. The original Rust compile errors have been addressed in the source files except for three test struct literals in `src-tauri/src/commands/ai_integration_tests.rs`, which need `connection: None` because `WorkflowDefinition` now has the optional workflow-level Connection field. Those three initializers are in:
-
-- `workflow_save_list_get_delete`;
-- `workflow_execute_ai_step_with_wiremock`;
-- `workflow_history_clear_after_execute`.
+Rust lib tests compile on this branch after restoring the workflow facade `model` re-export and filling `WorkflowDefinition.connection` in AI integration tests.
 
 ## Remaining Feature Work
 
 ### P0 — Driver-specific command migration
 
-Inventory existing Driver-specific IPC/custom operations and migrate each operation to:
-
-```text
-command_definitions()
-        ↓
-execute_command()
-```
-
-The migration should remove duplicate Driver-specific IPC dispatch rather than creating a second command system.
+- [x] Registered generic Driver Command IPC (`get_connection_commands`, `get_driver_commands`, `execute_driver_command`).
+- [x] Resolved Workflow/IPC Connection ids through `resolve_session` so config ids inherit/connect correctly.
+- [x] Migrated Redis plugin operations onto `command_definitions()` / `execute_command()`. Redis UI and Pub/Sub subscribe/unsubscribe use `execute_driver_command`; the Redis Tauri plugin is setup-only (Pub/Sub event sink).
+- [ ] Remaining path/git drivers (MongoDB, Elasticsearch, etc.) still use default `query`/`execute` until they grow Driver-specific commands.
 
 ### P1 — Permission enforcement
 
-`DriverCommandDefinition.permissions` is now part of the manifest and is carried through IPC, but the current implementation only exposes the declaration. A real permission policy/enforcement layer still needs to consume it.
+- [x] `DriverCommandDefinition.permissions` are classified into Read / Write / HighRisk and enforced before `execute_command()` for Workflow and IPC callers that supply an MCP permission mode.
+- [x] GUI `execute_driver_command` stays unrestricted for discovered commands (desktop operator). Read-only / safe-write modes deny write and high-risk commands.
 
 ### P1 — Integration coverage
 
-Add end-to-end tests covering:
-
-- command discovery from a Connection;
-- command input validation;
-- Driver command execution through IPC;
-- Workflow Command execution and Connection inheritance;
-- legacy Query loading/execution through the Command runtime.
+- [x] Command discovery from a Connection.
+- [x] Command input validation.
+- [x] Driver command execution through IPC.
+- [x] Workflow Command execution and Connection inheritance.
+- [x] Legacy Query loading/execution through the Command runtime.
+- [x] E2E spec `e2e/specs/driver-commands.ts` covers discovery + query execution + unsupported command.
 
 ### P2 — Command metadata
 

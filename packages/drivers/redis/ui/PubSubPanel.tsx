@@ -9,7 +9,7 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { Button } from '../../../../src/components/ui/Button';
 import { useI18n } from '../../../../src/hooks/useI18n';
 import { cn } from '../../../../src/lib/cn';
-import { pluginInvoke } from '../../../../src/plugins/generated';
+import { redisCommandInvoke } from './redisInvoke';
 
 export interface PubSubPanelProps {
   connectionId: string;
@@ -114,7 +114,10 @@ export function PubSubPanel({ connectionId }: PubSubPanelProps) {
   useEffect(() => {
     return () => {
       for (const sub of subscriptionsRef.current) {
-        void pluginInvoke('redis', 'pubsub_unsubscribe', { subscriptionId: sub.id }).catch(() => {});
+        void redisCommandInvoke('redis', 'pubsub_unsubscribe', {
+          connectionId,
+          subscriptionId: sub.id,
+        }).catch(() => {});
       }
     };
   }, [connectionId]);
@@ -130,7 +133,7 @@ export function PubSubPanel({ connectionId }: PubSubPanelProps) {
     setSubscribing(true);
     setError(null);
     try {
-      const subscriptionId = await pluginInvoke<string>('redis', 'pubsub_subscribe', {
+      const subscriptionId = await redisCommandInvoke<string>('redis', 'pubsub_subscribe', {
         connectionId,
         channels,
         patterns,
@@ -151,12 +154,15 @@ export function PubSubPanel({ connectionId }: PubSubPanelProps) {
   const handleUnsubscribe = useCallback(async (subscriptionId: string) => {
     setError(null);
     try {
-      await pluginInvoke('redis', 'pubsub_unsubscribe', { subscriptionId });
+      await redisCommandInvoke('redis', 'pubsub_unsubscribe', {
+        connectionId,
+        subscriptionId,
+      });
       setSubscriptions((prev) => prev.filter((s) => s.id !== subscriptionId));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
-  }, []);
+  }, [connectionId]);
 
   const handlePublish = useCallback(async () => {
     const channel = publishChannel.trim();
@@ -168,7 +174,7 @@ export function PubSubPanel({ connectionId }: PubSubPanelProps) {
     setPublishing(true);
     setError(null);
     try {
-      const receivers = await pluginInvoke<number>('redis', 'pubsub_publish', {
+      const receivers = await redisCommandInvoke<number>('redis', 'pubsub_publish', {
         connectionId,
         channel,
         message: publishMessage,

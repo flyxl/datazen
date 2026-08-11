@@ -3,7 +3,7 @@ import { Loader2, RefreshCw } from 'lucide-react';
 import { Button } from '../../../../src/components/ui/Button';
 import { useI18n } from '../../../../src/hooks/useI18n';
 import { cn } from '../../../../src/lib/cn';
-import { pluginInvoke } from '../../../../src/plugins/generated';
+import { redisCommandInvoke } from './redisInvoke';
 
 export interface StreamOverviewProps {
   connectionId: string;
@@ -30,7 +30,7 @@ export async function invokeStreamOverview(
   dbIndex: number,
   limit?: number,
 ): Promise<StreamOverviewResult> {
-  return pluginInvoke('redis', 'stream_overview', {
+  return redisCommandInvoke('redis', 'stream_overview', {
     connectionId,
     dbIndex,
     limit: limit ?? null,

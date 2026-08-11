@@ -1,23 +1,54 @@
 //! Runtime bridge between Workflow Command Steps and Driver Commands.
 
 use crate::commands::AppState;
+use crate::mcp::permission::McpPermissionMode;
 use crate::workflow::WorkflowCommandStep;
-use datazen_driver_api::{validate_command_input, CommandResult};
+use datazen_driver_api::{
+    check_command_access, validate_command_input, CommandResult,
+};
 
 pub fn resolve_connection_id<'a>(step: &'a WorkflowCommandStep, workflow_connection: Option<&'a str>) -> Result<&'a str, String> {
     step.effective_connection(workflow_connection)
         .ok_or_else(|| format!("Command step '{}' requires a database connection", step.id))
 }
 
-pub async fn execute_command(app_state: &AppState, step: &WorkflowCommandStep, workflow_connection: Option<&str>) -> Result<CommandResult, String> {
+pub async fn execute_command(
+    app_state: &AppState,
+    step: &WorkflowCommandStep,
+    workflow_connection: Option<&str>,
+) -> Result<CommandResult, String> {
+    execute_command_with_mode(app_state, step, workflow_connection, None).await
+}
+
+pub async fn execute_command_with_mode(
+    app_state: &AppState,
+    step: &WorkflowCommandStep,
+    workflow_connection: Option<&str>,
+    permission_mode: Option<McpPermissionMode>,
+) -> Result<CommandResult, String> {
     let connection_id = resolve_connection_id(step, workflow_connection)?;
-    let (driver, handle) = app_state.connection_manager.get_connection(connection_id).await
+    let (_runtime_id, driver, handle) = app_state
+        .connection_manager
+        .resolve_session(connection_id)
+        .await
         .map_err(|e| format!("Failed to connect '{connection_id}': {e}"))?;
 
     let definition = driver.command_definitions().into_iter()
         .find(|definition| definition.id == step.command)
         .ok_or_else(|| format!("Unsupported driver command '{}' for connection '{}'", step.command, connection_id))?;
     validate_command_input(&definition, &step.input)?;
+    check_command_access(
+        &definition,
+        crate::commands::access_level_for_mode(permission_mode),
+    )?;
+
+    if matches!(definition.id.as_str(), "query" | "execute") {
+        if let Some(mode) = permission_mode {
+            if let Some(sql) = step.input.get("sql").and_then(|v| v.as_str()) {
+                crate::mcp::permission::check_sql_allowed(sql, mode)?;
+            }
+        }
+    }
 
     // Legacy SQL workflows can select a database per step. The generic Command
     // API deliberately does not know about SQL session state, so this adapter
@@ -53,5 +84,58 @@ mod tests {
         let error = resolve_connection_id(&step, None).unwrap_err();
         assert!(error.contains("query"));
         assert!(error.contains("requires a database connection"));
+    }
+
+    #[tokio::test]
+    async fn inherited_connection_executes_query_command() {
+        let test = crate::testing::app_state::TestAppState::new().await;
+        test.save_connection("wf-inherit").await;
+        let step = WorkflowCommandStep::new(
+            "q1",
+            "query",
+            None,
+            serde_json::json!({ "sql": "SELECT 1" }),
+        );
+        let result = execute_command(&test.state, &step, Some("wf-inherit"))
+            .await
+            .unwrap();
+        assert!(result.data.is_object());
+    }
+
+    #[tokio::test]
+    async fn legacy_query_normalization_executes_through_command_runtime() {
+        let test = crate::testing::app_state::TestAppState::new().await;
+        test.save_connection("wf-legacy").await;
+        let step = WorkflowCommandStep::from_legacy_query(
+            "users",
+            "SELECT id FROM users",
+            Some("wf-legacy".into()),
+            None,
+            None,
+            None,
+        );
+        let result = execute_command(&test.state, &step, None).await.unwrap();
+        assert!(result.data.is_object());
+    }
+
+    #[tokio::test]
+    async fn read_only_mode_rejects_execute_command() {
+        let test = crate::testing::app_state::TestAppState::new().await;
+        test.save_connection("wf-ro").await;
+        let step = WorkflowCommandStep::new(
+            "e1",
+            "execute",
+            None,
+            serde_json::json!({ "sql": "DELETE FROM t" }),
+        );
+        let error = execute_command_with_mode(
+            &test.state,
+            &step,
+            Some("wf-ro"),
+            Some(crate::mcp::permission::McpPermissionMode::ReadOnly),
+        )
+        .await
+        .unwrap_err();
+        assert!(error.contains("not allowed"));
     }
 }

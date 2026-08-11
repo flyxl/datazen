@@ -1,8 +1,20 @@
 use super::error::{CmdExt, CommandError};
 use super::AppState;
-use datazen_driver_api::{validate_command_input, CommandResult, DriverCommandDefinition};
+use crate::mcp::permission::McpPermissionMode;
+use datazen_driver_api::{
+    check_command_access, validate_command_input, CommandAccessLevel, CommandResult,
+    DriverCommandDefinition,
+};
 use serde::{Deserialize, Serialize};
 use tauri::State;
+
+pub(crate) fn access_level_for_mode(mode: Option<McpPermissionMode>) -> CommandAccessLevel {
+    match mode {
+        None | Some(McpPermissionMode::HighRiskWrite) => CommandAccessLevel::HighRisk,
+        Some(McpPermissionMode::SafeWrite) => CommandAccessLevel::Write,
+        Some(McpPermissionMode::ReadOnly) => CommandAccessLevel::Read,
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -17,9 +29,9 @@ pub(crate) async fn get_driver_commands_impl(
     state: &AppState,
     connection_id: String,
 ) -> Result<Vec<DriverCommandDefinition>, CommandError> {
-    let (driver, _) = state
+    let (_runtime_id, driver, _) = state
         .connection_manager
-        .get_connection(&connection_id)
+        .resolve_session(&connection_id)
         .await
         .cmd_err("get_driver_commands")?;
     Ok(driver.command_definitions())
@@ -29,9 +41,17 @@ pub(crate) async fn execute_driver_command_impl(
     state: &AppState,
     request: ExecuteDriverCommandRequest,
 ) -> Result<CommandResult, CommandError> {
-    let (driver, handle) = state
+    execute_driver_command_with_mode(state, request, None).await
+}
+
+pub(crate) async fn execute_driver_command_with_mode(
+    state: &AppState,
+    request: ExecuteDriverCommandRequest,
+    permission_mode: Option<McpPermissionMode>,
+) -> Result<CommandResult, CommandError> {
+    let (_runtime_id, driver, handle) = state
         .connection_manager
-        .get_connection(&request.connection_id)
+        .resolve_session(&request.connection_id)
         .await
         .cmd_err("execute_driver_command")?;
 
@@ -48,13 +68,17 @@ pub(crate) async fn execute_driver_command_impl(
 
     validate_command_input(&definition, &request.input)
         .map_err(CommandError::Validation)?;
+    check_command_access(&definition, access_level_for_mode(permission_mode))
+        .map_err(CommandError::Validation)?;
 
-    // Command definitions are deliberately the single capability gate. This
-    // prevents IPC callers from reaching an arbitrary method that a driver did
-    // not expose in its manifest. Permission enforcement is kept in the same
-    // command-definition path so a future permission backend can consume the
-    // declared `definition.permissions` without adding another dispatch API.
-    let _permissions = definition.permissions;
+    if matches!(definition.id.as_str(), "query" | "execute") {
+        if let Some(mode) = permission_mode {
+            if let Some(sql) = request.input.get("sql").and_then(|v| v.as_str()) {
+                crate::mcp::permission::check_sql_allowed(sql, mode)
+                    .map_err(CommandError::Validation)?;
+            }
+        }
+    }
 
     driver
         .execute_command(&handle, &request.command, request.input)
@@ -120,5 +144,94 @@ mod tests {
         assert_eq!(request.connection_id, "mysql-prod");
         assert_eq!(request.command, "query");
         assert_eq!(request.input, serde_json::Value::Null);
+    }
+
+    #[tokio::test]
+    async fn discovers_standard_commands_from_connection() {
+        let test = crate::testing::app_state::TestAppState::new().await;
+        let (_, conn_id) = test.save_and_connect("cmd-discover").await;
+        let definitions = get_driver_commands_impl(&test.state, conn_id).await.unwrap();
+        let ids: Vec<_> = definitions.iter().map(|d| d.id.as_str()).collect();
+        assert!(ids.contains(&"query"));
+        assert!(ids.contains(&"execute"));
+    }
+
+    #[tokio::test]
+    async fn executes_query_command_through_ipc() {
+        let test = crate::testing::app_state::TestAppState::new().await;
+        let (_, conn_id) = test.save_and_connect("cmd-exec").await;
+        let result = execute_driver_command_impl(
+            &test.state,
+            ExecuteDriverCommandRequest {
+                connection_id: conn_id,
+                command: "query".into(),
+                input: serde_json::json!({ "sql": "SELECT 1" }),
+            },
+        )
+        .await
+        .unwrap();
+        assert!(result.data.get("results").is_some() || result.data.get("columns").is_some() || result.data.is_object());
+    }
+
+    #[tokio::test]
+    async fn rejects_unknown_command() {
+        let test = crate::testing::app_state::TestAppState::new().await;
+        let (_, conn_id) = test.save_and_connect("cmd-unknown").await;
+        let err = execute_driver_command_impl(
+            &test.state,
+            ExecuteDriverCommandRequest {
+                connection_id: conn_id,
+                command: "not-a-command".into(),
+                input: serde_json::json!({}),
+            },
+        )
+        .await
+        .unwrap_err();
+        assert!(err.to_string().contains("Unsupported driver command"));
+    }
+
+    #[tokio::test]
+    async fn rejects_invalid_query_input() {
+        let test = crate::testing::app_state::TestAppState::new().await;
+        let (_, conn_id) = test.save_and_connect("cmd-invalid").await;
+        let err = execute_driver_command_impl(
+            &test.state,
+            ExecuteDriverCommandRequest {
+                connection_id: conn_id,
+                command: "query".into(),
+                input: serde_json::json!({}),
+            },
+        )
+        .await
+        .unwrap_err();
+        assert!(err.to_string().contains("missing required field"));
+    }
+
+    #[tokio::test]
+    async fn read_only_mode_denies_execute() {
+        let test = crate::testing::app_state::TestAppState::new().await;
+        let (_, conn_id) = test.save_and_connect("cmd-ro").await;
+        let err = execute_driver_command_with_mode(
+            &test.state,
+            ExecuteDriverCommandRequest {
+                connection_id: conn_id,
+                command: "execute".into(),
+                input: serde_json::json!({ "sql": "DELETE FROM t" }),
+            },
+            Some(crate::mcp::permission::McpPermissionMode::ReadOnly),
+        )
+        .await
+        .unwrap_err();
+        assert!(err.to_string().contains("not allowed"));
+    }
+
+    #[tokio::test]
+    async fn discovers_commands_from_config_id() {
+        let test = crate::testing::app_state::TestAppState::new().await;
+        test.save_connection("cfg-discover").await;
+        let definitions = get_driver_commands_impl(&test.state, "cfg-discover".into())
+            .await
+            .unwrap();
+        assert!(definitions.iter().any(|d| d.id == "query"));
     }
 }
