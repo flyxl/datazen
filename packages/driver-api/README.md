@@ -10,11 +10,11 @@ The crate is maintained in the DataZen monorepo under `packages/driver-api` and 
 
 ## Usage
 
-A third-party driver normally depends on the published crate:
+The current crate version is `0.0.8`. A third-party driver can depend on the published release with:
 
 ```toml
 [dependencies]
-datazen-driver-api = "0.1"
+datazen-driver-api = "0.0.8"
 ```
 
 Then implement the public driver traits:
@@ -40,7 +40,7 @@ The Driver API is deliberately independent of database implementation libraries.
 
 Those implementation types must not appear in the public Driver API. Connection pools, rows, transactions, cursors, and database-specific errors remain private to the driver implementation. DataZen communicates through API-defined types such as `ConnectionHandle`, `QueryResult`, `Value`, and `DriverError`.
 
-See [`docs/public-api-dependency-boundary.md`](../../docs/public-api-dependency-boundary.md) for the complete dependency-boundary policy.
+See [`docs/driver-api/public-api-dependency-boundary.md`](../../docs/driver-api/public-api-dependency-boundary.md) for the complete dependency-boundary policy.
 
 ## Versioning
 
