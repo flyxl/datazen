@@ -1,372 +1,244 @@
-<p align="center">
-  <img src="public/logo.png" width="128" height="128" alt="DataZen Logo" />
-</p>
+<div align="center">
 
-<h1 align="center">DataZen</h1>
+<img src="site/assets/logo.png" width="96" alt="DataZen" />
 
-<p align="center">
-  <strong>轻量、快速、跨平台的桌面数据库管理工具</strong><br />
-  <strong>Lightweight, fast, cross-platform desktop database client</strong>
-</p>
+# DataZen
 
-<p align="center">
-  <a href="https://github.com/flyxl/datazen/releases"><img src="https://img.shields.io/github/v/release/flyxl/datazen?style=flat-square&color=00b4d8" alt="Release" /></a>
-  <img src="https://img.shields.io/badge/platforms-macOS%20%7C%20Windows%20%7C%20Linux-blue?style=flat-square" alt="Platforms" />
-  <img src="https://img.shields.io/badge/license-GPL--3.0-blue?style=flat-square" alt="License" />
-</p>
+### The lightweight, open-source AI database client for developers
 
-<p align="center">
-  <a href="https://github.com/flyxl/datazen/releases"><strong>Download</strong></a>
-  ·
-  <a href="https://flyxl.github.io/datazen/">Website</a>
-  ·
-  <a href="CONTRIBUTING.md">Contributing</a>
-  ·
-  <a href="mailto:wuxiaolongklws@gmail.com">Contact</a>
-</p>
+Natural-language SQL · Query analysis · Charts · Workflows · MCP · Extensible drivers
 
-<p align="center">
-  <img src="docs/screenshots/demo.gif" width="720" alt="DataZen demo" />
-</p>
+[![Release](https://img.shields.io/github/v/release/flyxl/datazen?style=flat-square)](https://github.com/flyxl/datazen/releases)
+[![License](https://img.shields.io/badge/license-GPLv3-blue?style=flat-square)](LICENSE)
+[![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Windows%20%7C%20Linux-blue?style=flat-square)](#installation)
 
-<p align="center">
-  <img src="docs/screenshots/connection-window.png" width="720" alt="DataZen data browser" />
-</p>
+[Download](https://github.com/flyxl/datazen/releases) · [Website](https://flyxl.github.io/datazen/) · [中文](README.zh-CN.md) · [Contributing](CONTRIBUTING.md)
 
-[English](#features) · [中文](#特性) · [Install](#install) · [macOS note](#macos-first-launch) · [Linux note](#linux-install) · [Contributing](#contributing) · [Contact](#contact--feedback)
+</div>
 
----
+![DataZen main window](site/assets/screenshots/01-main-window.png)
 
-## About
+## Why DataZen?
 
-**DataZen** is a free, [GPLv3-licensed](LICENSE) database GUI for developers. Built with **Tauri + Rust**, it ships **Basic** (PostgreSQL / MySQL / SQLite / Redis — small default) and **All** (extra native engines such as MongoDB, SQL Server, ClickHouse, DuckDB). Compile from source with only the drivers you need (`DATAZEN_DRIVERS=…`) — you never pay for bloat you will not use. Multi-window workflow, **SSH tunnels**, SQL editor, backups, and PG↔MySQL sync included. Credentials stay on your machine (AES-256-GCM).
+DataZen is a desktop database client built with **Tauri + Rust**. It combines the everyday database tools developers expect with AI-assisted querying, visual analysis, automation, and a compile-time driver architecture.
 
-**DataZen** 是一款免费开源（GPLv3）的桌面数据库客户端，基于 **Tauri + Rust**。发布提供 **Basic**（PostgreSQL / MySQL / SQLite / Redis，默认小包）与 **All**（额外原生引擎：MongoDB、SQL Server、ClickHouse、DuckDB 等）。源码构建可用 `DATAZEN_DRIVERS=…` **只编译需要的类型**，不为大而全买单。支持多窗口、**SSH 隧道**、SQL 编辑器、备份与 PG↔MySQL 同步；连接密码本地加密存储。
+- **Lightweight** — Tauri + Rust keeps the application small and responsive.
+- **AI-native** — generate SQL, diagnose errors, understand execution plans, and work with database context through chat.
+- **Visual** — turn query results into charts without exporting to another tool.
+- **Automatable** — compose SQL and AI operations into reusable YAML workflows across databases.
+- **Extensible** — database drivers are integrated at compile time through the DataZen Driver API.
+- **Local-first** — credentials and database access stay on your machine.
+- **Open source** — GPLv3, with an architecture designed for community drivers and contributions.
 
----
+## A database client built around real workflows
 
-<a id="features"></a>
-## Features
+### SQL and data exploration
 
-- **Pay only for what you use** — download **Basic** or **All**; or compile a custom driver set with `DATAZEN_DRIVERS`
-- **Multi-database** — Basic: PostgreSQL, MySQL / MariaDB, SQLite, Redis; All adds MongoDB, SQL Server, ClickHouse, DuckDB, and more native engines
-- **SSH tunneling** — Connect via bastion; pure Rust, no local `ssh` client required
-- **SQL editor** — Syntax highlighting, table/column autocomplete, multi-statement runs, EXPLAIN viz
-- **Data browser** — Virtual scrolling, inline edit, sort/filter, pagination
-- **Redis deep ops** — Key browser (all types + batch + Size + gated Flush); command console; Monitor (Info / Memory / Slowlog / Stream); Standalone / Cluster / Sentinel + mTLS; Pub/Sub; RedisJSON (module probe); DUMP/RESTORE import/export
-- **Import / export** — CSV, JSON, SQL, Markdown, XLSX
-- **Backup** — One-click SQL dump (schema-only, data-only, gzip)
-- **Cross-DB sync** — PG ↔ MySQL schema compare and data sync with resume
-- **AI + MCP** — Multi-provider AI chat; MCP Server (`datazen --mcp`) with permission tiers + connection allowlist; MCP Client for external tools
-- **YAML Workflows** — Cross-database automations (query / AI / condition / foreach), also exposed via MCP
-- **Charts** — Query-result charts with smart recommendations
-- **Bilingual UI** — 10 locales
-- **Appearance** — Light / dark / system mode; install local **theme packs** (ZIP) from Settings for custom colors, fonts, and icons
+Write and run SQL in a modern editor, inspect results, browse tables, and move between query results and visualizations without leaving DataZen.
 
-<a id="特性"></a>
-## 特性
+![Query results and charts](site/assets/screenshots/02-query-chart.png)
 
-- **按需选用，不为大而全买单** — 下载 **Basic** 或 **All**；源码可用 `DATAZEN_DRIVERS` 只编进需要的驱动
-- **多数据库支持** — Basic：PostgreSQL、MySQL / MariaDB、SQLite、Redis；All 另含 MongoDB、SQL Server、ClickHouse、DuckDB 等原生引擎
-- **SSH 隧道** — 通过跳板机安全连接远程数据库，纯 Rust 实现，无需本地安装 SSH 客户端
-- **智能 SQL 编辑器** — 语法高亮、自动补全（表名 + 列名）、多语句执行、执行计划可视化
-- **数据浏览与编辑** — 虚拟滚动表格、行内编辑、排序/筛选、分页导航
-- **Redis 深度运维** — Key 浏览（全类型 + 批量 + Size + 门控 Flush）；命令台；Monitor（Info / Memory / Slowlog / Stream）；Standalone / Cluster / Sentinel + mTLS；Pub/Sub；RedisJSON（模块探测）；DUMP/RESTORE 导入导出
-- **数据导入/导出** — CSV、JSON、SQL、Markdown、XLSX
-- **数据库备份** — 一键备份为 SQL 文件（Schema / Data / Gzip）
-- **数据同步** — PG ↔ MySQL 表结构对比与数据同步，支持断点续传
-- **AI + MCP** — 多 Provider AI；MCP Server（`datazen --mcp`，权限分档 + 连接白名单）；MCP Client 接入外部工具
-- **YAML Workflow** — 跨库自动化（query / AI / condition / foreach），并可通过 MCP 调用
-- **图表** — 查询结果智能推荐图表
-- **多语言** — 10 语系
-- **外观主题** — 浅色 / 深色 / 跟随系统；可在设置中安装本地**主题包**（ZIP），定制配色、字体与图标
+### AI-assisted database work
 
-<p align="center">
-  <img src="docs/screenshots/main-window.png" width="360" alt="主窗口" />
-  <img src="docs/screenshots/new-connection.png" width="360" alt="新建连接" />
-</p>
-<p align="center">
-  <img src="docs/screenshots/query-editor.png" width="360" alt="SQL 编辑器" />
-  <img src="docs/screenshots/redis-view.png" width="360" alt="Redis 视图" />
-</p>
+DataZen puts AI next to the database instead of making you copy schema and errors into another application.
 
----
+![AI natural-language SQL](site/assets/screenshots/03-ai-nl2sql.png)
 
-## 技术栈
+**Natural language → SQL**
 
-| 层 | 技术 | 说明 |
-|----|------|------|
-| **桌面框架** | [Tauri v2](https://v2.tauri.app/) | Rust 后端 + Web 前端，安装包 < 10 MB |
-| **前端** | React 18 + TypeScript + Vite | 组件化开发，HMR 热更新 |
-| **状态管理** | Zustand | 轻量级，无样板代码 |
-| **UI** | Tailwind CSS + Lucide Icons | 暗色主题，响应式布局 |
-| **代码编辑器** | CodeMirror 6 | SQL 语法高亮 + 自动补全 |
-| **虚拟化** | @tanstack/react-virtual | 十万行级数据流畅滚动 |
-| **后端语言** | Rust | 内存安全，高性能异步 I/O |
-| **数据库驱动** | `packages/drivers/*`（编译时选型） | Basic / All / 自定义列表，进程内原生驱动 |
-| **SSH** | russh | 纯 Rust SSH 客户端，无系统依赖 |
-| **加密** | AES-256-GCM | 本地加密存储连接密码 |
-| **E2E 测试** | WebdriverIO | 跨平台自动化测试 |
-| **CI/CD** | GitHub Actions | 自动构建 macOS / Windows / Linux 安装包 |
+Describe what you need and DataZen uses the current database schema as context to generate executable SQL. Generated SQL can be executed immediately or inserted into the editor for further editing.
 
----
+![AI error diagnosis](site/assets/screenshots/05-ai-diagnosis.png)
 
-<a id="install"></a>
-## Install / 安装
+**SQL error diagnosis**
 
-Download from [Releases](https://github.com/flyxl/datazen/releases) · 从 [Releases](https://github.com/flyxl/datazen/releases) 下载：
+When a query fails, AI can combine the database error and schema context to explain the problem and propose corrected SQL.
 
-| 平台 | 格式 |
-|------|------|
-| macOS (Apple Silicon) | `.dmg` (文件名含 `macos-arm64`) |
-| macOS (Intel) | `.dmg` (文件名含 `macos-x64`) |
-| Windows | `.exe` / `.msi` (文件名含 `windows-x64`) |
-| Linux (x86_64) | `.deb` / `.rpm` / `.AppImage` (文件名含 `linux-x64`) |
+![AI EXPLAIN analysis](site/assets/screenshots/06-ai-explain.png)
 
-GitHub Release 为上述平台同时发布：
+**EXPLAIN analysis**
 
-| 变体 | 文件名后缀 | 内容 |
-|------|------------|------|
-| **Basic** | （无） | PostgreSQL / MySQL / SQLite / Redis |
-| **All** | `-all` | 全部 **path 原生驱动**（不含 Kiwi / Superset / OLAP） |
-| **Akulaku** | `-akulaku` | Basic + MongoDB + Kiwi + Superset（特定部署） |
+Visualize execution plans and use AI to identify bottlenecks, scan strategies, and optimization opportunities.
 
-### Package managers / 包管理器
+![AI Chat](site/assets/screenshots/07-ai-chat.png)
 
-Homebrew (macOS Basic, tap template in `packaging/homebrew/datazen.rb`):
+**Database-aware AI Chat**
 
-```bash
-brew tap flyxl/datazen
-brew install --cask datazen
-# If macOS blocks launch: xattr -cr /Applications/DataZen.app
+The AI sidebar can work with the current connection's schema and turn SQL from the conversation into editor-ready code.
+
+Supported AI integrations include OpenAI, Anthropic, DeepSeek, and compatible custom endpoints.
+
+## Turn query results into charts
+
+You should not need to export data to Excel just to understand it. DataZen can infer useful chart configurations from query results and switch between table and chart views.
+
+![Chart types](site/assets/screenshots/10-chart-types.png)
+
+Supported visualizations include line, bar, pie, scatter, and area charts, with aggregation, grouping, and PNG/SVG export.
+
+![Chart export](site/assets/screenshots/11-chart-export.png)
+
+## Automate database work with Workflows
+
+DataZen Workflows describe reusable database operations in YAML. A workflow can combine queries, AI steps, conditions, and loops, with each step connected to the database it needs.
+
+![Workflow editor](site/assets/screenshots/04-workflow.png)
+
+For example, one workflow can query orders from PostgreSQL, fetch logistics from MySQL, and let AI summarize the combined result.
+
+![Cross-database workflow](site/assets/screenshots/12-workflow-crossdb.png)
+
+Workflows can be started from the UI, the AI sidebar, MCP, or generated with AI.
+
+![Workflow execution](site/assets/screenshots/13-workflow-run.png)
+
+## MCP: connect DataZen to the AI tool ecosystem
+
+DataZen works both as an **MCP Server** and an **MCP Client**.
+
+### MCP Server
+
+Expose database operations, schema inspection, EXPLAIN, and workflows to external AI agents. DataZen also provides a headless stdio mode for automation and agent integrations.
+
+### MCP Client
+
+Connect external MCP servers to DataZen AI Chat and bring additional tools and context into database conversations.
+
+This makes DataZen useful not only as a GUI, but also as a database tool inside larger AI-assisted development workflows.
+
+## Extensible database drivers
+
+DataZen separates the application from database-specific implementation through the **DataZen Driver API**.
+
+```text
+                         DataZen
+                            │
+              ┌─────────────┴─────────────┐
+              │       DataZen Core        │
+              │  UI · Query · AI · MCP   │
+              └─────────────┬─────────────┘
+                            │
+                    DataZen Driver API
+                            │
+          ┌─────────────────┼─────────────────┐
+          │                 │                 │
+       PostgreSQL         MySQL          External drivers
+                                           │
+                              ┌────────────┼────────────┐
+                              │            │            │
+                           MongoDB      ClickHouse    OLAP...
 ```
 
-WinGet (Windows Basic x64, manifest template in `packaging/winget/`):
+Drivers are **compiled into DataZen** rather than loaded through an unstable Rust dynamic-library ABI. This allows a driver to provide both Rust database functionality and frontend UI while still remaining in its own repository.
 
-```powershell
-winget install Flyxl.DataZen
+### Independent driver development
+
+A driver can be developed in an independent repository next to a local DataZen checkout:
+
+```text
+workspace/
+├── datazen/
+└── datazen-driver-mydb/
 ```
 
-Release checksums for packaging are appended to each GitHub release body (Basic assets only). See [docs/updater.md](docs/updater.md) for signed auto-update setup.
+During development, DataZen's driver registry can point to the local repository with `source: "path"`. The DataZen application is then built with the selected driver, giving plugin developers a real host for both backend and frontend debugging.
 
-<a id="macos-first-launch"></a>
-### macOS first launch / 首次打开
+See the complete guides:
 
-The app is **not Apple-notarized** (typical for free OSS). You may see “damaged” or “cannot verify” on first open.
+- **[Independent Plugin Development — English](docs/independent-plugin-development.md)**
+- **[独立插件开发指南 — 中文](docs/independent-plugin-development.zh-CN.md)**
+- **[DataZen Driver API](https://github.com/flyxl/datazen-driver-api)**
 
-应用**未经 Apple 公证**（开源项目常见情况），首次打开可能提示「已损坏」或「无法验证」。
+## Supported databases
 
-**Fix / 解决方法** — run after installing:
+DataZen ships with a small default set and can be built with additional drivers.
 
-```bash
-xattr -cr /Applications/DataZen.app
-```
+| Database | Default / optional | Notes |
+|---|---|---|
+| PostgreSQL | Default | SQL, schema browser, EXPLAIN, AI context |
+| MySQL / MariaDB | Default | SQL, schema browser, EXPLAIN |
+| SQLite | Default | Embedded database workflow |
+| Redis | Default | Key browser, command console, monitoring, Pub/Sub |
+| MongoDB | Optional | Native driver |
+| ClickHouse | Optional | Native driver |
+| DuckDB | Optional | Native driver |
+| SQL Server | Optional | Native driver |
+| Presto / Trino and other OLAP engines | Plugin | External driver architecture |
 
-Then open normally. Share this step in reviews if macOS blocks launch — it is expected, not corruption.
+The exact driver set is controlled at build time, so a distribution does not have to ship every database engine.
 
-<a id="linux-install"></a>
-### Linux install / Linux 安装
+## Installation
 
-Official builds are **x86_64** (`.deb` / `.rpm` / `.AppImage`). Prefer AppImage for a quick try:
+Download the latest release from **[GitHub Releases](https://github.com/flyxl/datazen/releases)**.
 
-官方提供 **x86_64** 安装包（`.deb` / `.rpm` / `.AppImage`）。快速试用推荐 AppImage：
+| Platform | Package |
+|---|---|
+| macOS Apple Silicon | `.dmg` |
+| macOS Intel | `.dmg` |
+| Windows | `.exe` / `.msi` |
+| Linux x86_64 | `.deb` / `.rpm` / `.AppImage` |
 
-```bash
-chmod +x DataZen-*-linux-x64.AppImage
-./DataZen-*-linux-x64.AppImage
-```
+DataZen is free and does not require an account.
 
-- Some distros need `libfuse2` for AppImage. / 部分发行版运行 AppImage 需安装 `libfuse2`
-- Runtime needs WebKitGTK (e.g. `libwebkit2gtk-4.1-0` / `webkit2gtk4.1`). / 运行时依赖 WebKitGTK
-- Debian/Ubuntu: `sudo apt install ./DataZen-*-linux-x64.deb`
-- Fedora/RHEL: `sudo rpm -i ./DataZen-*-linux-x64.rpm`
+## Build from source
 
----
+### Prerequisites
 
-<a id="contact--feedback"></a>
-## Contact & feedback / 联系与反馈
-
-| Channel | Link |
-|---------|------|
-| **Email** | [wuxiaolongklws@gmail.com](mailto:wuxiaolongklws@gmail.com) |
-| **Issues** | [github.com/flyxl/datazen/issues](https://github.com/flyxl/datazen/issues) |
-| **Releases** | [github.com/flyxl/datazen/releases](https://github.com/flyxl/datazen/releases) |
-| **Discussions** | [github.com/flyxl/datazen/discussions](https://github.com/flyxl/datazen/discussions) |
-| **Contributing** | [CONTRIBUTING.md](CONTRIBUTING.md) |
-| **Security** | [SECURITY.md](SECURITY.md) |
-| **Code of Conduct** | [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) |
-
-We typically respond to issues and email within a few business days. Bug reports welcome via the issue templates (version + OS required).
-
-Issue 与邮件反馈一般在几个工作日内回复；提交 Bug 请使用 Issue 模板并注明版本与系统。
-
----
-
-<a id="contributing"></a>
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, tests, and PR expectations.
-Please follow the [Code of Conduct](CODE_OF_CONDUCT.md). Security reports go to [SECURITY.md](SECURITY.md).
-
----
-
-## 开发
-
-### 前置条件
-
-- [Node.js](https://nodejs.org/) ≥ 20
-- [pnpm](https://pnpm.io/) ≥ 9
-- [Rust](https://rustup.rs/) ≥ 1.77
-- Tauri v2 系统依赖：[参考文档](https://v2.tauri.app/start/prerequisites/)
-
-### 启动开发模式
+- Node.js >= 20
+- pnpm >= 9
+- Rust >= 1.77
+- Tauri v2 system dependencies
 
 ```bash
 pnpm install
 pnpm tauri dev
 ```
 
-### 构建发行版
+Build only the drivers you need:
 
 ```bash
-# 默认 Basic 四核心（postgres/mysql/sqlite/redis）
+# Default driver set
 pnpm tauri:build
 
-# 全部 path 原生驱动（不含 kiwi/superset/olap）
+# All supported path drivers
 DATAZEN_DRIVERS=all pnpm tauri:build
 
-# 自定义：只编译需要的类型（不为大而全买单）
+# Custom driver set
 DATAZEN_DRIVERS=postgres,mongodb pnpm tauri:build
-DATAZEN_DRIVERS=postgres,mysql,sqlite,redis,mongodb,kiwi,superset pnpm tauri:build
 ```
 
-GitHub Release：**Basic** / **All**（path）/ **Akulaku**（CI 显式驱动列表，非脚本预设）。
+## Security and privacy
 
-### 运行 E2E 测试
+DataZen is designed around local database access:
 
-```bash
-# 先配置测试环境变量
-cp e2e/.env.example e2e/.env
-# 编辑 e2e/.env 填入数据库连接信息
+- Database credentials are stored locally.
+- AI requests are sent to the provider configured by the user.
+- Database data is not uploaded to a DataZen cloud service.
+- SSH connections can be established directly from the application.
 
-pnpm e2e
-```
+Always review the privacy and security policies of the AI provider and endpoint you configure.
 
----
+## Documentation
 
-## 独立插件开发
+- [Project website](https://flyxl.github.io/datazen/)
+- [Independent Plugin Development](docs/independent-plugin-development.md)
+- [Chinese Plugin Development Guide](docs/independent-plugin-development.zh-CN.md)
+- [Driver API](https://github.com/flyxl/datazen-driver-api)
+- [Workflow Guide](docs/workflow-guide.en.md)
+- [Contributing](CONTRIBUTING.md)
 
-Datazen Plugin 可以放在独立 Git 仓库中开发。插件源码不需要放入 Datazen 仓库，也不需要通过运行时加载 `.so` / `.dylib` / `.dll`。Rust 插件会在 **Datazen 编译期**被编译并链接进 Datazen，插件的前端代码也会作为 Datazen 前端构建的一部分参与集成。
+## Contributing
 
-推荐使用两个同级 Git 仓库：
+DataZen welcomes bug reports, feature requests, database drivers, documentation improvements, and code contributions.
 
-```text
-~/workspace/
-├── datazen/
-└── datazen-driver-mydb/
-```
-
-### 开发步骤
-
-1. Clone Datazen 和独立 Plugin 仓库，并保持两个仓库同级。
-2. 在 `datazen/drivers-registry.json` 中增加或修改插件配置，开发阶段使用 `source: "path"`：
-
-```json
-{
-  "mydb": {
-    "source": "path",
-    "path": "../datazen-driver-mydb",
-    "feature": "plugin-mydb"
-  }
-}
-```
-
-3. 从 Datazen 仓库启动开发环境，并通过 `--drivers` 选择插件：
-
-```bash
-cd ~/workspace/datazen
-pnpm tauri:dev --drivers=mydb
-```
-
-4. 在 `datazen-driver-mydb` 中继续修改 Rust 和前端代码，然后重新运行/构建 Datazen 验证集成。
-
-### `--drivers` 的含义
-
-`--drivers` 是**编译期 Driver 选择**，不是运行时动态插件加载。大致流程如下：
-
-```text
---drivers=mydb
-      │
-      ▼
-drivers-registry.json
-      │
-      ▼
-resolve-drivers.mjs
-      │
-      ├── Cargo dependency / feature
-      └── frontend plugin registry
-      │
-      ▼
-Datazen build
-      │
-      ▼
-Datazen binary
-```
-
-因此可以在真实 Datazen 应用中同时调试 Plugin 的 Rust 和前端代码，而不需要维护一个单独的 Mock Host。
-
-### 开发与发布
-
-开发阶段使用本地路径：
-
-```text
-source = path
-path = ../datazen-driver-mydb
-```
-
-插件完成后，可以将 Datazen registry 中的配置切换为独立 Git 仓库，并固定到一个 commit：
-
-```json
-{
-  "mydb": {
-    "source": "git",
-    "git": "https://github.com/example/datazen-driver-mydb.git",
-    "ref": "<commit-sha>",
-    "feature": "plugin-mydb"
-  }
-}
-```
-
-插件仓库和 Datazen 仓库保持独立。Datazen 的 registry 修改通过 Pull Request 提交，只有 PR 被合并后才会影响共享的 `main` 分支。
-
-**Documentation / 文档：**
-
-- [Independent Plugin Development — English](docs/independent-plugin-development.md)（默认）
-- [独立插件开发指南 — 中文](docs/independent-plugin-development.zh-CN.md)
-
----
-
-## 添加新的数据库类型
-
-DataZen 支持两种方式添加新数据库驱动：
-
-### 方式 1：作为外部插件（推荐）
-
-在独立仓库中开发，构建时按需组合。详见 **[插件开发指南](docs/independent-plugin-development.md)**。
-
-```bash
-# 构建时指定包含的驱动（path 与/或 git）
-DATAZEN_DRIVERS=kiwi,olap pnpm tauri build
-
-# 预设：all = 全部 path... 
-```
-
-### 方式 2：内置 Driver
-
-如果 Driver 需要随 DataZen 主仓库一起维护，可以放在 `packages/drivers/` 下，并在 registry 中注册。
-
----
+Please read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. Driver work should generally be developed in an independent driver repository and integrated through the DataZen driver registry.
 
 ## License
 
-GPL-3.0
+DataZen is licensed under the **GNU General Public License v3.0**. See [LICENSE](LICENSE).
+
+<div align="center">
+
+**DataZen — let AI handle the database work, and turn data into insight.**
+
+</div>
