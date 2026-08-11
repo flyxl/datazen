@@ -1,6 +1,6 @@
 use super::error::{CmdExt, CommandError};
 use super::AppState;
-use datazen_driver_api::{CommandResult, DriverCommandDefinition};
+use datazen_driver_api::{validate_command_input, CommandResult, DriverCommandDefinition};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
@@ -45,6 +45,9 @@ pub(crate) async fn execute_driver_command_impl(
                 request.command
             ))
         })?;
+
+    validate_command_input(&definition, &request.input)
+        .map_err(CommandError::Message)?;
 
     // Command definitions are deliberately the single capability gate. This
     // prevents IPC callers from reaching an arbitrary method that a driver did
