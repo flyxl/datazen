@@ -6,8 +6,8 @@
  */
 import { createConnection } from 'node:net';
 import { expect, browser, $, $$ } from '@wdio/globals';
-import { t } from '../i18n.js';
-import { closeExtraWindows, switchToNewWindow } from '../helpers.js';
+import { t } from '../../../e2e/i18n.js';
+import { closeExtraWindows, switchToNewWindow } from '../../../e2e/helpers.js';
 
 const CLUSTER_CONN = 'E2E-Redis-Cluster';
 const SENTINEL_CONN = 'E2E-Redis-Sentinel';

@@ -3,18 +3,18 @@
  *
  * Credentials: E2E_REDIS_* (see e2e/.env.example). Skips gracefully when
  * Redis is unreachable or E2E_SKIP_REDIS=1.
- * Cluster/Sentinel topology smoke: e2e/specs/redis-topology.ts (E2E_REDIS_CLUSTER_* /
+ * Cluster/Sentinel topology smoke: packages/drivers/redis/e2e/redis-topology.ts (E2E_REDIS_CLUSTER_* /
  * E2E_REDIS_SENTINEL_*; skipped unless env set).
  */
 import { createConnection } from 'node:net';
 import { expect, browser, $, $$ } from '@wdio/globals';
-import { t } from '../i18n.js';
+import { t } from '../../../e2e/i18n.js';
 import {
   closeExtraWindows,
   switchToNewWindow,
   findCardByName,
   expandAllGroups,
-} from '../helpers.js';
+} from '../../../e2e/helpers.js';
 
 const CONN_NAME = 'E2E-Redis';
 const REDIS_HOST = process.env.E2E_REDIS_HOST || '127.0.0.1';
