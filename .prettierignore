@@ -1,0 +1,11 @@
+node_modules/
+dist/
+build/
+coverage/
+.target/
+src-tauri/target/
+packages/*/dist/
+packages/*/target/
+pnpm-lock.yaml
+*.min.js
+*.map
