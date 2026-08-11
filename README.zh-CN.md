@@ -143,11 +143,15 @@ workspace/
 
 开发阶段 DataZen 的 Driver Registry 可以通过 `source: "path"` 指向本地 Driver 仓库。之后在 DataZen 中编译指定 Driver，即可使用真实 Host 同时调试 Driver 的 Rust 后端和前端页面。
 
+Driver API 本身维护在 DataZen monorepo 的 `packages/driver-api` 中，并作为 MIT License 的 `datazen-driver-api` crate 发布。独立 Driver 通常直接依赖 crates.io 上的 API，不需要为了获得 API 而 clone DataZen。
+
 详细文档：
 
 - **[独立插件开发指南 — 中文](docs/independent-plugin-development.zh-CN.md)**
 - **[Independent Plugin Development — English](docs/independent-plugin-development.md)**
-- **[DataZen Driver API](https://github.com/flyxl/datazen-driver-api)**
+- **[Driver API crate README](packages/driver-api/README.md)**
+- **[Driver API 依赖边界](docs/driver-api/public-api-dependency-boundary.md)**
+- **[datazen-driver-api on crates.io](https://crates.io/crates/datazen-driver-api)**
 
 ## 支持的数据库
 
@@ -223,7 +227,9 @@ DataZen 按照本地数据库访问场景设计：
 - [项目官网](https://flyxl.github.io/datazen/zh/)
 - [独立插件开发指南](docs/independent-plugin-development.zh-CN.md)
 - [English Plugin Development Guide](docs/independent-plugin-development.md)
-- [Driver API](https://github.com/flyxl/datazen-driver-api)
+- [Driver API crate](packages/driver-api/README.md)
+- [Driver API 依赖边界](docs/driver-api/public-api-dependency-boundary.md)
+- [datazen-driver-api on crates.io](https://crates.io/crates/datazen-driver-api)
 - [Workflow 指南](docs/workflow-guide.en.md)
 - [贡献指南](CONTRIBUTING.md)
 
@@ -235,7 +241,7 @@ DataZen 按照本地数据库访问场景设计：
 
 ## License
 
-DataZen 使用 **GNU General Public License v3.0** 开源。详见 [LICENSE](LICENSE)。
+DataZen 使用 **GNU General Public License v3.0** 开源。`packages/driver-api` 下的 `datazen-driver-api` crate 单独采用 **MIT License**。详见 [LICENSE](LICENSE) 和 [packages/driver-api/LICENSE-MIT](packages/driver-api/LICENSE-MIT)。
 
 <div align="center">
 
