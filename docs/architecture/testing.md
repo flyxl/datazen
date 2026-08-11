@@ -111,17 +111,25 @@ pnpm e2e:core / e2e:db / e2e:ai    # 分组（默认 skip-build）
 
 > **Agent / 开发者操作手册（构建、排错、检查清单）：[docs/e2e-testing.md](../e2e-testing.md)**
 
-WebdriverIO E2E spec（`e2e/specs/`，**35 个文件**）：
+WebdriverIO E2E spec（Host：`e2e/specs/`）：
 
 | 领域 | Spec 文件 |
 |------|----------|
 | **核心 UI** | `main-window.ts`, `homepage-features.ts`, `settings.ts`, `i18n-menu.ts`, `drag-drop-groups.ts`, `detail-panel.ts`, `file-connection-fields-theme.ts` |
 | **连接** | `new-connection.ts`, `edit-delete-connection.ts`, `connection-search-group.ts`, `connection-window.ts` |
 | **SQL / 数据** | `sql-query.ts`, `table-data.ts`, `table-edit.ts`, `table-structure.ts`, `data-types.ts`, `export-import.ts`, `er-diagram.ts`, `chart-expand.ts` |
-| **数据库驱动** | `sqlite.ts`, `mysql.ts`, `redis.ts`, `kiwi.ts` |
+| **数据库驱动（Host）** | `sqlite.ts`, `mysql.ts` |
 | **AI / Workflow** | `ai-features.ts`, `ai-ask-question.ts`, `ai-context.ts`, `workflow.ts`, `workflow-window.ts` |
 | **路径 IPC / 备份·i18n** | `path-ipc-hardening.ts`, `app-data-backup.ts`, `i18n-10-locales.ts`, `system-locale.ts` |
 | **运维** | `backup-database.ts`, `data-sync-real.ts`, `bugfix-verification.ts` |
+
+**插件自有（不进 Host 默认 `pnpm e2e` / `pnpm test:unit`）：**
+
+| 类型 | 位置 / 命令 |
+|------|-------------|
+| Redis UI 单测 | `packages/drivers/redis/ui/__tests__/` — `pnpm test:unit:drivers` |
+| Redis E2E | `packages/drivers/redis/e2e/` — `pnpm e2e:redis` |
+| Kiwi E2E | `datazen-driver-kiwi` 仓库 |
 
 配置文件：`e2e/.env`（`e2e/.env.example` 示例）
 
@@ -129,14 +137,15 @@ WebdriverIO E2E spec（`e2e/specs/`，**35 个文件**）：
 
 快捷运行：
 ```bash
-pnpm e2e                # 完整构建 + 全部
+pnpm e2e                # 完整构建 + Host 全部
 pnpm e2e:skip-build     # 已有合格二进制时
 pnpm e2e:core           # 核心 UI
-pnpm e2e:db             # 数据库驱动
-pnpm e2e:kiwi           # Kiwi 插件
+pnpm e2e:db             # 数据库驱动（Host）
+pnpm e2e:redis          # Redis 深度（显式）
 pnpm e2e:ai             # AI 功能
 pnpm e2e:i18n-backup    # 备份 + 10 语言
 pnpm e2e:path-ipc       # 路径 IPC 加固
+pnpm test:unit:drivers  # Path 驱动 UI 单测
 ```
 
 ## 6. 手工黑盒测试
