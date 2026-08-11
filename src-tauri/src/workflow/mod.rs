@@ -8,10 +8,11 @@ pub mod command_runtime;
 pub mod history;
 pub mod workflows;
 
-// Extracted workflow modules are introduced before the final workflows.rs
-// reduction so the refactor can be reviewed as a sequence of safe commits.
-pub(crate) mod model;
-pub(crate) mod registry;
+// These modules own the canonical workflow data types and registry. They are
+// public so the compatibility facade in `workflows` can re-export the same
+// types without introducing duplicate definitions.
+pub mod model;
+pub mod registry;
 
 pub use command::WorkflowCommandStep;
 pub use command_runtime::{execute_command, resolve_connection_id};
