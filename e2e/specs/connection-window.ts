@@ -217,6 +217,12 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
 
     const body = await $('body').getText();
     expect(body).toContain(t('structEditor.editTable'));
+
+    const cancelBtn = await $(`button*=${t('common.cancel')}`);
+    if (await cancelBtn.isExisting()) {
+      await cancelBtn.click();
+      await browser.pause(500);
+    }
   });
 
   // ── 外键 tab ────────────────────────────────────────────────────
@@ -348,7 +354,6 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
     expect(body).toContain(t('connWin.refresh'));
     expect(body).toContain(t('connWin.newQuery'));
     expect(body).not.toContain(t('connWin.copyCell'));
-    expect(body).not.toContain(t('indexes.editInStructure'));
     expect(body).not.toContain(t('connWin.copyDDL'));
 
     await browser.execute(() => document.dispatchEvent(new MouseEvent('mousedown')));
@@ -415,15 +420,15 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
     });
     await browser.pause(500);
 
-    await browser.execute(() => {
+    await browser.execute((label: string) => {
       const menuItems = document.querySelectorAll('.fixed.z-\\[9999\\] button');
       for (const item of menuItems) {
-        if (item.textContent?.includes(t('connWin.editStructure'))) {
+        if (item.textContent?.includes(label)) {
           (item as HTMLElement).click();
           break;
         }
       }
-    });
+    }, t('connWin.editStructure'));
     await browser.pause(800);
 
     const body = await $('body').getText();

@@ -44,6 +44,7 @@ export function ConnectionItem({
   return (
     <div
       data-conn-item
+      data-conn-name={connection.name}
       className={cn(
         'group flex cursor-default select-none items-center gap-3 rounded-lg px-3 py-2.5 transition-colors',
         isDragging && 'opacity-40',

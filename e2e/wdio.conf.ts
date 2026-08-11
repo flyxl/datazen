@@ -90,4 +90,26 @@ export const config: WebdriverIO.Config = {
     });
     await browser.pause(500);
   },
+  beforeSuite: async function () {
+    // Same Tauri process is reused across spec files; close leftover sub-windows
+    // so Host specs do not attach to a previous MultiDb / SQLite session.
+    try {
+      await browser.url('tauri://localhost');
+      await browser.pause(400);
+      const handles = await browser.getWindowHandles();
+      const main = handles[0];
+      for (const h of handles) {
+        if (h === main) continue;
+        try {
+          await browser.switchToWindow(h);
+          await browser.closeWindow();
+        } catch {
+          /* ignore */
+        }
+      }
+      if (main) await browser.switchToWindow(main);
+    } catch {
+      /* ignore */
+    }
+  },
 };

@@ -44,6 +44,19 @@ function loadDotEnv(filePath) {
 }
 loadDotEnv(path.join(__dirname, '.env'));
 
+function runEnvSetup() {
+  const script = path.join(__dirname, 'setup-e2e-env.sh');
+  if (!fs.existsSync(script)) return;
+  log('Preparing E2E databases (e2e/setup-e2e-env.sh)...');
+  try {
+    execSync(`bash "${script}"`, { stdio: 'inherit', cwd: ROOT, env: process.env });
+  } catch {
+    log(
+      'WARNING: e2e/setup-e2e-env.sh failed. DB specs may fail; UI-only specs can still run.',
+    );
+  }
+}
+
 const args = process.argv.slice(2);
 const skipBuild = args.includes('--skip-build');
 const minimalDrivers =
@@ -169,6 +182,8 @@ if (!skipBuild) {
 } else {
   log('Skipping build (--skip-build). Binary MUST come from a prior Tauri webdriver build.');
 }
+
+runEnvSetup();
 
 const appBinary = getAppBinaryPath();
 assertBinaryReady(appBinary);

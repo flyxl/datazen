@@ -72,7 +72,7 @@ describe('编辑、复制和删除连接 (CM-003, CM-004, CM-006)', () => {
     const found = conns.find((c) => c.id === TEST_CONN.id);
     expect(found).toBeDefined();
     expect(found!.name).toBe(TEST_CONN.name);
-    expect(found!.host).toBe('localhost');
+    expect(found!.host).toBe(TEST_CONN.host);
   });
 
   // ── Edit (CM-003) ──

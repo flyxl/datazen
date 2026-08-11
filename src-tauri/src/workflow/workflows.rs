@@ -81,9 +81,13 @@ pub enum WorkflowStep {
     Query {
         id: String,
         sql: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
         connection: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         database: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         timeout_secs: Option<u64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         on_error: Option<ErrorHandlingConfig>,
     },
     #[serde(rename = "ai")]

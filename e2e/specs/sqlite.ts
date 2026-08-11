@@ -6,6 +6,7 @@ import {
   closeExtraWindows,
   switchToNewWindow,
   findCardByName,
+  dblclickConnByExactName,
   expandAllGroups,
   openQueryTab,
   executeSQL,
@@ -26,16 +27,7 @@ async function createAndConnectSQLite() {
   // Check if already exists
   const existingItem = await findCardByName(CONN_NAME);
   if (existingItem) {
-    // Double-click to connect
-    await browser.execute((n: string) => {
-      const items = document.querySelectorAll('[data-conn-item]');
-      for (const item of items) {
-        if (item.textContent?.includes(n)) {
-          item.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
-          return;
-        }
-      }
-    }, CONN_NAME);
+    await dblclickConnByExactName(CONN_NAME);
     await browser.waitUntil(
       async () => (await browser.getWindowHandles()).length > 1,
       { timeout: 30000 },
@@ -91,15 +83,7 @@ async function createAndConnectSQLite() {
   // Connect
   const card = await findCardByName(CONN_NAME);
   if (!card) throw new Error(`SQLite connection "${CONN_NAME}" not found`);
-  await browser.execute((n: string) => {
-    const items = document.querySelectorAll('[data-conn-item]');
-    for (const item of items) {
-      if (item.textContent?.includes(n)) {
-        item.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
-        return;
-      }
-    }
-  }, CONN_NAME);
+  await dblclickConnByExactName(CONN_NAME);
 
   await browser.waitUntil(
     async () => (await browser.getWindowHandles()).length > 1,
