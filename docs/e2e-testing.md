@@ -46,10 +46,21 @@ pnpm e2e:skip-build -- --spec e2e/specs/path-ipc-hardening.ts
 pnpm e2e:core
 pnpm e2e:db
 pnpm e2e:ai
-pnpm e2e:kiwi
+pnpm e2e:redis          # 显式：packages/drivers/redis/e2e/（不进默认 pnpm e2e）
 pnpm e2e:i18n-backup
 pnpm e2e:path-ipc
+# Kiwi：datazen-driver-kiwi 仓；Host `pnpm e2e:kiwi` 仅提示并 exit 1
 ```
+
+## 插件自有测试（Host 默认不拉）
+
+| 类型 | 命令 / 位置 |
+|------|-------------|
+| Path 驱动 UI 单测 | `pnpm test:unit:drivers`（**不是** `pnpm test:unit`） |
+| Redis E2E | `pnpm e2e:redis` → `packages/drivers/redis/e2e/` |
+| Kiwi E2E | 仅 `datazen-driver-kiwi` 仓库 |
+
+设计：[superpowers/specs/2026-08-11-plugin-owned-tests-design.md](./superpowers/specs/2026-08-11-plugin-owned-tests-design.md)
 
 **Agent 推荐流程：**
 
@@ -123,7 +134,9 @@ e2e/wdio.conf.ts
 | 路径 IPC / 备份 | `path-ipc-hardening.ts`, `app-data-backup.ts`, `backup-database.ts` |
 | i18n | `i18n-10-locales.ts`, `system-locale.ts` |
 | AI / Workflow | `ai-features.ts`, `ai-context.ts`, `workflow.ts`, `workflow-window.ts` |
-| 驱动 | `sqlite.ts`, `mysql.ts`, `redis.ts`, `redis-topology.ts`（可选 Cluster/Sentinel）, `kiwi.ts` |
+| 驱动（Host） | `sqlite.ts`, `mysql.ts`（及其他 SQL Host specs） |
+| Redis E2E（插件包，非默认） | `packages/drivers/redis/e2e/redis.ts`, `redis-topology.ts` — `pnpm e2e:redis` |
+| Kiwi E2E | 仅 `datazen-driver-kiwi` 仓（Host 已移除） |
 
 完整列表与分层测试见 [architecture/testing.md](./architecture/testing.md)。
 
