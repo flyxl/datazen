@@ -11,6 +11,7 @@ mod types;
 mod traits;
 mod factory;
 mod reuse;
+pub mod command;
 pub mod sql_dump;
 pub mod sync;
 
@@ -18,6 +19,10 @@ pub use types::*;
 pub use traits::*;
 pub use factory::*;
 pub use reuse::ReuseDriver;
+pub use command::{
+    execute_command_definition, query_command_definition, CommandResult,
+    DriverCommandDefinition,
+};
 pub use sync::{
     BoxedSyncAdapter, IRColumn, IRDefault, IRTable, IRType, SyncAdapterFactory, SyncSourceAdapter,
     SyncTargetAdapter,
