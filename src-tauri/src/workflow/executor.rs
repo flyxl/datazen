@@ -14,7 +14,7 @@ use super::command::WorkflowCommandStep;
 use super::command_runtime;
 use super::conditions::evaluate_condition;
 use super::context::WorkflowContext;
-use super::model::{ErrorStrategy, StepExecutionResult, StepStatus, WorkflowDefinition, WorkflowExecutionResult, WorkflowStep};
+use crate::workflow::model::{ErrorStrategy, StepExecutionResult, StepStatus, WorkflowDefinition, WorkflowExecutionResult, WorkflowStep};
 
 pub const WORKFLOW_QUERY_ROW_LIMIT: u32 = 1000;
 
