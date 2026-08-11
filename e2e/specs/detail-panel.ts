@@ -144,17 +144,17 @@ describe('详情面板 (DP-001~DP-004)', () => {
     // Find the input/textarea for the "name" field in the detail panel
     // and change Alice to AliceEdited.
     const edited = await browser.execute(() => {
-      // The detail panel renders <aside> with field rows.
-      // Each field has a label with the field name and an input below.
-      const aside = document.querySelector('aside');
-      if (!aside) return false;
-      const inputs = aside.querySelectorAll('input, textarea');
+      // Detail panel is the right-hand aside (w-72), not the schema tree.
+      const asides = Array.from(document.querySelectorAll('aside'));
+      const panel = asides.find((el) => el.className.includes('w-72')) ?? asides[asides.length - 1];
+      if (!panel) return false;
+      const inputs = panel.querySelectorAll('input, textarea');
       for (const input of inputs) {
         if ((input as HTMLInputElement).value === 'Alice') {
           const el = input as HTMLInputElement;
-          // Focus, change value, blur to trigger commit
           el.focus();
-          el.value = 'AliceEdited';
+          const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+          setter?.call(el, 'AliceEdited');
           el.dispatchEvent(new Event('input', { bubbles: true }));
           el.dispatchEvent(new Event('change', { bubbles: true }));
           el.dispatchEvent(new Event('blur', { bubbles: true }));

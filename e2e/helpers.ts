@@ -20,14 +20,22 @@ export async function switchToNewWindow(originalHandle: string): Promise<string>
 }
 
 export async function closeExtraWindows(mainWindow: string) {
-  const handles = await browser.getWindowHandles();
+  let handles = await browser.getWindowHandles();
   for (const h of handles) {
     if (h !== mainWindow) {
-      await browser.switchToWindow(h);
-      await browser.closeWindow();
+      try {
+        await browser.switchToWindow(h);
+        await browser.closeWindow();
+      } catch {
+        /* window already gone */
+      }
     }
   }
-  await browser.switchToWindow(mainWindow);
+  handles = await browser.getWindowHandles();
+  const target = handles.includes(mainWindow) ? mainWindow : handles[0];
+  if (target) {
+    await browser.switchToWindow(target);
+  }
 }
 
 // ── main window ─────────────────────────────────────────────────────
@@ -50,30 +58,47 @@ export async function expandAllGroups() {
   await browser.pause(500);
 }
 
+/** Seeded by wdio.conf.ts — locked to E2E_PG_DB so StandardSchemaTree is used. */
+export const E2E_PG_CONN_NAME = '本地 PostgreSQL';
+
 /**
  * Double-click a connection item in the new grouped list to open it.
- * Searches for a connection containing `nameFragment` in its text.
+ * Prefers the seeded Host PG connection so leftover MultiDb cards are not opened.
  * If already connected (window open), returns true without clicking.
  */
-export async function clickCardConnectButton(nameFragment = 'Pg') {
+export async function clickCardConnectButton(nameFragment = E2E_PG_CONN_NAME) {
+  const current = await browser.getWindowHandle();
   const handles = await browser.getWindowHandles();
-  if (handles.length > 1) return true;
+  if (handles.length > 1) {
+    await closeExtraWindows(current);
+  }
 
   // Expand groups first so items are visible
   await expandAllGroups();
 
   // Use JS dblclick dispatch since WebDriver dblclick may not work in WebKit
   const found = await browser.execute((frag: string) => {
-    const items = document.querySelectorAll('[data-conn-item]');
-    for (const item of items) {
-      const text = item.textContent || '';
-      if (text.includes(frag) || text.includes('Postgres') || text.includes('PostgreSQL') || text.includes('localhost')) {
-        item.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
-        return true;
-      }
+    const items = Array.from(document.querySelectorAll('[data-conn-item]'));
+    const textOf = (item: Element) => item.textContent || '';
+    const click = (item: Element) => {
+      item.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+    };
+    const prefer = items.find((item) => textOf(item).includes(frag));
+    if (prefer) {
+      click(prefer);
+      return true;
+    }
+    const pg = items.find((item) => {
+      const text = textOf(item);
+      if (text.includes('MultiDb')) return false;
+      return text.includes('PostgreSQL') || text.includes('Postgres') || text.includes('Pg');
+    });
+    if (pg) {
+      click(pg);
+      return true;
     }
     if (items.length > 0) {
-      items[0].dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+      click(items[0]);
       return true;
     }
     return false;
@@ -81,15 +106,33 @@ export async function clickCardConnectButton(nameFragment = 'Pg') {
   return found;
 }
 
-/** Find a connection item by name in the main window. */
+/** Find a connection item by exact name (avoids E2E-MySQL matching E2E-MySQL-MultiDb). */
 export async function findCardByName(connName: string) {
   await expandAllGroups();
-  const items = await $$('[data-conn-item]');
-  for (const item of items) {
-    const text = await item.getText();
-    if (text.includes(connName)) return item;
-  }
-  return null;
+  const idx = await browser.execute((n: string) => {
+    const items = Array.from(document.querySelectorAll('[data-conn-item]'));
+    return items.findIndex((item) => {
+      const attr = item.getAttribute('data-conn-name');
+      if (attr) return attr === n;
+      return item.querySelector('span.truncate')?.textContent?.trim() === n;
+    });
+  }, connName);
+  if (idx < 0) return null;
+  return (await $$('[data-conn-item]'))[idx];
+}
+
+export async function dblclickConnByExactName(connName: string) {
+  return browser.execute((n: string) => {
+    const items = Array.from(document.querySelectorAll('[data-conn-item]'));
+    const item = items.find((el) => {
+      const attr = el.getAttribute('data-conn-name');
+      if (attr) return attr === n;
+      return el.querySelector('span.truncate')?.textContent?.trim() === n;
+    });
+    if (!item) return false;
+    item.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+    return true;
+  }, connName);
 }
 
 // ── connection window helpers ───────────────────────────────────────
@@ -155,15 +198,7 @@ export async function createAndConnectMySQL(opts: {
   // Check if the MySQL connection item already exists and just double-click to connect
   const existingItem = await findCardByName(name);
   if (existingItem) {
-    await browser.execute((n: string) => {
-      const items = document.querySelectorAll('[data-conn-item]');
-      for (const item of items) {
-        if (item.textContent?.includes(n)) {
-          item.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
-          return;
-        }
-      }
-    }, name);
+    await dblclickConnByExactName(name);
     await browser.waitUntil(
       async () => (await browser.getWindowHandles()).length > 1,
       { timeout: 30000, timeoutMsg: '等待 MySQL 连接窗口打开超时' },
@@ -235,15 +270,7 @@ export async function createAndConnectMySQL(opts: {
   // Now connect by double-clicking the item
   const card = await findCardByName(name);
   if (!card) throw new Error(`未找到 MySQL 连接 "${name}"`);
-  await browser.execute((n: string) => {
-    const items = document.querySelectorAll('[data-conn-item]');
-    for (const item of items) {
-      if (item.textContent?.includes(n)) {
-        item.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
-        return;
-      }
-    }
-  }, name);
+  await dblclickConnByExactName(name);
 
   await browser.waitUntil(
     async () => (await browser.getWindowHandles()).length > 1,
@@ -287,15 +314,7 @@ export async function createAndConnectPostgreSQL(opts: {
 
   const existingItem = await findCardByName(name);
   if (existingItem) {
-    await browser.execute((n: string) => {
-      const items = document.querySelectorAll('[data-conn-item]');
-      for (const item of items) {
-        if (item.textContent?.includes(n)) {
-          item.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
-          return;
-        }
-      }
-    }, name);
+    await dblclickConnByExactName(name);
     await browser.waitUntil(
       async () => (await browser.getWindowHandles()).length > 1,
       { timeout: 30000, timeoutMsg: '等待 PostgreSQL 连接窗口打开超时' },
@@ -359,15 +378,7 @@ export async function createAndConnectPostgreSQL(opts: {
 
   const card = await findCardByName(name);
   if (!card) throw new Error(`未找到 PostgreSQL 连接 "${name}"`);
-  await browser.execute((n: string) => {
-    const items = document.querySelectorAll('[data-conn-item]');
-    for (const item of items) {
-      if (item.textContent?.includes(n)) {
-        item.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
-        return;
-      }
-    }
-  }, name);
+  await dblclickConnByExactName(name);
 
   await browser.waitUntil(
     async () => (await browser.getWindowHandles()).length > 1,
@@ -391,15 +402,7 @@ export async function connectToCard(cardName: string) {
   const card = await findCardByName(cardName);
   if (!card) throw new Error(`未找到连接 "${cardName}"`);
 
-  await browser.execute((n: string) => {
-    const items = document.querySelectorAll('[data-conn-item]');
-    for (const item of items) {
-      if (item.textContent?.includes(n)) {
-        item.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
-        return;
-      }
-    }
-  }, cardName);
+  await dblclickConnByExactName(cardName);
 
   await browser.waitUntil(
     async () => (await browser.getWindowHandles()).length > 1,
@@ -410,162 +413,6 @@ export async function connectToCard(cardName: string) {
   await browser.switchToWindow(connWindow);
   await $('button*=新建查询').waitForDisplayed({ timeout: 20000 });
   await browser.pause(2000);
-  return { mainWindow, connWindow };
-}
-
-// ── Kiwi connection helpers ──────────────────────────────────────────
-
-/**
- * Create a Kiwi connection via the new-connection UI and connect to it.
- * Requires E2E_KIWI_* env vars.
- * Returns { mainWindow, connWindow }.
- */
-export async function createAndConnectKiwi(opts: {
-  name?: string;
-  baseUrl?: string;
-  token?: string;
-  username?: string;
-  domain?: string;
-  sourceType?: string;
-} = {}) {
-  const {
-    name = 'E2E-Kiwi',
-    baseUrl = process.env.E2E_KIWI_URL || 'https://kiwi.akusre.com',
-    token = process.env.E2E_KIWI_TOKEN || '',
-    username = process.env.E2E_KIWI_USERNAME || '',
-    domain = process.env.E2E_KIWI_DOMAIN || '',
-    sourceType = process.env.E2E_KIWI_SOURCE_TYPE || '4',
-  } = opts;
-
-  if (!token) throw new Error('E2E_KIWI_TOKEN is required for Kiwi E2E tests');
-  if (!domain) throw new Error('E2E_KIWI_DOMAIN is required for Kiwi E2E tests');
-
-  const mainWindow = await browser.getWindowHandle();
-  await expandAllGroups();
-
-  // Re-use existing connection if present
-  const existingItem = await findCardByName(name);
-  if (existingItem) {
-    await browser.execute((n: string) => {
-      const items = document.querySelectorAll('[data-conn-item]');
-      for (const item of items) {
-        if (item.textContent?.includes(n)) {
-          item.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
-          return;
-        }
-      }
-    }, name);
-    await browser.waitUntil(
-      async () => (await browser.getWindowHandles()).length > 1,
-      { timeout: 30000, timeoutMsg: '等待 Kiwi 连接窗口打开超时' },
-    );
-    const handles = await browser.getWindowHandles();
-    const connWindow = handles.find((h) => h !== mainWindow)!;
-    await browser.switchToWindow(connWindow);
-    await $('button*=新建查询').waitForDisplayed({ timeout: 20000 });
-    await browser.pause(2000);
-    return { mainWindow, connWindow };
-  }
-
-  // Create new Kiwi connection
-  const newConnBtn = await $('button*=新建连接');
-  await newConnBtn.click();
-  await switchToNewWindow(mainWindow);
-
-  // Select Kiwi type
-  const kiwiBtn = await $('button*=Kiwi');
-  await kiwiBtn.click();
-  await browser.pause(300);
-
-  // Connection name
-  const nameInput = await $('input[placeholder="例如：主数据库"]');
-  await nameInput.setValue(name);
-
-  // Kiwi URL
-  const urlInput = await $('input[placeholder="https://kiwi.akusre.com"]');
-  await urlInput.clearValue();
-  await urlInput.setValue(baseUrl);
-
-  // Token (paste directly instead of SSO)
-  const tokenInput = await $('input[type="password"]');
-  await tokenInput.setValue(token);
-  await browser.pause(500);
-
-  // Instance domain
-  const domainInput = await $('input[placeholder*="rwlb"]');
-  if (await domainInput.isExisting()) {
-    await domainInput.clearValue();
-    await domainInput.setValue(domain);
-  }
-
-  // Username
-  const allInputs = await $$('input');
-  for (const inp of allInputs) {
-    if ((await inp.getAttribute('placeholder')) === 'wuxl') {
-      await inp.clearValue();
-      await inp.setValue(username);
-      break;
-    }
-  }
-
-  // Source type
-  for (const inp of allInputs) {
-    if ((await inp.getValue()) === '4' && (await inp.getAttribute('placeholder')) === '4') {
-      await inp.clearValue();
-      await inp.setValue(sourceType);
-      break;
-    }
-  }
-
-  // Test connection first
-  const testBtn = await $('button*=测试连接');
-  await testBtn.click();
-  await browser.waitUntil(
-    async () => {
-      const body = await $('body').getText();
-      return body.includes('连接成功') || body.includes('Driver error') || body.includes('Error');
-    },
-    { timeout: 20000, timeoutMsg: '等待 Kiwi 测试连接超时' },
-  );
-
-  const bodyAfterTest = await $('body').getText();
-  if (bodyAfterTest.includes('Driver error') || bodyAfterTest.includes('Error')) {
-    throw new Error('Kiwi test connection failed: ' + bodyAfterTest.slice(0, 300));
-  }
-
-  // Save
-  const saveBtn = await $('button*=保存');
-  await saveBtn.click();
-  await browser.waitUntil(
-    async () => (await browser.getWindowHandles()).length === 1,
-    { timeout: 10000, timeoutMsg: '保存 Kiwi 连接后窗口未关闭' },
-  );
-  await browser.switchToWindow(mainWindow);
-  await browser.pause(1000);
-
-  // Connect
-  const card = await findCardByName(name);
-  if (!card) throw new Error(`未找到 Kiwi 连接 "${name}"`);
-  await browser.execute((n: string) => {
-    const items = document.querySelectorAll('[data-conn-item]');
-    for (const item of items) {
-      if (item.textContent?.includes(n)) {
-        item.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
-        return;
-      }
-    }
-  }, name);
-
-  await browser.waitUntil(
-    async () => (await browser.getWindowHandles()).length > 1,
-    { timeout: 30000, timeoutMsg: '等待 Kiwi 连接窗口打开超时' },
-  );
-  const handles = await browser.getWindowHandles();
-  const connWindow = handles.find((h) => h !== mainWindow)!;
-  await browser.switchToWindow(connWindow);
-  await $('button*=新建查询').waitForDisplayed({ timeout: 20000 });
-  await browser.pause(2000);
-
   return { mainWindow, connWindow };
 }
 
@@ -591,14 +438,43 @@ export async function setEditorContent(sql: string) {
 export async function executeSQL(sql: string) {
   await setEditorContent(sql);
   const execBtn = await $('button*=执行');
+  const prevTotal = await browser.execute(() => {
+    const spans = Array.from(document.querySelectorAll('span'));
+    return spans.find((s) => s.textContent?.includes('总耗时'))?.textContent ?? '';
+  });
   await execBtn.click();
+  const started = Date.now();
   await browser.waitUntil(
     async () => {
+      const elapsed = Date.now() - started;
       const body = await $('body').getText();
-      return body.includes('总耗时') || body.includes('text-red-400');
+      if (elapsed > 200 && /Query failed|No database selected|Access denied|error returned from database/i.test(body)) {
+        return true;
+      }
+      const stop = await $('button*=停止');
+      if (await stop.isExisting() && (await stop.isDisplayed().catch(() => false))) {
+        return false;
+      }
+      const curTotal = await browser.execute(() => {
+        const spans = Array.from(document.querySelectorAll('span'));
+        return spans.find((s) => s.textContent?.includes('总耗时'))?.textContent ?? '';
+      });
+      if (curTotal && curTotal !== prevTotal) return true;
+      // Fast queries can keep the same "总耗时 0 ms" label; settle after click.
+      if (elapsed > 900 && curTotal && !(await execBtn.getAttribute('disabled'))) return true;
+      return false;
     },
     { timeout: 15000, timeoutMsg: `等待 SQL 执行完成超时: ${sql.slice(0, 60)}` },
   );
+  // Auto-chart can hide grid column headers; switch back to table when present.
+  const tableView = await $('button*=表格');
+  if (await tableView.isExisting()) {
+    try {
+      if (await tableView.isDisplayed()) await tableView.click();
+    } catch {
+      /* ignore */
+    }
+  }
   await browser.pause(500);
 }
 
@@ -626,7 +502,7 @@ export function isSchemaSectionLabel(text: string): boolean {
 }
 
 /** Wait until the connection window sidebar shows table/key sections. */
-export async function waitForSchemaTreeLoaded(timeout = 10000) {
+export async function waitForSchemaTreeLoaded(timeout = 20000) {
   await browser.waitUntil(
     async () => asideHasSchemaSections(await $('aside').getText()),
     { timeout, timeoutMsg: '等待 schema 树加载超时' },

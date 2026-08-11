@@ -188,15 +188,20 @@ describe('表结构编辑 (TS-001~TS-008)', () => {
   });
 
   it('编辑表结构应显示保存更改按钮 (TS-006b)', async () => {
-    const editBtn = await $(`button*=${t('connWin.editTableStructure')}`);
+    const editBtn = await $(`button*=${t('structView.editStructure')}`);
     await editBtn.waitForDisplayed({
       timeout: 10000,
-      timeoutMsg: `Expected "${t('connWin.editTableStructure')}" button on structure tab`,
+      timeoutMsg: `Expected "${t('structView.editStructure')}" button on structure tab`,
     });
     await editBtn.click();
     await browser.pause(1000);
     const saveBtn = await $(`button*=${t('structEditor.saveChanges')}`);
     await expect(saveBtn).toBeDisplayed();
+    const cancelBtn = await $(`button*=${t('common.cancel')}`);
+    if (await cancelBtn.isExisting()) {
+      await cancelBtn.click();
+      await browser.pause(400);
+    }
   });
 
   it('应能查看表的完整列信息 (TS-007)', async () => {
