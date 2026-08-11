@@ -121,7 +121,8 @@ push_to_remote() {
 }
 
 push_to_remote "origin"
-push_to_remote "github"
+# Optional Gitee mirror (if configured as remote `gitee`)
+push_to_remote "gitee"
 
 echo ""
 echo "Done! Version bumped to v$NEW"
