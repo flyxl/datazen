@@ -280,6 +280,14 @@ impl DatabaseDriver for ElasticsearchDriver {
         Ok(v.get("rows").and_then(|r| r.as_u64()).unwrap_or(0))
     }
 
+    fn command_definitions(&self) -> Vec<DriverCommandDefinition> {
+        statement_command_definitions(
+            "Run an Elasticsearch SQL query",
+            "Run an Elasticsearch SQL statement",
+            "Elasticsearch SQL",
+        )
+    }
+
     async fn cancel_query(&self, _handle: &ConnectionHandle) -> Result<(), DriverError> {
         Ok(())
     }

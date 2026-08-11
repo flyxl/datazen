@@ -56,7 +56,6 @@ use std::sync::Arc;
 
 /// Shared application state injected into every command handler.
 pub struct AppState {
-    #[allow(dead_code)]
     pub driver_registry: Arc<DriverRegistry>,
     pub connection_manager: Arc<ConnectionManager>,
     pub monitor_connections: Arc<MonitorConnectionRegistry>,

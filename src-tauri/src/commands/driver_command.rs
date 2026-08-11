@@ -1,9 +1,11 @@
+use std::sync::Arc;
+
 use super::error::{CmdExt, CommandError};
 use super::AppState;
 use crate::mcp::permission::McpPermissionMode;
 use datazen_driver_api::{
     check_command_access, validate_command_input, CommandAccessLevel, CommandResult,
-    DriverCommandDefinition,
+    ConnectionHandle, DatabaseDriver, DriverCommandDefinition,
 };
 use serde::{Deserialize, Serialize};
 use tauri::State;
@@ -19,13 +21,51 @@ pub(crate) fn access_level_for_mode(mode: Option<McpPermissionMode>) -> CommandA
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExecuteDriverCommandRequest {
-    pub connection_id: String,
+    #[serde(default)]
+    pub connection_id: Option<String>,
+    #[serde(default)]
+    pub driver_type: Option<String>,
     pub command: String,
     #[serde(default)]
     pub input: serde_json::Value,
 }
 
-pub(crate) async fn get_driver_commands_impl(
+fn unbound_handle() -> ConnectionHandle {
+    ConnectionHandle {
+        id: String::new(),
+        pool_id: String::new(),
+    }
+}
+
+fn nonempty(value: Option<&String>) -> Option<&str> {
+    value.map(String::as_str).map(str::trim).filter(|s| !s.is_empty())
+}
+
+async fn resolve_command_driver(
+    state: &AppState,
+    connection_id: Option<&String>,
+    driver_type: Option<&String>,
+) -> Result<(Arc<dyn DatabaseDriver>, ConnectionHandle, bool), CommandError> {
+    if let Some(id) = nonempty(connection_id) {
+        let (_runtime_id, driver, handle) = state
+            .connection_manager
+            .resolve_session(id)
+            .await
+            .cmd_err("execute_driver_command")?;
+        return Ok((driver, handle, true));
+    }
+    let driver_type = nonempty(driver_type).ok_or_else(|| {
+        CommandError::Validation("connectionId or driverType is required".into())
+    })?;
+    let driver = state
+        .driver_registry
+        .get(&driver_type.to_string())
+        .await
+        .ok_or_else(|| CommandError::NotFound(format!("Driver not found: {driver_type}")))?;
+    Ok((driver, unbound_handle(), false))
+}
+
+pub(crate) async fn get_connection_commands_impl(
     state: &AppState,
     connection_id: String,
 ) -> Result<Vec<DriverCommandDefinition>, CommandError> {
@@ -33,7 +73,19 @@ pub(crate) async fn get_driver_commands_impl(
         .connection_manager
         .resolve_session(&connection_id)
         .await
-        .cmd_err("get_driver_commands")?;
+        .cmd_err("get_connection_commands")?;
+    Ok(driver.command_definitions())
+}
+
+pub(crate) async fn get_driver_type_commands_impl(
+    state: &AppState,
+    driver_type: String,
+) -> Result<Vec<DriverCommandDefinition>, CommandError> {
+    let driver = state
+        .driver_registry
+        .get(&driver_type)
+        .await
+        .ok_or_else(|| CommandError::NotFound(format!("Driver not found: {driver_type}")))?;
     Ok(driver.command_definitions())
 }
 
@@ -49,11 +101,12 @@ pub(crate) async fn execute_driver_command_with_mode(
     request: ExecuteDriverCommandRequest,
     permission_mode: Option<McpPermissionMode>,
 ) -> Result<CommandResult, CommandError> {
-    let (_runtime_id, driver, handle) = state
-        .connection_manager
-        .resolve_session(&request.connection_id)
-        .await
-        .cmd_err("execute_driver_command")?;
+    let (driver, handle, bound) = resolve_command_driver(
+        state,
+        request.connection_id.as_ref(),
+        request.driver_type.as_ref(),
+    )
+    .await?;
 
     let definition = driver
         .command_definitions()
@@ -65,6 +118,13 @@ pub(crate) async fn execute_driver_command_with_mode(
                 request.command
             ))
         })?;
+
+    if !bound && definition.metadata.requires_connection {
+        return Err(CommandError::Validation(format!(
+            "Command '{}' requires a connection",
+            request.command
+        )));
+    }
 
     validate_command_input(&definition, &request.input)
         .map_err(CommandError::Validation)?;
@@ -86,24 +146,22 @@ pub(crate) async fn execute_driver_command_with_mode(
         .cmd_err("execute_driver_command")
 }
 
+/// Discover commands from a Driver type. No live Connection is required.
 #[tauri::command]
 pub async fn get_driver_commands(
     state: State<'_, AppState>,
-    connection_id: String,
+    driver_type: String,
 ) -> Result<Vec<DriverCommandDefinition>, CommandError> {
-    get_driver_commands_impl(&state, connection_id).await
+    get_driver_type_commands_impl(&state, driver_type).await
 }
 
-/// Discover commands from a concrete Connection rather than from a Driver type.
-///
-/// This is the canonical discovery API for Workflow UI and future command
-/// clients. `get_driver_commands` remains as a compatibility alias.
+/// Discover commands from a concrete Connection.
 #[tauri::command]
 pub async fn get_connection_commands(
     state: State<'_, AppState>,
     connection_id: String,
 ) -> Result<Vec<DriverCommandDefinition>, CommandError> {
-    get_driver_commands_impl(&state, connection_id).await
+    get_connection_commands_impl(&state, connection_id).await
 }
 
 #[tauri::command]
@@ -121,7 +179,8 @@ mod tests {
     #[test]
     fn request_uses_camel_case_wire_format() {
         let request = ExecuteDriverCommandRequest {
-            connection_id: "mysql-prod".into(),
+            connection_id: Some("mysql-prod".into()),
+            driver_type: None,
             command: "query".into(),
             input: serde_json::json!({ "sql": "SELECT 1" }),
         };
@@ -141,16 +200,17 @@ mod tests {
         }))
         .unwrap();
 
-        assert_eq!(request.connection_id, "mysql-prod");
+        assert_eq!(request.connection_id.as_deref(), Some("mysql-prod"));
         assert_eq!(request.command, "query");
         assert_eq!(request.input, serde_json::Value::Null);
+        assert!(request.driver_type.is_none());
     }
 
     #[tokio::test]
     async fn discovers_standard_commands_from_connection() {
         let test = crate::testing::app_state::TestAppState::new().await;
         let (_, conn_id) = test.save_and_connect("cmd-discover").await;
-        let definitions = get_driver_commands_impl(&test.state, conn_id).await.unwrap();
+        let definitions = get_connection_commands_impl(&test.state, conn_id).await.unwrap();
         let ids: Vec<_> = definitions.iter().map(|d| d.id.as_str()).collect();
         assert!(ids.contains(&"query"));
         assert!(ids.contains(&"execute"));
@@ -163,7 +223,8 @@ mod tests {
         let result = execute_driver_command_impl(
             &test.state,
             ExecuteDriverCommandRequest {
-                connection_id: conn_id,
+                connection_id: Some(conn_id),
+                driver_type: None,
                 command: "query".into(),
                 input: serde_json::json!({ "sql": "SELECT 1" }),
             },
@@ -180,7 +241,8 @@ mod tests {
         let err = execute_driver_command_impl(
             &test.state,
             ExecuteDriverCommandRequest {
-                connection_id: conn_id,
+                connection_id: Some(conn_id),
+                driver_type: None,
                 command: "not-a-command".into(),
                 input: serde_json::json!({}),
             },
@@ -197,7 +259,8 @@ mod tests {
         let err = execute_driver_command_impl(
             &test.state,
             ExecuteDriverCommandRequest {
-                connection_id: conn_id,
+                connection_id: Some(conn_id),
+                driver_type: None,
                 command: "query".into(),
                 input: serde_json::json!({}),
             },
@@ -214,7 +277,8 @@ mod tests {
         let err = execute_driver_command_with_mode(
             &test.state,
             ExecuteDriverCommandRequest {
-                connection_id: conn_id,
+                connection_id: Some(conn_id),
+                driver_type: None,
                 command: "execute".into(),
                 input: serde_json::json!({ "sql": "DELETE FROM t" }),
             },
@@ -229,9 +293,71 @@ mod tests {
     async fn discovers_commands_from_config_id() {
         let test = crate::testing::app_state::TestAppState::new().await;
         test.save_connection("cfg-discover").await;
-        let definitions = get_driver_commands_impl(&test.state, "cfg-discover".into())
+        let definitions = get_connection_commands_impl(&test.state, "cfg-discover".into())
             .await
             .unwrap();
         assert!(definitions.iter().any(|d| d.id == "query"));
+    }
+
+    #[tokio::test]
+    async fn discovers_commands_from_driver_type_without_connection() {
+        let test = crate::testing::app_state::TestAppState::new().await;
+        let definitions = get_driver_type_commands_impl(&test.state, "postgres".into())
+            .await
+            .unwrap();
+        assert!(definitions.iter().any(|d| d.id == "query"));
+    }
+
+    #[tokio::test]
+    async fn rejects_connection_required_command_without_connection() {
+        let test = crate::testing::app_state::TestAppState::new().await;
+        let err = execute_driver_command_impl(
+            &test.state,
+            ExecuteDriverCommandRequest {
+                connection_id: None,
+                driver_type: Some("postgres".into()),
+                command: "query".into(),
+                input: serde_json::json!({ "sql": "SELECT 1" }),
+            },
+        )
+        .await
+        .unwrap_err();
+        assert!(err.to_string().contains("requires a connection"));
+    }
+
+    #[tokio::test]
+    async fn executes_unbound_driver_command_by_type() {
+        use datazen_driver_api::{CommandCategory, DriverCommandDefinition, DriverCommandMetadata};
+
+        let ping = DriverCommandDefinition {
+            id: "ping".into(),
+            name: "Ping".into(),
+            description: None,
+            input_schema: serde_json::json!({ "type": "object" }),
+            output_schema: None,
+            permissions: vec![],
+            metadata: DriverCommandMetadata::new(CommandCategory::Observe, CommandAccessLevel::Read)
+                .unbound()
+                .hide_from_workflow(),
+        };
+        let test = crate::testing::app_state::TestAppState::with_options(
+            crate::testing::mock_driver::MockDriverOptions {
+                extra_commands: vec![ping],
+                ..Default::default()
+            },
+        )
+        .await;
+        let result = execute_driver_command_impl(
+            &test.state,
+            ExecuteDriverCommandRequest {
+                connection_id: None,
+                driver_type: Some("postgres".into()),
+                command: "ping".into(),
+                input: serde_json::json!({}),
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(result.data["command"], "ping");
     }
 }

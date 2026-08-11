@@ -36,6 +36,12 @@ pub async fn execute_command_with_mode(
     let definition = driver.command_definitions().into_iter()
         .find(|definition| definition.id == step.command)
         .ok_or_else(|| format!("Unsupported driver command '{}' for connection '{}'", step.command, connection_id))?;
+    if !definition.metadata.workflow {
+        return Err(format!(
+            "Command '{}' is not available in workflows",
+            step.command
+        ));
+    }
     validate_command_input(&definition, &step.input)?;
     check_command_access(
         &definition,

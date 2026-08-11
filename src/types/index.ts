@@ -373,6 +373,27 @@ export interface WorkflowVariable {
   default?: unknown;
 }
 
+export type CommandCategory =
+  | 'query'
+  | 'mutate'
+  | 'admin'
+  | 'observe'
+  | 'pubSub'
+  | 'stream'
+  | 'io';
+
+export type CommandAccessLevel = 'read' | 'write' | 'highRisk';
+
+export interface DriverCommandMetadata {
+  category: CommandCategory;
+  risk?: CommandAccessLevel | null;
+  workflow: boolean;
+  ui: boolean;
+  deprecated: boolean;
+  replacedBy?: string | null;
+  requiresConnection: boolean;
+}
+
 export interface DriverCommandDefinition {
   id: string;
   name: string;
@@ -380,6 +401,7 @@ export interface DriverCommandDefinition {
   inputSchema: Record<string, unknown>;
   outputSchema?: Record<string, unknown> | null;
   permissions: string[];
+  metadata: DriverCommandMetadata;
 }
 
 export type WorkflowStepType = 'query' | 'command' | 'ai' | 'condition' | 'foreach';

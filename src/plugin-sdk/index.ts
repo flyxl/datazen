@@ -100,3 +100,5 @@ export {
 // === Plugin Commands ===
 export { pluginInvoke, hasPluginCommand } from '../plugins/generated';
 export type { PluginCommandMeta } from '../plugins/generated';
+export { driverCommands } from '../commands/driver';
+export type { ExecuteDriverCommandRequest, CommandResult } from '../commands/driver';

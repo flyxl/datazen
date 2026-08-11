@@ -300,6 +300,14 @@ impl DatabaseDriver for InfluxDbDriver {
         Ok(0)
     }
 
+    fn command_definitions(&self) -> Vec<DriverCommandDefinition> {
+        statement_command_definitions(
+            "Run an InfluxQL query",
+            "Run an InfluxQL write/admin statement",
+            "InfluxQL",
+        )
+    }
+
     async fn cancel_query(&self, _handle: &ConnectionHandle) -> Result<(), DriverError> {
         Ok(())
     }
