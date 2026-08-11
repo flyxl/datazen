@@ -7,10 +7,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::ops::KeyError;
 
+#[allow(dead_code)] // manifest helpers reserved for the upcoming dump/restore import flow
 pub const MANIFEST_SCHEMA_VERSION: u32 = 1;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
 pub struct DumpManifestKey {
     pub key: String,
     pub ttl_seconds: i64,
@@ -19,6 +21,7 @@ pub struct DumpManifestKey {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
 pub struct DumpManifest {
     pub schema_version: u32,
     pub db_index: u32,
@@ -80,6 +83,7 @@ pub fn restore_uses_replace(replace: bool) -> bool {
 }
 
 /// Build a safe, unique `.bin` filename for a Redis key inside the export zip.
+#[allow(dead_code)]
 pub fn dump_file_name_for_key(key: &str, index: usize, used: &mut HashSet<String>) -> String {
     let mut base: String = key
         .chars()
@@ -125,6 +129,7 @@ pub fn decode_dump_base64(encoded: &str) -> Result<Vec<u8>, String> {
         .map_err(|e| format!("invalid dump base64: {e}"))
 }
 
+#[allow(dead_code)]
 pub fn parse_manifest(json: &str) -> Result<DumpManifest, String> {
     let manifest: DumpManifest =
         serde_json::from_str(json).map_err(|e| format!("invalid manifest JSON: {e}"))?;
@@ -137,6 +142,7 @@ pub fn parse_manifest(json: &str) -> Result<DumpManifest, String> {
     Ok(manifest)
 }
 
+#[allow(dead_code)]
 pub fn serialize_manifest(manifest: &DumpManifest) -> Result<String, String> {
     serde_json::to_string_pretty(manifest).map_err(|e| e.to_string())
 }

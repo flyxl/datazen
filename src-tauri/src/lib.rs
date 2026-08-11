@@ -19,6 +19,8 @@ pub mod sync;
 pub mod schema_diff;
 pub mod workflow;
 
+pub use store::HistoryDb;
+
 #[cfg(test)]
 pub(crate) mod testing;
 

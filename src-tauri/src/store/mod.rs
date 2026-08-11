@@ -3,15 +3,15 @@
 mod ai_config;
 mod connections;
 mod history;
-mod history_db;
+pub(crate) mod history_db;
 mod key_store;
 mod models;
 mod settings;
 mod sync_tasks;
 
-pub use history_db::{HistoryDb, HistoryEntry, HistoryListItem, HistoryScope, MAX_QUERY_HISTORY, MAX_WORKFLOW_HISTORY};
+pub use history_db::{HistoryDb, HistoryEntry, HistoryListItem, HistoryScope};
 pub use models::{FavoriteQuery, QueryHistoryEntry, SyncTask};
-pub use settings::{clamp_connection_pool_size, AppSettings, ThemePreference};
+pub use settings::{clamp_connection_pool_size, AppSettings};
 
 use aes_gcm::aead::{Aead, KeyInit};
 use aes_gcm::{Aes256Gcm, Key, Nonce};

@@ -1,7 +1,7 @@
 use super::*;
 use chrono::Utc;
 use crate::db::{ConnectionConfig, SslMode, SshTunnelConfig};
-use settings::deserialize_theme;
+use settings::{deserialize_theme, ThemePreference};
 
 
 fn use_file_key_backend() {

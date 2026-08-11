@@ -2146,6 +2146,7 @@ mod tests {
     #[test]
     fn test_parse_ai_json_empty_response() {
         #[derive(Debug, serde::Deserialize)]
+        #[allow(dead_code)]
         struct Simple {
             key: String,
         }
@@ -2156,6 +2157,7 @@ mod tests {
     #[test]
     fn test_parse_ai_json_truncated_finish_reason() {
         #[derive(Debug, serde::Deserialize)]
+        #[allow(dead_code)]
         struct Simple {
             items: Vec<String>,
         }
@@ -2167,6 +2169,7 @@ mod tests {
     #[test]
     fn test_parse_ai_json_invalid_with_reason() {
         #[derive(Debug, serde::Deserialize)]
+        #[allow(dead_code)]
         struct NeedsField {
             required_field: String,
         }

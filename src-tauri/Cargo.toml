@@ -79,6 +79,12 @@ webdriver = ["tauri-plugin-webdriver"]
 [dev-dependencies]
 tempfile = "3.27.0"
 wiremock = "0.6"
+sqlx = { version = "0.7", features = ["runtime-tokio", "tls-rustls", "postgres", "mysql"] }
 datazen-driver-postgres = { path = "../packages/drivers/postgres" }
 datazen-driver-mysql = { path = "../packages/drivers/mysql" }
 datazen-driver-sqlite = { path = "../packages/drivers/sqlite" }
+
+[lints.rust]
+# `plugin-olap` is injected by resolve-drivers.mjs at build time; declare it here
+# so standalone `cargo check` does not treat it as an unexpected cfg.
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("plugin-olap"))'] }

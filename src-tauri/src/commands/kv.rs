@@ -122,7 +122,7 @@ mod tests {
     use super::*;
     use crate::db::{ConnectionConfig, SslMode};
     use crate::testing::app_state::TestAppState;
-    use crate::testing::mock_kv_driver::{MockKvDriver, MockKvDriverOptions};
+    use crate::testing::mock_kv_driver::MockKvDriverOptions;
 
     fn redis_config(id: &str) -> ConnectionConfig {
         ConnectionConfig {

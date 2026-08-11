@@ -471,7 +471,7 @@ output:
 
 #[tokio::test]
 async fn tc10_history_persistence() {
-    use datazen::store::HistoryDb;
+    use datazen::HistoryDb;
     use datazen::workflow::history::WorkflowHistoryManager;
     use datazen::workflow::workflows::{WorkflowExecutionResult, StepExecutionResult, StepStatus};
 

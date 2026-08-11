@@ -59,7 +59,7 @@ pub struct SyncTask {
 }
 
 #[derive(Default)]
-pub(super) struct StoreCache {
+pub(crate) struct StoreCache {
     pub(super) connections: Vec<ConnectionConfig>,
     pub(super) groups: Vec<String>,
     pub(super) settings: AppSettings,

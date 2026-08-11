@@ -52,10 +52,6 @@ impl TestAppState {
         Self::with_options(rich_mock_options()).await
     }
 
-    pub fn sample_config(id: &str) -> ConnectionConfig {
-        sample_postgres_config(id)
-    }
-
     pub async fn save_connection(&self, id: &str) -> ConnectionConfig {
         let config = sample_postgres_config(id);
         self.store

@@ -89,6 +89,7 @@ impl WiremockAi {
     }
 
     /// SSE stream that requests a DB tool then returns final SQL text.
+    #[allow(dead_code)]
     pub async fn mount_chat_stream_with_db_tool_then_text(&self, final_text: &str) {
         let sse = format!(
             r#"data: {{"choices":[{{"delta":{{"tool_calls":[{{"index":0,"id":"call_1","function":{{"name":"list_connections","arguments":"{{}}"}}}}]}}}}]}}
