@@ -16,7 +16,7 @@ import { Button } from '../../../../src/components/ui/Button';
 import { Input } from '../../../../src/components/ui/Input';
 import { useI18n } from '../../../../src/hooks/useI18n';
 import { cn } from '../../../../src/lib/cn';
-import { pluginInvoke } from '../../../../src/plugins/generated';
+import { redisCommandInvoke } from './redisInvoke';
 
 export interface StreamEditorProps {
   connectionId: string;
@@ -55,7 +55,7 @@ export async function invokeXrange(
   end = '+',
   count?: number,
 ): Promise<{ entries: StreamEntry[] }> {
-  return pluginInvoke('redis', 'xrange', {
+  return redisCommandInvoke('redis', 'xrange', {
     connectionId,
     dbIndex,
     key,
@@ -72,7 +72,7 @@ export async function invokeXadd(
   fields: Record<string, string>,
   id?: string,
 ): Promise<{ id: string }> {
-  return pluginInvoke('redis', 'xadd', {
+  return redisCommandInvoke('redis', 'xadd', {
     connectionId,
     dbIndex,
     key,
@@ -86,7 +86,7 @@ export async function invokeXinfoGroups(
   dbIndex: number,
   key: string,
 ): Promise<StreamGroupInfo[]> {
-  return pluginInvoke('redis', 'xinfo_groups', {
+  return redisCommandInvoke('redis', 'xinfo_groups', {
     connectionId,
     dbIndex,
     key,
@@ -100,7 +100,7 @@ export async function invokeXgroupCreate(
   group: string,
   startId?: string,
 ): Promise<void> {
-  await pluginInvoke('redis', 'xgroup_create', {
+  await redisCommandInvoke('redis', 'xgroup_create', {
     connectionId,
     dbIndex,
     key,
@@ -115,7 +115,7 @@ export async function invokeXgroupDestroy(
   key: string,
   group: string,
 ): Promise<void> {
-  await pluginInvoke('redis', 'xgroup_destroy', {
+  await redisCommandInvoke('redis', 'xgroup_destroy', {
     connectionId,
     dbIndex,
     key,
@@ -129,7 +129,7 @@ export async function invokeXpending(
   key: string,
   group: string,
 ): Promise<{ total: number; entries: XpendingEntry[] }> {
-  return pluginInvoke('redis', 'xpending', {
+  return redisCommandInvoke('redis', 'xpending', {
     connectionId,
     dbIndex,
     key,
@@ -148,7 +148,7 @@ export async function invokeXack(
   group: string,
   ids: string[],
 ): Promise<number> {
-  return pluginInvoke('redis', 'xack', {
+  return redisCommandInvoke('redis', 'xack', {
     connectionId,
     dbIndex,
     key,

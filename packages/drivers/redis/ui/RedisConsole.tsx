@@ -12,7 +12,7 @@ import { useI18n } from '../../../../src/hooks/useI18n';
 import { useSettingsStore } from '../../../../src/stores/settingsStore';
 import { cn } from '../../../../src/lib/cn';
 import { resolveEditorFontFamily, HOST_DEFAULT_EDITOR_FONT } from '../../../../src/lib/resolveEditorFontFamily';
-import { pluginInvoke } from '../../../../src/plugins/generated';
+import { redisCommandInvoke } from './redisInvoke';
 import {
   loadConsoleHistory,
   navigateConsoleHistory,
@@ -130,7 +130,7 @@ export function RedisConsole({
     setHistoryState({ index: null, draft: trimmed });
 
     try {
-      const response = await pluginInvoke<ExecResponse>('redis', 'exec', {
+      const response = await redisCommandInvoke<ExecResponse>('redis', 'exec', {
         connectionId,
         dbIndex,
         commands: trimmed,

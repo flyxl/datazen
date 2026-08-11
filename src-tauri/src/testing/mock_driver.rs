@@ -10,6 +10,10 @@ use crate::db::{
     DriverError, ExplainResult, MultiQueryResult, QueryResult, ServerInfo, StatementResult,
     TableInfo, TableSchema, TransactionHandle, Value,
 };
+use datazen_driver_api::{
+    execute_command_definition, execute_standard_sql_command, query_command_definition,
+    CommandResult, DriverCommandDefinition,
+};
 
 #[derive(Clone)]
 pub struct MockDriverOptions {
@@ -22,6 +26,7 @@ pub struct MockDriverOptions {
     pub tables: Vec<TableInfo>,
     pub explain_plan: ExplainResult,
     pub server_version: String,
+    pub extra_commands: Vec<DriverCommandDefinition>,
 }
 
 impl Default for MockDriverOptions {
@@ -41,6 +46,7 @@ impl Default for MockDriverOptions {
                 estimated_rows: None,
             },
             server_version: String::new(),
+            extra_commands: Vec::new(),
         }
     }
 }
@@ -274,5 +280,26 @@ impl DatabaseDriver for MockDriver {
 
     async fn rollback(&self, _tx: TransactionHandle) -> Result<(), DriverError> {
         Err(DriverError::TransactionError("mock".into()))
+    }
+
+    fn command_definitions(&self) -> Vec<DriverCommandDefinition> {
+        let mut definitions = vec![query_command_definition(), execute_command_definition()];
+        definitions.extend(self.opts.extra_commands.clone());
+        definitions
+    }
+
+    async fn execute_command(
+        &self,
+        handle: &ConnectionHandle,
+        command: &str,
+        input: serde_json::Value,
+    ) -> Result<CommandResult, DriverError> {
+        if self.opts.extra_commands.iter().any(|definition| definition.id == command) {
+            return Ok(CommandResult::new(serde_json::json!({
+                "command": command,
+                "input": input,
+            })));
+        }
+        execute_standard_sql_command(self, handle, command, input).await
     }
 }

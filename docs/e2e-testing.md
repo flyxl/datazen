@@ -122,7 +122,7 @@ e2e/wdio.conf.ts
 | SQL / 表 | `sql-query.ts`, `table-data.ts`, `table-edit.ts`, `export-import.ts` |
 | 路径 IPC / 备份 | `path-ipc-hardening.ts`, `app-data-backup.ts`, `backup-database.ts` |
 | i18n | `i18n-10-locales.ts`, `system-locale.ts` |
-| AI / Workflow | `ai-features.ts`, `ai-context.ts`, `workflow.ts`, `workflow-window.ts` |
+| AI / Workflow | `ai-features.ts`, `ai-context.ts`, `workflow.ts`, `workflow-window.ts`, `driver-commands.ts` |
 | 驱动 | `sqlite.ts`, `mysql.ts`, `redis.ts`, `redis-topology.ts`（可选 Cluster/Sentinel）, `kiwi.ts` |
 
 完整列表与分层测试见 [architecture/testing.md](./architecture/testing.md)。

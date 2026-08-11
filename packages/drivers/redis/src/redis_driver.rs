@@ -1393,6 +1393,19 @@ impl DatabaseDriver for RedisDriver {
         Ok(result.rows_affected.unwrap_or(0))
     }
 
+    fn command_definitions(&self) -> Vec<datazen_driver_api::DriverCommandDefinition> {
+        crate::commands::redis_command_definitions()
+    }
+
+    async fn execute_command(
+        &self,
+        handle: &ConnectionHandle,
+        command: &str,
+        input: serde_json::Value,
+    ) -> Result<datazen_driver_api::CommandResult, DriverError> {
+        crate::commands::execute_redis_command(self, handle, command, input).await
+    }
+
     async fn cancel_query(&self, _handle: &ConnectionHandle) -> Result<(), DriverError> {
         tracing::debug!("redis: cancel_query is a no-op (commands are atomic)");
         Ok(())

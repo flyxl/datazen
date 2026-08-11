@@ -10,7 +10,7 @@ import { Button } from '../../../../src/components/ui/Button';
 import { Dialog } from '../../../../src/components/ui/Dialog';
 import { useI18n } from '../../../../src/hooks/useI18n';
 import { cn } from '../../../../src/lib/cn';
-import { pluginInvoke } from '../../../../src/plugins/generated';
+import { redisCommandInvoke } from './redisInvoke';
 import { useSettingsStore } from '../../../../src/stores/settingsStore';
 import { parseInfoSections, type InfoSection } from './infoParse';
 import { StreamOverview } from './StreamOverview';
@@ -152,7 +152,7 @@ function InfoPane({
     setLoading(true);
     setError(null);
     try {
-      const raw = await pluginInvoke<string>('redis', 'info', {
+      const raw = await redisCommandInvoke<string>('redis', 'info', {
         connectionId,
         section: null,
         nodeAddr,
@@ -257,7 +257,7 @@ function MemoryPane({
     setLoading(true);
     setError(null);
     try {
-      const data = await pluginInvoke<MemorySampleResult>('redis', 'memory_sample', {
+      const data = await redisCommandInvoke<MemorySampleResult>('redis', 'memory_sample', {
         connectionId,
         dbIndex,
         limit: MEMORY_SAMPLE_LIMIT,
@@ -325,7 +325,7 @@ function SlowlogPane({ connectionId }: { connectionId: string }) {
     setLoading(true);
     setError(null);
     try {
-      const data = await pluginInvoke<SlowlogEntry[]>('redis', 'slowlog_get', {
+      const data = await redisCommandInvoke<SlowlogEntry[]>('redis', 'slowlog_get', {
         connectionId,
         count: SLOWLOG_COUNT,
       });
@@ -346,7 +346,7 @@ function SlowlogPane({ connectionId }: { connectionId: string }) {
     setResetBusy(true);
     setResetError(null);
     try {
-      await pluginInvoke('redis', 'slowlog_reset', {
+      await redisCommandInvoke('redis', 'slowlog_reset', {
         connectionId,
         confirm: true,
       });

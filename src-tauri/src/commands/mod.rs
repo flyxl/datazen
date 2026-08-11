@@ -9,7 +9,7 @@ mod context;
 mod connection;
 mod dashboard;
 mod data;
-mod driver_command;
+pub(crate) mod driver_command;
 mod error;
 mod file;
 mod kv;

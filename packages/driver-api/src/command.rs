@@ -80,7 +80,7 @@ pub fn query_command_definition() -> DriverCommandDefinition {
             "required": ["sql"]
         }),
         output_schema: None,
-        permissions: Vec::new(),
+        permissions: vec!["driver.query".into()],
     }
 }
 
@@ -99,8 +99,65 @@ pub fn execute_command_definition() -> DriverCommandDefinition {
             "type": "object",
             "properties": { "rowsAffected": { "type": "integer" } }
         })),
-        permissions: Vec::new(),
+        permissions: vec!["driver.execute".into()],
     }
+}
+
+/// Access level required by a Driver Command, derived from its declared permissions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum CommandAccessLevel {
+    Read,
+    Write,
+    HighRisk,
+}
+
+const HIGH_RISK_TOKENS: &[&str] = &["flush", "drop", "restore", "exec", "truncate", "destroy"];
+const WRITE_TOKENS: &[&str] = &[
+    "execute", "write", "delete", "del", "set", "update", "insert", "add", "rename", "push",
+    "pop", "remove", "ack", "create", "publish", "ttl", "reset", "xadd", "xack",
+];
+
+fn permission_tokens(definition: &DriverCommandDefinition) -> Vec<String> {
+    let mut tokens = Vec::new();
+    for value in definition
+        .permissions
+        .iter()
+        .map(String::as_str)
+        .chain(std::iter::once(definition.id.as_str()))
+    {
+        tokens.extend(value.split(|c: char| !c.is_ascii_alphanumeric()).filter(|t| !t.is_empty()).map(|t| t.to_ascii_lowercase()));
+    }
+    tokens
+}
+
+/// Classify a command from its id and declared permission identifiers.
+pub fn required_access_level(definition: &DriverCommandDefinition) -> CommandAccessLevel {
+    let tokens = permission_tokens(definition);
+    if tokens.iter().any(|t| HIGH_RISK_TOKENS.contains(&t.as_str())) {
+        return CommandAccessLevel::HighRisk;
+    }
+    if tokens.iter().any(|t| WRITE_TOKENS.contains(&t.as_str())) {
+        return CommandAccessLevel::Write;
+    }
+    if definition.permissions.is_empty() && definition.id != "query" {
+        return CommandAccessLevel::Write;
+    }
+    CommandAccessLevel::Read
+}
+
+/// Reject commands that need a higher access level than the caller was granted.
+pub fn check_command_access(
+    definition: &DriverCommandDefinition,
+    granted: CommandAccessLevel,
+) -> Result<(), String> {
+    let required = required_access_level(definition);
+    if required > granted {
+        return Err(format!(
+            "Command '{}' is not allowed at the current permission level",
+            definition.id
+        ));
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -117,7 +174,7 @@ mod tests {
         assert_eq!(definition.input_schema["properties"]["sql"]["type"], "string");
         assert_eq!(definition.input_schema["properties"]["limit"]["minimum"], 1);
         assert!(definition.output_schema.is_none());
-        assert!(definition.permissions.is_empty());
+        assert_eq!(definition.permissions, vec!["driver.query"]);
     }
 
     #[test]
@@ -127,7 +184,7 @@ mod tests {
         assert_eq!(definition.name, "Execute");
         assert_eq!(definition.input_schema["required"], serde_json::json!(["sql"]));
         assert_eq!(definition.output_schema.as_ref().unwrap()["type"], "object");
-        assert!(definition.permissions.is_empty());
+        assert_eq!(definition.permissions, vec!["driver.execute"]);
     }
 
     #[test]
@@ -191,5 +248,45 @@ mod tests {
         let encoded = serde_json::to_value(&result).unwrap();
         let decoded: CommandResult = serde_json::from_value(encoded).unwrap();
         assert_eq!(decoded.data["rowsAffected"], 3);
+    }
+
+    #[test]
+    fn query_is_read_and_execute_is_write() {
+        assert_eq!(required_access_level(&query_command_definition()), CommandAccessLevel::Read);
+        assert_eq!(required_access_level(&execute_command_definition()), CommandAccessLevel::Write);
+    }
+
+    #[test]
+    fn redis_style_permissions_classify_risk() {
+        let info = DriverCommandDefinition {
+            id: "info".into(),
+            name: "Info".into(),
+            description: None,
+            input_schema: serde_json::json!({"type": "object"}),
+            output_schema: None,
+            permissions: vec!["redis:allow-info".into()],
+        };
+        let set = DriverCommandDefinition {
+            id: "set_string".into(),
+            name: "Set".into(),
+            description: None,
+            input_schema: serde_json::json!({"type": "object"}),
+            output_schema: None,
+            permissions: vec!["redis:allow-set-string".into()],
+        };
+        let flush = DriverCommandDefinition {
+            id: "flush_db".into(),
+            name: "Flush".into(),
+            description: None,
+            input_schema: serde_json::json!({"type": "object"}),
+            output_schema: None,
+            permissions: vec!["redis:allow-flush-db".into()],
+        };
+        assert_eq!(required_access_level(&info), CommandAccessLevel::Read);
+        assert_eq!(required_access_level(&set), CommandAccessLevel::Write);
+        assert_eq!(required_access_level(&flush), CommandAccessLevel::HighRisk);
+        assert!(check_command_access(&flush, CommandAccessLevel::Write).is_err());
+        assert!(check_command_access(&set, CommandAccessLevel::Write).is_ok());
+        assert!(check_command_access(&info, CommandAccessLevel::Read).is_ok());
     }
 }

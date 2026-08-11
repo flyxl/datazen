@@ -7,6 +7,7 @@
 
 pub(crate) use crate::workflow::command;
 pub(crate) use crate::workflow::command_runtime;
+#[allow(unused_imports)]
 pub(crate) use crate::workflow::model;
 
 #[path = "context.rs"]

@@ -26,7 +26,7 @@
     "e2e:redis": "node e2e/run.mjs --skip-build -- --spec e2e/specs/redis.ts,e2e/specs/redis-topology.ts",
     "e2e:ai": "node e2e/run.mjs --skip-build -- --spec e2e/specs/ai-features.ts,e2e/specs/ai-context.ts,e2e/specs/ai-context-tables.ts",
     "e2e:i18n-backup": "node e2e/run.mjs --skip-build -- --spec e2e/specs/app-data-backup.ts,e2e/specs/i18n-10-locales.ts,e2e/specs/system-locale.ts,e2e/specs/i18n-menu.ts",
-    "e2e:path-ipc": "node e2e/run.mjs --skip-build -- --spec e2e/specs/path-ipc-hardening.ts,e2e/specs/workflow-window.ts,e2e/specs/app-data-backup.ts",
+    "e2e:path-ipc": "node e2e/run.mjs --skip-build -- --spec e2e/specs/path-ipc-hardening.ts,e2e/specs/workflow-window.ts,e2e/specs/driver-commands.ts,e2e/specs/app-data-backup.ts",
     "e2e:dashboard": "node e2e/run.mjs --minimal-drivers -- --spec e2e/specs/ops-dashboard.ts",
     "pretest": "node scripts/resolve-drivers.mjs --drivers=basic",
     "posttest": "node scripts/plugin-file-stash.mjs restore",

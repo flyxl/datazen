@@ -15,7 +15,7 @@ import { Button } from '../../../../src/components/ui/Button';
 import { Input } from '../../../../src/components/ui/Input';
 import { useI18n } from '../../../../src/hooks/useI18n';
 import { cn } from '../../../../src/lib/cn';
-import { pluginInvoke } from '../../../../src/plugins/generated';
+import { redisCommandInvoke } from './redisInvoke';
 import { hasRedisJson } from './hasRedisJson';
 
 export interface JsonEditorProps {
@@ -77,7 +77,7 @@ export async function invokeJsonGet(
   key: string,
   path = '$',
 ): Promise<JsonGetResult> {
-  return pluginInvoke('redis', 'json_get', {
+  return redisCommandInvoke('redis', 'json_get', {
     connectionId,
     dbIndex,
     key,
@@ -92,7 +92,7 @@ export async function invokeJsonSet(
   path: string,
   value: JsonValue,
 ): Promise<void> {
-  await pluginInvoke('redis', 'json_set', {
+  await redisCommandInvoke('redis', 'json_set', {
     connectionId,
     dbIndex,
     key,
@@ -107,7 +107,7 @@ export async function invokeJsonDel(
   key: string,
   path: string,
 ): Promise<JsonDelResult> {
-  return pluginInvoke('redis', 'json_del', {
+  return redisCommandInvoke('redis', 'json_del', {
     connectionId,
     dbIndex,
     key,
@@ -116,7 +116,7 @@ export async function invokeJsonDel(
 }
 
 export async function invokeModulesList(connectionId: string): Promise<string[]> {
-  return pluginInvoke('redis', 'modules_list', { connectionId }) as Promise<string[]>;
+  return redisCommandInvoke('redis', 'modules_list', { connectionId }) as Promise<string[]>;
 }
 
 function JsonTreeNode({

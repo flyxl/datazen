@@ -6,7 +6,7 @@ import { Input } from '../../../../src/components/ui/Input';
 import { fileCommands } from '../../../../src/commands/file';
 import { databaseCommands } from '../../../../src/commands/database';
 import { useI18n } from '../../../../src/hooks/useI18n';
-import { pluginInvoke } from '../../../../src/plugins/generated';
+import { redisCommandInvoke } from './redisInvoke';
 import { invokeCountMatching } from './BatchBar';
 import {
   base64ToZip,
@@ -61,7 +61,7 @@ async function invokeDumpKeys(
   dbIndex: number,
   keys: string[],
 ): Promise<DumpKeysResult> {
-  return (await pluginInvoke('redis', 'dump_keys', {
+  return (await redisCommandInvoke('redis', 'dump_keys', {
     connectionId,
     dbIndex,
     keys,
@@ -74,7 +74,7 @@ async function invokeRestoreKeys(
   entries: RestoreKeyEntry[],
   replace: boolean,
 ): Promise<RestoreKeysResult> {
-  return (await pluginInvoke('redis', 'restore_keys', {
+  return (await redisCommandInvoke('redis', 'restore_keys', {
     connectionId,
     dbIndex,
     entries,

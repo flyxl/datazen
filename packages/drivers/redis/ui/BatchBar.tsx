@@ -4,7 +4,7 @@ import { Button } from '../../../../src/components/ui/Button';
 import { Input } from '../../../../src/components/ui/Input';
 import { Dialog } from '../../../../src/components/ui/Dialog';
 import { useI18n } from '../../../../src/hooks/useI18n';
-import { pluginInvoke } from '../../../../src/plugins/generated';
+import { redisCommandInvoke, type RedisInvokeFn } from './redisInvoke';
 
 export interface BatchDeleteResult {
   deleted: number;
@@ -21,17 +21,13 @@ export interface BatchRenameResult {
   errors: { key: string; error: string }[];
 }
 
-export type PluginInvokeFn = (
-  pluginId: string,
-  command: string,
-  args?: Record<string, unknown>,
-) => Promise<unknown>;
+export type PluginInvokeFn = RedisInvokeFn;
 
 export async function invokeDeleteKeys(
   connectionId: string,
   dbIndex: number,
   keys: string[],
-  invoke: PluginInvokeFn = pluginInvoke,
+  invoke: PluginInvokeFn = redisCommandInvoke,
 ): Promise<number> {
   return (await invoke('redis', 'delete_keys', {
     connectionId: connectionId,
@@ -44,7 +40,7 @@ export async function invokeBatchDeletePattern(
   connectionId: string,
   dbIndex: number,
   pattern: string,
-  invoke: PluginInvokeFn = pluginInvoke,
+  invoke: PluginInvokeFn = redisCommandInvoke,
 ): Promise<BatchDeleteResult> {
   return (await invoke('redis', 'batch_delete_pattern', {
     connectionId: connectionId,
@@ -58,7 +54,7 @@ export async function invokeBatchSetTtl(
   dbIndex: number,
   keys: string[],
   ttlSeconds: number,
-  invoke: PluginInvokeFn = pluginInvoke,
+  invoke: PluginInvokeFn = redisCommandInvoke,
 ): Promise<BatchSetTtlResult> {
   return (await invoke('redis', 'batch_set_ttl', {
     connectionId: connectionId,
@@ -74,7 +70,7 @@ export async function invokeBatchRenamePrefix(
   oldPrefix: string,
   newPrefix: string,
   keys: string[] | undefined,
-  invoke: PluginInvokeFn = pluginInvoke,
+  invoke: PluginInvokeFn = redisCommandInvoke,
 ): Promise<BatchRenameResult> {
   return (await invoke('redis', 'batch_rename_prefix', {
     connectionId: connectionId,
@@ -89,7 +85,7 @@ export async function invokeCountMatching(
   connectionId: string,
   dbIndex: number,
   pattern: string,
-  invoke: PluginInvokeFn = pluginInvoke,
+  invoke: PluginInvokeFn = redisCommandInvoke,
 ): Promise<number> {
   return (await invoke('redis', 'count_matching', {
     connectionId: connectionId,

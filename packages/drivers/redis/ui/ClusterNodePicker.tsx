@@ -4,7 +4,7 @@ import { Select } from '../../../../src/components/ui/Select';
 import { useI18n } from '../../../../src/hooks/useI18n';
 import { useConnectionStore } from '../../../../src/stores/connectionStore';
 import { useSettingsStore } from '../../../../src/stores/settingsStore';
-import { hasPluginCommand, pluginInvoke } from '../../../../src/plugins/generated';
+import { redisCommandInvoke } from './redisInvoke';
 import { readRedisOptions } from './connectionOptions';
 import { readClusterRouting } from './settingsHelpers';
 
@@ -59,11 +59,10 @@ export function ClusterNodePicker({
 
   useEffect(() => {
     if (!showPicker) return;
-    if (!hasPluginCommand('redis', 'cluster_nodes')) return;
 
     let cancelled = false;
     setLoading(true);
-    void pluginInvoke<ClusterNodesResponse>('redis', 'cluster_nodes', { connectionId })
+    void redisCommandInvoke<ClusterNodesResponse>('redis', 'cluster_nodes', { connectionId })
       .then((response) => {
         if (cancelled) return;
         setNodes(response.nodes ?? []);
