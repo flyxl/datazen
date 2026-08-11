@@ -20,20 +20,29 @@ This document tracks the migration of DataZen from Driver-specific/query-oriente
 - [x] Split the large workflow implementation into focused model, registry, context, conditions, executor, command, and command-runtime modules while retaining the historical facade.
 - [x] Updated `AGENTS.md` and workflow/system architecture documentation.
 - [x] Updated WorkflowForm tests after introducing workflow-level Connection.
+- [x] Fixed Workflow model/facade visibility and equality derives required by the Rust compiler.
+- [x] Fixed Driver Command IPC to use the existing structured `CommandError::Validation` path.
+- [x] Fixed basic-CI sync adapter test linking so unselected optional driver crates are not referenced.
+- [x] Added this progress document.
 
-## Current CI Fixes
+## CI Status
 
-CI run `31474270276`, job `93724251779`, reaches the Rust test build after all 121 frontend test files / 940 frontend tests pass.
+The original failing CI run was `31474270276` / job `93724251779`.
 
-The Rust build currently reports these groups of errors:
+A follow-up run is `31475495899` / job `93728124924` for the latest fixes on `agent/driver-command-workflow`.
 
-1. Workflow facade re-export visibility (`E0365`) because the extracted model/registry modules were `pub(crate)` while `workflows.rs` preserved public historical exports.
-2. `CommandError::Message` no longer exists; command validation should use the existing structured `Validation` variant.
-3. Three Rust integration-test `WorkflowDefinition` struct literals need the new optional `connection` field.
-4. `WorkflowCommandStep` derives `PartialEq`, so `ErrorHandlingConfig` and its nested `WorkflowStep` need compatible `PartialEq` implementations.
-5. `adapter_registry` test-only force-linking references every optional driver crate even though the CI `basic` driver set only links PostgreSQL/MySQL/SQLite/Redis.
+The follow-up run has already passed:
 
-The first, second and fourth groups have been fixed on `agent/driver-command-workflow`. The remaining work is to update the three test initializers and make the optional-driver force-linking compatible with the selected driver feature set, then rerun CI.
+- frontend unit tests;
+- Site SEO/i18n checks;
+- Rust toolchain setup;
+- Linux Tauri/WebKit dependency setup.
+
+It is currently in the Rust compilation/cache stage. The original Rust compile errors have been addressed in the source files except for three test struct literals in `src-tauri/src/commands/ai_integration_tests.rs`, which need `connection: None` because `WorkflowDefinition` now has the optional workflow-level Connection field. Those three initializers are in:
+
+- `workflow_save_list_get_delete`;
+- `workflow_execute_ai_step_with_wiremock`;
+- `workflow_history_clear_after_execute`.
 
 ## Remaining Feature Work
 
