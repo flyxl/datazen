@@ -437,8 +437,8 @@ function toConnectionClipboardFill(parsed: ParsedRedisClipboard): ConnectionClip
   };
 }
 
-function omitUndefined<T extends Record<string, unknown>>(obj: T): T {
+function omitUndefined(obj: ParsedRedisClipboard): ParsedRedisClipboard {
   return Object.fromEntries(
     Object.entries(obj).filter(([, value]) => value !== undefined),
-  ) as T;
+  ) as ParsedRedisClipboard;
 }
