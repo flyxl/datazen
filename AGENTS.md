@@ -189,7 +189,7 @@ pnpm e2e:core                          # 核心 UI（默认 skip-build）
 pnpm e2e:db / e2e:ai                   # 分组
 pnpm e2e:redis                         # Redis 深度 E2E（显式；specs 在 packages/drivers/redis/e2e/；不进默认 e2e）
 pnpm e2e:i18n-backup / e2e:path-ipc    # 备份·i18n / 路径 IPC
-# Kiwi E2E：仅 datazen-driver-kiwi 仓（Host 已移除 e2e/specs/kiwi.ts；pnpm e2e:kiwi 会提示并退出）
+# Kiwi E2E：datazen-driver-kiwi 仓 e2e/kiwi.ts；DATAZEN_DRIVERS=basic,kiwi pnpm e2e:kiwi（不进默认 pnpm e2e）
 ```
 
 PR 合并前：`pnpm test:unit` + `cargo test -p datazen --lib`（见 `.github/workflows/ci.yml`）。Path 驱动 UI 单测：`pnpm test:unit:drivers`（**不**含在 `pnpm test:unit` 内）。代码审查修复对照：[docs/code-review-2026-08-07-full.md](docs/code-review-2026-08-07-full.md)、[docs/progress-code-review-fix.md](docs/progress-code-review-fix.md)。
