@@ -254,82 +254,116 @@ pnpm e2e
 
 ---
 
+## 独立插件开发
+
+Datazen Plugin 可以放在独立 Git 仓库中开发。插件源码不需要放入 Datazen 仓库，也不需要通过运行时加载 `.so` / `.dylib` / `.dll`。Rust 插件会在 **Datazen 编译期**被编译并链接进 Datazen，插件的前端代码也会作为 Datazen 前端构建的一部分参与集成。
+
+推荐使用两个同级 Git 仓库：
+
+```text
+~/workspace/
+├── datazen/
+└── datazen-driver-mydb/
+```
+
+### 开发步骤
+
+1. Clone Datazen 和独立 Plugin 仓库，并保持两个仓库同级。
+2. 在 `datazen/drivers-registry.json` 中增加或修改插件配置，开发阶段使用 `source: "path"`：
+
+```json
+{
+  "mydb": {
+    "source": "path",
+    "path": "../datazen-driver-mydb",
+    "feature": "plugin-mydb"
+  }
+}
+```
+
+3. 从 Datazen 仓库启动开发环境，并通过 `--drivers` 选择插件：
+
+```bash
+cd ~/workspace/datazen
+pnpm tauri:dev --drivers=mydb
+```
+
+4. 在 `datazen-driver-mydb` 中继续修改 Rust 和前端代码，然后重新运行/构建 Datazen 验证集成。
+
+### `--drivers` 的含义
+
+`--drivers` 是**编译期 Driver 选择**，不是运行时动态插件加载。大致流程如下：
+
+```text
+--drivers=mydb
+      │
+      ▼
+drivers-registry.json
+      │
+      ▼
+resolve-drivers.mjs
+      │
+      ├── Cargo dependency / feature
+      └── frontend plugin registry
+      │
+      ▼
+Datazen build
+      │
+      ▼
+Datazen binary
+```
+
+因此可以在真实 Datazen 应用中同时调试 Plugin 的 Rust 和前端代码，而不需要维护一个单独的 Mock Host。
+
+### 开发与发布
+
+开发阶段使用本地路径：
+
+```text
+source = path
+path = ../datazen-driver-mydb
+```
+
+插件完成后，可以将 Datazen registry 中的配置切换为独立 Git 仓库，并固定到一个 commit：
+
+```json
+{
+  "mydb": {
+    "source": "git",
+    "git": "https://github.com/example/datazen-driver-mydb.git",
+    "ref": "<commit-sha>",
+    "feature": "plugin-mydb"
+  }
+}
+```
+
+插件仓库和 Datazen 仓库保持独立。Datazen 的 registry 修改通过 Pull Request 提交，只有 PR 被合并后才会影响共享的 `main` 分支。
+
+完整的独立插件开发流程、Rust/前端集成方式和发布步骤请参阅 **[独立插件开发指南](docs/independent-plugin-development.md)**。
+
+---
+
 ## 添加新的数据库类型
 
 DataZen 支持两种方式添加新数据库驱动：
 
 ### 方式 1：作为外部插件（推荐）
 
-在独立仓库中开发，构建时按需组合。详见 **[插件开发指南](docs/plugin-development.md)**。
+在独立仓库中开发，构建时按需组合。详见 **[插件开发指南](docs/independent-plugin-development.md)**。
 
 ```bash
 # 构建时指定包含的驱动（path 与/或 git）
 DATAZEN_DRIVERS=kiwi,olap pnpm tauri build
 
-# 预设：all = 全部 path；basic = 四核心
-DATAZEN_DRIVERS=all pnpm tauri build
-DATAZEN_DRIVERS=basic pnpm tauri build
+# 预设：all = 全部 path... 
 ```
 
-### 方式 2：作为 path 原生驱动
+### 方式 2：内置 Driver
 
-在 `packages/drivers/<id>/` 实现并登记到 `drivers-registry.json`（`source: path`）。
-
-**后端**：
-1. 在 `packages/drivers/<id>/` 实现 `DatabaseDriver` trait 并用 `register_driver!` 注册
-2. 构建前由 `resolve-drivers.mjs` 注入 Cargo feature
-
-**前端**：
-1. 在 `src/lib/databaseTypes.ts` 的 `BUILTIN_DB_REGISTRY` 添加元数据
-2. 在 `src/types/index.ts` 的 `BuiltinDatabaseType` 添加类型
-
-### 验收清单
-
-- [ ] 无 `databaseType === 'xxx'` 硬编码（行为差异由 `DB_REGISTRY` 元数据驱动）
-- [ ] 视图/表单组件内部无方言 if-else（使用 `sqlDialects/` 策略）
-- [ ] `npx vitest run` + `cargo test` 通过
-
----
-
-## 项目结构
-
-```
-datazen/
-├── src/                         # React 前端
-│   ├── components/              # 通用 UI 组件
-│   ├── windows/                 # 各窗口页面（main, connection, settings 等）
-│   ├── stores/                  # Zustand 状态管理
-│   ├── commands/                # Tauri IPC 命令封装
-│   ├── lib/                     # DB_REGISTRY, sqlDialects, connectionViews
-│   ├── plugins/generated.ts     # 自动生成的驱动注册（resolve-drivers.mjs 产出）
-│   ├── locales/                 # 国际化（中/英）
-│   └── types/                   # TypeScript 类型定义
-├── src-tauri/                   # Rust 后端
-│   ├── src/
-│   │   ├── db/                  # 内置数据库驱动 + registry
-│   │   ├── commands/            # Tauri IPC（按领域拆分）
-│   │   └── store/               # 本地持久化
-│   └── Cargo.toml
-├── packages/driver-api/         # 插件公共 API crate（traits + types + inventory）
-├── scripts/resolve-drivers.mjs  # 驱动选型 + 代码生成
-├── drivers-registry.json        # 驱动注册表（path/git/local）
-├── .plugins/                    # 构建时克隆的插件目录（gitignored）
-├── e2e/                         # E2E 测试
-├── docs/                        # 文档
-│   ├── rfc-plugin-system.md     # 插件系统 RFC
-│   └── plugin-development.md    # 插件开发指南
-├── Cargo.toml                   # Workspace 根配置
-└── AGENTS.md                    # AI Agent 项目指引
-```
-
----
-
-## Marketing assets / 推广素材
-
-Screenshots, OG image, Product Hunt copy, and launch posts: [`docs/marketing/`](docs/marketing/).
+如果 Driver 需要随 DataZen 主仓库一起维护，可以放在 `packages/drivers/` 下，并在 registry 中注册。
 
 ---
 
 ## License
 
-[GPLv3](LICENSE)
+GPL-3.0
