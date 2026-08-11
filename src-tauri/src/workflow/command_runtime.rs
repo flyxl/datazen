@@ -1,23 +1,18 @@
 //! Runtime bridge between Workflow Command Steps and Driver Commands.
 //!
-//! The workflow executor uses this module as the only database operation entry
-//! point. Driver-specific behavior remains behind `DatabaseDriver::execute_command`.
+//! Workflow database operations are dispatched through the same command API as
+//! IPC. This keeps driver-specific operations out of the workflow executor.
 
 use crate::commands::AppState;
 use crate::workflow::WorkflowCommandStep;
-use datazen_driver_api::CommandResult;
+use datazen_driver_api::{validate_command_input, CommandResult};
 
 pub fn resolve_connection_id<'a>(
     step: &'a WorkflowCommandStep,
     workflow_connection: Option<&'a str>,
 ) -> Result<&'a str, String> {
     step.effective_connection(workflow_connection)
-        .ok_or_else(|| {
-            format!(
-                "Command step '{}' requires a database connection",
-                step.id
-            )
-        })
+        .ok_or_else(|| format!("Command step '{}' requires a database connection", step.id))
 }
 
 pub async fn execute_command(
@@ -28,7 +23,7 @@ pub async fn execute_command(
     let connection_id = resolve_connection_id(step, workflow_connection)?;
     let (driver, handle) = app_state
         .connection_manager
-        .resolve_session(connection_id)
+        .get_connection(connection_id)
         .await
         .map_err(|e| format!("Failed to connect '{connection_id}': {e}"))?;
 
@@ -43,7 +38,7 @@ pub async fn execute_command(
             )
         })?;
 
-    let _permissions = definition.permissions;
+    validate_command_input(&definition, &step.input)?;
 
     driver
         .execute_command(&handle, &step.command, step.input.clone())
@@ -63,10 +58,7 @@ mod tests {
             Some("mongo-prod".into()),
             serde_json::json!({}),
         );
-        assert_eq!(
-            resolve_connection_id(&step, Some("mysql-prod")).unwrap(),
-            "mongo-prod"
-        );
+        assert_eq!(resolve_connection_id(&step, Some("mysql-prod")).unwrap(), "mongo-prod");
     }
 
     #[test]
@@ -77,10 +69,7 @@ mod tests {
             None,
             serde_json::json!({"sql": "SELECT 1"}),
         );
-        assert_eq!(
-            resolve_connection_id(&step, Some("mysql-prod")).unwrap(),
-            "mysql-prod"
-        );
+        assert_eq!(resolve_connection_id(&step, Some("mysql-prod")).unwrap(), "mysql-prod");
     }
 
     #[test]
