@@ -154,6 +154,7 @@ Workflow Command Runtime 同时被 Tauri IPC 使用，主要能力包括：
 - 获取指定 connection 支持的 Commands
 - 获取 Driver 支持的 Commands（无需 live Connection）
 - 执行指定 Driver Command（`connectionId` 或 `driverType`；后者仅允许 `requiresConnection = false`）
+- SQL 编辑器通过 `query` Command 执行；兼容 `execute_query` IPC 转发到同一路径
 - Workflow 的创建、读取、更新、删除与执行
 - Workflow execution history
 

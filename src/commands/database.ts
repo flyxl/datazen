@@ -3,13 +3,13 @@ import type {
   FilterCondition,
   KeyDetail,
   KeyScanResult,
-  MultiQueryResult,
   SortCondition,
   TableDataResult,
   TableInfo,
   TableSchema,
   Value,
 } from '../types';
+import { queryCommands } from './query';
 
 export interface CellUpdate {
   column: string;
@@ -61,7 +61,7 @@ export const databaseCommands = {
     }),
 
   executeSQL: (connectionId: string, sql: string) =>
-    invoke<MultiQueryResult>('execute_query', { connectionId, sql }),
+    queryCommands.executeQuery(connectionId, sql),
 
   kvScanKeys: (connectionId: string, dbIndex: number, pattern: string, cursor: number, count: number) =>
     invoke<KeyScanResult>('kv_scan_keys', { connectionId, dbIndex, pattern, cursor, count }),

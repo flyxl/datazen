@@ -3,7 +3,6 @@ use super::AppState;
 use crate::db::{ExplainResult, MultiQueryResult, Value};
 use crate::store::QueryHistoryEntry;
 use tauri::State;
-use uuid::Uuid;
 
 pub(crate) async fn execute_query_impl(
     state: &AppState,
@@ -12,67 +11,17 @@ pub(crate) async fn execute_query_impl(
 ) -> Result<MultiQueryResult, CommandError> {
     tracing::info!(%connection_id, sql_len = sql.len(), "execute_query");
     tracing::debug!(%connection_id, sql_preview = %sql.chars().take(500).collect::<String>(), "execute_query sql");
-    let settings = state.store.get_settings().await;
-    let limit = if settings.limit_select_results && settings.query_result_limit > 0 {
-        Some(settings.query_result_limit)
-    } else {
-        None
-    };
-
-    let (driver, handle) = state
-        .connection_manager
-        .get_connection(&connection_id)
-        .await
-        .cmd_err("execute_query")?;
-
-    match driver.query_multi(&handle, &sql, limit).await {
-        Ok(result) => {
-            tracing::info!(
-                %connection_id,
-                statements = result.results.len(),
-                ms = result.total_time_ms,
-                "execute_query OK"
-            );
-            if crate::cache::sql_may_mutate_schema(&sql) {
-                state.schema_cache.clear_connection(&connection_id).await;
-                tracing::debug!(%connection_id, "schema cache cleared after DDL");
-            }
-            let total_rows: u64 = result
-                .results
-                .iter()
-                .filter_map(|r| r.rows_affected)
-                .sum();
-            let entry = QueryHistoryEntry {
-                id: Uuid::new_v4().to_string(),
-                connection_id: connection_id.clone(),
-                database: String::new(),
-                sql: sql.clone(),
-                executed_at: chrono::Utc::now(),
-                execution_time_ms: result.total_time_ms,
-                rows_affected: Some(total_rows),
-                success: true,
-                error_message: None,
-            };
-            let _ = state.store.add_query_history(entry).await;
-            Ok(result)
-        }
-        Err(err) => {
-            tracing::error!(%connection_id, error = %err, "execute_query failed");
-            let entry = QueryHistoryEntry {
-                id: Uuid::new_v4().to_string(),
-                connection_id: connection_id.clone(),
-                database: String::new(),
-                sql: sql.clone(),
-                executed_at: chrono::Utc::now(),
-                execution_time_ms: 0,
-                rows_affected: None,
-                success: false,
-                error_message: Some(err.to_string()),
-            };
-            let _ = state.store.add_query_history(entry).await;
-            Err(CommandError::Driver(err))
-        }
-    }
+    let result = super::driver_command::execute_driver_command_impl(
+        state,
+        super::driver_command::ExecuteDriverCommandRequest {
+            connection_id: Some(connection_id),
+            driver_type: None,
+            command: "query".into(),
+            input: serde_json::json!({ "sql": sql }),
+        },
+    )
+    .await?;
+    serde_json::from_value(result.data).map_err(CommandError::Json)
 }
 
 pub(crate) async fn get_explain_impl(
