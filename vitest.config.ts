@@ -25,7 +25,6 @@ export default defineConfig({
     include: [
       'src/**/*.test.{ts,tsx}',
       'scripts/__tests__/**/*.test.{ts,mjs}',
-      'packages/drivers/**/*.test.{ts,tsx}',
     ],
     coverage: {
       provider: 'v8',

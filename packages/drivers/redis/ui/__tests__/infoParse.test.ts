@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseInfoSections } from '../../../../packages/drivers/redis/ui/infoParse';
+import { parseInfoSections } from '../infoParse';
 
 describe('parseInfoSections', () => {
   it('splits section headers', () => {
