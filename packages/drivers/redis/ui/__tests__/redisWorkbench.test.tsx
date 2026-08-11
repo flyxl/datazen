@@ -5,11 +5,11 @@ import {
   invokeSetString,
   invokeSetTtl,
   type PluginInvokeFn,
-} from '../../../../packages/drivers/redis/ui/KeyEditors';
+} from '../KeyEditors';
 import {
   invokeBatchDeletePattern,
   invokeDeleteKeys,
-} from '../../../../packages/drivers/redis/ui/BatchBar';
+} from '../BatchBar';
 
 describe('redis editor invoke helpers', () => {
   const invoke = vi.fn<PluginInvokeFn>().mockResolvedValue(undefined);
