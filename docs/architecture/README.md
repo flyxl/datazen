@@ -8,7 +8,7 @@ DataZen 是一个跨平台桌面数据库管理工具，基于 **Tauri v2**（Ru
 
 ## 架构全景
 
-```
+```text
 ┌───────────────────────────────────────────────────────────────────────┐
 │                          Tauri Application                            │
 │                  (GUI mode / headless MCP stdio mode)                 │
@@ -16,99 +16,186 @@ DataZen 是一个跨平台桌面数据库管理工具，基于 **Tauri v2**（Ru
 │                                                                       │
 │  ┌─────────────────────────────────────────────────────────────────┐ │
 │  │                     Frontend (React + TS)                        │ │
-│  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐           │ │
-│  │  │Connection│ │  Query   │ │   AI     │ │ Settings │           │ │
-│  │  │ Manager  │ │ Editor + │ │ Features │ │  Panel   │           │ │
-│  │  │          │ │  Chart   │ │ +Context │ │          │           │ │
-│  │  └────┬─────┘ └────┬─────┘ └────┬─────┘ └────┬─────┘           │ │
-│  │       │             │            │             │                  │ │
-│  │  ┌────┴─────┐ ┌─────┴────┐ ┌────┴─────┐                        │ │
-│  │  │ ER Diag  │ │DataExport│ │WorkflowWin│                        │ │
-│  │  └──────────┘ └──────────┘ └──────────┘                         │ │
-│  └───────┼────────────┼────────────┼────────────┼─────────────────┘ │
-│          └────────────┴────────────┴────────────┘                    │
-│                              │ Tauri IPC                             │
-│                              ▼                                       │
+│  │  Connection / Query / AI / Settings / Workflow                  │ │
+│  │  Command discovery + schema-driven Workflow Command editor      │ │
+│  └──────────────────────────────┬──────────────────────────────────┘ │
+│                                 │ Tauri IPC                           │
+│                                 ▼                                     │
 │  ┌─────────────────────────────────────────────────────────────────┐ │
 │  │                      Backend (Rust)                              │ │
-│  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────┐ ┌──────────┐ │ │
-│  │  │ Commands │ │ Services │ │    AI    │ │ MCP  │ │  Store   │ │ │
-│  │  │(16模块)  │ │(连接/查询)│ │(4 Provid)│ │(S/C) │ │(AES加密) │ │ │
-│  │  └────┬─────┘ └────┬─────┘ └────┬─────┘ └──┬───┘ └──────────┘ │ │
-│  │       └────────────┴────────────┘           │                   │ │
-│  │                    │                         │                   │ │
-│  │  ┌─────────────────┴──────────────────┐     │                   │ │
-│  │  │        Database Drivers Layer       │     │                   │ │
-│  │  │  ┌────┐ ┌────┐ ┌──────┐ ┌─────┐   │     │                   │ │
-│  │  │  │ PG │ │ My │ │SQLite│ │Redis│   │     │                   │ │
-│  │  │  └────┘ └────┘ └──────┘ └─────┘   │     │                   │ │
-│  │  │        + Plugin Drivers             │     │                   │ │
-│  │  └────────────────────────────────────┘     │                   │ │
-│  └─────────────────────────────────────────────┘                   │ │
-│                    │                     │                           │
-└────────────────────┼─────────────────────┼───────────────────────────┘
-                     ▼                     ▼
-            External Databases      LLM Providers
-            (PG, MySQL, etc.)   (OpenAI, Anthropic,
-                                 DeepSeek, Custom...)
+│  │  Commands / Services / AI / MCP / Workflow / Store              │ │
+│  │                                 │                                │ │
+│  │                                 ▼                                │ │
+│  │                    Driver Command Runtime                         │ │
+│  │              connection → definition → validation                │ │
+│  │                         → execute_command                         │ │
+│  │                                 │                                │ │
+│  │                    Database Drivers Layer                          │ │
+│  │             PG / MySQL / SQLite / Redis / Plugins                │ │
+│  └─────────────────────────────────────────────────────────────────┘ │
+│                    │                         │                        │
+└────────────────────┼─────────────────────────┼────────────────────────┘
+                     ▼                         ▼
+             External Databases          LLM Providers
 ```
 
 ## 分层架构
 
 | 层级 | 职责 | 关键特性 |
 |------|------|----------|
-| **Commands 层** | 处理前端 IPC 调用 | 17 个命令模块、参数验证、结构化错误、日志记录 |
-| **Services 层** | 业务逻辑处理 | 连接管理（含去重锁）、查询执行、DbTools 共享工具 |
-| **Drivers 层** | 数据库驱动抽象 | 统一接口、连接池管理、编译时插件扩展（inventory） |
-| **AI 层** | LLM 集成 | 4 内置 Provider、协议层复用、流式输出、Prompt 资源文件 + 覆盖 |
-| **MCP 层** | 工具协议 | Server 暴露能力、Client 连接外部、Workflows 工作流 |
-| **Sync 层** | 跨库数据同步 | IR 中间表示、O(N) 适配器 |
-| **Stores 层** | 本地持久化 | AES-256-GCM 加密存储、配置管理 |
+| **Commands 层** | 处理前端 IPC 调用 | 参数验证、结构化错误、日志记录、Driver Command IPC |
+| **Services 层** | 业务逻辑处理 | ConnectionManager、QueryExecutor、DbTools |
+| **Workflow 层** | YAML 工作流编排 | Command runtime、Connection inheritance、Legacy Query compatibility |
+| **Drivers 层** | 数据库驱动抽象 | `DatabaseDriver`、Command Definition、`execute_command`、inventory 插件扩展 |
+| **AI 层** | LLM 集成 | 多 Provider、协议复用、流式输出、Prompt Resolver |
+| **MCP 层** | 工具协议 | Server / Client、Workflow 调用 |
+| **Sync 层** | 跨库数据同步 | IR 中间表示、适配器 |
+| **Stores 层** | 本地持久化 | AES-256-GCM 加密存储 |
 
----
+## Driver Command 架构
+
+Driver 的能力通过 Command 暴露，而不是让 Workflow / UI 根据 Driver 类型写大量特殊分支。
+
+```text
+                         DatabaseDriver
+                              │
+                 ┌────────────┴────────────┐
+                 ▼                         ▼
+       command_definitions()       execute_command()
+                 │                         │
+                 ▼                         ▼
+      DriverCommandDefinition          CommandResult
+       ├── name                       ├── rows / data
+       ├── description                ├── affected rows
+       └── input_schema               └── metadata
+                 │
+                 ├───────────────┐
+                 ▼               ▼
+             Workflow           IPC / UI
+                 │               │
+                 └───────┬───────┘
+                         ▼
+                 Command Runtime
+```
+
+标准 `query` / `execute` Command 提供默认实现，以兼容现有 Driver。Driver 可以增加任意 Driver-specific Command，例如 NoSQL、KV、搜索或管理类操作。上层只依赖 Command Definition 和 JSON input/output，不需要知道具体 Driver 类型。
+
+## Workflow 架构
+
+Workflow 模块位于 `src-tauri/src/workflow/`，GUI、Tauri IPC、MCP 共用同一个执行引擎。
+
+```text
+WorkflowDefinition
+       │
+       ▼
+WorkflowExecutor
+       │
+       ├── Condition / ForEach / Ai
+       │
+       └── Command
+              │
+              ▼
+       command_runtime
+              │
+              ├── effective connection
+              ├── command discovery
+              ├── template resolution
+              ├── input schema validation
+              └── Driver::execute_command()
+```
+
+### Connection inheritance
+
+Workflow 可以设置默认 connection：
+
+```yaml
+connection: mysql-prod
+steps:
+  - type: command
+    command: query
+    input:
+      sql: SELECT * FROM users
+  - type: command
+    connection: postgres-prod
+    command: query
+    input:
+      sql: SELECT * FROM orders
+```
+
+Step 未指定 connection 时继承 Workflow 默认值；Step 显式指定时覆盖默认值。这样常见的多 Step 单 Connection 场景不需要重复配置连接。
+
+### Legacy Query
+
+旧版：
+
+```yaml
+type: query
+connection: mysql-prod
+database: reporting
+sql: SELECT * FROM users
+```
+
+仍然支持。执行前转换为内部 `Command("query")`，`database` 等旧字段保持兼容。旧 Query 和新 Command 进入相同 runtime。
+
+### Command Discovery
+
+前端编辑 Command Step 时通过当前有效 Connection 获取 Driver Command Definition，并根据 `input_schema` 生成输入编辑器：
+
+```text
+Effective Connection
+       ↓
+get_connection_commands()
+       ↓
+Driver::command_definitions()
+       ↓
+Command selector
+       ↓
+input_schema
+       ↓
+Schema-driven form
+```
+
+Connection 变化后重新 discovery；没有 Step override 时使用 Workflow 默认 connection。
 
 ## 后端文档
 
 | 文档 | 内容 |
 |------|------|
-| [数据库驱动层](backend/drivers.md) | DatabaseDriver trait（含 `supports_offset`/`supports_explain`）、驱动注册表、插件扩展机制 |
+| [数据库驱动层](backend/drivers.md) | DatabaseDriver trait、驱动注册表、插件扩展机制 |
 | [Schema 缓存](backend/cache.md) | 两级 TTL 缓存架构、缓存失效策略、查询执行优化 |
-| [服务层](backend/services.md) | ConnectionManager（连接去重锁）、QueryExecutor（分页）、DbTools（共享工具） |
-| [持久化存储](backend/store.md) | AES-256-GCM 加密本地文件存储、配置/历史/收藏/Prompt覆盖管理 |
-| [IPC 命令层](backend/commands.md) | 17 个 Tauri Commands 模块、AppState 结构、CommandError 错误处理 |
-| [运行时主题包](backend/theme.md) | 本地 ZIP 安装、`{appData}/themes/`、校验白名单、theme IPC、与驱动插件独立 |
-| [AI 模块](backend/ai.md) | AiProvider trait、4 内置 Provider、protocol 层、PromptResolver（资源文件 + 覆盖） |
-| [MCP 模块](backend/mcp.md) | MCP Server（Tools/Resources/Prompts）、MCP Client、双运行模式 |
-| [Workflow 模块](backend/workflow.md) | YAML Workflow 引擎、执行历史；GUI/IPC/MCP 共用；用户手册见 [../workflow-guide.md](../workflow-guide.md) |
-| [Schema Diff Deploy](backend/schema-diff.md) | 源=目标态 → DDL 计划 → 审阅部署；与 sync IR 联动；用户手册见 [../schema-diff-deploy.md](../schema-diff-deploy.md) |
+| [服务层](backend/services.md) | ConnectionManager、QueryExecutor、DbTools |
+| [持久化存储](backend/store.md) | AES-256-GCM 加密本地文件存储 |
+| [IPC 命令层](backend/commands.md) | Tauri Commands、AppState、CommandError |
+| [运行时主题包](backend/theme.md) | 本地 ZIP 安装、theme IPC、与驱动插件独立 |
+| [AI 模块](backend/ai.md) | AiProvider、Provider protocol、PromptResolver |
+| [MCP 模块](backend/mcp.md) | MCP Server、MCP Client、双运行模式 |
+| [Workflow 模块](backend/workflow.md) | YAML Workflow、Command runtime、Connection inheritance、Legacy Query、执行历史 |
+| [Schema Diff Deploy](backend/schema-diff.md) | Schema diff / DDL plan / deploy |
 
 ## 前端文档
 
 | 文档 | 内容 |
 |------|------|
-| [状态管理](frontend/state.md) | 8 个 Zustand stores、事件处理、跨窗口通信 |
-| [组件与布局](frontend/components.md) | DataTable、ER 图、PathInput、虚拟滚动、图表；**主题系统**（内置 token + 运行时 ThemePack） |
-| [AI 功能](frontend/ai.md) | AI 组件（AiInput、ContextPicker、Chat、NL2SQL）、@ 上下文引用、SQL 编辑器方言 |
+| [状态管理](frontend/state.md) | Zustand stores、事件处理、跨窗口通信 |
+| [组件与布局](frontend/components.md) | DataTable、ER 图、PathInput、主题系统 |
+| [AI 功能](frontend/ai.md) | AI 组件、@ 上下文引用、SQL 编辑器方言 |
 | [扩展性](frontend/extensibility.md) | DB 类型扩展、DatabaseTypeMeta、插件系统、plugin-sdk |
 
 ## 横切关注点
 
 | 文档 | 内容 |
 |------|------|
-| [安全措施](security.md) | AES-256-GCM 加密、CSP、路径遍历防护、文件扩展名白名单、AI Key 安全 |
+| [安全措施](security.md) | AES-256-GCM、CSP、路径遍历防护、文件扩展名白名单、AI Key 安全 |
 | [窗口管理](windows.md) | 多窗口架构、Rust 端窗口创建、macOS acceptFirstMouse、windowKind URL 路由 |
-| [测试策略](testing.md) | Rust / Vitest / E2E 概览；**跑通 E2E 必读** [../e2e-testing.md](../e2e-testing.md) |
+| [测试策略](testing.md) | Rust / Vitest / E2E 概览 |
 
 ## 其他文档
 
 - [竞品对比：Navicat / TablePlus / DataGrip](../competitive-comparison.md)
-- [Workflow 使用手册](../workflow-guide.md)（YAML 语法、模板、跨库、排错）
+- [Workflow 使用手册](../workflow-guide.md)
 - [产品需求文档 (PRD)](../PRD.md)
 - [插件系统 RFC](../rfc-plugin-system.md)
 - [AI 功能 RFC](../rfc-ai-features.md)
-- [AI 功能开发进度](../ai-features-progress.md)
 - [数据同步 IR 设计](../plan-sync-ir.md)
 - [插件开发指南](../plugin-development.md)
-- [运行时主题包设计](../superpowers/specs/2026-08-08-runtime-theme-packs-design.md)（本地安装已实现；商店延后）
-- [图表可视化设计](../chart-visualization-design.md)
-- [代码审查报告](../code-review-2026-08-01-958f1b6.md)
+- [运行时主题包设计](../superpowers/specs/2026-08-08-runtime-theme-packs-design.md)
