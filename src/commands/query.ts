@@ -1,9 +1,16 @@
 import { invoke } from '@tauri-apps/api/core';
 import type { ExplainResult, FavoriteQuery, MultiQueryResult, QueryHistoryEntry } from '../types';
+import { driverCommands } from './driver';
 
 export const queryCommands = {
-  executeQuery: (connectionId: string, sql: string) =>
-    invoke<MultiQueryResult>('execute_query', { connectionId, sql }),
+  executeQuery: async (connectionId: string, sql: string) => {
+    const result = await driverCommands.execute({
+      connectionId,
+      command: 'query',
+      input: { sql },
+    });
+    return result.data as MultiQueryResult;
+  },
 
   getExplain: (connectionId: string, sql: string) =>
     invoke<ExplainResult>('get_explain', { connectionId, sql }),

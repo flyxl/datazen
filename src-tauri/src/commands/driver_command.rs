@@ -41,6 +41,63 @@ fn nonempty(value: Option<&String>) -> Option<&str> {
     value.map(String::as_str).map(str::trim).filter(|s| !s.is_empty())
 }
 
+async fn apply_query_result_limit(state: &AppState, input: &mut serde_json::Value) {
+    if input.get("limit").is_some() {
+        return;
+    }
+    let settings = state.store.get_settings().await;
+    if settings.limit_select_results && settings.query_result_limit > 0 {
+        input["limit"] = serde_json::json!(settings.query_result_limit);
+    }
+}
+
+fn sql_from_input(input: &serde_json::Value) -> Option<String> {
+    input
+        .get("sql")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+}
+
+async fn record_sql_command_outcome(
+    state: &AppState,
+    connection_id: Option<&str>,
+    sql: &str,
+    success: bool,
+    execution_time_ms: u64,
+    rows_affected: Option<u64>,
+    error_message: Option<String>,
+) {
+    let Some(connection_id) = connection_id else {
+        return;
+    };
+    let entry = crate::store::QueryHistoryEntry {
+        id: uuid::Uuid::new_v4().to_string(),
+        connection_id: connection_id.to_string(),
+        database: String::new(),
+        sql: sql.to_string(),
+        executed_at: chrono::Utc::now(),
+        execution_time_ms,
+        rows_affected,
+        success,
+        error_message,
+    };
+    let _ = state.store.add_query_history(entry).await;
+}
+
+fn query_rows_affected(data: &serde_json::Value) -> Option<u64> {
+    if let Some(rows) = data.get("rowsAffected").and_then(|v| v.as_u64()) {
+        return Some(rows);
+    }
+    let results = data.get("results")?.as_array()?;
+    Some(
+        results
+            .iter()
+            .filter_map(|r| r.get("rowsAffected").and_then(|v| v.as_u64()))
+            .sum(),
+    )
+}
+
 async fn resolve_command_driver(
     state: &AppState,
     connection_id: Option<&String>,
@@ -98,7 +155,7 @@ pub(crate) async fn execute_driver_command_impl(
 
 pub(crate) async fn execute_driver_command_with_mode(
     state: &AppState,
-    request: ExecuteDriverCommandRequest,
+    mut request: ExecuteDriverCommandRequest,
     permission_mode: Option<McpPermissionMode>,
 ) -> Result<CommandResult, CommandError> {
     let (driver, handle, bound) = resolve_command_driver(
@@ -126,12 +183,17 @@ pub(crate) async fn execute_driver_command_with_mode(
         )));
     }
 
+    let is_sql_command = matches!(definition.id.as_str(), "query" | "execute");
+    if definition.id == "query" {
+        apply_query_result_limit(state, &mut request.input).await;
+    }
+
     validate_command_input(&definition, &request.input)
         .map_err(CommandError::Validation)?;
     check_command_access(&definition, access_level_for_mode(permission_mode))
         .map_err(CommandError::Validation)?;
 
-    if matches!(definition.id.as_str(), "query" | "execute") {
+    if is_sql_command {
         if let Some(mode) = permission_mode {
             if let Some(sql) = request.input.get("sql").and_then(|v| v.as_str()) {
                 crate::mcp::permission::check_sql_allowed(sql, mode)
@@ -140,10 +202,67 @@ pub(crate) async fn execute_driver_command_with_mode(
         }
     }
 
-    driver
+    let sql = sql_from_input(&request.input);
+    let connection_id = nonempty(request.connection_id.as_ref()).map(str::to_string);
+    tracing::info!(
+        command = %request.command,
+        connection_id = connection_id.as_deref().unwrap_or(""),
+        sql_len = sql.as_ref().map(|s| s.len()).unwrap_or(0),
+        "execute_driver_command"
+    );
+    if let Some(sql) = sql.as_ref() {
+        tracing::debug!(sql_preview = %sql.chars().take(500).collect::<String>(), "execute_driver_command sql");
+    }
+
+    match driver
         .execute_command(&handle, &request.command, request.input)
         .await
-        .cmd_err("execute_driver_command")
+    {
+        Ok(result) => {
+            if is_sql_command {
+                if let Some(sql) = sql.as_deref() {
+                    let execution_time_ms = result
+                        .data
+                        .get("totalTimeMs")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0);
+                    record_sql_command_outcome(
+                        state,
+                        connection_id.as_deref(),
+                        sql,
+                        true,
+                        execution_time_ms,
+                        query_rows_affected(&result.data),
+                        None,
+                    )
+                    .await;
+                    if crate::cache::sql_may_mutate_schema(sql) {
+                        if let Some(id) = connection_id.as_deref() {
+                            state.schema_cache.clear_connection(id).await;
+                        }
+                    }
+                }
+            }
+            Ok(result)
+        }
+        Err(err) => {
+            if is_sql_command {
+                if let Some(sql) = sql.as_deref() {
+                    record_sql_command_outcome(
+                        state,
+                        connection_id.as_deref(),
+                        sql,
+                        false,
+                        0,
+                        None,
+                        Some(err.to_string()),
+                    )
+                    .await;
+                }
+            }
+            Err(err).cmd_err("execute_driver_command")
+        }
+    }
 }
 
 /// Discover commands from a Driver type. No live Connection is required.
@@ -223,7 +342,7 @@ mod tests {
         let result = execute_driver_command_impl(
             &test.state,
             ExecuteDriverCommandRequest {
-                connection_id: Some(conn_id),
+                connection_id: Some(conn_id.clone()),
                 driver_type: None,
                 command: "query".into(),
                 input: serde_json::json!({ "sql": "SELECT 1" }),
@@ -232,6 +351,8 @@ mod tests {
         .await
         .unwrap();
         assert!(result.data.get("results").is_some() || result.data.get("columns").is_some() || result.data.is_object());
+        let history = test.state.store.get_query_history(10).await;
+        assert!(history.iter().any(|e| e.connection_id == conn_id && e.success));
     }
 
     #[tokio::test]
