@@ -203,7 +203,7 @@ Rust 修改后，Cargo 会重新编译受影响的 Plugin 代码。前端修改�
 
 ## 8. 独立测试插件
 
-Plugin 仓库应该维护自己的测试和 CI。至少应该尽可能独立测试 Driver 实现。
+Plugin 仓库应该维护自己的测试和 CI。至少应该尽可能独立测试 Driver 实现。**不要把驱动专属测试写进 Host**（`src-tauri/`、`src/`、`e2e/specs/`）。本仓 path 驱动同样：测试落在 `packages/drivers/<id>/`（`#[cfg(test)]`、`tests/`、`ui/__tests__/`、`e2e/`）。见 [AGENTS.md](../AGENTS.md)「驱动测试落点」。
 
 例如：
 

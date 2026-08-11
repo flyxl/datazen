@@ -5,13 +5,13 @@
 //! env and/or the repo-root `.env` file (`TEST_PG_*` keys, same as workflow tests).
 //!
 //! Run (skip if no Postgres):
-//!   cargo test -p datazen --test postgres_use_database -- --nocapture
+//!   cargo test -p datazen-driver-postgres --test postgres_use_database -- --nocapture
 //!
 //! Force live run with env (example — use your own secrets, do not commit them):
 //!   TEST_PG_HOST=127.0.0.1 TEST_PG_PORT=5432 TEST_PG_USER=goecoride \
 //!   TEST_PG_PASSWORD= TEST_PG_DATABASE=goecoride \
 //!   TEST_PG_DATABASE_B=postgres \
-//!   cargo test -p datazen --test postgres_use_database -- --nocapture
+//!   cargo test -p datazen-driver-postgres --test postgres_use_database -- --nocapture
 //!
 //! Fixture assumption: database_a has a `users` table; database_b does not.
 
