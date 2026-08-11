@@ -10,6 +10,9 @@ exclude = [
     ".plugins/*",
 ]
 
+[workspace.dependencies]
+datazen-driver-api = { path = "packages/driver-api" }
+
 [profile.dev]
 incremental = true
 
