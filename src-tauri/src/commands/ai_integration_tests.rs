@@ -353,6 +353,7 @@ async fn workflow_save_list_get_delete() {
         version: Some("1".into()),
         author: None,
         variables: vec![],
+        connection: None,
         steps: vec![WorkflowStep::Ai {
             id: "s1".into(),
             prompt: "Say hi".into(),
@@ -874,6 +875,7 @@ async fn workflow_execute_ai_step_with_wiremock() {
         version: None,
         author: None,
         variables: vec![],
+        connection: None,
         steps: vec![WorkflowStep::Ai {
             id: "ai1".into(),
             prompt: "Say hello".into(),
@@ -1011,6 +1013,7 @@ async fn workflow_history_clear_after_execute() {
         version: None,
         author: None,
         variables: vec![],
+        connection: None,
         steps: vec![WorkflowStep::Ai {
             id: "a".into(),
             prompt: "x".into(),
