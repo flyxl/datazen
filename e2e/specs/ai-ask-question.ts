@@ -78,6 +78,14 @@ async function openWorkflowFromMain(mainHandle: string) {
   return wfWindow;
 }
 
+async function openWorkflowAiChat() {
+  const aiBtn = await $('button[title="AI 创建工作流"]');
+  if (await aiBtn.isExisting()) {
+    await aiBtn.click();
+    await browser.pause(800);
+  }
+}
+
 const MOCK_QUESTIONS = [
   {
     id: 'db_type',
@@ -105,30 +113,37 @@ const MOCK_QUESTIONS = [
  * Injects a simulated AI chat message containing AskQuestion blocks
  * into the current aiStore chatSession (via XML-parsed questions).
  */
-async function injectAskQuestionMessage() {
-  return browser.execute((qs: typeof MOCK_QUESTIONS) => {
-    const content = `I can help you set up a database query workflow. Let me ask a few questions first.`;
-    const zustandStores = (window as any).__zustand_stores;
-    if (zustandStores) {
-      for (const store of zustandStores.values()) {
-        const state = store.getState();
-        if (state.chatSession) {
-          store.setState({
-            chatSession: {
-              ...state.chatSession,
-              messages: [
-                ...state.chatSession.messages,
-                { role: 'user', content: 'Help me create a workflow' },
-                { role: 'assistant', content, questions: qs },
-              ],
-            },
-          });
-          return true;
-        }
-      }
+function injectIntoAiStore(messages: unknown[]) {
+  return browser.execute((msgs: unknown[]) => {
+    const store = (window as any).__datazenAiStore;
+    if (!store?.getState) return false;
+    const state = store.getState();
+    if (typeof state.initWorkflowChat === 'function' && !state.workflowChat) {
+      state.initWorkflowChat();
     }
-    return false;
-  }, MOCK_QUESTIONS);
+    const next = store.getState();
+    const key = next.workflowChat ? 'workflowChat' : next.chatSession ? 'chatSession' : null;
+    if (!key) return false;
+    const session = next[key];
+    store.setState({
+      isConfigured: true,
+      [key]: {
+        ...session,
+        messages: [...(session.messages || []), ...msgs],
+        isStreaming: false,
+      },
+    });
+    return true;
+  }, messages);
+}
+
+async function injectAskQuestionMessage() {
+  await openWorkflowAiChat();
+  const content = `I can help you set up a database query workflow. Let me ask a few questions first.`;
+  return injectIntoAiStore([
+    { role: 'user', content: 'Help me create a workflow' },
+    { role: 'assistant', content, questions: MOCK_QUESTIONS },
+  ]);
 }
 
 /**
@@ -136,36 +151,19 @@ async function injectAskQuestionMessage() {
  * (function calling approach) into the current aiStore chatSession.
  */
 async function injectToolCallAskQuestionMessage() {
-  return browser.execute((qs: typeof MOCK_QUESTIONS) => {
-    const content = `Let me gather some information to help you.`;
-    const toolCalls = [
-      {
-        id: 'call_abc123',
-        name: 'ask_questions',
-        arguments: JSON.stringify({ questions: qs }),
-      },
-    ];
-    const zustandStores = (window as any).__zustand_stores;
-    if (zustandStores) {
-      for (const store of zustandStores.values()) {
-        const state = store.getState();
-        if (state.chatSession) {
-          store.setState({
-            chatSession: {
-              ...state.chatSession,
-              messages: [
-                ...state.chatSession.messages,
-                { role: 'user', content: 'Help me create a workflow' },
-                { role: 'assistant', content, questions: qs, toolCalls },
-              ],
-            },
-          });
-          return true;
-        }
-      }
-    }
-    return false;
-  }, MOCK_QUESTIONS);
+  await openWorkflowAiChat();
+  const content = `Let me gather some information to help you.`;
+  const toolCalls = [
+    {
+      id: 'call_abc123',
+      name: 'ask_questions',
+      arguments: JSON.stringify({ questions: MOCK_QUESTIONS }),
+    },
+  ];
+  return injectIntoAiStore([
+    { role: 'user', content: 'Help me create a workflow' },
+    { role: 'assistant', content, questions: MOCK_QUESTIONS, toolCalls },
+  ]);
 }
 
 describe('AI AskQuestion Interaction (E2E)', () => {
@@ -228,7 +226,8 @@ describe('AI AskQuestion Interaction (E2E)', () => {
 
   it('问题 UI 应渲染选项按钮和自定义输入框', async () => {
     await openWorkflowFromMain(mainWindow);
-    await browser.pause(1000);
+    await openWorkflowAiChat();
+    await browser.pause(500);
 
     // Inject a simulated message with questions to test UI rendering
     const injected = await injectAskQuestionMessage();
@@ -390,18 +389,12 @@ describe('AI AskQuestion Interaction (E2E)', () => {
     await browser.pause(500);
 
     const hasToolCalls = await browser.execute(() => {
-      const zustandStores = (window as any).__zustand_stores;
-      if (zustandStores) {
-        for (const store of zustandStores.values()) {
-          const state = store.getState();
-          if (state.chatSession) {
-            const msgs = state.chatSession.messages;
-            const lastAssistant = [...msgs].reverse().find((m: any) => m.role === 'assistant');
-            return !!(lastAssistant && lastAssistant.toolCalls && lastAssistant.toolCalls.length > 0);
-          }
-        }
-      }
-      return false;
+      const store = (window as any).__datazenAiStore;
+      const state = store?.getState?.();
+      const session = state?.workflowChat ?? state?.chatSession;
+      const msgs = session?.messages ?? [];
+      const lastAssistant = [...msgs].reverse().find((m: { role?: string; toolCalls?: unknown[] }) => m.role === 'assistant');
+      return !!(lastAssistant && lastAssistant.toolCalls && lastAssistant.toolCalls.length > 0);
     });
     expect(hasToolCalls).toBe(true);
   });

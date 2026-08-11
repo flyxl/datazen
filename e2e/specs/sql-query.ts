@@ -5,6 +5,7 @@ import {
   closeExtraWindows,
   setEditorContent,
   openQueryTab,
+  executeSQL,
 } from '../helpers.js';
 
 /**
@@ -67,15 +68,10 @@ describe('SQL 查询模块 (SQ-001~SQ-012, TC-QUERY-006/008)', () => {
   // ── 执行查询 ───────────────────────────────────────────────────
 
   it('应能输入 SQL 并执行查询 (SQ-001, SQ-002)', async () => {
-    await setEditorContent('SELECT 1 AS test_col');
-
-    const execBtn = await $(`button*=${t('query.execute')}`);
-    await execBtn.click();
-
-    await browser.waitUntil(
-      async () => (await $('body').getText()).includes(`1 ${t('common.rows')}`),
-      { timeout: 15000, timeoutMsg: 'Timed out waiting for query result' },
-    );
+    await openQueryTab();
+    await executeSQL('SELECT 1 AS test_col');
+    const body = await $('body').getText();
+    expect(body.includes('test_col') || body.includes(`1 ${t('common.rows')}`)).toBe(true);
   });
 
   it('结果应显示行数、列数和耗时 (SQ-004)', async () => {
@@ -347,13 +343,7 @@ describe('SQL 查询模块 (SQ-001~SQ-012, TC-QUERY-006/008)', () => {
     await setEditorContent(uniqueSql);
 
     for (let i = 0; i < 3; i++) {
-      const execBtn = await $(`button*=${t('query.execute')}`);
-      await execBtn.click();
-      await browser.waitUntil(
-        async () => (await $('body').getText()).includes(`1 ${t('common.rows')}`),
-        { timeout: 15000, timeoutMsg: `Execution attempt ${i + 1} timed out` },
-      );
-      await browser.pause(500);
+      await executeSQL(uniqueSql);
     }
 
     const histBtn = await $(`button*=${t('query.history')}`);

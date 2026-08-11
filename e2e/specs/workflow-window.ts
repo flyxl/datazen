@@ -30,8 +30,9 @@ const TEST_WORKFLOW_ID = 'e2e-wf-tab-test';
 const FOCUS_TEST_WF_ID = 'e2e-wf-focus-test';
 
 async function seedTestWorkflow() {
-  const conns = await invokeBackend<{ id: string }[]>('get_connections');
-  const connId = conns.length > 0 ? conns[0].id : undefined;
+  const conns = await invokeBackend<{ id: string; name?: string }[]>('get_connections');
+  const seeded = conns.find((c) => c.id === 'conn_e2e_pg' || c.name === '本地 PostgreSQL');
+  const connId = seeded?.id ?? conns[0]?.id;
 
   const workflow = {
     id: TEST_WORKFLOW_ID,
@@ -99,7 +100,19 @@ async function selectWorkflow() {
 }
 
 async function executeAndWait() {
-  const clicked = await findAndClickButton(['执行', 'Execute']);
+  const clicked = await browser.execute(() => {
+    const buttons = document.querySelectorAll('button');
+    for (const btn of buttons) {
+      if (btn.hasAttribute('disabled')) continue;
+      const text = (btn.textContent || '').trim();
+      // "执行记录" also contains 执行 — require an exact action label.
+      if (text === '执行' || text === 'Execute') {
+        btn.click();
+        return true;
+      }
+    }
+    return false;
+  });
   expect(clicked).toBe(true);
 
   await browser.waitUntil(async () => {
