@@ -4,6 +4,7 @@ use async_trait::async_trait;
 use std::collections::HashMap;
 
 use crate::types::*;
+use crate::{execute_command_definition, query_command_definition, CommandResult, DriverCommandDefinition};
 
 #[async_trait]
 pub trait DatabaseDriver: Send + Sync {
@@ -143,6 +144,58 @@ pub trait DatabaseDriver: Send + Sync {
     ) -> Result<QueryResult, DriverError>;
 
     async fn execute(&self, handle: &ConnectionHandle, sql: &str) -> Result<u64, DriverError>;
+
+    /// Return commands supported by this driver.
+    ///
+    /// Existing SQL drivers get the standard `query` and `execute` commands.
+    /// A driver with additional capabilities can override this method and append
+    /// its own command definitions.
+    fn command_definitions(&self) -> Vec<DriverCommandDefinition> {
+        vec![query_command_definition(), execute_command_definition()]
+    }
+
+    /// Execute a driver command.
+    ///
+    /// The default implementation maps the existing SQL APIs to commands so
+    /// existing drivers remain source-compatible. Driver plugins can override
+    /// this method to implement driver-specific commands without adding another
+    /// application-level dispatch path.
+    async fn execute_command(
+        &self,
+        handle: &ConnectionHandle,
+        command: &str,
+        input: serde_json::Value,
+    ) -> Result<CommandResult, DriverError> {
+        match command {
+            "query" => {
+                let sql = input
+                    .get("sql")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| DriverError::InvalidConfig("command 'query' requires string input 'sql'".into()))?;
+                let limit = input
+                    .get("limit")
+                    .and_then(|v| v.as_u64())
+                    .map(|v| v.min(u32::MAX as u64) as u32);
+                let result = self.query_multi(handle, sql, limit).await?;
+                let data = serde_json::to_value(result)
+                    .map_err(|e| DriverError::QueryFailed(format!("failed to serialize query result: {e}")))?;
+                Ok(CommandResult::new(data))
+            }
+            "execute" => {
+                let sql = input
+                    .get("sql")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| DriverError::InvalidConfig("command 'execute' requires string input 'sql'".into()))?;
+                let rows_affected = self.execute(handle, sql).await?;
+                Ok(CommandResult::new(serde_json::json!({
+                    "rowsAffected": rows_affected
+                })))
+            }
+            other => Err(DriverError::Unsupported(format!(
+                "unsupported driver command: {other}"
+            ))),
+        }
+    }
 
     async fn begin_transaction(
         &self,
