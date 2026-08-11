@@ -1,6 +1,6 @@
 use super::error::{CmdExt, CommandError};
 use super::AppState;
-use crate::db::{ExplainResult, MultiQueryResult, Value};
+use crate::db::{ExplainResult, MultiQueryResult};
 use crate::store::QueryHistoryEntry;
 use tauri::State;
 
@@ -190,7 +190,7 @@ mod log_hygiene_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::{ColumnSchema, ExplainResult};
+    use crate::db::{ColumnSchema, ExplainResult, Value};
     use crate::store::AppSettings;
     use crate::testing::app_state::TestAppState;
     use crate::testing::mock_driver::MockDriverOptions;

@@ -72,6 +72,7 @@ pub enum HistoryDbError {
 }
 
 pub struct HistoryDb {
+    #[allow(dead_code)] // exposed via `db_path()` for the upcoming cleanup/purge flows
     db_path: PathBuf,
     conn: Mutex<Connection>,
 }

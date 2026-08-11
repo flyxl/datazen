@@ -17,6 +17,7 @@ pub struct JsonDelResult {
 }
 
 /// Returns true when `MODULE LIST` includes ReJSON / RedisJSON.
+#[allow(dead_code)] // used by upcoming JSON console / RedisJSON capability detection
 pub fn has_redis_json(modules: &[String]) -> bool {
     modules.iter().any(|name| {
         let lower = name.to_ascii_lowercase();

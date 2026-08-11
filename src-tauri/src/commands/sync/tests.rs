@@ -174,6 +174,7 @@ fn ir_col(name: &str, ir_type: IRType, nullable: bool, is_primary_key: bool) -> 
         assert!(diff.changed[0].changes.contains(&"dataType".into()));
     }
 
+    #[test]
     fn diff_table_schemas_detects_added_removed_changed() {
         let src = table(
             "users",

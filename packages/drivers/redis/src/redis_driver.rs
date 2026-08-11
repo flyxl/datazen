@@ -103,27 +103,6 @@ impl RedisDriver {
             .ok_or_else(|| DriverError::ConnectionFailed("Redis connection not found".into()))
     }
 
-    fn build_url(config: &ConnectionConfig) -> String {
-        match build_connection_plan(config) {
-            Ok(ConnectionPlan::Standalone(p)) => p.url,
-            Ok(ConnectionPlan::Cluster(p)) => p
-                .node_urls
-                .first()
-                .cloned()
-                .unwrap_or_else(|| "redis://127.0.0.1:6379".into()),
-            Ok(ConnectionPlan::Sentinel(p)) => p
-                .sentinel_urls
-                .first()
-                .cloned()
-                .unwrap_or_else(|| "redis://127.0.0.1:26379".into()),
-            Err(_) => {
-                let host = config.host.as_deref().unwrap_or("127.0.0.1");
-                let port = config.port.unwrap_or(6379);
-                format!("redis://{host}:{port}/0")
-            }
-        }
-    }
-
     async fn select_db(live: &mut RedisLiveConn, db_index: u32) -> Result<(), String> {
         with_redis_conn!(live, |conn| select_db_on(conn, db_index).await)
     }
