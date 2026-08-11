@@ -54,9 +54,12 @@ pnpm e2e:path-ipc
 
 ## 插件自有测试（Host 默认不拉）
 
+**驱动相关 E2E / 单测写在对应驱动 crate，不要往 `e2e/specs/` 加驱动方言或专属 Command 用例。** 见 [AGENTS.md](../AGENTS.md)「驱动测试落点」。
+
 | 类型 | 命令 / 位置 |
 |------|-------------|
-| Path 驱动 UI 单测 | `pnpm test:unit:drivers`（**不是** `pnpm test:unit`） |
+| Path 驱动 UI 单测 | `pnpm test:unit:drivers`（**不是** `pnpm test:unit`）→ `packages/drivers/<id>/ui/__tests__/` |
+| Path 驱动 Rust | `cargo test -p datazen-driver-<id>`（**不是** `-p datazen`） |
 | Redis E2E | `pnpm e2e:redis` → `packages/drivers/redis/e2e/` |
 | Kiwi E2E | 在 `datazen-driver-kiwi` 执行 `pnpm e2e:kiwi`（定位 Host 后跑本仓 spec） |
 

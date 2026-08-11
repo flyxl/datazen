@@ -9,7 +9,7 @@ DataZen 是一个跨平台桌面数据库管理工具，基于 **Tauri v2**（Ru
 - **框架**：Tauri v2 + React 18 + TypeScript + Tailwind CSS 4
 - **包管理**：pnpm（前端）、Cargo workspace（Rust）
 - **状态管理**：Zustand
-- **测试**：Vitest（单元）、WebdriverIO（E2E）、手工黑盒测试（`test/`）
+- **测试**：Vitest（Host 单元）、驱动 crate 内单测/E2E、WebdriverIO（Host E2E）、手工黑盒（`test/`）
 - **AI**：多 Provider（OpenAI / Anthropic / DeepSeek / Custom）、MCP Server/Client
 - **运行模式**：GUI 桌面应用 或 无头 MCP stdio 服务器（`--mcp-stdio`）
 
@@ -44,9 +44,10 @@ datazen/
 ├── packages/
 │   ├── driver-api/              # DatabaseDriver + Command API + inventory + ReuseDriver
 │   ├── ai-api/                  # AiProvider trait + factory
-│   ├── drivers/                 # path 驱动 + http-support；Git 驱动 clone 到同级（gitignored）
+│   ├── drivers/                 # path 驱动 crate（测试也写在各 crate 内）
+│   │   └── <id>/                # Rust `src/` + `tests/`；UI `ui/__tests__/`；E2E `e2e/`
 │   └── themes/                  # 主题包预留
-├── e2e/                         # WebdriverIO E2E 测试
+├── e2e/                         # Host WebdriverIO E2E（通用 UI / IPC；非驱动方言）
 ├── test/                        # 手工黑盒测试
 └── docs/                        # 架构文档、RFC、进度
 ```
@@ -75,6 +76,7 @@ DATAZEN_DRIVERS=all pnpm tauri:build
 - 前端 `DB_REGISTRY` 合并 `generated.ts` 的 `DRIVER_DB_ENTRIES`
 - 默认 DB 图标来自 `packages/drivers/*/ui/icons/{dbType}.svg`
 - 关键 trait 方法包括 `supports_offset()`、`supports_explain()`、`prompt_overrides()`
+- **驱动相关测试必须写在该驱动 crate 内**，不要加到 Host（`src-tauri/`、`src/`、`e2e/specs/`）。详见下方「驱动测试落点」
 
 ### Driver Command API
 
@@ -262,8 +264,9 @@ pnpm build                             # 构建前端（不 inject；打包前�
 pnpm build:with-drivers                # 单独前端构建并 inject/restore
 pnpm tauri:build                       # 完整应用（外层 inject 一次）
 npx vitest run                         # Host 前端单元测试（不含 packages/drivers）
-pnpm test:unit:drivers                 # Path 驱动 UI 单测（含 Redis）
-cargo test -p datazen                  # Rust 单元测试
+pnpm test:unit:drivers                 # Path 驱动 UI 单测（packages/drivers/*/ui）
+cargo test -p datazen                  # Host Rust 单元测试（不含驱动 crate）
+cargo test -p datazen-driver-postgres  # 示例：某个 path 驱动的 Rust 测试
 ```
 
 ### E2E
@@ -286,9 +289,39 @@ pnpm e2e:i18n-backup / e2e:path-ipc    # 备份·i18n / 路径 IPC
 # Kiwi E2E：在 datazen-driver-kiwi 仓执行 `pnpm e2e:kiwi`（不进 Host 默认 pnpm e2e；Host `pnpm e2e:kiwi` 仅提示并 exit 1）
 ```
 
-PR 合并前：`pnpm test:unit` + `cargo test -p datazen --lib`（见 `.github/workflows/ci.yml`）。Path 驱动 UI 单测：`pnpm test:unit:drivers`（**不**含在 `pnpm test:unit` 内）。
+PR 合并前：`pnpm test:unit` + `cargo test -p datazen --lib`（见 `.github/workflows/ci.yml`）。改了驱动还要跑该 crate 的 `cargo test -p datazen-driver-<id>` 和（若有 UI）`pnpm test:unit:drivers`。Path 驱动 UI 单测**不**含在 `pnpm test:unit` 内。
 
 编排脚本：`e2e/run.mjs`。环境变量：复制 `e2e/.env.example` → `e2e/.env`。
+
+## 驱动测试落点
+
+**规则：凡只验证某一个驱动实现 / 方言 / 专属 UI / 专属 Command 的用例，写到该驱动的 crate 目录，禁止放到 Host。**
+
+Path 驱动 crate 名 `datazen-driver-<id>`，目录 `packages/drivers/<id>/`：
+
+| 类型 | 位置 | 运行 |
+|------|------|------|
+| Rust 单元 | 同文件 `#[cfg(test)]` | `cargo test -p datazen-driver-<id>` |
+| Rust 集成（需真实实例） | `packages/drivers/<id>/tests/` | `cargo test -p datazen-driver-<id> --test <name>` |
+| 驱动 UI 单测 | `packages/drivers/<id>/ui/__tests__/` | `pnpm test:unit:drivers` |
+| 驱动 E2E | `packages/drivers/<id>/e2e/` | 显式脚本，如 `pnpm e2e:redis`；**不进**默认 `pnpm e2e` |
+
+Git 驱动（Kiwi / OLAP / Superset 等）：测试写在**插件自己的仓库**，不写进 Host。本地 symlink 开发时目录在 `packages/drivers/<id>/` 但仍属插件仓。
+
+**Host 只测宿主能力**（可用任意 SQL/KV 连接当夹具，但不编码驱动方言）：
+
+- `src-tauri/`：IPC、Workflow 引擎、MCP、store、窗口
+- `src/**/__tests__/`：Host 组件 / store / `lib/`
+- `e2e/specs/`：通用连接窗口、SQL 编辑器、表数据、设置等（不测 Redis Command、PG `USE` 语义、某驱动 structure SQL）
+
+**不要做：**
+
+- 在 `src-tauri/tests/` 或 `src-tauri/src/**` 新增 `postgres_*` / `mysql_*` / `redis_*` 驱动行为测试
+- 在 `e2e/specs/` 新增某驱动深度用例（应放到 `packages/drivers/<id>/e2e/`）
+- 在 `src/windows/connection/__tests__/` 测 Redis Workbench 等驱动 UI（应放到 `packages/drivers/redis/ui/__tests__/`）
+- 用 `cargo test -p datazen --test postgres_use_database` 跑驱动测试（包名是 `datazen-driver-postgres`，不是 `datazen`）
+
+参考：Redis 已按此拆分（`packages/drivers/redis/src/*` 的 `#[cfg(test)]`、`ui/__tests__/`、`e2e/`）；PG/MySQL `use_database` 集成测在 `packages/drivers/{postgres,mysql}/tests/`。详细策略见 [docs/architecture/testing.md](docs/architecture/testing.md)。
 
 ## 代码风格
 
@@ -300,6 +333,7 @@ PR 合并前：`pnpm test:unit` + `cargo test -p datazen --lib`（见 `.github/w
 ## 重要注意事项
 
 - Path 驱动 Rust crate：`datazen-driver-<id>`；Git 驱动 Rust crate 名以插件仓库为准
+- 驱动相关测试写在对应 crate（`packages/drivers/<id>/` 或 Git 插件仓），不要写到 Host
 - `Cargo.toml` 中的插件占位段在 git 中应保持为空；`resolve-drivers.mjs` 构建时填充
 - `src/plugins/generated.ts` 和 `src-tauri/src/plugin_init.rs` 是自动生成的，git 中必须保持 stub；禁止提交已注入内容
 - Git 驱动 clone 目录（`packages/drivers/{kiwi,olap,superset}/` 等非 path 驱动）是 gitignored，由 driver resolve/build/dev 流程生成；勿提交

@@ -950,7 +950,7 @@ pub async fn init_drivers() -> DriverRegistry {
 /// 3. 实现超时机制，防止查询无限等待
 /// 4. 正确处理错误，转换为统一的 DriverError
 /// 5. 实现 Drop trait 确保资源释放
-/// 6. 编写单元测试覆盖主要功能
+/// 6. 编写单元测试覆盖主要功能（写在本驱动 crate 内，不要写到 src-tauri）
 /// 
 /// 示例：
 /// 

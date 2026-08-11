@@ -4,13 +4,13 @@
 //! and/or the repo-root `.env` file (same `TEST_MYSQL_*` keys as workflow tests).
 //!
 //! Run (skip if no MySQL):
-//!   cargo test -p datazen --test mysql_use_database -- --nocapture
+//!   cargo test -p datazen-driver-mysql --test mysql_use_database -- --nocapture
 //!
 //! Force live run with env (example — use your own secrets, do not commit them):
 //!   TEST_MYSQL_HOST=127.0.0.1 TEST_MYSQL_PORT=3306 TEST_MYSQL_USER=root \
 //!   TEST_MYSQL_PASSWORD= TEST_MYSQL_DATABASE=datazen_test \
 //!   TEST_MYSQL_DATABASE_B=datazen_sync_mysql_tgt \
-//!   cargo test -p datazen --test mysql_use_database -- --nocapture
+//!   cargo test -p datazen-driver-mysql --test mysql_use_database -- --nocapture
 //!
 //! Note: do not verify the active schema with prepared `SELECT DATABASE()` —
 //! MySQL can return the database from PREPARE time after a later `USE`. This
