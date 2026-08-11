@@ -97,7 +97,7 @@
   "kiwi": {
     "source": "git",
     "git": "https://github.com/flyxl/datazen-driver-kiwi.git",
-    "ref": "fed557d527b23e3d7f5a84139edf72ebeebd9de7",
+    "ref": "7c2be6e32d4c76d3b7ea808ea83950b6d198b516",
     "feature": "plugin-kiwi",
     "description": "Kiwi cloud database proxy",
     "tauriPlugin": {
