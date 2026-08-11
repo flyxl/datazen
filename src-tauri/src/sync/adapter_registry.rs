@@ -89,7 +89,11 @@ impl Default for SyncAdapterRegistry {
     }
 }
 
-/// Keep path-driver sync adapter inventory linked in unit tests (dev-dependencies).
+/// Keep the path-driver sync adapters that are always present in the basic CI
+/// driver set linked in unit tests. Optional drivers are linked by their
+/// generated driver/plugin wiring when those drivers are selected; referencing
+/// them here would make the `basic` feature build depend on crates that are
+/// intentionally absent from Cargo.toml.
 #[cfg(test)]
 #[inline(never)]
 fn force_link_driver_sync_adapters() {
@@ -97,17 +101,7 @@ fn force_link_driver_sync_adapters() {
         std::any::type_name::<datazen_driver_postgres::PgSyncAdapter>(),
         std::any::type_name::<datazen_driver_mysql::MysqlSyncAdapter>(),
         std::any::type_name::<datazen_driver_sqlite::SqliteSyncAdapter>(),
-        std::any::type_name::<datazen_driver_sqlserver::SqlServerSyncAdapter>(),
-        std::any::type_name::<datazen_driver_clickhouse::ClickHouseSyncAdapter>(),
-        std::any::type_name::<datazen_driver_duckdb::DuckDbSyncAdapter>(),
-        std::any::type_name::<datazen_driver_elasticsearch::ElasticsearchSyncAdapter>(),
-        std::any::type_name::<datazen_driver_mongodb::MongodbSyncAdapter>(),
-        std::any::type_name::<datazen_driver_influxdb::InfluxDbSyncAdapter>(),
-        std::any::type_name::<datazen_driver_victoriametrics::VictoriaMetricsSyncAdapter>(),
-        std::any::type_name::<datazen_driver_hbase::HBaseSyncAdapter>(),
-        std::any::type_name::<datazen_driver_vector::VectorSyncAdapter>(),
-        #[cfg(feature = "plugin-olap")]
-        std::any::type_name::<datazen_plugin_olap::TrinoSyncAdapter>(),
+        std::any::type_name::<datazen_driver_redis::RedisSyncAdapter>(),
     );
 }
 
