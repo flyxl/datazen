@@ -143,11 +143,15 @@ workspace/
 
 During development, DataZen's driver registry can point to the local repository with `source: "path"`. The DataZen application is then built with the selected driver, giving plugin developers a real host for both backend and frontend debugging.
 
+The Driver API itself is maintained in `packages/driver-api` and published as the MIT-licensed `datazen-driver-api` crate. Independent drivers normally consume the published crate and do not need to clone DataZen just to obtain the API.
+
 See the complete guides:
 
 - **[Independent Plugin Development — English](docs/independent-plugin-development.md)**
 - **[独立插件开发指南 — 中文](docs/independent-plugin-development.zh-CN.md)**
-- **[DataZen Driver API](https://github.com/flyxl/datazen-driver-api)**
+- **[Driver API crate README](packages/driver-api/README.md)**
+- **[Driver API dependency boundary](docs/driver-api/public-api-dependency-boundary.md)**
+- **[datazen-driver-api on crates.io](https://crates.io/crates/datazen-driver-api)**
 
 ## Supported databases
 
@@ -223,7 +227,9 @@ Always review the privacy and security policies of the AI provider and endpoint 
 - [Project website](https://flyxl.github.io/datazen/)
 - [Independent Plugin Development](docs/independent-plugin-development.md)
 - [Chinese Plugin Development Guide](docs/independent-plugin-development.zh-CN.md)
-- [Driver API](https://github.com/flyxl/datazen-driver-api)
+- [Driver API crate](packages/driver-api/README.md)
+- [Driver API dependency boundary](docs/driver-api/public-api-dependency-boundary.md)
+- [datazen-driver-api on crates.io](https://crates.io/crates/datazen-driver-api)
 - [Workflow Guide](docs/workflow-guide.en.md)
 - [Contributing](CONTRIBUTING.md)
 
@@ -235,7 +241,7 @@ Please read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. Dr
 
 ## License
 
-DataZen is licensed under the **GNU General Public License v3.0**. See [LICENSE](LICENSE).
+DataZen is licensed under the **GNU General Public License v3.0**. The `datazen-driver-api` crate under `packages/driver-api` is separately licensed under the **MIT License**. See [LICENSE](LICENSE) and [packages/driver-api/LICENSE-MIT](packages/driver-api/LICENSE-MIT).
 
 <div align="center">
 
