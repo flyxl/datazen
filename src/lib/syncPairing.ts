@@ -3,6 +3,11 @@
  */
 
 import { DB_REGISTRY } from './databaseTypes';
+import type { DatabaseTypeMeta } from './databaseMeta';
+
+function registryMeta(dbType: string): DatabaseTypeMeta | undefined {
+  return (DB_REGISTRY as Record<string, DatabaseTypeMeta | undefined>)[dbType];
+}
 
 export type SyncPath = 'direct' | 'ir' | 'unsupported';
 
@@ -24,7 +29,7 @@ function syncCategory(dbType: string): SyncCategory {
     case 'superset':
       return 'other';
     default: {
-      const meta = DB_REGISTRY[dbType];
+      const meta = registryMeta(dbType);
       if (meta?.category === 'kv') return 'kv';
       if (meta?.category === 'document') return 'document';
       return 'sql';
@@ -34,7 +39,7 @@ function syncCategory(dbType: string): SyncCategory {
 
 /** Normalize a database type id to its sync dialect family. */
 export function normalizeSyncFamily(dbType: string): string {
-  const meta = DB_REGISTRY[dbType];
+  const meta = registryMeta(dbType);
   if (meta?.sqlDialect) return meta.sqlDialect;
 
   switch (dbType.toLowerCase()) {
