@@ -1,5 +1,14 @@
 #!/usr/bin/env sh
-# Restore plugin-injected managed files before commit (stash/rename model).
-# Implementation lives in scripts/plugin-stash-precommit.mjs for testability.
+# Format Rust code before commit, then restore plugin-managed files.
 
+set -e
+
+# Format the workspace before the commit is created.
+cargo fmt --all
+
+# Stage any files changed by rustfmt so the formatted version is committed.
+git add -- '*.rs'
+
+# Restore plugin-injected managed files (stash/rename model).
+# Implementation lives in scripts/plugin-stash-precommit.mjs for testability.
 node scripts/plugin-stash-precommit.mjs
