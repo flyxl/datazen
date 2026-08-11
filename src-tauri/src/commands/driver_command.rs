@@ -40,14 +40,14 @@ pub(crate) async fn execute_driver_command_impl(
         .into_iter()
         .find(|definition| definition.id == request.command)
         .ok_or_else(|| {
-            CommandError::Message(format!(
+            CommandError::Validation(format!(
                 "Unsupported driver command: {}",
                 request.command
             ))
         })?;
 
     validate_command_input(&definition, &request.input)
-        .map_err(CommandError::Message)?;
+        .map_err(CommandError::Validation)?;
 
     // Command definitions are deliberately the single capability gate. This
     // prevents IPC callers from reaching an arbitrary method that a driver did
