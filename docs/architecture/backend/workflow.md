@@ -73,10 +73,14 @@ Command 是 Driver 暴露给 Workflow / IPC / UI 的统一能力描述。
 ```text
 Driver
  ├── command_definitions()
- │      ├── name
- │      ├── description
- │      ├── input_schema
- │      └── capabilities / metadata
+ │      ├── name / description / input_schema
+ │      └── metadata
+ │            ├── category   query | mutate | admin | observe | pubSub | stream | io
+ │            ├── risk       read | write | highRisk（可省略，由 permissions 推导）
+ │            ├── workflow            是否出现在 Workflow Command 选择器
+ │            ├── ui                  是否面向 GUI
+ │            ├── requiresConnection  false 时可只凭 driverType 执行
+ │            └── deprecated / replacedBy
  │
  └── execute_command(command, input)
 ```
@@ -84,9 +88,9 @@ Driver
 标准 Command 至少包括：
 
 - `query`：查询并返回行数据
-- `execute`：执行非查询语句
+- `execute`：执行非查询语句（只读驱动可以不暴露）
 
-Driver 可以增加自己的特殊 Command，例如 NoSQL / KV / 搜索类驱动不需要伪装成 SQL。Workflow Engine 不根据具体 Driver 类型写分支，而是通过 Command Definition + JSON input/output 调用 Driver。
+Driver 可以增加自己的特殊 Command，例如 NoSQL / KV / 搜索类驱动不需要伪装成 SQL。`sql` 输入字段可通过 JSON Schema `title` 标明实际语言（JSON command / PromQL / InfluxQL 等）。Workflow Engine 不根据具体 Driver 类型写分支，而是通过 Command Definition + JSON input/output 调用 Driver。`metadata.workflow = false` 的 Command（例如 Redis Pub/Sub subscribe）不会进入 Workflow 选择器，运行时也会拒绝。
 
 ## Legacy Query 兼容
 
@@ -148,8 +152,8 @@ Connection 改变后应重新 discovery；没有指定 Step connection 时使用
 Workflow Command Runtime 同时被 Tauri IPC 使用，主要能力包括：
 
 - 获取指定 connection 支持的 Commands
-- 获取 Driver 支持的 Commands
-- 执行指定 Driver Command
+- 获取 Driver 支持的 Commands（无需 live Connection）
+- 执行指定 Driver Command（`connectionId` 或 `driverType`；后者仅允许 `requiresConnection = false`）
 - Workflow 的创建、读取、更新、删除与执行
 - Workflow execution history
 

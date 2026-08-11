@@ -48,6 +48,12 @@ interface WorkflowFormProps {
   onCancel: () => void;
 }
 
+function commandOptionLabel(definition: DriverCommandDefinition) {
+  const category = definition.metadata?.category ? ` · ${definition.metadata.category}` : '';
+  const deprecated = definition.metadata?.deprecated ? ' (deprecated)' : '';
+  return `${definition.name}${category}${deprecated}`;
+}
+
 function schemaProperties(definition?: DriverCommandDefinition) {
   const schema = definition?.inputSchema;
   const properties = schema?.properties;
@@ -86,17 +92,18 @@ function CommandInputEditor({ definition, value, onChange }: { definition?: Driv
       {fields.map((field) => {
         const type = field.schema.type;
         const current = value[field.name];
-        if (type === 'boolean') return <label key={field.name} className="flex items-center gap-2 text-xs text-fg"><input type="checkbox" checked={Boolean(current)} onChange={(e) => update(field.name, e.target.checked)} />{field.name}{field.required ? ' *' : ''}</label>;
+        const label = typeof field.schema.title === 'string' && field.schema.title ? field.schema.title : field.name;
+        if (type === 'boolean') return <label key={field.name} className="flex items-center gap-2 text-xs text-fg"><input type="checkbox" checked={Boolean(current)} onChange={(e) => update(field.name, e.target.checked)} />{label}{field.required ? ' *' : ''}</label>;
         if (type === 'array' || type === 'object') return (
           <div key={field.name}>
-            <label className="text-xs text-fg-muted block mb-1">{field.name}{field.required ? ' *' : ''}</label>
+            <label className="text-xs text-fg-muted block mb-1">{label}{field.required ? ' *' : ''}</label>
             <textarea className={textareaClass} value={typeof current === 'string' ? current : JSON.stringify(current ?? (type === 'array' ? [] : {}), null, 2)} onChange={(e) => { const text = e.target.value; setRawJson(text); try { update(field.name, JSON.parse(text)); } catch { /* keep editing */ } }} />
           </div>
         );
         const isNumber = type === 'number' || type === 'integer';
         return (
           <div key={field.name}>
-            <label className="text-xs text-fg-muted block mb-1">{field.name}{field.required ? ' *' : ''}</label>
+            <label className="text-xs text-fg-muted block mb-1">{label}{field.required ? ' *' : ''}</label>
             <input className={inputClass} type={isNumber ? 'number' : 'text'} value={current == null ? '' : String(current)} onChange={(e) => update(field.name, isNumber && e.target.value !== '' ? Number(e.target.value) : e.target.value)} placeholder={typeof field.schema.description === 'string' ? field.schema.description : undefined} />
           </div>
         );
@@ -151,7 +158,10 @@ export function WorkflowForm({ draft, editingId, connections, onDraftChange, onS
     return () => { cancelled = true; };
   }, [commandConnections.join('|')]);
 
-  const getDefinitions = (step: WorkflowStepDraft) => commandsByConnection[effectiveConnection(step)] ?? [];
+  const getDefinitions = (step: WorkflowStepDraft) =>
+    (commandsByConnection[effectiveConnection(step)] ?? []).filter(
+      (d) => d.metadata?.workflow !== false && (!d.metadata?.deprecated || d.id === step.command),
+    );
   const getDefinition = (step: WorkflowStepDraft) => getDefinitions(step).find((d) => d.id === step.command);
   const setStep = (index: number, patch: Partial<WorkflowStepDraft>) => {
     const steps = [...draft.steps];
@@ -205,8 +215,8 @@ export function WorkflowForm({ draft, editingId, connections, onDraftChange, onS
               {step.type === 'command' && <>
                 <div>
                   <label className="text-xs text-fg-muted block mb-1">Command</label>
-                  <Select value={step.command ?? ''} options={[{ value: '', label: isLoading ? 'Loading commands…' : connId ? 'Select command' : 'Select a connection first' }, ...definitions.map((d) => ({ value: d.id, label: d.name }))]} onChange={(command) => { const next = definitions.find((d) => d.id === command); setStep(i, { command: command || undefined, input: next ? defaultInput(next) : {} }); }} className="!h-8 !text-xs w-full" />
-                  {definition?.description && <div className="text-[11px] text-fg-muted mt-1">{definition.description}</div>}
+                  <Select value={step.command ?? ''} options={[{ value: '', label: isLoading ? 'Loading commands…' : connId ? 'Select command' : 'Select a connection first' }, ...definitions.map((d) => ({ value: d.id, label: commandOptionLabel(d) }))]} onChange={(command) => { const next = definitions.find((d) => d.id === command); setStep(i, { command: command || undefined, input: next ? defaultInput(next) : {} }); }} className="!h-8 !text-xs w-full" />
+                  {definition?.description && <div className="text-[11px] text-fg-muted mt-1">{definition.description}{definition.metadata?.risk ? ` · ${definition.metadata.risk}` : ''}</div>}
                 </div>
                 <CommandInputEditor definition={definition} value={step.input ?? {}} onChange={(input) => setStep(i, { input })} />
               </>}
