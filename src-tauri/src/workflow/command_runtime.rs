@@ -1,0 +1,99 @@
+//! Runtime bridge between Workflow Command Steps and Driver Commands.
+//!
+//! Workflow database operations are dispatched through the same command API as
+//! IPC. This keeps driver-specific operations out of the workflow executor.
+
+use crate::commands::AppState;
+use crate::workflow::WorkflowCommandStep;
+use datazen_driver_api::{validate_command_input, CommandResult};
+
+pub fn resolve_connection_id<'a>(
+    step: &'a WorkflowCommandStep,
+    workflow_connection: Option<&'a str>,
+) -> Result<&'a str, String> {
+    step.effective_connection(workflow_connection)
+        .ok_or_else(|| format!("Command step '{}' requires a database connection", step.id))
+}
+
+pub async fn execute_command(
+    app_state: &AppState,
+    step: &WorkflowCommandStep,
+    workflow_connection: Option<&str>,
+) -> Result<CommandResult, String> {
+    let connection_id = resolve_connection_id(step, workflow_connection)?;
+    let (driver, handle) = app_state
+        .connection_manager
+        .get_connection(connection_id)
+        .await
+        .map_err(|e| format!("Failed to connect '{connection_id}': {e}"))?;
+
+    let definition = driver
+        .command_definitions()
+        .into_iter()
+        .find(|definition| definition.id == step.command)
+        .ok_or_else(|| {
+            format!(
+                "Unsupported driver command '{}' for connection '{}'",
+                step.command, connection_id
+            )
+        })?;
+
+    validate_command_input(&definition, &step.input)?;
+
+    // `database` is a legacy SQL connection override. It is intentionally
+    // interpreted by the runtime rather than by the generic Command API so
+    // document/key-value drivers remain unaware of SQL-specific state.
+    if let Some(database) = step.input.get("database").and_then(|v| v.as_str()) {
+        if !database.is_empty() {
+            driver
+                .use_database(&handle, database)
+                .await
+                .map_err(|e| e.to_string())?;
+        }
+    }
+
+    driver
+        .execute_command(&handle, &step.command, step.input.clone())
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn explicit_step_connection_wins() {
+        let step = WorkflowCommandStep::new(
+            "aggregate",
+            "aggregate",
+            Some("mongo-prod".into()),
+            serde_json::json!({}),
+        );
+        assert_eq!(resolve_connection_id(&step, Some("mysql-prod")).unwrap(), "mongo-prod");
+    }
+
+    #[test]
+    fn workflow_connection_is_used_when_step_has_none() {
+        let step = WorkflowCommandStep::new(
+            "query",
+            "query",
+            None,
+            serde_json::json!({"sql": "SELECT 1"}),
+        );
+        assert_eq!(resolve_connection_id(&step, Some("mysql-prod")).unwrap(), "mysql-prod");
+    }
+
+    #[test]
+    fn missing_connection_is_a_clear_workflow_error() {
+        let step = WorkflowCommandStep::new(
+            "query",
+            "query",
+            None,
+            serde_json::json!({"sql": "SELECT 1"}),
+        );
+        let error = resolve_connection_id(&step, None).unwrap_err();
+        assert!(error.contains("query"));
+        assert!(error.contains("requires a database connection"));
+    }
+}
