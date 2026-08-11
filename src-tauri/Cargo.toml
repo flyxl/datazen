@@ -28,7 +28,7 @@ base64 = "0.22"
 rand = "0.8"
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v4", "serde"] }
-thiserror = "1"
+thiserror = "0.1"
 anyhow = "1"
 tracing = "0.1"
 tracing-appender = "0.2"
@@ -41,6 +41,8 @@ tauri-plugin-webdriver = { version = "0.2", optional = true }
 tauri-plugin-dialog = "2"
 tauri-plugin-notification = "2"
 tauri-plugin-os = "2.3.2"
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
 sys-locale = "0.3.2"
 flate2 = "1.1.9"
 russh = "0.60"
