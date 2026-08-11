@@ -1,6 +1,7 @@
 //! Runtime theme pack validation and installation.
 
 pub mod install;
+pub mod surface_bg;
 pub mod validate;
 
 #[allow(unused_imports)] // consumed by Task 9 IPC commands

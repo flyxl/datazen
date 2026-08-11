@@ -5,6 +5,7 @@ import { useI18n } from '../../hooks/useI18n';
 import { cn } from '../../lib/cn';
 import { COLOR_KEYS, Label } from './shared';
 import { SshTunnelFields } from './SshTunnelFields';
+import { getPluginConnectionAdvanced } from '../../plugins/generated';
 import type { ConnectionFormState } from './useConnectionForm';
 import type { SslMode } from '../../types';
 
@@ -21,6 +22,7 @@ export function ConnectionAdvancedSettings({
 }: ConnectionAdvancedSettingsProps) {
   const { t } = useI18n();
   const isWindow = variant === 'window';
+  const PluginAdvanced = getPluginConnectionAdvanced(form.formVariant);
 
   return (
     <>
@@ -51,7 +53,9 @@ export function ConnectionAdvancedSettings({
             innerPanelClassName={isWindow ? 'bg-surface-alt' : 'bg-surface'}
           />
 
-          {form.meta.supportsSSL && (
+          {PluginAdvanced ? (
+            <PluginAdvanced form={form} />
+          ) : form.meta.supportsSSL ? (
             <div>
               <Label>{t('newConn.sslMode')}</Label>
               <Select
@@ -60,7 +64,7 @@ export function ConnectionAdvancedSettings({
                 onChange={(v) => form.setSslMode(v as SslMode)}
               />
             </div>
-          )}
+          ) : null}
 
           {groupOptions ? (
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">

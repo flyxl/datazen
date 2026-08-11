@@ -44,12 +44,11 @@ datazen/
 ├── packages/
 │   ├── driver-api/              # DatabaseDriver + Command API + inventory + ReuseDriver
 │   ├── ai-api/                  # AiProvider trait + factory
-│   ├── drivers/                 # 可选 path 驱动 + http-support
+│   ├── drivers/                 # path 驱动 + http-support；Git 驱动 clone 到同级（gitignored）
 │   └── themes/                  # 主题包预留
 ├── e2e/                         # WebdriverIO E2E 测试
 ├── test/                        # 手工黑盒测试
-├── docs/                        # 架构文档、RFC、进度
-└── .plugins/                    # 构建时生成（gitignored）
+└── docs/                        # 架构文档、RFC、进度
 ```
 
 ## 核心架构模式
@@ -72,7 +71,7 @@ DATAZEN_DRIVERS=all pnpm tauri:build
 ### 数据库驱动
 
 - Path 驱动：`packages/drivers/*`（crate 名 `datazen-driver-<id>`），经 optional Cargo feature 注入
-- Git 驱动：克隆到 `.plugins/`，同样 inventory 注册
+- Git 驱动：克隆到 `packages/drivers/<id>/`（gitignore，非 Cargo workspace member），同样 inventory 注册
 - 前端 `DB_REGISTRY` 合并 `generated.ts` 的 `DRIVER_DB_ENTRIES`
 - 默认 DB 图标来自 `packages/drivers/*/ui/icons/{dbType}.svg`
 - 关键 trait 方法包括 `supports_offset()`、`supports_explain()`、`prompt_overrides()`
@@ -303,10 +302,10 @@ PR 合并前：`pnpm test:unit` + `cargo test -p datazen --lib`（见 `.github/w
 - Path 驱动 Rust crate：`datazen-driver-<id>`；Git 驱动 Rust crate 名以插件仓库为准
 - `Cargo.toml` 中的插件占位段在 git 中应保持为空；`resolve-drivers.mjs` 构建时填充
 - `src/plugins/generated.ts` 和 `src-tauri/src/plugin_init.rs` 是自动生成的，git 中必须保持 stub；禁止提交已注入内容
-- `.plugins/` 是 gitignored，由 driver resolve/build/dev 流程生成
+- Git 驱动 clone 目录（`packages/drivers/{kiwi,olap,superset}/` 等非 path 驱动）是 gitignored，由 driver resolve/build/dev 流程生成；勿提交
 - `PROTOCOL_VERSION`（`packages/driver-api`）变更时需同步更新所有插件
 - `AI_PROTOCOL_VERSION`（`packages/ai-api`）变更时需同步更新所有 AI Provider 插件
 - AI 配置加密存储在 `ai_config.enc`，不会出现在日志中
 - Prompt 模板在 `src-tauri/resources/prompts/{lang}/`，支持用户覆盖
 - 日志文件位于 `{data_dir}/logs/`
-- 主题包与驱动选型独立：`{appData}/themes/` 不由 `resolve-drivers.mjs` 管理；删除主题包不影响 `.plugins/`
+- 主题包与驱动选型独立：`{appData}/themes/` 不由 `resolve-drivers.mjs` 管理；删除主题包不影响 `packages/drivers/`

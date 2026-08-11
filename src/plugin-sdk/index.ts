@@ -26,6 +26,10 @@ export type { I18nKey, MongoTranslationKey, PluginTranslationKey, TranslationKey
 
 // === Types ===
 export type { DatabaseTypeMeta, ConnectionMode } from '../lib/databaseMeta';
+export type {
+  ConnectionClipboardFill,
+  ConnectionClipboardParser,
+} from '../lib/connectionClipboardTypes';
 export type { ConnectionFormState } from '../components/connection/useConnectionForm';
 export type { SqlDialectStrategy, SqlDialectFamily } from '../lib/sqlDialects/types';
 export type { TableInfo, TableType } from '../types';

@@ -21,6 +21,7 @@ export const victoriametricsMeta = {
     sqlDialect: 'generic',
     databaseFieldType: 'name',
     connectionForm: 'standard',
+    clipboardSchemes: ['victoriametrics'],
     supportsExplain: false,
   } satisfies DatabaseTypeMeta;
 

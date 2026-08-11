@@ -8,6 +8,7 @@ import { invoke } from '@tauri-apps/api/core';
 import type { DatabaseTypeMeta } from '@datazen/plugin-sdk';
 import type { SqlDialectStrategy } from '@datazen/plugin-sdk';
 import type { PluginFormValidator } from '@datazen/plugin-sdk';
+import type { ConnectionClipboardParser } from '@datazen/plugin-sdk';
 import type { PluginSettingsContribution } from '@datazen/plugin-sdk';
 import type { ComponentType } from 'react';
 
@@ -51,6 +52,7 @@ export const PLUGIN_SQL_DIALECTS: Record<string, SqlDialectStrategy> = {
 interface PluginFormEntry {
   formVariant: string;
   component: ComponentType<any>;
+  advanced?: ComponentType<any>;
 }
 
 const PLUGIN_FORMS: PluginFormEntry[] = [
@@ -67,6 +69,16 @@ export function getPluginConnectionForm(formVariant: string): ComponentType<any>
   return undefined;
 }
 
+/** Lookup plugin-provided Advanced-settings fields by form variant. */
+export function getPluginConnectionAdvanced(formVariant: string): ComponentType<any> | undefined {
+  for (const entry of PLUGIN_FORMS) {
+    if (entry.formVariant === formVariant) {
+      return entry.advanced;
+    }
+  }
+  return undefined;
+}
+
 /** Plugin-provided form validators, keyed by form variant. */
 const PLUGIN_VALIDATORS: Record<string, PluginFormValidator> = {
 
@@ -75,6 +87,15 @@ const PLUGIN_VALIDATORS: Record<string, PluginFormValidator> = {
 /** Lookup plugin-provided form validator by form variant. */
 export function getPluginValidator(formVariant: string): PluginFormValidator | undefined {
   return PLUGIN_VALIDATORS[formVariant];
+}
+
+/** Plugin-provided clipboard parsers for new-connection auto-detect. */
+const PLUGIN_CLIPBOARD_PARSERS: { dbType: string; parse: ConnectionClipboardParser }[] = [
+
+];
+
+export function getPluginClipboardParsers(): { dbType: string; parse: ConnectionClipboardParser }[] {
+  return PLUGIN_CLIPBOARD_PARSERS;
 }
 
 // ===== Plugin Schema Trees =====

@@ -16,6 +16,7 @@ const mockReadThemePackFile = vi.fn();
 vi.mock('../../commands/theme', () => ({
   themeCommands: {
     readThemePackFile: (...args: unknown[]) => mockReadThemePackFile(...args),
+    setSurfaceBackground: vi.fn().mockResolvedValue(undefined),
   },
 }));
 

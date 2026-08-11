@@ -15,6 +15,7 @@ import { filterDbTypesByQuery } from '../../lib/filterDbTypes';
 import { connectionCommands } from '../../commands/connection';
 import { ConnectionFormBody } from '../../components/connection/ConnectionFormBody';
 import { useConnectionForm } from '../../components/connection/useConnectionForm';
+import { useConnectionClipboardFill } from '../../components/connection/useConnectionClipboardFill';
 import type { DatabaseType } from '../../types';
 
 const ALL_DB_TYPES: { value: DatabaseType; label: string }[] = sortDbTypesByPopularity(
@@ -73,6 +74,19 @@ export function NewConnectionWindow() {
     onAfterSave: closeWindow,
   });
 
+  useConnectionClipboardFill(form, {
+    enabled: !editId,
+    availableTypes: availableDrivers,
+    onApplied: (databaseType) => {
+      setDriverQuery('');
+      window.setTimeout(() => {
+        document
+          .querySelector(`[data-testid="new-conn-driver-${databaseType}"]`)
+          ?.scrollIntoView({ block: 'nearest' });
+      }, 0);
+    },
+  });
+
   const groupOptions = useMemo(
     () => [
       { value: '', label: t('newConn.noGroup') },
@@ -110,6 +124,7 @@ export function NewConnectionWindow() {
                   <button
                     key={db.value}
                     type="button"
+                    data-testid={`new-conn-driver-${db.value}`}
                     onClick={() => form.handleDatabaseTypeChange(db.value)}
                     className={cn(
                       'flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors select-none',

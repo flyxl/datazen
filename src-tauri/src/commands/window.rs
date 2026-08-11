@@ -1,10 +1,11 @@
 use super::error::{CmdExt, CommandError};
+use crate::theme::surface_bg::{parse_css_hex, SurfaceBgCache};
 use serde::Deserialize;
 use tauri::webview::PageLoadEvent;
 use tauri::window::Color;
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 
-/// Matches `index.html` dark splash / `documentElement` background (`#0f172a`).
+/// Built-in dark `--c-surface` / splash fallback (`#0f172a`).
 const WINDOW_BG_DARK: Color = Color(0x0f, 0x17, 0x2a, 0xff);
 
 #[derive(Debug, Deserialize)]
@@ -26,12 +27,30 @@ pub struct CreateWindowOptions {
     pub accept_first_mouse: bool,
     #[serde(default)]
     pub transparent: Option<bool>,
+    /// Last-resolved `--c-surface` hex from the opener (`#rgb` / `#rrggbb`).
+    #[serde(default)]
+    pub background_color: Option<String>,
 }
 
 fn default_title() -> String { "DataZen".into() }
 fn default_width() -> f64 { 800.0 }
 fn default_height() -> f64 { 640.0 }
 fn default_true() -> bool { true }
+
+fn parse_css_hex_color(s: &str) -> Option<Color> {
+    parse_css_hex(s).map(|(r, g, b)| Color(r, g, b, 255))
+}
+
+fn window_background_color(override_hex: Option<&str>) -> Color {
+    override_hex
+        .and_then(parse_css_hex_color)
+        .unwrap_or(WINDOW_BG_DARK)
+}
+
+fn resolved_window_background(app: &AppHandle, override_hex: Option<&str>) -> Color {
+    let cached = app.try_state::<SurfaceBgCache>().map(|c| c.hex());
+    window_background_color(cached.as_deref().or(override_hex))
+}
 
 /// Open (or focus) the in-app docs singleton. Prefer calling this from Rust
 /// menu handlers instead of `emit` → frontend → IPC round-trips.
@@ -55,6 +74,7 @@ pub async fn open_docs_window(app: AppHandle, section: Option<&str>) -> Result<(
             center: true,
             accept_first_mouse: true,
             transparent: None,
+            background_color: None,
         },
     )
     .await
@@ -93,7 +113,10 @@ pub async fn create_sub_window(
     .decorations(is_mac)
     .transparent(transparent)
     .visible(false)
-    .background_color(WINDOW_BG_DARK)
+    .background_color(resolved_window_background(
+        &app,
+        options.background_color.as_deref(),
+    ))
     .accept_first_mouse(options.accept_first_mouse)
     // Show after HTML (theme + splash) has loaded — not immediately after
     // build() (white/light flash), and not only via frontend show() (ACL /
@@ -195,11 +218,12 @@ mod tests {
         assert!(opts.center);
         assert!(opts.accept_first_mouse);
         assert!(opts.transparent.is_none());
+        assert!(opts.background_color.is_none());
     }
 
     #[test]
     fn create_window_options_respects_overrides() {
-        let json = r#"{
+        let json = r##"{
             "label":"w2",
             "url":"window.html?window=settings",
             "title":"Settings",
@@ -207,13 +231,24 @@ mod tests {
             "height":768,
             "center":false,
             "acceptFirstMouse":false,
-            "transparent":true
-        }"#;
+            "transparent":true,
+            "backgroundColor":"#1a0a2e"
+        }"##;
         let opts: CreateWindowOptions = serde_json::from_str(json).unwrap();
         assert_eq!(opts.title, "Settings");
         assert_eq!(opts.width, 1024.0);
         assert!(!opts.center);
         assert!(!opts.accept_first_mouse);
         assert_eq!(opts.transparent, Some(true));
+        assert_eq!(opts.background_color.as_deref(), Some("#1a0a2e"));
+    }
+
+    #[test]
+    fn parse_css_hex_color_accepts_3_and_6() {
+        assert!(parse_css_hex_color("#0f172a").is_some());
+        assert!(parse_css_hex_color("#fff").is_some());
+        assert!(parse_css_hex_color("not-a-color").is_none());
+        assert!(parse_css_hex_color("#gg0000").is_none());
+        assert!(parse_css_hex_color("rgb(1,2,3)").is_none());
     }
 }

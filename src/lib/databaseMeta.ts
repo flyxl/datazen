@@ -67,6 +67,11 @@ export interface DatabaseTypeMeta {
   defaultPageSize?: number;
   /** Connection form variant — plugins can provide custom form identifiers */
   connectionForm: string;
+  /**
+   * URL schemes (without `://`) this driver claims for new-connection clipboard auto-detect.
+   * Custom parsers registered in `generated.ts` run first and can override this.
+   */
+  clipboardSchemes?: string[];
   /** Schema tree mode: 'standard' (default), 'multiDatabase', or 'custom' (plugin-provided tree) */
   schemaTreeMode?: 'standard' | 'multiDatabase' | 'custom';
   /** Whether this driver is read-only (no DDL, no create/alter table, no import) */

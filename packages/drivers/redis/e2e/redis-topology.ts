@@ -86,17 +86,14 @@ async function selectWizardTopology(kind: 'cluster' | 'sentinel') {
     kind === 'cluster'
       ? t('redis.wizard.topologyCluster')
       : t('redis.wizard.topologySentinel');
-  const btn = await $(`button*=${label}`);
-  await btn.waitForDisplayed({ timeout: 10000 });
-  await btn.click();
+  const trigger = await $('[data-testid="redis-topology"] button');
+  await trigger.waitForDisplayed({ timeout: 10000 });
+  await trigger.click();
   await browser.pause(200);
-}
-
-async function openWizardEndpointsTab() {
-  const tab = await $(`button*=${t('redis.wizard.endpoints')}`);
-  await tab.waitForDisplayed({ timeout: 5000 });
-  await tab.click();
-  await browser.pause(300);
+  const opt = await $(`div=${label}`);
+  await opt.waitForDisplayed({ timeout: 5000 });
+  await opt.click();
+  await browser.pause(200);
 }
 
 async function setWizardMonoTextarea(value: string) {
@@ -215,7 +212,6 @@ describe('Redis Cluster topology (E3, optional)', () => {
     await openRedisNewConnectionWindow(mainWindow);
     await setConnectionName(CLUSTER_CONN);
     await selectWizardTopology('cluster');
-    await openWizardEndpointsTab();
     await setWizardMonoTextarea(nodes.join('\n'));
     if (CLUSTER_PASSWORD) {
       await setPasswordField(CLUSTER_PASSWORD);
@@ -279,7 +275,6 @@ describe('Redis Sentinel topology (E3, optional)', () => {
     await openRedisNewConnectionWindow(mainWindow);
     await setConnectionName(SENTINEL_CONN);
     await selectWizardTopology('sentinel');
-    await openWizardEndpointsTab();
     await setWizardInputByPlaceholder('mymaster', SENTINEL_MASTER);
     await setWizardMonoTextarea(nodes.join('\n'));
     if (SENTINEL_NODE_PASSWORD) {

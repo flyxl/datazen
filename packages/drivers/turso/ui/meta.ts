@@ -21,6 +21,7 @@ export const tursoMeta = {
     sqlDialect: 'sqlite',
     databaseFieldType: 'name',
     connectionForm: 'standard',
+    clipboardSchemes: ['libsql', 'turso'],
     supportsExplain: true,
   } satisfies DatabaseTypeMeta;
 

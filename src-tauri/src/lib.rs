@@ -564,7 +564,9 @@ pub fn run() {
         .with(fmt::layer().with_writer(non_blocking).with_ansi(false))
         .init();
 
+    let surface_bg = theme::surface_bg::SurfaceBgCache::load();
     let builder = tauri::Builder::default()
+        .plugin(theme::surface_bg::SurfaceBootPlugin::new(surface_bg))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_os::init());
@@ -767,6 +769,7 @@ pub fn run() {
             commands::install_theme_pack_with_dialog,
             commands::remove_theme_pack,
             commands::read_theme_pack_file,
+            commands::set_surface_background,
             commands::list_dashboards,
             commands::get_dashboard,
             commands::save_dashboard,

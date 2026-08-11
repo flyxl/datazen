@@ -21,6 +21,7 @@ export const sqliteMeta = {
     sqlDialect: 'sqlite',
     databaseFieldType: 'path',
     connectionForm: 'file',
+    clipboardSchemes: ['sqlite', 'sqlite3'],
     supportsExplain: true,
     structureEditor: {
       columnTypes: [
