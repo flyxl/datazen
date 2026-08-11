@@ -51,6 +51,8 @@ jobs:
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
 
       - name: Install Linux system deps (Tauri / webkit2gtk)
         run: |
@@ -74,6 +76,16 @@ jobs:
 
       - name: Resolve drivers (basic)
         run: node scripts/resolve-drivers.mjs --drivers=basic
+
+      - name: Rust unit tests (driver API)
+        run: cargo test -p datazen-driver-api --lib
+
+      - name: Driver API coverage (new command API >= 80%)
+        run: |
+          cargo install cargo-llvm-cov --locked
+          cargo llvm-cov -p datazen-driver-api --lib \
+            --include-files 'packages/driver-api/src/command.rs' \
+            --fail-under-lines 80
 
       - name: Rust unit tests (datazen)
         run: |
