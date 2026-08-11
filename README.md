@@ -339,7 +339,10 @@ path = ../datazen-driver-mydb
 
 插件仓库和 Datazen 仓库保持独立。Datazen 的 registry 修改通过 Pull Request 提交，只有 PR 被合并后才会影响共享的 `main` 分支。
 
-完整的独立插件开发流程、Rust/前端集成方式和发布步骤请参阅 **[独立插件开发指南](docs/independent-plugin-development.md)**。
+**Documentation / 文档：**
+
+- [Independent Plugin Development — English](docs/independent-plugin-development.md)（默认）
+- [独立插件开发指南 — 中文](docs/independent-plugin-development.zh-CN.md)
 
 ---
 
