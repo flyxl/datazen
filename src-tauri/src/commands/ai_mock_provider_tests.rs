@@ -6,7 +6,7 @@ use datazen_ai_api::{ChatMessage, MessageRole, ToolCall};
 
 use super::*;
 use crate::testing::app_state::TestAppState;
-use crate::testing::mock_ai_provider::{mock_ai_config, MockAiProvider};
+use crate::testing::mock_ai_provider::mock_ai_config;
 
 fn collecting_stream_callback() -> (StreamCallback, Arc<Mutex<Vec<(String, bool)>>>) {
     let log = Arc::new(Mutex::new(Vec::new()));

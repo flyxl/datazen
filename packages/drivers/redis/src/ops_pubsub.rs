@@ -14,6 +14,7 @@ use tokio::task::JoinHandle;
 use crate::connect::{open_pubsub_connection, ConnectionPlan};
 use crate::redis_driver::RedisDriver;
 
+#[allow(dead_code)] // event name reserved for the Redis plugin Pub/Sub sink
 pub const EVENT_NAME: &str = "redis-pubsub-message";
 
 pub type PubSubEmitter = std::sync::Arc<dyn Fn(RedisPubSubMessageEvent) + Send + Sync>;
@@ -21,6 +22,7 @@ pub type PubSubEmitter = std::sync::Arc<dyn Fn(RedisPubSubMessageEvent) + Send +
 static PUBSUB_EMITTER: OnceLock<PubSubEmitter> = OnceLock::new();
 
 /// Install the frontend event sink. Called once from the Redis plugin setup hook.
+#[allow(dead_code)]
 pub fn set_pubsub_emitter(emitter: PubSubEmitter) {
     let _ = PUBSUB_EMITTER.set(emitter);
 }
@@ -42,6 +44,7 @@ pub struct RedisPubSubMessageEvent {
 }
 
 struct SubscriptionEntry {
+    #[allow(dead_code)]
     connection_id: String,
     handle: JoinHandle<()>,
 }
@@ -115,6 +118,7 @@ where
         .map_err(|e| e.to_string())
 }
 
+#[allow(dead_code)]
 pub async fn publish_on_live(
     live: &mut crate::connect::RedisLiveConn,
     channel: &str,
@@ -138,6 +142,7 @@ pub async fn unsubscribe(subscription_id: &str) -> Result<(), String> {
     Ok(())
 }
 
+#[allow(dead_code)]
 pub async fn cleanup_connection_subscriptions(connection_id: &str) {
     let mut reg = registry().lock().await;
     let ids: Vec<String> = reg

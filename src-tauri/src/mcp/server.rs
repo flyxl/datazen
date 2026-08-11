@@ -574,6 +574,7 @@ impl DataZenMcpServer {
         ))
     }
 
+    #[cfg(test)]
     pub(crate) async fn call_tool_inner(
         &self,
         name: &str,

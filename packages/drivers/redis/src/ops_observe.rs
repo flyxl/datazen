@@ -18,6 +18,7 @@ pub fn resolve_memory_sample_limit(limit: Option<u32>) -> u32 {
 }
 
 /// Parse Redis `INFO` text into `(section_name, [(key, value), ...])` pairs.
+#[allow(dead_code)] // used by upcoming Redis INFO / monitor views
 pub fn parse_info_sections(raw: &str) -> Vec<(String, Vec<(String, String)>)> {
     let mut sections: Vec<(String, Vec<(String, String)>)> = Vec::new();
     let mut current: Option<(String, Vec<(String, String)>)> = None;

@@ -38,6 +38,7 @@ impl MockAiProvider {
         }
     }
 
+    #[allow(dead_code)]
     pub fn set_supports_tools(&self, v: bool) {
         self.supports_tools.store(v, Ordering::Relaxed);
     }
@@ -77,6 +78,7 @@ impl MockAiProvider {
 
     /// Queue a non-streaming tool-call response (used when stream queue is empty
     /// and the default `stream_complete` falls back to `complete`).
+    #[allow(dead_code)]
     pub fn push_tool_calls(&self, tool_calls: Vec<ToolCall>) {
         self.complete_queue.lock().unwrap().push_back(Ok(CompletionResponse {
             request_id: String::new(),
@@ -134,6 +136,7 @@ impl MockAiProvider {
         self.push_stream_text(final_text);
     }
 
+    #[allow(dead_code)]
     pub fn push_stream_error(&self, msg: impl Into<String>) {
         self.stream_queue
             .lock()
@@ -149,6 +152,7 @@ impl MockAiProvider {
         self.calls.lock().unwrap().last().cloned()
     }
 
+    #[allow(dead_code)]
     pub fn take_calls(&self) -> Vec<CompletionRequest> {
         std::mem::take(&mut *self.calls.lock().unwrap())
     }

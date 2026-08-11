@@ -182,6 +182,6 @@ mod tests {
                 .await
                 .unwrap();
         }
-        assert!(mgr.list(None).await.len() <= crate::store::MAX_WORKFLOW_HISTORY);
+        assert!(mgr.list(None).await.len() <= crate::store::history_db::MAX_WORKFLOW_HISTORY);
     }
 }
