@@ -34,6 +34,7 @@
     "posttest:unit": "node scripts/plugin-file-stash.mjs restore",
     "test": "vitest run",
     "test:unit": "vitest run",
+    "test:unit:drivers": "vitest run --config vitest.drivers.config.ts",
     "test:unit:coverage": "vitest run --coverage",
     "test:scripts": "vitest run scripts/__tests__",
     "test:rust:backup-i18n": "cargo test -p datazen --lib app_data_archive && cargo test -p datazen --lib i18n_locale && cargo test -p datazen --lib store::tests",
