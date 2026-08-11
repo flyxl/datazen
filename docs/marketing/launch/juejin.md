@@ -21,7 +21,7 @@
 | 前端 | React + Zustand + CodeMirror 6 | 生态成熟 |
 | 驱动 | sqlx + redis + russh | 异步、无系统 ssh 依赖 |
 
-详细架构见仓库内文档: [backend-architecture.md](https://github.com/flyxl/datazen/blob/main/docs/backend-architecture.md)
+详细架构见仓库内文档: [architecture/README.md](https://github.com/flyxl/datazen/blob/main/docs/architecture/README.md)
 
 ### 3. 多窗口与驱动注册表
 

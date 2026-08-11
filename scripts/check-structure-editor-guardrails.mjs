@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Guardrail: Host must not maintain a central structure caps registry.
- * See docs/superpowers/specs/2026-08-09-table-structure-editor-plugins-design.md
+ * Host must not maintain a central structure caps registry.
  *
  * Pattern notes:
  * - Registry identifiers (capabilityByType, structure_capabilities_by, …).

@@ -194,8 +194,4 @@ Connection 变化后重新 discovery；没有 Step override 时使用 Workflow �
 - [竞品对比：Navicat / TablePlus / DataGrip](../competitive-comparison.md)
 - [Workflow 使用手册](../workflow-guide.md)
 - [产品需求文档 (PRD)](../PRD.md)
-- [插件系统 RFC](../rfc-plugin-system.md)
-- [AI 功能 RFC](../rfc-ai-features.md)
-- [数据同步 IR 设计](../plan-sync-ir.md)
 - [插件开发指南](../plugin-development.md)
-- [运行时主题包设计](../superpowers/specs/2026-08-08-runtime-theme-packs-design.md)

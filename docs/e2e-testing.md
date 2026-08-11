@@ -60,8 +60,6 @@ pnpm e2e:path-ipc
 | Redis E2E | `pnpm e2e:redis` → `packages/drivers/redis/e2e/` |
 | Kiwi E2E | 在 `datazen-driver-kiwi` 执行 `pnpm e2e:kiwi`（定位 Host 后跑本仓 spec） |
 
-设计：[superpowers/specs/2026-08-11-plugin-owned-tests-design.md](./superpowers/specs/2026-08-11-plugin-owned-tests-design.md)
-
 **Agent 推荐流程：**
 
 1. 若不确定本地二进制是否合格 → 直接 `pnpm e2e -- --spec <spec>`（**不要**加 `--skip-build`），或先执行构建命令再 skip-build。  
