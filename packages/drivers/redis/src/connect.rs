@@ -8,17 +8,36 @@ use redis::sentinel::{Sentinel, SentinelClient, SentinelNodeConnectionInfo, Sent
 use redis::{Client, ClientTlsConfig, RedisConnectionInfo, TlsCertificates as RedisTlsCertificates};
 use serde_json::Map;
 use std::fs;
+use std::future::Future;
 use std::path::Path;
+use std::time::Duration;
 
 /// Parsed TLS material paths and flags (no network I/O).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TlsPlan {
     pub enabled: bool,
+    /// `ssl_mode = Prefer` without an explicit `options.tls.enabled` flag:
+    /// attempt TLS first, then fall back to plaintext if the handshake fails.
+    pub prefer_fallback: bool,
     pub ca_path: Option<String>,
     pub cert_path: Option<String>,
     pub key_path: Option<String>,
     pub key_passphrase: Option<String>,
     pub insecure_skip_verify: bool,
+}
+
+impl TlsPlan {
+    fn plaintext() -> TlsPlan {
+        TlsPlan {
+            enabled: false,
+            prefer_fallback: false,
+            ca_path: None,
+            cert_path: None,
+            key_path: None,
+            key_passphrase: None,
+            insecure_skip_verify: false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -33,6 +52,7 @@ pub struct StandalonePlan {
     pub url: String,
     pub tls: TlsPlan,
     pub db_index: u32,
+    pub connect_timeout: Duration,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -41,6 +61,7 @@ pub struct ClusterPlan {
     pub username: Option<String>,
     pub password: Option<String>,
     pub tls: TlsPlan,
+    pub connect_timeout: Duration,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -52,6 +73,7 @@ pub struct SentinelPlan {
     pub password: Option<String>,
     pub tls: TlsPlan,
     pub db_index: u32,
+    pub connect_timeout: Duration,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -93,6 +115,7 @@ pub fn build_connection_plan(config: &ConnectionConfig) -> Result<ConnectionPlan
     let opts = config.options.as_ref();
     let topology = parse_topology(opts);
     let tls = parse_tls(opts, &config.ssl_mode);
+    let connect_timeout = Duration::from_secs(config.connection_timeout.max(1) as u64);
 
     match topology {
         Topology::Standalone => {
@@ -111,6 +134,7 @@ pub fn build_connection_plan(config: &ConnectionConfig) -> Result<ConnectionPlan
                 url,
                 tls,
                 db_index,
+                connect_timeout,
             }))
         }
         Topology::Cluster => {
@@ -125,6 +149,7 @@ pub fn build_connection_plan(config: &ConnectionConfig) -> Result<ConnectionPlan
                 username: non_empty(config.username.as_deref()),
                 password: config.password.clone(),
                 tls,
+                connect_timeout,
             }))
         }
         Topology::Sentinel => {
@@ -146,6 +171,7 @@ pub fn build_connection_plan(config: &ConnectionConfig) -> Result<ConnectionPlan
                 password: config.password.clone(),
                 tls,
                 db_index: parse_db_index(config.database.as_deref())?,
+                connect_timeout,
             }))
         }
     }
@@ -160,34 +186,34 @@ pub async fn open_pubsub_connection(
 ) -> Result<redis::aio::PubSub, DriverError> {
     match plan {
         ConnectionPlan::Standalone(p) => {
-            let client = open_standalone_client(&p.url, &p.tls)?;
-            client
-                .get_async_pubsub()
-                .await
-                .map_err(|e| DriverError::ConnectionFailed(e.to_string()))
+            open_standalone_pubsub_with_fallback(&p.url, &p.tls, p.connect_timeout).await
         }
         ConnectionPlan::Cluster(p) => {
             let url = p.node_urls.first().ok_or_else(|| {
                 DriverError::InvalidConfig("cluster topology requires at least one cluster node".into())
             })?;
-            let client = open_standalone_client(url, &p.tls)?;
-            client
-                .get_async_pubsub()
-                .await
-                .map_err(|e| DriverError::ConnectionFailed(e.to_string()))
+            let tls_timeout = if p.tls.prefer_fallback {
+                p.connect_timeout.min(PREFER_TLS_PROBE)
+            } else {
+                p.connect_timeout
+            };
+            let mut attempt = open_standalone_pubsub(url, &p.tls, tls_timeout).await;
+            if matches!(attempt, Err(DriverError::ConnectionFailed(_))) && p.tls.prefer_fallback {
+                attempt = open_standalone_pubsub(
+                    &plaintext_url(url),
+                    &TlsPlan::plaintext(),
+                    p.connect_timeout,
+                )
+                .await;
+            }
+            attempt
         }
         ConnectionPlan::Sentinel(p) => {
-            let node_info = sentinel_node_info(p);
-            let mut sentinel = Sentinel::build(p.sentinel_urls.clone())
-                .map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
-            let master_client = sentinel
-                .async_master_for(&p.master_name, Some(&node_info))
-                .await
-                .map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
-            master_client
-                .get_async_pubsub()
-                .await
-                .map_err(|e| DriverError::ConnectionFailed(e.to_string()))
+            let mut attempt = open_sentinel_pubsub(p, p.connect_timeout).await;
+            if matches!(attempt, Err(DriverError::ConnectionFailed(_))) && p.tls.prefer_fallback {
+                attempt = open_sentinel_pubsub(&plaintext_sentinel_plan(p), p.connect_timeout).await;
+            }
+            attempt
         }
     }
 }
@@ -195,55 +221,207 @@ pub async fn open_pubsub_connection(
 pub async fn open_live_conn(plan: &ConnectionPlan) -> Result<RedisLiveConn, DriverError> {
     match plan {
         ConnectionPlan::Standalone(p) => {
-            let client = open_standalone_client(&p.url, &p.tls)?;
-            let connection = client
-                .get_multiplexed_async_connection()
-                .await
-                .map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
+            let connection =
+                open_standalone_conn_with_fallback(&p.url, &p.tls, p.connect_timeout).await?;
             Ok(RedisLiveConn::Standalone(connection))
         }
         ConnectionPlan::Cluster(p) => {
-            let mut builder = ClusterClient::builder(p.node_urls.clone());
-            if let Some(user) = &p.username {
-                builder = builder.username(user.clone());
-            }
-            if let Some(pass) = &p.password {
-                builder = builder.password(pass.clone());
-            }
-            if let Some(mode) = tls_mode_for_plan(&p.tls) {
-                builder = builder.tls(mode);
-                if let Some(certs) = load_tls_certificates(&p.tls)? {
-                    builder = builder.certs(certs);
-                }
-            }
-            let client = builder
-                .build()
-                .map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
-            let connection = client
-                .get_async_connection()
-                .await
-                .map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
+            let connection = open_cluster_conn_with_fallback(
+                &p.node_urls,
+                p.username.as_deref(),
+                p.password.as_deref(),
+                &p.tls,
+                p.connect_timeout,
+            )
+            .await?;
             Ok(RedisLiveConn::Cluster(connection))
         }
         ConnectionPlan::Sentinel(p) => {
-            let node_info = sentinel_node_info(p);
-            let mut client = SentinelClient::build(
-                p.sentinel_urls.clone(),
-                p.master_name.clone(),
-                Some(node_info),
-                SentinelServerType::Master,
-            )
-            .map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
-            let connection = client
-                .get_async_connection()
-                .await
-                .map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
+            let mut attempt = open_sentinel_conn(p, p.connect_timeout).await;
+            if matches!(attempt, Err(DriverError::ConnectionFailed(_))) && p.tls.prefer_fallback {
+                attempt = open_sentinel_conn(&plaintext_sentinel_plan(p), p.connect_timeout).await;
+            }
+            let (client, connection) = attempt?;
             Ok(RedisLiveConn::Sentinel {
                 client,
                 connection,
             })
         }
     }
+}
+
+/// Cap on the TLS attempt when the connection prefers TLS but may fall back to
+/// plaintext. Real TLS handshakes finish in milliseconds, so this is only hit
+/// when the server is plaintext (or TLS is broken) — fail fast and retry.
+const PREFER_TLS_PROBE: Duration = Duration::from_secs(5);
+
+async fn open_standalone_conn(
+    url: &str,
+    tls: &TlsPlan,
+    timeout: Duration,
+) -> Result<MultiplexedConnection, DriverError> {
+    let client = open_standalone_client(url, tls)?;
+    connect_with_timeout(timeout, client.get_multiplexed_async_connection()).await
+}
+
+async fn open_standalone_conn_with_fallback(
+    url: &str,
+    tls: &TlsPlan,
+    timeout: Duration,
+) -> Result<MultiplexedConnection, DriverError> {
+    let tls_timeout = if tls.prefer_fallback {
+        timeout.min(PREFER_TLS_PROBE)
+    } else {
+        timeout
+    };
+    match open_standalone_conn(url, tls, tls_timeout).await {
+        Ok(conn) => Ok(conn),
+        Err(DriverError::ConnectionFailed(_)) if tls.prefer_fallback => {
+            open_standalone_conn(&plaintext_url(url), &TlsPlan::plaintext(), timeout).await
+        }
+        Err(e) => Err(e),
+    }
+}
+
+async fn open_standalone_pubsub(
+    url: &str,
+    tls: &TlsPlan,
+    timeout: Duration,
+) -> Result<redis::aio::PubSub, DriverError> {
+    let client = open_standalone_client(url, tls)?;
+    connect_with_timeout(timeout, client.get_async_pubsub()).await
+}
+
+async fn open_standalone_pubsub_with_fallback(
+    url: &str,
+    tls: &TlsPlan,
+    timeout: Duration,
+) -> Result<redis::aio::PubSub, DriverError> {
+    let tls_timeout = if tls.prefer_fallback {
+        timeout.min(PREFER_TLS_PROBE)
+    } else {
+        timeout
+    };
+    match open_standalone_pubsub(url, tls, tls_timeout).await {
+        Ok(pubsub) => Ok(pubsub),
+        Err(DriverError::ConnectionFailed(_)) if tls.prefer_fallback => {
+            open_standalone_pubsub(&plaintext_url(url), &TlsPlan::plaintext(), timeout).await
+        }
+        Err(e) => Err(e),
+    }
+}
+
+async fn open_cluster_conn(
+    node_urls: &[String],
+    username: Option<&str>,
+    password: Option<&str>,
+    tls: &TlsPlan,
+    timeout: Duration,
+) -> Result<ClusterConnection, DriverError> {
+    let mut builder = ClusterClient::builder(node_urls.to_vec());
+    if let Some(user) = username {
+        builder = builder.username(user.to_string());
+    }
+    if let Some(pass) = password {
+        builder = builder.password(pass.to_string());
+    }
+    if let Some(mode) = tls_mode_for_plan(tls) {
+        builder = builder.tls(mode);
+        if let Some(certs) = load_tls_certificates(tls)? {
+            builder = builder.certs(certs);
+        }
+    }
+    let client = builder
+        .build()
+        .map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
+    connect_with_timeout(timeout, client.get_async_connection()).await
+}
+
+async fn open_cluster_conn_with_fallback(
+    node_urls: &[String],
+    username: Option<&str>,
+    password: Option<&str>,
+    tls: &TlsPlan,
+    timeout: Duration,
+) -> Result<ClusterConnection, DriverError> {
+    let tls_timeout = if tls.prefer_fallback {
+        timeout.min(PREFER_TLS_PROBE)
+    } else {
+        timeout
+    };
+    match open_cluster_conn(node_urls, username, password, tls, tls_timeout).await {
+        Ok(conn) => Ok(conn),
+        Err(DriverError::ConnectionFailed(_)) if tls.prefer_fallback => {
+            let plain_urls: Vec<String> = node_urls.iter().map(|u| plaintext_url(u)).collect();
+            open_cluster_conn(
+                &plain_urls,
+                username,
+                password,
+                &TlsPlan::plaintext(),
+                timeout,
+            )
+            .await
+        }
+        Err(e) => Err(e),
+    }
+}
+
+async fn open_sentinel_conn(
+    plan: &SentinelPlan,
+    timeout: Duration,
+) -> Result<(SentinelClient, MultiplexedConnection), DriverError> {
+    let node_info = sentinel_node_info(plan);
+    let mut client = SentinelClient::build(
+        plan.sentinel_urls.clone(),
+        plan.master_name.clone(),
+        Some(node_info),
+        SentinelServerType::Master,
+    )
+    .map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
+    let connection = connect_with_timeout(timeout, client.get_async_connection()).await?;
+    Ok((client, connection))
+}
+
+async fn open_sentinel_pubsub(
+    plan: &SentinelPlan,
+    timeout: Duration,
+) -> Result<redis::aio::PubSub, DriverError> {
+    let node_info = sentinel_node_info(plan);
+    let mut sentinel = Sentinel::build(plan.sentinel_urls.clone())
+        .map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
+    let master_client = connect_with_timeout(
+        timeout,
+        sentinel.async_master_for(&plan.master_name, Some(&node_info)),
+    )
+    .await?;
+    connect_with_timeout(timeout, master_client.get_async_pubsub()).await
+}
+
+fn plaintext_url(url: &str) -> String {
+    url.replacen("rediss://", "redis://", 1)
+}
+
+fn plaintext_sentinel_plan(plan: &SentinelPlan) -> SentinelPlan {
+    let mut plain = plan.clone();
+    plain.tls = TlsPlan::plaintext();
+    plain.sentinel_urls = plain.sentinel_urls.iter().map(|u| plaintext_url(u)).collect();
+    plain
+}
+
+/// Bound connection establishment so a misconfigured endpoint (for example a
+/// TLS handshake against a plaintext server) fails fast instead of hanging.
+async fn connect_with_timeout<T>(
+    timeout: Duration,
+    fut: impl Future<Output = Result<T, redis::RedisError>>,
+) -> Result<T, DriverError> {
+    tokio::time::timeout(timeout, fut)
+        .await
+        .map_err(|_| {
+            DriverError::ConnectionFailed(format!(
+                "Redis connection timed out after {timeout:?}"
+            ))
+        })?
+        .map_err(|e| DriverError::ConnectionFailed(e.to_string()))
 }
 
 fn parse_topology(opts: Option<&Map<String, serde_json::Value>>) -> Topology {
@@ -259,12 +437,19 @@ fn parse_tls(opts: Option<&Map<String, serde_json::Value>>, ssl_mode: &SslMode) 
     let explicit_enabled = tls_obj
         .and_then(|v| v.get("enabled"))
         .and_then(|v| v.as_bool());
-    let ssl_requires = matches!(
+    // Redis TLS is connection-level, so `Prefer` is implemented as: attempt
+    // TLS first, then fall back to plaintext if the handshake fails. An
+    // explicit `options.tls.enabled = true` (Redis wizard TLS step) or a
+    // strict ssl_mode is treated as a hard requirement — never downgrade.
+    let ssl_prefer = matches!(ssl_mode, SslMode::Prefer);
+    let ssl_forced = matches!(
         ssl_mode,
-        SslMode::Prefer | SslMode::Require | SslMode::VerifyCa | SslMode::VerifyFull
+        SslMode::Require | SslMode::VerifyCa | SslMode::VerifyFull
     );
+    let enabled = explicit_enabled.unwrap_or(false) || ssl_forced || ssl_prefer;
     TlsPlan {
-        enabled: explicit_enabled.unwrap_or(false) || ssl_requires,
+        enabled,
+        prefer_fallback: ssl_prefer && explicit_enabled != Some(true),
         ca_path: tls_nested_string(tls_obj, "caPath"),
         cert_path: tls_nested_string(tls_obj, "certPath"),
         key_path: tls_nested_string(tls_obj, "keyPath"),
@@ -498,17 +683,23 @@ pub async fn open_pinned_node_conn(
     node_addr: &str,
 ) -> Result<MultiplexedConnection, DriverError> {
     let (host, port) = parse_host_port(node_addr)?;
-    let (tls, username, password) = match plan {
-        ConnectionPlan::Cluster(p) => (&p.tls, p.username.as_deref(), p.password.as_deref()),
-        ConnectionPlan::Standalone(p) => (&p.tls, None, None),
-        ConnectionPlan::Sentinel(p) => (&p.tls, p.username.as_deref(), p.password.as_deref()),
+    let (tls, username, password, connect_timeout) = match plan {
+        ConnectionPlan::Cluster(p) => (
+            &p.tls,
+            p.username.as_deref(),
+            p.password.as_deref(),
+            p.connect_timeout,
+        ),
+        ConnectionPlan::Standalone(p) => (&p.tls, None, None, p.connect_timeout),
+        ConnectionPlan::Sentinel(p) => (
+            &p.tls,
+            p.username.as_deref(),
+            p.password.as_deref(),
+            p.connect_timeout,
+        ),
     };
     let url = build_node_url(tls, &host, port, username, password, None);
-    let client = open_standalone_client(&url, tls)?;
-    client
-        .get_multiplexed_async_connection()
-        .await
-        .map_err(|e| DriverError::ConnectionFailed(e.to_string()))
+    open_standalone_conn_with_fallback(&url, tls, connect_timeout).await
 }
 
 /// Sentinel TLS in redis 0.27: `SentinelNodeConnectionInfo` only exposes `tls_mode`
@@ -576,6 +767,7 @@ mod tests {
             password: None,
             ssl_mode: SslMode::Disable,
             connection_timeout: 30,
+            max_pool_size: 10,
             ssh_tunnel: None,
             color_tag: None,
             group: None,
@@ -593,6 +785,7 @@ mod tests {
                 assert_eq!(p.db_index, 0);
                 assert!(p.url.starts_with("redis://"));
                 assert!(!p.tls.enabled);
+                assert!(!p.tls.prefer_fallback);
             }
             _ => panic!("expected standalone plan"),
         }
@@ -629,6 +822,7 @@ mod tests {
         match plan {
             ConnectionPlan::Standalone(p) => {
                 assert!(p.tls.enabled);
+                assert!(!p.tls.prefer_fallback);
                 assert!(p.url.starts_with("rediss://"));
             }
             _ => panic!("expected standalone plan"),
@@ -641,9 +835,84 @@ mod tests {
         config.ssl_mode = SslMode::Require;
         let plan = build_connection_plan(&config).unwrap();
         match plan {
-            ConnectionPlan::Standalone(p) => assert!(p.tls.enabled),
+            ConnectionPlan::Standalone(p) => {
+                assert!(p.tls.enabled);
+                assert!(!p.tls.prefer_fallback);
+            }
             _ => panic!("expected standalone plan"),
         }
+    }
+
+    #[test]
+    fn ssl_mode_prefer_attempts_tls_with_plaintext_fallback() {
+        // Default connections carry ssl_mode=Prefer: build a rediss:// URL,
+        // but mark the plan to fall back to plaintext when TLS fails.
+        let mut config = base_config();
+        config.ssl_mode = SslMode::Prefer;
+        let plan = build_connection_plan(&config).unwrap();
+        match plan {
+            ConnectionPlan::Standalone(p) => {
+                assert!(p.tls.enabled);
+                assert!(p.tls.prefer_fallback);
+                assert!(p.url.starts_with("rediss://"));
+            }
+            _ => panic!("expected standalone plan"),
+        }
+    }
+
+    #[test]
+    fn ssl_mode_prefer_with_explicit_tls_flag_never_downgrades() {
+        // Wizard explicitly enabled TLS: prefer must not silently fall back.
+        let mut config = base_config();
+        config.ssl_mode = SslMode::Prefer;
+        let mut opts = Map::new();
+        opts.insert("tls".into(), json!({ "enabled": true }));
+        config.options = Some(opts);
+        let plan = build_connection_plan(&config).unwrap();
+        match plan {
+            ConnectionPlan::Standalone(p) => {
+                assert!(p.tls.enabled);
+                assert!(!p.tls.prefer_fallback);
+            }
+            _ => panic!("expected standalone plan"),
+        }
+    }
+
+    #[test]
+    fn connect_timeout_honors_config() {
+        let mut config = base_config();
+        config.connection_timeout = 7;
+        let plan = build_connection_plan(&config).unwrap();
+        match plan {
+            ConnectionPlan::Standalone(p) => assert_eq!(p.connect_timeout, Duration::from_secs(7)),
+            _ => panic!("expected standalone plan"),
+        }
+    }
+
+    #[tokio::test]
+    #[ignore = "requires local redis on 127.0.0.1:6379"]
+    async fn local_live_connect_prefer_plaintext_require_times_out() {
+        let mut cfg = base_config();
+        cfg.ssl_mode = SslMode::Prefer;
+        cfg.connection_timeout = 4;
+        let plan = build_connection_plan(&cfg).unwrap();
+        let t0 = std::time::Instant::now();
+        assert!(open_live_conn(&plan).await.is_ok());
+        // TLS probe (≤5s) fails against the plaintext server, then plaintext
+        // fallback connects — total should stay well under a full timeout.
+        assert!(t0.elapsed() < Duration::from_secs(12));
+
+        let mut cfg = base_config();
+        cfg.ssl_mode = SslMode::Require;
+        cfg.connection_timeout = 3;
+        let plan = build_connection_plan(&cfg).unwrap();
+        let t0 = std::time::Instant::now();
+        let err = match open_live_conn(&plan).await {
+            Ok(_) => panic!("TLS-required connect must fail against plaintext server"),
+            Err(e) => e,
+        };
+        assert!(t0.elapsed() < Duration::from_secs(10));
+        assert!(err.to_string().contains("timed out"));
     }
 
     #[test]

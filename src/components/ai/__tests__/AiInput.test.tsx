@@ -121,7 +121,7 @@ describe('AiInput', () => {
     ];
 
     it('renders inline tokens without remove buttons', () => {
-      const { getAllByTestId } = render(
+      const { getAllByTestId, getByTestId, container } = render(
         <AiInput
           value=""
           onChange={vi.fn()}
@@ -130,20 +130,24 @@ describe('AiInput', () => {
           onContextItemsChange={vi.fn()}
         />,
       );
+      const field = getByTestId('ai-input-field');
       const tokens = getAllByTestId('context-token');
+      const textarea = container.querySelector('textarea')!;
       expect(tokens).toHaveLength(2);
       expect(tokens[0]).toHaveAttribute('data-kind', 'file');
       expect(tokens[0]).toHaveAttribute('data-id', 'schema.sql');
-      expect(tokens[0].textContent).toBe('schema.sql');
-      expect(tokens[0].textContent).not.toContain('@');
+      expect(tokens[0].textContent).toBe('@schema.sql');
       expect(tokens[0].querySelector('svg')).toBeTruthy();
       expect(tokens[1]).toHaveAttribute('data-kind', 'table');
-      expect(tokens[1]).toHaveAttribute('data-id', 'users');
-      expect(tokens[1].textContent).toBe('users');
+      expect(tokens[1].textContent).toBe('@users');
       expect(tokens[1].querySelector('svg')).toBeTruthy();
       for (const token of tokens) {
         expect(token.querySelector('button')).toBeNull();
+        expect(field.contains(token)).toBe(true);
       }
+      // Chips and textarea share one wrapping container (same line / span-like).
+      expect(field.contains(textarea)).toBe(true);
+      expect(field.className).toContain('flex-wrap');
     });
 
     it('Backspace at start removes last token', () => {

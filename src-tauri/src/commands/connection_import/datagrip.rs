@@ -375,6 +375,7 @@ pub fn parse(xml: &str) -> Result<ParsedImport, CommandError> {
             password: None,
             ssl_mode: SslMode::default(),
             connection_timeout: 30,
+            max_pool_size: 10,
             ssh_tunnel: None,
             color_tag: None,
             group,

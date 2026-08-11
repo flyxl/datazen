@@ -22,6 +22,31 @@ pub(crate) use tasks::{
 use tauri::State;
 
 #[tauri::command]
+pub fn classify_sync_pair(
+    source_database_type: String,
+    target_database_type: String,
+) -> Result<serde_json::Value, CommandError> {
+    use crate::sync::pairing::resolve_sync_pairing;
+    let pairing = resolve_sync_pairing(&source_database_type, &target_database_type);
+    Ok(match pairing {
+        crate::sync::pairing::SyncPairing::Direct { family } => serde_json::json!({
+            "path": "direct",
+            "family": family,
+            "supported": true,
+        }),
+        crate::sync::pairing::SyncPairing::Ir => serde_json::json!({
+            "path": "ir",
+            "supported": true,
+        }),
+        crate::sync::pairing::SyncPairing::Unsupported { reason } => serde_json::json!({
+            "path": "unsupported",
+            "supported": false,
+            "reason": reason,
+        }),
+    })
+}
+
+#[tauri::command]
 pub async fn compare_databases(
     state: State<'_, AppState>,
     source_connection_id: String,

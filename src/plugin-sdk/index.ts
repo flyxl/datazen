@@ -22,6 +22,7 @@ export { cn } from '../lib/cn';
 
 // === Hooks ===
 export { useI18n } from '../hooks/useI18n';
+export type { I18nKey, MongoTranslationKey, PluginTranslationKey, TranslationKey } from '../locales';
 
 // === Types ===
 export type { DatabaseTypeMeta, ConnectionMode } from '../lib/databaseMeta';

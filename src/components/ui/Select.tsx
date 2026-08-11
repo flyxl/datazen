@@ -7,6 +7,7 @@ export interface SelectOption {
   readonly value: string;
   readonly label: string;
   readonly disabled?: boolean;
+  readonly title?: string;
 }
 
 export interface SelectProps {
@@ -160,6 +161,7 @@ export function Select({ value, options, onChange, placeholder, disabled, classN
                 key={opt.value}
                 tabIndex={opt.disabled ? undefined : -1}
                 aria-selected={isSelected}
+                title={opt.title}
                 className={cn(
                   'flex cursor-pointer items-center px-2.5 py-1.5 text-sm transition-colors',
                   opt.disabled && 'cursor-not-allowed opacity-40',

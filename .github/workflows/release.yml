@@ -319,8 +319,46 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  release-checksums:
+  release-updater-json:
     needs: build
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Download release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p assets
+          gh release download "${GITHUB_REF_NAME}" --dir assets --clobber
+          ls -la assets/
+
+      - name: Generate and upload latest.json (Basic updater)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          node scripts/generate-updater-latest-json.mjs \
+            --assets-dir assets \
+            --version "$VERSION" \
+            --tag "${GITHUB_REF_NAME}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --notes "DataZen ${GITHUB_REF_NAME}" \
+            --out latest.json
+          cat latest.json
+          gh release upload "${GITHUB_REF_NAME}" latest.json --clobber
+
+  release-checksums:
+    needs: [build, release-updater-json]
     runs-on: ubuntu-latest
     environment: release
     permissions:

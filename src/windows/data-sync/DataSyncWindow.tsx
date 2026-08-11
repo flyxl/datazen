@@ -24,6 +24,7 @@ import { useThemeListener } from '../../hooks/useThemeListener';
 import { useI18n } from '../../hooks/useI18n';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { cn } from '../../lib/cn';
+import { resolveSyncPairing } from '../../lib/syncPairing';
 import type {
   ConnectionConfig,
   RowMismatch,
@@ -90,6 +91,19 @@ export function DataSyncWindow() {
     })();
   }, []);
 
+  useEffect(() => {
+    if (!sourceId || !targetId) return;
+    const src = connections.find((c) => c.id === sourceId);
+    const tgt = connections.find((c) => c.id === targetId);
+    if (!src || !tgt) return;
+    if (
+      sourceId === targetId
+      || !resolveSyncPairing(src.databaseType, tgt.databaseType).supported
+    ) {
+      setTargetId('');
+    }
+  }, [sourceId, connections, targetId]);
+
   // Listen for sync progress events
   useEffect(() => {
     const unlisten = listen<SyncProgress>('sync:progress', (event) => {
@@ -114,12 +128,43 @@ export function DataSyncWindow() {
     }
   }, [syncState, syncStartTime]);
 
+  const sourceConn = useMemo(
+    () => connections.find((c) => c.id === sourceId),
+    [connections, sourceId],
+  );
+
   const connOptions = useMemo(() => {
     return connections.map((c) => ({
       value: c.id,
       label: `${c.name} (${c.databaseType})`,
     }));
   }, [connections]);
+
+  const targetOptions = useMemo(() => {
+    const hint = t('sync.unsupportedHint');
+    const srcType = sourceConn?.databaseType;
+    return connections.map((c) => {
+      const sameConnection = c.id === sourceId;
+      const unsupported = Boolean(
+        srcType && !sameConnection && !resolveSyncPairing(srcType, c.databaseType).supported,
+      );
+      const disabled = sameConnection || unsupported;
+      const base = `${c.name} (${c.databaseType})`;
+      return {
+        value: c.id,
+        label: unsupported ? `${base} — ${hint}` : base,
+        disabled,
+        title: unsupported ? hint : undefined,
+      };
+    });
+  }, [connections, sourceId, sourceConn?.databaseType, t]);
+
+  const activePairing = useMemo(() => {
+    if (!sourceConn || !targetId) return null;
+    const tgt = connections.find((c) => c.id === targetId);
+    if (!tgt) return null;
+    return resolveSyncPairing(sourceConn.databaseType, tgt.databaseType);
+  }, [connections, sourceConn, targetId]);
 
   const ensureConnected = useCallback(async (configId: string): Promise<string | null> => {
     if (activeConns[configId]) return activeConns[configId];
@@ -456,9 +501,14 @@ export function DataSyncWindow() {
         <ArrowRight className="mt-5 h-5 w-5 shrink-0 text-fg-muted" />
         <div className="min-w-0 flex-1">
           <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-fg-muted">{t('sync.target')}</label>
-          <Select value={targetId} options={connOptions} onChange={setTargetId} placeholder={t('sync.selectTarget')} />
+          <Select value={targetId} options={targetOptions} onChange={setTargetId} placeholder={t('sync.selectTarget')} />
         </div>
-        <div className="mt-5 shrink-0">
+        <div className="mt-5 flex shrink-0 flex-col items-end gap-1">
+          {activePairing?.supported && (
+            <span className="text-[10px] font-medium uppercase tracking-wide text-fg-muted">
+              {activePairing.path === 'direct' ? t('sync.pathDirect') : t('sync.pathIr')}
+            </span>
+          )}
           <Button variant="primary" onClick={() => void handleCompare()} disabled={syncState === 'comparing' || syncState === 'syncing'}>
             {syncState === 'comparing' ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
             {t('sync.compare')}

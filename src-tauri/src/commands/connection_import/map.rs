@@ -64,6 +64,7 @@ pub fn base_connection(
         password,
         ssl_mode: SslMode::default(),
         connection_timeout: 30,
+        max_pool_size: 10,
         ssh_tunnel,
         color_tag,
         group,

@@ -63,9 +63,7 @@ pub(super) struct StoreCache {
     pub(super) connections: Vec<ConnectionConfig>,
     pub(super) groups: Vec<String>,
     pub(super) settings: AppSettings,
-    /// Lazy: loaded on first history / favorites / sync / AI access.
-    pub(super) query_history: Vec<QueryHistoryEntry>,
-    pub(super) query_history_loaded: bool,
+    /// Lazy: loaded on first favorites / sync / AI access.
     pub(super) favorite_queries: Vec<FavoriteQuery>,
     pub(super) favorite_queries_loaded: bool,
     pub(super) sync_tasks: Vec<SyncTask>,

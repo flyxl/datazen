@@ -114,7 +114,11 @@ impl ConnectionManager {
             .await
             .ok_or_else(|| ConnectionError::ConfigNotFound(config_id.to_string()))?;
 
-        let (effective_config, tunnel) = self.maybe_start_tunnel(config).await?;
+        let (mut effective_config, tunnel) = self.maybe_start_tunnel(config).await?;
+        let pool_size = crate::store::clamp_connection_pool_size(
+            self.store.get_settings().await.connection_pool_size,
+        );
+        effective_config.max_pool_size = pool_size;
 
         let driver = self
             .driver_for_type(&effective_config.database_type)
@@ -553,6 +557,7 @@ mod tests {
             password: None,
             ssl_mode: SslMode::Prefer,
             connection_timeout: 30,
+            max_pool_size: 10,
             ssh_tunnel: None,
             color_tag: None,
             group: None,
@@ -630,6 +635,7 @@ mod tests {
             password: None,
             ssl_mode: SslMode::Prefer,
             connection_timeout: 30,
+            max_pool_size: 10,
             ssh_tunnel: None,
             color_tag: None,
             group: None,

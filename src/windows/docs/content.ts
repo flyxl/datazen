@@ -42,7 +42,7 @@ export const DOCS_SECTIONS_ZH: DocsSection[] = [
   <li>用自然语言生成 SQL、诊断错误、分析执行计划</li>
   <li>通过上下文文件把业务规则、表说明等注入 AI</li>
   <li>用 Workflow 把「查询 + AI + 条件/循环」串成可复用流程</li>
-  <li>用<strong>运营看板</strong>多图盯盘：后台定时刷新、阈值告警、历史回看与托盘常驻</li>
+  <li>用<strong>数据看板</strong>多图盯盘：后台定时刷新、阈值告警、历史回看与托盘常驻</li>
   <li>数据同步、备份恢复、配置导入导出、MCP 对接外部 AI 客户端</li>
   <li>用 <strong>Schema Diff</strong> 以源库为目标态对比结构，生成并受控部署 DDL</li>
 </ul>
@@ -53,7 +53,7 @@ export const DOCS_SECTIONS_ZH: DocsSection[] = [
   <li>在查询编辑器或 AI 侧边栏使用 NL2SQL / 对话</li>
   <li>需要时添加上下文文件，提升生成准确度</li>
   <li>把重复分析沉淀为 Workflow，一键执行</li>
-  <li>把核心业务指标做成运营看板组件，开启监控与告警</li>
+  <li>把核心业务指标做成数据看板组件，开启监控与告警</li>
   <li>环境对齐时用 Schema Diff：对比 → 计划 → 审阅 → 部署</li>
 </ol>
 `,
@@ -79,12 +79,12 @@ export const DOCS_SECTIONS_ZH: DocsSection[] = [
   <li><strong>上下文文件</strong>：把本地文档注入提示词</li>
   <li><strong>Workflow</strong>：YAML 编排查询与 AI 步骤</li>
 </ul>
-<h3>运营看板与监控</h3>
+<h3>数据看板与监控</h3>
 <ul>
   <li>独立窗口多图网格，组件绑定 SQL + 图表配置</li>
   <li>后台 MonitorEngine 定时刷新；监控连接与 UI 会话隔离</li>
   <li>桌面通知 / Webhook 阈值告警；运行历史落盘可回看</li>
-  <li>可选系统托盘：关主窗仍可继续监控（详见「运营看板」专章）</li>
+  <li>可选系统托盘：关主窗仍可继续监控（详见「数据看板」专章）</li>
 </ul>
 <h3>运维与生态</h3>
 <ul>
@@ -193,7 +193,7 @@ export const DOCS_SECTIONS_ZH: DocsSection[] = [
   },
   {
     id: 'opsDashboard',
-    title: '运营看板',
+    title: '数据看板',
     html: '', // filled from docs/ops-dashboard-guide.md in getDocsSections
   },
   {

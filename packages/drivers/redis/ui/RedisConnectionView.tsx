@@ -1,11 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { RefreshCw } from 'lucide-react';
-import { Button } from '../../../../src/components/ui/Button';
-import { useSchemaStore } from '../../../../src/stores/schemaStore';
+import { useCallback, useEffect, useState } from 'react';
 import { useI18n } from '../../../../src/hooks/useI18n';
 import { cn } from '../../../../src/lib/cn';
 import type { ConnectionViewProps } from '../../../../src/lib/connectionViews/types';
-import { RedisWorkbench, type RedisWorkbenchHandle } from './RedisWorkbench';
+import { RedisWorkbench } from './RedisWorkbench';
 import { RedisConsole } from './RedisConsole';
 import { MonitorPanel } from './MonitorPanel';
 import { PubSubPanel } from './PubSubPanel';
@@ -31,14 +28,15 @@ export function RedisConnectionView({
   initialDatabase,
 }: ConnectionViewProps) {
   const { t } = useI18n();
-  const loadForConnection = useSchemaStore((s) => s.loadForConnection);
   const [activeTab, setActiveTab] = useState<ActiveTab>('items');
   const [dbIndex, setDbIndex] = useState(0);
   const [keySuggestions, setKeySuggestions] = useState<string[]>([]);
   const [pinnedNodeAddr, setPinnedNodeAddr] = useState(() =>
     readPinnedNodeAddr(connectionId),
   );
-  const workbenchRef = useRef<RedisWorkbenchHandle>(null);
+  // Panels stay mounted once visited so tab switches never lose their state
+  // (console draft/results, monitor samples, pub/sub subscriptions, …).
+  const [visitedTabs, setVisitedTabs] = useState<ActiveTab[]>(['items']);
 
   useEffect(() => {
     setDbIndex(0);
@@ -46,23 +44,14 @@ export function RedisConnectionView({
     setPinnedNodeAddr(readPinnedNodeAddr(connectionId));
   }, [connectionId]);
 
-  const handleRefresh = useCallback(() => {
-    void loadForConnection(connectionId, { skipLoadTables: true });
-    workbenchRef.current?.refreshKeys();
-  }, [connectionId, loadForConnection]);
+  const handleTabClick = useCallback((tab: ActiveTab) => {
+    setActiveTab(tab);
+    setVisitedTabs((prev) => (prev.includes(tab) ? prev : [...prev, tab]));
+  }, []);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex shrink-0 items-center gap-2 border-b border-edge bg-surface-alt px-4">
-        <Button
-          variant="secondary"
-          className="h-8 w-8 !px-0"
-          title={t('connWin.refresh')}
-          onClick={handleRefresh}
-        >
-          <RefreshCw className="h-4 w-4" />
-        </Button>
-        <div className="mx-1 h-6 w-px bg-edge" />
         {TABS.map((tab) => (
           <button
             key={tab}
@@ -73,46 +62,56 @@ export function RedisConnectionView({
                 ? 'text-fg font-medium'
                 : 'text-fg-secondary hover:text-fg',
             )}
-            onClick={() => setActiveTab(tab)}
+            onClick={() => handleTabClick(tab)}
           >
             {t(TAB_LABEL_KEYS[tab])}
-            {activeTab === tab && (
-              <span className="absolute inset-x-0 bottom-0 h-0.5 bg-accent" />
-            )}
+            <span
+              className={cn(
+                'absolute inset-x-0 bottom-0 h-0.5 bg-accent transition-opacity duration-300',
+                activeTab === tab ? 'opacity-100' : 'opacity-0',
+              )}
+            />
           </button>
         ))}
         <div className="flex-1" />
         <span className="text-xs text-fg-muted">{connectionName}</span>
       </div>
 
-      {activeTab === 'items' && (
-        <RedisWorkbench
-          ref={workbenchRef}
-          connectionId={connectionId}
-          initialDatabase={initialDatabase}
-          onDbIndexChange={setDbIndex}
-          onKeysChange={setKeySuggestions}
-        />
+      {visitedTabs.includes('items') && (
+        <div className={cn('flex min-h-0 flex-1 flex-col', activeTab !== 'items' && 'hidden')}>
+          <RedisWorkbench
+            connectionId={connectionId}
+            initialDatabase={initialDatabase}
+            onDbIndexChange={setDbIndex}
+            onKeysChange={setKeySuggestions}
+          />
+        </div>
       )}
-      {activeTab === 'console' && (
-        <RedisConsole
-          connectionId={connectionId}
-          dbIndex={dbIndex}
-          keySuggestions={keySuggestions}
-          pinnedNodeAddr={pinnedNodeAddr}
-          onPinnedNodeAddrChange={setPinnedNodeAddr}
-        />
+      {visitedTabs.includes('console') && (
+        <div className={cn('flex min-h-0 flex-1 flex-col', activeTab !== 'console' && 'hidden')}>
+          <RedisConsole
+            connectionId={connectionId}
+            dbIndex={dbIndex}
+            keySuggestions={keySuggestions}
+            pinnedNodeAddr={pinnedNodeAddr}
+            onPinnedNodeAddrChange={setPinnedNodeAddr}
+          />
+        </div>
       )}
-      {activeTab === 'monitor' && (
-        <MonitorPanel
-          connectionId={connectionId}
-          dbIndex={dbIndex}
-          pinnedNodeAddr={pinnedNodeAddr}
-          onPinnedNodeAddrChange={setPinnedNodeAddr}
-        />
+      {visitedTabs.includes('monitor') && (
+        <div className={cn('flex min-h-0 flex-1 flex-col', activeTab !== 'monitor' && 'hidden')}>
+          <MonitorPanel
+            connectionId={connectionId}
+            dbIndex={dbIndex}
+            pinnedNodeAddr={pinnedNodeAddr}
+            onPinnedNodeAddrChange={setPinnedNodeAddr}
+          />
+        </div>
       )}
-      {activeTab === 'pubsub' && (
-        <PubSubPanel connectionId={connectionId} />
+      {visitedTabs.includes('pubsub') && (
+        <div className={cn('flex min-h-0 flex-1 flex-col', activeTab !== 'pubsub' && 'hidden')}>
+          <PubSubPanel connectionId={connectionId} />
+        </div>
       )}
     </div>
   );

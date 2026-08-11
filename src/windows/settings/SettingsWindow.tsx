@@ -22,6 +22,7 @@ import { McpSettingsSection } from './McpSettingsSection';
 import { McpClientSection } from './McpClientSection';
 import { settingsSectionIconId } from '../../lib/hostLucideMap';
 import { SectionTitle, SettingRow, ToggleRow } from './settingsUi';
+import { DataCleanupSection } from './DataCleanupSection';
 
 const PAGE_SIZE_OPTIONS = [25, 50, 100, 200, 500];
 const RESULT_LIMIT_OPTIONS = [1000, 2000, 5000, 10000, 50000];
@@ -209,6 +210,23 @@ export function SettingsWindow() {
                   />
                 </SettingRow>
 
+                <SettingRow label={t('settings.connectionPoolSize')}>
+                  <input
+                    type="number"
+                    min={1}
+                    max={100}
+                    value={draft.connectionPoolSize ?? 10}
+                    onChange={(e) => {
+                      const n = Number(e.target.value);
+                      if (!Number.isFinite(n)) return;
+                      updateField('connectionPoolSize', Math.min(100, Math.max(1, Math.round(n))));
+                    }}
+                    className="h-9 w-24 rounded-md border border-edge bg-surface px-3 text-sm tabular-nums text-fg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/25"
+                    data-testid="settings-connection-pool-size"
+                  />
+                </SettingRow>
+                <p className="text-xs text-fg-muted -mt-2">{t('settings.connectionPoolSizeHint')}</p>
+
                 <ToggleRow
                   label={t('settings.limitSelect')}
                   checked={draft.limitSelectResults}
@@ -279,6 +297,8 @@ export function SettingsWindow() {
                   checked={draft.autoCommit}
                   onChange={(v) => updateField('autoCommit', v)}
                 />
+
+                <DataCleanupSection />
               </>
             )}
 

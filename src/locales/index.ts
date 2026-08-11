@@ -8,8 +8,16 @@ import ja from './ja';
 import ptBR from './pt-BR';
 import ru from './ru';
 import ko from './ko';
+import type { MongoTranslationKey } from '../../packages/drivers/mongodb/locales/en';
+import {
+  PLUGIN_LOCALES,
+  type PluginTranslationKey,
+} from '../plugins/generated-locales';
 
-export type { TranslationKey };
+export type { TranslationKey, PluginTranslationKey, MongoTranslationKey };
+
+/** Host keys plus merged plugin keys from enabled drivers. */
+export type I18nKey = TranslationKey | PluginTranslationKey | MongoTranslationKey;
 
 export const SUPPORTED_LOCALES = [
   'en',
@@ -49,6 +57,8 @@ const locales: Record<SupportedLocale, Record<TranslationKey, string>> = {
   ko,
 };
 
+const pluginLocalesEn = PLUGIN_LOCALES.en;
+
 function resolveLocale(locale: string): SupportedLocale {
   if (locale in locales) return locale as SupportedLocale;
   return 'en';
@@ -56,12 +66,19 @@ function resolveLocale(locale: string): SupportedLocale {
 
 export function getTranslation(
   locale: SupportedLocale | string,
-  key: TranslationKey,
+  key: I18nKey,
   params?: Record<string, string | number>,
 ): string {
   const resolved = resolveLocale(locale);
   const dict = locales[resolved];
-  let text = dict[key] ?? en[key] ?? zhCN[key] ?? key;
+  const pluginDict = PLUGIN_LOCALES[resolved];
+  let text =
+    dict[key as TranslationKey]
+    ?? pluginDict[key]
+    ?? en[key as TranslationKey]
+    ?? pluginLocalesEn[key]
+    ?? zhCN[key as TranslationKey]
+    ?? key;
   if (params) {
     for (const [k, v] of Object.entries(params)) {
       text = text.replace(new RegExp(`\\{${k}\\}`, 'g'), String(v));
@@ -70,6 +87,13 @@ export function getTranslation(
   return text;
 }
 
-export function getAllTranslations(locale: SupportedLocale | string): Record<string, string> {
+/** Host locale strings only (excludes plugin driver keys). */
+export function getHostTranslations(locale: SupportedLocale | string): Record<string, string> {
   return locales[resolveLocale(locale)];
+}
+
+/** Host + merged plugin locale strings for the active driver set. */
+export function getAllTranslations(locale: SupportedLocale | string): Record<string, string> {
+  const resolved = resolveLocale(locale);
+  return { ...locales[resolved], ...PLUGIN_LOCALES[resolved] };
 }

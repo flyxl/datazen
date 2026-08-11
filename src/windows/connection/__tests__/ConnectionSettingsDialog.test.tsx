@@ -15,6 +15,7 @@ const baseSettings = {
   confirmOnDelete: true,
   autoCommit: true,
   defaultPageSize: 50,
+    connectionPoolSize: 10,
   checkForUpdatesOnStartup: true,
   logLevel: 'info' as const,
   logPath: '',

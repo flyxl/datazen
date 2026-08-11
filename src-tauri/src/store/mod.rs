@@ -3,13 +3,15 @@
 mod ai_config;
 mod connections;
 mod history;
+mod history_db;
 mod key_store;
 mod models;
 mod settings;
 mod sync_tasks;
 
+pub use history_db::{HistoryDb, HistoryEntry, HistoryListItem, HistoryScope, MAX_QUERY_HISTORY, MAX_WORKFLOW_HISTORY};
 pub use models::{FavoriteQuery, QueryHistoryEntry, SyncTask};
-pub use settings::{AppSettings, ThemePreference};
+pub use settings::{clamp_connection_pool_size, AppSettings, ThemePreference};
 
 use aes_gcm::aead::{Aead, KeyInit};
 use aes_gcm::{Aes256Gcm, Key, Nonce};
@@ -17,20 +19,29 @@ use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use tauri::Manager;
 use thiserror::Error;
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex, RwLock};
 
 use models::StoreCache;
 /// Bundle identifier — must match `tauri.conf.json` `"identifier"`.
 pub const APP_IDENTIFIER: &str = "com.tbeasy.datazen";
+
+/// Monotonic counter so temp file names stay unique within this process,
+/// even for back-to-back writes to the same target file.
+static TMP_FILE_SEQ: AtomicU64 = AtomicU64::new(0);
 
 /// Encrypted JSON store rooted at the per-app data directory.
 pub struct Store {
     pub(super) data_dir: PathBuf,
     pub(super) encryption_key: [u8; 32],
     pub(super) cache: Arc<RwLock<StoreCache>>,
+    /// Serializes disk writes so concurrent saves to the same file cannot
+    /// clobber each other's temp files or leave stale snapshots on disk.
+    pub(super) write_lock: Mutex<()>,
+    history_db: Arc<HistoryDb>,
 }
 
 #[derive(Debug, Error)]
@@ -55,6 +66,10 @@ impl Store {
         &self.data_dir
     }
 
+    pub fn history_db(&self) -> Arc<HistoryDb> {
+        self.history_db.clone()
+    }
+
     /// Default app data directory for headless entry points (MCP stdio, early logging).
     /// Matches Tauri `app_data_dir()` for the configured bundle identifier.
     pub fn default_app_data_dir() -> Result<PathBuf, StoreError> {
@@ -75,10 +90,14 @@ impl Store {
 
         let encryption_key = Self::get_or_create_encryption_key(&data_dir).await?;
 
+        let history_db = HistoryDb::open(&data_dir).map_err(|e| StoreError::InitError(e.to_string()))?;
+
         let store = Self {
             data_dir,
             encryption_key,
             cache: Arc::new(RwLock::new(StoreCache::default())),
+            write_lock: Mutex::new(()),
+            history_db,
         };
 
         store.load_all().await?;
@@ -92,10 +111,14 @@ impl Store {
 
         let encryption_key = Self::get_or_create_encryption_key(data_dir).await?;
 
+        let history_db = HistoryDb::open(data_dir).map_err(|e| StoreError::InitError(e.to_string()))?;
+
         let store = Self {
             data_dir: data_dir.to_path_buf(),
             encryption_key,
             cache: Arc::new(RwLock::new(StoreCache::default())),
+            write_lock: Mutex::new(()),
+            history_db,
         };
 
         store.load_all().await?;
@@ -178,7 +201,7 @@ impl Store {
             Err(_) => AppSettings::default_for_first_run(),
         };
 
-        // query_history / favorites / sync_tasks / ai_config stay unloaded
+        // favorites / sync_tasks / ai_config stay unloaded
         // until their respective flows call ensure_* below.
 
         Ok(())
@@ -212,7 +235,7 @@ impl Store {
             .file_name()
             .and_then(|n| n.to_str())
             .ok_or_else(|| StoreError::WriteError("invalid file name".into()))?;
-        let tmp_path = parent.join(format!(".{file_name}.tmp"));
+        let tmp_path = Self::unique_tmp_path(parent, file_name);
 
         tokio::fs::write(&tmp_path, content.as_ref())
             .await
@@ -224,11 +247,29 @@ impl Store {
         Ok(())
     }
 
+    /// A unique temp path for an atomic write. Concurrent writers (including
+    /// separate app processes sharing the data dir) each get their own file,
+    /// so one writer's `rename` can never lose another writer's temp file.
+    fn unique_tmp_path(parent: &std::path::Path, file_name: &str) -> PathBuf {
+        let seq = TMP_FILE_SEQ.fetch_add(1, Ordering::Relaxed);
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        parent.join(format!(
+            ".{file_name}.{}.{}.{}.tmp",
+            std::process::id(),
+            nanos,
+            seq
+        ))
+    }
+
     pub(super) async fn save_json_file<T: Serialize + ?Sized>(
         &self,
         filename: &str,
         data: &T,
     ) -> Result<(), StoreError> {
+        let _guard = self.write_lock.lock().await;
         let path = self.data_dir.join(filename);
 
         if let Some(parent) = path.parent() {

@@ -52,7 +52,7 @@ describe('快捷键 (TC-HOTKEY-001~005)', () => {
     await browser.pause(800);
     let handles = await browser.getWindowHandles();
     if (handles.length === 1) {
-      await browser.url('tauri://localhost/?window=settings');
+      await browser.url('tauri://localhost/window.html?window=settings');
       await browser.pause(1500);
     } else {
       const settingsHandle = handles.find((h) => h !== mainWindow)!;

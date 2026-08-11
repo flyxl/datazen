@@ -234,6 +234,7 @@ pub fn parse(bytes: &[u8], password: &str) -> Result<ParsedImport, CommandError>
             password: item.database_password.filter(|s| !s.is_empty()),
             ssl_mode: SslMode::default(),
             connection_timeout: 30,
+            max_pool_size: 10,
             ssh_tunnel,
             color_tag: None,
             group: None,

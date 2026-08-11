@@ -63,6 +63,7 @@ describe('settingsStore', () => {
       confirmOnDelete: true,
       autoCommit: true,
       defaultPageSize: 50,
+    connectionPoolSize: 10,
       logLevel: 'info',
       logPath: '',
       mcpServerEnabled: false,

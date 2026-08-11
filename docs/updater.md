@@ -7,15 +7,20 @@ DataZen Basic builds support in-app updates via [tauri-plugin-updater](https://v
 Generate a minisign key pair once (keep the private key secret):
 
 ```bash
-pnpm tauri signer generate -w ~/.tauri/datazen.key
+pnpm tauri signer generate -w ~/.tauri/datazen.key --ci -p ""
 ```
 
 This writes:
 
 - **Private key** — e.g. `~/.tauri/datazen.key` (never commit)
-- **Public key** — printed to stdout; paste into `src-tauri/tauri.conf.json` → `plugins.updater.pubkey`
+- **Public key** — e.g. `~/.tauri/datazen.key.pub`; paste into `src-tauri/tauri.conf.json` → `plugins.updater.pubkey`
 
-The repo ships a **placeholder** public key until the first signed release. Replace it before publishing updates users can install.
+Upload secrets to the GitHub **release** environment:
+
+```bash
+gh secret set TAURI_SIGNING_PRIVATE_KEY --env release < ~/.tauri/datazen.key
+gh secret set TAURI_SIGNING_PRIVATE_KEY_PASSWORD --env release --body ""
+```
 
 ## CI / release signing
 
@@ -44,7 +49,13 @@ Updater bundles:
 | Windows | NSIS `*.exe` + `.sig` (also MSI) |
 | Linux | AppImage + `.sig` |
 
-Upload `.sig` files and updater archives to the GitHub release. [tauri-action](https://github.com/tauri-apps/tauri-action) can generate `latest.json` for the configured endpoint.
+Upload `.sig` files and updater archives to the GitHub release. The release workflow job **`release-updater-json`** runs `scripts/generate-updater-latest-json.mjs` and uploads `latest.json` to the draft release (Basic platforms only).
+
+Verify after publish:
+
+```bash
+curl -sfL https://github.com/flyxl/datazen/releases/latest/download/latest.json | jq .
+```
 
 ## App configuration
 

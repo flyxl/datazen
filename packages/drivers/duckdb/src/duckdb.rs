@@ -372,6 +372,7 @@ mod tests {
             password: None,
             ssl_mode: Default::default(),
             connection_timeout: 5,
+            max_pool_size: 10,
             ssh_tunnel: None,
             color_tag: None,
             group: None,

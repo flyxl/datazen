@@ -133,7 +133,7 @@ describe('Path IPC Hardening (PIH-001~PIH-006)', () => {
     const cmdSrc = fs.readFileSync(SETTINGS_TS, 'utf8');
     expect(cmdSrc).toContain("invoke<void>('open_log_dir')");
 
-    await browser.url('tauri://localhost/?window=settings&section=logging');
+    await browser.url('tauri://localhost/window.html?window=settings&section=logging');
     await browser.pause(1500);
 
     const viewLogs = await $('button*=查看日志');
@@ -153,7 +153,7 @@ describe('Path IPC Hardening (PIH-001~PIH-006)', () => {
     const cmdSrc = fs.readFileSync(SETTINGS_TS, 'utf8');
     expect(cmdSrc).toContain("invoke<void>('open_context_dir')");
 
-    await browser.url('tauri://localhost/?window=settings&section=ai');
+    await browser.url('tauri://localhost/window.html?window=settings&section=ai');
     await browser.pause(1500);
 
     const openCtx = await $('button*=打开上下文目录');

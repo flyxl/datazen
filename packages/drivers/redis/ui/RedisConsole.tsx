@@ -308,9 +308,12 @@ export function RedisConsole({
                     >
                       {result.ok ? 'OK' : 'ERR'}
                     </span>
-                    {idx === activeResultIdx && (
-                      <span className="absolute inset-x-0 bottom-0 h-0.5 bg-accent" />
-                    )}
+                    <span
+                      className={cn(
+                        'absolute inset-x-0 bottom-0 h-0.5 bg-accent transition-opacity duration-300',
+                        idx === activeResultIdx ? 'opacity-100' : 'opacity-0',
+                      )}
+                    />
                   </button>
                 ))}
               </div>
