@@ -49,7 +49,7 @@ pnpm e2e:ai
 pnpm e2e:redis          # 显式：packages/drivers/redis/e2e/（不进默认 pnpm e2e）
 pnpm e2e:i18n-backup
 pnpm e2e:path-ipc
-# Kiwi：datazen-driver-kiwi 仓 e2e/kiwi.ts；Host `DATAZEN_DRIVERS=basic,kiwi pnpm e2e:kiwi`
+# Kiwi：在 datazen-driver-kiwi 仓 `pnpm e2e:kiwi`（Host 同名脚本会 exit 1）
 ```
 
 ## 插件自有测试（Host 默认不拉）
@@ -58,7 +58,7 @@ pnpm e2e:path-ipc
 |------|-------------|
 | Path 驱动 UI 单测 | `pnpm test:unit:drivers`（**不是** `pnpm test:unit`） |
 | Redis E2E | `pnpm e2e:redis` → `packages/drivers/redis/e2e/` |
-| Kiwi E2E | `pnpm e2e:kiwi` → `datazen-driver-kiwi` 的 `e2e/kiwi.ts`（需含 kiwi 的 webdriver 构建） |
+| Kiwi E2E | 在 `datazen-driver-kiwi` 执行 `pnpm e2e:kiwi`（定位 Host 后跑本仓 spec） |
 
 设计：[superpowers/specs/2026-08-11-plugin-owned-tests-design.md](./superpowers/specs/2026-08-11-plugin-owned-tests-design.md)
 
@@ -104,7 +104,7 @@ bash e2e/setup-e2e-env.sh
 | `E2E_REDIS_*` | Redis Standalone（`redis.ts`）：`HOST` / `PORT` / `PASSWORD` |
 | `E2E_REDIS_CLUSTER_*` | 可选 Cluster（`redis-topology.ts`）：`CLUSTER_NODES`、`CLUSTER_PASSWORD`；未设置则跳过 |
 | `E2E_REDIS_SENTINEL_*` | 可选 Sentinel（`redis-topology.ts`）：`SENTINEL_NODES`、`SENTINEL_MASTER_NAME`、密码等；未设置则跳过 |
-| `E2E_KIWI_*` | Kiwi 插件 E2E（`pnpm e2e:kiwi`；spec 在 `datazen-driver-kiwi`） |
+| `E2E_KIWI_*` | Kiwi 插件 E2E（在 kiwi 仓 `pnpm e2e:kiwi`；可写 kiwi `e2e/.env`） |
 | `E2E_AI_*` | AI 功能 E2E |
 | `DATAZEN_DRIVERS=basic` | E2E 构建时仅 basic 四核心驱动（跳过 Git / 其余 path 驱动）（见 `pnpm e2e:minimal`） |
 
@@ -140,7 +140,7 @@ e2e/wdio.conf.ts
 | AI / Workflow | `ai-features.ts`, `ai-context.ts`, `workflow.ts`, `workflow-window.ts` |
 | 驱动（Host） | `sqlite.ts`, `mysql.ts`（及其他 SQL Host specs） |
 | Redis E2E（插件包，非默认） | `packages/drivers/redis/e2e/redis.ts`, `redis-topology.ts` — `pnpm e2e:redis` |
-| Kiwi E2E（插件仓，非默认） | `datazen-driver-kiwi` `e2e/kiwi.ts` — `pnpm e2e:kiwi` |
+| Kiwi E2E（插件仓，非默认） | `datazen-driver-kiwi`：`pnpm e2e:kiwi` |
 
 完整列表与分层测试见 [architecture/testing.md](./architecture/testing.md)。
 
