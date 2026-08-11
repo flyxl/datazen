@@ -207,9 +207,9 @@ pnpm tauri:build --plugins=mydb
 
 ## 本地开发工作流
 
-### 使用 .plugins-dev.json
+### 使用 .drivers-dev.json
 
-在项目根目录创建 `.plugins-dev.json`（已被 gitignore）：
+在项目根目录创建 `.drivers-dev.json`（已被 gitignore）：
 
 ```json
 {
@@ -220,7 +220,7 @@ pnpm tauri:build --plugins=mydb
 }
 ```
 
-这会将 git clone 替换为本地目录的 symlink，方便开发时实时修改和测试。
+这会将 git clone 替换为指向本地目录的 symlink（`packages/drivers/<id>`），方便开发时实时修改和测试。该目录不进 Host git，也不加入 Cargo workspace members。
 
 ### Rust 本地路径覆盖
 

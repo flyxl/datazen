@@ -6,15 +6,15 @@ set -euo pipefail
 #
 # Syncs local changes to all external GitHub repositories:
 #   1. packages/driver-api → github.com/flyxl/datazen-driver-api
-#   2. .plugins/kiwi       → github.com/flyxl/datazen-plugin-kiwi
-#   3. .plugins/olap       → github.com/flyxl/datazen-plugin-olap
+#   2. packages/drivers/kiwi      → github.com/flyxl/datazen-plugin-kiwi
+#   3. packages/drivers/olap      → github.com/flyxl/datazen-plugin-olap
 # Then updates Cargo.lock Git refs in the main workspace.
 # ─────────────────────────────────────────────────────────────────────
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DRIVER_API_DIR="$ROOT/packages/driver-api"
 DRIVER_API_REPO="https://github.com/flyxl/datazen-driver-api.git"
-PLUGINS_DIR="$ROOT/.plugins"
+DRIVERS_DIR="$ROOT/packages/drivers"
 
 GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
@@ -74,7 +74,7 @@ sync_driver_api() {
 
 sync_plugin() {
   local name="$1"
-  local dir="$PLUGINS_DIR/$name"
+  local dir="$DRIVERS_DIR/$name"
 
   if [[ ! -d "$dir/.git" ]]; then
     warn "Plugin '$name' not found or not a git repo at $dir — skipping"

@@ -7,7 +7,9 @@ members = [
     "packages/drivers/*",
 ]
 exclude = [
-    ".plugins/*",
+    "packages/drivers/kiwi",
+    "packages/drivers/olap",
+    "packages/drivers/superset",
 ]
 
 [workspace.dependencies]

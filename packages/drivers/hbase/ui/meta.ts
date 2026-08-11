@@ -21,6 +21,7 @@ export const hbaseMeta = {
     sqlDialect: 'generic',
     databaseFieldType: 'name',
     connectionForm: 'standard',
+    clipboardSchemes: ['hbase'],
     supportsExplain: false,
   } satisfies DatabaseTypeMeta;
 

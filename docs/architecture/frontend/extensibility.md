@@ -64,7 +64,7 @@ src/windows/connection/
 
 | | 驱动插件 | 主题包 |
 |---|---------|--------|
-| 路径 | `.plugins/`（构建时） | `{appData}/themes/{id}/`（运行时 ZIP） |
+| 路径 | `packages/drivers/<id>/`（path 已提交；git 构建时 clone，gitignored） | `{appData}/themes/{id}/`（运行时 ZIP） |
 | 注册 | `plugins-registry.json` + `DB_REGISTRY` | 文件系统 + `manifest.json` |
 | 扩展 | Rust crate + 前端 meta | CSS / JSON / SVG\|PNG\|WebP / 字体（无 JS） |
 

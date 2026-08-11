@@ -48,7 +48,9 @@ vi.mock('../../../../plugins/generated', () => {
     PLUGIN_SQL_DIALECTS: {},
     getPluginSchemaTree: () => undefined,
     getPluginConnectionForm: () => undefined,
+    getPluginConnectionAdvanced: () => undefined,
     getPluginValidator: () => undefined,
+    getPluginClipboardParsers: () => [],
   };
 });
 

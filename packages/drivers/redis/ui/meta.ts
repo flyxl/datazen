@@ -20,6 +20,7 @@ export const redisMeta = {
     connectionView: 'keyvalue',
     databaseFieldType: 'index',
     connectionForm: 'redis',
+    clipboardSchemes: ['redis', 'rediss', 'redis+tls', 'redis-sentinel', 'sentinel'],
     defaultDatabase: '0',
     maxDatabaseIndex: 15,
     defaultOptions: { topology: 'standalone' },

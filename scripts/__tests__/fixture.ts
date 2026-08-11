@@ -21,8 +21,8 @@ export const CLEAN_CONTENTS: Record<string, string> = {
 };
 
 export const INJECTED_CONTENTS: Record<string, string> = {
-  'Cargo.toml': `[workspace]\n\n# <<plugin-patches>>\n\n[patch."https://example.com/kiwi.git"]\ndatazen-plugin-kiwi = { path = ".plugins/kiwi" }\n# <</plugin-patches>>\n`,
-  'src-tauri/Cargo.toml': `[package]\nname = "datazen"\n\n# <<plugin-dependencies>>\ndatazen-plugin-kiwi = { path = "../.plugins/kiwi", optional = true, features = ["tauri-plugin"] }\n# <</plugin-dependencies>>\n\n# <<plugin-features>>\nplugin-kiwi = ["dep:datazen-plugin-kiwi"]\n# <</plugin-features>>\n`,
+  'Cargo.toml': `[workspace]\n\n# <<plugin-patches>>\n\n[patch."https://example.com/kiwi.git"]\ndatazen-plugin-kiwi = { path = "packages/drivers/kiwi" }\n# <</plugin-patches>>\n`,
+  'src-tauri/Cargo.toml': `[package]\nname = "datazen"\n\n# <<plugin-dependencies>>\ndatazen-plugin-kiwi = { path = "../packages/drivers/kiwi", optional = true, features = ["tauri-plugin"] }\n# <</plugin-dependencies>>\n\n# <<plugin-features>>\nplugin-kiwi = ["dep:datazen-plugin-kiwi"]\n# <</plugin-features>>\n`,
   'src-tauri/src/plugin_init.rs': `// AUTO-GENERATED\n// Ensures plugin crates are linked into the binary (extern crate)\n\n#[cfg(feature = "plugin-kiwi")]\nextern crate datazen_plugin_kiwi;\nuse tauri::Runtime;\n\npub fn register_plugins<R: Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> {\n    let builder = builder;\n    #[cfg(feature = "plugin-kiwi")]\n    let builder = builder.plugin(datazen_plugin_kiwi::init());\n    builder\n}\n`,
   'src/plugins/generated.ts': `export type DatabaseType = 'kiwi' | 'superset';\nexport type PluginDatabaseType = DatabaseType;\n\nexport const PLUGIN_COMMANDS = [\n  { pluginId: 'kiwi', commands: ['login', 'list_instances'] },\n];\n`,
   'src/plugins/generated-locales.ts': `export type PluginTranslationKey = 'redis.items';\n\nexport const PLUGIN_LOCALES = {\n  en: { 'redis.items': 'Items' },\n};\n`,

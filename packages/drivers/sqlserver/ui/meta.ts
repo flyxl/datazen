@@ -21,6 +21,7 @@ export const sqlserverMeta = {
     sqlDialect: 'sqlserver',
     databaseFieldType: 'name',
     connectionForm: 'standard',
+    clipboardSchemes: ['sqlserver', 'mssql'],
     supportsExplain: true,
     hasMultiDatabase: true,
   } satisfies DatabaseTypeMeta;

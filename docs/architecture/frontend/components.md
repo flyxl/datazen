@@ -422,7 +422,8 @@ settings.theme.packId  →  read_theme_pack_file (IPC)
 | 模块 | 路径 | 职责 |
 |------|------|------|
 | IPC 封装 | `src/commands/theme.ts` | `listThemePacks`, `installThemePackWithDialog`, `removeThemePack`, `readThemePackFile` |
-| 应用逻辑 | `src/lib/themePackApply.ts` | 注入/移除 pack CSS、字体、通知跨窗口刷新 |
+| 应用逻辑 | `src/lib/themePackApply.ts` | 注入/移除 pack CSS、字体、通知跨窗口刷新；把解析后的 `--c-surface` 经 IPC 写入 `{appData}/surface-bg.json` |
+| 首屏背景 | `surface-boot` plugin `initialization_script` | parse 前注入上次 hex + `html.dark`；主窗口与子窗口同一路径 |
 | 图标解析 | `src/lib/iconResolver.ts` | pack → Lucide/驱动 → 占位 |
 | 组件 | `ThemedIcon`, `DbTypeBadge` | 消费 IconResolver |
 | 设置 UI | `windows/settings/ThemePackSection.tsx` | 安装、启用、删除主题包 |

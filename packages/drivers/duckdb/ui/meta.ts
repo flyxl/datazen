@@ -21,6 +21,7 @@ export const duckdbMeta = {
     sqlDialect: 'duckdb',
     databaseFieldType: 'path',
     connectionForm: 'file',
+    clipboardSchemes: ['duckdb'],
     supportsExplain: true,
   } satisfies DatabaseTypeMeta;
 

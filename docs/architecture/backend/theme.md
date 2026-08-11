@@ -2,7 +2,7 @@
 
 > [返回架构总览](../README.md)
 
-与驱动插件**完全独立**：安装路径、注册表、生命周期均分离；不受 `plugins-registry.json`、`.plugins/` 或 `DATAZEN_PLUGINS` 影响。
+与驱动插件**完全独立**：安装路径、注册表、生命周期均分离；不受 `drivers-registry.json`、Git 驱动 clone 目录或 `DATAZEN_DRIVERS` 影响。
 
 ## 安装路径
 
@@ -19,7 +19,7 @@
 ```
 
 - ZIP 通过 `install_theme_pack_with_dialog` 解压到上述目录。
-- 删除包目录或 `remove_theme_pack` 不影响驱动插件或 `.plugins/`。
+- 删除包目录或 `remove_theme_pack` 不影响驱动插件或 `packages/drivers/`。
 
 ## 包内容与校验
 
@@ -59,6 +59,8 @@
 
 - 迁移：`"theme": "dark"` → `{ "mode": "dark", "packId": null }`。
 - `packId: null` 表示仅 Host 内置 token，不加载主题包。
+
+主题包在 IPC 之后才注入 CSS，首屏无法读取 pack token。`syncWebviewBackgroundFromTokens` 把当前 `--c-surface` 经 `set_surface_background` 写入 `{appData}/surface-bg.json`。`surface-boot` plugin 的 `initialization_script` 在 **每个** webview（含 `tauri.conf.json` 创建的 main）HTML parse 前 bake 该 hex，并调用 `set_background_color`。子窗口 native `backgroundColor` 同样读这份缓存。缺失时回退 `#0f172a`。
 
 详见 [持久化存储](store.md)。
 

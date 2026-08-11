@@ -11,6 +11,12 @@ import {
   setPackEditorColorOverlay,
 } from './themeEditorColors';
 import { setChartPaletteOverride } from './chart/colors';
+import {
+  DEFAULT_SURFACE_DARK,
+  DEFAULT_SURFACE_LIGHT,
+  cssColorToHex,
+  persistSurfaceBackground,
+} from './surfaceBgCache';
 
 export const THEME_PACK_STYLE_ID = 'datazen-theme-pack';
 
@@ -69,13 +75,24 @@ export function clearThemePackDom(): void {
 }
 
 export function syncWebviewBackgroundFromTokens(): void {
-  const surface = getComputedStyle(document.documentElement).getPropertyValue('--c-surface').trim();
-  if (surface) {
-    document.documentElement.style.backgroundColor = surface;
-    return;
-  }
   const isDark = document.documentElement.classList.contains('dark');
-  document.documentElement.style.backgroundColor = isDark ? '#0f172a' : '#ffffff';
+  const fallback = isDark ? DEFAULT_SURFACE_DARK : DEFAULT_SURFACE_LIGHT;
+  const surface = getComputedStyle(document.documentElement).getPropertyValue('--c-surface').trim();
+  document.documentElement.style.backgroundColor = surface || fallback;
+  const computed = getComputedStyle(document.documentElement).backgroundColor;
+  const hex = cssColorToHex(computed) ?? cssColorToHex(surface) ?? fallback;
+  document.documentElement.style.backgroundColor = hex;
+  persistSurfaceBackground(isDark, hex);
+  syncNativeWindowBackground(hex);
+}
+
+function syncNativeWindowBackground(hex: string): void {
+  if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) return;
+  void import('@tauri-apps/api/window')
+    .then(({ getCurrentWindow }) => getCurrentWindow().setBackgroundColor(hex))
+    .catch(() => {
+      // Missing ACL / platform without setBackgroundColor — HTML cache still applies.
+    });
 }
 
 function notifyThemePackChanged(): void {

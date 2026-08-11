@@ -21,6 +21,7 @@ export const mongodbMeta = {
     sqlDialect: 'mongodb',
     databaseFieldType: 'name',
     connectionForm: 'standard',
+    clipboardSchemes: ['mongodb', 'mongodb+srv'],
     supportsExplain: false,
     hasMultiDatabase: true,
     structureEditor: {
