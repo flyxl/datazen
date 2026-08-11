@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DataZen</title>
+    <script>
+      window.__HTML_START__ = performance.now();
+      // Sub-window entry: theme + solid background only — no splash/spinner.
+      (function () {
+        var saved = 'dark';
+        try { saved = localStorage.getItem('datazen-theme') || 'dark'; } catch (e) {}
+        var isDark = saved === 'dark' || (saved === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.classList.toggle('dark', isDark);
+        var bg = isDark ? '#0f172a' : '#ffffff';
+        document.documentElement.style.backgroundColor = bg;
+        document.write('<style>body{background:' + bg + ';margin:0}</style>');
+      })();
+    </script>
+  </head>
+  <body class="h-full antialiased">
+    <div id="root" class="h-full min-h-0"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

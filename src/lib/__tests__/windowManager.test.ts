@@ -32,7 +32,7 @@ describe('windowManager — browser', () => {
     const { openSettingsWindow } = await import('../windowManager');
     openSettingsWindow('ai');
     expect(window.open).toHaveBeenCalledWith(
-      '/?window=settings&section=ai',
+      '/window.html?window=settings&section=ai',
       '_blank',
       expect.stringContaining('width=720'),
     );
@@ -42,7 +42,7 @@ describe('windowManager — browser', () => {
     const { openNewConnectionWindow } = await import('../windowManager');
     openNewConnectionWindow('cfg-1');
     expect(window.open).toHaveBeenCalledWith(
-      '/?window=new-connection&editId=cfg-1',
+      '/window.html?window=new-connection&editId=cfg-1',
       '_blank',
       expect.any(String),
     );
@@ -72,24 +72,24 @@ describe('windowManager — browser', () => {
     } = await import('../windowManager');
 
     openDataSyncWindow();
-    expect(window.open).toHaveBeenLastCalledWith('/?window=data-sync', '_blank', expect.any(String));
+    expect(window.open).toHaveBeenLastCalledWith('/window.html?window=data-sync', '_blank', expect.any(String));
 
     openBackupWindow();
-    expect(window.open).toHaveBeenLastCalledWith('/?window=backup', '_blank', expect.any(String));
+    expect(window.open).toHaveBeenLastCalledWith('/window.html?window=backup', '_blank', expect.any(String));
 
     openWorkflowWindow();
-    expect(window.open).toHaveBeenLastCalledWith('/?window=workflow', '_blank', expect.any(String));
+    expect(window.open).toHaveBeenLastCalledWith('/window.html?window=workflow', '_blank', expect.any(String));
 
     openDocsWindow('getting-started');
     expect(window.open).toHaveBeenLastCalledWith(
-      '/?window=docs&section=getting-started',
+      '/window.html?window=docs&section=getting-started',
       '_blank',
       expect.any(String),
     );
 
     openDashboardWindow('dash-1', 'Sales');
     expect(window.open).toHaveBeenLastCalledWith(
-      '/?window=dashboard&dashboardId=dash-1',
+      '/window.html?window=dashboard&dashboardId=dash-1',
       '_blank',
       expect.any(String),
     );
@@ -115,7 +115,7 @@ describe('windowManager — Tauri', () => {
     expect(mockInvoke).toHaveBeenCalledWith('create_sub_window', {
       options: expect.objectContaining({
         label: 'settings-singleton',
-        url: 'index.html?window=settings',
+        url: 'window.html?window=settings',
       }),
     });
   });

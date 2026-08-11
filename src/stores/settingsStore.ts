@@ -22,6 +22,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   confirmOnDelete: true,
   autoCommit: true,
   defaultPageSize: 50,
+  connectionPoolSize: 10,
   logLevel: 'info',
   logPath: '',
   mcpServerEnabled: false,
@@ -124,6 +125,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       let settings = {
         ...raw,
         theme,
+        connectionPoolSize: raw.connectionPoolSize ?? 10,
         monitor: { ...DEFAULT_MONITOR_SETTINGS, ...raw.monitor },
       };
       try {

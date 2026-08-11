@@ -12,7 +12,7 @@ export const HOST_LUCIDE_MAP: Record<UiIconId, string> = {
   'action.refresh': 'RefreshCcw',
   'action.newConnection': 'Plus',
   'action.workflow': 'Workflow',
-  'action.dashboard': 'Gauge',
+  'action.dashboard': 'LayoutDashboard',
   'theme.light': 'Sun',
   'theme.dark': 'Moon',
   'theme.system': 'Monitor',

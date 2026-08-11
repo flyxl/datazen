@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import zhCN from './zh-CN';
 import en from './en';
-import { SUPPORTED_LOCALES, getAllTranslations, getTranslation, BETA_LOCALES, FULLY_TRANSLATED_LOCALES, type SupportedLocale, type TranslationKey } from './index';
+import { SUPPORTED_LOCALES, getAllTranslations, getHostTranslations, getTranslation, BETA_LOCALES, FULLY_TRANSLATED_LOCALES, type SupportedLocale, type TranslationKey } from './index';
 
 const CRITICAL_KEYS: TranslationKey[] = [
   'common.ok',
@@ -25,26 +25,26 @@ describe('locales', () => {
     );
   });
 
-  it('loads every supported locale with non-empty dictionaries', () => {
+  it('loads every supported locale with non-empty host dictionaries', () => {
     for (const locale of SUPPORTED_LOCALES) {
-      const dict = getAllTranslations(locale);
+      const dict = getHostTranslations(locale);
       expect(Object.keys(dict).length).toBeGreaterThan(0);
     }
   });
 
-  it('keeps key parity with en across all locales', () => {
-    const enKeys = Object.keys(en).sort();
+  it('keeps host key parity with en across all locales', () => {
+    const enKeys = Object.keys(getHostTranslations('en')).sort();
     for (const locale of SUPPORTED_LOCALES) {
-      const keys = Object.keys(getAllTranslations(locale)).sort();
+      const keys = Object.keys(getHostTranslations(locale)).sort();
       expect(keys, `${locale} key mismatch`).toEqual(enKeys);
     }
   });
 
   it('former beta locales are not mostly English copies', () => {
-    const enDict = getAllTranslations('en');
+    const enDict = getHostTranslations('en');
     const enKeys = Object.keys(enDict);
     for (const locale of ['de', 'es', 'fr', 'ja', 'ko', 'pt-BR', 'ru'] as const) {
-      const dict = getAllTranslations(locale);
+      const dict = getHostTranslations(locale);
       let same = 0;
       for (const key of enKeys) {
         if (dict[key] === enDict[key]) same += 1;

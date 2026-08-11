@@ -485,6 +485,7 @@ pub(crate) fn finish_app_state(
     let monitor_engine = MonitorEngine::new(store.clone(), monitor_connections.clone());
 
     let data_dir = store.data_dir().to_path_buf();
+    let history_db = store.history_db();
 
     // AI / prompts / workflows / history / MCP client: empty shells.
     // Nothing here touches disk or network — window can show immediately.
@@ -503,9 +504,7 @@ pub(crate) fn finish_app_state(
         )),
         prompt_resolver: Arc::new(ai::PromptResolver::new(&data_dir, prompts_dir)),
         workflow_registry: Arc::new(workflow::WorkflowRegistry::new(data_dir.join("workflows"))),
-        workflow_history: Arc::new(workflow::WorkflowHistoryManager::new(
-            data_dir.join("workflow_history"),
-        )),
+        workflow_history: Arc::new(workflow::WorkflowHistoryManager::new(history_db)),
         mcp_client_manager: Arc::new(mcp::McpClientManager::new()),
     }
 }
@@ -672,6 +671,7 @@ pub fn run() {
             commands::cancel_query,
             commands::get_query_history,
             commands::clear_query_history,
+            commands::purge_history,
             commands::get_favorite_queries,
             commands::add_favorite_query,
             commands::delete_favorite_query,
@@ -706,6 +706,7 @@ pub fn run() {
             commands::restore_database,
             commands::restore_database_with_dialog,
             commands::compare_databases,
+            commands::classify_sync_pair,
             commands::compare_table_schemas,
             commands::compare_table_data,
             commands::prepare_schema_diff_plan,
@@ -934,6 +935,7 @@ mod tests {
                 password: None,
                 ssl_mode: SslMode::default(),
                 connection_timeout: 30,
+                max_pool_size: 10,
                 ssh_tunnel: None,
                 color_tag: None,
                 group: None,

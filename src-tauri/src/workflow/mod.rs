@@ -16,7 +16,8 @@ pub mod registry;
 
 pub use command::WorkflowCommandStep;
 pub use command_runtime::{execute_command, resolve_connection_id};
-pub use history::{HistoryEntry, HistoryListItem, WorkflowHistoryManager};
+pub use crate::store::{HistoryEntry, HistoryListItem};
+pub use history::WorkflowHistoryManager;
 pub use workflows::{
     enforce_workflow_query_guards, StepExecutionResult, StepStatus, WorkflowDefinition,
     WorkflowExecuteOptions, WorkflowExecutionResult, WorkflowExecutor, WorkflowListItem,

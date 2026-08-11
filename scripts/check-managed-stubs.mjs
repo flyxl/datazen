@@ -8,11 +8,13 @@ import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import {
   cleanGeneratedTsContent,
+  cleanGeneratedLocalesContent,
   cleanPluginInitContent,
 } from './plugin-deinject.mjs';
 import {
   fileHasInjection,
   hasInjectedGeneratedTs,
+  hasInjectedGeneratedLocales,
   hasInjectedPluginInit,
 } from './plugin-stash-precommit.mjs';
 
@@ -23,6 +25,11 @@ const CHECKS = [
     rel: 'src/plugins/generated.ts',
     isInjected: hasInjectedGeneratedTs,
     expected: cleanGeneratedTsContent,
+  },
+  {
+    rel: 'src/plugins/generated-locales.ts',
+    isInjected: hasInjectedGeneratedLocales,
+    expected: cleanGeneratedLocalesContent,
   },
   {
     rel: 'src-tauri/src/plugin_init.rs',

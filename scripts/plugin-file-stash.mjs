@@ -45,6 +45,7 @@ export const MANAGED_FILES = [
   'src-tauri/Cargo.toml',
   'src-tauri/src/plugin_init.rs',
   'src/plugins/generated.ts',
+  'src/plugins/generated-locales.ts',
   'src-tauri/capabilities/default.json',
 ];
 

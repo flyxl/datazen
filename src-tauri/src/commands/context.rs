@@ -585,6 +585,7 @@ mod tests {
         let monitor_engine = MonitorEngine::new(store.clone(), monitor_connections.clone());
         let schema_cache = Arc::new(SchemaCache::new(registry.clone()));
         let data_dir = store.data_dir().to_path_buf();
+        let history_db = store.history_db();
 
         let state = AppState {
             driver_registry: registry,
@@ -601,9 +602,7 @@ mod tests {
             )),
             prompt_resolver: Arc::new(PromptResolver::new(&data_dir, None)),
             workflow_registry: Arc::new(WorkflowRegistry::new(data_dir.join("workflows"))),
-            workflow_history: Arc::new(WorkflowHistoryManager::new(
-                data_dir.join("workflow_history"),
-            )),
+            workflow_history: Arc::new(WorkflowHistoryManager::new(history_db)),
             mcp_client_manager: Arc::new(McpClientManager::new()),
         };
 
@@ -645,6 +644,7 @@ mod tests {
         let monitor_engine = MonitorEngine::new(store.clone(), monitor_connections.clone());
         let schema_cache = Arc::new(SchemaCache::new(registry.clone()));
         let data_dir = store.data_dir().to_path_buf();
+        let history_db = store.history_db();
 
         let state = AppState {
             driver_registry: registry,
@@ -661,9 +661,7 @@ mod tests {
             )),
             prompt_resolver: Arc::new(PromptResolver::new(&data_dir, None)),
             workflow_registry: Arc::new(WorkflowRegistry::new(data_dir.join("workflows"))),
-            workflow_history: Arc::new(WorkflowHistoryManager::new(
-                data_dir.join("workflow_history"),
-            )),
+            workflow_history: Arc::new(WorkflowHistoryManager::new(history_db)),
             mcp_client_manager: Arc::new(McpClientManager::new()),
         };
 

@@ -8,6 +8,7 @@ use crate::db::{DatabaseType, TableSchema};
 use crate::store::SyncTask;
 use crate::sync::adapter::{SyncSourceAdapter, SyncTargetAdapter};
 use crate::sync::ddl::build_create_table_ddl;
+use crate::sync::pairing::enforce_sync_pairing;
 use chrono::Utc;
 use tauri::Emitter;
 
@@ -132,6 +133,15 @@ pub(crate) async fn sync_table_impl(
     let src_type = &src_config.database_type;
     let tgt_type = &tgt_config.database_type;
 
+    let pairing = enforce_sync_pairing(src_type, tgt_type).map_err(CommandError::Validation)?;
+    tracing::info!(
+        sync_path = pairing.path_label(),
+        %source_connection_id,
+        %target_connection_id,
+        %table_name,
+        "sync_table pairing"
+    );
+
     let (src_adapter, tgt_adapter) = resolve_adapters(&state, src_type, tgt_type)?;
 
     let total = sync_one_table(
@@ -177,6 +187,15 @@ pub(crate) async fn sync_tables_impl(
 
     let src_type = src_config.database_type.clone();
     let tgt_type = tgt_config.database_type.clone();
+
+    let pairing = enforce_sync_pairing(&src_type, &tgt_type).map_err(CommandError::Validation)?;
+    tracing::info!(
+        sync_path = pairing.path_label(),
+        %task_id,
+        source_type = %src_type,
+        target_type = %tgt_type,
+        "sync_tables pairing"
+    );
 
     let (src_adapter, tgt_adapter) = resolve_adapters(&state, &src_type, &tgt_type)?;
 
@@ -329,5 +348,6 @@ pub(crate) async fn sync_tables_impl(
         "taskId": task_id,
         "completedTables": completed,
         "totalTables": total_tables,
+        "syncPath": pairing.path_label(),
     }))
 }

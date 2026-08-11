@@ -1,121 +1,16 @@
 //! Persists workflow execution history for auditing and replay.
 
+use crate::store::{HistoryDb, HistoryEntry, HistoryListItem};
 use crate::workflow::workflows::WorkflowExecutionResult;
-use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
-use tokio::sync::{Mutex, RwLock};
-
-const MAX_HISTORY_ENTRIES: usize = 100;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct HistoryEntry {
-    pub id: String,
-    #[serde(alias = "skillId")]
-    pub workflow_id: String,
-    #[serde(alias = "skillName")]
-    pub workflow_name: String,
-    pub variables: serde_json::Value,
-    pub result: WorkflowExecutionResult,
-    pub created_at: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct HistoryListItem {
-    pub id: String,
-    #[serde(alias = "skillId")]
-    pub workflow_id: String,
-    #[serde(alias = "skillName")]
-    pub workflow_name: String,
-    pub success: bool,
-    pub total_time_ms: u64,
-    pub created_at: String,
-}
+use std::sync::Arc;
 
 pub struct WorkflowHistoryManager {
-    history_dir: PathBuf,
-    cache: RwLock<Vec<HistoryEntry>>,
-    loaded: AtomicBool,
-    load_lock: Mutex<()>,
+    db: Arc<HistoryDb>,
 }
 
 impl WorkflowHistoryManager {
-    pub fn new(history_dir: PathBuf) -> Self {
-        // Migrate legacy `skill_history` directory if present.
-        if !history_dir.exists() {
-            if let Some(parent) = history_dir.parent() {
-                let legacy = parent.join("skill_history");
-                if legacy.is_dir() {
-                    if let Err(e) = std::fs::rename(&legacy, &history_dir) {
-                        tracing::warn!(
-                            from = %legacy.display(),
-                            to = %history_dir.display(),
-                            error = %e,
-                            "Failed to rename skill_history → workflow_history"
-                        );
-                    } else {
-                        tracing::info!(
-                            to = %history_dir.display(),
-                            "Migrated skill_history → workflow_history"
-                        );
-                    }
-                }
-            }
-        }
-
-        Self {
-            history_dir,
-            cache: RwLock::new(Vec::new()),
-            loaded: AtomicBool::new(false),
-            load_lock: Mutex::new(()),
-        }
-    }
-
-    pub async fn ensure_loaded(&self) -> Result<(), String> {
-        if self.loaded.load(Ordering::Acquire) {
-            return Ok(());
-        }
-        let _guard = self.load_lock.lock().await;
-        if self.loaded.load(Ordering::Acquire) {
-            return Ok(());
-        }
-        self.load().await?;
-        self.loaded.store(true, Ordering::Release);
-        Ok(())
-    }
-
-    pub async fn load(&self) -> Result<(), String> {
-        if !self.history_dir.exists() {
-            std::fs::create_dir_all(&self.history_dir).map_err(|e| e.to_string())?;
-            return Ok(());
-        }
-
-        let mut entries = Vec::new();
-        let dir_entries = std::fs::read_dir(&self.history_dir).map_err(|e| e.to_string())?;
-
-        for entry in dir_entries {
-            let entry = entry.map_err(|e| e.to_string())?;
-            let path = entry.path();
-            if path.extension().map_or(false, |ext| ext == "json") {
-                match std::fs::read_to_string(&path) {
-                    Ok(content) => match serde_json::from_str::<HistoryEntry>(&content) {
-                        Ok(he) => entries.push(he),
-                        Err(e) => {
-                            tracing::warn!("Failed to parse history {:?}: {}", path, e);
-                        }
-                    },
-                    Err(e) => {
-                        tracing::warn!("Failed to read history {:?}: {}", path, e);
-                    }
-                }
-            }
-        }
-
-        entries.sort_by(|a, b| b.created_at.cmp(&a.created_at));
-        *self.cache.write().await = entries;
-        Ok(())
+    pub fn new(db: Arc<HistoryDb>) -> Self {
+        Self { db }
     }
 
     pub async fn record(
@@ -125,12 +20,6 @@ impl WorkflowHistoryManager {
         variables: &serde_json::Value,
         result: &WorkflowExecutionResult,
     ) -> Result<String, String> {
-        self.ensure_loaded().await?;
-
-        if !self.history_dir.exists() {
-            std::fs::create_dir_all(&self.history_dir).map_err(|e| e.to_string())?;
-        }
-
         let now = chrono::Local::now();
         let id = format!(
             "{}_{}",
@@ -138,87 +27,47 @@ impl WorkflowHistoryManager {
             &uuid::Uuid::new_v4().to_string()[..8]
         );
 
-        let entry = HistoryEntry {
-            id: id.clone(),
-            workflow_id: workflow_id.into(),
-            workflow_name: workflow_name.into(),
-            variables: variables.clone(),
-            result: result.clone(),
-            created_at: now.to_rfc3339(),
-        };
-
-        let path = self.history_dir.join(format!("{id}.json"));
-        let content = serde_json::to_string_pretty(&entry).map_err(|e| e.to_string())?;
-        std::fs::write(&path, content).map_err(|e| e.to_string())?;
-
-        let mut cache = self.cache.write().await;
-        cache.insert(0, entry);
-
-        // Auto-cleanup: remove oldest entries beyond limit
-        while cache.len() > MAX_HISTORY_ENTRIES {
-            if let Some(old) = cache.pop() {
-                let old_path = self.history_dir.join(format!("{}.json", old.id));
-                let _ = std::fs::remove_file(old_path);
-            }
-        }
+        self.db
+            .record_workflow(
+                &id,
+                workflow_id,
+                workflow_name,
+                variables,
+                result,
+                &now.to_rfc3339(),
+            )
+            .map_err(|e| e.to_string())?;
 
         Ok(id)
     }
 
     pub async fn list(&self, workflow_id: Option<&str>) -> Vec<HistoryListItem> {
-        if let Err(e) = self.ensure_loaded().await {
-            tracing::warn!("Failed to load workflow history before list: {e}");
-            return Vec::new();
-        }
-        let cache = self.cache.read().await;
-        cache
-            .iter()
-            .filter(|e| workflow_id.map_or(true, |wid| e.workflow_id == wid))
-            .map(|e| HistoryListItem {
-                id: e.id.clone(),
-                workflow_id: e.workflow_id.clone(),
-                workflow_name: e.workflow_name.clone(),
-                success: e.result.success,
-                total_time_ms: e.result.total_time_ms,
-                created_at: e.created_at.clone(),
+        self.db
+            .list_workflow_history(workflow_id)
+            .unwrap_or_else(|e| {
+                tracing::warn!(error = %e, "Failed to list workflow history from SQLite");
+                Vec::new()
             })
-            .collect()
     }
 
     pub async fn get(&self, history_id: &str) -> Option<HistoryEntry> {
-        if let Err(e) = self.ensure_loaded().await {
-            tracing::warn!("Failed to load workflow history before get: {e}");
-            return None;
-        }
-        self.cache
-            .read()
-            .await
-            .iter()
-            .find(|e| e.id == history_id)
-            .cloned()
+        self.db.get_workflow_history(history_id).unwrap_or_else(|e| {
+            tracing::warn!(error = %e, history_id, "Failed to get workflow history from SQLite");
+            None
+        })
     }
 
     pub async fn clear(&self, workflow_id: Option<&str>) -> Result<usize, String> {
-        self.ensure_loaded().await?;
-        let mut cache = self.cache.write().await;
-        let (to_remove, to_keep): (Vec<_>, Vec<_>) = cache
-            .drain(..)
-            .partition(|e| workflow_id.map_or(true, |wid| e.workflow_id == wid));
-
-        let count = to_remove.len();
-        for entry in &to_remove {
-            let path = self.history_dir.join(format!("{}.json", entry.id));
-            let _ = std::fs::remove_file(path);
-        }
-
-        *cache = to_keep;
-        Ok(count)
+        self.db
+            .clear_workflow_history(workflow_id)
+            .map_err(|e| e.to_string())
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::store::HistoryDb;
     use crate::workflow::workflows::{StepExecutionResult, StepStatus};
 
     fn make_test_result(success: bool) -> WorkflowExecutionResult {
@@ -240,11 +89,14 @@ mod tests {
         }
     }
 
+    fn open_mgr(dir: &std::path::Path) -> WorkflowHistoryManager {
+        WorkflowHistoryManager::new(HistoryDb::open(dir).expect("history db"))
+    }
+
     #[tokio::test]
     async fn test_record_and_list() {
         let dir = tempfile::tempdir().unwrap();
-        let mgr = WorkflowHistoryManager::new(dir.path().to_path_buf());
-        mgr.load().await.unwrap();
+        let mgr = open_mgr(dir.path());
 
         let result = make_test_result(true);
         let id = mgr
@@ -266,8 +118,7 @@ mod tests {
     #[tokio::test]
     async fn test_list_filter_by_workflow_id() {
         let dir = tempfile::tempdir().unwrap();
-        let mgr = WorkflowHistoryManager::new(dir.path().to_path_buf());
-        mgr.load().await.unwrap();
+        let mgr = open_mgr(dir.path());
 
         let r = make_test_result(true);
         mgr.record("workflow-a", "A", &serde_json::json!({}), &r).await.unwrap();
@@ -282,8 +133,7 @@ mod tests {
     #[tokio::test]
     async fn test_clear() {
         let dir = tempfile::tempdir().unwrap();
-        let mgr = WorkflowHistoryManager::new(dir.path().to_path_buf());
-        mgr.load().await.unwrap();
+        let mgr = open_mgr(dir.path());
 
         let r = make_test_result(true);
         mgr.record("w1", "W1", &serde_json::json!({}), &r).await.unwrap();
@@ -304,44 +154,27 @@ mod tests {
         let r = make_test_result(true);
 
         {
-            let mgr = WorkflowHistoryManager::new(dir.path().to_path_buf());
-            mgr.load().await.unwrap();
+            let mgr = open_mgr(dir.path());
             mgr.record("w1", "W1", &serde_json::json!({"x": 1}), &r)
                 .await
                 .unwrap();
         }
 
-        let mgr2 = WorkflowHistoryManager::new(dir.path().to_path_buf());
-        mgr2.load().await.unwrap();
+        let mgr2 = open_mgr(dir.path());
         assert_eq!(mgr2.list(None).await.len(), 1);
     }
 
     #[tokio::test]
     async fn test_get_missing_returns_none() {
         let dir = tempfile::tempdir().unwrap();
-        let mgr = WorkflowHistoryManager::new(dir.path().to_path_buf());
-        mgr.load().await.unwrap();
+        let mgr = open_mgr(dir.path());
         assert!(mgr.get("missing-id").await.is_none());
-    }
-
-    #[tokio::test]
-    async fn test_legacy_skill_history_migration() {
-        let dir = tempfile::tempdir().unwrap();
-        let legacy = dir.path().join("skill_history");
-        std::fs::create_dir(&legacy).unwrap();
-        std::fs::write(legacy.join("note.txt"), "legacy").unwrap();
-
-        let new_dir = dir.path().join("workflow_history");
-        let mgr = WorkflowHistoryManager::new(new_dir.clone());
-        assert!(new_dir.is_dir());
-        assert!(!legacy.exists());
     }
 
     #[tokio::test]
     async fn test_history_truncates_beyond_limit() {
         let dir = tempfile::tempdir().unwrap();
-        let mgr = WorkflowHistoryManager::new(dir.path().to_path_buf());
-        mgr.load().await.unwrap();
+        let mgr = open_mgr(dir.path());
         let r = make_test_result(true);
 
         for i in 0..105 {
@@ -349,15 +182,6 @@ mod tests {
                 .await
                 .unwrap();
         }
-        assert!(mgr.list(None).await.len() <= 100);
-    }
-
-    #[tokio::test]
-    async fn test_load_skips_invalid_json_files() {
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("bad.json"), "{not json").unwrap();
-        let mgr = WorkflowHistoryManager::new(dir.path().to_path_buf());
-        mgr.load().await.unwrap();
-        assert!(mgr.list(None).await.is_empty());
+        assert!(mgr.list(None).await.len() <= crate::store::MAX_WORKFLOW_HISTORY);
     }
 }

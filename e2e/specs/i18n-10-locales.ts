@@ -79,7 +79,7 @@ async function invokeBackend<T>(cmd: string, args: Record<string, unknown> = {})
 }
 
 async function openSettingsWindow() {
-  await browser.url('tauri://localhost/?window=settings');
+  await browser.url('tauri://localhost/window.html?window=settings');
   await browser.pause(1500);
 }
 

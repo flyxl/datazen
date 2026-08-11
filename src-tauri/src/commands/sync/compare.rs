@@ -7,6 +7,7 @@ use crate::schema_diff::types::{ChangedColumnDiff, ColumnSnapshot, TableColumnDi
 use crate::sync::adapter::{SyncSourceAdapter, SyncTargetAdapter};
 use crate::sync::ddl::build_create_table_ddl;
 use crate::sync::ir::{IRColumn, IRTable, IRType};
+use crate::sync::pairing::enforce_sync_pairing;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
@@ -25,6 +26,15 @@ pub(crate) async fn compare_databases_impl(
     let tgt_config = state.connection_manager
         .get_connection_config(&target_connection_id).await
         .cmd_err("compare_databases")?;
+
+    let pairing = enforce_sync_pairing(&src_config.database_type, &tgt_config.database_type)
+        .map_err(CommandError::Validation)?;
+    tracing::info!(
+        sync_path = pairing.path_label(),
+        source_type = %src_config.database_type,
+        target_type = %tgt_config.database_type,
+        "compare_databases pairing"
+    );
 
     let (src_driver, src_handle) = state.connection_manager
         .get_connection(&source_connection_id).await

@@ -15,4 +15,13 @@ export default defineConfig({
       '@datazen/plugin-sdk': resolve(__dirname, 'src/plugin-sdk'),
     },
   },
+  // Main window: index.html (with splash). Sub-windows: window.html (no splash).
+  build: {
+    rollupOptions: {
+      input: {
+        main: resolve(__dirname, 'index.html'),
+        window: resolve(__dirname, 'window.html'),
+      },
+    },
+  },
 });

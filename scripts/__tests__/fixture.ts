@@ -16,6 +16,7 @@ export const CLEAN_CONTENTS: Record<string, string> = {
   'src-tauri/Cargo.toml': `[package]\nname = "datazen"\n\n# <<plugin-dependencies>>\n# <</plugin-dependencies>>\n\n# <<plugin-features>>\n# <</plugin-features>>\n`,
   'src-tauri/src/plugin_init.rs': `// AUTO-GENERATED\n// Ensures plugin crates are linked into the binary (extern crate)\n\nuse tauri::Runtime;\n\npub fn register_plugins<R: Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> {\n    let builder = builder;\n    // No plugins with Tauri commands enabled\n    builder\n}\n`,
   'src/plugins/generated.ts': `export type DatabaseType = never;\nexport type PluginDatabaseType = DatabaseType;\n\nexport const PLUGIN_COMMANDS = [];\n`,
+  'src/plugins/generated-locales.ts': `export type PluginTranslationKey = never;\n\nexport const PLUGIN_LOCALES = {\n  en: {},\n};\n`,
   'src-tauri/capabilities/default.json': `{\n  "identifier": "default",\n  "description": "Default capability set for DataZen",\n  "windows": ["main", "connection-*"],\n  "permissions": [\n    "core:default",\n    "core:window:allow-set-decorations"\n  ]\n}\n`,
 };
 
@@ -24,6 +25,7 @@ export const INJECTED_CONTENTS: Record<string, string> = {
   'src-tauri/Cargo.toml': `[package]\nname = "datazen"\n\n# <<plugin-dependencies>>\ndatazen-plugin-kiwi = { path = "../.plugins/kiwi", optional = true, features = ["tauri-plugin"] }\n# <</plugin-dependencies>>\n\n# <<plugin-features>>\nplugin-kiwi = ["dep:datazen-plugin-kiwi"]\n# <</plugin-features>>\n`,
   'src-tauri/src/plugin_init.rs': `// AUTO-GENERATED\n// Ensures plugin crates are linked into the binary (extern crate)\n\n#[cfg(feature = "plugin-kiwi")]\nextern crate datazen_plugin_kiwi;\nuse tauri::Runtime;\n\npub fn register_plugins<R: Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> {\n    let builder = builder;\n    #[cfg(feature = "plugin-kiwi")]\n    let builder = builder.plugin(datazen_plugin_kiwi::init());\n    builder\n}\n`,
   'src/plugins/generated.ts': `export type DatabaseType = 'kiwi' | 'superset';\nexport type PluginDatabaseType = DatabaseType;\n\nexport const PLUGIN_COMMANDS = [\n  { pluginId: 'kiwi', commands: ['login', 'list_instances'] },\n];\n`,
+  'src/plugins/generated-locales.ts': `export type PluginTranslationKey = 'redis.items';\n\nexport const PLUGIN_LOCALES = {\n  en: { 'redis.items': 'Items' },\n};\n`,
   'src-tauri/capabilities/default.json': `{\n  "identifier": "default",\n  "description": "Default capability set for DataZen",\n  "windows": ["main", "connection-*"],\n  "permissions": [\n    "core:default",\n    "core:window:allow-set-decorations",\n    "kiwi:default"\n  ]\n}\n`,
 };
 

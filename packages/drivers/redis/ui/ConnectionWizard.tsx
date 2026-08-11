@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react';
 import { Input } from '../../../../src/components/ui/Input';
 import { PathInput } from '../../../../src/components/ui/PathInput';
-import { Button } from '../../../../src/components/ui/Button';
 import { useI18n } from '../../../../src/hooks/useI18n';
 import { Label } from '../../../../src/components/connection/shared';
+import { cn } from '../../../../src/lib/cn';
 import type { ConnectionFormState } from '../../../../src/components/connection/useConnectionForm';
 import type { PluginFormValidator } from '../../../../src/plugin-sdk';
 import {
@@ -14,22 +14,21 @@ import {
 } from './connectionOptions';
 import { mergeRedisOptions, validateRedisConnection } from './connectionWizardValidate';
 
-const STEPS = ['topology', 'endpoints', 'tls'] as const;
-type WizardStep = (typeof STEPS)[number];
+const TABS = ['topology', 'endpoints', 'tls'] as const;
+type WizardTab = (typeof TABS)[number];
 
 export const redisValidate: PluginFormValidator = (fields, t) =>
   validateRedisConnection(fields, t);
 
 export function RedisConnectionWizard({ form }: { form: ConnectionFormState }) {
   const { t } = useI18n();
-  const [step, setStep] = useState<WizardStep>('topology');
+  const [activeTab, setActiveTab] = useState<WizardTab>('topology');
 
   const redisOptions = useMemo(
     () => readRedisOptions(form.options),
     [form.options],
   );
   const topology = redisOptions.topology ?? 'standalone';
-  const stepIndex = STEPS.indexOf(step);
 
   const updateOptions = (patch: Parameters<typeof mergeRedisOptions>[1]) => {
     form.setOptions(mergeRedisOptions(form.options, patch));
@@ -45,26 +44,31 @@ export function RedisConnectionWizard({ form }: { form: ConnectionFormState }) {
 
   return (
     <div className="md:col-span-2 space-y-4">
-      <div className="flex flex-wrap items-center gap-2 text-xs text-fg-muted">
-        {STEPS.map((name, idx) => (
-          <span key={name} className="inline-flex items-center gap-2">
+      <div className="flex shrink-0 items-center gap-1 border-b border-edge">
+        {TABS.map((tab) => (
+          <button
+            key={tab}
+            type="button"
+            className={cn(
+              'relative px-4 py-2 text-sm transition-colors',
+              activeTab === tab
+                ? 'text-fg font-medium'
+                : 'text-fg-secondary hover:text-fg',
+            )}
+            onClick={() => setActiveTab(tab)}
+          >
+            {t(`redis.wizard.${tab}` as 'redis.wizard.topology')}
             <span
-              className={
-                idx === stepIndex
-                  ? 'font-medium text-fg'
-                  : idx < stepIndex
-                    ? 'text-fg-secondary'
-                    : undefined
-              }
-            >
-              {idx + 1}. {t(`redis.wizard.${name}` as 'redis.wizard.topology')}
-            </span>
-            {idx < STEPS.length - 1 && <span className="text-edge">→</span>}
-          </span>
+              className={cn(
+                'absolute inset-x-0 bottom-0 h-0.5 bg-accent transition-opacity duration-300',
+                activeTab === tab ? 'opacity-100' : 'opacity-0',
+              )}
+            />
+          </button>
         ))}
       </div>
 
-      {step === 'topology' && (
+      {activeTab === 'topology' && (
         <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
           {(['standalone', 'cluster', 'sentinel'] as RedisTopology[]).map((value) => (
             <button
@@ -86,7 +90,7 @@ export function RedisConnectionWizard({ form }: { form: ConnectionFormState }) {
         </div>
       )}
 
-      {step === 'endpoints' && topology === 'standalone' && (
+      {activeTab === 'endpoints' && topology === 'standalone' && (
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           <div>
             <Label required>{t('newConn.host')}</Label>
@@ -137,7 +141,7 @@ export function RedisConnectionWizard({ form }: { form: ConnectionFormState }) {
         </div>
       )}
 
-      {step === 'endpoints' && topology === 'cluster' && (
+      {activeTab === 'endpoints' && topology === 'cluster' && (
         <div className="space-y-3">
           <div>
             <Label required>{t('redis.wizard.clusterNodes')}</Label>
@@ -174,7 +178,7 @@ export function RedisConnectionWizard({ form }: { form: ConnectionFormState }) {
         </div>
       )}
 
-      {step === 'endpoints' && topology === 'sentinel' && (
+      {activeTab === 'endpoints' && topology === 'sentinel' && (
         <div className="space-y-3">
           <div>
             <Label required>{t('redis.wizard.sentinelMasterName')}</Label>
@@ -243,7 +247,7 @@ export function RedisConnectionWizard({ form }: { form: ConnectionFormState }) {
         </div>
       )}
 
-      {step === 'tls' && (
+      {activeTab === 'tls' && (
         <div className="space-y-3">
           {topology === 'sentinel' &&
             (redisOptions.tls?.caPath || redisOptions.tls?.certPath) && (
@@ -305,28 +309,6 @@ export function RedisConnectionWizard({ form }: { form: ConnectionFormState }) {
         </div>
       )}
 
-      <div className="flex items-center gap-2">
-        {stepIndex > 0 && (
-          <Button
-            variant="secondary"
-            className="h-8 px-3 text-xs"
-            type="button"
-            onClick={() => setStep(STEPS[stepIndex - 1])}
-          >
-            {t('redis.wizard.back')}
-          </Button>
-        )}
-        {stepIndex < STEPS.length - 1 && (
-          <Button
-            variant="primary"
-            className="h-8 px-3 text-xs"
-            type="button"
-            onClick={() => setStep(STEPS[stepIndex + 1])}
-          >
-            {t('redis.wizard.next')}
-          </Button>
-        )}
-      </div>
     </div>
   );
 }

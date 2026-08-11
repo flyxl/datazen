@@ -51,6 +51,9 @@ pub struct AppSettings {
     pub confirm_on_delete: bool,
     pub auto_commit: bool,
     pub default_page_size: u32,
+    /// Max connections per DB session pool (Postgres/MySQL). Applies on next connect.
+    #[serde(default = "default_connection_pool_size")]
+    pub connection_pool_size: u32,
     #[serde(default = "default_log_level")]
     pub log_level: String,
     #[serde(default)]
@@ -95,6 +98,15 @@ fn default_log_level() -> String {
     "info".to_string()
 }
 
+fn default_connection_pool_size() -> u32 {
+    10
+}
+
+/// Clamp user-facing pool size to a safe range.
+pub fn clamp_connection_pool_size(n: u32) -> u32 {
+    n.clamp(1, 100)
+}
+
 impl AppSettings {
     /// Defaults used on first install when `settings.json` is absent.
     pub fn default_for_first_run() -> Self {
@@ -116,6 +128,7 @@ impl Default for AppSettings {
             confirm_on_delete: true,
             auto_commit: true,
             default_page_size: 50,
+            connection_pool_size: default_connection_pool_size(),
             log_level: default_log_level(),
             log_path: String::new(),
             mcp_server_enabled: false,

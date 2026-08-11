@@ -471,12 +471,12 @@ output:
 
 #[tokio::test]
 async fn tc10_history_persistence() {
+    use datazen::store::HistoryDb;
     use datazen::workflow::history::WorkflowHistoryManager;
     use datazen::workflow::workflows::{WorkflowExecutionResult, StepExecutionResult, StepStatus};
 
     let dir = tempfile::tempdir().unwrap();
-    let mgr = WorkflowHistoryManager::new(dir.path().to_path_buf());
-    mgr.load().await.unwrap();
+    let mgr = WorkflowHistoryManager::new(HistoryDb::open(dir.path()).unwrap());
 
     let result = WorkflowExecutionResult {
         success: true,
@@ -516,8 +516,7 @@ async fn tc10_history_persistence() {
 
     // Persist and reload
     drop(mgr);
-    let mgr2 = WorkflowHistoryManager::new(dir.path().to_path_buf());
-    mgr2.load().await.unwrap();
+    let mgr2 = WorkflowHistoryManager::new(HistoryDb::open(dir.path()).unwrap());
     assert_eq!(mgr2.list(None).await.len(), 1);
 
     let removed = mgr2.clear(None).await.unwrap();

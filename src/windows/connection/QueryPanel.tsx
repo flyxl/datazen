@@ -375,7 +375,11 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
                     className="relative px-3 py-1.5 text-xs text-fg font-medium transition-colors"
                   >
                     {t('explain.title')}
-                    <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-accent" />
+                    <span
+                      className={cn(
+                        'absolute bottom-0 left-0 right-0 h-0.5 bg-accent opacity-100',
+                      )}
+                    />
                   </button>
                 </div>
                 {explainLoading && (
@@ -463,9 +467,12 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
                         <span className="ml-1.5 text-[10px] text-fg-muted">
                           ({r.rows.length} {t('common.rows')}, {r.executionTimeMs}ms)
                         </span>
-                        {idx === activeResultIdx && (
-                          <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-accent" />
-                        )}
+                        <span
+                          className={cn(
+                            'absolute bottom-0 left-0 right-0 h-0.5 bg-accent transition-opacity duration-300',
+                            idx === activeResultIdx ? 'opacity-100' : 'opacity-0',
+                          )}
+                        />
                       </button>
                     ))}
                     {explainResult && (
