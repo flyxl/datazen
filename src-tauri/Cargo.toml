@@ -80,3 +80,4 @@ tempfile = "3.27.0"
 wiremock = "0.6"
 datazen-driver-postgres = { path = "../packages/drivers/postgres" }
 datazen-driver-mysql = { path = "../packages/drivers/mysql" }
+datazen-driver-sqlite = { path = "../packages/drivers/sqlite" }

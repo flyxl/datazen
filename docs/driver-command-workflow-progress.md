@@ -39,6 +39,7 @@ Rust lib tests compile on this branch after restoring the workflow facade `model
 - [x] Non-SQL path drivers override command discovery: MongoDB/Elasticsearch/InfluxDB keep query+execute with language-specific `sql` titles; HBase/Vector/VictoriaMetrics expose query only. SQL path drivers keep the default pair.
 - [x] `execute_driver_command` accepts `connectionId` or `driverType`. Commands with `metadata.requiresConnection = false` run against the registry Driver instance without a live session.
 - [x] Kiwi `login` / `list_instances` are unbound Driver Commands; the Kiwi Tauri plugin is setup-only.
+- [x] SQL editor (`queryCommands.executeQuery` / `databaseCommands.executeSQL`) executes via `execute_driver_command` `query`. Host `execute_query` is a compatibility wrapper on the same path (history, result limit, schema-cache invalidation).
 
 ### P1 — Permission enforcement
 

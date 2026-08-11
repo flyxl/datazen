@@ -234,6 +234,7 @@ Driver Command IPC 负责：
 - 获取指定 Connection 支持的 Command Definitions
 - 获取 Driver 支持的 Command Definitions（无需 live Connection）
 - 执行指定 Driver Command（`connectionId` 或 `driverType`；后者仅允许 `requiresConnection = false`）
+- SQL 编辑器 / `queryCommands.executeQuery` 走 `execute_driver_command` 的 `query` Command；兼容 IPC `execute_query` 也转发到同一路径
 
 ## 错误处理
 
