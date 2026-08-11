@@ -32,4 +32,4 @@ jobs:
       - name: Publish crate
         run: cargo publish -p datazen-driver-api --locked
         env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO }}
