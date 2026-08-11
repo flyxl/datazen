@@ -1639,6 +1639,7 @@ dependencies = [
  "datazen-driver-mongodb",
  "datazen-driver-mysql",
  "datazen-driver-postgres",
+ "datazen-driver-redis",
  "datazen-driver-sqlite",
  "datazen-driver-sqlserver",
  "datazen-driver-vector",
