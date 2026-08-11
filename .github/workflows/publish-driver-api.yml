@@ -4,15 +4,15 @@ on:
   workflow_dispatch:
   push:
     tags:
-      - 'driver-api-v*'
+      - 'datazen-driver-api-v*'
 
-permissions: {}
+permissions:
+  contents: read
 
 jobs:
   publish:
+    name: Publish datazen-driver-api
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -20,15 +20,16 @@ jobs:
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Cache Rust
-        uses: swatinem/rust-cache@v2
-        with:
-          workspaces: . -> target
+      - name: Check crate
+        run: cargo check -p datazen-driver-api
 
-      - name: Verify package
-        run: cargo package -p datazen-driver-api --allow-dirty
+      - name: Test crate
+        run: cargo test -p datazen-driver-api
 
-      - name: Publish datazen-driver-api
+      - name: Package crate
+        run: cargo package -p datazen-driver-api
+
+      - name: Publish crate
+        run: cargo publish -p datazen-driver-api --locked
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        run: cargo publish -p datazen-driver-api

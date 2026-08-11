@@ -3,7 +3,13 @@ name = "datazen-driver-api"
 version = "0.0.8"
 edition = "2021"
 description = "Public API (traits and types) for DataZen database driver plugins"
-license = "GPL-3.0-or-later"
+license-file = "LICENSE-MIT"
+repository = "https://github.com/flyxl/datazen"
+homepage = "https://flyxl.github.io/datazen/"
+documentation = "https://docs.rs/datazen-driver-api"
+readme = "README.md"
+keywords = ["datazen", "database", "driver", "plugin"]
+categories = ["database", "api-bindings"]
 
 [dependencies]
 async-trait = "0.1"
