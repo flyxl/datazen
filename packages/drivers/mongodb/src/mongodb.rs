@@ -446,6 +446,14 @@ impl DatabaseDriver for MongodbDriver {
         false
     }
 
+    fn command_definitions(&self) -> Vec<DriverCommandDefinition> {
+        statement_command_definitions(
+            "Run a MongoDB JSON command (find/aggregate)",
+            "Run a MongoDB JSON write command (insert/update/delete)",
+            "JSON command",
+        )
+    }
+
     async fn cancel_query(&self, _handle: &ConnectionHandle) -> Result<(), DriverError> {
         Ok(())
     }
@@ -471,6 +479,23 @@ mod tests {
         // validate only the empty-name path here. ConnectionFailed covers missing pool.
         let err = driver.use_database(&handle, "app").await.unwrap_err();
         assert!(matches!(err, DriverError::ConnectionFailed(_)));
+    }
+
+    #[test]
+    fn command_definitions_describe_json_commands() {
+        let ids: Vec<_> = MongodbDriver::new()
+            .command_definitions()
+            .into_iter()
+            .map(|d| d.id)
+            .collect();
+        assert_eq!(ids, vec!["query", "execute"]);
+        let query = MongodbDriver::new()
+            .command_definitions()
+            .into_iter()
+            .find(|d| d.id == "query")
+            .unwrap();
+        assert!(query.description.unwrap().contains("JSON"));
+        assert_eq!(query.input_schema["properties"]["sql"]["title"], "JSON command");
     }
 }
 

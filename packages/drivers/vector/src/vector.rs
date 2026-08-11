@@ -303,6 +303,13 @@ impl DatabaseDriver for VectorDriver {
         ))
     }
 
+    fn command_definitions(&self) -> Vec<DriverCommandDefinition> {
+        query_only_command_definitions(
+            "Search a vector collection with a JSON command",
+            "JSON command",
+        )
+    }
+
     async fn cancel_query(&self, _handle: &ConnectionHandle) -> Result<(), DriverError> {
         Ok(())
     }

@@ -265,7 +265,26 @@ impl DatabaseDriver for HBaseDriver {
         ))
     }
 
+    fn command_definitions(&self) -> Vec<DriverCommandDefinition> {
+        query_only_command_definitions("Scan an HBase table. Use `scan <table>`.", "scan <table>")
+    }
+
     async fn cancel_query(&self, _handle: &ConnectionHandle) -> Result<(), DriverError> {
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn command_definitions_are_query_only() {
+        let ids: Vec<_> = HBaseDriver::new()
+            .command_definitions()
+            .into_iter()
+            .map(|d| d.id)
+            .collect();
+        assert_eq!(ids, vec!["query"]);
     }
 }

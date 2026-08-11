@@ -20,9 +20,11 @@ pub use traits::*;
 pub use factory::*;
 pub use reuse::ReuseDriver;
 pub use command::{
-    check_command_access, execute_command_definition, query_command_definition,
-    required_access_level, validate_command_input, CommandAccessLevel, CommandResult,
-    DriverCommandDefinition,
+    check_command_access, execute_command_definition, execute_command_definition_for,
+    query_command_definition, query_command_definition_for, query_only_command_definitions,
+    required_access_level, statement_command_definitions, validate_command_input,
+    CommandAccessLevel, CommandCategory, CommandResult, DriverCommandDefinition,
+    DriverCommandMetadata,
 };
 pub use sync::{
     BoxedSyncAdapter, IRColumn, IRDefault, IRTable, IRType, SyncAdapterFactory, SyncSourceAdapter,

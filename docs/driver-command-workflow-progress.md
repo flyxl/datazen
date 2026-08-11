@@ -36,7 +36,9 @@ Rust lib tests compile on this branch after restoring the workflow facade `model
 - [x] Registered generic Driver Command IPC (`get_connection_commands`, `get_driver_commands`, `execute_driver_command`).
 - [x] Resolved Workflow/IPC Connection ids through `resolve_session` so config ids inherit/connect correctly.
 - [x] Migrated Redis plugin operations onto `command_definitions()` / `execute_command()`. Redis UI and Pub/Sub subscribe/unsubscribe use `execute_driver_command`; the Redis Tauri plugin is setup-only (Pub/Sub event sink).
-- [ ] Remaining path/git drivers (MongoDB, Elasticsearch, etc.) still use default `query`/`execute` until they grow Driver-specific commands.
+- [x] Non-SQL path drivers override command discovery: MongoDB/Elasticsearch/InfluxDB keep query+execute with language-specific `sql` titles; HBase/Vector/VictoriaMetrics expose query only. SQL path drivers keep the default pair.
+- [x] `execute_driver_command` accepts `connectionId` or `driverType`. Commands with `metadata.requiresConnection = false` run against the registry Driver instance without a live session.
+- [x] Kiwi `login` / `list_instances` are unbound Driver Commands; the Kiwi Tauri plugin is setup-only.
 
 ### P1 — Permission enforcement
 
@@ -54,7 +56,10 @@ Rust lib tests compile on this branch after restoring the workflow facade `model
 
 ### P2 — Command metadata
 
-Consider adding optional metadata such as command category, risk level, UI/workflow support, and deprecation status once concrete Driver migrations demonstrate the need.
+- [x] `DriverCommandDefinition.metadata` carries `category`, optional `risk`, `workflow`/`ui` visibility, `deprecated`/`replacedBy`, and `requiresConnection`.
+- [x] Explicit `metadata.risk` overrides permission-token classification.
+- [x] Workflow UI hides `workflow: false` and deprecated commands; runtime rejects `workflow: false`.
+- [x] Redis Pub/Sub subscribe/unsubscribe are `pubSub` and hidden from workflows.
 
 ## Branch Discipline
 

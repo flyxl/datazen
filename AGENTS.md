@@ -85,19 +85,22 @@ Driver 不再只以 SQL Query/Execute 作为扩展边界。`packages/driver-api`
 DatabaseDriver
 ├── command_definitions()
 │      └── DriverCommandDefinition
-│           ├── name
-│           ├── description
-│           └── input_schema
+│           ├── name / description / input_schema
+│           └── metadata (category, risk, workflow, ui, deprecated, requiresConnection)
 │
 └── execute_command(command, input)
        └── CommandResult
 ```
 
-- `query` / `execute` 是标准 Command，并有默认实现，保持现有 Driver 兼容。
+- `query` / `execute` 是标准 Command，并有默认实现，保持现有 SQL Driver 兼容。
+- 非 SQL 驱动应覆盖 `command_definitions()`：改 `sql` 字段 title，只读驱动不要暴露 `execute`。
 - Driver 可以通过 `command_definitions()` 暴露 Driver-specific Command。
 - `execute_command()` 是 Driver-specific 能力的统一执行入口。
 - Workflow、IPC、前端 Command Editor 都依赖 Command Definition，而不是按具体 Driver 类型硬编码。
+- `metadata.workflow = false` 的 Command 不进入 Workflow 选择器，workflow runtime 也会拒绝。
 - `ReuseDriver` 必须转发 Command discovery 与 execution。
+- `metadata.requiresConnection = false` 的 Command（如 Kiwi `login`）可通过 `driverType` 执行，不必先有 Connection。
+- Kiwi `login` / `list_instances` 走 `execute_driver_command({ driverType: 'kiwi', command })`，不再使用 `plugin:kiwi|*`。
 
 ### Redis 驱动（E1–E4）
 
@@ -229,8 +232,8 @@ Connection 改变后重新 discovery；没有 Step override 时使用 Workflow �
 Driver Command IPC 负责：
 
 - 获取指定 Connection 支持的 Command Definitions
-- 获取 Driver 支持的 Command Definitions
-- 执行指定 Driver Command
+- 获取 Driver 支持的 Command Definitions（无需 live Connection）
+- 执行指定 Driver Command（`connectionId` 或 `driverType`；后者仅允许 `requiresConnection = false`）
 
 ## 错误处理
 
