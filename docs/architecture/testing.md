@@ -52,7 +52,6 @@ pnpm e2e:core / e2e:db / e2e:ai    # 分组（默认 skip-build）
 | `src-tauri/src/workflow/workflows.rs` | Workflows 系统 |
 | `src-tauri/src/mcp/client.rs` | MCP Client（3 tests） |
 | `src-tauri/src/commands/context.rs` | AI 上下文文件（路径遍历防护、扩展名白名单、大小限制，14 tests） |
-| `src-tauri/src/sync/adapters/roundtrip_tests.rs` | 跨库类型映射 roundtrip 测试 |
 
 ### 3.2 集成测试
 
@@ -129,9 +128,10 @@ WebdriverIO E2E spec（Host：`e2e/specs/`）：
 |------|-------------|
 | Redis UI 单测 | `packages/drivers/redis/ui/__tests__/` — `pnpm test:unit:drivers` |
 | Redis E2E | `packages/drivers/redis/e2e/` — `pnpm e2e:redis` |
-| Kiwi E2E | `datazen-driver-kiwi` 仓库 |
+| Kiwi 元数据单测 | `datazen-driver-kiwi` `ui/plugin-meta.test.ts` |
+| Kiwi E2E | `datazen-driver-kiwi` `e2e/kiwi.ts` — `pnpm e2e:kiwi` |
 
-配置文件：`e2e/.env`（`e2e/.env.example` 示例）
+配置文件：`e2e/.env`（`e2e/.env.example` 示例）。跑库相关 spec 前执行 `bash e2e/setup-e2e-env.sh`（`e2e/run.mjs` 也会调用）。
 
 **构建要求：** `pnpm tauri build --debug --features webdriver`（禁止裸 `cargo build`）。
 
@@ -142,6 +142,7 @@ pnpm e2e:skip-build     # 已有合格二进制时
 pnpm e2e:core           # 核心 UI
 pnpm e2e:db             # 数据库驱动（Host）
 pnpm e2e:redis          # Redis 深度（显式）
+pnpm e2e:kiwi           # Kiwi（显式；spec 在 datazen-driver-kiwi）
 pnpm e2e:ai             # AI 功能
 pnpm e2e:i18n-backup    # 备份 + 10 语言
 pnpm e2e:path-ipc       # 路径 IPC 加固
