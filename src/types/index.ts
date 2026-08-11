@@ -373,7 +373,16 @@ export interface WorkflowVariable {
   default?: unknown;
 }
 
-export type WorkflowStepType = 'query' | 'ai' | 'condition' | 'foreach';
+export interface DriverCommandDefinition {
+  id: string;
+  name: string;
+  description?: string | null;
+  inputSchema: Record<string, unknown>;
+  outputSchema?: Record<string, unknown> | null;
+  permissions: string[];
+}
+
+export type WorkflowStepType = 'query' | 'command' | 'ai' | 'condition' | 'foreach';
 
 export interface ErrorHandlingConfig {
   strategy: 'abort' | 'skip' | 'fallback';
@@ -383,20 +392,17 @@ export interface ErrorHandlingConfig {
 export interface WorkflowStep {
   type: WorkflowStepType;
   id: string;
-  // query fields
   sql?: string;
   connection?: string;
   database?: string;
-  // ai fields
+  command?: string;
+  input?: Record<string, unknown>;
   prompt?: string;
-  // common
   timeoutSecs?: number;
   onError?: ErrorHandlingConfig;
-  // condition fields
   if?: string;
   thenSteps?: WorkflowStep[];
   elseSteps?: WorkflowStep[];
-  // foreach fields
   items?: string;
   asVar?: string;
   steps?: WorkflowStep[];
@@ -415,6 +421,8 @@ export interface WorkflowDefinition {
   version?: string;
   author?: string;
   variables: WorkflowVariable[];
+  /** Default connection inherited by data-operation steps. */
+  connection?: string;
   steps: WorkflowStep[];
   output?: WorkflowOutput;
   timeoutSecs?: number;
