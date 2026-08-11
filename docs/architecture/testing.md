@@ -6,19 +6,42 @@
 
 | 层级 | 工具 | 范围 |
 |------|------|------|
-| Rust 单元测试 | `cargo test` | 各模块 `#[cfg(test)]` |
-| Rust 集成测试 | `cargo test` | `src-tauri/tests/` |
-| 前端单元测试 | Vitest | `src/**/__tests__/` |
-| E2E 测试 | WebdriverIO | `e2e/specs/`（35 spec） |
+| Host Rust 单元测试 | `cargo test -p datazen` | `src-tauri` 各模块 `#[cfg(test)]` |
+| Host Rust 集成测试 | `cargo test -p datazen` | `src-tauri/tests/`（宿主编排，如 AI / Workflow） |
+| 驱动 Rust 测试 | `cargo test -p datazen-driver-<id>` | `packages/drivers/<id>/` 的 `#[cfg(test)]` 与 `tests/` |
+| Host 前端单元测试 | Vitest | `src/**/__tests__/`（`pnpm test:unit`） |
+| 驱动 UI 单测 | Vitest | `packages/drivers/<id>/ui/__tests__/`（`pnpm test:unit:drivers`） |
+| Host E2E | WebdriverIO | `e2e/specs/` |
+| 驱动 E2E | WebdriverIO | `packages/drivers/<id>/e2e/`（显式脚本，不进默认 `pnpm e2e`） |
 | 手工黑盒测试 | computer-use-mcp | `test/` |
+
+### 1.1 驱动测试必须写在驱动 crate 内
+
+**凡只验证某一个驱动实现、SQL/KV 方言、专属 UI 或 Driver Command 的用例，写到该驱动目录，禁止放到 Host。**
+
+Path 驱动（`packages/drivers/<id>/`，crate `datazen-driver-<id>`）：
+
+| 类型 | 落点 | 命令 |
+|------|------|------|
+| Rust 单元 | 实现文件旁 `#[cfg(test)]` | `cargo test -p datazen-driver-<id>` |
+| Rust 集成 | `packages/drivers/<id>/tests/` | `cargo test -p datazen-driver-<id> --test <name>` |
+| UI 单测 | `packages/drivers/<id>/ui/__tests__/` | `pnpm test:unit:drivers` |
+| E2E | `packages/drivers/<id>/e2e/` | 如 `pnpm e2e:redis` |
+
+Git 驱动（Kiwi 等）：测试在**插件仓库**维护，不要提交到 Host。
+
+Host（`src-tauri/`、`src/`、`e2e/specs/`）只测宿主：IPC、Workflow 引擎、MCP、通用窗口/表数据。可以用真实 PG/MySQL 当**夹具**，但不要把 `use_database`、structure DDL、Redis Command 等驱动语义写进 Host 测试。
+
+错误示例：`cargo test -p datazen --test postgres_use_database`（应 `-p datazen-driver-postgres`）。Agent 约定见 [AGENTS.md](../../AGENTS.md)「驱动测试落点」。
 
 ## 2. 运行命令
 
 ```bash
 # Rust 测试
-cargo test -p datazen              # 主应用单元测试
-cargo test -p datazen-ai-api       # AI API 单元测试
-cargo test -p datazen-driver-api   # Driver API 单元测试
+cargo test -p datazen                      # Host 主应用
+cargo test -p datazen-ai-api               # AI API
+cargo test -p datazen-driver-api           # Driver API
+cargo test -p datazen-driver-postgres      # 示例：path 驱动 crate（勿用 -p datazen）
 
 # 前端测试
 pnpm test:unit                     # package.json 脚本（vitest run）
@@ -38,7 +61,7 @@ pnpm e2e:core / e2e:db / e2e:ai    # 分组（默认 skip-build）
 
 ### 3.1 单元测试
 
-各模块内 `#[cfg(test)]` 模块：
+Host 各模块内 `#[cfg(test)]`。驱动实现的单测在 `packages/drivers/<id>/`，用 `cargo test -p datazen-driver-<id>`，见 §1.1。
 
 | 模块 | 测试范围 |
 |------|---------|
@@ -121,12 +144,14 @@ WebdriverIO E2E spec（Host：`e2e/specs/`）：
 | **路径 IPC / 备份·i18n** | `path-ipc-hardening.ts`, `app-data-backup.ts`, `i18n-10-locales.ts`, `system-locale.ts` |
 | **运维** | `backup-database.ts`, `data-sync-real.ts`, `bugfix-verification.ts` |
 
-**插件自有（不进 Host 默认 `pnpm e2e` / `pnpm test:unit`）：**
+**插件 / 驱动自有（不进 Host 默认 `pnpm e2e` / `pnpm test:unit`）：**
 
 | 类型 | 位置 / 命令 |
 |------|-------------|
+| Path 驱动 Rust | `packages/drivers/<id>/` — `cargo test -p datazen-driver-<id>` |
 | Redis UI 单测 | `packages/drivers/redis/ui/__tests__/` — `pnpm test:unit:drivers` |
 | Redis E2E | `packages/drivers/redis/e2e/` — `pnpm e2e:redis` |
+| PG / MySQL `use_database` | `packages/drivers/{postgres,mysql}/tests/` |
 | Kiwi 元数据单测 | `datazen-driver-kiwi` `ui/plugin-meta.test.ts` |
 | Kiwi E2E | `datazen-driver-kiwi`：`pnpm e2e:kiwi` |
 

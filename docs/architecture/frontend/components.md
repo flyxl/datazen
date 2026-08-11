@@ -906,9 +906,10 @@ export async function openQueryWindow(connectionId: string, database: string) {
 
 | 层级 | 工具 | 覆盖范围 |
 |------|------|----------|
-| 组件单测 | Vitest + React Testing Library | DataTable, CellRenderer, FilterBar |
+| 组件单测 | Vitest + React Testing Library | DataTable, CellRenderer, FilterBar（Host `src/`） |
+| 驱动 UI 单测 | Vitest | `packages/drivers/<id>/ui/__tests__/`（`pnpm test:unit:drivers`，不进 Host `pnpm test:unit`） |
 | Store 单测 | Vitest | 每个 Store 的 action/state 变化 |
-| 集成测试 | WebdriverIO | 窗口创建/关闭, 连接流程, 查询执行 |
+| 集成测试 | WebdriverIO | 窗口创建/关闭, 连接流程, 查询执行；驱动深度 E2E 在 `packages/drivers/<id>/e2e/` |
 | 性能测试 | WebdriverIO + Chrome DevTools | 10 万行滚动帧率, 内存占用 |
 | 快照测试 | Storybook | 关键 UI 组件视觉回归 |
 

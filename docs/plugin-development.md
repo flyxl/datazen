@@ -266,6 +266,21 @@ pnpm tauri dev
 
 ---
 
+## 测试约定
+
+驱动相关测试写在**本插件 / path 驱动 crate 内**，不要写到 Host 的 `src-tauri/`、`src/`、`e2e/specs/`。
+
+Path 驱动（Host 仓 `packages/drivers/<id>/`）：
+
+| 类型 | 位置 | 命令 |
+|------|------|------|
+| Rust 单元 | `src/` 旁 `#[cfg(test)]` | `cargo test -p datazen-driver-<id>` |
+| Rust 集成 | `tests/` | `cargo test -p datazen-driver-<id> --test <name>` |
+| UI 单测 | `ui/__tests__/` | `pnpm test:unit:drivers` |
+| E2E | `e2e/` | 显式脚本（如 `pnpm e2e:redis`），不进默认 `pnpm e2e` |
+
+Git 驱动在插件仓库用同样布局（crate 名以该仓为准）。Host 只测宿主 IPC / 通用 UI；用数据库实例当夹具可以，但不要把驱动方言测进 Host。详见 [AGENTS.md](../AGENTS.md)「驱动测试落点」。
+
 ## 目录结构约定
 
 ```
@@ -273,10 +288,14 @@ datazen-driver-xxx/         # Git 仓库目录名
 ├── Cargo.toml              # [package].name = "datazen-plugin-xxx"
 ├── src/
 │   └── lib.rs              # 驱动实现 + register_driver! 宏调用
+│       # 单元测试：同文件 #[cfg(test)]
+├── tests/                  # 集成测试（可选，需真实实例时）
 ├── ui/                     # 前端组件（可选）
 │   ├── plugin-meta.ts      # DatabaseTypeMeta（必须，如果有 ui/）
 │   ├── *Fields.tsx         # 自定义连接表单（可选）
-│   └── *Dialect.ts         # 自定义 SQL 方言（可选）
+│   ├── *Dialect.ts         # 自定义 SQL 方言（可选）
+│   └── __tests__/          # 驱动 UI 单测
+├── e2e/                    # 驱动专属 E2E（可选；不进 Host 默认 pnpm e2e）
 └── README.md
 ```
 

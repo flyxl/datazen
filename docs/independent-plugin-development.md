@@ -203,7 +203,7 @@ For Rust changes, Cargo recompiles the affected plugin code. For frontend change
 
 ## 8. Test the plugin independently
 
-The plugin repository should keep its own tests and CI. At minimum, test the driver implementation independently of the Datazen application where practical.
+The plugin repository should keep its own tests and CI. At minimum, test the driver implementation independently of the Datazen application where practical. **Do not add driver-specific tests to the Host** (`src-tauri/`, `src/`, `e2e/specs/`). Path drivers in this monorepo follow the same rule: tests live under `packages/drivers/<id>/` (`#[cfg(test)]`, `tests/`, `ui/__tests__/`, `e2e/`). See [AGENTS.md](../AGENTS.md)「驱动测试落点」.
 
 For example:
 
