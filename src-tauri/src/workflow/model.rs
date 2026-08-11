@@ -30,7 +30,7 @@ pub struct WorkflowVariable {
     pub default: Option<serde_json::Value>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type")]
 pub enum WorkflowStep {
     #[serde(rename = "query")]
@@ -63,7 +63,7 @@ impl WorkflowStep {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkflowOutput { pub format: String, pub template: Option<String> }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ErrorHandlingConfig { pub strategy: ErrorStrategyKind, #[serde(default)] pub fallback_steps: Option<Vec<WorkflowStep>> }
 
 impl ErrorHandlingConfig {
