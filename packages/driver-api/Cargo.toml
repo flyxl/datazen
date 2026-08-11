@@ -1,6 +1,6 @@
 [package]
 name = "datazen-driver-api"
-version = "0.0.7"
+version = "0.0.8"
 edition = "2021"
 description = "Public API (traits and types) for DataZen database driver plugins"
 license = "GPL-3.0-or-later"
