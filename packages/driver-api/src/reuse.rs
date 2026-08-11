@@ -133,6 +133,19 @@ impl DatabaseDriver for ReuseDriver {
         self.inner.execute(handle, sql).await
     }
 
+    fn command_definitions(&self) -> Vec<DriverCommandDefinition> {
+        self.inner.command_definitions()
+    }
+
+    async fn execute_command(
+        &self,
+        handle: &ConnectionHandle,
+        command: &str,
+        input: serde_json::Value,
+    ) -> Result<CommandResult, DriverError> {
+        self.inner.execute_command(handle, command, input).await
+    }
+
     async fn begin_transaction(
         &self,
         handle: &ConnectionHandle,
