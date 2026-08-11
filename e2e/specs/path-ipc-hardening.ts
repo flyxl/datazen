@@ -25,6 +25,7 @@ const FILE_CONNECTION_FIELDS = path.join(
 );
 const SETTINGS_TS = path.join(ROOT, 'src/commands/settings.ts');
 const SETTINGS_WIN = path.join(ROOT, 'src/windows/settings/SettingsWindow.tsx');
+const AI_SETTINGS = path.join(ROOT, 'src/windows/settings/AiSettingsSection.tsx');
 const ADB_TS = path.join(ROOT, 'src/commands/adb.ts');
 
 async function invokeBackend<T>(cmd: string, args: Record<string, unknown> = {}): Promise<T> {
@@ -146,7 +147,7 @@ describe('Path IPC Hardening (PIH-001~PIH-006)', () => {
   it('PIH-005: Settings AI context button wires open_context_dir', async function () {
     this.timeout(20000);
 
-    const winSrc = fs.readFileSync(SETTINGS_WIN, 'utf8');
+    const winSrc = fs.readFileSync(AI_SETTINGS, 'utf8');
     expect(winSrc).toContain('openContextDir()');
 
     const cmdSrc = fs.readFileSync(SETTINGS_TS, 'utf8');

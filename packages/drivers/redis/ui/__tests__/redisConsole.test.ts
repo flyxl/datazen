@@ -3,13 +3,13 @@ import {
   filterCompletions,
   getCompletionPrefix,
   REDIS_COMMANDS,
-} from '../../../../packages/drivers/redis/ui/redisCommands';
+} from '../redisCommands';
 import {
   loadConsoleHistory,
   navigateConsoleHistory,
   pushConsoleHistory,
   saveConsoleHistory,
-} from '../../../../packages/drivers/redis/ui/consoleHistory';
+} from '../consoleHistory';
 
 describe('filterCompletions', () => {
   it('prefers commands then keys', () => {

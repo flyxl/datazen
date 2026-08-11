@@ -719,3 +719,7 @@ if ('__TAURI_INTERNALS__' in globalThis) {
     void useAiStore.getState().loadConfig();
   });
 }
+
+if (typeof window !== 'undefined') {
+  (window as Window & { __datazenAiStore?: typeof useAiStore }).__datazenAiStore = useAiStore;
+}
