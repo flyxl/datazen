@@ -280,8 +280,17 @@ fn setup_menu(
         .item(&import_connections_item)
         .build()?;
 
-    // Edit menu omitted: predefined undo/redo/cut/copy do not target CodeMirror;
-    // keep locale keys for a future editor-aware Edit menu.
+    // ── Edit ──
+    // Restores ⌘X/⌘C/⌘V/⌘A for native inputs (settings, forms, search, …).
+    // Undo/Redo are intentionally omitted: CodeMirror handles its own ⌘Z/⌘⇧Z
+    // keymap, and the native undo/redo selectors do not target it.
+    let edit_menu = SubmenuBuilder::new(handle, t("edit"))
+        .item(&PredefinedMenuItem::cut(handle, Some(&t("cut")))?)
+        .item(&PredefinedMenuItem::copy(handle, Some(&t("copy")))?)
+        .item(&PredefinedMenuItem::paste(handle, Some(&t("paste")))?)
+        .separator()
+        .item(&PredefinedMenuItem::select_all(handle, Some(&t("select-all")))?)
+        .build()?;
 
     // ── View ──
     let theme_menu = SubmenuBuilder::new(handle, t("theme"))
@@ -326,6 +335,7 @@ fn setup_menu(
         .items(&[
             &app_menu,
             &file_menu,
+            &edit_menu,
             &view_menu,
             &tools_menu,
             &window_menu,
