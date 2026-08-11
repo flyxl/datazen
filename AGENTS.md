@@ -165,7 +165,8 @@ pnpm tauri:dev                         # 完整开发（前端 + Rust；默认 b
 pnpm build                             # 构建前端（不 inject；打包前由外层 resolve）
 pnpm build:with-drivers                # 单独前端构建并 inject/restore
 pnpm tauri:build                       # 完整应用（外层 inject 一次）
-npx vitest run                         # 前端单元测试
+npx vitest run                         # Host 前端单元测试（不含 packages/drivers）
+pnpm test:unit:drivers                 # Path 驱动 UI 单测（含 Redis）
 cargo test -p datazen                  # Rust 单元测试
 ```
 
@@ -180,16 +181,18 @@ cargo test -p datazen                  # Rust 单元测试
 3. 必须启用 `webdriver` feature（监听 `127.0.0.1:4445`）
 
 ```bash
-pnpm e2e                               # 完整构建（webdriver）+ 跑全部 E2E（推荐首次）
+pnpm e2e                               # 完整构建（webdriver）+ 跑全部 Host E2E（推荐首次）
 pnpm e2e:minimal                       # 更快：DATAZEN_DRIVERS=basic，跳过 Git / 非核心 path 驱动
 pnpm e2e:skip-build                    # 跳过构建（仅当已有合格的 webdriver debug 二进制）
 pnpm e2e:skip-build -- --spec e2e/specs/path-ipc-hardening.ts
 pnpm e2e:core                          # 核心 UI（默认 skip-build）
-pnpm e2e:db / e2e:ai / e2e:kiwi / e2e:redis  # 分组（redis 含 topology 可选用例）
+pnpm e2e:db / e2e:ai                   # 分组
+pnpm e2e:redis                         # Redis 深度 E2E（显式；specs 在 packages/drivers/redis/e2e/；不进默认 e2e）
 pnpm e2e:i18n-backup / e2e:path-ipc    # 备份·i18n / 路径 IPC
+# Kiwi E2E：仅 datazen-driver-kiwi 仓（Host 已移除 e2e/specs/kiwi.ts；pnpm e2e:kiwi 会提示并退出）
 ```
 
-PR 合并前：`pnpm test:unit` + `cargo test -p datazen --lib`（见 `.github/workflows/ci.yml`）。代码审查修复对照：[docs/code-review-2026-08-07-full.md](docs/code-review-2026-08-07-full.md)、[docs/progress-code-review-fix.md](docs/progress-code-review-fix.md)。
+PR 合并前：`pnpm test:unit` + `cargo test -p datazen --lib`（见 `.github/workflows/ci.yml`）。Path 驱动 UI 单测：`pnpm test:unit:drivers`（**不**含在 `pnpm test:unit` 内）。代码审查修复对照：[docs/code-review-2026-08-07-full.md](docs/code-review-2026-08-07-full.md)、[docs/progress-code-review-fix.md](docs/progress-code-review-fix.md)。
 
 编排脚本：`e2e/run.mjs`。环境变量：复制 `e2e/.env.example` → `e2e/.env`。
 
