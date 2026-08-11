@@ -561,6 +561,7 @@ mod tests {
             password: None,
             ssl_mode: SslMode::Prefer,
             connection_timeout: 30,
+            max_pool_size: 10,
             ssh_tunnel: None,
             color_tag: None,
             group: None,

@@ -32,8 +32,10 @@ pub(crate) async fn get_settings_impl(state: &AppState) -> Result<AppSettings, C
 
 pub(crate) async fn save_settings_impl(
     state: &AppState,
-    settings: AppSettings,
+    mut settings: AppSettings,
 ) -> Result<(), CommandError> {
+    settings.connection_pool_size =
+        crate::store::clamp_connection_pool_size(settings.connection_pool_size);
     tracing::debug!(theme_mode = %settings.theme.mode, "save_settings");
     state
         .store
@@ -623,6 +625,7 @@ mod tests {
                 password: None,
                 ssl_mode: SslMode::default(),
                 connection_timeout: 30,
+                max_pool_size: 10,
                 ssh_tunnel: None,
                 color_tag: None,
                 group: None,
@@ -709,6 +712,7 @@ mod tests {
             password: Some("pw".into()),
             ssl_mode: SslMode::default(),
             connection_timeout: 30,
+            max_pool_size: 10,
             ssh_tunnel: None,
             color_tag: None,
             group: Some("Prod".into()),
@@ -803,6 +807,7 @@ mod tests {
                 password: None,
                 ssl_mode: SslMode::default(),
                 connection_timeout: 30,
+                max_pool_size: 10,
                 ssh_tunnel: None,
                 color_tag: None,
                 group: group.map(str::to_string),

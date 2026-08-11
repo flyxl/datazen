@@ -1,10 +1,13 @@
-import { useEffect } from 'react';
-import { Loader2 } from 'lucide-react';
-import { DataTable } from '../../components/DataTable/DataTable';
-import type { ColumnDef } from '../../components/DataTable/TableHeader';
-import { NlFilterInput } from '../../components/ai/NlFilterInput';
-import { useTableDataStore, type TableState } from '../../stores/tableDataStore';
-import { useI18n } from '../../hooks/useI18n';
+import { useEffect } from "react";
+import { Loader2 } from "lucide-react";
+import { DataTable } from "../../components/DataTable/DataTable";
+import type { ColumnDef } from "../../components/DataTable/TableHeader";
+import { NlFilterInput } from "../../components/ai/NlFilterInput";
+import {
+  useTableDataStore,
+  type TableState,
+} from "../../stores/tableDataStore";
+import { useI18n } from "../../hooks/useI18n";
 
 interface TableViewProps {
   connectionId: string;
@@ -12,7 +15,11 @@ interface TableViewProps {
   tableName: string;
 }
 
-export function TableView({ connectionId, database, tableName }: TableViewProps) {
+export function TableView({
+  connectionId,
+  database,
+  tableName,
+}: TableViewProps) {
   const { t } = useI18n();
   // NlFilterInput handles unconfigured state internally
   const tableStates = useTableDataStore((s) => s.tableStates);
@@ -41,7 +48,14 @@ export function TableView({ connectionId, database, tableName }: TableViewProps)
     } else if (!hasData) {
       void loadTableData({ connectionId, table: tableName });
     }
-  }, [connectionId, tableName, hasData, activeTable, loadTableData, switchToTable]);
+  }, [
+    connectionId,
+    tableName,
+    hasData,
+    activeTable,
+    loadTableData,
+    switchToTable,
+  ]);
 
   const columns = ts?.columns ?? [];
   const rows = ts?.rows ?? [];
@@ -63,9 +77,11 @@ export function TableView({ connectionId, database, tableName }: TableViewProps)
           <button
             type="button"
             className="mt-2 text-xs text-accent hover:underline"
-            onClick={() => void loadTableData({ connectionId, table: tableName })}
+            onClick={() =>
+              void loadTableData({ connectionId, table: tableName })
+            }
           >
-            {t('common.retry')}
+            {t("common.retry")}
           </button>
         </div>
       </div>
@@ -76,7 +92,7 @@ export function TableView({ connectionId, database, tableName }: TableViewProps)
     return (
       <div className="flex flex-1 items-center justify-center gap-2 text-fg-muted">
         <Loader2 className="h-5 w-5 animate-spin" />
-        {t('tableView.loadingData')}
+        {t("tableView.loadingData")}
       </div>
     );
   }
@@ -101,24 +117,24 @@ export function TableView({ connectionId, database, tableName }: TableViewProps)
       <DataTable
         columns={columnDefs}
         rows={rowArrays}
-      totalRows={totalRows}
-      page={page}
-      pageSize={pageSize}
-      sorts={sorts}
-      filters={filters}
-      editingCell={editingCell}
-      selectedRows={selectedRows}
-      loading={loading}
-      onSort={setSort}
-      onRemoveFilter={removeFilter}
-      onClearFilters={clearFilters}
-      onPageChange={setPage}
-      onPageSizeChange={setPageSize}
-      onCellDoubleClick={startEdit}
-      onCellEdit={updateCell}
-      onCellEditCancel={cancelEdit}
-      onRowSelect={selectRow}
-      onSelectAll={toggleSelectAll}
+        totalRows={totalRows}
+        page={page}
+        pageSize={pageSize}
+        sorts={sorts}
+        filters={filters}
+        editingCell={editingCell}
+        selectedRows={selectedRows}
+        loading={loading}
+        onSort={setSort}
+        onRemoveFilter={removeFilter}
+        onClearFilters={clearFilters}
+        onPageChange={setPage}
+        onPageSizeChange={setPageSize}
+        onCellDoubleClick={startEdit}
+        onCellEdit={updateCell}
+        onCellEditCancel={cancelEdit}
+        onRowSelect={selectRow}
+        onSelectAll={toggleSelectAll}
         onRowClick={setDetailRow}
         highlightedRow={detailRowIndex}
         exportTableName={tableName}

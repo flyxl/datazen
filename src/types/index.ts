@@ -28,6 +28,8 @@ export interface ConnectionConfig {
   password?: string;
   sslMode: SslMode;
   connectionTimeout?: number;
+  /** Host-injected pool size; not typically set in the connection form. */
+  maxPoolSize?: number;
   sshTunnel?: SshTunnelConfig;
   colorTag?: string;
   group?: string;
@@ -180,6 +182,8 @@ export interface AppSettings {
   confirmOnDelete: boolean;
   autoCommit: boolean;
   defaultPageSize: number;
+  /** Max DB session pool size (Postgres/MySQL). Default 10; applies on next connect. */
+  connectionPoolSize: number;
   logLevel: 'trace' | 'debug' | 'info' | 'warn' | 'error';
   logPath: string;
   /** When true, GUI may start embedded MCP on launch. Default false. */

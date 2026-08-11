@@ -643,9 +643,12 @@ export function SqlConnectionView({
                         >
                           <X className="h-3 w-3" />
                         </button>
-                        {isActive && (
-                          <span className="absolute inset-x-0 bottom-0 h-0.5 bg-accent" />
-                        )}
+                        <span
+                          className={cn(
+                            'absolute inset-x-0 bottom-0 h-0.5 bg-accent transition-opacity duration-300',
+                            isActive ? 'opacity-100' : 'opacity-0',
+                          )}
+                        />
                       </div>
                     );
                   })}
@@ -677,9 +680,12 @@ export function SqlConnectionView({
                       onClick={() => handleSetSubTab(activePanel.id, tab.id)}
                     >
                       {tab.label}
-                      {activePanel.subTab === tab.id && (
-                        <span className="absolute inset-x-0 bottom-0 h-0.5 bg-accent" />
-                      )}
+                      <span
+                        className={cn(
+                          'absolute inset-x-0 bottom-0 h-0.5 bg-accent transition-opacity duration-300',
+                          activePanel.subTab === tab.id ? 'opacity-100' : 'opacity-0',
+                        )}
+                      />
                     </button>
                   ))}
                 </div>

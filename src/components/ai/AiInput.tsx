@@ -149,16 +149,24 @@ export const AiInput = forwardRef<HTMLTextAreaElement, AiInputProps>(function Ai
     [onContextItemsChange, contextItems, value, onChange],
   );
 
-  const hasTokens = contextItems && contextItems.length > 0;
+  const hasTokens = Boolean(contextItems && contextItems.length > 0);
+  const showPlaceholder = !hasTokens && value.length === 0;
 
   return (
     <div ref={wrapperRef} className={cn('relative', className)}>
       <div
         className={cn(
-          'relative flex flex-wrap items-end rounded-lg border border-edge bg-surface',
+          'relative rounded-lg border border-edge bg-surface',
           'transition-colors focus-within:border-accent',
           disabled && 'opacity-50',
         )}
+        onMouseDown={(e) => {
+          // Keep focus in the textarea when clicking chips / padding (span-like field).
+          if (e.target === e.currentTarget || (e.target as HTMLElement).closest('[data-testid="context-token"]')) {
+            e.preventDefault();
+            textareaRef.current?.focus();
+          }
+        }}
       >
         {showPicker && hasContext && (
           <ContextPicker
@@ -172,48 +180,64 @@ export const AiInput = forwardRef<HTMLTextAreaElement, AiInputProps>(function Ai
           />
         )}
 
-        {hasTokens && (
-          <div className="flex flex-wrap items-center gap-1.5 pl-2 pt-2">
-            {contextItems.map((item) => (
+        {/* Chips + text share one wrapping line (Android span-like), not a stacked block. */}
+        <div
+          data-testid="ai-input-field"
+          className={cn(
+            'flex flex-wrap items-center gap-x-1.5 gap-y-1',
+            'px-3 py-2',
+            !hideSubmit && 'pr-10',
+          )}
+        >
+          {hasTokens &&
+            contextItems!.map((item) => (
               <span
                 key={itemKey(item)}
                 data-testid="context-token"
                 data-kind={item.kind}
                 data-id={item.id}
-                className="inline-flex items-center gap-1 text-[12px] text-fg-secondary"
+                className={cn(
+                  'inline-flex max-w-full shrink-0 items-center gap-1',
+                  'rounded-md bg-accent/15 px-1.5 py-0.5',
+                  'text-[12px] leading-5 text-accent',
+                )}
               >
                 <TokenIcon kind={item.kind} />
-                <span className="truncate">{item.name}</span>
+                <span className="truncate">@{item.name}</span>
               </span>
             ))}
-          </div>
-        )}
 
-        <textarea
-          ref={textareaRef}
-          value={value}
-          onChange={handleChange}
-          onKeyDown={handleKeyDown}
-          onCompositionStart={aiKeyboard.onCompositionStart}
-          onCompositionEnd={aiKeyboard.onCompositionEnd}
-          placeholder={
-            placeholder !== undefined
-              ? placeholder
-              : hasContext
-                ? t('context.placeholder')
+          <textarea
+            ref={textareaRef}
+            value={value}
+            onChange={handleChange}
+            onKeyDown={handleKeyDown}
+            onCompositionStart={aiKeyboard.onCompositionStart}
+            onCompositionEnd={aiKeyboard.onCompositionEnd}
+            placeholder={
+              showPlaceholder
+                ? placeholder !== undefined
+                  ? placeholder
+                  : hasContext
+                    ? t('context.placeholder')
+                    : undefined
                 : undefined
-          }
-          rows={rows}
-          disabled={disabled}
-          autoCapitalize="off"
-          autoCorrect="off"
-          spellCheck={false}
-          className={cn(
-            'min-w-0 flex-1 resize-none bg-transparent px-3 py-2 text-sm text-fg',
-            'placeholder:text-fg-muted focus:outline-none',
-            'disabled:cursor-not-allowed',
-          )}
-        />
+            }
+            rows={rows}
+            disabled={disabled}
+            autoCapitalize="off"
+            autoCorrect="off"
+            spellCheck={false}
+            className={cn(
+              // Grow on the same flex line as chips; wrap only when the line is full.
+              'min-h-[1.5rem] min-w-[6rem] flex-1 basis-[6rem] resize-none',
+              'bg-transparent py-0 text-sm leading-5 text-fg',
+              'placeholder:text-fg-muted focus:outline-none',
+              'disabled:cursor-not-allowed',
+            )}
+          />
+        </div>
+
         {!hideSubmit && (
           <div className="absolute bottom-1.5 right-1.5 flex items-end">
             {showStop ? (

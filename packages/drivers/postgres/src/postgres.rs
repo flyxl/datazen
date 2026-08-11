@@ -416,11 +416,15 @@ impl DatabaseDriver for PostgresDriver {
         let timeout = Duration::from_secs(config.connection_timeout as u64);
         let resolved_db = Self::resolve_connect_database(config).to_string();
 
-        let pool = Self::open_pool(opts, timeout, 3, 2).await?;
+        let max = config.effective_max_pool_size();
+        let min = 2u32.min(max);
+        let pool = Self::open_pool(opts, timeout, max, min).await?;
 
         {
             let _c1 = pool.acquire().await.map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
-            let _c2 = pool.acquire().await.map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
+            if max >= 2 {
+                let _c2 = pool.acquire().await.map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
+            }
         }
 
         let pool_id = uuid::Uuid::new_v4().to_string();
@@ -1126,8 +1130,16 @@ impl DatabaseDriver for PostgresDriver {
 
         // Postgres cannot USE like MySQL — reconnect the handle's pool to the target DB.
         // Missing connect template / pool → ConnectionFailed (same shape as get_pool).
+        let max = {
+            let configs = self.connect_configs.read().await;
+            configs
+                .get(&handle.pool_id)
+                .map(|c| c.effective_max_pool_size())
+                .unwrap_or(10)
+        };
+        let min = 2u32.min(max);
         let new_pool = self
-            .pool_for_named_database(handle, &trimmed, 3, 2)
+            .pool_for_named_database(handle, &trimmed, max, min)
             .await?;
 
         let old = {
@@ -1480,6 +1492,7 @@ mod tests {
             password: None,
             ssl_mode: Default::default(),
             connection_timeout: 5,
+            max_pool_size: 10,
             ssh_tunnel: None,
             color_tag: None,
             group: None,

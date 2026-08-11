@@ -13,6 +13,7 @@ import {
   Key,
   Loader2,
   Plus,
+  RefreshCw,
   Search,
   X,
 } from 'lucide-react';
@@ -206,6 +207,11 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
       }
     }, [selectedDb, dbIndex, searchPattern, loadKeys]);
 
+    const handleRefresh = useCallback(() => {
+      void loadForConnection(connectionId, { skipLoadTables: true });
+      refreshKeys();
+    }, [connectionId, loadForConnection, refreshKeys]);
+
     useImperativeHandle(ref, () => ({ refreshKeys }), [refreshKeys]);
 
     const handleLoadMore = useCallback(() => {
@@ -371,6 +377,15 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
                   {cursor !== 0 && ` (${t('redis.loadMore')}…)`}
                 </span>
                 <div className="flex-1" />
+                <Button
+                  variant="secondary"
+                  className="h-7 gap-1 px-2 text-xs"
+                  title={t('connWin.refresh')}
+                  onClick={handleRefresh}
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  {t('redis.refresh')}
+                </Button>
                 <Button
                   variant="secondary"
                   className="h-7 gap-1 px-2 text-xs"

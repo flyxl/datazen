@@ -48,9 +48,12 @@ function isTauri(): boolean {
   return '__TAURI_INTERNALS__' in window;
 }
 
+/** Sub-window HTML entry — no splash (see `window.html`). Main stays on `index.html`. */
+const SUB_WINDOW_ENTRY = 'window.html';
+
 async function openTauriWindow(label: string, options: OpenWindowOptions) {
   const qs = new URLSearchParams(options.params ?? {}).toString();
-  const url = qs ? `index.html?${qs}` : 'index.html';
+  const url = qs ? `${SUB_WINDOW_ENTRY}?${qs}` : SUB_WINDOW_ENTRY;
 
   try {
     await invoke('create_sub_window', {
@@ -85,7 +88,7 @@ async function openTauriWindow(label: string, options: OpenWindowOptions) {
 
 function openBrowserWindow(options: OpenWindowOptions) {
   const qs = new URLSearchParams(options.params ?? {}).toString();
-  const url = qs ? `/?${qs}` : '/';
+  const url = qs ? `/window.html?${qs}` : '/window.html';
   window.open(url, '_blank', `width=${options.width ?? 800},height=${options.height ?? 640}`);
 }
 

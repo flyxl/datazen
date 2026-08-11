@@ -64,6 +64,9 @@ pub struct ConnectionConfig {
     pub ssl_mode: SslMode,
     #[serde(default = "default_connection_timeout")]
     pub connection_timeout: u32,
+    /// Max connections in the driver's sqlx pool (host injects from AppSettings on connect).
+    #[serde(default = "default_max_pool_size")]
+    pub max_pool_size: u32,
     pub ssh_tunnel: Option<SshTunnelConfig>,
     pub color_tag: Option<String>,
     pub group: Option<String>,
@@ -76,6 +79,17 @@ pub struct ConnectionConfig {
 
 fn default_connection_timeout() -> u32 {
     30
+}
+
+fn default_max_pool_size() -> u32 {
+    10
+}
+
+impl ConnectionConfig {
+    /// Pool size for sqlx drivers: at least 1, capped at 100.
+    pub fn effective_max_pool_size(&self) -> u32 {
+        self.max_pool_size.clamp(1, 100)
+    }
 }
 
 #[cfg(test)]
@@ -96,6 +110,7 @@ mod connection_config_tests {
             password: None,
             ssl_mode: SslMode::Disable,
             connection_timeout: 30,
+            max_pool_size: 10,
             ssh_tunnel: None,
             color_tag: None,
             group: None,
@@ -103,6 +118,18 @@ mod connection_config_tests {
             server_version: None,
             options: None,
         }
+    }
+
+    #[test]
+    fn max_pool_size_defaults_when_missing() {
+        let json = json!({
+            "id": "x",
+            "name": "n",
+            "databaseType": "postgresql",
+        });
+        let c: ConnectionConfig = serde_json::from_value(json).unwrap();
+        assert_eq!(c.max_pool_size, 10);
+        assert_eq!(c.effective_max_pool_size(), 10);
     }
 
     #[test]

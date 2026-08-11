@@ -412,7 +412,12 @@ export function WorkflowWindow() {
               className={cn('flex-1 px-3 py-2 text-xs transition-colors relative', sideTab === 'workflows' ? 'text-fg font-medium' : 'text-fg-muted hover:text-fg')}
             >
               Workflows
-              {sideTab === 'workflows' && <span className="absolute inset-x-0 bottom-0 h-0.5 bg-blue-500" />}
+              <span
+                className={cn(
+                  'absolute inset-x-0 bottom-0 h-0.5 bg-blue-500 transition-opacity duration-300',
+                  sideTab === 'workflows' ? 'opacity-100' : 'opacity-0',
+                )}
+              />
             </button>
             <button
               type="button" onMouseDown={(e) => e.preventDefault()}
@@ -421,7 +426,12 @@ export function WorkflowWindow() {
             >
               <History className="h-3 w-3" />
               {t('workflows.history.title')}
-              {sideTab === 'history' && <span className="absolute inset-x-0 bottom-0 h-0.5 bg-blue-500" />}
+              <span
+                className={cn(
+                  'absolute inset-x-0 bottom-0 h-0.5 bg-blue-500 transition-opacity duration-300',
+                  sideTab === 'history' ? 'opacity-100' : 'opacity-0',
+                )}
+              />
             </button>
           </div>
 
@@ -515,7 +525,12 @@ export function WorkflowWindow() {
                       >
                         <X className="h-3 w-3" />
                       </button>
-                      {isActive && <span className="absolute inset-x-0 bottom-0 h-0.5 bg-blue-500" />}
+                      <span
+                        className={cn(
+                          'absolute inset-x-0 bottom-0 h-0.5 bg-blue-500 transition-opacity duration-300',
+                          isActive ? 'opacity-100' : 'opacity-0',
+                        )}
+                      />
                     </div>
                   );
                 })}

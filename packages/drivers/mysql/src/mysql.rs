@@ -575,17 +575,24 @@ impl DatabaseDriver for MysqlDriver {
         let url = build_mysql_url(config)?;
         let timeout = Duration::from_secs(config.connection_timeout as u64);
 
-        let pool = MySqlPoolOptions::new()
-            .max_connections(3)
-            .min_connections(2)
-            .acquire_timeout(timeout)
+        let max = config.effective_max_pool_size();
+        let min = 2u32.min(max);
+        let mut builder = MySqlPoolOptions::new()
+            .max_connections(max)
+            .acquire_timeout(timeout);
+        if min > 0 {
+            builder = builder.min_connections(min);
+        }
+        let pool = builder
             .connect(&url)
             .await
             .map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
 
         {
             let _c1 = pool.acquire().await.map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
-            let _c2 = pool.acquire().await.map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
+            if max >= 2 {
+                let _c2 = pool.acquire().await.map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
+            }
         }
 
         let pool_id = uuid::Uuid::new_v4().to_string();

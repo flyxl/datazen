@@ -46,7 +46,7 @@ pub async fn open_docs_window(app: AppHandle, section: Option<&str>) -> Result<(
         app,
         CreateWindowOptions {
             label: "docs-singleton".into(),
-            url: format!("index.html?{qs}"),
+            url: format!("window.html?{qs}"),
             title: "DataZen".into(),
             width: 920.0,
             height: 680.0,
@@ -160,7 +160,10 @@ fn focus_existing_window(app: &AppHandle, label: &str, url: &str) -> bool {
     let Some(existing) = app.get_webview_window(label) else {
         return false;
     };
-    let marker = url.strip_prefix("index.html").unwrap_or(url);
+    let marker = url
+        .strip_prefix("window.html")
+        .or_else(|| url.strip_prefix("index.html"))
+        .unwrap_or(url);
     let needs_nav = existing
         .url()
         .map(|current| !current.as_str().contains(marker))
@@ -183,7 +186,7 @@ mod tests {
 
     #[test]
     fn create_window_options_defaults() {
-        let json = r#"{"label":"w1","url":"index.html?window=main"}"#;
+        let json = r#"{"label":"w1","url":"window.html?window=settings"}"#;
         let opts: CreateWindowOptions = serde_json::from_str(json).unwrap();
         assert_eq!(opts.label, "w1");
         assert_eq!(opts.title, "DataZen");
@@ -198,7 +201,7 @@ mod tests {
     fn create_window_options_respects_overrides() {
         let json = r#"{
             "label":"w2",
-            "url":"index.html?window=settings",
+            "url":"window.html?window=settings",
             "title":"Settings",
             "width":1024,
             "height":768,

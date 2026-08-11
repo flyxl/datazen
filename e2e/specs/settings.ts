@@ -171,7 +171,7 @@ describe('Settings (SS-001~SS-006)', () => {
   });
 
   it('TC-SET-003: 设置窗口编辑器分区应显示字体相关控件', async () => {
-    await browser.url('tauri://localhost/?window=settings');
+    await browser.url('tauri://localhost/window.html?window=settings');
     await browser.pause(1500);
     const editorNav = await $('button*=编辑器');
     if (await editorNav.isExisting()) {
@@ -183,7 +183,7 @@ describe('Settings (SS-001~SS-006)', () => {
   });
 
   it('TC-SET-004: 设置窗口数据浏览分区应显示分页/限制相关项', async () => {
-    await browser.url('tauri://localhost/?window=settings');
+    await browser.url('tauri://localhost/window.html?window=settings');
     await browser.pause(1500);
     const dataNav = await $('button*=数据浏览');
     if (await dataNav.isExisting()) {
@@ -201,7 +201,7 @@ describe('Settings (SS-001~SS-006)', () => {
   });
 
   it('TC-SET-007: 设置窗口应有 Prompt 自定义入口', async () => {
-    await browser.url('tauri://localhost/?window=settings');
+    await browser.url('tauri://localhost/window.html?window=settings');
     await browser.pause(1500);
     const promptNav = await $('button*=Prompt 管理');
     const promptNavAlt = await $('button*=Prompt');

@@ -2,29 +2,6 @@ use super::models::{FavoriteQuery, QueryHistoryEntry};
 use super::{Store, StoreError};
 
 impl Store {
-    async fn ensure_query_history_loaded(&self) {
-        {
-            let cache = self.cache.read().await;
-            if cache.query_history_loaded {
-                return;
-            }
-        }
-        let data = self
-            .load_json_file::<Vec<QueryHistoryEntry>>("history/queries.json")
-            .await
-            .unwrap_or_default();
-        let mut cache = self.cache.write().await;
-        if cache.query_history_loaded {
-            return;
-        }
-        cache.query_history = data;
-        cache.query_history_loaded = true;
-        tracing::debug!(
-            count = cache.query_history.len(),
-            "Loaded query history on demand"
-        );
-    }
-
     async fn ensure_favorite_queries_loaded(&self) {
         {
             let cache = self.cache.read().await;
@@ -49,53 +26,33 @@ impl Store {
     }
 
     pub async fn add_query_history(&self, entry: QueryHistoryEntry) -> Result<(), StoreError> {
-        self.ensure_query_history_loaded().await;
-        {
-            let mut cache = self.cache.write().await;
-            let dominated = cache
-                .query_history
-                .first()
-                .map(|last| last.sql.trim() == entry.sql.trim())
-                .unwrap_or(false);
-            if dominated {
-                if let Some(first) = cache.query_history.first_mut() {
-                    first.executed_at = entry.executed_at;
-                    first.execution_time_ms = entry.execution_time_ms;
-                    first.rows_affected = entry.rows_affected;
-                    first.success = entry.success;
-                    first.error_message = entry.error_message.clone();
-                }
-            } else {
-                cache.query_history.insert(0, entry);
-                if cache.query_history.len() > 1000 {
-                    cache.query_history.truncate(1000);
-                }
-            }
-        }
-
-        let snapshot = {
-            let cache = self.cache.read().await;
-            cache.query_history.clone()
-        };
-
-        self.save_json_file("history/queries.json", &snapshot).await
+        self.history_db
+            .add_query_history(entry)
+            .map_err(|e| StoreError::WriteError(e.to_string()))
     }
 
     pub async fn get_query_history(&self, limit: usize) -> Vec<QueryHistoryEntry> {
-        self.ensure_query_history_loaded().await;
-        let cache = self.cache.read().await;
-        cache.query_history.iter().take(limit).cloned().collect()
+        self.history_db
+            .get_query_history(limit)
+            .unwrap_or_else(|e| {
+                tracing::warn!(error = %e, "Failed to read query history from SQLite");
+                Vec::new()
+            })
     }
 
     pub async fn clear_query_history(&self) -> Result<(), StoreError> {
-        self.ensure_query_history_loaded().await;
-        {
-            let mut cache = self.cache.write().await;
-            cache.query_history.clear();
-            cache.query_history_loaded = true;
-        }
-        self.save_json_file("history/queries.json", &Vec::<QueryHistoryEntry>::new())
-            .await
+        self.purge_history(super::HistoryScope::Query, None).await?;
+        Ok(())
+    }
+
+    pub async fn purge_history(
+        &self,
+        scope: super::HistoryScope,
+        retain_days: Option<u32>,
+    ) -> Result<u64, StoreError> {
+        self.history_db
+            .purge(scope, retain_days)
+            .map_err(|e| StoreError::WriteError(e.to_string()))
     }
 
     pub async fn get_favorite_queries(&self) -> Vec<FavoriteQuery> {
