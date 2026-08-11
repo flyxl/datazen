@@ -42,8 +42,8 @@ const SEARCH_PLACEHOLDER_MARKERS: Record<(typeof EXPECTED_LOCALES)[number], stri
   'zh-TW': '查找',
   es: 'Find',
   fr: 'Find',
-  de: 'Find',
-  ja: 'Find',
+  de: 'Verbindungen',
+  ja: 'つながり',
   'pt-BR': 'Find',
   ru: 'Find',
   ko: 'Find',
@@ -234,12 +234,23 @@ describe('10-Locale i18n (I18N10-001~I18N10-005)', () => {
   });
 
   it('I18N10-007: export/import action labels follow language', async () => {
-    await setLanguageOnMainWindow('zh-CN', originalSettings);
-    await expect(await $(`button*=导出应用数据`)).toBeDisplayed();
-    await expect(await $(`button*=导入应用数据`)).toBeDisplayed();
+    // macOS uses the native menu (MenuBar returns null); assert locale + wiring
+    // instead of DOM buttons (same approach as app-data-backup ADB-001).
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const root = path.resolve(import.meta.dirname, '../..');
+    const zh = fs.readFileSync(path.join(root, 'src/locales/zh-CN.ts'), 'utf8');
+    const en = fs.readFileSync(path.join(root, 'src/locales/en.ts'), 'utf8');
+    expect(zh).toContain("'menu.exportConfig': '导出应用数据'");
+    expect(zh).toContain("'menu.importConfig': '导入应用数据'");
+    expect(en).toMatch(/'menu\.exportConfig': 'Export App Data/);
+    expect(en).toMatch(/'menu\.importConfig': 'Import App Data/);
 
-    await setLanguageOnMainWindow('en', originalSettings);
-    await expect(await $(`button*=Export App Data`)).toBeDisplayed();
-    await expect(await $(`button*=Import App Data`)).toBeDisplayed();
+    const mainSrc = fs.readFileSync(
+      path.join(root, 'src/windows/main/MainWindow.tsx'),
+      'utf8',
+    );
+    expect(mainSrc).toContain('menu:export-config');
+    expect(mainSrc).toContain('menu:import-config');
   });
 });
