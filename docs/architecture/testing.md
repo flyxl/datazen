@@ -1,7 +1,6 @@
 # 测试策略
 
-> [返回架构总览](README.md)  
-> 代码审查修复进度：[progress-code-review-fix.md](../progress-code-review-fix.md) · 审查报告：[code-review-2026-08-07-full.md](../code-review-2026-08-07-full.md)
+> [返回架构总览](README.md)
 
 ## 1. 测试分层
 

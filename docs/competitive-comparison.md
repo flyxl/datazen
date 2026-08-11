@@ -157,8 +157,7 @@ DataGrip 强在 **IDE 级数据库开发**，不是「轻量看表」：
 
 - [产品需求文档 (PRD)](./PRD.md) — 定位类似 TablePlus  
 - [窗口管理架构](./architecture/windows.md) — DataZen 多窗口实现  
-- [数据同步 IR](./plan-sync-ir.md) — 跨库同步（DataZen 差异化）  
-- [AI 功能 RFC](./rfc-ai-features.md) — AI / Workflow 相关  
+- [AI 模块](./architecture/backend/ai.md) — AI / Workflow 相关  
 
 ---
 

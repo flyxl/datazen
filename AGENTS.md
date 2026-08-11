@@ -286,7 +286,7 @@ pnpm e2e:i18n-backup / e2e:path-ipc    # 备份·i18n / 路径 IPC
 # Kiwi E2E：在 datazen-driver-kiwi 仓执行 `pnpm e2e:kiwi`（不进 Host 默认 pnpm e2e；Host `pnpm e2e:kiwi` 仅提示并 exit 1）
 ```
 
-PR 合并前：`pnpm test:unit` + `cargo test -p datazen --lib`（见 `.github/workflows/ci.yml`）。Path 驱动 UI 单测：`pnpm test:unit:drivers`（**不**含在 `pnpm test:unit` 内）。代码审查修复对照：[docs/code-review-2026-08-07-full.md](docs/code-review-2026-08-07-full.md)、[docs/progress-code-review-fix.md](docs/progress-code-review-fix.md)。
+PR 合并前：`pnpm test:unit` + `cargo test -p datazen --lib`（见 `.github/workflows/ci.yml`）。Path 驱动 UI 单测：`pnpm test:unit:drivers`（**不**含在 `pnpm test:unit` 内）。
 
 编排脚本：`e2e/run.mjs`。环境变量：复制 `e2e/.env.example` → `e2e/.env`。
 

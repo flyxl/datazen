@@ -68,7 +68,7 @@
 
 | | 驱动插件 | 主题包 |
 |---|---------|--------|
-| 安装 | 编译期 / `plugins-registry.json` | 运行时 `{appData}/themes/` |
+| 安装 | 编译期 / `drivers-registry.json` | 运行时 `{appData}/themes/` |
 | 注册 | `inventory` + `DB_REGISTRY` | 文件系统扫描 + manifest |
 | 内容 | Rust crate + 前端 meta | 声明式 CSS/JSON/静态资源 |
 | 失败回退 | 缺少驱动 = 无该连接类型 | 缺少/无效包 = 内置外观 |
@@ -76,5 +76,4 @@
 ## 相关文档
 
 - 前端应用与 IconResolver：[../frontend/components.md#3-主题系统](../frontend/components.md#3-主题系统)
-- 设计规格：[../../superpowers/specs/2026-08-08-runtime-theme-packs-design.md](../../superpowers/specs/2026-08-08-runtime-theme-packs-design.md)
 - 测试样例：`fixtures/themes/community.fixture-dark/`
