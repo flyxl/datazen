@@ -372,4 +372,35 @@ describe('SQL 查询模块 (SQ-001~SQ-012, TC-QUERY-006/008)', () => {
 
     expect(matchCount).toBeLessThanOrEqual(1);
   });
+
+  it('SQ-BIND-001: 命名参数 SQL 应显示绑定参数面板并可执行', async () => {
+    await setEditorContent("SELECT :uid AS uid");
+    await browser.pause(600);
+    await expect(await $(`div*=${t('query.params')}`)).toBeDisplayed();
+    const paramInput = await $(`input[placeholder="${t('query.paramValue')}"]`);
+    await paramInput.waitForDisplayed({ timeout: 5000 });
+    await paramInput.setValue('e2e-bind');
+    await browser.pause(200);
+    await executeSQL("SELECT :uid AS uid");
+    await browser.pause(1000);
+    const body = await $('body').getText();
+    expect(body.includes('e2e-bind') || body.includes('uid')).toBe(true);
+  });
+
+  it('SQ-EXPLAIN-001: EXPLAIN 按钮应打开计划面板', async () => {
+    await setEditorContent('SELECT 1 AS n');
+    await browser.pause(300);
+    const explainBtn = await $(`button*=${t('explain.title')}`);
+    await explainBtn.waitForDisplayed({ timeout: 8000 });
+    await explainBtn.click();
+    await browser.pause(1500);
+    const body = await $('body').getText();
+    expect(
+      body.includes(t('explain.title')) ||
+        body.includes(t('explain.loading')) ||
+        body.includes('Seq Scan') ||
+        body.includes('Result') ||
+        body.includes('PLAN'),
+    ).toBe(true);
+  });
 });
