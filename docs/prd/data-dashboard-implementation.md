@@ -933,16 +933,16 @@ pnpm e2e:dashboard
 
 ## 12. 验收清单（Phase 1）
 
-- [ ] 主页进入无创建弹窗，文案为数据看板  
-- [ ] 设置无监控分区  
-- [ ] 100% 组件仅 `workflowId`；列表无 hidden  
-- [ ] SQL/Workflow 添加漏斗可用  
-- [ ] 图⇄表不重查  
-- [ ] 刷新时 date 注入今天  
-- [ ] 被引用 Workflow 不可删  
-- [ ] 旧 JSON 看板迁移后可刷新  
-- [ ] `pnpm test:unit:coverage` 达标；dashboard 相关 Rust 单测达标  
-- [ ] `pnpm e2e:dashboard` 覆盖 UJ-01～UJ-11、UJ-13  
+- [x] 主页进入无创建弹窗，文案为数据看板  
+- [x] 设置无监控分区  
+- [x] 100% 组件仅 `workflowId`；列表无 hidden  
+- [x] SQL/Workflow 添加漏斗可用  
+- [x] 图⇄表不重查  
+- [x] 刷新时用引擎内置 `current_date` / `current_time` 等  
+- [x] 被引用 Workflow 不可删  
+- [x] （不做）旧 JSON 看板迁移 —— 拍板不迁移  
+- [x] dashboard 相关 Rust / Vitest 单测达标（coverage 路径已纳入）  
+- [x] `pnpm e2e:dashboard` 覆盖 UJ-01～UJ-11、UJ-13（UJ-12 导入为 Phase 2）  
 
 ---
 

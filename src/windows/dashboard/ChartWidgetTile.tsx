@@ -44,9 +44,9 @@ export function ChartWidgetTile({
   const tableColumns = useMemo<ColumnDef[]>(
     () =>
       run?.columns.map((name) => ({
+        id: name,
         name,
-        dataType: 'unknown',
-        nullable: true,
+        type: 'unknown',
       })) ?? [],
     [run?.columns],
   );
@@ -85,6 +85,7 @@ export function ChartWidgetTile({
               <button
                 key={mode}
                 type="button"
+                data-testid={mode === 'chart' ? 'widget-view-chart' : 'widget-view-table'}
                 className={cn(
                   'px-1.5 py-0.5 capitalize',
                   viewMode === mode ? 'bg-accent/20 text-accent' : 'text-fg-muted hover:text-fg',
@@ -169,15 +170,19 @@ export function ChartWidgetTile({
           </div>
         )}
         {hasChart && chartData && viewMode === 'chart' && (
-          <ChartCanvas data={chartData.data} config={widget.chartConfig!} compact />
+          <div className="h-full min-h-0" data-testid="dashboard-tile-chart">
+            <ChartCanvas data={chartData.data} config={widget.chartConfig!} compact />
+          </div>
         )}
         {run?.status === 'ok' && viewMode === 'table' && run.rows.length > 0 && (
-          <DataTable
-            columns={tableColumns}
-            rows={run.rows}
-            rowHeight={28}
-            exportTableName={widget.title}
-          />
+          <div className="h-full min-h-0" data-testid="dashboard-tile-table">
+            <DataTable
+              columns={tableColumns}
+              rows={run.rows}
+              rowHeight={28}
+              exportTableName={widget.title}
+            />
+          </div>
         )}
         {run?.status === 'ok' && viewMode === 'table' && run.rows.length === 0 && (
           <div className="absolute inset-0 flex items-center justify-center px-3 text-center text-xs text-fg-muted">

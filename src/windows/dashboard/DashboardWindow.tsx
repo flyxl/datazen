@@ -175,6 +175,33 @@ export function DashboardWindow() {
     }
   }, [current, refreshAllWidgets]);
 
+  const openWidgetEditor = useCallback(async (widget: DashboardWidget, asNew: boolean) => {
+    setEditingWidget(widget);
+    setIsNewWidget(asNew);
+    setEditorHiddenSql(undefined);
+    setUserWorkflows([]);
+    if (!asNew && widget.workflowId) {
+      try {
+        const wf = await aiCommands.workflowGet(widget.workflowId);
+        if (wf.visibility === 'dashboardHidden') {
+          const queryStep = wf.steps.find((s) => s.type === 'query');
+          setEditorHiddenSql({
+            configId: wf.connection ?? queryStep?.connection ?? '',
+            sql: queryStep?.sql ?? 'SELECT 1 AS v',
+          });
+        } else {
+          const workflows = await aiCommands.workflowList();
+          setUserWorkflows(workflows);
+        }
+      } catch {
+        /* keep read-only workflow id */
+      }
+    } else if (asNew) {
+      setEditorHiddenSql({ configId: '', sql: 'SELECT 1 AS v' });
+    }
+    setEditorOpen(true);
+  }, []);
+
   const handleAddWidget = useCallback(() => {
     if (!current) return;
     const draft: DashboardWidget = {
@@ -248,33 +275,6 @@ export function DashboardWindow() {
     },
     [current, saveDashboard, t],
   );
-
-  const openWidgetEditor = useCallback(async (widget: DashboardWidget, asNew: boolean) => {
-    setEditingWidget(widget);
-    setIsNewWidget(asNew);
-    setEditorHiddenSql(undefined);
-    setUserWorkflows([]);
-    if (!asNew && widget.workflowId) {
-      try {
-        const wf = await aiCommands.workflowGet(widget.workflowId);
-        if (wf.visibility === 'dashboardHidden') {
-          const queryStep = wf.steps.find((s) => s.type === 'query');
-          setEditorHiddenSql({
-            configId: wf.connection ?? queryStep?.connection ?? '',
-            sql: queryStep?.sql ?? 'SELECT 1 AS v',
-          });
-        } else {
-          const workflows = await aiCommands.workflowList();
-          setUserWorkflows(workflows);
-        }
-      } catch {
-        /* keep read-only workflow id */
-      }
-    } else if (asNew) {
-      setEditorHiddenSql({ configId: '', sql: 'SELECT 1 AS v' });
-    }
-    setEditorOpen(true);
-  }, []);
 
   const handleRename = useCallback(async () => {
     if (!current || !nameDraft.trim()) return;
