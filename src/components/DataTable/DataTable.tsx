@@ -4,6 +4,11 @@ import type { FilterCondition, SortCondition } from '../../types';
 import type { CellEdit } from '../../stores/tableDataStore';
 import { useI18n } from '../../hooks/useI18n';
 import { useColumnResize, adjustWidthsForSort } from '../../hooks/useColumnResize';
+import {
+  buildDataTableContextMenuItems,
+  serializeDataTableRowsAsTsv,
+} from '../../lib/dataTableContextMenu';
+import { showNativeContextMenu } from '../../lib/nativeContextMenu';
 import { FilterBar } from '../FilterBar';
 import { FilterEditor } from '../FilterEditor';
 import { Pagination } from './Pagination';
@@ -60,6 +65,12 @@ export interface DataTableProps {
   /** Enable data export (button + context menu). Provide a table name for the filename. */
   exportTableName?: string;
   databaseType?: string;
+
+  /**
+   * Optional cell text for the native context menu “copy cell” item.
+   * When omitted, falls back to `window.getSelection()`.
+   */
+  getContextCellText?: () => string | null | undefined;
 }
 
 const NOOP = () => {};
@@ -103,11 +114,11 @@ export function DataTable({
   rowHeight = 40,
   exportTableName,
   databaseType,
+  getContextCellText,
 }: DataTableProps) {
   const { t } = useI18n();
   const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
-  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
 
   const colMeta = useMemo(() => columns.map((c) => ({ name: c.name, type: c.type })), [columns]);
   const { columnWidths: baseWidths, onResizeStart } = useColumnResize({
@@ -128,16 +139,62 @@ export function DataTable({
     [onRowClick, onRowSelect],
   );
 
+  const exportEnabled = !!exportTableName && rows.length > 0;
+
   const handleContextMenu = useCallback(
     (e: React.MouseEvent) => {
-      if (!exportTableName) return;
       e.preventDefault();
-      setCtxMenu({ x: e.clientX, y: e.clientY });
-    },
-    [exportTableName],
-  );
+      e.stopPropagation();
 
-  const exportEnabled = !!exportTableName && rows.length > 0;
+      const fromProp = getContextCellText?.()?.trim() ?? '';
+      const fromSelection = window.getSelection()?.toString().trim() ?? '';
+      const cellText = fromProp || fromSelection || null;
+
+      const selectedIndices = Array.from(selectedRows).sort((a, b) => a - b);
+      const selectedDataRows = selectedIndices
+        .map((i) => rows[i])
+        .filter((r): r is unknown[] => Array.isArray(r));
+      const selectedRowTexts =
+        selectedDataRows.length > 0
+          ? selectedDataRows.map((r) => serializeDataTableRowsAsTsv([r]))
+          : null;
+
+      void showNativeContextMenu(
+        buildDataTableContextMenuItems({
+          labels: {
+            copyCell: t('connWin.copyCell'),
+            copySelectedRows: `${t('common.copy')} ${t('export.selectedRows')}`,
+            export:
+              selectedRows.size > 0
+                ? `${t('export.export')} (${t('export.selectedRows')} ${selectedRows.size})`
+                : t('export.export'),
+          },
+          handlers: {
+            onCopyCell: cellText
+              ? () => {
+                  void navigator.clipboard.writeText(cellText);
+                }
+              : undefined,
+            onCopySelectedRows:
+              selectedRowTexts && selectedRowTexts.length > 0
+                ? () => {
+                    void navigator.clipboard.writeText(selectedRowTexts.join('\n'));
+                  }
+                : undefined,
+            onExport: exportEnabled
+              ? () => {
+                  setExportOpen(true);
+                }
+              : undefined,
+          },
+          cellText,
+          selectedRowTexts,
+          exportEnabled,
+        }),
+      );
+    },
+    [exportEnabled, getContextCellText, rows, selectedRows, t],
+  );
 
   const hasPagination =
     page != null && pageSize != null && totalRows != null && onPageChange && onPageSizeChange;
@@ -264,38 +321,6 @@ export function DataTable({
             {t('export.export')}
           </button>
         </div>
-      )}
-
-      {ctxMenu && exportEnabled && (
-        <>
-          {/* Backdrop to close context menu */}
-          <div
-            className="fixed inset-0 z-[9998]"
-            onClick={() => setCtxMenu(null)}
-            onContextMenu={(e) => {
-              e.preventDefault();
-              setCtxMenu(null);
-            }}
-          />
-          <div
-            className="fixed z-[9999] min-w-[160px] rounded-lg border border-edge bg-surface-alt py-1 shadow-xl"
-            style={{ left: ctxMenu.x, top: ctxMenu.y }}
-          >
-            <button
-              type="button"
-              className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[13px] text-fg-secondary hover:bg-surface-raised hover:text-fg"
-              onClick={() => {
-                setCtxMenu(null);
-                setExportOpen(true);
-              }}
-            >
-              <Download className="h-3.5 w-3.5" />
-              {selectedRows.size > 0
-                ? `${t('export.export')} (${t('export.selectedRows')} ${selectedRows.size})`
-                : t('export.export')}
-            </button>
-          </div>
-        </>
       )}
 
       {exportOpen && (
