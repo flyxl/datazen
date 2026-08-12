@@ -18,13 +18,14 @@ import {
   Undo2,
   Wand2,
 } from 'lucide-react';
-import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { Button } from '../../components/ui/Button';
 import { Select } from '../../components/ui/Select';
 import { SqlEditor } from '../../components/SqlEditor';
 import type { SqlEditorHandle } from '../../components/SqlEditor';
 import { buildEditorSchema } from '../../lib/buildEditorSchema';
+import { showNativeContextMenu } from '../../lib/nativeContextMenu';
+import { buildSqlEditorContextMenuItems } from '../../lib/sqlEditorContextMenu';
 import { DataTable } from '../../components/DataTable/DataTable';
 import type { ColumnDef } from '../../components/DataTable/TableHeader';
 import { ChartView } from '../../components/chart/ChartView';
@@ -375,25 +376,42 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
     }
   }, [connectionId, tab]);
 
-  const handleEditorContextMenu = useCallback((_e: MouseEvent, sqlText: string) => {
-    const lang = useSettingsStore.getState().settings.language || 'en';
-    pendingFavSqlRef.current = sqlText;
-    void invoke('show_editor_context_menu', { lang: lang === 'en' ? 'en' : 'zh' });
+  const openAddFavoriteDialog = useCallback((sql: string) => {
+    const trimmed = sql.trim();
+    if (!trimmed) return;
+    pendingFavSqlRef.current = trimmed;
+    setFavoriteDialogSql(trimmed);
+    setFavoriteName('');
+    setShowFavoriteDialog(true);
   }, []);
 
+  const handleEditorContextMenu = useCallback(
+    (_e: MouseEvent, sqlText: string) => {
+      pendingFavSqlRef.current = sqlText;
+      void showNativeContextMenu(
+        buildSqlEditorContextMenuItems(
+          { addFavorite: t('query.addFavorite') },
+          sqlText,
+          openAddFavoriteDialog,
+        ),
+      );
+    },
+    [openAddFavoriteDialog, t],
+  );
+
+  // Keep event bridge for E2E / menubar emit compatibility.
   useEffect(() => {
     const unlisten = listen('menu:add-favorite', () => {
-      const sql = pendingFavSqlRef.current;
-      if (sql) {
-        setFavoriteDialogSql(sql);
-        setFavoriteName('');
-        setShowFavoriteDialog(true);
-      }
+      const sql =
+        pendingFavSqlRef.current ||
+        useQueryStore.getState().tabs.find((t) => t.id === queryTabId)?.sql ||
+        '';
+      openAddFavoriteDialog(sql);
     });
     return () => {
       void unlisten.then((fn) => fn());
     };
-  }, []);
+  }, [openAddFavoriteDialog, queryTabId]);
 
   if (!tab) return null;
 
