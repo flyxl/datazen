@@ -17,7 +17,10 @@ const sampleColumns = [
 
 const sampleResponse = {
   columns: sampleColumns,
-  rows: [[1, 'Alice'], [2, 'Bob']] as (string | number | null)[][],
+  rows: [
+    [1, 'Alice'],
+    [2, 'Bob'],
+  ] as (string | number | null)[][],
   totalRows: 2,
   page: 0,
   pageSize: 50,
@@ -69,9 +72,13 @@ describe('tableDataStore', () => {
   it('skips duplicate concurrent loads', async () => {
     let resolveLoad: () => void;
     mockDatabaseCommands.getTableData.mockReturnValueOnce(
-      new Promise((r) => { resolveLoad = () => r(sampleResponse); }),
+      new Promise((r) => {
+        resolveLoad = () => r(sampleResponse);
+      }),
     );
-    const p1 = useTableDataStore.getState().loadTableData({ connectionId: 'conn-1', table: 'users' });
+    const p1 = useTableDataStore
+      .getState()
+      .loadTableData({ connectionId: 'conn-1', table: 'users' });
     await useTableDataStore.getState().loadTableData({ connectionId: 'conn-1', table: 'users' });
     expect(mockDatabaseCommands.getTableData).toHaveBeenCalledTimes(1);
     resolveLoad!();
@@ -99,21 +106,57 @@ describe('tableDataStore', () => {
     );
   });
 
-  it('addFilter, removeFilter, clearFilters, setFilters', async () => {
+  it('addFilter edits draft only; applyFilters reloads', async () => {
     await loadTable();
     mockDatabaseCommands.getTableData.mockClear();
     const filter: FilterCondition = { column: 'name', operator: 'eq', value: 'Alice' };
     useTableDataStore.getState().addFilter(filter);
+    expect(useTableDataStore.getState().draftFilters).toContainEqual(filter);
+    expect(useTableDataStore.getState().filters).toEqual([]);
+    expect(useTableDataStore.getState().filterPanelOpen).toBe(true);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(mockDatabaseCommands.getTableData).not.toHaveBeenCalled();
+
+    useTableDataStore.getState().applyFilters();
     await vi.waitFor(() => expect(mockDatabaseCommands.getTableData).toHaveBeenCalled());
     expect(useTableDataStore.getState().filters).toContainEqual(filter);
 
     mockDatabaseCommands.getTableData.mockClear();
     useTableDataStore.getState().removeFilter(0);
-    await vi.waitFor(() => expect(mockDatabaseCommands.getTableData).toHaveBeenCalled());
+    expect(useTableDataStore.getState().draftFilters).toEqual([]);
+    expect(useTableDataStore.getState().filters).toContainEqual(filter);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(mockDatabaseCommands.getTableData).not.toHaveBeenCalled();
 
     useTableDataStore.getState().setFilters([filter]);
+    await vi.waitFor(() => expect(mockDatabaseCommands.getTableData).toHaveBeenCalled());
     useTableDataStore.getState().clearFilters();
     expect(useTableDataStore.getState().filters).toEqual([]);
+    expect(useTableDataStore.getState().draftFilters).toEqual([]);
+  });
+
+  it('addFilter with empty value does not reload', async () => {
+    await loadTable();
+    mockDatabaseCommands.getTableData.mockClear();
+    useTableDataStore.getState().addFilter({ column: 'id', operator: 'eq', value: '' });
+    expect(useTableDataStore.getState().draftFilters).toHaveLength(1);
+    expect(useTableDataStore.getState().filters).toHaveLength(0);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(mockDatabaseCommands.getTableData).not.toHaveBeenCalled();
+  });
+
+  it('loadTableData omits incomplete applied filters from the request', async () => {
+    await loadTable();
+    useTableDataStore.getState().addFilter({ column: 'id', operator: 'eq', value: '' });
+    useTableDataStore.getState().addFilter({ column: 'name', operator: 'eq', value: 'Bob' });
+    useTableDataStore.getState().applyFilters();
+    await vi.waitFor(() =>
+      expect(mockDatabaseCommands.getTableData).toHaveBeenCalledWith(
+        expect.objectContaining({
+          filters: [{ column: 'name', operator: 'eq', value: 'Bob' }],
+        }),
+      ),
+    );
   });
 
   it('setSort triggers reload', async () => {
@@ -193,7 +236,9 @@ describe('tableDataStore', () => {
   });
 
   it('deleteSelectedRows throws not implemented', async () => {
-    await expect(useTableDataStore.getState().deleteSelectedRows()).rejects.toThrow('not yet implemented');
+    await expect(useTableDataStore.getState().deleteSelectedRows()).rejects.toThrow(
+      'not yet implemented',
+    );
   });
 
   it('closeTable removes table state', async () => {
@@ -218,15 +263,21 @@ describe('tableDataStore', () => {
     );
   });
 
-  it('setFilterLogic reloads with or', async () => {
+  it('setFilterLogic only updates draft until apply', async () => {
     await loadTable();
     mockDatabaseCommands.getTableData.mockClear();
     useTableDataStore.getState().setFilterLogic('or');
-    expect(useTableDataStore.getState().filterLogic).toBe('or');
+    expect(useTableDataStore.getState().draftFilterLogic).toBe('or');
+    expect(useTableDataStore.getState().filterLogic).toBe('and');
+    await new Promise((r) => setTimeout(r, 20));
+    expect(mockDatabaseCommands.getTableData).not.toHaveBeenCalled();
+
+    useTableDataStore.getState().applyFilters();
     await vi.waitFor(() => {
       expect(mockDatabaseCommands.getTableData).toHaveBeenCalledWith(
         expect.objectContaining({ filterLogic: 'or' }),
       );
     });
+    expect(useTableDataStore.getState().filterLogic).toBe('or');
   });
 });

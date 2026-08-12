@@ -255,6 +255,12 @@ impl QueryExecutor {
         qi: &dyn Fn(&str) -> String,
         format_lit: &dyn Fn(&Value) -> String,
     ) -> String {
+        // Incomplete filters (e.g. just-added eq with empty value) must not enter SQL.
+        // Otherwise drivers cast '' onto integer PKs and the whole table load fails.
+        if !Self::filter_is_complete(condition) {
+            return String::new();
+        }
+
         let col = qi(&condition.column);
         match condition.operator {
             FilterOperator::Eq => format!("{col} = {}", format_lit(&condition.value)),
@@ -272,10 +278,51 @@ impl QueryExecutor {
                         .collect();
                     format!("{col} IN ({})", parts.join(", "))
                 }
-                _ => format!("{col} IN (NULL)"),
+                Value::String(s) => {
+                    let parts: Vec<String> = s
+                        .split(',')
+                        .map(|p| p.trim())
+                        .filter(|p| !p.is_empty())
+                        .map(|p| format_lit(&Value::String(p.to_string())))
+                        .collect();
+                    if parts.is_empty() {
+                        String::new()
+                    } else {
+                        format!("{col} IN ({})", parts.join(", "))
+                    }
+                }
+                _ => String::new(),
             },
             FilterOperator::IsNull => format!("{col} IS NULL"),
             FilterOperator::IsNotNull => format!("{col} IS NOT NULL"),
+        }
+    }
+
+    /// Filters that still need a value (just added / cleared) are ignored until complete.
+    fn filter_is_complete(condition: &FilterCondition) -> bool {
+        match condition.operator {
+            FilterOperator::IsNull | FilterOperator::IsNotNull => !condition.column.is_empty(),
+            FilterOperator::In => {
+                if condition.column.is_empty() {
+                    return false;
+                }
+                match &condition.value {
+                    Value::Json(serde_json::Value::Array(arr)) => !arr.is_empty(),
+                    Value::String(s) => s.split(',').any(|p| !p.trim().is_empty()),
+                    Value::Null => false,
+                    _ => true,
+                }
+            }
+            _ => {
+                if condition.column.is_empty() {
+                    return false;
+                }
+                match &condition.value {
+                    Value::Null => false,
+                    Value::String(s) if s.is_empty() => false,
+                    _ => true,
+                }
+            }
         }
     }
 }
@@ -579,6 +626,66 @@ mod tests {
             QueryExecutor::format_condition(&null_filter, &simple_qi, &simple_lit),
             "\"deleted_at\" IS NULL"
         );
+    }
+
+    #[test]
+    fn incomplete_eq_filter_is_skipped() {
+        let columns = vec![make_column("id", true), make_column("name", false)];
+        let filters = vec![FilterCondition {
+            column: "id".into(),
+            operator: FilterOperator::Eq,
+            value: Value::String(String::new()),
+        }];
+        let sql = QueryExecutor::build_select_sql(
+            "users",
+            &columns,
+            0,
+            50,
+            Some(filters),
+            None,
+            &simple_qi,
+            &simple_lit,
+            true,
+            None,
+        );
+        assert!(
+            !sql.contains("WHERE"),
+            "empty eq value must not produce WHERE, got: {sql}"
+        );
+    }
+
+    #[test]
+    fn complete_filters_kept_while_incomplete_skipped() {
+        let columns = vec![make_column("id", true), make_column("name", false)];
+        let filters = vec![
+            FilterCondition {
+                column: "id".into(),
+                operator: FilterOperator::Eq,
+                value: Value::String(String::new()),
+            },
+            FilterCondition {
+                column: "name".into(),
+                operator: FilterOperator::Eq,
+                value: Value::String("alice".into()),
+            },
+        ];
+        let sql = QueryExecutor::build_select_sql(
+            "users",
+            &columns,
+            0,
+            50,
+            Some(filters),
+            None,
+            &simple_qi,
+            &simple_lit,
+            true,
+            Some("and"),
+        );
+        assert!(
+            sql.contains("WHERE \"name\" = 'alice'"),
+            "expected only complete filter in WHERE, got: {sql}"
+        );
+        assert!(!sql.contains("\"id\" ="));
     }
 
     #[tokio::test]

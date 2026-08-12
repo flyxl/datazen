@@ -26,11 +26,16 @@ export interface DataTableProps {
 
   filters?: FilterCondition[];
   filterLogic?: 'and' | 'or';
+  draftFilters?: FilterCondition[];
+  draftFilterLogic?: 'and' | 'or';
+  filterPanelOpen?: boolean;
+  onFilterPanelOpenChange?: (open: boolean) => void;
   onRemoveFilter?: (index: number) => void;
   onClearFilters?: () => void;
   onAddFilter?: (filter: FilterCondition) => void;
   onUpdateFilter?: (index: number, filter: FilterCondition) => void;
   onFilterLogicChange?: (logic: 'and' | 'or') => void;
+  onApplyFilters?: () => void;
 
   editingCell?: { row: number; col: string } | null;
   editBuffer?: Map<string, CellEdit>;
@@ -71,6 +76,10 @@ export function DataTable({
   sorts = EMPTY_SORTS,
   filters = EMPTY_FILTERS,
   filterLogic = 'and',
+  draftFilters = EMPTY_FILTERS,
+  draftFilterLogic = 'and',
+  filterPanelOpen = false,
+  onFilterPanelOpenChange,
   editingCell,
   selectedRows = EMPTY_SET,
   loading,
@@ -80,6 +89,7 @@ export function DataTable({
   onAddFilter,
   onUpdateFilter,
   onFilterLogicChange,
+  onApplyFilters,
   onPageChange,
   onPageSizeChange,
   onCellDoubleClick,
@@ -99,11 +109,12 @@ export function DataTable({
   const [exportOpen, setExportOpen] = useState(false);
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
 
-  const colMeta = useMemo(
-    () => columns.map((c) => ({ name: c.name, type: c.type })),
-    [columns],
-  );
-  const { columnWidths: baseWidths, onResizeStart } = useColumnResize({ count: columns.length, columns: colMeta, rows });
+  const colMeta = useMemo(() => columns.map((c) => ({ name: c.name, type: c.type })), [columns]);
+  const { columnWidths: baseWidths, onResizeStart } = useColumnResize({
+    count: columns.length,
+    columns: colMeta,
+    rows,
+  });
   const columnWidths = useMemo(
     () => adjustWidthsForSort(baseWidths, columns, sorts),
     [baseWidths, columns, sorts],
@@ -117,30 +128,46 @@ export function DataTable({
     [onRowClick, onRowSelect],
   );
 
-  const handleContextMenu = useCallback((e: React.MouseEvent) => {
-    if (!exportTableName) return;
-    e.preventDefault();
-    setCtxMenu({ x: e.clientX, y: e.clientY });
-  }, [exportTableName]);
+  const handleContextMenu = useCallback(
+    (e: React.MouseEvent) => {
+      if (!exportTableName) return;
+      e.preventDefault();
+      setCtxMenu({ x: e.clientX, y: e.clientY });
+    },
+    [exportTableName],
+  );
 
   const exportEnabled = !!exportTableName && rows.length > 0;
 
-  const hasPagination = page != null && pageSize != null && totalRows != null && onPageChange && onPageSizeChange;
+  const hasPagination =
+    page != null && pageSize != null && totalRows != null && onPageChange && onPageSizeChange;
   const hasSelection = onSelectAll != null && onRowSelect != null;
   const hasFilters = filters.length > 0 && onRemoveFilter && onClearFilters;
-  const hasFilterEditor = onAddFilter && onUpdateFilter && onRemoveFilter && onClearFilters && onFilterLogicChange;
+  const hasFilterEditor =
+    onAddFilter &&
+    onUpdateFilter &&
+    onRemoveFilter &&
+    onClearFilters &&
+    onFilterLogicChange &&
+    onApplyFilters &&
+    onFilterPanelOpenChange;
 
   return (
     <div className="selectable flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-md border border-edge bg-surface">
       {hasFilterEditor ? (
         <FilterEditor
           columns={columns}
-          filters={filters}
-          logic={filterLogic}
+          appliedFilters={filters}
+          appliedLogic={filterLogic}
+          draftFilters={draftFilters}
+          draftLogic={draftFilterLogic}
+          open={filterPanelOpen}
+          onOpenChange={onFilterPanelOpenChange}
           onLogicChange={onFilterLogicChange}
           onChange={onUpdateFilter}
           onAdd={onAddFilter}
           onRemove={onRemoveFilter}
+          onApply={onApplyFilters}
           onClear={onClearFilters}
         />
       ) : hasFilters ? (
@@ -183,7 +210,11 @@ export function DataTable({
 
       {statusBar}
 
-      <div ref={setScrollEl} className="min-h-0 flex-1 overflow-auto" onContextMenu={handleContextMenu}>
+      <div
+        ref={setScrollEl}
+        className="min-h-0 flex-1 overflow-auto"
+        onContextMenu={handleContextMenu}
+      >
         <TableHeader
           columns={columns}
           sorts={sorts}
@@ -192,9 +223,7 @@ export function DataTable({
           onResizeStart={onResizeStart}
           sortable={onSort != null}
           onFilterColumn={
-            onAddFilter
-              ? (column) => onAddFilter({ column, operator: 'eq', value: '' })
-              : undefined
+            onAddFilter ? (column) => onAddFilter({ column, operator: 'eq', value: '' }) : undefined
           }
         />
         <VirtualBody
@@ -240,7 +269,14 @@ export function DataTable({
       {ctxMenu && exportEnabled && (
         <>
           {/* Backdrop to close context menu */}
-          <div className="fixed inset-0 z-[9998]" onClick={() => setCtxMenu(null)} onContextMenu={(e) => { e.preventDefault(); setCtxMenu(null); }} />
+          <div
+            className="fixed inset-0 z-[9998]"
+            onClick={() => setCtxMenu(null)}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              setCtxMenu(null);
+            }}
+          />
           <div
             className="fixed z-[9999] min-w-[160px] rounded-lg border border-edge bg-surface-alt py-1 shadow-xl"
             style={{ left: ctxMenu.x, top: ctxMenu.y }}
@@ -248,7 +284,10 @@ export function DataTable({
             <button
               type="button"
               className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[13px] text-fg-secondary hover:bg-surface-raised hover:text-fg"
-              onClick={() => { setCtxMenu(null); setExportOpen(true); }}
+              onClick={() => {
+                setCtxMenu(null);
+                setExportOpen(true);
+              }}
             >
               <Download className="h-3.5 w-3.5" />
               {selectedRows.size > 0

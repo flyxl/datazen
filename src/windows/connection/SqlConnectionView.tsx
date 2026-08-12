@@ -31,6 +31,7 @@ import { openDocsWindow } from '../../lib/windowManager';
 import { DB_REGISTRY, getDbLabel } from '../../lib/databaseTypes';
 import { canOpenStructureEditor } from '../../lib/structureEditor/canOpenStructureEditor';
 import { resolveCreateTableSchema } from '../../lib/structureEditor/resolveCreateTableSchema';
+import { invalidateSchemaCache } from '../../lib/schemaCache';
 import type { ConnectionViewProps } from '../../lib/connectionViews/types';
 import { SchemaTree } from './schema-tree/SchemaTree';
 import { StructureView } from './StructureView';
@@ -56,7 +57,10 @@ import { PrivilegeView } from './PrivilegeView';
 
 type SubTabId = 'data' | 'structure' | 'indexes' | 'foreignKeys' | 'ddl';
 
-function getSubTabs(t: (key: TranslationKey) => string, readOnly?: boolean): { id: SubTabId; label: string }[] {
+function getSubTabs(
+  t: (key: TranslationKey) => string,
+  readOnly?: boolean,
+): { id: SubTabId; label: string }[] {
   if (readOnly) {
     return [
       { id: 'data', label: t('connWin.data') },
@@ -77,6 +81,8 @@ interface TablePanel {
   id: string;
   tableName: string;
   subTab: SubTabId;
+  /** When true, structure sub-tab shows the inline alter editor. */
+  structureEditing?: boolean;
 }
 
 interface QueryPanelInfo {
@@ -89,12 +95,6 @@ interface QueryPanelInfo {
 interface CreateTablePanel {
   type: 'create-table';
   id: string;
-}
-
-interface AlterTablePanel {
-  type: 'alter-table';
-  id: string;
-  tableName: string;
 }
 
 interface ErDiagramPanel {
@@ -113,7 +113,13 @@ interface PrivilegesPanel {
   id: string;
 }
 
-type Panel = TablePanel | QueryPanelInfo | CreateTablePanel | AlterTablePanel | ErDiagramPanel | ObjectsPanel | PrivilegesPanel;
+type Panel =
+  | TablePanel
+  | QueryPanelInfo
+  | CreateTablePanel
+  | ErDiagramPanel
+  | ObjectsPanel
+  | PrivilegesPanel;
 
 let panelCounter = 0;
 function nextPanelId(prefix: string) {
@@ -143,7 +149,9 @@ export function SqlConnectionView({
   const [importOpen, setImportOpen] = useState(false);
   const [exportTableName, setExportTableName] = useState<string | null>(null);
   const [importTableName, setImportTableName] = useState<string | null>(null);
-  const [tableCtx, setTableCtx] = useState<{ tableName: string; x: number; y: number } | null>(null);
+  const [tableCtx, setTableCtx] = useState<{ tableName: string; x: number; y: number } | null>(
+    null,
+  );
   const [lastTableSchema, setLastTableSchema] = useState<string | null>(null);
   const tableCtxRef = useRef<HTMLDivElement>(null);
 
@@ -257,38 +265,62 @@ export function SqlConnectionView({
     setActivePanelId(panel.id);
   }, [panels]);
 
-  const handleAlterTable = useCallback((name: string) => {
-    const existing = panels.find((p) => p.type === 'alter-table' && p.tableName === name);
-    if (existing) {
-      setActivePanelId(existing.id);
-      return;
-    }
-    const panel: AlterTablePanel = { type: 'alter-table', id: nextPanelId('alt-tbl'), tableName: name };
-    setPanels((prev) => [...prev, panel]);
-    setActivePanelId(panel.id);
-  }, [panels]);
-
-  const handleOpenErDiagram = useCallback((focus?: string) => {
-    const existing = panels.find((p) => p.type === 'er-diagram');
-    if (existing) {
-      if (focus) {
-        setPanels((prev) =>
-          prev.map((p) =>
-            p.id === existing.id ? { ...p, focusTable: focus } as ErDiagramPanel : p,
-          ),
+  /** Enter alter-structure editor inside the table's Structure sub-tab (no new primary tab). */
+  const handleEditTableStructure = useCallback((name: string) => {
+    setPanels((prev) => {
+      const existing = prev.find((p) => p.type === 'table' && p.tableName === name);
+      if (existing) {
+        setActivePanelId(existing.id);
+        return prev.map((p) =>
+          p.id === existing.id
+            ? { ...p, subTab: 'structure' as SubTabId, structureEditing: true }
+            : p,
         );
       }
-      setActivePanelId(existing.id);
-      return;
-    }
-    const panel: ErDiagramPanel = {
-      type: 'er-diagram',
-      id: nextPanelId('er'),
-      focusTable: focus,
-    };
-    setPanels((prev) => [...prev, panel]);
-    setActivePanelId(panel.id);
-  }, [panels]);
+      const panel: TablePanel = {
+        type: 'table',
+        id: nextPanelId('tbl'),
+        tableName: name,
+        subTab: 'structure',
+        structureEditing: true,
+      };
+      setActivePanelId(panel.id);
+      return [...prev, panel];
+    });
+  }, []);
+
+  const handleExitStructureEditing = useCallback((panelId: string) => {
+    setPanels((prev) =>
+      prev.map((p) =>
+        p.id === panelId && p.type === 'table' ? { ...p, structureEditing: false } : p,
+      ),
+    );
+  }, []);
+
+  const handleOpenErDiagram = useCallback(
+    (focus?: string) => {
+      const existing = panels.find((p) => p.type === 'er-diagram');
+      if (existing) {
+        if (focus) {
+          setPanels((prev) =>
+            prev.map((p) =>
+              p.id === existing.id ? ({ ...p, focusTable: focus } as ErDiagramPanel) : p,
+            ),
+          );
+        }
+        setActivePanelId(existing.id);
+        return;
+      }
+      const panel: ErDiagramPanel = {
+        type: 'er-diagram',
+        id: nextPanelId('er'),
+        focusTable: focus,
+      };
+      setPanels((prev) => [...prev, panel]);
+      setActivePanelId(panel.id);
+    },
+    [panels],
+  );
 
   const handleOpenObjects = useCallback(() => {
     const existing = panels.find((p) => p.type === 'objects');
@@ -326,30 +358,42 @@ export function SqlConnectionView({
     setActivePanelId(panel.id);
   }, [createQueryTab]);
 
-  const handleClosePanel = useCallback((panelId: string) => {
-    setPanels((prev) => {
-      const idx = prev.findIndex((p) => p.id === panelId);
-      const closing = prev[idx];
-      const next = prev.filter((p) => p.id !== panelId);
+  const handleClosePanel = useCallback(
+    (panelId: string) => {
+      setPanels((prev) => {
+        const idx = prev.findIndex((p) => p.id === panelId);
+        const closing = prev[idx];
+        const next = prev.filter((p) => p.id !== panelId);
 
-      if (closing?.type === 'query') {
-        closeQueryTab(closing.queryTabId);
-      }
+        if (closing?.type === 'query') {
+          closeQueryTab(closing.queryTabId);
+        }
 
-      setActivePanelId((current) => {
-        if (current !== panelId) return current;
-        if (next.length === 0) return null;
-        const newIdx = Math.min(idx, next.length - 1);
-        return next[newIdx].id;
+        setActivePanelId((current) => {
+          if (current !== panelId) return current;
+          if (next.length === 0) return null;
+          const newIdx = Math.min(idx, next.length - 1);
+          return next[newIdx].id;
+        });
+
+        return next;
       });
-
-      return next;
-    });
-  }, [closeQueryTab]);
+    },
+    [closeQueryTab],
+  );
 
   const handleSetSubTab = useCallback((panelId: string, subTab: SubTabId) => {
     setPanels((prev) =>
-      prev.map((p) => (p.id === panelId && p.type === 'table' ? { ...p, subTab } : p)),
+      prev.map((p) =>
+        p.id === panelId && p.type === 'table'
+          ? {
+              ...p,
+              subTab,
+              // Leaving Structure exits inline edit mode.
+              structureEditing: subTab === 'structure' ? p.structureEditing : false,
+            }
+          : p,
+      ),
     );
   }, []);
 
@@ -366,7 +410,9 @@ export function SqlConnectionView({
 
   const contextMenuItems: ContextMenuEntry[] = useMemo(() => {
     if (!activePanel) {
-      return [{ id: 'new-query', label: t('connWin.newQuery'), icon: <Plus className="h-3.5 w-3.5" /> }];
+      return [
+        { id: 'new-query', label: t('connWin.newQuery'), icon: <Plus className="h-3.5 w-3.5" /> },
+      ];
     }
 
     const common: ContextMenuEntry[] = [
@@ -378,23 +424,55 @@ export function SqlConnectionView({
     if (activePanel.type === 'table') {
       switch (activePanel.subTab) {
         case 'data':
-          return [{ id: 'copy-cell', label: t('connWin.copyCell'), icon: <ClipboardCopy className="h-3.5 w-3.5" /> }, sep, ...common];
+          return [
+            {
+              id: 'copy-cell',
+              label: t('connWin.copyCell'),
+              icon: <ClipboardCopy className="h-3.5 w-3.5" />,
+            },
+            sep,
+            ...common,
+          ];
         case 'structure':
           if (!showStructureEditor) return common;
-          return [{ id: 'edit-structure', label: t('connWin.editStructure'), icon: <Pencil className="h-3.5 w-3.5" /> }, sep, ...common];
+          return [
+            {
+              id: 'edit-structure',
+              label: t('connWin.editStructure'),
+              icon: <Pencil className="h-3.5 w-3.5" />,
+            },
+            sep,
+            ...common,
+          ];
         case 'indexes': {
           const entries: ContextMenuEntry[] = [];
           if (!isReadOnly) {
-            entries.push({ id: 'create-index', label: t('connWin.newIndex'), icon: <Plus className="h-3.5 w-3.5" /> });
+            entries.push({
+              id: 'create-index',
+              label: t('connWin.newIndex'),
+              icon: <Plus className="h-3.5 w-3.5" />,
+            });
           }
           if (showStructureEditor) {
-            entries.push({ id: 'edit-structure', label: t('connWin.editStructure'), icon: <Pencil className="h-3.5 w-3.5" /> });
+            entries.push({
+              id: 'edit-structure',
+              label: t('connWin.editStructure'),
+              icon: <Pencil className="h-3.5 w-3.5" />,
+            });
           }
           if (entries.length === 0) return common;
           return [...entries, sep, ...common];
         }
         case 'ddl':
-          return [{ id: 'copy-ddl', label: t('connWin.copyDDL'), icon: <ClipboardCopy className="h-3.5 w-3.5" /> }, sep, ...common];
+          return [
+            {
+              id: 'copy-ddl',
+              label: t('connWin.copyDDL'),
+              icon: <ClipboardCopy className="h-3.5 w-3.5" />,
+            },
+            sep,
+            ...common,
+          ];
         default:
           return common;
       }
@@ -403,50 +481,60 @@ export function SqlConnectionView({
     return common;
   }, [activePanel, showStructureEditor, isReadOnly, t]);
 
-  const handleContextAction = useCallback((id: string) => {
-    switch (id) {
-      case 'refresh': handleRefresh(); break;
-      case 'new-query': handleNewQuery(); break;
-      case 'copy-cell': {
-        const sel = globalThis.getSelection()?.toString();
-        if (sel) void navigator.clipboard.writeText(sel);
-        break;
+  const handleContextAction = useCallback(
+    (id: string) => {
+      switch (id) {
+        case 'refresh':
+          handleRefresh();
+          break;
+        case 'new-query':
+          handleNewQuery();
+          break;
+        case 'copy-cell': {
+          const sel = globalThis.getSelection()?.toString();
+          if (sel) void navigator.clipboard.writeText(sel);
+          break;
+        }
+        case 'copy-ddl': {
+          const pre = document.querySelector('pre');
+          if (pre?.textContent) void navigator.clipboard.writeText(pre.textContent);
+          break;
+        }
+        case 'edit-structure': {
+          if (activePanel?.type === 'table') handleEditTableStructure(activePanel.tableName);
+          break;
+        }
+        case 'create-index': {
+          setCreateIndexTrigger((v) => v + 1);
+          break;
+        }
       }
-      case 'copy-ddl': {
-        const pre = document.querySelector('pre');
-        if (pre?.textContent) void navigator.clipboard.writeText(pre.textContent);
-        break;
-      }
-      case 'edit-structure': {
-        if (activePanel?.type === 'table') handleAlterTable(activePanel.tableName);
-        break;
-      }
-      case 'create-index': {
-        setCreateIndexTrigger((v) => v + 1);
-        break;
-      }
-    }
-  }, [handleRefresh, handleNewQuery, activePanel, handleAlterTable]);
+    },
+    [handleRefresh, handleNewQuery, activePanel, handleEditTableStructure],
+  );
 
   const handleTableContextMenu = useCallback((name: string, x: number, y: number) => {
     setTableCtx({ tableName: name, x, y });
   }, []);
 
-  const handleTableCtxAction = useCallback((action: 'export' | 'import' | 'er-focus') => {
-    if (!tableCtx) return;
-    const name = tableCtx.tableName;
-    setTableCtx(null);
-    if (action === 'export') {
-      setExportTableName(name);
-      handleSelectTable(name);
-      setExportOpen(true);
-    } else if (action === 'import') {
-      setImportTableName(name);
-      setImportOpen(true);
-    } else if (action === 'er-focus') {
-      handleOpenErDiagram(name);
-    }
-  }, [tableCtx, handleSelectTable, handleOpenErDiagram]);
+  const handleTableCtxAction = useCallback(
+    (action: 'export' | 'import' | 'er-focus') => {
+      if (!tableCtx) return;
+      const name = tableCtx.tableName;
+      setTableCtx(null);
+      if (action === 'export') {
+        setExportTableName(name);
+        handleSelectTable(name);
+        setExportOpen(true);
+      } else if (action === 'import') {
+        setImportTableName(name);
+        setImportOpen(true);
+      } else if (action === 'er-focus') {
+        handleOpenErDiagram(name);
+      }
+    },
+    [tableCtx, handleSelectTable, handleOpenErDiagram],
+  );
 
   useEffect(() => {
     if (!tableCtx) return;
@@ -467,14 +555,21 @@ export function SqlConnectionView({
   }, [tableCtx]);
 
   useKeyboardShortcuts([
-    { key: 'mod+b', scope: 'global', description: t('connWin.toggleSidebar') ?? 'Toggle Sidebar', action: () => setSidebarOpen((v) => !v) },
+    {
+      key: 'mod+b',
+      scope: 'global',
+      description: t('connWin.toggleSidebar') ?? 'Toggle Sidebar',
+      action: () => setSidebarOpen((v) => !v),
+    },
     { key: 'mod+n', scope: 'global', description: t('connWin.newQuery'), action: handleNewQuery },
     { key: 'mod+r', scope: 'global', description: t('connWin.refresh'), action: handleRefresh },
     {
       key: 'mod+w',
       scope: 'global',
       description: t('common.close'),
-      action: () => { if (activePanelId) handleClosePanel(activePanelId); },
+      action: () => {
+        if (activePanelId) handleClosePanel(activePanelId);
+      },
     },
   ]);
 
@@ -502,9 +597,10 @@ export function SqlConnectionView({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [detailPanelApplicable]);
 
-  const activeQueryTab = activePanel?.type === 'query'
-    ? queryTabs.find((tab) => tab.id === (activePanel as QueryPanelInfo).queryTabId)
-    : null;
+  const activeQueryTab =
+    activePanel?.type === 'query'
+      ? queryTabs.find((tab) => tab.id === (activePanel as QueryPanelInfo).queryTabId)
+      : null;
   const activeQueryResult = activeQueryTab?.results[activeQueryTab.activeResultIdx] ?? null;
 
   const detailColumnDefs: ColumnDef[] = useMemo(() => {
@@ -525,7 +621,11 @@ export function SqlConnectionView({
         ? tableRows[detailRowIndex]
         : null;
     }
-    if (activeQueryResult && resultDetailRowIndex !== null && resultDetailRowIndex < activeQueryResult.rows.length) {
+    if (
+      activeQueryResult &&
+      resultDetailRowIndex !== null &&
+      resultDetailRowIndex < activeQueryResult.rows.length
+    ) {
       return rowToRecord(activeQueryResult.rows[resultDetailRowIndex], activeQueryResult.columns);
     }
     return null;
@@ -549,7 +649,12 @@ export function SqlConnectionView({
   return (
     <>
       <div className="flex h-12 min-h-[48px] shrink-0 items-center gap-2 border-b border-edge bg-surface-alt px-4">
-        <Button variant="secondary" className="h-8 w-8 !px-0" title={`${t('connWin.refresh')} (⌘R)`} onClick={handleRefresh}>
+        <Button
+          variant="secondary"
+          className="h-8 w-8 !px-0"
+          title={`${t('connWin.refresh')} (⌘R)`}
+          onClick={handleRefresh}
+        >
           <RefreshCw className="h-4 w-4" />
         </Button>
         <Button variant="primary" className="h-8" onClick={handleNewQuery}>
@@ -652,7 +757,6 @@ export function SqlConnectionView({
                       table: <Table2 className="h-3.5 w-3.5 shrink-0" />,
                       query: <Code2 className="h-3.5 w-3.5 shrink-0" />,
                       'create-table': <TableProperties className="h-3.5 w-3.5 shrink-0" />,
-                      'alter-table': <Pencil className="h-3.5 w-3.5 shrink-0" />,
                       'er-diagram': <GitFork className="h-3.5 w-3.5 shrink-0" />,
                       objects: <Code2 className="h-3.5 w-3.5 shrink-0" />,
                       privileges: <KeyRound className="h-3.5 w-3.5 shrink-0" />,
@@ -661,7 +765,6 @@ export function SqlConnectionView({
                       table: (panel as TablePanel).tableName,
                       query: (panel as QueryPanelInfo).title,
                       'create-table': t('connWin.newTable'),
-                      'alter-table': `${t('connWin.editStructure')} · ${(panel as AlterTablePanel).tableName}`,
                       'er-diagram': t('erDiagram.title'),
                       objects: t('objects.title'),
                       privileges: t('privileges.title'),
@@ -743,36 +846,75 @@ export function SqlConnectionView({
 
                 <div className="flex min-h-0 flex-1 flex-col">
                   {activePanel.subTab === 'data' && (
-                    <TableView connectionId={connectionId} database={currentDatabase ?? ''} tableName={activePanel.tableName} />
-                  )}
-                  {activePanel.subTab === 'structure' && (
-                    <StructureView
+                    <TableView
                       connectionId={connectionId}
+                      database={currentDatabase ?? ''}
                       tableName={activePanel.tableName}
-                      onEditStructure={showStructureEditor ? handleAlterTable : undefined}
                     />
                   )}
+                  {activePanel.subTab === 'structure' &&
+                    (activePanel.structureEditing ? (
+                      <TableStructureEditor
+                        connectionId={connectionId}
+                        databaseType={databaseType}
+                        schema={resolveTableSchema(activePanel.tableName)}
+                        mode="alter"
+                        tableName={activePanel.tableName}
+                        showBackButton
+                        onSuccess={() => {
+                          invalidateSchemaCache(connectionId, activePanel.tableName);
+                          handleExitStructureEditing(activePanel.id);
+                          handleRefresh();
+                        }}
+                        onCancel={() => handleExitStructureEditing(activePanel.id)}
+                      />
+                    ) : (
+                      <StructureView
+                        connectionId={connectionId}
+                        tableName={activePanel.tableName}
+                        onEditStructure={
+                          showStructureEditor
+                            ? () => handleEditTableStructure(activePanel.tableName)
+                            : undefined
+                        }
+                      />
+                    ))}
                   {activePanel.subTab === 'indexes' && (
                     <IndexesView
                       connectionId={connectionId}
                       tableName={activePanel.tableName}
                       createIndexTrigger={createIndexTrigger}
                       databaseType={databaseType}
-                      onEditStructure={showStructureEditor ? handleAlterTable : undefined}
+                      onEditStructure={
+                        showStructureEditor
+                          ? () => handleSetSubTab(activePanel.id, 'structure')
+                          : undefined
+                      }
                     />
                   )}
                   {activePanel.subTab === 'foreignKeys' && (
-                    <ForeignKeysView connectionId={connectionId} tableName={activePanel.tableName} />
+                    <ForeignKeysView
+                      connectionId={connectionId}
+                      tableName={activePanel.tableName}
+                    />
                   )}
                   {activePanel.subTab === 'ddl' && (
-                    <DDLView connectionId={connectionId} tableName={activePanel.tableName} databaseType={databaseType} />
+                    <DDLView
+                      connectionId={connectionId}
+                      tableName={activePanel.tableName}
+                      databaseType={databaseType}
+                    />
                   )}
                 </div>
               </>
             )}
 
             {activePanel?.type === 'query' && (
-              <QueryPanel connectionId={connectionId} queryTabId={activePanel.queryTabId} databaseType={databaseType} />
+              <QueryPanel
+                connectionId={connectionId}
+                queryTabId={activePanel.queryTabId}
+                databaseType={databaseType}
+              />
             )}
 
             {activePanel?.type === 'create-table' && (
@@ -781,21 +923,6 @@ export function SqlConnectionView({
                 databaseType={databaseType}
                 schema={createTableSchema}
                 mode="create"
-                onSuccess={() => {
-                  handleClosePanel(activePanel.id);
-                  handleRefresh();
-                }}
-                onCancel={() => handleClosePanel(activePanel.id)}
-              />
-            )}
-
-            {activePanel?.type === 'alter-table' && (
-              <TableStructureEditor
-                connectionId={connectionId}
-                databaseType={databaseType}
-                schema={resolveTableSchema(activePanel.tableName)}
-                mode="alter"
-                tableName={activePanel.tableName}
                 onSuccess={() => {
                   handleClosePanel(activePanel.id);
                   handleRefresh();
@@ -819,9 +946,7 @@ export function SqlConnectionView({
               <ObjectBrowser connectionId={connectionId} databaseType={databaseType} />
             )}
 
-            {activePanel?.type === 'privileges' && (
-              <PrivilegeView connectionId={connectionId} />
-            )}
+            {activePanel?.type === 'privileges' && <PrivilegeView connectionId={connectionId} />}
 
             {!activePanel && (
               <div className="flex flex-1 items-center justify-center text-fg-muted">
@@ -854,16 +979,21 @@ export function SqlConnectionView({
               ref={aiHandleRef}
               className="w-1 shrink-0 cursor-col-resize bg-transparent hover:bg-accent/30"
             />
-            <aside style={{ width: aiSidebarWidth }} className="shrink-0 border-l border-edge bg-surface">
+            <aside
+              style={{ width: aiSidebarWidth }}
+              className="shrink-0 border-l border-edge bg-surface"
+            >
               <AiChatPanel
-              connectionId={connectionId}
-              database={currentDatabase ?? undefined}
-              onInsertSql={(sql) => {
-                if (activePanel?.type === 'query') {
-                  const tab = queryTabs.find((t) => t.id === (activePanel as QueryPanelInfo).queryTabId);
-                  if (tab) updateQuerySql(tab.id, sql);
-                }
-              }}
+                connectionId={connectionId}
+                database={currentDatabase ?? undefined}
+                onInsertSql={(sql) => {
+                  if (activePanel?.type === 'query') {
+                    const tab = queryTabs.find(
+                      (t) => t.id === (activePanel as QueryPanelInfo).queryTabId,
+                    );
+                    if (tab) updateQuerySql(tab.id, sql);
+                  }
+                }}
               />
             </aside>
           </>
@@ -888,65 +1018,76 @@ export function SqlConnectionView({
             .join(' · ')}
         </div>
         <div className="shrink-0 text-fg-muted">
-          <kbd className="font-mono">⌘N</kbd> {t('connWin.newQuery')} · <kbd className="font-mono">⌘R</kbd> {t('connWin.refresh')} · <kbd className="font-mono">⌘W</kbd> {t('common.close')} · <kbd className="font-mono">Space</kbd> {t('detail.title')}
+          <kbd className="font-mono">⌘N</kbd> {t('connWin.newQuery')} ·{' '}
+          <kbd className="font-mono">⌘R</kbd> {t('connWin.refresh')} ·{' '}
+          <kbd className="font-mono">⌘W</kbd> {t('common.close')} ·{' '}
+          <kbd className="font-mono">Space</kbd> {t('detail.title')}
         </div>
       </footer>
 
-      {tableCtx && createPortal(
-        <div
-          ref={tableCtxRef}
-          className="fixed z-[9999] min-w-[180px] rounded-lg border border-edge bg-surface-alt py-1 shadow-xl"
-          style={{ left: tableCtx.x, top: tableCtx.y }}
-        >
-          {showStructureEditor && (
-            <>
+      {tableCtx &&
+        createPortal(
+          <div
+            ref={tableCtxRef}
+            className="fixed z-[9999] min-w-[180px] rounded-lg border border-edge bg-surface-alt py-1 shadow-xl"
+            style={{ left: tableCtx.x, top: tableCtx.y }}
+          >
+            {showStructureEditor && (
+              <>
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[13px] text-fg-secondary hover:bg-surface-raised hover:text-fg"
+                  onClick={() => {
+                    const name = tableCtx.tableName;
+                    setTableCtx(null);
+                    handleEditTableStructure(name);
+                  }}
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                  {t('connWin.editTableStructure')}
+                </button>
+                <div className="my-1 h-px bg-edge" />
+              </>
+            )}
+            {supportsErDiagram && (
               <button
                 type="button"
                 className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[13px] text-fg-secondary hover:bg-surface-raised hover:text-fg"
-                onClick={() => { const name = tableCtx.tableName; setTableCtx(null); handleAlterTable(name); }}
+                onClick={() => handleTableCtxAction('er-focus')}
               >
-                <Pencil className="h-3.5 w-3.5" />
-                {t('connWin.editTableStructure')}
+                <GitFork className="h-3.5 w-3.5" />
+                {t('erDiagram.focusTable')}
               </button>
-              <div className="my-1 h-px bg-edge" />
-            </>
-          )}
-          {supportsErDiagram && (
+            )}
             <button
               type="button"
               className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[13px] text-fg-secondary hover:bg-surface-raised hover:text-fg"
-              onClick={() => handleTableCtxAction('er-focus')}
+              onClick={() => handleTableCtxAction('export')}
             >
-              <GitFork className="h-3.5 w-3.5" />
-              {t('erDiagram.focusTable')}
+              <Download className="h-3.5 w-3.5" />
+              {t('connWin.exportData')}
             </button>
-          )}
-          <button
-            type="button"
-            className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[13px] text-fg-secondary hover:bg-surface-raised hover:text-fg"
-            onClick={() => handleTableCtxAction('export')}
-          >
-            <Download className="h-3.5 w-3.5" />
-            {t('connWin.exportData')}
-          </button>
-          {!isReadOnly && (
-            <button
-              type="button"
-              className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[13px] text-fg-secondary hover:bg-surface-raised hover:text-fg"
-              onClick={() => handleTableCtxAction('import')}
-            >
-              <Upload className="h-3.5 w-3.5" />
-              {t('connWin.importData')}
-            </button>
-          )}
-        </div>,
-        document.body,
-      )}
+            {!isReadOnly && (
+              <button
+                type="button"
+                className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[13px] text-fg-secondary hover:bg-surface-raised hover:text-fg"
+                onClick={() => handleTableCtxAction('import')}
+              >
+                <Upload className="h-3.5 w-3.5" />
+                {t('connWin.importData')}
+              </button>
+            )}
+          </div>,
+          document.body,
+        )}
 
       {exportOpen && exportTableName && (
         <ExportDialog
           open={exportOpen}
-          onClose={() => { setExportOpen(false); setExportTableName(null); }}
+          onClose={() => {
+            setExportOpen(false);
+            setExportTableName(null);
+          }}
           tableName={exportTableName}
           columns={tableColumns}
           rows={tableRows}
@@ -957,7 +1098,10 @@ export function SqlConnectionView({
 
       <ImportDialog
         open={importOpen}
-        onClose={() => { setImportOpen(false); setImportTableName(null); }}
+        onClose={() => {
+          setImportOpen(false);
+          setImportTableName(null);
+        }}
         connectionId={connectionId}
         tableName={importTableName}
         onImported={handleRefresh}

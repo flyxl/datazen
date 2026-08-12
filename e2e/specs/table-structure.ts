@@ -27,10 +27,10 @@ describe('表结构编辑 (TS-001~TS-008)', () => {
     let handles = await browser.getWindowHandles();
     if (handles.length === 1) {
       await clickCardConnectButton();
-      await browser.waitUntil(
-        async () => (await browser.getWindowHandles()).length > 1,
-        { timeout: 30000, timeoutMsg: 'Timed out waiting for connection window' },
-      );
+      await browser.waitUntil(async () => (await browser.getWindowHandles()).length > 1, {
+        timeout: 30000,
+        timeoutMsg: 'Timed out waiting for connection window',
+      });
       handles = await browser.getWindowHandles();
     }
     const connWindow = handles.find((h) => h !== mainWindow)!;
@@ -159,10 +159,10 @@ describe('表结构编辑 (TS-001~TS-008)', () => {
     await browser.pause(2000);
 
     // Verify table appears
-    await browser.waitUntil(
-      async () => (await $('aside').getText()).includes(TEST_TABLE),
-      { timeout: 10000, timeoutMsg: 'Timed out waiting for new table in sidebar' },
-    );
+    await browser.waitUntil(async () => (await $('aside').getText()).includes(TEST_TABLE), {
+      timeout: 10000,
+      timeoutMsg: 'Timed out waiting for new table in sidebar',
+    });
   });
 
   // ── 编辑表结构 ─────────────────────────────────────────────────
@@ -182,12 +182,15 @@ describe('表结构编辑 (TS-001~TS-008)', () => {
   it('结构标签应有编辑按钮或显示列详情 (TS-006)', async () => {
     const body = await $('body').getText();
     // Either shows "编辑表结构" button or at minimum displays column types
-    const hasStructureInfo = body.includes(t('connWin.editTableStructure')) || body.includes('integer') ||
-      body.includes('varchar') || body.includes('NOT NULL');
+    const hasStructureInfo =
+      body.includes(t('connWin.editTableStructure')) ||
+      body.includes('integer') ||
+      body.includes('varchar') ||
+      body.includes('NOT NULL');
     expect(hasStructureInfo).toBe(true);
   });
 
-  it('编辑表结构应显示保存更改按钮 (TS-006b)', async () => {
+  it('编辑表结构应在结构子标签内打开并显示返回 (TS-006b)', async () => {
     const editBtn = await $(`button*=${t('structView.editStructure')}`);
     await editBtn.waitForDisplayed({
       timeout: 10000,
@@ -197,11 +200,14 @@ describe('表结构编辑 (TS-001~TS-008)', () => {
     await browser.pause(1000);
     const saveBtn = await $(`button*=${t('structEditor.saveChanges')}`);
     await expect(saveBtn).toBeDisplayed();
-    const cancelBtn = await $(`button*=${t('common.cancel')}`);
-    if (await cancelBtn.isExisting()) {
-      await cancelBtn.click();
-      await browser.pause(400);
-    }
+    // Inline edit — no new primary tab titled "编辑结构 · …"
+    const body = await $('body').getText();
+    expect(body).toContain(t('structEditor.editTable'));
+    const backBtn = await $(`button*=${t('common.back')}`);
+    await expect(backBtn).toBeDisplayed();
+    await backBtn.click();
+    await browser.pause(400);
+    await expect(editBtn).toBeDisplayed();
   });
 
   it('应能查看表的完整列信息 (TS-007)', async () => {

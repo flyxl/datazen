@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Loader2, Plus } from 'lucide-react';
+import { ArrowLeft, Loader2, Plus } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { databaseCommands } from '../../commands/database';
@@ -24,7 +24,7 @@ import type {
 import { useI18n } from '../../hooks/useI18n';
 import type { DatabaseType } from '../../types';
 import { StructureColumnTable } from './structure/StructureColumnTable';
-import { StructureIndexTable } from './structure/StructureIndexTable';
+import { StructureIndexTable, suggestedIndexName } from './structure/StructureIndexTable';
 import { StructurePlanPreview } from './structure/StructurePlanPreview';
 
 interface TableStructureEditorProps {
@@ -34,6 +34,11 @@ interface TableStructureEditorProps {
   schema?: string | null;
   mode: 'create' | 'alter';
   tableName?: string;
+  /**
+   * When true (inline alter inside Structure sub-tab), show a Back control.
+   * Primary-tab flows (create table) must not pass this — they use Cancel / close tab.
+   */
+  showBackButton?: boolean;
   onSuccess: () => void;
   onCancel: () => void;
 }
@@ -64,8 +69,7 @@ async function executePlanStatements(
       await queryCommands.executeQuery(connectionId, stmt.sql);
       executed += 1;
     } catch (e) {
-      const msg =
-        typeof e === 'string' ? e : e instanceof Error ? e.message : 'Execution failed';
+      const msg = typeof e === 'string' ? e : e instanceof Error ? e.message : 'Execution failed';
       return { executed, error: msg };
     }
   }
@@ -78,6 +82,7 @@ export function TableStructureEditor({
   schema: requestSchema = null,
   mode,
   tableName: initialTableName,
+  showBackButton = false,
   onSuccess,
   onCancel,
 }: TableStructureEditorProps) {
@@ -172,16 +177,7 @@ export function TableStructureEditor({
       originalIndexes,
       currentIndexes: indexes,
     });
-  }, [
-    mode,
-    tableName,
-    requestSchema,
-    originalColumns,
-    columns,
-    originalIndexes,
-    indexes,
-    isValid,
-  ]);
+  }, [mode, tableName, requestSchema, originalColumns, columns, originalIndexes, indexes, isValid]);
 
   const updateColumn = useCallback((id: string, patch: Partial<StructureColumnDraft>) => {
     setColumns((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c)));
@@ -205,9 +201,15 @@ export function TableStructureEditor({
   }, []);
 
   const addIndex = useCallback(() => {
-    setIndexes((prev) => [...prev, emptyIndexDraft(indexMethods[0] ?? 'btree')]);
+    setIndexes((prev) => [
+      ...prev,
+      {
+        ...emptyIndexDraft(indexMethods[0] ?? 'btree'),
+        name: suggestedIndexName(tableName, []),
+      },
+    ]);
     setPreviewPlan(null);
-  }, [indexMethods]);
+  }, [indexMethods, tableName]);
 
   const removeIndex = useCallback((id: string) => {
     setIndexes((prev) => prev.filter((i) => i.id !== id));
@@ -244,7 +246,11 @@ export function TableStructureEditor({
       setPreviewPlan(plan);
     } catch (e) {
       const msg =
-        typeof e === 'string' ? e : e instanceof Error ? e.message : t('structEditor.previewFailed');
+        typeof e === 'string'
+          ? e
+          : e instanceof Error
+            ? e.message
+            : t('structEditor.previewFailed');
       setError(msg);
     } finally {
       setPreviewing(false);
@@ -280,7 +286,11 @@ export function TableStructureEditor({
       onSuccess();
     } catch (e) {
       const msg =
-        typeof e === 'string' ? e : e instanceof Error ? e.message : t('structEditor.executeFailed');
+        typeof e === 'string'
+          ? e
+          : e instanceof Error
+            ? e.message
+            : t('structEditor.executeFailed');
       setError(msg);
     } finally {
       setExecuting(false);
@@ -311,6 +321,17 @@ export function TableStructureEditor({
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex items-center gap-4 border-b border-edge bg-surface-alt px-4 py-3">
+        {showBackButton && (
+          <Button
+            variant="ghost"
+            className="h-8 gap-1 px-2 text-xs"
+            onClick={onCancel}
+            title={t('common.back')}
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+            {t('common.back')}
+          </Button>
+        )}
         <span className="text-base font-semibold text-fg">
           {mode === 'create'
             ? t('structEditor.newTable')
@@ -325,9 +346,11 @@ export function TableStructureEditor({
         >
           {previewing ? t('structEditor.previewing') : t('structEditor.previewSQL')}
         </Button>
-        <Button variant="secondary" className="h-8 text-xs" onClick={onCancel}>
-          {t('common.cancel')}
-        </Button>
+        {!showBackButton && (
+          <Button variant="secondary" className="h-8 text-xs" onClick={onCancel}>
+            {t('common.cancel')}
+          </Button>
+        )}
         <Button
           variant="primary"
           className="h-8 text-xs"
@@ -388,7 +411,9 @@ export function TableStructureEditor({
 
         <div className="border-t border-edge px-4 py-2">
           <div className="flex items-center justify-between py-2">
-            <span className="text-xs font-medium text-fg-secondary">{t('structEditor.indexes')}</span>
+            <span className="text-xs font-medium text-fg-secondary">
+              {t('structEditor.indexes')}
+            </span>
             <Button
               variant="secondary"
               className="h-7 gap-1 text-xs"
@@ -404,6 +429,7 @@ export function TableStructureEditor({
             caps={caps}
             indexMethods={indexMethods}
             columnNames={columnNames}
+            tableName={tableName}
             indexes={indexes}
             onUpdate={updateIndex}
             onRemove={removeIndex}
