@@ -122,9 +122,7 @@ describe('ConnectionShareDialog', () => {
     renderImport('dbx');
     await waitFor(() => expect(screen.getByTestId('import-data-path')).toBeInTheDocument());
     fireEvent.click(screen.getByText('connShare.browseFolder'));
-    await waitFor(() =>
-      expect(pickMock).toHaveBeenCalledWith('folder', 'dbx'),
-    );
+    await waitFor(() => expect(pickMock).toHaveBeenCalledWith('folder', 'dbx'));
     await waitFor(() =>
       expect(screen.getByTestId('import-data-path')).toHaveValue('/custom/dbx-data'),
     );
@@ -143,5 +141,28 @@ describe('ConnectionShareDialog', () => {
     );
     fireEvent.click(screen.getByText('connShare.exportAction'));
     expect(screen.getByText('connShare.passwordRequired')).toBeInTheDocument();
+  });
+
+  it('export uses a TablePlus binary filename', async () => {
+    exportMock.mockResolvedValue(1);
+    render(
+      <ConnectionShareDialog
+        open
+        mode="export"
+        onClose={onClose}
+        onExportSuccess={onExportSuccess}
+        onImportSuccess={onImportSuccess}
+        onError={onError}
+      />,
+    );
+    const passwords = screen.getAllByDisplayValue('');
+    const inputs = document.querySelectorAll('input[type="password"]');
+    fireEvent.change(inputs[0]!, { target: { value: 'secret' } });
+    fireEvent.change(inputs[1]!, { target: { value: 'secret' } });
+    fireEvent.click(screen.getByText('connShare.exportAction'));
+    await waitFor(() => expect(exportMock).toHaveBeenCalled());
+    const fileName = exportMock.mock.calls[0]?.[1] as string;
+    expect(fileName).toMatch(/\.tableplusconnection$/);
+    expect(fileName).not.toMatch(/\.json$/);
   });
 });

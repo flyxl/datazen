@@ -233,11 +233,11 @@ fn merge_group_lists(existing: &[String], incoming: &[String]) -> (Vec<String>, 
 
 fn build_encrypted_connections_export(
     connections: &[ConnectionConfig],
-    groups: &[String],
+    _groups: &[String],
     password: &str,
-) -> Result<String, CommandError> {
+) -> Result<Vec<u8>, CommandError> {
     validate_share_password(password)?;
-    connection_import::build_encrypted_export(connections, groups, password)
+    connection_import::build_tableplus_export(connections, password)
 }
 
 #[tauri::command]
@@ -252,9 +252,9 @@ pub async fn export_connections(
     let groups = state.store.get_groups().await;
     let count = connections.len() as u32;
 
-    let json = build_encrypted_connections_export(&connections, &groups, &password)?;
+    let bytes = build_encrypted_connections_export(&connections, &groups, &password)?;
 
-    tokio::fs::write(PathBuf::from(&path), json.as_bytes())
+    tokio::fs::write(PathBuf::from(&path), &bytes)
         .await
         .cmd_err("export_connections")?;
 
@@ -262,7 +262,7 @@ pub async fn export_connections(
     Ok(count)
 }
 
-/// Native save dialog + encrypted JSON export. Returns connection count if saved, `None` if cancelled.
+/// Native save dialog + TablePlus RNCryptor export. Returns connection count if saved, `None` if cancelled.
 #[tauri::command]
 pub async fn export_connections_with_dialog(
     app: AppHandle,
@@ -279,7 +279,7 @@ pub async fn export_connections_with_dialog(
         app_for_dialog
             .dialog()
             .file()
-            .add_filter("JSON", &["json"])
+            .add_filter("TablePlus", &["tableplusconnection"])
             .set_file_name(&default_file_name)
             .blocking_save_file()
     })
@@ -291,9 +291,9 @@ pub async fn export_connections_with_dialog(
     let connections = state.store.get_connections().await;
     let groups = state.store.get_groups().await;
     let count = connections.len() as u32;
-    let json = build_encrypted_connections_export(&connections, &groups, &password)?;
+    let bytes = build_encrypted_connections_export(&connections, &groups, &password)?;
 
-    tokio::fs::write(dest, json.as_bytes())
+    tokio::fs::write(dest, &bytes)
         .await
         .cmd_err("export_connections_with_dialog")?;
 
@@ -890,12 +890,20 @@ mod tests {
             options: None,
             read_only: false,
         };
-        let json =
+        let bytes =
             build_encrypted_connections_export(&[conn], &["Prod".into()], "share-secret").unwrap();
-        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
-        assert_eq!(parsed["encrypted"], true);
-        assert!(parsed["connections"].is_array());
-        assert!(parsed["groups"].is_array());
+        assert_eq!(&bytes[0..2], &[0x03, 0x01]);
+        let parsed = parse_import_file(
+            Path::new("datazen-connections.tableplusconnection"),
+            &bytes,
+            Some("share-secret"),
+        )
+        .unwrap();
+        assert_eq!(parsed.format, connection_import::ImportFormat::TablePlus);
+        assert_eq!(parsed.connections.len(), 1);
+        assert_eq!(parsed.connections[0].name, "Demo");
+        assert_eq!(parsed.connections[0].password.as_deref(), Some("pw"));
+        assert_eq!(parsed.connections[0].group.as_deref(), Some("Prod"));
     }
 
     #[tokio::test]
