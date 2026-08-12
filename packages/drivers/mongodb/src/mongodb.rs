@@ -45,21 +45,13 @@ impl MongodbDriver {
         let port = config
             .port
             .ok_or_else(|| DriverError::InvalidConfig("port is required".into()))?;
-        let mut uri = String::new();
-        if let (Some(u), Some(p)) = (&config.username, &config.password) {
-            if !u.is_empty() {
-                uri.push_str(&format!("mongodb://{}:{}@", u, p));
-            } else {
-                uri.push_str("mongodb://");
-            }
-        } else {
-            uri.push_str("mongodb://");
-        }
+        // Never embed credentials in the URI — they go through `Credential` below so
+        // connection errors cannot echo `user:password@` into logs.
+        let mut uri = format!("mongodb://{host}:{port}/?directConnection=true");
         let tls = matches!(
             config.ssl_mode,
             SslMode::Require | SslMode::VerifyCa | SslMode::VerifyFull
         );
-        uri.push_str(&format!("{host}:{port}/?directConnection=true"));
         if tls {
             uri.push_str("&tls=true");
         }
@@ -734,6 +726,35 @@ mod tests {
         } else {
             panic!("expected statementStart");
         }
+    }
+
+    #[test]
+    fn uri_omits_credentials() {
+        let config = ConnectionConfig {
+            id: "m".into(),
+            name: "mongo".into(),
+            database_type: "mongodb".into(),
+            host: Some("127.0.0.1".into()),
+            port: Some(27017),
+            database: Some("app".into()),
+            schema: None,
+            username: Some("alice".into()),
+            password: Some("s3cret".into()),
+            ssl_mode: SslMode::Disable,
+            connection_timeout: 5,
+            max_pool_size: 5,
+            ssh_tunnel: None,
+            color_tag: None,
+            group: None,
+            last_connected_at: None,
+            server_version: None,
+            options: None,
+            read_only: false,
+        };
+        let uri = MongodbDriver::uri(&config).unwrap();
+        assert!(!uri.contains("s3cret"), "{uri}");
+        assert!(!uri.contains("alice"), "{uri}");
+        assert!(uri.starts_with("mongodb://127.0.0.1:27017/"), "{uri}");
     }
 }
 

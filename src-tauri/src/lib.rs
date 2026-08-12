@@ -27,6 +27,7 @@ pub use store::{AppDb, HistoryDb};
 pub(crate) mod testing;
 
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -85,6 +86,11 @@ pub(crate) enum MenuAction {
     OpenReportIssue,
     AddFavorite,
     Ignore,
+}
+
+/// First caller wins. Used so `rebuild_menu` does not stack another `on_menu_event`.
+pub(crate) fn take_once_slot(flag: &AtomicBool) -> bool {
+    !flag.swap(true, Ordering::SeqCst)
 }
 
 pub(crate) fn menu_action_for_id(id: &str) -> MenuAction {
@@ -194,6 +200,92 @@ pub(crate) fn resolve_prompts_dir(resource_dir: Option<PathBuf>) -> Option<PathB
 /// Whether embedded MCP server should auto-start during GUI setup.
 pub(crate) fn should_auto_start_embedded_mcp(mcp_server_enabled: bool) -> bool {
     mcp_server_enabled
+}
+
+/// Native menu event handler is registered once. `rebuild_menu` only replaces
+/// the menu tree; stacking another `on_menu_event` opened duplicate docs windows.
+#[cfg(target_os = "macos")]
+mod native_menu {
+    use super::*;
+    use std::sync::Mutex;
+    use tauri::menu::CheckMenuItem;
+    use tauri::Wry;
+
+    struct ThemeChecks {
+        light: CheckMenuItem<Wry>,
+        dark: CheckMenuItem<Wry>,
+        system: CheckMenuItem<Wry>,
+    }
+
+    static THEME_CHECKS: Mutex<Option<ThemeChecks>> = Mutex::new(None);
+    static HANDLER_REGISTERED: AtomicBool = AtomicBool::new(false);
+
+    pub fn store_theme_checks(
+        light: CheckMenuItem<Wry>,
+        dark: CheckMenuItem<Wry>,
+        system: CheckMenuItem<Wry>,
+    ) {
+        if let Ok(mut guard) = THEME_CHECKS.lock() {
+            *guard = Some(ThemeChecks {
+                light,
+                dark,
+                system,
+            });
+        }
+    }
+
+    fn apply_theme_checks(theme: &str) {
+        let Ok(guard) = THEME_CHECKS.lock() else {
+            return;
+        };
+        let Some(items) = guard.as_ref() else {
+            return;
+        };
+        let _ = items
+            .light
+            .set_checked(theme_menu_item_checked(theme, "theme-light"));
+        let _ = items
+            .dark
+            .set_checked(theme_menu_item_checked(theme, "theme-dark"));
+        let _ = items
+            .system
+            .set_checked(theme_menu_item_checked(theme, "theme-system"));
+    }
+
+    pub fn register_handler_once(handle: &tauri::AppHandle) {
+        if !take_once_slot(&HANDLER_REGISTERED) {
+            return;
+        }
+        handle.on_menu_event(move |app_handle, event| {
+            let id = event.id().as_ref();
+            match menu_action_for_id(id) {
+                MenuAction::ThemeChange(theme) => {
+                    apply_theme_checks(&theme);
+                    let _ = app_handle.emit("menu:theme-change", theme);
+                }
+                MenuAction::Emit(event) => {
+                    let _ = app_handle.emit(event, ());
+                }
+                MenuAction::OpenDocs => {
+                    // Open directly in Rust — do not emit to every webview (that
+                    // previously caused concurrent create_sub_window races).
+                    let app = app_handle.clone();
+                    tauri::async_runtime::spawn(async move {
+                        if let Err(e) = commands::open_docs_window(app, None).await {
+                            tracing::warn!(error = %e, "menu help-docs: open docs window failed");
+                        }
+                    });
+                }
+                MenuAction::OpenReportIssue => {
+                    let _ = open::that("https://github.com/flyxl/datazen/issues/new");
+                }
+                MenuAction::AddFavorite => {
+                    let _ = app_handle.emit("menu:add-favorite", ());
+                }
+                MenuAction::Ignore => {}
+            }
+        });
+    }
 }
 
 #[cfg(target_os = "macos")]
@@ -392,41 +484,12 @@ fn setup_menu(
 
     handle.set_menu(menu)?;
 
-    let tl = theme_light.clone();
-    let td = theme_dark.clone();
-    let ts = theme_system.clone();
-
-    handle.on_menu_event(move |app_handle, event| {
-        let id = event.id().as_ref();
-        match menu_action_for_id(id) {
-            MenuAction::ThemeChange(theme) => {
-                let _ = tl.set_checked(theme_menu_item_checked(&theme, "theme-light"));
-                let _ = td.set_checked(theme_menu_item_checked(&theme, "theme-dark"));
-                let _ = ts.set_checked(theme_menu_item_checked(&theme, "theme-system"));
-                let _ = app_handle.emit("menu:theme-change", theme);
-            }
-            MenuAction::Emit(event) => {
-                let _ = app_handle.emit(event, ());
-            }
-            MenuAction::OpenDocs => {
-                // Open directly in Rust — do not emit to every webview (that
-                // previously caused concurrent create_sub_window races).
-                let app = app_handle.clone();
-                tauri::async_runtime::spawn(async move {
-                    if let Err(e) = commands::open_docs_window(app, None).await {
-                        tracing::warn!(error = %e, "menu help-docs: open docs window failed");
-                    }
-                });
-            }
-            MenuAction::OpenReportIssue => {
-                let _ = open::that("https://github.com/flyxl/datazen/issues/new");
-            }
-            MenuAction::AddFavorite => {
-                let _ = app_handle.emit("menu:add-favorite", ());
-            }
-            MenuAction::Ignore => {}
-        }
-    });
+    native_menu::store_theme_checks(
+        theme_light.clone(),
+        theme_dark.clone(),
+        theme_system.clone(),
+    );
+    native_menu::register_handler_once(handle);
 
     Ok(())
 }
@@ -1006,6 +1069,14 @@ mod tests {
             MenuAction::AddFavorite
         );
         assert_eq!(menu_action_for_id("unknown-id"), MenuAction::Ignore);
+    }
+
+    #[test]
+    fn take_once_slot_only_first_caller_wins() {
+        let flag = AtomicBool::new(false);
+        assert!(take_once_slot(&flag));
+        assert!(!take_once_slot(&flag));
+        assert!(!take_once_slot(&flag));
     }
 
     #[test]
