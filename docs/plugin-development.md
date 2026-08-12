@@ -261,7 +261,7 @@ pnpm tauri dev
 - 协议版本在 `DatabaseDriver` / `KeyValueDriver` trait 发生 **breaking change** 时递增
 
 **规则**：
-- 新增 trait 方法（有默认实现）→ 不需要 bump
+- 新增 trait 方法（有默认实现）→ 不需要 bump（例如 `query_stream`：SQL 驱动应覆盖为逐行 fetch；HTTP 驱动可在解析时分批 emit。默认会 `query_multi` 后再分批 emit）
 - 修改已有方法签名、删除方法、修改类型定义 → 必须 bump
 
 ---

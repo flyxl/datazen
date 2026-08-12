@@ -407,7 +407,7 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
               </div>
             )}
 
-            {!showExplain && tab.running && (
+            {!showExplain && tab.running && results.length === 0 && (
               <div className="flex flex-1 items-center justify-center gap-2 text-fg-muted">
                 <Loader2 className="h-5 w-5 animate-spin" />
                 {t('query.executing')}
@@ -446,7 +446,7 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
               </div>
             )}
 
-            {!showExplain && results.length > 0 && !tab.running && (
+            {!showExplain && results.length > 0 && (
               <>
                 {/* Result tabs */}
                 {(results.length > 1 || explainResult) && (
@@ -465,7 +465,8 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
                       >
                         {t('query.result')} {idx + 1}
                         <span className="ml-1.5 text-[10px] text-fg-muted">
-                          ({r.rows.length} {t('common.rows')}, {r.executionTimeMs}ms)
+                          ({r.rows.length} {t('common.rows')}
+                          {tab.running ? '' : `, ${r.executionTimeMs}ms`})
                         </span>
                         <span
                           className={cn(
@@ -490,6 +491,12 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
                 {/* View mode toggle + active result */}
                 {activeResult && (
                   <>
+                    {tab.running && (
+                      <div className="flex shrink-0 items-center gap-2 border-b border-edge bg-surface-alt px-3 py-1.5 text-xs text-fg-muted">
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                        {t('query.streamingRows', { n: String(activeResult.rows.length) })}
+                      </div>
+                    )}
                     <div className="flex shrink-0 items-center border-b border-edge bg-surface-alt px-2">
                       <div className="flex items-center gap-0.5 rounded-md bg-surface p-0.5 my-1">
                         <button
@@ -526,7 +533,7 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
                         </span>
                       )}
                     </div>
-                    {resultViewMode === 'table' ? (
+                    {tab.running || resultViewMode === 'table' ? (
                       <ResultTable result={activeResult} />
                     ) : (
                       <ChartView

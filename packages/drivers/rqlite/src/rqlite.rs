@@ -1,8 +1,8 @@
 //! RQLite driver — distributed SQLite via HTTP JSON API.
 
-use datazen_driver_http_support::*;
-use datazen_driver_api::*;
 use async_trait::async_trait;
+use datazen_driver_api::*;
+use datazen_driver_http_support::*;
 use std::collections::HashMap;
 use std::time::Instant;
 use tokio::sync::RwLock;
@@ -58,7 +58,11 @@ impl RqliteDriver {
         let mut rows = Vec::new();
         if let Some(r) = first {
             if let Some(names) = r.get("columns").and_then(|c| c.as_array()) {
-                let types = r.get("types").and_then(|t| t.as_array()).cloned().unwrap_or_default();
+                let types = r
+                    .get("types")
+                    .and_then(|t| t.as_array())
+                    .cloned()
+                    .unwrap_or_default();
                 columns = names
                     .iter()
                     .enumerate()
@@ -100,8 +104,11 @@ impl DatabaseDriver for RqliteDriver {
     }
 
     async fn test_connection(&self, config: &ConnectionConfig) -> Result<ServerInfo, DriverError> {
-        let client =
-            build_http_client(config.connection_timeout, config.username.as_deref(), config.password.as_deref())?;
+        let client = build_http_client(
+            config.connection_timeout,
+            config.username.as_deref(),
+            config.password.as_deref(),
+        )?;
         let base = base_url(config)?;
         let v = Self::query_json(&client, &base, "SELECT 1").await?;
         let version = v
@@ -120,11 +127,17 @@ impl DatabaseDriver for RqliteDriver {
     }
 
     async fn connect(&self, config: &ConnectionConfig) -> Result<ConnectionHandle, DriverError> {
-        let client =
-            build_http_client(config.connection_timeout, config.username.as_deref(), config.password.as_deref())?;
+        let client = build_http_client(
+            config.connection_timeout,
+            config.username.as_deref(),
+            config.password.as_deref(),
+        )?;
         let base = base_url(config)?;
         let pool_id = format!("rqlite_{}", uuid::Uuid::new_v4());
-        self.clients.write().await.insert(pool_id.clone(), (client, base));
+        self.clients
+            .write()
+            .await
+            .insert(pool_id.clone(), (client, base));
         Ok(ConnectionHandle {
             id: pool_id.clone(),
             pool_id,
@@ -219,7 +232,11 @@ impl DatabaseDriver for RqliteDriver {
         })
     }
 
-    async fn query(&self, handle: &ConnectionHandle, sql: &str) -> Result<QueryResult, DriverError> {
+    async fn query(
+        &self,
+        handle: &ConnectionHandle,
+        sql: &str,
+    ) -> Result<QueryResult, DriverError> {
         let map = self.clients.read().await;
         let (client, base) = Self::get(&map, handle)?;
         let start = Instant::now();
@@ -247,6 +264,34 @@ impl DatabaseDriver for RqliteDriver {
             }],
             total_time_ms: result.execution_time_ms,
         })
+    }
+
+    async fn query_stream(
+        &self,
+        handle: &ConnectionHandle,
+        sql: &str,
+        limit: Option<u32>,
+        on_event: QueryStreamCallback,
+    ) -> Result<(), DriverError> {
+        let map = self.clients.read().await;
+        let (client, base) = Self::get(&map, handle)?;
+        let start = Instant::now();
+        let (effective, applied) = append_select_limit(sql, limit);
+        let v = Self::query_json(client, base, &effective).await?;
+        let mut result = Self::result_from_json(&v);
+        let ms = start.elapsed().as_millis() as u64;
+        stream_decoded_rows(
+            &on_event,
+            0,
+            sql.to_string(),
+            result.columns,
+            std::mem::take(&mut result.rows),
+            applied,
+            ms,
+            result.rows_affected,
+        );
+        on_event(QueryStreamEvent::Done { total_time_ms: ms });
+        Ok(())
     }
 
     async fn query_with_params(
@@ -301,5 +346,54 @@ impl DatabaseDriver for RqliteDriver {
 
     async fn cancel_query(&self, _handle: &ConnectionHandle) -> Result<(), DriverError> {
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::{Arc, Mutex};
+
+    #[test]
+    fn result_from_json_then_stream_decoded_rows_honors_limit() {
+        let v = serde_json::json!({
+            "results": [{
+                "columns": ["id"],
+                "types": ["integer"],
+                "values": [[1], [2], [3], [4]]
+            }]
+        });
+        let mut result = RqliteDriver::result_from_json(&v);
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let events_cb = Arc::clone(&events);
+        let cb: QueryStreamCallback = Arc::new(move |ev| {
+            events_cb.lock().unwrap().push(ev);
+        });
+        stream_decoded_rows(
+            &cb,
+            0,
+            "SELECT 1".into(),
+            result.columns,
+            std::mem::take(&mut result.rows),
+            Some(3),
+            1,
+            None,
+        );
+        let events = events.lock().unwrap();
+        let rows: usize = events
+            .iter()
+            .filter_map(|e| match e {
+                QueryStreamEvent::Rows { rows, .. } => Some(rows.len()),
+                _ => None,
+            })
+            .sum();
+        assert_eq!(rows, 3);
+        assert!(events.iter().any(|e| matches!(
+            e,
+            QueryStreamEvent::StatementEnd {
+                truncated: true,
+                ..
+            }
+        )));
     }
 }

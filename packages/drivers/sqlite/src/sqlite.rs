@@ -1,11 +1,12 @@
 //! SQLite driver backed by sqlx SqlitePool.
 
 use crate::structure;
-use datazen_driver_api::*;
 use async_trait::async_trait;
+use datazen_driver_api::*;
 use sqlx::sqlite::SqlitePoolOptions;
 use sqlx::{Column, Row, Sqlite, SqlitePool};
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 
@@ -48,59 +49,56 @@ impl SqliteDriver {
         query
     }
 
-    fn decode_rows(rows: &[sqlx::sqlite::SqliteRow]) -> (Vec<ColumnInfo>, Vec<Vec<Option<Value>>>) {
-        let columns: Vec<ColumnInfo> = if let Some(first) = rows.first() {
-            first
-                .columns()
-                .iter()
-                .map(|c| ColumnInfo {
-                    name: c.name().to_string(),
-                    data_type: c.type_info().to_string(),
-                    nullable: true,
-                })
-                .collect()
-        } else {
-            Vec::new()
-        };
-
-        let result_rows: Vec<Vec<Option<Value>>> = rows
+    fn columns_of_row(row: &sqlx::sqlite::SqliteRow) -> Vec<ColumnInfo> {
+        row.columns()
             .iter()
-            .map(|row| {
-                row.columns()
-                    .iter()
-                    .enumerate()
-                    .map(|(i, col)| {
-                        let type_name = col.type_info().to_string().to_uppercase();
-                        match type_name.as_str() {
-                            "INTEGER" | "INT" | "BIGINT" | "SMALLINT" | "TINYINT" | "MEDIUMINT" => {
-                                row.try_get::<i64, _>(i).ok().map(Value::Integer)
-                            }
-                            "REAL" | "DOUBLE" | "FLOAT" | "NUMERIC" | "DECIMAL" => {
-                                row.try_get::<f64, _>(i).ok().map(Value::Float)
-                            }
-                            "BOOLEAN" => {
-                                row.try_get::<bool, _>(i).ok().map(Value::Bool)
-                                    .or_else(|| row.try_get::<i32, _>(i).ok().map(|v| Value::Bool(v != 0)))
-                            }
-                            "BLOB" => {
-                                row.try_get::<Vec<u8>, _>(i).ok().map(|bytes| {
-                                    let hex: String = bytes.iter().map(|b| format!("{:02x}", b)).collect();
+            .map(|c| ColumnInfo {
+                name: c.name().to_string(),
+                data_type: c.type_info().to_string(),
+                nullable: true,
+            })
+            .collect()
+    }
+
+    fn decode_rows(rows: &[sqlx::sqlite::SqliteRow]) -> (Vec<ColumnInfo>, Vec<Vec<Option<Value>>>) {
+        let columns: Vec<ColumnInfo> = rows.first().map(Self::columns_of_row).unwrap_or_default();
+
+        let result_rows: Vec<Vec<Option<Value>>> =
+            rows.iter()
+                .map(|row| {
+                    row.columns()
+                        .iter()
+                        .enumerate()
+                        .map(|(i, col)| {
+                            let type_name = col.type_info().to_string().to_uppercase();
+                            match type_name.as_str() {
+                                "INTEGER" | "INT" | "BIGINT" | "SMALLINT" | "TINYINT"
+                                | "MEDIUMINT" => row.try_get::<i64, _>(i).ok().map(Value::Integer),
+                                "REAL" | "DOUBLE" | "FLOAT" | "NUMERIC" | "DECIMAL" => {
+                                    row.try_get::<f64, _>(i).ok().map(Value::Float)
+                                }
+                                "BOOLEAN" => {
+                                    row.try_get::<bool, _>(i).ok().map(Value::Bool).or_else(|| {
+                                        row.try_get::<i32, _>(i).ok().map(|v| Value::Bool(v != 0))
+                                    })
+                                }
+                                "BLOB" => row.try_get::<Vec<u8>, _>(i).ok().map(|bytes| {
+                                    let hex: String =
+                                        bytes.iter().map(|b| format!("{:02x}", b)).collect();
                                     Value::String(format!("\\x{}", hex))
-                                })
-                            }
-                            _ => {
-                                row.try_get::<String, _>(i)
+                                }),
+                                _ => row
+                                    .try_get::<String, _>(i)
                                     .ok()
                                     .map(Value::String)
                                     .or_else(|| row.try_get::<i64, _>(i).ok().map(Value::Integer))
                                     .or_else(|| row.try_get::<f64, _>(i).ok().map(Value::Float))
-                                    .or_else(|| row.try_get::<bool, _>(i).ok().map(Value::Bool))
+                                    .or_else(|| row.try_get::<bool, _>(i).ok().map(Value::Bool)),
                             }
-                        }
-                    })
-                    .collect()
-            })
-            .collect();
+                        })
+                        .collect()
+                })
+                .collect();
 
         (columns, result_rows)
     }
@@ -266,22 +264,23 @@ impl DatabaseDriver for SqliteDriver {
         }
 
         // Indexes
-        let idx_rows = sqlx::query(&format!(
-            "PRAGMA index_list({})", self.quote_ident(table)
-        ))
-        .fetch_all(pool)
-        .await
-        .unwrap_or_default();
+        let idx_rows = sqlx::query(&format!("PRAGMA index_list({})", self.quote_ident(table)))
+            .fetch_all(pool)
+            .await
+            .unwrap_or_default();
 
         let mut indexes = Vec::new();
         for idx_row in &idx_rows {
             let idx_name: String = idx_row.get("name");
             let is_unique: bool = idx_row.get::<i32, _>("unique") != 0;
 
-            let info_rows = sqlx::query(&format!("PRAGMA index_info(\"{}\")", idx_name.replace('"', "\"\"")))
-                .fetch_all(pool)
-                .await
-                .unwrap_or_default();
+            let info_rows = sqlx::query(&format!(
+                "PRAGMA index_info(\"{}\")",
+                idx_name.replace('"', "\"\"")
+            ))
+            .fetch_all(pool)
+            .await
+            .unwrap_or_default();
 
             let idx_columns: Vec<String> = info_rows
                 .iter()
@@ -300,7 +299,8 @@ impl DatabaseDriver for SqliteDriver {
 
         // Foreign keys
         let fk_rows = sqlx::query(&format!(
-            "PRAGMA foreign_key_list({})", self.quote_ident(table)
+            "PRAGMA foreign_key_list({})",
+            self.quote_ident(table)
         ))
         .fetch_all(pool)
         .await
@@ -342,7 +342,11 @@ impl DatabaseDriver for SqliteDriver {
         })
     }
 
-    async fn query(&self, handle: &ConnectionHandle, sql: &str) -> Result<QueryResult, DriverError> {
+    async fn query(
+        &self,
+        handle: &ConnectionHandle,
+        sql: &str,
+    ) -> Result<QueryResult, DriverError> {
         let pools = self.pools.read().await;
         let pool = Self::get_pool(&pools, handle)?;
 
@@ -381,7 +385,9 @@ impl DatabaseDriver for SqliteDriver {
         for stmt in statements {
             let start = Instant::now();
             let limited_sql = if let Some(lim) = limit {
-                if stmt.to_uppercase().starts_with("SELECT") && !stmt.to_uppercase().contains("LIMIT") {
+                if stmt.to_uppercase().starts_with("SELECT")
+                    && !stmt.to_uppercase().contains("LIMIT")
+                {
                     format!("{} LIMIT {}", stmt, lim)
                 } else {
                     stmt.to_string()
@@ -413,6 +419,60 @@ impl DatabaseDriver for SqliteDriver {
             results,
             total_time_ms: total_start.elapsed().as_millis() as u64,
         })
+    }
+
+    async fn query_stream(
+        &self,
+        handle: &ConnectionHandle,
+        sql: &str,
+        limit: Option<u32>,
+        on_event: QueryStreamCallback,
+    ) -> Result<(), DriverError> {
+        use futures_util::TryStreamExt;
+        let pools = self.pools.read().await;
+        let pool = Self::get_pool(&pools, handle)?;
+        let total_start = Instant::now();
+        let statements: Vec<&str> = sql
+            .split(';')
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .collect();
+
+        if statements.is_empty() {
+            on_event(QueryStreamEvent::Done { total_time_ms: 0 });
+            return Ok(());
+        }
+
+        for (index, stmt) in statements.iter().enumerate() {
+            let (effective_sql, applied_limit) = apply_sqlite_select_limit(stmt, limit);
+            let stmt_start = Instant::now();
+            let mut stream = sqlx::query(&effective_sql).fetch(pool);
+            let mut batcher = QueryRowBatcher::new(
+                Arc::clone(&on_event),
+                index,
+                (*stmt).to_string(),
+                applied_limit,
+            );
+            while let Some(row) = stream
+                .try_next()
+                .await
+                .map_err(|e| DriverError::QueryFailed(format!("[{stmt}] {e}")))?
+            {
+                if !batcher.started() {
+                    batcher.start(Self::columns_of_row(&row));
+                }
+                let (_, mut decoded) = Self::decode_rows(std::slice::from_ref(&row));
+                if !batcher.push(decoded.pop().unwrap_or_default()) {
+                    break;
+                }
+            }
+            batcher.finish(stmt_start.elapsed().as_millis() as u64, None);
+        }
+
+        on_event(QueryStreamEvent::Done {
+            total_time_ms: total_start.elapsed().as_millis() as u64,
+        });
+        Ok(())
     }
 
     async fn query_with_params(
@@ -481,7 +541,11 @@ impl DatabaseDriver for SqliteDriver {
         Ok(())
     }
 
-    async fn explain(&self, handle: &ConnectionHandle, sql: &str) -> Result<ExplainResult, DriverError> {
+    async fn explain(
+        &self,
+        handle: &ConnectionHandle,
+        sql: &str,
+    ) -> Result<ExplainResult, DriverError> {
         let explain_sql = format!("EXPLAIN QUERY PLAN {}", sql);
         let result = self.query(handle, &explain_sql).await?;
 
@@ -490,11 +554,13 @@ impl DatabaseDriver for SqliteDriver {
             .iter()
             .map(|row| {
                 row.iter()
-                    .filter_map(|v| v.as_ref().map(|val| match val {
-                        Value::String(s) => s.clone(),
-                        Value::Integer(n) => n.to_string(),
-                        _ => format!("{:?}", val),
-                    }))
+                    .filter_map(|v| {
+                        v.as_ref().map(|val| match val {
+                            Value::String(s) => s.clone(),
+                            Value::Integer(n) => n.to_string(),
+                            _ => format!("{:?}", val),
+                        })
+                    })
                     .collect::<Vec<_>>()
                     .join(" | ")
             })
@@ -544,9 +610,142 @@ impl DatabaseDriver for SqliteDriver {
     }
 }
 
+fn apply_sqlite_select_limit(stmt: &str, limit: Option<u32>) -> (String, Option<u32>) {
+    let Some(lim) = limit else {
+        return (stmt.to_string(), None);
+    };
+    let trimmed = stmt.trim();
+    let upper = trimmed.to_ascii_uppercase();
+    let is_select = upper.starts_with("SELECT") || upper.starts_with("WITH");
+    if !is_select {
+        return (stmt.to_string(), None);
+    }
+    if upper.split_whitespace().any(|w| w == "LIMIT") {
+        return (stmt.to_string(), Some(lim));
+    }
+    (format!("{trimmed} LIMIT {}", lim + 1), Some(lim))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn apply_sqlite_select_limit_none_does_not_rewrite() {
+        let (sql, cap) = apply_sqlite_select_limit("SELECT * FROM t", None);
+        assert_eq!(sql, "SELECT * FROM t");
+        assert_eq!(cap, None);
+    }
+
+    #[test]
+    fn apply_sqlite_select_limit_appends_plus_one() {
+        let (sql, cap) = apply_sqlite_select_limit("SELECT * FROM t", Some(10));
+        assert_eq!(sql, "SELECT * FROM t LIMIT 11");
+        assert_eq!(cap, Some(10));
+    }
+
+    #[test]
+    fn apply_sqlite_select_limit_keeps_existing_limit_and_skips_dml() {
+        let (sql, cap) = apply_sqlite_select_limit("SELECT * FROM t LIMIT 3", Some(10));
+        assert_eq!(sql, "SELECT * FROM t LIMIT 3");
+        assert_eq!(cap, Some(10));
+        let (sql, cap) = apply_sqlite_select_limit("INSERT INTO t VALUES (1)", Some(10));
+        assert_eq!(sql, "INSERT INTO t VALUES (1)");
+        assert_eq!(cap, None);
+        let (sql, cap) = apply_sqlite_select_limit("WITH x AS (SELECT 1) SELECT * FROM x", Some(2));
+        assert_eq!(sql, "WITH x AS (SELECT 1) SELECT * FROM x LIMIT 3");
+        assert_eq!(cap, Some(2));
+    }
+
+    fn collect_events() -> (
+        QueryStreamCallback,
+        std::sync::Arc<std::sync::Mutex<Vec<QueryStreamEvent>>>,
+    ) {
+        let events = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let events_cb = std::sync::Arc::clone(&events);
+        (
+            std::sync::Arc::new(move |ev| {
+                events_cb.lock().unwrap().push(ev);
+            }),
+            events,
+        )
+    }
+
+    fn stream_row_count(events: &[QueryStreamEvent]) -> usize {
+        events
+            .iter()
+            .filter_map(|e| match e {
+                QueryStreamEvent::Rows { rows, .. } => Some(rows.len()),
+                _ => None,
+            })
+            .sum()
+    }
+
+    #[tokio::test]
+    async fn query_stream_limits_and_batches_independently() {
+        let dir =
+            std::env::temp_dir().join(format!("datazen-sqlite-stream-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("stream.db");
+        let path_str = path.to_string_lossy().to_string();
+        std::fs::File::create(&path).unwrap();
+
+        let driver = SqliteDriver::new();
+        let handle = driver.connect(&test_config(&path_str)).await.unwrap();
+        driver
+            .execute(&handle, "CREATE TABLE t (id INTEGER PRIMARY KEY)")
+            .await
+            .unwrap();
+        driver
+            .execute(
+                &handle,
+                "WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM c WHERE x < 600)
+                 INSERT INTO t SELECT x FROM c",
+            )
+            .await
+            .unwrap();
+
+        let (cb, events) = collect_events();
+        driver
+            .query_stream(&handle, "SELECT id FROM t ORDER BY id", Some(7), cb)
+            .await
+            .unwrap();
+        {
+            let events = events.lock().unwrap();
+            assert_eq!(stream_row_count(&events), 7);
+            assert!(events.iter().any(|e| matches!(
+                e,
+                QueryStreamEvent::StatementEnd {
+                    truncated: true,
+                    ..
+                }
+            )));
+        }
+
+        let (cb, events) = collect_events();
+        driver
+            .query_stream(&handle, "SELECT id FROM t ORDER BY id", None, cb)
+            .await
+            .unwrap();
+        {
+            let events = events.lock().unwrap();
+            assert_eq!(stream_row_count(&events), 600);
+            let chunks = events
+                .iter()
+                .filter(|e| matches!(e, QueryStreamEvent::Rows { .. }))
+                .count();
+            assert!(chunks >= 2);
+        }
+
+        let (cb, events) = collect_events();
+        driver.query_stream(&handle, "   ", None, cb).await.unwrap();
+        assert!(matches!(
+            events.lock().unwrap().as_slice(),
+            [QueryStreamEvent::Done { total_time_ms: 0 }]
+        ));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     fn test_config(path: &str) -> ConnectionConfig {
         ConnectionConfig {
@@ -595,7 +794,10 @@ mod tests {
             .unwrap();
         driver.rollback(tx).await.unwrap();
 
-        let after_rollback = driver.query(&handle, "SELECT COUNT(*) FROM t").await.unwrap();
+        let after_rollback = driver
+            .query(&handle, "SELECT COUNT(*) FROM t")
+            .await
+            .unwrap();
         match &after_rollback.rows[0][0] {
             Some(Value::Integer(0)) => {}
             other => panic!("rollback should discard insert, got {other:?}"),
@@ -608,7 +810,10 @@ mod tests {
             .unwrap();
         driver.commit(tx).await.unwrap();
 
-        let after_commit = driver.query(&handle, "SELECT COUNT(*) FROM t").await.unwrap();
+        let after_commit = driver
+            .query(&handle, "SELECT COUNT(*) FROM t")
+            .await
+            .unwrap();
         match &after_commit.rows[0][0] {
             Some(Value::Integer(1)) => {}
             other => panic!("commit should persist insert, got {other:?}"),
@@ -634,7 +839,8 @@ mod tests {
 
     #[tokio::test]
     async fn query_with_params_binds_values() {
-        let dir = std::env::temp_dir().join(format!("datazen-sqlite-params-{}", uuid::Uuid::new_v4()));
+        let dir =
+            std::env::temp_dir().join(format!("datazen-sqlite-params-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("params.db");
         let path_str = path.to_string_lossy().to_string();
@@ -651,7 +857,10 @@ mod tests {
             .await
             .unwrap();
         driver
-            .execute(&handle, "INSERT INTO t (name, n) VALUES ('alice', 1), ('bob', 2)")
+            .execute(
+                &handle,
+                "INSERT INTO t (name, n) VALUES ('alice', 1), ('bob', 2)",
+            )
             .await
             .unwrap();
 
