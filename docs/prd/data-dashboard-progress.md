@@ -32,8 +32,8 @@
 | F8 | 图⇄表切换；编辑抽屉 | `done` | FE unit | [Verify](5f332e7e) PASS | `705858e` |
 | F9 | 从 SQL / 可见 Workflow「添加到看板」 | `done` | create:: | [Verify](5f332e7e) PASS | `705858e` |
 | F10 | 删除引用检查；面板暂停；运行历史 | `done` | Rust | [Verify](5f332e7e) PASS | `705858e` |
-| F11 | 整体 Review + 修复验证 | `in_progress` | — | — | pending |
-| F12 | 全量单测 + e2e:dashboard；文档收尾提交 | `pending` | — | — | — |
+| F11 | 整体 Review + 修复验证 | `done` | 44+17+34 | [Verify](282d7a1e) 12/12 PASS | `66e1ba4` |
+| F12 | 全量单测 + e2e:dashboard；文档收尾提交 | `done` | dashboard 44 / monitor 17 / FE 34；e2e **6/6** | — | pending |
 
 ## 变更日志
 
@@ -41,4 +41,5 @@
 |------|------|
 | 2026-08-12 | F0–F5 完成 |
 | 2026-08-12 | F4 YAML 双模 + F6–F10 看板核心落地（`705858e`） |
-| 2026-08-12 | F11：补齐面板 Tab、AddToDashboardDialog、hidden SQL 写回、仅 finalOutput、export v2、E2E 重写 |
+| 2026-08-12 | F11：补齐面板 Tab、AddToDashboardDialog、hidden SQL 写回、仅 finalOutput、export v2、E2E 重写（`66e1ba4`） |
+| 2026-08-12 | F12：`pnpm e2e:dashboard` 6/6 PASS；架构/手册文档收尾 |

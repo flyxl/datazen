@@ -1,5 +1,7 @@
 import type { ChartConfig } from './chart';
 
+export type { ChartConfig };
+
 export interface DashboardLayout {
   cols: number;
   rowHeight: number;

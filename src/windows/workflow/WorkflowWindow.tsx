@@ -1258,10 +1258,9 @@ function WorkflowSidebarList({
             <div className="flex items-center gap-1 text-xs font-medium truncate">
               <span className="truncate">{w.name}</span>
               {w.scheduled && (
-                <Clock
-                  className="h-3 w-3 shrink-0 text-accent"
-                  title={t('workflows.schedule.enabled')}
-                />
+                <span title={t('workflows.schedule.enabled')}>
+                  <Clock className="h-3 w-3 shrink-0 text-accent" />
+                </span>
               )}
             </div>
             {w.description && (

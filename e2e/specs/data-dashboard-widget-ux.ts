@@ -50,28 +50,33 @@ describe('数据看板组件 UX (UJ-05, UJ-06, UJ-09)', () => {
       timeout: 15000,
       timeoutMsg: '等待 tile 渲染',
     });
+    // Wait until a successful run paints chart (or table if already toggled).
+    await browser.waitUntil(
+      async () => {
+        const chart = await $('[data-testid="dashboard-tile-chart"]');
+        const table = await $('[data-testid="dashboard-tile-table"]');
+        return (await chart.isExisting()) || (await table.isExisting());
+      },
+      { timeout: 20000, timeoutMsg: '等待组件数据渲染' },
+    );
   });
 
   it('UJ-05: 应能切换图表/表格视图', async () => {
-    const toggle = await $('[data-testid="dashboard-view-toggle"]');
-    await toggle.waitForDisplayed({ timeout: 5000 });
-
-    const buttons = await toggle.$$('button');
-    expect(buttons.length).toBe(2);
-
-    await buttons[1].click();
-    await browser.pause(800);
+    const tableBtn = await $('[data-testid="widget-view-table"]');
+    await tableBtn.waitForDisplayed({ timeout: 5000 });
+    await tableBtn.click();
 
     await browser.waitUntil(
-      async () => {
-        const rows = await $$('table tbody tr');
-        return rows.length >= 1;
-      },
+      async () => (await $('[data-testid="dashboard-tile-table"]')).isDisplayed(),
       { timeout: 10000, timeoutMsg: '等待表格视图' },
     );
 
-    await buttons[0].click();
-    await browser.pause(500);
+    const chartBtn = await $('[data-testid="widget-view-chart"]');
+    await chartBtn.click();
+    await browser.waitUntil(
+      async () => (await $('[data-testid="dashboard-tile-chart"]')).isDisplayed(),
+      { timeout: 10000, timeoutMsg: '等待图表视图' },
+    );
   });
 
   it('UJ-06: 应打开组件编辑抽屉', async () => {
