@@ -39,6 +39,8 @@ impl WorkflowContext {
             .insert("current_date".into(), now.format("%Y-%m-%d").to_string());
         self.variables
             .insert("current_year".into(), now.format("%Y").to_string());
+        self.variables
+            .insert("current_time".into(), now.format("%H:%M:%S").to_string());
     }
 
     pub(crate) fn set_step_result(&mut self, step_id: &str, result: serde_json::Value) {
@@ -239,5 +241,39 @@ pub(crate) fn json_value_to_string(val: &serde_json::Value) -> String {
         serde_json::Value::Bool(b) => b.to_string(),
         serde_json::Value::Number(n) => n.to_string(),
         other => serde_json::to_string(other).unwrap_or_default(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn builtin_variables_include_date_and_time() {
+        let mut ctx = WorkflowContext::new(&serde_json::json!({}));
+        ctx.set_builtin_variables();
+        let date = ctx.variables.get("current_date").expect("current_date");
+        let time = ctx.variables.get("current_time").expect("current_time");
+        let month = ctx.variables.get("current_month").expect("current_month");
+        let year = ctx.variables.get("current_year").expect("current_year");
+
+        assert_eq!(date.len(), 10, "YYYY-MM-DD");
+        assert_eq!(time.len(), 8, "HH:MM:SS");
+        assert_eq!(month.len(), 7, "YYYY-MM");
+        assert_eq!(year.len(), 4, "YYYY");
+        assert!(date.chars().nth(4) == Some('-') && date.chars().nth(7) == Some('-'));
+        assert!(time.chars().nth(2) == Some(':') && time.chars().nth(5) == Some(':'));
+    }
+
+    #[test]
+    fn template_resolves_current_date_and_time() {
+        let mut ctx = WorkflowContext::new(&serde_json::json!({}));
+        ctx.set_builtin_variables();
+        let resolved = ctx
+            .resolve_template("d={{current_date}} t={{current_time}}")
+            .unwrap();
+        assert!(resolved.starts_with("d=20"));
+        assert!(resolved.contains(" t="));
+        assert!(!resolved.contains("{{"));
     }
 }

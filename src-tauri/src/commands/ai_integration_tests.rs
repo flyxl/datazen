@@ -1037,3 +1037,52 @@ async fn workflow_history_clear_after_execute() {
         .unwrap();
     assert_eq!(cleared, 1);
 }
+
+#[tokio::test]
+async fn dashboard_hidden_workflow_execute_skips_history() {
+    use crate::workflow::{WorkflowDefinition, WorkflowStep, WorkflowVisibility};
+
+    let (test, mock) = TestAppState::with_wiremock_ai().await;
+    test.state.workflow_registry.load_all().await.unwrap();
+    mock.mount_chat_completion_text("done").await;
+
+    let wf = WorkflowDefinition {
+        id: "hidden-hist".into(),
+        name: "Hidden Hist".into(),
+        description: String::new(),
+        version: None,
+        author: None,
+        variables: vec![],
+        connection: None,
+        steps: vec![WorkflowStep::Ai {
+            id: "a".into(),
+            prompt: "x".into(),
+            timeout_secs: None,
+            on_error: None,
+        }],
+        output: None,
+        timeout_secs: None,
+        error_handling: None,
+        schedule: None,
+        visibility: WorkflowVisibility::DashboardHidden,
+    };
+    test.state
+        .workflow_registry
+        .save_workflow(&wf)
+        .await
+        .unwrap();
+    workflow_execute_impl(
+        &test.state,
+        "hidden-hist".into(),
+        serde_json::json!({}),
+        None,
+    )
+    .await
+    .unwrap();
+
+    let history = test.state.workflow_history.list(Some("hidden-hist")).await;
+    assert!(
+        history.is_empty(),
+        "dashboardHidden workflows must not write workflow_history"
+    );
+}
