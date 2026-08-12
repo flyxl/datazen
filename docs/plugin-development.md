@@ -40,7 +40,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-datazen-driver-api = { git = "https://github.com/flyxl/datazen-driver-api.git" }
+datazen-driver-api = "0.0.8"
 async-trait = "0.1"
 ```
 

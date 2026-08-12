@@ -32,7 +32,7 @@ export const config: WebdriverIO.Config = {
             editorFontSize: 14,
             editorFontFamily: 'monospace',
             confirmOnDelete: true,
-            autoCommit: false,
+            autoCommit: true, // per-statement isolation; false leaves PG aborted after first error
             safeMode: true,
             defaultPageSize: 50,
           },
@@ -49,7 +49,14 @@ export const config: WebdriverIO.Config = {
       const pgPassword = process.env.E2E_PG_PASSWORD || process.env.PG_PASSWORD || '';
       const pgDatabase = process.env.E2E_PG_DB || process.env.PG_DATABASE || 'postgres';
       await browser.executeAsync(
-        (host: string, port: number, user: string, pw: string, db: string, done: (r: unknown) => void) => {
+        (
+          host: string,
+          port: number,
+          user: string,
+          pw: string,
+          db: string,
+          done: (r: unknown) => void,
+        ) => {
           const config = {
             id: 'conn_e2e_pg',
             name: '本地 PostgreSQL',

@@ -180,10 +180,11 @@ At run start:
 | Name | Example | Notes |
 |------|---------|-------|
 | `current_date` | `2026-08-07` | Local date |
+| `current_time` | `14:30:00` | Local time (`HH:MM:SS`) |
 | `current_month` | `2026-08` | Local year-month |
 | `current_year` | `2026` | Local year |
 
-Usage: `WHERE d = '{{current_date}}'`.
+Usage: `WHERE d = '{{current_date}}'`, or `{{current_time}}`.
 
 ---
 

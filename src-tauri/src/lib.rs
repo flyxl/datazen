@@ -21,7 +21,7 @@ mod theme;
 mod tray;
 pub mod workflow;
 
-pub use store::HistoryDb;
+pub use store::{AppDb, HistoryDb};
 
 #[cfg(test)]
 pub(crate) mod testing;
@@ -526,18 +526,19 @@ pub(crate) fn finish_app_state(
     let monitor_connections = Arc::new(monitor::MonitorConnectionRegistry::new(
         connection_manager.clone(),
     ));
-    let monitor_engine = MonitorEngine::new(store.clone(), monitor_connections.clone());
+    let monitor_engine = MonitorEngine::new(store.clone());
 
     let data_dir = store.data_dir().to_path_buf();
     let history_db = store.history_db();
+    let app_db = store.app_db();
 
     // AI / prompts / workflows / history / MCP client: empty shells.
     // Nothing here touches disk or network — window can show immediately.
-    AppState {
+    let state = AppState {
         driver_registry: registry,
         connection_manager: connection_manager.clone(),
         monitor_connections,
-        monitor_engine,
+        monitor_engine: monitor_engine.clone(),
         store,
         schema_cache: schema_cache.clone(),
         sync_adapters,
@@ -547,12 +548,14 @@ pub(crate) fn finish_app_state(
             connection_manager,
         )),
         prompt_resolver: Arc::new(ai::PromptResolver::new(&data_dir, prompts_dir)),
-        workflow_registry: Arc::new(workflow::WorkflowRegistry::new(data_dir.join("workflows"))),
+        workflow_registry: Arc::new(workflow::WorkflowRegistry::new(app_db, data_dir.clone())),
         workflow_history: Arc::new(workflow::WorkflowHistoryManager::new(history_db)),
         mcp_client_manager: Arc::new(mcp::McpClientManager::new()),
         session_transactions: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
         workflow_scheduler: workflow::scheduler::WorkflowScheduler::new(),
-    }
+    };
+    monitor_engine.attach_app_state(Arc::new(state.clone()));
+    state
 }
 
 /// Run as a headless MCP stdio server (invoked with `--mcp`).
@@ -804,6 +807,8 @@ pub fn run() {
             commands::workflow_list,
             commands::workflow_execute,
             commands::workflow_save,
+            commands::workflow_save_yaml,
+            commands::workflow_get_yaml,
             commands::workflow_delete,
             commands::workflow_reload,
             commands::workflow_get_dir,
@@ -844,6 +849,11 @@ pub fn run() {
             commands::run_dashboard_widget,
             commands::export_dashboard_with_dialog,
             commands::import_dashboard_with_dialog,
+            commands::set_dashboard_refresh_paused,
+            commands::find_dashboard_workflow_refs,
+            commands::create_widget_from_sql,
+            commands::create_widget_from_workflow,
+            commands::update_hidden_widget_sql,
             commands::get_monitor_paused,
             commands::set_monitor_paused,
             rebuild_menu,

@@ -32,16 +32,17 @@ Workflow 是可复用的自动化流程：把 **SQL 查询、AI 分析、条件�
 
 ### 2.1 存储位置
 
-- 工作流文件：`{应用数据目录}/workflows/{id}.yaml`  
-- 执行历史：`{应用数据目录}/workflow_history/*.json`（约保留 100 条）  
+- **主存储**：`{应用数据目录}/datazen.sqlite` 表 `workflows`（与看板共用同一库）  
+- **可见性**：`user`（列表可见）或 `dashboardHidden`（看板 SQL 源，不进 Workflow 列表）  
+- 执行历史：`workflow_history`（仅用户可见 Workflow 的手动/调度执行；看板刷新只写 `widget_runs`）  
 
-在 UI 中可通过「工作流目录」相关入口查看具体路径（IPC：`workflow_get_dir`）。
+编辑器提供 **可视化** 与 **YAML** 双模；YAML 仍使用 snake_case 字段。
 
 ### 2.2 加载规则
 
-- 首次列表/获取时懒加载目录中的 `.yaml` / `.yml`  
-- 外部改文件后需 **刷新 / `workflow_reload`** 才会重新扫描  
-- 文件名建议与 `id` 一致；以 YAML 内 `id` 字段为注册键  
+- 列表默认只返回 `visibility = user`  
+- 看板引擎可通过 id 加载 hidden 定义  
+- 外部改库后需刷新列表 / 重新打开编辑器  
 
 ### 2.3 校验要点
 
@@ -180,10 +181,11 @@ variables:
 | 名称 | 格式示例 | 说明 |
 |------|----------|------|
 | `current_date` | `2026-08-07` | 本地日期 |
+| `current_time` | `14:30:00` | 本地时间（时:分:秒） |
 | `current_month` | `2026-08` | 本地年月 |
 | `current_year` | `2026` | 本地年 |
 
-用法：`WHERE d = '{{current_date}}'`。
+用法：`WHERE d = '{{current_date}}'`，或 `{{current_time}}`。
 
 ---
 
@@ -746,7 +748,8 @@ output:
 | Required variable missing | 未传必填变量且无 default |
 | Step timed out | 增大该步或全局 `timeout_secs` |
 | AI 步骤失败 | Provider 未配置或不可用 |
-| 改了磁盘 YAML 不生效 | 未 `workflow_reload` / 未点刷新 |
+| 改了定义不生效 | 未刷新列表 / 未重新打开编辑器 |
+| 看板刷新无历史 | 预期：`dashboardHidden` 与看板刷新不写 `workflow_history` |
 | 跨库连错库 | `connection` 变量选成了错误配置 ID |
 
 ---

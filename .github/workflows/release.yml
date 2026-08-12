@@ -103,7 +103,7 @@ jobs:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
@@ -280,7 +280,9 @@ jobs:
           ls -la artifacts/ || true
 
       - name: Upload artifacts to release
-        uses: softprops/action-gh-release@v2
+        # v3 runs on Node 24 (v2 is Node 20 and breaks under FORCE_JAVASCRIPT_ACTIONS_TO_NODE24
+        # with "self-signed certificate / --use-system-ca" when talking to the GitHub API).
+        uses: softprops/action-gh-release@v3
         with:
           draft: true
           files: artifacts/*
@@ -327,12 +329,12 @@ jobs:
       contents: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
 
       - name: Download release assets
         env:

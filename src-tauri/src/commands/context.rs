@@ -594,10 +594,11 @@ mod tests {
         let connection_manager = Arc::new(ConnectionManager::new(registry.clone(), store.clone()));
         let monitor_connections =
             Arc::new(MonitorConnectionRegistry::new(connection_manager.clone()));
-        let monitor_engine = MonitorEngine::new(store.clone(), monitor_connections.clone());
+        let monitor_engine = MonitorEngine::new(store.clone());
         let schema_cache = Arc::new(SchemaCache::new(registry.clone()));
         let data_dir = store.data_dir().to_path_buf();
         let history_db = store.history_db();
+        let app_db = store.app_db();
 
         let state = AppState {
             driver_registry: registry,
@@ -613,7 +614,7 @@ mod tests {
                 connection_manager,
             )),
             prompt_resolver: Arc::new(PromptResolver::new(&data_dir, None)),
-            workflow_registry: Arc::new(WorkflowRegistry::new(data_dir.join("workflows"))),
+            workflow_registry: Arc::new(WorkflowRegistry::new(app_db, data_dir.clone())),
             workflow_history: Arc::new(WorkflowHistoryManager::new(history_db)),
             mcp_client_manager: Arc::new(McpClientManager::new()),
             session_transactions: Arc::new(tokio::sync::Mutex::new(
@@ -657,7 +658,7 @@ mod tests {
         let connection_manager = Arc::new(ConnectionManager::new(registry.clone(), store.clone()));
         let monitor_connections =
             Arc::new(MonitorConnectionRegistry::new(connection_manager.clone()));
-        let monitor_engine = MonitorEngine::new(store.clone(), monitor_connections.clone());
+        let monitor_engine = MonitorEngine::new(store.clone());
         let schema_cache = Arc::new(SchemaCache::new(registry.clone()));
         let data_dir = store.data_dir().to_path_buf();
         let history_db = store.history_db();
@@ -667,7 +668,7 @@ mod tests {
             connection_manager: connection_manager.clone(),
             monitor_connections,
             monitor_engine,
-            store,
+            store: store.clone(),
             schema_cache: schema_cache.clone(),
             sync_adapters: Arc::new(SyncAdapterRegistry::new()),
             ai_registry: Arc::new(AiProviderRegistry::new()),
@@ -676,7 +677,7 @@ mod tests {
                 connection_manager,
             )),
             prompt_resolver: Arc::new(PromptResolver::new(&data_dir, None)),
-            workflow_registry: Arc::new(WorkflowRegistry::new(data_dir.join("workflows"))),
+            workflow_registry: Arc::new(WorkflowRegistry::new(store.app_db(), data_dir.clone())),
             workflow_history: Arc::new(WorkflowHistoryManager::new(history_db)),
             mcp_client_manager: Arc::new(McpClientManager::new()),
             session_transactions: Arc::new(tokio::sync::Mutex::new(

@@ -2,6 +2,8 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import type { Dashboard, WidgetRun } from '../../types/dashboard';
 import { DEFAULT_CHART_CONFIG } from '../../types/chart';
 
+const listenHandlers: Record<string, (...args: unknown[]) => void> = {};
+
 const mockDashboardCommands = {
   listDashboards: vi.fn(),
   getDashboard: vi.fn(),
@@ -10,13 +12,21 @@ const mockDashboardCommands = {
   listWidgetRuns: vi.fn().mockResolvedValue([]),
   getWidgetRun: vi.fn(),
   runDashboardWidget: vi.fn(),
+  setDashboardRefreshPaused: vi.fn(),
 };
 
 vi.mock('../../commands/dashboard', () => ({
   dashboardCommands: mockDashboardCommands,
 }));
 
-function makeDashboard(id: string, widgetId: string): Dashboard {
+vi.mock('../../lib/crossWindowBus', () => ({
+  listenCrossWindow: vi.fn(async (event: string, handler: (...args: unknown[]) => void) => {
+    listenHandlers[event] = handler;
+    return () => {};
+  }),
+}));
+
+function makeDashboard(id: string, widgetId: string, overrides?: Partial<Dashboard>): Dashboard {
   return {
     id,
     name: `Dashboard ${id}`,
@@ -28,14 +38,15 @@ function makeDashboard(id: string, widgetId: string): Dashboard {
       {
         id: widgetId,
         title: 'Widget',
-        configId: 'conn-1',
-        sql: 'SELECT 1 AS v',
+        workflowId: 'wf-1',
+        viewMode: 'chart',
         chartConfig: { ...DEFAULT_CHART_CONFIG, yAxes: ['v'] },
         layout: { x: 0, y: 0, w: 6, h: 4 },
-        refreshSec: 60,
+        refresh: { mode: 'manual' },
         enabled: true,
       },
     ],
+    ...overrides,
   };
 }
 
@@ -44,6 +55,7 @@ function makeRun(dashboardId: string, widgetId: string, id: string): WidgetRun {
     id,
     dashboardId,
     widgetId,
+    workflowId: 'wf-1',
     startedAt: '2026-01-01T00:00:00Z',
     finishedAt: '2026-01-01T00:00:01Z',
     status: 'ok',
@@ -53,14 +65,259 @@ function makeRun(dashboardId: string, widgetId: string, id: string): WidgetRun {
   };
 }
 
-describe('dashboardStore multi-id isolation', () => {
+describe('dashboardStore', () => {
   let useDashboardStore: typeof import('../dashboardStore').useDashboardStore;
 
   beforeEach(async () => {
     vi.resetModules();
     vi.clearAllMocks();
+    for (const key of Object.keys(listenHandlers)) delete listenHandlers[key];
     const mod = await import('../dashboardStore');
     useDashboardStore = mod.useDashboardStore;
+    useDashboardStore.setState({
+      dashboardsById: {},
+      list: [],
+      listError: null,
+      listLoading: false,
+    });
+  });
+
+  it('fetchDashboards sets list on success', async () => {
+    const boards = [makeDashboard('d1', 'w1')];
+    mockDashboardCommands.listDashboards.mockResolvedValue(boards);
+
+    await useDashboardStore.getState().fetchDashboards();
+
+    const state = useDashboardStore.getState();
+    expect(state.list).toEqual(boards);
+    expect(state.listLoading).toBe(false);
+    expect(state.listError).toBeNull();
+  });
+
+  it('fetchDashboards sets listError on failure', async () => {
+    mockDashboardCommands.listDashboards.mockRejectedValue(new Error('list failed'));
+
+    await useDashboardStore.getState().fetchDashboards();
+
+    const state = useDashboardStore.getState();
+    expect(state.listError).toBe('list failed');
+    expect(state.listLoading).toBe(false);
+  });
+
+  it('mountDashboard increments refCount and releaseDashboard cleans up at zero', () => {
+    const store = useDashboardStore.getState();
+    store.mountDashboard('dash-a');
+    store.mountDashboard('dash-a');
+    expect(useDashboardStore.getState().dashboardsById['dash-a']?.refCount).toBe(2);
+
+    store.releaseDashboard('dash-a');
+    expect(useDashboardStore.getState().dashboardsById['dash-a']?.refCount).toBe(1);
+
+    store.releaseDashboard('dash-a');
+    expect(useDashboardStore.getState().dashboardsById['dash-a']).toBeUndefined();
+  });
+
+  it('loadDashboard loads dashboard and latest ok run', async () => {
+    const dash = makeDashboard('dash-a', 'widget-a');
+    const run = makeRun('dash-a', 'widget-a', 'run-1');
+    mockDashboardCommands.getDashboard.mockResolvedValue(dash);
+    mockDashboardCommands.listWidgetRuns.mockResolvedValue([
+      { id: 'run-err', startedAt: '2026-01-01T00:00:00Z', status: 'error' },
+      { id: 'run-1', startedAt: '2026-01-01T00:00:01Z', status: 'ok' },
+    ]);
+    mockDashboardCommands.getWidgetRun.mockResolvedValue(run);
+
+    await useDashboardStore.getState().loadDashboard('dash-a');
+
+    const entry = useDashboardStore.getState().dashboardsById['dash-a'];
+    expect(entry?.dashboard).toEqual(dash);
+    expect(entry?.runs['widget-a']).toEqual(run);
+    expect(entry?.loading).toBe(false);
+    expect(mockDashboardCommands.getWidgetRun).toHaveBeenCalledWith('dash-a', 'widget-a', 'run-1');
+  });
+
+  it('loadDashboard falls back to first index entry when none are ok', async () => {
+    const dash = makeDashboard('dash-a', 'widget-a');
+    const run = makeRun('dash-a', 'widget-a', 'run-err');
+    run.status = 'error';
+    mockDashboardCommands.getDashboard.mockResolvedValue(dash);
+    mockDashboardCommands.listWidgetRuns.mockResolvedValue([
+      { id: 'run-err', startedAt: '2026-01-01T00:00:00Z', status: 'error' },
+    ]);
+    mockDashboardCommands.getWidgetRun.mockResolvedValue(run);
+
+    await useDashboardStore.getState().loadDashboard('dash-a');
+
+    expect(useDashboardStore.getState().dashboardsById['dash-a']?.runs['widget-a']).toEqual(run);
+  });
+
+  it('loadDashboard sets null run when latest run fetch fails', async () => {
+    const dash = makeDashboard('dash-a', 'widget-a');
+    mockDashboardCommands.getDashboard.mockResolvedValue(dash);
+    mockDashboardCommands.listWidgetRuns.mockRejectedValue(new Error('index fail'));
+
+    await useDashboardStore.getState().loadDashboard('dash-a');
+
+    expect(useDashboardStore.getState().dashboardsById['dash-a']?.runs['widget-a']).toBeNull();
+  });
+
+  it('loadDashboard sets error when getDashboard fails', async () => {
+    mockDashboardCommands.getDashboard.mockRejectedValue(new Error('not found'));
+
+    await useDashboardStore.getState().loadDashboard('missing');
+
+    const entry = useDashboardStore.getState().dashboardsById['missing'];
+    expect(entry?.error).toBe('not found');
+    expect(entry?.loading).toBe(false);
+  });
+
+  it('saveDashboard updates list and existing entry', async () => {
+    const dash = makeDashboard('dash-a', 'widget-a');
+    const saved = { ...dash, name: 'Renamed' };
+    mockDashboardCommands.saveDashboard.mockResolvedValue(saved);
+
+    useDashboardStore.setState({
+      list: [dash],
+      dashboardsById: {
+        'dash-a': {
+          dashboard: dash,
+          runs: {},
+          busyWidgets: {},
+          refCount: 1,
+        },
+      },
+    });
+
+    const result = await useDashboardStore.getState().saveDashboard(saved);
+
+    expect(result).toEqual(saved);
+    expect(useDashboardStore.getState().list[0]?.name).toBe('Renamed');
+    expect(useDashboardStore.getState().dashboardsById['dash-a']?.dashboard?.name).toBe('Renamed');
+  });
+
+  it('saveDashboard appends to list when dashboard is new', async () => {
+    const dash = makeDashboard('dash-new', 'w1');
+    mockDashboardCommands.saveDashboard.mockResolvedValue(dash);
+
+    await useDashboardStore.getState().saveDashboard(dash);
+
+    expect(useDashboardStore.getState().list).toHaveLength(1);
+    expect(useDashboardStore.getState().list[0]?.id).toBe('dash-new');
+  });
+
+  it('deleteDashboard removes from list and dashboardsById', async () => {
+    const dash = makeDashboard('dash-a', 'widget-a');
+    useDashboardStore.setState({
+      list: [dash],
+      dashboardsById: {
+        'dash-a': { dashboard: dash, runs: {}, busyWidgets: {}, refCount: 1 },
+      },
+    });
+    mockDashboardCommands.deleteDashboard.mockResolvedValue(undefined);
+
+    await useDashboardStore.getState().deleteDashboard('dash-a');
+
+    expect(useDashboardStore.getState().list).toHaveLength(0);
+    expect(useDashboardStore.getState().dashboardsById['dash-a']).toBeUndefined();
+  });
+
+  it('refreshWidget error path clears busy and sets error', async () => {
+    useDashboardStore.setState({
+      dashboardsById: {
+        'dash-a': { dashboard: null, runs: {}, busyWidgets: {}, refCount: 1 },
+      },
+    });
+    mockDashboardCommands.runDashboardWidget.mockRejectedValue(new Error('run failed'));
+
+    await expect(useDashboardStore.getState().refreshWidget('dash-a', 'widget-a')).rejects.toThrow(
+      'run failed',
+    );
+
+    const entry = useDashboardStore.getState().dashboardsById['dash-a'];
+    expect(entry?.busyWidgets['widget-a']).toBeUndefined();
+    expect(entry?.error).toBe('run failed');
+  });
+
+  it('refreshAllWidgets refreshes only enabled widgets', async () => {
+    const dash = makeDashboard('dash-a', 'w1', {
+      widgets: [
+        {
+          id: 'w1',
+          title: 'Enabled',
+          workflowId: 'wf-1',
+          viewMode: 'chart',
+          chartConfig: { ...DEFAULT_CHART_CONFIG, yAxes: ['v'] },
+          layout: { x: 0, y: 0, w: 6, h: 4 },
+          refresh: { mode: 'manual' },
+          enabled: true,
+        },
+        {
+          id: 'w2',
+          title: 'Disabled',
+          workflowId: 'wf-2',
+          viewMode: 'chart',
+          chartConfig: { ...DEFAULT_CHART_CONFIG, yAxes: ['v'] },
+          layout: { x: 6, y: 0, w: 6, h: 4 },
+          refresh: { mode: 'manual' },
+          enabled: false,
+        },
+      ],
+    });
+    useDashboardStore.setState({
+      dashboardsById: {
+        'dash-a': { dashboard: dash, runs: {}, busyWidgets: {}, refCount: 1 },
+      },
+    });
+    mockDashboardCommands.runDashboardWidget.mockImplementation(async (_d, widgetId) =>
+      makeRun('dash-a', widgetId, `run-${widgetId}`),
+    );
+
+    await useDashboardStore.getState().refreshAllWidgets('dash-a');
+
+    expect(mockDashboardCommands.runDashboardWidget).toHaveBeenCalledTimes(1);
+    expect(mockDashboardCommands.runDashboardWidget).toHaveBeenCalledWith('dash-a', 'w1');
+  });
+
+  it('setRun patches runs for a widget', () => {
+    const run = makeRun('dash-a', 'widget-a', 'run-1');
+    useDashboardStore.setState({
+      dashboardsById: {
+        'dash-a': { dashboard: null, runs: {}, busyWidgets: {}, refCount: 1 },
+      },
+    });
+
+    useDashboardStore.getState().setRun('dash-a', 'widget-a', run);
+
+    expect(useDashboardStore.getState().dashboardsById['dash-a']?.runs['widget-a']).toEqual(run);
+  });
+
+  it('cross-window run-updated updates run when dashboard is mounted', async () => {
+    const dash = makeDashboard('dash-a', 'widget-a');
+    useDashboardStore.setState({
+      dashboardsById: {
+        'dash-a': { dashboard: dash, runs: {}, busyWidgets: {}, refCount: 1 },
+      },
+    });
+
+    useDashboardStore.getState().mountDashboard('dash-a');
+    const handler = listenHandlers['dashboard:run-updated'];
+    expect(handler).toBeTypeOf('function');
+
+    const run = makeRun('dash-a', 'widget-a', 'run-remote');
+    handler?.({ dashboardId: 'dash-a', widgetId: 'widget-a', run });
+
+    expect(useDashboardStore.getState().dashboardsById['dash-a']?.runs['widget-a']).toEqual(run);
+  });
+
+  it('cross-window run-updated ignores updates when dashboard is not mounted', () => {
+    const run = makeRun('dash-a', 'widget-a', 'run-remote');
+    useDashboardStore.getState().mountDashboard('dash-a');
+    useDashboardStore.getState().releaseDashboard('dash-a');
+
+    const handler = listenHandlers['dashboard:run-updated'];
+    handler?.({ dashboardId: 'dash-a', widgetId: 'widget-a', run });
+
+    expect(useDashboardStore.getState().dashboardsById['dash-a']).toBeUndefined();
   });
 
   it('keeps runs isolated per dashboard id on refreshWidget', async () => {
@@ -82,130 +339,11 @@ describe('dashboardStore multi-id isolation', () => {
     await store.loadDashboard('dash-b');
 
     await store.refreshWidget('dash-a', 'widget-a');
+    await store.refreshWidget('dash-b', 'widget-b');
 
-    const state = useDashboardStore.getState();
-    expect(state.dashboardsById['dash-a']?.runs['widget-a']?.id).toBe('run-dash-a');
-    expect(state.dashboardsById['dash-b']?.runs['widget-a']).toBeUndefined();
-  });
-
-  it('releaseDashboard removes entry only when refCount reaches zero', () => {
-    const store = useDashboardStore.getState();
-    store.mountDashboard('dash-1');
-    store.mountDashboard('dash-1');
-
-    expect(useDashboardStore.getState().dashboardsById['dash-1']?.refCount).toBe(2);
-
-    store.releaseDashboard('dash-1');
-    expect(useDashboardStore.getState().dashboardsById['dash-1']?.refCount).toBe(1);
-
-    store.releaseDashboard('dash-1');
-    expect(useDashboardStore.getState().dashboardsById['dash-1']).toBeUndefined();
-  });
-
-  it('fetchDashboards uses listLoading/list without touching per-dashboard state', async () => {
-    mockDashboardCommands.listDashboards.mockResolvedValue([
-      makeDashboard('dash-list', 'w1'),
-    ]);
-
-    const store = useDashboardStore.getState();
-    store.mountDashboard('dash-open');
-    useDashboardStore.setState({
-      dashboardsById: {
-        'dash-open': {
-          dashboard: makeDashboard('dash-open', 'w-open'),
-          runs: {},
-          busyWidgets: {},
-          refCount: 1,
-        },
-      },
-    });
-
-    await store.fetchDashboards();
-
-    const state = useDashboardStore.getState();
-    expect(state.list).toHaveLength(1);
-    expect(state.listLoading).toBe(false);
-    expect(state.dashboardsById['dash-open']).toBeDefined();
-  });
-
-  it('fetchDashboards sets error on failure', async () => {
-    mockDashboardCommands.listDashboards.mockRejectedValueOnce(new Error('list fail'));
-    await useDashboardStore.getState().fetchDashboards();
-    expect(useDashboardStore.getState().listError).toBe('list fail');
-  });
-
-  it('loadDashboard sets error when getDashboard fails', async () => {
-    mockDashboardCommands.getDashboard.mockRejectedValueOnce(new Error('load fail'));
-    await useDashboardStore.getState().loadDashboard('missing');
-    expect(useDashboardStore.getState().dashboardsById['missing']?.error).toBe('load fail');
-  });
-
-  it('saveDashboard updates list and cached entry', async () => {
-    const dash = makeDashboard('dash-save', 'w-save');
-    mockDashboardCommands.saveDashboard.mockResolvedValueOnce({ ...dash, name: 'Saved' });
-    useDashboardStore.getState().mountDashboard('dash-save');
-    const saved = await useDashboardStore.getState().saveDashboard(dash);
-    expect(saved.name).toBe('Saved');
-    expect(useDashboardStore.getState().list.some((d) => d.id === 'dash-save')).toBe(true);
-  });
-
-  it('deleteDashboard removes from list and cache', async () => {
-    const dash = makeDashboard('dash-del', 'w-del');
-    useDashboardStore.setState({ list: [dash] });
-    useDashboardStore.getState().mountDashboard('dash-del');
-    mockDashboardCommands.deleteDashboard.mockResolvedValueOnce(undefined);
-    await useDashboardStore.getState().deleteDashboard('dash-del');
-    expect(useDashboardStore.getState().list).toHaveLength(0);
-    expect(useDashboardStore.getState().dashboardsById['dash-del']).toBeUndefined();
-  });
-
-  it('refreshWidget throws and sets error on failure', async () => {
-    useDashboardStore.getState().mountDashboard('dash-err');
-    mockDashboardCommands.runDashboardWidget.mockRejectedValueOnce(new Error('run fail'));
-    await expect(
-      useDashboardStore.getState().refreshWidget('dash-err', 'widget-a'),
-    ).rejects.toThrow('run fail');
-    expect(useDashboardStore.getState().dashboardsById['dash-err']?.error).toBe('run fail');
-  });
-
-  it('refreshAllWidgets refreshes enabled widgets only', async () => {
-    const dash = makeDashboard('dash-all', 'w1');
-    dash.widgets.push({
-      ...dash.widgets[0],
-      id: 'w2',
-      enabled: false,
-    });
-    useDashboardStore.setState({
-      dashboardsById: {
-        'dash-all': {
-          dashboard: dash,
-          runs: {},
-          busyWidgets: {},
-          refCount: 1,
-        },
-      },
-    });
-    mockDashboardCommands.runDashboardWidget.mockResolvedValue(
-      makeRun('dash-all', 'w1', 'run-1'),
-    );
-    await useDashboardStore.getState().refreshAllWidgets('dash-all');
-    expect(mockDashboardCommands.runDashboardWidget).toHaveBeenCalledTimes(1);
-  });
-
-  it('setRun updates widget run', () => {
-    useDashboardStore.getState().mountDashboard('dash-run');
-    const run = makeRun('dash-run', 'w1', 'run-x');
-    useDashboardStore.getState().setRun('dash-run', 'w1', run);
-    expect(useDashboardStore.getState().dashboardsById['dash-run']?.runs['w1']).toEqual(run);
-  });
-
-  it('loadDashboard loads latest widget runs', async () => {
-    const dash = makeDashboard('dash-runs', 'w-r');
-    mockDashboardCommands.getDashboard.mockResolvedValueOnce(dash);
-    mockDashboardCommands.listWidgetRuns.mockResolvedValueOnce([{ id: 'run-1', status: 'ok' }]);
-    mockDashboardCommands.getWidgetRun.mockResolvedValueOnce(makeRun('dash-runs', 'w-r', 'run-1'));
-    useDashboardStore.getState().mountDashboard('dash-runs');
-    await useDashboardStore.getState().loadDashboard('dash-runs');
-    expect(useDashboardStore.getState().dashboardsById['dash-runs']?.runs['w-r']?.id).toBe('run-1');
+    const entryA = useDashboardStore.getState().dashboardsById['dash-a'];
+    const entryB = useDashboardStore.getState().dashboardsById['dash-b'];
+    expect(entryA?.runs['widget-a']?.id).toBe('run-dash-a');
+    expect(entryB?.runs['widget-b']?.id).toBe('run-dash-b');
   });
 });
