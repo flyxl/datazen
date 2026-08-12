@@ -20,7 +20,7 @@
 | F2 | SQL 编辑器原生菜单：Cut/Copy/Paste/SelectAll + 收藏 + 完整 i18n | P0 | done | （本提交） | PASS：复测通过，BUG-F2-001 CLOSED；lines 100% |
 | F3 | 移除 SqlConnectionView 整区 Web ContextMenu，消除双菜单 | P0 | done | （本提交） | PASS：单测 2/2；静态断言无 Web ContextMenu |
 | F4 | Schema 树原生菜单（表/视图/库/空白；按 nodeKind 分支） | P1 | done | （本提交） | PASS：单测 7/7，lines 100% |
-| F5 | DataTable 原生菜单（导出/复制单元格/复制行） | P1 | pending | — | — |
+| F5 | DataTable 原生菜单（导出/复制单元格/复制行） | P1 | done | （本提交） | PASS：lines 100% |
 | F6 | 连接窗口 Tab 栏原生菜单（关闭/关闭其他/关闭全部） | P1 | pending | — | — |
 | F7 | 收藏 / 历史侧栏原生菜单 | P2 | pending | — | — |
 | F8 | Redis key 列表原生菜单（驱动 UI） | P2 | pending | — | — |
@@ -61,3 +61,9 @@
 - `SqlConnectionView`：删除 tableCtx portal / mousedown+Esc 关闭；改为 `showNativeContextMenu(buildSchemaTreeContextMenuItems(...))`；复制名称走 `navigator.clipboard.writeText`
 - i18n：补齐 `schemaTree.open` / `schemaTree.openTable` / `schemaTree.copyName` / `schemaTree.copyDatabaseName`（全 locale）
 - 单测：`src/lib/__tests__/schemaTreeContextMenu.test.ts`（只读隐藏导入/新建表等分支）
+
+### F5 — DataTable 原生菜单（草稿）
+- 新增 `src/lib/dataTableContextMenu.ts`：`buildDataTableContextMenuItems` + `serializeDataTableRowsAsTsv`（copy cell / copy selected rows / export；labels 由调用方传入）
+- `DataTable`：删除 ctxMenu portal/backdrop Web 菜单；`onContextMenu` → `preventDefault` + `stopPropagation` + `showNativeContextMenu`
+- 复制单元格：`getContextCellText` optional prop，否则 `window.getSelection()`；复制选中行：TSV 写入 clipboard；导出仍打开 `DataExportDialog`
+- 单测：`src/lib/__tests__/dataTableContextMenu.test.ts`；更新 `DataTable.test.tsx`（mock native menu）
