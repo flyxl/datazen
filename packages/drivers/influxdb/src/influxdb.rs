@@ -1,8 +1,8 @@
 //! InfluxDB driver — v1 query API over HTTP.
 
-use datazen_driver_http_support::*;
-use datazen_driver_api::*;
 use async_trait::async_trait;
+use datazen_driver_api::*;
+use datazen_driver_http_support::*;
 use std::collections::HashMap;
 use std::time::Instant;
 use tokio::sync::RwLock;
@@ -101,8 +101,11 @@ impl DatabaseDriver for InfluxDbDriver {
     }
 
     async fn test_connection(&self, config: &ConnectionConfig) -> Result<ServerInfo, DriverError> {
-        let client =
-            build_http_client(config.connection_timeout, config.username.as_deref(), config.password.as_deref())?;
+        let client = build_http_client(
+            config.connection_timeout,
+            config.username.as_deref(),
+            config.password.as_deref(),
+        )?;
         let base = base_url(config)?;
         Self::query(&client, &base, None, "SHOW DATABASES").await?;
         Ok(ServerInfo {
@@ -112,11 +115,17 @@ impl DatabaseDriver for InfluxDbDriver {
     }
 
     async fn connect(&self, config: &ConnectionConfig) -> Result<ConnectionHandle, DriverError> {
-        let client =
-            build_http_client(config.connection_timeout, config.username.as_deref(), config.password.as_deref())?;
+        let client = build_http_client(
+            config.connection_timeout,
+            config.username.as_deref(),
+            config.password.as_deref(),
+        )?;
         let base = base_url(config)?;
         let pool_id = format!("influx_{}", uuid::Uuid::new_v4());
-        self.clients.write().await.insert(pool_id.clone(), (client, base));
+        self.clients
+            .write()
+            .await
+            .insert(pool_id.clone(), (client, base));
         Ok(ConnectionHandle {
             id: pool_id.clone(),
             pool_id,
@@ -143,7 +152,11 @@ impl DatabaseDriver for InfluxDbDriver {
         {
             if let Some(values) = series.get("values").and_then(|v2| v2.as_array()) {
                 for row in values {
-                    if let Some(name) = row.as_array().and_then(|a| a.first()).and_then(|n| n.as_str()) {
+                    if let Some(name) = row
+                        .as_array()
+                        .and_then(|a| a.first())
+                        .and_then(|n| n.as_str())
+                    {
                         dbs.push(name.to_string());
                     }
                 }
@@ -171,7 +184,11 @@ impl DatabaseDriver for InfluxDbDriver {
         {
             if let Some(values) = series.get("values").and_then(|v2| v2.as_array()) {
                 for row in values {
-                    if let Some(name) = row.as_array().and_then(|a| a.first()).and_then(|n| n.as_str()) {
+                    if let Some(name) = row
+                        .as_array()
+                        .and_then(|a| a.first())
+                        .and_then(|n| n.as_str())
+                    {
                         tables.push(TableInfo {
                             name: name.to_string(),
                             schema: Some(database.to_string()),
@@ -241,7 +258,11 @@ impl DatabaseDriver for InfluxDbDriver {
         })
     }
 
-    async fn query(&self, handle: &ConnectionHandle, sql: &str) -> Result<QueryResult, DriverError> {
+    async fn query(
+        &self,
+        handle: &ConnectionHandle,
+        sql: &str,
+    ) -> Result<QueryResult, DriverError> {
         let map = self.clients.read().await;
         let (client, base) = Self::get(&map, handle)?;
         let start = Instant::now();
@@ -271,6 +292,34 @@ impl DatabaseDriver for InfluxDbDriver {
         })
     }
 
+    async fn query_stream(
+        &self,
+        handle: &ConnectionHandle,
+        sql: &str,
+        limit: Option<u32>,
+        on_event: QueryStreamCallback,
+    ) -> Result<(), DriverError> {
+        let map = self.clients.read().await;
+        let (client, base) = Self::get(&map, handle)?;
+        let start = Instant::now();
+        let (effective, applied) = append_select_limit(sql, limit);
+        let v = Self::query(client, base, None, &effective).await?;
+        let mut result = Self::result_from_json(&v);
+        let ms = start.elapsed().as_millis() as u64;
+        stream_decoded_rows(
+            &on_event,
+            0,
+            sql.to_string(),
+            result.columns,
+            std::mem::take(&mut result.rows),
+            applied,
+            ms,
+            result.rows_affected,
+        );
+        on_event(QueryStreamEvent::Done { total_time_ms: ms });
+        Ok(())
+    }
+
     async fn query_with_params(
         &self,
         handle: &ConnectionHandle,
@@ -295,7 +344,10 @@ impl DatabaseDriver for InfluxDbDriver {
             .await
             .map_err(|e| http_error("InfluxDB read response failed", e))?;
         if !status.is_success() {
-            return Err(DriverError::QueryFailed(format!("InfluxDB execute failed: HTTP {}", status.as_u16())));
+            return Err(DriverError::QueryFailed(format!(
+                "InfluxDB execute failed: HTTP {}",
+                status.as_u16()
+            )));
         }
         Ok(0)
     }
@@ -310,5 +362,49 @@ impl DatabaseDriver for InfluxDbDriver {
 
     async fn cancel_query(&self, _handle: &ConnectionHandle) -> Result<(), DriverError> {
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::{Arc, Mutex};
+
+    #[test]
+    fn result_from_json_then_stream_decoded_rows_honors_limit() {
+        let v = serde_json::json!({
+            "results": [{
+                "series": [{
+                    "columns": ["time", "value"],
+                    "values": [["t1", 1], ["t2", 2], ["t3", 3]]
+                }]
+            }]
+        });
+        let mut result = InfluxDbDriver::result_from_json(&v);
+        assert_eq!(result.rows.len(), 3);
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let events_cb = Arc::clone(&events);
+        let cb: QueryStreamCallback = Arc::new(move |ev| {
+            events_cb.lock().unwrap().push(ev);
+        });
+        stream_decoded_rows(
+            &cb,
+            0,
+            "SELECT * FROM m".into(),
+            result.columns,
+            std::mem::take(&mut result.rows),
+            Some(1),
+            1,
+            None,
+        );
+        let events = events.lock().unwrap();
+        let rows: usize = events
+            .iter()
+            .filter_map(|e| match e {
+                QueryStreamEvent::Rows { rows, .. } => Some(rows.len()),
+                _ => None,
+            })
+            .sum();
+        assert_eq!(rows, 1);
     }
 }

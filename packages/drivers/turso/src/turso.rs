@@ -1,8 +1,8 @@
 //! Turso / libSQL driver — sqld HTTP `/v2/pipeline` interface.
 
-use datazen_driver_http_support::*;
-use datazen_driver_api::*;
 use async_trait::async_trait;
+use datazen_driver_api::*;
+use datazen_driver_http_support::*;
 use std::collections::HashMap;
 use std::time::Instant;
 use tokio::sync::RwLock;
@@ -103,7 +103,12 @@ impl TursoDriver {
     ) -> Result<TableSchema, DriverError> {
         let map = self.clients.read().await;
         let (client, base) = Self::get(&map, handle)?;
-        let v = Self::pipeline(client, base, &format!("PRAGMA table_info('{}')", table.replace('\'', "''"))).await?;
+        let v = Self::pipeline(
+            client,
+            base,
+            &format!("PRAGMA table_info('{}')", table.replace('\'', "''")),
+        )
+        .await?;
         let result = v
             .get("results")
             .and_then(|r| r.as_array())
@@ -181,8 +186,11 @@ impl DatabaseDriver for TursoDriver {
     }
 
     async fn test_connection(&self, config: &ConnectionConfig) -> Result<ServerInfo, DriverError> {
-        let client =
-            build_http_client(config.connection_timeout, config.username.as_deref(), config.password.as_deref())?;
+        let client = build_http_client(
+            config.connection_timeout,
+            config.username.as_deref(),
+            config.password.as_deref(),
+        )?;
         let base = base_url(config)?;
         Self::pipeline(&client, &base, "SELECT 1").await?;
         Ok(ServerInfo {
@@ -192,11 +200,17 @@ impl DatabaseDriver for TursoDriver {
     }
 
     async fn connect(&self, config: &ConnectionConfig) -> Result<ConnectionHandle, DriverError> {
-        let client =
-            build_http_client(config.connection_timeout, config.username.as_deref(), config.password.as_deref())?;
+        let client = build_http_client(
+            config.connection_timeout,
+            config.username.as_deref(),
+            config.password.as_deref(),
+        )?;
         let base = base_url(config)?;
         let pool_id = format!("turso_{}", uuid::Uuid::new_v4());
-        self.clients.write().await.insert(pool_id.clone(), (client, base));
+        self.clients
+            .write()
+            .await
+            .insert(pool_id.clone(), (client, base));
         Ok(ConnectionHandle {
             id: pool_id.clone(),
             pool_id,
@@ -257,7 +271,11 @@ impl DatabaseDriver for TursoDriver {
         self.schema(handle, table).await
     }
 
-    async fn query(&self, handle: &ConnectionHandle, sql: &str) -> Result<QueryResult, DriverError> {
+    async fn query(
+        &self,
+        handle: &ConnectionHandle,
+        sql: &str,
+    ) -> Result<QueryResult, DriverError> {
         let map = self.clients.read().await;
         let (client, base) = Self::get(&map, handle)?;
         let start = Instant::now();
@@ -285,6 +303,34 @@ impl DatabaseDriver for TursoDriver {
             }],
             total_time_ms: result.execution_time_ms,
         })
+    }
+
+    async fn query_stream(
+        &self,
+        handle: &ConnectionHandle,
+        sql: &str,
+        limit: Option<u32>,
+        on_event: QueryStreamCallback,
+    ) -> Result<(), DriverError> {
+        let map = self.clients.read().await;
+        let (client, base) = Self::get(&map, handle)?;
+        let start = Instant::now();
+        let (effective, applied) = append_select_limit(sql, limit);
+        let v = Self::pipeline(client, base, &effective).await?;
+        let mut result = Self::result_from_json(&v);
+        let ms = start.elapsed().as_millis() as u64;
+        stream_decoded_rows(
+            &on_event,
+            0,
+            sql.to_string(),
+            result.columns,
+            std::mem::take(&mut result.rows),
+            applied,
+            ms,
+            result.rows_affected,
+        );
+        on_event(QueryStreamEvent::Done { total_time_ms: ms });
+        Ok(())
     }
 
     async fn query_with_params(
@@ -329,5 +375,50 @@ impl DatabaseDriver for TursoDriver {
 
     async fn cancel_query(&self, _handle: &ConnectionHandle) -> Result<(), DriverError> {
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::{Arc, Mutex};
+
+    #[test]
+    fn result_from_json_then_stream_decoded_rows_honors_limit() {
+        let v = serde_json::json!({
+            "results": [{
+                "response": {
+                    "result": {
+                        "cols": [{"name": "id", "decltype": "INTEGER"}],
+                        "rows": [[1], [2], [3]]
+                    }
+                }
+            }]
+        });
+        let mut result = TursoDriver::result_from_json(&v);
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let events_cb = Arc::clone(&events);
+        let cb: QueryStreamCallback = Arc::new(move |ev| {
+            events_cb.lock().unwrap().push(ev);
+        });
+        stream_decoded_rows(
+            &cb,
+            0,
+            "SELECT 1".into(),
+            result.columns,
+            std::mem::take(&mut result.rows),
+            Some(2),
+            1,
+            None,
+        );
+        let events = events.lock().unwrap();
+        let rows: usize = events
+            .iter()
+            .filter_map(|e| match e {
+                QueryStreamEvent::Rows { rows, .. } => Some(rows.len()),
+                _ => None,
+            })
+            .sum();
+        assert_eq!(rows, 2);
     }
 }

@@ -668,6 +668,7 @@ pub fn run() {
             commands::get_table_data,
             commands::commit_row_updates,
             commands::execute_query,
+            commands::execute_query_stream,
             commands::get_driver_commands,
             commands::get_connection_commands,
             commands::execute_driver_command,

@@ -7,18 +7,15 @@
 pub use async_trait::async_trait;
 pub use inventory;
 
-mod types;
-mod traits;
-mod factory;
-mod reuse;
 pub mod command;
+mod factory;
+mod query_stream;
+mod reuse;
 pub mod sql_dump;
 pub mod sync;
+mod traits;
+mod types;
 
-pub use types::*;
-pub use traits::*;
-pub use factory::*;
-pub use reuse::ReuseDriver;
 pub use command::{
     check_command_access, execute_command_definition, execute_command_definition_for,
     query_command_definition, query_command_definition_for, query_only_command_definitions,
@@ -26,10 +23,18 @@ pub use command::{
     CommandAccessLevel, CommandCategory, CommandResult, DriverCommandDefinition,
     DriverCommandMetadata,
 };
+pub use factory::*;
+pub use query_stream::{
+    append_select_limit, emit_execute_statement, emit_multi_query_as_stream, stream_decoded_rows,
+    QueryRowBatcher, QueryStreamCallback, QueryStreamEvent, QUERY_STREAM_BATCH_SIZE,
+};
+pub use reuse::ReuseDriver;
 pub use sync::{
     BoxedSyncAdapter, IRColumn, IRDefault, IRTable, IRType, SyncAdapterFactory, SyncSourceAdapter,
     SyncTargetAdapter,
 };
+pub use traits::*;
+pub use types::*;
 
 /// Protocol version for the driver API.
 ///
