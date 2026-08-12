@@ -19,16 +19,16 @@
 
 | ID | 功能 | 单测要求 | 状态 | Commit | 测试 Agent 报告 |
 |----|------|----------|------|--------|-----------------|
-| F0 | Host UI 覆盖规则文档 + 既有缺口 Host E2E（筛选/索引/备份等） | FilterEditor 既有单测保持绿 | `done` | （本提交） | [复测](a07d8a2b-b28d-43b1-8f35-072d7740abde)：PASS_WITH_SKIPPED_E2E，覆盖率 88.98% |
-| F1 | `DriverFixture` 类型 + PG/MySQL/SQLite 夹具 + dialect seed helpers | 覆盖率 ≥80% | `doing` | — | — |
-| F2 | Host Contract journeys：HC-DATA / HC-FILTER / HC-QUERY + 矩阵入口 | journey 纯逻辑单测 ≥80% | `todo` | — | — |
+| F0 | Host UI 覆盖规则文档 + 既有缺口 Host E2E（筛选/索引/备份等） | FilterEditor 既有单测保持绿 | `done` | `d062bf2` | [复测](a07d8a2b-b28d-43b1-8f35-072d7740abde)：PASS_WITH_SKIPPED_E2E，覆盖率 88.98% |
+| F1 | `DriverFixture` 类型 + PG/MySQL/SQLite 夹具 + dialect seed helpers | 覆盖率 ≥80% | `done` | （本提交） | [F1](eb97a24a-26b1-4ee5-975b-39b44c328573)：PASS 覆盖率 92.15% |
+| F2 | Host Contract journeys：HC-DATA / HC-FILTER / HC-QUERY + 矩阵入口 | journey 纯逻辑单测 ≥80% | `doing` | — | — |
 | F3 | 其余契约：HC-CONN / EDIT / STRUCT / INDEX / EXPORT / OBJ / EXPLAIN + 能力门控 | 门控与 skip 逻辑单测 ≥80% | `todo` | — | — |
 | F4 | `pnpm e2e:contract:*` 脚本、CI 分流说明、旧 `mysql.ts` 与契约去重 | 脚本/清单单测或静态校验 | `todo` | — | — |
 | F5 | 更新 AGENTS.md / e2e-coverage / architecture；merge → main；push | — | `todo` | — | — |
 
 ## 当前焦点
 
-- **正在进行**：F0 收尾（独立测试 Agent）
+- **正在进行**：F2 journeys + matrix
 
 ## Bug 记录
 
@@ -44,3 +44,4 @@
 | 日期 | 事件 |
 |------|------|
 | 2026-08-13 | 创建本进度文件；确认 F0–F5 范围 |
+| 2026-08-13 | F0 done (d062bf2)；F1 PASS |
