@@ -1,9 +1,15 @@
 use serde::{Deserialize, Serialize};
 
 pub const MIN_REFRESH_SEC: u32 = 30;
+pub const REFRESH_WARN_BELOW_SEC: u32 = 60;
 
 pub fn clamp_refresh_sec(n: u32) -> u32 {
     n.max(MIN_REFRESH_SEC)
+}
+
+/// Non-blocking UI warning when interval refresh is denser than this threshold.
+pub fn should_warn_refresh_sec(refresh_sec: u32) -> bool {
+    refresh_sec < REFRESH_WARN_BELOW_SEC
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -53,6 +59,23 @@ pub struct ChartConfig {
     pub color_scheme: String,
 }
 
+impl Default for ChartConfig {
+    fn default() -> Self {
+        Self {
+            chart_type: ChartType::Line,
+            x_axis: None,
+            y_axes: vec![],
+            group_by: None,
+            aggregation: AggregationType::None,
+            sort_by: ChartSortBy::None,
+            show_legend: true,
+            show_grid: true,
+            show_values: false,
+            color_scheme: "default".into(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct DashboardLayout {
@@ -67,6 +90,59 @@ pub struct WidgetLayout {
     pub y: u32,
     pub w: u32,
     pub h: u32,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum ViewMode {
+    Chart,
+    Table,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum RefreshMode {
+    Manual,
+    OnOpen,
+    Interval,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct RefreshPolicy {
+    pub mode: RefreshMode,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub refresh_sec: Option<u32>,
+}
+
+impl Default for RefreshPolicy {
+    fn default() -> Self {
+        Self {
+            mode: RefreshMode::Manual,
+            refresh_sec: None,
+        }
+    }
+}
+
+impl RefreshPolicy {
+    pub fn normalize(&mut self) {
+        if self.mode == RefreshMode::Interval {
+            self.refresh_sec = Some(clamp_refresh_sec(
+                self.refresh_sec.unwrap_or(MIN_REFRESH_SEC),
+            ));
+        } else {
+            self.refresh_sec = None;
+        }
+    }
+
+    pub fn interval_secs(&self) -> Option<u32> {
+        match self.mode {
+            RefreshMode::Interval => Some(clamp_refresh_sec(
+                self.refresh_sec.unwrap_or(MIN_REFRESH_SEC),
+            )),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -139,11 +215,12 @@ fn default_cooldown_sec() -> u32 {
 pub struct DashboardWidget {
     pub id: String,
     pub title: String,
-    pub config_id: String,
-    pub sql: String,
-    pub chart_config: ChartConfig,
+    pub workflow_id: String,
+    pub view_mode: ViewMode,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chart_config: Option<ChartConfig>,
     pub layout: WidgetLayout,
-    pub refresh_sec: u32,
+    pub refresh: RefreshPolicy,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub alert: Option<AlertRule>,
     pub enabled: bool,
@@ -159,6 +236,8 @@ pub struct Dashboard {
     pub layout: DashboardLayout,
     pub widgets: Vec<DashboardWidget>,
     pub enabled: bool,
+    #[serde(default)]
+    pub refresh_paused: bool,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -175,6 +254,7 @@ pub struct WidgetRun {
     pub id: String,
     pub dashboard_id: String,
     pub widget_id: String,
+    pub workflow_id: String,
     pub started_at: String,
     pub finished_at: String,
     pub status: WidgetRunStatus,
@@ -187,6 +267,16 @@ pub struct WidgetRun {
     pub alert_fired: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub alert_value: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct DashboardWorkflowRef {
+    pub workflow_id: String,
+    pub dashboard_id: String,
+    pub widget_id: String,
+    pub dashboard_name: String,
+    pub widget_title: String,
 }
 
 /// SMTP settings reserved for phase 2.
@@ -248,6 +338,34 @@ mod tests {
         assert_eq!(clamp_refresh_sec(5), 30);
         assert_eq!(clamp_refresh_sec(30), 30);
         assert_eq!(clamp_refresh_sec(120), 120);
+    }
+
+    #[test]
+    fn should_warn_refresh_sec_below_threshold() {
+        assert!(should_warn_refresh_sec(30));
+        assert!(should_warn_refresh_sec(59));
+        assert!(!should_warn_refresh_sec(60));
+        assert!(!should_warn_refresh_sec(120));
+    }
+
+    #[test]
+    fn refresh_policy_normalizes_interval() {
+        let mut policy = RefreshPolicy {
+            mode: RefreshMode::Interval,
+            refresh_sec: Some(5),
+        };
+        policy.normalize();
+        assert_eq!(policy.refresh_sec, Some(30));
+    }
+
+    #[test]
+    fn refresh_policy_clears_sec_for_manual() {
+        let mut policy = RefreshPolicy {
+            mode: RefreshMode::Manual,
+            refresh_sec: Some(60),
+        };
+        policy.normalize();
+        assert_eq!(policy.refresh_sec, None);
     }
 
     #[test]
