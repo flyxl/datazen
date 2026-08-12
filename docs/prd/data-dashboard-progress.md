@@ -43,3 +43,4 @@
 | 2026-08-12 | F4 YAML 双模 + F6–F10 看板核心落地（`705858e`） |
 | 2026-08-12 | F11：补齐面板 Tab、AddToDashboardDialog、hidden SQL 写回、仅 finalOutput、export v2、E2E 重写（`66e1ba4`） |
 | 2026-08-12 | F12：`pnpm e2e:dashboard` 6/6 PASS；架构/手册文档收尾 |
+| 2026-08-12 | 补 Vitest 覆盖率：`windows/dashboard` lines **94.6%**，`dashboardStore` **~98%**，`lib/dashboard` **87.5%** |
