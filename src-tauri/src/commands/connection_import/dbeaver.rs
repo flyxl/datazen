@@ -412,6 +412,7 @@ fn build_from_entry(
             last_connected_at: None,
             server_version: None,
             options: None,
+            read_only: false,
         },
         folder,
     ))
@@ -627,6 +628,7 @@ pub fn parse_xml(xml: &str) -> Result<ParsedImport, CommandError> {
                 last_connected_at: None,
                 server_version: None,
                 options: None,
+                read_only: false,
             });
             continue;
         };
@@ -702,6 +704,7 @@ pub fn parse_xml(xml: &str) -> Result<ParsedImport, CommandError> {
             last_connected_at: None,
             server_version: None,
             options: None,
+            read_only: false,
         });
     }
 

@@ -64,7 +64,7 @@ describe('queryStore executeSelection', () => {
     useQueryStore.getState().updateSql(tabId, 'SELECT 1; SELECT 2; SELECT 3');
     await useQueryStore.getState().executeSelection(tabId, 'SELECT 2');
 
-    expect(mockQueryCommands.executeQuery).toHaveBeenCalledWith('conn-1', 'SELECT 2');
+    expect(mockQueryCommands.executeQuery).toHaveBeenCalledWith('conn-1', 'SELECT 2', undefined);
   });
 
   it('executeSelection does nothing when connectionId is null', async () => {

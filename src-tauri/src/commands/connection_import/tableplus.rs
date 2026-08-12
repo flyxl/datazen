@@ -198,6 +198,7 @@ pub fn parse(bytes: &[u8], password: &str) -> Result<ParsedImport, CommandError>
                         .filter(|s| !s.is_empty()),
                     private_key_path: key_path,
                     passphrase: None,
+                    jump: None,
                 })
             }
         } else {
@@ -241,6 +242,7 @@ pub fn parse(bytes: &[u8], password: &str) -> Result<ParsedImport, CommandError>
             last_connected_at: None,
             server_version: None,
             options: None,
+            read_only: false,
         });
     }
 

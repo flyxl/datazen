@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, BarChart3, Bookmark, Clock, Database, FileSearch, Loader2, Play, Sparkles, Square, Stethoscope, TableProperties, Trash2 } from 'lucide-react';
+import { AlertTriangle, BarChart3, Bookmark, Check, Clock, Database, FileSearch, Loader2, Play, Sparkles, Square, Stethoscope, TableProperties, Trash2, Undo2, Wand2 } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { Button } from '../../components/ui/Button';
@@ -20,6 +20,9 @@ import { useI18n } from '../../hooks/useI18n';
 import { useResizable } from '../../hooks/useResizable';
 import { cn } from '../../lib/cn';
 import { queryCommands } from '../../commands/query';
+import { formatSql } from '../../lib/sqlFormat';
+import { parseSqlParams, paramsToPayload } from '../../lib/sqlBindParams';
+import { BindParamPanel } from '../../components/query/BindParamPanel';
 import { DB_REGISTRY } from '../../lib/databaseTypes';
 import type { ExplainResult, StatementResult } from '../../types';
 
@@ -64,6 +67,11 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
   const [explainLoading, setExplainLoading] = useState(false);
   const [explainError, setExplainError] = useState<string | null>(null);
   const [showExplain, setShowExplain] = useState(false);
+  const [paramValues, setParamValues] = useState<Record<string, string>>({});
+  const [inTransaction, setInTransaction] = useState(false);
+  const [txBusy, setTxBusy] = useState(false);
+  const safeMode = useSettingsStore((s) => s.settings.safeMode);
+  const autoCommit = useSettingsStore((s) => s.settings.autoCommit);
   const resultViewMode = tab?.resultViewMode ?? 'table';
   const setResultViewModeStore = useQueryStore((s) => s.setResultViewMode);
   const setResultViewMode = useCallback(
@@ -125,19 +133,103 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
     }
   }, [tables, columnMap, loadColumnMap]);
 
+  const sqlParams = useMemo(() => parseSqlParams(tab?.sql ?? ''), [tab?.sql]);
+  const boundPayload = useMemo(
+    () => (sqlParams.length > 0 ? paramsToPayload(sqlParams, paramValues) : undefined),
+    [sqlParams, paramValues],
+  );
+
+  const refreshTxStatus = useCallback(async () => {
+    try {
+      setInTransaction(await queryCommands.sessionTransactionStatus(connectionId));
+    } catch {
+      setInTransaction(false);
+    }
+  }, [connectionId]);
+
+  useEffect(() => {
+    void refreshTxStatus();
+  }, [refreshTxStatus]);
+
+  const handleBeginTx = useCallback(async () => {
+    setTxBusy(true);
+    try {
+      await queryCommands.beginSessionTransaction(connectionId);
+      await refreshTxStatus();
+    } catch (e) {
+      console.warn(e);
+    } finally {
+      setTxBusy(false);
+    }
+  }, [connectionId, refreshTxStatus]);
+
+  const handleCommitTx = useCallback(async () => {
+    setTxBusy(true);
+    try {
+      await queryCommands.commitSessionTransaction(connectionId);
+      await refreshTxStatus();
+    } catch (e) {
+      console.warn(e);
+    } finally {
+      setTxBusy(false);
+    }
+  }, [connectionId, refreshTxStatus]);
+
+  const handleRollbackTx = useCallback(async () => {
+    setTxBusy(true);
+    try {
+      await queryCommands.rollbackSessionTransaction(connectionId);
+      await refreshTxStatus();
+    } catch (e) {
+      console.warn(e);
+    } finally {
+      setTxBusy(false);
+    }
+  }, [connectionId, refreshTxStatus]);
+
   const handleExecute = useCallback(() => {
     if (!tab) return;
-    const sel = editorRef.current?.getSelection()?.trim();
-    if (sel) {
-      void executeSelection(tab.id, sel);
-    } else {
-      void executeQuery(tab.id);
-    }
-  }, [tab, executeQuery, executeSelection]);
+    void (async () => {
+      if (!autoCommit && !inTransaction) {
+        try {
+          await queryCommands.beginSessionTransaction(connectionId);
+          setInTransaction(true);
+        } catch {
+          /* driver may not support transactions; continue */
+        }
+      }
+      const sel = editorRef.current?.getSelection()?.trim();
+      if (sel) {
+        await executeSelection(tab.id, sel, boundPayload);
+      } else {
+        await executeQuery(tab.id, boundPayload);
+      }
+    })();
+  }, [tab, executeQuery, executeSelection, boundPayload, autoCommit, inTransaction, connectionId]);
 
   const handleExecuteSelection = useCallback((sql: string) => {
-    if (tab) void executeSelection(tab.id, sql);
-  }, [tab, executeSelection]);
+    if (!tab) return;
+    void (async () => {
+      if (!autoCommit && !inTransaction) {
+        try {
+          await queryCommands.beginSessionTransaction(connectionId);
+          setInTransaction(true);
+        } catch {
+          /* continue */
+        }
+      }
+      await executeSelection(tab.id, sql, boundPayload);
+    })();
+  }, [tab, executeSelection, boundPayload, autoCommit, inTransaction, connectionId]);
+
+  const handleFormat = useCallback(() => {
+    if (!tab?.sql.trim()) return;
+    try {
+      updateSql(tab.id, formatSql(tab.sql, databaseType));
+    } catch {
+      /* keep original SQL if formatter rejects dialect-specific syntax */
+    }
+  }, [tab, databaseType, updateSql]);
 
   const handleCancel = useCallback(() => {
     if (tab) void cancelQuery(tab.id);
@@ -227,6 +319,53 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
             {t('explain.title')}
           </Button>
         )}
+        <Button
+          variant="ghost"
+          className="h-7 gap-1 px-2 text-xs"
+          onClick={handleFormat}
+          disabled={tab.running || !tab.sql.trim()}
+        >
+          <Wand2 className="h-3.5 w-3.5" />
+          {t('query.format')}
+        </Button>
+        <div className="mx-1 h-4 w-px bg-edge" />
+        <Button
+          variant="ghost"
+          className="h-7 gap-1 px-2 text-xs"
+          onClick={() => void handleBeginTx()}
+          disabled={tab.running || txBusy || inTransaction}
+          title={t('query.beginTx')}
+        >
+          {t('query.beginTx')}
+        </Button>
+        <Button
+          variant="ghost"
+          className="h-7 gap-1 px-2 text-xs"
+          onClick={() => void handleCommitTx()}
+          disabled={tab.running || txBusy || !inTransaction}
+        >
+          <Check className="h-3.5 w-3.5" />
+          {t('query.commitTx')}
+        </Button>
+        <Button
+          variant="ghost"
+          className="h-7 gap-1 px-2 text-xs"
+          onClick={() => void handleRollbackTx()}
+          disabled={tab.running || txBusy || !inTransaction}
+        >
+          <Undo2 className="h-3.5 w-3.5" />
+          {t('query.rollbackTx')}
+        </Button>
+        {inTransaction && (
+          <span className="rounded bg-accent/15 px-1.5 py-0.5 text-[10px] font-medium text-accent">
+            {t('query.inTransaction')}
+          </span>
+        )}
+        {safeMode && (
+          <span className="rounded bg-warning/15 px-1.5 py-0.5 text-[10px] font-medium text-warning">
+            {t('settings.safeMode')}
+          </span>
+        )}
         <span className="text-[11px] text-fg-muted">⌘+Enter {t('query.execute')}</span>
         <div className="flex-1" />
         {tab.executionTimeMs != null && (
@@ -257,6 +396,12 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
           {t('nl2sql.title')}
         </Button>
       </div>
+
+      <BindParamPanel
+        params={sqlParams}
+        values={paramValues}
+        onChange={(name, value) => setParamValues((prev) => ({ ...prev, [name]: value }))}
+      />
 
       {/* Editor + results (vertical split) */}
       <div className="flex min-h-0 flex-1">

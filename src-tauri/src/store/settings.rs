@@ -50,6 +50,9 @@ pub struct AppSettings {
     pub editor_font_family: String,
     pub confirm_on_delete: bool,
     pub auto_commit: bool,
+    /// Require WHERE on UPDATE/DELETE (TablePlus-style Safe Mode). Default on.
+    #[serde(default = "default_true")]
+    pub safe_mode: bool,
     pub default_page_size: u32,
     /// Max connections per DB session pool (Postgres/MySQL). Applies on next connect.
     #[serde(default = "default_connection_pool_size")]
@@ -127,6 +130,7 @@ impl Default for AppSettings {
             editor_font_family: "JetBrains Mono".to_string(),
             confirm_on_delete: true,
             auto_commit: true,
+            safe_mode: true,
             default_page_size: 50,
             connection_pool_size: default_connection_pool_size(),
             log_level: default_log_level(),

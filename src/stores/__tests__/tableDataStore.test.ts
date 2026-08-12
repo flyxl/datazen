@@ -217,4 +217,16 @@ describe('tableDataStore', () => {
       expect.objectContaining({ pageSize: expect.any(Number) }),
     );
   });
+
+  it('setFilterLogic reloads with or', async () => {
+    await loadTable();
+    mockDatabaseCommands.getTableData.mockClear();
+    useTableDataStore.getState().setFilterLogic('or');
+    expect(useTableDataStore.getState().filterLogic).toBe('or');
+    await vi.waitFor(() => {
+      expect(mockDatabaseCommands.getTableData).toHaveBeenCalledWith(
+        expect.objectContaining({ filterLogic: 'or' }),
+      );
+    });
+  });
 });

@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp } from 'lucide-react';
+import { ArrowDown, ArrowUp, Filter } from 'lucide-react';
 import type { SortCondition } from '../../types';
 import { cn } from '../../lib/cn';
 
@@ -15,9 +15,10 @@ export interface TableHeaderProps {
   columnWidths?: number[];
   onResizeStart?: (colIndex: number, startX: number) => void;
   sortable?: boolean;
+  onFilterColumn?: (column: string) => void;
 }
 
-export function TableHeader({ columns, sorts, onSort, columnWidths, onResizeStart, sortable = true }: TableHeaderProps) {
+export function TableHeader({ columns, sorts, onSort, columnWidths, onResizeStart, sortable = true, onFilterColumn }: TableHeaderProps) {
   const active = sorts[0];
 
   return (
@@ -53,6 +54,19 @@ export function TableHeader({ columns, sorts, onSort, columnWidths, onResizeStar
                 </div>
               ) : null}
             </div>
+            {onFilterColumn && (
+              <button
+                type="button"
+                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-fg-muted hover:bg-surface hover:text-accent"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onFilterColumn(col.name);
+                }}
+                aria-label="Filter"
+              >
+                <Filter className="h-3.5 w-3.5" />
+              </button>
+            )}
             {sortable && sorted !== 'none' && (
               <button
                 type="button"

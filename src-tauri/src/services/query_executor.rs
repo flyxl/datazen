@@ -77,6 +77,7 @@ impl QueryExecutor {
         filters: Option<Vec<FilterCondition>>,
         order_by: Option<OrderBy>,
         skip_count: bool,
+        filter_logic: Option<&str>,
     ) -> Result<TableDataResult, DriverError> {
         let cached = self
             .schema_cache
@@ -96,6 +97,7 @@ impl QueryExecutor {
             &qi,
             &format_lit,
             driver.supports_offset(),
+            filter_logic,
         );
 
         if skip_count {
@@ -111,7 +113,14 @@ impl QueryExecutor {
         }
 
         let count_sql =
-            Self::build_count_sql(&cached.table_name, &cached.columns, &filters, &qi, &format_lit);
+            Self::build_count_sql(
+                &cached.table_name,
+                &cached.columns,
+                &filters,
+                &qi,
+                &format_lit,
+                filter_logic,
+            );
         tracing::info!(%table, %count_sql, "query_executor: count query");
 
         let (count_res, data_res) = tokio::try_join!(
@@ -144,6 +153,7 @@ impl QueryExecutor {
         filters: &Option<Vec<FilterCondition>>,
         qi: &dyn Fn(&str) -> String,
         format_lit: &dyn Fn(&Value) -> String,
+        filter_logic: Option<&str>,
     ) -> String {
         let _ = columns;
         let mut sql = format!("SELECT COUNT(*) FROM {}", qi(table_name));
@@ -156,7 +166,7 @@ impl QueryExecutor {
                 .collect();
             if !parts.is_empty() {
                 sql.push_str(" WHERE ");
-                sql.push_str(&parts.join(" AND "));
+                sql.push_str(&parts.join(filter_join(filter_logic)));
             }
         }
 
@@ -173,6 +183,7 @@ impl QueryExecutor {
         qi: &dyn Fn(&str) -> String,
         format_lit: &dyn Fn(&Value) -> String,
         supports_offset: bool,
+        filter_logic: Option<&str>,
     ) -> String {
         let mut sql = String::new();
         sql.push_str("SELECT ");
@@ -198,7 +209,7 @@ impl QueryExecutor {
             let parts: Vec<String> = parts.into_iter().filter(|s| !s.is_empty()).collect();
             if !parts.is_empty() {
                 sql.push_str(" WHERE ");
-                sql.push_str(&parts.join(" AND "));
+                sql.push_str(&parts.join(filter_join(filter_logic)));
             }
         }
 
@@ -270,6 +281,13 @@ impl QueryExecutor {
     }
 }
 
+fn filter_join(logic: Option<&str>) -> &'static str {
+    match logic {
+        Some(s) if s.eq_ignore_ascii_case("or") => " OR ",
+        _ => " AND ",
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -326,6 +344,7 @@ mod tests {
             &simple_qi,
             &simple_lit,
             true,
+            None,
         );
         assert!(
             sql.contains("ORDER BY \"id\" ASC"),
@@ -350,6 +369,7 @@ mod tests {
             &simple_qi,
             &simple_lit,
             true,
+            None,
         );
         assert!(
             sql.contains("ORDER BY \"order_id\" ASC, \"product_id\" ASC"),
@@ -374,6 +394,7 @@ mod tests {
             &simple_qi,
             &simple_lit,
             true,
+            None,
         );
         assert!(
             sql.contains("ORDER BY \"name\" DESC"),
@@ -398,6 +419,7 @@ mod tests {
             &simple_qi,
             &simple_lit,
             true,
+            None,
         );
         assert!(
             sql.contains("ORDER BY \"col_a\" ASC"),
@@ -423,6 +445,7 @@ mod tests {
             &simple_qi,
             &simple_lit,
             true,
+            None,
         );
         assert!(
             sql.contains("WHERE \"flag\" = TRUE"),
@@ -438,15 +461,91 @@ mod tests {
             operator: FilterOperator::Eq,
             value: Value::String("active".into()),
         }];
-        let sql = QueryExecutor::build_count_sql("users", &columns, &Some(filters), &simple_qi, &simple_lit);
+        let sql = QueryExecutor::build_count_sql(
+            "users",
+            &columns,
+            &Some(filters),
+            &simple_qi,
+            &simple_lit,
+            None,
+        );
         assert!(sql.contains("WHERE \"status\" = 'active'"));
+    }
+
+    #[test]
+    fn build_select_sql_joins_filters_with_or() {
+        let columns = vec![make_column("status", false), make_column("role", false)];
+        let filters = vec![
+            FilterCondition {
+                column: "status".into(),
+                operator: FilterOperator::Eq,
+                value: Value::String("active".into()),
+            },
+            FilterCondition {
+                column: "role".into(),
+                operator: FilterOperator::Eq,
+                value: Value::String("admin".into()),
+            },
+        ];
+        let sql = QueryExecutor::build_select_sql(
+            "users",
+            &columns,
+            0,
+            10,
+            Some(filters),
+            None,
+            &simple_qi,
+            &simple_lit,
+            true,
+            Some("or"),
+        );
+        assert!(
+            sql.contains("WHERE \"status\" = 'active' OR \"role\" = 'admin'"),
+            "got: {sql}"
+        );
+    }
+
+    #[test]
+    fn build_count_sql_joins_filters_with_or() {
+        let columns = vec![make_column("status", false), make_column("role", false)];
+        let filters = vec![
+            FilterCondition {
+                column: "status".into(),
+                operator: FilterOperator::Eq,
+                value: Value::String("active".into()),
+            },
+            FilterCondition {
+                column: "role".into(),
+                operator: FilterOperator::Eq,
+                value: Value::String("admin".into()),
+            },
+        ];
+        let sql = QueryExecutor::build_count_sql(
+            "users",
+            &columns,
+            &Some(filters),
+            &simple_qi,
+            &simple_lit,
+            Some("OR"),
+        );
+        assert!(
+            sql.contains("WHERE \"status\" = 'active' OR \"role\" = 'admin'"),
+            "got: {sql}"
+        );
+    }
+
+    #[test]
+    fn filter_join_defaults_to_and() {
+        assert_eq!(filter_join(None), " AND ");
+        assert_eq!(filter_join(Some("and")), " AND ");
+        assert_eq!(filter_join(Some("or")), " OR ");
     }
 
     #[test]
     fn build_select_sql_without_offset_when_unsupported() {
         let columns = vec![make_column("id", true)];
         let sql = QueryExecutor::build_select_sql(
-            "users", &columns, 2, 25, None, None, &simple_qi, &simple_lit, false,
+            "users", &columns, 2, 25, None, None, &simple_qi, &simple_lit, false, None,
         );
         assert!(sql.contains("LIMIT 25"));
         assert!(!sql.contains("OFFSET"));
@@ -515,6 +614,7 @@ mod tests {
                 None,
                 None,
                 false,
+                None,
             )
             .await
             .unwrap();
