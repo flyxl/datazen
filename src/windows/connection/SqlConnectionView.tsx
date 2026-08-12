@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type MouseEvent } from 'react';
 import {
   BookOpen,
   Code2,
@@ -28,6 +28,7 @@ import { canOpenStructureEditor } from '../../lib/structureEditor/canOpenStructu
 import { resolveCreateTableSchema } from '../../lib/structureEditor/resolveCreateTableSchema';
 import { invalidateSchemaCache } from '../../lib/schemaCache';
 import { showNativeContextMenu } from '../../lib/nativeContextMenu';
+import { buildConnectionTabContextMenuItems } from '../../lib/connectionTabContextMenu';
 import { buildSchemaTreeContextMenuItems } from '../../lib/schemaTreeContextMenu';
 import type { ConnectionViewProps } from '../../lib/connectionViews/types';
 import { SchemaTree, type SchemaTreeNodeContextMenuPayload } from './schema-tree/SchemaTree';
@@ -373,6 +374,57 @@ export function SqlConnectionView({
     [closeQueryTab],
   );
 
+  const handleCloseOtherPanels = useCallback(
+    (keepPanelId: string) => {
+      setPanels((prev) => {
+        for (const panel of prev) {
+          if (panel.id === keepPanelId) continue;
+          if (panel.type === 'query') {
+            closeQueryTab(panel.queryTabId);
+          }
+        }
+        return prev.filter((p) => p.id === keepPanelId);
+      });
+      setActivePanelId(keepPanelId);
+    },
+    [closeQueryTab],
+  );
+
+  const handleCloseAllPanels = useCallback(() => {
+    setPanels((prev) => {
+      for (const panel of prev) {
+        if (panel.type === 'query') {
+          closeQueryTab(panel.queryTabId);
+        }
+      }
+      return [];
+    });
+    setActivePanelId(null);
+  }, [closeQueryTab]);
+
+  const handlePanelTabContextMenu = useCallback(
+    (panelId: string, e: MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      void showNativeContextMenu(
+        buildConnectionTabContextMenuItems({
+          labels: {
+            close: t('connWin.closeTab'),
+            closeOthers: t('connWin.closeOtherTabs'),
+            closeAll: t('connWin.closeAllTabs'),
+          },
+          handlers: {
+            onClose: () => handleClosePanel(panelId),
+            onCloseOthers: () => handleCloseOtherPanels(panelId),
+            onCloseAll: handleCloseAllPanels,
+          },
+          onlyOneTab: panels.length <= 1,
+        }),
+      );
+    },
+    [t, handleClosePanel, handleCloseOtherPanels, handleCloseAllPanels, panels.length],
+  );
+
   const handleSetSubTab = useCallback((panelId: string, subTab: SubTabId) => {
     setPanels((prev) =>
       prev.map((p) =>
@@ -685,6 +737,7 @@ export function SqlConnectionView({
                           ? 'bg-surface text-fg'
                           : 'text-fg-secondary hover:bg-surface-raised hover:text-fg',
                       )}
+                      onContextMenu={(e) => handlePanelTabContextMenu(panel.id, e)}
                     >
                       <button
                         type="button"
