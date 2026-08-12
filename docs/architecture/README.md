@@ -178,7 +178,7 @@ Connection 变化后重新 discovery；没有 Step override 时使用 Workflow �
 | 文档 | 内容 |
 |------|------|
 | [状态管理](frontend/state.md) | Zustand stores、事件处理、跨窗口通信 |
-| [组件与布局](frontend/components.md) | DataTable、ER 图、PathInput、主题系统 |
+| [组件与布局](frontend/components.md) | DataTable、原生 Context Menu、ER 图、PathInput、主题系统 |
 | [AI 功能](frontend/ai.md) | AI 组件、@ 上下文引用、SQL 编辑器方言 |
 | [扩展性](frontend/extensibility.md) | DB 类型扩展、DatabaseTypeMeta、插件系统、plugin-sdk |
 
