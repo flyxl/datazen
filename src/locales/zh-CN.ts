@@ -1179,6 +1179,17 @@ const zhCN = {
   'docs.openDashboardHelp': '数据看板说明',
   'dashboard.emptyBoards': '还没有面板，创建第一个开始',
   'dashboard.createFirstBoard': '创建第一个面板',
+  'dashboard.newPanel': '新面板',
+  'dashboard.deletePanel': '删除面板',
+  'dashboard.deletePanelConfirm': '删除此看板面板及其所有组件？',
+  'dashboard.deleteWidget': '删除组件',
+  'dashboard.deleteWidgetConfirm': '从面板中移除此组件？',
+  'dashboard.selectPanel': '选择看板面板',
+  'dashboard.createNewPanel': '创建新面板',
+  'dashboard.workflowInUse': '此工作流已被看板组件使用',
+  'dashboard.openWorkflowEditor': '打开工作流编辑器',
+  'dashboard.selectWorkflow': '选择工作流…',
+  'workflows.editor.invalidYamlField': 'YAML 无效：缺少或无效的字段 "{field}"',
   'docs.openSchemaDiffHelp': 'Schema Diff 说明',
 } as const;
 

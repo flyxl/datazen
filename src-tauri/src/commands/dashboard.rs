@@ -6,7 +6,8 @@ use super::error::{CmdExt, CommandError};
 use super::AppState;
 use crate::dashboard::create::{
     create_widget_from_sql as create_widget_from_sql_impl,
-    create_widget_from_workflow as create_widget_from_workflow_impl, CreateWidgetError,
+    create_widget_from_workflow as create_widget_from_workflow_impl,
+    update_hidden_workflow_sql as update_hidden_workflow_sql_impl, CreateWidgetError,
     CreateWidgetResult,
 };
 use crate::dashboard::export::{export_dashboard_json, import_dashboard, DashboardExportError};
@@ -53,6 +54,7 @@ fn map_export_error(err: DashboardExportError) -> CommandError {
         DashboardExportError::Validation(msg) => CommandError::Validation(msg),
         DashboardExportError::Io(e) => CommandError::Io(e),
         DashboardExportError::Store(e) => map_store_error(e),
+        DashboardExportError::Database(e) => CommandError::Internal(e.to_string()),
     }
 }
 
@@ -308,6 +310,32 @@ pub struct CreateWidgetFromWorkflowParams {
     pub chart_config: Option<ChartConfig>,
 }
 
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateHiddenWidgetSqlParams {
+    pub workflow_id: String,
+    pub config_id: String,
+    pub sql: String,
+}
+
+#[tauri::command]
+pub async fn update_hidden_widget_sql(
+    state: State<'_, AppState>,
+    params: UpdateHiddenWidgetSqlParams,
+) -> Result<(), CommandError> {
+    let app_db = state.store.app_db();
+    update_hidden_workflow_sql_impl(
+        &app_db,
+        &state.workflow_registry,
+        &params.workflow_id,
+        &params.config_id,
+        &params.sql,
+    )
+    .await
+    .map_err(map_create_error)
+    .cmd_err("update_hidden_widget_sql")
+}
+
 #[tauri::command]
 pub async fn create_widget_from_workflow(
     state: State<'_, AppState>,
@@ -353,7 +381,7 @@ pub async fn export_dashboard_with_dialog(
         .into_path()
         .map_err(|e| CommandError::Validation(format!("Invalid dialog path: {e}")))?;
 
-    let json = export_dashboard_json(&dashboard).map_err(map_export_error)?;
+    let json = export_dashboard_json(&app_db, &dashboard).map_err(map_export_error)?;
     tokio::fs::write(&dest, json.as_bytes())
         .await
         .cmd_err("export_dashboard_with_dialog")?;

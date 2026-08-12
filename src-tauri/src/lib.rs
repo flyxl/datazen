@@ -853,6 +853,7 @@ pub fn run() {
             commands::find_dashboard_workflow_refs,
             commands::create_widget_from_sql,
             commands::create_widget_from_workflow,
+            commands::update_hidden_widget_sql,
             commands::get_monitor_paused,
             commands::set_monitor_paused,
             rebuild_menu,

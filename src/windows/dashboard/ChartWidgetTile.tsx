@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { AlertTriangle, History, Loader2, Pencil, RefreshCw } from 'lucide-react';
+import { AlertTriangle, History, Loader2, Pencil, RefreshCw, Trash2 } from 'lucide-react';
 import { ChartCanvas } from '../../components/chart/ChartCanvas';
 import { DataTable } from '../../components/DataTable/DataTable';
 import type { ColumnDef } from '../../components/DataTable/TableHeader';
@@ -14,6 +14,7 @@ export interface ChartWidgetTileProps {
   run: WidgetRun | null;
   busy?: boolean;
   onEdit: () => void;
+  onDelete?: () => void;
   onHistory: () => void;
   onRefresh: () => void;
   onViewModeChange?: (mode: ViewMode) => void;
@@ -24,6 +25,7 @@ export function ChartWidgetTile({
   run,
   busy,
   onEdit,
+  onDelete,
   onHistory,
   onRefresh,
   onViewModeChange,
@@ -126,6 +128,17 @@ export function ChartWidgetTile({
         >
           <Pencil className="h-3.5 w-3.5" />
         </Button>
+        {onDelete && (
+          <Button
+            variant="ghost"
+            className="h-6 w-6 px-0 text-red-400 hover:text-red-300"
+            data-testid="dashboard-tile-delete"
+            title={t('dashboard.deleteWidget')}
+            onClick={onDelete}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        )}
       </div>
 
       <div className="relative min-h-0 flex-1">
