@@ -8,9 +8,8 @@ pub(crate) async fn purge_history_impl(
     scope: String,
     retain_days: Option<u32>,
 ) -> Result<u64, CommandError> {
-    let scope = HistoryScope::parse(&scope).ok_or_else(|| {
-        CommandError::Validation(format!("Invalid history scope: {scope}"))
-    })?;
+    let scope = HistoryScope::parse(&scope)
+        .ok_or_else(|| CommandError::Validation(format!("Invalid history scope: {scope}")))?;
     tracing::info!(?scope, ?retain_days, "purge_history");
     state
         .store

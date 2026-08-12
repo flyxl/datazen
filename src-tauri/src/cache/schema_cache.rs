@@ -298,7 +298,11 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(cols.columns.len(), schema.columns.len());
-        assert_eq!(mock.get_columns_calls(), 0, "columns served from full schema cache");
+        assert_eq!(
+            mock.get_columns_calls(),
+            0,
+            "columns served from full schema cache"
+        );
     }
 
     #[tokio::test]

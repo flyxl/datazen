@@ -17,10 +17,7 @@ pub struct SchemaContextBuilder {
 }
 
 impl SchemaContextBuilder {
-    pub fn new(
-        schema_cache: Arc<SchemaCache>,
-        connection_manager: Arc<ConnectionManager>,
-    ) -> Self {
+    pub fn new(schema_cache: Arc<SchemaCache>, connection_manager: Arc<ConnectionManager>) -> Self {
         Self {
             schema_cache,
             connection_manager,
@@ -129,10 +126,7 @@ impl SchemaContextBuilder {
         let mut ddl_parts = Vec::new();
         let mut token_estimate = 0;
 
-        let mut sorted_tables: Vec<_> = tables
-            .iter()
-            .map(|t| t.name.clone())
-            .collect();
+        let mut sorted_tables: Vec<_> = tables.iter().map(|t| t.name.clone()).collect();
 
         if let Some(current) = current_table {
             sorted_tables.sort_by_key(|name| if name == current { 0 } else { 1 });

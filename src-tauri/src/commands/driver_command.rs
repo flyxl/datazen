@@ -38,7 +38,10 @@ fn unbound_handle() -> ConnectionHandle {
 }
 
 fn nonempty(value: Option<&String>) -> Option<&str> {
-    value.map(String::as_str).map(str::trim).filter(|s| !s.is_empty())
+    value
+        .map(String::as_str)
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
 }
 
 /// SQL SELECT row cap from settings. `None` when the "limit SELECT results"
@@ -121,9 +124,8 @@ async fn resolve_command_driver(
             .cmd_err("execute_driver_command")?;
         return Ok((driver, handle, true));
     }
-    let driver_type = nonempty(driver_type).ok_or_else(|| {
-        CommandError::Validation("connectionId or driverType is required".into())
-    })?;
+    let driver_type = nonempty(driver_type)
+        .ok_or_else(|| CommandError::Validation("connectionId or driverType is required".into()))?;
     let driver = state
         .driver_registry
         .get(&driver_type.to_string())
@@ -180,10 +182,7 @@ pub(crate) async fn execute_driver_command_with_mode(
         .into_iter()
         .find(|definition| definition.id == request.command)
         .ok_or_else(|| {
-            CommandError::Validation(format!(
-                "Unsupported driver command: {}",
-                request.command
-            ))
+            CommandError::Validation(format!("Unsupported driver command: {}", request.command))
         })?;
 
     if !bound && definition.metadata.requires_connection {
@@ -198,8 +197,7 @@ pub(crate) async fn execute_driver_command_with_mode(
         apply_query_result_limit(state, &mut request.input).await;
     }
 
-    validate_command_input(&definition, &request.input)
-        .map_err(CommandError::Validation)?;
+    validate_command_input(&definition, &request.input).map_err(CommandError::Validation)?;
     check_command_access(&definition, access_level_for_mode(permission_mode))
         .map_err(CommandError::Validation)?;
 
@@ -359,7 +357,9 @@ mod tests {
     async fn discovers_standard_commands_from_connection() {
         let test = crate::testing::app_state::TestAppState::new().await;
         let (_, conn_id) = test.save_and_connect("cmd-discover").await;
-        let definitions = get_connection_commands_impl(&test.state, conn_id).await.unwrap();
+        let definitions = get_connection_commands_impl(&test.state, conn_id)
+            .await
+            .unwrap();
         let ids: Vec<_> = definitions.iter().map(|d| d.id.as_str()).collect();
         assert!(ids.contains(&"query"));
         assert!(ids.contains(&"execute"));
@@ -380,9 +380,15 @@ mod tests {
         )
         .await
         .unwrap();
-        assert!(result.data.get("results").is_some() || result.data.get("columns").is_some() || result.data.is_object());
+        assert!(
+            result.data.get("results").is_some()
+                || result.data.get("columns").is_some()
+                || result.data.is_object()
+        );
         let history = test.state.store.get_query_history(10).await;
-        assert!(history.iter().any(|e| e.connection_id == conn_id && e.success));
+        assert!(history
+            .iter()
+            .any(|e| e.connection_id == conn_id && e.success));
     }
 
     #[tokio::test]
@@ -487,9 +493,12 @@ mod tests {
             input_schema: serde_json::json!({ "type": "object" }),
             output_schema: None,
             permissions: vec![],
-            metadata: DriverCommandMetadata::new(CommandCategory::Observe, CommandAccessLevel::Read)
-                .unbound()
-                .hide_from_workflow(),
+            metadata: DriverCommandMetadata::new(
+                CommandCategory::Observe,
+                CommandAccessLevel::Read,
+            )
+            .unbound()
+            .hide_from_workflow(),
         };
         let test = crate::testing::app_state::TestAppState::with_options(
             crate::testing::mock_driver::MockDriverOptions {

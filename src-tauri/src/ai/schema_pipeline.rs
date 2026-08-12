@@ -20,11 +20,7 @@ pub fn format_table_names_block(names: &[String], max_names: usize) -> String {
         return names.join(", ");
     }
     let head: Vec<&str> = names.iter().take(max_names).map(String::as_str).collect();
-    format!(
-        "{}, …and {} more",
-        head.join(", "),
-        names.len() - max_names
-    )
+    format!("{}, …and {} more", head.join(", "), names.len() - max_names)
 }
 
 pub fn compose_schema_system_suffix(seed: &PromptSeed) -> String {

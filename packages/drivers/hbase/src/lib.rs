@@ -14,6 +14,8 @@ impl DatabaseDriverFactory for HBaseFactory {
     fn create(&self) -> Arc<dyn DatabaseDriver> {
         Arc::new(HBaseDriver::new())
     }
-    fn driver_id(&self) -> &'static str { "hbase" }
+    fn driver_id(&self) -> &'static str {
+        "hbase"
+    }
 }
 datazen_driver_api::register_driver!(&HBaseFactory);

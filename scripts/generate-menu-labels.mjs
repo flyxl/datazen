@@ -66,6 +66,12 @@ const RUST_TO_LOCALE = {
   'import-config': 'menu.importConfig',
   'export-connections': 'menu.exportConnections',
   'import-connections': 'menu.importConnections',
+  'import-connections-file': 'menu.importFromFile',
+  'import-connections-dbx': 'menu.importFromDbx',
+  'import-connections-navicat': 'menu.importFromNavicat',
+  'import-connections-datagrip': 'menu.importFromDataGrip',
+  'import-connections-dbeaver': 'menu.importFromDBeaver',
+  'import-connections-tableplus': 'menu.importFromTablePlus',
   'view-logs': 'menu.viewLogs',
   'ctx-add-favorite': 'menu.ctxAddFavorite',
 };

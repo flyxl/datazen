@@ -33,11 +33,7 @@ fn vm_type_to_ir(raw: &str) -> IRType {
 // ── SyncSourceAdapter ──────────────────────────────────────────────
 
 impl SyncSourceAdapter for VictoriaMetricsSyncAdapter {
-    fn column_to_ir(
-        &self,
-        column: &ColumnSchema,
-        native_full_type: Option<&str>,
-    ) -> IRColumn {
+    fn column_to_ir(&self, column: &ColumnSchema, native_full_type: Option<&str>) -> IRColumn {
         let raw = native_full_type.unwrap_or(&column.data_type);
         let ir_type = vm_type_to_ir(raw);
 
@@ -103,7 +99,9 @@ impl SyncTargetAdapter for VictoriaMetricsSyncAdapter {
             Some(Value::Json(j)) => format!("'{}'", j.to_string().replace('\'', "''")),
             Some(Value::Bytes(b)) => format!(
                 "'\\x{}'",
-                b.iter().map(|byte| format!("{:02x}", byte)).collect::<String>()
+                b.iter()
+                    .map(|byte| format!("{:02x}", byte))
+                    .collect::<String>()
             ),
         }
     }
@@ -132,8 +130,14 @@ mod tests {
     #[test]
     fn vm_label_and_value_types() {
         let a = VictoriaMetricsSyncAdapter;
-        assert_eq!(a.column_to_ir(&col("job", "string"), None).ir_type, IRType::Text);
-        assert_eq!(a.column_to_ir(&col("value", "float"), None).ir_type, IRType::Float64);
+        assert_eq!(
+            a.column_to_ir(&col("job", "string"), None).ir_type,
+            IRType::Text
+        );
+        assert_eq!(
+            a.column_to_ir(&col("value", "float"), None).ir_type,
+            IRType::Float64
+        );
     }
 
     #[test]

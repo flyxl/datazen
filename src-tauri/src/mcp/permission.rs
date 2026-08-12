@@ -23,18 +23,76 @@ const READ_ONLY_BLOCKED_TOOLS: &[&str] = &["query", "run_workflow"];
 
 /// First-keyword verbs treated as the main statement after an optional `WITH` clause.
 const MAIN_VERBS: &[&str] = &[
-    "SELECT", "INSERT", "UPDATE", "DELETE", "MERGE", "UPSERT", "REPLACE", "CALL", "EXEC",
-    "EXECUTE", "DO", "SHOW", "DESCRIBE", "DESC", "EXPLAIN", "SET", "USE", "BEGIN", "COMMIT",
-    "ROLLBACK", "SAVEPOINT", "RELEASE", "PREPARE", "DEALLOCATE", "ANALYZE", "VACUUM", "COPY",
-    "LOAD", "UNLOAD", "HANDLER", "OPTIMIZE", "REPAIR", "CHECKSUM", "CHECK", "FLUSH", "RESET",
-    "KILL", "SHUTDOWN", "CREATE", "ALTER", "DROP", "TRUNCATE", "GRANT", "REVOKE", "RENAME",
-    "COMMENT", "LOCK", "UNLOCK", "PURGE",
+    "SELECT",
+    "INSERT",
+    "UPDATE",
+    "DELETE",
+    "MERGE",
+    "UPSERT",
+    "REPLACE",
+    "CALL",
+    "EXEC",
+    "EXECUTE",
+    "DO",
+    "SHOW",
+    "DESCRIBE",
+    "DESC",
+    "EXPLAIN",
+    "SET",
+    "USE",
+    "BEGIN",
+    "COMMIT",
+    "ROLLBACK",
+    "SAVEPOINT",
+    "RELEASE",
+    "PREPARE",
+    "DEALLOCATE",
+    "ANALYZE",
+    "VACUUM",
+    "COPY",
+    "LOAD",
+    "UNLOAD",
+    "HANDLER",
+    "OPTIMIZE",
+    "REPAIR",
+    "CHECKSUM",
+    "CHECK",
+    "FLUSH",
+    "RESET",
+    "KILL",
+    "SHUTDOWN",
+    "CREATE",
+    "ALTER",
+    "DROP",
+    "TRUNCATE",
+    "GRANT",
+    "REVOKE",
+    "RENAME",
+    "COMMENT",
+    "LOCK",
+    "UNLOCK",
+    "PURGE",
 ];
 
 /// `CREATE` targets blocked in safe-write mode (destructive / admin DDL).
 const SAFE_WRITE_BLOCKED_CREATE_TARGETS: &[&str] = &[
-    "USER", "ROLE", "DATABASE", "SCHEMA", "TABLE", "INDEX", "VIEW", "MATERIALIZED", "TRIGGER",
-    "FUNCTION", "PROCEDURE", "SERVER", "EXTENSION", "SEQUENCE", "TYPE", "DOMAIN", "CATALOG",
+    "USER",
+    "ROLE",
+    "DATABASE",
+    "SCHEMA",
+    "TABLE",
+    "INDEX",
+    "VIEW",
+    "MATERIALIZED",
+    "TRIGGER",
+    "FUNCTION",
+    "PROCEDURE",
+    "SERVER",
+    "EXTENSION",
+    "SEQUENCE",
+    "TYPE",
+    "DOMAIN",
+    "CATALOG",
 ];
 
 /// Standalone keywords blocked in safe-write mode.
@@ -59,9 +117,9 @@ pub fn sql_main_keyword(sql: &str) -> Option<String> {
 pub fn check_sql_allowed(sql: &str, mode: McpPermissionMode) -> Result<(), String> {
     match mode {
         McpPermissionMode::HighRiskWrite => Ok(()),
-        McpPermissionMode::ReadOnly => Err(
-            "SQL execution is blocked in MCP read-only permission mode".to_string(),
-        ),
+        McpPermissionMode::ReadOnly => {
+            Err("SQL execution is blocked in MCP read-only permission mode".to_string())
+        }
         McpPermissionMode::SafeWrite => check_safe_write_sql(sql),
     }
 }
@@ -71,8 +129,8 @@ fn check_safe_write_sql(sql: &str) -> Result<(), String> {
         return Err("Multiple SQL statements are not allowed in MCP safe-write mode".to_string());
     }
 
-    let keyword = sql_main_keyword(sql)
-        .ok_or_else(|| "Could not classify SQL statement".to_string())?;
+    let keyword =
+        sql_main_keyword(sql).ok_or_else(|| "Could not classify SQL statement".to_string())?;
 
     if SAFE_WRITE_BLOCKED_KEYWORDS
         .iter()
@@ -123,7 +181,9 @@ pub fn check_tool_call(
     arguments: Option<&serde_json::Map<String, serde_json::Value>>,
 ) -> Result<(), String> {
     if disabled_tools.contains(tool_name) {
-        return Err(format!("Tool '{tool_name}' is disabled in DataZen settings"));
+        return Err(format!(
+            "Tool '{tool_name}' is disabled in DataZen settings"
+        ));
     }
 
     match mode {
@@ -245,9 +305,7 @@ fn tokenize_sql(sql: &str) -> Vec<String> {
 }
 
 fn is_main_verb(token: &str) -> bool {
-    MAIN_VERBS
-        .iter()
-        .any(|v| v.eq_ignore_ascii_case(token))
+    MAIN_VERBS.iter().any(|v| v.eq_ignore_ascii_case(token))
 }
 
 fn find_main_verb_index(tokens: &[String]) -> Option<usize> {
@@ -335,10 +393,7 @@ mod tests {
 
     #[test]
     fn sql_main_keyword_simple_select() {
-        assert_eq!(
-            sql_main_keyword("SELECT 1"),
-            Some("SELECT".to_string())
-        );
+        assert_eq!(sql_main_keyword("SELECT 1"), Some("SELECT".to_string()));
     }
 
     #[test]
@@ -352,7 +407,9 @@ mod tests {
     #[test]
     fn sql_main_keyword_with_cte_delete() {
         assert_eq!(
-            sql_main_keyword("WITH t AS (SELECT id FROM u) DELETE FROM u WHERE id IN (SELECT id FROM t)"),
+            sql_main_keyword(
+                "WITH t AS (SELECT id FROM u) DELETE FROM u WHERE id IN (SELECT id FROM t)"
+            ),
             Some("DELETE".to_string())
         );
     }
@@ -367,7 +424,9 @@ mod tests {
 
     #[test]
     fn safe_write_allows_insert_update_delete() {
-        assert!(check_sql_allowed("INSERT INTO t VALUES (1)", McpPermissionMode::SafeWrite).is_ok());
+        assert!(
+            check_sql_allowed("INSERT INTO t VALUES (1)", McpPermissionMode::SafeWrite).is_ok()
+        );
         assert!(check_sql_allowed("UPDATE t SET x = 1", McpPermissionMode::SafeWrite).is_ok());
         assert!(check_sql_allowed("DELETE FROM t", McpPermissionMode::SafeWrite).is_ok());
     }
@@ -392,11 +451,9 @@ mod tests {
 
     #[test]
     fn safe_write_blocks_create_table() {
-        assert!(check_sql_allowed(
-            "CREATE TABLE t (id INT)",
-            McpPermissionMode::SafeWrite
-        )
-        .is_err());
+        assert!(
+            check_sql_allowed("CREATE TABLE t (id INT)", McpPermissionMode::SafeWrite).is_err()
+        );
     }
 
     #[test]
@@ -410,11 +467,7 @@ mod tests {
 
     #[test]
     fn safe_write_blocks_multiple_statements() {
-        assert!(check_sql_allowed(
-            "SELECT 1; DROP TABLE t",
-            McpPermissionMode::SafeWrite
-        )
-        .is_err());
+        assert!(check_sql_allowed("SELECT 1; DROP TABLE t", McpPermissionMode::SafeWrite).is_err());
     }
 
     #[test]
@@ -444,22 +497,14 @@ mod tests {
     fn check_tool_call_query_without_sql_arg_is_ok() {
         let none = disabled(&[]);
         let args = serde_json::json!({}).as_object().cloned();
-        assert!(check_tool_call(
-            "query",
-            McpPermissionMode::SafeWrite,
-            &none,
-            args.as_ref()
-        )
-        .is_ok());
+        assert!(
+            check_tool_call("query", McpPermissionMode::SafeWrite, &none, args.as_ref()).is_ok()
+        );
     }
 
     #[test]
     fn safe_write_blocks_create_database() {
-        assert!(check_sql_allowed(
-            "CREATE DATABASE prod",
-            McpPermissionMode::SafeWrite
-        )
-        .is_err());
+        assert!(check_sql_allowed("CREATE DATABASE prod", McpPermissionMode::SafeWrite).is_err());
     }
 
     #[test]
@@ -477,17 +522,17 @@ mod tests {
 
     #[test]
     fn safe_write_blocks_create_index() {
-        assert!(check_sql_allowed(
-            "CREATE INDEX idx ON t (c)",
-            McpPermissionMode::SafeWrite
-        )
-        .is_err());
+        assert!(
+            check_sql_allowed("CREATE INDEX idx ON t (c)", McpPermissionMode::SafeWrite).is_err()
+        );
     }
 
     #[test]
     fn read_only_allows_non_blocked_tools() {
         let none = disabled(&[]);
-        assert!(check_tool_call("list_connections", McpPermissionMode::ReadOnly, &none, None).is_ok());
+        assert!(
+            check_tool_call("list_connections", McpPermissionMode::ReadOnly, &none, None).is_ok()
+        );
     }
 
     #[test]
@@ -512,32 +557,28 @@ mod tests {
     fn safe_write_allows_query_with_select() {
         let none = disabled(&[]);
         let args = serde_json::json!({"sql": "SELECT 1"}).as_object().cloned();
-        assert!(check_tool_call(
-            "query",
-            McpPermissionMode::SafeWrite,
-            &none,
-            args.as_ref()
-        )
-        .is_ok());
+        assert!(
+            check_tool_call("query", McpPermissionMode::SafeWrite, &none, args.as_ref()).is_ok()
+        );
     }
 
     #[test]
     fn safe_write_blocks_query_with_drop() {
         let none = disabled(&[]);
-        let args = serde_json::json!({"sql": "DROP TABLE t"}).as_object().cloned();
-        assert!(check_tool_call(
-            "query",
-            McpPermissionMode::SafeWrite,
-            &none,
-            args.as_ref()
-        )
-        .is_err());
+        let args = serde_json::json!({"sql": "DROP TABLE t"})
+            .as_object()
+            .cloned();
+        assert!(
+            check_tool_call("query", McpPermissionMode::SafeWrite, &none, args.as_ref()).is_err()
+        );
     }
 
     #[test]
     fn high_risk_write_allows_query_with_drop() {
         let none = disabled(&[]);
-        let args = serde_json::json!({"sql": "DROP TABLE t"}).as_object().cloned();
+        let args = serde_json::json!({"sql": "DROP TABLE t"})
+            .as_object()
+            .cloned();
         assert!(check_tool_call(
             "query",
             McpPermissionMode::HighRiskWrite,
@@ -563,10 +604,18 @@ mod tests {
     fn list_tools_respects_mode_and_denylist() {
         let none = disabled(&[]);
         assert!(!is_tool_listed("query", McpPermissionMode::ReadOnly, &none));
-        assert!(is_tool_listed("list_tables", McpPermissionMode::ReadOnly, &none));
+        assert!(is_tool_listed(
+            "list_tables",
+            McpPermissionMode::ReadOnly,
+            &none
+        ));
 
         let disabled = disabled(&["query"]);
-        assert!(!is_tool_listed("query", McpPermissionMode::SafeWrite, &disabled));
+        assert!(!is_tool_listed(
+            "query",
+            McpPermissionMode::SafeWrite,
+            &disabled
+        ));
         assert!(is_tool_listed("query", McpPermissionMode::SafeWrite, &none));
     }
 }

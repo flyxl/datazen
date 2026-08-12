@@ -76,7 +76,10 @@ impl TestAppState {
     }
 
     /// Register a redis SQL driver + mock KV driver for kv command tests.
-    pub async fn register_redis_kv(&self, kv_opts: crate::testing::mock_kv_driver::MockKvDriverOptions) {
+    pub async fn register_redis_kv(
+        &self,
+        kv_opts: crate::testing::mock_kv_driver::MockKvDriverOptions,
+    ) {
         use crate::testing::mock_kv_driver::MockKvDriver;
 
         let redis_driver = MockDriver::new("redis", MockDriverOptions::default());
@@ -134,10 +137,5 @@ pub fn rich_mock_options() -> MockDriverOptions {
 }
 
 pub fn build_app_state(store: Arc<Store>, registry: Arc<DriverRegistry>) -> AppState {
-    crate::finish_app_state(
-        store,
-        registry,
-        Arc::new(SyncAdapterRegistry::new()),
-        None,
-    )
+    crate::finish_app_state(store, registry, Arc::new(SyncAdapterRegistry::new()), None)
 }

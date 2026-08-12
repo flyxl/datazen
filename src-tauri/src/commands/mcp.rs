@@ -98,7 +98,10 @@ pub async fn mcp_stop() -> Result<(), CommandError> {
 
 #[tauri::command]
 pub async fn mcp_list_all_tools() -> Result<Vec<String>, CommandError> {
-    Ok(crate::mcp::MCP_ALL_TOOLS.iter().map(|s| s.to_string()).collect())
+    Ok(crate::mcp::MCP_ALL_TOOLS
+        .iter()
+        .map(|s| s.to_string())
+        .collect())
 }
 
 // ─── MCP Client commands ───
@@ -233,7 +236,9 @@ mod tests {
     async fn mcp_list_all_tools_non_empty() {
         let tools = mcp_list_all_tools().await.unwrap();
         assert!(!tools.is_empty());
-        assert!(tools.iter().any(|t| t.contains("connection") || t.contains("query")));
+        assert!(tools
+            .iter()
+            .any(|t| t.contains("connection") || t.contains("query")));
     }
 
     #[tokio::test]

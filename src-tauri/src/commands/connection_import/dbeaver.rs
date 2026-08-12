@@ -51,7 +51,10 @@ fn map_driver(provider: &str, driver: &str, url: &str, name: &str) -> Option<&'s
         (&["mysql"], "mysql"),
         (&["cloudberry"], "cloudberry"),
         (&["questdb"], "questdb"),
-        (&["postgresql", "postgres", "opengauss", "gaussdb"], "postgresql"),
+        (
+            &["postgresql", "postgres", "opengauss", "gaussdb"],
+            "postgresql",
+        ),
         (&["sqlite"], "sqlite"),
         (&["sqlserver", "mssql"], "sqlserver"),
         (&["clickhouse"], "clickhouse"),
@@ -97,11 +100,13 @@ fn parse_jdbc_bits(url: &str) -> (String, u16, String) {
         .unwrap_or(source);
 
     static SQLSERVER_RE: OnceLock<Regex> = OnceLock::new();
-    let sqlserver_re = SQLSERVER_RE.get_or_init(|| {
-        Regex::new(r"(?i)^sqlserver://([^;:/]+)(?::(\d+))?(?:;(.*))?").unwrap()
-    });
+    let sqlserver_re = SQLSERVER_RE
+        .get_or_init(|| Regex::new(r"(?i)^sqlserver://([^;:/]+)(?::(\d+))?(?:;(.*))?").unwrap());
     if let Some(caps) = sqlserver_re.captures(without) {
-        let host = caps.get(1).map(|m| m.as_str().to_string()).unwrap_or_default();
+        let host = caps
+            .get(1)
+            .map(|m| m.as_str().to_string())
+            .unwrap_or_default();
         let port = caps
             .get(2)
             .and_then(|m| m.as_str().parse().ok())
@@ -163,7 +168,9 @@ pub fn looks_like_dbeaver_json(text: &str) -> bool {
     }
     if let Some(obj) = v.get("connections").and_then(|c| c.as_object()) {
         return obj.values().any(|e| {
-            e.get("provider").is_some() || e.get("driver").is_some() || e.get("configuration").is_some()
+            e.get("provider").is_some()
+                || e.get("driver").is_some()
+                || e.get("configuration").is_some()
         });
     }
     false
@@ -196,10 +203,7 @@ fn decrypt_credentials_bytes(bytes: &[u8]) -> HashMap<String, (String, String)> 
     // Shape: { "<conn-id>": { "#connection": { "user": "...", "password": "..." } } }
     if let Some(obj) = json.as_object() {
         for (id, entry) in obj {
-            let secure = entry
-                .get("#connection")
-                .cloned()
-                .unwrap_or(Value::Null);
+            let secure = entry.get("#connection").cloned().unwrap_or(Value::Null);
             let user = get_string(
                 secure
                     .get("user")
@@ -276,14 +280,7 @@ fn build_from_entry(
         } else {
             url_host.clone()
         };
-        (
-            None,
-            if path.is_empty() {
-                None
-            } else {
-                Some(path)
-            },
-        )
+        (None, if path.is_empty() { None } else { Some(path) })
     } else {
         let h = get_string(
             config
@@ -332,10 +329,7 @@ fn build_from_entry(
         host.clone().unwrap_or_else(|| db_type.to_string())
     };
 
-    let (cred_user, cred_pass) = credentials
-        .get(id)
-        .cloned()
-        .unwrap_or_default();
+    let (cred_user, cred_pass) = credentials.get(id).cloned().unwrap_or_default();
     let inline_user = get_string(
         config
             .get("user")
@@ -355,11 +349,7 @@ fn build_from_entry(
                     .get("auth-properties")
                     .and_then(|a| a.get("password"))
             })
-            .or_else(|| {
-                config
-                    .get("credentials")
-                    .and_then(|c| c.get("password"))
-            })
+            .or_else(|| config.get("credentials").and_then(|c| c.get("password")))
             .unwrap_or(&Value::Null),
     );
 
@@ -431,7 +421,12 @@ fn parse_data_sources_value(
     let entries: Vec<(String, Value)> = if let Some(arr) = root.as_array() {
         arr.iter()
             .filter_map(|e| {
-                let id = get_string(e.get("id").or_else(|| e.get("uuid")).or_else(|| e.get("name")).unwrap_or(&Value::Null));
+                let id = get_string(
+                    e.get("id")
+                        .or_else(|| e.get("uuid"))
+                        .or_else(|| e.get("name"))
+                        .unwrap_or(&Value::Null),
+                );
                 Some((id, e.clone()))
             })
             .collect()
@@ -500,26 +495,27 @@ pub fn parse_json(path: &Path, text: &str) -> Result<ParsedImport, CommandError>
 
     let v: Value = serde_json::from_str(text).map_err(CommandError::Json)?;
 
-    let (data_sources, mut credentials) = if v.get("format").and_then(|x| x.as_str())
-        == Some("dbeaver-import")
-    {
-        let ds_text = v
-            .get("dataSources")
-            .and_then(|x| x.as_str())
-            .ok_or_else(|| {
-                CommandError::Validation("Invalid dbeaver-import payload: missing dataSources".into())
-            })?;
-        let ds: Value = serde_json::from_str(ds_text).map_err(CommandError::Json)?;
-        let mut creds = HashMap::new();
-        if let Some(b64) = v.get("credentialsBase64").and_then(|x| x.as_str()) {
-            if let Ok(bytes) = BASE64.decode(b64) {
-                creds = decrypt_credentials_bytes(&bytes);
+    let (data_sources, mut credentials) =
+        if v.get("format").and_then(|x| x.as_str()) == Some("dbeaver-import") {
+            let ds_text = v
+                .get("dataSources")
+                .and_then(|x| x.as_str())
+                .ok_or_else(|| {
+                    CommandError::Validation(
+                        "Invalid dbeaver-import payload: missing dataSources".into(),
+                    )
+                })?;
+            let ds: Value = serde_json::from_str(ds_text).map_err(CommandError::Json)?;
+            let mut creds = HashMap::new();
+            if let Some(b64) = v.get("credentialsBase64").and_then(|x| x.as_str()) {
+                if let Ok(bytes) = BASE64.decode(b64) {
+                    creds = decrypt_credentials_bytes(&bytes);
+                }
             }
-        }
-        (ds, creds)
-    } else {
-        (v, HashMap::new())
-    };
+            (ds, creds)
+        } else {
+            (v, HashMap::new())
+        };
 
     if credentials.is_empty() {
         credentials = load_sibling_credentials(path);
@@ -530,9 +526,7 @@ pub fn parse_json(path: &Path, text: &str) -> Result<ParsedImport, CommandError>
 
 pub fn parse_xml(xml: &str) -> Result<ParsedImport, CommandError> {
     static CONN_RE: OnceLock<Regex> = OnceLock::new();
-    let conn_re = CONN_RE.get_or_init(|| {
-        Regex::new(r#"(?is)<connection\b([^>]*?)/?>"#).unwrap()
-    });
+    let conn_re = CONN_RE.get_or_init(|| Regex::new(r#"(?is)<connection\b([^>]*?)/?>"#).unwrap());
     static ATTR_RE: OnceLock<Regex> = OnceLock::new();
     let attr_re = ATTR_RE.get_or_init(|| Regex::new(r#"([^\s=]+)="([^"]*)""#).unwrap());
 
@@ -544,7 +538,9 @@ pub fn parse_xml(xml: &str) -> Result<ParsedImport, CommandError> {
         let mut map = HashMap::new();
         for a in attr_re.captures_iter(attrs) {
             map.insert(
-                a.get(1).map(|m| m.as_str().to_ascii_lowercase()).unwrap_or_default(),
+                a.get(1)
+                    .map(|m| m.as_str().to_ascii_lowercase())
+                    .unwrap_or_default(),
                 a.get(2).map(|m| m.as_str().to_string()).unwrap_or_default(),
             );
         }
@@ -597,7 +593,11 @@ pub fn parse_xml(xml: &str) -> Result<ParsedImport, CommandError> {
                 port: if is_file {
                     None
                 } else {
-                    port.or(if url_port > 0 { Some(url_port) } else { default_port(db_type) })
+                    port.or(if url_port > 0 {
+                        Some(url_port)
+                    } else {
+                        default_port(db_type)
+                    })
                 },
                 database: if is_file {
                     Some(if !database.is_empty() {
@@ -643,14 +643,7 @@ pub fn parse_xml(xml: &str) -> Result<ParsedImport, CommandError> {
             } else {
                 url_host.clone()
             };
-            (
-                None,
-                if path.is_empty() {
-                    None
-                } else {
-                    Some(path)
-                },
-            )
+            (None, if path.is_empty() { None } else { Some(path) })
         } else {
             (
                 Some(if !host.is_empty() {
@@ -793,8 +786,7 @@ mod tests {
 
     #[test]
     fn decrypt_credentials_and_wrapper_payload() {
-        let cred_json =
-            r##"{"pg1":{"#connection":{"user":"from-cred","password":"secret"}}}"##;
+        let cred_json = r##"{"pg1":{"#connection":{"user":"from-cred","password":"secret"}}}"##;
         let enc = encrypt_credentials_json(cred_json);
         let b64 = BASE64.encode(&enc);
         let ds = r#"{"connections":{"pg1":{"provider":"postgresql","driver":"postgres-jdbc","name":"PG","configuration":{"host":"h","port":5432,"database":"d"}}}}"#;
@@ -836,8 +828,7 @@ mod tests {
 
     #[test]
     fn parse_jdbc_bits_postgres_and_sqlite() {
-        let (host, port, db) =
-            parse_jdbc_bits("jdbc:postgresql://db.example:5433/myapp?ssl=true");
+        let (host, port, db) = parse_jdbc_bits("jdbc:postgresql://db.example:5433/myapp?ssl=true");
         assert_eq!(host, "db.example");
         assert_eq!(port, 5433);
         assert_eq!(db, "myapp");

@@ -212,10 +212,7 @@ fn load_or_create_via_keyring(data_dir: &Path) -> Result<[u8; 32], StoreError> {
         Ok(entry) => entry,
         Err(e) => {
             tracing::error!(error = %e, "Failed to open OS keychain entry for encryption key");
-            return load_legacy_key_or_fail(
-                data_dir,
-                &format!("OS keychain unavailable ({e})"),
-            );
+            return load_legacy_key_or_fail(data_dir, &format!("OS keychain unavailable ({e})"));
         }
     };
 

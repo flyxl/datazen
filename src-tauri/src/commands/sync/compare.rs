@@ -20,11 +20,15 @@ pub(crate) async fn compare_databases_impl(
 ) -> Result<Vec<serde_json::Value>, CommandError> {
     tracing::info!(%source_connection_id, %target_connection_id, "compare_databases");
 
-    let src_config = state.connection_manager
-        .get_connection_config(&source_connection_id).await
+    let src_config = state
+        .connection_manager
+        .get_connection_config(&source_connection_id)
+        .await
         .cmd_err("compare_databases")?;
-    let tgt_config = state.connection_manager
-        .get_connection_config(&target_connection_id).await
+    let tgt_config = state
+        .connection_manager
+        .get_connection_config(&target_connection_id)
+        .await
         .cmd_err("compare_databases")?;
 
     let pairing = enforce_sync_pairing(&src_config.database_type, &tgt_config.database_type)
@@ -36,43 +40,67 @@ pub(crate) async fn compare_databases_impl(
         "compare_databases pairing"
     );
 
-    let (src_driver, src_handle) = state.connection_manager
-        .get_connection(&source_connection_id).await
+    let (src_driver, src_handle) = state
+        .connection_manager
+        .get_connection(&source_connection_id)
+        .await
         .cmd_err("compare_databases")?;
-    let (tgt_driver, tgt_handle) = state.connection_manager
-        .get_connection(&target_connection_id).await
+    let (tgt_driver, tgt_handle) = state
+        .connection_manager
+        .get_connection(&target_connection_id)
+        .await
         .cmd_err("compare_databases")?;
 
     let src_db = src_config.database.as_deref().unwrap_or("");
     let tgt_db = tgt_config.database.as_deref().unwrap_or("");
 
-    let src_tables = src_driver.get_tables(&src_handle, src_db).await
+    let src_tables = src_driver
+        .get_tables(&src_handle, src_db)
+        .await
         .cmd_err("compare_databases")?;
-    let tgt_tables = tgt_driver.get_tables(&tgt_handle, tgt_db).await
+    let tgt_tables = tgt_driver
+        .get_tables(&tgt_handle, tgt_db)
+        .await
         .cmd_err("compare_databases")?;
 
-    let src_names: std::collections::HashSet<String> = src_tables.iter().map(|t| t.name.clone()).collect();
-    let tgt_names: std::collections::HashSet<String> = tgt_tables.iter().map(|t| t.name.clone()).collect();
+    let src_names: std::collections::HashSet<String> =
+        src_tables.iter().map(|t| t.name.clone()).collect();
+    let tgt_names: std::collections::HashSet<String> =
+        tgt_tables.iter().map(|t| t.name.clone()).collect();
 
     let mut results = Vec::new();
 
     for t in &src_tables {
         let in_target = tgt_names.contains(&t.name);
-        let mut status = if in_target { "identical" } else { "source_only" };
+        let mut status = if in_target {
+            "identical"
+        } else {
+            "source_only"
+        };
 
         let mut source_rows: Option<u64> = None;
         let mut target_rows: Option<u64> = None;
 
         if in_target {
-            let src_schema = src_driver.get_table_schema(&src_handle, &t.name).await
+            let src_schema = src_driver
+                .get_table_schema(&src_handle, &t.name)
+                .await
                 .cmd_err("compare_databases")?;
-            let tgt_schema = tgt_driver.get_table_schema(&tgt_handle, &t.name).await
+            let tgt_schema = tgt_driver
+                .get_table_schema(&tgt_handle, &t.name)
+                .await
                 .cmd_err("compare_databases")?;
 
-            let src_cols: Vec<(&str, &str)> = src_schema.columns.iter()
-                .map(|c| (c.name.as_str(), c.data_type.as_str())).collect();
-            let tgt_cols: Vec<(&str, &str)> = tgt_schema.columns.iter()
-                .map(|c| (c.name.as_str(), c.data_type.as_str())).collect();
+            let src_cols: Vec<(&str, &str)> = src_schema
+                .columns
+                .iter()
+                .map(|c| (c.name.as_str(), c.data_type.as_str()))
+                .collect();
+            let tgt_cols: Vec<(&str, &str)> = tgt_schema
+                .columns
+                .iter()
+                .map(|c| (c.name.as_str(), c.data_type.as_str()))
+                .collect();
 
             if src_cols != tgt_cols {
                 status = "different";
@@ -122,23 +150,35 @@ pub(crate) async fn compare_table_schemas_impl(
 ) -> Result<serde_json::Value, CommandError> {
     tracing::info!(%source_connection_id, %target_connection_id, %table_name, "compare_table_schemas");
 
-    let src_config = state.connection_manager
-        .get_connection_config(&source_connection_id).await
+    let src_config = state
+        .connection_manager
+        .get_connection_config(&source_connection_id)
+        .await
         .cmd_err("compare_table_schemas")?;
-    let tgt_config = state.connection_manager
-        .get_connection_config(&target_connection_id).await
-        .cmd_err("compare_table_schemas")?;
-
-    let (src_driver, src_handle) = state.connection_manager
-        .get_connection(&source_connection_id).await
-        .cmd_err("compare_table_schemas")?;
-    let (tgt_driver, tgt_handle) = state.connection_manager
-        .get_connection(&target_connection_id).await
+    let tgt_config = state
+        .connection_manager
+        .get_connection_config(&target_connection_id)
+        .await
         .cmd_err("compare_table_schemas")?;
 
-    let src_schema = src_driver.get_table_schema(&src_handle, &table_name).await
+    let (src_driver, src_handle) = state
+        .connection_manager
+        .get_connection(&source_connection_id)
+        .await
         .cmd_err("compare_table_schemas")?;
-    let tgt_schema = tgt_driver.get_table_schema(&tgt_handle, &table_name).await
+    let (tgt_driver, tgt_handle) = state
+        .connection_manager
+        .get_connection(&target_connection_id)
+        .await
+        .cmd_err("compare_table_schemas")?;
+
+    let src_schema = src_driver
+        .get_table_schema(&src_handle, &table_name)
+        .await
+        .cmd_err("compare_table_schemas")?;
+    let tgt_schema = tgt_driver
+        .get_table_schema(&tgt_handle, &table_name)
+        .await
         .cmd_err("compare_table_schemas")?;
 
     // Source = desired: missingOnTarget → ADD, extraOnTarget → DROP.
@@ -147,7 +187,8 @@ pub(crate) async fn compare_table_schemas_impl(
     let mut target_ddl: Option<String> = None;
     let mut ir_diff: Option<TableColumnDiff> = None;
 
-    if state.sync_adapters
+    if state
+        .sync_adapters
         .ensure_pair(&src_config.database_type, &tgt_config.database_type)
         .is_ok()
     {
@@ -156,13 +197,21 @@ pub(crate) async fn compare_table_schemas_impl(
         let src_target = state.sync_adapters.get_target(&src_config.database_type);
         let tgt_target = state.sync_adapters.get_target(&tgt_config.database_type);
 
-        if let (Some(src_adapter), Some(tgt_src_adapter), Some(src_tgt_adapter), Some(tgt_adapter)) =
-            (src_source, tgt_source, src_target, tgt_target)
+        if let (
+            Some(src_adapter),
+            Some(tgt_src_adapter),
+            Some(src_tgt_adapter),
+            Some(tgt_adapter),
+        ) = (src_source, tgt_source, src_target, tgt_target)
         {
-            let src_full_types =
-                fetch_full_column_types(src_adapter.as_ref(), src_driver.as_ref(), &src_handle, &table_name)
-                    .await
-                    .ok();
+            let src_full_types = fetch_full_column_types(
+                src_adapter.as_ref(),
+                src_driver.as_ref(),
+                &src_handle,
+                &table_name,
+            )
+            .await
+            .ok();
             let tgt_full_types = fetch_full_column_types(
                 tgt_src_adapter.as_ref(),
                 tgt_driver.as_ref(),
@@ -210,16 +259,24 @@ pub(crate) async fn compare_table_data_impl(
 ) -> Result<serde_json::Value, CommandError> {
     tracing::info!(%source_connection_id, %target_connection_id, %table_name, "compare_table_data");
 
-    let (src_driver, src_handle) = state.connection_manager
-        .get_connection(&source_connection_id).await
+    let (src_driver, src_handle) = state
+        .connection_manager
+        .get_connection(&source_connection_id)
+        .await
         .cmd_err("compare_table_data")?;
-    let (tgt_driver, tgt_handle) = state.connection_manager
-        .get_connection(&target_connection_id).await
+    let (tgt_driver, tgt_handle) = state
+        .connection_manager
+        .get_connection(&target_connection_id)
+        .await
         .cmd_err("compare_table_data")?;
 
-    let src_schema = src_driver.get_table_schema(&src_handle, &table_name).await
+    let src_schema = src_driver
+        .get_table_schema(&src_handle, &table_name)
+        .await
         .cmd_err("compare_table_data")?;
-    let tgt_schema = tgt_driver.get_table_schema(&tgt_handle, &table_name).await
+    let tgt_schema = tgt_driver
+        .get_table_schema(&tgt_handle, &table_name)
+        .await
         .cmd_err("compare_table_data")?;
 
     let source_row_count = count_rows(src_driver.as_ref(), &src_handle, &table_name).await?;
@@ -234,14 +291,20 @@ pub(crate) async fn compare_table_data_impl(
         &table_name,
         &col_names,
         &pk_cols,
-    ).await?;
+    )
+    .await?;
     let tgt_rows = fetch_sample_rows(
         tgt_driver.as_ref(),
         &tgt_handle,
         &table_name,
-        &tgt_schema.columns.iter().map(|c| c.name.clone()).collect::<Vec<_>>(),
+        &tgt_schema
+            .columns
+            .iter()
+            .map(|c| c.name.clone())
+            .collect::<Vec<_>>(),
         &resolve_pk_columns(&tgt_schema),
-    ).await?;
+    )
+    .await?;
 
     let src_map = rows_to_key_map(&col_names, &pk_cols, &src_rows);
     let tgt_col_names: Vec<String> = tgt_schema.columns.iter().map(|c| c.name.clone()).collect();
@@ -326,8 +389,10 @@ pub(super) async fn fetch_full_column_types(
         .cmd_err("fetch_full_column_types")?;
     let mut map = std::collections::HashMap::new();
     for row in &result.rows {
-        if let (Some(Some(crate::db::Value::String(name))), Some(Some(crate::db::Value::String(ft)))) =
-            (row.get(0), row.get(1))
+        if let (
+            Some(Some(crate::db::Value::String(name))),
+            Some(Some(crate::db::Value::String(ft))),
+        ) = (row.get(0), row.get(1))
         {
             map.insert(name.clone(), ft.clone());
         }
@@ -385,8 +450,7 @@ pub(super) async fn count_rows(
     table: &str,
 ) -> Result<u64, CommandError> {
     let sql = format!("SELECT COUNT(*) FROM {}", driver.quote_ident(table));
-    let res = driver.query(handle, &sql).await
-        .cmd_err("count_rows")?;
+    let res = driver.query(handle, &sql).await.cmd_err("count_rows")?;
     if let Some(row) = res.rows.first() {
         if let Some(Some(crate::db::Value::Integer(n))) = row.first() {
             return Ok(*n as u64);
@@ -436,7 +500,11 @@ fn ir_column_snapshot(col: &IRColumn) -> ColumnSnapshot {
 /// Same contract as [`crate::schema_diff::diff_table_schemas`]: source is the desired
 /// state, so `missing_on_target`/`added` are columns to ADD to the target and
 /// `extra_on_target`/`removed` are columns to DROP from the target.
-pub(crate) fn diff_table_schemas_ir(table: &str, src_ir: &IRTable, tgt_ir: &IRTable) -> TableColumnDiff {
+pub(crate) fn diff_table_schemas_ir(
+    table: &str,
+    src_ir: &IRTable,
+    tgt_ir: &IRTable,
+) -> TableColumnDiff {
     let src_map: HashMap<&str, &IRColumn> = src_ir
         .columns
         .iter()
@@ -536,14 +604,19 @@ async fn fetch_sample_rows(
         DATA_COMPARE_SAMPLE_LIMIT,
     );
 
-    let result = driver.query(handle, &sql).await.cmd_err("fetch_sample_rows")?;
+    let result = driver
+        .query(handle, &sql)
+        .await
+        .cmd_err("fetch_sample_rows")?;
     Ok(result.rows)
 }
 
 pub(crate) fn row_key(col_names: &[String], pk_cols: &[String], row: &[Option<Value>]) -> String {
     if pk_cols.is_empty() {
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        serde_json::to_string(row).unwrap_or_default().hash(&mut hasher);
+        serde_json::to_string(row)
+            .unwrap_or_default()
+            .hash(&mut hasher);
         format!("h:{:016x}", hasher.finish())
     } else {
         pk_cols
@@ -592,8 +665,7 @@ pub(crate) fn row_to_json_map(col_names: &[String], row: &[Option<Value>]) -> se
 pub(crate) fn values_equal(a: Option<&Option<Value>>, b: Option<&Option<Value>>) -> bool {
     match (a, b) {
         (None, None) => true,
-        (Some(va), Some(vb)) => serde_json::to_string(va).ok()
-            == serde_json::to_string(vb).ok(),
+        (Some(va), Some(vb)) => serde_json::to_string(va).ok() == serde_json::to_string(vb).ok(),
         _ => false,
     }
 }

@@ -1,6 +1,6 @@
-use super::compare::count_rows;
 use super::super::error::{CmdExt, CommandError};
 use super::super::AppState;
+use super::compare::count_rows;
 use crate::store::SyncTask;
 
 pub(crate) async fn get_sync_tasks_impl(state: &AppState) -> Result<Vec<SyncTask>, CommandError> {

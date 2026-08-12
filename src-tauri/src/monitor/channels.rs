@@ -108,9 +108,7 @@ impl AlertChannelState {
         let now = Instant::now();
         let mut out = Vec::new();
 
-        if let Some((title, body)) =
-            self.track_query_failures(dashboard_name, widget, run, &key)
-        {
+        if let Some((title, body)) = self.track_query_failures(dashboard_name, widget, run, &key) {
             out.push(PendingNotification::QueryFailureWarning { title, body });
         }
 
@@ -202,10 +200,7 @@ impl AlertChannelState {
                 );
                 return Some((
                     format!("Query failed: {}", widget.title),
-                    format!(
-                        "{}: {} consecutive query failures",
-                        dashboard_name, count
-                    ),
+                    format!("{}: {} consecutive query failures", dashboard_name, count),
                 ));
             }
         } else {
@@ -280,13 +275,7 @@ async fn dispatch_channels(
 }
 
 pub async fn notify_desktop(app: &AppHandle, title: &str, body: &str) {
-    if let Err(e) = app
-        .notification()
-        .builder()
-        .title(title)
-        .body(body)
-        .show()
-    {
+    if let Err(e) = app.notification().builder().title(title).body(body).show() {
         tracing::warn!(error = %e, "desktop notification failed");
     }
 }
@@ -453,13 +442,25 @@ mod tests {
         let mut state = AlertChannelState::new();
         let widget = widget_with_alert(300);
 
-        let notes = state.process_run_state("d1", "Board", &widget, &make_run(WidgetRunStatus::Ok, Some(false)));
+        let notes = state.process_run_state(
+            "d1",
+            "Board",
+            &widget,
+            &make_run(WidgetRunStatus::Ok, Some(false)),
+        );
         assert!(alert_notifications(&notes).is_empty());
 
-        let notes = state.process_run_state("d1", "Board", &widget, &make_run(WidgetRunStatus::Ok, Some(true)));
+        let notes = state.process_run_state(
+            "d1",
+            "Board",
+            &widget,
+            &make_run(WidgetRunStatus::Ok, Some(true)),
+        );
         let alerts = alert_notifications(&notes);
         assert_eq!(alerts.len(), 1);
-        assert!(matches!(alerts[0], PendingNotification::Alert { title, .. } if title.starts_with("Alert:")));
+        assert!(
+            matches!(alerts[0], PendingNotification::Alert { title, .. } if title.starts_with("Alert:"))
+        );
     }
 
     #[test]
@@ -467,15 +468,32 @@ mod tests {
         let mut state = AlertChannelState::new();
         let widget = widget_with_alert(300);
 
-        state.process_run_state("d1", "Board", &widget, &make_run(WidgetRunStatus::Ok, Some(true)));
+        state.process_run_state(
+            "d1",
+            "Board",
+            &widget,
+            &make_run(WidgetRunStatus::Ok, Some(true)),
+        );
 
-        let notes = state.process_run_state("d1", "Board", &widget, &make_run(WidgetRunStatus::Error, None));
+        let notes = state.process_run_state(
+            "d1",
+            "Board",
+            &widget,
+            &make_run(WidgetRunStatus::Error, None),
+        );
         assert!(alert_notifications(&notes).is_empty());
 
-        let notes = state.process_run_state("d1", "Board", &widget, &make_run(WidgetRunStatus::Ok, Some(false)));
+        let notes = state.process_run_state(
+            "d1",
+            "Board",
+            &widget,
+            &make_run(WidgetRunStatus::Ok, Some(false)),
+        );
         let alerts = alert_notifications(&notes);
         assert_eq!(alerts.len(), 1);
-        assert!(matches!(alerts[0], PendingNotification::Alert { title, .. } if title.starts_with("Recovered:")));
+        assert!(
+            matches!(alerts[0], PendingNotification::Alert { title, .. } if title.starts_with("Recovered:"))
+        );
     }
 
     #[test]
@@ -483,12 +501,23 @@ mod tests {
         let mut state = AlertChannelState::new();
         let widget = widget_with_alert(300);
 
-        state.process_run_state("d1", "Board", &widget, &make_run(WidgetRunStatus::Ok, Some(true)));
+        state.process_run_state(
+            "d1",
+            "Board",
+            &widget,
+            &make_run(WidgetRunStatus::Ok, Some(true)),
+        );
 
-        let notes = state.process_run_state("d1", "Board", &widget, &make_run(WidgetRunStatus::Ok, None));
+        let notes =
+            state.process_run_state("d1", "Board", &widget, &make_run(WidgetRunStatus::Ok, None));
         assert!(alert_notifications(&notes).is_empty());
 
-        let notes = state.process_run_state("d1", "Board", &widget, &make_run(WidgetRunStatus::Ok, Some(false)));
+        let notes = state.process_run_state(
+            "d1",
+            "Board",
+            &widget,
+            &make_run(WidgetRunStatus::Ok, Some(false)),
+        );
         assert_eq!(alert_notifications(&notes).len(), 1);
     }
 
@@ -498,18 +527,37 @@ mod tests {
         let widget = sample_widget();
 
         for _ in 0..2 {
-            let notes = state.process_run_state("d1", "Board", &widget, &make_run(WidgetRunStatus::Error, None));
-            assert!(!notes.iter().any(|n| matches!(n, PendingNotification::QueryFailureWarning { .. })));
+            let notes = state.process_run_state(
+                "d1",
+                "Board",
+                &widget,
+                &make_run(WidgetRunStatus::Error, None),
+            );
+            assert!(!notes
+                .iter()
+                .any(|n| matches!(n, PendingNotification::QueryFailureWarning { .. })));
         }
 
-        let notes = state.process_run_state("d1", "Board", &widget, &make_run(WidgetRunStatus::Error, None));
+        let notes = state.process_run_state(
+            "d1",
+            "Board",
+            &widget,
+            &make_run(WidgetRunStatus::Error, None),
+        );
         assert!(notes.iter().any(|n| matches!(
             n,
             PendingNotification::QueryFailureWarning { title, .. } if title.starts_with("Query failed:")
         )));
 
-        let notes = state.process_run_state("d1", "Board", &widget, &make_run(WidgetRunStatus::Error, None));
-        assert!(!notes.iter().any(|n| matches!(n, PendingNotification::QueryFailureWarning { .. })));
+        let notes = state.process_run_state(
+            "d1",
+            "Board",
+            &widget,
+            &make_run(WidgetRunStatus::Error, None),
+        );
+        assert!(!notes
+            .iter()
+            .any(|n| matches!(n, PendingNotification::QueryFailureWarning { .. })));
     }
 
     #[test]
@@ -517,11 +565,31 @@ mod tests {
         let mut state = AlertChannelState::new();
         let widget = widget_with_alert(300);
 
-        state.process_run_state("d1", "Board", &widget, &make_run(WidgetRunStatus::Ok, Some(false)));
-        state.process_run_state("d1", "Board", &widget, &make_run(WidgetRunStatus::Ok, Some(true)));
+        state.process_run_state(
+            "d1",
+            "Board",
+            &widget,
+            &make_run(WidgetRunStatus::Ok, Some(false)),
+        );
+        state.process_run_state(
+            "d1",
+            "Board",
+            &widget,
+            &make_run(WidgetRunStatus::Ok, Some(true)),
+        );
 
-        state.process_run_state("d1", "Board", &widget, &make_run(WidgetRunStatus::Ok, Some(false)));
-        let notes = state.process_run_state("d1", "Board", &widget, &make_run(WidgetRunStatus::Ok, Some(true)));
+        state.process_run_state(
+            "d1",
+            "Board",
+            &widget,
+            &make_run(WidgetRunStatus::Ok, Some(false)),
+        );
+        let notes = state.process_run_state(
+            "d1",
+            "Board",
+            &widget,
+            &make_run(WidgetRunStatus::Ok, Some(true)),
+        );
         assert!(alert_notifications(&notes).is_empty());
     }
 }

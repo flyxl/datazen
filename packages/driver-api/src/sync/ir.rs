@@ -17,24 +17,39 @@ pub enum IRType {
     Float64,
 
     /// Exact numeric with optional precision/scale. `precision == 0` means unbounded.
-    Decimal { precision: u8, scale: u8 },
+    Decimal {
+        precision: u8,
+        scale: u8,
+    },
 
-    Char { length: u32 },
+    Char {
+        length: u32,
+    },
     /// `None` length means unbounded (equivalent to TEXT in most databases).
-    Varchar { length: Option<u32> },
+    Varchar {
+        length: Option<u32>,
+    },
     Text,
 
-    Binary { length: Option<u32> },
+    Binary {
+        length: Option<u32>,
+    },
     Blob,
 
     Date,
-    Time { with_timezone: bool },
-    Timestamp { with_timezone: bool },
+    Time {
+        with_timezone: bool,
+    },
+    Timestamp {
+        with_timezone: bool,
+    },
 
     Json,
     Uuid,
 
-    Bit { length: u32 },
+    Bit {
+        length: u32,
+    },
 
     /// Fallback for types that have no standard IR mapping.
     /// Target adapters should degrade this to TEXT.

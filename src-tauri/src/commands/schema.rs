@@ -235,11 +235,9 @@ fn value_as_string(value: Option<&crate::db::Value>) -> Option<String> {
 }
 
 fn column_index(columns: &[crate::db::ColumnInfo], names: &[&str]) -> Option<usize> {
-    columns.iter().position(|c| {
-        names
-            .iter()
-            .any(|n| c.name.eq_ignore_ascii_case(n))
-    })
+    columns
+        .iter()
+        .position(|c| names.iter().any(|n| c.name.eq_ignore_ascii_case(n)))
 }
 
 pub(crate) async fn get_database_objects_impl(
@@ -262,7 +260,10 @@ pub(crate) async fn get_database_objects_impl(
     let Some(sql) = crate::schema_objects::list_objects_sql(&config.database_type, parsed) else {
         return Ok(Vec::new());
     };
-    let result = driver.query(&handle, &sql).await.cmd_err("get_database_objects")?;
+    let result = driver
+        .query(&handle, &sql)
+        .await
+        .cmd_err("get_database_objects")?;
     let name_idx = column_index(&result.columns, &["name", "Name", "Trigger", "proname"])
         .ok_or_else(|| CommandError::Internal("Object list query missing name column".into()))?;
     let schema_idx = column_index(&result.columns, &["schema", "Db", "nspname"]);
@@ -310,7 +311,10 @@ pub(crate) async fn get_object_ddl_impl(
             "This database type does not expose object DDL".into(),
         ));
     };
-    let result = driver.query(&handle, &sql).await.cmd_err("get_object_ddl")?;
+    let result = driver
+        .query(&handle, &sql)
+        .await
+        .cmd_err("get_object_ddl")?;
     let ddl_idx = column_index(
         &result.columns,
         &[
@@ -359,14 +363,19 @@ pub(crate) async fn get_privileges_impl(
     let Some(sql) = crate::schema_objects::list_privileges_sql(&config.database_type) else {
         return Ok(Vec::new());
     };
-    let result = driver.query(&handle, &sql).await.cmd_err("get_privileges")?;
+    let result = driver
+        .query(&handle, &sql)
+        .await
+        .cmd_err("get_privileges")?;
     let grantee_idx = column_index(&result.columns, &["grantee"]);
     let schema_idx = column_index(&result.columns, &["schema", "table_schema"]);
     let name_idx = column_index(&result.columns, &["name", "table_name"]);
     let priv_idx = column_index(&result.columns, &["privilege", "privilege_type"]);
     let mut out = Vec::new();
     for row in result.rows {
-        let Some(grantee) = grantee_idx.and_then(|i| value_as_string(row.get(i).and_then(|v| v.as_ref()))) else {
+        let Some(grantee) =
+            grantee_idx.and_then(|i| value_as_string(row.get(i).and_then(|v| v.as_ref())))
+        else {
             continue;
         };
         let object_name = name_idx
@@ -377,7 +386,8 @@ pub(crate) async fn get_privileges_impl(
             .unwrap_or_default();
         out.push(crate::schema_objects::PrivilegeGrant {
             grantee,
-            object_schema: schema_idx.and_then(|i| value_as_string(row.get(i).and_then(|v| v.as_ref()))),
+            object_schema: schema_idx
+                .and_then(|i| value_as_string(row.get(i).and_then(|v| v.as_ref()))),
             object_name,
             privilege,
         });
@@ -717,14 +727,10 @@ mod tests {
 
     #[tokio::test]
     async fn sqlite_function_list_is_empty() {
-        let sqlite = crate::testing::mock_driver::MockDriver::new(
-            "sqlite",
-            MockDriverOptions::default(),
-        );
+        let sqlite =
+            crate::testing::mock_driver::MockDriver::new("sqlite", MockDriverOptions::default());
         let test = TestAppState::new().await;
-        test.registry
-            .register_test_driver("sqlite", sqlite)
-            .await;
+        test.registry.register_test_driver("sqlite", sqlite).await;
         let mut config = crate::testing::app_state::sample_postgres_config("sqlite-obj");
         config.database_type = "sqlite".into();
         test.store.save_connection(config).await.unwrap();
@@ -754,7 +760,10 @@ mod tests {
             columns: vec![col("id"), col("status")],
             primary_keys: vec!["id".into()],
             count_total: 1,
-            query_rows: vec![vec![Some(Value::Integer(1)), Some(Value::String("a".into()))]],
+            query_rows: vec![vec![
+                Some(Value::Integer(1)),
+                Some(Value::String("a".into())),
+            ]],
             ..Default::default()
         };
         let test = TestAppState::with_options(opts).await;

@@ -53,20 +53,23 @@ impl MockAiProvider {
 
     pub fn push_text(&self, content: impl Into<String>) {
         let content = content.into();
-        self.complete_queue.lock().unwrap().push_back(Ok(CompletionResponse {
-            request_id: String::new(),
-            content,
-            reasoning: None,
-            usage: TokenUsage {
-                prompt_tokens: 1,
-                completion_tokens: 2,
-                total_tokens: 3,
-            },
-            model: "mock-model".into(),
-            finish_reason: Some("stop".into()),
-            tool_calls: None,
-            response_id: None,
-        }));
+        self.complete_queue
+            .lock()
+            .unwrap()
+            .push_back(Ok(CompletionResponse {
+                request_id: String::new(),
+                content,
+                reasoning: None,
+                usage: TokenUsage {
+                    prompt_tokens: 1,
+                    completion_tokens: 2,
+                    total_tokens: 3,
+                },
+                model: "mock-model".into(),
+                finish_reason: Some("stop".into()),
+                tool_calls: None,
+                response_id: None,
+            }));
     }
 
     pub fn push_error(&self, msg: impl Into<String>) {
@@ -80,16 +83,19 @@ impl MockAiProvider {
     /// and the default `stream_complete` falls back to `complete`).
     #[allow(dead_code)]
     pub fn push_tool_calls(&self, tool_calls: Vec<ToolCall>) {
-        self.complete_queue.lock().unwrap().push_back(Ok(CompletionResponse {
-            request_id: String::new(),
-            content: String::new(),
-            reasoning: None,
-            usage: TokenUsage::default(),
-            model: "mock-model".into(),
-            finish_reason: Some("tool_calls".into()),
-            tool_calls: Some(tool_calls),
-            response_id: None,
-        }));
+        self.complete_queue
+            .lock()
+            .unwrap()
+            .push_back(Ok(CompletionResponse {
+                request_id: String::new(),
+                content: String::new(),
+                reasoning: None,
+                usage: TokenUsage::default(),
+                model: "mock-model".into(),
+                finish_reason: Some("tool_calls".into()),
+                tool_calls: Some(tool_calls),
+                response_id: None,
+            }));
     }
 
     /// Queue an explicit streaming round (chunks delivered via mpsc).
@@ -187,7 +193,12 @@ impl AiProvider for MockAiProvider {
         if !self.validate_ok.load(Ordering::Relaxed) {
             return Err(AiError::InvalidApiKey);
         }
-        if config.api_key.as_ref().map(|s| s.trim().is_empty()).unwrap_or(true) {
+        if config
+            .api_key
+            .as_ref()
+            .map(|s| s.trim().is_empty())
+            .unwrap_or(true)
+        {
             return Err(AiError::NotConfigured("api_key".into()));
         }
         Ok(())
@@ -202,9 +213,11 @@ impl AiProvider for MockAiProvider {
     async fn complete(&self, request: &CompletionRequest) -> Result<CompletionResponse, AiError> {
         self.calls.lock().unwrap().push(request.clone());
         let mut queue = self.complete_queue.lock().unwrap();
-        let mut response = queue
-            .pop_front()
-            .unwrap_or_else(|| Err(AiError::Internal("MockAiProvider complete queue empty".into())))?;
+        let mut response = queue.pop_front().unwrap_or_else(|| {
+            Err(AiError::Internal(
+                "MockAiProvider complete queue empty".into(),
+            ))
+        })?;
         if response.request_id.is_empty() {
             response.request_id = request.request_id.clone();
         }
@@ -234,7 +247,9 @@ impl AiProvider for MockAiProvider {
             }
             Some(Err(e)) => {
                 self.calls.lock().unwrap().push(request.clone());
-                let _ = sender.send(Err(AiError::RequestFailed(e.to_string()))).await;
+                let _ = sender
+                    .send(Err(AiError::RequestFailed(e.to_string())))
+                    .await;
                 Err(e)
             }
             None => {

@@ -90,7 +90,8 @@ impl Store {
 
         let encryption_key = Self::get_or_create_encryption_key(&data_dir).await?;
 
-        let history_db = HistoryDb::open(&data_dir).map_err(|e| StoreError::InitError(e.to_string()))?;
+        let history_db =
+            HistoryDb::open(&data_dir).map_err(|e| StoreError::InitError(e.to_string()))?;
 
         let store = Self {
             data_dir,
@@ -111,7 +112,8 @@ impl Store {
 
         let encryption_key = Self::get_or_create_encryption_key(data_dir).await?;
 
-        let history_db = HistoryDb::open(data_dir).map_err(|e| StoreError::InitError(e.to_string()))?;
+        let history_db =
+            HistoryDb::open(data_dir).map_err(|e| StoreError::InitError(e.to_string()))?;
 
         let store = Self {
             data_dir: data_dir.to_path_buf(),
@@ -125,7 +127,9 @@ impl Store {
         Ok(store)
     }
 
-    async fn get_or_create_encryption_key(data_dir: &std::path::Path) -> Result<[u8; 32], StoreError> {
+    async fn get_or_create_encryption_key(
+        data_dir: &std::path::Path,
+    ) -> Result<[u8; 32], StoreError> {
         let data_dir = data_dir.to_path_buf();
         tokio::task::spawn_blocking(move || key_store::load_or_create_master_key(&data_dir))
             .await
@@ -223,7 +227,10 @@ impl Store {
         serde_json::from_str(&content).map_err(|e| StoreError::ParseError(e.to_string()))
     }
 
-    pub(super) async fn write_file_atomic(path: &std::path::Path, content: impl AsRef<[u8]>) -> Result<(), StoreError> {
+    pub(super) async fn write_file_atomic(
+        path: &std::path::Path,
+        content: impl AsRef<[u8]>,
+    ) -> Result<(), StoreError> {
         let parent = path
             .parent()
             .ok_or_else(|| StoreError::WriteError("path has no parent directory".into()))?;
@@ -278,8 +285,8 @@ impl Store {
                 .map_err(|e| StoreError::WriteError(e.to_string()))?;
         }
 
-        let content =
-            serde_json::to_string_pretty(data).map_err(|e| StoreError::ParseError(e.to_string()))?;
+        let content = serde_json::to_string_pretty(data)
+            .map_err(|e| StoreError::ParseError(e.to_string()))?;
 
         Self::write_file_atomic(&path, content).await
     }
