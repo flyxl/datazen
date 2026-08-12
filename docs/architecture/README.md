@@ -188,7 +188,7 @@ Connection 变化后重新 discovery；没有 Step override 时使用 Workflow �
 |------|------|
 | [安全措施](security.md) | AES-256-GCM、CSP、路径遍历防护、文件扩展名白名单、AI Key 安全 |
 | [窗口管理](windows.md) | 多窗口架构、Rust 端窗口创建、macOS acceptFirstMouse、windowKind URL 路由 |
-| [测试策略](testing.md) | Rust / Vitest / E2E 概览 |
+| [测试策略](testing.md) | Rust / Vitest / E2E 概览；Host UI 路径覆盖见 [e2e-coverage.md](../e2e-coverage.md) |
 
 ## 其他文档
 

@@ -458,4 +458,21 @@ describe('Workflow Tab System (WORKFLOW-WINDOW)', () => {
     });
     expect(isHistoryActive).toBe(true);
   });
+
+  it('WF-YAML-001: 应能切换到 YAML 编辑模式', async () => {
+    await selectWorkflow();
+    const yamlTab = await $('[data-testid="workflow-mode-yaml"]');
+    await yamlTab.waitForDisplayed({ timeout: 10000 });
+    await yamlTab.click();
+    await browser.pause(600);
+    await expect(await $('[data-testid="workflow-yaml-editor"]')).toBeDisplayed();
+  });
+
+  it('WF-YAML-002: YAML 模式应显示保存入口', async () => {
+    const saveBtn = await $('[data-testid="workflow-yaml-save"]');
+    await expect(saveBtn).toBeDisplayed();
+    const visualTab = await $('[data-testid="workflow-mode-visual"]');
+    await visualTab.click();
+    await browser.pause(400);
+  });
 });

@@ -210,6 +210,43 @@ describe('表结构编辑 (TS-001~TS-008)', () => {
     await expect(editBtn).toBeDisplayed();
   });
 
+  it('结构编辑保存新增列后应反映在结构视图 (TS-009)', async () => {
+    const editBtn = await $(`button*=${t('structView.editStructure')}`);
+    await editBtn.waitForDisplayed({ timeout: 10000 });
+    await editBtn.click();
+    await browser.pause(800);
+
+    const addCol = await $(`button*=${t('structEditor.addColumn')}`);
+    await addCol.waitForDisplayed({ timeout: 8000 });
+    await addCol.click();
+    await browser.pause(400);
+
+    const nameInput = await $('input[placeholder="column_name"]');
+    await nameInput.waitForDisplayed({ timeout: 5000 });
+    // Prefer the last empty / newest column_name input
+    const inputs = await $$('input[placeholder="column_name"]');
+    const target = inputs[inputs.length - 1];
+    await target.click();
+    await target.clearValue();
+    await target.setValue('e2e_extra_col');
+    await browser.pause(300);
+
+    const saveBtn = await $(`button*=${t('structEditor.saveChanges')}`);
+    await saveBtn.click();
+    await browser.pause(2500);
+
+    const backBtn = await $(`button*=${t('common.back')}`);
+    if (await backBtn.isExisting()) {
+      await backBtn.click();
+      await browser.pause(600);
+    }
+
+    await switchSubTab(t('connWin.structure'));
+    await browser.pause(1200);
+    const body = await $('body').getText();
+    expect(body).toContain('e2e_extra_col');
+  });
+
   it('应能查看表的完整列信息 (TS-007)', async () => {
     const body = await $('body').getText();
     expect(body).toContain('id');

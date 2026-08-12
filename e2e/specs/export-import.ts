@@ -422,4 +422,23 @@ describe('导出和导入 (EI-001~EI-006)', () => {
       await browser.pause(500);
     }
   });
+
+  it('EI-GRID-001: DataTable 工具栏导出应打开导出对话框', async () => {
+    await clickTableInSidebar(TEST_TABLE);
+    await browser.pause(1200);
+    await switchSubTab(t('connWin.data'));
+    await browser.pause(1000);
+    const exportBtn = await $(`button[title="${t('export.export')}"]`);
+    await exportBtn.waitForDisplayed({ timeout: 10000 });
+    await exportBtn.click();
+    await browser.pause(600);
+    const body = await $('body').getText();
+    expect(body).toContain(t('export.export'));
+    // Dialog should offer format choices
+    expect(body.includes('CSV') || body.includes('JSON') || body.includes('SQL')).toBe(true);
+    const cancel = await $(`button*=${t('common.cancel')}`);
+    if (await cancel.isDisplayed()) {
+      await cancel.click();
+    }
+  });
 });

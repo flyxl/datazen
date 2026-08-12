@@ -271,11 +271,23 @@ cargo test -p datazen-driver-postgres  # 示例：某个 path 驱动的 Rust 测
 
 ### E2E
 
-完整流程见 [docs/e2e-testing.md](docs/e2e-testing.md)。
+完整流程见 [docs/e2e-testing.md](docs/e2e-testing.md)；覆盖矩阵见 [docs/e2e-coverage.md](docs/e2e-coverage.md)。
 
 1. 必须使用 Tauri CLI 构建：`pnpm tauri build --debug --features webdriver`
 2. 禁止裸 `cargo build --features webdriver` 作为 E2E 二进制
 3. 必须启用 `webdriver` feature，监听 `127.0.0.1:4445`
+
+#### Host E2E 覆盖规则（硬性）
+
+在 Host 边界内（见下方「驱动测试落点」）：
+
+1. **所有 UI 交互都必须被 E2E 覆盖**：用户可点击/输入/切换的 Host 控件与对话框，须有 `e2e/specs/` 用例走到该交互（不仅「文案出现在页面上」）。
+2. **所有用户可走到的交互路径都必须被 E2E 覆盖**：从入口到结果的完整路径（打开 → 操作 → 可见结果/状态），含成功路径与关键失败/空态（如未填完筛选不得报加载失败）。
+3. **新增或变更 Host UI / 用户路径时，必须同 PR 更新或新增 E2E**；禁止只改产品代码、靠手工验收。
+4. **驱动专属 UI / 方言 / Command** 仍写在 `packages/drivers/<id>/e2e/`（或插件仓），**不要**塞进 Host `e2e/specs/`。
+5. **自动化无法稳定覆盖的路径**（真实 IME 组字、原生系统文件对话框点选、依赖外部密钥的可选 AI 路径等）须在 [docs/e2e-coverage.md](docs/e2e-coverage.md) 登记例外：说明原因、替代覆盖（单测 / IPC / 手工黑盒），并尽量用可自动化的近似路径（如 composition 事件单测、路径 IPC 代替另存为对话框）。
+
+「仅断言某按钮文案存在」不算完成覆盖；至少要执行一次该交互并断言可见结果。
 
 ```bash
 pnpm e2e                               # 完整构建（webdriver）+ 跑全部 Host E2E（推荐首次）

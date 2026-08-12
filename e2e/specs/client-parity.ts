@@ -193,15 +193,25 @@ describe('Client parity P0–P2', () => {
     await expect(await $(`button*=${t('objects.function')}`)).toBeDisplayed();
   });
 
-  it('table filter editor exposes AND/OR', async () => {
+  it('table filter editor opens AND/OR controls', async () => {
     const handles = await browser.getWindowHandles();
     const conn = handles.find((h) => h !== mainWindow);
     if (conn) await browser.switchToWindow(conn);
     const table = await clickFirstTable();
     if (!table) return;
     await browser.pause(800);
+    const toggle = await $('[data-testid="table-filter-toggle"]');
+    if (await toggle.isExisting()) {
+      await toggle.click();
+      await browser.pause(400);
+    }
     const body = await $('body').getText();
-    expect(body.includes(t('filter.filter')) || body.includes('AND') || body.includes('OR')).toBe(true);
+    expect(
+      body.includes(t('filter.and')) ||
+        body.includes(t('filter.or')) ||
+        body.includes(t('filter.add')) ||
+        body.includes(t('filter.filter')),
+    ).toBe(true);
   });
 
   it('new connection form shows SSH agent and jump host', async () => {
