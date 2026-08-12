@@ -14,14 +14,18 @@ export function SettingRow({ label, hint, children }: { label: string; hint?: st
   );
 }
 
-export function ToggleRow({ label, checked, onChange }: {
+export function ToggleRow({ label, hint, checked, onChange }: {
   label: string;
+  hint?: string;
   checked: boolean;
   onChange: (v: boolean) => void;
 }) {
   return (
-    <div className="flex items-center justify-between">
-      <div className="text-sm text-fg-secondary">{label}</div>
+    <div className="flex items-center justify-between gap-4">
+      <div>
+        <div className="text-sm text-fg-secondary">{label}</div>
+        {hint ? <div className="mt-0.5 text-[11px] text-fg-muted">{hint}</div> : null}
+      </div>
       <button
         type="button"
         role="switch"

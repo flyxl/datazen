@@ -169,6 +169,127 @@ pub async fn delete_favorite_query(
     delete_favorite_query_impl(&state, id).await
 }
 
+pub(crate) async fn begin_session_transaction_impl(
+    state: &AppState,
+    connection_id: String,
+) -> Result<(), CommandError> {
+    {
+        let txs = state.session_transactions.lock().await;
+        if txs.contains_key(&connection_id) {
+            return Ok(());
+        }
+    }
+    let (driver, handle) = state
+        .connection_manager
+        .get_connection(&connection_id)
+        .await
+        .cmd_err("begin_session_transaction")?;
+    let tx = match driver.begin_transaction(&handle).await {
+        Ok(tx) => tx,
+        Err(e) => {
+            if state
+                .session_transactions
+                .lock()
+                .await
+                .contains_key(&connection_id)
+            {
+                return Ok(());
+            }
+            return Err(e).cmd_err("begin_session_transaction");
+        }
+    };
+    let mut txs = state.session_transactions.lock().await;
+    if txs.contains_key(&connection_id) {
+        drop(txs);
+        let _ = driver.rollback(tx).await;
+        return Ok(());
+    }
+    txs.insert(connection_id, tx);
+    Ok(())
+}
+
+pub(crate) async fn commit_session_transaction_impl(
+    state: &AppState,
+    connection_id: String,
+) -> Result<(), CommandError> {
+    let (driver, _) = state
+        .connection_manager
+        .get_connection(&connection_id)
+        .await
+        .cmd_err("commit_session_transaction")?;
+    let tx = state
+        .session_transactions
+        .lock()
+        .await
+        .remove(&connection_id)
+        .ok_or_else(|| CommandError::Validation("No open transaction".into()))?;
+    driver.commit(tx).await.cmd_err("commit_session_transaction")
+}
+
+pub(crate) async fn rollback_session_transaction_impl(
+    state: &AppState,
+    connection_id: String,
+) -> Result<(), CommandError> {
+    let (driver, _) = state
+        .connection_manager
+        .get_connection(&connection_id)
+        .await
+        .cmd_err("rollback_session_transaction")?;
+    let tx = state
+        .session_transactions
+        .lock()
+        .await
+        .remove(&connection_id)
+        .ok_or_else(|| CommandError::Validation("No open transaction".into()))?;
+    driver
+        .rollback(tx)
+        .await
+        .cmd_err("rollback_session_transaction")
+}
+
+pub(crate) async fn session_transaction_status_impl(
+    state: &AppState,
+    connection_id: String,
+) -> Result<bool, CommandError> {
+    Ok(state
+        .session_transactions
+        .lock()
+        .await
+        .contains_key(&connection_id))
+}
+
+#[tauri::command]
+pub async fn begin_session_transaction(
+    state: State<'_, AppState>,
+    connection_id: String,
+) -> Result<(), CommandError> {
+    begin_session_transaction_impl(&state, connection_id).await
+}
+
+#[tauri::command]
+pub async fn commit_session_transaction(
+    state: State<'_, AppState>,
+    connection_id: String,
+) -> Result<(), CommandError> {
+    commit_session_transaction_impl(&state, connection_id).await
+}
+
+#[tauri::command]
+pub async fn rollback_session_transaction(
+    state: State<'_, AppState>,
+    connection_id: String,
+) -> Result<(), CommandError> {
+    rollback_session_transaction_impl(&state, connection_id).await
+}
+
+#[tauri::command]
+pub async fn session_transaction_status(
+    state: State<'_, AppState>,
+    connection_id: String,
+) -> Result<bool, CommandError> {
+    session_transaction_status_impl(&state, connection_id).await
+}
+
 #[cfg(test)]
 mod log_hygiene_tests {
     #[test]
@@ -303,5 +424,69 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(result.results[0].rows.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn session_transaction_begin_commit_and_status() {
+        let test = TestAppState::new().await;
+        let (_, conn_id) = test.save_and_connect("tx-cfg").await;
+        assert!(!session_transaction_status_impl(&test.state, conn_id.clone())
+            .await
+            .unwrap());
+        begin_session_transaction_impl(&test.state, conn_id.clone())
+            .await
+            .unwrap();
+        assert!(session_transaction_status_impl(&test.state, conn_id.clone())
+            .await
+            .unwrap());
+        begin_session_transaction_impl(&test.state, conn_id.clone())
+            .await
+            .unwrap();
+        commit_session_transaction_impl(&test.state, conn_id.clone())
+            .await
+            .unwrap();
+        assert!(!session_transaction_status_impl(&test.state, conn_id.clone())
+            .await
+            .unwrap());
+        begin_session_transaction_impl(&test.state, conn_id.clone())
+            .await
+            .unwrap();
+        rollback_session_transaction_impl(&test.state, conn_id.clone())
+            .await
+            .unwrap();
+        assert!(!session_transaction_status_impl(&test.state, conn_id)
+            .await
+            .unwrap());
+    }
+
+    #[tokio::test]
+    async fn commit_and_rollback_without_tx_are_validation_errors() {
+        let test = TestAppState::new().await;
+        let (_, conn_id) = test.save_and_connect("tx-empty").await;
+        let commit_err = commit_session_transaction_impl(&test.state, conn_id.clone())
+            .await
+            .unwrap_err();
+        assert!(commit_err.to_string().contains("No open transaction"));
+        let rollback_err = rollback_session_transaction_impl(&test.state, conn_id)
+            .await
+            .unwrap_err();
+        assert!(rollback_err.to_string().contains("No open transaction"));
+    }
+
+    #[tokio::test]
+    async fn concurrent_begin_is_idempotent() {
+        let test = TestAppState::new().await;
+        let (_, conn_id) = test.save_and_connect("tx-race").await;
+        let a = begin_session_transaction_impl(&test.state, conn_id.clone());
+        let b = begin_session_transaction_impl(&test.state, conn_id.clone());
+        let (ra, rb) = tokio::join!(a, b);
+        assert!(ra.is_ok());
+        assert!(rb.is_ok());
+        assert!(session_transaction_status_impl(&test.state, conn_id.clone())
+            .await
+            .unwrap());
+        commit_session_transaction_impl(&test.state, conn_id)
+            .await
+            .unwrap();
     }
 }

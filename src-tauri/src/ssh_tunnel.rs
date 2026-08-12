@@ -90,6 +90,11 @@ impl client::Handler for TunnelHandler {
 pub struct SshTunnel {
     local_port: u16,
     _task: tokio::task::JoinHandle<()>,
+    _upstream: Option<Box<SshTunnel>>,
+}
+
+pub fn supported_auth_method(method: &str) -> bool {
+    matches!(method, "password" | "private_key" | "agent")
 }
 
 impl SshTunnel {
@@ -101,6 +106,26 @@ impl SshTunnel {
         remote_port: u16,
         known_hosts_path: &Path,
     ) -> Result<Self, DriverError> {
+        if !supported_auth_method(&ssh.auth_method) {
+            return Err(DriverError::SshTunnelError(format!(
+                "Unknown SSH auth method: {}",
+                ssh.auth_method
+            )));
+        }
+
+        let upstream = match ssh.jump.as_deref() {
+            Some(jump) if jump.enabled => Some(Box::new(
+                Box::pin(SshTunnel::start(jump, &ssh.host, ssh.port, known_hosts_path)).await?,
+            )),
+            _ => None,
+        };
+
+        let (connect_host, connect_port): (String, u16) = if let Some(ref up) = upstream {
+            ("127.0.0.1".into(), up.local_port())
+        } else {
+            (ssh.host.clone(), ssh.port)
+        };
+
         let config = Arc::new(client::Config::default());
         let host_id = host_key_id(&ssh.host, ssh.port);
         let rejection = Arc::new(Mutex::new(None));
@@ -113,8 +138,8 @@ impl SshTunnel {
             rejection: rejection.clone(),
         };
 
-        // 1. Connect
-        let mut session = client::connect(config, (ssh.host.as_str(), ssh.port), handler)
+        // 1. Connect (possibly via an upstream jump tunnel bound on localhost)
+        let mut session = client::connect(config, (connect_host.as_str(), connect_port), handler)
             .await
             .map_err(|e| {
                 if let Some(msg) = rejection.lock().unwrap().take() {
@@ -128,49 +153,7 @@ impl SshTunnel {
             })?;
 
         // 2. Authenticate
-        match ssh.auth_method.as_str() {
-            "password" => {
-                let pw = ssh.password.as_deref().unwrap_or("");
-                let result = session
-                    .authenticate_password(&ssh.username, pw)
-                    .await
-                    .map_err(|e| DriverError::SshTunnelError(format!("SSH password auth: {e}")))?;
-                if !matches!(result, AuthResult::Success) {
-                    return Err(DriverError::SshTunnelError(
-                        "SSH password authentication rejected".into(),
-                    ));
-                }
-            }
-            "private_key" => {
-                let key_path = ssh
-                    .private_key_path
-                    .as_deref()
-                    .unwrap_or("~/.ssh/id_rsa");
-                let expanded = expand_home(key_path);
-
-                let secret_key = keys::load_secret_key(&expanded, ssh.passphrase.as_deref())
-                    .map_err(|e| {
-                        DriverError::SshTunnelError(format!("Load SSH key {expanded}: {e}"))
-                    })?;
-
-                let key_with_hash = PrivateKeyWithHashAlg::new(Arc::new(secret_key), None);
-
-                let result = session
-                    .authenticate_publickey(&ssh.username, key_with_hash)
-                    .await
-                    .map_err(|e| DriverError::SshTunnelError(format!("SSH key auth: {e}")))?;
-                if !matches!(result, AuthResult::Success) {
-                    return Err(DriverError::SshTunnelError(
-                        "SSH public key authentication rejected".into(),
-                    ));
-                }
-            }
-            other => {
-                return Err(DriverError::SshTunnelError(format!(
-                    "Unknown SSH auth method: {other}"
-                )));
-            }
-        }
+        authenticate_session(&mut session, ssh).await?;
 
         // 3. Bind local listener
         let listener = TcpListener::bind("127.0.0.1:0")
@@ -232,11 +215,132 @@ impl SshTunnel {
         Ok(SshTunnel {
             local_port,
             _task: task,
+            _upstream: upstream,
         })
     }
 
     pub fn local_port(&self) -> u16 {
         self.local_port
+    }
+}
+
+async fn authenticate_session(
+    session: &mut client::Handle<TunnelHandler>,
+    ssh: &SshTunnelConfig,
+) -> Result<(), DriverError> {
+    match ssh.auth_method.as_str() {
+        "password" => {
+            let pw = ssh.password.as_deref().unwrap_or("");
+            let result = session
+                .authenticate_password(&ssh.username, pw)
+                .await
+                .map_err(|e| DriverError::SshTunnelError(format!("SSH password auth: {e}")))?;
+            if !matches!(result, AuthResult::Success) {
+                return Err(DriverError::SshTunnelError(
+                    "SSH password authentication rejected".into(),
+                ));
+            }
+        }
+        "private_key" => {
+            let key_path = ssh.private_key_path.as_deref().unwrap_or("~/.ssh/id_rsa");
+            let expanded = expand_home(key_path);
+
+            let secret_key = keys::load_secret_key(&expanded, ssh.passphrase.as_deref()).map_err(
+                |e| DriverError::SshTunnelError(format!("Load SSH key {expanded}: {e}")),
+            )?;
+
+            let key_with_hash = PrivateKeyWithHashAlg::new(Arc::new(secret_key), None);
+
+            let result = session
+                .authenticate_publickey(&ssh.username, key_with_hash)
+                .await
+                .map_err(|e| DriverError::SshTunnelError(format!("SSH key auth: {e}")))?;
+            if !matches!(result, AuthResult::Success) {
+                return Err(DriverError::SshTunnelError(
+                    "SSH public key authentication rejected".into(),
+                ));
+            }
+        }
+        "agent" => authenticate_with_agent(session, ssh).await?,
+        other => {
+            return Err(DriverError::SshTunnelError(format!(
+                "Unknown SSH auth method: {other}"
+            )));
+        }
+    }
+    Ok(())
+}
+
+async fn authenticate_with_agent(
+    session: &mut client::Handle<TunnelHandler>,
+    ssh: &SshTunnelConfig,
+) -> Result<(), DriverError> {
+    #[cfg(unix)]
+    let mut agent = russh::keys::agent::client::AgentClient::connect_env()
+        .await
+        .map_err(|e| DriverError::SshTunnelError(format!("SSH agent: {e}")))?;
+    #[cfg(windows)]
+    let mut agent = russh::keys::agent::client::AgentClient::connect_pageant()
+        .await
+        .map_err(|e| DriverError::SshTunnelError(format!("SSH agent: {e}")))?;
+    #[cfg(not(any(unix, windows)))]
+    {
+        let _ = (session, ssh);
+        return Err(DriverError::SshTunnelError(
+            "SSH agent is not supported on this platform".into(),
+        ));
+    }
+
+    #[cfg(any(unix, windows))]
+    {
+        let identities = agent
+            .request_identities()
+            .await
+            .map_err(|e| DriverError::SshTunnelError(format!("SSH agent identities: {e}")))?;
+        if identities.is_empty() {
+            return Err(DriverError::SshTunnelError(
+                "SSH agent has no identities".into(),
+            ));
+        }
+        let hash_alg = session
+            .best_supported_rsa_hash()
+            .await
+            .ok()
+            .flatten()
+            .flatten();
+        for identity in identities {
+            let result = match identity {
+                russh::keys::agent::AgentIdentity::PublicKey { key, .. } => {
+                    let alg = match key.algorithm() {
+                        russh::keys::Algorithm::Rsa { .. } | russh::keys::Algorithm::Dsa => {
+                            hash_alg
+                        }
+                        _ => None,
+                    };
+                    session
+                        .authenticate_publickey_with(&ssh.username, key, alg, &mut agent)
+                        .await
+                }
+                russh::keys::agent::AgentIdentity::Certificate { certificate, .. } => session
+                    .authenticate_certificate_with(
+                        &ssh.username,
+                        certificate,
+                        hash_alg,
+                        &mut agent,
+                    )
+                    .await,
+            };
+            match result {
+                Ok(AuthResult::Success) => return Ok(()),
+                Ok(_) => continue,
+                Err(e) => {
+                    tracing::debug!(error = %e, "SSH agent identity rejected");
+                }
+            }
+        }
+        Err(DriverError::SshTunnelError(
+            "SSH agent authentication rejected".into(),
+        ))
     }
 }
 
@@ -277,6 +381,14 @@ mod tests {
     fn host_key_id_formats_host_port() {
         assert_eq!(host_key_id("jump.example.com", 22), "jump.example.com:22");
         assert_eq!(host_key_id("127.0.0.1", 2222), "127.0.0.1:2222");
+    }
+
+    #[test]
+    fn supported_auth_includes_agent() {
+        assert!(supported_auth_method("password"));
+        assert!(supported_auth_method("private_key"));
+        assert!(supported_auth_method("agent"));
+        assert!(!supported_auth_method("keyboard"));
     }
 
     #[test]

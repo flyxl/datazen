@@ -39,6 +39,9 @@ pub struct SshTunnelConfig {
     pub password: Option<String>,
     pub private_key_path: Option<String>,
     pub passphrase: Option<String>,
+    /// Optional first hop (ProxyJump). Nested `jump` is allowed.
+    #[serde(default)]
+    pub jump: Option<Box<SshTunnelConfig>>,
 }
 
 fn default_ssh_enabled() -> bool {
@@ -75,6 +78,9 @@ pub struct ConnectionConfig {
     /// Opaque per-driver connection options (e.g. Redis topology/TLS).
     #[serde(default)]
     pub options: Option<serde_json::Map<String, serde_json::Value>>,
+    /// When true, mutating SQL and row edits are rejected by the host.
+    #[serde(default)]
+    pub read_only: bool,
 }
 
 fn default_connection_timeout() -> u32 {
@@ -117,6 +123,7 @@ mod connection_config_tests {
             last_connected_at: None,
             server_version: None,
             options: None,
+            read_only: false,
         }
     }
 
@@ -130,6 +137,7 @@ mod connection_config_tests {
         let c: ConnectionConfig = serde_json::from_value(json).unwrap();
         assert_eq!(c.max_pool_size, 10);
         assert_eq!(c.effective_max_pool_size(), 10);
+        assert!(!c.read_only);
     }
 
     #[test]

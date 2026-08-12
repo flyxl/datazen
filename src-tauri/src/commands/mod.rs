@@ -50,9 +50,12 @@ use crate::db::registry::DriverRegistry;
 use crate::mcp::McpClientManager;
 use crate::monitor::{MonitorConnectionRegistry, MonitorEngine};
 use crate::workflow::{WorkflowHistoryManager, WorkflowRegistry};
+use crate::db::TransactionHandle;
 use crate::services::ConnectionManager;
 use crate::store::Store;
 use crate::sync::adapter_registry::SyncAdapterRegistry;
+use crate::workflow::scheduler::WorkflowScheduler;
+use std::collections::HashMap;
 use std::sync::Arc;
 
 /// Shared application state injected into every command handler.
@@ -70,6 +73,8 @@ pub struct AppState {
     pub workflow_registry: Arc<WorkflowRegistry>,
     pub workflow_history: Arc<WorkflowHistoryManager>,
     pub mcp_client_manager: Arc<McpClientManager>,
+    pub session_transactions: Arc<tokio::sync::Mutex<HashMap<String, TransactionHandle>>>,
+    pub workflow_scheduler: Arc<WorkflowScheduler>,
 }
 
 impl AppState {

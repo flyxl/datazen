@@ -53,8 +53,8 @@ interface QueryStore {
   setActiveTab: (id: string) => void;
   updateSql: (tabId: string, sql: string) => void;
   setActiveResult: (tabId: string, idx: number) => void;
-  executeQuery: (tabId: string) => Promise<void>;
-  executeSelection: (tabId: string, sql: string) => Promise<void>;
+  executeQuery: (tabId: string, params?: Record<string, string | number | boolean | null>) => Promise<void>;
+  executeSelection: (tabId: string, sql: string, params?: Record<string, string | number | boolean | null>) => Promise<void>;
   cancelQuery: (tabId: string) => Promise<void>;
   loadHistory: () => Promise<void>;
   toggleHistory: () => void;
@@ -113,7 +113,7 @@ export const useQueryStore = create<QueryStore>((set, get) => ({
       tabs: s.tabs.map((t) => (t.id === tabId ? { ...t, activeResultIdx: idx } : t)),
     })),
 
-  executeQuery: async (tabId) => {
+  executeQuery: async (tabId, params) => {
     const { connectionId, tabs } = get();
     if (!connectionId) {
       set({
@@ -133,7 +133,7 @@ export const useQueryStore = create<QueryStore>((set, get) => ({
     });
 
     try {
-      const multi = await queryCommands.executeQuery(connectionId, tab.sql);
+      const multi = await queryCommands.executeQuery(connectionId, tab.sql, params);
       const { resolvePostQueryViewMode } = await import('../lib/chart/postQueryView');
       const viewMode = resolvePostQueryViewMode(multi.results[0]);
       set((s) => ({
@@ -169,14 +169,14 @@ export const useQueryStore = create<QueryStore>((set, get) => ({
     }
   },
 
-  executeSelection: async (tabId, sql) => {
+  executeSelection: async (tabId, sql, params) => {
     const { connectionId, tabs } = get();
     if (!connectionId) return;
     set({
       tabs: tabs.map((t) => (t.id === tabId ? { ...t, running: true, error: null } : t)),
     });
     try {
-      const multi = await queryCommands.executeQuery(connectionId, sql);
+      const multi = await queryCommands.executeQuery(connectionId, sql, params);
       const { resolvePostQueryViewMode } = await import('../lib/chart/postQueryView');
       const viewMode = resolvePostQueryViewMode(multi.results[0]);
       set((s) => ({

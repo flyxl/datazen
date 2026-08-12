@@ -14,6 +14,7 @@ const baseSettings = {
   editorFontFamily: 'Menlo',
   confirmOnDelete: true,
   autoCommit: true,
+  safeMode: true,
   defaultPageSize: 50,
     connectionPoolSize: 10,
   checkForUpdatesOnStartup: true,

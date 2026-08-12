@@ -298,6 +298,13 @@ export function SettingsWindow() {
                   onChange={(v) => updateField('autoCommit', v)}
                 />
 
+                <ToggleRow
+                  label={t('settings.safeMode')}
+                  hint={t('settings.safeModeHint')}
+                  checked={draft.safeMode}
+                  onChange={(v) => updateField('safeMode', v)}
+                />
+
                 <DataCleanupSection />
               </>
             )}
