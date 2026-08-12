@@ -67,7 +67,9 @@ const {
   const aiState = {
     loadConfig: vi.fn().mockResolvedValue(undefined),
     loadProviders: vi.fn().mockResolvedValue(undefined),
-    config: null as AppSettings extends never ? never : import('../../../types').AiProviderConfig | null,
+    config: null as AppSettings extends never
+      ? never
+      : import('../../../types').AiProviderConfig | null,
     isConfigured: false,
     providers: [
       {
@@ -183,10 +185,13 @@ vi.mock('../../../stores/settingsStore', () => {
 });
 
 vi.mock('../../../stores/aiStore', () => {
-  const useAiStore = Object.assign((sel?: (s: typeof aiState) => unknown) => {
-    if (typeof sel === 'function') return sel(aiState);
-    return aiState;
-  }, { getState: () => aiState });
+  const useAiStore = Object.assign(
+    (sel?: (s: typeof aiState) => unknown) => {
+      if (typeof sel === 'function') return sel(aiState);
+      return aiState;
+    },
+    { getState: () => aiState },
+  );
   return { useAiStore };
 });
 
@@ -288,14 +293,17 @@ function goToSection(label: string) {
 }
 
 function getSaveButton() {
-  return screen.getAllByText('common.save').find((el) => el.closest('footer')) ?? screen.getByText('common.save');
+  return (
+    screen.getAllByText('common.save').find((el) => el.closest('footer')) ??
+    screen.getByText('common.save')
+  );
 }
 
 /** Open a Select combobox and pick an option by visible label. */
 function pickSelectOption(comboboxIndex: number, optionLabel: string) {
-  const triggers = screen.getAllByRole('button', { hidden: false }).filter(
-    (b) => b.getAttribute('aria-haspopup') === 'listbox',
-  );
+  const triggers = screen
+    .getAllByRole('button', { hidden: false })
+    .filter((b) => b.getAttribute('aria-haspopup') === 'listbox');
   fireEvent.click(triggers[comboboxIndex]);
   fireEvent.mouseDown(screen.getByText(optionLabel));
 }
@@ -489,33 +497,10 @@ describe('SettingsWindow', () => {
     expect(saved.logPath).toBe('/var/log/datazen');
   });
 
-  it('covers monitor section fields', async () => {
+  it('removes monitor section from settings navigation', async () => {
     render(<SettingsWindow />);
     await waitForSettingsLoad();
-    goToSection('settings.monitor');
-
-    const switches = screen.getAllByRole('switch');
-    fireEvent.click(switches[0]);
-    fireEvent.click(switches[1]);
-    fireEvent.click(switches[2]);
-
-    fireEvent.change(document.querySelector('input[type="url"]') as HTMLInputElement, {
-      target: { value: 'https://hooks.example.com/alerts' },
-    });
-    pickSelectOption(0, '4');
-    fireEvent.change(document.querySelector('input[type="number"]') as HTMLInputElement, {
-      target: { value: '500' },
-    });
-    const numberInputs = document.querySelectorAll('input[type="number"]');
-    fireEvent.change(numberInputs[1], { target: { value: '60' } });
-
-    expect(screen.getByText('settings.monitor.comingSoon')).toBeInTheDocument();
-
-    fireEvent.click(getSaveButton());
-    await waitFor(() => expect(updateSettingsMock).toHaveBeenCalled());
-    const saved = updateSettingsMock.mock.calls.at(-1)?.[0] as AppSettings;
-    expect(saved.monitor?.defaultWebhookUrl).toBe('https://hooks.example.com/alerts');
-    expect(saved.monitor?.maxConcurrentQueries).toBe(4);
+    expect(screen.queryByText('settings.monitor')).not.toBeInTheDocument();
   });
 
   it('covers AI settings validate, save, delete, and fetch models', async () => {

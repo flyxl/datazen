@@ -1,10 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  ChevronDown,
-  ChevronRight,
-  Plus,
-  Search,
-} from 'lucide-react';
+import { ChevronDown, ChevronRight, Plus, Search } from 'lucide-react';
 import { Menu, MenuItem, Submenu, PredefinedMenuItem } from '@tauri-apps/api/menu';
 import { StatusBar } from '../../components/StatusBar';
 import { Dialog } from '../../components/ui/Dialog';
@@ -23,7 +18,16 @@ import { useActiveConnectionStore } from '../../stores/activeConnectionStore';
 import { cn } from '../../lib/cn';
 import { formatGroupLabel } from '../../lib/connectionGroups';
 import { listenCrossWindow } from '../../lib/crossWindowBus';
-import { openBackupWindow, openConnectionWindow, openDashboardWindow, openDataSyncWindow, openNewConnectionWindow, openSchemaDiffWindow, openSettingsWindow, openWorkflowWindow } from '../../lib/windowManager';
+import {
+  openBackupWindow,
+  openConnectionWindow,
+  openDashboardWindow,
+  openDataSyncWindow,
+  openNewConnectionWindow,
+  openSchemaDiffWindow,
+  openSettingsWindow,
+  openWorkflowWindow,
+} from '../../lib/windowManager';
 import { ThemeToggle } from '../../components/ThemeToggle';
 import { useI18n } from '../../hooks/useI18n';
 import { ActionPanel } from './ActionPanel';
@@ -36,7 +40,6 @@ import {
   type ConnectionShareMode,
 } from '../../components/connection/ConnectionShareDialog';
 import { useDashboardStore } from '../../stores/dashboardStore';
-import { createEmptyDashboard } from '../dashboard/DashboardWindow';
 import type { ConnectionConfig } from '../../types';
 
 // ─── Main Window ────────────────────────────────────────────────────
@@ -94,14 +97,7 @@ export function MainWindow() {
   const [connShareImportSource, setConnShareImportSource] =
     useState<ConnectionImportSource>('file');
 
-  const [dashboardDialogOpen, setDashboardDialogOpen] = useState(false);
-  const [newDashboardName, setNewDashboardName] = useState('');
-  const dashboards = useDashboardStore((s) => s.list);
-  const listLoading = useDashboardStore((s) => s.listLoading);
-  const listError = useDashboardStore((s) => s.listError);
   const fetchDashboards = useDashboardStore((s) => s.fetchDashboards);
-  const saveDashboard = useDashboardStore((s) => s.saveDashboard);
-  const deleteDashboard = useDashboardStore((s) => s.deleteDashboard);
 
   // ── Pointer-based drag state ──
   const [draggingConnId, setDraggingConnId] = useState<string | null>(null);
@@ -147,20 +143,34 @@ export function MainWindow() {
       if (data?.connectionId) {
         useActiveConnectionStore.getState().removeByConnectionId(data.connectionId);
       }
-    }).then((fn) => { if (cancelled) fn(); else fns.push(fn); });
+    }).then((fn) => {
+      if (cancelled) fn();
+      else fns.push(fn);
+    });
     listenCrossWindow('datazen:connection-ready', (payload) => {
       const data = payload as { configId?: string; connectionId?: string } | undefined;
       if (data?.configId && data?.connectionId) {
         useActiveConnectionStore.getState().markConnected(data.configId, data.connectionId);
       }
-    }).then((fn) => { if (cancelled) fn(); else fns.push(fn); });
+    }).then((fn) => {
+      if (cancelled) fn();
+      else fns.push(fn);
+    });
     listenCrossWindow('datazen:connection-failed', (payload) => {
       const data = payload as { configId?: string; error?: string } | undefined;
       if (data?.configId) {
-        useActiveConnectionStore.getState().markError(data.configId, data?.error ?? t('backend.unknownError'));
+        useActiveConnectionStore
+          .getState()
+          .markError(data.configId, data?.error ?? t('backend.unknownError'));
       }
-    }).then((fn) => { if (cancelled) fn(); else fns.push(fn); });
-    return () => { cancelled = true; fns.forEach((fn) => fn()); };
+    }).then((fn) => {
+      if (cancelled) fn();
+      else fns.push(fn);
+    });
+    return () => {
+      cancelled = true;
+      fns.forEach((fn) => fn());
+    };
   }, []);
 
   useEffect(() => {
@@ -168,38 +178,67 @@ export function MainWindow() {
     const cleanups: (() => void)[] = [];
     void listenCrossWindow('menu:open-settings', () => {
       if (!cancelled) openSettingsWindow();
-    }).then((u) => { if (cancelled) u(); else cleanups.push(u); });
+    }).then((u) => {
+      if (cancelled) u();
+      else cleanups.push(u);
+    });
     void listenCrossWindow('menu:new-connection', () => {
       if (!cancelled) openNewConnectionWindow();
-    }).then((u) => { if (cancelled) u(); else cleanups.push(u); });
+    }).then((u) => {
+      if (cancelled) u();
+      else cleanups.push(u);
+    });
     void listenCrossWindow('menu:data-sync', () => {
       if (!cancelled) openDataSyncWindow();
-    }).then((u) => { if (cancelled) u(); else cleanups.push(u); });
+    }).then((u) => {
+      if (cancelled) u();
+      else cleanups.push(u);
+    });
     void listenCrossWindow('menu:schema-diff', () => {
       if (!cancelled) openSchemaDiffWindow();
-    }).then((u) => { if (cancelled) u(); else cleanups.push(u); });
+    }).then((u) => {
+      if (cancelled) u();
+      else cleanups.push(u);
+    });
     void listenCrossWindow('menu:backup', () => {
       if (!cancelled) openBackupWindow();
-    }).then((u) => { if (cancelled) u(); else cleanups.push(u); });
+    }).then((u) => {
+      if (cancelled) u();
+      else cleanups.push(u);
+    });
     void listenCrossWindow('menu:view-logs', () => {
       if (!cancelled) void settingsCommands.openLogDir();
-    }).then((u) => { if (cancelled) u(); else cleanups.push(u); });
-    return () => { cancelled = true; cleanups.forEach((fn) => fn()); };
+    }).then((u) => {
+      if (cancelled) u();
+      else cleanups.push(u);
+    });
+    return () => {
+      cancelled = true;
+      cleanups.forEach((fn) => fn());
+    };
   }, []);
 
   // (native context menus handle their own dismiss)
 
-  const handleConnect = useCallback((cfg: ConnectionConfig) => {
-    const existing = useActiveConnectionStore.getState().connections[cfg.id];
-    if (existing?.status === 'connected' && existing.connectionId) {
-      openConnectionWindow({ connectionId: existing.connectionId }, cfg.name, cfg.database, cfg.databaseType);
-      return;
-    }
-    if (existing?.status !== 'connecting') {
-      markConnecting(cfg.id, cfg.database ?? null);
-    }
-    openConnectionWindow({ configId: cfg.id }, cfg.name, cfg.database, cfg.databaseType);
-  }, [markConnecting]);
+  const handleConnect = useCallback(
+    (cfg: ConnectionConfig) => {
+      const existing = useActiveConnectionStore.getState().connections[cfg.id];
+      if (existing?.status === 'connected' && existing.connectionId) {
+        openConnectionWindow(
+          { connectionId: existing.connectionId },
+          cfg.name,
+          cfg.database,
+          cfg.databaseType,
+        );
+        return;
+      }
+      if (existing?.status !== 'connecting') {
+        markConnecting(cfg.id, cfg.database ?? null);
+      }
+      openConnectionWindow({ configId: cfg.id }, cfg.name, cfg.database, cfg.databaseType);
+    },
+    [markConnecting],
+  );
 
   const { size: sidebarWidth, handleRef } = useResizable({
     direction: 'horizontal',
@@ -221,7 +260,12 @@ export function MainWindow() {
 
   // ── Keyboard shortcuts ──
   useKeyboardShortcuts([
-    { key: 'mod+n', scope: 'global', description: 'New Connection', action: () => openNewConnectionWindow() },
+    {
+      key: 'mod+n',
+      scope: 'global',
+      description: 'New Connection',
+      action: () => openNewConnectionWindow(),
+    },
   ]);
 
   // ── Status ──
@@ -233,7 +277,12 @@ export function MainWindow() {
   const statusLeft = (() => {
     if (loading) return t('common.loading');
     if (error) return <span className="text-red-400">{error}</span>;
-    if (activeCount > 0) return <span className="text-green-400">{t('main.activeConnections', { count: activeCount })}</span>;
+    if (activeCount > 0)
+      return (
+        <span className="text-green-400">
+          {t('main.activeConnections', { count: activeCount })}
+        </span>
+      );
     return t('main.ready');
   })();
 
@@ -250,82 +299,130 @@ export function MainWindow() {
 
   // ── Native context menus (Tauri Menu API) ──
 
-  const handleGroupContextMenu = useCallback(async (e: React.MouseEvent, groupName: string) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const isUngrouped = groupName === '';
+  const handleGroupContextMenu = useCallback(
+    async (e: React.MouseEvent, groupName: string) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const isUngrouped = groupName === '';
 
-    const items: Array<MenuItem | PredefinedMenuItem> = [
-      await MenuItem.new({ text: t('main.ctx.newGroup'), action: () => { setNewGroupName(''); setNewGroupDialogOpen(true); } }),
-    ];
-    if (!isUngrouped) {
-      items.push(
-        await PredefinedMenuItem.new({ item: 'Separator' }),
+      const items: Array<MenuItem | PredefinedMenuItem> = [
         await MenuItem.new({
-          text: t('main.ctx.renameGroup'),
+          text: t('main.ctx.newGroup'),
           action: () => {
-            setRenamingGroup(groupName);
-            setRenameValue(formatGroupLabel(groupName, t));
+            setNewGroupName('');
+            setNewGroupDialogOpen(true);
           },
         }),
-        await MenuItem.new({ text: t('main.ctx.deleteGroup'), action: () => { void deleteGroup(groupName); } }),
-      );
-    }
-    const menu = await Menu.new({ items });
-    await menu.popup();
-  }, [deleteGroup, t]);
-
-  const handleConnectionContextMenu = useCallback(async (e: React.MouseEvent, conn: ConnectionConfig) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setSelectedId(conn.id);
-
-    const isConnected = activeConnections[conn.id]?.status === 'connected';
-    const items: Array<MenuItem | Submenu | PredefinedMenuItem> = [
-      await MenuItem.new({
-        text: isConnected ? t('main.ctx.disconnect') : t('main.ctx.openConnection'),
-        action: () => { if (isConnected) void disconnectAction(conn.id); else void handleConnect(conn); },
-      }),
-      await PredefinedMenuItem.new({ item: 'Separator' }),
-      await MenuItem.new({ text: t('main.ctx.editConnection'), action: () => openNewConnectionWindow(conn.id) }),
-      await MenuItem.new({ text: t('main.ctx.duplicateConnection'), action: () => { void duplicateConnection(conn.id); } }),
-      await PredefinedMenuItem.new({ item: 'Separator' }),
-    ];
-
-    const moveTargets = groups.filter((g) => g !== conn.group);
-    if (moveTargets.length > 0 || conn.group) {
-      const subItems: MenuItem[] = [];
-      for (const g of moveTargets) {
-        subItems.push(
+      ];
+      if (!isUngrouped) {
+        items.push(
+          await PredefinedMenuItem.new({ item: 'Separator' }),
           await MenuItem.new({
-            text: formatGroupLabel(g, t),
-            action: () => { void moveConnectionToGroup(conn.id, g); },
+            text: t('main.ctx.renameGroup'),
+            action: () => {
+              setRenamingGroup(groupName);
+              setRenameValue(formatGroupLabel(groupName, t));
+            },
+          }),
+          await MenuItem.new({
+            text: t('main.ctx.deleteGroup'),
+            action: () => {
+              void deleteGroup(groupName);
+            },
           }),
         );
       }
-      if (conn.group) {
-        subItems.push(await MenuItem.new({ text: t('main.ctx.removeFromGroup'), action: () => { void moveConnectionToGroup(conn.id, undefined); } }));
-      }
-      items.push(await Submenu.new({ text: t('main.ctx.moveToGroup'), items: subItems }));
-      items.push(await PredefinedMenuItem.new({ item: 'Separator' }));
-    }
+      const menu = await Menu.new({ items });
+      await menu.popup();
+    },
+    [deleteGroup, t],
+  );
 
-    items.push(await MenuItem.new({
-      text: t('main.ctx.deleteConnection'),
-      action: async () => {
-        const { ask } = await import('@tauri-apps/plugin-dialog');
-        const confirmed = await ask(
-          t('main.ctx.confirmDeleteConnection', { name: conn.name }),
-          { title: t('main.ctx.deleteConnection'), kind: 'warning' },
-        );
-        if (confirmed) {
-          void deleteConnection(conn.id);
+  const handleConnectionContextMenu = useCallback(
+    async (e: React.MouseEvent, conn: ConnectionConfig) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setSelectedId(conn.id);
+
+      const isConnected = activeConnections[conn.id]?.status === 'connected';
+      const items: Array<MenuItem | Submenu | PredefinedMenuItem> = [
+        await MenuItem.new({
+          text: isConnected ? t('main.ctx.disconnect') : t('main.ctx.openConnection'),
+          action: () => {
+            if (isConnected) void disconnectAction(conn.id);
+            else void handleConnect(conn);
+          },
+        }),
+        await PredefinedMenuItem.new({ item: 'Separator' }),
+        await MenuItem.new({
+          text: t('main.ctx.editConnection'),
+          action: () => openNewConnectionWindow(conn.id),
+        }),
+        await MenuItem.new({
+          text: t('main.ctx.duplicateConnection'),
+          action: () => {
+            void duplicateConnection(conn.id);
+          },
+        }),
+        await PredefinedMenuItem.new({ item: 'Separator' }),
+      ];
+
+      const moveTargets = groups.filter((g) => g !== conn.group);
+      if (moveTargets.length > 0 || conn.group) {
+        const subItems: MenuItem[] = [];
+        for (const g of moveTargets) {
+          subItems.push(
+            await MenuItem.new({
+              text: formatGroupLabel(g, t),
+              action: () => {
+                void moveConnectionToGroup(conn.id, g);
+              },
+            }),
+          );
         }
-      },
-    }));
-    const menu = await Menu.new({ items });
-    await menu.popup();
-  }, [activeConnections, groups, disconnectAction, handleConnect, duplicateConnection, deleteConnection, moveConnectionToGroup, t]);
+        if (conn.group) {
+          subItems.push(
+            await MenuItem.new({
+              text: t('main.ctx.removeFromGroup'),
+              action: () => {
+                void moveConnectionToGroup(conn.id, undefined);
+              },
+            }),
+          );
+        }
+        items.push(await Submenu.new({ text: t('main.ctx.moveToGroup'), items: subItems }));
+        items.push(await PredefinedMenuItem.new({ item: 'Separator' }));
+      }
+
+      items.push(
+        await MenuItem.new({
+          text: t('main.ctx.deleteConnection'),
+          action: async () => {
+            const { ask } = await import('@tauri-apps/plugin-dialog');
+            const confirmed = await ask(
+              t('main.ctx.confirmDeleteConnection', { name: conn.name }),
+              { title: t('main.ctx.deleteConnection'), kind: 'warning' },
+            );
+            if (confirmed) {
+              void deleteConnection(conn.id);
+            }
+          },
+        }),
+      );
+      const menu = await Menu.new({ items });
+      await menu.popup();
+    },
+    [
+      activeConnections,
+      groups,
+      disconnectAction,
+      handleConnect,
+      duplicateConnection,
+      deleteConnection,
+      moveConnectionToGroup,
+      t,
+    ],
+  );
 
   // ── Pointer-based drag & drop ──
 
@@ -415,14 +512,9 @@ export function MainWindow() {
     let saved: boolean;
     try {
       const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-      saved = await backupCommands.exportAppDataWithDialog(
-        `datazen-backup-${date}.zip`,
-      );
+      saved = await backupCommands.exportAppDataWithDialog(`datazen-backup-${date}.zip`);
     } catch (e) {
-      showMessageDialog(
-        e instanceof Error ? e.message : t('appData.exportFailed'),
-        'error',
-      );
+      showMessageDialog(e instanceof Error ? e.message : t('appData.exportFailed'), 'error');
       return;
     }
     if (!saved) return;
@@ -441,10 +533,7 @@ export function MainWindow() {
         }
       }
     } catch (e) {
-      showMessageDialog(
-        e instanceof Error ? e.message : t('appData.backupKeyFailed'),
-        'error',
-      );
+      showMessageDialog(e instanceof Error ? e.message : t('appData.backupKeyFailed'), 'error');
     }
   }, [t, showMessageDialog]);
 
@@ -457,65 +546,66 @@ export function MainWindow() {
       if (!imported) return;
       await backupCommands.restartApp();
     } catch (e) {
-      showMessageDialog(
-        e instanceof Error ? e.message : t('appData.importFailed'),
-        'error',
-      );
+      showMessageDialog(e instanceof Error ? e.message : t('appData.importFailed'), 'error');
     }
   }, [t, showMessageDialog]);
 
-  const openConnShare = useCallback((mode: ConnectionShareMode, source: ConnectionImportSource = 'file') => {
-    setConnShareMode(mode);
-    setConnShareImportSource(source);
-    setConnShareOpen(true);
-  }, []);
+  const openConnShare = useCallback(
+    (mode: ConnectionShareMode, source: ConnectionImportSource = 'file') => {
+      setConnShareMode(mode);
+      setConnShareImportSource(source);
+      setConnShareOpen(true);
+    },
+    [],
+  );
 
-  const handleConnShareExportSuccess = useCallback((count: number) => {
-    showMessageDialog(t('connShare.exportSuccess', { count }), 'success');
-  }, [showMessageDialog, t]);
+  const handleConnShareExportSuccess = useCallback(
+    (count: number) => {
+      showMessageDialog(t('connShare.exportSuccess', { count }), 'success');
+    },
+    [showMessageDialog, t],
+  );
 
-  const handleOpenDashboardDialog = useCallback(() => {
-    setNewDashboardName('');
-    setDashboardDialogOpen(true);
-    void fetchDashboards();
+  const handleOpenDashboard = useCallback(async () => {
+    await fetchDashboards();
+    const list = useDashboardStore.getState().list;
+    if (list.length > 0) {
+      openDashboardWindow(list[0]!.id, list[0]!.name);
+      return;
+    }
+    // No boards yet — open the dashboard shell; window shows empty-state create CTA.
+    openDashboardWindow();
   }, [fetchDashboards]);
 
-  const handleCreateDashboard = useCallback(async () => {
-    const name = newDashboardName.trim() || t('dashboard.defaultName');
-    const dashboard = createEmptyDashboard(name);
-    await saveDashboard(dashboard);
-    setDashboardDialogOpen(false);
-    openDashboardWindow(dashboard.id, dashboard.name);
-  }, [newDashboardName, saveDashboard, t]);
-
-  const handleConnShareImportSuccess = useCallback(async (result: {
-    imported: number;
-    overwritten: number;
-    groupsAdded: number;
-    skipped?: string[];
-    sourceFormat?: string;
-  }) => {
-    await fetchConnections();
-    await fetchGroups();
-    const skippedCount = result.skipped?.length ?? 0;
-    const base =
-      skippedCount > 0
-        ? t('connShare.importSuccessWithSkipped', {
-            imported: result.imported,
-            overwritten: result.overwritten,
-            groupsAdded: result.groupsAdded,
-            skipped: skippedCount,
-          })
-        : t('connShare.importSuccess', {
-            imported: result.imported,
-            overwritten: result.overwritten,
-            groupsAdded: result.groupsAdded,
-          });
-    const message = result.sourceFormat
-      ? `${base} (${result.sourceFormat})`
-      : base;
-    showMessageDialog(message, 'success');
-  }, [fetchConnections, fetchGroups, showMessageDialog, t]);
+  const handleConnShareImportSuccess = useCallback(
+    async (result: {
+      imported: number;
+      overwritten: number;
+      groupsAdded: number;
+      skipped?: string[];
+      sourceFormat?: string;
+    }) => {
+      await fetchConnections();
+      await fetchGroups();
+      const skippedCount = result.skipped?.length ?? 0;
+      const base =
+        skippedCount > 0
+          ? t('connShare.importSuccessWithSkipped', {
+              imported: result.imported,
+              overwritten: result.overwritten,
+              groupsAdded: result.groupsAdded,
+              skipped: skippedCount,
+            })
+          : t('connShare.importSuccess', {
+              imported: result.imported,
+              overwritten: result.overwritten,
+              groupsAdded: result.groupsAdded,
+            });
+      const message = result.sourceFormat ? `${base} (${result.sourceFormat})` : base;
+      showMessageDialog(message, 'success');
+    },
+    [fetchConnections, fetchGroups, showMessageDialog, t],
+  );
 
   // ── Menu bar events for export/import ──
   useEffect(() => {
@@ -523,35 +613,68 @@ export function MainWindow() {
     const cleanups: (() => void)[] = [];
     void listenCrossWindow('menu:export-config', () => {
       if (!cancelled) void handleExportConfig();
-    }).then((u) => { if (cancelled) u(); else cleanups.push(u); });
+    }).then((u) => {
+      if (cancelled) u();
+      else cleanups.push(u);
+    });
     void listenCrossWindow('menu:import-config', () => {
       if (!cancelled) void handleImportConfig();
-    }).then((u) => { if (cancelled) u(); else cleanups.push(u); });
+    }).then((u) => {
+      if (cancelled) u();
+      else cleanups.push(u);
+    });
     void listenCrossWindow('menu:export-connections', () => {
       if (!cancelled) openConnShare('export');
-    }).then((u) => { if (cancelled) u(); else cleanups.push(u); });
+    }).then((u) => {
+      if (cancelled) u();
+      else cleanups.push(u);
+    });
     void listenCrossWindow('menu:import-connections', () => {
       if (!cancelled) openConnShare('import', 'file');
-    }).then((u) => { if (cancelled) u(); else cleanups.push(u); });
+    }).then((u) => {
+      if (cancelled) u();
+      else cleanups.push(u);
+    });
     void listenCrossWindow('menu:import-connections-file', () => {
       if (!cancelled) openConnShare('import', 'file');
-    }).then((u) => { if (cancelled) u(); else cleanups.push(u); });
+    }).then((u) => {
+      if (cancelled) u();
+      else cleanups.push(u);
+    });
     void listenCrossWindow('menu:import-connections-dbx', () => {
       if (!cancelled) openConnShare('import', 'dbx');
-    }).then((u) => { if (cancelled) u(); else cleanups.push(u); });
+    }).then((u) => {
+      if (cancelled) u();
+      else cleanups.push(u);
+    });
     void listenCrossWindow('menu:import-connections-navicat', () => {
       if (!cancelled) openConnShare('import', 'navicat');
-    }).then((u) => { if (cancelled) u(); else cleanups.push(u); });
+    }).then((u) => {
+      if (cancelled) u();
+      else cleanups.push(u);
+    });
     void listenCrossWindow('menu:import-connections-datagrip', () => {
       if (!cancelled) openConnShare('import', 'datagrip');
-    }).then((u) => { if (cancelled) u(); else cleanups.push(u); });
+    }).then((u) => {
+      if (cancelled) u();
+      else cleanups.push(u);
+    });
     void listenCrossWindow('menu:import-connections-dbeaver', () => {
       if (!cancelled) openConnShare('import', 'dbeaver');
-    }).then((u) => { if (cancelled) u(); else cleanups.push(u); });
+    }).then((u) => {
+      if (cancelled) u();
+      else cleanups.push(u);
+    });
     void listenCrossWindow('menu:import-connections-tableplus', () => {
       if (!cancelled) openConnShare('import', 'tableplus');
-    }).then((u) => { if (cancelled) u(); else cleanups.push(u); });
-    return () => { cancelled = true; cleanups.forEach((fn) => fn()); };
+    }).then((u) => {
+      if (cancelled) u();
+      else cleanups.push(u);
+    });
+    return () => {
+      cancelled = true;
+      cleanups.forEach((fn) => fn());
+    };
   }, [handleExportConfig, handleImportConfig, openConnShare]);
 
   // ── Backup / Restore handlers ──
@@ -587,8 +710,14 @@ export function MainWindow() {
     const cleanups: (() => void)[] = [];
     void listenCrossWindow('menu:restore', () => {
       if (!cancelled) void handleRestore();
-    }).then((u) => { if (cancelled) u(); else cleanups.push(u); });
-    return () => { cancelled = true; cleanups.forEach((fn) => fn()); };
+    }).then((u) => {
+      if (cancelled) u();
+      else cleanups.push(u);
+    });
+    return () => {
+      cancelled = true;
+      cleanups.forEach((fn) => fn());
+    };
   }, [handleRestore]);
 
   // ── Blank area context menu ──
@@ -599,8 +728,17 @@ export function MainWindow() {
     e.preventDefault();
     const menu = await Menu.new({
       items: [
-        await MenuItem.new({ text: t('main.ctx.newGroup'), action: () => { setNewGroupName(''); setNewGroupDialogOpen(true); } }),
-        await MenuItem.new({ text: t('main.newConnection'), action: () => openNewConnectionWindow() }),
+        await MenuItem.new({
+          text: t('main.ctx.newGroup'),
+          action: () => {
+            setNewGroupName('');
+            setNewGroupDialogOpen(true);
+          },
+        }),
+        await MenuItem.new({
+          text: t('main.newConnection'),
+          action: () => openNewConnectionWindow(),
+        }),
       ],
     });
     await menu.popup();
@@ -624,7 +762,7 @@ export function MainWindow() {
             onRestore={() => void handleRestore()}
             onDataSync={() => openDataSyncWindow()}
             onWorkflow={() => openWorkflowWindow()}
-            onDashboard={() => handleOpenDashboardDialog()}
+            onDashboard={() => void handleOpenDashboard()}
           />
         </aside>
         <div
@@ -657,18 +795,11 @@ export function MainWindow() {
           </div>
 
           {/* ── Grouped connection list ── */}
-          <div
-            className="flex-1 overflow-auto"
-            onContextMenu={handleBlankContextMenu}
-          >
+          <div className="flex-1 overflow-auto" onContextMenu={handleBlankContextMenu}>
             {grouped.length === 0 && (
               <div className="flex flex-col items-center justify-center py-20 text-sm text-fg-muted">
                 <p>{t('main.noConnections')}</p>
-                <Button
-                  variant="ghost"
-                  className="mt-3"
-                  onClick={() => openNewConnectionWindow()}
-                >
+                <Button variant="ghost" className="mt-3" onClick={() => openNewConnectionWindow()}>
                   <Plus className="h-4 w-4" />
                   {t('main.createFirst')}
                 </Button>
@@ -693,7 +824,9 @@ export function MainWindow() {
                     data-group-header
                     className="flex cursor-pointer select-none items-center gap-1.5 px-3 py-2 hover:bg-surface-raised/50"
                     onClick={() => toggleGroup(groupName)}
-                    onContextMenu={(e) => { void handleGroupContextMenu(e, groupName); }}
+                    onContextMenu={(e) => {
+                      void handleGroupContextMenu(e, groupName);
+                    }}
                   >
                     {expanded ? (
                       <ChevronDown className="h-3 w-3 shrink-0 text-fg-muted" />
@@ -745,18 +878,20 @@ export function MainWindow() {
           </div>
 
           {/* ── Drag ghost overlay ── */}
-          {draggingConnId && dragGhostPos && (() => {
-            const conn = connections.find((c) => c.id === draggingConnId);
-            if (!conn) return null;
-            return (
-              <div
-                className="pointer-events-none fixed z-[9999] rounded-lg border border-accent/40 bg-surface-alt px-3 py-2 text-[13px] font-medium text-fg shadow-xl"
-                style={{ left: dragGhostPos.x + 12, top: dragGhostPos.y + 12 }}
-              >
-                {conn.name}
-              </div>
-            );
-          })()}
+          {draggingConnId &&
+            dragGhostPos &&
+            (() => {
+              const conn = connections.find((c) => c.id === draggingConnId);
+              if (!conn) return null;
+              return (
+                <div
+                  className="pointer-events-none fixed z-[9999] rounded-lg border border-accent/40 bg-surface-alt px-3 py-2 text-[13px] font-medium text-fg shadow-xl"
+                  style={{ left: dragGhostPos.x + 12, top: dragGhostPos.y + 12 }}
+                >
+                  {conn.name}
+                </div>
+              );
+            })()}
         </main>
       </div>
 
@@ -804,76 +939,6 @@ export function MainWindow() {
         />
       </Dialog>
 
-      <Dialog
-        open={dashboardDialogOpen}
-        title={t('dashboard.title')}
-        onClose={() => setDashboardDialogOpen(false)}
-        className="max-w-md"
-        footer={
-          <>
-            <Button variant="ghost" onClick={() => setDashboardDialogOpen(false)}>
-              {t('common.close')}
-            </Button>
-            <Button data-testid="dashboard-create" onClick={() => void handleCreateDashboard()}>
-              {t('dashboard.create')}
-            </Button>
-          </>
-        }
-      >
-        <div className="space-y-3" data-testid="dashboard-dialog">
-          {listError && (
-            <div className="rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
-              {listError}
-            </div>
-          )}
-          <label className="block space-y-1">
-            <span className="text-xs text-fg-muted">{t('dashboard.name')}</span>
-            <Input
-              data-testid="dashboard-name-input"
-              value={newDashboardName}
-              onChange={(e) => setNewDashboardName(e.target.value)}
-              placeholder={t('dashboard.defaultName')}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') void handleCreateDashboard();
-              }}
-            />
-          </label>
-          {listLoading && (
-            <p className="text-xs text-fg-muted">{t('common.loading')}</p>
-          )}
-          {!listLoading && dashboards.length > 0 && (
-            <div className="space-y-1">
-              <span className="text-xs text-fg-muted">{t('dashboard.existing')}</span>
-              <ul className="max-h-48 space-y-1 overflow-auto rounded-md border border-edge p-1">
-                {dashboards.map((d) => (
-                  <li key={d.id} className="flex items-center gap-1" data-testid={`dashboard-list-item-${d.id}`}>
-                    <button
-                      type="button"
-                      data-testid={`dashboard-open-${d.id}`}
-                      className="min-w-0 flex-1 truncate rounded px-2 py-1.5 text-left text-sm hover:bg-surface-raised"
-                      onClick={() => {
-                        setDashboardDialogOpen(false);
-                        openDashboardWindow(d.id, d.name);
-                      }}
-                    >
-                      {d.name}
-                    </button>
-                    <Button
-                      variant="ghost"
-                      className="h-7 shrink-0 px-2 text-xs text-red-400"
-                      data-testid={`dashboard-delete-${d.id}`}
-                      onClick={() => void deleteDashboard(d.id)}
-                    >
-                      {t('common.delete')}
-                    </Button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
-      </Dialog>
-
       <ConnectionShareDialog
         open={connShareOpen}
         mode={connShareMode}
@@ -887,11 +952,7 @@ export function MainWindow() {
       {/* ── Message dialog (success / error) ── */}
       <Dialog
         open={messageDialogOpen}
-        title={
-          messageDialogKind === 'success'
-            ? t('common.success')
-            : t('common.error')
-        }
+        title={messageDialogKind === 'success' ? t('common.success') : t('common.error')}
         onClose={() => setMessageDialogOpen(false)}
         className="max-w-xs"
         footer={
@@ -900,7 +961,9 @@ export function MainWindow() {
           </Button>
         }
       >
-        <p className="whitespace-pre-wrap break-all text-sm text-fg-secondary">{messageDialogText}</p>
+        <p className="whitespace-pre-wrap break-all text-sm text-fg-secondary">
+          {messageDialogText}
+        </p>
       </Dialog>
 
       {/* ── Status bar ── */}

@@ -109,13 +109,7 @@ export interface TableSchema {
   foreignKeys: ForeignKeyInfo[];
 }
 
-export type Value =
-  | string
-  | number
-  | boolean
-  | null
-  | Record<string, unknown>
-  | unknown[];
+export type Value = string | number | boolean | null | Record<string, unknown> | unknown[];
 
 export interface ColumnInfo {
   name: string;
@@ -148,7 +142,13 @@ export interface MultiQueryResult {
 export type QueryStreamEvent =
   | { type: 'statementStart'; index: number; sql: string; columns: ColumnInfo[] }
   | { type: 'rows'; index: number; rows: (Value | null)[][] }
-  | { type: 'statementEnd'; index: number; rowsAffected?: number; executionTimeMs: number; truncated: boolean }
+  | {
+      type: 'statementEnd';
+      index: number;
+      rowsAffected?: number;
+      executionTimeMs: number;
+      truncated: boolean;
+    }
   | { type: 'done'; totalTimeMs: number };
 
 export interface ExplainResult {
@@ -407,14 +407,7 @@ export interface WorkflowVariable {
   default?: unknown;
 }
 
-export type CommandCategory =
-  | 'query'
-  | 'mutate'
-  | 'admin'
-  | 'observe'
-  | 'pubSub'
-  | 'stream'
-  | 'io';
+export type CommandCategory = 'query' | 'mutate' | 'admin' | 'observe' | 'pubSub' | 'stream' | 'io';
 
 export type CommandAccessLevel = 'read' | 'write' | 'highRisk';
 
@@ -484,6 +477,8 @@ export interface WorkflowDefinition {
   timeoutSecs?: number;
   errorHandling?: ErrorHandlingConfig;
   schedule?: WorkflowSchedule;
+  /** `user` | `dashboardHidden` — hidden workflows are dashboard-owned SQL bindings. */
+  visibility?: 'user' | 'dashboardHidden';
 }
 
 export interface WorkflowSchedule {
