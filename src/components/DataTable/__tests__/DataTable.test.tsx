@@ -17,7 +17,9 @@ vi.mock('../../../hooks/useColumnResize', () => ({
 vi.mock('../../FilterBar', () => ({
   FilterBar: ({ onClear }: { onClear: () => void }) => (
     <div data-testid="filter-bar">
-      <button type="button" onClick={onClear}>clear-filters</button>
+      <button type="button" onClick={onClear}>
+        clear-filters
+      </button>
     </div>
   ),
 }));
@@ -27,6 +29,14 @@ vi.mock('../../../hooks/useVirtualTable', () => ({
     virtualRows: rows.map((_, index) => ({ index, key: String(index), start: index * 40 })),
     totalHeight: rows.length * 40,
   }),
+}));
+
+const { showNativeContextMenu } = vi.hoisted(() => ({
+  showNativeContextMenu: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock('../../../lib/nativeContextMenu', () => ({
+  showNativeContextMenu: (...args: unknown[]) => showNativeContextMenu(...args),
 }));
 
 const COLS = [
@@ -50,7 +60,10 @@ beforeEach(() => {
 });
 
 describe('DataTable', () => {
-  const rows = [[1, 'Alice'], [2, 'Bob']];
+  const rows = [
+    [1, 'Alice'],
+    [2, 'Bob'],
+  ];
 
   it('renders header and body rows', () => {
     const { getByText } = render(<DataTable columns={COLS} rows={rows} />);
@@ -130,7 +143,10 @@ describe('DataTable', () => {
     await waitFor(() => expect(saveTextWithDialog).toHaveBeenCalled());
   });
 
-  it('opens context menu and exports selected rows label', async () => {
+  it('opens native context menu with export and copies selected rows', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+
     const { container, getByText, getAllByText } = render(
       <DataTable
         columns={COLS}
@@ -139,18 +155,53 @@ describe('DataTable', () => {
         onSelectAll={vi.fn()}
         onRowSelect={vi.fn()}
         exportTableName="users"
+        getContextCellText={() => 'Alice'}
       />,
     );
     const scrollArea = container.querySelector('.overflow-auto')!;
     fireEvent.contextMenu(scrollArea, { clientX: 10, clientY: 10 });
+
+    await waitFor(() => expect(showNativeContextMenu).toHaveBeenCalled());
+    const menuItems = showNativeContextMenu.mock.calls[0]![0] as Array<{
+      kind: string;
+      id?: string;
+      label?: string;
+      action?: () => void;
+    }>;
+    expect(menuItems.map((i) => i.id)).toEqual(['copy-cell', 'copy-selected-rows', 'export']);
+    expect(menuItems[2]!.label).toMatch(/export.selectedRows/);
+
+    menuItems[1]!.action?.();
     await waitFor(() => {
-      expect(getByText(/export.selectedRows/)).toBeInTheDocument();
+      expect(writeText).toHaveBeenCalledWith('1\tAlice\n2\tBob');
     });
-    fireEvent.click(getByText(/export.selectedRows/));
+
+    menuItems[2]!.action?.();
     await waitFor(() => expect(getByText('export.title')).toBeInTheDocument());
     const dialogExportBtns = getAllByText('export.export');
     fireEvent.click(dialogExportBtns[dialogExportBtns.length - 1]);
     await waitFor(() => expect(saveTextWithDialog).toHaveBeenCalled());
+  });
+
+  it('copies cell text from selection when getContextCellText is absent', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    const selection = { toString: () => '  selected-cell  ' };
+    vi.spyOn(window, 'getSelection').mockReturnValue(selection as unknown as Selection);
+
+    const { container } = render(<DataTable columns={COLS} rows={rows} exportTableName="users" />);
+    fireEvent.contextMenu(container.querySelector('.overflow-auto')!);
+
+    await waitFor(() => expect(showNativeContextMenu).toHaveBeenCalled());
+    const menuItems = showNativeContextMenu.mock.calls[0]![0] as Array<{
+      kind: string;
+      id?: string;
+      action?: () => void;
+    }>;
+    expect(menuItems.map((i) => i.id)).toContain('copy-cell');
+    expect(menuItems.map((i) => i.id)).toContain('export');
+    menuItems.find((i) => i.id === 'copy-cell')!.action?.();
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith('selected-cell'));
   });
 
   it('calls row click handlers', () => {
