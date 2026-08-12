@@ -26,7 +26,8 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
 
     // Detect if a connection window already exists
     const connHandle = handles.find((h) => h.startsWith('connection'));
-    mainWindow = handles.find((h) => h === 'main') ?? handles.find((h) => !h.startsWith('connection')) ?? '';
+    mainWindow =
+      handles.find((h) => h === 'main') ?? handles.find((h) => !h.startsWith('connection')) ?? '';
 
     if (connHandle) {
       // Already have a connection window, use it directly
@@ -37,12 +38,13 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
       await $(`button*=${t('action.newConnection')}`).waitForDisplayed({ timeout: 10000 });
       await browser.pause(1500);
       await clickCardConnectButton();
-      await browser.waitUntil(
-        async () => (await browser.getWindowHandles()).length > 1,
-        { timeout: 30000, timeoutMsg: 'Timed out waiting for connection window' },
-      );
+      await browser.waitUntil(async () => (await browser.getWindowHandles()).length > 1, {
+        timeout: 30000,
+        timeoutMsg: 'Timed out waiting for connection window',
+      });
       handles = await browser.getWindowHandles();
-      const newConn = handles.find((h) => h.startsWith('connection')) ?? handles.find((h) => h !== mainWindow)!;
+      const newConn =
+        handles.find((h) => h.startsWith('connection')) ?? handles.find((h) => h !== mainWindow)!;
       await browser.switchToWindow(newConn);
     }
 
@@ -87,7 +89,8 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
   after(async () => {
     try {
       const handles = await browser.getWindowHandles();
-      const connWindow = handles.find((h) => h.startsWith('connection')) ?? handles.find((h) => h !== mainWindow);
+      const connWindow =
+        handles.find((h) => h.startsWith('connection')) ?? handles.find((h) => h !== mainWindow);
       if (connWindow) {
         await browser.switchToWindow(connWindow);
         await openQueryTab();
@@ -152,18 +155,28 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
     await browser.pause(2000);
 
     const body = await $('body').getText();
-    const hasStructure = body.includes('字段名') || body.includes('类型') ||
-      body.includes('integer') || body.includes('varchar') || body.includes('text') ||
-      body.includes('boolean') || body.includes('timestamp');
+    const hasStructure =
+      body.includes('字段名') ||
+      body.includes('类型') ||
+      body.includes('integer') ||
+      body.includes('varchar') ||
+      body.includes('text') ||
+      body.includes('boolean') ||
+      body.includes('timestamp');
     expect(hasStructure).toBe(true);
   });
 
   it('结构标签应显示列名和数据类型 (DB-003)', async () => {
     const body = await $('body').getText();
     // Any real table will have at least one recognizable type
-    const hasColumns = body.includes('NOT NULL') || body.includes('NULL') ||
-      body.includes('PRIMARY') || body.includes('DEFAULT') ||
-      body.includes('integer') || body.includes('varchar') || body.includes('text');
+    const hasColumns =
+      body.includes('NOT NULL') ||
+      body.includes('NULL') ||
+      body.includes('PRIMARY') ||
+      body.includes('DEFAULT') ||
+      body.includes('integer') ||
+      body.includes('varchar') ||
+      body.includes('text');
     expect(hasColumns).toBe(true);
   });
 
@@ -210,19 +223,15 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
     await expect(editBtn).toBeDisplayed();
   });
 
-  it('点击在表结构中编辑应打开结构编辑器 (DB-004a)', async () => {
+  it('点击在表结构中编辑应切换到结构子标签 (DB-004a)', async () => {
     const editBtn = await $(`button*=${t('indexes.editInStructure')}`);
     await editBtn.click();
     await browser.pause(800);
 
     const body = await $('body').getText();
-    expect(body).toContain(t('structEditor.editTable'));
-
-    const cancelBtn = await $(`button*=${t('common.cancel')}`);
-    if (await cancelBtn.isExisting()) {
-      await cancelBtn.click();
-      await browser.pause(500);
-    }
+    // Stays on the same table primary tab; secondary tab switches to Structure.
+    expect(body).toContain(t('structView.fieldName'));
+    expect(body).not.toContain(t('structEditor.editTable'));
   });
 
   // ── 外键 tab ────────────────────────────────────────────────────
@@ -264,10 +273,10 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
     await copyBtn.click();
     await browser.pause(500);
 
-    await browser.waitUntil(
-      async () => (await $('body').getText()).includes('已复制'),
-      { timeout: 3000, timeoutMsg: 'Timed out waiting for copied toast' },
-    );
+    await browser.waitUntil(async () => (await $('body').getText()).includes('已复制'), {
+      timeout: 3000,
+      timeoutMsg: 'Timed out waiting for copied toast',
+    });
   });
 
   // ── 数据 tab ────────────────────────────────────────────────────
@@ -279,7 +288,9 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
     await browser.waitUntil(
       async () => {
         const body = await $('body').getText();
-        return body.includes(t('common.selectAll')) || body.includes('行') || body.includes('加载中');
+        return (
+          body.includes(t('common.selectAll')) || body.includes('行') || body.includes('加载中')
+        );
       },
       { timeout: 15000, timeoutMsg: 'Timed out waiting for data view to render' },
     );
@@ -296,7 +307,9 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
     await browser.execute(() => {
       const content = document.querySelector('.flex.min-h-0.min-w-0.flex-1.flex-col');
       if (content) {
-        content.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 500, clientY: 400 }));
+        content.dispatchEvent(
+          new MouseEvent('contextmenu', { bubbles: true, clientX: 500, clientY: 400 }),
+        );
       }
     });
     await browser.pause(500);
@@ -320,7 +333,9 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
     await browser.execute(() => {
       const content = document.querySelector('.flex.min-h-0.min-w-0.flex-1.flex-col');
       if (content) {
-        content.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 500, clientY: 400 }));
+        content.dispatchEvent(
+          new MouseEvent('contextmenu', { bubbles: true, clientX: 500, clientY: 400 }),
+        );
       }
     });
     await browser.pause(500);
@@ -344,7 +359,9 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
     await browser.execute(() => {
       const content = document.querySelector('.flex.min-h-0.min-w-0.flex-1.flex-col');
       if (content) {
-        content.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 500, clientY: 400 }));
+        content.dispatchEvent(
+          new MouseEvent('contextmenu', { bubbles: true, clientX: 500, clientY: 400 }),
+        );
       }
     });
     await browser.pause(500);
@@ -367,7 +384,9 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
     await browser.execute(() => {
       const content = document.querySelector('.flex.min-h-0.min-w-0.flex-1.flex-col');
       if (content) {
-        content.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 500, clientY: 400 }));
+        content.dispatchEvent(
+          new MouseEvent('contextmenu', { bubbles: true, clientX: 500, clientY: 400 }),
+        );
       }
     });
     await browser.pause(500);
@@ -391,7 +410,9 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
     await browser.execute(() => {
       const content = document.querySelector('.flex.min-h-0.min-w-0.flex-1.flex-col');
       if (content) {
-        content.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 500, clientY: 400 }));
+        content.dispatchEvent(
+          new MouseEvent('contextmenu', { bubbles: true, clientX: 500, clientY: 400 }),
+        );
       }
     });
     await browser.pause(500);
@@ -408,14 +429,16 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
     await browser.pause(300);
   });
 
-  it('索引标签右键菜单编辑结构应打开结构编辑器 (CTX-006)', async () => {
+  it('索引标签右键菜单编辑结构应在结构子标签内打开编辑器 (CTX-006)', async () => {
     await switchSubTab(t('connWin.indexes'));
     await browser.pause(2000);
 
     await browser.execute(() => {
       const content = document.querySelector('.flex.min-h-0.min-w-0.flex-1.flex-col');
       if (content) {
-        content.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 500, clientY: 400 }));
+        content.dispatchEvent(
+          new MouseEvent('contextmenu', { bubbles: true, clientX: 500, clientY: 400 }),
+        );
       }
     });
     await browser.pause(500);
@@ -433,6 +456,8 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
 
     const body = await $('body').getText();
     expect(body).toContain(t('structEditor.editTable'));
+    const backBtn = await $(`button*=${t('common.back')}`);
+    await expect(backBtn).toBeDisplayed();
   });
 
   // ── 搜索表 ─────────────────────────────────────────────────────
