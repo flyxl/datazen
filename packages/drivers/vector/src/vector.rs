@@ -4,9 +4,9 @@
 //! `{"collection":"my_collection","query":{"nearest":{"vector":[0.1,0.2],"limit":10}}}`
 //! Non-JSON input is rejected with a helpful message.
 
-use datazen_driver_http_support::*;
-use datazen_driver_api::*;
 use async_trait::async_trait;
+use datazen_driver_api::*;
+use datazen_driver_http_support::*;
 use std::collections::HashMap;
 use std::time::Instant;
 use tokio::sync::RwLock;
@@ -94,9 +94,19 @@ impl VectorDriver {
                 .unwrap_or(Some(Value::Null))];
             let payload = point.get("payload").and_then(|p| p.as_object());
             for k in &payload_keys {
-                row.push(payload.and_then(|p| p.get(k)).map(json_to_value).unwrap_or(Some(Value::Null)));
+                row.push(
+                    payload
+                        .and_then(|p| p.get(k))
+                        .map(json_to_value)
+                        .unwrap_or(Some(Value::Null)),
+                );
             }
-            row.push(point.get("vector").map(json_to_value).unwrap_or(Some(Value::Null)));
+            row.push(
+                point
+                    .get("vector")
+                    .map(json_to_value)
+                    .unwrap_or(Some(Value::Null)),
+            );
             rows.push(row);
         }
         QueryResult {
@@ -115,8 +125,11 @@ impl DatabaseDriver for VectorDriver {
     }
 
     async fn test_connection(&self, config: &ConnectionConfig) -> Result<ServerInfo, DriverError> {
-        let client =
-            build_http_client(config.connection_timeout, config.username.as_deref(), config.password.as_deref())?;
+        let client = build_http_client(
+            config.connection_timeout,
+            config.username.as_deref(),
+            config.password.as_deref(),
+        )?;
         let base = base_url(config)?;
         let v = Self::get_json(&client, &base, "/collections").await?;
         let version = v
@@ -131,11 +144,17 @@ impl DatabaseDriver for VectorDriver {
     }
 
     async fn connect(&self, config: &ConnectionConfig) -> Result<ConnectionHandle, DriverError> {
-        let client =
-            build_http_client(config.connection_timeout, config.username.as_deref(), config.password.as_deref())?;
+        let client = build_http_client(
+            config.connection_timeout,
+            config.username.as_deref(),
+            config.password.as_deref(),
+        )?;
         let base = base_url(config)?;
         let pool_id = format!("vector_{}", uuid::Uuid::new_v4());
-        self.clients.write().await.insert(pool_id.clone(), (client, base));
+        self.clients
+            .write()
+            .await
+            .insert(pool_id.clone(), (client, base));
         Ok(ConnectionHandle {
             id: pool_id.clone(),
             pool_id,
@@ -182,7 +201,12 @@ impl DatabaseDriver for VectorDriver {
     ) -> Result<TableSchema, DriverError> {
         let map = self.clients.read().await;
         let (client, base) = Self::get(&map, handle)?;
-        let v = Self::get_json(client, base, &format!("/collections/{}", urlencoding::encode(table))).await?;
+        let v = Self::get_json(
+            client,
+            base,
+            &format!("/collections/{}", urlencoding::encode(table)),
+        )
+        .await?;
         let mut columns = Vec::new();
         if let Some(params) = v
             .get("result")
@@ -232,7 +256,11 @@ impl DatabaseDriver for VectorDriver {
         })
     }
 
-    async fn query(&self, handle: &ConnectionHandle, sql: &str) -> Result<QueryResult, DriverError> {
+    async fn query(
+        &self,
+        handle: &ConnectionHandle,
+        sql: &str,
+    ) -> Result<QueryResult, DriverError> {
         let cmd: serde_json::Value = serde_json::from_str(sql.trim())
             .map_err(|_| DriverError::QueryFailed(
                 "Vector store queries are JSON commands, e.g. {\"collection\":\"c\",\"query\":{\"nearest\":{\"vector\":[0.1],\"limit\":10}}}".into(),
@@ -240,16 +268,21 @@ impl DatabaseDriver for VectorDriver {
         let collection = cmd
             .get("collection")
             .and_then(|c| c.as_str())
-            .ok_or_else(|| DriverError::QueryFailed("JSON command requires a \"collection\" field".into()))?;
-        let query = cmd
-            .get("query")
-            .ok_or_else(|| DriverError::QueryFailed("JSON command requires a \"query\" field".into()))?;
+            .ok_or_else(|| {
+                DriverError::QueryFailed("JSON command requires a \"collection\" field".into())
+            })?;
+        let query = cmd.get("query").ok_or_else(|| {
+            DriverError::QueryFailed("JSON command requires a \"query\" field".into())
+        })?;
         let map = self.clients.read().await;
         let (client, base) = Self::get(&map, handle)?;
         let start = Instant::now();
         let nearest = query.get("nearest").cloned().unwrap_or(query.clone());
         let resp = client
-            .post(format!("{base}/collections/{}/points/search", urlencoding::encode(collection)))
+            .post(format!(
+                "{base}/collections/{}/points/search",
+                urlencoding::encode(collection)
+            ))
             .json(&nearest)
             .send()
             .await
@@ -288,6 +321,29 @@ impl DatabaseDriver for VectorDriver {
         })
     }
 
+    async fn query_stream(
+        &self,
+        handle: &ConnectionHandle,
+        sql: &str,
+        limit: Option<u32>,
+        on_event: QueryStreamCallback,
+    ) -> Result<(), DriverError> {
+        let mut result = self.query(handle, sql).await?;
+        let ms = result.execution_time_ms;
+        stream_decoded_rows(
+            &on_event,
+            0,
+            sql.to_string(),
+            result.columns,
+            std::mem::take(&mut result.rows),
+            limit,
+            ms,
+            result.rows_affected,
+        );
+        on_event(QueryStreamEvent::Done { total_time_ms: ms });
+        Ok(())
+    }
+
     async fn query_with_params(
         &self,
         handle: &ConnectionHandle,
@@ -312,5 +368,49 @@ impl DatabaseDriver for VectorDriver {
 
     async fn cancel_query(&self, _handle: &ConnectionHandle) -> Result<(), DriverError> {
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::{Arc, Mutex};
+
+    #[test]
+    fn points_to_result_then_stream_decoded_rows_honors_limit() {
+        let v = serde_json::json!({
+            "result": {
+                "points": [
+                    {"id": "a", "payload": {"k": 1}, "vector": [0.1]},
+                    {"id": "b", "payload": {"k": 2}, "vector": [0.2]}
+                ]
+            }
+        });
+        let mut result = VectorDriver::points_to_result(&v);
+        assert_eq!(result.rows.len(), 2);
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let events_cb = Arc::clone(&events);
+        let cb: QueryStreamCallback = Arc::new(move |ev| {
+            events_cb.lock().unwrap().push(ev);
+        });
+        stream_decoded_rows(
+            &cb,
+            0,
+            "{}".into(),
+            result.columns,
+            std::mem::take(&mut result.rows),
+            Some(1),
+            1,
+            None,
+        );
+        let events = events.lock().unwrap();
+        let rows: usize = events
+            .iter()
+            .filter_map(|e| match e {
+                QueryStreamEvent::Rows { rows, .. } => Some(rows.len()),
+                _ => None,
+            })
+            .sum();
+        assert_eq!(rows, 1);
     }
 }

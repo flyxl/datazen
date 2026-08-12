@@ -41,13 +41,23 @@ fn nonempty(value: Option<&String>) -> Option<&str> {
     value.map(String::as_str).map(str::trim).filter(|s| !s.is_empty())
 }
 
+/// SQL SELECT row cap from settings. `None` when the "limit SELECT results"
+/// switch is off — streaming must not invent a cap from batch size.
+pub(crate) async fn query_result_limit_from_settings(state: &AppState) -> Option<u32> {
+    let settings = state.store.get_settings().await;
+    if settings.limit_select_results && settings.query_result_limit > 0 {
+        Some(settings.query_result_limit)
+    } else {
+        None
+    }
+}
+
 async fn apply_query_result_limit(state: &AppState, input: &mut serde_json::Value) {
     if input.get("limit").is_some() {
         return;
     }
-    let settings = state.store.get_settings().await;
-    if settings.limit_select_results && settings.query_result_limit > 0 {
-        input["limit"] = serde_json::json!(settings.query_result_limit);
+    if let Some(limit) = query_result_limit_from_settings(state).await {
+        input["limit"] = serde_json::json!(limit);
     }
 }
 

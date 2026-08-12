@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 import { queryCommands } from '../commands/query';
+import { applyQueryStreamEvent } from '../lib/queryStream';
 import { t } from '../locales/t';
-import type { FavoriteQuery, QueryHistoryEntry, StatementResult } from '../types';
+import type { FavoriteQuery, QueryHistoryEntry, QueryStreamEvent, StatementResult } from '../types';
 import type { ChartConfig } from '../types/chart';
 
 export interface QueryTab {
@@ -15,6 +16,7 @@ export interface QueryTab {
   executionTimeMs: number | null;
   chartConfig?: ChartConfig;
   resultViewMode?: 'table' | 'chart';
+  streamRunId?: number;
 }
 
 function extractError(e: unknown): string {
@@ -70,6 +72,77 @@ interface QueryStore {
 }
 
 let tabCounter = 0;
+let streamRunCounter = 0;
+
+async function runStreamingQuery(
+  get: () => QueryStore,
+  set: (partial: Partial<QueryStore> | ((state: QueryStore) => Partial<QueryStore>)) => void,
+  tabId: string,
+  sql: string,
+): Promise<void> {
+  const { connectionId, tabs } = get();
+  if (!connectionId) {
+    set({
+      tabs: tabs.map((tab) =>
+        tab.id === tabId
+          ? { ...tab, error: t('query.notConnected'), running: false, results: [], activeResultIdx: 0 }
+          : tab,
+      ),
+    });
+    return;
+  }
+
+  const runId = ++streamRunCounter;
+  set({
+    tabs: get().tabs.map((tab) =>
+      tab.id === tabId
+        ? {
+            ...tab,
+            running: true,
+            error: null,
+            results: [],
+            activeResultIdx: 0,
+            streamRunId: runId,
+            executionTimeMs: null,
+          }
+        : tab,
+    ),
+  });
+
+  const onEvent = (event: QueryStreamEvent) => {
+    set((state) => ({
+      tabs: state.tabs.map((tab) => {
+        if (tab.id !== tabId || tab.streamRunId !== runId) return tab;
+        return applyQueryStreamEvent(tab, event);
+      }),
+    }));
+  };
+
+  try {
+    await queryCommands.executeQueryStream(connectionId, sql, onEvent);
+    const tab = get().tabs.find((item) => item.id === tabId);
+    if (tab && tab.streamRunId === runId) {
+      const { resolvePostQueryViewMode } = await import('../lib/chart/postQueryView');
+      const viewMode = resolvePostQueryViewMode(tab.results[0]);
+      set((state) => ({
+        tabs: state.tabs.map((item) =>
+          item.id === tabId && item.streamRunId === runId
+            ? { ...item, resultViewMode: viewMode, running: false }
+            : item,
+        ),
+      }));
+      await get().loadHistory();
+    }
+  } catch (e) {
+    set((state) => ({
+      tabs: state.tabs.map((tab) =>
+        tab.id === tabId && tab.streamRunId === runId
+          ? { ...tab, running: false, error: extractError(e) }
+          : tab,
+      ),
+    }));
+  }
+}
 
 export const useQueryStore = create<QueryStore>((set, get) => ({
   connectionId: null,
@@ -114,102 +187,15 @@ export const useQueryStore = create<QueryStore>((set, get) => ({
     })),
 
   executeQuery: async (tabId) => {
-    const { connectionId, tabs } = get();
-    if (!connectionId) {
-      set({
-        tabs: tabs.map((tab) =>
-          tab.id === tabId
-            ? { ...tab, error: t('query.notConnected'), running: false, results: [], activeResultIdx: 0 }
-            : tab,
-        ),
-      });
-      return;
-    }
-    const tab = tabs.find((t) => t.id === tabId);
+    const tab = get().tabs.find((t) => t.id === tabId);
     if (!tab) return;
-
-    set({
-      tabs: tabs.map((t) => (t.id === tabId ? { ...t, running: true, error: null } : t)),
-    });
-
-    try {
-      const multi = await queryCommands.executeQuery(connectionId, tab.sql);
-      const { resolvePostQueryViewMode } = await import('../lib/chart/postQueryView');
-      const viewMode = resolvePostQueryViewMode(multi.results[0]);
-      set((s) => ({
-        tabs: s.tabs.map((t) =>
-          t.id === tabId
-            ? {
-                ...t,
-                running: false,
-                results: multi.results,
-                activeResultIdx: 0,
-                error: null,
-                executionTimeMs: multi.totalTimeMs ?? null,
-                resultViewMode: viewMode,
-              }
-            : t,
-        ),
-      }));
-      await get().loadHistory();
-    } catch (e) {
-      set((s) => ({
-        tabs: s.tabs.map((t) =>
-          t.id === tabId
-            ? {
-                ...t,
-                running: false,
-                error: extractError(e),
-                results: [],
-                activeResultIdx: 0,
-              }
-            : t,
-        ),
-      }));
-    }
+    await runStreamingQuery(get, set, tabId, tab.sql);
   },
 
   executeSelection: async (tabId, sql) => {
-    const { connectionId, tabs } = get();
+    const { connectionId } = get();
     if (!connectionId) return;
-    set({
-      tabs: tabs.map((t) => (t.id === tabId ? { ...t, running: true, error: null } : t)),
-    });
-    try {
-      const multi = await queryCommands.executeQuery(connectionId, sql);
-      const { resolvePostQueryViewMode } = await import('../lib/chart/postQueryView');
-      const viewMode = resolvePostQueryViewMode(multi.results[0]);
-      set((s) => ({
-        tabs: s.tabs.map((t) =>
-          t.id === tabId
-            ? {
-                ...t,
-                running: false,
-                results: multi.results,
-                activeResultIdx: 0,
-                error: null,
-                executionTimeMs: multi.totalTimeMs ?? null,
-                resultViewMode: viewMode,
-              }
-            : t,
-        ),
-      }));
-      await get().loadHistory();
-    } catch (e) {
-      set((s) => ({
-        tabs: s.tabs.map((t) =>
-          t.id === tabId
-            ? {
-                ...t,
-                running: false,
-                error: extractError(e),
-                results: [],
-                activeResultIdx: 0,
-              }
-            : t,
-        ),
-      }));
-    }
+    await runStreamingQuery(get, set, tabId, sql);
   },
 
   cancelQuery: async (tabId) => {
