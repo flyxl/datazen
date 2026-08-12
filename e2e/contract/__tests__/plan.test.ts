@@ -5,6 +5,7 @@ import {
   bodyContainsNone,
   describeMatrixTitle,
   F2_CORE_JOURNEYS,
+  ALL_CONTRACT_JOURNEYS,
   journeysToRun,
   paginationRangeVisible,
   planJourneys,
@@ -13,14 +14,14 @@ import {
 describe('planJourneys (F2 core)', () => {
   it('runs DATA/FILTER/QUERY for postgres and mysql', () => {
     for (const id of ['postgres', 'mysql'] as const) {
-      const plan = planJourneys(getFixture(id));
+      const plan = planJourneys(getFixture(id), F2_CORE_JOURNEYS);
       expect(plan.every((p) => p.status === 'run')).toBe(true);
       expect(journeysToRun(plan)).toEqual([...F2_CORE_JOURNEYS]);
     }
   });
 
   it('runs DATA/FILTER/QUERY for sqlite (OBJ not in F2 core)', () => {
-    const plan = planJourneys(getFixture('sqlite'));
+    const plan = planJourneys(getFixture('sqlite'), F2_CORE_JOURNEYS);
     expect(journeysToRun(plan)).toEqual(['HC-DATA', 'HC-FILTER', 'HC-QUERY']);
   });
 
@@ -31,7 +32,7 @@ describe('planJourneys (F2 core)', () => {
       id: 'postgres' as const,
       capabilities: { ...base.capabilities, connectionMode: 'redis' as const },
     };
-    const plan = planJourneys(redisLike);
+    const plan = planJourneys(redisLike, F2_CORE_JOURNEYS);
     expect(plan.every((p) => p.status === 'skip')).toBe(true);
     expect(journeysToRun(plan)).toEqual([]);
     expect(plan[0].reason).toMatch(/redis/);
@@ -41,6 +42,30 @@ describe('planJourneys (F2 core)', () => {
     expect(describeMatrixTitle(getFixture('mysql'))).toBe(
       'Host contract @ mysql (E2E-MySQL)',
     );
+  });
+});
+
+describe('planJourneys (F3 full contract)', () => {
+  it('runs all journeys on postgres/mysql', () => {
+    for (const id of ['postgres', 'mysql'] as const) {
+      const plan = planJourneys(getFixture(id), ALL_CONTRACT_JOURNEYS);
+      expect(journeysToRun(plan)).toEqual([...ALL_CONTRACT_JOURNEYS]);
+    }
+  });
+
+  it('skips HC-OBJ on sqlite but runs the rest', () => {
+    const plan = planJourneys(getFixture('sqlite'), ALL_CONTRACT_JOURNEYS);
+    expect(journeysToRun(plan)).not.toContain('HC-OBJ');
+    expect(journeysToRun(plan)).toContain('HC-DATA');
+    expect(journeysToRun(plan)).toContain('HC-EXPLAIN');
+    const obj = plan.find((p) => p.id === 'HC-OBJ');
+    expect(obj?.status).toBe('skip');
+    expect(obj?.reason).toMatch(/hasObjects/);
+  });
+
+  it('defaults planJourneys to the full contract list', () => {
+    const plan = planJourneys(getFixture('postgres'));
+    expect(plan.map((p) => p.id)).toEqual([...ALL_CONTRACT_JOURNEYS]);
   });
 });
 
