@@ -22,7 +22,7 @@
 | F4 | Schema 树原生菜单（表/视图/库/空白；按 nodeKind 分支） | P1 | done | （本提交） | PASS：单测 7/7，lines 100% |
 | F5 | DataTable 原生菜单（导出/复制单元格/复制行） | P1 | done | （本提交） | PASS：lines 100% |
 | F6 | 连接窗口 Tab 栏原生菜单（关闭/关闭其他/关闭全部） | P1 | done | （本提交） | PASS：lines 100% |
-| F7 | 收藏 / 历史侧栏原生菜单 | P2 | pending | — | — |
+| F7 | 收藏 / 历史侧栏原生菜单 | P2 | done | （本提交） | PASS：lines 100% |
 | F8 | Redis key 列表原生菜单（驱动 UI） | P2 | pending | — | — |
 | F9 | Workflow 列表 / 历史原生菜单 | P2 | pending | — | — |
 | F10 | ER 图节点原生菜单 | P2 | pending | — | — |
@@ -73,3 +73,9 @@
 - `SqlConnectionView`：panel tab 行 `onContextMenu` → `showNativeContextMenu`；新增 `handleCloseOtherPanels` / `handleCloseAllPanels`（批量关 panel，query 同步 `closeQueryTab`）
 - i18n：`connWin.closeTab` / `connWin.closeOtherTabs` / `connWin.closeAllTabs`（en + zh-CN 正式文案；其它 locale 英文占位；zh-TW 繁体）
 - 单测：`src/lib/__tests__/connectionTabContextMenu.test.ts`
+
+### F7 — 收藏 / 历史侧栏原生菜单（草稿）
+- 新增 `src/lib/querySidebarContextMenu.ts`：`buildFavoriteSidebarContextMenuItems`（apply / copy / delete）、`buildHistorySidebarContextMenuItems`（apply / copy）、`buildHistorySidebarHeaderContextMenuItems`（clear history）；无 rename API，省略重命名
+- `QueryPanel`：收藏条目 / 历史条目 `onContextMenu` → `preventDefault` + `stopPropagation` + `showNativeContextMenu`；历史标题右键清空历史（`clear_query_history`）
+- i18n：`query.applySql` / `query.copySql` / `query.clearHistory`（en + zh-CN 正式文案；其它 locale 英文占位；zh-TW 繁体）；删除复用 `common.delete`
+- 单测：`src/lib/__tests__/querySidebarContextMenu.test.ts`

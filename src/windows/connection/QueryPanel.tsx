@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+} from 'react';
 import {
   AlertTriangle,
   BarChart3,
@@ -26,6 +33,11 @@ import type { SqlEditorHandle } from '../../components/SqlEditor';
 import { buildEditorSchema } from '../../lib/buildEditorSchema';
 import { showNativeContextMenu } from '../../lib/nativeContextMenu';
 import { buildSqlEditorContextMenuItems } from '../../lib/sqlEditorContextMenu';
+import {
+  buildFavoriteSidebarContextMenuItems,
+  buildHistorySidebarContextMenuItems,
+  buildHistorySidebarHeaderContextMenuItems,
+} from '../../lib/querySidebarContextMenu';
 import { DataTable } from '../../components/DataTable/DataTable';
 import type { ColumnDef } from '../../components/DataTable/TableHeader';
 import { ChartView } from '../../components/chart/ChartView';
@@ -397,6 +409,77 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
       );
     },
     [openAddFavoriteDialog, t],
+  );
+
+  const copySqlToClipboard = useCallback((sql: string) => {
+    void navigator.clipboard.writeText(sql);
+  }, []);
+
+  const handleFavoriteContextMenu = useCallback(
+    (e: ReactMouseEvent, favorite: { id: string; sql: string }) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!tab) return;
+      void showNativeContextMenu(
+        buildFavoriteSidebarContextMenuItems({
+          labels: {
+            applySql: t('query.applySql'),
+            copySql: t('query.copySql'),
+            delete: t('common.delete'),
+          },
+          handlers: {
+            onApplySql: () => updateSql(tab.id, favorite.sql),
+            onCopySql: () => copySqlToClipboard(favorite.sql),
+            onDelete: () => {
+              void deleteFavorite(favorite.id);
+            },
+          },
+        }),
+      );
+    },
+    [tab, t, updateSql, copySqlToClipboard, deleteFavorite],
+  );
+
+  const handleHistoryContextMenu = useCallback(
+    (e: ReactMouseEvent, sql: string) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!tab) return;
+      void showNativeContextMenu(
+        buildHistorySidebarContextMenuItems({
+          labels: {
+            applySql: t('query.applySql'),
+            copySql: t('query.copySql'),
+          },
+          handlers: {
+            onApplySql: () => updateSql(tab.id, sql),
+            onCopySql: () => copySqlToClipboard(sql),
+          },
+        }),
+      );
+    },
+    [tab, t, updateSql, copySqlToClipboard],
+  );
+
+  const handleHistoryHeaderContextMenu = useCallback(
+    (e: ReactMouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      void showNativeContextMenu(
+        buildHistorySidebarHeaderContextMenuItems({
+          labels: { clearHistory: t('query.clearHistory') },
+          handlers: {
+            onClearHistory: () => {
+              void (async () => {
+                await queryCommands.clearQueryHistory();
+                await loadHistory();
+              })();
+            },
+          },
+        }),
+      );
+    },
+    [t, loadHistory],
   );
 
   // Keep event bridge for E2E / menubar emit compatibility.
@@ -871,6 +954,7 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
                 <div
                   key={f.id}
                   className="group flex w-full items-start border-b border-edge px-3 py-2 hover:bg-surface-raised"
+                  onContextMenu={(e) => handleFavoriteContextMenu(e, f)}
                 >
                   <button
                     type="button"
@@ -896,7 +980,10 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
         )}
         {historyVisible && (
           <aside className="w-64 shrink-0 overflow-y-auto border-l border-edge bg-surface-alt">
-            <div className="border-b border-edge px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-fg-muted">
+            <div
+              className="border-b border-edge px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-fg-muted"
+              onContextMenu={handleHistoryHeaderContextMenu}
+            >
               {t('query.historyTitle')}
             </div>
             {history.length === 0 ? (
@@ -910,6 +997,7 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
                   type="button"
                   className="w-full border-b border-edge px-3 py-2 text-left hover:bg-surface-raised"
                   onClick={() => updateSql(tab.id, h.sql)}
+                  onContextMenu={(e) => handleHistoryContextMenu(e, h.sql)}
                 >
                   <div className="truncate font-mono text-xs text-fg-secondary">{h.sql}</div>
                   <div className="mt-1 flex items-center gap-2 text-[11px] text-fg-muted">
