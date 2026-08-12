@@ -374,7 +374,10 @@ impl AppDb {
         })
     }
 
-    pub fn find_workflow_refs(&self, workflow_id: &str) -> Result<Vec<DashboardWorkflowRef>, AppDbError> {
+    pub fn find_workflow_refs(
+        &self,
+        workflow_id: &str,
+    ) -> Result<Vec<DashboardWorkflowRef>, AppDbError> {
         self.with_conn(|conn| {
             let mut stmt = conn.prepare(
                 "SELECT w.workflow_id, w.dashboard_id, w.id, d.name, w.title
@@ -752,7 +755,9 @@ fn validate_refresh_pair(mode: Option<&str>, refresh_sec: Option<u32>) -> Result
             }
             Ok(())
         }
-        _ => Err(AppDbError::Validation(format!("invalid refresh_mode: {mode}"))),
+        _ => Err(AppDbError::Validation(format!(
+            "invalid refresh_mode: {mode}"
+        ))),
     }
 }
 
@@ -805,9 +810,7 @@ fn map_widget_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<WidgetRecord> {
         layout_w: row.get::<_, i64>(8)? as u32,
         layout_h: row.get::<_, i64>(9)? as u32,
         refresh_mode: row.get(10)?,
-        refresh_sec: row
-            .get::<_, Option<i64>>(11)?
-            .map(|v| v as u32),
+        refresh_sec: row.get::<_, Option<i64>>(11)?.map(|v| v as u32),
         alert_json: row.get(12)?,
         enabled: row.get::<_, i32>(13)? != 0,
         sort_order: row.get(14)?,
@@ -830,9 +833,7 @@ fn map_run_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<WidgetRunRecord> {
         columns_json: row.get(9)?,
         rows_json: row.get(10)?,
         variables_json: row.get(11)?,
-        alert_fired: row
-            .get::<_, Option<i32>>(12)?
-            .map(|v| v != 0),
+        alert_fired: row.get::<_, Option<i32>>(12)?.map(|v| v != 0),
         alert_value: row.get(13)?,
     })
 }
@@ -900,11 +901,11 @@ mod tests {
         let db = AppDb::open_in_memory().unwrap();
         let version: i32 = db
             .with_conn(|conn| {
-                Ok(conn.query_row(
-                    "SELECT version FROM schema_migrations LIMIT 1",
-                    [],
-                    |row| row.get(0),
-                )?)
+                Ok(
+                    conn.query_row("SELECT version FROM schema_migrations LIMIT 1", [], |row| {
+                        row.get(0)
+                    })?,
+                )
             })
             .unwrap();
         assert_eq!(version, SCHEMA_VERSION);
@@ -915,11 +916,8 @@ mod tests {
         let db = AppDb::open_in_memory().unwrap();
         db.upsert_workflow(&sample_workflow("u1", WorkflowVisibility::User))
             .unwrap();
-        db.upsert_workflow(&sample_workflow(
-            "h1",
-            WorkflowVisibility::DashboardHidden,
-        ))
-        .unwrap();
+        db.upsert_workflow(&sample_workflow("h1", WorkflowVisibility::DashboardHidden))
+            .unwrap();
 
         let users = db.list_workflows(Some(WorkflowVisibility::User)).unwrap();
         assert_eq!(users.len(), 1);
@@ -938,8 +936,7 @@ mod tests {
         db.upsert_workflow(&sample_workflow("wf1", WorkflowVisibility::User))
             .unwrap();
         db.upsert_dashboard(&sample_dashboard("d1")).unwrap();
-        db.upsert_widget(&sample_widget("w1", "d1", "wf1"))
-            .unwrap();
+        db.upsert_widget(&sample_widget("w1", "d1", "wf1")).unwrap();
 
         let refs = db.find_workflow_refs("wf1").unwrap();
         assert_eq!(refs.len(), 1);
@@ -985,8 +982,7 @@ mod tests {
         db.upsert_workflow(&sample_workflow("wf1", WorkflowVisibility::User))
             .unwrap();
         db.upsert_dashboard(&sample_dashboard("d1")).unwrap();
-        db.upsert_widget(&sample_widget("w1", "d1", "wf1"))
-            .unwrap();
+        db.upsert_widget(&sample_widget("w1", "d1", "wf1")).unwrap();
 
         let big_rows: Vec<Vec<i32>> = (0..600).map(|i| vec![i]).collect();
         let run = WidgetRunRecord {
@@ -1028,8 +1024,7 @@ mod tests {
         db.upsert_workflow(&sample_workflow("wf1", WorkflowVisibility::User))
             .unwrap();
         db.upsert_dashboard(&sample_dashboard("d1")).unwrap();
-        db.upsert_widget(&sample_widget("w1", "d1", "wf1"))
-            .unwrap();
+        db.upsert_widget(&sample_widget("w1", "d1", "wf1")).unwrap();
         db.set_dashboard_refresh_paused("d1", true).unwrap();
         assert!(db.get_dashboard("d1").unwrap().refresh_paused);
 

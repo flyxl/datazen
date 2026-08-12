@@ -95,7 +95,8 @@ const translations = {
   'main.ctx.removeFromGroup': 'Eliminar del grupo',
   'main.ctx.moveToGroup': 'Mover al grupo',
   'main.ctx.deleteConnection': 'Eliminar conexión',
-  'main.ctx.confirmDeleteConnection': '¿Está seguro de que desea eliminar la conexión "{name}"? Esto no se puede deshacer.',
+  'main.ctx.confirmDeleteConnection':
+    '¿Está seguro de que desea eliminar la conexión "{name}"? Esto no se puede deshacer.',
   'main.newGroupTitle': 'Nuevo grupo',
   'main.groupNamePlaceholder': 'Introduzca el nombre del grupo',
   'main.backupSuccess': 'Base de datos respaldada exitosamente',
@@ -111,13 +112,16 @@ const translations = {
   'action.workflow': 'Flujo de trabajo…',
   'action.exportConfig': 'Exportar datos de la aplicación...',
   'action.importConfig': 'Importar datos de aplicaciones…',
-  'appData.exportSuccess': 'Los datos de la aplicación se exportaron correctamente. La clave de cifrado no está incluida en el ZIP; haga una copia de seguridad por separado si necesita descifrar las contraseñas guardadas en otra máquina.',
+  'appData.exportSuccess':
+    'Los datos de la aplicación se exportaron correctamente. La clave de cifrado no está incluida en el ZIP; haga una copia de seguridad por separado si necesita descifrar las contraseñas guardadas en otra máquina.',
   'appData.exportFailed': 'Exportación fallida',
   'appData.importConfirmTitle': 'Importar datos de aplicaciones',
-  'appData.importConfirmMessage': 'Esto sobrescribirá todos los datos de la aplicación. Se conservarán los archivos de registro existentes. Las copias de seguridad no incluyen la clave de cifrado: las contraseñas siguen siendo utilizables solo cuando se restauran en esta máquina (o en una con la misma clave). ¿Continuar?',
+  'appData.importConfirmMessage':
+    'Esto sobrescribirá todos los datos de la aplicación. Se conservarán los archivos de registro existentes. Las copias de seguridad no incluyen la clave de cifrado: las contraseñas siguen siendo utilizables solo cuando se restauran en esta máquina (o en una con la misma clave). ¿Continuar?',
   'appData.importFailed': 'Importación fallida',
   'appData.backupKeyTitle': 'Copia de seguridad de la clave de cifrado',
-  'appData.backupKeyMessage': '¿Guardar una copia de su clave de cifrado ahora? Guárdelo de forma segura; lo necesitará para descifrar las contraseñas guardadas después de restaurarlas en otra máquina.',
+  'appData.backupKeyMessage':
+    '¿Guardar una copia de su clave de cifrado ahora? Guárdelo de forma segura; lo necesitará para descifrar las contraseñas guardadas después de restaurarlas en otra máquina.',
   'appData.backupKeySaved': 'Clave de cifrado guardada.',
   'appData.backupKeyFailed': 'No se pudo guardar la clave de cifrado.',
   'connShare.exportTitle': 'Exportar conexiones',
@@ -125,23 +129,29 @@ const translations = {
   'connShare.importFromAppTitle': 'Importar desde {app}',
   'connShare.dataPath': 'Directorio de datos o ruta de instalación',
   'connShare.dataPathPlaceholder': 'Ruta de instalación, directorio de datos o archivo exportado',
-  'connShare.dataPathFoundHint': 'Se localizó el archivo de datos predeterminado. Si la aplicación está en otra ubicación, indique la ruta de instalación, el directorio de datos o un archivo exportado.',
-  'connShare.dataPathMissingHint': 'No se encontró el directorio de datos predeterminado. Indique la ruta de instalación, el directorio de datos o un archivo exportado.',
+  'connShare.dataPathFoundHint':
+    'Se localizó el archivo de datos predeterminado. Si la aplicación está en otra ubicación, indique la ruta de instalación, el directorio de datos o un archivo exportado.',
+  'connShare.dataPathMissingHint':
+    'No se encontró el directorio de datos predeterminado. Indique la ruta de instalación, el directorio de datos o un archivo exportado.',
   'connShare.browseFolder': 'Examinar carpeta…',
   'connShare.browseFile': 'Examinar archivo…',
-  'connShare.pathRequired': 'Indique un directorio de datos, ruta de instalación o archivo exportado',
+  'connShare.pathRequired':
+    'Indique un directorio de datos, ruta de instalación o archivo exportado',
   'connShare.password': 'Contraseña',
   'connShare.confirmPassword': 'confirmar Contraseña',
   'connShare.passwordRequired': 'Se requiere contraseña',
   'connShare.passwordMismatch': 'Las contraseñas no coinciden',
   'connShare.passwordOptional': 'opcional para DataGrip / Navicat / DBeaver / DBX plain',
   'connShare.passwordImportPlaceholder': 'Requerido para DataZen / DBX encrypted / TablePlus',
-  'connShare.importFormatsHint': 'Admite DataZen, DBX, DataGrip, Navicat, DBeaver y TablePlus. Vuelva a introducir contraseñas si faltan.',
+  'connShare.importFormatsHint':
+    'Admite DataZen, DBX, DataGrip, Navicat, DBeaver y TablePlus. Vuelva a introducir contraseñas si faltan.',
   'connShare.exportAction': 'Exportar…',
   'connShare.importAction': 'Importar…',
   'connShare.exportSuccess': 'Conexión(es) {count} exportadas',
-  'connShare.importSuccess': 'Importado {imported} nuevo, actualizado {overwritten}, agregado(s) {groupsAdded} grupo(s)',
-  'connShare.importSuccessWithSkipped': 'Importado {imported} nuevo, actualizado {overwritten}, agregado(s) {groupsAdded} grupo(s), omitidos {skipped}',
+  'connShare.importSuccess':
+    'Importado {imported} nuevo, actualizado {overwritten}, agregado(s) {groupsAdded} grupo(s)',
+  'connShare.importSuccessWithSkipped':
+    'Importado {imported} nuevo, actualizado {overwritten}, agregado(s) {groupsAdded} grupo(s), omitidos {skipped}',
   'connShare.exportFailed': 'Exportación fallida',
   'connShare.importFailed': 'Importación fallida',
   'conn.connected': 'Conectado',
@@ -235,7 +245,8 @@ const translations = {
   'newConn.adbPullFailed': 'Error al tirar',
   'newConn.adbLoadingPackages': 'Cargando aplicaciones…',
   'newConn.adbLoadingDatabases': 'Cargando bases de datos…',
-  'newConn.adbNoPackages': 'No se encontraron aplicaciones de terceros. Asegúrese de que el dispositivo esté conectado.',
+  'newConn.adbNoPackages':
+    'No se encontraron aplicaciones de terceros. Asegúrese de que el dispositivo esté conectado.',
   'newConn.adbNoDatabases': 'No se encontraron archivos de base de datos',
   'newConn.adbNotInstalled': 'adb no está instalado o no está en PATH',
 
@@ -257,17 +268,20 @@ const translations = {
   'settings.dataBrowsing': 'Navegación de datos',
   'settings.defaultPageSize': 'Tamaño de página predeterminado',
   'settings.connectionPoolSize': 'Tamaño del pool de conexiones',
-  'settings.connectionPoolSizeHint': 'Número máximo de conexiones conservadas por conexión de base de datos.',
+  'settings.connectionPoolSizeHint':
+    'Número máximo de conexiones conservadas por conexión de base de datos.',
   'settings.limitSelect': 'Limitar resultados SELECCIONAR',
   'settings.autoChartOnQuery': 'Auto-switch to chart',
-  'settings.autoChartOnQueryHint': 'After a query, open the Chart tab when the result looks chartable.',
+  'settings.autoChartOnQueryHint':
+    'After a query, open the Chart tab when the result looks chartable.',
   'settings.maxRows': 'Máximo de filas devueltas',
   'settings.editor': 'Editor',
   'settings.fontSize': 'Tamaño de fuente',
   'settings.fontFamily': 'Familia de fuentes',
   'settings.behavior': 'Comportamiento',
   'settings.dataCleanup.title': 'Limpieza de historial',
-  'settings.dataCleanup.description': 'Eliminar el historial local de consultas SQL y registros de ejecución de workflows.',
+  'settings.dataCleanup.description':
+    'Eliminar el historial local de consultas SQL y registros de ejecución de workflows.',
   'settings.dataCleanup.scope': 'Ámbito',
   'settings.dataCleanup.scopeQuery': 'Historial de consultas SQL',
   'settings.dataCleanup.scopeWorkflow': 'Historial de workflows',
@@ -280,8 +294,10 @@ const translations = {
   'settings.dataCleanup.clearAll': 'Borrar todo en el ámbito',
   'settings.dataCleanup.run': 'Limpiar ahora',
   'settings.dataCleanup.confirmTitle': '¿Limpiar historial?',
-  'settings.dataCleanup.confirmMessage': '¿Eliminar permanentemente registros anteriores a {days} días en el ámbito seleccionado?',
-  'settings.dataCleanup.confirmClearAll': '¿Eliminar permanentemente todos los registros en el ámbito seleccionado?',
+  'settings.dataCleanup.confirmMessage':
+    '¿Eliminar permanentemente registros anteriores a {days} días en el ámbito seleccionado?',
+  'settings.dataCleanup.confirmClearAll':
+    '¿Eliminar permanentemente todos los registros en el ámbito seleccionado?',
   'settings.dataCleanup.success': 'Se eliminaron {count} registro(s)',
   'settings.dataCleanup.error': 'Error al limpiar el historial',
   'settings.dataCleanup.noScope': 'Seleccione al menos un ámbito',
@@ -290,12 +306,14 @@ const translations = {
   'settings.logPath': 'Ruta de registro',
   'settings.logPathPlaceholder': 'Dejar vacío para la ruta predeterminada',
   'settings.viewLogs': 'Ver registros',
-  'settings.logRestartNote': 'Los cambios en la configuración del registro requieren que se reinicie la aplicación para que surtan efecto',
+  'settings.logRestartNote':
+    'Los cambios en la configuración del registro requieren que se reinicie la aplicación para que surtan efecto',
   'settings.contextDir': 'Directorio de contexto de IA',
   'settings.confirmDelete': 'Confirmar al eliminar',
   'settings.autoCommit': 'Confirmación automática',
   'settings.saved': 'Guardado',
-  'settings.limitSelectHint': 'Agregue automáticamente un límite de filas a las declaraciones SELECT sin LIMIT. Los resultados grandes siempre se transmiten; desactivar esta opción no desactiva la transmisión.',
+  'settings.limitSelectHint':
+    'Agregue automáticamente un límite de filas a las declaraciones SELECT sin LIMIT. Los resultados grandes siempre se transmiten; desactivar esta opción no desactiva la transmisión.',
   'settings.confirmDeleteHint': 'Mostrar un cuadro de diálogo de confirmación al eliminar filas',
   'settings.autoCommitHint': 'Confirmar automáticamente las ediciones de los datos',
   'settings.safeMode': 'Safe Mode',
@@ -447,7 +465,8 @@ const translations = {
   'import.parsing': 'Analizando archivo…',
   'import.rowsNotShown': '{count} más filas no se muestran',
   'import.largeDataWarning': 'A punto de importar un gran conjunto de datos',
-  'import.largeImportRows': 'A punto de importar un conjunto de datos grande ({count} filas). Esto puede tardar un poco.',
+  'import.largeImportRows':
+    'A punto de importar un conjunto de datos grande ({count} filas). Esto puede tardar un poco.',
   'import.importing': 'Importador…',
   'import.import': 'Importar',
   'import.noData': 'No hay datos para importar',
@@ -496,7 +515,8 @@ const translations = {
   'structEditor.sqlPreview': 'Vista previa de SQL',
   'structEditor.previewing': 'Generando vista previa…',
   'structEditor.capDisabled': 'No compatible con esta base de datos o versión',
-  'structEditor.notSupported': 'La edición de estructura de tabla no está disponible para este tipo de conexión',
+  'structEditor.notSupported':
+    'La edición de estructura de tabla no está disponible para este tipo de conexión',
   'structEditor.indexes': 'Índices',
   'structEditor.addIndex': 'Agregar índice',
   'structEditor.deleteIndex': 'Eliminar índice',
@@ -549,7 +569,8 @@ const translations = {
   'sync.comparing': 'Comparando estructuras de bases de datos...',
   'sync.selectBoth': 'Seleccione las bases de datos de origen y de destino',
   'sync.cannotSame': 'El origen y el destino no pueden ser los mismos',
-  'sync.selectPrompt': 'Seleccione las bases de datos de origen y de destino, luego haga clic en "Comparar"',
+  'sync.selectPrompt':
+    'Seleccione las bases de datos de origen y de destino, luego haga clic en "Comparar"',
   'sync.connectFailed': 'La conexión falló:',
   'sync.identical': 'Idéntico',
   'sync.different': 'Diferente',
@@ -576,16 +597,21 @@ const translations = {
   'sync.continue': 'Continuar',
   'sync.resumeTitle': 'Reanudar tarea de sincronización',
   'sync.resumeDesc': 'Tablas {done}/{total} completadas',
-  'sync.resumeExplain': 'Esta tarea se interrumpió durante la sincronización de la tabla. Elija una estrategia de recuperación:',
+  'sync.resumeExplain':
+    'Esta tarea se interrumpió durante la sincronización de la tabla. Elija una estrategia de recuperación:',
   'sync.resumeContinue': 'Continuar desde el punto de control',
-  'sync.resumeContinueDesc': 'Saltar {count} tablas completadas y reanudar desde el punto de interrupción',
+  'sync.resumeContinueDesc':
+    'Saltar {count} tablas completadas y reanudar desde el punto de interrupción',
   'sync.resumeRestart': 'Reiniciar desde cero',
-  'sync.resumeRestartDesc': 'Ignore el progreso anterior y vuelva a sincronizar todas las tablas {count}',
+  'sync.resumeRestartDesc':
+    'Ignore el progreso anterior y vuelva a sincronizar todas las tablas {count}',
   'sync.conflictTitle': 'Cambios de datos detectados',
   'sync.conflictDesc': 'Algunas tablas de origen han cambiado el número de filas.',
-  'sync.conflictWarning': 'Las siguientes tablas han cambiado desde la última sincronización. Continuar puede causar inconsistencia en los datos.',
+  'sync.conflictWarning':
+    'Las siguientes tablas han cambiado desde la última sincronización. Continuar puede causar inconsistencia en los datos.',
   'sync.conflictContinue': 'Continuar de todos modos',
-  'sync.conflictContinueDesc': 'Omitir tablas completadas y reanudar (las tablas modificadas se volverán a sincronizar cuando se alcancen)',
+  'sync.conflictContinueDesc':
+    'Omitir tablas completadas y reanudar (las tablas modificadas se volverán a sincronizar cuando se alcancen)',
   'sync.conflictRestartDesc': 'Ignora todo el progreso y vuelve a sincronizar todo.',
   'sync.checkConflictFailed': 'La verificación de conflicto falló:',
   'sync.originalRows': 'Filas originales',
@@ -621,7 +647,8 @@ const translations = {
   'settings.ai.delete': 'Borrar configuración',
   'settings.ai.notConfigured': 'No configurado',
   'settings.ai.configured': 'Configurado',
-  'settings.ai.description': 'Configure un proveedor de IA para habilitar NL a SQL, diagnóstico de errores y otras funciones inteligentes',
+  'settings.ai.description':
+    'Configure un proveedor de IA para habilitar NL a SQL, diagnóstico de errores y otras funciones inteligentes',
   'settings.ai.goToConfigure': 'Ir a configuración',
   'settings.ai.protocol': 'Protocolo',
   'settings.ai.protocolOpenAiChat': 'Finalizaciones del chat OpenAI',
@@ -635,7 +662,8 @@ const translations = {
   'settings.ai.endpointHintOpenAiResponses': 'p.ej. https://api.openai.com/v1',
   'settings.ai.endpointHintAnthropic': 'p.ej. https://api.anthropic.com',
   'settings.prompts': 'Gestión Rápida',
-  'settings.prompts.description': 'Vea y personalice las indicaciones del sistema utilizadas por las funciones de IA. Cada controlador y escenario se puede configurar individualmente.',
+  'settings.prompts.description':
+    'Vea y personalice las indicaciones del sistema utilizadas por las funciones de IA. Cada controlador y escenario se puede configurar individualmente.',
   'settings.prompts.driver': 'Controlador de base de datos',
   'settings.prompts.allDrivers': 'Todos los controladores (global)',
   'settings.prompts.source.default': 'Por defecto',
@@ -643,7 +671,8 @@ const translations = {
   'settings.prompts.source.user': 'Usuario personalizado',
   'settings.prompts.edit': 'Editar',
   'settings.prompts.reset': 'Restablecer los valores predeterminados',
-  'settings.prompts.resetConfirm': '¿Está seguro de que desea restablecer este mensaje a los valores predeterminados?',
+  'settings.prompts.resetConfirm':
+    '¿Está seguro de que desea restablecer este mensaje a los valores predeterminados?',
   'settings.prompts.zh': 'Aviso chino',
   'settings.prompts.en': 'Aviso en inglés',
   'settings.prompts.saved': 'Aviso guardado',
@@ -656,7 +685,8 @@ const translations = {
   'chat.stop': 'dejar de generar',
   'chat.thinking': 'Pensamiento…',
   'chat.notConfigured': 'Primero configure un proveedor de IA en Configuración',
-  'chat.welcome': '¡Hola! Soy tu asistente de base de datos. Pregúnteme sobre consultas SQL, conceptos de bases de datos o análisis de datos.',
+  'chat.welcome':
+    '¡Hola! Soy tu asistente de base de datos. Pregúnteme sobre consultas SQL, conceptos de bases de datos o análisis de datos.',
   'chat.insertSql': 'Insertar al editor',
   'chat.reasoning': 'Pensamiento',
   'chat.questions.customAnswer': 'Escribe una respuesta personalizada...',
@@ -667,11 +697,13 @@ const translations = {
   'context.recent': 'Recientes',
   'context.back': 'Atrás',
   'context.noTables': 'Sin tablas',
-  'context.noFiles': 'El directorio de contexto está vacío, agregue archivos al directorio de contexto',
+  'context.noFiles':
+    'El directorio de contexto está vacío, agregue archivos al directorio de contexto',
   'context.noResults': 'No se encontraron archivos coincidentes',
   'context.placeholder': 'Escriba @ para tablas o archivos…',
   'context.dirSetting': 'Directorio de contexto de IA',
-  'context.dirSettingDesc': 'Ruta del directorio para archivos de contexto AI, déjelo vacío por defecto',
+  'context.dirSettingDesc':
+    'Ruta del directorio para archivos de contexto AI, déjelo vacío por defecto',
   'context.openDir': 'Abrir directorio de contexto',
   'context.file': 'Archivo',
   'context.dir': 'Directorio',
@@ -707,7 +739,8 @@ const translations = {
   'diagnosis.applySuggested': 'Aplicar sugerencia',
   'diagnosis.notConfigured': 'Primero configure un proveedor de IA en Configuración',
   'smartFilter.title': 'Filtro inteligente',
-  'smartFilter.placeholder': 'Describir las condiciones del filtro, p.e. "edad > 18 y el nombre contiene John"',
+  'smartFilter.placeholder':
+    'Describir las condiciones del filtro, p.e. "edad > 18 y el nombre contiene John"',
   'smartFilter.parse': 'Filtrar',
   'smartFilter.parsing': 'Analizando…',
   'smartFilter.apply': 'Aplicar filtro',
@@ -716,24 +749,30 @@ const translations = {
   'smartFilter.noFilters': 'No se analizan condiciones de filtro',
   'smartFilter.parsed': '{count} condiciones de filtro analizadas',
   'mcp.title': 'Servidor MCP',
-  'mcp.description': 'Ejecute DataZen como servidor MCP para que las herramientas externas de IA (Claude Desktop, Cursor, etc.) puedan acceder a sus bases de datos.',
+  'mcp.description':
+    'Ejecute DataZen como servidor MCP para que las herramientas externas de IA (Claude Desktop, Cursor, etc.) puedan acceder a sus bases de datos.',
   'mcp.enabled': 'Habilitar el servidor MCP',
-  'mcp.enabledHint': 'Desactivado de forma predeterminada. Prefiere iniciar un proceso dedicado con --mcp para Claude Desktop/Cursor',
+  'mcp.enabledHint':
+    'Desactivado de forma predeterminada. Prefiere iniciar un proceso dedicado con --mcp para Claude Desktop/Cursor',
   'mcp.status': 'Estado',
   'mcp.running': 'Correr',
   'mcp.stopped': 'Interrumpido',
   'mcp.start': 'Iniciar el servidor MCP',
   'mcp.stop': 'Detener',
   'mcp.transport': 'Transporte',
-  'mcp.usage': 'Para usar DataZen como servidor MCP con Claude Desktop o Cursor, agregue la siguiente configuración:',
+  'mcp.usage':
+    'Para usar DataZen como servidor MCP con Claude Desktop o Cursor, agregue la siguiente configuración:',
   'mcp.tools': 'Herramientas expuestas',
-  'mcp.tools.description': 'Elija qué herramientas exponer a través del servidor MCP a clientes de IA externos',
+  'mcp.tools.description':
+    'Elija qué herramientas exponer a través del servidor MCP a clientes de IA externos',
   'mcp.tools.enableAll': 'Habilitar todo',
   'mcp.tools.disableAll': 'Deshabilitar todo',
-  'mcp.tools.restartHint': 'Es necesario reiniciar MCP Server para que los cambios de herramientas surtan efecto',
+  'mcp.tools.restartHint':
+    'Es necesario reiniciar MCP Server para que los cambios de herramientas surtan efecto',
   'mcp.toggleError': 'No se pudo iniciar/detener el servidor MCP',
   'mcpClient.title': 'Servidores MCP externos',
-  'mcpClient.description': 'Conéctese a servidores MCP externos para ampliar las capacidades del asistente de IA.',
+  'mcpClient.description':
+    'Conéctese a servidores MCP externos para ampliar las capacidades del asistente de IA.',
   'mcpClient.addServer': 'Agregar servidor MCP',
   'mcpClient.serverName': 'Nombre',
   'mcpClient.command': 'Dominio',
@@ -754,7 +793,8 @@ const translations = {
   'workflows.delete': 'Borrar',
   'workflows.deleteConfirm': '¿Está seguro de que desea eliminar este flujo de trabajo?',
   'workflows.storageDir': 'Ruta de almacenamiento del flujo de trabajo',
-  'workflows.storageDirHint': 'Coloque archivos YAML en esta carpeta para cargarlos automáticamente',
+  'workflows.storageDirHint':
+    'Coloque archivos YAML en esta carpeta para cargarlos automáticamente',
   'workflows.form.id': 'ID de flujo de trabajo',
   'workflows.form.idPlaceholder': 'p.ej. my-workflow (solo letras, números y guiones)',
   'workflows.form.name': 'Nombre del flujo de trabajo',
@@ -802,17 +842,21 @@ const translations = {
   'workflows.steps': 'Pasos',
   'workflows.addStep': 'Agregar paso',
   'workflows.openDir': 'Abrir directorio de flujo de trabajo',
-  'workflows.selectStep': 'Haga clic en una pestaña de pasos arriba para ver los detalles de ejecución',
-  'workflows.emptyHint': 'Seleccione un flujo de trabajo y ejecútelo. Los resultados aparecerán aquí.',
+  'workflows.selectStep':
+    'Haga clic en una pestaña de pasos arriba para ver los detalles de ejecución',
+  'workflows.emptyHint':
+    'Seleccione un flujo de trabajo y ejecútelo. Los resultados aparecerán aquí.',
   'workflows.noQueryResult': 'Este paso no arrojó ningún resultado de consulta.',
   'workflows.defaultConn': 'Conexión predeterminada',
   'workflows.noWorkflows': 'Sin flujos de trabajo. Haga clic en + arriba para crear uno.',
   'workflows.aiCreate': 'Crear IA',
   'workflows.aiCreate.title': 'Flujo de trabajo de creación de IA',
   'workflows.aiCreate.placeholder': 'Describe el flujo de trabajo que deseas crear...',
-  'workflows.aiCreate.welcome': 'Describe el flujo de trabajo que deseas crear y la IA te ayudará a generar una configuración YAML a través de la conversación.',
+  'workflows.aiCreate.welcome':
+    'Describe el flujo de trabajo que deseas crear y la IA te ayudará a generar una configuración YAML a través de la conversación.',
   'workflows.aiCreate.connection': 'Conexión',
-  'workflows.aiCreate.connectionHint': 'Seleccione una conexión para proporcionar contexto de esquema',
+  'workflows.aiCreate.connectionHint':
+    'Seleccione una conexión para proporcionar contexto de esquema',
   'workflows.aiCreate.noConnection': 'Sin conexión',
   'workflows.aiCreate.yamlDetected': 'Flujo de trabajo YAML detectado',
   'workflows.aiCreate.preview': 'Avance',
@@ -866,7 +910,8 @@ const translations = {
   'chart.empty.noData': 'No hay datos para visualizar',
   'chart.empty.noNumericField': 'Se requiere al menos una columna numérica para los gráficos',
   'chart.empty.noConfig': 'Seleccione un campo del eje Y en el panel de configuración',
-  'chart.sampledWarning': 'Conjunto de datos grande, el gráfico muestra solo las primeras {limit} filas',
+  'chart.sampledWarning':
+    'Conjunto de datos grande, el gráfico muestra solo las primeras {limit} filas',
   'chart.nlPlaceholder': 'Escriba el comando (por ejemplo, cambiar a pastel)',
   'chart.nlHint': 'Ajustar el gráfico con lenguaje natural',
   'chart.expand': 'Expandir',
@@ -882,7 +927,8 @@ const translations = {
   'win.dataSync': 'Sincronización de datos - DataZen',
   'win.schemaDiff': 'Schema Diff - DataZen',
   'schemaDiff.title': 'Diff de esquema',
-  'schemaDiff.description': 'La fuente es el estado deseado: comparar, generar DDL, revisar y desplegar. Solo aditivo por defecto.',
+  'schemaDiff.description':
+    'La fuente es el estado deseado: comparar, generar DDL, revisar y desplegar. Solo aditivo por defecto.',
   'schemaDiff.table': 'Tabla',
   'schemaDiff.tablePlaceholder': 'p. ej. public.users o users',
   'schemaDiff.tables': 'Tablas',
@@ -894,7 +940,8 @@ const translations = {
   'schemaDiff.allowDestructive': 'Permitir cambios destructivos (DROP / estrechar)',
   'schemaDiff.includeIndexes': 'Incluir índices',
   'schemaDiff.regeneratePlan': 'Regenerar',
-  'schemaDiff.crossDialectNote': 'Planes entre dialectos mapean tipos vía IR; los no soportados se omiten con aviso.',
+  'schemaDiff.crossDialectNote':
+    'Planes entre dialectos mapean tipos vía IR; los no soportados se omiten con aviso.',
   'schemaDiff.warnings': 'Avisos',
   'schemaDiff.statements': 'sentencias',
   'schemaDiff.emptyPlan': 'Sin sentencias (idéntico o destructivos omitidos)',
@@ -971,6 +1018,8 @@ const translations = {
   'docs.openAiHelp': 'Ayuda de IA y contexto',
   'docs.openWorkflowHelp': 'Ayuda de flujos',
   'docs.openDashboardHelp': 'Ops Dashboard Help',
+  'dashboard.emptyBoards': 'No boards yet — create your first one',
+  'dashboard.createFirstBoard': 'Create first board',
   'docs.openSchemaDiffHelp': 'Ayuda de Schema Diff',
   'settings.updater.title': 'Updates',
   'settings.updater.description': 'Check GitHub Releases for signed Basic build updates.',
@@ -1005,32 +1054,41 @@ const translations = {
   'mcp.permission.readOnly': 'Read-only',
   'mcp.permission.readOnlyHint': 'Schema introspection only; blocks query and run_workflow',
   'mcp.permission.safeWrite': 'Safe write (default)',
-  'mcp.permission.safeWriteHint': 'Allows DML; blocks DROP, TRUNCATE, ALTER, CREATE USER, and similar',
+  'mcp.permission.safeWriteHint':
+    'Allows DML; blocks DROP, TRUNCATE, ALTER, CREATE USER, and similar',
   'mcp.permission.highRiskWrite': 'High-risk write',
   'mcp.permission.highRiskWriteHint': 'No SQL restrictions; only the tool denylist applies',
-  'mcp.permission.restartHint': 'Restart MCP Server (or relaunch datazen --mcp) for permission mode changes to take effect',
+  'mcp.permission.restartHint':
+    'Restart MCP Server (or relaunch datazen --mcp) for permission mode changes to take effect',
   'mcp.allowlist.title': 'Connection allowlist',
-  'mcp.allowlist.description': 'Only selected connections are visible to MCP clients. Leave all unchecked to expose every saved connection.',
+  'mcp.allowlist.description':
+    'Only selected connections are visible to MCP clients. Leave all unchecked to expose every saved connection.',
   'mcp.allowlist.empty': 'No saved connections yet.',
-  'mcp.allowlist.restartHint': 'Restart MCP Server (or relaunch datazen --mcp) for allowlist changes to take effect',
+  'mcp.allowlist.restartHint':
+    'Restart MCP Server (or relaunch datazen --mcp) for allowlist changes to take effect',
   'mcp.config.cursor': 'Cursor',
   'mcp.config.claude': 'Claude Desktop',
   'mcp.config.copy': 'Copy',
   'mcp.config.copied': 'Copied',
   'mcp.config.pathHint': 'Typical location: {path}',
-  'mcp.config.commandHint': 'Uses `datazen` on PATH. For packaged apps, replace command with the absolute binary path.',
+  'mcp.config.commandHint':
+    'Uses `datazen` on PATH. For packaged apps, replace command with the absolute binary path.',
   'settings.monitor': 'Monitor',
-  'settings.monitor.description': 'Background dashboard refresh, system tray, alerts, and run history retention.',
+  'settings.monitor.description':
+    'Background dashboard refresh, system tray, alerts, and run history retention.',
   'settings.monitor.trayEnabled': 'Show system tray icon',
-  'settings.monitor.trayEnabledHint': 'Tray appears when at least one dashboard widget is actively monitored.',
+  'settings.monitor.trayEnabledHint':
+    'Tray appears when at least one dashboard widget is actively monitored.',
   'settings.monitor.closeToTray': 'Close to tray',
-  'settings.monitor.closeToTrayHint': 'When monitoring is active, closing the window hides the app instead of quitting.',
+  'settings.monitor.closeToTrayHint':
+    'When monitoring is active, closing the window hides the app instead of quitting.',
   'settings.monitor.defaultWebhookUrl': 'Default webhook URL',
   'settings.monitor.maxConcurrentQueries': 'Max concurrent monitor queries',
   'settings.monitor.runRetentionCount': 'Run history count (per widget)',
   'settings.monitor.runRetentionDays': 'Run history days (per widget)',
   'settings.monitor.exportIncludeDashboardRuns': 'Include run history in app data export',
-  'settings.monitor.exportIncludeDashboardRunsHint': 'When off, app data ZIP export skips dashboard-runs/.',
+  'settings.monitor.exportIncludeDashboardRunsHint':
+    'When off, app data ZIP export skips dashboard-runs/.',
   'settings.monitor.email': 'Email alerts (SMTP)',
   'settings.monitor.comingSoon': 'Coming soon',
   'settings.monitor.emailHint': 'SMTP email alerts will be available in a future release.',
@@ -1040,8 +1098,8 @@ const translations = {
   'settings.monitor.emailTo': 'Recipients',
   'dashboard.export': 'Export dashboard…',
   'dashboard.import': 'Import dashboard…',
-  'dashboard.pauseMonitoring': 'Pause monitoring',
-  'dashboard.resumeMonitoring': 'Resume monitoring',
+  'dashboard.pauseMonitoring': 'Pause panel refresh',
+  'dashboard.resumeMonitoring': 'Resume panel refresh',
   'dashboard.widgetEnabled': 'Enable widget',
 } as const;
 
