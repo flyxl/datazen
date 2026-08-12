@@ -412,6 +412,10 @@ const zhCN = {
   'schemaTree.noMatchingKeys': '没有匹配的键',
   'schemaTree.noKeys': '没有键',
   'schemaTree.showAll': '显示全部 ({count})',
+  'schemaTree.openTable': '打开表',
+  'schemaTree.open': '打开',
+  'schemaTree.copyName': '复制名称',
+  'schemaTree.copyDatabaseName': '复制库名',
 
   // ── ER Diagram ──
   'erDiagram.title': 'ER 图',
