@@ -83,7 +83,7 @@ describe('buildRootCargoPatchLines', () => {
     expect(text).toContain('[patch."https://github.com/flyxl/datazen-driver-kiwi.git"]');
     expect(text).toContain('datazen-plugin-kiwi = { path = "packages/drivers/kiwi" }');
     expect(text).toContain('[patch."https://github.com/flyxl/datazen-driver-superset.git"]');
-    expect(text).toContain('[patch."https://github.com/flyxl/datazen-driver-api.git"]');
+    expect(text).toContain('[patch.crates-io]');
     expect(text).toContain('datazen-driver-api = { path = "packages/driver-api" }');
   });
 
