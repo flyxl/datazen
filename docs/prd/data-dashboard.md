@@ -8,7 +8,7 @@
 | 更新日期 | 2026-08-12 |
 | 状态 | Draft |
 | 关联现状 | 现称「运营看板 / Ops Dashboard」；实现见 `src-tauri/src/dashboard/`、`src-tauri/src/monitor/`、`src/windows/dashboard/` |
-| 关联文档 | [运营看板手册（待更名）](../ops-dashboard-guide.md)、[Workflow 手册](../workflow-guide.md)、[图表设计](../chart-visualization-design.md)、[Tableau 对比](../tableau-comparison.md) |
+| 关联文档 | [实施方案](./data-dashboard-implementation.md)、[开发进度](./data-dashboard-progress.md)、[运营看板手册（待更名）](../ops-dashboard-guide.md)、[Workflow 手册](../workflow-guide.md)、[图表设计](../chart-visualization-design.md)、[Tableau 对比](../tableau-comparison.md) |
 
 ---
 
