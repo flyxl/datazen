@@ -143,7 +143,7 @@ describe('DataTable', () => {
     await waitFor(() => expect(saveTextWithDialog).toHaveBeenCalled());
   });
 
-  it('opens native context menu with export and copies selected rows', async () => {
+  it('opens native context menu with TablePlus-style items when a cell is hit', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.assign(navigator, { clipboard: { writeText } });
 
@@ -154,42 +154,62 @@ describe('DataTable', () => {
         selectedRows={new Set([0, 1])}
         onSelectAll={vi.fn()}
         onRowSelect={vi.fn()}
+        onAddFilter={vi.fn()}
+        onUpdateFilter={vi.fn()}
+        onRemoveFilter={vi.fn()}
+        onClearFilters={vi.fn()}
+        onFilterLogicChange={vi.fn()}
+        onApplyFilters={vi.fn()}
+        onFilterPanelOpenChange={vi.fn()}
         exportTableName="users"
-        getContextCellText={() => 'Alice'}
       />,
     );
-    const scrollArea = container.querySelector('.overflow-auto')!;
-    fireEvent.contextMenu(scrollArea, { clientX: 10, clientY: 10 });
+    const cell = container.querySelector('[data-dt-row="0"][data-dt-col="name"]');
+    expect(cell).toBeTruthy();
+    fireEvent.contextMenu(cell!, { clientX: 10, clientY: 10 });
 
     await waitFor(() => expect(showNativeContextMenu).toHaveBeenCalled());
     const menuItems = showNativeContextMenu.mock.calls[0]![0] as Array<{
       kind: string;
       id?: string;
-      label?: string;
       action?: () => void;
     }>;
-    expect(menuItems.map((i) => i.id)).toEqual(['copy-cell', 'copy-selected-rows', 'export']);
-    expect(menuItems[2]!.label).toMatch(/export.selectedRows/);
+    const itemIds = menuItems.filter((i) => i.kind === 'item').map((i) => i.id);
+    expect(itemIds).toEqual([
+      'copy',
+      'copy-row',
+      'copy-as-json',
+      'copy-as-sql-insert',
+      'copy-column-name',
+      'filter-by-value',
+      'copy-selected-rows',
+      'export',
+    ]);
 
-    menuItems[1]!.action?.();
-    await waitFor(() => {
-      expect(writeText).toHaveBeenCalledWith('1\tAlice\n2\tBob');
-    });
+    menuItems.find((i) => i.id === 'copy')!.action?.();
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith('Alice'));
 
-    menuItems[2]!.action?.();
+    menuItems.find((i) => i.id === 'export')!.action?.();
     await waitFor(() => expect(getByText('export.title')).toBeInTheDocument());
     const dialogExportBtns = getAllByText('export.export');
     fireEvent.click(dialogExportBtns[dialogExportBtns.length - 1]);
     await waitFor(() => expect(saveTextWithDialog).toHaveBeenCalled());
   });
 
-  it('copies cell text from selection when getContextCellText is absent', async () => {
+  it('copies selected rows without cell hit', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.assign(navigator, { clipboard: { writeText } });
-    const selection = { toString: () => '  selected-cell  ' };
-    vi.spyOn(window, 'getSelection').mockReturnValue(selection as unknown as Selection);
 
-    const { container } = render(<DataTable columns={COLS} rows={rows} exportTableName="users" />);
+    const { container } = render(
+      <DataTable
+        columns={COLS}
+        rows={rows}
+        selectedRows={new Set([0])}
+        onSelectAll={vi.fn()}
+        onRowSelect={vi.fn()}
+        exportTableName="users"
+      />,
+    );
     fireEvent.contextMenu(container.querySelector('.overflow-auto')!);
 
     await waitFor(() => expect(showNativeContextMenu).toHaveBeenCalled());
@@ -198,10 +218,12 @@ describe('DataTable', () => {
       id?: string;
       action?: () => void;
     }>;
-    expect(menuItems.map((i) => i.id)).toContain('copy-cell');
-    expect(menuItems.map((i) => i.id)).toContain('export');
-    menuItems.find((i) => i.id === 'copy-cell')!.action?.();
-    await waitFor(() => expect(writeText).toHaveBeenCalledWith('selected-cell'));
+    expect(menuItems.filter((i) => i.kind === 'item').map((i) => i.id)).toEqual([
+      'copy-selected-rows',
+      'export',
+    ]);
+    menuItems.find((i) => i.id === 'copy-selected-rows')!.action?.();
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith('1\tAlice'));
   });
 
   it('calls row click handlers', () => {
