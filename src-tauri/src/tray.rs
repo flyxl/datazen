@@ -98,12 +98,17 @@ fn build_tray_menu<R: Runtime>(
         .build()?)
 }
 
-fn show_dashboard_windows(app: &AppHandle) {
+/// Bring the main window to the front (Dock / taskbar / tray restore).
+pub fn focus_main_window(app: &AppHandle) {
     if let Some(main) = app.get_webview_window("main") {
         let _ = main.show();
         let _ = main.unminimize();
         let _ = main.set_focus();
     }
+}
+
+fn show_dashboard_windows(app: &AppHandle) {
+    focus_main_window(app);
     for (label, window) in app.webview_windows() {
         if label.starts_with("dashboard-") {
             let _ = window.show();

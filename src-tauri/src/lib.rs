@@ -862,7 +862,16 @@ pub fn run() {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 if window.label() == "main" && tray::should_close_to_tray(window.app_handle()) {
                     api.prevent_close();
-                    let _ = window.hide();
+                    // macOS: hide so the Dock icon remains; Reopen restores MainWindow.
+                    // Windows/Linux: minimize so the taskbar entry can restore MainWindow.
+                    #[cfg(target_os = "macos")]
+                    {
+                        let _ = window.hide();
+                    }
+                    #[cfg(not(target_os = "macos"))]
+                    {
+                        let _ = window.minimize();
+                    }
                 }
             }
             #[cfg(target_os = "macos")]
@@ -887,14 +896,22 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app_handle, event| {
-            if let tauri::RunEvent::ExitRequested { api, .. } = event {
-                if tray::should_prevent_exit(app_handle) {
-                    api.prevent_exit();
-                    return;
+            match event {
+                tauri::RunEvent::ExitRequested { api, .. } => {
+                    if tray::should_prevent_exit(app_handle) {
+                        api.prevent_exit();
+                        return;
+                    }
+                    let state = app_handle.state::<AppState>();
+                    let mgr = state.mcp_client_manager.clone();
+                    tauri::async_runtime::block_on(mgr.disconnect_all());
                 }
-                let state = app_handle.state::<AppState>();
-                let mgr = state.mcp_client_manager.clone();
-                tauri::async_runtime::block_on(mgr.disconnect_all());
+                // macOS Dock click (applicationShouldHandleReopen): raise MainWindow.
+                #[cfg(target_os = "macos")]
+                tauri::RunEvent::Reopen { .. } => {
+                    tray::focus_main_window(app_handle);
+                }
+                _ => {}
             }
         });
 }
