@@ -17,9 +17,9 @@ use super::error::CommandError;
 use crate::db::ConnectionConfig;
 use std::path::{Path, PathBuf};
 
-pub use datazen::build_encrypted_export;
 #[cfg(test)]
 pub use datazen::{decrypt_datazen_fields, derive_argon2_key, encrypt_field};
+pub use tableplus::export_connections as build_tableplus_export;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ImportFormat {

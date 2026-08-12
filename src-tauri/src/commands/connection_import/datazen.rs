@@ -46,6 +46,8 @@ pub fn decrypt_field(encrypted: &str, key: &[u8; 32]) -> Result<String, CommandE
         .map_err(|e| CommandError::Internal(format!("UTF-8 decode failed: {e}")))
 }
 
+/// Legacy pretty-JSON export (field-level AES). Kept so older files still round-trip in tests.
+#[allow(dead_code)]
 pub fn build_encrypted_export(
     connections: &[ConnectionConfig],
     groups: &[String],
