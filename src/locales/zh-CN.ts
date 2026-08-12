@@ -514,6 +514,11 @@ const zhCN = {
   'dataTable.selected': '已选',
   'dataTable.sort': '排序',
   'dataTable.selectRow': '选择行',
+  'dataTable.copyRow': '复制行',
+  'dataTable.copyAsJson': '复制为 JSON',
+  'dataTable.copyAsSqlInsert': '复制为 SQL INSERT',
+  'dataTable.copyColumnName': '复制列名',
+  'dataTable.filterByValue': '按此值筛选',
 
   // ── Detail Panel ──
   'detail.title': '详情',

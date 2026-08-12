@@ -6,6 +6,9 @@ import { useI18n } from '../../hooks/useI18n';
 import { useColumnResize, adjustWidthsForSort } from '../../hooks/useColumnResize';
 import {
   buildDataTableContextMenuItems,
+  formatRowAsSqlInsert,
+  resolveDataTableCellFromEvent,
+  rowToNamedRecord,
   serializeDataTableRowsAsTsv,
 } from '../../lib/dataTableContextMenu';
 import { showNativeContextMenu } from '../../lib/nativeContextMenu';
@@ -67,8 +70,8 @@ export interface DataTableProps {
   databaseType?: string;
 
   /**
-   * Optional cell text for the native context menu “copy cell” item.
-   * When omitted, falls back to `window.getSelection()`.
+   * Optional cell text for the native context menu “copy” item.
+   * When omitted, uses the right-clicked cell value (preferred) or `window.getSelection()`.
    */
   getContextCellText?: () => string | null | undefined;
 }
@@ -140,29 +143,48 @@ export function DataTable({
   );
 
   const exportEnabled = !!exportTableName && rows.length > 0;
+  const columnNames = useMemo(() => columns.map((c) => c.name), [columns]);
 
   const handleContextMenu = useCallback(
     (e: React.MouseEvent) => {
       e.preventDefault();
       e.stopPropagation();
 
-      const fromProp = getContextCellText?.()?.trim() ?? '';
-      const fromSelection = window.getSelection()?.toString().trim() ?? '';
-      const cellText = fromProp || fromSelection || null;
+      const hit = resolveDataTableCellFromEvent(e.target);
+      const hitRow = hit ? rows[hit.rowIndex] : undefined;
+      const hitColIdx = hit ? columnNames.indexOf(hit.columnName) : -1;
+      const hitCellValue = hitRow && hitColIdx >= 0 ? (hitRow[hitColIdx] ?? null) : undefined;
+
+      const fromProp = getContextCellText?.() ?? '';
+      const fromSelection = window.getSelection()?.toString() ?? '';
+      const cellTextForCopy =
+        hitCellValue !== undefined
+          ? hitCellValue == null
+            ? ''
+            : String(hitCellValue)
+          : fromProp || fromSelection;
 
       const selectedIndices = Array.from(selectedRows).sort((a, b) => a - b);
       const selectedDataRows = selectedIndices
         .map((i) => rows[i])
         .filter((r): r is unknown[] => Array.isArray(r));
-      const selectedRowTexts =
-        selectedDataRows.length > 0
-          ? selectedDataRows.map((r) => serializeDataTableRowsAsTsv([r]))
-          : null;
+      const hasSelectedRows = selectedDataRows.length > 0;
+      const hasCellContext = hit != null && Array.isArray(hitRow);
+      const canFilterByValue = hasCellContext && !!onAddFilter && !!hit;
+
+      const copyText = (text: string) => {
+        void navigator.clipboard.writeText(text);
+      };
 
       void showNativeContextMenu(
         buildDataTableContextMenuItems({
           labels: {
-            copyCell: t('connWin.copyCell'),
+            copy: t('common.copy'),
+            copyRow: t('dataTable.copyRow'),
+            copyAsJson: t('dataTable.copyAsJson'),
+            copyAsSqlInsert: t('dataTable.copyAsSqlInsert'),
+            copyColumnName: t('dataTable.copyColumnName'),
+            filterByValue: t('dataTable.filterByValue'),
             copySelectedRows: `${t('common.copy')} ${t('export.selectedRows')}`,
             export:
               selectedRows.size > 0
@@ -170,30 +192,73 @@ export function DataTable({
                 : t('export.export'),
           },
           handlers: {
-            onCopyCell: cellText
+            onCopy: hasCellContext
               ? () => {
-                  void navigator.clipboard.writeText(cellText);
+                  copyText(cellTextForCopy);
                 }
               : undefined,
-            onCopySelectedRows:
-              selectedRowTexts && selectedRowTexts.length > 0
+            onCopyRow:
+              hasCellContext && hitRow
                 ? () => {
-                    void navigator.clipboard.writeText(selectedRowTexts.join('\n'));
+                    copyText(serializeDataTableRowsAsTsv([hitRow]));
                   }
                 : undefined,
+            onCopyAsJson:
+              hasCellContext && hitRow
+                ? () => {
+                    copyText(JSON.stringify(rowToNamedRecord(columnNames, hitRow), null, 2));
+                  }
+                : undefined,
+            onCopyAsSqlInsert:
+              hasCellContext && hitRow
+                ? () => {
+                    copyText(formatRowAsSqlInsert(exportTableName || 'table', columnNames, hitRow));
+                  }
+                : undefined,
+            onCopyColumnName:
+              hasCellContext && hit
+                ? () => {
+                    copyText(hit.columnName);
+                  }
+                : undefined,
+            onFilterByValue:
+              canFilterByValue && hit
+                ? () => {
+                    onAddFilter?.({
+                      column: hit.columnName,
+                      operator: 'eq',
+                      value: hitCellValue == null ? '' : String(hitCellValue),
+                    });
+                  }
+                : undefined,
+            onCopySelectedRows: hasSelectedRows
+              ? () => {
+                  copyText(serializeDataTableRowsAsTsv(selectedDataRows));
+                }
+              : undefined,
             onExport: exportEnabled
               ? () => {
                   setExportOpen(true);
                 }
               : undefined,
           },
-          cellText,
-          selectedRowTexts,
+          hasCellContext,
+          hasSelectedRows,
           exportEnabled,
+          canFilterByValue,
         }),
       );
     },
-    [exportEnabled, getContextCellText, rows, selectedRows, t],
+    [
+      columnNames,
+      exportEnabled,
+      exportTableName,
+      getContextCellText,
+      onAddFilter,
+      rows,
+      selectedRows,
+      t,
+    ],
   );
 
   const hasPagination =
