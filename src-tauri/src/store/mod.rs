@@ -1,6 +1,7 @@
 //! Local encrypted persistence for connections, settings, and history.
 
 mod ai_config;
+pub(crate) mod app_db;
 mod connections;
 mod history;
 pub(crate) mod history_db;
@@ -9,6 +10,11 @@ mod models;
 mod settings;
 mod sync_tasks;
 
+#[allow(unused_imports)] // public re-exports for IPC / other modules
+pub use app_db::{
+    AppDb, AppDbError, DashboardRecord, DashboardWorkflowRef, WidgetRecord, WidgetRunRecord,
+    WorkflowRecord, WorkflowVisibility, APP_DB_FILE,
+};
 pub use history_db::{HistoryDb, HistoryEntry, HistoryListItem, HistoryScope};
 pub use models::{FavoriteQuery, QueryHistoryEntry, SyncTask};
 pub use settings::{clamp_connection_pool_size, AppSettings};
@@ -42,6 +48,7 @@ pub struct Store {
     /// clobber each other's temp files or leave stale snapshots on disk.
     pub(super) write_lock: Mutex<()>,
     history_db: Arc<HistoryDb>,
+    app_db: Arc<AppDb>,
 }
 
 #[derive(Debug, Error)]
@@ -70,6 +77,10 @@ impl Store {
         self.history_db.clone()
     }
 
+    pub fn app_db(&self) -> Arc<AppDb> {
+        self.app_db.clone()
+    }
+
     /// Default app data directory for headless entry points (MCP stdio, early logging).
     /// Matches Tauri `app_data_dir()` for the configured bundle identifier.
     pub fn default_app_data_dir() -> Result<PathBuf, StoreError> {
@@ -92,6 +103,7 @@ impl Store {
 
         let history_db =
             HistoryDb::open(&data_dir).map_err(|e| StoreError::InitError(e.to_string()))?;
+        let app_db = AppDb::open(&data_dir).map_err(|e| StoreError::InitError(e.to_string()))?;
 
         let store = Self {
             data_dir,
@@ -99,6 +111,7 @@ impl Store {
             cache: Arc::new(RwLock::new(StoreCache::default())),
             write_lock: Mutex::new(()),
             history_db,
+            app_db,
         };
 
         store.load_all().await?;
@@ -114,6 +127,7 @@ impl Store {
 
         let history_db =
             HistoryDb::open(data_dir).map_err(|e| StoreError::InitError(e.to_string()))?;
+        let app_db = AppDb::open(data_dir).map_err(|e| StoreError::InitError(e.to_string()))?;
 
         let store = Self {
             data_dir: data_dir.to_path_buf(),
@@ -121,6 +135,7 @@ impl Store {
             cache: Arc::new(RwLock::new(StoreCache::default())),
             write_lock: Mutex::new(()),
             history_db,
+            app_db,
         };
 
         store.load_all().await?;

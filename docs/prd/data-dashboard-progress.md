@@ -21,8 +21,8 @@
 
 | ID | 功能 | 状态 | 单测 | E2E agent | 提交 |
 |----|------|------|------|-----------|------|
-| F0 | 更新实施方案 + 进度文件 + 设计拍板 | `done` | n/a | n/a | — |
-| F1 | 统一 `datazen.sqlite` Schema（workflows/dashboards/widgets/runs）+ AppDb CRUD | `pending` | — | — | — |
+| F0 | 更新实施方案 + 进度文件 + 设计拍板 | `done` | n/a | n/a | `c7d0cea` |
+| F1 | 统一 `datazen.sqlite` Schema（workflows/dashboards/widgets/runs）+ AppDb CRUD | `done` | 7/7 | [Verify](0dc7d514) 16 PASS | pending |
 | F2 | Workflow 入库替换 YAML registry；visibility；list 过滤 hidden | `pending` | — | — | — |
 | F3 | 内置变量补齐 `current_time`；文档化；隐藏 WF 不写 workflow_history | `pending` | — | — | — |
 | F4 | Workflow 编辑页：可视化 + YAML 双模 | `pending` | — | — | — |
@@ -50,3 +50,5 @@
 | 日期 | 内容 |
 |------|------|
 | 2026-08-12 | 创建进度文件；写入五项设计拍板；功能拆分为 F0–F12 |
+| 2026-08-12 | F0 文档提交 `c7d0cea` |
+| 2026-08-12 | F1 AppDb 落地；独立测试 agent 16 PASS |
