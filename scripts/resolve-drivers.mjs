@@ -1126,13 +1126,11 @@ function syncPluginCapabilities(plugins, registry) {
 }
 
 /**
- * Git drivers depend on published `datazen-driver-api` from GitHub. Without a
- * workspace-root [patch], Cargo links a second copy of the API crate and
- * `inventory` registrations never reach the Host → "Driver not found for type: …".
+ * Git drivers consume `datazen-driver-api` from crates.io. When building inside
+ * the Host workspace, patch crates.io to the local path so inventory registration
+ * reaches the same API crate as the Host (avoids "Driver not found for type: …").
  */
-const DRIVER_API_GIT = 'https://github.com/flyxl/datazen-driver-api.git';
-
-/** Build root Cargo.toml [patch] lines for git drivers (+ shared driver-api). */
+/** Build root Cargo.toml [patch] lines for git drivers (+ crates.io driver-api unify). */
 export function buildRootCargoPatchLines(plugins, registry) {
   const patchLines = [];
   let hasGitDriver = false;
@@ -1147,7 +1145,7 @@ export function buildRootCargoPatchLines(plugins, registry) {
   }
   if (hasGitDriver) {
     patchLines.push('');
-    patchLines.push(`[patch."${DRIVER_API_GIT}"]`);
+    patchLines.push('[patch.crates-io]');
     patchLines.push('datazen-driver-api = { path = "packages/driver-api" }');
   }
   return patchLines;
