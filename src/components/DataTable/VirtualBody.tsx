@@ -107,6 +107,8 @@ export function VirtualBody({
               return (
                 <div
                   key={col.id}
+                  data-dt-row={vRow.index}
+                  data-dt-col={col.name}
                   className="flex shrink-0 items-center overflow-hidden border-r border-edge/30 px-2"
                   style={{ width: colW }}
                   onDoubleClick={(e) => {
