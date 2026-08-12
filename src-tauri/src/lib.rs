@@ -21,7 +21,7 @@ mod theme;
 mod tray;
 pub mod workflow;
 
-pub use store::HistoryDb;
+pub use store::{AppDb, HistoryDb};
 
 #[cfg(test)]
 pub(crate) mod testing;
