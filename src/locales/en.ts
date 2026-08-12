@@ -316,7 +316,7 @@ const en: Record<TranslationKey, string> = {
   'settings.confirmDelete': 'Confirm on Delete',
   'settings.autoCommit': 'Auto Commit',
   'settings.saved': 'Saved',
-  'settings.limitSelectHint': 'Automatically add a row limit to SELECT statements without LIMIT',
+  'settings.limitSelectHint': 'Automatically add a row limit to SELECT statements without LIMIT. Large results are always streamed; turning this off does not disable streaming.',
   'settings.confirmDeleteHint': 'Show a confirmation dialog when deleting rows',
   'settings.autoCommitHint': 'Automatically commit edits to data',
 
@@ -406,6 +406,7 @@ const en: Record<TranslationKey, string> = {
   'query.history': 'History',
   'query.placeholder': 'Type SQL query…',
   'query.executing': 'Executing…',
+  'query.streamingRows': 'Loaded {n} rows…',
   'query.result': 'Result',
   'query.shortcutHint': 'Press ⌘+Enter to execute',
   'query.historyTitle': 'Query History',

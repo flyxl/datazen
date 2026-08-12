@@ -162,6 +162,16 @@ describe('SQLite', () => {
     expect(body).toContain(`${t('query.result')} 1`);
   });
 
+  it('should stream more than one IPC batch without treating batch size as a row cap', async () => {
+    await openQueryTab();
+    await executeSQL(
+      'WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM c WHERE x < 600) SELECT x FROM c',
+    );
+    const body = await $('body').getText();
+    expect(body).toContain(`600 ${t('common.rows')}`);
+    expect(body).not.toContain(t('query.resultTruncated', { limit: 500 }));
+  });
+
   it('should show indexes', async () => {
     await clickTableInSidebar('users');
     await browser.pause(500);

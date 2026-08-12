@@ -1,13 +1,14 @@
 //! MySQL / MariaDB driver backed by sqlx MySqlPool.
 
 use crate::structure;
-use datazen_driver_api::*;
 use async_trait::async_trait;
+use datazen_driver_api::*;
 use rust_decimal::prelude::ToPrimitive;
 use sqlx::mysql::MySqlPoolOptions;
 use sqlx::pool::PoolConnection;
 use sqlx::{Column, MySql, MySqlPool, Row};
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::{Mutex, RwLock};
 
@@ -94,9 +95,10 @@ impl MysqlDriver {
         db: &str,
     ) -> Result<(), DriverError> {
         use sqlx::{Connection, Executor};
-        (&mut **conn).execute(use_sql).await.map_err(|e| {
-            DriverError::QueryFailed(format!("Failed to USE database `{db}`: {e}"))
-        })?;
+        (&mut **conn)
+            .execute(use_sql)
+            .await
+            .map_err(|e| DriverError::QueryFailed(format!("Failed to USE database `{db}`: {e}")))?;
         conn.clear_cached_statements().await.map_err(|e| {
             DriverError::QueryFailed(format!(
                 "Failed to clear statement cache after USE `{db}`: {e}"
@@ -169,7 +171,10 @@ impl MysqlDriver {
                     data_type: r.get("COLUMN_TYPE"),
                     nullable: nullable == "YES",
                     default_value: r.try_get("COLUMN_DEFAULT").ok(),
-                    comment: r.try_get::<String, _>("COLUMN_COMMENT").ok().filter(|s| !s.is_empty()),
+                    comment: r
+                        .try_get::<String, _>("COLUMN_COMMENT")
+                        .ok()
+                        .filter(|s| !s.is_empty()),
                     is_auto_increment: extra.contains("auto_increment"),
                 }
             })
@@ -194,7 +199,10 @@ impl MysqlDriver {
             let fk_name = Self::extract_backtick_after(trimmed, "CONSTRAINT");
             let fk_cols = Self::extract_backtick_list_after(trimmed, "FOREIGN KEY");
             let ref_table = Self::extract_backtick_after(trimmed, "REFERENCES");
-            let ref_cols = Self::extract_backtick_list_after(trimmed, &format!("REFERENCES `{}`", ref_table.replace('`', "``")));
+            let ref_cols = Self::extract_backtick_list_after(
+                trimmed,
+                &format!("REFERENCES `{}`", ref_table.replace('`', "``")),
+            );
 
             let on_delete = Self::extract_rule(trimmed, "ON DELETE");
             let on_update = Self::extract_rule(trimmed, "ON UPDATE");
@@ -256,7 +264,11 @@ impl MysqlDriver {
     fn extract_rule(s: &str, keyword: &str) -> String {
         if let Some(pos) = s.find(keyword) {
             let after = s[pos + keyword.len()..].trim_start();
-            let rule = after.split(|c: char| c == ',' || c == ')' || c == '\n').next().unwrap_or("").trim();
+            let rule = after
+                .split(|c: char| c == ',' || c == ')' || c == '\n')
+                .next()
+                .unwrap_or("")
+                .trim();
             if !rule.is_empty() {
                 return rule.to_uppercase();
             }
@@ -291,20 +303,19 @@ impl MysqlDriver {
         query
     }
 
+    fn columns_of_row(row: &sqlx::mysql::MySqlRow) -> Vec<ColumnInfo> {
+        row.columns()
+            .iter()
+            .map(|c| ColumnInfo {
+                name: c.name().to_string(),
+                data_type: c.type_info().to_string(),
+                nullable: true,
+            })
+            .collect()
+    }
+
     fn decode_rows(rows: &[sqlx::mysql::MySqlRow]) -> (Vec<ColumnInfo>, Vec<Vec<Option<Value>>>) {
-        let columns: Vec<ColumnInfo> = if let Some(first) = rows.first() {
-            first
-                .columns()
-                .iter()
-                .map(|c| ColumnInfo {
-                    name: c.name().to_string(),
-                    data_type: c.type_info().to_string(),
-                    nullable: true,
-                })
-                .collect()
-        } else {
-            Vec::new()
-        };
+        let columns: Vec<ColumnInfo> = rows.first().map(Self::columns_of_row).unwrap_or_default();
 
         let result_rows: Vec<Vec<Option<Value>>> = rows
             .iter()
@@ -317,31 +328,30 @@ impl MysqlDriver {
                         let display_name = col.type_info().to_string();
                         let upper = format!("{} {}", debug_name, display_name).to_uppercase();
                         match upper.as_str() {
-                            s if s.contains("BIGINT") || s.contains("INT8") => {
-                                row.try_get::<i64, _>(i)
-                                    .ok()
-                                    .map(Self::safe_integer)
-                                    .or_else(|| {
-                                        row.try_get::<u64, _>(i)
-                                            .ok()
-                                            .map(|v| {
-                                                if v > JS_MAX_SAFE_INT as u64 {
-                                                    Value::String(v.to_string())
-                                                } else {
-                                                    Value::Integer(v as i64)
-                                                }
-                                            })
+                            s if s.contains("BIGINT") || s.contains("INT8") => row
+                                .try_get::<i64, _>(i)
+                                .ok()
+                                .map(Self::safe_integer)
+                                .or_else(|| {
+                                    row.try_get::<u64, _>(i).ok().map(|v| {
+                                        if v > JS_MAX_SAFE_INT as u64 {
+                                            Value::String(v.to_string())
+                                        } else {
+                                            Value::Integer(v as i64)
+                                        }
                                     })
-                                    .or_else(|| {
-                                        row.try_get::<String, _>(i).ok().map(Value::String)
-                                    })
-                            }
+                                })
+                                .or_else(|| row.try_get::<String, _>(i).ok().map(Value::String)),
                             s if s.contains("MEDIUMINT") => {
                                 // MEDIUMINT: 3 bytes, sqlx reads as i32/u32
                                 row.try_get::<i32, _>(i)
                                     .ok()
                                     .map(|v| Value::Integer(v as i64))
-                                    .or_else(|| row.try_get::<u32, _>(i).ok().map(|v| Value::Integer(v as i64)))
+                                    .or_else(|| {
+                                        row.try_get::<u32, _>(i)
+                                            .ok()
+                                            .map(|v| Value::Integer(v as i64))
+                                    })
                                     .or_else(|| row.try_get::<String, _>(i).ok().map(Value::String))
                             }
                             s if s.contains("SMALLINT") => {
@@ -349,7 +359,11 @@ impl MysqlDriver {
                                 row.try_get::<i16, _>(i)
                                     .ok()
                                     .map(|v| Value::Integer(v as i64))
-                                    .or_else(|| row.try_get::<u16, _>(i).ok().map(|v| Value::Integer(v as i64)))
+                                    .or_else(|| {
+                                        row.try_get::<u16, _>(i)
+                                            .ok()
+                                            .map(|v| Value::Integer(v as i64))
+                                    })
                                     .or_else(|| row.try_get::<String, _>(i).ok().map(Value::String))
                             }
                             s if s.contains("TINYINT") => {
@@ -357,7 +371,11 @@ impl MysqlDriver {
                                 row.try_get::<i8, _>(i)
                                     .ok()
                                     .map(|v| Value::Integer(v as i64))
-                                    .or_else(|| row.try_get::<u8, _>(i).ok().map(|v| Value::Integer(v as i64)))
+                                    .or_else(|| {
+                                        row.try_get::<u8, _>(i)
+                                            .ok()
+                                            .map(|v| Value::Integer(v as i64))
+                                    })
                                     .or_else(|| row.try_get::<String, _>(i).ok().map(Value::String))
                             }
                             s if s.contains("INT") => {
@@ -365,77 +383,95 @@ impl MysqlDriver {
                                 row.try_get::<i32, _>(i)
                                     .ok()
                                     .map(|v| Value::Integer(v as i64))
-                                    .or_else(|| row.try_get::<u32, _>(i).ok().map(|v| Value::Integer(v as i64)))
+                                    .or_else(|| {
+                                        row.try_get::<u32, _>(i)
+                                            .ok()
+                                            .map(|v| Value::Integer(v as i64))
+                                    })
                                     .or_else(|| row.try_get::<String, _>(i).ok().map(Value::String))
                             }
                             s if s.contains("DOUBLE") => {
                                 // DOUBLE: 8 bytes
-                                row.try_get::<f64, _>(i)
-                                    .ok()
-                                    .map(Value::Float)
-                                    .or_else(|| row.try_get::<String, _>(i).ok().and_then(|s| s.parse::<f64>().ok()).map(Value::Float))
+                                row.try_get::<f64, _>(i).ok().map(Value::Float).or_else(|| {
+                                    row.try_get::<String, _>(i)
+                                        .ok()
+                                        .and_then(|s| s.parse::<f64>().ok())
+                                        .map(Value::Float)
+                                })
                             }
                             s if s.contains("FLOAT") => {
                                 // FLOAT: 4 bytes — use f32, then convert to f64
                                 row.try_get::<f32, _>(i)
                                     .ok()
                                     .map(|v| Value::Float(v as f64))
-                                    .or_else(|| row.try_get::<String, _>(i).ok().and_then(|s| s.parse::<f64>().ok()).map(Value::Float))
-                            }
-                            s if s.contains("DECIMAL") || s.contains("NUMERIC") => {
-                                row.try_get::<rust_decimal::Decimal, _>(i)
-                                    .ok()
-                                    .map(|d| {
-                                        if d.scale() == 0 {
-                                            if let Some(n) = d.to_i64() {
-                                                return Self::safe_integer(n);
-                                            }
-                                        }
-                                        d.to_f64().map(Value::Float).unwrap_or_else(|| Value::String(d.to_string()))
+                                    .or_else(|| {
+                                        row.try_get::<String, _>(i)
+                                            .ok()
+                                            .and_then(|s| s.parse::<f64>().ok())
+                                            .map(Value::Float)
                                     })
-                                    .or_else(|| row.try_get::<String, _>(i).ok().map(Value::String))
                             }
-                            s if s.contains("BIT") => {
-                                row.try_get::<bool, _>(i)
-                                    .ok()
-                                    .map(|v| Value::Integer(if v { 1 } else { 0 }))
-                                    .or_else(|| row.try_get::<u8, _>(i).ok().map(|v| Value::Integer(v as i64)))
-                                    .or_else(|| row.try_get::<String, _>(i).ok().map(Value::String))
-                            }
+                            s if s.contains("DECIMAL") || s.contains("NUMERIC") => row
+                                .try_get::<rust_decimal::Decimal, _>(i)
+                                .ok()
+                                .map(|d| {
+                                    if d.scale() == 0 {
+                                        if let Some(n) = d.to_i64() {
+                                            return Self::safe_integer(n);
+                                        }
+                                    }
+                                    d.to_f64()
+                                        .map(Value::Float)
+                                        .unwrap_or_else(|| Value::String(d.to_string()))
+                                })
+                                .or_else(|| row.try_get::<String, _>(i).ok().map(Value::String)),
+                            s if s.contains("BIT") => row
+                                .try_get::<bool, _>(i)
+                                .ok()
+                                .map(|v| Value::Integer(if v { 1 } else { 0 }))
+                                .or_else(|| {
+                                    row.try_get::<u8, _>(i)
+                                        .ok()
+                                        .map(|v| Value::Integer(v as i64))
+                                })
+                                .or_else(|| row.try_get::<String, _>(i).ok().map(Value::String)),
                             s if s.contains("BOOL") || s.contains("BOOLEAN") => {
                                 row.try_get::<bool, _>(i).ok().map(Value::Bool)
                             }
-                            s if s.contains("DATE") && !s.contains("DATETIME") && !s.contains("TIMESTAMP") => {
+                            s if s.contains("DATE")
+                                && !s.contains("DATETIME")
+                                && !s.contains("TIMESTAMP") =>
+                            {
                                 row.try_get::<chrono::NaiveDate, _>(i)
                                     .ok()
                                     .map(|d| Value::String(d.format("%Y-%m-%d").to_string()))
                                     .or_else(|| row.try_get::<String, _>(i).ok().map(Value::String))
                             }
-                            s if s.contains("DATETIME") || s.contains("TIMESTAMP") => {
-                                row.try_get::<chrono::NaiveDateTime, _>(i)
-                                    .ok()
-                                    .map(|dt| Value::String(dt.format("%Y-%m-%d %H:%M:%S").to_string()))
-                                    .or_else(|| row.try_get::<String, _>(i).ok().map(Value::String))
-                            }
-                            s if s.contains("TIME") => {
-                                row.try_get::<chrono::NaiveTime, _>(i)
-                                    .ok()
-                                    .map(|t| Value::String(t.format("%H:%M:%S").to_string()))
-                                    .or_else(|| row.try_get::<String, _>(i).ok().map(Value::String))
-                            }
-                            s if s.contains("YEAR") => {
-                                row.try_get::<u16, _>(i)
-                                    .ok()
-                                    .map(|v| Value::Integer(v as i64))
-                                    .or_else(|| row.try_get::<i16, _>(i).ok().map(|v| Value::Integer(v as i64)))
-                                    .or_else(|| row.try_get::<String, _>(i).ok().map(Value::String))
-                            }
-                            s if s.contains("JSON") => {
-                                row.try_get::<serde_json::Value, _>(i)
-                                    .ok()
-                                    .map(Value::Json)
-                                    .or_else(|| row.try_get::<String, _>(i).ok().map(Value::String))
-                            }
+                            s if s.contains("DATETIME") || s.contains("TIMESTAMP") => row
+                                .try_get::<chrono::NaiveDateTime, _>(i)
+                                .ok()
+                                .map(|dt| Value::String(dt.format("%Y-%m-%d %H:%M:%S").to_string()))
+                                .or_else(|| row.try_get::<String, _>(i).ok().map(Value::String)),
+                            s if s.contains("TIME") => row
+                                .try_get::<chrono::NaiveTime, _>(i)
+                                .ok()
+                                .map(|t| Value::String(t.format("%H:%M:%S").to_string()))
+                                .or_else(|| row.try_get::<String, _>(i).ok().map(Value::String)),
+                            s if s.contains("YEAR") => row
+                                .try_get::<u16, _>(i)
+                                .ok()
+                                .map(|v| Value::Integer(v as i64))
+                                .or_else(|| {
+                                    row.try_get::<i16, _>(i)
+                                        .ok()
+                                        .map(|v| Value::Integer(v as i64))
+                                })
+                                .or_else(|| row.try_get::<String, _>(i).ok().map(Value::String)),
+                            s if s.contains("JSON") => row
+                                .try_get::<serde_json::Value, _>(i)
+                                .ok()
+                                .map(Value::Json)
+                                .or_else(|| row.try_get::<String, _>(i).ok().map(Value::String)),
                             _ => {
                                 // Only try String for the catch-all; i64/f64 try_get can
                                 // panic in sqlx-mysql if column byte-size doesn't match.
@@ -474,14 +510,59 @@ impl MysqlDriver {
 
     fn extract_json_from_explain_row(rows: &[sqlx::mysql::MySqlRow]) -> Option<serde_json::Value> {
         rows.first().and_then(|row| {
-            row.try_get::<serde_json::Value, _>(0)
-                .ok()
-                .or_else(|| {
-                    row.try_get::<String, _>(0)
-                        .ok()
-                        .and_then(|s| serde_json::from_str(&s).ok())
-                })
+            row.try_get::<serde_json::Value, _>(0).ok().or_else(|| {
+                row.try_get::<String, _>(0)
+                    .ok()
+                    .and_then(|s| serde_json::from_str(&s).ok())
+            })
         })
+    }
+
+    async fn stream_one_statement<'e, E>(
+        executor: E,
+        stmt: &str,
+        limit: Option<u32>,
+        index: usize,
+        on_event: &QueryStreamCallback,
+    ) -> Result<(), DriverError>
+    where
+        E: sqlx::Executor<'e, Database = sqlx::MySql>,
+    {
+        use futures_util::TryStreamExt;
+        let (effective_sql, applied_limit) = apply_mysql_select_limit(stmt, limit);
+        let stmt_start = Instant::now();
+        if is_mysql_result_query(&effective_sql) {
+            let mut stream = sqlx::query(effective_sql.as_str()).fetch(executor);
+            let mut batcher =
+                QueryRowBatcher::new(Arc::clone(on_event), index, stmt.to_string(), applied_limit);
+            while let Some(row) = stream
+                .try_next()
+                .await
+                .map_err(|e| DriverError::QueryFailed(format!("[{stmt}] {e}")))?
+            {
+                if !batcher.started() {
+                    batcher.start(Self::columns_of_row(&row));
+                }
+                let (_, mut decoded) = Self::decode_rows(std::slice::from_ref(&row));
+                if !batcher.push(decoded.pop().unwrap_or_default()) {
+                    break;
+                }
+            }
+            batcher.finish(stmt_start.elapsed().as_millis() as u64, None);
+        } else {
+            let result = sqlx::query(effective_sql.as_str())
+                .execute(executor)
+                .await
+                .map_err(|e| DriverError::QueryFailed(format!("[{stmt}] {e}")))?;
+            emit_execute_statement(
+                on_event,
+                index,
+                stmt.to_string(),
+                result.rows_affected(),
+                stmt_start.elapsed().as_millis() as u64,
+            );
+        }
+        Ok(())
     }
 }
 
@@ -589,9 +670,15 @@ impl DatabaseDriver for MysqlDriver {
             .map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
 
         {
-            let _c1 = pool.acquire().await.map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
+            let _c1 = pool
+                .acquire()
+                .await
+                .map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
             if max >= 2 {
-                let _c2 = pool.acquire().await.map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
+                let _c2 = pool
+                    .acquire()
+                    .await
+                    .map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
             }
         }
 
@@ -754,7 +841,10 @@ impl DatabaseDriver for MysqlDriver {
                 let nullable: String = r.get("Null");
                 let key: String = r.try_get::<String, _>("Key").unwrap_or_default();
                 let extra: String = r.try_get::<String, _>("Extra").unwrap_or_default();
-                let comment: Option<String> = r.try_get::<String, _>("Comment").ok().filter(|s| !s.is_empty());
+                let comment: Option<String> = r
+                    .try_get::<String, _>("Comment")
+                    .ok()
+                    .filter(|s| !s.is_empty());
                 let is_pk = key == "PRI";
                 if is_pk {
                     pk_names.push(name.clone());
@@ -779,20 +869,20 @@ impl DatabaseDriver for MysqlDriver {
             let non_unique: i64 = r.try_get::<i64, _>("Non_unique").unwrap_or(1);
             let idx_type: String = r.try_get::<String, _>("Index_type").unwrap_or_default();
 
-            let entry = idx_map.entry(idx_name.clone()).or_insert_with(|| IndexInfo {
-                name: idx_name.clone(),
-                columns: Vec::new(),
-                is_unique: non_unique == 0,
-                is_primary: idx_name == "PRIMARY",
-                index_type: idx_type,
-            });
+            let entry = idx_map
+                .entry(idx_name.clone())
+                .or_insert_with(|| IndexInfo {
+                    name: idx_name.clone(),
+                    columns: Vec::new(),
+                    is_unique: non_unique == 0,
+                    is_primary: idx_name == "PRIMARY",
+                    index_type: idx_type,
+                });
             entry.columns.push(col_name);
         }
 
         let mut indexes: Vec<IndexInfo> = idx_map.into_values().collect();
-        indexes.sort_by(|a, b| {
-            b.is_primary.cmp(&a.is_primary).then(a.name.cmp(&b.name))
-        });
+        indexes.sort_by(|a, b| b.is_primary.cmp(&a.is_primary).then(a.name.cmp(&b.name)));
 
         // ── foreign keys parsed from SHOW CREATE TABLE output ──
         let create_sql: String = create_row.try_get(1).unwrap_or_default();
@@ -1017,6 +1107,49 @@ impl DatabaseDriver for MysqlDriver {
             results,
             total_time_ms: total_start.elapsed().as_millis() as u64,
         })
+    }
+
+    async fn query_stream(
+        &self,
+        handle: &ConnectionHandle,
+        sql: &str,
+        limit: Option<u32>,
+        on_event: QueryStreamCallback,
+    ) -> Result<(), DriverError> {
+        let statements = split_mysql_statements(sql);
+        if statements.is_empty() {
+            on_event(QueryStreamEvent::Done { total_time_ms: 0 });
+            return Ok(());
+        }
+
+        let total_start = Instant::now();
+        {
+            let mut txs = self.transactions.lock().await;
+            if let Some(conn) = txs.get_mut(&handle.id) {
+                for (index, stmt) in statements.iter().enumerate() {
+                    Self::stream_one_statement(&mut **conn, stmt, limit, index, &on_event).await?;
+                }
+                on_event(QueryStreamEvent::Done {
+                    total_time_ms: total_start.elapsed().as_millis() as u64,
+                });
+                return Ok(());
+            }
+        }
+
+        let pools = self.pools.read().await;
+        let pool = Self::get_pool(&pools, handle)?;
+        let mut conn = pool
+            .acquire()
+            .await
+            .map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
+        self.apply_active_database(handle, &mut conn).await?;
+        for (index, stmt) in statements.iter().enumerate() {
+            Self::stream_one_statement(&mut *conn, stmt, limit, index, &on_event).await?;
+        }
+        on_event(QueryStreamEvent::Done {
+            total_time_ms: total_start.elapsed().as_millis() as u64,
+        });
+        Ok(())
     }
 
     async fn query_with_params(
@@ -1366,7 +1499,10 @@ impl DatabaseDriver for MysqlDriver {
         let mut out = String::new();
         if opts.create_database {
             let q = self.quote_ident(database);
-            out.push_str(&format!("CREATE DATABASE IF NOT EXISTS {};\nUSE {};\n\n", q, q));
+            out.push_str(&format!(
+                "CREATE DATABASE IF NOT EXISTS {};\nUSE {};\n\n",
+                q, q
+            ));
         }
         out.push_str(&sql_dump::dump_sql_database(self, handle, database, opts).await?);
         if !opts.data_only {
@@ -1471,8 +1607,9 @@ async fn dump_mysql_triggers(driver: &MysqlDriver, handle: &ConnectionHandle) ->
         let create_sql = format!("SHOW CREATE TRIGGER {}", driver.quote_ident(name));
         match driver.query(handle, &create_sql).await {
             Ok(create_result) => {
-                if let Some(ddl) = extract_named_create_column(&create_result, "SQL Original Statement")
-                    .or_else(|| extract_named_create_column(&create_result, "Create Trigger"))
+                if let Some(ddl) =
+                    extract_named_create_column(&create_result, "SQL Original Statement")
+                        .or_else(|| extract_named_create_column(&create_result, "Create Trigger"))
                 {
                     out.push_str(&format!("-- TRIGGER: {name}\n"));
                     let trimmed = ddl.trim_end();
@@ -1621,6 +1758,16 @@ fn split_mysql_statements(input: &str) -> Vec<String> {
         stmts.push(tail.to_string());
     }
     stmts
+}
+
+fn is_mysql_result_query(sql: &str) -> bool {
+    let upper = sql.trim().to_ascii_uppercase();
+    upper.starts_with("SELECT")
+        || upper.starts_with("WITH")
+        || upper.starts_with("SHOW")
+        || upper.starts_with("DESCRIBE")
+        || upper.starts_with("DESC")
+        || upper.starts_with("EXPLAIN")
 }
 
 fn apply_mysql_select_limit(stmt: &str, limit: Option<u32>) -> (String, Option<u32>) {
@@ -1824,5 +1971,24 @@ mod tests {
             "expected ConnectionFailed, got {err:?}"
         );
     }
-}
 
+    #[test]
+    fn apply_mysql_select_limit_plus_one_and_existing_limit() {
+        assert_eq!(
+            apply_mysql_select_limit("SELECT * FROM t", None),
+            ("SELECT * FROM t".into(), None)
+        );
+        assert_eq!(
+            apply_mysql_select_limit("SELECT * FROM t", Some(8)),
+            ("SELECT * FROM t LIMIT 9".into(), Some(8))
+        );
+        assert_eq!(
+            apply_mysql_select_limit("SELECT * FROM t LIMIT 2", Some(8)),
+            ("SELECT * FROM t LIMIT 2".into(), Some(8))
+        );
+        assert_eq!(
+            apply_mysql_select_limit("UPDATE t SET a = 1", Some(8)),
+            ("UPDATE t SET a = 1".into(), None)
+        );
+    }
+}

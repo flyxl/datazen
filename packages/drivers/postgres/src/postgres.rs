@@ -1,13 +1,14 @@
 //! PostgreSQL driver backed by sqlx PgPool.
 
 use crate::structure::{caps_for_version, plan_structure_changes_with_caps};
-use datazen_driver_api::*;
 use async_trait::async_trait;
+use datazen_driver_api::*;
 use rust_decimal::prelude::ToPrimitive;
-use sqlx::postgres::PgPoolOptions;
 use sqlx::pool::PoolConnection;
+use sqlx::postgres::PgPoolOptions;
 use sqlx::{Column, PgPool, Postgres, Row};
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::{Mutex, RwLock};
 
@@ -127,9 +128,9 @@ impl PostgresDriver {
         min_connections: u32,
     ) -> Result<PgPool, DriverError> {
         let configs = self.connect_configs.read().await;
-        let config = configs.get(&handle.pool_id).ok_or_else(|| {
-            DriverError::ConnectionFailed("Connection pool not found".into())
-        })?;
+        let config = configs
+            .get(&handle.pool_id)
+            .ok_or_else(|| DriverError::ConnectionFailed("Connection pool not found".into()))?;
         let timeout = Duration::from_secs(config.connection_timeout as u64);
         let opts = build_pg_options(config)?.database(database);
         drop(configs);
@@ -174,20 +175,19 @@ impl PostgresDriver {
         query
     }
 
+    fn columns_of_row(row: &sqlx::postgres::PgRow) -> Vec<ColumnInfo> {
+        row.columns()
+            .iter()
+            .map(|c| ColumnInfo {
+                name: c.name().to_string(),
+                data_type: c.type_info().to_string(),
+                nullable: true,
+            })
+            .collect()
+    }
+
     fn decode_rows(rows: &[sqlx::postgres::PgRow]) -> (Vec<ColumnInfo>, Vec<Vec<Option<Value>>>) {
-        let columns: Vec<ColumnInfo> = if let Some(first) = rows.first() {
-            first
-                .columns()
-                .iter()
-                .map(|c| ColumnInfo {
-                    name: c.name().to_string(),
-                    data_type: c.type_info().to_string(),
-                    nullable: true,
-                })
-                .collect()
-        } else {
-            Vec::new()
-        };
+        let columns: Vec<ColumnInfo> = rows.first().map(Self::columns_of_row).unwrap_or_default();
 
         let result_rows: Vec<Vec<Option<Value>>> = rows
             .iter()
@@ -201,90 +201,82 @@ impl PostgresDriver {
                             "INT8" | "BIGINT" | "BIGSERIAL" => {
                                 row.try_get::<i64, _>(i).ok().map(Self::safe_integer)
                             }
-                            "INT4" | "INT" | "INTEGER" | "SERIAL" => {
-                                row.try_get::<i32, _>(i)
-                                    .ok()
-                                    .map(|v| Value::Integer(v as i64))
-                                    .or_else(|| row.try_get::<i64, _>(i).ok().map(Self::safe_integer))
-                            }
-                            "INT2" | "SMALLINT" | "SMALLSERIAL" => {
-                                row.try_get::<i16, _>(i)
-                                    .ok()
-                                    .map(|v| Value::Integer(v as i64))
-                                    .or_else(|| row.try_get::<i32, _>(i).ok().map(|v| Value::Integer(v as i64)))
-                            }
-                            "FLOAT4" | "REAL" => {
-                                row.try_get::<f32, _>(i)
-                                    .ok()
-                                    .map(|v| Value::Float(v as f64))
-                                    .or_else(|| row.try_get::<f64, _>(i).ok().map(Value::Float))
-                            }
+                            "INT4" | "INT" | "INTEGER" | "SERIAL" => row
+                                .try_get::<i32, _>(i)
+                                .ok()
+                                .map(|v| Value::Integer(v as i64))
+                                .or_else(|| row.try_get::<i64, _>(i).ok().map(Self::safe_integer)),
+                            "INT2" | "SMALLINT" | "SMALLSERIAL" => row
+                                .try_get::<i16, _>(i)
+                                .ok()
+                                .map(|v| Value::Integer(v as i64))
+                                .or_else(|| {
+                                    row.try_get::<i32, _>(i)
+                                        .ok()
+                                        .map(|v| Value::Integer(v as i64))
+                                }),
+                            "FLOAT4" | "REAL" => row
+                                .try_get::<f32, _>(i)
+                                .ok()
+                                .map(|v| Value::Float(v as f64))
+                                .or_else(|| row.try_get::<f64, _>(i).ok().map(Value::Float)),
                             "FLOAT8" | "DOUBLE PRECISION" => {
                                 row.try_get::<f64, _>(i).ok().map(Value::Float)
                             }
-                            "NUMERIC" | "DECIMAL" => {
-                                row.try_get::<rust_decimal::Decimal, _>(i)
-                                    .ok()
-                                    .map(|d| {
-                                        if d.scale() == 0 {
-                                            if let Some(n) = d.to_i64() {
-                                                return Self::safe_integer(n);
-                                            }
+                            "NUMERIC" | "DECIMAL" => row
+                                .try_get::<rust_decimal::Decimal, _>(i)
+                                .ok()
+                                .map(|d| {
+                                    if d.scale() == 0 {
+                                        if let Some(n) = d.to_i64() {
+                                            return Self::safe_integer(n);
                                         }
-                                        d.to_f64()
-                                            .map(Value::Float)
-                                            .unwrap_or_else(|| Value::String(d.to_string()))
-                                    })
-                                    .or_else(|| row.try_get::<f64, _>(i).ok().map(Value::Float))
-                                    .or_else(|| row.try_get::<String, _>(i).ok().map(Value::String))
-                            }
-                            "BOOL" | "BOOLEAN" => {
-                                row.try_get::<bool, _>(i).ok().map(Value::Bool)
-                            }
-                            "DATE" => {
-                                row.try_get::<chrono::NaiveDate, _>(i)
-                                    .ok()
-                                    .map(|d| Value::String(d.format("%Y-%m-%d").to_string()))
-                                    .or_else(|| row.try_get::<String, _>(i).ok().map(Value::String))
-                            }
-                            "TIME" | "TIME WITHOUT TIME ZONE" => {
-                                row.try_get::<chrono::NaiveTime, _>(i)
-                                    .ok()
-                                    .map(|t| Value::String(t.format("%H:%M:%S").to_string()))
-                                    .or_else(|| row.try_get::<String, _>(i).ok().map(Value::String))
-                            }
+                                    }
+                                    d.to_f64()
+                                        .map(Value::Float)
+                                        .unwrap_or_else(|| Value::String(d.to_string()))
+                                })
+                                .or_else(|| row.try_get::<f64, _>(i).ok().map(Value::Float))
+                                .or_else(|| row.try_get::<String, _>(i).ok().map(Value::String)),
+                            "BOOL" | "BOOLEAN" => row.try_get::<bool, _>(i).ok().map(Value::Bool),
+                            "DATE" => row
+                                .try_get::<chrono::NaiveDate, _>(i)
+                                .ok()
+                                .map(|d| Value::String(d.format("%Y-%m-%d").to_string()))
+                                .or_else(|| row.try_get::<String, _>(i).ok().map(Value::String)),
+                            "TIME" | "TIME WITHOUT TIME ZONE" => row
+                                .try_get::<chrono::NaiveTime, _>(i)
+                                .ok()
+                                .map(|t| Value::String(t.format("%H:%M:%S").to_string()))
+                                .or_else(|| row.try_get::<String, _>(i).ok().map(Value::String)),
                             "TIMETZ" | "TIME WITH TIME ZONE" => {
                                 row.try_get::<String, _>(i).ok().map(Value::String)
                             }
-                            "TIMESTAMP" | "TIMESTAMP WITHOUT TIME ZONE" => {
-                                row.try_get::<chrono::NaiveDateTime, _>(i)
-                                    .ok()
-                                    .map(|dt| Value::String(dt.format("%Y-%m-%d %H:%M:%S").to_string()))
-                                    .or_else(|| row.try_get::<String, _>(i).ok().map(Value::String))
-                            }
-                            "TIMESTAMPTZ" | "TIMESTAMP WITH TIME ZONE" => {
-                                row.try_get::<chrono::DateTime<chrono::Utc>, _>(i)
-                                    .ok()
-                                    .map(|dt| Value::String(dt.to_rfc3339()))
-                                    .or_else(|| {
-                                        row.try_get::<chrono::NaiveDateTime, _>(i)
-                                            .ok()
-                                            .map(|dt| Value::String(dt.format("%Y-%m-%d %H:%M:%S").to_string()))
+                            "TIMESTAMP" | "TIMESTAMP WITHOUT TIME ZONE" => row
+                                .try_get::<chrono::NaiveDateTime, _>(i)
+                                .ok()
+                                .map(|dt| Value::String(dt.format("%Y-%m-%d %H:%M:%S").to_string()))
+                                .or_else(|| row.try_get::<String, _>(i).ok().map(Value::String)),
+                            "TIMESTAMPTZ" | "TIMESTAMP WITH TIME ZONE" => row
+                                .try_get::<chrono::DateTime<chrono::Utc>, _>(i)
+                                .ok()
+                                .map(|dt| Value::String(dt.to_rfc3339()))
+                                .or_else(|| {
+                                    row.try_get::<chrono::NaiveDateTime, _>(i).ok().map(|dt| {
+                                        Value::String(dt.format("%Y-%m-%d %H:%M:%S").to_string())
                                     })
-                                    .or_else(|| row.try_get::<String, _>(i).ok().map(Value::String))
-                            }
-                            "UUID" => {
-                                row.try_get::<uuid::Uuid, _>(i)
-                                    .ok()
-                                    .map(|u| Value::String(u.to_string()))
-                                    .or_else(|| row.try_get::<String, _>(i).ok().map(Value::String))
-                            }
-                            "JSON" | "JSONB" => {
-                                row.try_get::<serde_json::Value, _>(i)
-                                    .ok()
-                                    .map(Value::Json)
-                                    .or_else(|| row.try_get::<String, _>(i).ok().map(Value::String))
-                            }
+                                })
+                                .or_else(|| row.try_get::<String, _>(i).ok().map(Value::String)),
+                            "UUID" => row
+                                .try_get::<uuid::Uuid, _>(i)
+                                .ok()
+                                .map(|u| Value::String(u.to_string()))
+                                .or_else(|| row.try_get::<String, _>(i).ok().map(Value::String)),
+                            "JSON" | "JSONB" => row
+                                .try_get::<serde_json::Value, _>(i)
+                                .ok()
+                                .map(Value::Json)
+                                .or_else(|| row.try_get::<String, _>(i).ok().map(Value::String)),
                             s @ ("INET" | "CIDR" | "MACADDR" | "MACADDR8") => {
                                 // These PG network types need ipnetwork/ipnet feature for native decode.
                                 // Fallback: read text representation via cast in a sub-query,
@@ -298,45 +290,50 @@ impl PostgresDriver {
                                         Some(Value::String(format!("<{}>", s.to_lowercase())))
                                     })
                             }
-                            "INTERVAL" => {
-                                row.try_get::<sqlx::postgres::types::PgInterval, _>(i)
-                                    .ok()
-                                    .map(|iv| {
-                                        let mut parts = Vec::new();
-                                        if iv.months != 0 {
-                                            let years = iv.months / 12;
-                                            let months = iv.months % 12;
-                                            if years != 0 { parts.push(format!("{} years", years)); }
-                                            if months != 0 { parts.push(format!("{} mons", months)); }
+                            "INTERVAL" => row
+                                .try_get::<sqlx::postgres::types::PgInterval, _>(i)
+                                .ok()
+                                .map(|iv| {
+                                    let mut parts = Vec::new();
+                                    if iv.months != 0 {
+                                        let years = iv.months / 12;
+                                        let months = iv.months % 12;
+                                        if years != 0 {
+                                            parts.push(format!("{} years", years));
                                         }
-                                        if iv.days != 0 { parts.push(format!("{} days", iv.days)); }
-                                        if iv.microseconds != 0 {
-                                            let total_secs = iv.microseconds / 1_000_000;
-                                            let h = total_secs / 3600;
-                                            let m = (total_secs % 3600) / 60;
-                                            let s = total_secs % 60;
-                                            parts.push(format!("{:02}:{:02}:{:02}", h, m, s));
+                                        if months != 0 {
+                                            parts.push(format!("{} mons", months));
                                         }
-                                        Value::String(if parts.is_empty() { "00:00:00".into() } else { parts.join(" ") })
+                                    }
+                                    if iv.days != 0 {
+                                        parts.push(format!("{} days", iv.days));
+                                    }
+                                    if iv.microseconds != 0 {
+                                        let total_secs = iv.microseconds / 1_000_000;
+                                        let h = total_secs / 3600;
+                                        let m = (total_secs % 3600) / 60;
+                                        let s = total_secs % 60;
+                                        parts.push(format!("{:02}:{:02}:{:02}", h, m, s));
+                                    }
+                                    Value::String(if parts.is_empty() {
+                                        "00:00:00".into()
+                                    } else {
+                                        parts.join(" ")
                                     })
-                                    .or_else(|| row.try_get::<String, _>(i).ok().map(Value::String))
-                            }
-                            "BYTEA" => {
-                                row.try_get::<Vec<u8>, _>(i)
-                                    .ok()
-                                    .map(|bytes| {
-                                        let hex: String = bytes.iter().map(|b| format!("{:02x}", b)).collect();
-                                        Value::String(format!("\\x{}", hex))
-                                    })
-                            }
-                            _ => {
-                                row.try_get::<String, _>(i)
-                                    .ok()
-                                    .map(Value::String)
-                                    .or_else(|| row.try_get::<i64, _>(i).ok().map(Self::safe_integer))
-                                    .or_else(|| row.try_get::<f64, _>(i).ok().map(Value::Float))
-                                    .or_else(|| row.try_get::<bool, _>(i).ok().map(Value::Bool))
-                            }
+                                })
+                                .or_else(|| row.try_get::<String, _>(i).ok().map(Value::String)),
+                            "BYTEA" => row.try_get::<Vec<u8>, _>(i).ok().map(|bytes| {
+                                let hex: String =
+                                    bytes.iter().map(|b| format!("{:02x}", b)).collect();
+                                Value::String(format!("\\x{}", hex))
+                            }),
+                            _ => row
+                                .try_get::<String, _>(i)
+                                .ok()
+                                .map(Value::String)
+                                .or_else(|| row.try_get::<i64, _>(i).ok().map(Self::safe_integer))
+                                .or_else(|| row.try_get::<f64, _>(i).ok().map(Value::Float))
+                                .or_else(|| row.try_get::<bool, _>(i).ok().map(Value::Bool)),
                         }
                     })
                     .collect()
@@ -357,6 +354,53 @@ impl PostgresDriver {
         let total_cost = plan.get("Total Cost").and_then(|v| v.as_f64());
         let estimated_rows = plan.get("Plan Rows").and_then(|v| v.as_i64());
         (total_cost, estimated_rows)
+    }
+
+    async fn stream_one_statement<'e, E>(
+        executor: E,
+        stmt: &str,
+        limit: Option<u32>,
+        index: usize,
+        on_event: &QueryStreamCallback,
+    ) -> Result<(), DriverError>
+    where
+        E: sqlx::Executor<'e, Database = sqlx::Postgres>,
+    {
+        use futures_util::TryStreamExt;
+        let (effective_sql, applied_limit) = apply_select_limit(stmt, limit);
+        let stmt_start = Instant::now();
+        if is_pg_result_query(&effective_sql) {
+            let mut stream = sqlx::query(effective_sql.as_str()).fetch(executor);
+            let mut batcher =
+                QueryRowBatcher::new(Arc::clone(on_event), index, stmt.to_string(), applied_limit);
+            while let Some(row) = stream
+                .try_next()
+                .await
+                .map_err(|e| DriverError::QueryFailed(format!("[{stmt}] {e}")))?
+            {
+                if !batcher.started() {
+                    batcher.start(Self::columns_of_row(&row));
+                }
+                let (_, mut decoded) = Self::decode_rows(std::slice::from_ref(&row));
+                if !batcher.push(decoded.pop().unwrap_or_default()) {
+                    break;
+                }
+            }
+            batcher.finish(stmt_start.elapsed().as_millis() as u64, None);
+        } else {
+            let result = sqlx::query(effective_sql.as_str())
+                .execute(executor)
+                .await
+                .map_err(|e| DriverError::QueryFailed(format!("[{stmt}] {e}")))?;
+            emit_execute_statement(
+                on_event,
+                index,
+                stmt.to_string(),
+                result.rows_affected(),
+                stmt_start.elapsed().as_millis() as u64,
+            );
+        }
+        Ok(())
     }
 }
 
@@ -421,9 +465,15 @@ impl DatabaseDriver for PostgresDriver {
         let pool = Self::open_pool(opts, timeout, max, min).await?;
 
         {
-            let _c1 = pool.acquire().await.map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
+            let _c1 = pool
+                .acquire()
+                .await
+                .map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
             if max >= 2 {
-                let _c2 = pool.acquire().await.map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
+                let _c2 = pool
+                    .acquire()
+                    .await
+                    .map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
             }
         }
 
@@ -904,6 +954,44 @@ impl DatabaseDriver for PostgresDriver {
         })
     }
 
+    async fn query_stream(
+        &self,
+        handle: &ConnectionHandle,
+        sql: &str,
+        limit: Option<u32>,
+        on_event: QueryStreamCallback,
+    ) -> Result<(), DriverError> {
+        let statements = sql_dump::split_sql_statements(sql);
+        if statements.is_empty() {
+            on_event(QueryStreamEvent::Done { total_time_ms: 0 });
+            return Ok(());
+        }
+
+        let total_start = Instant::now();
+        {
+            let mut txs = self.transactions.lock().await;
+            if let Some(conn) = txs.get_mut(&handle.id) {
+                for (index, stmt) in statements.iter().enumerate() {
+                    Self::stream_one_statement(&mut **conn, stmt, limit, index, &on_event).await?;
+                }
+                on_event(QueryStreamEvent::Done {
+                    total_time_ms: total_start.elapsed().as_millis() as u64,
+                });
+                return Ok(());
+            }
+        }
+
+        let pools = self.pools.read().await;
+        let pool = Self::get_pool(&pools, handle)?;
+        for (index, stmt) in statements.iter().enumerate() {
+            Self::stream_one_statement(pool, stmt, limit, index, &on_event).await?;
+        }
+        on_event(QueryStreamEvent::Done {
+            total_time_ms: total_start.elapsed().as_millis() as u64,
+        });
+        Ok(())
+    }
+
     async fn query_with_params(
         &self,
         handle: &ConnectionHandle,
@@ -1055,13 +1143,11 @@ impl DatabaseDriver for PostgresDriver {
             .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
 
         let plan_json = json_rows.first().and_then(|row| {
-            row.try_get::<serde_json::Value, _>(0)
-                .ok()
-                .or_else(|| {
-                    row.try_get::<String, _>(0)
-                        .ok()
-                        .and_then(|s| serde_json::from_str(&s).ok())
-                })
+            row.try_get::<serde_json::Value, _>(0).ok().or_else(|| {
+                row.try_get::<String, _>(0)
+                    .ok()
+                    .and_then(|s| serde_json::from_str(&s).ok())
+            })
         });
 
         let text_sql = format!("EXPLAIN (FORMAT TEXT) {sql}");
@@ -1223,6 +1309,14 @@ impl DatabaseDriver for PostgresDriver {
     }
 }
 
+fn is_pg_result_query(sql: &str) -> bool {
+    let upper = sql.trim().to_ascii_uppercase();
+    upper.starts_with("SELECT")
+        || upper.starts_with("WITH")
+        || upper.starts_with("SHOW")
+        || upper.starts_with("EXPLAIN")
+}
+
 /// If the statement is a SELECT without an existing LIMIT clause, returns a
 /// modified SQL with `LIMIT limit+1` appended (the extra row lets us detect
 /// truncation).  If the statement already has a LIMIT, the SQL is unchanged
@@ -1277,14 +1371,18 @@ fn has_top_level_limit(sql: &str) -> bool {
                 while i < len && bytes[i] != b'"' {
                     i += 1;
                 }
-                if i < len { i += 1; }
+                if i < len {
+                    i += 1;
+                }
             }
             b'$' => {
                 if let Some(tag_end) = sql_dump::find_dollar_tag(bytes, i) {
                     let tag = &sql[i..tag_end];
                     i = tag_end;
                     loop {
-                        if i >= len { break; }
+                        if i >= len {
+                            break;
+                        }
                         if bytes[i] == b'$' {
                             if sql[i..].starts_with(tag) {
                                 i += tag.len();
@@ -1308,16 +1406,24 @@ fn has_top_level_limit(sql: &str) -> bool {
                 let mut cd = 1i32;
                 while i + 1 < len && cd > 0 {
                     if bytes[i] == b'/' && bytes[i + 1] == b'*' {
-                        cd += 1; i += 2;
+                        cd += 1;
+                        i += 2;
                     } else if bytes[i] == b'*' && bytes[i + 1] == b'/' {
-                        cd -= 1; i += 2;
+                        cd -= 1;
+                        i += 2;
                     } else {
                         i += 1;
                     }
                 }
             }
-            b'(' => { depth += 1; i += 1; }
-            b')' => { depth -= 1; i += 1; }
+            b'(' => {
+                depth += 1;
+                i += 1;
+            }
+            b')' => {
+                depth -= 1;
+                i += 1;
+            }
             b'L' | b'l' if depth == 0 => {
                 if i + 5 <= len
                     && sql[i..i + 5].eq_ignore_ascii_case("LIMIT")
@@ -1328,7 +1434,9 @@ fn has_top_level_limit(sql: &str) -> bool {
                 }
                 i += 1;
             }
-            _ => { i += 1; }
+            _ => {
+                i += 1;
+            }
         }
     }
 
@@ -1372,7 +1480,10 @@ pub(crate) fn build_pg_create_table_ddl(
         parts.push(format!("  PRIMARY KEY ({})", pk_list.join(", ")));
     }
 
-    format!("CREATE TABLE {qualified_name} (\n{}\n);\n", parts.join(",\n"))
+    format!(
+        "CREATE TABLE {qualified_name} (\n{}\n);\n",
+        parts.join(",\n")
+    )
 }
 
 async fn fetch_pg_table_ddl_from_catalog(
@@ -1661,12 +1772,10 @@ mod tests {
                 default_expr: Some("'active'::text".into()),
             },
         ];
-        let sql = build_pg_create_table_ddl(
-            "\"public\".\"users\"",
-            &columns,
-            &["id".into()],
-            &|n| format!("\"{n}\""),
-        );
+        let sql =
+            build_pg_create_table_ddl("\"public\".\"users\"", &columns, &["id".into()], &|n| {
+                format!("\"{n}\"")
+            });
         assert!(sql.starts_with("CREATE TABLE \"public\".\"users\" ("));
         assert!(sql.contains("\"id\" integer NOT NULL"));
         assert!(sql.contains("\"email\" character varying(255) NOT NULL"));
@@ -1685,5 +1794,28 @@ mod tests {
         }];
         let sql = build_pg_create_table_ddl("t", &columns, &[], &|n| n.to_string());
         assert!(!sql.contains("PRIMARY KEY"));
+    }
+
+    #[test]
+    fn apply_select_limit_is_independent_of_subquery_limit() {
+        assert_eq!(
+            apply_select_limit("SELECT * FROM t", None),
+            ("SELECT * FROM t".into(), None)
+        );
+        assert_eq!(
+            apply_select_limit("SELECT * FROM t", Some(10)),
+            ("SELECT * FROM t LIMIT 11".into(), Some(10))
+        );
+        assert_eq!(
+            apply_select_limit("SELECT * FROM t LIMIT 3", Some(10)),
+            ("SELECT * FROM t LIMIT 3".into(), Some(10))
+        );
+        let (sql, cap) = apply_select_limit("SELECT * FROM (SELECT * FROM t LIMIT 5) s", Some(10));
+        assert!(sql.ends_with(" LIMIT 11"), "{sql}");
+        assert_eq!(cap, Some(10));
+        assert_eq!(
+            apply_select_limit("INSERT INTO t VALUES (1)", Some(10)),
+            ("INSERT INTO t VALUES (1)".into(), None)
+        );
     }
 }

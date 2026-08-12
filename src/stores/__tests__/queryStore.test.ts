@@ -2,6 +2,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 
 const mockQueryCommands = {
   executeQuery: vi.fn(),
+  executeQueryStream: vi.fn(),
   cancelQuery: vi.fn(),
   getQueryHistory: vi.fn().mockResolvedValue([]),
   getFavoriteQueries: vi.fn().mockResolvedValue([]),
@@ -55,16 +56,21 @@ describe('queryStore executeSelection', () => {
   });
 
   it('executeSelection sends only the selected SQL', async () => {
-    mockQueryCommands.executeQuery.mockResolvedValueOnce({
-      results: [{ sql: 'SELECT 1', columns: [], rows: [], executionTimeMs: 5 }],
-      totalTimeMs: 5,
+    mockQueryCommands.executeQueryStream.mockImplementationOnce(async (_id, sql, onEvent) => {
+      onEvent({ type: 'statementStart', index: 0, sql, columns: [] });
+      onEvent({ type: 'statementEnd', index: 0, executionTimeMs: 5, truncated: false });
+      onEvent({ type: 'done', totalTimeMs: 5 });
     });
 
     const tabId = useQueryStore.getState().tabs[0].id;
     useQueryStore.getState().updateSql(tabId, 'SELECT 1; SELECT 2; SELECT 3');
     await useQueryStore.getState().executeSelection(tabId, 'SELECT 2');
 
-    expect(mockQueryCommands.executeQuery).toHaveBeenCalledWith('conn-1', 'SELECT 2');
+    expect(mockQueryCommands.executeQueryStream).toHaveBeenCalledWith(
+      'conn-1',
+      'SELECT 2',
+      expect.any(Function),
+    );
   });
 
   it('executeSelection does nothing when connectionId is null', async () => {
@@ -72,7 +78,7 @@ describe('queryStore executeSelection', () => {
     const tabId = useQueryStore.getState().tabs[0].id;
     await useQueryStore.getState().executeSelection(tabId, 'SELECT 1');
 
-    expect(mockQueryCommands.executeQuery).not.toHaveBeenCalled();
+    expect(mockQueryCommands.executeQueryStream).not.toHaveBeenCalled();
   });
 });
 
@@ -176,17 +182,48 @@ describe('queryStore tabs and execution', () => {
     const tabId = useQueryStore.getState().tabs[0].id;
     useQueryStore.getState().updateSql(tabId, 'SELECT 1');
 
-    mockQueryCommands.executeQuery.mockResolvedValueOnce({
-      results: [{ sql: 'SELECT 1', columns: [{ name: 'v', dataType: 'int' }], rows: [[1]], executionTimeMs: 10 }],
-      totalTimeMs: 10,
+    mockQueryCommands.executeQueryStream.mockImplementationOnce(async (_id, sql, onEvent) => {
+      onEvent({
+        type: 'statementStart',
+        index: 0,
+        sql,
+        columns: [{ name: 'v', dataType: 'int', nullable: true }],
+      });
+      onEvent({ type: 'rows', index: 0, rows: [[1]] });
+      onEvent({ type: 'statementEnd', index: 0, executionTimeMs: 10, truncated: false });
+      onEvent({ type: 'done', totalTimeMs: 10 });
     });
     await useQueryStore.getState().executeQuery(tabId);
     expect(useQueryStore.getState().tabs[0].results).toHaveLength(1);
+    expect(useQueryStore.getState().tabs[0].results[0].rows).toEqual([[1]]);
     expect(useQueryStore.getState().tabs[0].running).toBe(false);
 
-    mockQueryCommands.executeQuery.mockRejectedValueOnce(new Error('syntax error'));
+    mockQueryCommands.executeQueryStream.mockRejectedValueOnce(new Error('syntax error'));
     await useQueryStore.getState().executeQuery(tabId);
     expect(useQueryStore.getState().tabs[0].error).toBe('syntax error');
+  });
+
+  it('executeQuery concatenates streamed row chunks', async () => {
+    useQueryStore.getState().setConnectionId('conn-1');
+    useQueryStore.getState().createTab();
+    const tabId = useQueryStore.getState().tabs[0].id;
+    useQueryStore.getState().updateSql(tabId, 'SELECT n');
+
+    mockQueryCommands.executeQueryStream.mockImplementationOnce(async (_id, sql, onEvent) => {
+      onEvent({
+        type: 'statementStart',
+        index: 0,
+        sql,
+        columns: [{ name: 'n', dataType: 'int', nullable: true }],
+      });
+      onEvent({ type: 'rows', index: 0, rows: [[1], [2]] });
+      onEvent({ type: 'rows', index: 0, rows: [[3]] });
+      onEvent({ type: 'statementEnd', index: 0, executionTimeMs: 8, truncated: false });
+      onEvent({ type: 'done', totalTimeMs: 8 });
+    });
+    await useQueryStore.getState().executeQuery(tabId);
+    expect(useQueryStore.getState().tabs[0].results[0].rows).toEqual([[1], [2], [3]]);
+    expect(useQueryStore.getState().tabs[0].running).toBe(false);
   });
 
   it('executeQuery sets error when not connected', async () => {

@@ -3,8 +3,11 @@
 use async_trait::async_trait;
 use std::collections::HashMap;
 
+use crate::query_stream::{emit_multi_query_as_stream, QueryStreamCallback};
 use crate::types::*;
-use crate::{execute_command_definition, query_command_definition, CommandResult, DriverCommandDefinition};
+use crate::{
+    execute_command_definition, query_command_definition, CommandResult, DriverCommandDefinition,
+};
 
 #[async_trait]
 pub trait DatabaseDriver: Send + Sync {
@@ -135,6 +138,24 @@ pub trait DatabaseDriver: Send + Sync {
         sql: &str,
         limit: Option<u32>,
     ) -> Result<MultiQueryResult, DriverError>;
+
+    /// Stream query results as row batches.
+    ///
+    /// `limit` is the SQL result cap from the host "limit SELECT results"
+    /// setting (`None` = do not rewrite/cap SQL). It is **not** the IPC batch
+    /// size. Drivers that can stream from the wire should override this;
+    /// the default materializes [`Self::query_multi`] then emits chunks.
+    async fn query_stream(
+        &self,
+        handle: &ConnectionHandle,
+        sql: &str,
+        limit: Option<u32>,
+        on_event: QueryStreamCallback,
+    ) -> Result<(), DriverError> {
+        let result = self.query_multi(handle, sql, limit).await?;
+        emit_multi_query_as_stream(result, &on_event);
+        Ok(())
+    }
 
     async fn query_with_params(
         &self,

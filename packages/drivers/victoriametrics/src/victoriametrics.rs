@@ -3,9 +3,9 @@
 //! The SQL editor runs PromQL expressions; results come back as instant
 //! vectors with metric labels flattened into columns.
 
-use datazen_driver_http_support::*;
-use datazen_driver_api::*;
 use async_trait::async_trait;
+use datazen_driver_api::*;
+use datazen_driver_http_support::*;
 use std::collections::HashMap;
 use std::time::Instant;
 use tokio::sync::RwLock;
@@ -45,10 +45,15 @@ impl VictoriaMetricsDriver {
             .await
             .map_err(|e| http_error("VictoriaMetrics read response failed", e))?;
         if !status.is_success() {
-            return Err(status_error("VictoriaMetrics request failed", status, &text));
+            return Err(status_error(
+                "VictoriaMetrics request failed",
+                status,
+                &text,
+            ));
         }
-        serde_json::from_str(&text)
-            .map_err(|e| DriverError::QueryFailed(format!("VictoriaMetrics JSON parse failed: {e}")))
+        serde_json::from_str(&text).map_err(|e| {
+            DriverError::QueryFailed(format!("VictoriaMetrics JSON parse failed: {e}"))
+        })
     }
 
     fn result_from_json(v: &serde_json::Value) -> QueryResult {
@@ -66,7 +71,11 @@ impl VictoriaMetricsDriver {
         ];
         let mut rows = Vec::new();
         let mut seen_labels: Vec<String> = Vec::new();
-        if let Some(results) = v.get("data").and_then(|d| d.get("result")).and_then(|r| r.as_array()) {
+        if let Some(results) = v
+            .get("data")
+            .and_then(|d| d.get("result"))
+            .and_then(|r| r.as_array())
+        {
             for item in results {
                 let mut row: Vec<Option<Value>> = Vec::new();
                 if let Some(metric) = item.get("metric").and_then(|m| m.as_object()) {
@@ -80,7 +89,12 @@ impl VictoriaMetricsDriver {
                             });
                         }
                     }
-                    row.push(metric.get("__name__").and_then(|n| n.as_str()).map(|s| Value::String(s.to_string())));
+                    row.push(
+                        metric
+                            .get("__name__")
+                            .and_then(|n| n.as_str())
+                            .map(|s| Value::String(s.to_string())),
+                    );
                 }
                 let value = item
                     .get("value")
@@ -105,7 +119,12 @@ impl VictoriaMetricsDriver {
                         if k == "__name__" {
                             continue;
                         }
-                        row.push(metric.get(k).and_then(|v2| v2.as_str()).map(|s| Value::String(s.to_string())));
+                        row.push(
+                            metric
+                                .get(k)
+                                .and_then(|v2| v2.as_str())
+                                .map(|s| Value::String(s.to_string())),
+                        );
                     }
                 }
                 rows.push(row);
@@ -127,8 +146,11 @@ impl DatabaseDriver for VictoriaMetricsDriver {
     }
 
     async fn test_connection(&self, config: &ConnectionConfig) -> Result<ServerInfo, DriverError> {
-        let client =
-            build_http_client(config.connection_timeout, config.username.as_deref(), config.password.as_deref())?;
+        let client = build_http_client(
+            config.connection_timeout,
+            config.username.as_deref(),
+            config.password.as_deref(),
+        )?;
         let base = base_url(config)?;
         Self::get_json(&client, &base, "/api/v1/query?query=up").await?;
         Ok(ServerInfo {
@@ -138,11 +160,17 @@ impl DatabaseDriver for VictoriaMetricsDriver {
     }
 
     async fn connect(&self, config: &ConnectionConfig) -> Result<ConnectionHandle, DriverError> {
-        let client =
-            build_http_client(config.connection_timeout, config.username.as_deref(), config.password.as_deref())?;
+        let client = build_http_client(
+            config.connection_timeout,
+            config.username.as_deref(),
+            config.password.as_deref(),
+        )?;
         let base = base_url(config)?;
         let pool_id = format!("vm_{}", uuid::Uuid::new_v4());
-        self.clients.write().await.insert(pool_id.clone(), (client, base));
+        self.clients
+            .write()
+            .await
+            .insert(pool_id.clone(), (client, base));
         Ok(ConnectionHandle {
             id: pool_id.clone(),
             pool_id,
@@ -230,7 +258,11 @@ impl DatabaseDriver for VictoriaMetricsDriver {
         })
     }
 
-    async fn query(&self, handle: &ConnectionHandle, sql: &str) -> Result<QueryResult, DriverError> {
+    async fn query(
+        &self,
+        handle: &ConnectionHandle,
+        sql: &str,
+    ) -> Result<QueryResult, DriverError> {
         let map = self.clients.read().await;
         let (client, base) = Self::get(&map, handle)?;
         let start = Instant::now();
@@ -265,6 +297,29 @@ impl DatabaseDriver for VictoriaMetricsDriver {
         })
     }
 
+    async fn query_stream(
+        &self,
+        handle: &ConnectionHandle,
+        sql: &str,
+        limit: Option<u32>,
+        on_event: QueryStreamCallback,
+    ) -> Result<(), DriverError> {
+        let mut result = self.query(handle, sql).await?;
+        let ms = result.execution_time_ms;
+        stream_decoded_rows(
+            &on_event,
+            0,
+            sql.to_string(),
+            result.columns,
+            std::mem::take(&mut result.rows),
+            limit,
+            ms,
+            result.rows_affected,
+        );
+        on_event(QueryStreamEvent::Done { total_time_ms: ms });
+        Ok(())
+    }
+
     async fn query_with_params(
         &self,
         handle: &ConnectionHandle,
@@ -286,5 +341,49 @@ impl DatabaseDriver for VictoriaMetricsDriver {
 
     async fn cancel_query(&self, _handle: &ConnectionHandle) -> Result<(), DriverError> {
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::{Arc, Mutex};
+
+    #[test]
+    fn result_from_json_then_stream_decoded_rows_honors_limit() {
+        let v = serde_json::json!({
+            "data": {
+                "result": [
+                    {"metric": {"__name__": "up", "job": "a"}, "value": [1, "1"]},
+                    {"metric": {"__name__": "up", "job": "b"}, "value": [1, "0"]}
+                ]
+            }
+        });
+        let mut result = VictoriaMetricsDriver::result_from_json(&v);
+        assert_eq!(result.rows.len(), 2);
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let events_cb = Arc::clone(&events);
+        let cb: QueryStreamCallback = Arc::new(move |ev| {
+            events_cb.lock().unwrap().push(ev);
+        });
+        stream_decoded_rows(
+            &cb,
+            0,
+            "up".into(),
+            result.columns,
+            std::mem::take(&mut result.rows),
+            Some(1),
+            1,
+            None,
+        );
+        let events = events.lock().unwrap();
+        let rows: usize = events
+            .iter()
+            .filter_map(|e| match e {
+                QueryStreamEvent::Rows { rows, .. } => Some(rows.len()),
+                _ => None,
+            })
+            .sum();
+        assert_eq!(rows, 1);
     }
 }

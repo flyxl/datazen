@@ -107,7 +107,11 @@ impl DatabaseDriver for ReuseDriver {
         self.inner.get_columns(handle, table).await
     }
 
-    async fn query(&self, handle: &ConnectionHandle, sql: &str) -> Result<QueryResult, DriverError> {
+    async fn query(
+        &self,
+        handle: &ConnectionHandle,
+        sql: &str,
+    ) -> Result<QueryResult, DriverError> {
         self.inner.query(handle, sql).await
     }
 
@@ -118,6 +122,16 @@ impl DatabaseDriver for ReuseDriver {
         limit: Option<u32>,
     ) -> Result<MultiQueryResult, DriverError> {
         self.inner.query_multi(handle, sql, limit).await
+    }
+
+    async fn query_stream(
+        &self,
+        handle: &ConnectionHandle,
+        sql: &str,
+        limit: Option<u32>,
+        on_event: QueryStreamCallback,
+    ) -> Result<(), DriverError> {
+        self.inner.query_stream(handle, sql, limit, on_event).await
     }
 
     async fn query_with_params(
@@ -232,5 +246,307 @@ impl DatabaseDriver for ReuseDriver {
         request: &StructureChangeRequest,
     ) -> Result<StructureChangePlan, DriverError> {
         self.inner.plan_structure_changes(handle, request).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::query_stream::QUERY_STREAM_BATCH_SIZE;
+    use crate::types::{ColumnInfo, QueryResult, StatementResult};
+    use std::sync::Mutex;
+
+    struct FakeDriver {
+        streamed: Mutex<bool>,
+        override_stream: bool,
+        rows: usize,
+    }
+
+    impl FakeDriver {
+        fn new(rows: usize, override_stream: bool) -> Arc<Self> {
+            Arc::new(Self {
+                streamed: Mutex::new(false),
+                override_stream,
+                rows,
+            })
+        }
+
+        fn statement(&self, sql: &str) -> StatementResult {
+            StatementResult {
+                sql: sql.to_string(),
+                columns: vec![ColumnInfo {
+                    name: "id".into(),
+                    data_type: "int".into(),
+                    nullable: false,
+                }],
+                rows: (0..self.rows as i64)
+                    .map(|i| vec![Some(Value::Integer(i))])
+                    .collect(),
+                rows_affected: Some(self.rows as u64),
+                execution_time_ms: 1,
+                truncated: false,
+            }
+        }
+    }
+
+    #[async_trait]
+    impl DatabaseDriver for FakeDriver {
+        fn driver_type(&self) -> DatabaseType {
+            "fake".into()
+        }
+
+        async fn connect(
+            &self,
+            _config: &ConnectionConfig,
+        ) -> Result<ConnectionHandle, DriverError> {
+            Ok(ConnectionHandle {
+                id: "h".into(),
+                pool_id: "p".into(),
+            })
+        }
+
+        async fn test_connection(
+            &self,
+            _config: &ConnectionConfig,
+        ) -> Result<ServerInfo, DriverError> {
+            Ok(ServerInfo {
+                server_version: String::new(),
+                server_type: "fake".into(),
+            })
+        }
+
+        async fn disconnect(&self, _handle: ConnectionHandle) -> Result<(), DriverError> {
+            Ok(())
+        }
+
+        async fn get_databases(
+            &self,
+            _handle: &ConnectionHandle,
+        ) -> Result<Vec<String>, DriverError> {
+            Ok(vec![])
+        }
+
+        async fn get_tables(
+            &self,
+            _handle: &ConnectionHandle,
+            _database: &str,
+        ) -> Result<Vec<TableInfo>, DriverError> {
+            Ok(vec![])
+        }
+
+        async fn get_table_schema(
+            &self,
+            _handle: &ConnectionHandle,
+            table: &str,
+        ) -> Result<TableSchema, DriverError> {
+            Ok(TableSchema {
+                table_name: table.to_string(),
+                columns: vec![],
+                primary_keys: vec![],
+                indexes: vec![],
+                foreign_keys: vec![],
+            })
+        }
+
+        async fn query(
+            &self,
+            _handle: &ConnectionHandle,
+            _sql: &str,
+        ) -> Result<QueryResult, DriverError> {
+            Ok(QueryResult {
+                columns: vec![],
+                rows: vec![],
+                rows_affected: None,
+                execution_time_ms: 0,
+            })
+        }
+
+        async fn query_multi(
+            &self,
+            _handle: &ConnectionHandle,
+            sql: &str,
+            _limit: Option<u32>,
+        ) -> Result<MultiQueryResult, DriverError> {
+            Ok(MultiQueryResult {
+                results: vec![self.statement(sql)],
+                total_time_ms: 1,
+            })
+        }
+
+        async fn query_stream(
+            &self,
+            handle: &ConnectionHandle,
+            sql: &str,
+            limit: Option<u32>,
+            on_event: QueryStreamCallback,
+        ) -> Result<(), DriverError> {
+            *self.streamed.lock().unwrap() = true;
+            if self.override_stream {
+                emit_multi_query_as_stream(self.query_multi(handle, sql, limit).await?, &on_event);
+                return Ok(());
+            }
+            let result = self.query_multi(handle, sql, limit).await?;
+            emit_multi_query_as_stream(result, &on_event);
+            Ok(())
+        }
+
+        async fn query_with_params(
+            &self,
+            handle: &ConnectionHandle,
+            sql: &str,
+            _params: &[Value],
+        ) -> Result<QueryResult, DriverError> {
+            self.query(handle, sql).await
+        }
+
+        async fn execute(
+            &self,
+            _handle: &ConnectionHandle,
+            _sql: &str,
+        ) -> Result<u64, DriverError> {
+            Ok(0)
+        }
+
+        async fn cancel_query(&self, _handle: &ConnectionHandle) -> Result<(), DriverError> {
+            Ok(())
+        }
+    }
+
+    fn collect() -> (QueryStreamCallback, Arc<Mutex<Vec<QueryStreamEvent>>>) {
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let events_cb = Arc::clone(&events);
+        (
+            Arc::new(move |ev| {
+                events_cb.lock().unwrap().push(ev);
+            }),
+            events,
+        )
+    }
+
+    #[tokio::test]
+    async fn default_query_stream_chunks_materialized_rows() {
+        struct DefaultStreamDriver {
+            inner: FakeDriver,
+        }
+
+        #[async_trait]
+        impl DatabaseDriver for DefaultStreamDriver {
+            fn driver_type(&self) -> DatabaseType {
+                self.inner.driver_type()
+            }
+            async fn connect(
+                &self,
+                config: &ConnectionConfig,
+            ) -> Result<ConnectionHandle, DriverError> {
+                self.inner.connect(config).await
+            }
+            async fn test_connection(
+                &self,
+                config: &ConnectionConfig,
+            ) -> Result<ServerInfo, DriverError> {
+                self.inner.test_connection(config).await
+            }
+            async fn disconnect(&self, handle: ConnectionHandle) -> Result<(), DriverError> {
+                self.inner.disconnect(handle).await
+            }
+            async fn get_databases(
+                &self,
+                handle: &ConnectionHandle,
+            ) -> Result<Vec<String>, DriverError> {
+                self.inner.get_databases(handle).await
+            }
+            async fn get_tables(
+                &self,
+                handle: &ConnectionHandle,
+                database: &str,
+            ) -> Result<Vec<TableInfo>, DriverError> {
+                self.inner.get_tables(handle, database).await
+            }
+            async fn get_table_schema(
+                &self,
+                handle: &ConnectionHandle,
+                table: &str,
+            ) -> Result<TableSchema, DriverError> {
+                self.inner.get_table_schema(handle, table).await
+            }
+            async fn query(
+                &self,
+                handle: &ConnectionHandle,
+                sql: &str,
+            ) -> Result<QueryResult, DriverError> {
+                self.inner.query(handle, sql).await
+            }
+            async fn query_multi(
+                &self,
+                handle: &ConnectionHandle,
+                sql: &str,
+                limit: Option<u32>,
+            ) -> Result<MultiQueryResult, DriverError> {
+                self.inner.query_multi(handle, sql, limit).await
+            }
+            async fn query_with_params(
+                &self,
+                handle: &ConnectionHandle,
+                sql: &str,
+                params: &[Value],
+            ) -> Result<QueryResult, DriverError> {
+                self.inner.query_with_params(handle, sql, params).await
+            }
+            async fn execute(
+                &self,
+                handle: &ConnectionHandle,
+                sql: &str,
+            ) -> Result<u64, DriverError> {
+                self.inner.execute(handle, sql).await
+            }
+            async fn cancel_query(&self, handle: &ConnectionHandle) -> Result<(), DriverError> {
+                self.inner.cancel_query(handle).await
+            }
+        }
+
+        let driver = DefaultStreamDriver {
+            inner: FakeDriver {
+                streamed: Mutex::new(false),
+                override_stream: false,
+                rows: QUERY_STREAM_BATCH_SIZE + 2,
+            },
+        };
+        let handle = ConnectionHandle {
+            id: "h".into(),
+            pool_id: "p".into(),
+        };
+        let (cb, events) = collect();
+        driver
+            .query_stream(&handle, "SELECT 1", None, cb)
+            .await
+            .unwrap();
+        let events = events.lock().unwrap();
+        let chunks = events
+            .iter()
+            .filter(|e| matches!(e, QueryStreamEvent::Rows { .. }))
+            .count();
+        assert!(chunks >= 2);
+        assert!(matches!(events.last(), Some(QueryStreamEvent::Done { .. })));
+    }
+
+    #[tokio::test]
+    async fn reuse_driver_forwards_query_stream() {
+        let inner = FakeDriver::new(3, true);
+        let reuse = ReuseDriver::new(inner.clone(), "mariadb");
+        let handle = ConnectionHandle {
+            id: "h".into(),
+            pool_id: "p".into(),
+        };
+        let (cb, events) = collect();
+        reuse
+            .query_stream(&handle, "SELECT 1", Some(10), cb)
+            .await
+            .unwrap();
+        assert!(*inner.streamed.lock().unwrap());
+        let events = events.lock().unwrap();
+        assert!(events
+            .iter()
+            .any(|e| matches!(e, QueryStreamEvent::StatementStart { .. })));
+        assert!(matches!(events.last(), Some(QueryStreamEvent::Done { .. })));
     }
 }

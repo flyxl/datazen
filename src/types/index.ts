@@ -123,6 +123,13 @@ export interface MultiQueryResult {
   totalTimeMs: number;
 }
 
+/** IPC events for `execute_query_stream`. Independent of SQL LIMIT. */
+export type QueryStreamEvent =
+  | { type: 'statementStart'; index: number; sql: string; columns: ColumnInfo[] }
+  | { type: 'rows'; index: number; rows: (Value | null)[][] }
+  | { type: 'statementEnd'; index: number; rowsAffected?: number; executionTimeMs: number; truncated: boolean }
+  | { type: 'done'; totalTimeMs: number };
+
 export interface ExplainResult {
   planText: string;
   planJson?: unknown;

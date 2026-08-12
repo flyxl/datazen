@@ -1005,3 +1005,32 @@ KeyValueDriver (KV 专用, db/traits/kv.rs)
 4. 按需覆盖：`skip_count_query`、`format_sql_literal`、`build_update_sql`
 5. 新型 IPC 命令放入对应 `commands/*.rs` 子模块
 6. `lib.rs` — `generate_handler` 注册新命令
+
+## 4. 查询结果流式传输
+
+SQL 编辑器走 `execute_query_stream`（Tauri `Channel`），按批发送行，避免一次性把整个结果集序列化进 IPC。
+
+`query_multi` / Driver Command `query` 仍一次性返回完整 `MultiQueryResult`，供 MCP、Workflow、Schema 缓存等需要完整结果的路径使用。
+
+### 与「限制 SELECT 结果行数」的关系
+
+这两件事互相独立，禁止混用：
+
+| | 限制 SELECT 结果行数 | 流式传输 |
+|---|---|---|
+| 作用 | 改写 SQL（`LIMIT n+1`）或在驱动侧截断 | 传输与解码分批进行 |
+| 开关 | `AppSettings.limit_select_results` | 编辑器路径始终开启 |
+| 关闭开关时 | `limit = None`，返回全部行 | 仍然分批推送全部行 |
+| 批大小 | 不是行数上限 | `QUERY_STREAM_BATCH_SIZE`（默认 500），只影响 IPC 分片 |
+
+各 path 驱动覆盖 `DatabaseDriver::query_stream`，按协议能力分三档：
+
+| 档次 | 驱动 | 行为 |
+|---|---|---|
+| 逐行 fetch | Postgres / MySQL / SQLite（sqlx `.fetch()`）、DuckDB（`rows.next()`）、SQL Server（tiberius `QueryItem`）、MongoDB（cursor `try_next`） | 驱动侧不攒完整结果集 |
+| 服务端分页 | Elasticsearch（`/_sql` cursor）、HBase（scanner 循环） | 按批向服务端取下一页 |
+| 解析后分批 emit | ClickHouse / Turso / rqlite / InfluxDB / Vector / VictoriaMetrics / Redis | HTTP/RESP 通常一次返回 JSON，解码后用 `QueryRowBatcher` 分批推给 IPC；SQL 类仍走 `append_select_limit`（`LIMIT n+1`） |
+
+`ReuseDriver` 必须转发 `query_stream`，以便 Doris / MariaDB 等复用驱动拿到内层的真正流式实现。
+
+默认实现（先 `query_multi` 再 `emit_multi_query_as_stream`）只留给未覆盖的 Git 驱动或第三方插件。
