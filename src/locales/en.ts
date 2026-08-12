@@ -1198,6 +1198,17 @@ const en: Record<TranslationKey, string> = {
   'docs.openDashboardHelp': 'Dashboards Help',
   'dashboard.emptyBoards': 'No boards yet — create your first one',
   'dashboard.createFirstBoard': 'Create first board',
+  'dashboard.newPanel': 'New panel',
+  'dashboard.deletePanel': 'Delete panel',
+  'dashboard.deletePanelConfirm': 'Delete this dashboard panel and all its widgets?',
+  'dashboard.deleteWidget': 'Delete widget',
+  'dashboard.deleteWidgetConfirm': 'Remove this widget from the panel?',
+  'dashboard.selectPanel': 'Choose a dashboard panel',
+  'dashboard.createNewPanel': 'Create new panel',
+  'dashboard.workflowInUse': 'This workflow is used by dashboard widgets',
+  'dashboard.openWorkflowEditor': 'Open workflow editor',
+  'dashboard.selectWorkflow': 'Select workflow…',
+  'workflows.editor.invalidYamlField': 'Invalid YAML: missing or invalid field "{field}"',
   'docs.openSchemaDiffHelp': 'Schema Diff Help',
 };
 

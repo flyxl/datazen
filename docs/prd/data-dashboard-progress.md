@@ -25,14 +25,14 @@
 | F1 | 统一 `datazen.sqlite` Schema + AppDb CRUD | `done` | 7/7 | [Verify](0dc7d514) 16 PASS | `8a763c2` |
 | F2 | Workflow 入库替换 YAML registry；visibility | `done` | 4/4 + IPC | [Verify](310a57bd) PASS | `c469639` |
 | F3 | `current_time`；隐藏 WF 不写 workflow_history | `done` | 4/4 | [Verify](6ae9b084) PASS | `24455f6` |
-| F4 | Workflow 编辑页：可视化 + YAML 双模 | `done` | PASS | [Verify](5f332e7e) PASS | pending |
+| F4 | Workflow 编辑页：可视化 + YAML 双模 | `done` | PASS | [Verify](5f332e7e) PASS | `705858e` |
 | F5 | 入口更名/直达窗口；移除设置→监控 | `done` | 70 | [Verify](f89eb288) PASS | `167887d` |
-| F6 | 看板窗内面板 CRUD（SQLite） | `done` | dashboard:: | [Verify](5f332e7e) PASS | pending |
-| F7 | Widget 仅 workflowId；Executor；Monitor | `done` | dashboard+monitor | [Verify](5f332e7e) PASS | pending |
-| F8 | 图⇄表切换；编辑抽屉 | `done` | FE unit | [Verify](5f332e7e) PASS | pending |
-| F9 | 从 SQL / 可见 Workflow「添加到看板」 | `done` | create:: | [Verify](5f332e7e) PASS | pending |
-| F10 | 删除引用检查；面板暂停；运行历史 | `done` | Rust | [Verify](5f332e7e) PASS | pending |
-| F11 | 整体 Review + 修复验证 | `pending` | — | — | — |
+| F6 | 看板窗内面板 CRUD（SQLite） | `done` | dashboard:: | [Verify](5f332e7e) PASS | `705858e` |
+| F7 | Widget 仅 workflowId；Executor；Monitor | `done` | dashboard+monitor | [Verify](5f332e7e) PASS | `705858e` |
+| F8 | 图⇄表切换；编辑抽屉 | `done` | FE unit | [Verify](5f332e7e) PASS | `705858e` |
+| F9 | 从 SQL / 可见 Workflow「添加到看板」 | `done` | create:: | [Verify](5f332e7e) PASS | `705858e` |
+| F10 | 删除引用检查；面板暂停；运行历史 | `done` | Rust | [Verify](5f332e7e) PASS | `705858e` |
+| F11 | 整体 Review + 修复验证 | `in_progress` | — | — | pending |
 | F12 | 全量单测 + e2e:dashboard；文档收尾提交 | `pending` | — | — | — |
 
 ## 变更日志
@@ -40,4 +40,5 @@
 | 日期 | 内容 |
 |------|------|
 | 2026-08-12 | F0–F5 完成 |
-| 2026-08-12 | F4 YAML 双模 + F6–F10 看板核心落地；locale 对齐后测试 PASS |
+| 2026-08-12 | F4 YAML 双模 + F6–F10 看板核心落地（`705858e`） |
+| 2026-08-12 | F11：补齐面板 Tab、AddToDashboardDialog、hidden SQL 写回、仅 finalOutput、export v2、E2E 重写 |
