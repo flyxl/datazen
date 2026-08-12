@@ -608,3 +608,49 @@ export async function waitForEditInput() {
   );
   return $('input.font-mono');
 }
+
+// ── Host Select (dz-select-listbox) ──────────────────────────────────
+
+/** Open a Host Select by matching the trigger's visible label, then pick an option. */
+export async function selectDzOption(triggerLabel: string, optionLabel: string) {
+  await browser.execute(
+    (trigger: string, option: string) => {
+      const buttons = Array.from(document.querySelectorAll('button[aria-haspopup="listbox"]'));
+      const btn = buttons.find((b) => (b.textContent || '').includes(trigger));
+      if (!btn) throw new Error(`Select trigger not found: ${trigger}`);
+      (btn as HTMLElement).click();
+      const list = document.getElementById('dz-select-listbox');
+      if (!list) throw new Error('dz-select-listbox not open');
+      const item = Array.from(list.children).find((el) => (el.textContent || '').includes(option));
+      if (!item) throw new Error(`Select option not found: ${option}`);
+      item.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+    },
+    triggerLabel,
+    optionLabel,
+  );
+  await browser.pause(200);
+}
+
+/** Ensure connection window is open on the seeded PG connection. */
+export async function openSeededPgConnectionWindow(mainWindow: string) {
+  let handles = await browser.getWindowHandles();
+  if (handles.length === 1) {
+    await clickCardConnectButton();
+    await browser.waitUntil(async () => (await browser.getWindowHandles()).length > 1, {
+      timeout: 30000,
+      timeoutMsg: 'Timed out waiting for connection window',
+    });
+    handles = await browser.getWindowHandles();
+  }
+  const connWindow = handles.find((h) => h !== mainWindow)!;
+  await browser.switchToWindow(connWindow);
+  await browser.waitUntil(
+    async () => {
+      const body = await $('body').getText();
+      return body.includes('新建查询') || body.includes('New Query') || body.includes('新查詢');
+    },
+    { timeout: 20000, timeoutMsg: 'Timed out waiting for connection toolbar' },
+  );
+  await browser.pause(800);
+  return connWindow;
+}

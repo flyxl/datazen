@@ -40,8 +40,8 @@ async function seedTestWorkflow() {
     description: 'Self-contained workflow for E2E tab system test',
     variables: [],
     steps: [
-      { type: 'query', id: 'step_a', sql: 'SELECT 1 AS val, \'alpha\' AS label', connection: connId },
-      { type: 'query', id: 'step_b', sql: 'SELECT 2 AS val, \'beta\' AS label', connection: connId },
+      { type: 'query', id: 'step_a', sql: "SELECT 1 AS val, 'alpha' AS label", connection: connId },
+      { type: 'query', id: 'step_b', sql: "SELECT 2 AS val, 'beta' AS label", connection: connId },
     ],
   };
   await invokeBackend('workflow_save', { workflow });
@@ -51,17 +51,27 @@ async function seedTestWorkflow() {
     name: 'E2E Focus Test WF',
     description: 'Workflow with variable to test focus behavior',
     variables: [{ name: 'uid', type: 'string', description: 'User ID', required: true }],
-    steps: [
-      { type: 'query', id: 'step1', sql: "SELECT '{{uid}}' AS uid", connection: connId },
-    ],
+    steps: [{ type: 'query', id: 'step1', sql: "SELECT '{{uid}}' AS uid", connection: connId }],
   };
   await invokeBackend('workflow_save', { workflow: focusWf });
 }
 
 async function cleanupTestWorkflow() {
-  try { await invokeBackend('workflow_delete', { workflowId: TEST_WORKFLOW_ID }); } catch { /* ok */ }
-  try { await invokeBackend('workflow_delete', { workflowId: FOCUS_TEST_WF_ID }); } catch { /* ok */ }
-  try { await invokeBackend('workflow_history_clear', { workflowId: null }); } catch { /* ok */ }
+  try {
+    await invokeBackend('workflow_delete', { workflowId: TEST_WORKFLOW_ID });
+  } catch {
+    /* ok */
+  }
+  try {
+    await invokeBackend('workflow_delete', { workflowId: FOCUS_TEST_WF_ID });
+  } catch {
+    /* ok */
+  }
+  try {
+    await invokeBackend('workflow_history_clear', { workflowId: null });
+  } catch {
+    /* ok */
+  }
 }
 
 async function findAndClickButton(textFragments: string[]) {
@@ -70,7 +80,10 @@ async function findAndClickButton(textFragments: string[]) {
     for (const btn of buttons) {
       if (btn.hasAttribute('disabled')) continue;
       const text = btn.textContent || '';
-      if (frags.some((f) => text.includes(f))) { btn.click(); return true; }
+      if (frags.some((f) => text.includes(f))) {
+        btn.click();
+        return true;
+      }
     }
     return false;
   }, textFragments);
@@ -86,10 +99,13 @@ async function openWorkflowFromMain(mainHandle: string) {
 }
 
 async function waitForWorkflowList() {
-  await browser.waitUntil(async () => {
-    const text = await $('body').getText();
-    return text.includes('E2E Tab Test WF');
-  }, { timeout: 8000, timeoutMsg: 'Timed out waiting for test workflow in list' });
+  await browser.waitUntil(
+    async () => {
+      const text = await $('body').getText();
+      return text.includes('E2E Tab Test WF');
+    },
+    { timeout: 8000, timeoutMsg: 'Timed out waiting for test workflow in list' },
+  );
 }
 
 async function selectWorkflow() {
@@ -115,12 +131,15 @@ async function executeAndWait() {
   });
   expect(clicked).toBe(true);
 
-  await browser.waitUntil(async () => {
-    const text = await $('body').getText();
-    const hasResult = text.includes('step_a') || text.includes('✓');
-    const executing = text.includes('执行中');
-    return hasResult && !executing;
-  }, { timeout: 30000, timeoutMsg: 'Timed out waiting for workflow execution to finish' });
+  await browser.waitUntil(
+    async () => {
+      const text = await $('body').getText();
+      const hasResult = text.includes('step_a') || text.includes('✓');
+      const executing = text.includes('执行中');
+      return hasResult && !executing;
+    },
+    { timeout: 30000, timeoutMsg: 'Timed out waiting for workflow execution to finish' },
+  );
 
   await browser.pause(500);
 }
@@ -276,7 +295,9 @@ describe('Workflow Tab System (WORKFLOW-WINDOW)', () => {
 
     // Count tabs before clicking history
     const tabsBefore = await browser.execute(() => {
-      const tabBar = document.querySelectorAll('[class*="border-r"][class*="border-edge"][class*="text-xs"]');
+      const tabBar = document.querySelectorAll(
+        '[class*="border-r"][class*="border-edge"][class*="text-xs"]',
+      );
       return tabBar.length;
     });
 
@@ -288,7 +309,9 @@ describe('Workflow Tab System (WORKFLOW-WINDOW)', () => {
 
       // Count tabs after first click
       const tabsAfterFirst = await browser.execute(() => {
-        const tabBar = document.querySelectorAll('[class*="border-r"][class*="border-edge"][class*="text-xs"]');
+        const tabBar = document.querySelectorAll(
+          '[class*="border-r"][class*="border-edge"][class*="text-xs"]',
+        );
         return tabBar.length;
       });
 
@@ -303,7 +326,9 @@ describe('Workflow Tab System (WORKFLOW-WINDOW)', () => {
 
       // Count tabs after second click - should be the same
       const tabsAfterSecond = await browser.execute(() => {
-        const tabBar = document.querySelectorAll('[class*="border-r"][class*="border-edge"][class*="text-xs"]');
+        const tabBar = document.querySelectorAll(
+          '[class*="border-r"][class*="border-edge"][class*="text-xs"]',
+        );
         return tabBar.length;
       });
 
@@ -320,7 +345,8 @@ describe('Workflow Tab System (WORKFLOW-WINDOW)', () => {
     // After execution, the first step should be automatically selected
     const body = await $('body').getText();
     // step_a should be visible in the step detail view (its content or its tab highlighted)
-    const hasStepContent = body.includes('val') || body.includes('alpha') || body.includes('step_a');
+    const hasStepContent =
+      body.includes('val') || body.includes('alpha') || body.includes('step_a');
     expect(hasStepContent).toBe(true);
 
     // The step_a tab should have the active/selected styling
@@ -450,12 +476,32 @@ describe('Workflow Tab System (WORKFLOW-WINDOW)', () => {
       const buttons = document.querySelectorAll('button');
       for (const btn of buttons) {
         const text = btn.textContent || '';
-        if ((text.includes('执行记录') || text.includes('History')) && btn.className.includes('font-medium')) {
+        if (
+          (text.includes('执行记录') || text.includes('History')) &&
+          btn.className.includes('font-medium')
+        ) {
           return true;
         }
       }
       return false;
     });
     expect(isHistoryActive).toBe(true);
+  });
+
+  it('WF-YAML-001: 应能切换到 YAML 编辑模式', async () => {
+    await selectWorkflow();
+    const yamlTab = await $('[data-testid="workflow-mode-yaml"]');
+    await yamlTab.waitForDisplayed({ timeout: 10000 });
+    await yamlTab.click();
+    await browser.pause(600);
+    await expect(await $('[data-testid="workflow-yaml-editor"]')).toBeDisplayed();
+  });
+
+  it('WF-YAML-002: YAML 模式应显示保存入口', async () => {
+    const saveBtn = await $('[data-testid="workflow-yaml-save"]');
+    await expect(saveBtn).toBeDisplayed();
+    const visualTab = await $('[data-testid="workflow-mode-visual"]');
+    await visualTab.click();
+    await browser.pause(400);
   });
 });
