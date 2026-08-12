@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -38,6 +38,8 @@ jobs:
       - name: Publish dry run
         run: cargo publish -p datazen-driver-api --locked --dry-run
 
+      # Requires secrets.CRATES_IO and a verified email on the crates.io account
+      # that owns the token (https://crates.io/settings/profile).
       - name: Publish crate
         if: github.event_name == 'push' || inputs.publish == true
         run: cargo publish -p datazen-driver-api --locked

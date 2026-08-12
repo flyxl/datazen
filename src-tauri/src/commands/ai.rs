@@ -1524,12 +1524,15 @@ pub(crate) async fn workflow_execute_impl(
     .await
     .cmd_err("workflow_execute")?;
 
-    if let Err(e) = state
-        .workflow_history
-        .record(&workflow.id, &workflow.name, &variables, &result)
-        .await
-    {
-        tracing::warn!("Failed to record workflow history: {e}");
+    // Dashboard-owned hidden workflows must not pollute the user-facing history list.
+    if workflow.visibility != crate::workflow::WorkflowVisibility::DashboardHidden {
+        if let Err(e) = state
+            .workflow_history
+            .record(&workflow.id, &workflow.name, &variables, &result)
+            .await
+        {
+            tracing::warn!("Failed to record workflow history: {e}");
+        }
     }
 
     Ok(result)
@@ -1558,6 +1561,36 @@ pub async fn workflow_save(
 }
 
 #[tauri::command]
+pub async fn workflow_save_yaml(
+    state: State<'_, AppState>,
+    yaml: String,
+) -> Result<crate::workflow::WorkflowDefinition, CommandError> {
+    state
+        .workflow_registry
+        .save_workflow_yaml(&yaml)
+        .await
+        .map_err(CommandError::Validation)
+}
+
+#[tauri::command]
+pub async fn workflow_get_yaml(
+    state: State<'_, AppState>,
+    workflow_id: String,
+) -> Result<String, CommandError> {
+    let record = state
+        .workflow_registry
+        .app_db()
+        .get_workflow(&workflow_id)
+        .map_err(|e| match e {
+            crate::store::AppDbError::NotFound(id) => {
+                CommandError::NotFound(format!("Workflow '{id}' not found"))
+            }
+            other => CommandError::Internal(other.to_string()),
+        })?;
+    Ok(record.definition_yaml)
+}
+
+#[tauri::command]
 pub async fn workflow_delete(
     state: State<'_, AppState>,
     workflow_id: String,
@@ -1566,7 +1599,7 @@ pub async fn workflow_delete(
         .workflow_registry
         .delete_workflow(&workflow_id)
         .await
-        .map_err(CommandError::Internal)
+        .map_err(|msg| CommandError::Validation(msg))
 }
 
 #[tauri::command]

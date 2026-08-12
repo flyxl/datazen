@@ -195,6 +195,7 @@ mod tests {
                 enabled,
                 interval_secs: interval,
             }),
+            visibility: Default::default(),
         }
     }
 

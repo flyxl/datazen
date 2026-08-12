@@ -1,5 +1,23 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, BarChart3, Bookmark, Check, Clock, Database, FileSearch, Loader2, Play, Sparkles, Square, Stethoscope, TableProperties, Trash2, Undo2, Wand2 } from 'lucide-react';
+import {
+  AlertTriangle,
+  BarChart3,
+  Bookmark,
+  Check,
+  Clock,
+  Database,
+  FileSearch,
+  Gauge,
+  Loader2,
+  Play,
+  Sparkles,
+  Square,
+  Stethoscope,
+  TableProperties,
+  Trash2,
+  Undo2,
+  Wand2,
+} from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { Button } from '../../components/ui/Button';
@@ -20,11 +38,17 @@ import { useI18n } from '../../hooks/useI18n';
 import { useResizable } from '../../hooks/useResizable';
 import { cn } from '../../lib/cn';
 import { queryCommands } from '../../commands/query';
+import { dashboardCommands } from '../../commands/dashboard';
+import { openDashboardWindow } from '../../lib/windowManager';
+import { createEmptyDashboard } from '../dashboard/DashboardWindow';
+import { AddToDashboardDialog } from '../dashboard/AddToDashboardDialog';
 import { formatSql } from '../../lib/sqlFormat';
 import { parseSqlParams, paramsToPayload } from '../../lib/sqlBindParams';
 import { BindParamPanel } from '../../components/query/BindParamPanel';
 import { DB_REGISTRY } from '../../lib/databaseTypes';
 import type { ExplainResult, StatementResult } from '../../types';
+import { Dialog } from '../../components/ui/Dialog';
+import { analyzeTransactionSql, isAbortedTransactionError } from '../../lib/sqlTransactionGuard';
 
 interface QueryPanelProps {
   connectionId: string;
@@ -70,12 +94,19 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
   const [paramValues, setParamValues] = useState<Record<string, string>>({});
   const [inTransaction, setInTransaction] = useState(false);
   const [txBusy, setTxBusy] = useState(false);
+  const [txUnclosedOpen, setTxUnclosedOpen] = useState(false);
+  const [txAbortedOpen, setTxAbortedOpen] = useState(false);
+  const [txAbortedDetail, setTxAbortedDetail] = useState<string | null>(null);
+  const pendingExecuteRef = useRef<null | { kind: 'full' | 'selection'; sql?: string }>(null);
+  const [addToDashboardOpen, setAddToDashboardOpen] = useState(false);
   const safeMode = useSettingsStore((s) => s.settings.safeMode);
   const autoCommit = useSettingsStore((s) => s.settings.autoCommit);
   const resultViewMode = tab?.resultViewMode ?? 'table';
   const setResultViewModeStore = useQueryStore((s) => s.setResultViewMode);
   const setResultViewMode = useCallback(
-    (mode: 'table' | 'chart') => { if (tab) setResultViewModeStore(tab.id, mode); },
+    (mode: 'table' | 'chart') => {
+      if (tab) setResultViewModeStore(tab.id, mode);
+    },
     [tab, setResultViewModeStore],
   );
 
@@ -106,16 +137,22 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
   );
 
   const ensureTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const handleQualifiedPath = useCallback((parents: string[]) => {
-    if (ensureTimer.current) clearTimeout(ensureTimer.current);
-    ensureTimer.current = setTimeout(() => {
-      void ensureNamespacePath(parents);
-    }, 120);
-  }, [ensureNamespacePath]);
+  const handleQualifiedPath = useCallback(
+    (parents: string[]) => {
+      if (ensureTimer.current) clearTimeout(ensureTimer.current);
+      ensureTimer.current = setTimeout(() => {
+        void ensureNamespacePath(parents);
+      }, 120);
+    },
+    [ensureNamespacePath],
+  );
 
-  useEffect(() => () => {
-    if (ensureTimer.current) clearTimeout(ensureTimer.current);
-  }, []);
+  useEffect(
+    () => () => {
+      if (ensureTimer.current) clearTimeout(ensureTimer.current);
+    },
+    [],
+  );
 
   useEffect(() => {
     setConnectionId(connectionId);
@@ -187,9 +224,23 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
     }
   }, [connectionId, refreshTxStatus]);
 
-  const handleExecute = useCallback(() => {
-    if (!tab) return;
-    void (async () => {
+  const maybeOfferAbortedDialog = useCallback(
+    async (error: string | null | undefined) => {
+      await refreshTxStatus();
+      const stillInTx = await queryCommands
+        .sessionTransactionStatus(connectionId)
+        .catch(() => false);
+      if (stillInTx || isAbortedTransactionError(error)) {
+        setTxAbortedDetail(error ?? null);
+        setTxAbortedOpen(true);
+      }
+    },
+    [connectionId, refreshTxStatus],
+  );
+
+  const runExecute = useCallback(
+    async (kind: 'full' | 'selection', selectionSql?: string) => {
+      if (!tab) return;
       if (!autoCommit && !inTransaction) {
         try {
           await queryCommands.beginSessionTransaction(connectionId);
@@ -198,29 +249,95 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
           /* driver may not support transactions; continue */
         }
       }
-      const sel = editorRef.current?.getSelection()?.trim();
-      if (sel) {
-        await executeSelection(tab.id, sel, boundPayload);
+      if (kind === 'selection' && selectionSql != null) {
+        await executeSelection(tab.id, selectionSql, boundPayload);
       } else {
-        await executeQuery(tab.id, boundPayload);
-      }
-    })();
-  }, [tab, executeQuery, executeSelection, boundPayload, autoCommit, inTransaction, connectionId]);
-
-  const handleExecuteSelection = useCallback((sql: string) => {
-    if (!tab) return;
-    void (async () => {
-      if (!autoCommit && !inTransaction) {
-        try {
-          await queryCommands.beginSessionTransaction(connectionId);
-          setInTransaction(true);
-        } catch {
-          /* continue */
+        const sel = editorRef.current?.getSelection()?.trim();
+        if (sel) {
+          await executeSelection(tab.id, sel, boundPayload);
+        } else {
+          await executeQuery(tab.id, boundPayload);
         }
       }
-      await executeSelection(tab.id, sql, boundPayload);
-    })();
-  }, [tab, executeSelection, boundPayload, autoCommit, inTransaction, connectionId]);
+      const err = useQueryStore.getState().tabs.find((item) => item.id === tab.id)?.error ?? null;
+      if (err) {
+        await maybeOfferAbortedDialog(err);
+      } else {
+        await refreshTxStatus();
+      }
+    },
+    [
+      tab,
+      autoCommit,
+      inTransaction,
+      connectionId,
+      executeSelection,
+      executeQuery,
+      boundPayload,
+      maybeOfferAbortedDialog,
+      refreshTxStatus,
+    ],
+  );
+
+  const requestExecute = useCallback(
+    (kind: 'full' | 'selection', selectionSql?: string) => {
+      if (!tab) return;
+      const sqlForCheck =
+        kind === 'selection' && selectionSql != null
+          ? selectionSql
+          : editorRef.current?.getSelection()?.trim() || tab.sql;
+      if (analyzeTransactionSql(sqlForCheck).hasUnclosedBegin) {
+        pendingExecuteRef.current = { kind, sql: selectionSql };
+        setTxUnclosedOpen(true);
+        return;
+      }
+      void runExecute(kind, selectionSql);
+    },
+    [tab, runExecute],
+  );
+
+  const handleExecute = useCallback(() => {
+    requestExecute('full');
+  }, [requestExecute]);
+
+  const handleExecuteSelection = useCallback(
+    (sql: string) => {
+      requestExecute('selection', sql);
+    },
+    [requestExecute],
+  );
+
+  const handleConfirmUnclosedTx = useCallback(() => {
+    const pending = pendingExecuteRef.current;
+    pendingExecuteRef.current = null;
+    setTxUnclosedOpen(false);
+    if (!pending) return;
+    void runExecute(pending.kind, pending.sql);
+  }, [runExecute]);
+
+  const handleCancelUnclosedTx = useCallback(() => {
+    pendingExecuteRef.current = null;
+    setTxUnclosedOpen(false);
+  }, []);
+
+  const handleAbortedRollback = useCallback(async () => {
+    setTxBusy(true);
+    try {
+      await queryCommands.rollbackSessionTransaction(connectionId);
+      await refreshTxStatus();
+    } catch (e) {
+      console.warn(e);
+    } finally {
+      setTxBusy(false);
+      setTxAbortedOpen(false);
+      setTxAbortedDetail(null);
+    }
+  }, [connectionId, refreshTxStatus]);
+
+  const handleAbortedSkip = useCallback(() => {
+    setTxAbortedOpen(false);
+    setTxAbortedDetail(null);
+  }, []);
 
   const handleFormat = useCallback(() => {
     if (!tab?.sql.trim()) return;
@@ -235,9 +352,12 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
     if (tab) void cancelQuery(tab.id);
   }, [tab, cancelQuery]);
 
-  const handleApplyAiSql = useCallback((sql: string) => {
-    if (tab) updateSql(tab.id, sql);
-  }, [tab, updateSql]);
+  const handleApplyAiSql = useCallback(
+    (sql: string) => {
+      if (tab) updateSql(tab.id, sql);
+    },
+    [tab, updateSql],
+  );
 
   const handleExplain = useCallback(async () => {
     if (!tab?.sql.trim()) return;
@@ -270,7 +390,9 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
         setShowFavoriteDialog(true);
       }
     });
-    return () => { void unlisten.then((fn) => fn()); };
+    return () => {
+      void unlisten.then((fn) => fn());
+    };
   }, []);
 
   if (!tab) return null;
@@ -369,7 +491,9 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
         <span className="text-[11px] text-fg-muted">⌘+Enter {t('query.execute')}</span>
         <div className="flex-1" />
         {tab.executionTimeMs != null && (
-          <span className="text-[11px] text-fg-muted">{t('query.totalTime')} {tab.executionTimeMs} ms</span>
+          <span className="text-[11px] text-fg-muted">
+            {t('query.totalTime')} {tab.executionTimeMs} ms
+          </span>
         )}
         <Button
           variant={historyVisible ? 'secondary' : 'ghost'}
@@ -416,10 +540,7 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
           )}
 
           {/* SQL editor — height adjustable via bottom drag handle */}
-          <div
-            className="relative shrink-0 border-b border-edge"
-            style={{ height: editorHeight }}
-          >
+          <div className="relative shrink-0 border-b border-edge" style={{ height: editorHeight }}>
             <SqlEditor
               ref={editorRef}
               value={tab.sql}
@@ -440,14 +561,19 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
           />
 
           {showFavoriteDialog && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setShowFavoriteDialog(false)}>
+            <div
+              className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+              onClick={() => setShowFavoriteDialog(false)}
+            >
               <div
                 className="w-[400px] rounded-lg border border-edge bg-surface p-4 shadow-xl"
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="mb-3 text-sm font-medium text-fg">{t('query.addFavorite')}</div>
                 <div className="mb-2">
-                  <label className="mb-1 block text-xs text-fg-muted">{t('query.favoriteTitle')}</label>
+                  <label className="mb-1 block text-xs text-fg-muted">
+                    {t('query.favoriteTitle')}
+                  </label>
                   <input
                     type="text"
                     value={favoriteName}
@@ -521,9 +647,7 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
                   >
                     {t('explain.title')}
                     <span
-                      className={cn(
-                        'absolute bottom-0 left-0 right-0 h-0.5 bg-accent opacity-100',
-                      )}
+                      className={cn('absolute bottom-0 left-0 right-0 h-0.5 bg-accent opacity-100')}
                     />
                   </button>
                 </div>
@@ -677,6 +801,16 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
                           {t('chart.sampledWarning', { limit: '1000' })}
                         </span>
                       )}
+                      <Button
+                        variant="ghost"
+                        className="ml-auto h-7 gap-1 px-2 text-xs"
+                        data-testid="query-add-to-dashboard"
+                        disabled={!activeResult.rows.length}
+                        onClick={() => setAddToDashboardOpen(true)}
+                      >
+                        <Gauge className="h-3 w-3" />
+                        {t('dashboard.addToDashboard')}
+                      </Button>
                     </div>
                     {tab.running || resultViewMode === 'table' ? (
                       <ResultTable result={activeResult} />
@@ -711,7 +845,9 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
               {t('query.favoritesTitle')}
             </div>
             {favorites.length === 0 ? (
-              <div className="px-3 py-4 text-center text-xs text-fg-muted">{t('query.noFavorites')}</div>
+              <div className="px-3 py-4 text-center text-xs text-fg-muted">
+                {t('query.noFavorites')}
+              </div>
             ) : (
               favorites.map((f) => (
                 <div
@@ -724,7 +860,9 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
                     onClick={() => updateSql(tab.id, f.sql)}
                   >
                     <div className="truncate text-xs font-medium text-fg">{f.title}</div>
-                    <div className="mt-0.5 truncate font-mono text-[11px] text-fg-muted">{f.sql}</div>
+                    <div className="mt-0.5 truncate font-mono text-[11px] text-fg-muted">
+                      {f.sql}
+                    </div>
                   </button>
                   <button
                     type="button"
@@ -744,7 +882,9 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
               {t('query.historyTitle')}
             </div>
             {history.length === 0 ? (
-              <div className="px-3 py-4 text-center text-xs text-fg-muted">{t('query.noHistory')}</div>
+              <div className="px-3 py-4 text-center text-xs text-fg-muted">
+                {t('query.noHistory')}
+              </div>
             ) : (
               history.map((h) => (
                 <button
@@ -766,6 +906,76 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
           </aside>
         )}
       </div>
+
+      <Dialog
+        open={txUnclosedOpen}
+        title={t('query.txUnclosedTitle')}
+        description={t('query.txUnclosedBody')}
+        onClose={handleCancelUnclosedTx}
+        footer={
+          <>
+            <Button variant="ghost" onClick={handleCancelUnclosedTx}>
+              {t('query.txUnclosedCancel')}
+            </Button>
+            <Button onClick={handleConfirmUnclosedTx}>{t('query.txUnclosedConfirm')}</Button>
+          </>
+        }
+      >
+        <p className="text-xs text-fg-muted">{t('query.inTransaction')}</p>
+      </Dialog>
+
+      <Dialog
+        open={txAbortedOpen}
+        title={t('query.txAbortedTitle')}
+        description={t('query.txAbortedBody')}
+        onClose={handleAbortedSkip}
+        footer={
+          <>
+            <Button variant="ghost" onClick={handleAbortedSkip} disabled={txBusy}>
+              {t('query.txAbortedSkip')}
+            </Button>
+            <Button variant="danger" onClick={() => void handleAbortedRollback()} disabled={txBusy}>
+              {t('query.txAbortedRollback')}
+            </Button>
+          </>
+        }
+      >
+        {txAbortedDetail ? (
+          <pre className="max-h-40 overflow-auto whitespace-pre-wrap rounded border border-edge bg-surface p-2 font-mono text-[11px] text-red-400">
+            {txAbortedDetail}
+          </pre>
+        ) : null}
+      </Dialog>
+
+      <AddToDashboardDialog
+        open={addToDashboardOpen}
+        onClose={() => setAddToDashboardOpen(false)}
+        onConfirm={(dashboardId, newName) => {
+          void (async () => {
+            if (!tab?.sql.trim() || !activeResult?.rows.length) return;
+            setAddToDashboardOpen(false);
+            try {
+              let targetId = dashboardId;
+              if (dashboardId === 'new') {
+                const board = createEmptyDashboard(newName?.trim() || t('dashboard.defaultName'));
+                await dashboardCommands.saveDashboard(board);
+                targetId = board.id;
+              }
+              const created = await dashboardCommands.createWidgetFromSql({
+                dashboardId: targetId,
+                configId: connectionId,
+                sql: tab.sql,
+                title: tab.title || undefined,
+                viewMode: resultViewMode,
+                chartConfig: tab.chartConfig,
+              });
+              openDashboardWindow(created.dashboard.id, created.dashboard.name);
+            } catch (e) {
+              window.alert(String(e));
+            }
+          })();
+        }}
+      />
     </div>
   );
 }
@@ -786,9 +996,13 @@ function ResultTable({ result }: { result: StatementResult }) {
   const statusBar = useMemo(
     () => (
       <div className="flex items-center gap-3 border-b border-edge bg-surface-alt px-3 py-1.5 text-xs text-fg-secondary">
-        <span>{result.rows.length} {t('common.rows')}</span>
+        <span>
+          {result.rows.length} {t('common.rows')}
+        </span>
         <span className="text-edge">|</span>
-        <span>{result.columns.length} {t('common.columns')}</span>
+        <span>
+          {result.columns.length} {t('common.columns')}
+        </span>
         <span className="text-edge">|</span>
         <span>{result.executionTimeMs} ms</span>
         {result.sql && (

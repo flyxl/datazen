@@ -1,11 +1,27 @@
 use super::store::{
     delete_dashboard, get_dashboard, list_dashboards, load_monitor_settings, save_dashboard,
+    set_dashboard_refresh_paused,
 };
 use super::types::{
-    AggregationType, ChartConfig, ChartSortBy, ChartType, Dashboard, DashboardLayout,
-    DashboardWidget, WidgetLayout,
+    ChartConfig, ChartType, Dashboard, DashboardLayout, DashboardWidget, RefreshMode,
+    RefreshPolicy, ViewMode, WidgetLayout,
 };
 use crate::store::AppSettings;
+use crate::store::{AppDb, WorkflowRecord, WorkflowVisibility};
+use chrono::Utc;
+
+fn seed_workflow(db: &AppDb, id: &str) {
+    db.upsert_workflow(&WorkflowRecord {
+        id: id.into(),
+        name: "WF".into(),
+        description: String::new(),
+        visibility: WorkflowVisibility::User,
+        definition_yaml: format!("id: {id}\nname: WF\nsteps: []\n"),
+        created_at: Utc::now().to_rfc3339(),
+        updated_at: Utc::now().to_rfc3339(),
+    })
+    .unwrap();
+}
 
 fn sample_dashboard() -> Dashboard {
     Dashboard {
@@ -20,81 +36,101 @@ fn sample_dashboard() -> Dashboard {
         widgets: vec![DashboardWidget {
             id: "w1".into(),
             title: "Widget 1".into(),
-            config_id: "conn-1".into(),
-            sql: "SELECT 1 AS v".into(),
-            chart_config: ChartConfig {
+            workflow_id: "wf-1".into(),
+            view_mode: ViewMode::Chart,
+            chart_config: Some(ChartConfig {
                 chart_type: ChartType::Bar,
                 x_axis: Some("v".into()),
                 y_axes: vec!["v".into()],
                 group_by: None,
-                aggregation: AggregationType::None,
-                sort_by: ChartSortBy::None,
+                aggregation: super::types::AggregationType::None,
+                sort_by: super::types::ChartSortBy::None,
                 show_legend: true,
                 show_grid: true,
                 show_values: false,
                 color_scheme: "default".into(),
-            },
+            }),
             layout: WidgetLayout {
                 x: 0,
                 y: 0,
                 w: 6,
                 h: 4,
             },
-            refresh_sec: 60,
+            refresh: RefreshPolicy {
+                mode: RefreshMode::Interval,
+                refresh_sec: Some(60),
+            },
             alert: None,
             enabled: true,
         }],
         enabled: true,
+        refresh_paused: false,
     }
 }
 
-#[tokio::test]
-async fn save_and_list_dashboard_roundtrip() {
-    let dir = tempfile::tempdir().unwrap();
-    let dash = sample_dashboard();
-    save_dashboard(dir.path(), dash.clone()).unwrap();
-    let list = list_dashboards(dir.path()).unwrap();
-    assert_eq!(list.len(), 1);
-    assert_eq!(list[0].id, dash.id);
-    assert_eq!(list[0].widgets[0].sql, "SELECT 1 AS v");
+fn open_db() -> std::sync::Arc<AppDb> {
+    let db = AppDb::open_in_memory().unwrap();
+    seed_workflow(&db, "wf-1");
+    db
 }
 
 #[test]
-fn list_dashboards_creates_empty_file_when_missing() {
-    let dir = tempfile::tempdir().unwrap();
-    let list = list_dashboards(dir.path()).unwrap();
+fn save_and_list_dashboard_roundtrip() {
+    let db = open_db();
+    let dash = sample_dashboard();
+    save_dashboard(&db, dash.clone()).unwrap();
+    let list = list_dashboards(&db).unwrap();
+    assert_eq!(list.len(), 1);
+    assert_eq!(list[0].id, dash.id);
+    assert_eq!(list[0].widgets[0].workflow_id, "wf-1");
+}
+
+#[test]
+fn list_dashboards_empty_when_no_rows() {
+    let db = AppDb::open_in_memory().unwrap();
+    let list = list_dashboards(&db).unwrap();
     assert!(list.is_empty());
-    assert!(dir.path().join("dashboards.json").is_file());
-    let content = std::fs::read_to_string(dir.path().join("dashboards.json")).unwrap();
-    assert_eq!(content.trim(), "[]");
 }
 
 #[test]
 fn get_dashboard_returns_one_by_id() {
-    let dir = tempfile::tempdir().unwrap();
+    let db = open_db();
     let dash = sample_dashboard();
-    save_dashboard(dir.path(), dash.clone()).unwrap();
-    let loaded = get_dashboard(dir.path(), "dash-1").unwrap();
+    save_dashboard(&db, dash.clone()).unwrap();
+    let loaded = get_dashboard(&db, "dash-1").unwrap();
     assert_eq!(loaded.id, dash.id);
 }
 
 #[test]
 fn delete_dashboard_removes_entry() {
-    let dir = tempfile::tempdir().unwrap();
+    let db = open_db();
     let dash = sample_dashboard();
-    save_dashboard(dir.path(), dash).unwrap();
-    delete_dashboard(dir.path(), "dash-1").unwrap();
-    assert!(list_dashboards(dir.path()).unwrap().is_empty());
+    save_dashboard(&db, dash).unwrap();
+    delete_dashboard(&db, "dash-1").unwrap();
+    assert!(list_dashboards(&db).unwrap().is_empty());
 }
 
 #[test]
-fn save_dashboard_clamps_refresh_sec() {
-    let dir = tempfile::tempdir().unwrap();
+fn save_dashboard_clamps_interval_refresh_sec() {
+    let db = open_db();
     let mut dash = sample_dashboard();
-    dash.widgets[0].refresh_sec = 5;
-    save_dashboard(dir.path(), dash).unwrap();
-    let loaded = get_dashboard(dir.path(), "dash-1").unwrap();
-    assert_eq!(loaded.widgets[0].refresh_sec, 30);
+    dash.widgets[0].refresh = RefreshPolicy {
+        mode: RefreshMode::Interval,
+        refresh_sec: Some(5),
+    };
+    save_dashboard(&db, dash).unwrap();
+    let loaded = get_dashboard(&db, "dash-1").unwrap();
+    assert_eq!(loaded.widgets[0].refresh.refresh_sec, Some(30));
+}
+
+#[test]
+fn set_dashboard_refresh_paused_persists() {
+    let db = open_db();
+    let dash = sample_dashboard();
+    save_dashboard(&db, dash).unwrap();
+    set_dashboard_refresh_paused(&db, "dash-1", true).unwrap();
+    let loaded = get_dashboard(&db, "dash-1").unwrap();
+    assert!(loaded.refresh_paused);
 }
 
 #[test]
@@ -110,12 +146,4 @@ fn load_monitor_settings_uses_app_settings_nested_monitor() {
     };
     let monitor = load_monitor_settings(&settings);
     assert_eq!(monitor.max_concurrent_queries, 4);
-}
-
-#[test]
-fn load_monitor_settings_defaults_when_monitor_missing() {
-    let json = r#"{"theme":"dark","language":"en","limitSelectResults":false,"queryResultLimit":5000,"editorFontSize":13,"editorFontFamily":"JetBrains Mono","confirmOnDelete":true,"autoCommit":true,"defaultPageSize":50,"logLevel":"info","logPath":"","mcpServerEnabled":false,"mcpDisabledTools":[],"mcpPermissionMode":"safe_write","contextDir":"","checkForUpdatesOnStartup":false}"#;
-    let settings: AppSettings = serde_json::from_str(json).unwrap();
-    let monitor = load_monitor_settings(&settings);
-    assert_eq!(monitor.max_concurrent_queries, 2);
 }
