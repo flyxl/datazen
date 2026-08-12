@@ -1,10 +1,13 @@
-import { describe, expect, it, vi, afterEach } from 'vitest';
-import { render, fireEvent, cleanup, screen } from '@testing-library/react';
-import { FilterEditor } from '../FilterEditor';
+import { describe, expect, it, vi, afterEach, beforeEach } from 'vitest';
+import { render, fireEvent, cleanup, screen, act } from '@testing-library/react';
+import type { ComponentProps } from 'react';
+import { FILTER_VALUE_DEBOUNCE_MS, FilterEditor } from '../FilterEditor';
 import type { FilterCondition } from '../../types';
 
 vi.mock('../../hooks/useI18n', () => ({
-  useI18n: () => ({ t: (key: string) => key }),
+  useI18n: () => ({
+    t: (key: string) => key,
+  }),
 }));
 
 vi.mock('../ui/Select', () => ({
@@ -27,86 +30,212 @@ vi.mock('../ui/Select', () => ({
   ),
 }));
 
-afterEach(cleanup);
+beforeEach(() => {
+  vi.useFakeTimers();
+});
+
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
 const columns = [{ name: 'id' }, { name: 'name' }];
 
+function renderEditor(overrides: Partial<ComponentProps<typeof FilterEditor>> = {}) {
+  const props = {
+    columns,
+    appliedFilters: [] as FilterCondition[],
+    appliedLogic: 'and' as const,
+    draftFilters: [] as FilterCondition[],
+    draftLogic: 'and' as const,
+    open: true,
+    onOpenChange: vi.fn(),
+    onLogicChange: vi.fn(),
+    onChange: vi.fn(),
+    onAdd: vi.fn(),
+    onRemove: vi.fn(),
+    onApply: vi.fn(),
+    onClear: vi.fn(),
+    ...overrides,
+  };
+  render(<FilterEditor {...props} />);
+  return props;
+}
+
 describe('FilterEditor', () => {
-  it('toggles AND/OR logic and adds a default filter', () => {
-    const onLogicChange = vi.fn();
-    const onAdd = vi.fn();
-    render(
+  it('returns null when collapsed with no filters', () => {
+    const { container } = render(
       <FilterEditor
         columns={columns}
-        filters={[]}
-        logic="and"
-        onLogicChange={onLogicChange}
+        appliedFilters={[]}
+        appliedLogic="and"
+        draftFilters={[]}
+        draftLogic="and"
+        open={false}
+        onOpenChange={vi.fn()}
+        onLogicChange={vi.fn()}
         onChange={vi.fn()}
-        onAdd={onAdd}
+        onAdd={vi.fn()}
         onRemove={vi.fn()}
+        onApply={vi.fn()}
         onClear={vi.fn()}
       />,
     );
-
-    fireEvent.click(screen.getByText('filter.or'));
-    expect(onLogicChange).toHaveBeenCalledWith('or');
-    fireEvent.click(screen.getByText('filter.and'));
-    expect(onLogicChange).toHaveBeenCalledWith('and');
-
-    fireEvent.click(screen.getByText('filter.add'));
-    expect(onAdd).toHaveBeenCalledWith({ column: 'id', operator: 'eq', value: '' });
+    expect(container.firstChild).toBeNull();
   });
 
-  it('edits, clears, and removes filter rows', () => {
+  it('toggles AND/OR and adds a default filter in the open panel', () => {
+    const props = renderEditor({
+      draftFilters: [{ column: 'id', operator: 'eq', value: '' }],
+    });
+
+    fireEvent.click(screen.getByText('filter.or'));
+    expect(props.onLogicChange).toHaveBeenCalledWith('or');
+    fireEvent.click(screen.getByText('filter.and'));
+    expect(props.onLogicChange).toHaveBeenCalledWith('and');
+
+    fireEvent.click(screen.getAllByText('filter.add')[0]);
+    expect(props.onAdd).toHaveBeenCalledWith({ column: 'id', operator: 'eq', value: '' });
+  });
+
+  it('Apply is disabled until draft differs from applied', () => {
+    const filter: FilterCondition = { column: 'name', operator: 'eq', value: 'a' };
+    const props = renderEditor({
+      appliedFilters: [filter],
+      draftFilters: [filter],
+    });
+    expect(screen.getByText('filter.apply').closest('button')).toBeDisabled();
+
+    cleanup();
+    const dirty = renderEditor({
+      appliedFilters: [filter],
+      draftFilters: [{ ...filter, value: 'b' }],
+    });
+    fireEvent.click(screen.getByText('filter.apply'));
+    expect(dirty.onApply).toHaveBeenCalled();
+  });
+
+  it('shows complete filters as chips and expands on click', () => {
     const filters: FilterCondition[] = [
       { column: 'id', operator: 'eq', value: '1' },
       { column: 'name', operator: 'isNull', value: null },
     ];
-    const onChange = vi.fn();
-    const onRemove = vi.fn();
-    const onClear = vi.fn();
-    render(
-      <FilterEditor
-        columns={columns}
-        filters={filters}
-        logic="or"
-        onLogicChange={vi.fn()}
-        onChange={onChange}
-        onAdd={vi.fn()}
-        onRemove={onRemove}
-        onClear={onClear}
-      />,
-    );
+    const props = renderEditor({
+      appliedFilters: filters,
+      draftFilters: filters,
+      draftLogic: 'or',
+    });
+
+    // Complete → chips (no comboboxes yet). Summary bar also shows the same text.
+    expect(screen.queryAllByRole('combobox')).toHaveLength(0);
+    expect(screen.getAllByText(/id filter\.eq 1/).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText(/name filter\.isNull/).length).toBeGreaterThanOrEqual(1);
 
     fireEvent.click(screen.getByText('filter.clear'));
-    expect(onClear).toHaveBeenCalled();
+    expect(props.onClear).toHaveBeenCalled();
 
-    const selects = screen.getAllByRole('combobox');
-    fireEvent.change(selects[0], { target: { value: 'name' } });
-    expect(onChange).toHaveBeenCalledWith(0, expect.objectContaining({ column: 'name' }));
-    fireEvent.change(selects[1], { target: { value: 'like' } });
-    expect(onChange).toHaveBeenCalledWith(0, expect.objectContaining({ operator: 'like' }));
+    // Click the chip label (not the summary) — prefer the button with edit title.
+    fireEvent.click(screen.getAllByTitle('filter.editCondition')[0]);
+    expect(screen.getAllByRole('combobox').length).toBeGreaterThanOrEqual(2);
 
-    fireEvent.change(screen.getByPlaceholderText('filter.value'), { target: { value: 'alice' } });
-    expect(onChange).toHaveBeenCalledWith(0, expect.objectContaining({ value: 'alice' }));
+    const valueInput = screen.getByPlaceholderText('filter.value');
+    fireEvent.change(valueInput, { target: { value: 'alice' } });
+    act(() => {
+      vi.advanceTimersByTime(FILTER_VALUE_DEBOUNCE_MS);
+    });
+    expect(props.onChange).toHaveBeenCalledWith(0, expect.objectContaining({ value: 'alice' }));
 
     fireEvent.click(screen.getAllByLabelText('filter.remove')[1]);
-    expect(onRemove).toHaveBeenCalledWith(1);
+    expect(props.onRemove).toHaveBeenCalledWith(1);
   });
 
-  it('disables add when there are no columns', () => {
-    render(
-      <FilterEditor
-        columns={[]}
-        filters={[]}
-        logic="and"
-        onLogicChange={vi.fn()}
-        onChange={vi.fn()}
-        onAdd={vi.fn()}
-        onRemove={vi.fn()}
-        onClear={vi.fn()}
-      />,
-    );
-    expect(screen.getByText('filter.add').closest('button')).toBeDisabled();
+  it('keeps incomplete filters in editor form', () => {
+    renderEditor({
+      draftFilters: [{ column: 'name', operator: 'eq', value: '' }],
+    });
+    expect(screen.getByPlaceholderText('filter.value')).toBeInTheDocument();
+    expect(screen.getAllByRole('combobox')).toHaveLength(2);
+  });
+
+  it('does not commit filter value while IME is composing', () => {
+    const props = renderEditor({
+      draftFilters: [{ column: 'name', operator: 'eq', value: '' }],
+    });
+
+    const valueInput = screen.getByPlaceholderText('filter.value');
+    fireEvent.compositionStart(valueInput);
+    fireEvent.change(valueInput, { target: { value: 'huan' } });
+    act(() => {
+      vi.advanceTimersByTime(FILTER_VALUE_DEBOUNCE_MS * 2);
+    });
+    expect(props.onChange).not.toHaveBeenCalled();
+
+    fireEvent.change(valueInput, { target: { value: '欢' } });
+    fireEvent.compositionEnd(valueInput);
+    act(() => {
+      vi.advanceTimersByTime(FILTER_VALUE_DEBOUNCE_MS);
+    });
+    expect(props.onChange).toHaveBeenCalledWith(0, expect.objectContaining({ value: '欢' }));
+  });
+
+  it('shows applied summary when collapsed', () => {
+    renderEditor({
+      open: false,
+      appliedFilters: [
+        { column: 'region', operator: 'eq', value: '华北' },
+        { column: 'category', operator: 'eq', value: '家电' },
+      ],
+      appliedLogic: 'and',
+      draftFilters: [
+        { column: 'region', operator: 'eq', value: '华北' },
+        { column: 'category', operator: 'eq', value: '家电' },
+      ],
+    });
+    expect(screen.getByText(/region filter\.eq 华北/)).toBeInTheDocument();
+    expect(screen.queryByText('filter.apply')).not.toBeInTheDocument();
+  });
+
+  it('renders complete filters as compact chips by default', () => {
+    const filters: FilterCondition[] = [
+      { column: 'a', operator: 'eq', value: '1' },
+      { column: 'b', operator: 'eq', value: '2' },
+      { column: 'c', operator: 'eq', value: '3' },
+      { column: 'd', operator: 'eq', value: '4' },
+    ];
+    renderEditor({ draftFilters: filters });
+    expect(screen.queryAllByRole('combobox')).toHaveLength(0);
+    expect(screen.getByText(/a filter\.eq 1/)).toBeInTheDocument();
+    expect(screen.getByText(/d filter\.eq 4/)).toBeInTheDocument();
+  });
+
+  it('collapses to chip when a complete filter loses focus', () => {
+    renderEditor({
+      draftFilters: [{ column: 'name', operator: 'eq', value: 'alice' }],
+    });
+    // Fresh mount with a complete filter starts as chip (editingIndex null).
+    expect(screen.queryAllByRole('combobox')).toHaveLength(0);
+
+    fireEvent.click(screen.getAllByTitle('filter.editCondition')[0]);
+    expect(screen.getAllByRole('combobox').length).toBeGreaterThanOrEqual(2);
+
+    const valueInput = screen.getByPlaceholderText('filter.value');
+    fireEvent.blur(valueInput, { relatedTarget: document.body });
+    act(() => {
+      vi.advanceTimersByTime(20);
+    });
+    expect(screen.queryAllByRole('combobox')).toHaveLength(0);
+    expect(screen.getAllByTitle('filter.editCondition').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('does not collapse incomplete filter on blur', () => {
+    renderEditor({
+      draftFilters: [{ column: 'name', operator: 'eq', value: '' }],
+    });
+    const valueInput = screen.getByPlaceholderText('filter.value');
+    fireEvent.blur(valueInput, { relatedTarget: document.body });
+    act(() => {
+      vi.advanceTimersByTime(20);
+    });
+    expect(screen.getByPlaceholderText('filter.value')).toBeInTheDocument();
   });
 });

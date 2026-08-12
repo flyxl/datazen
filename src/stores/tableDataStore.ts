@@ -34,6 +34,41 @@ function toCellValue(val: unknown): Value | null {
   return val as Value;
 }
 
+function extractErrorMessage(e: unknown, fallback: string): string {
+  if (typeof e === 'string' && e.trim()) return e;
+  if (e instanceof Error && e.message.trim()) return e.message;
+  if (e && typeof e === 'object') {
+    const msg = (e as { message?: unknown }).message;
+    if (typeof msg === 'string' && msg.trim()) return msg;
+  }
+  return fallback;
+}
+
+/** Incomplete filters (just added / cleared value) must not hit the backend. */
+export function isCompleteFilter(filter: FilterCondition): boolean {
+  if (!filter.column) return false;
+  if (filter.operator === 'isNull' || filter.operator === 'isNotNull') return true;
+  if (filter.value === null || filter.value === undefined) return false;
+  if (typeof filter.value === 'string' && filter.value === '') return false;
+  if (Array.isArray(filter.value) && filter.value.length === 0) return false;
+  return true;
+}
+
+export function cloneFilters(filters: FilterCondition[]): FilterCondition[] {
+  return filters.map((f) => ({ ...f }));
+}
+
+export function filterDraftEqualsApplied(
+  draftFilters: FilterCondition[],
+  draftLogic: 'and' | 'or',
+  appliedFilters: FilterCondition[],
+  appliedLogic: 'and' | 'or',
+): boolean {
+  return (
+    draftLogic === appliedLogic && JSON.stringify(draftFilters) === JSON.stringify(appliedFilters)
+  );
+}
+
 /** Per-table state slice */
 export interface TableState {
   columns: ColumnSchema[];
@@ -41,8 +76,13 @@ export interface TableState {
   totalRows: number;
   page: number;
   pageSize: number;
+  /** Applied filters used by queries. */
   filters: FilterCondition[];
   filterLogic: 'and' | 'or';
+  /** In-progress filter editor state; committed via applyFilters(). */
+  draftFilters: FilterCondition[];
+  draftFilterLogic: 'and' | 'or';
+  filterPanelOpen: boolean;
   sorts: SortCondition[];
   editBuffer: Map<string, CellEdit>;
   selectedRows: Set<number>;
@@ -61,6 +101,9 @@ function emptyTableState(): TableState {
     pageSize: 50,
     filters: [],
     filterLogic: 'and',
+    draftFilters: [],
+    draftFilterLogic: 'and',
+    filterPanelOpen: false,
     sorts: [],
     editBuffer: new Map(),
     selectedRows: new Set(),
@@ -85,6 +128,9 @@ interface TableDataStore {
   pageSize: number;
   filters: FilterCondition[];
   filterLogic: 'and' | 'or';
+  draftFilters: FilterCondition[];
+  draftFilterLogic: 'and' | 'or';
+  filterPanelOpen: boolean;
   sorts: SortCondition[];
   editBuffer: Map<string, CellEdit>;
   selectedRows: Set<number>;
@@ -96,15 +142,25 @@ interface TableDataStore {
 
   setDatabaseType: (dbType: string) => void;
   switchToTable: (table: string) => void;
-  loadTableData: (params: { connectionId: string; table: string; skipCount?: boolean }) => Promise<void>;
+  loadTableData: (params: {
+    connectionId: string;
+    table: string;
+    skipCount?: boolean;
+  }) => Promise<void>;
   setPage: (page: number) => void;
   setPageSize: (size: number) => void;
+  /** Draft-only; opens the filter panel. Does not query until applyFilters(). */
   addFilter: (filter: FilterCondition) => void;
+  /** Apply immediately (e.g. AI NL filter). Updates draft + applied and reloads. */
   setFilters: (filters: FilterCondition[]) => void;
   updateFilter: (index: number, filter: FilterCondition) => void;
   setFilterLogic: (logic: 'and' | 'or') => void;
   removeFilter: (index: number) => void;
+  /** Clears draft + applied and reloads. */
   clearFilters: () => void;
+  /** Commits draft → applied and reloads. */
+  applyFilters: () => void;
+  setFilterPanelOpen: (open: boolean) => void;
   setSort: (sort: SortCondition) => void;
   startEdit: (row: number, col: string) => void;
   updateCell: (row: number, col: string, value: unknown) => void;
@@ -138,6 +194,9 @@ function syncFlat(active: string | null, states: Map<string, TableState>) {
     pageSize: ts.pageSize,
     filters: ts.filters,
     filterLogic: ts.filterLogic,
+    draftFilters: ts.draftFilters,
+    draftFilterLogic: ts.draftFilterLogic,
+    filterPanelOpen: ts.filterPanelOpen,
     sorts: ts.sorts,
     editBuffer: ts.editBuffer,
     selectedRows: ts.selectedRows,
@@ -146,6 +205,13 @@ function syncFlat(active: string | null, states: Map<string, TableState>) {
     loading: ts.loading,
     error: ts.error,
   };
+}
+
+function reloadActive(get: () => TableDataStore): void {
+  const { connectionId, activeTable } = get();
+  if (connectionId && activeTable) {
+    void get().loadTableData({ connectionId, table: activeTable });
+  }
 }
 
 function updateActive(
@@ -205,7 +271,7 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
         table,
         page,
         pageSize,
-        filters,
+        filters: filters.filter(isCompleteFilter),
         sorts,
         skipCount,
         filterLogic,
@@ -236,7 +302,7 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
       updated.set(table, {
         ...ts,
         loading: false,
-        error: e instanceof Error ? e.message : t('tableData.loadFailed'),
+        error: extractErrorMessage(e, t('tableData.loadFailed')),
       });
       set({
         tableStates: updated,
@@ -248,64 +314,88 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
   setPage: (page) => {
     updateActive(get, set, () => ({ page }));
     const { connectionId, activeTable } = get();
-    if (connectionId && activeTable) void get().loadTableData({ connectionId, table: activeTable, skipCount: true });
+    if (connectionId && activeTable)
+      void get().loadTableData({ connectionId, table: activeTable, skipCount: true });
   },
 
   setPageSize: (size) => {
     updateActive(get, set, () => ({ pageSize: size, page: 0 }));
     const { connectionId, activeTable } = get();
-    if (connectionId && activeTable) void get().loadTableData({ connectionId, table: activeTable, skipCount: true });
+    if (connectionId && activeTable)
+      void get().loadTableData({ connectionId, table: activeTable, skipCount: true });
   },
 
   addFilter: (filter) => {
     updateActive(get, set, (ts) => ({
-      filters: [...ts.filters, filter],
-      page: 0,
+      draftFilters: [...ts.draftFilters, filter],
+      filterPanelOpen: true,
     }));
-    const { connectionId, activeTable } = get();
-    if (connectionId && activeTable) void get().loadTableData({ connectionId, table: activeTable });
   },
 
   setFilters: (filters) => {
-    updateActive(get, set, () => ({ filters, page: 0 }));
-    const { connectionId, activeTable } = get();
-    if (connectionId && activeTable) void get().loadTableData({ connectionId, table: activeTable });
+    const next = cloneFilters(filters);
+    updateActive(get, set, () => ({
+      filters: next,
+      draftFilters: cloneFilters(next),
+      page: 0,
+      filterPanelOpen: true,
+    }));
+    reloadActive(get);
   },
 
   updateFilter: (index, filter) => {
     updateActive(get, set, (ts) => ({
-      filters: ts.filters.map((f, i) => (i === index ? filter : f)),
-      page: 0,
+      draftFilters: ts.draftFilters.map((f, i) => (i === index ? filter : f)),
     }));
-    const { connectionId, activeTable } = get();
-    if (connectionId && activeTable) void get().loadTableData({ connectionId, table: activeTable });
   },
 
   setFilterLogic: (logic) => {
-    updateActive(get, set, () => ({ filterLogic: logic, page: 0 }));
-    const { connectionId, activeTable } = get();
-    if (connectionId && activeTable) void get().loadTableData({ connectionId, table: activeTable });
+    updateActive(get, set, () => ({ draftFilterLogic: logic }));
   },
 
   removeFilter: (index) => {
     updateActive(get, set, (ts) => ({
-      filters: ts.filters.filter((_, i) => i !== index),
-      page: 0,
+      draftFilters: ts.draftFilters.filter((_, i) => i !== index),
     }));
-    const { connectionId, activeTable } = get();
-    if (connectionId && activeTable) void get().loadTableData({ connectionId, table: activeTable });
   },
 
   clearFilters: () => {
-    updateActive(get, set, () => ({ filters: [], page: 0 }));
-    const { connectionId, activeTable } = get();
-    if (connectionId && activeTable) void get().loadTableData({ connectionId, table: activeTable });
+    updateActive(get, set, () => ({
+      filters: [],
+      draftFilters: [],
+      filterLogic: 'and',
+      draftFilterLogic: 'and',
+      page: 0,
+    }));
+    reloadActive(get);
+  },
+
+  applyFilters: () => {
+    const { activeTable, tableStates } = get();
+    if (!activeTable) return;
+    const ts = getState(tableStates, activeTable);
+    if (
+      filterDraftEqualsApplied(ts.draftFilters, ts.draftFilterLogic, ts.filters, ts.filterLogic)
+    ) {
+      return;
+    }
+    updateActive(get, set, (cur) => ({
+      filters: cloneFilters(cur.draftFilters),
+      filterLogic: cur.draftFilterLogic,
+      page: 0,
+    }));
+    reloadActive(get);
+  },
+
+  setFilterPanelOpen: (open) => {
+    updateActive(get, set, () => ({ filterPanelOpen: open }));
   },
 
   setSort: (sort) => {
     updateActive(get, set, () => ({ sorts: [sort], page: 0 }));
     const { connectionId, activeTable } = get();
-    if (connectionId && activeTable) void get().loadTableData({ connectionId, table: activeTable, skipCount: true });
+    if (connectionId && activeTable)
+      void get().loadTableData({ connectionId, table: activeTable, skipCount: true });
   },
 
   startEdit: (row, col) => updateActive(get, set, () => ({ editingCell: { row, col } })),
@@ -326,7 +416,13 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
     }
 
     const nextBuffer = new Map(ts.editBuffer);
-    nextBuffer.set(key, { rowIndex: row, columnName: col, originalValue, newValue: value, pkSnapshot });
+    nextBuffer.set(key, {
+      rowIndex: row,
+      columnName: col,
+      originalValue,
+      newValue: value,
+      pkSnapshot,
+    });
     const nextRows = [...ts.rows];
     nextRows[row] = { ...rowObj, [col]: value as Value };
 
@@ -417,7 +513,7 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
       for (const [key, edit] of snapshot) merged.set(key, edit);
       updateActive(get, set, () => ({
         editBuffer: merged,
-        error: e instanceof Error ? e.message : t('tableData.commitFailed'),
+        error: extractErrorMessage(e, t('tableData.commitFailed')),
       }));
     }
   },
