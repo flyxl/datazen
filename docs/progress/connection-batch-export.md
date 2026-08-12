@@ -15,7 +15,7 @@
 | F1 | 批量导出纯逻辑：模式(data/structure/both)、多表内容组装、文件名约定 | done | （本提交） | PASS：25/25，lines 100% |
 | F2 | BatchExportDialog UI：表全选/多选 + 导出模式 + 格式/进度 | done | （本提交） | PASS：job lines 100% |
 | F3 | 拉取 DDL + 全量（分页）表数据供批量导出 | done | （本提交） | PASS：lines 97.77% |
-| F4 | 接入 SqlConnectionView 顶栏 + Schema 树（库节点/空白/多表）入口 | pending | — | — |
+| F4 | 接入 SqlConnectionView 顶栏 + Schema 树（库节点/空白/多表）入口 | done | （本提交） | PASS |
 | F5 | i18n 全 locale + 文档(AGENTS/architecture) + E2E 用例调整 | pending | — | — |
 | F6 | 合并到 main 并 push | pending | — | — |
 
@@ -46,4 +46,12 @@
 - deps 可注入：`getSchema` / `getDdl` / `getTableData` / `getDialect`（便于单测）
 - DDL：有方言则 `getCachedDDL`；无方言或失败 → `ddl: null`，仍返回数据
 - 单测：`src/lib/__tests__/loadBatchExportTable.test.ts`（多页合并、maxRows、无方言、DDL 失败）
+- 未 commit
+
+### F4 — 接入 SqlConnectionView（testing）
+
+- 顶栏「批量导出」按钮（Download 图标）→ `BatchExportDialog`；`initialSelected` 在 activePanel 为 table 时预选该表
+- Dialog：`tables` 来自 schemaStore；`loadTableExportData` → `loadBatchExportTableData`
+- Schema 树：database / blank / table / view 右键「批量导出…」（`onBatchExport`）；表节点保留单表 `ExportDialog`
+- `schemaTreeContextMenu`：labels.batchExport + handlers.onBatchExport；单测已更新
 - 未 commit
