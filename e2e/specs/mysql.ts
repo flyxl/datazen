@@ -1,3 +1,10 @@
+/**
+ * MySQL dialect / type smoke (Host fixture).
+ *
+ * Host UI + IPC adaptation across drivers is covered by the Host Connection
+ * Contract matrix (`e2e/specs/host-contract-matrix.ts` / `pnpm e2e:contract:matrix`).
+ * Prefer adding new Host-path assertions there instead of duplicating UI flows here.
+ */
 import { expect, browser, $, $$ } from '@wdio/globals';
 import { t } from '../i18n.js';
 import {

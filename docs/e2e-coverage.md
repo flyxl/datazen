@@ -12,6 +12,31 @@
 | **Gap** | 用户可走但尚无 E2E（须补齐） |
 | **Exception** | 自动化例外（见文末），须有替代覆盖 |
 
+## Host Connection Contract × Driver
+
+> 目标：每个 SQL 驱动各开连接窗口，跑同一套 Host UI/IPC journeys（适配验证）。
+
+| 入口 | 说明 |
+|------|------|
+| `pnpm e2e:contract:matrix` | PG + MySQL + SQLite 全矩阵 |
+| `pnpm e2e:contract:pg` | 仅 PostgreSQL（冒烟） |
+| `pnpm test:unit:e2e-contract:coverage` | fixtures/plan 单测覆盖率 ≥80% |
+
+| Journey | 内容 | sqlite |
+|---------|------|--------|
+| HC-CONN | 工具栏 / 子标签 | run |
+| HC-QUERY | 执行 SQL | run |
+| HC-DATA | 表数据分页 | run |
+| HC-FILTER | Apply / 空值不炸 | run |
+| HC-EDIT | 内联编辑 | run |
+| HC-STRUCT | 结构内嵌编辑+返回 | run |
+| HC-INDEX | 新建索引对话框 | run |
+| HC-EXPORT | DataTable 导出对话框 | run |
+| HC-OBJ | 例程面板 | **skip**（无 objects） |
+| HC-EXPLAIN | EXPLAIN 面板 | run |
+
+实现：`e2e/contract/` + `e2e/specs/host-contract-matrix.ts`。方言深度仍在 `packages/drivers/<id>/e2e/`。
+
 ## 主窗口 / 连接 / SQL
 
 | 用户路径 | Spec | 状态 |
