@@ -4,7 +4,6 @@ import type {
   CreateWidgetResult,
   Dashboard,
   DashboardWorkflowRef,
-  RefreshPolicy,
   RunIndexEntry,
   ViewMode,
   WidgetRun,

@@ -102,19 +102,21 @@ export function RunHistoryDrawer({
     };
   }, [open, dashboardId, widget, selectedId]);
 
-  const chartData = useMemo(() => {
-    if (!loadedRun || !widget) return null;
-    return widgetRunToChartData(loadedRun, widget.chartConfig);
-  }, [loadedRun, widget]);
+  const chartConfig = widget?.chartConfig;
 
-  const hasChart = widget && hasRenderableChart(chartData, widget.chartConfig);
+  const chartData = useMemo(() => {
+    if (!loadedRun || !chartConfig) return null;
+    return widgetRunToChartData(loadedRun, chartConfig);
+  }, [loadedRun, chartConfig]);
+
+  const hasChart = !!chartConfig && hasRenderableChart(chartData, chartConfig);
 
   const tableColumns = useMemo<ColumnDef[]>(
     () =>
       loadedRun?.columns.map((name) => ({
+        id: name,
         name,
-        dataType: 'unknown',
-        nullable: true,
+        type: 'unknown',
       })) ?? [],
     [loadedRun?.columns],
   );
@@ -254,8 +256,8 @@ export function RunHistoryDrawer({
                     : t('dashboard.chartNotConfigured')}
                 </div>
               )}
-              {!loadingRun && hasChart && chartData && viewMode === 'chart' && (
-                <ChartCanvas data={chartData.data} config={widget.chartConfig} />
+              {!loadingRun && hasChart && chartData && chartConfig && viewMode === 'chart' && (
+                <ChartCanvas data={chartData.data} config={chartConfig} />
               )}
               {!loadingRun &&
                 loadedRun?.status === 'ok' &&

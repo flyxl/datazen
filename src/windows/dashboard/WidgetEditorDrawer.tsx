@@ -13,12 +13,7 @@ import {
   REFRESH_WARN_BELOW_SEC,
   shouldWarnRefreshSec,
 } from '../../types/dashboard';
-import type {
-  AlertMetricAgg,
-  AlertOperator,
-  DashboardWidget,
-  RefreshMode,
-} from '../../types/dashboard';
+import type { AlertOperator, DashboardWidget, RefreshMode } from '../../types/dashboard';
 import type { WorkflowListItem } from '../../types';
 import type { ChartType } from '../../types/chart';
 import { DEFAULT_CHART_CONFIG } from '../../types/chart';
@@ -39,7 +34,6 @@ export interface WidgetEditorDrawerProps {
 const CHART_TYPES: ChartType[] = ['bar', 'line', 'pie', 'scatter', 'area'];
 const REFRESH_MODES: RefreshMode[] = ['manual', 'onOpen', 'interval'];
 const ALERT_OPS: AlertOperator[] = ['>', '>=', '<', '<=', '==', '!='];
-const ALERT_AGGS: AlertMetricAgg[] = ['last', 'max', 'min', 'avg', 'sum'];
 
 const DEFAULT_ALERT: NonNullable<DashboardWidget['alert']> = {
   metric: { kind: 'column', column: '' },
