@@ -3,6 +3,7 @@ import {
   BookOpen,
   Code2,
   Database,
+  Download,
   KeyRound,
   GitFork,
   MessageSquare,
@@ -39,7 +40,9 @@ import { ForeignKeysView } from './ForeignKeysView';
 import { DDLView } from './DDLView';
 import { QueryPanel } from './QueryPanel';
 import { ExportDialog } from './ExportDialog';
+import { BatchExportDialog } from './BatchExportDialog';
 import { ImportDialog } from './ImportDialog';
+import { loadBatchExportTableData } from '../../lib/loadBatchExportTable';
 import { TableStructureEditor } from './TableStructureEditor';
 import type { TranslationKey } from '../../locales';
 import { DetailPanel } from '../../components/DataTable/DetailPanel';
@@ -145,6 +148,8 @@ export function SqlConnectionView({
   const [importOpen, setImportOpen] = useState(false);
   const [exportTableName, setExportTableName] = useState<string | null>(null);
   const [importTableName, setImportTableName] = useState<string | null>(null);
+  const [batchExportOpen, setBatchExportOpen] = useState(false);
+  const [batchExportInitialSelected, setBatchExportInitialSelected] = useState<string[]>([]);
   const [lastTableSchema, setLastTableSchema] = useState<string | null>(null);
 
   const currentDatabase = useSchemaStore((s) => s.currentDatabase);
@@ -449,6 +454,28 @@ export function SqlConnectionView({
     }
   }, [connectionId, currentDatabase, databaseType, loadTables, loadForConnection]);
 
+  const exportableTableNames = useMemo(() => schemaTables.map((tbl) => tbl.name), [schemaTables]);
+
+  const openBatchExport = useCallback((initialSelected: string[] = []) => {
+    setBatchExportInitialSelected(initialSelected);
+    setBatchExportOpen(true);
+  }, []);
+
+  const handleOpenBatchExportFromToolbar = useCallback(() => {
+    const preselected = activePanel?.type === 'table' ? [activePanel.tableName] : [];
+    openBatchExport(preselected);
+  }, [activePanel, openBatchExport]);
+
+  const loadTableExportData = useCallback(
+    (name: string) =>
+      loadBatchExportTableData({
+        connectionId,
+        tableName: name,
+        databaseType,
+      }),
+    [connectionId, databaseType],
+  );
+
   const handleNodeContextMenu = useCallback(
     (payload: SchemaTreeNodeContextMenuPayload) => {
       const { kind, name, schema } = payload;
@@ -469,6 +496,7 @@ export function SqlConnectionView({
             newQuery: t('connWin.newQuery'),
             copyDatabaseName: t('schemaTree.copyDatabaseName'),
             newTable: t('connWin.newTable'),
+            batchExport: `${t('batchExport.title')}…`,
           },
           handlers: {
             onOpen: () => handleSelectTable(name, schema),
@@ -479,6 +507,14 @@ export function SqlConnectionView({
               setExportTableName(name);
               handleSelectTable(name, schema);
               setExportOpen(true);
+            },
+            onBatchExport: () => {
+              if (kind === 'table' || kind === 'view') {
+                openBatchExport([name]);
+              } else {
+                // database / blank: empty selection; user can select all
+                openBatchExport([]);
+              }
             },
             onImport: () => {
               setImportTableName(name);
@@ -505,6 +541,7 @@ export function SqlConnectionView({
       handleRefresh,
       handleNewQuery,
       handleCreateTable,
+      openBatchExport,
       isReadOnly,
       showStructureEditor,
       supportsErDiagram,
@@ -617,6 +654,15 @@ export function SqlConnectionView({
         <Button variant="primary" className="h-8" onClick={handleNewQuery}>
           <Plus className="h-4 w-4" />
           {t('connWin.newQuery')}
+        </Button>
+        <Button
+          variant="secondary"
+          className="h-8"
+          title={t('batchExport.title')}
+          onClick={handleOpenBatchExportFromToolbar}
+        >
+          <Download className="h-4 w-4" />
+          {t('batchExport.title')}
         </Button>
         {showStructureEditor && (
           <Button variant="secondary" className="h-8" onClick={handleCreateTable}>
@@ -992,6 +1038,20 @@ export function SqlConnectionView({
           databaseType={databaseType}
         />
       )}
+
+      <BatchExportDialog
+        open={batchExportOpen}
+        onClose={() => {
+          setBatchExportOpen(false);
+          setBatchExportInitialSelected([]);
+        }}
+        connectionId={connectionId}
+        databaseType={databaseType}
+        database={currentDatabase ?? undefined}
+        tables={exportableTableNames}
+        initialSelected={batchExportInitialSelected}
+        loadTableExportData={loadTableExportData}
+      />
 
       <ImportDialog
         open={importOpen}

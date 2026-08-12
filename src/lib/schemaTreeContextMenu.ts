@@ -14,6 +14,8 @@ export type SchemaTreeContextMenuLabels = {
   newQuery: string;
   copyDatabaseName: string;
   newTable: string;
+  /** Batch export (toolbar / database / blank / optional table). */
+  batchExport: string;
 };
 
 export type SchemaTreeContextMenuHandlers = {
@@ -27,6 +29,8 @@ export type SchemaTreeContextMenuHandlers = {
   onNewQuery?: () => void;
   onCopyDatabaseName?: () => void;
   onNewTable?: () => void;
+  /** Open BatchExportDialog (database / blank / optional table). */
+  onBatchExport?: () => void;
 };
 
 export type BuildSchemaTreeContextMenuArgs = {
@@ -89,6 +93,7 @@ export function buildSchemaTreeContextMenuItems(
           : null,
         showErFocus ? item('focus-er', labels.focusEr, handlers.onFocusEr) : null,
         includeExport ? item('export', labels.exportData, handlers.onExport) : null,
+        item('batch-export', labels.batchExport, handlers.onBatchExport),
         !readOnly ? item('import', labels.importData, handlers.onImport) : null,
       );
     }
@@ -98,6 +103,7 @@ export function buildSchemaTreeContextMenuItems(
         item('open', labels.open, handlers.onOpen),
         item('copy-name', labels.copyName, handlers.onCopyName),
         includeExport ? item('export', labels.exportData, handlers.onExport) : null,
+        item('batch-export', labels.batchExport, handlers.onBatchExport),
       );
     }
     case 'database':
@@ -105,11 +111,13 @@ export function buildSchemaTreeContextMenuItems(
         item('refresh', labels.refresh, handlers.onRefresh),
         item('new-query', labels.newQuery, handlers.onNewQuery),
         item('copy-database-name', labels.copyDatabaseName, handlers.onCopyDatabaseName),
+        item('batch-export', labels.batchExport, handlers.onBatchExport),
       );
     case 'blank':
       return push(
         item('refresh', labels.refresh, handlers.onRefresh),
         item('new-query', labels.newQuery, handlers.onNewQuery),
+        item('batch-export', labels.batchExport, handlers.onBatchExport),
         !readOnly && showNewTable ? item('new-table', labels.newTable, handlers.onNewTable) : null,
       );
   }
