@@ -225,6 +225,7 @@ Connection 改变后重新 discovery；没有 Step override 时使用 Workflow �
 - `hasMultiDatabase` 表示驱动能力；切库走 `use_database`
 - 多窗口：`windowManager.ts` + `windowKind.ts` URL 参数路由
 - IPC：前端 camelCase，Rust snake_case；Tauri 自动映射
+- 右键菜单统一使用 Tauri 原生 Menu（`showNativeContextMenu`），禁止新增 Web ContextMenu
 
 ## IPC 通信
 

@@ -592,13 +592,14 @@ DataTable (容器)
 │           └── EditableCell  # 编辑模式
 ├── FilterBar           # 当前筛选条件展示
 ├── Pagination          # 分页控制
-├── DataExportDialog    # 数据导出对话框（CSV/TSV/JSON/SQL INSERT/SQL UPDATE）
-└── ContextMenu         # 右键菜单（含导出选中行）
+└── DataExportDialog    # 数据导出对话框（CSV/TSV/JSON/SQL INSERT/SQL UPDATE）
 ```
+
+右键菜单走 Tauri 原生 Menu（见下方「原生 Context Menu」），由 `buildDataTableContextMenuItems` 构建：复制单元格 / 复制选中行 / 导出。
 
 **数据导出功能**：
 - 工具栏「导出」按钮导出全部数据
-- 右键菜单导出选中行
+- 原生右键菜单导出选中行（或当前页）
 - 支持 5 种格式：CSV、TSV、JSON、SQL INSERT、SQL UPDATE
 - 通过 Tauri 原生对话框选择保存路径
 
@@ -628,6 +629,25 @@ interface DataTableProps {
   onSelectAll: () => void;
 }
 ```
+
+### 9.1.1 原生 Context Menu
+
+右键菜单统一使用 Tauri 系统原生 Menu，入口：`src/lib/nativeContextMenu.ts`（`showNativeContextMenu` / `normalizeNativeMenuItems` / `nativeEditMenuItems`）。禁止新增 Web DOM ContextMenu。
+
+各场景通过独立 builder 组装 `NativeMenuItemDef[]`，再调用 `showNativeContextMenu`：
+
+| Builder | 路径 | 调用方 |
+|---------|------|--------|
+| SQL 编辑器 | `src/lib/sqlEditorContextMenu.ts` | `QueryPanel` |
+| Schema 树 | `src/lib/schemaTreeContextMenu.ts` | `SqlConnectionView` |
+| DataTable | `src/lib/dataTableContextMenu.ts` | `DataTable` |
+| 连接 Tab | `src/lib/connectionTabContextMenu.ts` | `SqlConnectionView` |
+| 收藏 / 历史侧栏 | `src/lib/querySidebarContextMenu.ts` | `QueryPanel` |
+| Workflow 列表 / 历史 | `src/lib/workflowListContextMenu.ts` | `WorkflowWindow` |
+| ER 节点 | `src/lib/erNodeContextMenu.ts` | `ErDiagramView` |
+| Redis Key | `packages/drivers/redis/ui/redisKeyContextMenu.ts` | `RedisWorkbench` |
+
+约定：调用方传入 i18n labels 与 handlers；`preventDefault` + `stopPropagation` 后弹出；原生 OS 菜单不可 DOM 断言（E2E 勿依赖菜单文案）。
 
 ### 9.2 SQL 编辑器集成
 
