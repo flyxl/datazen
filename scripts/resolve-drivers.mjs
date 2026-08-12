@@ -920,14 +920,12 @@ function updateCargoFiles(plugins, registry) {
   replaceMarkerSection('src-tauri/Cargo.toml', 'PLUGIN FEATURES', featureLines.join('\n'));
 
   // --- Root Cargo.toml: [patch] entries for git-sourced plugins ---
-  const patchLines = plugins
-    .filter(name => registry[name]?.source === 'git' && registry[name]?.git)
-    .map(name => {
-      const meta = registry[name];
-      const crateName = cratePackageName(name, meta);
-      return `[patch."${meta.git}"]\n${crateName} = { path = "packages/drivers/${name}" }`;
-    });
-  replaceMarkerSection('Cargo.toml', 'PLUGIN PATCHES', patchLines.join('\n\n'));
+  // Prefer the same builder as injectRootCargoPatches (includes driver-api unify).
+  replaceMarkerSection(
+    'Cargo.toml',
+    'PLUGIN PATCHES',
+    buildRootCargoPatchLines(plugins, registry).join('\n').replace(/^\n/, ''),
+  );
 
   console.log(`[resolve-drivers] updated Cargo.toml files (${plugins.length} plugin(s))`);
 }
@@ -1128,6 +1126,34 @@ function syncPluginCapabilities(plugins, registry) {
 }
 
 /**
+ * Git drivers depend on published `datazen-driver-api` from GitHub. Without a
+ * workspace-root [patch], Cargo links a second copy of the API crate and
+ * `inventory` registrations never reach the Host → "Driver not found for type: …".
+ */
+const DRIVER_API_GIT = 'https://github.com/flyxl/datazen-driver-api.git';
+
+/** Build root Cargo.toml [patch] lines for git drivers (+ shared driver-api). */
+export function buildRootCargoPatchLines(plugins, registry) {
+  const patchLines = [];
+  let hasGitDriver = false;
+  for (const name of plugins) {
+    const meta = registry[name];
+    if (meta.source !== 'git' || !meta.git) continue;
+    hasGitDriver = true;
+    const crateName = cratePackageName(name, meta);
+    patchLines.push('');
+    patchLines.push(`[patch."${meta.git}"]`);
+    patchLines.push(`${crateName} = { path = "packages/drivers/${name}" }`);
+  }
+  if (hasGitDriver) {
+    patchLines.push('');
+    patchLines.push(`[patch."${DRIVER_API_GIT}"]`);
+    patchLines.push('datazen-driver-api = { path = "packages/driver-api" }');
+  }
+  return patchLines;
+}
+
+/**
  * Inject [patch] entries into root Cargo.toml for plugins using git sources.
  * Uses start/end markers for idempotent injection.
  */
@@ -1135,15 +1161,7 @@ function injectRootCargoPatches(plugins, registry) {
   const relPath = 'Cargo.toml';
   let content = readFileSync(managedReadPath(relPath), 'utf-8');
 
-  const patchLines = [];
-  for (const name of plugins) {
-    const meta = registry[name];
-    if (meta.source !== 'git' || !meta.git) continue;
-    const crateName = cratePackageName(name, meta);
-    patchLines.push('');
-    patchLines.push(`[patch."${meta.git}"]`);
-    patchLines.push(`${crateName} = { path = "packages/drivers/${name}" }`);
-  }
+  const patchLines = buildRootCargoPatchLines(plugins, registry);
 
   content = replaceMarkerBlock(content, 'plugin-patches', patchLines);
 
