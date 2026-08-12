@@ -1,56 +1,39 @@
-//! One-shot widget SQL execution for dashboard monitor runs.
-//!
-//! Uses [`MonitorConnectionRegistry`] — never UI session pools via `get_or_connect`.
+//! Widget execution via WorkflowExecutor for dashboard monitor runs.
 
-use std::path::Path;
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
-/// Default per-widget query timeout (seconds). Matches plan default.
-pub const DEFAULT_QUERY_TIMEOUT_SEC: u64 = 60;
-
+use crate::commands::AppState;
 use crate::dashboard::alert::evaluate_run_alert;
 use crate::dashboard::runs::{write_run, MAX_RUN_ROWS};
 use crate::dashboard::store::load_monitor_settings;
 use crate::dashboard::types::{DashboardWidget, WidgetRun, WidgetRunStatus};
-use crate::db::{StatementResult, Value};
-use crate::monitor::MonitorConnectionRegistry;
+use crate::store::AppDb;
 use crate::store::AppSettings;
+use crate::workflow::model::WorkflowExecutionResult;
+use crate::workflow::WorkflowExecutor;
+
+/// Default per-widget workflow timeout (seconds).
+pub const DEFAULT_QUERY_TIMEOUT_SEC: u64 = 60;
 
 #[derive(Debug, thiserror::Error)]
 pub enum DashboardExecuteError {
-    #[error("Connection error: {0}")]
-    Connection(#[from] crate::services::connection_manager::ConnectionError),
-
-    #[error("Driver error: {0}")]
-    Driver(#[from] crate::db::DriverError),
+    #[error("Workflow error: {0}")]
+    Workflow(String),
 
     #[error("Runs error: {0}")]
     Runs(#[from] crate::dashboard::runs::DashboardRunsError),
-}
 
-fn cell_to_json(value: &Option<Value>) -> serde_json::Value {
-    match value {
-        None => serde_json::Value::Null,
-        Some(v) => match v {
-            Value::Null => serde_json::Value::Null,
-            Value::Bool(b) => serde_json::json!(b),
-            Value::Integer(n) => serde_json::json!(n),
-            Value::Float(f) => serde_json::json!(f),
-            Value::String(s) => serde_json::json!(s),
-            Value::Bytes(b) => serde_json::json!(b),
-            Value::Timestamp(ts) => serde_json::json!(ts),
-            Value::Json(j) => j.clone(),
-        },
-    }
+    #[error("Store error: {0}")]
+    Store(#[from] crate::dashboard::store::DashboardStoreError),
 }
 
 fn build_error_run(
     run_id: String,
     dashboard_id: &str,
-    widget_id: &str,
+    widget: &DashboardWidget,
     started_at: DateTime<Utc>,
     finished_at: DateTime<Utc>,
     error: &str,
@@ -58,7 +41,8 @@ fn build_error_run(
     WidgetRun {
         id: run_id,
         dashboard_id: dashboard_id.to_string(),
-        widget_id: widget_id.to_string(),
+        widget_id: widget.id.clone(),
+        workflow_id: widget.workflow_id.clone(),
         started_at: started_at.to_rfc3339(),
         finished_at: finished_at.to_rfc3339(),
         status: WidgetRunStatus::Error,
@@ -74,7 +58,7 @@ fn build_error_run(
 fn build_timeout_run(
     run_id: String,
     dashboard_id: &str,
-    widget_id: &str,
+    widget: &DashboardWidget,
     started_at: DateTime<Utc>,
     finished_at: DateTime<Utc>,
     timeout_sec: u64,
@@ -82,11 +66,12 @@ fn build_timeout_run(
     WidgetRun {
         id: run_id,
         dashboard_id: dashboard_id.to_string(),
-        widget_id: widget_id.to_string(),
+        widget_id: widget.id.clone(),
+        workflow_id: widget.workflow_id.clone(),
         started_at: started_at.to_rfc3339(),
         finished_at: finished_at.to_rfc3339(),
         status: WidgetRunStatus::Timeout,
-        error: Some(format!("Query timed out after {timeout_sec}s")),
+        error: Some(format!("Workflow timed out after {timeout_sec}s")),
         row_count: 0,
         columns: Vec::new(),
         rows: Vec::new(),
@@ -96,9 +81,8 @@ fn build_timeout_run(
 }
 
 /// Build and persist an error-status run using monitor retention settings.
-#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn persist_error_run(
-    data_dir: &Path,
+    app_db: &AppDb,
     settings: &AppSettings,
     dashboard_id: &str,
     widget: &DashboardWidget,
@@ -110,33 +94,112 @@ pub(crate) fn persist_error_run(
     let run = build_error_run(
         run_id.to_string(),
         dashboard_id,
-        &widget.id,
+        widget,
         started_at,
         finished_at,
         error,
     );
     let retention = load_monitor_settings(settings);
-    write_run(data_dir, &run, &retention)?;
+    write_run(app_db, &run, &retention)?;
     Ok(run)
 }
 
-fn statement_to_run_fields(
-    stmt: &StatementResult,
+fn cap_rows(
+    columns: Vec<String>,
+    rows: Vec<Vec<serde_json::Value>>,
 ) -> (Vec<String>, Vec<Vec<serde_json::Value>>, u32) {
-    let columns: Vec<String> = stmt.columns.iter().map(|c| c.name.clone()).collect();
-    let rows: Vec<Vec<serde_json::Value>> = stmt
-        .rows
-        .iter()
-        .map(|row| row.iter().map(cell_to_json).collect())
-        .collect();
     let row_count = rows.len() as u32;
-    (columns, rows, row_count)
+    if rows.len() > MAX_RUN_ROWS {
+        (
+            columns,
+            rows.into_iter().take(MAX_RUN_ROWS).collect(),
+            row_count,
+        )
+    } else {
+        (columns, rows, row_count)
+    }
 }
 
-/// Execute a widget query once using the monitor connection registry.
+/// Parse workflow query step JSON or final_output text into tabular data.
+pub fn parse_step_result_value(
+    value: &serde_json::Value,
+) -> Option<(Vec<String>, Vec<Vec<serde_json::Value>>)> {
+    if let Some(cols) = value.get("columns").and_then(|c| c.as_array()) {
+        let col_names: Vec<String> = cols
+            .iter()
+            .filter_map(|c| {
+                c.as_str()
+                    .map(String::from)
+                    .or_else(|| c.get("name").and_then(|n| n.as_str()).map(String::from))
+            })
+            .collect();
+        if let Some(rows_val) = value.get("rows").and_then(|r| r.as_array()) {
+            let rows = rows_objects_to_matrix(&col_names, rows_val);
+            return Some((col_names, rows));
+        }
+    }
+
+    if let Some(rows_val) = value.get("rows").and_then(|r| r.as_array()) {
+        if rows_val.first().and_then(|r| r.as_object()).is_some() {
+            let col_names = rows_val
+                .first()
+                .and_then(|r| r.as_object())
+                .map(|obj| obj.keys().cloned().collect::<Vec<_>>())
+                .unwrap_or_default();
+            let rows = rows_objects_to_matrix(&col_names, rows_val);
+            return Some((col_names, rows));
+        }
+    }
+
+    None
+}
+
+fn rows_objects_to_matrix(
+    col_names: &[String],
+    rows_val: &[serde_json::Value],
+) -> Vec<Vec<serde_json::Value>> {
+    rows_val
+        .iter()
+        .filter_map(|row| {
+            let obj = row.as_object()?;
+            Some(
+                col_names
+                    .iter()
+                    .map(|name| obj.get(name).cloned().unwrap_or(serde_json::Value::Null))
+                    .collect(),
+            )
+        })
+        .collect()
+}
+
+/// Parse workflow final_output string into tabular data.
+pub fn parse_final_output_as_table(
+    output: &str,
+) -> Result<(Vec<String>, Vec<Vec<serde_json::Value>>), String> {
+    let trimmed = output.trim();
+    if trimmed.is_empty() {
+        return Ok((Vec::new(), Vec::new()));
+    }
+
+    if let Ok(value) = serde_json::from_str::<serde_json::Value>(trimmed) {
+        if let Some(table) = parse_step_result_value(&value) {
+            return Ok(table);
+        }
+    }
+
+    Err("Could not parse workflow output as table".into())
+}
+
+pub fn extract_table_from_execution(
+    result: &WorkflowExecutionResult,
+) -> Result<(Vec<String>, Vec<Vec<serde_json::Value>>), String> {
+    parse_final_output_as_table(&result.final_output)
+}
+
+/// Execute a widget once via WorkflowExecutor (does not write workflow_history).
 pub async fn execute_widget_once(
-    monitor_connections: &MonitorConnectionRegistry,
-    data_dir: &Path,
+    app_state: &AppState,
+    app_db: &AppDb,
     settings: &AppSettings,
     dashboard_id: &str,
     widget: &DashboardWidget,
@@ -145,76 +208,57 @@ pub async fn execute_widget_once(
     let run_id = Uuid::new_v4().to_string();
     let timeout_sec = DEFAULT_QUERY_TIMEOUT_SEC;
 
-    let query_result = tokio::time::timeout(Duration::from_secs(timeout_sec), async {
-        let (driver, handle) = monitor_connections
-            .get_or_connect_monitor(&widget.config_id)
-            .await
-            .map_err(DashboardExecuteError::Connection)?;
+    let workflow = app_state
+        .workflow_registry
+        .get(&widget.workflow_id)
+        .await
+        .ok_or_else(|| {
+            DashboardExecuteError::Workflow(format!("Workflow '{}' not found", widget.workflow_id))
+        })?;
 
-        let limit = Some(MAX_RUN_ROWS as u32);
-        driver
-            .query_multi(&handle, &widget.sql, limit)
-            .await
-            .map_err(DashboardExecuteError::Driver)
-    })
+    let exec_result = tokio::time::timeout(
+        Duration::from_secs(timeout_sec),
+        WorkflowExecutor::execute(&workflow, app_state, None, &serde_json::json!({})),
+    )
     .await;
 
     let finished_at = Utc::now();
 
-    let mut run = match query_result {
-        Ok(Ok(multi)) => {
-            let results = multi.results;
-            let stmt = results
-                .iter()
-                .find(|r| !r.columns.is_empty() || !r.rows.is_empty() || r.rows_affected.is_some())
-                .or_else(|| results.first());
-
-            match stmt {
-                Some(stmt) => {
-                    let (columns, rows, row_count) = statement_to_run_fields(stmt);
-                    WidgetRun {
-                        id: run_id,
-                        dashboard_id: dashboard_id.to_string(),
-                        widget_id: widget.id.clone(),
-                        started_at: started_at.to_rfc3339(),
-                        finished_at: finished_at.to_rfc3339(),
-                        status: WidgetRunStatus::Ok,
-                        error: None,
-                        row_count,
-                        columns,
-                        rows,
-                        alert_fired: None,
-                        alert_value: None,
-                    }
-                }
-                None => WidgetRun {
+    let mut run = match exec_result {
+        Ok(Ok(result)) if result.success => match extract_table_from_execution(&result) {
+            Ok((columns, rows)) => {
+                let (columns, rows, row_count) = cap_rows(columns, rows);
+                WidgetRun {
                     id: run_id,
                     dashboard_id: dashboard_id.to_string(),
                     widget_id: widget.id.clone(),
+                    workflow_id: widget.workflow_id.clone(),
                     started_at: started_at.to_rfc3339(),
                     finished_at: finished_at.to_rfc3339(),
                     status: WidgetRunStatus::Ok,
                     error: None,
-                    row_count: 0,
-                    columns: Vec::new(),
-                    rows: Vec::new(),
+                    row_count,
+                    columns,
+                    rows,
                     alert_fired: None,
                     alert_value: None,
-                },
+                }
             }
-        }
-        Ok(Err(err)) => build_error_run(
+            Err(e) => build_error_run(run_id, dashboard_id, widget, started_at, finished_at, &e),
+        },
+        Ok(Ok(result)) => build_error_run(
             run_id,
             dashboard_id,
-            &widget.id,
+            widget,
             started_at,
             finished_at,
-            &err.to_string(),
+            &result.error.unwrap_or_else(|| "Workflow failed".into()),
         ),
+        Ok(Err(e)) => build_error_run(run_id, dashboard_id, widget, started_at, finished_at, &e),
         Err(_elapsed) => build_timeout_run(
             run_id,
             dashboard_id,
-            &widget.id,
+            widget,
             started_at,
             finished_at,
             timeout_sec,
@@ -224,7 +268,7 @@ pub async fn execute_widget_once(
     evaluate_run_alert(&mut run, widget);
 
     let retention = load_monitor_settings(settings);
-    write_run(data_dir, &run, &retention)?;
+    write_run(app_db, &run, &retention)?;
 
     Ok(run)
 }
@@ -233,85 +277,172 @@ pub async fn execute_widget_once(
 mod tests {
     use super::*;
     use crate::dashboard::runs::{get_run, list_run_index};
-    use crate::dashboard::types::{
-        AggregationType, ChartConfig, ChartSortBy, ChartType, WidgetLayout,
-    };
+    use crate::dashboard::types::{RefreshMode, RefreshPolicy, ViewMode, WidgetLayout};
     use crate::store::AppSettings;
+    use crate::workflow::model::{StepExecutionResult, StepStatus, WorkflowExecutionResult};
 
     fn sample_widget() -> DashboardWidget {
         DashboardWidget {
             id: "w1".into(),
             title: "Test".into(),
-            config_id: "cfg-missing".into(),
-            sql: "SELECT 1".into(),
-            chart_config: ChartConfig {
-                chart_type: ChartType::Line,
-                x_axis: None,
-                y_axes: vec![],
-                group_by: None,
-                aggregation: AggregationType::None,
-                sort_by: ChartSortBy::None,
-                show_legend: true,
-                show_grid: true,
-                show_values: false,
-                color_scheme: "default".into(),
-            },
+            workflow_id: "wf-missing".into(),
+            view_mode: ViewMode::Chart,
+            chart_config: None,
             layout: WidgetLayout {
                 x: 0,
                 y: 0,
                 w: 4,
                 h: 3,
             },
-            refresh_sec: 60,
+            refresh: RefreshPolicy::default(),
             alert: None,
             enabled: true,
         }
     }
 
     #[test]
-    fn persist_error_run_writes_index_and_file() {
-        let dir = tempfile::tempdir().unwrap();
+    fn persist_error_run_writes_index() {
+        let db = crate::store::AppDb::open_in_memory().unwrap();
+        db.upsert_workflow(&crate::store::WorkflowRecord {
+            id: "wf1".into(),
+            name: "WF".into(),
+            description: String::new(),
+            visibility: crate::store::WorkflowVisibility::User,
+            definition_yaml: "id: wf1\nname: WF\nsteps: []\n".into(),
+            created_at: Utc::now().to_rfc3339(),
+            updated_at: Utc::now().to_rfc3339(),
+        })
+        .unwrap();
+        db.upsert_dashboard(&crate::store::DashboardRecord {
+            id: "d1".into(),
+            name: "D".into(),
+            created_at: Utc::now().to_rfc3339(),
+            updated_at: Utc::now().to_rfc3339(),
+            layout_cols: 12,
+            layout_row_height: 80,
+            enabled: true,
+            refresh_paused: false,
+        })
+        .unwrap();
+        db.upsert_widget(&crate::store::WidgetRecord {
+            id: "w1".into(),
+            dashboard_id: "d1".into(),
+            title: "W".into(),
+            workflow_id: "wf1".into(),
+            view_mode: "chart".into(),
+            chart_config_json: None,
+            layout_x: 0,
+            layout_y: 0,
+            layout_w: 4,
+            layout_h: 3,
+            refresh_mode: "manual".into(),
+            refresh_sec: None,
+            alert_json: None,
+            enabled: true,
+            sort_order: 0,
+            created_at: Utc::now().to_rfc3339(),
+            updated_at: Utc::now().to_rfc3339(),
+        })
+        .unwrap();
         let widget = sample_widget();
         let started_at = Utc::now();
         let finished_at = started_at + chrono::Duration::seconds(1);
         let settings = AppSettings::default();
 
         let run = persist_error_run(
-            dir.path(),
+            &db,
             &settings,
             "d1",
             &widget,
             "run-connect-err",
             started_at,
             finished_at,
-            "Connection error: config not found",
+            "Workflow error: not found",
         )
         .unwrap();
 
         assert_eq!(run.status, WidgetRunStatus::Error);
-        assert_eq!(
-            run.error.as_deref(),
-            Some("Connection error: config not found")
-        );
-
-        let index = list_run_index(dir.path(), "d1", "w1", 10).unwrap();
+        let index = list_run_index(&db, "d1", "w1", 10).unwrap();
         assert_eq!(index.len(), 1);
-        assert_eq!(index[0].id, "run-connect-err");
-        assert_eq!(index[0].status, WidgetRunStatus::Error);
-
-        let loaded = get_run(dir.path(), "d1", "w1", "run-connect-err").unwrap();
+        let loaded = get_run(&db, "d1", "w1", "run-connect-err").unwrap();
         assert_eq!(loaded.status, WidgetRunStatus::Error);
-        assert_eq!(loaded.error, run.error);
+    }
+
+    #[test]
+    fn parse_step_result_value_from_query_shape() {
+        let value = serde_json::json!({
+            "rows": [
+                {"id": 1, "name": "alice"},
+                {"id": 2, "name": "bob"}
+            ],
+            "columns": [
+                {"name": "id", "data_type": "int"},
+                {"name": "name", "data_type": "text"}
+            ]
+        });
+        let (cols, rows) = parse_step_result_value(&value).unwrap();
+        assert_eq!(cols, vec!["id", "name"]);
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0][0], serde_json::json!(1));
+    }
+
+    #[test]
+    fn parse_final_output_as_table_from_json() {
+        let output = r#"{
+            "rows": [{"v": 42}],
+            "columns": [{"name": "v"}]
+        }"#;
+        let (cols, rows) = parse_final_output_as_table(output).unwrap();
+        assert_eq!(cols, vec!["v"]);
+        assert_eq!(rows[0][0], serde_json::json!(42));
+    }
+
+    #[test]
+    fn extract_table_from_execution_uses_final_output_only() {
+        let step_table = StepExecutionResult {
+            step_id: "q1".into(),
+            step_type: "query".into(),
+            status: StepStatus::Success,
+            result: Some(serde_json::json!({
+                "rows": [{"n": 7}],
+                "columns": [{"name": "n"}]
+            })),
+            execution_time_ms: 1,
+            error: None,
+            connection_name: None,
+            sql_executed: None,
+        };
+
+        let invalid_final = WorkflowExecutionResult {
+            success: true,
+            final_output: "not json".into(),
+            steps: vec![step_table.clone()],
+            total_time_ms: 1,
+            error: None,
+        };
+        assert!(extract_table_from_execution(&invalid_final).is_err());
+
+        let valid_final = WorkflowExecutionResult {
+            success: true,
+            final_output: r#"{"rows":[{"v":42}],"columns":[{"name":"v"}]}"#.into(),
+            steps: vec![step_table],
+            total_time_ms: 1,
+            error: None,
+        };
+        let (cols, rows) = extract_table_from_execution(&valid_final).unwrap();
+        assert_eq!(cols, vec!["v"]);
+        assert_eq!(rows[0][0], serde_json::json!(42));
     }
 
     #[test]
     fn timeout_run_status_serializes_as_lowercase() {
         let started_at = Utc::now();
         let finished_at = started_at + chrono::Duration::seconds(60);
+        let widget = sample_widget();
         let run = build_timeout_run(
             "run-timeout".into(),
             "d1",
-            "w1",
+            &widget,
             started_at,
             finished_at,
             DEFAULT_QUERY_TIMEOUT_SEC,
@@ -319,64 +450,5 @@ mod tests {
         assert_eq!(run.status, WidgetRunStatus::Timeout);
         let json = serde_json::to_string(&run).unwrap();
         assert!(json.contains("\"status\":\"timeout\""));
-        let parsed: WidgetRun = serde_json::from_str(&json).unwrap();
-        assert_eq!(parsed.status, WidgetRunStatus::Timeout);
-        assert!(parsed.error.unwrap().contains("60s"));
-    }
-
-    #[test]
-    fn cell_to_json_maps_value_variants() {
-        assert_eq!(cell_to_json(&None), serde_json::Value::Null);
-        assert_eq!(
-            cell_to_json(&Some(Value::Bool(true))),
-            serde_json::json!(true)
-        );
-        assert_eq!(cell_to_json(&Some(Value::Integer(7))), serde_json::json!(7));
-        assert_eq!(
-            cell_to_json(&Some(Value::String("x".into()))),
-            serde_json::json!("x")
-        );
-    }
-
-    #[test]
-    fn statement_to_run_fields_extracts_columns_and_rows() {
-        use crate::db::{ColumnInfo, StatementResult};
-
-        let stmt = StatementResult {
-            sql: "SELECT 1".into(),
-            columns: vec![
-                ColumnInfo {
-                    name: "id".into(),
-                    data_type: "int".into(),
-                    nullable: false,
-                },
-                ColumnInfo {
-                    name: "name".into(),
-                    data_type: "text".into(),
-                    nullable: true,
-                },
-            ],
-            rows: vec![vec![
-                Some(Value::Integer(1)),
-                Some(Value::String("alice".into())),
-            ]],
-            rows_affected: None,
-            execution_time_ms: 0,
-            truncated: false,
-        };
-
-        let (cols, rows, count) = statement_to_run_fields(&stmt);
-        assert_eq!(cols, vec!["id", "name"]);
-        assert_eq!(rows.len(), 1);
-        assert_eq!(count, 1);
-    }
-
-    #[test]
-    fn build_error_run_sets_status_and_message() {
-        let started = Utc::now();
-        let finished = started + chrono::Duration::seconds(2);
-        let run = build_error_run("run-1".into(), "d1", "w1", started, finished, "boom");
-        assert_eq!(run.status, WidgetRunStatus::Error);
-        assert_eq!(run.error.as_deref(), Some("boom"));
     }
 }

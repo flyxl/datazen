@@ -59,6 +59,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 /// Shared application state injected into every command handler.
+#[derive(Clone)]
 pub struct AppState {
     pub driver_registry: Arc<DriverRegistry>,
     pub connection_manager: Arc<ConnectionManager>,

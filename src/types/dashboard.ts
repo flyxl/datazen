@@ -1,5 +1,7 @@
 import type { ChartConfig } from './chart';
 
+export type { ChartConfig };
+
 export interface DashboardLayout {
   cols: number;
   rowHeight: number;
@@ -10,6 +12,15 @@ export interface WidgetLayout {
   y: number;
   w: number;
   h: number;
+}
+
+export type ViewMode = 'chart' | 'table';
+
+export type RefreshMode = 'manual' | 'onOpen' | 'interval';
+
+export interface RefreshPolicy {
+  mode: RefreshMode;
+  refreshSec?: number;
 }
 
 export type AlertMetricKind = 'column' | 'aggregation';
@@ -37,11 +48,11 @@ export interface AlertRule {
 export interface DashboardWidget {
   id: string;
   title: string;
-  configId: string;
-  sql: string;
-  chartConfig: ChartConfig;
+  workflowId: string;
+  viewMode: ViewMode;
+  chartConfig?: ChartConfig;
   layout: WidgetLayout;
-  refreshSec: number;
+  refresh: RefreshPolicy;
   alert?: AlertRule;
   enabled: boolean;
 }
@@ -54,6 +65,7 @@ export interface Dashboard {
   layout: DashboardLayout;
   widgets: DashboardWidget[];
   enabled: boolean;
+  refreshPaused?: boolean;
 }
 
 export type WidgetRunStatus = 'ok' | 'error' | 'timeout';
@@ -69,6 +81,7 @@ export interface WidgetRun {
   id: string;
   dashboardId: string;
   widgetId: string;
+  workflowId: string;
   startedAt: string;
   finishedAt: string;
   status: WidgetRunStatus;
@@ -78,6 +91,19 @@ export interface WidgetRun {
   rows: unknown[][];
   alertFired?: boolean;
   alertValue?: number;
+}
+
+export interface DashboardWorkflowRef {
+  workflowId: string;
+  dashboardId: string;
+  widgetId: string;
+  dashboardName: string;
+  widgetTitle: string;
+}
+
+export interface CreateWidgetResult {
+  dashboard: Dashboard;
+  widget: DashboardWidget;
 }
 
 /** SMTP settings reserved for phase 2. */
@@ -103,9 +129,28 @@ export interface MonitorSettings {
 }
 
 export const MIN_REFRESH_SEC = 30;
+export const REFRESH_WARN_BELOW_SEC = 60;
 
 export function clampRefreshSec(n: number): number {
   return Math.max(MIN_REFRESH_SEC, n);
+}
+
+export function normalizeRefreshPolicy(refresh: RefreshPolicy): RefreshPolicy {
+  if (refresh.mode === 'interval') {
+    return {
+      mode: 'interval',
+      refreshSec: clampRefreshSec(refresh.refreshSec ?? MIN_REFRESH_SEC),
+    };
+  }
+  return { mode: refresh.mode };
+}
+
+export function shouldWarnRefreshSec(refresh: RefreshPolicy): boolean {
+  return (
+    refresh.mode === 'interval' &&
+    refresh.refreshSec != null &&
+    refresh.refreshSec < REFRESH_WARN_BELOW_SEC
+  );
 }
 
 export const DEFAULT_MONITOR_SETTINGS: MonitorSettings = {
@@ -116,3 +161,5 @@ export const DEFAULT_MONITOR_SETTINGS: MonitorSettings = {
   runRetentionCount: 200,
   runRetentionDays: 30,
 };
+
+export const DEFAULT_REFRESH: RefreshPolicy = { mode: 'manual' };

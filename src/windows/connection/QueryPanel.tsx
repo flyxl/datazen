@@ -7,6 +7,7 @@ import {
   Clock,
   Database,
   FileSearch,
+  Gauge,
   Loader2,
   Play,
   Sparkles,
@@ -37,6 +38,10 @@ import { useI18n } from '../../hooks/useI18n';
 import { useResizable } from '../../hooks/useResizable';
 import { cn } from '../../lib/cn';
 import { queryCommands } from '../../commands/query';
+import { dashboardCommands } from '../../commands/dashboard';
+import { openDashboardWindow } from '../../lib/windowManager';
+import { createEmptyDashboard } from '../dashboard/DashboardWindow';
+import { AddToDashboardDialog } from '../dashboard/AddToDashboardDialog';
 import { formatSql } from '../../lib/sqlFormat';
 import { parseSqlParams, paramsToPayload } from '../../lib/sqlBindParams';
 import { BindParamPanel } from '../../components/query/BindParamPanel';
@@ -93,6 +98,7 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
   const [txAbortedOpen, setTxAbortedOpen] = useState(false);
   const [txAbortedDetail, setTxAbortedDetail] = useState<string | null>(null);
   const pendingExecuteRef = useRef<null | { kind: 'full' | 'selection'; sql?: string }>(null);
+  const [addToDashboardOpen, setAddToDashboardOpen] = useState(false);
   const safeMode = useSettingsStore((s) => s.settings.safeMode);
   const autoCommit = useSettingsStore((s) => s.settings.autoCommit);
   const resultViewMode = tab?.resultViewMode ?? 'table';
@@ -795,6 +801,16 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
                           {t('chart.sampledWarning', { limit: '1000' })}
                         </span>
                       )}
+                      <Button
+                        variant="ghost"
+                        className="ml-auto h-7 gap-1 px-2 text-xs"
+                        data-testid="query-add-to-dashboard"
+                        disabled={!activeResult.rows.length}
+                        onClick={() => setAddToDashboardOpen(true)}
+                      >
+                        <Gauge className="h-3 w-3" />
+                        {t('dashboard.addToDashboard')}
+                      </Button>
                     </div>
                     {tab.running || resultViewMode === 'table' ? (
                       <ResultTable result={activeResult} />
@@ -930,6 +946,36 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
           </pre>
         ) : null}
       </Dialog>
+
+      <AddToDashboardDialog
+        open={addToDashboardOpen}
+        onClose={() => setAddToDashboardOpen(false)}
+        onConfirm={(dashboardId, newName) => {
+          void (async () => {
+            if (!tab?.sql.trim() || !activeResult?.rows.length) return;
+            setAddToDashboardOpen(false);
+            try {
+              let targetId = dashboardId;
+              if (dashboardId === 'new') {
+                const board = createEmptyDashboard(newName?.trim() || t('dashboard.defaultName'));
+                await dashboardCommands.saveDashboard(board);
+                targetId = board.id;
+              }
+              const created = await dashboardCommands.createWidgetFromSql({
+                dashboardId: targetId,
+                configId: connectionId,
+                sql: tab.sql,
+                title: tab.title || undefined,
+                viewMode: resultViewMode,
+                chartConfig: tab.chartConfig,
+              });
+              openDashboardWindow(created.dashboard.id, created.dashboard.name);
+            } catch (e) {
+              window.alert(String(e));
+            }
+          })();
+        }}
+      />
     </div>
   );
 }
