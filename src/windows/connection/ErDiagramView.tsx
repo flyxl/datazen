@@ -19,6 +19,8 @@ import { databaseCommands } from '../../commands/database';
 import { fileCommands } from '../../commands/file';
 import { Button } from '../../components/ui/Button';
 import { useI18n } from '../../hooks/useI18n';
+import { buildErNodeContextMenuItems } from '../../lib/erNodeContextMenu';
+import { showNativeContextMenu } from '../../lib/nativeContextMenu';
 import { TableNode } from './er/TableNode';
 import { buildErGraph } from './er/buildErGraph';
 import type { TableSchema } from '../../types';
@@ -28,6 +30,8 @@ interface ErDiagramViewProps {
   database: string;
   focusTable?: string;
   onSelectTable?: (tableName: string) => void;
+  /** Optional; when omitted, Focus still works via internal focus state. */
+  onFocusTable?: (tableName: string) => void;
 }
 
 const nodeTypes: NodeTypes = {
@@ -42,14 +46,26 @@ export function ErDiagramView(props: ErDiagramViewProps) {
   );
 }
 
-function ErDiagramInner({ connectionId, database, focusTable, onSelectTable }: ErDiagramViewProps) {
+function ErDiagramInner({
+  connectionId,
+  database,
+  focusTable,
+  onSelectTable,
+  onFocusTable,
+}: ErDiagramViewProps) {
   const { t } = useI18n();
   const [schemas, setSchemas] = useState<TableSchema[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  /** Local focus override; syncs from prop when parent changes focusTable. */
+  const [activeFocus, setActiveFocus] = useState<string | undefined>(focusTable);
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+
+  useEffect(() => {
+    setActiveFocus(focusTable);
+  }, [focusTable]);
 
   useEffect(() => {
     let cancelled = false;
@@ -60,9 +76,6 @@ function ErDiagramInner({ connectionId, database, focusTable, onSelectTable }: E
       .then((data) => {
         if (!cancelled) {
           setSchemas(data);
-          const { nodes: n, edges: e } = buildErGraph(data, focusTable);
-          setNodes(n);
-          setEdges(e);
           setLoading(false);
         }
       })
@@ -72,8 +85,17 @@ function ErDiagramInner({ connectionId, database, focusTable, onSelectTable }: E
           setLoading(false);
         }
       });
-    return () => { cancelled = true; };
-  }, [connectionId, database, focusTable, setNodes, setEdges]);
+    return () => {
+      cancelled = true;
+    };
+  }, [connectionId, database]);
+
+  useEffect(() => {
+    if (loading || error) return;
+    const { nodes: n, edges: e } = buildErGraph(schemas, activeFocus);
+    setNodes(n);
+    setEdges(e);
+  }, [schemas, activeFocus, loading, error, setNodes, setEdges]);
 
   useEffect(() => {
     if (!searchQuery.trim()) {
@@ -82,7 +104,7 @@ function ErDiagramInner({ connectionId, database, focusTable, onSelectTable }: E
           ...n,
           data: {
             ...n.data,
-            highlighted: n.id === focusTable,
+            highlighted: n.id === activeFocus,
             dimmed: false,
           },
         })),
@@ -100,16 +122,14 @@ function ErDiagramInner({ connectionId, database, focusTable, onSelectTable }: E
         },
       })),
     );
-  }, [searchQuery, setNodes, focusTable]);
+  }, [searchQuery, setNodes, activeFocus]);
 
   useEffect(() => {
     const handler = (e: Event) => {
       const tableName = (e as CustomEvent<string>).detail;
       setNodes((nds) =>
         nds.map((n) =>
-          n.id === tableName
-            ? { ...n, data: { ...n.data, collapsed: !n.data.collapsed } }
-            : n,
+          n.id === tableName ? { ...n, data: { ...n.data, collapsed: !n.data.collapsed } } : n,
         ),
       );
     };
@@ -132,6 +152,47 @@ function ErDiagramInner({ connectionId, database, focusTable, onSelectTable }: E
     [onSelectTable],
   );
 
+  const handleFocusTable = useCallback(
+    (tableName: string) => {
+      setActiveFocus(tableName);
+      onFocusTable?.(tableName);
+    },
+    [onFocusTable],
+  );
+
+  const handleNodeContextMenu = useCallback(
+    (event: React.MouseEvent, node: Node) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const tableName = (node.data?.tableName as string | undefined) ?? node.id;
+      if (!tableName) return;
+
+      void showNativeContextMenu(
+        buildErNodeContextMenuItems({
+          labels: {
+            openTable: t('schemaTree.openTable'),
+            copyName: t('schemaTree.copyName'),
+            focusTable: t('erDiagram.focusTable'),
+          },
+          handlers: {
+            onOpenTable: onSelectTable
+              ? () => {
+                  onSelectTable(tableName);
+                }
+              : undefined,
+            onCopyName: () => {
+              void navigator.clipboard.writeText(tableName);
+            },
+            onFocusTable: () => {
+              handleFocusTable(tableName);
+            },
+          },
+        }),
+      );
+    },
+    [t, onSelectTable, handleFocusTable],
+  );
+
   const handleExportPng = useCallback(async () => {
     const viewport = document.querySelector('.react-flow__viewport') as HTMLElement;
     if (!viewport) return;
@@ -141,12 +202,7 @@ function ErDiagramInner({ connectionId, database, focusTable, onSelectTable }: E
         quality: 1,
       });
       const base64 = dataUrl.includes(',') ? dataUrl.split(',')[1]! : dataUrl;
-      await fileCommands.saveBase64WithDialog(
-        base64,
-        `er-diagram-${database}.png`,
-        'PNG',
-        ['png'],
-      );
+      await fileCommands.saveBase64WithDialog(base64, `er-diagram-${database}.png`, 'PNG', ['png']);
     } catch (e) {
       console.error('Export failed:', e);
     }
@@ -167,12 +223,9 @@ function ErDiagramInner({ connectionId, database, focusTable, onSelectTable }: E
       } else {
         svgContent = dataUrl;
       }
-      await fileCommands.saveTextWithDialog(
-        svgContent,
-        `er-diagram-${database}.svg`,
-        'SVG',
-        ['svg'],
-      );
+      await fileCommands.saveTextWithDialog(svgContent, `er-diagram-${database}.svg`, 'SVG', [
+        'svg',
+      ]);
     } catch (e) {
       console.error('Export failed:', e);
     }
@@ -209,6 +262,7 @@ function ErDiagramInner({ connectionId, database, focusTable, onSelectTable }: E
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onNodeClick={handleNodeClick}
+        onNodeContextMenu={handleNodeContextMenu}
         nodeTypes={nodeTypes}
         fitView
         minZoom={0.1}
@@ -221,7 +275,10 @@ function ErDiagramInner({ connectionId, database, focusTable, onSelectTable }: E
           className="!bg-surface !border-edge !shadow-lg [&>button]:!bg-surface [&>button]:!border-edge [&>button]:!text-fg-muted [&>button:hover]:!bg-surface-alt [&>button:hover]:!text-fg"
         />
         <Background variant={BackgroundVariant.Dots} gap={20} size={1} className="!bg-surface" />
-        <Panel position="top-left" className="flex items-center gap-2 rounded-lg bg-surface/80 px-2 py-1 backdrop-blur">
+        <Panel
+          position="top-left"
+          className="flex items-center gap-2 rounded-lg bg-surface/80 px-2 py-1 backdrop-blur"
+        >
           <Search className="h-3.5 w-3.5 text-fg-muted" />
           <input
             value={searchQuery}
@@ -230,19 +287,34 @@ function ErDiagramInner({ connectionId, database, focusTable, onSelectTable }: E
             className="h-7 w-40 bg-transparent text-xs text-fg outline-none placeholder:text-fg-muted"
           />
         </Panel>
-        <Panel position="top-right" className="flex items-center gap-2 rounded-lg bg-surface/80 px-3 py-1.5 text-xs text-fg-muted backdrop-blur">
-          <Button variant="ghost" className="h-7 gap-1 px-2 text-xs" onClick={handleExportPng} title={t('erDiagram.exportPng')}>
+        <Panel
+          position="top-right"
+          className="flex items-center gap-2 rounded-lg bg-surface/80 px-3 py-1.5 text-xs text-fg-muted backdrop-blur"
+        >
+          <Button
+            variant="ghost"
+            className="h-7 gap-1 px-2 text-xs"
+            onClick={handleExportPng}
+            title={t('erDiagram.exportPng')}
+          >
             <Download className="h-3.5 w-3.5" />
             PNG
           </Button>
-          <Button variant="ghost" className="h-7 gap-1 px-2 text-xs" onClick={handleExportSvg} title={t('erDiagram.exportSvg')}>
+          <Button
+            variant="ghost"
+            className="h-7 gap-1 px-2 text-xs"
+            onClick={handleExportSvg}
+            title={t('erDiagram.exportSvg')}
+          >
             <Download className="h-3.5 w-3.5" />
             SVG
           </Button>
           <span className="text-edge">·</span>
           <span>{t('erDiagram.tableCount').replace('{count}', String(stats.tableCount))}</span>
           <span className="text-edge">·</span>
-          <span>{t('erDiagram.relationCount').replace('{count}', String(stats.relationCount))}</span>
+          <span>
+            {t('erDiagram.relationCount').replace('{count}', String(stats.relationCount))}
+          </span>
         </Panel>
       </ReactFlow>
     </div>

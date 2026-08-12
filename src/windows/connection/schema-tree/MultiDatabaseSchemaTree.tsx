@@ -24,7 +24,7 @@ export function MultiDatabaseSchemaTree({
   selectedTable,
   searchQuery,
   onSelectTable,
-  onTableContextMenu,
+  onNodeContextMenu,
 }: SchemaTreeProps) {
   const { t } = useI18n();
   const loading = useSchemaStore((s) => s.loading);
@@ -47,56 +47,62 @@ export function MultiDatabaseSchemaTree({
     });
   }, [connectionId, loadForConnection, initialDatabase, databaseType]);
 
-  const activateDatabase = useCallback(async (dbName: string, tables: TableInfo[]) => {
-    setLoadedTables(dbName, tables);
-    try {
-      const { databaseCommands } = await import('../../../commands/database');
-      await databaseCommands.useDatabase(connectionId, dbName);
-    } catch {
-      // Selection still updates; query path may fail until user retries.
-    }
-  }, [connectionId, setLoadedTables]);
+  const activateDatabase = useCallback(
+    async (dbName: string, tables: TableInfo[]) => {
+      setLoadedTables(dbName, tables);
+      try {
+        const { databaseCommands } = await import('../../../commands/database');
+        await databaseCommands.useDatabase(connectionId, dbName);
+      } catch {
+        // Selection still updates; query path may fail until user retries.
+      }
+    },
+    [connectionId, setLoadedTables],
+  );
 
-  const handleToggleDb = useCallback(async (dbName: string) => {
-    const wasExpanded = expandedDbs.has(dbName);
-    setExpandedDbs((prev) => {
-      const next = new Set(prev);
-      if (next.has(dbName)) next.delete(dbName);
-      else next.add(dbName);
-      return next;
-    });
-
-    if (wasExpanded) return;
-
-    const cached = dbTables[dbName];
-    if (cached) {
-      await activateDatabase(dbName, cached);
-      return;
-    }
-
-    if (dbLoading.has(dbName)) {
-      useSchemaStore.setState({ currentDatabase: dbName });
-      return;
-    }
-
-    setDbLoading((prev) => new Set(prev).add(dbName));
-    try {
-      const { databaseCommands } = await import('../../../commands/database');
-      await databaseCommands.useDatabase(connectionId, dbName);
-      const all = await databaseCommands.getTables(connectionId, dbName);
-      setDbTables((prev) => ({ ...prev, [dbName]: all }));
-      setLoadedTables(dbName, all);
-    } catch {
-      setDbTables((prev) => ({ ...prev, [dbName]: [] }));
-      setLoadedTables(dbName, []);
-    } finally {
-      setDbLoading((prev) => {
+  const handleToggleDb = useCallback(
+    async (dbName: string) => {
+      const wasExpanded = expandedDbs.has(dbName);
+      setExpandedDbs((prev) => {
         const next = new Set(prev);
-        next.delete(dbName);
+        if (next.has(dbName)) next.delete(dbName);
+        else next.add(dbName);
         return next;
       });
-    }
-  }, [connectionId, dbTables, dbLoading, expandedDbs, activateDatabase, setLoadedTables]);
+
+      if (wasExpanded) return;
+
+      const cached = dbTables[dbName];
+      if (cached) {
+        await activateDatabase(dbName, cached);
+        return;
+      }
+
+      if (dbLoading.has(dbName)) {
+        useSchemaStore.setState({ currentDatabase: dbName });
+        return;
+      }
+
+      setDbLoading((prev) => new Set(prev).add(dbName));
+      try {
+        const { databaseCommands } = await import('../../../commands/database');
+        await databaseCommands.useDatabase(connectionId, dbName);
+        const all = await databaseCommands.getTables(connectionId, dbName);
+        setDbTables((prev) => ({ ...prev, [dbName]: all }));
+        setLoadedTables(dbName, all);
+      } catch {
+        setDbTables((prev) => ({ ...prev, [dbName]: [] }));
+        setLoadedTables(dbName, []);
+      } finally {
+        setDbLoading((prev) => {
+          const next = new Set(prev);
+          next.delete(dbName);
+          return next;
+        });
+      }
+    },
+    [connectionId, dbTables, dbLoading, expandedDbs, activateDatabase, setLoadedTables],
+  );
 
   const query = searchQuery.toLowerCase();
 
@@ -114,9 +120,10 @@ export function MultiDatabaseSchemaTree({
     for (const dbName of filteredDbs) {
       const tbls = dbTables[dbName] ?? [];
       const dbNameMatches = query && dbName.toLowerCase().includes(query);
-      const filteredDbTables = query && !dbNameMatches
-        ? tbls.filter((tbl) => tbl.name.toLowerCase().includes(query))
-        : tbls;
+      const filteredDbTables =
+        query && !dbNameMatches
+          ? tbls.filter((tbl) => tbl.name.toLowerCase().includes(query))
+          : tbls;
       const hasTableMatch = !!(query && filteredDbTables.length > 0);
       const isExpanded = expandedDbs.has(dbName) || hasTableMatch;
       const isLoading = dbLoading.has(dbName);
@@ -170,7 +177,15 @@ export function MultiDatabaseSchemaTree({
   }
 
   return (
-    <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto">
+    <div
+      ref={scrollRef}
+      className="flex-1 min-h-0 overflow-y-auto"
+      onContextMenu={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onNodeContextMenu?.({ kind: 'blank', name: '', x: e.clientX, y: e.clientY });
+      }}
+    >
       {loading && databases.length === 0 && (
         <div className="flex items-center gap-2 px-3 py-2 text-xs text-fg-muted">
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -198,10 +213,22 @@ export function MultiDatabaseSchemaTree({
                   type="button"
                   className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm hover:bg-surface-raised text-fg-secondary"
                   onClick={() => void handleToggleDb(row.dbName)}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onNodeContextMenu?.({
+                      kind: 'database',
+                      name: row.dbName,
+                      x: e.clientX,
+                      y: e.clientY,
+                    });
+                  }}
                 >
-                  {row.expanded
-                    ? <ChevronDown className="h-3.5 w-3.5 shrink-0" />
-                    : <ChevronRight className="h-3.5 w-3.5 shrink-0" />}
+                  {row.expanded ? (
+                    <ChevronDown className="h-3.5 w-3.5 shrink-0" />
+                  ) : (
+                    <ChevronRight className="h-3.5 w-3.5 shrink-0" />
+                  )}
                   <Database className="h-3.5 w-3.5 shrink-0 text-teal-400" />
                   <span className="min-w-0 truncate">{row.dbName}</span>
                 </button>
@@ -225,7 +252,9 @@ export function MultiDatabaseSchemaTree({
                   type="button"
                   className={cn(
                     'flex w-full items-center gap-2 py-1.5 pl-8 pr-3 text-left text-[13px] hover:bg-surface-raised',
-                    selectedTable === row.item.name ? 'bg-surface-raised text-fg' : 'text-fg-secondary',
+                    selectedTable === row.item.name
+                      ? 'bg-surface-raised text-fg'
+                      : 'text-fg-secondary',
                   )}
                   onClick={() => {
                     if (currentDatabase !== row.dbName) {
@@ -237,7 +266,13 @@ export function MultiDatabaseSchemaTree({
                   onContextMenu={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    onTableContextMenu?.(row.item.name, e.clientX, e.clientY);
+                    onNodeContextMenu?.({
+                      kind: 'table',
+                      name: row.item.name,
+                      x: e.clientX,
+                      y: e.clientY,
+                      schema: row.item.schema ?? undefined,
+                    });
                   }}
                 >
                   <Table2 className="h-3.5 w-3.5 shrink-0 text-fg-secondary" />

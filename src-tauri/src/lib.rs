@@ -744,7 +744,6 @@ pub fn run() {
             commands::get_favorite_queries,
             commands::add_favorite_query,
             commands::delete_favorite_query,
-            commands::show_editor_context_menu,
             commands::get_settings,
             commands::get_system_ui_language,
             commands::save_settings,

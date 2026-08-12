@@ -13,7 +13,6 @@ describe('uiStore', () => {
       resultHeight: 360,
       connectionsViewMode: 'grid',
       activeDialog: null,
-      contextMenu: null,
       isFullscreen: false,
     });
   });
@@ -45,10 +44,7 @@ describe('uiStore', () => {
     expect(useUiStore.getState().activeDialog).toBeNull();
   });
 
-  it('sets context menu and view mode', () => {
-    const menu = { x: 10, y: 20, items: [{ label: 'Edit', onClick: () => {} }] };
-    useUiStore.getState().setContextMenu(menu);
-    expect(useUiStore.getState().contextMenu).toEqual(menu);
+  it('sets connections view mode', () => {
     useUiStore.getState().setConnectionsViewMode('list');
     expect(useUiStore.getState().connectionsViewMode).toBe('list');
   });

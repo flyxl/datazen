@@ -403,7 +403,7 @@ pub struct AppState {
 | AI | `ai.rs` | `ai_generate_sql`, `ai_chat`, `ai_diagnose_error`, `ai_analyze_explain`, `ai_parse_filter`, `workflow_*`, `prompt_*`（约 30 个命令） |
 | 上下文 | `context.rs` | `context_get_dir`, `context_list_files`, `context_read_files` |
 | MCP | `mcp.rs` | `mcp_start`, `mcp_stop`, `mcp_status`, `mcp_client_connect`, `mcp_client_call_tool` |
-| 文件 | `file.rs` | `read_file`, `write_file`, `show_editor_context_menu` |
+| 文件 | `file.rs` | `read_file`, `write_file` |
 | 窗口 | `window.rs` | `create_sub_window` |
 | ADB | `adb.rs` | `adb_list_packages`, `adb_list_databases`, `adb_pull_database` |
 
