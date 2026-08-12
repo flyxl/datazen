@@ -1,20 +1,16 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   BookOpen,
   Code2,
   Database,
-  Download,
   KeyRound,
   GitFork,
   MessageSquare,
-  Pencil,
   Plus,
   RefreshCw,
   Search,
   Table2,
   TableProperties,
-  Upload,
   X,
 } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
@@ -31,8 +27,10 @@ import { DB_REGISTRY, getDbLabel } from '../../lib/databaseTypes';
 import { canOpenStructureEditor } from '../../lib/structureEditor/canOpenStructureEditor';
 import { resolveCreateTableSchema } from '../../lib/structureEditor/resolveCreateTableSchema';
 import { invalidateSchemaCache } from '../../lib/schemaCache';
+import { showNativeContextMenu } from '../../lib/nativeContextMenu';
+import { buildSchemaTreeContextMenuItems } from '../../lib/schemaTreeContextMenu';
 import type { ConnectionViewProps } from '../../lib/connectionViews/types';
-import { SchemaTree } from './schema-tree/SchemaTree';
+import { SchemaTree, type SchemaTreeNodeContextMenuPayload } from './schema-tree/SchemaTree';
 import { StructureView } from './StructureView';
 import { TableView } from './TableView';
 import { IndexesView } from './IndexesView';
@@ -146,11 +144,7 @@ export function SqlConnectionView({
   const [importOpen, setImportOpen] = useState(false);
   const [exportTableName, setExportTableName] = useState<string | null>(null);
   const [importTableName, setImportTableName] = useState<string | null>(null);
-  const [tableCtx, setTableCtx] = useState<{ tableName: string; x: number; y: number } | null>(
-    null,
-  );
   const [lastTableSchema, setLastTableSchema] = useState<string | null>(null);
-  const tableCtxRef = useRef<HTMLDivElement>(null);
 
   const currentDatabase = useSchemaStore((s) => s.currentDatabase);
   const schemaTables = useSchemaStore((s) => s.tables);
@@ -403,46 +397,67 @@ export function SqlConnectionView({
     }
   }, [connectionId, currentDatabase, databaseType, loadTables, loadForConnection]);
 
-  const handleTableContextMenu = useCallback((name: string, x: number, y: number) => {
-    setTableCtx({ tableName: name, x, y });
-  }, []);
-
-  const handleTableCtxAction = useCallback(
-    (action: 'export' | 'import' | 'er-focus') => {
-      if (!tableCtx) return;
-      const name = tableCtx.tableName;
-      setTableCtx(null);
-      if (action === 'export') {
-        setExportTableName(name);
-        handleSelectTable(name);
-        setExportOpen(true);
-      } else if (action === 'import') {
-        setImportTableName(name);
-        setImportOpen(true);
-      } else if (action === 'er-focus') {
-        handleOpenErDiagram(name);
-      }
+  const handleNodeContextMenu = useCallback(
+    (payload: SchemaTreeNodeContextMenuPayload) => {
+      const { kind, name, schema } = payload;
+      const copyText = (text: string) => {
+        void navigator.clipboard.writeText(text);
+      };
+      void showNativeContextMenu(
+        buildSchemaTreeContextMenuItems({
+          kind,
+          labels: {
+            open: kind === 'view' ? t('schemaTree.open') : t('schemaTree.openTable'),
+            copyName: t('schemaTree.copyName'),
+            editStructure: t('connWin.editTableStructure'),
+            focusEr: t('erDiagram.focusTable'),
+            exportData: t('connWin.exportData'),
+            importData: t('connWin.importData'),
+            refresh: t('connWin.refresh'),
+            newQuery: t('connWin.newQuery'),
+            copyDatabaseName: t('schemaTree.copyDatabaseName'),
+            newTable: t('connWin.newTable'),
+          },
+          handlers: {
+            onOpen: () => handleSelectTable(name, schema),
+            onCopyName: () => copyText(name),
+            onEditStructure: () => handleEditTableStructure(name),
+            onFocusEr: () => handleOpenErDiagram(name),
+            onExport: () => {
+              setExportTableName(name);
+              handleSelectTable(name, schema);
+              setExportOpen(true);
+            },
+            onImport: () => {
+              setImportTableName(name);
+              setImportOpen(true);
+            },
+            onRefresh: handleRefresh,
+            onNewQuery: handleNewQuery,
+            onCopyDatabaseName: () => copyText(name),
+            onNewTable: handleCreateTable,
+          },
+          readOnly: isReadOnly,
+          showEditStructure: showStructureEditor,
+          showErFocus: supportsErDiagram,
+          showExport: kind === 'view' ? true : undefined,
+          showNewTable: showStructureEditor,
+        }),
+      );
     },
-    [tableCtx, handleSelectTable, handleOpenErDiagram],
+    [
+      t,
+      handleSelectTable,
+      handleEditTableStructure,
+      handleOpenErDiagram,
+      handleRefresh,
+      handleNewQuery,
+      handleCreateTable,
+      isReadOnly,
+      showStructureEditor,
+      supportsErDiagram,
+    ],
   );
-
-  useEffect(() => {
-    if (!tableCtx) return;
-    const onMouseDown = (e: MouseEvent) => {
-      if (tableCtxRef.current && !tableCtxRef.current.contains(e.target as Node)) {
-        setTableCtx(null);
-      }
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setTableCtx(null);
-    };
-    globalThis.addEventListener('mousedown', onMouseDown);
-    globalThis.addEventListener('keydown', onKey);
-    return () => {
-      globalThis.removeEventListener('mousedown', onMouseDown);
-      globalThis.removeEventListener('keydown', onKey);
-    };
-  }, [tableCtx]);
 
   useKeyboardShortcuts([
     {
@@ -625,7 +640,7 @@ export function SqlConnectionView({
                 selectedTable={activePanel?.type === 'table' ? activePanel.tableName : null}
                 searchQuery={searchQuery}
                 onSelectTable={handleSelectTable}
-                onTableContextMenu={handleTableContextMenu}
+                onNodeContextMenu={handleNodeContextMenu}
               />
             </aside>
 
@@ -908,62 +923,6 @@ export function SqlConnectionView({
           <kbd className="font-mono">Space</kbd> {t('detail.title')}
         </div>
       </footer>
-
-      {tableCtx &&
-        createPortal(
-          <div
-            ref={tableCtxRef}
-            className="fixed z-[9999] min-w-[180px] rounded-lg border border-edge bg-surface-alt py-1 shadow-xl"
-            style={{ left: tableCtx.x, top: tableCtx.y }}
-          >
-            {showStructureEditor && (
-              <>
-                <button
-                  type="button"
-                  className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[13px] text-fg-secondary hover:bg-surface-raised hover:text-fg"
-                  onClick={() => {
-                    const name = tableCtx.tableName;
-                    setTableCtx(null);
-                    handleEditTableStructure(name);
-                  }}
-                >
-                  <Pencil className="h-3.5 w-3.5" />
-                  {t('connWin.editTableStructure')}
-                </button>
-                <div className="my-1 h-px bg-edge" />
-              </>
-            )}
-            {supportsErDiagram && (
-              <button
-                type="button"
-                className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[13px] text-fg-secondary hover:bg-surface-raised hover:text-fg"
-                onClick={() => handleTableCtxAction('er-focus')}
-              >
-                <GitFork className="h-3.5 w-3.5" />
-                {t('erDiagram.focusTable')}
-              </button>
-            )}
-            <button
-              type="button"
-              className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[13px] text-fg-secondary hover:bg-surface-raised hover:text-fg"
-              onClick={() => handleTableCtxAction('export')}
-            >
-              <Download className="h-3.5 w-3.5" />
-              {t('connWin.exportData')}
-            </button>
-            {!isReadOnly && (
-              <button
-                type="button"
-                className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[13px] text-fg-secondary hover:bg-surface-raised hover:text-fg"
-                onClick={() => handleTableCtxAction('import')}
-              >
-                <Upload className="h-3.5 w-3.5" />
-                {t('connWin.importData')}
-              </button>
-            )}
-          </div>,
-          document.body,
-        )}
 
       {exportOpen && exportTableName && (
         <ExportDialog

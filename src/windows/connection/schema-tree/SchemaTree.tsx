@@ -1,11 +1,20 @@
 import { useEffect, type ComponentType } from 'react';
 import { DB_REGISTRY } from '../../../lib/databaseTypes';
 import type { DatabaseTypeMeta } from '../../../lib/databaseMeta';
+import type { SchemaTreeNodeKind } from '../../../lib/schemaTreeContextMenu';
 import { getPluginSchemaTree } from '../../../plugins/generated';
 import { useSchemaStore } from '../../../stores/schemaStore';
 import type { DatabaseType } from '../../../types';
 import { MultiDatabaseSchemaTree } from './MultiDatabaseSchemaTree';
 import { StandardSchemaTree } from './StandardSchemaTree';
+
+export type SchemaTreeNodeContextMenuPayload = {
+  kind: SchemaTreeNodeKind;
+  name: string;
+  x: number;
+  y: number;
+  schema?: string;
+};
 
 export interface SchemaTreeProps {
   connectionId: string;
@@ -14,7 +23,7 @@ export interface SchemaTreeProps {
   selectedTable: string | null;
   searchQuery: string;
   onSelectTable: (table: string, schema?: string) => void;
-  onTableContextMenu?: (tableName: string, x: number, y: number) => void;
+  onNodeContextMenu?: (payload: SchemaTreeNodeContextMenuPayload) => void;
 }
 
 /**
@@ -46,9 +55,7 @@ export function SchemaTree(props: SchemaTreeProps) {
   if (shouldUseMultiDatabaseTree(meta, props.initialDatabase)) {
     // Domain is not a logical DB — don't pass it as preferredDatabase.
     const treeProps =
-      meta?.databaseFieldType === 'domain'
-        ? { ...props, initialDatabase: undefined }
-        : props;
+      meta?.databaseFieldType === 'domain' ? { ...props, initialDatabase: undefined } : props;
     return <MultiDatabaseSchemaTree {...treeProps} />;
   }
   return <StandardSchemaTree {...props} isKeyValue={meta?.isKeyValue ?? false} />;

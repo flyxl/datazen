@@ -420,6 +420,10 @@ const en: Record<TranslationKey, string> = {
   'schemaTree.noMatchingKeys': 'No matching keys',
   'schemaTree.noKeys': 'No keys',
   'schemaTree.showAll': 'Show all ({count})',
+  'schemaTree.openTable': 'Open Table',
+  'schemaTree.open': 'Open',
+  'schemaTree.copyName': 'Copy Name',
+  'schemaTree.copyDatabaseName': 'Copy Database Name',
 
   // ── ER Diagram ──
   'erDiagram.title': 'ER Diagram',
