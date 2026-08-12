@@ -221,18 +221,17 @@ describe('表数据视图 (TD-001~TD-008)', () => {
     expect(checked).toBeGreaterThan(0);
   });
 
-  it('TC-TABLE-004: 筛选相关 UI 应存在或可降级为部分覆盖', async () => {
-    const body = await $('body').getText();
-    const smart = await $(`button*=${t('smartFilter.title')}`);
-    const smartAlt = await $('button*=智能筛选');
-    const filterWord = body.includes('筛选') || body.includes('Filter') || body.includes('filter');
-    const visible =
-      (await smart.isExisting()) ||
-      (await smartAlt.isExisting()) ||
-      filterWord ||
-      body.includes(t('common.selectAll'));
-    // Smart filter may require AI config; table chrome still counts as partial coverage.
-    expect(visible).toBe(true);
+  it('TC-TABLE-004: 筛选入口应可打开（完整路径见 table-filter.ts）', async () => {
+    const toggle = await $('[data-testid="table-filter-toggle"]');
+    await toggle.waitForDisplayed({ timeout: 10000 });
+    await toggle.click();
+    await browser.pause(400);
+    await expect(await $('[data-testid="filter-editor"]')).toBeDisplayed();
+    // Collapse to avoid interfering with later tests
+    const collapse = await $('[data-testid="filter-collapse"]');
+    if (await collapse.isExisting()) {
+      await collapse.click();
+    }
   });
 
   it('TC-TABLE-009: 空表应显示空状态而非崩溃', async () => {

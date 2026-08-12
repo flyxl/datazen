@@ -128,6 +128,14 @@ Host 各模块内 `#[cfg(test)]`。驱动实现的单测在 `packages/drivers/<i
 |---------|---------|
 | `hooks/__tests__/computeColumnWidths.test.ts` | 列宽计算 |
 
+## 4.6 Host E2E 覆盖规则
+
+与 [AGENTS.md](../../AGENTS.md) / [e2e-testing.md](../e2e-testing.md) 一致：
+
+1. Host 内**所有 UI 交互**与**所有用户可走到的路径**须有 `e2e/specs/` 覆盖（交互 + 结果断言）。
+2. 改 Host UI 必须同 PR 更新 E2E。
+3. 驱动专属用例不进 Host；例外路径登记在 [e2e-coverage.md](../e2e-coverage.md)。
+
 ## 5. E2E 测试
 
 > **Agent / 开发者操作手册（构建、排错、检查清单）：[docs/e2e-testing.md](../e2e-testing.md)**
@@ -138,11 +146,11 @@ WebdriverIO E2E spec（Host：`e2e/specs/`）：
 |------|----------|
 | **核心 UI** | `main-window.ts`, `homepage-features.ts`, `settings.ts`, `i18n-menu.ts`, `drag-drop-groups.ts`, `detail-panel.ts`, `file-connection-fields-theme.ts` |
 | **连接** | `new-connection.ts`, `edit-delete-connection.ts`, `connection-search-group.ts`, `connection-window.ts` |
-| **SQL / 数据** | `sql-query.ts`, `table-data.ts`, `table-edit.ts`, `table-structure.ts`, `data-types.ts`, `export-import.ts`, `er-diagram.ts`, `chart-expand.ts` |
+| **SQL / 数据** | `sql-query.ts`, `table-data.ts`, `table-filter.ts`, `table-indexes.ts`, `table-edit.ts`, `table-structure.ts`, `data-types.ts`, `export-import.ts`, `er-diagram.ts`, `chart-expand.ts`, `object-browser.ts` |
 | **数据库驱动（Host）** | `sqlite.ts`, `mysql.ts` |
 | **AI / Workflow** | `ai-features.ts`, `ai-ask-question.ts`, `ai-context.ts`, `workflow.ts`, `workflow-window.ts` |
 | **路径 IPC / 备份·i18n** | `path-ipc-hardening.ts`, `app-data-backup.ts`, `i18n-10-locales.ts`, `system-locale.ts` |
-| **运维** | `backup-database.ts`, `data-sync-real.ts`, `bugfix-verification.ts` |
+| **运维** | `backup-database.ts`, `backup-window.ts`, `schema-diff-window.ts`, `data-sync-real.ts`, `bugfix-verification.ts` |
 
 **插件 / 驱动自有（不进 Host 默认 `pnpm e2e` / `pnpm test:unit`）：**
 

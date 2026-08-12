@@ -148,6 +148,7 @@ function FilterValueInput({
       }}
       placeholder={placeholder}
       className="!h-7 w-24 shrink-0 !px-2 !text-xs"
+      data-testid="filter-value"
     />
   );
 }
@@ -347,13 +348,14 @@ export function FilterEditor({
   };
 
   return (
-    <div className="shrink-0 border-b border-edge bg-surface">
+    <div className="shrink-0 border-b border-edge bg-surface" data-testid="filter-editor">
       <div className="flex h-8 items-center gap-1.5 px-2">
         <button
           type="button"
           className="flex min-w-0 flex-1 items-center gap-1.5 rounded px-1 py-0.5 text-left hover:bg-surface-raised"
           onClick={() => onOpenChange(!open)}
           aria-expanded={open}
+          data-testid="filter-summary-toggle"
         >
           {open ? (
             <ChevronDown className="h-3.5 w-3.5 shrink-0 text-fg-muted" />
@@ -389,11 +391,12 @@ export function FilterEditor({
             {t('filter.add')}
           </Button>
         )}
-        {appliedCount > 0 && (
+          {appliedCount > 0 && (
           <button
             type="button"
             className="shrink-0 px-1.5 text-xs text-fg-secondary hover:text-fg"
             onClick={onClear}
+            data-testid="filter-clear"
           >
             {t('filter.clear')}
           </button>
@@ -430,6 +433,7 @@ export function FilterEditor({
               className="h-6 shrink-0 gap-1 px-1.5 text-xs"
               onClick={addEmpty}
               disabled={columns.length === 0}
+              data-testid="filter-add"
             >
               <Plus className="h-3 w-3" />
               {t('filter.add')}
@@ -439,12 +443,14 @@ export function FilterEditor({
                 variant="ghost"
                 className="h-6 px-2 text-xs"
                 onClick={() => onOpenChange(false)}
+                data-testid="filter-collapse"
               >
                 {t('filter.collapse')}
               </Button>
               <Button
                 className="h-6 px-2.5 text-xs"
                 disabled={!dirty}
+                data-testid="filter-apply"
                 onClick={() => {
                   setEditingIndex(null);
                   onApply();

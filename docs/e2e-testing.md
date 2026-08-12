@@ -26,6 +26,20 @@ node scripts/with-plugin-inject.mjs [--drivers=basic] -- node scripts/e2e-tauri-
 
 入口脚本：`e2e/run.mjs`（`pnpm e2e` 会调用它）。
 
+## 1.1 Host UI / 路径覆盖规则（硬性）
+
+在 Host 范围内（驱动专属 E2E 仍见「插件自有测试」与 [AGENTS.md](../AGENTS.md)「驱动测试落点」）：
+
+| 规则 | 要求 |
+|------|------|
+| **UI 交互全覆盖** | 所有用户可操作的 Host UI 控件/对话框，须有 `e2e/specs/` 走到该交互，并断言可见结果；仅「文案出现」不算覆盖。 |
+| **用户路径全覆盖** | 所有用户可走到的交互路径（入口 → 操作 → 结果/错误态）须有 E2E；含关键空态/失败态（例：未完成筛选不得出现「加载表数据失败」）。 |
+| **同 PR 更新** | 新增或变更 Host UI / 用户路径时，必须同 PR 补齐或更新 E2E。 |
+| **驱动边界** | 驱动方言 / 专属 Command / 专属 UI → `packages/drivers/<id>/e2e/`（或插件仓），不进 Host `e2e/specs/`。 |
+| **例外登记** | 自动化无法稳定覆盖的路径，必须在 [e2e-coverage.md](./e2e-coverage.md) 登记原因、替代测试与手工项。 |
+
+覆盖矩阵与缺口跟踪：[docs/e2e-coverage.md](./e2e-coverage.md)。
+
 ## 2. 一键跑通（推荐）
 
 ```bash
@@ -135,13 +149,15 @@ e2e/wdio.conf.ts
 |------|------|
 | 核心 UI | `main-window.ts`, `homepage-features.ts`, `settings.ts`, `i18n-menu.ts` |
 | 连接 | `new-connection.ts`, `edit-delete-connection.ts`, `connection-window.ts` |
-| SQL / 表 | `sql-query.ts`, `table-data.ts`, `table-edit.ts`, `export-import.ts` |
-| 路径 IPC / 备份 | `path-ipc-hardening.ts`, `app-data-backup.ts`, `backup-database.ts` |
+| SQL / 表 | `sql-query.ts`, `table-data.ts`, `table-filter.ts`, `table-indexes.ts`, `table-edit.ts`, `export-import.ts`, `object-browser.ts` |
+| 路径 IPC / 备份 | `path-ipc-hardening.ts`, `app-data-backup.ts`, `backup-database.ts`, `backup-window.ts`, `schema-diff-window.ts` |
 | i18n | `i18n-10-locales.ts`, `system-locale.ts` |
 | AI / Workflow | `ai-features.ts`, `ai-context.ts`, `workflow.ts`, `workflow-window.ts`, `driver-commands.ts` |
 | 驱动（Host） | `sqlite.ts`, `mysql.ts`（及其他 SQL Host specs） |
 | Redis E2E（插件包，非默认） | `packages/drivers/redis/e2e/redis.ts`, `redis-topology.ts` — `pnpm e2e:redis` |
 | Kiwi E2E（插件仓，非默认） | `datazen-driver-kiwi`：`pnpm e2e:kiwi` |
+
+覆盖矩阵（UI 交互 / 用户路径）：[e2e-coverage.md](./e2e-coverage.md)。
 
 完整列表与分层测试见 [architecture/testing.md](./architecture/testing.md)。
 
@@ -186,6 +202,8 @@ Tauri 2 前端传参为 **camelCase**（如 `defaultFileName`），不要用 sna
 - [ ] 启动日志无 `asset not found: index.html`
 - [ ] 4445 端口就绪
 - [ ] WDIO 退出码为 0（或如实报告失败用例）
+- [ ] 本次改动的 Host UI / 用户路径已有对应 `e2e/specs/`（见 §1.1 与 [e2e-coverage.md](./e2e-coverage.md)）
+- [ ] 驱动专属路径未误写入 Host `e2e/specs/`
 
 ## 9. 相关文件
 
