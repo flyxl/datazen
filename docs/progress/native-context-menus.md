@@ -23,9 +23,9 @@
 | F5 | DataTable 原生菜单（导出/复制单元格/复制行） | P1 | done | （本提交） | PASS：lines 100% |
 | F6 | 连接窗口 Tab 栏原生菜单（关闭/关闭其他/关闭全部） | P1 | done | （本提交） | PASS：lines 100% |
 | F7 | 收藏 / 历史侧栏原生菜单 | P2 | done | （本提交） | PASS：lines 100% |
-| F8 | Redis key 列表原生菜单（驱动 UI） | P2 | pending | — | — |
-| F9 | Workflow 列表 / 历史原生菜单 | P2 | pending | — | — |
-| F10 | ER 图节点原生菜单 | P2 | pending | — | — |
+| F8 | Redis key 列表原生菜单（驱动 UI） | P2 | done | （本批提交） | PASS：lines 100% |
+| F9 | Workflow 列表 / 历史原生菜单 | P2 | done | （本批提交） | PASS：lines 100% |
+| F10 | ER 图节点原生菜单 | P2 | done | （本批提交） | PASS：lines 100% |
 | F11 | 清理 Web ContextMenu / uiStore 死代码 + 架构文档 / AGENTS.md | P2 | pending | — | — |
 | F12 | 合并到 main 并 push | 收尾 | pending | — | — |
 
@@ -79,3 +79,34 @@
 - `QueryPanel`：收藏条目 / 历史条目 `onContextMenu` → `preventDefault` + `stopPropagation` + `showNativeContextMenu`；历史标题右键清空历史（`clear_query_history`）
 - i18n：`query.applySql` / `query.copySql` / `query.clearHistory`（en + zh-CN 正式文案；其它 locale 英文占位；zh-TW 繁体）；删除复用 `common.delete`
 - 单测：`src/lib/__tests__/querySidebarContextMenu.test.ts`
+
+### F9 — Workflow 列表 / 历史原生菜单（草稿）
+- 新增 `src/lib/workflowListContextMenu.ts`：`buildWorkflowListContextMenuItems`（open / run / delete / copy name）、`buildWorkflowHistoryContextMenuItems`（open detail；delete 仅当 handler 存在）
+- `WorkflowWindow`：侧栏 workflow / history 条目 `onContextMenu` → `showNativeContextMenu`；复用 `handleSelectWorkflow` / `handleRunFromList` / `handleDelete`；历史无单条删除 API，仅打开详情
+- i18n：`workflows.open` / `workflows.copyName` / `workflows.history.openDetail`（en + zh-CN 正式文案；其它 locale 英文占位；zh-TW 繁体）；run/delete 复用已有键
+- 单测：`src/lib/__tests__/workflowListContextMenu.test.ts`
+
+### F8 — Redis key 列表原生菜单（草稿）
+- 新增 `packages/drivers/redis/ui/redisKeyContextMenu.ts`：`buildRedisKeyContextMenuItems`（copy / set TTL / rename / delete；labels 由调用方传入）
+- `RedisWorkbench` KeyTable 行 `onContextMenu` → `showNativeContextMenu`；复制走 `navigator.clipboard.writeText`；TTL / 重命名 / 删除打开 Dialog，复用 `invokeSetTtl` / `invokeRename` / `invokeDeleteKeys`
+- i18n：复用 `schemaTree.copyName` / `redis.setTtl` / `redis.renameKey` / `common.delete` / `redis.confirmDeleteKeys` 等已有 key
+- 单测：`packages/drivers/redis/ui/__tests__/redisKeyContextMenu.test.ts`（vitest.drivers.config）
+
+### F10 — ER 图节点原生菜单（草稿）
+- 新增 `src/lib/erNodeContextMenu.ts`：`buildErNodeContextMenuItems`（open table / copy name / focus；无 handler 则省略该项）
+- `ErDiagramView`：`onNodeContextMenu` → `preventDefault` + `stopPropagation` + `showNativeContextMenu`；打开表接 `onSelectTable`；复制表名走 clipboard；聚焦更新内部 `activeFocus`（可选 `onFocusTable` 同步父级 panel）
+- `SqlConnectionView`：传入 `onFocusTable` → `handleOpenErDiagram(table)` 同步 panel `focusTable`
+- i18n：复用 `schemaTree.openTable` / `schemaTree.copyName` / `erDiagram.focusTable`
+- 单测：`src/lib/__tests__/erNodeContextMenu.test.ts`
+
+### F8 — Redis key 原生菜单
+- redisKeyContextMenu + RedisWorkbench
+- 独立测试 PASS
+
+### F9 — Workflow 列表原生菜单
+- workflowListContextMenu + WorkflowWindow
+- 独立测试 PASS
+
+### F10 — ER 节点原生菜单
+- erNodeContextMenu + ErDiagramView
+- 独立测试 PASS
