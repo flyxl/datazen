@@ -18,6 +18,18 @@ pub struct WorkflowDefinition {
     pub output: Option<WorkflowOutput>,
     pub timeout_secs: Option<u64>,
     pub error_handling: Option<ErrorHandlingConfig>,
+    /// Optional interval schedule (jobs / timed backup via Workflow).
+    #[serde(default)]
+    pub schedule: Option<WorkflowSchedule>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+pub struct WorkflowSchedule {
+    #[serde(default)]
+    pub enabled: bool,
+    /// Run every N seconds. Values below 30 are clamped at runtime.
+    #[serde(default, alias = "intervalSecs")]
+    pub interval_secs: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -93,7 +105,14 @@ pub enum StepStatus { Success, Failed, Skipped, TimedOut }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct WorkflowListItem { pub id: String, pub name: String, pub description: String, pub variables: Vec<WorkflowVariable> }
+pub struct WorkflowListItem {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub variables: Vec<WorkflowVariable>,
+    #[serde(default)]
+    pub scheduled: bool,
+}
 
 #[cfg(test)]
 mod tests {
@@ -113,5 +132,22 @@ mod tests {
     fn workflow_connection_is_optional() {
         let workflow: WorkflowDefinition = serde_yaml::from_str("id: w\nname: W\ndescription: d\nsteps: []\n").unwrap();
         assert_eq!(workflow.connection, None);
+        assert_eq!(workflow.schedule, None);
+    }
+
+    #[test]
+    fn workflow_schedule_yaml_deserializes() {
+        let yaml = "id: w\nname: W\ndescription: d\nsteps: []\nschedule:\n  enabled: true\n  interval_secs: 120\n";
+        let workflow: WorkflowDefinition = serde_yaml::from_str(yaml).unwrap();
+        let schedule = workflow.schedule.unwrap();
+        assert!(schedule.enabled);
+        assert_eq!(schedule.interval_secs, Some(120));
+    }
+
+    #[test]
+    fn workflow_schedule_accepts_camel_case_interval() {
+        let json = r#"{"id":"w","name":"W","description":"d","steps":[],"schedule":{"enabled":true,"intervalSecs":45}}"#;
+        let workflow: WorkflowDefinition = serde_json::from_str(json).unwrap();
+        assert_eq!(workflow.schedule.unwrap().interval_secs, Some(45));
     }
 }

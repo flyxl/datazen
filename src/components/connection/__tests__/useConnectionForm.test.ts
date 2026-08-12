@@ -140,4 +140,22 @@ describe('useConnectionForm', () => {
     expect(result.current.draft.username).toBe('kiwi-user');
     expect(result.current.hasUsername).toBe(true);
   });
+
+  it('builds ssh agent + jump tunnel into the draft', () => {
+    const { result } = renderHook(() => useConnectionForm());
+    act(() => {
+      result.current.setSshEnabled(true);
+      result.current.setSshHost('bastion');
+      result.current.setSshPort('22');
+      result.current.setSshUsername('ops');
+      result.current.setSshAuthMethod('agent');
+      result.current.setSshJumpEnabled(true);
+      result.current.setSshJumpHost('inner');
+      result.current.setSshJumpUsername('db');
+      result.current.setReadOnly(true);
+    });
+    expect(result.current.draft.sshTunnel?.authMethod).toBe('agent');
+    expect(result.current.draft.sshTunnel?.jump?.host).toBe('inner');
+    expect(result.current.draft.readOnly).toBe(true);
+  });
 });

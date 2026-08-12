@@ -363,6 +363,7 @@ async fn workflow_save_list_get_delete() {
         output: None,
         timeout_secs: None,
         error_handling: None,
+        schedule: None,
     };
 
     test.state.workflow_registry.save_workflow(&wf).await.unwrap();
@@ -885,6 +886,7 @@ async fn workflow_execute_ai_step_with_wiremock() {
         output: None,
         timeout_secs: None,
         error_handling: None,
+        schedule: None,
     };
     test.state.workflow_registry.save_workflow(&wf).await.unwrap();
 
@@ -1023,6 +1025,7 @@ async fn workflow_history_clear_after_execute() {
         output: None,
         timeout_secs: None,
         error_handling: None,
+        schedule: None,
     };
     test.state.workflow_registry.save_workflow(&wf).await.unwrap();
     workflow_execute_impl(&test.state, "hist-wf".into(), serde_json::json!({}), None)

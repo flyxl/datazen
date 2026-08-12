@@ -9,11 +9,15 @@ import type {
 import { driverCommands } from './driver';
 
 export const queryCommands = {
-  executeQuery: async (connectionId: string, sql: string) => {
+  executeQuery: async (
+    connectionId: string,
+    sql: string,
+    params?: Record<string, string | number | boolean | null>,
+  ) => {
     const result = await driverCommands.execute({
       connectionId,
       command: 'query',
-      input: { sql },
+      input: params && Object.keys(params).length > 0 ? { sql, params } : { sql },
     });
     return result.data as MultiQueryResult;
   },
@@ -51,4 +55,16 @@ export const queryCommands = {
 
   deleteFavoriteQuery: (id: string) =>
     invoke<void>('delete_favorite_query', { id }),
+
+  beginSessionTransaction: (connectionId: string) =>
+    invoke<void>('begin_session_transaction', { connectionId }),
+
+  commitSessionTransaction: (connectionId: string) =>
+    invoke<void>('commit_session_transaction', { connectionId }),
+
+  rollbackSessionTransaction: (connectionId: string) =>
+    invoke<void>('rollback_session_transaction', { connectionId }),
+
+  sessionTransactionStatus: (connectionId: string) =>
+    invoke<boolean>('session_transaction_status', { connectionId }),
 };

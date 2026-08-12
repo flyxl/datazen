@@ -160,7 +160,11 @@ pub fn query_command_definition() -> DriverCommandDefinition {
             "type": "object",
             "properties": {
                 "sql": { "type": "string" },
-                "limit": { "type": ["integer", "null"], "minimum": 1 }
+                "limit": { "type": ["integer", "null"], "minimum": 1 },
+                "params": {
+                    "description": "Named or positional bind values substituted by the host before execution",
+                    "type": ["object", "array", "null"]
+                }
             },
             "required": ["sql"]
         }),

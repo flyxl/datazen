@@ -49,6 +49,16 @@ pub async fn execute_command_with_mode(
     )?;
 
     if matches!(definition.id.as_str(), "query" | "execute") {
+        if let Some(sql) = step.input.get("sql").and_then(|v| v.as_str()) {
+            let read_only = app_state
+                .connection_manager
+                .get_connection_config(&handle.id)
+                .await
+                .map(|c| c.read_only)
+                .unwrap_or(false);
+            let safe_mode = app_state.store.get_settings().await.safe_mode;
+            crate::sql_guard::check_sql(sql, read_only, safe_mode)?;
+        }
         if let Some(mode) = permission_mode {
             if let Some(sql) = step.input.get("sql").and_then(|v| v.as_str()) {
                 crate::mcp::permission::check_sql_allowed(sql, mode)?;
@@ -143,5 +153,39 @@ mod tests {
         .await
         .unwrap_err();
         assert!(error.contains("not allowed"));
+    }
+
+    #[tokio::test]
+    async fn safe_mode_blocks_workflow_update_without_where() {
+        let test = crate::testing::app_state::TestAppState::new().await;
+        test.save_connection("wf-safe").await;
+        let step = WorkflowCommandStep::new(
+            "u1",
+            "query",
+            None,
+            serde_json::json!({ "sql": "UPDATE t SET x = 1" }),
+        );
+        let error = execute_command(&test.state, &step, Some("wf-safe"))
+            .await
+            .unwrap_err();
+        assert!(error.contains("WHERE"));
+    }
+
+    #[tokio::test]
+    async fn connection_read_only_blocks_workflow_writes() {
+        let test = crate::testing::app_state::TestAppState::new().await;
+        let mut config = crate::testing::app_state::sample_postgres_config("wf-conn-ro");
+        config.read_only = true;
+        test.store.save_connection(config).await.unwrap();
+        let step = WorkflowCommandStep::new(
+            "u1",
+            "query",
+            None,
+            serde_json::json!({ "sql": "DELETE FROM t WHERE id = 1" }),
+        );
+        let error = execute_command(&test.state, &step, Some("wf-conn-ro"))
+            .await
+            .unwrap_err();
+        assert!(error.contains("read-only"));
     }
 }

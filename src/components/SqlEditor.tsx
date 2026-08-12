@@ -4,7 +4,8 @@ import { EditorState, Compartment } from '@codemirror/state';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { sql, PostgreSQL, MySQL, MariaSQL, SQLite, StandardSQL } from '@codemirror/lang-sql';
 import type { SQLDialect } from '@codemirror/lang-sql';
-import { autocompletion, closeBrackets, acceptCompletion } from '@codemirror/autocomplete';
+import { autocompletion, closeBrackets, acceptCompletion, completeFromList } from '@codemirror/autocomplete';
+import { sqlFunctionCompletions } from '../lib/sqlCompletions';
 import { searchKeymap } from '@codemirror/search';
 import { resolveEditorFontFamily, HOST_DEFAULT_EDITOR_FONT } from '../lib/resolveEditorFontFamily';
 import {
@@ -112,6 +113,20 @@ const CM_DIALECT_MAP: Record<string, SQLDialect> = {
 };
 
 /** Resolve CodeMirror SQL dialect; plugins may map via `sqlDialect` (e.g. kiwi → mysql). */
+function sqlEditorExtensions(databaseType?: string, schema?: SqlSchema) {
+  const dialect = resolveCmDialect(databaseType);
+  return [
+    sql({
+      dialect,
+      upperCaseKeywords: true,
+      schema: schema ?? {},
+    }),
+    dialect.language.data.of({
+      autocomplete: completeFromList(sqlFunctionCompletions(databaseType)),
+    }),
+  ];
+}
+
 export function resolveCmDialect(dbType?: string): SQLDialect {
   if (!dbType) return StandardSQL;
   if (CM_DIALECT_MAP[dbType]) return CM_DIALECT_MAP[dbType];
@@ -214,13 +229,7 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
           activateOnTyping: true,
           defaultKeymap: true,
         }),
-        sqlCompartment.current.of(
-          sql({
-            dialect: resolveCmDialect(databaseType),
-            upperCaseKeywords: true,
-            schema: schema ?? {},
-          }),
-        ),
+        sqlCompartment.current.of(sqlEditorExtensions(databaseType, schema)),
         themeCompartment.current.of(themeExtensions(config)),
         EditorView.lineWrapping,
         EditorView.domEventHandlers({
@@ -305,13 +314,7 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
     const view = viewRef.current;
     if (!view) return;
     view.dispatch({
-      effects: sqlCompartment.current.reconfigure(
-        sql({
-          dialect: resolveCmDialect(databaseType),
-          upperCaseKeywords: true,
-          schema: schema ?? {},
-        }),
-      ),
+      effects: sqlCompartment.current.reconfigure(sqlEditorExtensions(databaseType, schema)),
     });
   }, [schema, databaseType]);
 

@@ -33,6 +33,7 @@ export const config: WebdriverIO.Config = {
             editorFontFamily: 'monospace',
             confirmOnDelete: true,
             autoCommit: false,
+            safeMode: true,
             defaultPageSize: 50,
           },
         })

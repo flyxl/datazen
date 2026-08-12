@@ -21,6 +21,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   editorFontFamily: HOST_DEFAULT_EDITOR_FONT,
   confirmOnDelete: true,
   autoCommit: true,
+  safeMode: true,
   defaultPageSize: 50,
   connectionPoolSize: 10,
   logLevel: 'info',

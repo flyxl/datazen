@@ -55,8 +55,8 @@ interface QueryStore {
   setActiveTab: (id: string) => void;
   updateSql: (tabId: string, sql: string) => void;
   setActiveResult: (tabId: string, idx: number) => void;
-  executeQuery: (tabId: string) => Promise<void>;
-  executeSelection: (tabId: string, sql: string) => Promise<void>;
+  executeQuery: (tabId: string, params?: Record<string, string | number | boolean | null>) => Promise<void>;
+  executeSelection: (tabId: string, sql: string, params?: Record<string, string | number | boolean | null>) => Promise<void>;
   cancelQuery: (tabId: string) => Promise<void>;
   loadHistory: () => Promise<void>;
   toggleHistory: () => void;
@@ -144,6 +144,69 @@ async function runStreamingQuery(
   }
 }
 
+/** Bind-param queries still go through execute_driver_command (params + sql_guard). */
+async function runBoundQuery(
+  get: () => QueryStore,
+  set: (partial: Partial<QueryStore> | ((state: QueryStore) => Partial<QueryStore>)) => void,
+  tabId: string,
+  sql: string,
+  params: Record<string, string | number | boolean | null>,
+): Promise<void> {
+  const { connectionId, tabs } = get();
+  if (!connectionId) {
+    set({
+      tabs: tabs.map((tab) =>
+        tab.id === tabId
+          ? { ...tab, error: t('query.notConnected'), running: false, results: [], activeResultIdx: 0 }
+          : tab,
+      ),
+    });
+    return;
+  }
+
+  set({
+    tabs: get().tabs.map((tab) =>
+      tab.id === tabId ? { ...tab, running: true, error: null } : tab,
+    ),
+  });
+
+  try {
+    const multi = await queryCommands.executeQuery(connectionId, sql, params);
+    const { resolvePostQueryViewMode } = await import('../lib/chart/postQueryView');
+    const viewMode = resolvePostQueryViewMode(multi.results[0]);
+    set((s) => ({
+      tabs: s.tabs.map((tab) =>
+        tab.id === tabId
+          ? {
+              ...tab,
+              running: false,
+              results: multi.results,
+              activeResultIdx: 0,
+              error: null,
+              executionTimeMs: multi.totalTimeMs ?? null,
+              resultViewMode: viewMode,
+            }
+          : tab,
+      ),
+    }));
+    await get().loadHistory();
+  } catch (e) {
+    set((s) => ({
+      tabs: s.tabs.map((tab) =>
+        tab.id === tabId
+          ? {
+              ...tab,
+              running: false,
+              error: extractError(e),
+              results: [],
+              activeResultIdx: 0,
+            }
+          : tab,
+      ),
+    }));
+  }
+}
+
 export const useQueryStore = create<QueryStore>((set, get) => ({
   connectionId: null,
   tabs: [],
@@ -186,15 +249,23 @@ export const useQueryStore = create<QueryStore>((set, get) => ({
       tabs: s.tabs.map((t) => (t.id === tabId ? { ...t, activeResultIdx: idx } : t)),
     })),
 
-  executeQuery: async (tabId) => {
+  executeQuery: async (tabId, params) => {
     const tab = get().tabs.find((t) => t.id === tabId);
     if (!tab) return;
+    if (params && Object.keys(params).length > 0) {
+      await runBoundQuery(get, set, tabId, tab.sql, params);
+      return;
+    }
     await runStreamingQuery(get, set, tabId, tab.sql);
   },
 
-  executeSelection: async (tabId, sql) => {
+  executeSelection: async (tabId, sql, params) => {
     const { connectionId } = get();
     if (!connectionId) return;
+    if (params && Object.keys(params).length > 0) {
+      await runBoundQuery(get, set, tabId, sql, params);
+      return;
+    }
     await runStreamingQuery(get, set, tabId, sql);
   },
 
