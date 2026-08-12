@@ -1,5 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { BookOpen, Download, Gauge, Loader2, Pause, Play, Plus, RefreshCw, Upload } from 'lucide-react';
+import {
+  BookOpen,
+  Download,
+  Gauge,
+  Loader2,
+  Pause,
+  Play,
+  Plus,
+  RefreshCw,
+  Upload,
+} from 'lucide-react';
 import { TitleBar } from '../../components/TitleBar';
 import { StatusBar } from '../../components/StatusBar';
 import { Button } from '../../components/ui/Button';
@@ -37,7 +47,9 @@ function nextWidgetLayout(widgets: DashboardWidget[]): DashboardWidget['layout']
 export function DashboardWindow() {
   useThemeListener();
   const { t } = useI18n();
-  const dashboardId = getUrlParam('dashboardId') ?? '';
+  const urlDashboardId = getUrlParam('dashboardId') ?? '';
+  const [activeDashboardId, setActiveDashboardId] = useState(urlDashboardId);
+  const dashboardId = activeDashboardId;
 
   const entry = useDashboardStore((s) => s.dashboardsById[dashboardId]);
   const current = entry?.dashboard ?? null;
@@ -45,9 +57,12 @@ export function DashboardWindow() {
   const busyWidgets = entry?.busyWidgets ?? {};
   const loading = entry?.loading ?? false;
   const error = entry?.error ?? null;
+  const list = useDashboardStore((s) => s.list);
+  const listLoading = useDashboardStore((s) => s.listLoading);
   const mountDashboard = useDashboardStore((s) => s.mountDashboard);
   const loadDashboard = useDashboardStore((s) => s.loadDashboard);
   const saveDashboard = useDashboardStore((s) => s.saveDashboard);
+  const fetchDashboards = useDashboardStore((s) => s.fetchDashboards);
   const refreshWidget = useDashboardStore((s) => s.refreshWidget);
   const refreshAllWidgets = useDashboardStore((s) => s.refreshAllWidgets);
   const releaseDashboard = useDashboardStore((s) => s.releaseDashboard);
@@ -61,13 +76,45 @@ export function DashboardWindow() {
   const [monitorPaused, setMonitorPaused] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [nameDraft, setNameDraft] = useState('');
+  const [bootstrapping, setBootstrapping] = useState(!urlDashboardId);
+
+  useEffect(() => {
+    if (urlDashboardId) {
+      setActiveDashboardId(urlDashboardId);
+      setBootstrapping(false);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      setBootstrapping(true);
+      await fetchDashboards();
+      if (cancelled) return;
+      const boards = useDashboardStore.getState().list;
+      if (boards.length > 0) {
+        setActiveDashboardId(boards[0]!.id);
+      }
+      setBootstrapping(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [urlDashboardId, fetchDashboards]);
 
   useEffect(() => {
     if (!dashboardId) return;
     mountDashboard(dashboardId);
     void loadDashboard(dashboardId);
-    return () => { releaseDashboard(dashboardId); };
+    return () => {
+      releaseDashboard(dashboardId);
+    };
   }, [dashboardId, mountDashboard, loadDashboard, releaseDashboard]);
+
+  const handleCreateFirstBoard = useCallback(async () => {
+    const board = createEmptyDashboard(t('dashboard.defaultName'));
+    await saveDashboard(board);
+    await fetchDashboards();
+    setActiveDashboardId(board.id);
+  }, [fetchDashboards, saveDashboard, t]);
 
   useEffect(() => {
     if (current) setNameDraft(current.name);
@@ -104,19 +151,22 @@ export function DashboardWindow() {
     setEditorOpen(true);
   }, [current, t]);
 
-  const handleSaveWidget = useCallback(async (widget: DashboardWidget) => {
-    if (!current) return;
-    const widgets = isNewWidget
-      ? [...current.widgets, widget]
-      : current.widgets.map((w) => (w.id === widget.id ? widget : w));
-    await saveDashboard({ ...current, widgets });
-    setEditorOpen(false);
-    setEditingWidget(null);
-    if (isNewWidget) {
-      void refreshWidget(current.id, widget.id);
-    }
-    setIsNewWidget(false);
-  }, [current, isNewWidget, saveDashboard, refreshWidget]);
+  const handleSaveWidget = useCallback(
+    async (widget: DashboardWidget) => {
+      if (!current) return;
+      const widgets = isNewWidget
+        ? [...current.widgets, widget]
+        : current.widgets.map((w) => (w.id === widget.id ? widget : w));
+      await saveDashboard({ ...current, widgets });
+      setEditorOpen(false);
+      setEditingWidget(null);
+      if (isNewWidget) {
+        void refreshWidget(current.id, widget.id);
+      }
+      setIsNewWidget(false);
+    },
+    [current, isNewWidget, saveDashboard, refreshWidget],
+  );
 
   const handleRename = useCallback(async () => {
     if (!current || !nameDraft.trim()) return;
@@ -188,7 +238,10 @@ export function DashboardWindow() {
   }
 
   return (
-    <div className="flex h-screen min-h-0 flex-col bg-surface text-fg" data-testid="dashboard-window">
+    <div
+      className="flex h-screen min-h-0 flex-col bg-surface text-fg"
+      data-testid="dashboard-window"
+    >
       <TitleBar
         title={titleContent}
         leftContent={<Gauge className="h-4 w-4 text-fg-muted" />}
@@ -199,13 +252,11 @@ export function DashboardWindow() {
               className="h-7 gap-1 px-2 text-xs"
               data-testid="dashboard-pause-toggle"
               onClick={() => void handleToggleMonitorPause()}
-              title={monitorPaused ? t('dashboard.resumeMonitoring') : t('dashboard.pauseMonitoring')}
+              title={
+                monitorPaused ? t('dashboard.resumeMonitoring') : t('dashboard.pauseMonitoring')
+              }
             >
-              {monitorPaused ? (
-                <Play className="h-3.5 w-3.5" />
-              ) : (
-                <Pause className="h-3.5 w-3.5" />
-              )}
+              {monitorPaused ? <Play className="h-3.5 w-3.5" /> : <Pause className="h-3.5 w-3.5" />}
             </Button>
             <Button
               variant="ghost"
@@ -265,7 +316,33 @@ export function DashboardWindow() {
       />
 
       <main className="min-h-0 flex-1 overflow-auto p-4" data-testid="dashboard-main">
-        {loading && !current && (
+        {(bootstrapping || listLoading) && !dashboardId && (
+          <div
+            className="flex h-full items-center justify-center text-sm text-fg-muted"
+            data-testid="dashboard-bootstrapping"
+          >
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            {t('common.loading')}
+          </div>
+        )}
+        {!bootstrapping && !dashboardId && list.length === 0 && (
+          <div
+            className="flex h-full flex-col items-center justify-center gap-3 text-sm text-fg-muted"
+            data-testid="dashboard-empty-boards"
+          >
+            <Gauge className="h-10 w-10 opacity-40" />
+            <p>{t('dashboard.emptyBoards')}</p>
+            <Button
+              className="h-7 gap-1 px-2 text-xs"
+              data-testid="dashboard-create-first"
+              onClick={() => void handleCreateFirstBoard()}
+            >
+              <Plus className="mr-1 h-3.5 w-3.5" />
+              {t('dashboard.createFirstBoard')}
+            </Button>
+          </div>
+        )}
+        {loading && !current && !!dashboardId && (
           <div className="flex h-full items-center justify-center text-sm text-fg-muted">
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             {t('common.loading')}
@@ -317,7 +394,9 @@ export function DashboardWindow() {
         )}
       </main>
 
-      <StatusBar left={current ? t('dashboard.widgetCount', { count: current.widgets.length }) : ''} />
+      <StatusBar
+        left={current ? t('dashboard.widgetCount', { count: current.widgets.length }) : ''}
+      />
 
       <WidgetEditorDrawer
         open={editorOpen}

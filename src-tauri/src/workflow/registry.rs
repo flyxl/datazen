@@ -1,13 +1,11 @@
 //! Workflow persistence backed by [`crate::store::AppDb`].
 
 use super::model::{WorkflowDefinition, WorkflowListItem, WorkflowVisibility};
-use crate::store::{
-    AppDb, AppDbError, WorkflowRecord, WorkflowVisibility as DbVisibility,
-};
+use crate::store::{AppDb, AppDbError, WorkflowRecord, WorkflowVisibility as DbVisibility};
 use chrono::Utc;
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use tokio::sync::Mutex;
 
 pub struct WorkflowRegistry {
@@ -285,12 +283,9 @@ mod tests {
         reg.save_workflow(&sample_def("user-1", WorkflowVisibility::User))
             .await
             .unwrap();
-        reg.save_workflow(&sample_def(
-            "hidden-1",
-            WorkflowVisibility::DashboardHidden,
-        ))
-        .await
-        .unwrap();
+        reg.save_workflow(&sample_def("hidden-1", WorkflowVisibility::DashboardHidden))
+            .await
+            .unwrap();
 
         let list = reg.list().await;
         assert!(
