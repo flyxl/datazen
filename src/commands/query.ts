@@ -1,5 +1,11 @@
-import { invoke } from '@tauri-apps/api/core';
-import type { ExplainResult, FavoriteQuery, MultiQueryResult, QueryHistoryEntry } from '../types';
+import { Channel, invoke } from '@tauri-apps/api/core';
+import type {
+  ExplainResult,
+  FavoriteQuery,
+  MultiQueryResult,
+  QueryHistoryEntry,
+  QueryStreamEvent,
+} from '../types';
 import { driverCommands } from './driver';
 
 export const queryCommands = {
@@ -10,6 +16,20 @@ export const queryCommands = {
       input: { sql },
     });
     return result.data as MultiQueryResult;
+  },
+
+  executeQueryStream: async (
+    connectionId: string,
+    sql: string,
+    onEvent: (event: QueryStreamEvent) => void,
+  ) => {
+    const onEventChannel = new Channel<QueryStreamEvent>();
+    onEventChannel.onmessage = onEvent;
+    await invoke<void>('execute_query_stream', {
+      connectionId,
+      sql,
+      onEvent: onEventChannel,
+    });
   },
 
   getExplain: (connectionId: string, sql: string) =>

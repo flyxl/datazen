@@ -114,12 +114,13 @@ impl RedisDriver {
             return Err(DriverError::QueryFailed("empty database name".into()));
         }
         if let Some(rest) = s.strip_prefix("db") {
-            rest
-                .parse()
-                .map_err(|_| DriverError::QueryFailed("invalid database name (expected e.g. db0)".into()))
+            rest.parse().map_err(|_| {
+                DriverError::QueryFailed("invalid database name (expected e.g. db0)".into())
+            })
         } else {
-            s.parse()
-                .map_err(|_| DriverError::QueryFailed("invalid database name (expected e.g. db0)".into()))
+            s.parse().map_err(|_| {
+                DriverError::QueryFailed("invalid database name (expected e.g. db0)".into())
+            })
         }
     }
 
@@ -135,16 +136,19 @@ impl RedisDriver {
         let t0 = std::time::Instant::now();
         tracing::info!(db_index, %pattern, cursor, count, "redis scan_keys_with_info: acquiring lock");
         let mut conns = self.connections.write().await;
-        tracing::info!(lock_ms = t0.elapsed().as_millis() as u64, "redis scan_keys_with_info: lock acquired");
+        tracing::info!(
+            lock_ms = t0.elapsed().as_millis() as u64,
+            "redis scan_keys_with_info: lock acquired"
+        );
         let rc = Self::get_conn(&mut conns, handle)?;
         Self::select_db(&mut rc.live, db_index)
             .await
             .map_err(DriverError::QueryFailed)?;
         let pattern = pattern.to_string();
-        with_redis_conn!(
-            &mut rc.live,
-            |conn| scan_keys_with_info_on(conn, db_index, &pattern, cursor, count, t0).await
+        with_redis_conn!(&mut rc.live, |conn| scan_keys_with_info_on(
+            conn, db_index, &pattern, cursor, count, t0
         )
+        .await)
     }
 
     /// Load the full value for a key in `db_index`.
@@ -157,7 +161,10 @@ impl RedisDriver {
         let t0 = std::time::Instant::now();
         tracing::info!(db_index, %key, "redis get_key_detail: acquiring lock");
         let mut conns = self.connections.write().await;
-        tracing::info!(lock_ms = t0.elapsed().as_millis() as u64, "redis get_key_detail: lock acquired");
+        tracing::info!(
+            lock_ms = t0.elapsed().as_millis() as u64,
+            "redis get_key_detail: lock acquired"
+        );
         let rc = Self::get_conn(&mut conns, handle)?;
         Self::select_db(&mut rc.live, db_index)
             .await
@@ -195,18 +202,13 @@ impl RedisDriver {
         let old_prefix = old_prefix.to_string();
         let new_prefix = new_prefix.to_string();
         with_live_op!(self, connection_id, db_index, |conn| {
-            crate::ops::batch_rename_prefix(
-                conn,
-                &old_prefix,
-                &new_prefix,
-                keys.clone(),
-            )
-            .await
+            crate::ops::batch_rename_prefix(conn, &old_prefix, &new_prefix, keys.clone()).await
         })
     }
 
     pub async fn plugin_flush_all(&self, connection_id: &str) -> Result<(), DriverError> {
-        with_live_any_op!(self, connection_id, |conn| crate::ops::flush_all(conn).await)
+        with_live_any_op!(self, connection_id, |conn| crate::ops::flush_all(conn)
+            .await)
     }
 
     pub async fn plugin_info(
@@ -296,7 +298,10 @@ impl RedisDriver {
         })
     }
 
-    pub async fn connection_plan(&self, connection_id: &str) -> Result<ConnectionPlan, DriverError> {
+    pub async fn connection_plan(
+        &self,
+        connection_id: &str,
+    ) -> Result<ConnectionPlan, DriverError> {
         let conns = self.connections.read().await;
         conns
             .get(connection_id)
@@ -539,7 +544,12 @@ where
         .query_async(conn)
         .await
         .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
-    tracing::info!(db_index, db_size, ms = t0.elapsed().as_millis() as u64, "redis scan_keys_with_info: SELECT+DBSIZE done");
+    tracing::info!(
+        db_index,
+        db_size,
+        ms = t0.elapsed().as_millis() as u64,
+        "redis scan_keys_with_info: SELECT+DBSIZE done"
+    );
 
     let scan_raw: redis::Value = redis::cmd("SCAN")
         .arg(cursor)
@@ -629,7 +639,12 @@ where
                 pipe3.cmd("SRANDMEMBER").arg(k);
             }
             "zset" => {
-                pipe3.cmd("ZRANGE").arg(k).arg(0i64).arg(0i64).arg("WITHSCORES");
+                pipe3
+                    .cmd("ZRANGE")
+                    .arg(k)
+                    .arg(0i64)
+                    .arg(0i64)
+                    .arg("WITHSCORES");
             }
             "stream" => {
                 pipe3
@@ -656,13 +671,17 @@ where
         let size = if matches!(tk.as_str(), "none") {
             0u64
         } else {
-            value_to_u64(r2.get(i).ok_or_else(|| DriverError::QueryFailed("size pipeline".into()))?)
+            value_to_u64(
+                r2.get(i)
+                    .ok_or_else(|| DriverError::QueryFailed("size pipeline".into()))?,
+            )
         };
         let preview = if tk == "none" {
             String::new()
         } else {
             preview_value_to_string(
-                r3.get(i).ok_or_else(|| DriverError::QueryFailed("preview pipeline".into()))?,
+                r3.get(i)
+                    .ok_or_else(|| DriverError::QueryFailed("preview pipeline".into()))?,
                 tk,
             )
         };
@@ -796,17 +815,12 @@ pub(crate) fn parse_scan_result(v: &redis::Value) -> (u64, Vec<String>) {
     match v {
         redis::Value::Array(items) if items.len() >= 2 => {
             let next_cursor: u64 = match &items[0] {
-                redis::Value::BulkString(b) => {
-                    String::from_utf8_lossy(b).parse().unwrap_or(0)
-                }
+                redis::Value::BulkString(b) => String::from_utf8_lossy(b).parse().unwrap_or(0),
                 redis::Value::Int(i) => *i as u64,
                 _ => 0,
             };
             let keys = match &items[1] {
-                redis::Value::Array(arr) => arr
-                    .iter()
-                    .map(|v| value_to_string(v))
-                    .collect(),
+                redis::Value::Array(arr) => arr.iter().map(|v| value_to_string(v)).collect(),
                 _ => vec![],
             };
             (next_cursor, keys)
@@ -862,13 +876,17 @@ fn preview_value_to_string(v: &redis::Value, key_type: &str) -> String {
             let n = 2.min(pairs.len());
             let mut s = "(".to_string();
             for (i, (fk, fv)) in pairs.iter().take(n).enumerate() {
-                if i > 0 { s.push_str(", "); }
+                if i > 0 {
+                    s.push_str(", ");
+                }
                 s.push_str(&value_field_for_preview(fk));
                 s.push_str(": ");
                 s.push_str(&value_field_for_preview(fv));
             }
             s.push(')');
-            if pairs.len() > 2 { s.push_str(" …"); }
+            if pairs.len() > 2 {
+                s.push_str(" …");
+            }
             s
         }
         // HSCAN returns [cursor, [field, val, ...]] — unwrap the inner array
@@ -889,11 +907,15 @@ fn preview_value_to_string(v: &redis::Value, key_type: &str) -> String {
                     s.push_str(&f);
                     s.push_str(": ");
                     s.push_str(&val);
-                    if i + 2 < n { s.push_str(", "); }
+                    if i + 2 < n {
+                        s.push_str(", ");
+                    }
                 }
             }
             s.push(')');
-            if fields.len() > 4 { s.push_str(" …"); }
+            if fields.len() > 4 {
+                s.push_str(" …");
+            }
             s
         }
         // Legacy HGETALL flat array format: [field, val, field, val, ...]
@@ -907,11 +929,15 @@ fn preview_value_to_string(v: &redis::Value, key_type: &str) -> String {
                     s.push_str(&f);
                     s.push_str(": ");
                     s.push_str(&val);
-                    if i + 2 < n { s.push_str(", "); }
+                    if i + 2 < n {
+                        s.push_str(", ");
+                    }
                 }
             }
             s.push(')');
-            if items.len() > 4 { s.push_str(" …"); }
+            if items.len() > 4 {
+                s.push_str(" …");
+            }
             s
         }
         redis::Value::Array(items) if !items.is_empty() => format!("{items:?}"),
@@ -1138,13 +1164,7 @@ impl DatabaseDriver for RedisDriver {
         let live = open_live_conn(&plan).await?;
 
         let mut conns = self.connections.write().await;
-        conns.insert(
-            pool_id.clone(),
-            RedisConn {
-                plan,
-                live,
-            },
-        );
+        conns.insert(pool_id.clone(), RedisConn { plan, live });
 
         Ok(ConnectionHandle {
             id: pool_id.clone(),
@@ -1156,7 +1176,10 @@ impl DatabaseDriver for RedisDriver {
         let t0 = std::time::Instant::now();
         tracing::info!(pool_id = %handle.pool_id, "redis disconnect: acquiring lock");
         let mut conns = self.connections.write().await;
-        tracing::info!(lock_ms = t0.elapsed().as_millis() as u64, "redis disconnect: lock acquired");
+        tracing::info!(
+            lock_ms = t0.elapsed().as_millis() as u64,
+            "redis disconnect: lock acquired"
+        );
         conns.remove(&handle.pool_id);
         tracing::info!("redis disconnect: done");
         Ok(())
@@ -1166,13 +1189,17 @@ impl DatabaseDriver for RedisDriver {
         let t0 = std::time::Instant::now();
         tracing::info!("redis get_databases: acquiring lock");
         let mut conns = self.connections.write().await;
-        tracing::info!(lock_ms = t0.elapsed().as_millis() as u64, "redis get_databases: lock acquired");
+        tracing::info!(
+            lock_ms = t0.elapsed().as_millis() as u64,
+            "redis get_databases: lock acquired"
+        );
         let rc = Self::get_conn(&mut conns, handle)?;
 
         // Single-command approach: INFO keyspace returns all non-empty dbs at once
         // e.g. "# Keyspace\r\ndb0:keys=732,expires=0\r\ndb1:keys=3886,expires=100\r\n"
-        let info_raw: redis::Value = with_redis_conn!(&mut rc.live, |conn| info_keyspace_on(conn).await)
-            .map_err(DriverError::QueryFailed)?;
+        let info_raw: redis::Value = with_redis_conn!(&mut rc.live, |conn| info_keyspace_on(conn)
+            .await)
+        .map_err(DriverError::QueryFailed)?;
 
         let info_str = value_to_string(&info_raw);
         let mut out = Vec::new();
@@ -1187,7 +1214,11 @@ impl DatabaseDriver for RedisDriver {
             }
         }
         out.sort_by_key(|s| s[2..].parse::<u32>().unwrap_or(0));
-        tracing::info!(count = out.len(), ms = t0.elapsed().as_millis() as u64, "redis get_databases: done");
+        tracing::info!(
+            count = out.len(),
+            ms = t0.elapsed().as_millis() as u64,
+            "redis get_databases: done"
+        );
         Ok(out)
     }
 
@@ -1200,13 +1231,17 @@ impl DatabaseDriver for RedisDriver {
         let db_index = Self::parse_db_name(database)?;
         tracing::info!(%database, db_index, "redis get_tables: acquiring lock");
         let mut conns = self.connections.write().await;
-        tracing::info!(lock_ms = t0.elapsed().as_millis() as u64, "redis get_tables: lock acquired");
+        tracing::info!(
+            lock_ms = t0.elapsed().as_millis() as u64,
+            "redis get_tables: lock acquired"
+        );
         let rc = Self::get_conn(&mut conns, handle)?;
         Self::select_db(&mut rc.live, db_index)
             .await
             .map_err(DriverError::QueryFailed)?;
         let database = database.to_string();
-        with_redis_conn!(&mut rc.live, |conn| get_tables_on(conn, &database, t0).await)
+        with_redis_conn!(&mut rc.live, |conn| get_tables_on(conn, &database, t0)
+            .await)
     }
 
     async fn get_table_schema(
@@ -1288,22 +1323,29 @@ impl DatabaseDriver for RedisDriver {
         })
     }
 
-    async fn query(&self, handle: &ConnectionHandle, sql: &str) -> Result<QueryResult, DriverError> {
+    async fn query(
+        &self,
+        handle: &ConnectionHandle,
+        sql: &str,
+    ) -> Result<QueryResult, DriverError> {
         let start = Instant::now();
         let parts = parse_redis_command_args(sql)?;
 
         tracing::info!(cmd = %sql, "redis query: acquiring lock");
         let mut conns = self.connections.write().await;
-        tracing::info!(lock_ms = start.elapsed().as_millis() as u64, "redis query: lock acquired");
+        tracing::info!(
+            lock_ms = start.elapsed().as_millis() as u64,
+            "redis query: lock acquired"
+        );
         let rc = Self::get_conn(&mut conns, handle)?;
 
         let cmd_name = parts[0].clone();
         let cmd_args: Vec<String> = parts[1..].to_vec();
 
-        let result: redis::Value = with_redis_conn!(
-            &mut rc.live,
-            |conn| query_cmd_on(conn, &cmd_name, &cmd_args).await
-        )?;
+        let result: redis::Value = with_redis_conn!(&mut rc.live, |conn| query_cmd_on(
+            conn, &cmd_name, &cmd_args
+        )
+        .await)?;
 
         let (columns, rows) = redis_value_to_rows(&result);
 
@@ -1322,7 +1364,11 @@ impl DatabaseDriver for RedisDriver {
         _limit: Option<u32>,
     ) -> Result<MultiQueryResult, DriverError> {
         let total_start = Instant::now();
-        let commands: Vec<&str> = sql.lines().map(|l| l.trim()).filter(|l| !l.is_empty()).collect();
+        let commands: Vec<&str> = sql
+            .lines()
+            .map(|l| l.trim())
+            .filter(|l| !l.is_empty())
+            .collect();
         let mut results = Vec::new();
 
         for cmd_str in commands {
@@ -1356,6 +1402,59 @@ impl DatabaseDriver for RedisDriver {
             results,
             total_time_ms: total_start.elapsed().as_millis() as u64,
         })
+    }
+
+    async fn query_stream(
+        &self,
+        handle: &ConnectionHandle,
+        sql: &str,
+        limit: Option<u32>,
+        on_event: QueryStreamCallback,
+    ) -> Result<(), DriverError> {
+        let total_start = Instant::now();
+        let commands: Vec<String> = sql
+            .lines()
+            .map(|l| l.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+        if commands.is_empty() {
+            on_event(QueryStreamEvent::Done { total_time_ms: 0 });
+            return Ok(());
+        }
+        for (index, cmd_str) in commands.iter().enumerate() {
+            let start = Instant::now();
+            match self.query(handle, cmd_str).await {
+                Ok(mut qr) => {
+                    stream_decoded_rows(
+                        &on_event,
+                        index,
+                        cmd_str.clone(),
+                        qr.columns,
+                        std::mem::take(&mut qr.rows),
+                        limit,
+                        start.elapsed().as_millis() as u64,
+                        qr.rows_affected,
+                    );
+                }
+                Err(e) => {
+                    tracing::warn!(cmd = %cmd_str, error = %e, "redis query_stream command failed");
+                    stream_decoded_rows(
+                        &on_event,
+                        index,
+                        cmd_str.clone(),
+                        vec![],
+                        Vec::<Vec<Option<Value>>>::new(),
+                        None,
+                        start.elapsed().as_millis() as u64,
+                        None,
+                    );
+                }
+            }
+        }
+        on_event(QueryStreamEvent::Done {
+            total_time_ms: total_start.elapsed().as_millis() as u64,
+        });
+        Ok(())
     }
 
     async fn query_with_params(
@@ -1393,8 +1492,9 @@ impl DatabaseDriver for RedisDriver {
     async fn get_server_info(&self, handle: &ConnectionHandle) -> Result<ServerInfo, DriverError> {
         let mut conns = self.connections.write().await;
         let redis_conn = Self::get_conn(&mut conns, handle)?;
-        let info: String = with_redis_conn!(&mut redis_conn.live, |conn| info_server_on(conn).await)
-            .map_err(DriverError::QueryFailed)?;
+        let info: String = with_redis_conn!(&mut redis_conn.live, |conn| info_server_on(conn)
+            .await)
+        .map_err(DriverError::QueryFailed)?;
         let version = info
             .lines()
             .find(|l| l.starts_with("redis_version:"))
@@ -1438,31 +1538,53 @@ impl KeyValueDriver for RedisDriver {
 fn redis_value_to_rows(value: &redis::Value) -> (Vec<ColumnInfo>, Vec<Vec<Option<Value>>>) {
     match value {
         redis::Value::Nil => (
-            vec![ColumnInfo { name: "result".into(), data_type: "string".into(), nullable: true }],
+            vec![ColumnInfo {
+                name: "result".into(),
+                data_type: "string".into(),
+                nullable: true,
+            }],
             vec![vec![Some(Value::Null)]],
         ),
         redis::Value::Int(n) => (
-            vec![ColumnInfo { name: "result".into(), data_type: "integer".into(), nullable: false }],
+            vec![ColumnInfo {
+                name: "result".into(),
+                data_type: "integer".into(),
+                nullable: false,
+            }],
             vec![vec![Some(Value::Integer(*n))]],
         ),
         redis::Value::BulkString(bytes) => {
             let s = String::from_utf8_lossy(bytes).to_string();
             (
-                vec![ColumnInfo { name: "result".into(), data_type: "string".into(), nullable: false }],
+                vec![ColumnInfo {
+                    name: "result".into(),
+                    data_type: "string".into(),
+                    nullable: false,
+                }],
                 vec![vec![Some(Value::String(s))]],
             )
         }
-        redis::Value::VerbatimString { text, .. } => {
-            (
-                vec![ColumnInfo { name: "result".into(), data_type: "string".into(), nullable: false }],
-                vec![vec![Some(Value::String(text.clone()))]],
-            )
-        }
+        redis::Value::VerbatimString { text, .. } => (
+            vec![ColumnInfo {
+                name: "result".into(),
+                data_type: "string".into(),
+                nullable: false,
+            }],
+            vec![vec![Some(Value::String(text.clone()))]],
+        ),
         redis::Value::Array(items) => {
             if items.len() >= 2 && items.len() % 2 == 0 && looks_like_hash(items) {
                 let columns = vec![
-                    ColumnInfo { name: "field".into(), data_type: "string".into(), nullable: false },
-                    ColumnInfo { name: "value".into(), data_type: "string".into(), nullable: true },
+                    ColumnInfo {
+                        name: "field".into(),
+                        data_type: "string".into(),
+                        nullable: false,
+                    },
+                    ColumnInfo {
+                        name: "value".into(),
+                        data_type: "string".into(),
+                        nullable: true,
+                    },
                 ];
                 let rows: Vec<Vec<Option<Value>>> = items
                     .chunks(2)
@@ -1476,30 +1598,48 @@ fn redis_value_to_rows(value: &redis::Value) -> (Vec<ColumnInfo>, Vec<Vec<Option
                 (columns, rows)
             } else {
                 let columns = vec![
-                    ColumnInfo { name: "index".into(), data_type: "integer".into(), nullable: false },
-                    ColumnInfo { name: "value".into(), data_type: "string".into(), nullable: true },
+                    ColumnInfo {
+                        name: "index".into(),
+                        data_type: "integer".into(),
+                        nullable: false,
+                    },
+                    ColumnInfo {
+                        name: "value".into(),
+                        data_type: "string".into(),
+                        nullable: true,
+                    },
                 ];
                 let rows: Vec<Vec<Option<Value>>> = items
                     .iter()
                     .enumerate()
-                    .map(|(i, v)| {
-                        vec![Some(Value::Integer(i as i64)), Some(redis_to_value(v))]
-                    })
+                    .map(|(i, v)| vec![Some(Value::Integer(i as i64)), Some(redis_to_value(v))])
                     .collect();
                 (columns, rows)
             }
         }
         redis::Value::SimpleString(s) => (
-            vec![ColumnInfo { name: "result".into(), data_type: "string".into(), nullable: false }],
+            vec![ColumnInfo {
+                name: "result".into(),
+                data_type: "string".into(),
+                nullable: false,
+            }],
             vec![vec![Some(Value::String(s.clone()))]],
         ),
         #[allow(deprecated)]
         redis::Value::Okay => (
-            vec![ColumnInfo { name: "result".into(), data_type: "string".into(), nullable: false }],
+            vec![ColumnInfo {
+                name: "result".into(),
+                data_type: "string".into(),
+                nullable: false,
+            }],
             vec![vec![Some(Value::String("OK".into()))]],
         ),
         _ => (
-            vec![ColumnInfo { name: "result".into(), data_type: "string".into(), nullable: false }],
+            vec![ColumnInfo {
+                name: "result".into(),
+                data_type: "string".into(),
+                nullable: false,
+            }],
             vec![vec![Some(Value::String(format!("{:?}", value)))]],
         ),
     }
@@ -1525,12 +1665,10 @@ fn redis_to_value(v: &redis::Value) -> Value {
 }
 
 fn looks_like_hash(items: &[redis::Value]) -> bool {
-    items
-        .chunks(2)
-        .all(|pair| {
-            matches!(
-                &pair[0],
-                redis::Value::BulkString(_) | redis::Value::SimpleString(_)
-            )
-        })
+    items.chunks(2).all(|pair| {
+        matches!(
+            &pair[0],
+            redis::Value::BulkString(_) | redis::Value::SimpleString(_)
+        )
+    })
 }

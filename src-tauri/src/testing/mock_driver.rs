@@ -1,7 +1,7 @@
 //! Configurable in-memory driver for service/cache unit tests.
 
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 
@@ -27,6 +27,7 @@ pub struct MockDriverOptions {
     pub explain_plan: ExplainResult,
     pub server_version: String,
     pub extra_commands: Vec<DriverCommandDefinition>,
+    pub query_error: Option<String>,
 }
 
 impl Default for MockDriverOptions {
@@ -47,6 +48,7 @@ impl Default for MockDriverOptions {
             },
             server_version: String::new(),
             extra_commands: Vec::new(),
+            query_error: None,
         }
     }
 }
@@ -57,6 +59,7 @@ pub struct MockDriver {
     get_columns_calls: AtomicU32,
     get_schema_calls: AtomicU32,
     query_calls: AtomicU32,
+    last_query_limit: Mutex<Option<Option<u32>>>,
 }
 
 impl MockDriver {
@@ -67,7 +70,12 @@ impl MockDriver {
             get_columns_calls: AtomicU32::new(0),
             get_schema_calls: AtomicU32::new(0),
             query_calls: AtomicU32::new(0),
+            last_query_limit: Mutex::new(None),
         })
+    }
+
+    pub fn last_query_limit(&self) -> Option<Option<u32>> {
+        self.last_query_limit.lock().ok().and_then(|g| *g)
     }
 
     pub fn get_columns_calls(&self) -> u32 {
@@ -182,8 +190,15 @@ impl DatabaseDriver for MockDriver {
         Ok((schema.columns, schema.primary_keys))
     }
 
-    async fn query(&self, _handle: &ConnectionHandle, sql: &str) -> Result<QueryResult, DriverError> {
+    async fn query(
+        &self,
+        _handle: &ConnectionHandle,
+        sql: &str,
+    ) -> Result<QueryResult, DriverError> {
         self.query_calls.fetch_add(1, Ordering::Relaxed);
+        if let Some(msg) = &self.opts.query_error {
+            return Err(DriverError::QueryFailed(msg.clone()));
+        }
         if sql.contains("COUNT(*)") {
             return Ok(QueryResult {
                 columns: vec![ColumnInfo {
@@ -221,7 +236,9 @@ impl DatabaseDriver for MockDriver {
         limit: Option<u32>,
     ) -> Result<MultiQueryResult, DriverError> {
         let result = self.query(handle, sql).await?;
-        let _ = limit;
+        if let Ok(mut g) = self.last_query_limit.lock() {
+            *g = Some(limit);
+        }
         Ok(MultiQueryResult {
             results: vec![StatementResult {
                 sql: sql.to_string(),
@@ -294,7 +311,12 @@ impl DatabaseDriver for MockDriver {
         command: &str,
         input: serde_json::Value,
     ) -> Result<CommandResult, DriverError> {
-        if self.opts.extra_commands.iter().any(|definition| definition.id == command) {
+        if self
+            .opts
+            .extra_commands
+            .iter()
+            .any(|definition| definition.id == command)
+        {
             return Ok(CommandResult::new(serde_json::json!({
                 "command": command,
                 "input": input,

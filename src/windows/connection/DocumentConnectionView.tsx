@@ -816,7 +816,7 @@ function DocumentQueryPanel({ connectionId }: { connectionId: string }) {
         />
       </div>
       <div className="flex min-h-0 flex-1 flex-col">
-        {tab.running && (
+        {tab.running && results.length === 0 && (
           <div className="flex flex-1 items-center justify-center gap-2 text-fg-muted">
             <Loader2 className="h-5 w-5 animate-spin" />
             {t('query.executing')}
@@ -829,7 +829,7 @@ function DocumentQueryPanel({ connectionId }: { connectionId: string }) {
             </div>
           </div>
         )}
-        {results.length > 0 && !tab.running && activeResult && (
+        {results.length > 0 && activeResult && (
           <>
             {results.length > 1 && (
               <div className="flex shrink-0 items-center border-b border-edge bg-surface-alt px-1">

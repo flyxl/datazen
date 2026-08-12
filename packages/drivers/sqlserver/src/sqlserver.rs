@@ -1,8 +1,9 @@
 //! SQL Server driver backed by `tiberius`.
 
-use datazen_driver_api::*;
 use async_trait::async_trait;
+use datazen_driver_api::*;
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tiberius::{AuthMethod, Client, ColumnData, Config, EncryptionLevel, QueryItem};
 use tokio::net::TcpStream;
@@ -118,7 +119,9 @@ impl SqlServerDriver {
         let tcp = tokio::time::timeout(timeout, TcpStream::connect(&addr))
             .await
             .map_err(|_| DriverError::ConnectionFailed("SQL Server connect timed out".into()))?
-            .map_err(|e| DriverError::ConnectionFailed(format!("SQL Server connect failed: {e}")))?;
+            .map_err(|e| {
+                DriverError::ConnectionFailed(format!("SQL Server connect failed: {e}"))
+            })?;
         tcp.set_nodelay(true).ok();
         tokio::time::timeout(timeout, Client::connect(cfg, tcp.compat_write()))
             .await
@@ -138,7 +141,10 @@ impl SqlServerDriver {
             ColumnData::String(v) => v.as_ref().map(|s| Value::String(s.to_string())),
             ColumnData::Guid(v) => v.map(|g| Value::String(g.to_string())),
             ColumnData::Binary(v) => v.as_ref().map(|b| {
-                Value::String(format!("0x{}", b.iter().map(|x| format!("{x:02x}")).collect::<String>()))
+                Value::String(format!(
+                    "0x{}",
+                    b.iter().map(|x| format!("{x:02x}")).collect::<String>()
+                ))
             }),
             ColumnData::Numeric(v) => v.map(|n| Value::String(n.to_string())),
             ColumnData::Xml(v) => v.as_ref().map(|x| Value::String(x.to_string())),
@@ -204,6 +210,86 @@ impl SqlServerDriver {
             execution_time_ms: start.elapsed().as_millis() as u64,
         })
     }
+
+    fn columns_from_tiberius(cols: &[tiberius::Column]) -> Vec<ColumnInfo> {
+        cols.iter()
+            .map(|c| ColumnInfo {
+                name: c.name().to_string(),
+                data_type: format!("{:?}", c.column_type()),
+                nullable: true,
+            })
+            .collect()
+    }
+
+    async fn stream_one(
+        client: &mut SqlClient,
+        stmt: &str,
+        limit: Option<u32>,
+        index: usize,
+        on_event: &QueryStreamCallback,
+    ) -> Result<(), DriverError> {
+        use futures_util::TryStreamExt;
+        let (effective, applied) = apply_sqlserver_top(stmt, limit);
+        let stmt_start = Instant::now();
+        let mut stream = client
+            .query(&effective, &[])
+            .await
+            .map_err(|e| DriverError::QueryFailed(format!("SQL Server query failed: {e}")))?;
+        let mut batcher =
+            QueryRowBatcher::new(Arc::clone(on_event), index, stmt.to_string(), applied);
+        while let Some(item) = stream
+            .try_next()
+            .await
+            .map_err(|e| DriverError::QueryFailed(format!("SQL Server row read failed: {e}")))?
+        {
+            match item {
+                QueryItem::Metadata(meta) => {
+                    batcher.start(Self::columns_from_tiberius(meta.columns()));
+                }
+                QueryItem::Row(row) => {
+                    if !batcher.started() {
+                        batcher.start(Self::columns_from_tiberius(row.columns()));
+                    }
+                    let vals: Vec<Option<Value>> = row
+                        .cells()
+                        .map(|(_, data)| Self::value_from_column(data))
+                        .collect();
+                    if !batcher.push(vals) {
+                        break;
+                    }
+                }
+            }
+        }
+        batcher.finish(stmt_start.elapsed().as_millis() as u64, None);
+        Ok(())
+    }
+}
+
+fn apply_sqlserver_top(stmt: &str, limit: Option<u32>) -> (String, Option<u32>) {
+    let Some(lim) = limit else {
+        return (stmt.to_string(), None);
+    };
+    let trimmed = stmt.trim();
+    let upper = trimmed.to_ascii_uppercase();
+    if !upper.starts_with("SELECT") {
+        return (stmt.to_string(), None);
+    }
+    let after_select = trimmed[6..].trim_start();
+    let after_upper = after_select.to_ascii_uppercase();
+    if after_upper.starts_with("DISTINCT") {
+        let after_distinct = after_select[8..].trim_start();
+        if after_distinct.to_ascii_uppercase().starts_with("TOP") {
+            return (stmt.to_string(), Some(lim));
+        }
+        return (
+            format!("SELECT DISTINCT TOP {} {after_distinct}", lim + 1),
+            Some(lim),
+        );
+    }
+    if after_upper.starts_with("TOP") {
+        return (stmt.to_string(), Some(lim));
+    }
+    (format!("SELECT TOP {} {after_select}", lim + 1), Some(lim))
 }
 
 #[async_trait]
@@ -290,7 +376,11 @@ impl DatabaseDriver for SqlServerDriver {
                 Some(TableInfo {
                     name,
                     schema: None,
-                    table_type: if kind == "VIEW" { TableType::View } else { TableType::Table },
+                    table_type: if kind == "VIEW" {
+                        TableType::View
+                    } else {
+                        TableType::Table
+                    },
                     row_count: None,
                 })
             })
@@ -360,7 +450,11 @@ impl DatabaseDriver for SqlServerDriver {
         })
     }
 
-    async fn query(&self, handle: &ConnectionHandle, sql: &str) -> Result<QueryResult, DriverError> {
+    async fn query(
+        &self,
+        handle: &ConnectionHandle,
+        sql: &str,
+    ) -> Result<QueryResult, DriverError> {
         let mut map = self.clients.write().await;
         let client = map
             .get_mut(&handle.pool_id)
@@ -415,6 +509,36 @@ impl DatabaseDriver for SqlServerDriver {
         })
     }
 
+    async fn query_stream(
+        &self,
+        handle: &ConnectionHandle,
+        sql: &str,
+        limit: Option<u32>,
+        on_event: QueryStreamCallback,
+    ) -> Result<(), DriverError> {
+        let mut map = self.clients.write().await;
+        let client = map
+            .get_mut(&handle.pool_id)
+            .ok_or_else(|| DriverError::ConnectionFailed("Connection pool not found".into()))?;
+        let statements: Vec<String> = sql
+            .split(';')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+        if statements.is_empty() {
+            on_event(QueryStreamEvent::Done { total_time_ms: 0 });
+            return Ok(());
+        }
+        let total_start = Instant::now();
+        for (index, stmt) in statements.iter().enumerate() {
+            Self::stream_one(client, stmt, limit, index, &on_event).await?;
+        }
+        on_event(QueryStreamEvent::Done {
+            total_time_ms: total_start.elapsed().as_millis() as u64,
+        });
+        Ok(())
+    }
+
     async fn query_with_params(
         &self,
         handle: &ConnectionHandle,
@@ -463,7 +587,9 @@ impl DatabaseDriver for SqlServerDriver {
         let disable = Self::run(client, "SET SHOWPLAN_TEXT OFF").await;
         let result = plan?;
         disable?;
-        Ok(datazen_driver_http_support::explain_result_from_query(result))
+        Ok(datazen_driver_http_support::explain_result_from_query(
+            result,
+        ))
     }
 
     async fn use_database(
@@ -529,5 +655,33 @@ mod tests {
         assert!(sql.contains("is_primary_key = 1"));
         assert!(sql.contains("OBJECT_ID('dbo.users')"));
         assert!(sql.contains("is_pk"));
+    }
+
+    #[test]
+    fn apply_sqlserver_top_inserts_plus_one() {
+        assert_eq!(
+            apply_sqlserver_top("SELECT * FROM t", None),
+            ("SELECT * FROM t".into(), None)
+        );
+        assert_eq!(
+            apply_sqlserver_top("SELECT * FROM t", Some(10)),
+            ("SELECT TOP 11 * FROM t".into(), Some(10))
+        );
+        assert_eq!(
+            apply_sqlserver_top("SELECT TOP 5 * FROM t", Some(10)),
+            ("SELECT TOP 5 * FROM t".into(), Some(10))
+        );
+        assert_eq!(
+            apply_sqlserver_top("SELECT DISTINCT name FROM t", Some(3)),
+            ("SELECT DISTINCT TOP 4 name FROM t".into(), Some(3))
+        );
+        assert_eq!(
+            apply_sqlserver_top("INSERT INTO t VALUES (1)", Some(10)),
+            ("INSERT INTO t VALUES (1)".into(), None)
+        );
+        assert_eq!(
+            apply_sqlserver_top("select id from t", Some(1)),
+            ("SELECT TOP 2 id from t".into(), Some(1))
+        );
     }
 }
