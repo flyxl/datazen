@@ -63,6 +63,9 @@ pnpm e2e:ai
 pnpm e2e:redis          # 显式：packages/drivers/redis/e2e/（不进默认 pnpm e2e）
 pnpm e2e:i18n-backup
 pnpm e2e:path-ipc
+pnpm e2e:contract:matrix          # Host UI/IPC × PG/MySQL/SQLite 连接窗
+pnpm e2e:contract:pg              # 仅 PostgreSQL 契约冒烟
+pnpm test:unit:e2e-contract:coverage  # 契约纯逻辑单测 ≥80%
 # Kiwi：在 datazen-driver-kiwi 仓 `pnpm e2e:kiwi`（Host 同名脚本会 exit 1）
 ```
 
