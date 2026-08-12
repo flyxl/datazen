@@ -4,7 +4,12 @@ import { EditorState, Compartment } from '@codemirror/state';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { sql, PostgreSQL, MySQL, MariaSQL, SQLite, StandardSQL } from '@codemirror/lang-sql';
 import type { SQLDialect } from '@codemirror/lang-sql';
-import { autocompletion, closeBrackets, acceptCompletion, completeFromList } from '@codemirror/autocomplete';
+import {
+  autocompletion,
+  closeBrackets,
+  acceptCompletion,
+  completeFromList,
+} from '@codemirror/autocomplete';
 import { sqlFunctionCompletions } from '../lib/sqlCompletions';
 import { searchKeymap } from '@codemirror/search';
 import { resolveEditorFontFamily, HOST_DEFAULT_EDITOR_FONT } from '../lib/resolveEditorFontFamily';
@@ -62,9 +67,7 @@ function makeEditorTheme({ dark, fontSize, fontFamily }: ThemeConfig, colors: Ed
         border: `1px solid ${dark ? '#334155' : '#e2e8f0'}`,
         color: dark ? '#f1f5f9' : '#0f172a',
         borderRadius: '6px',
-        boxShadow: dark
-          ? '0 4px 12px rgba(0,0,0,0.4)'
-          : '0 4px 12px rgba(0,0,0,0.1)',
+        boxShadow: dark ? '0 4px 12px rgba(0,0,0,0.4)' : '0 4px 12px rgba(0,0,0,0.1)',
       },
       '.cm-tooltip-autocomplete': {
         '& > ul': { maxHeight: '240px' },
@@ -92,10 +95,7 @@ function makeEditorTheme({ dark, fontSize, fontFamily }: ThemeConfig, colors: Ed
 
 function themeExtensions(config: ThemeConfig) {
   const colors = readEditorColorsFromElement();
-  return [
-    makeEditorTheme(config, colors),
-    editorSyntaxHighlighting(colors, config.dark),
-  ];
+  return [makeEditorTheme(config, colors), editorSyntaxHighlighting(colors, config.dark)];
 }
 
 /** Nested schema for CodeMirror SQL autocompletion */
@@ -151,7 +151,20 @@ function parentsEqual(a: readonly string[], b: readonly string[]): boolean {
   return a.length === b.length && a.every((seg, i) => seg === b[i]);
 }
 
-export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function SqlEditor({ value, onChange, onExecute, onExecuteSelection, onContextMenu: onCtxMenu, onQualifiedPath, placeholder, schema, databaseType }, ref) {
+export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function SqlEditor(
+  {
+    value,
+    onChange,
+    onExecute,
+    onExecuteSelection,
+    onContextMenu: onCtxMenu,
+    onQualifiedPath,
+    placeholder,
+    schema,
+    databaseType,
+  },
+  ref,
+) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const themeCompartment = useRef(new Compartment());
@@ -176,10 +189,7 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
     getSelection: () => {
       const view = viewRef.current;
       if (!view) return '';
-      return view.state.sliceDoc(
-        view.state.selection.main.from,
-        view.state.selection.main.to
-      );
+      return view.state.sliceDoc(view.state.selection.main.from, view.state.selection.main.to);
     },
   }));
 
@@ -209,7 +219,7 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
             run: (view) => {
               const sel = view.state.sliceDoc(
                 view.state.selection.main.from,
-                view.state.selection.main.to
+                view.state.selection.main.to,
               );
               if (sel.trim()) {
                 onExecuteSelectionRef.current?.(sel);
@@ -238,16 +248,14 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
             if (!handler) return false;
             const sel = view.state.sliceDoc(
               view.state.selection.main.from,
-              view.state.selection.main.to
+              view.state.selection.main.to,
             );
+            // Prefer selection; fall back to full doc (may be empty so Paste still works).
             const sqlText = sel.trim() || view.state.doc.toString().trim();
-            if (sqlText) {
-              e.preventDefault();
-              e.stopPropagation();
-              handler(e, sqlText);
-              return true;
-            }
-            return false;
+            e.preventDefault();
+            e.stopPropagation();
+            handler(e, sqlText);
+            return true;
           },
         }),
         EditorView.updateListener.of((update) => {

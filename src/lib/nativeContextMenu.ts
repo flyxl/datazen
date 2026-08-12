@@ -28,7 +28,7 @@ export type NativeMenuItemDef =
 
 type BuiltItem = TauriMenuItem | TauriPredefined | TauriSubmenu;
 
-/** Drop leading/trailing/duplicate separators after filtering disabled items. */
+/** Drop empty submenus and leading/trailing/duplicate separators. Disabled items are kept. */
 export function normalizeNativeMenuItems(items: NativeMenuItemDef[]): NativeMenuItemDef[] {
   const filtered = items
     .map((def) => {
@@ -37,7 +37,6 @@ export function normalizeNativeMenuItems(items: NativeMenuItemDef[]): NativeMenu
         if (children.length === 0) return null;
         return { ...def, items: children };
       }
-      if (def.kind === 'item' && def.enabled === false) return null;
       return def;
     })
     .filter((d): d is NativeMenuItemDef => d != null);
