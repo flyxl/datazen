@@ -22,13 +22,13 @@
 | F0 | Host UI 覆盖规则文档 + 既有缺口 Host E2E（筛选/索引/备份等） | FilterEditor 既有单测保持绿 | `done` | `d062bf2` | [复测](a07d8a2b-b28d-43b1-8f35-072d7740abde)：PASS_WITH_SKIPPED_E2E，覆盖率 88.98% |
 | F1 | `DriverFixture` 类型 + PG/MySQL/SQLite 夹具 + dialect seed helpers | 覆盖率 ≥80% | `done` | （本提交） | [F1](eb97a24a-26b1-4ee5-975b-39b44c328573)：PASS 覆盖率 92.15% |
 | F2 | Host Contract journeys：HC-DATA / HC-FILTER / HC-QUERY + 矩阵入口 | journey 纯逻辑单测 ≥80% | `done` | （本提交） | [F2](f187b211-713c-41fb-8e8d-605e1228b928)：PASS_WITH_SKIPPED_E2E |
-| F3 | 其余契约：HC-CONN / EDIT / STRUCT / INDEX / EXPORT / OBJ / EXPLAIN + 能力门控 | 门控与 skip 逻辑单测 ≥80% | `doing` | — | — |
-| F4 | `pnpm e2e:contract:*` 脚本、CI 分流说明、旧 `mysql.ts` 与契约去重 | 脚本/清单单测或静态校验 | `todo` | — | — |
+| F3 | 其余契约：HC-CONN / EDIT / STRUCT / INDEX / EXPORT / OBJ / EXPLAIN + 能力门控 | 门控与 skip 逻辑单测 ≥80% | `done` | （本提交） | [F3](41e4a06a-200a-49c4-b902-f41d628a9984)：PASS_WITH_SKIPPED_E2E |
+| F4 | `pnpm e2e:contract:*` 脚本、CI 分流说明、旧 `mysql.ts` 与契约去重 | 脚本/清单单测或静态校验 | `doing` | — | — |
 | F5 | 更新 AGENTS.md / e2e-coverage / architecture；merge → main；push | — | `todo` | — | — |
 
 ## 当前焦点
 
-- **正在进行**：F3 全量 journeys
+- **正在进行**：F4 脚本与去重
 
 ## Bug 记录
 

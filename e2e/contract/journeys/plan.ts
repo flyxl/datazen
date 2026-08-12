@@ -8,6 +8,20 @@ export const F2_CORE_JOURNEYS: readonly HostContractJourneyId[] = [
   'HC-QUERY',
 ] as const;
 
+/** Full Host connection contract (F3). */
+export const ALL_CONTRACT_JOURNEYS: readonly HostContractJourneyId[] = [
+  'HC-CONN',
+  'HC-QUERY',
+  'HC-DATA',
+  'HC-FILTER',
+  'HC-EDIT',
+  'HC-STRUCT',
+  'HC-INDEX',
+  'HC-EXPORT',
+  'HC-OBJ',
+  'HC-EXPLAIN',
+] as const;
+
 export interface PlannedJourney {
   readonly id: HostContractJourneyId;
   readonly status: 'run' | 'skip';
@@ -20,7 +34,7 @@ export interface PlannedJourney {
  */
 export function planJourneys(
   fixture: DriverFixtureDefinition,
-  journeys: readonly HostContractJourneyId[] = F2_CORE_JOURNEYS,
+  journeys: readonly HostContractJourneyId[] = ALL_CONTRACT_JOURNEYS,
 ): PlannedJourney[] {
   return journeys.map((id) => {
     if (journeyAllowed(fixture, id)) {
