@@ -5,8 +5,20 @@ import { Input } from '../../components/ui/Input';
 import { Select } from '../../components/ui/Select';
 import { useI18n } from '../../hooks/useI18n';
 import { useConnectionStore } from '../../stores/connectionStore';
-import { clampRefreshSec, MIN_REFRESH_SEC } from '../../types/dashboard';
-import type { AlertMetricAgg, AlertOperator, DashboardWidget } from '../../types/dashboard';
+import {
+  clampRefreshSec,
+  DEFAULT_REFRESH,
+  MIN_REFRESH_SEC,
+  normalizeRefreshPolicy,
+  REFRESH_WARN_BELOW_SEC,
+  shouldWarnRefreshSec,
+} from '../../types/dashboard';
+import type {
+  AlertMetricAgg,
+  AlertOperator,
+  DashboardWidget,
+  RefreshMode,
+} from '../../types/dashboard';
 import type { ChartType } from '../../types/chart';
 import { DEFAULT_CHART_CONFIG } from '../../types/chart';
 
@@ -14,14 +26,15 @@ export interface WidgetEditorDrawerProps {
   open: boolean;
   widget: DashboardWidget | null;
   isNew?: boolean;
+  /** When editing a hidden SQL workflow widget */
+  hiddenSql?: { configId: string; sql: string };
   onClose: () => void;
-  onSave: (widget: DashboardWidget) => void;
+  onSave: (widget: DashboardWidget, hiddenSql?: { configId: string; sql: string }) => void;
 }
 
 const CHART_TYPES: ChartType[] = ['bar', 'line', 'pie', 'scatter', 'area'];
-
+const REFRESH_MODES: RefreshMode[] = ['manual', 'onOpen', 'interval'];
 const ALERT_OPS: AlertOperator[] = ['>', '>=', '<', '<=', '==', '!='];
-
 const ALERT_AGGS: AlertMetricAgg[] = ['last', 'max', 'min', 'avg', 'sum'];
 
 const DEFAULT_ALERT: NonNullable<DashboardWidget['alert']> = {
@@ -36,14 +49,11 @@ function emptyDraft(): DashboardWidget {
   return {
     id: crypto.randomUUID(),
     title: '',
-    configId: '',
-    sql: 'SELECT 1 AS v',
-    chartConfig: {
-      ...DEFAULT_CHART_CONFIG,
-      yAxes: ['v'],
-    },
+    workflowId: '',
+    viewMode: 'chart',
+    chartConfig: { ...DEFAULT_CHART_CONFIG, yAxes: ['v'] },
     layout: { x: 0, y: 0, w: 6, h: 4 },
-    refreshSec: 60,
+    refresh: { ...DEFAULT_REFRESH },
     enabled: true,
   };
 }
@@ -52,6 +62,7 @@ export function WidgetEditorDrawer({
   open,
   widget,
   isNew,
+  hiddenSql: hiddenSqlProp,
   onClose,
   onSave,
 }: Readonly<WidgetEditorDrawerProps>) {
@@ -60,29 +71,40 @@ export function WidgetEditorDrawer({
   const fetchConnections = useConnectionStore((s) => s.fetchConnections);
 
   const [draft, setDraft] = useState<DashboardWidget>(() => widget ?? emptyDraft());
+  const [hiddenSql, setHiddenSql] = useState<{ configId: string; sql: string }>(
+    hiddenSqlProp ?? { configId: '', sql: 'SELECT 1 AS v' },
+  );
 
   useEffect(() => {
     if (open) {
       setDraft(widget ?? emptyDraft());
+      setHiddenSql(hiddenSqlProp ?? { configId: '', sql: 'SELECT 1 AS v' });
       void fetchConnections();
     }
-  }, [open, widget, fetchConnections]);
+  }, [open, widget, hiddenSqlProp, fetchConnections]);
 
   const handleSave = useCallback(() => {
-    if (!draft.title.trim() || !draft.configId || !draft.sql.trim()) return;
-    onSave({
+    if (!draft.title.trim()) return;
+    if (hiddenSqlProp != null && (!hiddenSql.configId || !hiddenSql.sql.trim())) return;
+    const normalized = {
       ...draft,
       title: draft.title.trim(),
-      refreshSec: clampRefreshSec(draft.refreshSec),
-    });
-  }, [draft, onSave]);
+      refresh: normalizeRefreshPolicy(draft.refresh),
+    };
+    onSave(normalized, hiddenSqlProp != null ? hiddenSql : undefined);
+  }, [draft, hiddenSql, hiddenSqlProp, onSave]);
 
   if (!open) return null;
 
   const connOptions = connections.map((c) => ({ value: c.id, label: c.name }));
+  const refreshWarn = shouldWarnRefreshSec(draft.refresh);
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end" data-no-drag data-testid="widget-editor-drawer">
+    <div
+      className="fixed inset-0 z-50 flex justify-end"
+      data-no-drag
+      data-testid="widget-editor-drawer"
+    >
       <button
         type="button"
         className="absolute inset-0 bg-black/40"
@@ -109,39 +131,85 @@ export function WidgetEditorDrawer({
             />
           </label>
 
+          {hiddenSqlProp != null ? (
+            <>
+              <label className="block space-y-1">
+                <span className="text-xs text-fg-muted">{t('dashboard.connection')}</span>
+                <Select
+                  value={hiddenSql.configId}
+                  onChange={(v) => setHiddenSql((s) => ({ ...s, configId: v }))}
+                  options={connOptions}
+                  placeholder={t('dashboard.selectConnection')}
+                />
+              </label>
+              <label className="block space-y-1">
+                <span className="text-xs text-fg-muted">{t('dashboard.sql')}</span>
+                <textarea
+                  value={hiddenSql.sql}
+                  onChange={(e) => setHiddenSql((s) => ({ ...s, sql: e.target.value }))}
+                  rows={6}
+                  className="w-full resize-y rounded-md border border-edge bg-surface px-3 py-2 font-mono text-xs text-fg focus:outline-none focus:ring-1 focus:ring-accent"
+                  spellCheck={false}
+                />
+              </label>
+            </>
+          ) : (
+            <label className="block space-y-1">
+              <span className="text-xs text-fg-muted">{t('dashboard.workflowSource')}</span>
+              <Input value={draft.workflowId} readOnly className="font-mono text-xs" />
+            </label>
+          )}
+
           <label className="block space-y-1">
-            <span className="text-xs text-fg-muted">{t('dashboard.connection')}</span>
+            <span className="text-xs text-fg-muted">{t('dashboard.refreshMode')}</span>
             <Select
-              value={draft.configId}
-              onChange={(v) => setDraft((d) => ({ ...d, configId: v }))}
-              options={connOptions}
-              placeholder={t('dashboard.selectConnection')}
-            />
-          </label>
-
-          <label className="block space-y-1">
-            <span className="text-xs text-fg-muted">{t('dashboard.sql')}</span>
-            <textarea
-              value={draft.sql}
-              onChange={(e) => setDraft((d) => ({ ...d, sql: e.target.value }))}
-              rows={6}
-              className="w-full resize-y rounded-md border border-edge bg-surface px-3 py-2 font-mono text-xs text-fg focus:outline-none focus:ring-1 focus:ring-accent"
-              spellCheck={false}
-            />
-          </label>
-
-          <label className="block space-y-1">
-            <span className="text-xs text-fg-muted">{t('dashboard.refreshSec')}</span>
-            <Input
-              type="number"
-              min={MIN_REFRESH_SEC}
-              value={draft.refreshSec}
-              onChange={(e) =>
-                setDraft((d) => ({ ...d, refreshSec: Number(e.target.value) || MIN_REFRESH_SEC }))
+              value={draft.refresh.mode}
+              onChange={(v) =>
+                setDraft((d) => ({
+                  ...d,
+                  refresh: {
+                    mode: v as RefreshMode,
+                    refreshSec:
+                      v === 'interval'
+                        ? clampRefreshSec(d.refresh.refreshSec ?? MIN_REFRESH_SEC)
+                        : undefined,
+                  },
+                }))
               }
+              options={REFRESH_MODES.map((m) => ({
+                value: m,
+                label: t(`dashboard.refreshMode.${m}`),
+              }))}
             />
-            <span className="text-[11px] text-fg-muted">{t('dashboard.refreshSecHint', { min: MIN_REFRESH_SEC })}</span>
           </label>
+
+          {draft.refresh.mode === 'interval' && (
+            <label className="block space-y-1">
+              <span className="text-xs text-fg-muted">{t('dashboard.refreshSec')}</span>
+              <Input
+                type="number"
+                min={MIN_REFRESH_SEC}
+                value={draft.refresh.refreshSec ?? MIN_REFRESH_SEC}
+                onChange={(e) =>
+                  setDraft((d) => ({
+                    ...d,
+                    refresh: {
+                      ...d.refresh,
+                      refreshSec: clampRefreshSec(Number(e.target.value) || MIN_REFRESH_SEC),
+                    },
+                  }))
+                }
+              />
+              <span className="text-[11px] text-fg-muted">
+                {t('dashboard.refreshSecHint', { min: MIN_REFRESH_SEC })}
+              </span>
+              {refreshWarn && (
+                <p className="text-[11px] text-amber-500" data-testid="refresh-sec-warn">
+                  {t('dashboard.refreshSecWarn', { sec: REFRESH_WARN_BELOW_SEC })}
+                </p>
+              )}
+            </label>
+          )}
 
           <label className="flex items-center gap-2 text-xs text-fg">
             <input
@@ -154,49 +222,59 @@ export function WidgetEditorDrawer({
           </label>
 
           <label className="block space-y-1">
-            <span className="text-xs text-fg-muted">{t('dashboard.chartType')}</span>
+            <span className="text-xs text-fg-muted">{t('dashboard.defaultView')}</span>
             <Select
-              value={draft.chartConfig.chartType}
+              value={draft.viewMode}
               onChange={(v) =>
-                setDraft((d) => ({
-                  ...d,
-                  chartConfig: { ...d.chartConfig, chartType: v as ChartType },
-                }))
+                setDraft((d) => ({ ...d, viewMode: v as DashboardWidget['viewMode'] }))
               }
-              options={CHART_TYPES.map((ct) => ({ value: ct, label: ct }))}
+              options={[
+                { value: 'chart', label: t('dashboard.viewChart') },
+                { value: 'table', label: t('dashboard.viewTable') },
+              ]}
             />
           </label>
 
-          <label className="block space-y-1">
-            <span className="text-xs text-fg-muted">{t('dashboard.yAxis')}</span>
-            <Input
-              value={draft.chartConfig.yAxes.join(', ')}
-              onChange={(e) =>
-                setDraft((d) => ({
-                  ...d,
-                  chartConfig: {
-                    ...d.chartConfig,
-                    yAxes: e.target.value.split(',').map((s) => s.trim()).filter(Boolean),
-                  },
-                }))
-              }
-              placeholder="v, count"
-            />
-          </label>
+          {draft.viewMode === 'chart' && draft.chartConfig && (
+            <>
+              <label className="block space-y-1">
+                <span className="text-xs text-fg-muted">{t('dashboard.chartType')}</span>
+                <Select
+                  value={draft.chartConfig.chartType}
+                  onChange={(v) =>
+                    setDraft((d) => ({
+                      ...d,
+                      chartConfig: {
+                        ...(d.chartConfig ?? DEFAULT_CHART_CONFIG),
+                        chartType: v as ChartType,
+                      },
+                    }))
+                  }
+                  options={CHART_TYPES.map((ct) => ({ value: ct, label: ct }))}
+                />
+              </label>
 
-          <label className="block space-y-1">
-            <span className="text-xs text-fg-muted">{t('dashboard.xAxis')}</span>
-            <Input
-              value={draft.chartConfig.xAxis ?? ''}
-              onChange={(e) =>
-                setDraft((d) => ({
-                  ...d,
-                  chartConfig: { ...d.chartConfig, xAxis: e.target.value || null },
-                }))
-              }
-              placeholder={t('dashboard.xAxisOptional')}
-            />
-          </label>
+              <label className="block space-y-1">
+                <span className="text-xs text-fg-muted">{t('dashboard.yAxis')}</span>
+                <Input
+                  value={draft.chartConfig.yAxes.join(', ')}
+                  onChange={(e) =>
+                    setDraft((d) => ({
+                      ...d,
+                      chartConfig: {
+                        ...(d.chartConfig ?? DEFAULT_CHART_CONFIG),
+                        yAxes: e.target.value
+                          .split(',')
+                          .map((s) => s.trim())
+                          .filter(Boolean),
+                      },
+                    }))
+                  }
+                  placeholder="v, count"
+                />
+              </label>
+            </>
+          )}
 
           <div className="space-y-3 rounded-md border border-edge p-3">
             <label className="flex items-center gap-2 text-xs text-fg">
@@ -234,49 +312,6 @@ export function WidgetEditorDrawer({
                 </label>
 
                 <label className="block space-y-1">
-                  <span className="text-xs text-fg-muted">{t('dashboard.alertMetricKind')}</span>
-                  <Select
-                    value={draft.alert.metric.kind}
-                    onChange={(v) =>
-                      setDraft((d) => ({
-                        ...d,
-                        alert: {
-                          ...d.alert!,
-                          metric: {
-                            ...d.alert!.metric,
-                            kind: v as 'column' | 'aggregation',
-                            agg: v === 'aggregation' ? (d.alert!.metric.agg ?? 'last') : undefined,
-                          },
-                        },
-                      }))
-                    }
-                    options={[
-                      { value: 'column', label: t('dashboard.alertKindColumn') },
-                      { value: 'aggregation', label: t('dashboard.alertKindAggregation') },
-                    ]}
-                  />
-                </label>
-
-                {draft.alert.metric.kind === 'aggregation' && (
-                  <label className="block space-y-1">
-                    <span className="text-xs text-fg-muted">{t('dashboard.alertAggregation')}</span>
-                    <Select
-                      value={draft.alert.metric.agg ?? 'last'}
-                      onChange={(v) =>
-                        setDraft((d) => ({
-                          ...d,
-                          alert: {
-                            ...d.alert!,
-                            metric: { ...d.alert!.metric, agg: v as AlertMetricAgg },
-                          },
-                        }))
-                      }
-                      options={ALERT_AGGS.map((a) => ({ value: a, label: a }))}
-                    />
-                  </label>
-                )}
-
-                <label className="block space-y-1">
                   <span className="text-xs text-fg-muted">{t('dashboard.alertOperator')}</span>
                   <Select
                     value={draft.alert.op}
@@ -298,22 +333,7 @@ export function WidgetEditorDrawer({
                     onChange={(e) =>
                       setDraft((d) => ({
                         ...d,
-                        alert: { ...d.alert!, threshold: Number(e.target.value) || 0 },
-                      }))
-                    }
-                  />
-                </label>
-
-                <label className="block space-y-1">
-                  <span className="text-xs text-fg-muted">{t('dashboard.alertCooldown')}</span>
-                  <Input
-                    type="number"
-                    min={0}
-                    value={draft.alert.cooldownSec}
-                    onChange={(e) =>
-                      setDraft((d) => ({
-                        ...d,
-                        alert: { ...d.alert!, cooldownSec: Number(e.target.value) || 0 },
+                        alert: { ...d.alert!, threshold: Number(e.target.value) },
                       }))
                     }
                   />
@@ -324,10 +344,13 @@ export function WidgetEditorDrawer({
         </div>
 
         <div className="flex shrink-0 justify-end gap-2 border-t border-edge px-4 py-3">
-          <Button variant="ghost" onClick={onClose}>{t('common.cancel')}</Button>
+          <Button variant="ghost" className="h-8 px-3 text-xs" onClick={onClose}>
+            {t('common.cancel')}
+          </Button>
           <Button
+            className="h-8 px-3 text-xs"
             onClick={handleSave}
-            disabled={!draft.title.trim() || !draft.configId || !draft.sql.trim()}
+            data-testid="widget-editor-save"
           >
             {t('common.save')}
           </Button>

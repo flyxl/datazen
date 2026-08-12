@@ -22,36 +22,22 @@
 | ID | 功能 | 状态 | 单测 | E2E agent | 提交 |
 |----|------|------|------|-----------|------|
 | F0 | 更新实施方案 + 进度文件 + 设计拍板 | `done` | n/a | n/a | `c7d0cea` |
-| F1 | 统一 `datazen.sqlite` Schema（workflows/dashboards/widgets/runs）+ AppDb CRUD | `done` | 7/7 | [Verify](0dc7d514) 16 PASS | `8a763c2` |
-| F2 | Workflow 入库替换 YAML registry；visibility；list 过滤 hidden | `done` | 4/4 + IPC | [Verify](310a57bd) PASS | `c469639` |
-| F3 | 内置变量补齐 `current_time`；文档化；隐藏 WF 不写 workflow_history | `done` | 4/4 | [Verify](6ae9b084) PASS | `24455f6` |
-| F4 | Workflow 编辑页：可视化 + YAML 双模 | `pending` | — | — | — |
+| F1 | 统一 `datazen.sqlite` Schema + AppDb CRUD | `done` | 7/7 | [Verify](0dc7d514) 16 PASS | `8a763c2` |
+| F2 | Workflow 入库替换 YAML registry；visibility | `done` | 4/4 + IPC | [Verify](310a57bd) PASS | `c469639` |
+| F3 | `current_time`；隐藏 WF 不写 workflow_history | `done` | 4/4 | [Verify](6ae9b084) PASS | `24455f6` |
+| F4 | Workflow 编辑页：可视化 + YAML 双模 | `done` | PASS | [Verify](5f332e7e) PASS | pending |
 | F5 | 入口更名/直达窗口；移除设置→监控 | `done` | 70 | [Verify](f89eb288) PASS | `167887d` |
-| F6 | 看板窗内面板 CRUD（SQLite） | `pending` | — | — | — |
-| F7 | Widget 仅 workflowId；执行改 WorkflowExecutor；Monitor 调度 | `pending` | — | — | — |
-| F8 | 图⇄表切换；编辑抽屉（刷新/告警/**SQL·WF 编辑**） | `pending` | — | — | — |
-| F9 | 从 SQL / 可见 Workflow「添加到看板」 | `pending` | — | — | — |
-| F10 | 删除 WF 引用检查；面板暂停；运行历史；日期变量用法验收 | `pending` | — | — | — |
+| F6 | 看板窗内面板 CRUD（SQLite） | `done` | dashboard:: | [Verify](5f332e7e) PASS | pending |
+| F7 | Widget 仅 workflowId；Executor；Monitor | `done` | dashboard+monitor | [Verify](5f332e7e) PASS | pending |
+| F8 | 图⇄表切换；编辑抽屉 | `done` | FE unit | [Verify](5f332e7e) PASS | pending |
+| F9 | 从 SQL / 可见 Workflow「添加到看板」 | `done` | create:: | [Verify](5f332e7e) PASS | pending |
+| F10 | 删除引用检查；面板暂停；运行历史 | `done` | Rust | [Verify](5f332e7e) PASS | pending |
 | F11 | 整体 Review + 修复验证 | `pending` | — | — | — |
 | F12 | 全量单测 + e2e:dashboard；文档收尾提交 | `pending` | — | — | — |
-
-**状态枚举**：`pending` → `developing` → `testing` → `fixing` → `done`
-
-## 测试循环约定
-
-1. 功能开发时同步写单元测试并本地跑通。
-2. 功能完成后：**新建独立 agent** 做该功能 E2E/验证测试；只输出用例、结果、bug 重现步骤，**不修复**。
-3. 若不通过 → 编码 agent 修复 → 再开**新**测试 agent 回归。
-4. 通过后更新本文件并 `git commit`。
-5. 全部功能完成后：整体 review → 新 agent 验证 → 全量单测+E2E → 修问题 → 更新文档并提交。
 
 ## 变更日志
 
 | 日期 | 内容 |
 |------|------|
-| 2026-08-12 | 创建进度文件；写入五项设计拍板；功能拆分为 F0–F12 |
-| 2026-08-12 | F0 文档提交 `c7d0cea` |
-| 2026-08-12 | F1 AppDb 落地；独立测试 agent 16 PASS |
-| 2026-08-12 | F2 Workflow 入库 + visibility；测试 agent PASS；`c469639` |
-| 2026-08-12 | F3 `current_time` + hidden 不写 history；`24455f6` |
-| 2026-08-12 | F5 直达看板窗 + 去设置监控 + 更名「数据看板」 |
+| 2026-08-12 | F0–F5 完成 |
+| 2026-08-12 | F4 YAML 双模 + F6–F10 看板核心落地；locale 对齐后测试 PASS |

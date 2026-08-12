@@ -308,16 +308,16 @@ mod tests {
     use super::*;
     use crate::dashboard::types::{
         AlertMetric, AlertMetricAgg, AlertMetricKind, AlertOperator, ChartConfig, ChartType,
-        WidgetLayout,
+        RefreshMode, RefreshPolicy, ViewMode, WidgetLayout,
     };
 
     fn sample_widget() -> DashboardWidget {
         DashboardWidget {
             id: "w1".into(),
             title: "CPU".into(),
-            config_id: "cfg-1".into(),
-            sql: "SELECT 1".into(),
-            chart_config: ChartConfig {
+            workflow_id: "wf-1".into(),
+            view_mode: ViewMode::Chart,
+            chart_config: Some(ChartConfig {
                 chart_type: ChartType::Line,
                 x_axis: None,
                 y_axes: vec![],
@@ -328,14 +328,17 @@ mod tests {
                 show_grid: true,
                 show_values: false,
                 color_scheme: "default".into(),
-            },
+            }),
             layout: WidgetLayout {
                 x: 0,
                 y: 0,
                 w: 4,
                 h: 3,
             },
-            refresh_sec: 60,
+            refresh: RefreshPolicy {
+                mode: RefreshMode::Interval,
+                refresh_sec: Some(60),
+            },
             alert: None,
             enabled: true,
         }
@@ -368,6 +371,7 @@ mod tests {
             id: "run-1".into(),
             dashboard_id: "d1".into(),
             widget_id: "w1".into(),
+            workflow_id: "wf-1".into(),
             started_at: "2026-01-01T00:00:00Z".into(),
             finished_at: "2026-01-01T00:01:00Z".into(),
             status,

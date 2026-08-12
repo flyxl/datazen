@@ -21,7 +21,8 @@ import { openDashboardWindow, openDocsWindow } from '../../lib/windowManager';
 import { dashboardCommands } from '../../commands/dashboard';
 import { useDashboardStore } from '../../stores/dashboardStore';
 import { DEFAULT_CHART_CONFIG } from '../../types/chart';
-import type { Dashboard, DashboardWidget } from '../../types/dashboard';
+import type { Dashboard, DashboardWidget, ViewMode } from '../../types/dashboard';
+import { DEFAULT_REFRESH } from '../../types/dashboard';
 import { ChartWidgetTile } from './ChartWidgetTile';
 import { RunHistoryDrawer } from './RunHistoryDrawer';
 import { WidgetEditorDrawer } from './WidgetEditorDrawer';
@@ -121,8 +122,18 @@ export function DashboardWindow() {
   }, [current]);
 
   useEffect(() => {
-    void dashboardCommands.getMonitorPaused().then(setMonitorPaused);
-  }, []);
+    if (!current) return;
+    setMonitorPaused(!!current.refreshPaused);
+  }, [current]);
+
+  useEffect(() => {
+    if (!current) return;
+    for (const widget of current.widgets) {
+      if (widget.enabled && widget.refresh.mode === 'onOpen' && !runs[widget.id]) {
+        void refreshWidget(current.id, widget.id);
+      }
+    }
+  }, [current, runs, refreshWidget]);
 
   const handleRefreshAll = useCallback(async () => {
     if (!current) return;
@@ -139,11 +150,11 @@ export function DashboardWindow() {
     const draft: DashboardWidget = {
       id: crypto.randomUUID(),
       title: t('dashboard.newWidget'),
-      configId: '',
-      sql: 'SELECT 1 AS v',
+      workflowId: '',
+      viewMode: 'chart',
       chartConfig: { ...DEFAULT_CHART_CONFIG, yAxes: ['v'] },
       layout: nextWidgetLayout(current.widgets),
-      refreshSec: 60,
+      refresh: { ...DEFAULT_REFRESH },
       enabled: true,
     };
     setEditingWidget(draft);
@@ -152,20 +163,45 @@ export function DashboardWindow() {
   }, [current, t]);
 
   const handleSaveWidget = useCallback(
-    async (widget: DashboardWidget) => {
+    async (widget: DashboardWidget, hiddenSql?: { configId: string; sql: string }) => {
       if (!current) return;
-      const widgets = isNewWidget
-        ? [...current.widgets, widget]
-        : current.widgets.map((w) => (w.id === widget.id ? widget : w));
-      await saveDashboard({ ...current, widgets });
+      let savedWidget = widget;
+      if (isNewWidget && hiddenSql) {
+        const created = await dashboardCommands.createWidgetFromSql({
+          dashboardId: current.id,
+          configId: hiddenSql.configId,
+          sql: hiddenSql.sql,
+          title: widget.title,
+          viewMode: widget.viewMode,
+          chartConfig: widget.chartConfig,
+        });
+        savedWidget = created.widget;
+        await loadDashboard(current.id);
+      } else {
+        const widgets = isNewWidget
+          ? [...current.widgets, widget]
+          : current.widgets.map((w) => (w.id === widget.id ? widget : w));
+        await saveDashboard({ ...current, widgets });
+      }
       setEditorOpen(false);
       setEditingWidget(null);
-      if (isNewWidget) {
-        void refreshWidget(current.id, widget.id);
+      if (isNewWidget && !hiddenSql) {
+        void refreshWidget(current.id, savedWidget.id);
+      } else if (!isNewWidget) {
+        void refreshWidget(current.id, savedWidget.id);
       }
       setIsNewWidget(false);
     },
-    [current, isNewWidget, saveDashboard, refreshWidget],
+    [current, isNewWidget, saveDashboard, refreshWidget, loadDashboard],
+  );
+
+  const handleViewModeChange = useCallback(
+    async (widgetId: string, viewMode: ViewMode) => {
+      if (!current) return;
+      const widgets = current.widgets.map((w) => (w.id === widgetId ? { ...w, viewMode } : w));
+      await saveDashboard({ ...current, widgets });
+    },
+    [current, saveDashboard],
   );
 
   const handleRename = useCallback(async () => {
@@ -191,10 +227,12 @@ export function DashboardWindow() {
   }, [dashboardId, loadDashboard]);
 
   const handleToggleMonitorPause = useCallback(async () => {
+    if (!current) return;
     const next = !monitorPaused;
-    await dashboardCommands.setMonitorPaused(next);
+    await dashboardCommands.setDashboardRefreshPaused(current.id, next);
     setMonitorPaused(next);
-  }, [monitorPaused]);
+    await loadDashboard(current.id);
+  }, [current, monitorPaused, loadDashboard]);
 
   const titleContent = useMemo(() => {
     if (!current) return t('win.dashboard');
@@ -388,6 +426,7 @@ export function DashboardWindow() {
                   setHistoryOpen(true);
                 }}
                 onRefresh={() => void refreshWidget(current.id, widget.id)}
+                onViewModeChange={(mode) => void handleViewModeChange(widget.id, mode)}
               />
             ))}
           </div>
@@ -402,12 +441,13 @@ export function DashboardWindow() {
         open={editorOpen}
         widget={editingWidget}
         isNew={isNewWidget}
+        hiddenSql={isNewWidget ? { configId: '', sql: 'SELECT 1 AS v' } : undefined}
         onClose={() => {
           setEditorOpen(false);
           setEditingWidget(null);
           setIsNewWidget(false);
         }}
-        onSave={(w) => void handleSaveWidget(w)}
+        onSave={(w, hiddenSql) => void handleSaveWidget(w, hiddenSql)}
       />
 
       <RunHistoryDrawer

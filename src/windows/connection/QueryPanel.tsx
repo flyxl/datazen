@@ -1,5 +1,23 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, BarChart3, Bookmark, Check, Clock, Database, FileSearch, Loader2, Play, Sparkles, Square, Stethoscope, TableProperties, Trash2, Undo2, Wand2 } from 'lucide-react';
+import {
+  AlertTriangle,
+  BarChart3,
+  Bookmark,
+  Check,
+  Clock,
+  Database,
+  FileSearch,
+  Gauge,
+  Loader2,
+  Play,
+  Sparkles,
+  Square,
+  Stethoscope,
+  TableProperties,
+  Trash2,
+  Undo2,
+  Wand2,
+} from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { Button } from '../../components/ui/Button';
@@ -20,6 +38,8 @@ import { useI18n } from '../../hooks/useI18n';
 import { useResizable } from '../../hooks/useResizable';
 import { cn } from '../../lib/cn';
 import { queryCommands } from '../../commands/query';
+import { dashboardCommands } from '../../commands/dashboard';
+import { openDashboardWindow } from '../../lib/windowManager';
 import { formatSql } from '../../lib/sqlFormat';
 import { parseSqlParams, paramsToPayload } from '../../lib/sqlBindParams';
 import { BindParamPanel } from '../../components/query/BindParamPanel';
@@ -75,7 +95,9 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
   const resultViewMode = tab?.resultViewMode ?? 'table';
   const setResultViewModeStore = useQueryStore((s) => s.setResultViewMode);
   const setResultViewMode = useCallback(
-    (mode: 'table' | 'chart') => { if (tab) setResultViewModeStore(tab.id, mode); },
+    (mode: 'table' | 'chart') => {
+      if (tab) setResultViewModeStore(tab.id, mode);
+    },
     [tab, setResultViewModeStore],
   );
 
@@ -106,16 +128,22 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
   );
 
   const ensureTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const handleQualifiedPath = useCallback((parents: string[]) => {
-    if (ensureTimer.current) clearTimeout(ensureTimer.current);
-    ensureTimer.current = setTimeout(() => {
-      void ensureNamespacePath(parents);
-    }, 120);
-  }, [ensureNamespacePath]);
+  const handleQualifiedPath = useCallback(
+    (parents: string[]) => {
+      if (ensureTimer.current) clearTimeout(ensureTimer.current);
+      ensureTimer.current = setTimeout(() => {
+        void ensureNamespacePath(parents);
+      }, 120);
+    },
+    [ensureNamespacePath],
+  );
 
-  useEffect(() => () => {
-    if (ensureTimer.current) clearTimeout(ensureTimer.current);
-  }, []);
+  useEffect(
+    () => () => {
+      if (ensureTimer.current) clearTimeout(ensureTimer.current);
+    },
+    [],
+  );
 
   useEffect(() => {
     setConnectionId(connectionId);
@@ -207,20 +235,23 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
     })();
   }, [tab, executeQuery, executeSelection, boundPayload, autoCommit, inTransaction, connectionId]);
 
-  const handleExecuteSelection = useCallback((sql: string) => {
-    if (!tab) return;
-    void (async () => {
-      if (!autoCommit && !inTransaction) {
-        try {
-          await queryCommands.beginSessionTransaction(connectionId);
-          setInTransaction(true);
-        } catch {
-          /* continue */
+  const handleExecuteSelection = useCallback(
+    (sql: string) => {
+      if (!tab) return;
+      void (async () => {
+        if (!autoCommit && !inTransaction) {
+          try {
+            await queryCommands.beginSessionTransaction(connectionId);
+            setInTransaction(true);
+          } catch {
+            /* continue */
+          }
         }
-      }
-      await executeSelection(tab.id, sql, boundPayload);
-    })();
-  }, [tab, executeSelection, boundPayload, autoCommit, inTransaction, connectionId]);
+        await executeSelection(tab.id, sql, boundPayload);
+      })();
+    },
+    [tab, executeSelection, boundPayload, autoCommit, inTransaction, connectionId],
+  );
 
   const handleFormat = useCallback(() => {
     if (!tab?.sql.trim()) return;
@@ -235,9 +266,12 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
     if (tab) void cancelQuery(tab.id);
   }, [tab, cancelQuery]);
 
-  const handleApplyAiSql = useCallback((sql: string) => {
-    if (tab) updateSql(tab.id, sql);
-  }, [tab, updateSql]);
+  const handleApplyAiSql = useCallback(
+    (sql: string) => {
+      if (tab) updateSql(tab.id, sql);
+    },
+    [tab, updateSql],
+  );
 
   const handleExplain = useCallback(async () => {
     if (!tab?.sql.trim()) return;
@@ -270,7 +304,9 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
         setShowFavoriteDialog(true);
       }
     });
-    return () => { void unlisten.then((fn) => fn()); };
+    return () => {
+      void unlisten.then((fn) => fn());
+    };
   }, []);
 
   if (!tab) return null;
@@ -369,7 +405,9 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
         <span className="text-[11px] text-fg-muted">⌘+Enter {t('query.execute')}</span>
         <div className="flex-1" />
         {tab.executionTimeMs != null && (
-          <span className="text-[11px] text-fg-muted">{t('query.totalTime')} {tab.executionTimeMs} ms</span>
+          <span className="text-[11px] text-fg-muted">
+            {t('query.totalTime')} {tab.executionTimeMs} ms
+          </span>
         )}
         <Button
           variant={historyVisible ? 'secondary' : 'ghost'}
@@ -416,10 +454,7 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
           )}
 
           {/* SQL editor — height adjustable via bottom drag handle */}
-          <div
-            className="relative shrink-0 border-b border-edge"
-            style={{ height: editorHeight }}
-          >
+          <div className="relative shrink-0 border-b border-edge" style={{ height: editorHeight }}>
             <SqlEditor
               ref={editorRef}
               value={tab.sql}
@@ -440,14 +475,19 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
           />
 
           {showFavoriteDialog && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setShowFavoriteDialog(false)}>
+            <div
+              className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+              onClick={() => setShowFavoriteDialog(false)}
+            >
               <div
                 className="w-[400px] rounded-lg border border-edge bg-surface p-4 shadow-xl"
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="mb-3 text-sm font-medium text-fg">{t('query.addFavorite')}</div>
                 <div className="mb-2">
-                  <label className="mb-1 block text-xs text-fg-muted">{t('query.favoriteTitle')}</label>
+                  <label className="mb-1 block text-xs text-fg-muted">
+                    {t('query.favoriteTitle')}
+                  </label>
                   <input
                     type="text"
                     value={favoriteName}
@@ -521,9 +561,7 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
                   >
                     {t('explain.title')}
                     <span
-                      className={cn(
-                        'absolute bottom-0 left-0 right-0 h-0.5 bg-accent opacity-100',
-                      )}
+                      className={cn('absolute bottom-0 left-0 right-0 h-0.5 bg-accent opacity-100')}
                     />
                   </button>
                 </div>
@@ -677,6 +715,39 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
                           {t('chart.sampledWarning', { limit: '1000' })}
                         </span>
                       )}
+                      <Button
+                        variant="ghost"
+                        className="ml-auto h-7 gap-1 px-2 text-xs"
+                        data-testid="query-add-to-dashboard"
+                        disabled={!activeResult.rows.length}
+                        onClick={() => {
+                          void (async () => {
+                            if (!tab?.sql.trim() || !activeResult.rows.length) return;
+                            try {
+                              const boards = await dashboardCommands.listDashboards();
+                              if (boards.length === 0) {
+                                window.alert(t('dashboard.emptyBoards'));
+                                return;
+                              }
+                              const target = boards[0]!;
+                              const created = await dashboardCommands.createWidgetFromSql({
+                                dashboardId: target.id,
+                                configId: connectionId,
+                                sql: tab.sql,
+                                title: tab.title || undefined,
+                                viewMode: resultViewMode,
+                                chartConfig: tab.chartConfig,
+                              });
+                              openDashboardWindow(created.dashboard.id, created.dashboard.name);
+                            } catch (e) {
+                              window.alert(String(e));
+                            }
+                          })();
+                        }}
+                      >
+                        <Gauge className="h-3 w-3" />
+                        {t('dashboard.addToDashboard')}
+                      </Button>
                     </div>
                     {tab.running || resultViewMode === 'table' ? (
                       <ResultTable result={activeResult} />
@@ -711,7 +782,9 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
               {t('query.favoritesTitle')}
             </div>
             {favorites.length === 0 ? (
-              <div className="px-3 py-4 text-center text-xs text-fg-muted">{t('query.noFavorites')}</div>
+              <div className="px-3 py-4 text-center text-xs text-fg-muted">
+                {t('query.noFavorites')}
+              </div>
             ) : (
               favorites.map((f) => (
                 <div
@@ -724,7 +797,9 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
                     onClick={() => updateSql(tab.id, f.sql)}
                   >
                     <div className="truncate text-xs font-medium text-fg">{f.title}</div>
-                    <div className="mt-0.5 truncate font-mono text-[11px] text-fg-muted">{f.sql}</div>
+                    <div className="mt-0.5 truncate font-mono text-[11px] text-fg-muted">
+                      {f.sql}
+                    </div>
                   </button>
                   <button
                     type="button"
@@ -744,7 +819,9 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
               {t('query.historyTitle')}
             </div>
             {history.length === 0 ? (
-              <div className="px-3 py-4 text-center text-xs text-fg-muted">{t('query.noHistory')}</div>
+              <div className="px-3 py-4 text-center text-xs text-fg-muted">
+                {t('query.noHistory')}
+              </div>
             ) : (
               history.map((h) => (
                 <button
@@ -786,9 +863,13 @@ function ResultTable({ result }: { result: StatementResult }) {
   const statusBar = useMemo(
     () => (
       <div className="flex items-center gap-3 border-b border-edge bg-surface-alt px-3 py-1.5 text-xs text-fg-secondary">
-        <span>{result.rows.length} {t('common.rows')}</span>
+        <span>
+          {result.rows.length} {t('common.rows')}
+        </span>
         <span className="text-edge">|</span>
-        <span>{result.columns.length} {t('common.columns')}</span>
+        <span>
+          {result.columns.length} {t('common.columns')}
+        </span>
         <span className="text-edge">|</span>
         <span>{result.executionTimeMs} ms</span>
         {result.sql && (
