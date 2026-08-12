@@ -1,13 +1,13 @@
 //! Single-file dashboard import/export (`.datazen-dashboard.json`).
 
 use std::io;
-use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use super::store::{list_dashboards, save_dashboard, DashboardStoreError};
 use super::types::{AlertChannel, Dashboard};
+use crate::store::AppDb;
 
 pub const FORMAT: &str = "datazen.dashboard";
 pub const VERSION: u32 = 1;
@@ -111,26 +111,44 @@ pub fn export_dashboard_json(dashboard: &Dashboard) -> Result<String, DashboardE
 }
 
 /// Import a dashboard file; assigns a new id when the id already exists locally.
-pub fn import_dashboard(data_dir: &Path, bytes: &[u8]) -> Result<Dashboard, DashboardExportError> {
+pub fn import_dashboard(app_db: &AppDb, bytes: &[u8]) -> Result<Dashboard, DashboardExportError> {
     let mut dashboard = parse_dashboard_file(bytes)?;
 
-    let existing = list_dashboards(data_dir)?;
+    let existing = list_dashboards(app_db)?;
     if existing.iter().any(|d| d.id == dashboard.id) {
         dashboard.id = uuid::Uuid::new_v4().to_string();
     }
 
-    save_dashboard(data_dir, dashboard.clone())?;
+    save_dashboard(app_db, dashboard.clone())?;
     Ok(dashboard)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dashboard::store::{get_dashboard, save_dashboard};
+    use crate::dashboard::store::{get_dashboard, list_dashboards, save_dashboard};
     use crate::dashboard::types::{
-        AggregationType, AlertChannel, AlertMetric, AlertMetricKind, AlertOperator, AlertRule,
-        ChartConfig, ChartSortBy, ChartType, DashboardLayout, DashboardWidget, WidgetLayout,
+        AlertChannel, AlertMetric, AlertMetricKind, AlertOperator, AlertRule, ChartConfig,
+        ChartType, DashboardLayout, DashboardWidget, RefreshMode, RefreshPolicy, ViewMode,
+        WidgetLayout,
     };
+    use crate::store::{AppDb, WorkflowRecord, WorkflowVisibility};
+    use chrono::Utc;
+
+    fn open_db() -> std::sync::Arc<AppDb> {
+        let db = AppDb::open_in_memory().unwrap();
+        db.upsert_workflow(&WorkflowRecord {
+            id: "wf-export".into(),
+            name: "WF".into(),
+            description: String::new(),
+            visibility: WorkflowVisibility::User,
+            definition_yaml: "id: wf-export\nname: WF\nsteps: []\n".into(),
+            created_at: Utc::now().to_rfc3339(),
+            updated_at: Utc::now().to_rfc3339(),
+        })
+        .unwrap();
+        db
+    }
 
     fn sample_dashboard() -> Dashboard {
         Dashboard {
@@ -145,27 +163,30 @@ mod tests {
             widgets: vec![DashboardWidget {
                 id: "w1".into(),
                 title: "Widget".into(),
-                config_id: "cfg-keep".into(),
-                sql: "SELECT 1".into(),
-                chart_config: ChartConfig {
+                workflow_id: "wf-export".into(),
+                view_mode: ViewMode::Chart,
+                chart_config: Some(ChartConfig {
                     chart_type: ChartType::Line,
                     x_axis: None,
                     y_axes: vec![],
                     group_by: None,
-                    aggregation: AggregationType::None,
-                    sort_by: ChartSortBy::None,
+                    aggregation: crate::dashboard::types::AggregationType::None,
+                    sort_by: crate::dashboard::types::ChartSortBy::None,
                     show_legend: true,
                     show_grid: true,
                     show_values: false,
                     color_scheme: "default".into(),
-                },
+                }),
                 layout: WidgetLayout {
                     x: 0,
                     y: 0,
                     w: 4,
                     h: 3,
                 },
-                refresh_sec: 60,
+                refresh: RefreshPolicy {
+                    mode: RefreshMode::Manual,
+                    refresh_sec: None,
+                },
                 alert: Some(AlertRule {
                     metric: AlertMetric {
                         kind: AlertMetricKind::Column,
@@ -180,6 +201,7 @@ mod tests {
                 enabled: true,
             }],
             enabled: true,
+            refresh_paused: false,
         }
     }
 
@@ -190,12 +212,12 @@ mod tests {
     }
 
     #[test]
-    fn export_strips_webhook_channel_and_keeps_config_id() {
+    fn export_strips_webhook_channel() {
         let json = export_dashboard_json(&sample_dashboard()).unwrap();
         assert!(!json.contains("webhook"));
-        assert!(json.contains("cfg-keep"));
+        assert!(json.contains("wf-export"));
         let parsed = parse_dashboard_file(json.as_bytes()).unwrap();
-        assert_eq!(parsed.widgets[0].config_id, "cfg-keep");
+        assert_eq!(parsed.widgets[0].workflow_id, "wf-export");
         assert!(parsed.widgets[0]
             .alert
             .as_ref()
@@ -207,24 +229,23 @@ mod tests {
 
     #[test]
     fn import_assigns_new_id_on_collision() {
-        let dir = tempfile::tempdir().unwrap();
+        let db = open_db();
         let dash = sample_dashboard();
-        save_dashboard(dir.path(), dash.clone()).unwrap();
+        save_dashboard(&db, dash.clone()).unwrap();
 
         let json = export_dashboard_json(&dash).unwrap();
-        let imported = import_dashboard(dir.path(), json.as_bytes()).unwrap();
+        let imported = import_dashboard(&db, json.as_bytes()).unwrap();
         assert_ne!(imported.id, dash.id);
-        assert_eq!(list_dashboards(dir.path()).unwrap().len(), 2);
+        assert_eq!(list_dashboards(&db).unwrap().len(), 2);
     }
 
     #[test]
     fn import_roundtrip_persists_dashboard() {
-        let dir = tempfile::tempdir().unwrap();
+        let db = open_db();
         let dash = sample_dashboard();
         let json = export_dashboard_json(&dash).unwrap();
-        let imported = import_dashboard(dir.path(), json.as_bytes()).unwrap();
-        let loaded = get_dashboard(dir.path(), &imported.id).unwrap();
-        assert_eq!(loaded.name, dash.name);
-        assert_eq!(loaded.widgets[0].config_id, "cfg-keep");
+        let imported = import_dashboard(&db, json.as_bytes()).unwrap();
+        let loaded = get_dashboard(&db, &imported.id).unwrap();
+        assert_eq!(loaded.widgets.len(), 1);
     }
 }

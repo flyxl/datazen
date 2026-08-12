@@ -594,7 +594,7 @@ mod tests {
         let connection_manager = Arc::new(ConnectionManager::new(registry.clone(), store.clone()));
         let monitor_connections =
             Arc::new(MonitorConnectionRegistry::new(connection_manager.clone()));
-        let monitor_engine = MonitorEngine::new(store.clone(), monitor_connections.clone());
+        let monitor_engine = MonitorEngine::new(store.clone());
         let schema_cache = Arc::new(SchemaCache::new(registry.clone()));
         let data_dir = store.data_dir().to_path_buf();
         let history_db = store.history_db();
@@ -658,7 +658,7 @@ mod tests {
         let connection_manager = Arc::new(ConnectionManager::new(registry.clone(), store.clone()));
         let monitor_connections =
             Arc::new(MonitorConnectionRegistry::new(connection_manager.clone()));
-        let monitor_engine = MonitorEngine::new(store.clone(), monitor_connections.clone());
+        let monitor_engine = MonitorEngine::new(store.clone());
         let schema_cache = Arc::new(SchemaCache::new(registry.clone()));
         let data_dir = store.data_dir().to_path_buf();
         let history_db = store.history_db();

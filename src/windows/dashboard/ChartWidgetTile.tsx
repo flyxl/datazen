@@ -1,11 +1,13 @@
 import { useMemo } from 'react';
 import { AlertTriangle, History, Loader2, Pencil, RefreshCw } from 'lucide-react';
 import { ChartCanvas } from '../../components/chart/ChartCanvas';
+import { DataTable } from '../../components/DataTable/DataTable';
+import type { ColumnDef } from '../../components/DataTable/TableHeader';
 import { Button } from '../../components/ui/Button';
 import { hasRenderableChart, widgetRunToChartData } from '../../lib/dashboard/runToChart';
 import { cn } from '../../lib/cn';
 import { useI18n } from '../../hooks/useI18n';
-import type { DashboardWidget, WidgetRun } from '../../types/dashboard';
+import type { DashboardWidget, ViewMode, WidgetRun } from '../../types/dashboard';
 
 export interface ChartWidgetTileProps {
   widget: DashboardWidget;
@@ -14,6 +16,7 @@ export interface ChartWidgetTileProps {
   onEdit: () => void;
   onHistory: () => void;
   onRefresh: () => void;
+  onViewModeChange?: (mode: ViewMode) => void;
 }
 
 export function ChartWidgetTile({
@@ -23,15 +26,30 @@ export function ChartWidgetTile({
   onEdit,
   onHistory,
   onRefresh,
+  onViewModeChange,
 }: Readonly<ChartWidgetTileProps>) {
   const { t } = useI18n();
+  const viewMode = widget.viewMode;
 
   const chartData = useMemo(
-    () => (run ? widgetRunToChartData(run, widget.chartConfig) : null),
-    [run, widget.chartConfig],
+    () =>
+      run && viewMode === 'chart' && widget.chartConfig
+        ? widgetRunToChartData(run, widget.chartConfig)
+        : null,
+    [run, widget.chartConfig, viewMode],
   );
 
-  const hasChart = hasRenderableChart(chartData, widget.chartConfig);
+  const tableColumns = useMemo<ColumnDef[]>(
+    () =>
+      run?.columns.map((name) => ({
+        name,
+        dataType: 'unknown',
+        nullable: true,
+      })) ?? [],
+    [run?.columns],
+  );
+
+  const hasChart = widget.chartConfig ? hasRenderableChart(chartData, widget.chartConfig) : false;
 
   return (
     <div
@@ -46,12 +64,35 @@ export function ChartWidgetTile({
         gridRow: `${widget.layout.y + 1} / span ${widget.layout.h}`,
       }}
     >
-      <div className="flex shrink-0 items-center gap-1 border-b border-edge px-2 py-1.5" data-no-drag>
+      <div
+        className="flex shrink-0 items-center gap-1 border-b border-edge px-2 py-1.5"
+        data-no-drag
+      >
         <span className="min-w-0 flex-1 truncate text-xs font-medium text-fg">{widget.title}</span>
         {run?.alertFired && (
           <span title={t('dashboard.alertFired')}>
             <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-500" />
           </span>
+        )}
+        {onViewModeChange && (
+          <div
+            className="flex rounded border border-edge text-[10px]"
+            data-testid="dashboard-view-toggle"
+          >
+            {(['chart', 'table'] as const).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                className={cn(
+                  'px-1.5 py-0.5 capitalize',
+                  viewMode === mode ? 'bg-accent/20 text-accent' : 'text-fg-muted hover:text-fg',
+                )}
+                onClick={() => onViewModeChange(mode)}
+              >
+                {mode === 'chart' ? t('dashboard.viewChart') : t('dashboard.viewTable')}
+              </button>
+            ))}
+          </div>
         )}
         <Button
           variant="ghost"
@@ -61,7 +102,11 @@ export function ChartWidgetTile({
           disabled={busy}
           onClick={onRefresh}
         >
-          {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+          {busy ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <RefreshCw className="h-3.5 w-3.5" />
+          )}
         </Button>
         <Button
           variant="ghost"
@@ -105,13 +150,26 @@ export function ChartWidgetTile({
             {t('dashboard.runTimeout')}
           </div>
         )}
-        {run?.status === 'ok' && !hasChart && (
+        {run?.status === 'ok' && viewMode === 'chart' && !hasChart && (
           <div className="absolute inset-0 flex items-center justify-center px-3 text-center text-xs text-fg-muted">
             {run.rowCount === 0 ? t('dashboard.emptyResult') : t('dashboard.chartNotConfigured')}
           </div>
         )}
-        {hasChart && chartData && (
-          <ChartCanvas data={chartData.data} config={widget.chartConfig} compact />
+        {hasChart && chartData && viewMode === 'chart' && (
+          <ChartCanvas data={chartData.data} config={widget.chartConfig!} compact />
+        )}
+        {run?.status === 'ok' && viewMode === 'table' && run.rows.length > 0 && (
+          <DataTable
+            columns={tableColumns}
+            rows={run.rows}
+            rowHeight={28}
+            exportTableName={widget.title}
+          />
+        )}
+        {run?.status === 'ok' && viewMode === 'table' && run.rows.length === 0 && (
+          <div className="absolute inset-0 flex items-center justify-center px-3 text-center text-xs text-fg-muted">
+            {t('dashboard.emptyResult')}
+          </div>
         )}
       </div>
     </div>
