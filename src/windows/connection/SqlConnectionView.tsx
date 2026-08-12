@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   BookOpen,
-  ClipboardCopy,
   Code2,
   Database,
   Download,
@@ -43,8 +42,6 @@ import { QueryPanel } from './QueryPanel';
 import { ExportDialog } from './ExportDialog';
 import { ImportDialog } from './ImportDialog';
 import { TableStructureEditor } from './TableStructureEditor';
-import { ContextMenu } from '../../components/ui/ContextMenu';
-import type { ContextMenuEntry } from '../../components/ui/ContextMenu';
 import type { TranslationKey } from '../../locales';
 import { DetailPanel } from '../../components/DataTable/DetailPanel';
 import { DetailPanelToggle } from '../../components/DataTable/DetailPanelToggle';
@@ -406,113 +403,6 @@ export function SqlConnectionView({
     }
   }, [connectionId, currentDatabase, databaseType, loadTables, loadForConnection]);
 
-  const [createIndexTrigger, setCreateIndexTrigger] = useState(0);
-
-  const contextMenuItems: ContextMenuEntry[] = useMemo(() => {
-    if (!activePanel) {
-      return [
-        { id: 'new-query', label: t('connWin.newQuery'), icon: <Plus className="h-3.5 w-3.5" /> },
-      ];
-    }
-
-    const common: ContextMenuEntry[] = [
-      { id: 'refresh', label: t('connWin.refresh'), icon: <RefreshCw className="h-3.5 w-3.5" /> },
-      { id: 'new-query', label: t('connWin.newQuery'), icon: <Plus className="h-3.5 w-3.5" /> },
-    ];
-    const sep: ContextMenuEntry = { id: 'sep1', separator: true };
-
-    if (activePanel.type === 'table') {
-      switch (activePanel.subTab) {
-        case 'data':
-          return [
-            {
-              id: 'copy-cell',
-              label: t('connWin.copyCell'),
-              icon: <ClipboardCopy className="h-3.5 w-3.5" />,
-            },
-            sep,
-            ...common,
-          ];
-        case 'structure':
-          if (!showStructureEditor) return common;
-          return [
-            {
-              id: 'edit-structure',
-              label: t('connWin.editStructure'),
-              icon: <Pencil className="h-3.5 w-3.5" />,
-            },
-            sep,
-            ...common,
-          ];
-        case 'indexes': {
-          const entries: ContextMenuEntry[] = [];
-          if (!isReadOnly) {
-            entries.push({
-              id: 'create-index',
-              label: t('connWin.newIndex'),
-              icon: <Plus className="h-3.5 w-3.5" />,
-            });
-          }
-          if (showStructureEditor) {
-            entries.push({
-              id: 'edit-structure',
-              label: t('connWin.editStructure'),
-              icon: <Pencil className="h-3.5 w-3.5" />,
-            });
-          }
-          if (entries.length === 0) return common;
-          return [...entries, sep, ...common];
-        }
-        case 'ddl':
-          return [
-            {
-              id: 'copy-ddl',
-              label: t('connWin.copyDDL'),
-              icon: <ClipboardCopy className="h-3.5 w-3.5" />,
-            },
-            sep,
-            ...common,
-          ];
-        default:
-          return common;
-      }
-    }
-
-    return common;
-  }, [activePanel, showStructureEditor, isReadOnly, t]);
-
-  const handleContextAction = useCallback(
-    (id: string) => {
-      switch (id) {
-        case 'refresh':
-          handleRefresh();
-          break;
-        case 'new-query':
-          handleNewQuery();
-          break;
-        case 'copy-cell': {
-          const sel = globalThis.getSelection()?.toString();
-          if (sel) void navigator.clipboard.writeText(sel);
-          break;
-        }
-        case 'copy-ddl': {
-          const pre = document.querySelector('pre');
-          if (pre?.textContent) void navigator.clipboard.writeText(pre.textContent);
-          break;
-        }
-        case 'edit-structure': {
-          if (activePanel?.type === 'table') handleEditTableStructure(activePanel.tableName);
-          break;
-        }
-        case 'create-index': {
-          setCreateIndexTrigger((v) => v + 1);
-          break;
-        }
-      }
-    },
-    [handleRefresh, handleNewQuery, activePanel, handleEditTableStructure],
-  );
-
   const handleTableContextMenu = useCallback((name: string, x: number, y: number) => {
     setTableCtx({ tableName: name, x, y });
   }, []);
@@ -746,220 +636,214 @@ export function SqlConnectionView({
           </>
         )}
 
-        <ContextMenu items={contextMenuItems} onAction={handleContextAction}>
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-            {panels.length > 0 && (
-              <div className="flex shrink-0 items-center border-b border-edge bg-surface-alt">
-                <div className="flex min-w-0 flex-1 overflow-x-auto">
-                  {panels.map((panel) => {
-                    const isActive = panel.id === activePanelId;
-                    const iconMap = {
-                      table: <Table2 className="h-3.5 w-3.5 shrink-0" />,
-                      query: <Code2 className="h-3.5 w-3.5 shrink-0" />,
-                      'create-table': <TableProperties className="h-3.5 w-3.5 shrink-0" />,
-                      'er-diagram': <GitFork className="h-3.5 w-3.5 shrink-0" />,
-                      objects: <Code2 className="h-3.5 w-3.5 shrink-0" />,
-                      privileges: <KeyRound className="h-3.5 w-3.5 shrink-0" />,
-                    };
-                    const labelMap: Record<string, string> = {
-                      table: (panel as TablePanel).tableName,
-                      query: (panel as QueryPanelInfo).title,
-                      'create-table': t('connWin.newTable'),
-                      'er-diagram': t('erDiagram.title'),
-                      objects: t('objects.title'),
-                      privileges: t('privileges.title'),
-                    };
-                    const icon = iconMap[panel.type];
-                    const label = labelMap[panel.type];
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          {panels.length > 0 && (
+            <div className="flex shrink-0 items-center border-b border-edge bg-surface-alt">
+              <div className="flex min-w-0 flex-1 overflow-x-auto">
+                {panels.map((panel) => {
+                  const isActive = panel.id === activePanelId;
+                  const iconMap = {
+                    table: <Table2 className="h-3.5 w-3.5 shrink-0" />,
+                    query: <Code2 className="h-3.5 w-3.5 shrink-0" />,
+                    'create-table': <TableProperties className="h-3.5 w-3.5 shrink-0" />,
+                    'er-diagram': <GitFork className="h-3.5 w-3.5 shrink-0" />,
+                    objects: <Code2 className="h-3.5 w-3.5 shrink-0" />,
+                    privileges: <KeyRound className="h-3.5 w-3.5 shrink-0" />,
+                  };
+                  const labelMap: Record<string, string> = {
+                    table: (panel as TablePanel).tableName,
+                    query: (panel as QueryPanelInfo).title,
+                    'create-table': t('connWin.newTable'),
+                    'er-diagram': t('erDiagram.title'),
+                    objects: t('objects.title'),
+                    privileges: t('privileges.title'),
+                  };
+                  const icon = iconMap[panel.type];
+                  const label = labelMap[panel.type];
 
-                    return (
-                      <div
-                        key={panel.id}
-                        className={cn(
-                          'group relative flex items-center gap-1.5 border-r border-edge px-3 py-2 text-xs',
-                          isActive
-                            ? 'bg-surface text-fg'
-                            : 'text-fg-secondary hover:bg-surface-raised hover:text-fg',
-                        )}
-                      >
-                        <button
-                          type="button"
-                          className="flex items-center gap-1.5"
-                          onClick={() => setActivePanelId(panel.id)}
-                        >
-                          {icon}
-                          <span className="max-w-[120px] truncate">{label}</span>
-                        </button>
-                        <button
-                          type="button"
-                          className="rounded p-0.5 text-fg-muted opacity-0 hover:bg-surface-raised hover:text-fg group-hover:opacity-100"
-                          onClick={() => handleClosePanel(panel.id)}
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                        <span
-                          className={cn(
-                            'absolute inset-x-0 bottom-0 h-0.5 bg-accent transition-opacity duration-300',
-                            isActive ? 'opacity-100' : 'opacity-0',
-                          )}
-                        />
-                      </div>
-                    );
-                  })}
-                </div>
-                <button
-                  type="button"
-                  className="shrink-0 px-2 py-2 text-fg-muted hover:text-fg"
-                  title={`${t('connWin.newQuery')} (⌘N)`}
-                  onClick={handleNewQuery}
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            )}
-
-            {activePanel?.type === 'table' && (
-              <>
-                <div className="flex shrink-0 border-b border-edge bg-surface-alt">
-                  {getSubTabs(t, isReadOnly).map((tab) => (
-                    <button
-                      key={tab.id}
-                      type="button"
+                  return (
+                    <div
+                      key={panel.id}
                       className={cn(
-                        'relative px-5 py-2 text-[13px] transition-colors',
-                        activePanel.subTab === tab.id
-                          ? 'bg-surface text-fg font-medium'
-                          : 'text-fg-secondary hover:text-fg',
+                        'group relative flex items-center gap-1.5 border-r border-edge px-3 py-2 text-xs',
+                        isActive
+                          ? 'bg-surface text-fg'
+                          : 'text-fg-secondary hover:bg-surface-raised hover:text-fg',
                       )}
-                      onClick={() => handleSetSubTab(activePanel.id, tab.id)}
                     >
-                      {tab.label}
+                      <button
+                        type="button"
+                        className="flex items-center gap-1.5"
+                        onClick={() => setActivePanelId(panel.id)}
+                      >
+                        {icon}
+                        <span className="max-w-[120px] truncate">{label}</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded p-0.5 text-fg-muted opacity-0 hover:bg-surface-raised hover:text-fg group-hover:opacity-100"
+                        onClick={() => handleClosePanel(panel.id)}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
                       <span
                         className={cn(
                           'absolute inset-x-0 bottom-0 h-0.5 bg-accent transition-opacity duration-300',
-                          activePanel.subTab === tab.id ? 'opacity-100' : 'opacity-0',
+                          isActive ? 'opacity-100' : 'opacity-0',
                         )}
                       />
-                    </button>
-                  ))}
-                </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <button
+                type="button"
+                className="shrink-0 px-2 py-2 text-fg-muted hover:text-fg"
+                title={`${t('connWin.newQuery')} (⌘N)`}
+                onClick={handleNewQuery}
+              >
+                <Plus className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          )}
 
-                <div className="flex min-h-0 flex-1 flex-col">
-                  {activePanel.subTab === 'data' && (
-                    <TableView
-                      connectionId={connectionId}
-                      database={currentDatabase ?? ''}
-                      tableName={activePanel.tableName}
+          {activePanel?.type === 'table' && (
+            <>
+              <div className="flex shrink-0 border-b border-edge bg-surface-alt">
+                {getSubTabs(t, isReadOnly).map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    className={cn(
+                      'relative px-5 py-2 text-[13px] transition-colors',
+                      activePanel.subTab === tab.id
+                        ? 'bg-surface text-fg font-medium'
+                        : 'text-fg-secondary hover:text-fg',
+                    )}
+                    onClick={() => handleSetSubTab(activePanel.id, tab.id)}
+                  >
+                    {tab.label}
+                    <span
+                      className={cn(
+                        'absolute inset-x-0 bottom-0 h-0.5 bg-accent transition-opacity duration-300',
+                        activePanel.subTab === tab.id ? 'opacity-100' : 'opacity-0',
+                      )}
                     />
-                  )}
-                  {activePanel.subTab === 'structure' &&
-                    (activePanel.structureEditing ? (
-                      <TableStructureEditor
-                        connectionId={connectionId}
-                        databaseType={databaseType}
-                        schema={resolveTableSchema(activePanel.tableName)}
-                        mode="alter"
-                        tableName={activePanel.tableName}
-                        showBackButton
-                        onSuccess={() => {
-                          invalidateSchemaCache(connectionId, activePanel.tableName);
-                          handleExitStructureEditing(activePanel.id);
-                          handleRefresh();
-                        }}
-                        onCancel={() => handleExitStructureEditing(activePanel.id)}
-                      />
-                    ) : (
-                      <StructureView
-                        connectionId={connectionId}
-                        tableName={activePanel.tableName}
-                        onEditStructure={
-                          showStructureEditor
-                            ? () => handleEditTableStructure(activePanel.tableName)
-                            : undefined
-                        }
-                      />
-                    ))}
-                  {activePanel.subTab === 'indexes' && (
-                    <IndexesView
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex min-h-0 flex-1 flex-col">
+                {activePanel.subTab === 'data' && (
+                  <TableView
+                    connectionId={connectionId}
+                    database={currentDatabase ?? ''}
+                    tableName={activePanel.tableName}
+                  />
+                )}
+                {activePanel.subTab === 'structure' &&
+                  (activePanel.structureEditing ? (
+                    <TableStructureEditor
+                      connectionId={connectionId}
+                      databaseType={databaseType}
+                      schema={resolveTableSchema(activePanel.tableName)}
+                      mode="alter"
+                      tableName={activePanel.tableName}
+                      showBackButton
+                      onSuccess={() => {
+                        invalidateSchemaCache(connectionId, activePanel.tableName);
+                        handleExitStructureEditing(activePanel.id);
+                        handleRefresh();
+                      }}
+                      onCancel={() => handleExitStructureEditing(activePanel.id)}
+                    />
+                  ) : (
+                    <StructureView
                       connectionId={connectionId}
                       tableName={activePanel.tableName}
-                      createIndexTrigger={createIndexTrigger}
-                      databaseType={databaseType}
                       onEditStructure={
                         showStructureEditor
-                          ? () => handleSetSubTab(activePanel.id, 'structure')
+                          ? () => handleEditTableStructure(activePanel.tableName)
                           : undefined
                       }
                     />
-                  )}
-                  {activePanel.subTab === 'foreignKeys' && (
-                    <ForeignKeysView
-                      connectionId={connectionId}
-                      tableName={activePanel.tableName}
-                    />
-                  )}
-                  {activePanel.subTab === 'ddl' && (
-                    <DDLView
-                      connectionId={connectionId}
-                      tableName={activePanel.tableName}
-                      databaseType={databaseType}
-                    />
-                  )}
-                </div>
-              </>
-            )}
-
-            {activePanel?.type === 'query' && (
-              <QueryPanel
-                connectionId={connectionId}
-                queryTabId={activePanel.queryTabId}
-                databaseType={databaseType}
-              />
-            )}
-
-            {activePanel?.type === 'create-table' && (
-              <TableStructureEditor
-                connectionId={connectionId}
-                databaseType={databaseType}
-                schema={createTableSchema}
-                mode="create"
-                onSuccess={() => {
-                  handleClosePanel(activePanel.id);
-                  handleRefresh();
-                }}
-                onCancel={() => handleClosePanel(activePanel.id)}
-              />
-            )}
-
-            {activePanel?.type === 'er-diagram' && currentDatabase && (
-              <div className="flex min-h-0 flex-1 flex-col">
-                <ErDiagramView
-                  connectionId={connectionId}
-                  database={currentDatabase}
-                  focusTable={(activePanel as ErDiagramPanel).focusTable}
-                  onSelectTable={handleSelectTable}
-                />
+                  ))}
+                {activePanel.subTab === 'indexes' && (
+                  <IndexesView
+                    connectionId={connectionId}
+                    tableName={activePanel.tableName}
+                    databaseType={databaseType}
+                    onEditStructure={
+                      showStructureEditor
+                        ? () => handleSetSubTab(activePanel.id, 'structure')
+                        : undefined
+                    }
+                  />
+                )}
+                {activePanel.subTab === 'foreignKeys' && (
+                  <ForeignKeysView connectionId={connectionId} tableName={activePanel.tableName} />
+                )}
+                {activePanel.subTab === 'ddl' && (
+                  <DDLView
+                    connectionId={connectionId}
+                    tableName={activePanel.tableName}
+                    databaseType={databaseType}
+                  />
+                )}
               </div>
-            )}
+            </>
+          )}
 
-            {activePanel?.type === 'objects' && (
-              <ObjectBrowser connectionId={connectionId} databaseType={databaseType} />
-            )}
+          {activePanel?.type === 'query' && (
+            <QueryPanel
+              connectionId={connectionId}
+              queryTabId={activePanel.queryTabId}
+              databaseType={databaseType}
+            />
+          )}
 
-            {activePanel?.type === 'privileges' && <PrivilegeView connectionId={connectionId} />}
+          {activePanel?.type === 'create-table' && (
+            <TableStructureEditor
+              connectionId={connectionId}
+              databaseType={databaseType}
+              schema={createTableSchema}
+              mode="create"
+              onSuccess={() => {
+                handleClosePanel(activePanel.id);
+                handleRefresh();
+              }}
+              onCancel={() => handleClosePanel(activePanel.id)}
+            />
+          )}
 
-            {!activePanel && (
-              <div className="flex flex-1 items-center justify-center text-fg-muted">
-                <div className="text-center">
-                  <Database className="mx-auto h-10 w-10 opacity-20" />
-                  <div className="mt-3 text-sm">
-                    {`${t('connWin.selectTable')} (⌘N ${t('connWin.newQuery')})`}
-                  </div>
+          {activePanel?.type === 'er-diagram' && currentDatabase && (
+            <div className="flex min-h-0 flex-1 flex-col">
+              <ErDiagramView
+                connectionId={connectionId}
+                database={currentDatabase}
+                focusTable={(activePanel as ErDiagramPanel).focusTable}
+                onSelectTable={handleSelectTable}
+              />
+            </div>
+          )}
+
+          {activePanel?.type === 'objects' && (
+            <ObjectBrowser connectionId={connectionId} databaseType={databaseType} />
+          )}
+
+          {activePanel?.type === 'privileges' && <PrivilegeView connectionId={connectionId} />}
+
+          {!activePanel && (
+            <div className="flex flex-1 items-center justify-center text-fg-muted">
+              <div className="text-center">
+                <Database className="mx-auto h-10 w-10 opacity-20" />
+                <div className="mt-3 text-sm">
+                  {`${t('connWin.selectTable')} (⌘N ${t('connWin.newQuery')})`}
                 </div>
               </div>
-            )}
-          </div>
-        </ContextMenu>
+            </div>
+          )}
+        </div>
 
         {detailPanelApplicable && (
           <DetailPanel
