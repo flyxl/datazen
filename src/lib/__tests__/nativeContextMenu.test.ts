@@ -25,13 +25,18 @@ import {
 } from '../nativeContextMenu';
 
 describe('normalizeNativeMenuItems', () => {
-  it('removes disabled items and empty submenus', () => {
+  it('keeps disabled items and removes empty submenus', () => {
     const items: NativeMenuItemDef[] = [
       { kind: 'item', id: 'a', label: 'A', action: () => undefined },
       { kind: 'item', id: 'b', label: 'B', enabled: false, action: () => undefined },
       {
         kind: 'submenu',
         label: 'Empty',
+        items: [],
+      },
+      {
+        kind: 'submenu',
+        label: 'WithDisabled',
         items: [{ kind: 'item', id: 'c', label: 'C', enabled: false, action: () => undefined }],
       },
       { kind: 'separator' },
@@ -40,6 +45,14 @@ describe('normalizeNativeMenuItems', () => {
     const normalized = normalizeNativeMenuItems(items);
     expect(normalized).toEqual([
       { kind: 'item', id: 'a', label: 'A', action: expect.any(Function) },
+      { kind: 'item', id: 'b', label: 'B', enabled: false, action: expect.any(Function) },
+      {
+        kind: 'submenu',
+        label: 'WithDisabled',
+        items: [
+          { kind: 'item', id: 'c', label: 'C', enabled: false, action: expect.any(Function) },
+        ],
+      },
       { kind: 'separator' },
       { kind: 'item', id: 'd', label: 'D', action: expect.any(Function) },
     ]);
@@ -80,11 +93,19 @@ describe('showNativeContextMenu', () => {
     predefinedNew.mockClear();
   });
 
-  it('no-ops when all items are filtered out', async () => {
+  it('no-ops when only separators remain after normalize', async () => {
+    await showNativeContextMenu([{ kind: 'separator' }, { kind: 'predefined', item: 'Separator' }]);
+    expect(menuNew).not.toHaveBeenCalled();
+  });
+
+  it('passes enabled: false through to MenuItem.new', async () => {
     await showNativeContextMenu([
       { kind: 'item', id: 'x', label: 'X', enabled: false, action: () => undefined },
     ]);
-    expect(menuNew).not.toHaveBeenCalled();
+    expect(menuItemNew).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'x', text: 'X', enabled: false }),
+    );
+    expect(menuNew).toHaveBeenCalled();
   });
 
   it('builds menu and pops up', async () => {

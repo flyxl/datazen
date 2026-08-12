@@ -4,28 +4,6 @@ use std::path::{Path, PathBuf};
 use tauri::AppHandle;
 use tauri_plugin_dialog::DialogExt;
 
-pub(crate) fn editor_context_menu_label(lang: &str) -> String {
-    crate::menu_label(lang, "ctx-add-favorite")
-}
-
-#[tauri::command]
-pub fn show_editor_context_menu(window: tauri::Window, lang: String) -> Result<(), CommandError> {
-    use tauri::menu::MenuBuilder;
-
-    let label_favorite = editor_context_menu_label(&lang);
-
-    let menu = MenuBuilder::new(&window)
-        .text("ctx-add-favorite", label_favorite)
-        .build()
-        .map_err(|e| CommandError::Internal(e.to_string()))?;
-
-    window
-        .popup_menu(&menu)
-        .map_err(|e| CommandError::Internal(e.to_string()))?;
-
-    Ok(())
-}
-
 const ALLOWED_EXTENSIONS: &[&str] = &[
     "csv", "tsv", "json", "sql", "md", "txt", "xml", "yaml", "yml", "png", "svg", "zip", "gz",
     "dump", "xlsx",
@@ -288,15 +266,6 @@ mod tests {
     #[test]
     fn ext_refs_rejects_empty_list() {
         assert!(ext_refs(&[]).is_err());
-    }
-
-    #[test]
-    fn editor_context_menu_label_localizes_or_falls_back() {
-        let en = editor_context_menu_label("en");
-        assert!(!en.is_empty());
-        assert_ne!(en, "ctx-add-favorite");
-        // Unknown locale falls back to English menu labels (not the raw key).
-        assert_eq!(editor_context_menu_label("xx-unknown"), en);
     }
 
     #[test]
