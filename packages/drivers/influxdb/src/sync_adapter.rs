@@ -33,11 +33,7 @@ fn influx_type_to_ir(raw: &str) -> IRType {
 // ── SyncSourceAdapter ──────────────────────────────────────────────
 
 impl SyncSourceAdapter for InfluxDbSyncAdapter {
-    fn column_to_ir(
-        &self,
-        column: &ColumnSchema,
-        native_full_type: Option<&str>,
-    ) -> IRColumn {
+    fn column_to_ir(&self, column: &ColumnSchema, native_full_type: Option<&str>) -> IRColumn {
         let raw = native_full_type.unwrap_or(&column.data_type);
         let ir_type = influx_type_to_ir(raw);
 
@@ -103,7 +99,9 @@ impl SyncTargetAdapter for InfluxDbSyncAdapter {
             Some(Value::Json(j)) => format!("'{}'", j.to_string().replace('\'', "''")),
             Some(Value::Bytes(b)) => format!(
                 "'\\x{}'",
-                b.iter().map(|byte| format!("{:02x}", byte)).collect::<String>()
+                b.iter()
+                    .map(|byte| format!("{:02x}", byte))
+                    .collect::<String>()
             ),
         }
     }
@@ -132,10 +130,22 @@ mod tests {
     #[test]
     fn influx_field_types() {
         let a = InfluxDbSyncAdapter;
-        assert_eq!(a.column_to_ir(&col("v", "float"), None).ir_type, IRType::Float64);
-        assert_eq!(a.column_to_ir(&col("v", "integer"), None).ir_type, IRType::Int64);
-        assert_eq!(a.column_to_ir(&col("host", "string"), None).ir_type, IRType::Text);
-        assert_eq!(a.column_to_ir(&col("ok", "boolean"), None).ir_type, IRType::Bool);
+        assert_eq!(
+            a.column_to_ir(&col("v", "float"), None).ir_type,
+            IRType::Float64
+        );
+        assert_eq!(
+            a.column_to_ir(&col("v", "integer"), None).ir_type,
+            IRType::Int64
+        );
+        assert_eq!(
+            a.column_to_ir(&col("host", "string"), None).ir_type,
+            IRType::Text
+        );
+        assert_eq!(
+            a.column_to_ir(&col("ok", "boolean"), None).ir_type,
+            IRType::Bool
+        );
     }
 
     #[test]

@@ -22,11 +22,7 @@ datazen_driver_api::inventory::submit! {
 // ── SyncSourceAdapter ──────────────────────────────────────────────
 
 impl SyncSourceAdapter for SqliteSyncAdapter {
-    fn column_to_ir(
-        &self,
-        column: &ColumnSchema,
-        _native_full_type: Option<&str>,
-    ) -> IRColumn {
+    fn column_to_ir(&self, column: &ColumnSchema, _native_full_type: Option<&str>) -> IRColumn {
         let upper = column.data_type.trim().to_uppercase();
 
         // SQLite type affinity rules (https://www.sqlite.org/datatype3.html)
@@ -43,7 +39,10 @@ impl SyncSourceAdapter for SqliteSyncAdapter {
         } else if upper.contains("DATE") || upper.contains("TIME") {
             IRType::Text
         } else if upper.contains("DECIMAL") || upper.contains("NUMERIC") {
-            IRType::Decimal { precision: 0, scale: 0 }
+            IRType::Decimal {
+                precision: 0,
+                scale: 0,
+            }
         } else {
             // SQLite NUMERIC affinity as fallback
             IRType::Text
@@ -115,7 +114,9 @@ impl SyncTargetAdapter for SqliteSyncAdapter {
             Some(Value::Bytes(b)) => {
                 format!(
                     "X'{}'",
-                    b.iter().map(|byte| format!("{:02x}", byte)).collect::<String>()
+                    b.iter()
+                        .map(|byte| format!("{:02x}", byte))
+                        .collect::<String>()
                 )
             }
         }
@@ -170,7 +171,13 @@ mod tests {
         assert_eq!(a.ir_type_to_native(&IRType::Json), "TEXT");
         assert_eq!(a.ir_type_to_native(&IRType::Uuid), "TEXT");
         assert_eq!(a.ir_type_to_native(&IRType::Bool), "INTEGER");
-        assert_eq!(a.ir_type_to_native(&IRType::Decimal { precision: 10, scale: 2 }), "REAL");
+        assert_eq!(
+            a.ir_type_to_native(&IRType::Decimal {
+                precision: 10,
+                scale: 2
+            }),
+            "REAL"
+        );
         assert_eq!(a.ir_type_to_native(&IRType::Bit { length: 8 }), "INTEGER");
         assert_eq!(a.ir_type_to_native(&IRType::Other("custom".into())), "TEXT");
     }
@@ -190,7 +197,13 @@ mod tests {
         let ir = SqliteSyncAdapter.column_to_ir(&col("t", "DATETIME"), None);
         assert_eq!(ir.ir_type, IRType::Text);
         let ir = SqliteSyncAdapter.column_to_ir(&col("n", "NUMERIC(10,2)"), None);
-        assert_eq!(ir.ir_type, IRType::Decimal { precision: 0, scale: 0 });
+        assert_eq!(
+            ir.ir_type,
+            IRType::Decimal {
+                precision: 0,
+                scale: 0
+            }
+        );
     }
 
     #[test]
@@ -226,9 +239,14 @@ mod tests {
             a.format_default(&IRDefault::Literal("42".into())),
             Some("42".into())
         );
-        assert!(a.format_default(&IRDefault::RawExpression("x".into())).is_none());
+        assert!(a
+            .format_default(&IRDefault::RawExpression("x".into()))
+            .is_none());
         assert_eq!(a.format_literal(&None, &IRType::Text), "NULL");
-        assert_eq!(a.format_literal(&Some(Value::Bool(true)), &IRType::Bool), "1");
+        assert_eq!(
+            a.format_literal(&Some(Value::Bool(true)), &IRType::Bool),
+            "1"
+        );
         assert_eq!(
             a.format_literal(&Some(Value::String("O'Brien".into())), &IRType::Text),
             "'O''Brien'"

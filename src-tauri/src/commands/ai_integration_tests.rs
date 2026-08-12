@@ -14,10 +14,7 @@ fn collecting_stream_callback() -> (StreamCallback, Arc<Mutex<Vec<(String, bool)
     let log_c = log.clone();
     let cb: StreamCallback = Arc::new(move |request_id, result| {
         let done = result.as_ref().map(|c| c.done).unwrap_or(false);
-        log_c
-            .lock()
-            .unwrap()
-            .push((request_id.to_string(), done));
+        log_c.lock().unwrap().push((request_id.to_string(), done));
     });
     (cb, log)
 }
@@ -152,7 +149,9 @@ async fn ai_diagnose_connection_parses_json() {
 #[tokio::test]
 async fn ai_analyze_queries_requires_history() {
     let (test, _mock) = TestAppState::with_wiremock_ai().await;
-    let err = ai_analyze_queries_impl(&test.state, None).await.unwrap_err();
+    let err = ai_analyze_queries_impl(&test.state, None)
+        .await
+        .unwrap_err();
     assert!(err.to_string().contains("No query history"));
 }
 
@@ -366,7 +365,11 @@ async fn workflow_save_list_get_delete() {
         schedule: None,
     };
 
-    test.state.workflow_registry.save_workflow(&wf).await.unwrap();
+    test.state
+        .workflow_registry
+        .save_workflow(&wf)
+        .await
+        .unwrap();
     let list = workflow_list_impl(&test.state).await.unwrap();
     assert!(list.iter().any(|w| w.id == "test-wf"));
 
@@ -406,14 +409,12 @@ fn many_tables_mock_options() -> crate::testing::mock_driver::MockDriverOptions 
 
 #[tokio::test]
 async fn ai_generate_schema_doc_selects_tables_when_many() {
-    let (test, mock) =
-        TestAppState::with_wiremock_ai_options(many_tables_mock_options()).await;
+    let (test, mock) = TestAppState::with_wiremock_ai_options(many_tables_mock_options()).await;
     let (_, conn_id) = test.save_and_connect("many-tables").await;
 
     mock.mount_chat_completion_text_once(r#"["table_0","table_1"]"#)
         .await;
-    mock.mount_chat_completion_text_once("# Schema doc")
-        .await;
+    mock.mount_chat_completion_text_once("# Schema doc").await;
 
     let doc = ai_generate_schema_doc_impl(&test.state, conn_id, "app".into())
         .await
@@ -652,8 +653,7 @@ async fn ai_chat_schema_resolve_failure_still_streams() {
 
 #[tokio::test]
 async fn ai_generate_schema_doc_falls_back_when_selection_invalid() {
-    let (test, mock) =
-        TestAppState::with_wiremock_ai_options(many_tables_mock_options()).await;
+    let (test, mock) = TestAppState::with_wiremock_ai_options(many_tables_mock_options()).await;
     let (_, conn_id) = test.save_and_connect("schema-fallback").await;
 
     mock.mount_chat_completion_text_once("not-valid-json").await;
@@ -750,7 +750,8 @@ async fn ai_save_config_impl_persists_wiremock_provider() {
 async fn ai_generate_schema_doc_strips_markdown_fence() {
     let (test, mock) = TestAppState::with_wiremock_ai_tables().await;
     let (_, conn_id) = test.save_and_connect("md-doc").await;
-    mock.mount_chat_completion_text("```markdown\n# Title\n```").await;
+    mock.mount_chat_completion_text("```markdown\n# Title\n```")
+        .await;
 
     let doc = ai_generate_schema_doc_impl(&test.state, conn_id, "app".into())
         .await
@@ -772,28 +773,26 @@ async fn ai_chat_stream_http_error_propagates() {
         .await;
 
     let (cb, _) = collecting_stream_callback();
-    assert!(
-        ai_chat_impl(
-            &test.state,
-            cb,
-            None,
-            None,
-            vec![ChatMessage {
-                role: MessageRole::User,
-                content: "Hi".into(),
-                reasoning: None,
-                tool_calls: None,
-                tool_call_id: None,
-            }],
-            "req-err".into(),
-            false,
-            None,
-            None,
-            None,
-        )
-        .await
-        .is_err()
-    );
+    assert!(ai_chat_impl(
+        &test.state,
+        cb,
+        None,
+        None,
+        vec![ChatMessage {
+            role: MessageRole::User,
+            content: "Hi".into(),
+            reasoning: None,
+            tool_calls: None,
+            tool_call_id: None,
+        }],
+        "req-err".into(),
+        false,
+        None,
+        None,
+        None,
+    )
+    .await
+    .is_err());
 }
 
 #[tokio::test]
@@ -888,16 +887,15 @@ async fn workflow_execute_ai_step_with_wiremock() {
         error_handling: None,
         schedule: None,
     };
-    test.state.workflow_registry.save_workflow(&wf).await.unwrap();
+    test.state
+        .workflow_registry
+        .save_workflow(&wf)
+        .await
+        .unwrap();
 
-    let result = workflow_execute_impl(
-        &test.state,
-        "exec-wf".into(),
-        serde_json::json!({}),
-        None,
-    )
-    .await
-    .unwrap();
+    let result = workflow_execute_impl(&test.state, "exec-wf".into(), serde_json::json!({}), None)
+        .await
+        .unwrap();
     assert!(result.final_output.contains("workflow output"));
 
     let history = test.state.workflow_history.list(Some("exec-wf")).await;
@@ -945,29 +943,22 @@ async fn ai_generate_schema_doc_small_schema_single_step() {
 #[tokio::test]
 async fn ai_diagnose_connection_missing_config_errors() {
     let (test, _mock) = TestAppState::with_wiremock_ai().await;
-    assert!(
-        ai_diagnose_connection_impl(
-            &test.state,
-            "missing".into(),
-            "connection refused".into(),
-        )
-        .await
-        .is_err()
-    );
+    assert!(ai_diagnose_connection_impl(
+        &test.state,
+        "missing".into(),
+        "connection refused".into(),
+    )
+    .await
+    .is_err());
 }
 
 #[tokio::test]
 async fn workflow_execute_missing_id_errors() {
     let test = TestAppState::new().await;
     assert!(
-        workflow_execute_impl(
-            &test.state,
-            "nope".into(),
-            serde_json::json!({}),
-            None,
-        )
-        .await
-        .is_err()
+        workflow_execute_impl(&test.state, "nope".into(), serde_json::json!({}), None,)
+            .await
+            .is_err()
     );
 }
 
@@ -1027,7 +1018,11 @@ async fn workflow_history_clear_after_execute() {
         error_handling: None,
         schedule: None,
     };
-    test.state.workflow_registry.save_workflow(&wf).await.unwrap();
+    test.state
+        .workflow_registry
+        .save_workflow(&wf)
+        .await
+        .unwrap();
     workflow_execute_impl(&test.state, "hist-wf".into(), serde_json::json!({}), None)
         .await
         .unwrap();

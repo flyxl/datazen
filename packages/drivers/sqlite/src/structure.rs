@@ -514,10 +514,7 @@ mod tests {
             schema: None,
             table: "users".into(),
             original_columns: vec![col("c1", "id", "INTEGER")],
-            current_columns: vec![
-                col("c1", "id", "INTEGER"),
-                col("c2", "email", "TEXT"),
-            ],
+            current_columns: vec![col("c1", "id", "INTEGER"), col("c2", "email", "TEXT")],
             original_indexes: vec![],
             current_indexes: vec![],
         };
@@ -554,10 +551,7 @@ mod tests {
             mode: StructureChangeMode::Alter,
             schema: None,
             table: "users".into(),
-            original_columns: vec![
-                col("c1", "id", "INTEGER"),
-                col("c2", "email", "TEXT"),
-            ],
+            original_columns: vec![col("c1", "id", "INTEGER"), col("c2", "email", "TEXT")],
             current_columns: vec![col("c1", "id", "INTEGER")],
             original_indexes: vec![],
             current_indexes: vec![],

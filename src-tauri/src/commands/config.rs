@@ -1,4 +1,7 @@
-use super::connection_import::{self, format_label, parse_import_file};
+use super::connection_import::{
+    self, detect_import_path, format_label, parse_from_app, parse_import_file, ImportApp,
+    PathContext,
+};
 use super::error::{CmdExt, CommandError};
 use super::AppState;
 use crate::app_data_archive;
@@ -19,11 +22,7 @@ pub(crate) async fn save_groups_impl(
     groups: Vec<String>,
 ) -> Result<(), CommandError> {
     tracing::info!(count = groups.len(), "save_groups");
-    state
-        .store
-        .save_groups(groups)
-        .await
-        .cmd_err("save_groups")
+    state.store.save_groups(groups).await.cmd_err("save_groups")
 }
 
 pub(crate) async fn get_settings_impl(state: &AppState) -> Result<AppSettings, CommandError> {
@@ -73,7 +72,10 @@ pub async fn get_groups(state: State<'_, AppState>) -> Result<Vec<String>, Comma
 }
 
 #[tauri::command]
-pub async fn save_groups(state: State<'_, AppState>, groups: Vec<String>) -> Result<(), CommandError> {
+pub async fn save_groups(
+    state: State<'_, AppState>,
+    groups: Vec<String>,
+) -> Result<(), CommandError> {
     save_groups_impl(&state, groups).await
 }
 #[tauri::command]
@@ -87,7 +89,10 @@ pub fn get_system_ui_language() -> String {
 }
 
 #[tauri::command]
-pub async fn save_settings(state: State<'_, AppState>, settings: AppSettings) -> Result<(), CommandError> {
+pub async fn save_settings(
+    state: State<'_, AppState>,
+    settings: AppSettings,
+) -> Result<(), CommandError> {
     save_settings_impl(&state, settings).await
 }
 
@@ -144,7 +149,9 @@ pub(crate) async fn open_path_impl(state: &AppState, path: String) -> Result<(),
     )?;
     let requested = PathBuf::from(&path);
     if requested.to_string_lossy().contains("..") {
-        return Err(CommandError::Validation("Path traversal not allowed".into()));
+        return Err(CommandError::Validation(
+            "Path traversal not allowed".into(),
+        ));
     }
 
     let data_dir = state.store.data_dir().clone();
@@ -301,9 +308,7 @@ fn import_password_option(password: &str) -> Option<&str> {
     }
 }
 
-fn build_import_preview_json(
-    parsed: &connection_import::ParsedImport,
-) -> serde_json::Value {
+fn build_import_preview_json(parsed: &connection_import::ParsedImport) -> serde_json::Value {
     serde_json::json!({
         "connections": parsed.connections,
         "groups": parsed.groups,
@@ -312,7 +317,9 @@ fn build_import_preview_json(
     })
 }
 
-pub(crate) fn export_options_from_settings(settings: &AppSettings) -> app_data_archive::ExportOptions {
+pub(crate) fn export_options_from_settings(
+    settings: &AppSettings,
+) -> app_data_archive::ExportOptions {
     app_data_archive::ExportOptions {
         include_dashboard_runs: settings.monitor.export_include_dashboard_runs,
     }
@@ -423,6 +430,111 @@ pub async fn import_connections_with_dialog(
     Ok(Some(result))
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct DetectedConnectionImportPath {
+    pub path: String,
+    pub found: bool,
+}
+
+#[tauri::command]
+pub fn detect_connection_import_path(
+    source: String,
+) -> Result<DetectedConnectionImportPath, CommandError> {
+    let app = ImportApp::parse(&source)?;
+    let detected = detect_import_path(app, &PathContext::from_env());
+    Ok(DetectedConnectionImportPath {
+        path: detected.path,
+        found: detected.found,
+    })
+}
+
+fn import_file_filters(app: ImportApp) -> (&'static str, &'static [&'static str]) {
+    match app {
+        ImportApp::Dbx => ("DBX", &["db", "json", "sqlite"]),
+        ImportApp::Navicat => ("Navicat", &["ncx", "xml"]),
+        ImportApp::DataGrip => ("DataGrip", &["xml"]),
+        ImportApp::DBeaver => ("DBeaver", &["json"]),
+        ImportApp::TablePlus => ("TablePlus", &["plist", "tableplusconnection"]),
+    }
+}
+
+/// Native file or folder picker for competitor data/install paths. Path never crosses as a write.
+#[tauri::command]
+pub fn pick_connection_import_path_with_dialog(
+    app: AppHandle,
+    mode: String,
+    source: String,
+) -> Result<Option<String>, CommandError> {
+    use tauri_plugin_dialog::DialogExt;
+
+    let import_app = ImportApp::parse(&source)?;
+    let picked = if mode.trim().eq_ignore_ascii_case("folder") {
+        app.dialog().file().blocking_pick_folder()
+    } else {
+        let (label, exts) = import_file_filters(import_app);
+        app.dialog()
+            .file()
+            .add_filter(label, exts)
+            .blocking_pick_file()
+    };
+    let Some(fp) = picked else {
+        return Ok(None);
+    };
+    let path = fp
+        .into_path()
+        .map_err(|e| CommandError::Validation(format!("Invalid dialog path: {e}")))?;
+    Ok(Some(path.to_string_lossy().into_owned()))
+}
+
+#[tauri::command]
+pub async fn import_connections_from_app(
+    state: State<'_, AppState>,
+    source: String,
+    password: String,
+    data_path: String,
+) -> Result<ImportConnectionsResult, CommandError> {
+    let app = ImportApp::parse(&source)?;
+    let custom = {
+        let trimmed = data_path.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(PathBuf::from(trimmed))
+        }
+    };
+    let parsed = parse_from_app(
+        app,
+        custom.as_deref(),
+        import_password_option(&password),
+        &PathContext::from_env(),
+    )?;
+    let incoming = parsed.connections;
+    let incoming_groups = parsed.groups;
+    let skipped = parsed.skipped;
+    let source_format = format_label(parsed.format).to_string();
+
+    let result = apply_connection_import_impl(
+        &state,
+        incoming,
+        incoming_groups,
+        skipped,
+        source_format.clone(),
+    )
+    .await?;
+
+    tracing::info!(
+        imported = result.imported,
+        overwritten = result.overwritten,
+        groups_added = result.groups_added,
+        skipped = result.skipped.len(),
+        %source_format,
+        %source,
+        "import_connections_from_app OK"
+    );
+    Ok(result)
+}
+
 #[tauri::command]
 pub async fn export_app_data(state: State<'_, AppState>, path: String) -> Result<(), CommandError> {
     require_webdriver_path_ipc("Direct path export disabled; use export_app_data_with_dialog")?;
@@ -434,9 +546,9 @@ pub async fn export_app_data(state: State<'_, AppState>, path: String) -> Result
     tokio::task::spawn_blocking(move || {
         app_data_archive::export_app_data_with_options(&data_dir, &dest, options)
     })
-        .await
-        .map_err(|e| CommandError::Internal(format!("export_app_data task: {e}")))?
-        .cmd_err("export_app_data")?;
+    .await
+    .map_err(|e| CommandError::Internal(format!("export_app_data task: {e}")))?
+    .cmd_err("export_app_data")?;
     tracing::info!("export_app_data OK");
     Ok(())
 }
@@ -469,9 +581,9 @@ pub async fn export_app_data_with_dialog(
     tokio::task::spawn_blocking(move || {
         app_data_archive::export_app_data_with_options(&data_dir, &dest, options)
     })
-        .await
-        .map_err(|e| CommandError::Internal(format!("export_app_data_with_dialog task: {e}")))?
-        .cmd_err("export_app_data_with_dialog")?;
+    .await
+    .map_err(|e| CommandError::Internal(format!("export_app_data_with_dialog task: {e}")))?
+    .cmd_err("export_app_data_with_dialog")?;
     Ok(true)
 }
 
@@ -722,8 +834,8 @@ mod tests {
             options: None,
             read_only: false,
         };
-        let json = build_encrypted_connections_export(&[conn], &["Prod".into()], "share-secret")
-            .unwrap();
+        let json =
+            build_encrypted_connections_export(&[conn], &["Prod".into()], "share-secret").unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed["encrypted"], true);
         assert!(parsed["connections"].is_array());
@@ -749,7 +861,10 @@ mod tests {
         save_settings_impl(&test.state, settings.clone())
             .await
             .unwrap();
-        assert_eq!(get_settings_impl(&test.state).await.unwrap().language, "zh-CN");
+        assert_eq!(
+            get_settings_impl(&test.state).await.unwrap().language,
+            "zh-CN"
+        );
 
         let log_path = get_log_path_impl(&test.state).await.unwrap();
         assert!(log_path.contains("logs"));
@@ -821,12 +936,18 @@ mod tests {
         }
 
         let test = TestAppState::new().await;
-        test.store.save_connection(conn("existing", Some("Alpha"))).await.unwrap();
+        test.store
+            .save_connection(conn("existing", Some("Alpha")))
+            .await
+            .unwrap();
         test.store.save_groups(vec!["Alpha".into()]).await.unwrap();
 
         let result = apply_connection_import_impl(
             &test.state,
-            vec![conn("existing", Some("Beta")), conn("new-one", Some("Beta"))],
+            vec![
+                conn("existing", Some("Beta")),
+                conn("new-one", Some("Beta")),
+            ],
             vec!["Beta".into(), "Gamma".into()],
             vec!["skipped-row".into()],
             "DataZen".into(),
@@ -866,10 +987,7 @@ mod tests {
             crate::resolve_log_dir(data, ""),
             Path::new("/data/app/logs")
         );
-        assert_eq!(
-            crate::resolve_context_dir(data, "/ctx"),
-            Path::new("/ctx")
-        );
+        assert_eq!(crate::resolve_context_dir(data, "/ctx"), Path::new("/ctx"));
     }
 
     #[tokio::test]
@@ -879,7 +997,12 @@ mod tests {
 
         let test = TestAppState::new().await;
         let mut settings = AppSettings::default();
-        settings.log_path = test._temp.path().join("custom-logs").to_string_lossy().into();
+        settings.log_path = test
+            ._temp
+            .path()
+            .join("custom-logs")
+            .to_string_lossy()
+            .into();
         save_settings_impl(&test.state, settings).await.unwrap();
         let log_path = get_log_path_impl(&test.state).await.unwrap();
         assert!(log_path.contains("custom-logs"));

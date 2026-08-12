@@ -9,7 +9,10 @@ use datazen_driver_api::PromptScenario;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::*;
 use rmcp::service::RequestContext;
-use rmcp::{prompt, prompt_handler, prompt_router, tool, tool_handler, tool_router, ErrorData as McpError, RoleServer, ServerHandler};
+use rmcp::{
+    prompt, prompt_handler, prompt_router, tool, tool_handler, tool_router, ErrorData as McpError,
+    RoleServer, ServerHandler,
+};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
@@ -185,7 +188,10 @@ impl DataZenMcpServer {
 }
 
 /// Human-readable table description for MCP `describe_table` tool output.
-pub(crate) fn format_table_description(table: &str, schema: &datazen_driver_api::TableSchema) -> String {
+pub(crate) fn format_table_description(
+    table: &str,
+    schema: &datazen_driver_api::TableSchema,
+) -> String {
     let mut desc = format!("Table: {table}\n\nColumns:\n");
     for col in &schema.columns {
         desc.push_str(&format!(
@@ -236,7 +242,9 @@ pub(crate) fn format_table_description(table: &str, schema: &datazen_driver_api:
 
 #[tool_router]
 impl DataZenMcpServer {
-    #[tool(description = "List all configured database connections. Returns config IDs, names, database types, and hosts.")]
+    #[tool(
+        description = "List all configured database connections. Returns config IDs, names, database types, and hosts."
+    )]
     async fn list_connections(&self) -> Result<String, McpError> {
         let connections = self.app_state.store.get_connections().await;
         let result: Vec<serde_json::Value> = connections
@@ -261,32 +269,39 @@ impl DataZenMcpServer {
         Parameters(input): Parameters<ListDatabasesInput>,
     ) -> Result<String, McpError> {
         self.ensure_allowed(&input.config_id)?;
-        crate::services::db_tools::list_databases(&self.app_state.connection_manager, &input.config_id)
-            .await
-            .map_err(Self::map_err)
+        crate::services::db_tools::list_databases(
+            &self.app_state.connection_manager,
+            &input.config_id,
+        )
+        .await
+        .map_err(Self::map_err)
     }
 
-    #[tool(description = "List all tables in a database. Returns table names with types and row counts.")]
+    #[tool(
+        description = "List all tables in a database. Returns table names with types and row counts."
+    )]
     async fn list_tables(
         &self,
         Parameters(input): Parameters<ListTablesInput>,
     ) -> Result<String, McpError> {
         self.ensure_allowed(&input.config_id)?;
         let db = input.database.as_deref().unwrap_or("");
-        crate::services::db_tools::list_tables(&self.app_state.connection_manager, &input.config_id, db)
-            .await
-            .map_err(Self::map_err)
+        crate::services::db_tools::list_tables(
+            &self.app_state.connection_manager,
+            &input.config_id,
+            db,
+        )
+        .await
+        .map_err(Self::map_err)
     }
 
-    #[tool(description = "Execute a SQL query on a connected database. Returns results as JSON. Use list_connections first to get valid config IDs. Default row limit is 100 (max 50000).")]
-    async fn query(
-        &self,
-        Parameters(input): Parameters<QueryInput>,
-    ) -> Result<String, McpError> {
+    #[tool(
+        description = "Execute a SQL query on a connected database. Returns results as JSON. Use list_connections first to get valid config IDs. Default row limit is 100 (max 50000)."
+    )]
+    async fn query(&self, Parameters(input): Parameters<QueryInput>) -> Result<String, McpError> {
         self.ensure_allowed(&input.config_id)?;
-        permission::check_sql_allowed(&input.sql, self.permission_mode).map_err(|e| {
-            McpError::invalid_params(e, None)
-        })?;
+        permission::check_sql_allowed(&input.sql, self.permission_mode)
+            .map_err(|e| McpError::invalid_params(e, None))?;
         crate::services::db_tools::query(
             &self.app_state.connection_manager,
             &input.config_id,
@@ -294,34 +309,48 @@ impl DataZenMcpServer {
             input.limit,
             Some(self.permission_mode),
         )
-            .await
-            .map_err(Self::map_err)
+        .await
+        .map_err(Self::map_err)
     }
 
-    #[tool(description = "Get detailed schema of a table including columns, types, primary keys, foreign keys, and indexes.")]
+    #[tool(
+        description = "Get detailed schema of a table including columns, types, primary keys, foreign keys, and indexes."
+    )]
     async fn get_schema(
         &self,
         Parameters(input): Parameters<GetSchemaInput>,
     ) -> Result<String, McpError> {
         self.ensure_allowed(&input.config_id)?;
         let tables = vec![input.table.clone()];
-        crate::services::db_tools::get_table_schema(&self.app_state.connection_manager, &input.config_id, &tables)
-            .await
-            .map_err(Self::map_err)
+        crate::services::db_tools::get_table_schema(
+            &self.app_state.connection_manager,
+            &input.config_id,
+            &tables,
+        )
+        .await
+        .map_err(Self::map_err)
     }
 
-    #[tool(description = "Get the execution plan (EXPLAIN) for a SQL query. Useful for performance analysis.")]
+    #[tool(
+        description = "Get the execution plan (EXPLAIN) for a SQL query. Useful for performance analysis."
+    )]
     async fn explain_query(
         &self,
         Parameters(input): Parameters<ExplainQueryInput>,
     ) -> Result<String, McpError> {
         self.ensure_allowed(&input.config_id)?;
-        crate::services::db_tools::explain_query(&self.app_state.connection_manager, &input.config_id, &input.sql)
-            .await
-            .map_err(Self::map_err)
+        crate::services::db_tools::explain_query(
+            &self.app_state.connection_manager,
+            &input.config_id,
+            &input.sql,
+        )
+        .await
+        .map_err(Self::map_err)
     }
 
-    #[tool(description = "Get a human-readable description of a table including columns, types, constraints, and indexes.")]
+    #[tool(
+        description = "Get a human-readable description of a table including columns, types, constraints, and indexes."
+    )]
     async fn describe_table(
         &self,
         Parameters(input): Parameters<DescribeTableInput>,
@@ -338,14 +367,18 @@ impl DataZenMcpServer {
         Ok(format_table_description(&input.table, &schema))
     }
 
-    #[tool(description = "List all available user-defined workflows. Workflows are reusable AI automations combining prompts and database operations.")]
+    #[tool(
+        description = "List all available user-defined workflows. Workflows are reusable AI automations combining prompts and database operations."
+    )]
     async fn list_workflows(&self) -> Result<String, McpError> {
         let workflows = self.app_state.workflow_registry.list().await;
         serde_json::to_string_pretty(&workflows)
             .map_err(|e| McpError::internal_error(e.to_string(), None))
     }
 
-    #[tool(description = "Execute a user-defined workflow by ID. Workflows are reusable automations combining prompts and database operations. Use list_workflows to see available workflows.")]
+    #[tool(
+        description = "Execute a user-defined workflow by ID. Workflows are reusable automations combining prompts and database operations. Use list_workflows to see available workflows."
+    )]
     async fn run_workflow(
         &self,
         Parameters(input): Parameters<RunWorkflowInput>,
@@ -356,7 +389,10 @@ impl DataZenMcpServer {
             .get(&input.workflow_id)
             .await
             .ok_or_else(|| {
-                McpError::invalid_params(format!("Workflow '{}' not found", input.workflow_id), None)
+                McpError::invalid_params(
+                    format!("Workflow '{}' not found", input.workflow_id),
+                    None,
+                )
             })?;
 
         let result = crate::workflow::WorkflowExecutor::execute_with_options(
@@ -481,7 +517,11 @@ impl DataZenMcpServer {
         let system = self
             .app_state
             .prompt_resolver
-            .resolve(PromptScenario::ExplainAnalysis, Some(driver.as_ref()), &lang)
+            .resolve(
+                PromptScenario::ExplainAnalysis,
+                Some(driver.as_ref()),
+                &lang,
+            )
             .await;
         let system_content = prompt_resolver::render_template(&system, &vars);
 
@@ -500,7 +540,10 @@ impl DataZenMcpServer {
 }
 
 impl DataZenMcpServer {
-    pub(crate) async fn read_resource_inner(&self, uri: &str) -> Result<ReadResourceResult, McpError> {
+    pub(crate) async fn read_resource_inner(
+        &self,
+        uri: &str,
+    ) -> Result<ReadResourceResult, McpError> {
         if uri == "datazen://connections" {
             let connections = self.app_state.store.get_connections().await;
             let result: Vec<serde_json::Value> = connections
@@ -519,8 +562,7 @@ impl DataZenMcpServer {
             let json = serde_json::to_string_pretty(&result)
                 .map_err(|e| McpError::internal_error(e.to_string(), None))?;
             return Ok(ReadResourceResult::new(vec![ResourceContents::text(
-                json,
-                uri,
+                json, uri,
             )]));
         }
 
@@ -529,8 +571,7 @@ impl DataZenMcpServer {
             let json = serde_json::to_string_pretty(&workflows)
                 .map_err(|e| McpError::internal_error(e.to_string(), None))?;
             return Ok(ReadResourceResult::new(vec![ResourceContents::text(
-                json,
-                uri,
+                json, uri,
             )]));
         }
 
@@ -539,14 +580,14 @@ impl DataZenMcpServer {
             let json = serde_json::to_string_pretty(&history)
                 .map_err(|e| McpError::internal_error(e.to_string(), None))?;
             return Ok(ReadResourceResult::new(vec![ResourceContents::text(
-                json,
-                uri,
+                json, uri,
             )]));
         }
 
         if let Some(rest) = uri.strip_prefix("datazen://schema/") {
-            let decoded = urlencoding::decode(rest)
-                .map_err(|e| McpError::invalid_params(format!("Invalid URI encoding: {e}"), None))?;
+            let decoded = urlencoding::decode(rest).map_err(|e| {
+                McpError::invalid_params(format!("Invalid URI encoding: {e}"), None)
+            })?;
             let parts: Vec<&str> = decoded.splitn(2, '/').collect();
             let config_id = parts
                 .first()
@@ -957,12 +998,10 @@ mod tests {
         assert!(tables.contains("users"));
 
         let schema = server
-            .get_schema(rmcp::handler::server::wrapper::Parameters(
-                GetSchemaInput {
-                    config_id: "mcp-cfg".into(),
-                    table: "users".into(),
-                },
-            ))
+            .get_schema(rmcp::handler::server::wrapper::Parameters(GetSchemaInput {
+                config_id: "mcp-cfg".into(),
+                table: "users".into(),
+            }))
             .await
             .unwrap();
         assert!(schema.contains("users"));
@@ -1016,17 +1055,25 @@ mod tests {
         let server = DataZenMcpServer::new(Arc::new(test.state));
 
         let nl2sql = server
-            .nl2sql_prompt(rmcp::handler::server::wrapper::Parameters(
-                Nl2SqlArgs {
-                    config_id: conn_id.clone(),
-                    question: "count users".into(),
-                    database: Some("app".into()),
-                },
-            ))
+            .nl2sql_prompt(rmcp::handler::server::wrapper::Parameters(Nl2SqlArgs {
+                config_id: conn_id.clone(),
+                question: "count users".into(),
+                database: Some("app".into()),
+            }))
             .await
             .unwrap();
-        assert!(nl2sql.messages[0].content.as_text().unwrap().text.contains("Schema:"));
-        assert!(nl2sql.messages[1].content.as_text().unwrap().text.contains("count users"));
+        assert!(nl2sql.messages[0]
+            .content
+            .as_text()
+            .unwrap()
+            .text
+            .contains("Schema:"));
+        assert!(nl2sql.messages[1]
+            .content
+            .as_text()
+            .unwrap()
+            .text
+            .contains("count users"));
 
         let diag = server
             .diagnose_error_prompt(rmcp::handler::server::wrapper::Parameters(
@@ -1038,7 +1085,12 @@ mod tests {
             ))
             .await
             .unwrap();
-        assert!(diag.messages[1].content.as_text().unwrap().text.contains("column missing"));
+        assert!(diag.messages[1]
+            .content
+            .as_text()
+            .unwrap()
+            .text
+            .contains("column missing"));
 
         let plan = server
             .explain_plan_prompt(rmcp::handler::server::wrapper::Parameters(
@@ -1049,7 +1101,12 @@ mod tests {
             ))
             .await
             .unwrap();
-        assert!(plan.messages[1].content.as_text().unwrap().text.contains("EXPLAIN"));
+        assert!(plan.messages[1]
+            .content
+            .as_text()
+            .unwrap()
+            .text
+            .contains("EXPLAIN"));
     }
 
     #[tokio::test]
@@ -1069,7 +1126,10 @@ mod tests {
         let (_, conn_id) = test.save_and_connect("res-inner").await;
         let server = DataZenMcpServer::new(Arc::new(test.state));
 
-        let conns = server.read_resource_inner("datazen://connections").await.unwrap();
+        let conns = server
+            .read_resource_inner("datazen://connections")
+            .await
+            .unwrap();
         match &conns.contents[0] {
             ResourceContents::TextResourceContents { text, .. } => {
                 assert!(text.contains("res-inner"));
@@ -1077,7 +1137,10 @@ mod tests {
             _ => panic!("expected text resource"),
         }
 
-        let hist = server.read_resource_inner("datazen://query-history").await.unwrap();
+        let hist = server
+            .read_resource_inner("datazen://query-history")
+            .await
+            .unwrap();
         assert!(!hist.contents.is_empty());
 
         let schema_uri = format!("datazen://schema/{conn_id}/app");
@@ -1089,14 +1152,17 @@ mod tests {
             _ => panic!("expected text resource"),
         }
 
-        let err = server.read_resource_inner("datazen://missing").await.unwrap_err();
+        let err = server
+            .read_resource_inner("datazen://missing")
+            .await
+            .unwrap_err();
         assert!(err.to_string().contains("Unknown resource"));
     }
 
     #[tokio::test]
     async fn mcp_query_rejects_disallowed_sql_in_readonly() {
-        use crate::testing::app_state::TestAppState;
         use crate::mcp::permission::McpPermissionMode;
+        use crate::testing::app_state::TestAppState;
         use std::sync::Arc;
 
         let test = TestAppState::with_tables().await;
@@ -1112,9 +1178,11 @@ mod tests {
             }))
             .await
             .unwrap_err();
-        assert!(err.to_string().to_lowercase().contains("delete")
-            || err.to_string().contains("not allowed")
-            || err.to_string().contains("permission"));
+        assert!(
+            err.to_string().to_lowercase().contains("delete")
+                || err.to_string().contains("not allowed")
+                || err.to_string().contains("permission")
+        );
     }
 
     #[tokio::test]
@@ -1132,8 +1200,8 @@ mod tests {
 
     #[tokio::test]
     async fn mcp_disabled_tools_and_permission_mode() {
-        use crate::testing::app_state::TestAppState;
         use crate::mcp::permission::McpPermissionMode;
+        use crate::testing::app_state::TestAppState;
         use std::sync::Arc;
 
         let test = TestAppState::new().await;
@@ -1203,12 +1271,7 @@ mod tests {
             .unwrap();
         assert!(!query.content[0].as_text().unwrap().text.is_empty());
 
-        assert!(
-            server
-                .call_tool_inner("missing_tool", None)
-                .await
-                .is_err()
-        );
+        assert!(server.call_tool_inner("missing_tool", None).await.is_err());
     }
 
     #[tokio::test]

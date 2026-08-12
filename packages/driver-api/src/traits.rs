@@ -130,7 +130,8 @@ pub trait DatabaseDriver: Send + Sync {
         Ok((schema.columns, schema.primary_keys))
     }
 
-    async fn query(&self, handle: &ConnectionHandle, sql: &str) -> Result<QueryResult, DriverError>;
+    async fn query(&self, handle: &ConnectionHandle, sql: &str)
+        -> Result<QueryResult, DriverError>;
 
     async fn query_multi(
         &self,
@@ -323,24 +324,23 @@ pub async fn execute_standard_sql_command<D: DatabaseDriver + ?Sized>(
 ) -> Result<CommandResult, DriverError> {
     match command {
         "query" => {
-            let sql = input
-                .get("sql")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| DriverError::InvalidConfig("command 'query' requires string input 'sql'".into()))?;
+            let sql = input.get("sql").and_then(|v| v.as_str()).ok_or_else(|| {
+                DriverError::InvalidConfig("command 'query' requires string input 'sql'".into())
+            })?;
             let limit = input
                 .get("limit")
                 .and_then(|v| v.as_u64())
                 .map(|v| v.min(u32::MAX as u64) as u32);
             let result = driver.query_multi(handle, sql, limit).await?;
-            let data = serde_json::to_value(result)
-                .map_err(|e| DriverError::QueryFailed(format!("failed to serialize query result: {e}")))?;
+            let data = serde_json::to_value(result).map_err(|e| {
+                DriverError::QueryFailed(format!("failed to serialize query result: {e}"))
+            })?;
             Ok(CommandResult::new(data))
         }
         "execute" => {
-            let sql = input
-                .get("sql")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| DriverError::InvalidConfig("command 'execute' requires string input 'sql'".into()))?;
+            let sql = input.get("sql").and_then(|v| v.as_str()).ok_or_else(|| {
+                DriverError::InvalidConfig("command 'execute' requires string input 'sql'".into())
+            })?;
             let rows_affected = driver.execute(handle, sql).await?;
             Ok(CommandResult::new(serde_json::json!({
                 "rowsAffected": rows_affected
@@ -458,7 +458,11 @@ mod structure_defaults_tests {
             })
         }
 
-        async fn execute(&self, _handle: &ConnectionHandle, _sql: &str) -> Result<u64, DriverError> {
+        async fn execute(
+            &self,
+            _handle: &ConnectionHandle,
+            _sql: &str,
+        ) -> Result<u64, DriverError> {
             Ok(0)
         }
 
@@ -523,7 +527,9 @@ mod structure_defaults_tests {
             .plan_structure_changes(&handle, &request)
             .await
             .unwrap_err();
-        assert!(matches!(err, DriverError::Unsupported(msg) if msg == "table structure planning is not supported by this driver"));
+        assert!(
+            matches!(err, DriverError::Unsupported(msg) if msg == "table structure planning is not supported by this driver")
+        );
     }
 
     #[tokio::test]

@@ -172,8 +172,8 @@ fn build_messages(messages: &[ChatMessage]) -> (Option<String>, Vec<serde_json::
                     }
                     if let Some(tool_calls) = &m.tool_calls {
                         for tc in tool_calls {
-                            let input: serde_json::Value =
-                                serde_json::from_str(&tc.arguments).unwrap_or(serde_json::json!({}));
+                            let input: serde_json::Value = serde_json::from_str(&tc.arguments)
+                                .unwrap_or(serde_json::json!({}));
                             blocks.push(serde_json::json!({
                                 "type": "tool_use",
                                 "id": tc.id,
@@ -240,7 +240,11 @@ fn parse_tool_use_blocks(content: &[ContentBlock]) -> Option<Vec<ToolCall>> {
             })
         })
         .collect();
-    if calls.is_empty() { None } else { Some(calls) }
+    if calls.is_empty() {
+        None
+    } else {
+        Some(calls)
+    }
 }
 
 // ─── Public API ───
@@ -285,8 +289,8 @@ pub async fn complete(
         return Err(map_http_error(status, &raw));
     }
 
-    let api_resp: ApiResponse =
-        serde_json::from_str(&raw).map_err(|e| AiError::RequestFailed(format!("JSON decode: {e}")))?;
+    let api_resp: ApiResponse = serde_json::from_str(&raw)
+        .map_err(|e| AiError::RequestFailed(format!("JSON decode: {e}")))?;
 
     let content = api_resp
         .content
@@ -303,7 +307,11 @@ pub async fn complete(
         .filter_map(|b| b.text.as_deref())
         .collect::<Vec<_>>()
         .join("");
-    let reasoning = if reasoning_text.is_empty() { None } else { Some(reasoning_text) };
+    let reasoning = if reasoning_text.is_empty() {
+        None
+    } else {
+        Some(reasoning_text)
+    };
 
     let tool_calls = parse_tool_use_blocks(&api_resp.content);
     let finish_reason = if tool_calls.is_some() {
@@ -409,20 +417,27 @@ pub async fn stream_complete(
             Ok(b) => b,
             Err(e) => {
                 tracing::error!("anthropic: stream read error: {}", e);
-                let _ = sender.send(Err(AiError::RequestFailed(e.to_string()))).await;
+                let _ = sender
+                    .send(Err(AiError::RequestFailed(e.to_string())))
+                    .await;
                 return Ok(());
             }
         };
 
         chunk_count += 1;
         if chunk_count == 1 {
-            tracing::info!("anthropic: first chunk received ({} bytes)", chunk_bytes.len());
+            tracing::info!(
+                "anthropic: first chunk received ({} bytes)",
+                chunk_bytes.len()
+            );
         }
 
         byte_buf.extend_from_slice(&chunk_bytes);
 
         while let Some(line_end) = byte_buf.iter().position(|&b| b == b'\n') {
-            let line = String::from_utf8_lossy(&byte_buf[..line_end]).trim().to_string();
+            let line = String::from_utf8_lossy(&byte_buf[..line_end])
+                .trim()
+                .to_string();
             byte_buf.drain(..=line_end);
 
             if line.is_empty() || line.starts_with(':') {
@@ -648,7 +663,9 @@ pub async fn probe(cfg: &ProtocolConfig, model: &str) -> Result<(), AiError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ai::protocol::test_support::{collect_stream, protocol_config_anthropic, sample_request};
+    use crate::ai::protocol::test_support::{
+        collect_stream, protocol_config_anthropic, sample_request,
+    };
     use datazen_ai_api::AiError;
     use wiremock::matchers::{header, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};

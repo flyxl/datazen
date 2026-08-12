@@ -100,7 +100,12 @@ mod tests {
 
         let result = make_test_result(true);
         let id = mgr
-            .record("workflow-1", "Workflow 1", &serde_json::json!({"uid": "U001"}), &result)
+            .record(
+                "workflow-1",
+                "Workflow 1",
+                &serde_json::json!({"uid": "U001"}),
+                &result,
+            )
             .await
             .unwrap();
 
@@ -121,9 +126,15 @@ mod tests {
         let mgr = open_mgr(dir.path());
 
         let r = make_test_result(true);
-        mgr.record("workflow-a", "A", &serde_json::json!({}), &r).await.unwrap();
-        mgr.record("workflow-b", "B", &serde_json::json!({}), &r).await.unwrap();
-        mgr.record("workflow-a", "A", &serde_json::json!({}), &r).await.unwrap();
+        mgr.record("workflow-a", "A", &serde_json::json!({}), &r)
+            .await
+            .unwrap();
+        mgr.record("workflow-b", "B", &serde_json::json!({}), &r)
+            .await
+            .unwrap();
+        mgr.record("workflow-a", "A", &serde_json::json!({}), &r)
+            .await
+            .unwrap();
 
         assert_eq!(mgr.list(None).await.len(), 3);
         assert_eq!(mgr.list(Some("workflow-a")).await.len(), 2);
@@ -136,8 +147,12 @@ mod tests {
         let mgr = open_mgr(dir.path());
 
         let r = make_test_result(true);
-        mgr.record("w1", "W1", &serde_json::json!({}), &r).await.unwrap();
-        mgr.record("w2", "W2", &serde_json::json!({}), &r).await.unwrap();
+        mgr.record("w1", "W1", &serde_json::json!({}), &r)
+            .await
+            .unwrap();
+        mgr.record("w2", "W2", &serde_json::json!({}), &r)
+            .await
+            .unwrap();
 
         let removed = mgr.clear(Some("w1")).await.unwrap();
         assert_eq!(removed, 1);

@@ -205,7 +205,10 @@ impl HistoryDb {
         })
     }
 
-    pub fn get_query_history(&self, limit: usize) -> Result<Vec<QueryHistoryEntry>, HistoryDbError> {
+    pub fn get_query_history(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<QueryHistoryEntry>, HistoryDbError> {
         self.with_conn(|conn| {
             let mut stmt = conn.prepare(
                 "SELECT id, connection_id, database, sql, executed_at,
@@ -215,7 +218,8 @@ impl HistoryDb {
                  LIMIT ?1",
             )?;
             let rows = stmt.query_map(params![limit as i64], map_query_row)?;
-            rows.collect::<Result<Vec<_>, _>>().map_err(HistoryDbError::from)
+            rows.collect::<Result<Vec<_>, _>>()
+                .map_err(HistoryDbError::from)
         })
     }
 
@@ -290,7 +294,10 @@ impl HistoryDb {
         })
     }
 
-    pub fn get_workflow_history(&self, history_id: &str) -> Result<Option<HistoryEntry>, HistoryDbError> {
+    pub fn get_workflow_history(
+        &self,
+        history_id: &str,
+    ) -> Result<Option<HistoryEntry>, HistoryDbError> {
         self.with_conn(|conn| {
             let mut stmt = conn.prepare(
                 "SELECT id, workflow_id, workflow_name, variables_json, result_json, created_at
@@ -318,10 +325,16 @@ impl HistoryDb {
         })
     }
 
-    pub fn clear_workflow_history(&self, workflow_id: Option<&str>) -> Result<usize, HistoryDbError> {
+    pub fn clear_workflow_history(
+        &self,
+        workflow_id: Option<&str>,
+    ) -> Result<usize, HistoryDbError> {
         self.with_conn(|conn| {
             let deleted = if let Some(wid) = workflow_id {
-                conn.execute("DELETE FROM workflow_history WHERE workflow_id = ?1", params![wid])?
+                conn.execute(
+                    "DELETE FROM workflow_history WHERE workflow_id = ?1",
+                    params![wid],
+                )?
             } else {
                 conn.execute("DELETE FROM workflow_history", [])?
             };
@@ -331,12 +344,15 @@ impl HistoryDb {
 
     /// Delete rows in `scope`. `retain_days = None` removes all rows in scope; otherwise
     /// deletes rows older than the cutoff (UTC).
-    pub fn purge(&self, scope: HistoryScope, retain_days: Option<u32>) -> Result<u64, HistoryDbError> {
+    pub fn purge(
+        &self,
+        scope: HistoryScope,
+        retain_days: Option<u32>,
+    ) -> Result<u64, HistoryDbError> {
         self.with_conn(|conn| {
             let mut total = 0u64;
-            let cutoff = retain_days.map(|days| {
-                (Utc::now() - Duration::days(days as i64)).to_rfc3339()
-            });
+            let cutoff =
+                retain_days.map(|days| (Utc::now() - Duration::days(days as i64)).to_rfc3339());
 
             if matches!(scope, HistoryScope::Query | HistoryScope::All) {
                 total += purge_table(conn, "query_history", "executed_at", cutoff.as_deref())?;

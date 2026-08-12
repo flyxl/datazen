@@ -98,11 +98,15 @@ fn primary_key_columns(columns: &[StructureColumnDraft]) -> Vec<String> {
         .collect()
 }
 
-fn columns_by_id(columns: &[StructureColumnDraft]) -> std::collections::HashMap<&str, &StructureColumnDraft> {
+fn columns_by_id(
+    columns: &[StructureColumnDraft],
+) -> std::collections::HashMap<&str, &StructureColumnDraft> {
     columns.iter().map(|c| (c.id.as_str(), c)).collect()
 }
 
-fn indexes_by_id(indexes: &[StructureIndexDraft]) -> std::collections::HashMap<&str, &StructureIndexDraft> {
+fn indexes_by_id(
+    indexes: &[StructureIndexDraft],
+) -> std::collections::HashMap<&str, &StructureIndexDraft> {
     indexes.iter().map(|i| (i.id.as_str(), i)).collect()
 }
 
@@ -149,11 +153,7 @@ fn plan_create_table(
 ) -> Result<StructureChangePlan, DriverError> {
     require_cap(caps.create_table, "CREATE TABLE")?;
     let table = qualified_table(request.schema.as_deref(), &request.table);
-    let mut col_defs: Vec<String> = request
-        .current_columns
-        .iter()
-        .map(column_def)
-        .collect();
+    let mut col_defs: Vec<String> = request.current_columns.iter().map(column_def).collect();
     let pk_cols = primary_key_columns(&request.current_columns);
     if !pk_cols.is_empty() {
         col_defs.push(format!("PRIMARY KEY ({})", pk_cols.join(", ")));
@@ -286,10 +286,7 @@ pub fn plan_structure_changes_with_caps(
         if !orig_cols.contains_key(id) {
             require_cap(caps.add_column, "ADD COLUMN")?;
             statements.push(PlanStatement {
-                sql: format!(
-                    "ALTER TABLE {table_ref} ADD COLUMN {}",
-                    column_def(col)
-                ),
+                sql: format!("ALTER TABLE {table_ref} ADD COLUMN {}", column_def(col)),
                 summary: format!("Add column {}", col.name),
                 risk: StatementRisk::Additive,
             });
@@ -346,9 +343,9 @@ pub fn plan_structure_changes_with_caps(
         if orig.default_value != curr.default_value {
             require_cap(caps.alter_default, "ALTER COLUMN DEFAULT")?;
             let sql = match &curr.default_value {
-                Some(val) => format!(
-                    "ALTER TABLE {table_ref} ALTER COLUMN {col_name} SET DEFAULT {val}"
-                ),
+                Some(val) => {
+                    format!("ALTER TABLE {table_ref} ALTER COLUMN {col_name} SET DEFAULT {val}")
+                }
                 None => format!("ALTER TABLE {table_ref} ALTER COLUMN {col_name} DROP DEFAULT"),
             };
             statements.push(PlanStatement {
@@ -366,15 +363,16 @@ pub fn plan_structure_changes_with_caps(
             ));
             if curr.is_primary_key {
                 statements.push(PlanStatement {
-                    sql: format!(
-                        "ALTER TABLE {table_ref} ADD PRIMARY KEY ({col_name})"
-                    ),
+                    sql: format!("ALTER TABLE {table_ref} ADD PRIMARY KEY ({col_name})"),
                     summary: format!("Add primary key on column {}", curr.name),
                     risk: StatementRisk::Rewrite,
                 });
             } else {
                 statements.push(PlanStatement {
-                    sql: format!("ALTER TABLE {table_ref} DROP CONSTRAINT IF EXISTS {}_pkey", request.table),
+                    sql: format!(
+                        "ALTER TABLE {table_ref} DROP CONSTRAINT IF EXISTS {}_pkey",
+                        request.table
+                    ),
                     summary: format!("Drop primary key involving column {}", curr.name),
                     risk: StatementRisk::Destructive,
                 });
@@ -508,7 +506,8 @@ mod tests {
 
     #[test]
     fn caps_parses_postgresql_version_string() {
-        let caps = caps_for_version("PostgreSQL 14.5 on aarch64-unknown-linux-gnu, compiled by gcc");
+        let caps =
+            caps_for_version("PostgreSQL 14.5 on aarch64-unknown-linux-gnu, compiled by gcc");
         assert!(caps.index_include);
         assert_eq!(caps.alter_strategy, AlterStrategy::Direct);
         assert!(!caps.reorder_column);
@@ -517,12 +516,7 @@ mod tests {
     #[test]
     fn plan_add_column() {
         let caps = caps_for_version("14.5");
-        let request = alter_request(
-            vec![],
-            vec![sample_column("c1", "email")],
-            vec![],
-            vec![],
-        );
+        let request = alter_request(vec![], vec![sample_column("c1", "email")], vec![], vec![]);
         let plan = plan_structure_changes_with_caps(&caps, &request).unwrap();
         assert_eq!(plan.statements.len(), 1);
         assert_eq!(
@@ -535,12 +529,7 @@ mod tests {
     #[test]
     fn plan_drop_column() {
         let caps = caps_for_version("14.5");
-        let request = alter_request(
-            vec![sample_column("c1", "email")],
-            vec![],
-            vec![],
-            vec![],
-        );
+        let request = alter_request(vec![sample_column("c1", "email")], vec![], vec![], vec![]);
         let plan = plan_structure_changes_with_caps(&caps, &request).unwrap();
         assert_eq!(plan.statements.len(), 1);
         assert_eq!(
@@ -566,7 +555,8 @@ mod tests {
         assert!(plan
             .statements
             .iter()
-            .any(|s| s.sql == r#"ALTER TABLE "public"."users" RENAME COLUMN "email" TO "email_address""#));
+            .any(|s| s.sql
+                == r#"ALTER TABLE "public"."users" RENAME COLUMN "email" TO "email_address""#));
     }
 
     #[test]
@@ -614,9 +604,10 @@ mod tests {
             vec![],
         );
         let plan = plan_structure_changes_with_caps(&caps, &request).unwrap();
-        assert!(plan.statements.iter().any(|s| {
-            s.sql == r#"DROP INDEX "public"."users_email_idx""#
-        }));
+        assert!(plan
+            .statements
+            .iter()
+            .any(|s| { s.sql == r#"DROP INDEX "public"."users_email_idx""# }));
     }
 
     #[test]
@@ -643,7 +634,9 @@ mod tests {
         };
         let plan = plan_structure_changes_with_caps(&caps, &request).unwrap();
         assert_eq!(plan.statements.len(), 1);
-        assert!(plan.statements[0].sql.starts_with(r#"CREATE TABLE "public"."users" ("#));
+        assert!(plan.statements[0]
+            .sql
+            .starts_with(r#"CREATE TABLE "public"."users" ("#));
         assert!(plan.statements[0].sql.contains(r#""id" integer NOT NULL"#));
         assert!(plan.statements[0].sql.contains(r#"PRIMARY KEY ("id")"#));
     }
@@ -674,14 +667,8 @@ mod tests {
     fn plan_rejects_column_reorder_when_cap_disabled() {
         let caps = caps_for_version("14.5");
         let request = alter_request(
-            vec![
-                sample_column("c1", "a"),
-                sample_column("c2", "b"),
-            ],
-            vec![
-                sample_column("c2", "b"),
-                sample_column("c1", "a"),
-            ],
+            vec![sample_column("c1", "a"), sample_column("c2", "b")],
+            vec![sample_column("c2", "b"), sample_column("c1", "a")],
             vec![],
             vec![],
         );

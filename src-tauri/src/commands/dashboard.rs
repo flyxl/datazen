@@ -31,7 +31,9 @@ fn map_runs_error(err: DashboardRunsError) -> CommandError {
 
 fn map_execute_error(err: crate::dashboard::execute::DashboardExecuteError) -> CommandError {
     match err {
-        crate::dashboard::execute::DashboardExecuteError::Connection(e) => CommandError::Connection(e),
+        crate::dashboard::execute::DashboardExecuteError::Connection(e) => {
+            CommandError::Connection(e)
+        }
         crate::dashboard::execute::DashboardExecuteError::Driver(e) => CommandError::Driver(e),
         crate::dashboard::execute::DashboardExecuteError::Runs(e) => map_runs_error(e),
     }
@@ -45,9 +47,7 @@ fn map_export_error(err: DashboardExportError) -> CommandError {
     }
 }
 
-pub(crate) async fn list_dashboards_impl(
-    state: &AppState,
-) -> Result<Vec<Dashboard>, CommandError> {
+pub(crate) async fn list_dashboards_impl(state: &AppState) -> Result<Vec<Dashboard>, CommandError> {
     let data_dir = state.store.data_dir();
     store_list_dashboards(data_dir)
         .map_err(map_store_error)
@@ -133,10 +133,7 @@ pub async fn save_dashboard(
 }
 
 #[tauri::command]
-pub async fn delete_dashboard(
-    state: State<'_, AppState>,
-    id: String,
-) -> Result<(), CommandError> {
+pub async fn delete_dashboard(state: State<'_, AppState>, id: String) -> Result<(), CommandError> {
     delete_dashboard_impl(&state, id).await
 }
 

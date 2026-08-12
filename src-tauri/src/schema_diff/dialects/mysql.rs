@@ -1,9 +1,7 @@
 //! MySQL / MariaDB ALTER TABLE helpers.
 
-use super::{add_column_stmt, drop_column_stmt, quote_column, quote_ident, nullability_sql};
-use crate::schema_diff::types::{
-    ChangedColumnDiff, ColumnSnapshot, PlanStatement, StatementRisk,
-};
+use super::{add_column_stmt, drop_column_stmt, nullability_sql, quote_column, quote_ident};
+use crate::schema_diff::types::{ChangedColumnDiff, ColumnSnapshot, PlanStatement, StatementRisk};
 
 pub fn add_column(table: &str, col: &ColumnSnapshot, type_sql: &str) -> PlanStatement {
     add_column_stmt("mysql", table, col, type_sql)
@@ -38,18 +36,10 @@ pub fn modify_column(table: &str, change: &ChangedColumnDiff, type_sql: &str) ->
     }
 }
 
-pub fn create_index(
-    table: &str,
-    name: &str,
-    columns: &[String],
-    unique: bool,
-) -> PlanStatement {
+pub fn create_index(table: &str, name: &str, columns: &[String], unique: bool) -> PlanStatement {
     let q_table = quote_ident("mysql", table);
     let q_name = quote_ident("mysql", name);
-    let cols: Vec<String> = columns
-        .iter()
-        .map(|c| quote_column("mysql", c))
-        .collect();
+    let cols: Vec<String> = columns.iter().map(|c| quote_column("mysql", c)).collect();
     let uniq = if unique { "UNIQUE " } else { "" };
     let sql = format!(
         "CREATE {uniq}INDEX {q_name} ON {q_table} ({})",

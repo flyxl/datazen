@@ -27,8 +27,14 @@ fn parse_precision(s: &str, prefix: &str) -> (u8, u8) {
         let rest = rest.trim();
         if let Some(inner) = rest.strip_prefix('(').and_then(|r| r.strip_suffix(')')) {
             let parts: Vec<&str> = inner.split(',').collect();
-            let p = parts.first().and_then(|v| v.trim().parse().ok()).unwrap_or(0);
-            let s = parts.get(1).and_then(|v| v.trim().parse().ok()).unwrap_or(0);
+            let p = parts
+                .first()
+                .and_then(|v| v.trim().parse().ok())
+                .unwrap_or(0);
+            let s = parts
+                .get(1)
+                .and_then(|v| v.trim().parse().ok())
+                .unwrap_or(0);
             return (p, s);
         }
     }
@@ -77,11 +83,7 @@ impl SyncSourceAdapter for PgSyncAdapter {
         ))
     }
 
-    fn column_to_ir(
-        &self,
-        column: &ColumnSchema,
-        native_full_type: Option<&str>,
-    ) -> IRColumn {
+    fn column_to_ir(&self, column: &ColumnSchema, native_full_type: Option<&str>) -> IRColumn {
         let raw = native_full_type.unwrap_or(&column.data_type);
         let lower = raw.trim().to_lowercase();
 
@@ -94,9 +96,16 @@ impl SyncSourceAdapter for PgSyncAdapter {
             let len = parse_char_length(&lower, "character").unwrap_or(1);
             IRType::Char { length: len }
         } else if lower.starts_with("numeric") || lower.starts_with("decimal") {
-            let prefix = if lower.starts_with("numeric") { "numeric" } else { "decimal" };
+            let prefix = if lower.starts_with("numeric") {
+                "numeric"
+            } else {
+                "decimal"
+            };
             let (p, s) = parse_precision(&lower, prefix);
-            IRType::Decimal { precision: p, scale: s }
+            IRType::Decimal {
+                precision: p,
+                scale: s,
+            }
         } else if lower.starts_with("bit varying") {
             IRType::Blob
         } else if lower.starts_with("bit(") || lower == "bit" {
@@ -115,19 +124,26 @@ impl SyncSourceAdapter for PgSyncAdapter {
                 "json" | "jsonb" => IRType::Json,
                 "uuid" => IRType::Uuid,
                 "date" => IRType::Date,
-                "time without time zone" | "time" => IRType::Time { with_timezone: false },
-                "time with time zone" | "timetz" => IRType::Time { with_timezone: true },
-                "timestamp without time zone" | "timestamp" => {
-                    IRType::Timestamp { with_timezone: false }
-                }
-                "timestamp with time zone" | "timestamptz" => {
-                    IRType::Timestamp { with_timezone: true }
-                }
+                "time without time zone" | "time" => IRType::Time {
+                    with_timezone: false,
+                },
+                "time with time zone" | "timetz" => IRType::Time {
+                    with_timezone: true,
+                },
+                "timestamp without time zone" | "timestamp" => IRType::Timestamp {
+                    with_timezone: false,
+                },
+                "timestamp with time zone" | "timestamptz" => IRType::Timestamp {
+                    with_timezone: true,
+                },
                 "inet" => IRType::Varchar { length: Some(45) },
                 "cidr" => IRType::Varchar { length: Some(43) },
                 "macaddr" | "macaddr8" => IRType::Varchar { length: Some(17) },
                 "interval" => IRType::Varchar { length: Some(255) },
-                "money" => IRType::Decimal { precision: 19, scale: 2 },
+                "money" => IRType::Decimal {
+                    precision: 19,
+                    scale: 2,
+                },
                 "oid" => IRType::Int32,
                 "xml" => IRType::Text,
                 _ => IRType::Other(raw.to_string()),
@@ -168,10 +184,18 @@ impl SyncTargetAdapter for PgSyncAdapter {
             IRType::Varchar { length: None } | IRType::Text => "text".into(),
             IRType::Binary { .. } | IRType::Blob => "bytea".into(),
             IRType::Date => "date".into(),
-            IRType::Time { with_timezone: false } => "time without time zone".into(),
-            IRType::Time { with_timezone: true } => "time with time zone".into(),
-            IRType::Timestamp { with_timezone: false } => "timestamp without time zone".into(),
-            IRType::Timestamp { with_timezone: true } => "timestamp with time zone".into(),
+            IRType::Time {
+                with_timezone: false,
+            } => "time without time zone".into(),
+            IRType::Time {
+                with_timezone: true,
+            } => "time with time zone".into(),
+            IRType::Timestamp {
+                with_timezone: false,
+            } => "timestamp without time zone".into(),
+            IRType::Timestamp {
+                with_timezone: true,
+            } => "timestamp with time zone".into(),
             IRType::Json => "jsonb".into(),
             IRType::Uuid => "uuid".into(),
             IRType::Bit { length } => format!("bit({length})"),
@@ -199,7 +223,9 @@ impl SyncTargetAdapter for PgSyncAdapter {
             Some(Value::Bytes(b)) => {
                 format!(
                     "'\\x{}'",
-                    b.iter().map(|byte| format!("{:02x}", byte)).collect::<String>()
+                    b.iter()
+                        .map(|byte| format!("{:02x}", byte))
+                        .collect::<String>()
                 )
             }
         }
@@ -235,7 +261,13 @@ mod tests {
         let adapter = PgSyncAdapter;
         let c = col("price", "numeric");
         let ir = adapter.column_to_ir(&c, Some("numeric(10,2)"));
-        assert_eq!(ir.ir_type, IRType::Decimal { precision: 10, scale: 2 });
+        assert_eq!(
+            ir.ir_type,
+            IRType::Decimal {
+                precision: 10,
+                scale: 2
+            }
+        );
     }
 
     #[test]
@@ -259,7 +291,12 @@ mod tests {
         let adapter = PgSyncAdapter;
         let c = col("created", "timestamptz");
         let ir = adapter.column_to_ir(&c, Some("timestamp with time zone"));
-        assert_eq!(ir.ir_type, IRType::Timestamp { with_timezone: true });
+        assert_eq!(
+            ir.ir_type,
+            IRType::Timestamp {
+                with_timezone: true
+            }
+        );
     }
 
     #[test]
@@ -286,10 +323,7 @@ mod tests {
         let mut c = col("status", "text");
         c.default_value = Some("'active'::text".into());
         let ir = adapter.column_to_ir(&c, None);
-        assert_eq!(
-            ir.default_expr,
-            Some(IRDefault::Literal("'active'".into()))
-        );
+        assert_eq!(ir.default_expr, Some(IRDefault::Literal("'active'".into())));
     }
 
     #[test]
@@ -331,10 +365,7 @@ mod tests {
     fn pg_inet_and_money_map_to_ir() {
         let adapter = PgSyncAdapter;
         let inet = adapter.column_to_ir(&col("ip", "inet"), None);
-        assert_eq!(
-            inet.ir_type,
-            IRType::Varchar { length: Some(45) }
-        );
+        assert_eq!(inet.ir_type, IRType::Varchar { length: Some(45) });
         let money = adapter.column_to_ir(&col("price", "money"), None);
         assert_eq!(
             money.ir_type,
@@ -382,8 +413,18 @@ mod tests {
     fn pg_time_types_with_and_without_tz() {
         let adapter = PgSyncAdapter;
         let time = adapter.column_to_ir(&col("t", "time"), Some("time without time zone"));
-        assert_eq!(time.ir_type, IRType::Time { with_timezone: false });
+        assert_eq!(
+            time.ir_type,
+            IRType::Time {
+                with_timezone: false
+            }
+        );
         let timetz = adapter.column_to_ir(&col("tz", "timetz"), Some("time with time zone"));
-        assert_eq!(timetz.ir_type, IRType::Time { with_timezone: true });
+        assert_eq!(
+            timetz.ir_type,
+            IRType::Time {
+                with_timezone: true
+            }
+        );
     }
 }

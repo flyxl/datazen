@@ -1,16 +1,16 @@
 //! AI-related Tauri IPC commands.
 
-use crate::ai::*;
 use crate::ai::budget;
 use crate::ai::prompt_resolver::{PromptInfo, PromptOverrideEntry};
+use crate::ai::*;
 use crate::commands::error::{CmdExt, CommandError};
 use crate::commands::AppState;
+use datazen_driver_api::PromptScenario;
 use serde::Serialize;
+use std::collections::HashMap;
 use tauri::{AppHandle, Emitter, State, WebviewWindow};
 use tokio::sync::mpsc;
 use uuid::Uuid;
-use std::collections::HashMap;
-use datazen_driver_api::PromptScenario;
 
 fn language_hint(lang: &str) -> String {
     let lang_name = match lang {
@@ -30,8 +30,8 @@ fn inject_language_hint(messages: &mut [ChatMessage], lang: &str) {
     }
 }
 
-use std::sync::Arc;
 use datazen_ai_api::AiProviderConfig;
+use std::sync::Arc;
 
 /// Delivers streaming chunks to the UI (or test collector).
 pub(crate) type StreamCallback = Arc<dyn Fn(&str, Result<StreamChunk, AiError>) + Send + Sync>;
@@ -43,7 +43,9 @@ pub(crate) fn window_stream_callback(window: &WebviewWindow) -> StreamCallback {
     })
 }
 
-async fn resolve_ai(state: &AppState) -> Result<(Arc<dyn AiProvider>, AiProviderConfig), CommandError> {
+async fn resolve_ai(
+    state: &AppState,
+) -> Result<(Arc<dyn AiProvider>, AiProviderConfig), CommandError> {
     state.ensure_ai_ready().await;
 
     let config = state
@@ -128,7 +130,11 @@ pub async fn ai_fetch_remote_models(
         "open_ai_compatible" => crate::ai::custom::CustomProtocol::OpenAiCompatible,
         "open_ai_responses" => crate::ai::custom::CustomProtocol::OpenAiResponses,
         "anthropic_compatible" => crate::ai::custom::CustomProtocol::AnthropicCompatible,
-        other => return Err(CommandError::Validation(format!("Unknown protocol: {other}"))),
+        other => {
+            return Err(CommandError::Validation(format!(
+                "Unknown protocol: {other}"
+            )))
+        }
     };
 
     crate::ai::custom::fetch_remote_models(proto, &endpoint, &api_key)
@@ -145,7 +151,9 @@ pub(crate) async fn ai_validate_config_impl(
         .ai_registry
         .get(&config.provider_type)
         .await
-        .ok_or_else(|| CommandError::NotFound(format!("Provider {:?} not found", config.provider_type)))?;
+        .ok_or_else(|| {
+            CommandError::NotFound(format!("Provider {:?} not found", config.provider_type))
+        })?;
     provider
         .validate_config(&config)
         .await
@@ -169,7 +177,9 @@ pub(crate) async fn ai_save_config_impl(
         .ai_registry
         .get(&config.provider_type)
         .await
-        .ok_or_else(|| CommandError::NotFound(format!("Provider {:?} not found", config.provider_type)))?;
+        .ok_or_else(|| {
+            CommandError::NotFound(format!("Provider {:?} not found", config.provider_type))
+        })?;
 
     provider
         .initialize(&config)
@@ -308,10 +318,18 @@ pub(crate) async fn ai_generate_sql_impl(
     let recent = if recent_queries.is_empty() {
         String::new()
     } else {
-        let label = if lang.starts_with("zh") { "近期查询（供风格参考）" } else { "Recent queries (for style reference)" };
+        let label = if lang.starts_with("zh") {
+            "近期查询（供风格参考）"
+        } else {
+            "Recent queries (for style reference)"
+        };
         format!(
             "\n\n{label}:\n{}",
-            recent_queries.iter().map(|q| format!("- {q}")).collect::<Vec<_>>().join("\n")
+            recent_queries
+                .iter()
+                .map(|q| format!("- {q}"))
+                .collect::<Vec<_>>()
+                .join("\n")
         )
     };
     let mut vars = HashMap::new();
@@ -319,10 +337,19 @@ pub(crate) async fn ai_generate_sql_impl(
     vars.insert("version", "");
     vars.insert("schema", schema_suffix.as_str());
     vars.insert("recent", recent.as_str());
-    let tpl = state.prompt_resolver.resolve(PromptScenario::Nl2Sql, Some(driver_ref.as_ref()), &lang).await;
+    let tpl = state
+        .prompt_resolver
+        .resolve(PromptScenario::Nl2Sql, Some(driver_ref.as_ref()), &lang)
+        .await;
     let system_content = prompt_resolver::render_template(&tpl, &vars);
 
-    let system_msg = ChatMessage { role: MessageRole::System, content: system_content, reasoning: None, tool_calls: None, tool_call_id: None };
+    let system_msg = ChatMessage {
+        role: MessageRole::System,
+        content: system_content,
+        reasoning: None,
+        tool_calls: None,
+        tool_call_id: None,
+    };
     let user_msg = ChatMessage {
         role: MessageRole::User,
         content: natural_language,
@@ -448,14 +475,23 @@ pub(crate) async fn ai_diagnose_error_impl(
     let mut vars = HashMap::new();
     vars.insert("db_type", context.database_type.as_str());
     vars.insert("schema", context.schema_ddl.as_str());
-    let tpl = state.prompt_resolver.resolve(PromptScenario::Diagnose, Some(driver_ref.as_ref()), &lang).await;
+    let tpl = state
+        .prompt_resolver
+        .resolve(PromptScenario::Diagnose, Some(driver_ref.as_ref()), &lang)
+        .await;
     let system_content = prompt_resolver::render_template(&tpl, &vars);
 
     let mut request = CompletionRequest {
         request_id: Uuid::new_v4().to_string(),
         model: ai_config.model.clone(),
         messages: vec![
-            ChatMessage { role: MessageRole::System, content: system_content, reasoning: None, tool_calls: None, tool_call_id: None },
+            ChatMessage {
+                role: MessageRole::System,
+                content: system_content,
+                reasoning: None,
+                tool_calls: None,
+                tool_call_id: None,
+            },
             ChatMessage {
                 role: MessageRole::User,
                 content: format!("SQL:\n```\n{sql}\n```\n\nError:\n{error_message}"),
@@ -534,14 +570,27 @@ pub(crate) async fn ai_analyze_explain_impl(
     let lang = state.store.get_settings().await.language;
     let mut vars = HashMap::new();
     vars.insert("db_type", db_type.as_str());
-    let tpl = state.prompt_resolver.resolve(PromptScenario::ExplainAnalysis, Some(driver.as_ref()), &lang).await;
+    let tpl = state
+        .prompt_resolver
+        .resolve(
+            PromptScenario::ExplainAnalysis,
+            Some(driver.as_ref()),
+            &lang,
+        )
+        .await;
     let system_content = prompt_resolver::render_template(&tpl, &vars);
 
     let mut request = CompletionRequest {
         request_id: Uuid::new_v4().to_string(),
         model: ai_config.model.clone(),
         messages: vec![
-            ChatMessage { role: MessageRole::System, content: system_content, reasoning: None, tool_calls: None, tool_call_id: None },
+            ChatMessage {
+                role: MessageRole::System,
+                content: system_content,
+                reasoning: None,
+                tool_calls: None,
+                tool_call_id: None,
+            },
             ChatMessage {
                 role: MessageRole::User,
                 content: format!(
@@ -654,14 +703,23 @@ pub(crate) async fn ai_parse_filter_impl(
     let mut vars = HashMap::new();
     vars.insert("db_type", db_type.as_str());
     vars.insert("columns", columns_ddl.as_str());
-    let tpl = state.prompt_resolver.resolve(PromptScenario::NlFilter, Some(driver.as_ref()), &lang).await;
+    let tpl = state
+        .prompt_resolver
+        .resolve(PromptScenario::NlFilter, Some(driver.as_ref()), &lang)
+        .await;
     let system_content = prompt_resolver::render_template(&tpl, &vars);
 
     let mut request = CompletionRequest {
         request_id: Uuid::new_v4().to_string(),
         model: ai_config.model.clone(),
         messages: vec![
-            ChatMessage { role: MessageRole::System, content: system_content, reasoning: None, tool_calls: None, tool_call_id: None },
+            ChatMessage {
+                role: MessageRole::System,
+                content: system_content,
+                reasoning: None,
+                tool_calls: None,
+                tool_call_id: None,
+            },
             ChatMessage {
                 role: MessageRole::User,
                 content: natural_language,
@@ -683,8 +741,11 @@ pub(crate) async fn ai_parse_filter_impl(
         .await
         .cmd_err("ai_parse_filter")?;
 
-    let mut filters: Vec<crate::services::query_executor::FilterCondition> =
-        parse_ai_json(&response.content, response.finish_reason.as_deref(), "ai_parse_filter")?;
+    let mut filters: Vec<crate::services::query_executor::FilterCondition> = parse_ai_json(
+        &response.content,
+        response.finish_reason.as_deref(),
+        "ai_parse_filter",
+    )?;
 
     let valid_columns: std::collections::HashSet<String> =
         cached.columns.iter().map(|c| c.name.clone()).collect();
@@ -771,7 +832,10 @@ fn db_tool_definitions() -> Vec<ToolDefinition> {
 }
 
 fn is_db_tool(name: &str) -> bool {
-    matches!(name, "list_connections" | "list_databases" | "list_tables" | "get_table_schema")
+    matches!(
+        name,
+        "list_connections" | "list_databases" | "list_tables" | "get_table_schema"
+    )
 }
 
 async fn execute_db_tool(state: &AppState, tool_call: &ToolCall) -> String {
@@ -796,7 +860,11 @@ async fn execute_db_tool(state: &AppState, tool_call: &ToolCall) -> String {
             let config_id = args["config_id"].as_str().unwrap_or("");
             let tables: Vec<String> = args["tables"]
                 .as_array()
-                .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|v| v.as_str().map(String::from))
+                        .collect()
+                })
                 .unwrap_or_default();
             crate::services::db_tools::get_table_schema(cm, config_id, &tables).await
         }
@@ -852,14 +920,17 @@ async fn run_streaming_tool_loop(
                             final_usage = chunk.usage;
                             final_response_id = chunk.response_id;
                             if !content.is_empty() || reasoning.is_some() {
-                                on_chunk_c(&rid_c, Ok(StreamChunk {
-                                    content,
-                                    reasoning,
-                                    done: false,
-                                    usage: None,
-                                    tool_calls: None,
-                                    response_id: None,
-                                }));
+                                on_chunk_c(
+                                    &rid_c,
+                                    Ok(StreamChunk {
+                                        content,
+                                        reasoning,
+                                        done: false,
+                                        usage: None,
+                                        tool_calls: None,
+                                        response_id: None,
+                                    }),
+                                );
                             }
                         } else {
                             full_content.push_str(&chunk.content);
@@ -903,18 +974,26 @@ async fn run_streaming_tool_loop(
         let db_tools: Vec<ToolCall> = result
             .tool_calls
             .as_ref()
-            .map(|tcs| tcs.iter().filter(|tc| is_db_tool(&tc.name)).cloned().collect())
+            .map(|tcs| {
+                tcs.iter()
+                    .filter(|tc| is_db_tool(&tc.name))
+                    .cloned()
+                    .collect()
+            })
             .unwrap_or_default();
 
         if db_tools.is_empty() {
-            on_chunk(request_id, Ok(StreamChunk {
-                content: String::new(),
-                reasoning: None,
-                done: true,
-                usage: result.usage,
-                tool_calls: result.tool_calls,
-                response_id: result.response_id,
-            }));
+            on_chunk(
+                request_id,
+                Ok(StreamChunk {
+                    content: String::new(),
+                    reasoning: None,
+                    done: true,
+                    usage: result.usage,
+                    tool_calls: result.tool_calls,
+                    response_id: result.response_id,
+                }),
+            );
             return Ok(request_id.to_string());
         }
 
@@ -936,7 +1015,11 @@ async fn run_streaming_tool_loop(
         request.messages.push(ChatMessage {
             role: MessageRole::Assistant,
             content: result.content,
-            reasoning: if result.reasoning.is_empty() { None } else { Some(result.reasoning) },
+            reasoning: if result.reasoning.is_empty() {
+                None
+            } else {
+                Some(result.reasoning)
+            },
             tool_calls: result.tool_calls.clone(),
             tool_call_id: None,
         });
@@ -959,14 +1042,17 @@ async fn run_streaming_tool_loop(
     }
 
     tracing::warn!(%request_id, "{cmd_label}: reached max tool rounds");
-    on_chunk(request_id, Ok(StreamChunk {
-        content: String::new(),
-        reasoning: None,
-        done: true,
-        usage: None,
-        tool_calls: None,
-        response_id: None,
-    }));
+    on_chunk(
+        request_id,
+        Ok(StreamChunk {
+            content: String::new(),
+            reasoning: None,
+            done: true,
+            usage: None,
+            tool_calls: None,
+            response_id: None,
+        }),
+    );
     Ok(request_id.to_string())
 }
 
@@ -1018,14 +1104,19 @@ pub(crate) async fn ai_chat_impl(
     if include_schema {
         if let Some(ref conn_id) = connection_id {
             let db = database.as_deref().unwrap_or("");
-            if let Ok((driver, _handle)) =
-                state.connection_manager.get_connection(conn_id).await
-            {
+            if let Ok((driver, _handle)) = state.connection_manager.get_connection(conn_id).await {
                 let pinned = context_tables.clone().unwrap_or_default();
                 let supports_tools = provider.supports_tools();
                 let pipeline = SchemaContextPipeline::new(state.schema_context_builder.clone());
                 match pipeline
-                    .resolve(conn_id, db, &pinned, supports_tools, budget::PINNED_DDL, budget::FALLBACK_DDL)
+                    .resolve(
+                        conn_id,
+                        db,
+                        &pinned,
+                        supports_tools,
+                        budget::PINNED_DDL,
+                        budget::FALLBACK_DDL,
+                    )
                     .await
                 {
                     Ok(seed) => {
@@ -1044,7 +1135,10 @@ pub(crate) async fn ai_chat_impl(
                         };
                         vars.insert("connections", connections_ctx.as_str());
 
-                        let base_tpl = state.prompt_resolver.resolve(prompt_scenario, Some(driver.as_ref()), &lang).await;
+                        let base_tpl = state
+                            .prompt_resolver
+                            .resolve(prompt_scenario, Some(driver.as_ref()), &lang)
+                            .await;
                         let base = crate::ai::prompt_resolver::render_template(&base_tpl, &vars);
 
                         let desc = if is_workflow {
@@ -1085,7 +1179,10 @@ pub(crate) async fn ai_chat_impl(
             vars.insert("connections", connections_ctx.as_str());
             vars.insert("schema", "");
             vars.insert("db_type", "");
-            let tpl = state.prompt_resolver.resolve(prompt_scenario, None, &lang).await;
+            let tpl = state
+                .prompt_resolver
+                .resolve(prompt_scenario, None, &lang)
+                .await;
             let prompt = crate::ai::prompt_resolver::render_template(&tpl, &vars);
             full_messages.push(ChatMessage {
                 role: MessageRole::System,
@@ -1095,7 +1192,10 @@ pub(crate) async fn ai_chat_impl(
                 tool_call_id: None,
             });
         } else {
-            let chat_prompt = state.prompt_resolver.resolve(prompt_scenario, None, &lang).await;
+            let chat_prompt = state
+                .prompt_resolver
+                .resolve(prompt_scenario, None, &lang)
+                .await;
             full_messages.push(ChatMessage {
                 role: MessageRole::System,
                 content: chat_prompt,
@@ -1230,7 +1330,10 @@ async fn build_connections_context(state: &AppState, lang: &str) -> String {
     };
     lines.push(header.to_string());
     for c in &conns {
-        lines.push(format!("- \"{}\" ({:?}) — id: {}", c.name, c.database_type, c.id));
+        lines.push(format!(
+            "- \"{}\" ({:?}) — id: {}",
+            c.name, c.database_type, c.id
+        ));
     }
     lines.join("\n")
 }
@@ -1476,9 +1579,7 @@ pub async fn workflow_reload(state: State<'_, AppState>) -> Result<(), CommandEr
 }
 
 #[tauri::command]
-pub async fn workflow_get_dir(
-    state: State<'_, AppState>,
-) -> Result<String, CommandError> {
+pub async fn workflow_get_dir(state: State<'_, AppState>) -> Result<String, CommandError> {
     Ok(state
         .workflow_registry
         .workflows_dir()
@@ -1565,14 +1666,27 @@ pub(crate) async fn ai_generate_schema_doc_impl(
         let mut select_vars = HashMap::new();
         select_vars.insert("db_type", db_type.as_str());
         select_vars.insert("table_names", table_names_str.as_str());
-        let select_tpl = state.prompt_resolver.resolve(PromptScenario::SchemaDocSelectTables, Some(driver_ref.as_ref()), &lang).await;
+        let select_tpl = state
+            .prompt_resolver
+            .resolve(
+                PromptScenario::SchemaDocSelectTables,
+                Some(driver_ref.as_ref()),
+                &lang,
+            )
+            .await;
         let select_content = prompt_resolver::render_template(&select_tpl, &select_vars);
 
         let select_request = CompletionRequest {
             request_id: Uuid::new_v4().to_string(),
             model: ai_config.model.clone(),
             messages: vec![
-                ChatMessage { role: MessageRole::System, content: select_content, reasoning: None, tool_calls: None, tool_call_id: None },
+                ChatMessage {
+                    role: MessageRole::System,
+                    content: select_content,
+                    reasoning: None,
+                    tool_calls: None,
+                    tool_call_id: None,
+                },
                 ChatMessage {
                     role: MessageRole::User,
                     content: "Select the important user tables.".into(),
@@ -1582,7 +1696,7 @@ pub(crate) async fn ai_generate_schema_doc_impl(
                 },
             ],
             temperature: Some(0.0),
-    
+
             stop: None,
             tools: None,
             previous_response_id: None,
@@ -1613,7 +1727,12 @@ pub(crate) async fn ai_generate_schema_doc_impl(
     // Step 2: Get detailed schema for selected tables only
     let context = state
         .schema_context_builder
-        .build_selective_context(&connection_id, &database, &selected_tables, budget::SCHEMA_DOC)
+        .build_selective_context(
+            &connection_id,
+            &database,
+            &selected_tables,
+            budget::SCHEMA_DOC,
+        )
         .await
         .cmd_err("ai_generate_schema_doc")?;
 
@@ -1625,14 +1744,23 @@ pub(crate) async fn ai_generate_schema_doc_impl(
     let mut doc_vars = HashMap::new();
     doc_vars.insert("db_type", context.database_type.as_str());
     doc_vars.insert("schema", context.schema_ddl.as_str());
-    let doc_tpl = state.prompt_resolver.resolve(PromptScenario::SchemaDoc, Some(driver_ref.as_ref()), &lang).await;
+    let doc_tpl = state
+        .prompt_resolver
+        .resolve(PromptScenario::SchemaDoc, Some(driver_ref.as_ref()), &lang)
+        .await;
     let doc_system_content = prompt_resolver::render_template(&doc_tpl, &doc_vars);
 
     let mut request = CompletionRequest {
         request_id: Uuid::new_v4().to_string(),
         model: ai_config.model.clone(),
         messages: vec![
-            ChatMessage { role: MessageRole::System, content: doc_system_content, reasoning: None, tool_calls: None, tool_call_id: None },
+            ChatMessage {
+                role: MessageRole::System,
+                content: doc_system_content,
+                reasoning: None,
+                tool_calls: None,
+                tool_call_id: None,
+            },
             ChatMessage {
                 role: MessageRole::User,
                 content: user_content.into(),
@@ -1715,7 +1843,11 @@ pub(crate) async fn ai_diagnose_connection_impl(
         .ok_or_else(|| CommandError::NotFound("Connection config not found".into()))?;
 
     let ssl_str = format!("{:?}", conn_info.ssl_mode);
-    let ssh_str = if conn_info.ssh_tunnel.is_some() { "enabled" } else { "disabled" };
+    let ssh_str = if conn_info.ssh_tunnel.is_some() {
+        "enabled"
+    } else {
+        "disabled"
+    };
     let conn_summary = format!(
         "Connection type: {:?}\nHost: {}\nPort: {}\nDatabase: {}\nUsername: {}\nSSL: {}\nSSH Tunnel: {}\nTimeout: {}s",
         conn_info.database_type,
@@ -1729,18 +1861,25 @@ pub(crate) async fn ai_diagnose_connection_impl(
     );
 
     let lang = state.store.get_settings().await.language;
-    let conn_diag_prompt = state.prompt_resolver.resolve(PromptScenario::ConnectionDiagnose, None, &lang).await;
+    let conn_diag_prompt = state
+        .prompt_resolver
+        .resolve(PromptScenario::ConnectionDiagnose, None, &lang)
+        .await;
 
     let mut request = CompletionRequest {
         request_id: Uuid::new_v4().to_string(),
         model: ai_config.model.clone(),
         messages: vec![
-            ChatMessage { role: MessageRole::System, content: conn_diag_prompt, reasoning: None, tool_calls: None, tool_call_id: None },
+            ChatMessage {
+                role: MessageRole::System,
+                content: conn_diag_prompt,
+                reasoning: None,
+                tool_calls: None,
+                tool_call_id: None,
+            },
             ChatMessage {
                 role: MessageRole::User,
-                content: format!(
-                    "Connection details:\n{conn_summary}\n\nError:\n{error_message}"
-                ),
+                content: format!("Connection details:\n{conn_summary}\n\nError:\n{error_message}"),
                 reasoning: None,
                 tool_calls: None,
                 tool_call_id: None,
@@ -1795,16 +1934,15 @@ pub(crate) async fn ai_analyze_queries_impl(
 
     let history = state.store.get_query_history(200).await;
     let filtered: Vec<_> = if let Some(ref cid) = connection_id {
-        history
-            .iter()
-            .filter(|h| &h.connection_id == cid)
-            .collect()
+        history.iter().filter(|h| &h.connection_id == cid).collect()
     } else {
         history.iter().collect()
     };
 
     if filtered.is_empty() {
-        return Err(CommandError::Validation("No query history available".into()));
+        return Err(CommandError::Validation(
+            "No query history available".into(),
+        ));
     }
 
     let queries_text = filtered
@@ -1815,13 +1953,22 @@ pub(crate) async fn ai_analyze_queries_impl(
         .join("\n---\n");
 
     let lang = state.store.get_settings().await.language;
-    let query_summary_prompt = state.prompt_resolver.resolve(PromptScenario::QuerySummary, None, &lang).await;
+    let query_summary_prompt = state
+        .prompt_resolver
+        .resolve(PromptScenario::QuerySummary, None, &lang)
+        .await;
 
     let mut request = CompletionRequest {
         request_id: Uuid::new_v4().to_string(),
         model: ai_config.model.clone(),
         messages: vec![
-            ChatMessage { role: MessageRole::System, content: query_summary_prompt, reasoning: None, tool_calls: None, tool_call_id: None },
+            ChatMessage {
+                role: MessageRole::System,
+                content: query_summary_prompt,
+                reasoning: None,
+                tool_calls: None,
+                tool_call_id: None,
+            },
             ChatMessage {
                 role: MessageRole::User,
                 content: format!(
@@ -1874,10 +2021,7 @@ pub(crate) async fn prompt_list_impl(
         } else {
             None
         };
-    let prompts = state
-        .prompt_resolver
-        .list_prompts(driver.as_deref())
-        .await;
+    let prompts = state.prompt_resolver.list_prompts(driver.as_deref()).await;
     Ok(prompts)
 }
 
@@ -1984,13 +2128,19 @@ mod tests {
     #[test]
     fn test_extract_json_boundary_nested() {
         let input = r#"{"a":{"b":"c"},"d":[1,2]}trailing"#;
-        assert_eq!(extract_json_boundary(input), Some(r#"{"a":{"b":"c"},"d":[1,2]}"#));
+        assert_eq!(
+            extract_json_boundary(input),
+            Some(r#"{"a":{"b":"c"},"d":[1,2]}"#)
+        );
     }
 
     #[test]
     fn test_extract_json_boundary_with_escaped_quotes() {
         let input = r#"{"msg":"say \"hello\""}extra"#;
-        assert_eq!(extract_json_boundary(input), Some(r#"{"msg":"say \"hello\""}"#));
+        assert_eq!(
+            extract_json_boundary(input),
+            Some(r#"{"msg":"say \"hello\""}"#)
+        );
     }
 
     #[test]
@@ -2007,7 +2157,9 @@ mod tests {
     #[test]
     fn test_parse_ai_json_with_trailing_reasoning() {
         #[derive(serde::Deserialize)]
-        struct Simple { key: String }
+        struct Simple {
+            key: String,
+        }
         let raw = r#"{"key":"val"}The user wants me to analyze..."#;
         let result: Result<Simple, _> = parse_ai_json(raw, None, "test");
         assert!(result.is_ok());
@@ -2031,7 +2183,10 @@ mod tests {
         assert_eq!(result.solutions.len(), 2);
         assert_eq!(result.category, "auth");
         assert!(result.solutions[0].command.is_none());
-        assert_eq!(result.solutions[1].command.as_deref(), Some("CREATE USER test"));
+        assert_eq!(
+            result.solutions[1].command.as_deref(),
+            Some("CREATE USER test")
+        );
     }
 
     #[test]
@@ -2134,7 +2289,10 @@ mod tests {
             provider_defaults(AiProviderType::DeepSeek),
             ("https://api.deepseek.com", "open_ai_responses")
         );
-        assert_eq!(provider_defaults(AiProviderType::Custom), ("", "open_ai_compatible"));
+        assert_eq!(
+            provider_defaults(AiProviderType::Custom),
+            ("", "open_ai_compatible")
+        );
     }
 
     #[test]
@@ -2194,25 +2352,26 @@ mod tests {
 
         let captured = Arc::new(Mutex::new(Captured::default()));
         let cap = captured.clone();
-        let cb: StreamCallback = Arc::new(move |request_id, result| {
-            match result {
-                Ok(chunk) => {
-                    let mut payload = serde_json::json!({
-                        "requestId": request_id,
-                        "content": chunk.content,
-                        "done": chunk.done,
-                    });
-                    if let Some(reasoning) = &chunk.reasoning {
-                        payload["reasoning"] = serde_json::Value::String(reasoning.clone());
-                    }
-                    cap.lock().unwrap().events.push(("ai:stream-chunk".into(), payload));
+        let cb: StreamCallback = Arc::new(move |request_id, result| match result {
+            Ok(chunk) => {
+                let mut payload = serde_json::json!({
+                    "requestId": request_id,
+                    "content": chunk.content,
+                    "done": chunk.done,
+                });
+                if let Some(reasoning) = &chunk.reasoning {
+                    payload["reasoning"] = serde_json::Value::String(reasoning.clone());
                 }
-                Err(e) => {
-                    cap.lock().unwrap().events.push((
-                        "ai:stream-error".into(),
-                        serde_json::json!({ "requestId": request_id, "error": e.to_string() }),
-                    ));
-                }
+                cap.lock()
+                    .unwrap()
+                    .events
+                    .push(("ai:stream-chunk".into(), payload));
+            }
+            Err(e) => {
+                cap.lock().unwrap().events.push((
+                    "ai:stream-error".into(),
+                    serde_json::json!({ "requestId": request_id, "error": e.to_string() }),
+                ));
             }
         });
 

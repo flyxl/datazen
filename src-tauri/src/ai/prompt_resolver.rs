@@ -150,16 +150,21 @@ impl PromptResolver {
         }
 
         if !templates.is_empty() {
-            tracing::info!("[prompts] loaded {} templates for lang={lang}", templates.len());
-            self.template_cache.write().await.insert(lang.to_string(), templates);
+            tracing::info!(
+                "[prompts] loaded {} templates for lang={lang}",
+                templates.len()
+            );
+            self.template_cache
+                .write()
+                .await
+                .insert(lang.to_string(), templates);
         }
     }
 
     async fn save(&self) -> Result<(), String> {
         let overrides = self.user_overrides.read().await.clone();
         let file = PromptOverridesFile { overrides };
-        let json =
-            serde_json::to_string_pretty(&file).map_err(|e| e.to_string())?;
+        let json = serde_json::to_string_pretty(&file).map_err(|e| e.to_string())?;
         if let Some(parent) = self.file_path.parent() {
             tokio::fs::create_dir_all(parent)
                 .await
@@ -239,18 +244,13 @@ impl PromptResolver {
     }
 
     /// Get all prompt infos for a specific driver type (for settings UI).
-    pub async fn list_prompts(
-        &self,
-        driver: Option<&dyn DatabaseDriver>,
-    ) -> Vec<PromptInfo> {
+    pub async fn list_prompts(&self, driver: Option<&dyn DatabaseDriver>) -> Vec<PromptInfo> {
         let driver_type_name = driver.and_then(|d| {
             serde_json::to_value(&d.driver_type())
                 .ok()
                 .and_then(|v| v.as_str().map(String::from))
         });
-        let driver_prompts = driver
-            .map(|d| d.prompt_overrides())
-            .unwrap_or_default();
+        let driver_prompts = driver.map(|d| d.prompt_overrides()).unwrap_or_default();
         let overrides = self.user_overrides.read().await;
         let cache = self.template_cache.read().await;
 
@@ -321,9 +321,8 @@ impl PromptResolver {
     pub async fn set_override(&self, entry: PromptOverrideEntry) -> Result<(), String> {
         {
             let mut overrides = self.user_overrides.write().await;
-            overrides.retain(|o| {
-                !(o.driver_type == entry.driver_type && o.scenario == entry.scenario)
-            });
+            overrides
+                .retain(|o| !(o.driver_type == entry.driver_type && o.scenario == entry.scenario));
             overrides.push(entry);
         }
         self.save().await
@@ -337,9 +336,7 @@ impl PromptResolver {
     ) -> Result<(), String> {
         {
             let mut overrides = self.user_overrides.write().await;
-            overrides.retain(|o| {
-                !(o.driver_type == driver_type && o.scenario == scenario)
-            });
+            overrides.retain(|o| !(o.driver_type == driver_type && o.scenario == scenario));
         }
         self.save().await
     }
@@ -372,13 +369,23 @@ fn embedded_default(scenario: PromptScenario) -> &'static str {
         PromptScenario::Nl2Sql => include_str!("../../resources/prompts/en/nl2sql.txt"),
         PromptScenario::Diagnose => include_str!("../../resources/prompts/en/diagnose.txt"),
         PromptScenario::NlFilter => include_str!("../../resources/prompts/en/nl_filter.txt"),
-        PromptScenario::SchemaDocSelectTables => include_str!("../../resources/prompts/en/schema_doc_select_tables.txt"),
+        PromptScenario::SchemaDocSelectTables => {
+            include_str!("../../resources/prompts/en/schema_doc_select_tables.txt")
+        }
         PromptScenario::SchemaDoc => include_str!("../../resources/prompts/en/schema_doc.txt"),
-        PromptScenario::ConnectionDiagnose => include_str!("../../resources/prompts/en/connection_diagnose.txt"),
-        PromptScenario::QuerySummary => include_str!("../../resources/prompts/en/query_summary.txt"),
-        PromptScenario::ExplainAnalysis => include_str!("../../resources/prompts/en/explain_analysis.txt"),
+        PromptScenario::ConnectionDiagnose => {
+            include_str!("../../resources/prompts/en/connection_diagnose.txt")
+        }
+        PromptScenario::QuerySummary => {
+            include_str!("../../resources/prompts/en/query_summary.txt")
+        }
+        PromptScenario::ExplainAnalysis => {
+            include_str!("../../resources/prompts/en/explain_analysis.txt")
+        }
         PromptScenario::Chat => include_str!("../../resources/prompts/en/chat.txt"),
-        PromptScenario::WorkflowGenerate => include_str!("../../resources/prompts/en/workflow_generate.txt"),
+        PromptScenario::WorkflowGenerate => {
+            include_str!("../../resources/prompts/en/workflow_generate.txt")
+        }
     }
 }
 
@@ -561,9 +568,7 @@ mod tests {
             .await
             .unwrap();
 
-        let result = resolver
-            .resolve(PromptScenario::Chat, None, "en")
-            .await;
+        let result = resolver.resolve(PromptScenario::Chat, None, "en").await;
         // Without a driver instance, driver-specific override is not matched; global default applies.
         assert!(result.contains("database assistant"));
 

@@ -1,6 +1,7 @@
 //! Multi-format connection import:
 //! DataZen / DBX / DBeaver / Navicat / DataGrip / TablePlus.
 
+mod app_source;
 mod datagrip;
 mod datazen;
 mod dbeaver;
@@ -10,9 +11,11 @@ mod navicat;
 mod rncryptor;
 mod tableplus;
 
+pub use app_source::{detect_import_path, resolve_import_files, ImportApp, PathContext};
+
 use super::error::CommandError;
 use crate::db::ConnectionConfig;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 pub use datazen::build_encrypted_export;
 #[cfg(test)]
@@ -115,6 +118,18 @@ pub fn parse_import_file(
         return tableplus::parse(bytes, pw);
     }
 
+    if bytes.starts_with(b"SQLite format 3") || file_name == "dbx.db" || ext == "db" {
+        return dbx::parse_sqlite(path);
+    }
+
+    if ext == "plist"
+        || file_name == "connections.plist"
+        || bytes.starts_with(b"bplist")
+        || (std::str::from_utf8(bytes).is_ok_and(|t| t.contains("<plist")))
+    {
+        return tableplus::parse_plist(bytes, Some(path));
+    }
+
     let text = std::str::from_utf8(bytes).map_err(|_| {
         CommandError::Validation(
             "Import file is not valid UTF-8 text (for TablePlus use .tableplusconnection)".into(),
@@ -128,7 +143,8 @@ pub fn parse_import_file(
         return navicat::parse(text);
     }
 
-    if text.contains("<data-source") || text.contains("jdbc-url")
+    if text.contains("<data-source")
+        || text.contains("jdbc-url")
         || (file_name.contains("datasources") && ext == "xml")
     {
         if text.contains("<data-source") || text.contains("jdbc-url") {
@@ -210,6 +226,49 @@ pub fn parse_import_file(
     ))
 }
 
+pub fn parse_import_files(
+    paths: &[PathBuf],
+    password: Option<&str>,
+) -> Result<ParsedImport, CommandError> {
+    if paths.is_empty() {
+        return Err(CommandError::Validation(
+            "No connection files to import".into(),
+        ));
+    }
+    let mut connections = Vec::new();
+    let mut groups = Vec::new();
+    let mut skipped = Vec::new();
+    let mut format = None;
+    for path in paths {
+        let bytes = std::fs::read(path).map_err(|e| {
+            CommandError::Validation(format!("Failed to read {}: {e}", path.display()))
+        })?;
+        let parsed = parse_import_file(path, &bytes, password)?;
+        format = Some(parsed.format);
+        connections.extend(parsed.connections);
+        groups.extend(parsed.groups);
+        skipped.extend(parsed.skipped);
+    }
+    groups.sort();
+    groups.dedup();
+    Ok(ParsedImport {
+        format: format.unwrap_or(ImportFormat::DataZen),
+        connections,
+        groups,
+        skipped,
+    })
+}
+
+pub fn parse_from_app(
+    app: ImportApp,
+    custom_path: Option<&Path>,
+    password: Option<&str>,
+    ctx: &PathContext,
+) -> Result<ParsedImport, CommandError> {
+    let files = resolve_import_files(app, custom_path, ctx)?;
+    parse_import_files(&files, password)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -255,7 +314,9 @@ mod tests {
         assert_eq!(
             serde_json::from_str::<serde_json::Value>(json)
                 .ok()
-                .and_then(|v| v.get("format").and_then(|x| x.as_str().map(|s| s.to_string())))
+                .and_then(|v| v
+                    .get("format")
+                    .and_then(|x| x.as_str().map(|s| s.to_string())))
                 .as_deref(),
             Some("dbx-encrypted")
         );
@@ -289,5 +350,57 @@ mod tests {
         let parsed = parse_connections_import(json, None).unwrap();
         assert!(parsed.connections.is_empty());
         assert_eq!(parsed.skipped.len(), 1);
+    }
+
+    #[test]
+    fn detect_sqlite_header_as_dbx() {
+        let dir =
+            std::env::temp_dir().join(format!("datazen-import-sqlite-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("dbx.db");
+        {
+            let conn = rusqlite::Connection::open(&path).unwrap();
+            conn.execute(
+                "CREATE TABLE connections (id TEXT PRIMARY KEY, config_json TEXT NOT NULL)",
+                [],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO connections (id, config_json) VALUES (?1, ?2)",
+                rusqlite::params![
+                    "c1",
+                    r#"{"name":"pg","db_type":"postgresql","host":"h","port":5432}"#
+                ],
+            )
+            .unwrap();
+        }
+        let bytes = std::fs::read(&path).unwrap();
+        let parsed = parse_import_file(&path, &bytes, None).unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(parsed.format, ImportFormat::DbxPlain);
+        assert_eq!(parsed.connections[0].database_type, "postgresql");
+    }
+
+    #[test]
+    fn parse_from_app_uses_custom_ncx() {
+        let dir = tempfile::tempdir().unwrap();
+        let ncx = dir.path().join("export.ncx");
+        std::fs::write(
+            &ncx,
+            r#"<?xml version="1.0"?>
+<Connections>
+  <Connection ConnectionName="PG" ConnType="POSTGRESQL" Host="h" Port="5432" UserName="u" Database="d" />
+</Connections>"#,
+        )
+        .unwrap();
+        let ctx = PathContext {
+            home: dir.path().to_path_buf(),
+            data: dir.path().join("data"),
+            data_local: dir.path().join("local"),
+            config: dir.path().join("config"),
+        };
+        let parsed = parse_from_app(ImportApp::Navicat, Some(&ncx), None, &ctx).unwrap();
+        assert_eq!(parsed.format, ImportFormat::Navicat);
+        assert_eq!(parsed.connections[0].name, "PG");
     }
 }

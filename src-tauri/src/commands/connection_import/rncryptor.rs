@@ -51,7 +51,9 @@ pub fn decrypt_password(data: &[u8], password: &str) -> Result<Vec<u8>, CommandE
         HmacSha256::new_from_slice(&hmac_key).map_err(|e| CommandError::Internal(e.to_string()))?;
     mac.update(header_and_cipher);
     mac.verify_slice(hmac).map_err(|_| {
-        CommandError::Validation("TablePlus decryption failed: wrong password or corrupt file".into())
+        CommandError::Validation(
+            "TablePlus decryption failed: wrong password or corrupt file".into(),
+        )
     })?;
 
     let mut buf = ciphertext.to_vec();

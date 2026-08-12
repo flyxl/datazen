@@ -45,7 +45,9 @@ pub(crate) fn parse_restore_options(options: &[String]) -> BackupRestoreOptions 
     }
 }
 
-pub(crate) fn validate_backup_filter_extension(filter_extension: &str) -> Result<String, CommandError> {
+pub(crate) fn validate_backup_filter_extension(
+    filter_extension: &str,
+) -> Result<String, CommandError> {
     let ext = filter_extension.trim_start_matches('.').to_lowercase();
     let allowed = ["sql", "gz", "dump"];
     if !allowed.contains(&ext.as_str()) {
@@ -178,13 +180,7 @@ pub async fn restore_database(
     options: Option<Vec<String>>,
 ) -> Result<(), CommandError> {
     require_webdriver_path_ipc("Direct path restore disabled; use restore_database_with_dialog")?;
-    restore_database_from_path(
-        &state,
-        connection_id,
-        PathBuf::from(input_path),
-        options,
-    )
-    .await
+    restore_database_from_path(&state, connection_id, PathBuf::from(input_path), options).await
 }
 
 /// Native open dialog + restore. Returns `true` if restored.
@@ -300,8 +296,9 @@ mod tests {
 
     #[test]
     fn require_webdriver_path_ipc_gates_without_feature() {
-        let result =
-            require_webdriver_path_ipc("Direct path backup disabled; use backup_database_with_dialog");
+        let result = require_webdriver_path_ipc(
+            "Direct path backup disabled; use backup_database_with_dialog",
+        );
         if cfg!(feature = "webdriver") {
             assert!(result.is_ok());
         } else {
@@ -356,16 +353,9 @@ mod tests {
         let test = TestAppState::with_tables().await;
         let path = test._temp.path().join("fail.sql");
         assert!(
-            backup_database_to_path(
-                &test.state,
-                "missing".into(),
-                None,
-                path,
-                None,
-                None,
-            )
-            .await
-            .is_err()
+            backup_database_to_path(&test.state, "missing".into(), None, path, None, None,)
+                .await
+                .is_err()
         );
     }
 }

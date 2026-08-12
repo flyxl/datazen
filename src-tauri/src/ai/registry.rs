@@ -96,9 +96,7 @@ mod tests {
     #[tokio::test]
     async fn test_register_and_get() {
         let registry = AiProviderRegistry::new();
-        registry
-            .register(Arc::new(OpenAiProvider::new()))
-            .await;
+        registry.register(Arc::new(OpenAiProvider::new())).await;
 
         let provider = registry.get(&AiProviderType::OpenAi).await;
         assert!(provider.is_some());
@@ -110,12 +108,8 @@ mod tests {
     #[tokio::test]
     async fn test_register_overwrites() {
         let registry = AiProviderRegistry::new();
-        registry
-            .register(Arc::new(OpenAiProvider::new()))
-            .await;
-        registry
-            .register(Arc::new(OpenAiProvider::new()))
-            .await;
+        registry.register(Arc::new(OpenAiProvider::new())).await;
+        registry.register(Arc::new(OpenAiProvider::new())).await;
 
         assert_eq!(registry.available_providers().await.len(), 1);
     }
@@ -123,12 +117,8 @@ mod tests {
     #[tokio::test]
     async fn test_available_providers() {
         let registry = AiProviderRegistry::new();
-        registry
-            .register(Arc::new(OpenAiProvider::new()))
-            .await;
-        registry
-            .register(Arc::new(AnthropicProvider::new()))
-            .await;
+        registry.register(Arc::new(OpenAiProvider::new())).await;
+        registry.register(Arc::new(AnthropicProvider::new())).await;
 
         let types = registry.available_providers().await;
         assert_eq!(types.len(), 2);
@@ -139,9 +129,7 @@ mod tests {
     #[tokio::test]
     async fn test_list_providers() {
         let registry = AiProviderRegistry::new();
-        registry
-            .register(Arc::new(AnthropicProvider::new()))
-            .await;
+        registry.register(Arc::new(AnthropicProvider::new())).await;
 
         let list = registry.list_providers().await;
         assert_eq!(list.len(), 1);
@@ -171,21 +159,11 @@ mod tests {
 /// Registers built-in AI providers and discovers plugin providers via `inventory`
 /// into an existing registry (used for deferred / in-place startup warm-up).
 pub async fn register_ai_providers(registry: &AiProviderRegistry) {
-    registry
-        .register(Arc::new(OpenAiProvider::new()))
-        .await;
-    registry
-        .register(Arc::new(AnthropicProvider::new()))
-        .await;
-    registry
-        .register(Arc::new(DeepSeekProvider::new()))
-        .await;
-    registry
-        .register(Arc::new(OllamaProvider::new()))
-        .await;
-    registry
-        .register(Arc::new(CustomProvider::new()))
-        .await;
+    registry.register(Arc::new(OpenAiProvider::new())).await;
+    registry.register(Arc::new(AnthropicProvider::new())).await;
+    registry.register(Arc::new(DeepSeekProvider::new())).await;
+    registry.register(Arc::new(OllamaProvider::new())).await;
+    registry.register(Arc::new(CustomProvider::new())).await;
 
     for factory in iter_ai_provider_factories() {
         let pv = factory.protocol_version();

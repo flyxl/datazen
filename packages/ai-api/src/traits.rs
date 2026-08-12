@@ -35,10 +35,7 @@ pub trait AiProvider: Send + Sync {
     async fn initialize(&self, config: &AiProviderConfig) -> Result<(), AiError>;
 
     /// Non-streaming completion request.
-    async fn complete(
-        &self,
-        request: &CompletionRequest,
-    ) -> Result<CompletionResponse, AiError>;
+    async fn complete(&self, request: &CompletionRequest) -> Result<CompletionResponse, AiError>;
 
     /// Streaming completion. Sends chunks through the `mpsc::Sender`.
     /// Default implementation falls back to a single non-streaming call.
