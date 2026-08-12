@@ -108,7 +108,8 @@ impl<T, E: Into<CommandError>> CmdExt<T> for Result<T, E> {
     fn cmd_err(self, cmd: &str) -> Result<T, CommandError> {
         self.map_err(|e| {
             let err: CommandError = e.into();
-            tracing::error!(cmd, error = %err);
+            let redacted = crate::log_redact::redact_secrets_for_log(&err.to_string());
+            tracing::error!(cmd, error = %redacted);
             err
         })
     }
@@ -158,5 +159,15 @@ mod tests {
         let err: Result<i32, ConnectionError> =
             Err(ConnectionError::ConnectionNotFound("gone".into()));
         assert!(err.cmd_err("test_cmd").is_err());
+    }
+
+    #[test]
+    fn cmd_ext_preserves_original_error_for_ipc() {
+        let err: Result<i32, DriverError> = Err(DriverError::ConnectionFailed(
+            "mysql://root:s3cret@127.0.0.1:3306/db".into(),
+        ));
+        let mapped = err.cmd_err("test_connection").unwrap_err();
+        // IPC payload keeps the original message; only the log line is redacted.
+        assert!(mapped.to_string().contains("s3cret"));
     }
 }

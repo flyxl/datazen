@@ -6,7 +6,7 @@ use datazen_driver_api::*;
 use rust_decimal::prelude::ToPrimitive;
 use sqlx::pool::PoolConnection;
 use sqlx::postgres::PgPoolOptions;
-use sqlx::{Column, PgPool, Postgres, Row};
+use sqlx::{Column, Executor, PgPool, Postgres, Row};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -184,6 +184,25 @@ impl PostgresDriver {
                 nullable: true,
             })
             .collect()
+    }
+
+    async fn describe_columns<'e, E>(executor: E, sql: &str) -> Vec<ColumnInfo>
+    where
+        E: Executor<'e, Database = Postgres>,
+    {
+        match executor.describe(sql).await {
+            Ok(desc) => desc
+                .columns()
+                .iter()
+                .enumerate()
+                .map(|(i, c)| ColumnInfo {
+                    name: c.name().to_string(),
+                    data_type: c.type_info().to_string(),
+                    nullable: desc.nullable(i).unwrap_or(true),
+                })
+                .collect(),
+            Err(_) => Vec::new(),
+        }
     }
 
     fn decode_rows(rows: &[sqlx::postgres::PgRow]) -> (Vec<ColumnInfo>, Vec<Vec<Option<Value>>>) {
@@ -420,7 +439,7 @@ fn build_pg_options(
         opts = opts.password(password);
     }
 
-    opts = opts.log_statements(tracing::log::LevelFilter::Warn);
+    opts = opts.log_statements(tracing::log::LevelFilter::Trace);
     Ok(opts)
 }
 
@@ -773,7 +792,10 @@ impl DatabaseDriver for PostgresDriver {
                     .await
                     .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
                 let elapsed = start.elapsed().as_millis() as u64;
-                let (columns, result_rows) = Self::decode_rows(&rows);
+                let (mut columns, result_rows) = Self::decode_rows(&rows);
+                if columns.is_empty() && result_rows.is_empty() {
+                    columns = Self::describe_columns(&mut **conn, sql).await;
+                }
                 let row_count = result_rows.len() as u64;
                 return Ok(QueryResult {
                     columns,
@@ -794,7 +816,14 @@ impl DatabaseDriver for PostgresDriver {
             .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
         let elapsed = start.elapsed().as_millis() as u64;
 
-        let (columns, result_rows) = Self::decode_rows(&rows);
+        let (mut columns, result_rows) = Self::decode_rows(&rows);
+        if columns.is_empty() && result_rows.is_empty() {
+            let mut conn = pool
+                .acquire()
+                .await
+                .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+            columns = Self::describe_columns(&mut *conn, sql).await;
+        }
         let row_count = result_rows.len() as u64;
 
         Ok(QueryResult {

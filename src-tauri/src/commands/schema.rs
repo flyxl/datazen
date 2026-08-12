@@ -264,6 +264,10 @@ pub(crate) async fn get_database_objects_impl(
         .query(&handle, &sql)
         .await
         .cmd_err("get_database_objects")?;
+    // Some drivers (notably PostgreSQL via sqlx) omit column metadata when the result set is empty.
+    if result.columns.is_empty() && result.rows.is_empty() {
+        return Ok(Vec::new());
+    }
     let name_idx = column_index(&result.columns, &["name", "Name", "Trigger", "proname"])
         .ok_or_else(|| CommandError::Internal("Object list query missing name column".into()))?;
     let schema_idx = column_index(&result.columns, &["schema", "Db", "nspname"]);
@@ -648,6 +652,21 @@ mod tests {
             .await
             .unwrap_err();
         assert!(err.to_string().contains("Unknown object kind"));
+    }
+
+    #[tokio::test]
+    async fn lists_database_objects_returns_empty_when_query_has_no_rows_and_no_columns() {
+        let opts = MockDriverOptions {
+            columns: vec![],
+            query_rows: vec![],
+            ..Default::default()
+        };
+        let test = TestAppState::with_options(opts).await;
+        let (_, conn_id) = test.save_and_connect("obj-empty").await;
+        let rows = get_database_objects_impl(&test.state, conn_id, "function".into())
+            .await
+            .unwrap();
+        assert!(rows.is_empty());
     }
 
     #[tokio::test]
