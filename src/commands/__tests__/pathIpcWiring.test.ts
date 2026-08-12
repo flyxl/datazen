@@ -60,6 +60,21 @@ describe('path IPC frontend wiring', () => {
     expect(connection).toContain("'detect_connection_import_path'");
     expect(connection).toContain("'pick_connection_import_path_with_dialog'");
 
+    const rustConfig = fs.readFileSync(
+      path.join(ROOT, '../src-tauri/src/commands/config.rs'),
+      'utf8',
+    );
+    expect(rustConfig).toContain('pub async fn pick_connection_import_path_with_dialog');
+    expect(rustConfig).toContain('run_blocking_dialog');
+    const pickFn = rustConfig.slice(
+      rustConfig.indexOf('pub async fn pick_connection_import_path_with_dialog'),
+      rustConfig.indexOf('pub async fn import_connections_from_app'),
+    );
+    expect(pickFn).toContain('blocking_pick_file');
+    expect(pickFn).toContain('blocking_pick_folder');
+    expect(pickFn).not.toContain('.pick_file(');
+    expect(pickFn).not.toContain('.pick_folder(');
+
     const main = readSrc('windows/main/MainWindow.tsx');
     expect(main).toContain('ConnectionShareDialog');
     expect(main).toContain('menu:export-connections');
