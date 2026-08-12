@@ -74,6 +74,14 @@ describe('SQL 查询模块 (SQ-001~SQ-012, TC-QUERY-006/008)', () => {
     expect(body.includes('test_col') || body.includes(`1 ${t('common.rows')}`)).toBe(true);
   });
 
+  it('流式查询超过一批的结果不应被批大小截断', async () => {
+    await openQueryTab();
+    await executeSQL('SELECT generate_series(1, 600) AS n');
+    const body = await $('body').getText();
+    expect(body).toContain(`600 ${t('common.rows')}`);
+    expect(body).not.toContain(t('query.resultTruncated', { limit: 500 }));
+  });
+
   it('结果应显示行数、列数和耗时 (SQ-004)', async () => {
     const body = await $('body').getText();
     expect(body).toContain(t('common.rows'));

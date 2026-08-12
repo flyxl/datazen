@@ -391,7 +391,7 @@ pub struct AppState {
 | 模块 | 文件 | 关键命令 |
 |------|------|---------|
 | 连接管理 | `connection.rs` | `get_connections`, `save_connection`, `test_connection`, `connect`, `disconnect`, `ping`, `get_server_info`, `available_drivers` |
-| SQL 查询 | `query.rs` | `execute_query`, `get_explain`, `cancel_query`, `get_query_history`, `favorite_query` |
+| SQL 查询 | `query.rs` | `execute_query`, `execute_query_stream`, `get_explain`, `cancel_query`, `get_query_history`, `favorite_query` |
 | Schema | `schema.rs` | `get_databases`, `get_tables`, `get_columns`, `get_table_schema`, `get_table_data`, `get_er_data` |
 | 表编辑 | `data.rs` | `commit_edits`（批量行 UPDATE） |
 | Redis | `kv.rs` | `scan_keys`, `get_key_detail` |

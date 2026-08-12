@@ -1,7 +1,7 @@
 //! DuckDB driver — embedded OLAP database (file or in-memory).
 
-use datazen_driver_api::*;
 use async_trait::async_trait;
+use datazen_driver_api::*;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
@@ -223,7 +223,11 @@ impl DatabaseDriver for DuckDbDriver {
         .await
     }
 
-    async fn query(&self, handle: &ConnectionHandle, sql: &str) -> Result<QueryResult, DriverError> {
+    async fn query(
+        &self,
+        handle: &ConnectionHandle,
+        sql: &str,
+    ) -> Result<QueryResult, DriverError> {
         let sql = sql.to_string();
         self.with_conn(handle, move |conn| {
             let start = Instant::now();
@@ -244,7 +248,11 @@ impl DatabaseDriver for DuckDbDriver {
                 .map_err(|e| DriverError::QueryFailed(format!("DuckDB read failed: {e}")))?
             {
                 let vals: Vec<Option<Value>> = (0..columns.len())
-                    .map(|i| row.get_ref::<usize>(i).ok().and_then(|v| Self::value_from_ref(v)))
+                    .map(|i| {
+                        row.get_ref::<usize>(i)
+                            .ok()
+                            .and_then(|v| Self::value_from_ref(v))
+                    })
                     .collect();
                 result_rows.push(vals);
             }
@@ -276,7 +284,8 @@ impl DatabaseDriver for DuckDbDriver {
             for stmt in statements {
                 let start = Instant::now();
                 let limited = if let Some(lim) = limit {
-                    if stmt.to_uppercase().starts_with("SELECT") && !stmt.to_uppercase().contains("LIMIT")
+                    if stmt.to_uppercase().starts_with("SELECT")
+                        && !stmt.to_uppercase().contains("LIMIT")
                     {
                         format!("{stmt} LIMIT {lim}")
                     } else {
@@ -301,7 +310,11 @@ impl DatabaseDriver for DuckDbDriver {
                     .map_err(|e| DriverError::QueryFailed(format!("DuckDB read failed: {e}")))?
                 {
                     let vals: Vec<Option<Value>> = (0..columns.len())
-                        .map(|i| row.get_ref::<usize>(i).ok().and_then(|v| Self::value_from_ref(v)))
+                        .map(|i| {
+                            row.get_ref::<usize>(i)
+                                .ok()
+                                .and_then(|v| Self::value_from_ref(v))
+                        })
                         .collect();
                     result_rows.push(vals);
                 }
@@ -318,6 +331,67 @@ impl DatabaseDriver for DuckDbDriver {
                 results,
                 total_time_ms: total_start.elapsed().as_millis() as u64,
             })
+        })
+        .await
+    }
+
+    async fn query_stream(
+        &self,
+        handle: &ConnectionHandle,
+        sql: &str,
+        limit: Option<u32>,
+        on_event: QueryStreamCallback,
+    ) -> Result<(), DriverError> {
+        let sql = sql.to_string();
+        self.with_conn(handle, move |conn| {
+            let total_start = Instant::now();
+            let statements: Vec<String> = sql
+                .split(';')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
+            if statements.is_empty() {
+                on_event(QueryStreamEvent::Done { total_time_ms: 0 });
+                return Ok(());
+            }
+            for (index, stmt) in statements.iter().enumerate() {
+                let start = Instant::now();
+                let (effective, applied) = append_select_limit(stmt, limit);
+                let mut st = conn
+                    .prepare(&effective)
+                    .map_err(|e| DriverError::QueryFailed(format!("DuckDB prepare failed: {e}")))?;
+                let mut rows = st
+                    .query([])
+                    .map_err(|e| DriverError::QueryFailed(format!("DuckDB query failed: {e}")))?;
+                let columns = rows
+                    .as_ref()
+                    .map(Self::columns_from_schema)
+                    .unwrap_or_default();
+                let col_len = columns.len();
+                let mut batcher =
+                    QueryRowBatcher::new(Arc::clone(&on_event), index, stmt.clone(), applied);
+                batcher.start(columns);
+                while let Some(row) = rows
+                    .next()
+                    .map_err(|e| DriverError::QueryFailed(format!("DuckDB read failed: {e}")))?
+                {
+                    let vals: Vec<Option<Value>> = (0..col_len)
+                        .map(|i| {
+                            row.get_ref::<usize>(i)
+                                .ok()
+                                .and_then(|v| Self::value_from_ref(v))
+                        })
+                        .collect();
+                    if !batcher.push(vals) {
+                        break;
+                    }
+                }
+                batcher.finish(start.elapsed().as_millis() as u64, None);
+            }
+            on_event(QueryStreamEvent::Done {
+                total_time_ms: total_start.elapsed().as_millis() as u64,
+            });
+            Ok(())
         })
         .await
     }
@@ -347,7 +421,9 @@ impl DatabaseDriver for DuckDbDriver {
         sql: &str,
     ) -> Result<ExplainResult, DriverError> {
         let result = self.query(handle, &format!("EXPLAIN {sql}")).await?;
-        Ok(datazen_driver_http_support::explain_result_from_query(result))
+        Ok(datazen_driver_http_support::explain_result_from_query(
+            result,
+        ))
     }
 
     async fn cancel_query(&self, _handle: &ConnectionHandle) -> Result<(), DriverError> {
@@ -408,10 +484,7 @@ mod tests {
             .expect("query");
         assert_eq!(rows.rows.len(), 2);
 
-        let tables = driver
-            .get_tables(&handle, "main")
-            .await
-            .expect("tables");
+        let tables = driver.get_tables(&handle, "main").await.expect("tables");
         assert!(
             tables.iter().any(|t| t.name == "items"),
             "expected items table, got {tables:?}"
@@ -430,12 +503,19 @@ mod tests {
             vec!["id".to_string()],
             "schema={schema:?}"
         );
-        assert!(
-            schema
-                .columns
-                .iter()
-                .any(|c| c.name == "id" && c.is_primary_key)
-        );
+        assert!(schema
+            .columns
+            .iter()
+            .any(|c| c.name == "id" && c.is_primary_key));
+
+        let (cb, events) = collect_events();
+        driver
+            .query_stream(&handle, "SELECT id FROM items ORDER BY id", None, cb)
+            .await
+            .expect("stream");
+        let events = events.lock().unwrap();
+        assert_eq!(stream_row_count(&events), 2);
+        assert!(matches!(events.last(), Some(QueryStreamEvent::Done { .. })));
 
         let plan = driver
             .explain(&handle, "SELECT * FROM items WHERE id = 1")
@@ -447,5 +527,88 @@ mod tests {
         );
 
         driver.disconnect(handle).await.expect("disconnect");
+    }
+
+    fn collect_events() -> (
+        QueryStreamCallback,
+        std::sync::Arc<std::sync::Mutex<Vec<QueryStreamEvent>>>,
+    ) {
+        let events = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let events_cb = std::sync::Arc::clone(&events);
+        (
+            std::sync::Arc::new(move |ev| {
+                events_cb.lock().unwrap().push(ev);
+            }),
+            events,
+        )
+    }
+
+    fn stream_row_count(events: &[QueryStreamEvent]) -> usize {
+        events
+            .iter()
+            .filter_map(|e| match e {
+                QueryStreamEvent::Rows { rows, .. } => Some(rows.len()),
+                _ => None,
+            })
+            .sum()
+    }
+
+    #[tokio::test]
+    async fn query_stream_empty_sql_emits_done() {
+        let driver = DuckDbDriver::new();
+        let handle = driver.connect(&memory_config()).await.unwrap();
+        let (cb, events) = collect_events();
+        driver.query_stream(&handle, "  ", None, cb).await.unwrap();
+        let events = events.lock().unwrap();
+        assert_eq!(events.len(), 1);
+        assert!(matches!(
+            &events[0],
+            QueryStreamEvent::Done { total_time_ms: 0 }
+        ));
+    }
+
+    #[tokio::test]
+    async fn query_stream_applies_sql_limit_not_batch_size() {
+        let driver = DuckDbDriver::new();
+        let handle = driver.connect(&memory_config()).await.unwrap();
+        let (cb, events) = collect_events();
+        driver
+            .query_stream(&handle, "SELECT range FROM range(600)", Some(5), cb)
+            .await
+            .unwrap();
+        let events = events.lock().unwrap();
+        assert_eq!(stream_row_count(&events), 5);
+        assert!(events.iter().any(|e| matches!(
+            e,
+            QueryStreamEvent::StatementEnd {
+                truncated: true,
+                ..
+            }
+        )));
+    }
+
+    #[tokio::test]
+    async fn query_stream_emits_multiple_row_batches_when_unlimited() {
+        let driver = DuckDbDriver::new();
+        let handle = driver.connect(&memory_config()).await.unwrap();
+        let (cb, events) = collect_events();
+        driver
+            .query_stream(&handle, "SELECT range FROM range(600)", None, cb)
+            .await
+            .unwrap();
+        let events = events.lock().unwrap();
+        assert_eq!(stream_row_count(&events), 600);
+        let chunks = events
+            .iter()
+            .filter(|e| matches!(e, QueryStreamEvent::Rows { .. }))
+            .count();
+        assert!(chunks >= 2, "expected multiple IPC batches, got {chunks}");
+        assert!(events.iter().any(|e| matches!(
+            e,
+            QueryStreamEvent::StatementEnd {
+                truncated: false,
+                ..
+            }
+        )));
     }
 }

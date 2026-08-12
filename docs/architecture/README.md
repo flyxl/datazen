@@ -43,7 +43,7 @@ DataZen 是一个跨平台桌面数据库管理工具，基于 **Tauri v2**（Ru
 
 | 层级 | 职责 | 关键特性 |
 |------|------|----------|
-| **Commands 层** | 处理前端 IPC 调用 | 参数验证、结构化错误、日志记录、Driver Command IPC |
+| **Commands 层** | 处理前端 IPC 调用 | 参数验证、结构化错误、日志记录、Driver Command IPC、查询结果流式 Channel |
 | **Services 层** | 业务逻辑处理 | ConnectionManager、QueryExecutor、DbTools |
 | **Workflow 层** | YAML 工作流编排 | Command runtime、Connection inheritance、Legacy Query compatibility |
 | **Drivers 层** | 数据库驱动抽象 | `DatabaseDriver`、Command Definition、`execute_command`、inventory 插件扩展 |
