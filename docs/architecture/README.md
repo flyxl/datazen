@@ -16,14 +16,14 @@ DataZen 是一个跨平台桌面数据库管理工具，基于 **Tauri v2**（Ru
 │                                                                       │
 │  ┌─────────────────────────────────────────────────────────────────┐ │
 │  │                     Frontend (React + TS)                        │ │
-│  │  Connection / Query / AI / Settings / Workflow                  │ │
+│  │  Connection / Query / AI / Settings / Workflow / Dashboard       │ │
 │  │  Command discovery + schema-driven Workflow Command editor      │ │
 │  └──────────────────────────────┬──────────────────────────────────┘ │
 │                                 │ Tauri IPC                           │
 │                                 ▼                                     │
 │  ┌─────────────────────────────────────────────────────────────────┐ │
 │  │                      Backend (Rust)                              │ │
-│  │  Commands / Services / AI / MCP / Workflow / Store              │ │
+│  │  Commands / Services / AI / MCP / Workflow / Dashboard / Store  │ │
 │  │                                 │                                │ │
 │  │                                 ▼                                │ │
 │  │                    Driver Command Runtime                         │ │
@@ -170,6 +170,7 @@ Connection 变化后重新 discovery；没有 Step override 时使用 Workflow �
 | [AI 模块](backend/ai.md) | AiProvider、Provider protocol、PromptResolver |
 | [MCP 模块](backend/mcp.md) | MCP Server、MCP Client、双运行模式 |
 | [Workflow 模块](backend/workflow.md) | YAML Workflow、Command runtime、Connection inheritance、Legacy Query、执行历史 |
+| [数据看板](backend/dashboard.md) | AppDb 统一存储、Widget→finalOutput、Monitor 调度、导出 v2 |
 | [Schema Diff Deploy](backend/schema-diff.md) | Schema diff / DDL plan / deploy |
 
 ## 前端文档

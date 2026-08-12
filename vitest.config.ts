@@ -22,10 +22,7 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
-    include: [
-      'src/**/*.test.{ts,tsx}',
-      'scripts/__tests__/**/*.test.{ts,mjs}',
-    ],
+    include: ['src/**/*.test.{ts,tsx}', 'scripts/__tests__/**/*.test.{ts,mjs}'],
     coverage: {
       provider: 'v8',
       include: [
@@ -43,6 +40,8 @@ export default defineConfig({
         'src/windows/workflow/**/*.{ts,tsx}',
         'src/windows/settings/SettingsWindow.tsx',
         'src/windows/main/MainWindow.tsx',
+        'src/windows/dashboard/**/*.{ts,tsx}',
+        'src/lib/dashboard/**/*.{ts,tsx}',
       ],
       exclude: [
         '**/*.test.{ts,tsx}',
@@ -69,6 +68,8 @@ export default defineConfig({
         'src/windows/workflow/**': { lines: 80 },
         'src/windows/settings/SettingsWindow.tsx': { lines: 80 },
         'src/windows/main/MainWindow.tsx': { lines: 80 },
+        'src/lib/dashboard/**': { lines: 80, statements: 80, functions: 75, branches: 70 },
+        'src/windows/dashboard/**': { lines: 80, statements: 80, functions: 70, branches: 55 },
       },
     },
   },
