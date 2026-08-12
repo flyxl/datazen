@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildEditorSchema } from '../buildEditorSchema';
+import { buildEditorSchema, hoistNamespaceChild } from '../buildEditorSchema';
 
 describe('buildEditorSchema', () => {
   it('prefers nested tree and overlays columns', () => {
@@ -22,5 +22,31 @@ describe('buildEditorSchema', () => {
         columnMap: { users: ['id'] },
       }),
     ).toEqual({ users: ['id'] });
+  });
+
+  it('hoists current database children for unqualified completion', () => {
+    expect(
+      buildEditorSchema({
+        namespaceTree: { app: { users: ['id'], orders: [] }, other: { t: [] } },
+        tables: [],
+        views: [],
+        columnMap: {},
+        currentDatabase: 'app',
+      }),
+    ).toEqual({
+      app: { users: ['id'], orders: [] },
+      other: { t: [] },
+      users: ['id'],
+      orders: [],
+    });
+  });
+});
+
+describe('hoistNamespaceChild', () => {
+  it('does not overwrite existing root keys', () => {
+    expect(hoistNamespaceChild({ app: { users: [] }, users: ['id'] }, 'app')).toEqual({
+      app: { users: [] },
+      users: ['id'],
+    });
   });
 });
