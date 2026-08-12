@@ -5,7 +5,7 @@ import { useI18n } from '../../hooks/useI18n';
 import { DB_REGISTRY, normalizeIndexDatabaseField } from '../../lib/databaseTypes';
 import { PRESET_GROUPS } from '../../lib/connectionGroups';
 import { newId } from './shared';
-import type { ConnectionConfig, DatabaseType, SslMode, SshTunnelConfig } from '../../types';
+import type { ConnectionConfig, DatabaseType, SslMode, SshAuthMethod, SshTunnelConfig } from '../../types';
 import { getPluginConnectionForm, getPluginValidator } from '../../plugins/generated';
 
 export interface UseConnectionFormOptions {
@@ -30,6 +30,7 @@ export function useConnectionForm(options: UseConnectionFormOptions = {}) {
   const [sslMode, setSslMode] = useState<SslMode>('prefer');
   const [group, setGroup] = useState<string>(() => PRESET_GROUPS.development);
   const [colorTag, setColorTag] = useState<string>('#3b82f6');
+  const [readOnly, setReadOnly] = useState(false);
 
   const [showAdvanced, setShowAdvanced] = useState(false);
 
@@ -37,10 +38,18 @@ export function useConnectionForm(options: UseConnectionFormOptions = {}) {
   const [sshHost, setSshHost] = useState('');
   const [sshPort, setSshPort] = useState('22');
   const [sshUsername, setSshUsername] = useState('');
-  const [sshAuthMethod, setSshAuthMethod] = useState<'password' | 'private_key'>('password');
+  const [sshAuthMethod, setSshAuthMethod] = useState<SshAuthMethod>('password');
   const [sshPassword, setSshPassword] = useState('');
   const [sshKeyPath, setSshKeyPath] = useState('');
   const [sshPassphrase, setSshPassphrase] = useState('');
+  const [sshJumpEnabled, setSshJumpEnabled] = useState(false);
+  const [sshJumpHost, setSshJumpHost] = useState('');
+  const [sshJumpPort, setSshJumpPort] = useState('22');
+  const [sshJumpUsername, setSshJumpUsername] = useState('');
+  const [sshJumpAuthMethod, setSshJumpAuthMethod] = useState<SshAuthMethod>('password');
+  const [sshJumpPassword, setSshJumpPassword] = useState('');
+  const [sshJumpKeyPath, setSshJumpKeyPath] = useState('');
+  const [sshJumpPassphrase, setSshJumpPassphrase] = useState('');
 
   const [testing, setTesting] = useState(false);
   const [testOk, setTestOk] = useState<string | null>(null);
@@ -66,6 +75,7 @@ export function useConnectionForm(options: UseConnectionFormOptions = {}) {
     setSslMode(existing.sslMode);
     setGroup(existing.group ?? '');
     setColorTag(existing.colorTag ?? '#3b82f6');
+    setReadOnly(existing.readOnly === true);
     setConnectionOptions(existing.options ?? {});
     if (existing.sshTunnel?.enabled) {
       setSshEnabled(true);
@@ -76,6 +86,17 @@ export function useConnectionForm(options: UseConnectionFormOptions = {}) {
       setSshPassword(existing.sshTunnel.password ?? '');
       setSshKeyPath(existing.sshTunnel.privateKeyPath ?? '');
       setSshPassphrase(existing.sshTunnel.passphrase ?? '');
+      if (existing.sshTunnel.jump?.enabled) {
+        const jump = existing.sshTunnel.jump;
+        setSshJumpEnabled(true);
+        setSshJumpHost(jump.host);
+        setSshJumpPort(String(jump.port));
+        setSshJumpUsername(jump.username);
+        setSshJumpAuthMethod(jump.authMethod);
+        setSshJumpPassword(jump.password ?? '');
+        setSshJumpKeyPath(jump.privateKeyPath ?? '');
+        setSshJumpPassphrase(jump.passphrase ?? '');
+      }
     }
     setShowAdvanced(true);
     setLoaded(true);
@@ -129,6 +150,18 @@ export function useConnectionForm(options: UseConnectionFormOptions = {}) {
         password: sshAuthMethod === 'password' ? sshPassword || undefined : undefined,
         privateKeyPath: sshAuthMethod === 'private_key' ? sshKeyPath || undefined : undefined,
         passphrase: sshAuthMethod === 'private_key' ? sshPassphrase || undefined : undefined,
+        jump: sshJumpEnabled
+          ? {
+              enabled: true,
+              host: sshJumpHost,
+              port: Number(sshJumpPort) || 22,
+              username: sshJumpUsername,
+              authMethod: sshJumpAuthMethod,
+              password: sshJumpAuthMethod === 'password' ? sshJumpPassword || undefined : undefined,
+              privateKeyPath: sshJumpAuthMethod === 'private_key' ? sshJumpKeyPath || undefined : undefined,
+              passphrase: sshJumpAuthMethod === 'private_key' ? sshJumpPassphrase || undefined : undefined,
+            }
+          : undefined,
       }
     : undefined;
 
@@ -172,6 +205,7 @@ export function useConnectionForm(options: UseConnectionFormOptions = {}) {
       group: group || undefined,
       colorTag: colorTag || undefined,
       sshTunnel,
+      readOnly: readOnly || undefined,
     };
 
     const draftMeta = DB_REGISTRY[databaseType];
@@ -200,7 +234,7 @@ export function useConnectionForm(options: UseConnectionFormOptions = {}) {
       conn.options = connectionOptions;
     }
     return conn;
-  }, [colorTag, connectionOptions, database, databaseType, editId, group, host, name, password, port, schema, sslMode, sshTunnel, t, username]);
+  }, [colorTag, connectionOptions, database, databaseType, editId, group, host, name, password, port, readOnly, schema, sslMode, sshTunnel, t, username]);
 
   async function onTest() {
     if (!validate()) return;
@@ -258,6 +292,8 @@ export function useConnectionForm(options: UseConnectionFormOptions = {}) {
     setGroup,
     colorTag,
     setColorTag,
+    readOnly,
+    setReadOnly,
     sshEnabled,
     setSshEnabled,
     sshHost,
@@ -274,6 +310,22 @@ export function useConnectionForm(options: UseConnectionFormOptions = {}) {
     setSshKeyPath,
     sshPassphrase,
     setSshPassphrase,
+    sshJumpEnabled,
+    setSshJumpEnabled,
+    sshJumpHost,
+    setSshJumpHost,
+    sshJumpPort,
+    setSshJumpPort,
+    sshJumpUsername,
+    setSshJumpUsername,
+    sshJumpAuthMethod,
+    setSshJumpAuthMethod,
+    sshJumpPassword,
+    setSshJumpPassword,
+    sshJumpKeyPath,
+    setSshJumpKeyPath,
+    sshJumpPassphrase,
+    setSshJumpPassphrase,
     meta,
     formVariant,
     hasUsername,

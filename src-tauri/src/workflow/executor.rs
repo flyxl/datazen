@@ -375,6 +375,7 @@ mod tests {
             output: None,
             timeout_secs: None,
             error_handling: None,
+            schedule: None,
         };
         let result = WorkflowExecutor::execute(&workflow, &test.state, None, &serde_json::json!({}))
             .await
@@ -408,6 +409,7 @@ mod tests {
             output: None,
             timeout_secs: None,
             error_handling: None,
+            schedule: None,
         };
         let result = WorkflowExecutor::execute(&workflow, &test.state, None, &serde_json::json!({}))
             .await

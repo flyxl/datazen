@@ -83,6 +83,13 @@ pub(crate) async fn disconnect_impl(
     connection_id: String,
 ) -> Result<(), CommandError> {
     tracing::info!(%connection_id, "disconnect");
+    if let Some(tx) = state.session_transactions.lock().await.remove(&connection_id) {
+        if let Ok((driver, _)) = state.connection_manager.get_connection(&connection_id).await {
+            if let Err(e) = driver.rollback(tx).await {
+                tracing::warn!(%connection_id, error = %e, "rollback session tx on disconnect");
+            }
+        }
+    }
     state
         .connection_manager
         .disconnect(&connection_id)

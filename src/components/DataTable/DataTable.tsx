@@ -5,6 +5,7 @@ import type { CellEdit } from '../../stores/tableDataStore';
 import { useI18n } from '../../hooks/useI18n';
 import { useColumnResize, adjustWidthsForSort } from '../../hooks/useColumnResize';
 import { FilterBar } from '../FilterBar';
+import { FilterEditor } from '../FilterEditor';
 import { Pagination } from './Pagination';
 import { TableHeader, type ColumnDef } from './TableHeader';
 import { VirtualBody } from './VirtualBody';
@@ -24,8 +25,12 @@ export interface DataTableProps {
   onSort?: (sort: SortCondition) => void;
 
   filters?: FilterCondition[];
+  filterLogic?: 'and' | 'or';
   onRemoveFilter?: (index: number) => void;
   onClearFilters?: () => void;
+  onAddFilter?: (filter: FilterCondition) => void;
+  onUpdateFilter?: (index: number, filter: FilterCondition) => void;
+  onFilterLogicChange?: (logic: 'and' | 'or') => void;
 
   editingCell?: { row: number; col: string } | null;
   editBuffer?: Map<string, CellEdit>;
@@ -65,12 +70,16 @@ export function DataTable({
   pageSize,
   sorts = EMPTY_SORTS,
   filters = EMPTY_FILTERS,
+  filterLogic = 'and',
   editingCell,
   selectedRows = EMPTY_SET,
   loading,
   onSort,
   onRemoveFilter,
   onClearFilters,
+  onAddFilter,
+  onUpdateFilter,
+  onFilterLogicChange,
   onPageChange,
   onPageSizeChange,
   onCellDoubleClick,
@@ -119,12 +128,24 @@ export function DataTable({
   const hasPagination = page != null && pageSize != null && totalRows != null && onPageChange && onPageSizeChange;
   const hasSelection = onSelectAll != null && onRowSelect != null;
   const hasFilters = filters.length > 0 && onRemoveFilter && onClearFilters;
+  const hasFilterEditor = onAddFilter && onUpdateFilter && onRemoveFilter && onClearFilters && onFilterLogicChange;
 
   return (
     <div className="selectable flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-md border border-edge bg-surface">
-      {hasFilters && (
+      {hasFilterEditor ? (
+        <FilterEditor
+          columns={columns}
+          filters={filters}
+          logic={filterLogic}
+          onLogicChange={onFilterLogicChange}
+          onChange={onUpdateFilter}
+          onAdd={onAddFilter}
+          onRemove={onRemoveFilter}
+          onClear={onClearFilters}
+        />
+      ) : hasFilters ? (
         <FilterBar filters={filters} onRemove={onRemoveFilter} onClear={onClearFilters} />
-      )}
+      ) : null}
 
       {hasSelection && (
         <div className="flex shrink-0 items-center gap-2 border-b border-edge bg-surface px-2 py-1.5">
@@ -170,6 +191,11 @@ export function DataTable({
           columnWidths={columnWidths}
           onResizeStart={onResizeStart}
           sortable={onSort != null}
+          onFilterColumn={
+            onAddFilter
+              ? (column) => onAddFilter({ column, operator: 'eq', value: '' })
+              : undefined
+          }
         />
         <VirtualBody
           columns={columns}

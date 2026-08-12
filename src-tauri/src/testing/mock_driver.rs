@@ -1,5 +1,6 @@
 //! Configurable in-memory driver for service/cache unit tests.
 
+use std::collections::HashSet;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -60,6 +61,7 @@ pub struct MockDriver {
     get_schema_calls: AtomicU32,
     query_calls: AtomicU32,
     last_query_limit: Mutex<Option<Option<u32>>>,
+    open_txs: Mutex<HashSet<String>>,
 }
 
 impl MockDriver {
@@ -71,6 +73,7 @@ impl MockDriver {
             get_schema_calls: AtomicU32::new(0),
             query_calls: AtomicU32::new(0),
             last_query_limit: Mutex::new(None),
+            open_txs: Mutex::new(HashSet::new()),
         })
     }
 
@@ -286,17 +289,38 @@ impl DatabaseDriver for MockDriver {
 
     async fn begin_transaction(
         &self,
-        _handle: &ConnectionHandle,
+        handle: &ConnectionHandle,
     ) -> Result<TransactionHandle, DriverError> {
-        Err(DriverError::TransactionError("mock".into()))
+        let mut txs = self.open_txs.lock().expect("mock open_txs");
+        if !txs.insert(handle.id.clone()) {
+            return Err(DriverError::TransactionError(
+                "A transaction is already open on this connection".into(),
+            ));
+        }
+        Ok(TransactionHandle {
+            id: format!("mock_tx_{}", handle.id),
+            connection_id: handle.id.clone(),
+        })
     }
 
-    async fn commit(&self, _tx: TransactionHandle) -> Result<(), DriverError> {
-        Err(DriverError::TransactionError("mock".into()))
+    async fn commit(&self, tx: TransactionHandle) -> Result<(), DriverError> {
+        let mut txs = self.open_txs.lock().expect("mock open_txs");
+        if !txs.remove(&tx.connection_id) {
+            return Err(DriverError::TransactionError(
+                "Transaction not found or already ended".into(),
+            ));
+        }
+        Ok(())
     }
 
-    async fn rollback(&self, _tx: TransactionHandle) -> Result<(), DriverError> {
-        Err(DriverError::TransactionError("mock".into()))
+    async fn rollback(&self, tx: TransactionHandle) -> Result<(), DriverError> {
+        let mut txs = self.open_txs.lock().expect("mock open_txs");
+        if !txs.remove(&tx.connection_id) {
+            return Err(DriverError::TransactionError(
+                "Transaction not found or already ended".into(),
+            ));
+        }
+        Ok(())
     }
 
     fn command_definitions(&self) -> Vec<DriverCommandDefinition> {

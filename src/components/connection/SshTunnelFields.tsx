@@ -1,4 +1,5 @@
-import { FileKey2, KeyRound } from 'lucide-react';
+import { FileKey2, KeyRound, Shield } from 'lucide-react';
+import type { SshAuthMethod } from '../../types';
 import { Input } from '../ui/Input';
 import { PathInput } from '../ui/PathInput';
 import { useI18n } from '../../hooks/useI18n';
@@ -59,36 +60,34 @@ export function SshTunnelFields({ form, innerPanelClassName = 'bg-surface' }: Ss
           <div className="md:col-span-2">
             <Label required>{t('newConn.authMethod')}</Label>
             <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => form.setSshAuthMethod('password')}
-                className={cn(
-                  'flex flex-1 items-center justify-center gap-1.5 rounded-md border px-3 py-2 text-xs transition-colors',
-                  form.sshAuthMethod === 'password'
-                    ? 'border-blue-500 bg-blue-500/10 text-blue-400'
-                    : 'border-edge bg-surface text-fg-secondary',
-                )}
-              >
-                <KeyRound className="h-3.5 w-3.5" />
-                {t('newConn.authPassword')}
-              </button>
-              <button
-                type="button"
-                onClick={() => form.setSshAuthMethod('private_key')}
-                className={cn(
-                  'flex flex-1 items-center justify-center gap-1.5 rounded-md border px-3 py-2 text-xs transition-colors',
-                  form.sshAuthMethod === 'private_key'
-                    ? 'border-blue-500 bg-blue-500/10 text-blue-400'
-                    : 'border-edge bg-surface text-fg-secondary',
-                )}
-              >
-                <FileKey2 className="h-3.5 w-3.5" />
-                {t('newConn.authKey')}
-              </button>
+              {([
+                { id: 'password' as SshAuthMethod, icon: KeyRound, label: t('newConn.authPassword') },
+                { id: 'private_key' as SshAuthMethod, icon: FileKey2, label: t('newConn.authKey') },
+                { id: 'agent' as SshAuthMethod, icon: Shield, label: t('newConn.authAgent') },
+              ]).map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => form.setSshAuthMethod(opt.id)}
+                  className={cn(
+                    'flex flex-1 items-center justify-center gap-1.5 rounded-md border px-3 py-2 text-xs transition-colors',
+                    form.sshAuthMethod === opt.id
+                      ? 'border-blue-500 bg-blue-500/10 text-blue-400'
+                      : 'border-edge bg-surface text-fg-secondary',
+                  )}
+                >
+                  <opt.icon className="h-3.5 w-3.5" />
+                  {opt.label}
+                </button>
+              ))}
             </div>
           </div>
 
-          {form.sshAuthMethod === 'password' ? (
+          {form.sshAuthMethod === 'agent' ? (
+            <div className="md:col-span-2 text-[11px] text-fg-muted">
+              {t('newConn.authAgentHint')}
+            </div>
+          ) : form.sshAuthMethod === 'password' ? (
             <div className="md:col-span-2">
               <Label required>{t('newConn.sshPassword')}</Label>
               <Input
@@ -117,6 +116,100 @@ export function SshTunnelFields({ form, innerPanelClassName = 'bg-surface' }: Ss
                   placeholder={t('newConn.passphraseHint')}
                 />
               </div>
+            </>
+          )}
+
+          <div className="md:col-span-2">
+            <label className="flex items-center gap-2 text-sm text-fg-secondary">
+              <input
+                type="checkbox"
+                checked={form.sshJumpEnabled}
+                onChange={(e) => form.setSshJumpEnabled(e.target.checked)}
+                className="h-4 w-4 rounded border-edge bg-surface text-blue-500 focus:ring-blue-500/25"
+              />
+              {t('newConn.sshJump')}
+            </label>
+          </div>
+
+          {form.sshJumpEnabled && (
+            <>
+              <div>
+                <Label required>{t('newConn.sshJumpHost')}</Label>
+                <Input
+                  value={form.sshJumpHost}
+                  onChange={(e) => form.setSshJumpHost(e.target.value)}
+                  placeholder="bastion.example.com"
+                />
+              </div>
+              <div>
+                <Label required>{t('newConn.sshJumpPort')}</Label>
+                <Input
+                  value={form.sshJumpPort}
+                  onChange={(e) => form.setSshJumpPort(e.target.value)}
+                  placeholder="22"
+                />
+              </div>
+              <div className="md:col-span-2">
+                <Label required>{t('newConn.sshJumpUsername')}</Label>
+                <Input
+                  value={form.sshJumpUsername}
+                  onChange={(e) => form.setSshJumpUsername(e.target.value)}
+                  placeholder="ubuntu"
+                />
+              </div>
+              <div className="md:col-span-2">
+                <div className="flex gap-2">
+                  {([
+                    { id: 'password' as SshAuthMethod, label: t('newConn.authPassword') },
+                    { id: 'private_key' as SshAuthMethod, label: t('newConn.authKey') },
+                    { id: 'agent' as SshAuthMethod, label: t('newConn.authAgent') },
+                  ]).map((opt) => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => form.setSshJumpAuthMethod(opt.id)}
+                      className={cn(
+                        'flex flex-1 items-center justify-center rounded-md border px-3 py-2 text-xs transition-colors',
+                        form.sshJumpAuthMethod === opt.id
+                          ? 'border-blue-500 bg-blue-500/10 text-blue-400'
+                          : 'border-edge bg-surface text-fg-secondary',
+                      )}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {form.sshJumpAuthMethod === 'password' && (
+                <div className="md:col-span-2">
+                  <Label required>{t('newConn.sshPassword')}</Label>
+                  <Input
+                    type="password"
+                    value={form.sshJumpPassword}
+                    onChange={(e) => form.setSshJumpPassword(e.target.value)}
+                  />
+                </div>
+              )}
+              {form.sshJumpAuthMethod === 'private_key' && (
+                <>
+                  <div className="md:col-span-2">
+                    <Label required>{t('newConn.privateKey')}</Label>
+                    <PathInput
+                      value={form.sshJumpKeyPath}
+                      onChange={form.setSshJumpKeyPath}
+                      placeholder="~/.ssh/id_rsa"
+                    />
+                  </div>
+                  <div className="md:col-span-2">
+                    <Label>{t('newConn.passphrase')}</Label>
+                    <Input
+                      type="password"
+                      value={form.sshJumpPassphrase}
+                      onChange={(e) => form.setSshJumpPassphrase(e.target.value)}
+                    />
+                  </div>
+                </>
+              )}
             </>
           )}
         </div>

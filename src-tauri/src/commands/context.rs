@@ -604,6 +604,8 @@ mod tests {
             workflow_registry: Arc::new(WorkflowRegistry::new(data_dir.join("workflows"))),
             workflow_history: Arc::new(WorkflowHistoryManager::new(history_db)),
             mcp_client_manager: Arc::new(McpClientManager::new()),
+            session_transactions: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
+            workflow_scheduler: crate::workflow::scheduler::WorkflowScheduler::new(),
         };
 
         let ctx_dir = resolve_context_dir_from_state(&state).await.unwrap();
@@ -663,6 +665,8 @@ mod tests {
             workflow_registry: Arc::new(WorkflowRegistry::new(data_dir.join("workflows"))),
             workflow_history: Arc::new(WorkflowHistoryManager::new(history_db)),
             mcp_client_manager: Arc::new(McpClientManager::new()),
+            session_transactions: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
+            workflow_scheduler: crate::workflow::scheduler::WorkflowScheduler::new(),
         };
 
         let ctx_dir = resolve_context_dir_from_state(&state).await.unwrap();

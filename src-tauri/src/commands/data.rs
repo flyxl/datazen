@@ -29,16 +29,38 @@ pub(crate) async fn commit_row_updates_impl(
         .get_connection(&connection_id)
         .await
         .cmd_err("commit_row_updates")?;
+    let read_only = state
+        .connection_manager
+        .get_connection_config(&connection_id)
+        .await
+        .map(|c| c.read_only)
+        .unwrap_or(false);
+    if read_only {
+        return Err(CommandError::Validation(
+            "Connection is read-only; row edits are not allowed".into(),
+        ));
+    }
+
+    let session_open = state
+        .session_transactions
+        .lock()
+        .await
+        .contains_key(&connection_id);
 
     // Prefer DatabaseDriver transaction API; fall back to BEGIN/COMMIT strings
-    // for drivers that still stub the trait (most SQL engines today).
-    let trait_tx = match driver.begin_transaction(&handle).await {
-        Ok(tx) => Some(tx),
-        Err(DriverError::TransactionError(_)) => None,
-        Err(e) => return Err(CommandError::Driver(e)),
+    // for drivers that still stub the trait. Skip wrapping when a session
+    // transaction is already open so row edits join that transaction.
+    let trait_tx = if session_open {
+        None
+    } else {
+        match driver.begin_transaction(&handle).await {
+            Ok(tx) => Some(tx),
+            Err(DriverError::TransactionError(_)) => None,
+            Err(e) => return Err(CommandError::Driver(e)),
+        }
     };
 
-    if trait_tx.is_none() {
+    if !session_open && trait_tx.is_none() {
         driver
             .execute(&handle, "BEGIN")
             .await
@@ -69,6 +91,10 @@ pub(crate) async fn commit_row_updates_impl(
 
     match result {
         Ok(()) => {
+            if session_open {
+                tracing::info!(%connection_id, %table, batch_count = updates.len(), "commit_row_updates OK (session tx)");
+                return Ok(());
+            }
             if let Some(tx) = trait_tx {
                 driver.commit(tx).await.cmd_err("commit_row_updates")?;
             } else {
@@ -81,6 +107,9 @@ pub(crate) async fn commit_row_updates_impl(
             Ok(())
         }
         Err(e) => {
+            if session_open {
+                return Err(e);
+            }
             if let Some(tx) = trait_tx {
                 if let Err(rb_err) = driver.rollback(tx).await {
                     tracing::warn!("rollback failed: {rb_err}");
@@ -142,5 +171,66 @@ mod tests {
         )
         .await
         .is_err());
+    }
+
+    #[tokio::test]
+    async fn commit_row_updates_rejects_read_only_connection() {
+        let test = TestAppState::with_tables().await;
+        let mut config = crate::testing::app_state::sample_postgres_config("ro-edit");
+        config.read_only = true;
+        test.store.save_connection(config).await.unwrap();
+        let conn_id = test.connect_config("ro-edit").await;
+        let err = commit_row_updates_impl(
+            &test.state,
+            conn_id,
+            "users".into(),
+            vec![RowUpdateBatch {
+                set_columns: vec![CellUpdate {
+                    column: "name".into(),
+                    value: Some(Value::String("x".into())),
+                }],
+                pk_columns: vec![CellUpdate {
+                    column: "id".into(),
+                    value: Some(Value::Integer(1)),
+                }],
+            }],
+        )
+        .await
+        .unwrap_err();
+        assert!(err.to_string().contains("read-only"));
+    }
+
+    #[tokio::test]
+    async fn commit_row_updates_joins_open_session_transaction() {
+        let test = TestAppState::with_tables().await;
+        let (_, conn_id) = test.save_and_connect("tx-edit").await;
+        crate::commands::begin_session_transaction_impl(&test.state, conn_id.clone())
+            .await
+            .unwrap();
+        commit_row_updates_impl(
+            &test.state,
+            conn_id.clone(),
+            "users".into(),
+            vec![RowUpdateBatch {
+                set_columns: vec![CellUpdate {
+                    column: "name".into(),
+                    value: Some(Value::String("Bob".into())),
+                }],
+                pk_columns: vec![CellUpdate {
+                    column: "id".into(),
+                    value: Some(Value::Integer(1)),
+                }],
+            }],
+        )
+        .await
+        .unwrap();
+        assert!(
+            crate::commands::session_transaction_status_impl(&test.state, conn_id.clone())
+                .await
+                .unwrap()
+        );
+        crate::commands::commit_session_transaction_impl(&test.state, conn_id)
+            .await
+            .unwrap();
     }
 }

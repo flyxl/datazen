@@ -58,6 +58,7 @@ interface AppSettings {
   editorFontFamily: string;
   confirmOnDelete: boolean;
   autoCommit: boolean;
+  safeMode: boolean;
   defaultPageSize: number;
 }
 
