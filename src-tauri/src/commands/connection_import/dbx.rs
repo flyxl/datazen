@@ -86,6 +86,7 @@ fn map_ssh(conn: &serde_json::Value) -> Option<SshTunnelConfig> {
             password,
             private_key_path,
             passphrase,
+            jump: None,
         });
     }
     None

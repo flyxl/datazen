@@ -62,6 +62,7 @@ describe('settingsStore', () => {
       editorFontSize: 13,
       confirmOnDelete: true,
       autoCommit: true,
+      safeMode: true,
       defaultPageSize: 50,
     connectionPoolSize: 10,
       logLevel: 'info',

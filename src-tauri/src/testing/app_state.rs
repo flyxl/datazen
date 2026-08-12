@@ -108,6 +108,7 @@ pub fn sample_postgres_config(id: &str) -> ConnectionConfig {
         last_connected_at: None,
         server_version: None,
         options: None,
+        read_only: false,
     }
 }
 

@@ -29,6 +29,7 @@ describe('Settings (SS-001~SS-006)', () => {
         editorFontFamily: 'Menlo, Monaco, Consolas, "Courier New", monospace',
         confirmOnDelete: true,
         autoCommit: true,
+        safeMode: true,
         defaultPageSize: 50,
       },
     });
@@ -102,6 +103,7 @@ describe('Settings (SS-001~SS-006)', () => {
         editorFontFamily: 'Menlo',
         confirmOnDelete: true,
         autoCommit: true,
+        safeMode: true,
         defaultPageSize: 50,
       },
     });
@@ -121,6 +123,7 @@ describe('Settings (SS-001~SS-006)', () => {
         editorFontFamily: 'Menlo',
         confirmOnDelete: true,
         autoCommit: true,
+        safeMode: true,
         defaultPageSize: 100,
       },
     });
@@ -140,6 +143,7 @@ describe('Settings (SS-001~SS-006)', () => {
         editorFontFamily: 'Menlo',
         confirmOnDelete: true,
         autoCommit: true,
+        safeMode: true,
         defaultPageSize: 50,
       },
     });
@@ -159,6 +163,7 @@ describe('Settings (SS-001~SS-006)', () => {
         editorFontFamily: 'Fira Code',
         confirmOnDelete: false,
         autoCommit: false,
+        safeMode: true,
         defaultPageSize: 50,
       },
     });
@@ -233,6 +238,7 @@ describe('Settings (SS-001~SS-006)', () => {
         editorFontFamily: 'Menlo, Monaco, Consolas, "Courier New", monospace',
         confirmOnDelete: true,
         autoCommit: true,
+        safeMode: true,
         defaultPageSize: 50,
       },
     });

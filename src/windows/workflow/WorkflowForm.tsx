@@ -26,6 +26,8 @@ export interface WorkflowDraft {
   connection?: string;
   variables: { name: string; varType: string; description: string; required: boolean }[];
   steps: WorkflowStepDraft[];
+  scheduleEnabled?: boolean;
+  scheduleIntervalSecs?: number;
 }
 
 export function emptyDraft(): WorkflowDraft {
@@ -36,6 +38,8 @@ export function emptyDraft(): WorkflowDraft {
     connection: undefined,
     variables: [],
     steps: [{ type: 'query' as WorkflowStepType, id: 'step1', sql: '' }],
+    scheduleEnabled: false,
+    scheduleIntervalSecs: 3600,
   };
 }
 
@@ -181,6 +185,30 @@ export function WorkflowForm({ draft, editingId, connections, onDraftChange, onS
         <label className="text-xs text-fg-muted block mb-1">Workflow Connection</label>
         <Select value={draft.connection ?? ''} options={[{ value: '', label: 'No default connection' }, ...connections.map((c) => ({ value: c.id, label: c.name }))]} onChange={(value) => onDraftChange({ ...draft, connection: value || undefined })} className="!h-8 !text-xs w-full" />
         <div className="text-[11px] text-fg-muted mt-1">Data-operation steps inherit this connection unless they override it.</div>
+      </div>
+
+      <div className="rounded-lg border border-edge p-3 space-y-2">
+        <label className="flex items-center gap-2 text-xs text-fg">
+          <input
+            type="checkbox"
+            checked={Boolean(draft.scheduleEnabled)}
+            onChange={(e) => onDraftChange({ ...draft, scheduleEnabled: e.target.checked })}
+          />
+          {t('workflows.schedule.enabled')}
+        </label>
+        {draft.scheduleEnabled && (
+          <div>
+            <label className="text-xs text-fg-muted block mb-1">{t('workflows.schedule.interval')}</label>
+            <input
+              className={inputClass}
+              type="number"
+              min={30}
+              value={draft.scheduleIntervalSecs ?? 3600}
+              onChange={(e) => onDraftChange({ ...draft, scheduleIntervalSecs: Number(e.target.value) || 3600 })}
+            />
+            <div className="text-[11px] text-fg-muted mt-1">{t('workflows.schedule.hint')}</div>
+          </div>
+        )}
       </div>
 
       <div>

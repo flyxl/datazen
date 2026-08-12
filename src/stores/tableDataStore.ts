@@ -42,6 +42,7 @@ export interface TableState {
   page: number;
   pageSize: number;
   filters: FilterCondition[];
+  filterLogic: 'and' | 'or';
   sorts: SortCondition[];
   editBuffer: Map<string, CellEdit>;
   selectedRows: Set<number>;
@@ -59,6 +60,7 @@ function emptyTableState(): TableState {
     page: 0,
     pageSize: 50,
     filters: [],
+    filterLogic: 'and',
     sorts: [],
     editBuffer: new Map(),
     selectedRows: new Set(),
@@ -82,6 +84,7 @@ interface TableDataStore {
   page: number;
   pageSize: number;
   filters: FilterCondition[];
+  filterLogic: 'and' | 'or';
   sorts: SortCondition[];
   editBuffer: Map<string, CellEdit>;
   selectedRows: Set<number>;
@@ -98,6 +101,8 @@ interface TableDataStore {
   setPageSize: (size: number) => void;
   addFilter: (filter: FilterCondition) => void;
   setFilters: (filters: FilterCondition[]) => void;
+  updateFilter: (index: number, filter: FilterCondition) => void;
+  setFilterLogic: (logic: 'and' | 'or') => void;
   removeFilter: (index: number) => void;
   clearFilters: () => void;
   setSort: (sort: SortCondition) => void;
@@ -132,6 +137,7 @@ function syncFlat(active: string | null, states: Map<string, TableState>) {
     page: ts.page,
     pageSize: ts.pageSize,
     filters: ts.filters,
+    filterLogic: ts.filterLogic,
     sorts: ts.sorts,
     editBuffer: ts.editBuffer,
     selectedRows: ts.selectedRows,
@@ -180,7 +186,7 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
     // Prevent duplicate concurrent loads for the same table
     if (existing.loading) return;
 
-    const { page, filters, sorts } = existing;
+    const { page, filters, sorts, filterLogic } = existing;
     const defaultPageSize = DB_REGISTRY[databaseType as DatabaseType]?.defaultPageSize;
     const pageSize = defaultPageSize ?? existing.pageSize;
 
@@ -202,6 +208,7 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
         filters,
         sorts,
         skipCount,
+        filterLogic,
       });
       const updated = new Map(get().tableStates);
       const ts = updated.get(table) ?? emptyTableState();
@@ -261,6 +268,21 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
 
   setFilters: (filters) => {
     updateActive(get, set, () => ({ filters, page: 0 }));
+    const { connectionId, activeTable } = get();
+    if (connectionId && activeTable) void get().loadTableData({ connectionId, table: activeTable });
+  },
+
+  updateFilter: (index, filter) => {
+    updateActive(get, set, (ts) => ({
+      filters: ts.filters.map((f, i) => (i === index ? filter : f)),
+      page: 0,
+    }));
+    const { connectionId, activeTable } = get();
+    if (connectionId && activeTable) void get().loadTableData({ connectionId, table: activeTable });
+  },
+
+  setFilterLogic: (logic) => {
+    updateActive(get, set, () => ({ filterLogic: logic, page: 0 }));
     const { connectionId, activeTable } = get();
     if (connectionId && activeTable) void get().loadTableData({ connectionId, table: activeTable });
   },

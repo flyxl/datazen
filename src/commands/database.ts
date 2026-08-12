@@ -4,6 +4,8 @@ import type {
   KeyDetail,
   KeyScanResult,
   SortCondition,
+  DatabaseObject,
+  PrivilegeGrant,
   TableDataResult,
   TableInfo,
   TableSchema,
@@ -49,6 +51,7 @@ export const databaseCommands = {
     filters?: FilterCondition[];
     sorts?: SortCondition[];
     skipCount?: boolean;
+    filterLogic?: 'and' | 'or';
   }) =>
     invoke<TableDataResult>('get_table_data', {
       connectionId: params.connectionId,
@@ -58,6 +61,7 @@ export const databaseCommands = {
       filters: params.filters,
       sorts: params.sorts,
       skipCount: params.skipCount,
+      filterLogic: params.filterLogic,
     }),
 
   executeSQL: (connectionId: string, sql: string) =>
@@ -71,4 +75,13 @@ export const databaseCommands = {
 
   commitRowUpdates: (connectionId: string, table: string, updates: RowUpdateBatch[]) =>
     invoke<void>('commit_row_updates', { connectionId, table, updates }),
+
+  getDatabaseObjects: (connectionId: string, kind: string) =>
+    invoke<DatabaseObject[]>('get_database_objects', { connectionId, kind }),
+
+  getObjectDdl: (connectionId: string, kind: string, name: string, schema?: string | null) =>
+    invoke<string>('get_object_ddl', { connectionId, kind, name, schema: schema ?? null }),
+
+  getPrivileges: (connectionId: string) =>
+    invoke<PrivilegeGrant[]>('get_privileges', { connectionId }),
 };

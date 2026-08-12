@@ -147,8 +147,21 @@ impl WorkflowRegistry {
                 name: s.name.clone(),
                 description: s.description.clone(),
                 variables: s.variables.clone(),
+                scheduled: s
+                    .schedule
+                    .as_ref()
+                    .map(|sc| sc.enabled)
+                    .unwrap_or(false),
             })
             .collect()
+    }
+
+    pub async fn list_definitions(&self) -> Vec<WorkflowDefinition> {
+        if let Err(e) = self.ensure_loaded().await {
+            tracing::warn!("Failed to load workflows before list_definitions: {e}");
+            return Vec::new();
+        }
+        self.workflows.read().await.values().cloned().collect()
     }
 
     pub fn validate_id(id: &str) -> Result<(), String> {

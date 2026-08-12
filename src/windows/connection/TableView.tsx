@@ -29,6 +29,9 @@ export function TableView({
   const setSort = useTableDataStore((s) => s.setSort);
   const removeFilter = useTableDataStore((s) => s.removeFilter);
   const clearFilters = useTableDataStore((s) => s.clearFilters);
+  const addFilter = useTableDataStore((s) => s.addFilter);
+  const updateFilter = useTableDataStore((s) => s.updateFilter);
+  const setFilterLogic = useTableDataStore((s) => s.setFilterLogic);
   const setPage = useTableDataStore((s) => s.setPage);
   const setPageSize = useTableDataStore((s) => s.setPageSize);
   const startEdit = useTableDataStore((s) => s.startEdit);
@@ -64,6 +67,7 @@ export function TableView({
   const pageSize = ts?.pageSize ?? 50;
   const sorts = ts?.sorts ?? [];
   const filters = ts?.filters ?? [];
+  const filterLogic = ts?.filterLogic ?? 'and';
   const editingCell = ts?.editingCell ?? null;
   const selectedRows = ts?.selectedRows ?? new Set<number>();
   const loading = ts?.loading ?? false;
@@ -122,6 +126,10 @@ export function TableView({
         pageSize={pageSize}
         sorts={sorts}
         filters={filters}
+        filterLogic={filterLogic}
+        onAddFilter={addFilter}
+        onUpdateFilter={updateFilter}
+        onFilterLogicChange={setFilterLogic}
         editingCell={editingCell}
         selectedRows={selectedRows}
         loading={loading}

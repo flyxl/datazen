@@ -156,6 +156,19 @@ export function ConnectionSettingsDialog({ open, onClose }: ConnectionSettingsDi
             className="h-4 w-4 accent-accent"
           />
         </div>
+
+        <div className="flex items-center justify-between">
+          <div>
+            <label className="text-xs font-medium text-fg-secondary">{t('settings.safeMode')}</label>
+            <p className="text-[11px] text-fg-muted">{t('settings.safeModeHint')}</p>
+          </div>
+          <input
+            type="checkbox"
+            checked={draft.safeMode}
+            onChange={(e) => updateField('safeMode', e.target.checked)}
+            className="h-4 w-4 accent-accent"
+          />
+        </div>
       </div>
     </Dialog>
   );

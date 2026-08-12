@@ -6,6 +6,7 @@ import {
   Code2,
   Database,
   Download,
+  KeyRound,
   GitFork,
   MessageSquare,
   Pencil,
@@ -50,6 +51,8 @@ import type { ColumnDef } from '../../components/DataTable/TableHeader';
 import { AiChatPanel } from '../../components/ai/AiChatPanel';
 import { rowToRecord } from '../../lib/rowToRecord';
 import { ErDiagramView } from './ErDiagramView';
+import { ObjectBrowser } from './ObjectBrowser';
+import { PrivilegeView } from './PrivilegeView';
 
 type SubTabId = 'data' | 'structure' | 'indexes' | 'foreignKeys' | 'ddl';
 
@@ -100,7 +103,17 @@ interface ErDiagramPanel {
   focusTable?: string;
 }
 
-type Panel = TablePanel | QueryPanelInfo | CreateTablePanel | AlterTablePanel | ErDiagramPanel;
+interface ObjectsPanel {
+  type: 'objects';
+  id: string;
+}
+
+interface PrivilegesPanel {
+  type: 'privileges';
+  id: string;
+}
+
+type Panel = TablePanel | QueryPanelInfo | CreateTablePanel | AlterTablePanel | ErDiagramPanel | ObjectsPanel | PrivilegesPanel;
 
 let panelCounter = 0;
 function nextPanelId(prefix: string) {
@@ -273,6 +286,28 @@ export function SqlConnectionView({
       id: nextPanelId('er'),
       focusTable: focus,
     };
+    setPanels((prev) => [...prev, panel]);
+    setActivePanelId(panel.id);
+  }, [panels]);
+
+  const handleOpenObjects = useCallback(() => {
+    const existing = panels.find((p) => p.type === 'objects');
+    if (existing) {
+      setActivePanelId(existing.id);
+      return;
+    }
+    const panel: ObjectsPanel = { type: 'objects', id: nextPanelId('obj') };
+    setPanels((prev) => [...prev, panel]);
+    setActivePanelId(panel.id);
+  }, [panels]);
+
+  const handleOpenPrivileges = useCallback(() => {
+    const existing = panels.find((p) => p.type === 'privileges');
+    if (existing) {
+      setActivePanelId(existing.id);
+      return;
+    }
+    const panel: PrivilegesPanel = { type: 'privileges', id: nextPanelId('priv') };
     setPanels((prev) => [...prev, panel]);
     setActivePanelId(panel.id);
   }, [panels]);
@@ -533,6 +568,18 @@ export function SqlConnectionView({
             {t('erDiagram.title')}
           </Button>
         )}
+        {!isReadOnly && (
+          <>
+            <Button variant="secondary" className="h-8" onClick={handleOpenObjects}>
+              <Code2 className="h-4 w-4" />
+              {t('objects.title')}
+            </Button>
+            <Button variant="secondary" className="h-8" onClick={handleOpenPrivileges}>
+              <KeyRound className="h-4 w-4" />
+              {t('privileges.title')}
+            </Button>
+          </>
+        )}
         <div className="mx-1 h-6 w-px bg-edge" />
 
         <div className="relative min-w-0 max-w-[280px] flex-1">
@@ -607,6 +654,8 @@ export function SqlConnectionView({
                       'create-table': <TableProperties className="h-3.5 w-3.5 shrink-0" />,
                       'alter-table': <Pencil className="h-3.5 w-3.5 shrink-0" />,
                       'er-diagram': <GitFork className="h-3.5 w-3.5 shrink-0" />,
+                      objects: <Code2 className="h-3.5 w-3.5 shrink-0" />,
+                      privileges: <KeyRound className="h-3.5 w-3.5 shrink-0" />,
                     };
                     const labelMap: Record<string, string> = {
                       table: (panel as TablePanel).tableName,
@@ -614,6 +663,8 @@ export function SqlConnectionView({
                       'create-table': t('connWin.newTable'),
                       'alter-table': `${t('connWin.editStructure')} · ${(panel as AlterTablePanel).tableName}`,
                       'er-diagram': t('erDiagram.title'),
+                      objects: t('objects.title'),
+                      privileges: t('privileges.title'),
                     };
                     const icon = iconMap[panel.type];
                     const label = labelMap[panel.type];
@@ -762,6 +813,14 @@ export function SqlConnectionView({
                   onSelectTable={handleSelectTable}
                 />
               </div>
+            )}
+
+            {activePanel?.type === 'objects' && (
+              <ObjectBrowser connectionId={connectionId} databaseType={databaseType} />
+            )}
+
+            {activePanel?.type === 'privileges' && (
+              <PrivilegeView connectionId={connectionId} />
             )}
 
             {!activePanel && (

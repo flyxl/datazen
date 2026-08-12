@@ -153,8 +153,9 @@ describe('WorkflowForm', () => {
     fireEvent.change(screen.getByPlaceholderText('workflows.form.varDesc'), { target: { value: 'pick conn' } });
     expect(screen.getByDisplayValue('pick conn')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('checkbox'));
-    expect(screen.getByRole('checkbox')).toBeChecked();
+    const required = screen.getByLabelText('workflows.form.varRequired');
+    fireEvent.click(required);
+    expect(required).toBeChecked();
 
     const trashBtn = Array.from(document.querySelectorAll('button')).find((b) =>
       b.querySelector('.lucide-trash2'),
@@ -241,5 +242,19 @@ describe('WorkflowForm', () => {
     fireEvent.click(screen.getByText('common.cancel'));
     expect(onSave).toHaveBeenCalled();
     expect(onCancel).toHaveBeenCalled();
+  });
+
+  it('toggles schedule and edits interval', () => {
+    const { onDraftChange } = renderForm(emptyDraft());
+    fireEvent.click(screen.getByText('workflows.schedule.enabled'));
+    expect(onDraftChange.mock.calls.at(-1)?.[0].scheduleEnabled).toBe(true);
+
+    const { onDraftChange: onChange2 } = renderForm({
+      ...emptyDraft(),
+      scheduleEnabled: true,
+      scheduleIntervalSecs: 3600,
+    });
+    fireEvent.change(screen.getByDisplayValue('3600'), { target: { value: '90' } });
+    expect(onChange2.mock.calls.at(-1)?.[0].scheduleIntervalSecs).toBe(90);
   });
 });
