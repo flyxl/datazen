@@ -367,6 +367,7 @@ const translations = {
   'query.totalTime': '總耗時',
   'query.history': '歷史',
   'query.placeholder': '輸入 SQL 查詢語句…',
+  'query.namespaceLoading': '正在加載對象…',
   'query.executing': '執行中…',
   'query.streamingRows': '已載入 {n} 行…',
   'query.result': '結果',

@@ -439,6 +439,7 @@ const zhCN = {
   'query.totalTime': '总耗时',
   'query.history': '历史',
   'query.placeholder': '输入 SQL 查询语句…',
+  'query.namespaceLoading': '正在加载对象…',
   'query.executing': '执行中…',
   'query.streamingRows': '已加载 {n} 行…',
   'query.result': '结果',

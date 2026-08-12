@@ -375,6 +375,7 @@ const translations = {
   'query.totalTime': 'Tempo total',
   'query.history': 'História',
   'query.placeholder': 'Digite consulta SQL…',
+  'query.namespaceLoading': 'Carregando objetos…',
   'query.executing': 'Executando…',
   'query.streamingRows': '{n} linhas carregadas…',
   'query.result': 'Resultado',

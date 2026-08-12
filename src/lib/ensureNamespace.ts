@@ -223,12 +223,21 @@ function usesCurrentDatabaseRoot(deps: EnsureDeps): boolean {
   return strategy === 'postgresql' && deps.isMultiDatabase;
 }
 
-export async function ensureNamespacePath(segments: string[], deps: EnsureDeps): Promise<void> {
-  const resolved = resolveEnsureSegments(segments, {
+function resolveForEnsure(segments: string[], deps: EnsureDeps): string[] {
+  return resolveEnsureSegments(segments, {
     currentDatabase: deps.currentDatabase,
     knownRoots: [...deps.databases, ...Object.keys(deps.pathAliases)],
     useCurrentDatabaseRoot: usesCurrentDatabaseRoot(deps),
   });
+}
+
+/** True when this path is not in `loadedPaths` yet (a fetch may still be in flight). */
+export function namespaceEnsurePending(segments: string[], deps: EnsureDeps): boolean {
+  return !deps.loadedPaths.has(pathKey(resolveForEnsure(segments, deps)));
+}
+
+export async function ensureNamespacePath(segments: string[], deps: EnsureDeps): Promise<void> {
+  const resolved = resolveForEnsure(segments, deps);
   const key = `${deps.connectionId}|${resolved.join('.')}`;
   const existing = inflight.get(key);
   if (existing) return existing;
