@@ -119,7 +119,7 @@ src/
 │ - connectionId              │ - theme      │ - sidebarWidth│
 │ - status (connected/idle)   │ - language   │ - editorHeight│
 │ - serverInfo                │ - editor     │ - activeDialog│
-│ - currentDatabase           │ - shortcuts  │ - contextMenu │
+│ - currentDatabase           │ - shortcuts  │ - isFullscreen│
 └─────────────────────────────┴──────────────┴───────────────┘
 ```
 
