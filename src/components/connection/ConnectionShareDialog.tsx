@@ -140,7 +140,7 @@ export function ConnectionShareDialog({
         const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
         const count = await connectionCommands.exportConnectionsWithDialog(
           password,
-          `datazen-connections-${date}.json`,
+          `datazen-connections-${date}.tableplusconnection`,
         );
         onClose();
         if (count !== null) {
@@ -204,7 +204,11 @@ export function ConnectionShareDialog({
           <Button variant="secondary" onClick={onClose} disabled={submitting}>
             {t('common.cancel')}
           </Button>
-          <Button variant="primary" onClick={() => void handleSubmit()} disabled={submitting || detecting}>
+          <Button
+            variant="primary"
+            onClick={() => void handleSubmit()}
+            disabled={submitting || detecting}
+          >
             {mode === 'export' ? t('connShare.exportAction') : t('connShare.importAction')}
           </Button>
         </>
@@ -212,7 +216,9 @@ export function ConnectionShareDialog({
     >
       <div className="space-y-4">
         {mode === 'import' && !appImport && (
-          <p className="text-xs leading-relaxed text-fg-muted">{t('connShare.importFormatsHint')}</p>
+          <p className="text-xs leading-relaxed text-fg-muted">
+            {t('connShare.importFormatsHint')}
+          </p>
         )}
 
         {appImport && (
@@ -253,7 +259,9 @@ export function ConnectionShareDialog({
           <label className="mb-1 block text-xs font-medium text-fg-secondary">
             {t('connShare.password')}
             {mode === 'import' ? (
-              <span className="ml-1 font-normal text-fg-muted">({t('connShare.passwordOptional')})</span>
+              <span className="ml-1 font-normal text-fg-muted">
+                ({t('connShare.passwordOptional')})
+              </span>
             ) : null}
           </label>
           <Input
