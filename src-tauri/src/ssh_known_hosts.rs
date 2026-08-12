@@ -70,10 +70,7 @@ pub fn load_known_hosts(path: &Path) -> HashMap<String, KnownHostEntry> {
     }
 }
 
-pub fn save_known_hosts(
-    path: &Path,
-    map: &HashMap<String, KnownHostEntry>,
-) -> Result<(), String> {
+pub fn save_known_hosts(path: &Path, map: &HashMap<String, KnownHostEntry>) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)
             .map_err(|e| format!("create known hosts dir {}: {e}", parent.display()))?;

@@ -147,11 +147,7 @@ impl WorkflowRegistry {
                 name: s.name.clone(),
                 description: s.description.clone(),
                 variables: s.variables.clone(),
-                scheduled: s
-                    .schedule
-                    .as_ref()
-                    .map(|sc| sc.enabled)
-                    .unwrap_or(false),
+                scheduled: s.schedule.as_ref().map(|sc| sc.enabled).unwrap_or(false),
             })
             .collect()
     }

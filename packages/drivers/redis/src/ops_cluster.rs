@@ -45,11 +45,7 @@ pub fn parse_cluster_nodes(raw: &str) -> Vec<ClusterNodeInfo> {
             continue;
         }
         let id = parts[0].to_string();
-        let addr = parts[1]
-            .split('@')
-            .next()
-            .unwrap_or(parts[1])
-            .to_string();
+        let addr = parts[1].split('@').next().unwrap_or(parts[1]).to_string();
         let flags = parts[2];
         let role = cluster_role_from_flags(flags);
         nodes.push(ClusterNodeInfo { id, addr, role });

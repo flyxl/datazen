@@ -5,7 +5,9 @@ use redis::aio::MultiplexedConnection;
 use redis::cluster::{ClusterClient, TlsMode};
 use redis::cluster_async::ClusterConnection;
 use redis::sentinel::{Sentinel, SentinelClient, SentinelNodeConnectionInfo, SentinelServerType};
-use redis::{Client, ClientTlsConfig, RedisConnectionInfo, TlsCertificates as RedisTlsCertificates};
+use redis::{
+    Client, ClientTlsConfig, RedisConnectionInfo, TlsCertificates as RedisTlsCertificates,
+};
 use serde_json::Map;
 use std::fs;
 use std::future::Future;
@@ -157,7 +159,8 @@ pub fn build_connection_plan(config: &ConnectionConfig) -> Result<ConnectionPlan
                 DriverError::InvalidConfig("sentinel topology requires sentinelMasterName".into())
             })?;
             let sentinel_password = opt_string(opts, "sentinelNodePassword");
-            let sentinel_urls = parse_sentinel_urls(opts, config, &tls, sentinel_password.as_deref())?;
+            let sentinel_urls =
+                parse_sentinel_urls(opts, config, &tls, sentinel_password.as_deref())?;
             if sentinel_urls.is_empty() {
                 return Err(DriverError::InvalidConfig(
                     "sentinel topology requires at least one sentinel node".into(),
@@ -190,7 +193,9 @@ pub async fn open_pubsub_connection(
         }
         ConnectionPlan::Cluster(p) => {
             let url = p.node_urls.first().ok_or_else(|| {
-                DriverError::InvalidConfig("cluster topology requires at least one cluster node".into())
+                DriverError::InvalidConfig(
+                    "cluster topology requires at least one cluster node".into(),
+                )
             })?;
             let tls_timeout = if p.tls.prefer_fallback {
                 p.connect_timeout.min(PREFER_TLS_PROBE)
@@ -211,7 +216,8 @@ pub async fn open_pubsub_connection(
         ConnectionPlan::Sentinel(p) => {
             let mut attempt = open_sentinel_pubsub(p, p.connect_timeout).await;
             if matches!(attempt, Err(DriverError::ConnectionFailed(_))) && p.tls.prefer_fallback {
-                attempt = open_sentinel_pubsub(&plaintext_sentinel_plan(p), p.connect_timeout).await;
+                attempt =
+                    open_sentinel_pubsub(&plaintext_sentinel_plan(p), p.connect_timeout).await;
             }
             attempt
         }
@@ -242,10 +248,7 @@ pub async fn open_live_conn(plan: &ConnectionPlan) -> Result<RedisLiveConn, Driv
                 attempt = open_sentinel_conn(&plaintext_sentinel_plan(p), p.connect_timeout).await;
             }
             let (client, connection) = attempt?;
-            Ok(RedisLiveConn::Sentinel {
-                client,
-                connection,
-            })
+            Ok(RedisLiveConn::Sentinel { client, connection })
         }
     }
 }
@@ -404,7 +407,11 @@ fn plaintext_url(url: &str) -> String {
 fn plaintext_sentinel_plan(plan: &SentinelPlan) -> SentinelPlan {
     let mut plain = plan.clone();
     plain.tls = TlsPlan::plaintext();
-    plain.sentinel_urls = plain.sentinel_urls.iter().map(|u| plaintext_url(u)).collect();
+    plain.sentinel_urls = plain
+        .sentinel_urls
+        .iter()
+        .map(|u| plaintext_url(u))
+        .collect();
     plain
 }
 
@@ -417,9 +424,7 @@ async fn connect_with_timeout<T>(
     tokio::time::timeout(timeout, fut)
         .await
         .map_err(|_| {
-            DriverError::ConnectionFailed(format!(
-                "Redis connection timed out after {timeout:?}"
-            ))
+            DriverError::ConnectionFailed(format!("Redis connection timed out after {timeout:?}"))
         })?
         .map_err(|e| DriverError::ConnectionFailed(e.to_string()))
 }
@@ -492,7 +497,10 @@ fn opt_string_array(opts: Option<&Map<String, serde_json::Value>>, key: &str) ->
 }
 
 fn non_empty(value: Option<&str>) -> Option<String> {
-    value.map(str::trim).filter(|s| !s.is_empty()).map(str::to_string)
+    value
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
 }
 
 fn parse_db_index(raw: Option<&str>) -> Result<u32, DriverError> {
@@ -522,7 +530,9 @@ fn parse_host_port(node: &str) -> Result<(String, u16), DriverError> {
             .map_err(|_| DriverError::InvalidConfig(format!("invalid port in node {node:?}")))?;
         let host = host.trim();
         if host.is_empty() {
-            return Err(DriverError::InvalidConfig(format!("missing host in node {node:?}")));
+            return Err(DriverError::InvalidConfig(format!(
+                "missing host in node {node:?}"
+            )));
         }
         return Ok((host.to_string(), port));
     }
@@ -633,9 +643,8 @@ fn read_pem(path: &str, label: &str) -> Result<Vec<u8>, DriverError> {
             "TLS {label} file not found: {path}"
         )));
     }
-    fs::read(path).map_err(|e| {
-        DriverError::SslError(format!("failed to read TLS {label} file {path}: {e}"))
-    })
+    fs::read(path)
+        .map_err(|e| DriverError::SslError(format!("failed to read TLS {label} file {path}: {e}")))
 }
 
 fn load_tls_certificates(tls: &TlsPlan) -> Result<Option<RedisTlsCertificates>, DriverError> {
@@ -741,9 +750,7 @@ macro_rules! with_redis_conn {
         match $live {
             $crate::connect::RedisLiveConn::Standalone($c) => $body,
             $crate::connect::RedisLiveConn::Cluster($c) => $body,
-            $crate::connect::RedisLiveConn::Sentinel {
-                connection: $c, ..
-            } => $body,
+            $crate::connect::RedisLiveConn::Sentinel { connection: $c, .. } => $body,
         }
     };
 }

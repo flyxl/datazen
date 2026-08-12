@@ -29,7 +29,11 @@ pub fn check_sql(sql: &str, read_only: bool, safe_mode: bool) -> Result<(), Stri
         if safe_mode && verb.eq_ignore_ascii_case("TRUNCATE") {
             return Err("Safe Mode blocks TRUNCATE".to_string());
         }
-        if safe_mode && SAFE_MODE_NEEDS_WHERE.iter().any(|v| verb.eq_ignore_ascii_case(v)) {
+        if safe_mode
+            && SAFE_MODE_NEEDS_WHERE
+                .iter()
+                .any(|v| verb.eq_ignore_ascii_case(v))
+        {
             if !has_top_level_where(&stmt) {
                 return Err(format!(
                     "Safe Mode requires a WHERE clause on {verb} statements"
@@ -307,13 +311,15 @@ mod tests {
 
     #[test]
     fn params_inside_strings_are_not_replaced() {
-        let sql = apply_params("SELECT ':uid' FROM t WHERE id = :uid", &json!({ "uid": 1 })).unwrap();
+        let sql =
+            apply_params("SELECT ':uid' FROM t WHERE id = :uid", &json!({ "uid": 1 })).unwrap();
         assert_eq!(sql, "SELECT ':uid' FROM t WHERE id = 1");
     }
 
     #[test]
     fn positional_dollar_params() {
-        let sql = apply_params("SELECT * FROM t WHERE a = $1 AND b = $2", &json!([1, "x"])).unwrap();
+        let sql =
+            apply_params("SELECT * FROM t WHERE a = $1 AND b = $2", &json!([1, "x"])).unwrap();
         assert_eq!(sql, "SELECT * FROM t WHERE a = 1 AND b = 'x'");
     }
 
@@ -358,13 +364,12 @@ mod tests {
 
     #[test]
     fn apply_params_handles_null_bool_and_question_marks() {
-        assert_eq!(apply_params("SELECT :x", &json!(null)).unwrap(), "SELECT :x");
+        assert_eq!(
+            apply_params("SELECT :x", &json!(null)).unwrap(),
+            "SELECT :x"
+        );
         assert_eq!(apply_params("SELECT :x", &json!({})).unwrap(), "SELECT :x");
-        let sql = apply_params(
-            "SELECT ? , ? , ?",
-            &json!([true, false, {"a": 1}]),
-        )
-        .unwrap();
+        let sql = apply_params("SELECT ? , ? , ?", &json!([true, false, {"a": 1}])).unwrap();
         assert_eq!(sql, "SELECT TRUE , FALSE , '{\"a\":1}'");
     }
 

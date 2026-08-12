@@ -18,8 +18,8 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use datazen_driver_postgres::PostgresDriver;
 use datazen_driver_api::{ConnectionConfig, DatabaseDriver, DriverError, Value};
+use datazen_driver_postgres::PostgresDriver;
 
 #[derive(Clone, Debug)]
 struct PgTestConfig {

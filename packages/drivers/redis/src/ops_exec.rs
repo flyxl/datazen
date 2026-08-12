@@ -32,10 +32,7 @@ pub struct ExecResponse {
     pub results: Vec<ExecResult>,
 }
 
-pub async fn exec_commands<C>(
-    conn: &mut C,
-    commands: &str,
-) -> Result<ExecResponse, String>
+pub async fn exec_commands<C>(conn: &mut C, commands: &str) -> Result<ExecResponse, String>
 where
     C: AsyncCommands + redis::aio::ConnectionLike + Send,
 {
@@ -96,7 +93,9 @@ fn format_redis_value(value: &redis::Value) -> String {
         redis::Value::Map(map) => {
             let mut pairs: Vec<String> = map
                 .iter()
-                .map(|(key, val)| format!("{} => {}", format_redis_value(key), format_redis_value(val)))
+                .map(|(key, val)| {
+                    format!("{} => {}", format_redis_value(key), format_redis_value(val))
+                })
                 .collect();
             pairs.sort();
             format!("{{{}}}", pairs.join(", "))
@@ -105,11 +104,7 @@ fn format_redis_value(value: &redis::Value) -> String {
         redis::Value::Boolean(b) => b.to_string(),
         redis::Value::BigNumber(n) => n.to_string(),
         redis::Value::Attribute { data, attributes } => {
-            format!(
-                "{} (attrs: {:?})",
-                format_redis_value(data),
-                attributes
-            )
+            format!("{} (attrs: {:?})", format_redis_value(data), attributes)
         }
         redis::Value::Set(items) => {
             let mut parts: Vec<String> = items.iter().map(format_redis_value).collect();

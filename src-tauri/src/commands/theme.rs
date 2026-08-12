@@ -85,7 +85,9 @@ pub(crate) async fn list_theme_packs_impl(
         }
         match validate_pack_dir(&path) {
             Ok(manifest) => packs.push(ThemePackSummary::from(manifest)),
-            Err(e) => tracing::warn!(dir = %path.display(), error = %e, "skipping invalid theme pack"),
+            Err(e) => {
+                tracing::warn!(dir = %path.display(), error = %e, "skipping invalid theme pack")
+            }
         }
     }
     packs.sort_by(|a, b| a.name.cmp(&b.name));
@@ -99,7 +101,9 @@ pub(crate) async fn remove_theme_pack_impl(
     validate_pack_id(&id)?;
     let dir = pack_dir(state, &id)?;
     if !dir.is_dir() {
-        return Err(CommandError::NotFound(format!("theme pack not found: {id}")));
+        return Err(CommandError::NotFound(format!(
+            "theme pack not found: {id}"
+        )));
     }
 
     let mut settings = state.store.get_settings().await;
@@ -125,7 +129,9 @@ pub(crate) async fn read_theme_pack_file_impl(
     let rel = safe_pack_rel_path(&relative_path)?;
     let pack = pack_dir(state, &id)?;
     if !pack.is_dir() {
-        return Err(CommandError::NotFound(format!("theme pack not found: {id}")));
+        return Err(CommandError::NotFound(format!(
+            "theme pack not found: {id}"
+        )));
     }
 
     let file_path = pack.join(&rel);
@@ -138,7 +144,9 @@ pub(crate) async fn read_theme_pack_file_impl(
     let canonical_pack = fs::canonicalize(&pack).cmd_err("read_theme_pack_file")?;
     let canonical_file = fs::canonicalize(&file_path).cmd_err("read_theme_pack_file")?;
     if !canonical_file.starts_with(&canonical_pack) {
-        return Err(CommandError::Validation("path traversal not allowed".into()));
+        return Err(CommandError::Validation(
+            "path traversal not allowed".into(),
+        ));
     }
 
     tokio::fs::read(&file_path)
@@ -147,7 +155,9 @@ pub(crate) async fn read_theme_pack_file_impl(
 }
 
 #[tauri::command]
-pub async fn list_theme_packs(state: State<'_, AppState>) -> Result<Vec<ThemePackSummary>, CommandError> {
+pub async fn list_theme_packs(
+    state: State<'_, AppState>,
+) -> Result<Vec<ThemePackSummary>, CommandError> {
     list_theme_packs_impl(&state).await
 }
 
@@ -197,9 +207,7 @@ pub fn set_surface_background(app: AppHandle, hex: String, dark: bool) -> Result
     let cache = app
         .try_state::<SurfaceBgCache>()
         .ok_or_else(|| CommandError::Internal("surface background cache missing".into()))?;
-    cache
-        .set(&hex, dark)
-        .map_err(CommandError::Validation)?;
+    cache.set(&hex, dark).map_err(CommandError::Validation)?;
     Ok(())
 }
 
@@ -229,7 +237,11 @@ mod tests {
         let test = TestAppState::new().await;
         assert!(list_theme_packs_impl(&test.state).await.unwrap().is_empty());
 
-        let pack_root = test.state.store.data_dir().join("themes/community.fixture-dark");
+        let pack_root = test
+            .state
+            .store
+            .data_dir()
+            .join("themes/community.fixture-dark");
         std::fs::create_dir_all(&pack_root).unwrap();
         std::fs::write(
             pack_root.join("manifest.json"),

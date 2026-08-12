@@ -12,7 +12,11 @@ impl DatabaseDriverFactory for RqliteFactory {
     fn create(&self) -> Arc<dyn DatabaseDriver> {
         Arc::new(RqliteDriver::new())
     }
-    fn driver_id(&self) -> &'static str { "rqlite" }
-    fn supports_explain(&self) -> bool { true }
+    fn driver_id(&self) -> &'static str {
+        "rqlite"
+    }
+    fn supports_explain(&self) -> bool {
+        true
+    }
 }
 datazen_driver_api::register_driver!(&RqliteFactory);

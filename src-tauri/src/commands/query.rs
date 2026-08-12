@@ -56,8 +56,7 @@ pub(crate) async fn execute_query_stream_impl(
         .map(|c| c.read_only)
         .unwrap_or(false);
     let safe_mode = state.store.get_settings().await.safe_mode;
-    crate::sql_guard::check_sql(&sql, read_only, safe_mode)
-        .map_err(CommandError::Validation)?;
+    crate::sql_guard::check_sql(&sql, read_only, safe_mode).map_err(CommandError::Validation)?;
 
     let limit = query_result_limit_from_settings(state).await;
     let rows_affected = Arc::new(AtomicU64::new(0));
@@ -329,7 +328,10 @@ pub(crate) async fn commit_session_transaction_impl(
         .await
         .remove(&connection_id)
         .ok_or_else(|| CommandError::Validation("No open transaction".into()))?;
-    driver.commit(tx).await.cmd_err("commit_session_transaction")
+    driver
+        .commit(tx)
+        .await
+        .cmd_err("commit_session_transaction")
 }
 
 pub(crate) async fn rollback_session_transaction_impl(
@@ -637,24 +639,30 @@ mod tests {
     async fn session_transaction_begin_commit_and_status() {
         let test = TestAppState::new().await;
         let (_, conn_id) = test.save_and_connect("tx-cfg").await;
-        assert!(!session_transaction_status_impl(&test.state, conn_id.clone())
-            .await
-            .unwrap());
+        assert!(
+            !session_transaction_status_impl(&test.state, conn_id.clone())
+                .await
+                .unwrap()
+        );
         begin_session_transaction_impl(&test.state, conn_id.clone())
             .await
             .unwrap();
-        assert!(session_transaction_status_impl(&test.state, conn_id.clone())
-            .await
-            .unwrap());
+        assert!(
+            session_transaction_status_impl(&test.state, conn_id.clone())
+                .await
+                .unwrap()
+        );
         begin_session_transaction_impl(&test.state, conn_id.clone())
             .await
             .unwrap();
         commit_session_transaction_impl(&test.state, conn_id.clone())
             .await
             .unwrap();
-        assert!(!session_transaction_status_impl(&test.state, conn_id.clone())
-            .await
-            .unwrap());
+        assert!(
+            !session_transaction_status_impl(&test.state, conn_id.clone())
+                .await
+                .unwrap()
+        );
         begin_session_transaction_impl(&test.state, conn_id.clone())
             .await
             .unwrap();
@@ -689,9 +697,11 @@ mod tests {
         let (ra, rb) = tokio::join!(a, b);
         assert!(ra.is_ok());
         assert!(rb.is_ok());
-        assert!(session_transaction_status_impl(&test.state, conn_id.clone())
-            .await
-            .unwrap());
+        assert!(
+            session_transaction_status_impl(&test.state, conn_id.clone())
+                .await
+                .unwrap()
+        );
         commit_session_transaction_impl(&test.state, conn_id)
             .await
             .unwrap();

@@ -59,10 +59,7 @@ impl SurfaceBgCache {
     }
 
     pub fn snapshot(&self) -> CachedSurface {
-        self.inner
-            .read()
-            .unwrap_or_else(|e| e.into_inner())
-            .clone()
+        self.inner.read().unwrap_or_else(|e| e.into_inner()).clone()
     }
 
     pub fn hex(&self) -> String {

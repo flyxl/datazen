@@ -11,13 +11,13 @@ pub const AI_PROTOCOL_VERSION: u32 = 1;
 /// will run in degraded mode (missing capabilities default to `false`).
 pub const MIN_AI_PROTOCOL_VERSION: u32 = 1;
 
+mod factory;
 mod traits;
 mod types;
-mod factory;
 
+pub use factory::*;
 pub use traits::*;
 pub use types::*;
-pub use factory::*;
 
 pub use async_trait::async_trait;
 pub use inventory;

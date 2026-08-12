@@ -1,8 +1,6 @@
-use super::compare::{
-    count_rows, fetch_full_column_types, fetch_table_options, resolve_adapters,
-};
 use super::super::error::{CmdExt, CommandError};
 use super::super::AppState;
+use super::compare::{count_rows, fetch_full_column_types, fetch_table_options, resolve_adapters};
 use super::types::{SyncProgressEvent, BATCH_SIZE};
 use crate::db::{DatabaseType, TableSchema};
 use crate::store::SyncTask;
@@ -33,16 +31,22 @@ where
 {
     let _cross_db = src_type != tgt_type;
 
-    let (src_driver, src_handle) = state.connection_manager
-        .get_connection(source_connection_id).await
+    let (src_driver, src_handle) = state
+        .connection_manager
+        .get_connection(source_connection_id)
+        .await
         .cmd_err("sync_one_table")?;
-    let (tgt_driver, tgt_handle) = state.connection_manager
-        .get_connection(target_connection_id).await
+    let (tgt_driver, tgt_handle) = state
+        .connection_manager
+        .get_connection(target_connection_id)
+        .await
         .cmd_err("sync_one_table")?;
 
     let sq = |name: &str| src_driver.quote_ident(name);
 
-    let src_schema: TableSchema = src_driver.get_table_schema(&src_handle, table_name).await
+    let src_schema: TableSchema = src_driver
+        .get_table_schema(&src_handle, table_name)
+        .await
         .cmd_err("sync_one_table")?;
 
     let full_types = if src_adapter.full_column_types_query(table_name).is_some() {
@@ -61,21 +65,38 @@ where
     }
 
     if resume_offset == 0 {
-        tgt_driver.execute(
-            &tgt_handle,
-            &format!("DROP TABLE IF EXISTS {}", tgt_adapter.quote_ident(table_name)),
-        ).await.cmd_err("sync_one_table")?;
+        tgt_driver
+            .execute(
+                &tgt_handle,
+                &format!(
+                    "DROP TABLE IF EXISTS {}",
+                    tgt_adapter.quote_ident(table_name)
+                ),
+            )
+            .await
+            .cmd_err("sync_one_table")?;
 
         let create_ddl = build_create_table_ddl(&ir_table, tgt_adapter);
-        tgt_driver.execute(&tgt_handle, &create_ddl).await
+        tgt_driver
+            .execute(&tgt_handle, &create_ddl)
+            .await
             .cmd_err("sync_one_table")?;
     }
 
     let src_col_names: Vec<String> = src_schema.columns.iter().map(|c| sq(&c.name)).collect();
-    let tgt_col_names: Vec<String> = ir_table.columns.iter()
-        .map(|c| tgt_adapter.quote_ident(&c.name)).collect();
-    let select_sql = format!("SELECT {} FROM {}", src_col_names.join(", "), sq(table_name));
-    let result = src_driver.query(&src_handle, &select_sql).await
+    let tgt_col_names: Vec<String> = ir_table
+        .columns
+        .iter()
+        .map(|c| tgt_adapter.quote_ident(&c.name))
+        .collect();
+    let select_sql = format!(
+        "SELECT {} FROM {}",
+        src_col_names.join(", "),
+        sq(table_name)
+    );
+    let result = src_driver
+        .query(&src_handle, &select_sql)
+        .await
         .cmd_err("sync_one_table")?;
 
     let cols_joined = tgt_col_names.join(", ");
@@ -87,14 +108,21 @@ where
     };
 
     for batch in rows.chunks(BATCH_SIZE) {
-        let value_sets: Vec<String> = batch.iter().map(|row| {
-            let vals: Vec<String> = row.iter().enumerate().map(|(i, v)| {
-                let ir_type = &ir_table.columns[i].ir_type;
-                let transformed = tgt_adapter.transform_value(v, ir_type);
-                tgt_adapter.format_literal(&transformed, ir_type)
-            }).collect();
-            format!("({})", vals.join(", "))
-        }).collect();
+        let value_sets: Vec<String> = batch
+            .iter()
+            .map(|row| {
+                let vals: Vec<String> = row
+                    .iter()
+                    .enumerate()
+                    .map(|(i, v)| {
+                        let ir_type = &ir_table.columns[i].ir_type;
+                        let transformed = tgt_adapter.transform_value(v, ir_type);
+                        tgt_adapter.format_literal(&transformed, ir_type)
+                    })
+                    .collect();
+                format!("({})", vals.join(", "))
+            })
+            .collect();
 
         let insert = format!(
             "INSERT INTO {} ({}) VALUES {}",
@@ -102,7 +130,9 @@ where
             cols_joined,
             value_sets.join(", ")
         );
-        tgt_driver.execute(&tgt_handle, &insert).await
+        tgt_driver
+            .execute(&tgt_handle, &insert)
+            .await
             .cmd_err("sync_one_table")?;
 
         synced += batch.len() as u64;
@@ -123,11 +153,15 @@ pub(crate) async fn sync_table_impl(
 ) -> Result<u64, CommandError> {
     tracing::info!(%source_connection_id, %target_connection_id, %table_name, "sync_table");
 
-    let src_config = state.connection_manager
-        .get_connection_config(&source_connection_id).await
+    let src_config = state
+        .connection_manager
+        .get_connection_config(&source_connection_id)
+        .await
         .cmd_err("sync_table")?;
-    let tgt_config = state.connection_manager
-        .get_connection_config(&target_connection_id).await
+    let tgt_config = state
+        .connection_manager
+        .get_connection_config(&target_connection_id)
+        .await
         .cmd_err("sync_table")?;
 
     let src_type = &src_config.database_type;
@@ -155,7 +189,8 @@ pub(crate) async fn sync_table_impl(
         tgt_adapter.as_ref(),
         0,
         &|_| {},
-    ).await?;
+    )
+    .await?;
 
     tracing::info!(%table_name, total, "sync_table OK");
     Ok(total)
@@ -178,11 +213,15 @@ pub(crate) async fn sync_tables_impl(
 ) -> Result<serde_json::Value, CommandError> {
     tracing::info!(%task_id, table_count = tables.len(), %strategy, resume_offset, "sync_tables");
 
-    let src_config = state.connection_manager
-        .get_connection_config(&source_connection_id).await
+    let src_config = state
+        .connection_manager
+        .get_connection_config(&source_connection_id)
+        .await
         .cmd_err("sync_tables")?;
-    let tgt_config = state.connection_manager
-        .get_connection_config(&target_connection_id).await
+    let tgt_config = state
+        .connection_manager
+        .get_connection_config(&target_connection_id)
+        .await
         .cmd_err("sync_tables")?;
 
     let src_type = src_config.database_type.clone();
@@ -199,22 +238,32 @@ pub(crate) async fn sync_tables_impl(
 
     let (src_adapter, tgt_adapter) = resolve_adapters(&state, &src_type, &tgt_type)?;
 
-    let emit = |evt: SyncProgressEvent| { let _ = app_handle.emit("sync:progress", &evt); };
+    let emit = |evt: SyncProgressEvent| {
+        let _ = app_handle.emit("sync:progress", &evt);
+    };
 
     let mut completed: Vec<String> = skip_tables.clone();
-    let mut source_row_counts: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
+    let mut source_row_counts: std::collections::HashMap<String, u64> =
+        std::collections::HashMap::new();
     let total_tables = tables.len();
 
     emit(SyncProgressEvent {
-        task_id: task_id.clone(), phase: "counting".into(),
-        table_index: 0, total_tables, current_table: String::new(),
-        source_row_count: 0, synced_rows: 0, completed_tables: completed.clone(),
+        task_id: task_id.clone(),
+        phase: "counting".into(),
+        table_index: 0,
+        total_tables,
+        current_table: String::new(),
+        source_row_count: 0,
+        synced_rows: 0,
+        completed_tables: completed.clone(),
         error: None,
     });
 
     {
-        let (src_driver, src_handle) = state.connection_manager
-            .get_connection(&source_connection_id).await
+        let (src_driver, src_handle) = state
+            .connection_manager
+            .get_connection(&source_connection_id)
+            .await
             .cmd_err("sync_tables")?;
         for t in &tables {
             let cnt = count_rows(src_driver.as_ref(), &src_handle, t).await?;
@@ -239,7 +288,11 @@ pub(crate) async fn sync_tables_impl(
         created_at: Utc::now(),
         updated_at: Utc::now(),
     };
-    state.store.save_sync_task(task.clone()).await.cmd_err("sync_tables")?;
+    state
+        .store
+        .save_sync_task(task.clone())
+        .await
+        .cmd_err("sync_tables")?;
 
     for (idx, table_name) in tables.iter().enumerate() {
         if completed.contains(table_name) {
@@ -249,10 +302,15 @@ pub(crate) async fn sync_tables_impl(
         let src_rows = source_row_counts.get(table_name).copied().unwrap_or(0);
 
         emit(SyncProgressEvent {
-            task_id: task_id.clone(), phase: "syncing".into(),
-            table_index: idx, total_tables, current_table: table_name.clone(),
-            source_row_count: src_rows, synced_rows: 0,
-            completed_tables: completed.clone(), error: None,
+            task_id: task_id.clone(),
+            phase: "syncing".into(),
+            table_index: idx,
+            total_tables,
+            current_table: table_name.clone(),
+            source_row_count: src_rows,
+            synced_rows: 0,
+            completed_tables: completed.clone(),
+            error: None,
         });
 
         task.current_table = Some(table_name.clone());
@@ -266,7 +324,11 @@ pub(crate) async fn sync_tables_impl(
         };
         task.current_table_offset = table_resume_offset;
         task.updated_at = Utc::now();
-        state.store.save_sync_task(task.clone()).await.cmd_err("sync_tables")?;
+        state
+            .store
+            .save_sync_task(task.clone())
+            .await
+            .cmd_err("sync_tables")?;
 
         let task_id_clone = task_id.clone();
         let table_name_clone = table_name.clone();
@@ -287,13 +349,19 @@ pub(crate) async fn sync_tables_impl(
             &|synced| {
                 last_synced.store(synced, std::sync::atomic::Ordering::Relaxed);
                 emit_ref(SyncProgressEvent {
-                    task_id: task_id_clone.clone(), phase: "syncing".into(),
-                    table_index: idx, total_tables, current_table: table_name_clone.clone(),
-                    source_row_count: src_rows, synced_rows: synced,
-                    completed_tables: completed_clone.clone(), error: None,
+                    task_id: task_id_clone.clone(),
+                    phase: "syncing".into(),
+                    table_index: idx,
+                    total_tables,
+                    current_table: table_name_clone.clone(),
+                    source_row_count: src_rows,
+                    synced_rows: synced,
+                    completed_tables: completed_clone.clone(),
+                    error: None,
                 });
             },
-        ).await;
+        )
+        .await;
 
         match sync_result {
             Ok(_rows) => {
@@ -302,29 +370,46 @@ pub(crate) async fn sync_tables_impl(
                 task.current_table = None;
                 task.current_table_offset = 0;
                 task.updated_at = Utc::now();
-                state.store.save_sync_task(task.clone()).await.cmd_err("sync_tables")?;
+                state
+                    .store
+                    .save_sync_task(task.clone())
+                    .await
+                    .cmd_err("sync_tables")?;
 
                 emit(SyncProgressEvent {
-                    task_id: task_id.clone(), phase: "table_done".into(),
-                    table_index: idx, total_tables, current_table: table_name.clone(),
-                    source_row_count: src_rows, synced_rows: src_rows,
-                    completed_tables: completed.clone(), error: None,
+                    task_id: task_id.clone(),
+                    phase: "table_done".into(),
+                    table_index: idx,
+                    total_tables,
+                    current_table: table_name.clone(),
+                    source_row_count: src_rows,
+                    synced_rows: src_rows,
+                    completed_tables: completed.clone(),
+                    error: None,
                 });
             }
             Err(err) => {
                 let err_msg = err.to_string();
                 task.status = "failed".into();
                 task.error_message = Some(err_msg.clone());
-                task.current_table_offset =
-                    last_synced.load(std::sync::atomic::Ordering::Relaxed);
+                task.current_table_offset = last_synced.load(std::sync::atomic::Ordering::Relaxed);
                 task.updated_at = Utc::now();
-                state.store.save_sync_task(task.clone()).await.cmd_err("sync_tables")?;
+                state
+                    .store
+                    .save_sync_task(task.clone())
+                    .await
+                    .cmd_err("sync_tables")?;
 
                 emit(SyncProgressEvent {
-                    task_id: task_id.clone(), phase: "error".into(),
-                    table_index: idx, total_tables, current_table: table_name.clone(),
-                    source_row_count: src_rows, synced_rows: task.current_table_offset,
-                    completed_tables: completed.clone(), error: Some(err_msg),
+                    task_id: task_id.clone(),
+                    phase: "error".into(),
+                    table_index: idx,
+                    total_tables,
+                    current_table: table_name.clone(),
+                    source_row_count: src_rows,
+                    synced_rows: task.current_table_offset,
+                    completed_tables: completed.clone(),
+                    error: Some(err_msg),
                 });
 
                 return Err(err);
@@ -335,13 +420,22 @@ pub(crate) async fn sync_tables_impl(
     task.status = "completed".into();
     task.current_table = None;
     task.updated_at = Utc::now();
-    state.store.save_sync_task(task.clone()).await.cmd_err("sync_tables")?;
+    state
+        .store
+        .save_sync_task(task.clone())
+        .await
+        .cmd_err("sync_tables")?;
 
     emit(SyncProgressEvent {
-        task_id: task_id.clone(), phase: "done".into(),
-        table_index: total_tables, total_tables, current_table: String::new(),
-        source_row_count: 0, synced_rows: 0,
-        completed_tables: completed.clone(), error: None,
+        task_id: task_id.clone(),
+        phase: "done".into(),
+        table_index: total_tables,
+        total_tables,
+        current_table: String::new(),
+        source_row_count: 0,
+        synced_rows: 0,
+        completed_tables: completed.clone(),
+        error: None,
     });
 
     Ok(serde_json::json!({

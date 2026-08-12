@@ -120,7 +120,9 @@ pub(crate) fn persist_error_run(
     Ok(run)
 }
 
-fn statement_to_run_fields(stmt: &StatementResult) -> (Vec<String>, Vec<Vec<serde_json::Value>>, u32) {
+fn statement_to_run_fields(
+    stmt: &StatementResult,
+) -> (Vec<String>, Vec<Vec<serde_json::Value>>, u32) {
     let columns: Vec<String> = stmt.columns.iter().map(|c| c.name.clone()).collect();
     let rows: Vec<Vec<serde_json::Value>> = stmt
         .rows
@@ -143,21 +145,18 @@ pub async fn execute_widget_once(
     let run_id = Uuid::new_v4().to_string();
     let timeout_sec = DEFAULT_QUERY_TIMEOUT_SEC;
 
-    let query_result = tokio::time::timeout(
-        Duration::from_secs(timeout_sec),
-        async {
-            let (driver, handle) = monitor_connections
-                .get_or_connect_monitor(&widget.config_id)
-                .await
-                .map_err(DashboardExecuteError::Connection)?;
+    let query_result = tokio::time::timeout(Duration::from_secs(timeout_sec), async {
+        let (driver, handle) = monitor_connections
+            .get_or_connect_monitor(&widget.config_id)
+            .await
+            .map_err(DashboardExecuteError::Connection)?;
 
-            let limit = Some(MAX_RUN_ROWS as u32);
-            driver
-                .query_multi(&handle, &widget.sql, limit)
-                .await
-                .map_err(DashboardExecuteError::Driver)
-        },
-    )
+        let limit = Some(MAX_RUN_ROWS as u32);
+        driver
+            .query_multi(&handle, &widget.sql, limit)
+            .await
+            .map_err(DashboardExecuteError::Driver)
+    })
     .await;
 
     let finished_at = Utc::now();
@@ -328,7 +327,10 @@ mod tests {
     #[test]
     fn cell_to_json_maps_value_variants() {
         assert_eq!(cell_to_json(&None), serde_json::Value::Null);
-        assert_eq!(cell_to_json(&Some(Value::Bool(true))), serde_json::json!(true));
+        assert_eq!(
+            cell_to_json(&Some(Value::Bool(true))),
+            serde_json::json!(true)
+        );
         assert_eq!(cell_to_json(&Some(Value::Integer(7))), serde_json::json!(7));
         assert_eq!(
             cell_to_json(&Some(Value::String("x".into()))),
@@ -373,14 +375,7 @@ mod tests {
     fn build_error_run_sets_status_and_message() {
         let started = Utc::now();
         let finished = started + chrono::Duration::seconds(2);
-        let run = build_error_run(
-            "run-1".into(),
-            "d1",
-            "w1",
-            started,
-            finished,
-            "boom",
-        );
+        let run = build_error_run("run-1".into(), "d1", "w1", started, finished, "boom");
         assert_eq!(run.status, WidgetRunStatus::Error);
         assert_eq!(run.error.as_deref(), Some("boom"));
     }
