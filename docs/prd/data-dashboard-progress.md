@@ -33,7 +33,7 @@
 | F9 | 从 SQL / 可见 Workflow「添加到看板」 | `done` | create:: | [Verify](5f332e7e) PASS | `705858e` |
 | F10 | 删除引用检查；面板暂停；运行历史 | `done` | Rust | [Verify](5f332e7e) PASS | `705858e` |
 | F11 | 整体 Review + 修复验证 | `done` | 44+17+34 | [Verify](282d7a1e) 12/12 PASS | `66e1ba4` |
-| F12 | 全量单测 + e2e:dashboard；文档收尾提交 | `done` | dashboard 44 / monitor 17 / FE 34；e2e **6/6** | — | pending |
+| F12 | 全量单测 + e2e:dashboard；文档收尾提交 | `done` | dashboard 44 / monitor 17 / FE 34；e2e **6/6** | — | `6dcd35f` |
 
 ## 变更日志
 
