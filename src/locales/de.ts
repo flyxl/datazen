@@ -373,6 +373,7 @@ const translations = {
   'query.totalTime': 'Gesamtzeit',
   'query.history': 'Geschichte',
   'query.placeholder': 'Geben Sie SQL-Abfrage ein…',
+  'query.namespaceLoading': 'Objekte werden geladen…',
   'query.executing': 'Ausführen…',
   'query.streamingRows': '{n} Zeilen geladen…',
   'query.result': 'Ergebnis',

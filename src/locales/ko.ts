@@ -371,6 +371,7 @@ const translations = {
   'query.totalTime': '총 시간',
   'query.history': '역사',
   'query.placeholder': 'SQL 쿼리를 입력하세요...',
+  'query.namespaceLoading': '객체 불러오는 중…',
   'query.executing': '실행 중…',
   'query.streamingRows': '{n}행 로드됨…',
   'query.result': '결과',

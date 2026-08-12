@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   ensureNamespacePath,
+  namespaceEnsurePending,
   namespacePathLoaded,
   pathNavSegment,
   type EnsureDeps,
@@ -344,5 +345,31 @@ describe('ensureNamespacePath — postgresql', () => {
     });
     await ensureNamespacePath([], deps);
     expect(deps.mergeNamespace).toHaveBeenCalledWith([], 'branch', ['db']);
+  });
+});
+
+describe('namespaceEnsurePending', () => {
+  it('is pending until the resolved path is in loadedPaths', () => {
+    const deps = makeDeps({
+      databaseType: 'mysql',
+      pathAliases: {},
+      currentDatabase: 'app',
+      databases: ['app'],
+      loadedPaths: new Set(),
+    });
+    expect(namespaceEnsurePending([], deps)).toBe(true);
+    expect(namespaceEnsurePending(['app'], deps)).toBe(true);
+  });
+
+  it('is not pending after the path is marked loaded', () => {
+    const deps = makeDeps({
+      databaseType: 'mysql',
+      pathAliases: {},
+      currentDatabase: 'app',
+      databases: ['app'],
+      loadedPaths: new Set(['app']),
+    });
+    expect(namespaceEnsurePending([], deps)).toBe(false);
+    expect(namespaceEnsurePending(['app'], deps)).toBe(false);
   });
 });

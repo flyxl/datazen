@@ -1,7 +1,10 @@
 import { create } from 'zustand';
 import { databaseCommands } from '../commands/database';
 import { DB_REGISTRY } from '../lib/databaseTypes';
-import { ensureNamespacePath as ensureNamespacePathImpl } from '../lib/ensureNamespace';
+import {
+  ensureNamespacePath as ensureNamespacePathImpl,
+  namespaceEnsurePending,
+} from '../lib/ensureNamespace';
 import {
   isSchemaGroupingSchema,
   mergeNamespacePath,
@@ -85,6 +88,8 @@ interface SchemaStore {
   expanded: Set<string>;
   selectedId: string | null;
   loading: boolean;
+  /** In-flight `ensureNamespacePath` fetches (SQL autocomplete loading UI). */
+  ensuringCount: number;
   error: string | null;
 
   loadForConnection: (connectionId: string, options?: LoadForConnectionOptions) => Promise<void>;
@@ -120,11 +125,13 @@ export const useSchemaStore = create<SchemaStore>((set, get) => ({
   expanded: new Set(),
   selectedId: null,
   loading: false,
+  ensuringCount: 0,
   error: null,
 
   loadForConnection: async (connectionId, options) => {
     set({
       loading: true,
+      ensuringCount: 0,
       error: null,
       connectionId,
       databaseType: options?.databaseType ?? null,
@@ -143,8 +150,7 @@ export const useSchemaStore = create<SchemaStore>((set, get) => ({
         options?.preferredDatabase,
       );
       const isMultiDatabase =
-        !lockedToConfigured &&
-        computeIsMultiDatabase(meta?.hasMultiDatabase, databases.length);
+        !lockedToConfigured && computeIsMultiDatabase(meta?.hasMultiDatabase, databases.length);
       set({ databases, isMultiDatabase, loading: false, currentDatabase: preferred });
       if (isMultiDatabase) {
         get().mergeNamespace([], 'branch', databases);
@@ -203,7 +209,7 @@ export const useSchemaStore = create<SchemaStore>((set, get) => ({
   ensureNamespacePath: async (segments) => {
     const s = get();
     if (!s.connectionId) return;
-    await ensureNamespacePathImpl(segments, {
+    const deps = {
       connectionId: s.connectionId,
       databaseType: s.databaseType,
       isMultiDatabase: s.isMultiDatabase,
@@ -218,16 +224,22 @@ export const useSchemaStore = create<SchemaStore>((set, get) => ({
       getDatabases: databaseCommands.getDatabases,
       getTables: databaseCommands.getTables,
       useDatabase: databaseCommands.useDatabase,
-    });
+    };
+    const pending = namespaceEnsurePending(segments, deps);
+    if (pending) set({ ensuringCount: get().ensuringCount + 1 });
+    try {
+      await ensureNamespacePathImpl(segments, deps);
+    } finally {
+      if (pending) set({ ensuringCount: Math.max(0, get().ensuringCount - 1) });
+    }
   },
 
   setLoadedTables: (database, all) => {
-    const { databaseType, isMultiDatabase, namespaceTree, loadedPaths, namespaceOwnedByPlugin } = get();
+    const { databaseType, isMultiDatabase, namespaceTree, loadedPaths, namespaceOwnedByPlugin } =
+      get();
     const tables = all.filter((item) => item.tableType !== 'view');
     const views = all.filter((item) => item.tableType === 'view');
-    const meta = databaseType
-      ? DB_REGISTRY[databaseType as DatabaseType]
-      : undefined;
+    const meta = databaseType ? DB_REGISTRY[databaseType as DatabaseType] : undefined;
 
     let nextTree = namespaceTree;
     let nextLoadedPaths = loadedPaths;
@@ -309,6 +321,7 @@ export const useSchemaStore = create<SchemaStore>((set, get) => ({
       expanded: new Set(),
       selectedId: null,
       loading: false,
+      ensuringCount: 0,
       error: null,
     }),
 }));
