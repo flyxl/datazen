@@ -28,7 +28,7 @@
 
 ## 当前焦点
 
-- **全部完成**（待 merge/push 记录）
+- **全部完成**（已 merge 到 main 并 push）
 
 ## Bug 记录
 
@@ -48,3 +48,4 @@
 | 2026-08-13 | F2 PASS_WITH_SKIPPED_E2E |
 
 | 2026-08-13 | F3–F5 done；准备 merge main |
+| 2026-08-13 | merge → main `8b7264a` + push origin/main |
