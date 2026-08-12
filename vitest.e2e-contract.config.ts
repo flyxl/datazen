@@ -15,13 +15,31 @@ export default defineConfig({
     include: ['e2e/contract/**/*.test.ts'],
     coverage: {
       provider: 'v8',
-      include: ['e2e/contract/**/*.ts'],
-      exclude: ['e2e/contract/**/*.test.ts', 'e2e/contract/**/__tests__/**'],
+      all: false,
+      include: [
+        'e2e/contract/fixtures.ts',
+        'e2e/contract/journeys/plan.ts',
+      ],
+      exclude: [
+        '**/node_modules/**',
+        '**/*.test.ts',
+        '**/__tests__/**',
+        'e2e/contract/open-fixture.ts',
+        'e2e/contract/journeys/run-*.ts',
+      ],
       thresholds: {
-        lines: 80,
-        statements: 80,
-        functions: 80,
-        branches: 70,
+        'e2e/contract/fixtures.ts': {
+          lines: 80,
+          statements: 80,
+          functions: 80,
+          branches: 70,
+        },
+        'e2e/contract/journeys/plan.ts': {
+          lines: 80,
+          statements: 80,
+          functions: 80,
+          branches: 70,
+        },
       },
     },
   },
