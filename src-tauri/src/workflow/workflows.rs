@@ -21,7 +21,7 @@ pub use super::registry::WorkflowRegistry;
 pub use crate::workflow::model::{
     ErrorHandlingConfig, ErrorStrategy, ErrorStrategyKind, StepExecutionResult, StepStatus,
     WorkflowDefinition, WorkflowExecutionResult, WorkflowListItem, WorkflowOutput,
-    WorkflowSchedule, WorkflowStep, WorkflowVariable,
+    WorkflowSchedule, WorkflowStep, WorkflowVariable, WorkflowVisibility,
 };
 pub use command::WorkflowCommandStep;
 pub use executor::{
