@@ -400,6 +400,9 @@ const zhCN = {
   'connWin.editTableStructure': '编辑表结构…',
   'connWin.exportData': '导出数据…',
   'connWin.importData': '导入数据…',
+  'connWin.closeTab': '关闭',
+  'connWin.closeOtherTabs': '关闭其他',
+  'connWin.closeAllTabs': '关闭全部',
 
   // ── Table View ──
   'tableView.loadingData': '加载表数据…',
