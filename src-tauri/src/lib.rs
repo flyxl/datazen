@@ -530,6 +530,7 @@ pub(crate) fn finish_app_state(
 
     let data_dir = store.data_dir().to_path_buf();
     let history_db = store.history_db();
+    let app_db = store.app_db();
 
     // AI / prompts / workflows / history / MCP client: empty shells.
     // Nothing here touches disk or network — window can show immediately.
@@ -547,7 +548,7 @@ pub(crate) fn finish_app_state(
             connection_manager,
         )),
         prompt_resolver: Arc::new(ai::PromptResolver::new(&data_dir, prompts_dir)),
-        workflow_registry: Arc::new(workflow::WorkflowRegistry::new(data_dir.join("workflows"))),
+        workflow_registry: Arc::new(workflow::WorkflowRegistry::new(app_db, data_dir.clone())),
         workflow_history: Arc::new(workflow::WorkflowHistoryManager::new(history_db)),
         mcp_client_manager: Arc::new(mcp::McpClientManager::new()),
         session_transactions: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
