@@ -31,7 +31,10 @@ impl std::fmt::Display for CommandError {
             Self::Ai(e) => write!(f, "{e}"),
             Self::Io(e) => write!(f, "{e}"),
             Self::Json(e) => write!(f, "{e}"),
-            Self::NotFound(msg) | Self::NotConfigured(msg) | Self::Validation(msg) | Self::Internal(msg) => {
+            Self::NotFound(msg)
+            | Self::NotConfigured(msg)
+            | Self::Validation(msg)
+            | Self::Internal(msg) => {
                 write!(f, "{msg}")
             }
         }
@@ -122,10 +125,7 @@ mod tests {
             CommandError::Connection(ConnectionError::ConfigNotFound("c".into())),
             CommandError::Driver(DriverError::QueryFailed("q".into())),
             CommandError::Ai(AiError::NotConfigured("ai".into())),
-            CommandError::Io(std::io::Error::new(
-                std::io::ErrorKind::NotFound,
-                "file",
-            )),
+            CommandError::Io(std::io::Error::new(std::io::ErrorKind::NotFound, "file")),
             CommandError::Json(serde_json::from_str::<serde_json::Value>("{").unwrap_err()),
             CommandError::NotFound("n".into()),
             CommandError::NotConfigured("nc".into()),

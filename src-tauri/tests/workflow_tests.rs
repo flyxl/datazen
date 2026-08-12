@@ -84,7 +84,10 @@ impl DbConfig {
         } else {
             format!(
                 "mysql://{}:{}@{}:{}/{}",
-                self.mysql_user, self.mysql_password, self.mysql_host, self.mysql_port,
+                self.mysql_user,
+                self.mysql_password,
+                self.mysql_host,
+                self.mysql_port,
                 self.mysql_database
             )
         }
@@ -187,7 +190,7 @@ async fn tc02_cross_db_query_and_template_resolution() {
 
 #[tokio::test]
 async fn tc03_structured_result_serialization() {
-    use datazen::workflow::workflows::{WorkflowExecutionResult, StepExecutionResult, StepStatus};
+    use datazen::workflow::workflows::{StepExecutionResult, StepStatus, WorkflowExecutionResult};
 
     let result = WorkflowExecutionResult {
         success: true,
@@ -286,23 +289,21 @@ async fn tc05_foreach_batch_query() {
         }
     };
 
-    let orders: Vec<(String,)> =
-        sqlx::query_as("SELECT order_id FROM test_orders ORDER BY id")
-            .fetch_all(&pg_pool)
-            .await
-            .unwrap();
+    let orders: Vec<(String,)> = sqlx::query_as("SELECT order_id FROM test_orders ORDER BY id")
+        .fetch_all(&pg_pool)
+        .await
+        .unwrap();
 
     assert_eq!(orders.len(), 5, "Should have 5 orders total");
 
     let mut logistics_found = 0;
     for (order_id,) in &orders {
-        let result: Vec<(String, String)> = sqlx::query_as(
-            "SELECT carrier, status FROM test_logistics WHERE order_id = ?",
-        )
-        .bind(order_id)
-        .fetch_all(&mysql_pool)
-        .await
-        .unwrap();
+        let result: Vec<(String, String)> =
+            sqlx::query_as("SELECT carrier, status FROM test_logistics WHERE order_id = ?")
+                .bind(order_id)
+                .fetch_all(&mysql_pool)
+                .await
+                .unwrap();
 
         if !result.is_empty() {
             logistics_found += 1;
@@ -336,10 +337,9 @@ async fn tc06_error_handling_invalid_sql() {
         }
     };
 
-    let result: Result<Vec<(i64,)>, _> =
-        sqlx::query_as("SELECT id FROM non_existent_table_xyz")
-            .fetch_all(&pg_pool)
-            .await;
+    let result: Result<Vec<(i64,)>, _> = sqlx::query_as("SELECT id FROM non_existent_table_xyz")
+        .fetch_all(&pg_pool)
+        .await;
 
     assert!(result.is_err(), "Query to non-existent table should fail");
     let err = result.err().unwrap().to_string();
@@ -372,10 +372,7 @@ async fn tc07_timeout_behavior() {
     )
     .await;
 
-    assert!(
-        result.is_ok(),
-        "Short query should complete within timeout"
-    );
+    assert!(result.is_ok(), "Short query should complete within timeout");
 
     // Should timeout
     let result = tokio::time::timeout(
@@ -471,9 +468,9 @@ output:
 
 #[tokio::test]
 async fn tc10_history_persistence() {
-    use datazen::HistoryDb;
     use datazen::workflow::history::WorkflowHistoryManager;
-    use datazen::workflow::workflows::{WorkflowExecutionResult, StepExecutionResult, StepStatus};
+    use datazen::workflow::workflows::{StepExecutionResult, StepStatus, WorkflowExecutionResult};
+    use datazen::HistoryDb;
 
     let dir = tempfile::tempdir().unwrap();
     let mgr = WorkflowHistoryManager::new(HistoryDb::open(dir.path()).unwrap());

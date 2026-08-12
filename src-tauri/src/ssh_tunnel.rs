@@ -14,7 +14,7 @@ use crate::ssh_known_hosts::{
     save_known_hosts, verify_host_key, HostKeyDecision, KnownHostEntry,
 };
 use russh::client::{self, AuthResult};
-use russh::keys::{self, PrivateKeyWithHashAlg, ssh_key};
+use russh::keys::{self, ssh_key, PrivateKeyWithHashAlg};
 use std::collections::HashMap;
 use std::future::Future;
 use std::path::Path;
@@ -115,7 +115,13 @@ impl SshTunnel {
 
         let upstream = match ssh.jump.as_deref() {
             Some(jump) if jump.enabled => Some(Box::new(
-                Box::pin(SshTunnel::start(jump, &ssh.host, ssh.port, known_hosts_path)).await?,
+                Box::pin(SshTunnel::start(
+                    jump,
+                    &ssh.host,
+                    ssh.port,
+                    known_hosts_path,
+                ))
+                .await?,
             )),
             _ => None,
         };
@@ -245,9 +251,10 @@ async fn authenticate_session(
             let key_path = ssh.private_key_path.as_deref().unwrap_or("~/.ssh/id_rsa");
             let expanded = expand_home(key_path);
 
-            let secret_key = keys::load_secret_key(&expanded, ssh.passphrase.as_deref()).map_err(
-                |e| DriverError::SshTunnelError(format!("Load SSH key {expanded}: {e}")),
-            )?;
+            let secret_key =
+                keys::load_secret_key(&expanded, ssh.passphrase.as_deref()).map_err(|e| {
+                    DriverError::SshTunnelError(format!("Load SSH key {expanded}: {e}"))
+                })?;
 
             let key_with_hash = PrivateKeyWithHashAlg::new(Arc::new(secret_key), None);
 
@@ -321,14 +328,16 @@ async fn authenticate_with_agent(
                         .authenticate_publickey_with(&ssh.username, key, alg, &mut agent)
                         .await
                 }
-                russh::keys::agent::AgentIdentity::Certificate { certificate, .. } => session
-                    .authenticate_certificate_with(
-                        &ssh.username,
-                        certificate,
-                        hash_alg,
-                        &mut agent,
-                    )
-                    .await,
+                russh::keys::agent::AgentIdentity::Certificate { certificate, .. } => {
+                    session
+                        .authenticate_certificate_with(
+                            &ssh.username,
+                            certificate,
+                            hash_alg,
+                            &mut agent,
+                        )
+                        .await
+                }
             };
             match result {
                 Ok(AuthResult::Success) => return Ok(()),
@@ -437,11 +446,8 @@ mod tests {
 
     #[test]
     fn mismatch_error_message_includes_host_and_fingerprints() {
-        let msg = mismatch_error_message(
-            "evil.example.com:22",
-            "SHA256:expected",
-            "SHA256:received",
-        );
+        let msg =
+            mismatch_error_message("evil.example.com:22", "SHA256:expected", "SHA256:received");
         assert!(msg.contains("evil.example.com:22"));
         assert!(msg.contains("SHA256:expected"));
         assert!(msg.contains("SHA256:received"));
@@ -462,10 +468,7 @@ mod tests {
 
         let loaded = load_known_hosts(&path);
         assert_eq!(loaded.len(), 1);
-        assert_eq!(
-            loaded.get("host.example:22"),
-            Some(&entry)
-        );
+        assert_eq!(loaded.get("host.example:22"), Some(&entry));
     }
 
     #[test]

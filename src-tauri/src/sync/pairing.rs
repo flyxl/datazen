@@ -33,13 +33,7 @@ impl SyncPairing {
 pub fn normalize_sync_family(raw: &str) -> String {
     match raw.to_ascii_lowercase().as_str() {
         "postgres" | "postgresql" | "cloudberry" | "questdb" => "postgresql".into(),
-        "mysql"
-        | "mariadb"
-        | "tidb"
-        | "oceanbase"
-        | "doris"
-        | "starrocks"
-        | "manticore"
+        "mysql" | "mariadb" | "tidb" | "oceanbase" | "doris" | "starrocks" | "manticore"
         | "ob_oracle" => "mysql".into(),
         "sqlite" | "rqlite" | "turso" => "sqlite".into(),
         "sqlserver" | "mssql" => "sqlserver".into(),
@@ -89,9 +83,7 @@ pub fn resolve_sync_pairing(source: &str, target: &str) -> SyncPairing {
             let src_family = normalize_sync_family(source);
             let tgt_family = normalize_sync_family(target);
             if src_family == tgt_family {
-                SyncPairing::Direct {
-                    family: src_family,
-                }
+                SyncPairing::Direct { family: src_family }
             } else if src_cat == SyncCategory::Sql {
                 SyncPairing::Ir
             } else {
@@ -172,7 +164,10 @@ mod tests {
             ("redis", "mysql"),
         ] {
             assert!(
-                matches!(resolve_sync_pairing(pair.0, pair.1), SyncPairing::Unsupported { .. }),
+                matches!(
+                    resolve_sync_pairing(pair.0, pair.1),
+                    SyncPairing::Unsupported { .. }
+                ),
                 "{pair:?}"
             );
         }
@@ -193,6 +188,9 @@ mod tests {
 
     #[test]
     fn pg_mysql_ir_still_allowed() {
-        assert_eq!(enforce_sync_pairing("postgresql", "mysql").unwrap(), SyncPairing::Ir);
+        assert_eq!(
+            enforce_sync_pairing("postgresql", "mysql").unwrap(),
+            SyncPairing::Ir
+        );
     }
 }

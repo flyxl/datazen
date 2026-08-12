@@ -95,7 +95,10 @@ pub struct MonitorEngine {
 }
 
 impl MonitorEngine {
-    pub fn new(store: Arc<Store>, monitor_connections: Arc<MonitorConnectionRegistry>) -> Arc<Self> {
+    pub fn new(
+        store: Arc<Store>,
+        monitor_connections: Arc<MonitorConnectionRegistry>,
+    ) -> Arc<Self> {
         Arc::new(Self {
             store,
             monitor_connections,
@@ -134,7 +137,9 @@ impl MonitorEngine {
         });
     }
 
-    pub async fn reload_from_store(&self) -> Result<(), crate::dashboard::store::DashboardStoreError> {
+    pub async fn reload_from_store(
+        &self,
+    ) -> Result<(), crate::dashboard::store::DashboardStoreError> {
         let data_dir = self.store.data_dir();
         let dashboards = list_dashboards(data_dir)?;
         let table = build_schedule_table(&dashboards);
@@ -160,8 +165,7 @@ impl MonitorEngine {
         let count = schedule.len();
         *self.schedule.write().await = schedule;
         *self.dashboard_names.write().await = names;
-        self.active_widget_count
-            .store(count, Ordering::Relaxed);
+        self.active_widget_count.store(count, Ordering::Relaxed);
 
         let settings = self.store.get_settings().await;
         let max = load_monitor_settings(&settings)
@@ -198,7 +202,10 @@ impl MonitorEngine {
     }
 
     pub fn app_handle(&self) -> Option<AppHandle> {
-        self.app_handle.lock().expect("monitor app_handle lock").clone()
+        self.app_handle
+            .lock()
+            .expect("monitor app_handle lock")
+            .clone()
     }
 
     /// Execute one widget refresh (shared by manual refresh and the scheduler).
@@ -217,12 +224,11 @@ impl MonitorEngine {
         emit_event: bool,
     ) -> Result<WidgetRun, DashboardExecuteError> {
         let sem = self.semaphore.read().await.clone();
-        let _permit = sem
-            .acquire()
-            .await
-            .map_err(|_| DashboardExecuteError::Driver(crate::db::DriverError::QueryFailed(
+        let _permit = sem.acquire().await.map_err(|_| {
+            DashboardExecuteError::Driver(crate::db::DriverError::QueryFailed(
                 "monitor semaphore closed".into(),
-            )))?;
+            ))
+        })?;
 
         let config_lock = {
             let mut locks = self.config_locks.lock().expect("config_locks mutex");
@@ -268,15 +274,15 @@ impl MonitorEngine {
             .cloned()
             .unwrap_or_else(|| dashboard_id.to_string());
         let monitor_settings = load_monitor_settings(settings);
-        let app = self.app_handle.lock().expect("monitor app_handle lock").clone();
+        let app = self
+            .app_handle
+            .lock()
+            .expect("monitor app_handle lock")
+            .clone();
         let (notifications, client) = {
             let mut channels = self.alert_channels.lock().await;
-            let notifications = channels.process_run_state(
-                dashboard_id,
-                &dashboard_name,
-                widget,
-                run,
-            );
+            let notifications =
+                channels.process_run_state(dashboard_id, &dashboard_name, widget, run);
             let client = channels.http_client().clone();
             (notifications, client)
         };
@@ -284,7 +290,11 @@ impl MonitorEngine {
     }
 
     fn emit_run_updated(&self, dashboard_id: &str, widget_id: &str, run: &WidgetRun) {
-        let handle = self.app_handle.lock().expect("monitor app_handle lock").clone();
+        let handle = self
+            .app_handle
+            .lock()
+            .expect("monitor app_handle lock")
+            .clone();
         let Some(app) = handle else {
             return;
         };
@@ -318,9 +328,7 @@ impl MonitorEngine {
             let dashboard_id = entry.dashboard_id.clone();
             let widget = entry.widget.clone();
             tokio::spawn(async move {
-                let result = engine
-                    .tick_widget_inner(&dashboard_id, &widget, true)
-                    .await;
+                let result = engine.tick_widget_inner(&dashboard_id, &widget, true).await;
 
                 {
                     let clear_key = (dashboard_id.clone(), widget.id.clone());
@@ -402,11 +410,7 @@ mod tests {
     #[test]
     fn build_schedule_table_skips_disabled_dashboards_and_widgets() {
         let dashboards = vec![
-            sample_dashboard(
-                "d1",
-                false,
-                vec![sample_widget("w1", 60, true)],
-            ),
+            sample_dashboard("d1", false, vec![sample_widget("w1", 60, true)]),
             sample_dashboard(
                 "d2",
                 true,
@@ -486,8 +490,7 @@ mod tests {
         let store = Arc::new(Store::init_with_path(dir.path()).await.unwrap());
         let registry = Arc::new(crate::db::registry::DriverRegistry::new());
         let connection_manager = Arc::new(ConnectionManager::new(registry, store.clone()));
-        let monitor_connections =
-            Arc::new(MonitorConnectionRegistry::new(connection_manager));
+        let monitor_connections = Arc::new(MonitorConnectionRegistry::new(connection_manager));
         (keyring, MonitorEngine::new(store, monitor_connections))
     }
 
@@ -553,11 +556,7 @@ mod tests {
             enabled: true,
         };
         save_dashboard(test.state.store.data_dir(), dashboard).unwrap();
-        test.state
-            .monitor_engine
-            .reload_from_store()
-            .await
-            .unwrap();
+        test.state.monitor_engine.reload_from_store().await.unwrap();
         assert!(test.state.monitor_engine.is_monitoring_active());
     }
 }

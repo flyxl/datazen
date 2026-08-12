@@ -128,7 +128,10 @@ mod tests {
 
     #[test]
     fn provider_type_is_ollama() {
-        assert_eq!(OllamaProvider::new().provider_type(), AiProviderType::Ollama);
+        assert_eq!(
+            OllamaProvider::new().provider_type(),
+            AiProviderType::Ollama
+        );
     }
 
     #[test]

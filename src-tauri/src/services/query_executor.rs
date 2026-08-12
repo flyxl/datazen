@@ -112,15 +112,14 @@ impl QueryExecutor {
             });
         }
 
-        let count_sql =
-            Self::build_count_sql(
-                &cached.table_name,
-                &cached.columns,
-                &filters,
-                &qi,
-                &format_lit,
-                filter_logic,
-            );
+        let count_sql = Self::build_count_sql(
+            &cached.table_name,
+            &cached.columns,
+            &filters,
+            &qi,
+            &format_lit,
+            filter_logic,
+        );
         tracing::info!(%table, %count_sql, "query_executor: count query");
 
         let (count_res, data_res) = tokio::try_join!(
@@ -545,7 +544,16 @@ mod tests {
     fn build_select_sql_without_offset_when_unsupported() {
         let columns = vec![make_column("id", true)];
         let sql = QueryExecutor::build_select_sql(
-            "users", &columns, 2, 25, None, None, &simple_qi, &simple_lit, false, None,
+            "users",
+            &columns,
+            2,
+            25,
+            None,
+            None,
+            &simple_qi,
+            &simple_lit,
+            false,
+            None,
         );
         assert!(sql.contains("LIMIT 25"));
         assert!(!sql.contains("OFFSET"));
@@ -604,17 +612,7 @@ mod tests {
 
         let result = executor
             .get_table_data(
-                &driver,
-                &handle,
-                "conn1",
-                "db1",
-                "users",
-                0,
-                50,
-                None,
-                None,
-                false,
-                None,
+                &driver, &handle, "conn1", "db1", "users", 0, 50, None, None, false, None,
             )
             .await
             .unwrap();

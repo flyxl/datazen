@@ -62,7 +62,13 @@ pub async fn compare_table_schemas(
     target_connection_id: String,
     table_name: String,
 ) -> Result<serde_json::Value, CommandError> {
-    compare_table_schemas_impl(&state, source_connection_id, target_connection_id, table_name).await
+    compare_table_schemas_impl(
+        &state,
+        source_connection_id,
+        target_connection_id,
+        table_name,
+    )
+    .await
 }
 
 #[tauri::command]
@@ -72,7 +78,13 @@ pub async fn compare_table_data(
     target_connection_id: String,
     table_name: String,
 ) -> Result<serde_json::Value, CommandError> {
-    compare_table_data_impl(&state, source_connection_id, target_connection_id, table_name).await
+    compare_table_data_impl(
+        &state,
+        source_connection_id,
+        target_connection_id,
+        table_name,
+    )
+    .await
 }
 
 #[tauri::command]
@@ -82,7 +94,13 @@ pub async fn sync_table(
     target_connection_id: String,
     table_name: String,
 ) -> Result<u64, CommandError> {
-    sync_table_impl(&state, source_connection_id, target_connection_id, table_name).await
+    sync_table_impl(
+        &state,
+        source_connection_id,
+        target_connection_id,
+        table_name,
+    )
+    .await
 }
 
 #[tauri::command]
@@ -131,7 +149,10 @@ pub async fn save_sync_task_direct(
 }
 
 #[tauri::command]
-pub async fn delete_sync_task(state: State<'_, AppState>, task_id: String) -> Result<(), CommandError> {
+pub async fn delete_sync_task(
+    state: State<'_, AppState>,
+    task_id: String,
+) -> Result<(), CommandError> {
     delete_sync_task_impl(&state, task_id).await
 }
 

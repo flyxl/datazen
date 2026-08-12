@@ -16,8 +16,12 @@ impl DatabaseDriverFactory for PostgresFactory {
     fn create(&self) -> Arc<dyn DatabaseDriver> {
         Arc::new(PostgresDriver::new())
     }
-    fn driver_id(&self) -> &'static str { "postgresql" }
-    fn supports_explain(&self) -> bool { true }
+    fn driver_id(&self) -> &'static str {
+        "postgresql"
+    }
+    fn supports_explain(&self) -> bool {
+        true
+    }
 }
 datazen_driver_api::register_driver!(&PostgresFactory);
 
@@ -26,17 +30,28 @@ impl DatabaseDriverFactory for QuestDbFactory {
     fn create(&self) -> Arc<dyn DatabaseDriver> {
         Arc::new(ReuseDriver::new(Arc::new(PostgresDriver::new()), "questdb"))
     }
-    fn driver_id(&self) -> &'static str { "questdb" }
-    fn supports_explain(&self) -> bool { true }
+    fn driver_id(&self) -> &'static str {
+        "questdb"
+    }
+    fn supports_explain(&self) -> bool {
+        true
+    }
 }
 datazen_driver_api::register_driver!(&QuestDbFactory);
 
 struct CloudberryFactory;
 impl DatabaseDriverFactory for CloudberryFactory {
     fn create(&self) -> Arc<dyn DatabaseDriver> {
-        Arc::new(ReuseDriver::new(Arc::new(PostgresDriver::new()), "cloudberry"))
+        Arc::new(ReuseDriver::new(
+            Arc::new(PostgresDriver::new()),
+            "cloudberry",
+        ))
     }
-    fn driver_id(&self) -> &'static str { "cloudberry" }
-    fn supports_explain(&self) -> bool { true }
+    fn driver_id(&self) -> &'static str {
+        "cloudberry"
+    }
+    fn supports_explain(&self) -> bool {
+        true
+    }
 }
 datazen_driver_api::register_driver!(&CloudberryFactory);

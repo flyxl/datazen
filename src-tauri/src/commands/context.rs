@@ -249,9 +249,17 @@ mod tests {
     #[test]
     fn test_is_allowed_file_accepts_valid_extensions() {
         let valid = [
-            "schema.sql", "notes.md", "data.json", "config.yaml",
-            "config.yml", "readme.txt", "data.csv", "data.tsv",
-            "feed.xml", "create.ddl", "users.schema",
+            "schema.sql",
+            "notes.md",
+            "data.json",
+            "config.yaml",
+            "config.yml",
+            "readme.txt",
+            "data.csv",
+            "data.tsv",
+            "feed.xml",
+            "create.ddl",
+            "users.schema",
         ];
         for name in valid {
             assert!(
@@ -264,8 +272,14 @@ mod tests {
     #[test]
     fn test_is_allowed_file_rejects_disallowed_extensions() {
         let invalid = [
-            "image.png", "binary.exe", "archive.zip", "script.sh",
-            "library.so", "code.rs", "style.css", "noext",
+            "image.png",
+            "binary.exe",
+            "archive.zip",
+            "script.sh",
+            "library.so",
+            "code.rs",
+            "style.css",
+            "noext",
         ];
         for name in invalid {
             assert!(
@@ -296,7 +310,8 @@ mod tests {
         let entries = scan_dir(dir.path(), dir.path());
         assert_eq!(entries.len(), 3); // notes.md, schema.sql, sub/
 
-        let file_names: Vec<&str> = entries.iter()
+        let file_names: Vec<&str> = entries
+            .iter()
             .filter(|e| !e.is_dir)
             .map(|e| e.name.as_str())
             .collect();
@@ -492,10 +507,7 @@ mod tests {
         let result = read_context_paths(&ctx, &["../secret.txt".into()]).await;
         assert!(result.is_err(), "expected error for ../ traversal");
         let err = result.unwrap_err().to_string();
-        assert!(
-            err.contains("Path traversal not allowed"),
-            "got: {err}"
-        );
+        assert!(err.contains("Path traversal not allowed"), "got: {err}");
     }
 
     #[tokio::test]
@@ -512,10 +524,7 @@ mod tests {
         let result = read_context_paths(&ctx, &["escape_link/secret.txt".into()]).await;
         assert!(result.is_err(), "expected traversal rejection via symlink");
         let err = result.unwrap_err().to_string();
-        assert!(
-            err.contains("Path traversal not allowed"),
-            "got: {err}"
-        );
+        assert!(err.contains("Path traversal not allowed"), "got: {err}");
     }
 
     #[tokio::test]
@@ -538,7 +547,10 @@ mod tests {
             ("b.md".into(), "# doc".into()),
         ];
         let block = format_context_block(&entries);
-        assert_eq!(block, "[Context: a.sql]\nSELECT 1\n\n[Context: b.md]\n# doc");
+        assert_eq!(
+            block,
+            "[Context: a.sql]\nSELECT 1\n\n[Context: b.md]\n# doc"
+        );
     }
 
     #[test]
@@ -571,8 +583,8 @@ mod tests {
         use crate::monitor::{MonitorConnectionRegistry, MonitorEngine};
         use crate::services::ConnectionManager;
         use crate::store::Store;
-        use crate::SyncAdapterRegistry;
         use crate::workflow::{WorkflowHistoryManager, WorkflowRegistry};
+        use crate::SyncAdapterRegistry;
         use std::sync::Arc;
 
         let dir = tempfile::tempdir().unwrap();
@@ -604,7 +616,9 @@ mod tests {
             workflow_registry: Arc::new(WorkflowRegistry::new(data_dir.join("workflows"))),
             workflow_history: Arc::new(WorkflowHistoryManager::new(history_db)),
             mcp_client_manager: Arc::new(McpClientManager::new()),
-            session_transactions: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
+            session_transactions: Arc::new(tokio::sync::Mutex::new(
+                std::collections::HashMap::new(),
+            )),
             workflow_scheduler: crate::workflow::scheduler::WorkflowScheduler::new(),
         };
 
@@ -623,8 +637,8 @@ mod tests {
         use crate::monitor::{MonitorConnectionRegistry, MonitorEngine};
         use crate::services::ConnectionManager;
         use crate::store::{AppSettings, Store};
-        use crate::SyncAdapterRegistry;
         use crate::workflow::{WorkflowHistoryManager, WorkflowRegistry};
+        use crate::SyncAdapterRegistry;
         use std::sync::Arc;
 
         let dir = tempfile::tempdir().unwrap();
@@ -665,7 +679,9 @@ mod tests {
             workflow_registry: Arc::new(WorkflowRegistry::new(data_dir.join("workflows"))),
             workflow_history: Arc::new(WorkflowHistoryManager::new(history_db)),
             mcp_client_manager: Arc::new(McpClientManager::new()),
-            session_transactions: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
+            session_transactions: Arc::new(tokio::sync::Mutex::new(
+                std::collections::HashMap::new(),
+            )),
             workflow_scheduler: crate::workflow::scheduler::WorkflowScheduler::new(),
         };
 

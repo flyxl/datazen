@@ -27,7 +27,11 @@ impl SyncAdapterRegistry {
 
     /// Ensure adapters for `src_type` and `tgt_type` are registered.
     /// Only those two (or one, if they match) types are loaded.
-    pub fn ensure_pair(&self, src_type: &DatabaseType, tgt_type: &DatabaseType) -> Result<(), String> {
+    pub fn ensure_pair(
+        &self,
+        src_type: &DatabaseType,
+        tgt_type: &DatabaseType,
+    ) -> Result<(), String> {
         self.ensure_type(src_type)?;
         if src_type != tgt_type {
             self.ensure_type(tgt_type)?;

@@ -1,7 +1,9 @@
 //! Manages live connections and coordinates with the driver registry.
 
-use crate::db::{ConnectionConfig, ConnectionHandle, DatabaseDriver, DatabaseType, DriverError, ServerInfo};
 use crate::db::registry::DriverRegistry;
+use crate::db::{
+    ConnectionConfig, ConnectionHandle, DatabaseDriver, DatabaseType, DriverError, ServerInfo,
+};
 use crate::ssh_tunnel::SshTunnel;
 use crate::store::Store;
 use std::collections::HashMap;
@@ -77,7 +79,9 @@ impl ConnectionManager {
             }
         }
 
-        self.config_id_map.write().await
+        self.config_id_map
+            .write()
+            .await
             .insert(connection_id.clone(), config_id.to_string());
 
         let mut connections = self.connections.write().await;
@@ -197,7 +201,9 @@ impl ConnectionManager {
                     .registry
                     .get(&active.config.database_type)
                     .await
-                    .ok_or_else(|| ConnectionError::DriverNotFound(active.config.database_type.clone()))?;
+                    .ok_or_else(|| {
+                        ConnectionError::DriverNotFound(active.config.database_type.clone())
+                    })?;
 
                 return Ok((driver, active.handle.clone()));
             }
@@ -251,7 +257,9 @@ impl ConnectionManager {
             .registry
             .get(&effective_config.database_type)
             .await
-            .ok_or(ConnectionError::DriverNotFound(effective_config.database_type.clone()))?;
+            .ok_or(ConnectionError::DriverNotFound(
+                effective_config.database_type.clone(),
+            ))?;
 
         let handle = driver.connect(&effective_config).await?;
 
@@ -298,14 +306,19 @@ impl ConnectionManager {
         Ok(())
     }
 
-    pub async fn test_connection(&self, config: &ConnectionConfig) -> Result<ServerInfo, ConnectionError> {
+    pub async fn test_connection(
+        &self,
+        config: &ConnectionConfig,
+    ) -> Result<ServerInfo, ConnectionError> {
         let (effective_config, _tunnel) = self.maybe_start_tunnel(config.clone()).await?;
 
         let driver = self
             .registry
             .get(&effective_config.database_type)
             .await
-            .ok_or_else(|| ConnectionError::DriverNotFound(effective_config.database_type.clone()))?;
+            .ok_or_else(|| {
+                ConnectionError::DriverNotFound(effective_config.database_type.clone())
+            })?;
 
         driver
             .test_connection(&effective_config)

@@ -21,18 +21,10 @@ pub fn unsupported_modify(table: &str, col: &str) -> String {
     format!("SQLite cannot MODIFY COLUMN `{col}` on `{table}` via simple ALTER in this planner")
 }
 
-pub fn create_index(
-    table: &str,
-    name: &str,
-    columns: &[String],
-    unique: bool,
-) -> PlanStatement {
+pub fn create_index(table: &str, name: &str, columns: &[String], unique: bool) -> PlanStatement {
     let q_table = quote_ident("sqlite", table);
     let q_name = quote_ident("sqlite", name);
-    let cols: Vec<String> = columns
-        .iter()
-        .map(|c| quote_ident("sqlite", c))
-        .collect();
+    let cols: Vec<String> = columns.iter().map(|c| quote_ident("sqlite", c)).collect();
     let uniq = if unique { "UNIQUE " } else { "" };
     let sql = format!(
         "CREATE {uniq}INDEX {q_name} ON {q_table} ({})",

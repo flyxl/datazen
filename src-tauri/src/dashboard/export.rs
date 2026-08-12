@@ -107,8 +107,7 @@ pub fn export_dashboard_json(dashboard: &Dashboard) -> Result<String, DashboardE
         version: VERSION,
         dashboard: sanitized,
     };
-    serde_json::to_string_pretty(&file)
-        .map_err(|e| DashboardExportError::Validation(e.to_string()))
+    serde_json::to_string_pretty(&file).map_err(|e| DashboardExportError::Validation(e.to_string()))
 }
 
 /// Import a dashboard file; assigns a new id when the id already exists locally.
@@ -197,15 +196,13 @@ mod tests {
         assert!(json.contains("cfg-keep"));
         let parsed = parse_dashboard_file(json.as_bytes()).unwrap();
         assert_eq!(parsed.widgets[0].config_id, "cfg-keep");
-        assert!(
-            parsed.widgets[0]
-                .alert
-                .as_ref()
-                .unwrap()
-                .channels
-                .iter()
-                .all(|c| *c != AlertChannel::Webhook)
-        );
+        assert!(parsed.widgets[0]
+            .alert
+            .as_ref()
+            .unwrap()
+            .channels
+            .iter()
+            .all(|c| *c != AlertChannel::Webhook));
     }
 
     #[test]

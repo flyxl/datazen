@@ -32,8 +32,14 @@ fn parse_precision(s: &str, prefix: &str) -> (u8, u8) {
         let rest = rest.trim();
         if let Some(inner) = rest.strip_prefix('(').and_then(|r| r.strip_suffix(')')) {
             let parts: Vec<&str> = inner.split(',').collect();
-            let p = parts.first().and_then(|v| v.trim().parse().ok()).unwrap_or(0);
-            let s = parts.get(1).and_then(|v| v.trim().parse().ok()).unwrap_or(0);
+            let p = parts
+                .first()
+                .and_then(|v| v.trim().parse().ok())
+                .unwrap_or(0);
+            let s = parts
+                .get(1)
+                .and_then(|v| v.trim().parse().ok())
+                .unwrap_or(0);
             return (p, s);
         }
     }
@@ -69,11 +75,7 @@ fn base_type(raw: &str) -> String {
 // ── SyncSourceAdapter ──────────────────────────────────────────────
 
 impl SyncSourceAdapter for SqlServerSyncAdapter {
-    fn column_to_ir(
-        &self,
-        column: &ColumnSchema,
-        native_full_type: Option<&str>,
-    ) -> IRColumn {
+    fn column_to_ir(&self, column: &ColumnSchema, native_full_type: Option<&str>) -> IRColumn {
         let raw = native_full_type.unwrap_or(&column.data_type);
         let lower = base_type(raw);
 
@@ -91,10 +93,16 @@ impl SyncSourceAdapter for SqlServerSyncAdapter {
             IRType::Char { length: len }
         } else if lower.starts_with("decimal") {
             let (p, s) = parse_precision(&lower, "decimal");
-            IRType::Decimal { precision: p, scale: s }
+            IRType::Decimal {
+                precision: p,
+                scale: s,
+            }
         } else if lower.starts_with("numeric") {
             let (p, s) = parse_precision(&lower, "numeric");
-            IRType::Decimal { precision: p, scale: s }
+            IRType::Decimal {
+                precision: p,
+                scale: s,
+            }
         } else if lower.starts_with("varbinary") {
             let len = parse_length(&lower, "varbinary");
             IRType::Binary { length: len }
@@ -122,13 +130,17 @@ impl SyncSourceAdapter for SqlServerSyncAdapter {
         } else if lower == "date" {
             IRType::Date
         } else if lower == "time" || lower.starts_with("time(") {
-            IRType::Time { with_timezone: false }
+            IRType::Time {
+                with_timezone: false,
+            }
         } else if lower == "datetime"
             || lower == "datetime2"
             || lower.starts_with("datetime2(")
             || lower == "smalldatetime"
         {
-            IRType::Timestamp { with_timezone: false }
+            IRType::Timestamp {
+                with_timezone: false,
+            }
         } else if lower == "uniqueidentifier" {
             IRType::Uuid
         } else if lower == "xml" {
@@ -202,7 +214,9 @@ impl SyncTargetAdapter for SqlServerSyncAdapter {
             Some(Value::Bytes(b)) => {
                 format!(
                     "0x{}",
-                    b.iter().map(|byte| format!("{byte:02X}")).collect::<String>()
+                    b.iter()
+                        .map(|byte| format!("{byte:02X}"))
+                        .collect::<String>()
                 )
             }
         }
@@ -246,10 +260,22 @@ mod tests {
     #[test]
     fn sqlserver_int_types() {
         let a = SqlServerSyncAdapter;
-        assert_eq!(a.column_to_ir(&col("a", "tinyint"), None).ir_type, IRType::Int8);
-        assert_eq!(a.column_to_ir(&col("a", "smallint"), None).ir_type, IRType::Int16);
-        assert_eq!(a.column_to_ir(&col("a", "int"), None).ir_type, IRType::Int32);
-        assert_eq!(a.column_to_ir(&col("a", "bigint"), None).ir_type, IRType::Int64);
+        assert_eq!(
+            a.column_to_ir(&col("a", "tinyint"), None).ir_type,
+            IRType::Int8
+        );
+        assert_eq!(
+            a.column_to_ir(&col("a", "smallint"), None).ir_type,
+            IRType::Int16
+        );
+        assert_eq!(
+            a.column_to_ir(&col("a", "int"), None).ir_type,
+            IRType::Int32
+        );
+        assert_eq!(
+            a.column_to_ir(&col("a", "bigint"), None).ir_type,
+            IRType::Int64
+        );
     }
 
     #[test]
@@ -261,7 +287,13 @@ mod tests {
     #[test]
     fn sqlserver_decimal_to_ir() {
         let ir = SqlServerSyncAdapter.column_to_ir(&col("price", "decimal(10,2)"), None);
-        assert_eq!(ir.ir_type, IRType::Decimal { precision: 10, scale: 2 });
+        assert_eq!(
+            ir.ir_type,
+            IRType::Decimal {
+                precision: 10,
+                scale: 2
+            }
+        );
     }
 
     #[test]
@@ -269,7 +301,9 @@ mod tests {
         let a = SqlServerSyncAdapter;
         assert_eq!(
             a.column_to_ir(&col("t", "datetime2"), None).ir_type,
-            IRType::Timestamp { with_timezone: false }
+            IRType::Timestamp {
+                with_timezone: false
+            }
         );
         assert_eq!(
             a.column_to_ir(&col("t", "uniqueidentifier"), None).ir_type,
@@ -287,8 +321,14 @@ mod tests {
     #[test]
     fn sqlserver_format_bool_literal() {
         let a = SqlServerSyncAdapter;
-        assert_eq!(a.format_literal(&Some(Value::Bool(true)), &IRType::Bool), "1");
-        assert_eq!(a.format_literal(&Some(Value::Bool(false)), &IRType::Bool), "0");
+        assert_eq!(
+            a.format_literal(&Some(Value::Bool(true)), &IRType::Bool),
+            "1"
+        );
+        assert_eq!(
+            a.format_literal(&Some(Value::Bool(false)), &IRType::Bool),
+            "0"
+        );
     }
 
     #[test]

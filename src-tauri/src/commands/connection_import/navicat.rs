@@ -2,7 +2,7 @@
 
 use super::super::error::CommandError;
 use super::{ImportFormat, ParsedImport};
-use crate::db::{ConnectionConfig, SslMode, SshTunnelConfig};
+use crate::db::{ConnectionConfig, SshTunnelConfig, SslMode};
 use aes::Aes128;
 use cbc::cipher::{block_padding::Pkcs7, BlockDecryptMut, KeyIvInit};
 use regex::Regex;
@@ -78,7 +78,9 @@ pub fn encrypt_password(plain: &str) -> String {
     let pad = 16 - (buf.len() % 16);
     buf.extend(std::iter::repeat(0u8).take(pad));
     let cipher = Aes128CbcEnc::new_from_slices(NAVICAT_KEY, NAVICAT_IV).unwrap();
-    let out = cipher.encrypt_padded_mut::<Pkcs7>(&mut buf, plain.len()).unwrap();
+    let out = cipher
+        .encrypt_padded_mut::<Pkcs7>(&mut buf, plain.len())
+        .unwrap();
     out.iter().map(|b| format!("{b:02X}")).collect()
 }
 
@@ -137,7 +139,11 @@ fn map_conn_type(raw: &str, tag: &str, port: Option<u16>) -> Option<&'static str
     }
 }
 
-fn apply_service_provider(db_type: &str, service_provider: &str, raw_type: &str) -> Option<&'static str> {
+fn apply_service_provider(
+    db_type: &str,
+    service_provider: &str,
+    raw_type: &str,
+) -> Option<&'static str> {
     let sp = service_provider.to_ascii_lowercase();
     if sp.contains("oceanbase") {
         if normalize_key(raw_type).contains("oracle") {
@@ -172,7 +178,9 @@ fn apply_service_provider(db_type: &str, service_provider: &str, raw_type: &str)
 fn default_port(db_type: &str) -> Option<u16> {
     match db_type {
         "mysql" | "mariadb" => Some(3306),
-        "postgresql" | "cloudberry" | "questdb" => Some(if db_type == "questdb" { 8812 } else { 5432 }),
+        "postgresql" | "cloudberry" | "questdb" => {
+            Some(if db_type == "questdb" { 8812 } else { 5432 })
+        }
         "sqlserver" => Some(1433),
         "mongodb" => Some(27017),
         "redis" => Some(6379),
@@ -278,7 +286,8 @@ fn build_ssh(values: &HashMap<String, String>) -> Option<SshTunnelConfig> {
             "sshTunnelPrivateKey",
         ],
     );
-    let uses_key = auth_value.contains("key") || (!auth_value.contains("password") && !key_path.is_empty());
+    let uses_key =
+        auth_value.contains("key") || (!auth_value.contains("password") && !key_path.is_empty());
 
     Some(SshTunnelConfig {
         enabled: true,
@@ -312,7 +321,11 @@ fn build_ssh(values: &HashMap<String, String>) -> Option<SshTunnelConfig> {
         passphrase: if uses_key {
             let pp = decrypt_password(&get_any(
                 values,
-                &["sshPassphrase", "sshKeyPassphrase", "sshPrivateKeyPassphrase"],
+                &[
+                    "sshPassphrase",
+                    "sshKeyPassphrase",
+                    "sshPrivateKeyPassphrase",
+                ],
             ));
             if pp.is_empty() {
                 None
@@ -333,7 +346,13 @@ fn is_connection_candidate(tag: &str, values: &HashMap<String, String>) -> bool 
     }
     let type_v = get_any(
         values,
-        &["connType", "databaseType", "driver", "connectionType", "type"],
+        &[
+            "connType",
+            "databaseType",
+            "driver",
+            "connectionType",
+            "type",
+        ],
     );
     let name = get_any(
         values,
@@ -351,8 +370,10 @@ fn is_connection_candidate(tag: &str, values: &HashMap<String, String>) -> bool 
 pub fn parse(xml: &str) -> Result<ParsedImport, CommandError> {
     static CONN_RE: OnceLock<Regex> = OnceLock::new();
     let conn_re = CONN_RE.get_or_init(|| {
-        Regex::new(r#"(?is)<(Connection|connection)\b([^>]*?)(?:/>|>(.*?)</(?:Connection|connection)>)"#)
-            .unwrap()
+        Regex::new(
+            r#"(?is)<(Connection|connection)\b([^>]*?)(?:/>|>(.*?)</(?:Connection|connection)>)"#,
+        )
+        .unwrap()
     });
 
     let mut connections = Vec::new();
@@ -368,7 +389,8 @@ pub fn parse(xml: &str) -> Result<ParsedImport, CommandError> {
         // Flatten simple child attribute bags (Advance / Member ignored for mapping beyond SSH).
         static CHILD_RE: OnceLock<Regex> = OnceLock::new();
         let child_re = CHILD_RE.get_or_init(|| {
-            Regex::new(r#"(?is)<(Advance|advance)\b([^>]*?)(?:/>|></(?:Advance|advance)>)"#).unwrap()
+            Regex::new(r#"(?is)<(Advance|advance)\b([^>]*?)(?:/>|></(?:Advance|advance)>)"#)
+                .unwrap()
         });
         for child in child_re.captures_iter(inner) {
             for (k, v) in parse_attrs(child.get(2).map(|m| m.as_str()).unwrap_or("")) {
@@ -453,11 +475,7 @@ pub fn parse(xml: &str) -> Result<ParsedImport, CommandError> {
                 &values,
                 &["host", "server", "hostname", "serverHost", "address"],
             );
-            Some(if h.is_empty() {
-                "127.0.0.1".into()
-            } else {
-                h
-            })
+            Some(if h.is_empty() { "127.0.0.1".into() } else { h })
         };
 
         let port = if is_file {

@@ -78,9 +78,8 @@ fn read_index_entries(path: &Path) -> Result<Vec<RunIndexEntry>, DashboardRunsEr
         if line.trim().is_empty() {
             continue;
         }
-        let entry: RunIndexEntry = serde_json::from_str(line).map_err(|e| {
-            DashboardRunsError::Parse(format!("index line {}: {e}", line_no + 1))
-        })?;
+        let entry: RunIndexEntry = serde_json::from_str(line)
+            .map_err(|e| DashboardRunsError::Parse(format!("index line {}: {e}", line_no + 1)))?;
         entries.push(entry);
     }
     Ok(entries)
@@ -124,17 +123,16 @@ fn write_run_file(path: &Path, run: &WidgetRun) -> Result<(), DashboardRunsError
         std::fs::create_dir_all(parent)?;
     }
 
-    let parent = path
-        .parent()
-        .ok_or_else(|| DashboardRunsError::Io(io::Error::new(io::ErrorKind::NotFound, "no parent")))?;
-    let file_name = path
-        .file_name()
-        .and_then(|n| n.to_str())
-        .ok_or_else(|| DashboardRunsError::Io(io::Error::new(io::ErrorKind::InvalidInput, "bad name")))?;
+    let parent = path.parent().ok_or_else(|| {
+        DashboardRunsError::Io(io::Error::new(io::ErrorKind::NotFound, "no parent"))
+    })?;
+    let file_name = path.file_name().and_then(|n| n.to_str()).ok_or_else(|| {
+        DashboardRunsError::Io(io::Error::new(io::ErrorKind::InvalidInput, "bad name"))
+    })?;
     let tmp_path = parent.join(format!(".{file_name}.tmp"));
 
-    let content = serde_json::to_string_pretty(run)
-        .map_err(|e| DashboardRunsError::Parse(e.to_string()))?;
+    let content =
+        serde_json::to_string_pretty(run).map_err(|e| DashboardRunsError::Parse(e.to_string()))?;
     std::fs::write(&tmp_path, content.as_bytes())?;
     std::fs::rename(tmp_path, path)?;
     Ok(())
@@ -233,12 +231,7 @@ pub fn write_run(
         &index_entry,
     )?;
 
-    prune_runs(
-        data_dir,
-        &stored.dashboard_id,
-        &stored.widget_id,
-        retention,
-    )
+    prune_runs(data_dir, &stored.dashboard_id, &stored.widget_id, retention)
 }
 
 pub fn list_run_index(

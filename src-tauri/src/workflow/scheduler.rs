@@ -38,7 +38,10 @@ pub fn due_decision(last_run: Option<Instant>, now: Instant, interval_secs: u64)
 }
 
 pub fn is_workflow_due(last_run: Option<Instant>, now: Instant, interval_secs: u64) -> bool {
-    matches!(due_decision(last_run, now, interval_secs), DueDecision::Fire)
+    matches!(
+        due_decision(last_run, now, interval_secs),
+        DueDecision::Fire
+    )
 }
 
 pub fn scheduled_interval_secs(workflow: &WorkflowDefinition) -> Option<u64> {
@@ -69,7 +72,10 @@ impl WorkflowScheduler {
     }
 
     pub fn start(self: &Arc<Self>, app_handle: AppHandle) {
-        *self.app_handle.lock().expect("workflow scheduler app_handle") = Some(app_handle);
+        *self
+            .app_handle
+            .lock()
+            .expect("workflow scheduler app_handle") = Some(app_handle);
         let engine = Arc::clone(self);
         tauri::async_runtime::spawn(async move {
             engine.run_loop().await;
@@ -94,7 +100,10 @@ impl WorkflowScheduler {
 
     async fn tick(self: &Arc<Self>) {
         let handle = {
-            let guard = self.app_handle.lock().expect("workflow scheduler app_handle");
+            let guard = self
+                .app_handle
+                .lock()
+                .expect("workflow scheduler app_handle");
             match guard.clone() {
                 Some(h) => h,
                 None => return,
@@ -153,7 +162,11 @@ impl WorkflowScheduler {
                         tracing::warn!(workflow_id = %id, error = %e, "scheduled workflow failed");
                     }
                 }
-                scheduler.last_run.write().await.insert(id.clone(), Instant::now());
+                scheduler
+                    .last_run
+                    .write()
+                    .await
+                    .insert(id.clone(), Instant::now());
                 scheduler.in_flight.write().await.remove(&id);
             });
         }
@@ -195,7 +208,10 @@ mod tests {
 
     #[test]
     fn clamps_below_minimum() {
-        assert_eq!(scheduled_interval_secs(&wf(true, Some(5))), Some(MIN_INTERVAL_SECS));
+        assert_eq!(
+            scheduled_interval_secs(&wf(true, Some(5))),
+            Some(MIN_INTERVAL_SECS)
+        );
         assert_eq!(scheduled_interval_secs(&wf(true, None)), Some(3600));
     }
 

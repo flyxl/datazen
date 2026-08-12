@@ -43,11 +43,7 @@ pub fn build_create_table_ddl(ir_table: &IRTable, tgt: &dyn SyncTargetAdapter) -
         })
         .collect();
 
-    let mut ddl = format!(
-        "CREATE TABLE {} (\n{}",
-        q(&ir_table.name),
-        cols.join(",\n")
-    );
+    let mut ddl = format!("CREATE TABLE {} (\n{}", q(&ir_table.name), cols.join(",\n"));
 
     if tgt.supports_primary_key() && !ir_table.primary_keys.is_empty() {
         let pk_cols: Vec<String> = ir_table.primary_keys.iter().map(|k| q(k)).collect();
@@ -168,7 +164,9 @@ mod tests {
             name: "events".into(),
             columns: vec![IRColumn {
                 name: "ts".into(),
-                ir_type: IRType::Timestamp { with_timezone: false },
+                ir_type: IRType::Timestamp {
+                    with_timezone: false,
+                },
                 nullable: false,
                 default_expr: None,
                 is_primary_key: false,
@@ -180,7 +178,10 @@ mod tests {
         };
 
         let ddl = build_create_table_ddl(&table, &DummyTarget::new());
-        assert!(ddl.ends_with("ENGINE = MergeTree\nORDER BY (ts)"), "ddl={ddl}");
+        assert!(
+            ddl.ends_with("ENGINE = MergeTree\nORDER BY (ts)"),
+            "ddl={ddl}"
+        );
     }
 
     #[test]

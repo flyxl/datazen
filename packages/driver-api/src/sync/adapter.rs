@@ -12,11 +12,7 @@ pub trait SyncSourceAdapter: Send + Sync {
     /// `native_full_type` carries the fully-qualified type string with precision
     /// (e.g. PostgreSQL's `format_type()` output). When `None`, the adapter
     /// falls back to `column.data_type`.
-    fn column_to_ir(
-        &self,
-        column: &ColumnSchema,
-        native_full_type: Option<&str>,
-    ) -> IRColumn;
+    fn column_to_ir(&self, column: &ColumnSchema, native_full_type: Option<&str>) -> IRColumn;
 
     /// Convert an entire `TableSchema` to an `IRTable`.
     ///
@@ -34,9 +30,7 @@ pub trait SyncSourceAdapter: Send + Sync {
             .columns
             .iter()
             .map(|c| {
-                let ft = full_types
-                    .and_then(|m| m.get(&c.name))
-                    .map(|s| s.as_str());
+                let ft = full_types.and_then(|m| m.get(&c.name)).map(|s| s.as_str());
                 let mut ir = self.column_to_ir(c, ft);
                 if pk_set.contains(c.name.as_str()) {
                     ir.is_primary_key = true;

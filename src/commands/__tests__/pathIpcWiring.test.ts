@@ -55,14 +55,22 @@ describe('path IPC frontend wiring', () => {
     expect(connection).toContain('exportConnectionsWithDialog');
     expect(connection).toContain("'import_connections_with_dialog'");
     expect(connection).toContain('importConnectionsWithDialog');
+    expect(connection).toContain("'import_connections_from_app'");
+    expect(connection).toContain('importConnectionsFromApp');
+    expect(connection).toContain("'detect_connection_import_path'");
+    expect(connection).toContain("'pick_connection_import_path_with_dialog'");
 
     const main = readSrc('windows/main/MainWindow.tsx');
     expect(main).toContain('ConnectionShareDialog');
     expect(main).toContain('menu:export-connections');
     expect(main).toContain('menu:import-connections');
+    expect(main).toContain('menu:import-connections-dbx');
+    expect(main).toContain('menu:import-connections-navicat');
 
     const menuBar = readSrc('components/MenuBar.tsx');
     expect(menuBar).toContain('export-connections');
     expect(menuBar).toContain('import-connections');
+    expect(menuBar).toContain('import-connections-dbx');
+    expect(menuBar).toContain('import-connections-file');
   });
 });

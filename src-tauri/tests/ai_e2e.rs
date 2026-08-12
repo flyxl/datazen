@@ -12,7 +12,11 @@ use datazen::ai::prompt_resolver::{self, PromptResolver};
 use datazen_ai_api::{ChatMessage, MessageRole};
 use datazen_driver_api::PromptScenario;
 
-async fn system_prompt(scenario: PromptScenario, vars: &HashMap<&str, &str>, lang: &str) -> ChatMessage {
+async fn system_prompt(
+    scenario: PromptScenario,
+    vars: &HashMap<&str, &str>,
+    lang: &str,
+) -> ChatMessage {
     let tmp = tempfile::tempdir().unwrap();
     let resolver = PromptResolver::new(tmp.path(), None);
     let tpl = resolver.resolve(scenario, None, lang).await;
@@ -95,7 +99,8 @@ fn load_test_config() -> Option<TestConfig> {
         endpoint: vars.get("AI_ENDPOINT").cloned().unwrap_or_default(),
         api_key: vars.get("AI_API_KEY").cloned().unwrap_or_default(),
         model,
-        max_tokens: vars.get("AI_MAX_TOKENS")
+        max_tokens: vars
+            .get("AI_MAX_TOKENS")
             .and_then(|v| v.parse().ok())
             .unwrap_or(4096),
     })
@@ -112,8 +117,12 @@ fn load_deepseek_config() -> Option<DeepSeekTestConfig> {
 
     Some(DeepSeekTestConfig {
         api_key,
-        model: vars.get("DEEPSEEK_MODEL").cloned().unwrap_or_else(|| "deepseek-v4-flash".into()),
-        max_tokens: vars.get("DEEPSEEK_MAX_TOKENS")
+        model: vars
+            .get("DEEPSEEK_MODEL")
+            .cloned()
+            .unwrap_or_else(|| "deepseek-v4-flash".into()),
+        max_tokens: vars
+            .get("DEEPSEEK_MAX_TOKENS")
             .and_then(|v| v.parse().ok())
             .unwrap_or(200_000),
     })
@@ -153,7 +162,9 @@ mod provider_tests {
                     max_tokens,
                     extra: serde_json::Value::Null,
                 };
-                p.initialize(&config).await.expect("Failed to initialize DeepSeek");
+                p.initialize(&config)
+                    .await
+                    .expect("Failed to initialize DeepSeek");
                 Box::new(p)
             }
             _ => panic!("Unsupported provider: {provider_type}"),
@@ -171,7 +182,11 @@ mod provider_tests {
                 Err(AiError::RateLimited { retry_after_secs }) => {
                     if attempt < max_retries {
                         let wait = retry_after_secs.max(1);
-                        eprintln!("  ⏳ Rate limited, waiting {wait}s (attempt {}/{})", attempt + 1, max_retries);
+                        eprintln!(
+                            "  ⏳ Rate limited, waiting {wait}s (attempt {}/{})",
+                            attempt + 1,
+                            max_retries
+                        );
                         tokio::time::sleep(std::time::Duration::from_secs(wait)).await;
                     } else {
                         return Err(AiError::RateLimited { retry_after_secs });
@@ -191,7 +206,8 @@ mod provider_tests {
             return;
         };
 
-        let provider = create_provider(&cfg.provider, &cfg.endpoint, &cfg.api_key, cfg.max_tokens).await;
+        let provider =
+            create_provider(&cfg.provider, &cfg.endpoint, &cfg.api_key, cfg.max_tokens).await;
 
         let request = CompletionRequest {
             request_id: "test-phase0".into(),
@@ -210,7 +226,8 @@ mod provider_tests {
             previous_response_id: None,
         };
 
-        let resp = complete_with_retry(provider.as_ref(), &request, 3).await
+        let resp = complete_with_retry(provider.as_ref(), &request, 3)
+            .await
             .expect("complete() failed after retries");
         eprintln!("  Phase 0 response: {:?}", resp.content);
         eprintln!("  Phase 0 reasoning: {:?}", resp.reasoning);
@@ -228,7 +245,8 @@ mod provider_tests {
             return;
         };
 
-        let provider = create_provider(&cfg.provider, &cfg.endpoint, &cfg.api_key, cfg.max_tokens).await;
+        let provider =
+            create_provider(&cfg.provider, &cfg.endpoint, &cfg.api_key, cfg.max_tokens).await;
 
         let mut vars = HashMap::new();
         vars.insert("db_type", "PostgreSQL");
@@ -256,7 +274,9 @@ mod provider_tests {
             previous_response_id: None,
         };
 
-        let response = complete_with_retry(provider.as_ref(), &request, 3).await.expect("NL2SQL failed");
+        let response = complete_with_retry(provider.as_ref(), &request, 3)
+            .await
+            .expect("NL2SQL failed");
         let sql = response.content.to_uppercase();
         eprintln!("  Phase 1 NL2SQL: {}", response.content);
         assert!(sql.contains("SELECT"), "Response should contain SELECT");
@@ -274,11 +294,15 @@ mod provider_tests {
             return;
         };
 
-        let provider = create_provider(&cfg.provider, &cfg.endpoint, &cfg.api_key, cfg.max_tokens).await;
+        let provider =
+            create_provider(&cfg.provider, &cfg.endpoint, &cfg.api_key, cfg.max_tokens).await;
 
         let mut vars = HashMap::new();
         vars.insert("db_type", "PostgreSQL");
-        vars.insert("schema", "  users (id int4 PK, name varchar, email varchar)");
+        vars.insert(
+            "schema",
+            "  users (id int4 PK, name varchar, email varchar)",
+        );
         let system = system_prompt(PromptScenario::Diagnose, &vars, "en").await;
         let request = CompletionRequest {
             request_id: "test-diagnose".into(),
@@ -300,7 +324,9 @@ mod provider_tests {
             previous_response_id: None,
         };
 
-        let response = complete_with_retry(provider.as_ref(), &request, 3).await.expect("Diagnosis failed");
+        let response = complete_with_retry(provider.as_ref(), &request, 3)
+            .await
+            .expect("Diagnosis failed");
         eprintln!("  Phase 1 Diagnosis: {}", response.content);
 
         let json_str = strip_fences(&response.content);
@@ -328,7 +354,8 @@ mod provider_tests {
             return;
         };
 
-        let provider = create_provider(&cfg.provider, &cfg.endpoint, &cfg.api_key, cfg.max_tokens).await;
+        let provider =
+            create_provider(&cfg.provider, &cfg.endpoint, &cfg.api_key, cfg.max_tokens).await;
 
         let mut vars = HashMap::new();
         vars.insert("db_type", "PostgreSQL");
@@ -381,11 +408,15 @@ mod provider_tests {
             return;
         };
 
-        let provider = create_provider(&cfg.provider, &cfg.endpoint, &cfg.api_key, cfg.max_tokens).await;
+        let provider =
+            create_provider(&cfg.provider, &cfg.endpoint, &cfg.api_key, cfg.max_tokens).await;
 
         let mut vars = HashMap::new();
         vars.insert("db_type", "PostgreSQL");
-        vars.insert("columns", "  id int4 NOT NULL PK\n  name varchar NULL\n  age int4 NULL\n  status varchar NULL");
+        vars.insert(
+            "columns",
+            "  id int4 NOT NULL PK\n  name varchar NULL\n  age int4 NULL\n  status varchar NULL",
+        );
         let system = system_prompt(PromptScenario::NlFilter, &vars, "en").await;
         let request = CompletionRequest {
             request_id: "test-filter".into(),
@@ -441,7 +472,8 @@ mod provider_tests {
             return;
         };
 
-        let provider = create_provider(&cfg.provider, &cfg.endpoint, &cfg.api_key, cfg.max_tokens).await;
+        let provider =
+            create_provider(&cfg.provider, &cfg.endpoint, &cfg.api_key, cfg.max_tokens).await;
 
         let mut vars = HashMap::new();
         vars.insert("db_type", "PostgreSQL");
@@ -478,7 +510,10 @@ mod provider_tests {
             }
             end
         };
-        eprintln!("  Phase 8 Schema Doc (first 200 chars): {}", &response.content[..preview_end]);
+        eprintln!(
+            "  Phase 8 Schema Doc (first 200 chars): {}",
+            &response.content[..preview_end]
+        );
 
         let content = response.content.to_lowercase();
         assert!(content.contains("user"), "Doc should mention users table");
@@ -493,7 +528,8 @@ mod provider_tests {
             return;
         };
 
-        let provider = create_provider(&cfg.provider, &cfg.endpoint, &cfg.api_key, cfg.max_tokens).await;
+        let provider =
+            create_provider(&cfg.provider, &cfg.endpoint, &cfg.api_key, cfg.max_tokens).await;
 
         let vars = HashMap::new();
         let system = system_prompt(PromptScenario::ConnectionDiagnose, &vars, "en").await;
@@ -549,7 +585,8 @@ mod provider_tests {
             return;
         };
 
-        let provider = create_provider(&cfg.provider, &cfg.endpoint, &cfg.api_key, cfg.max_tokens).await;
+        let provider =
+            create_provider(&cfg.provider, &cfg.endpoint, &cfg.api_key, cfg.max_tokens).await;
 
         let vars = HashMap::new();
         let system = system_prompt(PromptScenario::QuerySummary, &vars, "en").await;
@@ -604,7 +641,8 @@ mod provider_tests {
             return;
         };
 
-        let provider = create_provider(&cfg.provider, &cfg.endpoint, &cfg.api_key, cfg.max_tokens).await;
+        let provider =
+            create_provider(&cfg.provider, &cfg.endpoint, &cfg.api_key, cfg.max_tokens).await;
 
         let request = CompletionRequest {
             request_id: "test-stream".into(),
@@ -623,7 +661,8 @@ mod provider_tests {
             previous_response_id: None,
         };
 
-        let (tx, mut rx) = tokio::sync::mpsc::channel::<Result<StreamChunk, datazen_ai_api::AiError>>(32);
+        let (tx, mut rx) =
+            tokio::sync::mpsc::channel::<Result<StreamChunk, datazen_ai_api::AiError>>(32);
         let result = provider.stream_complete(&request, tx).await;
         assert!(result.is_ok(), "stream_complete failed: {:?}", result.err());
 
@@ -642,7 +681,10 @@ mod provider_tests {
 
         let full_content: String = chunks.iter().map(|c| c.content.as_str()).collect();
         eprintln!("  Streaming content: {full_content}");
-        assert!(!full_content.is_empty(), "Streamed content should not be empty");
+        assert!(
+            !full_content.is_empty(),
+            "Streamed content should not be empty"
+        );
     }
 }
 
@@ -736,7 +778,8 @@ mod deepseek_workflow_tests {
     }
 
     fn mock_tool_result(tool_call: &ToolCall) -> String {
-        let args: serde_json::Value = serde_json::from_str(&tool_call.arguments).unwrap_or_default();
+        let args: serde_json::Value =
+            serde_json::from_str(&tool_call.arguments).unwrap_or_default();
         match tool_call.name.as_str() {
             "list_connections" => serde_json::json!([
                 { "id": "conn_pg01", "name": "test_orders", "databaseType": "PostgreSQL", "host": "localhost" },
@@ -868,7 +911,10 @@ mod deepseek_workflow_tests {
             max_tokens: cfg.max_tokens,
             extra: serde_json::Value::Null,
         };
-        provider.initialize(&init_config).await.expect("Failed to initialize DeepSeek");
+        provider
+            .initialize(&init_config)
+            .await
+            .expect("Failed to initialize DeepSeek");
 
         let tools = workflow_tools();
         let system_prompt = workflow_system_prompt();
@@ -916,7 +962,9 @@ mod deepseek_workflow_tests {
 
             // Use streaming to test the full streaming path
             let (tx, mut rx) = tokio::sync::mpsc::channel(64);
-            provider.stream_complete(&request, tx).await
+            provider
+                .stream_complete(&request, tx)
+                .await
                 .unwrap_or_else(|e| panic!("stream_complete failed in round {round}: {e}"));
 
             let mut round_content = String::new();
@@ -925,7 +973,8 @@ mod deepseek_workflow_tests {
             let mut round_response_id: Option<String> = None;
 
             while let Some(chunk_result) = rx.recv().await {
-                let chunk = chunk_result.unwrap_or_else(|e| panic!("Stream error in round {round}: {e}"));
+                let chunk =
+                    chunk_result.unwrap_or_else(|e| panic!("Stream error in round {round}: {e}"));
                 round_content.push_str(&chunk.content);
                 if let Some(r) = &chunk.reasoning {
                     round_reasoning.push_str(r);
@@ -964,7 +1013,8 @@ mod deepseek_workflow_tests {
                 }
             };
 
-            let db_tools: Vec<&ToolCall> = tool_calls.iter()
+            let db_tools: Vec<&ToolCall> = tool_calls
+                .iter()
                 .filter(|tc| tc.name != "ask_questions")
                 .collect();
 
@@ -975,7 +1025,10 @@ mod deepseek_workflow_tests {
             }
 
             total_tool_calls += db_tools.len();
-            eprintln!("  Tool calls: {:?}", db_tools.iter().map(|t| &t.name).collect::<Vec<_>>());
+            eprintln!(
+                "  Tool calls: {:?}",
+                db_tools.iter().map(|t| &t.name).collect::<Vec<_>>()
+            );
 
             // Handle previous_response_id for stateful conversations
             if round_response_id.is_some() {
@@ -987,7 +1040,11 @@ mod deepseek_workflow_tests {
                 messages.push(ChatMessage {
                     role: MessageRole::Assistant,
                     content: round_content,
-                    reasoning: if round_reasoning.is_empty() { None } else { Some(round_reasoning) },
+                    reasoning: if round_reasoning.is_empty() {
+                        None
+                    } else {
+                        Some(round_reasoning)
+                    },
                     tool_calls: Some(tool_calls.clone()),
                     tool_call_id: None,
                 });
@@ -999,7 +1056,11 @@ mod deepseek_workflow_tests {
                     continue;
                 }
                 let result = mock_tool_result(tc);
-                eprintln!("  Tool result for {}: {}...", tc.name, &result[..result.len().min(80)]);
+                eprintln!(
+                    "  Tool result for {}: {}...",
+                    tc.name,
+                    &result[..result.len().min(80)]
+                );
                 messages.push(ChatMessage {
                     role: MessageRole::Tool,
                     content: result,
@@ -1017,10 +1078,15 @@ mod deepseek_workflow_tests {
         eprintln!("  Total DB tool calls: {total_tool_calls}");
 
         // Assertions
-        assert!(total_tool_calls > 0, "AI should have called at least one database tool");
+        assert!(
+            total_tool_calls > 0,
+            "AI should have called at least one database tool"
+        );
 
         assert!(
-            final_content.contains("```yaml") || final_content.contains("```YAML") || final_content.contains("yaml\n"),
+            final_content.contains("```yaml")
+                || final_content.contains("```YAML")
+                || final_content.contains("yaml\n"),
             "Final response should contain a YAML code block. Content:\n{final_content}"
         );
 
@@ -1059,7 +1125,10 @@ mod deepseek_workflow_tests {
             max_tokens: cfg.max_tokens,
             extra: serde_json::Value::Null,
         };
-        provider.initialize(&init_config).await.expect("Failed to initialize");
+        provider
+            .initialize(&init_config)
+            .await
+            .expect("Failed to initialize");
 
         let tools = workflow_tools();
         let request = CompletionRequest {
@@ -1079,7 +1148,10 @@ mod deepseek_workflow_tests {
         };
 
         let (tx, mut rx) = tokio::sync::mpsc::channel(32);
-        provider.stream_complete(&request, tx).await.expect("stream_complete failed");
+        provider
+            .stream_complete(&request, tx)
+            .await
+            .expect("stream_complete failed");
 
         let mut content = String::new();
         let mut has_done = false;

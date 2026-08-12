@@ -27,11 +27,7 @@ pub fn evaluate_run_alert(run: &mut WidgetRun, widget: &DashboardWidget) {
     }
     if let Some(value) = extract_metric(&run.columns, &run.rows, rule) {
         run.alert_value = Some(value);
-        run.alert_fired = Some(eval_threshold(
-            value,
-            alert_op_str(rule.op),
-            rule.threshold,
-        ));
+        run.alert_fired = Some(eval_threshold(value, alert_op_str(rule.op), rule.threshold));
     }
 }
 
@@ -146,10 +142,7 @@ mod tests {
 
     fn sample_rows(values: &[f64]) -> (Vec<String>, Vec<Vec<serde_json::Value>>) {
         let columns = vec!["v".into()];
-        let rows = values
-            .iter()
-            .map(|v| vec![serde_json::json!(v)])
-            .collect();
+        let rows = values.iter().map(|v| vec![serde_json::json!(v)]).collect();
         (columns, rows)
     }
 

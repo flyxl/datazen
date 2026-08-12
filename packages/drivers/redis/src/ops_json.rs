@@ -103,12 +103,7 @@ where
     Ok(JsonGetResult { value })
 }
 
-pub async fn json_set<C>(
-    conn: &mut C,
-    key: &str,
-    path: &str,
-    value: &str,
-) -> Result<(), String>
+pub async fn json_set<C>(conn: &mut C, key: &str, path: &str, value: &str) -> Result<(), String>
 where
     C: AsyncCommands + ConnectionLike + Send,
 {

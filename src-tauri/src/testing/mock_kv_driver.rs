@@ -4,9 +4,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 
-use crate::db::{
-    ConnectionHandle, DatabaseType, DriverError, KeyDetail, KeyEntry, KeyValueDriver,
-};
+use crate::db::{ConnectionHandle, DatabaseType, DriverError, KeyDetail, KeyEntry, KeyValueDriver};
 
 #[derive(Clone)]
 pub struct MockKvDriverOptions {

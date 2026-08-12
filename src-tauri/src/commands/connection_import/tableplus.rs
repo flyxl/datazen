@@ -1,9 +1,9 @@
 //! TablePlus `.tableplusconnection` (RNCryptor v3 JSON array) import.
 
+use super::super::error::CommandError;
 use super::rncryptor;
 use super::{ImportFormat, ParsedImport};
-use super::super::error::CommandError;
-use crate::db::{ConnectionConfig, SslMode, SshTunnelConfig};
+use crate::db::{ConnectionConfig, SshTunnelConfig, SslMode};
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
@@ -109,14 +109,248 @@ fn default_port(db_type: &str) -> Option<u16> {
 
 pub fn parse(bytes: &[u8], password: &str) -> Result<ParsedImport, CommandError> {
     let plain = rncryptor::decrypt_password(bytes, password)?;
-    let text = String::from_utf8(plain).map_err(|e| {
-        CommandError::Validation(format!("TablePlus payload is not UTF-8: {e}"))
-    })?;
+    let text = String::from_utf8(plain)
+        .map_err(|e| CommandError::Validation(format!("TablePlus payload is not UTF-8: {e}")))?;
 
     let items: Vec<TablePlusConnection> = serde_json::from_str(&text).map_err(|e| {
         CommandError::Validation(format!("Invalid TablePlus JSON after decrypt: {e}"))
     })?;
+    from_items(items)
+}
 
+fn plist_unescape(s: &str) -> String {
+    s.replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&apos;", "'")
+        .replace("&amp;", "&")
+}
+
+struct XmlCursor<'a> {
+    s: &'a str,
+    i: usize,
+}
+
+impl<'a> XmlCursor<'a> {
+    fn new(s: &'a str) -> Self {
+        Self { s, i: 0 }
+    }
+
+    fn skip_misc(&mut self) {
+        loop {
+            self.skip_ws();
+            if self.s[self.i..].starts_with("<?") {
+                if let Some(end) = self.s[self.i..].find("?>") {
+                    self.i += end + 2;
+                    continue;
+                }
+            }
+            if self.s[self.i..].starts_with("<!--") {
+                if let Some(end) = self.s[self.i..].find("-->") {
+                    self.i += end + 3;
+                    continue;
+                }
+            }
+            if self.s[self.i..].starts_with("<!DOCTYPE") {
+                if let Some(end) = self.s[self.i..].find('>') {
+                    self.i += end + 1;
+                    continue;
+                }
+            }
+            break;
+        }
+    }
+
+    fn skip_ws(&mut self) {
+        while let Some(c) = self.s[self.i..].chars().next() {
+            if !c.is_whitespace() {
+                break;
+            }
+            self.i += c.len_utf8();
+        }
+    }
+
+    fn starts_with(&self, tag: &str) -> bool {
+        self.s[self.i..].starts_with(tag)
+    }
+
+    fn take_until(&mut self, needle: &str) -> Result<&'a str, CommandError> {
+        let rest = &self.s[self.i..];
+        let Some(pos) = rest.find(needle) else {
+            return Err(CommandError::Validation(
+                "Invalid TablePlus plist: unterminated tag".into(),
+            ));
+        };
+        let out = &rest[..pos];
+        self.i += pos + needle.len();
+        Ok(out)
+    }
+
+    fn parse_value(&mut self) -> Result<serde_json::Value, CommandError> {
+        self.skip_misc();
+        if self.starts_with("<true") {
+            let _ = self.take_until(">")?;
+            return Ok(serde_json::Value::Bool(true));
+        }
+        if self.starts_with("<false") {
+            let _ = self.take_until(">")?;
+            return Ok(serde_json::Value::Bool(false));
+        }
+        if self.starts_with("<string") {
+            let open = self.take_until(">")?;
+            if open.trim_end().ends_with('/') {
+                return Ok(serde_json::Value::String(String::new()));
+            }
+            let inner = self.take_until("</string>")?;
+            return Ok(serde_json::Value::String(plist_unescape(inner)));
+        }
+        if self.starts_with("<integer") || self.starts_with("<real") {
+            let open = self.take_until(">")?.to_string();
+            let close = if open.contains("integer") {
+                "</integer>"
+            } else {
+                "</real>"
+            };
+            let inner = self.take_until(close)?.trim().to_string();
+            if let Ok(n) = inner.parse::<i64>() {
+                return Ok(serde_json::json!(n));
+            }
+            if let Ok(n) = inner.parse::<f64>() {
+                return Ok(serde_json::json!(n));
+            }
+            return Ok(serde_json::Value::String(inner));
+        }
+        if self.starts_with("<data") || self.starts_with("<date") {
+            let tag = if self.starts_with("<data") {
+                "data"
+            } else {
+                "date"
+            };
+            let _ = self.take_until(">")?;
+            let _ = self.take_until(&format!("</{tag}>"))?;
+            return Ok(serde_json::Value::Null);
+        }
+        if self.starts_with("<array") {
+            let _ = self.take_until(">")?;
+            let mut items = Vec::new();
+            loop {
+                self.skip_misc();
+                if self.starts_with("</array>") {
+                    let _ = self.take_until(">")?;
+                    break;
+                }
+                if self.i >= self.s.len() {
+                    break;
+                }
+                items.push(self.parse_value()?);
+            }
+            return Ok(serde_json::Value::Array(items));
+        }
+        if self.starts_with("<dict") {
+            let _ = self.take_until(">")?;
+            let mut map = serde_json::Map::new();
+            loop {
+                self.skip_misc();
+                if self.starts_with("</dict>") {
+                    let _ = self.take_until(">")?;
+                    break;
+                }
+                if !self.starts_with("<key") {
+                    if self.i >= self.s.len() {
+                        break;
+                    }
+                    let _ = self.parse_value()?;
+                    continue;
+                }
+                let _ = self.take_until(">")?;
+                let key = plist_unescape(self.take_until("</key>")?);
+                let value = self.parse_value()?;
+                map.insert(key, value);
+            }
+            return Ok(serde_json::Value::Object(map));
+        }
+        if self.starts_with("<plist") {
+            let _ = self.take_until(">")?;
+            let value = self.parse_value()?;
+            self.skip_misc();
+            if self.starts_with("</plist>") {
+                let _ = self.take_until(">")?;
+            }
+            return Ok(value);
+        }
+        Err(CommandError::Validation(
+            "Invalid TablePlus plist structure".into(),
+        ))
+    }
+}
+
+fn flatten_plist_connections(value: serde_json::Value) -> Vec<serde_json::Value> {
+    match value {
+        serde_json::Value::Array(items) => items
+            .into_iter()
+            .flat_map(flatten_plist_connections)
+            .collect(),
+        serde_json::Value::Object(map) => {
+            if map.contains_key("ConnectionName")
+                || map.contains_key("Driver")
+                || map.contains_key("DatabaseHost")
+            {
+                return vec![serde_json::Value::Object(map)];
+            }
+            map.into_values()
+                .flat_map(flatten_plist_connections)
+                .collect()
+        }
+        _ => Vec::new(),
+    }
+}
+
+fn plist_xml_from_bytes(
+    bytes: &[u8],
+    path: Option<&std::path::Path>,
+) -> Result<String, CommandError> {
+    if bytes.starts_with(b"bplist") {
+        #[cfg(target_os = "macos")]
+        if let Some(path) = path {
+            let out = std::process::Command::new("plutil")
+                .args(["-convert", "xml1", "-o", "-", "--"])
+                .arg(path)
+                .output()
+                .map_err(|e| CommandError::Internal(format!("plutil: {e}")))?;
+            if out.status.success() {
+                return String::from_utf8(out.stdout)
+                    .map_err(|e| CommandError::Validation(format!("TablePlus plist UTF-8: {e}")));
+            }
+        }
+        return Err(CommandError::Validation(
+            "Binary TablePlus Connections.plist is not supported on this platform. Export .tableplusconnection or convert the plist to XML.".into(),
+        ));
+    }
+    String::from_utf8(bytes.to_vec())
+        .map_err(|e| CommandError::Validation(format!("TablePlus plist UTF-8: {e}")))
+}
+
+/// Live TablePlus `Connections.plist` (XML, or binary on macOS via plutil).
+pub fn parse_plist(
+    bytes: &[u8],
+    path: Option<&std::path::Path>,
+) -> Result<ParsedImport, CommandError> {
+    let text = plist_xml_from_bytes(bytes, path)?;
+    let mut cur = XmlCursor::new(&text);
+    cur.skip_misc();
+    let root = cur.parse_value()?;
+    let values = flatten_plist_connections(root);
+    let mut items = Vec::new();
+    for value in values {
+        match serde_json::from_value::<TablePlusConnection>(value) {
+            Ok(item) => items.push(item),
+            Err(_) => continue,
+        }
+    }
+    from_items(items)
+}
+
+fn from_items(items: Vec<TablePlusConnection>) -> Result<ParsedImport, CommandError> {
     let mut connections = Vec::new();
     let mut skipped = Vec::new();
 
@@ -192,10 +426,7 @@ pub fn parse(bytes: &[u8], password: &str) -> Result<ParsedImport, CommandError>
                     } else {
                         "password".into()
                     },
-                    password: item
-                        .server_password
-                        .clone()
-                        .filter(|s| !s.is_empty()),
+                    password: item.server_password.clone().filter(|s| !s.is_empty()),
                     private_key_path: key_path,
                     passphrase: None,
                     jump: None,
@@ -302,5 +533,35 @@ mod tests {
         assert!(ssh.enabled);
         assert_eq!(ssh.host, "bastion");
         assert_eq!(ssh.username, "ubuntu");
+    }
+
+    #[test]
+    fn parse_xml_plist_array() {
+        let xml = r#"<?xml version="1.0"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<array>
+  <dict>
+    <key>ConnectionName</key>
+    <string>Local MySQL</string>
+    <key>Driver</key>
+    <string>MySQL</string>
+    <key>DatabaseHost</key>
+    <string>127.0.0.1</string>
+    <key>DatabasePort</key>
+    <string>3306</string>
+    <key>DatabaseUser</key>
+    <string>root</string>
+    <key>DatabaseName</key>
+    <string>app</string>
+  </dict>
+</array>
+</plist>"#;
+        let parsed = parse_plist(xml.as_bytes(), None).unwrap();
+        assert_eq!(parsed.format, ImportFormat::TablePlus);
+        assert_eq!(parsed.connections.len(), 1);
+        assert_eq!(parsed.connections[0].name, "Local MySQL");
+        assert_eq!(parsed.connections[0].database_type, "mysql");
+        assert_eq!(parsed.connections[0].host.as_deref(), Some("127.0.0.1"));
     }
 }

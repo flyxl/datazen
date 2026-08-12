@@ -9,9 +9,9 @@ use zip::{CompressionMethod, ZipArchive, ZipWriter};
 
 /// True when any path component is the encryption key file `.key`.
 fn has_key_component(rel_path: &Path) -> bool {
-    rel_path.components().any(|c| {
-        matches!(c, Component::Normal(name) if name.to_string_lossy() == ".key")
-    })
+    rel_path
+        .components()
+        .any(|c| matches!(c, Component::Normal(name) if name.to_string_lossy() == ".key"))
 }
 
 /// Shared exclusions for logs, staging dirs, and temp files.
@@ -47,9 +47,10 @@ impl Default for ExportOptions {
 }
 
 fn is_dashboard_runs_path(rel_path: &Path) -> bool {
-    rel_path.components().next().is_some_and(|c| {
-        matches!(c, Component::Normal(name) if name == "dashboard-runs")
-    })
+    rel_path
+        .components()
+        .next()
+        .is_some_and(|c| matches!(c, Component::Normal(name) if name == "dashboard-runs"))
 }
 
 /// Returns true if `rel_path` (relative to the data dir root) should be skipped on export.
@@ -107,9 +108,9 @@ fn add_dir_to_zip<W: Write + std::io::Seek>(
     for entry in fs::read_dir(dir)? {
         let entry = entry?;
         let path = entry.path();
-        let rel = path.strip_prefix(root).map_err(|e| {
-            std::io::Error::new(std::io::ErrorKind::InvalidInput, e)
-        })?;
+        let rel = path
+            .strip_prefix(root)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
         if should_exclude_with_options(rel, export_options) {
             continue;
         }
@@ -241,9 +242,10 @@ impl<R: Read> Read for LimitedZipReader<'_, R> {
         }
 
         let n = n as u64;
-        *self.total_written = self.total_written.checked_add(n).ok_or_else(|| {
-            zip_bomb_err("zip bomb: uncompressed size limit exceeded (overflow)")
-        })?;
+        *self.total_written = self
+            .total_written
+            .checked_add(n)
+            .ok_or_else(|| zip_bomb_err("zip bomb: uncompressed size limit exceeded (overflow)"))?;
         check_uncompressed_total(*self.total_written, self.max_uncompressed_bytes)?;
 
         if n > self.entry_remaining {
@@ -296,12 +298,14 @@ fn extract_zip_to_dir_with_limits(
                 &format!("entry `{entry_name}`"),
             )?;
 
-            total_uncompressed = total_uncompressed.checked_add(uncompressed).ok_or_else(|| {
-                zip_bomb_err("zip bomb: uncompressed size limit exceeded (overflow)")
-            })?;
-            total_compressed = total_compressed.checked_add(compressed).ok_or_else(|| {
-                zip_bomb_err("zip bomb: compressed size overflow")
-            })?;
+            total_uncompressed = total_uncompressed
+                .checked_add(uncompressed)
+                .ok_or_else(|| {
+                    zip_bomb_err("zip bomb: uncompressed size limit exceeded (overflow)")
+                })?;
+            total_compressed = total_compressed
+                .checked_add(compressed)
+                .ok_or_else(|| zip_bomb_err("zip bomb: compressed size overflow"))?;
             check_uncompressed_total(total_uncompressed, limits.max_uncompressed_bytes)?;
         }
     }
@@ -363,10 +367,7 @@ pub fn import_app_data(data_dir: &Path, zip_path: &Path) -> std::io::Result<()> 
         )
     })?;
 
-    let staging = std::env::temp_dir().join(format!(
-        "datazen-import-{}",
-        uuid::Uuid::new_v4()
-    ));
+    let staging = std::env::temp_dir().join(format!("datazen-import-{}", uuid::Uuid::new_v4()));
     let prepared = parent.join(format!(
         ".{}-import-{}",
         dir_name.to_string_lossy(),
@@ -496,9 +497,9 @@ where
     for entry in fs::read_dir(src)? {
         let entry = entry?;
         let path = entry.path();
-        let rel = path.strip_prefix(root).map_err(|e| {
-            std::io::Error::new(std::io::ErrorKind::InvalidInput, e)
-        })?;
+        let rel = path
+            .strip_prefix(root)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
         if !include(rel) {
             continue;
         }
@@ -879,8 +880,7 @@ mod tests {
     fn write_zero_payload_zip(zip_path: &Path, entry_name: &str, zero_bytes: usize) {
         let file = File::create(zip_path).unwrap();
         let mut zip = ZipWriter::new(file);
-        let options =
-            SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+        let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
         zip.start_file(entry_name, options).unwrap();
         zip.write_all(&vec![0u8; zero_bytes]).unwrap();
         zip.finish().unwrap();
@@ -940,8 +940,7 @@ mod tests {
             let options =
                 SimpleFileOptions::default().compression_method(CompressionMethod::Stored);
             for i in 0..5 {
-                zip.start_file(format!("file{i}.txt"), options)
-                    .unwrap();
+                zip.start_file(format!("file{i}.txt"), options).unwrap();
                 zip.write_all(b"x").unwrap();
             }
             zip.finish().unwrap();

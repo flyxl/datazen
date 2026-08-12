@@ -81,10 +81,7 @@ where
         if let Some(pat) = pattern {
             cmd.arg("MATCH").arg(pat);
         }
-        let raw: redis::Value = cmd
-            .query_async(conn)
-            .await
-            .map_err(|e| e.to_string())?;
+        let raw: redis::Value = cmd.query_async(conn).await.map_err(|e| e.to_string())?;
         let (next, batch) = parse_scan_result(&raw);
         keys.extend(batch);
         cursor = next;
@@ -101,20 +98,14 @@ where
     Ok(keys)
 }
 
-pub async fn scan_matching_keys<C>(
-    conn: &mut C,
-    pattern: &str,
-) -> Result<Vec<String>, String>
+pub async fn scan_matching_keys<C>(conn: &mut C, pattern: &str) -> Result<Vec<String>, String>
 where
     C: AsyncCommands + redis::aio::ConnectionLike + Send,
 {
     scan_keys(conn, Some(pattern), None).await
 }
 
-pub async fn count_matching<C>(
-    conn: &mut C,
-    pattern: &str,
-) -> Result<u64, String>
+pub async fn count_matching<C>(conn: &mut C, pattern: &str) -> Result<u64, String>
 where
     C: AsyncCommands + redis::aio::ConnectionLike + Send,
 {
@@ -148,25 +139,14 @@ where
     Ok(total)
 }
 
-pub async fn set_string<C>(
-    conn: &mut C,
-    key: &str,
-    value: &str,
-) -> Result<(), String>
+pub async fn set_string<C>(conn: &mut C, key: &str, value: &str) -> Result<(), String>
 where
     C: AsyncCommands + redis::aio::ConnectionLike + Send,
 {
-    conn.set(key, value)
-        .await
-        .map_err(|e| e.to_string())
+    conn.set(key, value).await.map_err(|e| e.to_string())
 }
 
-pub async fn hash_set<C>(
-    conn: &mut C,
-    key: &str,
-    field: &str,
-    value: &str,
-) -> Result<(), String>
+pub async fn hash_set<C>(conn: &mut C, key: &str, field: &str, value: &str) -> Result<(), String>
 where
     C: AsyncCommands + redis::aio::ConnectionLike + Send,
 {
@@ -175,11 +155,7 @@ where
         .map_err(|e| e.to_string())
 }
 
-pub async fn hash_del<C>(
-    conn: &mut C,
-    key: &str,
-    fields: &[String],
-) -> Result<(), String>
+pub async fn hash_del<C>(conn: &mut C, key: &str, fields: &[String]) -> Result<(), String>
 where
     C: AsyncCommands + redis::aio::ConnectionLike + Send,
 {
@@ -215,16 +191,13 @@ where
             .await
             .map(|_| ())
             .map_err(|e| e.to_string()),
-        _ => Err(format!("invalid side: {side} (expected \"left\" or \"right\")")),
+        _ => Err(format!(
+            "invalid side: {side} (expected \"left\" or \"right\")"
+        )),
     }
 }
 
-pub async fn list_set<C>(
-    conn: &mut C,
-    key: &str,
-    index: i64,
-    value: &str,
-) -> Result<(), String>
+pub async fn list_set<C>(conn: &mut C, key: &str, index: i64, value: &str) -> Result<(), String>
 where
     C: AsyncCommands + redis::aio::ConnectionLike + Send,
 {
@@ -237,18 +210,18 @@ where
         .map_err(|e| e.to_string())
 }
 
-pub async fn list_pop<C>(
-    conn: &mut C,
-    key: &str,
-    side: &str,
-) -> Result<Option<String>, String>
+pub async fn list_pop<C>(conn: &mut C, key: &str, side: &str) -> Result<Option<String>, String>
 where
     C: AsyncCommands + redis::aio::ConnectionLike + Send,
 {
     let raw: redis::Value = match side {
         "left" => redis::cmd("LPOP").arg(key).query_async(conn).await,
         "right" => redis::cmd("RPOP").arg(key).query_async(conn).await,
-        _ => return Err(format!("invalid side: {side} (expected \"left\" or \"right\")")),
+        _ => {
+            return Err(format!(
+                "invalid side: {side} (expected \"left\" or \"right\")"
+            ))
+        }
     }
     .map_err(|e| e.to_string())?;
     Ok(match raw {
@@ -259,11 +232,7 @@ where
     })
 }
 
-pub async fn set_add<C>(
-    conn: &mut C,
-    key: &str,
-    members: &[String],
-) -> Result<(), String>
+pub async fn set_add<C>(conn: &mut C, key: &str, members: &[String]) -> Result<(), String>
 where
     C: AsyncCommands + redis::aio::ConnectionLike + Send,
 {
@@ -276,11 +245,7 @@ where
         .map_err(|e| e.to_string())
 }
 
-pub async fn set_remove<C>(
-    conn: &mut C,
-    key: &str,
-    members: &[String],
-) -> Result<(), String>
+pub async fn set_remove<C>(conn: &mut C, key: &str, members: &[String]) -> Result<(), String>
 where
     C: AsyncCommands + redis::aio::ConnectionLike + Send,
 {
@@ -299,11 +264,7 @@ pub struct ZsetMember {
     pub score: f64,
 }
 
-pub async fn zset_add<C>(
-    conn: &mut C,
-    key: &str,
-    members: &[ZsetMember],
-) -> Result<(), String>
+pub async fn zset_add<C>(conn: &mut C, key: &str, members: &[ZsetMember]) -> Result<(), String>
 where
     C: AsyncCommands + redis::aio::ConnectionLike + Send,
 {
@@ -319,11 +280,7 @@ where
         .map_err(|e| e.to_string())
 }
 
-pub async fn zset_remove<C>(
-    conn: &mut C,
-    key: &str,
-    members: &[String],
-) -> Result<(), String>
+pub async fn zset_remove<C>(conn: &mut C, key: &str, members: &[String]) -> Result<(), String>
 where
     C: AsyncCommands + redis::aio::ConnectionLike + Send,
 {
@@ -336,26 +293,17 @@ where
         .map_err(|e| e.to_string())
 }
 
-pub async fn delete_keys<C>(
-    conn: &mut C,
-    keys: &[String],
-) -> Result<u64, String>
+pub async fn delete_keys<C>(conn: &mut C, keys: &[String]) -> Result<u64, String>
 where
     C: AsyncCommands + redis::aio::ConnectionLike + Send,
 {
     if keys.is_empty() {
         return Ok(0);
     }
-    conn.del(keys)
-        .await
-        .map_err(|e| e.to_string())
+    conn.del(keys).await.map_err(|e| e.to_string())
 }
 
-pub async fn rename_key<C>(
-    conn: &mut C,
-    key: &str,
-    new_key: &str,
-) -> Result<(), String>
+pub async fn rename_key<C>(conn: &mut C, key: &str, new_key: &str) -> Result<(), String>
 where
     C: AsyncCommands + redis::aio::ConnectionLike + Send,
 {
@@ -367,11 +315,7 @@ where
         .map_err(|e| e.to_string())
 }
 
-pub async fn set_ttl<C>(
-    conn: &mut C,
-    key: &str,
-    ttl_seconds: i64,
-) -> Result<(), String>
+pub async fn set_ttl<C>(conn: &mut C, key: &str, ttl_seconds: i64) -> Result<(), String>
 where
     C: AsyncCommands + redis::aio::ConnectionLike + Send,
 {
@@ -525,7 +469,10 @@ mod tests {
         let planned = plan_rename_prefix("user:", "u:", &["user:1".into(), "user:2".into()]);
         assert_eq!(
             planned,
-            vec![("user:1".into(), "u:1".into()), ("user:2".into(), "u:2".into())]
+            vec![
+                ("user:1".into(), "u:1".into()),
+                ("user:2".into(), "u:2".into())
+            ]
         );
     }
 

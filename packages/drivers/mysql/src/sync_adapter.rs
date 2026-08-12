@@ -52,8 +52,14 @@ fn parse_precision(s: &str, prefix: &str) -> (u8, u8) {
         let rest = rest.trim();
         if let Some(inner) = rest.strip_prefix('(').and_then(|r| r.strip_suffix(')')) {
             let parts: Vec<&str> = inner.split(',').collect();
-            let p = parts.first().and_then(|v| v.trim().parse().ok()).unwrap_or(0);
-            let s = parts.get(1).and_then(|v| v.trim().parse().ok()).unwrap_or(0);
+            let p = parts
+                .first()
+                .and_then(|v| v.trim().parse().ok())
+                .unwrap_or(0);
+            let s = parts
+                .get(1)
+                .and_then(|v| v.trim().parse().ok())
+                .unwrap_or(0);
             return (p, s);
         }
     }
@@ -74,11 +80,7 @@ fn parse_mysql_default(raw: &str) -> Option<IRDefault> {
 // ── SyncSourceAdapter ──────────────────────────────────────────────
 
 impl SyncSourceAdapter for MysqlSyncAdapter {
-    fn column_to_ir(
-        &self,
-        column: &ColumnSchema,
-        _native_full_type: Option<&str>,
-    ) -> IRColumn {
+    fn column_to_ir(&self, column: &ColumnSchema, _native_full_type: Option<&str>) -> IRColumn {
         let base = strip_modifiers(&column.data_type);
 
         let ir_type = if base.starts_with("tinyint(1)") {
@@ -101,8 +103,15 @@ impl SyncSourceAdapter for MysqlSyncAdapter {
             IRType::Char { length: len }
         } else if base.starts_with("decimal") {
             let (p, s) = parse_precision(&base, "decimal");
-            IRType::Decimal { precision: p, scale: s }
-        } else if base.starts_with("enum(") || base.starts_with("set(") || base == "enum" || base == "set" {
+            IRType::Decimal {
+                precision: p,
+                scale: s,
+            }
+        } else if base.starts_with("enum(")
+            || base.starts_with("set(")
+            || base == "enum"
+            || base == "set"
+        {
             IRType::Text
         } else if base.starts_with("varbinary") {
             let len = parse_length(&base, "varbinary");
@@ -121,9 +130,13 @@ impl SyncSourceAdapter for MysqlSyncAdapter {
             match base.as_str() {
                 "float" => IRType::Float32,
                 "double" => IRType::Float64,
-                "datetime" | "timestamp" => IRType::Timestamp { with_timezone: false },
+                "datetime" | "timestamp" => IRType::Timestamp {
+                    with_timezone: false,
+                },
                 "date" => IRType::Date,
-                "time" => IRType::Time { with_timezone: false },
+                "time" => IRType::Time {
+                    with_timezone: false,
+                },
                 "year" => IRType::Int16,
                 "text" | "longtext" | "mediumtext" | "tinytext" => IRType::Text,
                 "blob" | "longblob" | "mediumblob" | "tinyblob" => IRType::Blob,
@@ -197,7 +210,9 @@ impl SyncTargetAdapter for MysqlSyncAdapter {
             Some(Value::Bytes(b)) => {
                 format!(
                     "X'{}'",
-                    b.iter().map(|byte| format!("{:02x}", byte)).collect::<String>()
+                    b.iter()
+                        .map(|byte| format!("{:02x}", byte))
+                        .collect::<String>()
                 )
             }
         }
@@ -316,15 +331,29 @@ mod tests {
     fn mysql_target_and_format_helpers() {
         let a = adapter();
         assert_eq!(a.ir_type_to_native(&IRType::Int8), "TINYINT");
-        assert_eq!(a.ir_type_to_native(&IRType::Decimal { precision: 0, scale: 0 }), "DECIMAL(65,30)");
-        assert_eq!(a.ir_type_to_native(&IRType::Varchar { length: None }), "VARCHAR(255)");
-        assert_eq!(a.ir_type_to_native(&IRType::Binary { length: Some(16) }), "VARBINARY(16)");
+        assert_eq!(
+            a.ir_type_to_native(&IRType::Decimal {
+                precision: 0,
+                scale: 0
+            }),
+            "DECIMAL(65,30)"
+        );
+        assert_eq!(
+            a.ir_type_to_native(&IRType::Varchar { length: None }),
+            "VARCHAR(255)"
+        );
+        assert_eq!(
+            a.ir_type_to_native(&IRType::Binary { length: Some(16) }),
+            "VARBINARY(16)"
+        );
         assert_eq!(a.ir_type_to_native(&IRType::Bit { length: 4 }), "BIT(4)");
         assert_eq!(
             a.format_default(&IRDefault::Literal("0".into())),
             Some("0".into())
         );
-        assert!(a.format_default(&IRDefault::RawExpression("x".into())).is_none());
+        assert!(a
+            .format_default(&IRDefault::RawExpression("x".into()))
+            .is_none());
         assert_eq!(a.quote_char(), '`');
         assert_eq!(a.auto_increment_keyword(), Some("AUTO_INCREMENT"));
         assert_eq!(a.format_literal(&None, &IRType::Int32), "NULL");
