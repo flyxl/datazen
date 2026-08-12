@@ -589,6 +589,25 @@ const zhCN = {
   'export.exporting': '导出中...',
   'export.export': '导出',
 
+  // ── Batch Export Dialog ──
+  'batchExport.title': '批量导出',
+  'batchExport.selectTables': '选择表',
+  'batchExport.selectAll': '全选',
+  'batchExport.clearAll': '全不选',
+  'batchExport.mode': '导出模式',
+  'batchExport.modeStructureOnly': '仅结构',
+  'batchExport.modeDataOnly': '仅数据',
+  'batchExport.modeDataAndStructure': '数据+结构',
+  'batchExport.format': '数据格式',
+  'batchExport.output': '输出方式',
+  'batchExport.outputSingle': '单文件合并',
+  'batchExport.outputZip': '多文件 ZIP',
+  'batchExport.export': '导出',
+  'batchExport.exporting': '导出中…',
+  'batchExport.noTablesSelected': '请至少选择一张表',
+  'batchExport.success': '导出成功',
+  'batchExport.failed': '导出失败',
+
   // ── DDL View ──
   'ddl.generating': '生成 DDL…',
   'ddl.getFailed': '无法获取 DDL',
