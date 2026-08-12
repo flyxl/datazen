@@ -1,3 +1,10 @@
+/**
+ * MySQL dialect / type smoke (Host fixture).
+ *
+ * Host UI + IPC adaptation across drivers is covered by the Host Connection
+ * Contract matrix (`e2e/specs/host-contract-matrix.ts` / `pnpm e2e:contract:matrix`).
+ * Prefer adding new Host-path assertions there instead of duplicating UI flows here.
+ */
 import { expect, browser, $, $$ } from '@wdio/globals';
 import { t } from '../i18n.js';
 import {
@@ -118,10 +125,14 @@ describe('MySQL 数据库支持 (MY-001~MY-020)', () => {
         await executeSQL(`DROP TABLE IF EXISTS ${TABLE_TYPES}`);
         await executeSQL(`DROP TABLE IF EXISTS ${TABLE_BASIC}`);
       }
-    } catch { /* best-effort cleanup */ }
+    } catch {
+      /* best-effort cleanup */
+    }
     try {
       await closeExtraWindows(mainWindow);
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   });
 
   // ── Connection & Sidebar ──
@@ -285,7 +296,9 @@ describe('MySQL 数据库支持 (MY-001~MY-020)', () => {
 
   it('应能执行多条 MySQL 语句 (MY-018)', async () => {
     await openQueryTab();
-    await executeSQL(`SELECT COUNT(*) AS cnt FROM ${TABLE_BASIC}; SELECT COUNT(*) AS cnt FROM ${TABLE_TYPES}`);
+    await executeSQL(
+      `SELECT COUNT(*) AS cnt FROM ${TABLE_BASIC}; SELECT COUNT(*) AS cnt FROM ${TABLE_TYPES}`,
+    );
 
     const body = await $('body').getText();
     expect(body).toContain('5');
@@ -315,7 +328,9 @@ describe('MySQL 数据库支持 (MY-001~MY-020)', () => {
       if (i > 0) insertValues += ',';
       insertValues += `('User${i}', 'user${i}@test.com', ${i}, 1)`;
     }
-    await executeSQL(`INSERT INTO ${TABLE_BASIC} (name, email, score, active) VALUES ${insertValues}`);
+    await executeSQL(
+      `INSERT INTO ${TABLE_BASIC} (name, email, score, active) VALUES ${insertValues}`,
+    );
 
     // Click the table to load data
     await clickTableInSidebar(TABLE_BASIC);

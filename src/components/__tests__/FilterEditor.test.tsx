@@ -238,4 +238,104 @@ describe('FilterEditor', () => {
     });
     expect(screen.getByPlaceholderText('filter.value')).toBeInTheDocument();
   });
+
+  it('collapsed summary bar can add a filter and reopen the panel', () => {
+    const props = renderEditor({
+      open: false,
+      appliedFilters: [{ column: 'id', operator: 'eq', value: '1' }],
+      draftFilters: [{ column: 'id', operator: 'eq', value: '1' }],
+    });
+    fireEvent.click(screen.getByText('filter.add'));
+    expect(props.onOpenChange).toHaveBeenCalledWith(true);
+    expect(props.onAdd).toHaveBeenCalledWith({ column: 'id', operator: 'eq', value: '' });
+  });
+
+  it('collapse button closes the open panel', () => {
+    const props = renderEditor({
+      draftFilters: [{ column: 'id', operator: 'eq', value: '' }],
+    });
+    fireEvent.click(screen.getByTestId('filter-collapse'));
+    expect(props.onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it('summary toggle flips open state', () => {
+    const props = renderEditor({
+      open: true,
+      draftFilters: [{ column: 'id', operator: 'eq', value: '' }],
+    });
+    fireEvent.click(screen.getByTestId('filter-summary-toggle'));
+    expect(props.onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it('clamps editing index when draft filters shrink', () => {
+    const { rerender } = render(
+      <FilterEditor
+        columns={columns}
+        appliedFilters={[]}
+        appliedLogic="and"
+        draftFilters={[
+          { column: 'id', operator: 'eq', value: '' },
+          { column: 'name', operator: 'eq', value: '' },
+        ]}
+        draftLogic="and"
+        open
+        onOpenChange={vi.fn()}
+        onLogicChange={vi.fn()}
+        onChange={vi.fn()}
+        onAdd={vi.fn()}
+        onRemove={vi.fn()}
+        onApply={vi.fn()}
+        onClear={vi.fn()}
+      />,
+    );
+    expect(screen.getAllByPlaceholderText('filter.value').length).toBeGreaterThanOrEqual(1);
+
+    rerender(
+      <FilterEditor
+        columns={columns}
+        appliedFilters={[]}
+        appliedLogic="and"
+        draftFilters={[{ column: 'id', operator: 'eq', value: '' }]}
+        draftLogic="and"
+        open
+        onOpenChange={vi.fn()}
+        onLogicChange={vi.fn()}
+        onChange={vi.fn()}
+        onAdd={vi.fn()}
+        onRemove={vi.fn()}
+        onApply={vi.fn()}
+        onClear={vi.fn()}
+      />,
+    );
+    expect(screen.getByPlaceholderText('filter.value')).toBeInTheDocument();
+  });
+
+  it('shows unapplied badge when draft differs from applied', () => {
+    renderEditor({
+      appliedFilters: [],
+      draftFilters: [{ column: 'id', operator: 'eq', value: '1' }],
+    });
+    expect(screen.getByText('filter.unapplied')).toBeInTheDocument();
+  });
+
+  it('Enter on value commits and can collapse complete filter', () => {
+    const props = renderEditor({
+      draftFilters: [{ column: 'name', operator: 'eq', value: '' }],
+    });
+    const valueInput = screen.getByPlaceholderText('filter.value');
+    fireEvent.change(valueInput, { target: { value: 'bob' } });
+    fireEvent.keyDown(valueInput, { key: 'Enter' });
+    expect(props.onChange).toHaveBeenCalledWith(0, expect.objectContaining({ value: 'bob' }));
+  });
+
+  it('selecting isNull operator collapses the condition editor', () => {
+    renderEditor({
+      draftFilters: [{ column: 'name', operator: 'eq', value: 'x' }],
+    });
+    fireEvent.click(screen.getAllByTitle('filter.editCondition')[0]);
+    const selects = screen.getAllByRole('combobox');
+    // column + operator
+    fireEvent.change(selects[1], { target: { value: 'isNull' } });
+    expect(screen.queryByPlaceholderText('filter.value')).not.toBeInTheDocument();
+  });
 });

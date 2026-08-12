@@ -22,10 +22,10 @@ describe('SQL 查询模块 (SQ-001~SQ-012, TC-QUERY-006/008)', () => {
 
     await clickCardConnectButton();
 
-    await browser.waitUntil(
-      async () => (await browser.getWindowHandles()).length > 1,
-      { timeout: 20000, timeoutMsg: 'Timed out waiting for connection window' },
-    );
+    await browser.waitUntil(async () => (await browser.getWindowHandles()).length > 1, {
+      timeout: 20000,
+      timeoutMsg: 'Timed out waiting for connection window',
+    });
     const handles = await browser.getWindowHandles();
     const connWindow = handles.find((h) => h !== mainWindow)!;
     await browser.switchToWindow(connWindow);
@@ -129,25 +129,24 @@ describe('SQL 查询模块 (SQ-001~SQ-012, TC-QUERY-006/008)', () => {
 
   it('执行 DML 语句应显示影响行数 (SQ-012)', async () => {
     await setEditorContent(
-      "CREATE TABLE IF NOT EXISTS _e2e_sql_test (id SERIAL PRIMARY KEY, val TEXT); " +
-      "INSERT INTO _e2e_sql_test (val) VALUES ('hello')"
+      'CREATE TABLE IF NOT EXISTS _e2e_sql_test (id SERIAL PRIMARY KEY, val TEXT); ' +
+        "INSERT INTO _e2e_sql_test (val) VALUES ('hello')",
     );
     const execBtn = await $(`button*=${t('query.execute')}`);
     await execBtn.click();
 
-    await browser.waitUntil(
-      async () => (await $('body').getText()).includes('总耗时'),
-      { timeout: 15000, timeoutMsg: 'Timed out waiting for DML execution' },
-    );
+    await browser.waitUntil(async () => (await $('body').getText()).includes('总耗时'), {
+      timeout: 15000,
+      timeoutMsg: 'Timed out waiting for DML execution',
+    });
 
     // Clean up
     await setEditorContent('DROP TABLE IF EXISTS _e2e_sql_test');
     const execBtn2 = await $(`button*=${t('query.execute')}`);
     await execBtn2.click();
-    await browser.waitUntil(
-      async () => (await $('body').getText()).includes('总耗时'),
-      { timeout: 10000 },
-    );
+    await browser.waitUntil(async () => (await $('body').getText()).includes('总耗时'), {
+      timeout: 10000,
+    });
   });
 
   // ── 错误处理 ───────────────────────────────────────────────────
@@ -162,9 +161,13 @@ describe('SQL 查询模块 (SQ-001~SQ-012, TC-QUERY-006/008)', () => {
     await browser.waitUntil(
       async () => {
         const body = await $('body').getText();
-        return body.includes('does not exist') || body.includes('不存在') ||
-          body.includes('nonexistent') || body.includes('ERROR') ||
-          body.includes(t('common.failed'));
+        return (
+          body.includes('does not exist') ||
+          body.includes('不存在') ||
+          body.includes('nonexistent') ||
+          body.includes('ERROR') ||
+          body.includes(t('common.failed'))
+        );
       },
       { timeout: 20000, timeoutMsg: 'Timed out waiting for error message' },
     );
@@ -181,7 +184,10 @@ describe('SQL 查询模块 (SQ-001~SQ-012, TC-QUERY-006/008)', () => {
 
   it('历史面板应显示之前执行的 SQL 记录 (SQ-005)', async () => {
     const body = await $('body').getText();
-    const hasHistory = body.includes('SELECT') || body.includes(t('common.success')) || body.includes(t('common.failed'));
+    const hasHistory =
+      body.includes('SELECT') ||
+      body.includes(t('common.success')) ||
+      body.includes(t('common.failed'));
     expect(hasHistory).toBe(true);
   });
 
@@ -222,14 +228,18 @@ describe('SQL 查询模块 (SQ-001~SQ-012, TC-QUERY-006/008)', () => {
     await browser.pause(1500);
 
     const stopBtn = await $(`button*=${t('query.stop')}`);
-    if (await stopBtn.isExisting() && await stopBtn.isDisplayed()) {
+    if ((await stopBtn.isExisting()) && (await stopBtn.isDisplayed())) {
       await stopBtn.click();
       await browser.pause(3000);
 
       const body = await $('body').getText();
-      const wasCancelled = body.includes('cancel') || body.includes(t('common.cancel')) ||
-        body.includes(t('query.totalTime')) || body.includes(t('common.error')) ||
-        body.includes(t('common.failed')) || body.includes('interrupted') ||
+      const wasCancelled =
+        body.includes('cancel') ||
+        body.includes(t('common.cancel')) ||
+        body.includes(t('query.totalTime')) ||
+        body.includes(t('common.error')) ||
+        body.includes(t('common.failed')) ||
+        body.includes('interrupted') ||
         body.includes('pg_sleep');
       expect(wasCancelled).toBe(true);
     } else {
@@ -334,7 +344,10 @@ describe('SQL 查询模块 (SQ-001~SQ-012, TC-QUERY-006/008)', () => {
     await browser.pause(500);
 
     const body = await $('body').getText();
-    const hasFav = body.includes(t('query.favoritesTitle')) || body.includes(t('query.noFavorites')) || body.includes('我的测试收藏');
+    const hasFav =
+      body.includes(t('query.favoritesTitle')) ||
+      body.includes(t('query.noFavorites')) ||
+      body.includes('我的测试收藏');
     expect(hasFav).toBe(true);
   });
 
@@ -371,5 +384,36 @@ describe('SQL 查询模块 (SQ-001~SQ-012, TC-QUERY-006/008)', () => {
     }
 
     expect(matchCount).toBeLessThanOrEqual(1);
+  });
+
+  it('SQ-BIND-001: 命名参数 SQL 应显示绑定参数面板并可执行', async () => {
+    await setEditorContent('SELECT :uid AS uid');
+    await browser.pause(600);
+    await expect(await $(`div*=${t('query.params')}`)).toBeDisplayed();
+    const paramInput = await $(`input[placeholder="${t('query.paramValue')}"]`);
+    await paramInput.waitForDisplayed({ timeout: 5000 });
+    await paramInput.setValue('e2e-bind');
+    await browser.pause(200);
+    await executeSQL('SELECT :uid AS uid');
+    await browser.pause(1000);
+    const body = await $('body').getText();
+    expect(body.includes('e2e-bind') || body.includes('uid')).toBe(true);
+  });
+
+  it('SQ-EXPLAIN-001: EXPLAIN 按钮应打开计划面板', async () => {
+    await setEditorContent('SELECT 1 AS n');
+    await browser.pause(300);
+    const explainBtn = await $(`button*=${t('explain.title')}`);
+    await explainBtn.waitForDisplayed({ timeout: 8000 });
+    await explainBtn.click();
+    await browser.pause(1500);
+    const body = await $('body').getText();
+    expect(
+      body.includes(t('explain.title')) ||
+        body.includes(t('explain.loading')) ||
+        body.includes('Seq Scan') ||
+        body.includes('Result') ||
+        body.includes('PLAN'),
+    ).toBe(true);
   });
 });

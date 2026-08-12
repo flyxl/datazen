@@ -1,4 +1,5 @@
 import { expect, browser, $ } from '@wdio/globals';
+import { t } from '../i18n.js';
 
 async function invokeBackend<T>(cmd: string, args: Record<string, unknown> = {}): Promise<T> {
   const result = await browser.executeAsync(
@@ -184,7 +185,12 @@ describe('Settings (SS-001~SS-006)', () => {
       await browser.pause(400);
     }
     const body = await $('body').getText();
-    expect(body.includes('字体') || body.includes('Font') || body.includes('字号') || body.includes('字')).toBe(true);
+    expect(
+      body.includes('字体') ||
+        body.includes('Font') ||
+        body.includes('字号') ||
+        body.includes('字'),
+    ).toBe(true);
   });
 
   it('TC-SET-004: 设置窗口数据浏览分区应显示分页/限制相关项', async () => {
@@ -223,6 +229,48 @@ describe('Settings (SS-001~SS-006)', () => {
         body.includes('场景') ||
         body.includes('驱动'),
     ).toBe(true);
+  });
+
+  it('SS-NAV-001: 设置侧栏应能进入行为 / 日志 / AI / MCP / 扩展分区', async () => {
+    await browser.url('tauri://localhost/window.html?window=settings');
+    await browser.pause(1500);
+
+    const sections: Array<{ label: string; expectText: string[] }> = [
+      {
+        label: t('settings.behavior'),
+        expectText: [t('settings.dataCleanup.title'), '确认', 'Safe', '安全'],
+      },
+      { label: t('settings.logging'), expectText: ['日志', 'Log', '路径'] },
+      {
+        label: t('settings.ai'),
+        expectText: [t('settings.ai.provider'), t('settings.ai.apiKey'), 'API'],
+      },
+      { label: t('mcp.title'), expectText: ['MCP', t('mcp.title')] },
+      { label: t('mcpClient.title'), expectText: [t('mcpClient.title'), 'MCP'] },
+      {
+        label: t('settings.extensions.title'),
+        expectText: [t('settings.extensions.title'), t('settings.extensions.empty'), '扩展'],
+      },
+    ];
+
+    for (const sec of sections) {
+      const nav = await $(`button*=${sec.label}`);
+      await nav.waitForDisplayed({ timeout: 8000 });
+      await nav.click();
+      await browser.pause(400);
+      const body = await $('body').getText();
+      expect(sec.expectText.some((frag) => body.includes(frag))).toBe(true);
+    }
+  });
+
+  it('SS-CLN-001: 行为分区应能看到数据清理入口', async () => {
+    await browser.url('tauri://localhost/window.html?window=settings');
+    await browser.pause(1200);
+    await $(`button*=${t('settings.behavior')}`).click();
+    await browser.pause(400);
+    const body = await $('body').getText();
+    expect(body).toContain(t('settings.dataCleanup.title'));
+    expect(body).toContain(t('settings.dataCleanup.run'));
   });
 
   // ── Restore defaults ──
