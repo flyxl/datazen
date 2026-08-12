@@ -26,7 +26,7 @@
 | F8 | Redis key 列表原生菜单（驱动 UI） | P2 | done | （本批提交） | PASS：lines 100% |
 | F9 | Workflow 列表 / 历史原生菜单 | P2 | done | （本批提交） | PASS：lines 100% |
 | F10 | ER 图节点原生菜单 | P2 | done | （本批提交） | PASS：lines 100% |
-| F11 | 清理 Web ContextMenu / uiStore 死代码 + 架构文档 / AGENTS.md | P2 | pending | — | — |
+| F11 | 清理 Web ContextMenu / uiStore 死代码 + 架构文档 / AGENTS.md | P2 | done | （本提交） | PASS |
 | F12 | 合并到 main 并 push | 收尾 | pending | — | — |
 
 ## 测试约定
@@ -110,3 +110,9 @@
 ### F10 — ER 节点原生菜单
 - erNodeContextMenu + ErDiagramView
 - 独立测试 PASS
+
+### F11 — 清理死代码 + 文档（草稿）
+- 删除未使用的 `src/components/ui/ContextMenu.tsx`
+- `uiStore` 移除 `contextMenu` / `setContextMenu`；更新 `uiStore.test.ts`
+- 文档：`components.md`（DataTable + 原生 Context Menu 节）、`commands.md`（去掉 `show_editor_context_menu`）、`state.md`、`AGENTS.md`（禁止新增 Web ContextMenu）、`architecture/README.md`
+- E2E：`export-import.ts` — EI-001 等原生菜单 DOM 断言改为 SKIPPED；工具栏导出打开对话框以跑 EI-002/003；Import（EI-004~006）因仅原生菜单可达而 SKIPPED
