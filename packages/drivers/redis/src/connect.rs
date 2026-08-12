@@ -6,7 +6,8 @@ use redis::cluster::{ClusterClient, TlsMode};
 use redis::cluster_async::ClusterConnection;
 use redis::sentinel::{Sentinel, SentinelClient, SentinelNodeConnectionInfo, SentinelServerType};
 use redis::{
-    Client, ClientTlsConfig, RedisConnectionInfo, TlsCertificates as RedisTlsCertificates,
+    Client, ClientTlsConfig, ConnectionInfo, RedisConnectionInfo,
+    TlsCertificates as RedisTlsCertificates,
 };
 use serde_json::Map;
 use std::fs;
@@ -51,7 +52,10 @@ pub enum Topology {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StandalonePlan {
+    /// Connection URL without credentials (password applied via `RedisConnectionInfo`).
     pub url: String,
+    pub username: Option<String>,
+    pub password: Option<String>,
     pub tls: TlsPlan,
     pub db_index: u32,
     pub connect_timeout: Duration,
@@ -124,16 +128,11 @@ pub fn build_connection_plan(config: &ConnectionConfig) -> Result<ConnectionPlan
             let host = config.host.as_deref().unwrap_or("127.0.0.1");
             let port = config.port.unwrap_or(6379);
             let db_index = parse_db_index(config.database.as_deref())?;
-            let url = build_node_url(
-                &tls,
-                host,
-                port,
-                config.username.as_deref(),
-                config.password.as_deref(),
-                Some(db_index),
-            );
+            let url = build_node_url(&tls, host, port, None, None, Some(db_index));
             Ok(ConnectionPlan::Standalone(StandalonePlan {
                 url,
+                username: non_empty(config.username.as_deref()),
+                password: config.password.clone(),
                 tls,
                 db_index,
                 connect_timeout,
@@ -189,7 +188,14 @@ pub async fn open_pubsub_connection(
 ) -> Result<redis::aio::PubSub, DriverError> {
     match plan {
         ConnectionPlan::Standalone(p) => {
-            open_standalone_pubsub_with_fallback(&p.url, &p.tls, p.connect_timeout).await
+            open_standalone_pubsub_with_fallback(
+                &p.url,
+                &p.tls,
+                p.username.as_deref(),
+                p.password.as_deref(),
+                p.connect_timeout,
+            )
+            .await
         }
         ConnectionPlan::Cluster(p) => {
             let url = p.node_urls.first().ok_or_else(|| {
@@ -202,11 +208,20 @@ pub async fn open_pubsub_connection(
             } else {
                 p.connect_timeout
             };
-            let mut attempt = open_standalone_pubsub(url, &p.tls, tls_timeout).await;
+            let mut attempt = open_standalone_pubsub(
+                url,
+                &p.tls,
+                p.username.as_deref(),
+                p.password.as_deref(),
+                tls_timeout,
+            )
+            .await;
             if matches!(attempt, Err(DriverError::ConnectionFailed(_))) && p.tls.prefer_fallback {
                 attempt = open_standalone_pubsub(
                     &plaintext_url(url),
                     &TlsPlan::plaintext(),
+                    p.username.as_deref(),
+                    p.password.as_deref(),
                     p.connect_timeout,
                 )
                 .await;
@@ -227,8 +242,14 @@ pub async fn open_pubsub_connection(
 pub async fn open_live_conn(plan: &ConnectionPlan) -> Result<RedisLiveConn, DriverError> {
     match plan {
         ConnectionPlan::Standalone(p) => {
-            let connection =
-                open_standalone_conn_with_fallback(&p.url, &p.tls, p.connect_timeout).await?;
+            let connection = open_standalone_conn_with_fallback(
+                &p.url,
+                &p.tls,
+                p.username.as_deref(),
+                p.password.as_deref(),
+                p.connect_timeout,
+            )
+            .await?;
             Ok(RedisLiveConn::Standalone(connection))
         }
         ConnectionPlan::Cluster(p) => {
@@ -261,15 +282,19 @@ const PREFER_TLS_PROBE: Duration = Duration::from_secs(5);
 async fn open_standalone_conn(
     url: &str,
     tls: &TlsPlan,
+    username: Option<&str>,
+    password: Option<&str>,
     timeout: Duration,
 ) -> Result<MultiplexedConnection, DriverError> {
-    let client = open_standalone_client(url, tls)?;
+    let client = open_standalone_client(url, tls, username, password)?;
     connect_with_timeout(timeout, client.get_multiplexed_async_connection()).await
 }
 
 async fn open_standalone_conn_with_fallback(
     url: &str,
     tls: &TlsPlan,
+    username: Option<&str>,
+    password: Option<&str>,
     timeout: Duration,
 ) -> Result<MultiplexedConnection, DriverError> {
     let tls_timeout = if tls.prefer_fallback {
@@ -277,10 +302,17 @@ async fn open_standalone_conn_with_fallback(
     } else {
         timeout
     };
-    match open_standalone_conn(url, tls, tls_timeout).await {
+    match open_standalone_conn(url, tls, username, password, tls_timeout).await {
         Ok(conn) => Ok(conn),
         Err(DriverError::ConnectionFailed(_)) if tls.prefer_fallback => {
-            open_standalone_conn(&plaintext_url(url), &TlsPlan::plaintext(), timeout).await
+            open_standalone_conn(
+                &plaintext_url(url),
+                &TlsPlan::plaintext(),
+                username,
+                password,
+                timeout,
+            )
+            .await
         }
         Err(e) => Err(e),
     }
@@ -289,15 +321,19 @@ async fn open_standalone_conn_with_fallback(
 async fn open_standalone_pubsub(
     url: &str,
     tls: &TlsPlan,
+    username: Option<&str>,
+    password: Option<&str>,
     timeout: Duration,
 ) -> Result<redis::aio::PubSub, DriverError> {
-    let client = open_standalone_client(url, tls)?;
+    let client = open_standalone_client(url, tls, username, password)?;
     connect_with_timeout(timeout, client.get_async_pubsub()).await
 }
 
 async fn open_standalone_pubsub_with_fallback(
     url: &str,
     tls: &TlsPlan,
+    username: Option<&str>,
+    password: Option<&str>,
     timeout: Duration,
 ) -> Result<redis::aio::PubSub, DriverError> {
     let tls_timeout = if tls.prefer_fallback {
@@ -305,10 +341,17 @@ async fn open_standalone_pubsub_with_fallback(
     } else {
         timeout
     };
-    match open_standalone_pubsub(url, tls, tls_timeout).await {
+    match open_standalone_pubsub(url, tls, username, password, tls_timeout).await {
         Ok(pubsub) => Ok(pubsub),
         Err(DriverError::ConnectionFailed(_)) if tls.prefer_fallback => {
-            open_standalone_pubsub(&plaintext_url(url), &TlsPlan::plaintext(), timeout).await
+            open_standalone_pubsub(
+                &plaintext_url(url),
+                &TlsPlan::plaintext(),
+                username,
+                password,
+                timeout,
+            )
+            .await
         }
         Err(e) => Err(e),
     }
@@ -677,12 +720,35 @@ fn load_tls_certificates(tls: &TlsPlan) -> Result<Option<RedisTlsCertificates>, 
     }))
 }
 
-fn open_standalone_client(url: &str, tls: &TlsPlan) -> Result<Client, DriverError> {
+fn connection_info_with_auth(
+    url: &str,
+    username: Option<&str>,
+    password: Option<&str>,
+) -> Result<ConnectionInfo, DriverError> {
+    let mut info: ConnectionInfo = url
+        .parse::<ConnectionInfo>()
+        .map_err(|e: redis::RedisError| DriverError::ConnectionFailed(e.to_string()))?;
+    if let Some(user) = username {
+        info.redis.username = Some(user.to_string());
+    }
+    if let Some(pass) = password {
+        info.redis.password = Some(pass.to_string());
+    }
+    Ok(info)
+}
+
+fn open_standalone_client(
+    url: &str,
+    tls: &TlsPlan,
+    username: Option<&str>,
+    password: Option<&str>,
+) -> Result<Client, DriverError> {
+    let info = connection_info_with_auth(url, username, password)?;
     if let Some(certs) = load_tls_certificates(tls)? {
-        return Client::build_with_tls(url, certs)
+        return Client::build_with_tls(info, certs)
             .map_err(|e| DriverError::ConnectionFailed(e.to_string()));
     }
-    Client::open(url).map_err(|e| DriverError::ConnectionFailed(e.to_string()))
+    Client::open(info).map_err(|e| DriverError::ConnectionFailed(e.to_string()))
 }
 
 /// Open a standalone multiplexed connection to a specific `host:port` node,
@@ -699,7 +765,12 @@ pub async fn open_pinned_node_conn(
             p.password.as_deref(),
             p.connect_timeout,
         ),
-        ConnectionPlan::Standalone(p) => (&p.tls, None, None, p.connect_timeout),
+        ConnectionPlan::Standalone(p) => (
+            &p.tls,
+            p.username.as_deref(),
+            p.password.as_deref(),
+            p.connect_timeout,
+        ),
         ConnectionPlan::Sentinel(p) => (
             &p.tls,
             p.username.as_deref(),
@@ -707,8 +778,9 @@ pub async fn open_pinned_node_conn(
             p.connect_timeout,
         ),
     };
-    let url = build_node_url(tls, &host, port, username, password, None);
-    open_standalone_conn_with_fallback(&url, tls, connect_timeout).await
+    // Keep credentials out of the URL so connection errors cannot echo them.
+    let url = build_node_url(tls, &host, port, None, None, None);
+    open_standalone_conn_with_fallback(&url, tls, username, password, connect_timeout).await
 }
 
 /// Sentinel TLS in redis 0.27: `SentinelNodeConnectionInfo` only exposes `tls_mode`
@@ -955,6 +1027,23 @@ mod tests {
                 assert_eq!(p.sentinel_urls.len(), 1);
             }
             _ => panic!("expected sentinel plan"),
+        }
+    }
+
+    #[test]
+    fn standalone_url_omits_password() {
+        let mut config = base_config();
+        config.username = Some("alice".into());
+        config.password = Some("s3cret".into());
+        let plan = build_connection_plan(&config).unwrap();
+        match plan {
+            ConnectionPlan::Standalone(p) => {
+                assert!(!p.url.contains("s3cret"), "{}", p.url);
+                assert!(!p.url.contains('@'), "{}", p.url);
+                assert_eq!(p.username.as_deref(), Some("alice"));
+                assert_eq!(p.password.as_deref(), Some("s3cret"));
+            }
+            _ => panic!("expected standalone"),
         }
     }
 }

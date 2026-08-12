@@ -73,4 +73,17 @@ describe('path IPC frontend wiring', () => {
     expect(menuBar).toContain('import-connections-dbx');
     expect(menuBar).toContain('import-connections-file');
   });
+
+  it('docs window is a singleton and overlay chrome has a drag fallback', () => {
+    const app = readSrc('App.tsx');
+    expect(app).toContain('WindowChromeFallback');
+    expect(app).not.toContain('fallback={null}');
+
+    const wm = readSrc('lib/windowManager.ts');
+    expect(wm).toContain("openSingletonWindow('docs-singleton'");
+
+    const rustMenu = fs.readFileSync(path.join(ROOT, '../src-tauri/src/lib.rs'), 'utf8');
+    expect(rustMenu).toContain('register_handler_once');
+    expect(rustMenu).toContain('take_once_slot');
+  });
 });

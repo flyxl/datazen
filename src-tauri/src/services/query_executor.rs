@@ -120,7 +120,8 @@ impl QueryExecutor {
             &format_lit,
             filter_logic,
         );
-        tracing::info!(%table, %count_sql, "query_executor: count query");
+        tracing::info!(%table, "query_executor: count query");
+        tracing::debug!(%table, %count_sql, "query_executor: count sql");
 
         let (count_res, data_res) = tokio::try_join!(
             driver.query(handle, &count_sql),
