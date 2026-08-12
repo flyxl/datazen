@@ -7,6 +7,7 @@ import {
 import { DB_REGISTRY } from './databaseTypes';
 import type { DatabaseType, TableInfo } from '../types';
 import type { DatabaseTypeMeta } from './databaseMeta';
+import { resolveEnsureSegments } from './sqlPathPrefix';
 
 export interface EnsureDeps {
   connectionId: string;
@@ -153,11 +154,13 @@ async function ensurePostgresql(segments: string[], deps: EnsureDeps): Promise<v
 
   if (!isMultiDatabase && segments.length === 1) {
     const [schema] = segments;
-    const fromMemory = tables.filter(
-      (item) => item.tableType !== 'view' && item.schema === schema,
-    );
+    const fromMemory = tables.filter((item) => item.tableType !== 'view' && item.schema === schema);
     if (fromMemory.length > 0) {
-      deps.mergeNamespace([schema], 'tables', fromMemory.map((item) => item.name));
+      deps.mergeNamespace(
+        [schema],
+        'tables',
+        fromMemory.map((item) => item.name),
+      );
       return;
     }
 
@@ -213,11 +216,23 @@ async function runEnsure(segments: string[], deps: EnsureDeps): Promise<void> {
   }
 }
 
+function usesCurrentDatabaseRoot(deps: EnsureDeps): boolean {
+  if (!deps.currentDatabase) return false;
+  const strategy = resolveEnsureStrategy(deps.databaseType);
+  if (strategy === 'path-hierarchy' || strategy === 'default-sql') return true;
+  return strategy === 'postgresql' && deps.isMultiDatabase;
+}
+
 export async function ensureNamespacePath(segments: string[], deps: EnsureDeps): Promise<void> {
-  const key = `${deps.connectionId}|${segments.join('.')}`;
+  const resolved = resolveEnsureSegments(segments, {
+    currentDatabase: deps.currentDatabase,
+    knownRoots: [...deps.databases, ...Object.keys(deps.pathAliases)],
+    useCurrentDatabaseRoot: usesCurrentDatabaseRoot(deps),
+  });
+  const key = `${deps.connectionId}|${resolved.join('.')}`;
   const existing = inflight.get(key);
   if (existing) return existing;
-  const p = runEnsure(segments, deps).finally(() => inflight.delete(key));
+  const p = runEnsure(resolved, deps).finally(() => inflight.delete(key));
   inflight.set(key, p);
   return p;
 }

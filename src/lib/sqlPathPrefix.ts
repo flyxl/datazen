@@ -100,3 +100,31 @@ export function parseQualifiedPathParents(text: string, cursor: number): string[
   if (segs.length <= 1) return [];
   return segs.slice(0, -1);
 }
+
+/**
+ * Map the editor's qualified-path parents onto a fetch path.
+ * Unqualified names (`FROM users`) resolve to the current database so its
+ * tables/catalogs can be completed without typing `db.`.
+ */
+export function resolveEnsureSegments(
+  parents: string[],
+  opts: {
+    currentDatabase: string | null;
+    knownRoots: readonly string[];
+    /** When true, empty/`unknown` first segments are prefixed with currentDatabase. */
+    useCurrentDatabaseRoot: boolean;
+  },
+): string[] {
+  const current = opts.currentDatabase?.trim() || null;
+  const roots = new Set(opts.knownRoots);
+  if (current) roots.add(current);
+
+  if (parents.length === 0) {
+    return opts.useCurrentDatabaseRoot && current ? [current] : [];
+  }
+  if (roots.has(parents[0]!)) return parents;
+  if (opts.useCurrentDatabaseRoot && current) {
+    return [current, ...parents];
+  }
+  return parents;
+}
