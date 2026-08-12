@@ -12,6 +12,7 @@ import {
 /**
  * Export and Import dialog tests.
  * Export dialog is opened via DataTable toolbar (native OS context menus are not DOM-assertable).
+ * Batch export dialog is opened via Connection Window toolbar (EI-BE-001); Schema-tree native menu path is skipped.
  * Import dialog is only reachable via schema-tree native context menu → those cases are skipped.
  * Requires a PostgreSQL connection (seeded by wdio.conf.ts before hook).
  */
@@ -215,6 +216,40 @@ describe('导出和导入 (EI-001~EI-006)', () => {
     const body = await $('body').getText();
     expect(body).not.toContain(t('export.format'));
   });
+
+  // ── 批量导出（顶栏可 DOM 断言；Schema 树原生菜单不可）────────
+
+  it('顶栏批量导出按钮应存在并可打开对话框 (EI-BE-001)', async () => {
+    const batchBtn = await $(`button[title="${t('batchExport.title')}"]`);
+    await batchBtn.waitForDisplayed({ timeout: 10000 });
+    await batchBtn.click();
+    await browser.pause(1000);
+
+    const body = await $('body').getText();
+    expect(body).toContain(t('batchExport.title'));
+    expect(body).toContain(t('batchExport.selectTables'));
+
+    await browser.execute(
+      (cancelLabel, closeLabel) => {
+        const dlg = document.querySelector('.fixed.inset-0.z-50');
+        if (!dlg) return;
+        const btns = dlg.querySelectorAll('button');
+        for (const btn of btns) {
+          if (btn.textContent?.trim() === cancelLabel) {
+            (btn as HTMLElement).click();
+            return;
+          }
+        }
+        const overlay = dlg.querySelector(`button[aria-label="${closeLabel}"]`) as HTMLElement;
+        if (overlay) overlay.click();
+      },
+      t('common.cancel'),
+      t('common.close'),
+    );
+    await browser.pause(500);
+  });
+
+  it.skip('Schema 树右键应显示批量导出选项 (EI-BE-002) — SKIPPED: native OS menu not DOM-assertable', async () => {});
 
   // ── 导入对话框（仅 Schema 树原生菜单可开，不可 DOM 断言）────────
 
