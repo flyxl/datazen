@@ -237,9 +237,7 @@ where
     if restore_uses_replace(replace) {
         cmd.arg("REPLACE");
     }
-    cmd.query_async::<()>(conn)
-        .await
-        .map_err(|e| e.to_string())
+    cmd.query_async::<()>(conn).await.map_err(|e| e.to_string())
 }
 
 #[cfg(test)]

@@ -147,7 +147,11 @@ impl TestAppState {
             .await
             .expect("openai provider");
         provider.initialize(&cfg).await.expect("initialize");
-        test.state.store.save_ai_config(&cfg).await.expect("save ai cfg");
+        test.state
+            .store
+            .save_ai_config(&cfg)
+            .await
+            .expect("save ai cfg");
 
         (test, mock)
     }

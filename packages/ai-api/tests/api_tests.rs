@@ -40,10 +40,7 @@ impl AiProvider for MockProvider {
         Ok(())
     }
 
-    async fn complete(
-        &self,
-        request: &CompletionRequest,
-    ) -> Result<CompletionResponse, AiError> {
+    async fn complete(&self, request: &CompletionRequest) -> Result<CompletionResponse, AiError> {
         if !*self.initialized.read().await {
             return Err(AiError::NotConfigured("Mock".into()));
         }
@@ -90,7 +87,7 @@ fn test_ai_config_serde() {
         api_key: Some("sk-test".into()),
         endpoint: None,
         model: "gpt-4o".into(),
-            max_tokens: 200_000,
+        max_tokens: 200_000,
         extra: serde_json::Value::Null,
     };
 
@@ -121,15 +118,13 @@ fn test_completion_request_serde() {
     let req = CompletionRequest {
         request_id: "req-1".into(),
         model: "gpt-4o".into(),
-        messages: vec![
-            ChatMessage {
-                role: MessageRole::User,
-                content: "Hello".into(),
-                reasoning: None,
-                tool_calls: None,
-                tool_call_id: None,
-            },
-        ],
+        messages: vec![ChatMessage {
+            role: MessageRole::User,
+            content: "Hello".into(),
+            reasoning: None,
+            tool_calls: None,
+            tool_call_id: None,
+        }],
         temperature: Some(0.7),
         stop: None,
         tools: None,
@@ -147,10 +142,15 @@ fn test_ai_error_display() {
     let err = AiError::RequestFailed("connection refused".into());
     assert_eq!(err.to_string(), "API request failed: connection refused");
 
-    let err = AiError::RateLimited { retry_after_secs: 60 };
+    let err = AiError::RateLimited {
+        retry_after_secs: 60,
+    };
     assert_eq!(err.to_string(), "Rate limited, retry after 60s");
 
-    let err = AiError::ContextLengthExceeded { used: 130000, limit: 128000 };
+    let err = AiError::ContextLengthExceeded {
+        used: 130000,
+        limit: 128000,
+    };
     assert_eq!(
         err.to_string(),
         "Context length exceeded: 130000 tokens (max 128000)"
@@ -192,7 +192,7 @@ async fn test_mock_provider_validate_config() {
         api_key: Some("sk-valid".into()),
         endpoint: None,
         model: "mock-model".into(),
-            max_tokens: 200_000,
+        max_tokens: 200_000,
         extra: serde_json::Value::Null,
     };
     assert!(provider.validate_config(&valid_config).await.is_ok());
@@ -202,7 +202,7 @@ async fn test_mock_provider_validate_config() {
         api_key: Some("invalid".into()),
         endpoint: None,
         model: "mock-model".into(),
-            max_tokens: 200_000,
+        max_tokens: 200_000,
         extra: serde_json::Value::Null,
     };
     let err = provider.validate_config(&invalid_config).await.unwrap_err();
@@ -218,7 +218,7 @@ async fn test_mock_provider_complete() {
         api_key: Some("sk-test".into()),
         endpoint: None,
         model: "mock-model".into(),
-            max_tokens: 200_000,
+        max_tokens: 200_000,
         extra: serde_json::Value::Null,
     };
 
@@ -271,7 +271,7 @@ async fn test_mock_provider_stream_fallback() {
         api_key: Some("sk-test".into()),
         endpoint: None,
         model: "mock-model".into(),
-            max_tokens: 200_000,
+        max_tokens: 200_000,
         extra: serde_json::Value::Null,
     };
     provider.initialize(&config).await.unwrap();
@@ -285,7 +285,7 @@ async fn test_mock_provider_stream_fallback() {
                 model: "mock-model".into(),
                 messages: vec![],
                 temperature: None,
-    
+
                 stop: None,
                 tools: None,
                 previous_response_id: None,

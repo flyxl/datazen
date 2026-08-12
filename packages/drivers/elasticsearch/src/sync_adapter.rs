@@ -33,7 +33,9 @@ fn es_type_to_ir(raw: &str) -> IRType {
         "float" => IRType::Float32,
         "half_float" => IRType::Float32,
         "boolean" | "bool" => IRType::Bool,
-        "date" | "date_nanos" => IRType::Timestamp { with_timezone: false },
+        "date" | "date_nanos" => IRType::Timestamp {
+            with_timezone: false,
+        },
         "binary" => IRType::Blob,
         "object" | "nested" | "flattened" => IRType::Json,
         "geo_point" | "geo_shape" | "dense_vector" => IRType::Other(raw.to_string()),
@@ -45,11 +47,7 @@ fn es_type_to_ir(raw: &str) -> IRType {
 // ── SyncSourceAdapter ──────────────────────────────────────────────
 
 impl SyncSourceAdapter for ElasticsearchSyncAdapter {
-    fn column_to_ir(
-        &self,
-        column: &ColumnSchema,
-        native_full_type: Option<&str>,
-    ) -> IRColumn {
+    fn column_to_ir(&self, column: &ColumnSchema, native_full_type: Option<&str>) -> IRColumn {
         let raw = native_full_type.unwrap_or(&column.data_type);
         let ir_type = es_type_to_ir(raw);
 
@@ -115,7 +113,9 @@ impl SyncTargetAdapter for ElasticsearchSyncAdapter {
             Some(Value::Json(j)) => format!("'{}'", j.to_string().replace('\'', "''")),
             Some(Value::Bytes(b)) => format!(
                 "'\\x{}'",
-                b.iter().map(|byte| format!("{:02x}", byte)).collect::<String>()
+                b.iter()
+                    .map(|byte| format!("{:02x}", byte))
+                    .collect::<String>()
             ),
         }
     }
@@ -144,7 +144,10 @@ mod tests {
     #[test]
     fn es_text_and_keyword() {
         let a = ElasticsearchSyncAdapter;
-        assert_eq!(a.column_to_ir(&col("body", "text"), None).ir_type, IRType::Text);
+        assert_eq!(
+            a.column_to_ir(&col("body", "text"), None).ir_type,
+            IRType::Text
+        );
         assert_eq!(
             a.column_to_ir(&col("status", "keyword"), None).ir_type,
             IRType::Varchar { length: None }
@@ -154,15 +157,27 @@ mod tests {
     #[test]
     fn es_numeric_types() {
         let a = ElasticsearchSyncAdapter;
-        assert_eq!(a.column_to_ir(&col("n", "long"), None).ir_type, IRType::Int64);
-        assert_eq!(a.column_to_ir(&col("n", "integer"), None).ir_type, IRType::Int32);
-        assert_eq!(a.column_to_ir(&col("n", "double"), None).ir_type, IRType::Float64);
+        assert_eq!(
+            a.column_to_ir(&col("n", "long"), None).ir_type,
+            IRType::Int64
+        );
+        assert_eq!(
+            a.column_to_ir(&col("n", "integer"), None).ir_type,
+            IRType::Int32
+        );
+        assert_eq!(
+            a.column_to_ir(&col("n", "double"), None).ir_type,
+            IRType::Float64
+        );
     }
 
     #[test]
     fn es_object_and_geo() {
         let a = ElasticsearchSyncAdapter;
-        assert_eq!(a.column_to_ir(&col("meta", "object"), None).ir_type, IRType::Json);
+        assert_eq!(
+            a.column_to_ir(&col("meta", "object"), None).ir_type,
+            IRType::Json
+        );
         assert_eq!(
             a.column_to_ir(&col("loc", "geo_point"), None).ir_type,
             IRType::Other("geo_point".into())

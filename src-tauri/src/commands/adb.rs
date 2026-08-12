@@ -160,9 +160,7 @@ async fn pull_database_bytes(package: &str, db_path: &str) -> Result<Vec<u8>, Co
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(CommandError::Internal(format!(
-            "adb pull failed: {stderr}"
-        )));
+        return Err(CommandError::Internal(format!("adb pull failed: {stderr}")));
     }
 
     if output.stdout.is_empty() {
@@ -306,11 +304,13 @@ mod tests {
         if cfg!(feature = "webdriver") {
             return;
         }
-        let result = tokio::runtime::Runtime::new().unwrap().block_on(adb_pull_database(
-            "com.example.app".into(),
-            "./databases/app.db".into(),
-            "/tmp/test.db".into(),
-        ));
+        let result = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(adb_pull_database(
+                "com.example.app".into(),
+                "./databases/app.db".into(),
+                "/tmp/test.db".into(),
+            ));
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("disabled"));
     }

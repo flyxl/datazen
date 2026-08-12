@@ -19,8 +19,8 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use datazen_driver_mysql::MysqlDriver;
 use datazen_driver_api::{ConnectionConfig, DatabaseDriver, DriverError, Value};
+use datazen_driver_mysql::MysqlDriver;
 
 #[derive(Clone, Debug)]
 struct MysqlTestConfig {
@@ -149,14 +149,21 @@ fn cell_as_i64(value: &Option<Value>) -> Option<i64> {
 }
 
 /// `datazen_test.users` exists; proves unqualified names resolve after USE.
-async fn assert_users_visible(driver: &MysqlDriver, handle: &datazen_driver_api::ConnectionHandle, label: &str) {
+async fn assert_users_visible(
+    driver: &MysqlDriver,
+    handle: &datazen_driver_api::ConnectionHandle,
+    label: &str,
+) {
     let result = driver
         .query(handle, "SELECT COUNT(*) FROM users")
         .await
         .unwrap_or_else(|e| panic!("{label}: unqualified users query failed: {e}"));
     assert_eq!(result.rows.len(), 1, "{label}: expected one count row");
     let count = cell_as_i64(&result.rows[0][0]).unwrap_or(-1);
-    assert!(count >= 0, "{label}: expected non-negative users count, got {count}");
+    assert!(
+        count >= 0,
+        "{label}: expected non-negative users count, got {count}"
+    );
 }
 
 #[tokio::test]
@@ -177,7 +184,10 @@ async fn use_database_switches_and_rejects_invalid() {
     let handle = match driver.connect(&connection_config(&cfg)).await {
         Ok(h) => h,
         Err(e) => {
-            eprintln!("⏭  Skipping: cannot connect to MySQL at {}:{}: {e}", cfg.host, cfg.port);
+            eprintln!(
+                "⏭  Skipping: cannot connect to MySQL at {}:{}: {e}",
+                cfg.host, cfg.port
+            );
             return;
         }
     };

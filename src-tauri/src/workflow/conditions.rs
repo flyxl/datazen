@@ -28,8 +28,12 @@ pub(crate) fn evaluate_condition(expr: &str, context: &WorkflowContext) -> bool 
                 "!=" => left != right,
                 ">" => left_num.zip(right_num).map_or(left > right, |(l, r)| l > r),
                 "<" => left_num.zip(right_num).map_or(left < right, |(l, r)| l < r),
-                ">=" => left_num.zip(right_num).map_or(left >= right, |(l, r)| l >= r),
-                "<=" => left_num.zip(right_num).map_or(left <= right, |(l, r)| l <= r),
+                ">=" => left_num
+                    .zip(right_num)
+                    .map_or(left >= right, |(l, r)| l >= r),
+                "<=" => left_num
+                    .zip(right_num)
+                    .map_or(left <= right, |(l, r)| l <= r),
                 _ => false,
             };
         }

@@ -32,8 +32,14 @@ fn parse_precision(s: &str, prefix: &str) -> (u8, u8) {
         let rest = rest.trim();
         if let Some(inner) = rest.strip_prefix('(').and_then(|r| r.strip_suffix(')')) {
             let parts: Vec<&str> = inner.split(',').collect();
-            let p = parts.first().and_then(|v| v.trim().parse().ok()).unwrap_or(0);
-            let scale = parts.get(1).and_then(|v| v.trim().parse().ok()).unwrap_or(0);
+            let p = parts
+                .first()
+                .and_then(|v| v.trim().parse().ok())
+                .unwrap_or(0);
+            let scale = parts
+                .get(1)
+                .and_then(|v| v.trim().parse().ok())
+                .unwrap_or(0);
             return (p, scale);
         }
     }
@@ -43,8 +49,7 @@ fn parse_precision(s: &str, prefix: &str) -> (u8, u8) {
 fn duckdb_type_to_ir(raw: &str) -> IRType {
     let upper = raw.trim().to_uppercase();
     if upper.starts_with("VARCHAR") || upper.starts_with("CHAR") {
-        let len = parse_length(&upper, "VARCHAR")
-            .or_else(|| parse_length(&upper, "CHAR"));
+        let len = parse_length(&upper, "VARCHAR").or_else(|| parse_length(&upper, "CHAR"));
         return IRType::Varchar { length: len };
     }
     if upper.starts_with("DECIMAL") || upper.starts_with("NUMERIC") {
@@ -66,11 +71,9 @@ fn duckdb_type_to_ir(raw: &str) -> IRType {
         "DOUBLE" | "FLOAT8" | "FLOAT" => IRType::Float64,
         "REAL" | "FLOAT4" => IRType::Float32,
         "BOOLEAN" | "BOOL" => IRType::Bool,
-        "TIMESTAMP" | "TIMESTAMPTZ" | "DATETIME" => {
-            IRType::Timestamp {
-                with_timezone: upper.contains("TZ"),
-            }
-        }
+        "TIMESTAMP" | "TIMESTAMPTZ" | "DATETIME" => IRType::Timestamp {
+            with_timezone: upper.contains("TZ"),
+        },
         "DATE" => IRType::Date,
         "BLOB" | "BYTEA" | "BINARY" => IRType::Blob,
         "UUID" => IRType::Uuid,
@@ -83,11 +86,7 @@ fn duckdb_type_to_ir(raw: &str) -> IRType {
 // ── SyncSourceAdapter ──────────────────────────────────────────────
 
 impl SyncSourceAdapter for DuckDbSyncAdapter {
-    fn column_to_ir(
-        &self,
-        column: &ColumnSchema,
-        native_full_type: Option<&str>,
-    ) -> IRColumn {
+    fn column_to_ir(&self, column: &ColumnSchema, native_full_type: Option<&str>) -> IRColumn {
         let raw = native_full_type.unwrap_or(&column.data_type);
         let ir_type = duckdb_type_to_ir(raw);
 
@@ -133,8 +132,12 @@ impl SyncTargetAdapter for DuckDbSyncAdapter {
             IRType::Binary { .. } | IRType::Blob => "BLOB".into(),
             IRType::Date => "DATE".into(),
             IRType::Time { .. } => "VARCHAR".into(),
-            IRType::Timestamp { with_timezone: true } => "TIMESTAMPTZ".into(),
-            IRType::Timestamp { with_timezone: false } => "TIMESTAMP".into(),
+            IRType::Timestamp {
+                with_timezone: true,
+            } => "TIMESTAMPTZ".into(),
+            IRType::Timestamp {
+                with_timezone: false,
+            } => "TIMESTAMP".into(),
             IRType::Json => "JSON".into(),
             IRType::Uuid => "UUID".into(),
             IRType::Bit { .. } => "INTEGER".into(),
@@ -161,7 +164,9 @@ impl SyncTargetAdapter for DuckDbSyncAdapter {
             Some(Value::Json(j)) => format!("'{}'", j.to_string().replace('\'', "''")),
             Some(Value::Bytes(b)) => format!(
                 "'\\x{}'",
-                b.iter().map(|byte| format!("{:02x}", byte)).collect::<String>()
+                b.iter()
+                    .map(|byte| format!("{:02x}", byte))
+                    .collect::<String>()
             ),
         }
     }

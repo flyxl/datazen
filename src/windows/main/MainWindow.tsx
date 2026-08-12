@@ -30,7 +30,11 @@ import { ActionPanel } from './ActionPanel';
 import { ConnectionItem } from './ConnectionItem';
 import { backupCommands } from '../../commands/backup';
 import { settingsCommands } from '../../commands/settings';
-import { ConnectionShareDialog, type ConnectionShareMode } from '../../components/connection/ConnectionShareDialog';
+import {
+  ConnectionShareDialog,
+  type ConnectionImportSource,
+  type ConnectionShareMode,
+} from '../../components/connection/ConnectionShareDialog';
 import { useDashboardStore } from '../../stores/dashboardStore';
 import { createEmptyDashboard } from '../dashboard/DashboardWindow';
 import type { ConnectionConfig } from '../../types';
@@ -87,6 +91,8 @@ export function MainWindow() {
 
   const [connShareOpen, setConnShareOpen] = useState(false);
   const [connShareMode, setConnShareMode] = useState<ConnectionShareMode>('export');
+  const [connShareImportSource, setConnShareImportSource] =
+    useState<ConnectionImportSource>('file');
 
   const [dashboardDialogOpen, setDashboardDialogOpen] = useState(false);
   const [newDashboardName, setNewDashboardName] = useState('');
@@ -458,8 +464,9 @@ export function MainWindow() {
     }
   }, [t, showMessageDialog]);
 
-  const openConnShare = useCallback((mode: ConnectionShareMode) => {
+  const openConnShare = useCallback((mode: ConnectionShareMode, source: ConnectionImportSource = 'file') => {
     setConnShareMode(mode);
+    setConnShareImportSource(source);
     setConnShareOpen(true);
   }, []);
 
@@ -524,7 +531,25 @@ export function MainWindow() {
       if (!cancelled) openConnShare('export');
     }).then((u) => { if (cancelled) u(); else cleanups.push(u); });
     void listenCrossWindow('menu:import-connections', () => {
-      if (!cancelled) openConnShare('import');
+      if (!cancelled) openConnShare('import', 'file');
+    }).then((u) => { if (cancelled) u(); else cleanups.push(u); });
+    void listenCrossWindow('menu:import-connections-file', () => {
+      if (!cancelled) openConnShare('import', 'file');
+    }).then((u) => { if (cancelled) u(); else cleanups.push(u); });
+    void listenCrossWindow('menu:import-connections-dbx', () => {
+      if (!cancelled) openConnShare('import', 'dbx');
+    }).then((u) => { if (cancelled) u(); else cleanups.push(u); });
+    void listenCrossWindow('menu:import-connections-navicat', () => {
+      if (!cancelled) openConnShare('import', 'navicat');
+    }).then((u) => { if (cancelled) u(); else cleanups.push(u); });
+    void listenCrossWindow('menu:import-connections-datagrip', () => {
+      if (!cancelled) openConnShare('import', 'datagrip');
+    }).then((u) => { if (cancelled) u(); else cleanups.push(u); });
+    void listenCrossWindow('menu:import-connections-dbeaver', () => {
+      if (!cancelled) openConnShare('import', 'dbeaver');
+    }).then((u) => { if (cancelled) u(); else cleanups.push(u); });
+    void listenCrossWindow('menu:import-connections-tableplus', () => {
+      if (!cancelled) openConnShare('import', 'tableplus');
     }).then((u) => { if (cancelled) u(); else cleanups.push(u); });
     return () => { cancelled = true; cleanups.forEach((fn) => fn()); };
   }, [handleExportConfig, handleImportConfig, openConnShare]);
@@ -852,6 +877,7 @@ export function MainWindow() {
       <ConnectionShareDialog
         open={connShareOpen}
         mode={connShareMode}
+        importSource={connShareImportSource}
         onClose={() => setConnShareOpen(false)}
         onExportSuccess={handleConnShareExportSuccess}
         onImportSuccess={(result) => void handleConnShareImportSuccess(result)}

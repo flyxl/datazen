@@ -1,7 +1,9 @@
-use super::store::{delete_dashboard, get_dashboard, list_dashboards, load_monitor_settings, save_dashboard};
+use super::store::{
+    delete_dashboard, get_dashboard, list_dashboards, load_monitor_settings, save_dashboard,
+};
 use super::types::{
-    AggregationType, ChartConfig, ChartSortBy, ChartType, Dashboard, DashboardLayout, DashboardWidget,
-    WidgetLayout,
+    AggregationType, ChartConfig, ChartSortBy, ChartType, Dashboard, DashboardLayout,
+    DashboardWidget, WidgetLayout,
 };
 use crate::store::AppSettings;
 

@@ -4,9 +4,9 @@ use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use pbkdf2::pbkdf2_hmac;
 use sha2::Sha256;
 
+use super::super::error::CommandError;
 use super::map::{base_connection, map_database_type};
 use super::{ImportFormat, ParsedImport};
-use super::super::error::CommandError;
 use crate::db::SshTunnelConfig;
 
 const PBKDF2_ITERS: u32 = 100_000;
@@ -32,8 +32,7 @@ fn decrypt_dbx_envelope(content: &str, passphrase: &str) -> Result<String, Comma
     let plaintext = cipher
         .decrypt(Nonce::from_slice(&iv), data.as_ref())
         .map_err(|_| CommandError::Internal("DBX decryption failed: wrong passphrase".into()))?;
-    String::from_utf8(plaintext)
-        .map_err(|e| CommandError::Internal(format!("DBX UTF-8: {e}")))
+    String::from_utf8(plaintext).map_err(|e| CommandError::Internal(format!("DBX UTF-8: {e}")))
 }
 
 fn map_ssh(conn: &serde_json::Value) -> Option<SshTunnelConfig> {
@@ -153,7 +152,9 @@ fn map_connections(list: &[serde_json::Value]) -> (Vec<crate::db::ConnectionConf
     (connections, skipped)
 }
 
-fn extract_connection_array(value: &serde_json::Value) -> Result<Vec<serde_json::Value>, CommandError> {
+fn extract_connection_array(
+    value: &serde_json::Value,
+) -> Result<Vec<serde_json::Value>, CommandError> {
     if let Some(arr) = value.as_array() {
         return Ok(arr.clone());
     }
@@ -187,6 +188,10 @@ pub fn parse_encrypted(content: &str, passphrase: &str) -> Result<ParsedImport, 
 pub fn parse_plain(content: &str) -> Result<ParsedImport, CommandError> {
     let value: serde_json::Value =
         serde_json::from_str(content).map_err(|e| CommandError::Validation(e.to_string()))?;
+    parse_plain_value(value)
+}
+
+pub fn parse_plain_value(value: serde_json::Value) -> Result<ParsedImport, CommandError> {
     let list = extract_connection_array(&value)?;
     let (connections, skipped) = map_connections(&list);
     let groups = value
@@ -200,6 +205,130 @@ pub fn parse_plain(content: &str) -> Result<ParsedImport, CommandError> {
         groups,
         skipped,
     })
+}
+
+fn apply_secret(obj: &mut serde_json::Value, key: &str, secret: &str) {
+    if secret.is_empty() {
+        return;
+    }
+    if key == "password" {
+        obj["password"] = serde_json::Value::String(secret.to_string());
+        return;
+    }
+    let Some(rest) = key.strip_prefix("transport_layers.") else {
+        return;
+    };
+    let Some((seg, field)) = rest.rsplit_once('.') else {
+        return;
+    };
+    let json_field = match field {
+        "ssh_password" => "password",
+        "ssh_key_passphrase" => "key_passphrase",
+        "proxy_password" => "password",
+        "http_tunnel_token" => "token",
+        _ => return,
+    };
+    let Some(layers) = obj
+        .get_mut("transport_layers")
+        .and_then(|v| v.as_array_mut())
+    else {
+        return;
+    };
+    let idx = if let Ok(i) = seg.parse::<usize>() {
+        i
+    } else {
+        match layers
+            .iter()
+            .position(|l| l.get("id").and_then(|v| v.as_str()) == Some(seg))
+        {
+            Some(i) => i,
+            None => return,
+        }
+    };
+    if let Some(layer) = layers.get_mut(idx) {
+        layer[json_field] = serde_json::Value::String(secret.to_string());
+    }
+}
+
+fn snapshot_sqlite_path(src: &std::path::Path) -> Result<std::path::PathBuf, CommandError> {
+    let dir = std::env::temp_dir().join(format!("datazen-dbx-import-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&dir)
+        .map_err(|e| CommandError::Internal(format!("DBX snapshot dir: {e}")))?;
+    let dest = dir.join("dbx.db");
+    std::fs::copy(src, &dest).map_err(|e| CommandError::Internal(format!("DBX copy: {e}")))?;
+    for suffix in ["-wal", "-shm"] {
+        let mut sidecar = src.as_os_str().to_os_string();
+        sidecar.push(suffix);
+        let sidecar = std::path::PathBuf::from(sidecar);
+        if sidecar.is_file() {
+            let mut dest_side = dest.as_os_str().to_os_string();
+            dest_side.push(suffix);
+            let _ = std::fs::copy(&sidecar, dest_side);
+        }
+    }
+    Ok(dest)
+}
+
+/// Live DBX `dbx.db` (SQLite): `connections.config_json` + `connection_secrets`.
+pub fn parse_sqlite(path: &std::path::Path) -> Result<ParsedImport, CommandError> {
+    let snapshot = snapshot_sqlite_path(path)?;
+    let result = parse_sqlite_file(&snapshot);
+    if let Some(parent) = snapshot.parent() {
+        let _ = std::fs::remove_dir_all(parent);
+    }
+    result
+}
+
+fn parse_sqlite_file(path: &std::path::Path) -> Result<ParsedImport, CommandError> {
+    let conn =
+        rusqlite::Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+            .map_err(|e| CommandError::Validation(format!("Cannot open DBX database: {e}")))?;
+
+    let mut secrets: std::collections::HashMap<String, Vec<(String, String)>> =
+        std::collections::HashMap::new();
+    if let Ok(mut stmt) = conn.prepare("SELECT connection_id, key, secret FROM connection_secrets")
+    {
+        let rows = stmt.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        });
+        if let Ok(rows) = rows {
+            for row in rows.flatten() {
+                secrets.entry(row.0).or_default().push((row.1, row.2));
+            }
+        }
+    }
+
+    let mut stmt = conn
+        .prepare("SELECT id, config_json FROM connections")
+        .map_err(|e| CommandError::Validation(format!("DBX connections table: {e}")))?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })
+        .map_err(|e| CommandError::Validation(format!("DBX query: {e}")))?;
+
+    let mut list = Vec::new();
+    for row in rows {
+        let (id, json) = row.map_err(|e| CommandError::Validation(format!("DBX row: {e}")))?;
+        let mut value: serde_json::Value = serde_json::from_str(&json)
+            .map_err(|e| CommandError::Validation(format!("DBX config_json: {e}")))?;
+        if let Some(obj) = value.as_object_mut() {
+            obj.entry("id".to_string())
+                .or_insert_with(|| serde_json::Value::String(id.clone()));
+        }
+        if let Some(pairs) = secrets.get(&id) {
+            for (key, secret) in pairs {
+                apply_secret(&mut value, key, secret);
+            }
+        }
+        list.push(value);
+    }
+
+    parse_plain_value(serde_json::json!({ "connections": list }))
 }
 
 #[cfg(test)]
@@ -254,5 +383,59 @@ mod tests {
         let value = serde_json::json!([{"name": "a", "db_type": "mysql", "host": "h"}]);
         let list = extract_connection_array(&value).unwrap();
         assert_eq!(list.len(), 1);
+    }
+
+    #[test]
+    fn apply_secret_merges_password_and_ssh() {
+        let mut obj = serde_json::json!({
+            "transport_layers": [{ "type": "ssh", "id": "hop1", "host": "b" }]
+        });
+        apply_secret(&mut obj, "password", "secret");
+        apply_secret(&mut obj, "transport_layers.hop1.ssh_password", "jump");
+        assert_eq!(obj["password"], "secret");
+        assert_eq!(obj["transport_layers"][0]["password"], "jump");
+    }
+
+    #[test]
+    fn parse_sqlite_reads_connections_and_secrets() {
+        let dir = std::env::temp_dir().join(format!("datazen-dbx-test-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("dbx.db");
+        {
+            let conn = rusqlite::Connection::open(&path).unwrap();
+            conn.execute(
+                "CREATE TABLE connections (id TEXT PRIMARY KEY, config_json TEXT NOT NULL)",
+                [],
+            )
+            .unwrap();
+            conn.execute(
+                "CREATE TABLE connection_secrets (
+                    connection_id TEXT NOT NULL,
+                    key TEXT NOT NULL,
+                    secret TEXT NOT NULL,
+                    PRIMARY KEY (connection_id, key)
+                )",
+                [],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO connections (id, config_json) VALUES (?1, ?2)",
+                rusqlite::params![
+                    "c1",
+                    r#"{"name":"demo","db_type":"mysql","host":"127.0.0.1","port":3306,"username":"root"}"#
+                ],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO connection_secrets (connection_id, key, secret) VALUES (?1, ?2, ?3)",
+                rusqlite::params!["c1", "password", "s3cret"],
+            )
+            .unwrap();
+        }
+        let parsed = parse_sqlite(&path).unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(parsed.connections.len(), 1);
+        assert_eq!(parsed.connections[0].name, "demo");
+        assert_eq!(parsed.connections[0].password.as_deref(), Some("s3cret"));
     }
 }

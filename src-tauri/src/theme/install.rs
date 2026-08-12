@@ -13,7 +13,8 @@ use super::validate::{
 use crate::app_data_archive::{self, MAX_COMPRESSION_RATIO};
 
 pub fn install_theme_zip(zip_path: &Path, themes_root: &Path) -> Result<ThemeManifest, String> {
-    let staging = std::env::temp_dir().join(format!("datazen-theme-staging-{}", uuid::Uuid::new_v4()));
+    let staging =
+        std::env::temp_dir().join(format!("datazen-theme-staging-{}", uuid::Uuid::new_v4()));
 
     let result = (|| -> Result<ThemeManifest, String> {
         extract_theme_zip(zip_path, &staging)?;
@@ -95,10 +96,9 @@ impl<R: Read> Read for LimitedZipReader<'_, R> {
         }
 
         let n = n as u64;
-        *self.total_written = self
-            .total_written
-            .checked_add(n)
-            .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidData, "zip bomb: overflow"))?;
+        *self.total_written = self.total_written.checked_add(n).ok_or_else(|| {
+            std::io::Error::new(std::io::ErrorKind::InvalidData, "zip bomb: overflow")
+        })?;
         check_uncompressed_total(*self.total_written, self.max_uncompressed_bytes)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
 
@@ -181,8 +181,8 @@ fn extract_theme_zip_with_limits(
         let mut entry = archive.by_index(i).map_err(|e| e.to_string())?;
         let entry_name = entry.name().to_string();
         validate_theme_zip_path(&entry_name)?;
-        let rel = app_data_archive::validate_zip_entry_path(&entry_name)
-            .map_err(|e| e.to_string())?;
+        let rel =
+            app_data_archive::validate_zip_entry_path(&entry_name).map_err(|e| e.to_string())?;
         let out_path = dest.join(&rel);
 
         if entry_name.ends_with('/') {
@@ -360,7 +360,8 @@ mod tests {
   "apiVersion": 1,
   "modes": ["dark"]
 }"#;
-            zip.start_file("nested.theme/manifest.json", options).unwrap();
+            zip.start_file("nested.theme/manifest.json", options)
+                .unwrap();
             zip.write_all(manifest.as_bytes()).unwrap();
             zip.start_file("nested.theme/tokens.css", options).unwrap();
             zip.write_all(b":root { --c-accent: red; }").unwrap();

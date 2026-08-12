@@ -129,14 +129,14 @@ fn plan_single_table(
                             statements.push(stmt);
                         }
                     }
-                    Err(e) => warnings.push(format!(
-                        "Skip ALTER type {}.{}: {e}",
-                        table, change.name
-                    )),
+                    Err(e) => {
+                        warnings.push(format!("Skip ALTER type {}.{}: {e}", table, change.name))
+                    }
                 }
             }
         } else if wants_null {
-            let narrowing = is_narrowing_nullability(change.source.nullable, change.target.nullable);
+            let narrowing =
+                is_narrowing_nullability(change.source.nullable, change.target.nullable);
             if narrowing && !opts.allow_destructive {
                 warnings.push(format!(
                     "Skipped SET NOT NULL {}.{} (enable allowDestructive)",
@@ -146,15 +146,12 @@ fn plan_single_table(
             }
             match dialect.as_str() {
                 "postgresql" => statements.push(postgres::set_nullability(table, change)),
-                "mysql" => {
-                    match resolve_type(opts, &change.name, &change.source.data_type) {
-                        Ok(ty) => statements.push(mysql::modify_column(table, change, &ty)),
-                        Err(e) => warnings.push(format!(
-                            "Skip nullability {}.{}: {e}",
-                            table, change.name
-                        )),
+                "mysql" => match resolve_type(opts, &change.name, &change.source.data_type) {
+                    Ok(ty) => statements.push(mysql::modify_column(table, change, &ty)),
+                    Err(e) => {
+                        warnings.push(format!("Skip nullability {}.{}: {e}", table, change.name))
                     }
-                }
+                },
                 _ => {}
             }
         }
@@ -171,9 +168,7 @@ fn plan_single_table(
         let idx = diff_indexes(src, tgt);
         for i in &idx.missing_on_target {
             let stmt = match dialect.as_str() {
-                "postgresql" => {
-                    postgres::create_index(table, &i.name, &i.columns, i.is_unique)
-                }
+                "postgresql" => postgres::create_index(table, &i.name, &i.columns, i.is_unique),
                 "mysql" => mysql::create_index(table, &i.name, &i.columns, i.is_unique),
                 "sqlite" => sqlite::create_index(table, &i.name, &i.columns, i.is_unique),
                 _ => continue,
@@ -219,9 +214,7 @@ fn extract_len(ty: &str) -> Option<usize> {
     ty[start + 1..end].parse().ok()
 }
 
-fn rollback_completeness(
-    statements: &[super::types::PlanStatement],
-) -> RollbackCompleteness {
+fn rollback_completeness(statements: &[super::types::PlanStatement]) -> RollbackCompleteness {
     let missing: Vec<String> = statements
         .iter()
         .filter(|s| s.rollback_sql.is_none())
@@ -333,9 +326,10 @@ mod tests {
         let src = schema(vec![col("id", "int"), col("email", "varchar(255)")]);
         let tgt = schema(vec![col("id", "int")]);
         let plan = build_column_plan("users", &src, &tgt, "postgresql").unwrap();
-        assert!(plan.statements.iter().any(|s| {
-            s.sql.contains("ADD COLUMN") && s.sql.contains("email")
-        }));
+        assert!(plan
+            .statements
+            .iter()
+            .any(|s| { s.sql.contains("ADD COLUMN") && s.sql.contains("email") }));
     }
 
     #[test]
@@ -376,10 +370,7 @@ mod tests {
         let src_b = schema(vec![col("id", "int"), col("b", "text")]);
         let tgt_b = schema(vec![col("id", "int")]);
         let plan = build_schema_diff_plan(
-            &[
-                ("t_a".into(), src_a, tgt_a),
-                ("t_b".into(), src_b, tgt_b),
-            ],
+            &[("t_a".into(), src_a, tgt_a), ("t_b".into(), src_b, tgt_b)],
             "postgresql",
             "postgresql",
             PlanOptions::default(),

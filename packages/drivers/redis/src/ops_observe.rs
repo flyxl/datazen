@@ -70,10 +70,7 @@ pub struct SlowlogEntry {
     pub client_name: Option<String>,
 }
 
-pub async fn fetch_info<C>(
-    conn: &mut C,
-    section: Option<&str>,
-) -> Result<String, String>
+pub async fn fetch_info<C>(conn: &mut C, section: Option<&str>) -> Result<String, String>
 where
     C: AsyncCommands + redis::aio::ConnectionLike + Send,
 {
@@ -81,15 +78,10 @@ where
     if let Some(sec) = section.filter(|s| !s.is_empty()) {
         cmd.arg(sec);
     }
-    cmd.query_async(conn)
-        .await
-        .map_err(|e| e.to_string())
+    cmd.query_async(conn).await.map_err(|e| e.to_string())
 }
 
-pub async fn memory_sample<C>(
-    conn: &mut C,
-    limit: u32,
-) -> Result<MemorySampleResult, String>
+pub async fn memory_sample<C>(conn: &mut C, limit: u32) -> Result<MemorySampleResult, String>
 where
     C: AsyncCommands + redis::aio::ConnectionLike + Send,
 {
@@ -144,16 +136,10 @@ where
     samples.sort_by(|a, b| b.bytes.cmp(&a.bytes).then_with(|| a.key.cmp(&b.key)));
 
     let truncated = !scan_exhausted || db_size > samples.len() as u64;
-    Ok(MemorySampleResult {
-        samples,
-        truncated,
-    })
+    Ok(MemorySampleResult { samples, truncated })
 }
 
-pub async fn slowlog_get<C>(
-    conn: &mut C,
-    count: u32,
-) -> Result<Vec<SlowlogEntry>, String>
+pub async fn slowlog_get<C>(conn: &mut C, count: u32) -> Result<Vec<SlowlogEntry>, String>
 where
     C: AsyncCommands + redis::aio::ConnectionLike + Send,
 {

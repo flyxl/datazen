@@ -3,7 +3,9 @@ use crate::db::ConnectionConfig;
 use super::{Store, StoreError};
 
 impl Store {
-    pub(super) async fn load_connections_from_disk(&self) -> Result<Vec<ConnectionConfig>, StoreError> {
+    pub(super) async fn load_connections_from_disk(
+        &self,
+    ) -> Result<Vec<ConnectionConfig>, StoreError> {
         let path = self.data_dir.join("connections.json");
         if !path.exists() {
             return Ok(Vec::new());
@@ -59,7 +61,10 @@ impl Store {
         Ok(connections)
     }
 
-    async fn persist_connections(&self, connections: &[ConnectionConfig]) -> Result<(), StoreError> {
+    async fn persist_connections(
+        &self,
+        connections: &[ConnectionConfig],
+    ) -> Result<(), StoreError> {
         let mut to_disk = Vec::with_capacity(connections.len());
 
         for conn in connections {

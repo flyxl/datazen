@@ -26,11 +26,7 @@ fn hbase_type_to_ir(raw: &str) -> IRType {
 }
 
 impl SyncSourceAdapter for HBaseSyncAdapter {
-    fn column_to_ir(
-        &self,
-        column: &ColumnSchema,
-        native_full_type: Option<&str>,
-    ) -> IRColumn {
+    fn column_to_ir(&self, column: &ColumnSchema, native_full_type: Option<&str>) -> IRColumn {
         let raw = native_full_type.unwrap_or(&column.data_type);
         let ir_type = hbase_type_to_ir(raw);
 
@@ -66,7 +62,9 @@ impl SyncTargetAdapter for HBaseSyncAdapter {
             Some(Value::Json(j)) => format!("'{}'", j.to_string().replace('\'', "''")),
             Some(Value::Bytes(b)) => format!(
                 "'\\x{}'",
-                b.iter().map(|byte| format!("{:02x}", byte)).collect::<String>()
+                b.iter()
+                    .map(|byte| format!("{:02x}", byte))
+                    .collect::<String>()
             ),
         }
     }

@@ -25,15 +25,14 @@ fn dashboards_path(data_dir: &Path) -> PathBuf {
 }
 
 fn write_atomic(path: &Path, content: &[u8]) -> Result<(), DashboardStoreError> {
-    let parent = path
-        .parent()
-        .ok_or_else(|| DashboardStoreError::Io(io::Error::new(io::ErrorKind::NotFound, "no parent")))?;
+    let parent = path.parent().ok_or_else(|| {
+        DashboardStoreError::Io(io::Error::new(io::ErrorKind::NotFound, "no parent"))
+    })?;
     std::fs::create_dir_all(parent)?;
 
-    let file_name = path
-        .file_name()
-        .and_then(|n| n.to_str())
-        .ok_or_else(|| DashboardStoreError::Io(io::Error::new(io::ErrorKind::InvalidInput, "bad name")))?;
+    let file_name = path.file_name().and_then(|n| n.to_str()).ok_or_else(|| {
+        DashboardStoreError::Io(io::Error::new(io::ErrorKind::InvalidInput, "bad name"))
+    })?;
     let tmp_path = parent.join(format!(".{file_name}.tmp"));
 
     std::fs::write(&tmp_path, content)?;
@@ -75,7 +74,10 @@ pub fn get_dashboard(data_dir: &Path, id: &str) -> Result<Dashboard, DashboardSt
         .ok_or_else(|| DashboardStoreError::NotFound(id.to_string()))
 }
 
-pub fn save_dashboard(data_dir: &Path, mut dashboard: Dashboard) -> Result<(), DashboardStoreError> {
+pub fn save_dashboard(
+    data_dir: &Path,
+    mut dashboard: Dashboard,
+) -> Result<(), DashboardStoreError> {
     normalize_dashboard(&mut dashboard);
     let mut all = load_all(data_dir)?;
     if let Some(pos) = all.iter().position(|d| d.id == dashboard.id) {

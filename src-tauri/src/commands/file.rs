@@ -9,10 +9,7 @@ pub(crate) fn editor_context_menu_label(lang: &str) -> String {
 }
 
 #[tauri::command]
-pub fn show_editor_context_menu(
-    window: tauri::Window,
-    lang: String,
-) -> Result<(), CommandError> {
+pub fn show_editor_context_menu(window: tauri::Window, lang: String) -> Result<(), CommandError> {
     use tauri::menu::MenuBuilder;
 
     let label_favorite = editor_context_menu_label(&lang);
@@ -30,14 +27,12 @@ pub fn show_editor_context_menu(
 }
 
 const ALLOWED_EXTENSIONS: &[&str] = &[
-    "csv", "tsv", "json", "sql", "md", "txt", "xml", "yaml", "yml", "png", "svg", "zip",
-    "gz", "dump", "xlsx",
+    "csv", "tsv", "json", "sql", "md", "txt", "xml", "yaml", "yml", "png", "svg", "zip", "gz",
+    "dump", "xlsx",
 ];
 
 fn deny_path_ipc() -> CommandError {
-    CommandError::Validation(
-        "Direct path file IPC is disabled; use *_with_dialog commands".into(),
-    )
+    CommandError::Validation("Direct path file IPC is disabled; use *_with_dialog commands".into())
 }
 
 fn validate_extension(path: &Path, allowed: &[&str]) -> Result<(), CommandError> {
@@ -64,9 +59,7 @@ fn validate_file_path(path: &Path) -> Result<(), CommandError> {
     validate_extension(path, ALLOWED_EXTENSIONS)
 }
 
-fn dialog_path_to_buf(
-    path: tauri_plugin_dialog::FilePath,
-) -> Result<PathBuf, CommandError> {
+fn dialog_path_to_buf(path: tauri_plugin_dialog::FilePath) -> Result<PathBuf, CommandError> {
     path.into_path()
         .map_err(|e| CommandError::Validation(format!("Invalid dialog path: {e}")))
 }
@@ -262,9 +255,7 @@ pub(crate) async fn read_file_impl(path: String) -> Result<String, CommandError>
     }
     let p = PathBuf::from(&path);
     validate_file_path(&p)?;
-    tokio::fs::read_to_string(&p)
-        .await
-        .cmd_err("read_file")
+    tokio::fs::read_to_string(&p).await.cmd_err("read_file")
 }
 
 pub(crate) async fn write_file_impl(path: String, contents: String) -> Result<(), CommandError> {
@@ -398,7 +389,10 @@ mod tests {
         }
         let result = tokio::runtime::Runtime::new()
             .unwrap()
-            .block_on(write_file_base64("/tmp/e2e-gate-test.png".into(), "AAAA".into()));
+            .block_on(write_file_base64(
+                "/tmp/e2e-gate-test.png".into(),
+                "AAAA".into(),
+            ));
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("disabled"));
     }

@@ -32,10 +32,18 @@ pub struct CreateWindowOptions {
     pub background_color: Option<String>,
 }
 
-fn default_title() -> String { "DataZen".into() }
-fn default_width() -> f64 { 800.0 }
-fn default_height() -> f64 { 640.0 }
-fn default_true() -> bool { true }
+fn default_title() -> String {
+    "DataZen".into()
+}
+fn default_width() -> f64 {
+    800.0
+}
+fn default_height() -> f64 {
+    640.0
+}
+fn default_true() -> bool {
+    true
+}
 
 fn parse_css_hex_color(s: &str) -> Option<Color> {
     parse_css_hex(s).map(|(r, g, b)| Color(r, g, b, 255))

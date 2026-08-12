@@ -266,7 +266,9 @@ mod tests {
     async fn get_table_schema_returns_pretty_json() {
         let (_keyring, store, mgr, _) = test_stack().await;
         store.save_connection(sample_config("c1")).await.unwrap();
-        let json = get_table_schema(&mgr, "c1", &["users".into()]).await.unwrap();
+        let json = get_table_schema(&mgr, "c1", &["users".into()])
+            .await
+            .unwrap();
         assert!(json.contains("users"));
         assert!(json.contains("id"));
     }
@@ -275,15 +277,9 @@ mod tests {
     async fn query_executes_without_permission_gate() {
         let (_keyring, store, mgr, mock) = test_stack().await;
         store.save_connection(sample_config("c1")).await.unwrap();
-        let json = query(
-            &mgr,
-            "c1",
-            "SELECT * FROM users",
-            Some(10),
-            None,
-        )
-        .await
-        .unwrap();
+        let json = query(&mgr, "c1", "SELECT * FROM users", Some(10), None)
+            .await
+            .unwrap();
         assert!(json.contains("1"));
         assert!(mock.query_calls() >= 1);
     }

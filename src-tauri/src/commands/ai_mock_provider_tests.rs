@@ -13,10 +13,7 @@ fn collecting_stream_callback() -> (StreamCallback, Arc<Mutex<Vec<(String, bool)
     let log_c = log.clone();
     let cb: StreamCallback = Arc::new(move |request_id, result| {
         let done = result.as_ref().map(|c| c.done).unwrap_or(false);
-        log_c
-            .lock()
-            .unwrap()
-            .push((request_id.to_string(), done));
+        log_c.lock().unwrap().push((request_id.to_string(), done));
     });
     (cb, log)
 }
@@ -76,10 +73,16 @@ async fn mock_provider_diagnose_error_parses_json() {
     .unwrap();
 
     assert_eq!(result.explanation, "bad column");
-    assert_eq!(result.suggested_sql.as_deref(), Some("SELECT id FROM users"));
+    assert_eq!(
+        result.suggested_sql.as_deref(),
+        Some("SELECT id FROM users")
+    );
     assert_eq!(mock.call_count(), 1);
     let req = mock.last_request().unwrap();
-    assert!(req.messages.iter().any(|m| m.content.contains("bad column") || m.content.contains("column bad")));
+    assert!(req
+        .messages
+        .iter()
+        .any(|m| m.content.contains("bad column") || m.content.contains("column bad")));
 }
 
 #[tokio::test]
@@ -289,13 +292,10 @@ async fn mock_provider_complete_error_surfaces() {
     test.save_connection("err-cfg").await;
     mock.push_error("upstream 503");
 
-    let err = ai_diagnose_connection_impl(
-        &test.state,
-        "err-cfg".into(),
-        "connection refused".into(),
-    )
-    .await
-    .unwrap_err();
+    let err =
+        ai_diagnose_connection_impl(&test.state, "err-cfg".into(), "connection refused".into())
+            .await
+            .unwrap_err();
     assert!(
         err.to_string().contains("503") || err.to_string().to_lowercase().contains("fail"),
         "unexpected err: {err}"

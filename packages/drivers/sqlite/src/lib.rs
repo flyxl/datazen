@@ -15,7 +15,11 @@ impl DatabaseDriverFactory for SqliteFactory {
     fn create(&self) -> Arc<dyn DatabaseDriver> {
         Arc::new(SqliteDriver::new())
     }
-    fn driver_id(&self) -> &'static str { "sqlite" }
-    fn supports_explain(&self) -> bool { true }
+    fn driver_id(&self) -> &'static str {
+        "sqlite"
+    }
+    fn supports_explain(&self) -> bool {
+        true
+    }
 }
 datazen_driver_api::register_driver!(&SqliteFactory);

@@ -176,9 +176,7 @@ pub const DESTRUCTIVE_CONFIRM_TOKEN: &str = "DEPLOY";
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::schema_diff::types::{
-        PlanStatement, RollbackCompleteness, StatementRisk,
-    };
+    use crate::schema_diff::types::{PlanStatement, RollbackCompleteness, StatementRisk};
     use std::sync::Mutex;
 
     struct ScriptedExecutor {

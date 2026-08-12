@@ -85,8 +85,11 @@ fn build_tray_menu<R: Runtime>(
     lang: &str,
     paused: bool,
 ) -> Result<tauri::menu::Menu<R>, Box<dyn std::error::Error>> {
-    let open = MenuItemBuilder::with_id("tray-open-dashboards", tray_label(lang, "tray-open-dashboards"))
-        .build(app)?;
+    let open = MenuItemBuilder::with_id(
+        "tray-open-dashboards",
+        tray_label(lang, "tray-open-dashboards"),
+    )
+    .build(app)?;
     let pause_text = tray_pause_item_label(lang, paused);
     let pause = MenuItemBuilder::with_id("tray-toggle-pause", pause_text).build(app)?;
     let quit = MenuItemBuilder::with_id("tray-quit", tray_label(lang, "tray-quit")).build(app)?;
@@ -250,7 +253,10 @@ mod tests {
 
     #[test]
     fn tray_label_falls_back_to_key_when_missing() {
-        assert_eq!(tray_label("en", "tray-nonexistent-key"), "tray-nonexistent-key");
+        assert_eq!(
+            tray_label("en", "tray-nonexistent-key"),
+            "tray-nonexistent-key"
+        );
     }
 
     #[test]

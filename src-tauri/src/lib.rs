@@ -1,24 +1,24 @@
 pub mod ai;
 mod app_data_archive;
-mod dashboard;
-mod monitor;
-mod theme;
 mod cache;
 mod commands;
+mod dashboard;
 pub mod db;
 mod i18n_locale;
 pub mod mcp;
-mod sql_guard;
-mod schema_objects;
+mod monitor;
 mod plugin_init;
 mod redis_flush_gate;
+pub mod schema_diff;
+mod schema_objects;
 mod services;
+mod sql_guard;
 mod ssh_known_hosts;
 pub mod ssh_tunnel;
 mod store;
-mod tray;
 pub mod sync;
-pub mod schema_diff;
+mod theme;
+mod tray;
 pub mod workflow;
 
 pub use store::HistoryDb;
@@ -30,7 +30,15 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
+use ai::SchemaContextBuilder;
+use cache::SchemaCache;
+use commands::AppState;
+use db::init_drivers;
+use monitor::MonitorEngine;
+use services::ConnectionManager;
 use std::collections::HashMap;
+use store::Store;
+use sync::adapter_registry::SyncAdapterRegistry;
 #[cfg(target_os = "macos")]
 use tauri::menu::{
     AboutMetadata, CheckMenuItemBuilder, MenuBuilder, MenuItemBuilder, PredefinedMenuItem,
@@ -39,14 +47,6 @@ use tauri::menu::{
 #[cfg(target_os = "macos")]
 use tauri::Emitter;
 use tauri::Manager;
-use ai::SchemaContextBuilder;
-use commands::AppState;
-use db::init_drivers;
-use cache::SchemaCache;
-use monitor::MonitorEngine;
-use services::ConnectionManager;
-use store::Store;
-use sync::adapter_registry::SyncAdapterRegistry;
 
 pub(crate) fn menu_labels(lang: &str) -> HashMap<String, String> {
     static MENU_JSON: &str = include_str!("../resources/menu-labels.json");
@@ -101,7 +101,14 @@ pub(crate) fn menu_action_for_id(id: &str) -> MenuAction {
         "export-config" => MenuAction::Emit("menu:export-config"),
         "import-config" => MenuAction::Emit("menu:import-config"),
         "export-connections" => MenuAction::Emit("menu:export-connections"),
-        "import-connections" => MenuAction::Emit("menu:import-connections"),
+        "import-connections" | "import-connections-file" => {
+            MenuAction::Emit("menu:import-connections-file")
+        }
+        "import-connections-dbx" => MenuAction::Emit("menu:import-connections-dbx"),
+        "import-connections-navicat" => MenuAction::Emit("menu:import-connections-navicat"),
+        "import-connections-datagrip" => MenuAction::Emit("menu:import-connections-datagrip"),
+        "import-connections-dbeaver" => MenuAction::Emit("menu:import-connections-dbeaver"),
+        "import-connections-tableplus" => MenuAction::Emit("menu:import-connections-tableplus"),
         "view-logs" => MenuAction::Emit("menu:view-logs"),
         "help-docs" => MenuAction::OpenDocs,
         "help-report" => MenuAction::OpenReportIssue,
@@ -115,7 +122,10 @@ pub(crate) fn unique_driver_types(connections: &[crate::db::ConnectionConfig]) -
     let mut seen = std::collections::HashSet::new();
     connections
         .iter()
-        .filter_map(|c| seen.insert(c.database_type.clone()).then_some(c.database_type.clone()))
+        .filter_map(|c| {
+            seen.insert(c.database_type.clone())
+                .then_some(c.database_type.clone())
+        })
         .collect()
 }
 
@@ -144,7 +154,10 @@ pub(crate) fn resolve_log_dir(data_dir: &std::path::Path, custom_log_path: &str)
 }
 
 /// Resolve the AI context files directory.
-pub(crate) fn resolve_context_dir(data_dir: &std::path::Path, context_dir_setting: &str) -> PathBuf {
+pub(crate) fn resolve_context_dir(
+    data_dir: &std::path::Path,
+    context_dir_setting: &str,
+) -> PathBuf {
     if context_dir_setting.is_empty() {
         data_dir.join("contexts")
     } else {
@@ -224,9 +237,33 @@ fn setup_menu(
     let export_connections_item = MenuItemBuilder::new(t("export-connections"))
         .id("export-connections")
         .build(handle)?;
-    let import_connections_item = MenuItemBuilder::new(t("import-connections"))
-        .id("import-connections")
+    let import_connections_file_item = MenuItemBuilder::new(t("import-connections-file"))
+        .id("import-connections-file")
         .build(handle)?;
+    let import_dbx_item = MenuItemBuilder::new(t("import-connections-dbx"))
+        .id("import-connections-dbx")
+        .build(handle)?;
+    let import_navicat_item = MenuItemBuilder::new(t("import-connections-navicat"))
+        .id("import-connections-navicat")
+        .build(handle)?;
+    let import_datagrip_item = MenuItemBuilder::new(t("import-connections-datagrip"))
+        .id("import-connections-datagrip")
+        .build(handle)?;
+    let import_dbeaver_item = MenuItemBuilder::new(t("import-connections-dbeaver"))
+        .id("import-connections-dbeaver")
+        .build(handle)?;
+    let import_tableplus_item = MenuItemBuilder::new(t("import-connections-tableplus"))
+        .id("import-connections-tableplus")
+        .build(handle)?;
+    let import_connections_menu = SubmenuBuilder::new(handle, t("import-connections"))
+        .item(&import_dbx_item)
+        .item(&import_navicat_item)
+        .item(&import_datagrip_item)
+        .item(&import_dbeaver_item)
+        .item(&import_tableplus_item)
+        .separator()
+        .item(&import_connections_file_item)
+        .build()?;
 
     let data_sync_item = MenuItemBuilder::new(t("data-sync"))
         .id("data-sync")
@@ -281,7 +318,7 @@ fn setup_menu(
         .item(&export_config_item)
         .item(&import_config_item)
         .item(&export_connections_item)
-        .item(&import_connections_item)
+        .item(&import_connections_menu)
         .build()?;
 
     // ── Edit ──
@@ -293,7 +330,10 @@ fn setup_menu(
         .item(&PredefinedMenuItem::copy(handle, Some(&t("copy")))?)
         .item(&PredefinedMenuItem::paste(handle, Some(&t("paste")))?)
         .separator()
-        .item(&PredefinedMenuItem::select_all(handle, Some(&t("select-all")))?)
+        .item(&PredefinedMenuItem::select_all(
+            handle,
+            Some(&t("select-all")),
+        )?)
         .build()?;
 
     // ── View ──
@@ -324,7 +364,10 @@ fn setup_menu(
         .separator()
         .bring_all_to_front_with_text(t("bring-all-to-front"))
         .separator()
-        .item(&PredefinedMenuItem::close_window(handle, Some(&t("close-window")))?)
+        .item(&PredefinedMenuItem::close_window(
+            handle,
+            Some(&t("close-window")),
+        )?)
         .build()?;
     let _ = window_menu.set_as_windows_menu_for_nsapp();
 
@@ -478,10 +521,7 @@ pub(crate) fn finish_app_state(
     prompts_dir: Option<PathBuf>,
 ) -> AppState {
     let schema_cache = Arc::new(SchemaCache::new(registry.clone()));
-    let connection_manager = Arc::new(ConnectionManager::new(
-        registry.clone(),
-        store.clone(),
-    ));
+    let connection_manager = Arc::new(ConnectionManager::new(registry.clone(), store.clone()));
     connection_manager.clone().start_cleanup_task();
     let monitor_connections = Arc::new(monitor::MonitorConnectionRegistry::new(
         connection_manager.clone(),
@@ -533,7 +573,9 @@ pub fn run_mcp_stdio() {
     rt.block_on(async {
         let data_dir = Store::default_app_data_dir().expect("Cannot determine data dir");
         let store = Arc::new(
-            Store::init_with_path(&data_dir).await.expect("Failed to init store"),
+            Store::init_with_path(&data_dir)
+                .await
+                .expect("Failed to init store"),
         );
         let prompts_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/prompts");
         let app_state = match build_app_state(store, Some(prompts_dir)).await {
@@ -598,7 +640,8 @@ pub fn run() {
 
             let t0 = Instant::now();
             let prompts_dir = resolve_prompts_dir(handle.path().resource_dir().ok());
-            let app_state = tauri::async_runtime::block_on(build_gui_app_state(&handle, prompts_dir))?;
+            let app_state =
+                tauri::async_runtime::block_on(build_gui_app_state(&handle, prompts_dir))?;
             tracing::info!("[startup]   block_on total: {:?}", t0.elapsed());
 
             std::thread::spawn(|| {
@@ -625,9 +668,12 @@ pub fn run() {
             // Optional embedded MCP: only if user explicitly enabled it in settings (default off).
             {
                 let state = handle.state::<AppState>();
-                let enabled = tauri::async_runtime::block_on(state.store.get_settings()).mcp_server_enabled;
+                let enabled =
+                    tauri::async_runtime::block_on(state.store.get_settings()).mcp_server_enabled;
                 if should_auto_start_embedded_mcp(enabled) {
-                    if let Err(e) = tauri::async_runtime::block_on(commands::start_embedded_mcp(state.inner())) {
+                    if let Err(e) =
+                        tauri::async_runtime::block_on(commands::start_embedded_mcp(state.inner()))
+                    {
                         tracing::warn!(error = %e, "Failed to auto-start embedded MCP Server");
                     }
                 }
@@ -636,12 +682,15 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             {
                 let t_settings = Instant::now();
-                let initial_settings = tauri::async_runtime::block_on(
-                    handle.state::<AppState>().store.get_settings(),
-                );
+                let initial_settings =
+                    tauri::async_runtime::block_on(handle.state::<AppState>().store.get_settings());
                 tracing::info!("[startup]   get_settings: {:?}", t_settings.elapsed());
                 let t_menu = Instant::now();
-                setup_menu(&handle, &initial_settings.theme.mode, &initial_settings.language)?;
+                setup_menu(
+                    &handle,
+                    &initial_settings.theme.mode,
+                    &initial_settings.language,
+                )?;
                 tracing::info!("[startup]   build menu: {:?}", t_menu.elapsed());
             }
 
@@ -705,6 +754,9 @@ pub fn run() {
             commands::export_connections_with_dialog,
             commands::import_connections_preview,
             commands::import_connections_with_dialog,
+            commands::detect_connection_import_path,
+            commands::pick_connection_import_path_with_dialog,
+            commands::import_connections_from_app,
             commands::export_app_data,
             commands::export_app_data_with_dialog,
             commands::import_app_data,
@@ -840,8 +892,8 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
     use crate::store::Store;
+    use std::sync::Arc;
 
     #[test]
     fn menu_labels_en_contains_core_keys() {
@@ -869,7 +921,9 @@ mod tests {
     fn resolve_log_settings_defaults_without_settings_file() {
         let data_dir = Store::default_app_data_dir().unwrap();
         let settings_path = data_dir.join("settings.json");
-        let backup = settings_path.exists().then(|| std::fs::read(&settings_path).unwrap());
+        let backup = settings_path
+            .exists()
+            .then(|| std::fs::read(&settings_path).unwrap());
         let _ = std::fs::remove_file(&settings_path);
 
         let (level, log_dir) = resolve_log_settings();
@@ -886,7 +940,9 @@ mod tests {
         let data_dir = Store::default_app_data_dir().unwrap();
         std::fs::create_dir_all(&data_dir).unwrap();
         let settings_path = data_dir.join("settings.json");
-        let backup = settings_path.exists().then(|| std::fs::read(&settings_path).unwrap());
+        let backup = settings_path
+            .exists()
+            .then(|| std::fs::read(&settings_path).unwrap());
         let custom_log = tempfile::tempdir().unwrap().path().join("custom-logs");
         let settings = serde_json::json!({
             "logLevel": "debug",
@@ -931,8 +987,14 @@ mod tests {
             MenuAction::Emit("menu:open-settings")
         );
         assert_eq!(menu_action_for_id("help-docs"), MenuAction::OpenDocs);
-        assert_eq!(menu_action_for_id("help-report"), MenuAction::OpenReportIssue);
-        assert_eq!(menu_action_for_id("ctx-add-favorite"), MenuAction::AddFavorite);
+        assert_eq!(
+            menu_action_for_id("help-report"),
+            MenuAction::OpenReportIssue
+        );
+        assert_eq!(
+            menu_action_for_id("ctx-add-favorite"),
+            MenuAction::AddFavorite
+        );
         assert_eq!(menu_action_for_id("unknown-id"), MenuAction::Ignore);
     }
 
@@ -1063,6 +1125,12 @@ mod tests {
             "import-config",
             "export-connections",
             "import-connections",
+            "import-connections-file",
+            "import-connections-dbx",
+            "import-connections-navicat",
+            "import-connections-datagrip",
+            "import-connections-dbeaver",
+            "import-connections-tableplus",
             "view-logs",
         ] {
             match menu_action_for_id(id) {
@@ -1086,9 +1154,7 @@ mod tests {
         );
         let registry = Arc::new(DriverRegistry::new());
         let mock = MockDriver::new("postgres", MockDriverOptions::default());
-        registry
-            .register_test_driver("postgres", mock)
-            .await;
+        registry.register_test_driver("postgres", mock).await;
 
         let state = finish_app_state(
             store.clone(),
@@ -1096,7 +1162,10 @@ mod tests {
             Arc::new(SyncAdapterRegistry::new()),
             None,
         );
-        assert!(state.workflow_registry.workflows_dir().starts_with(temp.path()));
+        assert!(state
+            .workflow_registry
+            .workflows_dir()
+            .starts_with(temp.path()));
         assert_eq!(state.store.data_dir(), temp.path());
     }
 }

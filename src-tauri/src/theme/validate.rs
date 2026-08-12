@@ -48,7 +48,9 @@ pub fn validate_theme_zip_path(name: &str) -> Result<(), String> {
         return Err("symlink entry name not allowed".into());
     }
 
-    crate::app_data_archive::validate_zip_entry_path(name).map(|_| ()).map_err(|e| e.to_string())
+    crate::app_data_archive::validate_zip_entry_path(name)
+        .map(|_| ())
+        .map_err(|e| e.to_string())
 }
 
 /// Validate pack contents (manifest, tokens, file whitelist) without checking folder name.

@@ -71,7 +71,8 @@ impl Store {
             let cache = self.cache.read().await;
             cache.favorite_queries.clone()
         };
-        self.save_json_file("favorites/queries.json", &snapshot).await
+        self.save_json_file("favorites/queries.json", &snapshot)
+            .await
     }
 
     pub async fn delete_favorite_query(&self, id: &str) -> Result<(), StoreError> {
@@ -84,6 +85,7 @@ impl Store {
             let cache = self.cache.read().await;
             cache.favorite_queries.clone()
         };
-        self.save_json_file("favorites/queries.json", &snapshot).await
+        self.save_json_file("favorites/queries.json", &snapshot)
+            .await
     }
 }

@@ -15,9 +15,9 @@ pub mod model;
 pub mod registry;
 pub mod scheduler;
 
+pub use crate::store::{HistoryEntry, HistoryListItem};
 pub use command::WorkflowCommandStep;
 pub use command_runtime::{execute_command, resolve_connection_id};
-pub use crate::store::{HistoryEntry, HistoryListItem};
 pub use history::WorkflowHistoryManager;
 pub use workflows::{
     enforce_workflow_query_guards, StepExecutionResult, StepStatus, WorkflowDefinition,

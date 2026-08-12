@@ -4,16 +4,18 @@ use std::sync::Arc;
 
 use datazen_driver_api::*;
 
-mod victoriametrics;
 mod sync_adapter;
-pub use victoriametrics::*;
+mod victoriametrics;
 pub use sync_adapter::VictoriaMetricsSyncAdapter;
+pub use victoriametrics::*;
 
 struct VictoriaMetricsFactory;
 impl DatabaseDriverFactory for VictoriaMetricsFactory {
     fn create(&self) -> Arc<dyn DatabaseDriver> {
         Arc::new(VictoriaMetricsDriver::new())
     }
-    fn driver_id(&self) -> &'static str { "victoriametrics" }
+    fn driver_id(&self) -> &'static str {
+        "victoriametrics"
+    }
 }
 datazen_driver_api::register_driver!(&VictoriaMetricsFactory);

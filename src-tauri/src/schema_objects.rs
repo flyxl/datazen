@@ -79,17 +79,24 @@ pub fn list_objects_sql(db_type: &str, kind: ObjectKind) -> Option<String> {
             Some("SHOW PROCEDURE STATUS WHERE Db = DATABASE()".into())
         }
         ("mysql", ObjectKind::Trigger) => Some("SHOW TRIGGERS".into()),
-        ("sqlite", ObjectKind::Trigger) => Some(
-            "SELECT name FROM sqlite_master WHERE type = 'trigger' ORDER BY name".into(),
-        ),
+        ("sqlite", ObjectKind::Trigger) => {
+            Some("SELECT name FROM sqlite_master WHERE type = 'trigger' ORDER BY name".into())
+        }
         _ => None,
     }
 }
 
-pub fn object_ddl_sql(db_type: &str, kind: ObjectKind, name: &str, schema: Option<&str>) -> Option<String> {
+pub fn object_ddl_sql(
+    db_type: &str,
+    kind: ObjectKind,
+    name: &str,
+    schema: Option<&str>,
+) -> Option<String> {
     let family = dialect_family(db_type);
     let ident = quote_ident(family, name);
-    let schema_ident = schema.filter(|s| !s.is_empty()).map(|s| quote_ident(family, s));
+    let schema_ident = schema
+        .filter(|s| !s.is_empty())
+        .map(|s| quote_ident(family, s));
     let qualified = match &schema_ident {
         Some(s) => format!("{s}.{ident}"),
         None => ident.clone(),
@@ -190,8 +197,12 @@ mod tests {
 
     #[test]
     fn privilege_sql_for_pg_and_mysql() {
-        assert!(list_privileges_sql("postgres").unwrap().contains("role_table_grants"));
-        assert!(list_privileges_sql("mariadb").unwrap().contains("TABLE_PRIVILEGES"));
+        assert!(list_privileges_sql("postgres")
+            .unwrap()
+            .contains("role_table_grants"));
+        assert!(list_privileges_sql("mariadb")
+            .unwrap()
+            .contains("TABLE_PRIVILEGES"));
     }
 
     #[test]
@@ -228,8 +239,12 @@ mod tests {
 
     #[test]
     fn mysql_list_and_ddl_cover_all_kinds() {
-        assert!(list_objects_sql("mysql", ObjectKind::Function).unwrap().contains("FUNCTION"));
-        assert!(list_objects_sql("mysql", ObjectKind::Trigger).unwrap().contains("TRIGGERS"));
+        assert!(list_objects_sql("mysql", ObjectKind::Function)
+            .unwrap()
+            .contains("FUNCTION"));
+        assert!(list_objects_sql("mysql", ObjectKind::Trigger)
+            .unwrap()
+            .contains("TRIGGERS"));
         assert!(object_ddl_sql("mysql", ObjectKind::Procedure, "p", None)
             .unwrap()
             .contains("SHOW CREATE PROCEDURE"));
