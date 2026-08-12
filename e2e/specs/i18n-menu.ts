@@ -27,6 +27,7 @@ interface AppSettings {
   editorFontFamily: string;
   confirmOnDelete: boolean;
   autoCommit: boolean;
+  safeMode: boolean;
   defaultPageSize: number;
 }
 
@@ -200,6 +201,7 @@ describe('System Menu (MENU-001~MENU-005)', () => {
         editorFontFamily: 'Menlo, Monaco, Consolas, "Courier New", monospace',
         confirmOnDelete: true,
         autoCommit: true,
+        safeMode: true,
         defaultPageSize: 50,
       },
     });

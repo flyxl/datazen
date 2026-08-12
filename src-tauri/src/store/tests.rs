@@ -75,12 +75,14 @@ fn sample_connection_with_ssh() -> ConnectionConfig {
                 password: Some("ssh-secret-password".into()),
                 private_key_path: None,
                 passphrase: Some("key-passphrase".into()),
+                jump: None,
             }),
             color_tag: None,
             group: None,
             last_connected_at: None,
             server_version: None,
             options: None,
+            read_only: false,
         }
 }
 

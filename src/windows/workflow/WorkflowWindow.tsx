@@ -315,6 +315,8 @@ export function WorkflowWindow() {
         steps: workflow.steps.map((s) => ({
           type: s.type as WorkflowStepType, id: s.id, sql: s.sql, prompt: s.prompt, connection: s.connection, database: s.database,
         })),
+        scheduleEnabled: workflow.schedule?.enabled ?? false,
+        scheduleIntervalSecs: workflow.schedule?.interval_secs ?? workflow.schedule?.intervalSecs ?? 3600,
       });
     } catch (e) { setFeedback(String(e)); }
   };
@@ -337,6 +339,9 @@ export function WorkflowWindow() {
       id: d.id.trim(), name: d.name.trim(), description: d.description.trim(),
       variables: d.variables.map((v) => ({ name: v.name, type: v.varType, description: v.description, required: v.required })),
       steps: d.steps.map((s) => ({ type: s.type, id: s.id, sql: s.sql, prompt: s.prompt, connection: s.connection, database: s.database })),
+      schedule: d.scheduleEnabled
+        ? { enabled: true, interval_secs: Math.max(30, d.scheduleIntervalSecs ?? 3600) }
+        : { enabled: false },
     };
     try {
       await aiCommands.workflowSave(workflow);
@@ -846,7 +851,10 @@ function WorkflowSidebarList({
         >
           <Wand2 className="h-3.5 w-3.5 shrink-0" />
           <div className="flex-1 min-w-0">
-            <div className="text-xs font-medium truncate">{w.name}</div>
+            <div className="flex items-center gap-1 text-xs font-medium truncate">
+              <span className="truncate">{w.name}</span>
+              {w.scheduled && <Clock className="h-3 w-3 shrink-0 text-accent" title={t('workflows.schedule.enabled')} />}
+            </div>
             {w.description && <div className="text-[10px] text-fg-muted truncate">{w.description}</div>}
           </div>
           <div className="hidden group-hover:flex items-center gap-0.5">

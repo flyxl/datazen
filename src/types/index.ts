@@ -4,15 +4,19 @@ import type { DatabaseType } from '../plugins/generated';
 
 export type SslMode = 'disable' | 'prefer' | 'require' | 'verifyCa' | 'verifyFull';
 
+export type SshAuthMethod = 'password' | 'private_key' | 'agent';
+
 export interface SshTunnelConfig {
   enabled: boolean;
   host: string;
   port: number;
   username: string;
-  authMethod: 'password' | 'private_key';
+  authMethod: SshAuthMethod;
   password?: string;
   privateKeyPath?: string;
   passphrase?: string;
+  /** Optional ProxyJump hop. */
+  jump?: SshTunnelConfig;
 }
 
 export interface ConnectionConfig {
@@ -37,6 +41,8 @@ export interface ConnectionConfig {
   serverVersion?: string;
   /** Opaque per-driver connection options (e.g. Redis topology/TLS). */
   options?: Record<string, unknown>;
+  /** When true, the host rejects mutating SQL and row edits. */
+  readOnly?: boolean;
 }
 
 export interface ServerInfo {
@@ -45,6 +51,21 @@ export interface ServerInfo {
 }
 
 export type TableType = 'table' | 'view' | 'materializedView' | 'systemTable';
+
+export type DatabaseObjectKind = 'function' | 'procedure' | 'trigger';
+
+export interface DatabaseObject {
+  kind: DatabaseObjectKind;
+  schema?: string | null;
+  name: string;
+}
+
+export interface PrivilegeGrant {
+  grantee: string;
+  objectSchema?: string | null;
+  objectName: string;
+  privilege: string;
+}
 
 export interface TableInfo {
   name: string;
@@ -181,6 +202,8 @@ export interface AppSettings {
   editorFontFamily: string;
   confirmOnDelete: boolean;
   autoCommit: boolean;
+  /** Require WHERE on UPDATE/DELETE. Default true. */
+  safeMode: boolean;
   defaultPageSize: number;
   /** Max DB session pool size (Postgres/MySQL). Default 10; applies on next connect. */
   connectionPoolSize: number;
@@ -453,6 +476,13 @@ export interface WorkflowDefinition {
   output?: WorkflowOutput;
   timeoutSecs?: number;
   errorHandling?: ErrorHandlingConfig;
+  schedule?: WorkflowSchedule;
+}
+
+export interface WorkflowSchedule {
+  enabled: boolean;
+  interval_secs?: number;
+  intervalSecs?: number;
 }
 
 export interface WorkflowListItem {
@@ -460,6 +490,7 @@ export interface WorkflowListItem {
   name: string;
   description: string;
   variables: WorkflowVariable[];
+  scheduled?: boolean;
 }
 
 export type StepStatus = 'success' | 'failed' | 'skipped' | 'timed_out';

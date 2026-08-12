@@ -8,6 +8,8 @@ mod commands;
 pub mod db;
 mod i18n_locale;
 pub mod mcp;
+mod sql_guard;
+mod schema_objects;
 mod plugin_init;
 mod redis_flush_gate;
 mod services;
@@ -508,6 +510,8 @@ pub(crate) fn finish_app_state(
         workflow_registry: Arc::new(workflow::WorkflowRegistry::new(data_dir.join("workflows"))),
         workflow_history: Arc::new(workflow::WorkflowHistoryManager::new(history_db)),
         mcp_client_manager: Arc::new(mcp::McpClientManager::new()),
+        session_transactions: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
+        workflow_scheduler: workflow::scheduler::WorkflowScheduler::new(),
     }
 }
 
@@ -612,6 +616,7 @@ pub fn run() {
             {
                 let state = handle.state::<AppState>();
                 state.monitor_engine.start(handle.clone());
+                state.workflow_scheduler.start(handle.clone());
                 tray::sync_tray(&handle);
             }
 
@@ -673,6 +678,13 @@ pub fn run() {
             commands::execute_driver_command,
             commands::get_explain,
             commands::cancel_query,
+            commands::begin_session_transaction,
+            commands::commit_session_transaction,
+            commands::rollback_session_transaction,
+            commands::session_transaction_status,
+            commands::get_database_objects,
+            commands::get_object_ddl,
+            commands::get_privileges,
             commands::get_query_history,
             commands::clear_query_history,
             commands::purge_history,
@@ -947,6 +959,7 @@ mod tests {
                 last_connected_at: None,
                 server_version: None,
                 options: None,
+                read_only: false,
             }
         }
 

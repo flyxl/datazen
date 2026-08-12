@@ -66,6 +66,19 @@ export function ConnectionAdvancedSettings({
             </div>
           ) : null}
 
+          <label className="flex items-start gap-2 text-sm text-fg-secondary">
+            <input
+              type="checkbox"
+              className="mt-0.5 accent-accent"
+              checked={form.readOnly}
+              onChange={(e) => form.setReadOnly(e.target.checked)}
+            />
+            <span>
+              <span className="block">{t('newConn.readOnly')}</span>
+              <span className="block text-[11px] text-fg-muted">{t('newConn.readOnlyHint')}</span>
+            </span>
+          </label>
+
           {groupOptions ? (
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div>

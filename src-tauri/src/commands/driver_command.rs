@@ -194,6 +194,26 @@ pub(crate) async fn execute_driver_command_with_mode(
         .map_err(CommandError::Validation)?;
 
     if is_sql_command {
+        if let Some(params) = request.input.get("params").cloned() {
+            if let Some(sql) = request.input.get("sql").and_then(|v| v.as_str()) {
+                let bound_sql = crate::sql_guard::apply_params(sql, &params)
+                    .map_err(CommandError::Validation)?;
+                request.input["sql"] = serde_json::Value::String(bound_sql);
+            }
+        }
+        if bound {
+            if let Some(sql) = request.input.get("sql").and_then(|v| v.as_str()) {
+                let read_only = state
+                    .connection_manager
+                    .get_connection_config(&handle.id)
+                    .await
+                    .map(|c| c.read_only)
+                    .unwrap_or(false);
+                let safe_mode = state.store.get_settings().await.safe_mode;
+                crate::sql_guard::check_sql(sql, read_only, safe_mode)
+                    .map_err(CommandError::Validation)?;
+            }
+        }
         if let Some(mode) = permission_mode {
             if let Some(sql) = request.input.get("sql").and_then(|v| v.as_str()) {
                 crate::mcp::permission::check_sql_allowed(sql, mode)
@@ -480,5 +500,86 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(result.data["command"], "ping");
+    }
+
+    #[tokio::test]
+    async fn safe_mode_blocks_update_without_where() {
+        let test = crate::testing::app_state::TestAppState::new().await;
+        let (_, conn_id) = test.save_and_connect("cmd-safe").await;
+        let err = execute_driver_command_impl(
+            &test.state,
+            ExecuteDriverCommandRequest {
+                connection_id: Some(conn_id),
+                driver_type: None,
+                command: "query".into(),
+                input: serde_json::json!({ "sql": "UPDATE t SET x = 1" }),
+            },
+        )
+        .await
+        .unwrap_err();
+        assert!(err.to_string().contains("WHERE"));
+    }
+
+    #[tokio::test]
+    async fn connection_read_only_blocks_write_sql() {
+        let test = crate::testing::app_state::TestAppState::new().await;
+        let mut config = crate::testing::app_state::sample_postgres_config("cmd-conn-ro");
+        config.read_only = true;
+        test.store.save_connection(config).await.unwrap();
+        let conn_id = test.connect_config("cmd-conn-ro").await;
+        let err = execute_driver_command_impl(
+            &test.state,
+            ExecuteDriverCommandRequest {
+                connection_id: Some(conn_id),
+                driver_type: None,
+                command: "query".into(),
+                input: serde_json::json!({ "sql": "UPDATE t SET x = 1 WHERE id = 1" }),
+            },
+        )
+        .await
+        .unwrap_err();
+        assert!(err.to_string().contains("read-only"));
+    }
+
+    #[tokio::test]
+    async fn bind_params_are_substituted_before_execution() {
+        let test = crate::testing::app_state::TestAppState::new().await;
+        let (_, conn_id) = test.save_and_connect("cmd-params").await;
+        let result = execute_driver_command_impl(
+            &test.state,
+            ExecuteDriverCommandRequest {
+                connection_id: Some(conn_id),
+                driver_type: None,
+                command: "query".into(),
+                input: serde_json::json!({
+                    "sql": "SELECT * FROM t WHERE id = :id",
+                    "params": { "id": 7 }
+                }),
+            },
+        )
+        .await
+        .unwrap();
+        assert!(result.data.is_object());
+    }
+
+    #[tokio::test]
+    async fn disabling_safe_mode_allows_update_without_where() {
+        let test = crate::testing::app_state::TestAppState::new().await;
+        let mut settings = test.store.get_settings().await;
+        settings.safe_mode = false;
+        test.store.save_settings(settings).await.unwrap();
+        let (_, conn_id) = test.save_and_connect("cmd-unsafe").await;
+        let result = execute_driver_command_impl(
+            &test.state,
+            ExecuteDriverCommandRequest {
+                connection_id: Some(conn_id),
+                driver_type: None,
+                command: "query".into(),
+                input: serde_json::json!({ "sql": "UPDATE t SET x = 1" }),
+            },
+        )
+        .await
+        .unwrap();
+        assert!(result.data.is_object());
     }
 }

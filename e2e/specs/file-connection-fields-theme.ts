@@ -61,6 +61,7 @@ async function setTheme(theme: 'light' | 'dark') {
       editorFontFamily: 'Menlo',
       confirmOnDelete: true,
       autoCommit: true,
+      safeMode: true,
       defaultPageSize: 50,
     },
   });

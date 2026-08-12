@@ -382,6 +382,7 @@ pub fn parse(xml: &str) -> Result<ParsedImport, CommandError> {
             last_connected_at: None,
             server_version: None,
             options: None,
+            read_only: false,
         });
     }
 

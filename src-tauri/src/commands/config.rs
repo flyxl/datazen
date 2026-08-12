@@ -632,6 +632,7 @@ mod tests {
                 last_connected_at: None,
                 server_version: None,
                 options: None,
+                read_only: false,
             }
         }
 
@@ -719,6 +720,7 @@ mod tests {
             last_connected_at: None,
             server_version: None,
             options: None,
+            read_only: false,
         };
         let json = build_encrypted_connections_export(&[conn], &["Prod".into()], "share-secret")
             .unwrap();
@@ -814,6 +816,7 @@ mod tests {
                 last_connected_at: None,
                 server_version: None,
                 options: None,
+                read_only: false,
             }
         }
 

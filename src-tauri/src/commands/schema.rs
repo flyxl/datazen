@@ -138,6 +138,7 @@ pub(crate) async fn get_table_data_impl(
     filters: Option<Vec<FilterCondition>>,
     sorts: Option<Vec<SortCondition>>,
     skip_count: Option<bool>,
+    filter_logic: Option<String>,
 ) -> Result<TableDataResult, CommandError> {
     let start = Instant::now();
     tracing::info!(%connection_id, %table, page, page_size, "get_table_data");
@@ -176,6 +177,7 @@ pub(crate) async fn get_table_data_impl(
             filters,
             order,
             effective_skip_count,
+            filter_logic.as_deref(),
         )
         .await
         .cmd_err("get_table_data")?;
@@ -222,6 +224,193 @@ pub(crate) async fn get_er_data_impl(
         "get_er_data OK"
     );
     Ok(schemas)
+}
+
+fn value_as_string(value: Option<&crate::db::Value>) -> Option<String> {
+    match value {
+        Some(crate::db::Value::String(s)) if !s.is_empty() => Some(s.clone()),
+        Some(crate::db::Value::Integer(n)) => Some(n.to_string()),
+        _ => None,
+    }
+}
+
+fn column_index(columns: &[crate::db::ColumnInfo], names: &[&str]) -> Option<usize> {
+    columns.iter().position(|c| {
+        names
+            .iter()
+            .any(|n| c.name.eq_ignore_ascii_case(n))
+    })
+}
+
+pub(crate) async fn get_database_objects_impl(
+    state: &AppState,
+    connection_id: String,
+    kind: String,
+) -> Result<Vec<crate::schema_objects::DatabaseObject>, CommandError> {
+    let parsed = crate::schema_objects::ObjectKind::parse(&kind)
+        .ok_or_else(|| CommandError::Validation(format!("Unknown object kind: {kind}")))?;
+    let (driver, handle) = state
+        .connection_manager
+        .get_connection(&connection_id)
+        .await
+        .cmd_err("get_database_objects")?;
+    let config = state
+        .connection_manager
+        .get_connection_config(&connection_id)
+        .await
+        .cmd_err("get_database_objects")?;
+    let Some(sql) = crate::schema_objects::list_objects_sql(&config.database_type, parsed) else {
+        return Ok(Vec::new());
+    };
+    let result = driver.query(&handle, &sql).await.cmd_err("get_database_objects")?;
+    let name_idx = column_index(&result.columns, &["name", "Name", "Trigger", "proname"])
+        .ok_or_else(|| CommandError::Internal("Object list query missing name column".into()))?;
+    let schema_idx = column_index(&result.columns, &["schema", "Db", "nspname"]);
+    let mut out = Vec::new();
+    for row in result.rows {
+        let Some(name) = value_as_string(row.get(name_idx).and_then(|v| v.as_ref())) else {
+            continue;
+        };
+        let schema = schema_idx.and_then(|i| value_as_string(row.get(i).and_then(|v| v.as_ref())));
+        out.push(crate::schema_objects::DatabaseObject {
+            kind: parsed.as_str().into(),
+            schema,
+            name,
+        });
+    }
+    Ok(out)
+}
+
+pub(crate) async fn get_object_ddl_impl(
+    state: &AppState,
+    connection_id: String,
+    kind: String,
+    name: String,
+    schema: Option<String>,
+) -> Result<String, CommandError> {
+    let parsed = crate::schema_objects::ObjectKind::parse(&kind)
+        .ok_or_else(|| CommandError::Validation(format!("Unknown object kind: {kind}")))?;
+    let (driver, handle) = state
+        .connection_manager
+        .get_connection(&connection_id)
+        .await
+        .cmd_err("get_object_ddl")?;
+    let config = state
+        .connection_manager
+        .get_connection_config(&connection_id)
+        .await
+        .cmd_err("get_object_ddl")?;
+    let Some(sql) = crate::schema_objects::object_ddl_sql(
+        &config.database_type,
+        parsed,
+        &name,
+        schema.as_deref(),
+    ) else {
+        return Err(CommandError::Validation(
+            "This database type does not expose object DDL".into(),
+        ));
+    };
+    let result = driver.query(&handle, &sql).await.cmd_err("get_object_ddl")?;
+    let ddl_idx = column_index(
+        &result.columns,
+        &[
+            "ddl",
+            "Create Function",
+            "Create Procedure",
+            "Create Trigger",
+            "SQL Original Statement",
+            "pg_get_functiondef",
+            "pg_get_triggerdef",
+        ],
+    )
+    .or_else(|| {
+        // SHOW CREATE * typically has DDL in the second column.
+        if result.columns.len() >= 2 {
+            Some(1)
+        } else {
+            result.columns.first().map(|_| 0)
+        }
+    });
+    let Some(idx) = ddl_idx else {
+        return Ok(String::new());
+    };
+    let ddl = result
+        .rows
+        .first()
+        .and_then(|row| value_as_string(row.get(idx).and_then(|v| v.as_ref())))
+        .unwrap_or_default();
+    Ok(ddl)
+}
+
+pub(crate) async fn get_privileges_impl(
+    state: &AppState,
+    connection_id: String,
+) -> Result<Vec<crate::schema_objects::PrivilegeGrant>, CommandError> {
+    let (driver, handle) = state
+        .connection_manager
+        .get_connection(&connection_id)
+        .await
+        .cmd_err("get_privileges")?;
+    let config = state
+        .connection_manager
+        .get_connection_config(&connection_id)
+        .await
+        .cmd_err("get_privileges")?;
+    let Some(sql) = crate::schema_objects::list_privileges_sql(&config.database_type) else {
+        return Ok(Vec::new());
+    };
+    let result = driver.query(&handle, &sql).await.cmd_err("get_privileges")?;
+    let grantee_idx = column_index(&result.columns, &["grantee"]);
+    let schema_idx = column_index(&result.columns, &["schema", "table_schema"]);
+    let name_idx = column_index(&result.columns, &["name", "table_name"]);
+    let priv_idx = column_index(&result.columns, &["privilege", "privilege_type"]);
+    let mut out = Vec::new();
+    for row in result.rows {
+        let Some(grantee) = grantee_idx.and_then(|i| value_as_string(row.get(i).and_then(|v| v.as_ref()))) else {
+            continue;
+        };
+        let object_name = name_idx
+            .and_then(|i| value_as_string(row.get(i).and_then(|v| v.as_ref())))
+            .unwrap_or_default();
+        let privilege = priv_idx
+            .and_then(|i| value_as_string(row.get(i).and_then(|v| v.as_ref())))
+            .unwrap_or_default();
+        out.push(crate::schema_objects::PrivilegeGrant {
+            grantee,
+            object_schema: schema_idx.and_then(|i| value_as_string(row.get(i).and_then(|v| v.as_ref()))),
+            object_name,
+            privilege,
+        });
+    }
+    Ok(out)
+}
+
+#[tauri::command]
+pub async fn get_database_objects(
+    state: State<'_, AppState>,
+    connection_id: String,
+    kind: String,
+) -> Result<Vec<crate::schema_objects::DatabaseObject>, CommandError> {
+    get_database_objects_impl(&state, connection_id, kind).await
+}
+
+#[tauri::command]
+pub async fn get_object_ddl(
+    state: State<'_, AppState>,
+    connection_id: String,
+    kind: String,
+    name: String,
+    schema: Option<String>,
+) -> Result<String, CommandError> {
+    get_object_ddl_impl(&state, connection_id, kind, name, schema).await
+}
+
+#[tauri::command]
+pub async fn get_privileges(
+    state: State<'_, AppState>,
+    connection_id: String,
+) -> Result<Vec<crate::schema_objects::PrivilegeGrant>, CommandError> {
+    get_privileges_impl(&state, connection_id).await
 }
 
 #[tauri::command]
@@ -278,6 +467,7 @@ pub async fn get_table_data(
     filters: Option<Vec<FilterCondition>>,
     sorts: Option<Vec<SortCondition>>,
     skip_count: Option<bool>,
+    filter_logic: Option<String>,
 ) -> Result<TableDataResult, CommandError> {
     get_table_data_impl(
         &state,
@@ -288,6 +478,7 @@ pub async fn get_table_data(
         filters,
         sorts,
         skip_count,
+        filter_logic,
     )
     .await
 }
@@ -352,6 +543,7 @@ mod tests {
                 column: "id".into(),
                 descending: false,
             }]),
+            None,
             None,
         )
         .await
@@ -419,6 +611,175 @@ mod tests {
             None,
             None,
             Some(true),
+            None,
+        )
+        .await
+        .unwrap();
+        assert_eq!(data.rows.len(), 1);
+    }
+
+    fn col(name: &str) -> crate::db::ColumnSchema {
+        crate::db::ColumnSchema {
+            name: name.into(),
+            data_type: "text".into(),
+            nullable: true,
+            default_value: None,
+            comment: None,
+            is_primary_key: false,
+            is_auto_increment: false,
+        }
+    }
+
+    #[tokio::test]
+    async fn unknown_object_kind_is_validation_error() {
+        let test = TestAppState::new().await;
+        let (_, conn_id) = test.save_and_connect("obj-bad-kind").await;
+        let err = get_database_objects_impl(&test.state, conn_id, "view".into())
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("Unknown object kind"));
+    }
+
+    #[tokio::test]
+    async fn lists_database_objects_from_name_column() {
+        let opts = MockDriverOptions {
+            columns: vec![col("schema"), col("name")],
+            query_rows: vec![
+                vec![
+                    Some(Value::String("public".into())),
+                    Some(Value::String("fn_ok".into())),
+                ],
+                vec![
+                    Some(Value::String("public".into())),
+                    Some(Value::String("".into())),
+                ],
+            ],
+            ..Default::default()
+        };
+        let test = TestAppState::with_options(opts).await;
+        let (_, conn_id) = test.save_and_connect("obj-list").await;
+        let rows = get_database_objects_impl(&test.state, conn_id, "function".into())
+            .await
+            .unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].name, "fn_ok");
+        assert_eq!(rows[0].schema.as_deref(), Some("public"));
+        assert_eq!(rows[0].kind, "function");
+    }
+
+    #[tokio::test]
+    async fn object_ddl_reads_named_or_second_column() {
+        let opts = MockDriverOptions {
+            columns: vec![col("Function"), col("Create Function")],
+            query_rows: vec![vec![
+                Some(Value::String("fn_ok".into())),
+                Some(Value::String("CREATE FUNCTION fn_ok() ...".into())),
+            ]],
+            ..Default::default()
+        };
+        let test = TestAppState::with_options(opts).await;
+        let (_, conn_id) = test.save_and_connect("obj-ddl").await;
+        let ddl = get_object_ddl_impl(
+            &test.state,
+            conn_id,
+            "function".into(),
+            "fn_ok".into(),
+            Some("public".into()),
+        )
+        .await
+        .unwrap();
+        assert!(ddl.contains("CREATE FUNCTION"));
+    }
+
+    #[tokio::test]
+    async fn privileges_map_grantee_and_skip_incomplete_rows() {
+        let opts = MockDriverOptions {
+            columns: vec![col("grantee"), col("schema"), col("name"), col("privilege")],
+            query_rows: vec![
+                vec![
+                    Some(Value::String("alice".into())),
+                    Some(Value::String("public".into())),
+                    Some(Value::String("users".into())),
+                    Some(Value::String("SELECT".into())),
+                ],
+                vec![None, None, None, None],
+            ],
+            ..Default::default()
+        };
+        let test = TestAppState::with_options(opts).await;
+        let (_, conn_id) = test.save_and_connect("priv-list").await;
+        let grants = get_privileges_impl(&test.state, conn_id).await.unwrap();
+        assert_eq!(grants.len(), 1);
+        assert_eq!(grants[0].grantee, "alice");
+        assert_eq!(grants[0].object_name, "users");
+        assert_eq!(grants[0].privilege, "SELECT");
+    }
+
+    #[tokio::test]
+    async fn sqlite_function_list_is_empty() {
+        let sqlite = crate::testing::mock_driver::MockDriver::new(
+            "sqlite",
+            MockDriverOptions::default(),
+        );
+        let test = TestAppState::new().await;
+        test.registry
+            .register_test_driver("sqlite", sqlite)
+            .await;
+        let mut config = crate::testing::app_state::sample_postgres_config("sqlite-obj");
+        config.database_type = "sqlite".into();
+        test.store.save_connection(config).await.unwrap();
+        let conn_id = test.connect_config("sqlite-obj").await;
+        let rows = get_database_objects_impl(&test.state, conn_id.clone(), "function".into())
+            .await
+            .unwrap();
+        assert!(rows.is_empty());
+        let grants = get_privileges_impl(&test.state, conn_id).await.unwrap();
+        assert!(grants.is_empty());
+    }
+
+    #[tokio::test]
+    async fn get_table_data_joins_filters_with_or() {
+        use crate::db::{TableInfo, TableType};
+        use crate::services::query_executor::FilterOperator;
+        use crate::services::FilterCondition;
+
+        let opts = MockDriverOptions {
+            databases: vec!["app".into()],
+            tables: vec![TableInfo {
+                name: "items".into(),
+                schema: None,
+                table_type: TableType::Table,
+                row_count: None,
+            }],
+            columns: vec![col("id"), col("status")],
+            primary_keys: vec!["id".into()],
+            count_total: 1,
+            query_rows: vec![vec![Some(Value::Integer(1)), Some(Value::String("a".into()))]],
+            ..Default::default()
+        };
+        let test = TestAppState::with_options(opts).await;
+        let (_, conn_id) = test.save_and_connect("filter-or").await;
+        let data = get_table_data_impl(
+            &test.state,
+            conn_id,
+            "items".into(),
+            0,
+            50,
+            Some(vec![
+                FilterCondition {
+                    column: "id".into(),
+                    operator: FilterOperator::Eq,
+                    value: Value::Integer(1),
+                },
+                FilterCondition {
+                    column: "status".into(),
+                    operator: FilterOperator::Eq,
+                    value: Value::String("a".into()),
+                },
+            ]),
+            None,
+            Some(true),
+            Some("or".into()),
         )
         .await
         .unwrap();
