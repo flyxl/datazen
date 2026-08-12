@@ -408,6 +408,9 @@ const en: Record<TranslationKey, string> = {
   'connWin.editTableStructure': 'Edit Table Structure…',
   'connWin.exportData': 'Export Data…',
   'connWin.importData': 'Import Data…',
+  'connWin.closeTab': 'Close',
+  'connWin.closeOtherTabs': 'Close Others',
+  'connWin.closeAllTabs': 'Close All',
 
   // ── Table View ──
   'tableView.loadingData': 'Loading table data…',
