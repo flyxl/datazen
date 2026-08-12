@@ -146,6 +146,7 @@ export function TableView({ connectionId, database, tableName }: TableViewProps)
           title={t('filter.filter')}
           aria-label={t('filter.filter')}
           aria-pressed={filterPanelOpen}
+          data-testid="table-filter-toggle"
         >
           <Filter className="h-3.5 w-3.5" />
         </button>
