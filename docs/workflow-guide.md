@@ -180,10 +180,11 @@ variables:
 | 名称 | 格式示例 | 说明 |
 |------|----------|------|
 | `current_date` | `2026-08-07` | 本地日期 |
+| `current_time` | `14:30:00` | 本地时间（时:分:秒） |
 | `current_month` | `2026-08` | 本地年月 |
 | `current_year` | `2026` | 本地年 |
 
-用法：`WHERE d = '{{current_date}}'`。
+用法：`WHERE d = '{{current_date}}'`，或 `{{current_time}}`。
 
 ---
 

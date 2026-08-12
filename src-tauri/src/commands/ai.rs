@@ -1524,12 +1524,15 @@ pub(crate) async fn workflow_execute_impl(
     .await
     .cmd_err("workflow_execute")?;
 
-    if let Err(e) = state
-        .workflow_history
-        .record(&workflow.id, &workflow.name, &variables, &result)
-        .await
-    {
-        tracing::warn!("Failed to record workflow history: {e}");
+    // Dashboard-owned hidden workflows must not pollute the user-facing history list.
+    if workflow.visibility != crate::workflow::WorkflowVisibility::DashboardHidden {
+        if let Err(e) = state
+            .workflow_history
+            .record(&workflow.id, &workflow.name, &variables, &result)
+            .await
+        {
+            tracing::warn!("Failed to record workflow history: {e}");
+        }
     }
 
     Ok(result)
