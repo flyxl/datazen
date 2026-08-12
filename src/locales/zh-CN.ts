@@ -130,13 +130,16 @@ const zhCN = {
   'action.importConfig': '导入应用数据',
 
   // ── Config Import / Export ──
-  'appData.exportSuccess': '应用数据已导出。ZIP 不包含加密密钥——若需在其他机器解密已保存的密码，请单独备份密钥。',
+  'appData.exportSuccess':
+    '应用数据已导出。ZIP 不包含加密密钥——若需在其他机器解密已保存的密码，请单独备份密钥。',
   'appData.exportFailed': '导出失败',
   'appData.importConfirmTitle': '导入应用数据',
-  'appData.importConfirmMessage': '此操作将覆盖所有应用数据（现有日志文件会保留）。备份不含加密密钥——仅在本机（或拥有相同密钥的机器）上恢复时，已保存的密码仍可用。是否继续？',
+  'appData.importConfirmMessage':
+    '此操作将覆盖所有应用数据（现有日志文件会保留）。备份不含加密密钥——仅在本机（或拥有相同密钥的机器）上恢复时，已保存的密码仍可用。是否继续？',
   'appData.importFailed': '导入失败',
   'appData.backupKeyTitle': '备份加密密钥',
-  'appData.backupKeyMessage': '是否现在另存加密密钥？请妥善保管；在其他机器恢复应用数据后，需要此密钥才能解密已保存的密码。',
+  'appData.backupKeyMessage':
+    '是否现在另存加密密钥？请妥善保管；在其他机器恢复应用数据后，需要此密钥才能解密已保存的密码。',
   'appData.backupKeySaved': '加密密钥已保存。',
   'appData.backupKeyFailed': '加密密钥保存失败。',
 
@@ -146,8 +149,10 @@ const zhCN = {
   'connShare.importFromAppTitle': '从 {app} 导入',
   'connShare.dataPath': '数据目录或安装路径',
   'connShare.dataPathPlaceholder': '可填写安装路径、数据目录或导出文件',
-  'connShare.dataPathFoundHint': '已定位到默认数据文件。若软件不在默认位置，请改为填写安装路径、数据目录或导出文件。',
-  'connShare.dataPathMissingHint': '未找到默认数据目录。请填写该软件的安装路径、数据目录，或选择导出文件。',
+  'connShare.dataPathFoundHint':
+    '已定位到默认数据文件。若软件不在默认位置，请改为填写安装路径、数据目录或导出文件。',
+  'connShare.dataPathMissingHint':
+    '未找到默认数据目录。请填写该软件的安装路径、数据目录，或选择导出文件。',
   'connShare.browseFolder': '浏览目录…',
   'connShare.browseFile': '浏览文件…',
   'connShare.pathRequired': '请填写数据目录、安装路径或导出文件',
@@ -162,7 +167,8 @@ const zhCN = {
   'connShare.exportAction': '导出…',
   'connShare.importAction': '导入…',
   'connShare.exportSuccess': '已导出 {count} 个连接',
-  'connShare.importSuccess': '导入 {imported} 个新连接，更新 {overwritten} 个，新增 {groupsAdded} 个分组',
+  'connShare.importSuccess':
+    '导入 {imported} 个新连接，更新 {overwritten} 个，新增 {groupsAdded} 个分组',
   'connShare.importSuccessWithSkipped':
     '导入 {imported} 个新连接，更新 {overwritten} 个，新增 {groupsAdded} 个分组，跳过 {skipped} 个不支持的类型',
   'connShare.exportFailed': '导出失败',
@@ -282,7 +288,8 @@ const zhCN = {
   'settings.theme.import': '导入主题包…',
   'settings.theme.remove': '移除主题包',
   'settings.updater.title': '更新',
-  'settings.updater.description': '从 GitHub Releases 检查并安装 Basic 版本更新（需已签名的发布包）。',
+  'settings.updater.description':
+    '从 GitHub Releases 检查并安装 Basic 版本更新（需已签名的发布包）。',
   'settings.updater.check': '检查更新',
   'settings.updater.downloadInstall': '下载并安装',
   'settings.updater.checkOnStartup': '启动时检查更新',
@@ -323,7 +330,8 @@ const zhCN = {
   'settings.dataCleanup.clearAll': '清空所选范围',
   'settings.dataCleanup.run': '立即清理',
   'settings.dataCleanup.confirmTitle': '确认清理历史？',
-  'settings.dataCleanup.confirmMessage': '将永久删除所选范围内超过 {days} 天的历史记录，此操作不可撤销。',
+  'settings.dataCleanup.confirmMessage':
+    '将永久删除所选范围内超过 {days} 天的历史记录，此操作不可撤销。',
   'settings.dataCleanup.confirmClearAll': '将永久删除所选范围内的全部历史记录，此操作不可撤销。',
   'settings.dataCleanup.success': '已删除 {count} 条记录',
   'settings.dataCleanup.error': '清理历史失败',
@@ -338,7 +346,8 @@ const zhCN = {
   'settings.confirmDelete': '删除确认',
   'settings.autoCommit': '自动提交',
   'settings.saved': '已保存',
-  'settings.limitSelectHint': '自动为无 LIMIT 的 SELECT 添加行数限制。与大数据量流式传输相互独立：关闭此开关仍会流式返回全部结果。',
+  'settings.limitSelectHint':
+    '自动为无 LIMIT 的 SELECT 添加行数限制。与大数据量流式传输相互独立：关闭此开关仍会流式返回全部结果。',
   'settings.confirmDeleteHint': '删除行时弹出确认对话框',
   'settings.autoCommitHint': '编辑数据后自动提交更改',
   'settings.safeMode': 'Safe Mode',
@@ -355,7 +364,8 @@ const zhCN = {
   'settings.monitor.runRetentionCount': '运行历史条数（每组件）',
   'settings.monitor.runRetentionDays': '运行历史天数（每组件）',
   'settings.monitor.exportIncludeDashboardRuns': '应用数据导出包含运行历史',
-  'settings.monitor.exportIncludeDashboardRunsHint': '关闭时，应用数据 ZIP 导出将跳过 dashboard-runs/。',
+  'settings.monitor.exportIncludeDashboardRunsHint':
+    '关闭时，应用数据 ZIP 导出将跳过 dashboard-runs/。',
   'settings.monitor.email': '邮件告警（SMTP）',
   'settings.monitor.comingSoon': '二期',
   'settings.monitor.emailHint': 'SMTP 邮件告警将在后续版本提供。',
@@ -453,6 +463,16 @@ const zhCN = {
   'query.commitTx': '提交',
   'query.rollbackTx': '回滚',
   'query.inTransaction': '事务中',
+  'query.txUnclosedTitle': '检测到未结束的事务',
+  'query.txUnclosedBody':
+    '脚本中包含 BEGIN / START TRANSACTION，但没有配对的 COMMIT 或 ROLLBACK。执行后连接将保持「事务中」状态；确认后继续执行？',
+  'query.txUnclosedConfirm': '继续执行',
+  'query.txUnclosedCancel': '取消',
+  'query.txAbortedTitle': '事务已中止',
+  'query.txAbortedBody':
+    '当前事务因语句失败已中止。后续语句在回滚前都无法执行。请选择全部回滚，或跳过并稍后自行处理。',
+  'query.txAbortedRollback': '全部回滚',
+  'query.txAbortedSkip': '跳过',
   'objects.title': '例程',
   'objects.function': '函数',
   'objects.procedure': '存储过程',
@@ -760,7 +780,8 @@ const zhCN = {
 
   // ── Prompt Management ──
   'settings.prompts': 'Prompt 管理',
-  'settings.prompts.description': '查看和自定义 AI 功能使用的系统 Prompt。每个驱动和场景都可以单独配置。',
+  'settings.prompts.description':
+    '查看和自定义 AI 功能使用的系统 Prompt。每个驱动和场景都可以单独配置。',
   'settings.prompts.driver': '数据库驱动',
   'settings.prompts.allDrivers': '通用（所有驱动）',
   'settings.prompts.source.default': '默认',
@@ -856,9 +877,11 @@ const zhCN = {
 
   // ── MCP Server ──
   'mcp.title': 'MCP Server',
-  'mcp.description': '将 DataZen 作为 MCP Server 运行，让外部 AI 工具（如 Claude Desktop、Cursor）可以访问你的数据库',
+  'mcp.description':
+    '将 DataZen 作为 MCP Server 运行，让外部 AI 工具（如 Claude Desktop、Cursor）可以访问你的数据库',
   'mcp.enabled': '启用 MCP Server',
-  'mcp.enabledHint': '默认关闭。给 Claude Desktop / Cursor 使用时，推荐用命令行 datazen --mcp 单独启动',
+  'mcp.enabledHint':
+    '默认关闭。给 Claude Desktop / Cursor 使用时，推荐用命令行 datazen --mcp 单独启动',
   'mcp.status': '状态',
   'mcp.running': '运行中',
   'mcp.stopped': '已停止',
@@ -879,9 +902,11 @@ const zhCN = {
   'mcp.permission.safeWriteHint': '允许 DML；拒绝 DROP、TRUNCATE、ALTER、CREATE USER 等高危语句',
   'mcp.permission.highRiskWrite': '高危写入',
   'mcp.permission.highRiskWriteHint': '不限制 SQL；仅受工具禁用列表约束',
-  'mcp.permission.restartHint': '修改权限模式后需重启 MCP Server（或重新运行 datazen --mcp）才能生效',
+  'mcp.permission.restartHint':
+    '修改权限模式后需重启 MCP Server（或重新运行 datazen --mcp）才能生效',
   'mcp.allowlist.title': '连接白名单',
-  'mcp.allowlist.description': '仅勾选的连接会对 MCP 客户端可见。全部不勾选表示暴露所有已保存连接。',
+  'mcp.allowlist.description':
+    '仅勾选的连接会对 MCP 客户端可见。全部不勾选表示暴露所有已保存连接。',
   'mcp.allowlist.empty': '暂无已保存的连接。',
   'mcp.allowlist.restartHint': '修改白名单后需重启 MCP Server（或重新运行 datazen --mcp）才能生效',
   'mcp.config.cursor': 'Cursor',

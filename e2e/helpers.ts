@@ -9,10 +9,10 @@ import { browser, $, $$ } from '@wdio/globals';
 // ── window management ───────────────────────────────────────────────
 
 export async function switchToNewWindow(originalHandle: string): Promise<string> {
-  await browser.waitUntil(
-    async () => (await browser.getWindowHandles()).length > 1,
-    { timeout: 15000, timeoutMsg: '等待新窗口打开超时' },
-  );
+  await browser.waitUntil(async () => (await browser.getWindowHandles()).length > 1, {
+    timeout: 15000,
+    timeoutMsg: '等待新窗口打开超时',
+  });
   const handles = await browser.getWindowHandles();
   const newHandle = handles.find((h) => h !== originalHandle)!;
   await browser.switchToWindow(newHandle);
@@ -145,17 +145,17 @@ export async function openConnectionWindow() {
   const mainWindow = await browser.getWindowHandle();
   // Expand groups and wait for the main window to render connection items
   await expandAllGroups();
-  await browser.waitUntil(
-    async () => (await $$('[data-conn-item]')).length > 0,
-    { timeout: 15000, timeoutMsg: '等待连接项加载超时' },
-  );
+  await browser.waitUntil(async () => (await $$('[data-conn-item]')).length > 0, {
+    timeout: 15000,
+    timeoutMsg: '等待连接项加载超时',
+  });
   await browser.pause(1500);
 
   await clickCardConnectButton();
-  await browser.waitUntil(
-    async () => (await browser.getWindowHandles()).length > 1,
-    { timeout: 30000, timeoutMsg: '等待连接窗口打开超时' },
-  );
+  await browser.waitUntil(async () => (await browser.getWindowHandles()).length > 1, {
+    timeout: 30000,
+    timeoutMsg: '等待连接窗口打开超时',
+  });
   const handles = await browser.getWindowHandles();
   const connWindow = handles.find((h) => h !== mainWindow)!;
   await browser.switchToWindow(connWindow);
@@ -172,15 +172,17 @@ export async function openConnectionWindow() {
  * Returns { mainWindow, connWindow }.
  * Assumes we start on the main window.
  */
-export async function createAndConnectMySQL(opts: {
-  name?: string;
-  host?: string;
-  port?: string;
-  user?: string;
-  password?: string;
-  /** Pass empty string to leave the database field blank (multi-db session). */
-  database?: string;
-} = {}) {
+export async function createAndConnectMySQL(
+  opts: {
+    name?: string;
+    host?: string;
+    port?: string;
+    user?: string;
+    password?: string;
+    /** Pass empty string to leave the database field blank (multi-db session). */
+    database?: string;
+  } = {},
+) {
   const {
     name = 'E2E-MySQL',
     host = process.env.E2E_MYSQL_HOST || '127.0.0.1',
@@ -199,10 +201,10 @@ export async function createAndConnectMySQL(opts: {
   const existingItem = await findCardByName(name);
   if (existingItem) {
     await dblclickConnByExactName(name);
-    await browser.waitUntil(
-      async () => (await browser.getWindowHandles()).length > 1,
-      { timeout: 30000, timeoutMsg: '等待 MySQL 连接窗口打开超时' },
-    );
+    await browser.waitUntil(async () => (await browser.getWindowHandles()).length > 1, {
+      timeout: 30000,
+      timeoutMsg: '等待 MySQL 连接窗口打开超时',
+    });
     const handles = await browser.getWindowHandles();
     const connWindow = handles.find((h) => h !== mainWindow)!;
     await browser.switchToWindow(connWindow);
@@ -260,10 +262,10 @@ export async function createAndConnectMySQL(opts: {
   // Save
   const saveBtn = await $('button*=保存');
   await saveBtn.click();
-  await browser.waitUntil(
-    async () => (await browser.getWindowHandles()).length === 1,
-    { timeout: 10000, timeoutMsg: '保存连接后窗口未关闭' },
-  );
+  await browser.waitUntil(async () => (await browser.getWindowHandles()).length === 1, {
+    timeout: 10000,
+    timeoutMsg: '保存连接后窗口未关闭',
+  });
   await browser.switchToWindow(mainWindow);
   await browser.pause(1000);
 
@@ -272,10 +274,10 @@ export async function createAndConnectMySQL(opts: {
   if (!card) throw new Error(`未找到 MySQL 连接 "${name}"`);
   await dblclickConnByExactName(name);
 
-  await browser.waitUntil(
-    async () => (await browser.getWindowHandles()).length > 1,
-    { timeout: 30000, timeoutMsg: '等待 MySQL 连接窗口打开超时' },
-  );
+  await browser.waitUntil(async () => (await browser.getWindowHandles()).length > 1, {
+    timeout: 30000,
+    timeoutMsg: '等待 MySQL 连接窗口打开超时',
+  });
   const handles = await browser.getWindowHandles();
   const connWindow = handles.find((h) => h !== mainWindow)!;
   await browser.switchToWindow(connWindow);
@@ -290,15 +292,17 @@ export async function createAndConnectMySQL(opts: {
  * Returns { mainWindow, connWindow }.
  * Assumes we start on the main window.
  */
-export async function createAndConnectPostgreSQL(opts: {
-  name?: string;
-  host?: string;
-  port?: string;
-  user?: string;
-  password?: string;
-  /** Pass empty string to leave the database field blank (multi-db session). */
-  database?: string;
-} = {}) {
+export async function createAndConnectPostgreSQL(
+  opts: {
+    name?: string;
+    host?: string;
+    port?: string;
+    user?: string;
+    password?: string;
+    /** Pass empty string to leave the database field blank (multi-db session). */
+    database?: string;
+  } = {},
+) {
   const {
     name = 'E2E-PostgreSQL',
     host = process.env.E2E_PG_HOST || '127.0.0.1',
@@ -315,10 +319,10 @@ export async function createAndConnectPostgreSQL(opts: {
   const existingItem = await findCardByName(name);
   if (existingItem) {
     await dblclickConnByExactName(name);
-    await browser.waitUntil(
-      async () => (await browser.getWindowHandles()).length > 1,
-      { timeout: 30000, timeoutMsg: '等待 PostgreSQL 连接窗口打开超时' },
-    );
+    await browser.waitUntil(async () => (await browser.getWindowHandles()).length > 1, {
+      timeout: 30000,
+      timeoutMsg: '等待 PostgreSQL 连接窗口打开超时',
+    });
     const handles = await browser.getWindowHandles();
     const connWindow = handles.find((h) => h !== mainWindow)!;
     await browser.switchToWindow(connWindow);
@@ -369,10 +373,10 @@ export async function createAndConnectPostgreSQL(opts: {
 
   const saveBtn = await $('button*=保存');
   await saveBtn.click();
-  await browser.waitUntil(
-    async () => (await browser.getWindowHandles()).length === 1,
-    { timeout: 10000, timeoutMsg: '保存连接后窗口未关闭' },
-  );
+  await browser.waitUntil(async () => (await browser.getWindowHandles()).length === 1, {
+    timeout: 10000,
+    timeoutMsg: '保存连接后窗口未关闭',
+  });
   await browser.switchToWindow(mainWindow);
   await browser.pause(1000);
 
@@ -380,10 +384,10 @@ export async function createAndConnectPostgreSQL(opts: {
   if (!card) throw new Error(`未找到 PostgreSQL 连接 "${name}"`);
   await dblclickConnByExactName(name);
 
-  await browser.waitUntil(
-    async () => (await browser.getWindowHandles()).length > 1,
-    { timeout: 30000, timeoutMsg: '等待 PostgreSQL 连接窗口打开超时' },
-  );
+  await browser.waitUntil(async () => (await browser.getWindowHandles()).length > 1, {
+    timeout: 30000,
+    timeoutMsg: '等待 PostgreSQL 连接窗口打开超时',
+  });
   const handles = await browser.getWindowHandles();
   const connWindow = handles.find((h) => h !== mainWindow)!;
   await browser.switchToWindow(connWindow);
@@ -404,10 +408,10 @@ export async function connectToCard(cardName: string) {
 
   await dblclickConnByExactName(cardName);
 
-  await browser.waitUntil(
-    async () => (await browser.getWindowHandles()).length > 1,
-    { timeout: 30000, timeoutMsg: `等待 "${cardName}" 连接窗口打开超时` },
-  );
+  await browser.waitUntil(async () => (await browser.getWindowHandles()).length > 1, {
+    timeout: 30000,
+    timeoutMsg: `等待 "${cardName}" 连接窗口打开超时`,
+  });
   const handles = await browser.getWindowHandles();
   const connWindow = handles.find((h) => h !== mainWindow)!;
   await browser.switchToWindow(connWindow);
@@ -448,11 +452,40 @@ export async function executeSQL(sql: string) {
     async () => {
       const elapsed = Date.now() - started;
       const body = await $('body').getText();
-      if (elapsed > 200 && /Query failed|No database selected|Access denied|error returned from database/i.test(body)) {
+      // Confirm unclosed-BEGIN dialog if shown (product guard).
+      if (body.includes('检测到未结束的事务') || body.includes('Unclosed transaction detected')) {
+        const cont = await $('button*=继续执行');
+        const contEn = await $('button*=Continue');
+        if (await cont.isExisting()) await cont.click();
+        else if (await contEn.isExisting()) await contEn.click();
+        await browser.pause(200);
+        return false;
+      }
+      if (
+        /current transaction is aborted/i.test(body) ||
+        body.includes('事务已中止') ||
+        body.includes('Transaction aborted')
+      ) {
+        const rb = await $('button*=全部回滚');
+        const rbEn = await $('button*=Roll back all');
+        const rbLegacy = await $('button*=回滚');
+        if ((await rb.isExisting()) && (await rb.isDisplayed().catch(() => false)))
+          await rb.click();
+        else if ((await rbEn.isExisting()) && (await rbEn.isDisplayed().catch(() => false)))
+          await rbEn.click();
+        else if ((await rbLegacy.isExisting()) && !(await rbLegacy.getAttribute('disabled')))
+          await rbLegacy.click();
+        await browser.pause(300);
+        return true;
+      }
+      if (
+        elapsed > 200 &&
+        /Query failed|No database selected|Access denied|error returned from database/i.test(body)
+      ) {
         return true;
       }
       const stop = await $('button*=停止');
-      if (await stop.isExisting() && (await stop.isDisplayed().catch(() => false))) {
+      if ((await stop.isExisting()) && (await stop.isDisplayed().catch(() => false))) {
         return false;
       }
       const curTotal = await browser.execute(() => {
@@ -503,10 +536,10 @@ export function isSchemaSectionLabel(text: string): boolean {
 
 /** Wait until the connection window sidebar shows table/key sections. */
 export async function waitForSchemaTreeLoaded(timeout = 20000) {
-  await browser.waitUntil(
-    async () => asideHasSchemaSections(await $('aside').getText()),
-    { timeout, timeoutMsg: '等待 schema 树加载超时' },
-  );
+  await browser.waitUntil(async () => asideHasSchemaSections(await $('aside').getText()), {
+    timeout,
+    timeoutMsg: '等待 schema 树加载超时',
+  });
 }
 
 /** Click a table by exact name in the sidebar. */
