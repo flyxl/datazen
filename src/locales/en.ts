@@ -522,6 +522,11 @@ const en: Record<TranslationKey, string> = {
   'dataTable.selected': 'Selected',
   'dataTable.sort': 'Sort',
   'dataTable.selectRow': 'Select Row',
+  'dataTable.copyRow': 'Copy Row',
+  'dataTable.copyAsJson': 'Copy as JSON',
+  'dataTable.copyAsSqlInsert': 'Copy as SQL INSERT',
+  'dataTable.copyColumnName': 'Copy Column Name',
+  'dataTable.filterByValue': 'Filter by This Value',
 
   // ── Detail Panel ──
   'detail.title': 'Details',
