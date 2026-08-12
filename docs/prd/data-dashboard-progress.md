@@ -26,7 +26,7 @@
 | F2 | Workflow 入库替换 YAML registry；visibility；list 过滤 hidden | `done` | 4/4 + IPC | [Verify](310a57bd) PASS | `c469639` |
 | F3 | 内置变量补齐 `current_time`；文档化；隐藏 WF 不写 workflow_history | `done` | 4/4 | [Verify](6ae9b084) PASS | `24455f6` |
 | F4 | Workflow 编辑页：可视化 + YAML 双模 | `pending` | — | — | — |
-| F5 | 入口更名/直达窗口；移除设置→监控 | `done` | 70 | [Verify](f89eb288) PASS | pending |
+| F5 | 入口更名/直达窗口；移除设置→监控 | `done` | 70 | [Verify](f89eb288) PASS | `167887d` |
 | F6 | 看板窗内面板 CRUD（SQLite） | `pending` | — | — | — |
 | F7 | Widget 仅 workflowId；执行改 WorkflowExecutor；Monitor 调度 | `pending` | — | — | — |
 | F8 | 图⇄表切换；编辑抽屉（刷新/告警/**SQL·WF 编辑**） | `pending` | — | — | — |
