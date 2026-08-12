@@ -5,6 +5,7 @@ mod commands;
 mod dashboard;
 pub mod db;
 mod i18n_locale;
+mod log_redact;
 pub mod mcp;
 mod monitor;
 mod plugin_init;
