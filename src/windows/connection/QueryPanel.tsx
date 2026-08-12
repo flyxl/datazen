@@ -152,6 +152,7 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
   const loadColumnMap = useSchemaStore((s) => s.loadColumnMap);
   const loadTables = useSchemaStore((s) => s.loadTables);
   const ensureNamespacePath = useSchemaStore((s) => s.ensureNamespacePath);
+  const namespaceLoading = useSchemaStore((s) => s.ensuringCount > 0);
 
   const dbMeta = databaseType ? DB_REGISTRY[databaseType as keyof typeof DB_REGISTRY] : undefined;
   const supportsExplain = dbMeta?.supportsExplain === true;
@@ -177,6 +178,10 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
     },
     [],
   );
+
+  useEffect(() => {
+    void ensureNamespacePath([]);
+  }, [connectionId, currentDatabase, ensureNamespacePath]);
 
   useEffect(() => {
     setConnectionId(connectionId);
@@ -585,6 +590,7 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
               placeholder={t('query.placeholder')}
               schema={editorSchema}
               databaseType={databaseType}
+              namespaceLoading={namespaceLoading}
             />
           </div>
           <div

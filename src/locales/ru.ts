@@ -373,6 +373,7 @@ const translations = {
   'query.totalTime': 'Общее время',
   'query.history': 'История',
   'query.placeholder': 'Введите SQL-запрос…',
+  'query.namespaceLoading': 'Загрузка объектов…',
   'query.executing': 'Выполнение…',
   'query.streamingRows': 'Загружено {n} строк…',
   'query.result': 'Результат',

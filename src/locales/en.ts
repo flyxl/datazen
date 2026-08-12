@@ -447,6 +447,7 @@ const en: Record<TranslationKey, string> = {
   'query.totalTime': 'Total Time',
   'query.history': 'History',
   'query.placeholder': 'Type SQL query…',
+  'query.namespaceLoading': 'Loading objects…',
   'query.executing': 'Executing…',
   'query.streamingRows': 'Loaded {n} rows…',
   'query.result': 'Result',

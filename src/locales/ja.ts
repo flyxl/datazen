@@ -374,6 +374,7 @@ const translations = {
   'query.totalTime': '合計時間',
   'query.history': '歴史',
   'query.placeholder': 'SQL クエリを入力…',
+  'query.namespaceLoading': 'オブジェクトを読み込み中…',
   'query.executing': '実行中…',
   'query.streamingRows': '{n} 行を読み込みました…',
   'query.result': '結果',
