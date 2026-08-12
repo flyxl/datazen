@@ -108,7 +108,8 @@ const en: Record<TranslationKey, string> = {
   'main.ctx.removeFromGroup': 'Remove from Group',
   'main.ctx.moveToGroup': 'Move to Group',
   'main.ctx.deleteConnection': 'Delete Connection',
-  'main.ctx.confirmDeleteConnection': 'Are you sure you want to delete connection "{name}"? This cannot be undone.',
+  'main.ctx.confirmDeleteConnection':
+    'Are you sure you want to delete connection "{name}"? This cannot be undone.',
 
   // ── Main / Group Dialog ──
   'main.newGroupTitle': 'New Group',
@@ -127,18 +128,21 @@ const en: Record<TranslationKey, string> = {
   'action.dataSync': 'Data Sync…',
   'action.newConnection': 'New Connection…',
   'action.workflow': 'Workflow…',
-  'action.dashboard': 'Dashboards…',
+  'action.dashboard': 'Dashboards',
   'action.exportConfig': 'Export App Data…',
   'action.importConfig': 'Import App Data…',
 
   // ── Config Import / Export ──
-  'appData.exportSuccess': 'App data exported successfully. The encryption key is not included in the ZIP — back it up separately if you need to decrypt saved passwords on another machine.',
+  'appData.exportSuccess':
+    'App data exported successfully. The encryption key is not included in the ZIP — back it up separately if you need to decrypt saved passwords on another machine.',
   'appData.exportFailed': 'Export failed',
   'appData.importConfirmTitle': 'Import App Data',
-  'appData.importConfirmMessage': 'This will overwrite all application data. Existing log files will be preserved. Backups do not include the encryption key — passwords remain usable only when restoring on this machine (or one with the same key). Continue?',
+  'appData.importConfirmMessage':
+    'This will overwrite all application data. Existing log files will be preserved. Backups do not include the encryption key — passwords remain usable only when restoring on this machine (or one with the same key). Continue?',
   'appData.importFailed': 'Import failed',
   'appData.backupKeyTitle': 'Back Up Encryption Key',
-  'appData.backupKeyMessage': 'Save a copy of your encryption key now? Store it securely; you will need it to decrypt saved passwords after restoring on another machine.',
+  'appData.backupKeyMessage':
+    'Save a copy of your encryption key now? Store it securely; you will need it to decrypt saved passwords after restoring on another machine.',
   'appData.backupKeySaved': 'Encryption key saved.',
   'appData.backupKeyFailed': 'Failed to save encryption key.',
 
@@ -148,8 +152,10 @@ const en: Record<TranslationKey, string> = {
   'connShare.importFromAppTitle': 'Import from {app}',
   'connShare.dataPath': 'Data directory or install path',
   'connShare.dataPathPlaceholder': 'Install path, data directory, or exported file',
-  'connShare.dataPathFoundHint': 'Located the default data file. If the app is installed elsewhere, enter its install path, data directory, or an exported file.',
-  'connShare.dataPathMissingHint': 'Default data directory not found. Enter the app install path, data directory, or choose an exported file.',
+  'connShare.dataPathFoundHint':
+    'Located the default data file. If the app is installed elsewhere, enter its install path, data directory, or an exported file.',
+  'connShare.dataPathMissingHint':
+    'Default data directory not found. Enter the app install path, data directory, or choose an exported file.',
   'connShare.browseFolder': 'Browse folder…',
   'connShare.browseFile': 'Browse file…',
   'connShare.pathRequired': 'Enter a data directory, install path, or exported file',
@@ -164,7 +170,8 @@ const en: Record<TranslationKey, string> = {
   'connShare.exportAction': 'Export…',
   'connShare.importAction': 'Import…',
   'connShare.exportSuccess': 'Exported {count} connection(s)',
-  'connShare.importSuccess': 'Imported {imported} new, updated {overwritten}, added {groupsAdded} group(s)',
+  'connShare.importSuccess':
+    'Imported {imported} new, updated {overwritten}, added {groupsAdded} group(s)',
   'connShare.importSuccessWithSkipped':
     'Imported {imported} new, updated {overwritten}, added {groupsAdded} group(s), skipped {skipped} unsupported',
   'connShare.exportFailed': 'Export failed',
@@ -305,14 +312,16 @@ const en: Record<TranslationKey, string> = {
   'settings.connectionPoolSizeHint': 'Maximum connections kept per database connection.',
   'settings.limitSelect': 'Limit SELECT Results',
   'settings.autoChartOnQuery': 'Auto-switch to chart',
-  'settings.autoChartOnQueryHint': 'After a query, open the Chart tab when the result looks chartable.',
+  'settings.autoChartOnQueryHint':
+    'After a query, open the Chart tab when the result looks chartable.',
   'settings.maxRows': 'Max Returned Rows',
   'settings.editor': 'Editor',
   'settings.fontSize': 'Font Size',
   'settings.fontFamily': 'Font Family',
   'settings.behavior': 'Behavior',
   'settings.dataCleanup.title': 'History cleanup',
-  'settings.dataCleanup.description': 'Remove old SQL query history and workflow execution records stored locally on this device.',
+  'settings.dataCleanup.description':
+    'Remove old SQL query history and workflow execution records stored locally on this device.',
   'settings.dataCleanup.scope': 'Scope',
   'settings.dataCleanup.scopeQuery': 'SQL query history',
   'settings.dataCleanup.scopeWorkflow': 'Workflow history',
@@ -325,8 +334,10 @@ const en: Record<TranslationKey, string> = {
   'settings.dataCleanup.clearAll': 'Clear all in scope',
   'settings.dataCleanup.run': 'Clean up now',
   'settings.dataCleanup.confirmTitle': 'Clean up history?',
-  'settings.dataCleanup.confirmMessage': 'Delete history records older than {days} days in the selected scope? This cannot be undone.',
-  'settings.dataCleanup.confirmClearAll': 'Delete all history records in the selected scope? This cannot be undone.',
+  'settings.dataCleanup.confirmMessage':
+    'Delete history records older than {days} days in the selected scope? This cannot be undone.',
+  'settings.dataCleanup.confirmClearAll':
+    'Delete all history records in the selected scope? This cannot be undone.',
   'settings.dataCleanup.success': 'Removed {count} record(s)',
   'settings.dataCleanup.error': 'Failed to clean up history',
   'settings.dataCleanup.noScope': 'Select at least one scope',
@@ -340,24 +351,29 @@ const en: Record<TranslationKey, string> = {
   'settings.confirmDelete': 'Confirm on Delete',
   'settings.autoCommit': 'Auto Commit',
   'settings.saved': 'Saved',
-  'settings.limitSelectHint': 'Automatically add a row limit to SELECT statements without LIMIT. Large results are always streamed; turning this off does not disable streaming.',
+  'settings.limitSelectHint':
+    'Automatically add a row limit to SELECT statements without LIMIT. Large results are always streamed; turning this off does not disable streaming.',
   'settings.confirmDeleteHint': 'Show a confirmation dialog when deleting rows',
   'settings.autoCommitHint': 'Automatically commit edits to data',
   'settings.safeMode': 'Safe Mode',
   'settings.safeModeHint': 'Block UPDATE/DELETE without a WHERE clause, and TRUNCATE',
 
   'settings.monitor': 'Monitor',
-  'settings.monitor.description': 'Background dashboard refresh, system tray, alerts, and run history retention.',
+  'settings.monitor.description':
+    'Background dashboard refresh, system tray, alerts, and run history retention.',
   'settings.monitor.trayEnabled': 'Show system tray icon',
-  'settings.monitor.trayEnabledHint': 'Tray appears when at least one dashboard widget is actively monitored.',
+  'settings.monitor.trayEnabledHint':
+    'Tray appears when at least one dashboard widget is actively monitored.',
   'settings.monitor.closeToTray': 'Close to tray',
-  'settings.monitor.closeToTrayHint': 'When monitoring is active, closing the window hides the app instead of quitting.',
+  'settings.monitor.closeToTrayHint':
+    'When monitoring is active, closing the window hides the app instead of quitting.',
   'settings.monitor.defaultWebhookUrl': 'Default webhook URL',
   'settings.monitor.maxConcurrentQueries': 'Max concurrent monitor queries',
   'settings.monitor.runRetentionCount': 'Run history count (per widget)',
   'settings.monitor.runRetentionDays': 'Run history days (per widget)',
   'settings.monitor.exportIncludeDashboardRuns': 'Include run history in app data export',
-  'settings.monitor.exportIncludeDashboardRunsHint': 'When off, app data ZIP export skips dashboard-runs/.',
+  'settings.monitor.exportIncludeDashboardRunsHint':
+    'When off, app data ZIP export skips dashboard-runs/.',
   'settings.monitor.email': 'Email alerts (SMTP)',
   'settings.monitor.comingSoon': 'Coming soon',
   'settings.monitor.emailHint': 'SMTP email alerts will be available in a future release.',
@@ -535,7 +551,8 @@ const en: Record<TranslationKey, string> = {
   'import.parsing': 'Parsing file…',
   'import.rowsNotShown': '{count} more rows not shown',
   'import.largeDataWarning': 'About to import large dataset',
-  'import.largeImportRows': 'About to import a large dataset ({count} rows). This may take a while.',
+  'import.largeImportRows':
+    'About to import a large dataset ({count} rows). This may take a while.',
   'import.importing': 'Importing…',
   'import.import': 'Import',
   'import.noData': 'No data to import',
@@ -685,9 +702,11 @@ const en: Record<TranslationKey, string> = {
   'sync.resumeRestartDesc': 'Ignore previous progress and re-sync all {count} tables',
   'sync.conflictTitle': 'Data Changes Detected',
   'sync.conflictDesc': 'Some source tables have changed row counts',
-  'sync.conflictWarning': 'The following tables have changed since last sync. Continuing may cause data inconsistency.',
+  'sync.conflictWarning':
+    'The following tables have changed since last sync. Continuing may cause data inconsistency.',
   'sync.conflictContinue': 'Continue Anyway',
-  'sync.conflictContinueDesc': 'Skip completed tables and resume (changed tables will be re-synced when reached)',
+  'sync.conflictContinueDesc':
+    'Skip completed tables and resume (changed tables will be re-synced when reached)',
   'sync.conflictRestartDesc': 'Ignore all progress and re-sync everything',
   'sync.checkConflictFailed': 'Conflict check failed: ',
   'sync.originalRows': 'Original Rows',
@@ -746,7 +765,8 @@ const en: Record<TranslationKey, string> = {
   'settings.ai.delete': 'Clear Config',
   'settings.ai.notConfigured': 'Not configured',
   'settings.ai.configured': 'Configured',
-  'settings.ai.description': 'Configure an AI provider to enable NL-to-SQL, error diagnosis, and other smart features',
+  'settings.ai.description':
+    'Configure an AI provider to enable NL-to-SQL, error diagnosis, and other smart features',
   'settings.ai.goToConfigure': 'Go to Settings',
   'settings.ai.protocol': 'Protocol',
   'settings.ai.protocolOpenAiChat': 'OpenAI Chat Completions',
@@ -762,7 +782,8 @@ const en: Record<TranslationKey, string> = {
 
   // ── Prompt Management ──
   'settings.prompts': 'Prompt Management',
-  'settings.prompts.description': 'View and customize system prompts used by AI features. Each driver and scenario can be configured individually.',
+  'settings.prompts.description':
+    'View and customize system prompts used by AI features. Each driver and scenario can be configured individually.',
   'settings.prompts.driver': 'Database Driver',
   'settings.prompts.allDrivers': 'All Drivers (Global)',
   'settings.prompts.source.default': 'Default',
@@ -785,7 +806,8 @@ const en: Record<TranslationKey, string> = {
   'chat.stop': 'Stop generating',
   'chat.thinking': 'Thinking…',
   'chat.notConfigured': 'Please configure an AI provider in Settings first',
-  'chat.welcome': 'Hello! I\'m your database assistant. Ask me about SQL queries, database concepts, or data analysis.',
+  'chat.welcome':
+    "Hello! I'm your database assistant. Ask me about SQL queries, database concepts, or data analysis.",
   'chat.insertSql': 'Insert to Editor',
   'chat.reasoning': 'Thinking',
   'chat.questions.customAnswer': 'Type a custom answer…',
@@ -858,16 +880,19 @@ const en: Record<TranslationKey, string> = {
 
   // ── MCP Server ──
   'mcp.title': 'MCP Server',
-  'mcp.description': 'Run DataZen as an MCP Server so external AI tools (Claude Desktop, Cursor, etc.) can access your databases',
+  'mcp.description':
+    'Run DataZen as an MCP Server so external AI tools (Claude Desktop, Cursor, etc.) can access your databases',
   'mcp.enabled': 'Enable MCP Server',
-  'mcp.enabledHint': 'Off by default. Prefer launching a dedicated process with --mcp for Claude Desktop / Cursor',
+  'mcp.enabledHint':
+    'Off by default. Prefer launching a dedicated process with --mcp for Claude Desktop / Cursor',
   'mcp.status': 'Status',
   'mcp.running': 'Running',
   'mcp.stopped': 'Stopped',
   'mcp.start': 'Start MCP Server',
   'mcp.stop': 'Stop',
   'mcp.transport': 'Transport',
-  'mcp.usage': 'To use DataZen as an MCP server with Claude Desktop or Cursor, add the following config:',
+  'mcp.usage':
+    'To use DataZen as an MCP server with Claude Desktop or Cursor, add the following config:',
   'mcp.tools': 'Exposed Tools',
   'mcp.tools.description': 'Choose which tools to expose via MCP Server to external AI clients',
   'mcp.tools.enableAll': 'Enable All',
@@ -878,20 +903,25 @@ const en: Record<TranslationKey, string> = {
   'mcp.permission.readOnly': 'Read-only',
   'mcp.permission.readOnlyHint': 'Schema introspection only; blocks query and run_workflow',
   'mcp.permission.safeWrite': 'Safe write (default)',
-  'mcp.permission.safeWriteHint': 'Allows DML; blocks DROP, TRUNCATE, ALTER, CREATE USER, and similar',
+  'mcp.permission.safeWriteHint':
+    'Allows DML; blocks DROP, TRUNCATE, ALTER, CREATE USER, and similar',
   'mcp.permission.highRiskWrite': 'High-risk write',
   'mcp.permission.highRiskWriteHint': 'No SQL restrictions; only the tool denylist applies',
-  'mcp.permission.restartHint': 'Restart MCP Server (or relaunch datazen --mcp) for permission mode changes to take effect',
+  'mcp.permission.restartHint':
+    'Restart MCP Server (or relaunch datazen --mcp) for permission mode changes to take effect',
   'mcp.allowlist.title': 'Connection allowlist',
-  'mcp.allowlist.description': 'Only selected connections are visible to MCP clients. Leave all unchecked to expose every saved connection.',
+  'mcp.allowlist.description':
+    'Only selected connections are visible to MCP clients. Leave all unchecked to expose every saved connection.',
   'mcp.allowlist.empty': 'No saved connections yet.',
-  'mcp.allowlist.restartHint': 'Restart MCP Server (or relaunch datazen --mcp) for allowlist changes to take effect',
+  'mcp.allowlist.restartHint':
+    'Restart MCP Server (or relaunch datazen --mcp) for allowlist changes to take effect',
   'mcp.config.cursor': 'Cursor',
   'mcp.config.claude': 'Claude Desktop',
   'mcp.config.copy': 'Copy',
   'mcp.config.copied': 'Copied',
   'mcp.config.pathHint': 'Typical location: {path}',
-  'mcp.config.commandHint': 'Uses `datazen` on PATH. For packaged apps, replace command with the absolute binary path.',
+  'mcp.config.commandHint':
+    'Uses `datazen` on PATH. For packaged apps, replace command with the absolute binary path.',
 
   // ── MCP Client ──
   'mcpClient.title': 'External MCP Servers',
@@ -974,7 +1004,8 @@ const en: Record<TranslationKey, string> = {
   'workflows.aiCreate': 'AI Create',
   'workflows.aiCreate.title': 'AI Create Workflow',
   'workflows.aiCreate.placeholder': 'Describe the workflow you want to create…',
-  'workflows.aiCreate.welcome': 'Describe the workflow you want to create, and AI will help you generate a YAML configuration through conversation.',
+  'workflows.aiCreate.welcome':
+    'Describe the workflow you want to create, and AI will help you generate a YAML configuration through conversation.',
   'workflows.aiCreate.connection': 'Connection',
   'workflows.aiCreate.connectionHint': 'Select a connection to provide schema context',
   'workflows.aiCreate.noConnection': 'No connection',
@@ -1093,7 +1124,7 @@ const en: Record<TranslationKey, string> = {
   'schemaDiff.missingOnTarget': 'Missing on target (ADD)',
   'schemaDiff.extraOnTarget': 'Extra on target (DROP)',
   'win.workflow': 'Workflow - DataZen',
-  'win.dashboard': 'Dashboard - DataZen',
+  'win.dashboard': 'Dashboards - DataZen',
 
   // ── Dashboard ──
   'dashboard.title': 'Dashboards',
@@ -1110,8 +1141,8 @@ const en: Record<TranslationKey, string> = {
   'dashboard.refreshWidget': 'Refresh',
   'dashboard.export': 'Export dashboard…',
   'dashboard.import': 'Import dashboard…',
-  'dashboard.pauseMonitoring': 'Pause monitoring',
-  'dashboard.resumeMonitoring': 'Resume monitoring',
+  'dashboard.pauseMonitoring': 'Pause panel refresh',
+  'dashboard.resumeMonitoring': 'Resume panel refresh',
   'dashboard.widgetEnabled': 'Enable widget',
   'dashboard.history': 'History',
   'dashboard.widgetTitle': 'Title',
@@ -1151,7 +1182,9 @@ const en: Record<TranslationKey, string> = {
   'docs.openHelp': 'User Guide',
   'docs.openAiHelp': 'AI & Context Help',
   'docs.openWorkflowHelp': 'Workflow Help',
-  'docs.openDashboardHelp': 'Ops Dashboard Help',
+  'docs.openDashboardHelp': 'Dashboards Help',
+  'dashboard.emptyBoards': 'No boards yet — create your first one',
+  'dashboard.createFirstBoard': 'Create first board',
   'docs.openSchemaDiffHelp': 'Schema Diff Help',
 };
 

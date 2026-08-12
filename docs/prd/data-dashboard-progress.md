@@ -24,9 +24,9 @@
 | F0 | 更新实施方案 + 进度文件 + 设计拍板 | `done` | n/a | n/a | `c7d0cea` |
 | F1 | 统一 `datazen.sqlite` Schema（workflows/dashboards/widgets/runs）+ AppDb CRUD | `done` | 7/7 | [Verify](0dc7d514) 16 PASS | `8a763c2` |
 | F2 | Workflow 入库替换 YAML registry；visibility；list 过滤 hidden | `done` | 4/4 + IPC | [Verify](310a57bd) PASS | `c469639` |
-| F3 | 内置变量补齐 `current_time`；文档化；隐藏 WF 不写 workflow_history | `done` | 4/4 | [Verify](6ae9b084) PASS | pending |
+| F3 | 内置变量补齐 `current_time`；文档化；隐藏 WF 不写 workflow_history | `done` | 4/4 | [Verify](6ae9b084) PASS | `24455f6` |
 | F4 | Workflow 编辑页：可视化 + YAML 双模 | `pending` | — | — | — |
-| F5 | 入口更名/直达窗口；移除设置→监控 | `pending` | — | — | — |
+| F5 | 入口更名/直达窗口；移除设置→监控 | `done` | 70 | [Verify](f89eb288) PASS | pending |
 | F6 | 看板窗内面板 CRUD（SQLite） | `pending` | — | — | — |
 | F7 | Widget 仅 workflowId；执行改 WorkflowExecutor；Monitor 调度 | `pending` | — | — | — |
 | F8 | 图⇄表切换；编辑抽屉（刷新/告警/**SQL·WF 编辑**） | `pending` | — | — | — |
@@ -53,3 +53,5 @@
 | 2026-08-12 | F0 文档提交 `c7d0cea` |
 | 2026-08-12 | F1 AppDb 落地；独立测试 agent 16 PASS |
 | 2026-08-12 | F2 Workflow 入库 + visibility；测试 agent PASS；`c469639` |
+| 2026-08-12 | F3 `current_time` + hidden 不写 history；`24455f6` |
+| 2026-08-12 | F5 直达看板窗 + 去设置监控 + 更名「数据看板」 |

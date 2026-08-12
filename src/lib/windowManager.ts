@@ -206,9 +206,11 @@ export function openDocsWindow(section?: string) {
 
 // ── Multi-instance windows ──────────────────────────────────────────
 
-export function openDashboardWindow(dashboardId: string, dashboardName?: string) {
-  openWindow(`dashboard-${dashboardId}`, {
-    params: { window: 'dashboard', dashboardId },
+export function openDashboardWindow(dashboardId?: string, dashboardName?: string) {
+  const params: Record<string, string> = { window: 'dashboard' };
+  if (dashboardId) params.dashboardId = dashboardId;
+  openWindow('dashboard-main', {
+    params,
     width: 1200,
     height: 800,
     minWidth: 800,
