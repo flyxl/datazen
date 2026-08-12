@@ -16,9 +16,9 @@
 
 | ID | 功能 | 优先级 | 状态 | Commit | 测试结果 |
 |----|------|--------|------|--------|----------|
-| F1 | 原生 ContextMenu 共享辅助层（TS popup helper + 事件约定） | P0 基建 | done | （本提交） | PASS：单测 8/8，lines 100%；E2E 设计 4 条（待 UI 接入后跑） |
-| F2 | SQL 编辑器原生菜单：Cut/Copy/Paste/SelectAll + 收藏 + 完整 i18n | P0 | fixing | — | BUG-F2-001：disabled 项应灰显保留，勿从 normalize 中删除 |
-| F3 | 移除 SqlConnectionView 整区 Web ContextMenu，消除双菜单 | P0 | pending | — | — |
+| F1 | 原生 ContextMenu 共享辅助层（TS popup helper + 事件约定） | P0 基建 | done | b029d7f | PASS：单测 8/8，lines 100%；E2E 设计 4 条（待 UI 接入后跑） |
+| F2 | SQL 编辑器原生菜单：Cut/Copy/Paste/SelectAll + 收藏 + 完整 i18n | P0 | done | （本提交） | PASS：复测通过，BUG-F2-001 CLOSED；lines 100% |
+| F3 | 移除 SqlConnectionView 整区 Web ContextMenu，消除双菜单 | P0 | done | （本提交） | PASS：单测 2/2；静态断言无 Web ContextMenu |
 | F4 | Schema 树原生菜单（表/视图/库/空白；按 nodeKind 分支） | P1 | pending | — | — |
 | F5 | DataTable 原生菜单（导出/复制单元格/复制行） | P1 | pending | — | — |
 | F6 | 连接窗口 Tab 栏原生菜单（关闭/关闭其他/关闭全部） | P1 | pending | — | — |
@@ -44,5 +44,13 @@
 - 独立测试 agent：PASS（覆盖率 lines 100%）
 
 ### F2 — SQL 编辑器原生菜单
-- `normalizeNativeMenuItems` **保留** `enabled: false` 项（灰显），仅过滤空 submenu / 规范化分隔符；`buildItem` 已传 `enabled` 给 `MenuItem.new`
-- 修复 BUG-F2-001：空 SQL 时「加入收藏」应灰显出现，而非整项消失
+- 新增 `src/lib/sqlEditorContextMenu.ts`；QueryPanel 改用 `showNativeContextMenu`
+- SqlEditor 空文档也可右键；移除 Rust `show_editor_context_menu`
+- `normalizeNativeMenuItems` **保留** `enabled: false` 项（灰显）
+- 修复 BUG-F2-001；独立测试复测 PASS
+
+### F3 — 移除 SqlConnectionView 整区 Web ContextMenu（草稿）
+- 从 `SqlConnectionView.tsx` 删除整区 `<ContextMenu>` 包裹及 `contextMenuItems` / `handleContextAction` / `createIndexTrigger`
+- IndexesView 不再接收 `createIndexTrigger`（自身已有「新建索引」）
+- 单测：`src/windows/connection/__tests__/sqlConnectionViewNoWebContextMenu.test.ts`（源码断言无 ContextMenu import / JSX）
+- 目的：消除与 DataTable 的双菜单；表数据右键由后续 F5 原生菜单承接
