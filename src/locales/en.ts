@@ -598,6 +598,25 @@ const en: Record<TranslationKey, string> = {
   'export.exporting': 'Exporting…',
   'export.export': 'Export',
 
+  // ── Batch Export Dialog ──
+  'batchExport.title': 'Batch Export',
+  'batchExport.selectTables': 'Select Tables',
+  'batchExport.selectAll': 'Select All',
+  'batchExport.clearAll': 'Clear All',
+  'batchExport.mode': 'Export Mode',
+  'batchExport.modeStructureOnly': 'Structure only',
+  'batchExport.modeDataOnly': 'Data only',
+  'batchExport.modeDataAndStructure': 'Data + structure',
+  'batchExport.format': 'Data Format',
+  'batchExport.output': 'Output',
+  'batchExport.outputSingle': 'Combine into a single file',
+  'batchExport.outputZip': 'Multiple files (ZIP)',
+  'batchExport.export': 'Export',
+  'batchExport.exporting': 'Exporting…',
+  'batchExport.noTablesSelected': 'Select at least one table',
+  'batchExport.success': 'Export completed',
+  'batchExport.failed': 'Export failed',
+
   // ── DDL View ──
   'ddl.generating': 'Generating DDL…',
   'ddl.getFailed': 'Cannot get DDL',
