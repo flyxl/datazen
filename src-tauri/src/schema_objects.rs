@@ -140,8 +140,9 @@ pub fn list_privileges_sql(db_type: &str) -> Option<String> {
              ORDER BY 1, 2, 3 LIMIT 500"
                 .into(),
         ),
+        // Alias as `table_schema` — MySQL treats bare `schema` as a reserved word (1064).
         "mysql" => Some(
-            "SELECT GRANTEE AS grantee, TABLE_SCHEMA AS schema, TABLE_NAME AS name, PRIVILEGE_TYPE AS privilege \
+            "SELECT GRANTEE AS grantee, TABLE_SCHEMA AS table_schema, TABLE_NAME AS name, PRIVILEGE_TYPE AS privilege \
              FROM information_schema.TABLE_PRIVILEGES \
              WHERE TABLE_SCHEMA = DATABASE() \
              ORDER BY 1, 2, 3 LIMIT 500"
@@ -200,9 +201,16 @@ mod tests {
         assert!(list_privileges_sql("postgres")
             .unwrap()
             .contains("role_table_grants"));
-        assert!(list_privileges_sql("mariadb")
-            .unwrap()
-            .contains("TABLE_PRIVILEGES"));
+        let mysql = list_privileges_sql("mariadb").unwrap();
+        assert!(mysql.contains("TABLE_PRIVILEGES"));
+        assert!(
+            mysql.contains("AS table_schema"),
+            "MySQL must not alias as bare `schema` (reserved word)"
+        );
+        assert!(
+            !mysql.contains("AS schema,"),
+            "bare AS schema breaks MySQL 1064"
+        );
     }
 
     #[test]
