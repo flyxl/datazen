@@ -132,6 +132,59 @@ pub async fn create_widget_from_sql(
     Ok(CreateWidgetResult { dashboard, widget })
 }
 
+/// Update SQL + connection on a dashboard-owned hidden workflow.
+pub async fn update_hidden_workflow_sql(
+    app_db: &AppDb,
+    registry: &WorkflowRegistry,
+    workflow_id: &str,
+    config_id: &str,
+    sql: &str,
+) -> Result<(), CreateWidgetError> {
+    if config_id.trim().is_empty() {
+        return Err(CreateWidgetError::Validation(
+            "config_id is required".into(),
+        ));
+    }
+    if sql.trim().is_empty() {
+        return Err(CreateWidgetError::Validation("sql is required".into()));
+    }
+
+    let record = app_db
+        .get_workflow(workflow_id)
+        .map_err(|e| CreateWidgetError::Validation(e.to_string()))?;
+    if record.visibility != WorkflowVisibility::DashboardHidden {
+        return Err(CreateWidgetError::Validation(
+            "Workflow is not dashboard-hidden".into(),
+        ));
+    }
+
+    let mut def = registry.get(workflow_id).await.ok_or_else(|| {
+        CreateWidgetError::Workflow(format!("Workflow '{workflow_id}' not found"))
+    })?;
+
+    def.connection = Some(config_id.to_string());
+    let mut updated = false;
+    for step in &mut def.steps {
+        if let WorkflowStep::Query { sql: step_sql, .. } = step {
+            *step_sql = sql.to_string();
+            updated = true;
+            break;
+        }
+    }
+    if !updated {
+        return Err(CreateWidgetError::Validation(
+            "Hidden workflow has no query step".into(),
+        ));
+    }
+
+    registry
+        .save_workflow(&def)
+        .await
+        .map_err(CreateWidgetError::Workflow)?;
+
+    Ok(())
+}
+
 pub async fn create_widget_from_workflow(
     app_db: &AppDb,
     dashboard_id: &str,
@@ -227,6 +280,62 @@ mod tests {
         assert_eq!(result.dashboard.widgets.len(), 1);
         let wf = db.get_workflow(&result.widget.workflow_id).unwrap();
         assert_eq!(wf.visibility, WorkflowVisibility::DashboardHidden);
+    }
+
+    #[tokio::test]
+    async fn update_hidden_workflow_sql_updates_query() {
+        let (db, registry, dash) = setup().await;
+        let created = create_widget_from_sql(
+            &db,
+            &registry,
+            &dash.id,
+            "cfg-1",
+            "SELECT 1 AS v",
+            Some("SQL".into()),
+            ViewMode::Chart,
+            None,
+        )
+        .await
+        .unwrap();
+
+        update_hidden_workflow_sql(
+            &db,
+            &registry,
+            &created.widget.workflow_id,
+            "cfg-2",
+            "SELECT 2 AS v",
+        )
+        .await
+        .unwrap();
+
+        let wf = registry.get(&created.widget.workflow_id).await.unwrap();
+        assert_eq!(wf.connection.as_deref(), Some("cfg-2"));
+        match &wf.steps[0] {
+            WorkflowStep::Query { sql, .. } => assert_eq!(sql, "SELECT 2 AS v"),
+            other => panic!("expected query step, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn update_hidden_workflow_sql_rejects_user_workflow() {
+        let (db, registry, _) = setup().await;
+        db.upsert_workflow(&WorkflowRecord {
+            id: "user-wf".into(),
+            name: "User".into(),
+            description: String::new(),
+            visibility: WorkflowVisibility::User,
+            definition_yaml:
+                "id: user-wf\nname: User\nconnection: cfg\nsteps:\n  - type: query\n    id: q1\n    sql: SELECT 1\n"
+                    .into(),
+            created_at: Utc::now().to_rfc3339(),
+            updated_at: Utc::now().to_rfc3339(),
+        })
+        .unwrap();
+
+        let err = update_hidden_workflow_sql(&db, &registry, "user-wf", "cfg", "SELECT 2")
+            .await
+            .unwrap_err();
+        assert!(matches!(err, CreateWidgetError::Validation(_)));
     }
 
     #[tokio::test]

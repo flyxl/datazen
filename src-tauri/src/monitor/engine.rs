@@ -11,7 +11,9 @@ use tokio_util::sync::CancellationToken;
 
 use crate::commands::AppState;
 use crate::dashboard::execute::{execute_widget_once, DashboardExecuteError};
-use crate::dashboard::store::{list_dashboards, load_monitor_settings};
+use crate::dashboard::store::{
+    list_dashboards, load_monitor_settings, set_dashboard_refresh_paused,
+};
 use crate::dashboard::types::{Dashboard, DashboardWidget, RefreshMode, WidgetRun};
 use crate::monitor::channels::{dispatch_notifications, AlertChannelState};
 use crate::store::Store;
@@ -196,13 +198,47 @@ impl MonitorEngine {
         self.active_widget_count.load(Ordering::Relaxed) > 0
     }
 
-    /// Legacy global pause — kept for tray compatibility; per-dashboard pause uses AppDb.
+    /// Legacy global pause — tray toggles refresh_paused on every dashboard.
     pub fn is_paused(&self) -> bool {
-        false
+        let Some(app_state) = self.app_state() else {
+            return false;
+        };
+        let app_db = app_state.store.app_db();
+        match list_dashboards(&app_db) {
+            Ok(dashboards) if !dashboards.is_empty() => dashboards.iter().all(|d| d.refresh_paused),
+            _ => false,
+        }
     }
 
-    pub fn set_paused(&self, _paused: bool) {
-        tracing::info!("global monitor pause is deprecated; use set_dashboard_refresh_paused");
+    /// Pause or resume scheduled refresh for all dashboards (tray menu).
+    pub fn set_paused(&self, paused: bool) {
+        let Some(app_state) = self.app_state() else {
+            tracing::warn!("set_paused: monitor engine has no app state");
+            return;
+        };
+        let app_db = app_state.store.app_db();
+        match list_dashboards(&app_db) {
+            Ok(dashboards) => {
+                for dashboard in &dashboards {
+                    if let Err(e) = set_dashboard_refresh_paused(&app_db, &dashboard.id, paused) {
+                        tracing::warn!(
+                            dashboard_id = %dashboard.id,
+                            error = %e,
+                            "failed to set dashboard refresh_paused"
+                        );
+                    }
+                }
+                if let Err(e) =
+                    tauri::async_runtime::block_on(app_state.monitor_engine.reload_from_store())
+                {
+                    tracing::warn!(error = %e, "failed to reload monitor after set_paused");
+                }
+                if let Some(app) = self.app_handle() {
+                    crate::tray::sync_tray(&app);
+                }
+            }
+            Err(e) => tracing::warn!(error = %e, "set_paused: failed to list dashboards"),
+        }
     }
 
     pub fn app_handle(&self) -> Option<AppHandle> {

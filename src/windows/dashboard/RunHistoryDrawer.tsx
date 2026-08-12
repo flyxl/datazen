@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, Loader2, X } from 'lucide-react';
 import { ChartCanvas } from '../../components/chart/ChartCanvas';
+import { DataTable } from '../../components/DataTable/DataTable';
+import type { ColumnDef } from '../../components/DataTable/TableHeader';
 import { Button } from '../../components/ui/Button';
 import { dashboardCommands } from '../../commands/dashboard';
 import { formatLastConnected } from '../../lib/formatters';
 import { hasRenderableChart, widgetRunToChartData } from '../../lib/dashboard/runToChart';
 import { cn } from '../../lib/cn';
 import { useI18n } from '../../hooks/useI18n';
-import type { DashboardWidget, RunIndexEntry, WidgetRun } from '../../types/dashboard';
+import type { DashboardWidget, RunIndexEntry, ViewMode, WidgetRun } from '../../types/dashboard';
 
 const HISTORY_LIMIT = 50;
 
@@ -43,6 +45,7 @@ export function RunHistoryDrawer({
   const [loadingRun, setLoadingRun] = useState(false);
   const [indexError, setIndexError] = useState<string | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<ViewMode>('chart');
 
   useEffect(() => {
     if (!open || !widget) return;
@@ -51,6 +54,7 @@ export function RunHistoryDrawer({
     setLoadedRun(null);
     setIndexError(null);
     setRunError(null);
+    setViewMode(widget.viewMode);
     setLoadingIndex(true);
     void dashboardCommands
       .listWidgetRuns(dashboardId, widget.id, HISTORY_LIMIT)
@@ -66,7 +70,9 @@ export function RunHistoryDrawer({
       .finally(() => {
         if (!cancelled) setLoadingIndex(false);
       });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [open, dashboardId, widget]);
 
   useEffect(() => {
@@ -91,7 +97,9 @@ export function RunHistoryDrawer({
       .finally(() => {
         if (!cancelled) setLoadingRun(false);
       });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [open, dashboardId, widget, selectedId]);
 
   const chartData = useMemo(() => {
@@ -101,12 +109,26 @@ export function RunHistoryDrawer({
 
   const hasChart = widget && hasRenderableChart(chartData, widget.chartConfig);
 
+  const tableColumns = useMemo<ColumnDef[]>(
+    () =>
+      loadedRun?.columns.map((name) => ({
+        name,
+        dataType: 'unknown',
+        nullable: true,
+      })) ?? [],
+    [loadedRun?.columns],
+  );
+
   const handleSelect = useCallback((id: string) => setSelectedId(id), []);
 
   if (!open || !widget) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end" data-no-drag data-testid="run-history-drawer">
+    <div
+      className="fixed inset-0 z-50 flex justify-end"
+      data-no-drag
+      data-testid="run-history-drawer"
+    >
       <button
         type="button"
         className="absolute inset-0 bg-black/40"
@@ -173,41 +195,88 @@ export function RunHistoryDrawer({
             )}
           </div>
 
-          <div className="relative min-h-0 min-w-0 flex-1">
-            {runError && (
-              <div className="absolute inset-0 flex items-center justify-center px-4 text-center text-xs text-red-400">
-                {runError}
+          <div className="relative min-h-0 min-w-0 flex-1 flex flex-col">
+            {loadedRun?.status === 'ok' && (
+              <div
+                className="flex shrink-0 justify-end border-b border-edge px-3 py-1.5"
+                data-testid="run-history-view-toggle"
+              >
+                <div className="flex rounded border border-edge text-[10px]">
+                  {(['chart', 'table'] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      className={cn(
+                        'px-1.5 py-0.5 capitalize',
+                        viewMode === mode
+                          ? 'bg-accent/20 text-accent'
+                          : 'text-fg-muted hover:text-fg',
+                      )}
+                      onClick={() => setViewMode(mode)}
+                    >
+                      {mode === 'chart' ? t('dashboard.viewChart') : t('dashboard.viewTable')}
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
-            {!runError && !selectedId && !loadingIndex && (
-              <div className="absolute inset-0 flex items-center justify-center px-4 text-center text-xs text-fg-muted">
-                {t('dashboard.selectRun')}
-              </div>
-            )}
-            {loadingRun && (
-              <div className="absolute inset-0 flex items-center justify-center text-xs text-fg-muted">
-                <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
-                {t('common.loading')}
-              </div>
-            )}
-            {!loadingRun && loadedRun?.status === 'error' && (
-              <div className="absolute inset-0 flex items-center justify-center px-4 text-center text-xs text-red-400">
-                {loadedRun.error ?? t('dashboard.runError')}
-              </div>
-            )}
-            {!loadingRun && loadedRun?.status === 'timeout' && (
-              <div className="absolute inset-0 flex items-center justify-center px-4 text-center text-xs text-amber-400">
-                {t('dashboard.runTimeout')}
-              </div>
-            )}
-            {!loadingRun && loadedRun?.status === 'ok' && !hasChart && (
-              <div className="absolute inset-0 flex items-center justify-center px-4 text-center text-xs text-fg-muted">
-                {loadedRun.rowCount === 0 ? t('dashboard.emptyResult') : t('dashboard.chartNotConfigured')}
-              </div>
-            )}
-            {!loadingRun && hasChart && chartData && (
-              <ChartCanvas data={chartData.data} config={widget.chartConfig} />
-            )}
+            <div className="relative min-h-0 flex-1">
+              {runError && (
+                <div className="absolute inset-0 flex items-center justify-center px-4 text-center text-xs text-red-400">
+                  {runError}
+                </div>
+              )}
+              {!runError && !selectedId && !loadingIndex && (
+                <div className="absolute inset-0 flex items-center justify-center px-4 text-center text-xs text-fg-muted">
+                  {t('dashboard.selectRun')}
+                </div>
+              )}
+              {loadingRun && (
+                <div className="absolute inset-0 flex items-center justify-center text-xs text-fg-muted">
+                  <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                  {t('common.loading')}
+                </div>
+              )}
+              {!loadingRun && loadedRun?.status === 'error' && (
+                <div className="absolute inset-0 flex items-center justify-center px-4 text-center text-xs text-red-400">
+                  {loadedRun.error ?? t('dashboard.runError')}
+                </div>
+              )}
+              {!loadingRun && loadedRun?.status === 'timeout' && (
+                <div className="absolute inset-0 flex items-center justify-center px-4 text-center text-xs text-amber-400">
+                  {t('dashboard.runTimeout')}
+                </div>
+              )}
+              {!loadingRun && loadedRun?.status === 'ok' && viewMode === 'chart' && !hasChart && (
+                <div className="absolute inset-0 flex items-center justify-center px-4 text-center text-xs text-fg-muted">
+                  {loadedRun.rowCount === 0
+                    ? t('dashboard.emptyResult')
+                    : t('dashboard.chartNotConfigured')}
+                </div>
+              )}
+              {!loadingRun && hasChart && chartData && viewMode === 'chart' && (
+                <ChartCanvas data={chartData.data} config={widget.chartConfig} />
+              )}
+              {!loadingRun &&
+                loadedRun?.status === 'ok' &&
+                viewMode === 'table' &&
+                loadedRun.rows.length > 0 && (
+                  <DataTable
+                    columns={tableColumns}
+                    rows={loadedRun.rows}
+                    rowHeight={28}
+                    exportTableName={widget.title}
+                  />
+                )}
+              {!loadingRun &&
+                loadedRun?.status === 'ok' &&
+                viewMode === 'table' &&
+                loadedRun.rows.length === 0 && (
+                  <div className="absolute inset-0 flex items-center justify-center px-4 text-center text-xs text-fg-muted">
+                    {t('dashboard.emptyResult')}
+                  </div>
+                )}
+            </div>
           </div>
         </div>
       </aside>

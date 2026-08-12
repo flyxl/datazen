@@ -193,13 +193,6 @@ pub fn parse_final_output_as_table(
 pub fn extract_table_from_execution(
     result: &WorkflowExecutionResult,
 ) -> Result<(Vec<String>, Vec<Vec<serde_json::Value>>), String> {
-    for step in result.steps.iter().rev() {
-        if let Some(data) = &step.result {
-            if let Some(table) = parse_step_result_value(data) {
-                return Ok(table);
-            }
-        }
-    }
     parse_final_output_as_table(&result.final_output)
 }
 
@@ -405,29 +398,40 @@ mod tests {
     }
 
     #[test]
-    fn extract_table_from_execution_prefers_step_result() {
-        let result = WorkflowExecutionResult {
+    fn extract_table_from_execution_uses_final_output_only() {
+        let step_table = StepExecutionResult {
+            step_id: "q1".into(),
+            step_type: "query".into(),
+            status: StepStatus::Success,
+            result: Some(serde_json::json!({
+                "rows": [{"n": 7}],
+                "columns": [{"name": "n"}]
+            })),
+            execution_time_ms: 1,
+            error: None,
+            connection_name: None,
+            sql_executed: None,
+        };
+
+        let invalid_final = WorkflowExecutionResult {
             success: true,
             final_output: "not json".into(),
-            steps: vec![StepExecutionResult {
-                step_id: "q1".into(),
-                step_type: "query".into(),
-                status: StepStatus::Success,
-                result: Some(serde_json::json!({
-                    "rows": [{"n": 7}],
-                    "columns": [{"name": "n"}]
-                })),
-                execution_time_ms: 1,
-                error: None,
-                connection_name: None,
-                sql_executed: None,
-            }],
+            steps: vec![step_table.clone()],
             total_time_ms: 1,
             error: None,
         };
-        let (cols, rows) = extract_table_from_execution(&result).unwrap();
-        assert_eq!(cols, vec!["n"]);
-        assert_eq!(rows[0][0], serde_json::json!(7));
+        assert!(extract_table_from_execution(&invalid_final).is_err());
+
+        let valid_final = WorkflowExecutionResult {
+            success: true,
+            final_output: r#"{"rows":[{"v":42}],"columns":[{"name":"v"}]}"#.into(),
+            steps: vec![step_table],
+            total_time_ms: 1,
+            error: None,
+        };
+        let (cols, rows) = extract_table_from_execution(&valid_final).unwrap();
+        assert_eq!(cols, vec!["v"]);
+        assert_eq!(rows[0][0], serde_json::json!(42));
     }
 
     #[test]

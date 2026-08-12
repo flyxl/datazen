@@ -37,10 +37,13 @@ import { connectionCommands } from '../../commands/connection';
 import { openDashboardWindow } from '../../lib/windowManager';
 import { cn } from '../../lib/cn';
 import { openDocsWindow } from '../../lib/windowManager';
+import { createEmptyDashboard } from '../dashboard/DashboardWindow';
+import { AddToDashboardDialog } from '../dashboard/AddToDashboardDialog';
 import { WorkflowForm, emptyDraft } from './WorkflowForm';
 import type { WorkflowDraft } from './WorkflowForm';
 import { WorkflowYamlEditor } from './WorkflowYamlEditor';
 import { parseWorkflowYaml, validateWorkflowFields } from '../../lib/workflowYaml';
+import { draftToYamlObject, yamlObjectToDraft } from '../../lib/workflowDraftYaml';
 import YAML from 'yaml';
 import type {
   ColumnInfo,
@@ -127,6 +130,7 @@ export function WorkflowWindow() {
   >([]);
   const [sideTab, setSideTab] = useState<'workflows' | 'history'>('workflows');
   const [historyItems, setHistoryItems] = useState<HistoryListItem[]>([]);
+  const [addToDashboardOpen, setAddToDashboardOpen] = useState(false);
   const { size: sidebarWidth, handleRef: sidebarHandleRef } = useResizable({
     direction: 'horizontal',
     initialSize: 256,
@@ -258,14 +262,42 @@ export function WorkflowWindow() {
     );
   }, []);
 
-  const setEditMode = useCallback((panelId: string, editorMode: 'visual' | 'yaml') => {
-    setPanels((prev) =>
-      prev.map((p): Panel => {
-        if (p.id !== panelId || p.type !== 'edit') return p;
-        return { ...p, editorMode };
-      }),
-    );
-  }, []);
+  const setEditMode = useCallback(
+    (panelId: string, editorMode: 'visual' | 'yaml') => {
+      setPanels((prev) =>
+        prev.map((p): Panel => {
+          if (p.id !== panelId || p.type !== 'edit') return p;
+          if (p.editorMode === editorMode) return p;
+
+          if (editorMode === 'yaml') {
+            return {
+              ...p,
+              editorMode,
+              yamlText: YAML.stringify(draftToYamlObject(p.draft)),
+            };
+          }
+
+          try {
+            const parsed = parseWorkflowYaml(p.yamlText);
+            const missing = validateWorkflowFields(parsed);
+            if (missing) {
+              window.alert(t('workflows.editor.invalidYamlField', { field: missing }));
+              return p;
+            }
+            return {
+              ...p,
+              editorMode,
+              draft: yamlObjectToDraft(parsed),
+            };
+          } catch (e) {
+            window.alert(String(e));
+            return p;
+          }
+        }),
+      );
+    },
+    [t],
+  );
 
   // ── Workflow CRUD ─────────────────────────────────────────────────
 
@@ -513,27 +545,31 @@ export function WorkflowWindow() {
   const isExecuting =
     activePanel?.type === 'run' ? (activePanel as WorkflowRunPanel).isExecuting : false;
 
-  const handleAddToDashboard = useCallback(async () => {
-    if (activePanel?.type !== 'run' || !currentResult?.success) return;
-    const wfPanel = activePanel as WorkflowRunPanel;
-    try {
-      const boards = await dashboardCommands.listDashboards();
-      if (boards.length === 0) {
-        window.alert(t('dashboard.emptyBoards'));
-        return;
+  const handleAddToDashboardConfirm = useCallback(
+    async (dashboardId: string | 'new', newName?: string) => {
+      if (activePanel?.type !== 'run') return;
+      const wfPanel = activePanel as WorkflowRunPanel;
+      setAddToDashboardOpen(false);
+      try {
+        let targetId = dashboardId;
+        if (dashboardId === 'new') {
+          const board = createEmptyDashboard(newName?.trim() || t('dashboard.defaultName'));
+          await dashboardCommands.saveDashboard(board);
+          targetId = board.id;
+        }
+        const created = await dashboardCommands.createWidgetFromWorkflow({
+          dashboardId: targetId,
+          workflowId: wfPanel.workflowId,
+          title: wfPanel.workflowName,
+          viewMode: 'table',
+        });
+        openDashboardWindow(created.dashboard.id, created.dashboard.name);
+      } catch (e) {
+        window.alert(String(e));
       }
-      const target = boards[0]!;
-      const created = await dashboardCommands.createWidgetFromWorkflow({
-        dashboardId: target.id,
-        workflowId: wfPanel.workflowId,
-        title: wfPanel.workflowName,
-        viewMode: 'table',
-      });
-      openDashboardWindow(created.dashboard.id, created.dashboard.name);
-    } catch (e) {
-      window.alert(String(e));
-    }
-  }, [activePanel, currentResult, t]);
+    },
+    [activePanel, t],
+  );
 
   // ── Render ────────────────────────────────────────────────────────
 
@@ -827,7 +863,7 @@ export function WorkflowWindow() {
                   variant="ghost"
                   className="ml-2 h-8 text-xs"
                   data-testid="workflow-add-to-dashboard"
-                  onClick={() => void handleAddToDashboard()}
+                  onClick={() => setAddToDashboardOpen(true)}
                 >
                   {t('dashboard.addToDashboard')}
                 </Button>
@@ -972,6 +1008,12 @@ export function WorkflowWindow() {
           ) : null}
         </div>
       </div>
+
+      <AddToDashboardDialog
+        open={addToDashboardOpen}
+        onClose={() => setAddToDashboardOpen(false)}
+        onConfirm={(id, name) => void handleAddToDashboardConfirm(id, name)}
+      />
 
       <StatusBar />
     </div>

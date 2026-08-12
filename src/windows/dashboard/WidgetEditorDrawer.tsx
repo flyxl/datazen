@@ -19,6 +19,7 @@ import type {
   DashboardWidget,
   RefreshMode,
 } from '../../types/dashboard';
+import type { WorkflowListItem } from '../../types';
 import type { ChartType } from '../../types/chart';
 import { DEFAULT_CHART_CONFIG } from '../../types/chart';
 
@@ -28,6 +29,9 @@ export interface WidgetEditorDrawerProps {
   isNew?: boolean;
   /** When editing a hidden SQL workflow widget */
   hiddenSql?: { configId: string; sql: string };
+  /** User-visible workflows for binding non-hidden widgets */
+  userWorkflows?: WorkflowListItem[];
+  onOpenWorkflowEditor?: () => void;
   onClose: () => void;
   onSave: (widget: DashboardWidget, hiddenSql?: { configId: string; sql: string }) => void;
 }
@@ -63,6 +67,8 @@ export function WidgetEditorDrawer({
   widget,
   isNew,
   hiddenSql: hiddenSqlProp,
+  userWorkflows = [],
+  onOpenWorkflowEditor,
   onClose,
   onSave,
 }: Readonly<WidgetEditorDrawerProps>) {
@@ -154,10 +160,31 @@ export function WidgetEditorDrawer({
               </label>
             </>
           ) : (
-            <label className="block space-y-1">
-              <span className="text-xs text-fg-muted">{t('dashboard.workflowSource')}</span>
-              <Input value={draft.workflowId} readOnly className="font-mono text-xs" />
-            </label>
+            <div className="space-y-2">
+              <label className="block space-y-1">
+                <span className="text-xs text-fg-muted">{t('dashboard.workflowSource')}</span>
+                {userWorkflows.length > 0 ? (
+                  <Select
+                    value={draft.workflowId}
+                    onChange={(v) => setDraft((d) => ({ ...d, workflowId: v }))}
+                    options={userWorkflows.map((w) => ({ value: w.id, label: w.name }))}
+                    placeholder={t('dashboard.selectWorkflow')}
+                  />
+                ) : (
+                  <Input value={draft.workflowId} readOnly className="font-mono text-xs" />
+                )}
+              </label>
+              {onOpenWorkflowEditor && draft.workflowId && (
+                <Button
+                  variant="ghost"
+                  className="h-7 px-2 text-xs"
+                  data-testid="widget-open-workflow-editor"
+                  onClick={onOpenWorkflowEditor}
+                >
+                  {t('dashboard.openWorkflowEditor')}
+                </Button>
+              )}
+            </div>
           )}
 
           <label className="block space-y-1">
