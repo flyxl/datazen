@@ -14,6 +14,8 @@ impl DatabaseDriverFactory for MongodbFactory {
     fn create(&self) -> Arc<dyn DatabaseDriver> {
         Arc::new(MongodbDriver::new())
     }
-    fn driver_id(&self) -> &'static str { "mongodb" }
+    fn driver_id(&self) -> &'static str {
+        "mongodb"
+    }
 }
 datazen_driver_api::register_driver!(&MongodbFactory);

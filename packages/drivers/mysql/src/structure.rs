@@ -693,7 +693,9 @@ mod tests {
         };
 
         let plan = plan_structure_changes(&caps, &request).unwrap();
-        assert!(plan.statements[0].sql.contains("`email` VARCHAR(255) NOT NULL UNIQUE"));
+        assert!(plan.statements[0]
+            .sql
+            .contains("`email` VARCHAR(255) NOT NULL UNIQUE"));
     }
 
     #[test]
@@ -814,7 +816,9 @@ mod tests {
         };
 
         let err = plan_structure_changes(&caps, &request).unwrap_err();
-        assert!(matches!(err, DriverError::Unsupported(msg) if msg == "index_include is not supported"));
+        assert!(
+            matches!(err, DriverError::Unsupported(msg) if msg == "index_include is not supported")
+        );
     }
 
     #[test]
@@ -835,7 +839,9 @@ mod tests {
         };
 
         let err = plan_structure_changes(&caps, &request).unwrap_err();
-        assert!(matches!(err, DriverError::Unsupported(msg) if msg == "add_column is not supported"));
+        assert!(
+            matches!(err, DriverError::Unsupported(msg) if msg == "add_column is not supported")
+        );
     }
 
     #[test]
@@ -895,7 +901,9 @@ mod tests {
         };
 
         let err = plan_structure_changes(&caps, &request).unwrap_err();
-        assert!(matches!(err, DriverError::Unsupported(msg) if msg == "reorder_column is not supported"));
+        assert!(
+            matches!(err, DriverError::Unsupported(msg) if msg == "reorder_column is not supported")
+        );
     }
 
     #[test]
@@ -961,7 +969,9 @@ mod tests {
         };
 
         let err = plan_structure_changes(&caps, &request).unwrap_err();
-        assert!(matches!(err, DriverError::Unsupported(msg) if msg == "index_type is not supported"));
+        assert!(
+            matches!(err, DriverError::Unsupported(msg) if msg == "index_type is not supported")
+        );
     }
 
     #[test]
@@ -982,7 +992,9 @@ mod tests {
         };
 
         let err = plan_structure_changes(&caps, &request).unwrap_err();
-        assert!(matches!(err, DriverError::Unsupported(msg) if msg == "index_comment is not supported"));
+        assert!(
+            matches!(err, DriverError::Unsupported(msg) if msg == "index_comment is not supported")
+        );
     }
 
     #[test]
@@ -1003,6 +1015,8 @@ mod tests {
         };
 
         let err = plan_structure_changes(&caps, &request).unwrap_err();
-        assert!(matches!(err, DriverError::Unsupported(msg) if msg == "index method `HASH` is not supported"));
+        assert!(
+            matches!(err, DriverError::Unsupported(msg) if msg == "index method `HASH` is not supported")
+        );
     }
 }

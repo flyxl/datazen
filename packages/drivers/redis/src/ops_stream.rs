@@ -188,10 +188,12 @@ fn parse_xinfo_groups(raw: &redis::Value) -> Result<Vec<StreamGroupInfo>, String
 fn parse_xpending_entries(raw: &redis::Value) -> Result<XpendingResult, String> {
     let items = match raw {
         redis::Value::Array(items) => items,
-        _ => return Ok(XpendingResult {
-            total: 0,
-            entries: vec![],
-        }),
+        _ => {
+            return Ok(XpendingResult {
+                total: 0,
+                entries: vec![],
+            })
+        }
     };
 
     if items.is_empty() {
@@ -243,8 +245,16 @@ where
     if key.is_empty() {
         return Err("key is required".into());
     }
-    let start = if start.trim().is_empty() { "-" } else { start.trim() };
-    let end = if end.trim().is_empty() { "+" } else { end.trim() };
+    let start = if start.trim().is_empty() {
+        "-"
+    } else {
+        start.trim()
+    };
+    let end = if end.trim().is_empty() {
+        "+"
+    } else {
+        end.trim()
+    };
 
     let mut cmd = redis::cmd("XRANGE");
     cmd.arg(key).arg(start).arg(end);
@@ -314,16 +324,10 @@ where
     cmd.arg("CREATE").arg(key).arg(&group);
     cmd.arg(start_id.filter(|s| !s.trim().is_empty()).unwrap_or("$"));
 
-    cmd.query_async::<()>(conn)
-        .await
-        .map_err(|e| e.to_string())
+    cmd.query_async::<()>(conn).await.map_err(|e| e.to_string())
 }
 
-pub async fn xgroup_destroy<C>(
-    conn: &mut C,
-    key: &str,
-    group: &str,
-) -> Result<(), String>
+pub async fn xgroup_destroy<C>(conn: &mut C, key: &str, group: &str) -> Result<(), String>
 where
     C: AsyncCommands + redis::aio::ConnectionLike + Send,
 {
@@ -393,12 +397,7 @@ where
     parse_xpending_entries(&raw)
 }
 
-pub async fn xack<C>(
-    conn: &mut C,
-    key: &str,
-    group: &str,
-    ids: &[String],
-) -> Result<u64, String>
+pub async fn xack<C>(conn: &mut C, key: &str, group: &str, ids: &[String]) -> Result<u64, String>
 where
     C: AsyncCommands + redis::aio::ConnectionLike + Send,
 {
@@ -456,10 +455,8 @@ where
             for key in &batch {
                 pipe.cmd("TYPE").arg(key);
             }
-            let types: Vec<redis::Value> = pipe
-                .query_async(conn)
-                .await
-                .map_err(|e| e.to_string())?;
+            let types: Vec<redis::Value> =
+                pipe.query_async(conn).await.map_err(|e| e.to_string())?;
 
             for (key, ty) in batch.into_iter().zip(types.into_iter()) {
                 if value_to_string(&ty).eq_ignore_ascii_case("stream") {

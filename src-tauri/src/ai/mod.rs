@@ -18,6 +18,6 @@ pub mod registry;
 pub mod schema_pipeline;
 
 pub use context::{prompt_db_type, SchemaContextBuilder};
-pub use schema_pipeline::{PromptSeed, SchemaContextPipeline, compose_schema_system_suffix};
 pub use prompt_resolver::PromptResolver;
 pub use registry::{init_ai_providers, register_ai_providers, AiProviderRegistry};
+pub use schema_pipeline::{compose_schema_system_suffix, PromptSeed, SchemaContextPipeline};

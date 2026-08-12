@@ -118,9 +118,15 @@ impl WorkflowContext {
             if let Some(bracket_pos) = part.find('[') {
                 let field = &part[..bracket_pos];
                 if !field.is_empty() {
-                    let next = current.get(field).cloned().unwrap_or(serde_json::Value::Null);
+                    let next = current
+                        .get(field)
+                        .cloned()
+                        .unwrap_or(serde_json::Value::Null);
                     current = if next.is_null() && (field == "data" || field == "result") {
-                        current.get("rows").cloned().unwrap_or(serde_json::Value::Null)
+                        current
+                            .get("rows")
+                            .cloned()
+                            .unwrap_or(serde_json::Value::Null)
                     } else {
                         next
                     };
@@ -132,9 +138,15 @@ impl WorkflowContext {
             } else if let Ok(idx) = part.parse::<usize>() {
                 current = current.get(idx).cloned().unwrap_or(serde_json::Value::Null);
             } else {
-                let next = current.get(part).cloned().unwrap_or(serde_json::Value::Null);
+                let next = current
+                    .get(part)
+                    .cloned()
+                    .unwrap_or(serde_json::Value::Null);
                 current = if next.is_null() && (part == "data" || part == "result") {
-                    current.get("rows").cloned().unwrap_or(serde_json::Value::Null)
+                    current
+                        .get("rows")
+                        .cloned()
+                        .unwrap_or(serde_json::Value::Null)
                 } else {
                     next
                 };
@@ -153,9 +165,15 @@ impl WorkflowContext {
             if let Ok(idx) = part.parse::<usize>() {
                 current = current.get(idx).cloned().unwrap_or(serde_json::Value::Null);
             } else {
-                let next = current.get(*part).cloned().unwrap_or(serde_json::Value::Null);
+                let next = current
+                    .get(*part)
+                    .cloned()
+                    .unwrap_or(serde_json::Value::Null);
                 current = if next.is_null() && (*part == "data" || *part == "result") {
-                    current.get("rows").cloned().unwrap_or(serde_json::Value::Null)
+                    current
+                        .get("rows")
+                        .cloned()
+                        .unwrap_or(serde_json::Value::Null)
                 } else {
                     next
                 };
@@ -192,9 +210,15 @@ impl WorkflowContext {
                         if let Ok(idx) = part.parse::<usize>() {
                             current = current.get(idx).cloned().unwrap_or(serde_json::Value::Null);
                         } else {
-                            let next = current.get(*part).cloned().unwrap_or(serde_json::Value::Null);
+                            let next = current
+                                .get(*part)
+                                .cloned()
+                                .unwrap_or(serde_json::Value::Null);
                             current = if next.is_null() && (*part == "data" || *part == "result") {
-                                current.get("rows").cloned().unwrap_or(serde_json::Value::Null)
+                                current
+                                    .get("rows")
+                                    .cloned()
+                                    .unwrap_or(serde_json::Value::Null)
                             } else {
                                 next
                             };

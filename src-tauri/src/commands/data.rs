@@ -163,14 +163,11 @@ mod tests {
     #[tokio::test]
     async fn commit_row_updates_not_connected_errors() {
         let test = TestAppState::new().await;
-        assert!(commit_row_updates_impl(
-            &test.state,
-            "missing".into(),
-            "users".into(),
-            vec![],
-        )
-        .await
-        .is_err());
+        assert!(
+            commit_row_updates_impl(&test.state, "missing".into(), "users".into(), vec![],)
+                .await
+                .is_err()
+        );
     }
 
     #[tokio::test]

@@ -22,7 +22,10 @@ datazen_driver_api::inventory::submit! {
 
 fn unwrap_wrappers(mut s: &str) -> &str {
     loop {
-        if let Some(inner) = s.strip_prefix("Nullable(").and_then(|r| r.strip_suffix(')')) {
+        if let Some(inner) = s
+            .strip_prefix("Nullable(")
+            .and_then(|r| r.strip_suffix(')'))
+        {
             s = inner;
             continue;
         }
@@ -43,7 +46,10 @@ fn parse_paren_args(s: &str, prefix: &str) -> Option<(u8, u8)> {
     let inner = rest.strip_prefix('(')?.strip_suffix(')')?;
     let parts: Vec<&str> = inner.split(',').collect();
     let p = parts.first()?.trim().parse().ok()?;
-    let scale = parts.get(1).and_then(|v| v.trim().parse().ok()).unwrap_or(0);
+    let scale = parts
+        .get(1)
+        .and_then(|v| v.trim().parse().ok())
+        .unwrap_or(0);
     Some((p, scale))
 }
 
@@ -51,7 +57,10 @@ fn parse_ch_type(raw: &str) -> (IRType, bool) {
     let trimmed = raw.trim();
     let mut nullable = false;
     let mut s = trimmed;
-    if let Some(inner) = s.strip_prefix("Nullable(").and_then(|r| r.strip_suffix(')')) {
+    if let Some(inner) = s
+        .strip_prefix("Nullable(")
+        .and_then(|r| r.strip_suffix(')'))
+    {
         nullable = true;
         s = inner;
     }
@@ -76,7 +85,9 @@ fn parse_ch_type(raw: &str) -> (IRType, bool) {
             scale,
         }
     } else if lower.starts_with("datetime64") {
-        IRType::Timestamp { with_timezone: false }
+        IRType::Timestamp {
+            with_timezone: false,
+        }
     } else if lower.starts_with("array(") || lower == "array" {
         IRType::Json
     } else if lower.starts_with("map(") || lower == "map" {
@@ -97,7 +108,9 @@ fn parse_ch_type(raw: &str) -> (IRType, bool) {
             "float64" => IRType::Float64,
             "string" => IRType::Text,
             "date" => IRType::Date,
-            "datetime" => IRType::Timestamp { with_timezone: false },
+            "datetime" => IRType::Timestamp {
+                with_timezone: false,
+            },
             "uuid" => IRType::Uuid,
             "bool" | "boolean" => IRType::Bool,
             _ => IRType::Other(s.to_string()),
@@ -126,11 +139,7 @@ fn order_by_clause(ir_table: &IRTable) -> String {
 // ── SyncSourceAdapter ──────────────────────────────────────────────
 
 impl SyncSourceAdapter for ClickHouseSyncAdapter {
-    fn column_to_ir(
-        &self,
-        column: &ColumnSchema,
-        native_full_type: Option<&str>,
-    ) -> IRColumn {
+    fn column_to_ir(&self, column: &ColumnSchema, native_full_type: Option<&str>) -> IRColumn {
         let raw = native_full_type.unwrap_or(&column.data_type);
         let (ir_type, type_nullable) = parse_ch_type(raw);
 
@@ -211,7 +220,9 @@ impl SyncTargetAdapter for ClickHouseSyncAdapter {
             Some(Value::Json(j)) => format!("'{}'", j.to_string().replace('\'', "''")),
             Some(Value::Bytes(b)) => format!(
                 "'{}'",
-                b.iter().map(|byte| format!("{:02x}", byte)).collect::<String>()
+                b.iter()
+                    .map(|byte| format!("{:02x}", byte))
+                    .collect::<String>()
             ),
         }
     }
@@ -295,7 +306,9 @@ mod tests {
             name: "events".into(),
             columns: vec![IRColumn {
                 name: "ts".into(),
-                ir_type: IRType::Timestamp { with_timezone: false },
+                ir_type: IRType::Timestamp {
+                    with_timezone: false,
+                },
                 nullable: false,
                 default_expr: None,
                 is_primary_key: false,

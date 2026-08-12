@@ -140,10 +140,8 @@ where
             match driver.query(handle, &select_sql).await {
                 Ok(result) => {
                     for row in &result.rows {
-                        let vals: Vec<String> = row
-                            .iter()
-                            .map(|v| driver.format_sql_literal(v))
-                            .collect();
+                        let vals: Vec<String> =
+                            row.iter().map(|v| driver.format_sql_literal(v)).collect();
                         out.push_str(&format!(
                             "INSERT INTO {} ({}) VALUES ({});\n",
                             driver.quote_ident(tname),
@@ -325,7 +323,9 @@ pub fn dump_header_requests_single_transaction(sql: &str) -> bool {
     for line in sql.lines().take(20) {
         let trimmed = line.trim();
         if let Some(rest) = trimmed.strip_prefix("-- Options:") {
-            return rest.split(',').any(|part| part.trim() == "single-transaction");
+            return rest
+                .split(',')
+                .any(|part| part.trim() == "single-transaction");
         }
     }
     false
@@ -346,9 +346,7 @@ where
         .filter(|s| !is_comment_only_or_empty(s))
         .collect();
 
-    let use_tx = opts
-        .map(|o| o.single_transaction)
-        .unwrap_or(false)
+    let use_tx = opts.map(|o| o.single_transaction).unwrap_or(false)
         || dump_header_requests_single_transaction(sql);
 
     if use_tx {
@@ -475,6 +473,8 @@ mod tests {
     fn dump_header_single_transaction_flag() {
         let sql = "-- DataZen backup: app\n-- Options: clean, single-transaction\n";
         assert!(dump_header_requests_single_transaction(sql));
-        assert!(!dump_header_requests_single_transaction("-- Options: clean\n"));
+        assert!(!dump_header_requests_single_transaction(
+            "-- Options: clean\n"
+        ));
     }
 }

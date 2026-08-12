@@ -17,4 +17,3 @@ pub(super) struct SyncProgressEvent {
 }
 
 pub(super) const BATCH_SIZE: usize = 500;
-

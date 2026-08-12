@@ -144,9 +144,11 @@ pub fn decrypt_datazen_fields(
     Ok(())
 }
 
-pub fn parse(content: &str, password: &str) -> Result<(Vec<ConnectionConfig>, Vec<String>), CommandError> {
-    let mut data: serde_json::Value =
-        serde_json::from_str(content).cmd_err("datazen parse")?;
+pub fn parse(
+    content: &str,
+    password: &str,
+) -> Result<(Vec<ConnectionConfig>, Vec<String>), CommandError> {
+    let mut data: serde_json::Value = serde_json::from_str(content).cmd_err("datazen parse")?;
     if data.get("connections").is_none() {
         return Err(CommandError::Validation(
             "Invalid import file: missing 'connections' field".into(),

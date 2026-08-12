@@ -190,7 +190,9 @@ impl AiProvider for CustomProvider {
         let cfg = self.make_cfg(state);
 
         match state.protocol {
-            CustomProtocol::OpenAiCompatible => protocol::openai_chat::complete(&cfg, request).await,
+            CustomProtocol::OpenAiCompatible => {
+                protocol::openai_chat::complete(&cfg, request).await
+            }
             CustomProtocol::OpenAiResponses => {
                 protocol::openai_responses::complete(&cfg, request).await
             }

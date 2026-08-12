@@ -190,7 +190,11 @@ fn to_oai_tools(tools: &[ToolDefinition]) -> Vec<serde_json::Value> {
         .collect()
 }
 
-fn build_request_body(cfg: &ProtocolConfig, request: &CompletionRequest, stream: bool) -> serde_json::Value {
+fn build_request_body(
+    cfg: &ProtocolConfig,
+    request: &CompletionRequest,
+    stream: bool,
+) -> serde_json::Value {
     let mut body = serde_json::json!({
         "model": request.model,
         "messages": to_oai_messages(&request.messages),
@@ -240,11 +244,13 @@ fn accumulate_tool_call_delta(
     acc: &mut HashMap<usize, AccumulatedToolCall>,
     delta: StreamToolCallDelta,
 ) {
-    let entry = acc.entry(delta.index).or_insert_with(|| AccumulatedToolCall {
-        id: String::new(),
-        name: String::new(),
-        arguments: String::new(),
-    });
+    let entry = acc
+        .entry(delta.index)
+        .or_insert_with(|| AccumulatedToolCall {
+            id: String::new(),
+            name: String::new(),
+            arguments: String::new(),
+        });
     if let Some(id) = delta.id {
         entry.id = id;
     }
@@ -288,7 +294,10 @@ pub async fn complete(
     let url = chat_completions_url(&cfg.api_base);
     let body = build_request_body(cfg, request, false);
 
-    tracing::debug!("openai_chat: request\n{}", serde_json::to_string(&body).unwrap_or_default());
+    tracing::debug!(
+        "openai_chat: request\n{}",
+        serde_json::to_string(&body).unwrap_or_default()
+    );
 
     let resp = cfg
         .http_client
@@ -321,10 +330,7 @@ pub async fn complete(
         .as_ref()
         .map(|m| {
             let c = m.content.clone().unwrap_or_default();
-            let r = m
-                .reasoning_content
-                .clone()
-                .filter(|s| !s.is_empty());
+            let r = m.reasoning_content.clone().filter(|s| !s.is_empty());
             let tc = parse_oai_tool_calls(m.tool_calls.clone());
             (c, r, tc)
         })
@@ -425,13 +431,18 @@ pub async fn stream_complete(
 
         chunk_count += 1;
         if chunk_count == 1 {
-            tracing::info!("openai_chat: first chunk received ({} bytes)", chunk_bytes.len());
+            tracing::info!(
+                "openai_chat: first chunk received ({} bytes)",
+                chunk_bytes.len()
+            );
         }
 
         byte_buf.extend_from_slice(&chunk_bytes);
 
         while let Some(line_end) = byte_buf.iter().position(|&b| b == b'\n') {
-            let line = String::from_utf8_lossy(&byte_buf[..line_end]).trim().to_string();
+            let line = String::from_utf8_lossy(&byte_buf[..line_end])
+                .trim()
+                .to_string();
             byte_buf.drain(..=line_end);
 
             if line.is_empty() || line.starts_with(':') {
@@ -474,10 +485,7 @@ pub async fn stream_complete(
                     }
 
                     let content = delta.content.clone().unwrap_or_default();
-                    let reasoning = delta
-                        .reasoning_content
-                        .clone()
-                        .filter(|r| !r.is_empty());
+                    let reasoning = delta.reasoning_content.clone().filter(|r| !r.is_empty());
 
                     if !content.is_empty() || reasoning.is_some() {
                         if sender

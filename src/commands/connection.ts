@@ -54,4 +54,19 @@ export const connectionCommands = {
       skipped?: string[];
       sourceFormat?: string;
     } | null>('import_connections_with_dialog', { password }),
+
+  detectConnectionImportPath: (source: string) =>
+    invoke<{ path: string; found: boolean }>('detect_connection_import_path', { source }),
+
+  pickConnectionImportPathWithDialog: (mode: 'file' | 'folder', source: string) =>
+    invoke<string | null>('pick_connection_import_path_with_dialog', { mode, source }),
+
+  importConnectionsFromApp: (source: string, password: string, dataPath: string) =>
+    invoke<{
+      imported: number;
+      overwritten: number;
+      groupsAdded: number;
+      skipped?: string[];
+      sourceFormat?: string;
+    }>('import_connections_from_app', { source, password, dataPath }),
 };

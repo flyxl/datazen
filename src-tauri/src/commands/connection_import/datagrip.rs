@@ -1,7 +1,7 @@
 //! DataGrip `dataSources.xml` import (JDBC URL based).
 
-use super::{ImportFormat, ParsedImport};
 use super::super::error::CommandError;
+use super::{ImportFormat, ParsedImport};
 use crate::db::{ConnectionConfig, SslMode};
 use regex::Regex;
 use std::sync::OnceLock;
@@ -12,8 +12,17 @@ struct DriverProfile {
     default_user: &'static str,
 }
 
-fn profile_for(driver_ref: &str, product: &str, driver_class: &str, subprotocol: &str) -> Option<DriverProfile> {
-    let ref_key = driver_ref.split('.').next().unwrap_or("").to_ascii_lowercase();
+fn profile_for(
+    driver_ref: &str,
+    product: &str,
+    driver_class: &str,
+    subprotocol: &str,
+) -> Option<DriverProfile> {
+    let ref_key = driver_ref
+        .split('.')
+        .next()
+        .unwrap_or("")
+        .to_ascii_lowercase();
     if let Some(p) = map_key(&ref_key) {
         return Some(p);
     }
@@ -94,17 +103,19 @@ fn map_key(key: &str) -> Option<DriverProfile> {
             default_port: 3306,
             default_user: "root",
         }),
-        "postgresql" | "postgres" | "cockroach" | "cockroachdb" | "redshift" => Some(DriverProfile {
-            db_type: "postgresql",
-            default_port: if key.contains("redshift") {
-                5439
-            } else if key.contains("cockroach") {
-                26257
-            } else {
-                5432
-            },
-            default_user: "postgres",
-        }),
+        "postgresql" | "postgres" | "cockroach" | "cockroachdb" | "redshift" => {
+            Some(DriverProfile {
+                db_type: "postgresql",
+                default_port: if key.contains("redshift") {
+                    5439
+                } else if key.contains("cockroach") {
+                    26257
+                } else {
+                    5432
+                },
+                default_user: "postgres",
+            })
+        }
         "sqlite" => Some(DriverProfile {
             db_type: "sqlite",
             default_port: 0,
@@ -170,11 +181,13 @@ fn parse_jdbc_url(jdbc_url: &str) -> JdbcParts {
     };
 
     static SQLSERVER_RE: OnceLock<Regex> = OnceLock::new();
-    let sqlserver_re = SQLSERVER_RE.get_or_init(|| {
-        Regex::new(r"(?i)^sqlserver://([^;:/]+)(?::(\d+))?(?:;(.*))?").unwrap()
-    });
+    let sqlserver_re = SQLSERVER_RE
+        .get_or_init(|| Regex::new(r"(?i)^sqlserver://([^;:/]+)(?::(\d+))?(?:;(.*))?").unwrap());
     if let Some(caps) = sqlserver_re.captures(url) {
-        result.host = caps.get(1).map(|m| m.as_str().to_string()).unwrap_or_default();
+        result.host = caps
+            .get(1)
+            .map(|m| m.as_str().to_string())
+            .unwrap_or_default();
         result.port = caps
             .get(2)
             .and_then(|m| m.as_str().parse().ok())
@@ -268,9 +281,8 @@ fn child_text(block: &str, tag: &str) -> String {
 
 pub fn parse(xml: &str) -> Result<ParsedImport, CommandError> {
     static BLOCK_RE: OnceLock<Regex> = OnceLock::new();
-    let block_re = BLOCK_RE.get_or_init(|| {
-        Regex::new(r"(?is)<data-source\b([^>]*)>(.*?)</data-source>").unwrap()
-    });
+    let block_re = BLOCK_RE
+        .get_or_init(|| Regex::new(r"(?is)<data-source\b([^>]*)>(.*?)</data-source>").unwrap());
 
     let mut connections = Vec::new();
     let mut groups = Vec::new();
@@ -393,7 +405,8 @@ pub fn parse(xml: &str) -> Result<ParsedImport, CommandError> {
     }
     if connections.is_empty() {
         return Err(CommandError::Validation(
-            "No supported DataGrip connections found (unsupported JDBC drivers were skipped)".into(),
+            "No supported DataGrip connections found (unsupported JDBC drivers were skipped)"
+                .into(),
         ));
     }
 

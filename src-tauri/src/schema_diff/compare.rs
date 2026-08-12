@@ -85,10 +85,8 @@ pub fn diff_indexes(src: &TableSchema, tgt: &TableSchema) -> IndexDiff {
             idx.is_primary
         )
     };
-    let src_keys: HashMap<String, &IndexInfo> =
-        src.indexes.iter().map(|i| (key(i), i)).collect();
-    let tgt_keys: HashMap<String, &IndexInfo> =
-        tgt.indexes.iter().map(|i| (key(i), i)).collect();
+    let src_keys: HashMap<String, &IndexInfo> = src.indexes.iter().map(|i| (key(i), i)).collect();
+    let tgt_keys: HashMap<String, &IndexInfo> = tgt.indexes.iter().map(|i| (key(i), i)).collect();
 
     let mut missing_on_target = Vec::new();
     let mut extra_on_target = Vec::new();

@@ -95,15 +95,7 @@ pub async fn kv_scan_keys(
     cursor: u64,
     count: u32,
 ) -> Result<serde_json::Value, CommandError> {
-    kv_scan_keys_impl(
-        &state,
-        connection_id,
-        db_index,
-        pattern,
-        cursor,
-        count,
-    )
-    .await
+    kv_scan_keys_impl(&state, connection_id, db_index, pattern, cursor, count).await
 }
 
 /// Return the full JSON value for a Redis key in the given logical database.

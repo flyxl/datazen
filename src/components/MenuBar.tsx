@@ -14,6 +14,7 @@ interface MenuItem {
   shortcut?: string;
   checked?: boolean;
   separator?: boolean;
+  children?: MenuItem[];
 }
 
 interface Menu {
@@ -36,7 +37,19 @@ function useMenus(): Menu[] {
         { id: 'export-config', label: t('menu.exportConfig') },
         { id: 'import-config', label: t('menu.importConfig') },
         { id: 'export-connections', label: t('menu.exportConnections') },
-        { id: 'import-connections', label: t('menu.importConnections') },
+        {
+          id: 'import-connections',
+          label: t('menu.importConnections'),
+          children: [
+            { id: 'import-connections-dbx', label: t('menu.importFromDbx') },
+            { id: 'import-connections-navicat', label: t('menu.importFromNavicat') },
+            { id: 'import-connections-datagrip', label: t('menu.importFromDataGrip') },
+            { id: 'import-connections-dbeaver', label: t('menu.importFromDBeaver') },
+            { id: 'import-connections-tableplus', label: t('menu.importFromTablePlus') },
+            { id: 'sep-import', label: '', separator: true },
+            { id: 'import-connections-file', label: t('menu.importFromFile') },
+          ],
+        },
         { id: 'sep-f2', label: '', separator: true },
         { id: 'open-settings', label: t('menu.settings'), shortcut: 'Ctrl+,' },
       ],
@@ -199,37 +212,70 @@ function MenuButton({ menu, isOpen, onOpen, onClose, onHover }: MenuButtonProps)
           className="fixed z-[9999] min-w-[200px] rounded-lg border border-edge bg-surface-alt py-1 shadow-xl"
           style={{ left: pos.x, top: pos.y }}
         >
-          {menu.items.map((item) => {
-            if (item.separator) {
-              return <div key={item.id} className="my-1 h-px bg-edge" />;
-            }
-            return (
-              <button
-                key={item.id}
-                type="button"
-                className="flex w-full items-center justify-between px-3 py-1.5 text-left text-[13px] text-fg-secondary transition-colors hover:bg-surface-raised hover:text-fg"
-                onClick={() => {
-                  void handleMenuAction(item.id);
-                  onClose();
-                }}
-              >
-                <span className="flex items-center gap-2">
-                  {item.checked !== undefined && (
-                    <span className="w-4 text-center text-blue-500">
-                      {item.checked ? '✓' : ''}
-                    </span>
-                  )}
-                  {item.label}
-                </span>
-                {item.shortcut && (
-                  <span className="ml-4 text-[11px] text-fg-muted">{item.shortcut}</span>
-                )}
-              </button>
-            );
-          })}
+          {menu.items.map((item) => (
+            <MenuEntry key={item.id} item={item} onClose={onClose} />
+          ))}
         </div>,
         document.body,
       )}
     </>
+  );
+}
+
+function MenuEntry({ item, onClose }: { item: MenuItem; onClose: () => void }) {
+  const [open, setOpen] = useState(false);
+  const rowRef = useRef<HTMLDivElement>(null);
+
+  if (item.separator) {
+    return <div className="my-1 h-px bg-edge" />;
+  }
+
+  if (item.children?.length) {
+    return (
+      <div
+        ref={rowRef}
+        className="relative"
+        onMouseEnter={() => setOpen(true)}
+        onMouseLeave={() => setOpen(false)}
+      >
+        <button
+          type="button"
+          className="flex w-full items-center justify-between px-3 py-1.5 text-left text-[13px] text-fg-secondary transition-colors hover:bg-surface-raised hover:text-fg"
+        >
+          <span>{item.label}</span>
+          <span className="ml-4 text-[11px] text-fg-muted">▸</span>
+        </button>
+        {open && (
+          <div className="absolute top-0 left-full z-[10000] min-w-[200px] rounded-lg border border-edge bg-surface-alt py-1 shadow-xl">
+            {item.children.map((child) => (
+              <MenuEntry key={child.id} item={child} onClose={onClose} />
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      className="flex w-full items-center justify-between px-3 py-1.5 text-left text-[13px] text-fg-secondary transition-colors hover:bg-surface-raised hover:text-fg"
+      onClick={() => {
+        void handleMenuAction(item.id);
+        onClose();
+      }}
+    >
+      <span className="flex items-center gap-2">
+        {item.checked !== undefined && (
+          <span className="w-4 text-center text-blue-500">
+            {item.checked ? '✓' : ''}
+          </span>
+        )}
+        {item.label}
+      </span>
+      {item.shortcut && (
+        <span className="ml-4 text-[11px] text-fg-muted">{item.shortcut}</span>
+      )}
+    </button>
   );
 }

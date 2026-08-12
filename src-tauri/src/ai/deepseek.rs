@@ -27,9 +27,9 @@ impl DeepSeekProvider {
 
     async fn protocol_config(&self) -> Result<ProtocolConfig, AiError> {
         let guard = self.config.read().await;
-        let config = guard.as_ref().ok_or_else(|| {
-            AiError::NotConfigured("DeepSeek provider not initialized".into())
-        })?;
+        let config = guard
+            .as_ref()
+            .ok_or_else(|| AiError::NotConfigured("DeepSeek provider not initialized".into()))?;
 
         let api_key = config
             .api_key
@@ -37,10 +37,7 @@ impl DeepSeekProvider {
             .filter(|k| !k.is_empty())
             .ok_or_else(|| AiError::NotConfigured("API key is required for DeepSeek".into()))?;
 
-        let endpoint = config
-            .endpoint
-            .as_deref()
-            .unwrap_or(DEFAULT_ENDPOINT);
+        let endpoint = config.endpoint.as_deref().unwrap_or(DEFAULT_ENDPOINT);
 
         Ok(ProtocolConfig {
             http_client: self.http_client.clone(),
@@ -82,7 +79,9 @@ impl AiProvider for DeepSeekProvider {
             .ok_or_else(|| AiError::NotConfigured("API key is required for DeepSeek".into()))?;
 
         if config.model.is_empty() {
-            return Err(AiError::NotConfigured("Model is required for DeepSeek".into()));
+            return Err(AiError::NotConfigured(
+                "Model is required for DeepSeek".into(),
+            ));
         }
 
         let endpoint = config.endpoint.as_deref().unwrap_or(DEFAULT_ENDPOINT);

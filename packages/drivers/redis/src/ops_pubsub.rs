@@ -166,7 +166,10 @@ pub async fn start_subscription(
 ) -> Result<String, String> {
     validate_subscribe_args(&channels, &patterns)?;
 
-    let plan = driver.connection_plan(&connection_id).await.map_err(|e| e.to_string())?;
+    let plan = driver
+        .connection_plan(&connection_id)
+        .await
+        .map_err(|e| e.to_string())?;
     let channels = normalize_names(&channels);
     let patterns = normalize_names(&patterns);
     if channels.is_empty() && patterns.is_empty() {
@@ -179,20 +182,15 @@ pub async fn start_subscription(
     let sub_id_log = sub_id_for_task.clone();
 
     let handle = tokio::spawn(async move {
-        let result = run_subscribe_loop(
-            &plan,
-            &channels,
-            &patterns,
-            move |channel, payload| {
-                emit_pubsub_message(RedisPubSubMessageEvent {
-                    connection_id: conn_id_for_task.clone(),
-                    subscription_id: sub_id_for_task.clone(),
-                    channel,
-                    payload,
-                    ts: now_millis(),
-                });
-            },
-        )
+        let result = run_subscribe_loop(&plan, &channels, &patterns, move |channel, payload| {
+            emit_pubsub_message(RedisPubSubMessageEvent {
+                connection_id: conn_id_for_task.clone(),
+                subscription_id: sub_id_for_task.clone(),
+                channel,
+                payload,
+                ts: now_millis(),
+            });
+        })
         .await;
         if let Err(e) = result {
             tracing::warn!(
@@ -279,7 +277,9 @@ mod tests {
 
     #[tokio::test]
     async fn unsubscribe_unknown_id_returns_error() {
-        let err = unsubscribe("nonexistent-subscription-id").await.unwrap_err();
+        let err = unsubscribe("nonexistent-subscription-id")
+            .await
+            .unwrap_err();
         assert!(err.contains("subscription not found"));
     }
 

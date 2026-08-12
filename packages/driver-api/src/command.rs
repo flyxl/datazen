@@ -126,10 +126,17 @@ pub fn validate_command_input(
     definition: &DriverCommandDefinition,
     input: &JsonValue,
 ) -> Result<(), String> {
-    if definition.input_schema.get("type").and_then(JsonValue::as_str) == Some("object")
+    if definition
+        .input_schema
+        .get("type")
+        .and_then(JsonValue::as_str)
+        == Some("object")
         && !input.is_object()
     {
-        return Err(format!("Command '{}' input must be an object", definition.id));
+        return Err(format!(
+            "Command '{}' input must be an object",
+            definition.id
+        ));
     }
 
     if let Some(required) = definition
@@ -207,14 +214,20 @@ fn set_sql_title(mut definition: DriverCommandDefinition, title: &str) -> Driver
 }
 
 /// `query` with a driver-specific description and `sql` field title.
-pub fn query_command_definition_for(description: &str, statement_title: &str) -> DriverCommandDefinition {
+pub fn query_command_definition_for(
+    description: &str,
+    statement_title: &str,
+) -> DriverCommandDefinition {
     let mut definition = query_command_definition();
     definition.description = Some(description.into());
     set_sql_title(definition, statement_title)
 }
 
 /// `execute` with a driver-specific description and `sql` field title.
-pub fn execute_command_definition_for(description: &str, statement_title: &str) -> DriverCommandDefinition {
+pub fn execute_command_definition_for(
+    description: &str,
+    statement_title: &str,
+) -> DriverCommandDefinition {
     let mut definition = execute_command_definition();
     definition.description = Some(description.into());
     set_sql_title(definition, statement_title)
@@ -233,14 +246,17 @@ pub fn statement_command_definitions(
 }
 
 /// Query-only drivers (writes are not exposed as commands).
-pub fn query_only_command_definitions(description: &str, statement_title: &str) -> Vec<DriverCommandDefinition> {
+pub fn query_only_command_definitions(
+    description: &str,
+    statement_title: &str,
+) -> Vec<DriverCommandDefinition> {
     vec![query_command_definition_for(description, statement_title)]
 }
 
 const HIGH_RISK_TOKENS: &[&str] = &["flush", "drop", "restore", "exec", "truncate", "destroy"];
 const WRITE_TOKENS: &[&str] = &[
-    "execute", "write", "delete", "del", "set", "update", "insert", "add", "rename", "push",
-    "pop", "remove", "ack", "create", "publish", "ttl", "reset", "xadd", "xack",
+    "execute", "write", "delete", "del", "set", "update", "insert", "add", "rename", "push", "pop",
+    "remove", "ack", "create", "publish", "ttl", "reset", "xadd", "xack",
 ];
 
 fn permission_tokens(definition: &DriverCommandDefinition) -> Vec<String> {
@@ -251,7 +267,12 @@ fn permission_tokens(definition: &DriverCommandDefinition) -> Vec<String> {
         .map(String::as_str)
         .chain(std::iter::once(definition.id.as_str()))
     {
-        tokens.extend(value.split(|c: char| !c.is_ascii_alphanumeric()).filter(|t| !t.is_empty()).map(|t| t.to_ascii_lowercase()));
+        tokens.extend(
+            value
+                .split(|c: char| !c.is_ascii_alphanumeric())
+                .filter(|t| !t.is_empty())
+                .map(|t| t.to_ascii_lowercase()),
+        );
     }
     tokens
 }
@@ -262,7 +283,10 @@ pub fn required_access_level(definition: &DriverCommandDefinition) -> CommandAcc
         return risk;
     }
     let tokens = permission_tokens(definition);
-    if tokens.iter().any(|t| HIGH_RISK_TOKENS.contains(&t.as_str())) {
+    if tokens
+        .iter()
+        .any(|t| HIGH_RISK_TOKENS.contains(&t.as_str()))
+    {
         return CommandAccessLevel::HighRisk;
     }
     if tokens.iter().any(|t| WRITE_TOKENS.contains(&t.as_str())) {
@@ -299,8 +323,14 @@ mod tests {
         assert_eq!(definition.id, "query");
         assert_eq!(definition.name, "Query");
         assert_eq!(definition.input_schema["type"], "object");
-        assert_eq!(definition.input_schema["required"], serde_json::json!(["sql"]));
-        assert_eq!(definition.input_schema["properties"]["sql"]["type"], "string");
+        assert_eq!(
+            definition.input_schema["required"],
+            serde_json::json!(["sql"])
+        );
+        assert_eq!(
+            definition.input_schema["properties"]["sql"]["type"],
+            "string"
+        );
         assert_eq!(definition.input_schema["properties"]["limit"]["minimum"], 1);
         assert!(definition.output_schema.is_none());
         assert_eq!(definition.permissions, vec!["driver.query"]);
@@ -311,7 +341,10 @@ mod tests {
         let definition = execute_command_definition();
         assert_eq!(definition.id, "execute");
         assert_eq!(definition.name, "Execute");
-        assert_eq!(definition.input_schema["required"], serde_json::json!(["sql"]));
+        assert_eq!(
+            definition.input_schema["required"],
+            serde_json::json!(["sql"])
+        );
         assert_eq!(definition.output_schema.as_ref().unwrap()["type"], "object");
         assert_eq!(definition.permissions, vec!["driver.execute"]);
     }
@@ -319,13 +352,16 @@ mod tests {
     #[test]
     fn command_input_validation_accepts_valid_input() {
         let definition = query_command_definition();
-        assert!(validate_command_input(&definition, &serde_json::json!({"sql": "SELECT 1"})).is_ok());
+        assert!(
+            validate_command_input(&definition, &serde_json::json!({"sql": "SELECT 1"})).is_ok()
+        );
     }
 
     #[test]
     fn command_input_validation_rejects_non_object() {
         let definition = query_command_definition();
-        let error = validate_command_input(&definition, &serde_json::json!("SELECT 1")).unwrap_err();
+        let error =
+            validate_command_input(&definition, &serde_json::json!("SELECT 1")).unwrap_err();
         assert!(error.contains("must be an object"));
     }
 
@@ -350,7 +386,10 @@ mod tests {
         let encoded = serde_json::to_value(&definition).unwrap();
         assert_eq!(encoded["inputSchema"]["type"], "object");
         assert_eq!(encoded["outputSchema"]["type"], "string");
-        assert_eq!(encoded["permissions"], serde_json::json!(["driver.custom.execute"]));
+        assert_eq!(
+            encoded["permissions"],
+            serde_json::json!(["driver.custom.execute"])
+        );
         assert_eq!(encoded["metadata"]["workflow"], true);
         assert_eq!(encoded["metadata"]["category"], "query");
     }
@@ -393,7 +432,10 @@ mod tests {
     fn explicit_metadata_risk_overrides_permission_tokens() {
         let mut definition = query_command_definition();
         definition.metadata.risk = Some(CommandAccessLevel::HighRisk);
-        assert_eq!(required_access_level(&definition), CommandAccessLevel::HighRisk);
+        assert_eq!(
+            required_access_level(&definition),
+            CommandAccessLevel::HighRisk
+        );
     }
 
     #[test]
@@ -412,8 +454,14 @@ mod tests {
 
     #[test]
     fn query_is_read_and_execute_is_write() {
-        assert_eq!(required_access_level(&query_command_definition()), CommandAccessLevel::Read);
-        assert_eq!(required_access_level(&execute_command_definition()), CommandAccessLevel::Write);
+        assert_eq!(
+            required_access_level(&query_command_definition()),
+            CommandAccessLevel::Read
+        );
+        assert_eq!(
+            required_access_level(&execute_command_definition()),
+            CommandAccessLevel::Write
+        );
     }
 
     #[test]

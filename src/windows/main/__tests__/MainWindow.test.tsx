@@ -368,6 +368,7 @@ vi.mock('../../../components/connection/ConnectionShareDialog', () => ({
   ConnectionShareDialog: ({
     open,
     mode,
+    importSource,
     onClose,
     onExportSuccess,
     onImportSuccess,
@@ -375,6 +376,7 @@ vi.mock('../../../components/connection/ConnectionShareDialog', () => ({
   }: {
     open: boolean;
     mode: string;
+    importSource?: string;
     onClose: () => void;
     onExportSuccess: (count: number) => void;
     onImportSuccess: (result: {
@@ -387,7 +389,7 @@ vi.mock('../../../components/connection/ConnectionShareDialog', () => ({
     onError: (message: string) => void;
   }) =>
     open ? (
-      <div data-testid="conn-share-dialog" data-mode={mode}>
+      <div data-testid="conn-share-dialog" data-mode={mode} data-source={importSource ?? 'file'}>
         <button type="button" data-testid="share-close" onClick={onClose}>close</button>
         <button type="button" data-testid="share-export-ok" onClick={() => onExportSuccess(2)}>export</button>
         <button
@@ -754,6 +756,16 @@ describe('MainWindow', () => {
 
     fireEvent.click(screen.getByTestId('share-error'));
     await waitFor(() => expect(screen.getByText('share-fail')).toBeInTheDocument());
+  });
+
+  it('TC-main: import-from-app menu opens dialog with source', async () => {
+    render(<MainWindow />);
+    await emitCrossWindow('menu:import-connections-dbx');
+    await waitFor(() => {
+      const dialog = screen.getByTestId('conn-share-dialog');
+      expect(dialog).toHaveAttribute('data-mode', 'import');
+      expect(dialog).toHaveAttribute('data-source', 'dbx');
+    });
   });
 
   it('TC-main: dashboard dialog list open and delete', async () => {

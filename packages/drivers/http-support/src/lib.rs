@@ -15,8 +15,7 @@ pub fn build_http_client(
     if let (Some(u), Some(p)) = (username, password) {
         if !u.is_empty() {
             use base64::Engine;
-            let token = base64::engine::general_purpose::STANDARD
-                .encode(format!("{u}:{p}"));
+            let token = base64::engine::general_purpose::STANDARD.encode(format!("{u}:{p}"));
             let mut headers = reqwest::header::HeaderMap::new();
             if let Ok(v) = reqwest::header::HeaderValue::from_str(&format!("Basic {token}")) {
                 headers.insert(reqwest::header::AUTHORIZATION, v);
@@ -59,9 +58,7 @@ pub fn json_to_value(v: &serde_json::Value) -> Option<Value> {
             }
         }
         serde_json::Value::String(s) => Some(Value::String(s.clone())),
-        serde_json::Value::Array(_) | serde_json::Value::Object(_) => {
-            Some(Value::Json(v.clone()))
-        }
+        serde_json::Value::Array(_) | serde_json::Value::Object(_) => Some(Value::Json(v.clone())),
     }
 }
 

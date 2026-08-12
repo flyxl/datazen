@@ -94,9 +94,7 @@ fn responses_url(api_base: &str) -> String {
     format!("{}/responses", base.trim_end_matches('/'))
 }
 
-fn split_instructions(
-    messages: &[ChatMessage],
-) -> (Option<String>, Vec<serde_json::Value>) {
+fn split_instructions(messages: &[ChatMessage]) -> (Option<String>, Vec<serde_json::Value>) {
     let system_parts: Vec<&str> = messages
         .iter()
         .filter(|m| m.role == MessageRole::System)
@@ -184,7 +182,8 @@ fn build_request_body(
     let (instructions, input) = if use_prev_id {
         // When using previous_response_id, only send new messages (non-system).
         // The server already has instructions from the stored response — don't re-send them.
-        let new_input: Vec<serde_json::Value> = request.messages
+        let new_input: Vec<serde_json::Value> = request
+            .messages
             .iter()
             .filter(|m| m.role != MessageRole::System)
             .filter(|m| m.role == MessageRole::User || m.role == MessageRole::Tool)
@@ -260,7 +259,11 @@ fn parse_output_tool_calls(output: &[OutputItem]) -> Option<Vec<ToolCall>> {
             })
         })
         .collect();
-    if calls.is_empty() { None } else { Some(calls) }
+    if calls.is_empty() {
+        None
+    } else {
+        Some(calls)
+    }
 }
 
 // ─── Public API ───
@@ -272,7 +275,10 @@ pub async fn complete(
     let url = responses_url(&cfg.api_base);
     let body = build_request_body(cfg, request, false);
 
-    tracing::debug!("openai_responses: request\n{}", serde_json::to_string(&body).unwrap_or_default());
+    tracing::debug!(
+        "openai_responses: request\n{}",
+        serde_json::to_string(&body).unwrap_or_default()
+    );
 
     let resp = cfg
         .http_client
@@ -315,7 +321,11 @@ pub async fn complete(
         .collect::<Vec<_>>()
         .join("");
 
-    let reasoning = if reasoning_text.is_empty() { None } else { Some(reasoning_text) };
+    let reasoning = if reasoning_text.is_empty() {
+        None
+    } else {
+        Some(reasoning_text)
+    };
 
     let tool_calls = parse_output_tool_calls(&api_resp.output);
     let finish_reason = if tool_calls.is_some() {
@@ -353,7 +363,10 @@ pub async fn stream_complete(
     let url = responses_url(&cfg.api_base);
     let body = build_request_body(cfg, request, true);
 
-    tracing::debug!("openai_responses: stream request\n{}", serde_json::to_string(&body).unwrap_or_default());
+    tracing::debug!(
+        "openai_responses: stream request\n{}",
+        serde_json::to_string(&body).unwrap_or_default()
+    );
 
     let resp = cfg
         .http_client
@@ -409,20 +422,27 @@ pub async fn stream_complete(
             Ok(b) => b,
             Err(e) => {
                 tracing::error!("openai_responses: stream read error: {}", e);
-                let _ = sender.send(Err(AiError::RequestFailed(e.to_string()))).await;
+                let _ = sender
+                    .send(Err(AiError::RequestFailed(e.to_string())))
+                    .await;
                 return Ok(());
             }
         };
 
         chunk_count += 1;
         if chunk_count == 1 {
-            tracing::info!("openai_responses: first chunk received ({} bytes)", chunk_bytes.len());
+            tracing::info!(
+                "openai_responses: first chunk received ({} bytes)",
+                chunk_bytes.len()
+            );
         }
 
         byte_buf.extend_from_slice(&chunk_bytes);
 
         while let Some(line_end) = byte_buf.iter().position(|&b| b == b'\n') {
-            let line = String::from_utf8_lossy(&byte_buf[..line_end]).trim().to_string();
+            let line = String::from_utf8_lossy(&byte_buf[..line_end])
+                .trim()
+                .to_string();
             byte_buf.drain(..=line_end);
 
             if line.is_empty() || line.starts_with(':') {
@@ -501,7 +521,8 @@ pub async fn stream_complete(
                 "response.output_item.added" => {
                     if let Some(item) = &event.item {
                         if item.item_type.as_deref() == Some("function_call") {
-                            current_fc_id = item.id.clone().or(item.call_id.clone()).unwrap_or_default();
+                            current_fc_id =
+                                item.id.clone().or(item.call_id.clone()).unwrap_or_default();
                             current_fc_name = item.name.clone().unwrap_or_default();
                             current_fc_args.clear();
                         }
@@ -554,7 +575,10 @@ pub async fn stream_complete(
         }
     }
 
-    tracing::warn!(chunk_count, "openai_responses: stream ended without response.completed");
+    tracing::warn!(
+        chunk_count,
+        "openai_responses: stream ended without response.completed"
+    );
     let tool_calls = if pending_tool_calls.is_empty() {
         None
     } else {

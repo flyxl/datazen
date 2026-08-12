@@ -32,7 +32,9 @@ fn mongo_type_to_ir(raw: &str) -> IRType {
             scale: 0,
         },
         "bool" | "boolean" => IRType::Bool,
-        "datetime" | "date" | "timestamp" => IRType::Timestamp { with_timezone: false },
+        "datetime" | "date" | "timestamp" => IRType::Timestamp {
+            with_timezone: false,
+        },
         "objectid" => IRType::Varchar { length: Some(24) },
         "document" | "object" => IRType::Json,
         "array" => IRType::Json,
@@ -45,11 +47,7 @@ fn mongo_type_to_ir(raw: &str) -> IRType {
 // ── SyncSourceAdapter ──────────────────────────────────────────────
 
 impl SyncSourceAdapter for MongodbSyncAdapter {
-    fn column_to_ir(
-        &self,
-        column: &ColumnSchema,
-        native_full_type: Option<&str>,
-    ) -> IRColumn {
+    fn column_to_ir(&self, column: &ColumnSchema, native_full_type: Option<&str>) -> IRColumn {
         let raw = native_full_type.unwrap_or(&column.data_type);
         let ir_type = mongo_type_to_ir(raw);
 
@@ -113,7 +111,9 @@ impl SyncTargetAdapter for MongodbSyncAdapter {
             Some(Value::Json(j)) => format!("'{}'", j.to_string().replace('\'', "''")),
             Some(Value::Bytes(b)) => format!(
                 "'\\x{}'",
-                b.iter().map(|byte| format!("{:02x}", byte)).collect::<String>()
+                b.iter()
+                    .map(|byte| format!("{:02x}", byte))
+                    .collect::<String>()
             ),
         }
     }
@@ -142,25 +142,49 @@ mod tests {
     #[test]
     fn mongo_bson_types() {
         let a = MongodbSyncAdapter;
-        assert_eq!(a.column_to_ir(&col("name", "string"), None).ir_type, IRType::Text);
-        assert_eq!(a.column_to_ir(&col("n", "int"), None).ir_type, IRType::Int32);
-        assert_eq!(a.column_to_ir(&col("n", "Int64"), None).ir_type, IRType::Int64);
-        assert_eq!(a.column_to_ir(&col("n", "double"), None).ir_type, IRType::Float64);
-        assert_eq!(a.column_to_ir(&col("ok", "bool"), None).ir_type, IRType::Bool);
+        assert_eq!(
+            a.column_to_ir(&col("name", "string"), None).ir_type,
+            IRType::Text
+        );
+        assert_eq!(
+            a.column_to_ir(&col("n", "int"), None).ir_type,
+            IRType::Int32
+        );
+        assert_eq!(
+            a.column_to_ir(&col("n", "Int64"), None).ir_type,
+            IRType::Int64
+        );
+        assert_eq!(
+            a.column_to_ir(&col("n", "double"), None).ir_type,
+            IRType::Float64
+        );
+        assert_eq!(
+            a.column_to_ir(&col("ok", "bool"), None).ir_type,
+            IRType::Bool
+        );
     }
 
     #[test]
     fn mongo_complex_types() {
         let a = MongodbSyncAdapter;
-        assert_eq!(a.column_to_ir(&col("meta", "object"), None).ir_type, IRType::Json);
-        assert_eq!(a.column_to_ir(&col("tags", "array"), None).ir_type, IRType::Json);
+        assert_eq!(
+            a.column_to_ir(&col("meta", "object"), None).ir_type,
+            IRType::Json
+        );
+        assert_eq!(
+            a.column_to_ir(&col("tags", "array"), None).ir_type,
+            IRType::Json
+        );
         assert_eq!(
             a.column_to_ir(&col("id", "objectId"), None).ir_type,
             IRType::Varchar { length: Some(24) }
         );
         assert_eq!(
             a.column_to_ir(&col("price", "decimal128"), None).ir_type,
-            IRType::Decimal { precision: 0, scale: 0 }
+            IRType::Decimal {
+                precision: 0,
+                scale: 0
+            }
         );
     }
 
