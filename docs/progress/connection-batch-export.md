@@ -17,7 +17,7 @@
 | F3 | 拉取 DDL + 全量（分页）表数据供批量导出 | done | （本提交） | PASS：lines 97.77% |
 | F4 | 接入 SqlConnectionView 顶栏 + Schema 树（库节点/空白/多表）入口 | done | （本提交） | PASS |
 | F5 | i18n 全 locale + 文档(AGENTS/architecture) + E2E 用例调整 | done | （本提交） | PASS |
-| F6 | 合并到 main 并 push | pending | — | — |
+| F6 | 合并到 main 并 push | done | （merge） | merged + pushed |
 
 ## 测试约定
 
@@ -63,3 +63,6 @@
 - `docs/architecture/frontend/components.md`：DataTable 导出附近新增「批量导出」小节
 - E2E：`e2e/specs/export-import.ts` — EI-BE-001 顶栏按钮打开对话框（可跑）；EI-BE-002 Schema 树原生菜单 SKIPPED
 - 未 commit
+
+### F6 — 合并 main
+- feat/connection-batch-export → origin/main
