@@ -2,6 +2,14 @@
 
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum WorkflowVisibility {
+    #[default]
+    User,
+    DashboardHidden,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkflowDefinition {
     pub id: String,
@@ -21,6 +29,9 @@ pub struct WorkflowDefinition {
     /// Optional interval schedule (jobs / timed backup via Workflow).
     #[serde(default)]
     pub schedule: Option<WorkflowSchedule>,
+    /// `user` appears in Workflow UI; `dashboardHidden` is dashboard-owned.
+    #[serde(default)]
+    pub visibility: WorkflowVisibility,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]

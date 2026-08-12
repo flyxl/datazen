@@ -22,5 +22,5 @@ pub use history::WorkflowHistoryManager;
 pub use workflows::{
     enforce_workflow_query_guards, StepExecutionResult, StepStatus, WorkflowDefinition,
     WorkflowExecuteOptions, WorkflowExecutionResult, WorkflowExecutor, WorkflowListItem,
-    WorkflowRegistry, WorkflowStep, WORKFLOW_QUERY_ROW_LIMIT,
+    WorkflowRegistry, WorkflowStep, WorkflowVisibility, WORKFLOW_QUERY_ROW_LIMIT,
 };

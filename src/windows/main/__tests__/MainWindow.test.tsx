@@ -117,11 +117,13 @@ const {
     saveDashboardMock: dashboardState.saveDashboard,
     deleteDashboardMock: dashboardState.deleteDashboard,
     crossWindowHandlers,
-    listenCrossWindowMock: vi.fn().mockImplementation((event: string, handler: (p?: unknown) => void) => {
-      crossWindowHandlers.set(event, handler);
-      // No-op unsubscribe: avoid async teardown racing with re-register (mirrors production timing bug in tests only).
-      return Promise.resolve(() => {});
-    }),
+    listenCrossWindowMock: vi
+      .fn()
+      .mockImplementation((event: string, handler: (p?: unknown) => void) => {
+        crossWindowHandlers.set(event, handler);
+        // No-op unsubscribe: avoid async teardown racing with re-register (mirrors production timing bug in tests only).
+        return Promise.resolve(() => {});
+      }),
     openBackupWindowMock: vi.fn(),
     openConnectionWindowMock: vi.fn(),
     openDashboardWindowMock: vi.fn(),
@@ -222,7 +224,10 @@ vi.mock('../../../stores/activeConnectionStore', () => ({
 }));
 
 vi.mock('../../../stores/dashboardStore', () => ({
-  useDashboardStore: (sel: (s: typeof dashboardState) => unknown) => sel(dashboardState),
+  useDashboardStore: Object.assign(
+    (sel: (s: typeof dashboardState) => unknown) => sel(dashboardState),
+    { getState: () => dashboardState },
+  ),
 }));
 
 vi.mock('../../../lib/crossWindowBus', () => ({
@@ -321,12 +326,24 @@ vi.mock('../ActionPanel', () => ({
     onDashboard: () => void;
   }) => (
     <div data-testid="action-panel">
-      <button type="button" data-testid="action-new" onClick={onNewConnection}>new</button>
-      <button type="button" data-testid="action-backup" onClick={onBackup}>backup</button>
-      <button type="button" data-testid="action-restore" onClick={onRestore}>restore</button>
-      <button type="button" data-testid="action-sync" onClick={onDataSync}>sync</button>
-      <button type="button" data-testid="action-workflow" onClick={onWorkflow}>workflow</button>
-      <button type="button" data-testid="action-dashboard" onClick={onDashboard}>dashboard</button>
+      <button type="button" data-testid="action-new" onClick={onNewConnection}>
+        new
+      </button>
+      <button type="button" data-testid="action-backup" onClick={onBackup}>
+        backup
+      </button>
+      <button type="button" data-testid="action-restore" onClick={onRestore}>
+        restore
+      </button>
+      <button type="button" data-testid="action-sync" onClick={onDataSync}>
+        sync
+      </button>
+      <button type="button" data-testid="action-workflow" onClick={onWorkflow}>
+        workflow
+      </button>
+      <button type="button" data-testid="action-dashboard" onClick={onDashboard}>
+        dashboard
+      </button>
     </div>
   ),
 }));
@@ -356,7 +373,9 @@ vi.mock('../ConnectionItem', () => ({
       data-dragging={isDragging ? 'true' : 'false'}
       onClick={() => onSelect(connection.id)}
       onDoubleClick={() => onConnect(connection)}
-      onContextMenu={(e) => { void onContextMenu(e, connection); }}
+      onContextMenu={(e) => {
+        void onContextMenu(e, connection);
+      }}
       onPointerDown={(e) => onPointerDown(e, connection)}
     >
       {connection.name}
@@ -390,23 +409,38 @@ vi.mock('../../../components/connection/ConnectionShareDialog', () => ({
   }) =>
     open ? (
       <div data-testid="conn-share-dialog" data-mode={mode} data-source={importSource ?? 'file'}>
-        <button type="button" data-testid="share-close" onClick={onClose}>close</button>
-        <button type="button" data-testid="share-export-ok" onClick={() => onExportSuccess(2)}>export</button>
+        <button type="button" data-testid="share-close" onClick={onClose}>
+          close
+        </button>
+        <button type="button" data-testid="share-export-ok" onClick={() => onExportSuccess(2)}>
+          export
+        </button>
         <button
           type="button"
           data-testid="share-import-ok"
-          onClick={() => void onImportSuccess({ imported: 1, overwritten: 0, groupsAdded: 1, sourceFormat: 'json' })}
+          onClick={() =>
+            void onImportSuccess({
+              imported: 1,
+              overwritten: 0,
+              groupsAdded: 1,
+              sourceFormat: 'json',
+            })
+          }
         >
           import
         </button>
         <button
           type="button"
           data-testid="share-import-skipped"
-          onClick={() => void onImportSuccess({ imported: 1, overwritten: 0, groupsAdded: 0, skipped: ['x'] })}
+          onClick={() =>
+            void onImportSuccess({ imported: 1, overwritten: 0, groupsAdded: 0, skipped: ['x'] })
+          }
         >
           import-skipped
         </button>
-        <button type="button" data-testid="share-error" onClick={() => onError('share-fail')}>error</button>
+        <button type="button" data-testid="share-error" onClick={() => onError('share-fail')}>
+          error
+        </button>
       </div>
     ) : null,
 }));
@@ -506,7 +540,10 @@ describe('MainWindow', () => {
 
   it('TC-main: renders grouped connections and toggles expand', () => {
     connectionState.groups = ['Dev'];
-    connectionState.connections = [makeConn(), makeConn({ id: 'c2', name: 'Redis', databaseType: 'redis', group: 'Dev' })];
+    connectionState.connections = [
+      makeConn(),
+      makeConn({ id: 'c2', name: 'Redis', databaseType: 'redis', group: 'Dev' }),
+    ];
 
     render(<MainWindow />);
     expect(screen.getByText('Dev')).toBeInTheDocument();
@@ -691,7 +728,7 @@ describe('MainWindow', () => {
 
     const groupEl = screen.getByText('Prod').closest('[data-group-name]') as HTMLElement;
     groupEl.getBoundingClientRect = () =>
-      ({ left: 0, right: 200, top: 0, bottom: 100, width: 200, height: 100 } as DOMRect);
+      ({ left: 0, right: 200, top: 0, bottom: 100, width: 200, height: 100 }) as DOMRect;
 
     const conn = screen.getByTestId('conn-c1');
     fireEvent.pointerDown(conn, { button: 0, clientX: 10, clientY: 10 });
@@ -739,20 +776,26 @@ describe('MainWindow', () => {
   it('TC-main: connection share export/import dialogs', async () => {
     render(<MainWindow />);
     await emitCrossWindow('menu:export-connections');
-    await waitFor(() => expect(screen.getByTestId('conn-share-dialog')).toHaveAttribute('data-mode', 'export'));
+    await waitFor(() =>
+      expect(screen.getByTestId('conn-share-dialog')).toHaveAttribute('data-mode', 'export'),
+    );
 
     fireEvent.click(screen.getByTestId('share-export-ok'));
     await waitFor(() => expect(screen.getByText(/connShare.exportSuccess/)).toBeInTheDocument());
     fireEvent.click(screen.getByTestId('share-close'));
 
     await emitCrossWindow('menu:import-connections');
-    await waitFor(() => expect(screen.getByTestId('conn-share-dialog')).toHaveAttribute('data-mode', 'import'));
+    await waitFor(() =>
+      expect(screen.getByTestId('conn-share-dialog')).toHaveAttribute('data-mode', 'import'),
+    );
     fireEvent.click(screen.getByTestId('share-import-ok'));
     await waitFor(() => expect(fetchConnectionsMock).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(screen.getByText(/connShare.importSuccess/)).toBeInTheDocument());
 
     fireEvent.click(screen.getByTestId('share-import-skipped'));
-    await waitFor(() => expect(screen.getByText(/connShare.importSuccessWithSkipped/)).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByText(/connShare.importSuccessWithSkipped/)).toBeInTheDocument(),
+    );
 
     fireEvent.click(screen.getByTestId('share-error'));
     await waitFor(() => expect(screen.getByText('share-fail')).toBeInTheDocument());
@@ -768,25 +811,21 @@ describe('MainWindow', () => {
     });
   });
 
-  it('TC-main: dashboard dialog list open and delete', async () => {
+  it('TC-main: dashboard opens window directly without dialog', async () => {
     dashboardState.list = [{ id: 'd1', name: 'Ops' }];
     render(<MainWindow />);
 
     fireEvent.click(screen.getByTestId('action-dashboard'));
-    await waitFor(() => expect(screen.getByTestId('dashboard-dialog')).toBeInTheDocument());
-    fireEvent.click(screen.getByTestId('dashboard-delete-d1'));
-    expect(deleteDashboardMock).toHaveBeenCalledWith('d1');
-    fireEvent.click(screen.getByTestId('dashboard-open-d1'));
-    expect(openDashboardWindowMock).toHaveBeenCalledWith('d1', 'Ops');
+    await waitFor(() => expect(openDashboardWindowMock).toHaveBeenCalledWith('d1', 'Ops'));
+    expect(screen.queryByTestId('dashboard-dialog')).not.toBeInTheDocument();
   });
 
-  it('TC-main: dashboard dialog shows loading and error', () => {
-    dashboardState.listLoading = true;
-    dashboardState.listError = 'dash err';
+  it('TC-main: dashboard opens shell when no boards exist', async () => {
+    dashboardState.list = [];
     render(<MainWindow />);
     fireEvent.click(screen.getByTestId('action-dashboard'));
-    expect(screen.getByText('common.loading')).toBeInTheDocument();
-    expect(screen.getByText('dash err')).toBeInTheDocument();
+    await waitFor(() => expect(openDashboardWindowMock).toHaveBeenCalledWith());
+    expect(screen.queryByTestId('dashboard-dialog')).not.toBeInTheDocument();
   });
 
   it('TC-main: restore requires selection and connected session', async () => {
@@ -809,9 +848,11 @@ describe('MainWindow', () => {
     render(<MainWindow />);
     fireEvent.click(screen.getByTestId('conn-c1'));
     fireEvent.click(screen.getByTestId('action-restore'));
-    await waitFor(() => expect(invokeMock).toHaveBeenCalledWith('restore_database_with_dialog', {
-      connectionId: 'live-1',
-    }));
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith('restore_database_with_dialog', {
+        connectionId: 'live-1',
+      }),
+    );
     await waitFor(() => expect(screen.getByText('main.restoreSuccess')).toBeInTheDocument());
   });
 
@@ -900,7 +941,7 @@ describe('MainWindow', () => {
     render(<MainWindow />);
     const groupEl = screen.getByText('Prod').closest('[data-group-name]') as HTMLElement;
     groupEl.getBoundingClientRect = () =>
-      ({ left: 0, right: 200, top: 0, bottom: 100, width: 200, height: 100 } as DOMRect);
+      ({ left: 0, right: 200, top: 0, bottom: 100, width: 200, height: 100 }) as DOMRect;
 
     fireEvent.pointerDown(screen.getByTestId('conn-c1'), { button: 0, clientX: 0, clientY: 0 });
     fireEvent(window, new PointerEvent('pointermove', { clientX: 20, clientY: 20, bubbles: true }));
@@ -918,19 +959,13 @@ describe('MainWindow', () => {
     await waitFor(() => expect(menuItemActions.length).toBe(1)); // only newGroup
   });
 
-  it('TC-main: dashboard create with default name on Enter', async () => {
-    render(<MainWindow />);
-    fireEvent.click(screen.getByTestId('action-dashboard'));
-    const input = screen.getByTestId('dashboard-name-input');
-    fireEvent.keyDown(input, { key: 'Enter' });
-    await waitFor(() => expect(saveDashboardMock).toHaveBeenCalled());
-  });
-
   it('TC-main: new group Enter key submits', async () => {
     render(<MainWindow />);
     await openBlankContextMenu();
     menuItemActions[0]!();
-    await waitFor(() => expect(screen.getByPlaceholderText('main.groupNamePlaceholder')).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByPlaceholderText('main.groupNamePlaceholder')).toBeInTheDocument(),
+    );
     const nameInput = screen.getByPlaceholderText('main.groupNamePlaceholder');
     fireEvent.change(nameInput, { target: { value: 'QA' } });
     fireEvent.keyDown(nameInput, { key: 'Enter' });
