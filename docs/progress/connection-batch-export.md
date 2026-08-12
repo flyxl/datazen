@@ -16,7 +16,7 @@
 | F2 | BatchExportDialog UI：表全选/多选 + 导出模式 + 格式/进度 | done | （本提交） | PASS：job lines 100% |
 | F3 | 拉取 DDL + 全量（分页）表数据供批量导出 | done | （本提交） | PASS：lines 97.77% |
 | F4 | 接入 SqlConnectionView 顶栏 + Schema 树（库节点/空白/多表）入口 | done | （本提交） | PASS |
-| F5 | i18n 全 locale + 文档(AGENTS/architecture) + E2E 用例调整 | pending | — | — |
+| F5 | i18n 全 locale + 文档(AGENTS/architecture) + E2E 用例调整 | done | （本提交） | PASS |
 | F6 | 合并到 main 并 push | pending | — | — |
 
 ## 测试约定
@@ -54,4 +54,12 @@
 - Dialog：`tables` 来自 schemaStore；`loadTableExportData` → `loadBatchExportTableData`
 - Schema 树：database / blank / table / view 右键「批量导出…」（`onBatchExport`）；表节点保留单表 `ExportDialog`
 - `schemaTreeContextMenu`：labels.batchExport + handlers.onBatchExport；单测已更新
+- 未 commit
+
+### F5 — 文档 + E2E（testing）
+
+- i18n：`batchExport.*` 已覆盖全 locale（en / zh-CN 实译；其它英文占位，见 F2）
+- `AGENTS.md`：前端约定 + 关键功能表补充批量导出（顶栏 / Schema 树；`batchExport.ts` / `BatchExportDialog`）
+- `docs/architecture/frontend/components.md`：DataTable 导出附近新增「批量导出」小节
+- E2E：`e2e/specs/export-import.ts` — EI-BE-001 顶栏按钮打开对话框（可跑）；EI-BE-002 Schema 树原生菜单 SKIPPED
 - 未 commit
