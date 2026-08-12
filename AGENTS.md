@@ -289,6 +289,15 @@ cargo test -p datazen-driver-postgres  # 示例：某个 path 驱动的 Rust 测
 
 「仅断言某按钮文案存在」不算完成覆盖；至少要执行一次该交互并断言可见结果。
 
+#### Host Connection Contract × Driver（适配矩阵）
+
+验证「每个驱动都能适配 Host 已定义的 UI / IPC」时：
+
+1. **契约套件**定义在 `e2e/contract/`（`fixtures.ts` + `journeys/`），用例入口 `e2e/specs/host-contract-matrix.ts`。
+2. **对每个 SQL 驱动夹具**（postgres / mysql / sqlite）分别打开连接窗口，按 `planJourneys` **完整跑同一套** Host journeys（HC-CONN…HC-EXPLAIN）；能力不足的 journey 显式 `skip`（如 sqlite 的 HC-OBJ）。
+3. **这是 Host 契约 × 驱动夹具**，不是方言测试：断言用 Host i18n / testid / 行内容；方言深度仍在 `packages/drivers/<id>/e2e/`。
+4. 新增 Host 连接窗路径时，优先加入契约 journey，使矩阵自动覆盖各驱动。
+
 ```bash
 pnpm e2e                               # 完整构建（webdriver）+ 跑全部 Host E2E（推荐首次）
 pnpm e2e:minimal                       # 更快：DATAZEN_DRIVERS=basic，跳过 Git / 非核心 path 驱动
@@ -296,6 +305,9 @@ pnpm e2e:skip-build                    # 跳过构建（仅当已有合格的 we
 pnpm e2e:skip-build -- --spec e2e/specs/path-ipc-hardening.ts
 pnpm e2e:core                          # 核心 UI（默认 skip-build）
 pnpm e2e:db / e2e:ai                   # 分组
+pnpm e2e:contract:matrix               # Host 契约 × PG/MySQL/SQLite 连接窗
+pnpm e2e:contract:pg                   # 仅 PostgreSQL 契约冒烟
+pnpm test:unit:e2e-contract:coverage   # 契约纯逻辑单测覆盖率 ≥80%
 pnpm e2e:redis                         # Redis 深度 E2E（显式；specs 在 packages/drivers/redis/e2e/；不进默认 e2e）
 pnpm e2e:i18n-backup / e2e:path-ipc    # 备份·i18n / 路径 IPC
 # Kiwi E2E：在 datazen-driver-kiwi 仓执行 `pnpm e2e:kiwi`（不进 Host 默认 pnpm e2e；Host `pnpm e2e:kiwi` 仅提示并 exit 1）
