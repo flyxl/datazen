@@ -891,6 +891,7 @@ export function SqlConnectionView({
                 database={currentDatabase}
                 focusTable={(activePanel as ErDiagramPanel).focusTable}
                 onSelectTable={handleSelectTable}
+                onFocusTable={(table) => handleOpenErDiagram(table)}
               />
             </div>
           )}
