@@ -6,6 +6,7 @@ import { useI18n } from '../../../hooks/useI18n';
 import { cn } from '../../../lib/cn';
 import { matchingColumns, tableMatchesObjectSearch } from '../../../lib/schemaObjectSearch';
 import type { DatabaseType, TableInfo } from '../../../types';
+import type { SchemaTreeNodeContextMenuPayload } from './SchemaTree';
 import { formatRowCount } from './formatRowCount';
 
 export interface StandardSchemaTreeProps {
@@ -15,7 +16,7 @@ export interface StandardSchemaTreeProps {
   selectedTable: string | null;
   searchQuery: string;
   onSelectTable: (table: string, schema?: string) => void;
-  onTableContextMenu?: (tableName: string, x: number, y: number) => void;
+  onNodeContextMenu?: (payload: SchemaTreeNodeContextMenuPayload) => void;
   isKeyValue: boolean;
 }
 
@@ -35,7 +36,7 @@ export function StandardSchemaTree({
   selectedTable,
   searchQuery,
   onSelectTable,
-  onTableContextMenu,
+  onNodeContextMenu,
   isKeyValue,
 }: StandardSchemaTreeProps) {
   const { t } = useI18n();
@@ -86,14 +87,24 @@ export function StandardSchemaTree({
     const rows: FlatRow[] = [];
 
     if (filteredTables.length > 0) {
-      rows.push({ type: 'section', section: 'tables', count: filteredTables.length, expanded: tablesExpanded });
+      rows.push({
+        type: 'section',
+        section: 'tables',
+        count: filteredTables.length,
+        expanded: tablesExpanded,
+      });
       if (tablesExpanded) {
         for (const tbl of filteredTables) rows.push({ type: 'item', item: tbl, section: 'tables' });
       }
     }
 
     if (!isKeyValue && filteredViews.length > 0) {
-      rows.push({ type: 'section', section: 'views', count: filteredViews.length, expanded: viewsExpanded });
+      rows.push({
+        type: 'section',
+        section: 'views',
+        count: filteredViews.length,
+        expanded: viewsExpanded,
+      });
       if (viewsExpanded) {
         for (const v of filteredViews) rows.push({ type: 'item', item: v, section: 'views' });
       }
@@ -104,7 +115,15 @@ export function StandardSchemaTree({
     }
 
     return rows;
-  }, [filteredTables, filteredViews, tablesExpanded, viewsExpanded, isKeyValue, loading, currentDatabase]);
+  }, [
+    filteredTables,
+    filteredViews,
+    tablesExpanded,
+    viewsExpanded,
+    isKeyValue,
+    loading,
+    currentDatabase,
+  ]);
 
   const estimateSize = useCallback(
     (index: number) => {
@@ -143,7 +162,15 @@ export function StandardSchemaTree({
         </div>
       )}
 
-      <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto">
+      <div
+        ref={scrollRef}
+        className="flex-1 min-h-0 overflow-y-auto"
+        onContextMenu={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onNodeContextMenu?.({ kind: 'blank', name: '', x: e.clientX, y: e.clientY });
+        }}
+      >
         <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
           {virtualizer.getVirtualItems().map((virtualRow) => {
             const row = flatRows[virtualRow.index];
@@ -168,57 +195,74 @@ export function StandardSchemaTree({
                       else setViewsExpanded((v) => !v);
                     }}
                   >
-                    {row.expanded
-                      ? <ChevronDown className="h-3 w-3 shrink-0" />
-                      : <ChevronRight className="h-3 w-3 shrink-0" />}
+                    {row.expanded ? (
+                      <ChevronDown className="h-3 w-3 shrink-0" />
+                    ) : (
+                      <ChevronRight className="h-3 w-3 shrink-0" />
+                    )}
                     {row.section === 'tables'
                       ? `${isKeyValue ? t('schemaTree.keys') : t('schemaTree.tables')} (${row.count})`
                       : `Views (${row.count})`}
                   </button>
                 )}
 
-                {row.type === 'item' && (() => {
-                  const colHits = query.length >= 2
-                    ? matchingColumns(query, columnMap[row.item.name])
-                    : [];
-                  return (
-                  <button
-                    type="button"
-                    className={cn(
-                      'flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] hover:bg-surface-raised',
-                      selectedTable === row.item.name ? 'bg-surface-raised text-fg' : 'text-fg-secondary',
-                    )}
-                    onClick={() => onSelectTable(row.item.name, row.item.schema)}
-                    onContextMenu={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      onTableContextMenu?.(row.item.name, e.clientX, e.clientY);
-                    }}
-                    title={colHits.length > 0 ? colHits.slice(0, 8).join(', ') : undefined}
-                  >
-                    {row.section === 'tables'
-                      ? <Table2 className="h-3.5 w-3.5 shrink-0 text-fg-secondary" />
-                      : <Eye className="h-3.5 w-3.5 shrink-0 text-fg-secondary" />}
-                    <span className="min-w-0 truncate">{row.item.name}</span>
-                    {colHits.length > 0 && (
-                      <span className="shrink-0 text-[10px] text-accent">
-                        {colHits.length === 1 ? colHits[0] : `${colHits.length} cols`}
-                      </span>
-                    )}
-                    {row.item.rowCount != null && (
-                      <span className="ml-auto shrink-0 text-[11px] text-fg-muted">
-                        {formatRowCount(row.item.rowCount)}
-                      </span>
-                    )}
-                  </button>
-                  );
-                })()}
+                {row.type === 'item' &&
+                  (() => {
+                    const colHits =
+                      query.length >= 2 ? matchingColumns(query, columnMap[row.item.name]) : [];
+                    const kind = row.section === 'views' ? 'view' : 'table';
+                    return (
+                      <button
+                        type="button"
+                        className={cn(
+                          'flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] hover:bg-surface-raised',
+                          selectedTable === row.item.name
+                            ? 'bg-surface-raised text-fg'
+                            : 'text-fg-secondary',
+                        )}
+                        onClick={() => onSelectTable(row.item.name, row.item.schema)}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          onNodeContextMenu?.({
+                            kind,
+                            name: row.item.name,
+                            x: e.clientX,
+                            y: e.clientY,
+                            schema: row.item.schema ?? undefined,
+                          });
+                        }}
+                        title={colHits.length > 0 ? colHits.slice(0, 8).join(', ') : undefined}
+                      >
+                        {row.section === 'tables' ? (
+                          <Table2 className="h-3.5 w-3.5 shrink-0 text-fg-secondary" />
+                        ) : (
+                          <Eye className="h-3.5 w-3.5 shrink-0 text-fg-secondary" />
+                        )}
+                        <span className="min-w-0 truncate">{row.item.name}</span>
+                        {colHits.length > 0 && (
+                          <span className="shrink-0 text-[10px] text-accent">
+                            {colHits.length === 1 ? colHits[0] : `${colHits.length} cols`}
+                          </span>
+                        )}
+                        {row.item.rowCount != null && (
+                          <span className="ml-auto shrink-0 text-[11px] text-fg-muted">
+                            {formatRowCount(row.item.rowCount)}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })()}
 
                 {row.type === 'empty' && (
                   <div className="px-3 py-3 text-center text-xs text-fg-muted">
                     {query
-                      ? isKeyValue ? t('schemaTree.noMatchingKeys') : t('schemaTree.noMatchingTables')
-                      : isKeyValue ? t('schemaTree.noKeys') : t('schemaTree.noTables')}
+                      ? isKeyValue
+                        ? t('schemaTree.noMatchingKeys')
+                        : t('schemaTree.noMatchingTables')
+                      : isKeyValue
+                        ? t('schemaTree.noKeys')
+                        : t('schemaTree.noTables')}
                   </div>
                 )}
               </div>
