@@ -363,6 +363,7 @@ async fn workflow_save_list_get_delete() {
         timeout_secs: None,
         error_handling: None,
         schedule: None,
+        visibility: Default::default(),
     };
 
     test.state
@@ -886,6 +887,7 @@ async fn workflow_execute_ai_step_with_wiremock() {
         timeout_secs: None,
         error_handling: None,
         schedule: None,
+        visibility: Default::default(),
     };
     test.state
         .workflow_registry
@@ -1017,6 +1019,7 @@ async fn workflow_history_clear_after_execute() {
         timeout_secs: None,
         error_handling: None,
         schedule: None,
+        visibility: Default::default(),
     };
     test.state
         .workflow_registry
