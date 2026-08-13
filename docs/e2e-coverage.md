@@ -72,7 +72,7 @@
 | 备份窗口打开与连接选择 UI | `backup-window.ts` | Covered |
 | 备份执行（IPC） | `backup-database.ts` | Covered |
 | Schema Diff 窗口打开与步骤控件 | `schema-diff-window.ts` | Covered |
-| 数据同步窗口 | `homepage-features.ts`, `data-sync-real.ts` | Partial |
+| 数据同步窗口 | `data-sync-window.ts`, `homepage-features.ts`, `data-sync-real.ts` | Covered（横幅 / 未选 Compare / Apply 禁用；inspect IPC；行 Diff 未接线记后续） |
 | 数据看板 | `data-dashboard-*.ts` | Covered |
 | 应用数据备份标签 | `app-data-backup.ts` | Covered |
 | 路径 IPC 加固 | `path-ipc-hardening.ts` | Covered |

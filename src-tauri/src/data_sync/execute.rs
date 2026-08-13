@@ -41,20 +41,14 @@ pub async fn execute_statements(
             "target connection is read-only; Data Synchronization cannot execute",
         ));
     }
-    if cancelled
-        .as_ref()
-        .is_some_and(|c| c.load(Ordering::SeqCst))
-    {
+    if cancelled.as_ref().is_some_and(|c| c.load(Ordering::SeqCst)) {
         return Err(DataSyncError::cancelled("execute cancelled"));
     }
 
     executor.begin().await?;
     let mut applied = 0usize;
     for stmt in statements {
-        if cancelled
-            .as_ref()
-            .is_some_and(|c| c.load(Ordering::SeqCst))
-        {
+        if cancelled.as_ref().is_some_and(|c| c.load(Ordering::SeqCst)) {
             executor.rollback().await?;
             return Ok(ExecutionResult {
                 applied,
@@ -99,9 +93,15 @@ impl StatementExecutor for RecordingExecutor {
     }
 
     async fn execute(&mut self, sql: &str, params: &[Value]) -> Result<u64, DataSyncError> {
-        self.calls
-            .push(format!("execute:{}:{}", params.len(), sql));
-        if self.fail_at == Some(self.calls.iter().filter(|c| c.starts_with("execute:")).count() - 1)
+        self.calls.push(format!("execute:{}:{}", params.len(), sql));
+        if self.fail_at
+            == Some(
+                self.calls
+                    .iter()
+                    .filter(|c| c.starts_with("execute:"))
+                    .count()
+                    - 1,
+            )
         {
             return Err(DataSyncError::validation("injected failure"));
         }
@@ -207,7 +207,7 @@ mod tests {
         // First execute will run; flip cancel after begin by wrapping — simulate mid-loop
         // by setting flag after begin via fail path: set flag true before second statement
         // Use a custom executor... simpler: set flag true immediately after we know begin ran
-        // by using fail_at None and pre-set flag after constructing, then... 
+        // by using fail_at None and pre-set flag after constructing, then...
         // Mid-loop: start false, but RecordingExecutor can't flip. Set flag true after first
         // execute by using a second test executor. Here we set flag true before call then
         // that's cancel_before_start. For mid-run, toggle after begin using a helper executor.

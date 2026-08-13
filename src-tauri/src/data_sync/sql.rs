@@ -88,13 +88,9 @@ where
     P: Fn(usize) -> String,
 {
     match change.operation {
-        ChangeOperation::Insert => insert_sql(
-            table,
-            change,
-            column_names,
-            quote_ident,
-            placeholder,
-        ),
+        ChangeOperation::Insert => {
+            insert_sql(table, change, column_names, quote_ident, placeholder)
+        }
         ChangeOperation::Update => update_sql(
             table,
             change,
@@ -121,9 +117,10 @@ where
     Q: Fn(&str) -> String,
     P: Fn(usize) -> String,
 {
-    let row = change.source_row.as_ref().ok_or_else(|| {
-        DataSyncError::validation("INSERT requires a source row")
-    })?;
+    let row = change
+        .source_row
+        .as_ref()
+        .ok_or_else(|| DataSyncError::validation("INSERT requires a source row"))?;
     if row.len() != column_names.len() {
         return Err(DataSyncError::validation(
             "INSERT row width does not match column list",
@@ -171,9 +168,10 @@ where
     Q: Fn(&str) -> String,
     P: Fn(usize) -> String,
 {
-    let row = change.source_row.as_ref().ok_or_else(|| {
-        DataSyncError::validation("UPDATE requires a source row")
-    })?;
+    let row = change
+        .source_row
+        .as_ref()
+        .ok_or_else(|| DataSyncError::validation("UPDATE requires a source row"))?;
     if change.changed_columns.is_empty() {
         return Err(DataSyncError::validation(
             "UPDATE requires at least one changed column",
@@ -338,11 +336,11 @@ mod tests {
             r#"UPDATE "clients" SET "name" = $1 WHERE "id" = $2"#
         );
         assert_eq!(stmts[1].parameters.len(), 2);
+        assert_eq!(stmts[2].sql, r#"DELETE FROM "clients" WHERE "id" = $1"#);
         assert_eq!(
-            stmts[2].sql,
-            r#"DELETE FROM "clients" WHERE "id" = $1"#
+            stmts[2].preview_sql,
+            r#"DELETE FROM "clients" WHERE "id" = 3"#
         );
-        assert_eq!(stmts[2].preview_sql, r#"DELETE FROM "clients" WHERE "id" = 3"#);
     }
 
     #[test]
@@ -381,7 +379,10 @@ mod tests {
             target_table: "t".into(),
             changes: vec![same],
         };
-        assert!(generate_table_sql(&table, &["id".into()], &["id".into()], q, mysql_placeholder).is_err());
+        assert!(
+            generate_table_sql(&table, &["id".into()], &["id".into()], q, mysql_placeholder)
+                .is_err()
+        );
         assert!(generate_table_sql(&table, &[], &["id".into()], q, mysql_placeholder).is_err());
     }
 
@@ -396,9 +397,14 @@ mod tests {
             target_table: "t".into(),
             changes: vec![del],
         };
-        let stmts =
-            generate_table_sql(&table, &["id".into()], &["id".into()], q, postgres_placeholder)
-                .unwrap();
+        let stmts = generate_table_sql(
+            &table,
+            &["id".into()],
+            &["id".into()],
+            q,
+            postgres_placeholder,
+        )
+        .unwrap();
         assert_eq!(stmts[0].sql, r#"DELETE FROM "t" WHERE "id" IS NULL"#);
         assert!(stmts[0].parameters.is_empty());
     }
