@@ -356,10 +356,32 @@ pub trait DatabaseDriver: Send + Sync {
         .await
     }
 
+    /// When true (SQL drivers), the host streams the dump file into
+    /// [`crate::sql_dump::RestoreSession`]. Override to `false` to take over
+    /// the whole restore via [`Self::restore_sql_with_progress`].
+    fn uses_sql_restore_pipeline(&self) -> bool {
+        matches!(self.driver_category(), DriverCategory::Sql)
+    }
+
+    /// Statement scanner for the default restore pipeline.
+    /// Override to disable `DELIMITER`, change quote rules, or swap splitters.
+    fn new_sql_scanner(&self) -> crate::sql_split::SqlStatementScanner {
+        crate::sql_split::SqlStatementScanner::new()
+    }
+
+    /// Split a complete SQL buffer. Default uses [`Self::new_sql_scanner`].
+    fn split_restore_sql(&self, sql: &str) -> Vec<String> {
+        let mut scanner = self.new_sql_scanner();
+        let mut out = scanner.push(sql);
+        out.extend(scanner.finish());
+        out
+    }
+
     /// Restore a SQL dump by executing statements against the live connection.
     ///
-    /// Default uses [`crate::sql_dump::split_sql_statements`] and honors
-    /// [`BackupRestoreOptions::single_transaction`] / dump header flags.
+    /// Default uses [`crate::sql_dump::RestoreSession`] (streaming-capable) and
+    /// honors [`BackupRestoreOptions::single_transaction`] / dump header flags.
+    /// Override this method to replace the entire restore pipeline.
     async fn restore_sql(
         &self,
         handle: &ConnectionHandle,

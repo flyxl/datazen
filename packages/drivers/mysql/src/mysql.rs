@@ -1540,19 +1540,41 @@ impl DatabaseDriver for MysqlDriver {
         opts: &BackupDumpOptions,
         on_progress: &mut (dyn FnMut(DumpProgress) + Send),
     ) -> Result<String, DriverError> {
-        let mut out = String::new();
-        if opts.create_database {
-            let q = self.quote_ident(database);
-            out.push_str(&format!(
-                "CREATE DATABASE IF NOT EXISTS {};\nUSE {};\n\n",
-                q, q
-            ));
-        }
-        out.push_str(
-            &sql_dump::dump_sql_database_with_progress(self, handle, database, opts, on_progress)
+        let snapshot = if opts.single_transaction {
+            self.begin_transaction(handle).await.ok()
+        } else {
+            None
+        };
+        let result = async {
+            let mut out = String::new();
+            if opts.create_database {
+                let q = self.quote_ident(database);
+                out.push_str(&format!(
+                    "CREATE DATABASE IF NOT EXISTS {};\nUSE {};\n\n",
+                    q, q
+                ));
+            }
+            out.push_str(
+                &sql_dump::dump_sql_database_with_progress(
+                    self,
+                    handle,
+                    database,
+                    opts,
+                    on_progress,
+                )
                 .await?,
-        );
-        Ok(out)
+            );
+            Ok(out)
+        }
+        .await;
+        if let Some(tx) = snapshot {
+            if result.is_ok() {
+                let _ = self.commit(tx).await;
+            } else {
+                let _ = self.rollback(tx).await;
+            }
+        }
+        result
     }
 
     async fn dump_routines(

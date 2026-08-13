@@ -12,6 +12,7 @@ mod factory;
 mod query_stream;
 mod reuse;
 pub mod sql_dump;
+pub mod sql_split;
 pub mod sync;
 mod traits;
 mod types;
@@ -29,6 +30,8 @@ pub use query_stream::{
     QueryRowBatcher, QueryStreamCallback, QueryStreamEvent, QUERY_STREAM_BATCH_SIZE,
 };
 pub use reuse::ReuseDriver;
+pub use sql_dump::RestoreSession;
+pub use sql_split::{SqlStatementScanner, Utf8ChunkDecoder};
 pub use sync::{
     BoxedSyncAdapter, IRColumn, IRDefault, IRTable, IRType, SyncAdapterFactory, SyncSourceAdapter,
     SyncTargetAdapter,
