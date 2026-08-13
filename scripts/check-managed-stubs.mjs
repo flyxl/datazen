@@ -1,74 +1,60 @@
 #!/usr/bin/env node
 /**
- * Fail if git-tracked fully-generated managed files look injected.
- * Run on a clean checkout (before resolve-drivers) so CI catches accidental commits.
+ * Fail if git-tracked managed files look injected.
+ * Run on a clean checkout (before resolve-drivers) so CI catches accidental
+ * commits of Cargo.toml / capabilities plugin injection.
+ *
+ * Driver codegen (generated.ts / plugin_init.rs) is gitignored and not checked.
  */
 import { readFileSync, existsSync } from 'fs';
 import { resolve, dirname } from 'path';
-import { fileURLToPath } from 'url';
-import {
-  cleanGeneratedTsContent,
-  cleanGeneratedLocalesContent,
-  cleanPluginInitContent,
-} from './plugin-deinject.mjs';
-import {
-  fileHasInjection,
-  hasInjectedGeneratedTs,
-  hasInjectedGeneratedLocales,
-  hasInjectedPluginInit,
-} from './plugin-stash-precommit.mjs';
+import { fileURLToPath, pathToFileURL } from 'url';
+import { MANAGED_FILES } from './plugin-file-stash.mjs';
+import { fileHasInjection } from './plugin-stash-precommit.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
-const CHECKS = [
-  {
-    rel: 'src/plugins/generated.ts',
-    isInjected: hasInjectedGeneratedTs,
-    expected: cleanGeneratedTsContent,
-  },
-  {
-    rel: 'src/plugins/generated-locales.ts',
-    isInjected: hasInjectedGeneratedLocales,
-    expected: cleanGeneratedLocalesContent,
-  },
-  {
-    rel: 'src-tauri/src/plugin_init.rs',
-    isInjected: hasInjectedPluginInit,
-    expected: cleanPluginInitContent,
-  },
-];
+/**
+ * @param {{
+ *   root?: string,
+ *   files?: string[],
+ *   log?: (...args: unknown[]) => void,
+ *   error?: (...args: unknown[]) => void,
+ * }} [opts]
+ * @returns {number} 0 if clean, 1 if any file is missing or injected
+ */
+export function checkManagedStubs(opts = {}) {
+  const root = opts.root ?? ROOT;
+  const files = opts.files ?? MANAGED_FILES;
+  const log = opts.log ?? console.log.bind(console);
+  const error = opts.error ?? console.error.bind(console);
 
-let failed = false;
-for (const { rel, isInjected, expected } of CHECKS) {
-  const path = resolve(ROOT, rel);
-  if (!existsSync(path)) {
-    console.error(`[check-managed-stubs] missing ${rel}`);
-    failed = true;
-    continue;
+  let failed = false;
+  for (const rel of files) {
+    const path = resolve(root, rel);
+    if (!existsSync(path)) {
+      error(`[check-managed-stubs] missing ${rel}`);
+      failed = true;
+      continue;
+    }
+    const content = readFileSync(path, 'utf-8');
+    if (fileHasInjection(rel, content)) {
+      error(
+        `[check-managed-stubs] ${rel} looks injected (plugin deps / ACL present).`,
+      );
+      error('  Restore with: node scripts/plugin-file-stash.mjs restore');
+      failed = true;
+      continue;
+    }
+    log(`[check-managed-stubs] ok ${rel}`);
   }
-  const content = readFileSync(path, 'utf-8');
-  if (isInjected(content) || fileHasInjection(rel, content)) {
-    console.error(
-      `[check-managed-stubs] ${rel} looks injected (DatabaseType/plugin crates present).`,
-    );
-    console.error(
-      '  Commit the git-safe stub instead: node scripts/resolve-drivers.mjs --drivers=stub',
-    );
-    console.error('  then restore/deinject before committing.');
-    failed = true;
-    continue;
-  }
-  if (content !== expected()) {
-    console.error(
-      `[check-managed-stubs] ${rel} is not injected but differs from the canonical stub.`,
-    );
-    console.error(
-      '  Refresh with: node -e "import { writeFileSync } from \'fs\'; import { cleanGeneratedTsContent, cleanPluginInitContent } from \'./scripts/plugin-deinject.mjs\'; ..."',
-    );
-    failed = true;
-  } else {
-    console.log(`[check-managed-stubs] ok ${rel}`);
-  }
+  return failed ? 1 : 0;
 }
 
-process.exit(failed ? 1 : 0);
+function main() {
+  process.exit(checkManagedStubs());
+}
+
+if (import.meta.url === pathToFileURL(resolve(process.argv[1] ?? '')).href) {
+  main();
+}
