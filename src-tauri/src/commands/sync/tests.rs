@@ -428,6 +428,27 @@ async fn sync_table_impl_refuses_overwrite_copy() {
 }
 
 #[test]
+fn table_sync_module_has_no_drop_insert_body() {
+    let src = include_str!("table_sync.rs");
+    assert!(
+        !src.contains("DROP TABLE"),
+        "overwrite-copy DROP TABLE body must be deleted"
+    );
+    assert!(
+        !src.contains("sync_one_table"),
+        "legacy sync_one_table must be deleted"
+    );
+    assert!(
+        !src.contains("sync_table_impl_legacy"),
+        "legacy sync_table_impl_legacy must be deleted"
+    );
+    assert!(
+        src.contains("refuse_overwrite_copy"),
+        "compat IPC must still refuse overwrite copy"
+    );
+}
+
+#[test]
 fn classify_sync_pair_rejects_ir_and_allows_mysql_family() {
     let mysql = super::classify_sync_pair("mysql".into(), "mariadb".into()).unwrap();
     assert_eq!(mysql["path"], "direct");
