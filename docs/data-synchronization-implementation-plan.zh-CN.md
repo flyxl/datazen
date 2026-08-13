@@ -1,21 +1,36 @@
 # DataZen 数据同步实施方案
 
-**关联 PRD：** `docs/data-synchronization-prd.zh-CN.md`
+**关联 PRD：** `docs/data-synchronization-prd.zh-CN.md`（V1.2）  
+**相关：** [Data Transfer PRD](./data-transfer-prd.zh-CN.md)（本次不实施）· Schema Diff（已有）
 
-**目标：** 将数据同步 PRD 落地为 DataZen 可维护、可扩展、可测试的实现方案。
+**目标：** 对标 Navicat **Data Synchronization**。现有「整表覆盖拷贝」按 Transfer 处理：Sync 引擎替换为 Compare → Change Set → Execute；旧 DROP+INSERT 从 Sync 拆除，留给未来 Transfer。
 
 **实施原则：**
 
-> Driver 能力负责数据库差异；Host 负责同步编排、Diff、Change Set、SQL Preview 和执行生命周期；Frontend 负责 Diff Workspace 与用户交互。
+> Driver 负责连接、查询流、事务、标识符与参数化 DML；Host 负责同步编排、Diff、Change Set、SQL Preview 与执行生命周期；Frontend 负责 Diff Workspace。方言细节测在驱动 crate，Host 只测编排。
+
+**硬门闸（Compare 前）：** 同 dialect family · **表结构完全一致** · **双方相同 Primary Key**。不满足 → `INCOMPATIBLE`，提示 Structure Sync 或 Transfer，不得比较。
+
+---
+
+## 0. 与 Transfer / Structure Sync 的实施边界
+
+| 产品 | 本次 | 引擎 |
+|---|---|---|
+| Data Synchronization | **做** | 新 `data_sync`：PK Diff + Change Set |
+| Structure Synchronization | 已有，不改范围 | Schema Diff + Deploy |
+| Data Transfer | **不做** | 未来独立窗口；可吸收 IR + 旧 `table_sync` |
+
+禁止把字段映射、类型转换、目标建表、无 PK 灌数做进 Sync。INCOMPATIBLE UI 只引导，不在 Sync 里做半套 Transfer。
 
 ---
 
 ## 1. 实施范围
 
-本方案对应 PRD V1/P0，第一阶段只实现同类型数据库的数据同步：
+对应 PRD V1 / P0。同 dialect family **且通过结构+PK 门闸** 的增量同步：
 
-- MySQL → MySQL
-- PostgreSQL → PostgreSQL
+- MySQL ↔ MySQL / MariaDB
+- PostgreSQL ↔ PostgreSQL
 
 核心闭环：
 
@@ -28,95 +43,89 @@ Table Mapping
       ↓
 Schema & Capability Check
       ↓
-Streaming Comparison
+Streaming Comparison（query_stream + keyset）
       ↓
 Comparison Result
       ↓
 Change Set
       ↓
-SQL Preview
+SQL Preview（只读）
       ↓
-Revalidate
+Revalidate（read_only / 表 / PK）
       ↓
 Transaction Execute
       ↓
 Execution Result
+      ↓
+Compare again → 0 changes
 ```
 
-V1 不实现：
+V1 不实现：CDC、定时、ETL、字段映射、类型转换、无 PK、目标建表、跨类型拷贝、行 WHERE、可编辑 SQL、Mongo/Redis、Workflow/MCP。这些归 [Transfer PRD](./data-transfer-prd.zh-CN.md) 或已有 Schema Diff。
 
-- CDC / Replication
-- 定时同步
-- Schema Structure Sync
-- ETL / 字段转换
-- 不同数据库类型之间的数据迁移
-- MongoDB Document Sync
+**Definition of Done：** Apply 后再 Compare，行差异为 0；产品内不可再走旧 DROP+INSERT 覆盖路径。
 
 ---
 
-## 2. 当前代码基础与复用策略
+## 2. 现有实现：抛弃 vs 复用
 
-当前仓库已经存在数据库 Driver 抽象，可以直接作为数据同步的基础设施：
+当前 Data Sync 是 **DROP TABLE → CREATE → 批量 INSERT** 的克隆工具，可跨库 IR。与 Navicat 增量 Diff **模型冲突**，执行引擎应替换而非打补丁。
 
-- `packages/driver-api/src/traits.rs`
-- `packages/driver-api/src/types.rs`
-- `packages/driver-api/src/query_stream/`
-- `packages/driver-api/src/sync/`
-- `src-tauri/src/`
-- `src/commands/`
-- `src/components/`
-- `src/stores/`
+### 2.1 抛弃（产品内删除或停用）
 
-`DatabaseDriver` 已提供：
+| 模块 | 原因 |
+|---|---|
+| `src-tauri/src/commands/sync/table_sync.rs` 的 DROP/CREATE/INSERT | 覆盖拷贝，无 Change Set |
+| `sync_table` / `sync_tables` 现语义 | 与新 Execute 冲突 |
+| 跨库 IR 行拷贝路径 | 属于 Transfer，不进 Sync |
+| `sync_tasks.json` 断点（`current_table_offset` + 跳过已 DROP 的表） | 与 Change Set 不兼容，不迁移 |
+| `compare_table_data` 抽样 1000 行当「同步依据」 | 仅能预览，不能当 Change Set |
+| 前端「选表 → 直接 Start Sync」主路径 | 违反 Compare → Review → Apply |
 
-- `connect`
-- `disconnect`
-- `get_databases`
-- `get_tables`
-- `get_table_schema`
-- `query`
-- `query_with_params`
-- `query_stream`
-- `execute`
-- `begin_transaction`
-- `commit`
-- `rollback`
-- `cancel_query`
-- `quote_ident`
-- `format_sql_literal`
-- `build_update_sql`
-- `build_delete_sql`
+旧 IPC 可在同一替换 PR 中删除或改成返回明确错误，避免两套同步并存。
 
-因此数据同步**不应该重新设计一套数据库连接和 SQL 执行体系**。
+### 2.2 复用
 
-### 2.1 `packages/driver-api/src/sync/` 的定位
+| 能力 | 位置 | 用法 |
+|---|---|---|
+| 单例窗口 / kind | `windowKind` `data-sync`、`openDataSyncWindow()`、`DataSyncWindow.tsx` 壳 | 换成 Diff Workspace，不新增 window kind |
+| 菜单 / 侧栏 / i18n | `menu:data-sync`、`action.dataSync`、10 语言 `sync.*` | 改文案与流程，补齐新 key |
+| 连接管理 | ConnectionManager + 已保存连接 | Endpoint 只存 `connection_id` |
+| 同族判定 | `sync/pairing.rs`、`src/lib/syncPairing.ts` | Sync 只开 Direct same-family；IR 留给 Schema Diff / 未来 Transfer |
+| `get_tables` / `get_table_schema` | Driver | 映射与兼容性检查 |
+| `query_stream` / `query_with_params` | Driver | Compare 流式读，禁止整表 `query()` |
+| `build_update_sql` / `build_delete_sql` | Driver（Delete Row 已用） | Execute 参数化 UPDATE/DELETE |
+| `quote_ident` / `format_sql_literal` | Driver | 标识符 + Preview 字面量 |
+| `begin_transaction` / `commit` / `rollback` / `cancel_query` | Driver | 执行与取消 |
+| Schema Diff 面板 | `SchemaDiffPanel` | INCOMPATIBLE 时展示列差异，引导去 Schema Diff / Transfer |
+| E2E 夹具库 | `e2e/setup-sync-dbs.sh` | 夹具表必须结构一致且有 PK；改断言为 Diff 闭环 |
+| `packages/driver-api/src/sync/` IR | Schema/DDL IR | Sync **不调用**拷贝；Schema Diff 与未来 Transfer 用 |
 
-当前 `sync` 模块主要提供跨数据库的 Schema/DDL Intermediate Representation：
+### 2.3 新模块边界
 
 ```text
-IRTable
-IRColumn
-IRType
-IRDefault
-SyncSourceAdapter
-SyncTargetAdapter
+packages/driver-api/src/sync/     → Schema IR（保留给结构同步，Data Sync V1 不调用拷贝）
+src-tauri/src/data_sync/          → 新：Compare / ChangeSet / SQL / Execute
+src-tauri/src/commands/data_sync.rs 或替换 commands/sync/* 语义
+src/windows/data-sync/            → 改造现有窗口，不新建 kind
 ```
 
-它可以复用其中的类型和 Driver Adapter 思路，但不建议直接把当前 `IRTable` 当成数据同步的 Row Model。
+不要把 Data Sync 行模型塞进 `IRTable`。
 
-原因：
+### 2.4 Driver Trait：P0 不新增大批方法
+
+P0 使用已有：
 
 ```text
-Schema Sync
-    → Table / Column / Type
-
-Data Sync
-    → Row / Cell / Key / Operation
+get_tables / get_table_schema
+query_with_params / query_stream
+execute / begin_transaction / commit / rollback / cancel_query
+quote_ident / format_sql_literal
+build_update_sql / build_delete_sql
 ```
 
-两者生命周期、数据量和执行模型完全不同。
+INSERT SQL 由 Host 按 Target schema + `quote_ident` + 参数生成；与 Preview 共用同一生成器。
 
-因此建议新增独立的 `data_sync` 模块，避免把 Schema Sync 和 Data Sync 强耦合。
+P1 再评估可选 `DataSyncDialect`（keyset SQL、服务端 hash、值归一化）。禁止在 Host 写 `if mysql { ... } else if postgres`。
 
 ---
 
@@ -171,117 +180,34 @@ SQL
 Execution
 ```
 
-用户可以在 Compare 完成后长时间 Review，而不需要保持数据库连接或重新执行 Compare。
+用户可以在 Compare 完成后长时间 Review。行 Diff 可落盘或分页回读，不要求一直占着 DB 连接；Execute 前必须重新拿到 Target 连接并 Revalidate。
 
 ---
 
 ## 4. 推荐代码目录
 
-最终建议形成如下结构：
+在**现有窗口与 IPC 包名上替换语义**，避免长期双轨：
 
 ```text
-packages/driver-api/
-└── src/
-    ├── traits.rs
-    ├── types.rs
-    └── data_sync/
-        ├── mod.rs
-        ├── capability.rs
-        ├── dialect.rs
-        └── types.rs
-
-src-tauri/src/
-├── data_sync/
-│   ├── mod.rs
-│   ├── service.rs
-│   ├── task.rs
-│   ├── mapping.rs
-│   ├── comparison.rs
-│   ├── matcher.rs
-│   ├── changeset.rs
-│   ├── sql.rs
-│   ├── execution.rs
-│   ├── validation.rs
-│   ├── pagination.rs
-│   ├── history.rs
-│   └── error.rs
-├── commands/
-│   └── data_sync.rs
-└── ...
-
-src/
-├── components/
-│   └── data-sync/
-│       ├── DataSyncWorkspace.tsx
-│       ├── SyncSourceTarget.tsx
-│       ├── SyncOptions.tsx
-│       ├── TableMapping.tsx
-│       ├── ComparisonSummary.tsx
-│       ├── TableDiff.tsx
-│       ├── RowDiff.tsx
-│       ├── ChangeSetToolbar.tsx
-│       ├── SqlPreview.tsx
-│       ├── ExecutionProgress.tsx
-│       └── ExecutionResult.tsx
-├── stores/
-│   └── data-sync.ts
-├── types/
-│   └── data-sync.ts
-└── commands/
-    └── data-sync.ts
+src-tauri/src/data_sync/          # 新领域（Compare / ChangeSet / SQL / Execute）
+src-tauri/src/commands/sync/      # 替换现有 compare/sync_tables 实现，不要长期保留 DROP 路径
+src/windows/data-sync/            # 改造 DataSyncWindow，拆子组件
+src/commands/sync.ts              # 换新 command 形状
+src/stores/dataSyncStore.ts       # 新增；只存任务/摘要/当前表页
+packages/driver-api/src/sync/     # 保留给 Schema IR，V1 Data Sync 不走拷贝
 ```
 
-具体路径以现有模块组织方式为准，但职责边界应保持不变。
+Frontend 子组件可以放在 `src/windows/data-sync/`（与现有窗口一致），不必强行新建 `src/components/data-sync/`。
+
+`packages/driver-api/src/data_sync/` 仅在 P1 需要跨 Driver 的 dialect hook 时再加；P0 不必新增 crate 模块。
 
 ---
 
-## 5. Driver API 设计
+## 5. Driver API
 
-### 5.1 第一阶段尽量不修改 `DatabaseDriver`
+见 §2.4。P0 必须用 `query_stream` 做比较读取；必须用 `build_update_sql` / `build_delete_sql` 做执行（与 Delete Row 同一套 PK WHERE）。INSERT 由 Host 生成参数化语句。
 
-现有 `DatabaseDriver` 已经可以完成 P0：
-
-```text
-get_table_schema
-query_with_params
-query_stream
-execute
-begin_transaction
-commit
-rollback
-quote_ident
-format_sql_literal
-```
-
-因此第一阶段不应为了数据同步而向 `DatabaseDriver` 增加大量同步专用方法。
-
-同步 Host 可以通过标准 SQL 完成：
-
-- Row 查询
-- COUNT
-- Primary Key 查询
-- Insert
-- Update
-- Delete
-
-这样可以降低插件 API breaking change 风险。
-
-### 5.2 后续可增加可选能力
-
-当 MySQL/PostgreSQL 实现成熟后，再评估增加：
-
-```rust
-trait DataSyncDialect {
-    fn build_keyset_query(...);
-    fn build_insert_sql(...);
-    fn build_update_sql(...);
-    fn build_delete_sql(...);
-    fn normalize_value(...);
-    fn compare_value(...);
-}
-```
-
-这些能力应该作为**可选扩展能力**，而不是把所有同步逻辑塞进 Driver Trait。
+执行通道必须是同步专用 IPC，**不要**把生成 SQL 交给 `execute_query`（否则 Safe Mode 的「UPDATE 必须有 WHERE」与只读连接语义会对不上：要么误杀合法 PK UPDATE，要么绕过 `read_only`）。
 
 ---
 
@@ -335,15 +261,13 @@ batch_size = 1000
 
 ### 6.4 MatchingStrategy
 
+V1 **只有 Primary Key**。无 PK 或不一致 → `INCOMPATIBLE`，引导 Transfer / Structure Sync。不实现 Unique Index / Custom Columns（那会削弱「必须有 PK」的前提）。
+
 ```rust
 enum MatchingStrategy {
     PrimaryKey,
-    UniqueIndex,
-    CustomColumns(Vec<String>),
 }
 ```
-
-P0 只实现 `PrimaryKey`。
 
 ### 6.5 TableMapping
 
@@ -414,6 +338,8 @@ Target - Source
 ```
 
 ### 7.2 不建议全表加载
+
+禁止整表 `query()`（旧 `table_sync.rs` 即如此）。必须 `query_stream` + keyset chunk。
 
 禁止：
 
@@ -576,18 +502,22 @@ DISABLED
 INCOMPATIBLE
 ```
 
-### 9.3 Schema 校验
+### 9.3 Schema 校验（硬门闸，PRD §9）
 
-进入 Compare 前检查：
+进入 Compare 前，**每一对映射表**必须：
 
-- Source table 存在
-- Target table 存在
-- Column 数量/名称
-- Matching columns 存在
-- Matching columns 类型兼容
-- Source/Target Driver Type 相同
+- 双方表存在，且为基表（非视图）
+- 同 dialect family
+- **列名集合相同**（按列名对齐，允许物理顺序不同）
+- **列类型等价、可空性相同**
+- **PRIMARY KEY 存在且列集合+顺序相同**
+- 不是「同一连接 + 同一库 + 映射到自身」
 
-V1 如果列结构存在不兼容，默认阻止 Compare，而不是尝试隐式转换。
+任一项失败 → `INCOMPATIBLE`，列出差异，**禁止**只同步列交集。提示：结构问题走 Schema Diff；异构/改列名/无 PK 走 Transfer。
+
+索引/外键/触发器不一致：警告，不阻断。
+
+PK 为 IDENTITY/SERIAL：INSERT 必须写入 PK 值（MySQL `SET IDENTITY_INSERT` 类能力若缺失则该表 INCOMPATIBLE 或 Execute 失败并说明）。生成列非 PK：不写入 SET/INSERT。
 
 ---
 
@@ -834,7 +764,7 @@ age = 25
 [Recompare] [Skip] [Execute Anyway]
 ```
 
-P0 可以先实现 Table/Task 级 revalidation；Row-level conflict detection 可作为 P1，但架构必须预留。
+P0：Table/Task 级 revalidation + Target `read_only` 检查。Row-level conflict detection 为 P1，架构预留快照字段。
 
 ---
 
@@ -858,17 +788,20 @@ rollback()
 
 ### 16.1 执行顺序
 
-建议：
+**表间顺序比行操作顺序更重要。**
+
+V1 默认：
 
 ```text
-INSERT
-UPDATE
-DELETE
+按用户勾选的表顺序执行
+同一张表内：INSERT → UPDATE → DELETE
 ```
 
-原因是减少因外键依赖导致的失败概率。
+不在 V1 解析 FK 图。外键失败给出明确错误（表、操作、row key、数据库信息），不静默跳过。
 
-后续可以根据 FK 图进行拓扑排序。
+P1/P2 再按 FK 拓扑：INSERT 父→子，DELETE 子→父。
+
+同表内 `INSERT → UPDATE → DELETE` 仍建议保留，降低自引用/唯一约束冲突概率。
 
 ### 16.2 Batch Execution
 
@@ -961,23 +894,28 @@ Compared → Reviewing → ReadyToExecute → Revalidating
 
 ## 19. Tauri Command API
 
-建议暴露以下 Command：
+替换现有 `commands/sync/*` 语义（删除 `sync_tables` 覆盖拷贝）。建议：
 
 ```text
 sync_create_task
 sync_validate_task
 sync_start_compare
 sync_cancel_compare
-sync_get_comparison
+sync_get_comparison          # 表摘要
+sync_get_table_diff          # 分页行 Diff，禁止一次返回全表
 sync_update_selection
 sync_generate_sql
 sync_validate_execution
 sync_execute
 sync_cancel_execution
-sync_get_history
-sync_save_task
+sync_get_history             # P1
+sync_save_task               # P1
 sync_delete_task
 ```
+
+事件名避免与旧 `sync:progress` 语义混用：新事件建议 `data-sync:compare-progress` / `data-sync:execute-progress`（或同一事件加 `phase: compare|execute` 且 payload 含 Change Set 计数）。替换完成后删除旧监听。
+
+新 command 必须写入 `src-tauri/capabilities/default.json`。
 
 ### 19.1 `sync_create_task`
 
@@ -1047,7 +985,7 @@ sync_delete_task
 新增：
 
 ```text
-src/stores/data-sync.ts
+src/stores/dataSyncStore.ts
 ```
 
 Store 状态：
@@ -1093,6 +1031,8 @@ Current table → Local state / paged cache
 
 ## 21. UI 实现
 
+改造现有 `src/windows/data-sync/DataSyncWindow.tsx`，去掉「选表后直接同步」主按钮路径。右键菜单只用 Tauri 原生 Menu。10 语言同步更新 `sync.*`。
+
 ### 21.1 Source / Target
 
 ```text
@@ -1112,10 +1052,7 @@ Current table → Local state / paged cache
 ☑ Update
 ☐ Delete
 
-Matching:
-● Primary Key
-○ Unique Index
-○ Custom Columns
+Matching: Primary Key only（无 PK 则不可同步）
 ```
 
 ### 21.3 Table Mapping
@@ -1133,7 +1070,7 @@ products    →      —                 —
 顶部 Summary：
 
 ```text
-35 Insert   171 Update   4 Delete   8 Unchanged
+35 Insert   171 Update   4 Delete   ·   8 tables unchanged
 ```
 
 左侧：
@@ -1173,7 +1110,7 @@ Operation
 Row
 ```
 
-默认所有 INSERT/UPDATE 被选中，DELETE 未开启时不可选。
+默认所有 INSERT/UPDATE 被选中；DELETE 仅在选项开启后可选，且默认不选。支持逐行勾选（P0）。
 
 ---
 
@@ -1229,7 +1166,7 @@ SQL 编辑必须明确标识：
 
 > Editing SQL changes the execution payload.
 
-如果 V1 暂不支持编辑 SQL，建议先提供只读 Preview，避免出现“用户编辑了 SQL，但 ChangeSet 与 SQL 不一致”的复杂状态。
+V1 **只提供只读 Preview**。禁止用户编辑 SQL 后执行（避免文本与 ChangeSet 不一致）。编辑执行为 P1。
 
 ---
 
@@ -1283,8 +1220,9 @@ Status
 
 - 密码
 - 完整敏感数据快照
+- 旧版覆盖拷贝的 `current_table_offset` 任务（启动时忽略或删除 `sync_tasks.json` 不兼容条目）
 
-SQL 是否持久化可以做成设置项；默认建议不保存完整 SQL，以降低敏感数据泄漏风险。
+SQL 是否持久化做成设置项；默认不保存完整 SQL。
 
 ---
 
@@ -1382,6 +1320,16 @@ P0 目标：
 Chunk → Compare → Persist/Stream Result
 ```
 
+行 Diff 存储建议（P0 必须有一种，避免全进内存）：
+
+```text
+{appData}/sync-compare/{taskId}/
+  manifest.json          # 表摘要、计数
+  {table}.changes        # 仅 INSERT/UPDATE/DELETE 行（可分页文件）
+```
+
+不持久化 UNCHANGED 行。窗口关闭后 Compare 结果可丢弃（P0）或按任务保留至 Execute（推荐，便于 Review 后回来再执行）。旧 `sync_tasks.json` 不复用该目录。
+
 ---
 
 ## 29. 大表优化路线
@@ -1435,17 +1383,24 @@ Delete option 默认关闭
 Execute 前再次确认
 ```
 
-### 30.2 权限
-
-Execute 前检查：
+### 30.2 权限与只读 / Safe Mode
 
 ```text
-INSERT
-UPDATE
-DELETE
+Target.read_only = true  → 禁止 Execute（Compare 仍允许）
+Source.read_only = true  → 允许 Compare
 ```
 
-Driver 如果无法提前判断权限，则在执行前通过轻量权限验证或实际错误反馈。
+同步执行走专用 IPC，**不**经 `execute_query` / `sql_guard` 的「无 WHERE 则拦 UPDATE」规则（生成语句已带 PK WHERE）。专用通道仍必须：
+
+- 拒绝 `read_only` Target
+- 参数绑定
+- 仅执行 Change Set 内已勾选行
+
+Delete 与设置 `confirmOnDelete` 对齐。
+
+Driver 无法预检权限时，执行失败要带 Table / Operation / Row Key / DB 错误。
+
+触发器 / `ON DELETE CASCADE`：V1 在开启 Delete 时警告「实际删除可能多于 Change Set」。
 
 ### 30.3 Credential
 
@@ -1523,30 +1478,24 @@ must produce no changes
 
 这是数据同步最重要的闭环测试。
 
-### 31.3 Integration Test
+### 31.3 Integration Test（落点必须遵守 AGENTS.md）
 
-至少：
+**方言 / 类型 / PK 行为**写在驱动 crate，不要进 Host：
 
 ```text
-MySQL source → MySQL target
-PostgreSQL source → PostgreSQL target
+packages/drivers/mysql/tests/     data_sync_*.rs
+packages/drivers/postgres/tests/  data_sync_*.rs
 ```
 
-测试：
+MariaDB 与 MySQL 同 family，P0 用同一套用例或显式 MariaDB 夹具各跑一次。
 
-- Insert
-- Update
-- Delete
-- Transaction rollback
-- Composite PK
-- NULL
-- Unicode
-- JSON
-- Large TEXT
-- Timestamp
-- Empty table
-- Empty source
-- Empty target
+**Host**（`src-tauri` / `e2e/specs/`）只测编排：状态机、选择、Preview 与 Execute 一致、只读拦截、Cancel、事务结果、窗口流程。可用 PG/MySQL 当夹具，不断言方言 SQL。
+
+复用 `e2e/setup-sync-dbs.sh`，**改写** `e2e/specs/data-sync-real.ts`：断言 Diff 闭环，删除对 DROP+INSERT 覆盖拷贝的依赖。
+
+覆盖：Insert / Update / Delete / Rollback / Composite PK / NULL / Unicode / JSON / TEXT / Timestamp / 空表 / 空源 / 空目标 / Target read_only 拒绝 Execute。
+
+Host UI：`e2e/specs/` 必须走完 Compare → 勾选 → Preview → Execute → 结果（现 SYNC UI 仍为 Partial，本功能落地时补齐）。
 
 ### 31.4 Failure Test
 
@@ -1598,24 +1547,20 @@ source.sql
 
 ## 33. 实施阶段
 
-### Phase 0：架构确认
+### Phase 0：替换边界确认
 
-目标：明确现有 Driver/Command/Connection 复用边界。
+目标：冻结「抛弃 vs 复用」清单（见 §2），避免新旧引擎并存。
 
 任务：
 
-- 确认 connection manager
-- 确认 Tauri command 注册方式
-- 确认 Event 推送机制
-- 确认现有 TableSchema / Value 模型
-- 确认 MySQL/PostgreSQL Driver 实现
-- 确认现有测试基础设施
+- 列出将删除的 `table_sync` / 旧 `sync_tables` / IR 拷贝调用点
+- 确认窗口 kind、菜单、pairing 同族门闸保留
+- 确认 `query_stream`、`build_update_sql` / `build_delete_sql`、事务、`cancel_query`
+- 确认专用 IPC 与 `sql_guard` / `read_only` 的分工
+- 确认 Compare 结果落盘目录与旧 `sync_tasks.json` 互不混用
+- 确认 E2E 夹具可改为 Diff 闭环
 
-产物：
-
-```text
-Architecture Decision Record
-```
+产物：短 ADR（可写在本文件 §2，不必另开长文）。
 
 ### Phase 1：Backend Domain Model
 
@@ -1680,44 +1625,31 @@ Execution result
 
 ### Phase 5：Frontend Diff Workspace
 
-实现：
+改造 `DataSyncWindow`，不要新开窗口 kind：
 
 ```text
-Source / Target
+Source / Target / Swap
 Options
 Table Mapping
 Summary
 Table Diff
 Row Diff
 Change Selection
-SQL Preview
+只读 SQL Preview
 Execution Progress
 Result
+拆除「直接 Sync」覆盖入口
 ```
 
-### Phase 6：PostgreSQL
+### Phase 6：PostgreSQL / MariaDB
 
-在 MySQL 跑通后，将数据库相关差异限制在 Dialect/Driver 层。
+同一 Comparison Engine + 各 Driver。MariaDB 与 MySQL 同 family，用现有 pairing 验收一遍即可。避免复制两套同步代码。
 
-目标：
+### Phase 7：拆除旧引擎 + History
 
-```text
-同一 Comparison Engine
-+
-MySQL Driver
-PostgreSQL Driver
-```
-
-避免复制两套同步代码。
-
-### Phase 7：History / Saved Task
-
-最后增加：
-
-- History
-- Saved Task
-- SQL export
-- Sync task duplication
+- 删除或永久禁用 DROP+INSERT `sync_tables` 路径（P0 结束前产品内不可达）
+- 忽略/清理不兼容的旧 `sync_tasks.json`
+- P1：History / Saved Task / SQL 导出
 
 ---
 
@@ -1771,8 +1703,8 @@ History
 - [ ] Task state machine
 - [ ] Endpoint validation
 - [ ] Table mapping
-- [ ] Schema compatibility
-- [ ] Primary key matcher
+- [ ] Schema 完全一致校验（列名/类型/可空/PK）
+- [ ] Primary key matcher（无 PK 即拒绝）
 - [ ] Keyset pagination
 - [ ] Row comparator
 - [ ] ChangeSet
@@ -1783,29 +1715,27 @@ History
 - [ ] Cancel
 - [ ] Error model
 
-### Driver
+### Driver（测在各 crate，不是 Host）
 
-- [ ] MySQL sync compatibility
-- [ ] PostgreSQL sync compatibility
-- [ ] Identifier quoting validation
-- [ ] Parameter binding validation
-- [ ] Transaction validation
-- [ ] Large value handling
+- [ ] MySQL / MariaDB family：stream、事务、PK DML
+- [ ] PostgreSQL：同上
+- [ ] `quote_ident` / 参数绑定 / 大字段
+- [ ] 值比较：NULL / 时间 / JSON（写在 `packages/drivers/{mysql,postgres}/`）
 
 ### Frontend
 
-- [ ] Data Sync entry
-- [ ] Source/Target selector
-- [ ] Options
-- [ ] Table Mapping
-- [ ] Compare progress
-- [ ] Summary
-- [ ] Table Diff
-- [ ] Row Diff
-- [ ] Selection
-- [ ] SQL Preview
-- [ ] Execution Progress
-- [ ] Execution Result
+- [ ] 改造现有 Data Sync 窗口（去掉覆盖拷贝主路径）
+- [ ] Source/Target + Swap + 同族校验 + 自同步禁止
+- [ ] Options（Delete 默认关）
+- [ ] Table Mapping + 结构完全一致/PK 硬门闸（失败 INCOMPATIBLE，引导 Schema Diff / Transfer）
+- [ ] Compare progress + Cancel
+- [ ] Summary（表 unchanged 与行 insert 分列）
+- [ ] Table / Row / Cell Diff（分页 ≤500）
+- [ ] Table / Operation / Row 选择
+- [ ] 只读 SQL Preview
+- [ ] Execution Progress / Result
+- [ ] 10 语言 i18n；右键仅原生 Menu
+- [ ] Host E2E 走通主路径
 
 ### Test
 
@@ -1840,11 +1770,14 @@ History
 
 ### Safety
 
-1. Delete 默认关闭。
+1. Delete 默认关闭；开启与执行两道确认。
 2. 未选择的 Change 不得执行。
-3. Preview SQL 与实际执行 SQL 一致。
+3. Preview 与执行同一生成器（参数化执行，Preview 仅展示）。
 4. 不保存数据库密码。
-5. Target 发生明显变化时提示重新 Compare。
+5. Target `read_only` 禁止 Execute。
+6. Target 发生明显变化时提示重新 Compare。
+7. 产品内不可再触发旧 DROP+INSERT 覆盖同步。
+8. 同一连接同一库自同步被拒绝。
 
 ### Performance
 
@@ -1914,15 +1847,9 @@ else if postgres { ... }
 
 ### 风险 5：外键依赖
 
-V1 采用：
+V1：按勾选表顺序执行；同表内 INSERT → UPDATE → DELETE。FK 失败明确报错。
 
-```text
-INSERT → UPDATE → DELETE
-```
-
-遇到复杂 FK 场景先给出明确错误。
-
-P1/P2 再根据 FK 图优化执行顺序。
+P1/P2：表级拓扑（INSERT 父→子，DELETE 子→父）。
 
 ---
 
@@ -1975,7 +1902,15 @@ Driver
 
 ### 38.5 不要把 Data Sync 和 Schema Sync 混成一个模块
 
-两者可以共享 Driver 能力，但 Domain Model 应保持独立。
+两者可以共享 Driver 能力，但 Domain Model 应保持独立。`packages/driver-api/src/sync/` IR 不用于 V1 行拷贝。
+
+### 38.6 不要保留两套同步引擎
+
+P0 交付后，UI 与 IPC 不得再进入覆盖拷贝。旧任务文件不升级。
+
+### 38.7 不要在 Host 写驱动方言测试
+
+`mysql_*` / `postgres_*` 同步语义测在对应 driver crate。
 
 ---
 
@@ -1993,7 +1928,7 @@ Data IR
 Target Driver
 ```
 
-这里可以复用现有 `packages/driver-api/src/sync/` 的 IR 思路。
+V1 已去掉整表 IR 拷贝。未来跨库应是 **行级 Data IR**（值转换后再 INSERT/UPDATE），不是 DROP+重建。可借鉴现有 type IR，但不要复活旧 `table_sync`。
 
 ### Data Transformation
 
@@ -2120,16 +2055,14 @@ History
 按照风险优先级，第一批实现建议只做以下内容：
 
 ```text
-1. data_sync domain model
-2. MySQL source/target connection
-3. Table schema discovery
-4. Primary Key matcher
-5. Keyset pagination
-6. Row comparator
-7. INSERT/UPDATE/DELETE ChangeSet
-8. Parameterized SQL generator
-9. Transaction executor
-10. Compare → Apply → Recompare integration test
+1. data_sync domain model + 状态机
+2. 停用旧 sync_tables 覆盖路径（或先藏入口）
+3. 复用连接 + 同族 pairing 门闸
+4. PK matcher + keyset + query_stream 比较（MySQL）
+5. ChangeSet + 参数化 SQL（复用 build_update/delete_sql）
+6. 专用 Execute IPC（read_only / 事务 / Cancel）
+7. Compare → Apply → Recompare = 0 差异（crate 集成测 + Host 编排测）
+8. 改造 DataSyncWindow 最小 Diff UI
 ```
 
 其中第 10 项作为第一阶段的 **Definition of Done**：
@@ -2148,4 +2081,4 @@ Compare Again
 0 Changes
 ```
 
-如果这条闭环稳定，再开始投入大量 UI 和高级优化工作。
+如果这条闭环稳定，再补 PostgreSQL、完整 Diff UI、MariaDB 验收，并**删除**旧 DROP+INSERT 代码路径。然后才是 History / Hash / 自定义匹配列。
