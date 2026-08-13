@@ -77,7 +77,7 @@
 | 新建查询不弹出对象加载补全框 | `connection-window.ts` (SQ-AC-001), `mysql.ts` (MY-AC-001) | Covered |
 | SQL 补全只拉取语句中已加载完整表名的列（禁止前缀 get_columns） | `schemaStore.test.ts` / `sqlEditorDefaults.test.ts` / `buildEditorSchema.test.ts` | Covered |
 | Schema Diff 窗口打开与步骤控件 | `schema-diff-window.ts` | Covered |
-| 数据同步窗口 | `homepage-features.ts`, `data-sync-real.ts` | Partial |
+| 数据同步窗口 | `data-sync-window.ts`, `homepage-features.ts`, `data-sync-real.ts` | Covered（横幅 / 未选 Compare / Apply 禁用；inspect IPC；行 Diff 未接线记后续） |
 | 数据看板 | `data-dashboard-*.ts` | Covered |
 | 应用数据备份标签 | `app-data-backup.ts` | Covered |
 | 路径 IPC 加固 | `path-ipc-hardening.ts` | Covered |

@@ -49,7 +49,7 @@ DataZen 是一个跨平台桌面数据库管理工具，基于 **Tauri v2**（Ru
 | **Drivers 层** | 数据库驱动抽象 | `DatabaseDriver`、Command Definition、`execute_command`、inventory 插件扩展 |
 | **AI 层** | LLM 集成 | 多 Provider、协议复用、流式输出、Prompt Resolver |
 | **MCP 层** | 工具协议 | Server / Client、Workflow 调用 |
-| **Sync 层** | 跨库数据同步 | IR 中间表示、适配器 |
+| **Sync 层** | 数据同步（同族 Diff Sync） | `data_sync`：门闸 / 流式比较 / ChangeSet / 参数化 DML；异构 IR 属 Transfer，V1 不实现 |
 | **Stores 层** | 本地持久化 | AES-256-GCM 加密存储 |
 
 ## Driver Command 架构
@@ -172,6 +172,7 @@ Connection 变化后重新 discovery；没有 Step override 时使用 Workflow �
 | [Workflow 模块](backend/workflow.md) | YAML Workflow、Command runtime、Connection inheritance、Legacy Query、执行历史 |
 | [数据看板](backend/dashboard.md) | AppDb 统一存储、Widget→finalOutput、Monitor 调度、导出 v2 |
 | [Schema Diff Deploy](backend/schema-diff.md) | Schema diff / DDL plan / deploy |
+| [数据同步](backend/data-sync.md) | 同族 Diff Sync、硬门闸、`inspect_data_sync` / `execute_data_sync`、覆盖拷贝已拆除 |
 
 ## 前端文档
 
