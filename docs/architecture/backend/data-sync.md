@@ -6,7 +6,7 @@ DataZen 把三类能力拆开，**本模块只实现 Data Synchronization**（�
 
 | 产品 | 何时用 | V1 |
 |------|--------|----|
-| **Data Synchronization** | 同族、结构完全一致、相同 PK；Compare → ChangeSet → 参数化 DML | 已实现引擎 + 映射门闸壳；Apply 尚未接到窗口 |
+| **Data Synchronization** | 同族、结构完全一致、相同 PK；Compare → ChangeSet → 参数化 DML | 引擎 + 映射门闸 + 行比较 / Apply / Cancel 已接到窗口 |
 | **Data Transfer** | 异构 / 需 IR 转换 | **不实现**（pairing 标 `path: ir, supported: false`） |
 | **Structure Sync** | 只改 DDL | Schema Diff Deploy，见 [schema-diff.md](schema-diff.md) |
 
@@ -40,7 +40,9 @@ src-tauri/src/data_sync/
 
 src-tauri/src/commands/sync/
 ├── inspect.rs      # inspect_data_sync：get_tables + schema → classify_tables
-├── exec.rs         # execute_data_sync：不经 execute_query / sql_guard
+├── apply.rs        # compare_data_sync / apply_data_sync：行比较 + ChangeSet SQL
+├── jobs.rs         # cancel_data_sync 与 execute 共用的 job 取消标志
+├── exec.rs         # execute_data_sync：不经 execute_query / sql_guard；可带 jobId
 └── table_sync.rs   # sync_table / sync_tables 仅 refuse_overwrite_copy
 ```
 
@@ -52,13 +54,16 @@ src-tauri/src/commands/sync/
 DataSyncWindow
     │ Compare
     ▼
-inspect_data_sync  →  require_data_sync_family + classify_tables
+compare_data_sync  →  inspect 门闸 + 对 MATCHED 表 query 行 + compare_sorted_rows
     │
-    ▼  （行 Diff / Apply 尚未接线）
-compare_table_pages  →  ChangeSet  →  generate_table_sql  →  execute_data_sync
+    ▼  Apply（仅已选且有行差异的表）
+ChangeSet  →  generate_table_sql  →  execute_data_sync(jobId)
     │
     ▼
-execute_statements（begin → query_with_params → commit；失败 rollback）
+execute_statements（begin → query_with_params → commit；失败/Cancel 则 rollback）
+    │
+    ▼
+再 compare_data_sync → 期望行差异为 0
 ```
 
 - ChangeSet 只含选中且被 options 允许的变更；DELETE 默认不选。
@@ -69,8 +74,9 @@ execute_statements（begin → query_with_params → commit；失败 rollback）
 
 - 窗口：`src/windows/data-sync/DataSyncWindow.tsx`（单例 `data-sync`）
 - Pairing：`src/lib/syncPairing.ts`（与 Rust `pairing.rs` 对齐）
-- IPC：`src/commands/sync.ts` → `inspectDataSync` / `executeDataSync`
-- Apply 按钮 `data-testid="data-sync-start-disabled"` 保持禁用，直到 Diff Execute 接到窗口
+- IPC：`src/commands/sync.ts` → `compareDataSync` / `applyDataSync` / `cancelDataSync` / `executeDataSync`
+- 有行差异且已勾选 MATCHED 表时 Apply 为 `data-testid="data-sync-start"`；否则 `data-sync-start-disabled`
+- 比较/执行中 Cancel：`data-testid="data-sync-cancel"` → `cancel_data_sync(jobId)`
 - 覆盖拷贝横幅：`data-testid="data-sync-overwrite-retired"`
 
 ## 5. 测试落点

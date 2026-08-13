@@ -595,7 +595,7 @@ DataTable (容器)
 └── DataExportDialog    # 数据导出对话框（CSV/TSV/JSON/SQL INSERT/SQL UPDATE）
 ```
 
-右键菜单走 Tauri 原生 Menu（见下方「原生 Context Menu」），由 `buildDataTableContextMenuItems` 构建（对齐 TablePlus）：
+右键菜单走 Web Context Menu（见下方「Web Context Menu」），由 `buildDataTableContextMenuItems` 构建（对齐 TablePlus）：
 Copy / Copy Row / Copy as JSON / Copy as SQL INSERT / Copy as UPDATE / Copy as CSV /
 Copy Column Name / Set NULL（可编辑表；Query 结果通过 `enableSetNull={false}` 隐藏）/
 Filter by This Value / Delete Row（需主键；`commit_row_deletes`）/
@@ -604,7 +604,7 @@ Safe Mode 开启时 Schema 树隐藏 Truncate / Drop（后端 `sql_guard` 拦截
 
 **数据导出功能**：
 - 工具栏「导出」按钮导出全部数据
-- 原生右键菜单导出选中行（或当前页）
+- 右键菜单导出选中行（或当前页）
 - 支持 5 种格式：CSV、TSV、JSON、SQL INSERT、SQL UPDATE
 - 通过 Tauri 原生对话框选择保存路径
 
@@ -613,7 +613,7 @@ Safe Mode 开启时 Schema 树隐藏 Truncate / Drop（后端 `sql_guard` 拦截
 - 范围：全部表或所选表；模式：仅结构 / 仅数据 / 数据+结构
 - 逻辑：`src/lib/batchExport.ts`（组装）+ `batchExportJob.ts`（执行/ZIP）+ `loadBatchExportTable.ts`（DDL + 分页全量）
 - UI：`src/windows/connection/BatchExportDialog.tsx`；表多选、格式、单文件/ZIP
-- E2E：可断言顶栏按钮；Schema 树原生菜单项不可 DOM 断言
+- E2E：可断言顶栏按钮；Schema 树右键可断言 `data-testid="web-context-menu"` 与 `web-context-item-*`
 - 编辑表结构页（`TableStructureEditor` alter）：「导出表结构」→ DDL 另存为 `.sql`（`exportTableStructure.ts`）
 
 Props 接口：
@@ -643,11 +643,18 @@ interface DataTableProps {
 }
 ```
 
-### 9.1.1 原生 Context Menu
+### 9.1.1 Web Context Menu
 
-右键菜单统一使用 Tauri 系统原生 Menu，入口：`src/lib/nativeContextMenu.ts`（`showNativeContextMenu` / `normalizeNativeMenuItems` / `nativeEditMenuItems`）。禁止新增 Web DOM ContextMenu。
+右键菜单统一使用 Web 浮层（portal 到 `document.body`），入口：
 
-各场景通过独立 builder 组装 `NativeMenuItemDef[]`，再调用 `showNativeContextMenu`：
+- `src/lib/nativeContextMenu.ts`：`NativeMenuItemDef` / `normalizeNativeMenuItems` / `nativeEditMenuItems` / `showNativeContextMenu(items, {x,y})`
+- `src/stores/contextMenuStore.ts`：`showWebContextMenu`
+- `src/components/ui/WebContextMenu.tsx`：`WebContextMenuHost`（`App.tsx` 挂载）
+- `src/lib/contextMenuPosition.ts`：根菜单与**二级菜单**在视口右/下边缘翻转或 clamp，面板不得被窗口裁切
+
+禁止再使用 `@tauri-apps/api/menu` 的 `Menu.popup()`。调用方必须传入 `clientX/clientY`（或 Schema 树 payload 的 `x/y`）。
+
+各场景通过独立 builder 组装 `NativeMenuItemDef[]`，再调用 `showNativeContextMenu` / `showWebContextMenu`：
 
 | Builder | 路径 | 调用方 |
 |---------|------|--------|
@@ -659,10 +666,11 @@ interface DataTableProps {
 | Workflow 列表 / 历史 | `src/lib/workflowListContextMenu.ts` | `WorkflowWindow` |
 | ER 节点 | `src/lib/erNodeContextMenu.ts` | `ErDiagramView` |
 | Redis Key | `packages/drivers/redis/ui/redisKeyContextMenu.ts` | `RedisWorkbench` |
+| 主窗口连接/分组 | `src/lib/mainWindowContextMenu.ts` | `MainWindow` |
 
 Connection Window 菜单项对齐 TablePlus：Schema（Open Structure / New Query / Copy DDL / Truncate / Drop / New Table / Import）、SQL 编辑器（Run / Run Selection / Format / Comment）、Tab（Close to the Right/Left）、DDL 视图右键 Copy。
 
-约定：调用方传入 i18n labels 与 handlers；`preventDefault` + `stopPropagation` 后弹出；原生 OS 菜单不可 DOM 断言（E2E 勿依赖菜单文案）。
+约定：调用方传入 i18n labels 与 handlers；`preventDefault` + `stopPropagation` 后按坐标弹出。E2E 断言 `data-testid="web-context-menu"` / `web-context-submenu` / `web-context-item-*`；二级菜单贴窗口边缘时必须完整可见。主窗口「移到分组」是典型 submenu 用例。
 
 ### 9.2 SQL 编辑器集成
 
