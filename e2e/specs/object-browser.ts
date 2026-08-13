@@ -33,6 +33,20 @@ describe('对象浏览器与权限 (OBJ/PRV)', () => {
     expect(body).toContain(t('objects.function'));
   });
 
+  it('例程列表右键应打开 Web 菜单 (OBJ-003)', async () => {
+    const item = await $('[data-testid="object-browser-item"]');
+    if (!(await item.isExisting())) {
+      return;
+    }
+    await item.click({ button: 'right' });
+    const menu = await $('[data-testid="web-context-menu"]');
+    await menu.waitForDisplayed({ timeout: 5000 });
+    const text = await menu.getText();
+    expect(text).toContain(t('objects.open'));
+    expect(text).toContain(t('objects.copyName'));
+    await browser.keys('Escape');
+  });
+
   it('应能切换到过程子标签 (OBJ-002)', async () => {
     const procBtn = await $(`button*=${t('objects.procedure')}`);
     if (await procBtn.isExisting()) {

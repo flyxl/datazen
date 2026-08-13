@@ -55,9 +55,9 @@
 | 结构只读 + 内嵌编辑 + 返回 + 保存列变更 + 导出表结构按钮 | `table-structure.ts` | Covered |
 | 索引列表 / 新建对话框 / 删除 / 在结构中编辑 | `table-indexes.ts`, `connection-window.ts` | Covered |
 | FK / DDL 子标签 | `connection-window.ts` | Covered |
-| Objects / Privileges 面板 | `object-browser.ts` | Covered |
+| Objects / Privileges 面板 / 例程 Web 右键菜单 | `object-browser.ts` (OBJ-003) | Covered |
 | 侧栏导出 / 导入 | `export-import.ts` | Covered |
-| 顶栏导出对话框 / DataTable 导出 | `export-import.ts` (EI-BE / EI-GRID) | Covered |
+| 顶栏导出对话框 / DataTable 导出 / 整表范围 / Schema 树 Web 菜单导出 | `export-import.ts` (EI-BE / EI-GRID / EI-001 / EI-002) | Covered |
 | ER 图 | `er-diagram.ts` | Partial |
 | 图表 | `chart-views.ts`, `chart-expand.ts` | Covered |
 | AI Chat / @ 上下文 | `ai-context*.ts`, `ai-features.ts` | Covered / Partial（需 API Key 的路径见 Exception） |
@@ -68,9 +68,9 @@
 | 用户路径 | Spec | 状态 |
 |----------|------|------|
 | 设置：主题 / 持久化 / 分区导航（通用·浏览·编辑器·行为·日志·AI·Prompt·MCP·扩展） | `settings.ts` | Covered |
-| Workflow 列表 / 执行 / 历史 | `workflow.ts`, `workflow-window.ts` | Covered |
+| Workflow 列表 / 执行 / 历史 / 列表右键无运行 / 历史无菜单 | `workflow.ts`, `workflow-window.ts` (WF-CTX-*) | Covered |
 | Workflow 可视化 ↔ YAML 切换与保存入口 | `workflow-window.ts` (WF-YAML-*) | Covered |
-| Workflow / 数据看板 SQL 编辑（SqlEditor 高亮） | `workflow-window.ts` (WF-SQL-001), `data-dashboard-widget-ux.ts` (UJ-06) | Covered |
+| Workflow / 数据看板 SQL 编辑（SqlEditor 高亮 + Web 右键） | `workflow-window.ts` (WF-SQL-001 / WF-SQL-002), `data-dashboard-widget-ux.ts` (UJ-06) | Covered |
 | 恢复执行日志 | `BackupWindow.test.tsx` | Covered（原生文件对话框为例外） |
 | 备份窗口打开与连接选择 UI / 分组文案 | `backup-window.ts` | Covered |
 | 备份执行（IPC） | `backup-database.ts` | Covered |

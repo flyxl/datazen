@@ -137,6 +137,8 @@ export async function loadBatchExportTableData(params: {
   /** max rows to pull (default 100_000); stop early if hit */
   maxRows?: number;
   pageSize?: number; // default 500
+  /** When false, skip paging rows into memory (streaming export supplies data). */
+  includeRows?: boolean;
   deps?: Partial<LoadBatchExportTableDeps>;
 }): Promise<BatchExportTableInput> {
   const {
@@ -145,6 +147,7 @@ export async function loadBatchExportTableData(params: {
     databaseType,
     maxRows = DEFAULT_MAX_ROWS,
     pageSize = DEFAULT_PAGE_SIZE,
+    includeRows = true,
     deps: depsOverride,
   } = params;
 
@@ -155,7 +158,9 @@ export async function loadBatchExportTableData(params: {
 
   const schema = await deps.getSchema(connectionId, tableName);
   const ddl = await loadDdl(connectionId, tableName, databaseType, deps.getDdl, deps.getDialect);
-  const rows = await loadAllRows(connectionId, tableName, pageSize, maxRows, deps.getTableData);
+  const rows = includeRows
+    ? await loadAllRows(connectionId, tableName, pageSize, maxRows, deps.getTableData)
+    : [];
 
   return {
     tableName,

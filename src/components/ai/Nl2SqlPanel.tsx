@@ -16,7 +16,12 @@ interface Nl2SqlPanelProps {
   onSqlChange: (sql: string) => void;
 }
 
-export function Nl2SqlPanel({ connectionId, database, currentTable, onSqlChange }: Nl2SqlPanelProps) {
+export function Nl2SqlPanel({
+  connectionId,
+  database,
+  currentTable,
+  onSqlChange,
+}: Nl2SqlPanelProps) {
   const { t } = useI18n();
   const nl2sql = useAiStore((s) => s.nl2sql);
   const nl2sqlError = useAiStore((s) => s.nl2sqlError);
@@ -49,14 +54,26 @@ export function Nl2SqlPanel({ connectionId, database, currentTable, onSqlChange 
       contextTables: contextTables.length > 0 ? contextTables : undefined,
     });
     setContextItems([]);
-  }, [generateSql, connectionId, database, currentTable, nl2sql.input, nl2sql.isGenerating, contextItems]);
+  }, [
+    generateSql,
+    connectionId,
+    database,
+    currentTable,
+    nl2sql.input,
+    nl2sql.isGenerating,
+    contextItems,
+  ]);
 
   if (!isConfigured) {
     return (
       <div className="flex items-center gap-2 px-3 py-2 text-xs text-fg-muted border-b border-edge bg-surface-alt">
         <Sparkles className="h-3.5 w-3.5" />
         <span className="flex-1">{t('nl2sql.notConfigured')}</span>
-        <Button variant="primary" className="h-6 gap-1 px-2 text-[11px]" onClick={() => openSettingsWindow('ai')}>
+        <Button
+          variant="primary"
+          className="h-6 gap-1 px-2 text-[11px]"
+          onClick={() => openSettingsWindow('ai')}
+        >
           <Settings className="h-3 w-3" />
           {t('settings.ai.goToConfigure')}
         </Button>
@@ -66,7 +83,7 @@ export function Nl2SqlPanel({ connectionId, database, currentTable, onSqlChange 
 
   return (
     <div className="flex shrink-0 flex-col border-b border-edge bg-surface-alt">
-      <div className="flex shrink-0 items-start gap-2 p-2">
+      <div className="flex shrink-0 items-center gap-2 p-2">
         <AiInput
           className="min-w-0 flex-1 [&_>div]:rounded [&_>div]:border"
           value={nl2sql.input}
@@ -97,11 +114,7 @@ export function Nl2SqlPanel({ connectionId, database, currentTable, onSqlChange 
             {nl2sql.isGenerating ? t('nl2sql.generating') : t('nl2sql.generate')}
           </Button>
           {nl2sql.input && (
-            <Button
-              variant="ghost"
-              className="h-7 px-1.5 text-xs"
-              onClick={clearNl2Sql}
-            >
+            <Button variant="ghost" className="h-7 px-1.5 text-xs" onClick={clearNl2Sql}>
               <Trash2 className="h-3.5 w-3.5" />
             </Button>
           )}

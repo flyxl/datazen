@@ -10,6 +10,8 @@ export interface BatchExportTableInput {
   ddl?: string | null;
   columns: { name: string }[];
   rows: Record<string, unknown>[];
+  /** Pre-formatted data file body from a streaming export (skips generateExport). */
+  streamedData?: string;
 }
 
 export interface BuildBatchExportOptions {
@@ -58,6 +60,9 @@ function exportTableData(
   dataFormat: BatchExportDataFormat,
   databaseType?: string,
 ): string {
+  if (table.streamedData != null) {
+    return table.streamedData;
+  }
   const selectedColumns = table.columns.map((c) => c.name);
   const result = generateExport({
     tableName: table.tableName,
@@ -149,6 +154,7 @@ export function buildBatchExportFiles(options: BuildBatchExportOptions): BatchEx
 /**
  * Join multiple export files into one text blob (for “merge into a single file”).
  * Default separator banners each section with `-- ===== filename =====`.
+ * Only valid when every file is SQL (or a caller-supplied separator is used).
  */
 export function combineBatchExportFiles(files: BatchExportFile[], separator?: string): string {
   if (files.length === 0) return '';
@@ -160,12 +166,33 @@ export function combineBatchExportFiles(files: BatchExportFile[], separator?: st
   return files.map((f) => `-- ===== ${f.filename} =====\n\n${f.content}`).join('\n\n');
 }
 
+function fileExtension(filename: string): string {
+  const dot = filename.lastIndexOf('.');
+  return dot >= 0 ? filename.slice(dot + 1).toLowerCase() : '';
+}
+
+/** CSV/JSON (and mixed SQL+data) cannot be concatenated into one valid file. */
+export function batchExportNeedsZip(
+  files: BatchExportFile[],
+  outputMode: 'single' | 'zip',
+): boolean {
+  if (outputMode === 'zip') return true;
+  if (files.length <= 1) return false;
+  const exts = new Set(files.map((f) => fileExtension(f.filename)));
+  if (exts.size > 1) return true;
+  const ext = [...exts][0] ?? '';
+  return ext === 'csv' || ext === 'json' || ext === 'tsv';
+}
+
 /**
  * Default download name for a batch export.
- * Prefix reflects mode; extension is `.sql` for structure/full or multi-table combined text,
- * otherwise callers (F2) may rename by `dataFormat`.
+ * Extension follows the data format unless the result is a zip or combined SQL.
  */
-export function getBatchExportDefaultFilename(mode: BatchExportMode, multi: boolean): string {
+export function getBatchExportDefaultFilename(
+  mode: BatchExportMode,
+  zipOrMulti: boolean,
+  dataFormat: BatchExportDataFormat = 'sql_insert',
+): string {
   const ts = new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-');
   const prefix =
     mode === 'structure_only'
@@ -173,8 +200,11 @@ export function getBatchExportDefaultFilename(mode: BatchExportMode, multi: bool
       : mode === 'data_only'
         ? 'export_data'
         : 'export_full';
-  // Default combined / download name uses .sql. `multi` is reserved for F2
-  // (e.g. zip vs single); extension stays .sql for the merge-to-one-file path.
-  void multi;
-  return `${prefix}_${ts}.sql`;
+  if (zipOrMulti) {
+    return `${prefix}_${ts}.zip`;
+  }
+  if (mode === 'structure_only' || dataFormat === 'sql_insert') {
+    return `${prefix}_${ts}.sql`;
+  }
+  return `${prefix}_${ts}.${DATA_EXT[dataFormat]}`;
 }

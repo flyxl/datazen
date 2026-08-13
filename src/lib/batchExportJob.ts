@@ -1,6 +1,7 @@
 import { strToU8, zipSync } from 'fflate';
 import { fileCommands } from '../commands/file';
 import {
+  batchExportNeedsZip,
   buildBatchExportFiles,
   combineBatchExportFiles,
   getBatchExportDefaultFilename,
@@ -9,6 +10,7 @@ import {
   type BatchExportMode,
   type BatchExportTableInput,
 } from './batchExport';
+import { streamTableExportText, type StreamQueryFn } from './exportStream';
 
 export type BatchExportOutputMode = 'single' | 'zip';
 
@@ -24,7 +26,10 @@ export interface RunBatchExportJobOptions {
   dataFormat: BatchExportDataFormat;
   outputMode: BatchExportOutputMode;
   databaseType?: string;
+  connectionId?: string;
   loadTableExportData: (tableName: string) => Promise<BatchExportTableInput>;
+  /** When set, table data is streamed via query_stream instead of using in-memory rows. */
+  streamQuery?: StreamQueryFn;
   onProgress?: (progress: BatchExportProgress) => void;
   /** Injectable for tests; defaults to fileCommands.saveTextWithDialog */
   saveText?: (
@@ -62,13 +67,47 @@ export function zipBatchExportFiles(files: BatchExportFile[]): string {
   return uint8ToBase64(zipSync(archive));
 }
 
-function defaultZipFilename(mode: BatchExportMode): string {
-  return getBatchExportDefaultFilename(mode, true).replace(/\.sql$/i, '.zip');
+function defaultZipFilename(mode: BatchExportMode, dataFormat: BatchExportDataFormat): string {
+  return getBatchExportDefaultFilename(mode, true, dataFormat);
+}
+
+async function resolveTableInput(
+  tableName: string,
+  mode: BatchExportMode,
+  dataFormat: BatchExportDataFormat,
+  options: RunBatchExportJobOptions,
+): Promise<BatchExportTableInput> {
+  const meta = await options.loadTableExportData(tableName);
+  const needsData = mode !== 'structure_only';
+  if (!needsData) {
+    return { ...meta, rows: [] };
+  }
+  if (
+    options.streamQuery &&
+    options.connectionId &&
+    meta.rows.length === 0 &&
+    meta.streamedData == null
+  ) {
+    const columns = meta.columns.map((c) => c.name);
+    const content = await streamTableExportText({
+      connectionId: options.connectionId,
+      tableName,
+      columns,
+      format: dataFormat,
+      databaseType: options.databaseType,
+      streamQuery: options.streamQuery,
+    });
+    return { ...meta, rows: [], streamedData: content };
+  }
+  return meta;
 }
 
 /**
  * Load selected tables, build export files, then save as a single merged file or ZIP.
  * Returns `cancelled` when the user dismisses the native save dialog.
+ *
+ * Data is streamed via `query_stream` when `streamQuery` + `connectionId` are provided;
+ * otherwise in-memory `rows` from `loadTableExportData` are used (tests / fallback).
  */
 export async function runBatchExportJob(
   options: RunBatchExportJobOptions,
@@ -79,7 +118,6 @@ export async function runBatchExportJob(
     dataFormat,
     outputMode,
     databaseType,
-    loadTableExportData,
     onProgress,
     saveText = fileCommands.saveTextWithDialog,
     saveBase64 = fileCommands.saveBase64WithDialog,
@@ -94,7 +132,7 @@ export async function runBatchExportJob(
   for (let i = 0; i < tableNames.length; i += 1) {
     const tableName = tableNames[i]!;
     onProgress?.({ current: i + 1, total, tableName });
-    tables.push(await loadTableExportData(tableName));
+    tables.push(await resolveTableInput(tableName, mode, dataFormat, options));
   }
 
   const files = buildBatchExportFiles({
@@ -104,15 +142,20 @@ export async function runBatchExportJob(
     databaseType,
   });
 
-  if (outputMode === 'single') {
-    const content = combineBatchExportFiles(files);
-    const filename = getBatchExportDefaultFilename(mode, false);
-    const saved = await saveText(content, filename, 'SQL', ['sql', 'txt']);
+  const useZip = batchExportNeedsZip(files, outputMode);
+  if (useZip) {
+    const dataBase64 = zipBatchExportFiles(files);
+    const zipName = defaultZipFilename(mode, dataFormat);
+    const saved = await saveBase64(dataBase64, zipName, 'ZIP', ['zip']);
     return saved ? { status: 'saved' } : { status: 'cancelled' };
   }
 
-  const dataBase64 = zipBatchExportFiles(files);
-  const zipName = defaultZipFilename(mode);
-  const saved = await saveBase64(dataBase64, zipName, 'ZIP', ['zip']);
+  const content = files.length === 1 ? (files[0]?.content ?? '') : combineBatchExportFiles(files);
+  const filename =
+    files.length === 1
+      ? (files[0]?.filename ?? getBatchExportDefaultFilename(mode, false, dataFormat))
+      : getBatchExportDefaultFilename(mode, false, dataFormat);
+  const ext = filename.split('.').pop() ?? 'txt';
+  const saved = await saveText(content, filename, ext.toUpperCase(), [ext, 'txt']);
   return saved ? { status: 'saved' } : { status: 'cancelled' };
 }

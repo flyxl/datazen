@@ -75,6 +75,8 @@ export interface DataTableProps {
   /** Enable data export (button + context menu). Provide a table name for the filename. */
   exportTableName?: string;
   databaseType?: string;
+  /** Live connection — enables entire-table streaming export. */
+  connectionId?: string;
   /** Primary-key column names for Copy as UPDATE / Delete Row; falls back to first column for copy. */
   primaryKeyColumns?: string[];
   /** Delete rows by page-row indices (requires primary keys). */
@@ -129,6 +131,7 @@ export function DataTable({
   rowHeight = 40,
   exportTableName,
   databaseType,
+  connectionId,
   primaryKeyColumns,
   onDeleteRows,
   getContextCellText,
@@ -496,6 +499,9 @@ export function DataTable({
           selectedRows={selectedRows}
           tableName={exportTableName}
           databaseType={databaseType}
+          connectionId={connectionId}
+          totalRows={totalRows}
+          primaryKeyColumns={primaryKeyColumns}
         />
       )}
     </div>

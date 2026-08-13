@@ -99,7 +99,25 @@ describe('导出和导入 (EI-001~EI-006)', () => {
 
   // ── 导出对话框 ─────────────────────────────────────────────────
 
-  it.skip('右键表名应显示导出选项 (EI-001) — SKIPPED: native OS menu not DOM-assertable', async () => {});
+  it('右键表名应显示导出数据与导出 (EI-001)', async () => {
+    await clickTableInSidebar(TEST_TABLE);
+    await browser.pause(400);
+    await browser.execute((tableName: string) => {
+      const buttons = Array.from(document.querySelectorAll('aside button'));
+      const btn = buttons.find((b) => b.textContent?.trim() === tableName) as
+        | HTMLElement
+        | undefined;
+      btn?.dispatchEvent(
+        new MouseEvent('contextmenu', { bubbles: true, clientX: 80, clientY: 120 }),
+      );
+    }, TEST_TABLE);
+    const menu = await $('[data-testid="web-context-menu"]');
+    await menu.waitForDisplayed({ timeout: 5000 });
+    const text = await menu.getText();
+    expect(text).toContain(t('connWin.exportData'));
+    expect(text).toContain(t('batchExport.title'));
+    await browser.keys('Escape');
+  });
 
   it('点击工具栏导出应打开导出对话框 (EI-001 → toolbar)', async () => {
     const exportBtn = await $(`button[title="${t('export.export')}"]`);
@@ -119,6 +137,7 @@ describe('导出和导入 (EI-001~EI-006)', () => {
   it('导出对话框应显示导出范围 (EI-002)', async () => {
     const body = await $('body').getText();
     expect(body).toContain(t('export.range'));
+    expect(body).toContain(t('export.entireTable'));
   });
 
   it.skip('导出对话框应显示列选择 (EI-002) — SKIPPED: DataExportDialog has no column checkboxes', async () => {});
@@ -249,7 +268,27 @@ describe('导出和导入 (EI-001~EI-006)', () => {
     await browser.pause(500);
   });
 
-  it.skip('Schema 树右键应显示批量导出选项 (EI-BE-002) — SKIPPED: native OS menu not DOM-assertable', async () => {});
+  it('Schema 树右键应显示批量导出选项 (EI-BE-002)', async () => {
+    await clickTableInSidebar(TEST_TABLE);
+    await browser.pause(300);
+    await browser.execute((tableName: string) => {
+      const buttons = Array.from(document.querySelectorAll('aside button'));
+      const btn = buttons.find((b) => b.textContent?.trim() === tableName) as
+        | HTMLElement
+        | undefined;
+      btn?.dispatchEvent(
+        new MouseEvent('contextmenu', { bubbles: true, clientX: 80, clientY: 140 }),
+      );
+    }, TEST_TABLE);
+    const item = await $('[data-testid="web-context-item-batch-export"]');
+    await item.waitForDisplayed({ timeout: 5000 });
+    await item.click();
+    await browser.pause(600);
+    const body = await $('body').getText();
+    expect(body).toContain(t('batchExport.selectTables'));
+    const cancel = await $(`button*=${t('common.cancel')}`);
+    if (await cancel.isDisplayed()) await cancel.click();
+  });
 
   // ── 导入对话框（仅 Schema 树原生菜单可开，不可 DOM 断言）────────
 

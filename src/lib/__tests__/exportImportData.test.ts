@@ -7,7 +7,13 @@ describe('generateExport markdown', () => {
     tableName: 'users',
     columns: [
       { name: 'id', dataType: 'int', nullable: false, isPrimaryKey: true, isAutoIncrement: true },
-      { name: 'name', dataType: 'text', nullable: true, isPrimaryKey: false, isAutoIncrement: false },
+      {
+        name: 'name',
+        dataType: 'text',
+        nullable: true,
+        isPrimaryKey: false,
+        isAutoIncrement: false,
+      },
     ],
     rows: [
       { id: 1, name: 'Alice' },
@@ -55,8 +61,20 @@ describe('generateExport csv/tsv/json/sql', () => {
     tableName: 'users',
     columns: [
       { name: 'id', dataType: 'int', nullable: false, isPrimaryKey: true, isAutoIncrement: true },
-      { name: 'name', dataType: 'text', nullable: true, isPrimaryKey: false, isAutoIncrement: false },
-      { name: 'active', dataType: 'bool', nullable: true, isPrimaryKey: false, isAutoIncrement: false },
+      {
+        name: 'name',
+        dataType: 'text',
+        nullable: true,
+        isPrimaryKey: false,
+        isAutoIncrement: false,
+      },
+      {
+        name: 'active',
+        dataType: 'bool',
+        nullable: true,
+        isPrimaryKey: false,
+        isAutoIncrement: false,
+      },
     ],
     rows: [
       { id: 1, name: 'Alice, "A"', active: true },
@@ -70,7 +88,12 @@ describe('generateExport csv/tsv/json/sql', () => {
   };
 
   it('exports csv with quoting', () => {
-    const result = generateExport({ ...base, format: 'csv', scope: 'current_page', selectedRows: new Set() });
+    const result = generateExport({
+      ...base,
+      format: 'csv',
+      scope: 'current_page',
+      selectedRows: new Set(),
+    });
     expect(result.kind).toBe('text');
     if (result.kind !== 'text') return;
     expect(result.content).toContain('"Alice, ""A"""');
@@ -78,35 +101,55 @@ describe('generateExport csv/tsv/json/sql', () => {
   });
 
   it('exports tsv', () => {
-    const result = generateExport({ ...base, format: 'tsv', scope: 'current_page', selectedRows: new Set() });
+    const result = generateExport({
+      ...base,
+      format: 'tsv',
+      scope: 'current_page',
+      selectedRows: new Set(),
+    });
     expect(result.kind).toBe('text');
     if (result.kind !== 'text') return;
     expect(result.content.split('\n')[0]).toContain('\t');
   });
 
   it('exports json with nulls', () => {
-    const result = generateExport({ ...base, format: 'json', scope: 'current_page', selectedRows: new Set() });
+    const result = generateExport({
+      ...base,
+      format: 'json',
+      scope: 'current_page',
+      selectedRows: new Set(),
+    });
     expect(result.kind).toBe('text');
     if (result.kind !== 'text') return;
     const parsed = JSON.parse(result.content);
     expect(parsed[2].name).toBeNull();
   });
 
-  it('exports sql_insert with postgres quoting', () => {
-    const result = generateExport({ ...base, format: 'sql_insert', scope: 'current_page', selectedRows: new Set() });
+  it('exports sql_insert as batched VALUES inside a transaction', () => {
+    const result = generateExport({
+      ...base,
+      format: 'sql_insert',
+      scope: 'current_page',
+      selectedRows: new Set(),
+    });
     expect(result.kind).toBe('text');
     if (result.kind !== 'text') return;
-    expect(result.content).toContain('INSERT INTO "users"');
+    expect(result.content.startsWith('BEGIN;')).toBe(true);
+    expect(result.content).toContain('INSERT INTO "users" ("id", "name", "active") VALUES');
     expect(result.content).toContain('TRUE');
     expect(result.content).toContain('NULL');
+    expect(result.content).toMatch(/COMMIT;\s*$/);
+    expect(result.content.match(/INSERT INTO/g)?.length).toBe(1);
   });
 
-  it('exports sql_update using primary key', () => {
+  it('exports sql_update using primary key inside a transaction', () => {
     const result = generateExport({ ...base, format: 'sql_update' });
     expect(result.kind).toBe('text');
     if (result.kind !== 'text') return;
+    expect(result.content.startsWith('BEGIN;')).toBe(true);
     expect(result.content).toContain('UPDATE "users" SET');
     expect(result.content).toContain('WHERE "id" = 2');
+    expect(result.content).toMatch(/COMMIT;\s*$/);
   });
 
   it('getDefaultFilename includes table and extension', () => {

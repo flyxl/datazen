@@ -80,6 +80,15 @@ describe('buildSqlEditorContextMenuItems', () => {
     expect(onAdd).not.toHaveBeenCalled();
   });
 
+  it('omits add-favorite when handler is missing', () => {
+    const items = buildSqlEditorContextMenuItems({
+      labels,
+      handlers: { onFormat: vi.fn() },
+      sqlText: 'SELECT 1',
+    });
+    expect(items.some((i) => i.kind === 'item' && i.id === 'add-favorite')).toBe(false);
+  });
+
   it('trims sql before passing to onAddFavorite', () => {
     const onAdd = vi.fn();
     const items = buildSqlEditorContextMenuItems({

@@ -16,17 +16,18 @@ vi.mock('../../../components/SqlEditor', () => ({
     onChange: (v: string) => void;
     placeholder?: string;
   }) => (
-    <textarea
-      placeholder={placeholder}
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-    />
+    <textarea placeholder={placeholder} value={value} onChange={(e) => onChange(e.target.value)} />
   ),
 }));
 
+const showNativeContextMenu = vi.fn();
 const getDatabaseObjects = vi.fn();
 const getObjectDdl = vi.fn();
 const executeQuery = vi.fn();
+
+vi.mock('../../../lib/nativeContextMenu', () => ({
+  showNativeContextMenu: (...args: unknown[]) => showNativeContextMenu(...args),
+}));
 
 vi.mock('../../../commands/database', () => ({
   databaseCommands: {
@@ -45,9 +46,7 @@ afterEach(cleanup);
 
 beforeEach(() => {
   vi.clearAllMocks();
-  getDatabaseObjects.mockResolvedValue([
-    { kind: 'function', schema: 'public', name: 'fn_ok' },
-  ]);
+  getDatabaseObjects.mockResolvedValue([{ kind: 'function', schema: 'public', name: 'fn_ok' }]);
   getObjectDdl.mockResolvedValue('CREATE FUNCTION fn_ok() RETURNS int AS $$ SELECT 1 $$;');
   executeQuery.mockResolvedValue({});
 });
@@ -75,10 +74,17 @@ describe('ObjectBrowser', () => {
     await screen.findByText('exec failed');
   });
 
+  it('opens a web context menu on a routine item', async () => {
+    render(<ObjectBrowser connectionId="c1" databaseType="postgresql" />);
+    const row = await screen.findByText('fn_ok');
+    fireEvent.contextMenu(row);
+    await waitFor(() => expect(showNativeContextMenu).toHaveBeenCalled());
+    const items = showNativeContextMenu.mock.calls[0]![0] as Array<{ id?: string }>;
+    expect(items.map((i) => i.id)).toEqual(['open', 'copy-name', 'copy-ddl', 'refresh']);
+  });
+
   it('switches kind and shows load errors', async () => {
-    getDatabaseObjects
-      .mockResolvedValueOnce([])
-      .mockRejectedValueOnce(new Error('boom'));
+    getDatabaseObjects.mockResolvedValueOnce([]).mockRejectedValueOnce(new Error('boom'));
     render(<ObjectBrowser connectionId="c1" />);
     await screen.findByText('objects.empty');
 
