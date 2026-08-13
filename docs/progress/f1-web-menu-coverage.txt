@@ -1,0 +1,77 @@
+# F1 coverage (web context menu infrastructure)
+
+## TypeScript (vitest --coverage)
+
+Working directory:
+  /Users/wuxiaolong/code/rust-projects/datazen/.worktrees/web-context-menus
+Branch: feat/web-context-menus
+
+Command:
+  npx vitest run \
+    src/lib/__tests__/contextMenuPosition.test.ts \
+    src/lib/__tests__/runPredefinedEdit.test.ts \
+    src/stores/__tests__/contextMenuStore.test.ts \
+    src/components/ui/__tests__/WebContextMenu.test.tsx \
+    --coverage \
+    --coverage.include='src/lib/contextMenuPosition.ts' \
+    --coverage.include='src/lib/runPredefinedEdit.ts' \
+    --coverage.include='src/stores/contextMenuStore.ts' \
+    --coverage.include='src/components/ui/WebContextMenu.tsx'
+
+Tests: 17 passed / 0 failed
+  contextMenuPosition.test.ts   8
+  runPredefinedEdit.test.ts     2
+  contextMenuStore.test.ts      3
+  WebContextMenu.test.tsx       4
+Reporter: v8; json-summary also dumped to /tmp/datazen-f1-cov/coverage-summary.json
+Threshold: include 合计 Lines ≥ 80%；WebContextMenu.tsx Lines 尽量 ≥ 80%。
+
+file                     stmts      branch     funcs      lines     uncovered start-lines
+contextMenuPosition.ts   100%       100%       100%       100%      (none)
+                         24/24      16/16      3/3        23/23
+runPredefinedEdit.ts     85.71%     75%        100%       100%      stmt 16 (`if (!command) return`)
+                         6/7        3/4        1/1        5/5
+contextMenuStore.ts      100%       100%       100%       100%      (none)
+                         9/9        2/2        4/4        8/8
+WebContextMenu.tsx       79.01%     64.55%     84.21%     80.88%    stmts 24-26, 78, 98, 100, 103, 163-165, 178-179, 183-184
+                         64/81      51/79      16/19      55/68
+TOTAL (include)          85.12%     71.28%     88.88%     87.5%
+                         103/121    72/101     24/27      91/104
+
+=============================== Coverage summary ===============================
+Statements   : 85.12% ( 103/121 )
+Branches     : 71.28% ( 72/101 )
+Functions    : 88.88% ( 24/27 )
+Lines        : 87.5% ( 91/104 )
+================================================================================
+
+Uncovered statement notes (WebContextMenu.tsx):
+  24-26              itemLabel submenu / predefined / empty-kind arms
+                     (submenu uses item.label directly; no predefined fixture)
+  78                 submenu trigger onFocus (tests use mouseEnter)
+  98                 regular item onMouseEnter → close submenu
+  100                disabled item click early-return (button is disabled; click not fired)
+  103                runPredefinedEdit path (no predefined item in host tests)
+  163-165            mousedown-outside hide (E2E-F1-04 click-blank; UT only Escape)
+  178-179            onItemEnter empty id → setSub(null)
+  183-184            onItemEnter unknown submenu id → setSub(null)
+
+Uncovered statement notes (runPredefinedEdit.ts):
+  16                 `if (!command) return` — typed union is exhaustive after Separator;
+                     no invalid-item fixture
+
+Branch misses (WebContextMenu.tsx, not a Lines fail):
+  19, 23-25, 58, 65, 85, 89, 93, 100, 102, 132-133, 146-147, 153, 160, 164, 177, 181-182
+  Includes: separator key variants, offsetWidth/Height fallbacks, submenu pos already-equal,
+  Escape-only key filter, root/sub contains(target) early-return, SSR `typeof document`.
+
+App.tsx is NOT in coverage.include (host mount only; static review: <WebContextMenuHost />).
+
+Gate metric: lines ≥ 80%
+  include 合计              87.5%  (91/104)   → PASS
+  WebContextMenu.tsx        80.88% (55/68)    → PASS (≥80% Lines; Stmts 79.01% 未作为门槛)
+  contextMenuPosition.ts    100%   (23/23)    → PASS
+  runPredefinedEdit.ts      100%   (5/5)      → PASS
+  contextMenuStore.ts       100%   (8/8)      → PASS
+
+F1 included-files line coverage ≥ 80% → PASS
