@@ -403,6 +403,8 @@ const zhCN = {
   'connWin.closeTab': '关闭',
   'connWin.closeOtherTabs': '关闭其他',
   'connWin.closeAllTabs': '关闭全部',
+  'connWin.closeTabsToRight': '关闭右侧标签',
+  'connWin.closeTabsToLeft': '关闭左侧标签',
 
   // ── Table View ──
   'tableView.loadingData': '加载表数据…',
@@ -417,8 +419,15 @@ const zhCN = {
   'schemaTree.showAll': '显示全部 ({count})',
   'schemaTree.openTable': '打开表',
   'schemaTree.open': '打开',
+  'schemaTree.openStructure': '打开结构',
   'schemaTree.copyName': '复制名称',
   'schemaTree.copyDatabaseName': '复制库名',
+  'schemaTree.truncate': '清空表',
+  'schemaTree.drop': '删除表',
+  'schemaTree.dropView': '删除视图',
+  'schemaTree.confirmTruncate': '确定要清空表「{name}」吗？所有行将被删除。',
+  'schemaTree.confirmDrop': '确定要删除表「{name}」吗？此操作不可撤销。',
+  'schemaTree.confirmDropView': '确定要删除视图「{name}」吗？此操作不可撤销。',
 
   // ── ER Diagram ──
   'erDiagram.title': 'ER 图',
@@ -443,6 +452,8 @@ const zhCN = {
 
   // ── Query Panel ──
   'query.execute': '执行',
+  'query.run': '运行',
+  'query.runSelection': '运行选中',
   'query.stop': '停止',
   'query.totalTime': '总耗时',
   'query.history': '历史',
@@ -468,6 +479,7 @@ const zhCN = {
   'query.copySql': '复制 SQL',
   'query.clearHistory': '清空历史',
   'query.format': '格式化',
+  'query.comment': '注释/取消注释',
   'query.params': '绑定参数',
   'query.paramValue': '值',
   'query.beginTx': '开始事务',
@@ -517,7 +529,10 @@ const zhCN = {
   'dataTable.copyRow': '复制行',
   'dataTable.copyAsJson': '复制为 JSON',
   'dataTable.copyAsSqlInsert': '复制为 SQL INSERT',
+  'dataTable.copyAsUpdate': '复制为 UPDATE',
+  'dataTable.copyAsCsv': '复制为 CSV',
   'dataTable.copyColumnName': '复制列名',
+  'dataTable.setNull': '设为 NULL',
   'dataTable.filterByValue': '按此值筛选',
 
   // ── Detail Panel ──

@@ -5,8 +5,9 @@ export type SchemaTreeNodeKind = 'table' | 'view' | 'database' | 'blank';
 /** Caller-supplied labels (typically from `t()`). No hardcoded locale strings here. */
 export type SchemaTreeContextMenuLabels = {
   open: string;
+  openStructure: string;
   copyName: string;
-  editStructure: string;
+  copyDdl: string;
   focusEr: string;
   exportData: string;
   importData: string;
@@ -16,12 +17,16 @@ export type SchemaTreeContextMenuLabels = {
   newTable: string;
   /** Batch export (toolbar / database / blank / optional table). */
   batchExport: string;
+  truncate: string;
+  drop: string;
+  dropView: string;
 };
 
 export type SchemaTreeContextMenuHandlers = {
   onOpen?: () => void;
+  onOpenStructure?: () => void;
   onCopyName?: () => void;
-  onEditStructure?: () => void;
+  onCopyDdl?: () => void;
   onFocusEr?: () => void;
   onExport?: () => void;
   onImport?: () => void;
@@ -31,16 +36,18 @@ export type SchemaTreeContextMenuHandlers = {
   onNewTable?: () => void;
   /** Open BatchExportDialog (database / blank / optional table). */
   onBatchExport?: () => void;
+  onTruncate?: () => void;
+  onDrop?: () => void;
 };
 
 export type BuildSchemaTreeContextMenuArgs = {
   kind: SchemaTreeNodeKind;
   labels: SchemaTreeContextMenuLabels;
   handlers: SchemaTreeContextMenuHandlers;
-  /** Hide import (table) and new table (blank) when true. */
+  /** Hide import / truncate / drop / new table when true. */
   readOnly?: boolean;
-  /** Include edit-structure item for tables. */
-  showEditStructure?: boolean;
+  /** Include open-structure item for tables. */
+  showOpenStructure?: boolean;
   /** Include ER focus item for tables. */
   showErFocus?: boolean;
   /**
@@ -48,7 +55,7 @@ export type BuildSchemaTreeContextMenuArgs = {
    * Views only include export when this is true.
    */
   showExport?: boolean;
-  /** Include new-table on blank when !readOnly. */
+  /** Include new-table on database / blank when !readOnly. */
   showNewTable?: boolean;
 };
 
@@ -67,6 +74,7 @@ function push(...defs: Array<NativeMenuItemDef | null>): NativeMenuItemDef[] {
 
 /**
  * Build native context-menu items for Schema tree nodes (table / view / database / blank).
+ * Table order aligns with TablePlus: Open → Structure → New Query → Copy… → Export… → Truncate/Drop.
  */
 export function buildSchemaTreeContextMenuItems(
   args: BuildSchemaTreeContextMenuArgs,
@@ -76,7 +84,7 @@ export function buildSchemaTreeContextMenuItems(
     labels,
     handlers,
     readOnly = false,
-    showEditStructure = false,
+    showOpenStructure = false,
     showErFocus = false,
     showExport,
     showNewTable = false,
@@ -85,26 +93,40 @@ export function buildSchemaTreeContextMenuItems(
   switch (kind) {
     case 'table': {
       const includeExport = showExport !== false;
-      return push(
+      const danger = !readOnly
+        ? push(
+            item('truncate', labels.truncate, handlers.onTruncate),
+            item('drop', labels.drop, handlers.onDrop),
+          )
+        : [];
+      const main = push(
         item('open', labels.open, handlers.onOpen),
-        item('copy-name', labels.copyName, handlers.onCopyName),
-        showEditStructure
-          ? item('edit-structure', labels.editStructure, handlers.onEditStructure)
+        showOpenStructure
+          ? item('open-structure', labels.openStructure, handlers.onOpenStructure)
           : null,
         showErFocus ? item('focus-er', labels.focusEr, handlers.onFocusEr) : null,
+        item('new-query', labels.newQuery, handlers.onNewQuery),
+        item('copy-name', labels.copyName, handlers.onCopyName),
+        item('copy-ddl', labels.copyDdl, handlers.onCopyDdl),
         includeExport ? item('export', labels.exportData, handlers.onExport) : null,
         item('batch-export', labels.batchExport, handlers.onBatchExport),
         !readOnly ? item('import', labels.importData, handlers.onImport) : null,
       );
+      if (danger.length === 0) return main;
+      return [...main, { kind: 'separator' }, ...danger];
     }
     case 'view': {
       const includeExport = showExport === true;
-      return push(
+      const main = push(
         item('open', labels.open, handlers.onOpen),
         item('copy-name', labels.copyName, handlers.onCopyName),
+        item('copy-ddl', labels.copyDdl, handlers.onCopyDdl),
         includeExport ? item('export', labels.exportData, handlers.onExport) : null,
         item('batch-export', labels.batchExport, handlers.onBatchExport),
       );
+      const drop = !readOnly ? item('drop-view', labels.dropView, handlers.onDrop) : null;
+      if (!drop) return main;
+      return [...main, { kind: 'separator' }, drop];
     }
     case 'database':
       return push(
@@ -112,12 +134,15 @@ export function buildSchemaTreeContextMenuItems(
         item('new-query', labels.newQuery, handlers.onNewQuery),
         item('copy-database-name', labels.copyDatabaseName, handlers.onCopyDatabaseName),
         item('batch-export', labels.batchExport, handlers.onBatchExport),
+        !readOnly ? item('import', labels.importData, handlers.onImport) : null,
+        !readOnly && showNewTable ? item('new-table', labels.newTable, handlers.onNewTable) : null,
       );
     case 'blank':
       return push(
         item('refresh', labels.refresh, handlers.onRefresh),
         item('new-query', labels.newQuery, handlers.onNewQuery),
         item('batch-export', labels.batchExport, handlers.onBatchExport),
+        !readOnly ? item('import', labels.importData, handlers.onImport) : null,
         !readOnly && showNewTable ? item('new-table', labels.newTable, handlers.onNewTable) : null,
       );
   }

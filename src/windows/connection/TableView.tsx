@@ -185,6 +185,7 @@ export function TableView({ connectionId, database, tableName }: TableViewProps)
         onRowClick={setDetailRow}
         highlightedRow={detailRowIndex}
         exportTableName={tableName}
+        primaryKeyColumns={columns.filter((c) => c.isPrimaryKey).map((c) => c.name)}
       />
     </div>
   );

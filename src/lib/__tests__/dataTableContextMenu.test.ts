@@ -2,8 +2,10 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   buildDataTableContextMenuItems,
   formatRowAsSqlInsert,
+  formatRowAsSqlUpdate,
   resolveDataTableCellFromEvent,
   rowToNamedRecord,
+  serializeDataTableRowsAsCsv,
   serializeDataTableRowsAsTsv,
   type DataTableContextMenuLabels,
 } from '../dataTableContextMenu';
@@ -13,7 +15,10 @@ const labels: DataTableContextMenuLabels = {
   copyRow: 'Copy Row',
   copyAsJson: 'Copy as JSON',
   copyAsSqlInsert: 'Copy as SQL INSERT',
+  copyAsUpdate: 'Copy as UPDATE',
+  copyAsCsv: 'Copy as CSV',
   copyColumnName: 'Copy Column Name',
+  setNull: 'Set NULL',
   filterByValue: 'Filter by This Value',
   copySelectedRows: 'Copy Selected Rows',
   export: 'Export',
@@ -36,7 +41,21 @@ describe('serializeDataTableRowsAsTsv', () => {
   });
 });
 
-describe('rowToNamedRecord / formatRowAsSqlInsert', () => {
+describe('serializeDataTableRowsAsCsv', () => {
+  it('includes header and escapes commas/quotes', () => {
+    expect(
+      serializeDataTableRowsAsCsv(
+        ['id', 'name'],
+        [
+          [1, 'Ada'],
+          [2, 'O"Brien, Jr'],
+        ],
+      ),
+    ).toBe('id,name\n1,Ada\n2,"O""Brien, Jr"');
+  });
+});
+
+describe('rowToNamedRecord / formatRowAsSqlInsert / formatRowAsSqlUpdate', () => {
   it('maps columns to a JSON-friendly record', () => {
     expect(rowToNamedRecord(['id', 'name'], [1, 'Ada'])).toEqual({ id: 1, name: 'Ada' });
   });
@@ -44,6 +63,15 @@ describe('rowToNamedRecord / formatRowAsSqlInsert', () => {
   it('formats SQL INSERT with escaping', () => {
     expect(formatRowAsSqlInsert('users', ['id', 'name'], [1, "O'Brien"])).toBe(
       `INSERT INTO "users" ("id", "name") VALUES (1, 'O''Brien');`,
+    );
+  });
+
+  it('formats SQL UPDATE using primary key or first column', () => {
+    expect(formatRowAsSqlUpdate('users', ['id', 'name'], [1, 'Ada'], ['id'])).toBe(
+      `UPDATE "users" SET "name" = 'Ada' WHERE "id" = 1;`,
+    );
+    expect(formatRowAsSqlUpdate('users', ['id', 'name'], [1, 'Ada'])).toBe(
+      `UPDATE "users" SET "name" = 'Ada' WHERE "id" = 1;`,
     );
   });
 });
@@ -71,7 +99,10 @@ describe('buildDataTableContextMenuItems', () => {
       onCopyRow: vi.fn(),
       onCopyAsJson: vi.fn(),
       onCopyAsSqlInsert: vi.fn(),
+      onCopyAsUpdate: vi.fn(),
+      onCopyAsCsv: vi.fn(),
       onCopyColumnName: vi.fn(),
+      onSetNull: vi.fn(),
       onFilterByValue: vi.fn(),
       onCopySelectedRows: vi.fn(),
       onExport: vi.fn(),
@@ -83,13 +114,17 @@ describe('buildDataTableContextMenuItems', () => {
       hasSelectedRows: true,
       exportEnabled: true,
       canFilterByValue: true,
+      canSetNull: true,
     });
     expect(ids(items)).toEqual([
       'copy',
       'copy-row',
       'copy-as-json',
       'copy-as-sql-insert',
+      'copy-as-update',
+      'copy-as-csv',
       'copy-column-name',
+      'set-null',
       'filter-by-value',
       'separator',
       'copy-selected-rows',
@@ -99,6 +134,7 @@ describe('buildDataTableContextMenuItems', () => {
       if (it.kind === 'item') it.action();
     }
     expect(handlers.onCopy).toHaveBeenCalledOnce();
+    expect(handlers.onSetNull).toHaveBeenCalledOnce();
     expect(handlers.onExport).toHaveBeenCalledOnce();
   });
 
@@ -110,12 +146,15 @@ describe('buildDataTableContextMenuItems', () => {
         onCopyRow: vi.fn(),
         onCopyAsJson: vi.fn(),
         onCopyAsSqlInsert: vi.fn(),
+        onCopyAsUpdate: vi.fn(),
+        onCopyAsCsv: vi.fn(),
         onCopyColumnName: vi.fn(),
       },
       hasCellContext: true,
     });
     expect(ids(items).length).toBeGreaterThanOrEqual(5);
     expect(ids(items)).not.toContain('export');
+    expect(ids(items)).not.toContain('set-null');
   });
 
   it('omits filter when canFilterByValue is false', () => {
@@ -137,17 +176,21 @@ describe('buildDataTableContextMenuItems', () => {
     expect(ids(items)).not.toContain('filter-by-value');
   });
 
-  it('without cell context only offers selection copy and/or export', () => {
+  it('without cell context only offers selection copy / csv and/or export', () => {
     expect(
       ids(
         buildDataTableContextMenuItems({
           labels,
-          handlers: { onCopySelectedRows: vi.fn(), onExport: vi.fn() },
+          handlers: {
+            onCopySelectedRows: vi.fn(),
+            onCopyAsCsv: vi.fn(),
+            onExport: vi.fn(),
+          },
           hasSelectedRows: true,
           exportEnabled: true,
         }),
       ),
-    ).toEqual(['copy-selected-rows', 'export']);
+    ).toEqual(['copy-selected-rows', 'copy-as-csv', 'export']);
 
     expect(
       ids(

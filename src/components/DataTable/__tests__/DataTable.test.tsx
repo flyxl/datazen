@@ -180,6 +180,8 @@ describe('DataTable', () => {
       'copy-row',
       'copy-as-json',
       'copy-as-sql-insert',
+      'copy-as-update',
+      'copy-as-csv',
       'copy-column-name',
       'filter-by-value',
       'copy-selected-rows',
@@ -220,6 +222,7 @@ describe('DataTable', () => {
     }>;
     expect(menuItems.filter((i) => i.kind === 'item').map((i) => i.id)).toEqual([
       'copy-selected-rows',
+      'copy-as-csv',
       'export',
     ]);
     menuItems.find((i) => i.id === 'copy-selected-rows')!.action?.();
