@@ -1,6 +1,8 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { render, cleanup, waitFor, fireEvent, screen } from '@testing-library/react';
 import { MainWindow } from '../MainWindow';
+import { WebContextMenuHost } from '../../../components/ui/WebContextMenu';
+import { useContextMenuStore } from '../../../stores/contextMenuStore';
 import type { ConnectionConfig } from '../../../types';
 
 // ─── Hoisted mocks ───────────────────────────────────────────────────
@@ -41,8 +43,6 @@ const {
   openLogDirMock,
   invokeMock,
   askMock,
-  menuPopupMock,
-  menuItemActions,
   connectionState,
   activeState,
   dashboardState,
@@ -90,7 +90,6 @@ const {
     setMainSidebarWidth: vi.fn(),
   };
 
-  const menuItemActions: Array<() => void | Promise<void>> = [];
   const capturedShortcuts: { key: string; action: () => void }[] = [];
   const crossWindowHandlers = new Map<string, (payload?: unknown) => void>();
   const stableT = (key: string, params?: Record<string, unknown>) =>
@@ -138,8 +137,6 @@ const {
     openLogDirMock: vi.fn().mockResolvedValue(undefined),
     invokeMock: vi.fn().mockResolvedValue(true),
     askMock: vi.fn().mockResolvedValue(false),
-    menuPopupMock: vi.fn().mockResolvedValue(undefined),
-    menuItemActions,
     connectionState,
     activeState,
     dashboardState,
@@ -158,23 +155,42 @@ function getListArea() {
   return document.querySelector('.flex-1.overflow-auto') as HTMLElement;
 }
 
+function mainTree() {
+  return (
+    <>
+      <MainWindow />
+      <WebContextMenuHost />
+    </>
+  );
+}
+
+function renderMain() {
+  return render(mainTree());
+}
+
 async function openBlankContextMenu() {
-  menuItemActions.length = 0;
-  fireEvent.contextMenu(getListArea());
-  await waitFor(() => expect(menuPopupMock).toHaveBeenCalled());
+  fireEvent.contextMenu(getListArea(), { clientX: 40, clientY: 40 });
+  await screen.findByTestId('web-context-menu');
 }
 
 async function openGroupContextMenu(groupLabel: string) {
-  menuItemActions.length = 0;
   const header = screen.getByText(groupLabel).closest('[data-group-header]') as HTMLElement;
-  fireEvent.contextMenu(header);
-  await waitFor(() => expect(menuItemActions.length).toBeGreaterThan(0));
+  fireEvent.contextMenu(header, { clientX: 40, clientY: 40 });
+  await screen.findByTestId('web-context-menu');
 }
 
 async function openConnContextMenu(connId: string) {
-  menuItemActions.length = 0;
-  fireEvent.contextMenu(screen.getByTestId(`conn-${connId}`));
-  await waitFor(() => expect(menuItemActions.length).toBeGreaterThan(0));
+  fireEvent.contextMenu(screen.getByTestId(`conn-${connId}`), { clientX: 40, clientY: 40 });
+  await screen.findByTestId('web-context-menu');
+}
+
+async function clickMenuItem(id: string) {
+  fireEvent.click(await screen.findByTestId(`web-context-item-${id}`));
+}
+
+async function hoverSubmenu(id: string) {
+  fireEvent.mouseEnter(await screen.findByTestId(`web-context-submenu-trigger-${id}`));
+  await screen.findByTestId('web-context-submenu');
 }
 
 // ─── Module mocks ────────────────────────────────────────────────────
@@ -265,27 +281,6 @@ vi.mock('@tauri-apps/plugin-dialog', () => ({
 
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: (...a: unknown[]) => invokeMock(...a),
-}));
-
-vi.mock('@tauri-apps/api/menu', () => ({
-  Menu: {
-    new: vi.fn().mockImplementation(async ({ items }: { items: unknown[] }) => ({
-      popup: menuPopupMock,
-      items,
-    })),
-  },
-  MenuItem: {
-    new: vi.fn().mockImplementation(async ({ action }: { action?: () => void | Promise<void> }) => {
-      if (action) menuItemActions.push(action);
-      return { action };
-    }),
-  },
-  Submenu: {
-    new: vi.fn().mockImplementation(async ({ items }: { items: unknown[] }) => ({ items })),
-  },
-  PredefinedMenuItem: {
-    new: vi.fn().mockResolvedValue({ separator: true }),
-  },
 }));
 
 vi.mock('../../../components/TitleBar', () => ({
@@ -472,7 +467,6 @@ function resetState() {
   dashboardState.listLoading = false;
   dashboardState.listError = null;
   crossWindowHandlers.clear();
-  menuItemActions.length = 0;
   vi.clearAllMocks();
   exportAppDataMock.mockResolvedValue(true);
   saveEncryptionKeyMock.mockResolvedValue(true);
@@ -488,6 +482,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  useContextMenuStore.getState().hide();
   cleanup();
   Reflect.deleteProperty(globalThis, '__TAURI_INTERNALS__');
 });
@@ -496,7 +491,7 @@ afterEach(() => {
 
 describe('MainWindow', () => {
   it('TC-main: init fetches connections, groups, and settings', async () => {
-    render(<MainWindow />);
+    renderMain();
     await waitFor(() => {
       expect(fetchConnectionsMock).toHaveBeenCalled();
       expect(fetchGroupsMock).toHaveBeenCalled();
@@ -508,28 +503,28 @@ describe('MainWindow', () => {
 
   it('TC-main: status bar shows loading, error, active, and ready states', () => {
     connectionState.loading = true;
-    const { rerender } = render(<MainWindow />);
+    const { rerender } = renderMain();
     expect(screen.getByTestId('status-left')).toHaveTextContent('common.loading');
 
     connectionState.loading = false;
     connectionState.error = 'load failed';
-    rerender(<MainWindow />);
+    rerender(mainTree());
     expect(screen.getByTestId('status-left')).toHaveTextContent('load failed');
 
     connectionState.error = null;
     activeState.connections = {
       c1: { status: 'connected', connectionId: 'live-1' },
     };
-    rerender(<MainWindow />);
+    rerender(mainTree());
     expect(screen.getByTestId('status-left')).toHaveTextContent('main.activeConnections');
 
     activeState.connections = {};
-    rerender(<MainWindow />);
+    rerender(mainTree());
     expect(screen.getByTestId('status-left')).toHaveTextContent('main.ready');
   });
 
   it('TC-main: empty state and new-connection actions', () => {
-    render(<MainWindow />);
+    renderMain();
     expect(screen.getByText('main.noConnections')).toBeInTheDocument();
     fireEvent.click(screen.getByText('main.createFirst'));
     expect(openNewConnectionWindowMock).toHaveBeenCalled();
@@ -545,7 +540,7 @@ describe('MainWindow', () => {
       makeConn({ id: 'c2', name: 'Redis', databaseType: 'redis', group: 'Dev' }),
     ];
 
-    render(<MainWindow />);
+    renderMain();
     expect(screen.getByText('Dev')).toBeInTheDocument();
     expect(screen.getByTestId('conn-c1')).toBeInTheDocument();
     expect(screen.getByTestId('conn-c2')).toBeInTheDocument();
@@ -558,14 +553,14 @@ describe('MainWindow', () => {
   });
 
   it('TC-main: search updates query via store', () => {
-    render(<MainWindow />);
+    renderMain();
     const input = screen.getByPlaceholderText('main.searchPlaceholder');
     fireEvent.change(input, { target: { value: 'pg' } });
     expect(setSearchQueryMock).toHaveBeenCalledWith('pg');
   });
 
   it('TC-main: action panel opens windows', () => {
-    render(<MainWindow />);
+    renderMain();
     fireEvent.click(screen.getByTestId('action-new'));
     fireEvent.click(screen.getByTestId('action-backup'));
     fireEvent.click(screen.getByTestId('action-sync'));
@@ -580,7 +575,7 @@ describe('MainWindow', () => {
     connectionState.groups = ['Dev'];
     connectionState.connections = [makeConn()];
 
-    render(<MainWindow />);
+    renderMain();
     fireEvent.doubleClick(screen.getByTestId('conn-c1'));
     expect(markConnectingMock).toHaveBeenCalledWith('c1', 'postgres');
     expect(openConnectionWindowMock).toHaveBeenCalledWith(
@@ -601,7 +596,7 @@ describe('MainWindow', () => {
   });
 
   it('TC-main: cross-window connection lifecycle events update active store', async () => {
-    render(<MainWindow />);
+    renderMain();
     await waitFor(() => expect(listenCrossWindowMock).toHaveBeenCalled());
 
     await emitCrossWindow('datazen:connection-closed', { connectionId: 'live-1' });
@@ -618,7 +613,7 @@ describe('MainWindow', () => {
   });
 
   it('TC-main: menu cross-window events open windows and log dir', async () => {
-    render(<MainWindow />);
+    renderMain();
     await waitFor(() => expect(listenCrossWindowMock).toHaveBeenCalled());
 
     await emitCrossWindow('menu:open-settings');
@@ -635,7 +630,7 @@ describe('MainWindow', () => {
   });
 
   it('TC-main: keyboard shortcut opens new connection', () => {
-    render(<MainWindow />);
+    renderMain();
     const shortcut = capturedShortcuts.find((s) => s.key === 'mod+n');
     expect(shortcut).toBeDefined();
     shortcut!.action();
@@ -643,10 +638,10 @@ describe('MainWindow', () => {
   });
 
   it('TC-main: new group dialog adds group', async () => {
-    render(<MainWindow />);
+    renderMain();
     await openBlankContextMenu();
 
-    menuItemActions[0]!();
+    await clickMenuItem('new-group');
     await waitFor(() => expect(screen.getByText('main.newGroupTitle')).toBeInTheDocument());
 
     const nameInput = screen.getByPlaceholderText('main.groupNamePlaceholder');
@@ -659,11 +654,10 @@ describe('MainWindow', () => {
     connectionState.groups = ['Dev'];
     connectionState.connections = [makeConn()];
 
-    render(<MainWindow />);
+    renderMain();
     await openGroupContextMenu('Dev');
 
-    // items: newGroup (0), rename (1), delete (2)
-    menuItemActions[1]!();
+    await clickMenuItem('rename-group');
     await waitFor(() => expect(screen.getByDisplayValue('Dev')).toBeInTheDocument());
     const renameInput = screen.getByDisplayValue('Dev');
     fireEvent.change(renameInput, { target: { value: 'Production' } });
@@ -671,7 +665,7 @@ describe('MainWindow', () => {
     expect(renameGroupMock).toHaveBeenCalledWith('Dev', 'Production');
 
     await openGroupContextMenu('Dev');
-    menuItemActions[2]!();
+    await clickMenuItem('delete-group');
     expect(deleteGroupMock).toHaveBeenCalledWith('Dev');
   });
 
@@ -679,21 +673,24 @@ describe('MainWindow', () => {
     connectionState.groups = ['Dev', 'Prod'];
     connectionState.connections = [makeConn()];
 
-    render(<MainWindow />);
+    renderMain();
     await openConnContextMenu('c1');
 
-    menuItemActions[0]!();
+    await clickMenuItem('open-connection');
     expect(openConnectionWindowMock).toHaveBeenCalled();
 
     await openConnContextMenu('c1');
-    menuItemActions[1]!();
+    await clickMenuItem('edit-connection');
     expect(openNewConnectionWindowMock).toHaveBeenCalledWith('c1');
-    menuItemActions[2]!();
+
+    await openConnContextMenu('c1');
+    await clickMenuItem('duplicate-connection');
     expect(duplicateConnectionMock).toHaveBeenCalledWith('c1');
 
     askMock.mockResolvedValueOnce(true);
-    await menuItemActions[menuItemActions.length - 1]!();
-    expect(deleteConnectionMock).toHaveBeenCalledWith('c1');
+    await openConnContextMenu('c1');
+    await clickMenuItem('delete-connection');
+    await waitFor(() => expect(deleteConnectionMock).toHaveBeenCalledWith('c1'));
   });
 
   it('TC-main: connection context menu disconnect when connected', async () => {
@@ -701,9 +698,9 @@ describe('MainWindow', () => {
     connectionState.connections = [makeConn()];
     activeState.connections = { c1: { status: 'connected', connectionId: 'live-1' } };
 
-    render(<MainWindow />);
+    renderMain();
     await openConnContextMenu('c1');
-    await menuItemActions[0]!();
+    await clickMenuItem('disconnect');
     expect(disconnectMock).toHaveBeenCalledWith('c1');
   });
 
@@ -711,12 +708,15 @@ describe('MainWindow', () => {
     connectionState.groups = ['Dev', 'Prod'];
     connectionState.connections = [makeConn()];
 
-    render(<MainWindow />);
+    renderMain();
     await openConnContextMenu('c1');
-    // indices: open(0), edit(1), duplicate(2), move Prod(3), remove from group(4), delete(5)
-    menuItemActions[3]!();
+    await hoverSubmenu('move-to-group');
+    await clickMenuItem('move-group-Prod');
     expect(moveConnectionToGroupMock).toHaveBeenCalledWith('c1', 'Prod');
-    menuItemActions[4]!();
+
+    await openConnContextMenu('c1');
+    await hoverSubmenu('move-to-group');
+    await clickMenuItem('remove-from-group');
     expect(moveConnectionToGroupMock).toHaveBeenCalledWith('c1', undefined);
   });
 
@@ -724,7 +724,7 @@ describe('MainWindow', () => {
     connectionState.groups = ['Dev', 'Prod'];
     connectionState.connections = [makeConn()];
 
-    render(<MainWindow />);
+    renderMain();
 
     const groupEl = screen.getByText('Prod').closest('[data-group-name]') as HTMLElement;
     groupEl.getBoundingClientRect = () =>
@@ -742,7 +742,7 @@ describe('MainWindow', () => {
   });
 
   it('TC-main: export config success and optional key save', async () => {
-    render(<MainWindow />);
+    renderMain();
     askMock.mockResolvedValueOnce(true);
     await emitCrossWindow('menu:export-config');
 
@@ -754,13 +754,13 @@ describe('MainWindow', () => {
 
   it('TC-main: export config handles errors', async () => {
     exportAppDataMock.mockRejectedValueOnce(new Error('export boom'));
-    render(<MainWindow />);
+    renderMain();
     await emitCrossWindow('menu:export-config');
     await waitFor(() => expect(screen.getByText('export boom')).toBeInTheDocument());
   });
 
   it('TC-main: import config restarts app', async () => {
-    render(<MainWindow />);
+    renderMain();
     await emitCrossWindow('menu:import-config');
     await waitFor(() => expect(importAppDataMock).toHaveBeenCalled());
     await waitFor(() => expect(restartAppMock).toHaveBeenCalled());
@@ -768,13 +768,13 @@ describe('MainWindow', () => {
 
   it('TC-main: import config shows error dialog', async () => {
     importAppDataMock.mockRejectedValueOnce(new Error('import fail'));
-    render(<MainWindow />);
+    renderMain();
     await emitCrossWindow('menu:import-config');
     await waitFor(() => expect(screen.getByText('import fail')).toBeInTheDocument());
   });
 
   it('TC-main: connection share export/import dialogs', async () => {
-    render(<MainWindow />);
+    renderMain();
     await emitCrossWindow('menu:export-connections');
     await waitFor(() =>
       expect(screen.getByTestId('conn-share-dialog')).toHaveAttribute('data-mode', 'export'),
@@ -802,7 +802,7 @@ describe('MainWindow', () => {
   });
 
   it('TC-main: import-from-app menu opens dialog with source', async () => {
-    render(<MainWindow />);
+    renderMain();
     await emitCrossWindow('menu:import-connections-dbx');
     await waitFor(() => {
       const dialog = screen.getByTestId('conn-share-dialog');
@@ -813,7 +813,7 @@ describe('MainWindow', () => {
 
   it('TC-main: dashboard opens window directly without dialog', async () => {
     dashboardState.list = [{ id: 'd1', name: 'Ops' }];
-    render(<MainWindow />);
+    renderMain();
 
     fireEvent.click(screen.getByTestId('action-dashboard'));
     await waitFor(() => expect(openDashboardWindowMock).toHaveBeenCalledWith('d1', 'Ops'));
@@ -822,14 +822,14 @@ describe('MainWindow', () => {
 
   it('TC-main: dashboard opens shell when no boards exist', async () => {
     dashboardState.list = [];
-    render(<MainWindow />);
+    renderMain();
     fireEvent.click(screen.getByTestId('action-dashboard'));
     await waitFor(() => expect(openDashboardWindowMock).toHaveBeenCalledWith());
     expect(screen.queryByTestId('dashboard-dialog')).not.toBeInTheDocument();
   });
 
   it('TC-main: restore opens backup window in restore mode without requiring a selection', async () => {
-    render(<MainWindow />);
+    renderMain();
     fireEvent.click(screen.getByTestId('action-restore'));
     expect(openBackupWindowMock).toHaveBeenCalledWith('restore');
     expect(screen.queryByText('backup.selectConnectionFirst')).not.toBeInTheDocument();
@@ -837,7 +837,7 @@ describe('MainWindow', () => {
   });
 
   it('TC-main: restore menu event opens restore window', async () => {
-    render(<MainWindow />);
+    renderMain();
     await emitCrossWindow('menu:restore');
     await waitFor(() => expect(openBackupWindowMock).toHaveBeenCalledWith('restore'));
   });
@@ -845,28 +845,28 @@ describe('MainWindow', () => {
   it('TC-main: ungrouped label and new groups auto-expand', () => {
     connectionState.groups = ['Dev'];
     connectionState.connections = [makeConn({ group: undefined })];
-    const { rerender } = render(<MainWindow />);
+    const { rerender } = renderMain();
     expect(screen.getByText('main.ungrouped')).toBeInTheDocument();
 
     connectionState.groups = ['Dev', 'NewGroup'];
-    rerender(<MainWindow />);
+    rerender(mainTree());
     expect(screen.getByText('NewGroup')).toBeInTheDocument();
   });
 
   it('TC-main: blank context menu on list area', async () => {
-    render(<MainWindow />);
+    renderMain();
     await openBlankContextMenu();
-    menuItemActions[1]!();
+    await clickMenuItem('new-connection');
     expect(openNewConnectionWindowMock).toHaveBeenCalled();
   });
 
   it('TC-main: rename escape cancels inline edit', async () => {
     connectionState.groups = ['Dev'];
     connectionState.connections = [makeConn()];
-    render(<MainWindow />);
+    renderMain();
 
     await openGroupContextMenu('Dev');
-    menuItemActions[1]!();
+    await clickMenuItem('rename-group');
     await waitFor(() => expect(screen.getByDisplayValue('Dev')).toBeInTheDocument());
     const renameInput = screen.getByDisplayValue('Dev');
     fireEvent.keyDown(renameInput, { key: 'Escape' });
@@ -875,7 +875,7 @@ describe('MainWindow', () => {
 
   it('TC-main: export cancelled when dialog returns false', async () => {
     exportAppDataMock.mockResolvedValueOnce(false);
-    render(<MainWindow />);
+    renderMain();
     await emitCrossWindow('menu:export-config');
     await waitFor(() => expect(exportAppDataMock).toHaveBeenCalled());
     expect(screen.queryByText('appData.exportSuccess')).not.toBeInTheDocument();
@@ -883,21 +883,21 @@ describe('MainWindow', () => {
 
   it('TC-main: import skipped when user cancels', async () => {
     importAppDataMock.mockResolvedValueOnce(false);
-    render(<MainWindow />);
+    renderMain();
     await emitCrossWindow('menu:import-config');
     await waitFor(() => expect(importAppDataMock).toHaveBeenCalled());
     expect(restartAppMock).not.toHaveBeenCalled();
   });
 
   it('TC-main: restore from action panel does not invoke restore IPC on the main window', async () => {
-    render(<MainWindow />);
+    renderMain();
     fireEvent.click(screen.getByTestId('action-restore'));
     expect(invokeMock).not.toHaveBeenCalledWith('restore_database_with_dialog', expect.anything());
   });
 
   it('TC-main: connection count in status bar', () => {
     connectionState.connections = [makeConn(), makeConn({ id: 'c2', name: 'B' })];
-    render(<MainWindow />);
+    renderMain();
     expect(screen.getByTestId('status-left')).toHaveTextContent('main.connectionCount');
   });
 
@@ -905,7 +905,7 @@ describe('MainWindow', () => {
     connectionState.groups = ['Dev', 'Prod'];
     connectionState.connections = [makeConn()];
 
-    render(<MainWindow />);
+    renderMain();
     const groupEl = screen.getByText('Prod').closest('[data-group-name]') as HTMLElement;
     groupEl.getBoundingClientRect = () =>
       ({ left: 0, right: 200, top: 0, bottom: 100, width: 200, height: 100 }) as DOMRect;
@@ -919,17 +919,19 @@ describe('MainWindow', () => {
   it('TC-main: ungrouped context menu has no rename/delete', async () => {
     connectionState.groups = [];
     connectionState.connections = [makeConn({ group: undefined })];
-    render(<MainWindow />);
+    renderMain();
 
     const header = screen.getByText('main.ungrouped').closest('[data-group-header]')!;
-    fireEvent.contextMenu(header);
-    await waitFor(() => expect(menuItemActions.length).toBe(1)); // only newGroup
+    fireEvent.contextMenu(header, { clientX: 40, clientY: 40 });
+    await screen.findByTestId('web-context-item-new-group');
+    expect(screen.queryByTestId('web-context-item-rename-group')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('web-context-item-delete-group')).not.toBeInTheDocument();
   });
 
   it('TC-main: new group Enter key submits', async () => {
-    render(<MainWindow />);
+    renderMain();
     await openBlankContextMenu();
-    menuItemActions[0]!();
+    await clickMenuItem('new-group');
     await waitFor(() =>
       expect(screen.getByPlaceholderText('main.groupNamePlaceholder')).toBeInTheDocument(),
     );
@@ -942,7 +944,7 @@ describe('MainWindow', () => {
   it('TC-main: export backup key failure shows error', async () => {
     exportAppDataMock.mockResolvedValueOnce(true);
     askMock.mockRejectedValueOnce(new Error('key err'));
-    render(<MainWindow />);
+    renderMain();
     await emitCrossWindow('menu:export-config');
     await waitFor(() => expect(screen.getByText('key err')).toBeInTheDocument());
   });
@@ -950,11 +952,11 @@ describe('MainWindow', () => {
   it('TC-main: blank context menu skips conn item target', async () => {
     connectionState.groups = ['Dev'];
     connectionState.connections = [makeConn()];
-    render(<MainWindow />);
+    renderMain();
 
     await openConnContextMenu('c1');
-    expect(menuItemActions.length).toBeGreaterThan(0);
-    // conn item handler fired, not blank menu new-connection-only path
+    expect(screen.getByTestId('web-context-item-edit-connection')).toBeInTheDocument();
+    expect(screen.queryByTestId('web-context-item-new-connection')).not.toBeInTheDocument();
   });
 
   it('TC-main: connecting status skips re-markConnecting', () => {
@@ -962,7 +964,7 @@ describe('MainWindow', () => {
     connectionState.connections = [makeConn()];
     activeState.connections = { c1: { status: 'connecting' } };
 
-    render(<MainWindow />);
+    renderMain();
     fireEvent.doubleClick(screen.getByTestId('conn-c1'));
     expect(markConnectingMock).not.toHaveBeenCalled();
     expect(openConnectionWindowMock).toHaveBeenCalled();
