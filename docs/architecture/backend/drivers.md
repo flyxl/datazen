@@ -976,7 +976,7 @@ pub async fn init_drivers() -> DriverRegistry {
 | `kv.rs` | KV 扫描/读取（通过 `KeyValueDriver`） |
 | `data.rs` | 行级更新（`commit_row_updates`） |
 | `backup.rs` | 备份/恢复 |
-| `sync.rs` | PG↔MySQL 数据同步 |
+| `commands/sync/` | Data Sync IPC（`inspect_data_sync` / `execute_data_sync`；旧 `sync_tables` 拒绝 DROP+INSERT） |
 | `kiwi.rs` | Kiwi OAuth 登录/实例列表 |
 | `config.rs` | 设置、分组、导入导出（含加密） |
 | `file.rs` | 文件读写、编辑器右键菜单 |

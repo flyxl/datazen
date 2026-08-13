@@ -1,0 +1,62 @@
+# F8 coverage (inspect.rs + mappingView.ts)
+
+## Rust (cargo llvm-cov) — inspect.rs only
+
+Command:
+  cargo llvm-cov -p datazen --lib --json --output-path /tmp/datazen-f8-cov/f8-coverage.json -- commands::sync::tests::inspect_data_sync
+Filter: filename ending with /commands/sync/inspect.rs
+Note: --ignore-filename-regex negative-lookahead does not isolate files (llvm-cov still totals the whole crate).
+Note: unfiltered `cargo llvm-cov -p datazen --lib` is known to fail on unrelated
+      sync::adapter_registry::tests::ensure_type_wire_aliases_succeed (expected sqlserver adapter).
+Note: other commands/sync files may appear in the same JSON but are EXCLUDED
+      from this slice threshold.
+
+Threshold: inspect.rs line coverage >= 80%.
+
+file             line_cov line_tot    line%  fn_cov  fn_tot      fn%  reg_cov  reg_tot     reg%
+inspect.rs             73       79   92.41%       4       4  100.00%       96      111   86.49%
+TOTAL                  73       79   92.41%       4       4  100.00%       96      111   86.49%
+
+Uncovered line numbers (segments with count=0 and no covered hit on that line):
+  inspect.rs: [27, 28, 30, 66, 77, 83]
+
+Uncovered line notes:
+  27-28, 30          self-sync guard (same config id + database + schema → Validation).
+                     Happy-path test uses distinct ids (src-ins / tgt-ins) so
+                     `src_config.id == tgt_config.id` is false; later && / return Err unused
+  66                 `if let Ok(schema)` source: Err arm (get_table_schema failure skipped)
+  77                 `if let Ok(schema)` target: Err arm unused (mock always Ok)
+  83                 second `require_data_sync_family` `?` Err arm unused
+                     (first call at L25 already succeeded)
+
+Partial (hit + zero region on same line; not counted as uncovered lines):
+  18, 23             get_connection_config `?` Err arm unused
+  25                 first require_data_sync_family `?` Err arm unused
+  39, 44             get_connection `?` Err arm unused
+  51, 55             get_tables `?` Err arm unused
+  59, 70             filter `matches!(TableType::Table)` false arm unused
+                     (mock tables are Table only; views never present)
+
+F8 inspect.rs line coverage 92.41% >= 80% → PASS
+
+## TypeScript (vitest --coverage, include=src/windows/data-sync/mappingView.ts only)
+
+Command:
+  npx vitest run src/windows/data-sync/__tests__/mappingView.test.ts src/locales/locales.test.ts \
+    --coverage --coverage.include=src/windows/data-sync/mappingView.ts \
+    --coverage.reporter=text --coverage.reporter=json-summary --coverage.reporter=text-summary \
+    --coverage.reportsDirectory=/tmp/datazen-f8-cov/vitest
+
+Tests: 17 passed / 0 failed (3 mappingView + 14 locales; locales file is coverage-excluded)
+
+file            stmts    branch   funcs    lines   uncovered
+mappingView.ts  92.85%   93.33%   100%     92.85%  29
+                13/14    14/15    6/6      13/14
+
+Uncovered line:
+  29                 mappingLabelKey default → 'sync.mappingIncompatible'
+                     (typed union is exhaustive; no invalid-status fixture)
+
+Gate metric (same as F1–F7): lines >= 80% → 92.85% PASS
+
+F8 mappingView.ts line coverage 92.85% >= 80% → PASS

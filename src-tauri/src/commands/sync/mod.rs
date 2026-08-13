@@ -1,6 +1,8 @@
 //! Data sync IPC commands (compare, table sync, task persistence).
 
 mod compare;
+mod exec;
+mod inspect;
 mod table_sync;
 mod tasks;
 mod types;
@@ -14,6 +16,8 @@ use crate::store::SyncTask;
 pub(crate) use compare::{
     compare_databases_impl, compare_table_data_impl, compare_table_schemas_impl,
 };
+pub(crate) use exec::execute_data_sync_impl;
+pub(crate) use inspect::inspect_data_sync_impl;
 pub(crate) use table_sync::{sync_table_impl, sync_tables_impl};
 pub(crate) use tasks::{
     check_sync_conflicts_impl, delete_sync_task_impl, get_sync_tasks_impl,
@@ -26,24 +30,9 @@ pub fn classify_sync_pair(
     source_database_type: String,
     target_database_type: String,
 ) -> Result<serde_json::Value, CommandError> {
-    use crate::sync::pairing::resolve_sync_pairing;
-    let pairing = resolve_sync_pairing(&source_database_type, &target_database_type);
-    Ok(match pairing {
-        crate::sync::pairing::SyncPairing::Direct { family } => serde_json::json!({
-            "path": "direct",
-            "family": family,
-            "supported": true,
-        }),
-        crate::sync::pairing::SyncPairing::Ir => serde_json::json!({
-            "path": "ir",
-            "supported": true,
-        }),
-        crate::sync::pairing::SyncPairing::Unsupported { reason } => serde_json::json!({
-            "path": "unsupported",
-            "supported": false,
-            "reason": reason,
-        }),
-    })
+    let view =
+        crate::data_sync::classify_data_sync_pair(&source_database_type, &target_database_type);
+    serde_json::to_value(view).map_err(CommandError::from)
 }
 
 #[tauri::command]
@@ -115,7 +104,6 @@ pub async fn sync_table(
 #[tauri::command]
 pub async fn sync_tables(
     state: State<'_, AppState>,
-    app_handle: tauri::AppHandle,
     task_id: String,
     source_connection_id: String,
     target_connection_id: String,
@@ -132,7 +120,6 @@ pub async fn sync_tables(
 ) -> Result<serde_json::Value, CommandError> {
     sync_tables_impl(
         &state,
-        app_handle,
         task_id,
         source_connection_id,
         target_connection_id,
@@ -169,6 +156,24 @@ pub async fn delete_sync_task(
     task_id: String,
 ) -> Result<(), CommandError> {
     delete_sync_task_impl(&state, task_id).await
+}
+
+#[tauri::command]
+pub async fn inspect_data_sync(
+    state: State<'_, AppState>,
+    source_connection_id: String,
+    target_connection_id: String,
+) -> Result<Vec<crate::data_sync::TableResult>, CommandError> {
+    inspect_data_sync_impl(&state, source_connection_id, target_connection_id).await
+}
+
+#[tauri::command]
+pub async fn execute_data_sync(
+    state: State<'_, AppState>,
+    target_connection_id: String,
+    statements: Vec<crate::data_sync::SqlStatement>,
+) -> Result<crate::data_sync::ExecutionResult, CommandError> {
+    execute_data_sync_impl(&state, target_connection_id, statements).await
 }
 
 #[tauri::command]

@@ -1,5 +1,6 @@
 /**
- * Sync pairing policy for the Data Sync window (mirrors `src-tauri/src/sync/pairing.rs`).
+ * Data Sync pairing (mirrors `src-tauri/src/data_sync/pairing.rs`).
+ * IR / heterogeneous pairs are Transfer, not Synchronization.
  */
 
 import { DB_REGISTRY } from './databaseTypes';
@@ -11,10 +12,13 @@ function registryMeta(dbType: string): DatabaseTypeMeta | undefined {
 
 export type SyncPath = 'direct' | 'ir' | 'unsupported';
 
+export const DATA_SYNC_V1_FAMILIES = ['mysql', 'postgresql'] as const;
+
 export interface SyncPairingResult {
   path: SyncPath;
   supported: boolean;
   family?: string;
+  reason?: string;
 }
 
 type SyncCategory = 'sql' | 'document' | 'kv' | 'other';
@@ -72,6 +76,10 @@ export function normalizeSyncFamily(dbType: string): string {
   }
 }
 
+function isV1Family(family: string): boolean {
+  return (DATA_SYNC_V1_FAMILIES as readonly string[]).includes(family);
+}
+
 /** Classify how a source/target database type pair should sync. */
 export function resolveSyncPairing(sourceType: string, targetType: string): SyncPairingResult {
   const srcCat = syncCategory(sourceType);
@@ -89,11 +97,23 @@ export function resolveSyncPairing(sourceType: string, targetType: string): Sync
   const tgtFamily = normalizeSyncFamily(targetType);
 
   if (srcFamily === tgtFamily) {
-    return { path: 'direct', supported: true, family: srcFamily };
+    if (isV1Family(srcFamily)) {
+      return { path: 'direct', supported: true, family: srcFamily };
+    }
+    return {
+      path: 'direct',
+      supported: false,
+      family: srcFamily,
+      reason: `Data Synchronization for family '${srcFamily}' is not available in V1`,
+    };
   }
 
   if (srcCat === 'sql') {
-    return { path: 'ir', supported: true };
+    return {
+      path: 'ir',
+      supported: false,
+      reason: `heterogeneous pair ${sourceType} → ${targetType} is Data Transfer, not Data Synchronization`,
+    };
   }
 
   return { path: 'unsupported', supported: false };

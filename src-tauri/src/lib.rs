@@ -3,6 +3,7 @@ mod app_data_archive;
 mod cache;
 mod commands;
 mod dashboard;
+pub mod data_sync;
 pub mod db;
 mod i18n_locale;
 mod log_redact;
@@ -849,6 +850,8 @@ pub fn run() {
             commands::execute_schema_diff_deploy,
             commands::sync_table,
             commands::sync_tables,
+            commands::execute_data_sync,
+            commands::inspect_data_sync,
             commands::get_sync_tasks,
             commands::save_sync_task_direct,
             commands::delete_sync_task,
