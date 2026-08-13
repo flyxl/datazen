@@ -247,6 +247,26 @@ describe('DataTable', () => {
     expect(onRowSelect).toHaveBeenCalledWith(0, { multi: false, range: false });
   });
 
+  it('deletes selected rows from the toolbar and Delete key', () => {
+    const onDeleteRows = vi.fn();
+    const { getByTestId, container } = render(
+      <DataTable
+        columns={COLS}
+        rows={rows}
+        selectedRows={new Set([0])}
+        onSelectAll={vi.fn()}
+        onRowSelect={vi.fn()}
+        primaryKeyColumns={['id']}
+        onDeleteRows={onDeleteRows}
+      />,
+    );
+    getByTestId('data-table-delete-rows').click();
+    expect(onDeleteRows).toHaveBeenCalledWith([0]);
+    onDeleteRows.mockClear();
+    fireEvent.keyDown(container.firstChild as HTMLElement, { key: 'Delete' });
+    expect(onDeleteRows).toHaveBeenCalledWith([0]);
+  });
+
   it('shows loading indicator in selection bar', () => {
     const { getByText } = render(
       <DataTable

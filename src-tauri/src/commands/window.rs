@@ -187,6 +187,19 @@ pub async fn create_sub_window(
     }
 }
 
+/// Labels of open windows excluding the main window.
+pub fn non_main_window_labels<I, S>(labels: I) -> Vec<String>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<str>,
+{
+    labels
+        .into_iter()
+        .map(|l| l.as_ref().to_string())
+        .filter(|l| l != "main")
+        .collect()
+}
+
 /// Show/focus an existing labeled window. Reloads when `url` query differs so
 /// singleton reopen with a new query (e.g. docs `section`) takes effect.
 fn focus_existing_window(app: &AppHandle, label: &str, url: &str) -> bool {
@@ -273,6 +286,13 @@ mod tests {
     fn docs_window_options_ignore_blank_section() {
         let opts = docs_window_options(Some("  "));
         assert_eq!(opts.url, "window.html?window=docs");
+    }
+
+    #[test]
+    fn non_main_window_labels_drops_main_only() {
+        let labels = non_main_window_labels(["main", "backup-singleton", "connection-1"]);
+        assert_eq!(labels, vec!["backup-singleton", "connection-1"]);
+        assert!(non_main_window_labels(["main"]).is_empty());
     }
 
     #[test]

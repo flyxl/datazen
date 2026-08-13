@@ -566,8 +566,11 @@ export interface QueryAnalysis {
 
 export type TableCompareStatus = 'identical' | 'different' | 'source_only' | 'target_only';
 
+export type SyncObjectKind = 'table' | 'view' | 'function' | 'procedure';
+
 export interface TableComparison {
   table: string;
+  kind?: SyncObjectKind;
   status: TableCompareStatus;
   sourceRows: number | null;
   targetRows: number | null;

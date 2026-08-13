@@ -1,6 +1,9 @@
 use super::super::error::{CmdExt, CommandError};
+use super::super::schema::{get_database_objects_impl, get_object_ddl_impl};
 use super::super::AppState;
-use super::compare::{count_rows, fetch_full_column_types, fetch_table_options, resolve_adapters};
+use super::compare::{
+    count_rows, fetch_full_column_types, fetch_table_options, maybe_use_database, resolve_adapters,
+};
 use super::types::{SyncProgressEvent, BATCH_SIZE};
 use crate::db::{DatabaseType, TableSchema};
 use crate::store::SyncTask;
@@ -81,6 +84,28 @@ where
             .execute(&tgt_handle, &create_ddl)
             .await
             .cmd_err("sync_one_table")?;
+
+        for idx in &src_schema.indexes {
+            if idx.is_primary || idx.columns.is_empty() {
+                continue;
+            }
+            let unique = if idx.is_unique { "UNIQUE " } else { "" };
+            let cols: Vec<String> = idx
+                .columns
+                .iter()
+                .map(|c| tgt_adapter.quote_ident(c))
+                .collect();
+            let sql = format!(
+                "CREATE {unique}INDEX {} ON {} ({})",
+                tgt_adapter.quote_ident(&idx.name),
+                tgt_adapter.quote_ident(table_name),
+                cols.join(", ")
+            );
+            tgt_driver
+                .execute(&tgt_handle, &sql)
+                .await
+                .cmd_err("sync_one_table")?;
+        }
     }
 
     let src_col_names: Vec<String> = src_schema.columns.iter().map(|c| sq(&c.name)).collect();
@@ -140,6 +165,111 @@ where
     }
 
     Ok(synced)
+}
+
+async fn sync_one_object(
+    state: &AppState,
+    source_connection_id: &str,
+    target_connection_id: &str,
+    name: &str,
+    kind: &str,
+) -> Result<u64, CommandError> {
+    let (src_driver, src_handle) = state
+        .connection_manager
+        .get_connection(source_connection_id)
+        .await
+        .cmd_err("sync_one_object")?;
+    let (tgt_driver, tgt_handle) = state
+        .connection_manager
+        .get_connection(target_connection_id)
+        .await
+        .cmd_err("sync_one_object")?;
+
+    if kind == "view" {
+        let ddl = src_driver
+            .dump_view_ddl(&src_handle, name)
+            .await
+            .cmd_err("sync_one_object")?;
+        let rewritten =
+            rewrite_view_ddl_for_target(&ddl, name, |ident| tgt_driver.quote_ident(ident));
+        let drop_sql = format!("DROP VIEW IF EXISTS {}", tgt_driver.quote_ident(name));
+        let _ = tgt_driver.execute(&tgt_handle, &drop_sql).await;
+        tgt_driver
+            .execute(&tgt_handle, &rewritten)
+            .await
+            .cmd_err("sync_one_object")?;
+        return Ok(0);
+    }
+
+    let objects = get_database_objects_impl(state, source_connection_id.to_string(), kind.into())
+        .await
+        .unwrap_or_default();
+    let schema = objects
+        .iter()
+        .find(|o| o.name == name)
+        .and_then(|o| o.schema.clone());
+    let ddl = get_object_ddl_impl(
+        state,
+        source_connection_id.to_string(),
+        kind.into(),
+        name.into(),
+        schema,
+    )
+    .await?;
+    if ddl.trim().is_empty() {
+        return Err(CommandError::Internal(format!(
+            "Empty DDL for {kind} {name}"
+        )));
+    }
+    let drop_kw = if kind == "procedure" {
+        "PROCEDURE"
+    } else {
+        "FUNCTION"
+    };
+    let drop_sql = format!("DROP {drop_kw} IF EXISTS {}", tgt_driver.quote_ident(name));
+    let _ = tgt_driver.execute(&tgt_handle, &drop_sql).await;
+    tgt_driver
+        .execute(&tgt_handle, &ddl)
+        .await
+        .cmd_err("sync_one_object")?;
+    Ok(0)
+}
+
+/// Rebuild `CREATE VIEW` with the target driver's identifier quoting.
+/// Keeps the source SELECT body so a Postgres view can be created on MySQL
+/// (or vice versa) as a view rather than being executed as source dialect DDL.
+pub(crate) fn rewrite_view_ddl_for_target(
+    ddl: &str,
+    view_name: &str,
+    quote_ident: impl Fn(&str) -> String,
+) -> String {
+    let body = extract_view_select_body(ddl).unwrap_or(ddl.trim());
+    format!(
+        "CREATE OR REPLACE VIEW {} AS\n{};\n",
+        quote_ident(view_name),
+        body.trim().trim_end_matches(';')
+    )
+}
+
+fn extract_view_select_body(ddl: &str) -> Option<&str> {
+    let lower = ddl.to_ascii_lowercase();
+    let view_idx = lower.find("view")?;
+    let after_view = &lower[view_idx + 4..];
+    let mut i = 0;
+    let bytes = after_view.as_bytes();
+    while i + 1 < bytes.len() {
+        if bytes[i].is_ascii_whitespace()
+            && bytes[i + 1] == b'a'
+            && i + 3 < bytes.len()
+            && bytes[i + 2] == b's'
+            && (i + 3 == bytes.len() || bytes[i + 3].is_ascii_whitespace())
+        {
+            let abs = view_idx + 4 + i + 3;
+            return ddl.get(abs..).map(str::trim).filter(|s| !s.is_empty());
+        }
+        i += 1;
+    }
+    None
 }
 
 // ── Tauri Commands ──────────────────────────────────────────────────
@@ -210,6 +340,9 @@ pub(crate) async fn sync_tables_impl(
     strategy: String,
     resume_table: Option<String>,
     resume_offset: u64,
+    source_database: Option<String>,
+    target_database: Option<String>,
+    object_kinds: std::collections::HashMap<String, String>,
 ) -> Result<serde_json::Value, CommandError> {
     tracing::info!(%task_id, table_count = tables.len(), %strategy, resume_offset, "sync_tables");
 
@@ -237,6 +370,35 @@ pub(crate) async fn sync_tables_impl(
     );
 
     let (src_adapter, tgt_adapter) = resolve_adapters(&state, &src_type, &tgt_type)?;
+
+    {
+        let (src_driver, src_handle) = state
+            .connection_manager
+            .get_connection(&source_connection_id)
+            .await
+            .cmd_err("sync_tables")?;
+        let (tgt_driver, tgt_handle) = state
+            .connection_manager
+            .get_connection(&target_connection_id)
+            .await
+            .cmd_err("sync_tables")?;
+        maybe_use_database(
+            src_driver.as_ref(),
+            &src_handle,
+            source_database
+                .as_deref()
+                .or(src_config.database.as_deref()),
+        )
+        .await?;
+        maybe_use_database(
+            tgt_driver.as_ref(),
+            &tgt_handle,
+            target_database
+                .as_deref()
+                .or(tgt_config.database.as_deref()),
+        )
+        .await?;
+    }
 
     let emit = |evt: SyncProgressEvent| {
         let _ = app_handle.emit("sync:progress", &evt);
@@ -266,6 +428,11 @@ pub(crate) async fn sync_tables_impl(
             .await
             .cmd_err("sync_tables")?;
         for t in &tables {
+            let kind = object_kinds.get(t).map(|s| s.as_str()).unwrap_or("table");
+            if kind != "table" {
+                source_row_counts.insert(t.clone(), 0);
+                continue;
+            }
             let cnt = count_rows(src_driver.as_ref(), &src_handle, t).await?;
             source_row_counts.insert(t.clone(), cnt);
         }
@@ -336,32 +503,47 @@ pub(crate) async fn sync_tables_impl(
         let emit_ref = &emit;
         let last_synced = std::sync::atomic::AtomicU64::new(table_resume_offset);
 
-        let sync_result = sync_one_table(
-            &state,
-            &source_connection_id,
-            &target_connection_id,
-            table_name,
-            &src_type,
-            &tgt_type,
-            src_adapter.as_ref(),
-            tgt_adapter.as_ref(),
-            table_resume_offset,
-            &|synced| {
-                last_synced.store(synced, std::sync::atomic::Ordering::Relaxed);
-                emit_ref(SyncProgressEvent {
-                    task_id: task_id_clone.clone(),
-                    phase: "syncing".into(),
-                    table_index: idx,
-                    total_tables,
-                    current_table: table_name_clone.clone(),
-                    source_row_count: src_rows,
-                    synced_rows: synced,
-                    completed_tables: completed_clone.clone(),
-                    error: None,
-                });
-            },
-        )
-        .await;
+        let kind = object_kinds
+            .get(table_name)
+            .map(|s| s.as_str())
+            .unwrap_or("table");
+        let sync_result = if kind == "table" {
+            sync_one_table(
+                &state,
+                &source_connection_id,
+                &target_connection_id,
+                table_name,
+                &src_type,
+                &tgt_type,
+                src_adapter.as_ref(),
+                tgt_adapter.as_ref(),
+                table_resume_offset,
+                &|synced| {
+                    last_synced.store(synced, std::sync::atomic::Ordering::Relaxed);
+                    emit_ref(SyncProgressEvent {
+                        task_id: task_id_clone.clone(),
+                        phase: "syncing".into(),
+                        table_index: idx,
+                        total_tables,
+                        current_table: table_name_clone.clone(),
+                        source_row_count: src_rows,
+                        synced_rows: synced,
+                        completed_tables: completed_clone.clone(),
+                        error: None,
+                    });
+                },
+            )
+            .await
+        } else {
+            sync_one_object(
+                &state,
+                &source_connection_id,
+                &target_connection_id,
+                table_name,
+                kind,
+            )
+            .await
+        };
 
         match sync_result {
             Ok(_rows) => {

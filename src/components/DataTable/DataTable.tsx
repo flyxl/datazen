@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState, type KeyboardEvent } from 'react';
 import { Download, Trash2 } from 'lucide-react';
 import type { FilterCondition, SortCondition } from '../../types';
 import type { CellEdit } from '../../stores/tableDataStore';
@@ -343,8 +343,23 @@ export function DataTable({
     onApplyFilters &&
     onFilterPanelOpenChange;
 
+  const handleDeleteKey = useCallback(
+    (e: KeyboardEvent<HTMLDivElement>) => {
+      if (editingCell) return;
+      if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+      if (!onDeleteRows || (primaryKeyColumns?.length ?? 0) === 0) return;
+      if (selectedRows.size === 0) return;
+      e.preventDefault();
+      onDeleteRows(Array.from(selectedRows).sort((a, b) => a - b));
+    },
+    [editingCell, onDeleteRows, primaryKeyColumns, selectedRows],
+  );
+
   return (
-    <div className="selectable flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-md border border-edge bg-surface">
+    <div
+      className="selectable flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-md border border-edge bg-surface"
+      onKeyDown={handleDeleteKey}
+    >
       {hasFilterEditor ? (
         <FilterEditor
           columns={columns}
@@ -388,6 +403,7 @@ export function DataTable({
             {onDeleteRows && selectedRows.size > 0 && (primaryKeyColumns?.length ?? 0) > 0 && (
               <button
                 type="button"
+                data-testid="data-table-delete-rows"
                 className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-red-400 hover:bg-surface-raised hover:text-red-300"
                 onClick={() => onDeleteRows(Array.from(selectedRows).sort((a, b) => a - b))}
                 title={t('dataTable.deleteRow')}

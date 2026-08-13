@@ -436,10 +436,28 @@ pub struct BackupDumpOptions {
     pub no_owner: bool,
     /// Hint to wrap restore in a transaction (MySQL `--single-transaction` parity).
     pub single_transaction: bool,
-    /// Include stored procedures and functions (MySQL).
+    /// Include stored procedures and functions.
     pub routines: bool,
-    /// Include triggers (MySQL).
+    /// Include triggers.
     pub triggers: bool,
+}
+
+/// Progress event while dumping a database (one object at a time).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct DumpProgress {
+    pub current: u32,
+    pub total: u32,
+    pub object_name: String,
+    pub phase: DumpPhase,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum DumpPhase {
+    Object,
+    Writing,
+    Done,
 }
 
 /// Options for SQL restore operations.
@@ -447,6 +465,8 @@ pub struct BackupDumpOptions {
 pub struct BackupRestoreOptions {
     /// Execute the restore inside `BEGIN`/`COMMIT` (rolls back on failure).
     pub single_transaction: bool,
+    /// Drop existing tables/views in the target database before applying the dump.
+    pub overwrite: bool,
 }
 
 #[derive(Debug, Error)]

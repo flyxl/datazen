@@ -1,21 +1,49 @@
 import type { TableInfo } from '../types';
 import { isSchemaGroupingSchema } from './sqlNamespace';
 
-const FROM_TABLE =
-  /\b(?:from|join)\s+(?:only\s+)?(?:"([^"]+)"|([A-Za-z_][\w$]*))(?:\s*\.\s*(?:"([^"]+)"|([A-Za-z_][\w$]*)))?/gi;
+const FROM_RELATION =
+  /\b(?:from|join)\s+(?:only\s+)?((?:"[^"]+"|`[^`]+`|[A-Za-z_][\w$]*)(?:\s*\.\s*(?:"[^"]+"|`[^`]+`|[A-Za-z_][\w$]*))*)/gi;
+
+function unquoteIdent(raw: string): string {
+  const trimmed = raw.trim();
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith('`') && trimmed.endsWith('`')) ||
+    (trimmed.startsWith('[') && trimmed.endsWith(']'))
+  ) {
+    return trimmed.slice(1, -1);
+  }
+  return trimmed;
+}
+
+function lastRelationSegment(qualified: string): string | undefined {
+  const parts = qualified.split('.').map(unquoteIdent).filter(Boolean);
+  return parts[parts.length - 1];
+}
+
+/** Table names referenced by FROM/JOIN (last segment of each qualified path). */
+export function tablesReferencedInSql(sql: string): string[] {
+  const names: string[] = [];
+  const seen = new Set<string>();
+  FROM_RELATION.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = FROM_RELATION.exec(sql)) !== null) {
+    const table = lastRelationSegment(match[1] ?? '');
+    if (table && !seen.has(table)) {
+      seen.add(table);
+      names.push(table);
+    }
+  }
+  return names;
+}
 
 /**
- * Last FROM/JOIN relation in `sql`. For `schema.table`, returns the table
- * segment — CodeMirror resolves it via `defaultSchema` + aliases.
+ * Last FROM/JOIN relation in `sql`. For `schema.table` / `catalog.schema.table`,
+ * returns the table segment — CodeMirror resolves it via `defaultSchema` + aliases.
  */
 export function inferDefaultTable(sql: string): string | undefined {
-  let table: string | undefined;
-  FROM_TABLE.lastIndex = 0;
-  let match: RegExpExecArray | null;
-  while ((match = FROM_TABLE.exec(sql)) !== null) {
-    table = match[3] || match[4] || match[1] || match[2];
-  }
-  return table || undefined;
+  const names = tablesReferencedInSql(sql);
+  return names[names.length - 1];
 }
 
 /** Prefer `public`, otherwise the most common real schema on loaded tables. */

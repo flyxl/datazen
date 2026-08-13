@@ -40,6 +40,14 @@ describe('备份窗口 UI (BKU-001~BKU-004)', () => {
     expect(body).toContain(t('backup.fileName'));
   });
 
+  it('分组文案应与主窗口一致，不显示 preset: 键 (BKU-005)', async () => {
+    await $(`button*=${t('action.backup')}`).click();
+    await switchToNewWindow(mainWindow);
+    await browser.pause(1000);
+    const body = await $('body').getText();
+    expect(body).not.toContain('preset:');
+  });
+
   it('未选连接时应提示先选择连接 (BKU-003)', async () => {
     await $(`button*=${t('action.backup')}`).click();
     await switchToNewWindow(mainWindow);

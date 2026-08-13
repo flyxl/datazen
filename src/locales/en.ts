@@ -466,6 +466,9 @@ const en: Record<TranslationKey, string> = {
   'query.totalTime': 'Total Time',
   'query.history': 'History',
   'query.placeholder': 'Type SQL query…',
+  'query.database': 'Database',
+  'query.catalog': 'Catalog',
+  'query.schema': 'Schema',
   'query.namespaceLoading': 'Loading objects…',
   'query.executing': 'Executing…',
   'query.streamingRows': 'Loaded {n} rows…',
@@ -751,6 +754,17 @@ const en: Record<TranslationKey, string> = {
   'sync.different': 'Different',
   'sync.sourceOnly': 'Source Only',
   'sync.targetOnly': 'Target Only',
+  'sync.selectDatabase': 'Select database…',
+  'sync.selectDbRequired': 'Select source and target databases first',
+  'sync.kind.table': 'Table',
+  'sync.kind.view': 'View',
+  'sync.kind.function': 'Function',
+  'sync.kind.procedure': 'Procedure',
+  'sync.objectName': 'Object',
+  'sync.group.tables': 'Tables',
+  'sync.group.views': 'Views',
+  'sync.group.functions': 'Functions',
+  'sync.group.procedures': 'Procedures',
   'sync.tableName': 'Table',
   'sync.sourceRows': 'Source Rows',
   'sync.targetRows': 'Target Rows',
@@ -806,6 +820,10 @@ const en: Record<TranslationKey, string> = {
 
   // ── Backup Window ──
   'backup.title': 'Backup Database',
+  'backup.restoreTitle': 'Restore Database',
+  'backup.startRestore': 'Start Restore…',
+  'backup.restoring': 'Restoring…',
+  'backup.restoreSuccess': 'Restore completed',
   'backup.fileName': 'File name',
   'backup.fileNameHint': 'Click to change the file name pattern',
   'backup.searchConnection': 'Search for connection…',
@@ -816,9 +834,19 @@ const en: Record<TranslationKey, string> = {
   'backup.startBackup': 'Start backup…',
   'backup.inProgress': 'Backing up…',
   'backup.success': 'Backup completed',
+  'backup.unsupportedType': 'This connection type does not support database backup',
+  'backup.progressPreparing': 'Preparing backup…',
+  'backup.progressObject': 'Dumping {name} ({current}/{total})',
+  'backup.progressWriting': 'Writing backup file…',
+  'backup.restoreOverwriteConfirm':
+    'Target database “{database}” already has {count} objects. Continuing will drop existing tables/views and then apply the backup. Overwrite?',
+  'backup.restorePreparing': 'Reading backup file…',
+  'backup.restoreProgress': 'Restoring {name} ({current}/{total})',
+  'backup.progressLog': 'Execution log',
 
   // ── Window titles ──
   'win.backup': 'Backup Database - DataZen',
+  'win.restore': 'Restore Database - DataZen',
 
   // ── Connection Settings Dialog ──
   'connSettings.title': 'Connection Settings',

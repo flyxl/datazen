@@ -14,7 +14,6 @@ import {
   Bookmark,
   Check,
   Clock,
-  Database,
   FileSearch,
   Gauge,
   Loader2,
@@ -29,7 +28,6 @@ import {
 } from 'lucide-react';
 import { listen } from '@tauri-apps/api/event';
 import { Button } from '../../components/ui/Button';
-import { Select } from '../../components/ui/Select';
 import { SqlEditor } from '../../components/SqlEditor';
 import type { SqlEditorHandle } from '../../components/SqlEditor';
 import { buildEditorSchema } from '../../lib/buildEditorSchema';
@@ -40,7 +38,17 @@ import {
   buildHistorySidebarContextMenuItems,
   buildHistorySidebarHeaderContextMenuItems,
 } from '../../lib/querySidebarContextMenu';
-import { inferDefaultSchema, inferDefaultTable } from '../../lib/sqlEditorDefaults';
+import {
+  inferDefaultSchema,
+  inferDefaultTable,
+  tablesReferencedInSql,
+} from '../../lib/sqlEditorDefaults';
+import {
+  namespaceRootsFrom,
+  pathsEqual,
+  resolveQueryContextPath,
+} from '../../lib/queryContextPath';
+import { QueryContextSelectors } from '../../components/query/QueryContextSelectors';
 import { DataTable } from '../../components/DataTable/DataTable';
 import type { ColumnDef } from '../../components/DataTable/TableHeader';
 import { ChartView } from '../../components/chart/ChartView';
@@ -161,33 +169,35 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
   const views = useSchemaStore((s) => s.views);
   const columnMap = useSchemaStore((s) => s.columnMap);
   const namespaceTree = useSchemaStore((s) => s.namespaceTree);
+  const pathAliases = useSchemaStore((s) => s.pathAliases);
   const databases = useSchemaStore((s) => s.databases);
   const currentDatabase = useSchemaStore((s) => s.currentDatabase);
   const isMultiDb = useSchemaStore((s) => s.isMultiDatabase);
-  const loadColumnMap = useSchemaStore((s) => s.loadColumnMap);
+  const ensureColumns = useSchemaStore((s) => s.ensureColumns);
   const loadTables = useSchemaStore((s) => s.loadTables);
   const ensureNamespacePath = useSchemaStore((s) => s.ensureNamespacePath);
   const namespaceLoading = useSchemaStore((s) => s.ensuringCount > 0);
 
   const dbMeta = databaseType ? DB_REGISTRY[databaseType as keyof typeof DB_REGISTRY] : undefined;
   const supportsExplain = dbMeta?.supportsExplain === true;
+  const isPathHierarchy = dbMeta?.namespaceEnsure === 'path-hierarchy';
+  const [contextPath, setContextPath] = useState<string[]>([]);
   const editorSchema = useMemo(
-    () => buildEditorSchema({ namespaceTree, tables, views, columnMap, currentDatabase }),
-    [namespaceTree, tables, views, columnMap, currentDatabase],
+    () =>
+      buildEditorSchema({
+        namespaceTree,
+        tables,
+        views,
+        columnMap,
+        currentDatabase,
+        hoistPath: contextPath,
+      }),
+    [namespaceTree, tables, views, columnMap, currentDatabase, contextPath],
   );
   const editorDefaultSchema = useMemo(() => inferDefaultSchema(tables, views), [tables, views]);
   const editorDefaultTable = useMemo(() => inferDefaultTable(tab?.sql ?? ''), [tab?.sql]);
 
   const ensureTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const handleQualifiedPath = useCallback(
-    (parents: string[]) => {
-      if (ensureTimer.current) clearTimeout(ensureTimer.current);
-      ensureTimer.current = setTimeout(() => {
-        void ensureNamespacePath(parents);
-      }, 120);
-    },
-    [ensureNamespacePath],
-  );
 
   useEffect(
     () => () => {
@@ -201,6 +211,59 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
   }, [connectionId, currentDatabase, ensureNamespacePath]);
 
   useEffect(() => {
+    if (isPathHierarchy) return;
+    setContextPath(currentDatabase ? [currentDatabase] : []);
+  }, [currentDatabase, isPathHierarchy]);
+
+  const applyContextPath = useCallback(
+    async (next: string[]) => {
+      setContextPath(next);
+      if (isPathHierarchy) {
+        if (next.length > 0) await ensureNamespacePath(next);
+        return;
+      }
+      const db = next[0];
+      if (db && db !== currentDatabase) await loadTables(db);
+    },
+    [currentDatabase, ensureNamespacePath, isPathHierarchy, loadTables],
+  );
+
+  const handleQualifiedPath = useCallback(
+    (parents: string[]) => {
+      if (ensureTimer.current) clearTimeout(ensureTimer.current);
+      ensureTimer.current = setTimeout(() => {
+        void ensureNamespacePath(parents);
+      }, 120);
+      const roots = new Set(namespaceRootsFrom(namespaceTree, pathAliases, databases));
+      if (parents[0] && roots.has(parents[0]) && !pathsEqual(parents, contextPath)) {
+        void applyContextPath(parents);
+      }
+    },
+    [applyContextPath, contextPath, databases, ensureNamespacePath, namespaceTree, pathAliases],
+  );
+
+  const syncContextFromSql = useCallback(
+    async (sql: string) => {
+      const resolved = resolveQueryContextPath(sql, {
+        databases,
+        namespaceRoots: namespaceRootsFrom(namespaceTree, pathAliases, databases),
+      });
+      if (!resolved || pathsEqual(resolved, contextPath)) return;
+      await applyContextPath(resolved);
+    },
+    [applyContextPath, contextPath, databases, namespaceTree, pathAliases],
+  );
+
+  useEffect(() => {
+    const sql = tab?.sql ?? '';
+    if (!sql.trim()) return;
+    const timer = setTimeout(() => {
+      void syncContextFromSql(sql);
+    }, 50);
+    return () => clearTimeout(timer);
+  }, [tab?.sql, syncContextFromSql]);
+
+  useEffect(() => {
     setConnectionId(connectionId);
     void loadHistory();
     void loadFavorites();
@@ -211,10 +274,13 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
   }, [connectionId, databaseType]);
 
   useEffect(() => {
-    if (tables.length > 0 && Object.keys(columnMap).length === 0) {
-      void loadColumnMap();
-    }
-  }, [tables, columnMap, loadColumnMap]);
+    const names = tablesReferencedInSql(tab?.sql ?? '');
+    if (names.length === 0) return;
+    const timer = setTimeout(() => {
+      void ensureColumns(names);
+    }, 120);
+    return () => clearTimeout(timer);
+  }, [tab?.sql, ensureColumns, namespaceTree, tables, views]);
 
   const sqlParams = useMemo(() => parseSqlParams(tab?.sql ?? ''), [tab?.sql]);
   const boundPayload = useMemo(
@@ -287,6 +353,9 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
   const runExecute = useCallback(
     async (kind: 'full' | 'selection', selectionSql?: string) => {
       if (!tab) return;
+      await syncContextFromSql(
+        kind === 'selection' && selectionSql != null ? selectionSql : tab.sql,
+      );
       if (!autoCommit && !inTransaction) {
         try {
           await queryCommands.beginSessionTransaction(connectionId);
@@ -322,6 +391,7 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
       boundPayload,
       maybeOfferAbortedDialog,
       refreshTxStatus,
+      syncContextFromSql,
     ],
   );
 
@@ -558,17 +628,18 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
         ref={toolbarRef}
         className="flex h-9 shrink-0 flex-nowrap items-center gap-2 overflow-x-auto border-b border-edge bg-surface-alt px-3"
       >
-        {isMultiDb && databases.length > 0 && (
-          <div className="flex shrink-0 items-center gap-1.5">
-            <Database className="h-3.5 w-3.5 text-fg-muted" />
-            <Select
-              value={currentDatabase ?? ''}
-              options={databases.map((db) => ({ value: db, label: db }))}
-              onChange={(db) => void loadTables(db)}
-              className="!h-6 !text-[11px] max-w-[180px]"
-            />
-          </div>
-        )}
+        <QueryContextSelectors
+          isMultiDb={isMultiDb}
+          isPathHierarchy={isPathHierarchy}
+          databases={databases}
+          currentDatabase={currentDatabase}
+          namespaceTree={namespaceTree}
+          pathAliases={pathAliases}
+          contextPath={contextPath}
+          onSelectLevel={(index, value) => {
+            void applyContextPath([...contextPath.slice(0, index), value]);
+          }}
+        />
         <ToolbarButton
           compact={compactToolbar}
           variant="primary"
