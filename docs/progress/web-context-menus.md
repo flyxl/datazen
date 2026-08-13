@@ -19,7 +19,7 @@
 | ID | 功能 | 状态 | 单测 | 独立 QA | 覆盖率 | Commit |
 |----|------|------|------|---------|--------|--------|
 | F1 | Web 菜单定位 + 组件（二级菜单防截断） | done | 17 PASS | [F1 QA](c86bf24c-a11a-4a42-8d30-b310c3fdeb2c) PASS | lines 87.5% | `e983514` |
-| F2 | MainWindow 连接/分组/空白右键改 Web 菜单 | pending | — | — | — | — |
+| F2 | MainWindow 连接/分组/空白右键改 Web 菜单 | done | 42 PASS | [F2 QA](86de97e9-365b-4ba8-82f1-0db550159c1a) PASS | mainWindowContextMenu.ts lines 100% | — |
 | F3 | Host `showNativeContextMenu` 全部改为 Web | pending | — | — | — | — |
 | F4 | Redis 驱动右键改 Web 菜单 | pending | — | — | — | — |
 | F5 | Data Sync：Cancel IPC + Apply / 行比较接线 | pending | — | — | — | — |

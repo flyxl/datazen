@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, ChevronRight, Plus, Search } from 'lucide-react';
-import { Menu, MenuItem, Submenu, PredefinedMenuItem } from '@tauri-apps/api/menu';
+import { showWebContextMenu } from '../../stores/contextMenuStore';
+import {
+  buildMainBlankContextMenuItems,
+  buildMainConnectionContextMenuItems,
+  buildMainGroupContextMenuItems,
+} from '../../lib/mainWindowContextMenu';
 import { StatusBar } from '../../components/StatusBar';
 import { Dialog } from '../../components/ui/Dialog';
 import { Input } from '../../components/ui/Input';
@@ -297,107 +302,81 @@ export function MainWindow() {
     });
   }, []);
 
-  // ── Native context menus (Tauri Menu API) ──
+  const contextLabels = useMemo(
+    () => ({
+      newGroup: t('main.ctx.newGroup'),
+      newConnection: t('main.newConnection'),
+      renameGroup: t('main.ctx.renameGroup'),
+      deleteGroup: t('main.ctx.deleteGroup'),
+      openConnection: t('main.ctx.openConnection'),
+      disconnect: t('main.ctx.disconnect'),
+      editConnection: t('main.ctx.editConnection'),
+      duplicateConnection: t('main.ctx.duplicateConnection'),
+      moveToGroup: t('main.ctx.moveToGroup'),
+      removeFromGroup: t('main.ctx.removeFromGroup'),
+      deleteConnection: t('main.ctx.deleteConnection'),
+    }),
+    [t],
+  );
 
   const handleGroupContextMenu = useCallback(
-    async (e: React.MouseEvent, groupName: string) => {
+    (e: React.MouseEvent, groupName: string) => {
       e.preventDefault();
       e.stopPropagation();
-      const isUngrouped = groupName === '';
-
-      const items: Array<MenuItem | PredefinedMenuItem> = [
-        await MenuItem.new({
-          text: t('main.ctx.newGroup'),
-          action: () => {
+      showWebContextMenu(
+        buildMainGroupContextMenuItems({
+          labels: contextLabels,
+          isUngrouped: groupName === '',
+          onNewGroup: () => {
             setNewGroupName('');
             setNewGroupDialogOpen(true);
           },
+          onRenameGroup: () => {
+            setRenamingGroup(groupName);
+            setRenameValue(formatGroupLabel(groupName, t));
+          },
+          onDeleteGroup: () => {
+            void deleteGroup(groupName);
+          },
         }),
-      ];
-      if (!isUngrouped) {
-        items.push(
-          await PredefinedMenuItem.new({ item: 'Separator' }),
-          await MenuItem.new({
-            text: t('main.ctx.renameGroup'),
-            action: () => {
-              setRenamingGroup(groupName);
-              setRenameValue(formatGroupLabel(groupName, t));
-            },
-          }),
-          await MenuItem.new({
-            text: t('main.ctx.deleteGroup'),
-            action: () => {
-              void deleteGroup(groupName);
-            },
-          }),
-        );
-      }
-      const menu = await Menu.new({ items });
-      await menu.popup();
+        { x: e.clientX, y: e.clientY },
+      );
     },
-    [deleteGroup, t],
+    [contextLabels, deleteGroup, t],
   );
 
   const handleConnectionContextMenu = useCallback(
-    async (e: React.MouseEvent, conn: ConnectionConfig) => {
+    (e: React.MouseEvent, conn: ConnectionConfig) => {
       e.preventDefault();
       e.stopPropagation();
       setSelectedId(conn.id);
 
       const isConnected = activeConnections[conn.id]?.status === 'connected';
-      const items: Array<MenuItem | Submenu | PredefinedMenuItem> = [
-        await MenuItem.new({
-          text: isConnected ? t('main.ctx.disconnect') : t('main.ctx.openConnection'),
-          action: () => {
+      const moveTargets = groups
+        .filter((g) => g !== conn.group)
+        .map((g) => ({ id: g, label: formatGroupLabel(g, t) }));
+
+      showWebContextMenu(
+        buildMainConnectionContextMenuItems({
+          labels: contextLabels,
+          isConnected,
+          grouped: Boolean(conn.group),
+          moveTargets,
+          onOpenOrDisconnect: () => {
             if (isConnected) void disconnectAction(conn.id);
             else void handleConnect(conn);
           },
-        }),
-        await PredefinedMenuItem.new({ item: 'Separator' }),
-        await MenuItem.new({
-          text: t('main.ctx.editConnection'),
-          action: () => openNewConnectionWindow(conn.id),
-        }),
-        await MenuItem.new({
-          text: t('main.ctx.duplicateConnection'),
-          action: () => {
+          onEdit: () => openNewConnectionWindow(conn.id),
+          onDuplicate: () => {
             void duplicateConnection(conn.id);
           },
-        }),
-        await PredefinedMenuItem.new({ item: 'Separator' }),
-      ];
-
-      const moveTargets = groups.filter((g) => g !== conn.group);
-      if (moveTargets.length > 0 || conn.group) {
-        const subItems: MenuItem[] = [];
-        for (const g of moveTargets) {
-          subItems.push(
-            await MenuItem.new({
-              text: formatGroupLabel(g, t),
-              action: () => {
-                void moveConnectionToGroup(conn.id, g);
-              },
-            }),
-          );
-        }
-        if (conn.group) {
-          subItems.push(
-            await MenuItem.new({
-              text: t('main.ctx.removeFromGroup'),
-              action: () => {
-                void moveConnectionToGroup(conn.id, undefined);
-              },
-            }),
-          );
-        }
-        items.push(await Submenu.new({ text: t('main.ctx.moveToGroup'), items: subItems }));
-        items.push(await PredefinedMenuItem.new({ item: 'Separator' }));
-      }
-
-      items.push(
-        await MenuItem.new({
-          text: t('main.ctx.deleteConnection'),
-          action: async () => {
+          onMoveToGroup: (groupId) => {
+            void moveConnectionToGroup(conn.id, groupId);
+          },
+          onRemoveFromGroup: () => {
+            void moveConnectionToGroup(conn.id, undefined);
+          },
+          onDelete: async () => {
             const { ask } = await import('@tauri-apps/plugin-dialog');
             const confirmed = await ask(
               t('main.ctx.confirmDeleteConnection', { name: conn.name }),
@@ -408,17 +387,17 @@ export function MainWindow() {
             }
           },
         }),
+        { x: e.clientX, y: e.clientY },
       );
-      const menu = await Menu.new({ items });
-      await menu.popup();
     },
     [
       activeConnections,
-      groups,
-      disconnectAction,
-      handleConnect,
-      duplicateConnection,
+      contextLabels,
       deleteConnection,
+      disconnectAction,
+      duplicateConnection,
+      groups,
+      handleConnect,
       moveConnectionToGroup,
       t,
     ],
@@ -696,27 +675,22 @@ export function MainWindow() {
 
   // ── Blank area context menu ──
 
-  const handleBlankContextMenu = useCallback(async (e: React.MouseEvent) => {
+  const handleBlankContextMenu = useCallback((e: React.MouseEvent) => {
     const el = e.target as HTMLElement;
     if (el.closest('[data-group-header]') || el.closest('[data-conn-item]')) return;
     e.preventDefault();
-    const menu = await Menu.new({
-      items: [
-        await MenuItem.new({
-          text: t('main.ctx.newGroup'),
-          action: () => {
-            setNewGroupName('');
-            setNewGroupDialogOpen(true);
-          },
-        }),
-        await MenuItem.new({
-          text: t('main.newConnection'),
-          action: () => openNewConnectionWindow(),
-        }),
-      ],
-    });
-    await menu.popup();
-  }, []);
+    showWebContextMenu(
+      buildMainBlankContextMenuItems({
+        labels: contextLabels,
+        onNewGroup: () => {
+          setNewGroupName('');
+          setNewGroupDialogOpen(true);
+        },
+        onNewConnection: () => openNewConnectionWindow(),
+      }),
+      { x: e.clientX, y: e.clientY },
+    );
+  }, [contextLabels]);
 
   return (
     <div className="flex h-screen min-h-0 min-w-[520px] flex-col bg-surface text-fg">
