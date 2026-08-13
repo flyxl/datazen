@@ -3,6 +3,7 @@
 //! Compare → Review → ChangeSet → SQL Preview → Execute.
 //! Does not perform Transfer (heterogeneous copy) or Structure Sync.
 
+pub mod apply_loop;
 pub mod changeset;
 pub mod compare;
 pub mod error;
@@ -17,6 +18,7 @@ pub mod sql;
 pub mod state;
 pub mod types_eq;
 
+pub use apply_loop::{apply_changeset_to_rows, remaining_mutating_changes};
 pub use changeset::{ChangeSet, TableChangeSet};
 pub use compare::{
     cmp_keys, cmp_values, compare_sorted_rows, compare_table_pages, SliceRowSource, RowPageSource,
