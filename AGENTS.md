@@ -226,7 +226,7 @@ Connection 改变后重新 discovery；没有 Step override 时使用 Workflow �
 - `hasMultiDatabase` 表示驱动能力；切库走 `use_database`
 - 多窗口：`windowManager.ts` + `windowKind.ts` URL 参数路由
 - IPC：前端 camelCase，Rust snake_case；Tauri 自动映射
-- 右键菜单统一使用 Tauri 原生 Menu（`showNativeContextMenu`），禁止新增 Web ContextMenu
+- 右键菜单统一使用 Web Context Menu（`showNativeContextMenu` / `showWebContextMenu` + `WebContextMenuHost` portal）；二级菜单在窗口边缘翻转/clamp，禁止再接 Tauri 原生 `Menu.popup()`
 - Connection Window 支持导出（全部/所选表；仅结构/仅数据/数据+结构），入口顶栏（权限后）与 Schema 树，实现见 `batchExport.ts` / `BatchExportDialog`；编辑表结构页可导出单表 DDL（`exportTableStructure.ts`）
 - **Data Synchronization ≠ Transfer ≠ Structure Sync**：Sync 仅同族 + 结构/PK 完全一致（V1：`mysql` / `postgresql`）；异构 IR 是 Transfer，不要在 Sync 窗口实现；结构变更走 Schema Diff。旧 `sync_tables` DROP+INSERT 已拆除，IPC 立即拒绝。详细设计见 [docs/architecture/backend/data-sync.md](docs/architecture/backend/data-sync.md)
 
