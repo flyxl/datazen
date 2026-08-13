@@ -1,6 +1,6 @@
 /** @vitest-environment node */
 import { describe, expect, it } from 'vitest';
-import { resolveDrivers } from '../resolve-drivers.mjs';
+import { resolveDrivers, wantsCodegenOnly } from '../resolve-drivers.mjs';
 
 const registry = {
   postgres: { source: 'path' },
@@ -62,6 +62,14 @@ describe('resolveDrivers', () => {
   it('accepts bare kiwi or superset as single registry ids', () => {
     expect(resolveDrivers('kiwi', registry)).toEqual(['kiwi']);
     expect(resolveDrivers('superset', registry)).toEqual(['superset']);
+  });
+});
+
+describe('wantsCodegenOnly', () => {
+  it('detects --codegen-only anywhere in argv', () => {
+    expect(wantsCodegenOnly(['--drivers=basic'])).toBe(false);
+    expect(wantsCodegenOnly(['--codegen-only'])).toBe(true);
+    expect(wantsCodegenOnly(['--codegen-only', '--drivers=basic'])).toBe(true);
   });
 });
 

@@ -177,7 +177,7 @@ plugin repository
 
 This is important for debugging because plugin UI code runs in the real Datazen application context rather than in a separate mock host. You can therefore debug the plugin together with Datazen's actual React/Tauri environment.
 
-The current driver resolver generates `src/plugins/generated.ts` from the selected driver set. Frontend contributions are therefore part of the same build-time selection as the Rust driver.
+The current driver resolver generates `src/plugins/generated.ts` (gitignored) from the selected driver set. Frontend contributions are therefore part of the same build-time selection as the Rust driver. `pnpm install` / `pnpm build` run `--codegen-only` when those files are missing.
 
 When adding frontend functionality, follow the structure and conventions used by existing external plugins in the registry, such as Kiwi, OLAP, and Superset.
 

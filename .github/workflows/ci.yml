@@ -34,7 +34,7 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Guard managed driver stubs are not injected
+      - name: Guard tracked driver-managed files are not injected
         run: node scripts/check-managed-stubs.mjs
 
       - name: Guard Host structure caps registry absent
