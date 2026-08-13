@@ -396,7 +396,7 @@ pub struct AppState {
 | 表编辑 | `data.rs` | `commit_edits`（批量行 UPDATE） |
 | Redis | `kv.rs` | `scan_keys`, `get_key_detail` |
 | 备份 | `backup.rs` | `backup_database`, `restore_database` |
-| 同步 | `sync.rs` | `compare_databases`, `compare_table_schemas`, `sync_tables`, … |
+| 同步 | `commands/sync/` | `inspect_data_sync`, `execute_data_sync`, `classify_sync_pair`；`sync_table`/`sync_tables` 拒绝覆盖拷贝；旧 `compare_*` 抽样仍在 |
 | Schema Diff Deploy | `schema_diff.rs` | `prepare_schema_diff_plan`, `execute_schema_diff_deploy` |
 | 配置 | `config.rs` | `get_settings`, `save_settings`, `get_groups`, `get_log_path`, `export_connections`, `import_connections` |
 | 主题包 | `theme.rs` | `list_theme_packs`, `install_theme_pack_with_dialog`, `remove_theme_pack`, `read_theme_pack_file` |

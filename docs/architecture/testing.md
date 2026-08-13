@@ -152,7 +152,7 @@ WebdriverIO E2E spec（Host：`e2e/specs/`）：
 | **数据库驱动（Host）** | `sqlite.ts`, `mysql.ts`（方言/类型烟雾；UI 路径优先契约矩阵） |
 | **AI / Workflow** | `ai-features.ts`, `ai-ask-question.ts`, `ai-context.ts`, `workflow.ts`, `workflow-window.ts` |
 | **路径 IPC / 备份·i18n** | `path-ipc-hardening.ts`, `app-data-backup.ts`, `i18n-10-locales.ts`, `system-locale.ts` |
-| **运维** | `backup-database.ts`, `backup-window.ts`, `schema-diff-window.ts`, `data-sync-real.ts`, `bugfix-verification.ts` |
+| **运维** | `backup-database.ts`, `backup-window.ts`, `schema-diff-window.ts`, `data-sync-window.ts`, `data-sync-real.ts`, `bugfix-verification.ts` |
 
 **插件 / 驱动自有（不进 Host 默认 `pnpm e2e` / `pnpm test:unit`）：**
 
@@ -211,7 +211,7 @@ test/
 | SQL 查询 | 10 | 执行、取消、历史、收藏、多标签 |
 | 表结构 | 6 | 列信息、索引、约束查看 |
 | AI 功能 | 9 | NL2SQL、诊断、EXPLAIN、Chat、NL 筛选 |
-| 数据同步 | 4 | 配置、比较、执行、断点续传 |
+| 数据同步 | Host E2E：`data-sync-window.ts` / `data-sync-real.ts`；领域单测：`data_sync/` | Compare 映射门闸、覆盖拷贝拒绝；行 Apply 未接线 |
 | 备份恢复 | 4 | 备份/恢复配置与执行 |
 | 设置 | 9 | 主题、语言、AI 配置、快捷键 |
 | 其他 | 26 | Redis、导出、多窗口、快捷键、边界容错 |

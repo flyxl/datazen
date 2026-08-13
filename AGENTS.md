@@ -39,7 +39,8 @@ datazen/
 │   │   ├── services/            # ConnectionManager, QueryExecutor, DbTools
 │   │   ├── cache/               # SchemaCache
 │   │   ├── store/               # AES-256-GCM 加密持久化
-│   │   └── sync/                # 跨库同步
+│   │   ├── data_sync/           # 同族 Data Synchronization（门闸 / 比较 / ChangeSet / 执行）
+│   │   └── sync/                # 旧 IR 适配器与抽样 compare（非 Sync 执行引擎）
 │   └── resources/               # 菜单翻译、Prompt 模板
 ├── packages/
 │   ├── driver-api/              # DatabaseDriver + Command API + inventory + ReuseDriver
@@ -227,6 +228,7 @@ Connection 改变后重新 discovery；没有 Step override 时使用 Workflow �
 - IPC：前端 camelCase，Rust snake_case；Tauri 自动映射
 - 右键菜单统一使用 Tauri 原生 Menu（`showNativeContextMenu`），禁止新增 Web ContextMenu
 - Connection Window 支持导出（全部/所选表；仅结构/仅数据/数据+结构），入口顶栏（权限后）与 Schema 树，实现见 `batchExport.ts` / `BatchExportDialog`；编辑表结构页可导出单表 DDL（`exportTableStructure.ts`）
+- **Data Synchronization ≠ Transfer ≠ Structure Sync**：Sync 仅同族 + 结构/PK 完全一致（V1：`mysql` / `postgresql`）；异构 IR 是 Transfer，不要在 Sync 窗口实现；结构变更走 Schema Diff。旧 `sync_tables` DROP+INSERT 已拆除，IPC 立即拒绝。详细设计见 [docs/architecture/backend/data-sync.md](docs/architecture/backend/data-sync.md)
 
 ## IPC 通信
 
@@ -254,7 +256,7 @@ Driver Command IPC 负责：
 | 导出表结构 | `TableStructureEditor` + `lib/exportTableStructure.ts` | — |
 | AI Chat | `components/ai/AiChatPanel.tsx` | `commands/ai.rs` |
 | Workflows | `windows/workflow/WorkflowWindow.tsx` | `workflow/executor.rs` / `workflow/command_runtime.rs` |
-| 数据同步 | `windows/data-sync/` | `sync/` |
+| 数据同步 | `windows/data-sync/` | `data_sync/` + `commands/sync/`（`inspect_data_sync` / `execute_data_sync`） |
 | Redis 深度运维 | `packages/drivers/redis/ui/*` | `execute_command` / `execute_driver_command` |
 | 主题包 | `windows/settings/ThemePackSection.tsx` | `theme/` + `commands/theme.rs` |
 
@@ -338,7 +340,7 @@ Git 驱动（Kiwi / OLAP / Superset 等）：测试写在**插件自己的仓库
 
 **Host 只测宿主能力**（可用任意 SQL/KV 连接当夹具，但不编码驱动方言）：
 
-- `src-tauri/`：IPC、Workflow 引擎、MCP、store、窗口
+- `src-tauri/`：IPC、Workflow 引擎、MCP、store、窗口、`data_sync/`（Host 同步引擎，不写驱动方言）
 - `src/**/__tests__/`：Host 组件 / store / `lib/`
 - `e2e/specs/`：通用连接窗口、SQL 编辑器、表数据、设置等（不测 Redis Command、PG `USE` 语义、某驱动 structure SQL）
 
@@ -348,6 +350,7 @@ Git 驱动（Kiwi / OLAP / Superset 等）：测试写在**插件自己的仓库
 - 在 `e2e/specs/` 新增某驱动深度用例（应放到 `packages/drivers/<id>/e2e/`）
 - 在 `src/windows/connection/__tests__/` 测 Redis Workbench 等驱动 UI（应放到 `packages/drivers/redis/ui/__tests__/`）
 - 用 `cargo test -p datazen --test postgres_use_database` 跑驱动测试（包名是 `datazen-driver-postgres`，不是 `datazen`）
+- 在 Host 把异构 IR 拷贝当 Data Synchronization 实现或测试；Transfer 与 Sync 分离，见 `docs/architecture/backend/data-sync.md`
 
 参考：Redis 已按此拆分（`packages/drivers/redis/src/*` 的 `#[cfg(test)]`、`ui/__tests__/`、`e2e/`）；PG/MySQL `use_database` 集成测在 `packages/drivers/{postgres,mysql}/tests/`。详细策略见 [docs/architecture/testing.md](docs/architecture/testing.md)。
 
