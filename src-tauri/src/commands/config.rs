@@ -262,7 +262,7 @@ pub async fn export_connections(
     Ok(count)
 }
 
-/// Native save dialog + TablePlus RNCryptor export. Returns connection count if saved, `None` if cancelled.
+/// Native save dialog + RNCryptor `.datazenconnection` export. Returns connection count if saved, `None` if cancelled.
 #[tauri::command]
 pub async fn export_connections_with_dialog(
     app: AppHandle,
@@ -279,7 +279,7 @@ pub async fn export_connections_with_dialog(
         app_for_dialog
             .dialog()
             .file()
-            .add_filter("TablePlus", &["tableplusconnection"])
+            .add_filter("DataZen", &["datazenconnection"])
             .set_file_name(&default_file_name)
             .blocking_save_file()
     })
@@ -388,9 +388,15 @@ pub async fn import_connections_with_dialog(
             .file()
             .add_filter(
                 "Connections",
-                &["json", "xml", "ncx", "tableplusconnection"],
+                &[
+                    "json",
+                    "xml",
+                    "ncx",
+                    "datazenconnection",
+                    "tableplusconnection",
+                ],
             )
-            .add_filter("DataZen / DBX JSON", &["json"])
+            .add_filter("DataZen", &["datazenconnection", "json"])
             .add_filter("DataGrip XML", &["xml"])
             .add_filter("Navicat NCX", &["ncx", "xml"])
             .add_filter("DBeaver JSON", &["json"])
@@ -894,11 +900,18 @@ mod tests {
             build_encrypted_connections_export(&[conn], &["Prod".into()], "share-secret").unwrap();
         assert_eq!(&bytes[0..2], &[0x03, 0x01]);
         let parsed = parse_import_file(
-            Path::new("datazen-connections.tableplusconnection"),
+            Path::new("datazen-connections.datazenconnection"),
             &bytes,
             Some("share-secret"),
         )
         .unwrap();
+        let parsed_tableplus = parse_import_file(
+            Path::new("legacy.tableplusconnection"),
+            &bytes,
+            Some("share-secret"),
+        )
+        .unwrap();
+        assert_eq!(parsed_tableplus.connections[0].name, "Demo");
         assert_eq!(parsed.format, connection_import::ImportFormat::TablePlus);
         assert_eq!(parsed.connections.len(), 1);
         assert_eq!(parsed.connections[0].name, "Demo");

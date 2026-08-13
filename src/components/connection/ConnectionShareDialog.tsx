@@ -140,7 +140,7 @@ export function ConnectionShareDialog({
         const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
         const count = await connectionCommands.exportConnectionsWithDialog(
           password,
-          `datazen-connections-${date}.tableplusconnection`,
+          `datazen-connections-${date}.datazenconnection`,
         );
         onClose();
         if (count !== null) {

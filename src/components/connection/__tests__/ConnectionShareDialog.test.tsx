@@ -162,7 +162,8 @@ describe('ConnectionShareDialog', () => {
     fireEvent.click(screen.getByText('connShare.exportAction'));
     await waitFor(() => expect(exportMock).toHaveBeenCalled());
     const fileName = exportMock.mock.calls[0]?.[1] as string;
-    expect(fileName).toMatch(/\.tableplusconnection$/);
+    expect(fileName).toMatch(/\.datazenconnection$/);
     expect(fileName).not.toMatch(/\.json$/);
+    expect(fileName).not.toMatch(/\.tableplusconnection$/);
   });
 });

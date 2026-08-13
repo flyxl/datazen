@@ -284,6 +284,12 @@ describe('schemaStore namespace merge APIs', () => {
     expect(useSchemaStore.getState().loadedPaths.has('db')).toBe(true);
   });
 
+  it('cachePathItems stores get_tables rows by fetch path', async () => {
+    const items = [{ name: '558/hive', tableType: 'table', schema: 'CATALOG', rowCount: null }];
+    useSchemaStore.getState().cachePathItems('558', items);
+    expect(useSchemaStore.getState().pathItems['558']).toEqual(items);
+  });
+
   it('registerPathAliases maps name to id', async () => {
     useSchemaStore.getState().registerPathAliases([{ name: 'presto_afi_data', id: '558' }]);
     expect(useSchemaStore.getState().pathAliases).toEqual({ presto_afi_data: '558' });

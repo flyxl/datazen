@@ -142,7 +142,7 @@ const translations = {
   'connShare.passwordOptional': 'DataGrip / Navicat / DBeaver / DBX 明文可留空',
   'connShare.passwordImportPlaceholder': 'DataZen / DBX 加密 / TablePlus 需要密碼',
   'connShare.importFormatsHint':
-    '支援 DataZen、DBX、DataGrip、Navicat、DBeaver、TablePlus。來源未含密碼時需手動補填。',
+    '支援 DataZen（.datazenconnection）、DBX、DataGrip、Navicat、DBeaver、TablePlus。來源未含密碼時需手動補填。',
   'connShare.exportAction': '導出…',
   'connShare.importAction': '導入…',
   'connShare.exportSuccess': '已匯出 {count} 個連線',

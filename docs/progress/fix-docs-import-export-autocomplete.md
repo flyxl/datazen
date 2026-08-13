@@ -7,14 +7,14 @@
 |---|------|------|------|----------------|------|
 | 1 | 菜单「使用说明」打开两个窗口，其中一个无法拖动 | 开发完成 | 通过 | 通过 | 已提交 |
 | 2 | 导入连接点「浏览文件」弹出 Finder 后应用卡死 | 开发完成 | 通过 | 用户复现后已二次修复 | 已提交 |
-| 3 | 导出连接改为 TablePlus `.tableplusconnection` 二进制（非明文 JSON） | 开发完成 | 通过 | | 已提交 |
+| 3 | 导出连接改为 RNCryptor 二进制 `.datazenconnection`（非明文 JSON；导入仍兼容 TablePlus） | 开发完成 | 通过 | | 已提交 |
 | 4 | Kiwi / Superset：未写完整路径时 SQL 补全应给出当前库对象 | 开发完成 | 通过 | | 已提交 |
 | 5 | Superset：SQL 若带了当前 database 前缀，发给 API 前剥掉 | 开发完成 | 通过 | | 插件仓提交 |
 | 6 | Superset 懒加载树：补全时触发加载并展示 loading | 开发完成 | 通过 | | 已提交 |
 
 ## 阻塞
 
-无。#3 已按 TablePlus RNCryptor v3 `.tableplusconnection` 实现（host/user/password 不出现在明文 JSON）；旧 DataZen JSON 仍可导入。#5 在 git 驱动 `datazen-plugin-superset`（`packages/drivers/superset/` 本地克隆 + `/Users/flyxl/code/datazen-plugin-superset`）。
+无。#3 导出扩展名为 `.datazenconnection`（RNCryptor v3，与 TablePlus 同算法；导入仍接受 `.tableplusconnection` / 旧 JSON）。#5/#6 树与补全共用 `schemaStore.pathItems`。
 
 ## 测试记录
 
