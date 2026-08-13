@@ -50,7 +50,7 @@ pub struct AppSettings {
     pub editor_font_family: String,
     pub confirm_on_delete: bool,
     pub auto_commit: bool,
-    /// Require WHERE on UPDATE/DELETE (TablePlus-style Safe Mode). Default on.
+    /// Require WHERE on UPDATE/DELETE; also block TRUNCATE/DROP (TablePlus-style Safe Mode). Default on.
     #[serde(default = "default_true")]
     pub safe_mode: bool,
     pub default_page_size: u32,

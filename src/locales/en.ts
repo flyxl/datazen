@@ -357,7 +357,7 @@ const en: Record<TranslationKey, string> = {
   'settings.confirmDeleteHint': 'Show a confirmation dialog when deleting rows',
   'settings.autoCommitHint': 'Automatically commit edits to data',
   'settings.safeMode': 'Safe Mode',
-  'settings.safeModeHint': 'Block UPDATE/DELETE without a WHERE clause, and TRUNCATE',
+  'settings.safeModeHint': 'Block UPDATE/DELETE without a WHERE clause, and TRUNCATE/DROP',
 
   'settings.monitor': 'Monitor',
   'settings.monitor.description':

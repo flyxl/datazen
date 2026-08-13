@@ -422,6 +422,47 @@ export async function connectToCard(cardName: string) {
 
 // ── SQL / CodeMirror ────────────────────────────────────────────────
 
+type SettingsLike = { safeMode?: boolean } & Record<string, unknown>;
+
+async function invokeSettings<T>(cmd: string, args: Record<string, unknown> = {}): Promise<T> {
+  const result = await browser.executeAsync(
+    (c: string, a: string, done: (r: unknown) => void) => {
+      (
+        window as unknown as {
+          __TAURI_INTERNALS__?: { invoke: (cmd: string, args: unknown) => Promise<unknown> };
+        }
+      ).__TAURI_INTERNALS__
+        ?.invoke(c, JSON.parse(a))
+        .then((r) => done(r))
+        .catch((e: unknown) => done({ __error: String(e) }));
+    },
+    cmd,
+    JSON.stringify(args),
+  );
+  if (result && typeof result === 'object' && result !== null && '__error' in result) {
+    throw new Error(String((result as { __error: string }).__error));
+  }
+  return result as T;
+}
+
+/** DROP / TRUNCATE are blocked when Safe Mode is on (product default). */
+export function sqlBlockedBySafeMode(sql: string): boolean {
+  return /^\s*(DROP|TRUNCATE)\b/im.test(sql);
+}
+
+/** Temporarily disable Safe Mode for fixture DDL (DROP/TRUNCATE). Restores previous flag. */
+export async function withSafeModeOff<T>(fn: () => Promise<T>): Promise<T> {
+  const settings = await invokeSettings<SettingsLike>('get_settings');
+  if (!settings.safeMode) return fn();
+  await invokeSettings('save_settings', { settings: { ...settings, safeMode: false } });
+  try {
+    return await fn();
+  } finally {
+    const current = await invokeSettings<SettingsLike>('get_settings');
+    await invokeSettings('save_settings', { settings: { ...current, safeMode: true } });
+  }
+}
+
 /** Replace CodeMirror editor content using execCommand. */
 export async function setEditorContent(sql: string) {
   await browser.execute((text: string) => {
@@ -440,6 +481,13 @@ export async function setEditorContent(sql: string) {
 
 /** Execute SQL in the currently active query tab and wait for completion. */
 export async function executeSQL(sql: string) {
+  if (sqlBlockedBySafeMode(sql)) {
+    return withSafeModeOff(() => executeSqlInEditor(sql));
+  }
+  return executeSqlInEditor(sql);
+}
+
+async function executeSqlInEditor(sql: string) {
   await setEditorContent(sql);
   const execBtn = await $('button*=执行');
   const prevTotal = await browser.execute(() => {
