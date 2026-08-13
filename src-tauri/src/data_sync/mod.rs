@@ -4,6 +4,7 @@
 //! Does not perform Transfer (heterogeneous copy) or Structure Sync.
 
 pub mod changeset;
+pub mod compare;
 pub mod error;
 pub mod gate;
 pub mod legacy;
@@ -15,6 +16,9 @@ pub mod state;
 pub mod types_eq;
 
 pub use changeset::{ChangeSet, TableChangeSet};
+pub use compare::{
+    cmp_keys, cmp_values, compare_sorted_rows, compare_table_pages, SliceRowSource, RowPageSource,
+};
 pub use error::DataSyncError;
 pub use gate::{check_table_gate, CompatCode, CompatIssue, GateVerdict};
 pub use legacy::{
