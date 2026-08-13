@@ -2,9 +2,7 @@
 
 use super::super::error::{CmdExt, CommandError};
 use super::super::AppState;
-use crate::data_sync::{
-    execute_statements, ExecutionResult, SqlStatement, StatementExecutor,
-};
+use crate::data_sync::{execute_statements, ExecutionResult, SqlStatement, StatementExecutor};
 use crate::db::{ConnectionHandle, DatabaseDriver, TransactionHandle, Value};
 use async_trait::async_trait;
 use std::sync::Arc;

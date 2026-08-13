@@ -31,9 +31,9 @@ pub fn cmp_values(left: &Value, right: &Value) -> Ordering {
         (Value::Bytes(a), Value::Bytes(b)) => a.cmp(b),
         (Value::Timestamp(a), Value::Timestamp(b)) => a.cmp(b),
         (Value::Json(a), Value::Json(b)) => a.to_string().cmp(&b.to_string()),
-        (a, b) => value_rank(a).cmp(&value_rank(b)).then_with(|| {
-            format!("{a:?}").cmp(&format!("{b:?}"))
-        }),
+        (a, b) => value_rank(a)
+            .cmp(&value_rank(b))
+            .then_with(|| format!("{a:?}").cmp(&format!("{b:?}"))),
     }
 }
 
@@ -60,7 +60,10 @@ pub fn cmp_keys(left: &[Value], right: &[Value]) -> Ordering {
     left.len().cmp(&right.len())
 }
 
-pub fn extract_key(row: &[Option<Value>], pk_indexes: &[usize]) -> Result<Vec<Value>, DataSyncError> {
+pub fn extract_key(
+    row: &[Option<Value>],
+    pk_indexes: &[usize],
+) -> Result<Vec<Value>, DataSyncError> {
     let mut key = Vec::with_capacity(pk_indexes.len());
     for &idx in pk_indexes {
         let cell = row.get(idx).ok_or_else(|| {
@@ -117,19 +120,11 @@ pub fn compare_sorted_rows(
         let tgt_key = extract_key(&target_rows[j], pk_indexes)?;
         match cmp_keys(&src_key, &tgt_key) {
             Ordering::Less => {
-                changes.push(RowChange::insert(
-                    src_key,
-                    source_rows[i].clone(),
-                    options,
-                ));
+                changes.push(RowChange::insert(src_key, source_rows[i].clone(), options));
                 i += 1;
             }
             Ordering::Greater => {
-                changes.push(RowChange::delete(
-                    tgt_key,
-                    target_rows[j].clone(),
-                    options,
-                ));
+                changes.push(RowChange::delete(tgt_key, target_rows[j].clone(), options));
                 j += 1;
             }
             Ordering::Equal => {
@@ -370,7 +365,10 @@ mod tests {
             Ordering::Less
         );
         assert_eq!(
-            cmp_keys(&[Value::Integer(1)], &[Value::Integer(1), Value::Integer(2)]),
+            cmp_keys(
+                &[Value::Integer(1)],
+                &[Value::Integer(1), Value::Integer(2)]
+            ),
             Ordering::Less
         );
         assert_eq!(
@@ -414,11 +412,7 @@ mod tests {
             vec![i(3), s("c")],
             vec![i(5), s("e")],
         ];
-        let target_data = vec![
-            vec![i(1), s("a")],
-            vec![i(2), s("B")],
-            vec![i(4), s("d")],
-        ];
+        let target_data = vec![vec![i(1), s("a")], vec![i(2), s("B")], vec![i(4), s("d")]];
         let cols = vec!["id".into(), "name".into()];
         let mut src = SliceRowSource::new(source_data.clone(), vec![0]).unwrap();
         let mut tgt = SliceRowSource::new(target_data.clone(), vec![0]).unwrap();
@@ -466,14 +460,8 @@ mod tests {
     #[test]
     fn pk_index_out_of_bounds() {
         let opts = SyncOptions::default();
-        let err = compare_sorted_rows(
-            &[vec![i(1)]],
-            &[vec![i(1)]],
-            &[3],
-            &["id".into()],
-            &opts,
-        )
-        .unwrap_err();
+        let err = compare_sorted_rows(&[vec![i(1)]], &[vec![i(1)]], &[3], &["id".into()], &opts)
+            .unwrap_err();
         assert!(err.to_string().contains("out of row bounds"));
     }
 

@@ -632,6 +632,18 @@ describe('数据同步: 批量同步与进度 (SYNC-BATCH)', () => {
     }
   });
 
+  it('SYNC-INSPECT-001: inspect_data_sync maps same-family tables', async () => {
+    const results = await invokeBackend<
+      Array<{ sourceTable: string; targetTable: string; status: string }>
+    >('inspect_data_sync', {
+      sourceConnectionId: batchSrcId,
+      targetConnectionId: batchTgtId,
+    });
+    const names = results.map((r) => r.sourceTable);
+    expect(names).toContain('sync_batch_a');
+    expect(results.find((r) => r.sourceTable === 'sync_batch_a')?.status).toBe('MATCHED');
+  });
+
   it('SYNC-BATCH-001: sync_tables refuses overwrite copy', async () => {
     let message = '';
     try {

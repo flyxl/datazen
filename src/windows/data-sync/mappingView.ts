@@ -1,3 +1,5 @@
+import type { TranslationKey } from '../../locales/zh-CN';
+
 export type DataSyncMappingStatus =
   | 'MATCHED'
   | 'UNMAPPED_SOURCE'
@@ -13,7 +15,7 @@ export interface DataSyncTableResult {
   warnings?: string[];
 }
 
-export function mappingLabelKey(status: DataSyncMappingStatus): string {
+export function mappingLabelKey(status: DataSyncMappingStatus): TranslationKey {
   switch (status) {
     case 'MATCHED':
       return 'sync.mappingMatched';
@@ -45,8 +47,7 @@ export function summarizeMappings(rows: DataSyncTableResult[]): {
   return {
     matched: rows.filter((r) => r.status === 'MATCHED').length,
     incompatible: rows.filter((r) => r.status === 'INCOMPATIBLE').length,
-    unmapped: rows.filter(
-      (r) => r.status === 'UNMAPPED_SOURCE' || r.status === 'UNMAPPED_TARGET',
-    ).length,
+    unmapped: rows.filter((r) => r.status === 'UNMAPPED_SOURCE' || r.status === 'UNMAPPED_TARGET')
+      .length,
   };
 }

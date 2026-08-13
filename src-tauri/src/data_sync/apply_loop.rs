@@ -13,7 +13,10 @@ fn key_bytes(key: &[Value]) -> Vec<u8> {
     serde_json::to_vec(key).unwrap_or_default()
 }
 
-pub fn rows_to_map(rows: &[Row], pk_indexes: &[usize]) -> Result<BTreeMap<Vec<u8>, Row>, DataSyncError> {
+pub fn rows_to_map(
+    rows: &[Row],
+    pk_indexes: &[usize],
+) -> Result<BTreeMap<Vec<u8>, Row>, DataSyncError> {
     let mut map = BTreeMap::new();
     for row in rows {
         let key = extract_key(row, pk_indexes)?;
@@ -42,9 +45,10 @@ pub fn apply_changeset_to_rows(
     for change in changes {
         match change.operation {
             ChangeOperation::Insert | ChangeOperation::Update => {
-                let row = change.source_row.clone().ok_or_else(|| {
-                    DataSyncError::validation("apply requires a source row")
-                })?;
+                let row = change
+                    .source_row
+                    .clone()
+                    .ok_or_else(|| DataSyncError::validation("apply requires a source row"))?;
                 let key = extract_key(&row, pk_indexes)?;
                 target.insert(key_bytes(&key), row);
                 applied += 1;
@@ -92,11 +96,7 @@ mod tests {
         options.delete = true;
         let cols = vec!["id".into(), "name".into()];
         let pk = vec![0usize];
-        let source = vec![
-            vec![i(1), s("a")],
-            vec![i(2), s("b2")],
-            vec![i(3), s("c")],
-        ];
+        let source = vec![vec![i(1), s("a")], vec![i(2), s("b2")], vec![i(3), s("c")]];
         let target = vec![vec![i(2), s("b")], vec![i(4), s("d")]];
 
         let first = compare_sorted_rows(&source, &target, &pk, &cols, &options).unwrap();
@@ -115,12 +115,8 @@ mod tests {
         assert!(!set.is_empty());
 
         let mut target_map = rows_to_map(&target, &pk).unwrap();
-        let applied = apply_changeset_to_rows(
-            &mut target_map,
-            &set.tables[0].changes,
-            &pk,
-        )
-        .unwrap();
+        let applied =
+            apply_changeset_to_rows(&mut target_map, &set.tables[0].changes, &pk).unwrap();
         assert!(applied >= 3);
 
         let target_after = map_to_sorted_rows(&target_map, &pk);
@@ -140,7 +136,15 @@ mod tests {
         let table = TableResult::matched("t", "t", first);
         let set = ChangeSet::from_comparison("t", &ComparisonResult::new(vec![table]), &options);
         let mut target_map = rows_to_map(&target, &pk).unwrap();
-        apply_changeset_to_rows(&mut target_map, set.tables.get(0).map(|t| t.changes.as_slice()).unwrap_or(&[]), &pk).unwrap();
+        apply_changeset_to_rows(
+            &mut target_map,
+            set.tables
+                .get(0)
+                .map(|t| t.changes.as_slice())
+                .unwrap_or(&[]),
+            &pk,
+        )
+        .unwrap();
         let second = recompare_table(
             &source,
             &map_to_sorted_rows(&target_map, &pk),
