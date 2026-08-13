@@ -36,9 +36,12 @@ pub(crate) async fn compare_data_sync_impl(
         Some(id) => Some(super::jobs::ensure_job(id).await),
         None => None,
     };
-    let mappings =
-        inspect_data_sync_impl(state, source_connection_id.clone(), target_connection_id.clone())
-            .await?;
+    let mappings = inspect_data_sync_impl(
+        state,
+        source_connection_id.clone(),
+        target_connection_id.clone(),
+    )
+    .await?;
     let wanted: std::collections::HashSet<String> = tables.into_iter().collect();
     let src_config = state
         .connection_manager
@@ -79,9 +82,9 @@ pub(crate) async fn compare_data_sync_impl(
             .as_ref()
             .is_some_and(|c| c.load(std::sync::atomic::Ordering::SeqCst))
         {
-            return Err(CommandError::from(crate::data_sync::DataSyncError::cancelled(
-                "compare cancelled",
-            )));
+            return Err(CommandError::from(
+                crate::data_sync::DataSyncError::cancelled("compare cancelled"),
+            ));
         }
         let schema = src_driver
             .get_table_schema(&src_handle, &mapping.source_table)
@@ -158,7 +161,13 @@ pub(crate) async fn apply_data_sync_impl(
         let column_names: Vec<String> = schema.columns.iter().map(|c| c.name.clone()).collect();
         let pk = schema.primary_keys.clone();
         let stmts = if family == "mysql" {
-            generate_table_sql(table, &pk, &column_names, |n| quote_ident_sql(n, quote), mysql_placeholder)
+            generate_table_sql(
+                table,
+                &pk,
+                &column_names,
+                |n| quote_ident_sql(n, quote),
+                mysql_placeholder,
+            )
         } else {
             generate_table_sql(
                 table,

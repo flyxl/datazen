@@ -15,10 +15,10 @@ mod tests;
 use super::error::CommandError;
 use super::AppState;
 use crate::store::SyncTask;
+pub(crate) use apply::{apply_data_sync_impl, compare_data_sync_impl};
 pub(crate) use compare::{
     compare_databases_impl, compare_table_data_impl, compare_table_schemas_impl,
 };
-pub(crate) use apply::{apply_data_sync_impl, compare_data_sync_impl};
 pub(crate) use exec::execute_data_sync_impl;
 pub(crate) use inspect::inspect_data_sync_impl;
 pub(crate) use jobs::cancel_job;
