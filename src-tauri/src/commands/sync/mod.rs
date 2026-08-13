@@ -1,6 +1,7 @@
 //! Data sync IPC commands (compare, table sync, task persistence).
 
 mod compare;
+mod exec;
 mod table_sync;
 mod tasks;
 mod types;
@@ -14,6 +15,7 @@ use crate::store::SyncTask;
 pub(crate) use compare::{
     compare_databases_impl, compare_table_data_impl, compare_table_schemas_impl,
 };
+pub(crate) use exec::execute_data_sync_impl;
 pub(crate) use table_sync::{sync_table_impl, sync_tables_impl};
 pub(crate) use tasks::{
     check_sync_conflicts_impl, delete_sync_task_impl, get_sync_tasks_impl,
@@ -139,6 +141,15 @@ pub async fn delete_sync_task(
     task_id: String,
 ) -> Result<(), CommandError> {
     delete_sync_task_impl(&state, task_id).await
+}
+
+#[tauri::command]
+pub async fn execute_data_sync(
+    state: State<'_, AppState>,
+    target_connection_id: String,
+    statements: Vec<crate::data_sync::SqlStatement>,
+) -> Result<crate::data_sync::ExecutionResult, CommandError> {
+    execute_data_sync_impl(&state, target_connection_id, statements).await
 }
 
 #[tauri::command]

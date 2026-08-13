@@ -438,6 +438,34 @@ fn classify_sync_pair_rejects_ir_and_allows_mysql_family() {
 }
 
 #[tokio::test]
+async fn execute_data_sync_rejects_read_only_target() {
+    use crate::data_sync::{ChangeOperation, SqlStatement};
+    use crate::testing::app_state::{sample_postgres_config, TestAppState};
+
+    let test = TestAppState::new().await;
+    test.registry
+        .register_test_driver("postgresql", test.mock.clone())
+        .await;
+    let mut cfg = sample_postgres_config("ro-tgt");
+    cfg.database_type = "postgresql".into();
+    cfg.read_only = true;
+    test.store.save_connection(cfg).await.unwrap();
+    let id = test.connect_config("ro-tgt").await;
+    let stmt = SqlStatement {
+        table: "t".into(),
+        operation: ChangeOperation::Insert,
+        sql: "INSERT INTO t VALUES (1)".into(),
+        preview_sql: "INSERT INTO t VALUES (1)".into(),
+        parameters: vec![],
+        row_key: vec![],
+    };
+    let err = super::execute_data_sync_impl(&test.state, id, vec![stmt])
+        .await
+        .unwrap_err();
+    assert!(err.to_string().contains("read-only"));
+}
+
+#[tokio::test]
 async fn check_sync_conflicts_missing_task_errors() {
     use crate::testing::app_state::TestAppState;
 

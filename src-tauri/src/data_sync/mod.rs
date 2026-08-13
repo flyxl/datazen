@@ -6,6 +6,7 @@
 pub mod changeset;
 pub mod compare;
 pub mod error;
+pub mod execute;
 pub mod gate;
 pub mod legacy;
 pub mod mapping;
@@ -21,6 +22,7 @@ pub use compare::{
     cmp_keys, cmp_values, compare_sorted_rows, compare_table_pages, SliceRowSource, RowPageSource,
 };
 pub use error::DataSyncError;
+pub use execute::{execute_statements, ExecutionResult, StatementExecutor};
 pub use gate::{check_table_gate, CompatCode, CompatIssue, GateVerdict};
 pub use legacy::{
     is_overwrite_copy_retired_message, refuse_overwrite_copy, OVERWRITE_COPY_RETIRED,
