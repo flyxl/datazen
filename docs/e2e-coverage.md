@@ -51,12 +51,12 @@
 | 表筛选：打开 / 添加 / Apply / Clear / AND·OR / 收起 / chip / 空值不报错 | `table-filter.ts` | Covered |
 | 表内联编辑 | `table-edit.ts` | Covered |
 | 详情面板 | `detail-panel.ts` | Covered |
-| 结构只读 + 内嵌编辑 + 返回 + 保存列变更 | `table-structure.ts` | Covered |
+| 结构只读 + 内嵌编辑 + 返回 + 保存列变更 + 导出表结构按钮 | `table-structure.ts` | Covered |
 | 索引列表 / 新建对话框 / 删除 / 在结构中编辑 | `table-indexes.ts`, `connection-window.ts` | Covered |
 | FK / DDL 子标签 | `connection-window.ts` | Covered |
 | Objects / Privileges 面板 | `object-browser.ts` | Covered |
 | 侧栏导出 / 导入 | `export-import.ts` | Covered |
-| DataTable 工具栏导出对话框 | `export-import.ts` (EI-GRID-*) | Covered |
+| 顶栏导出对话框 / DataTable 导出 | `export-import.ts` (EI-BE / EI-GRID) | Covered |
 | ER 图 | `er-diagram.ts` | Partial |
 | 图表 | `chart-views.ts`, `chart-expand.ts` | Covered |
 | AI Chat / @ 上下文 | `ai-context*.ts`, `ai-features.ts` | Covered / Partial（需 API Key 的路径见 Exception） |

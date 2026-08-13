@@ -622,7 +622,7 @@ const en: Record<TranslationKey, string> = {
   'export.export': 'Export',
 
   // ── Batch Export Dialog ──
-  'batchExport.title': 'Batch Export',
+  'batchExport.title': 'Export',
   'batchExport.selectTables': 'Select Tables',
   'batchExport.selectAll': 'Select All',
   'batchExport.clearAll': 'Clear All',
@@ -686,6 +686,11 @@ const en: Record<TranslationKey, string> = {
   'structEditor.noChanges': 'No changes to apply',
   'structEditor.previewFailed': 'Failed to generate SQL preview',
   'structEditor.executePartial': '{executed}/{total} statements succeeded; stopped: {error}',
+  'structEditor.exportStructure': 'Export Structure',
+  'structEditor.exportingStructure': 'Exporting…',
+  'structEditor.exportFailed': 'Failed to export table structure',
+  'structEditor.exportUnsupported':
+    'Exporting table structure is not supported for this connection type',
 
   // ── Indexes View ──
   'indexes.newIndex': 'New Index',

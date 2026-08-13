@@ -849,15 +849,6 @@ export function SqlConnectionView({
           <Plus className="h-4 w-4" />
           {t('connWin.newQuery')}
         </Button>
-        <Button
-          variant="secondary"
-          className="h-8"
-          title={t('batchExport.title')}
-          onClick={handleOpenBatchExportFromToolbar}
-        >
-          <Download className="h-4 w-4" />
-          {t('batchExport.title')}
-        </Button>
         {showStructureEditor && (
           <Button variant="secondary" className="h-8" onClick={handleCreateTable}>
             <TableProperties className="h-4 w-4" />
@@ -882,6 +873,16 @@ export function SqlConnectionView({
             </Button>
           </>
         )}
+        <Button
+          variant="secondary"
+          className="h-8"
+          data-testid="conn-toolbar-export"
+          title={t('batchExport.title')}
+          onClick={handleOpenBatchExportFromToolbar}
+        >
+          <Download className="h-4 w-4" />
+          {t('batchExport.title')}
+        </Button>
         <div className="mx-1 h-6 w-px bg-edge" />
 
         <div className="relative min-w-0 max-w-[280px] flex-1">

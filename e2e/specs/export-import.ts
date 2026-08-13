@@ -217,10 +217,10 @@ describe('导出和导入 (EI-001~EI-006)', () => {
     expect(body).not.toContain(t('export.format'));
   });
 
-  // ── 批量导出（顶栏可 DOM 断言；Schema 树原生菜单不可）────────
+  // ── 导出（顶栏可 DOM 断言；Schema 树原生菜单不可）────────
 
-  it('顶栏批量导出按钮应存在并可打开对话框 (EI-BE-001)', async () => {
-    const batchBtn = await $(`button[title="${t('batchExport.title')}"]`);
+  it('顶栏导出按钮应存在并可打开对话框 (EI-BE-001)', async () => {
+    const batchBtn = await $('[data-testid="conn-toolbar-export"]');
     await batchBtn.waitForDisplayed({ timeout: 10000 });
     await batchBtn.click();
     await browser.pause(1000);

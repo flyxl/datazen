@@ -533,7 +533,7 @@ const translations = {
   'export.export': '輸出',
 
   // ── Batch Export Dialog ──
-  'batchExport.title': 'Batch Export',
+  'batchExport.title': 'Export',
   'batchExport.selectTables': 'Select Tables',
   'batchExport.selectAll': 'Select All',
   'batchExport.clearAll': 'Clear All',
@@ -592,6 +592,11 @@ const translations = {
   'structEditor.noChanges': '適用する変更がありません',
   'structEditor.previewFailed': 'SQLプレビューの生成に失敗しました',
   'structEditor.executePartial': '{executed}/{total} ステートメント成功後に停止：{error}',
+  'structEditor.exportStructure': '構造をエクスポート',
+  'structEditor.exportingStructure': 'エクスポート中…',
+  'structEditor.exportFailed': 'テーブル構造のエクスポートに失敗しました',
+  'structEditor.exportUnsupported':
+    'この接続タイプではテーブル構造のエクスポートに対応していません',
   'indexes.newIndex': '新しいインデックス',
   'indexes.indexName': 'インデックス名',
   'indexes.selectColumns': '列を選択します (選択順)',

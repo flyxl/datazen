@@ -46,12 +46,17 @@ export function ConnectionWindow() {
     const existing = useActiveConnectionStore.getState().connections[configId];
     if (existing?.status === 'connected' && existing.connectionId) {
       setConnectionId(existing.connectionId);
-      void emitCrossWindow('datazen:connection-ready', { configId, connectionId: existing.connectionId });
+      void emitCrossWindow('datazen:connection-ready', {
+        configId,
+        connectionId: existing.connectionId,
+      });
       return;
     }
 
     let cancelled = false;
-    const timer = setTimeout(() => { if (!cancelled) setShowLoading(true); }, 400);
+    const timer = setTimeout(() => {
+      if (!cancelled) setShowLoading(true);
+    }, 400);
 
     (async () => {
       try {
@@ -63,14 +68,18 @@ export function ConnectionWindow() {
         }
       } catch (e) {
         if (!cancelled) {
-          const msg = typeof e === 'string' ? e : e instanceof Error ? e.message : t('backend.unknownError');
+          const msg =
+            typeof e === 'string' ? e : e instanceof Error ? e.message : t('backend.unknownError');
           setConnectError(msg);
           void emitCrossWindow('datazen:connection-failed', { configId, error: msg });
         }
       }
     })();
 
-    return () => { cancelled = true; clearTimeout(timer); };
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, [connectionId, configId, t]);
 
   useEffect(() => {
@@ -108,7 +117,9 @@ export function ConnectionWindow() {
       if (!('__TAURI_INTERNALS__' in globalThis)) return;
       const { getCurrentWindow } = await import('@tauri-apps/api/window');
       await getCurrentWindow().destroy();
-    }).then((unlisten) => { cleanup = unlisten; });
+    }).then((unlisten) => {
+      cleanup = unlisten;
+    });
     return () => cleanup?.();
   }, [connectionId]);
 
@@ -141,10 +152,11 @@ export function ConnectionWindow() {
           title={centerTitle}
           leftContent={
             <div className="flex items-center gap-2">
-              {connectError
-                ? <span className="inline-flex h-2 w-2 rounded-full bg-red-500" />
-                : <span className="inline-flex h-2 w-2 animate-pulse rounded-full bg-yellow-400" />
-              }
+              {connectError ? (
+                <span className="inline-flex h-2 w-2 rounded-full bg-red-500" />
+              ) : (
+                <span className="inline-flex h-2 w-2 animate-pulse rounded-full bg-yellow-400" />
+              )}
               <span className="text-xs text-fg-secondary">{connectionName}</span>
             </div>
           }
@@ -155,6 +167,7 @@ export function ConnectionWindow() {
               <div className="text-sm text-red-400">{connectError}</div>
               <button
                 className="rounded-md bg-blue-500 px-4 py-1.5 text-sm text-white hover:bg-blue-600"
+                type="button"
                 onClick={() => {
                   setConnectError(null);
                   void (async () => {
