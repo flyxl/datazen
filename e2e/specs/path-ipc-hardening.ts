@@ -45,7 +45,10 @@ async function invokeBackend<T>(cmd: string, args: Record<string, unknown> = {})
   return result as T;
 }
 
-async function invokeBackendCatch(cmd: string, args: Record<string, unknown> = {}): Promise<string | null> {
+async function invokeBackendCatch(
+  cmd: string,
+  args: Record<string, unknown> = {},
+): Promise<string | null> {
   try {
     await invokeBackend(cmd, args);
     return null;
@@ -62,7 +65,7 @@ describe('Path IPC Hardening (PIH-001~PIH-006)', () => {
   before(async () => {
     mainWindow = await browser.getWindowHandle();
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'datazen-pih-'));
-    exportPath = path.join(tmpDir, 'connections-export.json');
+    exportPath = path.join(tmpDir, 'connections-export.datazenconnection');
   });
 
   after(async () => {
@@ -110,9 +113,9 @@ describe('Path IPC Hardening (PIH-001~PIH-006)', () => {
     });
     expect(typeof count).toBe('number');
     expect(fs.existsSync(exportPath)).toBe(true);
-    const raw = fs.readFileSync(exportPath, 'utf8');
-    expect(raw).toContain('"connections"');
-    expect(raw).toContain('"encrypted"');
+    const raw = fs.readFileSync(exportPath);
+    expect(raw[0]).toBe(0x03);
+    expect(raw[1]).toBe(0x01);
 
     const preview = await invokeBackend<{
       connections: unknown[];
@@ -181,10 +184,10 @@ describe('Path IPC Hardening (PIH-001~PIH-006)', () => {
 
     const newBtn = await $('button*=新建连接');
     await newBtn.click();
-    await browser.waitUntil(
-      async () => (await browser.getWindowHandles()).length > 1,
-      { timeout: 15000, timeoutMsg: 'new-connection window did not open' },
-    );
+    await browser.waitUntil(async () => (await browser.getWindowHandles()).length > 1, {
+      timeout: 15000,
+      timeoutMsg: 'new-connection window did not open',
+    });
     const handles = await browser.getWindowHandles();
     const connWin = handles.find((h) => h !== mainWindow)!;
     await browser.switchToWindow(connWin);

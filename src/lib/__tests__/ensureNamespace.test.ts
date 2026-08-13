@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   ensureNamespacePath,
+  namespaceEnsurePending,
   namespacePathLoaded,
   pathNavSegment,
   type EnsureDeps,
@@ -10,16 +11,26 @@ import type { TableInfo } from '../../types';
 function makeDeps(overrides: Partial<EnsureDeps> = {}): EnsureDeps {
   const pathAliases: Record<string, string> = { ...(overrides.pathAliases ?? { presto: '558' }) };
   const loadedPaths = new Set<string>(overrides.loadedPaths ? [...overrides.loadedPaths] : []);
+  const pathItems: Record<string, TableInfo[]> = { ...(overrides.pathItems ?? {}) };
   const mergeNamespace =
     overrides.mergeNamespace ??
     vi.fn((segments: string[], _kind: 'branch' | 'tables', _names: string[]) => {
       loadedPaths.add(segments.join('/') || '');
     });
+  const cachePathItems =
+    overrides.cachePathItems ??
+    vi.fn((fetchPath: string, items: TableInfo[]) => {
+      pathItems[fetchPath] = items;
+    });
   const registerPathAliases =
     overrides.registerPathAliases ??
     vi.fn((entries: { name: string; id: string }[]) => {
       for (const { name, id } of entries) pathAliases[name] = id;
-      mergeNamespace([], 'branch', entries.map((e) => e.name));
+      mergeNamespace(
+        [],
+        'branch',
+        entries.map((e) => e.name),
+      );
     });
 
   return {
@@ -36,7 +47,9 @@ function makeDeps(overrides: Partial<EnsureDeps> = {}): EnsureDeps {
     ...overrides,
     pathAliases: overrides.pathAliases ?? pathAliases,
     loadedPaths: overrides.loadedPaths ?? loadedPaths,
+    pathItems: overrides.pathItems ?? pathItems,
     mergeNamespace,
+    cachePathItems,
     registerPathAliases,
   };
 }
@@ -71,6 +84,21 @@ describe('ensureNamespacePath — path-hierarchy', () => {
     expect(deps.getDatabases).not.toHaveBeenCalled();
     expect(deps.mergeNamespace).toHaveBeenCalledWith([], 'branch', ['presto', 'other']);
     expect(deps.loadedPaths.has('')).toBe(true);
+  });
+
+  it('[] with currentDatabase fetches that root instead of only seeding aliases', async () => {
+    const deps = makeDeps({
+      currentDatabase: 'presto',
+      databases: ['presto'],
+      getTables: vi
+        .fn()
+        .mockResolvedValue([
+          { name: '558/hive', schema: 'CATALOG', tableType: 'table', rowCount: null },
+        ] satisfies TableInfo[]),
+    });
+    await ensureNamespacePath([], deps);
+    expect(deps.getTables).toHaveBeenCalledWith('conn-1', '558');
+    expect(deps.mergeNamespace).toHaveBeenCalledWith(['presto'], 'branch', ['hive']);
   });
 
   it("['presto'] fetches catalogs with aliased root id", async () => {
@@ -123,6 +151,26 @@ describe('ensureNamespacePath — path-hierarchy', () => {
     expect(deps.getTables).not.toHaveBeenCalled();
   });
 
+  it('reuses cached path items without calling getTables', async () => {
+    const items = [
+      { name: '558/hive', schema: 'CATALOG', tableType: 'table', rowCount: null },
+    ] satisfies TableInfo[];
+    const deps = makeDeps({ pathItems: { '558': items } });
+    await ensureNamespacePath(['presto'], deps);
+    expect(deps.getTables).not.toHaveBeenCalled();
+    expect(deps.mergeNamespace).toHaveBeenCalledWith(['presto'], 'branch', ['hive']);
+  });
+
+  it('writes getTables results into the shared pathItems cache', async () => {
+    const items = [
+      { name: '558/hive', schema: 'CATALOG', tableType: 'table', rowCount: null },
+    ] satisfies TableInfo[];
+    const deps = makeDeps({ getTables: vi.fn().mockResolvedValue(items) });
+    await ensureNamespacePath(['presto'], deps);
+    expect(deps.cachePathItems).toHaveBeenCalledWith('558', items);
+    expect(deps.pathItems['558']).toEqual(items);
+  });
+
   it('dedupes concurrent ensures for the same key', async () => {
     let resolveTables!: (v: TableInfo[]) => void;
     const tablesPromise = new Promise<TableInfo[]>((resolve) => {
@@ -134,9 +182,7 @@ describe('ensureNamespacePath — path-hierarchy', () => {
 
     const p1 = ensureNamespacePath(['presto'], deps);
     const p2 = ensureNamespacePath(['presto'], deps);
-    resolveTables([
-      { name: '558/hive', schema: 'CATALOG', tableType: 'table', rowCount: null },
-    ]);
+    resolveTables([{ name: '558/hive', schema: 'CATALOG', tableType: 'table', rowCount: null }]);
     await Promise.all([p1, p2]);
     expect(deps.getTables).toHaveBeenCalledTimes(1);
   });
@@ -159,7 +205,10 @@ describe('pathNavSegment', () => {
       ),
     ).toBe('snap');
     expect(
-      pathNavSegment({ name: 'catalog', schema: 'CATALOG', tableType: 'table', rowCount: null }, '558'),
+      pathNavSegment(
+        { name: 'catalog', schema: 'CATALOG', tableType: 'table', rowCount: null },
+        '558',
+      ),
     ).toBe('catalog');
   });
 });
@@ -203,6 +252,24 @@ describe('ensureNamespacePath — default-sql (mysql)', () => {
     expect(deps.getTables).toHaveBeenCalledWith('conn-1', 'app');
     expect(deps.mergeNamespace).toHaveBeenCalledWith(['app'], 'tables', ['users']);
   });
+
+  it('[] with currentDatabase also loads that database tables', async () => {
+    const deps = makeDeps({
+      databaseType: 'mysql',
+      pathAliases: {},
+      currentDatabase: 'app',
+      databases: ['app', 'test'],
+      getDatabases: vi.fn().mockResolvedValue(['app', 'test']),
+      getTables: vi
+        .fn()
+        .mockResolvedValue([
+          { name: 'users', schema: null, tableType: 'table', rowCount: null },
+        ] satisfies TableInfo[]),
+    });
+    await ensureNamespacePath([], deps);
+    expect(deps.getTables).toHaveBeenCalledWith('conn-1', 'app');
+    expect(deps.mergeNamespace).toHaveBeenCalledWith(['app'], 'tables', ['users']);
+  });
 });
 
 describe('ensureNamespacePath — postgresql', () => {
@@ -242,9 +309,11 @@ describe('ensureNamespacePath — postgresql', () => {
       databaseType: 'postgresql',
       pathAliases: {},
       isMultiDatabase: true,
-      getTables: vi.fn().mockResolvedValue([
-        { name: 't1', schema: 'public', tableType: 'table', rowCount: null },
-      ] satisfies TableInfo[]),
+      getTables: vi
+        .fn()
+        .mockResolvedValue([
+          { name: 't1', schema: 'public', tableType: 'table', rowCount: null },
+        ] satisfies TableInfo[]),
     });
     await ensureNamespacePath(['db1'], deps);
     expect(deps.useDatabase).toHaveBeenCalledWith('conn-1', 'db1');
@@ -304,5 +373,31 @@ describe('ensureNamespacePath — postgresql', () => {
     });
     await ensureNamespacePath([], deps);
     expect(deps.mergeNamespace).toHaveBeenCalledWith([], 'branch', ['db']);
+  });
+});
+
+describe('namespaceEnsurePending', () => {
+  it('is pending until the resolved path is in loadedPaths', () => {
+    const deps = makeDeps({
+      databaseType: 'mysql',
+      pathAliases: {},
+      currentDatabase: 'app',
+      databases: ['app'],
+      loadedPaths: new Set(),
+    });
+    expect(namespaceEnsurePending([], deps)).toBe(true);
+    expect(namespaceEnsurePending(['app'], deps)).toBe(true);
+  });
+
+  it('is not pending after the path is marked loaded', () => {
+    const deps = makeDeps({
+      databaseType: 'mysql',
+      pathAliases: {},
+      currentDatabase: 'app',
+      databases: ['app'],
+      loadedPaths: new Set(['app']),
+    });
+    expect(namespaceEnsurePending([], deps)).toBe(false);
+    expect(namespaceEnsurePending(['app'], deps)).toBe(false);
   });
 });

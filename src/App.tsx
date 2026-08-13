@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect } from 'react';
 import { getWindowKind } from './lib/windowKind';
 import { mark } from './lib/startupTimer';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { WindowChromeFallback } from './components/WindowChromeFallback';
 
 const MainWindow = lazy(() =>
   import('./windows/main/MainWindow').then((m) => {
@@ -100,7 +101,7 @@ function WindowContent() {
 export default function App() {
   return (
     <ErrorBoundary>
-      <Suspense fallback={null}>
+      <Suspense fallback={<WindowChromeFallback />}>
         <WindowContent />
       </Suspense>
     </ErrorBoundary>

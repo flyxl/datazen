@@ -225,7 +225,7 @@ export interface AppSettings {
   contextDir: string;
   /** Check GitHub for app updates on startup (Basic builds only). Default false. */
   checkForUpdatesOnStartup: boolean;
-  /** Switch to chart view after query when the result is chartable. Default true. */
+  /** Switch to chart view after query when the result is chartable. Default false. */
   autoChartOnQuery: boolean;
   /** Dashboard monitor / tray / retention settings. */
   monitor: MonitorSettings;

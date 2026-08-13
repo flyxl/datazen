@@ -79,7 +79,7 @@ pub struct AppSettings {
     #[serde(default)]
     pub check_for_updates_on_startup: bool,
     /// After a successful query, switch to chart view when the result is chartable.
-    #[serde(default = "default_true")]
+    #[serde(default)]
     pub auto_chart_on_query: bool,
     /// Dashboard monitor / tray / retention settings (nested for settings UI).
     #[serde(default)]
@@ -141,7 +141,7 @@ impl Default for AppSettings {
             mcp_allowed_connection_ids: Vec::new(),
             context_dir: String::new(),
             check_for_updates_on_startup: false,
-            auto_chart_on_query: true,
+            auto_chart_on_query: false,
             monitor: MonitorSettings::default(),
             plugin_settings: serde_json::Map::new(),
         }

@@ -4,6 +4,9 @@ import { defineConfig } from 'vite';
 import { resolve } from 'path';
 
 export default defineConfig({
+  // Tauri serves the webview from a custom protocol; absolute `/assets/...`
+  // URLs can miss the asset handler and hit ipc:// (GET → "only POST and OPTIONS are allowed").
+  base: './',
   plugins: [react(), tailwindcss()],
   clearScreen: false,
   server: {

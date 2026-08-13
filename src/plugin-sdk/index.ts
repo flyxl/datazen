@@ -22,7 +22,12 @@ export { cn } from '../lib/cn';
 
 // === Hooks ===
 export { useI18n } from '../hooks/useI18n';
-export type { I18nKey, MongoTranslationKey, PluginTranslationKey, TranslationKey } from '../locales';
+export type {
+  I18nKey,
+  MongoTranslationKey,
+  PluginTranslationKey,
+  TranslationKey,
+} from '../locales';
 
 // === Types ===
 export type { DatabaseTypeMeta, ConnectionMode } from '../lib/databaseMeta';
@@ -73,6 +78,26 @@ export function registerPathAliases(
     useSchemaStore.setState({ connectionId });
   }
   useSchemaStore.getState().registerPathAliases(entries);
+}
+
+/** Cached `get_tables` rows for a fetch path (`dbId` or `dbId/catalog[/schema]`). */
+export function getCachedPathItems(fetchPath: string): TableInfo[] | undefined {
+  return useSchemaStore.getState().pathItems[fetchPath];
+}
+
+/** Store `get_tables` rows so autocomplete and the schema tree share one fetch. */
+export function cachePathItems(fetchPath: string, items: TableInfo[]): void {
+  useSchemaStore.getState().cachePathItems(fetchPath, items);
+}
+
+/** Subscribe to the shared path-item cache (custom trees hydrate from autocomplete). */
+export function subscribeSchemaPathItems(
+  listener: (items: Record<string, TableInfo[]>) => void,
+): () => void {
+  listener(useSchemaStore.getState().pathItems);
+  return useSchemaStore.subscribe((state, prev) => {
+    if (state.pathItems !== prev.pathItems) listener(state.pathItems);
+  });
 }
 
 /**

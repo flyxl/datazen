@@ -1331,9 +1331,9 @@ impl DatabaseDriver for RedisDriver {
         let start = Instant::now();
         let parts = parse_redis_command_args(sql)?;
 
-        tracing::info!(cmd = %sql, "redis query: acquiring lock");
+        tracing::debug!(cmd = %sql, "redis query: acquiring lock");
         let mut conns = self.connections.write().await;
-        tracing::info!(
+        tracing::debug!(
             lock_ms = start.elapsed().as_millis() as u64,
             "redis query: lock acquired"
         );

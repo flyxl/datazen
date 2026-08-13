@@ -60,6 +60,21 @@ describe('path IPC frontend wiring', () => {
     expect(connection).toContain("'detect_connection_import_path'");
     expect(connection).toContain("'pick_connection_import_path_with_dialog'");
 
+    const rustConfig = fs.readFileSync(
+      path.join(ROOT, '../src-tauri/src/commands/config.rs'),
+      'utf8',
+    );
+    expect(rustConfig).toContain('pub async fn pick_connection_import_path_with_dialog');
+    expect(rustConfig).toContain('run_blocking_dialog');
+    const pickFn = rustConfig.slice(
+      rustConfig.indexOf('pub async fn pick_connection_import_path_with_dialog'),
+      rustConfig.indexOf('pub async fn import_connections_from_app'),
+    );
+    expect(pickFn).toContain('blocking_pick_file');
+    expect(pickFn).toContain('blocking_pick_folder');
+    expect(pickFn).not.toContain('.pick_file(');
+    expect(pickFn).not.toContain('.pick_folder(');
+
     const main = readSrc('windows/main/MainWindow.tsx');
     expect(main).toContain('ConnectionShareDialog');
     expect(main).toContain('menu:export-connections');
@@ -72,5 +87,18 @@ describe('path IPC frontend wiring', () => {
     expect(menuBar).toContain('import-connections');
     expect(menuBar).toContain('import-connections-dbx');
     expect(menuBar).toContain('import-connections-file');
+  });
+
+  it('docs window is a singleton and overlay chrome has a drag fallback', () => {
+    const app = readSrc('App.tsx');
+    expect(app).toContain('WindowChromeFallback');
+    expect(app).not.toContain('fallback={null}');
+
+    const wm = readSrc('lib/windowManager.ts');
+    expect(wm).toContain("openSingletonWindow('docs-singleton'");
+
+    const rustMenu = fs.readFileSync(path.join(ROOT, '../src-tauri/src/lib.rs'), 'utf8');
+    expect(rustMenu).toContain('register_handler_once');
+    expect(rustMenu).toContain('take_once_slot');
   });
 });

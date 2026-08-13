@@ -132,11 +132,16 @@ describe('Client parity P0–P2', () => {
   });
 
   it('lists routines and privileges on PostgreSQL', async () => {
-    const fns = await invokeBackend<{ name: string }[]>('get_database_objects', {
-      connectionId: pgId,
-      kind: 'function',
-    });
-    expect(Array.isArray(fns)).toBe(true);
+    for (const kind of ['function', 'procedure', 'trigger'] as const) {
+      const rows = await invokeBackend<{ name: string }[]>('get_database_objects', {
+        connectionId: pgId,
+        kind,
+      });
+      expect(Array.isArray(rows)).toBe(true);
+      for (const row of rows) {
+        expect(typeof row.name).toBe('string');
+      }
+    }
     const grants = await invokeBackend<unknown[]>('get_privileges', { connectionId: pgId });
     expect(Array.isArray(grants)).toBe(true);
   });
@@ -214,6 +219,9 @@ describe('Client parity P0–P2', () => {
     await expect(await $(`button*=${t('privileges.title')}`)).toBeDisplayed();
     await $(`button*=${t('objects.title')}`).click();
     await expect(await $(`button*=${t('objects.function')}`)).toBeDisplayed();
+    const bodyAfterObjects = await $('body').getText();
+    expect(bodyAfterObjects).not.toContain('Object list query missing name column');
+    expect(bodyAfterObjects).toMatch(/objects\.(empty|function)/);
   });
 
   it('table filter editor opens AND/OR controls', async () => {

@@ -10,7 +10,7 @@ import { MenuBar } from '../../components/MenuBar';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 import { useResizable } from '../../hooks/useResizable';
 import { useTauriEvent } from '../../hooks/useTauriEvent';
-import { useThemeListener } from '../../hooks/useThemeListener';
+import { useSettings } from '../../hooks/useSettings';
 import { groupConnections, useConnectionStore } from '../../stores/connectionStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useUiStore } from '../../stores/uiStore';
@@ -46,7 +46,7 @@ import type { ConnectionConfig } from '../../types';
 
 export function MainWindow() {
   useTauriEvent();
-  useThemeListener();
+  useSettings();
   const { t } = useI18n();
 
   const fetchConnections = useConnectionStore((s) => s.fetchConnections);

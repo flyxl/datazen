@@ -5,7 +5,7 @@ import { Input } from '../../components/ui/Input';
 import { DbTypeBadge } from '../../components/DbTypeBadge';
 import { useConnectionStore } from '../../stores/connectionStore';
 import { useSettingsStore } from '../../stores/settingsStore';
-import { useThemeListener } from '../../hooks/useThemeListener';
+import { useSettings } from '../../hooks/useSettings';
 import { useI18n } from '../../hooks/useI18n';
 import { cn } from '../../lib/cn';
 import { getUrlParam } from '../../lib/windowKind';
@@ -38,11 +38,13 @@ function closeWindow() {
 }
 
 export function NewConnectionWindow() {
-  useThemeListener();
+  useSettings();
   const { t } = useI18n();
 
   const loadSettings = useSettingsStore((s) => s.loadSettings);
-  useEffect(() => { void loadSettings(); }, [loadSettings]);
+  useEffect(() => {
+    void loadSettings();
+  }, [loadSettings]);
 
   const fetchConnections = useConnectionStore((s) => s.fetchConnections);
   const connections = useConnectionStore((s) => s.connections);
@@ -56,7 +58,8 @@ export function NewConnectionWindow() {
   useEffect(() => {
     void fetchConnections();
     void fetchGroups();
-    connectionCommands.getAvailableDrivers()
+    connectionCommands
+      .getAvailableDrivers()
       .then(setAvailableDrivers)
       .catch(() => setAvailableDrivers(null));
   }, [fetchConnections, fetchGroups]);

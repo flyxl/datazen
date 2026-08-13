@@ -261,7 +261,11 @@ async fn dispatch_channels(
             AlertChannel::Webhook => {
                 if let Some(url) = settings.default_webhook_url.as_deref() {
                     if let Err(e) = notify_webhook(client, url, payload).await {
-                        tracing::warn!(error = %e, url = %url, "webhook alert failed");
+                        tracing::warn!(
+                            error = %crate::log_redact::redact_secrets_for_log(&e.to_string()),
+                            url = %crate::log_redact::redact_url_for_log(url),
+                            "webhook alert failed"
+                        );
                     }
                 } else {
                     tracing::debug!("webhook channel configured but default_webhook_url is unset");
