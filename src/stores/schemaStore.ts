@@ -1,7 +1,10 @@
 import { create } from 'zustand';
 import { databaseCommands } from '../commands/database';
 import { DB_REGISTRY } from '../lib/databaseTypes';
-import { ensureNamespacePath as ensureNamespacePathImpl } from '../lib/ensureNamespace';
+import {
+  ensureNamespacePath as ensureNamespacePathImpl,
+  namespaceEnsurePending,
+} from '../lib/ensureNamespace';
 import {
   isSchemaGroupingSchema,
   mergeNamespacePath,
@@ -78,6 +81,12 @@ interface SchemaStore {
   columnMap: Record<string, string[]>;
   namespaceTree: SqlNamespace;
   loadedPaths: Set<string>;
+  /**
+   * Raw `get_tables` results keyed by fetch path (`dbId`, `dbId/catalog`, …).
+   * Shared by SQL autocomplete and custom schema trees so expanding a node
+   * already loaded via ensure does not hit the driver again.
+   */
+  pathItems: Record<string, TableInfo[]>;
   /** SQL display name → fetch path root id (plugin-registered). */
   pathAliases: Record<string, string>;
   /** When true, setLoadedTables skips namespace merges (plugin owns tree via SDK). */
@@ -85,6 +94,8 @@ interface SchemaStore {
   expanded: Set<string>;
   selectedId: string | null;
   loading: boolean;
+  /** In-flight `ensureNamespacePath` fetches (SQL autocomplete loading UI). */
+  ensuringCount: number;
   error: string | null;
 
   loadForConnection: (connectionId: string, options?: LoadForConnectionOptions) => Promise<void>;
@@ -95,6 +106,7 @@ interface SchemaStore {
    */
   setLoadedTables: (database: string, all: TableInfo[]) => void;
   mergeNamespace: (segments: string[], kind: NamespaceMergeKind, names: string[]) => void;
+  cachePathItems: (fetchPath: string, items: TableInfo[]) => void;
   /** Register display-name → fetch-id aliases and seed top-level namespace branches. */
   registerPathAliases: (entries: { name: string; id: string }[]) => void;
   ensureNamespacePath: (segments: string[]) => Promise<void>;
@@ -115,21 +127,25 @@ export const useSchemaStore = create<SchemaStore>((set, get) => ({
   columnMap: {},
   namespaceTree: EMPTY_NAMESPACE,
   loadedPaths: new Set(),
+  pathItems: {},
   pathAliases: {},
   namespaceOwnedByPlugin: false,
   expanded: new Set(),
   selectedId: null,
   loading: false,
+  ensuringCount: 0,
   error: null,
 
   loadForConnection: async (connectionId, options) => {
     set({
       loading: true,
+      ensuringCount: 0,
       error: null,
       connectionId,
       databaseType: options?.databaseType ?? null,
       namespaceTree: EMPTY_NAMESPACE,
       loadedPaths: new Set(),
+      pathItems: {},
       pathAliases: {},
       namespaceOwnedByPlugin: false,
     });
@@ -143,8 +159,7 @@ export const useSchemaStore = create<SchemaStore>((set, get) => ({
         options?.preferredDatabase,
       );
       const isMultiDatabase =
-        !lockedToConfigured &&
-        computeIsMultiDatabase(meta?.hasMultiDatabase, databases.length);
+        !lockedToConfigured && computeIsMultiDatabase(meta?.hasMultiDatabase, databases.length);
       set({ databases, isMultiDatabase, loading: false, currentDatabase: preferred });
       if (isMultiDatabase) {
         get().mergeNamespace([], 'branch', databases);
@@ -189,6 +204,11 @@ export const useSchemaStore = create<SchemaStore>((set, get) => ({
     });
   },
 
+  cachePathItems: (fetchPath, items) => {
+    if (!fetchPath) return;
+    set({ pathItems: { ...get().pathItems, [fetchPath]: items } });
+  },
+
   registerPathAliases: (entries) => {
     const nextIds = { ...get().pathAliases };
     const names: string[] = [];
@@ -203,31 +223,39 @@ export const useSchemaStore = create<SchemaStore>((set, get) => ({
   ensureNamespacePath: async (segments) => {
     const s = get();
     if (!s.connectionId) return;
-    await ensureNamespacePathImpl(segments, {
+    const deps = {
       connectionId: s.connectionId,
       databaseType: s.databaseType,
       isMultiDatabase: s.isMultiDatabase,
       loadedPaths: s.loadedPaths,
+      pathItems: s.pathItems,
       pathAliases: s.pathAliases,
       namespaceTree: s.namespaceTree,
       tables: s.tables,
       databases: s.databases,
       currentDatabase: s.currentDatabase,
       mergeNamespace: get().mergeNamespace,
+      cachePathItems: get().cachePathItems,
       registerPathAliases: get().registerPathAliases,
       getDatabases: databaseCommands.getDatabases,
       getTables: databaseCommands.getTables,
       useDatabase: databaseCommands.useDatabase,
-    });
+    };
+    const pending = namespaceEnsurePending(segments, deps);
+    if (pending) set({ ensuringCount: get().ensuringCount + 1 });
+    try {
+      await ensureNamespacePathImpl(segments, deps);
+    } finally {
+      if (pending) set({ ensuringCount: Math.max(0, get().ensuringCount - 1) });
+    }
   },
 
   setLoadedTables: (database, all) => {
-    const { databaseType, isMultiDatabase, namespaceTree, loadedPaths, namespaceOwnedByPlugin } = get();
+    const { databaseType, isMultiDatabase, namespaceTree, loadedPaths, namespaceOwnedByPlugin } =
+      get();
     const tables = all.filter((item) => item.tableType !== 'view');
     const views = all.filter((item) => item.tableType === 'view');
-    const meta = databaseType
-      ? DB_REGISTRY[databaseType as DatabaseType]
-      : undefined;
+    const meta = databaseType ? DB_REGISTRY[databaseType as DatabaseType] : undefined;
 
     let nextTree = namespaceTree;
     let nextLoadedPaths = loadedPaths;
@@ -304,11 +332,13 @@ export const useSchemaStore = create<SchemaStore>((set, get) => ({
       columnMap: {},
       namespaceTree: EMPTY_NAMESPACE,
       loadedPaths: new Set(),
+      pathItems: {},
       pathAliases: {},
       namespaceOwnedByPlugin: false,
       expanded: new Set(),
       selectedId: null,
       loading: false,
+      ensuringCount: 0,
       error: null,
     }),
 }));

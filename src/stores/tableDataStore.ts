@@ -3,6 +3,7 @@ import { databaseCommands, type RowUpdateBatch, type RowDeleteBatch } from '../c
 import { t } from '../locales/t';
 import type { ColumnSchema, DatabaseType, FilterCondition, SortCondition, Value } from '../types';
 import { DB_REGISTRY } from '../lib/databaseTypes';
+import { useSettingsStore } from './settingsStore';
 
 function rowsToRecords(
   columns: ColumnSchema[],
@@ -255,8 +256,12 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
     if (existing.loading) return;
 
     const { page, filters, sorts, filterLogic } = existing;
-    const defaultPageSize = DB_REGISTRY[databaseType as DatabaseType]?.defaultPageSize;
-    const pageSize = defaultPageSize ?? existing.pageSize;
+    const driverPageSize = DB_REGISTRY[databaseType as DatabaseType]?.defaultPageSize;
+    const settingsPageSize = useSettingsStore.getState().settings.defaultPageSize;
+    const pageSize =
+      existing.columns.length > 0
+        ? existing.pageSize
+        : settingsPageSize || driverPageSize || existing.pageSize;
 
     const next = new Map(tableStates);
     next.set(table, { ...existing, loading: true, error: null });

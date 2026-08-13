@@ -5,8 +5,10 @@ import {
   useRef,
   useState,
   type MouseEvent as ReactMouseEvent,
+  type ReactNode,
 } from 'react';
 import {
+  CirclePlay,
   AlertTriangle,
   BarChart3,
   Bookmark,
@@ -38,6 +40,7 @@ import {
   buildHistorySidebarContextMenuItems,
   buildHistorySidebarHeaderContextMenuItems,
 } from '../../lib/querySidebarContextMenu';
+import { inferDefaultSchema, inferDefaultTable } from '../../lib/sqlEditorDefaults';
 import { DataTable } from '../../components/DataTable/DataTable';
 import type { ColumnDef } from '../../components/DataTable/TableHeader';
 import { ChartView } from '../../components/chart/ChartView';
@@ -49,6 +52,7 @@ import { useSchemaStore } from '../../stores/schemaStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useI18n } from '../../hooks/useI18n';
 import { useResizable } from '../../hooks/useResizable';
+import { useCompactToolbar } from '../../hooks/useCompactToolbar';
 import { cn } from '../../lib/cn';
 import { queryCommands } from '../../commands/query';
 import { dashboardCommands } from '../../commands/dashboard';
@@ -60,6 +64,7 @@ import { parseSqlParams, paramsToPayload } from '../../lib/sqlBindParams';
 import { BindParamPanel } from '../../components/query/BindParamPanel';
 import { DB_REGISTRY } from '../../lib/databaseTypes';
 import type { ExplainResult, StatementResult } from '../../types';
+import type { ButtonProps } from '../../components/ui/Button';
 import { Dialog } from '../../components/ui/Dialog';
 import { analyzeTransactionSql, isAbortedTransactionError } from '../../lib/sqlTransactionGuard';
 
@@ -67,6 +72,26 @@ interface QueryPanelProps {
   connectionId: string;
   queryTabId: string;
   databaseType?: string;
+}
+
+interface ToolbarButtonProps extends ButtonProps {
+  compact: boolean;
+  label: string;
+  icon: ReactNode;
+}
+
+function ToolbarButton({ compact, label, icon, className, title, ...props }: ToolbarButtonProps) {
+  return (
+    <Button
+      {...props}
+      title={title ?? label}
+      aria-label={label}
+      className={cn('shrink-0', compact ? 'h-7 px-1.5' : 'h-7 gap-1 px-2 text-xs', className)}
+    >
+      {icon}
+      <span className={cn(compact && 'sr-only')}>{label}</span>
+    </Button>
+  );
 }
 
 export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPanelProps) {
@@ -130,6 +155,7 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
     maxSize: 900,
     storageKey: 'query-editor-height',
   });
+  const { ref: toolbarRef, compact: compactToolbar } = useCompactToolbar();
 
   const tables = useSchemaStore((s) => s.tables);
   const views = useSchemaStore((s) => s.views);
@@ -141,13 +167,16 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
   const loadColumnMap = useSchemaStore((s) => s.loadColumnMap);
   const loadTables = useSchemaStore((s) => s.loadTables);
   const ensureNamespacePath = useSchemaStore((s) => s.ensureNamespacePath);
+  const namespaceLoading = useSchemaStore((s) => s.ensuringCount > 0);
 
   const dbMeta = databaseType ? DB_REGISTRY[databaseType as keyof typeof DB_REGISTRY] : undefined;
   const supportsExplain = dbMeta?.supportsExplain === true;
   const editorSchema = useMemo(
-    () => buildEditorSchema({ namespaceTree, tables, views, columnMap }),
-    [namespaceTree, tables, views, columnMap],
+    () => buildEditorSchema({ namespaceTree, tables, views, columnMap, currentDatabase }),
+    [namespaceTree, tables, views, columnMap, currentDatabase],
   );
+  const editorDefaultSchema = useMemo(() => inferDefaultSchema(tables, views), [tables, views]);
+  const editorDefaultTable = useMemo(() => inferDefaultTable(tab?.sql ?? ''), [tab?.sql]);
 
   const ensureTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleQualifiedPath = useCallback(
@@ -166,6 +195,10 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
     },
     [],
   );
+
+  useEffect(() => {
+    void ensureNamespacePath([]);
+  }, [connectionId, currentDatabase, ensureNamespacePath]);
 
   useEffect(() => {
     setConnectionId(connectionId);
@@ -521,9 +554,12 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {/* Toolbar */}
-      <div className="flex h-9 shrink-0 items-center gap-2 border-b border-edge bg-surface-alt px-3">
+      <div
+        ref={toolbarRef}
+        className="flex h-9 shrink-0 flex-nowrap items-center gap-2 overflow-x-auto border-b border-edge bg-surface-alt px-3"
+      >
         {isMultiDb && databases.length > 0 && (
-          <div className="flex items-center gap-1.5 shrink-0">
+          <div className="flex shrink-0 items-center gap-1.5">
             <Database className="h-3.5 w-3.5 text-fg-muted" />
             <Select
               value={currentDatabase ?? ''}
@@ -533,110 +569,116 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
             />
           </div>
         )}
-        <Button
+        <ToolbarButton
+          compact={compactToolbar}
           variant="primary"
-          className="h-7 gap-1 px-2 text-xs"
+          label={t('query.execute')}
+          icon={<Play className="h-3.5 w-3.5" />}
           onClick={handleExecute}
           disabled={tab.running}
-        >
-          <Play className="h-3.5 w-3.5" />
-          {t('query.execute')}
-        </Button>
+        />
         {tab.running && (
-          <Button variant="danger" className="h-7 gap-1 px-2 text-xs" onClick={handleCancel}>
-            <Square className="h-3.5 w-3.5" />
-            {t('query.stop')}
-          </Button>
+          <ToolbarButton
+            compact={compactToolbar}
+            variant="danger"
+            label={t('query.stop')}
+            icon={<Square className="h-3.5 w-3.5" />}
+            onClick={handleCancel}
+          />
         )}
         {supportsExplain && (
-          <Button
+          <ToolbarButton
+            compact={compactToolbar}
             variant="ghost"
-            className="h-7 gap-1 px-2 text-xs"
+            label={t('explain.title')}
+            icon={<FileSearch className="h-3.5 w-3.5" />}
             onClick={() => void handleExplain()}
             disabled={tab.running || !tab.sql.trim()}
-          >
-            <FileSearch className="h-3.5 w-3.5" />
-            {t('explain.title')}
-          </Button>
+          />
         )}
-        <Button
+        <ToolbarButton
+          compact={compactToolbar}
           variant="ghost"
-          className="h-7 gap-1 px-2 text-xs"
+          label={t('query.format')}
+          icon={<Wand2 className="h-3.5 w-3.5" />}
           onClick={handleFormat}
           disabled={tab.running || !tab.sql.trim()}
-        >
-          <Wand2 className="h-3.5 w-3.5" />
-          {t('query.format')}
-        </Button>
-        <div className="mx-1 h-4 w-px bg-edge" />
-        <Button
+        />
+        <div className="mx-1 h-4 w-px shrink-0 bg-edge" />
+        <ToolbarButton
+          compact={compactToolbar}
           variant="ghost"
-          className="h-7 gap-1 px-2 text-xs"
+          label={t('query.beginTx')}
+          icon={<CirclePlay className="h-3.5 w-3.5" />}
           onClick={() => void handleBeginTx()}
           disabled={tab.running || txBusy || inTransaction}
-          title={t('query.beginTx')}
-        >
-          {t('query.beginTx')}
-        </Button>
-        <Button
+        />
+        <ToolbarButton
+          compact={compactToolbar}
           variant="ghost"
-          className="h-7 gap-1 px-2 text-xs"
+          label={t('query.commitTx')}
+          icon={<Check className="h-3.5 w-3.5" />}
           onClick={() => void handleCommitTx()}
           disabled={tab.running || txBusy || !inTransaction}
-        >
-          <Check className="h-3.5 w-3.5" />
-          {t('query.commitTx')}
-        </Button>
-        <Button
+        />
+        <ToolbarButton
+          compact={compactToolbar}
           variant="ghost"
-          className="h-7 gap-1 px-2 text-xs"
+          label={t('query.rollbackTx')}
+          icon={<Undo2 className="h-3.5 w-3.5" />}
           onClick={() => void handleRollbackTx()}
           disabled={tab.running || txBusy || !inTransaction}
-        >
-          <Undo2 className="h-3.5 w-3.5" />
-          {t('query.rollbackTx')}
-        </Button>
+        />
         {inTransaction && (
-          <span className="rounded bg-accent/15 px-1.5 py-0.5 text-[10px] font-medium text-accent">
-            {t('query.inTransaction')}
+          <span
+            className="shrink-0 rounded bg-accent/15 px-1.5 py-0.5 text-[10px] font-medium text-accent"
+            title={t('query.inTransaction')}
+          >
+            {compactToolbar ? 'TX' : t('query.inTransaction')}
           </span>
         )}
         {safeMode && (
-          <span className="rounded bg-warning/15 px-1.5 py-0.5 text-[10px] font-medium text-warning">
-            {t('settings.safeMode')}
+          <span
+            className="shrink-0 rounded bg-warning/15 px-1.5 py-0.5 text-[10px] font-medium text-warning"
+            title={t('settings.safeMode')}
+          >
+            {compactToolbar ? 'Safe' : t('settings.safeMode')}
           </span>
         )}
-        <span className="text-[11px] text-fg-muted">⌘+Enter {t('query.execute')}</span>
-        <div className="flex-1" />
+        {!compactToolbar && (
+          <span className="shrink-0 whitespace-nowrap text-[11px] text-fg-muted">
+            ⌘+Enter {t('query.execute')}
+          </span>
+        )}
+        <div className="min-w-0 flex-1" />
         {tab.executionTimeMs != null && (
-          <span className="text-[11px] text-fg-muted">
-            {t('query.totalTime')} {tab.executionTimeMs} ms
+          <span className="shrink-0 whitespace-nowrap text-[11px] text-fg-muted">
+            {compactToolbar
+              ? `${tab.executionTimeMs} ms`
+              : `${t('query.totalTime')} ${tab.executionTimeMs} ms`}
           </span>
         )}
-        <Button
+        <ToolbarButton
+          compact={compactToolbar}
           variant={historyVisible ? 'secondary' : 'ghost'}
-          className="h-7 gap-1 px-2 text-xs"
+          label={t('query.history')}
+          icon={<Clock className="h-3.5 w-3.5" />}
           onClick={toggleHistory}
-        >
-          <Clock className="h-3.5 w-3.5" />
-          {t('query.history')}
-        </Button>
-        <Button
+        />
+        <ToolbarButton
+          compact={compactToolbar}
           variant={favoritesVisible ? 'secondary' : 'ghost'}
-          className="h-7 gap-1 px-2 text-xs"
+          label={t('query.favorites')}
+          icon={<Bookmark className="h-3.5 w-3.5" />}
           onClick={toggleFavorites}
-        >
-          <Bookmark className="h-3.5 w-3.5" />
-          {t('query.favorites')}
-        </Button>
-        <Button
+        />
+        <ToolbarButton
+          compact={compactToolbar}
           variant={nl2sqlVisible ? 'secondary' : 'ghost'}
-          className="h-7 gap-1 px-2 text-xs"
+          label={t('nl2sql.title')}
+          icon={<Sparkles className="h-3.5 w-3.5" />}
           onClick={() => setNl2sqlVisible((v) => !v)}
-        >
-          <Sparkles className="h-3.5 w-3.5" />
-          {t('nl2sql.title')}
-        </Button>
+        />
       </div>
 
       <BindParamPanel
@@ -670,6 +712,9 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
               placeholder={t('query.placeholder')}
               schema={editorSchema}
               databaseType={databaseType}
+              namespaceLoading={namespaceLoading}
+              defaultSchema={editorDefaultSchema}
+              defaultTable={editorDefaultTable}
             />
           </div>
           <div

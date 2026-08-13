@@ -211,6 +211,15 @@ fn theme_deserializes_legacy_string_and_object() {
 fn default_language_is_english() {
     assert_eq!(AppSettings::default().language, "en");
     assert_eq!(AppSettings::default().connection_pool_size, 10);
+    assert!(!AppSettings::default().auto_chart_on_query);
+}
+
+#[test]
+fn missing_auto_chart_on_query_defaults_to_false() {
+    let mut value = serde_json::to_value(AppSettings::default()).unwrap();
+    value.as_object_mut().unwrap().remove("autoChartOnQuery");
+    let parsed: AppSettings = serde_json::from_value(value).unwrap();
+    assert!(!parsed.auto_chart_on_query);
 }
 
 #[test]

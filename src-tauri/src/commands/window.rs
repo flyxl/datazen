@@ -60,32 +60,34 @@ fn resolved_window_background(app: &AppHandle, override_hex: Option<&str>) -> Co
     window_background_color(cached.as_deref().or(override_hex))
 }
 
-/// Open (or focus) the in-app docs singleton. Prefer calling this from Rust
-/// menu handlers instead of `emit` → frontend → IPC round-trips.
-pub async fn open_docs_window(app: AppHandle, section: Option<&str>) -> Result<(), CommandError> {
+pub const DOCS_WINDOW_LABEL: &str = "docs-singleton";
+
+pub fn docs_window_options(section: Option<&str>) -> CreateWindowOptions {
     let mut qs = String::from("window=docs");
     if let Some(section) = section.map(str::trim).filter(|s| !s.is_empty()) {
         // Section ids are app-controlled (`overview`, `workflows`, …).
         qs.push_str("&section=");
         qs.push_str(section);
     }
-    create_sub_window(
-        app,
-        CreateWindowOptions {
-            label: "docs-singleton".into(),
-            url: format!("window.html?{qs}"),
-            title: "DataZen".into(),
-            width: 920.0,
-            height: 680.0,
-            min_width: Some(640.0),
-            min_height: Some(480.0),
-            center: true,
-            accept_first_mouse: true,
-            transparent: None,
-            background_color: None,
-        },
-    )
-    .await
+    CreateWindowOptions {
+        label: DOCS_WINDOW_LABEL.into(),
+        url: format!("window.html?{qs}"),
+        title: "DataZen".into(),
+        width: 920.0,
+        height: 680.0,
+        min_width: Some(640.0),
+        min_height: Some(480.0),
+        center: true,
+        accept_first_mouse: true,
+        transparent: None,
+        background_color: None,
+    }
+}
+
+/// Open (or focus) the in-app docs singleton. Prefer calling this from Rust
+/// menu handlers instead of `emit` → frontend → IPC round-trips.
+pub async fn open_docs_window(app: AppHandle, section: Option<&str>) -> Result<(), CommandError> {
+    create_sub_window(app, docs_window_options(section)).await
 }
 
 /// Create (or focus) a sub-window.
@@ -249,6 +251,28 @@ mod tests {
         assert!(!opts.accept_first_mouse);
         assert_eq!(opts.transparent, Some(true));
         assert_eq!(opts.background_color.as_deref(), Some("#1a0a2e"));
+    }
+
+    #[test]
+    fn docs_window_options_are_singleton_with_docs_kind() {
+        let opts = docs_window_options(None);
+        assert_eq!(opts.label, DOCS_WINDOW_LABEL);
+        assert_eq!(opts.url, "window.html?window=docs");
+        assert_eq!(opts.width, 920.0);
+        assert_eq!(opts.min_width, Some(640.0));
+    }
+
+    #[test]
+    fn docs_window_options_append_section() {
+        let opts = docs_window_options(Some("workflows"));
+        assert_eq!(opts.label, DOCS_WINDOW_LABEL);
+        assert_eq!(opts.url, "window.html?window=docs&section=workflows");
+    }
+
+    #[test]
+    fn docs_window_options_ignore_blank_section() {
+        let opts = docs_window_options(Some("  "));
+        assert_eq!(opts.url, "window.html?window=docs");
     }
 
     #[test]
