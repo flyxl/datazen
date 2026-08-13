@@ -17,8 +17,8 @@
 | F4 | Host 流式 PK 比较（mock driver / keyset 编排） | done | 8 PASS | [F4 QA](e5f4b08e-a702-4ae4-a9a2-9ac3286b0332) PASS | 92.97% | `fe97153` |
 | F5 | ChangeSet → 参数化 INSERT/UPDATE/DELETE SQL | done | 5 PASS | [F5 QA](745899af-3f19-4929-b4a9-3f47130e79d1) PASS | 92.84% | `d294ed6` |
 | F6 | 专用 Execute IPC（read_only / 事务 / Cancel） | done | 7 PASS | [F6 QA](a2e49ad5-2211-4ad5-8435-9e7df8c1e0c6) PASS（Cancel IPC 未接线记 S3） | execute.rs 98.79% | `be8e36e` |
-| F7 | Compare → Apply → Recompare=0 编排闭环 | done | 2 PASS | [F7 QA](59efff33-1814-46e9-8c90-e5edbdb28956) PASS | 95.08% | 待提交 |
-| F8 | DataSyncWindow Diff Workspace（最小可用） | pending | — | — | — | — |
+| F7 | Compare → Apply → Recompare=0 编排闭环 | done | 2 PASS | [F7 QA](59efff33-1814-46e9-8c90-e5edbdb28956) PASS | 95.08% | `aad15e6` |
+| F8 | DataSyncWindow Diff Workspace（最小可用） | done | inspect+mappingView PASS | [F8 QA](a56d3e68-490a-4f4e-afd8-0067564090c7) PASS；已修 Select All / footer total | inspect 92.41% / mappingView 92.85% | 待提交 |
 | F9 | i18n + Host E2E 契约 journey | pending | — | — | — | — |
 | F10 | 拆除旧引擎残留 + 架构/AGENTS 文档 + merge main | pending | — | — | — | — |
 
