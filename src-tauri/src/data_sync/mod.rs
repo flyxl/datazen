@@ -21,7 +21,7 @@ pub mod types_eq;
 pub use apply_loop::{apply_changeset_to_rows, remaining_mutating_changes};
 pub use changeset::{ChangeSet, TableChangeSet};
 pub use compare::{
-    cmp_keys, cmp_values, compare_sorted_rows, compare_table_pages, SliceRowSource, RowPageSource,
+    cmp_keys, cmp_values, compare_sorted_rows, compare_table_pages, RowPageSource, SliceRowSource,
 };
 pub use error::DataSyncError;
 pub use execute::{execute_statements, ExecutionResult, StatementExecutor};

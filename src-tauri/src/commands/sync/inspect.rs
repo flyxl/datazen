@@ -55,24 +55,20 @@ pub(crate) async fn inspect_data_sync_impl(
         .cmd_err("inspect_data_sync")?;
 
     let mut source_schemas = HashMap::new();
-    for table in src_tables.iter().filter(|t| {
-        matches!(t.table_type, crate::db::TableType::Table)
-    }) {
-        if let Ok(schema) = src_driver
-            .get_table_schema(&src_handle, &table.name)
-            .await
-        {
+    for table in src_tables
+        .iter()
+        .filter(|t| matches!(t.table_type, crate::db::TableType::Table))
+    {
+        if let Ok(schema) = src_driver.get_table_schema(&src_handle, &table.name).await {
             source_schemas.insert(table.name.clone(), schema);
         }
     }
     let mut target_schemas = HashMap::new();
-    for table in tgt_tables.iter().filter(|t| {
-        matches!(t.table_type, crate::db::TableType::Table)
-    }) {
-        if let Ok(schema) = tgt_driver
-            .get_table_schema(&tgt_handle, &table.name)
-            .await
-        {
+    for table in tgt_tables
+        .iter()
+        .filter(|t| matches!(t.table_type, crate::db::TableType::Table))
+    {
+        if let Ok(schema) = tgt_driver.get_table_schema(&tgt_handle, &table.name).await {
             target_schemas.insert(table.name.clone(), schema);
         }
     }

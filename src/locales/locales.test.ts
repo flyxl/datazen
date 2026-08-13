@@ -1,7 +1,16 @@
 import { describe, it, expect } from 'vitest';
 import zhCN from './zh-CN';
 import en from './en';
-import { SUPPORTED_LOCALES, getAllTranslations, getHostTranslations, getTranslation, BETA_LOCALES, FULLY_TRANSLATED_LOCALES, type SupportedLocale, type TranslationKey } from './index';
+import {
+  SUPPORTED_LOCALES,
+  getAllTranslations,
+  getHostTranslations,
+  getTranslation,
+  BETA_LOCALES,
+  FULLY_TRANSLATED_LOCALES,
+  type SupportedLocale,
+  type TranslationKey,
+} from './index';
 
 const CRITICAL_KEYS: TranslationKey[] = [
   'common.ok',
@@ -73,6 +82,46 @@ describe('locales', () => {
   it('interpolates params for every locale', () => {
     for (const locale of SUPPORTED_LOCALES) {
       expect(getTranslation(locale, 'win.query', { db: 'testdb' })).toContain('testdb');
+    }
+  });
+
+  const SYNC_KEYS: TranslationKey[] = [
+    'sync.overwriteRetiredBanner',
+    'sync.applyUnavailable',
+    'sync.mappingMatched',
+    'sync.mappingUnmappedSource',
+    'sync.mappingUnmappedTarget',
+    'sync.mappingDisabled',
+    'sync.mappingIncompatible',
+    'sync.mappingSummary',
+    'sync.selectBoth',
+    'sync.cannotSame',
+    'sync.unsupportedHint',
+    'sync.compare',
+    'sync.windowTitle',
+  ];
+
+  it('resolves Data Sync workspace keys for every locale', () => {
+    for (const locale of SUPPORTED_LOCALES) {
+      for (const key of SYNC_KEYS) {
+        const text = getTranslation(locale, key);
+        expect(text.length, `${locale}:${key}`).toBeGreaterThan(0);
+        expect(text).not.toBe(key);
+      }
+    }
+  });
+
+  it('interpolates sync.mappingSummary placeholders in every locale', () => {
+    for (const locale of SUPPORTED_LOCALES) {
+      const text = getTranslation(locale, 'sync.mappingSummary', {
+        matched: 3,
+        incompatible: 1,
+        unmapped: 2,
+      });
+      expect(text).toContain('3');
+      expect(text).toContain('1');
+      expect(text).toContain('2');
+      expect(text.includes('{')).toBe(false);
     }
   });
 
