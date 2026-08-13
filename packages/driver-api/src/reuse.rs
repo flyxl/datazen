@@ -63,6 +63,10 @@ impl DatabaseDriver for ReuseDriver {
         self.inner.build_update_sql(table, set_columns, pk_columns)
     }
 
+    fn build_delete_sql(&self, table: &str, pk_columns: &[(&str, Option<Value>)]) -> String {
+        self.inner.build_delete_sql(table, pk_columns)
+    }
+
     async fn connect(&self, config: &ConnectionConfig) -> Result<ConnectionHandle, DriverError> {
         self.inner.connect(config).await
     }

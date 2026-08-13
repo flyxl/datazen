@@ -12,6 +12,7 @@ export type DataTableContextMenuLabels = {
   setNull: string;
   filterByValue: string;
   copySelectedRows: string;
+  deleteRow: string;
   export: string;
 };
 
@@ -26,6 +27,7 @@ export type DataTableContextMenuHandlers = {
   onSetNull?: () => void;
   onFilterByValue?: () => void;
   onCopySelectedRows?: () => void;
+  onDeleteRow?: () => void;
   onExport?: () => void;
 };
 
@@ -42,6 +44,8 @@ export type BuildDataTableContextMenuArgs = {
   canFilterByValue?: boolean;
   /** Set NULL available (needs cell context + edit handler). */
   canSetNull?: boolean;
+  /** Delete row available (needs PK + delete handler). */
+  canDelete?: boolean;
 };
 
 function item(
@@ -150,6 +154,35 @@ export function formatRowAsSqlUpdate(
 }
 
 /**
+ * Single-row SQL DELETE. WHERE uses primary-key columns when provided,
+ * otherwise the first column. Null PK values use `IS NULL`.
+ */
+export function formatRowAsSqlDelete(
+  tableName: string,
+  columnNames: string[],
+  row: unknown[],
+  primaryKeyColumns?: string[],
+): string {
+  const pkNames =
+    primaryKeyColumns && primaryKeyColumns.length > 0
+      ? primaryKeyColumns.filter((c) => columnNames.includes(c))
+      : columnNames.slice(0, 1);
+  const whereKeys = pkNames.length > 0 ? pkNames : columnNames.slice(0, 1);
+  const where = whereKeys
+    .map((col) => {
+      const idx = columnNames.indexOf(col);
+      const val = row[idx];
+      if (val === null || val === undefined) {
+        return `${quoteIdent(col)} IS NULL`;
+      }
+      return `${quoteIdent(col)} = ${escapeSqlValue(val)}`;
+    })
+    .join(' AND ');
+
+  return `DELETE FROM ${quoteIdent(tableName)} WHERE ${where};`;
+}
+
+/**
  * Resolve which cell was targeted by a contextmenu event.
  * Expects VirtualBody cells to set `data-dt-row` / `data-dt-col`.
  */
@@ -169,7 +202,7 @@ export function resolveDataTableCellFromEvent(
 
 /**
  * TablePlus-style DataTable context menu.
- * With cell context: always a multi-item menu (copy / copy row / copy as… / set null / filter / export).
+ * With cell context: always a multi-item menu (copy / copy row / copy as… / set null / filter / delete / export).
  * Never emit a lonely single “Export” item when cell context exists.
  */
 export function buildDataTableContextMenuItems(
@@ -183,6 +216,7 @@ export function buildDataTableContextMenuItems(
     exportEnabled = false,
     canFilterByValue = false,
     canSetNull = false,
+    canDelete = false,
   } = args;
 
   if (hasCellContext) {
@@ -200,6 +234,10 @@ export function buildDataTableContextMenuItems(
         : null,
     );
 
+    const danger = canDelete
+      ? push(item('delete-row', labels.deleteRow, handlers.onDeleteRow))
+      : [];
+
     const tail = push(
       hasSelectedRows
         ? item('copy-selected-rows', labels.copySelectedRows, handlers.onCopySelectedRows)
@@ -207,9 +245,14 @@ export function buildDataTableContextMenuItems(
       exportEnabled ? item('export', labels.export, handlers.onExport) : null,
     );
 
-    if (cellBlock.length === 0) return tail;
-    if (tail.length === 0) return cellBlock;
-    return [...cellBlock, { kind: 'separator' }, ...tail];
+    let out = cellBlock;
+    if (danger.length > 0) {
+      out = out.length > 0 ? [...out, { kind: 'separator' }, ...danger] : danger;
+    }
+    if (tail.length > 0) {
+      out = out.length > 0 ? [...out, { kind: 'separator' }, ...tail] : tail;
+    }
+    return out;
   }
 
   // No cell hit — still avoid a single lonely export when possible.
@@ -218,6 +261,9 @@ export function buildDataTableContextMenuItems(
       ? item('copy-selected-rows', labels.copySelectedRows, handlers.onCopySelectedRows)
       : null,
     hasSelectedRows ? item('copy-as-csv', labels.copyAsCsv, handlers.onCopyAsCsv) : null,
+    canDelete && hasSelectedRows
+      ? item('delete-row', labels.deleteRow, handlers.onDeleteRow)
+      : null,
     exportEnabled ? item('export', labels.export, handlers.onExport) : null,
   );
 }

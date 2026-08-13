@@ -598,7 +598,9 @@ DataTable (容器)
 右键菜单走 Tauri 原生 Menu（见下方「原生 Context Menu」），由 `buildDataTableContextMenuItems` 构建（对齐 TablePlus）：
 Copy / Copy Row / Copy as JSON / Copy as SQL INSERT / Copy as UPDATE / Copy as CSV /
 Copy Column Name / Set NULL（可编辑表；Query 结果通过 `enableSetNull={false}` 隐藏）/
-Filter by This Value / Copy Selected Rows / Export。
+Filter by This Value / Delete Row（需主键；`commit_row_deletes`）/
+Copy Selected Rows / Export。
+Safe Mode 开启时 Schema 树隐藏 Truncate（后端本就会拦截无 WHERE 的 DELETE / TRUNCATE）；Drop 不在 Safe Mode 范围内。
 
 **数据导出功能**：
 - 工具栏「导出」按钮导出全部数据

@@ -23,9 +23,12 @@ export interface RowUpdateBatch {
   pkColumns: CellUpdate[];
 }
 
+export interface RowDeleteBatch {
+  pkColumns: CellUpdate[];
+}
+
 export const databaseCommands = {
-  getDatabases: (connectionId: string) =>
-    invoke<string[]>('get_databases', { connectionId }),
+  getDatabases: (connectionId: string) => invoke<string[]>('get_databases', { connectionId }),
 
   /** Switch active database for subsequent unqualified queries (MySQL/MariaDB). */
   useDatabase: (connectionId: string, database: string) =>
@@ -64,17 +67,24 @@ export const databaseCommands = {
       filterLogic: params.filterLogic,
     }),
 
-  executeSQL: (connectionId: string, sql: string) =>
-    queryCommands.executeQuery(connectionId, sql),
+  executeSQL: (connectionId: string, sql: string) => queryCommands.executeQuery(connectionId, sql),
 
-  kvScanKeys: (connectionId: string, dbIndex: number, pattern: string, cursor: number, count: number) =>
-    invoke<KeyScanResult>('kv_scan_keys', { connectionId, dbIndex, pattern, cursor, count }),
+  kvScanKeys: (
+    connectionId: string,
+    dbIndex: number,
+    pattern: string,
+    cursor: number,
+    count: number,
+  ) => invoke<KeyScanResult>('kv_scan_keys', { connectionId, dbIndex, pattern, cursor, count }),
 
   kvGetKey: (connectionId: string, dbIndex: number, key: string) =>
     invoke<KeyDetail>('kv_get_key', { connectionId, dbIndex, key }),
 
   commitRowUpdates: (connectionId: string, table: string, updates: RowUpdateBatch[]) =>
     invoke<void>('commit_row_updates', { connectionId, table, updates }),
+
+  commitRowDeletes: (connectionId: string, table: string, deletes: RowDeleteBatch[]) =>
+    invoke<void>('commit_row_deletes', { connectionId, table, deletes }),
 
   getDatabaseObjects: (connectionId: string, kind: string) =>
     invoke<DatabaseObject[]>('get_database_objects', { connectionId, kind }),

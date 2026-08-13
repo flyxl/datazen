@@ -724,6 +724,7 @@ pub fn run() {
             commands::get_er_data,
             commands::get_table_data,
             commands::commit_row_updates,
+            commands::commit_row_deletes,
             commands::execute_query,
             commands::execute_query_stream,
             commands::get_driver_commands,

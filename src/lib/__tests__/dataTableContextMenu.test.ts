@@ -3,6 +3,7 @@ import {
   buildDataTableContextMenuItems,
   formatRowAsSqlInsert,
   formatRowAsSqlUpdate,
+  formatRowAsSqlDelete,
   resolveDataTableCellFromEvent,
   rowToNamedRecord,
   serializeDataTableRowsAsCsv,
@@ -21,6 +22,7 @@ const labels: DataTableContextMenuLabels = {
   setNull: 'Set NULL',
   filterByValue: 'Filter by This Value',
   copySelectedRows: 'Copy Selected Rows',
+  deleteRow: 'Delete Row',
   export: 'Export',
 };
 
@@ -72,6 +74,15 @@ describe('rowToNamedRecord / formatRowAsSqlInsert / formatRowAsSqlUpdate', () =>
     );
     expect(formatRowAsSqlUpdate('users', ['id', 'name'], [1, 'Ada'])).toBe(
       `UPDATE "users" SET "name" = 'Ada' WHERE "id" = 1;`,
+    );
+  });
+
+  it('formats SQL DELETE with PK WHERE and IS NULL for null keys', () => {
+    expect(formatRowAsSqlDelete('users', ['id', 'name'], [1, 'Ada'], ['id'])).toBe(
+      `DELETE FROM "users" WHERE "id" = 1;`,
+    );
+    expect(formatRowAsSqlDelete('users', ['id', 'name'], [null, 'Ada'], ['id'])).toBe(
+      `DELETE FROM "users" WHERE "id" IS NULL;`,
     );
   });
 });
@@ -201,5 +212,30 @@ describe('buildDataTableContextMenuItems', () => {
         }),
       ),
     ).toEqual(['export']);
+  });
+
+  it('includes delete-row when canDelete', () => {
+    const onDeleteRow = vi.fn();
+    const withCell = buildDataTableContextMenuItems({
+      labels,
+      handlers: { onCopy: vi.fn(), onDeleteRow },
+      hasCellContext: true,
+      canDelete: true,
+    });
+    expect(ids(withCell)).toContain('delete-row');
+    const del = withCell.find((i) => i.kind === 'item' && i.id === 'delete-row');
+    if (del?.kind === 'item') del.action();
+    expect(onDeleteRow).toHaveBeenCalledOnce();
+
+    expect(
+      ids(
+        buildDataTableContextMenuItems({
+          labels,
+          handlers: { onCopySelectedRows: vi.fn(), onDeleteRow },
+          hasSelectedRows: true,
+          canDelete: true,
+        }),
+      ),
+    ).toContain('delete-row');
   });
 });

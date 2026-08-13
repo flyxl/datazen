@@ -516,6 +516,7 @@ const zhCN = {
   'tableData.loadFailed': '加载表数据失败',
   'tableData.noPrimaryKey': '无法提交更改：表没有主键',
   'tableData.commitFailed': '提交更改失败',
+  'tableData.deleteFailed': '删除行失败',
 
   // ── Schema Store ──
   'schema.loadDbFailed': '加载数据库失败',
@@ -534,6 +535,8 @@ const zhCN = {
   'dataTable.copyColumnName': '复制列名',
   'dataTable.setNull': '设为 NULL',
   'dataTable.filterByValue': '按此值筛选',
+  'dataTable.deleteRow': '删除行',
+  'dataTable.confirmDeleteRows': '确定删除选中的 {count} 行吗？此操作不可撤销。',
 
   // ── Detail Panel ──
   'detail.title': '详情',
