@@ -14,6 +14,8 @@ export interface EnsureDeps {
   databaseType: string | null;
   isMultiDatabase: boolean;
   loadedPaths: Set<string>;
+  /** Raw `get_tables` payloads keyed by fetch path (shared with custom trees). */
+  pathItems: Record<string, TableInfo[]>;
   /** SQL display name → fetch path root (e.g. numeric id). Filled by plugins via SDK. */
   pathAliases: Record<string, string>;
   namespaceTree: SqlNamespace;
@@ -21,6 +23,7 @@ export interface EnsureDeps {
   databases: string[];
   currentDatabase: string | null;
   mergeNamespace: (segments: string[], kind: 'branch' | 'tables', names: string[]) => void;
+  cachePathItems: (fetchPath: string, items: TableInfo[]) => void;
   registerPathAliases: (entries: { name: string; id: string }[]) => void;
   getDatabases: (connectionId: string) => Promise<string[]>;
   getTables: (connectionId: string, database: string) => Promise<TableInfo[]>;
@@ -83,7 +86,11 @@ async function ensurePathHierarchy(segments: string[], deps: EnsureDeps): Promis
   const fetchPath = buildSlashFetchPath(segments, rootId);
   if (!fetchPath) return;
 
-  const items = await deps.getTables(connectionId, fetchPath);
+  let items = deps.pathItems[fetchPath];
+  if (!items) {
+    items = await deps.getTables(connectionId, fetchPath);
+    deps.cachePathItems(fetchPath, items);
+  }
 
   if (segments.length === 1) {
     const children = items.filter(isPathNav).map((item) => pathNavSegment(item, rootId));

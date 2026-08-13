@@ -65,7 +65,7 @@ describe('Path IPC Hardening (PIH-001~PIH-006)', () => {
   before(async () => {
     mainWindow = await browser.getWindowHandle();
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'datazen-pih-'));
-    exportPath = path.join(tmpDir, 'connections-export.json');
+    exportPath = path.join(tmpDir, 'connections-export.datazenconnection');
   });
 
   after(async () => {

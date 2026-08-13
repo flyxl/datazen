@@ -55,6 +55,10 @@ fn looks_like_rncryptor_v3(bytes: &[u8]) -> bool {
     bytes.len() >= 66 && bytes[0] == 0x03 && bytes[1] == 0x01
 }
 
+fn is_encrypted_connection_ext(ext: &str) -> bool {
+    ext == "datazenconnection" || ext == "tableplusconnection"
+}
+
 fn looks_like_datazen_json(value: &serde_json::Value) -> bool {
     if value.get("app").and_then(|v| v.as_str()) == Some("DataZen") {
         return true;
@@ -109,10 +113,10 @@ pub fn parse_import_file(
         .to_ascii_lowercase();
     let pw = password.unwrap_or("").trim();
 
-    if ext == "tableplusconnection" || looks_like_rncryptor_v3(bytes) {
+    if is_encrypted_connection_ext(&ext) || looks_like_rncryptor_v3(bytes) {
         if pw.is_empty() {
             return Err(CommandError::Validation(
-                "Password is required for TablePlus import".into(),
+                "Password is required for encrypted connection import".into(),
             ));
         }
         return tableplus::parse(bytes, pw);
@@ -132,7 +136,7 @@ pub fn parse_import_file(
 
     let text = std::str::from_utf8(bytes).map_err(|_| {
         CommandError::Validation(
-            "Import file is not valid UTF-8 text (for TablePlus use .tableplusconnection)".into(),
+            "Import file is not valid UTF-8 text (for DataZen use .datazenconnection)".into(),
         )
     })?;
 

@@ -143,7 +143,7 @@ const translations = {
   'connShare.passwordOptional': 'DataGrip / Navicat / DBeaver / DBX plain은 선택',
   'connShare.passwordImportPlaceholder': 'DataZen / DBX encrypted / TablePlus에 필요',
   'connShare.importFormatsHint':
-    'DataZen, DBX, DataGrip, Navicat, DBeaver, TablePlus 지원. 비밀번호가 없으면 다시 입력하세요.',
+    'DataZen(.datazenconnection), DBX, DataGrip, Navicat, DBeaver, TablePlus 지원. 비밀번호가 없으면 다시 입력하세요.',
   'connShare.exportAction': '내보내다…',
   'connShare.importAction': '수입…',
   'connShare.exportSuccess': '{count} 연결을 내보냈습니다.',
