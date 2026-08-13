@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Loader2, Plus } from 'lucide-react';
+import { ArrowLeft, Download, Loader2, Plus } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { databaseCommands } from '../../commands/database';
 import { queryCommands } from '../../commands/query';
 import { structureCommands } from '../../commands/structure';
 import { DB_REGISTRY } from '../../lib/databaseTypes';
+import { exportTableStructureToFile } from '../../lib/exportTableStructure';
 import { buildStructureChangeRequest } from '../../lib/structureEditor/buildStructureChangeRequest';
 import { capEnabled } from '../../lib/structureEditor/controlHints';
 import {
@@ -101,6 +102,7 @@ export function TableStructureEditor({
   const [error, setError] = useState<string | null>(null);
   const [previewPlan, setPreviewPlan] = useState<StructureChangePlan | null>(null);
   const [dragIdx, setDragIdx] = useState<number | null>(null);
+  const [exportingStructure, setExportingStructure] = useState(false);
 
   useEffect(() => {
     if (!uiConfig) {
@@ -297,6 +299,28 @@ export function TableStructureEditor({
     }
   }, [buildRequest, connectionId, onSuccess, t]);
 
+  const handleExportStructure = useCallback(async () => {
+    if (mode !== 'alter' || !initialTableName) return;
+    setExportingStructure(true);
+    setError(null);
+    try {
+      const result = await exportTableStructureToFile({
+        connectionId,
+        tableName: initialTableName,
+        databaseType,
+      });
+      if (result === 'unsupported') {
+        setError(t('structEditor.exportUnsupported'));
+      }
+    } catch (e) {
+      const msg =
+        typeof e === 'string' ? e : e instanceof Error ? e.message : t('structEditor.exportFailed');
+      setError(msg);
+    } finally {
+      setExportingStructure(false);
+    }
+  }, [mode, initialTableName, connectionId, databaseType, t]);
+
   const canAddColumn =
     mode === 'create' ? capEnabled(caps, 'createTable') : capEnabled(caps, 'addColumn');
   const canAddIndex = capEnabled(caps, 'createIndex');
@@ -338,6 +362,25 @@ export function TableStructureEditor({
             : `${t('structEditor.editTable')} · ${initialTableName}`}
         </span>
         <div className="flex-1" />
+        {mode === 'alter' && initialTableName && (
+          <Button
+            variant="secondary"
+            className="h-8 gap-1 text-xs"
+            data-testid="struct-editor-export-structure"
+            title={t('structEditor.exportStructure')}
+            onClick={() => void handleExportStructure()}
+            disabled={exportingStructure}
+          >
+            {exportingStructure ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Download className="h-3.5 w-3.5" />
+            )}
+            {exportingStructure
+              ? t('structEditor.exportingStructure')
+              : t('structEditor.exportStructure')}
+          </Button>
+        )}
         <Button
           variant="secondary"
           className="h-8 text-xs"

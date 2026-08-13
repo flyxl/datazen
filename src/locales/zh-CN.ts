@@ -614,7 +614,7 @@ const zhCN = {
   'export.export': '导出',
 
   // ── Batch Export Dialog ──
-  'batchExport.title': '批量导出',
+  'batchExport.title': '导出',
   'batchExport.selectTables': '选择表',
   'batchExport.selectAll': '全选',
   'batchExport.clearAll': '全不选',
@@ -678,6 +678,10 @@ const zhCN = {
   'structEditor.noChanges': '没有可应用的更改',
   'structEditor.previewFailed': '生成 SQL 预览失败',
   'structEditor.executePartial': '已执行 {executed}/{total} 条语句后停止：{error}',
+  'structEditor.exportStructure': '导出表结构',
+  'structEditor.exportingStructure': '导出中…',
+  'structEditor.exportFailed': '导出表结构失败',
+  'structEditor.exportUnsupported': '当前连接类型不支持导出表结构',
 
   // ── Indexes View ──
   'indexes.newIndex': '新建索引',

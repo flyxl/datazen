@@ -177,7 +177,7 @@ plugin repository
 
 这样做的好处是 Plugin UI 在真实的 Datazen 应用环境中运行，而不是在单独的 Mock Host 中运行，因此可以直接调试真实的 React/Tauri 上下文。
 
-当前 Driver resolver 会根据选择的 Driver 生成 `src/plugins/generated.ts`。因此前端 Plugin 和 Rust Driver 一样，都属于同一个编译期 Driver selection。
+当前 Driver resolver 会根据选择的 Driver 生成 `src/plugins/generated.ts`（gitignore）。因此前端 Plugin 和 Rust Driver 一样，都属于同一个编译期 Driver selection。文件缺失时 `pnpm install` / `pnpm build` 会 `--codegen-only` 补齐。
 
 新增前端功能时，应参考 registry 中已有的外部 Plugin，例如 Kiwi、OLAP 和 Superset 的结构和约定。
 

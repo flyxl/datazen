@@ -6,6 +6,35 @@ import {
   runWithPluginInject,
 } from '../with-plugin-inject.mjs';
 
+describe('runWithPluginInject rejected flags', () => {
+  it('returns status 1 for --plugins', () => {
+    const result = runWithPluginInject({
+      argv: ['--plugins=kiwi', '--', 'true'],
+      stashExistsFn: () => false,
+      env: {},
+      runResolve: () => {
+        throw new Error('must not resolve');
+      },
+      log: () => {},
+    });
+    expect(result.status).toBe(1);
+    expect(result.ownStash).toBe(false);
+  });
+
+  it('returns status 1 for DATAZEN_PLUGINS', () => {
+    const result = runWithPluginInject({
+      argv: ['--', 'true'],
+      stashExistsFn: () => false,
+      env: { DATAZEN_PLUGINS: 'kiwi' },
+      runResolve: () => {
+        throw new Error('must not resolve');
+      },
+      log: () => {},
+    });
+    expect(result.status).toBe(1);
+  });
+});
+
 describe('planPluginInjectLifecycle', () => {
   it('owns stash when none exists', () => {
     expect(planPluginInjectLifecycle({ exists: () => false, env: {} })).toEqual({
@@ -16,9 +45,7 @@ describe('planPluginInjectLifecycle', () => {
   });
 
   it('treats leftover stash without env as orphan (take ownership)', () => {
-    expect(
-      planPluginInjectLifecycle({ exists: () => true, env: {} }),
-    ).toEqual({
+    expect(planPluginInjectLifecycle({ exists: () => true, env: {} })).toEqual({
       ownStash: true,
       nested: false,
       orphanStash: true,
@@ -79,11 +106,7 @@ describe('runWithPluginInject nested ownership', () => {
       nested: false,
       orphanStash: false,
     });
-    expect(calls).toEqual([
-      'resolve:--drivers=basic',
-      'cmd:echo ok',
-      'restore',
-    ]);
+    expect(calls).toEqual(['resolve:--drivers=basic', 'cmd:echo ok', 'restore']);
   });
 
   it('orphan stash: restore then resolve/command/restore', () => {
@@ -141,6 +164,38 @@ describe('runWithPluginInject nested ownership', () => {
     });
     expect(calls).toEqual(['cmd:tsc']);
     expect(logs.some((l) => /skipping resolve\/restore/.test(l))).toBe(true);
+  });
+
+  it('ownStash with no command still resolves and restores', () => {
+    const calls: string[] = [];
+    const result = runWithPluginInject({
+      argv: ['--drivers=basic'],
+      stashExistsFn: () => false,
+      env: {},
+      runResolve: () => {
+        calls.push('resolve');
+      },
+      runRestore: () => {
+        calls.push('restore');
+      },
+      log: () => {},
+    });
+    expect(result.status).toBe(0);
+    expect(result.ownStash).toBe(true);
+    expect(calls).toEqual(['resolve', 'restore']);
+  });
+
+  it('maps null command status to 1', () => {
+    const result = runWithPluginInject({
+      argv: ['--', 'false'],
+      stashExistsFn: () => false,
+      env: {},
+      runResolve: () => {},
+      runRestore: () => {},
+      runCommand: () => ({ status: null }),
+      log: () => {},
+    });
+    expect(result.status).toBe(1);
   });
 
   it('nested with no command still does not restore', () => {

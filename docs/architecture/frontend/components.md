@@ -608,12 +608,13 @@ Safe Mode 开启时 Schema 树隐藏 Truncate / Drop（后端 `sql_guard` 拦截
 - 支持 5 种格式：CSV、TSV、JSON、SQL INSERT、SQL UPDATE
 - 通过 Tauri 原生对话框选择保存路径
 
-**批量导出**（Connection Window，非单表 DataTable 导出）：
-- 顶栏「批量导出」按钮 → `BatchExportDialog`；Schema 树 database / blank / table / view 右键「批量导出…」（`schemaTreeContextMenu` → `onBatchExport`）
+**导出**（Connection Window，非单表 DataTable 导出；原「批量导出」）：
+- 顶栏「导出」按钮（权限按钮之后，`data-testid=conn-toolbar-export`）→ `BatchExportDialog`；Schema 树 database / blank / table / view 右键「导出…」（`schemaTreeContextMenu` → `onBatchExport`）
 - 范围：全部表或所选表；模式：仅结构 / 仅数据 / 数据+结构
 - 逻辑：`src/lib/batchExport.ts`（组装）+ `batchExportJob.ts`（执行/ZIP）+ `loadBatchExportTable.ts`（DDL + 分页全量）
 - UI：`src/windows/connection/BatchExportDialog.tsx`；表多选、格式、单文件/ZIP
-- E2E：可断言顶栏按钮（`title=batchExport.title`）；Schema 树原生菜单项不可 DOM 断言
+- E2E：可断言顶栏按钮；Schema 树原生菜单项不可 DOM 断言
+- 编辑表结构页（`TableStructureEditor` alter）：「导出表结构」→ DDL 另存为 `.sql`（`exportTableStructure.ts`）
 
 Props 接口：
 

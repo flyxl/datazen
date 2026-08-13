@@ -526,7 +526,7 @@ const translations = {
   'export.export': '導出',
 
   // ── Batch Export Dialog ──
-  'batchExport.title': 'Batch Export',
+  'batchExport.title': '匯出',
   'batchExport.selectTables': 'Select Tables',
   'batchExport.selectAll': 'Select All',
   'batchExport.clearAll': 'Clear All',
@@ -585,6 +585,10 @@ const translations = {
   'structEditor.noChanges': '沒有可套用的更改',
   'structEditor.previewFailed': '生成 SQL 預覽失敗',
   'structEditor.executePartial': '已執行 {executed}/{total} 條語句後停止：{error}',
+  'structEditor.exportStructure': '匯出表結構',
+  'structEditor.exportingStructure': '匯出中…',
+  'structEditor.exportFailed': '匯出表結構失敗',
+  'structEditor.exportUnsupported': '目前連線類型不支援匯出表結構',
   'indexes.newIndex': '新建索引',
   'indexes.indexName': '索引名稱',
   'indexes.selectColumns': '選擇列（按選擇順序排列）',
