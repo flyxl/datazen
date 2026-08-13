@@ -376,8 +376,18 @@ export function DataSyncWindow() {
   }, []);
 
   const selectAll = useCallback(() => {
+    if (mappingResults.length > 0) {
+      setSelectedTables(
+        new Set(
+          mappingResults
+            .filter((r) => r.status === 'MATCHED')
+            .map((r) => displayTableName(r)),
+        ),
+      );
+      return;
+    }
     setSelectedTables(new Set(comparisons.filter((r) => r.status !== 'target_only').map((r) => r.table)));
-  }, [comparisons]);
+  }, [comparisons, mappingResults]);
 
   const deselectAll = useCallback(() => {
     setSelectedTables(new Set());
@@ -750,7 +760,7 @@ export function DataSyncWindow() {
       {/* Footer */}
       {(syncState === 'compared' || syncState === 'syncing' || syncState === 'done') && (
         <div className="flex shrink-0 items-center gap-3 border-t border-edge px-6 py-3">
-          <span className="text-xs text-fg-muted">{t('sync.selected', { selected: selectedTables.size, total: comparisons.length })}</span>
+          <span className="text-xs text-fg-muted">{t('sync.selected', { selected: selectedTables.size, total: mappingResults.length > 0 ? mappingResults.length : comparisons.length })}</span>
           <div className="flex-1" />
           <Button
             variant="primary"
