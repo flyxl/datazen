@@ -15,7 +15,6 @@ pub(crate) async fn sync_table_impl(
 /// Retired product path: overwrite copy (DROP + INSERT) is not Data Synchronization.
 pub(crate) async fn sync_tables_impl(
     _state: &AppState,
-    _app_handle: tauri::AppHandle,
     task_id: String,
     _source_connection_id: String,
     _target_connection_id: String,
