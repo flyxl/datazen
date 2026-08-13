@@ -318,7 +318,7 @@ const translations = {
   'settings.confirmDeleteHint': 'Mostrar uma caixa de diálogo de confirmação ao excluir linhas',
   'settings.autoCommitHint': 'Confirmar edições automaticamente nos dados',
   'settings.safeMode': 'Safe Mode',
-  'settings.safeModeHint': 'Block UPDATE/DELETE without a WHERE clause, and TRUNCATE',
+  'settings.safeModeHint': 'Block UPDATE/DELETE without a WHERE clause, and TRUNCATE/DROP',
   'connWin.data': 'Dados',
   'connWin.structure': 'Estrutura',
   'connWin.indexes': 'Índices',

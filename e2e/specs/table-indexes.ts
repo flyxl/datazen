@@ -7,6 +7,7 @@ import {
   clickTableInSidebar,
   switchSubTab,
   openSeededPgConnectionWindow,
+  withSafeModeOff,
 } from '../helpers.js';
 
 /**
@@ -104,22 +105,24 @@ describe('表索引创建与删除 (IDX-001~IDX-006)', () => {
   });
 
   it('删除索引应弹出确认并移除 (IDX-005)', async () => {
-    await switchSubTab(t('connWin.indexes'));
-    await browser.pause(800);
-    const deleteBtn = await $(`button[title="${t('indexes.deleteIndex')}"]`);
-    await deleteBtn.waitForDisplayed({ timeout: 8000 });
-    await deleteBtn.click();
-    await browser.pause(400);
-    await expect(await $(`div*=${t('indexes.confirmDeleteTitle')}`)).toBeDisplayed();
-    await browser.execute(() => {
-      const dialog = document.querySelector('[role="dialog"]');
-      const buttons = Array.from(dialog?.querySelectorAll('button') ?? []);
-      const confirm = buttons[buttons.length - 1] as HTMLButtonElement | undefined;
-      confirm?.click();
-    });
-    await browser.waitUntil(async () => !(await $('body').getText()).includes(INDEX_NAME), {
-      timeout: 15000,
-      timeoutMsg: '等待索引从列表移除',
+    await withSafeModeOff(async () => {
+      await switchSubTab(t('connWin.indexes'));
+      await browser.pause(800);
+      const deleteBtn = await $(`button[title="${t('indexes.deleteIndex')}"]`);
+      await deleteBtn.waitForDisplayed({ timeout: 8000 });
+      await deleteBtn.click();
+      await browser.pause(400);
+      await expect(await $(`div*=${t('indexes.confirmDeleteTitle')}`)).toBeDisplayed();
+      await browser.execute(() => {
+        const dialog = document.querySelector('[role="dialog"]');
+        const buttons = Array.from(dialog?.querySelectorAll('button') ?? []);
+        const confirm = buttons[buttons.length - 1] as HTMLButtonElement | undefined;
+        confirm?.click();
+      });
+      await browser.waitUntil(async () => !(await $('body').getText()).includes(INDEX_NAME), {
+        timeout: 15000,
+        timeoutMsg: '等待索引从列表移除',
+      });
     });
   });
 

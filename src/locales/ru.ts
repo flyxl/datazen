@@ -316,7 +316,7 @@ const translations = {
   'settings.confirmDeleteHint': 'Показывать диалоговое окно подтверждения при удалении строк',
   'settings.autoCommitHint': 'Автоматически фиксировать изменения в данных',
   'settings.safeMode': 'Safe Mode',
-  'settings.safeModeHint': 'Block UPDATE/DELETE without a WHERE clause, and TRUNCATE',
+  'settings.safeModeHint': 'Block UPDATE/DELETE without a WHERE clause, and TRUNCATE/DROP',
   'connWin.data': 'Данные',
   'connWin.structure': 'Структура',
   'connWin.indexes': 'Индексы',

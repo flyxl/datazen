@@ -90,6 +90,17 @@ describe('Client parity P0–P2', () => {
     expect(err).toMatch(/WHERE/i);
   });
 
+  it('Safe Mode blocks DROP', async () => {
+    const err = await invokeBackendCatch('execute_driver_command', {
+      request: {
+        connectionId: pgId,
+        command: 'query',
+        input: { sql: 'DROP TABLE IF EXISTS _e2e_should_not_drop' },
+      },
+    });
+    expect(err).toMatch(/DROP/i);
+  });
+
   it('substitutes bind params before execution', async () => {
     const result = await invokeBackend<{ data: { results?: { rows?: unknown[] }[] } }>(
       'execute_driver_command',

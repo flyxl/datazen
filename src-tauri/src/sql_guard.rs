@@ -10,9 +10,10 @@ const WRITE_VERBS: &[&str] = &[
 ];
 
 const SAFE_MODE_NEEDS_WHERE: &[&str] = &["UPDATE", "DELETE"];
+const SAFE_MODE_BLOCKED: &[&str] = &["TRUNCATE", "DROP"];
 
 /// Reject mutating SQL when the connection is read-only, and require WHERE
-/// for UPDATE/DELETE when Safe Mode is on.
+/// for UPDATE/DELETE when Safe Mode is on. Safe Mode also blocks TRUNCATE/DROP.
 pub fn check_sql(sql: &str, read_only: bool, safe_mode: bool) -> Result<(), String> {
     if !read_only && !safe_mode {
         return Ok(());
@@ -26,8 +27,12 @@ pub fn check_sql(sql: &str, read_only: bool, safe_mode: bool) -> Result<(), Stri
                 "Connection is read-only; '{verb}' statements are not allowed"
             ));
         }
-        if safe_mode && verb.eq_ignore_ascii_case("TRUNCATE") {
-            return Err("Safe Mode blocks TRUNCATE".to_string());
+        if safe_mode
+            && SAFE_MODE_BLOCKED
+                .iter()
+                .any(|v| verb.eq_ignore_ascii_case(v))
+        {
+            return Err(format!("Safe Mode blocks {verb}"));
         }
         if safe_mode
             && SAFE_MODE_NEEDS_WHERE
@@ -296,7 +301,22 @@ mod tests {
 
     #[test]
     fn safe_mode_blocks_truncate() {
-        assert!(check_sql("TRUNCATE TABLE t", false, true).is_err());
+        let err = check_sql("TRUNCATE TABLE t", false, true).unwrap_err();
+        assert!(err.contains("TRUNCATE"));
+    }
+
+    #[test]
+    fn safe_mode_blocks_drop() {
+        for sql in [
+            "DROP TABLE t",
+            "DROP VIEW v",
+            "DROP INDEX idx",
+            "DROP TABLE IF EXISTS t",
+        ] {
+            let err = check_sql(sql, false, true).unwrap_err();
+            assert!(err.contains("DROP"), "expected DROP block for {sql}: {err}");
+        }
+        assert!(check_sql("DROP TABLE t", false, false).is_ok());
     }
 
     #[test]
@@ -327,6 +347,8 @@ mod tests {
     fn disabled_guards_allow_writes() {
         assert!(check_sql("UPDATE t SET x = 1", false, false).is_ok());
         assert!(check_sql("DELETE FROM t", false, false).is_ok());
+        assert!(check_sql("DROP TABLE t", false, false).is_ok());
+        assert!(check_sql("TRUNCATE TABLE t", false, false).is_ok());
     }
 
     #[test]

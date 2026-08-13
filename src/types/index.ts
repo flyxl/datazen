@@ -209,7 +209,7 @@ export interface AppSettings {
   editorFontFamily: string;
   confirmOnDelete: boolean;
   autoCommit: boolean;
-  /** Require WHERE on UPDATE/DELETE. Default true. */
+  /** Require WHERE on UPDATE/DELETE; also block TRUNCATE/DROP. Default true. */
   safeMode: boolean;
   defaultPageSize: number;
   /** Max DB session pool size (Postgres/MySQL). Default 10; applies on next connect. */

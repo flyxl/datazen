@@ -316,7 +316,7 @@ const translations = {
   'settings.confirmDeleteHint': 'Zeigt beim Löschen von Zeilen einen Bestätigungsdialog an',
   'settings.autoCommitHint': 'Übernehmen Sie Änderungen an Daten automatisch',
   'settings.safeMode': 'Safe Mode',
-  'settings.safeModeHint': 'Block UPDATE/DELETE without a WHERE clause, and TRUNCATE',
+  'settings.safeModeHint': 'Block UPDATE/DELETE without a WHERE clause, and TRUNCATE/DROP',
   'connWin.data': 'Daten',
   'connWin.structure': 'Struktur',
   'connWin.indexes': 'Indizes',

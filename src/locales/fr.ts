@@ -320,7 +320,7 @@ const translations = {
     'Afficher une boîte de dialogue de confirmation lors de la suppression de lignes',
   'settings.autoCommitHint': 'Valider automatiquement les modifications des données',
   'settings.safeMode': 'Safe Mode',
-  'settings.safeModeHint': 'Block UPDATE/DELETE without a WHERE clause, and TRUNCATE',
+  'settings.safeModeHint': 'Block UPDATE/DELETE without a WHERE clause, and TRUNCATE/DROP',
   'connWin.data': 'Données',
   'connWin.structure': 'Structure',
   'connWin.indexes': 'Index',

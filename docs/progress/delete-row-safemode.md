@@ -8,7 +8,7 @@
 | 操作 | 后端 `sql_guard` | 前端菜单 | 结论 |
 |------|------------------|----------|------|
 | Truncate（含 SQLite `DELETE FROM` 无 WHERE） | Safe Mode **拦截** | Safe Mode 时 **隐藏** Truncate | 已对齐 |
-| Drop | Safe Mode **不拦截**（设置文案未包含 DROP） | 仅 `readOnly` 隐藏 | 与设定一致 |
+| Drop | Safe Mode **拦截**（与 Truncate 同级） | Safe Mode 时 **隐藏** Drop / Drop View | 已对齐（`feat/safemode-drop`） |
 | Delete Row（PK WHERE） | 专用 IPC 与 update 对齐（总有 WHERE） | 右键/选择栏 + confirmOnDelete | 已实现 |
 
 ## 功能清单

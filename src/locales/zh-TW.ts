@@ -310,7 +310,7 @@ const translations = {
   'settings.confirmDeleteHint': '刪除行時彈出確認對話框',
   'settings.autoCommitHint': '編輯數據後自動提交更改',
   'settings.safeMode': 'Safe Mode',
-  'settings.safeModeHint': 'Block UPDATE/DELETE without a WHERE clause, and TRUNCATE',
+  'settings.safeModeHint': '禁止無 WHERE 的 UPDATE/DELETE，以及 TRUNCATE/DROP',
   'connWin.data': '數據',
   'connWin.structure': '結構',
   'connWin.indexes': '索引',

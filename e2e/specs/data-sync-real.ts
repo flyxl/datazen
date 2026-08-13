@@ -8,6 +8,7 @@
  */
 import { expect, browser, $ } from '@wdio/globals';
 import { t } from '../i18n.js';
+import { sqlBlockedBySafeMode, withSafeModeOff } from '../helpers.js';
 
 // ── Connection configs (credentials from environment variables) ─────
 
@@ -98,7 +99,12 @@ async function saveAndConnect(cfg: typeof PG_SRC): Promise<string> {
 }
 
 async function runSQL(connectionId: string, sql: string): Promise<void> {
-  await invokeBackend('execute_query', { connectionId, sql });
+  const run = () => invokeBackend('execute_query', { connectionId, sql });
+  if (sqlBlockedBySafeMode(sql)) {
+    await withSafeModeOff(run);
+    return;
+  }
+  await run();
 }
 
 interface TableComparison {
@@ -122,7 +128,9 @@ let myRoConnId: string;
 
 describe('数据同步: PG→PG 基础功能 (SYNC-REAL)', () => {
   before(async () => {
-    await $(`input[placeholder="${t('main.searchPlaceholder')}"]`).waitForDisplayed({ timeout: 10000 });
+    await $(`input[placeholder="${t('main.searchPlaceholder')}"]`).waitForDisplayed({
+      timeout: 10000,
+    });
     await browser.pause(500);
 
     // Save connection configs and connect
@@ -150,18 +158,32 @@ describe('数据同步: PG→PG 基础功能 (SYNC-REAL)', () => {
       DROP TABLE IF EXISTS sync_simple;
       DROP TABLE IF EXISTS sync_pg_types;
     `;
-    try { await runSQL(srcConnId, cleanSQL); } catch { /* ok */ }
-    try { await runSQL(tgtConnId, cleanSQL); } catch { /* ok */ }
+    try {
+      await runSQL(srcConnId, cleanSQL);
+    } catch {
+      /* ok */
+    }
+    try {
+      await runSQL(tgtConnId, cleanSQL);
+    } catch {
+      /* ok */
+    }
 
     // Delete test connections
     for (const cfg of ALL_CONFIGS) {
-      try { await invokeBackend('delete_connection', { id: cfg.id }); } catch { /* ok */ }
+      try {
+        await invokeBackend('delete_connection', { id: cfg.id });
+      } catch {
+        /* ok */
+      }
     }
   });
 
   it('SYNC-REAL-001: compare — source has table, target is empty → source_only', async () => {
     // Use integer (not serial) to avoid sequence-copy issues in sync_table
-    await runSQL(srcConnId, `
+    await runSQL(
+      srcConnId,
+      `
       CREATE TABLE sync_users (
         id integer NOT NULL,
         name varchar(100) NOT NULL,
@@ -172,7 +194,8 @@ describe('数据同步: PG→PG 基础功能 (SYNC-REAL)', () => {
         (1, 'Alice', 'alice@example.com'),
         (2, 'Bob', 'bob@example.com'),
         (3, 'Charlie', 'charlie@example.com');
-    `);
+    `,
+    );
 
     const results = await invokeBackend<TableComparison[]>('compare_databases', {
       sourceConnectionId: srcConnId,
@@ -209,11 +232,14 @@ describe('数据同步: PG→PG 基础功能 (SYNC-REAL)', () => {
   });
 
   it('SYNC-REAL-004: compare — same schema different rows reports different', async () => {
-    await runSQL(srcConnId, `
+    await runSQL(
+      srcConnId,
+      `
       INSERT INTO sync_users (id, name, email) VALUES
         (4, 'Dave', 'dave@example.com'),
         (5, 'Eve', 'eve@example.com');
-    `);
+    `,
+    );
 
     const results = await invokeBackend<TableComparison[]>('compare_databases', {
       sourceConnectionId: srcConnId,
@@ -229,7 +255,9 @@ describe('数据同步: PG→PG 基础功能 (SYNC-REAL)', () => {
 
   it('SYNC-REAL-005: compare — different schemas → different', async () => {
     // Source: 3 columns
-    await runSQL(srcConnId, `
+    await runSQL(
+      srcConnId,
+      `
       CREATE TABLE sync_products (
         id integer NOT NULL,
         name text NOT NULL,
@@ -237,17 +265,21 @@ describe('数据同步: PG→PG 基础功能 (SYNC-REAL)', () => {
         PRIMARY KEY (id)
       );
       INSERT INTO sync_products (id, name, price) VALUES (1, 'Widget', 9.99);
-    `);
+    `,
+    );
 
     // Target: 2 columns (missing price)
-    await runSQL(tgtConnId, `
+    await runSQL(
+      tgtConnId,
+      `
       CREATE TABLE sync_products (
         id integer NOT NULL,
         name text NOT NULL,
         PRIMARY KEY (id)
       );
       INSERT INTO sync_products (id, name) VALUES (1, 'Widget');
-    `);
+    `,
+    );
 
     const results = await invokeBackend<TableComparison[]>('compare_databases', {
       sourceConnectionId: srcConnId,
@@ -299,7 +331,9 @@ describe('数据同步: PG→PG 基础功能 (SYNC-REAL)', () => {
 
 describe('数据同步: 权限错误 (SYNC-PERM)', () => {
   before(async () => {
-    await $(`input[placeholder="${t('main.searchPlaceholder')}"]`).waitForDisplayed({ timeout: 10000 });
+    await $(`input[placeholder="${t('main.searchPlaceholder')}"]`).waitForDisplayed({
+      timeout: 10000,
+    });
     await browser.pause(500);
 
     // Ensure source connection is ready with a table to sync
@@ -308,7 +342,9 @@ describe('数据同步: 权限错误 (SYNC-PERM)', () => {
 
     // Ensure sync_users exists in source
     try {
-      await runSQL(srcConnId, `
+      await runSQL(
+        srcConnId,
+        `
         CREATE TABLE IF NOT EXISTS sync_users (
           id integer NOT NULL,
           name varchar(100) NOT NULL,
@@ -318,8 +354,11 @@ describe('数据同步: 权限错误 (SYNC-PERM)', () => {
         INSERT INTO sync_users (id, name, email)
           SELECT 1, 'Test', 'test@test.com'
           WHERE NOT EXISTS (SELECT 1 FROM sync_users LIMIT 1);
-      `);
-    } catch { /* may already exist */ }
+      `,
+      );
+    } catch {
+      /* may already exist */
+    }
 
     // Connect readonly users
     roConnId = await saveAndConnect(PG_RO);
@@ -340,8 +379,9 @@ describe('数据同步: 权限错误 (SYNC-PERM)', () => {
     }
 
     expect(errorMsg).not.toBe('__NO_ERROR__');
-    const hasPermError = errorMsg.toLowerCase().includes('permission denied')
-      || errorMsg.toLowerCase().includes('error');
+    const hasPermError =
+      errorMsg.toLowerCase().includes('permission denied') ||
+      errorMsg.toLowerCase().includes('error');
     expect(hasPermError).toBe(true);
   });
 
@@ -359,9 +399,10 @@ describe('数据同步: 权限错误 (SYNC-PERM)', () => {
     }
 
     expect(errorMsg).not.toBe('__NO_ERROR__');
-    const hasPermError = errorMsg.toLowerCase().includes('denied')
-      || errorMsg.toLowerCase().includes('error')
-      || errorMsg.toLowerCase().includes('command');
+    const hasPermError =
+      errorMsg.toLowerCase().includes('denied') ||
+      errorMsg.toLowerCase().includes('error') ||
+      errorMsg.toLowerCase().includes('command');
     expect(hasPermError).toBe(true);
   });
 });
@@ -372,7 +413,9 @@ describe('数据同步: 权限错误 (SYNC-PERM)', () => {
 
 describe('数据同步: PG→MySQL 跨库 (SYNC-CROSS)', () => {
   before(async () => {
-    await $(`input[placeholder="${t('main.searchPlaceholder')}"]`).waitForDisplayed({ timeout: 10000 });
+    await $(`input[placeholder="${t('main.searchPlaceholder')}"]`).waitForDisplayed({
+      timeout: 10000,
+    });
     await browser.pause(500);
 
     if (!srcConnId) srcConnId = await saveAndConnect(PG_SRC);
@@ -380,32 +423,47 @@ describe('数据同步: PG→MySQL 跨库 (SYNC-CROSS)', () => {
 
     // Clean MySQL target
     try {
-      await runSQL(myTgtConnId, `
+      await runSQL(
+        myTgtConnId,
+        `
         DROP TABLE IF EXISTS sync_users;
         DROP TABLE IF EXISTS sync_simple;
         DROP TABLE IF EXISTS sync_diverse;
         DROP TABLE IF EXISTS sync_pg_arrays;
-      `);
-    } catch { /* ok */ }
+      `,
+      );
+    } catch {
+      /* ok */
+    }
   });
 
   after(async () => {
     try {
-      await runSQL(myTgtConnId, `
+      await runSQL(
+        myTgtConnId,
+        `
         DROP TABLE IF EXISTS sync_users;
         DROP TABLE IF EXISTS sync_simple;
         DROP TABLE IF EXISTS sync_diverse;
         DROP TABLE IF EXISTS sync_pg_arrays;
-      `);
-    } catch { /* ok */ }
+      `,
+      );
+    } catch {
+      /* ok */
+    }
     // Clean PG source test tables
     try {
-      await runSQL(srcConnId, `
+      await runSQL(
+        srcConnId,
+        `
         DROP TABLE IF EXISTS sync_simple;
         DROP TABLE IF EXISTS sync_diverse;
         DROP TABLE IF EXISTS sync_pg_arrays;
-      `);
-    } catch { /* ok */ }
+      `,
+      );
+    } catch {
+      /* ok */
+    }
   });
 
   it('SYNC-REAL-020: compare PG source vs MySQL target → PG tables are source_only', async () => {
@@ -424,8 +482,12 @@ describe('数据同步: PG→MySQL 跨库 (SYNC-CROSS)', () => {
   it('SYNC-REAL-021: sync simple compatible types PG→MySQL → success', async () => {
     try {
       await runSQL(srcConnId, 'DROP TABLE IF EXISTS sync_simple;');
-    } catch { /* ok */ }
-    await runSQL(srcConnId, `
+    } catch {
+      /* ok */
+    }
+    await runSQL(
+      srcConnId,
+      `
       CREATE TABLE sync_simple (
         id integer NOT NULL,
         name varchar(100),
@@ -435,7 +497,8 @@ describe('数据同步: PG→MySQL 跨库 (SYNC-CROSS)', () => {
       INSERT INTO sync_simple (id, name, active) VALUES
         (1, 'Alpha', true),
         (2, 'Beta', false);
-    `);
+    `,
+    );
 
     // With type mapping, PG integer→INT, varchar→VARCHAR, boolean→TINYINT(1)
     const rowsSynced = await invokeBackend<number>('sync_table', {
@@ -459,8 +522,12 @@ describe('数据同步: PG→MySQL 跨库 (SYNC-CROSS)', () => {
   it('SYNC-REAL-022: sync PG table with diverse types PG→MySQL → success', async () => {
     try {
       await runSQL(srcConnId, 'DROP TABLE IF EXISTS sync_diverse;');
-    } catch { /* ok */ }
-    await runSQL(srcConnId, `
+    } catch {
+      /* ok */
+    }
+    await runSQL(
+      srcConnId,
+      `
       CREATE TABLE sync_diverse (
         id integer NOT NULL PRIMARY KEY,
         name text NOT NULL,
@@ -473,7 +540,8 @@ describe('数据同步: PG→MySQL 跨库 (SYNC-CROSS)', () => {
       );
       INSERT INTO sync_diverse (id, name, price, ratio, is_active, uid, note) VALUES
         (1, 'Widget', 19.99, 3.14, true, 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11', 'first item');
-    `);
+    `,
+    );
 
     const rowsSynced = await invokeBackend<number>('sync_table', {
       sourceConnectionId: srcConnId,
@@ -486,14 +554,19 @@ describe('数据同步: PG→MySQL 跨库 (SYNC-CROSS)', () => {
   it('SYNC-REAL-023: sync PG array type to MySQL → error (no array equivalent)', async () => {
     try {
       await runSQL(srcConnId, 'DROP TABLE IF EXISTS sync_pg_arrays;');
-    } catch { /* ok */ }
-    await runSQL(srcConnId, `
+    } catch {
+      /* ok */
+    }
+    await runSQL(
+      srcConnId,
+      `
       CREATE TABLE sync_pg_arrays (
         id integer NOT NULL PRIMARY KEY,
         tags text[]
       );
       INSERT INTO sync_pg_arrays (id, tags) VALUES (1, ARRAY['a','b']);
-    `);
+    `,
+    );
 
     // Array data from PG comes as '{a,b}' string — type maps to JSON but
     // the PG array literal format isn't valid JSON, so INSERT may fail
@@ -529,7 +602,9 @@ describe('数据同步: 批量同步与进度 (SYNC-BATCH)', () => {
   let batchTgtId: string;
 
   before(async () => {
-    await $(`input[placeholder="${t('main.searchPlaceholder')}"]`).waitForDisplayed({ timeout: 10000 });
+    await $(`input[placeholder="${t('main.searchPlaceholder')}"]`).waitForDisplayed({
+      timeout: 10000,
+    });
     await browser.pause(500);
 
     batchSrcId = await saveAndConnect(PG_SRC);
@@ -544,7 +619,9 @@ describe('数据同步: 批量同步与进度 (SYNC-BATCH)', () => {
     await runSQL(batchSrcId, cleanSQL);
     await runSQL(batchTgtId, cleanSQL);
 
-    await runSQL(batchSrcId, `
+    await runSQL(
+      batchSrcId,
+      `
       CREATE TABLE sync_batch_a (id int PRIMARY KEY, val text);
       INSERT INTO sync_batch_a VALUES (1, 'a1'), (2, 'a2'), (3, 'a3');
 
@@ -553,7 +630,8 @@ describe('数据同步: 批量同步与进度 (SYNC-BATCH)', () => {
 
       CREATE TABLE sync_batch_c (id int PRIMARY KEY, val text);
       INSERT INTO sync_batch_c VALUES (1, 'c1');
-    `);
+    `,
+    );
   });
 
   after(async () => {
@@ -562,8 +640,16 @@ describe('数据同步: 批量同步与进度 (SYNC-BATCH)', () => {
       DROP TABLE IF EXISTS sync_batch_b;
       DROP TABLE IF EXISTS sync_batch_c;
     `;
-    try { await runSQL(batchSrcId, cleanSQL); } catch { /* ok */ }
-    try { await runSQL(batchTgtId, cleanSQL); } catch { /* ok */ }
+    try {
+      await runSQL(batchSrcId, cleanSQL);
+    } catch {
+      /* ok */
+    }
+    try {
+      await runSQL(batchTgtId, cleanSQL);
+    } catch {
+      /* ok */
+    }
     // Clean up sync tasks
     try {
       const tasks = await invokeBackend<SyncTask[]>('get_sync_tasks');
@@ -572,23 +658,26 @@ describe('数据同步: 批量同步与进度 (SYNC-BATCH)', () => {
           await invokeBackend('delete_sync_task', { taskId: t.id });
         }
       }
-    } catch { /* ok */ }
+    } catch {
+      /* ok */
+    }
   });
 
   it('SYNC-BATCH-001: sync_tables syncs multiple tables and returns result', async () => {
-    const result = await invokeBackend<{ taskId: string; completedTables: string[]; totalTables: number }>(
-      'sync_tables',
-      {
-        taskId: 'test-batch-001',
-        sourceConnectionId: batchSrcId,
-        targetConnectionId: batchTgtId,
-        sourceConfigId: PG_SRC.id,
-        targetConfigId: PG_TGT.id,
-        tables: ['sync_batch_a', 'sync_batch_b', 'sync_batch_c'],
-        skipTables: [],
-        strategy: 'full',
-      },
-    );
+    const result = await invokeBackend<{
+      taskId: string;
+      completedTables: string[];
+      totalTables: number;
+    }>('sync_tables', {
+      taskId: 'test-batch-001',
+      sourceConnectionId: batchSrcId,
+      targetConnectionId: batchTgtId,
+      sourceConfigId: PG_SRC.id,
+      targetConfigId: PG_TGT.id,
+      tables: ['sync_batch_a', 'sync_batch_b', 'sync_batch_c'],
+      skipTables: [],
+      strategy: 'full',
+    });
 
     expect(result.totalTables).toBe(3);
     expect(result.completedTables).toContain('sync_batch_a');
@@ -613,19 +702,16 @@ describe('数据同步: 批量同步与进度 (SYNC-BATCH)', () => {
     // Modify batch_a in source to verify it gets re-synced
     await runSQL(batchSrcId, `INSERT INTO sync_batch_a VALUES (4, 'a4')`);
 
-    const result = await invokeBackend<{ completedTables: string[] }>(
-      'sync_tables',
-      {
-        taskId: 'test-batch-003',
-        sourceConnectionId: batchSrcId,
-        targetConnectionId: batchTgtId,
-        sourceConfigId: PG_SRC.id,
-        targetConfigId: PG_TGT.id,
-        tables: ['sync_batch_a', 'sync_batch_b', 'sync_batch_c'],
-        skipTables: ['sync_batch_b', 'sync_batch_c'],
-        strategy: 'continue',
-      },
-    );
+    const result = await invokeBackend<{ completedTables: string[] }>('sync_tables', {
+      taskId: 'test-batch-003',
+      sourceConnectionId: batchSrcId,
+      targetConnectionId: batchTgtId,
+      sourceConfigId: PG_SRC.id,
+      targetConfigId: PG_TGT.id,
+      tables: ['sync_batch_a', 'sync_batch_b', 'sync_batch_c'],
+      skipTables: ['sync_batch_b', 'sync_batch_c'],
+      strategy: 'continue',
+    });
 
     // Only batch_a should have been re-synced; b and c were skipped
     expect(result.completedTables).toContain('sync_batch_a');
@@ -658,7 +744,9 @@ describe('数据同步: 断点续传与冲突检测 (SYNC-RESUME)', () => {
   let resumeTgtId: string;
 
   before(async () => {
-    await $(`input[placeholder="${t('main.searchPlaceholder')}"]`).waitForDisplayed({ timeout: 10000 });
+    await $(`input[placeholder="${t('main.searchPlaceholder')}"]`).waitForDisplayed({
+      timeout: 10000,
+    });
     await browser.pause(500);
 
     resumeSrcId = await saveAndConnect(PG_SRC);
@@ -671,13 +759,16 @@ describe('数据同步: 断点续传与冲突检测 (SYNC-RESUME)', () => {
     await runSQL(resumeSrcId, cleanSQL);
     await runSQL(resumeTgtId, cleanSQL);
 
-    await runSQL(resumeSrcId, `
+    await runSQL(
+      resumeSrcId,
+      `
       CREATE TABLE sync_resume_a (id int PRIMARY KEY, val text);
       INSERT INTO sync_resume_a VALUES (1, 'a1'), (2, 'a2');
 
       CREATE TABLE sync_resume_b (id int PRIMARY KEY, val text);
       INSERT INTO sync_resume_b VALUES (1, 'b1');
-    `);
+    `,
+    );
   });
 
   after(async () => {
@@ -685,8 +776,16 @@ describe('数据同步: 断点续传与冲突检测 (SYNC-RESUME)', () => {
       DROP TABLE IF EXISTS sync_resume_a;
       DROP TABLE IF EXISTS sync_resume_b;
     `;
-    try { await runSQL(resumeSrcId, cleanSQL); } catch { /* ok */ }
-    try { await runSQL(resumeTgtId, cleanSQL); } catch { /* ok */ }
+    try {
+      await runSQL(resumeSrcId, cleanSQL);
+    } catch {
+      /* ok */
+    }
+    try {
+      await runSQL(resumeTgtId, cleanSQL);
+    } catch {
+      /* ok */
+    }
     try {
       const tasks = await invokeBackend<SyncTask[]>('get_sync_tasks');
       for (const t of tasks) {
@@ -694,7 +793,9 @@ describe('数据同步: 断点续传与冲突检测 (SYNC-RESUME)', () => {
           await invokeBackend('delete_sync_task', { taskId: t.id });
         }
       }
-    } catch { /* ok */ }
+    } catch {
+      /* ok */
+    }
   });
 
   it('SYNC-RESUME-001: sync first table, then check_sync_conflicts detects row changes', async () => {
@@ -747,10 +848,10 @@ describe('数据同步: 断点续传与冲突检测 (SYNC-RESUME)', () => {
     // Check for conflicts: only non-completed tables are checked
     // sync_resume_a is completed → skipped
     // sync_resume_b has original=1, current=1 → no change → no conflict
-    const conflicts = await invokeBackend<{ hasConflicts: boolean; conflicts: Array<{ table: string; originalRows: number; currentRows: number }> }>(
-      'check_sync_conflicts',
-      { taskId: 'test-resume-conflict' },
-    );
+    const conflicts = await invokeBackend<{
+      hasConflicts: boolean;
+      conflicts: Array<{ table: string; originalRows: number; currentRows: number }>;
+    }>('check_sync_conflicts', { taskId: 'test-resume-conflict' });
 
     expect(conflicts.hasConflicts).toBe(false);
     expect(conflicts.conflicts.length).toBe(0);
@@ -760,10 +861,10 @@ describe('数据同步: 断点续传与冲突检测 (SYNC-RESUME)', () => {
     // Now modify sync_resume_b in source (this is a non-completed table)
     await runSQL(resumeSrcId, `INSERT INTO sync_resume_b VALUES (2, 'b2'), (3, 'b3')`);
 
-    const conflicts = await invokeBackend<{ hasConflicts: boolean; conflicts: Array<{ table: string; originalRows: number; currentRows: number }> }>(
-      'check_sync_conflicts',
-      { taskId: 'test-resume-conflict' },
-    );
+    const conflicts = await invokeBackend<{
+      hasConflicts: boolean;
+      conflicts: Array<{ table: string; originalRows: number; currentRows: number }>;
+    }>('check_sync_conflicts', { taskId: 'test-resume-conflict' });
 
     expect(conflicts.hasConflicts).toBe(true);
     const conflictB = conflicts.conflicts.find((c) => c.table === 'sync_resume_b');

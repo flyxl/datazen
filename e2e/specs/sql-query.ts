@@ -140,13 +140,8 @@ describe('SQL 查询模块 (SQ-001~SQ-012, TC-QUERY-006/008)', () => {
       timeoutMsg: 'Timed out waiting for DML execution',
     });
 
-    // Clean up
-    await setEditorContent('DROP TABLE IF EXISTS _e2e_sql_test');
-    const execBtn2 = await $(`button*=${t('query.execute')}`);
-    await execBtn2.click();
-    await browser.waitUntil(async () => (await $('body').getText()).includes('总耗时'), {
-      timeout: 10000,
-    });
+    // Clean up (executeSQL temporarily disables Safe Mode for DROP)
+    await executeSQL('DROP TABLE IF EXISTS _e2e_sql_test');
   });
 
   // ── 错误处理 ───────────────────────────────────────────────────
