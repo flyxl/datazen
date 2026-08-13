@@ -226,7 +226,7 @@ Connection 改变后重新 discovery；没有 Step override 时使用 Workflow �
 - 多窗口：`windowManager.ts` + `windowKind.ts` URL 参数路由
 - IPC：前端 camelCase，Rust snake_case；Tauri 自动映射
 - 右键菜单统一使用 Tauri 原生 Menu（`showNativeContextMenu`），禁止新增 Web ContextMenu
-- Connection Window 支持批量导出（全部/所选表；仅结构/仅数据/数据+结构），入口顶栏与 Schema 树，实现见 `batchExport.ts` / `BatchExportDialog`
+- Connection Window 支持导出（全部/所选表；仅结构/仅数据/数据+结构），入口顶栏（权限后）与 Schema 树，实现见 `batchExport.ts` / `BatchExportDialog`；编辑表结构页可导出单表 DDL（`exportTableStructure.ts`）
 
 ## IPC 通信
 
@@ -250,7 +250,8 @@ Driver Command IPC 负责：
 | 图表可视化 | `components/chart/` + `lib/chart/` | — |
 | ER 图 | `windows/connection/ErDiagramView.tsx` + `er/` | `commands/schema.rs → get_er_data` |
 | 数据导出 | `DataTable/DataExportDialog.tsx` + `lib/exportData.ts` | — |
-| 批量导出 | `windows/connection/BatchExportDialog.tsx` + `lib/batchExport.ts` | — |
+| 导出（多表） | `windows/connection/BatchExportDialog.tsx` + `lib/batchExport.ts` | — |
+| 导出表结构 | `TableStructureEditor` + `lib/exportTableStructure.ts` | — |
 | AI Chat | `components/ai/AiChatPanel.tsx` | `commands/ai.rs` |
 | Workflows | `windows/workflow/WorkflowWindow.tsx` | `workflow/executor.rs` / `workflow/command_runtime.rs` |
 | 数据同步 | `windows/data-sync/` | `sync/` |
