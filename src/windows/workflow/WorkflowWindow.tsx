@@ -1358,6 +1358,7 @@ function WorkflowSidebarList({
               }}
               className="p-0.5 rounded hover:bg-surface-alt"
               title={t('workflows.edit')}
+              data-testid="workflow-item-edit"
             >
               <Pencil className="h-3 w-3" />
             </button>

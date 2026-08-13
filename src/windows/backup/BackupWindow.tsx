@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, ChevronRight, Database, HardDrive } from 'lucide-react';
 import { TitleBar } from '../../components/TitleBar';
 import { Button } from '../../components/ui/Button';
@@ -6,11 +6,21 @@ import { Input } from '../../components/ui/Input';
 import { useSettings } from '../../hooks/useSettings';
 import { useI18n } from '../../hooks/useI18n';
 import { useSettingsStore } from '../../stores/settingsStore';
+import { groupConnections } from '../../stores/connectionStore';
+import { formatGroupLabel } from '../../lib/connectionGroups';
+import {
+  appendProgressLog,
+  backupProgressRatio,
+  formatBackupProgress,
+  formatRestoreProgress,
+  type BackupProgressPayload,
+} from '../../lib/backupProgress';
 import { cn } from '../../lib/cn';
 import { DbTypeBadge } from '../../components/DbTypeBadge';
 import { getDbLabel, DB_REGISTRY } from '../../lib/databaseTypes';
 import { getSqlDialect } from '../../lib/sqlDialects';
-import type { ConnectionConfig } from '../../types';
+import { getUrlParam } from '../../lib/windowKind';
+import type { ConnectionConfig, TableInfo } from '../../types';
 
 interface DatabaseInfo {
   name: string;
@@ -20,6 +30,7 @@ export function BackupWindow() {
   useSettings();
   const { t } = useI18n();
   const loadSettings = useSettingsStore((s) => s.loadSettings);
+  const isRestore = getUrlParam('mode') === 'restore';
 
   const [connections, setConnections] = useState<ConnectionConfig[]>([]);
   const [groups, setGroups] = useState<string[]>([]);
@@ -38,6 +49,9 @@ export function BackupWindow() {
 
   const [backing, setBacking] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
+  const [progress, setProgress] = useState<BackupProgressPayload | null>(null);
+  const [progressLog, setProgressLog] = useState<string[]>([]);
+  const progressLogEndRef = useRef<HTMLDivElement>(null);
   const [searchConn, setSearchConn] = useState('');
   const [searchDb, setSearchDb] = useState('');
 
@@ -58,73 +72,77 @@ export function BackupWindow() {
   }, [loadSettings]);
 
   useEffect(() => {
+    progressLogEndRef.current?.scrollIntoView?.({ block: 'end' });
+  }, [progressLog]);
+
+  useEffect(() => {
     void (async () => {
       const { invoke } = await import('@tauri-apps/api/core');
       const conns = await invoke<ConnectionConfig[]>('get_connections');
       const grps = await invoke<string[]>('get_groups');
       setConnections(conns);
       setGroups(grps);
+      const keys = new Set<string>([...grps, '']);
+      for (const c of conns) keys.add(c.group || '');
+      setExpandedGroups(keys);
     })();
   }, []);
 
-  const grouped = useMemo(() => {
-    const q = searchConn.trim().toLowerCase();
-    const filtered = connections.filter((c) => {
-      if (!DB_REGISTRY[c.databaseType]?.supportsBackup) return false;
-      if (!q) return true;
-      return `${c.name} ${c.host ?? ''} ${c.database ?? ''}`.toLowerCase().includes(q);
-    });
-    const map = new Map<string, ConnectionConfig[]>();
-    for (const g of groups) map.set(g, []);
-    for (const c of filtered) {
-      const key = c.group || '';
-      if (!map.has(key)) map.set(key, []);
-      map.get(key)!.push(c);
-    }
-    const result: { group: string; connections: ConnectionConfig[] }[] = [];
-    for (const g of groups) {
-      const conns = map.get(g) ?? [];
-      if (conns.length > 0) result.push({ group: g, connections: conns });
-    }
-    const ungrouped = map.get('');
-    if (ungrouped && ungrouped.length > 0) {
-      result.push({ group: '', connections: ungrouped });
-    }
-    return result;
-  }, [connections, groups, searchConn]);
+  const grouped = useMemo(
+    () => groupConnections(connections, groups, searchConn),
+    [connections, groups, searchConn],
+  );
 
-  const handleSelectConnection = useCallback(async (conn: ConnectionConfig) => {
-    setSelectedConnId(conn.id);
-    setSelectedDb(null);
-    setDatabases([]);
-    setServerVersion('');
-    setEnabledOptions(new Set());
-    setStatusMessage('');
+  const handleSelectConnection = useCallback(
+    async (conn: ConnectionConfig) => {
+      setSelectedConnId(conn.id);
+      setSelectedDb(null);
+      setDatabases([]);
+      setServerVersion('');
+      setEnabledOptions(new Set());
+      setStatusMessage('');
+      setProgress(null);
 
-    try {
-      const { invoke } = await import('@tauri-apps/api/core');
-      const connectionId = await invoke<string>('connect', { configId: conn.id });
-      setConnectedId(connectionId);
+      if (!DB_REGISTRY[conn.databaseType]?.supportsBackup) {
+        setConnectedId(null);
+        setStatusMessage(t('backup.unsupportedType'));
+        return;
+      }
 
       try {
-        const info = await invoke<{ serverVersion?: string }>('get_connection_info', {
-          connectionId,
-        });
-        if (info.serverVersion) setServerVersion(info.serverVersion);
-      } catch {
-        /* server version is optional */
-      }
+        const { invoke } = await import('@tauri-apps/api/core');
+        const connectionId = await invoke<string>('connect', { configId: conn.id });
+        setConnectedId(connectionId);
 
-      const dbs = await invoke<string[]>('get_databases', { connectionId });
-      setDatabases(dbs.map((name) => ({ name })));
+        try {
+          const info = await invoke<{ serverVersion?: string }>('get_connection_info', {
+            connectionId,
+          });
+          if (info.serverVersion) setServerVersion(info.serverVersion);
+        } catch {
+          /* server version is optional */
+        }
 
-      if (conn.database && dbs.includes(conn.database)) {
-        setSelectedDb(conn.database);
+        const dbs = await invoke<string[]>('get_databases', { connectionId });
+        setDatabases(dbs.map((name) => ({ name })));
+
+        if (conn.database && dbs.includes(conn.database)) {
+          setSelectedDb(conn.database);
+        }
+
+        const defaults = new Set<string>();
+        for (const opt of getSqlDialect(conn.databaseType)?.backupOptions ?? []) {
+          if (opt.id === 'routines' || opt.id === 'triggers') {
+            defaults.add(opt.id);
+          }
+        }
+        setEnabledOptions(defaults);
+      } catch (e) {
+        setStatusMessage(e instanceof Error ? e.message : String(e));
       }
-    } catch (e) {
-      setStatusMessage(e instanceof Error ? e.message : String(e));
-    }
-  }, []);
+    },
+    [t],
+  );
 
   const toggleGroup = useCallback((group: string) => {
     setExpandedGroups((prev) => {
@@ -144,6 +162,72 @@ export function BackupWindow() {
     });
   }, []);
 
+  const handleRestore = useCallback(async () => {
+    if (!connectedId || !selectedDb) return;
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('use_database', { connectionId: connectedId, database: selectedDb });
+
+      const tables = await invoke<TableInfo[]>('get_tables', {
+        connectionId: connectedId,
+        database: selectedDb,
+      }).catch(() => [] as TableInfo[]);
+
+      const options: string[] = [];
+      if (tables.length > 0) {
+        const { ask } = await import('@tauri-apps/plugin-dialog');
+        const ok = await ask(
+          t('backup.restoreOverwriteConfirm', {
+            database: selectedDb,
+            count: tables.length,
+          }),
+          { title: t('backup.restoreTitle'), kind: 'warning' },
+        );
+        if (!ok) return;
+        options.push('overwrite');
+      }
+
+      setBacking(true);
+      setProgress(null);
+      setProgressLog([t('backup.restoring')]);
+      setStatusMessage(t('backup.restoring'));
+
+      const { listen } = await import('@tauri-apps/api/event');
+      const unlisten = await listen<BackupProgressPayload>('restore-progress', (event) => {
+        const line = formatRestoreProgress(event.payload, t);
+        setProgress(event.payload);
+        setStatusMessage(line);
+        setProgressLog((prev) => appendProgressLog(prev, line));
+      });
+
+      try {
+        const restored = await invoke<boolean>('restore_database_with_dialog', {
+          connectionId: connectedId,
+          database: selectedDb,
+          options,
+        });
+        if (!restored) {
+          setStatusMessage('');
+          setProgress(null);
+          setProgressLog([]);
+          return;
+        }
+        setStatusMessage(t('backup.restoreSuccess'));
+        setProgress({ current: 0, total: 0, objectName: '', phase: 'done' });
+        setProgressLog((prev) => appendProgressLog(prev, t('backup.restoreSuccess')));
+      } finally {
+        unlisten();
+        setBacking(false);
+      }
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      setStatusMessage(message);
+      setProgress(null);
+      setProgressLog((prev) => appendProgressLog(prev, message));
+      setBacking(false);
+    }
+  }, [connectedId, selectedDb, t]);
+
   const handleBackup = useCallback(async () => {
     if (!connectedId || !selectedDb) return;
 
@@ -152,25 +236,46 @@ export function BackupWindow() {
       const defaultName = `${fileName}.${compressGzip ? 'sql.gz' : ext}`;
 
       setBacking(true);
-      setStatusMessage(t('backup.inProgress'));
+      setProgress(null);
+      setProgressLog([t('backup.progressPreparing')]);
+      setStatusMessage(t('backup.progressPreparing'));
 
-      const { invoke } = await import('@tauri-apps/api/core');
-      const saved = await invoke<boolean>('backup_database_with_dialog', {
-        connectionId: connectedId,
-        database: selectedDb,
-        defaultFileName: defaultName,
-        filterExtension: ext,
-        options: Array.from(enabledOptions),
-        compress: compressGzip,
+      const { listen } = await import('@tauri-apps/api/event');
+      const unlisten = await listen<BackupProgressPayload>('backup-progress', (event) => {
+        const line = formatBackupProgress(event.payload, t);
+        setProgress(event.payload);
+        setStatusMessage(line);
+        setProgressLog((prev) => appendProgressLog(prev, line));
       });
-      if (!saved) {
-        setStatusMessage('');
-        return;
-      }
 
-      setStatusMessage(t('backup.success'));
+      try {
+        const { invoke } = await import('@tauri-apps/api/core');
+        const saved = await invoke<boolean>('backup_database_with_dialog', {
+          connectionId: connectedId,
+          database: selectedDb,
+          defaultFileName: defaultName,
+          filterExtension: ext,
+          options: Array.from(enabledOptions),
+          compress: compressGzip,
+        });
+        if (!saved) {
+          setStatusMessage('');
+          setProgress(null);
+          setProgressLog([]);
+          return;
+        }
+
+        setStatusMessage(t('backup.success'));
+        setProgress({ current: 0, total: 0, objectName: '', phase: 'done' });
+        setProgressLog((prev) => appendProgressLog(prev, t('backup.success')));
+      } finally {
+        unlisten();
+      }
     } catch (e) {
-      setStatusMessage(e instanceof Error ? e.message : String(e));
+      const message = e instanceof Error ? e.message : String(e);
+      setStatusMessage(message);
+      setProgress(null);
+      setProgressLog((prev) => appendProgressLog(prev, message));
     } finally {
       setBacking(false);
     }
@@ -188,18 +293,19 @@ export function BackupWindow() {
 
   return (
     <div className="flex h-screen min-h-0 flex-col bg-surface text-fg">
-      <TitleBar title={t('backup.title')} />
+      <TitleBar title={isRestore ? t('backup.restoreTitle') : t('backup.title')} />
 
-      {/* File name row */}
-      <div className="flex items-center gap-3 border-b border-edge px-4 py-2">
-        <span className="text-xs font-medium text-fg-secondary">{t('backup.fileName')}:</span>
-        <Input
-          value={fileName}
-          onChange={(e) => setFileName(e.target.value)}
-          className="h-7 w-48 text-xs"
-        />
-        <span className="text-[11px] text-fg-muted">{t('backup.fileNameHint')}</span>
-      </div>
+      {!isRestore && (
+        <div className="flex items-center gap-3 border-b border-edge px-4 py-2">
+          <span className="text-xs font-medium text-fg-secondary">{t('backup.fileName')}:</span>
+          <Input
+            value={fileName}
+            onChange={(e) => setFileName(e.target.value)}
+            className="h-7 w-48 text-xs"
+          />
+          <span className="text-[11px] text-fg-muted">{t('backup.fileNameHint')}</span>
+        </div>
+      )}
 
       {/* Main content: 3 columns */}
       <div className="flex min-h-0 flex-1">
@@ -216,12 +322,14 @@ export function BackupWindow() {
           <div className="min-h-0 flex-1 overflow-y-auto">
             {grouped.map(({ group: groupName, connections: groupConns }) => {
               const expanded = expandedGroups.has(groupName);
-              const displayName = groupName || t('main.ungrouped');
+              const displayName = groupName ? formatGroupLabel(groupName, t) : t('main.ungrouped');
               return (
-                <div key={groupName}>
+                <div key={groupName || '__ungrouped'}>
                   <div
                     className="flex cursor-pointer select-none items-center gap-1 px-2 py-1.5 hover:bg-surface-raised/50"
                     onClick={() => toggleGroup(groupName)}
+                    data-testid="backup-group-header"
+                    data-group={groupName}
                   >
                     {expanded ? (
                       <ChevronDown className="h-3 w-3 shrink-0 text-fg-muted" />
@@ -232,30 +340,35 @@ export function BackupWindow() {
                     <span className="truncate text-xs font-medium">{displayName}</span>
                   </div>
                   {expanded &&
-                    groupConns.map((conn) => (
-                      <div
-                        key={conn.id}
-                        className={cn(
-                          'flex cursor-pointer items-center gap-2 py-1.5 pl-7 pr-2 transition-colors',
-                          'hover:bg-surface-raised',
-                          selectedConnId === conn.id && 'bg-blue-600/20 text-blue-400',
-                        )}
-                        onClick={() => void handleSelectConnection(conn)}
-                      >
-                        <DbTypeBadge databaseType={conn.databaseType} size={20} />
-                        <div className="min-w-0 flex-1">
-                          <div className="truncate text-xs font-medium">
-                            {conn.name}
-                            {conn.database && (
-                              <span className="text-fg-muted"> ({conn.database})</span>
-                            )}
-                          </div>
-                          <div className="truncate text-[10px] text-fg-muted">
-                            {conn.host ?? 'localhost'} : {conn.database ?? ''}
+                    groupConns.map((conn) => {
+                      const canBackup = Boolean(DB_REGISTRY[conn.databaseType]?.supportsBackup);
+                      return (
+                        <div
+                          key={conn.id}
+                          className={cn(
+                            'flex cursor-pointer items-center gap-2 py-1.5 pl-7 pr-2 transition-colors',
+                            'hover:bg-surface-raised',
+                            selectedConnId === conn.id && 'bg-blue-600/20 text-blue-400',
+                            !canBackup && 'opacity-50',
+                          )}
+                          onClick={() => void handleSelectConnection(conn)}
+                          data-testid="backup-connection-row"
+                        >
+                          <DbTypeBadge databaseType={conn.databaseType} size={20} />
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate text-xs font-medium">
+                              {conn.name}
+                              {conn.database && (
+                                <span className="text-fg-muted"> ({conn.database})</span>
+                              )}
+                            </div>
+                            <div className="truncate text-[10px] text-fg-muted">
+                              {conn.host ?? 'localhost'} : {conn.database ?? ''}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                 </div>
               );
             })}
@@ -309,90 +422,138 @@ export function BackupWindow() {
                 {dbTypeDisplayLabel}
               </div>
 
-              {/* Options dropdown */}
-              <div className="relative mb-3">
-                <button
-                  type="button"
-                  className="flex h-8 w-full items-center justify-between rounded border border-edge bg-surface-alt px-3 text-xs"
-                  onClick={() => setOptionDropdownOpen(!optionDropdownOpen)}
-                >
-                  <span>{t('backup.addOption')}</span>
-                  <ChevronDown className="h-3 w-3" />
-                </button>
-                {optionDropdownOpen && (
-                  <div className="absolute top-full z-20 mt-1 w-full rounded border border-edge bg-surface shadow-lg">
-                    {backupOptions.map((opt) => (
-                      <label
-                        key={opt.id}
-                        className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-xs hover:bg-surface-raised"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={enabledOptions.has(opt.id)}
-                          onChange={() => toggleOption(opt.id)}
-                          className="h-3 w-3 rounded"
-                        />
-                        {opt.label}
-                      </label>
-                    ))}
+              {!isRestore && (
+                <>
+                  <div className="relative mb-3">
+                    <button
+                      type="button"
+                      className="flex h-8 w-full items-center justify-between rounded border border-edge bg-surface-alt px-3 text-xs"
+                      onClick={() => setOptionDropdownOpen(!optionDropdownOpen)}
+                    >
+                      <span>{t('backup.addOption')}</span>
+                      <ChevronDown className="h-3 w-3" />
+                    </button>
+                    {optionDropdownOpen && (
+                      <div className="absolute top-full z-20 mt-1 w-full rounded border border-edge bg-surface shadow-lg">
+                        {backupOptions.map((opt) => (
+                          <label
+                            key={opt.id}
+                            className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-xs hover:bg-surface-raised"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={enabledOptions.has(opt.id)}
+                              onChange={() => toggleOption(opt.id)}
+                              className="h-3 w-3 rounded"
+                            />
+                            {opt.label}
+                          </label>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
 
-              {/* Selected options display */}
-              {enabledOptions.size > 0 && (
-                <div className="mb-3 flex flex-wrap gap-1">
-                  {Array.from(enabledOptions).map((id) => {
-                    const opt = backupOptions.find((o) => o.id === id);
-                    return opt ? (
-                      <span
-                        key={id}
-                        className="inline-flex items-center gap-1 rounded bg-blue-600/20 px-2 py-0.5 text-[11px] text-blue-400"
-                      >
-                        {opt.label}
-                        <button
-                          type="button"
-                          className="ml-0.5 text-blue-400/60 hover:text-blue-400"
-                          onClick={() => toggleOption(id)}
-                        >
-                          ×
-                        </button>
-                      </span>
-                    ) : null;
-                  })}
-                </div>
+                  {/* Selected options display */}
+                  {enabledOptions.size > 0 && (
+                    <div className="mb-3 flex flex-wrap gap-1">
+                      {Array.from(enabledOptions).map((id) => {
+                        const opt = backupOptions.find((o) => o.id === id);
+                        return opt ? (
+                          <span
+                            key={id}
+                            className="inline-flex items-center gap-1 rounded bg-blue-600/20 px-2 py-0.5 text-[11px] text-blue-400"
+                          >
+                            {opt.label}
+                            <button
+                              type="button"
+                              className="ml-0.5 text-blue-400/60 hover:text-blue-400"
+                              onClick={() => toggleOption(id)}
+                            >
+                              ×
+                            </button>
+                          </span>
+                        ) : null;
+                      })}
+                    </div>
+                  )}
+
+                  {/* Compress */}
+                  <label className="mb-4 flex items-center gap-2 text-xs">
+                    <input
+                      type="checkbox"
+                      checked={compressGzip}
+                      onChange={(e) => setCompressGzip(e.target.checked)}
+                      className="h-3 w-3 rounded"
+                    />
+                    {t('backup.compressGzip')}
+                  </label>
+                </>
               )}
-
-              {/* Compress */}
-              <label className="mb-4 flex items-center gap-2 text-xs">
-                <input
-                  type="checkbox"
-                  checked={compressGzip}
-                  onChange={(e) => setCompressGzip(e.target.checked)}
-                  className="h-3 w-3 rounded"
-                />
-                {t('backup.compressGzip')}
-              </label>
             </>
           )}
 
           {/* Status message */}
           {statusMessage && (
-            <div className="mb-3 rounded border border-edge bg-surface-alt px-3 py-2 text-xs text-fg-secondary">
+            <div
+              className="mb-3 rounded border border-edge bg-surface-alt px-3 py-2 text-xs text-fg-secondary"
+              data-testid="backup-status"
+            >
               {statusMessage}
+              {(backing || progress) && (
+                <div className="mt-2 h-1.5 overflow-hidden rounded bg-edge">
+                  <div
+                    className={cn(
+                      'h-full rounded bg-blue-500 transition-all',
+                      backing && !progress && 'w-1/3 animate-pulse',
+                    )}
+                    style={
+                      progress
+                        ? { width: `${Math.round(backupProgressRatio(progress) * 100)}%` }
+                        : undefined
+                    }
+                    data-testid="backup-progress-bar"
+                  />
+                </div>
+              )}
             </div>
           )}
 
-          <div className="flex-1" />
+          {progressLog.length > 0 ? (
+            <div className="mb-3 flex min-h-0 flex-1 flex-col">
+              <div className="mb-1 text-[11px] font-medium text-fg-muted">
+                {t('backup.progressLog')}
+              </div>
+              <div
+                className="min-h-0 flex-1 overflow-auto rounded border border-edge bg-surface px-2 py-1.5 font-mono text-[11px] leading-5 text-fg-secondary"
+                data-testid="backup-progress-log"
+              >
+                {progressLog.map((line, i) => (
+                  <div key={`${i}-${line.slice(0, 24)}`} className="whitespace-pre-wrap break-all">
+                    {line}
+                  </div>
+                ))}
+                <div ref={progressLogEndRef} />
+              </div>
+            </div>
+          ) : (
+            <div className="flex-1" />
+          )}
 
           {/* Start backup button */}
           <div className="flex justify-end">
             <Button
               variant="primary"
               disabled={!connectedId || !selectedDb || backing}
-              onClick={() => void handleBackup()}
+              onClick={() => void (isRestore ? handleRestore() : handleBackup())}
+              data-testid={isRestore ? 'backup-start-restore' : 'backup-start-backup'}
             >
-              {backing ? t('backup.inProgress') : t('backup.startBackup')}
+              {backing
+                ? isRestore
+                  ? t('backup.restoring')
+                  : t('backup.inProgress')
+                : isRestore
+                  ? t('backup.startRestore')
+                  : t('backup.startBackup')}
             </Button>
           </div>
         </div>

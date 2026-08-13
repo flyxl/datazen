@@ -1,7 +1,8 @@
 use super::super::error::{CmdExt, CommandError};
+use super::super::schema::get_database_objects_impl;
 use super::super::AppState;
 use super::types::{DATA_COMPARE_MISMATCH_LIMIT, DATA_COMPARE_SAMPLE_LIMIT};
-use crate::db::{DatabaseType, TableSchema, Value};
+use crate::db::{DatabaseType, TableInfo, TableSchema, TableType, Value};
 use crate::schema_diff::diff_table_schemas;
 use crate::schema_diff::types::{ChangedColumnDiff, ColumnSnapshot, TableColumnDiff};
 use crate::sync::adapter::{SyncSourceAdapter, SyncTargetAdapter};
@@ -13,10 +14,33 @@ use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
 /// Compare two databases for data sync.
+fn table_object_kind(table: &TableInfo) -> &'static str {
+    match table.table_type {
+        TableType::View | TableType::MaterializedView => "view",
+        _ => "table",
+    }
+}
+
+pub(super) async fn maybe_use_database(
+    driver: &dyn crate::db::DatabaseDriver,
+    handle: &crate::db::ConnectionHandle,
+    database: Option<&str>,
+) -> Result<(), CommandError> {
+    let Some(db) = database.map(str::trim).filter(|s| !s.is_empty()) else {
+        return Ok(());
+    };
+    driver
+        .use_database(handle, db)
+        .await
+        .cmd_err("compare_databases")
+}
+
 pub(crate) async fn compare_databases_impl(
     state: &AppState,
     source_connection_id: String,
     target_connection_id: String,
+    source_database: Option<String>,
+    target_database: Option<String>,
 ) -> Result<Vec<serde_json::Value>, CommandError> {
     tracing::info!(%source_connection_id, %target_connection_id, "compare_databases");
 
@@ -51,8 +75,19 @@ pub(crate) async fn compare_databases_impl(
         .await
         .cmd_err("compare_databases")?;
 
-    let src_db = src_config.database.as_deref().unwrap_or("");
-    let tgt_db = tgt_config.database.as_deref().unwrap_or("");
+    let src_db = source_database
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .or(src_config.database.as_deref())
+        .unwrap_or("");
+    let tgt_db = target_database
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .or(tgt_config.database.as_deref())
+        .unwrap_or("");
+
+    maybe_use_database(src_driver.as_ref(), &src_handle, Some(src_db)).await?;
+    maybe_use_database(tgt_driver.as_ref(), &tgt_handle, Some(tgt_db)).await?;
 
     let src_tables = src_driver
         .get_tables(&src_handle, src_db)
@@ -71,6 +106,10 @@ pub(crate) async fn compare_databases_impl(
     let mut results = Vec::new();
 
     for t in &src_tables {
+        if matches!(t.table_type, TableType::SystemTable) {
+            continue;
+        }
+        let kind = table_object_kind(t);
         let in_target = tgt_names.contains(&t.name);
         let mut status = if in_target {
             "identical"
@@ -81,7 +120,31 @@ pub(crate) async fn compare_databases_impl(
         let mut source_rows: Option<u64> = None;
         let mut target_rows: Option<u64> = None;
 
-        if in_target {
+        if kind == "table" || kind == "view" {
+            source_rows = Some(
+                count_rows(src_driver.as_ref(), &src_handle, &t.name)
+                    .await
+                    .ok()
+                    .or_else(|| t.row_count.map(|n| n as u64))
+                    .unwrap_or(0),
+            );
+            if in_target {
+                target_rows = Some(
+                    count_rows(tgt_driver.as_ref(), &tgt_handle, &t.name)
+                        .await
+                        .ok()
+                        .or_else(|| {
+                            tgt_tables
+                                .iter()
+                                .find(|x| x.name == t.name)
+                                .and_then(|x| x.row_count.map(|n| n as u64))
+                        })
+                        .unwrap_or(0),
+                );
+            }
+        }
+
+        if in_target && kind == "table" {
             let src_schema = src_driver
                 .get_table_schema(&src_handle, &t.name)
                 .await
@@ -104,36 +167,70 @@ pub(crate) async fn compare_databases_impl(
 
             if src_cols != tgt_cols {
                 status = "different";
-            } else {
-                let src_count = count_rows(src_driver.as_ref(), &src_handle, &t.name).await?;
-                let tgt_count = count_rows(tgt_driver.as_ref(), &tgt_handle, &t.name).await?;
-                source_rows = Some(src_count);
-                target_rows = Some(tgt_count);
-                if src_count != tgt_count {
-                    status = "different";
-                }
+            } else if source_rows != target_rows {
+                status = "different";
             }
         }
 
         results.push(serde_json::json!({
             "table": t.name,
+            "kind": kind,
             "status": status,
-            "sourceRows": source_rows.or_else(|| t.row_count.map(|n| n as u64)),
-            "targetRows": target_rows.or_else(|| {
-                tgt_tables.iter().find(|x| x.name == t.name)
-                    .and_then(|x| x.row_count.map(|n| n as u64))
-            }),
+            "sourceRows": source_rows,
+            "targetRows": target_rows,
         }));
     }
 
     for t in &tgt_tables {
+        if matches!(t.table_type, TableType::SystemTable) {
+            continue;
+        }
         if !src_names.contains(&t.name) {
             results.push(serde_json::json!({
                 "table": t.name,
+                "kind": table_object_kind(t),
                 "status": "target_only",
                 "sourceRows": null,
                 "targetRows": t.row_count,
             }));
+        }
+    }
+
+    for kind in ["function", "procedure"] {
+        let src_objs = get_database_objects_impl(&state, source_connection_id.clone(), kind.into())
+            .await
+            .unwrap_or_default();
+        let tgt_objs = get_database_objects_impl(&state, target_connection_id.clone(), kind.into())
+            .await
+            .unwrap_or_default();
+        let src_obj_names: std::collections::HashSet<String> =
+            src_objs.iter().map(|o| o.name.clone()).collect();
+        let tgt_obj_names: std::collections::HashSet<String> =
+            tgt_objs.iter().map(|o| o.name.clone()).collect();
+        for obj in &src_objs {
+            let status = if tgt_obj_names.contains(&obj.name) {
+                "identical"
+            } else {
+                "source_only"
+            };
+            results.push(serde_json::json!({
+                "table": obj.name,
+                "kind": kind,
+                "status": status,
+                "sourceRows": null,
+                "targetRows": null,
+            }));
+        }
+        for obj in &tgt_objs {
+            if !src_obj_names.contains(&obj.name) {
+                results.push(serde_json::json!({
+                    "table": obj.name,
+                    "kind": kind,
+                    "status": "target_only",
+                    "sourceRows": null,
+                    "targetRows": null,
+                }));
+            }
         }
     }
 
@@ -444,6 +541,15 @@ pub(super) fn resolve_adapters(
 }
 
 /// Count rows in a table on a given connection.
+pub(super) fn value_as_u64(value: &crate::db::Value) -> Option<u64> {
+    match value {
+        crate::db::Value::Integer(n) if *n >= 0 => Some(*n as u64),
+        crate::db::Value::Float(f) if *f >= 0.0 && f.is_finite() => Some(*f as u64),
+        crate::db::Value::String(s) => s.parse().ok(),
+        _ => None,
+    }
+}
+
 pub(super) async fn count_rows(
     driver: &dyn crate::db::DatabaseDriver,
     handle: &crate::db::ConnectionHandle,
@@ -452,8 +558,10 @@ pub(super) async fn count_rows(
     let sql = format!("SELECT COUNT(*) FROM {}", driver.quote_ident(table));
     let res = driver.query(handle, &sql).await.cmd_err("count_rows")?;
     if let Some(row) = res.rows.first() {
-        if let Some(Some(crate::db::Value::Integer(n))) = row.first() {
-            return Ok(*n as u64);
+        if let Some(Some(v)) = row.first() {
+            if let Some(n) = value_as_u64(v) {
+                return Ok(n);
+            }
         }
     }
     Ok(0)

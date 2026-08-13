@@ -6,6 +6,8 @@ const PG_OPTIONS = [
   { id: 'create', label: '--create' },
   { id: 'no-owner', label: '--no-owner' },
   { id: 'schema-only', label: '--schema-only' },
+  { id: 'routines', label: '--routines' },
+  { id: 'triggers', label: '--triggers' },
   // format-custom removed: requires pg_dump binary format, not supported in-process
 ];
 
@@ -44,7 +46,9 @@ export const postgresqlDialect: SqlDialectStrategy = {
     getCreateIndexSql(opts) {
       const uniqueKw = opts.unique ? 'UNIQUE ' : '';
       const usingKw = opts.method && opts.method !== 'btree' ? ` USING ${opts.method}` : '';
-      const quotedCols = opts.columns.map((c) => `${opts.quoteChar}${c}${opts.quoteChar}`).join(', ');
+      const quotedCols = opts.columns
+        .map((c) => `${opts.quoteChar}${c}${opts.quoteChar}`)
+        .join(', ');
       return `CREATE ${uniqueKw}INDEX ${opts.quoteChar}${opts.indexName}${opts.quoteChar} ON ${opts.quoteChar}${opts.tableName}${opts.quoteChar}${usingKw} (${quotedCols})`;
     },
   },

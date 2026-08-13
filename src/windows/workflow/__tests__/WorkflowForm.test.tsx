@@ -8,6 +8,25 @@ vi.mock('../../../hooks/useI18n', () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));
 
+vi.mock('../../../components/SqlEditor', () => ({
+  SqlEditor: ({
+    value,
+    onChange,
+    placeholder,
+  }: {
+    value: string;
+    onChange: (v: string) => void;
+    placeholder?: string;
+  }) => (
+    <textarea
+      data-testid="sql-editor"
+      placeholder={placeholder}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+    />
+  ),
+}));
+
 vi.mock('../../../components/ui/Select', () => ({
   Select: ({
     value,
@@ -142,7 +161,9 @@ describe('WorkflowForm', () => {
     fireEvent.click(screen.getByText('+ workflows.form.addVariable'));
     expect(screen.getByPlaceholderText('workflows.form.varName')).toBeInTheDocument();
 
-    fireEvent.change(screen.getByPlaceholderText('workflows.form.varName'), { target: { value: 'connVar' } });
+    fireEvent.change(screen.getByPlaceholderText('workflows.form.varName'), {
+      target: { value: 'connVar' },
+    });
     expect(screen.getByDisplayValue('connVar')).toBeInTheDocument();
 
     // The workflow-level connection select is now rendered before variable selects.
@@ -150,7 +171,9 @@ describe('WorkflowForm', () => {
     fireEvent.change(typeSelect, { target: { value: 'connection' } });
     expect(typeSelect).toHaveValue('connection');
 
-    fireEvent.change(screen.getByPlaceholderText('workflows.form.varDesc'), { target: { value: 'pick conn' } });
+    fireEvent.change(screen.getByPlaceholderText('workflows.form.varDesc'), {
+      target: { value: 'pick conn' },
+    });
     expect(screen.getByDisplayValue('pick conn')).toBeInTheDocument();
 
     const required = screen.getByLabelText('workflows.form.varRequired');
@@ -201,11 +224,12 @@ describe('WorkflowForm', () => {
     };
     const { onDraftChange } = renderForm(draft);
 
-    const textareas = document.querySelectorAll('textarea');
-    fireEvent.change(textareas[0], { target: { value: 'SELECT 1' } });
+    fireEvent.change(screen.getByTestId('sql-editor'), { target: { value: 'SELECT 1' } });
     expect(onDraftChange.mock.calls.at(-1)?.[0].steps[0].sql).toBe('SELECT 1');
 
-    fireEvent.change(textareas[1], { target: { value: 'Summarize data' } });
+    fireEvent.change(screen.getByPlaceholderText('AI prompt...'), {
+      target: { value: 'Summarize data' },
+    });
     expect(onDraftChange.mock.calls.at(-1)?.[0].steps[1].prompt).toBe('Summarize data');
   });
 

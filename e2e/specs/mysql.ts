@@ -159,6 +159,24 @@ describe('MySQL 数据库支持 (MY-001~MY-020)', () => {
     expect(body).toContain('MySQL');
   });
 
+  it('新建查询不应弹出对象加载补全框 (MY-AC-001)', async () => {
+    await $(`button*=${t('connWin.newQuery')}`).click();
+    let loadingHint = false;
+    const deadline = Date.now() + 1500;
+    while (Date.now() < deadline) {
+      const tooltip = await $('.cm-tooltip-autocomplete');
+      if (await tooltip.isExisting()) {
+        const text = await tooltip.getText();
+        if (text.includes(t('query.namespaceLoading'))) {
+          loadingHint = true;
+          break;
+        }
+      }
+      await browser.pause(100);
+    }
+    expect(loadingHint).toBe(false);
+  });
+
   // ── Table Data (basic) ──
 
   it('点击表名应显示数据 tab 页 (MY-004)', async () => {

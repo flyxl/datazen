@@ -94,6 +94,11 @@ describe('数据看板组件 UX (UJ-05, UJ-06, UJ-09)', () => {
         text.includes('dashboard.editWidget'),
     ).toBe(true);
 
+    const sqlEditor = await $('[data-testid="dashboard-sql-editor"]');
+    if (await sqlEditor.isExisting()) {
+      await expect(await $('[data-testid="dashboard-sql-editor"] .cm-editor')).toBeDisplayed();
+    }
+
     await browser.keys('Escape');
     await browser.pause(400);
   });

@@ -50,12 +50,7 @@ describe('windowManager — browser', () => {
 
   it('openConnectionWindow passes connection params', async () => {
     const { openConnectionWindow } = await import('../windowManager');
-    openConnectionWindow(
-      { connectionId: 'c1', configId: 'cfg1' },
-      'My DB',
-      'app',
-      'postgresql',
-    );
+    openConnectionWindow({ connectionId: 'c1', configId: 'cfg1' }, 'My DB', 'app', 'postgresql');
     const url = String(vi.mocked(window.open).mock.calls[0][0]);
     expect(url).toContain('window=connection');
     expect(url).toContain('connectionId=c1');
@@ -72,13 +67,32 @@ describe('windowManager — browser', () => {
     } = await import('../windowManager');
 
     openDataSyncWindow();
-    expect(window.open).toHaveBeenLastCalledWith('/window.html?window=data-sync', '_blank', expect.any(String));
+    expect(window.open).toHaveBeenLastCalledWith(
+      '/window.html?window=data-sync',
+      '_blank',
+      expect.any(String),
+    );
 
     openBackupWindow();
-    expect(window.open).toHaveBeenLastCalledWith('/window.html?window=backup', '_blank', expect.any(String));
+    expect(window.open).toHaveBeenLastCalledWith(
+      '/window.html?window=backup',
+      '_blank',
+      expect.any(String),
+    );
+
+    openBackupWindow('restore');
+    expect(window.open).toHaveBeenLastCalledWith(
+      '/window.html?window=backup&mode=restore',
+      '_blank',
+      expect.any(String),
+    );
 
     openWorkflowWindow();
-    expect(window.open).toHaveBeenLastCalledWith('/window.html?window=workflow', '_blank', expect.any(String));
+    expect(window.open).toHaveBeenLastCalledWith(
+      '/window.html?window=workflow',
+      '_blank',
+      expect.any(String),
+    );
 
     openDocsWindow('getting-started');
     expect(window.open).toHaveBeenLastCalledWith(

@@ -1491,11 +1491,54 @@ impl DatabaseDriver for MysqlDriver {
         }
     }
 
+    async fn dump_view_ddl(
+        &self,
+        handle: &ConnectionHandle,
+        view: &str,
+    ) -> Result<String, DriverError> {
+        let sql = format!("SHOW CREATE VIEW {}", self.quote_ident(view));
+        let result = self.query(handle, &sql).await?;
+        let create = extract_named_create_column(&result, "Create View").or_else(|| {
+            if result.columns.len() >= 2 {
+                let row = result.rows.first()?;
+                let cell = row.get(1)?.as_ref()?;
+                match cell {
+                    Value::String(s) if !s.is_empty() => Some(s.clone()),
+                    _ => None,
+                }
+            } else {
+                None
+            }
+        });
+        let Some(create) = create else {
+            return Err(DriverError::QueryFailed(format!(
+                "View definition not found: {view}"
+            )));
+        };
+        let trimmed = create.trim_end();
+        if trimmed.ends_with(';') {
+            Ok(format!("{trimmed}\n"))
+        } else {
+            Ok(format!("{trimmed};\n"))
+        }
+    }
+
     async fn dump_database(
         &self,
         handle: &ConnectionHandle,
         database: &str,
         opts: &BackupDumpOptions,
+    ) -> Result<String, DriverError> {
+        self.dump_database_with_progress(handle, database, opts, &mut |_| {})
+            .await
+    }
+
+    async fn dump_database_with_progress(
+        &self,
+        handle: &ConnectionHandle,
+        database: &str,
+        opts: &BackupDumpOptions,
+        on_progress: &mut (dyn FnMut(DumpProgress) + Send),
     ) -> Result<String, DriverError> {
         let mut out = String::new();
         if opts.create_database {
@@ -1505,16 +1548,27 @@ impl DatabaseDriver for MysqlDriver {
                 q, q
             ));
         }
-        out.push_str(&sql_dump::dump_sql_database(self, handle, database, opts).await?);
-        if !opts.data_only {
-            if opts.routines {
-                out.push_str(&dump_mysql_routines(self, handle).await);
-            }
-            if opts.triggers {
-                out.push_str(&dump_mysql_triggers(self, handle).await);
-            }
-        }
+        out.push_str(
+            &sql_dump::dump_sql_database_with_progress(self, handle, database, opts, on_progress)
+                .await?,
+        );
         Ok(out)
+    }
+
+    async fn dump_routines(
+        &self,
+        handle: &ConnectionHandle,
+        _database: &str,
+    ) -> Result<String, DriverError> {
+        Ok(dump_mysql_routines(self, handle).await)
+    }
+
+    async fn dump_triggers(
+        &self,
+        handle: &ConnectionHandle,
+        _database: &str,
+    ) -> Result<String, DriverError> {
+        Ok(dump_mysql_triggers(self, handle).await)
     }
 
     async fn structure_capabilities(
@@ -1570,14 +1624,7 @@ async fn dump_mysql_routines(driver: &MysqlDriver, handle: &ConnectionHandle) ->
             };
             if let Some(ddl) = extract_named_create_column(&create_result, col_name) {
                 out.push_str(&format!("-- {kind}: {name}\n"));
-                let trimmed = ddl.trim_end();
-                if trimmed.ends_with(';') {
-                    out.push_str(trimmed);
-                    out.push('\n');
-                } else {
-                    out.push_str(trimmed);
-                    out.push_str(";\n");
-                }
+                out.push_str(&wrap_mysql_client_routine(&ddl));
                 out.push('\n');
             }
         }
@@ -1613,14 +1660,7 @@ async fn dump_mysql_triggers(driver: &MysqlDriver, handle: &ConnectionHandle) ->
                         .or_else(|| extract_named_create_column(&create_result, "Create Trigger"))
                 {
                     out.push_str(&format!("-- TRIGGER: {name}\n"));
-                    let trimmed = ddl.trim_end();
-                    if trimmed.ends_with(';') {
-                        out.push_str(trimmed);
-                        out.push('\n');
-                    } else {
-                        out.push_str(trimmed);
-                        out.push_str(";\n");
-                    }
+                    out.push_str(&wrap_mysql_client_routine(&ddl));
                     out.push('\n');
                 }
             }
@@ -1630,6 +1670,12 @@ async fn dump_mysql_triggers(driver: &MysqlDriver, handle: &ConnectionHandle) ->
         }
     }
     out
+}
+
+fn wrap_mysql_client_routine(ddl: &str) -> String {
+    let delim = if ddl.contains("$$") { "//" } else { "$$" };
+    let body = ddl.trim().trim_end_matches(';');
+    format!("DELIMITER {delim}\n{body}{delim}\nDELIMITER ;\n")
 }
 
 fn extract_named_create_column(result: &QueryResult, col_name: &str) -> Option<String> {
