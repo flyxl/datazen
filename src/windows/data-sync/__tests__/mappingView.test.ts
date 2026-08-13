@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
   displayTableName,
   mappingLabelKey,
+  rowDiffCounts,
   summarizeMappings,
+  tableHasRowDiffs,
   type DataSyncTableResult,
 } from '../mappingView';
 
@@ -51,5 +53,30 @@ describe('mappingView', () => {
       incompatible: 1,
       unmapped: 2,
     });
+  });
+
+  it('counts INSERT/UPDATE/DELETE row diffs', () => {
+    const row: DataSyncTableResult = {
+      sourceTable: 'users',
+      targetTable: 'users',
+      status: 'MATCHED',
+      rows: [
+        { operation: 'INSERT' },
+        { operation: 'UPDATE' },
+        { operation: 'UPDATE' },
+        { operation: 'DELETE' },
+        { operation: 'UNCHANGED' },
+      ],
+    };
+    expect(rowDiffCounts(row)).toEqual({ inserts: 1, updates: 2, deletes: 1 });
+    expect(tableHasRowDiffs(row)).toBe(true);
+    expect(
+      tableHasRowDiffs({
+        sourceTable: 'users',
+        targetTable: 'users',
+        status: 'MATCHED',
+        rows: [{ operation: 'UNCHANGED' }],
+      }),
+    ).toBe(false);
   });
 });

@@ -68,6 +68,7 @@ pub(crate) async fn execute_data_sync_impl(
     state: &AppState,
     target_connection_id: String,
     statements: Vec<SqlStatement>,
+    job_id: Option<String>,
 ) -> Result<ExecutionResult, CommandError> {
     let config = state
         .connection_manager
@@ -85,7 +86,15 @@ pub(crate) async fn execute_data_sync_impl(
         read_only: config.read_only,
         tx: None,
     };
-    execute_statements(&statements, &mut executor, None)
+    let cancelled = match job_id.as_deref() {
+        Some(id) => Some(super::jobs::ensure_job(id).await),
+        None => None,
+    };
+    let result = execute_statements(&statements, &mut executor, cancelled)
         .await
-        .map_err(CommandError::from)
+        .map_err(CommandError::from);
+    if let Some(id) = job_id.as_deref() {
+        super::jobs::remove_job(id).await;
+    }
+    result
 }
