@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect } from 'react';
 import { getWindowKind } from './lib/windowKind';
 import { mark } from './lib/startupTimer';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { WebContextMenuHost } from './components/ui/WebContextMenu';
 import { WindowChromeFallback } from './components/WindowChromeFallback';
 
 const MainWindow = lazy(() =>
@@ -104,6 +105,7 @@ export default function App() {
       <Suspense fallback={<WindowChromeFallback />}>
         <WindowContent />
       </Suspense>
+      <WebContextMenuHost />
     </ErrorBoundary>
   );
 }
