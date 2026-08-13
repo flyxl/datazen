@@ -9,6 +9,7 @@ import { Select } from '../../components/ui/Select';
 import { useI18n } from '../../hooks/useI18n';
 import { DB_REGISTRY } from '../../lib/databaseTypes';
 import { getSqlDialect } from '../../lib/sqlDialects';
+import { useSettingsStore } from '../../stores/settingsStore';
 import { suggestedIndexName } from './structure/StructureIndexTable';
 
 interface IndexesViewProps {
@@ -268,6 +269,7 @@ export function IndexesView({
   onEditStructure,
 }: IndexesViewProps) {
   const { t } = useI18n();
+  const safeMode = useSettingsStore((s) => s.settings.safeMode);
   const dbMeta = DB_REGISTRY[databaseType as DatabaseType];
   const indexDialect = databaseType ? getSqlDialect(databaseType as DatabaseType)?.index : null;
   const q = dbMeta?.quoteChar || '"';
@@ -330,7 +332,7 @@ export function IndexesView({
   };
 
   const handleDropIndex = async () => {
-    if (!deleteTarget) return;
+    if (!deleteTarget || safeMode) return;
     setSubmitting(true);
     try {
       const dropSql =
@@ -487,7 +489,7 @@ export function IndexesView({
                     </span>
                   </td>
                   <td className="px-4 py-2.5">
-                    {!idx.isPrimary && (
+                    {!idx.isPrimary && !safeMode && (
                       <button
                         className="rounded p-1 text-fg-muted opacity-0 transition hover:bg-red-500/10 hover:text-red-400 group-hover:opacity-100"
                         title={t('indexes.deleteIndex')}

@@ -692,7 +692,7 @@ export function SqlConnectionView({
                   }
                 : undefined,
             onDrop:
-              (kind === 'table' || kind === 'view') && !isReadOnly
+              (kind === 'table' || kind === 'view') && !isReadOnly && !safeMode
                 ? () => {
                     const isView = kind === 'view';
                     const sql = isView ? `DROP VIEW ${quoted}` : `DROP TABLE ${quoted}`;

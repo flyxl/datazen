@@ -317,7 +317,7 @@ const translations = {
   'settings.confirmDeleteHint': '行を削除するときに確認ダイアログを表示する',
   'settings.autoCommitHint': 'データへの編集を自動的にコミットする',
   'settings.safeMode': 'Safe Mode',
-  'settings.safeModeHint': 'Block UPDATE/DELETE without a WHERE clause, and TRUNCATE',
+  'settings.safeModeHint': 'Block UPDATE/DELETE without a WHERE clause, and TRUNCATE/DROP',
   'connWin.data': 'データ',
   'connWin.structure': '構造',
   'connWin.indexes': 'インデックス',

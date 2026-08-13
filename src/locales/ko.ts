@@ -314,7 +314,7 @@ const translations = {
   'settings.confirmDeleteHint': '행 삭제 시 확인 대화상자 표시',
   'settings.autoCommitHint': '데이터 편집 내용을 자동으로 커밋',
   'settings.safeMode': 'Safe Mode',
-  'settings.safeModeHint': 'Block UPDATE/DELETE without a WHERE clause, and TRUNCATE',
+  'settings.safeModeHint': 'Block UPDATE/DELETE without a WHERE clause, and TRUNCATE/DROP',
   'connWin.data': '데이터',
   'connWin.structure': '구조',
   'connWin.indexes': '인덱스',

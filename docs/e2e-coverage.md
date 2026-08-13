@@ -85,6 +85,7 @@
 | 原生「另存为 / 打开文件」对话框点选 | OS 对话框不可靠 | webdriver 路径 IPC（`write_file` / `export_app_data` 等） |
 | 依赖真实 LLM Key 的 AI 深度路径 | 环境无 Key 时跳过 | `ai-features.ts` 条件执行；无 Key 时仍测未配置 UI |
 | `ConnectionSettingsDialog` | 当前未挂到可点击入口（非用户可达） | 组件单测；挂接 UI 后须立刻补 E2E |
+| E2E 夹具 `DROP`/`TRUNCATE` | Safe Mode 默认开启会拦截 | `executeSQL` / `withSafeModeOff` 临时关闭；`client-parity` 断言 DROP 被拦 |
 
 ## 维护约定
 

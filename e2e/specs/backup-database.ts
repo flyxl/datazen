@@ -2,6 +2,7 @@ import { expect, browser } from '@wdio/globals';
 import path from 'node:path';
 import fs from 'node:fs';
 import os from 'node:os';
+import { withSafeModeOff } from '../helpers.js';
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
@@ -38,9 +39,10 @@ const TMP_DIR = os.tmpdir();
 const TEST_TABLE = '_e2e_backup_test';
 
 async function seedBackupTable(connId: string) {
-  await invokeBackend('execute_query', {
-    connectionId: connId,
-    sql: `
+  await withSafeModeOff(() =>
+    invokeBackend('execute_query', {
+      connectionId: connId,
+      sql: `
       DROP TABLE IF EXISTS ${TEST_TABLE};
       CREATE TABLE ${TEST_TABLE} (
         id SERIAL PRIMARY KEY,
@@ -48,14 +50,17 @@ async function seedBackupTable(connId: string) {
       );
       INSERT INTO ${TEST_TABLE} (name) VALUES ('alice');
     `,
-  });
+    }),
+  );
 }
 
 async function dropBackupTable(connId: string) {
-  await invokeBackend('execute_query', {
-    connectionId: connId,
-    sql: `DROP TABLE IF EXISTS ${TEST_TABLE}`,
-  });
+  await withSafeModeOff(() =>
+    invokeBackend('execute_query', {
+      connectionId: connId,
+      sql: `DROP TABLE IF EXISTS ${TEST_TABLE}`,
+    }),
+  );
 }
 
 // ═════════════════════════════════════════════════════════════════════
@@ -74,9 +79,21 @@ describe('数据库备份功能 (BACKUP)', () => {
   });
 
   after(async () => {
-    try { await dropBackupTable(connectionId); } catch { /* ok */ }
-    try { await invokeBackend('disconnect', { connectionId }); } catch { /* ok */ }
-    try { await invokeBackend('delete_connection', { id: PG_CONFIG.id }); } catch { /* ok */ }
+    try {
+      await dropBackupTable(connectionId);
+    } catch {
+      /* ok */
+    }
+    try {
+      await invokeBackend('disconnect', { connectionId });
+    } catch {
+      /* ok */
+    }
+    try {
+      await invokeBackend('delete_connection', { id: PG_CONFIG.id });
+    } catch {
+      /* ok */
+    }
   });
 
   it('BACKUP-001: connect returns a valid connection ID string', async () => {
