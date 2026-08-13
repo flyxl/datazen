@@ -39,6 +39,51 @@ pub fn family_of(db_type: &str) -> String {
     normalize_sync_family(db_type)
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DataSyncPairingView {
+    pub path: String,
+    pub supported: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub family: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+/// UI/IPC view: only V1 Direct families are selectable for Data Sync.
+pub fn classify_data_sync_pair(source_db_type: &str, target_db_type: &str) -> DataSyncPairingView {
+    match resolve_sync_pairing(source_db_type, target_db_type) {
+        SyncPairing::Direct { family } if is_v1_family(&family) => DataSyncPairingView {
+            path: "direct".into(),
+            supported: true,
+            family: Some(family),
+            reason: None,
+        },
+        SyncPairing::Direct { family } => DataSyncPairingView {
+            path: "direct".into(),
+            supported: false,
+            family: Some(family.clone()),
+            reason: Some(format!(
+                "Data Synchronization for family '{family}' is not available in V1"
+            )),
+        },
+        SyncPairing::Ir => DataSyncPairingView {
+            path: "ir".into(),
+            supported: false,
+            family: None,
+            reason: Some(format!(
+                "heterogeneous pair {source_db_type} → {target_db_type} is Data Transfer, not Data Synchronization"
+            )),
+        },
+        SyncPairing::Unsupported { reason } => DataSyncPairingView {
+            path: "unsupported".into(),
+            supported: false,
+            family: None,
+            reason: Some(reason),
+        },
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -90,5 +135,26 @@ mod tests {
         assert!(is_v1_family("postgresql"));
         assert!(!is_v1_family("sqlite"));
         assert_eq!(V1_FAMILIES.len(), 2);
+    }
+
+    #[test]
+    fn classify_view_marks_ir_and_sqlite_unsupported() {
+        let ok = classify_data_sync_pair("mysql", "mariadb");
+        assert!(ok.supported);
+        assert_eq!(ok.path, "direct");
+        assert_eq!(ok.family.as_deref(), Some("mysql"));
+
+        let ir = classify_data_sync_pair("postgresql", "mysql");
+        assert!(!ir.supported);
+        assert_eq!(ir.path, "ir");
+        assert!(ir.reason.as_deref().unwrap().contains("Transfer"));
+
+        let sqlite = classify_data_sync_pair("sqlite", "sqlite");
+        assert!(!sqlite.supported);
+        assert_eq!(sqlite.path, "direct");
+
+        let redis = classify_data_sync_pair("redis", "mysql");
+        assert!(!redis.supported);
+        assert_eq!(redis.path, "unsupported");
     }
 }
