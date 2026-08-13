@@ -2,8 +2,9 @@ use super::error::{CmdExt, CommandError};
 use super::AppState;
 use crate::db::{
     BackupDumpOptions, BackupRestoreOptions, ConnectionHandle, DatabaseDriver, DriverError,
-    DumpPhase, DumpProgress, TableInfo, TableType,
+    DumpPhase, DumpProgress, RestoreSession, TableInfo, TableType, Utf8ChunkDecoder,
 };
+use std::io::Read;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::{Emitter, State};
@@ -374,10 +375,6 @@ async fn restore_database_from_path(
         },
     );
 
-    let sql = tokio::fs::read_to_string(&input_path)
-        .await
-        .cmd_err("restore_database")?;
-
     let (driver, handle) = state
         .connection_manager
         .get_connection(&connection_id)
@@ -387,9 +384,8 @@ async fn restore_database_from_path(
     let restore_opts = parse_restore_options(&options.unwrap_or_default());
     tracing::info!(
         %connection_id,
-        bytes = sql.len(),
         overwrite = restore_opts.overwrite,
-        "restore_database file loaded"
+        "restore_database streaming"
     );
     if restore_opts.overwrite {
         let db_name = if let Some(name) = database.as_deref().filter(|s| !s.is_empty()) {
@@ -408,14 +404,21 @@ async fn restore_database_from_path(
     }
 
     let mut on_progress = |progress: DumpProgress| emit_restore_progress(app, progress);
-    driver
-        .restore_sql_with_progress(&handle, &sql, Some(&restore_opts), &mut on_progress)
-        .await
-        .map_err(|e| {
-            let err = map_driver_err(e);
-            tracing::error!(cmd = "restore_database", error = %err);
-            err
-        })?;
+    if driver.uses_sql_restore_pipeline() {
+        stream_sql_file_into_session(
+            &input_path,
+            driver.as_ref(),
+            &handle,
+            &restore_opts,
+            &mut on_progress,
+        )
+        .await?;
+    } else {
+        driver
+            .restore_sql_with_progress(&handle, "", Some(&restore_opts), &mut on_progress)
+            .await
+            .map_err(map_driver_err)?;
+    }
 
     emit_restore_progress(
         app,
@@ -428,6 +431,70 @@ async fn restore_database_from_path(
     );
     tracing::info!(%connection_id, "restore_database OK");
     Ok(())
+}
+
+const SQL_STREAM_CHUNK: usize = 64 * 1024;
+
+/// Read a `.sql` / `.sql.gz` file in chunks and feed the driver's restore pipeline.
+async fn stream_sql_file_into_session(
+    path: &std::path::Path,
+    driver: &dyn DatabaseDriver,
+    handle: &ConnectionHandle,
+    opts: &BackupRestoreOptions,
+    on_progress: &mut (dyn FnMut(DumpProgress) + Send),
+) -> Result<(), CommandError> {
+    let gz = path
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("gz"));
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<Result<Vec<u8>, String>>(8);
+    let path = path.to_path_buf();
+    let reader_task = tokio::task::spawn_blocking(move || {
+        let file = std::fs::File::open(&path).map_err(|e| e.to_string())?;
+        let mut reader: Box<dyn Read> = if gz {
+            Box::new(flate2::read::GzDecoder::new(file))
+        } else {
+            Box::new(std::io::BufReader::with_capacity(SQL_STREAM_CHUNK, file))
+        };
+        let mut buf = vec![0u8; SQL_STREAM_CHUNK];
+        loop {
+            let n = reader.read(&mut buf).map_err(|e| e.to_string())?;
+            if n == 0 {
+                break;
+            }
+            if tx.blocking_send(Ok(buf[..n].to_vec())).is_err() {
+                break;
+            }
+        }
+        Ok::<(), String>(())
+    });
+
+    let mut session = RestoreSession::new(driver, handle, driver.new_sql_scanner(), Some(opts));
+    let mut utf8 = Utf8ChunkDecoder::new();
+    while let Some(item) = rx.recv().await {
+        let bytes = item.map_err(CommandError::Validation)?;
+        let text = utf8.push(&bytes).map_err(CommandError::Validation)?;
+        if !text.is_empty() {
+            session
+                .feed(&text, on_progress)
+                .await
+                .map_err(map_driver_err)?;
+        }
+    }
+    match reader_task.await {
+        Ok(Ok(())) => {}
+        Ok(Err(e)) => {
+            return Err(CommandError::Io(std::io::Error::other(e)));
+        }
+        Err(e) => return Err(CommandError::Internal(e.to_string())),
+    }
+    let tail = utf8.finish().map_err(CommandError::Validation)?;
+    if !tail.is_empty() {
+        session
+            .feed(&tail, on_progress)
+            .await
+            .map_err(map_driver_err)?;
+    }
+    session.finish(on_progress).await.map_err(map_driver_err)
 }
 
 #[cfg(test)]

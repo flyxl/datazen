@@ -7,6 +7,11 @@
 use crate::traits::DatabaseDriver;
 use crate::types::*;
 
+pub use crate::sql_split::{
+    find_dollar_tag, is_comment_only_or_empty, split_sql_statements, SqlStatementScanner,
+    Utf8ChunkDecoder,
+};
+
 /// Build `CREATE TABLE IF NOT EXISTS` DDL from a table schema (host-compatible).
 pub fn build_create_table_sql(
     quote_ident: &dyn Fn(&str) -> String,
@@ -253,220 +258,6 @@ where
     Ok(out)
 }
 
-/// Parse a MySQL client `DELIMITER` meta-command at `i`.
-/// Returns `(new_delimiter, next_index)` when `input[i..]` starts a DELIMITER line.
-fn match_delimiter_command(input: &str, i: usize) -> Option<(String, usize)> {
-    let rest = input.get(i..)?;
-    if rest.len() < 9 || !rest[..9].eq_ignore_ascii_case("delimiter") {
-        return None;
-    }
-    let after = rest.get(9..)?;
-    let next = after.chars().next()?;
-    if !next.is_whitespace() {
-        return None;
-    }
-    let mut j = i + 9;
-    while j < input.len() {
-        let b = input.as_bytes()[j];
-        if b == b'\n' {
-            return Some((";".into(), j + 1));
-        }
-        if !b.is_ascii_whitespace() {
-            break;
-        }
-        j += 1;
-    }
-    let delim_start = j;
-    while j < input.len() {
-        let b = input.as_bytes()[j];
-        if b.is_ascii_whitespace() {
-            break;
-        }
-        j += 1;
-    }
-    let new_delim = input[delim_start..j].to_string();
-    while j < input.len() && input.as_bytes()[j] != b'\n' {
-        j += 1;
-    }
-    if j < input.len() {
-        j += 1;
-    }
-    Some((
-        if new_delim.is_empty() {
-            ";".into()
-        } else {
-            new_delim
-        },
-        j,
-    ))
-}
-
-/// Split SQL text into individual statements, respecting single-quoted strings,
-/// double-quoted identifiers, dollar-quoted strings, `--` line comments,
-/// `/* */` block comments, and MySQL `DELIMITER` meta-commands.
-pub fn split_sql_statements(input: &str) -> Vec<String> {
-    let bytes = input.as_bytes();
-    let len = bytes.len();
-    let mut stmts: Vec<String> = Vec::new();
-    let mut start = 0;
-    let mut i = 0;
-    let mut delimiter = ";".to_string();
-
-    while i < len {
-        if input[start..i].trim().is_empty() {
-            if let Some((new_delim, next)) = match_delimiter_command(input, i) {
-                delimiter = new_delim;
-                i = next;
-                start = next;
-                continue;
-            }
-        }
-        if input[i..].starts_with(&delimiter) {
-            let fragment = input[start..i].trim();
-            if !fragment.is_empty() {
-                stmts.push(fragment.to_string());
-            }
-            i += delimiter.len();
-            start = i;
-            continue;
-        }
-        match bytes[i] {
-            b'\'' => {
-                i += 1;
-                while i < len {
-                    if bytes[i] == b'\'' {
-                        i += 1;
-                        if i < len && bytes[i] == b'\'' {
-                            i += 1; // escaped ''
-                        } else {
-                            break;
-                        }
-                    } else {
-                        i += 1;
-                    }
-                }
-            }
-            b'"' => {
-                i += 1;
-                while i < len {
-                    if bytes[i] == b'"' {
-                        i += 1;
-                        if i < len && bytes[i] == b'"' {
-                            i += 1;
-                        } else {
-                            break;
-                        }
-                    } else {
-                        i += 1;
-                    }
-                }
-            }
-            b'$' => {
-                if let Some(tag_end) = find_dollar_tag(bytes, i) {
-                    let tag = &input[i..tag_end];
-                    i = tag_end;
-                    loop {
-                        if i >= len {
-                            break;
-                        }
-                        if bytes[i] == b'$' && input[i..].starts_with(tag) {
-                            i += tag.len();
-                            break;
-                        }
-                        i += 1;
-                    }
-                } else {
-                    i += 1;
-                }
-            }
-            b'-' if i + 1 < len && bytes[i + 1] == b'-' => {
-                while i < len && bytes[i] != b'\n' {
-                    i += 1;
-                }
-            }
-            b'/' if i + 1 < len && bytes[i + 1] == b'*' => {
-                i += 2;
-                let mut depth = 1u32;
-                while i + 1 < len && depth > 0 {
-                    if bytes[i] == b'/' && bytes[i + 1] == b'*' {
-                        depth += 1;
-                        i += 2;
-                    } else if bytes[i] == b'*' && bytes[i + 1] == b'/' {
-                        depth -= 1;
-                        i += 2;
-                    } else {
-                        i += 1;
-                    }
-                }
-            }
-            _ => {
-                i += 1;
-            }
-        }
-    }
-
-    let tail = input[start..].trim();
-    if !tail.is_empty() {
-        stmts.push(tail.to_string());
-    }
-    stmts
-}
-
-/// Try to match a `$tag$` dollar-quote opener starting at position `pos`.
-/// Returns `Some(end)` where `end` is the byte index past the closing `$`.
-pub fn find_dollar_tag(bytes: &[u8], pos: usize) -> Option<usize> {
-    if pos >= bytes.len() || bytes[pos] != b'$' {
-        return None;
-    }
-    let mut j = pos + 1;
-    while j < bytes.len() {
-        if bytes[j] == b'$' {
-            return Some(j + 1);
-        }
-        if !bytes[j].is_ascii_alphanumeric() && bytes[j] != b'_' {
-            return None;
-        }
-        j += 1;
-    }
-    None
-}
-
-/// Returns true when `stmt` is empty or contains only SQL comments / whitespace.
-fn is_comment_only_or_empty(stmt: &str) -> bool {
-    let bytes = stmt.as_bytes();
-    let len = bytes.len();
-    let mut i = 0;
-
-    while i < len {
-        while i < len && bytes[i].is_ascii_whitespace() {
-            i += 1;
-        }
-        if i >= len {
-            return true;
-        }
-        if i + 1 < len && bytes[i] == b'-' && bytes[i + 1] == b'-' {
-            while i < len && bytes[i] != b'\n' {
-                i += 1;
-            }
-            continue;
-        }
-        if i + 1 < len && bytes[i] == b'/' && bytes[i + 1] == b'*' {
-            i += 2;
-            while i + 1 < len {
-                if bytes[i] == b'*' && bytes[i + 1] == b'/' {
-                    i += 2;
-                    break;
-                }
-                i += 1;
-            }
-            continue;
-        }
-        return false;
-    }
-
-    true
-}
-
 /// Parse `-- Options:` header line from a DataZen dump for `single-transaction`.
 pub fn dump_header_requests_single_transaction(sql: &str) -> bool {
     for line in sql.lines().take(20) {
@@ -496,6 +287,144 @@ pub fn restore_statement_label(stmt: &str) -> String {
     }
 }
 
+/// Default restore pipeline: incremental split + execute.
+///
+/// Host feeds file chunks via [`RestoreSession::feed`]; drivers that want a
+/// different splitter pass their own [`SqlStatementScanner`]. Override
+/// [`DatabaseDriver::restore_sql_with_progress`] to replace the whole pipeline.
+pub struct RestoreSession<'a, D: DatabaseDriver + ?Sized> {
+    driver: &'a D,
+    handle: &'a ConnectionHandle,
+    scanner: SqlStatementScanner,
+    header: String,
+    header_done: bool,
+    use_tx: bool,
+    tx_open: bool,
+    executed: u32,
+    errors: Vec<String>,
+}
+
+impl<'a, D: DatabaseDriver + ?Sized> RestoreSession<'a, D> {
+    pub fn new(
+        driver: &'a D,
+        handle: &'a ConnectionHandle,
+        scanner: SqlStatementScanner,
+        opts: Option<&BackupRestoreOptions>,
+    ) -> Self {
+        Self {
+            driver,
+            handle,
+            scanner,
+            header: String::new(),
+            header_done: false,
+            use_tx: opts.map(|o| o.single_transaction).unwrap_or(false),
+            tx_open: false,
+            executed: 0,
+            errors: Vec::new(),
+        }
+    }
+
+    pub async fn feed(
+        &mut self,
+        chunk: &str,
+        on_progress: &mut (dyn FnMut(DumpProgress) + Send),
+    ) -> Result<(), DriverError> {
+        self.note_header(chunk);
+        let stmts = self.scanner.push(chunk);
+        self.exec_all(stmts, on_progress).await
+    }
+
+    pub async fn finish(
+        &mut self,
+        on_progress: &mut (dyn FnMut(DumpProgress) + Send),
+    ) -> Result<(), DriverError> {
+        if !self.header_done {
+            self.use_tx = self.use_tx || dump_header_requests_single_transaction(&self.header);
+            self.header_done = true;
+            self.header.clear();
+        }
+        let stmts = self.scanner.finish();
+        self.exec_all(stmts, on_progress).await?;
+        if self.tx_open {
+            self.driver.execute(self.handle, "COMMIT").await?;
+            self.tx_open = false;
+        }
+        if !self.errors.is_empty() {
+            return Err(DriverError::QueryFailed(format!(
+                "Partial restore failure ({}/{} statements failed):\n{}",
+                self.errors.len(),
+                self.executed,
+                self.errors.join("\n")
+            )));
+        }
+        on_progress(DumpProgress {
+            current: self.executed,
+            total: self.executed,
+            object_name: String::new(),
+            phase: DumpPhase::Done,
+        });
+        Ok(())
+    }
+
+    fn note_header(&mut self, chunk: &str) {
+        if self.header_done {
+            return;
+        }
+        self.header.push_str(chunk);
+        if self.header.lines().count() >= 20 || chunk.is_empty() {
+            self.use_tx = self.use_tx || dump_header_requests_single_transaction(&self.header);
+            self.header_done = true;
+            self.header.clear();
+        }
+    }
+
+    async fn exec_all(
+        &mut self,
+        stmts: Vec<String>,
+        on_progress: &mut (dyn FnMut(DumpProgress) + Send),
+    ) -> Result<(), DriverError> {
+        for stmt in stmts {
+            if is_comment_only_or_empty(&stmt) {
+                continue;
+            }
+            if self.use_tx && !self.tx_open {
+                self.driver.execute(self.handle, "BEGIN").await?;
+                self.tx_open = true;
+            }
+            self.executed += 1;
+            on_progress(DumpProgress {
+                current: self.executed,
+                total: 0,
+                object_name: restore_statement_label(&stmt),
+                phase: DumpPhase::Object,
+            });
+            let full = format!("{};", stmt);
+            if let Err(e) = self.driver.execute(self.handle, &full).await {
+                if self.tx_open {
+                    let _ = self.driver.execute(self.handle, "ROLLBACK").await;
+                    self.tx_open = false;
+                }
+                let max = 80;
+                let end = if stmt.len() <= max {
+                    stmt.len()
+                } else {
+                    let mut e = max;
+                    while e > 0 && !stmt.is_char_boundary(e) {
+                        e -= 1;
+                    }
+                    e
+                };
+                self.errors
+                    .push(format!("Error executing: {}... -> {e}", &stmt[..end]));
+                if self.use_tx {
+                    break;
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
 /// Default restore: split statements intelligently, execute each non-empty one.
 pub async fn restore_sql_statements<D>(
     driver: &D,
@@ -519,79 +448,11 @@ pub async fn restore_sql_statements_with_progress<D, F>(
 ) -> Result<(), DriverError>
 where
     D: DatabaseDriver + ?Sized,
-    F: FnMut(DumpProgress),
+    F: FnMut(DumpProgress) + Send,
 {
-    let statements: Vec<String> = split_sql_statements(sql)
-        .into_iter()
-        .filter(|s| !is_comment_only_or_empty(s))
-        .collect();
-
-    let total = statements.len() as u32;
-    on_progress(DumpProgress {
-        current: 0,
-        total,
-        object_name: String::new(),
-        phase: DumpPhase::Object,
-    });
-
-    let use_tx = opts.map(|o| o.single_transaction).unwrap_or(false)
-        || dump_header_requests_single_transaction(sql);
-
-    if use_tx {
-        driver.execute(handle, "BEGIN").await?;
-    }
-
-    let mut errors = Vec::new();
-    for (i, stmt) in statements.iter().enumerate() {
-        on_progress(DumpProgress {
-            current: (i as u32) + 1,
-            total,
-            object_name: restore_statement_label(stmt),
-            phase: DumpPhase::Object,
-        });
-        let full = format!("{};", stmt);
-        if let Err(e) = driver.execute(handle, &full).await {
-            if use_tx {
-                let _ = driver.execute(handle, "ROLLBACK").await;
-            }
-            let max = 80;
-            let end = if stmt.len() <= max {
-                stmt.len()
-            } else {
-                let mut e = max;
-                while e > 0 && !stmt.is_char_boundary(e) {
-                    e -= 1;
-                }
-                e
-            };
-            errors.push(format!("Error executing: {}... -> {e}", &stmt[..end]));
-            if use_tx {
-                break;
-            }
-        }
-    }
-
-    if !errors.is_empty() {
-        return Err(DriverError::QueryFailed(format!(
-            "Partial restore failure ({}/{} statements failed):\n{}",
-            errors.len(),
-            statements.len(),
-            errors.join("\n")
-        )));
-    }
-
-    if use_tx {
-        driver.execute(handle, "COMMIT").await?;
-    }
-
-    on_progress(DumpProgress {
-        current: total,
-        total,
-        object_name: String::new(),
-        phase: DumpPhase::Done,
-    });
-
-    Ok(())
+    let mut session = RestoreSession::new(driver, handle, driver.new_sql_scanner(), opts);
+    session.feed(sql, &mut on_progress).await?;
+    session.finish(&mut on_progress).await
 }
 
 #[cfg(test)]
@@ -632,55 +493,6 @@ mod tests {
         assert!(sql.contains("DEFAULT 'anon'"));
         assert!(sql.contains("PRIMARY KEY (\"id\")"));
         assert!(sql.ends_with(";\n"));
-    }
-
-    #[test]
-    fn split_sql_respects_semicolon_in_single_quotes() {
-        let stmts = split_sql_statements("SELECT 'a;b'; SELECT 1;");
-        assert_eq!(stmts.len(), 2);
-        assert_eq!(stmts[0], "SELECT 'a;b'");
-        assert_eq!(stmts[1], "SELECT 1");
-    }
-
-    #[test]
-    fn split_sql_respects_dollar_quoted_body_with_semicolon() {
-        let stmts = split_sql_statements("SELECT $$foo;bar$$; SELECT 1;");
-        assert_eq!(stmts.len(), 2);
-        assert_eq!(stmts[0], "SELECT $$foo;bar$$");
-        assert_eq!(stmts[1], "SELECT 1");
-    }
-
-    #[test]
-    fn split_sql_respects_line_comment_with_semicolon() {
-        let stmts = split_sql_statements("SELECT 1; -- trailing; comment\nSELECT 2;");
-        assert_eq!(stmts.len(), 2);
-        assert_eq!(stmts[0], "SELECT 1");
-        assert_eq!(stmts[1], "-- trailing; comment\nSELECT 2");
-    }
-
-    #[test]
-    fn split_sql_respects_block_comment_with_semicolon() {
-        let stmts = split_sql_statements("SELECT 1; /* block; comment */ SELECT 2;");
-        assert_eq!(stmts.len(), 2);
-        assert_eq!(stmts[0], "SELECT 1");
-        assert_eq!(stmts[1], "/* block; comment */ SELECT 2");
-    }
-
-    #[test]
-    fn is_comment_only_or_empty_detects_comment_statements() {
-        assert!(is_comment_only_or_empty("-- only a comment"));
-        assert!(is_comment_only_or_empty("/* block */"));
-        assert!(!is_comment_only_or_empty("SELECT 1"));
-    }
-
-    #[test]
-    fn split_sql_respects_mysql_delimiter_around_routines() {
-        let sql = "DELIMITER $$\nCREATE PROCEDURE foo()\nBEGIN\n  SELECT 1;\nEND$$\nDELIMITER ;\nSELECT 2;";
-        let stmts = split_sql_statements(sql);
-        assert_eq!(stmts.len(), 2);
-        assert!(stmts[0].contains("CREATE PROCEDURE"));
-        assert!(stmts[0].contains("SELECT 1;"));
-        assert_eq!(stmts[1], "SELECT 2");
     }
 
     #[test]

@@ -26,7 +26,10 @@ export function formatBackupProgress(
 export function backupProgressRatio(payload: BackupProgressPayload): number {
   if (payload.phase === 'done') return 1;
   if (payload.phase === 'writing') return 0.95;
-  if (payload.total <= 0) return 0;
+  if (payload.total <= 0) {
+    if (payload.current <= 0) return 0;
+    return Math.min(0.9, 0.12 + Math.log10(payload.current + 1) / 5);
+  }
   return Math.min(0.94, payload.current / payload.total);
 }
 
@@ -36,11 +39,18 @@ export function formatRestoreProgress(
 ): string {
   if (payload.phase === 'done') return t('backup.restoreSuccess');
   if (payload.phase === 'writing') return t('backup.restorePreparing');
-  if (payload.total > 0 && payload.objectName) {
+  if (payload.objectName) {
+    if (payload.total > 0) {
+      return t('backup.restoreProgress', {
+        name: payload.objectName,
+        current: payload.current,
+        total: payload.total,
+      });
+    }
     return t('backup.restoreProgress', {
       name: payload.objectName,
       current: payload.current,
-      total: payload.total,
+      total: '…',
     });
   }
   return t('backup.restoring');

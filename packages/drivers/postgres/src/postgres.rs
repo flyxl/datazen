@@ -1377,6 +1377,10 @@ impl DatabaseDriver for PostgresDriver {
             .await
     }
 
+    fn new_sql_scanner(&self) -> sql_dump::SqlStatementScanner {
+        sql_dump::SqlStatementScanner::new().recognize_delimiter_commands(false)
+    }
+
     async fn dump_database_with_progress(
         &self,
         handle: &ConnectionHandle,
@@ -1384,19 +1388,48 @@ impl DatabaseDriver for PostgresDriver {
         opts: &BackupDumpOptions,
         on_progress: &mut (dyn FnMut(DumpProgress) + Send),
     ) -> Result<String, DriverError> {
-        let mut out = String::new();
-        if opts.create_database {
-            // No `\connect` — restore runs against the existing session.
-            out.push_str(&format!(
-                "CREATE DATABASE {};\n",
-                self.quote_ident(database)
-            ));
-        }
-        out.push_str(
-            &sql_dump::dump_sql_database_with_progress(self, handle, database, opts, on_progress)
+        let snapshot = match self.begin_transaction(handle).await {
+            Ok(tx) => {
+                let _ = self
+                    .execute(
+                        handle,
+                        "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY",
+                    )
+                    .await;
+                Some(tx)
+            }
+            Err(_) => None,
+        };
+        let result = async {
+            let mut out = String::new();
+            if opts.create_database {
+                // No `\connect` — restore runs against the existing session.
+                out.push_str(&format!(
+                    "CREATE DATABASE {};\n",
+                    self.quote_ident(database)
+                ));
+            }
+            out.push_str(
+                &sql_dump::dump_sql_database_with_progress(
+                    self,
+                    handle,
+                    database,
+                    opts,
+                    on_progress,
+                )
                 .await?,
-        );
-        Ok(out)
+            );
+            Ok(out)
+        }
+        .await;
+        if let Some(tx) = snapshot {
+            if result.is_ok() {
+                let _ = self.commit(tx).await;
+            } else {
+                let _ = self.rollback(tx).await;
+            }
+        }
+        result
     }
 
     async fn structure_capabilities(

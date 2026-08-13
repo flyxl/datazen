@@ -42,6 +42,12 @@ describe('formatRestoreProgress', () => {
     expect(
       formatRestoreProgress({ current: 0, total: 4, objectName: '', phase: 'object' }, t),
     ).toBe('backup.restoring');
+    expect(
+      formatRestoreProgress(
+        { current: 3, total: 0, objectName: 'INSERT INTO t', phase: 'object' },
+        t,
+      ),
+    ).toContain('INSERT INTO t');
   });
 });
 
@@ -62,5 +68,13 @@ describe('backupProgressRatio', () => {
       0.95,
     );
     expect(backupProgressRatio({ current: 0, total: 0, objectName: '', phase: 'done' })).toBe(1);
+    const streamed = backupProgressRatio({
+      current: 12,
+      total: 0,
+      objectName: 'INSERT',
+      phase: 'object',
+    });
+    expect(streamed).toBeGreaterThan(0);
+    expect(streamed).toBeLessThan(0.95);
   });
 });
