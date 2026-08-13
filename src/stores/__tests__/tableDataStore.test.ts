@@ -4,6 +4,7 @@ import type { FilterCondition, SortCondition } from '../../types';
 const mockDatabaseCommands = {
   getTableData: vi.fn(),
   commitRowUpdates: vi.fn(),
+  commitRowDeletes: vi.fn(),
 };
 
 vi.mock('../../commands/database', () => ({
@@ -34,6 +35,7 @@ describe('tableDataStore', () => {
     vi.clearAllMocks();
     mockDatabaseCommands.getTableData.mockResolvedValue(sampleResponse);
     mockDatabaseCommands.commitRowUpdates.mockResolvedValue(undefined);
+    mockDatabaseCommands.commitRowDeletes.mockResolvedValue(undefined);
     const mod = await import('../tableDataStore');
     useTableDataStore = mod.useTableDataStore;
     useTableDataStore.getState().reset();
@@ -235,10 +237,24 @@ describe('tableDataStore', () => {
     expect(useTableDataStore.getState().selectedRows.size).toBe(0);
   });
 
-  it('deleteSelectedRows throws not implemented', async () => {
-    await expect(useTableDataStore.getState().deleteSelectedRows()).rejects.toThrow(
-      'not yet implemented',
-    );
+  it('deleteSelectedRows commits PK deletes and reloads', async () => {
+    await loadTable();
+    useTableDataStore.getState().selectRow(0);
+    useTableDataStore.getState().selectRow(1, { multi: true });
+    await useTableDataStore.getState().deleteSelectedRows();
+    expect(mockDatabaseCommands.commitRowDeletes).toHaveBeenCalledWith('conn-1', 'users', [
+      { pkColumns: [{ column: 'id', value: 1 }] },
+      { pkColumns: [{ column: 'id', value: 2 }] },
+    ]);
+    expect(mockDatabaseCommands.getTableData).toHaveBeenCalled();
+  });
+
+  it('deleteRows selects indices then deletes', async () => {
+    await loadTable();
+    await useTableDataStore.getState().deleteRows([1]);
+    expect(mockDatabaseCommands.commitRowDeletes).toHaveBeenCalledWith('conn-1', 'users', [
+      { pkColumns: [{ column: 'id', value: 2 }] },
+    ]);
   });
 
   it('closeTable removes table state', async () => {

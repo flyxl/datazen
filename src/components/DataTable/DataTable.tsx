@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { Download } from 'lucide-react';
+import { Download, Trash2 } from 'lucide-react';
 import type { FilterCondition, SortCondition } from '../../types';
 import type { CellEdit } from '../../stores/tableDataStore';
 import { useI18n } from '../../hooks/useI18n';
@@ -75,8 +75,10 @@ export interface DataTableProps {
   /** Enable data export (button + context menu). Provide a table name for the filename. */
   exportTableName?: string;
   databaseType?: string;
-  /** Primary-key column names for Copy as UPDATE; falls back to first column. */
+  /** Primary-key column names for Copy as UPDATE / Delete Row; falls back to first column for copy. */
   primaryKeyColumns?: string[];
+  /** Delete rows by page-row indices (requires primary keys). */
+  onDeleteRows?: (rowIndices: number[]) => void;
 
   /**
    * Optional cell text for the native context menu “copy” item.
@@ -128,6 +130,7 @@ export function DataTable({
   exportTableName,
   databaseType,
   primaryKeyColumns,
+  onDeleteRows,
   getContextCellText,
 }: DataTableProps) {
   const { t } = useI18n();
@@ -184,6 +187,9 @@ export function DataTable({
       const canFilterByValue = hasCellContext && !!onAddFilter && !!hit;
       const setNullAllowed = enableSetNull ?? !!onCellEdit;
       const canSetNull = hasCellContext && setNullAllowed && !!onCellEdit && !!hit;
+      const deleteIndices = hasSelectedRows ? selectedIndices : hit != null ? [hit.rowIndex] : [];
+      const canDelete =
+        !!onDeleteRows && (primaryKeyColumns?.length ?? 0) > 0 && deleteIndices.length > 0;
 
       const csvRows =
         hasSelectedRows && !hasCellContext
@@ -210,6 +216,10 @@ export function DataTable({
             setNull: t('dataTable.setNull'),
             filterByValue: t('dataTable.filterByValue'),
             copySelectedRows: `${t('common.copy')} ${t('export.selectedRows')}`,
+            deleteRow:
+              deleteIndices.length > 1
+                ? `${t('dataTable.deleteRow')} (${deleteIndices.length})`
+                : t('dataTable.deleteRow'),
             export:
               selectedRows.size > 0
                 ? `${t('export.export')} (${t('export.selectedRows')} ${selectedRows.size})`
@@ -284,6 +294,11 @@ export function DataTable({
                   copyText(serializeDataTableRowsAsTsv(selectedDataRows));
                 }
               : undefined,
+            onDeleteRow: canDelete
+              ? () => {
+                  onDeleteRows?.(deleteIndices);
+                }
+              : undefined,
             onExport: exportEnabled
               ? () => {
                   setExportOpen(true);
@@ -295,6 +310,7 @@ export function DataTable({
           exportEnabled,
           canFilterByValue,
           canSetNull,
+          canDelete,
         }),
       );
     },
@@ -306,6 +322,7 @@ export function DataTable({
       onAddFilter,
       onCellEdit,
       enableSetNull,
+      onDeleteRows,
       primaryKeyColumns,
       rows,
       selectedRows,
@@ -367,17 +384,30 @@ export function DataTable({
               {t('dataTable.selected')} {selectedRows.size} / {rows.length} {t('common.rows')}
             </span>
           )}
-          {exportEnabled && (
-            <button
-              type="button"
-              className="ml-auto flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-fg-secondary hover:bg-surface-raised hover:text-fg"
-              onClick={() => setExportOpen(true)}
-              title={t('export.export')}
-            >
-              <Download className="h-3 w-3" />
-              {t('export.export')}
-            </button>
-          )}
+          <div className="ml-auto flex items-center gap-1">
+            {onDeleteRows && selectedRows.size > 0 && (primaryKeyColumns?.length ?? 0) > 0 && (
+              <button
+                type="button"
+                className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-red-400 hover:bg-surface-raised hover:text-red-300"
+                onClick={() => onDeleteRows(Array.from(selectedRows).sort((a, b) => a - b))}
+                title={t('dataTable.deleteRow')}
+              >
+                <Trash2 className="h-3 w-3" />
+                {t('dataTable.deleteRow')}
+              </button>
+            )}
+            {exportEnabled && (
+              <button
+                type="button"
+                className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-fg-secondary hover:bg-surface-raised hover:text-fg"
+                onClick={() => setExportOpen(true)}
+                title={t('export.export')}
+              >
+                <Download className="h-3 w-3" />
+                {t('export.export')}
+              </button>
+            )}
+          </div>
           {loading ? <span className="text-xs text-fg-muted">{t('common.loading')}</span> : null}
         </div>
       )}

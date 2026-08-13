@@ -101,6 +101,26 @@ pub trait DatabaseDriver: Send + Sync {
         )
     }
 
+    /// Build `DELETE FROM … WHERE pk…` for row-level deletes (mirrors `build_update_sql`).
+    fn build_delete_sql(&self, table: &str, pk_columns: &[(&str, Option<Value>)]) -> String {
+        let where_clauses: Vec<String> = pk_columns
+            .iter()
+            .map(|(col, val)| match val {
+                None | Some(Value::Null) => format!("{} IS NULL", self.quote_ident(col)),
+                Some(v) => format!(
+                    "{} = {}",
+                    self.quote_ident(col),
+                    self.format_sql_literal(&Some(v.clone()))
+                ),
+            })
+            .collect();
+        format!(
+            "DELETE FROM {} WHERE {}",
+            self.quote_ident(table),
+            where_clauses.join(" AND ")
+        )
+    }
+
     async fn connect(&self, config: &ConnectionConfig) -> Result<ConnectionHandle, DriverError>;
 
     async fn test_connection(&self, config: &ConnectionConfig) -> Result<ServerInfo, DriverError>;

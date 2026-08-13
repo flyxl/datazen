@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { databaseCommands, type RowUpdateBatch } from '../commands/database';
+import { databaseCommands, type RowUpdateBatch, type RowDeleteBatch } from '../commands/database';
 import { t } from '../locales/t';
 import type { ColumnSchema, DatabaseType, FilterCondition, SortCondition, Value } from '../types';
 import { DB_REGISTRY } from '../lib/databaseTypes';
@@ -171,6 +171,8 @@ interface TableDataStore {
   selectRow: (index: number, opts?: { multi?: boolean; range?: boolean }) => void;
   toggleSelectAll: () => void;
   deleteSelectedRows: () => Promise<void>;
+  /** Delete by explicit page-row indices (selects them first). */
+  deleteRows: (rowIndices: number[]) => Promise<void>;
   closeTable: (table: string) => void;
 
   detailRowIndex: number | null;
@@ -554,7 +556,52 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
   },
 
   deleteSelectedRows: async () => {
-    throw new Error('Row deletion requires backend support (not yet implemented)');
+    const { activeTable, tableStates, connectionId } = get();
+    if (!activeTable || !connectionId) return;
+    const ts = getState(tableStates, activeTable);
+    const indices = Array.from(ts.selectedRows).sort((a, b) => a - b);
+    if (indices.length === 0) return;
+
+    const pkCols = ts.columns.filter((c) => c.isPrimaryKey);
+    if (pkCols.length === 0) {
+      updateActive(get, set, () => ({ error: t('tableData.noPrimaryKey') }));
+      return;
+    }
+
+    const deletes: RowDeleteBatch[] = [];
+    for (const index of indices) {
+      const row = ts.rows[index];
+      if (!row) continue;
+      deletes.push({
+        pkColumns: pkCols.map((pk) => ({
+          column: pk.name,
+          value: toCellValue(row[pk.name]),
+        })),
+      });
+    }
+    if (deletes.length === 0) return;
+
+    try {
+      await databaseCommands.commitRowDeletes(connectionId, activeTable, deletes);
+      void get().loadTableData({ connectionId, table: activeTable });
+    } catch (e) {
+      updateActive(get, set, () => ({
+        error: extractErrorMessage(e, t('tableData.deleteFailed')),
+      }));
+    }
+  },
+
+  /** Delete specific row indices (e.g. right-clicked row when nothing is selected). */
+  deleteRows: async (rowIndices: number[]) => {
+    const { activeTable, tableStates } = get();
+    if (!activeTable) return;
+    const unique = [...new Set(rowIndices.filter((i) => Number.isInteger(i) && i >= 0))];
+    if (unique.length === 0) return;
+    updateActive(get, set, () => ({
+      selectedRows: new Set(unique),
+      lastSelectedIndex: unique[unique.length - 1] ?? null,
+    }));
+    await get().deleteSelectedRows();
   },
 
   closeTable: (table: string) => {

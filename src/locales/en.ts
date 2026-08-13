@@ -524,6 +524,7 @@ const en: Record<TranslationKey, string> = {
   'tableData.loadFailed': 'Failed to load table data',
   'tableData.noPrimaryKey': 'Cannot commit: table has no primary key',
   'tableData.commitFailed': 'Failed to commit changes',
+  'tableData.deleteFailed': 'Failed to delete rows',
 
   // ── Schema Store ──
   'schema.loadDbFailed': 'Failed to load databases',
@@ -542,6 +543,8 @@ const en: Record<TranslationKey, string> = {
   'dataTable.copyColumnName': 'Copy Column Name',
   'dataTable.setNull': 'Set NULL',
   'dataTable.filterByValue': 'Filter by This Value',
+  'dataTable.deleteRow': 'Delete Row',
+  'dataTable.confirmDeleteRows': 'Delete {count} selected row(s)? This cannot be undone.',
 
   // ── Detail Panel ──
   'detail.title': 'Details',

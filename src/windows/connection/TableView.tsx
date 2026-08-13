@@ -1,9 +1,10 @@
-import { useEffect } from 'react';
+import { useCallback, useEffect } from 'react';
 import { Filter, Loader2 } from 'lucide-react';
 import { DataTable } from '../../components/DataTable/DataTable';
 import type { ColumnDef } from '../../components/DataTable/TableHeader';
 import { NlFilterInput } from '../../components/ai/NlFilterInput';
 import { useTableDataStore, type TableState } from '../../stores/tableDataStore';
+import { useSettingsStore } from '../../stores/settingsStore';
 import { useI18n } from '../../hooks/useI18n';
 import { cn } from '../../lib/cn';
 
@@ -35,8 +36,26 @@ export function TableView({ connectionId, database, tableName }: TableViewProps)
   const cancelEdit = useTableDataStore((s) => s.cancelEdit);
   const selectRow = useTableDataStore((s) => s.selectRow);
   const toggleSelectAll = useTableDataStore((s) => s.toggleSelectAll);
+  const deleteRows = useTableDataStore((s) => s.deleteRows);
   const setDetailRow = useTableDataStore((s) => s.setDetailRow);
   const detailRowIndex = useTableDataStore((s) => s.detailRowIndex);
+  const confirmOnDelete = useSettingsStore((s) => s.settings.confirmOnDelete);
+
+  const handleDeleteRows = useCallback(
+    async (rowIndices: number[]) => {
+      if (rowIndices.length === 0) return;
+      if (confirmOnDelete) {
+        const { ask } = await import('@tauri-apps/plugin-dialog');
+        const confirmed = await ask(
+          t('dataTable.confirmDeleteRows', { count: rowIndices.length }),
+          { title: t('dataTable.deleteRow'), kind: 'warning' },
+        );
+        if (!confirmed) return;
+      }
+      await deleteRows(rowIndices);
+    },
+    [confirmOnDelete, deleteRows, t],
+  );
 
   const ts: TableState | undefined = tableStates.get(tableName);
   const hasData = ts != null && ts.columns.length > 0;
@@ -186,6 +205,7 @@ export function TableView({ connectionId, database, tableName }: TableViewProps)
         highlightedRow={detailRowIndex}
         exportTableName={tableName}
         primaryKeyColumns={columns.filter((c) => c.isPrimaryKey).map((c) => c.name)}
+        onDeleteRows={handleDeleteRows}
       />
     </div>
   );
