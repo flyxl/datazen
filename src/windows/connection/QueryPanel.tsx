@@ -38,7 +38,11 @@ import {
   buildHistorySidebarContextMenuItems,
   buildHistorySidebarHeaderContextMenuItems,
 } from '../../lib/querySidebarContextMenu';
-import { inferDefaultSchema, inferDefaultTable } from '../../lib/sqlEditorDefaults';
+import {
+  inferDefaultSchema,
+  inferDefaultTable,
+  tablesReferencedInSql,
+} from '../../lib/sqlEditorDefaults';
 import {
   namespaceRootsFrom,
   pathsEqual,
@@ -169,7 +173,7 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
   const databases = useSchemaStore((s) => s.databases);
   const currentDatabase = useSchemaStore((s) => s.currentDatabase);
   const isMultiDb = useSchemaStore((s) => s.isMultiDatabase);
-  const loadColumnMap = useSchemaStore((s) => s.loadColumnMap);
+  const ensureColumns = useSchemaStore((s) => s.ensureColumns);
   const loadTables = useSchemaStore((s) => s.loadTables);
   const ensureNamespacePath = useSchemaStore((s) => s.ensureNamespacePath);
   const namespaceLoading = useSchemaStore((s) => s.ensuringCount > 0);
@@ -179,8 +183,16 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
   const isPathHierarchy = dbMeta?.namespaceEnsure === 'path-hierarchy';
   const [contextPath, setContextPath] = useState<string[]>([]);
   const editorSchema = useMemo(
-    () => buildEditorSchema({ namespaceTree, tables, views, columnMap, currentDatabase }),
-    [namespaceTree, tables, views, columnMap, currentDatabase],
+    () =>
+      buildEditorSchema({
+        namespaceTree,
+        tables,
+        views,
+        columnMap,
+        currentDatabase,
+        hoistPath: contextPath,
+      }),
+    [namespaceTree, tables, views, columnMap, currentDatabase, contextPath],
   );
   const editorDefaultSchema = useMemo(() => inferDefaultSchema(tables, views), [tables, views]);
   const editorDefaultTable = useMemo(() => inferDefaultTable(tab?.sql ?? ''), [tab?.sql]);
@@ -262,10 +274,13 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
   }, [connectionId, databaseType]);
 
   useEffect(() => {
-    if (tables.length > 0 && Object.keys(columnMap).length === 0) {
-      void loadColumnMap();
-    }
-  }, [tables, columnMap, loadColumnMap]);
+    const names = tablesReferencedInSql(tab?.sql ?? '');
+    if (names.length === 0) return;
+    const timer = setTimeout(() => {
+      void ensureColumns(names);
+    }, 120);
+    return () => clearTimeout(timer);
+  }, [tab?.sql, ensureColumns, namespaceTree, tables, views]);
 
   const sqlParams = useMemo(() => parseSqlParams(tab?.sql ?? ''), [tab?.sql]);
   const boundPayload = useMemo(

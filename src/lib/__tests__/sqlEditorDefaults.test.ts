@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { inferDefaultSchema, inferDefaultTable } from '../sqlEditorDefaults';
+import { inferDefaultSchema, inferDefaultTable, tablesReferencedInSql } from '../sqlEditorDefaults';
 import type { TableInfo } from '../../types';
 
 describe('inferDefaultTable', () => {
@@ -24,6 +24,31 @@ describe('inferDefaultTable', () => {
 
   it('returns undefined when there is no FROM', () => {
     expect(inferDefaultTable('SELECT 1')).toBeUndefined();
+  });
+
+  it('uses the last segment of a multi-level path', () => {
+    expect(inferDefaultTable('SELECT * FROM hive.snap.afi_credit_r_cibi_report_trade')).toBe(
+      'afi_credit_r_cibi_report_trade',
+    );
+  });
+});
+
+describe('tablesReferencedInSql', () => {
+  it('returns every FROM/JOIN table once, last path segment only', () => {
+    expect(
+      tablesReferencedInSql(
+        'SELECT * FROM hive.snap.orders o JOIN hive.snap.users u ON o.uid = u.id',
+      ),
+    ).toEqual(['orders', 'users']);
+  });
+
+  it('is empty when there is no relation', () => {
+    expect(tablesReferencedInSql('SELECT 1')).toEqual([]);
+    expect(tablesReferencedInSql('')).toEqual([]);
+  });
+
+  it('still extracts an in-progress identifier (store must filter unknown names)', () => {
+    expect(tablesReferencedInSql('SELECT * FROM hive.snap.wb_d')).toEqual(['wb_d']);
   });
 });
 
