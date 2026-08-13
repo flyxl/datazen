@@ -42,4 +42,14 @@ describe('resolvePostQueryViewMode', () => {
     });
     expect(resolvePostQueryViewMode(chartable())).toBe('table');
   });
+
+  it('returns table when the setting is unset', () => {
+    useSettingsStore.setState({
+      settings: {
+        ...useSettingsStore.getState().settings,
+        autoChartOnQuery: undefined as unknown as boolean,
+      },
+    });
+    expect(resolvePostQueryViewMode(chartable())).toBe('table');
+  });
 });

@@ -4,11 +4,7 @@ import { emitCrossWindow } from '../lib/crossWindowBus';
 import { resolveUiLanguage } from '../lib/resolveUiLanguage';
 import type { AppSettings } from '../types';
 import { HOST_DEFAULT_EDITOR_FONT } from '../lib/resolveEditorFontFamily';
-import {
-  DEFAULT_THEME_PREFERENCE,
-  normalizeThemePreference,
-  type ThemeMode,
-} from '../types/theme';
+import { DEFAULT_THEME_PREFERENCE, normalizeThemePreference, type ThemeMode } from '../types/theme';
 import { DEFAULT_MONITOR_SETTINGS } from '../types/dashboard';
 import { applyThemePack, syncWebviewBackgroundFromTokens } from '../lib/themePackApply';
 
@@ -32,7 +28,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   mcpAllowedConnectionIds: [],
   contextDir: '',
   checkForUpdatesOnStartup: false,
-  autoChartOnQuery: true,
+  autoChartOnQuery: false,
   monitor: DEFAULT_MONITOR_SETTINGS,
   pluginSettings: {},
 };
@@ -105,9 +101,16 @@ export async function applyThemeLocally(mode: ThemeMode) {
  */
 export async function applySettingsLocally(incoming: AppSettings) {
   const theme = normalizeThemePreference(incoming.theme);
-  await applyTheme(theme.mode, theme.packId);
-  watchSystemTheme(theme.mode);
+  const prev = useSettingsStore.getState().settings;
   useSettingsStore.setState({ settings: { ...incoming, theme } });
+  const themeChanged = prev.theme.mode !== theme.mode || prev.theme.packId !== theme.packId;
+  if (!themeChanged) return;
+  try {
+    await applyTheme(theme.mode, theme.packId);
+    watchSystemTheme(theme.mode);
+  } catch {
+    // Settings cache must still update even if the theme pack fails to apply.
+  }
 }
 
 interface SettingsStore {
@@ -152,9 +155,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
 
   updateSettings: async (partial) => {
     const merged = { ...get().settings, ...partial };
-    const theme = partial.theme
-      ? normalizeThemePreference(partial.theme)
-      : merged.theme;
+    const theme = partial.theme ? normalizeThemePreference(partial.theme) : merged.theme;
     const next: AppSettings = { ...merged, theme };
     if (partial.theme) {
       await applyTheme(theme.mode, theme.packId);

@@ -12,9 +12,11 @@ import {
 async function invokeBackend<T>(cmd: string, args: Record<string, unknown> = {}): Promise<T> {
   const result = await browser.executeAsync(
     (c: string, a: string, done: (r: unknown) => void) => {
-      (window as unknown as {
-        __TAURI_INTERNALS__?: { invoke: (cmd: string, args: unknown) => Promise<unknown> };
-      }).__TAURI_INTERNALS__
+      (
+        window as unknown as {
+          __TAURI_INTERNALS__?: { invoke: (cmd: string, args: unknown) => Promise<unknown> };
+        }
+      ).__TAURI_INTERNALS__
         ?.invoke(c, JSON.parse(a))
         .then((r) => done(r))
         .catch((e: unknown) => done({ __error: String(e) }));
@@ -28,7 +30,10 @@ async function invokeBackend<T>(cmd: string, args: Record<string, unknown> = {})
   return result as T;
 }
 
-async function invokeBackendCatch(cmd: string, args: Record<string, unknown> = {}): Promise<string> {
+async function invokeBackendCatch(
+  cmd: string,
+  args: Record<string, unknown> = {},
+): Promise<string> {
   try {
     await invokeBackend(cmd, args);
     return '';
@@ -44,7 +49,8 @@ describe('Client parity P0–P2', () => {
   before(async () => {
     mainWindow = await browser.getWindowHandle();
     const conns = await invokeBackend<{ id: string; name?: string }[]>('get_connections');
-    const pg = conns.find((c) => c.id === 'conn_e2e_pg' || c.name === '本地 PostgreSQL') ?? conns[0];
+    const pg =
+      conns.find((c) => c.id === 'conn_e2e_pg' || c.name === '本地 PostgreSQL') ?? conns[0];
     if (!pg) {
       throw new Error('No PostgreSQL connection seeded for client-parity E2E');
     }
@@ -100,20 +106,31 @@ describe('Client parity P0–P2', () => {
 
   it('session transaction begin/commit/rollback', async () => {
     await invokeBackend('begin_session_transaction', { connectionId: pgId });
-    expect(await invokeBackend<boolean>('session_transaction_status', { connectionId: pgId })).toBe(true);
+    expect(await invokeBackend<boolean>('session_transaction_status', { connectionId: pgId })).toBe(
+      true,
+    );
     await invokeBackend('rollback_session_transaction', { connectionId: pgId });
-    expect(await invokeBackend<boolean>('session_transaction_status', { connectionId: pgId })).toBe(false);
+    expect(await invokeBackend<boolean>('session_transaction_status', { connectionId: pgId })).toBe(
+      false,
+    );
     await invokeBackend('begin_session_transaction', { connectionId: pgId });
     await invokeBackend('commit_session_transaction', { connectionId: pgId });
-    expect(await invokeBackend<boolean>('session_transaction_status', { connectionId: pgId })).toBe(false);
+    expect(await invokeBackend<boolean>('session_transaction_status', { connectionId: pgId })).toBe(
+      false,
+    );
   });
 
   it('lists routines and privileges on PostgreSQL', async () => {
-    const fns = await invokeBackend<{ name: string }[]>('get_database_objects', {
-      connectionId: pgId,
-      kind: 'function',
-    });
-    expect(Array.isArray(fns)).toBe(true);
+    for (const kind of ['function', 'procedure', 'trigger'] as const) {
+      const rows = await invokeBackend<{ name: string }[]>('get_database_objects', {
+        connectionId: pgId,
+        kind,
+      });
+      expect(Array.isArray(rows)).toBe(true);
+      for (const row of rows) {
+        expect(typeof row.name).toBe('string');
+      }
+    }
     const grants = await invokeBackend<unknown[]>('get_privileges', { connectionId: pgId });
     expect(Array.isArray(grants)).toBe(true);
   });
@@ -191,6 +208,9 @@ describe('Client parity P0–P2', () => {
     await expect(await $(`button*=${t('privileges.title')}`)).toBeDisplayed();
     await $(`button*=${t('objects.title')}`).click();
     await expect(await $(`button*=${t('objects.function')}`)).toBeDisplayed();
+    const bodyAfterObjects = await $('body').getText();
+    expect(bodyAfterObjects).not.toContain('Object list query missing name column');
+    expect(bodyAfterObjects).toMatch(/objects\.(empty|function)/);
   });
 
   it('table filter editor exposes AND/OR', async () => {
@@ -201,7 +221,9 @@ describe('Client parity P0–P2', () => {
     if (!table) return;
     await browser.pause(800);
     const body = await $('body').getText();
-    expect(body.includes(t('filter.filter')) || body.includes('AND') || body.includes('OR')).toBe(true);
+    expect(body.includes(t('filter.filter')) || body.includes('AND') || body.includes('OR')).toBe(
+      true,
+    );
   });
 
   it('new connection form shows SSH agent and jump host', async () => {

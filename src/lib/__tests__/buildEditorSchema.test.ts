@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { buildEditorSchema, hoistNamespaceChild } from '../buildEditorSchema';
+import {
+  buildEditorSchema,
+  hoistNamespaceChild,
+  hoistNestedTableLeaves,
+} from '../buildEditorSchema';
 
 describe('buildEditorSchema', () => {
   it('prefers nested tree and overlays columns', () => {
@@ -10,7 +14,7 @@ describe('buildEditorSchema', () => {
         views: [],
         columnMap: { users: ['id'] },
       }),
-    ).toEqual({ app: { users: ['id'] } });
+    ).toEqual({ app: { users: ['id'] }, users: ['id'] });
   });
 
   it('falls back to flat tables when namespace empty', () => {
@@ -38,6 +42,28 @@ describe('buildEditorSchema', () => {
       other: { t: [] },
       users: ['id'],
       orders: [],
+      t: [],
+    });
+  });
+
+  it('hoists postgresql schema tables and overlays columns', () => {
+    expect(
+      buildEditorSchema({
+        namespaceTree: { public: { users: [], orders: [] }, audit: { logs: [] } },
+        tables: [
+          { name: 'users', tableType: 'table', schema: 'public', rowCount: null },
+          { name: 'orders', tableType: 'table', schema: 'public', rowCount: null },
+        ],
+        views: [],
+        columnMap: { users: ['id', 'email'] },
+        currentDatabase: 'app',
+      }),
+    ).toEqual({
+      public: { users: ['id', 'email'], orders: [] },
+      audit: { logs: [] },
+      users: ['id', 'email'],
+      orders: [],
+      logs: [],
     });
   });
 });
@@ -47,6 +73,23 @@ describe('hoistNamespaceChild', () => {
     expect(hoistNamespaceChild({ app: { users: [] }, users: ['id'] }, 'app')).toEqual({
       app: { users: [] },
       users: ['id'],
+    });
+  });
+});
+
+describe('hoistNestedTableLeaves', () => {
+  it('copies schema table leaves to the root', () => {
+    expect(hoistNestedTableLeaves({ public: { users: [] }, audit: { logs: [] } })).toEqual({
+      public: { users: [] },
+      audit: { logs: [] },
+      users: [],
+      logs: [],
+    });
+  });
+
+  it('does not hoist nested branches as tables', () => {
+    expect(hoistNestedTableLeaves({ hive: { snap: { t: [] } } })).toEqual({
+      hive: { snap: { t: [] } },
     });
   });
 });

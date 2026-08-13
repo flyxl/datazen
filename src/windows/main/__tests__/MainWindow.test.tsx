@@ -184,7 +184,7 @@ vi.mock('../../../hooks/useI18n', () => ({
 }));
 
 vi.mock('../../../hooks/useTauriEvent', () => ({ useTauriEvent: () => {} }));
-vi.mock('../../../hooks/useThemeListener', () => ({ useThemeListener: () => {} }));
+vi.mock('../../../hooks/useSettings', () => ({ useSettings: () => {} }));
 
 vi.mock('../../../hooks/useResizable', () => ({
   useResizable: () => ({ size: 256, handleRef: { current: null } }),

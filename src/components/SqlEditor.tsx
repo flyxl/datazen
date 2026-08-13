@@ -4,6 +4,7 @@ import { EditorState, Compartment } from '@codemirror/state';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { sql, PostgreSQL, MySQL, MariaSQL, SQLite, StandardSQL } from '@codemirror/lang-sql';
 import type { SQLDialect } from '@codemirror/lang-sql';
+import { contextualSchemaCompletion } from '../lib/sqlCompletionContext';
 import {
   autocompletion,
   closeBrackets,
@@ -120,13 +121,23 @@ function sqlEditorExtensions(
   databaseType?: string,
   schema?: SqlSchema,
   namespaceLoading?: boolean,
+  defaultSchema?: string,
+  defaultTable?: string,
 ) {
   const dialect = resolveCmDialect(databaseType);
   return [
+    // Do not pass `schema` into sql() — its built-in source mixes tables into WHERE.
     sql({
       dialect,
       upperCaseKeywords: true,
-      schema: schema ?? {},
+    }),
+    dialect.language.data.of({
+      autocomplete: contextualSchemaCompletion({
+        dialect,
+        schema: schema ?? {},
+        defaultSchema,
+        defaultTable,
+      }),
     }),
     dialect.language.data.of({
       autocomplete: completeFromList(sqlFunctionCompletions(databaseType)),
@@ -161,6 +172,10 @@ interface SqlEditorProps {
   databaseType?: string;
   /** True while a lazy namespace path is fetching for autocomplete. */
   namespaceLoading?: boolean;
+  /** CodeMirror: tables in this schema complete without a prefix (`public.users` → `users`). */
+  defaultSchema?: string;
+  /** CodeMirror: columns of this table complete at the top level (WHERE / SELECT). */
+  defaultTable?: string;
 }
 
 export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function SqlEditor(
@@ -175,6 +190,8 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
     schema,
     databaseType,
     namespaceLoading,
+    defaultSchema,
+    defaultTable,
   },
   ref,
 ) {
@@ -251,7 +268,9 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
           activateOnTyping: true,
           defaultKeymap: true,
         }),
-        sqlCompartment.current.of(sqlEditorExtensions(databaseType, schema, namespaceLoading)),
+        sqlCompartment.current.of(
+          sqlEditorExtensions(databaseType, schema, namespaceLoading, defaultSchema, defaultTable),
+        ),
         themeCompartment.current.of(themeExtensions(config)),
         EditorView.lineWrapping,
         EditorView.domEventHandlers({
@@ -337,11 +356,11 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
     if (!view) return;
     view.dispatch({
       effects: sqlCompartment.current.reconfigure(
-        sqlEditorExtensions(databaseType, schema, namespaceLoading),
+        sqlEditorExtensions(databaseType, schema, namespaceLoading, defaultSchema, defaultTable),
       ),
     });
     if (namespaceLoading) startCompletion(view);
-  }, [schema, databaseType, namespaceLoading]);
+  }, [schema, databaseType, namespaceLoading, defaultSchema, defaultTable]);
 
   useEffect(() => {
     const view = viewRef.current;

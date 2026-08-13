@@ -12,6 +12,12 @@
 | 5 | Superset：SQL 若带了当前 database 前缀，发给 API 前剥掉 | 开发完成 | 通过 | | 插件仓提交 |
 | 6 | Superset 懒加载树：补全时触发加载并展示 loading | 开发完成 | 通过 | | 已提交 |
 
+## 后续：PostgreSQL WHERE 补全混入 schema/表名
+
+`SELECT * FROM product WHERE p` 曾同时列出 `price`（列）和 `product` / `public`（表/schema）。
+CodeMirror `completeFromSchema` 在顶层总是合并 tables/schemas + `defaultTable` 列。
+现用 `contextualSchemaCompletion` 按光标前关键字过滤：`WHERE`/`SELECT` 只保留 `type === "property"`。
+
 ## 阻塞
 
 无。#3 导出扩展名为 `.datazenconnection`（RNCryptor v3，与 TablePlus 同算法；导入仍接受 `.tableplusconnection` / 旧 JSON）。#5/#6 树与补全共用 `schemaStore.pathItems`。

@@ -64,7 +64,7 @@ describe('settingsStore', () => {
       autoCommit: true,
       safeMode: true,
       defaultPageSize: 50,
-    connectionPoolSize: 10,
+      connectionPoolSize: 10,
       logLevel: 'info',
       logPath: '',
       mcpServerEnabled: false,
@@ -162,5 +162,22 @@ describe('settingsStore', () => {
 
     expect(useSettingsStore.getState().settings.language).toBe('ja');
     expect(useSettingsStore.getState().settings.theme.mode).toBe('system');
+  });
+
+  it('applySettingsLocally updates autoChartOnQuery from another window', async () => {
+    applyThemePack.mockResolvedValue({ ok: true });
+    const { applySettingsLocally } = await import('../settingsStore');
+    useSettingsStore.setState({
+      settings: { ...useSettingsStore.getState().settings, autoChartOnQuery: true },
+    });
+    applyThemePack.mockClear();
+
+    await applySettingsLocally({
+      ...useSettingsStore.getState().settings,
+      autoChartOnQuery: false,
+    });
+
+    expect(useSettingsStore.getState().settings.autoChartOnQuery).toBe(false);
+    expect(applyThemePack).not.toHaveBeenCalled();
   });
 });
