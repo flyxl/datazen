@@ -3,7 +3,7 @@ use super::compare::{
     diff_table_schemas_ir, format_ir_type, resolve_pk_columns, row_key, row_to_json_map,
     rows_equal, rows_to_key_map, value_key_part, values_equal,
 };
-use super::table_sync::sync_table_impl;
+use super::table_sync::{sync_table_impl, sync_tables_impl};
 use super::tasks::{
     check_sync_conflicts_impl, delete_sync_task_impl, get_sync_tasks_impl,
     save_sync_task_direct_impl,
@@ -422,6 +422,31 @@ async fn sync_table_impl_refuses_overwrite_copy() {
     let err = sync_table_impl(&test.state, "src".into(), "tgt".into(), "users".into())
         .await
         .unwrap_err();
+    assert!(crate::data_sync::is_overwrite_copy_retired_message(
+        &err.to_string()
+    ));
+}
+
+#[tokio::test]
+async fn sync_tables_impl_refuses_overwrite_copy() {
+    use crate::testing::app_state::TestAppState;
+
+    let test = TestAppState::new().await;
+    let err = sync_tables_impl(
+        &test.state,
+        "task-1".into(),
+        "src".into(),
+        "tgt".into(),
+        "src-cfg".into(),
+        "tgt-cfg".into(),
+        vec!["users".into()],
+        vec![],
+        "overwrite".into(),
+        None,
+        0,
+    )
+    .await
+    .unwrap_err();
     assert!(crate::data_sync::is_overwrite_copy_retired_message(
         &err.to_string()
     ));
