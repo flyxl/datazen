@@ -88,10 +88,48 @@ export const syncCommands = {
       conflicts: { table: string; originalRows: number; currentRows: number }[];
     }>('check_sync_conflicts', { taskId }),
 
-  executeDataSync: (targetConnectionId: string, statements: unknown[]) =>
+  executeDataSync: (targetConnectionId: string, statements: unknown[], jobId?: string) =>
     invoke<{ applied: number; rolledBack: boolean }>('execute_data_sync', {
       targetConnectionId,
       statements,
+      jobId: jobId ?? null,
+    }),
+
+  cancelDataSync: (jobId: string) => invoke<boolean>('cancel_data_sync', { jobId }),
+
+  compareDataSync: (
+    sourceConnectionId: string,
+    targetConnectionId: string,
+    tables?: string[],
+    jobId?: string,
+  ) =>
+    invoke<
+      Array<{
+        sourceTable: string;
+        targetTable: string;
+        status: string;
+        incompatibleReason?: string | null;
+        warnings?: string[];
+        rows?: Array<{ operation: string }>;
+      }>
+    >('compare_data_sync', {
+      sourceConnectionId,
+      targetConnectionId,
+      tables: tables ?? null,
+      jobId: jobId ?? null,
+    }),
+
+  applyDataSync: (
+    sourceConnectionId: string,
+    targetConnectionId: string,
+    tables: string[],
+    jobId?: string,
+  ) =>
+    invoke<{ applied: number; rolledBack: boolean }>('apply_data_sync', {
+      sourceConnectionId,
+      targetConnectionId,
+      tables,
+      jobId: jobId ?? null,
     }),
 
   inspectDataSync: (sourceConnectionId: string, targetConnectionId: string) =>
@@ -102,6 +140,7 @@ export const syncCommands = {
         status: string;
         incompatibleReason?: string | null;
         warnings?: string[];
+        rows?: Array<{ operation: string }>;
       }>
     >('inspect_data_sync', { sourceConnectionId, targetConnectionId }),
 };

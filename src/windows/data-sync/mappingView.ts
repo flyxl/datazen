@@ -7,12 +7,35 @@ export type DataSyncMappingStatus =
   | 'DISABLED'
   | 'INCOMPATIBLE';
 
+export interface DataSyncRowChange {
+  operation: string;
+}
+
 export interface DataSyncTableResult {
   sourceTable: string;
   targetTable: string;
   status: DataSyncMappingStatus;
   incompatibleReason?: string | null;
   warnings?: string[];
+  rows?: DataSyncRowChange[];
+}
+
+export function rowDiffCounts(row: DataSyncTableResult): {
+  inserts: number;
+  updates: number;
+  deletes: number;
+} {
+  const rows = row.rows ?? [];
+  return {
+    inserts: rows.filter((r) => r.operation === 'INSERT').length,
+    updates: rows.filter((r) => r.operation === 'UPDATE').length,
+    deletes: rows.filter((r) => r.operation === 'DELETE').length,
+  };
+}
+
+export function tableHasRowDiffs(row: DataSyncTableResult): boolean {
+  const { inserts, updates, deletes } = rowDiffCounts(row);
+  return inserts + updates + deletes > 0;
 }
 
 export function mappingLabelKey(status: DataSyncMappingStatus): TranslationKey {

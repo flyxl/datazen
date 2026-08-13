@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { ArrowRight, Loader2, RefreshCcw } from 'lucide-react';
 import { TitleBar } from '../../components/TitleBar';
@@ -7,7 +7,6 @@ import { Button } from '../../components/ui/Button';
 import { Select } from '../../components/ui/Select';
 import { Dialog } from '../../components/ui/Dialog';
 import { syncCommands } from '../../commands/sync';
-import { useThemeListener } from '../../hooks/useThemeListener';
 import { useI18n } from '../../hooks/useI18n';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { cn } from '../../lib/cn';
@@ -17,12 +16,13 @@ import type { SyncState } from './utils';
 import {
   displayTableName,
   mappingLabelKey,
+  rowDiffCounts,
   summarizeMappings,
+  tableHasRowDiffs,
   type DataSyncTableResult,
 } from './mappingView';
 
 export function DataSyncWindow() {
-  useThemeListener();
   const { t } = useI18n();
   const loadSettings = useSettingsStore((s) => s.loadSettings);
 
@@ -35,6 +35,7 @@ export function DataSyncWindow() {
   const [syncState, setSyncState] = useState<SyncState>('idle');
   const [errorMsg, setErrorMsg] = useState('');
   const [errorOpen, setErrorOpen] = useState(false);
+  const jobIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     void loadSettings();
@@ -133,6 +134,8 @@ export function DataSyncWindow() {
     setSyncState('comparing');
     setSelectedTables(new Set());
     setMappingResults([]);
+    const jobId = crypto.randomUUID();
+    jobIdRef.current = jobId;
 
     try {
       const srcConnId = await ensureConnected(sourceId);
@@ -142,9 +145,11 @@ export function DataSyncWindow() {
         return;
       }
 
-      const mappings = (await syncCommands.inspectDataSync(
+      const mappings = (await syncCommands.compareDataSync(
         srcConnId,
         tgtConnId,
+        [],
+        jobId,
       )) as DataSyncTableResult[];
       setMappingResults(mappings);
       const autoSelect = new Set(
@@ -158,6 +163,58 @@ export function DataSyncWindow() {
       setSyncState('idle');
     }
   }, [sourceId, targetId, ensureConnected, t]);
+
+  const handleCancel = useCallback(async () => {
+    const jobId = jobIdRef.current;
+    if (!jobId) return;
+    await syncCommands.cancelDataSync(jobId);
+  }, []);
+
+  const handleApply = useCallback(async () => {
+    if (!sourceId || !targetId) return;
+    const selected = mappingResults.filter(
+      (r) => r.status === 'MATCHED' && selectedTables.has(displayTableName(r)) && tableHasRowDiffs(r),
+    );
+    if (selected.length === 0) return;
+    setSyncState('syncing');
+    const jobId = crypto.randomUUID();
+    jobIdRef.current = jobId;
+    try {
+      const srcConnId = await ensureConnected(sourceId);
+      const tgtConnId = await ensureConnected(targetId);
+      if (!srcConnId || !tgtConnId) {
+        setSyncState('compared');
+        return;
+      }
+      const result = await syncCommands.applyDataSync(
+        srcConnId,
+        tgtConnId,
+        selected.map((r) => r.sourceTable),
+        jobId,
+      );
+      if (result.rolledBack) {
+        setErrorMsg(t('sync.failedMsg') + t('common.cancel'));
+        setErrorOpen(true);
+        setSyncState('compared');
+        return;
+      }
+      const mappings = (await syncCommands.compareDataSync(
+        srcConnId,
+        tgtConnId,
+        selected.map((r) => r.sourceTable),
+        jobId,
+      )) as DataSyncTableResult[];
+      setMappingResults((prev) => {
+        const byName = new Map(mappings.map((m) => [m.sourceTable || m.targetTable, m]));
+        return prev.map((row) => byName.get(row.sourceTable || row.targetTable) ?? row);
+      });
+      setSyncState('done');
+    } catch (e) {
+      setErrorMsg(e instanceof Error ? e.message : String(e));
+      setErrorOpen(true);
+      setSyncState('compared');
+    }
+  }, [sourceId, targetId, mappingResults, selectedTables, ensureConnected, t]);
 
   const selectAll = useCallback(() => {
     setSelectedTables(
@@ -305,8 +362,10 @@ export function DataSyncWindow() {
                     }}
                   />
                   <div className="min-w-0 flex-1 truncate font-mono text-xs">{name}</div>
-                  <div className="w-40 text-right text-xs text-fg-secondary">
-                    {t(mappingLabelKey(row.status))}
+                  <div className="w-56 text-right text-xs text-fg-secondary">
+                    {row.status === 'MATCHED' && tableHasRowDiffs(row)
+                      ? t('sync.rowDiffs', rowDiffCounts(row))
+                      : t(mappingLabelKey(row.status))}
                   </div>
                   {row.incompatibleReason && (
                     <div
@@ -329,14 +388,50 @@ export function DataSyncWindow() {
             {t('sync.selected', { selected: selectedTables.size, total: mappingResults.length })}
           </span>
           <div className="flex-1" />
+          {(syncState === 'comparing' || syncState === 'syncing') && (
+            <Button variant="ghost" data-testid="data-sync-cancel" onClick={() => void handleCancel()}>
+              {t('common.cancel')}
+            </Button>
+          )}
           <Button
             variant="primary"
-            onClick={() => undefined}
-            disabled
-            title={t('sync.applyUnavailable')}
-            data-testid="data-sync-start-disabled"
+            onClick={() => void handleApply()}
+            disabled={
+              syncState === 'comparing' ||
+              syncState === 'syncing' ||
+              !mappingResults.some(
+                (r) =>
+                  r.status === 'MATCHED' &&
+                  selectedTables.has(displayTableName(r)) &&
+                  tableHasRowDiffs(r),
+              )
+            }
+            title={
+              mappingResults.some(
+                (r) =>
+                  r.status === 'MATCHED' &&
+                  selectedTables.has(displayTableName(r)) &&
+                  tableHasRowDiffs(r),
+              )
+                ? undefined
+                : t('sync.applyUnavailable')
+            }
+            data-testid={
+              mappingResults.some(
+                (r) =>
+                  r.status === 'MATCHED' &&
+                  selectedTables.has(displayTableName(r)) &&
+                  tableHasRowDiffs(r),
+              )
+                ? 'data-sync-start'
+                : 'data-sync-start-disabled'
+            }
           >
-            <RefreshCcw className="h-4 w-4" />
+            {syncState === 'syncing' ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCcw className="h-4 w-4" />
+            )}
             {t('sync.startSync')}
           </Button>
         </div>

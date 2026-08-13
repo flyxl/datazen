@@ -2,12 +2,23 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { render, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import type { ConnectionConfig } from '../../../types';
 
-const { invokeMock, inspectDataSyncMock, getSyncTasksMock, stableT } = vi.hoisted(() => {
+const {
+  invokeMock,
+  inspectDataSyncMock,
+  compareDataSyncMock,
+  applyDataSyncMock,
+  cancelDataSyncMock,
+  getSyncTasksMock,
+  stableT,
+} = vi.hoisted(() => {
   const stableT = (key: string, params?: Record<string, string | number>) =>
     params ? `${key}:${JSON.stringify(params)}` : key;
   return {
     invokeMock: vi.fn(),
     inspectDataSyncMock: vi.fn(),
+    compareDataSyncMock: vi.fn(),
+    applyDataSyncMock: vi.fn(),
+    cancelDataSyncMock: vi.fn().mockResolvedValue(true),
     getSyncTasksMock: vi.fn(),
     stableT,
   };
@@ -37,6 +48,9 @@ vi.mock('../../../stores/settingsStore', () => ({
 vi.mock('../../../commands/sync', () => ({
   syncCommands: {
     inspectDataSync: (...args: unknown[]) => inspectDataSyncMock(...args),
+    compareDataSync: (...args: unknown[]) => compareDataSyncMock(...args),
+    applyDataSync: (...args: unknown[]) => applyDataSyncMock(...args),
+    cancelDataSync: (...args: unknown[]) => cancelDataSyncMock(...args),
     getSyncTasks: (...args: unknown[]) => getSyncTasksMock(...args),
   },
 }));
@@ -141,29 +155,43 @@ describe('DataSyncWindow (F9 Diff Workspace shell)', () => {
     await waitFor(() => expect(invokeMock).toHaveBeenCalledWith('get_connections'));
     fireEvent.click(screen.getByTestId('data-sync-compare'));
     expect(await screen.findByTestId('data-sync-error')).toHaveTextContent('sync.selectBoth');
-    expect(inspectDataSyncMock).not.toHaveBeenCalled();
+    expect(compareDataSyncMock).not.toHaveBeenCalled();
   });
 
-  it('inspects same-family connections and keeps Apply disabled', async () => {
-    inspectDataSyncMock.mockResolvedValue([
-      { sourceTable: 'users', targetTable: 'users', status: 'MATCHED' },
+  it('compares same-family connections and enables Apply when row diffs exist', async () => {
+    compareDataSyncMock.mockResolvedValue([
+      {
+        sourceTable: 'users',
+        targetTable: 'users',
+        status: 'MATCHED',
+        rows: [{ operation: 'INSERT' }],
+      },
       { sourceTable: 'orders', targetTable: '', status: 'UNMAPPED_SOURCE' },
     ]);
+    applyDataSyncMock.mockResolvedValue({ applied: 1, rolledBack: false });
     render(<DataSyncWindow />);
     await waitFor(() => expect(invokeMock).toHaveBeenCalledWith('get_connections'));
     await pickSelect('data-sync-source', 'PG Src');
     await pickSelect('data-sync-target', 'PG Tgt');
     fireEvent.click(screen.getByTestId('data-sync-compare'));
     await waitFor(() =>
-      expect(inspectDataSyncMock).toHaveBeenCalledWith('live-pg-src', 'live-pg-tgt'),
+      expect(compareDataSyncMock).toHaveBeenCalledWith('live-pg-src', 'live-pg-tgt', [], expect.any(String)),
     );
     const rows = await screen.findAllByTestId('data-sync-mapping-row');
     expect(rows).toHaveLength(2);
-    expect(screen.getByText('sync.mappingMatched')).toBeTruthy();
+    expect(screen.getByText(/sync.rowDiffs/)).toBeTruthy();
     expect(screen.getByText('sync.mappingUnmappedSource')).toBeTruthy();
-    const apply = screen.getByTestId('data-sync-start-disabled');
-    expect(apply).toBeDisabled();
-    expect(apply).toHaveAttribute('title', 'sync.applyUnavailable');
+    const apply = screen.getByTestId('data-sync-start');
+    expect(apply).not.toBeDisabled();
+    fireEvent.click(apply);
+    await waitFor(() =>
+      expect(applyDataSyncMock).toHaveBeenCalledWith(
+        'live-pg-src',
+        'live-pg-tgt',
+        ['users'],
+        expect.any(String),
+      ),
+    );
   });
 
   it('marks heterogeneous targets as unsupported', async () => {
@@ -203,13 +231,13 @@ describe('DataSyncWindow (F9 Diff Workspace shell)', () => {
       if (cmd === 'connect') return `live-${args?.configId}`;
       return null;
     });
-    inspectDataSyncMock.mockRejectedValue(new Error('gate failed'));
+    compareDataSyncMock.mockRejectedValue(new Error('gate failed'));
     fireEvent.click(screen.getByTestId('data-sync-compare'));
     expect(await screen.findByTestId('data-sync-error')).toHaveTextContent('gate failed');
   });
 
   it('toggles MATCHED rows and select-all / deselect-all', async () => {
-    inspectDataSyncMock.mockResolvedValue([
+    compareDataSyncMock.mockResolvedValue([
       { sourceTable: 'users', targetTable: 'users', status: 'MATCHED' },
       {
         sourceTable: 'legacy',

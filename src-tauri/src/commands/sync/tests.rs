@@ -527,7 +527,7 @@ async fn execute_data_sync_rejects_read_only_target() {
         parameters: vec![],
         row_key: vec![],
     };
-    let err = super::execute_data_sync_impl(&test.state, id, vec![stmt])
+    let err = super::execute_data_sync_impl(&test.state, id, vec![stmt], None)
         .await
         .unwrap_err();
     assert!(err.to_string().contains("read-only"));
@@ -541,6 +541,78 @@ async fn check_sync_conflicts_missing_task_errors() {
     assert!(check_sync_conflicts_impl(&test.state, "missing".into())
         .await
         .is_err());
+}
+
+#[tokio::test]
+async fn cancel_data_sync_stops_execute_before_start() {
+    use crate::data_sync::{ChangeOperation, SqlStatement};
+    use crate::testing::app_state::{sample_postgres_config, TestAppState};
+
+    let test = TestAppState::new().await;
+    test.registry
+        .register_test_driver("postgresql", test.mock.clone())
+        .await;
+    let mut cfg = sample_postgres_config("cancel-tgt");
+    cfg.database_type = "postgresql".into();
+    test.store.save_connection(cfg).await.unwrap();
+    let id = test.connect_config("cancel-tgt").await;
+    let job = format!("job-{}", uuid::Uuid::new_v4());
+    assert!(super::cancel_job(&job).await);
+    let stmt = SqlStatement {
+        table: "t".into(),
+        operation: ChangeOperation::Insert,
+        sql: "INSERT INTO t VALUES (1)".into(),
+        preview_sql: "INSERT INTO t VALUES (1)".into(),
+        parameters: vec![],
+        row_key: vec![],
+    };
+    let err = super::execute_data_sync_impl(&test.state, id, vec![stmt], Some(job))
+        .await
+        .unwrap_err();
+    assert!(
+        err.to_string().to_lowercase().contains("cancel"),
+        "{err}"
+    );
+}
+
+#[tokio::test]
+async fn compare_data_sync_fills_row_diff_for_matched_tables() {
+    use crate::data_sync::TableMappingStatus;
+    use crate::testing::app_state::TestAppState;
+
+    let test = TestAppState::with_tables().await;
+    test.save_and_connect("src-cmp").await;
+    test.save_and_connect("tgt-cmp").await;
+    let src = test.connect_config("src-cmp").await;
+    let tgt = test.connect_config("tgt-cmp").await;
+    let results = super::compare_data_sync_impl(&test.state, src, tgt, vec!["users".into()], None)
+        .await
+        .unwrap();
+    let users = results
+        .iter()
+        .find(|r| r.source_table == "users")
+        .expect("users");
+    assert_eq!(users.status, TableMappingStatus::Matched);
+    assert!(!users.rows.is_empty());
+}
+
+#[tokio::test]
+async fn apply_data_sync_rejects_empty_change_set() {
+    use crate::testing::app_state::TestAppState;
+
+    let test = TestAppState::with_tables().await;
+    test.save_and_connect("src-ap").await;
+    test.save_and_connect("tgt-ap").await;
+    let src = test.connect_config("src-ap").await;
+    let tgt = test.connect_config("tgt-ap").await;
+    let err = super::apply_data_sync_impl(&test.state, src, tgt, vec!["users".into()], None)
+        .await
+        .unwrap_err();
+    assert!(
+        err.to_string().to_lowercase().contains("empty")
+            || err.to_string().to_lowercase().contains("nothing"),
+        "{err}"
+    );
 }
 
 #[test]
