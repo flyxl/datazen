@@ -34,7 +34,7 @@ function push(...defs: Array<NativeMenuItemDef | null>): NativeMenuItemDef[] {
 }
 
 /**
- * Build native context-menu items for a Redis key list row
+ * Build web context-menu items for a Redis key list row
  * (copy name / set TTL / rename / delete).
  */
 export function buildRedisKeyContextMenuItems(
