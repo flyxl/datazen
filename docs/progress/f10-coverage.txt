@@ -1,13 +1,19 @@
-# F10 coverage (table_sync.rs)
+# F10 coverage (table_sync.rs) — RETEST
 
 ## Rust (cargo llvm-cov) — table_sync.rs only
 
+Round: retest (new independent QA session; previous FAIL was Lines 35.71%)
 Working directory:
   /Users/wuxiaolong/code/rust-projects/datazen/.worktrees/data-sync-navicat
+Branch: feat/data-sync-navicat
+HEAD: 26ba2691e25a8c77c0cf7712e541031311d7089a
+  (checkpoint before checking out agent/data-synchronization-prd)
+  2026-08-13 21:50:34 +0800
 
 Command:
-  cargo llvm-cov -p datazen --lib --json --output-path /tmp/datazen-f10-cov/f10-coverage.json -- \
+  cargo llvm-cov -p datazen --lib --json --output-path /tmp/datazen-f10-retest/f10-coverage.json -- \
     commands::sync::tests::sync_table_impl_refuses_overwrite_copy \
+    commands::sync::tests::sync_tables_impl_refuses_overwrite_copy \
     commands::sync::tests::table_sync_module_has_no_drop_insert_body
 
 Filter: filename ending with /commands/sync/table_sync.rs
@@ -18,57 +24,52 @@ Note: cargo tarpaulin is NOT installed; llvm-cov 0.8.7 was used (not BLOCKED).
 Threshold: table_sync.rs line coverage >= 80%.
 
 file             line_cov line_tot    line%  fn_cov  fn_tot      fn%  reg_cov  reg_tot     reg%
-table_sync.rs          10       28   35.71%       2       4   50.00%        5       14   35.71%
-TOTAL                  10       28   35.71%       2       4   50.00%        5       14   35.71%
+table_sync.rs          27       27  100.00%       4       4  100.00%       10       14   71.43%
+TOTAL                  27       27  100.00%       4       4  100.00%       10       14   71.43%
 
-llvm-cov JSON: /tmp/datazen-f10-cov/f10-coverage.json
+llvm-cov JSON: /tmp/datazen-f10-retest/f10-coverage.json
 cargo-llvm-cov 0.8.7; coverage format version 2.0.1
-Tests executed under llvm-cov: 2 passed / 0 failed
+Tests executed under llvm-cov: 3 passed / 0 failed
   (887 other lib tests filtered out)
 
-Source file size: 32 lines (wc -l). Instrumented unique source lines: 10.
+Source file size: 31 lines (wc -l). Instrumented unique source lines: 10.
 
 Unique source lines with hasCount segments (F8-style; not the gate metric):
-  COVERED  L5, L10, L12, L13
-  PARTIAL  L11  (hit + zero region on tracing::info! expansion)
-  UNCOVERED L16, L29, L30, L31, L32
-  unique-source-line coverage: 5/10 = 50.00%  (still < 80%)
+  COVERED  L5, L10, L12, L13, L16, L28, L30, L31
+  PARTIAL  L11, L29  (hit + zero region on tracing::info! expansion)
+  UNCOVERED (none)
+  unique-source-line coverage: 10/10 = 100.00%
 
 Uncovered line numbers (segments with count=0 and no covered hit on that line):
-  table_sync.rs: [16, 29, 30, 31, 32]
+  table_sync.rs: []
 
 Uncovered line notes:
-  16                 sync_tables_impl function entry (never called by the two filtered tests)
-  29                 resume_offset parameter / signature tail of sync_tables_impl
-  30                 tracing::info!(..., "sync_tables refused")
-  31                 Err(refuse_overwrite_copy().into())  — second refuse path NOT executed
-  32                 function close
+  (none — previous F10-BUG-01 uncovered L16 / L29–32 belonged to sync_tables_impl;
+   now executed by sync_tables_impl_refuses_overwrite_copy)
 
 Covered line notes:
-  5, 10, 11, 12, 13  sync_table_impl (hit by sync_table_impl_refuses_overwrite_copy)
-  11                 PARTIAL: tracing::info! has a zero-count expansion region on the same line
+  5, 10, 11, 12, 13   sync_table_impl (hit by sync_table_impl_refuses_overwrite_copy)
+  16, 28, 29, 30, 31  sync_tables_impl (hit by sync_tables_impl_refuses_overwrite_copy)
+  11, 29              PARTIAL: tracing::info! has a zero-count expansion region on the same line
 
-Partial (hit + zero region on same line; not counted as uncovered lines):
+Partial (hit + zero region on same line; llvm-cov still counts the line as covered):
   11                 tracing::info! macro expansion zero-count region
+  29                 tracing::info! macro expansion zero-count regions
 
-Functions: llvm-cov reports 4 functions / 2 covered (50%).
-  async fn desugars to extra Future/poll items; both uncovered items belong to sync_tables_impl.
+Functions: llvm-cov reports 4 functions / 4 covered (100%).
+  async fn desugars to extra Future/poll items; both sync_table_impl and
+  sync_tables_impl (and their desugared futures) are now executed.
 
-Why the specified two tests cannot reach 80%:
-  - sync_table_impl_refuses_overwrite_copy executes only sync_table_impl (single-table refuse).
-  - table_sync_module_has_no_drop_insert_body is include_str! source assertion; it does not
-    execute sync_table_impl or sync_tables_impl.
-  - No unit test in commands::sync::tests calls sync_tables_impl.
-  - Even unique-source-line metric (5/10 = 50%) is below 80%.
+vs previous FAIL (35.71% / 10/28):
+  - Previous filtered tests did not call sync_tables_impl.
+  - This retest includes sync_tables_impl_refuses_overwrite_copy.
+  - AppHandle parameter removed; file is 31 lines; instrumented line count 27.
 
 Gate metric (same as F1–F8 Rust): llvm-cov summary.lines >= 80%
-  table_sync.rs  35.71% (10/28)  → FAIL
+  table_sync.rs  100.00% (27/27)  → PASS
 
-F10 table_sync.rs line coverage 35.71% < 80% → FAIL
+F10 table_sync.rs line coverage 100.00% >= 80% → PASS
 
 ## Fallback note (not used)
 
 llvm-cov WAS available, so tarpaulin / BLOCKED fallback was not applied.
-For the record: table_sync.rs is 32 lines (~30). The two specified tests cover
-ONE runtime refuse (sync_table_impl) + source-string assertion. They do NOT
-cover both refuse functions. sync_tables_impl remains unexecuted.
