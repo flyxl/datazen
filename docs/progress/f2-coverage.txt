@@ -1,0 +1,33 @@
+# F2 data_sync coverage (pairing / types_eq / gate / mapping only)
+
+Command:
+  cargo llvm-cov -p datazen --lib --json --output-path /tmp/datazen-f2-cov/f2-coverage.json -- data_sync
+Filter: filenames containing /data_sync/ AND basename in {pairing.rs, types_eq.rs, gate.rs, mapping.rs}
+Note: --ignore-filename-regex negative-lookahead does not isolate files (llvm-cov still totals the whole crate).
+Note: unfiltered `cargo llvm-cov -p datazen --lib` is known to fail on unrelated
+      sync::adapter_registry::tests::ensure_type_wire_aliases_succeed (expected sqlserver adapter).
+Note: F1 files (model/state/changeset/session/error) were present in the same JSON
+      but are EXCLUDED from this slice threshold.
+
+Threshold: F2 four-file combined line coverage >= 80%.
+
+file             line_cov line_tot    line%  fn_cov  fn_tot      fn%  reg_cov  reg_tot     reg%
+pairing.rs             54       54  100.00%       9       9  100.00%       93       94   98.94%
+types_eq.rs           151      151  100.00%      12      12  100.00%      327      336   97.32%
+gate.rs               263      266   98.87%      27      27  100.00%      457      466   98.07%
+mapping.rs            305      306   99.67%      21      21  100.00%      518      523   99.04%
+TOTAL                 773      777   99.49%      69      69  100.00%     1395     1419   98.31%
+
+Uncovered line numbers (segments with count=0):
+  pairing.rs: (none)
+  types_eq.rs: [45]
+  gate.rs: [269, 298, 330]
+  mapping.rs: [42, 79, 80]
+
+Uncovered line notes:
+  types_eq.rs:45     canonical_type empty-args branch close (`Some("")` → skip `(args)`); no `INT()` fixture
+  gate.rs:269,298,330  test-only `other => panic!` arms (expected Incompatible, Compatible not hit)
+  mapping.rs:42      empty `target_table` skip of mapped_targets insert (all fixtures have names)
+  mapping.rs:79-80   source-side `check_base_table` hit (tests use target View, not source View)
+
+F2 four-file combined line coverage 99.49% >= 80% → PASS
