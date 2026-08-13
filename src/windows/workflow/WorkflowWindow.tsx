@@ -43,10 +43,7 @@ import { connectionCommands } from '../../commands/connection';
 import { openDashboardWindow } from '../../lib/windowManager';
 import { cn } from '../../lib/cn';
 import { showNativeContextMenu } from '../../lib/nativeContextMenu';
-import {
-  buildWorkflowHistoryContextMenuItems,
-  buildWorkflowListContextMenuItems,
-} from '../../lib/workflowListContextMenu';
+import { buildWorkflowListContextMenuItems } from '../../lib/workflowListContextMenu';
 import { openDocsWindow } from '../../lib/windowManager';
 import { createEmptyDashboard } from '../dashboard/DashboardWindow';
 import { AddToDashboardDialog } from '../dashboard/AddToDashboardDialog';
@@ -367,44 +364,13 @@ export function WorkflowWindow() {
     await runWorkflowInPanel(wfPanel.id, wfPanel.workflowId, variables);
   }, [activePanel, variables, runWorkflowInPanel]);
 
-  /** Open run panel (if needed) and execute with workflow default variables. */
-  const handleRunFromList = useCallback(
-    async (workflow: WorkflowListItem) => {
-      const defaults: Record<string, string> = {};
-      for (const v of workflow.variables) {
-        defaults[v.name] = v.default != null ? String(v.default) : '';
-      }
-      setVariables(defaults);
-
-      const existing = panels.find((p) => p.type === 'run' && p.workflowId === workflow.id);
-      let panelId: string;
-      if (existing) {
-        panelId = existing.id;
-        setActivePanelId(existing.id);
-        clearWorkflowResult();
-      } else {
-        panelId = nextPanelId('wf');
-        const panel: WorkflowRunPanel = {
-          type: 'run',
-          id: panelId,
-          workflowId: workflow.id,
-          workflowName: workflow.name,
-          startedAt: new Date().toISOString(),
-          result: null,
-          isExecuting: false,
-        };
-        setPanels((prev) => [...prev, panel]);
-        setActivePanelId(panelId);
-        clearWorkflowResult();
-      }
-
-      await runWorkflowInPanel(panelId, workflow.id, defaults);
-    },
-    [panels, clearWorkflowResult, runWorkflowInPanel],
-  );
-
   const handleDelete = async (workflowId: string) => {
-    if (!confirm(t('workflows.deleteConfirm'))) return;
+    const { ask } = await import('@tauri-apps/plugin-dialog');
+    const confirmed = await ask(t('workflows.deleteConfirm'), {
+      title: t('workflows.delete'),
+      kind: 'warning',
+    });
+    if (!confirmed) return;
     try {
       await aiCommands.workflowDelete(workflowId);
       setPanels((prev) => prev.filter((p) => !(p.type === 'run' && p.workflowId === workflowId)));
@@ -752,7 +718,6 @@ export function WorkflowWindow() {
                     : undefined
                 }
                 onSelect={handleSelectWorkflow}
-                onRun={(w) => void handleRunFromList(w)}
                 onEdit={(id) => void handleEdit(id)}
                 onDelete={(id) => void handleDelete(id)}
                 t={t}
@@ -1273,7 +1238,6 @@ function WorkflowSidebarList({
   loading,
   activePanelWorkflowId,
   onSelect,
-  onRun,
   onEdit,
   onDelete,
   t,
@@ -1282,7 +1246,6 @@ function WorkflowSidebarList({
   loading: boolean;
   activePanelWorkflowId?: string;
   onSelect: (w: WorkflowListItem) => void;
-  onRun: (w: WorkflowListItem) => void;
   onEdit: (id: string) => void;
   onDelete: (id: string) => void;
   t: ReturnType<typeof useI18n>['t'];
@@ -1294,13 +1257,11 @@ function WorkflowSidebarList({
       buildWorkflowListContextMenuItems({
         labels: {
           open: t('workflows.open'),
-          run: t('workflows.run'),
           delete: t('workflows.delete'),
           copyName: t('workflows.copyName'),
         },
         handlers: {
           onOpen: () => onSelect(w),
-          onRun: () => onRun(w),
           onDelete: () => onDelete(w.id),
           onCopyName: () => {
             void navigator.clipboard.writeText(w.name);
@@ -1396,21 +1357,6 @@ function HistoryList({
   onClear: () => void;
   t: ReturnType<typeof useI18n>['t'];
 }) {
-  const handleContextMenu = (e: ReactMouseEvent, item: HistoryListItem) => {
-    e.preventDefault();
-    e.stopPropagation();
-    // Per-entry delete API is not available (only clear-all); omit delete.
-    void showNativeContextMenu(
-      buildWorkflowHistoryContextMenuItems({
-        labels: { openDetail: t('workflows.history.openDetail') },
-        handlers: {
-          onOpenDetail: () => onView(item.id, item.workflowName),
-        },
-      }),
-      { x: e.clientX, y: e.clientY },
-    );
-  };
-
   return (
     <div className="p-1.5">
       {items.length > 0 && (
@@ -1431,7 +1377,10 @@ function HistoryList({
           type="button"
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => onView(item.id, item.workflowName)}
-          onContextMenu={(e) => handleContextMenu(e, item)}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
           className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left hover:bg-surface-raised/50 transition-colors"
         >
           <Clock className="h-3.5 w-3.5 text-fg-muted shrink-0" />

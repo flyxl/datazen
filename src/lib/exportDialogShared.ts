@@ -28,11 +28,15 @@ export const ARRAY_EXPORT_FORMAT_OPTIONS: { value: ExportFormat; label: string }
 ];
 
 export function buildExportScopeOptions(
-  t: (key: 'export.currentPage' | 'export.selectedRows' | 'common.rows') => string,
+  t: (
+    key: 'export.currentPage' | 'export.selectedRows' | 'export.entireTable' | 'common.rows',
+    params?: Record<string, string | number>,
+  ) => string,
   rowCount: number,
   selectedCount: number,
+  entireTable?: { totalRows?: number } | false,
 ): { value: ExportScope; label: string; disabled?: boolean }[] {
-  return [
+  const options: { value: ExportScope; label: string; disabled?: boolean }[] = [
     {
       value: 'current_page',
       label: `${t('export.currentPage')} (${rowCount} ${t('common.rows')})`,
@@ -43,6 +47,17 @@ export function buildExportScopeOptions(
       disabled: selectedCount === 0,
     },
   ];
+  if (entireTable) {
+    const total = entireTable.totalRows;
+    options.push({
+      value: 'entire_table',
+      label:
+        total != null && total >= 0
+          ? `${t('export.entireTable')} (${total} ${t('common.rows')})`
+          : t('export.entireTable'),
+    });
+  }
+  return options;
 }
 
 /** Save an export result via the native file dialog. Returns false if the user cancelled. */

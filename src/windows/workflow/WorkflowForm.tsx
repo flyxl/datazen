@@ -1,13 +1,66 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Trash2 } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Select } from '../../components/ui/Select';
-import { SqlEditor } from '../../components/SqlEditor';
+import { SqlEditor, type SqlEditorHandle } from '../../components/SqlEditor';
 import { useI18n } from '../../hooks/useI18n';
 import { driverCommands } from '../../commands/driver';
 import { aiCommands } from '../../commands/ai';
 import { rememberWorkflowDraft } from './draftBridge';
+import { showNativeContextMenu } from '../../lib/nativeContextMenu';
+import { buildSqlEditorContextMenuItems } from '../../lib/sqlEditorContextMenu';
+import { formatSql } from '../../lib/sqlFormat';
 import type { DriverCommandDefinition, WorkflowStepType } from '../../types';
+
+function WorkflowSqlEditor({
+  value,
+  onChange,
+  databaseType,
+  placeholder,
+}: {
+  value: string;
+  onChange: (sql: string) => void;
+  databaseType?: string;
+  placeholder?: string;
+}) {
+  const { t } = useI18n();
+  const editorRef = useRef<SqlEditorHandle>(null);
+
+  const handleContextMenu = useCallback(
+    (e: MouseEvent, sqlText: string) => {
+      const selection = editorRef.current?.getSelection() ?? '';
+      void showNativeContextMenu(
+        buildSqlEditorContextMenuItems({
+          labels: {
+            run: t('query.run'),
+            runSelection: t('query.runSelection'),
+            format: t('query.format'),
+            comment: t('query.comment'),
+          },
+          handlers: {
+            onFormat: () => onChange(formatSql(value, databaseType)),
+            onComment: () => editorRef.current?.toggleLineComment(),
+          },
+          sqlText,
+          hasSelection: selection.length > 0,
+        }),
+        { x: e.clientX, y: e.clientY },
+      );
+    },
+    [t, onChange, value, databaseType],
+  );
+
+  return (
+    <SqlEditor
+      ref={editorRef}
+      value={value}
+      onChange={onChange}
+      placeholder={placeholder}
+      databaseType={databaseType}
+      onContextMenu={handleContextMenu}
+    />
+  );
+}
 
 export interface WorkflowStepDraft {
   type: WorkflowStepType;
@@ -139,7 +192,7 @@ function CommandInputEditor({
                 className="h-36 overflow-hidden rounded border border-edge"
                 data-testid="command-sql-editor"
               >
-                <SqlEditor
+                <WorkflowSqlEditor
                   value={typeof current === 'string' ? current : ''}
                   onChange={(sql) => update(field.name, sql)}
                   placeholder="SELECT ..."
@@ -611,7 +664,7 @@ export function WorkflowForm({
                   className="h-36 overflow-hidden rounded border border-edge"
                   data-testid="workflow-sql-editor"
                 >
-                  <SqlEditor
+                  <WorkflowSqlEditor
                     value={step.sql ?? ''}
                     onChange={(sql) => setStep(i, { sql })}
                     placeholder="SELECT ..."

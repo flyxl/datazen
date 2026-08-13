@@ -12,9 +12,10 @@ interface TableViewProps {
   connectionId: string;
   database: string;
   tableName: string;
+  databaseType?: string;
 }
 
-export function TableView({ connectionId, database, tableName }: TableViewProps) {
+export function TableView({ connectionId, database, tableName, databaseType }: TableViewProps) {
   const { t } = useI18n();
   // NlFilterInput handles unconfigured state internally
   const tableStates = useTableDataStore((s) => s.tableStates);
@@ -204,6 +205,8 @@ export function TableView({ connectionId, database, tableName }: TableViewProps)
         onRowClick={setDetailRow}
         highlightedRow={detailRowIndex}
         exportTableName={tableName}
+        databaseType={databaseType}
+        connectionId={connectionId}
         primaryKeyColumns={columns.filter((c) => c.isPrimaryKey).map((c) => c.name)}
         onDeleteRows={handleDeleteRows}
       />

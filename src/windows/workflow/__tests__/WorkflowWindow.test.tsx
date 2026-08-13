@@ -234,6 +234,11 @@ vi.mock('../WorkflowForm', async () => {
 });
 
 const confirmMock = vi.fn(() => true);
+const askMock = vi.fn().mockResolvedValue(true);
+
+vi.mock('@tauri-apps/plugin-dialog', () => ({
+  ask: (...args: unknown[]) => askMock(...args),
+}));
 
 function makeResult(steps: StepExecutionResult[], success = true): WorkflowExecutionResult {
   return { success, finalOutput: '', steps, totalTimeMs: 42 };
@@ -290,6 +295,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.stubGlobal('confirm', confirmMock);
   confirmMock.mockReturnValue(true);
+  askMock.mockResolvedValue(true);
   aiStoreState.workflowsLoading = false;
   aiStoreState.workflowError = null;
   aiStoreState.workflowExecutionResult = null;
@@ -608,7 +614,9 @@ describe('WorkflowWindow', () => {
     expect(screen.getByTestId('workflow-form')).toBeInTheDocument();
 
     fireEvent.click(buttons[1]);
-    expect(confirmMock).toHaveBeenCalledWith('workflows.deleteConfirm');
+    await waitFor(() =>
+      expect(askMock).toHaveBeenCalledWith('workflows.deleteConfirm', expect.anything()),
+    );
     await waitFor(() => expect(workflowDeleteMock).toHaveBeenCalledWith('wf-demo'));
   });
 
@@ -673,6 +681,7 @@ describe('WorkflowWindow', () => {
 
   it('skips delete and clear when confirm is cancelled', async () => {
     confirmMock.mockReturnValue(false);
+    askMock.mockResolvedValue(false);
     workflowHistoryListMock.mockResolvedValue([
       {
         id: 'h1',

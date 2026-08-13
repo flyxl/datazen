@@ -129,6 +129,43 @@ describe('runBatchExportJob', () => {
     expect(new TextDecoder().decode(unzipped['users.csv']!)).toContain('Alice');
   });
 
+  it('saves a single json file with .json extension (not .sql)', async () => {
+    const result = await runBatchExportJob({
+      tableNames: ['users'],
+      mode: 'data_only',
+      dataFormat: 'json',
+      outputMode: 'single',
+      loadTableExportData,
+      saveText,
+      saveBase64,
+    });
+    expect(result).toEqual({ status: 'saved' });
+    expect(saveText).toHaveBeenCalledTimes(1);
+    expect(saveBase64).not.toHaveBeenCalled();
+    const [content, filename, filterName, extensions] = saveText.mock.calls[0]!;
+    expect(filename).toBe('users.json');
+    expect(filterName).toBe('JSON');
+    expect(extensions).toEqual(['json', 'txt']);
+    expect(JSON.parse(content as string)).toEqual([{ id: 1, name: 'Alice' }]);
+  });
+
+  it('zips data+structure csv instead of concatenating into sql', async () => {
+    const result = await runBatchExportJob({
+      tableNames: ['users'],
+      mode: 'data_and_structure',
+      dataFormat: 'csv',
+      outputMode: 'single',
+      loadTableExportData,
+      saveText,
+      saveBase64,
+    });
+    expect(result).toEqual({ status: 'saved' });
+    expect(saveBase64).toHaveBeenCalledTimes(1);
+    expect(saveText).not.toHaveBeenCalled();
+    const [, filename] = saveBase64.mock.calls[0]!;
+    expect(filename).toMatch(/\.zip$/);
+  });
+
   it('returns cancelled when save dialog is dismissed', async () => {
     saveText.mockResolvedValue(false);
     const result = await runBatchExportJob({

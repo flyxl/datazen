@@ -9,6 +9,7 @@ import type {
   BatchExportTableInput,
 } from '../../lib/batchExport';
 import { runBatchExportJob, type BatchExportOutputMode } from '../../lib/batchExportJob';
+import { queryCommands } from '../../commands/query';
 
 export interface BatchExportDialogProps {
   open: boolean;
@@ -43,7 +44,7 @@ const DATA_FORMAT_OPTIONS: { value: BatchExportDataFormat; label: string }[] = [
 export function BatchExportDialog({
   open,
   onClose,
-  connectionId: _connectionId,
+  connectionId,
   databaseType,
   database: _database,
   tables,
@@ -121,6 +122,8 @@ export function BatchExportDialog({
           dataFormat,
           outputMode,
           databaseType,
+          connectionId,
+          streamQuery: queryCommands.executeQueryStream,
           loadTableExportData,
           onProgress: ({ current, total, tableName }) => {
             setProgressLabel(`${t('batchExport.exporting')} (${current}/${total}: ${tableName})`);
@@ -152,6 +155,7 @@ export function BatchExportDialog({
     outputMode,
     databaseType,
     loadTableExportData,
+    connectionId,
     onClose,
   ]);
 

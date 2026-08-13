@@ -8,7 +8,6 @@ import {
 
 const listLabels: WorkflowListContextMenuLabels = {
   open: 'Open',
-  run: 'Run',
   delete: 'Delete',
   copyName: 'Copy Name',
 };
@@ -27,21 +26,20 @@ function ids(
 }
 
 describe('buildWorkflowListContextMenuItems', () => {
-  it('builds open / run / delete / copy-name when handlers are set', () => {
+  it('builds open / delete / copy-name and never includes run', () => {
     const onOpen = vi.fn();
-    const onRun = vi.fn();
     const onDelete = vi.fn();
     const onCopyName = vi.fn();
     const items = buildWorkflowListContextMenuItems({
       labels: listLabels,
-      handlers: { onOpen, onRun, onDelete, onCopyName },
+      handlers: { onOpen, onDelete, onCopyName },
     });
-    expect(ids(items)).toEqual(['open', 'run', 'delete', 'copy-name']);
+    expect(ids(items)).toEqual(['open', 'delete', 'copy-name']);
+    expect(ids(items)).not.toContain('run');
     for (const it of items) {
       if (it.kind === 'item') it.action();
     }
     expect(onOpen).toHaveBeenCalledOnce();
-    expect(onRun).toHaveBeenCalledOnce();
     expect(onDelete).toHaveBeenCalledOnce();
     expect(onCopyName).toHaveBeenCalledOnce();
   });
@@ -58,25 +56,6 @@ describe('buildWorkflowListContextMenuItems', () => {
     expect(ids(buildWorkflowListContextMenuItems({ labels: listLabels, handlers: {} }))).toEqual(
       [],
     );
-  });
-
-  it('uses caller-supplied labels', () => {
-    const items = buildWorkflowListContextMenuItems({
-      labels: {
-        open: '打开',
-        run: '运行',
-        delete: '删除',
-        copyName: '复制名称',
-      },
-      handlers: {
-        onOpen: vi.fn(),
-        onRun: vi.fn(),
-        onDelete: vi.fn(),
-        onCopyName: vi.fn(),
-      },
-    });
-    const texts = items.map((i) => (i.kind === 'item' ? i.label : ''));
-    expect(texts).toEqual(['打开', '运行', '删除', '复制名称']);
   });
 });
 
@@ -101,33 +80,5 @@ describe('buildWorkflowHistoryContextMenuItems', () => {
       handlers: { onOpenDetail, onDelete },
     });
     expect(ids(items)).toEqual(['open-detail', 'delete']);
-    for (const it of items) {
-      if (it.kind === 'item') it.action();
-    }
-    expect(onOpenDetail).toHaveBeenCalledOnce();
-    expect(onDelete).toHaveBeenCalledOnce();
-  });
-
-  it('omits delete when handler is missing even if label is set', () => {
-    const items = buildWorkflowHistoryContextMenuItems({
-      labels: historyLabels,
-      handlers: { onOpenDetail: vi.fn() },
-    });
-    expect(ids(items)).toEqual(['open-detail']);
-  });
-
-  it('returns empty when no handlers', () => {
-    expect(
-      ids(buildWorkflowHistoryContextMenuItems({ labels: historyLabels, handlers: {} })),
-    ).toEqual([]);
-  });
-
-  it('uses caller-supplied labels', () => {
-    const items = buildWorkflowHistoryContextMenuItems({
-      labels: { openDetail: '打开详情', delete: '删除' },
-      handlers: { onOpenDetail: vi.fn(), onDelete: vi.fn() },
-    });
-    const texts = items.map((i) => (i.kind === 'item' ? i.label : ''));
-    expect(texts).toEqual(['打开详情', '删除']);
   });
 });

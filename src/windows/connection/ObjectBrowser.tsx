@@ -1,11 +1,17 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Loader2, Play, RefreshCw } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
-import { SqlEditor } from '../../components/SqlEditor';
+import { SqlEditor, type SqlEditorHandle } from '../../components/SqlEditor';
 import { useI18n } from '../../hooks/useI18n';
 import { databaseCommands } from '../../commands/database';
 import { queryCommands } from '../../commands/query';
 import { cn } from '../../lib/cn';
+import { showNativeContextMenu } from '../../lib/nativeContextMenu';
+import {
+  buildObjectBrowserEditorMenuItems,
+  buildObjectBrowserListMenuItems,
+} from '../../lib/objectBrowserContextMenu';
+import { formatSql } from '../../lib/sqlFormat';
 import type { DatabaseObject, DatabaseObjectKind } from '../../types';
 
 const KINDS: DatabaseObjectKind[] = ['function', 'procedure', 'trigger'];
@@ -25,35 +31,62 @@ export function ObjectBrowser({ connectionId, databaseType }: ObjectBrowserProps
   const [ddl, setDdl] = useState('');
   const [running, setRunning] = useState(false);
   const [runMessage, setRunMessage] = useState<string | null>(null);
+  const editorRef = useRef<SqlEditorHandle>(null);
 
-  const load = useCallback(async (nextKind: DatabaseObjectKind) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const rows = await databaseCommands.getDatabaseObjects(connectionId, nextKind);
-      setObjects(rows);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-      setObjects([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [connectionId]);
+  const load = useCallback(
+    async (nextKind: DatabaseObjectKind) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const rows = await databaseCommands.getDatabaseObjects(connectionId, nextKind);
+        setObjects(rows);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+        setObjects([]);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [connectionId],
+  );
 
   useEffect(() => {
     void load(kind);
   }, [kind, load]);
 
-  const openObject = useCallback(async (obj: DatabaseObject) => {
-    setSelected(obj);
-    setRunMessage(null);
-    try {
-      const text = await databaseCommands.getObjectDdl(connectionId, obj.kind, obj.name, obj.schema);
-      setDdl(text);
-    } catch (e) {
-      setDdl(`-- ${e instanceof Error ? e.message : String(e)}`);
-    }
-  }, [connectionId]);
+  const openObject = useCallback(
+    async (obj: DatabaseObject) => {
+      setSelected(obj);
+      setRunMessage(null);
+      try {
+        const text = await databaseCommands.getObjectDdl(
+          connectionId,
+          obj.kind,
+          obj.name,
+          obj.schema,
+        );
+        setDdl(text);
+      } catch (e) {
+        setDdl(`-- ${e instanceof Error ? e.message : String(e)}`);
+      }
+    },
+    [connectionId],
+  );
+
+  const copyObjectDdl = useCallback(
+    async (obj: DatabaseObject) => {
+      try {
+        const text =
+          selected?.name === obj.name && selected?.schema === obj.schema && ddl
+            ? ddl
+            : await databaseCommands.getObjectDdl(connectionId, obj.kind, obj.name, obj.schema);
+        await navigator.clipboard.writeText(text);
+      } catch (e) {
+        setRunMessage(e instanceof Error ? e.message : String(e));
+      }
+    },
+    [connectionId, ddl, selected],
+  );
 
   const handleExecute = useCallback(async () => {
     if (!ddl.trim()) return;
@@ -70,6 +103,63 @@ export function ObjectBrowser({ connectionId, databaseType }: ObjectBrowserProps
     }
   }, [connectionId, ddl, kind, load, t]);
 
+  const handleListContextMenu = useCallback(
+    (e: React.MouseEvent, obj: DatabaseObject) => {
+      e.preventDefault();
+      e.stopPropagation();
+      void showNativeContextMenu(
+        buildObjectBrowserListMenuItems({
+          labels: {
+            open: t('objects.open'),
+            copyName: t('objects.copyName'),
+            copyDdl: t('objects.copyDdl'),
+            refresh: t('objects.refresh'),
+          },
+          handlers: {
+            onOpen: () => void openObject(obj),
+            onCopyName: () => {
+              void navigator.clipboard.writeText(obj.name);
+            },
+            onCopyDdl: () => {
+              void copyObjectDdl(obj);
+            },
+            onRefresh: () => {
+              void load(kind);
+            },
+          },
+        }),
+        { x: e.clientX, y: e.clientY },
+      );
+    },
+    [t, openObject, copyObjectDdl, load, kind],
+  );
+
+  const handleEditorContextMenu = useCallback(
+    (e: MouseEvent, sqlText: string) => {
+      const selection = editorRef.current?.getSelection() ?? '';
+      void showNativeContextMenu(
+        buildObjectBrowserEditorMenuItems({
+          labels: {
+            execute: t('query.execute'),
+            format: t('query.format'),
+            comment: t('query.comment'),
+          },
+          handlers: {
+            onExecute: () => {
+              void handleExecute();
+            },
+            onFormat: () => setDdl(formatSql(ddl, databaseType)),
+            onComment: () => editorRef.current?.toggleLineComment(),
+          },
+          sqlText,
+          hasSelection: selection.length > 0,
+        }),
+        { x: e.clientX, y: e.clientY },
+      );
+    },
+    [t, handleExecute, ddl, databaseType],
+  );
+
   return (
     <div className="flex min-h-0 flex-1">
       <aside className="flex w-64 shrink-0 flex-col border-r border-edge bg-surface-alt">
@@ -82,15 +172,27 @@ export function ObjectBrowser({ connectionId, databaseType }: ObjectBrowserProps
                 'flex-1 rounded px-1.5 py-1 text-[11px]',
                 kind === k ? 'bg-accent/15 text-accent' : 'text-fg-muted hover:text-fg',
               )}
-              onClick={() => { setKind(k); setSelected(null); setDdl(''); }}
+              onClick={() => {
+                setKind(k);
+                setSelected(null);
+                setDdl('');
+              }}
             >
-              {k === 'function' ? t('objects.function') : k === 'procedure' ? t('objects.procedure') : t('objects.trigger')}
+              {k === 'function'
+                ? t('objects.function')
+                : k === 'procedure'
+                  ? t('objects.procedure')
+                  : t('objects.trigger')}
             </button>
           ))}
         </div>
         <div className="flex items-center justify-between px-2 py-1.5">
           <span className="text-[11px] text-fg-muted">{objects.length}</span>
-          <button type="button" className="text-fg-muted hover:text-fg" onClick={() => void load(kind)}>
+          <button
+            type="button"
+            className="text-fg-muted hover:text-fg"
+            onClick={() => void load(kind)}
+          >
             <RefreshCw className="h-3.5 w-3.5" />
           </button>
         </div>
@@ -109,6 +211,7 @@ export function ObjectBrowser({ connectionId, databaseType }: ObjectBrowserProps
             <button
               key={`${obj.schema ?? ''}.${obj.name}`}
               type="button"
+              data-testid="object-browser-item"
               className={cn(
                 'flex w-full flex-col items-start px-3 py-1.5 text-left text-[13px] hover:bg-surface-raised',
                 selected?.name === obj.name && selected?.schema === obj.schema
@@ -116,6 +219,7 @@ export function ObjectBrowser({ connectionId, databaseType }: ObjectBrowserProps
                   : 'text-fg-secondary',
               )}
               onClick={() => void openObject(obj)}
+              onContextMenu={(e) => handleListContextMenu(e, obj)}
             >
               <span className="truncate">{obj.name}</span>
               {obj.schema && <span className="text-[10px] text-fg-muted">{obj.schema}</span>}
@@ -141,14 +245,18 @@ export function ObjectBrowser({ connectionId, databaseType }: ObjectBrowserProps
         </div>
         <div className="min-h-0 flex-1">
           <SqlEditor
+            ref={editorRef}
             value={ddl}
             onChange={setDdl}
             databaseType={databaseType}
             placeholder={t('objects.placeholder')}
+            onContextMenu={handleEditorContextMenu}
           />
         </div>
         {runMessage && (
-          <div className="border-t border-edge px-3 py-1.5 text-[11px] text-fg-muted">{runMessage}</div>
+          <div className="border-t border-edge px-3 py-1.5 text-[11px] text-fg-muted">
+            {runMessage}
+          </div>
         )}
       </div>
     </div>

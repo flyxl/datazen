@@ -1,5 +1,6 @@
 import { expect, browser, $, $$ } from '@wdio/globals';
 import { closeExtraWindows, switchToNewWindow } from '../helpers.js';
+import { t } from '../i18n.js';
 
 /**
  * Invoke a Tauri backend command directly from the browser context.
@@ -196,6 +197,38 @@ describe('Workflow Tab System (WORKFLOW-WINDOW)', () => {
     await waitForWorkflowList();
     const item = await $('div*=E2E Tab Test WF');
     await expect(item).toBeDisplayed();
+  });
+
+  it('WF-CTX-001: workflow 右键菜单无运行项', async () => {
+    await openWorkflowFromMain(mainWindow);
+    await waitForWorkflowList();
+    const item = await $('div*=E2E Tab Test WF');
+    await item.click({ button: 'right' });
+    const menu = await $('[data-testid="web-context-menu"]');
+    await menu.waitForDisplayed({ timeout: 5000 });
+    const text = await menu.getText();
+    expect(text).toContain(t('workflows.open'));
+    expect(text).toContain(t('workflows.delete'));
+    expect(text).not.toContain(t('workflows.run'));
+    await browser.keys('Escape');
+  });
+
+  it('WF-CTX-002: 执行记录右键不弹出菜单', async () => {
+    await openWorkflowFromMain(mainWindow);
+    await waitForWorkflowList();
+    const historyTab = await $(`button*=${t('workflows.history.title')}`);
+    await historyTab.click();
+    await browser.pause(400);
+    await browser.execute(() => {
+      const rows = Array.from(document.querySelectorAll('button'));
+      const row = rows.find((b) => b.querySelector('.text-xs.font-medium'));
+      row?.dispatchEvent(
+        new MouseEvent('contextmenu', { bubbles: true, clientX: 40, clientY: 80 }),
+      );
+    });
+    await browser.pause(300);
+    const menu = await $('[data-testid="web-context-menu"]');
+    expect(await menu.isExisting()).toBe(false);
   });
 
   it('选中 workflow 后右侧应出现空状态提示', async () => {
@@ -500,6 +533,18 @@ describe('Workflow Tab System (WORKFLOW-WINDOW)', () => {
     const editor = await $('[data-testid="workflow-sql-editor"]');
     await editor.waitForDisplayed({ timeout: 10000 });
     await expect(await $('[data-testid="workflow-sql-editor"] .cm-editor')).toBeDisplayed();
+  });
+
+  it('WF-SQL-002: 编辑 workflow 时 SQL 编辑器右键为 Web 菜单', async () => {
+    const editor = await $('[data-testid="workflow-sql-editor"] .cm-editor');
+    await editor.waitForDisplayed({ timeout: 5000 });
+    await editor.click({ button: 'right' });
+    const menu = await $('[data-testid="web-context-menu"]');
+    await menu.waitForDisplayed({ timeout: 5000 });
+    const text = await menu.getText();
+    expect(text).toContain(t('query.format'));
+    expect(text).toContain(t('query.comment'));
+    await browser.keys('Escape');
   });
 
   it('WF-YAML-001: 应能切换到 YAML 编辑模式', async () => {

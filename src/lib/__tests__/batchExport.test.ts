@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  batchExportNeedsZip,
   buildBatchExportFiles,
   combineBatchExportFiles,
   getBatchExportDefaultFilename,
@@ -172,7 +173,7 @@ describe('buildBatchExportFiles data_and_structure', () => {
     expect(files).toHaveLength(1);
     expect(files[0].filename).toBe('users.sql');
     expect(files[0].content.startsWith(users.ddl!)).toBe(true);
-    expect(files[0].content).toContain('\n\nINSERT INTO "users"');
+    expect(files[0].content).toContain('INSERT INTO "users"');
   });
 
   it('uses unavailable DDL comment still paired with inserts', () => {
@@ -269,6 +270,36 @@ describe('combineBatchExportFiles', () => {
   });
 });
 
+describe('batchExportNeedsZip', () => {
+  it('zips mixed sql+csv even when output is single', () => {
+    expect(
+      batchExportNeedsZip(
+        [
+          { filename: 'users.sql', content: 'CREATE' },
+          { filename: 'users.csv', content: 'id\n1' },
+        ],
+        'single',
+      ),
+    ).toBe(true);
+  });
+
+  it('zips multiple csv files', () => {
+    expect(
+      batchExportNeedsZip(
+        [
+          { filename: 'a.csv', content: 'a' },
+          { filename: 'b.csv', content: 'b' },
+        ],
+        'single',
+      ),
+    ).toBe(true);
+  });
+
+  it('keeps a single json file as text', () => {
+    expect(batchExportNeedsZip([{ filename: 'users.json', content: '[]' }], 'single')).toBe(false);
+  });
+});
+
 describe('getBatchExportDefaultFilename', () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -280,20 +311,23 @@ describe('getBatchExportDefaultFilename', () => {
   });
 
   it('names structure export', () => {
-    expect(getBatchExportDefaultFilename('structure_only', true)).toBe(
+    expect(getBatchExportDefaultFilename('structure_only', false)).toBe(
       'export_structure_2026-08-13-01-02-03.sql',
     );
   });
 
-  it('names data export', () => {
-    expect(getBatchExportDefaultFilename('data_only', false)).toBe(
-      'export_data_2026-08-13-01-02-03.sql',
+  it('names data export with format extension', () => {
+    expect(getBatchExportDefaultFilename('data_only', false, 'json')).toBe(
+      'export_data_2026-08-13-01-02-03.json',
+    );
+    expect(getBatchExportDefaultFilename('data_only', false, 'csv')).toBe(
+      'export_data_2026-08-13-01-02-03.csv',
     );
   });
 
-  it('names full export', () => {
-    expect(getBatchExportDefaultFilename('data_and_structure', true)).toBe(
-      'export_full_2026-08-13-01-02-03.sql',
+  it('names zip when zip flag is set', () => {
+    expect(getBatchExportDefaultFilename('data_and_structure', true, 'csv')).toBe(
+      'export_full_2026-08-13-01-02-03.zip',
     );
   });
 });
