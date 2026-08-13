@@ -12,6 +12,7 @@ pub mod mapping;
 pub mod model;
 pub mod pairing;
 pub mod session;
+pub mod sql;
 pub mod state;
 pub mod types_eq;
 
@@ -32,4 +33,5 @@ pub use model::{
 };
 pub use pairing::{classify_data_sync_pair, require_data_sync_family, DataSyncPairingView};
 pub use session::SyncSession;
+pub use sql::{generate_table_sql, SqlStatement};
 pub use state::SyncPhase;
