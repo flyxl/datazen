@@ -35,6 +35,12 @@ import type {
 import { SyncProgressPanel } from './SyncProgressPanel';
 import { ConflictSyncDialog, ResumeSyncDialog } from './ResumeSyncDialog';
 import type { ConflictInfo, SyncProgress, SyncState } from './utils';
+import {
+  displayTableName,
+  mappingLabelKey,
+  summarizeMappings,
+  type DataSyncTableResult,
+} from './mappingView';
 
 export function DataSyncWindow() {
   useThemeListener();
@@ -46,6 +52,7 @@ export function DataSyncWindow() {
   const [sourceId, setSourceId] = useState('');
   const [targetId, setTargetId] = useState('');
   const [comparisons, setComparisons] = useState<TableComparison[]>([]);
+  const [mappingResults, setMappingResults] = useState<DataSyncTableResult[]>([]);
   const [selectedTables, setSelectedTables] = useState<Set<string>>(new Set());
   const [syncState, setSyncState] = useState<SyncState>('idle');
   const [errorMsg, setErrorMsg] = useState('');
@@ -206,12 +213,11 @@ export function DataSyncWindow() {
         return;
       }
 
-      const results = await syncCommands.compareDatabases(srcConnId, tgtConnId);
-      setComparisons(results);
+      const mappings = (await syncCommands.inspectDataSync(srcConnId, tgtConnId)) as DataSyncTableResult[];
+      setMappingResults(mappings);
+      setComparisons([]);
       const autoSelect = new Set(
-        results
-          .filter((r) => r.status !== 'identical' && r.status !== 'target_only')
-          .map((r) => r.table),
+        mappings.filter((r) => r.status === 'MATCHED').map((r) => displayTableName(r)),
       );
       setSelectedTables(autoSelect);
       setSyncState('compared');
@@ -537,10 +543,9 @@ export function DataSyncWindow() {
               <Button variant="ghost" className="text-xs" onClick={deselectAll}>{t('common.deselectAll')}</Button>
               <div className="flex-1" />
               <span className="text-xs text-fg-muted">
-                {comparisons.filter((r) => r.status === 'identical').length} {t('sync.identical')} /
-                {' '}{comparisons.filter((r) => r.status === 'different').length} {t('sync.different')} /
-                {' '}{comparisons.filter((r) => r.status === 'source_only').length} {t('sync.sourceOnly')} /
-                {' '}{comparisons.filter((r) => r.status === 'target_only').length} {t('sync.targetOnly')}
+                {mappingResults.length > 0
+                  ? t('sync.mappingSummary', summarizeMappings(mappingResults))
+                  : `${comparisons.filter((r) => r.status === 'identical').length} ${t('sync.identical')} / ${comparisons.filter((r) => r.status === 'different').length} ${t('sync.different')}`}
               </span>
             </div>
 
@@ -554,7 +559,43 @@ export function DataSyncWindow() {
               <div className="w-20 text-center">{t('sync.status')}</div>
             </div>
 
-            {comparisons.map((row) => {
+            {mappingResults.length > 0 && mappingResults.map((row) => {
+              const name = displayTableName(row);
+              const isSelected = selectedTables.has(name);
+              const disabled = row.status !== 'MATCHED';
+              return (
+                <div
+                  key={`${row.status}:${name}`}
+                  data-testid="data-sync-mapping-row"
+                  className={cn('flex items-center gap-3 border-b border-edge px-3 py-2 text-sm', disabled && 'opacity-60')}
+                >
+                  <input
+                    type="checkbox"
+                    className="h-3.5 w-3.5"
+                    checked={isSelected}
+                    disabled={disabled}
+                    onChange={() => {
+                      if (disabled) return;
+                      setSelectedTables((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(name)) next.delete(name);
+                        else next.add(name);
+                        return next;
+                      });
+                    }}
+                  />
+                  <div className="min-w-0 flex-1 truncate font-mono text-xs">{name}</div>
+                  <div className="w-40 text-right text-xs text-fg-secondary">{t(mappingLabelKey(row.status) as never)}</div>
+                  {row.incompatibleReason && (
+                    <div className="max-w-xs truncate text-[11px] text-amber-600 dark:text-amber-400" title={row.incompatibleReason}>
+                      {row.incompatibleReason}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            {mappingResults.length === 0 && comparisons.map((row) => {
               const isSelected = selectedTables.has(row.table);
               const disabled = row.status === 'target_only';
               const isExpanded = expandedTables.has(row.table);

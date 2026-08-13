@@ -787,6 +787,7 @@ pub fn run() {
             commands::sync_table,
             commands::sync_tables,
             commands::execute_data_sync,
+            commands::inspect_data_sync,
             commands::get_sync_tasks,
             commands::save_sync_task_direct,
             commands::delete_sync_task,

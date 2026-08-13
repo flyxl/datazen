@@ -438,6 +438,24 @@ fn classify_sync_pair_rejects_ir_and_allows_mysql_family() {
 }
 
 #[tokio::test]
+async fn inspect_data_sync_returns_matched_tables() {
+    use crate::data_sync::TableMappingStatus;
+    use crate::testing::app_state::TestAppState;
+
+    let test = TestAppState::with_tables().await;
+    test.save_and_connect("src-ins").await;
+    test.save_and_connect("tgt-ins").await;
+    let src = test.connect_config("src-ins").await;
+    let tgt = test.connect_config("tgt-ins").await;
+    let results = super::inspect_data_sync_impl(&test.state, src, tgt)
+        .await
+        .unwrap();
+    assert!(results
+        .iter()
+        .any(|r| r.status == TableMappingStatus::Matched && r.source_table == "users"));
+}
+
+#[tokio::test]
 async fn execute_data_sync_rejects_read_only_target() {
     use crate::data_sync::{ChangeOperation, SqlStatement};
     use crate::testing::app_state::{sample_postgres_config, TestAppState};
