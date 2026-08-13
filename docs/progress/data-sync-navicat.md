@@ -14,8 +14,8 @@
 | F1 | `data_sync` 领域模型 + 状态机 + ChangeSet 选择规则 | done | 30 PASS | [F1 QA](45f474d3-e7da-4c9a-b593-ce3d61ce5f80) PASS | 99.31% | `42ea3d1` |
 | F2 | 同族 pairing + 结构完全一致 + 相同 PK 硬门闸 | done | 53 PASS | [F2 QA](3db2440f-4484-442c-bbe6-30229916c515) PASS | 99.49% | `8518c32` |
 | F3 | 停用旧 DROP+INSERT `sync_tables` 产品路径 | done | Rust+Vitest PASS | [F3 QA](1664c61a-a915-4a67-b603-e61a0dc06156) PASS | Rust 100% / TS 86.11% | `d35e6a0` |
-| F4 | Host 流式 PK 比较（mock driver / keyset 编排） | dev_done | 8 compare 单测 | 待派发 | — | — |
-| F5 | ChangeSet → 参数化 INSERT/UPDATE/DELETE SQL | pending | — | — | — | — |
+| F4 | Host 流式 PK 比较（mock driver / keyset 编排） | done | 8 PASS | [F4 QA](e5f4b08e-a702-4ae4-a9a2-9ac3286b0332) PASS | 92.97% | `fe97153` |
+| F5 | ChangeSet → 参数化 INSERT/UPDATE/DELETE SQL | done | 5 PASS | [F5 QA](745899af-3f19-4929-b4a9-3f47130e79d1) PASS | 92.84% | 待提交 |
 | F6 | 专用 Execute IPC（read_only / 事务 / Cancel） | pending | — | — | — | — |
 | F7 | Compare → Apply → Recompare=0 编排闭环 | pending | — | — | — | — |
 | F8 | DataSyncWindow Diff Workspace（最小可用） | pending | — | — | — | — |
