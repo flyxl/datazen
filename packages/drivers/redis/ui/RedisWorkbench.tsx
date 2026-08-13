@@ -361,6 +361,7 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
               },
             },
           }),
+          { x: e.clientX, y: e.clientY },
         );
       },
       [t],

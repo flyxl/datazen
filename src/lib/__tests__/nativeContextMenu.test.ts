@@ -1,21 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-
-const menuPopup = vi.fn().mockResolvedValue(undefined);
-const menuNew = vi.fn().mockImplementation(async ({ items }: { items: unknown[] }) => ({
-  popup: menuPopup,
-  items,
-}));
-const menuItemNew = vi.fn().mockImplementation(async (opts: unknown) => opts);
-const submenuNew = vi.fn().mockImplementation(async (opts: unknown) => opts);
-const predefinedNew = vi.fn().mockImplementation(async (opts: unknown) => opts);
-
-vi.mock('@tauri-apps/api/menu', () => ({
-  Menu: { new: (...a: unknown[]) => menuNew(...a) },
-  MenuItem: { new: (...a: unknown[]) => menuItemNew(...a) },
-  Submenu: { new: (...a: unknown[]) => submenuNew(...a) },
-  PredefinedMenuItem: { new: (...a: unknown[]) => predefinedNew(...a) },
-}));
-
+import { useContextMenuStore } from '../../stores/contextMenuStore';
 import {
   createNativeContextMenuHandler,
   nativeEditMenuItems,
@@ -86,69 +70,85 @@ describe('nativeEditMenuItems', () => {
 
 describe('showNativeContextMenu', () => {
   beforeEach(() => {
-    menuPopup.mockClear();
-    menuNew.mockClear();
-    menuItemNew.mockClear();
-    submenuNew.mockClear();
-    predefinedNew.mockClear();
+    useContextMenuStore.getState().hide();
   });
 
   it('no-ops when only separators remain after normalize', async () => {
-    await showNativeContextMenu([{ kind: 'separator' }, { kind: 'predefined', item: 'Separator' }]);
-    expect(menuNew).not.toHaveBeenCalled();
-  });
-
-  it('passes enabled: false through to MenuItem.new', async () => {
-    await showNativeContextMenu([
-      { kind: 'item', id: 'x', label: 'X', enabled: false, action: () => undefined },
-    ]);
-    expect(menuItemNew).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 'x', text: 'X', enabled: false }),
+    useContextMenuStore.getState().show(
+      [{ kind: 'item', id: 'keep', label: 'Keep', action: () => undefined }],
+      { x: 1, y: 1 },
     );
-    expect(menuNew).toHaveBeenCalled();
+    expect(useContextMenuStore.getState().open).toBe(true);
+    showNativeContextMenu([{ kind: 'separator' }, { kind: 'predefined', item: 'Separator' }], {
+      x: 8,
+      y: 12,
+    });
+    await vi.waitFor(() => {
+      expect(useContextMenuStore.getState().open).toBe(false);
+    });
   });
 
-  it('builds menu and pops up', async () => {
+  it('opens the web menu store at the given client position', async () => {
     const action = vi.fn();
-    await showNativeContextMenu([
-      { kind: 'item', id: 'run', label: 'Run', action },
-      { kind: 'separator' },
-      { kind: 'predefined', item: 'Copy' },
-      {
-        kind: 'submenu',
-        label: 'More',
-        items: [{ kind: 'item', id: 'nested', label: 'Nested', action: () => undefined }],
-      },
-    ]);
-    expect(menuItemNew).toHaveBeenCalled();
-    expect(predefinedNew).toHaveBeenCalledWith(expect.objectContaining({ item: 'Copy' }));
-    expect(submenuNew).toHaveBeenCalled();
-    expect(menuNew).toHaveBeenCalled();
-    expect(menuPopup).toHaveBeenCalledTimes(1);
+    showNativeContextMenu(
+      [
+        { kind: 'item', id: 'run', label: 'Run', action },
+        { kind: 'separator' },
+        { kind: 'predefined', item: 'Copy' },
+        {
+          kind: 'submenu',
+          label: 'More',
+          items: [{ kind: 'item', id: 'nested', label: 'Nested', action: () => undefined }],
+        },
+      ],
+      { x: 40, y: 80 },
+    );
+    await vi.waitFor(() => {
+      const s = useContextMenuStore.getState();
+      expect(s.open).toBe(true);
+      expect(s.x).toBe(40);
+      expect(s.y).toBe(80);
+      expect(s.items.some((i) => i.kind === 'item' && i.id === 'run')).toBe(true);
+      expect(s.items.some((i) => i.kind === 'submenu')).toBe(true);
+    });
   });
 
-  it('invokes item action when MenuItem action runs', async () => {
-    const action = vi.fn();
-    await showNativeContextMenu([{ kind: 'item', id: 'run', label: 'Run', action }]);
-    const opts = menuItemNew.mock.calls[0]![0] as { action: () => void };
-    opts.action();
-    expect(action).toHaveBeenCalledTimes(1);
+  it('keeps disabled items so the web menu can render them inert', async () => {
+    showNativeContextMenu(
+      [{ kind: 'item', id: 'x', label: 'X', enabled: false, action: () => undefined }],
+      { x: 1, y: 2 },
+    );
+    await vi.waitFor(() => {
+      const item = useContextMenuStore.getState().items[0];
+      expect(item).toMatchObject({ kind: 'item', id: 'x', enabled: false });
+    });
   });
 });
 
 describe('createNativeContextMenuHandler', () => {
-  it('prevents default, stops propagation, and shows menu', async () => {
+  beforeEach(() => {
+    useContextMenuStore.getState().hide();
+  });
+
+  it('prevents default, stops propagation, and shows menu at client coords', async () => {
     const handler = createNativeContextMenuHandler(() => [
       { kind: 'item', id: 'a', label: 'A', action: () => undefined },
     ]);
     const e = {
       preventDefault: vi.fn(),
       stopPropagation: vi.fn(),
+      clientX: 15,
+      clientY: 25,
     } as unknown as MouseEvent;
     handler(e);
     expect(e.preventDefault).toHaveBeenCalled();
     expect(e.stopPropagation).toHaveBeenCalled();
-    await vi.waitFor(() => expect(menuPopup).toHaveBeenCalled());
+    await vi.waitFor(() => {
+      const s = useContextMenuStore.getState();
+      expect(s.open).toBe(true);
+      expect(s.x).toBe(15);
+      expect(s.y).toBe(25);
+    });
   });
 
   it('can skip stopPropagation', async () => {
@@ -159,9 +159,11 @@ describe('createNativeContextMenuHandler', () => {
     const e = {
       preventDefault: vi.fn(),
       stopPropagation: vi.fn(),
+      clientX: 3,
+      clientY: 4,
     } as unknown as MouseEvent;
     handler(e);
     expect(e.stopPropagation).not.toHaveBeenCalled();
-    await vi.waitFor(() => expect(menuPopup).toHaveBeenCalled());
+    await vi.waitFor(() => expect(useContextMenuStore.getState().open).toBe(true));
   });
 });

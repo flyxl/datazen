@@ -188,6 +188,7 @@ function ErDiagramInner({
             },
           },
         }),
+        { x: event.clientX, y: event.clientY },
       );
     },
     [t, onSelectTable, handleFocusTable],

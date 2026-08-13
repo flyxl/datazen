@@ -1307,6 +1307,7 @@ function WorkflowSidebarList({
           },
         },
       }),
+      { x: e.clientX, y: e.clientY },
     );
   };
 
@@ -1406,6 +1407,7 @@ function HistoryList({
           onOpenDetail: () => onView(item.id, item.workflowName),
         },
       }),
+      { x: e.clientX, y: e.clientY },
     );
   };
 
