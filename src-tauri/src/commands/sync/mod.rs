@@ -95,7 +95,6 @@ pub async fn sync_table(
 #[tauri::command]
 pub async fn sync_tables(
     state: State<'_, AppState>,
-    app_handle: tauri::AppHandle,
     task_id: String,
     source_connection_id: String,
     target_connection_id: String,
@@ -109,7 +108,6 @@ pub async fn sync_tables(
 ) -> Result<serde_json::Value, CommandError> {
     sync_tables_impl(
         &state,
-        app_handle,
         task_id,
         source_connection_id,
         target_connection_id,
