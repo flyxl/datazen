@@ -532,7 +532,7 @@ const translations = {
   'export.export': 'Экспорт',
 
   // ── Batch Export Dialog ──
-  'batchExport.title': 'Batch Export',
+  'batchExport.title': 'Export',
   'batchExport.selectTables': 'Select Tables',
   'batchExport.selectAll': 'Select All',
   'batchExport.clearAll': 'Clear All',
@@ -592,6 +592,11 @@ const translations = {
   'structEditor.noChanges': 'Нет изменений для применения',
   'structEditor.previewFailed': 'Не удалось создать предварительный просмотр SQL',
   'structEditor.executePartial': '{executed}/{total} инструкций выполнено; остановлено: {error}',
+  'structEditor.exportStructure': 'Экспорт структуры',
+  'structEditor.exportingStructure': 'Экспорт…',
+  'structEditor.exportFailed': 'Не удалось экспортировать структуру таблицы',
+  'structEditor.exportUnsupported':
+    'Экспорт структуры не поддерживается для этого типа подключения',
   'indexes.newIndex': 'Новый индекс',
   'indexes.indexName': 'Имя индекса',
   'indexes.selectColumns': 'Выберите столбцы (в порядке выбора)',
