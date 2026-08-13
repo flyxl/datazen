@@ -1,0 +1,128 @@
+# F2 coverage (MainWindow web context menus)
+
+## TypeScript (vitest --coverage)
+
+Working directory:
+  /Users/wuxiaolong/code/rust-projects/datazen/.worktrees/web-context-menus
+Branch: feat/web-context-menus
+
+Command:
+  npx vitest run \
+    src/lib/__tests__/mainWindowContextMenu.test.ts \
+    src/windows/main/__tests__/MainWindow.test.tsx \
+    --coverage \
+    --coverage.include='src/lib/mainWindowContextMenu.ts' \
+    --coverage.include='src/windows/main/MainWindow.tsx' \
+    --reporter=verbose
+
+Tests: 42 passed / 0 failed
+  mainWindowContextMenu.test.ts   3
+  MainWindow.test.tsx            39
+Reporter: v8
+Threshold: mainWindowContextMenu.ts Lines 必须 ≥80%；MainWindow.tsx 整文件不单独因 <80% 判 FAIL。
+
+file                         stmts      branch     funcs      lines     uncovered start-lines
+mainWindowContextMenu.ts     100%       83.33%     100%       100%      83-90 (branch partial; lines 100%)
+                             16/16      10/12      5/5        15/15
+MainWindow.tsx               89.67%     65.02%     91.89%     96.25%    truncated: …50-854,904-907
+                             408/455    132/203    136/148    360/374
+TOTAL (include)              90.02%     66.04%     92.15%     96.4%
+                             424/471    142/215    141/153    375/389
+
+=============================== Coverage summary ===============================
+Statements   : 90.02% ( 424/471 )
+Branches     : 66.04% ( 142/215 )
+Functions    : 92.15% ( 141/153 )
+Lines        : 96.4% ( 375/389 )
+================================================================================
+
+## Full vitest verbose output
+
+ RUN  v4.1.10 /Users/wuxiaolong/code/rust-projects/datazen/.worktrees/web-context-menus
+      Coverage enabled with v8
+
+ ✓ src/lib/__tests__/mainWindowContextMenu.test.ts > mainWindowContextMenu > builds blank-area items 1ms
+ ✓ src/lib/__tests__/mainWindowContextMenu.test.ts > mainWindowContextMenu > omits rename/delete for the ungrouped header 1ms
+ ✓ src/lib/__tests__/mainWindowContextMenu.test.ts > mainWindowContextMenu > puts move targets in a submenu so they can flip at the window edge 1ms
+ ✓ src/windows/main/__tests__/MainWindow.test.tsx > MainWindow > TC-main: init fetches connections, groups, and settings 34ms
+ ✓ src/windows/main/__tests__/MainWindow.test.tsx > MainWindow > TC-main: status bar shows loading, error, active, and ready states 9ms
+ ✓ src/windows/main/__tests__/MainWindow.test.tsx > MainWindow > TC-main: empty state and new-connection actions 13ms
+ ✓ src/windows/main/__tests__/MainWindow.test.tsx > MainWindow > TC-main: renders grouped connections and toggles expand 14ms
+ ✓ src/windows/main/__tests__/MainWindow.test.tsx > MainWindow > TC-main: search updates query via store 4ms
+ ✓ src/windows/main/__tests__/MainWindow.test.tsx > MainWindow > TC-main: action panel opens windows 5ms
+ ✓ src/windows/main/__tests__/MainWindow.test.tsx > MainWindow > TC-main: handleConnect opens window for idle and connected sessions 5ms
+ ✓ src/windows/main/__tests__/MainWindow.test.tsx > MainWindow > TC-main: cross-window connection lifecycle events update active store 8ms
+ ✓ src/windows/main/__tests__/MainWindow.test.tsx > MainWindow > TC-main: menu cross-window events open windows and log dir 11ms
+ ✓ src/windows/main/__tests__/MainWindow.test.tsx > MainWindow > TC-main: keyboard shortcut opens new connection 3ms
+ ✓ src/windows/main/__tests__/MainWindow.test.tsx > MainWindow > TC-main: new group dialog adds group 20ms
+ ✓ src/windows/main/__tests__/MainWindow.test.tsx > MainWindow > TC-main: group context menu rename and delete 20ms
+ ✓ src/windows/main/__tests__/MainWindow.test.tsx > MainWindow > TC-main: connection context menu open, edit, duplicate, delete 76ms
+ ✓ src/windows/main/__tests__/MainWindow.test.tsx > MainWindow > TC-main: connection context menu disconnect when connected 10ms
+ ✓ src/windows/main/__tests__/MainWindow.test.tsx > MainWindow > TC-main: connection context menu move to group 21ms
+ ✓ src/windows/main/__tests__/MainWindow.test.tsx > MainWindow > TC-main: drag-and-drop moves connection to another group 10ms
+ ✓ src/windows/main/__tests__/MainWindow.test.tsx > MainWindow > TC-main: export config success and optional key save 14ms
+ ✓ src/windows/main/__tests__/MainWindow.test.tsx > MainWindow > TC-main: export config handles errors 10ms
+ ✓ src/windows/main/__tests__/MainWindow.test.tsx > MainWindow > TC-main: import config restarts app 6ms
+ ✓ src/windows/main/__tests__/MainWindow.test.tsx > MainWindow > TC-main: import config shows error dialog 9ms
+ ✓ src/windows/main/__tests__/MainWindow.test.tsx > MainWindow > TC-main: connection share export/import dialogs 27ms
+ ✓ src/windows/main/__tests__/MainWindow.test.tsx > MainWindow > TC-main: import-from-app menu opens dialog with source 7ms
+ ✓ src/windows/main/__tests__/MainWindow.test.tsx > MainWindow > TC-main: dashboard opens window directly without dialog 55ms
+ ✓ src/windows/main/__tests__/MainWindow.test.tsx > MainWindow > TC-main: dashboard opens shell when no boards exist 55ms
+ ✓ src/windows/main/__tests__/MainWindow.test.tsx > MainWindow > TC-main: restore opens backup window in restore mode without requiring a selection 5ms
+ ✓ src/windows/main/__tests__/MainWindow.test.tsx > MainWindow > TC-main: restore menu event opens restore window 5ms
+ ✓ src/windows/main/__tests__/MainWindow.test.tsx > MainWindow > TC-main: ungrouped label and new groups auto-expand 7ms
+ ✓ src/windows/main/__tests__/MainWindow.test.tsx > MainWindow > TC-main: blank context menu on list area 7ms
+ ✓ src/windows/main/__tests__/MainWindow.test.tsx > MainWindow > TC-main: rename escape cancels inline edit 10ms
+ ✓ src/windows/main/__tests__/MainWindow.test.tsx > MainWindow > TC-main: export cancelled when dialog returns false 6ms
+ ✓ src/windows/main/__tests__/MainWindow.test.tsx > MainWindow > TC-main: import skipped when user cancels 5ms
+ ✓ src/windows/main/__tests__/MainWindow.test.tsx > MainWindow > TC-main: restore from action panel does not invoke restore IPC on the main window 6ms
+ ✓ src/windows/main/__tests__/MainWindow.test.tsx > MainWindow > TC-main: connection count in status bar 3ms
+ ✓ src/windows/main/__tests__/MainWindow.test.tsx > MainWindow > TC-main: drag ghost renders while dragging 5ms
+ ✓ src/windows/main/__tests__/MainWindow.test.tsx > MainWindow > TC-main: ungrouped context menu has no rename/delete 4ms
+ ✓ src/windows/main/__tests__/MainWindow.test.tsx > MainWindow > TC-main: new group Enter key submits 10ms
+ ✓ src/windows/main/__tests__/MainWindow.test.tsx > MainWindow > TC-main: export backup key failure shows error 11ms
+ ✓ src/windows/main/__tests__/MainWindow.test.tsx > MainWindow > TC-main: blank context menu skips conn item target 6ms
+ ✓ src/windows/main/__tests__/MainWindow.test.tsx > MainWindow > TC-main: connecting status skips re-markConnecting 4ms
+
+ Test Files  2 passed (2)
+      Tests  42 passed (42)
+   Start at  22:32:02
+   Duration  1.86s (transform 386ms, setup 262ms, import 507ms, tests 543ms, environment 1.08s)
+
+ % Coverage report from v8
+-------------------|---------|----------|---------|---------|-------------------
+File               | % Stmts | % Branch | % Funcs | % Lines | Uncovered Line #s 
+-------------------|---------|----------|---------|---------|-------------------
+All files          |   90.02 |    66.04 |   92.15 |    96.4 |                   
+ lib               |     100 |    83.33 |     100 |     100 |                   
+  ...ontextMenu.ts |     100 |    83.33 |     100 |     100 | 83-90             
+ windows/main      |   89.67 |    65.02 |   91.89 |   96.25 |                   
+  MainWindow.tsx   |   89.67 |    65.02 |   91.89 |   96.25 | ...50-854,904-907 
+-------------------|---------|----------|---------|---------|-------------------
+
+=============================== Coverage summary ===============================
+Statements   : 90.02% ( 424/471 )
+Branches     : 66.04% ( 142/215 )
+Functions    : 92.15% ( 141/153 )
+Lines        : 96.4% ( 375/389 )
+================================================================================
+
+Uncovered / branch notes (mainWindowContextMenu.ts):
+  Lines 100% (15/15). Branch 83.33% (10/12). Uncovered Line #s 83-90 are
+  partial-branch markers on the move-target map + `if (args.grouped)` arm.
+  Likely miss: `grouped=false && moveTargets.length>0` (submenu without
+  remove-from-group). Builder fixture only uses grouped:true + moveTargets.
+  `grouped=true && moveTargets=[]` is hit via MainWindow disconnect test
+  (groups=['Dev'], conn.group='Dev').
+
+Uncovered notes (MainWindow.tsx, not F2 gate):
+  Truncated list includes ~850-854 (new-group dialog cancel / onClose) and
+  ~904-907 (message dialog onClose / OK). Context-menu handlers L322-404 /
+  L678-693 are exercised by MainWindow.test.tsx via real web-context-item-*.
+
+Gate metric: lines ≥ 80%
+  mainWindowContextMenu.ts   100%    (15/15)   → PASS (mandatory)
+  MainWindow.tsx             96.25%  (360/374) → 整文件 ≥80%，无需「低于门槛」备注
+  include 合计               96.4%   (375/389) → PASS
+
+F2 new-module line coverage ≥ 80% → PASS
