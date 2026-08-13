@@ -584,37 +584,37 @@ impl DatabaseDriver for PostgresDriver {
         let pools = self.pools.read().await;
         let pool = Self::get_pool(&pools, handle)?;
 
-        let (cols, pk_rows) = tokio::try_join!(
-            async {
-                sqlx::query(
-                    r#"
+        let cols = sqlx::query(
+            r#"
                     SELECT column_name, data_type, is_nullable, column_default,
                            col_description((quote_ident(table_schema)||'.'||quote_ident(table_name))::regclass, ordinal_position) as comment
                     FROM information_schema.columns
                     WHERE table_name = $1
                     ORDER BY ordinal_position
                     "#,
-                )
-                .bind(table)
-                .fetch_all(pool)
-                .await
-                .map_err(|e| DriverError::QueryFailed(e.to_string()))
-            },
-            async {
-                sqlx::query(
-                    r#"
+        )
+        .bind(table)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+
+        // `quote_ident($1)::regclass` fails when the table is not on search_path.
+        // Columns must still load so SQL autocomplete can list fields.
+        let pk_rows = sqlx::query(
+            r#"
                     SELECT a.attname
                     FROM pg_index i
                     JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
-                    WHERE i.indrelid = quote_ident($1)::regclass AND i.indisprimary
+                    JOIN pg_class c ON c.oid = i.indrelid
+                    JOIN pg_namespace n ON n.oid = c.relnamespace
+                    WHERE c.relname = $1 AND i.indisprimary
+                      AND n.nspname = ANY (current_schemas(true))
                     "#,
-                )
-                .bind(table)
-                .fetch_all(pool)
-                .await
-                .map_err(|e| DriverError::QueryFailed(e.to_string()))
-            },
-        )?;
+        )
+        .bind(table)
+        .fetch_all(pool)
+        .await
+        .unwrap_or_default();
 
         let pk_names: Vec<String> = pk_rows.iter().map(|r| r.get::<String, _>(0)).collect();
         let columns: Vec<ColumnSchema> = cols

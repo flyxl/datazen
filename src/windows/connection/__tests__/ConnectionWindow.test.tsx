@@ -34,8 +34,8 @@ vi.mock('../../../hooks/useI18n', () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));
 
-vi.mock('../../../hooks/useThemeListener', () => ({
-  useThemeListener: () => {},
+vi.mock('../../../hooks/useSettings', () => ({
+  useSettings: () => {},
 }));
 
 vi.mock('../../../stores/settingsStore', () => ({
@@ -148,7 +148,9 @@ describe('ConnectionWindow', () => {
     render(<ConnectionWindow />);
 
     await waitFor(() => expect(connectMock).toHaveBeenCalledWith('cfg-1'));
-    await waitFor(() => expect(screen.getByTestId('mock-view')).toHaveTextContent('view:conn-live-1'));
+    await waitFor(() =>
+      expect(screen.getByTestId('mock-view')).toHaveTextContent('view:conn-live-1'),
+    );
     expect(emitCrossWindowMock).toHaveBeenCalledWith(
       'datazen:connection-ready',
       expect.objectContaining({ configId: 'cfg-1', connectionId: 'conn-live-1' }),
@@ -182,7 +184,9 @@ describe('ConnectionWindow', () => {
 
     render(<ConnectionWindow />);
 
-    await waitFor(() => expect(screen.getByTestId('mock-view')).toHaveTextContent('view:already-open'));
+    await waitFor(() =>
+      expect(screen.getByTestId('mock-view')).toHaveTextContent('view:already-open'),
+    );
     expect(connectMock).not.toHaveBeenCalled();
   });
 
