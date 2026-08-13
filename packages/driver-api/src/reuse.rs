@@ -264,6 +264,18 @@ impl DatabaseDriver for ReuseDriver {
             .await
     }
 
+    fn uses_sql_restore_pipeline(&self) -> bool {
+        self.inner.uses_sql_restore_pipeline()
+    }
+
+    fn new_sql_scanner(&self) -> crate::sql_split::SqlStatementScanner {
+        self.inner.new_sql_scanner()
+    }
+
+    fn split_restore_sql(&self, sql: &str) -> Vec<String> {
+        self.inner.split_restore_sql(sql)
+    }
+
     async fn restore_sql(
         &self,
         handle: &ConnectionHandle,

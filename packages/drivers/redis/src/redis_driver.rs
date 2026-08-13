@@ -1505,6 +1505,30 @@ impl DatabaseDriver for RedisDriver {
             server_type: "Redis".to_string(),
         })
     }
+
+    async fn dump_database_with_progress(
+        &self,
+        _handle: &ConnectionHandle,
+        _database: &str,
+        _opts: &BackupDumpOptions,
+        _on_progress: &mut (dyn FnMut(DumpProgress) + Send),
+    ) -> Result<String, DriverError> {
+        Err(DriverError::NotSupported(
+            "Redis does not use SQL dump; export keys via driver commands".into(),
+        ))
+    }
+
+    async fn restore_sql_with_progress(
+        &self,
+        _handle: &ConnectionHandle,
+        _sql: &str,
+        _opts: Option<&BackupRestoreOptions>,
+        _on_progress: &mut (dyn FnMut(DumpProgress) + Send),
+    ) -> Result<(), DriverError> {
+        Err(DriverError::NotSupported(
+            "Redis does not restore SQL files; import via driver commands".into(),
+        ))
+    }
 }
 
 #[async_trait]
