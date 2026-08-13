@@ -21,7 +21,7 @@
 | F1 | Web 菜单定位 + 组件（二级菜单防截断） | done | 17 PASS | [F1 QA](c86bf24c-a11a-4a42-8d30-b310c3fdeb2c) PASS | lines 87.5% | `e983514` |
 | F2 | MainWindow 连接/分组/空白右键改 Web 菜单 | done | 42 PASS | [F2 QA](86de97e9-365b-4ba8-82f1-0db550159c1a) PASS | mainWindowContextMenu.ts lines 100% | — |
 | F3 | Host `showNativeContextMenu` 全部改为 Web | done | 78 PASS | [F3 QA](80d620d6-47c9-4b91-857d-ae5edf8cb0a4) PASS | nativeContextMenu.ts lines 100% | — |
-| F4 | Redis 驱动右键改 Web 菜单 | pending | — | — | — | — |
+| F4 | Redis 驱动右键改 Web 菜单 | done | 7 PASS | [F4 QA](268756f1-b0fb-4d4e-85b2-4af08031922b) PASS | redisKeyContextMenu.ts lines 100% | — |
 | F5 | Data Sync：Cancel IPC + Apply / 行比较接线 | pending | — | — | — | — |
 | F6 | 架构 / AGENTS 文档 + merge main + push | pending | — | — | — | — |
 
