@@ -23,7 +23,7 @@
 | F3 | Host `showNativeContextMenu` 全部改为 Web | done | 78 PASS | [F3 QA](80d620d6-47c9-4b91-857d-ae5edf8cb0a4) PASS | nativeContextMenu.ts lines 100% | — |
 | F4 | Redis 驱动右键改 Web 菜单 | done | 7 PASS | [F4 QA](268756f1-b0fb-4d4e-85b2-4af08031922b) PASS | redisKeyContextMenu.ts lines 100% | — |
 | F5 | Data Sync：Cancel IPC + Apply / 行比较接线 | done | Rust 31 + FE 26 PASS | [F5 QA](43c82485-a192-40f6-a384-f8384d9f7767) PASS | jobs/exec/apply lines 83.97% | — |
-| F6 | 架构 / AGENTS 文档 + merge main + push | in_progress | — | — | — | — |
+| F6 | 架构 / AGENTS 文档 + merge main + push | done | docs | static | — | — |
 
 提交时排除自动生成文件：`src/plugins/generated.ts`、`generated-locales.ts`、`src-tauri/src/plugin_init.rs`、`.plugin-features.json`（已 gitignore）。
 
