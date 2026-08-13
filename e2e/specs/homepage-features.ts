@@ -159,16 +159,19 @@ describe('主页 TablePlus 风格 (HOME)', () => {
     expect(hasHandler).toBe(true);
   });
 
-  it('HOME-021: 页面不包含自定义菜单覆盖层（已使用原生菜单）', async () => {
-    // Verify no custom fixed-position context menu overlay in the DOM
-    const customMenu = await browser.execute(() => {
-      const overlays = document.querySelectorAll('[class*="fixed"]');
-      for (const o of overlays) {
-        if (o.className.includes('z-') && o.querySelectorAll('button').length > 2) return true;
-      }
-      return false;
-    });
-    expect(customMenu).toBe(false);
+  it('HOME-021: 空白区域右键打开 Web 菜单且不被窗口截断', async () => {
+    const list = await $('.flex-1.overflow-auto');
+    await list.waitForExist({ timeout: 8000 });
+    await list.click({ button: 'right', x: 40, y: 40 });
+    const menu = await $('[data-testid="web-context-menu"]');
+    await menu.waitForExist({ timeout: 5000 });
+    expect(await menu.isDisplayed()).toBe(true);
+    const box = await menu.getLocation();
+    const size = await menu.getSize();
+    const win = await browser.getWindowSize();
+    expect(box.x + size.width).toBeLessThanOrEqual(win.width);
+    expect(box.y + size.height).toBeLessThanOrEqual(win.height);
+    await browser.keys('Escape');
   });
 
   // ── Group context menu ───────────────────────────────────────────
@@ -182,8 +185,8 @@ describe('主页 TablePlus 风格 (HOME)', () => {
   });
 
   it('HOME-031: 空白区域绑定了 contextmenu 事件', async () => {
-    // The scroll container's onContextMenu triggers a native Tauri menu
-    // with "新建分组" and "新建连接". We verify the container element exists.
+    // The scroll container's onContextMenu opens the web context menu
+    // with "新建分组" and "新建连接" (see HOME-021). We verify the container exists.
     const hasContainer = await browser.execute(() => {
       const scrollArea = document.querySelector('.flex-1.overflow-auto');
       return scrollArea instanceof HTMLElement;

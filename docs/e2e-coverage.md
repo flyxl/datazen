@@ -42,6 +42,7 @@
 | 用户路径 | Spec | 状态 |
 |----------|------|------|
 | 主页操作面板、搜索、分组 | `main-window.ts`, `homepage-features.ts` | Covered |
+| 主页空白右键 Web 菜单（含边缘不截断） | `homepage-features.ts` (HOME-021) | Covered（需 webdriver 二进制；无二进制时 BLOCKED） |
 | 新建 / 编辑 / 删除连接 | `new-connection.ts`, `edit-delete-connection.ts` | Covered |
 | 连接窗口工具栏、表树、子标签 | `connection-window.ts` | Covered |
 | 查询执行 / 历史 / 收藏 | `sql-query.ts` | Covered |
@@ -77,7 +78,7 @@
 | 新建查询不弹出对象加载补全框 | `connection-window.ts` (SQ-AC-001), `mysql.ts` (MY-AC-001) | Covered |
 | SQL 补全只拉取语句中已加载完整表名的列（禁止前缀 get_columns） | `schemaStore.test.ts` / `sqlEditorDefaults.test.ts` / `buildEditorSchema.test.ts` | Covered |
 | Schema Diff 窗口打开与步骤控件 | `schema-diff-window.ts` | Covered |
-| 数据同步窗口 | `data-sync-window.ts`, `homepage-features.ts`, `data-sync-real.ts` | Covered（横幅 / 未选 Compare / Apply 禁用；inspect IPC；行 Diff 未接线记后续） |
+| 数据同步窗口 | `data-sync-window.ts`, `homepage-features.ts`, `data-sync-real.ts` | Covered（横幅 / Compare / 行 Diff 计数 / 有差异可 Apply / Cancel IPC；Host E2E 无二进制时以单测替代） |
 | 数据看板 | `data-dashboard-*.ts` | Covered |
 | 应用数据备份标签 | `app-data-backup.ts` | Covered |
 | 路径 IPC 加固 | `path-ipc-hardening.ts` | Covered |
