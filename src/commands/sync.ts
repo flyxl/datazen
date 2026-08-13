@@ -83,4 +83,15 @@ export const syncCommands = {
       targetConnectionId,
       statements,
     }),
+
+  inspectDataSync: (sourceConnectionId: string, targetConnectionId: string) =>
+    invoke<
+      Array<{
+        sourceTable: string;
+        targetTable: string;
+        status: string;
+        incompatibleReason?: string | null;
+        warnings?: string[];
+      }>
+    >('inspect_data_sync', { sourceConnectionId, targetConnectionId }),
 };

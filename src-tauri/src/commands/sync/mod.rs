@@ -2,6 +2,7 @@
 
 mod compare;
 mod exec;
+mod inspect;
 mod table_sync;
 mod tasks;
 mod types;
@@ -16,6 +17,7 @@ pub(crate) use compare::{
     compare_databases_impl, compare_table_data_impl, compare_table_schemas_impl,
 };
 pub(crate) use exec::execute_data_sync_impl;
+pub(crate) use inspect::inspect_data_sync_impl;
 pub(crate) use table_sync::{sync_table_impl, sync_tables_impl};
 pub(crate) use tasks::{
     check_sync_conflicts_impl, delete_sync_task_impl, get_sync_tasks_impl,
@@ -141,6 +143,15 @@ pub async fn delete_sync_task(
     task_id: String,
 ) -> Result<(), CommandError> {
     delete_sync_task_impl(&state, task_id).await
+}
+
+#[tauri::command]
+pub async fn inspect_data_sync(
+    state: State<'_, AppState>,
+    source_connection_id: String,
+    target_connection_id: String,
+) -> Result<Vec<crate::data_sync::TableResult>, CommandError> {
+    inspect_data_sync_impl(&state, source_connection_id, target_connection_id).await
 }
 
 #[tauri::command]
