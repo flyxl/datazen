@@ -46,6 +46,16 @@ describe('SQL 查询模块 (SQ-001~SQ-012, TC-QUERY-006/008)', () => {
     await expect(await $(`button*=${t('query.execute')}`)).toBeDisplayed();
   });
 
+  it('SQ-CTX-001: SQL 带完整库路径时应同步执行栏选择框', async () => {
+    const bar = await $('[data-testid="query-context-selectors"]');
+    if (!(await bar.isExisting())) return;
+    const dbName = process.env.E2E_PG_DB || 'postgres';
+    await setEditorContent(`SELECT * FROM ${dbName}.pg_catalog.pg_tables LIMIT 1`);
+    await browser.pause(800);
+    const text = await bar.getText();
+    expect(text).toContain(dbName);
+  });
+
   it('应显示执行快捷键提示 (SQ-001)', async () => {
     await expect(await $('span*=⌘+Enter')).toBeDisplayed();
   });

@@ -828,44 +828,18 @@ describe('MainWindow', () => {
     expect(screen.queryByTestId('dashboard-dialog')).not.toBeInTheDocument();
   });
 
-  it('TC-main: restore requires selection and connected session', async () => {
+  it('TC-main: restore opens backup window in restore mode without requiring a selection', async () => {
     render(<MainWindow />);
     fireEvent.click(screen.getByTestId('action-restore'));
-    await waitFor(() => expect(screen.getByText('main.restoreFailed')).toBeInTheDocument());
-
-    cleanup();
-    connectionState.groups = ['Dev'];
-    connectionState.connections = [makeConn()];
-    render(<MainWindow />);
-    fireEvent.click(screen.getByTestId('conn-c1'));
-    fireEvent.click(screen.getByTestId('action-restore'));
-    await waitFor(() => expect(screen.getByText('main.restoreFailed')).toBeInTheDocument());
-
-    cleanup();
-    connectionState.groups = ['Dev'];
-    connectionState.connections = [makeConn()];
-    activeState.connections = { c1: { status: 'connected', connectionId: 'live-1' } };
-    render(<MainWindow />);
-    fireEvent.click(screen.getByTestId('conn-c1'));
-    fireEvent.click(screen.getByTestId('action-restore'));
-    await waitFor(() =>
-      expect(invokeMock).toHaveBeenCalledWith('restore_database_with_dialog', {
-        connectionId: 'live-1',
-      }),
-    );
-    await waitFor(() => expect(screen.getByText('main.restoreSuccess')).toBeInTheDocument());
+    expect(openBackupWindowMock).toHaveBeenCalledWith('restore');
+    expect(screen.queryByText('backup.selectConnectionFirst')).not.toBeInTheDocument();
+    expect(screen.queryByText('main.restoreFailed')).not.toBeInTheDocument();
   });
 
-  it('TC-main: restore menu event and invoke error', async () => {
-    connectionState.groups = ['Dev'];
-    connectionState.connections = [makeConn()];
-    activeState.connections = { c1: { status: 'connected', connectionId: 'live-1' } };
-    invokeMock.mockRejectedValueOnce(new Error('restore err'));
-
+  it('TC-main: restore menu event opens restore window', async () => {
     render(<MainWindow />);
-    fireEvent.click(screen.getByTestId('conn-c1'));
     await emitCrossWindow('menu:restore');
-    await waitFor(() => expect(screen.getByText('restore err')).toBeInTheDocument());
+    await waitFor(() => expect(openBackupWindowMock).toHaveBeenCalledWith('restore'));
   });
 
   it('TC-main: ungrouped label and new groups auto-expand', () => {
@@ -915,17 +889,10 @@ describe('MainWindow', () => {
     expect(restartAppMock).not.toHaveBeenCalled();
   });
 
-  it('TC-main: restore invoke returns false without success message', async () => {
-    connectionState.groups = ['Dev'];
-    connectionState.connections = [makeConn()];
-    activeState.connections = { c1: { status: 'connected', connectionId: 'live-1' } };
-    invokeMock.mockResolvedValueOnce(false);
-
+  it('TC-main: restore from action panel does not invoke restore IPC on the main window', async () => {
     render(<MainWindow />);
-    fireEvent.click(screen.getByTestId('conn-c1'));
     fireEvent.click(screen.getByTestId('action-restore'));
-    await waitFor(() => expect(invokeMock).toHaveBeenCalled());
-    expect(screen.queryByText('main.restoreSuccess')).not.toBeInTheDocument();
+    expect(invokeMock).not.toHaveBeenCalledWith('restore_database_with_dialog', expect.anything());
   });
 
   it('TC-main: connection count in status bar', () => {

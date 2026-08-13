@@ -3,6 +3,7 @@ import { X } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Select } from '../../components/ui/Select';
+import { SqlEditor } from '../../components/SqlEditor';
 import { useI18n } from '../../hooks/useI18n';
 import { useConnectionStore } from '../../stores/connectionStore';
 import {
@@ -144,13 +145,18 @@ export function WidgetEditorDrawer({
               </label>
               <label className="block space-y-1">
                 <span className="text-xs text-fg-muted">{t('dashboard.sql')}</span>
-                <textarea
-                  value={hiddenSql.sql}
-                  onChange={(e) => setHiddenSql((s) => ({ ...s, sql: e.target.value }))}
-                  rows={6}
-                  className="w-full resize-y rounded-md border border-edge bg-surface px-3 py-2 font-mono text-xs text-fg focus:outline-none focus:ring-1 focus:ring-accent"
-                  spellCheck={false}
-                />
+                <div
+                  className="h-40 overflow-hidden rounded-md border border-edge"
+                  data-testid="dashboard-sql-editor"
+                >
+                  <SqlEditor
+                    value={hiddenSql.sql}
+                    onChange={(sql) => setHiddenSql((s) => ({ ...s, sql }))}
+                    databaseType={
+                      connections.find((c) => c.id === hiddenSql.configId)?.databaseType
+                    }
+                  />
+                </div>
               </label>
             </>
           ) : (

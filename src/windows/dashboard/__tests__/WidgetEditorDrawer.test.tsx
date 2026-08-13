@@ -15,12 +15,22 @@ vi.mock('../../../stores/connectionStore', () => {
   return {
     useConnectionStore: (
       sel: (s: {
-        connections: { id: string; name: string }[];
+        connections: { id: string; name: string; databaseType: string }[];
         fetchConnections: () => void;
       }) => unknown,
-    ) => sel({ connections: [{ id: 'c1', name: 'Conn 1' }], fetchConnections }),
+    ) =>
+      sel({
+        connections: [{ id: 'c1', name: 'Conn 1', databaseType: 'postgresql' }],
+        fetchConnections,
+      }),
   };
 });
+
+vi.mock('../../../components/SqlEditor', () => ({
+  SqlEditor: ({ value, onChange }: { value: string; onChange: (v: string) => void }) => (
+    <textarea data-testid="sql-editor" value={value} onChange={(e) => onChange(e.target.value)} />
+  ),
+}));
 
 vi.mock('../../../components/ui/Select', () => ({
   Select: ({
@@ -179,7 +189,7 @@ describe('WidgetEditorDrawer', () => {
       />,
     );
 
-    fireEvent.change(screen.getByDisplayValue('SELECT 1 AS v'), {
+    fireEvent.change(screen.getByTestId('sql-editor'), {
       target: { value: 'SELECT 2 AS v' },
     });
 

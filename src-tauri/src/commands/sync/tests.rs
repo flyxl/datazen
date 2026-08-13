@@ -339,9 +339,10 @@ async fn sync_task_crud_and_compare() {
     let src_conn = test.connect_config("src-cfg").await;
     let tgt_conn = test.connect_config("tgt-cfg").await;
 
-    let results = compare_databases_impl(&test.state, src_conn.clone(), tgt_conn.clone())
-        .await
-        .unwrap();
+    let results =
+        compare_databases_impl(&test.state, src_conn.clone(), tgt_conn.clone(), None, None)
+            .await
+            .unwrap();
     assert!(!results.is_empty());
     assert_eq!(results[0]["status"], "identical");
 
@@ -447,4 +448,23 @@ async fn check_sync_conflicts_missing_task_errors() {
     assert!(check_sync_conflicts_impl(&test.state, "missing".into())
         .await
         .is_err());
+}
+
+#[test]
+fn rewrite_view_ddl_uses_target_quoting() {
+    let src = "CREATE OR REPLACE VIEW \"active_users\" AS\nSELECT id,\n    username,\n    email\nFROM users;";
+    let out =
+        super::table_sync::rewrite_view_ddl_for_target(src, "active_users", |n| format!("`{n}`"));
+    assert!(out.starts_with("CREATE OR REPLACE VIEW `active_users` AS"));
+    assert!(!out.contains("\"active_users\""));
+    assert!(out.contains("SELECT id"));
+}
+
+#[test]
+fn value_as_u64_accepts_int_float_and_numeric_string() {
+    use super::compare::value_as_u64;
+    assert_eq!(value_as_u64(&Value::Integer(12)), Some(12));
+    assert_eq!(value_as_u64(&Value::Float(7.0)), Some(7));
+    assert_eq!(value_as_u64(&Value::String("3".into())), Some(3));
+    assert_eq!(value_as_u64(&Value::Integer(-1)), None);
 }
