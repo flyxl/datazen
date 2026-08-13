@@ -11,10 +11,16 @@ import type { TableInfo } from '../../types';
 function makeDeps(overrides: Partial<EnsureDeps> = {}): EnsureDeps {
   const pathAliases: Record<string, string> = { ...(overrides.pathAliases ?? { presto: '558' }) };
   const loadedPaths = new Set<string>(overrides.loadedPaths ? [...overrides.loadedPaths] : []);
+  const pathItems: Record<string, TableInfo[]> = { ...(overrides.pathItems ?? {}) };
   const mergeNamespace =
     overrides.mergeNamespace ??
     vi.fn((segments: string[], _kind: 'branch' | 'tables', _names: string[]) => {
       loadedPaths.add(segments.join('/') || '');
+    });
+  const cachePathItems =
+    overrides.cachePathItems ??
+    vi.fn((fetchPath: string, items: TableInfo[]) => {
+      pathItems[fetchPath] = items;
     });
   const registerPathAliases =
     overrides.registerPathAliases ??
@@ -41,7 +47,9 @@ function makeDeps(overrides: Partial<EnsureDeps> = {}): EnsureDeps {
     ...overrides,
     pathAliases: overrides.pathAliases ?? pathAliases,
     loadedPaths: overrides.loadedPaths ?? loadedPaths,
+    pathItems: overrides.pathItems ?? pathItems,
     mergeNamespace,
+    cachePathItems,
     registerPathAliases,
   };
 }
@@ -141,6 +149,26 @@ describe('ensureNamespacePath — path-hierarchy', () => {
     deps.loadedPaths.add('presto');
     await ensureNamespacePath(['presto'], deps);
     expect(deps.getTables).not.toHaveBeenCalled();
+  });
+
+  it('reuses cached path items without calling getTables', async () => {
+    const items = [
+      { name: '558/hive', schema: 'CATALOG', tableType: 'table', rowCount: null },
+    ] satisfies TableInfo[];
+    const deps = makeDeps({ pathItems: { '558': items } });
+    await ensureNamespacePath(['presto'], deps);
+    expect(deps.getTables).not.toHaveBeenCalled();
+    expect(deps.mergeNamespace).toHaveBeenCalledWith(['presto'], 'branch', ['hive']);
+  });
+
+  it('writes getTables results into the shared pathItems cache', async () => {
+    const items = [
+      { name: '558/hive', schema: 'CATALOG', tableType: 'table', rowCount: null },
+    ] satisfies TableInfo[];
+    const deps = makeDeps({ getTables: vi.fn().mockResolvedValue(items) });
+    await ensureNamespacePath(['presto'], deps);
+    expect(deps.cachePathItems).toHaveBeenCalledWith('558', items);
+    expect(deps.pathItems['558']).toEqual(items);
   });
 
   it('dedupes concurrent ensures for the same key', async () => {

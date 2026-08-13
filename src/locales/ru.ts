@@ -143,7 +143,7 @@ const translations = {
   'connShare.passwordOptional': 'необязательно для DataGrip / Navicat / DBeaver / DBX plain',
   'connShare.passwordImportPlaceholder': 'Требуется для DataZen / DBX encrypted / TablePlus',
   'connShare.importFormatsHint':
-    'Поддерживает DataZen, DBX, DataGrip, Navicat, DBeaver и TablePlus. При отсутствии паролей введите вручную.',
+    'Поддерживает DataZen (.datazenconnection), DBX, DataGrip, Navicat, DBeaver и TablePlus. При отсутствии паролей введите вручную.',
   'connShare.exportAction': 'Экспортировать…',
   'connShare.importAction': 'Импортировать…',
   'connShare.exportSuccess': 'Экспортированные соединения {count}',
