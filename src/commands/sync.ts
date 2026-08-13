@@ -77,4 +77,10 @@ export const syncCommands = {
       'check_sync_conflicts',
       { taskId },
     ),
+
+  executeDataSync: (targetConnectionId: string, statements: unknown[]) =>
+    invoke<{ applied: number; rolledBack: boolean }>('execute_data_sync', {
+      targetConnectionId,
+      statements,
+    }),
 };
