@@ -6,11 +6,12 @@
   "type": "module",
   "scripts": {
     "dev": "node scripts/dev.mjs",
-    "build": "node scripts/generate-menu-labels.mjs && tsc && vite build",
+    "build": "node scripts/ensure-generated-drivers.mjs && node scripts/generate-menu-labels.mjs && tsc && vite build",
     "build:with-drivers": "node scripts/generate-menu-labels.mjs && node scripts/with-plugin-inject.mjs -- sh -c \"tsc && vite build\"",
     "preview": "vite preview",
     "tauri": "tauri",
     "drivers:resolve": "node scripts/resolve-drivers.mjs",
+    "drivers:codegen": "node scripts/resolve-drivers.mjs --codegen-only",
     "drivers:restore": "node scripts/plugin-file-stash.mjs restore",
     "menu:labels": "node scripts/generate-menu-labels.mjs",
     "tauri:dev": "node scripts/tauri-dev.mjs",
@@ -30,9 +31,9 @@
     "e2e:i18n-backup": "node e2e/run.mjs --skip-build -- --spec e2e/specs/app-data-backup.ts,e2e/specs/i18n-10-locales.ts,e2e/specs/system-locale.ts,e2e/specs/i18n-menu.ts",
     "e2e:path-ipc": "node e2e/run.mjs --skip-build -- --spec e2e/specs/path-ipc-hardening.ts,e2e/specs/workflow-window.ts,e2e/specs/driver-commands.ts,e2e/specs/app-data-backup.ts",
     "e2e:dashboard": "node e2e/run.mjs --minimal-drivers -- --spec e2e/specs/data-dashboard*.ts",
-    "pretest": "node scripts/resolve-drivers.mjs --drivers=basic",
+    "pretest": "node scripts/resolve-drivers.mjs --codegen-only --drivers=basic",
     "posttest": "node scripts/plugin-file-stash.mjs restore",
-    "pretest:unit": "node scripts/resolve-drivers.mjs --drivers=basic",
+    "pretest:unit": "node scripts/resolve-drivers.mjs --codegen-only --drivers=basic",
     "posttest:unit": "node scripts/plugin-file-stash.mjs restore",
     "test": "vitest run",
     "test:unit": "vitest run",
@@ -42,7 +43,7 @@
     "test:unit:coverage": "vitest run --coverage",
     "test:scripts": "vitest run scripts/__tests__",
     "test:rust:backup-i18n": "cargo test -p datazen --lib app_data_archive && cargo test -p datazen --lib i18n_locale && cargo test -p datazen --lib store::tests",
-    "prepare": "husky"
+    "prepare": "husky && node scripts/ensure-generated-drivers.mjs"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.1",

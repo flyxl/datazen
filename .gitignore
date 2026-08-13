@@ -59,6 +59,11 @@ e2e/.env
 /.plugins/
 /plugins/
 
+# Driver selection codegen (written by resolve-drivers.mjs; not committed)
+src/plugins/generated.ts
+src/plugins/generated-locales.ts
+src-tauri/src/plugin_init.rs
+
 # Git-cloned / locally-linked drivers (not committed path builtins)
 /packages/drivers/*
 !/packages/drivers/clickhouse/

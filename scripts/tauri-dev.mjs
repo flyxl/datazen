@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
  * tauri-dev.mjs — wrapper for `pnpm tauri:dev` that resolves drivers then
- * restores stashed clean managed files on exit.
+ * restores tracked managed files (Cargo.toml / capabilities) on exit.
+ * Gitignored codegen files are left as generated.
  *
  * Usage:
  *   pnpm tauri:dev                         # basic (postgres/mysql/sqlite/redis)

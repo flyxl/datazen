@@ -8,8 +8,9 @@
  *   1. `stash`  — copyFileSync clean working files → .plugin-file-stash/<path>
  *                 (working tree stays in place so editors/git keep seeing the files)
  *   2. resolve-drivers overwrites working paths with injected content
- *   3. `restore` — deinject cargo/capabilities (keep user edits); stash-restore
- *                 fully-generated files; then remove stash copies
+ *   3. `restore` — deinject cargo/capabilities (keep user edits); then remove
+ *                 stash copies. Gitignored codegen files (generated.ts /
+ *                 plugin_init.rs) are left as-is.
  *
  * Usage:
  *   node scripts/plugin-file-stash.mjs stash
@@ -30,22 +31,15 @@ import {
 import { resolve, dirname, relative, basename } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { randomBytes } from 'crypto';
-import {
-  cleanFullyGeneratedContent,
-  deinjectManagedContent,
-  isFullyGeneratedManagedFile,
-} from './plugin-deinject.mjs';
+import { deinjectManagedContent } from './plugin-deinject.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 export const ROOT = resolve(__dirname, '..');
 
-/** Paths relative to repo root — keep in sync with resolve-drivers / pre-commit. */
+/** Tracked files that resolve-drivers injects. Codegen files are gitignored. */
 export const MANAGED_FILES = [
   'Cargo.toml',
   'src-tauri/Cargo.toml',
-  'src-tauri/src/plugin_init.rs',
-  'src/plugins/generated.ts',
-  'src/plugins/generated-locales.ts',
   'src-tauri/capabilities/default.json',
 ];
 
@@ -149,9 +143,8 @@ export function createPluginFileStash(root, options = {}) {
   }
 
   /**
-   * Write deinjected (or stash baseline) content to the working path.
+   * Write deinjected content to the working path.
    * Cargo / capabilities: strip injection, keep user edits.
-   * Fully generated files: replace from stash.
    * @param {string} relPath
    */
   function restoreOneManagedFile(relPath) {
@@ -159,28 +152,6 @@ export function createPluginFileStash(root, options = {}) {
     const stashed = stashPath(relPath);
     const hasStash = existsSync(stashed);
     const hasWork = existsSync(work);
-
-    if (isFullyGeneratedManagedFile(relPath)) {
-      if (hasStash) {
-        atomicReplaceWithCopy(stashed, work);
-        return;
-      }
-      // Stash missing (e.g. injected generated.ts was committed): write git-safe stub.
-      const token = randomBytes(6).toString('hex');
-      const tmp = resolve(dirname(work), `.${basename(work)}.${token}.tmp`);
-      try {
-        writeFileSync(tmp, cleanFullyGeneratedContent(relPath));
-        renameSync(tmp, work);
-      } catch (e) {
-        try {
-          if (existsSync(tmp)) unlinkSync(tmp);
-        } catch {
-          /* ignore */
-        }
-        throw e;
-      }
-      return;
-    }
 
     if (!hasWork && hasStash) {
       atomicReplaceWithCopy(stashed, work);
@@ -213,17 +184,11 @@ export function createPluginFileStash(root, options = {}) {
   }
 
   /**
-   * Restore managed files: strip injection from work (keep user edits),
-   * restore fully-generated files from stash (or canonical stub if stash missing).
+   * Restore tracked managed files: strip injection from work (keep user edits).
+   * Gitignored codegen files are not touched.
    */
   function restoreManagedFiles() {
-    const missingNonGenerated = missingStashFiles().filter(
-      (f) => !isFullyGeneratedManagedFile(f),
-    );
-    // Cargo/capabilities can deinject without stash when work copies exist.
-    const blocking = missingNonGenerated.filter(
-      (f) => !existsSync(workPath(f)),
-    );
+    const blocking = missingStashFiles().filter((f) => !existsSync(workPath(f)));
     if (blocking.length > 0) {
       throw new Error(
         `[plugin-file-stash] cannot restore; stash missing for: ${blocking.join(', ')}. ` +
@@ -244,16 +209,12 @@ export function createPluginFileStash(root, options = {}) {
   }
 
   /**
-   * Restore only injected paths: deinject cargo/capabilities (keep user edits),
-   * stash-restore fully generated files (canonical stub if stash missing).
+   * Restore only the given tracked paths: deinject cargo/capabilities.
    * @param {string[]} relPaths
    */
   function restoreSelectedFiles(relPaths) {
     const missingOptional = relPaths.filter(
-      (f) =>
-        !isFullyGeneratedManagedFile(f) &&
-        !existsSync(workPath(f)) &&
-        !existsSync(stashPath(f)),
+      (f) => !existsSync(workPath(f)) && !existsSync(stashPath(f)),
     );
     if (missingOptional.length > 0) {
       throw new Error(
@@ -314,23 +275,38 @@ export const stashManagedFiles = defaultApi.stashManagedFiles;
 export const restoreManagedFiles = defaultApi.restoreManagedFiles;
 export const restoreSelectedFiles = defaultApi.restoreSelectedFiles;
 
-function main() {
-  const cmd = process.argv[2];
+/**
+ * @param {string[]} [argv]
+ * @param {{
+ *   api?: ReturnType<typeof createPluginFileStash>,
+ *   error?: (...args: unknown[]) => void,
+ * }} [options]
+ * @returns {number}
+ */
+export function runPluginFileStashCli(argv = process.argv.slice(2), options = {}) {
+  const api = options.api ?? defaultApi;
+  const error = options.error ?? console.error.bind(console);
+  const cmd = argv[0];
   try {
     if (cmd === 'stash') {
-      stashManagedFiles();
+      api.stashManagedFiles();
     } else if (cmd === 'restore') {
-      restoreManagedFiles();
+      api.restoreManagedFiles();
     } else if (cmd === 'status') {
-      defaultApi.printStatus();
+      api.printStatus();
     } else {
-      console.error('Usage: node scripts/plugin-file-stash.mjs <stash|restore|status>');
-      process.exit(1);
+      error('Usage: node scripts/plugin-file-stash.mjs <stash|restore|status>');
+      return 1;
     }
+    return 0;
   } catch (e) {
-    console.error(e instanceof Error ? e.message : e);
-    process.exit(1);
+    error(e instanceof Error ? e.message : e);
+    return 1;
   }
+}
+
+function main() {
+  process.exit(runPluginFileStashCli());
 }
 
 if (import.meta.url === pathToFileURL(resolve(process.argv[1] ?? '')).href) {

@@ -26,7 +26,7 @@ datazen/
 │   ├── lib/                     # 工具库
 │   ├── hooks/                   # React hooks
 │   ├── locales/                 # i18n
-│   ├── plugins/generated.ts     # 自动生成（勿手动编辑）
+│   ├── plugins/generated.ts     # 自动生成（gitignore；pnpm install / resolve-drivers）
 │   └── plugin-sdk/              # 插件前端 SDK
 ├── src-tauri/                   # Rust 后端
 │   ├── src/
@@ -57,7 +57,7 @@ datazen/
 ### 驱动选型（编译时，类似 Caddy 2）
 
 1. `drivers-registry.json` 定义 path 驱动 + git 驱动；Git 可钉 `ref`
-2. `scripts/resolve-drivers.mjs` 构建前执行选型、克隆 Git driver，并生成 `generated.ts`、`plugin_init.rs`、`.plugin-features.json`
+2. `scripts/resolve-drivers.mjs` 构建前执行选型、克隆 Git driver，并生成 `generated.ts`、`plugin_init.rs`、`.plugin-features.json`（前两者 gitignore；`pnpm install` / `pnpm build` 会 `--codegen-only` 补齐）
 3. 通过 `inventory` crate 实现链接时自动注册；宿主 `DriverRegistry` 仅走 factories
 
 ```bash
@@ -264,7 +264,7 @@ Driver Command IPC 负责：
 pnpm install                           # 安装依赖
 pnpm dev                               # Vite dev server
 pnpm tauri:dev                         # 完整开发（前端 + Rust；默认 basic 驱动）
-pnpm build                             # 构建前端（不 inject；打包前由外层 resolve）
+pnpm build                             # 构建前端（缺 codegen 时 --codegen-only；不改 Cargo.toml）
 pnpm build:with-drivers                # 单独前端构建并 inject/restore
 pnpm tauri:build                       # 完整应用（外层 inject 一次）
 npx vitest run                         # Host 前端单元测试（不含 packages/drivers）
@@ -363,7 +363,8 @@ Git 驱动（Kiwi / OLAP / Superset 等）：测试写在**插件自己的仓库
 - Path 驱动 Rust crate：`datazen-driver-<id>`；Git 驱动 Rust crate 名以插件仓库为准
 - 驱动相关测试写在对应 crate（`packages/drivers/<id>/` 或 Git 插件仓），不要写到 Host
 - `Cargo.toml` 中的插件占位段在 git 中应保持为空；`resolve-drivers.mjs` 构建时填充
-- `src/plugins/generated.ts` 和 `src-tauri/src/plugin_init.rs` 是自动生成的，git 中必须保持 stub；禁止提交已注入内容
+- `src/plugins/generated.ts`、`src/plugins/generated-locales.ts`、`src-tauri/src/plugin_init.rs` 是 gitignore 的 codegen，由 `resolve-drivers` / `ensure-generated-drivers` 生成；不要提交
+- `pnpm install`（prepare）若这 3 个文件缺失则 `--codegen-only --drivers=basic`；已存在则保留当前选型
 - Git 驱动 clone 目录（`packages/drivers/{kiwi,olap,superset}/` 等非 path 驱动）是 gitignored，由 driver resolve/build/dev 流程生成；勿提交
 - `PROTOCOL_VERSION`（`packages/driver-api`）变更时需同步更新所有插件
 - `AI_PROTOCOL_VERSION`（`packages/ai-api`）变更时需同步更新所有 AI Provider 插件
