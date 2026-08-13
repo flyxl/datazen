@@ -6,8 +6,9 @@ import {
 
 const labels: SchemaTreeContextMenuLabels = {
   open: 'Open',
+  openStructure: 'Open Structure',
   copyName: 'Copy Name',
-  editStructure: 'Edit Structure',
+  copyDdl: 'Copy DDL',
   focusEr: 'Focus ER',
   exportData: 'Export',
   importData: 'Import',
@@ -16,6 +17,9 @@ const labels: SchemaTreeContextMenuLabels = {
   copyDatabaseName: 'Copy DB Name',
   newTable: 'New Table',
   batchExport: 'Batch Export…',
+  truncate: 'Truncate',
+  drop: 'Drop',
+  dropView: 'Drop View',
 };
 
 function ids(items: ReturnType<typeof buildSchemaTreeContextMenuItems>): string[] {
@@ -23,54 +27,76 @@ function ids(items: ReturnType<typeof buildSchemaTreeContextMenuItems>): string[
 }
 
 describe('buildSchemaTreeContextMenuItems', () => {
-  it('builds table menu with optional structure/ER and import when not read-only', () => {
+  it('builds table menu in TablePlus order with structure / new query / ddl / truncate / drop', () => {
     const onOpen = vi.fn();
     const onImport = vi.fn();
     const onBatchExport = vi.fn();
+    const onTruncate = vi.fn();
+    const onDrop = vi.fn();
     const items = buildSchemaTreeContextMenuItems({
       kind: 'table',
       labels,
       handlers: {
         onOpen,
-        onCopyName: vi.fn(),
-        onEditStructure: vi.fn(),
+        onOpenStructure: vi.fn(),
         onFocusEr: vi.fn(),
+        onNewQuery: vi.fn(),
+        onCopyName: vi.fn(),
+        onCopyDdl: vi.fn(),
         onExport: vi.fn(),
         onBatchExport,
         onImport,
+        onTruncate,
+        onDrop,
       },
-      showEditStructure: true,
+      showOpenStructure: true,
       showErFocus: true,
       readOnly: false,
     });
     expect(ids(items)).toEqual([
       'open',
-      'copy-name',
-      'edit-structure',
+      'open-structure',
       'focus-er',
+      'new-query',
+      'copy-name',
+      'copy-ddl',
       'export',
       'batch-export',
       'import',
+      'separator',
+      'truncate',
+      'drop',
     ]);
     const open = items[0]!;
     if (open.kind === 'item') open.action();
     expect(onOpen).toHaveBeenCalledOnce();
   });
 
-  it('hides import on table when readOnly', () => {
+  it('hides import / truncate / drop on table when readOnly', () => {
     const items = buildSchemaTreeContextMenuItems({
       kind: 'table',
       labels,
       handlers: {
         onOpen: vi.fn(),
         onCopyName: vi.fn(),
+        onCopyDdl: vi.fn(),
+        onNewQuery: vi.fn(),
         onExport: vi.fn(),
         onBatchExport: vi.fn(),
         onImport: vi.fn(),
+        onTruncate: vi.fn(),
+        onDrop: vi.fn(),
       },
       readOnly: true,
     });
-    expect(ids(items)).toEqual(['open', 'copy-name', 'export', 'batch-export']);
+    expect(ids(items)).toEqual([
+      'open',
+      'new-query',
+      'copy-name',
+      'copy-ddl',
+      'export',
+      'batch-export',
+    ]);
   });
 
   it('omits optional table items when flags are false', () => {
@@ -79,31 +105,49 @@ describe('buildSchemaTreeContextMenuItems', () => {
       labels,
       handlers: {
         onOpen: vi.fn(),
-        onCopyName: vi.fn(),
-        onEditStructure: vi.fn(),
+        onOpenStructure: vi.fn(),
         onFocusEr: vi.fn(),
+        onNewQuery: vi.fn(),
+        onCopyName: vi.fn(),
+        onCopyDdl: vi.fn(),
         onExport: vi.fn(),
         onBatchExport: vi.fn(),
         onImport: vi.fn(),
+        onTruncate: vi.fn(),
+        onDrop: vi.fn(),
       },
-      showEditStructure: false,
+      showOpenStructure: false,
       showErFocus: false,
     });
-    expect(ids(items)).toEqual(['open', 'copy-name', 'export', 'batch-export', 'import']);
+    expect(ids(items)).toEqual([
+      'open',
+      'new-query',
+      'copy-name',
+      'copy-ddl',
+      'export',
+      'batch-export',
+      'import',
+      'separator',
+      'truncate',
+      'drop',
+    ]);
   });
 
-  it('builds view menu without import; export only when showExport', () => {
+  it('builds view menu with copy ddl / export / drop view', () => {
     const without = buildSchemaTreeContextMenuItems({
       kind: 'view',
       labels,
       handlers: {
         onOpen: vi.fn(),
         onCopyName: vi.fn(),
+        onCopyDdl: vi.fn(),
         onExport: vi.fn(),
         onImport: vi.fn(),
+        onDrop: vi.fn(),
       },
+      readOnly: true,
     });
-    expect(ids(without)).toEqual(['open', 'copy-name']);
+    expect(ids(without)).toEqual(['open', 'copy-name', 'copy-ddl']);
 
     const withExport = buildSchemaTreeContextMenuItems({
       kind: 'view',
@@ -111,17 +155,29 @@ describe('buildSchemaTreeContextMenuItems', () => {
       handlers: {
         onOpen: vi.fn(),
         onCopyName: vi.fn(),
+        onCopyDdl: vi.fn(),
         onExport: vi.fn(),
         onBatchExport: vi.fn(),
+        onDrop: vi.fn(),
       },
       showExport: true,
+      readOnly: false,
     });
-    expect(ids(withExport)).toEqual(['open', 'copy-name', 'export', 'batch-export']);
+    expect(ids(withExport)).toEqual([
+      'open',
+      'copy-name',
+      'copy-ddl',
+      'export',
+      'batch-export',
+      'separator',
+      'drop-view',
+    ]);
   });
 
-  it('builds database menu', () => {
+  it('builds database menu with import and new table when supported', () => {
     const onRefresh = vi.fn();
     const onBatchExport = vi.fn();
+    const onNewTable = vi.fn();
     const items = buildSchemaTreeContextMenuItems({
       kind: 'database',
       labels,
@@ -130,18 +186,32 @@ describe('buildSchemaTreeContextMenuItems', () => {
         onNewQuery: vi.fn(),
         onCopyDatabaseName: vi.fn(),
         onBatchExport,
+        onImport: vi.fn(),
+        onNewTable,
       },
+      readOnly: false,
+      showNewTable: true,
     });
-    expect(ids(items)).toEqual(['refresh', 'new-query', 'copy-database-name', 'batch-export']);
+    expect(ids(items)).toEqual([
+      'refresh',
+      'new-query',
+      'copy-database-name',
+      'batch-export',
+      'import',
+      'new-table',
+    ]);
     const first = items[0]!;
     if (first.kind === 'item') first.action();
     expect(onRefresh).toHaveBeenCalledOnce();
     const batch = items.find((i) => i.kind === 'item' && i.id === 'batch-export');
     if (batch?.kind === 'item') batch.action();
     expect(onBatchExport).toHaveBeenCalledOnce();
+    const create = items.find((i) => i.kind === 'item' && i.id === 'new-table');
+    if (create?.kind === 'item') create.action();
+    expect(onNewTable).toHaveBeenCalledOnce();
   });
 
-  it('builds blank menu and hides new table when read-only or unsupported', () => {
+  it('builds blank menu with import and hides new table when read-only or unsupported', () => {
     const withNew = buildSchemaTreeContextMenuItems({
       kind: 'blank',
       labels,
@@ -149,12 +219,13 @@ describe('buildSchemaTreeContextMenuItems', () => {
         onRefresh: vi.fn(),
         onNewQuery: vi.fn(),
         onBatchExport: vi.fn(),
+        onImport: vi.fn(),
         onNewTable: vi.fn(),
       },
       readOnly: false,
       showNewTable: true,
     });
-    expect(ids(withNew)).toEqual(['refresh', 'new-query', 'batch-export', 'new-table']);
+    expect(ids(withNew)).toEqual(['refresh', 'new-query', 'batch-export', 'import', 'new-table']);
 
     const readOnly = buildSchemaTreeContextMenuItems({
       kind: 'blank',
@@ -163,6 +234,7 @@ describe('buildSchemaTreeContextMenuItems', () => {
         onRefresh: vi.fn(),
         onNewQuery: vi.fn(),
         onBatchExport: vi.fn(),
+        onImport: vi.fn(),
         onNewTable: vi.fn(),
       },
       readOnly: true,
@@ -177,12 +249,13 @@ describe('buildSchemaTreeContextMenuItems', () => {
         onRefresh: vi.fn(),
         onNewQuery: vi.fn(),
         onBatchExport: vi.fn(),
+        onImport: vi.fn(),
         onNewTable: vi.fn(),
       },
       readOnly: false,
       showNewTable: false,
     });
-    expect(ids(noSupport)).toEqual(['refresh', 'new-query', 'batch-export']);
+    expect(ids(noSupport)).toEqual(['refresh', 'new-query', 'batch-export', 'import']);
   });
 
   it('skips items whose handlers are missing', () => {
@@ -190,7 +263,7 @@ describe('buildSchemaTreeContextMenuItems', () => {
       kind: 'table',
       labels,
       handlers: { onOpen: vi.fn() },
-      showEditStructure: true,
+      showOpenStructure: true,
       showErFocus: true,
     });
     expect(ids(items)).toEqual(['open']);
