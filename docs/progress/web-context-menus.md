@@ -18,7 +18,7 @@
 
 | ID | 功能 | 状态 | 单测 | 独立 QA | 覆盖率 | Commit |
 |----|------|------|------|---------|--------|--------|
-| F1 | Web 菜单定位 + 组件（二级菜单防截断） | in_progress | 17 PASS（开发自测） | 待独立 QA | lines 87.5% | — |
+| F1 | Web 菜单定位 + 组件（二级菜单防截断） | done | 17 PASS | [F1 QA](c86bf24c-a11a-4a42-8d30-b310c3fdeb2c) PASS | lines 87.5% | `e983514` |
 | F2 | MainWindow 连接/分组/空白右键改 Web 菜单 | pending | — | — | — | — |
 | F3 | Host `showNativeContextMenu` 全部改为 Web | pending | — | — | — | — |
 | F4 | Redis 驱动右键改 Web 菜单 | pending | — | — | — | — |
