@@ -4,7 +4,7 @@ import { ThemedIcon } from '../../components/ThemedIcon';
 import { Button } from '../../components/ui/Button';
 import { Select } from '../../components/ui/Select';
 import { useSettingsStore } from '../../stores/settingsStore';
-import { useThemeListener } from '../../hooks/useThemeListener';
+import { useSettings } from '../../hooks/useSettings';
 import { useI18n } from '../../hooks/useI18n';
 import { getUrlParam } from '../../lib/windowKind';
 import { cn } from '../../lib/cn';
@@ -79,7 +79,7 @@ const SECTIONS: { id: SettingsSection; labelKey: TranslationKey }[] = [
 ];
 
 export function SettingsWindow() {
-  useThemeListener();
+  useSettings();
   const { t } = useI18n();
 
   const settings = useSettingsStore((s) => s.settings);
@@ -262,7 +262,7 @@ export function SettingsWindow() {
 
                 <ToggleRow
                   label={t('settings.autoChartOnQuery')}
-                  checked={draft.autoChartOnQuery !== false}
+                  checked={draft.autoChartOnQuery === true}
                   onChange={(v) => updateField('autoChartOnQuery', v)}
                 />
                 <p className="text-xs text-fg-muted -mt-2">{t('settings.autoChartOnQueryHint')}</p>

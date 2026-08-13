@@ -146,7 +146,7 @@ const translations = {
   'connShare.passwordOptional': 'DataGrip / Navicat / DBeaver / DBX plain は任意',
   'connShare.passwordImportPlaceholder': 'DataZen / DBX encrypted / TablePlus で必須',
   'connShare.importFormatsHint':
-    'DataZen、DBX、DataGrip、Navicat、DBeaver、TablePlus に対応。パスワードが無い場合は再入力してください。',
+    'DataZen（.datazenconnection）、DBX、DataGrip、Navicat、DBeaver、TablePlus に対応。パスワードが無い場合は再入力してください。',
   'connShare.exportAction': '輸出…',
   'connShare.importAction': '輸入…',
   'connShare.exportSuccess': '{count} 接続をエクスポートしました',
@@ -393,6 +393,7 @@ const translations = {
   'query.totalTime': '合計時間',
   'query.history': '歴史',
   'query.placeholder': 'SQL クエリを入力…',
+  'query.namespaceLoading': 'オブジェクトを読み込み中…',
   'query.executing': '実行中…',
   'query.streamingRows': '{n} 行を読み込みました…',
   'query.result': '結果',

@@ -233,11 +233,11 @@ fn merge_group_lists(existing: &[String], incoming: &[String]) -> (Vec<String>, 
 
 fn build_encrypted_connections_export(
     connections: &[ConnectionConfig],
-    groups: &[String],
+    _groups: &[String],
     password: &str,
-) -> Result<String, CommandError> {
+) -> Result<Vec<u8>, CommandError> {
     validate_share_password(password)?;
-    connection_import::build_encrypted_export(connections, groups, password)
+    connection_import::build_tableplus_export(connections, password)
 }
 
 #[tauri::command]
@@ -252,9 +252,9 @@ pub async fn export_connections(
     let groups = state.store.get_groups().await;
     let count = connections.len() as u32;
 
-    let json = build_encrypted_connections_export(&connections, &groups, &password)?;
+    let bytes = build_encrypted_connections_export(&connections, &groups, &password)?;
 
-    tokio::fs::write(PathBuf::from(&path), json.as_bytes())
+    tokio::fs::write(PathBuf::from(&path), &bytes)
         .await
         .cmd_err("export_connections")?;
 
@@ -262,7 +262,7 @@ pub async fn export_connections(
     Ok(count)
 }
 
-/// Native save dialog + encrypted JSON export. Returns connection count if saved, `None` if cancelled.
+/// Native save dialog + RNCryptor `.datazenconnection` export. Returns connection count if saved, `None` if cancelled.
 #[tauri::command]
 pub async fn export_connections_with_dialog(
     app: AppHandle,
@@ -274,25 +274,26 @@ pub async fn export_connections_with_dialog(
 
     validate_share_password(&password)?;
 
-    let picked = app
-        .dialog()
-        .file()
-        .add_filter("JSON", &["json"])
-        .set_file_name(&default_file_name)
-        .blocking_save_file();
-    let Some(fp) = picked else {
+    let app_for_dialog = app.clone();
+    let picked = run_blocking_dialog(move || {
+        app_for_dialog
+            .dialog()
+            .file()
+            .add_filter("DataZen", &["datazenconnection"])
+            .set_file_name(&default_file_name)
+            .blocking_save_file()
+    })
+    .await?;
+    let Some(dest) = dialog_file_path_to_buf(picked)? else {
         return Ok(None);
     };
-    let dest = fp
-        .into_path()
-        .map_err(|e| CommandError::Validation(format!("Invalid dialog path: {e}")))?;
 
     let connections = state.store.get_connections().await;
     let groups = state.store.get_groups().await;
     let count = connections.len() as u32;
-    let json = build_encrypted_connections_export(&connections, &groups, &password)?;
+    let bytes = build_encrypted_connections_export(&connections, &groups, &password)?;
 
-    tokio::fs::write(dest, json.as_bytes())
+    tokio::fs::write(dest, &bytes)
         .await
         .cmd_err("export_connections_with_dialog")?;
 
@@ -380,25 +381,32 @@ pub async fn import_connections_with_dialog(
 ) -> Result<Option<ImportConnectionsResult>, CommandError> {
     use tauri_plugin_dialog::DialogExt;
 
-    let picked = app
-        .dialog()
-        .file()
-        .add_filter(
-            "Connections",
-            &["json", "xml", "ncx", "tableplusconnection"],
-        )
-        .add_filter("DataZen / DBX JSON", &["json"])
-        .add_filter("DataGrip XML", &["xml"])
-        .add_filter("Navicat NCX", &["ncx", "xml"])
-        .add_filter("DBeaver JSON", &["json"])
-        .add_filter("TablePlus", &["tableplusconnection"])
-        .blocking_pick_file();
-    let Some(fp) = picked else {
+    let app_for_dialog = app.clone();
+    let picked = run_blocking_dialog(move || {
+        app_for_dialog
+            .dialog()
+            .file()
+            .add_filter(
+                "Connections",
+                &[
+                    "json",
+                    "xml",
+                    "ncx",
+                    "datazenconnection",
+                    "tableplusconnection",
+                ],
+            )
+            .add_filter("DataZen", &["datazenconnection", "json"])
+            .add_filter("DataGrip XML", &["xml"])
+            .add_filter("Navicat NCX", &["ncx", "xml"])
+            .add_filter("DBeaver JSON", &["json"])
+            .add_filter("TablePlus", &["tableplusconnection"])
+            .blocking_pick_file()
+    })
+    .await?;
+    let Some(source) = dialog_file_path_to_buf(picked)? else {
         return Ok(None);
     };
-    let source = fp
-        .into_path()
-        .map_err(|e| CommandError::Validation(format!("Invalid dialog path: {e}")))?;
 
     let bytes = tokio::fs::read(&source)
         .await
@@ -459,9 +467,38 @@ fn import_file_filters(app: ImportApp) -> (&'static str, &'static [&'static str]
     }
 }
 
+/// Convert a native dialog result into a filesystem path. `None` means cancelled.
+pub(crate) fn dialog_file_path_to_buf(
+    picked: Option<tauri_plugin_dialog::FilePath>,
+) -> Result<Option<PathBuf>, CommandError> {
+    let Some(fp) = picked else {
+        return Ok(None);
+    };
+    fp.into_path()
+        .map(Some)
+        .map_err(|e| CommandError::Validation(format!("Invalid dialog path: {e}")))
+}
+
+/// Run a blocking native dialog on a worker thread.
+///
+/// Sync IPC + `blocking_pick_*` freezes macOS (main thread waits for Finder,
+/// Finder waits for the main thread). Callback `pick_file` + `oneshot` await
+/// also freezes: the plugin `block_on`s the dialog on the same runtime the
+/// command is waiting on. Async command + `spawn_blocking` + `blocking_pick_*`
+/// is the pattern tauri-plugin-dialog documents for async commands.
+async fn run_blocking_dialog<T, F>(f: F) -> Result<T, CommandError>
+where
+    F: FnOnce() -> T + Send + 'static,
+    T: Send + 'static,
+{
+    tauri::async_runtime::spawn_blocking(f)
+        .await
+        .map_err(|e| CommandError::Internal(format!("native dialog task: {e}")))
+}
+
 /// Native file or folder picker for competitor data/install paths. Path never crosses as a write.
 #[tauri::command]
-pub fn pick_connection_import_path_with_dialog(
+pub async fn pick_connection_import_path_with_dialog(
     app: AppHandle,
     mode: String,
     source: String,
@@ -469,22 +506,20 @@ pub fn pick_connection_import_path_with_dialog(
     use tauri_plugin_dialog::DialogExt;
 
     let import_app = ImportApp::parse(&source)?;
-    let picked = if mode.trim().eq_ignore_ascii_case("folder") {
-        app.dialog().file().blocking_pick_folder()
-    } else {
-        let (label, exts) = import_file_filters(import_app);
-        app.dialog()
-            .file()
-            .add_filter(label, exts)
-            .blocking_pick_file()
-    };
-    let Some(fp) = picked else {
-        return Ok(None);
-    };
-    let path = fp
-        .into_path()
-        .map_err(|e| CommandError::Validation(format!("Invalid dialog path: {e}")))?;
-    Ok(Some(path.to_string_lossy().into_owned()))
+    let is_folder = mode.trim().eq_ignore_ascii_case("folder");
+    let picked = run_blocking_dialog(move || {
+        if is_folder {
+            app.dialog().file().blocking_pick_folder()
+        } else {
+            let (label, exts) = import_file_filters(import_app);
+            app.dialog()
+                .file()
+                .add_filter(label, exts)
+                .blocking_pick_file()
+        }
+    })
+    .await?;
+    Ok(dialog_file_path_to_buf(picked)?.map(|p| p.to_string_lossy().into_owned()))
 }
 
 #[tauri::command]
@@ -721,6 +756,33 @@ mod tests {
     }
 
     #[test]
+    fn dialog_file_path_to_buf_none_is_cancel() {
+        assert_eq!(dialog_file_path_to_buf(None).unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn run_blocking_dialog_runs_off_caller() {
+        let value = run_blocking_dialog(|| 7u8).await.unwrap();
+        assert_eq!(value, 7);
+    }
+
+    #[test]
+    fn import_file_filters_match_source_apps() {
+        assert_eq!(
+            import_file_filters(ImportApp::DataGrip),
+            ("DataGrip", &["xml"][..])
+        );
+        assert_eq!(
+            import_file_filters(ImportApp::TablePlus),
+            ("TablePlus", &["plist", "tableplusconnection"][..])
+        );
+        assert_eq!(
+            import_file_filters(ImportApp::Navicat),
+            ("Navicat", &["ncx", "xml"][..])
+        );
+    }
+
+    #[test]
     fn merge_connections_overwrites_by_id() {
         use crate::db::{ConnectionConfig, SslMode};
 
@@ -834,12 +896,27 @@ mod tests {
             options: None,
             read_only: false,
         };
-        let json =
+        let bytes =
             build_encrypted_connections_export(&[conn], &["Prod".into()], "share-secret").unwrap();
-        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
-        assert_eq!(parsed["encrypted"], true);
-        assert!(parsed["connections"].is_array());
-        assert!(parsed["groups"].is_array());
+        assert_eq!(&bytes[0..2], &[0x03, 0x01]);
+        let parsed = parse_import_file(
+            Path::new("datazen-connections.datazenconnection"),
+            &bytes,
+            Some("share-secret"),
+        )
+        .unwrap();
+        let parsed_tableplus = parse_import_file(
+            Path::new("legacy.tableplusconnection"),
+            &bytes,
+            Some("share-secret"),
+        )
+        .unwrap();
+        assert_eq!(parsed_tableplus.connections[0].name, "Demo");
+        assert_eq!(parsed.format, connection_import::ImportFormat::TablePlus);
+        assert_eq!(parsed.connections.len(), 1);
+        assert_eq!(parsed.connections[0].name, "Demo");
+        assert_eq!(parsed.connections[0].password.as_deref(), Some("pw"));
+        assert_eq!(parsed.connections[0].group.as_deref(), Some("Prod"));
     }
 
     #[tokio::test]

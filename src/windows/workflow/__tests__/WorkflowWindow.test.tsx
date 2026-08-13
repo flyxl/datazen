@@ -1,7 +1,11 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { render, cleanup, waitFor, fireEvent, screen, within } from '@testing-library/react';
 import { WorkflowWindow } from '../WorkflowWindow';
-import type { StepExecutionResult, WorkflowExecutionResult, WorkflowListItem } from '../../../types';
+import type {
+  StepExecutionResult,
+  WorkflowExecutionResult,
+  WorkflowListItem,
+} from '../../../types';
 
 const {
   loadWorkflowsMock,
@@ -36,7 +40,13 @@ const {
         name: 'Vars Workflow',
         description: '',
         variables: [
-          { name: 'q', type: 'string', description: 'query text', required: true, default: 'hello' },
+          {
+            name: 'q',
+            type: 'string',
+            description: 'query text',
+            required: true,
+            default: 'hello',
+          },
           { name: 'db', type: 'connection', description: 'conn', required: false },
         ],
       },
@@ -65,9 +75,11 @@ const {
     workflowReloadMock: vi.fn().mockResolvedValue(undefined),
     workflowGetMock: vi.fn(),
     workflowHistoryClearMock: vi.fn().mockResolvedValue(undefined),
-    getConnectionsMock: vi.fn().mockResolvedValue([
-      { id: 'c1', name: 'PG', databaseType: 'postgresql', database: 'postgres' },
-    ]),
+    getConnectionsMock: vi
+      .fn()
+      .mockResolvedValue([
+        { id: 'c1', name: 'PG', databaseType: 'postgresql', database: 'postgres' },
+      ]),
     openWorkflowsDirMock: vi.fn().mockResolvedValue(undefined),
     openDocsWindowMock: vi.fn(),
     aiStoreState,
@@ -78,8 +90,8 @@ vi.mock('../../../hooks/useI18n', () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));
 
-vi.mock('../../../hooks/useThemeListener', () => ({
-  useThemeListener: () => {},
+vi.mock('../../../hooks/useSettings', () => ({
+  useSettings: () => {},
 }));
 
 vi.mock('../../../hooks/useResizable', () => ({
@@ -156,13 +168,7 @@ vi.mock('../../../components/ui/Select', () => ({
 }));
 
 vi.mock('../../../components/TitleBar', () => ({
-  TitleBar: ({
-    title,
-    leftContent,
-  }: {
-    title: string;
-    leftContent?: React.ReactNode;
-  }) => (
+  TitleBar: ({ title, leftContent }: { title: string; leftContent?: React.ReactNode }) => (
     <div data-testid="title-bar">
       <span>{title}</span>
       {leftContent}
@@ -198,13 +204,7 @@ vi.mock('../../../components/chart/ChartView', () => ({
 }));
 
 vi.mock('../../../components/ai/WorkflowChatPanel', () => ({
-  WorkflowChatPanel: ({
-    onSaved,
-    onBack,
-  }: {
-    onSaved: () => void;
-    onBack: () => void;
-  }) => (
+  WorkflowChatPanel: ({ onSaved, onBack }: { onSaved: () => void; onBack: () => void }) => (
     <div data-testid="wf-chat">
       <button type="button" onClick={onSaved}>
         chat-saved
@@ -220,13 +220,7 @@ vi.mock('../WorkflowForm', async () => {
   const actual = await vi.importActual<typeof import('../WorkflowForm')>('../WorkflowForm');
   return {
     ...actual,
-    WorkflowForm: ({
-      onSave,
-      onCancel,
-    }: {
-      onSave: () => void;
-      onCancel: () => void;
-    }) => (
+    WorkflowForm: ({ onSave, onCancel }: { onSave: () => void; onCancel: () => void }) => (
       <div data-testid="workflow-form">
         <button type="button" onClick={onSave}>
           form-save
@@ -285,9 +279,9 @@ async function executeWithResult(result: WorkflowExecutionResult | null) {
 }
 
 function clickStepTab(stepId: string) {
-  const btn = screen.getAllByRole('button').find(
-    (b) => b.textContent?.includes(stepId) && b.textContent?.includes('['),
-  );
+  const btn = screen
+    .getAllByRole('button')
+    .find((b) => b.textContent?.includes(stepId) && b.textContent?.includes('['));
   expect(btn).toBeTruthy();
   fireEvent.click(btn!);
 }
@@ -406,7 +400,9 @@ describe('WorkflowWindow', () => {
     fireEvent.click(screen.getByText('workflows.history.title'));
     await waitFor(() => expect(workflowHistoryListMock).toHaveBeenCalled());
     fireEvent.click(screen.getByText('Bad History'));
-    await waitFor(() => expect(screen.getByText('Error: history fetch failed')).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByText('Error: history fetch failed')).toBeInTheDocument(),
+    );
   });
 
   it('reuses existing history panel when clicking same entry twice', async () => {
@@ -563,7 +559,10 @@ describe('WorkflowWindow', () => {
         status: 'success',
         executionTimeMs: 99,
         result: {
-          columns: [{ name: 'name', dataType: 'text' }, { name: 'val', dataType: 'int4' }],
+          columns: [
+            { name: 'name', dataType: 'text' },
+            { name: 'val', dataType: 'int4' },
+          ],
           rows: manyRows,
           rows_count: 1001,
         },
@@ -630,7 +629,9 @@ describe('WorkflowWindow', () => {
     });
     workflowSaveMock.mockResolvedValue(undefined);
     await renderAndLoad();
-    fireEvent.click(within(screen.getByText('Demo Workflow').closest('div.group')!).getAllByRole('button')[0]);
+    fireEvent.click(
+      within(screen.getByText('Demo Workflow').closest('div.group')!).getAllByRole('button')[0],
+    );
     await waitFor(() => expect(screen.getByTestId('workflow-form')).toBeInTheDocument());
     fireEvent.click(screen.getByText('form-save'));
     await waitFor(() => expect(workflowSaveMock).toHaveBeenCalled());
@@ -648,7 +649,9 @@ describe('WorkflowWindow', () => {
     workflowSaveMock.mockRejectedValue(new Error('save failed'));
 
     await renderAndLoad();
-    fireEvent.click(within(screen.getByText('Demo Workflow').closest('div.group')!).getAllByRole('button')[0]);
+    fireEvent.click(
+      within(screen.getByText('Demo Workflow').closest('div.group')!).getAllByRole('button')[0],
+    );
     await waitFor(() => expect(screen.getByTestId('workflow-form')).toBeInTheDocument());
     fireEvent.click(screen.getByText('form-save'));
     await waitFor(() => expect(screen.getByText('Error: save failed')).toBeInTheDocument());
@@ -700,7 +703,9 @@ describe('WorkflowWindow', () => {
     await selectWorkflow('Demo Workflow');
     expect(screen.getByText('workflows.execute')).toBeInTheDocument();
 
-    const createTab = screen.getAllByRole('button').find((b) => b.textContent?.includes('workflows.create'));
+    const createTab = screen
+      .getAllByRole('button')
+      .find((b) => b.textContent?.includes('workflows.create'));
     expect(createTab).toBeTruthy();
     fireEvent.click(createTab!);
     await waitFor(() => expect(screen.getByTestId('workflow-form')).toBeInTheDocument());

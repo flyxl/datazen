@@ -4,11 +4,13 @@ import { EditorState, Compartment } from '@codemirror/state';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { sql, PostgreSQL, MySQL, MariaSQL, SQLite, StandardSQL } from '@codemirror/lang-sql';
 import type { SQLDialect } from '@codemirror/lang-sql';
+import { contextualSchemaCompletion } from '../lib/sqlCompletionContext';
 import {
   autocompletion,
   closeBrackets,
   acceptCompletion,
   completeFromList,
+  startCompletion,
 } from '@codemirror/autocomplete';
 import { sqlFunctionCompletions } from '../lib/sqlCompletions';
 import { searchKeymap } from '@codemirror/search';
@@ -21,6 +23,8 @@ import {
 import { useSettingsStore } from '../stores/settingsStore';
 import { DB_REGISTRY } from '../lib/databaseTypes';
 import { parseQualifiedPathParents } from '../lib/sqlPathPrefix';
+import { namespaceLoadingCompletionSource } from '../lib/namespaceLoadingCompletion';
+import { t } from '../locales/t';
 import type { SqlNamespace } from '../lib/sqlNamespace';
 import type { DatabaseType } from '../types';
 import { toggleSqlLineComments } from '../lib/sqlEditorContextMenu';
@@ -116,16 +120,37 @@ const CM_DIALECT_MAP: Record<string, SQLDialect> = {
 };
 
 /** Resolve CodeMirror SQL dialect; plugins may map via `sqlDialect` (e.g. kiwi → mysql). */
-function sqlEditorExtensions(databaseType?: string, schema?: SqlSchema) {
+function sqlEditorExtensions(
+  databaseType?: string,
+  schema?: SqlSchema,
+  namespaceLoading?: boolean,
+  defaultSchema?: string,
+  defaultTable?: string,
+) {
   const dialect = resolveCmDialect(databaseType);
   return [
+    // Do not pass `schema` into sql() — its built-in source mixes tables into WHERE.
     sql({
       dialect,
       upperCaseKeywords: true,
-      schema: schema ?? {},
+    }),
+    dialect.language.data.of({
+      autocomplete: contextualSchemaCompletion({
+        dialect,
+        schema: schema ?? {},
+        defaultSchema,
+        defaultTable,
+      }),
     }),
     dialect.language.data.of({
       autocomplete: completeFromList(sqlFunctionCompletions(databaseType)),
+    }),
+    // CompletionSource is not an Extension — must be registered via language data.
+    dialect.language.data.of({
+      autocomplete: namespaceLoadingCompletionSource(
+        Boolean(namespaceLoading),
+        t('query.namespaceLoading'),
+      ),
     }),
   ];
 }
@@ -148,6 +173,12 @@ interface SqlEditorProps {
   placeholder?: string;
   schema?: SqlSchema;
   databaseType?: string;
+  /** True while a lazy namespace path is fetching for autocomplete. */
+  namespaceLoading?: boolean;
+  /** CodeMirror: tables in this schema complete without a prefix (`public.users` → `users`). */
+  defaultSchema?: string;
+  /** CodeMirror: columns of this table complete at the top level (WHERE / SELECT). */
+  defaultTable?: string;
 }
 
 function parentsEqual(a: readonly string[], b: readonly string[]): boolean {
@@ -165,6 +196,9 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
     placeholder,
     schema,
     databaseType,
+    namespaceLoading,
+    defaultSchema,
+    defaultTable,
   },
   ref,
 ) {
@@ -262,7 +296,9 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
           activateOnTyping: true,
           defaultKeymap: true,
         }),
-        sqlCompartment.current.of(sqlEditorExtensions(databaseType, schema)),
+        sqlCompartment.current.of(
+          sqlEditorExtensions(databaseType, schema, namespaceLoading, defaultSchema, defaultTable),
+        ),
         themeCompartment.current.of(themeExtensions(config)),
         EditorView.lineWrapping,
         EditorView.domEventHandlers({
@@ -302,6 +338,12 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
 
     const view = new EditorView({ state, parent: containerRef.current });
     viewRef.current = view;
+    const initialParents = parseQualifiedPathParents(
+      view.state.doc.toString(),
+      view.state.selection.main.head,
+    );
+    lastParentsRef.current = initialParents;
+    onQualifiedPathRef.current?.(initialParents);
 
     const observer = new MutationObserver(() => {
       view.dispatch({
@@ -340,14 +382,17 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
     return () => document.removeEventListener('datazen:theme-pack-changed', reconfigure);
   }, []);
 
-  // Dynamically update schema when it changes
+  // Dynamically update schema / loading completions
   useEffect(() => {
     const view = viewRef.current;
     if (!view) return;
     view.dispatch({
-      effects: sqlCompartment.current.reconfigure(sqlEditorExtensions(databaseType, schema)),
+      effects: sqlCompartment.current.reconfigure(
+        sqlEditorExtensions(databaseType, schema, namespaceLoading, defaultSchema, defaultTable),
+      ),
     });
-  }, [schema, databaseType]);
+    if (namespaceLoading) startCompletion(view);
+  }, [schema, databaseType, namespaceLoading, defaultSchema, defaultTable]);
 
   useEffect(() => {
     const view = viewRef.current;

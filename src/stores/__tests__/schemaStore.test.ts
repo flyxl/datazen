@@ -44,11 +44,13 @@ describe('computeIsMultiDatabase / resolvePreferredDatabase / resolveVisibleData
       lockedToConfigured: false,
     });
     // Kiwi-style: preferred is instance domain, not in logical DB list → do not lock
-    expect(resolveVisibleDatabases(['app_db', 'other'], 'afi-ph-useraccount-dbreader.aku')).toEqual({
-      databases: ['app_db', 'other'],
-      preferred: 'app_db',
-      lockedToConfigured: false,
-    });
+    expect(resolveVisibleDatabases(['app_db', 'other'], 'afi-ph-useraccount-dbreader.aku')).toEqual(
+      {
+        databases: ['app_db', 'other'],
+        preferred: 'app_db',
+        lockedToConfigured: false,
+      },
+    );
   });
 });
 
@@ -282,6 +284,12 @@ describe('schemaStore namespace merge APIs', () => {
     expect(useSchemaStore.getState().loadedPaths.has('db')).toBe(true);
   });
 
+  it('cachePathItems stores get_tables rows by fetch path', async () => {
+    const items = [{ name: '558/hive', tableType: 'table', schema: 'CATALOG', rowCount: null }];
+    useSchemaStore.getState().cachePathItems('558', items);
+    expect(useSchemaStore.getState().pathItems['558']).toEqual(items);
+  });
+
   it('registerPathAliases maps name to id', async () => {
     useSchemaStore.getState().registerPathAliases([{ name: 'presto_afi_data', id: '558' }]);
     expect(useSchemaStore.getState().pathAliases).toEqual({ presto_afi_data: '558' });
@@ -293,9 +301,11 @@ describe('schemaStore namespace merge APIs', () => {
     useSchemaStore.getState().registerPathAliases([{ name: 'presto', id: '558' }]);
     useSchemaStore.getState().mergeNamespace(['presto', 'hive', 'snap'], 'tables', ['t1']);
     const before = structuredClone(useSchemaStore.getState().namespaceTree);
-    useSchemaStore.getState().setLoadedTables('558/hive/snap', [
-      { name: 't1', tableType: 'table', schema: 'snap', rowCount: null },
-    ]);
+    useSchemaStore
+      .getState()
+      .setLoadedTables('558/hive/snap', [
+        { name: 't1', tableType: 'table', schema: 'snap', rowCount: null },
+      ]);
     expect(useSchemaStore.getState().namespaceOwnedByPlugin).toBe(true);
     expect(useSchemaStore.getState().namespaceTree).toEqual(before);
     expect(useSchemaStore.getState().tables.map((t) => t.name)).toEqual(['t1']);
@@ -303,17 +313,21 @@ describe('schemaStore namespace merge APIs', () => {
 
   it('setLoadedTables merges mysql-style database.table namespace', async () => {
     useSchemaStore.setState({ isMultiDatabase: true });
-    useSchemaStore.getState().setLoadedTables('app', [
-      { name: 'users', tableType: 'table', schema: null, rowCount: null },
-    ]);
+    useSchemaStore
+      .getState()
+      .setLoadedTables('app', [
+        { name: 'users', tableType: 'table', schema: null, rowCount: null },
+      ]);
     expect(useSchemaStore.getState().namespaceTree).toEqual({ app: { users: [] } });
   });
 
   it('setLoadedTables groups postgresql schemas under database when multi-db', async () => {
     useSchemaStore.setState({ isMultiDatabase: true });
-    useSchemaStore.getState().setLoadedTables('warehouse', [
-      { name: 't', tableType: 'table', schema: 'public', rowCount: null },
-    ]);
+    useSchemaStore
+      .getState()
+      .setLoadedTables('warehouse', [
+        { name: 't', tableType: 'table', schema: 'public', rowCount: null },
+      ]);
     expect(useSchemaStore.getState().namespaceTree).toEqual({
       warehouse: { public: { t: [] } },
     });
@@ -321,9 +335,11 @@ describe('schemaStore namespace merge APIs', () => {
 
   it('setLoadedTables uses schema.table when single-db postgresql', async () => {
     useSchemaStore.setState({ isMultiDatabase: false });
-    useSchemaStore.getState().setLoadedTables('warehouse', [
-      { name: 't', tableType: 'table', schema: 'public', rowCount: null },
-    ]);
+    useSchemaStore
+      .getState()
+      .setLoadedTables('warehouse', [
+        { name: 't', tableType: 'table', schema: 'public', rowCount: null },
+      ]);
     expect(useSchemaStore.getState().namespaceTree).toEqual({ public: { t: [] } });
   });
 
@@ -335,5 +351,68 @@ describe('schemaStore namespace merge APIs', () => {
     ]);
     expect(useSchemaStore.getState().namespaceTree).toEqual({ public: { t: [], v: [] } });
     expect(useSchemaStore.getState().views.map((v) => v.name)).toEqual(['v']);
+  });
+});
+
+describe('schemaStore.ensureNamespacePath ensuringCount', () => {
+  let useSchemaStore: typeof import('../../stores/schemaStore').useSchemaStore;
+  let databaseCommands: typeof import('../../commands/database').databaseCommands;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    vi.clearAllMocks();
+    const storeMod = await import('../../stores/schemaStore');
+    useSchemaStore = storeMod.useSchemaStore;
+    const cmdMod = await import('../../commands/database');
+    databaseCommands = cmdMod.databaseCommands;
+    useSchemaStore.getState().reset();
+  });
+
+  it('increments while a namespace fetch is in flight', async () => {
+    let release!: (
+      value: { name: string; tableType: string; schema: string; rowCount: null }[],
+    ) => void;
+    vi.mocked(databaseCommands.getTables).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+
+    useSchemaStore.setState({
+      connectionId: 'c1',
+      databaseType: 'mysql',
+      currentDatabase: 'app',
+      databases: ['app'],
+      isMultiDatabase: false,
+      loadedPaths: new Set(),
+      ensuringCount: 0,
+    });
+
+    const pending = useSchemaStore.getState().ensureNamespacePath(['app']);
+    await vi.waitFor(() => {
+      expect(typeof release).toBe('function');
+    });
+    expect(useSchemaStore.getState().ensuringCount).toBe(1);
+
+    release([]);
+    await pending;
+    expect(useSchemaStore.getState().ensuringCount).toBe(0);
+  });
+
+  it('does not increment when the path is already loaded', async () => {
+    useSchemaStore.setState({
+      connectionId: 'c1',
+      databaseType: 'mysql',
+      currentDatabase: 'app',
+      databases: ['app'],
+      isMultiDatabase: false,
+      loadedPaths: new Set(['app']),
+      ensuringCount: 0,
+    });
+
+    await useSchemaStore.getState().ensureNamespacePath(['app']);
+    expect(useSchemaStore.getState().ensuringCount).toBe(0);
+    expect(databaseCommands.getTables).not.toHaveBeenCalled();
   });
 });

@@ -68,8 +68,7 @@ pub fn decrypt_password(data: &[u8], password: &str) -> Result<Vec<u8>, CommandE
     Ok(plain.to_vec())
 }
 
-/// Encrypt for unit tests / fixtures.
-#[cfg(test)]
+/// Encrypt plaintext with RNCryptor v3 (TablePlus `.tableplusconnection`).
 pub fn encrypt_password(plaintext: &[u8], password: &str) -> Result<Vec<u8>, CommandError> {
     use cbc::cipher::BlockEncryptMut;
     use rand::RngCore;

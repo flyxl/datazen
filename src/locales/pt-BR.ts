@@ -145,7 +145,7 @@ const translations = {
   'connShare.passwordOptional': 'opcional para DataGrip / Navicat / DBeaver / DBX plain',
   'connShare.passwordImportPlaceholder': 'Obrigatório para DataZen / DBX encrypted / TablePlus',
   'connShare.importFormatsHint':
-    'Suporta DataZen, DBX, DataGrip, Navicat, DBeaver e TablePlus. Redigite senhas quando ausentes.',
+    'Suporta DataZen (.datazenconnection), DBX, DataGrip, Navicat, DBeaver e TablePlus. Redigite senhas quando ausentes.',
   'connShare.exportAction': 'Exportar…',
   'connShare.importAction': 'Importar…',
   'connShare.exportSuccess': 'Conexões {count} exportadas',
@@ -394,6 +394,7 @@ const translations = {
   'query.totalTime': 'Tempo total',
   'query.history': 'História',
   'query.placeholder': 'Digite consulta SQL…',
+  'query.namespaceLoading': 'Carregando objetos…',
   'query.executing': 'Executando…',
   'query.streamingRows': '{n} linhas carregadas…',
   'query.result': 'Resultado',

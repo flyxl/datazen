@@ -45,6 +45,9 @@ struct TablePlusConnection {
     private_key: Option<String>,
     #[serde(default, alias = "PrivateKeyPath")]
     private_key_path: Option<String>,
+    /// DataZen round-trip; TablePlus ignores unknown keys.
+    #[serde(default)]
+    group: Option<String>,
 }
 
 fn truthy(v: &Option<serde_json::Value>) -> bool {
@@ -67,31 +70,115 @@ fn as_port(v: &Option<serde_json::Value>) -> Option<u16> {
     }
 }
 
-fn map_driver(driver: &str) -> Option<&'static str> {
-    let d = driver.to_ascii_lowercase();
+fn map_driver(driver: &str) -> Option<String> {
+    let original = driver.trim();
+    let d = original.to_ascii_lowercase();
     if d.contains("maria") {
-        Some("mariadb")
+        Some("mariadb".into())
     } else if d.contains("mysql") {
-        Some("mysql")
+        Some("mysql".into())
     } else if d.contains("postgres") || d.contains("cockroach") || d.contains("redshift") {
-        Some("postgresql")
+        Some("postgresql".into())
     } else if d.contains("sqlite") {
-        Some("sqlite")
+        Some("sqlite".into())
     } else if d.contains("sql server") || d.contains("sqlserver") || d.contains("mssql") {
-        Some("sqlserver")
+        Some("sqlserver".into())
     } else if d.contains("mongo") {
-        Some("mongodb")
+        Some("mongodb".into())
     } else if d.contains("redis") {
-        Some("redis")
+        Some("redis".into())
     } else if d.contains("clickhouse") {
-        Some("clickhouse")
+        Some("clickhouse".into())
     } else if d.contains("duckdb") {
-        Some("duckdb")
+        Some("duckdb".into())
     } else if d.contains("elastic") {
-        Some("elasticsearch")
+        Some("elasticsearch".into())
+    } else if !original.is_empty()
+        && original
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+    {
+        // DataZen-only types we exported as lowercase ids (kiwi, superset, …).
+        Some(original.to_string())
     } else {
         None
     }
+}
+
+fn export_driver(db_type: &str) -> String {
+    match db_type {
+        "postgresql" | "questdb" | "cloudberry" => "PostgreSQL".into(),
+        "mysql" | "doris" | "starrocks" | "manticore" => "MySQL".into(),
+        "mariadb" => "MariaDB".into(),
+        "sqlite" => "SQLite".into(),
+        "sqlserver" => "SQL Server".into(),
+        "mongodb" => "MongoDB".into(),
+        "redis" => "Redis".into(),
+        "clickhouse" => "ClickHouse".into(),
+        "duckdb" => "DuckDB".into(),
+        "elasticsearch" => "Elasticsearch".into(),
+        other => other.to_string(),
+    }
+}
+
+fn is_file_type(db_type: &str) -> bool {
+    db_type == "sqlite" || db_type == "duckdb"
+}
+
+/// RNCryptor v3 `.tableplusconnection` bytes (JSON array payload).
+pub fn export_connections(
+    connections: &[ConnectionConfig],
+    password: &str,
+) -> Result<Vec<u8>, CommandError> {
+    if password.trim().is_empty() {
+        return Err(CommandError::Validation(
+            "Password is required for TablePlus export".into(),
+        ));
+    }
+    let items: Vec<serde_json::Value> = connections
+        .iter()
+        .map(connection_to_tableplus_json)
+        .collect();
+    let json = serde_json::to_vec(&items)
+        .map_err(|e| CommandError::Internal(format!("TablePlus export JSON failed: {e}")))?;
+    rncryptor::encrypt_password(&json, password)
+}
+
+fn connection_to_tableplus_json(conn: &ConnectionConfig) -> serde_json::Value {
+    let file = is_file_type(&conn.database_type);
+    let ssh = conn.ssh_tunnel.as_ref().filter(|s| s.enabled);
+    let mut obj = serde_json::json!({
+        "ID": conn.id,
+        "ConnectionName": conn.name,
+        "Driver": export_driver(&conn.database_type),
+        "DatabaseUser": conn.username.clone().unwrap_or_default(),
+        "DatabasePassword": conn.password.clone().unwrap_or_default(),
+        "isOverSSH": ssh.is_some(),
+    });
+    if file {
+        obj["DatabasePath"] = serde_json::Value::String(conn.database.clone().unwrap_or_default());
+    } else {
+        obj["DatabaseHost"] =
+            serde_json::Value::String(conn.host.clone().unwrap_or_else(|| "127.0.0.1".into()));
+        obj["DatabasePort"] =
+            serde_json::Value::String(conn.port.map(|p| p.to_string()).unwrap_or_default());
+        obj["DatabaseName"] = serde_json::Value::String(conn.database.clone().unwrap_or_default());
+    }
+    if let Some(ssh) = ssh {
+        obj["ServerAddress"] = serde_json::Value::String(ssh.host.clone());
+        obj["ServerPort"] = serde_json::Value::String(ssh.port.to_string());
+        obj["ServerUser"] = serde_json::Value::String(ssh.username.clone());
+        obj["ServerPassword"] = serde_json::Value::String(ssh.password.clone().unwrap_or_default());
+        let use_key = ssh.auth_method == "private_key";
+        obj["isUsePrivateKey"] = serde_json::Value::Bool(use_key);
+        if let Some(path) = ssh.private_key_path.as_ref() {
+            obj["PrivateKeyPath"] = serde_json::Value::String(path.clone());
+        }
+    }
+    if let Some(group) = conn.group.as_ref().filter(|g| !g.is_empty()) {
+        obj["Group"] = serde_json::Value::String(group.clone());
+    }
+    obj
 }
 
 fn default_port(db_type: &str) -> Option<u16> {
@@ -361,7 +448,7 @@ fn from_items(items: Vec<TablePlusConnection>) -> Result<ParsedImport, CommandEr
             continue;
         };
 
-        let is_file = db_type == "sqlite" || db_type == "duckdb";
+        let is_file = is_file_type(&db_type);
         let path = item
             .database_path
             .as_deref()
@@ -439,7 +526,7 @@ fn from_items(items: Vec<TablePlusConnection>) -> Result<ParsedImport, CommandEr
         connections.push(ConnectionConfig {
             id,
             name,
-            database_type: db_type.into(),
+            database_type: db_type.clone(),
             host: if is_file {
                 None
             } else {
@@ -454,7 +541,7 @@ fn from_items(items: Vec<TablePlusConnection>) -> Result<ParsedImport, CommandEr
             port: if is_file {
                 None
             } else {
-                as_port(&item.database_port).or_else(|| default_port(db_type))
+                as_port(&item.database_port).or_else(|| default_port(&db_type))
             },
             database: if is_file {
                 path
@@ -469,7 +556,7 @@ fn from_items(items: Vec<TablePlusConnection>) -> Result<ParsedImport, CommandEr
             max_pool_size: 10,
             ssh_tunnel,
             color_tag: None,
-            group: None,
+            group: item.group.filter(|s| !s.trim().is_empty()),
             last_connected_at: None,
             server_version: None,
             options: None,
@@ -533,6 +620,74 @@ mod tests {
         assert!(ssh.enabled);
         assert_eq!(ssh.host, "bastion");
         assert_eq!(ssh.username, "ubuntu");
+    }
+
+    #[test]
+    fn export_roundtrip_preserves_password_and_group() {
+        let conn = ConnectionConfig {
+            id: "c1".into(),
+            name: "Demo".into(),
+            database_type: "postgresql".into(),
+            host: Some("localhost".into()),
+            port: Some(5432),
+            database: Some("app".into()),
+            schema: None,
+            username: Some("alice".into()),
+            password: Some("pw".into()),
+            ssl_mode: SslMode::default(),
+            connection_timeout: 30,
+            max_pool_size: 10,
+            ssh_tunnel: None,
+            color_tag: None,
+            group: Some("Prod".into()),
+            last_connected_at: None,
+            server_version: None,
+            options: None,
+            read_only: false,
+        };
+        let bytes = export_connections(&[conn], "share-secret").unwrap();
+        assert_eq!(&bytes[0..2], &[0x03, 0x01]);
+        let parsed = parse(&bytes, "share-secret").unwrap();
+        assert_eq!(parsed.connections.len(), 1);
+        let c = &parsed.connections[0];
+        assert_eq!(c.name, "Demo");
+        assert_eq!(c.password.as_deref(), Some("pw"));
+        assert_eq!(c.group.as_deref(), Some("Prod"));
+        assert_eq!(c.host.as_deref(), Some("localhost"));
+    }
+
+    #[test]
+    fn export_roundtrip_keeps_datazen_only_driver() {
+        let conn = ConnectionConfig {
+            id: "k1".into(),
+            name: "Kiwi".into(),
+            database_type: "kiwi".into(),
+            host: Some("https://kiwi.example".into()),
+            port: Some(443),
+            database: None,
+            schema: None,
+            username: Some("u".into()),
+            password: Some("p".into()),
+            ssl_mode: SslMode::default(),
+            connection_timeout: 30,
+            max_pool_size: 10,
+            ssh_tunnel: None,
+            color_tag: None,
+            group: None,
+            last_connected_at: None,
+            server_version: None,
+            options: None,
+            read_only: false,
+        };
+        let bytes = export_connections(&[conn], "pw").unwrap();
+        let parsed = parse(&bytes, "pw").unwrap();
+        assert_eq!(parsed.connections[0].database_type, "kiwi");
+    }
+
+    #[test]
+    fn map_driver_skips_oracle() {
+        assert!(map_driver("Oracle").is_none());
+        assert_eq!(map_driver("kiwi").as_deref(), Some("kiwi"));
     }
 
     #[test]

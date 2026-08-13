@@ -6,7 +6,7 @@ use datazen_driver_api::*;
 use rust_decimal::prelude::ToPrimitive;
 use sqlx::pool::PoolConnection;
 use sqlx::postgres::PgPoolOptions;
-use sqlx::{Column, PgPool, Postgres, Row};
+use sqlx::{Column, Executor, PgPool, Postgres, Row};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -184,6 +184,25 @@ impl PostgresDriver {
                 nullable: true,
             })
             .collect()
+    }
+
+    async fn describe_columns<'e, E>(executor: E, sql: &str) -> Vec<ColumnInfo>
+    where
+        E: Executor<'e, Database = Postgres>,
+    {
+        match executor.describe(sql).await {
+            Ok(desc) => desc
+                .columns()
+                .iter()
+                .enumerate()
+                .map(|(i, c)| ColumnInfo {
+                    name: c.name().to_string(),
+                    data_type: c.type_info().to_string(),
+                    nullable: desc.nullable(i).unwrap_or(true),
+                })
+                .collect(),
+            Err(_) => Vec::new(),
+        }
     }
 
     fn decode_rows(rows: &[sqlx::postgres::PgRow]) -> (Vec<ColumnInfo>, Vec<Vec<Option<Value>>>) {
@@ -420,7 +439,7 @@ fn build_pg_options(
         opts = opts.password(password);
     }
 
-    opts = opts.log_statements(tracing::log::LevelFilter::Warn);
+    opts = opts.log_statements(tracing::log::LevelFilter::Trace);
     Ok(opts)
 }
 
@@ -565,37 +584,37 @@ impl DatabaseDriver for PostgresDriver {
         let pools = self.pools.read().await;
         let pool = Self::get_pool(&pools, handle)?;
 
-        let (cols, pk_rows) = tokio::try_join!(
-            async {
-                sqlx::query(
-                    r#"
+        let cols = sqlx::query(
+            r#"
                     SELECT column_name, data_type, is_nullable, column_default,
                            col_description((quote_ident(table_schema)||'.'||quote_ident(table_name))::regclass, ordinal_position) as comment
                     FROM information_schema.columns
                     WHERE table_name = $1
                     ORDER BY ordinal_position
                     "#,
-                )
-                .bind(table)
-                .fetch_all(pool)
-                .await
-                .map_err(|e| DriverError::QueryFailed(e.to_string()))
-            },
-            async {
-                sqlx::query(
-                    r#"
+        )
+        .bind(table)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+
+        // `quote_ident($1)::regclass` fails when the table is not on search_path.
+        // Columns must still load so SQL autocomplete can list fields.
+        let pk_rows = sqlx::query(
+            r#"
                     SELECT a.attname
                     FROM pg_index i
                     JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
-                    WHERE i.indrelid = quote_ident($1)::regclass AND i.indisprimary
+                    JOIN pg_class c ON c.oid = i.indrelid
+                    JOIN pg_namespace n ON n.oid = c.relnamespace
+                    WHERE c.relname = $1 AND i.indisprimary
+                      AND n.nspname = ANY (current_schemas(true))
                     "#,
-                )
-                .bind(table)
-                .fetch_all(pool)
-                .await
-                .map_err(|e| DriverError::QueryFailed(e.to_string()))
-            },
-        )?;
+        )
+        .bind(table)
+        .fetch_all(pool)
+        .await
+        .unwrap_or_default();
 
         let pk_names: Vec<String> = pk_rows.iter().map(|r| r.get::<String, _>(0)).collect();
         let columns: Vec<ColumnSchema> = cols
@@ -773,7 +792,10 @@ impl DatabaseDriver for PostgresDriver {
                     .await
                     .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
                 let elapsed = start.elapsed().as_millis() as u64;
-                let (columns, result_rows) = Self::decode_rows(&rows);
+                let (mut columns, result_rows) = Self::decode_rows(&rows);
+                if columns.is_empty() && result_rows.is_empty() {
+                    columns = Self::describe_columns(&mut **conn, sql).await;
+                }
                 let row_count = result_rows.len() as u64;
                 return Ok(QueryResult {
                     columns,
@@ -794,7 +816,14 @@ impl DatabaseDriver for PostgresDriver {
             .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
         let elapsed = start.elapsed().as_millis() as u64;
 
-        let (columns, result_rows) = Self::decode_rows(&rows);
+        let (mut columns, result_rows) = Self::decode_rows(&rows);
+        if columns.is_empty() && result_rows.is_empty() {
+            let mut conn = pool
+                .acquire()
+                .await
+                .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+            columns = Self::describe_columns(&mut *conn, sql).await;
+        }
         let row_count = result_rows.len() as u64;
 
         Ok(QueryResult {

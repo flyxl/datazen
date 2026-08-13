@@ -7,12 +7,15 @@ import {
 import { DB_REGISTRY } from './databaseTypes';
 import type { DatabaseType, TableInfo } from '../types';
 import type { DatabaseTypeMeta } from './databaseMeta';
+import { resolveEnsureSegments } from './sqlPathPrefix';
 
 export interface EnsureDeps {
   connectionId: string;
   databaseType: string | null;
   isMultiDatabase: boolean;
   loadedPaths: Set<string>;
+  /** Raw `get_tables` payloads keyed by fetch path (shared with custom trees). */
+  pathItems: Record<string, TableInfo[]>;
   /** SQL display name → fetch path root (e.g. numeric id). Filled by plugins via SDK. */
   pathAliases: Record<string, string>;
   namespaceTree: SqlNamespace;
@@ -20,6 +23,7 @@ export interface EnsureDeps {
   databases: string[];
   currentDatabase: string | null;
   mergeNamespace: (segments: string[], kind: 'branch' | 'tables', names: string[]) => void;
+  cachePathItems: (fetchPath: string, items: TableInfo[]) => void;
   registerPathAliases: (entries: { name: string; id: string }[]) => void;
   getDatabases: (connectionId: string) => Promise<string[]>;
   getTables: (connectionId: string, database: string) => Promise<TableInfo[]>;
@@ -82,7 +86,11 @@ async function ensurePathHierarchy(segments: string[], deps: EnsureDeps): Promis
   const fetchPath = buildSlashFetchPath(segments, rootId);
   if (!fetchPath) return;
 
-  const items = await deps.getTables(connectionId, fetchPath);
+  let items = deps.pathItems[fetchPath];
+  if (!items) {
+    items = await deps.getTables(connectionId, fetchPath);
+    deps.cachePathItems(fetchPath, items);
+  }
 
   if (segments.length === 1) {
     const children = items.filter(isPathNav).map((item) => pathNavSegment(item, rootId));
@@ -153,11 +161,13 @@ async function ensurePostgresql(segments: string[], deps: EnsureDeps): Promise<v
 
   if (!isMultiDatabase && segments.length === 1) {
     const [schema] = segments;
-    const fromMemory = tables.filter(
-      (item) => item.tableType !== 'view' && item.schema === schema,
-    );
+    const fromMemory = tables.filter((item) => item.tableType !== 'view' && item.schema === schema);
     if (fromMemory.length > 0) {
-      deps.mergeNamespace([schema], 'tables', fromMemory.map((item) => item.name));
+      deps.mergeNamespace(
+        [schema],
+        'tables',
+        fromMemory.map((item) => item.name),
+      );
       return;
     }
 
@@ -213,11 +223,32 @@ async function runEnsure(segments: string[], deps: EnsureDeps): Promise<void> {
   }
 }
 
+function usesCurrentDatabaseRoot(deps: EnsureDeps): boolean {
+  if (!deps.currentDatabase) return false;
+  const strategy = resolveEnsureStrategy(deps.databaseType);
+  if (strategy === 'path-hierarchy' || strategy === 'default-sql') return true;
+  return strategy === 'postgresql' && deps.isMultiDatabase;
+}
+
+function resolveForEnsure(segments: string[], deps: EnsureDeps): string[] {
+  return resolveEnsureSegments(segments, {
+    currentDatabase: deps.currentDatabase,
+    knownRoots: [...deps.databases, ...Object.keys(deps.pathAliases)],
+    useCurrentDatabaseRoot: usesCurrentDatabaseRoot(deps),
+  });
+}
+
+/** True when this path is not in `loadedPaths` yet (a fetch may still be in flight). */
+export function namespaceEnsurePending(segments: string[], deps: EnsureDeps): boolean {
+  return !deps.loadedPaths.has(pathKey(resolveForEnsure(segments, deps)));
+}
+
 export async function ensureNamespacePath(segments: string[], deps: EnsureDeps): Promise<void> {
-  const key = `${deps.connectionId}|${segments.join('.')}`;
+  const resolved = resolveForEnsure(segments, deps);
+  const key = `${deps.connectionId}|${resolved.join('.')}`;
   const existing = inflight.get(key);
   if (existing) return existing;
-  const p = runEnsure(segments, deps).finally(() => inflight.delete(key));
+  const p = runEnsure(resolved, deps).finally(() => inflight.delete(key));
   inflight.set(key, p);
   return p;
 }

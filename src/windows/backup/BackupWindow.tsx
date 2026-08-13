@@ -3,7 +3,7 @@ import { ChevronDown, ChevronRight, Database, HardDrive } from 'lucide-react';
 import { TitleBar } from '../../components/TitleBar';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
-import { useThemeListener } from '../../hooks/useThemeListener';
+import { useSettings } from '../../hooks/useSettings';
 import { useI18n } from '../../hooks/useI18n';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { cn } from '../../lib/cn';
@@ -17,7 +17,7 @@ interface DatabaseInfo {
 }
 
 export function BackupWindow() {
-  useThemeListener();
+  useSettings();
   const { t } = useI18n();
   const loadSettings = useSettingsStore((s) => s.loadSettings);
 
@@ -53,7 +53,9 @@ export function BackupWindow() {
     return getSqlDialect(selectedConn.databaseType)?.backupOptions ?? [];
   }, [selectedConn]);
 
-  useEffect(() => { void loadSettings(); }, [loadSettings]);
+  useEffect(() => {
+    void loadSettings();
+  }, [loadSettings]);
 
   useEffect(() => {
     void (async () => {
@@ -105,9 +107,13 @@ export function BackupWindow() {
       setConnectedId(connectionId);
 
       try {
-        const info = await invoke<{ serverVersion?: string }>('get_connection_info', { connectionId });
+        const info = await invoke<{ serverVersion?: string }>('get_connection_info', {
+          connectionId,
+        });
         if (info.serverVersion) setServerVersion(info.serverVersion);
-      } catch { /* server version is optional */ }
+      } catch {
+        /* server version is optional */
+      }
 
       const dbs = await invoke<string[]>('get_databases', { connectionId });
       setDatabases(dbs.map((name) => ({ name })));
@@ -142,7 +148,7 @@ export function BackupWindow() {
     if (!connectedId || !selectedDb) return;
 
     try {
-      const ext = compressGzip ? 'gz' : (enabledOptions.has('format-custom') ? 'dump' : 'sql');
+      const ext = compressGzip ? 'gz' : enabledOptions.has('format-custom') ? 'dump' : 'sql';
       const defaultName = `${fileName}.${compressGzip ? 'sql.gz' : ext}`;
 
       setBacking(true);
@@ -225,30 +231,31 @@ export function BackupWindow() {
                     <HardDrive className="h-3.5 w-3.5 shrink-0 text-orange-400" />
                     <span className="truncate text-xs font-medium">{displayName}</span>
                   </div>
-                  {expanded && groupConns.map((conn) => (
-                    <div
-                      key={conn.id}
-                      className={cn(
-                        'flex cursor-pointer items-center gap-2 py-1.5 pl-7 pr-2 transition-colors',
-                        'hover:bg-surface-raised',
-                        selectedConnId === conn.id && 'bg-blue-600/20 text-blue-400',
-                      )}
-                      onClick={() => void handleSelectConnection(conn)}
-                    >
-                      <DbTypeBadge databaseType={conn.databaseType} size={20} />
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate text-xs font-medium">
-                          {conn.name}
-                          {conn.database && (
-                            <span className="text-fg-muted"> ({conn.database})</span>
-                          )}
-                        </div>
-                        <div className="truncate text-[10px] text-fg-muted">
-                          {conn.host ?? 'localhost'} : {conn.database ?? ''}
+                  {expanded &&
+                    groupConns.map((conn) => (
+                      <div
+                        key={conn.id}
+                        className={cn(
+                          'flex cursor-pointer items-center gap-2 py-1.5 pl-7 pr-2 transition-colors',
+                          'hover:bg-surface-raised',
+                          selectedConnId === conn.id && 'bg-blue-600/20 text-blue-400',
+                        )}
+                        onClick={() => void handleSelectConnection(conn)}
+                      >
+                        <DbTypeBadge databaseType={conn.databaseType} size={20} />
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-xs font-medium">
+                            {conn.name}
+                            {conn.database && (
+                              <span className="text-fg-muted"> ({conn.database})</span>
+                            )}
+                          </div>
+                          <div className="truncate text-[10px] text-fg-muted">
+                            {conn.host ?? 'localhost'} : {conn.database ?? ''}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    ))}
                 </div>
               );
             })}

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { BookOpen } from 'lucide-react';
 import { TitleBar } from '../../components/TitleBar';
-import { useThemeListener } from '../../hooks/useThemeListener';
+import { useSettings } from '../../hooks/useSettings';
 import { useI18n } from '../../hooks/useI18n';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { getUrlParam } from '../../lib/windowKind';
@@ -19,7 +19,7 @@ const VALID_IDS = new Set<DocsSectionId>([
 ]);
 
 export function DocsWindow() {
-  useThemeListener();
+  useSettings();
   const { t } = useI18n();
   const language = useSettingsStore((s) => s.settings.language);
   const loadSettings = useSettingsStore((s) => s.loadSettings);

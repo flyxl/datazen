@@ -164,7 +164,7 @@ const zhCN = {
   'connShare.passwordOptional': 'DataGrip / Navicat / DBeaver / DBX 明文可留空',
   'connShare.passwordImportPlaceholder': 'DataZen / DBX 加密 / TablePlus 需要密码',
   'connShare.importFormatsHint':
-    '支持 DataZen、DBX、DataGrip（dataSources.xml）、Navicat（.ncx）、DBeaver（data-sources.json）与 TablePlus（.tableplusconnection）。将 credentials-config.json 与 data-sources.json 放在同一目录时可尝试导入 DBeaver 密码。',
+    '支持 DataZen（.datazenconnection）、DBX、DataGrip（dataSources.xml）、Navicat（.ncx）、DBeaver（data-sources.json）与 TablePlus（.tableplusconnection）。将 credentials-config.json 与 data-sources.json 放在同一目录时可尝试导入 DBeaver 密码。',
   'connShare.exportAction': '导出…',
   'connShare.importAction': '导入…',
   'connShare.exportSuccess': '已导出 {count} 个连接',
@@ -458,6 +458,7 @@ const zhCN = {
   'query.totalTime': '总耗时',
   'query.history': '历史',
   'query.placeholder': '输入 SQL 查询语句…',
+  'query.namespaceLoading': '正在加载对象…',
   'query.executing': '执行中…',
   'query.streamingRows': '已加载 {n} 行…',
   'query.result': '结果',
