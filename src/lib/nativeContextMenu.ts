@@ -1,10 +1,6 @@
-import { Menu, MenuItem, PredefinedMenuItem, Submenu } from '@tauri-apps/api/menu';
-import type { MenuItem as TauriMenuItem } from '@tauri-apps/api/menu';
-import type { PredefinedMenuItem as TauriPredefined } from '@tauri-apps/api/menu';
-import type { Submenu as TauriSubmenu } from '@tauri-apps/api/menu';
 import type { MouseEvent as ReactMouseEvent } from 'react';
 
-/** OS / Tauri predefined menu item kinds we expose in context menus. */
+/** Edit / separator kinds shared by web context menus (legacy name kept for item defs). */
 export type NativeMenuPredefined =
   | 'Separator'
   | 'Cut'
@@ -26,7 +22,7 @@ export type NativeMenuItemDef =
   | { kind: 'predefined'; item: NativeMenuPredefined; text?: string }
   | { kind: 'submenu'; id?: string; label: string; items: NativeMenuItemDef[] };
 
-type BuiltItem = TauriMenuItem | TauriPredefined | TauriSubmenu;
+export type ContextMenuPosition = { x: number; y: number };
 
 /** Drop empty submenus and leading/trailing/duplicate separators. Disabled items are kept. */
 export function normalizeNativeMenuItems(items: NativeMenuItemDef[]): NativeMenuItemDef[] {
@@ -64,38 +60,18 @@ export function normalizeNativeMenuItems(items: NativeMenuItemDef[]): NativeMenu
   return out;
 }
 
-async function buildItem(def: NativeMenuItemDef): Promise<BuiltItem> {
-  switch (def.kind) {
-    case 'separator':
-      return PredefinedMenuItem.new({ item: 'Separator' });
-    case 'predefined':
-      return PredefinedMenuItem.new({ item: def.item, text: def.text });
-    case 'submenu': {
-      const children = await Promise.all(normalizeNativeMenuItems(def.items).map(buildItem));
-      return Submenu.new({ text: def.label, items: children });
-    }
-    case 'item':
-      return MenuItem.new({
-        id: def.id,
-        text: def.label,
-        enabled: def.enabled !== false,
-        action: () => {
-          void def.action();
-        },
-      });
-  }
-}
-
 /**
- * Show a native (OS) context menu at the cursor.
+ * Show a web context menu at `pos` (client coordinates).
  * Call after `e.preventDefault()` on a `contextmenu` event.
+ * Dynamic import avoids a cycle with `contextMenuStore` (which imports normalize).
  */
-export async function showNativeContextMenu(items: NativeMenuItemDef[]): Promise<void> {
-  const normalized = normalizeNativeMenuItems(items);
-  if (normalized.length === 0) return;
-  const built = await Promise.all(normalized.map(buildItem));
-  const menu = await Menu.new({ items: built });
-  await menu.popup();
+export function showNativeContextMenu(
+  items: NativeMenuItemDef[],
+  pos: ContextMenuPosition,
+): void {
+  void import('../stores/contextMenuStore').then(({ showWebContextMenu }) => {
+    showWebContextMenu(items, pos);
+  });
 }
 
 /** Standard edit block for text-focused surfaces (editor, inputs). */
@@ -109,7 +85,7 @@ export function nativeEditMenuItems(): NativeMenuItemDef[] {
 }
 
 /**
- * Build a React contextmenu handler that shows a native menu.
+ * Build a React contextmenu handler that shows a web menu at the cursor.
  * Always preventDefault; optionally stopPropagation (default true) to avoid nested menus.
  */
 export function createNativeContextMenuHandler(
@@ -120,9 +96,10 @@ export function createNativeContextMenuHandler(
   return (e: ReactMouseEvent | MouseEvent) => {
     e.preventDefault();
     if (stop) e.stopPropagation();
+    const pos = { x: e.clientX, y: e.clientY };
     void (async () => {
       const items = await buildItems();
-      await showNativeContextMenu(items);
+      showNativeContextMenu(items, pos);
     })();
   };
 }

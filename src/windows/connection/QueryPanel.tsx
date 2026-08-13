@@ -501,7 +501,7 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
   }, []);
 
   const handleEditorContextMenu = useCallback(
-    (_e: MouseEvent, sqlText: string) => {
+    (e: MouseEvent, sqlText: string) => {
       pendingFavSqlRef.current = sqlText;
       const selection = editorRef.current?.getSelection() ?? '';
       const hasSelection = selection.length > 0;
@@ -526,6 +526,7 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
           sqlText,
           hasSelection,
         }),
+        { x: e.clientX, y: e.clientY },
       );
     },
     [openAddFavoriteDialog, t, handleExecute, handleExecuteSelection, handleFormat],
@@ -555,6 +556,7 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
             },
           },
         }),
+        { x: e.clientX, y: e.clientY },
       );
     },
     [tab, t, updateSql, copySqlToClipboard, deleteFavorite],
@@ -576,6 +578,7 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
             onCopySql: () => copySqlToClipboard(sql),
           },
         }),
+        { x: e.clientX, y: e.clientY },
       );
     },
     [tab, t, updateSql, copySqlToClipboard],
@@ -597,6 +600,7 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
             },
           },
         }),
+        { x: e.clientX, y: e.clientY },
       );
     },
     [t, loadHistory],
