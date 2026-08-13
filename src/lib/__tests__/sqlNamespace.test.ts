@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  collectTableLeafNames,
   isSchemaGroupingSchema,
   mergeNamespacePath,
   overlayColumnMap,
@@ -51,6 +52,14 @@ describe('mergeNamespacePath', () => {
   it('does not wipe existing siblings', () => {
     const tree = mergeNamespacePath({ a: { x: [] }, b: {} }, [], 'branch', ['a', 'c']);
     expect(tree).toEqual({ a: { x: [] }, b: {}, c: {} });
+  });
+});
+
+describe('collectTableLeafNames', () => {
+  it('collects leaves at any depth and ignores catalog branches', () => {
+    expect(
+      [...collectTableLeafNames({ presto: { hive: { snap: { orders: [], users: [] } } } })].sort(),
+    ).toEqual(['orders', 'users']);
   });
 });
 

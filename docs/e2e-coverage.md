@@ -75,6 +75,7 @@
 | 备份执行（IPC） | `backup-database.ts` | Covered |
 | 恢复：覆盖确认 + 分步进度 | `backup-database.ts` (BACKUP-012) + `BackupWindow.test.tsx` | Covered / Exception（原生 ask + 打开文件） |
 | 新建查询不弹出对象加载补全框 | `connection-window.ts` (SQ-AC-001), `mysql.ts` (MY-AC-001) | Covered |
+| SQL 补全只拉取语句中已加载完整表名的列（禁止前缀 get_columns） | `schemaStore.test.ts` / `sqlEditorDefaults.test.ts` / `buildEditorSchema.test.ts` | Covered |
 | Schema Diff 窗口打开与步骤控件 | `schema-diff-window.ts` | Covered |
 | 数据同步窗口 | `homepage-features.ts`, `data-sync-real.ts` | Partial |
 | 数据看板 | `data-dashboard-*.ts` | Covered |

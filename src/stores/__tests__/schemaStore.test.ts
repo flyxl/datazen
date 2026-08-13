@@ -268,6 +268,85 @@ describe('schemaStore.loadColumnMap', () => {
   });
 });
 
+describe('schemaStore.ensureColumns', () => {
+  let useSchemaStore: typeof import('../../stores/schemaStore').useSchemaStore;
+  let databaseCommands: typeof import('../../commands/database').databaseCommands;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    vi.clearAllMocks();
+    const storeMod = await import('../../stores/schemaStore');
+    useSchemaStore = storeMod.useSchemaStore;
+    const cmdMod = await import('../../commands/database');
+    databaseCommands = cmdMod.databaseCommands;
+    useSchemaStore.getState().reset();
+    useSchemaStore.setState({ connectionId: 'test-conn', columnMap: {} });
+  });
+
+  it('fetches only the requested tables', async () => {
+    await useSchemaStore.getState().loadTables('testdb');
+    vi.mocked(databaseCommands.getColumns).mockClear();
+
+    await useSchemaStore.getState().ensureColumns(['users']);
+
+    expect(databaseCommands.getColumns).toHaveBeenCalledTimes(1);
+    expect(databaseCommands.getColumns).toHaveBeenCalledWith('test-conn', 'users');
+    expect(useSchemaStore.getState().columnMap).toEqual({ users: ['id', 'name'] });
+  });
+
+  it('skips tables already present in columnMap', async () => {
+    await useSchemaStore.getState().loadTables('testdb');
+    vi.mocked(databaseCommands.getColumns).mockClear();
+    useSchemaStore.setState({ columnMap: { users: ['id'] } });
+    await useSchemaStore.getState().ensureColumns(['users', 'orders']);
+    expect(databaseCommands.getColumns).toHaveBeenCalledTimes(1);
+    expect(databaseCommands.getColumns).toHaveBeenCalledWith('test-conn', 'orders');
+    expect(useSchemaStore.getState().columnMap).toEqual({
+      users: ['id'],
+      orders: ['id', 'name'],
+    });
+  });
+
+  it('does not call getColumns for unknown or partial table names', async () => {
+    useSchemaStore.setState({
+      namespaceTree: { hive: { snap: { wb_daily_orders: [] } } },
+    });
+    await useSchemaStore.getState().ensureColumns(['wb_d', 'wb_daily', 'snap', 'hive']);
+    expect(databaseCommands.getColumns).not.toHaveBeenCalled();
+    expect(useSchemaStore.getState().columnMap).toEqual({});
+  });
+
+  it('fetches a path-hierarchy leaf once the full name is known', async () => {
+    useSchemaStore.setState({
+      namespaceTree: { hive: { snap: { wb_daily_orders: [] } } },
+    });
+    await useSchemaStore.getState().ensureColumns(['wb_d', 'wb_daily_orders']);
+    expect(databaseCommands.getColumns).toHaveBeenCalledTimes(1);
+    expect(databaseCommands.getColumns).toHaveBeenCalledWith('test-conn', 'wb_daily_orders');
+    expect(useSchemaStore.getState().columnMap).toEqual({
+      wb_daily_orders: ['id', 'name'],
+    });
+  });
+
+  it('does not cache a failed getColumns so a later retry can succeed', async () => {
+    await useSchemaStore.getState().loadTables('testdb');
+    vi.mocked(databaseCommands.getColumns).mockClear();
+    vi.mocked(databaseCommands.getColumns).mockRejectedValueOnce(new Error('500'));
+    await useSchemaStore.getState().ensureColumns(['users']);
+    expect(useSchemaStore.getState().columnMap).toEqual({});
+
+    vi.mocked(databaseCommands.getColumns).mockResolvedValueOnce(['id', 'name']);
+    await useSchemaStore.getState().ensureColumns(['users']);
+    expect(useSchemaStore.getState().columnMap).toEqual({ users: ['id', 'name'] });
+  });
+
+  it('does nothing when connectionId is null', async () => {
+    useSchemaStore.setState({ connectionId: null });
+    await useSchemaStore.getState().ensureColumns(['users']);
+    expect(databaseCommands.getColumns).not.toHaveBeenCalled();
+  });
+});
+
 describe('schemaStore namespace merge APIs', () => {
   let useSchemaStore: typeof import('../schemaStore').useSchemaStore;
 
