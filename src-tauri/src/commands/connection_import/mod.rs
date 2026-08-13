@@ -55,8 +55,12 @@ fn looks_like_rncryptor_v3(bytes: &[u8]) -> bool {
     bytes.len() >= 66 && bytes[0] == 0x03 && bytes[1] == 0x01
 }
 
+fn is_datazen_connection_ext(ext: &str) -> bool {
+    ext == "datazenconnection" || ext == "datazenconnections"
+}
+
 fn is_encrypted_connection_ext(ext: &str) -> bool {
-    ext == "datazenconnection" || ext == "tableplusconnection"
+    is_datazen_connection_ext(ext) || ext == "tableplusconnection"
 }
 
 fn looks_like_datazen_json(value: &serde_json::Value) -> bool {
@@ -119,7 +123,12 @@ pub fn parse_import_file(
                 "Password is required for encrypted connection import".into(),
             ));
         }
-        return tableplus::parse(bytes, pw);
+        let mut parsed = tableplus::parse(bytes, pw)?;
+        // Same RNCryptor payload as TablePlus; label by our export extension.
+        if is_datazen_connection_ext(&ext) {
+            parsed.format = ImportFormat::DataZen;
+        }
+        return Ok(parsed);
     }
 
     if bytes.starts_with(b"SQLite format 3") || file_name == "dbx.db" || ext == "db" {

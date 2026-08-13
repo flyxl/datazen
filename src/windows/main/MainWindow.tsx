@@ -679,37 +679,11 @@ export function MainWindow() {
 
   // ── Backup / Restore handlers ──
 
-  const handleRestore = useCallback(async () => {
-    try {
-      if (!selectedId) {
-        showMessageDialog(t('main.restoreFailed'), 'error');
-        return;
-      }
-      const conn = connections.find((c) => c.id === selectedId);
-      if (!conn) return;
-
-      const entry = activeConnections[conn.id];
-      if (entry?.status !== 'connected' || !entry.connectionId) {
-        showMessageDialog(t('main.restoreFailed'), 'error');
-        return;
-      }
-
-      const { invoke } = await import('@tauri-apps/api/core');
-      const restored = await invoke<boolean>('restore_database_with_dialog', {
-        connectionId: entry.connectionId,
-      });
-      if (!restored) return;
-      showMessageDialog(t('main.restoreSuccess'), 'success');
-    } catch (e) {
-      showMessageDialog(e instanceof Error ? e.message : String(e), 'error');
-    }
-  }, [selectedId, connections, activeConnections, t, showMessageDialog]);
-
   useEffect(() => {
     let cancelled = false;
     const cleanups: (() => void)[] = [];
     void listenCrossWindow('menu:restore', () => {
-      if (!cancelled) void handleRestore();
+      if (!cancelled) openBackupWindow('restore');
     }).then((u) => {
       if (cancelled) u();
       else cleanups.push(u);
@@ -718,7 +692,7 @@ export function MainWindow() {
       cancelled = true;
       cleanups.forEach((fn) => fn());
     };
-  }, [handleRestore]);
+  }, []);
 
   // ── Blank area context menu ──
 
@@ -759,7 +733,7 @@ export function MainWindow() {
           <ActionPanel
             onNewConnection={() => openNewConnectionWindow()}
             onBackup={() => openBackupWindow()}
-            onRestore={() => void handleRestore()}
+            onRestore={() => openBackupWindow('restore')}
             onDataSync={() => openDataSyncWindow()}
             onWorkflow={() => openWorkflowWindow()}
             onDashboard={() => void handleOpenDashboard()}

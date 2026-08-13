@@ -219,6 +219,30 @@ impl DatabaseDriver for ReuseDriver {
         self.inner.dump_table_ddl(handle, table).await
     }
 
+    async fn dump_view_ddl(
+        &self,
+        handle: &ConnectionHandle,
+        view: &str,
+    ) -> Result<String, DriverError> {
+        self.inner.dump_view_ddl(handle, view).await
+    }
+
+    async fn dump_routines(
+        &self,
+        handle: &ConnectionHandle,
+        database: &str,
+    ) -> Result<String, DriverError> {
+        self.inner.dump_routines(handle, database).await
+    }
+
+    async fn dump_triggers(
+        &self,
+        handle: &ConnectionHandle,
+        database: &str,
+    ) -> Result<String, DriverError> {
+        self.inner.dump_triggers(handle, database).await
+    }
+
     async fn dump_database(
         &self,
         handle: &ConnectionHandle,
@@ -228,6 +252,18 @@ impl DatabaseDriver for ReuseDriver {
         self.inner.dump_database(handle, database, opts).await
     }
 
+    async fn dump_database_with_progress(
+        &self,
+        handle: &ConnectionHandle,
+        database: &str,
+        opts: &BackupDumpOptions,
+        on_progress: &mut (dyn FnMut(DumpProgress) + Send),
+    ) -> Result<String, DriverError> {
+        self.inner
+            .dump_database_with_progress(handle, database, opts, on_progress)
+            .await
+    }
+
     async fn restore_sql(
         &self,
         handle: &ConnectionHandle,
@@ -235,6 +271,18 @@ impl DatabaseDriver for ReuseDriver {
         opts: Option<&BackupRestoreOptions>,
     ) -> Result<(), DriverError> {
         self.inner.restore_sql(handle, sql, opts).await
+    }
+
+    async fn restore_sql_with_progress(
+        &self,
+        handle: &ConnectionHandle,
+        sql: &str,
+        opts: Option<&BackupRestoreOptions>,
+        on_progress: &mut (dyn FnMut(DumpProgress) + Send),
+    ) -> Result<(), DriverError> {
+        self.inner
+            .restore_sql_with_progress(handle, sql, opts, on_progress)
+            .await
     }
 
     async fn structure_capabilities(

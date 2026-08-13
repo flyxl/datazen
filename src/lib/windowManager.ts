@@ -27,6 +27,7 @@ export const WINDOW_CAPABILITY_LABEL_SAMPLES = [
   'data-sync-singleton',
   'schema-diff-singleton',
   'backup-singleton',
+  'backup-restore-singleton',
   'workflow-singleton',
   'settings-singleton',
   'docs-singleton',
@@ -154,14 +155,15 @@ export function openSchemaDiffWindow() {
   });
 }
 
-export function openBackupWindow() {
-  openSingletonWindow('backup-singleton', {
-    params: { window: 'backup' },
+export function openBackupWindow(mode: 'backup' | 'restore' = 'backup') {
+  const restore = mode === 'restore';
+  openSingletonWindow(restore ? 'backup-restore-singleton' : 'backup-singleton', {
+    params: { window: 'backup', ...(restore ? { mode: 'restore' } : {}) },
     width: 750,
     height: 520,
     minWidth: 600,
     minHeight: 400,
-    title: t('win.backup'),
+    title: restore ? t('win.restore') : t('win.backup'),
   });
 }
 

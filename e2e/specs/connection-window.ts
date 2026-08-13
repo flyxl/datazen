@@ -491,4 +491,24 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
     await browser.pause(1000);
     await expect(await $(`button*=${t('query.execute')}`)).toBeDisplayed();
   });
+
+  it('新建查询不应弹出对象加载补全框 (SQ-AC-001)', async () => {
+    const newQueryBtn = await $(`button*=${t('connWin.newQuery')}`);
+    await newQueryBtn.click();
+    let loadingHint = false;
+    const deadline = Date.now() + 1500;
+    while (Date.now() < deadline) {
+      const tooltip = await $('.cm-tooltip-autocomplete');
+      if (await tooltip.isExisting()) {
+        const text = await tooltip.getText();
+        if (text.includes(t('query.namespaceLoading'))) {
+          loadingHint = true;
+          break;
+        }
+      }
+      await browser.pause(100);
+    }
+    expect(loadingHint).toBe(false);
+    await expect(await $(`button*=${t('query.execute')}`)).toBeDisplayed();
+  });
 });

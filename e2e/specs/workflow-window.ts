@@ -488,6 +488,20 @@ describe('Workflow Tab System (WORKFLOW-WINDOW)', () => {
     expect(isHistoryActive).toBe(true);
   });
 
+  it('WF-SQL-001: 可视化编辑查询步骤应使用 SQL 高亮编辑器', async () => {
+    await openWorkflowFromMain(mainWindow);
+    await waitForWorkflowList();
+    await browser.execute(() => {
+      const edit = document.querySelector(
+        '[data-testid="workflow-item-edit"]',
+      ) as HTMLElement | null;
+      edit?.click();
+    });
+    const editor = await $('[data-testid="workflow-sql-editor"]');
+    await editor.waitForDisplayed({ timeout: 10000 });
+    await expect(await $('[data-testid="workflow-sql-editor"] .cm-editor')).toBeDisplayed();
+  });
+
   it('WF-YAML-001: 应能切换到 YAML 编辑模式', async () => {
     await selectWorkflow();
     const yamlTab = await $('[data-testid="workflow-mode-yaml"]');

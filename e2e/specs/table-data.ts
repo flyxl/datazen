@@ -234,6 +234,26 @@ describe('表数据视图 (TD-001~TD-008)', () => {
     }
   });
 
+  it('TD-DEL-001: 选中行后应显示删除行按钮', async () => {
+    await clickTableInSidebar(TEST_TABLE);
+    await browser.pause(1500);
+    await switchSubTab(t('connWin.data'));
+    await browser.waitUntil(
+      async () => (await $('body').getText()).includes(t('common.selectAll')),
+      { timeout: 15000, timeoutMsg: 'Timed out waiting for table data' },
+    );
+    await browser.execute(() => {
+      const boxes = Array.from(
+        document.querySelectorAll('input[type="checkbox"]'),
+      ) as HTMLInputElement[];
+      const rowBox = boxes.find((b) => !b.closest('label'));
+      (rowBox ?? boxes[1])?.click();
+    });
+    await browser.pause(400);
+    const del = await $('[data-testid="data-table-delete-rows"]');
+    await expect(del).toBeDisplayed();
+  });
+
   it('TC-TABLE-009: 空表应显示空状态而非崩溃', async () => {
     const emptyTable = '_e2e_empty_table';
     await openQueryTab();
