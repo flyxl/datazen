@@ -20,7 +20,7 @@
 | F7 | Compare → Apply → Recompare=0 编排闭环 | done | 2 PASS | [F7 QA](59efff33-1814-46e9-8c90-e5edbdb28956) PASS | 95.08% | `aad15e6` |
 | F8 | DataSyncWindow Diff Workspace（最小可用） | done | inspect+mappingView PASS | [F8 QA](a56d3e68-490a-4f4e-afd8-0067564090c7) PASS；已修 Select All / footer total | inspect 92.41% / mappingView 92.85% | `dfa2870` |
 | F9 | i18n + Host E2E journey + Diff Workspace 壳 | done | DataSyncWindow+locales+mappingView PASS | [F9 QA](a9c637b7-1248-4398-b8a1-1cb9646778ff) PASS（E2E 无应用 BLOCKED） | window 92.15% / mappingView 92.85% | `5c0a05f` |
-| F10 | 拆除旧引擎残留 + 架构/AGENTS 文档 + merge main | in_progress | table_sync 无 DROP 单测已写 | 待独立 QA | — | — |
+| F10 | 拆除旧引擎残留 + 架构/AGENTS 文档 + merge main | done | 25 PASS | [F10 QA](c0a1dfc3-7bbb-4dac-ba79-fc3925b64bfb) PASS（retest；E2E 无应用 BLOCKED） | table_sync.rs 100% | 待提交 |
 
 ## 测试约定
 
