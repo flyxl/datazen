@@ -8,6 +8,8 @@ export interface BuildEditorSchemaInput {
   columnMap: Record<string, string[]>;
   /** Hoist this database's children to the top level for unqualified completion. */
   currentDatabase?: string | null;
+  /** Catalog/schema path from the query toolbar — hoist each segment in order. */
+  hoistPath?: readonly string[];
 }
 
 function isNamespaceEmpty(tree: SqlNamespace): boolean {
@@ -44,20 +46,36 @@ export function hoistNamespaceChild(
   return out;
 }
 
+/** Copy each path segment's children to the root (catalog → schema → tables). */
+export function hoistNamespacePath(
+  tree: SqlNamespace,
+  path: readonly string[] | undefined,
+): SqlNamespace {
+  let out = tree;
+  for (const seg of path ?? []) {
+    out = hoistNamespaceChild(out, seg);
+  }
+  return out;
+}
+
 /**
- * PostgreSQL (and similar) nest tables under schema names. CodeMirror only
- * completes unqualified identifiers from the root, so copy table leaves up.
+ * Nest tables under schema / catalog / schema. CodeMirror only completes
+ * unqualified identifiers from the root, so copy table leaves up at any depth.
  */
 export function hoistNestedTableLeaves(tree: SqlNamespace): SqlNamespace {
   if (Array.isArray(tree)) return tree;
   const out: Record<string, SqlNamespace> = { ...tree };
-  for (const child of Object.values(tree)) {
-    if (Array.isArray(child)) continue;
-    for (const [name, value] of Object.entries(child)) {
-      if (name in out) continue;
-      if (Array.isArray(value)) out[name] = value;
+  const walk = (node: SqlNamespace) => {
+    if (Array.isArray(node)) return;
+    for (const [name, value] of Object.entries(node)) {
+      if (Array.isArray(value)) {
+        if (!(name in out)) out[name] = value;
+      } else {
+        walk(value);
+      }
     }
-  }
+  };
+  walk(tree);
   return out;
 }
 
@@ -80,10 +98,12 @@ export function buildEditorSchema({
   views,
   columnMap,
   currentDatabase,
+  hoistPath,
 }: BuildEditorSchemaInput): SqlNamespace {
   const base = isNamespaceEmpty(namespaceTree) ? flatFromTables(tables, views) : namespaceTree;
   const withDb = hoistNamespaceChild(base, currentDatabase);
-  const withNested = hoistNestedTableLeaves(withDb);
+  const withPath = hoistNamespacePath(withDb, hoistPath);
+  const withNested = hoistNestedTableLeaves(withPath);
   const withTables = mergeUnqualifiedTables(withNested, tables, views);
   return overlayColumnMap(withTables, columnMap);
 }

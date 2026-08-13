@@ -20,10 +20,17 @@ export interface SyncTask {
 }
 
 export const syncCommands = {
-  compareDatabases: (sourceConnectionId: string, targetConnectionId: string) =>
+  compareDatabases: (
+    sourceConnectionId: string,
+    targetConnectionId: string,
+    sourceDatabase?: string,
+    targetDatabase?: string,
+  ) =>
     invoke<TableComparison[]>('compare_databases', {
       sourceConnectionId,
       targetConnectionId,
+      sourceDatabase: sourceDatabase || null,
+      targetDatabase: targetDatabase || null,
     }),
 
   compareTableSchemas: (
@@ -37,11 +44,7 @@ export const syncCommands = {
       tableName,
     }),
 
-  compareTableData: (
-    sourceConnectionId: string,
-    targetConnectionId: string,
-    tableName: string,
-  ) =>
+  compareTableData: (sourceConnectionId: string, targetConnectionId: string, tableName: string) =>
     invoke<TableDataCompare>('compare_table_data', {
       sourceConnectionId,
       targetConnectionId,
@@ -66,15 +69,22 @@ export const syncCommands = {
     strategy: string;
     resumeTable?: string | null;
     resumeOffset?: number;
-  }) => invoke<{ taskId: string; completedTables: string[]; totalTables: number; syncPath?: string }>('sync_tables', params),
+    sourceDatabase?: string | null;
+    targetDatabase?: string | null;
+    objectKinds?: Record<string, string>;
+  }) =>
+    invoke<{ taskId: string; completedTables: string[]; totalTables: number; syncPath?: string }>(
+      'sync_tables',
+      params,
+    ),
 
   getSyncTasks: () => invoke<SyncTask[]>('get_sync_tasks'),
 
   deleteSyncTask: (taskId: string) => invoke<void>('delete_sync_task', { taskId }),
 
   checkSyncConflicts: (taskId: string) =>
-    invoke<{ hasConflicts: boolean; conflicts: { table: string; originalRows: number; currentRows: number }[] }>(
-      'check_sync_conflicts',
-      { taskId },
-    ),
+    invoke<{
+      hasConflicts: boolean;
+      conflicts: { table: string; originalRows: number; currentRows: number }[];
+    }>('check_sync_conflicts', { taskId }),
 };

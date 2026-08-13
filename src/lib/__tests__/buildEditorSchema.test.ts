@@ -46,6 +46,23 @@ describe('buildEditorSchema', () => {
     });
   });
 
+  it('hoists path-hierarchy table leaves and overlays columns', () => {
+    expect(
+      buildEditorSchema({
+        namespaceTree: { presto: { hive: { snap: { orders: [] } } } },
+        tables: [],
+        views: [],
+        columnMap: { orders: ['id', 'amt'] },
+        hoistPath: ['presto', 'hive', 'snap'],
+      }),
+    ).toEqual({
+      presto: { hive: { snap: { orders: ['id', 'amt'] } } },
+      hive: { snap: { orders: ['id', 'amt'] } },
+      snap: { orders: ['id', 'amt'] },
+      orders: ['id', 'amt'],
+    });
+  });
+
   it('hoists postgresql schema tables and overlays columns', () => {
     expect(
       buildEditorSchema({
@@ -87,9 +104,10 @@ describe('hoistNestedTableLeaves', () => {
     });
   });
 
-  it('does not hoist nested branches as tables', () => {
+  it('hoists table leaves at any depth without promoting catalog/schema branches', () => {
     expect(hoistNestedTableLeaves({ hive: { snap: { t: [] } } })).toEqual({
       hive: { snap: { t: [] } },
+      t: [],
     });
   });
 });

@@ -24,10 +24,13 @@ import { useSettings } from '../../hooks/useSettings';
 import { useI18n } from '../../hooks/useI18n';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { cn } from '../../lib/cn';
+import { DB_REGISTRY } from '../../lib/databaseTypes';
 import { resolveSyncPairing } from '../../lib/syncPairing';
 import type {
   ConnectionConfig,
+  DatabaseType,
   RowMismatch,
+  SyncObjectKind,
   TableComparison,
   TableDataCompare,
   TableSchemaDiff,
@@ -46,6 +49,10 @@ export function DataSyncWindow() {
   const [activeConns, setActiveConns] = useState<Record<string, string>>({});
   const [sourceId, setSourceId] = useState('');
   const [targetId, setTargetId] = useState('');
+  const [sourceDatabases, setSourceDatabases] = useState<string[]>([]);
+  const [targetDatabases, setTargetDatabases] = useState<string[]>([]);
+  const [sourceDatabase, setSourceDatabase] = useState('');
+  const [targetDatabase, setTargetDatabase] = useState('');
   const [comparisons, setComparisons] = useState<TableComparison[]>([]);
   const [selectedTables, setSelectedTables] = useState<Set<string>>(new Set());
   const [syncState, setSyncState] = useState<SyncState>('idle');
@@ -188,6 +195,56 @@ export function DataSyncWindow() {
     [activeConns, t],
   );
 
+  const needsDatabasePicker = useCallback((databaseType?: string) => {
+    if (!databaseType) return false;
+    return DB_REGISTRY[databaseType as DatabaseType]?.hasMultiDatabase === true;
+  }, []);
+
+  const loadDatabasesFor = useCallback(
+    async (
+      configId: string,
+      setList: (dbs: string[]) => void,
+      setSelected: (db: string) => void,
+    ) => {
+      const conn = connections.find((c) => c.id === configId);
+      const connId = await ensureConnected(configId);
+      if (!connId || !conn) return;
+      if (!needsDatabasePicker(conn.databaseType)) {
+        setList([]);
+        setSelected(conn.database ?? '');
+        return;
+      }
+      try {
+        const dbs = await invoke<string[]>('get_databases', { connectionId: connId });
+        setList(dbs);
+        const preferred = conn.database && dbs.includes(conn.database) ? conn.database : '';
+        setSelected(preferred);
+      } catch {
+        setList([]);
+        setSelected('');
+      }
+    },
+    [connections, ensureConnected, needsDatabasePicker],
+  );
+
+  useEffect(() => {
+    if (!sourceId) {
+      setSourceDatabases([]);
+      setSourceDatabase('');
+      return;
+    }
+    void loadDatabasesFor(sourceId, setSourceDatabases, setSourceDatabase);
+  }, [sourceId, loadDatabasesFor]);
+
+  useEffect(() => {
+    if (!targetId) {
+      setTargetDatabases([]);
+      setTargetDatabase('');
+      return;
+    }
+    void loadDatabasesFor(targetId, setTargetDatabases, setTargetDatabase);
+  }, [targetId, loadDatabasesFor]);
+
   const handleCompare = useCallback(async () => {
     if (!sourceId || !targetId) {
       setErrorMsg(t('sync.selectBoth'));
@@ -215,8 +272,23 @@ export function DataSyncWindow() {
         setSyncState('idle');
         return;
       }
+      const srcNeedsDb = needsDatabasePicker(sourceConn?.databaseType);
+      const tgtNeedsDb = needsDatabasePicker(
+        connections.find((c) => c.id === targetId)?.databaseType,
+      );
+      if ((srcNeedsDb && !sourceDatabase) || (tgtNeedsDb && !targetDatabase)) {
+        setErrorMsg(t('sync.selectDbRequired'));
+        setErrorOpen(true);
+        setSyncState('idle');
+        return;
+      }
 
-      const results = await syncCommands.compareDatabases(srcConnId, tgtConnId);
+      const results = await syncCommands.compareDatabases(
+        srcConnId,
+        tgtConnId,
+        sourceDatabase || undefined,
+        targetDatabase || undefined,
+      );
       setComparisons(results);
       const autoSelect = new Set(
         results
@@ -230,7 +302,17 @@ export function DataSyncWindow() {
       setErrorOpen(true);
       setSyncState('idle');
     }
-  }, [sourceId, targetId, ensureConnected, t]);
+  }, [
+    sourceId,
+    targetId,
+    ensureConnected,
+    t,
+    needsDatabasePicker,
+    sourceConn?.databaseType,
+    connections,
+    sourceDatabase,
+    targetDatabase,
+  ]);
 
   const startSync = useCallback(
     async (tablesToSync: string[], skipTables: string[] = [], strategy: string = 'full') => {
@@ -245,6 +327,11 @@ export function DataSyncWindow() {
       setSyncStartTime(Date.now());
       setElapsed(0);
 
+      const objectKinds: Record<string, string> = {};
+      for (const row of comparisons) {
+        objectKinds[row.table] = row.kind ?? 'table';
+      }
+
       try {
         await invoke('sync_tables', {
           taskId,
@@ -255,6 +342,9 @@ export function DataSyncWindow() {
           tables: tablesToSync,
           skipTables,
           strategy,
+          sourceDatabase: sourceDatabase || null,
+          targetDatabase: targetDatabase || null,
+          objectKinds,
         });
         // Refresh saved tasks
         const tasks = await invoke<SyncTask[]>('get_sync_tasks');
@@ -262,10 +352,11 @@ export function DataSyncWindow() {
       } catch (e) {
         setErrorMsg(e instanceof Error ? e.message : String(e));
         setErrorOpen(true);
+        setProgressOpen(false);
         setSyncState('compared');
       }
     },
-    [sourceId, targetId, activeConns],
+    [sourceId, targetId, activeConns, comparisons, sourceDatabase, targetDatabase],
   );
 
   const handleSync = useCallback(async () => {
@@ -362,6 +453,7 @@ export function DataSyncWindow() {
       } catch (e) {
         setErrorMsg(e instanceof Error ? e.message : String(e));
         setErrorOpen(true);
+        setProgressOpen(false);
       }
     },
     [resumeTask, activeConns],
@@ -500,6 +592,29 @@ export function DataSyncWindow() {
     }
   };
 
+  const kindLabel = (kind: SyncObjectKind | undefined) => {
+    switch (kind) {
+      case 'view':
+        return t('sync.kind.view');
+      case 'function':
+        return t('sync.kind.function');
+      case 'procedure':
+        return t('sync.kind.procedure');
+      default:
+        return t('sync.kind.table');
+    }
+  };
+
+  const groupedComparisons = useMemo(() => {
+    const order: SyncObjectKind[] = ['table', 'view', 'function', 'procedure'];
+    return order
+      .map((kind) => ({
+        kind,
+        rows: comparisons.filter((row) => (row.kind ?? 'table') === kind),
+      }))
+      .filter((group) => group.rows.length > 0);
+  }, [comparisons]);
+
   const statusLabel = (status: string) => {
     switch (status) {
       case 'identical':
@@ -540,6 +655,15 @@ export function DataSyncWindow() {
             onChange={setSourceId}
             placeholder={t('sync.selectSource')}
           />
+          {sourceDatabases.length > 0 && (
+            <Select
+              value={sourceDatabase}
+              options={sourceDatabases.map((db) => ({ value: db, label: db }))}
+              onChange={setSourceDatabase}
+              placeholder={t('sync.selectDatabase')}
+              className="mt-2"
+            />
+          )}
         </div>
         <ArrowRight className="mt-5 h-5 w-5 shrink-0 text-fg-muted" />
         <div className="min-w-0 flex-1">
@@ -552,6 +676,15 @@ export function DataSyncWindow() {
             onChange={setTargetId}
             placeholder={t('sync.selectTarget')}
           />
+          {targetDatabases.length > 0 && (
+            <Select
+              value={targetDatabase}
+              options={targetDatabases.map((db) => ({ value: db, label: db }))}
+              onChange={setTargetDatabase}
+              placeholder={t('sync.selectDatabase')}
+              className="mt-2"
+            />
+          )}
         </div>
         <div className="mt-5 flex shrink-0 flex-col items-end gap-1">
           {activePairing?.supported && (
@@ -620,117 +753,136 @@ export function DataSyncWindow() {
                 <div className="w-6" />
                 <div className="w-6" />
                 <div className="w-6" />
-                <div className="min-w-0 flex-1">{t('sync.tableName')}</div>
+                <div className="min-w-0 flex-1">{t('sync.objectName')}</div>
                 <div className="w-20 text-right">{t('sync.sourceRows')}</div>
                 <div className="w-20 text-right">{t('sync.targetRows')}</div>
                 <div className="w-20 text-center">{t('sync.status')}</div>
               </div>
 
-              {comparisons.map((row) => {
-                const isSelected = selectedTables.has(row.table);
-                const disabled = row.status === 'target_only';
-                const isExpanded = expandedTables.has(row.table);
-                const canExpand = row.status === 'different';
-                const isDetail = detailTable === row.table;
-                const dataCompare = dataCompareCache[row.table];
-                const isDataLoading = dataCompareLoading.has(row.table);
+              {groupedComparisons.map((group) => (
+                <div key={group.kind}>
+                  <div className="border-x border-b border-edge bg-surface-alt px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-fg-muted">
+                    {group.kind === 'view'
+                      ? t('sync.group.views')
+                      : group.kind === 'function'
+                        ? t('sync.group.functions')
+                        : group.kind === 'procedure'
+                          ? t('sync.group.procedures')
+                          : t('sync.group.tables')}
+                  </div>
+                  {group.rows.map((row) => {
+                    const isSelected = selectedTables.has(row.table);
+                    const disabled = row.status === 'target_only';
+                    const isExpanded = expandedTables.has(row.table);
+                    const canExpand =
+                      (row.kind ?? 'table') === 'table' && row.status === 'different';
+                    const isDetail = detailTable === row.table;
+                    const dataCompare = dataCompareCache[row.table];
+                    const isDataLoading = dataCompareLoading.has(row.table);
 
-                return (
-                  <div key={row.table}>
-                    <div
-                      className={cn(
-                        'flex items-center gap-3 border-x border-b border-edge px-3 py-2 text-[13px] transition-colors',
-                        isSelected && !disabled && 'bg-blue-500/5',
-                        isDetail && 'bg-surface-raised/70',
-                        !disabled && 'hover:bg-surface-raised/50',
-                        disabled && 'opacity-50',
-                      )}
-                    >
-                      <div className="w-6 shrink-0">
-                        {canExpand ? (
+                    return (
+                      <div key={`${row.kind ?? 'table'}:${row.table}`}>
+                        <div
+                          className={cn(
+                            'flex items-center gap-3 border-x border-b border-edge px-3 py-2 text-[13px] transition-colors',
+                            isSelected && !disabled && 'bg-blue-500/5',
+                            isDetail && 'bg-surface-raised/70',
+                            !disabled && 'hover:bg-surface-raised/50',
+                            disabled && 'opacity-50',
+                          )}
+                        >
+                          <div className="w-6 shrink-0">
+                            {canExpand ? (
+                              <button
+                                type="button"
+                                className="flex h-4 w-4 items-center justify-center text-fg-muted hover:text-fg"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (!isExpanded) void toggleExpandTable(row.table);
+                                  else {
+                                    setExpandedTables((prev) => {
+                                      const next = new Set(prev);
+                                      next.delete(row.table);
+                                      return next;
+                                    });
+                                  }
+                                }}
+                              >
+                                {isDataLoading ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                ) : isExpanded ? (
+                                  <ChevronDown className="h-3.5 w-3.5" />
+                                ) : (
+                                  <ChevronRight className="h-3.5 w-3.5" />
+                                )}
+                              </button>
+                            ) : null}
+                          </div>
+                          <div className="w-6 shrink-0">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              disabled={disabled}
+                              onChange={() => toggleTable(row.table)}
+                              onClick={(e) => e.stopPropagation()}
+                              className="h-3.5 w-3.5 rounded border-edge"
+                            />
+                          </div>
+                          <div className="w-6 shrink-0">{statusIcon(row.status)}</div>
                           <button
                             type="button"
-                            className="flex h-4 w-4 items-center justify-center text-fg-muted hover:text-fg"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (!isExpanded) void toggleExpandTable(row.table);
-                              else {
-                                setExpandedTables((prev) => {
-                                  const next = new Set(prev);
-                                  next.delete(row.table);
-                                  return next;
-                                });
-                              }
+                            className="min-w-0 flex-1 truncate text-left font-mono text-fg"
+                            onClick={() => {
+                              if (!disabled) void openTableDetail(row.table);
                             }}
                           >
-                            {isDataLoading ? (
-                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            ) : isExpanded ? (
-                              <ChevronDown className="h-3.5 w-3.5" />
-                            ) : (
-                              <ChevronRight className="h-3.5 w-3.5" />
-                            )}
+                            <span className="mr-2 rounded bg-surface-alt px-1.5 py-0.5 text-[10px] uppercase text-fg-muted">
+                              {kindLabel(row.kind)}
+                            </span>
+                            {row.table}
                           </button>
-                        ) : null}
-                      </div>
-                      <div className="w-6 shrink-0">
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          disabled={disabled}
-                          onChange={() => toggleTable(row.table)}
-                          onClick={(e) => e.stopPropagation()}
-                          className="h-3.5 w-3.5 rounded border-edge"
-                        />
-                      </div>
-                      <div className="w-6 shrink-0">{statusIcon(row.status)}</div>
-                      <button
-                        type="button"
-                        className="min-w-0 flex-1 truncate text-left font-mono text-fg"
-                        onClick={() => {
-                          if (!disabled) void openTableDetail(row.table);
-                        }}
-                      >
-                        {row.table}
-                      </button>
-                      <div className="w-20 text-right tabular-nums text-fg-secondary">
-                        {row.sourceRows ?? '-'}
-                      </div>
-                      <div className="w-20 text-right tabular-nums text-fg-secondary">
-                        {row.targetRows ?? '-'}
-                      </div>
-                      <div className="w-20 text-center text-xs text-fg-muted">
-                        {statusLabel(row.status)}
-                      </div>
-                    </div>
+                          <div className="w-20 text-right tabular-nums text-fg-secondary">
+                            {row.sourceRows ?? '-'}
+                          </div>
+                          <div className="w-20 text-right tabular-nums text-fg-secondary">
+                            {row.targetRows ?? '-'}
+                          </div>
+                          <div className="w-20 text-center text-xs text-fg-muted">
+                            {statusLabel(row.status)}
+                          </div>
+                        </div>
 
-                    {canExpand && isExpanded && (
-                      <div className="border-x border-b border-edge bg-surface-alt/50">
-                        {isDataLoading && (
-                          <div className="flex items-center gap-2 px-4 py-3 text-xs text-fg-muted">
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            {t('sync.loadingDataCompare')}
+                        {canExpand && isExpanded && (
+                          <div className="border-x border-b border-edge bg-surface-alt/50">
+                            {isDataLoading && (
+                              <div className="flex items-center gap-2 px-4 py-3 text-xs text-fg-muted">
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                {t('sync.loadingDataCompare')}
+                              </div>
+                            )}
+                            {dataCompare && (
+                              <>
+                                <div className="flex items-center gap-3 border-b border-edge px-3 py-1.5 text-[11px] text-fg-muted">
+                                  <span>
+                                    {t('sync.sampledRows', { count: dataCompare.sampledRows })}
+                                  </span>
+                                  <span>
+                                    {t('sync.mismatchCount', {
+                                      count: dataCompare.mismatches.length,
+                                    })}
+                                    {dataCompare.truncated ? '+' : ''}
+                                  </span>
+                                </div>
+                                {renderMismatchRows(dataCompare.mismatches)}
+                              </>
+                            )}
                           </div>
                         )}
-                        {dataCompare && (
-                          <>
-                            <div className="flex items-center gap-3 border-b border-edge px-3 py-1.5 text-[11px] text-fg-muted">
-                              <span>
-                                {t('sync.sampledRows', { count: dataCompare.sampledRows })}
-                              </span>
-                              <span>
-                                {t('sync.mismatchCount', { count: dataCompare.mismatches.length })}
-                                {dataCompare.truncated ? '+' : ''}
-                              </span>
-                            </div>
-                            {renderMismatchRows(dataCompare.mismatches)}
-                          </>
-                        )}
                       </div>
-                    )}
-                  </div>
-                );
-              })}
+                    );
+                  })}
+                </div>
+              ))}
             </div>
 
             {detailTable && (

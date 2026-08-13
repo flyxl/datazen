@@ -10,7 +10,9 @@ describe('主页 TablePlus 风格 (HOME)', () => {
 
   before(async () => {
     mainWindow = await browser.getWindowHandle();
-    await $(`input[placeholder="${t('main.searchPlaceholder')}"]`).waitForDisplayed({ timeout: 10000 });
+    await $(`input[placeholder="${t('main.searchPlaceholder')}"]`).waitForDisplayed({
+      timeout: 10000,
+    });
     await expandAllGroups();
     await browser.pause(1000);
   });
@@ -23,6 +25,22 @@ describe('主页 TablePlus 风格 (HOME)', () => {
   });
 
   // ── Layout ──────────────────────────────────────────────────────
+
+  it('HOME-RESTORE-001: 恢复应打开选连接/选库窗口而不是直接报错', async () => {
+    const restore = await $(`button*=${t('action.restore')}`);
+    await restore.click();
+    await browser.waitUntil(async () => (await browser.getWindowHandles()).length > 1, {
+      timeout: 10000,
+      timeoutMsg: 'Restore should open a dedicated window',
+    });
+    const handles = await browser.getWindowHandles();
+    const restoreWin = handles.find((h) => h !== mainWindow)!;
+    await browser.switchToWindow(restoreWin);
+    const body = await $('body').getText();
+    expect(body).toContain(t('backup.selectConnectionFirst'));
+    expect(body).not.toContain(t('main.restoreFailed'));
+    await expect(await $(`button*=${t('backup.startRestore')}`)).toBeDisplayed();
+  });
 
   it('HOME-001: 左侧应显示操作面板', async () => {
     const backup = await $(`button*=${t('action.backup')}`);
@@ -59,14 +77,23 @@ describe('主页 TablePlus 风格 (HOME)', () => {
 
   it('HOME-006: 连接项应显示 DB 类型图标', async () => {
     // Wait for groups to expand and items to appear
-    await browser.waitUntil(
-      async () => (await $$('[data-conn-item]')).length > 0,
-      { timeout: 5000, timeoutMsg: 'Timed out waiting for connection items' },
-    );
+    await browser.waitUntil(async () => (await $$('[data-conn-item]')).length > 0, {
+      timeout: 5000,
+      timeoutMsg: 'Timed out waiting for connection items',
+    });
     const items = await $$('[data-conn-item]');
     expect(items.length).toBeGreaterThan(0);
     const firstText = await items[0].getText();
-    const hasIcon = firstText.includes('Pg') || firstText.includes('My') || firstText.includes('Ma') || firstText.includes('Lt') || firstText.includes('Rd') || firstText.includes('Ss') || firstText.includes('Ki') || firstText.includes('Pr') || firstText.includes('Tr');
+    const hasIcon =
+      firstText.includes('Pg') ||
+      firstText.includes('My') ||
+      firstText.includes('Ma') ||
+      firstText.includes('Lt') ||
+      firstText.includes('Rd') ||
+      firstText.includes('Ss') ||
+      firstText.includes('Ki') ||
+      firstText.includes('Pr') ||
+      firstText.includes('Tr');
     expect(hasIcon).toBe(true);
   });
 
@@ -86,10 +113,10 @@ describe('主页 TablePlus 风格 (HOME)', () => {
   // ── Group expand/collapse ────────────────────────────────────────
 
   it('HOME-010: 折叠分组应隐藏其连接', async () => {
-    await browser.waitUntil(
-      async () => (await $$('[data-conn-item]')).length > 0,
-      { timeout: 5000, timeoutMsg: 'Timed out waiting for connection items' },
-    );
+    await browser.waitUntil(async () => (await $$('[data-conn-item]')).length > 0, {
+      timeout: 5000,
+      timeoutMsg: 'Timed out waiting for connection items',
+    });
 
     const totalBefore = (await $$('[data-conn-item]')).length;
     if (totalBefore === 0) return;
@@ -176,10 +203,10 @@ describe('主页 TablePlus 风格 (HOME)', () => {
       el.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
     });
 
-    await browser.waitUntil(
-      async () => (await browser.getWindowHandles()).length > 1,
-      { timeout: 30000, timeoutMsg: 'Timed out waiting for connection window' },
-    );
+    await browser.waitUntil(async () => (await browser.getWindowHandles()).length > 1, {
+      timeout: 30000,
+      timeoutMsg: 'Timed out waiting for connection window',
+    });
     const handles = await browser.getWindowHandles();
     expect(handles.length).toBeGreaterThan(1);
   });
@@ -219,10 +246,10 @@ describe('主页 TablePlus 风格 (HOME)', () => {
   it('HOME-060: 点击"新建连接"应打开新连接窗口', async () => {
     const newConnBtn = await $(`button*=${t('action.newConnection')}`);
     await newConnBtn.click();
-    await browser.waitUntil(
-      async () => (await browser.getWindowHandles()).length > 1,
-      { timeout: 15000, timeoutMsg: 'Timed out waiting for new connection window' },
-    );
+    await browser.waitUntil(async () => (await browser.getWindowHandles()).length > 1, {
+      timeout: 15000,
+      timeoutMsg: 'Timed out waiting for new connection window',
+    });
     const handles = await browser.getWindowHandles();
     expect(handles.length).toBeGreaterThan(1);
   });
@@ -230,10 +257,10 @@ describe('主页 TablePlus 风格 (HOME)', () => {
   it('HOME-061: 点击"数据同步"应打开同步窗口', async () => {
     const syncBtn = await $(`button*=${t('action.dataSync')}`);
     await syncBtn.click();
-    await browser.waitUntil(
-      async () => (await browser.getWindowHandles()).length > 1,
-      { timeout: 15000, timeoutMsg: 'Timed out waiting for data sync window' },
-    );
+    await browser.waitUntil(async () => (await browser.getWindowHandles()).length > 1, {
+      timeout: 15000,
+      timeoutMsg: 'Timed out waiting for data sync window',
+    });
     const handles = await browser.getWindowHandles();
     expect(handles.length).toBeGreaterThan(1);
 
@@ -259,10 +286,10 @@ describe('数据同步窗口 (SYNC)', () => {
     await browser.pause(300);
     const syncBtn = await $(`button*=${t('action.dataSync')}`);
     await syncBtn.click();
-    await browser.waitUntil(
-      async () => (await browser.getWindowHandles()).length > 1,
-      { timeout: 15000, timeoutMsg: 'Timed out waiting for data sync window' },
-    );
+    await browser.waitUntil(async () => (await browser.getWindowHandles()).length > 1, {
+      timeout: 15000,
+      timeoutMsg: 'Timed out waiting for data sync window',
+    });
     const handles = await browser.getWindowHandles();
     const syncWin = handles.find((h) => h !== mainWindow)!;
     await browser.switchToWindow(syncWin);
@@ -272,7 +299,9 @@ describe('数据同步窗口 (SYNC)', () => {
 
   before(async () => {
     mainWindow = await browser.getWindowHandle();
-    await $(`input[placeholder="${t('main.searchPlaceholder')}"]`).waitForDisplayed({ timeout: 10000 });
+    await $(`input[placeholder="${t('main.searchPlaceholder')}"]`).waitForDisplayed({
+      timeout: 10000,
+    });
     await browser.pause(500);
   });
 
@@ -377,18 +406,20 @@ describe('拖拽连接到不同分组 (DRAG)', () => {
 
   before(async () => {
     mainWindow = await browser.getWindowHandle();
-    await $(`input[placeholder="${t('main.searchPlaceholder')}"]`).waitForDisplayed({ timeout: 10000 });
+    await $(`input[placeholder="${t('main.searchPlaceholder')}"]`).waitForDisplayed({
+      timeout: 10000,
+    });
     await expandAllGroups();
     await browser.pause(1000);
 
-    await browser.waitUntil(
-      async () => (await $$('[data-group-header]')).length > 0,
-      { timeout: 5000, timeoutMsg: 'Timed out waiting for groups to load' },
-    );
-    await browser.waitUntil(
-      async () => (await $$('[data-conn-item]')).length > 0,
-      { timeout: 5000, timeoutMsg: 'Timed out waiting for connection items' },
-    );
+    await browser.waitUntil(async () => (await $$('[data-group-header]')).length > 0, {
+      timeout: 5000,
+      timeoutMsg: 'Timed out waiting for groups to load',
+    });
+    await browser.waitUntil(async () => (await $$('[data-conn-item]')).length > 0, {
+      timeout: 5000,
+      timeoutMsg: 'Timed out waiting for connection items',
+    });
   });
 
   afterEach(async () => {
@@ -422,14 +453,24 @@ describe('拖拽连接到不同分组 (DRAG)', () => {
       const el = document.querySelector('[data-conn-item]');
       if (!el) return;
       const rect = el.getBoundingClientRect();
-      el.dispatchEvent(new PointerEvent('pointerdown', {
-        bubbles: true, cancelable: true,
-        clientX: rect.left + 5, clientY: rect.top + 5, button: 0,
-      }));
-      window.dispatchEvent(new PointerEvent('pointerup', {
-        bubbles: true, cancelable: true,
-        clientX: rect.left + 5, clientY: rect.top + 5, button: 0,
-      }));
+      el.dispatchEvent(
+        new PointerEvent('pointerdown', {
+          bubbles: true,
+          cancelable: true,
+          clientX: rect.left + 5,
+          clientY: rect.top + 5,
+          button: 0,
+        }),
+      );
+      window.dispatchEvent(
+        new PointerEvent('pointerup', {
+          bubbles: true,
+          cancelable: true,
+          clientX: rect.left + 5,
+          clientY: rect.top + 5,
+          button: 0,
+        }),
+      );
     });
     await browser.pause(300);
     const searchInput = await $(`input[placeholder="${t('main.searchPlaceholder')}"]`);
@@ -457,19 +498,34 @@ describe('拖拽连接到不同分组 (DRAG)', () => {
       const tx = tgtRect.left + tgtRect.width / 2;
       const ty = tgtRect.top + tgtRect.height / 2;
 
-      src.dispatchEvent(new PointerEvent('pointerdown', {
-        bubbles: true, cancelable: true, clientX: sx, clientY: sy, button: 0,
-      }));
+      src.dispatchEvent(
+        new PointerEvent('pointerdown', {
+          bubbles: true,
+          cancelable: true,
+          clientX: sx,
+          clientY: sy,
+          button: 0,
+        }),
+      );
       for (let i = 1; i <= 5; i++) {
-        window.dispatchEvent(new PointerEvent('pointermove', {
-          bubbles: true, cancelable: true,
-          clientX: sx + (tx - sx) * i / 5,
-          clientY: sy + (ty - sy) * i / 5,
-        }));
+        window.dispatchEvent(
+          new PointerEvent('pointermove', {
+            bubbles: true,
+            cancelable: true,
+            clientX: sx + ((tx - sx) * i) / 5,
+            clientY: sy + ((ty - sy) * i) / 5,
+          }),
+        );
       }
-      window.dispatchEvent(new PointerEvent('pointerup', {
-        bubbles: true, cancelable: true, clientX: tx, clientY: ty, button: 0,
-      }));
+      window.dispatchEvent(
+        new PointerEvent('pointerup', {
+          bubbles: true,
+          cancelable: true,
+          clientX: tx,
+          clientY: ty,
+          button: 0,
+        }),
+      );
 
       return 'ok';
     });
@@ -486,14 +542,23 @@ describe('拖拽连接到不同分组 (DRAG)', () => {
       const el = document.querySelector('[data-conn-item]') as HTMLElement;
       if (!el) return;
       const rect = el.getBoundingClientRect();
-      el.dispatchEvent(new PointerEvent('pointerdown', {
-        bubbles: true, cancelable: true,
-        clientX: rect.left + 5, clientY: rect.top + 5, button: 0,
-      }));
-      window.dispatchEvent(new PointerEvent('pointermove', {
-        bubbles: true, cancelable: true,
-        clientX: rect.left + 30, clientY: rect.top + 30,
-      }));
+      el.dispatchEvent(
+        new PointerEvent('pointerdown', {
+          bubbles: true,
+          cancelable: true,
+          clientX: rect.left + 5,
+          clientY: rect.top + 5,
+          button: 0,
+        }),
+      );
+      window.dispatchEvent(
+        new PointerEvent('pointermove', {
+          bubbles: true,
+          cancelable: true,
+          clientX: rect.left + 30,
+          clientY: rect.top + 30,
+        }),
+      );
     });
     await browser.pause(300);
 
@@ -502,9 +567,15 @@ describe('拖拽连接到不同分组 (DRAG)', () => {
     });
 
     await browser.execute(() => {
-      window.dispatchEvent(new PointerEvent('pointerup', {
-        bubbles: true, cancelable: true, clientX: 0, clientY: 0, button: 0,
-      }));
+      window.dispatchEvent(
+        new PointerEvent('pointerup', {
+          bubbles: true,
+          cancelable: true,
+          clientX: 0,
+          clientY: 0,
+          button: 0,
+        }),
+      );
     });
 
     expect(hasGhost).toBe(true);
@@ -524,20 +595,33 @@ describe('拖拽连接到不同分组 (DRAG)', () => {
       const sr = src.getBoundingClientRect();
       const tr = target.getBoundingClientRect();
 
-      src.dispatchEvent(new PointerEvent('pointerdown', {
-        bubbles: true, cancelable: true,
-        clientX: sr.left + 5, clientY: sr.top + 5, button: 0,
-      }));
+      src.dispatchEvent(
+        new PointerEvent('pointerdown', {
+          bubbles: true,
+          cancelable: true,
+          clientX: sr.left + 5,
+          clientY: sr.top + 5,
+          button: 0,
+        }),
+      );
       // Move enough to start drag
-      window.dispatchEvent(new PointerEvent('pointermove', {
-        bubbles: true, cancelable: true,
-        clientX: sr.left + 20, clientY: sr.top + 20,
-      }));
+      window.dispatchEvent(
+        new PointerEvent('pointermove', {
+          bubbles: true,
+          cancelable: true,
+          clientX: sr.left + 20,
+          clientY: sr.top + 20,
+        }),
+      );
       // Move over target group
-      window.dispatchEvent(new PointerEvent('pointermove', {
-        bubbles: true, cancelable: true,
-        clientX: tr.left + tr.width / 2, clientY: tr.top + tr.height / 2,
-      }));
+      window.dispatchEvent(
+        new PointerEvent('pointermove', {
+          bubbles: true,
+          cancelable: true,
+          clientX: tr.left + tr.width / 2,
+          clientY: tr.top + tr.height / 2,
+        }),
+      );
     });
 
     await browser.pause(300);
@@ -548,9 +632,15 @@ describe('拖拽连接到不同分组 (DRAG)', () => {
     });
 
     await browser.execute(() => {
-      window.dispatchEvent(new PointerEvent('pointerup', {
-        bubbles: true, cancelable: true, clientX: 0, clientY: 0, button: 0,
-      }));
+      window.dispatchEvent(
+        new PointerEvent('pointerup', {
+          bubbles: true,
+          cancelable: true,
+          clientX: 0,
+          clientY: 0,
+          button: 0,
+        }),
+      );
     });
 
     expect(highlighted).toBe(true);

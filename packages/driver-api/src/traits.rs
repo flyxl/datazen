@@ -283,6 +283,42 @@ pub trait DatabaseDriver: Send + Sync {
         crate::sql_dump::dump_table_ddl_from_schema::<Self>(self, handle, table).await
     }
 
+    /// Emit `CREATE VIEW` (or equivalent) for a view / materialized view.
+    ///
+    /// Default is [`DriverError::NotSupported`]; backup then writes a comment
+    /// and still skips `INSERT INTO` for view-like objects.
+    async fn dump_view_ddl(
+        &self,
+        _handle: &ConnectionHandle,
+        view: &str,
+    ) -> Result<String, DriverError> {
+        Err(DriverError::NotSupported(format!(
+            "View DDL dump is not supported for {view}"
+        )))
+    }
+
+    /// Dump stored procedures and functions for the current database.
+    ///
+    /// Default is an empty string (driver has no routines, or they are skipped).
+    async fn dump_routines(
+        &self,
+        _handle: &ConnectionHandle,
+        _database: &str,
+    ) -> Result<String, DriverError> {
+        Ok(String::new())
+    }
+
+    /// Dump triggers for the current database.
+    ///
+    /// Default is an empty string.
+    async fn dump_triggers(
+        &self,
+        _handle: &ConnectionHandle,
+        _database: &str,
+    ) -> Result<String, DriverError> {
+        Ok(String::new())
+    }
+
     /// Dump an entire database to SQL text.
     ///
     /// Default refuses `create_database` with [`DriverError::NotSupported`] and
@@ -293,12 +329,31 @@ pub trait DatabaseDriver: Send + Sync {
         database: &str,
         opts: &BackupDumpOptions,
     ) -> Result<String, DriverError> {
+        self.dump_database_with_progress(handle, database, opts, &mut |_| {})
+            .await
+    }
+
+    /// Same as [`Self::dump_database`] with per-object progress.
+    async fn dump_database_with_progress(
+        &self,
+        handle: &ConnectionHandle,
+        database: &str,
+        opts: &BackupDumpOptions,
+        on_progress: &mut (dyn FnMut(DumpProgress) + Send),
+    ) -> Result<String, DriverError> {
         if opts.create_database {
             return Err(DriverError::NotSupported(
                 "Backup option 'create' (CREATE DATABASE) is not supported for this driver".into(),
             ));
         }
-        crate::sql_dump::dump_sql_database::<Self>(self, handle, database, opts).await
+        crate::sql_dump::dump_sql_database_with_progress::<Self, _>(
+            self,
+            handle,
+            database,
+            opts,
+            on_progress,
+        )
+        .await
     }
 
     /// Restore a SQL dump by executing statements against the live connection.
@@ -311,7 +366,26 @@ pub trait DatabaseDriver: Send + Sync {
         sql: &str,
         opts: Option<&BackupRestoreOptions>,
     ) -> Result<(), DriverError> {
-        crate::sql_dump::restore_sql_statements::<Self>(self, handle, sql, opts).await
+        self.restore_sql_with_progress(handle, sql, opts, &mut |_| {})
+            .await
+    }
+
+    /// Same as [`Self::restore_sql`] with per-statement progress.
+    async fn restore_sql_with_progress(
+        &self,
+        handle: &ConnectionHandle,
+        sql: &str,
+        opts: Option<&BackupRestoreOptions>,
+        on_progress: &mut (dyn FnMut(DumpProgress) + Send),
+    ) -> Result<(), DriverError> {
+        crate::sql_dump::restore_sql_statements_with_progress::<Self, _>(
+            self,
+            handle,
+            sql,
+            opts,
+            on_progress,
+        )
+        .await
     }
 
     async fn structure_capabilities(

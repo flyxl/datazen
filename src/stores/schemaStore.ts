@@ -6,6 +6,7 @@ import {
   namespaceEnsurePending,
 } from '../lib/ensureNamespace';
 import {
+  collectTableLeafNames,
   isSchemaGroupingSchema,
   mergeNamespacePath,
   pathKey,
@@ -61,6 +62,28 @@ export function resolveVisibleDatabases(
 }
 
 const EMPTY_NAMESPACE: SqlNamespace = {};
+const columnInflight = new Set<string>();
+
+/** Names that are safe to pass to `get_columns` (complete loaded tables only). */
+export function knownTableNames(
+  namespaceTree: SqlNamespace,
+  tables: TableInfo[],
+  views: TableInfo[] = [],
+  pathItems: Record<string, TableInfo[]> = {},
+): Set<string> {
+  const names = collectTableLeafNames(namespaceTree);
+  for (const item of [...tables, ...views]) {
+    names.add(item.name);
+  }
+  for (const items of Object.values(pathItems)) {
+    for (const item of items) {
+      if (item.schema === 'CATALOG' || item.schema === 'SCHEMA') continue;
+      const parts = item.name.split('/').filter(Boolean);
+      names.add(parts[parts.length - 1] ?? item.name);
+    }
+  }
+  return names;
+}
 
 export interface LoadForConnectionOptions {
   skipLoadTables?: boolean;
@@ -110,6 +133,11 @@ interface SchemaStore {
   /** Register display-name → fetch-id aliases and seed top-level namespace branches. */
   registerPathAliases: (entries: { name: string; id: string }[]) => void;
   ensureNamespacePath: (segments: string[]) => Promise<void>;
+  /**
+   * Fetch columns only for known, complete table names (skips prefixes, names
+   * already in columnMap, and failed lookups so they can retry).
+   */
+  ensureColumns: (tableNames: string[]) => Promise<void>;
   loadColumnMap: () => Promise<void>;
   toggleExpand: (id: string) => void;
   setSelected: (id: string | null) => void;
@@ -294,20 +322,47 @@ export const useSchemaStore = create<SchemaStore>((set, get) => ({
     });
   },
 
-  loadColumnMap: async () => {
-    const { connectionId, tables, views } = get();
+  ensureColumns: async (tableNames) => {
+    const { connectionId, columnMap, namespaceTree, tables, views, pathItems } = get();
     if (!connectionId) return;
-    const allNames = [...tables, ...views].map((item) => item.name);
-    const results = await Promise.all(
-      allNames.map((name) =>
-        databaseCommands.getColumns(connectionId, name).catch(() => [] as string[]),
+    const known = knownTableNames(namespaceTree, tables, views, pathItems);
+    if (known.size === 0) return;
+    const wanted = [
+      ...new Set(
+        tableNames.map((name) => name.trim()).filter((name) => name.length > 0 && known.has(name)),
       ),
-    );
-    const map: Record<string, string[]> = {};
-    allNames.forEach((name, i) => {
-      map[name] = results[i];
-    });
-    set({ columnMap: map });
+    ];
+    const missing = wanted.filter((name) => !(name in columnMap) && !columnInflight.has(name));
+    if (missing.length === 0) return;
+
+    for (const name of missing) columnInflight.add(name);
+    try {
+      const settled = await Promise.all(
+        missing.map(async (name) => {
+          try {
+            return { name, cols: await databaseCommands.getColumns(connectionId, name) };
+          } catch {
+            return { name, cols: null };
+          }
+        }),
+      );
+      const next = { ...get().columnMap };
+      let changed = false;
+      for (const row of settled) {
+        if (row.cols == null) continue;
+        next[row.name] = row.cols;
+        changed = true;
+      }
+      if (changed) set({ columnMap: next });
+    } finally {
+      for (const name of missing) columnInflight.delete(name);
+    }
+  },
+
+  loadColumnMap: async () => {
+    const { tables, views } = get();
+    const allNames = [...tables, ...views].map((item) => item.name);
+    await get().ensureColumns(allNames);
   },
 
   toggleExpand: (id) =>

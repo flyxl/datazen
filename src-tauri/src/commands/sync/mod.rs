@@ -51,8 +51,17 @@ pub async fn compare_databases(
     state: State<'_, AppState>,
     source_connection_id: String,
     target_connection_id: String,
+    source_database: Option<String>,
+    target_database: Option<String>,
 ) -> Result<Vec<serde_json::Value>, CommandError> {
-    compare_databases_impl(&state, source_connection_id, target_connection_id).await
+    compare_databases_impl(
+        &state,
+        source_connection_id,
+        target_connection_id,
+        source_database,
+        target_database,
+    )
+    .await
 }
 
 #[tauri::command]
@@ -117,6 +126,9 @@ pub async fn sync_tables(
     strategy: String,
     resume_table: Option<String>,
     resume_offset: Option<u64>,
+    source_database: Option<String>,
+    target_database: Option<String>,
+    object_kinds: Option<std::collections::HashMap<String, String>>,
 ) -> Result<serde_json::Value, CommandError> {
     sync_tables_impl(
         &state,
@@ -131,6 +143,9 @@ pub async fn sync_tables(
         strategy,
         resume_table,
         resume_offset.unwrap_or(0),
+        source_database,
+        target_database,
+        object_kinds.unwrap_or_default(),
     )
     .await
 }

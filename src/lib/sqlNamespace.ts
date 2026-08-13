@@ -62,6 +62,46 @@ export function namespaceHasChild(tree: SqlNamespace, segments: string[]): boole
   return true;
 }
 
+/** Child names at `segments`. Empty when the node is missing or a table leaf. */
+export function namespaceChildNames(tree: SqlNamespace, segments: string[]): string[] {
+  let node: SqlNamespace = tree;
+  for (const seg of segments) {
+    if (isLeaf(node)) return [];
+    if (!(seg in node)) return [];
+    node = node[seg];
+  }
+  if (isLeaf(node)) return [];
+  return Object.keys(node);
+}
+
+/** Like `namespaceChildNames`, but skips table-leaf children so selectors stop at schema. */
+export function namespaceBranchChildNames(tree: SqlNamespace, segments: string[]): string[] {
+  let node: SqlNamespace = tree;
+  for (const seg of segments) {
+    if (isLeaf(node)) return [];
+    if (!(seg in node)) return [];
+    node = node[seg];
+  }
+  if (isLeaf(node)) return [];
+  return Object.entries(node)
+    .filter(([, child]) => !isLeaf(child))
+    .map(([name]) => name);
+}
+
+/** Table-leaf keys at any depth (path-hierarchy catalogs included). */
+export function collectTableLeafNames(tree: SqlNamespace): Set<string> {
+  const names = new Set<string>();
+  const walk = (node: SqlNamespace) => {
+    if (isLeaf(node)) return;
+    for (const [key, child] of Object.entries(node)) {
+      if (isLeaf(child)) names.add(key);
+      else walk(child);
+    }
+  };
+  walk(tree);
+  return names;
+}
+
 /** Deep-clone tree and replace table leaves whose names appear in columnMap. */
 export function overlayColumnMap(
   tree: SqlNamespace,
