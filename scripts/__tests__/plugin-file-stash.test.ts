@@ -1,16 +1,13 @@
 /** @vitest-environment node */
 import { describe, expect, it, beforeEach, afterEach } from 'vitest';
-import {
-  mkdtempSync,
-  writeFileSync,
-  mkdirSync,
-  existsSync,
-  readFileSync,
-  unlinkSync,
-} from 'fs';
+import { mkdtempSync, writeFileSync, mkdirSync, existsSync, readFileSync, unlinkSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { createPluginFileStash, MANAGED_FILES } from '../plugin-file-stash.mjs';
+import {
+  createPluginFileStash,
+  MANAGED_FILES,
+  runPluginFileStashCli,
+} from '../plugin-file-stash.mjs';
 import {
   CLEAN_CONTENTS,
   INJECTED_CONTENTS,
@@ -73,23 +70,14 @@ describe('createPluginFileStash', () => {
     const after = readManaged(root, 'src-tauri/capabilities/default.json');
     expect(after).toContain('docs-singleton');
     expect(after).not.toContain('kiwi:');
-    expect(readManaged(root, 'src/plugins/generated.ts')).toBe(
-      CLEAN_CONTENTS['src/plugins/generated.ts'],
-    );
   });
 
   it('restore succeeds when only some working files were modified', () => {
     stash.stashManagedFiles();
-    // partially overwrite: only capabilities + generated injected
     mkdirSync(join(root, 'src-tauri/capabilities'), { recursive: true });
-    mkdirSync(join(root, 'src/plugins'), { recursive: true });
     writeFileSync(
       stash.workPath('src-tauri/capabilities/default.json'),
       INJECTED_CONTENTS['src-tauri/capabilities/default.json'],
-    );
-    writeFileSync(
-      stash.workPath('src/plugins/generated.ts'),
-      INJECTED_CONTENTS['src/plugins/generated.ts'],
     );
 
     stash.restoreManagedFiles();
@@ -110,15 +98,19 @@ describe('createPluginFileStash', () => {
     expect(() => stash.stashManagedFiles()).toThrow(/missing working files.*Cargo\.toml/);
   });
 
-  it('writes git-safe stub when generated stash backup is missing', () => {
+  it('leaves gitignored codegen files in place on restore', () => {
     stash.stashManagedFiles();
-    writeManagedFiles(root, INJECTED_CONTENTS);
-    unlinkSync(stash.stashPath('src/plugins/generated.ts'));
-    stash.restoreManagedFiles();
-    expect(readManaged(root, 'src/plugins/generated.ts')).toContain(
-      'export type DatabaseType = never',
+    mkdirSync(join(root, 'src/plugins'), { recursive: true });
+    writeFileSync(
+      stash.workPath('src/plugins/generated.ts'),
+      INJECTED_CONTENTS['src/plugins/generated.ts'],
     );
-    expect(existsSync(join(root, '.plugin-file-stash'))).toBe(false);
+    writeManagedFiles(root, INJECTED_CONTENTS);
+    stash.restoreManagedFiles();
+    expect(readManaged(root, 'src/plugins/generated.ts')).toBe(
+      INJECTED_CONTENTS['src/plugins/generated.ts'],
+    );
+    expect(readManaged(root, 'Cargo.toml')).toBe(CLEAN_CONTENTS['Cargo.toml']);
   });
 
   it('deinjects when stash dir is gone but working copies remain', () => {
@@ -126,9 +118,6 @@ describe('createPluginFileStash', () => {
     writeManagedFiles(root, INJECTED_CONTENTS);
     stash.cleanupStashDir();
     stash.restoreManagedFiles();
-    expect(readManaged(root, 'src/plugins/generated.ts')).toContain(
-      'export type DatabaseType = never',
-    );
     expect(readManaged(root, 'Cargo.toml')).toBe(CLEAN_CONTENTS['Cargo.toml']);
   });
 
@@ -143,14 +132,12 @@ describe('createPluginFileStash', () => {
     );
   });
 
-  it('double restore after successful restore is idempotent (stub fallback)', () => {
+  it('double restore after successful restore is idempotent', () => {
     stash.stashManagedFiles();
     writeManagedFiles(root, INJECTED_CONTENTS);
     stash.restoreManagedFiles();
     expect(() => stash.restoreManagedFiles()).not.toThrow();
-    expect(readManaged(root, 'src/plugins/generated.ts')).toContain(
-      'export type DatabaseType = never',
-    );
+    expect(readManaged(root, 'Cargo.toml')).toBe(CLEAN_CONTENTS['Cargo.toml']);
   });
 
   it('stashExists is true if any file is stashed', () => {
@@ -162,5 +149,85 @@ describe('createPluginFileStash', () => {
     }
     expect(stash.stashExists()).toBe(true);
     expect(stash.allStashed()).toBe(false);
+  });
+
+  it('restores a missing work file from stash', () => {
+    stash.stashManagedFiles();
+    unlinkSync(stash.workPath('Cargo.toml'));
+    stash.restoreManagedFiles();
+    expect(readManaged(root, 'Cargo.toml')).toBe(CLEAN_CONTENTS['Cargo.toml']);
+  });
+
+  it('errors when restore has neither work nor stash for a tracked file', () => {
+    unlinkSync(stash.workPath('Cargo.toml'));
+    expect(() => stash.restoreManagedFiles()).toThrow(
+      /cannot restore; stash missing for: Cargo\.toml/,
+    );
+  });
+
+  it('restoreSelectedFiles errors when both work and stash are missing', () => {
+    unlinkSync(stash.workPath('Cargo.toml'));
+    expect(() => stash.restoreSelectedFiles(['Cargo.toml'])).toThrow(/cannot restore selection/);
+  });
+
+  it('printStatus reports stash and work presence', () => {
+    const lines: string[] = [];
+    const orig = console.log;
+    console.log = (...args: unknown[]) => {
+      lines.push(args.map(String).join(' '));
+    };
+    try {
+      stash.printStatus();
+    } finally {
+      console.log = orig;
+    }
+    expect(lines.some((l) => l.includes('stash dir:'))).toBe(true);
+    expect(lines.some((l) => /Cargo\.toml: stash=no work=yes/.test(l))).toBe(true);
+  });
+
+  it('runPluginFileStashCli dispatches stash / restore / status / usage', () => {
+    const errors: string[] = [];
+    expect(
+      runPluginFileStashCli(['status'], {
+        api: stash,
+        error: (msg) => errors.push(String(msg)),
+      }),
+    ).toBe(0);
+    expect(
+      runPluginFileStashCli(['stash'], {
+        api: stash,
+        error: (msg) => errors.push(String(msg)),
+      }),
+    ).toBe(0);
+    expect(
+      runPluginFileStashCli(['restore'], {
+        api: stash,
+        error: (msg) => errors.push(String(msg)),
+      }),
+    ).toBe(0);
+    expect(
+      runPluginFileStashCli(['nope'], {
+        api: stash,
+        error: (msg) => errors.push(String(msg)),
+      }),
+    ).toBe(1);
+    expect(errors.some((e) => /Usage:/.test(e))).toBe(true);
+  });
+
+  it('runPluginFileStashCli returns 1 when the command throws', () => {
+    const errors: string[] = [];
+    expect(
+      runPluginFileStashCli(['stash'], {
+        api: stash,
+        error: (msg) => errors.push(String(msg)),
+      }),
+    ).toBe(0);
+    expect(
+      runPluginFileStashCli(['stash'], {
+        api: stash,
+        error: (msg) => errors.push(String(msg)),
+      }),
+    ).toBe(1);
+    expect(errors.some((e) => /stash already exists/.test(e))).toBe(true);
   });
 });

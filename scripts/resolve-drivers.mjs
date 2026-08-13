@@ -9,10 +9,12 @@
  *   --drivers="all"              (all path drivers only; excludes git drivers)
  *   --drivers="basic,kiwi,superset"  (basic / :basic expands core path drivers, then adds listed ids)
  *   --drivers="all,kiwi,superset"   (all / :all expands to all path drivers, then adds listed ids)
- *   --drivers="stub"             (empty selection; git-safe generated.ts / plugin_init)
+ *   --drivers="stub"             (empty selection; empty generated.ts / plugin_init)
  *   --drivers=                   (same as stub — explicit empty value)
  *   --drivers="postgres,mongodb,kiwi"  (explicit list; use this for custom SKUs)
  *   --drivers="kiwi" / --drivers="superset"  (single git driver id from the registry)
+ *   --codegen-only               (write generated.ts / locales / plugin_init.rs only;
+ *                                 do not inject Cargo.toml or capabilities)
  *   --restore                    (restore stashed clean managed files and exit)
  *
  * Environment variable: DATAZEN_DRIVERS="basic" (overrides default when no --drivers flag)
@@ -21,8 +23,9 @@
  * Custom release SKUs (e.g. akulaku) must pass an explicit comma list in CI —
  * do not add more named presets beyond basic|all|stub; use expanders in lists instead.
  *
- * Managed files are copied into `.plugin-file-stash/` before injection,
- * then restored with `node scripts/plugin-file-stash.mjs restore` after build.
+ * Tracked managed files (Cargo.toml / capabilities) are copied into
+ * `.plugin-file-stash/` before injection, then restored after build.
+ * Gitignored codegen files are written in place and left as-is.
  */
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
@@ -114,12 +117,12 @@ function pathDriverIds(registry) {
 export function resolveDrivers(driversArg, registry) {
   if (driversArg === 'none' || driversArg === 'core') {
     console.error(
-      `[resolve-drivers] preset "${driversArg}" is no longer supported. Use --drivers=basic for the four core drivers, or --drivers=stub for an empty git baseline.`,
+      `[resolve-drivers] preset "${driversArg}" is no longer supported. Use --drivers=basic for the four core drivers, or --drivers=stub for an empty generated registry.`,
     );
     process.exit(1);
   }
 
-  // Empty / stub: commit-safe generated.ts (DatabaseType = never). Do not use as a runtime SKU.
+  // Empty / stub: generated.ts with DatabaseType = never. Do not use as a runtime SKU.
   if (driversArg === 'stub' || driversArg === '') {
     return [];
   }
@@ -1169,8 +1172,12 @@ function injectRootCargoPatches(plugins, registry) {
   }
 }
 
-function wantsRestoreOnly() {
-  return process.argv.slice(2).includes('--restore');
+function wantsRestoreOnly(argv = process.argv.slice(2)) {
+  return argv.includes('--restore');
+}
+
+export function wantsCodegenOnly(argv = process.argv.slice(2)) {
+  return argv.includes('--codegen-only');
 }
 
 function main() {
@@ -1181,21 +1188,28 @@ function main() {
 
   const registry = loadRegistry();
   const driversArg = parseArgs();
+  const codegenOnly = wantsCodegenOnly();
 
   console.log(`[resolve-drivers] drivers arg: "${driversArg}"`);
+  if (codegenOnly) {
+    console.log('[resolve-drivers] --codegen-only (skip Cargo.toml / capabilities inject)');
+  }
 
   const plugins = resolveDrivers(driversArg, registry);
 
   console.log(`[resolve-drivers] resolved drivers: [${plugins.join(', ')}]`);
 
-  // Rename clean managed files aside, then write injected copies at original paths.
+  // Stash tracked managed files, then write injected copies at original paths.
   // Idempotent: if an outer caller already stashed, re-inject over working copies.
-  if (allStashed()) {
-    console.log(
-      '[resolve-drivers] stash already present; re-injecting without re-stash',
-    );
-  } else {
-    stashManagedFiles();
+  // Codegen-only never touches Cargo.toml / capabilities.
+  if (!codegenOnly) {
+    if (allStashed()) {
+      console.log(
+        '[resolve-drivers] stash already present; re-injecting without re-stash',
+      );
+    } else {
+      stashManagedFiles();
+    }
   }
 
   try {
@@ -1216,10 +1230,11 @@ function main() {
       }
     }
 
-    // Inject Cargo dependencies and features at build time
-    injectCargoToml(plugins, registry);
-    injectRootCargoPatches(plugins, registry);
-    syncPluginCapabilities(plugins, registry);
+    if (!codegenOnly) {
+      injectCargoToml(plugins, registry);
+      injectRootCargoPatches(plugins, registry);
+      syncPluginCapabilities(plugins, registry);
+    }
 
     // Write the features file for the build system to consume
     const output = {
@@ -1245,8 +1260,19 @@ function main() {
     } else {
       console.log(`  cargo build`);
     }
-    console.log(`[resolve-drivers] managed files are injected; run \`node scripts/plugin-file-stash.mjs restore\` after build`);
+    if (codegenOnly) {
+      console.log(
+        '[resolve-drivers] codegen-only: wrote generated.ts / generated-locales.ts / plugin_init.rs',
+      );
+    } else {
+      console.log(
+        `[resolve-drivers] managed files are injected; run \`node scripts/plugin-file-stash.mjs restore\` after build`,
+      );
+    }
   } catch (err) {
+    if (codegenOnly) {
+      throw err;
+    }
     console.error('[resolve-drivers] failed; attempting stash restore...');
     try {
       restoreManagedFiles();

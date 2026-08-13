@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 /**
- * dev.mjs — wrapper for `pnpm dev` that resolves drivers then restores stash on exit.
+ * dev.mjs — wrapper for `pnpm dev` that resolves drivers then restores
+ * tracked managed files (Cargo.toml / capabilities) on exit.
+ * Gitignored codegen files are left as generated.
  *
  * Usage:
  *   pnpm dev                          # basic (postgres/mysql/sqlite/redis)

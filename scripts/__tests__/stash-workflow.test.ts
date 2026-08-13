@@ -4,7 +4,7 @@
  * including mixed partial injection patterns.
  */
 import { describe, expect, it, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, existsSync, writeFileSync, unlinkSync } from 'fs';
+import { mkdtempSync, existsSync, writeFileSync, mkdirSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { createPluginFileStash, MANAGED_FILES } from '../plugin-file-stash.mjs';
@@ -32,9 +32,7 @@ describe('stash inject restore workflow', () => {
   });
 
   it('round-trip: stash → inject all → restore matches original', () => {
-    const before = Object.fromEntries(
-      MANAGED_FILES.map((f) => [f, readManaged(root, f)]),
-    );
+    const before = Object.fromEntries(MANAGED_FILES.map((f) => [f, readManaged(root, f)]));
     stash.stashManagedFiles();
     writeManagedFiles(root, INJECTED_CONTENTS);
     stash.restoreManagedFiles();
@@ -45,15 +43,8 @@ describe('stash inject restore workflow', () => {
 
   it('round-trip via precommit after partial inject (only 2 files written)', () => {
     stash.stashManagedFiles();
-    writeFileSync(
-      stash.workPath('Cargo.toml'),
-      INJECTED_CONTENTS['Cargo.toml'],
-    );
-    writeFileSync(
-      stash.workPath('src/plugins/generated.ts'),
-      INJECTED_CONTENTS['src/plugins/generated.ts'],
-    );
-    // other work files intentionally absent
+    writeFileSync(stash.workPath('Cargo.toml'), INJECTED_CONTENTS['Cargo.toml']);
+    // other work files intentionally left clean
 
     const result = runPluginStashPrecommit({
       root,
@@ -86,9 +77,7 @@ describe('stash inject restore workflow', () => {
   });
 
   it('CI-like nest: outer stash stays while nested inject skips restore', async () => {
-    const { INJECT_ACTIVE_ENV, runWithPluginInject } = await import(
-      '../with-plugin-inject.mjs'
-    );
+    const { INJECT_ACTIVE_ENV, runWithPluginInject } = await import('../with-plugin-inject.mjs');
     stash.stashManagedFiles();
     writeManagedFiles(root, INJECTED_CONTENTS);
 
@@ -113,29 +102,19 @@ describe('stash inject restore workflow', () => {
     }
   });
 
-  it('deleting generated stash mid-flight restores a git-safe stub', () => {
+  it('restore leaves extra codegen files untouched', () => {
     stash.stashManagedFiles();
     writeManagedFiles(root, INJECTED_CONTENTS);
-    unlinkSync(stash.stashPath('src/plugins/generated.ts'));
+    mkdirSync(join(root, 'src/plugins'), { recursive: true });
+    writeFileSync(
+      stash.workPath('src/plugins/generated.ts'),
+      INJECTED_CONTENTS['src/plugins/generated.ts'],
+    );
 
     stash.restoreManagedFiles();
-    expect(readManaged(root, 'src/plugins/generated.ts')).toContain(
-      'export type DatabaseType = never',
+    expect(readManaged(root, 'src/plugins/generated.ts')).toBe(
+      INJECTED_CONTENTS['src/plugins/generated.ts'],
     );
-
-    writeManagedFiles(root, INJECTED_CONTENTS);
-    const result = runPluginStashPrecommit({
-      root,
-      quiet: true,
-      isStaged: () => false,
-      getContent: (rel) => readManaged(root, rel),
-      restage: () => {},
-      log: () => {},
-    });
-    expect(result.status).toBe(0);
-    expect(result.restored).toBe(true);
-    expect(readManaged(root, 'src/plugins/generated.ts')).toContain(
-      'export type DatabaseType = never',
-    );
+    expect(readManaged(root, 'Cargo.toml')).toBe(CLEAN_CONTENTS['Cargo.toml']);
   });
 });

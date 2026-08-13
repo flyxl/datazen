@@ -203,6 +203,10 @@ describe('表结构编辑 (TS-001~TS-008)', () => {
     // Inline edit — no new primary tab titled "编辑结构 · …"
     const body = await $('body').getText();
     expect(body).toContain(t('structEditor.editTable'));
+    const exportBtn = await $('[data-testid="struct-editor-export-structure"]');
+    await expect(exportBtn).toBeDisplayed();
+    expect(await exportBtn.getText()).toContain(t('structEditor.exportStructure'));
+    // Native save dialog is not automatable — assert control only.
     const backBtn = await $(`button*=${t('common.back')}`);
     await expect(backBtn).toBeDisplayed();
     await backBtn.click();

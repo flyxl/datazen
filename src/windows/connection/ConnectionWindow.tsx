@@ -167,6 +167,7 @@ export function ConnectionWindow() {
               <div className="text-sm text-red-400">{connectError}</div>
               <button
                 className="rounded-md bg-blue-500 px-4 py-1.5 text-sm text-white hover:bg-blue-600"
+                type="button"
                 onClick={() => {
                   setConnectError(null);
                   void (async () => {

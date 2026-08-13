@@ -531,7 +531,7 @@ const translations = {
   'export.export': '내보내다',
 
   // ── Batch Export Dialog ──
-  'batchExport.title': 'Batch Export',
+  'batchExport.title': 'Export',
   'batchExport.selectTables': 'Select Tables',
   'batchExport.selectAll': 'Select All',
   'batchExport.clearAll': 'Clear All',
@@ -590,6 +590,10 @@ const translations = {
   'structEditor.noChanges': '적용할 변경 사항이 없습니다',
   'structEditor.previewFailed': 'SQL 미리보기 생성 실패',
   'structEditor.executePartial': '{executed}/{total} 문 성공 후 중지: {error}',
+  'structEditor.exportStructure': '구조 내보내기',
+  'structEditor.exportingStructure': '내보내는 중…',
+  'structEditor.exportFailed': '테이블 구조 내보내기 실패',
+  'structEditor.exportUnsupported': '이 연결 유형은 테이블 구조 내보내기를 지원하지 않습니다',
   'indexes.newIndex': '새로운 색인',
   'indexes.indexName': '인덱스 이름',
   'indexes.selectColumns': '열 선택(선택 순서대로)',

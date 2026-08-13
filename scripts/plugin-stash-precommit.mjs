@@ -6,10 +6,10 @@
  * Invoked by `.husky/pre-commit`. Safe to unit-test with an injectable root.
  *
  * Strategy:
- *   - Detect files that still carry injection (plugin compile ran).
+ *   - Detect tracked files that still carry injection (plugin compile ran).
  *   - For those files only: strip injection while keeping user edits
- *     (e.g. new window labels in capabilities). Fully-generated files
- *     (plugin_init / generated.ts) come back from stash.
+ *     (e.g. new window labels in capabilities).
+ *   - Gitignored codegen (generated.ts / plugin_init.rs) is left as-is.
  *
  * Exit codes:
  *   0 — clean / restored successfully
@@ -25,10 +25,7 @@ import {
   MANAGED_FILES,
   ROOT,
 } from './plugin-file-stash.mjs';
-import {
-  PLUGIN_ACL_IDS,
-  isFullyGeneratedManagedFile,
-} from './plugin-deinject.mjs';
+import { PLUGIN_ACL_IDS } from './plugin-deinject.mjs';
 
 export { PLUGIN_ACL_IDS };
 
@@ -182,17 +179,6 @@ export function runPluginStashPrecommit(opts = {}) {
   log(
     `[pre-commit] Deinjecting ${injectedFiles.length} managed file(s) (keep user edits, strip plugin injection)...`,
   );
-
-  // Fully-generated files prefer stash; if missing, restore writes a canonical stub.
-  const needStash = injectedFiles.filter((f) =>
-    isFullyGeneratedManagedFile(f),
-  );
-  const missingStash = needStash.filter((f) => !existsSync(stash.stashPath(f)));
-  if (missingStash.length > 0) {
-    log(
-      `[pre-commit] stash missing for ${missingStash.join(', ')} — restoring git-safe stubs`,
-    );
-  }
 
   try {
     stash.restoreSelectedFiles(injectedFiles);

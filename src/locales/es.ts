@@ -535,7 +535,7 @@ const translations = {
   'export.export': 'Exportar',
 
   // ── Batch Export Dialog ──
-  'batchExport.title': 'Batch Export',
+  'batchExport.title': 'Export',
   'batchExport.selectTables': 'Select Tables',
   'batchExport.selectAll': 'Select All',
   'batchExport.clearAll': 'Clear All',
@@ -595,6 +595,11 @@ const translations = {
   'structEditor.noChanges': 'No hay cambios que aplicar',
   'structEditor.previewFailed': 'No se pudo generar la vista previa de SQL',
   'structEditor.executePartial': '{executed}/{total} sentencias exitosas; detenido: {error}',
+  'structEditor.exportStructure': 'Exportar estructura',
+  'structEditor.exportingStructure': 'Exportando…',
+  'structEditor.exportFailed': 'Error al exportar la estructura de la tabla',
+  'structEditor.exportUnsupported':
+    'Exportar la estructura no es compatible con este tipo de conexión',
   'indexes.newIndex': 'Nuevo índice',
   'indexes.indexName': 'Nombre del índice',
   'indexes.selectColumns': 'Seleccionar columnas (en orden de selección)',
