@@ -87,7 +87,7 @@ export function DDLView({ connectionId, tableName, databaseType }: DDLViewProps)
             void handleCopy();
           },
         },
-      ]);
+      ], { x: e.clientX, y: e.clientY });
     },
     [ddl, handleCopy, t],
   );

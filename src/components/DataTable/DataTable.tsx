@@ -312,6 +312,7 @@ export function DataTable({
           canSetNull,
           canDelete,
         }),
+        { x: e.clientX, y: e.clientY },
       );
     },
     [

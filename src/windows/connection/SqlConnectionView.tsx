@@ -501,6 +501,7 @@ export function SqlConnectionView({
           hasTabsToRight: idx >= 0 && idx < panels.length - 1,
           hasTabsToLeft: idx > 0,
         }),
+        { x: e.clientX, y: e.clientY },
       );
     },
     [
@@ -717,6 +718,7 @@ export function SqlConnectionView({
           showExport: kind === 'view' ? true : undefined,
           showNewTable: showStructureEditor,
         }),
+        { x: payload.x, y: payload.y },
       );
     },
     [
