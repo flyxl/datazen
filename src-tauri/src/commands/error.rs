@@ -86,6 +86,12 @@ impl From<serde_json::Error> for CommandError {
     }
 }
 
+impl From<crate::data_sync::DataSyncError> for CommandError {
+    fn from(e: crate::data_sync::DataSyncError) -> Self {
+        Self::Validation(e.to_string())
+    }
+}
+
 impl From<String> for CommandError {
     fn from(s: String) -> Self {
         Self::Internal(s)
@@ -148,6 +154,10 @@ mod tests {
         let _: CommandError = std::io::Error::new(std::io::ErrorKind::Other, "io").into();
         let _: CommandError = "msg".into();
         let _: CommandError = "msg".to_string().into();
+        let err: CommandError = crate::data_sync::refuse_overwrite_copy().into();
+        assert!(crate::data_sync::is_overwrite_copy_retired_message(
+            &err.to_string()
+        ));
     }
 
     #[test]

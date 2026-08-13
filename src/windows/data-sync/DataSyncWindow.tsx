@@ -32,7 +32,6 @@ import type {
   TableDataCompare,
   TableSchemaDiff,
 } from '../../types';
-import { SavedTasksBanner } from './SavedTasksBanner';
 import { SyncProgressPanel } from './SyncProgressPanel';
 import { ConflictSyncDialog, ResumeSyncDialog } from './ResumeSyncDialog';
 import type { ConflictInfo, SyncProgress, SyncState } from './utils';
@@ -484,13 +483,12 @@ export function DataSyncWindow() {
       {/* Title bar */}
       <TitleBar title={t('sync.windowTitle')} />
 
-      <SavedTasksBanner
-        savedTasks={savedTasks}
-        syncState={syncState}
-        connections={connections}
-        onResume={handleResumeClick}
-        onDelete={handleDeleteTask}
-      />
+      <div
+        data-testid="data-sync-overwrite-retired"
+        className="shrink-0 border-b border-amber-500/40 bg-amber-500/10 px-6 py-2 text-xs text-fg-secondary"
+      >
+        {t('sync.overwriteRetiredBanner')}
+      </div>
 
       {/* Connection selectors */}
       <div className="flex shrink-0 items-center gap-4 border-b border-edge px-6 py-4">
@@ -713,7 +711,13 @@ export function DataSyncWindow() {
         <div className="flex shrink-0 items-center gap-3 border-t border-edge px-6 py-3">
           <span className="text-xs text-fg-muted">{t('sync.selected', { selected: selectedTables.size, total: comparisons.length })}</span>
           <div className="flex-1" />
-          <Button variant="primary" onClick={() => void handleSync()} disabled={syncState === 'syncing' || selectedTables.size === 0}>
+          <Button
+            variant="primary"
+            onClick={() => void handleSync()}
+            disabled
+            title={t('sync.applyUnavailable')}
+            data-testid="data-sync-start-disabled"
+          >
             {syncState === 'syncing' ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
             {syncState === 'done' ? t('sync.reSync') : t('sync.startSync')}
           </Button>

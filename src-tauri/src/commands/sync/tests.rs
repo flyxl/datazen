@@ -415,28 +415,26 @@ async fn compare_table_schemas_and_data_impl() {
 }
 
 #[tokio::test]
-async fn sync_table_impl_copies_rows() {
-    use crate::testing::app_state::{sample_postgres_config, TestAppState};
+async fn sync_table_impl_refuses_overwrite_copy() {
+    use crate::testing::app_state::TestAppState;
 
-    let test = TestAppState::with_tables().await;
-    test.registry
-        .register_test_driver("postgresql", test.mock.clone())
-        .await;
-
-    let mut src_cfg = sample_postgres_config("src-sync");
-    src_cfg.database_type = "postgresql".into();
-    let mut tgt_cfg = sample_postgres_config("tgt-sync");
-    tgt_cfg.database_type = "postgresql".into();
-
-    test.store.save_connection(src_cfg).await.unwrap();
-    test.store.save_connection(tgt_cfg).await.unwrap();
-    let src = test.connect_config("src-sync").await;
-    let tgt = test.connect_config("tgt-sync").await;
-
-    let rows = sync_table_impl(&test.state, src, tgt, "users".into())
+    let test = TestAppState::new().await;
+    let err = sync_table_impl(&test.state, "src".into(), "tgt".into(), "users".into())
         .await
-        .unwrap();
-    assert!(rows >= 1);
+        .unwrap_err();
+    assert!(crate::data_sync::is_overwrite_copy_retired_message(
+        &err.to_string()
+    ));
+}
+
+#[test]
+fn classify_sync_pair_rejects_ir_and_allows_mysql_family() {
+    let mysql = super::classify_sync_pair("mysql".into(), "mariadb".into()).unwrap();
+    assert_eq!(mysql["path"], "direct");
+    assert_eq!(mysql["supported"], true);
+    let ir = super::classify_sync_pair("postgresql".into(), "mysql".into()).unwrap();
+    assert_eq!(ir["path"], "ir");
+    assert_eq!(ir["supported"], false);
 }
 
 #[tokio::test]

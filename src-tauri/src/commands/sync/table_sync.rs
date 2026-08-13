@@ -14,6 +14,7 @@ use tauri::Emitter;
 ///
 /// `resume_offset`: when > 0 (continue strategy mid-table), skip DROP/CREATE and
 /// skip the first `resume_offset` source rows before inserting.
+#[allow(dead_code)]
 async fn sync_one_table<F>(
     state: &AppState,
     source_connection_id: &str,
@@ -145,7 +146,19 @@ where
 // ── Tauri Commands ──────────────────────────────────────────────────
 
 /// Sync a single table from source to target (drop+recreate+insert).
+/// Retired: overwrite copy is not Data Synchronization.
 pub(crate) async fn sync_table_impl(
+    _state: &AppState,
+    source_connection_id: String,
+    target_connection_id: String,
+    table_name: String,
+) -> Result<u64, CommandError> {
+    tracing::info!(%source_connection_id, %target_connection_id, %table_name, "sync_table refused");
+    Err(crate::data_sync::refuse_overwrite_copy().into())
+}
+
+#[allow(dead_code)]
+pub(crate) async fn sync_table_impl_legacy(
     state: &AppState,
     source_connection_id: String,
     target_connection_id: String,
@@ -198,6 +211,25 @@ pub(crate) async fn sync_table_impl(
 
 /// Sync multiple tables with progress events and checkpoint support.
 pub(crate) async fn sync_tables_impl(
+    _state: &AppState,
+    _app_handle: tauri::AppHandle,
+    task_id: String,
+    _source_connection_id: String,
+    _target_connection_id: String,
+    _source_config_id: String,
+    _target_config_id: String,
+    tables: Vec<String>,
+    _skip_tables: Vec<String>,
+    strategy: String,
+    _resume_table: Option<String>,
+    resume_offset: u64,
+) -> Result<serde_json::Value, CommandError> {
+    tracing::info!(%task_id, table_count = tables.len(), %strategy, resume_offset, "sync_tables refused");
+    Err(crate::data_sync::refuse_overwrite_copy().into())
+}
+
+#[allow(dead_code)]
+pub(crate) async fn sync_tables_impl_legacy(
     state: &AppState,
     app_handle: tauri::AppHandle,
     task_id: String,
