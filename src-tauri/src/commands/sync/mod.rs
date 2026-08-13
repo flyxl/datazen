@@ -1,8 +1,10 @@
 //! Data sync IPC commands (compare, table sync, task persistence).
 
+mod apply;
 mod compare;
 mod exec;
 mod inspect;
+mod jobs;
 mod table_sync;
 mod tasks;
 mod types;
@@ -16,8 +18,10 @@ use crate::store::SyncTask;
 pub(crate) use compare::{
     compare_databases_impl, compare_table_data_impl, compare_table_schemas_impl,
 };
+pub(crate) use apply::{apply_data_sync_impl, compare_data_sync_impl};
 pub(crate) use exec::execute_data_sync_impl;
 pub(crate) use inspect::inspect_data_sync_impl;
+pub(crate) use jobs::cancel_job;
 pub(crate) use table_sync::{sync_table_impl, sync_tables_impl};
 pub(crate) use tasks::{
     check_sync_conflicts_impl, delete_sync_task_impl, get_sync_tasks_impl,
@@ -172,8 +176,50 @@ pub async fn execute_data_sync(
     state: State<'_, AppState>,
     target_connection_id: String,
     statements: Vec<crate::data_sync::SqlStatement>,
+    job_id: Option<String>,
 ) -> Result<crate::data_sync::ExecutionResult, CommandError> {
-    execute_data_sync_impl(&state, target_connection_id, statements).await
+    execute_data_sync_impl(&state, target_connection_id, statements, job_id).await
+}
+
+#[tauri::command]
+pub async fn cancel_data_sync(job_id: String) -> Result<bool, CommandError> {
+    Ok(cancel_job(&job_id).await)
+}
+
+#[tauri::command]
+pub async fn compare_data_sync(
+    state: State<'_, AppState>,
+    source_connection_id: String,
+    target_connection_id: String,
+    tables: Option<Vec<String>>,
+    job_id: Option<String>,
+) -> Result<Vec<crate::data_sync::TableResult>, CommandError> {
+    compare_data_sync_impl(
+        &state,
+        source_connection_id,
+        target_connection_id,
+        tables.unwrap_or_default(),
+        job_id,
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn apply_data_sync(
+    state: State<'_, AppState>,
+    source_connection_id: String,
+    target_connection_id: String,
+    tables: Vec<String>,
+    job_id: Option<String>,
+) -> Result<crate::data_sync::ExecutionResult, CommandError> {
+    apply_data_sync_impl(
+        &state,
+        source_connection_id,
+        target_connection_id,
+        tables,
+        job_id,
+    )
+    .await
 }
 
 #[tauri::command]
