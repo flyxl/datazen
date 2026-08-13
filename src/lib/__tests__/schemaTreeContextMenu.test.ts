@@ -16,7 +16,7 @@ const labels: SchemaTreeContextMenuLabels = {
   newQuery: 'New Query',
   copyDatabaseName: 'Copy DB Name',
   newTable: 'New Table',
-  batchExport: 'Batch Export…',
+  batchExport: 'Export…',
   truncate: 'Truncate',
   drop: 'Drop',
   dropView: 'Drop View',

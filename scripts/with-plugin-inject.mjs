@@ -4,12 +4,12 @@
  *
  * Intended as the single inject boundary for packaging (`tauri:build`, CI).
  * `pnpm build` / beforeBuildCommand must NOT call this — they only compile the
- * frontend against already-injected managed files.
+ * frontend against already-injected Cargo.toml / already-generated codegen.
  *
  * Nesting: set DATAZEN_PLUGIN_INJECT_ACTIVE=1 on child processes. Inner
  * with-plugin-inject sees that and skips resolve/restore. A leftover
  * `.plugin-file-stash/` without that env is treated as orphaned and cleaned
- * before this wrapper takes ownership (avoids leaving generated.ts injected).
+ * before this wrapper takes ownership (avoids leaving Cargo.toml injected).
  *
  * Usage:
  *   node scripts/with-plugin-inject.mjs [--drivers=...] -- <cmd> [args...]
@@ -80,7 +80,7 @@ export function runWithPluginInject(options = {}) {
     console.error(
       '[with-plugin-inject] --plugins / DATAZEN_PLUGINS are no longer supported. Use --drivers=... or DATAZEN_DRIVERS.',
     );
-    process.exit(1);
+    return { status: 1, ownStash: false, nested: false, orphanStash: false };
   }
 
   const driversArgs = ahead.filter((a) => a.startsWith('--drivers'));
