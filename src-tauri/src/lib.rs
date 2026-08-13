@@ -9,6 +9,7 @@ pub mod mcp;
 mod monitor;
 mod plugin_init;
 mod redis_flush_gate;
+pub mod data_sync;
 pub mod schema_diff;
 mod schema_objects;
 mod services;
