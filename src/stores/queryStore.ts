@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { queryCommands } from '../commands/query';
 import { applyQueryStreamEvent } from '../lib/queryStream';
+import { resolvePostQueryViewMode } from '../lib/chart/postQueryView';
 import { t } from '../locales/t';
 import type { FavoriteQuery, QueryHistoryEntry, QueryStreamEvent, StatementResult } from '../types';
 import type { ChartConfig } from '../types/chart';
@@ -55,8 +56,15 @@ interface QueryStore {
   setActiveTab: (id: string) => void;
   updateSql: (tabId: string, sql: string) => void;
   setActiveResult: (tabId: string, idx: number) => void;
-  executeQuery: (tabId: string, params?: Record<string, string | number | boolean | null>) => Promise<void>;
-  executeSelection: (tabId: string, sql: string, params?: Record<string, string | number | boolean | null>) => Promise<void>;
+  executeQuery: (
+    tabId: string,
+    params?: Record<string, string | number | boolean | null>,
+  ) => Promise<void>;
+  executeSelection: (
+    tabId: string,
+    sql: string,
+    params?: Record<string, string | number | boolean | null>,
+  ) => Promise<void>;
   cancelQuery: (tabId: string) => Promise<void>;
   loadHistory: () => Promise<void>;
   toggleHistory: () => void;
@@ -64,7 +72,13 @@ interface QueryStore {
   addFavorite: (title: string, sql: string) => Promise<void>;
   deleteFavorite: (id: string) => Promise<void>;
   toggleFavorites: () => void;
-  updateResultCell: (tabId: string, resultIdx: number, row: number, col: string, value: unknown) => void;
+  updateResultCell: (
+    tabId: string,
+    resultIdx: number,
+    row: number,
+    col: string,
+    value: unknown,
+  ) => void;
   reset: () => void;
   setResultDetailRow: (index: number | null) => void;
   setChartConfig: (tabId: string, config: ChartConfig) => void;
@@ -85,7 +99,13 @@ async function runStreamingQuery(
     set({
       tabs: tabs.map((tab) =>
         tab.id === tabId
-          ? { ...tab, error: t('query.notConnected'), running: false, results: [], activeResultIdx: 0 }
+          ? {
+              ...tab,
+              error: t('query.notConnected'),
+              running: false,
+              results: [],
+              activeResultIdx: 0,
+            }
           : tab,
       ),
     });
@@ -122,7 +142,6 @@ async function runStreamingQuery(
     await queryCommands.executeQueryStream(connectionId, sql, onEvent);
     const tab = get().tabs.find((item) => item.id === tabId);
     if (tab && tab.streamRunId === runId) {
-      const { resolvePostQueryViewMode } = await import('../lib/chart/postQueryView');
       const viewMode = resolvePostQueryViewMode(tab.results[0]);
       set((state) => ({
         tabs: state.tabs.map((item) =>
@@ -157,7 +176,13 @@ async function runBoundQuery(
     set({
       tabs: tabs.map((tab) =>
         tab.id === tabId
-          ? { ...tab, error: t('query.notConnected'), running: false, results: [], activeResultIdx: 0 }
+          ? {
+              ...tab,
+              error: t('query.notConnected'),
+              running: false,
+              results: [],
+              activeResultIdx: 0,
+            }
           : tab,
       ),
     });
@@ -172,7 +197,6 @@ async function runBoundQuery(
 
   try {
     const multi = await queryCommands.executeQuery(connectionId, sql, params);
-    const { resolvePostQueryViewMode } = await import('../lib/chart/postQueryView');
     const viewMode = resolvePostQueryViewMode(multi.results[0]);
     set((s) => ({
       tabs: s.tabs.map((tab) =>
@@ -233,7 +257,7 @@ export const useQueryStore = create<QueryStore>((set, get) => ({
     set((s) => {
       if (s.tabs.length <= 1) return s;
       const tabs = s.tabs.filter((t) => t.id !== id);
-      const activeTabId = s.activeTabId === id ? tabs[0]?.id ?? s.activeTabId : s.activeTabId;
+      const activeTabId = s.activeTabId === id ? (tabs[0]?.id ?? s.activeTabId) : s.activeTabId;
       return { tabs, activeTabId };
     }),
 
@@ -345,15 +369,11 @@ export const useQueryStore = create<QueryStore>((set, get) => ({
 
   setChartConfig: (tabId, config) =>
     set((s) => ({
-      tabs: s.tabs.map((tab) =>
-        tab.id === tabId ? { ...tab, chartConfig: config } : tab,
-      ),
+      tabs: s.tabs.map((tab) => (tab.id === tabId ? { ...tab, chartConfig: config } : tab)),
     })),
 
   setResultViewMode: (tabId, mode) =>
     set((s) => ({
-      tabs: s.tabs.map((tab) =>
-        tab.id === tabId ? { ...tab, resultViewMode: mode } : tab,
-      ),
+      tabs: s.tabs.map((tab) => (tab.id === tabId ? { ...tab, resultViewMode: mode } : tab)),
     })),
 }));

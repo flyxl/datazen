@@ -16,7 +16,7 @@ import {
   type SchemaDiffDeployResult,
   type SchemaDiffPlan,
 } from '../../commands/schemaDiff';
-import { useThemeListener } from '../../hooks/useThemeListener';
+import { useSettings } from '../../hooks/useSettings';
 import { useI18n } from '../../hooks/useI18n';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { openDocsWindow } from '../../lib/windowManager';
@@ -34,7 +34,7 @@ function parseTableList(raw: string): string[] {
 }
 
 export function SchemaDiffWindow() {
-  useThemeListener();
+  useSettings();
   const { t } = useI18n();
   const loadSettings = useSettingsStore((s) => s.loadSettings);
 
@@ -266,11 +266,15 @@ export function SchemaDiffWindow() {
       <div className="flex flex-1 flex-col gap-4 overflow-auto p-6">
         <p className="text-sm text-fg-muted">{t('schemaDiff.description')}</p>
         <div className="flex flex-wrap gap-2 text-xs text-fg-muted">
-          <span className={step === 'compare' ? 'text-accent' : ''}>{t('schemaDiff.stepCompare')}</span>
+          <span className={step === 'compare' ? 'text-accent' : ''}>
+            {t('schemaDiff.stepCompare')}
+          </span>
           <span>→</span>
           <span className={step === 'plan' ? 'text-accent' : ''}>{t('schemaDiff.stepPlan')}</span>
           <span>→</span>
-          <span className={step === 'review' ? 'text-accent' : ''}>{t('schemaDiff.stepReview')}</span>
+          <span className={step === 'review' ? 'text-accent' : ''}>
+            {t('schemaDiff.stepReview')}
+          </span>
         </div>
 
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -311,7 +315,9 @@ export function SchemaDiffWindow() {
           </Button>
           <Button
             variant="secondary"
-            disabled={loading || !sourceId || !targetId || parseTableList(tableNamesRaw).length === 0}
+            disabled={
+              loading || !sourceId || !targetId || parseTableList(tableNamesRaw).length === 0
+            }
             onClick={() => void buildPlan()}
           >
             {t('schemaDiff.generatePlan')}

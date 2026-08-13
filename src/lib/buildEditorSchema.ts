@@ -44,6 +44,36 @@ export function hoistNamespaceChild(
   return out;
 }
 
+/**
+ * PostgreSQL (and similar) nest tables under schema names. CodeMirror only
+ * completes unqualified identifiers from the root, so copy table leaves up.
+ */
+export function hoistNestedTableLeaves(tree: SqlNamespace): SqlNamespace {
+  if (Array.isArray(tree)) return tree;
+  const out: Record<string, SqlNamespace> = { ...tree };
+  for (const child of Object.values(tree)) {
+    if (Array.isArray(child)) continue;
+    for (const [name, value] of Object.entries(child)) {
+      if (name in out) continue;
+      if (Array.isArray(value)) out[name] = value;
+    }
+  }
+  return out;
+}
+
+function mergeUnqualifiedTables(
+  tree: SqlNamespace,
+  tables: TableInfo[],
+  views: TableInfo[],
+): SqlNamespace {
+  if (tables.length === 0 && views.length === 0) return tree;
+  const out: Record<string, SqlNamespace> = Array.isArray(tree) ? {} : { ...tree };
+  for (const item of [...tables, ...views]) {
+    if (!(item.name in out)) out[item.name] = [];
+  }
+  return out;
+}
+
 export function buildEditorSchema({
   namespaceTree,
   tables,
@@ -52,5 +82,8 @@ export function buildEditorSchema({
   currentDatabase,
 }: BuildEditorSchemaInput): SqlNamespace {
   const base = isNamespaceEmpty(namespaceTree) ? flatFromTables(tables, views) : namespaceTree;
-  return hoistNamespaceChild(overlayColumnMap(base, columnMap), currentDatabase);
+  const withDb = hoistNamespaceChild(base, currentDatabase);
+  const withNested = hoistNestedTableLeaves(withDb);
+  const withTables = mergeUnqualifiedTables(withNested, tables, views);
+  return overlayColumnMap(withTables, columnMap);
 }

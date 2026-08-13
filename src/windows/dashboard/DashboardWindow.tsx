@@ -15,7 +15,7 @@ import { TitleBar } from '../../components/TitleBar';
 import { StatusBar } from '../../components/StatusBar';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
-import { useThemeListener } from '../../hooks/useThemeListener';
+import { useSettings } from '../../hooks/useSettings';
 import { useI18n } from '../../hooks/useI18n';
 import { getUrlParam } from '../../lib/windowKind';
 import { cn } from '../../lib/cn';
@@ -50,7 +50,7 @@ function nextWidgetLayout(widgets: DashboardWidget[]): DashboardWidget['layout']
 }
 
 export function DashboardWindow() {
-  useThemeListener();
+  useSettings();
   const { t } = useI18n();
   const urlDashboardId = getUrlParam('dashboardId') ?? '';
   const [activeDashboardId, setActiveDashboardId] = useState(urlDashboardId);

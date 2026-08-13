@@ -151,8 +151,8 @@ vi.mock('../../../hooks/useI18n', () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));
 
-vi.mock('../../../hooks/useThemeListener', () => ({
-  useThemeListener: () => {},
+vi.mock('../../../hooks/useSettings', () => ({
+  useSettings: () => {},
 }));
 
 vi.mock('../../../lib/windowKind', () => ({

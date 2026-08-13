@@ -27,7 +27,7 @@ import { isChartableResult } from '../../lib/chart/fieldInference';
 import { Button } from '../../components/ui/Button';
 import { Select } from '../../components/ui/Select';
 import { useResizable } from '../../hooks/useResizable';
-import { useThemeListener } from '../../hooks/useThemeListener';
+import { useSettings } from '../../hooks/useSettings';
 import { useI18n } from '../../hooks/useI18n';
 import { useAiStore } from '../../stores/aiStore';
 import { useSettingsStore } from '../../stores/settingsStore';
@@ -106,7 +106,7 @@ function nextPanelId(prefix: string) {
 // ── Main Component ──────────────────────────────────────────────────
 
 export function WorkflowWindow() {
-  useThemeListener();
+  useSettings();
   const { t } = useI18n();
 
   const workflows = useAiStore((s) => s.workflows);

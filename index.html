@@ -1,25 +1,77 @@
-<!DOCTYPE html>
-<html lang="en" class="h-full" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false">
+<!doctype html>
+<html
+  lang="en"
+  class="h-full"
+  autocapitalize="off"
+  autocorrect="off"
+  autocomplete="off"
+  spellcheck="false"
+>
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/png" href="/favicon.png" />
+    <link rel="icon" type="image/png" href="./favicon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>DataZen</title>
     <script>
       window.__HTML_START__ = performance.now();
-      var _d = new Date(), _p = function(n,w){return String(n).padStart(w||2,'0');};
-      console.log(_p(_d.getFullYear(),4)+'-'+_p(_d.getMonth()+1)+'-'+_p(_d.getDate())+' '+_p(_d.getHours())+':'+_p(_d.getMinutes())+':'+_p(_d.getSeconds())+'.'+_p(_d.getMilliseconds(),3)+' [startup] HTML inline script executing');
+      var _d = new Date(),
+        _p = function (n, w) {
+          return String(n).padStart(w || 2, '0');
+        };
+      console.log(
+        _p(_d.getFullYear(), 4) +
+          '-' +
+          _p(_d.getMonth() + 1) +
+          '-' +
+          _p(_d.getDate()) +
+          ' ' +
+          _p(_d.getHours()) +
+          ':' +
+          _p(_d.getMinutes()) +
+          ':' +
+          _p(_d.getSeconds()) +
+          '.' +
+          _p(_d.getMilliseconds(), 3) +
+          ' [startup] HTML inline script executing',
+      );
     </script>
     <style>
-      #splash{display:flex;align-items:center;justify-content:center;position:fixed;inset:0;z-index:99999;transition:opacity .3s;border-radius:inherit}
-      #splash.hide{opacity:0;pointer-events:none}
-      #splash .logo{width:96px;height:96px;object-fit:contain;user-select:none;-webkit-user-drag:none;opacity:0;animation:splash-fade-in .45s ease-out forwards}
-      @keyframes splash-fade-in{from{opacity:0}to{opacity:1}}
+      #splash {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: fixed;
+        inset: 0;
+        z-index: 99999;
+        transition: opacity 0.3s;
+        border-radius: inherit;
+      }
+      #splash.hide {
+        opacity: 0;
+        pointer-events: none;
+      }
+      #splash .logo {
+        width: 96px;
+        height: 96px;
+        object-fit: contain;
+        user-select: none;
+        -webkit-user-drag: none;
+        opacity: 0;
+        animation: splash-fade-in 0.45s ease-out forwards;
+      }
+      @keyframes splash-fade-in {
+        from {
+          opacity: 0;
+        }
+        to {
+          opacity: 1;
+        }
+      }
     </style>
   </head>
   <body class="h-full antialiased">
     <div id="splash">
-      <img class="logo" src="/logo.png" alt="DataZen" width="96" height="96" />
+      <img class="logo" src="./logo.png" alt="DataZen" width="96" height="96" />
     </div>
     <div id="root" class="h-full min-h-0"></div>
     <script>

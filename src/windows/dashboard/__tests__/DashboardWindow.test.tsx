@@ -48,8 +48,8 @@ const {
   };
 });
 
-vi.mock('../../../hooks/useThemeListener', () => ({
-  useThemeListener: vi.fn(),
+vi.mock('../../../hooks/useSettings', () => ({
+  useSettings: vi.fn(),
 }));
 
 vi.mock('../../../hooks/useI18n', () => ({

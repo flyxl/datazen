@@ -26,6 +26,7 @@ import { Select } from '../../components/ui/Select';
 import { SqlEditor } from '../../components/SqlEditor';
 import type { SqlEditorHandle } from '../../components/SqlEditor';
 import { buildEditorSchema } from '../../lib/buildEditorSchema';
+import { inferDefaultSchema, inferDefaultTable } from '../../lib/sqlEditorDefaults';
 import { DataTable } from '../../components/DataTable/DataTable';
 import type { ColumnDef } from '../../components/DataTable/TableHeader';
 import { ChartView } from '../../components/chart/ChartView';
@@ -160,6 +161,8 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
     () => buildEditorSchema({ namespaceTree, tables, views, columnMap, currentDatabase }),
     [namespaceTree, tables, views, columnMap, currentDatabase],
   );
+  const editorDefaultSchema = useMemo(() => inferDefaultSchema(tables, views), [tables, views]);
+  const editorDefaultTable = useMemo(() => inferDefaultTable(tab?.sql ?? ''), [tab?.sql]);
 
   const ensureTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleQualifiedPath = useCallback(
@@ -591,6 +594,8 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
               schema={editorSchema}
               databaseType={databaseType}
               namespaceLoading={namespaceLoading}
+              defaultSchema={editorDefaultSchema}
+              defaultTable={editorDefaultTable}
             />
           </div>
           <div
