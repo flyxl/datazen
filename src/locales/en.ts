@@ -411,6 +411,8 @@ const en: Record<TranslationKey, string> = {
   'connWin.closeTab': 'Close',
   'connWin.closeOtherTabs': 'Close Others',
   'connWin.closeAllTabs': 'Close All',
+  'connWin.closeTabsToRight': 'Close to the Right',
+  'connWin.closeTabsToLeft': 'Close to the Left',
 
   // ── Table View ──
   'tableView.loadingData': 'Loading table data…',
@@ -425,8 +427,15 @@ const en: Record<TranslationKey, string> = {
   'schemaTree.showAll': 'Show all ({count})',
   'schemaTree.openTable': 'Open Table',
   'schemaTree.open': 'Open',
+  'schemaTree.openStructure': 'Open Structure',
   'schemaTree.copyName': 'Copy Name',
   'schemaTree.copyDatabaseName': 'Copy Database Name',
+  'schemaTree.truncate': 'Truncate',
+  'schemaTree.drop': 'Drop',
+  'schemaTree.dropView': 'Drop View',
+  'schemaTree.confirmTruncate': 'Truncate table "{name}"? All rows will be deleted.',
+  'schemaTree.confirmDrop': 'Drop table "{name}"? This cannot be undone.',
+  'schemaTree.confirmDropView': 'Drop view "{name}"? This cannot be undone.',
 
   // ── ER Diagram ──
   'erDiagram.title': 'ER Diagram',
@@ -451,6 +460,8 @@ const en: Record<TranslationKey, string> = {
 
   // ── Query Panel ──
   'query.execute': 'Execute',
+  'query.run': 'Run',
+  'query.runSelection': 'Run Selection',
   'query.stop': 'Stop',
   'query.totalTime': 'Total Time',
   'query.history': 'History',
@@ -476,6 +487,7 @@ const en: Record<TranslationKey, string> = {
   'query.copySql': 'Copy SQL',
   'query.clearHistory': 'Clear History',
   'query.format': 'Format',
+  'query.comment': 'Comment/Uncomment',
   'query.params': 'Parameters',
   'query.paramValue': 'Value',
   'query.beginTx': 'Begin',
@@ -525,7 +537,10 @@ const en: Record<TranslationKey, string> = {
   'dataTable.copyRow': 'Copy Row',
   'dataTable.copyAsJson': 'Copy as JSON',
   'dataTable.copyAsSqlInsert': 'Copy as SQL INSERT',
+  'dataTable.copyAsUpdate': 'Copy as UPDATE',
+  'dataTable.copyAsCsv': 'Copy as CSV',
   'dataTable.copyColumnName': 'Copy Column Name',
+  'dataTable.setNull': 'Set NULL',
   'dataTable.filterByValue': 'Filter by This Value',
 
   // ── Detail Panel ──

@@ -23,6 +23,7 @@ import { DB_REGISTRY } from '../lib/databaseTypes';
 import { parseQualifiedPathParents } from '../lib/sqlPathPrefix';
 import type { SqlNamespace } from '../lib/sqlNamespace';
 import type { DatabaseType } from '../types';
+import { toggleSqlLineComments } from '../lib/sqlEditorContextMenu';
 
 interface ThemeConfig {
   dark: boolean;
@@ -103,6 +104,8 @@ export type SqlSchema = SqlNamespace;
 
 export interface SqlEditorHandle {
   getSelection: () => string;
+  /** Toggle `-- ` comments on selected lines (or the line containing the cursor). */
+  toggleLineComment: () => void;
 }
 
 const CM_DIALECT_MAP: Record<string, SQLDialect> = {
@@ -190,6 +193,26 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
       const view = viewRef.current;
       if (!view) return '';
       return view.state.sliceDoc(view.state.selection.main.from, view.state.selection.main.to);
+    },
+    toggleLineComment: () => {
+      const view = viewRef.current;
+      if (!view) return;
+      const { state } = view;
+      const sel = state.selection.main;
+      const fromLine = state.doc.lineAt(sel.from);
+      const toLine = state.doc.lineAt(sel.to > sel.from ? sel.to - 1 : sel.to);
+      const from = fromLine.from;
+      const to = toLine.to;
+      const original = state.sliceDoc(from, to);
+      const next = toggleSqlLineComments(original);
+      if (next === original) return;
+      view.dispatch({
+        changes: { from, to, insert: next },
+        selection: {
+          anchor: from,
+          head: from + next.length,
+        },
+      });
     },
   }));
 

@@ -595,7 +595,10 @@ DataTable (容器)
 └── DataExportDialog    # 数据导出对话框（CSV/TSV/JSON/SQL INSERT/SQL UPDATE）
 ```
 
-右键菜单走 Tauri 原生 Menu（见下方「原生 Context Menu」），由 `buildDataTableContextMenuItems` 构建：复制单元格 / 复制选中行 / 导出。
+右键菜单走 Tauri 原生 Menu（见下方「原生 Context Menu」），由 `buildDataTableContextMenuItems` 构建（对齐 TablePlus）：
+Copy / Copy Row / Copy as JSON / Copy as SQL INSERT / Copy as UPDATE / Copy as CSV /
+Copy Column Name / Set NULL（可编辑表；Query 结果通过 `enableSetNull={false}` 隐藏）/
+Filter by This Value / Copy Selected Rows / Export。
 
 **数据导出功能**：
 - 工具栏「导出」按钮导出全部数据
@@ -653,6 +656,8 @@ interface DataTableProps {
 | Workflow 列表 / 历史 | `src/lib/workflowListContextMenu.ts` | `WorkflowWindow` |
 | ER 节点 | `src/lib/erNodeContextMenu.ts` | `ErDiagramView` |
 | Redis Key | `packages/drivers/redis/ui/redisKeyContextMenu.ts` | `RedisWorkbench` |
+
+Connection Window 菜单项对齐 TablePlus：Schema（Open Structure / New Query / Copy DDL / Truncate / Drop / New Table / Import）、SQL 编辑器（Run / Run Selection / Format / Comment）、Tab（Close to the Right/Left）、DDL 视图右键 Copy。
 
 约定：调用方传入 i18n labels 与 handlers；`preventDefault` + `stopPropagation` 后弹出；原生 OS 菜单不可 DOM 断言（E2E 勿依赖菜单文案）。
 

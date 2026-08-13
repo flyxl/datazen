@@ -7,8 +7,10 @@ import { useColumnResize, adjustWidthsForSort } from '../../hooks/useColumnResiz
 import {
   buildDataTableContextMenuItems,
   formatRowAsSqlInsert,
+  formatRowAsSqlUpdate,
   resolveDataTableCellFromEvent,
   rowToNamedRecord,
+  serializeDataTableRowsAsCsv,
   serializeDataTableRowsAsTsv,
 } from '../../lib/dataTableContextMenu';
 import { showNativeContextMenu } from '../../lib/nativeContextMenu';
@@ -50,6 +52,11 @@ export interface DataTableProps {
   onCellDoubleClick?: (row: number, col: string) => void;
   onCellEdit?: (row: number, col: string, value: unknown) => void;
   onCellEditCancel?: () => void;
+  /**
+   * Show “Set NULL” in the context menu. Defaults to true when `onCellEdit` is set.
+   * Pass false for read-only grids that only use `onCellEdit` to dismiss an editor (e.g. query results).
+   */
+  enableSetNull?: boolean;
 
   selectedRows?: Set<number>;
   onRowSelect?: (index: number, opts?: { multi?: boolean; range?: boolean }) => void;
@@ -68,6 +75,8 @@ export interface DataTableProps {
   /** Enable data export (button + context menu). Provide a table name for the filename. */
   exportTableName?: string;
   databaseType?: string;
+  /** Primary-key column names for Copy as UPDATE; falls back to first column. */
+  primaryKeyColumns?: string[];
 
   /**
    * Optional cell text for the native context menu “copy” item.
@@ -109,6 +118,7 @@ export function DataTable({
   onCellDoubleClick,
   onCellEdit,
   onCellEditCancel,
+  enableSetNull,
   onRowSelect,
   onSelectAll,
   onRowClick,
@@ -117,6 +127,7 @@ export function DataTable({
   rowHeight = 40,
   exportTableName,
   databaseType,
+  primaryKeyColumns,
   getContextCellText,
 }: DataTableProps) {
   const { t } = useI18n();
@@ -171,6 +182,16 @@ export function DataTable({
       const hasSelectedRows = selectedDataRows.length > 0;
       const hasCellContext = hit != null && Array.isArray(hitRow);
       const canFilterByValue = hasCellContext && !!onAddFilter && !!hit;
+      const setNullAllowed = enableSetNull ?? !!onCellEdit;
+      const canSetNull = hasCellContext && setNullAllowed && !!onCellEdit && !!hit;
+
+      const csvRows =
+        hasSelectedRows && !hasCellContext
+          ? selectedDataRows
+          : hasCellContext && hitRow
+            ? [hitRow]
+            : selectedDataRows;
+      const canCopyCsv = csvRows.length > 0;
 
       const copyText = (text: string) => {
         void navigator.clipboard.writeText(text);
@@ -183,7 +204,10 @@ export function DataTable({
             copyRow: t('dataTable.copyRow'),
             copyAsJson: t('dataTable.copyAsJson'),
             copyAsSqlInsert: t('dataTable.copyAsSqlInsert'),
+            copyAsUpdate: t('dataTable.copyAsUpdate'),
+            copyAsCsv: t('dataTable.copyAsCsv'),
             copyColumnName: t('dataTable.copyColumnName'),
+            setNull: t('dataTable.setNull'),
             filterByValue: t('dataTable.filterByValue'),
             copySelectedRows: `${t('common.copy')} ${t('export.selectedRows')}`,
             export:
@@ -215,10 +239,34 @@ export function DataTable({
                     copyText(formatRowAsSqlInsert(exportTableName || 'table', columnNames, hitRow));
                   }
                 : undefined,
+            onCopyAsUpdate:
+              hasCellContext && hitRow
+                ? () => {
+                    copyText(
+                      formatRowAsSqlUpdate(
+                        exportTableName || 'table',
+                        columnNames,
+                        hitRow,
+                        primaryKeyColumns,
+                      ),
+                    );
+                  }
+                : undefined,
+            onCopyAsCsv: canCopyCsv
+              ? () => {
+                  copyText(serializeDataTableRowsAsCsv(columnNames, csvRows));
+                }
+              : undefined,
             onCopyColumnName:
               hasCellContext && hit
                 ? () => {
                     copyText(hit.columnName);
+                  }
+                : undefined,
+            onSetNull:
+              canSetNull && hit
+                ? () => {
+                    onCellEdit?.(hit.rowIndex, hit.columnName, null);
                   }
                 : undefined,
             onFilterByValue:
@@ -246,6 +294,7 @@ export function DataTable({
           hasSelectedRows,
           exportEnabled,
           canFilterByValue,
+          canSetNull,
         }),
       );
     },
@@ -255,6 +304,9 @@ export function DataTable({
       exportTableName,
       getContextCellText,
       onAddFilter,
+      onCellEdit,
+      enableSetNull,
+      primaryKeyColumns,
       rows,
       selectedRows,
       t,

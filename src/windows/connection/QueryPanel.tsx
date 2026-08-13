@@ -400,15 +400,32 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
   const handleEditorContextMenu = useCallback(
     (_e: MouseEvent, sqlText: string) => {
       pendingFavSqlRef.current = sqlText;
+      const selection = editorRef.current?.getSelection() ?? '';
+      const hasSelection = selection.length > 0;
       void showNativeContextMenu(
-        buildSqlEditorContextMenuItems(
-          { addFavorite: t('query.addFavorite') },
+        buildSqlEditorContextMenuItems({
+          labels: {
+            run: t('query.run'),
+            runSelection: t('query.runSelection'),
+            format: t('query.format'),
+            comment: t('query.comment'),
+            addFavorite: t('query.addFavorite'),
+          },
+          handlers: {
+            onRun: handleExecute,
+            onRunSelection: () => {
+              if (selection.trim()) handleExecuteSelection(selection);
+            },
+            onFormat: handleFormat,
+            onComment: () => editorRef.current?.toggleLineComment(),
+            onAddFavorite: openAddFavoriteDialog,
+          },
           sqlText,
-          openAddFavoriteDialog,
-        ),
+          hasSelection,
+        }),
       );
     },
-    [openAddFavoriteDialog, t],
+    [openAddFavoriteDialog, t, handleExecute, handleExecuteSelection, handleFormat],
   );
 
   const copySqlToClipboard = useCallback((sql: string) => {
@@ -1151,6 +1168,7 @@ function ResultTable({ result }: { result: StatementResult }) {
       onCellDoubleClick={handleCellDoubleClick}
       onCellEdit={(_row, _col, _value) => setEditingCell(null)}
       onCellEditCancel={() => setEditingCell(null)}
+      enableSetNull={false}
       onRowClick={setResultDetailRow}
       highlightedRow={resultDetailRowIndex}
       exportTableName="query_result"

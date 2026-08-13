@@ -24,14 +24,17 @@ import { useTableDataStore } from '../../stores/tableDataStore';
 import { useQueryStore } from '../../stores/queryStore';
 import { cn } from '../../lib/cn';
 import { openDocsWindow } from '../../lib/windowManager';
-import { DB_REGISTRY, getDbLabel } from '../../lib/databaseTypes';
+import { DB_REGISTRY, escapeIdent, getDbLabel } from '../../lib/databaseTypes';
 import { canOpenStructureEditor } from '../../lib/structureEditor/canOpenStructureEditor';
 import { resolveCreateTableSchema } from '../../lib/structureEditor/resolveCreateTableSchema';
-import { invalidateSchemaCache } from '../../lib/schemaCache';
+import { getCachedDDL, invalidateSchemaCache } from '../../lib/schemaCache';
 import { showNativeContextMenu } from '../../lib/nativeContextMenu';
 import { buildConnectionTabContextMenuItems } from '../../lib/connectionTabContextMenu';
 import { buildSchemaTreeContextMenuItems } from '../../lib/schemaTreeContextMenu';
+import { getSqlDialect } from '../../lib/sqlDialects';
+import { queryCommands } from '../../commands/query';
 import type { ConnectionViewProps } from '../../lib/connectionViews/types';
+import type { DatabaseType } from '../../types';
 import { SchemaTree, type SchemaTreeNodeContextMenuPayload } from './schema-tree/SchemaTree';
 import { StructureView } from './StructureView';
 import { TableView } from './TableView';
@@ -286,6 +289,34 @@ export function SqlConnectionView({
     });
   }, []);
 
+  /** Open Structure sub-tab (edit mode when structure editor is available). */
+  const handleOpenStructure = useCallback(
+    (name: string) => {
+      if (showStructureEditor) {
+        handleEditTableStructure(name);
+        return;
+      }
+      setPanels((prev) => {
+        const existing = prev.find((p) => p.type === 'table' && p.tableName === name);
+        if (existing) {
+          setActivePanelId(existing.id);
+          return prev.map((p) =>
+            p.id === existing.id ? { ...p, subTab: 'structure' as SubTabId } : p,
+          );
+        }
+        const panel: TablePanel = {
+          type: 'table',
+          id: nextPanelId('tbl'),
+          tableName: name,
+          subTab: 'structure',
+        };
+        setActivePanelId(panel.id);
+        return [...prev, panel];
+      });
+    },
+    [showStructureEditor, handleEditTableStructure],
+  );
+
   const handleExitStructureEditing = useCallback((panelId: string) => {
     setPanels((prev) =>
       prev.map((p) =>
@@ -341,19 +372,23 @@ export function SqlConnectionView({
     setActivePanelId(panel.id);
   }, [panels]);
 
-  const handleNewQuery = useCallback(() => {
-    createQueryTab();
-    const latestTab = useQueryStore.getState().tabs.at(-1);
-    if (!latestTab) return;
-    const panel: QueryPanelInfo = {
-      type: 'query',
-      id: nextPanelId('qry'),
-      queryTabId: latestTab.id,
-      title: latestTab.title,
-    };
-    setPanels((prev) => [...prev, panel]);
-    setActivePanelId(panel.id);
-  }, [createQueryTab]);
+  const handleNewQuery = useCallback(
+    (initialSql?: string) => {
+      createQueryTab();
+      const latestTab = useQueryStore.getState().tabs.at(-1);
+      if (!latestTab) return;
+      if (initialSql) updateQuerySql(latestTab.id, initialSql);
+      const panel: QueryPanelInfo = {
+        type: 'query',
+        id: nextPanelId('qry'),
+        queryTabId: latestTab.id,
+        title: latestTab.title,
+      };
+      setPanels((prev) => [...prev, panel]);
+      setActivePanelId(panel.id);
+    },
+    [createQueryTab, updateQuerySql],
+  );
 
   const handleClosePanel = useCallback(
     (panelId: string) => {
@@ -407,27 +442,74 @@ export function SqlConnectionView({
     setActivePanelId(null);
   }, [closeQueryTab]);
 
+  const handleClosePanelsToTheRight = useCallback(
+    (panelId: string) => {
+      setPanels((prev) => {
+        const idx = prev.findIndex((p) => p.id === panelId);
+        if (idx < 0) return prev;
+        const keep = prev.slice(0, idx + 1);
+        for (const panel of prev.slice(idx + 1)) {
+          if (panel.type === 'query') closeQueryTab(panel.queryTabId);
+        }
+        return keep;
+      });
+      setActivePanelId(panelId);
+    },
+    [closeQueryTab],
+  );
+
+  const handleClosePanelsToTheLeft = useCallback(
+    (panelId: string) => {
+      setPanels((prev) => {
+        const idx = prev.findIndex((p) => p.id === panelId);
+        if (idx < 0) return prev;
+        const keep = prev.slice(idx);
+        for (const panel of prev.slice(0, idx)) {
+          if (panel.type === 'query') closeQueryTab(panel.queryTabId);
+        }
+        return keep;
+      });
+      setActivePanelId(panelId);
+    },
+    [closeQueryTab],
+  );
+
   const handlePanelTabContextMenu = useCallback(
     (panelId: string, e: MouseEvent) => {
       e.preventDefault();
       e.stopPropagation();
+      const idx = panels.findIndex((p) => p.id === panelId);
       void showNativeContextMenu(
         buildConnectionTabContextMenuItems({
           labels: {
             close: t('connWin.closeTab'),
             closeOthers: t('connWin.closeOtherTabs'),
             closeAll: t('connWin.closeAllTabs'),
+            closeToTheRight: t('connWin.closeTabsToRight'),
+            closeToTheLeft: t('connWin.closeTabsToLeft'),
           },
           handlers: {
             onClose: () => handleClosePanel(panelId),
             onCloseOthers: () => handleCloseOtherPanels(panelId),
             onCloseAll: handleCloseAllPanels,
+            onCloseToTheRight: () => handleClosePanelsToTheRight(panelId),
+            onCloseToTheLeft: () => handleClosePanelsToTheLeft(panelId),
           },
           onlyOneTab: panels.length <= 1,
+          hasTabsToRight: idx >= 0 && idx < panels.length - 1,
+          hasTabsToLeft: idx > 0,
         }),
       );
     },
-    [t, handleClosePanel, handleCloseOtherPanels, handleCloseAllPanels, panels.length],
+    [
+      t,
+      handleClosePanel,
+      handleCloseOtherPanels,
+      handleCloseAllPanels,
+      handleClosePanelsToTheRight,
+      handleClosePanelsToTheLeft,
+      panels,
+    ],
   );
 
   const handleSetSubTab = useCallback((panelId: string, subTab: SubTabId) => {
@@ -479,16 +561,63 @@ export function SqlConnectionView({
   const handleNodeContextMenu = useCallback(
     (payload: SchemaTreeNodeContextMenuPayload) => {
       const { kind, name, schema } = payload;
+      const dbType = databaseType as DatabaseType;
       const copyText = (text: string) => {
         void navigator.clipboard.writeText(text);
       };
+      const quoted = escapeIdent(name, dbType);
+
+      const copyDdl = () => {
+        const dialect = getSqlDialect(dbType);
+        if (!dialect) return;
+        const { sql, extractColumnIndex } = dialect.ddl.getTableDdlQuery(name);
+        void getCachedDDL(connectionId, name, sql, (rows) => {
+          const row = rows[0];
+          const val = row?.[extractColumnIndex];
+          return typeof val === 'string' ? val : val != null ? String(val) : '';
+        })
+          .then((ddl) => {
+            if (ddl) copyText(ddl);
+          })
+          .catch((e) => console.warn(e));
+      };
+
+      const confirmAndRun = async (
+        message: string,
+        title: string,
+        sql: string,
+        afterSuccess?: () => void,
+      ) => {
+        const { ask } = await import('@tauri-apps/plugin-dialog');
+        const confirmed = await ask(message, { title, kind: 'warning' });
+        if (!confirmed) return;
+        try {
+          await queryCommands.executeQuery(connectionId, sql);
+          afterSuccess?.();
+        } catch (e) {
+          console.warn(e);
+        }
+      };
+
+      const closePanelsForTable = (tableName: string) => {
+        setPanels((prev) => {
+          const next = prev.filter((p) => !(p.type === 'table' && p.tableName === tableName));
+          setActivePanelId((current) => {
+            if (current && next.some((p) => p.id === current)) return current;
+            return next[next.length - 1]?.id ?? null;
+          });
+          return next;
+        });
+      };
+
       void showNativeContextMenu(
         buildSchemaTreeContextMenuItems({
           kind,
           labels: {
             open: kind === 'view' ? t('schemaTree.open') : t('schemaTree.openTable'),
+            openStructure: t('schemaTree.openStructure'),
             copyName: t('schemaTree.copyName'),
-            editStructure: t('connWin.editTableStructure'),
+            copyDdl: t('connWin.copyDDL'),
             focusEr: t('erDiagram.focusTable'),
             exportData: t('connWin.exportData'),
             importData: t('connWin.importData'),
@@ -497,36 +626,91 @@ export function SqlConnectionView({
             copyDatabaseName: t('schemaTree.copyDatabaseName'),
             newTable: t('connWin.newTable'),
             batchExport: `${t('batchExport.title')}…`,
+            truncate: t('schemaTree.truncate'),
+            drop: t('schemaTree.drop'),
+            dropView: t('schemaTree.dropView'),
           },
           handlers: {
-            onOpen: () => handleSelectTable(name, schema),
-            onCopyName: () => copyText(name),
-            onEditStructure: () => handleEditTableStructure(name),
-            onFocusEr: () => handleOpenErDiagram(name),
-            onExport: () => {
-              setExportTableName(name);
-              handleSelectTable(name, schema);
-              setExportOpen(true);
-            },
+            onOpen:
+              kind === 'table' || kind === 'view'
+                ? () => handleSelectTable(name, schema)
+                : undefined,
+            onOpenStructure: kind === 'table' ? () => handleOpenStructure(name) : undefined,
+            onCopyName: kind === 'table' || kind === 'view' ? () => copyText(name) : undefined,
+            onCopyDdl: kind === 'table' || kind === 'view' ? () => copyDdl() : undefined,
+            onFocusEr: kind === 'table' ? () => handleOpenErDiagram(name) : undefined,
+            onExport:
+              kind === 'table' || kind === 'view'
+                ? () => {
+                    setExportTableName(name);
+                    handleSelectTable(name, schema);
+                    setExportOpen(true);
+                  }
+                : undefined,
             onBatchExport: () => {
               if (kind === 'table' || kind === 'view') {
                 openBatchExport([name]);
               } else {
-                // database / blank: empty selection; user can select all
                 openBatchExport([]);
               }
             },
-            onImport: () => {
-              setImportTableName(name);
-              setImportOpen(true);
-            },
+            onImport:
+              !isReadOnly && (kind === 'table' || kind === 'database' || kind === 'blank')
+                ? () => {
+                    setImportTableName(kind === 'table' ? name : null);
+                    setImportOpen(true);
+                  }
+                : undefined,
             onRefresh: handleRefresh,
-            onNewQuery: handleNewQuery,
-            onCopyDatabaseName: () => copyText(name),
+            onNewQuery: () => {
+              if (kind === 'table') {
+                handleNewQuery(`SELECT * FROM ${quoted} LIMIT 100`);
+              } else {
+                handleNewQuery();
+              }
+            },
+            onCopyDatabaseName: kind === 'database' ? () => copyText(name) : undefined,
             onNewTable: handleCreateTable,
+            onTruncate:
+              kind === 'table' && !isReadOnly
+                ? () => {
+                    const sql =
+                      dbType === 'sqlite' ? `DELETE FROM ${quoted}` : `TRUNCATE TABLE ${quoted}`;
+                    void confirmAndRun(
+                      t('schemaTree.confirmTruncate', { name }),
+                      t('schemaTree.truncate'),
+                      sql,
+                      () => {
+                        const store = useTableDataStore.getState();
+                        if (store.activeTable === name) {
+                          void store.loadTableData({ connectionId, table: name });
+                        }
+                      },
+                    );
+                  }
+                : undefined,
+            onDrop:
+              (kind === 'table' || kind === 'view') && !isReadOnly
+                ? () => {
+                    const isView = kind === 'view';
+                    const sql = isView ? `DROP VIEW ${quoted}` : `DROP TABLE ${quoted}`;
+                    void confirmAndRun(
+                      t(isView ? 'schemaTree.confirmDropView' : 'schemaTree.confirmDrop', {
+                        name,
+                      }),
+                      t(isView ? 'schemaTree.dropView' : 'schemaTree.drop'),
+                      sql,
+                      () => {
+                        invalidateSchemaCache(connectionId, name);
+                        handleRefresh();
+                        closePanelsForTable(name);
+                      },
+                    );
+                  }
+                : undefined,
           },
           readOnly: isReadOnly,
-          showEditStructure: showStructureEditor,
+          showOpenStructure: true,
           showErFocus: supportsErDiagram,
           showExport: kind === 'view' ? true : undefined,
           showNewTable: showStructureEditor,
@@ -535,8 +719,10 @@ export function SqlConnectionView({
     },
     [
       t,
+      connectionId,
+      databaseType,
       handleSelectTable,
-      handleEditTableStructure,
+      handleOpenStructure,
       handleOpenErDiagram,
       handleRefresh,
       handleNewQuery,
@@ -555,7 +741,12 @@ export function SqlConnectionView({
       description: t('connWin.toggleSidebar') ?? 'Toggle Sidebar',
       action: () => setSidebarOpen((v) => !v),
     },
-    { key: 'mod+n', scope: 'global', description: t('connWin.newQuery'), action: handleNewQuery },
+    {
+      key: 'mod+n',
+      scope: 'global',
+      description: t('connWin.newQuery'),
+      action: () => handleNewQuery(),
+    },
     { key: 'mod+r', scope: 'global', description: t('connWin.refresh'), action: handleRefresh },
     {
       key: 'mod+w',
@@ -651,7 +842,7 @@ export function SqlConnectionView({
         >
           <RefreshCw className="h-4 w-4" />
         </Button>
-        <Button variant="primary" className="h-8" onClick={handleNewQuery}>
+        <Button variant="primary" className="h-8" onClick={() => handleNewQuery()}>
           <Plus className="h-4 w-4" />
           {t('connWin.newQuery')}
         </Button>
@@ -814,7 +1005,7 @@ export function SqlConnectionView({
                 type="button"
                 className="shrink-0 px-2 py-2 text-fg-muted hover:text-fg"
                 title={`${t('connWin.newQuery')} (⌘N)`}
-                onClick={handleNewQuery}
+                onClick={() => handleNewQuery()}
               >
                 <Plus className="h-3.5 w-3.5" />
               </button>
