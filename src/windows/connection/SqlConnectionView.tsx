@@ -22,6 +22,7 @@ import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 import { useSchemaStore } from '../../stores/schemaStore';
 import { useTableDataStore } from '../../stores/tableDataStore';
 import { useQueryStore } from '../../stores/queryStore';
+import { useSettingsStore } from '../../stores/settingsStore';
 import { cn } from '../../lib/cn';
 import { openDocsWindow } from '../../lib/windowManager';
 import { DB_REGISTRY, escapeIdent, getDbLabel } from '../../lib/databaseTypes';
@@ -140,6 +141,7 @@ export function SqlConnectionView({
   const isReadOnly = dbMeta?.readOnly === true;
   const showStructureEditor = canOpenStructureEditor(dbMeta) && !isReadOnly;
   const supportsErDiagram = dbMeta?.supportsErDiagram !== false;
+  const safeMode = useSettingsStore((s) => s.settings.safeMode);
 
   const [panels, setPanels] = useState<Panel[]>([]);
   const [activePanelId, setActivePanelId] = useState<string | null>(null);
@@ -672,7 +674,7 @@ export function SqlConnectionView({
             onCopyDatabaseName: kind === 'database' ? () => copyText(name) : undefined,
             onNewTable: handleCreateTable,
             onTruncate:
-              kind === 'table' && !isReadOnly
+              kind === 'table' && !isReadOnly && !safeMode
                 ? () => {
                     const sql =
                       dbType === 'sqlite' ? `DELETE FROM ${quoted}` : `TRUNCATE TABLE ${quoted}`;
@@ -731,6 +733,7 @@ export function SqlConnectionView({
       isReadOnly,
       showStructureEditor,
       supportsErDiagram,
+      safeMode,
     ],
   );
 
