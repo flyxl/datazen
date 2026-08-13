@@ -3,7 +3,7 @@ use super::compare::{
     diff_table_schemas_ir, format_ir_type, resolve_pk_columns, row_key, row_to_json_map,
     rows_equal, rows_to_key_map, value_key_part, values_equal,
 };
-use super::table_sync::sync_table_impl;
+use super::table_sync::{sync_table_impl, sync_tables_impl};
 use super::tasks::{
     check_sync_conflicts_impl, delete_sync_task_impl, get_sync_tasks_impl,
     save_sync_task_direct_impl,
@@ -416,28 +416,121 @@ async fn compare_table_schemas_and_data_impl() {
 }
 
 #[tokio::test]
-async fn sync_table_impl_copies_rows() {
-    use crate::testing::app_state::{sample_postgres_config, TestAppState};
+async fn sync_table_impl_refuses_overwrite_copy() {
+    use crate::testing::app_state::TestAppState;
+
+    let test = TestAppState::new().await;
+    let err = sync_table_impl(&test.state, "src".into(), "tgt".into(), "users".into())
+        .await
+        .unwrap_err();
+    assert!(crate::data_sync::is_overwrite_copy_retired_message(
+        &err.to_string()
+    ));
+}
+
+#[tokio::test]
+async fn sync_tables_impl_refuses_overwrite_copy() {
+    use crate::testing::app_state::TestAppState;
+
+    let test = TestAppState::new().await;
+    let err = sync_tables_impl(
+        &test.state,
+        "task-1".into(),
+        "src".into(),
+        "tgt".into(),
+        "src-cfg".into(),
+        "tgt-cfg".into(),
+        vec!["users".into()],
+        vec![],
+        "overwrite".into(),
+        None,
+        0,
+        None,
+        None,
+        std::collections::HashMap::new(),
+    )
+    .await
+    .unwrap_err();
+    assert!(crate::data_sync::is_overwrite_copy_retired_message(
+        &err.to_string()
+    ));
+}
+
+#[test]
+fn table_sync_module_has_no_drop_insert_body() {
+    let src = include_str!("table_sync.rs");
+    assert!(
+        !src.contains("DROP TABLE"),
+        "overwrite-copy DROP TABLE body must be deleted"
+    );
+    assert!(
+        !src.contains("sync_one_table"),
+        "legacy sync_one_table must be deleted"
+    );
+    assert!(
+        !src.contains("sync_table_impl_legacy"),
+        "legacy sync_table_impl_legacy must be deleted"
+    );
+    assert!(
+        src.contains("refuse_overwrite_copy"),
+        "compat IPC must still refuse overwrite copy"
+    );
+}
+
+#[test]
+fn classify_sync_pair_rejects_ir_and_allows_mysql_family() {
+    let mysql = super::classify_sync_pair("mysql".into(), "mariadb".into()).unwrap();
+    assert_eq!(mysql["path"], "direct");
+    assert_eq!(mysql["supported"], true);
+    let ir = super::classify_sync_pair("postgresql".into(), "mysql".into()).unwrap();
+    assert_eq!(ir["path"], "ir");
+    assert_eq!(ir["supported"], false);
+}
+
+#[tokio::test]
+async fn inspect_data_sync_returns_matched_tables() {
+    use crate::data_sync::TableMappingStatus;
+    use crate::testing::app_state::TestAppState;
 
     let test = TestAppState::with_tables().await;
+    test.save_and_connect("src-ins").await;
+    test.save_and_connect("tgt-ins").await;
+    let src = test.connect_config("src-ins").await;
+    let tgt = test.connect_config("tgt-ins").await;
+    let results = super::inspect_data_sync_impl(&test.state, src, tgt)
+        .await
+        .unwrap();
+    assert!(results
+        .iter()
+        .any(|r| r.status == TableMappingStatus::Matched && r.source_table == "users"));
+}
+
+#[tokio::test]
+async fn execute_data_sync_rejects_read_only_target() {
+    use crate::data_sync::{ChangeOperation, SqlStatement};
+    use crate::testing::app_state::{sample_postgres_config, TestAppState};
+
+    let test = TestAppState::new().await;
     test.registry
         .register_test_driver("postgresql", test.mock.clone())
         .await;
-
-    let mut src_cfg = sample_postgres_config("src-sync");
-    src_cfg.database_type = "postgresql".into();
-    let mut tgt_cfg = sample_postgres_config("tgt-sync");
-    tgt_cfg.database_type = "postgresql".into();
-
-    test.store.save_connection(src_cfg).await.unwrap();
-    test.store.save_connection(tgt_cfg).await.unwrap();
-    let src = test.connect_config("src-sync").await;
-    let tgt = test.connect_config("tgt-sync").await;
-
-    let rows = sync_table_impl(&test.state, src, tgt, "users".into())
+    let mut cfg = sample_postgres_config("ro-tgt");
+    cfg.database_type = "postgresql".into();
+    cfg.read_only = true;
+    test.store.save_connection(cfg).await.unwrap();
+    let id = test.connect_config("ro-tgt").await;
+    let stmt = SqlStatement {
+        table: "t".into(),
+        operation: ChangeOperation::Insert,
+        sql: "INSERT INTO t VALUES (1)".into(),
+        preview_sql: "INSERT INTO t VALUES (1)".into(),
+        parameters: vec![],
+        row_key: vec![],
+    };
+    let err = super::execute_data_sync_impl(&test.state, id, vec![stmt])
         .await
-        .unwrap();
-    assert!(rows >= 1);
+        .unwrap_err();
+    assert!(err.to_string().contains("read-only"));
 }
 
 #[tokio::test]
@@ -448,16 +541,6 @@ async fn check_sync_conflicts_missing_task_errors() {
     assert!(check_sync_conflicts_impl(&test.state, "missing".into())
         .await
         .is_err());
-}
-
-#[test]
-fn rewrite_view_ddl_uses_target_quoting() {
-    let src = "CREATE OR REPLACE VIEW \"active_users\" AS\nSELECT id,\n    username,\n    email\nFROM users;";
-    let out =
-        super::table_sync::rewrite_view_ddl_for_target(src, "active_users", |n| format!("`{n}`"));
-    assert!(out.starts_with("CREATE OR REPLACE VIEW `active_users` AS"));
-    assert!(!out.contains("\"active_users\""));
-    assert!(out.contains("SELECT id"));
 }
 
 #[test]

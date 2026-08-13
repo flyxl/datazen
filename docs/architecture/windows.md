@@ -14,7 +14,7 @@ DataZen 采用 Tauri 的多窗口模型，每个主要功能区域在独立的�
 | settings | 应用设置（单例） | `settings-singleton` |
 | docs | 内置使用说明（单例） | `docs-singleton` |
 | backup | 备份/恢复（单例） | `backup-singleton` |
-| data-sync | 数据同步（单例） | `data-sync-singleton` |
+| data-sync | 数据同步 Diff Workspace（单例；Apply 未接线） | `data-sync-singleton` |
 | workflow | Workflow 管理（单例） | `workflow-singleton` |
 
 ## 2. Rust 端窗口创建

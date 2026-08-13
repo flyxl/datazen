@@ -1,0 +1,45 @@
+# F6 data_sync coverage (execute.rs + exec.rs)
+
+Command:
+  cargo llvm-cov -p datazen --lib --json --output-path /tmp/datazen-f6-cov/f6-coverage.json \
+    -- data_sync::execute commands::sync::tests::execute_data_sync
+Filter: filename ending with /data_sync/execute.rs or /commands/sync/exec.rs
+Note: --ignore-filename-regex negative-lookahead does not isolate files (llvm-cov still totals the whole crate).
+Note: unfiltered `cargo llvm-cov -p datazen --lib` is known to fail on unrelated
+      sync::adapter_registry::tests::ensure_type_wire_aliases_succeed (expected sqlserver adapter).
+Note: other data_sync / commands/sync files may appear in the same JSON
+      but are EXCLUDED from this slice threshold.
+
+Threshold: execute.rs line coverage >= 80% (required).
+           exec.rs reported if convenient (not the gate).
+
+Tests included in this llvm-cov run (7 passed / 0 failed):
+  data_sync::execute::tests::commits_all_statements
+  data_sync::execute::tests::read_only_never_begins
+  data_sync::execute::tests::empty_set_rejected
+  data_sync::execute::tests::failure_rolls_back
+  data_sync::execute::tests::cancel_before_start
+  data_sync::execute::tests::cancel_mid_run_rolls_back
+  commands::sync::tests::execute_data_sync_rejects_read_only_target
+
+file             line_cov line_tot    line%  fn_cov  fn_tot      fn%  reg_cov  reg_tot     reg%
+execute.rs            163      165   98.79%      27      28   96.43%      212      218   97.25%
+exec.rs                29       41   70.73%       3      11   27.27%       26       48   54.17%
+
+Uncovered line numbers (segments with count=0 and no covered hit on that line):
+  execute.rs: [231, 233]
+  exec.rs:    [25, 30, 33, 39, 44, 46, 48, 53, 56, 58, 63, 66]
+
+Uncovered line notes:
+  execute.rs 231, 233    FlipOnExecute::commit in cancel_mid_run_rolls_back test helper
+                         (mid-run cancel rolls back; commit arm never taken). Product
+                         execute_statements / RecordingExecutor are covered.
+  exec.rs 25, 30, 33     LiveExecutor::begin (begin_transaction + store tx)
+  exec.rs 39, 44, 46     LiveExecutor::execute (query_with_params + rows_affected)
+  exec.rs 48, 53, 56     LiveExecutor::commit
+  exec.rs 58, 63, 66     LiveExecutor::rollback
+                         IPC test only hits read_only → execute_statements returns
+                         before begin(); LiveExecutor DML/tx path has 0 hits.
+
+F6 execute.rs line coverage 98.79% >= 80% → PASS
+F6 exec.rs    line coverage 70.73%  < 80% → reported only (not the gate); LiveExecutor untested
