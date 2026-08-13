@@ -912,7 +912,15 @@ mod tests {
         )
         .unwrap();
         assert_eq!(parsed_tableplus.connections[0].name, "Demo");
-        assert_eq!(parsed.format, connection_import::ImportFormat::TablePlus);
+        assert_eq!(
+            parsed.format,
+            connection_import::ImportFormat::DataZen,
+            ".datazenconnection must be labeled DataZen even though the cipher matches TablePlus"
+        );
+        assert_eq!(
+            parsed_tableplus.format,
+            connection_import::ImportFormat::TablePlus
+        );
         assert_eq!(parsed.connections.len(), 1);
         assert_eq!(parsed.connections[0].name, "Demo");
         assert_eq!(parsed.connections[0].password.as_deref(), Some("pw"));

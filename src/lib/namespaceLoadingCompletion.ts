@@ -27,12 +27,25 @@ export function namespaceLoadingCompletionResult(
   };
 }
 
+export function shouldShowNamespaceLoadingHint(
+  loading: boolean,
+  explicit: boolean,
+  typedPrefix: boolean,
+): boolean {
+  if (!loading) return false;
+  return explicit || typedPrefix;
+}
+
 export function namespaceLoadingCompletionSource(
   loading: boolean,
   label: string,
 ): CompletionSource {
   return (context: CompletionContext): CompletionResult | null => {
-    if (!loading) return null;
+    const typed = context.matchBefore(/[\w."`]+/);
+    const typedPrefix = Boolean(typed && typed.from < typed.to);
+    if (!shouldShowNamespaceLoadingHint(loading, context.explicit, typedPrefix)) {
+      return null;
+    }
     const word = context.matchBefore(/[\w."`]*/);
     return namespaceLoadingCompletionResult(true, word?.from ?? context.pos, label);
   };

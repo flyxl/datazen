@@ -10,7 +10,6 @@ import {
   closeBrackets,
   acceptCompletion,
   completeFromList,
-  startCompletion,
 } from '@codemirror/autocomplete';
 import { sqlFunctionCompletions } from '../lib/sqlCompletions';
 import { searchKeymap } from '@codemirror/search';
@@ -179,6 +178,7 @@ interface SqlEditorProps {
   defaultSchema?: string;
   /** CodeMirror: columns of this table complete at the top level (WHERE / SELECT). */
   defaultTable?: string;
+  className?: string;
 }
 
 function parentsEqual(a: readonly string[], b: readonly string[]): boolean {
@@ -199,6 +199,7 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
     namespaceLoading,
     defaultSchema,
     defaultTable,
+    className,
   },
   ref,
 ) {
@@ -391,7 +392,6 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
         sqlEditorExtensions(databaseType, schema, namespaceLoading, defaultSchema, defaultTable),
       ),
     });
-    if (namespaceLoading) startCompletion(view);
   }, [schema, databaseType, namespaceLoading, defaultSchema, defaultTable]);
 
   useEffect(() => {
@@ -405,5 +405,10 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
     }
   }, [value]);
 
-  return <div ref={containerRef} className="h-full w-full overflow-hidden" />;
+  return (
+    <div
+      ref={containerRef}
+      className={`h-full w-full overflow-hidden${className ? ` ${className}` : ''}`}
+    />
+  );
 });

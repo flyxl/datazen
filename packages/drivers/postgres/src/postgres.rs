@@ -1302,11 +1302,87 @@ impl DatabaseDriver for PostgresDriver {
         }
     }
 
+    async fn dump_view_ddl(
+        &self,
+        handle: &ConnectionHandle,
+        view: &str,
+    ) -> Result<String, DriverError> {
+        let pools = self.pools.read().await;
+        let pool = Self::get_pool(&pools, handle)?;
+        let row = sqlx::query("SELECT pg_get_viewdef($1::regclass, true) AS def")
+            .bind(view)
+            .fetch_one(pool)
+            .await
+            .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+        let def: String = row.try_get("def").unwrap_or_default();
+        if def.trim().is_empty() {
+            return Err(DriverError::QueryFailed(format!(
+                "View definition not found: {view}"
+            )));
+        }
+        Ok(format!(
+            "CREATE OR REPLACE VIEW {} AS\n{};\n",
+            self.quote_ident(view),
+            def.trim().trim_end_matches(';')
+        ))
+    }
+
+    async fn dump_routines(
+        &self,
+        handle: &ConnectionHandle,
+        _database: &str,
+    ) -> Result<String, DriverError> {
+        let result = self
+            .query(
+                handle,
+                "SELECT n.nspname AS schema, p.proname AS name, \
+                 pg_get_functiondef(p.oid) AS ddl \
+                 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace \
+                 WHERE n.nspname NOT IN ('pg_catalog','information_schema') \
+                   AND p.prokind IN ('f', 'p') \
+                 ORDER BY 1, 2",
+            )
+            .await?;
+        Ok(collect_named_ddl_column(&result, "ddl", "ROUTINE"))
+    }
+
+    async fn dump_triggers(
+        &self,
+        handle: &ConnectionHandle,
+        _database: &str,
+    ) -> Result<String, DriverError> {
+        let result = self
+            .query(
+                handle,
+                "SELECT n.nspname AS schema, t.tgname AS name, \
+                 pg_get_triggerdef(t.oid) AS ddl \
+                 FROM pg_trigger t \
+                 JOIN pg_class c ON c.oid = t.tgrelid \
+                 JOIN pg_namespace n ON n.oid = c.relnamespace \
+                 WHERE NOT t.tgisinternal \
+                   AND n.nspname NOT IN ('pg_catalog','information_schema') \
+                 ORDER BY 1, 2",
+            )
+            .await?;
+        Ok(collect_named_ddl_column(&result, "ddl", "TRIGGER"))
+    }
+
     async fn dump_database(
         &self,
         handle: &ConnectionHandle,
         database: &str,
         opts: &BackupDumpOptions,
+    ) -> Result<String, DriverError> {
+        self.dump_database_with_progress(handle, database, opts, &mut |_| {})
+            .await
+    }
+
+    async fn dump_database_with_progress(
+        &self,
+        handle: &ConnectionHandle,
+        database: &str,
+        opts: &BackupDumpOptions,
+        on_progress: &mut (dyn FnMut(DumpProgress) + Send),
     ) -> Result<String, DriverError> {
         let mut out = String::new();
         if opts.create_database {
@@ -1316,7 +1392,10 @@ impl DatabaseDriver for PostgresDriver {
                 self.quote_ident(database)
             ));
         }
-        out.push_str(&sql_dump::dump_sql_database(self, handle, database, opts).await?);
+        out.push_str(
+            &sql_dump::dump_sql_database_with_progress(self, handle, database, opts, on_progress)
+                .await?,
+        );
         Ok(out)
     }
 
@@ -1350,6 +1429,41 @@ fn is_pg_result_query(sql: &str) -> bool {
 /// modified SQL with `LIMIT limit+1` appended (the extra row lets us detect
 /// truncation).  If the statement already has a LIMIT, the SQL is unchanged
 /// but the cap is still returned so the caller can truncate over-limit results.
+fn collect_named_ddl_column(result: &QueryResult, col_name: &str, kind_label: &str) -> String {
+    let ddl_idx = result
+        .columns
+        .iter()
+        .position(|c| c.name.eq_ignore_ascii_case(col_name));
+    let name_idx = result
+        .columns
+        .iter()
+        .position(|c| c.name.eq_ignore_ascii_case("name"));
+    let Some(ddl_idx) = ddl_idx else {
+        return String::new();
+    };
+    let mut out = String::new();
+    for row in &result.rows {
+        let Some(Value::String(ddl)) = row.get(ddl_idx).and_then(|v| v.as_ref()) else {
+            continue;
+        };
+        if ddl.trim().is_empty() {
+            continue;
+        }
+        if let Some(name_idx) = name_idx {
+            if let Some(Value::String(name)) = row.get(name_idx).and_then(|v| v.as_ref()) {
+                out.push_str(&format!("-- {kind_label}: {name}\n"));
+            }
+        }
+        let trimmed = ddl.trim_end();
+        out.push_str(trimmed);
+        if !trimmed.ends_with(';') {
+            out.push(';');
+        }
+        out.push_str("\n\n");
+    }
+    out
+}
+
 fn apply_select_limit(stmt: &str, limit: Option<u32>) -> (String, Option<u32>) {
     let Some(lim) = limit else {
         return (stmt.to_string(), None);

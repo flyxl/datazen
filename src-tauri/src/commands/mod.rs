@@ -21,7 +21,7 @@ mod schema_diff;
 mod structure;
 mod sync;
 mod theme;
-mod window;
+pub(crate) mod window;
 
 pub use adb::*;
 pub use ai::*;

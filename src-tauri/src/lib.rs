@@ -924,17 +924,38 @@ pub fn run() {
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                if window.label() == "main" && tray::should_close_to_tray(window.app_handle()) {
-                    api.prevent_close();
-                    // macOS: hide so the Dock icon remains; Reopen restores MainWindow.
-                    // Windows/Linux: minimize so the taskbar entry can restore MainWindow.
-                    #[cfg(target_os = "macos")]
-                    {
-                        let _ = window.hide();
+                if window.label() == "main" {
+                    let child_labels = commands::window::non_main_window_labels(
+                        window.app_handle().webview_windows().keys().cloned(),
+                    );
+                    if !child_labels.is_empty() {
+                        api.prevent_close();
+                        let lang = tauri::async_runtime::block_on(
+                            window.app_handle().state::<AppState>().store.get_settings(),
+                        )
+                        .language;
+                        let msg = menu_label(&lang, "close-main-blocked");
+                        use tauri_plugin_dialog::DialogExt;
+                        let _ = window
+                            .app_handle()
+                            .dialog()
+                            .message(msg)
+                            .title("DataZen")
+                            .blocking_show();
+                        return;
                     }
-                    #[cfg(not(target_os = "macos"))]
-                    {
-                        let _ = window.minimize();
+                    if tray::should_close_to_tray(window.app_handle()) {
+                        api.prevent_close();
+                        // macOS: hide so the Dock icon remains; Reopen restores MainWindow.
+                        // Windows/Linux: minimize so the taskbar entry can restore MainWindow.
+                        #[cfg(target_os = "macos")]
+                        {
+                            let _ = window.hide();
+                        }
+                        #[cfg(not(target_os = "macos"))]
+                        {
+                            let _ = window.minimize();
+                        }
                     }
                 }
             }

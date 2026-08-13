@@ -257,6 +257,91 @@ describe('数据库备份功能 (BACKUP)', () => {
     fs.unlinkSync(outPath);
   });
 
+  it('BACKUP-011: backup and restore include functions', async function () {
+    this.timeout(120000);
+    const fnName = '_e2e_backup_fn';
+    await withSafeModeOff(() =>
+      invokeBackend('execute_query', {
+        connectionId,
+        sql: `CREATE OR REPLACE FUNCTION ${fnName}() RETURNS integer LANGUAGE sql AS $$ SELECT 1 $$;`,
+      }),
+    );
+
+    const outPath = path.join(TMP_DIR, `datazen-backup-routines-${Date.now()}.sql`);
+    await invokeBackend('backup_database', {
+      connectionId,
+      database: PG_CONFIG.database,
+      outputPath: outPath,
+      options: ['schema-only', 'routines'],
+      compress: false,
+    });
+
+    const content = fs.readFileSync(outPath, 'utf-8');
+    expect(content.toLowerCase()).toContain('create');
+    expect(content).toContain(fnName);
+
+    await withSafeModeOff(() =>
+      invokeBackend('execute_query', {
+        connectionId,
+        sql: `DROP FUNCTION IF EXISTS ${fnName}();`,
+      }),
+    );
+
+    await withSafeModeOff(() =>
+      invokeBackend('restore_database', {
+        connectionId,
+        inputPath: outPath,
+      }),
+    );
+
+    const check = await invokeBackend<unknown>('execute_query', {
+      connectionId,
+      sql: `SELECT proname FROM pg_proc WHERE proname = '${fnName}'`,
+    });
+    expect(JSON.stringify(check)).toContain(fnName);
+
+    await withSafeModeOff(() =>
+      invokeBackend('execute_query', {
+        connectionId,
+        sql: `DROP FUNCTION IF EXISTS ${fnName}();`,
+      }),
+    );
+    fs.unlinkSync(outPath);
+  });
+
+  it('BACKUP-012: restore overwrite replaces existing objects without duplicating rows', async function () {
+    this.timeout(120000);
+    const outPath = path.join(TMP_DIR, `datazen-backup-overwrite-${Date.now()}.sql`);
+    await invokeBackend('backup_database', {
+      connectionId,
+      database: PG_CONFIG.database,
+      outputPath: outPath,
+      options: [],
+      compress: false,
+    });
+
+    await withSafeModeOff(() =>
+      invokeBackend('restore_database', {
+        connectionId,
+        inputPath: outPath,
+        database: PG_CONFIG.database,
+        options: ['overwrite'],
+      }),
+    );
+
+    const check = await invokeBackend<{
+      rows?: unknown[][];
+      results?: { rows?: unknown[][] }[];
+    }>('execute_query', {
+      connectionId,
+      sql: `SELECT COUNT(*)::int AS c FROM ${TEST_TABLE}`,
+    });
+    const rows = check.rows ?? check.results?.[0]?.rows ?? [];
+    expect(Number(rows[0]?.[0])).toBe(1);
+
+    fs.unlinkSync(outPath);
+  });
+
   it('BACKUP-010: backup with invalid connection ID fails gracefully', async () => {
     const outPath = path.join(TMP_DIR, `datazen-backup-fail-${Date.now()}.sql`);
     let errorMsg = '';

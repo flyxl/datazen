@@ -458,6 +458,9 @@ const zhCN = {
   'query.totalTime': '总耗时',
   'query.history': '历史',
   'query.placeholder': '输入 SQL 查询语句…',
+  'query.database': '数据库',
+  'query.catalog': 'Catalog',
+  'query.schema': 'Schema',
   'query.namespaceLoading': '正在加载对象…',
   'query.executing': '执行中…',
   'query.streamingRows': '已加载 {n} 行…',
@@ -737,6 +740,17 @@ const zhCN = {
   'sync.different': '不同',
   'sync.sourceOnly': '仅源',
   'sync.targetOnly': '仅目标',
+  'sync.selectDatabase': '选择数据库…',
+  'sync.selectDbRequired': '请先选择源和目标数据库',
+  'sync.kind.table': '表',
+  'sync.kind.view': '视图',
+  'sync.kind.function': '函数',
+  'sync.kind.procedure': '存储过程',
+  'sync.objectName': '对象',
+  'sync.group.tables': '表',
+  'sync.group.views': '视图',
+  'sync.group.functions': '函数',
+  'sync.group.procedures': '存储过程',
   'sync.tableName': '表名',
   'sync.sourceRows': '源行数',
   'sync.targetRows': '目标行数',
@@ -790,6 +804,10 @@ const zhCN = {
 
   // ── Backup Window ──
   'backup.title': '备份数据库',
+  'backup.restoreTitle': '恢复数据库',
+  'backup.startRestore': '开始恢复…',
+  'backup.restoring': '恢复中…',
+  'backup.restoreSuccess': '恢复成功',
   'backup.fileName': '文件名',
   'backup.fileNameHint': '点击可修改文件名模式',
   'backup.searchConnection': '搜索连接…',
@@ -800,9 +818,19 @@ const zhCN = {
   'backup.startBackup': '开始备份…',
   'backup.inProgress': '备份中…',
   'backup.success': '备份成功',
+  'backup.unsupportedType': '该连接类型不支持数据库备份',
+  'backup.progressPreparing': '正在准备备份…',
+  'backup.progressObject': '正在导出 {name}（{current}/{total}）',
+  'backup.progressWriting': '正在写入备份文件…',
+  'backup.restoreOverwriteConfirm':
+    '目标数据库「{database}」已有 {count} 个对象。继续将先删除现有表/视图，再写入备份内容。是否覆盖？',
+  'backup.restorePreparing': '正在读取备份文件…',
+  'backup.restoreProgress': '正在恢复 {name}（{current}/{total}）',
+  'backup.progressLog': '执行日志',
 
   // ── Window titles ──
   'win.backup': '备份数据库 - DataZen',
+  'win.restore': '恢复数据库 - DataZen',
 
   // ── Connection Settings Dialog ──
   'connSettings.title': '连接设置',

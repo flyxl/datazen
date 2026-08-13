@@ -47,7 +47,7 @@
 | 查询执行 / 历史 / 收藏 | `sql-query.ts` | Covered |
 | 绑定参数面板填值并执行 | `sql-query.ts` (SQ-BIND-*) | Covered |
 | EXPLAIN 面板 | `sql-query.ts` (SQ-EXPLAIN-*) | Covered |
-| 表数据分页 / 排序 / 选择 | `table-data.ts` | Covered |
+| 表数据分页 / 排序 / 选择 / 删除行按钮 | `table-data.ts` | Covered |
 | 表筛选：打开 / 添加 / Apply / Clear / AND·OR / 收起 / chip / 空值不报错 | `table-filter.ts` | Covered |
 | 表内联编辑 | `table-edit.ts` | Covered |
 | 详情面板 | `detail-panel.ts` | Covered |
@@ -69,8 +69,12 @@
 | 设置：主题 / 持久化 / 分区导航（通用·浏览·编辑器·行为·日志·AI·Prompt·MCP·扩展） | `settings.ts` | Covered |
 | Workflow 列表 / 执行 / 历史 | `workflow.ts`, `workflow-window.ts` | Covered |
 | Workflow 可视化 ↔ YAML 切换与保存入口 | `workflow-window.ts` (WF-YAML-*) | Covered |
-| 备份窗口打开与连接选择 UI | `backup-window.ts` | Covered |
+| Workflow / 数据看板 SQL 编辑（SqlEditor 高亮） | `workflow-window.ts` (WF-SQL-001), `data-dashboard-widget-ux.ts` (UJ-06) | Covered |
+| 恢复执行日志 | `BackupWindow.test.tsx` | Covered（原生文件对话框为例外） |
+| 备份窗口打开与连接选择 UI / 分组文案 | `backup-window.ts` | Covered |
 | 备份执行（IPC） | `backup-database.ts` | Covered |
+| 恢复：覆盖确认 + 分步进度 | `backup-database.ts` (BACKUP-012) + `BackupWindow.test.tsx` | Covered / Exception（原生 ask + 打开文件） |
+| 新建查询不弹出对象加载补全框 | `connection-window.ts` (SQ-AC-001), `mysql.ts` (MY-AC-001) | Covered |
 | Schema Diff 窗口打开与步骤控件 | `schema-diff-window.ts` | Covered |
 | 数据同步窗口 | `homepage-features.ts`, `data-sync-real.ts` | Partial |
 | 数据看板 | `data-dashboard-*.ts` | Covered |
@@ -86,6 +90,9 @@
 | 依赖真实 LLM Key 的 AI 深度路径 | 环境无 Key 时跳过 | `ai-features.ts` 条件执行；无 Key 时仍测未配置 UI |
 | `ConnectionSettingsDialog` | 当前未挂到可点击入口（非用户可达） | 组件单测；挂接 UI 后须立刻补 E2E |
 | E2E 夹具 `DROP`/`TRUNCATE` | Safe Mode 默认开启会拦截 | `executeSQL` / `withSafeModeOff` 临时关闭；`client-parity` 断言 DROP 被拦 |
+| 删除行确认框（`confirmOnDelete`） | 原生 `ask` 对话框无法点选 | `DataTable.test.tsx` 工具栏/Delete 键；`commit_row_deletes` Rust 单测；E2E 断言删除按钮出现 |
+| 主窗口在子窗口未关时关闭 | 原生窗口关闭 + 阻塞对话框 | `window.rs` `non_main_window_labels` 单测 |
+| 恢复覆盖确认（原生 `ask`）+ 选 SQL 文件 | OS 对话框不可点选 | `BackupWindow.test.tsx` ask/overwrite；`backup-database.ts` BACKUP-012 IPC overwrite |
 
 ## 维护约定
 
