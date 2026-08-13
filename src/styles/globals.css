@@ -14,7 +14,9 @@ body {
   font-family: var(--font-sans);
   background-color: var(--c-surface);
   color: var(--c-fg);
-  transition: background-color 0.15s ease, color 0.15s ease;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
 }
 
 /* macOS rounded corners for custom-decorated windows.
@@ -47,13 +49,13 @@ body {
 
 input,
 textarea,
-[contenteditable="true"],
+[contenteditable='true'],
 pre,
 code,
 .cm-content,
 .cm-editor,
 .selectable,
-[role="alert"],
+[role='alert'],
 .text-red-400,
 .text-red-500,
 .whitespace-pre-wrap {
@@ -82,4 +84,15 @@ code,
 }
 ::-webkit-scrollbar-corner {
   background: transparent;
+}
+
+/* Hide scrollbar while keeping overflow scroll (tab strips). */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }

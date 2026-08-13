@@ -3,14 +3,12 @@ import type { NativeMenuItemDef } from './nativeContextMenu';
 /** Caller-supplied labels (typically from `t()`). No hardcoded locale strings here. */
 export type WorkflowListContextMenuLabels = {
   open: string;
-  run: string;
   delete: string;
   copyName: string;
 };
 
 export type WorkflowListContextMenuHandlers = {
   onOpen?: () => void;
-  onRun?: () => void;
   onDelete?: () => void;
   onCopyName?: () => void;
 };
@@ -52,7 +50,7 @@ function push(...defs: Array<NativeMenuItemDef | null>): NativeMenuItemDef[] {
 
 /**
  * Build native context-menu items for a workflow sidebar entry
- * (open / run / delete / copy name).
+ * (open / delete / copy name). Run is omitted — workflows require parameters.
  */
 export function buildWorkflowListContextMenuItems(
   args: BuildWorkflowListContextMenuArgs,
@@ -60,7 +58,6 @@ export function buildWorkflowListContextMenuItems(
   const { labels, handlers } = args;
   return push(
     item('open', labels.open, handlers.onOpen),
-    item('run', labels.run, handlers.onRun),
     item('delete', labels.delete, handlers.onDelete),
     item('copy-name', labels.copyName, handlers.onCopyName),
   );

@@ -1,8 +1,19 @@
 use super::error::{CmdExt, CommandError};
 use serde::Serialize;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::LazyLock;
 use tauri::AppHandle;
 use tauri_plugin_dialog::DialogExt;
+use tokio::io::AsyncWriteExt;
+
+struct SaveSession {
+    path: PathBuf,
+    file: tokio::fs::File,
+}
+
+static SAVE_SESSIONS: LazyLock<tokio::sync::Mutex<HashMap<String, SaveSession>>> =
+    LazyLock::new(|| tokio::sync::Mutex::new(HashMap::new()));
 
 const ALLOWED_EXTENSIONS: &[&str] = &[
     "csv", "tsv", "json", "sql", "md", "txt", "xml", "yaml", "yml", "png", "svg", "zip", "gz",
@@ -205,6 +216,80 @@ pub async fn open_text_with_dialog(
     Ok(Some(OpenedTextFile { file_name, content }))
 }
 
+async fn insert_save_session(path: PathBuf) -> Result<String, CommandError> {
+    let file = tokio::fs::File::create(&path)
+        .await
+        .cmd_err("begin_save_with_dialog")?;
+    let token = uuid::Uuid::new_v4().to_string();
+    let mut sessions = SAVE_SESSIONS.lock().await;
+    if sessions.len() >= 8 {
+        return Err(CommandError::Validation(
+            "Too many concurrent save sessions".into(),
+        ));
+    }
+    sessions.insert(token.clone(), SaveSession { path, file });
+    Ok(token)
+}
+
+/// Open a save dialog and keep an opaque write handle. Path never returns to JS.
+#[tauri::command]
+pub async fn begin_save_with_dialog(
+    app: AppHandle,
+    default_file_name: String,
+    filter_name: String,
+    extensions: Vec<String>,
+) -> Result<Option<String>, CommandError> {
+    let ext_list = ext_refs(&extensions)?;
+    let picked = app
+        .dialog()
+        .file()
+        .add_filter(&filter_name, &ext_list)
+        .set_file_name(&default_file_name)
+        .blocking_save_file();
+    let Some(fp) = picked else {
+        return Ok(None);
+    };
+    let path = dialog_path_to_buf(fp)?;
+    validate_extension(&path, &ext_list)?;
+    let token = insert_save_session(path).await?;
+    Ok(Some(token))
+}
+
+#[tauri::command]
+pub async fn append_save_text(token: String, chunk: String) -> Result<(), CommandError> {
+    let mut sessions = SAVE_SESSIONS.lock().await;
+    let session = sessions
+        .get_mut(&token)
+        .ok_or_else(|| CommandError::NotFound("Save session not found".into()))?;
+    session
+        .file
+        .write_all(chunk.as_bytes())
+        .await
+        .cmd_err("append_save_text")?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn finish_save(token: String) -> Result<(), CommandError> {
+    let mut sessions = SAVE_SESSIONS.lock().await;
+    let mut session = sessions
+        .remove(&token)
+        .ok_or_else(|| CommandError::NotFound("Save session not found".into()))?;
+    session.file.flush().await.cmd_err("finish_save")?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn abort_save(token: String) -> Result<(), CommandError> {
+    let mut sessions = SAVE_SESSIONS.lock().await;
+    let session = sessions
+        .remove(&token)
+        .ok_or_else(|| CommandError::NotFound("Save session not found".into()))?;
+    drop(session.file);
+    let _ = tokio::fs::remove_file(&session.path).await;
+    Ok(())
+}
+
 /// Legacy path-based write — only available in webdriver/E2E builds.
 #[tauri::command]
 pub async fn write_file(path: String, contents: String) -> Result<(), CommandError> {
@@ -364,5 +449,43 @@ mod tests {
             ));
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("disabled"));
+    }
+
+    #[tokio::test]
+    async fn save_session_appends_then_finish() {
+        let dir = std::env::temp_dir().join(format!("dz-save-{}", uuid::Uuid::new_v4()));
+        tokio::fs::create_dir_all(&dir).await.unwrap();
+        let path = dir.join("out.csv");
+        let token = insert_save_session(path.clone()).await.unwrap();
+        append_save_text(token.clone(), "id,name\n".into())
+            .await
+            .unwrap();
+        append_save_text(token.clone(), "1,a\n".into())
+            .await
+            .unwrap();
+        finish_save(token).await.unwrap();
+        let body = tokio::fs::read_to_string(&path).await.unwrap();
+        assert_eq!(body, "id,name\n1,a\n");
+        let _ = tokio::fs::remove_dir_all(&dir).await;
+    }
+
+    #[tokio::test]
+    async fn save_session_abort_deletes_file() {
+        let dir = std::env::temp_dir().join(format!("dz-abort-{}", uuid::Uuid::new_v4()));
+        tokio::fs::create_dir_all(&dir).await.unwrap();
+        let path = dir.join("out.json");
+        let token = insert_save_session(path.clone()).await.unwrap();
+        append_save_text(token.clone(), "[".into()).await.unwrap();
+        abort_save(token).await.unwrap();
+        assert!(!path.exists());
+        let _ = tokio::fs::remove_dir_all(&dir).await;
+    }
+
+    #[tokio::test]
+    async fn append_unknown_token_errors() {
+        let err = append_save_text("missing".into(), "x".into())
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("not found") || err.to_string().contains("NotFound"));
     }
 }

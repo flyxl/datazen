@@ -18,7 +18,9 @@ vi.mock('../../ui/Select', () => ({
   }) => (
     <select value={String(value)} onChange={(e) => onChange(e.target.value)}>
       {options.map((o) => (
-        <option key={o.value} value={o.value} disabled={o.disabled}>{o.label}</option>
+        <option key={o.value} value={o.value} disabled={o.disabled}>
+          {o.label}
+        </option>
       ))}
     </select>
   ),
@@ -54,13 +56,33 @@ describe('DataExportDialog', () => {
         open
         onClose={vi.fn()}
         columns={COLS}
-        rows={[[1, 'a'], [2, 'b']]}
+        rows={[
+          [1, 'a'],
+          [2, 'b'],
+        ]}
         tableName="users"
       />,
     );
     expect(getByText('export.title')).toBeInTheDocument();
     expect(getByText('export.format')).toBeInTheDocument();
     expect(getByText('export.range')).toBeInTheDocument();
+  });
+
+  it('offers entire-table scope when connectionId is set', () => {
+    render(
+      <DataExportDialog
+        open
+        onClose={vi.fn()}
+        columns={COLS}
+        rows={[[1, 'a']]}
+        tableName="users"
+        connectionId="c1"
+        totalRows={100}
+      />,
+    );
+    const selects = document.querySelectorAll('select');
+    const range = selects[1]!;
+    expect(Array.from(range.options).map((o) => o.value)).toContain('entire_table');
   });
 
   it('exports csv text and closes on success', async () => {
@@ -102,12 +124,7 @@ describe('DataExportDialog', () => {
   it('shows error when export fails', async () => {
     saveTextWithDialog.mockRejectedValue(new Error('disk full'));
     const { getByText } = render(
-      <DataExportDialog
-        open
-        onClose={vi.fn()}
-        columns={COLS}
-        rows={[[1, 'a']]}
-      />,
+      <DataExportDialog open onClose={vi.fn()} columns={COLS} rows={[[1, 'a']]} />,
     );
     fireEvent.click(getByText('export.export'));
     await waitFor(() => {
@@ -119,12 +136,7 @@ describe('DataExportDialog', () => {
     saveTextWithDialog.mockResolvedValue(false);
     const onClose = vi.fn();
     const { getByText } = render(
-      <DataExportDialog
-        open
-        onClose={onClose}
-        columns={COLS}
-        rows={[[1, 'a']]}
-      />,
+      <DataExportDialog open onClose={onClose} columns={COLS} rows={[[1, 'a']]} />,
     );
     fireEvent.click(getByText('export.export'));
     await waitFor(() => expect(saveTextWithDialog).toHaveBeenCalled());
@@ -138,7 +150,10 @@ describe('DataExportDialog', () => {
         open
         onClose={vi.fn()}
         columns={COLS}
-        rows={[[1, 'a'], [2, 'b']]}
+        rows={[
+          [1, 'a'],
+          [2, 'b'],
+        ]}
         selectedRows={selected}
       />,
     );

@@ -557,6 +557,7 @@ export function SqlConnectionView({
         connectionId,
         tableName: name,
         databaseType,
+        includeRows: false,
       }),
     [connectionId, databaseType],
   );
@@ -949,7 +950,14 @@ export function SqlConnectionView({
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           {panels.length > 0 && (
             <div className="flex shrink-0 items-center border-b border-edge bg-surface-alt">
-              <div className="flex min-w-0 flex-1 overflow-x-auto">
+              <div
+                data-testid="connection-tab-bar"
+                className="scrollbar-hide flex min-w-0 flex-1 overflow-x-auto"
+                onWheel={(e) => {
+                  if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+                  e.currentTarget.scrollLeft += e.deltaY;
+                }}
+              >
                 {panels.map((panel) => {
                   const isActive = panel.id === activePanelId;
                   const iconMap = {
@@ -1050,6 +1058,7 @@ export function SqlConnectionView({
                     connectionId={connectionId}
                     database={currentDatabase ?? ''}
                     tableName={activePanel.tableName}
+                    databaseType={databaseType}
                   />
                 )}
                 {activePanel.subTab === 'structure' &&
@@ -1233,6 +1242,9 @@ export function SqlConnectionView({
           rows={tableRows}
           selectedRows={selectedRows}
           databaseType={databaseType}
+          connectionId={connectionId}
+          totalRows={totalRows}
+          defaultScope="entire_table"
         />
       )}
 

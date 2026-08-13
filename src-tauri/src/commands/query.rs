@@ -30,11 +30,27 @@ pub(crate) async fn execute_query_impl(
     serde_json::from_value(result.data).map_err(CommandError::Json)
 }
 
+#[derive(Clone, Copy)]
+pub(crate) struct ExecuteQueryStreamOpts {
+    pub apply_result_limit: bool,
+    pub record_history: bool,
+}
+
+impl Default for ExecuteQueryStreamOpts {
+    fn default() -> Self {
+        Self {
+            apply_result_limit: true,
+            record_history: true,
+        }
+    }
+}
+
 pub(crate) async fn execute_query_stream_impl(
     state: &AppState,
     connection_id: String,
     sql: String,
     on_event: QueryStreamCallback,
+    opts: ExecuteQueryStreamOpts,
 ) -> Result<(), CommandError> {
     tracing::info!(%connection_id, sql_len = sql.len(), "execute_query_stream");
     tracing::debug!(
@@ -58,7 +74,11 @@ pub(crate) async fn execute_query_stream_impl(
     let safe_mode = state.store.get_settings().await.safe_mode;
     crate::sql_guard::check_sql(&sql, read_only, safe_mode).map_err(CommandError::Validation)?;
 
-    let limit = query_result_limit_from_settings(state).await;
+    let limit = if opts.apply_result_limit {
+        query_result_limit_from_settings(state).await
+    } else {
+        None
+    };
     let rows_affected = Arc::new(AtomicU64::new(0));
     let total_ms = Arc::new(AtomicU64::new(0));
     let rows_cb = Arc::clone(&rows_affected);
@@ -82,36 +102,40 @@ pub(crate) async fn execute_query_stream_impl(
 
     match driver.query_stream(&handle, &sql, limit, wrapped).await {
         Ok(()) => {
-            let entry = crate::store::QueryHistoryEntry {
-                id: uuid::Uuid::new_v4().to_string(),
-                connection_id: connection_id.clone(),
-                database: String::new(),
-                sql: sql.clone(),
-                executed_at: chrono::Utc::now(),
-                execution_time_ms: total_ms.load(Ordering::Relaxed),
-                rows_affected: Some(rows_affected.load(Ordering::Relaxed)),
-                success: true,
-                error_message: None,
-            };
-            let _ = state.store.add_query_history(entry).await;
+            if opts.record_history {
+                let entry = crate::store::QueryHistoryEntry {
+                    id: uuid::Uuid::new_v4().to_string(),
+                    connection_id: connection_id.clone(),
+                    database: String::new(),
+                    sql: sql.clone(),
+                    executed_at: chrono::Utc::now(),
+                    execution_time_ms: total_ms.load(Ordering::Relaxed),
+                    rows_affected: Some(rows_affected.load(Ordering::Relaxed)),
+                    success: true,
+                    error_message: None,
+                };
+                let _ = state.store.add_query_history(entry).await;
+            }
             if crate::cache::sql_may_mutate_schema(&sql) {
                 state.schema_cache.clear_connection(&connection_id).await;
             }
             Ok(())
         }
         Err(err) => {
-            let entry = crate::store::QueryHistoryEntry {
-                id: uuid::Uuid::new_v4().to_string(),
-                connection_id: connection_id.clone(),
-                database: String::new(),
-                sql: sql.clone(),
-                executed_at: chrono::Utc::now(),
-                execution_time_ms: 0,
-                rows_affected: None,
-                success: false,
-                error_message: Some(err.to_string()),
-            };
-            let _ = state.store.add_query_history(entry).await;
+            if opts.record_history {
+                let entry = crate::store::QueryHistoryEntry {
+                    id: uuid::Uuid::new_v4().to_string(),
+                    connection_id: connection_id.clone(),
+                    database: String::new(),
+                    sql: sql.clone(),
+                    executed_at: chrono::Utc::now(),
+                    execution_time_ms: 0,
+                    rows_affected: None,
+                    success: false,
+                    error_message: Some(err.to_string()),
+                };
+                let _ = state.store.add_query_history(entry).await;
+            }
             Err(err).cmd_err("execute_query_stream")
         }
     }
@@ -213,11 +237,23 @@ pub async fn execute_query_stream(
     connection_id: String,
     sql: String,
     on_event: Channel<QueryStreamEvent>,
+    apply_result_limit: Option<bool>,
+    record_history: Option<bool>,
 ) -> Result<(), CommandError> {
     let callback: QueryStreamCallback = Arc::new(move |event| {
         let _ = on_event.send(event);
     });
-    execute_query_stream_impl(&state, connection_id, sql, callback).await
+    execute_query_stream_impl(
+        &state,
+        connection_id,
+        sql,
+        callback,
+        ExecuteQueryStreamOpts {
+            apply_result_limit: apply_result_limit.unwrap_or(true),
+            record_history: record_history.unwrap_or(true),
+        },
+    )
+    .await
 }
 
 #[tauri::command]
@@ -571,9 +607,15 @@ mod tests {
         let cb: QueryStreamCallback = std::sync::Arc::new(move |ev| {
             events_cb.lock().unwrap().push(ev);
         });
-        execute_query_stream_impl(&test.state, conn_id, "SELECT 1".into(), cb)
-            .await
-            .unwrap();
+        execute_query_stream_impl(
+            &test.state,
+            conn_id,
+            "SELECT 1".into(),
+            cb,
+            ExecuteQueryStreamOpts::default(),
+        )
+        .await
+        .unwrap();
         assert_eq!(test.mock.last_query_limit(), Some(None));
         let events = events.lock().unwrap();
         assert!(events
@@ -596,10 +638,43 @@ mod tests {
 
         let (_, conn_id) = test.save_and_connect("stream-limit").await;
         let cb: QueryStreamCallback = std::sync::Arc::new(|_| {});
-        execute_query_stream_impl(&test.state, conn_id, "SELECT * FROM users".into(), cb)
-            .await
-            .unwrap();
+        execute_query_stream_impl(
+            &test.state,
+            conn_id,
+            "SELECT * FROM users".into(),
+            cb,
+            ExecuteQueryStreamOpts::default(),
+        )
+        .await
+        .unwrap();
         assert_eq!(test.mock.last_query_limit(), Some(Some(5)));
+    }
+
+    #[tokio::test]
+    async fn execute_query_stream_can_skip_result_limit_for_export() {
+        let test = TestAppState::with_tables().await;
+        let mut settings = AppSettings::default();
+        settings.limit_select_results = true;
+        settings.query_result_limit = 5;
+        test.state.store.save_settings(settings).await.unwrap();
+
+        let (_, conn_id) = test.save_and_connect("stream-export").await;
+        let cb: QueryStreamCallback = std::sync::Arc::new(|_| {});
+        execute_query_stream_impl(
+            &test.state,
+            conn_id,
+            "SELECT * FROM users".into(),
+            cb,
+            ExecuteQueryStreamOpts {
+                apply_result_limit: false,
+                record_history: false,
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(test.mock.last_query_limit(), Some(None));
+        let history = get_query_history_impl(&test.state, 10).await.unwrap();
+        assert!(history.is_empty());
     }
 
     #[tokio::test]
@@ -611,9 +686,15 @@ mod tests {
         let test = TestAppState::with_options(opts).await;
         let (_, conn_id) = test.save_and_connect("stream-fail").await;
         let cb: QueryStreamCallback = std::sync::Arc::new(|_| {});
-        let err = execute_query_stream_impl(&test.state, conn_id, "SELECT 1".into(), cb)
-            .await
-            .unwrap_err();
+        let err = execute_query_stream_impl(
+            &test.state,
+            conn_id,
+            "SELECT 1".into(),
+            cb,
+            ExecuteQueryStreamOpts::default(),
+        )
+        .await
+        .unwrap_err();
         assert!(err.to_string().contains("boom"));
         let history = get_query_history_impl(&test.state, 10).await.unwrap();
         assert_eq!(history.len(), 1);
@@ -628,11 +709,15 @@ mod tests {
     async fn execute_query_stream_not_connected_errors() {
         let test = TestAppState::new().await;
         let cb: QueryStreamCallback = std::sync::Arc::new(|_| {});
-        assert!(
-            execute_query_stream_impl(&test.state, "nope".into(), "SELECT 1".into(), cb)
-                .await
-                .is_err()
-        );
+        assert!(execute_query_stream_impl(
+            &test.state,
+            "nope".into(),
+            "SELECT 1".into(),
+            cb,
+            ExecuteQueryStreamOpts::default(),
+        )
+        .await
+        .is_err());
     }
 
     #[tokio::test]

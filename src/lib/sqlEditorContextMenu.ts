@@ -6,7 +6,7 @@ export type SqlEditorContextMenuLabels = {
   runSelection: string;
   format: string;
   comment: string;
-  addFavorite: string;
+  addFavorite?: string;
 };
 
 export type SqlEditorContextMenuHandlers = {
@@ -88,16 +88,18 @@ export function buildSqlEditorContextMenuItems(
     });
   }
 
-  items.push({ kind: 'separator' });
-  items.push({
-    kind: 'item',
-    id: 'add-favorite',
-    label: labels.addFavorite,
-    enabled: trimmed.length > 0,
-    action: () => {
-      if (trimmed && handlers.onAddFavorite) handlers.onAddFavorite(trimmed);
-    },
-  });
+  if (handlers.onAddFavorite && labels.addFavorite) {
+    items.push({ kind: 'separator' });
+    items.push({
+      kind: 'item',
+      id: 'add-favorite',
+      label: labels.addFavorite,
+      enabled: trimmed.length > 0,
+      action: () => {
+        if (trimmed) handlers.onAddFavorite?.(trimmed);
+      },
+    });
+  }
 
   return items;
 }

@@ -2,8 +2,18 @@ import * as XLSX from 'xlsx';
 import type { ColumnSchema, DatabaseType } from '../types';
 import { escapeIdent } from './databaseTypes';
 
-export type ExportFormat = 'csv' | 'tsv' | 'json' | 'markdown' | 'xlsx' | 'sql_insert' | 'sql_update';
-export type ExportScope = 'current_page' | 'selected';
+export type ExportFormat =
+  | 'csv'
+  | 'tsv'
+  | 'json'
+  | 'markdown'
+  | 'xlsx'
+  | 'sql_insert'
+  | 'sql_update';
+export type ExportScope = 'current_page' | 'selected' | 'entire_table';
+
+/** Multi-row INSERT batch size (TablePlus-style). */
+export const SQL_INSERT_BATCH_SIZE = 500;
 
 export type ExportResult =
   | { kind: 'text'; content: string; extension: string; mimeType: string }
@@ -20,7 +30,7 @@ interface ExportOptions {
   databaseType?: string;
 }
 
-function escapeCSV(value: unknown): string {
+export function escapeCSV(value: unknown): string {
   if (value === null || value === undefined) return '';
   const str = typeof value === 'object' ? JSON.stringify(value) : String(value);
   if (str.includes(',') || str.includes('"') || str.includes('\n')) {
@@ -29,13 +39,13 @@ function escapeCSV(value: unknown): string {
   return str;
 }
 
-function escapeMarkdownCell(value: unknown): string {
+export function escapeMarkdownCell(value: unknown): string {
   if (value === null || value === undefined) return '';
   const str = typeof value === 'object' ? JSON.stringify(value) : String(value);
   return str.replaceAll('|', '\\|').replaceAll('\n', ' ').replaceAll('\r', '');
 }
 
-function escapeSQLValue(value: unknown): string {
+export function escapeSQLValue(value: unknown): string {
   if (value === null || value === undefined) return 'NULL';
   if (typeof value === 'number') return String(value);
   if (typeof value === 'boolean') return value ? 'TRUE' : 'FALSE';
@@ -43,11 +53,60 @@ function escapeSQLValue(value: unknown): string {
   return `'${str.replaceAll("'", "''")}'`;
 }
 
-function escapeSQLIdent(name: string, dbType?: string): string {
+export function escapeSQLIdent(name: string, dbType?: string): string {
   return escapeIdent(name, dbType as DatabaseType | undefined);
 }
 
-function getRows(rows: Record<string, unknown>[], selectedRows: Set<number>, scope: ExportScope): Record<string, unknown>[] {
+export function sqlBeginTransaction(databaseType?: string): string {
+  return databaseType === 'sqlserver' ? 'BEGIN TRANSACTION;' : 'BEGIN;';
+}
+
+export function sqlCommitTransaction(): string {
+  return 'COMMIT;';
+}
+
+export function formatSqlInsertHeader(
+  tableName: string,
+  cols: string[],
+  databaseType?: string,
+): string {
+  const colList = cols.map((c) => escapeSQLIdent(c, databaseType)).join(', ');
+  return `INSERT INTO ${escapeSQLIdent(tableName, databaseType)} (${colList}) VALUES`;
+}
+
+export function formatSqlInsertTuple(row: Record<string, unknown>, cols: string[]): string {
+  return `(${cols.map((col) => escapeSQLValue(row[col])).join(', ')})`;
+}
+
+/** Batched INSERT statements wrapped in a transaction. */
+export function formatSqlInsertScript(
+  tableName: string,
+  cols: string[],
+  dataRows: Record<string, unknown>[],
+  databaseType?: string,
+  batchSize: number = SQL_INSERT_BATCH_SIZE,
+): string {
+  const lines: string[] = [sqlBeginTransaction(databaseType)];
+  if (dataRows.length === 0) {
+    lines.push(sqlCommitTransaction());
+    return lines.join('\n');
+  }
+  const header = formatSqlInsertHeader(tableName, cols, databaseType);
+  const size = Math.max(1, batchSize);
+  for (let i = 0; i < dataRows.length; i += size) {
+    const chunk = dataRows.slice(i, i + size);
+    const tuples = chunk.map((row) => `  ${formatSqlInsertTuple(row, cols)}`).join(',\n');
+    lines.push(`${header}\n${tuples};`);
+  }
+  lines.push(sqlCommitTransaction());
+  return lines.join('\n');
+}
+
+function getRows(
+  rows: Record<string, unknown>[],
+  selectedRows: Set<number>,
+  scope: ExportScope,
+): Record<string, unknown>[] {
   if (scope === 'selected' && selectedRows.size > 0) {
     return rows.filter((_, i) => selectedRows.has(i));
   }
@@ -62,10 +121,13 @@ export function generateExport(options: ExportOptions): ExportResult {
   switch (format) {
     case 'csv': {
       const header = cols.map(escapeCSV).join(',');
-      const body = dataRows.map((row) =>
-        cols.map((col) => escapeCSV(row[col])).join(','),
-      );
-      return { kind: 'text', content: [header, ...body].join('\n'), extension: 'csv', mimeType: 'text/csv' };
+      const body = dataRows.map((row) => cols.map((col) => escapeCSV(row[col])).join(','));
+      return {
+        kind: 'text',
+        content: [header, ...body].join('\n'),
+        extension: 'csv',
+        mimeType: 'text/csv',
+      };
     }
 
     case 'tsv': {
@@ -75,10 +137,13 @@ export function generateExport(options: ExportOptions): ExportResult {
         return s.replaceAll('\t', ' ').replaceAll('\n', ' ').replaceAll('\r', '');
       };
       const header = cols.map(escapeTSV).join('\t');
-      const body = dataRows.map((row) =>
-        cols.map((col) => escapeTSV(row[col])).join('\t'),
-      );
-      return { kind: 'text', content: [header, ...body].join('\n'), extension: 'tsv', mimeType: 'text/tab-separated-values' };
+      const body = dataRows.map((row) => cols.map((col) => escapeTSV(row[col])).join('\t'));
+      return {
+        kind: 'text',
+        content: [header, ...body].join('\n'),
+        extension: 'tsv',
+        mimeType: 'text/tab-separated-values',
+      };
     }
 
     case 'json': {
@@ -87,14 +152,19 @@ export function generateExport(options: ExportOptions): ExportResult {
         for (const col of cols) obj[col] = row[col] ?? null;
         return obj;
       });
-      return { kind: 'text', content: JSON.stringify(data, null, 2), extension: 'json', mimeType: 'application/json' };
+      return {
+        kind: 'text',
+        content: JSON.stringify(data, null, 2),
+        extension: 'json',
+        mimeType: 'application/json',
+      };
     }
 
     case 'markdown': {
       const header = `| ${cols.join(' | ')} |`;
       const separator = `| ${cols.map(() => '---').join(' | ')} |`;
-      const body = dataRows.map((row) =>
-        `| ${cols.map((col) => escapeMarkdownCell(row[col])).join(' | ')} |`,
+      const body = dataRows.map(
+        (row) => `| ${cols.map((col) => escapeMarkdownCell(row[col])).join(' | ')} |`,
       );
       return {
         kind: 'text',
@@ -123,12 +193,12 @@ export function generateExport(options: ExportOptions): ExportResult {
     }
 
     case 'sql_insert': {
-      const colList = cols.map((c) => escapeSQLIdent(c, databaseType)).join(', ');
-      const statements = dataRows.map((row) => {
-        const values = cols.map((col) => escapeSQLValue(row[col])).join(', ');
-        return `INSERT INTO ${escapeSQLIdent(tableName, databaseType)} (${colList}) VALUES (${values});`;
-      });
-      return { kind: 'text', content: statements.join('\n'), extension: 'sql', mimeType: 'text/sql' };
+      return {
+        kind: 'text',
+        content: formatSqlInsertScript(tableName, cols, dataRows, databaseType),
+        extension: 'sql',
+        mimeType: 'text/sql',
+      };
     }
 
     case 'sql_update': {
@@ -142,7 +212,11 @@ export function generateExport(options: ExportOptions): ExportResult {
         const where = `${escapeSQLIdent(pkName, databaseType)} = ${escapeSQLValue(row[pkName])}`;
         return `UPDATE ${escapeSQLIdent(tableName, databaseType)} SET ${setClauses} WHERE ${where};`;
       });
-      return { kind: 'text', content: statements.join('\n'), extension: 'sql', mimeType: 'text/sql' };
+      const body =
+        statements.length === 0
+          ? `${sqlBeginTransaction(databaseType)}\n${sqlCommitTransaction()}`
+          : `${sqlBeginTransaction(databaseType)}\n${statements.join('\n')}\n${sqlCommitTransaction()}`;
+      return { kind: 'text', content: body, extension: 'sql', mimeType: 'text/sql' };
     }
   }
 }
