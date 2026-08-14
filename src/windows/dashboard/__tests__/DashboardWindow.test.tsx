@@ -358,6 +358,8 @@ describe('DashboardWindow', () => {
     await waitFor(() => expect(screen.getByTestId('dashboard-delete-panel')).toBeInTheDocument());
 
     fireEvent.click(screen.getByTestId('dashboard-delete-panel'));
+    await waitFor(() => expect(screen.getByTestId('dashboard-delete-confirm')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('dashboard-delete-confirm'));
     await waitFor(() => expect(mockDashboardCommands.deleteDashboard).toHaveBeenCalledWith('d1'));
   });
 
@@ -460,6 +462,8 @@ describe('DashboardWindow', () => {
     await waitFor(() => expect(mockDashboardCommands.saveDashboard).toHaveBeenCalled());
 
     fireEvent.click(screen.getByTestId('tile-delete-w1'));
+    await waitFor(() => expect(screen.getByTestId('widget-delete-confirm')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('widget-delete-confirm'));
     await waitFor(() => expect(mockDashboardCommands.saveDashboard).toHaveBeenCalledTimes(2));
   });
 

@@ -1,7 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { Plus } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Dialog } from '../../components/ui/Dialog';
 import { Input } from '../../components/ui/Input';
+import { Select } from '../../components/ui/Select';
 import { useI18n } from '../../hooks/useI18n';
 import { dashboardCommands } from '../../commands/dashboard';
 import type { Dashboard } from '../../types/dashboard';
@@ -20,14 +22,15 @@ export function AddToDashboardDialog({
   const { t } = useI18n();
   const [dashboards, setDashboards] = useState<Dashboard[]>([]);
   const [loading, setLoading] = useState(false);
-  const [selection, setSelection] = useState<string | 'new'>('new');
+  const [selection, setSelection] = useState('');
+  const [creatingNew, setCreatingNew] = useState(false);
   const [newName, setNewName] = useState('');
 
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
     setLoading(true);
-    setSelection('new');
+    setCreatingNew(false);
     setNewName(t('dashboard.defaultName'));
     void dashboardCommands
       .listDashboards()
@@ -37,7 +40,7 @@ export function AddToDashboardDialog({
         if (list.length > 0) {
           setSelection(list[0]!.id);
         } else {
-          setSelection('new');
+          setCreatingNew(true);
         }
       })
       .finally(() => {
@@ -49,8 +52,13 @@ export function AddToDashboardDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only refetch when dialog opens
   }, [open]);
 
+  const selectOptions = useMemo(
+    () => dashboards.map((b) => ({ value: b.id, label: b.name })),
+    [dashboards],
+  );
+
   const handleConfirm = () => {
-    if (selection === 'new') {
+    if (creatingNew) {
       const name = newName.trim() || t('dashboard.defaultName');
       onConfirm('new', name);
       return;
@@ -71,7 +79,7 @@ export function AddToDashboardDialog({
           <Button
             className="h-8 px-3 text-xs"
             data-testid="add-to-dashboard-confirm"
-            disabled={loading || (selection === 'new' && !newName.trim())}
+            disabled={loading || (creatingNew && !newName.trim()) || (!creatingNew && !selection)}
             onClick={handleConfirm}
           >
             {t('common.ok')}
@@ -80,45 +88,50 @@ export function AddToDashboardDialog({
       }
     >
       <div className="space-y-3" data-testid="add-to-dashboard-dialog">
-        <p className="text-xs text-fg-muted">{t('dashboard.selectPanel')}</p>
         {loading && <p className="text-xs text-fg-muted">{t('common.loading')}</p>}
-        {!loading && (
+        {!loading && !creatingNew && (
           <div className="space-y-2">
-            {dashboards.map((board) => (
-              <label
-                key={board.id}
-                className="flex cursor-pointer items-center gap-2 rounded-md border border-edge px-3 py-2 text-sm hover:bg-surface-raised"
+            <p className="text-xs text-fg-muted">{t('dashboard.selectPanel')}</p>
+            <Select
+              value={selection}
+              options={selectOptions}
+              onChange={setSelection}
+              placeholder={t('dashboard.selectPanel')}
+              data-testid="dashboard-target-select"
+            />
+            <button
+              type="button"
+              className="flex items-center gap-1 text-xs text-accent hover:underline"
+              data-testid="dashboard-target-new"
+              onClick={() => setCreatingNew(true)}
+            >
+              <Plus className="h-3 w-3" />
+              {t('dashboard.createNewPanel')}
+            </button>
+          </div>
+        )}
+        {!loading && creatingNew && (
+          <div className="space-y-2">
+            <p className="text-xs font-medium text-fg">{t('dashboard.createNewPanel')}</p>
+            <Input
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder={t('dashboard.name')}
+              data-testid="dashboard-new-panel-name"
+              autoFocus
+            />
+            {dashboards.length > 0 && (
+              <button
+                type="button"
+                className="text-xs text-accent hover:underline"
+                onClick={() => {
+                  setCreatingNew(false);
+                  setSelection(dashboards[0]!.id);
+                }}
               >
-                <input
-                  type="radio"
-                  name="dashboard-target"
-                  checked={selection === board.id}
-                  onChange={() => setSelection(board.id)}
-                  data-testid="dashboard-target-option"
-                />
-                <span className="truncate">{board.name}</span>
-              </label>
-            ))}
-            <label className="flex cursor-pointer items-start gap-2 rounded-md border border-edge px-3 py-2 text-sm hover:bg-surface-raised">
-              <input
-                type="radio"
-                name="dashboard-target"
-                checked={selection === 'new'}
-                onChange={() => setSelection('new')}
-                data-testid="dashboard-target-new"
-              />
-              <span className="min-w-0 flex-1 space-y-2">
-                <span className="block">{t('dashboard.createNewPanel')}</span>
-                {selection === 'new' && (
-                  <Input
-                    value={newName}
-                    onChange={(e) => setNewName(e.target.value)}
-                    placeholder={t('dashboard.name')}
-                    data-testid="dashboard-new-panel-name"
-                  />
-                )}
-              </span>
-            </label>
+                {t('dashboard.selectExisting')}
+              </button>
+            )}
           </div>
         )}
       </div>

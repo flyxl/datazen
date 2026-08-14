@@ -582,6 +582,11 @@ impl AppDb {
 
     pub fn delete_widget(&self, id: &str) -> Result<(), AppDbError> {
         self.with_conn(|conn| {
+            conn.execute(
+                "DELETE FROM widget_latest_run WHERE widget_id = ?1",
+                params![id],
+            )?;
+            conn.execute("DELETE FROM widget_runs WHERE widget_id = ?1", params![id])?;
             let n = conn.execute("DELETE FROM widgets WHERE id = ?1", params![id])?;
             if n == 0 {
                 return Err(AppDbError::NotFound(id.into()));
