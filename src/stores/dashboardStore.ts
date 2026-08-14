@@ -49,28 +49,39 @@ function patchEntry(
   return { ...dashboardsById, [id]: { ...prev, ...patch } };
 }
 
-let runUpdatedListenerReady = false;
+let crossWindowListenerReady = false;
 
-function ensureRunUpdatedListener() {
-  if (runUpdatedListenerReady) return;
-  runUpdatedListenerReady = true;
+function ensureCrossWindowListeners() {
+  if (crossWindowListenerReady) return;
+  crossWindowListenerReady = true;
+
   void listenCrossWindow('dashboard:run-updated', (payload) => {
-    const data = payload as {
-      dashboardId?: string;
-      widgetId?: string;
-      run?: WidgetRun;
-    } | undefined;
+    const data = payload as
+      | {
+          dashboardId?: string;
+          widgetId?: string;
+          run?: WidgetRun;
+        }
+      | undefined;
     if (!data?.dashboardId || !data.widgetId || !data.run) return;
     const entry = useDashboardStore.getState().dashboardsById[data.dashboardId];
     if (!entry || entry.refCount <= 0) return;
     useDashboardStore.getState().setRun(data.dashboardId, data.widgetId, data.run);
   });
+
+  void listenCrossWindow('dashboard:changed', (payload) => {
+    const data = payload as { dashboardId?: string } | undefined;
+    if (!data?.dashboardId) return;
+    const store = useDashboardStore.getState();
+    const entry = store.dashboardsById[data.dashboardId];
+    if (entry && entry.refCount > 0) {
+      void store.loadDashboard(data.dashboardId);
+    }
+    void store.fetchDashboards();
+  });
 }
 
-async function loadLatestRun(
-  dashboardId: string,
-  widgetId: string,
-): Promise<WidgetRun | null> {
+async function loadLatestRun(dashboardId: string, widgetId: string): Promise<WidgetRun | null> {
   const index = await dashboardCommands.listWidgetRuns(dashboardId, widgetId, 1);
   const latest = index.find((e) => e.status === 'ok') ?? index[0];
   if (!latest) return null;
@@ -97,7 +108,7 @@ export const useDashboardStore = create<DashboardStore>((set, get) => ({
   },
 
   mountDashboard: (id: string) => {
-    ensureRunUpdatedListener();
+    ensureCrossWindowListeners();
     set((s) => {
       const prev = s.dashboardsById[id] ?? emptyEntry();
       return {

@@ -1,6 +1,16 @@
 import { useCallback, useRef, useState } from 'react';
 import { useAiKeyboard } from '../../hooks/useAiKeyboard';
-import { BarChart3, Download, Maximize2, LineChart as LineChartIcon, MessageSquare, PieChart as PieChartIcon, ScatterChart as ScatterChartIcon, TrendingUp } from 'lucide-react';
+import {
+  BarChart3,
+  Download,
+  LayoutGrid,
+  Maximize2,
+  LineChart as LineChartIcon,
+  MessageSquare,
+  PieChart as PieChartIcon,
+  ScatterChart as ScatterChartIcon,
+  TrendingUp,
+} from 'lucide-react';
 import { useI18n } from '../../hooks/useI18n';
 import { cn } from '../../lib/cn';
 import { exportChartAsPng, exportChartAsSvg } from '../../lib/chart/export';
@@ -13,6 +23,8 @@ interface ChartToolbarProps {
   chartRef: React.RefObject<HTMLDivElement | null>;
   fields?: ChartField[];
   onExpand?: () => void;
+  splitView?: boolean;
+  onToggleSplit?: () => void;
 }
 
 const CHART_TYPES: { type: ChartType; icon: React.ElementType; labelKey: string }[] = [
@@ -23,7 +35,15 @@ const CHART_TYPES: { type: ChartType; icon: React.ElementType; labelKey: string 
   { type: 'area', icon: TrendingUp, labelKey: 'chart.type.area' },
 ];
 
-export function ChartToolbar({ config, onChange, chartRef, fields = [], onExpand }: ChartToolbarProps) {
+export function ChartToolbar({
+  config,
+  onChange,
+  chartRef,
+  fields = [],
+  onExpand,
+  splitView,
+  onToggleSplit,
+}: ChartToolbarProps) {
   const { t } = useI18n();
   const [exportOpen, setExportOpen] = useState(false);
   const [nlInput, setNlInput] = useState('');
@@ -105,6 +125,26 @@ export function ChartToolbar({ config, onChange, chartRef, fields = [], onExpand
         {t('chart.values')}
       </label>
 
+      {/* Split view toggle */}
+      {onToggleSplit && config.yAxes.length > 1 && (
+        <>
+          <span className="mx-1 h-4 w-px bg-edge" />
+          <button
+            type="button"
+            className={cn(
+              'flex items-center gap-1 rounded px-2 py-1 text-xs transition-colors',
+              splitView
+                ? 'bg-accent/20 text-accent'
+                : 'text-fg-muted hover:text-fg-secondary hover:bg-surface',
+            )}
+            onClick={onToggleSplit}
+            title={t('chart.splitView')}
+          >
+            <LayoutGrid className="h-3.5 w-3.5" />
+          </button>
+        </>
+      )}
+
       <div className="flex-1" />
 
       {/* NL config input */}
@@ -117,7 +157,10 @@ export function ChartToolbar({ config, onChange, chartRef, fields = [], onExpand
             onChange={(e) => setNlInput(e.target.value)}
             onKeyDown={(e) => {
               aiKeyboard.onKeyDown(e);
-              if (e.key === 'Escape') { setNlOpen(false); setNlInput(''); }
+              if (e.key === 'Escape') {
+                setNlOpen(false);
+                setNlInput('');
+              }
             }}
             onCompositionStart={aiKeyboard.onCompositionStart}
             onCompositionEnd={aiKeyboard.onCompositionEnd}
@@ -130,7 +173,10 @@ export function ChartToolbar({ config, onChange, chartRef, fields = [], onExpand
         <button
           type="button"
           className="flex items-center gap-1 rounded px-2 py-1 text-xs text-fg-muted hover:text-fg-secondary hover:bg-surface transition-colors"
-          onClick={() => { setNlOpen(true); setTimeout(() => nlInputRef.current?.focus(), 50); }}
+          onClick={() => {
+            setNlOpen(true);
+            setTimeout(() => nlInputRef.current?.focus(), 50);
+          }}
           title={t('chart.nlHint')}
         >
           <MessageSquare className="h-3.5 w-3.5" />

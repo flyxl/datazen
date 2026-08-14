@@ -15,6 +15,7 @@ import {
 import { TitleBar } from '../../components/TitleBar';
 import { StatusBar } from '../../components/StatusBar';
 import { Button } from '../../components/ui/Button';
+import { Dialog } from '../../components/ui/Dialog';
 import { Input } from '../../components/ui/Input';
 import { cn } from '../../lib/cn';
 import { useSettings } from '../../hooks/useSettings';
@@ -25,6 +26,7 @@ import { dashboardCommands } from '../../commands/dashboard';
 import { aiCommands } from '../../commands/ai';
 import { useDashboardStore } from '../../stores/dashboardStore';
 import { DEFAULT_CHART_CONFIG } from '../../types/chart';
+import type { ChartConfig, ChartType } from '../../types/chart';
 import type { Dashboard, DashboardWidget, ViewMode } from '../../types/dashboard';
 import type { WorkflowListItem } from '../../types';
 import { DEFAULT_REFRESH } from '../../types/dashboard';
@@ -84,6 +86,8 @@ export function DashboardWindow() {
   const [renaming, setRenaming] = useState(false);
   const [nameDraft, setNameDraft] = useState('');
   const [bootstrapping, setBootstrapping] = useState(!urlDashboardId);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [widgetToDelete, setWidgetToDelete] = useState<string | null>(null);
   const [editorHiddenSql, setEditorHiddenSql] = useState<
     { configId: string; sql: string } | undefined
   >(undefined);
@@ -130,8 +134,8 @@ export function DashboardWindow() {
 
   const handleDeletePanel = useCallback(async () => {
     if (!current) return;
-    if (!confirm(t('dashboard.deletePanelConfirm'))) return;
     const deletedId = current.id;
+    setDeleteConfirmOpen(false);
     await deleteDashboard(deletedId);
     const remaining = useDashboardStore.getState().list;
     if (remaining.length === 0) {
@@ -139,7 +143,7 @@ export function DashboardWindow() {
     } else {
       setActiveDashboardId(remaining[0]!.id);
     }
-  }, [current, deleteDashboard, t]);
+  }, [current, deleteDashboard]);
 
   const handleCreateFirstBoard = useCallback(async () => {
     const board = createEmptyDashboard(t('dashboard.defaultName'));
@@ -267,14 +271,36 @@ export function DashboardWindow() {
     [current, saveDashboard],
   );
 
+  const handleChartTypeChange = useCallback(
+    async (widgetId: string, chartType: ChartType) => {
+      if (!current) return;
+      const widgets = current.widgets.map((w) =>
+        w.id === widgetId && w.chartConfig
+          ? { ...w, chartConfig: { ...w.chartConfig, chartType } }
+          : w,
+      );
+      await saveDashboard({ ...current, widgets });
+    },
+    [current, saveDashboard],
+  );
+
+  const handleChartConfigChange = useCallback(
+    async (widgetId: string, chartConfig: ChartConfig) => {
+      if (!current) return;
+      const widgets = current.widgets.map((w) => (w.id === widgetId ? { ...w, chartConfig } : w));
+      await saveDashboard({ ...current, widgets });
+    },
+    [current, saveDashboard],
+  );
+
   const handleDeleteWidget = useCallback(
     async (widgetId: string) => {
       if (!current) return;
-      if (!confirm(t('dashboard.deleteWidgetConfirm'))) return;
+      setWidgetToDelete(null);
       const widgets = current.widgets.filter((w) => w.id !== widgetId);
       await saveDashboard({ ...current, widgets });
     },
-    [current, saveDashboard, t],
+    [current, saveDashboard],
   );
 
   const handleRename = useCallback(async () => {
@@ -333,13 +359,15 @@ export function DashboardWindow() {
               run={runs[widget.id] ?? null}
               busy={!!busyWidgets[widget.id]}
               onEdit={() => void openWidgetEditor(widget, false)}
-              onDelete={() => void handleDeleteWidget(widget.id)}
+              onDelete={() => setWidgetToDelete(widget.id)}
               onHistory={() => {
                 setHistoryWidget(widget);
                 setHistoryOpen(true);
               }}
               onRefresh={() => void refreshWidget(current.id, widget.id)}
               onViewModeChange={(mode) => void handleViewModeChange(widget.id, mode)}
+              onChartTypeChange={(type) => void handleChartTypeChange(widget.id, type)}
+              onChartConfigChange={(cfg) => void handleChartConfigChange(widget.id, cfg)}
             />
           ))}
           <button
@@ -562,7 +590,7 @@ export function DashboardWindow() {
               size="sm"
               className="h-7 w-7 !px-0 text-red-400 hover:text-red-300"
               data-testid="dashboard-delete-panel"
-              onClick={() => void handleDeletePanel()}
+              onClick={() => setDeleteConfirmOpen(true)}
               disabled={loading}
               title={t('dashboard.deletePanel')}
             >
@@ -604,6 +632,60 @@ export function DashboardWindow() {
           setHistoryWidget(null);
         }}
       />
+
+      <Dialog
+        open={deleteConfirmOpen}
+        title={t('dashboard.deletePanel')}
+        onClose={() => setDeleteConfirmOpen(false)}
+        footer={
+          <>
+            <Button
+              variant="ghost"
+              className="h-8 px-3 text-xs"
+              onClick={() => setDeleteConfirmOpen(false)}
+            >
+              {t('common.cancel')}
+            </Button>
+            <Button
+              variant="destructive"
+              className="h-8 px-3 text-xs"
+              data-testid="dashboard-delete-confirm"
+              onClick={() => void handleDeletePanel()}
+            >
+              {t('common.delete')}
+            </Button>
+          </>
+        }
+      >
+        <p className="text-sm text-fg-secondary">{t('dashboard.deletePanelConfirm')}</p>
+      </Dialog>
+
+      <Dialog
+        open={!!widgetToDelete}
+        title={t('dashboard.deleteWidget')}
+        onClose={() => setWidgetToDelete(null)}
+        footer={
+          <>
+            <Button
+              variant="ghost"
+              className="h-8 px-3 text-xs"
+              onClick={() => setWidgetToDelete(null)}
+            >
+              {t('common.cancel')}
+            </Button>
+            <Button
+              variant="destructive"
+              className="h-8 px-3 text-xs"
+              data-testid="widget-delete-confirm"
+              onClick={() => widgetToDelete && void handleDeleteWidget(widgetToDelete)}
+            >
+              {t('common.delete')}
+            </Button>
+          </>
+        }
+      >
+        <p className="text-sm text-fg-secondary">{t('dashboard.deleteWidgetConfirm')}</p>
+      </Dialog>
     </div>
   );
 }

@@ -33,8 +33,32 @@ export interface WidgetEditorDrawerProps {
 }
 
 const CHART_TYPES: ChartType[] = ['bar', 'line', 'pie', 'scatter', 'area'];
-const REFRESH_MODES: RefreshMode[] = ['manual', 'onOpen', 'interval'];
 const ALERT_OPS: AlertOperator[] = ['>', '>=', '<', '<=', '==', '!='];
+
+type RefreshPreset = 'manual' | 'onOpen' | 'daily' | 'hourly' | 'custom';
+type IntervalUnit = 'days' | 'hours' | 'minutes' | 'seconds';
+
+const INTERVAL_MULTIPLIERS: Record<IntervalUnit, number> = {
+  days: 86400,
+  hours: 3600,
+  minutes: 60,
+  seconds: 1,
+};
+
+function refreshPolicyToPreset(mode: RefreshMode, sec?: number): RefreshPreset {
+  if (mode === 'manual') return 'manual';
+  if (mode === 'onOpen') return 'onOpen';
+  if (sec === 86400) return 'daily';
+  if (sec === 3600) return 'hourly';
+  return 'custom';
+}
+
+function secToUnitAndValue(sec: number): { unit: IntervalUnit; value: number } {
+  if (sec >= 86400 && sec % 86400 === 0) return { unit: 'days', value: sec / 86400 };
+  if (sec >= 3600 && sec % 3600 === 0) return { unit: 'hours', value: sec / 3600 };
+  if (sec >= 60 && sec % 60 === 0) return { unit: 'minutes', value: sec / 60 };
+  return { unit: 'seconds', value: sec };
+}
 
 const DEFAULT_ALERT: NonNullable<DashboardWidget['alert']> = {
   metric: { kind: 'column', column: '' },
@@ -75,11 +99,13 @@ export function WidgetEditorDrawer({
   const [hiddenSql, setHiddenSql] = useState<{ configId: string; sql: string }>(
     hiddenSqlProp ?? { configId: '', sql: 'SELECT 1 AS v' },
   );
+  const [forceCustomRefresh, setForceCustomRefresh] = useState(false);
 
   useEffect(() => {
     if (open) {
       setDraft(widget ?? emptyDraft());
       setHiddenSql(hiddenSqlProp ?? { configId: '', sql: 'SELECT 1 AS v' });
+      setForceCustomRefresh(false);
       void fetchConnections();
     }
   }, [open, widget, hiddenSqlProp, fetchConnections]);
@@ -190,53 +216,96 @@ export function WidgetEditorDrawer({
           <label className="block space-y-1">
             <span className="text-xs text-fg-muted">{t('dashboard.refreshMode')}</span>
             <Select
-              value={draft.refresh.mode}
-              onChange={(v) =>
-                setDraft((d) => ({
-                  ...d,
-                  refresh: {
-                    mode: v as RefreshMode,
-                    refreshSec:
-                      v === 'interval'
-                        ? clampRefreshSec(d.refresh.refreshSec ?? MIN_REFRESH_SEC)
-                        : undefined,
-                  },
-                }))
+              value={
+                forceCustomRefresh
+                  ? 'custom'
+                  : refreshPolicyToPreset(draft.refresh.mode, draft.refresh.refreshSec)
               }
-              options={REFRESH_MODES.map((m) => ({
-                value: m,
-                label: t(`dashboard.refreshMode.${m}`),
-              }))}
+              onChange={(v) => {
+                const preset = v as RefreshPreset;
+                setForceCustomRefresh(preset === 'custom');
+                setDraft((d) => {
+                  if (preset === 'manual') return { ...d, refresh: { mode: 'manual' } };
+                  if (preset === 'onOpen') return { ...d, refresh: { mode: 'onOpen' } };
+                  if (preset === 'daily')
+                    return { ...d, refresh: { mode: 'interval', refreshSec: 86400 } };
+                  if (preset === 'hourly')
+                    return { ...d, refresh: { mode: 'interval', refreshSec: 3600 } };
+                  return {
+                    ...d,
+                    refresh: {
+                      mode: 'interval',
+                      refreshSec: clampRefreshSec(d.refresh.refreshSec ?? MIN_REFRESH_SEC),
+                    },
+                  };
+                });
+              }}
+              options={[
+                { value: 'manual', label: t('dashboard.refreshMode.manual') },
+                { value: 'onOpen', label: t('dashboard.refreshMode.onOpen') },
+                { value: 'daily', label: t('dashboard.refreshPreset.daily') },
+                { value: 'hourly', label: t('dashboard.refreshPreset.hourly') },
+                { value: 'custom', label: t('dashboard.refreshPreset.custom') },
+              ]}
             />
           </label>
 
-          {draft.refresh.mode === 'interval' && (
-            <label className="block space-y-1">
-              <span className="text-xs text-fg-muted">{t('dashboard.refreshSec')}</span>
-              <Input
-                type="number"
-                min={MIN_REFRESH_SEC}
-                value={draft.refresh.refreshSec ?? MIN_REFRESH_SEC}
-                onChange={(e) =>
-                  setDraft((d) => ({
-                    ...d,
-                    refresh: {
-                      ...d.refresh,
-                      refreshSec: clampRefreshSec(Number(e.target.value) || MIN_REFRESH_SEC),
-                    },
-                  }))
-                }
-              />
-              <span className="text-[11px] text-fg-muted">
-                {t('dashboard.refreshSecHint', { min: MIN_REFRESH_SEC })}
-              </span>
-              {refreshWarn && (
-                <p className="text-[11px] text-amber-500" data-testid="refresh-sec-warn">
-                  {t('dashboard.refreshSecWarn', { sec: REFRESH_WARN_BELOW_SEC })}
-                </p>
-              )}
-            </label>
-          )}
+          {draft.refresh.mode === 'interval' &&
+            (forceCustomRefresh ||
+              refreshPolicyToPreset(draft.refresh.mode, draft.refresh.refreshSec) === 'custom') && (
+              <div className="space-y-1">
+                <span className="text-xs text-fg-muted">{t('dashboard.refreshInterval')}</span>
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="number"
+                    min={1}
+                    className="w-24"
+                    value={secToUnitAndValue(draft.refresh.refreshSec ?? MIN_REFRESH_SEC).value}
+                    onChange={(e) => {
+                      const val = Math.max(1, Number(e.target.value) || 1);
+                      const { unit } = secToUnitAndValue(
+                        draft.refresh.refreshSec ?? MIN_REFRESH_SEC,
+                      );
+                      const totalSec = clampRefreshSec(val * INTERVAL_MULTIPLIERS[unit]);
+                      setDraft((d) => ({
+                        ...d,
+                        refresh: { ...d.refresh, refreshSec: totalSec },
+                      }));
+                    }}
+                  />
+                  <Select
+                    className="w-28"
+                    value={secToUnitAndValue(draft.refresh.refreshSec ?? MIN_REFRESH_SEC).unit}
+                    onChange={(unit) => {
+                      const { value } = secToUnitAndValue(
+                        draft.refresh.refreshSec ?? MIN_REFRESH_SEC,
+                      );
+                      const totalSec = clampRefreshSec(
+                        value * INTERVAL_MULTIPLIERS[unit as IntervalUnit],
+                      );
+                      setDraft((d) => ({
+                        ...d,
+                        refresh: { ...d.refresh, refreshSec: totalSec },
+                      }));
+                    }}
+                    options={[
+                      { value: 'days', label: t('dashboard.intervalUnit.days') },
+                      { value: 'hours', label: t('dashboard.intervalUnit.hours') },
+                      { value: 'minutes', label: t('dashboard.intervalUnit.minutes') },
+                      { value: 'seconds', label: t('dashboard.intervalUnit.seconds') },
+                    ]}
+                  />
+                </div>
+                <span className="text-[11px] text-fg-muted">
+                  {t('dashboard.refreshSecHint', { min: MIN_REFRESH_SEC })}
+                </span>
+                {refreshWarn && (
+                  <p className="text-[11px] text-amber-500" data-testid="refresh-sec-warn">
+                    {t('dashboard.refreshSecWarn', { sec: REFRESH_WARN_BELOW_SEC })}
+                  </p>
+                )}
+              </div>
+            )}
 
           <label className="flex items-center gap-2 text-xs text-fg">
             <input

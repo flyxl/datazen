@@ -42,13 +42,22 @@ function defaultConfig(fields: { name: string; inferredType: string }[]): ChartC
 
 const MAX_CHART_ROWS = 1000;
 
-export function ChartView({ result, onDataPointClick, savedConfig, onConfigChange }: ChartViewProps) {
+export function ChartView({
+  result,
+  onDataPointClick,
+  savedConfig,
+  onConfigChange,
+}: ChartViewProps) {
   const chartRef = useRef<HTMLDivElement>(null);
   const expandedChartRef = useRef<HTMLDivElement>(null);
   const { t } = useI18n();
   const fields = useMemo(() => inferAllFields(result), [result]);
-  const recommendation = useMemo(() => recommendChart(fields, result.rows.length), [fields, result.rows.length]);
+  const recommendation = useMemo(
+    () => recommendChart(fields, result.rows.length),
+    [fields, result.rows.length],
+  );
   const [expanded, setExpanded] = useState(false);
+  const [splitView, setSplitView] = useState(false);
   const [paletteEpoch, setPaletteEpoch] = useState(0);
 
   useEffect(() => {
@@ -57,14 +66,31 @@ export function ChartView({ result, onDataPointClick, savedConfig, onConfigChang
     return () => document.removeEventListener('datazen:theme-pack-changed', onPackChanged);
   }, []);
 
-  const [config, setConfigState] = useState<ChartConfig>(() =>
-    savedConfig ?? (recommendation ? recommendationToConfig(recommendation) : defaultConfig(fields)),
+  const [config, setConfigState] = useState<ChartConfig>(
+    () =>
+      savedConfig ??
+      (recommendation ? recommendationToConfig(recommendation) : defaultConfig(fields)),
   );
 
-  const setConfig = useCallback((newConfig: ChartConfig) => {
-    setConfigState(newConfig);
-    onConfigChange?.(newConfig);
-  }, [onConfigChange]);
+  useEffect(() => {
+    if (savedConfig) {
+      setConfigState(savedConfig);
+    } else {
+      const derived = recommendation
+        ? recommendationToConfig(recommendation)
+        : defaultConfig(fields);
+      setConfigState(derived);
+      onConfigChange?.(derived);
+    }
+  }, [savedConfig, recommendation, fields, onConfigChange]);
+
+  const setConfig = useCallback(
+    (newConfig: ChartConfig) => {
+      setConfigState(newConfig);
+      onConfigChange?.(newConfig);
+    },
+    [onConfigChange],
+  );
 
   const chartResult = useMemo(() => {
     if (result.rows.length > MAX_CHART_ROWS) {
@@ -96,9 +122,27 @@ export function ChartView({ result, onDataPointClick, savedConfig, onConfigChang
 
   const showEmptyCanvas = config.yAxes.length === 0;
 
+  const showSplit = splitView && config.yAxes.length > 1;
+
+  const splitConfigs = useMemo<ChartConfig[]>(() => {
+    if (!showSplit) return [];
+    return config.yAxes.map((yKey) => ({
+      ...renderConfig,
+      yAxes: [yKey],
+    }));
+  }, [showSplit, config.yAxes, renderConfig]);
+
   return (
     <div className="flex flex-1 flex-col min-h-0">
-      <ChartToolbar config={config} onChange={setConfig} chartRef={chartRef} fields={fields} onExpand={() => setExpanded(true)} />
+      <ChartToolbar
+        config={config}
+        onChange={setConfig}
+        chartRef={chartRef}
+        fields={fields}
+        onExpand={() => setExpanded(true)}
+        splitView={splitView}
+        onToggleSplit={() => setSplitView((v) => !v)}
+      />
       <div className="flex flex-1 min-h-0">
         <AxisConfigurator
           fields={fields}
@@ -106,30 +150,56 @@ export function ChartView({ result, onDataPointClick, savedConfig, onConfigChang
           onChange={setConfig}
           recommendation={recommendation}
         />
-        <div ref={chartRef} className="relative flex-1 min-h-0">
+        <div ref={chartRef} className="relative flex-1 min-h-0 overflow-y-auto">
           {showEmptyCanvas ? (
             <ChartEmptyState reason="noConfig" />
+          ) : showSplit ? (
+            <div
+              className="grid grid-cols-1 gap-2 p-2 md:grid-cols-2"
+              style={{ minHeight: splitConfigs.length * 200 }}
+            >
+              {splitConfigs.map((sc) => (
+                <div key={sc.yAxes[0]} className="relative h-56 rounded border border-edge">
+                  <div className="absolute left-2 top-1 z-10 text-[11px] font-medium text-fg-muted">
+                    {sc.yAxes[0]}
+                  </div>
+                  <ChartCanvas
+                    key={`${paletteEpoch}-${sc.yAxes[0]}`}
+                    data={data}
+                    config={sc}
+                    onDataPointClick={onDataPointClick}
+                    compact
+                  />
+                </div>
+              ))}
+            </div>
           ) : (
-            <ChartCanvas key={paletteEpoch} data={data} config={renderConfig} onDataPointClick={onDataPointClick} />
+            <ChartCanvas
+              key={paletteEpoch}
+              data={data}
+              config={renderConfig}
+              onDataPointClick={onDataPointClick}
+            />
           )}
         </div>
       </div>
 
-      {expanded && createPortal(
-        <ChartExpandOverlay
-          paletteEpoch={paletteEpoch}
-          data={data}
-          config={config}
-          renderConfig={renderConfig}
-          fields={fields}
-          recommendation={recommendation}
-          chartRef={expandedChartRef}
-          t={t}
-          onConfigChange={setConfig}
-          onClose={() => setExpanded(false)}
-        />,
-        document.body,
-      )}
+      {expanded &&
+        createPortal(
+          <ChartExpandOverlay
+            paletteEpoch={paletteEpoch}
+            data={data}
+            config={config}
+            renderConfig={renderConfig}
+            fields={fields}
+            recommendation={recommendation}
+            chartRef={expandedChartRef}
+            t={t}
+            onConfigChange={setConfig}
+            onClose={() => setExpanded(false)}
+          />,
+          document.body,
+        )}
     </div>
   );
 }
@@ -174,7 +244,7 @@ function ChartExpandOverlay({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-surface/95 backdrop-blur-sm">
+    <div className="fixed inset-0 top-10 z-50 flex flex-col bg-surface/95 backdrop-blur-sm">
       {/* Toolbar */}
       <div className="flex shrink-0 items-center gap-2 border-b border-edge px-4 py-2">
         <span className="text-sm font-medium text-fg">{t('chart.expandTitle')}</span>

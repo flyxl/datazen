@@ -26,7 +26,7 @@
 
 ## 3. 下周计划
 
-- [ ] 发布 V2EX + 掘金（见 `launch/README.md`）
+- [ ] 记录发布各渠道帖子（V2EX / 掘金等）
 - [ ] 记录发布后 Stars 变化
 - [ ] 启用 GitHub Pages（Settings → Pages → GitHub Actions）
 

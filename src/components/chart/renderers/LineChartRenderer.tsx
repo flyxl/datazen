@@ -1,6 +1,8 @@
+import { useMemo } from 'react';
 import { CartesianGrid, LabelList, Legend, Line, LineChart, Tooltip, XAxis, YAxis } from 'recharts';
 import { getColorPalette } from '../../../lib/chart/colors';
-import { formatAxisTick, formatNumber } from '../../../lib/chart/format';
+import { formatAxisTick, formatCompact } from '../../../lib/chart/format';
+import { computeLogScaleHint } from '../../../lib/chart/transform';
 import type { ChartConfig, ChartDataPoint } from '../../../types/chart';
 
 interface LineChartRendererProps {
@@ -11,11 +13,20 @@ interface LineChartRendererProps {
 
 export function LineChartRenderer({ data, config, onDataPointClick }: LineChartRendererProps) {
   const colors = getColorPalette(config.colorScheme);
+  const logHint = useMemo(() => computeLogScaleHint(data, config.yAxes), [data, config.yAxes]);
+
   return (
-    <LineChart data={data} onClick={onDataPointClick ? (state: unknown) => {
-      const s = state as { activeTooltipIndex?: number | null };
-      if (typeof s?.activeTooltipIndex === 'number') onDataPointClick(s.activeTooltipIndex);
-    } : undefined}>
+    <LineChart
+      data={data}
+      onClick={
+        onDataPointClick
+          ? (state: unknown) => {
+              const s = state as { activeTooltipIndex?: number | null };
+              if (typeof s?.activeTooltipIndex === 'number') onDataPointClick(s.activeTooltipIndex);
+            }
+          : undefined
+      }
+    >
       <CartesianGrid
         strokeDasharray="3 3"
         stroke="var(--c-edge, #333)"
@@ -30,7 +41,8 @@ export function LineChartRenderer({ data, config, onDataPointClick }: LineChartR
       <YAxis
         tick={{ fontSize: 12, fill: 'var(--c-fg-secondary, #999)' }}
         stroke="var(--c-edge, #333)"
-        tickFormatter={(v: number) => formatNumber(v)}
+        tickFormatter={(v: number) => formatCompact(v)}
+        {...(logHint.use ? { scale: 'log', domain: [logHint.domainMin, 'auto'] } : {})}
       />
       <Tooltip
         contentStyle={{
@@ -54,7 +66,14 @@ export function LineChartRenderer({ data, config, onDataPointClick }: LineChartR
           dot={{ r: 3, fill: colors[i % colors.length] }}
           activeDot={{ r: 5, cursor: onDataPointClick ? 'pointer' : undefined }}
         >
-          {config.showValues && <LabelList dataKey={yKey} position="top" fontSize={11} fill="var(--c-fg-secondary, #999)" />}
+          {config.showValues && (
+            <LabelList
+              dataKey={yKey}
+              position="top"
+              fontSize={11}
+              fill="var(--c-fg-secondary, #999)"
+            />
+          )}
         </Line>
       ))}
     </LineChart>

@@ -35,9 +35,6 @@ Examples:
    - `src/windows/main/MainWindow.tsx`
    - `src/windows/data-sync/DataSyncWindow.tsx`
    - `e2e/specs/homepage-features.ts`
-   - `docs/screenshots/mockup.html`
-   - `docs/prototypes/main-window-empty.svg`
-   - `docs/prototypes/main-window.svg`
 4. Runs `cargo check` to regenerate `Cargo.lock`.
 5. Commits all changes: `chore: bump version to vX.Y.Z`.
 6. Creates git tag `vX.Y.Z` and pushes to `origin` (GitHub; default) and

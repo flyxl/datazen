@@ -1,6 +1,8 @@
+import { useMemo } from 'react';
 import { Bar, BarChart, CartesianGrid, LabelList, Legend, Tooltip, XAxis, YAxis } from 'recharts';
 import { getColorPalette } from '../../../lib/chart/colors';
-import { formatAxisTick, formatNumber } from '../../../lib/chart/format';
+import { formatAxisTick, formatCompact } from '../../../lib/chart/format';
+import { computeLogScaleHint } from '../../../lib/chart/transform';
 import type { ChartConfig, ChartDataPoint } from '../../../types/chart';
 
 interface BarChartRendererProps {
@@ -11,6 +13,8 @@ interface BarChartRendererProps {
 
 export function BarChartRenderer({ data, config, onDataPointClick }: BarChartRendererProps) {
   const colors = getColorPalette(config.colorScheme);
+  const logHint = useMemo(() => computeLogScaleHint(data, config.yAxes), [data, config.yAxes]);
+
   return (
     <BarChart data={data}>
       <CartesianGrid
@@ -27,7 +31,8 @@ export function BarChartRenderer({ data, config, onDataPointClick }: BarChartRen
       <YAxis
         tick={{ fontSize: 12, fill: 'var(--c-fg-secondary, #999)' }}
         stroke="var(--c-edge, #333)"
-        tickFormatter={(v: number) => formatNumber(v)}
+        tickFormatter={(v: number) => formatCompact(v)}
+        {...(logHint.use ? { scale: 'log', domain: [logHint.domainMin, 'auto'] } : {})}
       />
       <Tooltip
         contentStyle={{
@@ -50,7 +55,14 @@ export function BarChartRenderer({ data, config, onDataPointClick }: BarChartRen
           cursor={onDataPointClick ? 'pointer' : undefined}
           onClick={(_: unknown, index: number) => onDataPointClick?.(index)}
         >
-          {config.showValues && <LabelList dataKey={yKey} position="top" fontSize={11} fill="var(--c-fg-secondary, #999)" />}
+          {config.showValues && (
+            <LabelList
+              dataKey={yKey}
+              position="top"
+              fontSize={11}
+              fill="var(--c-fg-secondary, #999)"
+            />
+          )}
         </Bar>
       ))}
     </BarChart>
