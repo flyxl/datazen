@@ -239,7 +239,7 @@ export function StandardSchemaTree({
                         ) : (
                           <Eye className="h-3.5 w-3.5 shrink-0 text-fg-secondary" />
                         )}
-                        <span className="min-w-0 truncate">{row.item.name}</span>
+                        <span className="selectable min-w-0 truncate">{row.item.name}</span>
                         {colHits.length > 0 && (
                           <span className="shrink-0 text-[10px] text-accent">
                             {colHits.length === 1 ? colHits[0] : `${colHits.length} cols`}

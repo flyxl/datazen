@@ -170,7 +170,7 @@ function FilterConditionChip({
     <div className="inline-flex max-w-full items-center gap-0.5 rounded-full border border-accent/30 bg-accent/10 py-0.5 pl-2 pr-0.5 text-xs text-accent">
       <button
         type="button"
-        className="min-w-0 truncate px-0.5 text-left hover:underline"
+        className="selectable min-w-0 truncate px-0.5 text-left hover:underline"
         onClick={onEdit}
         title={t('filter.editCondition')}
       >

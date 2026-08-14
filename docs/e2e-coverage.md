@@ -50,6 +50,7 @@
 | 绑定参数面板填值并执行 | `sql-query.ts` (SQ-BIND-*) | Covered |
 | EXPLAIN 面板 | `sql-query.ts` (SQ-EXPLAIN-*) | Covered |
 | 表数据分页 / 排序 / 选择 / 删除行按钮 | `table-data.ts` | Covered |
+| 文本选择：内容可复制、交互控件不可选中（user-select 计算样式） | `table-data.ts` (TD-SEL-001) | Covered |
 | 表筛选：打开 / 添加 / Apply / Clear / AND·OR / 收起 / chip / 空值不报错 | `table-filter.ts` | Covered |
 | 表内联编辑 | `table-edit.ts` | Covered |
 | 详情面板 | `detail-panel.ts` | Covered |
@@ -99,6 +100,7 @@
 | 恢复覆盖确认（原生 `ask`）+ 选 SQL 文件 | OS 对话框不可点选 | `BackupWindow.test.tsx` ask/overwrite；`backup-database.ts` BACKUP-012 IPC overwrite |
 | 恢复执行日志截断（>1500 行省略标记 / 字符预算） | 需 >1500 条 SQL 语句的真实大备份，E2E 不可行 | `backupProgress.test.ts`（行/字符预算、头尾保留、累计省略数、超长单行截断）；`BackupWindow.test.tsx` 覆盖日志渲染路径 |
 | 数据看板表格视图：大数据量下底部导出按钮不被容器裁剪 | 依赖真实渲染高度的几何断言，跨 WebView 平台不稳定 | 布局修复（`flex flex-col` 容器约束使 DataTable `flex-1` 生效、虚拟滚动开启）；E2E UJ-05 覆盖导出按钮可见 + 点击打开导出对话框 |
+| 选区视觉样式（`::selection` 颜色、大面积选区外观） | 纯视觉外观，无法自动化断言颜色/观感 | 全局 CSS（`globals.css` A1 主题化选区 + A2 控件 `user-select: none`）；TD-SEL-001 覆盖计算样式（内容可选中/控件不可选中） |
 
 ## 维护约定
 

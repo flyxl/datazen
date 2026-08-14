@@ -42,13 +42,57 @@ html.macos-rounded #splash {
   box-sizing: border-box;
 }
 
-/* Application text is selectable by default. Interactive controls and
-   drag handles can opt out with user-select: none where needed. */
+/* ── Text selection ──
+   Application text is selectable by default so most content can be copied.
+   Interactive controls opt out (user-select: none) so dragging over a
+   toolbar/nav does not paint a huge blue block; content containers are
+   explicitly kept selectable below so the opt-out can never swallow them. */
+
+/* A1: theme-aware, low-saturation selection highlight. */
+::selection {
+  background: rgba(59, 130, 246, 0.2);
+  background: color-mix(in oklab, var(--c-accent, #3b82f6) 22%, transparent);
+  color: inherit;
+}
+
 body {
   -webkit-user-select: text;
   user-select: text;
 }
 
+/* A2: interactive controls are not text-selectable. */
+button,
+[role='button'],
+[role='menuitem'],
+[role='menuitemcheckbox'],
+[role='menuitemradio'],
+[role='tab'],
+[role='checkbox'],
+[role='radio'],
+[role='switch'],
+[role='slider'],
+[role='option'],
+[role='listbox'],
+[role='combobox'],
+[role='menu'],
+[role='menubar'],
+[role='toolbar'],
+[role='separator'],
+[role='scrollbar'],
+[role='progressbar'],
+input[type='checkbox'],
+input[type='radio'],
+input[type='range'],
+input[type='color'],
+input[type='file'],
+select,
+progress {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Content containers: always keep these selectable so copied text covers
+   tables, trees, logs, AI messages, errors, code and editable fields. */
 input,
 textarea,
 [contenteditable='true'],
@@ -57,16 +101,24 @@ code,
 .cm-content,
 .cm-editor,
 .selectable,
+.select-text,
 [role='alert'],
+[role='log'],
+[role='status'],
+[role='article'],
+[role='gridcell'],
+[role='treeitem'],
+[role='listitem'],
+p,
+li,
+td,
+th,
+blockquote,
 .text-red-400,
 .text-red-500,
 .whitespace-pre-wrap {
   -webkit-user-select: text;
   user-select: text;
-}
-
-::selection {
-  background: rgba(59, 130, 246, 0.35);
 }
 
 /* ── Scrollbar ── */
