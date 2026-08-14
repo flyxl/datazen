@@ -538,7 +538,7 @@ mod tests {
             Ok(0)
         }
 
-        async fn cancel_query(&self, _handle: &ConnectionHandle) -> Result<(), DriverError> {
+        async fn cancel_query(&self, _handle: ConnectionHandle) -> Result<(), DriverError> {
             Ok(())
         }
     }
@@ -618,7 +618,7 @@ mod tests {
         Arc<Store>,
         Arc<MockDriver>,
     ) {
-        let keyring = crate::testing::FileKeyringGuard::set();
+        let keyring = crate::testing::FileKeyringGuard::set().await;
         let dir = tempfile::tempdir().unwrap();
         let store = Arc::new(Store::init_with_path(dir.path()).await.unwrap());
         let registry = Arc::new(DriverRegistry::new());
