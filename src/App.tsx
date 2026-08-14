@@ -4,6 +4,7 @@ import { mark } from './lib/startupTimer';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { WebContextMenuHost } from './components/ui/WebContextMenu';
 import { WindowChromeFallback } from './components/WindowChromeFallback';
+import { installGlobalTextSelectionPolicy } from './lib/globalTextSelection';
 
 const MainWindow = lazy(() =>
   import('./windows/main/MainWindow').then((m) => {
@@ -100,6 +101,8 @@ function WindowContent() {
 }
 
 export default function App() {
+  useEffect(() => installGlobalTextSelectionPolicy(), []);
+
   return (
     <ErrorBoundary>
       <Suspense fallback={<WindowChromeFallback />}>
