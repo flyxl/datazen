@@ -1,15 +1,10 @@
 /**
- * Make application text selectable while keeping Cmd/Ctrl+A scoped to
- * native editable controls and CodeMirror editors.
+ * Keep normal application text selectable by mouse drag while preventing
+ * Cmd/Ctrl+A from selecting the entire WebView.
+ *
+ * Native editable controls and CodeMirror keep their own select-all behavior.
  */
 export function installGlobalTextSelectionPolicy(): () => void {
-  const body = document.body;
-  const previousUserSelect = body.style.userSelect;
-  const previousWebkitUserSelect = body.style.webkitUserSelect;
-
-  body.style.userSelect = 'text';
-  body.style.webkitUserSelect = 'text';
-
   const onKeyDown = (event: KeyboardEvent) => {
     if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 'a') {
       return;
@@ -22,8 +17,7 @@ export function installGlobalTextSelectionPolicy(): () => void {
     }
 
     // Let native controls, contenteditable elements, and CodeMirror handle
-    // their own select-all behavior. CodeMirror's Cmd/Ctrl+A selects only its
-    // editor document rather than the surrounding WebView.
+    // their own select-all behavior.
     if (
       target.closest(
         'input, textarea, select, [contenteditable="true"], [contenteditable="plaintext-only"], .cm-editor',
@@ -32,7 +26,8 @@ export function installGlobalTextSelectionPolicy(): () => void {
       return;
     }
 
-    // Prevent the browser WebView from selecting every selectable text node.
+    // Do not let Cmd/Ctrl+A select all text in the surrounding WebView.
+    // Normal mouse-drag text selection remains fully native.
     event.preventDefault();
   };
 
@@ -40,7 +35,5 @@ export function installGlobalTextSelectionPolicy(): () => void {
 
   return () => {
     document.removeEventListener('keydown', onKeyDown, true);
-    body.style.userSelect = previousUserSelect;
-    body.style.webkitUserSelect = previousWebkitUserSelect;
   };
 }
