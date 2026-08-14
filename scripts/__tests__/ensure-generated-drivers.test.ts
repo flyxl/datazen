@@ -11,6 +11,8 @@ import {
 import { FULLY_GENERATED_MANAGED } from '../plugin-deinject.mjs';
 import { resetDir } from './fixture';
 
+const ALL_GENERATED = [...FULLY_GENERATED_MANAGED, 'src-tauri/capabilities/default.json'];
+
 describe('ensure-generated-drivers', () => {
   let root: string;
 
@@ -23,12 +25,12 @@ describe('ensure-generated-drivers', () => {
   });
 
   it('reports all codegen files missing on a fresh tree', () => {
-    expect(missingGeneratedFiles(root)).toEqual([...FULLY_GENERATED_MANAGED]);
+    expect(missingGeneratedFiles(root)).toEqual(ALL_GENERATED);
     expect(shouldGenerate(root)).toBe(true);
   });
 
   it('skips when all codegen files exist', () => {
-    for (const rel of FULLY_GENERATED_MANAGED) {
+    for (const rel of ALL_GENERATED) {
       const full = join(root, rel);
       mkdirSync(dirname(full), { recursive: true });
       writeFileSync(full, '// present\n');
@@ -61,12 +63,12 @@ describe('ensure-generated-drivers', () => {
       },
     });
     expect(result.generated).toBe(true);
-    expect(result.missing).toEqual([...FULLY_GENERATED_MANAGED]);
+    expect(result.missing).toEqual(ALL_GENERATED);
     expect(calls).toEqual(['--codegen-only --drivers=basic']);
   });
 
   it('forwards --force even when files exist', () => {
-    for (const rel of FULLY_GENERATED_MANAGED) {
+    for (const rel of ALL_GENERATED) {
       const full = join(root, rel);
       mkdirSync(dirname(full), { recursive: true });
       writeFileSync(full, '// present\n');

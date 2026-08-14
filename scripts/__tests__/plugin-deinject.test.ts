@@ -6,7 +6,6 @@ import {
   cleanGeneratedTsContent,
   cleanPluginInitContent,
   deinjectCargoContent,
-  deinjectCapabilities,
   deinjectManagedContent,
   emptyBeginEndSection,
   emptyMarkerBlock,
@@ -22,17 +21,6 @@ describe('plugin-deinject', () => {
     expect(deinjectCargoContent(INJECTED_CONTENTS['src-tauri/Cargo.toml'])).toBe(
       CLEAN_CONTENTS['src-tauri/Cargo.toml'],
     );
-  });
-
-  it('strips plugin ACL but keeps windows edits', () => {
-    const injectedWithWindow = INJECTED_CONTENTS['src-tauri/capabilities/default.json'].replace(
-      '"connection-*"',
-      '"connection-*", "docs-singleton"',
-    );
-    const out = deinjectCapabilities(injectedWithWindow);
-    expect(out).toContain('docs-singleton');
-    expect(out).not.toContain('kiwi:');
-    expect(out).toContain('core:default');
   });
 
   it('leaves gitignored codegen files unchanged', () => {
@@ -68,11 +56,5 @@ describe('plugin-deinject', () => {
   it('emptyMarkerBlock / emptyBeginEndSection no-op when markers are absent', () => {
     expect(emptyMarkerBlock('no markers here', 'plugin-patches')).toBe('no markers here');
     expect(emptyBeginEndSection('no sections', 'PLUGIN DEPS')).toBe('no sections');
-  });
-
-  it('deinjectCapabilities throws when permissions is not an array', () => {
-    expect(() => deinjectCapabilities('{"identifier":"default","permissions":{}}')).toThrow(
-      /not an array/,
-    );
   });
 });

@@ -354,6 +354,14 @@ Git 驱动（Kiwi / OLAP / Superset 等）：测试写在**插件自己的仓库
 
 参考：Redis 已按此拆分（`packages/drivers/redis/src/*` 的 `#[cfg(test)]`、`ui/__tests__/`、`e2e/`）；PG/MySQL `use_database` 集成测在 `packages/drivers/{postgres,mysql}/tests/`。详细策略见 [docs/architecture/testing.md](docs/architecture/testing.md)。
 
+## i18n 国际化规则
+
+- **开发期间**：只修改 `en.ts`（英文）和可选的 `zh-CN.ts`（中文），不要同时修改其他语言文件
+- **发布前**：使用 `node scripts/i18n-sync-check.mjs` 检查翻译完整性，然后通过 i18n-sync skill 补齐所有语言
+- `en.ts` 是唯一的翻译 source of truth，其他语言文件必须保持相同的 key 集合
+- `scripts/i18n-sync-check.mjs --from <tag>` 可检查自上一个 tag 以来英文文件的变更，识别需要翻译的 key
+- 该脚本返回 exit code 1 表示有未完成的翻译，适合 CI 检查
+
 ## 代码风格
 
 - Rust：`rustfmt` + `thiserror` + `tracing` + `CommandError`
@@ -366,8 +374,13 @@ Git 驱动（Kiwi / OLAP / Superset 等）：测试写在**插件自己的仓库
 - Path 驱动 Rust crate：`datazen-driver-<id>`；Git 驱动 Rust crate 名以插件仓库为准
 - 驱动相关测试写在对应 crate（`packages/drivers/<id>/` 或 Git 插件仓），不要写到 Host
 - `Cargo.toml` 中的插件占位段在 git 中应保持为空；`resolve-drivers.mjs` 构建时填充
-- `src/plugins/generated.ts`、`src/plugins/generated-locales.ts`、`src-tauri/src/plugin_init.rs` 是 gitignore 的 codegen，由 `resolve-drivers` / `ensure-generated-drivers` 生成；不要提交
-- `pnpm install`（prepare）若这 3 个文件缺失则 `--codegen-only --drivers=basic`；已存在则保留当前选型
+- 以下文件均为 gitignore 的 codegen，由 `resolve-drivers` / `ensure-generated-drivers` 生成，不要提交：
+  - `src/plugins/generated.ts`
+  - `src/plugins/generated-locales.ts`
+  - `src-tauri/src/plugin_init.rs`
+  - `src-tauri/capabilities/default.json`（由 `default_host.json` + 插件 capabilities 合并生成）
+- `pnpm install`（prepare）若上述文件缺失则 `--codegen-only --drivers=basic`；已存在则保留当前选型
+- **Capabilities 管理**：`src-tauri/capabilities/default.json.host` 是 git 跟踪的 host 权限源文件（`.json.host` 扩展名避免 Tauri 构建系统扫描）；需要添加新 host capability 时直接修改该文件。`src-tauri/capabilities/default.json` 在构建时由 `resolve-drivers.mjs` 合并 `default.json.host` + 活跃插件权限自动生成，**不要手动编辑或提交**
 - Git 驱动 clone 目录（`packages/drivers/{kiwi,olap,superset}/` 等非 path 驱动）是 gitignored，由 driver resolve/build/dev 流程生成；勿提交
 - `PROTOCOL_VERSION`（`packages/driver-api`）变更时需同步更新所有插件
 - `AI_PROTOCOL_VERSION`（`packages/ai-api`）变更时需同步更新所有 AI Provider 插件
