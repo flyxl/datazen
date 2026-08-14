@@ -3,7 +3,7 @@ import { cn } from '../../lib/cn';
 
 export interface TabItem {
   id: string;
-  label: string;
+  label: ReactNode;
   content: ReactNode;
 }
 
@@ -11,15 +11,17 @@ export interface TabsProps {
   items: TabItem[];
   activeId: string;
   onChange: (id: string) => void;
+  /** Extra element rendered at the end of the tab bar (e.g. "+" button). */
+  trailing?: ReactNode;
   className?: string;
 }
 
-export function Tabs({ items, activeId, onChange, className }: TabsProps) {
+export function Tabs({ items, activeId, onChange, trailing, className }: TabsProps) {
   const active = items.find((i) => i.id === activeId) ?? items[0];
 
   return (
     <div className={cn('flex min-h-0 min-w-0 flex-1 flex-col', className)}>
-      <div className="flex h-10 shrink-0 items-center gap-1 border-b border-edge bg-surface-alt px-2">
+      <div className="flex h-10 shrink-0 items-center gap-1 overflow-x-auto border-b border-edge bg-surface-alt px-2">
         {items.map((item) => {
           const selected = item.id === active?.id;
           return (
@@ -28,7 +30,7 @@ export function Tabs({ items, activeId, onChange, className }: TabsProps) {
               type="button"
               onClick={() => onChange(item.id)}
               className={cn(
-                'h-8 rounded-md px-3 text-xs font-medium transition-colors',
+                'shrink-0 h-8 rounded-md px-3 text-xs font-medium transition-colors',
                 selected
                   ? 'bg-surface text-fg border border-edge'
                   : 'text-fg-muted hover:text-fg hover:bg-surface-raised/40',
@@ -38,6 +40,7 @@ export function Tabs({ items, activeId, onChange, className }: TabsProps) {
             </button>
           );
         })}
+        {trailing}
       </div>
       <div className="min-h-0 min-w-0 flex-1 overflow-hidden">{active?.content}</div>
     </div>

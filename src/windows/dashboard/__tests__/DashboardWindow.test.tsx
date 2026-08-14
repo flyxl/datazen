@@ -77,12 +77,15 @@ vi.mock('../../../commands/ai', () => ({
 vi.mock('../../../components/TitleBar', () => ({
   TitleBar: ({
     title,
+    leftContent,
     rightContent,
   }: {
     title?: React.ReactNode;
+    leftContent?: React.ReactNode;
     rightContent?: React.ReactNode;
   }) => (
     <div data-testid="title-bar">
+      <div data-testid="title-bar-left">{leftContent}</div>
       <div data-testid="title-bar-title">{title}</div>
       <div data-testid="title-bar-right">{rightContent}</div>
     </div>
@@ -460,17 +463,16 @@ describe('DashboardWindow', () => {
     await waitFor(() => expect(mockDashboardCommands.saveDashboard).toHaveBeenCalledTimes(2));
   });
 
-  it('renames dashboard from title click', async () => {
+  it('renames dashboard via rename button', async () => {
     const board = makeDashboard('d1', []);
     mockDashboardCommands.listDashboards.mockResolvedValue([board]);
     mockDashboardCommands.getDashboard.mockResolvedValue(board);
 
     await renderWindow();
-    const titleBar = await screen.findByTestId('title-bar-title');
-    await waitFor(() => expect(titleBar.textContent).toContain('Board d1'));
+    await waitFor(() => expect(screen.getByTestId('dashboard-rename')).toBeInTheDocument());
 
-    fireEvent.click(titleBar.querySelector('button')!);
-    const input = screen.getByDisplayValue('Board d1');
+    fireEvent.click(screen.getByTestId('dashboard-rename'));
+    const input = screen.getByTestId('dashboard-rename-input');
     fireEvent.change(input, { target: { value: 'Renamed Board' } });
     fireEvent.blur(input);
 
@@ -578,16 +580,15 @@ describe('DashboardWindow', () => {
     );
   });
 
-  it('shows empty widget state and add widget from empty panel', async () => {
+  it('shows add-report placeholder card on empty panel', async () => {
     const board = makeDashboard('d1', []);
     mockDashboardCommands.listDashboards.mockResolvedValue([board]);
     mockDashboardCommands.getDashboard.mockResolvedValue(board);
 
     await renderWindow();
-    await waitFor(() => expect(screen.getByTestId('dashboard-empty')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId('dashboard-add-widget')).toBeInTheDocument());
 
-    const addButtons = screen.getAllByText('dashboard.addWidget');
-    fireEvent.click(addButtons[addButtons.length - 1]!);
+    fireEvent.click(screen.getByTestId('dashboard-add-widget'));
     await waitFor(() => expect(screen.getByTestId('mock-widget-editor')).toBeInTheDocument());
   });
 

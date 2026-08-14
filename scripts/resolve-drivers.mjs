@@ -1063,52 +1063,36 @@ function injectCargoToml(plugins, registry) {
 }
 
 /**
- * Sync Tauri ACL capabilities for plugin commands.
+ * Generate Tauri ACL capabilities by merging host + plugin permissions.
  *
- * Removes any permissions whose prefix matches a registry plugin id, then
- * appends `{tauriPlugin.id}:default` for each active plugin that exposes commands.
- * Idempotent across resolve-drivers runs.
- *
- * Preserves the committed file layout (compact `windows` array). No-ops when
- * the permissions list is already correct so --drivers=basic does not churn formatting.
+ * Reads `default_host.json` (git-tracked, host-only permissions) and appends
+ * `{tauriPlugin.id}:default` for each active plugin that exposes commands.
+ * Writes the merged result to `default.json` (gitignored).
  */
 function syncPluginCapabilities(plugins, registry) {
-  const relPath = 'src-tauri/capabilities/default.json';
-  const readPath = managedReadPath(relPath);
-  if (!existsSync(readPath)) {
-    console.warn(`[resolve-drivers] capabilities file not found: ${relPath}`);
+  const hostPath = workPath('src-tauri/capabilities/default.json.host');
+  if (!existsSync(hostPath)) {
+    console.warn(`[resolve-drivers] host capabilities file not found: ${hostPath}`);
     return;
   }
 
-  const before = readFileSync(readPath, 'utf-8');
-  const cap = JSON.parse(before);
+  const cap = JSON.parse(readFileSync(hostPath, 'utf-8'));
   if (!Array.isArray(cap.permissions)) {
     console.warn('[resolve-drivers] capabilities.permissions is not an array');
     return;
   }
-
-  const pluginIds = new Set(
-    Object.keys(registry).filter((name) => Boolean(registry[name]?.feature)),
-  );
-
-  const kept = cap.permissions.filter((entry) => {
-    if (typeof entry !== 'string') return true;
-    const prefix = entry.split(':')[0];
-    return !pluginIds.has(prefix);
-  });
 
   const added = [];
   for (const name of plugins) {
     const tp = registry[name]?.tauriPlugin;
     if (!tp?.id) continue;
     const perm = `${tp.id}:default`;
-    if (!kept.includes(perm) && !added.includes(perm)) {
+    if (!cap.permissions.includes(perm) && !added.includes(perm)) {
       added.push(perm);
     }
   }
 
-  const nextPermissions = [...kept, ...added];
-  // Always write working copy after stash (working path was renamed away).
+  const nextPermissions = [...cap.permissions, ...added];
   cap.permissions = nextPermissions;
   const windowsJson = `[${cap.windows.map((w) => JSON.stringify(w)).join(', ')}]`;
   const content = [
@@ -1122,9 +1106,9 @@ function syncPluginCapabilities(plugins, registry) {
     `}`,
     ``,
   ].join('\n');
-  writeFileSync(workPath(relPath), content);
+  writeFileSync(workPath('src-tauri/capabilities/default.json'), content);
   console.log(
-    `[resolve-drivers] synced capabilities plugin permissions: [${added.join(', ') || 'none'}]`,
+    `[resolve-drivers] generated capabilities (host + plugins): [${added.join(', ') || 'no plugins'}]`,
   );
 }
 
@@ -1233,8 +1217,9 @@ function main() {
     if (!codegenOnly) {
       injectCargoToml(plugins, registry);
       injectRootCargoPatches(plugins, registry);
-      syncPluginCapabilities(plugins, registry);
     }
+    // Always generate capabilities (default.json is gitignored, built from default_host.json + plugins)
+    syncPluginCapabilities(plugins, registry);
 
     // Write the features file for the build system to consume
     const output = {

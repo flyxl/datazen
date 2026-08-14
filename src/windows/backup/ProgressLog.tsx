@@ -13,12 +13,12 @@ export function ProgressLog({ lines }: ProgressLogProps) {
   const [copied, setCopied] = useState(false);
   const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const ROW_HEIGHT = 20;
   const virtualizer = useVirtualizer({
     count: lines.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => 20,
+    estimateSize: () => ROW_HEIGHT,
     overscan: 12,
-    getItemKey: (index) => index,
   });
 
   useEffect(() => {
@@ -68,11 +68,9 @@ export function ProgressLog({ lines }: ProgressLogProps) {
         <div className="relative w-full select-text" style={{ height: virtualizer.getTotalSize() }}>
           {virtualizer.getVirtualItems().map((row) => (
             <div
-              key={row.key}
-              ref={virtualizer.measureElement}
-              data-index={row.index}
+              key={row.index}
               className="absolute left-0 top-0 w-full select-text overflow-hidden text-ellipsis whitespace-nowrap"
-              style={{ transform: `translateY(${row.start}px)` }}
+              style={{ height: ROW_HEIGHT, transform: `translateY(${row.start}px)` }}
               title={lines[row.index]}
             >
               {lines[row.index]}

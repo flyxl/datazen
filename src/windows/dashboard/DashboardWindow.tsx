@@ -5,6 +5,7 @@ import {
   Gauge,
   Loader2,
   Pause,
+  Pencil,
   Play,
   Plus,
   RefreshCw,
@@ -15,10 +16,10 @@ import { TitleBar } from '../../components/TitleBar';
 import { StatusBar } from '../../components/StatusBar';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
+import { cn } from '../../lib/cn';
 import { useSettings } from '../../hooks/useSettings';
 import { useI18n } from '../../hooks/useI18n';
 import { getUrlParam } from '../../lib/windowKind';
-import { cn } from '../../lib/cn';
 import { openDashboardWindow, openDocsWindow, openWorkflowWindow } from '../../lib/windowManager';
 import { dashboardCommands } from '../../commands/dashboard';
 import { aiCommands } from '../../commands/ai';
@@ -306,35 +307,57 @@ export function DashboardWindow() {
     await loadDashboard(current.id);
   }, [current, monitorPaused, loadDashboard]);
 
-  const titleContent = useMemo(() => {
-    if (!current) return t('win.dashboard');
-    if (renaming) {
-      return (
-        <Input
-          value={nameDraft}
-          onChange={(e) => setNameDraft(e.target.value)}
-          onBlur={() => void handleRename()}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') void handleRename();
-            if (e.key === 'Escape') setRenaming(false);
-          }}
-          className="h-7 max-w-xs text-sm"
-          autoFocus
-          data-no-drag
-        />
-      );
-    }
-    return (
-      <button
-        type="button"
-        className="truncate text-sm font-medium hover:underline"
-        onClick={() => setRenaming(true)}
-        data-no-drag
-      >
-        {current.name}
-      </button>
-    );
-  }, [current, renaming, nameDraft, handleRename, t]);
+  const dashboardMainContent = (
+    <div className="min-h-0 flex-1 overflow-auto p-4" data-testid="dashboard-main">
+      {loading && !current && !!dashboardId && (
+        <div className="flex h-full items-center justify-center text-sm text-fg-muted">
+          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          {t('common.loading')}
+        </div>
+      )}
+      {error && (
+        <div className="mb-3 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
+          {error}
+        </div>
+      )}
+      {current && (
+        <div
+          className="grid gap-3"
+          data-testid="dashboard-grid"
+          style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(420px, 1fr))' }}
+        >
+          {current.widgets.map((widget) => (
+            <ChartWidgetTile
+              key={widget.id}
+              widget={widget}
+              run={runs[widget.id] ?? null}
+              busy={!!busyWidgets[widget.id]}
+              onEdit={() => void openWidgetEditor(widget, false)}
+              onDelete={() => void handleDeleteWidget(widget.id)}
+              onHistory={() => {
+                setHistoryWidget(widget);
+                setHistoryOpen(true);
+              }}
+              onRefresh={() => void refreshWidget(current.id, widget.id)}
+              onViewModeChange={(mode) => void handleViewModeChange(widget.id, mode)}
+            />
+          ))}
+          <button
+            type="button"
+            className="flex min-h-[320px] flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed border-edge/60 text-fg-muted transition-colors hover:border-accent/40 hover:bg-accent/5 hover:text-accent"
+            data-testid="dashboard-add-widget"
+            onClick={handleAddWidget}
+            disabled={loading}
+          >
+            <Plus className="h-8 w-8 opacity-60" />
+            <span className="text-sm">{t('dashboard.addWidget')}</span>
+          </button>
+        </div>
+      )}
+    </div>
+  );
+
+  const tabItems = list;
 
   if (bootstrapping || (listLoading && !dashboardId && list.length === 0)) {
     return (
@@ -391,20 +414,18 @@ export function DashboardWindow() {
       data-testid="dashboard-window"
     >
       <TitleBar
-        title={titleContent}
+        title={t('dashboard.title')}
         leftContent={<Gauge className="h-4 w-4 text-fg-muted" />}
         rightContent={
           <div className="flex items-center gap-1" data-no-drag>
             <Button
               variant="ghost"
               className="h-7 gap-1 px-2 text-xs"
-              data-testid="dashboard-pause-toggle"
-              onClick={() => void handleToggleMonitorPause()}
-              title={
-                monitorPaused ? t('dashboard.resumeMonitoring') : t('dashboard.pauseMonitoring')
-              }
+              data-testid="dashboard-tab-add"
+              onClick={() => void handleCreatePanel()}
+              title={t('dashboard.newPanel')}
             >
-              {monitorPaused ? <Play className="h-3.5 w-3.5" /> : <Pause className="h-3.5 w-3.5" />}
+              <Plus className="h-3.5 w-3.5" />
             </Button>
             <Button
               variant="ghost"
@@ -415,50 +436,6 @@ export function DashboardWindow() {
               title={t('dashboard.import')}
             >
               <Upload className="h-3.5 w-3.5" />
-            </Button>
-            <Button
-              variant="ghost"
-              className="h-7 gap-1 px-2 text-xs"
-              data-testid="dashboard-export"
-              onClick={() => void handleExport()}
-              disabled={!current || loading}
-              title={t('dashboard.export')}
-            >
-              <Download className="h-3.5 w-3.5" />
-            </Button>
-            <Button
-              variant="ghost"
-              className="h-7 gap-1 px-2 text-xs text-red-400 hover:text-red-300"
-              data-testid="dashboard-delete-panel"
-              onClick={() => void handleDeletePanel()}
-              disabled={!current || loading}
-              title={t('dashboard.deletePanel')}
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </Button>
-            <Button
-              variant="ghost"
-              className="h-7 gap-1 px-2 text-xs"
-              data-testid="dashboard-add-widget"
-              onClick={handleAddWidget}
-              disabled={!current || loading}
-            >
-              <Plus className="h-3.5 w-3.5" />
-              {t('dashboard.addWidget')}
-            </Button>
-            <Button
-              variant="ghost"
-              className="h-7 gap-1 px-2 text-xs"
-              data-testid="dashboard-refresh-all"
-              onClick={() => void handleRefreshAll()}
-              disabled={!current || refreshingAll}
-            >
-              {refreshingAll ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <RefreshCw className="h-3.5 w-3.5" />
-              )}
-              {t('dashboard.refreshAll')}
             </Button>
             <Button
               variant="ghost"
@@ -473,119 +450,129 @@ export function DashboardWindow() {
         }
       />
 
-      {!bootstrapping && list.length > 0 && (
-        <div
-          className="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-edge px-3 py-1.5"
-          data-no-drag
-        >
-          {list.map((board) => (
-            <button
-              key={board.id}
-              type="button"
-              data-testid="dashboard-tab"
-              data-dashboard-id={board.id}
-              className={cn(
-                'shrink-0 rounded-md px-2.5 py-1 text-xs transition-colors',
-                board.id === dashboardId
-                  ? 'bg-accent/15 font-medium text-accent'
-                  : 'text-fg-muted hover:bg-surface-raised hover:text-fg',
-              )}
-              onClick={() => setActiveDashboardId(board.id)}
-            >
-              {board.name}
-            </button>
-          ))}
-          <button
-            type="button"
-            data-testid="dashboard-tab-add"
-            className="shrink-0 rounded-md px-2 py-1 text-xs text-fg-muted hover:bg-surface-raised hover:text-fg"
-            title={t('dashboard.newPanel')}
-            onClick={() => void handleCreatePanel()}
+      {tabItems.length > 0 && (
+        <div className="flex shrink-0 items-center border-b border-edge bg-surface-alt">
+          <div
+            data-testid="dashboard-tab-bar"
+            className="scrollbar-hide flex min-w-0 flex-1 overflow-x-auto"
+            onWheel={(e) => {
+              if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+              e.currentTarget.scrollLeft += e.deltaY;
+            }}
           >
-            <Plus className="h-3.5 w-3.5" />
-          </button>
+            {tabItems.map((board) => {
+              const isActive = board.id === dashboardId;
+              return (
+                <button
+                  key={board.id}
+                  type="button"
+                  data-testid="dashboard-tab"
+                  data-dashboard-id={board.id}
+                  className={cn(
+                    'relative flex shrink-0 items-center gap-1.5 border-r border-edge px-3 py-2 text-xs transition-colors',
+                    isActive
+                      ? 'bg-surface font-medium text-fg'
+                      : 'text-fg-secondary hover:bg-surface-raised hover:text-fg',
+                  )}
+                  onClick={() => setActiveDashboardId(board.id)}
+                >
+                  <span className="max-w-[120px] truncate">{board.name}</span>
+                  <span
+                    className={cn(
+                      'absolute inset-x-0 bottom-0 h-0.5 bg-accent transition-opacity duration-300',
+                      isActive ? 'opacity-100' : 'opacity-0',
+                    )}
+                  />
+                </button>
+              );
+            })}
+          </div>
         </div>
       )}
 
-      <main className="min-h-0 flex-1 overflow-auto p-4" data-testid="dashboard-main">
-        {(bootstrapping || listLoading) && !dashboardId && (
-          <div
-            className="flex h-full items-center justify-center text-sm text-fg-muted"
-            data-testid="dashboard-bootstrapping"
-          >
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            {t('common.loading')}
-          </div>
-        )}
-        {!bootstrapping && !dashboardId && list.length === 0 && (
-          <div
-            className="flex h-full flex-col items-center justify-center gap-3 text-sm text-fg-muted"
-            data-testid="dashboard-empty-boards"
-          >
-            <Gauge className="h-10 w-10 opacity-40" />
-            <p>{t('dashboard.emptyBoards')}</p>
-            <Button
-              className="h-7 gap-1 px-2 text-xs"
-              data-testid="dashboard-create-first"
-              onClick={() => void handleCreateFirstBoard()}
-            >
-              <Plus className="mr-1 h-3.5 w-3.5" />
-              {t('dashboard.createFirstBoard')}
-            </Button>
-          </div>
-        )}
-        {loading && !current && !!dashboardId && (
-          <div className="flex h-full items-center justify-center text-sm text-fg-muted">
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            {t('common.loading')}
-          </div>
-        )}
-        {error && (
-          <div className="mb-3 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
-            {error}
-          </div>
-        )}
-        {current && current.widgets.length === 0 && (
-          <div
-            className="flex h-full flex-col items-center justify-center gap-3 text-sm text-fg-muted"
-            data-testid="dashboard-empty"
-          >
-            <Gauge className="h-10 w-10 opacity-40" />
-            <p>{t('dashboard.empty')}</p>
-            <Button className="h-7 gap-1 px-2 text-xs" onClick={handleAddWidget}>
-              <Plus className="mr-1 h-3.5 w-3.5" />
-              {t('dashboard.addWidget')}
-            </Button>
-          </div>
-        )}
-        {current && current.widgets.length > 0 && (
-          <div
-            className="grid gap-3"
-            data-testid="dashboard-grid"
-            style={{
-              gridTemplateColumns: `repeat(${current.layout.cols}, 1fr)`,
-              gridAutoRows: `${current.layout.rowHeight}px`,
-            }}
-          >
-            {current.widgets.map((widget) => (
-              <ChartWidgetTile
-                key={widget.id}
-                widget={widget}
-                run={runs[widget.id] ?? null}
-                busy={!!busyWidgets[widget.id]}
-                onEdit={() => void openWidgetEditor(widget, false)}
-                onDelete={() => void handleDeleteWidget(widget.id)}
-                onHistory={() => {
-                  setHistoryWidget(widget);
-                  setHistoryOpen(true);
+      {current && (
+        <div className="flex shrink-0 items-center gap-1 border-b border-edge bg-surface px-3 py-1.5">
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            {renaming ? (
+              <Input
+                value={nameDraft}
+                onChange={(e) => setNameDraft(e.target.value)}
+                onBlur={() => void handleRename()}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') void handleRename();
+                  if (e.key === 'Escape') setRenaming(false);
                 }}
-                onRefresh={() => void refreshWidget(current.id, widget.id)}
-                onViewModeChange={(mode) => void handleViewModeChange(widget.id, mode)}
+                className="h-7 w-48 text-xs"
+                autoFocus
+                data-testid="dashboard-rename-input"
               />
-            ))}
+            ) : (
+              <button
+                type="button"
+                className="flex min-w-0 items-center gap-1.5 rounded px-1.5 py-1 text-xs font-medium text-fg hover:bg-surface-raised"
+                data-testid="dashboard-rename"
+                onClick={() => setRenaming(true)}
+                title={t('dashboard.name')}
+              >
+                <span className="truncate">{current.name}</span>
+                <Pencil className="h-3 w-3 shrink-0 text-fg-muted" />
+              </button>
+            )}
           </div>
-        )}
-      </main>
+          <div className="flex items-center gap-0.5">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 w-7 !px-0"
+              data-testid="dashboard-pause-toggle"
+              onClick={() => void handleToggleMonitorPause()}
+              title={
+                monitorPaused ? t('dashboard.resumeMonitoring') : t('dashboard.pauseMonitoring')
+              }
+            >
+              {monitorPaused ? <Play className="h-3.5 w-3.5" /> : <Pause className="h-3.5 w-3.5" />}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 w-7 !px-0"
+              data-testid="dashboard-refresh-all"
+              onClick={() => void handleRefreshAll()}
+              disabled={refreshingAll}
+            >
+              {refreshingAll ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <RefreshCw className="h-3.5 w-3.5" />
+              )}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 w-7 !px-0"
+              data-testid="dashboard-export"
+              onClick={() => void handleExport()}
+              disabled={loading}
+              title={t('dashboard.export')}
+            >
+              <Download className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 w-7 !px-0 text-red-400 hover:text-red-300"
+              data-testid="dashboard-delete-panel"
+              onClick={() => void handleDeletePanel()}
+              disabled={loading}
+              title={t('dashboard.deletePanel')}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {dashboardMainContent}
 
       <StatusBar
         left={current ? t('dashboard.widgetCount', { count: current.widgets.length }) : ''}

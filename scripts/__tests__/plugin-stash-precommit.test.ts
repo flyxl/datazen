@@ -44,24 +44,14 @@ describe('injection detectors', () => {
   });
 
   it('detects capabilities plugin ACL entries', () => {
-    expect(hasInjectedCapabilities(CLEAN_CONTENTS['src-tauri/capabilities/default.json'])).toBe(
-      false,
-    );
-    expect(hasInjectedCapabilities(INJECTED_CONTENTS['src-tauri/capabilities/default.json'])).toBe(
-      true,
-    );
+    expect(hasInjectedCapabilities(`"permissions": ["core:default"]`)).toBe(false);
+    expect(hasInjectedCapabilities(`"permissions": ["kiwi:default"]`)).toBe(true);
     expect(hasInjectedCapabilities(`"permissions": ["olap:default"]`)).toBe(true);
     expect(hasInjectedCapabilities(`"permissions": ["superset:allow-login"]`)).toBe(true);
   });
 
   it('fileHasInjection routes by path', () => {
     expect(fileHasInjection('Cargo.toml', INJECTED_CONTENTS['Cargo.toml'])).toBe(true);
-    expect(
-      fileHasInjection(
-        'src-tauri/capabilities/default.json',
-        CLEAN_CONTENTS['src-tauri/capabilities/default.json'],
-      ),
-    ).toBe(false);
     expect(
       fileHasInjection('src/plugins/generated.ts', INJECTED_CONTENTS['src/plugins/generated.ts']),
     ).toBe(true);
@@ -159,7 +149,6 @@ describe('runPluginStashPrecommit', () => {
       const stash = createPluginFileStash(root, { quiet: true });
       stash.stashManagedFiles();
       writeManagedFiles(root, INJECTED_CONTENTS);
-      staged.add('src-tauri/capabilities/default.json');
       staged.add('Cargo.toml');
 
       const result = runPluginStashPrecommit(opts);
@@ -169,30 +158,6 @@ describe('runPluginStashPrecommit', () => {
       for (const f of MANAGED_FILES) {
         expect(readManaged(root, f)).toBe(CLEAN_CONTENTS[f]);
       }
-    } finally {
-      cleanup();
-    }
-  });
-
-  it('restores when only capabilities is injected (partial)', () => {
-    const { root, opts, staged, cleanup } = setup();
-    try {
-      const stash = createPluginFileStash(root, { quiet: true });
-      stash.stashManagedFiles();
-      writeManagedFiles(root, {
-        ...CLEAN_CONTENTS,
-        'src-tauri/capabilities/default.json':
-          INJECTED_CONTENTS['src-tauri/capabilities/default.json'],
-      });
-      staged.add('src-tauri/capabilities/default.json');
-
-      const result = runPluginStashPrecommit(opts);
-      expect(result.status).toBe(0);
-      expect(result.restored).toBe(true);
-      expect(readManaged(root, 'src-tauri/capabilities/default.json')).toBe(
-        CLEAN_CONTENTS['src-tauri/capabilities/default.json'],
-      );
-      expect(readManaged(root, 'Cargo.toml')).toBe(CLEAN_CONTENTS['Cargo.toml']);
     } finally {
       cleanup();
     }
@@ -234,101 +199,29 @@ describe('runPluginStashPrecommit', () => {
     try {
       const stash = createPluginFileStash(root, { quiet: true });
       stash.stashManagedFiles();
-      // Legitimate edit after stash (e.g. docs-singleton) — not injection markers
-      const editedCaps = CLEAN_CONTENTS['src-tauri/capabilities/default.json'].replace(
-        '"connection-*"',
-        '"connection-*", "docs-singleton"',
-      );
-      writeManagedFiles(root, {
-        ...CLEAN_CONTENTS,
-        'src-tauri/capabilities/default.json': editedCaps,
-      });
 
       const result = runPluginStashPrecommit(opts);
       expect(result.status).toBe(0);
       expect(result.restored).toBe(false);
       expect(result.discardedStash).toBe(true);
       expect(existsSync(join(root, '.plugin-file-stash'))).toBe(false);
-      expect(readManaged(root, 'src-tauri/capabilities/default.json')).toContain('docs-singleton');
     } finally {
       cleanup();
     }
   });
 
-  it('restores only injected files and preserves clean edits', () => {
-    const { root, opts, staged, cleanup } = setup();
-    try {
-      const stash = createPluginFileStash(root, { quiet: true });
-      stash.stashManagedFiles();
-      const editedCaps = CLEAN_CONTENTS['src-tauri/capabilities/default.json'].replace(
-        '"connection-*"',
-        '"connection-*", "docs-singleton"',
-      );
-      writeManagedFiles(root, {
-        ...INJECTED_CONTENTS,
-        'src-tauri/capabilities/default.json': editedCaps,
-      });
-      staged.add('Cargo.toml');
-      staged.add('src-tauri/capabilities/default.json');
-
-      const result = runPluginStashPrecommit(opts);
-      expect(result.status).toBe(0);
-      expect(result.restored).toBe(true);
-      expect(readManaged(root, 'Cargo.toml')).toBe(CLEAN_CONTENTS['Cargo.toml']);
-      expect(readManaged(root, 'src-tauri/capabilities/default.json')).toContain('docs-singleton');
-      expect(existsSync(join(root, '.plugin-file-stash'))).toBe(false);
-    } finally {
-      cleanup();
-    }
-  });
-
-  it('keeps user window edits when capabilities is also plugin-injected', () => {
-    const { root, opts, cleanup } = setup();
-    try {
-      const stash = createPluginFileStash(root, { quiet: true });
-      stash.stashManagedFiles();
-      // Realistic: plugin build injected kiwi ACL, user also added a window label.
-      const caps = INJECTED_CONTENTS['src-tauri/capabilities/default.json'].replace(
-        '"connection-*"',
-        '"connection-*", "docs-singleton"',
-      );
-      expect(caps).toContain('kiwi:default');
-      expect(caps).toContain('docs-singleton');
-      writeManagedFiles(root, {
-        ...INJECTED_CONTENTS,
-        'src-tauri/capabilities/default.json': caps,
-      });
-
-      const result = runPluginStashPrecommit(opts);
-      expect(result.status).toBe(0);
-      expect(result.restored).toBe(true);
-      const after = readManaged(root, 'src-tauri/capabilities/default.json');
-      expect(after).toContain('docs-singleton');
-      expect(after).not.toContain('kiwi:');
-      expect(readManaged(root, 'Cargo.toml')).toBe(CLEAN_CONTENTS['Cargo.toml']);
-    } finally {
-      cleanup();
-    }
-  });
-
-  it('deinjects cargo/capabilities without stash when generated files are clean', () => {
+  it('deinjects cargo without stash when generated files are clean', () => {
     const { root, opts, cleanup } = setup();
     try {
       writeManagedFiles(root, {
         ...CLEAN_CONTENTS,
         'Cargo.toml': INJECTED_CONTENTS['Cargo.toml'],
-        'src-tauri/capabilities/default.json': INJECTED_CONTENTS[
-          'src-tauri/capabilities/default.json'
-        ].replace('"connection-*"', '"connection-*", "docs-singleton"'),
       });
 
       const result = runPluginStashPrecommit(opts);
       expect(result.status).toBe(0);
       expect(result.restored).toBe(true);
       expect(readManaged(root, 'Cargo.toml')).toBe(CLEAN_CONTENTS['Cargo.toml']);
-      const caps = readManaged(root, 'src-tauri/capabilities/default.json');
-      expect(caps).toContain('docs-singleton');
-      expect(caps).not.toContain('kiwi:');
     } finally {
       cleanup();
     }

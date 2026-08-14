@@ -56,15 +56,11 @@ export function ChartWidgetTile({
   return (
     <div
       className={cn(
-        'flex min-h-0 flex-col overflow-hidden rounded-lg border border-edge bg-surface-raised',
+        'flex h-80 flex-col overflow-hidden rounded-lg border border-edge bg-surface-raised',
         !widget.enabled && 'opacity-60',
       )}
       data-testid="dashboard-tile"
       data-widget-id={widget.id}
-      style={{
-        gridColumn: `${widget.layout.x + 1} / span ${widget.layout.w}`,
-        gridRow: `${widget.layout.y + 1} / span ${widget.layout.h}`,
-      }}
     >
       <div
         className="flex shrink-0 items-center gap-1 border-b border-edge px-2 py-1.5"
