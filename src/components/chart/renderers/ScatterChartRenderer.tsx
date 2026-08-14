@@ -1,6 +1,15 @@
-import { CartesianGrid, Legend, Scatter, ScatterChart, Tooltip, XAxis, YAxis, ZAxis } from 'recharts';
+import {
+  CartesianGrid,
+  Legend,
+  Scatter,
+  ScatterChart,
+  Tooltip,
+  XAxis,
+  YAxis,
+  ZAxis,
+} from 'recharts';
 import { getColorPalette } from '../../../lib/chart/colors';
-import { formatNumber } from '../../../lib/chart/format';
+import { formatCompact } from '../../../lib/chart/format';
 import type { ChartConfig, ChartDataPoint } from '../../../types/chart';
 
 interface ScatterChartRendererProps {
@@ -9,7 +18,11 @@ interface ScatterChartRendererProps {
   onDataPointClick?: (rowIndex: number) => void;
 }
 
-export function ScatterChartRenderer({ data, config, onDataPointClick }: ScatterChartRendererProps) {
+export function ScatterChartRenderer({
+  data,
+  config,
+  onDataPointClick,
+}: ScatterChartRendererProps) {
   const colors = getColorPalette(config.colorScheme);
   const xKey = config.xAxis ?? '__index';
   const yKey = config.yAxes[0];
@@ -27,7 +40,7 @@ export function ScatterChartRenderer({ data, config, onDataPointClick }: Scatter
         name={xKey}
         tick={{ fontSize: 12, fill: 'var(--c-fg-secondary, #999)' }}
         stroke="var(--c-edge, #333)"
-        tickFormatter={(v: number) => formatNumber(v)}
+        tickFormatter={(v: number) => formatCompact(v)}
       />
       <YAxis
         dataKey={yKey}
@@ -35,7 +48,7 @@ export function ScatterChartRenderer({ data, config, onDataPointClick }: Scatter
         name={yKey}
         tick={{ fontSize: 12, fill: 'var(--c-fg-secondary, #999)' }}
         stroke="var(--c-edge, #333)"
-        tickFormatter={(v: number) => formatNumber(v)}
+        tickFormatter={(v: number) => formatCompact(v)}
       />
       <ZAxis range={[40, 40]} />
       <Tooltip
@@ -48,9 +61,7 @@ export function ScatterChartRenderer({ data, config, onDataPointClick }: Scatter
         }}
         cursor={{ strokeDasharray: '3 3' }}
       />
-      {config.showLegend && (
-        <Legend wrapperStyle={{ fontSize: 12, color: 'var(--c-fg, #eee)' }} />
-      )}
+      {config.showLegend && <Legend wrapperStyle={{ fontSize: 12, color: 'var(--c-fg, #eee)' }} />}
       <Scatter
         data={data}
         fill={colors[0]}

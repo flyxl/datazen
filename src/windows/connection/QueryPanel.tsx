@@ -65,6 +65,7 @@ import { cn } from '../../lib/cn';
 import { queryCommands } from '../../commands/query';
 import { dashboardCommands } from '../../commands/dashboard';
 import { openDashboardWindow } from '../../lib/windowManager';
+import { emitCrossWindow } from '../../lib/crossWindowBus';
 import { createEmptyDashboard } from '../dashboard/DashboardWindow';
 import { AddToDashboardDialog } from '../dashboard/AddToDashboardDialog';
 import { formatSql } from '../../lib/sqlFormat';
@@ -1054,6 +1055,7 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
                       <ResultTable result={activeResult} />
                     ) : (
                       <ChartView
+                        key={tab.id}
                         result={activeResult}
                         savedConfig={tab.chartConfig}
                         onConfigChange={(cfg) => setChartConfig(tab.id, cfg)}
@@ -1212,6 +1214,7 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
                 viewMode: resultViewMode,
                 chartConfig: tab.chartConfig,
               });
+              void emitCrossWindow('dashboard:changed', { dashboardId: created.dashboard.id });
               openDashboardWindow(created.dashboard.id, created.dashboard.name);
             } catch (e) {
               window.alert(String(e));
