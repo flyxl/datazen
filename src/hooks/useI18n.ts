@@ -9,9 +9,12 @@ import {
 export function useI18n() {
   const language = useSettingsStore((s) => s.settings.language) as SupportedLocale;
 
+  // Keep the hook usable by generic UI helpers whose translation callback is
+  // intentionally `(key: string) => string`; the actual locale lookup remains
+  // type-safe at the getTranslation boundary.
   const t = useCallback(
-    (key: I18nKey, params?: Record<string, string | number>) =>
-      getTranslation(language ?? 'en', key, params),
+    (key: string, params?: Record<string, string | number>) =>
+      getTranslation(language ?? 'en', key as I18nKey, params),
     [language],
   );
 
