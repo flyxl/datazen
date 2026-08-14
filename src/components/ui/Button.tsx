@@ -1,22 +1,29 @@
 import type { ButtonHTMLAttributes, MouseEvent } from 'react';
 import { cn } from '../../lib/cn';
 
-type Variant = 'primary' | 'secondary' | 'ghost' | 'danger';
+type Variant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'destructive';
+type Size = 'sm' | 'md' | 'lg';
 
 const variants: Record<Variant, string> = {
-  primary:
-    'bg-accent text-white hover:bg-accent/90 disabled:opacity-50 disabled:pointer-events-none shadow-sm',
-  secondary:
-    'border border-edge bg-transparent text-fg hover:bg-surface-raised disabled:opacity-50',
+  primary: 'bg-accent text-white hover:bg-accent/90 disabled:opacity-50 disabled:pointer-events-none shadow-sm',
+  secondary: 'border border-edge bg-transparent text-fg hover:bg-surface-raised disabled:opacity-50',
   ghost: 'bg-transparent text-fg-secondary hover:bg-surface-raised disabled:opacity-50',
   danger: 'bg-red-500/90 text-white hover:bg-red-500 disabled:opacity-50',
+  destructive: 'bg-red-500/90 text-white hover:bg-red-500 disabled:opacity-50',
+};
+
+const sizes: Record<Size, string> = {
+  sm: 'h-7 text-xs',
+  md: 'h-8 text-sm',
+  lg: 'h-9 text-sm',
 };
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: Variant;
+  size?: Size;
 }
 
-export function Button({ className, variant = 'primary', type = 'button', onMouseDown, ...props }: ButtonProps) {
+export function Button({ className, variant = 'primary', size = 'md', type = 'button', onMouseDown, ...props }: ButtonProps) {
   const handleMouseDown = (e: MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
     onMouseDown?.(e);
@@ -24,11 +31,7 @@ export function Button({ className, variant = 'primary', type = 'button', onMous
   return (
     <button
       type={type}
-      className={cn(
-        'inline-flex items-center justify-center gap-2 rounded-md px-3 h-8 text-sm font-medium transition-colors',
-        variants[variant],
-        className,
-      )}
+      className={cn('inline-flex items-center justify-center gap-2 rounded-md px-3 font-medium transition-colors', sizes[size], variants[variant], className)}
       onMouseDown={handleMouseDown}
       {...props}
     />
