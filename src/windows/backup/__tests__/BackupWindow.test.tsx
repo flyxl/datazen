@@ -64,6 +64,31 @@ vi.mock('../../../lib/windowKind', () => ({
   getUrlParam: (name: string) => urlParamMock(name),
 }));
 
+/** jsdom has no layout; render all virtual rows so log content is visible. */
+vi.mock('@tanstack/react-virtual', () => ({
+  useVirtualizer: ({
+    count,
+    estimateSize,
+  }: {
+    count: number;
+    estimateSize?: (i: number) => number;
+  }) => {
+    const sizeOf = (i: number) => estimateSize?.(i) ?? 20;
+    let offset = 0;
+    const items = Array.from({ length: count }, (_, index) => {
+      const size = sizeOf(index);
+      const start = offset;
+      offset += size;
+      return { index, key: index, start, size, end: start + size };
+    });
+    return {
+      getTotalSize: () => offset || count * 20,
+      getVirtualItems: () => items,
+      scrollToIndex: () => {},
+    };
+  },
+}));
+
 function conn(
   partial: Partial<ConnectionConfig> & Pick<ConnectionConfig, 'id' | 'name' | 'databaseType'>,
 ): ConnectionConfig {
@@ -251,6 +276,23 @@ describe('BackupWindow connection list', () => {
       expect(screen.getByTestId('backup-progress-log')).toHaveTextContent('CREATE TABLE users'),
     );
     expect(screen.getByTestId('backup-progress-log')).toHaveTextContent('INSERT INTO users');
+    expect(screen.getByTestId('backup-progress-log-copy')).toBeInTheDocument();
+  });
+
+  it('copy log writes all lines to the clipboard', async () => {
+    mockRestoreCommands([]);
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    await selectRestoreTarget();
+    fireEvent.click(screen.getByTestId('backup-start-restore'));
+    await waitFor(() =>
+      expect(screen.getByTestId('backup-progress-log')).toHaveTextContent('backup.restoreSuccess'),
+    );
+    fireEvent.click(screen.getByTestId('backup-progress-log-copy'));
+    await waitFor(() => expect(writeText).toHaveBeenCalled());
+    const copied = String(writeText.mock.calls[0]?.[0] ?? '');
+    expect(copied).toContain('backup.restoring');
+    expect(copied).toContain('backup.restoreSuccess');
   });
 
   it('restore asks to overwrite when target already has objects', async () => {

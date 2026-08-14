@@ -276,6 +276,18 @@ impl DatabaseDriver for ReuseDriver {
         self.inner.split_restore_sql(sql)
     }
 
+    async fn recover_restore_statement(
+        &self,
+        handle: &ConnectionHandle,
+        stmt: &str,
+        error: &DriverError,
+        overwrite: bool,
+    ) -> Result<bool, DriverError> {
+        self.inner
+            .recover_restore_statement(handle, stmt, error, overwrite)
+            .await
+    }
+
     async fn restore_sql(
         &self,
         handle: &ConnectionHandle,

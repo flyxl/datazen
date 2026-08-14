@@ -3,6 +3,7 @@ import {
   collectTableLeafNames,
   isSchemaGroupingSchema,
   mergeNamespacePath,
+  omitTableLeaf,
   overlayColumnMap,
   pathKey,
   namespaceHasChild,
@@ -52,6 +53,25 @@ describe('mergeNamespacePath', () => {
   it('does not wipe existing siblings', () => {
     const tree = mergeNamespacePath({ a: { x: [] }, b: {} }, [], 'branch', ['a', 'c']);
     expect(tree).toEqual({ a: { x: [] }, b: {}, c: {} });
+  });
+
+  it('replace drops table leaves that are no longer present', () => {
+    const tree = mergeNamespacePath(
+      { app: { users: [], orders: [] } },
+      ['app'],
+      'tables',
+      ['users'],
+      { replace: true },
+    );
+    expect(tree).toEqual({ app: { users: [] } });
+  });
+});
+
+describe('omitTableLeaf', () => {
+  it('removes a table leaf at any depth and keeps branches', () => {
+    expect(
+      omitTableLeaf({ public: { orders: [], users: [] }, other: { t: [] } }, 'orders'),
+    ).toEqual({ public: { users: [] }, other: { t: [] } });
   });
 });
 

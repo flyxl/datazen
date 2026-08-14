@@ -9,12 +9,13 @@ import { useSettingsStore } from '../../stores/settingsStore';
 import { groupConnections } from '../../stores/connectionStore';
 import { formatGroupLabel } from '../../lib/connectionGroups';
 import {
-  appendProgressLog,
   backupProgressRatio,
+  createProgressLogPump,
   formatBackupProgress,
   formatRestoreProgress,
   type BackupProgressPayload,
 } from '../../lib/backupProgress';
+import { ProgressLog } from './ProgressLog';
 import { cn } from '../../lib/cn';
 import { DbTypeBadge } from '../../components/DbTypeBadge';
 import { getDbLabel, DB_REGISTRY } from '../../lib/databaseTypes';
@@ -51,7 +52,7 @@ export function BackupWindow() {
   const [statusMessage, setStatusMessage] = useState('');
   const [progress, setProgress] = useState<BackupProgressPayload | null>(null);
   const [progressLog, setProgressLog] = useState<string[]>([]);
-  const progressLogEndRef = useRef<HTMLDivElement>(null);
+  const logPumpRef = useRef(createProgressLogPump(setProgressLog));
   const [searchConn, setSearchConn] = useState('');
   const [searchDb, setSearchDb] = useState('');
 
@@ -70,10 +71,6 @@ export function BackupWindow() {
   useEffect(() => {
     void loadSettings();
   }, [loadSettings]);
-
-  useEffect(() => {
-    progressLogEndRef.current?.scrollIntoView?.({ block: 'end' });
-  }, [progressLog]);
 
   useEffect(() => {
     void (async () => {
@@ -189,7 +186,7 @@ export function BackupWindow() {
 
       setBacking(true);
       setProgress(null);
-      setProgressLog([t('backup.restoring')]);
+      logPumpRef.current.reset([t('backup.restoring')]);
       setStatusMessage(t('backup.restoring'));
 
       const { listen } = await import('@tauri-apps/api/event');
@@ -197,7 +194,7 @@ export function BackupWindow() {
         const line = formatRestoreProgress(event.payload, t);
         setProgress(event.payload);
         setStatusMessage(line);
-        setProgressLog((prev) => appendProgressLog(prev, line));
+        logPumpRef.current.push(line);
       });
 
       try {
@@ -209,12 +206,13 @@ export function BackupWindow() {
         if (!restored) {
           setStatusMessage('');
           setProgress(null);
-          setProgressLog([]);
+          logPumpRef.current.reset([]);
           return;
         }
         setStatusMessage(t('backup.restoreSuccess'));
         setProgress({ current: 0, total: 0, objectName: '', phase: 'done' });
-        setProgressLog((prev) => appendProgressLog(prev, t('backup.restoreSuccess')));
+        logPumpRef.current.push(t('backup.restoreSuccess'));
+        logPumpRef.current.flush();
       } finally {
         unlisten();
         setBacking(false);
@@ -223,7 +221,8 @@ export function BackupWindow() {
       const message = e instanceof Error ? e.message : String(e);
       setStatusMessage(message);
       setProgress(null);
-      setProgressLog((prev) => appendProgressLog(prev, message));
+      logPumpRef.current.push(message);
+      logPumpRef.current.flush();
       setBacking(false);
     }
   }, [connectedId, selectedDb, t]);
@@ -237,7 +236,7 @@ export function BackupWindow() {
 
       setBacking(true);
       setProgress(null);
-      setProgressLog([t('backup.progressPreparing')]);
+      logPumpRef.current.reset([t('backup.progressPreparing')]);
       setStatusMessage(t('backup.progressPreparing'));
 
       const { listen } = await import('@tauri-apps/api/event');
@@ -245,7 +244,7 @@ export function BackupWindow() {
         const line = formatBackupProgress(event.payload, t);
         setProgress(event.payload);
         setStatusMessage(line);
-        setProgressLog((prev) => appendProgressLog(prev, line));
+        logPumpRef.current.push(line);
       });
 
       try {
@@ -261,13 +260,14 @@ export function BackupWindow() {
         if (!saved) {
           setStatusMessage('');
           setProgress(null);
-          setProgressLog([]);
+          logPumpRef.current.reset([]);
           return;
         }
 
         setStatusMessage(t('backup.success'));
         setProgress({ current: 0, total: 0, objectName: '', phase: 'done' });
-        setProgressLog((prev) => appendProgressLog(prev, t('backup.success')));
+        logPumpRef.current.push(t('backup.success'));
+        logPumpRef.current.flush();
       } finally {
         unlisten();
       }
@@ -275,7 +275,8 @@ export function BackupWindow() {
       const message = e instanceof Error ? e.message : String(e);
       setStatusMessage(message);
       setProgress(null);
-      setProgressLog((prev) => appendProgressLog(prev, message));
+      logPumpRef.current.push(message);
+      logPumpRef.current.flush();
     } finally {
       setBacking(false);
     }
@@ -492,13 +493,15 @@ export function BackupWindow() {
             </>
           )}
 
-          {/* Status message */}
+          {/* Status message — fixed height so the progress bar never jumps */}
           {statusMessage && (
             <div
               className="mb-3 rounded border border-edge bg-surface-alt px-3 py-2 text-xs text-fg-secondary"
               data-testid="backup-status"
             >
-              {statusMessage}
+              <div className="truncate" title={statusMessage}>
+                {statusMessage}
+              </div>
               {(backing || progress) && (
                 <div className="mt-2 h-1.5 overflow-hidden rounded bg-edge">
                   <div
@@ -519,22 +522,7 @@ export function BackupWindow() {
           )}
 
           {progressLog.length > 0 ? (
-            <div className="mb-3 flex min-h-0 flex-1 flex-col">
-              <div className="mb-1 text-[11px] font-medium text-fg-muted">
-                {t('backup.progressLog')}
-              </div>
-              <div
-                className="min-h-0 flex-1 overflow-auto rounded border border-edge bg-surface px-2 py-1.5 font-mono text-[11px] leading-5 text-fg-secondary"
-                data-testid="backup-progress-log"
-              >
-                {progressLog.map((line, i) => (
-                  <div key={`${i}-${line.slice(0, 24)}`} className="whitespace-pre-wrap break-all">
-                    {line}
-                  </div>
-                ))}
-                <div ref={progressLogEndRef} />
-              </div>
-            </div>
+            <ProgressLog lines={progressLog} />
           ) : (
             <div className="flex-1" />
           )}

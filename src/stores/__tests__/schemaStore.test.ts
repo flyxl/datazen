@@ -431,6 +431,32 @@ describe('schemaStore namespace merge APIs', () => {
     expect(useSchemaStore.getState().namespaceTree).toEqual({ public: { t: [], v: [] } });
     expect(useSchemaStore.getState().views.map((v) => v.name)).toEqual(['v']);
   });
+
+  it('setLoadedTables replaces dropped tables instead of merging them back', async () => {
+    useSchemaStore.setState({ isMultiDatabase: true });
+    useSchemaStore.getState().setLoadedTables('app', [
+      { name: 'users', tableType: 'table', schema: null, rowCount: null },
+      { name: 'orders', tableType: 'table', schema: null, rowCount: null },
+    ]);
+    useSchemaStore
+      .getState()
+      .setLoadedTables('app', [
+        { name: 'users', tableType: 'table', schema: null, rowCount: null },
+      ]);
+    expect(useSchemaStore.getState().tables.map((t) => t.name)).toEqual(['users']);
+    expect(useSchemaStore.getState().namespaceTree).toEqual({ app: { users: [] } });
+  });
+
+  it('removeRelation drops the table from lists and namespace immediately', async () => {
+    useSchemaStore.setState({ isMultiDatabase: true });
+    useSchemaStore.getState().setLoadedTables('app', [
+      { name: 'users', tableType: 'table', schema: null, rowCount: null },
+      { name: 'orders', tableType: 'table', schema: null, rowCount: null },
+    ]);
+    useSchemaStore.getState().removeRelation('orders');
+    expect(useSchemaStore.getState().tables.map((t) => t.name)).toEqual(['users']);
+    expect(useSchemaStore.getState().namespaceTree).toEqual({ app: { users: [] } });
+  });
 });
 
 describe('schemaStore.ensureNamespacePath ensuringCount', () => {

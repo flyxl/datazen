@@ -1,7 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   appendProgressLog,
   backupProgressRatio,
+  createProgressLogPump,
   formatBackupProgress,
   formatRestoreProgress,
 } from '../backupProgress';
@@ -56,6 +57,26 @@ describe('appendProgressLog', () => {
     expect(appendProgressLog([], '')).toEqual([]);
     expect(appendProgressLog(['a'], 'a')).toEqual(['a']);
     expect(appendProgressLog(['a'], 'b')).toEqual(['a', 'b']);
+  });
+});
+
+describe('createProgressLogPump', () => {
+  it('batches pushes and flushes on demand', () => {
+    vi.useFakeTimers();
+    const seen: string[][] = [];
+    const pump = createProgressLogPump((lines) => {
+      seen.push(lines);
+    }, 50);
+    pump.reset(['start']);
+    pump.push('a');
+    pump.push('b');
+    expect(seen.at(-1)).toEqual(['start']);
+    vi.advanceTimersByTime(50);
+    expect(seen.at(-1)).toEqual(['start', 'a', 'b']);
+    pump.push('c');
+    pump.flush();
+    expect(seen.at(-1)).toEqual(['start', 'a', 'b', 'c']);
+    vi.useRealTimers();
   });
 });
 

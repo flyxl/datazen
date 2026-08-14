@@ -434,7 +434,8 @@ pub struct BackupDumpOptions {
     pub create_database: bool,
     /// Omit `OWNER` clauses (PostgreSQL); documented no-op when not emitted.
     pub no_owner: bool,
-    /// Hint to wrap restore in a transaction (MySQL `--single-transaction` parity).
+    /// Consistent dump snapshot (mysqldump `--single-transaction`).
+    /// This is a **dump-time** isolation hint, not a restore transaction flag.
     pub single_transaction: bool,
     /// Include stored procedures and functions.
     pub routines: bool,

@@ -45,6 +45,7 @@
 | 主页空白右键 Web 菜单（含边缘不截断） | `homepage-features.ts` (HOME-021) | Covered（需 webdriver 二进制；无二进制时 BLOCKED） |
 | 新建 / 编辑 / 删除连接 | `new-connection.ts`, `edit-delete-connection.ts` | Covered |
 | 连接窗口工具栏、表树、子标签 | `connection-window.ts` | Covered |
+| 侧栏删表后树立即刷新（不再需关窗） | `schemaStore.test.ts` / `SchemaTree.test.tsx` / `sqlNamespace.test.ts` | Covered（原生 Drop 确认框见例外） |
 | 查询执行 / 历史 / 收藏 | `sql-query.ts` | Covered |
 | 绑定参数面板填值并执行 | `sql-query.ts` (SQ-BIND-*) | Covered |
 | EXPLAIN 面板 | `sql-query.ts` (SQ-EXPLAIN-*) | Covered |
@@ -71,7 +72,7 @@
 | Workflow 列表 / 执行 / 历史 / 列表右键无运行 / 历史无菜单 | `workflow.ts`, `workflow-window.ts` (WF-CTX-*) | Covered |
 | Workflow 可视化 ↔ YAML 切换与保存入口 | `workflow-window.ts` (WF-YAML-*) | Covered |
 | Workflow / 数据看板 SQL 编辑（SqlEditor 高亮 + Web 右键） | `workflow-window.ts` (WF-SQL-001 / WF-SQL-002), `data-dashboard-widget-ux.ts` (UJ-06) | Covered |
-| 恢复执行日志 | `BackupWindow.test.tsx` | Covered（原生文件对话框为例外） |
+| 恢复执行日志（virtual scroll + 复制） | `BackupWindow.test.tsx` | Covered（原生文件对话框为例外） |
 | 备份窗口打开与连接选择 UI / 分组文案 | `backup-window.ts` | Covered |
 | 备份执行（IPC） | `backup-database.ts` | Covered |
 | 恢复：覆盖确认 + 分步进度 | `backup-database.ts` (BACKUP-012) + `BackupWindow.test.tsx` | Covered / Exception（原生 ask + 打开文件） |
@@ -93,6 +94,7 @@
 | `ConnectionSettingsDialog` | 当前未挂到可点击入口（非用户可达） | 组件单测；挂接 UI 后须立刻补 E2E |
 | E2E 夹具 `DROP`/`TRUNCATE` | Safe Mode 默认开启会拦截 | `executeSQL` / `withSafeModeOff` 临时关闭；`client-parity` 断言 DROP 被拦 |
 | 删除行确认框（`confirmOnDelete`） | 原生 `ask` 对话框无法点选 | `DataTable.test.tsx` 工具栏/Delete 键；`commit_row_deletes` Rust 单测；E2E 断言删除按钮出现 |
+| 侧栏 Drop 表/视图确认 | 原生 `ask` 无法点选 | `removeRelation` + `setLoadedTables` replace；`SchemaTree.test.tsx` 断言树立刻少表 |
 | 主窗口在子窗口未关时关闭 | 原生窗口关闭 + 阻塞对话框 | `window.rs` `non_main_window_labels` 单测 |
 | 恢复覆盖确认（原生 `ask`）+ 选 SQL 文件 | OS 对话框不可点选 | `BackupWindow.test.tsx` ask/overwrite；`backup-database.ts` BACKUP-012 IPC overwrite |
 
