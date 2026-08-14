@@ -538,6 +538,7 @@ const translations = {
   'export.formatAs': '~처럼',
   'export.exporting': '내보내는 중…',
   'export.export': '내보내다',
+  'export.disabledByDriver': 'This driver does not allow exporting data.',
 
   // ── Batch Export Dialog ──
   'batchExport.title': 'Export',
@@ -557,6 +558,7 @@ const translations = {
   'batchExport.noTablesSelected': 'Select at least one table',
   'batchExport.success': 'Export completed',
   'batchExport.failed': 'Export failed',
+  'batchExport.disabledByDriver': 'This driver does not support full-table export.',
 
   'ddl.generating': 'DDL 생성 중…',
   'ddl.getFailed': 'DDL을 가져올 수 없습니다.',
