@@ -227,7 +227,7 @@ describe('System Menu (MENU-001~MENU-005)', () => {
     expect(error).toBeNull();
   });
 
-  it('MENU-003: menu should include tools menu items (new-connection, data-sync)', async () => {
+  it('MENU-003: native menu rebuilds under different tool languages', async () => {
     const result = await invokeBackend<null>('rebuild_menu', { language: 'en' });
     expect(result).toBeNull();
 
@@ -246,10 +246,12 @@ describe('System Menu (MENU-001~MENU-005)', () => {
     const initialCount = handles1.length;
 
     await browser.execute(() => {
-      (window as any).__TAURI_INTERNALS__?.invoke?.('plugin:event|emit', {
-        event: 'menu:new-connection',
-        payload: {},
-      }).catch(() => {});
+      (window as any).__TAURI_INTERNALS__
+        ?.invoke?.('plugin:event|emit', {
+          event: 'menu:new-connection',
+          payload: {},
+        })
+        .catch(() => {});
     });
     await browser.pause(2000);
 

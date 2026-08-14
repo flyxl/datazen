@@ -255,11 +255,6 @@ export function BatchExportDialog({
                 }`
               : t('batchExport.exporting')}
           </span>
-          {progress?.rowsWritten != null && (
-            <span className="text-xs text-fg-muted">
-              {t('batchExport.rowsWritten', { count: String(progress.rowsWritten) })}
-            </span>
-          )}
           {progress && progress.total > 0 && (
             <div className="h-1.5 w-56 overflow-hidden rounded-full bg-surface-raised">
               <div

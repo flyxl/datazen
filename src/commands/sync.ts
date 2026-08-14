@@ -88,11 +88,17 @@ export const syncCommands = {
       conflicts: { table: string; originalRows: number; currentRows: number }[];
     }>('check_sync_conflicts', { taskId }),
 
-  executeDataSync: (targetConnectionId: string, statements: unknown[], jobId?: string) =>
+  executeDataSync: (
+    targetConnectionId: string,
+    statements: unknown[],
+    jobId?: string,
+    targetDatabase?: string,
+  ) =>
     invoke<{ applied: number; rolledBack: boolean }>('execute_data_sync', {
       targetConnectionId,
       statements,
       jobId: jobId ?? null,
+      targetDatabase: targetDatabase ?? null,
     }),
 
   cancelDataSync: (jobId: string) => invoke<boolean>('cancel_data_sync', { jobId }),
@@ -102,6 +108,8 @@ export const syncCommands = {
     targetConnectionId: string,
     tables?: string[],
     jobId?: string,
+    sourceDatabase?: string,
+    targetDatabase?: string,
   ) =>
     invoke<
       Array<{
@@ -117,6 +125,8 @@ export const syncCommands = {
       targetConnectionId,
       tables: tables ?? null,
       jobId: jobId ?? null,
+      sourceDatabase: sourceDatabase ?? null,
+      targetDatabase: targetDatabase ?? null,
     }),
 
   applyDataSync: (
@@ -124,15 +134,24 @@ export const syncCommands = {
     targetConnectionId: string,
     tables: string[],
     jobId?: string,
+    sourceDatabase?: string,
+    targetDatabase?: string,
   ) =>
     invoke<{ applied: number; rolledBack: boolean }>('apply_data_sync', {
       sourceConnectionId,
       targetConnectionId,
       tables,
       jobId: jobId ?? null,
+      sourceDatabase: sourceDatabase ?? null,
+      targetDatabase: targetDatabase ?? null,
     }),
 
-  inspectDataSync: (sourceConnectionId: string, targetConnectionId: string) =>
+  inspectDataSync: (
+    sourceConnectionId: string,
+    targetConnectionId: string,
+    sourceDatabase?: string,
+    targetDatabase?: string,
+  ) =>
     invoke<
       Array<{
         sourceTable: string;
@@ -142,5 +161,10 @@ export const syncCommands = {
         warnings?: string[];
         rows?: Array<{ operation: string }>;
       }>
-    >('inspect_data_sync', { sourceConnectionId, targetConnectionId }),
+    >('inspect_data_sync', {
+      sourceConnectionId,
+      targetConnectionId,
+      sourceDatabase: sourceDatabase ?? null,
+      targetDatabase: targetDatabase ?? null,
+    }),
 };

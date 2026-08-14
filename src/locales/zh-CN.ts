@@ -639,7 +639,6 @@ const zhCN = {
   'batchExport.export': '导出',
   'batchExport.exporting': '导出中…',
   'batchExport.noTablesSelected': '请至少选择一张表',
-  'batchExport.rowsWritten': '已写入 {count} 行',
   'batchExport.success': '导出成功',
   'batchExport.failed': '导出失败',
   'batchExport.disabledByDriver': '该驱动不支持整表导出。',

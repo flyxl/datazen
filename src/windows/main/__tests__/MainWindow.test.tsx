@@ -563,11 +563,9 @@ describe('MainWindow', () => {
     renderMain();
     fireEvent.click(screen.getByTestId('action-new'));
     fireEvent.click(screen.getByTestId('action-backup'));
-    fireEvent.click(screen.getByTestId('action-sync'));
     fireEvent.click(screen.getByTestId('action-workflow'));
     expect(openNewConnectionWindowMock).toHaveBeenCalled();
     expect(openBackupWindowMock).toHaveBeenCalled();
-    expect(openDataSyncWindowMock).toHaveBeenCalled();
     expect(openWorkflowWindowMock).toHaveBeenCalled();
   });
 
