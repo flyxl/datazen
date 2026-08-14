@@ -13,6 +13,8 @@ interface BarChartRendererProps {
 }
 
 const logTickFormatter = (v: number) => formatCompact(Math.pow(10, v));
+const labelFormatter = (value: unknown) =>
+  typeof value === 'number' ? logTickFormatter(value) : String(value ?? '');
 
 export function BarChartRenderer({ data, config, onDataPointClick }: BarChartRendererProps) {
   const colors = getColorPalette(config.colorScheme);
@@ -68,12 +70,18 @@ export function BarChartRenderer({ data, config, onDataPointClick }: BarChartRen
       {multiSeries && (
         <Legend
           wrapperStyle={{ fontSize: 12, color: 'var(--c-fg, #eee)', cursor: 'pointer' }}
-          onClick={(e: { dataKey?: string }) => e.dataKey && toggleSeries(e.dataKey)}
-          formatter={(value: string, entry: { dataKey?: string }) => (
-            <span style={{ opacity: hiddenSeries.has(entry.dataKey ?? '') ? 0.35 : 1 }}>
-              {value}
-            </span>
-          )}
+          onClick={(entry) => {
+            const dataKey = entry.dataKey;
+            if (typeof dataKey === 'string') toggleSeries(dataKey);
+          }}
+          formatter={(value, entry) => {
+            const dataKey = entry?.dataKey;
+            return (
+              <span style={{ opacity: typeof dataKey === 'string' && hiddenSeries.has(dataKey) ? 0.35 : 1 }}>
+                {value}
+              </span>
+            );
+          }}
         />
       )}
       {config.yAxes.map((yKey, i) => (
@@ -92,7 +100,7 @@ export function BarChartRenderer({ data, config, onDataPointClick }: BarChartRen
               position="top"
               fontSize={11}
               fill="var(--c-fg-secondary, #999)"
-              formatter={logHint.use ? logTickFormatter : undefined}
+              formatter={logHint.use ? labelFormatter : undefined}
             />
           )}
         </Bar>
