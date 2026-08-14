@@ -81,11 +81,22 @@ impl MysqlDriver {
         Self::current_database_on_conn(&mut conn).await
     }
 
-    /// Execute `USE \`db\`` via the MySQL text protocol (COM_QUERY).
+    /// Execute SQL via the MySQL text protocol (COM_QUERY).
     ///
-    /// `USE` is rejected by MySQL's prepared-statement protocol (error 1295).
-    /// Passing `&str` directly to [`sqlx::Executor::execute`] sends COM_QUERY
-    /// (`Execute::take_arguments` is `None`); `sqlx::query` always prepares.
+    /// `sqlx::query` always PREPARE's. MySQL rejects `BEGIN`/`COMMIT`/`ROLLBACK`,
+    /// `USE`, `SET`, some DDL, and `CREATE PROCEDURE` on the prepared protocol
+    /// with **1295 (HY000): This command is not supported in the prepared
+    /// statement protocol yet**. Passing `&str` to [`sqlx::Executor::execute`]
+    /// sends COM_QUERY (`Execute::take_arguments` is `None`).
+    async fn execute_text_on_conn(
+        conn: &mut sqlx::pool::PoolConnection<sqlx::MySql>,
+        sql: &str,
+    ) -> Result<sqlx::mysql::MySqlQueryResult, sqlx::Error> {
+        use sqlx::Executor;
+        (&mut **conn).execute(sql).await
+    }
+
+    /// Execute `USE \`db\`` via the MySQL text protocol (COM_QUERY).
     ///
     /// Also clears sqlx's statement cache: MySQL resolves unqualified table names
     /// at PREPARE time, so cached statements would keep hitting the previous DB.
@@ -94,9 +105,8 @@ impl MysqlDriver {
         use_sql: &str,
         db: &str,
     ) -> Result<(), DriverError> {
-        use sqlx::{Connection, Executor};
-        (&mut **conn)
-            .execute(use_sql)
+        use sqlx::Connection;
+        Self::execute_text_on_conn(conn, use_sql)
             .await
             .map_err(|e| DriverError::QueryFailed(format!("Failed to USE database `{db}`: {e}")))?;
         conn.clear_cached_statements().await.map_err(|e| {
@@ -550,8 +560,7 @@ impl MysqlDriver {
             }
             batcher.finish(stmt_start.elapsed().as_millis() as u64, None);
         } else {
-            let result = sqlx::query(effective_sql.as_str())
-                .execute(executor)
+            let result = sqlx::Executor::execute(executor, effective_sql.as_str())
                 .await
                 .map_err(|e| DriverError::QueryFailed(format!("[{stmt}] {e}")))?;
             emit_execute_statement(
@@ -708,7 +717,7 @@ impl DatabaseDriver for MysqlDriver {
 
     async fn disconnect(&self, handle: ConnectionHandle) -> Result<(), DriverError> {
         if let Some(mut conn) = self.transactions.lock().await.remove(&handle.id) {
-            let _ = sqlx::query("ROLLBACK").execute(&mut *conn).await;
+            let _ = Self::execute_text_on_conn(&mut conn, "ROLLBACK").await;
         }
         self.active_databases.write().await.remove(&handle.pool_id);
         if let Some(pool) = self.pools.write().await.remove(&handle.pool_id) {
@@ -1013,8 +1022,7 @@ impl DatabaseDriver for MysqlDriver {
                         truncated,
                     });
                 } else {
-                    let result = sqlx::query(effective_sql.as_str())
-                        .execute(&mut **conn)
+                    let result = Self::execute_text_on_conn(conn, effective_sql.as_str())
                         .await
                         .map_err(|e| DriverError::QueryFailed(format!("[{}] {}", stmt, e)))?;
                     let stmt_ms = stmt_start.elapsed().as_millis() as u64;
@@ -1087,8 +1095,7 @@ impl DatabaseDriver for MysqlDriver {
                     truncated,
                 });
             } else {
-                let result = sqlx::query(effective_sql.as_str())
-                    .execute(&mut *conn)
+                let result = Self::execute_text_on_conn(&mut conn, effective_sql.as_str())
                     .await
                     .map_err(|e| DriverError::QueryFailed(format!("[{}] {}", stmt, e)))?;
                 let stmt_ms = stmt_start.elapsed().as_millis() as u64;
@@ -1209,8 +1216,7 @@ impl DatabaseDriver for MysqlDriver {
         {
             let mut txs = self.transactions.lock().await;
             if let Some(conn) = txs.get_mut(&handle.id) {
-                let result = sqlx::query(sql)
-                    .execute(&mut **conn)
+                let result = Self::execute_text_on_conn(conn, sql)
                     .await
                     .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
                 return Ok(result.rows_affected());
@@ -1225,8 +1231,7 @@ impl DatabaseDriver for MysqlDriver {
             .map_err(|e| DriverError::ConnectionFailed(e.to_string()))?;
         self.apply_active_database(handle, &mut conn).await?;
 
-        let result = sqlx::query(sql)
-            .execute(&mut *conn)
+        let result = Self::execute_text_on_conn(&mut conn, sql)
             .await
             .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
 
@@ -1254,8 +1259,7 @@ impl DatabaseDriver for MysqlDriver {
 
         self.apply_active_database(handle, &mut conn).await?;
 
-        sqlx::query("BEGIN")
-            .execute(&mut *conn)
+        Self::execute_text_on_conn(&mut conn, "BEGIN")
             .await
             .map_err(|e| DriverError::TransactionError(e.to_string()))?;
 
@@ -1276,8 +1280,7 @@ impl DatabaseDriver for MysqlDriver {
                 DriverError::TransactionError("Transaction not found or already ended".into())
             })?;
 
-        sqlx::query("COMMIT")
-            .execute(&mut *conn)
+        Self::execute_text_on_conn(&mut conn, "COMMIT")
             .await
             .map_err(|e| DriverError::TransactionError(e.to_string()))?;
         Ok(())
@@ -1293,8 +1296,7 @@ impl DatabaseDriver for MysqlDriver {
                 DriverError::TransactionError("Transaction not found or already ended".into())
             })?;
 
-        sqlx::query("ROLLBACK")
-            .execute(&mut *conn)
+        Self::execute_text_on_conn(&mut conn, "ROLLBACK")
             .await
             .map_err(|e| DriverError::TransactionError(e.to_string()))?;
         Ok(())

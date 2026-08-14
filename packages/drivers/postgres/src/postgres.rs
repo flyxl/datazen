@@ -1662,6 +1662,129 @@ pub(crate) fn build_pg_create_table_ddl(
     )
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct PgSequenceDdl {
+    pub qualified_name: String,
+    pub data_type: String,
+    pub increment: i64,
+    pub min_value: i64,
+    pub max_value: i64,
+    pub start: i64,
+    pub cache: i64,
+    pub cycle: bool,
+    pub owned_column: Option<String>,
+}
+
+pub(crate) fn build_pg_create_sequence_sql(seq: &PgSequenceDdl) -> String {
+    let cycle = if seq.cycle { "CYCLE" } else { "NO CYCLE" };
+    format!(
+        "CREATE SEQUENCE IF NOT EXISTS {}\n    AS {}\n    INCREMENT BY {}\n    MINVALUE {}\n    MAXVALUE {}\n    START WITH {}\n    CACHE {}\n    {cycle};\n",
+        seq.qualified_name,
+        seq.data_type,
+        seq.increment,
+        seq.min_value,
+        seq.max_value,
+        seq.start,
+        seq.cache,
+    )
+}
+
+pub(crate) fn build_pg_alter_sequence_owned_by(
+    seq: &PgSequenceDdl,
+    table_qualified: &str,
+    quote_ident: &dyn Fn(&str) -> String,
+) -> Option<String> {
+    seq.owned_column.as_ref().map(|col| {
+        format!(
+            "ALTER SEQUENCE {} OWNED BY {}.{};\n",
+            seq.qualified_name,
+            table_qualified,
+            quote_ident(col)
+        )
+    })
+}
+
+fn pg_sequence_start(
+    last_value: Option<i64>,
+    is_called: Option<bool>,
+    start: i64,
+    increment: i64,
+) -> i64 {
+    match (last_value, is_called) {
+        (Some(last), Some(true)) => last.saturating_add(increment),
+        (Some(last), Some(false)) => last,
+        _ => start,
+    }
+}
+
+async fn fetch_pg_table_sequences(
+    pool: &PgPool,
+    table: &str,
+) -> Result<Vec<PgSequenceDdl>, DriverError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT
+          quote_ident(ns.nspname) || '.' || quote_ident(seq_cls.relname) AS qualified_name,
+          format_type(s.seqtypid, NULL) AS data_type,
+          s.seqstart,
+          s.seqincrement,
+          s.seqmin,
+          s.seqmax,
+          s.seqcache,
+          s.seqcycle,
+          a.attname AS owned_column,
+          pgs.last_value,
+          pgs.is_called
+        FROM pg_class tbl
+        JOIN pg_depend d
+          ON d.refobjid = tbl.oid
+         AND d.classid = 'pg_class'::regclass
+         AND d.deptype IN ('a', 'i')
+        JOIN pg_class seq_cls
+          ON seq_cls.oid = d.objid AND seq_cls.relkind = 'S'
+        JOIN pg_namespace ns ON ns.oid = seq_cls.relnamespace
+        JOIN pg_sequence s ON s.seqrelid = seq_cls.oid
+        LEFT JOIN pg_attribute a
+          ON a.attrelid = tbl.oid AND a.attnum = d.refobjsubid AND NOT a.attisdropped
+        LEFT JOIN pg_sequences pgs
+          ON pgs.schemaname = ns.nspname AND pgs.sequencename = seq_cls.relname
+        WHERE tbl.oid = $1::regclass
+        ORDER BY seq_cls.relname
+        "#,
+    )
+    .bind(table)
+    .fetch_all(pool)
+    .await
+    .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+
+    Ok(rows
+        .iter()
+        .map(|r| {
+            let increment: i64 = r.get("seqincrement");
+            let start: i64 = r.get("seqstart");
+            PgSequenceDdl {
+                qualified_name: r.get("qualified_name"),
+                data_type: r.get("data_type"),
+                increment,
+                min_value: r.get("seqmin"),
+                max_value: r.get("seqmax"),
+                start: pg_sequence_start(
+                    r.try_get::<Option<i64>, _>("last_value").ok().flatten(),
+                    r.try_get::<Option<bool>, _>("is_called").ok().flatten(),
+                    start,
+                    increment,
+                ),
+                cache: r.get("seqcache"),
+                cycle: r.get("seqcycle"),
+                owned_column: r
+                    .try_get::<Option<String>, _>("owned_column")
+                    .ok()
+                    .flatten(),
+            }
+        })
+        .collect())
+}
+
 async fn fetch_pg_table_ddl_from_catalog(
     pool: &PgPool,
     table: &str,
@@ -1724,12 +1847,29 @@ async fn fetch_pg_table_ddl_from_catalog(
 
     let pk_columns: Vec<String> = pk_rows.iter().map(|r| r.get("attname")).collect();
 
-    Ok(build_pg_create_table_ddl(
+    let sequences = fetch_pg_table_sequences(pool, table)
+        .await
+        .unwrap_or_default();
+    let mut out = String::new();
+    for seq in &sequences {
+        out.push_str(&build_pg_create_sequence_sql(seq));
+        out.push('\n');
+    }
+
+    out.push_str(&build_pg_create_table_ddl(
         &qualified_name,
         &columns,
         &pk_columns,
         &quote_ident,
-    ))
+    ));
+
+    for seq in &sequences {
+        if let Some(sql) = build_pg_alter_sequence_owned_by(seq, &qualified_name, &quote_ident) {
+            out.push_str(&sql);
+        }
+    }
+
+    Ok(out)
 }
 
 #[cfg(test)]
@@ -1959,6 +2099,42 @@ mod tests {
         assert!(sql.contains("\"status\" text DEFAULT 'active'::text"));
         assert!(sql.contains("PRIMARY KEY (\"id\")"));
         assert!(sql.ends_with(");\n"));
+    }
+
+    #[test]
+    fn pg_sequence_start_uses_last_value_when_called() {
+        assert_eq!(pg_sequence_start(Some(3), Some(true), 1, 1), 4);
+        assert_eq!(pg_sequence_start(Some(1), Some(false), 1, 1), 1);
+        assert_eq!(pg_sequence_start(None, None, 1, 1), 1);
+    }
+
+    #[test]
+    fn build_pg_create_sequence_sql_and_owned_by() {
+        let seq = PgSequenceDdl {
+            qualified_name: "\"public\".\"categories_id_seq\"".into(),
+            data_type: "integer".into(),
+            increment: 1,
+            min_value: 1,
+            max_value: 2147483647,
+            start: 4,
+            cache: 1,
+            cycle: false,
+            owned_column: Some("id".into()),
+        };
+        let create = build_pg_create_sequence_sql(&seq);
+        assert!(
+            create.starts_with("CREATE SEQUENCE IF NOT EXISTS \"public\".\"categories_id_seq\"")
+        );
+        assert!(create.contains("START WITH 4"));
+        assert!(create.contains("NO CYCLE"));
+        let owned = build_pg_alter_sequence_owned_by(&seq, "\"public\".\"categories\"", &|n| {
+            format!("\"{n}\"")
+        })
+        .unwrap();
+        assert_eq!(
+            owned,
+            "ALTER SEQUENCE \"public\".\"categories_id_seq\" OWNED BY \"public\".\"categories\".\"id\";\n"
+        );
     }
 
     #[test]

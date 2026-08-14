@@ -750,6 +750,8 @@ const translations = {
   'backup.restorePreparing': 'Reading backup file…',
   'backup.restoreProgress': 'Restoring {name} ({current}/{total})',
   'backup.progressLog': 'Execution log',
+  'backup.copyLog': 'Copy log',
+  'backup.logCopied': 'Copied',
   'win.backup': 'Base de données de sauvegarde - DataZen',
   'win.restore': 'Restaurer la base de données - DataZen',
   'connSettings.title': 'Paramètres de connexion',

@@ -162,6 +162,7 @@ export function SqlConnectionView({
   const schemaViews = useSchemaStore((s) => s.views);
   const loadForConnection = useSchemaStore((s) => s.loadForConnection);
   const loadTables = useSchemaStore((s) => s.loadTables);
+  const removeRelation = useSchemaStore((s) => s.removeRelation);
   const tableColumns = useTableDataStore((s) => s.columns);
   const tableRows = useTableDataStore((s) => s.rows);
   const totalRows = useTableDataStore((s) => s.totalRows);
@@ -706,6 +707,7 @@ export function SqlConnectionView({
                       sql,
                       () => {
                         invalidateSchemaCache(connectionId, name);
+                        removeRelation(name);
                         handleRefresh();
                         closePanelsForTable(name);
                       },
@@ -732,6 +734,7 @@ export function SqlConnectionView({
       handleRefresh,
       handleNewQuery,
       handleCreateTable,
+      removeRelation,
       openBatchExport,
       isReadOnly,
       showStructureEditor,

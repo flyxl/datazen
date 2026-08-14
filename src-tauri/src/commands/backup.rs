@@ -7,6 +7,7 @@ use crate::db::{
 use std::io::Read;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 use tauri::{Emitter, State};
 
 fn emit_backup_progress(app: Option<&tauri::AppHandle>, progress: DumpProgress) {
@@ -18,6 +19,45 @@ fn emit_backup_progress(app: Option<&tauri::AppHandle>, progress: DumpProgress) 
 fn emit_restore_progress(app: Option<&tauri::AppHandle>, progress: DumpProgress) {
     if let Some(app) = app {
         let _ = app.emit("restore-progress", &progress);
+    }
+}
+
+/// Coalesce per-statement restore events so the webview is not flooded
+/// (one INSERT per row previously froze the UI halfway through a dump).
+struct ThrottledRestoreProgress<'a> {
+    app: Option<&'a tauri::AppHandle>,
+    last: Instant,
+    pending: Option<DumpProgress>,
+    interval: Duration,
+}
+
+impl<'a> ThrottledRestoreProgress<'a> {
+    fn new(app: Option<&'a tauri::AppHandle>) -> Self {
+        Self {
+            app,
+            last: Instant::now()
+                .checked_sub(Duration::from_secs(1))
+                .unwrap_or_else(Instant::now),
+            pending: None,
+            interval: Duration::from_millis(80),
+        }
+    }
+
+    fn emit(&mut self, progress: DumpProgress) {
+        let force = !matches!(progress.phase, DumpPhase::Object);
+        if force || self.last.elapsed() >= self.interval {
+            emit_restore_progress(self.app, progress);
+            self.last = Instant::now();
+            self.pending = None;
+        } else {
+            self.pending = Some(progress);
+        }
+    }
+
+    fn flush(&mut self) {
+        if let Some(progress) = self.pending.take() {
+            emit_restore_progress(self.app, progress);
+        }
     }
 }
 
@@ -320,36 +360,25 @@ async fn drop_existing_restore_targets(
     let _ = driver.execute(handle, "SET FOREIGN_KEY_CHECKS=0").await;
     for (i, table) in ordered.iter().enumerate() {
         let ident = qualify_restore_ident(driver.as_ref(), table);
-        let keyword = if matches!(
-            table.table_type,
-            TableType::View | TableType::MaterializedView
-        ) {
-            "VIEW"
-        } else {
-            "TABLE"
-        };
         emit_restore_progress(
             app,
             DumpProgress {
                 current: (i as u32) + 1,
                 total,
-                object_name: format!("DROP {keyword} {ident}"),
+                object_name: format!("DROP {ident}"),
                 phase: DumpPhase::Object,
             },
         );
-        let cascade = format!("DROP {keyword} IF EXISTS {ident} CASCADE");
-        if driver.execute(handle, &cascade).await.is_err() {
-            driver
-                .execute(handle, &format!("DROP {keyword} IF EXISTS {ident}"))
-                .await
-                .map_err(|e| {
-                    tracing::error!(
-                        cmd = "restore_database",
-                        table = %table.name,
-                        error = %e
-                    );
-                    map_driver_err(e)
-                })?;
+        // PG: DROP TABLE on a view (or the reverse) errors even with IF EXISTS.
+        // Try every kind so leftover catalog rows cannot block later CREATE.
+        for sql in [
+            format!("DROP VIEW IF EXISTS {ident} CASCADE"),
+            format!("DROP MATERIALIZED VIEW IF EXISTS {ident} CASCADE"),
+            format!("DROP TABLE IF EXISTS {ident} CASCADE"),
+            format!("DROP VIEW IF EXISTS {ident}"),
+            format!("DROP TABLE IF EXISTS {ident}"),
+        ] {
+            let _ = driver.execute(handle, &sql).await;
         }
     }
     let _ = driver.execute(handle, "SET FOREIGN_KEY_CHECKS=1").await;
@@ -403,22 +432,26 @@ async fn restore_database_from_path(
         }
     }
 
-    let mut on_progress = |progress: DumpProgress| emit_restore_progress(app, progress);
-    if driver.uses_sql_restore_pipeline() {
-        stream_sql_file_into_session(
-            &input_path,
-            driver.as_ref(),
-            &handle,
-            &restore_opts,
-            &mut on_progress,
-        )
-        .await?;
-    } else {
-        driver
-            .restore_sql_with_progress(&handle, "", Some(&restore_opts), &mut on_progress)
-            .await
-            .map_err(map_driver_err)?;
+    let mut throttle = ThrottledRestoreProgress::new(app);
+    {
+        let mut on_progress = |progress: DumpProgress| throttle.emit(progress);
+        if driver.uses_sql_restore_pipeline() {
+            stream_sql_file_into_session(
+                &input_path,
+                driver.as_ref(),
+                &handle,
+                &restore_opts,
+                &mut on_progress,
+            )
+            .await?;
+        } else {
+            driver
+                .restore_sql_with_progress(&handle, "", Some(&restore_opts), &mut on_progress)
+                .await
+                .map_err(map_driver_err)?;
+        }
     }
+    throttle.flush();
 
     emit_restore_progress(
         app,

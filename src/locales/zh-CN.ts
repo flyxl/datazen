@@ -846,6 +846,8 @@ const zhCN = {
   'backup.restorePreparing': '正在读取备份文件…',
   'backup.restoreProgress': '正在恢复 {name}（{current}/{total}）',
   'backup.progressLog': '执行日志',
+  'backup.copyLog': '复制日志',
+  'backup.logCopied': '已复制',
 
   // ── Window titles ──
   'win.backup': '备份数据库 - DataZen',
