@@ -171,3 +171,58 @@ describe('DataExportDialog', () => {
     expect(onClose).toHaveBeenCalled();
   });
 });
+
+describe('DataExportDialog export capability', () => {
+  it('hides entire-table scope when capability is loaded_only', () => {
+    render(
+      <DataExportDialog
+        open
+        onClose={vi.fn()}
+        columns={COLS}
+        rows={[[1, 'a']]}
+        tableName="users"
+        connectionId="c1"
+        totalRows={100}
+        dataExportCapability="loaded_only"
+      />,
+    );
+    const selects = document.querySelectorAll('select');
+    const range = selects[1]!;
+    const values = Array.from(range.options).map((o) => o.value);
+    expect(values).not.toContain('entire_table');
+    expect(values).toContain('current_page');
+  });
+
+  it('shows a warning and disables export button when capability is none', () => {
+    const { getByText, getByRole } = render(
+      <DataExportDialog
+        open
+        onClose={vi.fn()}
+        columns={COLS}
+        rows={[[1, 'a']]}
+        tableName="users"
+        connectionId="c1"
+        dataExportCapability="none"
+      />,
+    );
+    expect(getByText('export.disabledByDriver')).toBeInTheDocument();
+    expect(getByRole('button', { name: 'export.export' })).toBeDisabled();
+  });
+
+  it('does not attempt export when capability is none', async () => {
+    render(
+      <DataExportDialog
+        open
+        onClose={vi.fn()}
+        columns={COLS}
+        rows={[[1, 'a']]}
+        tableName="users"
+        dataExportCapability="none"
+      />,
+    );
+    // Button is disabled, so firing click is a no-op for the handler guard.
+    const btn = document.querySelectorAll('button')[1] as HTMLButtonElement;
+    fireEvent.click(btn);
+    expect(saveTextWithDialog).not.toHaveBeenCalled();
+  });
+});

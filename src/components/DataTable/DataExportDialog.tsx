@@ -10,6 +10,7 @@ import {
   saveExportResultWithDialog,
 } from '../../lib/exportDialogShared';
 import { isStreamableExportFormat, streamTableExportToSaveDialog } from '../../lib/exportStream';
+import { supportsFullTableExport, type DataExportCapability } from '../../lib/exportCapability';
 import { useI18n } from '../../hooks/useI18n';
 import type { ColumnDef } from './TableHeader';
 
@@ -24,6 +25,12 @@ interface DataExportDialogProps {
   connectionId?: string;
   totalRows?: number;
   primaryKeyColumns?: string[];
+  /**
+   * Driver data-export capability. Defaults to `full_table`.
+   * - `none`: export disabled entirely.
+   * - `loaded_only`: only already-loaded rows may be exported (no entire-table).
+   */
+  dataExportCapability?: DataExportCapability;
 }
 
 export function DataExportDialog({
@@ -37,9 +44,15 @@ export function DataExportDialog({
   connectionId,
   totalRows,
   primaryKeyColumns,
+  dataExportCapability = 'full_table',
 }: DataExportDialogProps) {
   const { t } = useI18n();
-  const allowEntire = Boolean(connectionId) && tableName !== 'data';
+  const exportLocked = dataExportCapability === 'none';
+  const allowEntire =
+    !exportLocked &&
+    supportsFullTableExport(dataExportCapability) &&
+    Boolean(connectionId) &&
+    tableName !== 'data';
   const [format, setFormat] = useState<ExportFormat>('csv');
   const [scope, setScope] = useState<ExportScope>('current_page');
   const [exporting, setExporting] = useState(false);
@@ -79,6 +92,7 @@ export function DataExportDialog({
   );
 
   const handleExport = useCallback(async () => {
+    if (exportLocked) return;
     setError(null);
     setExporting(true);
     try {
@@ -133,6 +147,7 @@ export function DataExportDialog({
     databaseType,
     connectionId,
     primaryKeyColumns,
+    exportLocked,
     onClose,
   ]);
 
@@ -152,6 +167,7 @@ export function DataExportDialog({
             onClick={() => void handleExport()}
             disabled={
               exporting ||
+              exportLocked ||
               (scope !== 'entire_table' && rows.length === 0) ||
               (scope === 'selected' && selectedRows.size === 0)
             }
@@ -162,6 +178,11 @@ export function DataExportDialog({
       }
     >
       <div className="space-y-4">
+        {exportLocked && (
+          <div className="rounded-md border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-500">
+            {t('export.disabledByDriver')}
+          </div>
+        )}
         <div>
           <label className="mb-1 block text-xs font-medium text-fg-secondary">
             {t('export.format')}

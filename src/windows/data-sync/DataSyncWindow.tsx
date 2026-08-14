@@ -7,6 +7,7 @@ import { Button } from '../../components/ui/Button';
 import { Select } from '../../components/ui/Select';
 import { Dialog } from '../../components/ui/Dialog';
 import { syncCommands } from '../../commands/sync';
+import { databaseCommands } from '../../commands/database';
 import { useI18n } from '../../hooks/useI18n';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { cn } from '../../lib/cn';
@@ -30,6 +31,10 @@ export function DataSyncWindow() {
   const [activeConns, setActiveConns] = useState<Record<string, string>>({});
   const [sourceId, setSourceId] = useState('');
   const [targetId, setTargetId] = useState('');
+  const [sourceDatabases, setSourceDatabases] = useState<string[]>([]);
+  const [targetDatabases, setTargetDatabases] = useState<string[]>([]);
+  const [sourceDatabase, setSourceDatabase] = useState('');
+  const [targetDatabase, setTargetDatabase] = useState('');
   const [mappingResults, setMappingResults] = useState<DataSyncTableResult[]>([]);
   const [selectedTables, setSelectedTables] = useState<Set<string>>(new Set());
   const [syncState, setSyncState] = useState<SyncState>('idle');
@@ -119,6 +124,58 @@ export function DataSyncWindow() {
     [activeConns, t],
   );
 
+  // Load the source connection's databases when it is selected.
+  useEffect(() => {
+    if (!sourceId) return;
+    let cancelled = false;
+    const cfg = connections.find((c) => c.id === sourceId);
+    (async () => {
+      try {
+        const connId = await ensureConnected(sourceId);
+        if (!connId || cancelled) return;
+        const dbs = await databaseCommands.getDatabases(connId);
+        if (cancelled) return;
+        setSourceDatabases(dbs);
+        const preferred = cfg?.database ?? '';
+        setSourceDatabase((prev) =>
+          dbs.includes(preferred) ? preferred : prev && dbs.includes(prev) ? prev : (dbs[0] ?? ''),
+        );
+      } catch {
+        if (!cancelled) setSourceDatabases([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sourceId, connections, ensureConnected]);
+
+  // Load the target connection's databases when it is selected.
+  useEffect(() => {
+    if (!targetId) return;
+    let cancelled = false;
+    const cfg = connections.find((c) => c.id === targetId);
+    (async () => {
+      try {
+        const connId = await ensureConnected(targetId);
+        if (!connId || cancelled) return;
+        const dbs = await databaseCommands.getDatabases(connId);
+        if (cancelled) return;
+        setTargetDatabases(dbs);
+        const preferred = cfg?.database ?? '';
+        setTargetDatabase((prev) =>
+          dbs.includes(preferred) ? preferred : prev && dbs.includes(prev) ? prev : (dbs[0] ?? ''),
+        );
+      } catch {
+        if (!cancelled) setTargetDatabases([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [targetId, connections, ensureConnected]);
+
   const handleCompare = useCallback(async () => {
     if (!sourceId || !targetId) {
       setErrorMsg(t('sync.selectBoth'));
@@ -127,6 +184,11 @@ export function DataSyncWindow() {
     }
     if (sourceId === targetId) {
       setErrorMsg(t('sync.cannotSame'));
+      setErrorOpen(true);
+      return;
+    }
+    if (!sourceDatabase || !targetDatabase) {
+      setErrorMsg(t('sync.selectDbRequired'));
       setErrorOpen(true);
       return;
     }
@@ -150,6 +212,8 @@ export function DataSyncWindow() {
         tgtConnId,
         [],
         jobId,
+        sourceDatabase,
+        targetDatabase,
       )) as DataSyncTableResult[];
       setMappingResults(mappings);
       const autoSelect = new Set(
@@ -162,7 +226,7 @@ export function DataSyncWindow() {
       setErrorOpen(true);
       setSyncState('idle');
     }
-  }, [sourceId, targetId, ensureConnected, t]);
+  }, [sourceId, targetId, ensureConnected, t, sourceDatabase, targetDatabase]);
 
   const handleCancel = useCallback(async () => {
     const jobId = jobIdRef.current;
@@ -173,7 +237,8 @@ export function DataSyncWindow() {
   const handleApply = useCallback(async () => {
     if (!sourceId || !targetId) return;
     const selected = mappingResults.filter(
-      (r) => r.status === 'MATCHED' && selectedTables.has(displayTableName(r)) && tableHasRowDiffs(r),
+      (r) =>
+        r.status === 'MATCHED' && selectedTables.has(displayTableName(r)) && tableHasRowDiffs(r),
     );
     if (selected.length === 0) return;
     setSyncState('syncing');
@@ -191,6 +256,8 @@ export function DataSyncWindow() {
         tgtConnId,
         selected.map((r) => r.sourceTable),
         jobId,
+        sourceDatabase,
+        targetDatabase,
       );
       if (result.rolledBack) {
         setErrorMsg(t('sync.failedMsg') + t('common.cancel'));
@@ -203,6 +270,8 @@ export function DataSyncWindow() {
         tgtConnId,
         selected.map((r) => r.sourceTable),
         jobId,
+        sourceDatabase,
+        targetDatabase,
       )) as DataSyncTableResult[];
       setMappingResults((prev) => {
         const byName = new Map(mappings.map((m) => [m.sourceTable || m.targetTable, m]));
@@ -214,7 +283,16 @@ export function DataSyncWindow() {
       setErrorOpen(true);
       setSyncState('compared');
     }
-  }, [sourceId, targetId, mappingResults, selectedTables, ensureConnected, t]);
+  }, [
+    sourceId,
+    targetId,
+    mappingResults,
+    selectedTables,
+    ensureConnected,
+    t,
+    sourceDatabase,
+    targetDatabase,
+  ]);
 
   const selectAll = useCallback(() => {
     setSelectedTables(
@@ -250,6 +328,14 @@ export function DataSyncWindow() {
             onChange={setSourceId}
             placeholder={t('sync.selectSource')}
           />
+          <div data-testid="data-sync-source-database" className="mt-2">
+            <Select
+              value={sourceDatabase}
+              options={sourceDatabases.map((db) => ({ value: db, label: db }))}
+              onChange={setSourceDatabase}
+              placeholder={t('sync.selectDatabase')}
+            />
+          </div>
         </div>
         <ArrowRight className="mt-5 h-5 w-5 shrink-0 text-fg-muted" />
         <div className="min-w-0 flex-1" data-testid="data-sync-target">
@@ -262,6 +348,14 @@ export function DataSyncWindow() {
             onChange={setTargetId}
             placeholder={t('sync.selectTarget')}
           />
+          <div data-testid="data-sync-target-database" className="mt-2">
+            <Select
+              value={targetDatabase || ''}
+              options={targetDatabases.map((db) => ({ value: db, label: db }))}
+              onChange={setTargetDatabase}
+              placeholder={t('sync.selectDatabase')}
+            />
+          </div>
         </div>
         <div className="mt-5 flex shrink-0 flex-col items-end gap-1">
           {activePairing?.supported && (
@@ -389,7 +483,11 @@ export function DataSyncWindow() {
           </span>
           <div className="flex-1" />
           {(syncState === 'comparing' || syncState === 'syncing') && (
-            <Button variant="ghost" data-testid="data-sync-cancel" onClick={() => void handleCancel()}>
+            <Button
+              variant="ghost"
+              data-testid="data-sync-cancel"
+              onClick={() => void handleCancel()}
+            >
               {t('common.cancel')}
             </Button>
           )}

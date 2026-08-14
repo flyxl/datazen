@@ -648,7 +648,6 @@ const en: Record<TranslationKey, string> = {
   'batchExport.export': 'Export',
   'batchExport.exporting': 'Exporting…',
   'batchExport.noTablesSelected': 'Select at least one table',
-  'batchExport.rowsWritten': '{count} rows written',
   'batchExport.success': 'Export completed',
   'batchExport.failed': 'Export failed',
   'batchExport.disabledByDriver': 'This driver does not support full-table export.',

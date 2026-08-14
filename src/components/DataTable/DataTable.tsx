@@ -77,6 +77,11 @@ export interface DataTableProps {
   databaseType?: string;
   /** Live connection — enables entire-table streaming export. */
   connectionId?: string;
+  /**
+   * Data-export capability, threaded to the export dialog. Omit for `full_table`.
+   * `none` disables the table-data export button entirely.
+   */
+  dataExportCapability?: 'none' | 'loaded_only' | 'full_table';
   /** Primary-key column names for Copy as UPDATE / Delete Row; falls back to first column for copy. */
   primaryKeyColumns?: string[];
   /** Delete rows by page-row indices (requires primary keys). */
@@ -132,6 +137,7 @@ export function DataTable({
   exportTableName,
   databaseType,
   connectionId,
+  dataExportCapability,
   primaryKeyColumns,
   onDeleteRows,
   getContextCellText,
@@ -159,7 +165,7 @@ export function DataTable({
     [onRowClick, onRowSelect],
   );
 
-  const exportEnabled = !!exportTableName && rows.length > 0;
+  const exportEnabled = !!exportTableName && rows.length > 0 && dataExportCapability !== 'none';
   const columnNames = useMemo(() => columns.map((c) => c.name), [columns]);
 
   const handleContextMenu = useCallback(
@@ -502,6 +508,7 @@ export function DataTable({
           connectionId={connectionId}
           totalRows={totalRows}
           primaryKeyColumns={primaryKeyColumns}
+          dataExportCapability={dataExportCapability}
         />
       )}
     </div>

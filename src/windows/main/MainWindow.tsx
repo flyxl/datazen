@@ -675,22 +675,25 @@ export function MainWindow() {
 
   // ── Blank area context menu ──
 
-  const handleBlankContextMenu = useCallback((e: React.MouseEvent) => {
-    const el = e.target as HTMLElement;
-    if (el.closest('[data-group-header]') || el.closest('[data-conn-item]')) return;
-    e.preventDefault();
-    showWebContextMenu(
-      buildMainBlankContextMenuItems({
-        labels: contextLabels,
-        onNewGroup: () => {
-          setNewGroupName('');
-          setNewGroupDialogOpen(true);
-        },
-        onNewConnection: () => openNewConnectionWindow(),
-      }),
-      { x: e.clientX, y: e.clientY },
-    );
-  }, [contextLabels]);
+  const handleBlankContextMenu = useCallback(
+    (e: React.MouseEvent) => {
+      const el = e.target as HTMLElement;
+      if (el.closest('[data-group-header]') || el.closest('[data-conn-item]')) return;
+      e.preventDefault();
+      showWebContextMenu(
+        buildMainBlankContextMenuItems({
+          labels: contextLabels,
+          onNewGroup: () => {
+            setNewGroupName('');
+            setNewGroupDialogOpen(true);
+          },
+          onNewConnection: () => openNewConnectionWindow(),
+        }),
+        { x: e.clientX, y: e.clientY },
+      );
+    },
+    [contextLabels],
+  );
 
   return (
     <div className="flex h-screen min-h-0 min-w-[520px] flex-col bg-surface text-fg">
@@ -708,7 +711,6 @@ export function MainWindow() {
             onNewConnection={() => openNewConnectionWindow()}
             onBackup={() => openBackupWindow()}
             onRestore={() => openBackupWindow('restore')}
-            onDataSync={() => openDataSyncWindow()}
             onWorkflow={() => openWorkflowWindow()}
             onDashboard={() => void handleOpenDashboard()}
           />

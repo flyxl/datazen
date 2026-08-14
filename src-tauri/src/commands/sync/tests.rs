@@ -497,7 +497,7 @@ async fn inspect_data_sync_returns_matched_tables() {
     test.save_and_connect("tgt-ins").await;
     let src = test.connect_config("src-ins").await;
     let tgt = test.connect_config("tgt-ins").await;
-    let results = super::inspect_data_sync_impl(&test.state, src, tgt)
+    let results = super::inspect_data_sync_impl(&test.state, src, tgt, None, None)
         .await
         .unwrap();
     assert!(results
@@ -527,7 +527,7 @@ async fn execute_data_sync_rejects_read_only_target() {
         parameters: vec![],
         row_key: vec![],
     };
-    let err = super::execute_data_sync_impl(&test.state, id, vec![stmt], None)
+    let err = super::execute_data_sync_impl(&test.state, id, vec![stmt], None, None)
         .await
         .unwrap_err();
     assert!(err.to_string().contains("read-only"));
@@ -566,7 +566,7 @@ async fn cancel_data_sync_stops_execute_before_start() {
         parameters: vec![],
         row_key: vec![],
     };
-    let err = super::execute_data_sync_impl(&test.state, id, vec![stmt], Some(job))
+    let err = super::execute_data_sync_impl(&test.state, id, vec![stmt], Some(job), None)
         .await
         .unwrap_err();
     assert!(err.to_string().to_lowercase().contains("cancel"), "{err}");
@@ -582,9 +582,17 @@ async fn compare_data_sync_fills_row_diff_for_matched_tables() {
     test.save_and_connect("tgt-cmp").await;
     let src = test.connect_config("src-cmp").await;
     let tgt = test.connect_config("tgt-cmp").await;
-    let results = super::compare_data_sync_impl(&test.state, src, tgt, vec!["users".into()], None)
-        .await
-        .unwrap();
+    let results = super::compare_data_sync_impl(
+        &test.state,
+        src,
+        tgt,
+        vec!["users".into()],
+        None,
+        None,
+        None,
+    )
+    .await
+    .unwrap();
     let users = results
         .iter()
         .find(|r| r.source_table == "users")
@@ -602,9 +610,17 @@ async fn apply_data_sync_rejects_empty_change_set() {
     test.save_and_connect("tgt-ap").await;
     let src = test.connect_config("src-ap").await;
     let tgt = test.connect_config("tgt-ap").await;
-    let err = super::apply_data_sync_impl(&test.state, src, tgt, vec!["users".into()], None)
-        .await
-        .unwrap_err();
+    let err = super::apply_data_sync_impl(
+        &test.state,
+        src,
+        tgt,
+        vec!["users".into()],
+        None,
+        None,
+        None,
+    )
+    .await
+    .unwrap_err();
     assert!(
         err.to_string().to_lowercase().contains("empty")
             || err.to_string().to_lowercase().contains("nothing"),

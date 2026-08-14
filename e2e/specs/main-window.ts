@@ -7,7 +7,9 @@ describe('主窗口 (CM-001)', () => {
 
   before(async () => {
     mainWindow = await browser.getWindowHandle();
-    await $(`input[placeholder="${t('main.searchPlaceholder')}"]`).waitForDisplayed({ timeout: 10000 });
+    await $(`input[placeholder="${t('main.searchPlaceholder')}"]`).waitForDisplayed({
+      timeout: 10000,
+    });
     await expandAllGroups();
     await browser.pause(1000);
   });
@@ -38,10 +40,8 @@ describe('主窗口 (CM-001)', () => {
   it('应显示左侧操作面板', async () => {
     const backupBtn = await $(`button*=${t('action.backup')}`);
     const restoreBtn = await $(`button*=${t('action.restore')}`);
-    const syncBtn = await $(`button*=${t('action.dataSync')}`);
     await expect(backupBtn).toBeDisplayed();
     await expect(restoreBtn).toBeDisplayed();
-    await expect(syncBtn).toBeDisplayed();
   });
 
   it('状态栏应显示版本号', async () => {
@@ -53,10 +53,10 @@ describe('主窗口 (CM-001)', () => {
 
   it('应显示分组的连接列表', async () => {
     // Wait for connection items to load
-    await browser.waitUntil(
-      async () => (await $$('[data-conn-item]')).length > 0,
-      { timeout: 10000, timeoutMsg: '等待连接项加载超时' },
-    );
+    await browser.waitUntil(async () => (await $$('[data-conn-item]')).length > 0, {
+      timeout: 10000,
+      timeoutMsg: '等待连接项加载超时',
+    });
     const items = await $$('[data-conn-item]');
     expect(items.length).toBeGreaterThan(0);
   });
@@ -65,7 +65,17 @@ describe('主窗口 (CM-001)', () => {
     await browser.waitUntil(
       async () => {
         const body = await $('body').getText();
-        return body.includes('Pg') || body.includes('My') || body.includes('Ma') || body.includes('Lt') || body.includes('Rd') || body.includes('Ss') || body.includes('Ki') || body.includes('Pr') || body.includes('Tr');
+        return (
+          body.includes('Pg') ||
+          body.includes('My') ||
+          body.includes('Ma') ||
+          body.includes('Lt') ||
+          body.includes('Rd') ||
+          body.includes('Ss') ||
+          body.includes('Ki') ||
+          body.includes('Pr') ||
+          body.includes('Tr')
+        );
       },
       { timeout: 10000, timeoutMsg: '等待数据库类型图标加载超时' },
     );
@@ -99,10 +109,10 @@ describe('主窗口 (CM-001)', () => {
       const el = document.querySelector('[data-conn-item]');
       if (el) el.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
     });
-    await browser.waitUntil(
-      async () => (await browser.getWindowHandles()).length > 1,
-      { timeout: 30000, timeoutMsg: '等待连接窗口打开超时' },
-    );
+    await browser.waitUntil(async () => (await browser.getWindowHandles()).length > 1, {
+      timeout: 30000,
+      timeoutMsg: '等待连接窗口打开超时',
+    });
     const handles = await browser.getWindowHandles();
     expect(handles.length).toBeGreaterThan(1);
   });

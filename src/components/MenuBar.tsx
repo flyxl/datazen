@@ -58,9 +58,21 @@ function useMenus(): Menu[] {
       id: 'view',
       label: t('menu.view'),
       items: [
-        { id: 'theme-light', label: `${t('menu.theme')}: ${t('menu.themeLight')}`, checked: theme === 'light' },
-        { id: 'theme-dark', label: `${t('menu.theme')}: ${t('menu.themeDark')}`, checked: theme === 'dark' },
-        { id: 'theme-system', label: `${t('menu.theme')}: ${t('menu.themeSystem')}`, checked: theme === 'system' },
+        {
+          id: 'theme-light',
+          label: `${t('menu.theme')}: ${t('menu.themeLight')}`,
+          checked: theme === 'light',
+        },
+        {
+          id: 'theme-dark',
+          label: `${t('menu.theme')}: ${t('menu.themeDark')}`,
+          checked: theme === 'dark',
+        },
+        {
+          id: 'theme-system',
+          label: `${t('menu.theme')}: ${t('menu.themeSystem')}`,
+          checked: theme === 'system',
+        },
         { id: 'sep-2', label: '', separator: true },
         { id: 'fullscreen', label: t('menu.fullscreen') },
       ],
@@ -69,7 +81,6 @@ function useMenus(): Menu[] {
       id: 'tools',
       label: t('menu.tools'),
       items: [
-        { id: 'data-sync', label: t('menu.dataSync') },
         { id: 'schema-diff', label: t('menu.schemaDiff') },
         { id: 'sep-3', label: '', separator: true },
         { id: 'backup', label: t('menu.backup') },
@@ -144,7 +155,9 @@ export function MenuBar() {
           isOpen={openMenu === menu.id}
           onOpen={() => setOpenMenu(menu.id)}
           onClose={() => setOpenMenu(null)}
-          onHover={() => { if (openMenu) setOpenMenu(menu.id); }}
+          onHover={() => {
+            if (openMenu) setOpenMenu(menu.id);
+          }}
           barRef={barRef}
         />
       ))}
@@ -175,14 +188,19 @@ function MenuButton({ menu, isOpen, onOpen, onClose, onHover }: MenuButtonProps)
     }
   }, [isOpen]);
 
-  const handleClickOutside = useCallback((e: MouseEvent) => {
-    if (
-      dropRef.current && !dropRef.current.contains(e.target as Node) &&
-      btnRef.current && !btnRef.current.contains(e.target as Node)
-    ) {
-      onClose();
-    }
-  }, [onClose]);
+  const handleClickOutside = useCallback(
+    (e: MouseEvent) => {
+      if (
+        dropRef.current &&
+        !dropRef.current.contains(e.target as Node) &&
+        btnRef.current &&
+        !btnRef.current.contains(e.target as Node)
+      ) {
+        onClose();
+      }
+    },
+    [onClose],
+  );
 
   useEffect(() => {
     if (!isOpen) return;
@@ -195,7 +213,10 @@ function MenuButton({ menu, isOpen, onOpen, onClose, onHover }: MenuButtonProps)
       <button
         ref={btnRef}
         type="button"
-        onClick={() => { if (isOpen) onClose(); else onOpen(); }}
+        onClick={() => {
+          if (isOpen) onClose();
+          else onOpen();
+        }}
         onMouseEnter={onHover}
         className={cn(
           'rounded px-2 py-0.5 text-xs transition-colors',
@@ -206,18 +227,20 @@ function MenuButton({ menu, isOpen, onOpen, onClose, onHover }: MenuButtonProps)
       >
         {menu.label}
       </button>
-      {isOpen && pos && createPortal(
-        <div
-          ref={dropRef}
-          className="fixed z-[9999] min-w-[200px] rounded-lg border border-edge bg-surface-alt py-1 shadow-xl"
-          style={{ left: pos.x, top: pos.y }}
-        >
-          {menu.items.map((item) => (
-            <MenuEntry key={item.id} item={item} onClose={onClose} />
-          ))}
-        </div>,
-        document.body,
-      )}
+      {isOpen &&
+        pos &&
+        createPortal(
+          <div
+            ref={dropRef}
+            className="fixed z-[9999] min-w-[200px] rounded-lg border border-edge bg-surface-alt py-1 shadow-xl"
+            style={{ left: pos.x, top: pos.y }}
+          >
+            {menu.items.map((item) => (
+              <MenuEntry key={item.id} item={item} onClose={onClose} />
+            ))}
+          </div>,
+          document.body,
+        )}
     </>
   );
 }
@@ -267,15 +290,11 @@ function MenuEntry({ item, onClose }: { item: MenuItem; onClose: () => void }) {
     >
       <span className="flex items-center gap-2">
         {item.checked !== undefined && (
-          <span className="w-4 text-center text-blue-500">
-            {item.checked ? '✓' : ''}
-          </span>
+          <span className="w-4 text-center text-blue-500">{item.checked ? '✓' : ''}</span>
         )}
         {item.label}
       </span>
-      {item.shortcut && (
-        <span className="ml-4 text-[11px] text-fg-muted">{item.shortcut}</span>
-      )}
+      {item.shortcut && <span className="ml-4 text-[11px] text-fg-muted">{item.shortcut}</span>}
     </button>
   );
 }

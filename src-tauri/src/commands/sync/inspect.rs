@@ -10,6 +10,8 @@ pub(crate) async fn inspect_data_sync_impl(
     state: &AppState,
     source_connection_id: String,
     target_connection_id: String,
+    source_database: Option<String>,
+    target_database: Option<String>,
 ) -> Result<Vec<TableResult>, CommandError> {
     let src_config = state
         .connection_manager
@@ -43,8 +45,22 @@ pub(crate) async fn inspect_data_sync_impl(
         .await
         .cmd_err("inspect_data_sync")?;
 
-    let src_db = src_config.database.as_deref().unwrap_or("");
-    let tgt_db = tgt_config.database.as_deref().unwrap_or("");
+    // Scope to the explicitly chosen database, defaulting to the connection's
+    // configured database when none was picked.
+    let src_db = source_database
+        .as_deref()
+        .filter(|s| !s.trim().is_empty())
+        .or(src_config.database.as_deref())
+        .unwrap_or("");
+    let tgt_db = target_database
+        .as_deref()
+        .filter(|s| !s.trim().is_empty())
+        .or(tgt_config.database.as_deref())
+        .unwrap_or("");
+
+    super::compare::maybe_use_database(src_driver.as_ref(), &src_handle, Some(src_db)).await?;
+    super::compare::maybe_use_database(tgt_driver.as_ref(), &tgt_handle, Some(tgt_db)).await?;
+
     let src_tables = src_driver
         .get_tables(&src_handle, src_db)
         .await

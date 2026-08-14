@@ -1075,6 +1075,7 @@ export function SqlConnectionView({
                     database={currentDatabase ?? ''}
                     tableName={activePanel.tableName}
                     databaseType={databaseType}
+                    dataExportCapability={exportScope}
                   />
                 )}
                 {activePanel.subTab === 'structure' &&

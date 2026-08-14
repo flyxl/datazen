@@ -9,6 +9,7 @@ const {
   applyDataSyncMock,
   cancelDataSyncMock,
   getSyncTasksMock,
+  getDatabasesMock,
   stableT,
 } = vi.hoisted(() => {
   const stableT = (key: string, params?: Record<string, string | number>) =>
@@ -20,6 +21,7 @@ const {
     applyDataSyncMock: vi.fn(),
     cancelDataSyncMock: vi.fn().mockResolvedValue(true),
     getSyncTasksMock: vi.fn(),
+    getDatabasesMock: vi.fn(),
     stableT,
   };
 });
@@ -52,6 +54,12 @@ vi.mock('../../../commands/sync', () => ({
     applyDataSync: (...args: unknown[]) => applyDataSyncMock(...args),
     cancelDataSync: (...args: unknown[]) => cancelDataSyncMock(...args),
     getSyncTasks: (...args: unknown[]) => getSyncTasksMock(...args),
+  },
+}));
+
+vi.mock('../../../commands/database', () => ({
+  databaseCommands: {
+    getDatabases: (...args: unknown[]) => getDatabasesMock(...args),
   },
 }));
 
@@ -109,7 +117,7 @@ const mysqlTgt: ConnectionConfig = {
 
 async function pickSelect(testId: string, optionLabel: string) {
   const wrap = screen.getByTestId(testId);
-  const trigger = within(wrap).getByRole('button');
+  const trigger = within(wrap).getAllByRole('button')[0];
   fireEvent.click(trigger);
   const list = await waitFor(() => {
     const el = document.getElementById('dz-select-listbox');
@@ -129,6 +137,10 @@ describe('DataSyncWindow (F9 Diff Workspace shell)', () => {
     inspectDataSyncMock.mockReset();
     getSyncTasksMock.mockReset();
     getSyncTasksMock.mockResolvedValue([]);
+    getDatabasesMock.mockReset();
+    getDatabasesMock.mockImplementation(async (connId: string) =>
+      connId.includes('pg-src') || connId.includes('my') ? ['src', 'other'] : ['tgt'],
+    );
     invokeMock.mockImplementation(async (cmd: string, args?: { configId?: string }) => {
       if (cmd === 'get_connections') return [pgSrc, pgTgt, mysqlTgt];
       if (cmd === 'connect') return `live-${args?.configId}`;
@@ -173,9 +185,20 @@ describe('DataSyncWindow (F9 Diff Workspace shell)', () => {
     await waitFor(() => expect(invokeMock).toHaveBeenCalledWith('get_connections'));
     await pickSelect('data-sync-source', 'PG Src');
     await pickSelect('data-sync-target', 'PG Tgt');
+    // Both connections auto-connect to enumerate databases; default DBs are selected.
+    await waitFor(() =>
+      expect(screen.getByTestId('data-sync-source-database')).toHaveTextContent('src'),
+    );
     fireEvent.click(screen.getByTestId('data-sync-compare'));
     await waitFor(() =>
-      expect(compareDataSyncMock).toHaveBeenCalledWith('live-pg-src', 'live-pg-tgt', [], expect.any(String)),
+      expect(compareDataSyncMock).toHaveBeenCalledWith(
+        'live-pg-src',
+        'live-pg-tgt',
+        [],
+        expect.any(String),
+        'src',
+        'tgt',
+      ),
     );
     const rows = await screen.findAllByTestId('data-sync-mapping-row');
     expect(rows).toHaveLength(2);
@@ -190,6 +213,19 @@ describe('DataSyncWindow (F9 Diff Workspace shell)', () => {
         'live-pg-tgt',
         ['users'],
         expect.any(String),
+        'src',
+        'tgt',
+      ),
+    );
+    // Drain the post-apply re-compare so it does not leak into the next test.
+    await waitFor(() =>
+      expect(compareDataSyncMock).toHaveBeenLastCalledWith(
+        'live-pg-src',
+        'live-pg-tgt',
+        ['users'],
+        expect.any(String),
+        'src',
+        'tgt',
       ),
     );
   });
@@ -199,7 +235,7 @@ describe('DataSyncWindow (F9 Diff Workspace shell)', () => {
     await waitFor(() => expect(invokeMock).toHaveBeenCalledWith('get_connections'));
     await pickSelect('data-sync-source', 'PG Src');
     const wrap = screen.getByTestId('data-sync-target');
-    fireEvent.click(within(wrap).getByRole('button'));
+    fireEvent.click(within(wrap).getAllByRole('button')[0]);
     const list = await waitFor(() => {
       const el = document.getElementById('dz-select-listbox');
       if (!el) throw new Error('dz-select-listbox not open');
@@ -209,7 +245,7 @@ describe('DataSyncWindow (F9 Diff Workspace shell)', () => {
     expect(mysql?.textContent).toContain('sync.unsupportedHint');
   });
 
-  it('shows inspect errors and connect failures', async () => {
+  it('gates compare when a database cannot be enumerated', async () => {
     invokeMock.mockImplementation(async (cmd: string, args?: { configId?: string }) => {
       if (cmd === 'get_connections') return [pgSrc, pgTgt, mysqlTgt];
       if (cmd === 'connect') {
@@ -222,15 +258,24 @@ describe('DataSyncWindow (F9 Diff Workspace shell)', () => {
     await waitFor(() => expect(invokeMock).toHaveBeenCalledWith('get_connections'));
     await pickSelect('data-sync-source', 'PG Src');
     await pickSelect('data-sync-target', 'PG Tgt');
+    // The target database list failed to enumerate, so compare stays gated.
     fireEvent.click(screen.getByTestId('data-sync-compare'));
-    expect(await screen.findByTestId('data-sync-error')).toHaveTextContent('sync.connectFailed');
-    fireEvent.click(screen.getByText('common.ok'));
+    expect(await screen.findByTestId('data-sync-error')).toHaveTextContent('sync.selectDbRequired');
+  });
 
+  it('surfaces data-sync comparison errors', async () => {
     invokeMock.mockImplementation(async (cmd: string, args?: { configId?: string }) => {
       if (cmd === 'get_connections') return [pgSrc, pgTgt, mysqlTgt];
       if (cmd === 'connect') return `live-${args?.configId}`;
       return null;
     });
+    render(<DataSyncWindow />);
+    await waitFor(() => expect(invokeMock).toHaveBeenCalledWith('get_connections'));
+    await pickSelect('data-sync-source', 'PG Src');
+    await pickSelect('data-sync-target', 'PG Tgt');
+    await waitFor(() =>
+      expect(screen.getByTestId('data-sync-source-database')).toHaveTextContent('src'),
+    );
     compareDataSyncMock.mockRejectedValue(new Error('gate failed'));
     fireEvent.click(screen.getByTestId('data-sync-compare'));
     expect(await screen.findByTestId('data-sync-error')).toHaveTextContent('gate failed');
@@ -250,6 +295,9 @@ describe('DataSyncWindow (F9 Diff Workspace shell)', () => {
     await waitFor(() => expect(invokeMock).toHaveBeenCalledWith('get_connections'));
     await pickSelect('data-sync-source', 'PG Src');
     await pickSelect('data-sync-target', 'PG Tgt');
+    await waitFor(() =>
+      expect(screen.getByTestId('data-sync-source-database')).toHaveTextContent('src'),
+    );
     fireEvent.click(screen.getByTestId('data-sync-compare'));
     await screen.findAllByTestId('data-sync-mapping-row');
     expect(screen.getByTestId('data-sync-path')).toHaveTextContent('sync.pathDirect');
