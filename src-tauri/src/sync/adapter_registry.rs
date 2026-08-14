@@ -145,14 +145,23 @@ mod tests {
             "starrocks",
             "manticore",
             "ob_oracle",
+            #[cfg(feature = "plugin-sqlserver")]
             "sqlserver",
+            #[cfg(feature = "plugin-clickhouse")]
             "clickhouse",
+            #[cfg(feature = "plugin-duckdb")]
             "duckdb",
+            #[cfg(feature = "plugin-elasticsearch")]
             "elasticsearch",
+            #[cfg(feature = "plugin-mongodb")]
             "mongodb",
+            #[cfg(feature = "plugin-influxdb")]
             "influxdb",
+            #[cfg(feature = "plugin-victoriametrics")]
             "victoriametrics",
+            #[cfg(feature = "plugin-hbase")]
             "hbase",
+            #[cfg(feature = "plugin-vector")]
             "vector",
             #[cfg(feature = "plugin-olap")]
             "trino",

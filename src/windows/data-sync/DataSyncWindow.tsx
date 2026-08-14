@@ -482,7 +482,7 @@ export function DataSyncWindow() {
             {t('sync.selected', { selected: selectedTables.size, total: mappingResults.length })}
           </span>
           <div className="flex-1" />
-          {(syncState === 'comparing' || syncState === 'syncing') && (
+          {syncState === 'syncing' && (
             <Button
               variant="ghost"
               data-testid="data-sync-cancel"
@@ -495,7 +495,6 @@ export function DataSyncWindow() {
             variant="primary"
             onClick={() => void handleApply()}
             disabled={
-              syncState === 'comparing' ||
               syncState === 'syncing' ||
               !mappingResults.some(
                 (r) =>

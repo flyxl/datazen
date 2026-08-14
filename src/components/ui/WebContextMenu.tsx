@@ -15,7 +15,7 @@ import { runPredefinedEdit } from '../../lib/runPredefinedEdit';
 import type { NativeMenuItemDef } from '../../lib/nativeContextMenu';
 import { useContextMenuStore } from '../../stores/contextMenuStore';
 
-function isSeparator(item: NativeMenuItemDef): boolean {
+function isSeparator(item: NativeMenuItemDef): item is { kind: 'separator'; id?: string } {
   return item.kind === 'separator' || (item.kind === 'predefined' && item.item === 'Separator');
 }
 
@@ -55,7 +55,7 @@ function MenuPanel({
         if (isSeparator(item)) {
           return (
             <div
-              key={item.kind === 'separator' ? item.id ?? `sep-${idx}` : `pre-sep-${idx}`}
+              key={item.kind === 'separator' ? (item.id ?? `sep-${idx}`) : `pre-sep-${idx}`}
               role="separator"
               className="my-1 h-px bg-edge"
             />
@@ -90,10 +90,14 @@ function MenuPanel({
             type="button"
             role="menuitem"
             disabled={!enabled}
-            data-testid={item.kind === 'item' ? `web-context-item-${item.id}` : `web-context-pre-${item.item}`}
+            data-testid={
+              item.kind === 'item' ? `web-context-item-${item.id}` : `web-context-pre-${item.item}`
+            }
             className={cn(
               'flex w-full items-center px-3 py-1.5 text-left text-sm',
-              enabled ? 'text-fg hover:bg-surface-raised' : 'cursor-not-allowed text-fg-muted opacity-50',
+              enabled
+                ? 'text-fg hover:bg-surface-raised'
+                : 'cursor-not-allowed text-fg-muted opacity-50',
             )}
             onMouseEnter={() => onItemEnter?.('', document.body)}
             onClick={() => {
@@ -145,10 +149,14 @@ export function WebContextMenuHost() {
     const el = subRef.current;
     const width = el?.offsetWidth ?? 160;
     const height = el?.offsetHeight ?? 40;
-    const pos = positionSubmenu(sub.itemRect, { width, height }, {
-      width: window.innerWidth,
-      height: window.innerHeight,
-    });
+    const pos = positionSubmenu(
+      sub.itemRect,
+      { width, height },
+      {
+        width: window.innerWidth,
+        height: window.innerHeight,
+      },
+    );
     if (pos.left !== sub.pos.left || pos.top !== sub.pos.top) {
       setSub((prev) => (prev ? { ...prev, pos: { left: pos.left, top: pos.top } } : prev));
     }

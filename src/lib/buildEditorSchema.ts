@@ -1,5 +1,5 @@
 import type { TableInfo } from '../types';
-import { overlayColumnMap, type SqlNamespace } from './sqlNamespace';
+import { isLeaf, overlayColumnMap, type SqlNamespace } from './sqlNamespace';
 
 export interface BuildEditorSchemaInput {
   namespaceTree: SqlNamespace;
@@ -29,10 +29,10 @@ export function hoistNamespaceChild(
   tree: SqlNamespace,
   childKey: string | null | undefined,
 ): SqlNamespace {
-  if (!childKey || Array.isArray(tree)) return tree;
+  if (!childKey || isLeaf(tree)) return tree;
   const child = tree[childKey];
   if (child == null) return tree;
-  if (Array.isArray(child)) {
+  if (isLeaf(child)) {
     const out: Record<string, SqlNamespace> = { ...tree };
     for (const name of child) {
       if (!(name in out)) out[name] = [];
@@ -63,7 +63,7 @@ export function hoistNamespacePath(
  * unqualified identifiers from the root, so copy table leaves up at any depth.
  */
 export function hoistNestedTableLeaves(tree: SqlNamespace): SqlNamespace {
-  if (Array.isArray(tree)) return tree;
+  if (isLeaf(tree)) return tree;
   const out: Record<string, SqlNamespace> = { ...tree };
   const walk = (node: SqlNamespace) => {
     if (Array.isArray(node)) return;
@@ -85,7 +85,7 @@ function mergeUnqualifiedTables(
   views: TableInfo[],
 ): SqlNamespace {
   if (tables.length === 0 && views.length === 0) return tree;
-  const out: Record<string, SqlNamespace> = Array.isArray(tree) ? {} : { ...tree };
+  const out: Record<string, SqlNamespace> = isLeaf(tree) ? {} : { ...tree };
   for (const item of [...tables, ...views]) {
     if (!(item.name in out)) out[item.name] = [];
   }

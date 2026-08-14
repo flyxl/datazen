@@ -16,16 +16,14 @@ export function LogScaleTooltip() {
         color: 'var(--c-fg, #eee)',
         fontSize: 12,
       }}
-      formatter={(
-        _logValue: number,
-        name: string,
-        props: { payload?: Record<string, unknown> },
-      ) => {
-        const orig = props.payload?.[`__orig__${name}`];
+      formatter={(value, name, props) => {
+        const logValue = typeof value === 'number' ? value : Number(value ?? 0);
+        const nameStr = String(name ?? '');
+        const orig = props.payload?.[`__orig__${nameStr}`];
         if (typeof orig === 'number') {
-          return [orig <= 0 ? '0' : formatCompact(orig), name];
+          return [orig <= 0 ? '0' : formatCompact(orig), nameStr];
         }
-        return [formatCompact(Math.pow(10, _logValue)), name];
+        return [formatCompact(Math.pow(10, logValue)), nameStr];
       }}
     />
   );

@@ -11,7 +11,7 @@ export function pathKey(segments: string[]): string {
   return segments.join('/');
 }
 
-function isLeaf(node: SqlNamespace): node is readonly string[] {
+export function isLeaf(node: SqlNamespace): node is readonly string[] {
   return Array.isArray(node);
 }
 
