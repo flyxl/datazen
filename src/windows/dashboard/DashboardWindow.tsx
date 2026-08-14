@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   BookOpen,
   Download,
@@ -647,7 +647,7 @@ export function DashboardWindow() {
               {t('common.cancel')}
             </Button>
             <Button
-              variant="destructive"
+              variant="danger"
               className="h-8 px-3 text-xs"
               data-testid="dashboard-delete-confirm"
               onClick={() => void handleDeletePanel()}
@@ -674,7 +674,7 @@ export function DashboardWindow() {
               {t('common.cancel')}
             </Button>
             <Button
-              variant="destructive"
+              variant="danger"
               className="h-8 px-3 text-xs"
               data-testid="widget-delete-confirm"
               onClick={() => widgetToDelete && void handleDeleteWidget(widgetToDelete)}

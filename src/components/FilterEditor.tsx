@@ -2,6 +2,7 @@ import { ChevronDown, ChevronRight, Plus, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { FilterCondition, FilterOperator } from '../types';
 import { useI18n } from '../hooks/useI18n';
+import type { I18nKey } from '../locales';
 import { Select } from './ui/Select';
 import { Input } from './ui/Input';
 import { Button } from './ui/Button';
@@ -47,11 +48,11 @@ interface FilterEditorProps {
   onClear: () => void;
 }
 
-function opLabel(op: FilterOperator, t: (key: string) => string): string {
+function opLabel(op: FilterOperator, t: (key: I18nKey) => string): string {
   return t(`filter.${op}`);
 }
 
-function conditionSummary(f: FilterCondition, t: (key: string) => string): string {
+function conditionSummary(f: FilterCondition, t: (key: I18nKey) => string): string {
   const op = opLabel(f.operator, t);
   if (f.operator === 'isNull' || f.operator === 'isNotNull') {
     return `${f.column} ${op}`;
@@ -120,7 +121,7 @@ function FilterValueInput({
       onChange={(e) => {
         const next = e.target.value;
         setDraft(next);
-        if (composingRef.current || e.nativeEvent.isComposing) return;
+        if (composingRef.current || (e.nativeEvent as InputEvent).isComposing) return;
         schedule(next);
       }}
       onCompositionStart={() => {
@@ -162,7 +163,7 @@ function FilterConditionChip({
   filter: FilterCondition;
   onEdit: () => void;
   onRemove: () => void;
-  t: (key: string) => string;
+  t: (key: I18nKey) => string;
 }) {
   const label = conditionSummary(filter, t);
   return (
@@ -206,7 +207,7 @@ function FilterConditionEditor({
   onRemove: (index: number) => void;
   onCollapse: () => void;
   autoFocusValue: boolean;
-  t: (key: string) => string;
+  t: (key: I18nKey) => string;
 }) {
   const needsValue = filter.operator !== 'isNull' && filter.operator !== 'isNotNull';
   const rootRef = useRef<HTMLDivElement>(null);

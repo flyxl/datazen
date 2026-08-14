@@ -751,6 +751,7 @@ const translations = {
   'backup.progressLog': 'Execution log',
   'backup.copyLog': 'Copy log',
   'backup.logCopied': 'Copied',
+  'backup.logOmitted': '… {count} linhas omitidas (log truncado para economizar memória)',
   'win.backup': 'Banco de dados de backup - DataZen',
   'win.restore': 'Restaurar banco de dados - DataZen',
   'connSettings.title': 'Configurações de conexão',
