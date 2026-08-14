@@ -68,13 +68,12 @@ export function ChartWidgetTile({ widget, run, busy, onEdit, onDelete, onHistory
         {run?.status === 'ok' && viewMode === 'table' && run.rows.length > 0 && <div className="h-full min-h-0" data-testid="dashboard-tile-table"><DataTable columns={tableColumns} rows={run.rows} rowHeight={28} exportTableName={widget.title} /></div>}
         {run?.status === 'ok' && viewMode === 'table' && run.rows.length === 0 && <div className="absolute inset-0 flex items-center justify-center px-3 text-center text-xs text-fg-muted">{t('dashboard.emptyResult')}</div>}
       </div>
-      {expanded && run?.status === 'ok' && createPortal(<TileExpandOverlay widget={widget} run={run} chartData={chartData} tableColumns={tableColumns} hasChart={hasChart} viewMode={viewMode} t={t} onClose={() => setExpanded(false)} onChartConfigChange={onChartConfigChange} />, document.body)}
+      {expanded && run?.status === 'ok' && createPortal(<TileExpandOverlay widget={widget} run={run} tableColumns={tableColumns} viewMode={viewMode} t={t} onClose={() => setExpanded(false)} onChartConfigChange={onChartConfigChange} />, document.body)}
     </div>
   );
 }
 
-function TileExpandOverlay({ widget, run, chartData: initialChartData, tableColumns, hasChart: initialHasChart, viewMode, t, onClose, onChartConfigChange }: { widget: DashboardWidget; run: WidgetRun; chartData: ReturnType<typeof widgetRunToChartData> | null; tableColumns: ColumnDef[]; hasChart: boolean; viewMode: string; t: ReturnType<typeof useI18n>['t']; onClose: () => void; onChartConfigChange?: (config: ChartConfig) => void; }) {
-  void initialChartData; void initialHasChart;
+function TileExpandOverlay({ widget, run, tableColumns, viewMode, t, onClose, onChartConfigChange }: { widget: DashboardWidget; run: WidgetRun; tableColumns: ColumnDef[]; viewMode: string; t: ReturnType<typeof useI18n>['t']; onClose: () => void; onChartConfigChange?: (config: ChartConfig) => void; }) {
   const [localConfig, setLocalConfig] = useState<ChartConfig>(() => widget.chartConfig ?? { chartType: 'bar', xAxis: null, yAxes: [], showLegend: true, showGrid: true, showValues: false, aggregation: 'none', groupBy: null, sortBy: 'none', colorScheme: 'default' });
   const fields = useMemo(() => { try { return inferAllFields(widgetRunToStatementResult(run)); } catch { return []; } }, [run]);
   const chartData = useMemo(() => widgetRunToChartData(run, localConfig), [run, localConfig]);
