@@ -145,6 +145,7 @@ mod tests {
             "starrocks",
             "manticore",
             "ob_oracle",
+            #[cfg(feature = "plugin-sqlserver")]
             "sqlserver",
             "clickhouse",
             "duckdb",
