@@ -102,6 +102,24 @@ describe('表数据视图 (TD-001~TD-008)', () => {
     expect(body).toMatch(/\d+-\d+\s*\/\s*\d+/);
   });
 
+  it('表格数据可复制而交互控件不可选中 (TD-SEL-001)', async () => {
+    // Content (the DataTable root) must stay selectable so cell text can be
+    // copied; interactive controls must not paint a selection block.
+    const table = await $('.selectable');
+    const tableSel = await browser.execute(
+      (el) => getComputedStyle(el as HTMLElement).userSelect,
+      table,
+    );
+    expect(tableSel).not.toBe('none');
+
+    const prevBtn = await $(`button[aria-label="${t('pagination.prev')}"]`);
+    const btnSel = await browser.execute(
+      (el) => getComputedStyle(el as HTMLElement).userSelect,
+      prevBtn,
+    );
+    expect(btnSel).toBe('none');
+  });
+
   // ── 分页 ───────────────────────────────────────────────────────
 
   it('应显示分页导航 (TD-002)', async () => {

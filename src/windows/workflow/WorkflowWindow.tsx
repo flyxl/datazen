@@ -794,7 +794,7 @@ export function WorkflowWindow() {
                         }}
                       >
                         {icon}
-                        <span className="max-w-[140px] truncate">{label}</span>
+                        <span className="selectable max-w-[140px] truncate">{label}</span>
                         {resultStatus && (
                           <span
                             className={cn(
