@@ -6,8 +6,8 @@
   "type": "module",
   "scripts": {
     "dev": "node scripts/dev.mjs",
-    "build": "node scripts/ensure-generated-drivers.mjs && node scripts/generate-menu-labels.mjs && tsc --noCheck && vite build",
-    "build:with-drivers": "node scripts/generate-menu-labels.mjs && node scripts/with-plugin-inject.mjs -- sh -c \"tsc --noCheck && vite build\"",
+    "build": "node scripts/ensure-generated-drivers.mjs && node scripts/generate-menu-labels.mjs && tsc && vite build",
+    "build:with-drivers": "node scripts/generate-menu-labels.mjs && node scripts/with-plugin-inject.mjs -- sh -c \"tsc && vite build\"",
     "typecheck": "tsc --noEmit",
     "preview": "vite preview",
     "tauri": "tauri",
