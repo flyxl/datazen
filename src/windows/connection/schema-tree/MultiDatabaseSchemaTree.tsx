@@ -271,7 +271,7 @@ export function MultiDatabaseSchemaTree({
                     <ChevronRight className="h-3.5 w-3.5 shrink-0" />
                   )}
                   <Database className="h-3.5 w-3.5 shrink-0 text-teal-400" />
-                  <span className="min-w-0 truncate">{row.dbName}</span>
+                  <span className="selectable min-w-0 truncate">{row.dbName}</span>
                 </button>
               )}
 
@@ -317,7 +317,7 @@ export function MultiDatabaseSchemaTree({
                   }}
                 >
                   <Table2 className="h-3.5 w-3.5 shrink-0 text-fg-secondary" />
-                  <span className="min-w-0 truncate">{row.item.name}</span>
+                  <span className="selectable min-w-0 truncate">{row.item.name}</span>
                 </button>
               )}
 

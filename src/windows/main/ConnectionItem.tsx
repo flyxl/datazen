@@ -46,11 +46,9 @@ export function ConnectionItem({
       data-conn-item
       data-conn-name={connection.name}
       className={cn(
-        'group flex cursor-default select-none items-center gap-3 rounded-lg px-3 py-2.5 transition-colors',
+        'group flex cursor-default items-center gap-3 rounded-lg px-3 py-2.5 transition-colors',
         isDragging && 'opacity-40',
-        selected
-          ? 'bg-accent/10 ring-1 ring-accent/30'
-          : 'hover:bg-surface-raised/60',
+        selected ? 'bg-accent/10 ring-1 ring-accent/30' : 'hover:bg-surface-raised/60',
       )}
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
@@ -61,17 +59,16 @@ export function ConnectionItem({
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className="truncate text-[13px] font-medium text-fg">{connection.name}</span>
-          {isLocal && (
-            <span className="text-[11px] font-medium text-green-500">(local)</span>
-          )}
-          {hasSSH && (
-            <span className="text-[11px] font-medium text-accent">(SSH)</span>
-          )}
+          {isLocal && <span className="text-[11px] font-medium text-green-500">(local)</span>}
+          {hasSSH && <span className="text-[11px] font-medium text-accent">(SSH)</span>}
         </div>
         <div className="mt-0.5 truncate text-[11px] text-fg-muted">{addr}</div>
       </div>
       {status === 'connecting' && (
-        <span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-yellow-400" title={t('conn.connecting')} />
+        <span
+          className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-yellow-400"
+          title={t('conn.connecting')}
+        />
       )}
       {isConnected && (
         <span className="h-2 w-2 shrink-0 rounded-full bg-green-500" title={t('conn.connected')} />

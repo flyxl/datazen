@@ -98,7 +98,9 @@ function parseMysqlBlock(block: Record<string, unknown>, id: string): PlanNode[]
     nodes.push({
       id: `${id}.table`,
       label: mysqlTableLabel(block.table),
-      cost: parseNumeric(block.cost_info && isRecord(block.cost_info) ? block.cost_info.query_cost : undefined),
+      cost: parseNumeric(
+        block.cost_info && isRecord(block.cost_info) ? block.cost_info.query_cost : undefined,
+      ),
       rows: parseNumeric(block.table.rows_examined_per_scan),
       details: mysqlTableDetails(block.table),
       children: [],
@@ -130,9 +132,7 @@ function parseMysqlBlock(block: Record<string, unknown>, id: string): PlanNode[]
       nodes.push({
         id: `${id}.${key}`,
         label: key.replace(/_/g, ' '),
-        cost: parseNumeric(
-          isRecord(value.cost_info) ? value.cost_info.query_cost : undefined,
-        ),
+        cost: parseNumeric(isRecord(value.cost_info) ? value.cost_info.query_cost : undefined),
         details: [],
         children,
       });
@@ -170,7 +170,7 @@ function PlanTreeNode({ node, depth }: { node: PlanNode; depth: number }) {
   const hasChildren = node.children.length > 0;
 
   return (
-    <div className="select-none">
+    <div>
       <div
         className={cn(
           'flex items-start gap-1 rounded px-1 py-0.5 hover:bg-surface-raised/60',
@@ -183,7 +183,11 @@ function PlanTreeNode({ node, depth }: { node: PlanNode; depth: number }) {
       >
         <span className="mt-0.5 shrink-0 text-fg-muted">
           {hasChildren ? (
-            expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />
+            expanded ? (
+              <ChevronDown className="h-3 w-3" />
+            ) : (
+              <ChevronRight className="h-3 w-3" />
+            )
           ) : (
             <span className="inline-block h-3 w-3" />
           )}
