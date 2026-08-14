@@ -1,5 +1,6 @@
 import { expect, browser, $, $$ } from '@wdio/globals';
 import { closeExtraWindows } from '../helpers.js';
+import { t } from '../i18n.js';
 import {
   E2E_DASHBOARD_PREFIX,
   cleanupDashboard,
@@ -70,6 +71,17 @@ describe('数据看板组件 UX (UJ-05, UJ-06, UJ-09)', () => {
       async () => (await $('[data-testid="dashboard-tile-table"]')).isDisplayed(),
       { timeout: 10000, timeoutMsg: '等待表格视图' },
     );
+
+    // 表格视图的底部导出按钮必须可见且可交互（数据量较大时也不得被容器裁剪）。
+    const exportBtn = await $(
+      `[data-testid="dashboard-tile-table"] button[title="${t('export.export')}"]`,
+    );
+    await exportBtn.waitForDisplayed({ timeout: 5000 });
+    await exportBtn.click();
+    const exportDialog = await $(`=${t('export.title')}`);
+    await exportDialog.waitForDisplayed({ timeout: 5000 });
+    await browser.keys('Escape');
+    await browser.pause(300);
 
     const chartBtn = await $('[data-testid="widget-view-chart"]');
     await chartBtn.click();

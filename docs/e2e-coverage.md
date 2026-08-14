@@ -80,7 +80,7 @@
 | SQL 补全只拉取语句中已加载完整表名的列（禁止前缀 get_columns） | `schemaStore.test.ts` / `sqlEditorDefaults.test.ts` / `buildEditorSchema.test.ts` | Covered |
 | Schema Diff 窗口打开与步骤控件 | `schema-diff-window.ts` | Covered |
 | 数据同步窗口 | `data-sync-window.ts`, `homepage-features.ts`, `data-sync-real.ts` | Covered（横幅 / Compare / 行 Diff 计数 / 有差异可 Apply / Cancel IPC；Host E2E 无二进制时以单测替代） |
-| 数据看板 | `data-dashboard-*.ts` | Covered |
+| 数据看板 | `data-dashboard-*.ts` | Covered（表格视图底部导出按钮交互见 UJ-05） |
 | 应用数据备份标签 | `app-data-backup.ts` | Covered |
 | 路径 IPC 加固 | `path-ipc-hardening.ts` | Covered |
 
@@ -98,6 +98,7 @@
 | 主窗口在子窗口未关时关闭 | 原生窗口关闭 + 阻塞对话框 | `window.rs` `non_main_window_labels` 单测 |
 | 恢复覆盖确认（原生 `ask`）+ 选 SQL 文件 | OS 对话框不可点选 | `BackupWindow.test.tsx` ask/overwrite；`backup-database.ts` BACKUP-012 IPC overwrite |
 | 恢复执行日志截断（>1500 行省略标记 / 字符预算） | 需 >1500 条 SQL 语句的真实大备份，E2E 不可行 | `backupProgress.test.ts`（行/字符预算、头尾保留、累计省略数、超长单行截断）；`BackupWindow.test.tsx` 覆盖日志渲染路径 |
+| 数据看板表格视图：大数据量下底部导出按钮不被容器裁剪 | 依赖真实渲染高度的几何断言，跨 WebView 平台不稳定 | 布局修复（`flex flex-col` 容器约束使 DataTable `flex-1` 生效、虚拟滚动开启）；E2E UJ-05 覆盖导出按钮可见 + 点击打开导出对话框 |
 
 ## 维护约定
 
