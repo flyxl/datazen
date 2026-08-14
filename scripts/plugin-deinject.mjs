@@ -320,37 +320,6 @@ export function deinjectCargoContent(content) {
 }
 
 /**
- * Remove plugin ACL permission strings; preserve windows and other fields.
- * Layout matches resolve-drivers syncPluginCapabilities.
- * @param {string} content
- * @param {string[]} [pluginIds]
- */
-export function deinjectCapabilities(content, pluginIds = PLUGIN_ACL_IDS) {
-  const cap = JSON.parse(content);
-  if (!Array.isArray(cap.permissions)) {
-    throw new Error('capabilities.permissions is not an array');
-  }
-  const idSet = new Set(pluginIds);
-  cap.permissions = cap.permissions.filter((entry) => {
-    if (typeof entry !== 'string') return true;
-    return !idSet.has(entry.split(':')[0]);
-  });
-  const windows = Array.isArray(cap.windows) ? cap.windows : [];
-  const windowsJson = `[${windows.map((w) => JSON.stringify(w)).join(', ')}]`;
-  return [
-    `{`,
-    `  "identifier": ${JSON.stringify(cap.identifier)},`,
-    `  "description": ${JSON.stringify(cap.description)},`,
-    `  "windows": ${windowsJson},`,
-    `  "permissions": [`,
-    cap.permissions.map((p) => `    ${JSON.stringify(p)}`).join(',\n'),
-    `  ]`,
-    `}`,
-    ``,
-  ].join('\n');
-}
-
-/**
  * Produce commit-safe content: user edits kept, plugin injection removed.
  *
  * @param {string} relPath
@@ -359,13 +328,8 @@ export function deinjectCapabilities(content, pluginIds = PLUGIN_ACL_IDS) {
  * @returns {string}
  */
 export function deinjectManagedContent(relPath, workContent, opts = {}) {
-  const pluginIds = opts.pluginIds ?? PLUGIN_ACL_IDS;
-
   if (relPath.endsWith('Cargo.toml')) {
     return deinjectCargoContent(workContent);
-  }
-  if (relPath.endsWith('capabilities/default.json')) {
-    return deinjectCapabilities(workContent, pluginIds);
   }
   return workContent;
 }

@@ -6,11 +6,12 @@
  *   src/plugins/generated.ts
  *   src/plugins/generated-locales.ts
  *   src-tauri/src/plugin_init.rs
+ *   src-tauri/capabilities/default.json (merged from default_host.json + plugins)
  *
  * Used by `pnpm install` (prepare) and `pnpm build` so tsc / rust-analyzer /
  * beforeBuildCommand work on a fresh clone without injecting Cargo.toml.
  *
- * If all three files exist, skip (keeps the last `tauri:dev --drivers=...`
+ * If all files exist, skip (keeps the last `tauri:dev --drivers=...`
  * selection). Pass `--force` to regenerate. Driver set follows
  * `--drivers=...` / DATAZEN_DRIVERS / default `basic`.
  */
@@ -24,12 +25,17 @@ import { FULLY_GENERATED_MANAGED } from './plugin-deinject.mjs';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 export const ROOT = resolve(__dirname, '..');
 
+const GENERATED_FILES = [
+  ...FULLY_GENERATED_MANAGED,
+  'src-tauri/capabilities/default.json',
+];
+
 /**
  * @param {string} [root]
  * @returns {string[]}
  */
 export function missingGeneratedFiles(root = ROOT) {
-  return FULLY_GENERATED_MANAGED.filter((rel) => !existsSync(resolve(root, rel)));
+  return GENERATED_FILES.filter((rel) => !existsSync(resolve(root, rel)));
 }
 
 /**
