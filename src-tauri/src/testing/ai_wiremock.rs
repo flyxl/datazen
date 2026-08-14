@@ -1,41 +1,20 @@
 //! WireMock helpers for AI command integration tests.
 
-use std::sync::{Arc, OnceLock};
-
 use datazen_ai_api::{AiProviderConfig, AiProviderType};
-use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use wiremock::matchers::{header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 use super::app_state::TestAppState;
 
-fn ai_test_semaphore() -> Arc<Semaphore> {
-    static SEMAPHORE: OnceLock<Arc<Semaphore>> = OnceLock::new();
-    SEMAPHORE
-        .get_or_init(|| Arc::new(Semaphore::new(1)))
-        .clone()
-}
-
 /// Running mock HTTP server + helpers for OpenAI-compatible responses.
-///
-/// AI command tests mutate process-wide test state (notably the file keyring
-/// environment) and use a local HTTP server. Keep these tests isolated from
-/// one another so one test cannot change the environment while another test
-/// is initializing or resolving its provider.
 pub struct WiremockAi {
     pub server: MockServer,
-    _test_permit: OwnedSemaphorePermit,
 }
 
 impl WiremockAi {
     pub async fn start() -> Self {
-        let permit = ai_test_semaphore()
-            .acquire_owned()
-            .await
-            .expect("AI test semaphore closed");
         Self {
             server: MockServer::start().await,
-            _test_permit: permit,
         }
     }
 
