@@ -34,6 +34,9 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: TypeScript typecheck
+        run: pnpm typecheck
+
       - name: Guard tracked driver-managed files are not injected
         run: node scripts/check-managed-stubs.mjs
 
