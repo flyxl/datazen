@@ -31,6 +31,9 @@ export function MultiDatabaseSchemaTree({
   const error = useSchemaStore((s) => s.error);
   const databases = useSchemaStore((s) => s.databases);
   const currentDatabase = useSchemaStore((s) => s.currentDatabase);
+  const schemaEpoch = useSchemaStore((s) => s.schemaEpoch);
+  const tables = useSchemaStore((s) => s.tables);
+  const views = useSchemaStore((s) => s.views);
   const loadForConnection = useSchemaStore((s) => s.loadForConnection);
   const setLoadedTables = useSchemaStore((s) => s.setLoadedTables);
 
@@ -46,6 +49,44 @@ export function MultiDatabaseSchemaTree({
       databaseType,
     });
   }, [connectionId, loadForConnection, initialDatabase, databaseType]);
+
+  useEffect(() => {
+    if (!currentDatabase) return;
+    setDbTables((prev) => {
+      if (!(currentDatabase in prev)) return prev;
+      return { ...prev, [currentDatabase]: [...tables, ...views] };
+    });
+  }, [currentDatabase, tables, views]);
+
+  const expandedDbsRef = useRef(expandedDbs);
+  expandedDbsRef.current = expandedDbs;
+
+  useEffect(() => {
+    if (schemaEpoch === 0) return;
+    const expanded = [...expandedDbsRef.current];
+    if (expanded.length === 0) return;
+    let cancelled = false;
+    void (async () => {
+      const { databaseCommands } = await import('../../../commands/database');
+      for (const dbName of expanded) {
+        try {
+          await databaseCommands.useDatabase(connectionId, dbName);
+          const all = await databaseCommands.getTables(connectionId, dbName);
+          if (cancelled) return;
+          setDbTables((prev) => ({ ...prev, [dbName]: all }));
+          if (useSchemaStore.getState().currentDatabase === dbName) {
+            setLoadedTables(dbName, all);
+          }
+        } catch {
+          if (cancelled) return;
+          setDbTables((prev) => ({ ...prev, [dbName]: [] }));
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [schemaEpoch, connectionId, setLoadedTables]);
 
   const activateDatabase = useCallback(
     async (dbName: string, tables: TableInfo[]) => {

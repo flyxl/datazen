@@ -737,6 +737,8 @@ const translations = {
   'backup.restorePreparing': 'Reading backup file…',
   'backup.restoreProgress': 'Restoring {name} ({current}/{total})',
   'backup.progressLog': 'Execution log',
+  'backup.copyLog': 'Copy log',
+  'backup.logCopied': 'Copied',
   'win.backup': '백업 데이터베이스 - DataZen',
   'win.restore': '데이터베이스 복원 - DataZen',
   'connSettings.title': '연결 설정',

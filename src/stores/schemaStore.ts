@@ -9,6 +9,7 @@ import {
   collectTableLeafNames,
   isSchemaGroupingSchema,
   mergeNamespacePath,
+  omitTableLeaf,
   pathKey,
   type NamespaceMergeKind,
   type SqlNamespace,
@@ -114,6 +115,11 @@ interface SchemaStore {
   pathAliases: Record<string, string>;
   /** When true, setLoadedTables skips namespace merges (plugin owns tree via SDK). */
   namespaceOwnedByPlugin: boolean;
+  /**
+   * Bumped after a full table-list reload so MultiDatabaseSchemaTree can drop
+   * its local `dbTables` cache (merge-only namespace updates are not enough).
+   */
+  schemaEpoch: number;
   expanded: Set<string>;
   selectedId: string | null;
   loading: boolean;
@@ -128,6 +134,8 @@ interface SchemaStore {
    * trees that keep local caches but must feed SQL editor autocomplete).
    */
   setLoadedTables: (database: string, all: TableInfo[]) => void;
+  /** Instant sidebar update after DROP TABLE / DROP VIEW (before refetch). */
+  removeRelation: (name: string) => void;
   mergeNamespace: (segments: string[], kind: NamespaceMergeKind, names: string[]) => void;
   cachePathItems: (fetchPath: string, items: TableInfo[]) => void;
   /** Register display-name → fetch-id aliases and seed top-level namespace branches. */
@@ -158,6 +166,7 @@ export const useSchemaStore = create<SchemaStore>((set, get) => ({
   pathItems: {},
   pathAliases: {},
   namespaceOwnedByPlugin: false,
+  schemaEpoch: 0,
   expanded: new Set(),
   selectedId: null,
   loading: false,
@@ -215,7 +224,7 @@ export const useSchemaStore = create<SchemaStore>((set, get) => ({
       await databaseCommands.useDatabase(connectionId, database);
       const all = await databaseCommands.getTables(connectionId, database);
       get().setLoadedTables(database, all);
-      set({ loading: false });
+      set({ loading: false, schemaEpoch: get().schemaEpoch + 1 });
     } catch (e) {
       set({
         loading: false,
@@ -302,12 +311,12 @@ export const useSchemaStore = create<SchemaStore>((set, get) => ({
         nextLoadedPaths = new Set(loadedPaths);
         for (const [schema, names] of bySchema) {
           const segments = isMultiDatabase ? [database, schema] : [schema];
-          nextTree = mergeNamespacePath(nextTree, segments, 'tables', names);
+          nextTree = mergeNamespacePath(nextTree, segments, 'tables', names, { replace: true });
           nextLoadedPaths.add(pathKey(segments));
         }
       } else {
         const names = all.map((item) => item.name);
-        nextTree = mergeNamespacePath(nextTree, [database], 'tables', names);
+        nextTree = mergeNamespacePath(nextTree, [database], 'tables', names, { replace: true });
         nextLoadedPaths = new Set(loadedPaths).add(pathKey([database]));
       }
     }
@@ -319,6 +328,18 @@ export const useSchemaStore = create<SchemaStore>((set, get) => ({
       columnMap: {},
       namespaceTree: nextTree,
       loadedPaths: nextLoadedPaths,
+    });
+  },
+
+  removeRelation: (name) => {
+    const { tables, views, namespaceTree, selectedId } = get();
+    const nextSelected =
+      selectedId === `table:${name}` || selectedId === `view:${name}` ? null : selectedId;
+    set({
+      tables: tables.filter((item) => item.name !== name),
+      views: views.filter((item) => item.name !== name),
+      namespaceTree: omitTableLeaf(namespaceTree, name),
+      selectedId: nextSelected,
     });
   },
 
@@ -390,6 +411,7 @@ export const useSchemaStore = create<SchemaStore>((set, get) => ({
       pathItems: {},
       pathAliases: {},
       namespaceOwnedByPlugin: false,
+      schemaEpoch: 0,
       expanded: new Set(),
       selectedId: null,
       loading: false,

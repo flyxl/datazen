@@ -25,8 +25,10 @@ export function mergeNamespacePath(
   segments: string[],
   kind: NamespaceMergeKind,
   names: string[],
+  options?: { replace?: boolean },
 ): SqlNamespace {
   const root = asBranch(tree);
+  const replace = options?.replace === true;
 
   const setAt = (
     node: Record<string, SqlNamespace>,
@@ -34,6 +36,11 @@ export function mergeNamespacePath(
   ): Record<string, SqlNamespace> => {
     if (segs.length === 0) {
       const next = { ...node };
+      if (kind === 'tables' && replace) {
+        for (const [key, child] of Object.entries(next)) {
+          if (Array.isArray(child)) delete next[key];
+        }
+      }
       for (const name of names) {
         if (kind === 'tables') {
           next[name] = Array.isArray(next[name]) ? next[name] : [];
@@ -49,6 +56,20 @@ export function mergeNamespacePath(
   };
 
   return setAt(root, segments);
+}
+
+/** Drop table-leaf keys named `tableName` at any depth (keep catalog branches). */
+export function omitTableLeaf(tree: SqlNamespace, tableName: string): SqlNamespace {
+  if (isLeaf(tree)) return tree;
+  const out: Record<string, SqlNamespace> = {};
+  for (const [key, child] of Object.entries(tree)) {
+    if (isLeaf(child)) {
+      if (key !== tableName) out[key] = child;
+    } else {
+      out[key] = omitTableLeaf(child, tableName);
+    }
+  }
+  return out;
 }
 
 export function namespaceHasChild(tree: SqlNamespace, segments: string[]): boolean {

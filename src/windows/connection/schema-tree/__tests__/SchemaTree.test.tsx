@@ -56,7 +56,10 @@ vi.mock('../../../../plugins/generated', () => {
 
 /** jsdom has no layout; render all virtual rows so tree content is visible. */
 vi.mock('@tanstack/react-virtual', () => ({
-  useVirtualizer: ({ count, estimateSize }: {
+  useVirtualizer: ({
+    count,
+    estimateSize,
+  }: {
     count: number;
     estimateSize?: (i: number) => number;
   }) => {
@@ -126,16 +129,10 @@ describe('SchemaTree routing', () => {
       ),
     ).toBe(false);
     expect(
-      shouldUseMultiDatabaseTree(
-        { hasMultiDatabase: true, databaseFieldType: 'name' },
-        undefined,
-      ),
+      shouldUseMultiDatabaseTree({ hasMultiDatabase: true, databaseFieldType: 'name' }, undefined),
     ).toBe(true);
     expect(
-      shouldUseMultiDatabaseTree(
-        { hasMultiDatabase: false, databaseFieldType: 'domain' },
-        'x',
-      ),
+      shouldUseMultiDatabaseTree({ hasMultiDatabase: false, databaseFieldType: 'domain' }, 'x'),
     ).toBe(false);
   });
 
@@ -160,9 +157,7 @@ describe('SchemaTree routing', () => {
   it('routes mysql without initialDatabase to MultiDatabaseSchemaTree when length > 1', async () => {
     mockGetDatabases.mockResolvedValueOnce(['datazen_test', 'mysql', 'information_schema']);
 
-    const { findByText, queryByText } = render(
-      <SchemaTree {...baseProps} databaseType="mysql" />,
-    );
+    const { findByText, queryByText } = render(<SchemaTree {...baseProps} databaseType="mysql" />);
 
     expect(await findByText('datazen_test')).toBeInTheDocument();
     expect(await findByText('mysql')).toBeInTheDocument();
@@ -177,9 +172,7 @@ describe('SchemaTree routing', () => {
   it('routes mysql without initialDatabase to MultiDatabaseSchemaTree when length === 1', async () => {
     mockGetDatabases.mockResolvedValueOnce(['only_db']);
 
-    const { findByText, queryByText } = render(
-      <SchemaTree {...baseProps} databaseType="mysql" />,
-    );
+    const { findByText, queryByText } = render(<SchemaTree {...baseProps} databaseType="mysql" />);
 
     expect(await findByText('only_db')).toBeInTheDocument();
     expect(queryByText(/schemaTree\.tables/)).not.toBeInTheDocument();
@@ -226,9 +219,7 @@ describe('SchemaTree routing', () => {
       { name: 'orders', tableType: 'TABLE', schema: 'public', rowCount: null },
     ]);
 
-    const { findByText } = render(
-      <SchemaTree {...baseProps} databaseType="postgresql" />,
-    );
+    const { findByText } = render(<SchemaTree {...baseProps} databaseType="postgresql" />);
 
     const dbBtn = await findByText('db1');
     fireEvent.click(dbBtn.closest('button')!);
@@ -253,9 +244,7 @@ describe('SchemaTree routing', () => {
       { name: 't2', tableType: 'TABLE', schema: null, rowCount: null },
     ]);
 
-    const { findByText, getByText } = render(
-      <SchemaTree {...baseProps} databaseType="mysql" />,
-    );
+    const { findByText, getByText } = render(<SchemaTree {...baseProps} databaseType="mysql" />);
 
     const dbBtn = await findByText('alpha');
     fireEvent.click(dbBtn.closest('button')!);
@@ -272,5 +261,25 @@ describe('SchemaTree routing', () => {
 
     expect(await findByText('t1')).toBeInTheDocument();
     expect(getByText('t2')).toBeInTheDocument();
+  });
+
+  it('removes a dropped table from the multi-db sidebar without remounting', async () => {
+    mockGetDatabases.mockResolvedValueOnce(['alpha', 'beta']);
+    mockGetTables.mockResolvedValueOnce([
+      { name: 't1', tableType: 'TABLE', schema: null, rowCount: null },
+      { name: 't2', tableType: 'TABLE', schema: null, rowCount: null },
+    ]);
+
+    const { findByText, queryByText } = render(<SchemaTree {...baseProps} databaseType="mysql" />);
+
+    fireEvent.click((await findByText('alpha')).closest('button')!);
+    expect(await findByText('t2')).toBeInTheDocument();
+
+    useSchemaStore.getState().removeRelation('t2');
+
+    await waitFor(() => {
+      expect(queryByText('t2')).not.toBeInTheDocument();
+    });
+    expect(await findByText('t1')).toBeInTheDocument();
   });
 });

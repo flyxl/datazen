@@ -56,7 +56,7 @@ export function formatRestoreProgress(
   return t('backup.restoring');
 }
 
-const MAX_PROGRESS_LOG_LINES = 3000;
+const MAX_PROGRESS_LOG_LINES = 5000;
 
 /** Append a progress line, skipping consecutive duplicates and bounding length. */
 export function appendProgressLog(lines: string[], next: string): string[] {
@@ -65,4 +65,42 @@ export function appendProgressLog(lines: string[], next: string): string[] {
   if (lines[lines.length - 1] === trimmed) return lines;
   const out = [...lines, trimmed];
   return out.length > MAX_PROGRESS_LOG_LINES ? out.slice(-MAX_PROGRESS_LOG_LINES) : out;
+}
+
+/** Buffer progress lines and flush to React on an interval (avoids per-statement re-renders). */
+export function createProgressLogPump(
+  setLines: (lines: string[]) => void,
+  intervalMs = 80,
+): {
+  reset: (initial: string[]) => void;
+  push: (line: string) => void;
+  flush: () => void;
+} {
+  let lines: string[] = [];
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const flush = () => {
+    timer = null;
+    setLines(lines);
+  };
+  return {
+    reset(initial) {
+      if (timer != null) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      lines = [...initial];
+      setLines(lines);
+    },
+    push(line) {
+      lines = appendProgressLog(lines, line);
+      if (timer == null) timer = setTimeout(flush, intervalMs);
+    },
+    flush() {
+      if (timer != null) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      setLines(lines);
+    },
+  };
 }

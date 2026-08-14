@@ -377,10 +377,26 @@ pub trait DatabaseDriver: Send + Sync {
         out
     }
 
+    /// After a restore statement fails: clear an aborted PG transaction,
+    /// create missing `nextval` sequences, and when `overwrite` is set, drop an
+    /// existing relation and ask the pipeline to retry `CREATE`.
+    async fn recover_restore_statement(
+        &self,
+        handle: &ConnectionHandle,
+        stmt: &str,
+        error: &DriverError,
+        overwrite: bool,
+    ) -> Result<bool, DriverError> {
+        crate::sql_dump::recover_restore_statement_default(self, handle, stmt, error, overwrite)
+            .await
+    }
+
     /// Restore a SQL dump by executing statements against the live connection.
     ///
     /// Default uses [`crate::sql_dump::RestoreSession`] (streaming-capable) and
-    /// honors [`BackupRestoreOptions::single_transaction`] / dump header flags.
+    /// honors [`BackupRestoreOptions::single_transaction`] when the **user**
+    /// requested it. Dump-header `-- Options: single-transaction` is dump-time
+    /// snapshot only and is not treated as restore atomicity.
     /// Override this method to replace the entire restore pipeline.
     async fn restore_sql(
         &self,
