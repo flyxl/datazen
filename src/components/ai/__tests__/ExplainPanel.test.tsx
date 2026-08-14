@@ -17,6 +17,17 @@ vi.mock('../../query/ExplainPlanTree', () => ({
   ),
 }));
 
+const dataTableCalls = vi.hoisted(() => ({
+  last: null as { columns: { id: string; name: string }[]; rows: unknown[][] } | null,
+}));
+
+vi.mock('../../DataTable/DataTable', () => ({
+  DataTable: (props: { columns: { id: string; name: string }[]; rows: unknown[][] }) => {
+    dataTableCalls.last = { columns: props.columns, rows: props.rows };
+    return <div data-testid="explain-datatable" />;
+  },
+}));
+
 const aiState = vi.hoisted(() => ({
   explainAnalysis: null as {
     summary: string;
@@ -64,6 +75,35 @@ describe('ExplainPanel', () => {
     });
   });
 
+  it('renders raw explain output as a DataTable when planJson carries columns/rows', () => {
+    const planJson = {
+      query_block: { nested_loop: [{ table: { table_name: 'ot', access_type: 'ref' } }] },
+      columns: ['id', 'select_type', 'table', 'type', 'key', 'rows'],
+      rows: [['1', 'SIMPLE', 'ot', 'ref', 'idx_uid', '69']],
+    };
+    const { getByTestId, queryByText } = render(
+      <ExplainPanel
+        connectionId="c1"
+        sql="SELECT 1"
+        explainOutput="raw text fallback"
+        planJson={planJson}
+      />,
+    );
+    // DataTable is rendered with the raw EXPLAIN columns/rows.
+    expect(getByTestId('explain-datatable')).toBeInTheDocument();
+    expect(dataTableCalls.last?.columns.map((c) => c.name)).toEqual([
+      'id',
+      'select_type',
+      'table',
+      'type',
+      'key',
+      'rows',
+    ]);
+    expect(dataTableCalls.last?.rows).toEqual([['1', 'SIMPLE', 'ot', 'ref', 'idx_uid', '69']]);
+    // The plain-text fallback is not rendered.
+    expect(queryByText('raw text fallback')).toBeNull();
+  });
+
   it('shows analyzing and error states', () => {
     aiState.isAnalyzingExplain = true;
     const { getByText, rerender } = render(
@@ -105,9 +145,7 @@ describe('ExplainPanel', () => {
 
   it('shows not configured footer', () => {
     aiState.isConfigured = false;
-    const { getByText } = render(
-      <ExplainPanel connectionId="c1" sql="" explainOutput="x" />,
-    );
+    const { getByText } = render(<ExplainPanel connectionId="c1" sql="" explainOutput="x" />);
     fireEvent.click(getByText('settings.ai.goToConfigure'));
     expect(openSettingsWindow).toHaveBeenCalledWith('ai');
   });
