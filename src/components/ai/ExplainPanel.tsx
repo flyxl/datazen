@@ -1,7 +1,9 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { AlertTriangle, ArrowDownToLine, Loader2, Settings, Sparkles, Zap } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { ExplainPlanTree } from '../query/ExplainPlanTree';
+import { DataTable } from '../DataTable/DataTable';
+import type { ColumnDef } from '../DataTable/TableHeader';
 import { useI18n } from '../../hooks/useI18n';
 import { useAiStore } from '../../stores/aiStore';
 import { cn } from '../../lib/cn';
@@ -27,7 +29,13 @@ const severityIcons: Record<string, string> = {
   low: 'bg-blue-500',
 };
 
-export function ExplainPanel({ connectionId, sql, explainOutput, planJson, onApplySql }: ExplainPanelProps) {
+export function ExplainPanel({
+  connectionId,
+  sql,
+  explainOutput,
+  planJson,
+  onApplySql,
+}: ExplainPanelProps) {
   const { t } = useI18n();
   const analysis = useAiStore((s) => s.explainAnalysis);
   const isAnalyzing = useAiStore((s) => s.isAnalyzingExplain);
@@ -42,19 +50,33 @@ export function ExplainPanel({ connectionId, sql, explainOutput, planJson, onApp
     };
   }, [clearExplainAnalysis]);
 
+  /**
+   * When the driver returns the raw EXPLAIN result set inside planJson
+   * (columns + rows, like MySQL / Kiwi), render it as a DataTable — the same
+   * view as running EXPLAIN directly in the SQL editor. Falls back to the
+   * plain-text output for drivers that only provide plan_text.
+   */
+  const rawTable = useMemo(() => {
+    if (!planJson || typeof planJson !== 'object' || Array.isArray(planJson)) return null;
+    const record = planJson as Record<string, unknown>;
+    const cols = record['columns'];
+    const rows = record['rows'];
+    if (!Array.isArray(cols) || !Array.isArray(rows)) return null;
+    const columnDefs: ColumnDef[] = cols
+      .filter((c): c is string => typeof c === 'string')
+      .map((name) => ({ id: name, name, type: 'string' }));
+    if (columnDefs.length === 0) return null;
+    const dataRows = rows.filter((r): r is unknown[] => Array.isArray(r));
+    return { columns: columnDefs, rows: dataRows };
+  }, [planJson]);
+
   const handleAnalyze = useCallback(() => {
     void analyzeExplain({ connectionId, explainOutput, originalSql: sql });
   }, [analyzeExplain, connectionId, explainOutput, sql]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-auto">
-      {planJson != null && (
-        <div className="border-b border-edge p-3">
-          <ExplainPlanTree planJson={planJson} />
-        </div>
-      )}
-
-      {/* Raw EXPLAIN output */}
+      {/* Raw EXPLAIN output — DataTable when the driver provides columns/rows */}
       <div className="border-b border-edge p-3">
         <div className="mb-1.5 flex items-center justify-between">
           <span className="text-[11px] font-medium uppercase tracking-wider text-fg-muted">
@@ -71,10 +93,37 @@ export function ExplainPanel({ connectionId, sql, explainOutput, planJson, onApp
             </Button>
           )}
         </div>
-        <pre className="max-h-[200px] overflow-auto rounded border border-edge bg-surface-alt p-2 font-mono text-xs text-fg-secondary">
-          {explainOutput}
-        </pre>
+        {rawTable ? (
+          <div className="overflow-hidden rounded border border-edge">
+            <DataTable
+              columns={rawTable.columns}
+              rows={rawTable.rows}
+              statusBar={
+                <div className="flex items-center gap-3 border-b border-edge bg-surface-alt px-3 py-1.5 text-xs text-fg-secondary">
+                  <span>
+                    {rawTable.rows.length} {t('common.rows')}
+                  </span>
+                  <span className="text-edge">|</span>
+                  <span>
+                    {rawTable.columns.length} {t('common.columns')}
+                  </span>
+                </div>
+              }
+            />
+          </div>
+        ) : (
+          <pre className="max-h-[200px] overflow-auto rounded border border-edge bg-surface-alt p-2 font-mono text-xs text-fg-secondary">
+            {explainOutput}
+          </pre>
+        )}
       </div>
+
+      {/* Plan tree */}
+      {planJson != null && (
+        <div className="border-b border-edge p-3">
+          <ExplainPlanTree planJson={planJson} />
+        </div>
+      )}
 
       {/* AI Analysis */}
       {isAnalyzing && (
@@ -113,10 +162,18 @@ export function ExplainPanel({ connectionId, sql, explainOutput, planJson, onApp
                 {analysis.bottlenecks.map((b, i) => (
                   <div
                     key={i}
-                    className={cn('rounded border px-3 py-2', severityColors[b.severity] ?? severityColors.low)}
+                    className={cn(
+                      'rounded border px-3 py-2',
+                      severityColors[b.severity] ?? severityColors.low,
+                    )}
                   >
                     <div className="flex items-center gap-2">
-                      <span className={cn('inline-block h-2 w-2 rounded-full', severityIcons[b.severity] ?? severityIcons.low)} />
+                      <span
+                        className={cn(
+                          'inline-block h-2 w-2 rounded-full',
+                          severityIcons[b.severity] ?? severityIcons.low,
+                        )}
+                      />
                       <span className="text-xs font-medium">{b.node}</span>
                     </div>
                     <p className="mt-1 text-xs opacity-80">{b.description}</p>
@@ -135,7 +192,10 @@ export function ExplainPanel({ connectionId, sql, explainOutput, planJson, onApp
               </div>
               <div className="space-y-1.5">
                 {analysis.suggestions.map((s, i) => (
-                  <div key={i} className="rounded border border-green-500/20 bg-green-500/5 px-3 py-2">
+                  <div
+                    key={i}
+                    className="rounded border border-green-500/20 bg-green-500/5 px-3 py-2"
+                  >
                     <p className="text-xs text-fg-secondary">{s.description}</p>
                     {s.sql && (
                       <div className="mt-1.5">
@@ -169,7 +229,11 @@ export function ExplainPanel({ connectionId, sql, explainOutput, planJson, onApp
         <div className="flex items-center gap-2 p-4 text-xs text-fg-muted">
           <Sparkles className="h-3.5 w-3.5" />
           <span className="flex-1">{t('explain.notConfigured')}</span>
-          <Button variant="primary" className="h-6 gap-1 px-2 text-[11px]" onClick={() => openSettingsWindow('ai')}>
+          <Button
+            variant="primary"
+            className="h-6 gap-1 px-2 text-[11px]"
+            onClick={() => openSettingsWindow('ai')}
+          >
             <Settings className="h-3 w-3" />
             {t('settings.ai.goToConfigure')}
           </Button>
