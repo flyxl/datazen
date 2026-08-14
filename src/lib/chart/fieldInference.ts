@@ -1,11 +1,15 @@
 import type { ColumnInfo, StatementResult, Value } from '../../types';
 import type { ChartField, InferredFieldType } from '../../types/chart';
 
-export function inferFieldType(column: ColumnInfo, sampleValues: (Value | null)[]): InferredFieldType {
+export function inferFieldType(
+  column: ColumnInfo,
+  sampleValues: (Value | null)[],
+): InferredFieldType {
   const dt = column.dataType.toLowerCase();
 
   if (/bool/.test(dt)) return 'boolean';
-  if (/int|serial|double|numeric|decimal|real|float|money|bigint|smallint/.test(dt)) return 'numeric';
+  if (/int|serial|double|numeric|decimal|real|float|money|bigint|smallint/.test(dt))
+    return 'numeric';
   if (/timestamp|date|time/.test(dt)) return 'datetime';
 
   const nonNull = sampleValues.filter((v) => v != null);
@@ -14,8 +18,16 @@ export function inferFieldType(column: ColumnInfo, sampleValues: (Value | null)[
   if (nonNull.every((v) => typeof v === 'number')) return 'numeric';
   if (nonNull.every((v) => typeof v === 'boolean')) return 'boolean';
   if (nonNull.every((v) => typeof v === 'string' && isDateLike(v as string))) return 'datetime';
+  if (nonNull.every((v) => isNumericLike(v))) return 'numeric';
 
   return 'categorical';
+}
+
+function isNumericLike(v: unknown): boolean {
+  if (typeof v === 'number') return true;
+  if (typeof v !== 'string') return false;
+  const s = v.trim();
+  return s !== '' && !isNaN(Number(s));
 }
 
 function isDateLike(s: string): boolean {

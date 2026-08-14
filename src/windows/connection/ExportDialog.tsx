@@ -10,6 +10,7 @@ import {
   saveExportResultWithDialog,
 } from '../../lib/exportDialogShared';
 import { isStreamableExportFormat, streamTableExportToSaveDialog } from '../../lib/exportStream';
+import { supportsFullTableExport, type DataExportCapability } from '../../lib/exportCapability';
 import type { ColumnSchema } from '../../types';
 import { useI18n } from '../../hooks/useI18n';
 import { getCachedTableSchema } from '../../lib/schemaCache';
@@ -26,6 +27,12 @@ interface ExportDialogProps {
   totalRows?: number;
   /** Prefer entire-table when opened from the schema tree (no page loaded). */
   defaultScope?: ExportScope;
+  /**
+   * Driver data-export capability. Defaults to `full_table`.
+   * - `none`: export disabled entirely.
+   * - `loaded_only`: only already-loaded rows may be exported (no entire-table).
+   */
+  dataExportCapability?: DataExportCapability;
 }
 
 export function ExportDialog({
@@ -39,9 +46,12 @@ export function ExportDialog({
   connectionId,
   totalRows,
   defaultScope,
+  dataExportCapability = 'full_table',
 }: ExportDialogProps) {
   const { t } = useI18n();
-  const allowEntire = Boolean(connectionId);
+  const exportLocked = dataExportCapability === 'none';
+  const allowEntire =
+    !exportLocked && supportsFullTableExport(dataExportCapability) && Boolean(connectionId);
   const [format, setFormat] = useState<ExportFormat>('csv');
   const [scope, setScope] = useState<ExportScope>(
     defaultScope ?? (allowEntire && rows.length === 0 ? 'entire_table' : 'current_page'),
@@ -197,7 +207,9 @@ export function ExportDialog({
           <Button
             variant="primary"
             onClick={() => void handleExport()}
-            disabled={exporting || (loadedColumns.length > 0 && selectedCols.size === 0)}
+            disabled={
+              exporting || exportLocked || (loadedColumns.length > 0 && selectedCols.size === 0)
+            }
           >
             {exporting ? t('export.exporting') : t('export.export')}
           </Button>
@@ -205,6 +217,11 @@ export function ExportDialog({
       }
     >
       <div className="space-y-4">
+        {exportLocked && (
+          <div className="rounded-md border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-500">
+            {t('export.disabledByDriver')}
+          </div>
+        )}
         <div>
           <label className="mb-1 block text-xs font-medium text-fg-secondary">
             {t('export.format')}

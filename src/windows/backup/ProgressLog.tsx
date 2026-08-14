@@ -60,9 +60,6 @@ export function ProgressLog({ lines }: ProgressLogProps) {
   }, [lines]);
 
   const items = virtualizer.getVirtualItems();
-  const paddingTop = items.length > 0 ? items[0].start : 0;
-  const paddingBottom =
-    items.length > 0 ? virtualizer.getTotalSize() - items[items.length - 1].end : 0;
 
   return (
     <div className="mb-3 flex min-h-0 flex-1 flex-col">
@@ -83,12 +80,20 @@ export function ProgressLog({ lines }: ProgressLogProps) {
         className="selectable min-h-0 flex-1 overflow-auto rounded border border-edge bg-surface px-2 py-1 font-mono text-[11px] text-fg-secondary"
         data-testid="backup-progress-log"
       >
-        <div style={{ paddingTop, paddingBottom }}>
+        <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
           {items.map((row) => (
             <div
               key={row.index}
               className="select-text overflow-hidden text-ellipsis whitespace-nowrap"
-              style={{ height: ROW_HEIGHT, lineHeight: `${ROW_HEIGHT}px` }}
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                height: ROW_HEIGHT,
+                lineHeight: `${ROW_HEIGHT}px`,
+                transform: `translateY(${row.start}px)`,
+              }}
               title={lines[row.index]}
             >
               {lines[row.index]}

@@ -27,6 +27,11 @@ import { cn } from '../../lib/cn';
 import { openDocsWindow } from '../../lib/windowManager';
 import { DB_REGISTRY, escapeIdent, getDbLabel } from '../../lib/databaseTypes';
 import { canOpenStructureEditor } from '../../lib/structureEditor/canOpenStructureEditor';
+import {
+  resolveExportScope,
+  supportsAnyExport,
+  supportsFullTableExport,
+} from '../../lib/exportCapability';
 import { resolveCreateTableSchema } from '../../lib/structureEditor/resolveCreateTableSchema';
 import { getCachedDDL, invalidateSchemaCache } from '../../lib/schemaCache';
 import { showNativeContextMenu } from '../../lib/nativeContextMenu';
@@ -141,6 +146,9 @@ export function SqlConnectionView({
   const isReadOnly = dbMeta?.readOnly === true;
   const showStructureEditor = canOpenStructureEditor(dbMeta) && !isReadOnly;
   const supportsErDiagram = dbMeta?.supportsErDiagram !== false;
+  const exportScope = resolveExportScope(dbMeta);
+  const exportDataSupported = supportsAnyExport(exportScope);
+  const batchExportSupported = supportsFullTableExport(exportScope);
   const safeMode = useSettingsStore((s) => s.settings.safeMode);
 
   const [panels, setPanels] = useState<Panel[]>([]);
@@ -718,7 +726,8 @@ export function SqlConnectionView({
           readOnly: isReadOnly,
           showOpenStructure: true,
           showErFocus: supportsErDiagram,
-          showExport: kind === 'view' ? true : undefined,
+          showExport: exportDataSupported ? (kind === 'view' ? true : undefined) : false,
+          showBatchExport: batchExportSupported ? (kind === 'view' ? true : undefined) : false,
           showNewTable: showStructureEditor,
         }),
         { x: payload.x, y: payload.y },
@@ -739,6 +748,8 @@ export function SqlConnectionView({
       isReadOnly,
       showStructureEditor,
       supportsErDiagram,
+      exportDataSupported,
+      batchExportSupported,
       safeMode,
     ],
   );
@@ -879,16 +890,18 @@ export function SqlConnectionView({
             </Button>
           </>
         )}
-        <Button
-          variant="secondary"
-          className="h-8"
-          data-testid="conn-toolbar-export"
-          title={t('batchExport.title')}
-          onClick={handleOpenBatchExportFromToolbar}
-        >
-          <Download className="h-4 w-4" />
-          {t('batchExport.title')}
-        </Button>
+        {batchExportSupported && (
+          <Button
+            variant="secondary"
+            className="h-8"
+            data-testid="conn-toolbar-export"
+            title={t('batchExport.title')}
+            onClick={handleOpenBatchExportFromToolbar}
+          >
+            <Download className="h-4 w-4" />
+            {t('batchExport.title')}
+          </Button>
+        )}
         <div className="mx-1 h-6 w-px bg-edge" />
 
         <div className="relative min-w-0 max-w-[280px] flex-1">
@@ -1248,6 +1261,7 @@ export function SqlConnectionView({
           connectionId={connectionId}
           totalRows={totalRows}
           defaultScope="entire_table"
+          dataExportCapability={exportScope}
         />
       )}
 
@@ -1263,6 +1277,7 @@ export function SqlConnectionView({
         tables={exportableTableNames}
         initialSelected={batchExportInitialSelected}
         loadTableExportData={loadTableExportData}
+        dataExportCapability={exportScope}
       />
 
       <ImportDialog

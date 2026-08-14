@@ -792,6 +792,7 @@ pub fn run() {
             commands::commit_row_deletes,
             commands::execute_query,
             commands::execute_query_stream,
+            commands::export_tables_stream,
             commands::get_driver_commands,
             commands::get_connection_commands,
             commands::execute_driver_command,
