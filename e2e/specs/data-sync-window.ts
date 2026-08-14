@@ -62,21 +62,17 @@ describe('数据同步窗口 (DSW-001~DSW-005)', () => {
     expect(body).not.toContain('DROP TABLE');
   });
 
-  it('DSW-005: 主页数据同步按钮应打开同步窗口', async () => {
+  it('DSW-005: 主页不再暴露数据同步入口，窗口改为 URL 直达', async () => {
+    // 主窗口内容不再给出数据同步按钮入口。
     await closeExtraWindows(mainWindow);
     await browser.switchToWindow(mainWindow);
     await browser.pause(300);
-    const syncBtn = await $(`button*=${t('action.dataSync')}`);
-    await syncBtn.waitForDisplayed({ timeout: 8000 });
-    await syncBtn.click();
-    await browser.waitUntil(async () => (await browser.getWindowHandles()).length > 1, {
-      timeout: 15000,
-      timeoutMsg: 'Timed out waiting for data sync window',
-    });
-    const handles = await browser.getWindowHandles();
-    const syncWin = handles.find((h) => h !== mainWindow)!;
-    await browser.switchToWindow(syncWin);
-    await browser.pause(1000);
+    const hiddenSyncEntry = await $(`button*=${t('action.dataSync')}`);
+    await expect(hiddenSyncEntry).not.toBeDisplayed();
+
+    // 同步窗口仍可经由 URL 打开。
+    await browser.url('tauri://localhost/window.html?window=data-sync');
+    await browser.pause(1500);
     await expect(await $('[data-testid="data-sync-overwrite-retired"]')).toBeDisplayed();
     await expect(await $('[data-testid="data-sync-compare"]')).toBeDisplayed();
   });
@@ -135,16 +131,30 @@ describe('数据同步窗口映射门闸 (DSW-MAP)', () => {
       }
     }
 
+    // Selecting each endpoint auto-populates its database list and defaults to the
+    // connection's configured database, which is required before Compare.
+    await browser.execute(() => {
+      const src = document.querySelector('[data-testid="data-sync-source-database"]');
+      const tgt = document.querySelector('[data-testid="data-sync-target-database"]');
+      return {
+        srcHasSelect: !!src,
+        tgtHasSelect: !!tgt,
+      };
+    });
+    await browser.pause(800);
+
     const compare = await $('[data-testid="data-sync-compare"]');
     await compare.click();
     await browser.pause(2000);
 
+    // If no enumerable database is available, the compare is gated on a selection.
+    const gated = await $('[data-testid="data-sync-error"]');
+    if (await gated.isDisplayed().catch(() => false)) {
+      return;
+    }
+
     const rows = await $$('[data-testid="data-sync-mapping-row"]');
     if (rows.length === 0) {
-      const err = await $('[data-testid="data-sync-error"]');
-      if (await err.isDisplayed().catch(() => false)) {
-        return;
-      }
       return;
     }
     expect(rows.length).toBeGreaterThan(0);
@@ -152,5 +162,10 @@ describe('数据同步窗口映射门闸 (DSW-MAP)', () => {
     await expect(apply).toBeDisplayed();
     await expect(apply).toBeDisabled();
     expect(await apply.getAttribute('title')).toContain(t('sync.applyUnavailable'));
+  });
+
+  it('DSW-MAP-002: 选连接后应出现数据库选择器', async () => {
+    await expect(await $('[data-testid="data-sync-source-database"]')).toBeDisplayed();
+    await expect(await $('[data-testid="data-sync-target-database"]')).toBeDisplayed();
   });
 });

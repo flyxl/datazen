@@ -20,7 +20,6 @@ import {
   Play,
   Sparkles,
   Square,
-  Stethoscope,
   TableProperties,
   Trash2,
   Undo2,
@@ -49,6 +48,7 @@ import {
   resolveQueryContextPath,
 } from '../../lib/queryContextPath';
 import { QueryContextSelectors } from '../../components/query/QueryContextSelectors';
+import { QueryErrorPanel } from '../../components/query/QueryErrorPanel';
 import { DataTable } from '../../components/DataTable/DataTable';
 import type { ColumnDef } from '../../components/DataTable/TableHeader';
 import { ChartView } from '../../components/chart/ChartView';
@@ -925,21 +925,10 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
             {!showExplain && tab.error && !tab.running && (
               <div className="flex-1 overflow-auto">
                 <div className="p-4">
-                  <div className="flex items-start gap-2 rounded-md border border-red-500/20 bg-red-500/10 px-4 py-3">
-                    <span className="flex-1 text-sm text-red-400">{tab.error}</span>
-                    {currentDatabase && (
-                      <button
-                        type="button"
-                        className="shrink-0 rounded px-2 py-0.5 text-[11px] text-blue-400 hover:bg-blue-500/10"
-                        onClick={() => setDiagnosisVisible(true)}
-                      >
-                        <span className="flex items-center gap-1">
-                          <Stethoscope className="h-3 w-3" />
-                          {t('diagnosis.diagnose')}
-                        </span>
-                      </button>
-                    )}
-                  </div>
+                  <QueryErrorPanel
+                    message={tab.error}
+                    onDiagnose={currentDatabase ? () => setDiagnosisVisible(true) : undefined}
+                  />
                 </div>
                 {diagnosisVisible && currentDatabase && (
                   <DiagnosisPanel
@@ -954,7 +943,7 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
               </div>
             )}
 
-            {!showExplain && results.length > 0 && (
+            {!showExplain && !tab.error && results.length > 0 && (
               <>
                 {/* Result tabs */}
                 {(results.length > 1 || explainResult) && (

@@ -19,6 +19,10 @@ DataZen 把三类能力拆开，**本模块只实现 Data Synchronization**（�
 3. 主键集合与顺序必须一致。
 4. 禁止同一连接 + 同一 database + 同一 schema 自同步。
 5. 异构 SQL（如 PG→MySQL）走 IR，**不是** Synchronization。
+6. **按 database 同步，不按 connection**：选择连接后，还需各自选定源/目标数据库。IPC 接收
+   `source_database` / `target_database`（`Option<String>`），`inspect` / `compare` / `apply` /
+   `execute` 在查询前对两端连接执行 `use_database(db)`；未传则回落到连接的默认 `database`。
+   前端用 `get_databases` 枚举并默认选中连接的 `database` 下拉（Compare 前两端都必须有值）。
 
 ## 2. 模块
 
@@ -73,8 +77,10 @@ execute_statements（begin → query_with_params → commit；失败/Cancel 则 
 ## 4. 前端
 
 - 窗口：`src/windows/data-sync/DataSyncWindow.tsx`（单例 `data-sync`）
+- 连接级选择源/目标连接后，再各选一个具体 **database**（枚举 `get_databases`，默认取连接的 `database`）：
+  `data-sync-source-database` / `data-sync-target-database`
 - Pairing：`src/lib/syncPairing.ts`（与 Rust `pairing.rs` 对齐）
-- IPC：`src/commands/sync.ts` → `compareDataSync` / `applyDataSync` / `cancelDataSync` / `executeDataSync`
+- IPC：`src/commands/sync.ts` → `compareDataSync` / `applyDataSync` / `cancelDataSync` / `executeDataSync`（均带 `sourceDatabase` / `targetDatabase`）
 - 有行差异且已勾选 MATCHED 表时 Apply 为 `data-testid="data-sync-start"`；否则 `data-sync-start-disabled`
 - 比较/执行中 Cancel：`data-testid="data-sync-cancel"` → `cancel_data_sync(jobId)`
 - 覆盖拷贝横幅：`data-testid="data-sync-overwrite-retired"`

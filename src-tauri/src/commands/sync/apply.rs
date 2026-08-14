@@ -31,6 +31,8 @@ pub(crate) async fn compare_data_sync_impl(
     target_connection_id: String,
     tables: Vec<String>,
     job_id: Option<String>,
+    source_database: Option<String>,
+    target_database: Option<String>,
 ) -> Result<Vec<TableResult>, CommandError> {
     let cancelled = match job_id.as_deref() {
         Some(id) => Some(super::jobs::ensure_job(id).await),
@@ -40,6 +42,8 @@ pub(crate) async fn compare_data_sync_impl(
         state,
         source_connection_id.clone(),
         target_connection_id.clone(),
+        source_database.clone(),
+        target_database.clone(),
     )
     .await?;
     let wanted: std::collections::HashSet<String> = tables.into_iter().collect();
@@ -68,6 +72,18 @@ pub(crate) async fn compare_data_sync_impl(
         .get_connection(&target_connection_id)
         .await
         .cmd_err("compare_data_sync")?;
+
+    // Keep both connections scoped to their chosen databases for the row queries.
+    let src_db = source_database
+        .as_deref()
+        .filter(|s| !s.trim().is_empty())
+        .or(src_config.database.as_deref());
+    let tgt_db = target_database
+        .as_deref()
+        .filter(|s| !s.trim().is_empty())
+        .or(tgt_config.database.as_deref());
+    super::compare::maybe_use_database(src_driver.as_ref(), &src_handle, src_db).await?;
+    super::compare::maybe_use_database(tgt_driver.as_ref(), &tgt_handle, tgt_db).await?;
 
     let options = SyncOptions::default();
     let mut out = Vec::new();
@@ -125,6 +141,8 @@ pub(crate) async fn apply_data_sync_impl(
     target_connection_id: String,
     tables: Vec<String>,
     job_id: Option<String>,
+    source_database: Option<String>,
+    target_database: Option<String>,
 ) -> Result<crate::data_sync::ExecutionResult, CommandError> {
     let compared = compare_data_sync_impl(
         state,
@@ -132,6 +150,8 @@ pub(crate) async fn apply_data_sync_impl(
         target_connection_id.clone(),
         tables,
         job_id.clone(),
+        source_database.clone(),
+        target_database.clone(),
     )
     .await?;
     let options = SyncOptions::default();
@@ -180,7 +200,14 @@ pub(crate) async fn apply_data_sync_impl(
         .map_err(CommandError::from)?;
         statements.extend(stmts);
     }
-    execute_data_sync_impl(state, target_connection_id, statements, job_id).await
+    execute_data_sync_impl(
+        state,
+        target_connection_id,
+        statements,
+        job_id,
+        target_database,
+    )
+    .await
 }
 
 #[cfg(test)]

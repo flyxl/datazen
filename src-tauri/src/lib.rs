@@ -102,7 +102,6 @@ pub(crate) fn menu_action_for_id(id: &str) -> MenuAction {
     match id {
         "open-settings" => MenuAction::Emit("menu:open-settings"),
         "new-connection" => MenuAction::Emit("menu:new-connection"),
-        "data-sync" => MenuAction::Emit("menu:data-sync"),
         "schema-diff" => MenuAction::Emit("menu:schema-diff"),
         "backup" => MenuAction::Emit("menu:backup"),
         "restore" => MenuAction::Emit("menu:restore"),
@@ -359,9 +358,6 @@ fn setup_menu(
         .item(&import_connections_file_item)
         .build()?;
 
-    let data_sync_item = MenuItemBuilder::new(t("data-sync"))
-        .id("data-sync")
-        .build(handle)?;
     let schema_diff_item = MenuItemBuilder::new(t("schema-diff"))
         .id("schema-diff")
         .build(handle)?;
@@ -442,7 +438,6 @@ fn setup_menu(
 
     // ── Tools ──
     let tools_menu = SubmenuBuilder::new(handle, t("tools"))
-        .item(&data_sync_item)
         .item(&schema_diff_item)
         .separator()
         .item(&backup_item)
@@ -1248,7 +1243,6 @@ mod tests {
         for id in [
             "open-settings",
             "new-connection",
-            "data-sync",
             "schema-diff",
             "backup",
             "restore",

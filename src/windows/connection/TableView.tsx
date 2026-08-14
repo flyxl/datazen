@@ -13,9 +13,17 @@ interface TableViewProps {
   database: string;
   tableName: string;
   databaseType?: string;
+  /** Data-export capability, threaded to the table-data export dialog. */
+  dataExportCapability?: 'none' | 'loaded_only' | 'full_table';
 }
 
-export function TableView({ connectionId, database, tableName, databaseType }: TableViewProps) {
+export function TableView({
+  connectionId,
+  database,
+  tableName,
+  databaseType,
+  dataExportCapability,
+}: TableViewProps) {
   const { t } = useI18n();
   // NlFilterInput handles unconfigured state internally
   const tableStates = useTableDataStore((s) => s.tableStates);
@@ -207,6 +215,7 @@ export function TableView({ connectionId, database, tableName, databaseType }: T
         exportTableName={tableName}
         databaseType={databaseType}
         connectionId={connectionId}
+        dataExportCapability={dataExportCapability}
         primaryKeyColumns={columns.filter((c) => c.isPrimaryKey).map((c) => c.name)}
         onDeleteRows={handleDeleteRows}
       />

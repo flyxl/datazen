@@ -6,17 +6,21 @@ export interface ActionPanelProps {
   onNewConnection: () => void;
   onBackup: () => void;
   onRestore: () => void;
-  onDataSync: () => void;
   onWorkflow: () => void;
   onDashboard: () => void;
 }
 
-export function ActionPanel({ onNewConnection, onBackup, onRestore, onDataSync, onWorkflow, onDashboard }: Readonly<ActionPanelProps>) {
+export function ActionPanel({
+  onNewConnection,
+  onBackup,
+  onRestore,
+  onWorkflow,
+  onDashboard,
+}: Readonly<ActionPanelProps>) {
   const { t } = useI18n();
   const items = [
     { iconId: 'action.backup', label: t('action.backup'), action: onBackup },
     { iconId: 'action.sync', label: t('action.restore'), action: onRestore },
-    { iconId: 'action.refresh', label: t('action.dataSync'), action: onDataSync },
     { iconId: 'action.newConnection', label: t('action.newConnection'), action: onNewConnection },
     { iconId: 'action.workflow', label: t('action.workflow'), action: onWorkflow },
     { iconId: 'action.dashboard', label: t('action.dashboard'), action: onDashboard },
@@ -26,12 +30,7 @@ export function ActionPanel({ onNewConnection, onBackup, onRestore, onDataSync, 
     <div className="flex h-full flex-col">
       {/* Logo */}
       <div className="flex flex-col items-center gap-3 px-3 pt-8 pb-4">
-        <img
-          src="/logo.png"
-          alt="DataZen"
-          className="h-24 w-24 drop-shadow-lg"
-          draggable={false}
-        />
+        <img src="/logo.png" alt="DataZen" className="h-24 w-24 drop-shadow-lg" draggable={false} />
         <span className="text-base font-bold tracking-wider text-fg">DataZen</span>
       </div>
 

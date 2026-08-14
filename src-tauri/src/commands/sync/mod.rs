@@ -167,8 +167,17 @@ pub async fn inspect_data_sync(
     state: State<'_, AppState>,
     source_connection_id: String,
     target_connection_id: String,
+    source_database: Option<String>,
+    target_database: Option<String>,
 ) -> Result<Vec<crate::data_sync::TableResult>, CommandError> {
-    inspect_data_sync_impl(&state, source_connection_id, target_connection_id).await
+    inspect_data_sync_impl(
+        &state,
+        source_connection_id,
+        target_connection_id,
+        source_database,
+        target_database,
+    )
+    .await
 }
 
 #[tauri::command]
@@ -177,8 +186,16 @@ pub async fn execute_data_sync(
     target_connection_id: String,
     statements: Vec<crate::data_sync::SqlStatement>,
     job_id: Option<String>,
+    target_database: Option<String>,
 ) -> Result<crate::data_sync::ExecutionResult, CommandError> {
-    execute_data_sync_impl(&state, target_connection_id, statements, job_id).await
+    execute_data_sync_impl(
+        &state,
+        target_connection_id,
+        statements,
+        job_id,
+        target_database,
+    )
+    .await
 }
 
 #[tauri::command]
@@ -193,6 +210,8 @@ pub async fn compare_data_sync(
     target_connection_id: String,
     tables: Option<Vec<String>>,
     job_id: Option<String>,
+    source_database: Option<String>,
+    target_database: Option<String>,
 ) -> Result<Vec<crate::data_sync::TableResult>, CommandError> {
     compare_data_sync_impl(
         &state,
@@ -200,6 +219,8 @@ pub async fn compare_data_sync(
         target_connection_id,
         tables.unwrap_or_default(),
         job_id,
+        source_database,
+        target_database,
     )
     .await
 }
@@ -211,6 +232,8 @@ pub async fn apply_data_sync(
     target_connection_id: String,
     tables: Vec<String>,
     job_id: Option<String>,
+    source_database: Option<String>,
+    target_database: Option<String>,
 ) -> Result<crate::data_sync::ExecutionResult, CommandError> {
     apply_data_sync_impl(
         &state,
@@ -218,6 +241,8 @@ pub async fn apply_data_sync(
         target_connection_id,
         tables,
         job_id,
+        source_database,
+        target_database,
     )
     .await
 }

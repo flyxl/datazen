@@ -45,11 +45,9 @@ describe('主页 TablePlus 风格 (HOME)', () => {
   it('HOME-001: 左侧应显示操作面板', async () => {
     const backup = await $(`button*=${t('action.backup')}`);
     const restore = await $(`button*=${t('action.restore')}`);
-    const sync = await $(`button*=${t('action.dataSync')}`);
     const newConn = await $(`button*=${t('action.newConnection')}`);
     await expect(backup).toBeDisplayed();
     await expect(restore).toBeDisplayed();
-    await expect(sync).toBeDisplayed();
     await expect(newConn).toBeDisplayed();
   });
 
@@ -256,25 +254,6 @@ describe('主页 TablePlus 风格 (HOME)', () => {
     const handles = await browser.getWindowHandles();
     expect(handles.length).toBeGreaterThan(1);
   });
-
-  it('HOME-061: 点击"数据同步"应打开同步窗口', async () => {
-    const syncBtn = await $(`button*=${t('action.dataSync')}`);
-    await syncBtn.click();
-    await browser.waitUntil(async () => (await browser.getWindowHandles()).length > 1, {
-      timeout: 15000,
-      timeoutMsg: 'Timed out waiting for data sync window',
-    });
-    const handles = await browser.getWindowHandles();
-    expect(handles.length).toBeGreaterThan(1);
-
-    const syncWin = handles.find((h) => h !== mainWindow)!;
-    await browser.switchToWindow(syncWin);
-    await browser.pause(2000);
-    const body = await $('body').getText();
-    expect(body).toContain('源数据库');
-    expect(body).toContain('目标数据库');
-    expect(body).toContain('比较');
-  });
 });
 
 // ═════════════════════════════════════════════════════════════════════
@@ -286,18 +265,11 @@ describe('数据同步窗口 (SYNC)', () => {
 
   async function openSyncWindow(): Promise<string> {
     await browser.switchToWindow(mainWindow);
-    await browser.pause(300);
-    const syncBtn = await $(`button*=${t('action.dataSync')}`);
-    await syncBtn.click();
-    await browser.waitUntil(async () => (await browser.getWindowHandles()).length > 1, {
-      timeout: 15000,
-      timeoutMsg: 'Timed out waiting for data sync window',
-    });
-    const handles = await browser.getWindowHandles();
-    const syncWin = handles.find((h) => h !== mainWindow)!;
-    await browser.switchToWindow(syncWin);
-    await browser.pause(2000);
-    return syncWin;
+    await browser.url('tauri://localhost/window.html?window=data-sync');
+    await browser.pause(1500);
+    const compareBtn = await $(`button*=${t('sync.compare')}`);
+    await compareBtn.waitForDisplayed({ timeout: 8000 });
+    return mainWindow;
   }
 
   before(async () => {
