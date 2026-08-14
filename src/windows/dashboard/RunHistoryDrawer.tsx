@@ -222,7 +222,7 @@ export function RunHistoryDrawer({
                 </div>
               </div>
             )}
-            <div className="relative min-h-0 flex-1">
+            <div className="relative flex min-h-0 flex-1 flex-col">
               {runError && (
                 <div className="absolute inset-0 flex items-center justify-center px-4 text-center text-xs text-red-400">
                   {runError}

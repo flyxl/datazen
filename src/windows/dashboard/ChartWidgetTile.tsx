@@ -249,7 +249,7 @@ export function ChartWidgetTile({
           </div>
         )}
         {run?.status === 'ok' && viewMode === 'table' && run.rows.length > 0 && (
-          <div className="h-full min-h-0" data-testid="dashboard-tile-table">
+          <div className="flex h-full min-h-0 flex-col" data-testid="dashboard-tile-table">
             <DataTable
               columns={tableColumns}
               rows={run.rows}
@@ -380,7 +380,7 @@ function TileExpandOverlay({
             </div>
           )}
           {viewMode === 'table' && run.rows.length > 0 && (
-            <div className="h-full min-h-0">
+            <div className="flex h-full min-h-0 flex-col">
               <DataTable
                 columns={tableColumns}
                 rows={run.rows}
