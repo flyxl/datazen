@@ -542,6 +542,7 @@ const translations = {
   'export.formatAs': 'como',
   'export.exporting': 'Exportador…',
   'export.export': 'Exportar',
+  'export.disabledByDriver': 'This driver does not allow exporting data.',
 
   // ── Batch Export Dialog ──
   'batchExport.title': 'Export',
@@ -561,6 +562,7 @@ const translations = {
   'batchExport.noTablesSelected': 'Select at least one table',
   'batchExport.success': 'Export completed',
   'batchExport.failed': 'Export failed',
+  'batchExport.disabledByDriver': 'This driver does not support full-table export.',
 
   'ddl.generating': 'Gerando DDL…',
   'ddl.getFailed': 'Não é possível obter DDL',

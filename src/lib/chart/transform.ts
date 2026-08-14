@@ -177,14 +177,13 @@ export interface LogScaleHint {
 }
 
 /**
- * Check whether Y-axis series have value ranges differing by > 10x AND all
- * values are non-negative, making a log scale appropriate.  Returns a domain
- * minimum (smallest positive value, floored to 1) for the log scale.
+ * Check whether Y-axis series have value ranges differing by > 10x, making a
+ * log scale appropriate.  Negative values prevent log scale.  Zero values are
+ * allowed — callers should clamp them to `domainMin` for rendering.
  */
 export function computeLogScaleHint(data: ChartDataPoint[], seriesKeys: string[]): LogScaleHint {
   if (seriesKeys.length < 2) return { use: false, domainMin: 1 };
 
-  let globalMin = Infinity;
   let globalMax = -Infinity;
   let minPositive = Infinity;
   let hasNegative = false;
@@ -194,18 +193,39 @@ export function computeLogScaleHint(data: ChartDataPoint[], seriesKeys: string[]
       const v = toNumber(point[key]);
       if (v == null) continue;
       if (v < 0) hasNegative = true;
-      if (v < globalMin) globalMin = v;
       if (v > globalMax) globalMax = v;
       if (v > 0 && v < minPositive) minPositive = v;
     }
   }
 
-  if (hasNegative || globalMax <= 0) return { use: false, domainMin: 1 };
-  if (globalMax / Math.max(globalMin, minPositive, 1) < 10) return { use: false, domainMin: 1 };
+  if (hasNegative || globalMax <= 0 || minPositive === Infinity)
+    return { use: false, domainMin: 1 };
+  if (globalMax / minPositive < 10) return { use: false, domainMin: 1 };
 
-  const domainMin =
-    minPositive === Infinity ? 1 : Math.max(1, Math.pow(10, Math.floor(Math.log10(minPositive))));
+  const domainMin = Math.max(1, Math.pow(10, Math.floor(Math.log10(minPositive))));
   return { use: true, domainMin };
+}
+
+/**
+ * Transform Y-axis values to log10 space for manual log-scale rendering.
+ * Values <= 0 are clamped to `domainMin` before log10.  Original values are
+ * stored under `__orig__${key}` so tooltips/labels can display real numbers.
+ */
+export function mapToLogScale(
+  data: ChartDataPoint[],
+  seriesKeys: string[],
+  domainMin: number,
+): ChartDataPoint[] {
+  return data.map((point) => {
+    const clone = { ...point };
+    for (const key of seriesKeys) {
+      const v = toNumber(clone[key]);
+      if (v == null) continue;
+      clone[`__orig__${key}`] = v;
+      clone[key] = Math.log10(Math.max(v, domainMin));
+    }
+    return clone;
+  });
 }
 
 function sortData(data: ChartDataPoint[], config: ChartConfig): ChartDataPoint[] {

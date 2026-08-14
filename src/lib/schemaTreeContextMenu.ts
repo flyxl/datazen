@@ -51,10 +51,18 @@ export type BuildSchemaTreeContextMenuArgs = {
   /** Include ER focus item for tables. */
   showErFocus?: boolean;
   /**
-   * Include export. Tables always export when handlers.onExport is set (flag defaults true).
-   * Views only include export when this is true.
+   * Include the single-table export item. Tables always export when
+   * handlers.onExport is set (flag defaults true). Views only include export
+   * when this is true. Pass `false` to hide export (e.g. when a driver forbids
+   * exporting data).
    */
   showExport?: boolean;
+  /**
+   * Include the multi-table "batch export" item. Defaults to follow `showExport`
+   * when omitted, so existing callers keep their behavior. Pass `false` to hide
+   * batch export (e.g. a driver that cannot pull entire tables).
+   */
+  showBatchExport?: boolean;
   /** Include new-table on database / blank when !readOnly. */
   showNewTable?: boolean;
 };
@@ -87,8 +95,13 @@ export function buildSchemaTreeContextMenuItems(
     showOpenStructure = false,
     showErFocus = false,
     showExport,
+    showBatchExport,
     showNewTable = false,
   } = args;
+
+  /** Default `showBatchExport` to follow `showExport` when not explicitly provided. */
+  const batchExportShown = (kind: SchemaTreeNodeKind): boolean =>
+    showBatchExport ?? (kind === 'view' ? showExport === true : showExport !== false);
 
   switch (kind) {
     case 'table': {
@@ -109,7 +122,9 @@ export function buildSchemaTreeContextMenuItems(
         item('copy-name', labels.copyName, handlers.onCopyName),
         item('copy-ddl', labels.copyDdl, handlers.onCopyDdl),
         includeExport ? item('export', labels.exportData, handlers.onExport) : null,
-        item('batch-export', labels.batchExport, handlers.onBatchExport),
+        batchExportShown('table')
+          ? item('batch-export', labels.batchExport, handlers.onBatchExport)
+          : null,
         !readOnly ? item('import', labels.importData, handlers.onImport) : null,
       );
       if (danger.length === 0) return main;
@@ -122,7 +137,9 @@ export function buildSchemaTreeContextMenuItems(
         item('copy-name', labels.copyName, handlers.onCopyName),
         item('copy-ddl', labels.copyDdl, handlers.onCopyDdl),
         includeExport ? item('export', labels.exportData, handlers.onExport) : null,
-        item('batch-export', labels.batchExport, handlers.onBatchExport),
+        batchExportShown('view')
+          ? item('batch-export', labels.batchExport, handlers.onBatchExport)
+          : null,
       );
       const drop = !readOnly ? item('drop-view', labels.dropView, handlers.onDrop) : null;
       if (!drop) return main;
@@ -133,7 +150,9 @@ export function buildSchemaTreeContextMenuItems(
         item('refresh', labels.refresh, handlers.onRefresh),
         item('new-query', labels.newQuery, handlers.onNewQuery),
         item('copy-database-name', labels.copyDatabaseName, handlers.onCopyDatabaseName),
-        item('batch-export', labels.batchExport, handlers.onBatchExport),
+        batchExportShown('database')
+          ? item('batch-export', labels.batchExport, handlers.onBatchExport)
+          : null,
         !readOnly ? item('import', labels.importData, handlers.onImport) : null,
         !readOnly && showNewTable ? item('new-table', labels.newTable, handlers.onNewTable) : null,
       );
@@ -141,7 +160,9 @@ export function buildSchemaTreeContextMenuItems(
       return push(
         item('refresh', labels.refresh, handlers.onRefresh),
         item('new-query', labels.newQuery, handlers.onNewQuery),
-        item('batch-export', labels.batchExport, handlers.onBatchExport),
+        batchExportShown('blank')
+          ? item('batch-export', labels.batchExport, handlers.onBatchExport)
+          : null,
         !readOnly ? item('import', labels.importData, handlers.onImport) : null,
         !readOnly && showNewTable ? item('new-table', labels.newTable, handlers.onNewTable) : null,
       );

@@ -621,6 +621,7 @@ const zhCN = {
   'export.formatAs': '格式为',
   'export.exporting': '导出中...',
   'export.export': '导出',
+  'export.disabledByDriver': '该驱动不允许导出数据。',
 
   // ── Batch Export Dialog ──
   'batchExport.title': '导出',
@@ -638,8 +639,10 @@ const zhCN = {
   'batchExport.export': '导出',
   'batchExport.exporting': '导出中…',
   'batchExport.noTablesSelected': '请至少选择一张表',
+  'batchExport.rowsWritten': '已写入 {count} 行',
   'batchExport.success': '导出成功',
   'batchExport.failed': '导出失败',
+  'batchExport.disabledByDriver': '该驱动不支持整表导出。',
 
   // ── DDL View ──
   'ddl.generating': '生成 DDL…',

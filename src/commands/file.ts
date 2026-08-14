@@ -84,4 +84,51 @@ export const fileCommands = {
   finishSave: (token: string) => invoke<void>('finish_save', { token }),
 
   abortSave: (token: string) => invoke<void>('abort_save', { token }),
+
+  /**
+   * Stream selected tables to a single file or ZIP entirely on the Rust side
+   * (opens its own native save dialog). Never buffers whole tables in JS.
+   */
+  exportTablesStream: (request: ExportTablesRequest) =>
+    invoke<ExportTablesResult | null>('export_tables_stream', { request }),
 };
+
+export type ExportMode = 'structure_only' | 'data_only' | 'data_and_structure';
+export type ExportDataFormat = 'csv' | 'json' | 'sql_insert';
+export type ExportOutputMode = 'single' | 'zip';
+
+export interface ExportTableInput {
+  tableName: string;
+  columns: string[];
+  ddl?: string | null;
+}
+
+export interface ExportTablesRequest {
+  connectionId: string;
+  databaseType?: string | null;
+  mode: ExportMode;
+  dataFormat: ExportDataFormat;
+  outputMode: ExportOutputMode;
+  tables: ExportTableInput[];
+}
+
+export type ExportTablesResult = { Saved: number } | { Cancelled: null };
+
+/** Progress emitted by the Rust exporter while streaming a table to disk. */
+export interface ExportProgressEvent {
+  table: string;
+  rowsWritten: number;
+}
+
+/**
+ * Subscribe to writer progress from `export_tables_stream`. Returns an
+ * unlisten function. Setting it up lets the UI show row-write progress during
+ * the (potentially long) streaming phase.
+ */
+export function onExportProgress(
+  handler: (event: ExportProgressEvent) => void,
+): Promise<import('@tauri-apps/api/event').UnlistenFn> {
+  return import('@tauri-apps/api/event').then(({ listen }) =>
+    listen<ExportProgressEvent>('batch-export-progress', (e) => handler(e.payload)),
+  );
+}

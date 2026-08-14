@@ -95,4 +95,14 @@ export interface DatabaseTypeMeta {
   namespaceOwnedByPlugin?: boolean;
   /** Table structure editor UI config; omit or `enabled: false` for non-SQL / opt-out drivers. */
   structureEditor?: StructureEditorUiConfig;
+  /**
+   * Data-export capability of this driver, from weakest to strongest:
+   * - `'none'`        — the driver must not export any data (security/compliance).
+   * - `'loaded_only'` — can only export rows already loaded/queried into the UI;
+   *                     cannot reliably pull an entire table (e.g. drivers that cap
+   *                     query results and lack paging).
+   * - `'full_table'`  (default) — can stream/retrieve the whole table for export.
+   * Omit the field for drivers that support full-table export.
+   */
+  exportScope?: 'none' | 'loaded_only' | 'full_table';
 }

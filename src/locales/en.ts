@@ -630,6 +630,7 @@ const en: Record<TranslationKey, string> = {
   'export.formatAs': 'as',
   'export.exporting': 'Exporting…',
   'export.export': 'Export',
+  'export.disabledByDriver': 'This driver does not allow exporting data.',
 
   // ── Batch Export Dialog ──
   'batchExport.title': 'Export',
@@ -647,8 +648,10 @@ const en: Record<TranslationKey, string> = {
   'batchExport.export': 'Export',
   'batchExport.exporting': 'Exporting…',
   'batchExport.noTablesSelected': 'Select at least one table',
+  'batchExport.rowsWritten': '{count} rows written',
   'batchExport.success': 'Export completed',
   'batchExport.failed': 'Export failed',
+  'batchExport.disabledByDriver': 'This driver does not support full-table export.',
 
   // ── DDL View ──
   'ddl.generating': 'Generating DDL…',

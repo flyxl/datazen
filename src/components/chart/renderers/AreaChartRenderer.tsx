@@ -1,9 +1,10 @@
-import { useMemo } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Area, AreaChart, CartesianGrid, Legend, Tooltip, XAxis, YAxis } from 'recharts';
-import { getColorPalette } from '../../../lib/chart/colors';
+import { getColorPalette, STROKE_DASH_PATTERNS } from '../../../lib/chart/colors';
 import { formatAxisTick, formatCompact } from '../../../lib/chart/format';
-import { computeLogScaleHint } from '../../../lib/chart/transform';
+import { computeLogScaleHint, mapToLogScale } from '../../../lib/chart/transform';
 import type { ChartConfig, ChartDataPoint } from '../../../types/chart';
+import { LogScaleTooltip } from '../LogScaleTooltip';
 
 interface AreaChartRendererProps {
   data: ChartDataPoint[];
@@ -11,13 +12,31 @@ interface AreaChartRendererProps {
   onDataPointClick?: (rowIndex: number) => void;
 }
 
+const logTickFormatter = (v: number) => formatCompact(Math.pow(10, v));
+
 export function AreaChartRenderer({ data, config, onDataPointClick }: AreaChartRendererProps) {
   const colors = getColorPalette(config.colorScheme);
   const logHint = useMemo(() => computeLogScaleHint(data, config.yAxes), [data, config.yAxes]);
+  const chartData = useMemo(
+    () => (logHint.use ? mapToLogScale(data, config.yAxes, logHint.domainMin) : data),
+    [data, config.yAxes, logHint],
+  );
+
+  const [hiddenSeries, setHiddenSeries] = useState<Set<string>>(new Set());
+  const toggleSeries = useCallback((dataKey: string) => {
+    setHiddenSeries((prev) => {
+      const next = new Set(prev);
+      if (next.has(dataKey)) next.delete(dataKey);
+      else next.add(dataKey);
+      return next;
+    });
+  }, []);
+
+  const multiSeries = config.yAxes.length > 1;
 
   return (
     <AreaChart
-      data={data}
+      data={chartData}
       onClick={
         onDataPointClick
           ? (state: unknown) => {
@@ -41,20 +60,31 @@ export function AreaChartRenderer({ data, config, onDataPointClick }: AreaChartR
       <YAxis
         tick={{ fontSize: 12, fill: 'var(--c-fg-secondary, #999)' }}
         stroke="var(--c-edge, #333)"
-        tickFormatter={(v: number) => formatCompact(v)}
-        {...(logHint.use ? { scale: 'log', domain: [logHint.domainMin, 'auto'] } : {})}
+        tickFormatter={logHint.use ? logTickFormatter : (v: number) => formatCompact(v)}
       />
-      <Tooltip
-        contentStyle={{
-          background: 'var(--c-surface-alt, #1e1e2e)',
-          border: '1px solid var(--c-edge, #333)',
-          borderRadius: 6,
-          color: 'var(--c-fg, #eee)',
-          fontSize: 12,
-        }}
-      />
-      {config.showLegend && config.yAxes.length > 1 && (
-        <Legend wrapperStyle={{ fontSize: 12, color: 'var(--c-fg, #eee)' }} />
+      {logHint.use ? (
+        <LogScaleTooltip />
+      ) : (
+        <Tooltip
+          contentStyle={{
+            background: 'var(--c-surface-alt, #1e1e2e)',
+            border: '1px solid var(--c-edge, #333)',
+            borderRadius: 6,
+            color: 'var(--c-fg, #eee)',
+            fontSize: 12,
+          }}
+        />
+      )}
+      {multiSeries && (
+        <Legend
+          wrapperStyle={{ fontSize: 12, color: 'var(--c-fg, #eee)', cursor: 'pointer' }}
+          onClick={(e: { dataKey?: string }) => e.dataKey && toggleSeries(e.dataKey)}
+          formatter={(value: string, entry: { dataKey?: string }) => (
+            <span style={{ opacity: hiddenSeries.has(entry.dataKey ?? '') ? 0.35 : 1 }}>
+              {value}
+            </span>
+          )}
+        />
       )}
       {config.yAxes.map((yKey, i) => (
         <Area
@@ -65,6 +95,10 @@ export function AreaChartRenderer({ data, config, onDataPointClick }: AreaChartR
           fill={colors[i % colors.length]}
           fillOpacity={0.15}
           strokeWidth={2}
+          strokeDasharray={
+            multiSeries ? STROKE_DASH_PATTERNS[i % STROKE_DASH_PATTERNS.length] : undefined
+          }
+          hide={hiddenSeries.has(yKey)}
           activeDot={{ r: 5, cursor: onDataPointClick ? 'pointer' : undefined }}
         />
       ))}

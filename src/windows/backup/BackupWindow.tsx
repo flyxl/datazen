@@ -493,17 +493,13 @@ export function BackupWindow() {
             </>
           )}
 
-          {/* Status message — single line + fixed height so the progress bar never jumps */}
+          {/* Status message — fixed-height single line so the progress bar never jumps */}
           {statusMessage && (
             <div
               className="mb-3 rounded border border-edge bg-surface-alt px-3 py-2 text-xs text-fg-secondary"
               data-testid="backup-status"
             >
-              <div
-                className="overflow-hidden text-ellipsis"
-                style={{ whiteSpace: 'nowrap' }}
-                title={statusMessage}
-              >
+              <div className="h-5 truncate leading-5" title={statusMessage}>
                 {statusMessage}
               </div>
               {(backing || progress) && (

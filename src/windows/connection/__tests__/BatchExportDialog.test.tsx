@@ -34,13 +34,12 @@ vi.mock('../../../components/ui/Select', () => ({
   ),
 }));
 
-const saveTextWithDialog = vi.fn();
-const saveBase64WithDialog = vi.fn();
+const fileCommands = vi.fn();
+const exportTablesStream = vi.fn();
 
 vi.mock('../../../commands/file', () => ({
   fileCommands: {
-    saveTextWithDialog: (...args: unknown[]) => saveTextWithDialog(...args),
-    saveBase64WithDialog: (...args: unknown[]) => saveBase64WithDialog(...args),
+    exportTablesStream: (...args: unknown[]) => exportTablesStream(...args),
   },
 }));
 
@@ -59,8 +58,7 @@ afterEach(cleanup);
 
 beforeEach(() => {
   vi.clearAllMocks();
-  saveTextWithDialog.mockResolvedValue(true);
-  saveBase64WithDialog.mockResolvedValue(true);
+  exportTablesStream.mockResolvedValue({ Saved: 1 });
 });
 
 describe('BatchExportDialog', () => {
@@ -121,7 +119,7 @@ describe('BatchExportDialog', () => {
     expect(screen.getByTestId('data-format')).toBeInTheDocument();
   });
 
-  it('exports via loadTableExportData and saveBase64 for zip', async () => {
+  it('exports via loadTableExportData then shows a success view (not auto-close)', async () => {
     const onClose = vi.fn();
     const loadTableExportData = vi.fn(async (name: string) => mockTable(name));
 
@@ -142,10 +140,24 @@ describe('BatchExportDialog', () => {
 
     await waitFor(() => {
       expect(loadTableExportData).toHaveBeenCalledTimes(2);
-      expect(saveBase64WithDialog).toHaveBeenCalled();
-      expect(onClose).toHaveBeenCalled();
+      expect(exportTablesStream).toHaveBeenCalledTimes(1);
+      // Success view replaces the form; the dialog does not auto-close.
+      expect(screen.getByText('batchExport.success')).toBeInTheDocument();
+      expect(onClose).not.toHaveBeenCalled();
     });
     expect(loadTableExportData.mock.calls.map((c) => c[0])).toEqual(['users', 'orders']);
+
+    const request = exportTablesStream.mock.calls[0]![0];
+    expect(request.connectionId).toBe('c1');
+    expect(request.databaseType).toBe('postgres');
+    expect(request.tables.map((t: { tableName: string }) => t.tableName)).toEqual([
+      'users',
+      'orders',
+    ]);
+
+    // Closing is explicit via the Close button.
+    fireEvent.click(screen.getByText('common.close'));
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 
   it('exports combined single file via saveText', async () => {
@@ -167,9 +179,12 @@ describe('BatchExportDialog', () => {
     fireEvent.click(screen.getByText('batchExport.export'));
 
     await waitFor(() => {
-      expect(saveTextWithDialog).toHaveBeenCalled();
+      expect(exportTablesStream).toHaveBeenCalledTimes(1);
+      expect(screen.getByText('batchExport.success')).toBeInTheDocument();
     });
-    expect(saveBase64WithDialog).not.toHaveBeenCalled();
+    const request = exportTablesStream.mock.calls[0]![0];
+    expect(request.outputMode).toBe('single');
+    expect(request.mode).toBe('structure_only');
   });
 
   it('shows error when export fails', async () => {
@@ -220,8 +235,36 @@ describe('BatchExportDialog', () => {
           outputMode: 'zip',
         }),
       );
-      expect(onClose).toHaveBeenCalled();
+      expect(screen.getByText('batchExport.success')).toBeInTheDocument();
+      expect(onClose).not.toHaveBeenCalled();
     });
     expect(loadTableExportData).not.toHaveBeenCalled();
+  });
+
+  it('returns to the form when the native save dialog is dismissed', async () => {
+    exportTablesStream.mockResolvedValue({ Cancelled: null });
+    const onClose = vi.fn();
+    const loadTableExportData = vi.fn(async (name: string) => mockTable(name));
+
+    render(
+      <BatchExportDialog
+        open
+        onClose={onClose}
+        connectionId="c1"
+        tables={['users']}
+        initialSelected={['users']}
+        loadTableExportData={loadTableExportData}
+      />,
+    );
+
+    fireEvent.click(screen.getByText('batchExport.export'));
+
+    await waitFor(() => {
+      expect(exportTablesStream).toHaveBeenCalledTimes(1);
+      // Back on the form (Export button visible again), no success view.
+      expect(screen.getByText('batchExport.export')).toBeInTheDocument();
+      expect(screen.queryByText('batchExport.success')).not.toBeInTheDocument();
+      expect(onClose).not.toHaveBeenCalled();
+    });
   });
 });

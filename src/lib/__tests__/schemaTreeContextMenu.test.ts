@@ -268,4 +268,47 @@ describe('buildSchemaTreeContextMenuItems', () => {
     });
     expect(ids(items)).toEqual(['open']);
   });
+
+  it('hides batch-export when showBatchExport is false (no full-table export)', () => {
+    const items = buildSchemaTreeContextMenuItems({
+      kind: 'table',
+      labels,
+      handlers: {
+        onOpen: vi.fn(),
+        onCopyName: vi.fn(),
+        onCopyDdl: vi.fn(),
+        onNewQuery: vi.fn(),
+        onExport: vi.fn(),
+        onBatchExport: vi.fn(),
+        onImport: vi.fn(),
+        onTruncate: vi.fn(),
+        onDrop: vi.fn(),
+      },
+      showBatchExport: false,
+    });
+    expect(ids(items)).not.toContain('batch-export');
+    expect(ids(items)).toContain('export');
+  });
+
+  it('hides both export and batch-export when showExport and showBatchExport are false', () => {
+    const items = buildSchemaTreeContextMenuItems({
+      kind: 'table',
+      labels,
+      handlers: {
+        onOpen: vi.fn(),
+        onCopyName: vi.fn(),
+        onCopyDdl: vi.fn(),
+        onNewQuery: vi.fn(),
+        onExport: vi.fn(),
+        onBatchExport: vi.fn(),
+        onImport: vi.fn(),
+        onTruncate: vi.fn(),
+        onDrop: vi.fn(),
+      },
+      showExport: false,
+      showBatchExport: false,
+    });
+    expect(ids(items)).not.toContain('export');
+    expect(ids(items)).not.toContain('batch-export');
+  });
 });
