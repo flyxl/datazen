@@ -40,9 +40,11 @@ html.macos-rounded #splash {
   box-sizing: border-box;
 }
 
+/* Application text is selectable by default. Interactive controls and
+   drag handles can opt out with user-select: none where needed. */
 body {
-  -webkit-user-select: none;
-  user-select: none;
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 input,
