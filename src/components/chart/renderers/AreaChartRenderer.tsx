@@ -78,9 +78,12 @@ export function AreaChartRenderer({ data, config, onDataPointClick }: AreaChartR
       {multiSeries && (
         <Legend
           wrapperStyle={{ fontSize: 12, color: 'var(--c-fg, #eee)', cursor: 'pointer' }}
-          onClick={(e: { dataKey?: string }) => e.dataKey && toggleSeries(e.dataKey)}
-          formatter={(value: string, entry: { dataKey?: string }) => (
-            <span style={{ opacity: hiddenSeries.has(entry.dataKey ?? '') ? 0.35 : 1 }}>
+          onClick={(data) => {
+            const key = data.dataKey;
+            if (typeof key === 'string' && key) toggleSeries(key);
+          }}
+          formatter={(value, entry) => (
+            <span style={{ opacity: hiddenSeries.has(String(entry.dataKey ?? '')) ? 0.35 : 1 }}>
               {value}
             </span>
           )}

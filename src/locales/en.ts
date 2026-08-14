@@ -863,6 +863,7 @@ const en: Record<TranslationKey, string> = {
   'backup.progressLog': 'Execution log',
   'backup.copyLog': 'Copy log',
   'backup.logCopied': 'Copied',
+  'backup.logOmitted': '… {count} lines omitted (log trimmed to save memory)',
 
   // ── Window titles ──
   'win.backup': 'Backup Database - DataZen',

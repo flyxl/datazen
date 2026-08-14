@@ -598,7 +598,7 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
 
   /** Delete specific row indices (e.g. right-clicked row when nothing is selected). */
   deleteRows: async (rowIndices: number[]) => {
-    const { activeTable, tableStates } = get();
+    const { activeTable } = get();
     if (!activeTable) return;
     const unique = [...new Set(rowIndices.filter((i) => Number.isInteger(i) && i >= 0))];
     if (unique.length === 0) return;

@@ -288,9 +288,7 @@ export function ChartWidgetTile({
 function TileExpandOverlay({
   widget,
   run,
-  chartData: initialChartData,
   tableColumns,
-  hasChart: initialHasChart,
   viewMode,
   t,
   onClose,
