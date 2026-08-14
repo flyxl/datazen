@@ -132,6 +132,9 @@ export async function runHcExplain(ctx: ContractConnCtx) {
   await explainBtn.waitForDisplayed({ timeout: 8000 });
   await explainBtn.click();
   await browser.pause(1500);
+  // Raw EXPLAIN output section is present (table or text depending on driver).
+  const rawOutput = await $(`*=${t('explain.rawOutput')}`);
+  await rawOutput.waitForDisplayed({ timeout: 8000 });
   const body = await $('body').getText();
   expect(
     body.includes(t('explain.title')) ||

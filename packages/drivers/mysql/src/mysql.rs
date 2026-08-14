@@ -1359,9 +1359,20 @@ impl DatabaseDriver for MysqlDriver {
             .map(Self::extract_mysql_plan_metrics)
             .unwrap_or((None, None));
 
+        // Carry the raw classic EXPLAIN result set (columns + rows) so the Host
+        // can render it as a DataTable, same as running EXPLAIN in the editor.
+        let mut plan_json = plan_json.unwrap_or_else(|| serde_json::json!({}));
+        if let Some(obj) = plan_json.as_object_mut() {
+            obj.insert(
+                "columns".to_string(),
+                serde_json::json!(columns.iter().map(|c| c.name.clone()).collect::<Vec<_>>()),
+            );
+            obj.insert("rows".to_string(), serde_json::json!(result_rows));
+        }
+
         Ok(ExplainResult {
             plan_text: plan_lines.join("\n"),
-            plan_json,
+            plan_json: Some(plan_json),
             total_cost,
             estimated_rows,
         })
