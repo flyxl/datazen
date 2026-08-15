@@ -167,13 +167,12 @@ function FieldRow({ column, value, editable, onCommit }: FieldRowProps) {
   const isJson = type.includes('json') || isJsonValue(value);
   const isBlob = isBlobType(type);
   const isLongText = type.includes('text') || isJson || isBlob;
-  const canQuickLook =
-    isJson || isBlob || (typeof value === 'string' && value.length > 120);
+  const canQuickLook = isJson || isBlob || (typeof value === 'string' && value.length > 120);
   const pretty = isJson ? prettyJson(value) : null;
 
   return (
     <div
-      className="group border-b border-edge/50 px-3 py-2.5"
+      className="selectable group border-b border-edge/50 px-3 py-2.5"
       onMouseDown={(e) => {
         if (e.button === 1 && canQuickLook) {
           e.preventDefault();
@@ -207,8 +206,7 @@ function FieldRow({ column, value, editable, onCommit }: FieldRowProps) {
       ) : isBlob && !isNull ? (
         <div className="font-mono text-xs italic text-fg-muted">
           {t('detail.blobData')} ·{' '}
-          {typeof value === 'string' ? value.length : formatCell(value).length}{' '}
-          {t('detail.bytes')}
+          {typeof value === 'string' ? value.length : formatCell(value).length} {t('detail.bytes')}
         </div>
       ) : (
         <pre
@@ -217,7 +215,7 @@ function FieldRow({ column, value, editable, onCommit }: FieldRowProps) {
             isNull ? 'italic text-fg-muted' : 'text-fg',
           )}
         >
-          {isNull ? 'NULL' : pretty ?? formatCell(value)}
+          {isNull ? 'NULL' : (pretty ?? formatCell(value))}
         </pre>
       )}
 
@@ -298,7 +296,9 @@ function QuickLookDialog({
     <Dialog
       open={open}
       title={column.name}
-      description={column.type ? `${t('detail.quickLook')} · ${column.type}` : t('detail.quickLook')}
+      description={
+        column.type ? `${t('detail.quickLook')} · ${column.type}` : t('detail.quickLook')
+      }
       onClose={onClose}
       className="max-w-2xl"
       footer={
@@ -366,12 +366,22 @@ function InlineFieldEditor({ value, type, isLongText, onCommit }: InlineFieldEdi
       onCommit(trimmed === 'true');
       return;
     }
-    if (type.includes('float') || type.includes('double') || type.includes('numeric') || type.includes('decimal') || type.includes('real')) {
+    if (
+      type.includes('float') ||
+      type.includes('double') ||
+      type.includes('numeric') ||
+      type.includes('decimal') ||
+      type.includes('real')
+    ) {
       onCommit(Number(trimmed));
       return;
     }
     if (type.includes('json')) {
-      try { onCommit(JSON.parse(trimmed)); } catch { onCommit(trimmed); }
+      try {
+        onCommit(JSON.parse(trimmed));
+      } catch {
+        onCommit(trimmed);
+      }
       return;
     }
     onCommit(trimmed);

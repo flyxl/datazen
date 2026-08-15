@@ -46,7 +46,7 @@ export function ConnectionItem({
       data-conn-item
       data-conn-name={connection.name}
       className={cn(
-        'group flex cursor-default items-center gap-3 rounded-lg px-3 py-2.5 transition-colors',
+        'group flex cursor-default selectable items-center gap-3 rounded-lg px-3 py-2.5 transition-colors',
         isDragging && 'opacity-40',
         selected ? 'bg-accent/10 ring-1 ring-accent/30' : 'hover:bg-surface-raised/60',
       )}

@@ -837,7 +837,7 @@ export function WorkflowWindow() {
                 <div className="flex flex-wrap items-end gap-3 mb-3">
                   {currentWorkflow.variables.map((v) => (
                     <div key={v.name} className="min-w-[160px] max-w-[260px] flex-1">
-                      <label className="text-[11px] text-fg-muted block mb-0.5">
+                      <label className="selectable text-[11px] text-fg-muted block mb-0.5">
                         {v.name}
                         {v.required && <span className="text-red-400">*</span>}
                         {v.description && (

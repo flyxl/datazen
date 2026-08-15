@@ -439,9 +439,9 @@ export function MainWindow() {
         const dy = e.clientY - dragStartPos.current.y;
         if (Math.abs(dx) < 5 && Math.abs(dy) < 5) return;
         dragActiveRef.current = true;
-        // Prevent text selection while reordering connections (the item
-        // itself stays selectable when not dragging).
-        document.body.classList.add('select-none');
+        // Prevent text selection while reordering connections. Inline style
+        // beats descendant `.selectable` classes on the items being dragged.
+        document.body.style.userSelect = 'none';
         snapshotGroupRects();
         setDraggingConnId(dragConnRef.current.id);
       }
@@ -466,7 +466,7 @@ export function MainWindow() {
       dragStartPos.current = null;
       dragConnRef.current = null;
       dragActiveRef.current = false;
-      document.body.classList.remove('select-none');
+      document.body.style.userSelect = '';
       setDraggingConnId(null);
       setDragOverGroup(null);
       setDragGhostPos(null);
@@ -477,7 +477,7 @@ export function MainWindow() {
     return () => {
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
-      document.body.classList.remove('select-none');
+      document.body.style.userSelect = '';
     };
   }, [snapshotGroupRects, hitTestGroup, moveConnectionToGroup]);
 
