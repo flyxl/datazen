@@ -4,7 +4,11 @@ import { mark } from './lib/startupTimer';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { WebContextMenuHost } from './components/ui/WebContextMenu';
 import { WindowChromeFallback } from './components/WindowChromeFallback';
-import { installGlobalTextSelectionPolicy } from './lib/globalTextSelection';
+import {
+  installDragSelectionGuard,
+  installGlobalTextSelectionPolicy,
+  installRightDragSelectionSuppressor,
+} from './lib/globalTextSelection';
 
 const MainWindow = lazy(() =>
   import('./windows/main/MainWindow').then((m) => {
@@ -101,7 +105,16 @@ function WindowContent() {
 }
 
 export default function App() {
-  useEffect(() => installGlobalTextSelectionPolicy(), []);
+  useEffect(() => {
+    const stopSelectAll = installGlobalTextSelectionPolicy();
+    const stopRightDrag = installRightDragSelectionSuppressor();
+    const stopDragGuard = installDragSelectionGuard();
+    return () => {
+      stopSelectAll();
+      stopRightDrag();
+      stopDragGuard();
+    };
+  }, []);
 
   return (
     <ErrorBoundary>

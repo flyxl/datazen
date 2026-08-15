@@ -32,7 +32,12 @@ function KeyBadge({ label, tone }: { label: string; tone: 'blue' | 'amber' | 'gr
     green: 'bg-green-500/20 text-green-400',
   };
   return (
-    <span className={cn('inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold', colorMap[tone])}>
+    <span
+      className={cn(
+        'inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold',
+        colorMap[tone],
+      )}
+    >
       {label}
     </span>
   );
@@ -59,14 +64,17 @@ export function StructureView({ connectionId, tableName, onEditStructure }: Stru
       })
       .catch((e) => {
         if (!cancelled) {
-          const msg = typeof e === 'string' ? e : e instanceof Error ? e.message : t('structView.loadFailed');
+          const msg =
+            typeof e === 'string' ? e : e instanceof Error ? e.message : t('structView.loadFailed');
           console.error('[StructureView] error', msg);
           setError(msg);
           setLoading(false);
         }
       });
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [connectionId, tableName, t]);
 
   if (loading) {
@@ -114,12 +122,24 @@ export function StructureView({ connectionId, tableName, onEditStructure }: Stru
         <table className="w-full border-collapse text-[13px]">
           <thead className="sticky top-0 z-10">
             <tr className="bg-surface-alt text-left text-xs font-medium text-fg-secondary">
-              <th className="border-b border-edge px-4 py-2.5 font-medium">{t('structView.fieldName')}</th>
-              <th className="border-b border-edge px-4 py-2.5 font-medium">{t('structView.type')}</th>
-              <th className="border-b border-edge px-4 py-2.5 font-medium">{t('structView.nullable')}</th>
-              <th className="border-b border-edge px-4 py-2.5 font-medium">{t('structView.defaultValue')}</th>
-              <th className="border-b border-edge px-4 py-2.5 font-medium">{t('structView.primaryKey')}</th>
-              <th className="border-b border-edge px-4 py-2.5 font-medium">{t('structView.comment')}</th>
+              <th className="border-b border-edge px-4 py-2.5 font-medium">
+                {t('structView.fieldName')}
+              </th>
+              <th className="border-b border-edge px-4 py-2.5 font-medium">
+                {t('structView.type')}
+              </th>
+              <th className="border-b border-edge px-4 py-2.5 font-medium">
+                {t('structView.nullable')}
+              </th>
+              <th className="border-b border-edge px-4 py-2.5 font-medium">
+                {t('structView.defaultValue')}
+              </th>
+              <th className="border-b border-edge px-4 py-2.5 font-medium">
+                {t('structView.primaryKey')}
+              </th>
+              <th className="border-b border-edge px-4 py-2.5 font-medium">
+                {t('structView.comment')}
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -127,9 +147,14 @@ export function StructureView({ connectionId, tableName, onEditStructure }: Stru
               const isPk = pkSet.has(col.name);
               const isUq = uniqueCols.has(col.name);
               return (
-                <tr key={col.name} className="border-b border-edge bg-surface hover:bg-surface-alt/50">
-                  <td className="px-4 py-2.5 font-mono text-fg">{col.name}</td>
-                  <td className={cn('px-4 py-2.5 font-mono', typeColor(col.dataType))}>{col.dataType}</td>
+                <tr
+                  key={col.name}
+                  className="border-b border-edge bg-surface hover:bg-surface-alt/50"
+                >
+                  <td className="selectable px-4 py-2.5 font-mono text-fg">{col.name}</td>
+                  <td className={cn('px-4 py-2.5 font-mono', typeColor(col.dataType))}>
+                    {col.dataType}
+                  </td>
                   <td className="px-4 py-2.5">
                     {col.nullable ? (
                       <span className="text-green-400">YES</span>
@@ -165,7 +190,11 @@ export function StructureView({ connectionId, tableName, onEditStructure }: Stru
         <span className="text-edge">|</span>
         <span>{t('structView.primaryKeys', { count: schema.primaryKeys.length })}</span>
         <span className="text-edge">|</span>
-        <span>{t('structView.uniqueIndexes', { count: schema.indexes.filter((i) => i.isUnique && !i.isPrimary).length })}</span>
+        <span>
+          {t('structView.uniqueIndexes', {
+            count: schema.indexes.filter((i) => i.isUnique && !i.isPrimary).length,
+          })}
+        </span>
         <span className="text-edge">|</span>
         <span>{t('structView.indexCount', { count: schema.indexes.length })}</span>
         <span className="text-edge">|</span>

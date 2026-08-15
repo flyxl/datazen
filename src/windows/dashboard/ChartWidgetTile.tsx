@@ -98,7 +98,9 @@ export function ChartWidgetTile({
         className="flex shrink-0 items-center gap-1 border-b border-edge px-2 py-1.5"
         data-no-drag
       >
-        <span className="min-w-0 flex-1 truncate text-xs font-medium text-fg">{widget.title}</span>
+        <span className="selectable min-w-0 flex-1 truncate text-xs font-medium text-fg">
+          {widget.title}
+        </span>
         {run?.alertFired && (
           <span title={t('dashboard.alertFired')}>
             <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-500" />

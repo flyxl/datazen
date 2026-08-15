@@ -43,10 +43,10 @@ html.macos-rounded #splash {
 }
 
 /* ── Text selection ──
-   Application text is selectable by default so most content can be copied.
-   Interactive controls opt out (user-select: none) so dragging over a
-   toolbar/nav does not paint a huge blue block; content containers are
-   explicitly kept selectable below so the opt-out can never swallow them. */
+   Default is NOT selectable. Only content that users actually copy is opted
+   in, per concrete layout element (`.selectable`/`.select-text` markers, code
+   blocks, editable fields, errors). No broad element/role selectors: a stray
+   drag over a table, paragraph or list must never start a selection. */
 
 /* A1: theme-aware, low-saturation selection highlight. */
 ::selection {
@@ -56,8 +56,8 @@ html.macos-rounded #splash {
 }
 
 body {
-  -webkit-user-select: text;
-  user-select: text;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 /* A2: interactive controls are not text-selectable. */
@@ -91,8 +91,9 @@ progress {
   user-select: none;
 }
 
-/* Content containers: always keep these selectable so copied text covers
-   tables, trees, logs, AI messages, errors, code and editable fields. */
+/* Content opt-in, per concrete layout element. */
+.selectable,
+.select-text,
 input,
 textarea,
 [contenteditable='true'],
@@ -100,20 +101,7 @@ pre,
 code,
 .cm-content,
 .cm-editor,
-.selectable,
-.select-text,
 [role='alert'],
-[role='log'],
-[role='status'],
-[role='article'],
-[role='gridcell'],
-[role='treeitem'],
-[role='listitem'],
-p,
-li,
-td,
-th,
-blockquote,
 .text-red-400,
 .text-red-500,
 .whitespace-pre-wrap {

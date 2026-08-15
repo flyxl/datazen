@@ -170,7 +170,7 @@ function PlanTreeNode({ node, depth }: { node: PlanNode; depth: number }) {
   const hasChildren = node.children.length > 0;
 
   return (
-    <div>
+    <div className="selectable">
       <div
         className={cn(
           'flex items-start gap-1 rounded px-1 py-0.5 hover:bg-surface-raised/60',
