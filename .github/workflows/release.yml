@@ -264,7 +264,23 @@ jobs:
             "$BUNDLE_DIR"/appimage/*.sig; do
             [ -f "$file" ] || continue
             base=$(basename "$file")
-            if [[ "$base" == *.tar.gz ]]; then
+            if [[ "$base" == *.sig ]]; then
+              # Signature files must follow their bundle's renamed name so the
+              # updater latest.json generator can resolve "<bundle>.<ext>.sig".
+              sigstem="${base%.sig}"
+              if [[ "$sigstem" == *.tar.gz ]]; then
+                inner="${sigstem%.tar.gz}"
+                newsigstem="${inner}-${LABEL}.tar.gz"
+              elif [[ "$sigstem" == *.AppImage ]]; then
+                inner="${sigstem%.AppImage}"
+                newsigstem="${inner}-${LABEL}.AppImage"
+              else
+                inner="${sigstem%.*}"
+                ext="${sigstem##*.}"
+                newsigstem="${inner}-${LABEL}.${ext}"
+              fi
+              newname="${newsigstem}.sig"
+            elif [[ "$base" == *.tar.gz ]]; then
               stem="${base%.tar.gz}"
               newname="${stem}-${LABEL}.tar.gz"
             elif [[ "$base" == *.AppImage ]]; then
