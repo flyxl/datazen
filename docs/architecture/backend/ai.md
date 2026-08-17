@@ -143,3 +143,40 @@ AI Prompt 模板管理（替代原 `PromptBuilder`），支持多层覆盖和多
 - `context_read_files` — 读取选中文件的内容（512KB 大小限制，路径遍历防护）
 
 **支持的文件类型**：`.txt`, `.md`, `.sql`, `.json`, `.yaml`, `.yml`, `.csv`, `.toml`, `.xml`, `.html`, `.css`, `.js`, `.ts`, `.py`, `.sh`, `.log`, `.conf`, `.ini`, `.cfg`, `.env`, `.properties`
+
+### 1.10 NL2SQL 大量表优化
+
+针对包含大量表（数千个）的数据库，NL2SQL 模块提供以下优化：
+
+#### search_tables 工具
+
+`search_tables` 是 AI DB tools 中新增的关键字搜索工具（大小写不敏感的子串匹配），支持 `limit` 参数。当数据库表数量超过 500 个时，`SchemaContextPipeline` 的系统提示会自动引导 LLM 优先使用 `search_tables` 按关键字查找相关表，而不是使用 `list_tables` 列出全部表名。
+
+#### .ctx.yaml 表组上下文文件
+
+用户可创建 `.ctx.yaml`（或 `.ctx.yml`）文件来定义命名的表组：
+
+```yaml
+groups:
+  - name: "User Management"
+    tables:
+      - users
+      - roles
+      - permissions
+  - name: "Orders"
+    tables:
+      - orders
+      - order_items
+```
+
+当用户在 NL2SQL 输入中 `@` 引用 `.ctx.yaml` 文件时，后端会：
+1. 解析 YAML 提取所有表名（跨组去重）
+2. 将表名合并到 pinned tables 列表
+3. 由 `SchemaContextPipeline` 实时获取这些表的 DDL
+4. 注入到系统 prompt 中
+
+普通上下文文件（非 `.ctx.yaml`）仍按原有方式作为文本附加到用户消息。
+
+**解析模块**：`src-tauri/src/ai/ctx_yaml.rs`
+
+**前端识别**：`ContextPicker` 中 `.ctx.yaml` 文件使用 `Layers` 图标区分于普通文件。

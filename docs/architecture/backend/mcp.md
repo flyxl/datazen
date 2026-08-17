@@ -28,8 +28,10 @@ Workflow 引擎本身在 [`workflow` 模块](./workflow.md)（若尚未拆文档
 修改权限/白名单/工具后需重启 MCP（或重新运行 `datazen --mcp`）。
 
 **Server Tools:**
-- `list_connections` / `list_databases` / `list_tables` / `query` / `get_schema`
+- `list_connections` / `list_databases` / `list_tables` / `search_tables` / `query` / `get_schema`
 - `explain_query` / `describe_table` / `list_workflows` / `run_workflow`
+
+`search_tables` 是 `list_tables` 的补充：当数据库表数量很大（>500）时，LLM 优先使用 `search_tables` 按关键字搜索匹配的表，而不是列出全部表名。
 
 **Server Resources:**
 - `datazen://connections` / `datazen://query-history`
