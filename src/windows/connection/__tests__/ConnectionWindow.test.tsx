@@ -4,30 +4,28 @@ import { ConnectionWindow } from '../ConnectionWindow';
 
 const {
   connectMock,
-  disconnectMock,
+  releaseConnectionMock,
   pingMock,
   loadSettingsMock,
   loadAiConfigMock,
   setupAiListenersMock,
-  getUrlParamMock,
   emitCrossWindowMock,
   listenCrossWindowMock,
   getActiveConnectionState,
-  destroyMock,
+  closeMock,
 } = vi.hoisted(() => ({
   connectMock: vi.fn(),
-  disconnectMock: vi.fn(),
+  releaseConnectionMock: vi.fn(),
   pingMock: vi.fn(),
   loadSettingsMock: vi.fn().mockResolvedValue(undefined),
   loadAiConfigMock: vi.fn().mockResolvedValue(undefined),
   setupAiListenersMock: vi.fn().mockResolvedValue(() => {}),
-  getUrlParamMock: vi.fn(),
   emitCrossWindowMock: vi.fn().mockResolvedValue(undefined),
   listenCrossWindowMock: vi.fn().mockResolvedValue(() => {}),
   getActiveConnectionState: vi.fn(() => ({
     connections: {} as Record<string, { status: string; connectionId?: string }>,
   })),
-  destroyMock: vi.fn().mockResolvedValue(undefined),
+  closeMock: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('../../../hooks/useI18n', () => ({
@@ -58,16 +56,35 @@ vi.mock('../../../stores/activeConnectionStore', () => ({
   },
 }));
 
+vi.mock('../../../stores/schemaStore', () => ({
+  useSchemaStore: {
+    getState: () => ({ reset: vi.fn(), databases: [], currentDatabase: null, tables: [] }),
+  },
+}));
+
+vi.mock('../../../stores/queryStore', () => ({
+  useQueryStore: {
+    getState: () => ({ reset: vi.fn(), tabs: [], activeTabId: '' }),
+    setState: vi.fn(),
+  },
+}));
+
+vi.mock('../../../stores/tableDataStore', () => ({
+  useTableDataStore: {
+    getState: () => ({ reset: vi.fn() }),
+  },
+}));
+
 vi.mock('../../../commands/connection', () => ({
   connectionCommands: {
     connect: (...args: unknown[]) => connectMock(...args),
-    disconnect: (...args: unknown[]) => disconnectMock(...args),
+    releaseConnection: (...args: unknown[]) => releaseConnectionMock(...args),
     pingConnection: (...args: unknown[]) => pingMock(...args),
   },
 }));
 
-vi.mock('../../../lib/windowKind', () => ({
-  getUrlParam: (key: string) => getUrlParamMock(key),
+vi.mock('../../../lib/windowManager', () => ({
+  PENDING_CONNECTION_KEY: 'datazen:pending-connection',
 }));
 
 vi.mock('../../../lib/crossWindowBus', () => ({
@@ -90,6 +107,12 @@ vi.mock('../../../components/TitleBar', () => ({
   TitleBar: ({ title }: { title: string }) => <div data-testid="title-bar">{title}</div>,
 }));
 
+vi.mock('../../../components/DbTypeBadge', () => ({
+  DbTypeBadge: ({ databaseType }: { databaseType: string }) => (
+    <span data-testid="db-badge">{databaseType}</span>
+  ),
+}));
+
 vi.mock('../../../lib/databaseTypes', async () => {
   const actual = await vi.importActual<typeof import('../../../lib/databaseTypes')>(
     '../../../lib/databaseTypes',
@@ -102,27 +125,22 @@ vi.mock('../../../lib/databaseTypes', async () => {
 
 vi.mock('@tauri-apps/api/window', () => ({
   getCurrentWindow: () => ({
-    destroy: destroyMock,
-    close: vi.fn(),
+    close: closeMock,
     onCloseRequested: vi.fn().mockResolvedValue(() => {}),
   }),
 }));
 
+function setPendingConnection(data: Record<string, string>) {
+  localStorage.setItem('datazen:pending-connection', JSON.stringify(data));
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
+  localStorage.clear();
   getActiveConnectionState.mockReturnValue({ connections: {} });
-  getUrlParamMock.mockImplementation((key: string) => {
-    if (key === 'connectionId') return '';
-    if (key === 'configId') return '';
-    if (key === 'connectionName') return 'Pg';
-    if (key === 'databaseType') return 'postgresql';
-    if (key === 'database') return 'postgres';
-    return null;
-  });
   connectMock.mockResolvedValue('conn-live-1');
+  releaseConnectionMock.mockResolvedValue(true);
   pingMock.mockResolvedValue(undefined);
-  disconnectMock.mockResolvedValue(undefined);
-  destroyMock.mockResolvedValue(undefined);
   Object.defineProperty(globalThis, '__TAURI_INTERNALS__', {
     value: {},
     configurable: true,
@@ -135,18 +153,16 @@ afterEach(() => {
 });
 
 describe('ConnectionWindow', () => {
-  it('TC-window: shows missing-params when configId and connectionId absent', () => {
+  it('TC-window: shows empty state when no pending connection', () => {
     render(<ConnectionWindow />);
-    expect(screen.getByText('connWin.missingParams')).toBeInTheDocument();
+    expect(screen.getByText('connWin.noConnections')).toBeInTheDocument();
   });
 
-  it('TC-window: connects via configId and renders view', async () => {
-    getUrlParamMock.mockImplementation((key: string) => {
-      if (key === 'connectionId') return '';
-      if (key === 'configId') return 'cfg-1';
-      if (key === 'connectionName') return 'Local PG';
-      if (key === 'databaseType') return 'postgresql';
-      return null;
+  it('TC-window: connects via localStorage pending connection and renders view', async () => {
+    setPendingConnection({
+      configId: 'cfg-1',
+      connectionName: 'Local PG',
+      databaseType: 'postgresql',
     });
 
     render(<ConnectionWindow />);
@@ -161,29 +177,27 @@ describe('ConnectionWindow', () => {
     );
   });
 
-  it('TC-window: shows connect error UI when connect fails and close destroys window', async () => {
-    getUrlParamMock.mockImplementation((key: string) => {
-      if (key === 'configId') return 'cfg-bad';
-      if (key === 'connectionName') return 'Bad';
-      if (key === 'databaseType') return 'postgresql';
-      return '';
+  it('TC-window: shows connect error UI with retry and close buttons', async () => {
+    setPendingConnection({
+      configId: 'cfg-bad',
+      connectionName: 'Bad',
+      databaseType: 'postgresql',
     });
     connectMock.mockRejectedValue(new Error('boom'));
 
     render(<ConnectionWindow />);
 
     await waitFor(() => expect(screen.getByText('boom')).toBeInTheDocument());
-    fireEvent.click(screen.getByText('common.close'));
-    await waitFor(() => expect(destroyMock).toHaveBeenCalled());
+    expect(screen.getByText('common.retry')).toBeInTheDocument();
+    expect(screen.getByText('common.close')).toBeInTheDocument();
   });
 
-  it('TC-window: uses existing connectionId from URL without reconnect', async () => {
-    getUrlParamMock.mockImplementation((key: string) => {
-      if (key === 'connectionId') return 'already-open';
-      if (key === 'configId') return 'cfg-1';
-      if (key === 'connectionName') return 'Local PG';
-      if (key === 'databaseType') return 'postgresql';
-      return null;
+  it('TC-window: uses existing connectionId from pending without reconnect', async () => {
+    setPendingConnection({
+      connectionId: 'already-open',
+      configId: 'cfg-1',
+      connectionName: 'Local PG',
+      databaseType: 'postgresql',
     });
 
     render(<ConnectionWindow />);
@@ -201,11 +215,10 @@ describe('ConnectionWindow', () => {
       },
     });
 
-    getUrlParamMock.mockImplementation((key: string) => {
-      if (key === 'configId') return 'cfg-reuse';
-      if (key === 'connectionName') return 'Reuse';
-      if (key === 'databaseType') return 'postgresql';
-      return '';
+    setPendingConnection({
+      configId: 'cfg-reuse',
+      connectionName: 'Reuse',
+      databaseType: 'postgresql',
     });
 
     render(<ConnectionWindow />);
@@ -214,12 +227,10 @@ describe('ConnectionWindow', () => {
   });
 
   it('TC-window: passes configId to view component for dashboard use', async () => {
-    getUrlParamMock.mockImplementation((key: string) => {
-      if (key === 'connectionId') return '';
-      if (key === 'configId') return 'cfg-dash';
-      if (key === 'connectionName') return 'Dashboard PG';
-      if (key === 'databaseType') return 'postgresql';
-      return null;
+    setPendingConnection({
+      configId: 'cfg-dash',
+      connectionName: 'Dashboard PG',
+      databaseType: 'postgresql',
     });
 
     render(<ConnectionWindow />);
@@ -236,11 +247,10 @@ describe('ConnectionWindow', () => {
           resolveConnect = resolve;
         }),
     );
-    getUrlParamMock.mockImplementation((key: string) => {
-      if (key === 'configId') return 'cfg-slow';
-      if (key === 'connectionName') return 'Slow';
-      if (key === 'databaseType') return 'postgresql';
-      return '';
+    setPendingConnection({
+      configId: 'cfg-slow',
+      connectionName: 'Slow',
+      databaseType: 'postgresql',
     });
 
     render(<ConnectionWindow />);

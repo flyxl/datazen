@@ -66,7 +66,7 @@ import { queryCommands } from '../../commands/query';
 import { dashboardCommands } from '../../commands/dashboard';
 import { openDashboardWindow } from '../../lib/windowManager';
 import { emitCrossWindow } from '../../lib/crossWindowBus';
-import { createEmptyDashboard } from '../dashboard/DashboardWindow';
+import { createEmptyDashboard } from '../dashboard/DashboardPanel';
 import { AddToDashboardDialog } from '../dashboard/AddToDashboardDialog';
 import { formatSql } from '../../lib/sqlFormat';
 import { parseSqlParams, paramsToPayload } from '../../lib/sqlBindParams';

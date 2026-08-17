@@ -31,7 +31,7 @@ export const WINDOW_CAPABILITY_LABEL_SAMPLES = [
   'workflow-singleton',
   'settings-singleton',
   'docs-singleton',
-  'connection-0-1',
+  'connection-singleton',
   'dashboard-sample-id',
 ] as const;
 
@@ -221,20 +221,48 @@ export function openDashboardWindow(dashboardId?: string, dashboardName?: string
   });
 }
 
+/**
+ * Key used by {@link openConnectionWindow} to hand the first connection
+ * payload to the newly created ConnectionWindow via `localStorage`.
+ * Subsequent connections use the `datazen:open-connection` cross-window event.
+ */
+export const PENDING_CONNECTION_KEY = 'datazen:pending-connection';
+
+/**
+ * Open the singleton ConnectionWindow and add a connection tab.
+ *
+ * Connection-specific params are NOT included in the URL (only `window=connection`)
+ * so that the Rust-side `focus_existing_window` never re-navigates the webview
+ * when a second connection is opened.
+ *
+ * Instead, the connection payload is delivered via:
+ * 1. `localStorage` — read on first mount (handles the initial window creation race)
+ * 2. `datazen:open-connection` event — handled by the existing listener
+ */
 export function openConnectionWindow(
   opts: { connectionId?: string; configId?: string },
   connectionName: string,
   database?: string,
   databaseType?: string,
 ) {
-  const params: Record<string, string> = { window: 'connection', connectionName };
-  if (opts.connectionId) params.connectionId = opts.connectionId;
-  if (opts.configId) params.configId = opts.configId;
-  if (database) params.database = database;
-  if (databaseType) params.databaseType = databaseType;
+  const payload: Record<string, string> = { connectionName };
+  if (opts.connectionId) payload.connectionId = opts.connectionId;
+  if (opts.configId) payload.configId = opts.configId;
+  if (database) payload.database = database;
+  if (databaseType) payload.databaseType = databaseType;
 
-  openWindow(nextLabel('connection'), {
-    params,
+  try {
+    localStorage.setItem(PENDING_CONNECTION_KEY, JSON.stringify(payload));
+  } catch {
+    // localStorage unavailable; event-only fallback
+  }
+
+  import('../lib/crossWindowBus').then(({ emitCrossWindow }) => {
+    void emitCrossWindow('datazen:open-connection', payload);
+  });
+
+  openSingletonWindow('connection-singleton', {
+    params: { window: 'connection' },
     width: 1200,
     height: 800,
     minWidth: 600,

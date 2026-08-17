@@ -124,6 +124,11 @@ const en: Record<TranslationKey, string> = {
   'main.restoreFailed': 'Restore failed',
   'main.sidebar.resize': 'Drag to resize sidebar',
 
+  // ── Workspace Nav ──
+  'nav.connections': 'Connections',
+  'nav.dashboard': 'Dashboards',
+  'nav.workflow': 'Workflows',
+
   // ── Action Panel ──
   'action.backup': 'Backup Database…',
   'action.restore': 'Restore Database…',
@@ -414,6 +419,8 @@ const en: Record<TranslationKey, string> = {
   'connWin.closeAllTabs': 'Close All',
   'connWin.closeTabsToRight': 'Close to the Right',
   'connWin.closeTabsToLeft': 'Close to the Left',
+  'connWin.closeConnection': 'Close Connection',
+  'connWin.noConnections': 'Open a connection from the main window',
 
   // ── Table View ──
   'tableView.loadingData': 'Loading table data…',
