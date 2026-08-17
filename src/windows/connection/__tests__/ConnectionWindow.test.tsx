@@ -77,8 +77,12 @@ vi.mock('../../../lib/crossWindowBus', () => ({
 
 vi.mock('../../../lib/connectionViews', () => ({
   getConnectionView: () =>
-    function MockSqlView({ connectionId }: { connectionId: string }) {
-      return <div data-testid="mock-view">view:{connectionId}</div>;
+    function MockSqlView({ connectionId, configId }: { connectionId: string; configId: string }) {
+      return (
+        <div data-testid="mock-view" data-config-id={configId}>
+          view:{connectionId}
+        </div>
+      );
     },
 }));
 
@@ -207,6 +211,21 @@ describe('ConnectionWindow', () => {
     render(<ConnectionWindow />);
     await waitFor(() => expect(screen.getByTestId('mock-view')).toHaveTextContent('view:reuse-1'));
     expect(connectMock).not.toHaveBeenCalled();
+  });
+
+  it('TC-window: passes configId to view component for dashboard use', async () => {
+    getUrlParamMock.mockImplementation((key: string) => {
+      if (key === 'connectionId') return '';
+      if (key === 'configId') return 'cfg-dash';
+      if (key === 'connectionName') return 'Dashboard PG';
+      if (key === 'databaseType') return 'postgresql';
+      return null;
+    });
+
+    render(<ConnectionWindow />);
+
+    await waitFor(() => expect(screen.getByTestId('mock-view')).toBeInTheDocument());
+    expect(screen.getByTestId('mock-view').getAttribute('data-config-id')).toBe('cfg-dash');
   });
 
   it('TC-window: shows loading spinner while connect is pending', async () => {

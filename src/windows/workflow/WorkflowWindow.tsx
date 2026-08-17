@@ -45,6 +45,7 @@ import { cn } from '../../lib/cn';
 import { showNativeContextMenu } from '../../lib/nativeContextMenu';
 import { buildWorkflowListContextMenuItems } from '../../lib/workflowListContextMenu';
 import { openDocsWindow } from '../../lib/windowManager';
+import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 import { createEmptyDashboard } from '../dashboard/DashboardWindow';
 import { AddToDashboardDialog } from '../dashboard/AddToDashboardDialog';
 import { WorkflowForm, emptyDraft } from './WorkflowForm';
@@ -116,6 +117,7 @@ function nextPanelId(prefix: string) {
 export function WorkflowWindow() {
   useSettings();
   const { t } = useI18n();
+  const [confirmWf, confirmWfDialog] = useConfirmDialog();
 
   const workflows = useAiStore((s) => s.workflows);
   const workflowsLoading = useAiStore((s) => s.workflowsLoading);
@@ -365,9 +367,9 @@ export function WorkflowWindow() {
   }, [activePanel, variables, runWorkflowInPanel]);
 
   const handleDelete = async (workflowId: string) => {
-    const { ask } = await import('@tauri-apps/plugin-dialog');
-    const confirmed = await ask(t('workflows.deleteConfirm'), {
+    const confirmed = await confirmWf({
       title: t('workflows.delete'),
+      message: t('workflows.deleteConfirm'),
       kind: 'warning',
     });
     if (!confirmed) return;
@@ -542,7 +544,12 @@ export function WorkflowWindow() {
   );
 
   const handleClearHistory = async () => {
-    if (!confirm(t('workflows.history.clearConfirm'))) return;
+    const ok = await confirmWf({
+      title: t('workflows.history.clear'),
+      message: t('workflows.history.clearConfirm'),
+      kind: 'warning',
+    });
+    if (!ok) return;
     await aiCommands.workflowHistoryClear();
     setHistoryItems([]);
   };
@@ -1034,6 +1041,8 @@ export function WorkflowWindow() {
         onClose={() => setAddToDashboardOpen(false)}
         onConfirm={(id, name) => void handleAddToDashboardConfirm(id, name)}
       />
+
+      {confirmWfDialog}
 
       <StatusBar />
     </div>

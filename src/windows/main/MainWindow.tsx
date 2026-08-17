@@ -10,6 +10,7 @@ import { StatusBar } from '../../components/StatusBar';
 import { Dialog } from '../../components/ui/Dialog';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
+import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 import { TitleBar } from '../../components/TitleBar';
 import { MenuBar } from '../../components/MenuBar';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
@@ -53,6 +54,7 @@ export function MainWindow() {
   useTauriEvent();
   useSettings();
   const { t } = useI18n();
+  const [confirmDelete, confirmDeleteDialog] = useConfirmDialog();
 
   const fetchConnections = useConnectionStore((s) => s.fetchConnections);
   const fetchGroups = useConnectionStore((s) => s.fetchGroups);
@@ -377,11 +379,11 @@ export function MainWindow() {
             void moveConnectionToGroup(conn.id, undefined);
           },
           onDelete: async () => {
-            const { ask } = await import('@tauri-apps/plugin-dialog');
-            const confirmed = await ask(
-              t('main.ctx.confirmDeleteConnection', { name: conn.name }),
-              { title: t('main.ctx.deleteConnection'), kind: 'warning' },
-            );
+            const confirmed = await confirmDelete({
+              title: t('main.ctx.deleteConnection'),
+              message: t('main.ctx.confirmDeleteConnection', { name: conn.name }),
+              kind: 'warning',
+            });
             if (confirmed) {
               void deleteConnection(conn.id);
             }
@@ -920,6 +922,8 @@ export function MainWindow() {
           {messageDialogText}
         </p>
       </Dialog>
+
+      {confirmDeleteDialog}
 
       {/* ── Status bar ── */}
       <StatusBar

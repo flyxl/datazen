@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronLeft, File, Folder, Loader2, Table2 } from 'lucide-react';
+import { ChevronLeft, File, Folder, Layers, Loader2, Table2 } from 'lucide-react';
 import { cn } from '../../lib/cn';
 import { contextCommands } from '../../commands/context';
 import { databaseCommands } from '../../commands/database';
@@ -162,16 +162,12 @@ export function ContextPicker({
 
   const rows: Row[] = useMemo(() => {
     if (view === 'tables') {
-      const list = query
-        ? tables.filter((item) => matchesQuery(item, query))
-        : tables;
+      const list = query ? tables.filter((item) => matchesQuery(item, query)) : tables;
       return list.map((item) => ({ type: 'item' as const, item }));
     }
 
     if (view === 'files') {
-      const list = query
-        ? files.filter((item) => matchesQuery(item, query))
-        : files;
+      const list = query ? files.filter((item) => matchesQuery(item, query)) : files;
       return list.map((item) => ({ type: 'item' as const, item }));
     }
 
@@ -181,9 +177,7 @@ export function ContextPicker({
       result.push({ type: 'category', id: 'tables', label: t('context.tables') });
     }
     result.push({ type: 'category', id: 'files', label: t('context.files') });
-    const recentRows = query
-      ? recent.filter((item) => matchesQuery(item, query))
-      : recent;
+    const recentRows = query ? recent.filter((item) => matchesQuery(item, query)) : recent;
     if (recentRows.length > 0) {
       result.push({ type: 'section', label: t('context.recent') });
       for (const item of recentRows) {
@@ -353,7 +347,17 @@ export function ContextPicker({
           }
 
           const { item } = row;
-          const Icon = item.kind === 'table' ? Table2 : item.kind === 'dir' ? Folder : File;
+          const isCtxYaml =
+            item.kind === 'file' &&
+            (item.name.endsWith('.ctx.yaml') || item.name.endsWith('.ctx.yml'));
+          const Icon =
+            item.kind === 'table'
+              ? Table2
+              : item.kind === 'dir'
+                ? Folder
+                : isCtxYaml
+                  ? Layers
+                  : File;
 
           return (
             <button

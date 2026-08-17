@@ -214,6 +214,7 @@ export function ConnectionWindow() {
 
       <ViewComponent
         connectionId={connectionId}
+        configId={configId}
         connectionName={connectionName}
         databaseType={dbType}
         initialDatabase={initialDatabase}

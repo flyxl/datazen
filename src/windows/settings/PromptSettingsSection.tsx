@@ -2,8 +2,15 @@ import { useCallback, useEffect, useState } from 'react';
 import { Button } from '../../components/ui/Button';
 import { Select } from '../../components/ui/Select';
 import { useI18n } from '../../hooks/useI18n';
+import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 import { cn } from '../../lib/cn';
-import { aiCommands, type PromptInfo, type PromptOverrideEntry, type PromptScenario, type PromptSource } from '../../commands/ai';
+import {
+  aiCommands,
+  type PromptInfo,
+  type PromptOverrideEntry,
+  type PromptScenario,
+  type PromptSource,
+} from '../../commands/ai';
 import { DB_REGISTRY } from '../../lib/databaseTypes';
 import type { DatabaseType } from '../../types';
 import { SectionTitle, SettingRow } from './settingsUi';
@@ -29,6 +36,7 @@ const SOURCE_BADGE_CLASSES: Record<PromptSource, string> = {
 
 export function PromptSettingsSection() {
   const { t } = useI18n();
+  const [confirmReset, confirmResetDialog] = useConfirmDialog();
   const [driverType, setDriverType] = useState<string>('*');
   const [prompts, setPrompts] = useState<PromptInfo[]>([]);
   const [editingIdx, setEditingIdx] = useState<number | null>(null);
@@ -37,9 +45,10 @@ export function PromptSettingsSection() {
   const [feedback, setFeedback] = useState('');
   const driverOptions = [
     { value: '*', label: t('settings.prompts.allDrivers') },
-    ...(Object.entries(DB_REGISTRY) as [DatabaseType, { label: string }][]).map(
-      ([key, meta]) => ({ value: key, label: meta.label }),
-    ),
+    ...(Object.entries(DB_REGISTRY) as [DatabaseType, { label: string }][]).map(([key, meta]) => ({
+      value: key,
+      label: meta.label,
+    })),
   ];
 
   const loadPrompts = useCallback(async () => {
@@ -76,7 +85,12 @@ export function PromptSettingsSection() {
   };
 
   const handleReset = async (p: PromptInfo) => {
-    if (!confirm(t('settings.prompts.resetConfirm'))) return;
+    const ok = await confirmReset({
+      title: t('settings.prompts.reset'),
+      message: t('settings.prompts.resetConfirm'),
+      kind: 'warning',
+    });
+    if (!ok) return;
     await aiCommands.promptRemoveOverride(driverType, p.scenario);
     setFeedback(t('settings.prompts.resetDone'));
     setTimeout(() => setFeedback(''), 2000);
@@ -144,8 +158,7 @@ export function PromptSettingsSection() {
 
               {vars.length > 0 && (
                 <p className="text-[10px] text-fg-muted">
-                  {t('settings.prompts.variables')}:{' '}
-                  {vars.map((v) => `{{${v}}}`).join(', ')}
+                  {t('settings.prompts.variables')}: {vars.map((v) => `{{${v}}}`).join(', ')}
                 </p>
               )}
 
@@ -192,6 +205,7 @@ export function PromptSettingsSection() {
           );
         })}
       </div>
+      {confirmResetDialog}
     </>
   );
 }

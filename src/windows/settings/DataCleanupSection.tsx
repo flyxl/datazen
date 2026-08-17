@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 import { Button } from '../../components/ui/Button';
 import { useI18n } from '../../hooks/useI18n';
+import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 import { historyCommands, type HistoryPurgeScope } from '../../commands/history';
 import { SectionTitle, SettingRow } from './settingsUi';
 
@@ -10,6 +11,7 @@ type RetentionMode = 'preset' | 'custom' | 'clearAll';
 
 export function DataCleanupSection() {
   const { t } = useI18n();
+  const [confirmCleanup, confirmCleanupDialog] = useConfirmDialog();
   const [scopeQuery, setScopeQuery] = useState(true);
   const [scopeWorkflow, setScopeWorkflow] = useState(true);
   const [retentionMode, setRetentionMode] = useState<RetentionMode>('preset');
@@ -44,9 +46,12 @@ export function DataCleanupSection() {
         ? t('settings.dataCleanup.confirmClearAll')
         : t('settings.dataCleanup.confirmMessage', { days: retainDays ?? 0 });
 
-    if (!window.confirm(`${t('settings.dataCleanup.confirmTitle')}\n\n${confirmMessage}`)) {
-      return;
-    }
+    const ok = await confirmCleanup({
+      title: t('settings.dataCleanup.confirmTitle'),
+      message: confirmMessage,
+      kind: 'warning',
+    });
+    if (!ok) return;
 
     setBusy(true);
     setMessage(null);
@@ -61,7 +66,7 @@ export function DataCleanupSection() {
     } finally {
       setBusy(false);
     }
-  }, [customDays, presetDays, resolveScope, retentionMode, t]);
+  }, [confirmCleanup, customDays, presetDays, resolveScope, retentionMode, t]);
 
   return (
     <div className="space-y-4 rounded-md border border-edge bg-surface-alt p-4">
@@ -116,7 +121,10 @@ export function DataCleanupSection() {
         ))}
       </div>
 
-      <SettingRow label={t('settings.dataCleanup.customDays')} hint={t('settings.dataCleanup.customDaysHint')}>
+      <SettingRow
+        label={t('settings.dataCleanup.customDays')}
+        hint={t('settings.dataCleanup.customDaysHint')}
+      >
         <div className="flex items-center gap-2">
           <input
             type="number"
@@ -146,15 +154,23 @@ export function DataCleanupSection() {
       </label>
 
       <div className="flex items-center gap-3 pt-1">
-        <Button variant="secondary" disabled={busy} onClick={() => void handleRun()} data-testid="data-cleanup-run">
+        <Button
+          variant="secondary"
+          disabled={busy}
+          onClick={() => void handleRun()}
+          data-testid="data-cleanup-run"
+        >
           {t('settings.dataCleanup.run')}
         </Button>
         {message && (
-          <span className={`text-xs ${message.kind === 'success' ? 'text-success' : 'text-danger'}`}>
+          <span
+            className={`text-xs ${message.kind === 'success' ? 'text-success' : 'text-danger'}`}
+          >
             {message.text}
           </span>
         )}
       </div>
+      {confirmCleanupDialog}
     </div>
   );
 }

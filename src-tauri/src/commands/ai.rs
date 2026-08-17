@@ -265,13 +265,21 @@ pub(crate) async fn ai_generate_sql_impl(
     );
     tracing::debug!(%request_id, input = %natural_language, "ai_generate_sql: input");
 
+    let mut ctx_yaml_tables: Vec<String> = Vec::new();
+
     if let Some(ref ctx_files) = context_files {
         if !ctx_files.is_empty() {
             let ctx_dir = super::context::resolve_context_dir_from_state(&state).await?;
             let entries = super::context::read_context_paths(&ctx_dir, ctx_files).await?;
             if !entries.is_empty() {
-                let context_block = super::context::format_context_block(&entries);
-                natural_language = format!("{context_block}\n\n{natural_language}");
+                let (yaml_tables, remaining) =
+                    crate::ai::ctx_yaml::extract_ctx_yaml_tables(&entries);
+                ctx_yaml_tables = yaml_tables;
+
+                if !remaining.is_empty() {
+                    let context_block = super::context::format_context_block(&remaining);
+                    natural_language = format!("{context_block}\n\n{natural_language}");
+                }
             }
         }
     }
@@ -287,6 +295,11 @@ pub(crate) async fn ai_generate_sql_impl(
         .cmd_err("ai_generate_sql")?;
 
     let mut pinned = context_tables.unwrap_or_default();
+    for table in ctx_yaml_tables {
+        if !pinned.iter().any(|p| p == &table) {
+            pinned.push(table);
+        }
+    }
     if let Some(ref t) = current_table {
         if !pinned.iter().any(|p| p == t) {
             pinned.insert(0, t.clone());
@@ -813,6 +826,20 @@ fn db_tool_definitions() -> Vec<ToolDefinition> {
             }),
         },
         ToolDefinition {
+            name: "search_tables".into(),
+            description: "Search for tables by name pattern (case-insensitive substring match). Use this instead of list_tables when the database has many tables and you need to find specific ones.".into(),
+            parameters: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "config_id": { "type": "string", "description": "The config ID from list_connections" },
+                    "database": { "type": "string", "description": "Database name" },
+                    "pattern": { "type": "string", "description": "Search keyword to match against table names" },
+                    "limit": { "type": "integer", "description": "Max results to return (default 20)", "default": 20 }
+                },
+                "required": ["config_id", "pattern"]
+            }),
+        },
+        ToolDefinition {
             name: "get_table_schema".into(),
             description: "Get detailed schema of one or more tables, including column names, data types, primary keys, foreign keys, and indexes. Supports batch queries for multiple tables.".into(),
             parameters: serde_json::json!({
@@ -855,6 +882,13 @@ async fn execute_db_tool(state: &AppState, tool_call: &ToolCall) -> String {
             let config_id = args["config_id"].as_str().unwrap_or("");
             let database = args["database"].as_str().unwrap_or("");
             crate::services::db_tools::list_tables(cm, config_id, database).await
+        }
+        "search_tables" => {
+            let config_id = args["config_id"].as_str().unwrap_or("");
+            let database = args["database"].as_str().unwrap_or("");
+            let pattern = args["pattern"].as_str().unwrap_or("");
+            let limit = args["limit"].as_u64().unwrap_or(20) as usize;
+            crate::services::db_tools::search_tables(cm, config_id, database, pattern, limit).await
         }
         "get_table_schema" => {
             let config_id = args["config_id"].as_str().unwrap_or("");

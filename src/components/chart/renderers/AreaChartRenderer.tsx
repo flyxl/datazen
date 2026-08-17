@@ -1,8 +1,9 @@
 import { useCallback, useMemo, useState } from 'react';
 import { Area, AreaChart, CartesianGrid, Legend, Tooltip, XAxis, YAxis } from 'recharts';
-import { getColorPalette, STROKE_DASH_PATTERNS } from '../../../lib/chart/colors';
+import { getColorPalette } from '../../../lib/chart/colors';
 import { formatAxisTick, formatCompact } from '../../../lib/chart/format';
 import { computeLogScaleHint, mapToLogScale } from '../../../lib/chart/transform';
+import { buildOverlapDashMap } from '../../../lib/chart/seriesOverlap';
 import type { ChartConfig, ChartDataPoint } from '../../../types/chart';
 import { LogScaleTooltip } from '../LogScaleTooltip';
 
@@ -33,6 +34,10 @@ export function AreaChartRenderer({ data, config, onDataPointClick }: AreaChartR
   }, []);
 
   const multiSeries = config.yAxes.length > 1;
+  const dashMap = useMemo(
+    () => (multiSeries ? buildOverlapDashMap(chartData, config.yAxes) : {}),
+    [chartData, config.yAxes, multiSeries],
+  );
 
   return (
     <AreaChart
@@ -98,9 +103,7 @@ export function AreaChartRenderer({ data, config, onDataPointClick }: AreaChartR
           fill={colors[i % colors.length]}
           fillOpacity={0.15}
           strokeWidth={2}
-          strokeDasharray={
-            multiSeries ? STROKE_DASH_PATTERNS[i % STROKE_DASH_PATTERNS.length] : undefined
-          }
+          strokeDasharray={dashMap[yKey]}
           hide={hiddenSeries.has(yKey)}
           activeDot={{ r: 5, cursor: onDataPointClick ? 'pointer' : undefined }}
         />

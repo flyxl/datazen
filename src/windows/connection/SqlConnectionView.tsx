@@ -59,6 +59,7 @@ import { DetailPanelToggle } from '../../components/DataTable/DetailPanelToggle'
 import type { ColumnDef } from '../../components/DataTable/TableHeader';
 import { AiChatPanel } from '../../components/ai/AiChatPanel';
 import { rowToRecord } from '../../lib/rowToRecord';
+import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 import { ErDiagramView } from './ErDiagramView';
 import { ObjectBrowser } from './ObjectBrowser';
 import { PrivilegeView } from './PrivilegeView';
@@ -137,11 +138,13 @@ function nextPanelId(prefix: string) {
 
 export function SqlConnectionView({
   connectionId,
+  configId,
   connectionName,
   databaseType,
   initialDatabase,
 }: ConnectionViewProps) {
   const { t } = useI18n();
+  const [confirmAction, confirmActionDialog] = useConfirmDialog();
   const dbMeta = DB_REGISTRY[databaseType];
   const isReadOnly = dbMeta?.readOnly === true;
   const showStructureEditor = canOpenStructureEditor(dbMeta) && !isReadOnly;
@@ -601,8 +604,7 @@ export function SqlConnectionView({
         sql: string,
         afterSuccess?: () => void,
       ) => {
-        const { ask } = await import('@tauri-apps/plugin-dialog');
-        const confirmed = await ask(message, { title, kind: 'warning' });
+        const confirmed = await confirmAction({ title, message, kind: 'warning' });
         if (!confirmed) return;
         try {
           await queryCommands.executeQuery(connectionId, sql);
@@ -1134,6 +1136,7 @@ export function SqlConnectionView({
           {activePanel?.type === 'query' && (
             <QueryPanel
               connectionId={connectionId}
+              configId={configId}
               queryTabId={activePanel.queryTabId}
               databaseType={databaseType}
             />
@@ -1292,6 +1295,8 @@ export function SqlConnectionView({
         onImported={handleRefresh}
         databaseType={databaseType}
       />
+
+      {confirmActionDialog}
     </>
   );
 }
