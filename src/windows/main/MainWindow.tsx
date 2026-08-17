@@ -76,7 +76,6 @@ export function MainWindow() {
   const mainSidebarWidth = useUiStore((s) => s.mainSidebarWidth);
   const setMainSidebarWidth = useUiStore((s) => s.setMainSidebarWidth);
 
-  const markConnecting = useActiveConnectionStore((s) => s.markConnecting);
   const disconnectAction = useActiveConnectionStore((s) => s.disconnect);
   const activeConnections = useActiveConnectionStore((s) => s.connections);
 
@@ -227,6 +226,8 @@ export function MainWindow() {
 
   // (native context menus handle their own dismiss)
 
+  const connectAction = useActiveConnectionStore((s) => s.connect);
+
   const handleConnect = useCallback(
     (cfg: ConnectionConfig) => {
       const existing = useActiveConnectionStore.getState().connections[cfg.id];
@@ -240,11 +241,13 @@ export function MainWindow() {
         return;
       }
       if (existing?.status !== 'connecting') {
-        markConnecting(cfg.id, cfg.database ?? null);
+        // Preconnect: start the IPC connection before the window opens.
+        // get_or_connect is idempotent so ConnectionWindow can safely call it again.
+        void connectAction(cfg);
       }
       openConnectionWindow({ configId: cfg.id }, cfg.name, cfg.database, cfg.databaseType);
     },
-    [markConnecting],
+    [connectAction],
   );
 
   const { size: sidebarWidth, handleRef } = useResizable({
@@ -559,7 +562,6 @@ export function MainWindow() {
       openDashboardWindow(list[0]!.id, list[0]!.name);
       return;
     }
-    // No boards yet — open the dashboard shell; window shows empty-state create CTA.
     openDashboardWindow();
   }, [fetchDashboards]);
 

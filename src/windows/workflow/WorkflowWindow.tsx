@@ -47,7 +47,7 @@ import { showNativeContextMenu } from '../../lib/nativeContextMenu';
 import { buildWorkflowListContextMenuItems } from '../../lib/workflowListContextMenu';
 import { openDocsWindow } from '../../lib/windowManager';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
-import { createEmptyDashboard } from '../dashboard/DashboardWindow';
+import { createEmptyDashboard } from '../dashboard/DashboardPanel';
 import { AddToDashboardDialog } from '../dashboard/AddToDashboardDialog';
 import { WorkflowForm, emptyDraft } from './WorkflowForm';
 import type { WorkflowDraft } from './WorkflowForm';

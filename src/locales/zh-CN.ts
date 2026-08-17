@@ -121,6 +121,11 @@ const zhCN = {
   'main.restoreFailed': '恢复失败',
   'main.sidebar.resize': '拖拽调整侧边栏宽度',
 
+  // ── Workspace Nav ──
+  'nav.connections': '连接',
+  'nav.dashboard': '看板',
+  'nav.workflow': '工作流',
+
   // ── Action Panel ──
   'action.backup': '备份数据库',
   'action.restore': '恢复数据库',
@@ -406,6 +411,8 @@ const zhCN = {
   'connWin.closeAllTabs': '关闭全部',
   'connWin.closeTabsToRight': '关闭右侧标签',
   'connWin.closeTabsToLeft': '关闭左侧标签',
+  'connWin.closeConnection': '关闭连接',
+  'connWin.noConnections': '从主窗口打开一个连接',
 
   // ── Table View ──
   'tableView.loadingData': '加载表数据…',

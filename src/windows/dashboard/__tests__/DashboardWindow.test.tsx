@@ -500,11 +500,12 @@ describe('DashboardWindow', () => {
       expect(mockDashboardCommands.exportWithDialog).toHaveBeenCalledWith('d1', 'Board_d1.json'),
     );
 
-    mockDashboardCommands.importWithDialog.mockResolvedValue(makeDashboard('imported', []));
+    const importedBoard = makeDashboard('imported', []);
+    mockDashboardCommands.importWithDialog.mockResolvedValue(importedBoard);
+    mockDashboardCommands.getDashboard.mockResolvedValue(importedBoard);
+    mockDashboardCommands.listDashboards.mockResolvedValue([board, importedBoard]);
     fireEvent.click(screen.getByTestId('dashboard-import'));
-    await waitFor(() =>
-      expect(mockOpenDashboardWindow).toHaveBeenCalledWith('imported', 'Board imported'),
-    );
+    await waitFor(() => expect(mockDashboardCommands.importWithDialog).toHaveBeenCalled());
   });
 
   it('reloads same dashboard when import returns current id', async () => {

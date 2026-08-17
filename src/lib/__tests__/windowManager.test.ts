@@ -48,13 +48,16 @@ describe('windowManager — browser', () => {
     );
   });
 
-  it('openConnectionWindow passes connection params', async () => {
-    const { openConnectionWindow } = await import('../windowManager');
+  it('openConnectionWindow stores pending connection in localStorage and opens with stable URL', async () => {
+    const { openConnectionWindow, PENDING_CONNECTION_KEY } = await import('../windowManager');
     openConnectionWindow({ connectionId: 'c1', configId: 'cfg1' }, 'My DB', 'app', 'postgresql');
     const url = String(vi.mocked(window.open).mock.calls[0][0]);
     expect(url).toContain('window=connection');
-    expect(url).toContain('connectionId=c1');
-    expect(url).toContain('database=app');
+    expect(url).not.toContain('connectionId');
+    const pending = JSON.parse(localStorage.getItem(PENDING_CONNECTION_KEY) ?? '{}');
+    expect(pending.configId).toBe('cfg1');
+    expect(pending.connectionId).toBe('c1');
+    expect(pending.database).toBe('app');
   });
 
   it('openDataSyncWindow, backup, workflow, docs, dashboard', async () => {
