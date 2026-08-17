@@ -77,6 +77,42 @@ pub async fn list_tables(
     serde_json::to_string_pretty(&tables).map_err(|e| format!("Error: {e}"))
 }
 
+/// Search tables by keyword pattern in a database (case-insensitive substring match).
+/// Returns at most `limit` matching table names.
+pub async fn search_tables(
+    connection_manager: &ConnectionManager,
+    config_id: &str,
+    database: &str,
+    pattern: &str,
+    limit: usize,
+) -> Result<String, String> {
+    let (driver, handle) = resolve_connection(connection_manager, config_id).await?;
+    let all_tables = driver
+        .get_tables(&handle, database)
+        .await
+        .map_err(|e| format!("Error listing tables: {e}"))?;
+
+    let pattern_lower = pattern.to_lowercase();
+    let matched: Vec<&datazen_driver_api::TableInfo> = all_tables
+        .iter()
+        .filter(|t| t.name.to_lowercase().contains(&pattern_lower))
+        .take(limit)
+        .collect();
+
+    let total_matches = all_tables
+        .iter()
+        .filter(|t| t.name.to_lowercase().contains(&pattern_lower))
+        .count();
+
+    let result = serde_json::json!({
+        "matched": matched,
+        "totalMatches": total_matches,
+        "totalTables": all_tables.len(),
+        "pattern": pattern,
+    });
+    serde_json::to_string_pretty(&result).map_err(|e| format!("Error: {e}"))
+}
+
 /// Get detailed schema for one or more tables on a connection identified by config_id.
 pub async fn get_table_schema(
     connection_manager: &ConnectionManager,
@@ -306,5 +342,162 @@ mod tests {
         store.save_connection(sample_config("c1")).await.unwrap();
         let json = explain_query(&mgr, "c1", "SELECT 1").await.unwrap();
         assert!(json.contains("Seq Scan"));
+    }
+
+    #[tokio::test]
+    async fn search_tables_filters_by_pattern() {
+        let keyring = crate::testing::FileKeyringGuard::set();
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(Store::init_with_path(dir.path()).await.unwrap());
+        let registry = Arc::new(DriverRegistry::new());
+        let mock = MockDriver::new(
+            "postgres",
+            MockDriverOptions {
+                databases: vec!["app".into()],
+                tables: vec![
+                    TableInfo {
+                        name: "users".into(),
+                        schema: Some("public".into()),
+                        table_type: TableType::Table,
+                        row_count: Some(10),
+                    },
+                    TableInfo {
+                        name: "user_roles".into(),
+                        schema: Some("public".into()),
+                        table_type: TableType::Table,
+                        row_count: Some(5),
+                    },
+                    TableInfo {
+                        name: "orders".into(),
+                        schema: Some("public".into()),
+                        table_type: TableType::Table,
+                        row_count: Some(100),
+                    },
+                    TableInfo {
+                        name: "products".into(),
+                        schema: Some("public".into()),
+                        table_type: TableType::Table,
+                        row_count: Some(50),
+                    },
+                ],
+                ..Default::default()
+            },
+        );
+        registry
+            .register_test_driver("postgres", mock.clone())
+            .await;
+        let mgr = Arc::new(ConnectionManager::new(registry, store.clone()));
+        store.save_connection(sample_config("c1")).await.unwrap();
+
+        let json = search_tables(&mgr, "c1", "app", "user", 20).await.unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed["totalMatches"].as_u64(), Some(2));
+        assert_eq!(parsed["totalTables"].as_u64(), Some(4));
+        assert_eq!(parsed["pattern"].as_str(), Some("user"));
+        let matched = parsed["matched"].as_array().unwrap();
+        assert_eq!(matched.len(), 2);
+
+        let json_limited = search_tables(&mgr, "c1", "app", "user", 1).await.unwrap();
+        let parsed_limited: serde_json::Value = serde_json::from_str(&json_limited).unwrap();
+        assert_eq!(parsed_limited["matched"].as_array().unwrap().len(), 1);
+        assert_eq!(parsed_limited["totalMatches"].as_u64(), Some(2));
+
+        let _ = keyring;
+    }
+
+    #[tokio::test]
+    async fn search_tables_case_insensitive() {
+        let keyring = crate::testing::FileKeyringGuard::set();
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(Store::init_with_path(dir.path()).await.unwrap());
+        let registry = Arc::new(DriverRegistry::new());
+        let mock = MockDriver::new(
+            "postgres",
+            MockDriverOptions {
+                databases: vec!["app".into()],
+                tables: vec![
+                    TableInfo {
+                        name: "UserAccounts".into(),
+                        schema: None,
+                        table_type: TableType::Table,
+                        row_count: None,
+                    },
+                    TableInfo {
+                        name: "order_items".into(),
+                        schema: None,
+                        table_type: TableType::Table,
+                        row_count: None,
+                    },
+                ],
+                ..Default::default()
+            },
+        );
+        registry
+            .register_test_driver("postgres", mock.clone())
+            .await;
+        let mgr = Arc::new(ConnectionManager::new(registry, store.clone()));
+        store.save_connection(sample_config("c1")).await.unwrap();
+
+        let json = search_tables(&mgr, "c1", "app", "USER", 20).await.unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed["totalMatches"].as_u64(), Some(1));
+        assert_eq!(parsed["matched"][0]["name"].as_str(), Some("UserAccounts"));
+
+        let _ = keyring;
+    }
+
+    #[tokio::test]
+    async fn search_tables_empty_pattern_returns_all() {
+        let keyring = crate::testing::FileKeyringGuard::set();
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(Store::init_with_path(dir.path()).await.unwrap());
+        let registry = Arc::new(DriverRegistry::new());
+        let mock = MockDriver::new(
+            "postgres",
+            MockDriverOptions {
+                databases: vec!["app".into()],
+                tables: vec![
+                    TableInfo {
+                        name: "a".into(),
+                        schema: None,
+                        table_type: TableType::Table,
+                        row_count: None,
+                    },
+                    TableInfo {
+                        name: "b".into(),
+                        schema: None,
+                        table_type: TableType::Table,
+                        row_count: None,
+                    },
+                ],
+                ..Default::default()
+            },
+        );
+        registry
+            .register_test_driver("postgres", mock.clone())
+            .await;
+        let mgr = Arc::new(ConnectionManager::new(registry, store.clone()));
+        store.save_connection(sample_config("c1")).await.unwrap();
+
+        let json = search_tables(&mgr, "c1", "app", "", 20).await.unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed["totalMatches"].as_u64(), Some(2));
+        assert_eq!(parsed["matched"].as_array().unwrap().len(), 2);
+
+        let _ = keyring;
+    }
+
+    #[tokio::test]
+    async fn search_tables_no_match() {
+        let (_keyring, store, mgr, _) = test_stack().await;
+        store.save_connection(sample_config("c1")).await.unwrap();
+
+        let json = search_tables(&mgr, "c1", "app", "nonexistent_xyz", 20)
+            .await
+            .unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed["totalMatches"].as_u64(), Some(0));
+        assert!(parsed["matched"].as_array().unwrap().is_empty());
+        assert_eq!(parsed["totalTables"].as_u64(), Some(1));
     }
 }

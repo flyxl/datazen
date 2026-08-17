@@ -5,6 +5,7 @@ import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { useSettings } from '../../hooks/useSettings';
 import { useI18n } from '../../hooks/useI18n';
+import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { groupConnections } from '../../stores/connectionStore';
 import { formatGroupLabel } from '../../lib/connectionGroups';
@@ -30,6 +31,7 @@ interface DatabaseInfo {
 export function BackupWindow() {
   useSettings();
   const { t } = useI18n();
+  const [confirmRestore, confirmRestoreDialog] = useConfirmDialog();
   const loadSettings = useSettingsStore((s) => s.loadSettings);
   const isRestore = getUrlParam('mode') === 'restore';
 
@@ -172,14 +174,14 @@ export function BackupWindow() {
 
       const options: string[] = [];
       if (tables.length > 0) {
-        const { ask } = await import('@tauri-apps/plugin-dialog');
-        const ok = await ask(
-          t('backup.restoreOverwriteConfirm', {
+        const ok = await confirmRestore({
+          title: t('backup.restoreTitle'),
+          message: t('backup.restoreOverwriteConfirm', {
             database: selectedDb,
             count: tables.length,
           }),
-          { title: t('backup.restoreTitle'), kind: 'warning' },
-        );
+          kind: 'warning',
+        });
         if (!ok) return;
         options.push('overwrite');
       }
@@ -546,6 +548,7 @@ export function BackupWindow() {
           </div>
         </div>
       </div>
+      {confirmRestoreDialog}
     </div>
   );
 }

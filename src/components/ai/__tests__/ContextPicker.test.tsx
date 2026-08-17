@@ -9,7 +9,13 @@ vi.mock('../../../hooks/useI18n', () => ({
 }));
 
 const mockListFiles = vi.fn<(query?: string) => Promise<ContextEntry[]>>();
-const mockGetTables = vi.fn<(connectionId: string, database: string) => Promise<{ name: string; tableType: string; schema?: string }[]>>();
+const mockGetTables =
+  vi.fn<
+    (
+      connectionId: string,
+      database: string,
+    ) => Promise<{ name: string; tableType: string; schema?: string }[]>
+  >();
 
 vi.mock('../../../commands/context', () => ({
   contextCommands: {
@@ -262,9 +268,7 @@ describe('ContextPicker', () => {
   });
 
   it('shows recent items at root', async () => {
-    const recent: ContextItem[] = [
-      { kind: 'table', id: 'users', name: 'users', database: 'mydb' },
-    ];
+    const recent: ContextItem[] = [{ kind: 'table', id: 'users', name: 'users', database: 'mydb' }];
     localStorage.setItem(RECENT_KEY, JSON.stringify(recent));
 
     const { getByText } = renderPicker('', vi.fn(), vi.fn(), {
@@ -276,5 +280,60 @@ describe('ContextPicker', () => {
       expect(getByText('context.recent')).toBeInTheDocument();
       expect(getByText('users')).toBeInTheDocument();
     });
+  });
+
+  it('renders Layers icon for .ctx.yaml files', async () => {
+    const ctxFiles: ContextEntry[] = [
+      { name: 'tables.ctx.yaml', path: 'tables.ctx.yaml', isDir: false, size: 128 },
+      { name: 'notes.md', path: 'notes.md', isDir: false, size: 64 },
+    ];
+    mockListFiles.mockResolvedValue(ctxFiles);
+    const { getByTestId, queryAllByTestId } = renderPicker();
+
+    await waitFor(() => {
+      expect(getByTestId('context-cat-files')).toBeInTheDocument();
+    });
+
+    fireEvent.click(getByTestId('context-cat-files'));
+
+    await waitFor(() => {
+      expect(queryAllByTestId('context-item')).toHaveLength(2);
+    });
+
+    const items = queryAllByTestId('context-item');
+    const ctxYamlItem = items.find((el) => el.getAttribute('data-id') === 'tables.ctx.yaml');
+    const mdItem = items.find((el) => el.getAttribute('data-id') === 'notes.md');
+
+    expect(ctxYamlItem).toBeDefined();
+    expect(mdItem).toBeDefined();
+
+    const ctxYamlSvg = ctxYamlItem!.querySelector('svg');
+    const mdSvg = mdItem!.querySelector('svg');
+    expect(ctxYamlSvg).toBeTruthy();
+    expect(mdSvg).toBeTruthy();
+    // The Layers icon (for .ctx.yaml) and File icon (for .md) should be different SVGs
+    expect(ctxYamlSvg!.innerHTML).not.toBe(mdSvg!.innerHTML);
+  });
+
+  it('renders Layers icon for .ctx.yml extension too', async () => {
+    const ctxFiles: ContextEntry[] = [
+      { name: 'groups.ctx.yml', path: 'groups.ctx.yml', isDir: false, size: 64 },
+    ];
+    mockListFiles.mockResolvedValue(ctxFiles);
+    const { getByTestId, queryAllByTestId } = renderPicker();
+
+    await waitFor(() => {
+      expect(getByTestId('context-cat-files')).toBeInTheDocument();
+    });
+
+    fireEvent.click(getByTestId('context-cat-files'));
+
+    await waitFor(() => {
+      expect(queryAllByTestId('context-item')).toHaveLength(1);
+    });
+
+    const item = queryAllByTestId('context-item')[0];
+    expect(item.getAttribute('data-id')).toBe('groups.ctx.yml');
+    expect(item.querySelector('svg')).toBeTruthy();
   });
 });

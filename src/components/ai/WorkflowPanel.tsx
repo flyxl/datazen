@@ -19,6 +19,7 @@ import {
   X,
 } from 'lucide-react';
 import { useI18n } from '../../hooks/useI18n';
+import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 import { useAiStore } from '../../stores/aiStore';
 import { aiCommands } from '../../commands/ai';
 import { connectionCommands } from '../../commands/connection';
@@ -88,6 +89,7 @@ type PanelTab = 'workflows' | 'history';
 
 export function WorkflowPanel({ connectionId }: WorkflowPanelProps) {
   const { t } = useI18n();
+  const [confirmWf, confirmWfDialog] = useConfirmDialog();
   const workflows = useAiStore((s) => s.workflows);
   const workflowsLoading = useAiStore((s) => s.workflowsLoading);
   const loadWorkflows = useAiStore((s) => s.loadWorkflows);
@@ -107,18 +109,22 @@ export function WorkflowPanel({ connectionId }: WorkflowPanelProps) {
   const [tab, setTab] = useState<PanelTab>('workflows');
   const [historyItems, setHistoryItems] = useState<HistoryListItem[]>([]);
   const [historyDetail, setHistoryDetail] = useState<WorkflowExecutionResult | null>(null);
-  const [savedConnections, setSavedConnections] = useState<{ id: string; name: string; databaseType: string; database?: string }[]>([]);
+  const [savedConnections, setSavedConnections] = useState<
+    { id: string; name: string; databaseType: string; database?: string }[]
+  >([]);
 
   useEffect(() => {
     void loadWorkflows();
     void aiCommands.workflowGetDir().then(setWorkflowsDir);
     void connectionCommands.getConnections().then((conns) =>
-      setSavedConnections(conns.map((c) => ({
-        id: c.id,
-        name: c.name,
-        databaseType: c.databaseType,
-        database: c.database,
-      }))),
+      setSavedConnections(
+        conns.map((c) => ({
+          id: c.id,
+          name: c.name,
+          databaseType: c.databaseType,
+          database: c.database,
+        })),
+      ),
     );
   }, [loadWorkflows]);
 
@@ -176,7 +182,12 @@ export function WorkflowPanel({ connectionId }: WorkflowPanelProps) {
   };
 
   const handleDelete = async (workflowId: string) => {
-    if (!confirm(t('workflows.deleteConfirm'))) return;
+    const ok = await confirmWf({
+      title: t('workflows.delete'),
+      message: t('workflows.deleteConfirm'),
+      kind: 'warning',
+    });
+    if (!ok) return;
     await aiCommands.workflowDelete(workflowId);
     if (selectedWorkflow?.id === workflowId) {
       setSelectedWorkflow(null);
@@ -224,7 +235,12 @@ export function WorkflowPanel({ connectionId }: WorkflowPanelProps) {
   };
 
   const handleClearHistory = async () => {
-    if (!confirm(t('workflows.history.clearConfirm'))) return;
+    const ok = await confirmWf({
+      title: t('workflows.history.clear'),
+      message: t('workflows.history.clearConfirm'),
+      kind: 'warning',
+    });
+    if (!ok) return;
     await aiCommands.workflowHistoryClear();
     setHistoryItems([]);
     setHistoryDetail(null);
@@ -254,14 +270,16 @@ export function WorkflowPanel({ connectionId }: WorkflowPanelProps) {
         </h3>
         <div className="flex items-center gap-1">
           <button
-            type="button" onMouseDown={(e) => e.preventDefault()}
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => setTab('workflows')}
             className={`px-2 py-0.5 text-[11px] rounded transition-colors ${tab === 'workflows' ? 'bg-accent/10 text-accent' : 'text-fg-muted hover:text-fg'}`}
           >
             {t('workflows.title')}
           </button>
           <button
-            type="button" onMouseDown={(e) => e.preventDefault()}
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => setTab('history')}
             className={`flex items-center gap-1 px-2 py-0.5 text-[11px] rounded transition-colors ${tab === 'history' ? 'bg-accent/10 text-accent' : 'text-fg-muted hover:text-fg'}`}
           >
@@ -272,7 +290,11 @@ export function WorkflowPanel({ connectionId }: WorkflowPanelProps) {
       </div>
 
       {feedback && (
-        <p className={`text-xs ${feedback.startsWith('Error') || feedback.startsWith('error') ? 'text-red-400' : 'text-green-500'}`}>{feedback}</p>
+        <p
+          className={`text-xs ${feedback.startsWith('Error') || feedback.startsWith('error') ? 'text-red-400' : 'text-green-500'}`}
+        >
+          {feedback}
+        </p>
       )}
 
       {tab === 'history' ? (
@@ -289,7 +311,8 @@ export function WorkflowPanel({ connectionId }: WorkflowPanelProps) {
           {/* Actions bar */}
           <div className="flex items-center gap-1">
             <button
-              type="button" onMouseDown={(e) => e.preventDefault()}
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
               onClick={handleCreate}
               className="flex items-center gap-1 px-2 py-1 text-[11px] text-accent hover:bg-accent/10 rounded transition-colors"
               title={t('workflows.create')}
@@ -298,7 +321,8 @@ export function WorkflowPanel({ connectionId }: WorkflowPanelProps) {
               {t('workflows.create')}
             </button>
             <button
-              type="button" onMouseDown={(e) => e.preventDefault()}
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => void handleReload()}
               className="p-1 text-fg-muted hover:text-fg rounded transition-colors"
               title={t('workflows.reload')}
@@ -306,7 +330,8 @@ export function WorkflowPanel({ connectionId }: WorkflowPanelProps) {
               <RefreshCw className="h-3.5 w-3.5" />
             </button>
             <button
-              type="button" onMouseDown={(e) => e.preventDefault()}
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => openDocsWindow('workflows')}
               className="p-1 text-fg-muted hover:text-fg rounded transition-colors"
               title={t('docs.openWorkflowHelp')}
@@ -321,8 +346,12 @@ export function WorkflowPanel({ connectionId }: WorkflowPanelProps) {
               <FolderOpen className="h-3.5 w-3.5 shrink-0 mt-0.5 text-fg-muted" />
               <div>
                 <div className="text-[10px] text-fg-muted">{t('workflows.storageDir')}</div>
-                <code className="text-[11px] text-fg-secondary break-all select-all">{workflowsDir}</code>
-                <div className="text-[10px] text-fg-muted mt-0.5">{t('workflows.storageDirHint')}</div>
+                <code className="text-[11px] text-fg-secondary break-all select-all">
+                  {workflowsDir}
+                </code>
+                <div className="text-[10px] text-fg-muted mt-0.5">
+                  {t('workflows.storageDirHint')}
+                </div>
               </div>
             </div>
           )}
@@ -344,9 +373,7 @@ export function WorkflowPanel({ connectionId }: WorkflowPanelProps) {
 
           {/* Workflows list */}
           {workflows.length === 0 && !showForm ? (
-            <div className="py-4 text-center text-xs text-fg-muted">
-              {t('workflows.empty')}
-            </div>
+            <div className="py-4 text-center text-xs text-fg-muted">{t('workflows.empty')}</div>
           ) : (
             <div className="space-y-1">
               {workflows.map((workflow) => (
@@ -366,16 +393,24 @@ export function WorkflowPanel({ connectionId }: WorkflowPanelProps) {
                   </div>
                   <div className="flex items-center gap-0.5 shrink-0 ml-2">
                     <button
-                      type="button" onMouseDown={(e) => e.preventDefault()}
-                      onClick={(e) => { e.stopPropagation(); void handleEdit(workflow.id); }}
+                      type="button"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void handleEdit(workflow.id);
+                      }}
                       className="p-1 text-fg-muted hover:text-fg rounded transition-colors"
                       title={t('workflows.edit')}
                     >
                       <Pencil className="h-3 w-3" />
                     </button>
                     <button
-                      type="button" onMouseDown={(e) => e.preventDefault()}
-                      onClick={(e) => { e.stopPropagation(); void handleDelete(workflow.id); }}
+                      type="button"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void handleDelete(workflow.id);
+                      }}
                       className="p-1 text-fg-muted hover:text-red-400 rounded transition-colors"
                       title={t('workflows.delete')}
                     >
@@ -396,15 +431,15 @@ export function WorkflowPanel({ connectionId }: WorkflowPanelProps) {
                     {v.description || v.name}
                     {v.required && <span className="text-red-400 ml-0.5">*</span>}
                     {v.type === 'connection' && (
-                      <span className="ml-1 text-accent text-[10px]">[{t('workflows.form.varTypeConnection')}]</span>
+                      <span className="ml-1 text-accent text-[10px]">
+                        [{t('workflows.form.varTypeConnection')}]
+                      </span>
                     )}
                   </label>
                   {v.type === 'connection' ? (
                     <Select
                       value={variables[v.name] ?? ''}
-                      onChange={(val) =>
-                        setVariables((prev) => ({ ...prev, [v.name]: val }))
-                      }
+                      onChange={(val) => setVariables((prev) => ({ ...prev, [v.name]: val }))}
                       className="!h-8 !text-xs"
                       disabled={isExecuting}
                       options={[
@@ -428,7 +463,8 @@ export function WorkflowPanel({ connectionId }: WorkflowPanelProps) {
               ))}
 
               <button
-                type="button" onMouseDown={(e) => e.preventDefault()}
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-accent text-white rounded hover:bg-accent/90 disabled:opacity-50 transition-colors"
                 onClick={() => void handleExecute()}
                 disabled={isExecuting}
@@ -444,33 +480,29 @@ export function WorkflowPanel({ connectionId }: WorkflowPanelProps) {
           )}
 
           {workflowError && (
-            <div className="text-xs text-red-400 rounded bg-red-500/10 p-2">
-              {workflowError}
-            </div>
+            <div className="text-xs text-red-400 rounded bg-red-500/10 p-2">{workflowError}</div>
           )}
 
           {/* Structured execution result */}
           {result && <ExecutionResultPanel result={result} t={t} />}
         </>
       )}
+      {confirmWfDialog}
     </div>
   );
 }
 
 // ─── Structured result display ──────────────────────────────────────────────
 
-function ExecutionResultPanel({
-  result,
-  t,
-}: {
-  result: WorkflowExecutionResult;
-  t: TFn;
-}) {
+function ExecutionResultPanel({ result, t }: { result: WorkflowExecutionResult; t: TFn }) {
   return (
     <div className="border border-edge rounded-md bg-surface overflow-hidden">
-      <div className={`flex items-center justify-between px-3 py-2 text-xs font-medium border-b border-edge ${result.success ? 'bg-green-500/5 text-green-600 dark:text-green-400' : 'bg-red-500/5 text-red-600 dark:text-red-400'}`}>
+      <div
+        className={`flex items-center justify-between px-3 py-2 text-xs font-medium border-b border-edge ${result.success ? 'bg-green-500/5 text-green-600 dark:text-green-400' : 'bg-red-500/5 text-red-600 dark:text-red-400'}`}
+      >
         <span>
-          {result.success ? '✓' : '✗'} {result.success ? t('workflows.result') : t('workflows.executionFailed')}
+          {result.success ? '✓' : '✗'}{' '}
+          {result.success ? t('workflows.result') : t('workflows.executionFailed')}
         </span>
         <span className="text-fg-muted font-normal">{result.totalTimeMs}ms</span>
       </div>
@@ -509,7 +541,12 @@ function stepToStatementResult(step: StepExecutionResult): StatementResult | nul
   }));
   const rawRows = r.rows as unknown[];
   let rows: (Value | null)[][];
-  if (rawRows.length > 0 && typeof rawRows[0] === 'object' && rawRows[0] !== null && !Array.isArray(rawRows[0])) {
+  if (
+    rawRows.length > 0 &&
+    typeof rawRows[0] === 'object' &&
+    rawRows[0] !== null &&
+    !Array.isArray(rawRows[0])
+  ) {
     rows = (rawRows as Record<string, unknown>[]).map((obj) =>
       cols.map((c) => (obj[c.name] ?? null) as Value | null),
     );
@@ -529,7 +566,13 @@ function extractColumnNames(stepResult: Record<string, unknown> | undefined): { 
   const cols = stepResult.columns as { name: string }[] | undefined;
   if (Array.isArray(cols) && cols.length > 0) return cols;
   const rows = stepResult.rows as Record<string, unknown>[] | undefined;
-  if (Array.isArray(rows) && rows.length > 0 && typeof rows[0] === 'object' && rows[0] !== null && !Array.isArray(rows[0])) {
+  if (
+    Array.isArray(rows) &&
+    rows.length > 0 &&
+    typeof rows[0] === 'object' &&
+    rows[0] !== null &&
+    !Array.isArray(rows[0])
+  ) {
     return Object.keys(rows[0]).map((k) => ({ name: k }));
   }
   return [];
@@ -540,8 +583,20 @@ function StepResultRow({ step }: { step: StepExecutionResult }) {
   const [expanded, setExpanded] = useState(false);
   const [viewMode, setViewMode] = useState<'table' | 'chart'>('table');
   const [chartConfig, setChartConfig] = useState<ChartConfig | undefined>();
-  const statusIcon = step.status === 'success' ? '✓' : step.status === 'skipped' ? '⏭' : step.status === 'timed_out' ? '⏱' : '✗';
-  const statusColor = step.status === 'success' ? 'text-green-500' : step.status === 'skipped' ? 'text-yellow-500' : 'text-red-400';
+  const statusIcon =
+    step.status === 'success'
+      ? '✓'
+      : step.status === 'skipped'
+        ? '⏭'
+        : step.status === 'timed_out'
+          ? '⏱'
+          : '✗';
+  const statusColor =
+    step.status === 'success'
+      ? 'text-green-500'
+      : step.status === 'skipped'
+        ? 'text-yellow-500'
+        : 'text-red-400';
 
   const colInfos = useMemo(() => extractColumnNames(step.result), [step.result]);
 
@@ -557,11 +612,16 @@ function StepResultRow({ step }: { step: StepExecutionResult }) {
   return (
     <div className="border-b border-edge last:border-b-0">
       <button
-        type="button" onMouseDown={(e) => e.preventDefault()}
+        type="button"
+        onMouseDown={(e) => e.preventDefault()}
         onClick={() => setExpanded(!expanded)}
         className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-surface-raised/50 transition-colors"
       >
-        {expanded ? <ChevronDown className="h-3 w-3 text-fg-muted shrink-0" /> : <ChevronRight className="h-3 w-3 text-fg-muted shrink-0" />}
+        {expanded ? (
+          <ChevronDown className="h-3 w-3 text-fg-muted shrink-0" />
+        ) : (
+          <ChevronRight className="h-3 w-3 text-fg-muted shrink-0" />
+        )}
         <span className={`${statusColor} shrink-0`}>{statusIcon}</span>
         <span className="font-medium text-fg truncate">{step.stepId}</span>
         <span className="text-fg-muted">[{step.stepType}]</span>
@@ -582,9 +642,7 @@ function StepResultRow({ step }: { step: StepExecutionResult }) {
             </div>
           )}
 
-          {step.error && (
-            <div className="text-[11px] text-red-400">{step.error}</div>
-          )}
+          {step.error && <div className="text-[11px] text-red-400">{step.error}</div>}
 
           {hasData && (
             <div>
@@ -593,7 +651,8 @@ function StepResultRow({ step }: { step: StepExecutionResult }) {
                 {chartable && (
                   <div className="flex items-center gap-0.5 rounded-md bg-surface p-0.5 ml-auto">
                     <button
-                      type="button" onMouseDown={(e) => e.preventDefault()}
+                      type="button"
+                      onMouseDown={(e) => e.preventDefault()}
                       className={cn(
                         'flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] transition-colors',
                         viewMode === 'table'
@@ -606,7 +665,8 @@ function StepResultRow({ step }: { step: StepExecutionResult }) {
                       {t('chart.viewTable')}
                     </button>
                     <button
-                      type="button" onMouseDown={(e) => e.preventDefault()}
+                      type="button"
+                      onMouseDown={(e) => e.preventDefault()}
                       className={cn(
                         'flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] transition-colors',
                         viewMode === 'chart'
@@ -623,7 +683,10 @@ function StepResultRow({ step }: { step: StepExecutionResult }) {
               </div>
 
               {viewMode === 'chart' && statementResult ? (
-                <div className="mt-1 border border-edge rounded overflow-hidden" style={{ height: 260 }}>
+                <div
+                  className="mt-1 border border-edge rounded overflow-hidden"
+                  style={{ height: 260 }}
+                >
                   {statementResult.rows.length > 1000 && (
                     <div className="flex items-center gap-1 bg-surface-alt px-2 py-0.5 text-[10px] text-yellow-400">
                       <AlertTriangle className="h-2.5 w-2.5" />
@@ -643,7 +706,10 @@ function StepResultRow({ step }: { step: StepExecutionResult }) {
                     <thead className="sticky top-0">
                       <tr className="bg-surface-alt">
                         {colInfos.map((col) => (
-                          <th key={col.name} className="px-2 py-1 text-left font-semibold text-fg border-b border-edge whitespace-nowrap">
+                          <th
+                            key={col.name}
+                            className="px-2 py-1 text-left font-semibold text-fg border-b border-edge whitespace-nowrap"
+                          >
                             {col.name}
                           </th>
                         ))}
@@ -651,16 +717,33 @@ function StepResultRow({ step }: { step: StepExecutionResult }) {
                     </thead>
                     <tbody>
                       {rows.slice(0, 20).map((row, i) => (
-                        <tr key={i} className="border-b border-edge last:border-b-0 hover:bg-surface-raised/30">
+                        <tr
+                          key={i}
+                          className="border-b border-edge last:border-b-0 hover:bg-surface-raised/30"
+                        >
                           {row.map((val, j) => (
-                            <td key={j} className="px-2 py-0.5 text-fg-secondary whitespace-nowrap max-w-[200px] truncate">
-                              {val == null ? <span className="text-fg-muted italic">null</span> : String(val)}
+                            <td
+                              key={j}
+                              className="px-2 py-0.5 text-fg-secondary whitespace-nowrap max-w-[200px] truncate"
+                            >
+                              {val == null ? (
+                                <span className="text-fg-muted italic">null</span>
+                              ) : (
+                                String(val)
+                              )}
                             </td>
                           ))}
                         </tr>
                       ))}
                       {rows.length > 20 && (
-                        <tr><td colSpan={colInfos.length} className="px-2 py-0.5 text-fg-muted text-center">... {rows.length - 20} more</td></tr>
+                        <tr>
+                          <td
+                            colSpan={colInfos.length}
+                            className="px-2 py-0.5 text-fg-muted text-center"
+                          >
+                            ... {rows.length - 20} more
+                          </td>
+                        </tr>
                       )}
                     </tbody>
                   </table>
@@ -701,7 +784,8 @@ function HistoryTab({
     return (
       <div>
         <button
-          type="button" onMouseDown={(e) => e.preventDefault()}
+          type="button"
+          onMouseDown={(e) => e.preventDefault()}
           onClick={onCloseDetail}
           className="flex items-center gap-1 text-xs text-accent hover:underline mb-2"
         >
@@ -717,7 +801,8 @@ function HistoryTab({
     <div className="space-y-2">
       {items.length > 0 && (
         <button
-          type="button" onMouseDown={(e) => e.preventDefault()}
+          type="button"
+          onMouseDown={(e) => e.preventDefault()}
           onClick={onClear}
           className="text-[11px] text-red-400 hover:underline"
         >
@@ -726,9 +811,7 @@ function HistoryTab({
       )}
 
       {items.length === 0 ? (
-        <div className="py-4 text-center text-xs text-fg-muted">
-          {t('workflows.history.empty')}
-        </div>
+        <div className="py-4 text-center text-xs text-fg-muted">{t('workflows.history.empty')}</div>
       ) : (
         items.map((item) => (
           <div
@@ -745,7 +828,9 @@ function HistoryTab({
                 <span className="text-fg-muted">{item.totalTimeMs}ms</span>
               </div>
             </div>
-            <span className={`shrink-0 ml-2 text-[11px] font-medium ${item.success ? 'text-green-500' : 'text-red-400'}`}>
+            <span
+              className={`shrink-0 ml-2 text-[11px] font-medium ${item.success ? 'text-green-500' : 'text-red-400'}`}
+            >
               {item.success ? '✓' : '✗'}
             </span>
           </div>
@@ -811,7 +896,10 @@ function WorkflowForm({
   const addVariable = () => {
     setDraft((prev) => ({
       ...prev,
-      variables: [...prev.variables, { name: '', varType: 'string', description: '', required: false }],
+      variables: [
+        ...prev.variables,
+        { name: '', varType: 'string', description: '', required: false },
+      ],
     }));
   };
 
@@ -819,9 +907,7 @@ function WorkflowForm({
     setDraft((prev) => ({ ...prev, variables: prev.variables.filter((_, i) => i !== idx) }));
   };
 
-  const connVarNames = draft.variables
-    .filter((v) => v.varType === 'connection')
-    .map((v) => v.name);
+  const connVarNames = draft.variables.filter((v) => v.varType === 'connection').map((v) => v.name);
 
   return (
     <div className="space-y-2 border border-edge rounded-md p-3 bg-surface">
@@ -853,7 +939,9 @@ function WorkflowForm({
       </div>
 
       <div>
-        <label className="text-[10px] text-fg-muted block mb-0.5">{t('workflows.form.description')}</label>
+        <label className="text-[10px] text-fg-muted block mb-0.5">
+          {t('workflows.form.description')}
+        </label>
         <input
           type="text"
           value={draft.description}
@@ -867,7 +955,12 @@ function WorkflowForm({
       <div>
         <div className="flex items-center justify-between mb-1">
           <label className="text-[10px] text-fg-muted">{t('workflows.form.variables')}</label>
-          <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={addVariable} className="text-[10px] text-accent hover:underline">
+          <button
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={addVariable}
+            className="text-[10px] text-accent hover:underline"
+          >
             {t('workflows.form.addVariable')}
           </button>
         </div>
@@ -924,7 +1017,8 @@ function WorkflowForm({
               {t('workflows.form.varRequired')}
             </label>
             <button
-              type="button" onMouseDown={(e) => e.preventDefault()}
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => removeVariable(i)}
               className="p-0.5 text-fg-muted hover:text-red-400"
             >
@@ -952,16 +1046,36 @@ function WorkflowForm({
           />
         ))}
         <div className="flex gap-2 flex-wrap">
-          <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => addStep('query')} className="text-[10px] text-accent hover:underline">
+          <button
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => addStep('query')}
+            className="text-[10px] text-accent hover:underline"
+          >
             + {t('workflows.form.addQueryStep')}
           </button>
-          <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => addStep('ai')} className="text-[10px] text-accent hover:underline">
+          <button
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => addStep('ai')}
+            className="text-[10px] text-accent hover:underline"
+          >
             + {t('workflows.form.addAiStep')}
           </button>
-          <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => addStep('condition')} className="text-[10px] text-accent hover:underline">
+          <button
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => addStep('condition')}
+            className="text-[10px] text-accent hover:underline"
+          >
             + {t('workflows.form.addConditionStep')}
           </button>
-          <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => addStep('foreach')} className="text-[10px] text-accent hover:underline">
+          <button
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => addStep('foreach')}
+            className="text-[10px] text-accent hover:underline"
+          >
             + {t('workflows.form.addForeachStep')}
           </button>
         </div>
@@ -970,7 +1084,8 @@ function WorkflowForm({
       {/* Actions */}
       <div className="flex gap-2 pt-1">
         <button
-          type="button" onMouseDown={(e) => e.preventDefault()}
+          type="button"
+          onMouseDown={(e) => e.preventDefault()}
           className="px-3 py-1 text-xs bg-accent text-white rounded hover:bg-accent/90 transition-colors disabled:opacity-50"
           onClick={onSave}
           disabled={!draft.id.trim() || !draft.name.trim() || draft.steps.length === 0}
@@ -978,7 +1093,8 @@ function WorkflowForm({
           {t('common.save')}
         </button>
         <button
-          type="button" onMouseDown={(e) => e.preventDefault()}
+          type="button"
+          onMouseDown={(e) => e.preventDefault()}
           className="px-3 py-1 text-xs text-fg-secondary border border-edge rounded hover:bg-surface-raised transition-colors"
           onClick={onCancel}
         >
@@ -1008,14 +1124,13 @@ function DatabasePicker({
   const connId = step.connection ?? '';
   const isVariable = connId.startsWith('{{');
   const savedConn = !isVariable ? savedConnections.find((c) => c.id === connId) : undefined;
-  const meta = savedConn ? DB_REGISTRY[savedConn.databaseType as keyof typeof DB_REGISTRY] : undefined;
+  const meta = savedConn
+    ? DB_REGISTRY[savedConn.databaseType as keyof typeof DB_REGISTRY]
+    : undefined;
   const hasMultiCapability = !!meta?.hasMultiDatabase;
   const configuredDatabase = savedConn?.database?.trim() || undefined;
   // Same gate as schemaStore: configured database locks to single DB (no picker).
-  const needsDb =
-    hasMultiCapability &&
-    !configuredDatabase &&
-    (loading || databases.length > 1);
+  const needsDb = hasMultiCapability && !configuredDatabase && (loading || databases.length > 1);
 
   useEffect(() => {
     if (!hasMultiCapability || !connId || configuredDatabase) {
@@ -1034,7 +1149,9 @@ function DatabasePicker({
         if (!cancelled) setLoading(false);
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [connId, hasMultiCapability, configuredDatabase]);
 
   if (!needsDb && !isVariable) return null;
@@ -1042,7 +1159,9 @@ function DatabasePicker({
   if (isVariable) {
     return (
       <div className="flex items-center gap-1">
-        <label className="text-[10px] text-fg-muted w-12 shrink-0">{t('workflows.form.database')}</label>
+        <label className="text-[10px] text-fg-muted w-12 shrink-0">
+          {t('workflows.form.database')}
+        </label>
         <input
           type="text"
           value={step.database ?? ''}
@@ -1056,7 +1175,9 @@ function DatabasePicker({
 
   return (
     <div className="flex items-center gap-1">
-      <label className="text-[10px] text-fg-muted w-12 shrink-0">{t('workflows.form.database')}</label>
+      <label className="text-[10px] text-fg-muted w-12 shrink-0">
+        {t('workflows.form.database')}
+      </label>
       {loading ? (
         <span className="text-[10px] text-fg-muted">{t('workflows.loading')}</span>
       ) : databases.length > 0 ? (
@@ -1104,9 +1225,12 @@ function StepEditor({
   textareaClass: string;
 }) {
   const typeLabel =
-    step.type === 'query' ? t('workflows.form.sql')
-      : step.type === 'ai' ? t('workflows.form.prompt')
-        : step.type === 'condition' ? t('workflows.form.condition')
+    step.type === 'query'
+      ? t('workflows.form.sql')
+      : step.type === 'ai'
+        ? t('workflows.form.prompt')
+        : step.type === 'condition'
+          ? t('workflows.form.condition')
           : t('workflows.form.foreach');
 
   return (
@@ -1115,13 +1239,20 @@ function StepEditor({
         <span className="text-[10px] font-medium text-fg-secondary">
           #{index + 1} {typeLabel}
         </span>
-        <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={onRemove} className="text-[10px] text-red-400 hover:underline">
+        <button
+          type="button"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={onRemove}
+          className="text-[10px] text-red-400 hover:underline"
+        >
           {t('workflows.form.removeStep')}
         </button>
       </div>
 
       <div className="flex items-center gap-1">
-        <label className="text-[10px] text-fg-muted w-12 shrink-0">{t('workflows.form.stepId')}</label>
+        <label className="text-[10px] text-fg-muted w-12 shrink-0">
+          {t('workflows.form.stepId')}
+        </label>
         <input
           type="text"
           value={step.id}
@@ -1133,7 +1264,9 @@ function StepEditor({
       {step.type === 'query' && (
         <>
           <div className="flex items-center gap-1">
-            <label className="text-[10px] text-fg-muted w-12 shrink-0">{t('workflows.form.connection')}</label>
+            <label className="text-[10px] text-fg-muted w-12 shrink-0">
+              {t('workflows.form.connection')}
+            </label>
             <Select
               value={step.connection ?? ''}
               onChange={(val) => onUpdate('connection', val || undefined)}
@@ -1187,7 +1320,9 @@ function StepEditor({
               placeholder="steps.s1.rows_count > 0"
             />
           </div>
-          <div className="text-[10px] text-fg-muted mt-1">then / else {t('workflows.form.conditionHint')}</div>
+          <div className="text-[10px] text-fg-muted mt-1">
+            then / else {t('workflows.form.conditionHint')}
+          </div>
         </>
       )}
 

@@ -936,18 +936,7 @@ pub fn run() {
                     );
                     if !child_labels.is_empty() {
                         api.prevent_close();
-                        let lang = tauri::async_runtime::block_on(
-                            window.app_handle().state::<AppState>().store.get_settings(),
-                        )
-                        .language;
-                        let msg = menu_label(&lang, "close-main-blocked");
-                        use tauri_plugin_dialog::DialogExt;
-                        let _ = window
-                            .app_handle()
-                            .dialog()
-                            .message(msg)
-                            .title("DataZen")
-                            .blocking_show();
+                        let _ = window.minimize();
                         return;
                     }
                     if tray::should_close_to_tray(window.app_handle()) {
