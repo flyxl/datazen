@@ -9,7 +9,9 @@ import { Dialog } from '../../components/ui/Dialog';
 import { syncCommands } from '../../commands/sync';
 import { databaseCommands } from '../../commands/database';
 import { useI18n } from '../../hooks/useI18n';
+import { useSettings } from '../../hooks/useSettings';
 import { useSettingsStore } from '../../stores/settingsStore';
+import { listenCrossWindow } from '../../lib/crossWindowBus';
 import { cn } from '../../lib/cn';
 import { resolveSyncPairing } from '../../lib/syncPairing';
 import type { ConnectionConfig } from '../../types';
@@ -24,6 +26,7 @@ import {
 } from './mappingView';
 
 export function DataSyncWindow() {
+  useSettings();
   const { t } = useI18n();
   const loadSettings = useSettingsStore((s) => s.loadSettings);
 
@@ -47,15 +50,40 @@ export function DataSyncWindow() {
   }, [loadSettings]);
 
   useEffect(() => {
-    (async () => {
-      try {
-        const conns = await invoke<ConnectionConfig[]>('get_connections');
-        setConnections(conns);
-      } catch (e) {
-        console.error('Failed to load', e);
-      }
-    })();
+    let cleanup: (() => void) | undefined;
+    listenCrossWindow('datazen:connection-closed', (payload) => {
+      const { connectionId } = (payload ?? {}) as { connectionId?: string };
+      if (!connectionId) return;
+      setActiveConns((prev) => {
+        const next = { ...prev };
+        for (const [cfgId, connId] of Object.entries(next)) {
+          if (connId === connectionId) delete next[cfgId];
+        }
+        return next;
+      });
+    }).then((fn) => {
+      cleanup = fn;
+    });
+    return () => cleanup?.();
   }, []);
+
+  const loadConnections = useCallback(() => {
+    void invoke<ConnectionConfig[]>('get_connections')
+      .then(setConnections)
+      .catch((e) => console.error('Failed to load', e));
+  }, []);
+
+  useEffect(() => {
+    loadConnections();
+  }, [loadConnections]);
+
+  useEffect(() => {
+    let cleanup: (() => void) | undefined;
+    listenCrossWindow('datazen:connections-changed', loadConnections).then((fn) => {
+      cleanup = fn;
+    });
+    return () => cleanup?.();
+  }, [loadConnections]);
 
   useEffect(() => {
     if (!sourceId || !targetId) return;

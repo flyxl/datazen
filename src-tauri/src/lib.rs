@@ -769,6 +769,7 @@ pub fn run() {
             commands::test_connection,
             commands::connect,
             commands::ping_connection,
+            commands::release_connection,
             commands::disconnect,
             commands::get_connection_info,
             commands::get_available_drivers,
@@ -983,8 +984,10 @@ pub fn run() {
                         return;
                     }
                     let state = app_handle.state::<AppState>();
-                    let mgr = state.mcp_client_manager.clone();
-                    tauri::async_runtime::block_on(mgr.disconnect_all());
+                    tauri::async_runtime::block_on(async {
+                        state.connection_manager.shutdown().await;
+                        state.mcp_client_manager.disconnect_all().await;
+                    });
                 }
                 // macOS Dock click (applicationShouldHandleReopen): raise MainWindow.
                 #[cfg(target_os = "macos")]
