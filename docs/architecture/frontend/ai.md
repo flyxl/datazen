@@ -37,7 +37,8 @@ src/windows/workflow/
 - 从全局上下文目录（`settings.contextDir`）列出可用文件
 - 支持搜索过滤、键盘上下导航、回车选择
 - 显示文件大小信息
-- 选中的文件内容作为前缀注入到发送给 AI 的 user message 中
+- `.ctx.yaml` / `.ctx.yml` 文件使用 `Layers` 图标区分（表组上下文文件）
+- 选中的文件内容作为前缀注入到发送给 AI 的 user message 中（`.ctx.yaml` 文件则提取表名获取实时 DDL）
 - 支持 `position?: 'above' | 'below'` 属性（默认 `'above'`），控制下拉列表相对锚点元素的弹出方向：
   - `AiInput` 使用默认 `'above'`（位于 Chat 面板底部，向上弹出避免被裁切）
   - `Nl2SqlPanel` 传入 `position="below"`（位于 QueryPanel 内容区顶部，向下弹出）
