@@ -19,6 +19,7 @@ const {
   deleteConnectionMock,
   moveConnectionToGroupMock,
   setMainSidebarWidthMock,
+  connectActionMock,
   markConnectingMock,
   disconnectMock,
   removeByConnectionIdMock,
@@ -70,6 +71,7 @@ const {
 
   const activeState = {
     connections: {} as Record<string, { status: string; connectionId?: string; error?: string }>,
+    connect: vi.fn().mockResolvedValue(undefined),
     markConnecting: vi.fn(),
     disconnect: vi.fn().mockResolvedValue(undefined),
     removeByConnectionId: vi.fn(),
@@ -108,6 +110,7 @@ const {
     deleteConnectionMock: connectionState.deleteConnection,
     moveConnectionToGroupMock: connectionState.moveConnectionToGroup,
     setMainSidebarWidthMock: uiState.setMainSidebarWidth,
+    connectActionMock: activeState.connect,
     markConnectingMock: activeState.markConnecting,
     disconnectMock: activeState.disconnect,
     removeByConnectionIdMock: activeState.removeByConnectionId,
@@ -315,14 +318,12 @@ vi.mock('../ActionPanel', () => ({
     onNewConnection,
     onBackup,
     onRestore,
-    onDataSync,
     onWorkflow,
     onDashboard,
   }: {
     onNewConnection: () => void;
     onBackup: () => void;
     onRestore: () => void;
-    onDataSync: () => void;
     onWorkflow: () => void;
     onDashboard: () => void;
   }) => (
@@ -335,9 +336,6 @@ vi.mock('../ActionPanel', () => ({
       </button>
       <button type="button" data-testid="action-restore" onClick={onRestore}>
         restore
-      </button>
-      <button type="button" data-testid="action-sync" onClick={onDataSync}>
-        sync
       </button>
       <button type="button" data-testid="action-workflow" onClick={onWorkflow}>
         workflow
@@ -582,7 +580,7 @@ describe('MainWindow', () => {
 
     renderMain();
     fireEvent.doubleClick(screen.getByTestId('conn-c1'));
-    expect(markConnectingMock).toHaveBeenCalledWith('c1', 'postgres');
+    expect(connectActionMock).toHaveBeenCalled();
     expect(openConnectionWindowMock).toHaveBeenCalledWith(
       { configId: 'c1' },
       'Local PG',
@@ -964,14 +962,14 @@ describe('MainWindow', () => {
     expect(screen.queryByTestId('web-context-item-new-connection')).not.toBeInTheDocument();
   });
 
-  it('TC-main: connecting status skips re-markConnecting', () => {
+  it('TC-main: connecting status skips re-connect', () => {
     connectionState.groups = ['Dev'];
     connectionState.connections = [makeConn()];
     activeState.connections = { c1: { status: 'connecting' } };
 
     renderMain();
     fireEvent.doubleClick(screen.getByTestId('conn-c1'));
-    expect(markConnectingMock).not.toHaveBeenCalled();
+    expect(connectActionMock).not.toHaveBeenCalled();
     expect(openConnectionWindowMock).toHaveBeenCalled();
   });
 });
