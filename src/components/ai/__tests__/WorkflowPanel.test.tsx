@@ -1,7 +1,11 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { render, cleanup, waitFor, fireEvent, screen } from '@testing-library/react';
 import { WorkflowPanel } from '../WorkflowPanel';
-import type { StepExecutionResult, WorkflowExecutionResult, WorkflowListItem } from '../../../types';
+import type {
+  StepExecutionResult,
+  WorkflowExecutionResult,
+  WorkflowListItem,
+} from '../../../types';
 
 const {
   aiStoreState,
@@ -109,12 +113,18 @@ vi.mock('../../../lib/windowManager', () => ({
 vi.mock('../../chart/ChartView', () => ({
   ChartView: ({ onDataPointClick }: { onDataPointClick?: () => void }) => (
     <div data-testid="chart-view">
-      <button type="button" onClick={() => onDataPointClick?.()}>chart-click</button>
+      <button type="button" onClick={() => onDataPointClick?.()}>
+        chart-click
+      </button>
     </div>
   ),
 }));
 
-const confirmMock = vi.fn(() => true);
+const confirmDialogFn = vi.fn().mockResolvedValue(true);
+
+vi.mock('../../../hooks/useConfirmDialog', () => ({
+  useConfirmDialog: () => [confirmDialogFn, null],
+}));
 
 function makeResult(steps: StepExecutionResult[]): WorkflowExecutionResult {
   return { success: true, finalOutput: 'done', steps, totalTimeMs: 10 };
@@ -128,8 +138,14 @@ const chartableStep: StepExecutionResult = {
   connectionName: 'PG',
   sqlExecuted: 'SELECT n, v FROM t',
   result: {
-    columns: [{ name: 'n', dataType: 'text' }, { name: 'v', dataType: 'int4' }],
-    rows: [['a', 1], ['b', 2]],
+    columns: [
+      { name: 'n', dataType: 'text' },
+      { name: 'v', dataType: 'int4' },
+    ],
+    rows: [
+      ['a', 1],
+      ['b', 2],
+    ],
     rows_count: 2,
     execution_time_ms: 5,
   },
@@ -137,8 +153,7 @@ const chartableStep: StepExecutionResult = {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.stubGlobal('confirm', confirmMock);
-  confirmMock.mockReturnValue(true);
+  confirmDialogFn.mockResolvedValue(true);
   aiStoreState.workflowsLoading = false;
   aiStoreState.workflowError = null;
   aiStoreState.workflowExecutionResult = null;
@@ -203,7 +218,9 @@ describe('WorkflowPanel', () => {
     fireEvent.click(screen.getByTitle('workflows.create'));
     const idInput = screen.getByPlaceholderText('workflows.form.idPlaceholder');
     fireEvent.change(idInput, { target: { value: 'new-wf' } });
-    fireEvent.change(screen.getByPlaceholderText('workflows.form.namePlaceholder'), { target: { value: 'New' } });
+    fireEvent.change(screen.getByPlaceholderText('workflows.form.namePlaceholder'), {
+      target: { value: 'New' },
+    });
     fireEvent.click(screen.getByText('common.save'));
     await waitFor(() => expect(workflowSaveMock).toHaveBeenCalled());
     expect(screen.getByText('workflows.saved')).toBeInTheDocument();
@@ -227,8 +244,12 @@ describe('WorkflowPanel', () => {
     render(<WorkflowPanel />);
     await waitFor(() => screen.getByTitle('workflows.create'));
     fireEvent.click(screen.getByTitle('workflows.create'));
-    fireEvent.change(screen.getByPlaceholderText('workflows.form.idPlaceholder'), { target: { value: 'wf-x' } });
-    fireEvent.change(screen.getByPlaceholderText('workflows.form.namePlaceholder'), { target: { value: 'X' } });
+    fireEvent.change(screen.getByPlaceholderText('workflows.form.idPlaceholder'), {
+      target: { value: 'wf-x' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('workflows.form.namePlaceholder'), {
+      target: { value: 'X' },
+    });
     fireEvent.click(screen.getByText('common.save'));
     await waitFor(() => expect(screen.getByText('Error: save failed')).toBeInTheDocument());
   });
@@ -259,21 +280,36 @@ describe('WorkflowPanel', () => {
       description: 'First',
       variables: [],
       steps: [
-        { type: 'condition', id: 'c1', if: 'true', thenSteps: [{ type: 'query', id: 'q1', sql: 'SELECT 1' }], elseSteps: [] },
-        { type: 'foreach', id: 'f1', items: 'steps.q1.rows', asVar: 'row', steps: [{ type: 'ai', id: 'a1', prompt: 'hi' }], maxIterations: 50 },
+        {
+          type: 'condition',
+          id: 'c1',
+          if: 'true',
+          thenSteps: [{ type: 'query', id: 'q1', sql: 'SELECT 1' }],
+          elseSteps: [],
+        },
+        {
+          type: 'foreach',
+          id: 'f1',
+          items: 'steps.q1.rows',
+          asVar: 'row',
+          steps: [{ type: 'ai', id: 'a1', prompt: 'hi' }],
+          maxIterations: 50,
+        },
       ],
     });
     render(<WorkflowPanel />);
     await waitFor(() => screen.getByText('Workflow One'));
     fireEvent.click(screen.getAllByTitle('workflows.edit')[0]);
     await waitFor(() => expect(workflowGetMock).toHaveBeenCalledWith('wf1'));
-    await waitFor(() => expect(screen.getByText(/workflows.form.conditionHint/)).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByText(/workflows.form.conditionHint/)).toBeInTheDocument(),
+    );
     expect(screen.getByDisplayValue('row')).toBeInTheDocument();
     expect(screen.getByDisplayValue('50')).toBeInTheDocument();
   });
 
   it('skips delete when confirm cancelled', async () => {
-    confirmMock.mockReturnValueOnce(false);
+    confirmDialogFn.mockResolvedValueOnce(false);
     render(<WorkflowPanel />);
     await waitFor(() => screen.getByText('Workflow One'));
     fireEvent.click(screen.getAllByTitle('workflows.delete')[0]);
@@ -310,7 +346,13 @@ describe('WorkflowPanel', () => {
 
   it('shows execution result with expandable step and chart via history', async () => {
     workflowHistoryListMock.mockResolvedValue([
-      { id: 'h1', workflowName: 'Chart Run', createdAt: Date.now(), totalTimeMs: 99, success: true },
+      {
+        id: 'h1',
+        workflowName: 'Chart Run',
+        createdAt: Date.now(),
+        totalTimeMs: 99,
+        success: true,
+      },
     ]);
     workflowHistoryGetMock.mockResolvedValue({
       result: makeResult([chartableStep]),
@@ -331,14 +373,22 @@ describe('WorkflowPanel', () => {
   it('shows workflow error and failed execution via history', async () => {
     aiStoreState.workflowError = 'exec failed';
     workflowHistoryListMock.mockResolvedValue([
-      { id: 'h1', workflowName: 'Failed Run', createdAt: Date.now(), totalTimeMs: 1, success: false },
+      {
+        id: 'h1',
+        workflowName: 'Failed Run',
+        createdAt: Date.now(),
+        totalTimeMs: 1,
+        success: false,
+      },
     ]);
     workflowHistoryGetMock.mockResolvedValue({
       result: {
         success: false,
         finalOutput: '',
         error: 'boom',
-        steps: [{ stepId: 's1', stepType: 'query', status: 'failed', executionTimeMs: 1, error: 'err' }],
+        steps: [
+          { stepId: 's1', stepType: 'query', status: 'failed', executionTimeMs: 1, error: 'err' },
+        ],
         totalTimeMs: 1,
       },
     });
@@ -380,10 +430,12 @@ describe('WorkflowPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'workflows.form.selectConnection' }));
     fireEvent.mouseDown(await screen.findByText('PG'));
     fireEvent.click(screen.getByText('workflows.run'));
-    await waitFor(() => expect(executeWorkflowMock).toHaveBeenCalledWith({
-      workflowId: 'wf2',
-      variables: { q: 'x', conn: 'c1' },
-      connectionId: 'c1',
-    }));
+    await waitFor(() =>
+      expect(executeWorkflowMock).toHaveBeenCalledWith({
+        workflowId: 'wf2',
+        variables: { q: 'x', conn: 'c1' },
+        connectionId: 'c1',
+      }),
+    );
   });
 });
