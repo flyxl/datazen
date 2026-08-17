@@ -40,6 +40,7 @@ import { useSettingsStore } from '../../stores/settingsStore';
 import { aiCommands } from '../../commands/ai';
 import { dashboardCommands } from '../../commands/dashboard';
 import { connectionCommands } from '../../commands/connection';
+import { listenCrossWindow } from '../../lib/crossWindowBus';
 import { openDashboardWindow } from '../../lib/windowManager';
 import { cn } from '../../lib/cn';
 import { showNativeContextMenu } from '../../lib/nativeContextMenu';
@@ -149,11 +150,7 @@ export function WorkflowWindow() {
     storageKey: 'workflow.sidebar',
   });
 
-  useEffect(() => {
-    void loadSettings();
-    void loadConfig();
-    void loadWorkflows();
-    void aiCommands.workflowGetDir().then(setWorkflowsDir);
+  const reloadConnections = useCallback(() => {
     void connectionCommands.getConnections().then((conns) =>
       setSavedConnections(
         conns.map((c) => ({
@@ -164,11 +161,27 @@ export function WorkflowWindow() {
         })),
       ),
     );
+  }, []);
+
+  useEffect(() => {
+    void loadSettings();
+    void loadConfig();
+    void loadWorkflows();
+    void aiCommands.workflowGetDir().then(setWorkflowsDir);
+    reloadConnections();
     const cleanup = setupAiListeners();
     return () => {
       void cleanup.then((fn) => fn());
     };
-  }, [loadSettings, loadConfig, loadWorkflows, setupAiListeners]);
+  }, [loadSettings, loadConfig, loadWorkflows, setupAiListeners, reloadConnections]);
+
+  useEffect(() => {
+    let cleanup: (() => void) | undefined;
+    listenCrossWindow('datazen:connections-changed', reloadConnections).then((fn) => {
+      cleanup = fn;
+    });
+    return () => cleanup?.();
+  }, [reloadConnections]);
 
   const loadHistory = useCallback(async () => {
     const items = await aiCommands.workflowHistoryList();

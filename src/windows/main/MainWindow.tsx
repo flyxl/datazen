@@ -232,7 +232,7 @@ export function MainWindow() {
       const existing = useActiveConnectionStore.getState().connections[cfg.id];
       if (existing?.status === 'connected' && existing.connectionId) {
         openConnectionWindow(
-          { connectionId: existing.connectionId },
+          { connectionId: existing.connectionId, configId: cfg.id },
           cfg.name,
           cfg.database,
           cfg.databaseType,

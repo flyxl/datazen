@@ -96,11 +96,13 @@ export function ConnectionWindow() {
         isClosing = true;
         event.preventDefault();
         try {
-          await connectionCommands.disconnect(connectionId);
+          const wasDisconnected = await connectionCommands.releaseConnection(connectionId);
+          if (wasDisconnected) {
+            await emitCrossWindow('datazen:connection-closed', { connectionId });
+          }
         } catch (e) {
-          console.error('[ConnectionWindow] disconnect on close failed', e);
+          console.error('[ConnectionWindow] release on close failed', e);
         }
-        await emitCrossWindow('datazen:connection-closed', { connectionId });
         await win.close();
       });
     })();

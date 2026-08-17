@@ -6,10 +6,7 @@ import { createIconResolver, setActiveIconResolver, type IconSourceMap } from '.
 import { getDbIcon, getDriverIconMap } from './databaseTypes';
 import { buildHostLucideById } from './hostLucideMap';
 import type { DatabaseType } from '../types';
-import {
-  parsePackEditorOverlay,
-  setPackEditorColorOverlay,
-} from './themeEditorColors';
+import { parsePackEditorOverlay, setPackEditorColorOverlay } from './themeEditorColors';
 import { setChartPaletteOverride } from './chart/colors';
 import {
   DEFAULT_SURFACE_DARK,
@@ -204,13 +201,16 @@ export function clearThemePack(): void {
 
 export type ApplyThemePackResult = { ok: true } | { ok: false; error: string };
 
-export async function applyThemePack(packId: string | null): Promise<ApplyThemePackResult> {
+export async function applyThemePack(
+  packId: string | null,
+  { broadcast = true }: { broadcast?: boolean } = {},
+): Promise<ApplyThemePackResult> {
   resetPackState();
 
   if (!packId) {
     syncWebviewBackgroundFromTokens();
     notifyThemePackChanged();
-    void emitCrossWindow('datazen:theme-pack-changed', packId);
+    if (broadcast) void emitCrossWindow('datazen:theme-pack-changed', packId);
     return { ok: true };
   }
 
@@ -250,14 +250,14 @@ export async function applyThemePack(packId: string | null): Promise<ApplyThemeP
 
     syncWebviewBackgroundFromTokens();
     notifyThemePackChanged();
-    void emitCrossWindow('datazen:theme-pack-changed', packId);
+    if (broadcast) void emitCrossWindow('datazen:theme-pack-changed', packId);
     return { ok: true };
   } catch (err) {
     console.warn('[theme] failed to apply pack', packId, err);
     resetPackState();
     syncWebviewBackgroundFromTokens();
     notifyThemePackChanged();
-    void emitCrossWindow('datazen:theme-pack-changed', null);
+    if (broadcast) void emitCrossWindow('datazen:theme-pack-changed', null);
     const message = err instanceof Error ? err.message : String(err);
     return { ok: false, error: message };
   }

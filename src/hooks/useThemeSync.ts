@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { listenCrossWindow } from '../lib/crossWindowBus';
 import { settingsCommands } from '../commands/settings';
 import { applyThemeLocally, useSettingsStore } from '../stores/settingsStore';
+import { applyThemePack } from '../lib/themePackApply';
 import type { ThemeMode } from '../types/theme';
 
 /**
@@ -38,6 +39,11 @@ export function useThemeSync() {
       const mode = payload as ThemeMode;
       if (mode === useSettingsStore.getState().settings.theme.mode) return;
       void applyThemeLocally(mode);
+    });
+
+    subscribe('datazen:theme-pack-changed', (payload) => {
+      const packId = (payload ?? null) as string | null;
+      void applyThemePack(packId, { broadcast: false });
     });
 
     return () => {
