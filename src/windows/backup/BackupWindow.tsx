@@ -18,6 +18,7 @@ import {
 } from '../../lib/backupProgress';
 import { ProgressLog } from './ProgressLog';
 import { cn } from '../../lib/cn';
+import { listenCrossWindow } from '../../lib/crossWindowBus';
 import { DbTypeBadge } from '../../components/DbTypeBadge';
 import { getDbLabel, DB_REGISTRY } from '../../lib/databaseTypes';
 import { getSqlDialect } from '../../lib/sqlDialects';
@@ -73,6 +74,18 @@ export function BackupWindow() {
   useEffect(() => {
     void loadSettings();
   }, [loadSettings]);
+
+  useEffect(() => {
+    let cleanup: (() => void) | undefined;
+    listenCrossWindow('datazen:connection-closed', (payload) => {
+      const { connectionId } = (payload ?? {}) as { connectionId?: string };
+      if (!connectionId) return;
+      setConnectedId((prev) => (prev === connectionId ? null : prev));
+    }).then((fn) => {
+      cleanup = fn;
+    });
+    return () => cleanup?.();
+  }, []);
 
   useEffect(() => {
     void (async () => {

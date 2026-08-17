@@ -29,6 +29,9 @@ pub struct ConnectionManager {
     /// Maps runtime connectionId → persistent configId so we can reconnect
     /// after idle eviction using the latest config from the Store.
     config_id_map: Arc<RwLock<HashMap<String, String>>>,
+    /// Reference counts per runtime connectionId. Each `get_or_connect` caller
+    /// increments; `release` decrements; session is torn down only at zero.
+    ref_counts: Arc<RwLock<HashMap<String, usize>>>,
     store: Arc<Store>,
     idle_timeout: Duration,
     /// Per-config_id locks to prevent concurrent connect attempts for the same
@@ -57,6 +60,7 @@ impl ConnectionManager {
             registry,
             connections: Arc::new(RwLock::new(HashMap::new())),
             config_id_map: Arc::new(RwLock::new(HashMap::new())),
+            ref_counts: Arc::new(RwLock::new(HashMap::new())),
             store,
             idle_timeout: Duration::from_secs(1800),
             connect_locks: std::sync::Mutex::new(HashMap::new()),
@@ -167,14 +171,47 @@ impl ConnectionManager {
             let connections = self.connections.read().await;
             for (conn_id, cfg_id) in map.iter() {
                 if cfg_id == config_id && connections.contains_key(conn_id) {
+                    let mut refs = self.ref_counts.write().await;
+                    *refs.entry(conn_id.clone()).or_insert(0) += 1;
+                    tracing::debug!(%conn_id, refs = refs[conn_id], "session ref acquired (reuse)");
                     return Ok(conn_id.clone());
                 }
             }
         }
-        self.connect(config_id).await
+        let conn_id = self.connect(config_id).await?;
+        let mut refs = self.ref_counts.write().await;
+        *refs.entry(conn_id.clone()).or_insert(0) += 1;
+        tracing::debug!(%conn_id, refs = refs[&conn_id], "session ref acquired (new)");
+        Ok(conn_id)
     }
 
+    /// Decrement the reference count for a session. Only tears down the
+    /// underlying driver connection when the count reaches zero.
+    pub async fn release(&self, connection_id: &str) -> Result<bool, ConnectionError> {
+        let should_disconnect = {
+            let mut refs = self.ref_counts.write().await;
+            if let Some(count) = refs.get_mut(connection_id) {
+                *count = count.saturating_sub(1);
+                tracing::debug!(%connection_id, refs = *count, "session ref released");
+                if *count == 0 {
+                    refs.remove(connection_id);
+                    true
+                } else {
+                    false
+                }
+            } else {
+                true
+            }
+        };
+        if should_disconnect {
+            self.disconnect(connection_id).await?;
+        }
+        Ok(should_disconnect)
+    }
+
+    /// Force-disconnect regardless of reference count (e.g. from sidebar).
     pub async fn disconnect(&self, connection_id: &str) -> Result<(), ConnectionError> {
+        self.ref_counts.write().await.remove(connection_id);
         self.config_id_map.write().await.remove(connection_id);
 
         let mut connections = self.connections.write().await;
@@ -186,6 +223,17 @@ impl ConnectionManager {
         }
 
         Ok(())
+    }
+
+    /// Current reference count for a session (0 if not tracked).
+    #[cfg(test)]
+    pub(crate) async fn ref_count(&self, connection_id: &str) -> usize {
+        self.ref_counts
+            .read()
+            .await
+            .get(connection_id)
+            .copied()
+            .unwrap_or(0)
     }
 
     pub async fn get_connection(
@@ -370,6 +418,7 @@ impl ConnectionManager {
     }
 
     pub async fn shutdown(&self) {
+        self.ref_counts.write().await.clear();
         self.config_id_map.write().await.clear();
 
         let mut connections = self.connections.write().await;

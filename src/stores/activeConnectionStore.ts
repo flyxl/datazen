@@ -113,6 +113,21 @@ export const useActiveConnectionStore = create<ActiveConnectionStore>((set, get)
         },
       },
     }));
+    setTimeout(() => {
+      const entry = get().connections[configId];
+      if (entry?.status === 'connecting') {
+        set((s) => ({
+          connections: {
+            ...s.connections,
+            [configId]: {
+              ...s.connections[configId],
+              status: 'error',
+              error: 'Connection timeout',
+            },
+          },
+        }));
+      }
+    }, 30_000);
   },
 
   markConnected: (configId, connectionId) => {

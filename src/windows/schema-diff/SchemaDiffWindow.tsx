@@ -19,6 +19,7 @@ import {
 import { useSettings } from '../../hooks/useSettings';
 import { useI18n } from '../../hooks/useI18n';
 import { useSettingsStore } from '../../stores/settingsStore';
+import { listenCrossWindow } from '../../lib/crossWindowBus';
 import { openDocsWindow } from '../../lib/windowManager';
 import type { ConnectionConfig, TableSchemaDiff } from '../../types';
 import { SchemaDiffPlanPanel } from './SchemaDiffPlanPanel';
@@ -61,10 +62,40 @@ export function SchemaDiffWindow() {
   }, [loadSettings]);
 
   useEffect(() => {
+    let cleanup: (() => void) | undefined;
+    listenCrossWindow('datazen:connection-closed', (payload) => {
+      const { connectionId } = (payload ?? {}) as { connectionId?: string };
+      if (!connectionId) return;
+      setActiveConns((prev) => {
+        const next = { ...prev };
+        for (const [cfgId, connId] of Object.entries(next)) {
+          if (connId === connectionId) delete next[cfgId];
+        }
+        return next;
+      });
+    }).then((fn) => {
+      cleanup = fn;
+    });
+    return () => cleanup?.();
+  }, []);
+
+  const loadConnections = useCallback(() => {
     void invoke<ConnectionConfig[]>('get_connections')
       .then(setConnections)
       .catch(() => setConnections([]));
   }, []);
+
+  useEffect(() => {
+    loadConnections();
+  }, [loadConnections]);
+
+  useEffect(() => {
+    let cleanup: (() => void) | undefined;
+    listenCrossWindow('datazen:connections-changed', loadConnections).then((fn) => {
+      cleanup = fn;
+    });
+    return () => cleanup?.();
+  }, [loadConnections]);
 
   const connOptions = useMemo(
     () =>

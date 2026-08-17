@@ -84,11 +84,30 @@ pub(crate) async fn ping_connection_impl(
     Ok(alive)
 }
 
+pub(crate) async fn release_connection_impl(
+    state: &AppState,
+    connection_id: String,
+) -> Result<bool, CommandError> {
+    tracing::info!(%connection_id, "release_connection");
+    let disconnected = state
+        .connection_manager
+        .release(&connection_id)
+        .await
+        .cmd_err("release_connection")?;
+    if disconnected {
+        state.schema_cache.clear_connection(&connection_id).await;
+        tracing::info!(%connection_id, "release_connection: session torn down (ref=0)");
+    } else {
+        tracing::info!(%connection_id, "release_connection: ref decremented, session kept alive");
+    }
+    Ok(disconnected)
+}
+
 pub(crate) async fn disconnect_impl(
     state: &AppState,
     connection_id: String,
 ) -> Result<(), CommandError> {
-    tracing::info!(%connection_id, "disconnect");
+    tracing::info!(%connection_id, "disconnect (force)");
     if let Some(tx) = state
         .session_transactions
         .lock()
@@ -194,6 +213,14 @@ pub async fn ping_connection(
     connection_id: String,
 ) -> Result<bool, CommandError> {
     ping_connection_impl(&state, connection_id).await
+}
+
+#[tauri::command]
+pub async fn release_connection(
+    state: State<'_, AppState>,
+    connection_id: String,
+) -> Result<bool, CommandError> {
+    release_connection_impl(&state, connection_id).await
 }
 
 #[tauri::command]
