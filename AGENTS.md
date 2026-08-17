@@ -81,169 +81,45 @@ DATAZEN_DRIVERS=all pnpm tauri:build
 
 ### Driver Command API
 
-Driver 不再只以 SQL Query/Execute 作为扩展边界。`packages/driver-api` 提供统一 Command 抽象：
+`packages/driver-api` 提供统一 Command 抽象（`command_definitions()` + `execute_command()`）。`query` / `execute` 是内置 Command 有默认实现。Workflow、IPC、前端 Command Editor 都依赖 Command Definition，不按 Driver 类型硬编码。`ReuseDriver` 必须转发 Command discovery 与 execution。`metadata.requiresConnection = false` 的 Command 可通过 `driverType` 执行。
 
-```text
-DatabaseDriver
-├── command_definitions()
-│      └── DriverCommandDefinition
-│           ├── name / description / input_schema
-│           └── metadata (category, risk, workflow, ui, deprecated, requiresConnection)
-│
-└── execute_command(command, input)
-       └── CommandResult
-```
+### Redis 驱动
 
-- `query` / `execute` 是标准 Command，并有默认实现，保持现有 SQL Driver 兼容。
-- 非 SQL 驱动应覆盖 `command_definitions()`：改 `sql` 字段 title，只读驱动不要暴露 `execute`。
-- Driver 可以通过 `command_definitions()` 暴露 Driver-specific Command。
-- `execute_command()` 是 Driver-specific 能力的统一执行入口。
-- Workflow、IPC、前端 Command Editor 都依赖 Command Definition，而不是按具体 Driver 类型硬编码。
-- `metadata.workflow = false` 的 Command 不进入 Workflow 选择器，workflow runtime 也会拒绝。
-- `ReuseDriver` 必须转发 Command discovery 与 execution。
-- `metadata.requiresConnection = false` 的 Command（如 Kiwi `login`）可通过 `driverType` 执行，不必先有 Connection。
-- Kiwi `login` / `list_instances` 走 `execute_driver_command({ driverType: 'kiwi', command })`，不再使用 `plugin:kiwi|*`。
-
-### Redis 驱动（E1–E4）
-
-深度能力集中在 `packages/drivers/redis`（UI + Driver Command API），宿主 `RedisConnectionView` 仅为薄 Tab 壳；**禁止** Host 按 `pluginId === 'redis'` 写设置分支。 Redis Tauri plugin 仅用于安装 Pub/Sub 事件 sink，操作一律走 `execute_command` / `execute_driver_command`。
-
-- Tabs：Workbench / Console / Monitor / Pub/Sub
-- 拓扑：Standalone / Cluster / Sentinel + mTLS
-- 连接扩展字段走 `ConnectionConfig.options`
-- 设置位于 `AppSettings.pluginSettings.redis`
-- UI 使用语义主题色
+深度能力集中在 `packages/drivers/redis`（UI + Driver Command API），宿主仅为薄 Tab 壳。**禁止** Host 按 `pluginId === 'redis'` 写设置分支。操作一律走 `execute_command` / `execute_driver_command`。
 
 ### AI 模块
 
-- Provider：OpenAI / Anthropic / DeepSeek / Custom
-- `ai/protocol/` 共享 HTTP 协议实现
-- `PromptResolver` 优先级：用户覆盖 → 驱动覆盖 → 资源文件 → 编译时英文嵌入
-- `@` 上下文引用有白名单、512KB 限制和路径遍历防护
-- `StreamChunk` 区分 `content` 与 `reasoning`
+多 Provider（OpenAI / Anthropic / DeepSeek / Custom）；`PromptResolver` 优先级：用户覆盖 → 驱动覆盖 → 资源文件 → 编译时英文嵌入。详见 [docs/architecture/backend/ai.md](docs/architecture/backend/ai.md)。
 
 ### MCP
 
-- Server（`mcp/server.rs`）暴露 Tools/Resources/Prompts，包括 `list_workflows` / `run_workflow`
-- DB tools/prompts 使用持久化 connection ID，即 `config_id`
-- Client（`mcp/client.rs`）连接外部 MCP Server
-- `main.rs --mcp-stdio` 启动无头 MCP server
+Server 暴露 Tools/Resources/Prompts（DB tools 使用持久化 `config_id`）；Client 连接外部 MCP Server；`--mcp-stdio` 启动无头模式。详见 [docs/architecture/backend/mcp.md](docs/architecture/backend/mcp.md)。
 
 ## Workflows
 
-Workflow 是 YAML 驱动的通用执行引擎，GUI、Tauri IPC 和 MCP 共用同一 runtime。
-
-模块拆分：
-
-```text
-src-tauri/src/workflow/
-├── model.rs             # WorkflowDefinition / WorkflowStep 等数据模型
-├── registry.rs          # YAML 注册、加载、保存、删除
-├── context.rs           # 模板变量、路径解析、循环上下文
-├── conditions.rs        # Condition 求值
-├── executor.rs          # WorkflowExecutor / 步骤编排 / 错误策略
-├── command.rs           # Workflow Command Step
-├── command_runtime.rs   # Connection 解析、Command discovery、Driver 执行
-├── history.rs           # 执行历史
-└── workflows.rs         # 兼容 facade / re-export
-```
-
-核心执行链：
-
-```text
-WorkflowDefinition
-      ↓
-WorkflowExecutor
-      ↓
-WorkflowStep::Command
-      ↓
-command_runtime
-      ↓
-resolve effective connection
-      ↓
-Driver::command_definitions()
-      ↓
-validate / resolve input
-      ↓
-Driver::execute_command()
-```
-
-### Connection 继承
-
-Workflow 可以定义默认 `connection`。Step 未指定 connection 时继承它；Step 显式指定时覆盖默认值。因此一个 connection 下可以连续执行多个 Step，而不必重复选择 connection。
-
-### Legacy Query 兼容
-
-旧版配置仍支持：
-
-```yaml
-type: query
-connection: mysql-prod
-database: reporting
-sql: SELECT * FROM users
-```
-
-执行前会规范化为内部 `Command("query")`，并保留 `database` 等旧字段语义。旧 Query 和新 Command 进入同一执行路径。
-
-### Command Discovery / UI
-
-Workflow UI 不应硬编码 Driver Command。编辑 Command Step 时：
-
-```text
-Effective Connection
-      ↓
-get_connection_commands()
-      ↓
-Driver::command_definitions()
-      ↓
-Command selector
-      ↓
-input_schema
-      ↓
-schema-driven input editor
-```
-
-Connection 改变后重新 discovery；没有 Step override 时使用 Workflow 默认 connection。
+YAML 驱动的通用执行引擎，GUI、Tauri IPC 和 MCP 共用同一 runtime。Step 通过 Driver Command API 执行；Workflow 默认 connection 可被 Step 继承或覆盖；旧 `type: query` 自动规范化为 `Command("query")`。Workflow UI 通过 `command_definitions()` 动态发现可用 Command，不硬编码。
 
 详细设计：[Workflow 架构文档](docs/architecture/backend/workflow.md)；用户手册：[docs/workflow-guide.md](docs/workflow-guide.md)。
 
 ### 运行时主题包
 
-与驱动选型完全独立：
-
-- 安装路径：`{appData}/themes/{id}/`
-- 设置：`theme: { mode: 'light'|'dark'|'system', packId: string | null }`
-- IPC：`list_theme_packs`、`install_theme_pack_with_dialog`、`remove_theme_pack`、`read_theme_pack_file`
-- Rust：`src-tauri/src/theme/`、`commands/theme.rs`
-- 前端：`src/commands/theme.ts`、`src/lib/themePackApply.ts`、`src/lib/iconResolver.ts`
-- 商店/CDN 下载暂未实现
+与驱动选型独立，安装在 `{appData}/themes/{id}/`。Rust 实现 `src-tauri/src/theme/`，前端 `src/lib/themePackApply.ts`。
 
 ## 前端约定
 
 - 零硬编码：行为差异通过 `DB_REGISTRY` + `DatabaseTypeMeta` 元数据驱动
-- `ConnectionFormBody.tsx` 通过 `connectionForm` 选择表单
-- `connectionViews/index.ts` 映射 `connectionMode` → 视图
-- `hasMultiDatabase` 表示驱动能力；切库走 `use_database`
 - 多窗口：`windowManager.ts` + `windowKind.ts` URL 参数路由
 - IPC：前端 camelCase，Rust snake_case；Tauri 自动映射
-- 右键菜单统一使用 Web Context Menu（`showNativeContextMenu` / `showWebContextMenu` + `WebContextMenuHost` portal）；二级菜单在窗口边缘翻转/clamp，禁止再接 Tauri 原生 `Menu.popup()`
-- Connection Window 支持导出（全部/所选表；仅结构/仅数据/数据+结构），入口顶栏（权限后）与 Schema 树，实现见 `batchExport.ts` / `BatchExportDialog`；编辑表结构页可导出单表 DDL（`exportTableStructure.ts`）
-- **Data Synchronization ≠ Transfer ≠ Structure Sync**：Sync 仅同族 + 结构/PK 完全一致（V1：`mysql` / `postgresql`）；异构 IR 是 Transfer，不要在 Sync 窗口实现；结构变更走 Schema Diff。旧 `sync_tables` DROP+INSERT 已拆除，IPC 立即拒绝。详细设计见 [docs/architecture/backend/data-sync.md](docs/architecture/backend/data-sync.md)
+- 右键菜单统一使用 Web Context Menu，禁止 Tauri 原生 `Menu.popup()`
+- **Data Synchronization ≠ Transfer ≠ Structure Sync**：Sync 仅同族 + 结构/PK 完全一致；异构 IR 是 Transfer。详见 [docs/architecture/backend/data-sync.md](docs/architecture/backend/data-sync.md)
 
 ## IPC 通信
 
-前端 `src/commands/` ↔ 后端 `src-tauri/src/commands/`，按领域对齐：`connection`、`database/schema`、`query`、`ai`、`context`、`settings/config`、`theme`、`file`、`adb`、`kv`、`backup`、`sync`、`mcp`、`window`。
-
-Driver Command IPC 负责：
-
-- 获取指定 Connection 支持的 Command Definitions
-- 获取 Driver 支持的 Command Definitions（无需 live Connection）
-- 执行指定 Driver Command（`connectionId` 或 `driverType`；后者仅允许 `requiresConnection = false`）
-- SQL 编辑器 / `queryCommands.executeQuery` 走 `execute_driver_command` 的 `query` Command；兼容 IPC `execute_query` 也转发到同一路径
+前端 `src/commands/` ↔ 后端 `src-tauri/src/commands/`，按领域对齐。Driver Command IPC 统一走 `execute_driver_command`，SQL 编辑器的 `query` / `execute` 也通过同一路径。
 
 ## 错误处理
 
-`CommandError`（`commands/error.rs`）覆盖 Store / Connection / Driver / Ai / Io / Json / NotFound / NotConfigured / Validation / Internal；`CmdExt` 统一日志。
+`CommandError`（`commands/error.rs`）统一覆盖所有错误类型；`CmdExt` 统一日志。
 
 ## 关键功能模块
 
@@ -279,80 +155,33 @@ cargo test -p datazen-driver-postgres  # 示例：某个 path 驱动的 Rust 测
 
 完整流程见 [docs/e2e-testing.md](docs/e2e-testing.md)；覆盖矩阵见 [docs/e2e-coverage.md](docs/e2e-coverage.md)。
 
-1. 必须使用 Tauri CLI 构建：`pnpm tauri build --debug --features webdriver`
-2. 禁止裸 `cargo build --features webdriver` 作为 E2E 二进制
-3. 必须启用 `webdriver` feature，监听 `127.0.0.1:4445`
-
-#### Host E2E 覆盖规则（硬性）
-
-在 Host 边界内（见下方「驱动测试落点」）：
-
-1. **所有 UI 交互都必须被 E2E 覆盖**：用户可点击/输入/切换的 Host 控件与对话框，须有 `e2e/specs/` 用例走到该交互（不仅「文案出现在页面上」）。
-2. **所有用户可走到的交互路径都必须被 E2E 覆盖**：从入口到结果的完整路径（打开 → 操作 → 可见结果/状态），含成功路径与关键失败/空态（如未填完筛选不得报加载失败）。
-3. **新增或变更 Host UI / 用户路径时，必须同 PR 更新或新增 E2E**；禁止只改产品代码、靠手工验收。
-4. **驱动专属 UI / 方言 / Command** 仍写在 `packages/drivers/<id>/e2e/`（或插件仓），**不要**塞进 Host `e2e/specs/`。
-5. **自动化无法稳定覆盖的路径**（真实 IME 组字、原生系统文件对话框点选、依赖外部密钥的可选 AI 路径等）须在 [docs/e2e-coverage.md](docs/e2e-coverage.md) 登记例外：说明原因、替代覆盖（单测 / IPC / 手工黑盒），并尽量用可自动化的近似路径（如 composition 事件单测、路径 IPC 代替另存为对话框）。
-
-「仅断言某按钮文案存在」不算完成覆盖；至少要执行一次该交互并断言可见结果。
-
-#### Host Connection Contract × Driver（适配矩阵）
-
-验证「每个驱动都能适配 Host 已定义的 UI / IPC」时：
-
-1. **契约套件**定义在 `e2e/contract/`（`fixtures.ts` + `journeys/`），用例入口 `e2e/specs/host-contract-matrix.ts`。
-2. **对每个 SQL 驱动夹具**（postgres / mysql / sqlite）分别打开连接窗口，按 `planJourneys` **完整跑同一套** Host journeys（HC-CONN…HC-EXPLAIN）；能力不足的 journey 显式 `skip`（如 sqlite 的 HC-OBJ）。
-3. **这是 Host 契约 × 驱动夹具**，不是方言测试：断言用 Host i18n / testid / 行内容；方言深度仍在 `packages/drivers/<id>/e2e/`。
-4. 新增 Host 连接窗路径时，优先加入契约 journey，使矩阵自动覆盖各驱动。
+- 必须用 `pnpm tauri build --debug --features webdriver` 构建
+- **硬性规则**：所有 Host UI 交互路径都必须被 E2E 覆盖；新增/变更 Host UI 必须同 PR 更新 E2E
+- **驱动 E2E** 写在 `packages/drivers/<id>/e2e/`，不进 Host `e2e/specs/`
+- **契约矩阵**：`e2e/contract/` 定义统一 journeys，`pnpm e2e:contract:matrix` 跨 PG/MySQL/SQLite 运行
+- 无法自动化的路径须在 `docs/e2e-coverage.md` 登记例外
 
 ```bash
-pnpm e2e                               # 完整构建（webdriver）+ 跑全部 Host E2E（推荐首次）
-pnpm e2e:minimal                       # 更快：DATAZEN_DRIVERS=basic，跳过 Git / 非核心 path 驱动
-pnpm e2e:skip-build                    # 跳过构建（仅当已有合格的 webdriver debug 二进制）
-pnpm e2e:skip-build -- --spec e2e/specs/path-ipc-hardening.ts
-pnpm e2e:core                          # 核心 UI（默认 skip-build）
-pnpm e2e:db / e2e:ai                   # 分组
-pnpm e2e:contract:matrix               # Host 契约 × PG/MySQL/SQLite 连接窗
-pnpm e2e:contract:pg                   # 仅 PostgreSQL 契约冒烟
-pnpm test:unit:e2e-contract:coverage   # 契约纯逻辑单测覆盖率 ≥80%
-pnpm e2e:redis                         # Redis 深度 E2E（显式；specs 在 packages/drivers/redis/e2e/；不进默认 e2e）
-pnpm e2e:i18n-backup / e2e:path-ipc    # 备份·i18n / 路径 IPC
-# Kiwi E2E：在 datazen-driver-kiwi 仓执行 `pnpm e2e:kiwi`（不进 Host 默认 pnpm e2e；Host `pnpm e2e:kiwi` 仅提示并 exit 1）
+pnpm e2e                    # 完整构建 + 全部 Host E2E
+pnpm e2e:minimal             # DATAZEN_DRIVERS=basic 快速跑
+pnpm e2e:skip-build          # 跳过构建
+pnpm e2e:contract:matrix     # Host 契约 × 驱动矩阵
 ```
 
-PR 合并前：`pnpm test:unit` + `cargo test -p datazen --lib`（见 `.github/workflows/ci.yml`）。改了驱动还要跑该 crate 的 `cargo test -p datazen-driver-<id>` 和（若有 UI）`pnpm test:unit:drivers`。Path 驱动 UI 单测**不**含在 `pnpm test:unit` 内。
-
-编排脚本：`e2e/run.mjs`。环境变量：复制 `e2e/.env.example` → `e2e/.env`。
+PR 合并前：`pnpm test:unit` + `cargo test -p datazen --lib`。改了驱动还要跑 `cargo test -p datazen-driver-<id>` 和 `pnpm test:unit:drivers`。
 
 ## 驱动测试落点
 
-**规则：凡只验证某一个驱动实现 / 方言 / 专属 UI / 专属 Command 的用例，写到该驱动的 crate 目录，禁止放到 Host。**
-
-Path 驱动 crate 名 `datazen-driver-<id>`，目录 `packages/drivers/<id>/`：
+**规则：驱动实现 / 方言 / 专属 UI / 专属 Command 的测试，写到该驱动 crate 目录（`packages/drivers/<id>/`），禁止放到 Host。** Git 驱动测试写在插件自己的仓库。
 
 | 类型 | 位置 | 运行 |
 |------|------|------|
 | Rust 单元 | 同文件 `#[cfg(test)]` | `cargo test -p datazen-driver-<id>` |
-| Rust 集成（需真实实例） | `packages/drivers/<id>/tests/` | `cargo test -p datazen-driver-<id> --test <name>` |
+| Rust 集成 | `packages/drivers/<id>/tests/` | `cargo test -p datazen-driver-<id> --test <name>` |
 | 驱动 UI 单测 | `packages/drivers/<id>/ui/__tests__/` | `pnpm test:unit:drivers` |
-| 驱动 E2E | `packages/drivers/<id>/e2e/` | 显式脚本，如 `pnpm e2e:redis`；**不进**默认 `pnpm e2e` |
+| 驱动 E2E | `packages/drivers/<id>/e2e/` | 显式脚本，不进默认 `pnpm e2e` |
 
-Git 驱动（Kiwi / OLAP / Superset 等）：测试写在**插件自己的仓库**，不写进 Host。本地 symlink 开发时目录在 `packages/drivers/<id>/` 但仍属插件仓。
-
-**Host 只测宿主能力**（可用任意 SQL/KV 连接当夹具，但不编码驱动方言）：
-
-- `src-tauri/`：IPC、Workflow 引擎、MCP、store、窗口、`data_sync/`（Host 同步引擎，不写驱动方言）
-- `src/**/__tests__/`：Host 组件 / store / `lib/`
-- `e2e/specs/`：通用连接窗口、SQL 编辑器、表数据、设置等（不测 Redis Command、PG `USE` 语义、某驱动 structure SQL）
-
-**不要做：**
-
-- 在 `src-tauri/tests/` 或 `src-tauri/src/**` 新增 `postgres_*` / `mysql_*` / `redis_*` 驱动行为测试
-- 在 `e2e/specs/` 新增某驱动深度用例（应放到 `packages/drivers/<id>/e2e/`）
-- 在 `src/windows/connection/__tests__/` 测 Redis Workbench 等驱动 UI（应放到 `packages/drivers/redis/ui/__tests__/`）
-- 用 `cargo test -p datazen --test postgres_use_database` 跑驱动测试（包名是 `datazen-driver-postgres`，不是 `datazen`）
-- 在 Host 把异构 IR 拷贝当 Data Synchronization 实现或测试；Transfer 与 Sync 分离，见 `docs/architecture/backend/data-sync.md`
-
-参考：Redis 已按此拆分（`packages/drivers/redis/src/*` 的 `#[cfg(test)]`、`ui/__tests__/`、`e2e/`）；PG/MySQL `use_database` 集成测在 `packages/drivers/{postgres,mysql}/tests/`。详细策略见 [docs/architecture/testing.md](docs/architecture/testing.md)。
+**Host 只测宿主能力**（不编码驱动方言）。禁止在 `src-tauri/`、`e2e/specs/`、`src/**/__tests__/` 新增驱动专属测试。详细策略见 [docs/architecture/testing.md](docs/architecture/testing.md)。
 
 ## i18n 国际化规则
 
