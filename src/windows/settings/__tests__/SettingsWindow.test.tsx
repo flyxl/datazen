@@ -155,6 +155,10 @@ vi.mock('../../../hooks/useSettings', () => ({
   useSettings: () => {},
 }));
 
+vi.mock('../../../hooks/useConfirmDialog', () => ({
+  useConfirmDialog: () => [vi.fn().mockResolvedValue(true), null],
+}));
+
 vi.mock('../../../lib/windowKind', () => ({
   getUrlParam: (...args: unknown[]) => getUrlParamMock(...args),
 }));
@@ -579,8 +583,6 @@ describe('SettingsWindow', () => {
   });
 
   it('covers prompts edit, save, and reset flows', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
-
     render(<SettingsWindow />);
     await waitForSettingsLoad();
     goToSection('settings.prompts');

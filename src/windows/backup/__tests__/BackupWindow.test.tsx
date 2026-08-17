@@ -4,13 +4,15 @@ import { BackupWindow } from '../BackupWindow';
 import { PRESET_GROUPS } from '../../../lib/connectionGroups';
 import type { ConnectionConfig } from '../../../types';
 
-const { invokeMock, loadSettingsMock, urlParamMock, askMock, listenMock } = vi.hoisted(() => ({
-  invokeMock: vi.fn(),
-  loadSettingsMock: vi.fn().mockResolvedValue(undefined),
-  urlParamMock: vi.fn((name: string) => (name === 'mode' ? null : null)),
-  askMock: vi.fn(),
-  listenMock: vi.fn(async () => () => {}),
-}));
+const { invokeMock, loadSettingsMock, urlParamMock, confirmDialogFn, listenMock } = vi.hoisted(
+  () => ({
+    invokeMock: vi.fn(),
+    loadSettingsMock: vi.fn().mockResolvedValue(undefined),
+    urlParamMock: vi.fn((name: string) => (name === 'mode' ? null : null)),
+    confirmDialogFn: vi.fn().mockResolvedValue(true),
+    listenMock: vi.fn(async () => () => {}),
+  }),
+);
 
 vi.mock('../../../hooks/useI18n', () => ({
   useI18n: () => ({
@@ -56,8 +58,8 @@ vi.mock('@tauri-apps/api/event', () => ({
   listen: (...args: unknown[]) => listenMock(...args),
 }));
 
-vi.mock('@tauri-apps/plugin-dialog', () => ({
-  ask: (...args: unknown[]) => askMock(...args),
+vi.mock('../../../hooks/useConfirmDialog', () => ({
+  useConfirmDialog: () => [confirmDialogFn, null],
 }));
 
 vi.mock('../../../lib/windowKind', () => ({
@@ -214,7 +216,7 @@ describe('BackupWindow connection list', () => {
         database: 'app',
       }),
     );
-    expect(askMock).not.toHaveBeenCalled();
+    expect(confirmDialogFn).not.toHaveBeenCalled();
     await waitFor(() =>
       expect(invokeMock).toHaveBeenCalledWith('restore_database_with_dialog', {
         connectionId: 'live-1',
@@ -297,10 +299,10 @@ describe('BackupWindow connection list', () => {
 
   it('restore asks to overwrite when target already has objects', async () => {
     mockRestoreCommands([{ name: 'users', tableType: 'table' }]);
-    askMock.mockResolvedValue(true);
+    confirmDialogFn.mockResolvedValue(true);
     await selectRestoreTarget();
     fireEvent.click(screen.getByTestId('backup-start-restore'));
-    await waitFor(() => expect(askMock).toHaveBeenCalled());
+    await waitFor(() => expect(confirmDialogFn).toHaveBeenCalled());
     await waitFor(() =>
       expect(invokeMock).toHaveBeenCalledWith('restore_database_with_dialog', {
         connectionId: 'live-1',
@@ -312,10 +314,10 @@ describe('BackupWindow connection list', () => {
 
   it('restore does not start when overwrite is declined', async () => {
     mockRestoreCommands([{ name: 'users', tableType: 'table' }]);
-    askMock.mockResolvedValue(false);
+    confirmDialogFn.mockResolvedValue(false);
     await selectRestoreTarget();
     fireEvent.click(screen.getByTestId('backup-start-restore'));
-    await waitFor(() => expect(askMock).toHaveBeenCalled());
+    await waitFor(() => expect(confirmDialogFn).toHaveBeenCalled());
     expect(invokeMock).not.toHaveBeenCalledWith('restore_database_with_dialog', expect.anything());
   });
 });

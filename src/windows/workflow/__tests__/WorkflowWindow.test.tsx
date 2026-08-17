@@ -233,11 +233,10 @@ vi.mock('../WorkflowForm', async () => {
   };
 });
 
-const confirmMock = vi.fn(() => true);
-const askMock = vi.fn().mockResolvedValue(true);
+const confirmDialogFn = vi.fn().mockResolvedValue(true);
 
-vi.mock('@tauri-apps/plugin-dialog', () => ({
-  ask: (...args: unknown[]) => askMock(...args),
+vi.mock('../../../hooks/useConfirmDialog', () => ({
+  useConfirmDialog: () => [confirmDialogFn, null],
 }));
 
 function makeResult(steps: StepExecutionResult[], success = true): WorkflowExecutionResult {
@@ -293,9 +292,7 @@ function clickStepTab(stepId: string) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.stubGlobal('confirm', confirmMock);
-  confirmMock.mockReturnValue(true);
-  askMock.mockResolvedValue(true);
+  confirmDialogFn.mockResolvedValue(true);
   aiStoreState.workflowsLoading = false;
   aiStoreState.workflowError = null;
   aiStoreState.workflowExecutionResult = null;
@@ -379,7 +376,7 @@ describe('WorkflowWindow', () => {
     await waitFor(() => expect(screen.getByTestId('data-table')).toBeInTheDocument());
 
     fireEvent.click(screen.getByText('workflows.history.clear'));
-    expect(confirmMock).toHaveBeenCalledWith('workflows.history.clearConfirm');
+    await waitFor(() => expect(confirmDialogFn).toHaveBeenCalled());
     await waitFor(() => expect(workflowHistoryClearMock).toHaveBeenCalled());
 
     cleanup();
@@ -614,9 +611,7 @@ describe('WorkflowWindow', () => {
     expect(screen.getByTestId('workflow-form')).toBeInTheDocument();
 
     fireEvent.click(buttons[1]);
-    await waitFor(() =>
-      expect(askMock).toHaveBeenCalledWith('workflows.deleteConfirm', expect.anything()),
-    );
+    await waitFor(() => expect(confirmDialogFn).toHaveBeenCalled());
     await waitFor(() => expect(workflowDeleteMock).toHaveBeenCalledWith('wf-demo'));
   });
 
@@ -680,8 +675,7 @@ describe('WorkflowWindow', () => {
   });
 
   it('skips delete and clear when confirm is cancelled', async () => {
-    confirmMock.mockReturnValue(false);
-    askMock.mockResolvedValue(false);
+    confirmDialogFn.mockResolvedValue(false);
     workflowHistoryListMock.mockResolvedValue([
       {
         id: 'h1',

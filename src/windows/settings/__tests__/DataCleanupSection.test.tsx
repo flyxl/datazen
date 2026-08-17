@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/re
 import { DataCleanupSection } from '../DataCleanupSection';
 
 const purgeHistoryMock = vi.fn();
+const confirmCleanupFn = vi.fn().mockResolvedValue(true);
 
 vi.mock('../../../commands/history', () => ({
   historyCommands: {
@@ -21,15 +22,18 @@ vi.mock('../../../hooks/useI18n', () => ({
   }),
 }));
 
+vi.mock('../../../hooks/useConfirmDialog', () => ({
+  useConfirmDialog: () => [confirmCleanupFn, null],
+}));
+
 describe('DataCleanupSection', () => {
   beforeEach(() => {
     purgeHistoryMock.mockReset();
-    vi.stubGlobal('confirm', vi.fn(() => true));
+    confirmCleanupFn.mockResolvedValue(true);
   });
 
   afterEach(() => {
     cleanup();
-    vi.unstubAllGlobals();
   });
 
   it('requires at least one scope', async () => {

@@ -43,6 +43,7 @@ const {
   openLogDirMock,
   invokeMock,
   askMock,
+  confirmDialogFn,
   connectionState,
   activeState,
   dashboardState,
@@ -137,6 +138,7 @@ const {
     openLogDirMock: vi.fn().mockResolvedValue(undefined),
     invokeMock: vi.fn().mockResolvedValue(true),
     askMock: vi.fn().mockResolvedValue(false),
+    confirmDialogFn: vi.fn().mockResolvedValue(true),
     connectionState,
     activeState,
     dashboardState,
@@ -277,6 +279,10 @@ vi.mock('../../../commands/settings', () => ({
 
 vi.mock('@tauri-apps/plugin-dialog', () => ({
   ask: (...a: unknown[]) => askMock(...a),
+}));
+
+vi.mock('../../../hooks/useConfirmDialog', () => ({
+  useConfirmDialog: () => [confirmDialogFn, null],
 }));
 
 vi.mock('@tauri-apps/api/core', () => ({
@@ -474,6 +480,7 @@ function resetState() {
   restartAppMock.mockResolvedValue(undefined);
   invokeMock.mockResolvedValue(true);
   askMock.mockResolvedValue(false);
+  confirmDialogFn.mockResolvedValue(true);
 }
 
 beforeEach(() => {
@@ -586,7 +593,7 @@ describe('MainWindow', () => {
     activeState.connections = { c1: { status: 'connected', connectionId: 'live-1' } };
     fireEvent.doubleClick(screen.getByTestId('conn-c1'));
     expect(openConnectionWindowMock).toHaveBeenLastCalledWith(
-      { connectionId: 'live-1' },
+      { configId: 'c1', connectionId: 'live-1' },
       'Local PG',
       'postgres',
       'postgresql',
@@ -685,7 +692,7 @@ describe('MainWindow', () => {
     await clickMenuItem('duplicate-connection');
     expect(duplicateConnectionMock).toHaveBeenCalledWith('c1');
 
-    askMock.mockResolvedValueOnce(true);
+    confirmDialogFn.mockResolvedValueOnce(true);
     await openConnContextMenu('c1');
     await clickMenuItem('delete-connection');
     await waitFor(() => expect(deleteConnectionMock).toHaveBeenCalledWith('c1'));
