@@ -79,6 +79,8 @@ import { analyzeTransactionSql, isAbortedTransactionError } from '../../lib/sqlT
 
 interface QueryPanelProps {
   connectionId: string;
+  /** Persistent saved-connection ID (stable across restarts). */
+  configId: string;
   queryTabId: string;
   databaseType?: string;
 }
@@ -103,7 +105,7 @@ function ToolbarButton({ compact, label, icon, className, title, ...props }: Too
   );
 }
 
-export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPanelProps) {
+export function QueryPanel({ connectionId, configId, queryTabId, databaseType }: QueryPanelProps) {
   const { t } = useI18n();
   const tab = useQueryStore((s) => s.tabs.find((t) => t.id === queryTabId));
   const historyVisible = useQueryStore((s) => s.historyVisible);
@@ -1199,7 +1201,7 @@ export function QueryPanel({ connectionId, queryTabId, databaseType }: QueryPane
               }
               const created = await dashboardCommands.createWidgetFromSql({
                 dashboardId: targetId,
-                configId: connectionId,
+                configId,
                 sql: tab.sql,
                 title: tab.title || undefined,
                 viewMode: resultViewMode,

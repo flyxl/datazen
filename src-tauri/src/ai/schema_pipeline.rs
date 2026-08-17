@@ -23,6 +23,8 @@ pub fn format_table_names_block(names: &[String], max_names: usize) -> String {
     format!("{}, …and {} more", head.join(", "), names.len() - max_names)
 }
 
+const LARGE_TABLE_THRESHOLD: usize = 500;
+
 pub fn compose_schema_system_suffix(seed: &PromptSeed) -> String {
     let names = format_table_names_block(&seed.table_names, 200);
     let mut out = format!(
@@ -35,9 +37,15 @@ pub fn compose_schema_system_suffix(seed: &PromptSeed) -> String {
         out.push('\n');
     }
     if seed.attach_db_tools {
-        out.push_str(
-            "\nUse list_tables / get_table_schema tools to fetch schemas for tables you need beyond the pinned set.\n",
-        );
+        if seed.table_names.len() > LARGE_TABLE_THRESHOLD {
+            out.push_str(
+                "\nThis database has many tables. Use search_tables with a keyword to find relevant tables first, then get_table_schema for the ones you need.\n",
+            );
+        } else {
+            out.push_str(
+                "\nUse list_tables / get_table_schema tools to fetch schemas for tables you need beyond the pinned set.\n",
+            );
+        }
     } else if let Some(fb) = &seed.fallback_schema_ddl {
         out.push_str("\nSchema:\n");
         out.push_str(fb);
@@ -191,6 +199,36 @@ mod tests {
     }
 
     #[test]
+    fn compose_suggests_search_tables_for_large_table_count() {
+        let table_names: Vec<String> = (0..600).map(|i| format!("table_{i}")).collect();
+        let seed = PromptSeed {
+            database_type: "Postgres".into(),
+            table_names,
+            pinned_schema_ddl: String::new(),
+            attach_db_tools: true,
+            fallback_schema_ddl: None,
+        };
+        let text = compose_schema_system_suffix(&seed);
+        assert!(text.contains("search_tables"));
+        assert!(!text.contains("list_tables"));
+    }
+
+    #[test]
+    fn compose_suggests_list_tables_for_small_table_count() {
+        let table_names: Vec<String> = (0..50).map(|i| format!("table_{i}")).collect();
+        let seed = PromptSeed {
+            database_type: "Postgres".into(),
+            table_names,
+            pinned_schema_ddl: String::new(),
+            attach_db_tools: true,
+            fallback_schema_ddl: None,
+        };
+        let text = compose_schema_system_suffix(&seed);
+        assert!(text.contains("list_tables"));
+        assert!(!text.contains("search_tables"));
+    }
+
+    #[test]
     fn compose_fallback_when_no_tools() {
         let seed = PromptSeed {
             database_type: "Mysql".into(),
@@ -202,5 +240,106 @@ mod tests {
         let text = compose_schema_system_suffix(&seed);
         assert!(text.contains("a (id int)"));
         assert!(!text.contains("get_table_schema"));
+    }
+
+    #[test]
+    fn compose_at_threshold_boundary_uses_list_tables() {
+        let table_names: Vec<String> = (0..LARGE_TABLE_THRESHOLD)
+            .map(|i| format!("t{i}"))
+            .collect();
+        let seed = PromptSeed {
+            database_type: "Postgres".into(),
+            table_names,
+            pinned_schema_ddl: String::new(),
+            attach_db_tools: true,
+            fallback_schema_ddl: None,
+        };
+        let text = compose_schema_system_suffix(&seed);
+        assert!(text.contains("list_tables"));
+        assert!(!text.contains("search_tables"));
+    }
+
+    #[test]
+    fn compose_just_above_threshold_uses_search_tables() {
+        let table_names: Vec<String> = (0..=LARGE_TABLE_THRESHOLD)
+            .map(|i| format!("t{i}"))
+            .collect();
+        let seed = PromptSeed {
+            database_type: "Postgres".into(),
+            table_names,
+            pinned_schema_ddl: String::new(),
+            attach_db_tools: true,
+            fallback_schema_ddl: None,
+        };
+        let text = compose_schema_system_suffix(&seed);
+        assert!(text.contains("search_tables"));
+        assert!(!text.contains("list_tables"));
+    }
+
+    #[test]
+    fn compose_empty_tables_with_tools() {
+        let seed = PromptSeed {
+            database_type: "Postgres".into(),
+            table_names: vec![],
+            pinned_schema_ddl: String::new(),
+            attach_db_tools: true,
+            fallback_schema_ddl: None,
+        };
+        let text = compose_schema_system_suffix(&seed);
+        assert!(text.contains("(no tables)"));
+        assert!(text.contains("list_tables"));
+    }
+
+    #[test]
+    fn compose_no_tools_no_fallback() {
+        let seed = PromptSeed {
+            database_type: "Postgres".into(),
+            table_names: vec!["a".into()],
+            pinned_schema_ddl: String::new(),
+            attach_db_tools: false,
+            fallback_schema_ddl: None,
+        };
+        let text = compose_schema_system_suffix(&seed);
+        assert!(text.contains("Postgres"));
+        assert!(!text.contains("list_tables"));
+        assert!(!text.contains("search_tables"));
+        assert!(!text.contains("Schema:"));
+    }
+
+    #[test]
+    fn compose_pinned_only_no_tools() {
+        let seed = PromptSeed {
+            database_type: "Mysql".into(),
+            table_names: vec!["users".into(), "orders".into()],
+            pinned_schema_ddl: "CREATE TABLE users (id INT)".into(),
+            attach_db_tools: false,
+            fallback_schema_ddl: None,
+        };
+        let text = compose_schema_system_suffix(&seed);
+        assert!(text.contains("Pinned table schemas"));
+        assert!(text.contains("CREATE TABLE users"));
+        assert!(!text.contains("list_tables"));
+    }
+
+    #[test]
+    fn format_table_names_all_fit() {
+        let names: Vec<String> = vec!["a".into(), "b".into(), "c".into()];
+        let block = format_table_names_block(&names, 5);
+        assert_eq!(block, "a, b, c");
+        assert!(!block.contains("more"));
+    }
+
+    #[test]
+    fn format_table_names_empty() {
+        let names: Vec<String> = vec![];
+        let block = format_table_names_block(&names, 5);
+        assert_eq!(block, "(no tables)");
+    }
+
+    #[test]
+    fn format_table_names_exact_limit() {
+        let names: Vec<String> = (0..3).map(|i| format!("t{i}")).collect();
+        let block = format_table_names_block(&names, 3);
+        assert_eq!(block, "t0, t1, t2");
     }
 }

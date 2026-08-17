@@ -39,6 +39,18 @@ pub struct ListTablesInput {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+pub struct SearchTablesInput {
+    /// Persistent connection config id (from list_connections)
+    pub config_id: String,
+    /// Optional database name
+    pub database: Option<String>,
+    /// Search keyword to match against table names (case-insensitive)
+    pub pattern: String,
+    /// Max results to return (default: 20)
+    pub limit: Option<u64>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
 pub struct GetSchemaInput {
     /// Persistent connection config id (from list_connections)
     pub config_id: String,
@@ -124,6 +136,7 @@ pub const MCP_ALL_TOOLS: &[&str] = &[
     "list_connections",
     "list_databases",
     "list_tables",
+    "search_tables",
     "query",
     "get_schema",
     "explain_query",
@@ -290,6 +303,27 @@ impl DataZenMcpServer {
             &self.app_state.connection_manager,
             &input.config_id,
             db,
+        )
+        .await
+        .map_err(Self::map_err)
+    }
+
+    #[tool(
+        description = "Search for tables by name pattern (case-insensitive substring match). Use this instead of list_tables when the database has many tables."
+    )]
+    async fn search_tables(
+        &self,
+        Parameters(input): Parameters<SearchTablesInput>,
+    ) -> Result<String, McpError> {
+        self.ensure_allowed(&input.config_id)?;
+        let db = input.database.as_deref().unwrap_or("");
+        let limit = input.limit.unwrap_or(20) as usize;
+        crate::services::db_tools::search_tables(
+            &self.app_state.connection_manager,
+            &input.config_id,
+            db,
+            &input.pattern,
+            limit,
         )
         .await
         .map_err(Self::map_err)
@@ -659,6 +693,36 @@ impl DataZenMcpServer {
                 ))
                 .await?
             }
+            "search_tables" => {
+                let config_id = arguments
+                    .as_ref()
+                    .and_then(|a| a.get("config_id"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let database = arguments
+                    .as_ref()
+                    .and_then(|a| a.get("database"))
+                    .and_then(|v| v.as_str())
+                    .map(String::from);
+                let pattern = arguments
+                    .as_ref()
+                    .and_then(|a| a.get("pattern"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let limit = arguments
+                    .as_ref()
+                    .and_then(|a| a.get("limit"))
+                    .and_then(|v| v.as_u64());
+                self.search_tables(rmcp::handler::server::wrapper::Parameters(
+                    SearchTablesInput {
+                        config_id: config_id.into(),
+                        database,
+                        pattern: pattern.into(),
+                        limit,
+                    },
+                ))
+                .await?
+            }
             "query" => {
                 let config_id = arguments
                     .as_ref()
@@ -900,8 +964,9 @@ mod tests {
 
     #[test]
     fn mcp_all_tools_list_is_stable() {
-        assert_eq!(MCP_ALL_TOOLS.len(), 9);
+        assert_eq!(MCP_ALL_TOOLS.len(), 10);
         assert!(MCP_ALL_TOOLS.contains(&"list_connections"));
+        assert!(MCP_ALL_TOOLS.contains(&"search_tables"));
         assert!(MCP_ALL_TOOLS.contains(&"run_workflow"));
     }
 
@@ -911,6 +976,26 @@ mod tests {
         let input: ListTablesInput = serde_json::from_str(json).unwrap();
         assert_eq!(input.config_id, "c1");
         assert_eq!(input.database.as_deref(), Some("mydb"));
+    }
+
+    #[test]
+    fn search_tables_input_deserializes() {
+        let json = r#"{"config_id":"c1","pattern":"user","database":"app","limit":10}"#;
+        let input: SearchTablesInput = serde_json::from_str(json).unwrap();
+        assert_eq!(input.config_id, "c1");
+        assert_eq!(input.pattern, "user");
+        assert_eq!(input.database.as_deref(), Some("app"));
+        assert_eq!(input.limit, Some(10));
+    }
+
+    #[test]
+    fn search_tables_input_defaults_optional_fields() {
+        let json = r#"{"config_id":"c1","pattern":"order"}"#;
+        let input: SearchTablesInput = serde_json::from_str(json).unwrap();
+        assert_eq!(input.config_id, "c1");
+        assert_eq!(input.pattern, "order");
+        assert!(input.database.is_none());
+        assert!(input.limit.is_none());
     }
 
     #[test]
@@ -1043,6 +1128,57 @@ mod tests {
             workflows.contains("builtin-hello-query") || workflows.contains("[]"),
             "expected builtin workflows or an empty list, got: {workflows}"
         );
+
+        let search_result = server
+            .search_tables(rmcp::handler::server::wrapper::Parameters(
+                SearchTablesInput {
+                    config_id: "mcp-cfg".into(),
+                    database: Some("app".into()),
+                    pattern: "user".into(),
+                    limit: Some(10),
+                },
+            ))
+            .await
+            .unwrap();
+        assert!(search_result.contains("users"));
+        assert!(search_result.contains("totalMatches"));
+
+        let search_no_match = server
+            .search_tables(rmcp::handler::server::wrapper::Parameters(
+                SearchTablesInput {
+                    config_id: "mcp-cfg".into(),
+                    database: Some("app".into()),
+                    pattern: "zzz_nonexistent".into(),
+                    limit: None,
+                },
+            ))
+            .await
+            .unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&search_no_match).unwrap();
+        assert_eq!(parsed["totalMatches"].as_u64(), Some(0));
+    }
+
+    #[tokio::test]
+    async fn mcp_search_tables_via_call_tool_inner() {
+        use crate::testing::app_state::TestAppState;
+        use std::sync::Arc;
+
+        let test = TestAppState::with_tables().await;
+        test.save_connection("cti-search").await;
+        let server = DataZenMcpServer::new(Arc::new(test.state));
+
+        let result = server
+            .call_tool_inner(
+                "search_tables",
+                Some(
+                    serde_json::json!({"config_id":"cti-search","database":"app","pattern":"user"}),
+                ),
+            )
+            .await
+            .unwrap();
+        let text = result.content[0].as_text().unwrap().text.as_str();
+        assert!(text.contains("users"));
+        assert!(text.contains("totalMatches"));
     }
 
     #[tokio::test]

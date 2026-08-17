@@ -6,6 +6,7 @@ import { NlFilterInput } from '../../components/ai/NlFilterInput';
 import { useTableDataStore, type TableState } from '../../stores/tableDataStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useI18n } from '../../hooks/useI18n';
+import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 import { cn } from '../../lib/cn';
 
 interface TableViewProps {
@@ -49,21 +50,22 @@ export function TableView({
   const setDetailRow = useTableDataStore((s) => s.setDetailRow);
   const detailRowIndex = useTableDataStore((s) => s.detailRowIndex);
   const confirmOnDelete = useSettingsStore((s) => s.settings.confirmOnDelete);
+  const [confirmDelete, confirmDeleteDialog] = useConfirmDialog();
 
   const handleDeleteRows = useCallback(
     async (rowIndices: number[]) => {
       if (rowIndices.length === 0) return;
       if (confirmOnDelete) {
-        const { ask } = await import('@tauri-apps/plugin-dialog');
-        const confirmed = await ask(
-          t('dataTable.confirmDeleteRows', { count: rowIndices.length }),
-          { title: t('dataTable.deleteRow'), kind: 'warning' },
-        );
+        const confirmed = await confirmDelete({
+          title: t('dataTable.deleteRow'),
+          message: t('dataTable.confirmDeleteRows', { count: rowIndices.length }),
+          kind: 'warning',
+        });
         if (!confirmed) return;
       }
       await deleteRows(rowIndices);
     },
-    [confirmOnDelete, deleteRows, t],
+    [confirmOnDelete, confirmDelete, deleteRows, t],
   );
 
   const ts: TableState | undefined = tableStates.get(tableName);
@@ -219,6 +221,7 @@ export function TableView({
         primaryKeyColumns={columns.filter((c) => c.isPrimaryKey).map((c) => c.name)}
         onDeleteRows={handleDeleteRows}
       />
+      {confirmDeleteDialog}
     </div>
   );
 }
