@@ -1306,6 +1306,7 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
               return (
                 <div
                   key={panel.id}
+                  data-testid="panel-tab"
                   className={cn(
                     'group relative flex items-center gap-1.5 border-r border-edge px-3 py-2 text-xs transition-colors',
                     isActive
@@ -1325,6 +1326,7 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
                   </button>
                   <button
                     type="button"
+                    data-testid="panel-tab-close"
                     className="rounded p-0.5 text-fg-muted opacity-0 hover:bg-surface-raised hover:text-fg group-hover:opacity-100"
                     onClick={() => handleClosePanel(panel.id)}
                   >

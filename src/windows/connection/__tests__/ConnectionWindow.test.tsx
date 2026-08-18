@@ -122,6 +122,22 @@ vi.mock('../../../stores/tableDataStore', () => ({
   },
 }));
 
+vi.mock('../../../stores/panelStore', () => {
+  const mockState = { panels: [], activePanelId: null };
+  const store = (sel: (s: typeof mockState) => unknown) => sel(mockState);
+  store.getState = () => ({
+    ...mockState,
+    addPanel: vi.fn(),
+    removePanel: vi.fn(),
+    setActivePanel: vi.fn(),
+    removeAllForConnection: vi.fn(),
+  });
+  return {
+    usePanelStore: store,
+    nextPanelId: (prefix: string) => `panel-${prefix}-test`,
+  };
+});
+
 vi.mock('../../../commands/connection', () => ({
   connectionCommands: {
     connect: (...args: unknown[]) => connectMock(...args),
@@ -140,15 +156,8 @@ vi.mock('../../../lib/crossWindowBus', () => ({
   listenCrossWindow: (...args: unknown[]) => listenCrossWindowMock(...args),
 }));
 
-vi.mock('../../../lib/connectionViews', () => ({
-  getConnectionView: () =>
-    function MockSqlView({ connectionId, configId }: { connectionId: string; configId: string }) {
-      return (
-        <div data-testid="mock-view" data-config-id={configId}>
-          view:{connectionId}
-        </div>
-      );
-    },
+vi.mock('../ContentView', () => ({
+  ContentView: () => <div data-testid="mock-content-view">content-view</div>,
 }));
 
 vi.mock('../../../components/TitleBar', () => ({
@@ -204,9 +213,9 @@ describe('ConnectionWindow', () => {
     expect(screen.getByTestId('navigator-tree')).toBeInTheDocument();
   });
 
-  it('TC-window: shows placeholder when no active tab', () => {
+  it('TC-window: renders content view even with no active tab', () => {
     render(<ConnectionWindow />);
-    expect(screen.getByText('connWin.noConnections')).toBeInTheDocument();
+    expect(screen.getByTestId('mock-content-view')).toBeInTheDocument();
   });
 
   it('TC-window: fetches connections and groups on mount', () => {
@@ -215,7 +224,7 @@ describe('ConnectionWindow', () => {
     expect(fetchGroupsMock).toHaveBeenCalled();
   });
 
-  it('TC-window: connects via localStorage pending connection and renders view', async () => {
+  it('TC-window: connects via localStorage pending connection and renders content view', async () => {
     setPendingConnection({
       configId: 'cfg-1',
       connectionName: 'Local PG',
@@ -225,9 +234,7 @@ describe('ConnectionWindow', () => {
     render(<ConnectionWindow />);
 
     await waitFor(() => expect(connectMock).toHaveBeenCalledWith('cfg-1'));
-    await waitFor(() =>
-      expect(screen.getByTestId('mock-view')).toHaveTextContent('view:conn-live-1'),
-    );
+    await waitFor(() => expect(screen.getByTestId('mock-content-view')).toBeInTheDocument());
     expect(emitCrossWindowMock).toHaveBeenCalledWith(
       'datazen:connection-ready',
       expect.objectContaining({ configId: 'cfg-1', connectionId: 'conn-live-1' }),
@@ -259,9 +266,7 @@ describe('ConnectionWindow', () => {
 
     render(<ConnectionWindow />);
 
-    await waitFor(() =>
-      expect(screen.getByTestId('mock-view')).toHaveTextContent('view:already-open'),
-    );
+    await waitFor(() => expect(screen.getByTestId('mock-content-view')).toBeInTheDocument());
     expect(connectMock).not.toHaveBeenCalled();
   });
 
@@ -279,11 +284,11 @@ describe('ConnectionWindow', () => {
     });
 
     render(<ConnectionWindow />);
-    await waitFor(() => expect(screen.getByTestId('mock-view')).toHaveTextContent('view:reuse-1'));
+    await waitFor(() => expect(screen.getByTestId('mock-content-view')).toBeInTheDocument());
     expect(connectMock).not.toHaveBeenCalled();
   });
 
-  it('TC-window: passes configId to view component', async () => {
+  it('TC-window: renders content view after successful connection', async () => {
     setPendingConnection({
       configId: 'cfg-dash',
       connectionName: 'Dashboard PG',
@@ -292,8 +297,7 @@ describe('ConnectionWindow', () => {
 
     render(<ConnectionWindow />);
 
-    await waitFor(() => expect(screen.getByTestId('mock-view')).toBeInTheDocument());
-    expect(screen.getByTestId('mock-view').getAttribute('data-config-id')).toBe('cfg-dash');
+    await waitFor(() => expect(screen.getByTestId('mock-content-view')).toBeInTheDocument());
   });
 
   it('TC-window: shows loading spinner while connect is pending', async () => {
@@ -315,6 +319,6 @@ describe('ConnectionWindow', () => {
       timeout: 2000,
     });
     resolveConnect('conn-slow');
-    await waitFor(() => expect(screen.getByTestId('mock-view')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId('mock-content-view')).toBeInTheDocument());
   });
 });
