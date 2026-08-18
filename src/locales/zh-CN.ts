@@ -109,6 +109,9 @@ const zhCN = {
   'main.ctx.removeFromGroup': '移除分组',
   'main.ctx.moveToGroup': '移动到分组',
   'main.ctx.deleteConnection': '删除连接',
+  'main.ctx.copyName': '复制名称',
+  'main.ctx.newQuery': '新建查询',
+  'main.ctx.refresh': '刷新',
   'main.ctx.confirmDeleteConnection': '确定要删除连接「{name}」吗？此操作不可撤消。',
 
   // ── Main / Group Dialog ──
@@ -443,6 +446,12 @@ const zhCN = {
   'schemaTree.dropView': '删除视图',
   'schemaTree.confirmTruncate': '确定要清空表「{name}」吗？所有行将被删除。',
   'schemaTree.confirmDrop': '确定要删除表「{name}」吗？此操作不可撤销。',
+  'schemaTree.viewErDiagram': '查看关系图',
+  'schemaTree.searchInDatabase': '在数据库中查找',
+  'schemaTree.newSchema': '新建 Schema',
+  'schemaTree.dataTransfer': '数据传输',
+  'schemaTree.compareSchema': '比较架构',
+  'schemaTree.compareData': '比较数据',
   'schemaTree.confirmDropView': '确定要删除视图「{name}」吗？此操作不可撤销。',
 
   // ── ER Diagram ──
@@ -866,6 +875,7 @@ const zhCN = {
   'backup.progressLog': '执行日志',
   'backup.copyLog': '复制日志',
   'backup.logCopied': '已复制',
+  'backup.logOmitted': '… 已省略 {count} 行 …',
 
   // ── Window titles ──
   'win.backup': '备份数据库 - DataZen',

@@ -17,6 +17,9 @@ const labels = {
   moveToGroup: 'Move to group',
   removeFromGroup: 'Remove from group',
   deleteConnection: 'Delete',
+  copyName: 'Copy Name',
+  newQuery: 'New Query',
+  refresh: 'Refresh',
 };
 
 describe('mainWindowContextMenu', () => {
@@ -59,6 +62,9 @@ describe('mainWindowContextMenu', () => {
       grouped: true,
       moveTargets: [{ id: 'Prod', label: 'Prod' }],
       onOpenOrDisconnect: () => undefined,
+      onCopyName: () => undefined,
+      onNewQuery: () => undefined,
+      onRefresh: () => undefined,
       onEdit: () => undefined,
       onDuplicate: () => undefined,
       onMoveToGroup: move,

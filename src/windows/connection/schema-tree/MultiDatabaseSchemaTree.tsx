@@ -15,6 +15,7 @@ import { useSchemaStore, useConnectionSchemaField } from '../../../stores/schema
 import { useI18n } from '../../../hooks/useI18n';
 import { cn } from '../../../lib/cn';
 import type { DatabaseObject, TableInfo } from '../../../types';
+import { DB_REGISTRY } from '../../../lib/databaseTypes';
 import type { SchemaTreeProps } from './SchemaTree';
 
 interface CategoryDef {
@@ -323,9 +324,12 @@ export function MultiDatabaseSchemaTree({
       if (!schemaGroups) {
         addCategoriesForItems(filteredDbItems, dbName, undefined, 1);
       } else {
+        const preferred = DB_REGISTRY[databaseType]?.defaultSchema;
         const sortedSchemas = [...schemaGroups.keys()].sort((a, b) => {
-          if (a === 'public') return -1;
-          if (b === 'public') return 1;
+          if (preferred) {
+            if (a === preferred) return -1;
+            if (b === preferred) return 1;
+          }
           return a.localeCompare(b);
         });
 

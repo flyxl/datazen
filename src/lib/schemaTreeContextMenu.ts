@@ -4,6 +4,8 @@ export type SchemaTreeNodeKind =
   | 'table'
   | 'view'
   | 'database'
+  | 'schema'
+  | 'category'
   | 'blank'
   | 'function'
   | 'procedure'
@@ -27,6 +29,11 @@ export type SchemaTreeContextMenuLabels = {
   truncate: string;
   drop: string;
   dropView: string;
+  viewErDiagram: string;
+  newSchema: string;
+  dataTransfer: string;
+  compareSchema: string;
+  compareData: string;
 };
 
 export type SchemaTreeContextMenuHandlers = {
@@ -45,6 +52,11 @@ export type SchemaTreeContextMenuHandlers = {
   onBatchExport?: () => void;
   onTruncate?: () => void;
   onDrop?: () => void;
+  onViewErDiagram?: () => void;
+  onNewSchema?: () => void;
+  onDataTransfer?: () => void;
+  onCompareSchema?: () => void;
+  onCompareData?: () => void;
 };
 
 export type BuildSchemaTreeContextMenuArgs = {
@@ -72,6 +84,8 @@ export type BuildSchemaTreeContextMenuArgs = {
   showBatchExport?: boolean;
   /** Include new-table on database / blank when !readOnly. */
   showNewTable?: boolean;
+  /** Category id for `kind: 'category'` (e.g. `'tables'`). */
+  categoryId?: string;
 };
 
 function item(
@@ -104,6 +118,7 @@ export function buildSchemaTreeContextMenuItems(
     showExport,
     showBatchExport,
     showNewTable = false,
+    categoryId,
   } = args;
 
   /** Default `showBatchExport` to follow `showExport` when not explicitly provided. */
@@ -152,16 +167,56 @@ export function buildSchemaTreeContextMenuItems(
       if (!drop) return main;
       return [...main, { kind: 'separator' }, drop];
     }
-    case 'database':
-      return push(
+    case 'database': {
+      const dbMain = push(
         item('refresh', labels.refresh, handlers.onRefresh),
         item('new-query', labels.newQuery, handlers.onNewQuery),
         item('copy-database-name', labels.copyDatabaseName, handlers.onCopyDatabaseName),
+        item('view-er-diagram', labels.viewErDiagram, handlers.onViewErDiagram),
         batchExportShown('database')
           ? item('batch-export', labels.batchExport, handlers.onBatchExport)
           : null,
         !readOnly ? item('import', labels.importData, handlers.onImport) : null,
         !readOnly && showNewTable ? item('new-table', labels.newTable, handlers.onNewTable) : null,
+      );
+      const syncItems = push(
+        item('data-transfer', labels.dataTransfer, handlers.onDataTransfer),
+        item('compare-schema', labels.compareSchema, handlers.onCompareSchema),
+        item('compare-data', labels.compareData, handlers.onCompareData),
+      );
+      if (syncItems.length === 0) return dbMain;
+      return [...dbMain, { kind: 'separator' }, ...syncItems];
+    }
+    case 'schema': {
+      const schemaMain = push(
+        item('refresh', labels.refresh, handlers.onRefresh),
+        item('new-query', labels.newQuery, handlers.onNewQuery),
+        item('copy-schema-name', labels.copyName, handlers.onCopyName),
+        item('view-er-diagram', labels.viewErDiagram, handlers.onViewErDiagram),
+        batchExportShown('schema')
+          ? item('batch-export', labels.batchExport, handlers.onBatchExport)
+          : null,
+        !readOnly ? item('import', labels.importData, handlers.onImport) : null,
+        !readOnly ? item('new-table', labels.newTable, handlers.onNewTable) : null,
+      );
+      const schemaSyncItems = push(
+        item('data-transfer', labels.dataTransfer, handlers.onDataTransfer),
+        item('compare-schema', labels.compareSchema, handlers.onCompareSchema),
+        item('compare-data', labels.compareData, handlers.onCompareData),
+      );
+      if (schemaSyncItems.length === 0) return schemaMain;
+      return [
+        ...schemaMain,
+        ...(schemaSyncItems.length > 0 ? [{ kind: 'separator' as const }, ...schemaSyncItems] : []),
+      ];
+    }
+    case 'category':
+      return push(
+        item('refresh', labels.refresh, handlers.onRefresh),
+        !readOnly && categoryId === 'tables'
+          ? item('new-table', labels.newTable, handlers.onNewTable)
+          : null,
+        !readOnly ? item('import', labels.importData, handlers.onImport) : null,
       );
     case 'blank':
       return push(

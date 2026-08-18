@@ -144,6 +144,8 @@ export function SqlConnectionView({
   initialDatabase,
   hideSidebar: externalSidebar,
   selectTableRef,
+  nodeContextMenuRef,
+  actionsRef,
 }: ConnectionViewProps) {
   const { t } = useI18n();
   const [confirmAction, confirmActionDialog] = useConfirmDialog();
@@ -653,6 +655,11 @@ export function SqlConnectionView({
             truncate: t('schemaTree.truncate'),
             drop: t('schemaTree.drop'),
             dropView: t('schemaTree.dropView'),
+            viewErDiagram: t('schemaTree.viewErDiagram'),
+            newSchema: t('schemaTree.newSchema'),
+            dataTransfer: t('schemaTree.dataTransfer'),
+            compareSchema: t('schemaTree.compareSchema'),
+            compareData: t('schemaTree.compareData'),
           },
           handlers: {
             onOpen:
@@ -737,8 +744,8 @@ export function SqlConnectionView({
           readOnly: isReadOnly,
           showOpenStructure: true,
           showErFocus: supportsErDiagram,
-          showExport: exportDataSupported ? (kind === 'view' ? true : undefined) : false,
-          showBatchExport: batchExportSupported ? (kind === 'view' ? true : undefined) : false,
+          showExport: kind === 'table' ? false : exportDataSupported,
+          showBatchExport: kind === 'table' ? false : batchExportSupported,
           showNewTable: showStructureEditor,
         }),
         { x: payload.x, y: payload.y },
@@ -764,6 +771,29 @@ export function SqlConnectionView({
       safeMode,
     ],
   );
+
+  useEffect(() => {
+    if (nodeContextMenuRef) {
+      nodeContextMenuRef.current = (payload) =>
+        handleNodeContextMenu(payload as SchemaTreeNodeContextMenuPayload);
+    }
+    return () => {
+      if (nodeContextMenuRef) nodeContextMenuRef.current = undefined;
+    };
+  }, [nodeContextMenuRef, handleNodeContextMenu]);
+
+  useEffect(() => {
+    if (actionsRef) {
+      actionsRef.current = {
+        newQuery: handleNewQuery,
+        openErDiagram: handleOpenErDiagram,
+        refresh: handleRefresh,
+      };
+    }
+    return () => {
+      if (actionsRef) actionsRef.current = undefined;
+    };
+  }, [actionsRef, handleNewQuery, handleOpenErDiagram, handleRefresh]);
 
   useKeyboardShortcuts([
     {

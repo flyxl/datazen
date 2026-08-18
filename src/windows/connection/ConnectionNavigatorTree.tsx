@@ -31,12 +31,14 @@ import {
   buildMainConnectionContextMenuItems,
   buildMainGroupContextMenuItems,
 } from '../../lib/mainWindowContextMenu';
+import { buildSchemaTreeContextMenuItems } from '../../lib/schemaTreeContextMenu';
 import { groupConnections, useConnectionStore } from '../../stores/connectionStore';
 import { useActiveConnectionStore } from '../../stores/activeConnectionStore';
 import { useSchemaStore } from '../../stores/schemaStore';
 import { showWebContextMenu } from '../../stores/contextMenuStore';
 import { shouldUseMultiDatabaseTree } from './schema-tree/SchemaTree';
 import { connectionCommands } from '../../commands/connection';
+import { openDataSyncWindow, openSchemaDiffWindow } from '../../lib/windowManager';
 import type { ConnectionConfig, DatabaseObject, TableInfo } from '../../types';
 
 // ── Category definitions ────────────────────────────────────────
@@ -147,6 +149,11 @@ export interface ConnectionNavigatorTreeProps {
     y: number;
     schema?: string;
   }) => void;
+  viewActions?: {
+    newQuery?: (initialSql?: string) => void;
+    openErDiagram?: (focusTable?: string) => void;
+    refresh?: () => void;
+  };
 }
 
 // ── Component ───────────────────────────────────────────────────
@@ -164,6 +171,7 @@ export function ConnectionNavigatorTree({
   onImportConnections,
   onCollapseSidebar,
   onNodeContextMenu,
+  viewActions,
 }: ConnectionNavigatorTreeProps) {
   const { t } = useI18n();
   const [searchQuery, setSearchQuery] = useState('');
@@ -235,6 +243,20 @@ export function ConnectionNavigatorTree({
   // ── Load schema when connection expanded ──
 
   const loadedConnectionsRef = useRef<Set<string>>(new Set());
+  const prevConnectionIdsRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    const currentIds = new Set(
+      Object.keys(activeConnections).filter((id) => activeConnections[id]?.status === 'connected'),
+    );
+    for (const id of prevConnectionIdsRef.current) {
+      if (!currentIds.has(id)) {
+        loadedConnectionsRef.current.delete(id);
+      }
+    }
+    prevConnectionIdsRef.current = currentIds;
+  }, [activeConnections]);
+
   useEffect(() => {
     for (const configId of expandedConnections) {
       const entry = activeConnections[configId];
@@ -278,6 +300,35 @@ export function ConnectionNavigatorTree({
       moveToGroup: t('main.ctx.moveToGroup'),
       removeFromGroup: t('main.ctx.removeFromGroup'),
       deleteConnection: t('main.ctx.deleteConnection'),
+      copyName: t('main.ctx.copyName'),
+      newQuery: t('main.ctx.newQuery'),
+      refresh: t('main.ctx.refresh'),
+    }),
+    [t],
+  );
+
+  const schemaLabels = useMemo(
+    () => ({
+      open: t('schemaTree.openTable'),
+      openStructure: t('schemaTree.openStructure'),
+      copyName: t('schemaTree.copyName'),
+      copyDdl: t('connWin.copyDDL'),
+      focusEr: '',
+      exportData: t('connWin.exportData'),
+      importData: t('connWin.importData'),
+      refresh: t('connWin.refresh'),
+      newQuery: t('connWin.newQuery'),
+      copyDatabaseName: t('schemaTree.copyDatabaseName'),
+      newTable: t('connWin.newTable'),
+      batchExport: `${t('batchExport.title')}…`,
+      truncate: t('schemaTree.truncate'),
+      drop: t('schemaTree.drop'),
+      dropView: t('schemaTree.dropView'),
+      viewErDiagram: t('schemaTree.viewErDiagram'),
+      newSchema: t('schemaTree.newSchema'),
+      dataTransfer: t('schemaTree.dataTransfer'),
+      compareSchema: t('schemaTree.compareSchema'),
+      compareData: t('schemaTree.compareData'),
     }),
     [t],
   );
@@ -438,8 +489,26 @@ export function ConnectionNavigatorTree({
           grouped: Boolean(conn.group),
           moveTargets,
           onOpenOrDisconnect: () => {
-            if (isConnected) onDisconnect(conn.id);
-            else void connect(conn);
+            if (isConnected) {
+              onDisconnect(conn.id);
+            } else {
+              onSelectConnection(conn.id);
+              toggleConnection(conn.id);
+              void connect(conn);
+            }
+          },
+          onCopyName: () => {
+            void navigator.clipboard.writeText(conn.name);
+          },
+          onNewQuery: () => {
+            onSelectConnection(conn.id);
+            viewActions?.newQuery?.();
+          },
+          onRefresh: () => {
+            const entry = activeConnections[conn.id];
+            if (entry?.connectionId) {
+              viewActions?.refresh?.();
+            }
           },
           onEdit: () => onEditConnection(conn.id),
           onDuplicate: () => {
@@ -462,13 +531,185 @@ export function ConnectionNavigatorTree({
       contextLabels,
       duplicateConnection,
       groups,
+      loadForConnection,
       moveConnectionToGroup,
       onDeleteConnection,
       onDisconnect,
       onEditConnection,
+      onNodeContextMenu,
       onSelectConnection,
       t,
     ],
+  );
+
+  // ── Database / Schema / Category / Object context menus ──
+
+  const handleDatabaseContextMenu = useCallback(
+    (e: React.MouseEvent, dbName: string, configId: string) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const entry = activeConnections[configId];
+      const connectionId = entry?.connectionId;
+      showWebContextMenu(
+        buildSchemaTreeContextMenuItems({
+          kind: 'database',
+          labels: schemaLabels,
+          handlers: {
+            onRefresh: connectionId
+              ? () => {
+                  const conn = connections.find((c) => c.id === configId);
+                  if (!conn) return;
+                  void loadForConnection(connectionId, {
+                    preferredDatabase: dbName,
+                    skipLoadTables: shouldUseMultiDatabaseTree(
+                      DB_REGISTRY[conn.databaseType],
+                      conn.database,
+                    ),
+                    databaseType: conn.databaseType,
+                  });
+                }
+              : undefined,
+            onNewQuery: () => {
+              onSelectConnection(configId);
+              viewActions?.newQuery?.();
+            },
+            onCopyDatabaseName: () => {
+              void navigator.clipboard.writeText(dbName);
+            },
+            onViewErDiagram: () => {
+              onSelectConnection(configId);
+              viewActions?.openErDiagram?.();
+            },
+            onDataTransfer: () => openDataSyncWindow(),
+            onCompareSchema: () => openSchemaDiffWindow(),
+            onCompareData: () => openDataSyncWindow(),
+          },
+          showNewTable: true,
+        }),
+        { x: e.clientX, y: e.clientY },
+      );
+    },
+    [
+      activeConnections,
+      connections,
+      loadForConnection,
+      onNodeContextMenu,
+      onSelectConnection,
+      schemaLabels,
+    ],
+  );
+
+  const handleSchemaContextMenu = useCallback(
+    (e: React.MouseEvent, schemaName: string, configId: string) => {
+      e.preventDefault();
+      e.stopPropagation();
+      showWebContextMenu(
+        buildSchemaTreeContextMenuItems({
+          kind: 'schema',
+          labels: schemaLabels,
+          handlers: {
+            onRefresh: () => {
+              const entry = activeConnections[configId];
+              if (!entry?.connectionId) return;
+              const conn = connections.find((c) => c.id === configId);
+              if (!conn) return;
+              void loadForConnection(entry.connectionId, {
+                preferredDatabase: conn.database,
+                skipLoadTables: shouldUseMultiDatabaseTree(
+                  DB_REGISTRY[conn.databaseType],
+                  conn.database,
+                ),
+                databaseType: conn.databaseType,
+              });
+            },
+            onNewQuery: () => {
+              onSelectConnection(configId);
+              viewActions?.newQuery?.();
+            },
+            onCopyName: () => {
+              void navigator.clipboard.writeText(schemaName);
+            },
+            onViewErDiagram: () => {
+              onSelectConnection(configId);
+              viewActions?.openErDiagram?.();
+            },
+            onDataTransfer: () => openDataSyncWindow(),
+            onCompareSchema: () => openSchemaDiffWindow(),
+            onCompareData: () => openDataSyncWindow(),
+          },
+        }),
+        { x: e.clientX, y: e.clientY },
+      );
+    },
+    [
+      activeConnections,
+      connections,
+      loadForConnection,
+      onNodeContextMenu,
+      onSelectConnection,
+      schemaLabels,
+    ],
+  );
+
+  const handleCategoryContextMenu = useCallback(
+    (e: React.MouseEvent, catKey: string, catId: string, configId: string) => {
+      e.preventDefault();
+      e.stopPropagation();
+      showWebContextMenu(
+        buildSchemaTreeContextMenuItems({
+          kind: 'category',
+          labels: schemaLabels,
+          handlers: {
+            onRefresh: () => {
+              const entry = activeConnections[configId];
+              if (!entry?.connectionId) return;
+              if (catId === 'tables' || catId === 'views') {
+                const conn = connections.find((c) => c.id === configId);
+                if (!conn) return;
+                void loadForConnection(entry.connectionId, {
+                  preferredDatabase: conn.database,
+                  skipLoadTables: false,
+                  databaseType: conn.databaseType,
+                });
+              } else {
+                setExpandedCats((prev) => {
+                  const next = new Set(prev);
+                  next.delete(catKey);
+                  return next;
+                });
+                setDbObjectsMap((prev) => {
+                  const next = { ...prev };
+                  delete next[catKey];
+                  return next;
+                });
+              }
+            },
+          },
+          categoryId: catId,
+        }),
+        { x: e.clientX, y: e.clientY },
+      );
+    },
+    [activeConnections, connections, loadForConnection, schemaLabels],
+  );
+
+  const handleObjectContextMenu = useCallback(
+    (e: React.MouseEvent, name: string) => {
+      e.preventDefault();
+      e.stopPropagation();
+      showWebContextMenu(
+        [
+          {
+            kind: 'item',
+            id: 'copy-name',
+            label: schemaLabels.copyName,
+            action: () => void navigator.clipboard.writeText(name),
+          },
+        ],
+        { x: e.clientX, y: e.clientY },
+      );
+    },
+    [schemaLabels],
   );
 
   // ── Drag & Drop ──
@@ -718,7 +959,10 @@ export function ConnectionNavigatorTree({
 
         const connectionId = entry!.connectionId!;
         const schemaData = schemas.get(connectionId);
-        if (!schemaData) continue;
+        if (!schemaData) {
+          rows.push({ type: 'db-loading', depth: 2 });
+          continue;
+        }
 
         const meta = DB_REGISTRY[conn.databaseType];
         const isMultiDb = shouldUseMultiDatabaseTree(meta, conn.database);
@@ -759,9 +1003,12 @@ export function ConnectionNavigatorTree({
             const schemaGroups = groupBySchema(allItems);
 
             if (schemaGroups) {
+              const preferred = DB_REGISTRY[conn.databaseType]?.defaultSchema;
               const sortedSchemas = [...schemaGroups.keys()].sort((a, b) => {
-                if (a === 'public') return -1;
-                if (b === 'public') return 1;
+                if (preferred) {
+                  if (a === preferred) return -1;
+                  if (b === preferred) return 1;
+                }
                 return a.localeCompare(b);
               });
 
@@ -806,6 +1053,11 @@ export function ConnectionNavigatorTree({
           });
 
           if (!isDbExpanded) continue;
+
+          if (schemaData.loading && schemaData.tables.length === 0) {
+            rows.push({ type: 'db-loading', depth: 3 });
+            continue;
+          }
 
           const allItems = [...schemaData.tables, ...schemaData.views];
           const schemaGroups = groupBySchema(allItems);
@@ -978,19 +1230,12 @@ export function ConnectionNavigatorTree({
         return (
           <button
             type="button"
+            data-tree-node="db"
+            data-db-name={row.dbName}
             className="flex w-full items-center gap-1.5 py-1 pr-2 text-left text-[13px] hover:bg-surface-raised text-fg-secondary"
             style={{ paddingLeft: depthPadding(row.depth) }}
             onClick={() => void toggleDb(row.configId, row.connectionId, row.dbName)}
-            onContextMenu={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              onNodeContextMenu?.({
-                kind: 'database',
-                name: row.dbName,
-                x: e.clientX,
-                y: e.clientY,
-              });
-            }}
+            onContextMenu={(e) => handleDatabaseContextMenu(e, row.dbName, row.configId)}
           >
             {row.expanded ? (
               <ChevronDown className="h-3 w-3 shrink-0" />
@@ -1007,9 +1252,12 @@ export function ConnectionNavigatorTree({
         return (
           <button
             type="button"
+            data-tree-node="schema"
+            data-schema-name={row.schemaName}
             className="flex w-full items-center gap-1.5 py-1 pr-2 text-left text-[13px] hover:bg-surface-raised text-fg-secondary"
             style={{ paddingLeft: depthPadding(row.depth) }}
             onClick={() => toggleSchema(`${row.configId}::${row.dbName}::${row.schemaName}`)}
+            onContextMenu={(e) => handleSchemaContextMenu(e, row.schemaName, row.configId)}
           >
             {row.expanded ? (
               <ChevronDown className="h-3 w-3 shrink-0" />
@@ -1021,22 +1269,24 @@ export function ConnectionNavigatorTree({
           </button>
         );
 
-      case 'category':
+      case 'category': {
+        const catConfigId = row.key.split('::')[0];
         return (
           <button
             type="button"
+            data-tree-node="category"
+            data-cat-id={row.cat.id}
             className="flex w-full items-center gap-1.5 py-1 pr-2 text-left text-[13px] text-fg-secondary hover:bg-surface-raised"
             style={{ paddingLeft: depthPadding(row.depth) }}
             onClick={() => {
-              const parts = row.key.split('::');
-              const configId = parts[0];
-              const conn = connections.find((c) => c.id === configId);
+              const conn = connections.find((c) => c.id === catConfigId);
               const connectionId =
                 conn && activeConnections[conn.id]?.connectionId
                   ? activeConnections[conn.id].connectionId!
                   : '';
               void toggleCategory(row.key, row.cat.id, connectionId);
             }}
+            onContextMenu={(e) => handleCategoryContextMenu(e, row.key, row.cat.id, catConfigId)}
           >
             {row.expanded ? (
               <ChevronDown className="h-3 w-3 shrink-0" />
@@ -1050,6 +1300,7 @@ export function ConnectionNavigatorTree({
             <span className="ml-auto shrink-0 text-[10px] text-fg-muted">{row.count}</span>
           </button>
         );
+      }
 
       case 'table': {
         const iconColor = row.catId === 'views' ? 'text-purple-400' : 'text-blue-400';
@@ -1057,6 +1308,8 @@ export function ConnectionNavigatorTree({
         return (
           <button
             type="button"
+            data-tree-node={row.catId === 'views' ? 'view' : 'table'}
+            data-item-name={row.item.name}
             className={cn(
               'flex w-full items-center gap-1.5 py-1 pr-2 text-left text-[13px] hover:bg-surface-raised',
               row.isSelected ? 'bg-surface-raised text-fg' : 'text-fg-secondary',
@@ -1093,6 +1346,7 @@ export function ConnectionNavigatorTree({
           <div
             className="flex items-center gap-1.5 py-1 pr-2 text-[13px] text-fg-secondary"
             style={{ paddingLeft: depthPadding(row.depth) }}
+            onContextMenu={(e) => handleObjectContextMenu(e, row.obj.name)}
           >
             <ObjIcon className={`h-3.5 w-3.5 shrink-0 ${objColor}`} />
             <span className="min-w-0 truncate">{row.obj.name}</span>
