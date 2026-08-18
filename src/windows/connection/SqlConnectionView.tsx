@@ -1,16 +1,21 @@
-import { useCallback, useEffect, useMemo, useState, type MouseEvent } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState, type MouseEvent } from 'react';
 import {
   BookOpen,
+  Braces,
   Code2,
   Database,
   Download,
+  Eye,
+  Hash,
   KeyRound,
   GitFork,
   MessageSquare,
   Plus,
+  Shapes,
   Table2,
   TableProperties,
   X,
+  Zap,
 } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { useResizable } from '../../hooks/useResizable';
@@ -60,6 +65,7 @@ import { rowToRecord } from '../../lib/rowToRecord';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 import { ErDiagramView } from './ErDiagramView';
 import { ObjectBrowser } from './ObjectBrowser';
+import { DatabaseObjectView } from './DatabaseObjectView';
 import { PrivilegeView } from './PrivilegeView';
 
 type SubTabId = 'data' | 'structure' | 'indexes' | 'foreignKeys' | 'ddl';
@@ -83,6 +89,14 @@ function getSubTabs(
   ];
 }
 
+function getViewSubTabs(t: (key: TranslationKey) => string): { id: SubTabId; label: string }[] {
+  return [
+    { id: 'data', label: t('connWin.data') },
+    { id: 'structure', label: t('connWin.structure') },
+    { id: 'ddl', label: 'DDL' },
+  ];
+}
+
 interface TablePanel {
   type: 'table';
   id: string;
@@ -90,6 +104,13 @@ interface TablePanel {
   subTab: SubTabId;
   /** When true, structure sub-tab shows the inline alter editor. */
   structureEditing?: boolean;
+}
+
+interface ViewPanel {
+  type: 'view';
+  id: string;
+  viewName: string;
+  subTab: SubTabId;
 }
 
 interface QueryPanelInfo {
@@ -120,13 +141,23 @@ interface PrivilegesPanel {
   id: string;
 }
 
+interface DatabaseObjectPanel {
+  type: 'db-object';
+  id: string;
+  objectKind: 'function' | 'procedure' | 'trigger' | 'sequence' | 'type';
+  objectName: string;
+  objectSchema?: string;
+}
+
 type Panel =
   | TablePanel
+  | ViewPanel
   | QueryPanelInfo
   | CreateTablePanel
   | ErDiagramPanel
   | ObjectsPanel
-  | PrivilegesPanel;
+  | PrivilegesPanel
+  | DatabaseObjectPanel;
 
 let panelCounter = 0;
 function nextPanelId(prefix: string) {
@@ -200,7 +231,9 @@ export function SqlConnectionView({
   // The detail panel only makes sense while viewing row data (table "data" sub-tab
   // or query results); hide it on structure/indexes/foreign keys/DDL tabs.
   const detailPanelApplicable =
-    activePanel != null && (activePanel.type !== 'table' || activePanel.subTab === 'data');
+    activePanel != null &&
+    (activePanel.type !== 'table' || activePanel.subTab === 'data') &&
+    (activePanel.type !== 'view' || (activePanel as ViewPanel).subTab === 'data');
 
   const resolveTableSchema = useCallback(
     (tableName: string): string | null => {
@@ -246,27 +279,46 @@ export function SqlConnectionView({
     setDbType(databaseType);
   }, [databaseType, setDbType]);
 
-  const handleSelectTable = useCallback((table: string, schema?: string) => {
-    if (schema) setLastTableSchema(schema);
-    console.log('[SqlConnectionView] select table', table);
-    setPanels((prev) => {
-      const existing = prev.find((p) => p.type === 'table' && p.tableName === table);
-      if (existing) {
-        setActivePanelId(existing.id);
-        return prev;
-      }
-      const panel: TablePanel = {
-        type: 'table',
-        id: nextPanelId('tbl'),
-        tableName: table,
-        subTab: 'data',
-      };
-      setActivePanelId(panel.id);
-      return [...prev, panel];
-    });
-  }, []);
+  const handleSelectTable = useCallback(
+    (table: string, schema?: string) => {
+      if (schema) setLastTableSchema(schema);
+      console.log('[SqlConnectionView] select table', table);
+      const isView = schemaViews.some((v) => v.name === table);
+      setPanels((prev) => {
+        if (isView) {
+          const existing = prev.find((p) => p.type === 'view' && p.viewName === table);
+          if (existing) {
+            setActivePanelId(existing.id);
+            return prev;
+          }
+          const panel: ViewPanel = {
+            type: 'view',
+            id: nextPanelId('view'),
+            viewName: table,
+            subTab: 'data',
+          };
+          setActivePanelId(panel.id);
+          return [...prev, panel];
+        }
+        const existing = prev.find((p) => p.type === 'table' && p.tableName === table);
+        if (existing) {
+          setActivePanelId(existing.id);
+          return prev;
+        }
+        const panel: TablePanel = {
+          type: 'table',
+          id: nextPanelId('tbl'),
+          tableName: table,
+          subTab: 'data',
+        };
+        setActivePanelId(panel.id);
+        return [...prev, panel];
+      });
+    },
+    [schemaViews],
+  );
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (selectTableRef && isActive) selectTableRef.current = handleSelectTable;
     return () => {
       if (selectTableRef && isActive) selectTableRef.current = undefined;
@@ -379,6 +431,37 @@ export function SqlConnectionView({
     setPanels((prev) => [...prev, panel]);
     setActivePanelId(panel.id);
   }, [panels]);
+
+  const handleOpenDbObject = useCallback(
+    (
+      kind: 'function' | 'procedure' | 'trigger' | 'sequence' | 'type',
+      name: string,
+      schema?: string,
+    ) => {
+      setPanels((prev) => {
+        const existing = prev.find(
+          (p) =>
+            p.type === 'db-object' &&
+            (p as DatabaseObjectPanel).objectName === name &&
+            (p as DatabaseObjectPanel).objectKind === kind,
+        );
+        if (existing) {
+          setActivePanelId(existing.id);
+          return prev;
+        }
+        const panel: DatabaseObjectPanel = {
+          type: 'db-object',
+          id: nextPanelId('dbobj'),
+          objectKind: kind,
+          objectName: name,
+          objectSchema: schema,
+        };
+        setActivePanelId(panel.id);
+        return [...prev, panel];
+      });
+    },
+    [],
+  );
 
   const handleOpenPrivileges = useCallback(() => {
     const existing = panels.find((p) => p.type === 'privileges');
@@ -535,16 +618,20 @@ export function SqlConnectionView({
 
   const handleSetSubTab = useCallback((panelId: string, subTab: SubTabId) => {
     setPanels((prev) =>
-      prev.map((p) =>
-        p.id === panelId && p.type === 'table'
-          ? {
-              ...p,
-              subTab,
-              // Leaving Structure exits inline edit mode.
-              structureEditing: subTab === 'structure' ? p.structureEditing : false,
-            }
-          : p,
-      ),
+      prev.map((p) => {
+        if (p.id !== panelId) return p;
+        if (p.type === 'table') {
+          return {
+            ...p,
+            subTab,
+            structureEditing: subTab === 'structure' ? p.structureEditing : false,
+          };
+        }
+        if (p.type === 'view') {
+          return { ...p, subTab };
+        }
+        return p;
+      }),
     );
   }, []);
 
@@ -769,7 +856,7 @@ export function SqlConnectionView({
     ],
   );
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (nodeContextMenuRef && isActive) {
       nodeContextMenuRef.current = (payload) =>
         handleNodeContextMenu(payload as SchemaTreeNodeContextMenuPayload);
@@ -779,18 +866,26 @@ export function SqlConnectionView({
     };
   }, [nodeContextMenuRef, handleNodeContextMenu, isActive]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (actionsRef && isActive) {
       actionsRef.current = {
         newQuery: handleNewQuery,
         openErDiagram: handleOpenErDiagram,
         refresh: handleRefresh,
+        openObject: handleOpenDbObject,
       };
     }
     return () => {
       if (actionsRef && isActive) actionsRef.current = undefined;
     };
-  }, [actionsRef, handleNewQuery, handleOpenErDiagram, handleRefresh, isActive]);
+  }, [
+    actionsRef,
+    handleNewQuery,
+    handleOpenErDiagram,
+    handleOpenDbObject,
+    handleRefresh,
+    isActive,
+  ]);
 
   useKeyboardShortcuts([
     {
@@ -961,7 +1056,13 @@ export function SqlConnectionView({
                 connectionId={connectionId}
                 databaseType={databaseType}
                 initialDatabase={initialDatabase}
-                selectedTable={activePanel?.type === 'table' ? activePanel.tableName : null}
+                selectedTable={
+                  activePanel?.type === 'table'
+                    ? activePanel.tableName
+                    : activePanel?.type === 'view'
+                      ? (activePanel as ViewPanel).viewName
+                      : null
+                }
                 searchQuery=""
                 onSelectTable={handleSelectTable}
                 onNodeContextMenu={handleNodeContextMenu}
@@ -1000,33 +1101,57 @@ export function SqlConnectionView({
               >
                 {panels.map((panel) => {
                   const isActive = panel.id === activePanelId;
-                  const iconMap = {
-                    table: <Table2 className="h-3.5 w-3.5 shrink-0" />,
+                  const dbObjKind =
+                    panel.type === 'db-object' ? (panel as DatabaseObjectPanel).objectKind : null;
+                  const dbObjIcon =
+                    dbObjKind === 'trigger' ? (
+                      <Zap className="h-3.5 w-3.5 shrink-0 text-amber-400" />
+                    ) : dbObjKind === 'procedure' ? (
+                      <Braces className="h-3.5 w-3.5 shrink-0 text-emerald-400" />
+                    ) : dbObjKind === 'sequence' ? (
+                      <Hash className="h-3.5 w-3.5 shrink-0 text-cyan-400" />
+                    ) : dbObjKind === 'type' ? (
+                      <Shapes className="h-3.5 w-3.5 shrink-0 text-pink-400" />
+                    ) : dbObjKind ? (
+                      <Braces className="h-3.5 w-3.5 shrink-0 text-orange-400" />
+                    ) : null;
+                  const iconMap: Record<string, React.ReactNode> = {
+                    table: <Table2 className="h-3.5 w-3.5 shrink-0 text-blue-400" />,
+                    view: <Eye className="h-3.5 w-3.5 shrink-0 text-purple-400" />,
                     query: <Code2 className="h-3.5 w-3.5 shrink-0" />,
                     'create-table': <TableProperties className="h-3.5 w-3.5 shrink-0" />,
                     'er-diagram': <GitFork className="h-3.5 w-3.5 shrink-0" />,
                     objects: <Code2 className="h-3.5 w-3.5 shrink-0" />,
                     privileges: <KeyRound className="h-3.5 w-3.5 shrink-0" />,
+                    'db-object': dbObjIcon,
                   };
                   const db = currentDatabase ?? initialDatabase ?? '';
                   const labelMap: Record<string, string> = {
                     table: (panel as TablePanel).tableName,
+                    view: (panel as ViewPanel).viewName,
                     query: (panel as QueryPanelInfo).title,
                     'create-table': t('connWin.newTable'),
                     'er-diagram': t('erDiagram.title'),
                     objects: t('objects.title'),
                     privileges: t('privileges.title'),
+                    'db-object': (panel as DatabaseObjectPanel).objectName ?? '',
                   };
                   const icon = iconMap[panel.type];
                   const label = labelMap[panel.type];
 
+                  const displayName =
+                    panel.type === 'table'
+                      ? (panel as TablePanel).tableName
+                      : panel.type === 'view'
+                        ? (panel as ViewPanel).viewName
+                        : panel.type === 'db-object'
+                          ? (panel as DatabaseObjectPanel).objectName
+                          : '';
                   const tooltipLines = [
                     `${t('connWin.tooltipConn')}: ${connectionName}`,
                     connGroup ? `${t('connWin.tooltipGroup')}: ${connGroup}` : '',
                     db ? `${t('connWin.tooltipDb')}: ${db}` : '',
-                    panel.type === 'table'
-                      ? `${t('connWin.tooltipTable')}: ${(panel as TablePanel).tableName}`
-                      : '',
+                    displayName ? `${t('connWin.tooltipTable')}: ${displayName}` : '',
                   ]
                     .filter(Boolean)
                     .join('\n');
@@ -1168,6 +1293,56 @@ export function SqlConnectionView({
             </>
           )}
 
+          {activePanel?.type === 'view' && (
+            <>
+              <div className="flex shrink-0 border-b border-edge bg-surface-alt">
+                {getViewSubTabs(t).map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    className={cn(
+                      'relative px-5 py-2 text-[13px] transition-colors',
+                      activePanel.subTab === tab.id
+                        ? 'bg-surface text-fg font-medium'
+                        : 'text-fg-secondary hover:text-fg',
+                    )}
+                    onClick={() => handleSetSubTab(activePanel.id, tab.id)}
+                  >
+                    {tab.label}
+                    <span
+                      className={cn(
+                        'absolute inset-x-0 bottom-0 h-0.5 bg-accent transition-opacity duration-300',
+                        activePanel.subTab === tab.id ? 'opacity-100' : 'opacity-0',
+                      )}
+                    />
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex min-h-0 flex-1 flex-col">
+                {activePanel.subTab === 'data' && (
+                  <TableView
+                    connectionId={connectionId}
+                    database={currentDatabase ?? ''}
+                    tableName={activePanel.viewName}
+                    databaseType={databaseType}
+                    dataExportCapability={exportScope}
+                  />
+                )}
+                {activePanel.subTab === 'structure' && (
+                  <StructureView connectionId={connectionId} tableName={activePanel.viewName} />
+                )}
+                {activePanel.subTab === 'ddl' && (
+                  <DDLView
+                    connectionId={connectionId}
+                    tableName={activePanel.viewName}
+                    databaseType={databaseType}
+                  />
+                )}
+              </div>
+            </>
+          )}
+
           {activePanel?.type === 'query' && (
             <QueryPanel
               connectionId={connectionId}
@@ -1209,6 +1384,16 @@ export function SqlConnectionView({
 
           {activePanel?.type === 'privileges' && <PrivilegeView connectionId={connectionId} />}
 
+          {activePanel?.type === 'db-object' && (
+            <DatabaseObjectView
+              connectionId={connectionId}
+              databaseType={databaseType}
+              objectKind={(activePanel as DatabaseObjectPanel).objectKind}
+              objectName={(activePanel as DatabaseObjectPanel).objectName}
+              objectSchema={(activePanel as DatabaseObjectPanel).objectSchema}
+            />
+          )}
+
           {!activePanel && (
             <div className="flex flex-1 items-center justify-center text-fg-muted">
               <div className="text-center">
@@ -1227,7 +1412,11 @@ export function SqlConnectionView({
             columns={detailColumnDefs}
             row={detailRow}
             rowIndex={detailRowIdx}
-            selectedRows={activePanel?.type === 'table' ? selectedRows : undefined}
+            selectedRows={
+              activePanel?.type === 'table' || activePanel?.type === 'view'
+                ? selectedRows
+                : undefined
+            }
             editable
             onFieldEdit={handleDetailFieldEdit}
           />

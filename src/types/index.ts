@@ -52,7 +52,7 @@ export interface ServerInfo {
 
 export type TableType = 'table' | 'view' | 'materializedView' | 'systemTable';
 
-export type DatabaseObjectKind = 'function' | 'procedure' | 'trigger';
+export type DatabaseObjectKind = 'function' | 'procedure' | 'trigger' | 'sequence' | 'type';
 
 export interface DatabaseObject {
   kind: DatabaseObjectKind;

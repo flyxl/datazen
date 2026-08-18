@@ -225,9 +225,7 @@ fn missing_auto_chart_on_query_defaults_to_false() {
 #[test]
 fn first_run_language_is_supported() {
     let settings = AppSettings::default_for_first_run();
-    const OK: &[&str] = &[
-        "en", "zh-CN", "zh-TW", "es", "fr", "de", "ja", "pt-BR", "ru", "ko",
-    ];
+    const OK: &[&str] = &["en", "zh-CN"];
     assert!(
         OK.contains(&settings.language.as_str()),
         "unexpected {}",

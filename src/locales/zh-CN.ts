@@ -117,6 +117,7 @@ const zhCN = {
   // ── Main / Group Dialog ──
   'main.newGroupTitle': '新建分组',
   'main.groupNamePlaceholder': '请输入分组名称',
+  'main.confirmDeleteGroup': '确定要删除分组 "{name}" 吗？该分组中的连接将移至未分组。',
 
   // ── Main / Backup & Restore ──
   'main.backupSuccess': '数据库备份成功',
@@ -434,6 +435,8 @@ const zhCN = {
   'schemaTree.functions': '函数',
   'schemaTree.procedures': '存储过程',
   'schemaTree.triggers': '触发器',
+  'schemaTree.sequences': '序列',
+  'schemaTree.types': '类型',
   'schemaTree.keys': '键',
   'schemaTree.noMatchingTables': '没有匹配的表或视图',
   'schemaTree.noTables': '没有表',

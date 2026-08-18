@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { TitleBar } from '../../components/TitleBar';
 import { ThemedIcon } from '../../components/ThemedIcon';
 import { Button } from '../../components/ui/Button';
@@ -12,6 +12,7 @@ import { settingsCommands } from '../../commands/settings';
 import type { AppSettings } from '../../types';
 import type { ThemeMode } from '../../types/theme';
 import type { TranslationKey } from '../../locales';
+import { getExtensionLocales } from '../../locales';
 import { ThemePackSection } from './ThemePackSection';
 import { UpdateSection } from './UpdateSection';
 import { PluginSettingsSection } from './PluginSettingsSection';
@@ -40,17 +41,9 @@ const THEME_KEYS: { value: ThemeMode; key: TranslationKey }[] = [
   { value: 'system', key: 'theme.system' },
 ];
 
-const LANGUAGE_OPTIONS = [
+const BUILTIN_LANGUAGE_OPTIONS = [
   { value: 'zh-CN', label: '简体中文' },
-  { value: 'zh-TW', label: '繁體中文' },
   { value: 'en', label: 'English' },
-  { value: 'es', label: 'Español' },
-  { value: 'fr', label: 'Français' },
-  { value: 'de', label: 'Deutsch' },
-  { value: 'ja', label: '日本語' },
-  { value: 'pt-BR', label: 'Português (Brasil)' },
-  { value: 'ru', label: 'Русский' },
-  { value: 'ko', label: '한국어' },
 ];
 
 type SettingsSection =
@@ -90,6 +83,11 @@ export function SettingsWindow() {
   const [saved, setSaved] = useState(false);
   const [defaultLogPath, setDefaultLogPath] = useState('');
   const settingsHydrated = useRef(false);
+
+  const languageOptions = useMemo(
+    () => [...BUILTIN_LANGUAGE_OPTIONS, ...getExtensionLocales()],
+    [],
+  );
 
   const [activeSection, setActiveSection] = useState<SettingsSection>(() => {
     const fromUrl = getUrlParam('section');
@@ -185,7 +183,7 @@ export function SettingsWindow() {
                 <SettingRow label={t('settings.language')}>
                   <Select
                     value={draft.language}
-                    options={LANGUAGE_OPTIONS}
+                    options={languageOptions}
                     onChange={(v) => updateField('language', v)}
                   />
                 </SettingRow>

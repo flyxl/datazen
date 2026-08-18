@@ -372,7 +372,7 @@ const DRIVER_LOCALE_CONFIG = {
   },
 };
 
-const HOST_LOCALES = ['en', 'zh-CN', 'zh-TW', 'es', 'fr', 'de', 'ja', 'pt-BR', 'ru', 'ko'];
+const HOST_LOCALES = ['en', 'zh-CN'];
 
 function generatePluginLocales(plugins) {
   const importLines = [];
@@ -418,12 +418,11 @@ function generatePluginLocales(plugins) {
  * Merges locale dictionaries from enabled driver packages.
  * Regenerated every time the build runs with different --drivers args.
  */
-${importLines.length > 0 ? importLines.join('\n') + '\n' : ''}import type { SupportedLocale } from '../locales';
-
+${importLines.length > 0 ? importLines.join('\n') + '\n' : ''}
 export type PluginTranslationKey = ${typeUnion};
 
 ${emptyDecl}/** Plugin locale strings keyed by translation key, merged per host locale. */
-export const PLUGIN_LOCALES: Record<SupportedLocale, Record<string, string>> = {
+export const PLUGIN_LOCALES: Record<string, Record<string, string>> = {
 ${localeEntryLines.join('\n')}
 };
 `;
