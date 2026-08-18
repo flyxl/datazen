@@ -77,16 +77,8 @@ const RUST_TO_LOCALE = {
 };
 
 const LOCALES = [
-  { code: 'zh-CN', file: 'src/locales/zh-CN.ts' },
   { code: 'en', file: 'src/locales/en.ts' },
-  { code: 'zh-TW', file: 'src/locales/zh-TW.ts' },
-  { code: 'es', file: 'src/locales/es.ts' },
-  { code: 'fr', file: 'src/locales/fr.ts' },
-  { code: 'de', file: 'src/locales/de.ts' },
-  { code: 'ja', file: 'src/locales/ja.ts' },
-  { code: 'pt-BR', file: 'src/locales/pt-BR.ts' },
-  { code: 'ru', file: 'src/locales/ru.ts' },
-  { code: 'ko', file: 'src/locales/ko.ts' },
+  { code: 'zh-CN', file: 'src/locales/zh-CN.ts' },
 ];
 
 function parseLocaleTs(source) {
