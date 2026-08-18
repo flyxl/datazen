@@ -9,13 +9,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { t } from '../locales/t';
 
-let counter = 0;
-
-function nextLabel(prefix: string) {
-  counter += 1;
-  return `${prefix}-${Date.now()}-${counter}`;
-}
-
 /**
  * Representative window labels that must match
  * `src-tauri/capabilities/default.json` → `windows` globs.
@@ -227,6 +220,21 @@ export function openDashboardWindow(dashboardId?: string, dashboardName?: string
  * Subsequent connections use the `datazen:open-connection` cross-window event.
  */
 export const PENDING_CONNECTION_KEY = 'datazen:pending-connection';
+
+/**
+ * Open the singleton ConnectionWindow without a specific connection.
+ * The window shows its navigator tree for the user to pick a connection.
+ */
+export function openConnectionBrowser() {
+  openSingletonWindow('connection-singleton', {
+    params: { window: 'connection' },
+    width: 1200,
+    height: 800,
+    minWidth: 600,
+    minHeight: 480,
+    title: 'DataZen',
+  });
+}
 
 /**
  * Open the singleton ConnectionWindow and add a connection tab.

@@ -38,7 +38,7 @@ export function ConfirmDialog({
             {cancelLabel ?? t('common.cancel')}
           </Button>
           <Button
-            variant={kind === 'warning' ? 'danger' : 'default'}
+            variant={kind === 'warning' ? 'danger' : 'primary'}
             className="h-8 px-3 text-xs"
             onClick={onConfirm}
             data-testid="confirm-dialog-ok"

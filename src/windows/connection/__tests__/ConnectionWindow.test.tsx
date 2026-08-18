@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { render, cleanup, waitFor, fireEvent, screen } from '@testing-library/react';
+import { render, cleanup, waitFor, screen } from '@testing-library/react';
 import { ConnectionWindow } from '../ConnectionWindow';
 
 const {
@@ -13,6 +13,8 @@ const {
   listenCrossWindowMock,
   getActiveConnectionState,
   closeMock,
+  fetchConnectionsMock,
+  fetchGroupsMock,
 } = vi.hoisted(() => ({
   connectMock: vi.fn(),
   releaseConnectionMock: vi.fn(),
@@ -26,6 +28,8 @@ const {
     connections: {} as Record<string, { status: string; connectionId?: string }>,
   })),
   closeMock: vi.fn().mockResolvedValue(undefined),
+  fetchConnectionsMock: vi.fn().mockResolvedValue(undefined),
+  fetchGroupsMock: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('../../../hooks/useI18n', () => ({
@@ -34,6 +38,10 @@ vi.mock('../../../hooks/useI18n', () => ({
 
 vi.mock('../../../hooks/useSettings', () => ({
   useSettings: () => {},
+}));
+
+vi.mock('../../../hooks/useConfirmDialog', () => ({
+  useConfirmDialog: () => [vi.fn().mockResolvedValue(false), null],
 }));
 
 vi.mock('../../../stores/settingsStore', () => ({
@@ -50,15 +58,35 @@ vi.mock('../../../stores/aiStore', () => ({
   ) => sel({ loadConfig: loadAiConfigMock, setupEventListeners: setupAiListenersMock }),
 }));
 
+vi.mock('../../../stores/connectionStore', () => ({
+  useConnectionStore: (sel: (s: Record<string, unknown>) => unknown) =>
+    sel({
+      connections: [],
+      groups: [],
+      fetchConnections: fetchConnectionsMock,
+      fetchGroups: fetchGroupsMock,
+      deleteConnection: vi.fn(),
+    }),
+  groupConnections: () => [],
+}));
+
 vi.mock('../../../stores/activeConnectionStore', () => ({
-  useActiveConnectionStore: {
-    getState: () => getActiveConnectionState(),
-  },
+  useActiveConnectionStore: Object.assign(
+    (sel: (s: Record<string, unknown>) => unknown) =>
+      sel({ connections: getActiveConnectionState().connections, connect: vi.fn() }),
+    { getState: () => getActiveConnectionState() },
+  ),
 }));
 
 vi.mock('../../../stores/schemaStore', () => ({
   useSchemaStore: {
-    getState: () => ({ reset: vi.fn(), databases: [], currentDatabase: null, tables: [] }),
+    getState: () => ({
+      reset: vi.fn(),
+      removeConnection: vi.fn(),
+      databases: [],
+      currentDatabase: null,
+      tables: [],
+    }),
   },
 }));
 
@@ -85,6 +113,7 @@ vi.mock('../../../commands/connection', () => ({
 
 vi.mock('../../../lib/windowManager', () => ({
   PENDING_CONNECTION_KEY: 'datazen:pending-connection',
+  openNewConnectionWindow: vi.fn(),
 }));
 
 vi.mock('../../../lib/crossWindowBus', () => ({
@@ -107,10 +136,8 @@ vi.mock('../../../components/TitleBar', () => ({
   TitleBar: ({ title }: { title: string }) => <div data-testid="title-bar">{title}</div>,
 }));
 
-vi.mock('../../../components/DbTypeBadge', () => ({
-  DbTypeBadge: ({ databaseType }: { databaseType: string }) => (
-    <span data-testid="db-badge">{databaseType}</span>
-  ),
+vi.mock('../ConnectionNavigatorTree', () => ({
+  ConnectionNavigatorTree: () => <div data-testid="navigator-tree">tree</div>,
 }));
 
 vi.mock('../../../lib/databaseTypes', async () => {
@@ -153,9 +180,20 @@ afterEach(() => {
 });
 
 describe('ConnectionWindow', () => {
-  it('TC-window: shows empty state when no pending connection', () => {
+  it('TC-window: always renders navigator tree sidebar', () => {
+    render(<ConnectionWindow />);
+    expect(screen.getByTestId('navigator-tree')).toBeInTheDocument();
+  });
+
+  it('TC-window: shows placeholder when no active tab', () => {
     render(<ConnectionWindow />);
     expect(screen.getByText('connWin.noConnections')).toBeInTheDocument();
+  });
+
+  it('TC-window: fetches connections and groups on mount', () => {
+    render(<ConnectionWindow />);
+    expect(fetchConnectionsMock).toHaveBeenCalled();
+    expect(fetchGroupsMock).toHaveBeenCalled();
   });
 
   it('TC-window: connects via localStorage pending connection and renders view', async () => {
@@ -226,7 +264,7 @@ describe('ConnectionWindow', () => {
     expect(connectMock).not.toHaveBeenCalled();
   });
 
-  it('TC-window: passes configId to view component for dashboard use', async () => {
+  it('TC-window: passes configId to view component', async () => {
     setPendingConnection({
       configId: 'cfg-dash',
       connectionName: 'Dashboard PG',
