@@ -124,7 +124,11 @@ export function SqlConnectionView({
   const batchExportSupported = supportsFullTableExport(exportScope);
   const safeMode = useSettingsStore((s) => s.settings.safeMode);
 
-  const panels = usePanelStore((s) => s.panels.filter((p) => p.configId === configId));
+  const allPanels = usePanelStore((s) => s.panels);
+  const panels = useMemo(
+    () => allPanels.filter((p) => p.configId === configId),
+    [allPanels, configId],
+  );
   const activePanelId = usePanelStore((s) => s.activePanelId);
   const addPanel = usePanelStore((s) => s.addPanel);
   const removePanel = usePanelStore((s) => s.removePanel);

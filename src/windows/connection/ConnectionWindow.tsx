@@ -241,14 +241,13 @@ export function ConnectionWindow() {
     return () => cleanup?.();
   }, [fetchConnections, fetchGroups]);
 
-  // ── Sync keyed stores whenever active connection changes ──
+  // ── Derive active connection from active panel or active tab ──
+
+  const activeConnectionId = activePanel?.connectionId || activeTab?.connectionId || null;
 
   useEffect(() => {
-    const connId = activeTab?.connectionId || null;
-    syncStoresActiveConnection(connId);
-  }, [activeTab?.connectionId]);
-
-  // ── Sync active connection when panel changes ──
+    syncStoresActiveConnection(activeConnectionId);
+  }, [activeConnectionId]);
 
   useEffect(() => {
     if (!activePanel) return;
@@ -256,10 +255,8 @@ export function ConnectionWindow() {
     if (tabIdx >= 0 && tabIdx !== activeIdx) {
       setActiveIdx(tabIdx);
     }
-    if (activePanel.connectionId) {
-      syncStoresActiveConnection(activePanel.connectionId);
-    }
-  }, [activePanel?.id, activePanel?.configId, activePanel?.connectionId, tabs, activeIdx]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activePanelId]);
 
   // ── Connect the initial tab (if not already connected) ──
 
