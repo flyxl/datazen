@@ -116,10 +116,12 @@ export function ConnectionWindow() {
   // ── Connect the initial tab (if not already connected) ──
 
   const connectTab = useCallback(async (tab: ConnectionTab): Promise<string> => {
-    const existing = useActiveConnectionStore.getState().connections[tab.configId];
+    const store = useActiveConnectionStore.getState();
+    const existing = store.connections[tab.configId];
     if (existing?.status === 'connected' && existing.connectionId) {
       return existing.connectionId;
     }
+    store.markConnecting(tab.configId, tab.initialDatabase ?? null);
     return connectionCommands.connect(tab.configId);
   }, []);
 
@@ -130,6 +132,7 @@ export function ConnectionWindow() {
       void (async () => {
         try {
           const connId = await connectTab(tab);
+          useActiveConnectionStore.getState().markConnected(tab.configId, connId);
           setTabs((prev) =>
             prev.map((t) =>
               t.configId === tab.configId
@@ -144,6 +147,7 @@ export function ConnectionWindow() {
         } catch (e) {
           const msg =
             typeof e === 'string' ? e : e instanceof Error ? e.message : t('backend.unknownError');
+          useActiveConnectionStore.getState().markError(tab.configId, msg);
           setTabs((prev) =>
             prev.map((tb) =>
               tb.configId === tab.configId ? { ...tb, status: 'error', error: msg } : tb,
@@ -320,6 +324,7 @@ export function ConnectionWindow() {
 
       storeCache.current.delete(tab.configId);
       useSchemaStore.getState().removeConnection(tab.connectionId);
+      useActiveConnectionStore.getState().removeByConnectionId(tab.connectionId);
 
       if (tab.connectionId) {
         try {

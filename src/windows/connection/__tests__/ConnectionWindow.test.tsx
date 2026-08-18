@@ -74,7 +74,15 @@ vi.mock('../../../stores/activeConnectionStore', () => ({
   useActiveConnectionStore: Object.assign(
     (sel: (s: Record<string, unknown>) => unknown) =>
       sel({ connections: getActiveConnectionState().connections, connect: vi.fn() }),
-    { getState: () => getActiveConnectionState() },
+    {
+      getState: () => ({
+        ...getActiveConnectionState(),
+        markConnecting: vi.fn(),
+        markConnected: vi.fn(),
+        markError: vi.fn(),
+        removeByConnectionId: vi.fn(),
+      }),
+    },
   ),
 }));
 
