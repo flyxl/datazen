@@ -63,7 +63,165 @@ export function resolveVisibleDatabases(
 }
 
 const EMPTY_NAMESPACE: SqlNamespace = {};
-const columnInflight = new Set<string>();
+
+/** Fallback key when mutating schema without an active connection (singleton compat). */
+const DEFAULT_SCHEMA_KEY = '__default__';
+
+/** Per-connection schema cache entry. */
+export interface ConnectionSchemaState {
+  currentDatabase: string | null;
+  databases: string[];
+  databaseType: string | null;
+  isMultiDatabase: boolean;
+  tables: TableInfo[];
+  views: TableInfo[];
+  columnMap: Record<string, string[]>;
+  namespaceTree: SqlNamespace;
+  loadedPaths: Set<string>;
+  pathItems: Record<string, TableInfo[]>;
+  pathAliases: Record<string, string>;
+  namespaceOwnedByPlugin: boolean;
+  schemaEpoch: number;
+  expanded: Set<string>;
+  selectedId: string | null;
+  loading: boolean;
+  ensuringCount: number;
+  error: string | null;
+  columnInflight: Set<string>;
+}
+
+const CONNECTION_STATE_KEYS = [
+  'currentDatabase',
+  'databases',
+  'databaseType',
+  'isMultiDatabase',
+  'tables',
+  'views',
+  'columnMap',
+  'namespaceTree',
+  'loadedPaths',
+  'pathItems',
+  'pathAliases',
+  'namespaceOwnedByPlugin',
+  'schemaEpoch',
+  'expanded',
+  'selectedId',
+  'loading',
+  'ensuringCount',
+  'error',
+  'columnInflight',
+] as const satisfies readonly (keyof ConnectionSchemaState)[];
+
+function createEmptyConnectionSchema(): ConnectionSchemaState {
+  return {
+    currentDatabase: null,
+    databases: [],
+    databaseType: null,
+    isMultiDatabase: false,
+    tables: [],
+    views: [],
+    columnMap: {},
+    namespaceTree: EMPTY_NAMESPACE,
+    loadedPaths: new Set(),
+    pathItems: {},
+    pathAliases: {},
+    namespaceOwnedByPlugin: false,
+    schemaEpoch: 0,
+    expanded: new Set(),
+    selectedId: null,
+    loading: false,
+    ensuringCount: 0,
+    error: null,
+    columnInflight: new Set(),
+  };
+}
+
+function activeFlatten(
+  schemas: Map<string, ConnectionSchemaState>,
+  activeConnectionId: string | null,
+): ConnectionSchemaState & { connectionId: string | null } {
+  const readKey =
+    activeConnectionId ?? (schemas.has(DEFAULT_SCHEMA_KEY) ? DEFAULT_SCHEMA_KEY : null);
+  if (!readKey) {
+    return { ...createEmptyConnectionSchema(), connectionId: null };
+  }
+  const schema = schemas.get(readKey);
+  if (!schema) {
+    return { ...createEmptyConnectionSchema(), connectionId: activeConnectionId };
+  }
+  return { ...schema, connectionId: activeConnectionId };
+}
+
+function extractSchemaPatch(partial: Partial<SchemaStore>): Partial<ConnectionSchemaState> {
+  const result: Partial<ConnectionSchemaState> = {};
+  for (const key of CONNECTION_STATE_KEYS) {
+    if (!(key in partial)) continue;
+    (result as Record<string, unknown>)[key] = partial[key as keyof ConnectionSchemaState];
+  }
+  return result;
+}
+
+function mergePartialIntoStore(
+  current: { schemas: Map<string, ConnectionSchemaState>; activeConnectionId: string | null },
+  partial: Partial<SchemaStore>,
+): Pick<SchemaStore, 'schemas' | 'activeConnectionId'> &
+  ConnectionSchemaState & { connectionId: string | null } {
+  let schemas = partial.schemas ?? current.schemas;
+  let activeConnectionId = current.activeConnectionId;
+
+  if ('activeConnectionId' in partial) {
+    activeConnectionId = partial.activeConnectionId ?? null;
+  } else if ('connectionId' in partial) {
+    activeConnectionId = partial.connectionId ?? null;
+  }
+
+  if (activeConnectionId && !schemas.has(activeConnectionId)) {
+    schemas = new Map(schemas);
+    schemas.set(activeConnectionId, createEmptyConnectionSchema());
+  }
+
+  const schemaPatch = extractSchemaPatch(partial);
+
+  const mutationKey =
+    activeConnectionId ?? (Object.keys(schemaPatch).length > 0 ? DEFAULT_SCHEMA_KEY : null);
+
+  if (mutationKey && Object.keys(schemaPatch).length > 0) {
+    schemas = new Map(schemas);
+    const prev = schemas.get(mutationKey) ?? createEmptyConnectionSchema();
+    schemas.set(mutationKey, { ...prev, ...schemaPatch });
+  }
+
+  return {
+    schemas,
+    activeConnectionId,
+    ...activeFlatten(schemas, activeConnectionId),
+  };
+}
+
+function patchConnectionSchema(
+  schemas: Map<string, ConnectionSchemaState>,
+  connectionId: string,
+  patch: Partial<ConnectionSchemaState>,
+): Map<string, ConnectionSchemaState> {
+  const next = new Map(schemas);
+  const prev = next.get(connectionId) ?? createEmptyConnectionSchema();
+  next.set(connectionId, { ...prev, ...patch });
+  return next;
+}
+
+function resolveTargetConnectionId(
+  state: { activeConnectionId: string | null },
+  override?: string,
+): string {
+  return override ?? state.activeConnectionId ?? DEFAULT_SCHEMA_KEY;
+}
+
+function resolveRealConnectionId(
+  state: { activeConnectionId: string | null },
+  override?: string,
+): string | null {
+  return override ?? state.activeConnectionId;
+}
 
 /** Names that are safe to pass to `get_columns` (complete loaded tables only). */
 export function knownTableNames(
@@ -93,329 +251,412 @@ export interface LoadForConnectionOptions {
   databaseType?: DatabaseType | string;
 }
 
-interface SchemaStore {
+interface SchemaStore extends ConnectionSchemaState {
+  /** Keyed per-connection schema cache. */
+  schemas: Map<string, ConnectionSchemaState>;
+  activeConnectionId: string | null;
+  /** Alias for `activeConnectionId` (backward compatible). */
   connectionId: string | null;
-  currentDatabase: string | null;
-  databases: string[];
-  databaseType: string | null;
-  /** True when driver supports multi-db AND connection sees more than one database. */
-  isMultiDatabase: boolean;
-  tables: TableInfo[];
-  views: TableInfo[];
-  columnMap: Record<string, string[]>;
-  namespaceTree: SqlNamespace;
-  loadedPaths: Set<string>;
-  /**
-   * Raw `get_tables` results keyed by fetch path (`dbId`, `dbId/catalog`, …).
-   * Shared by SQL autocomplete and custom schema trees so expanding a node
-   * already loaded via ensure does not hit the driver again.
-   */
-  pathItems: Record<string, TableInfo[]>;
-  /** SQL display name → fetch path root id (plugin-registered). */
-  pathAliases: Record<string, string>;
-  /** When true, setLoadedTables skips namespace merges (plugin owns tree via SDK). */
-  namespaceOwnedByPlugin: boolean;
-  /**
-   * Bumped after a full table-list reload so MultiDatabaseSchemaTree can drop
-   * its local `dbTables` cache (merge-only namespace updates are not enough).
-   */
-  schemaEpoch: number;
-  expanded: Set<string>;
-  selectedId: string | null;
-  loading: boolean;
-  /** In-flight `ensureNamespacePath` fetches (SQL autocomplete loading UI). */
-  ensuringCount: number;
-  error: string | null;
 
   loadForConnection: (connectionId: string, options?: LoadForConnectionOptions) => Promise<void>;
-  loadTables: (database: string) => Promise<void>;
-  /**
-   * Apply an already-fetched table list into the store (for multi-db / custom
-   * trees that keep local caches but must feed SQL editor autocomplete).
-   */
-  setLoadedTables: (database: string, all: TableInfo[]) => void;
-  /** Instant sidebar update after DROP TABLE / DROP VIEW (before refetch). */
-  removeRelation: (name: string) => void;
-  mergeNamespace: (segments: string[], kind: NamespaceMergeKind, names: string[]) => void;
-  cachePathItems: (fetchPath: string, items: TableInfo[]) => void;
-  /** Register display-name → fetch-id aliases and seed top-level namespace branches. */
-  registerPathAliases: (entries: { name: string; id: string }[]) => void;
-  ensureNamespacePath: (segments: string[]) => Promise<void>;
-  /**
-   * Fetch columns only for known, complete table names (skips prefixes, names
-   * already in columnMap, and failed lookups so they can retry).
-   */
-  ensureColumns: (tableNames: string[]) => Promise<void>;
-  loadColumnMap: () => Promise<void>;
-  toggleExpand: (id: string) => void;
-  setSelected: (id: string | null) => void;
+  loadTables: (database: string, connectionId?: string) => Promise<void>;
+  setLoadedTables: (database: string, all: TableInfo[], connectionId?: string) => void;
+  removeRelation: (name: string, connectionId?: string) => void;
+  mergeNamespace: (
+    segments: string[],
+    kind: NamespaceMergeKind,
+    names: string[],
+    connectionId?: string,
+  ) => void;
+  cachePathItems: (fetchPath: string, items: TableInfo[], connectionId?: string) => void;
+  registerPathAliases: (entries: { name: string; id: string }[], connectionId?: string) => void;
+  ensureNamespacePath: (segments: string[], connectionId?: string) => Promise<void>;
+  ensureColumns: (tableNames: string[], connectionId?: string) => Promise<void>;
+  loadColumnMap: (connectionId?: string) => Promise<void>;
+  toggleExpand: (id: string, connectionId?: string) => void;
+  setSelected: (id: string | null, connectionId?: string) => void;
   reset: () => void;
+  setActiveConnection: (connectionId: string | null) => void;
+  removeConnection: (connectionId: string) => void;
+  getConnectionSchema: (connectionId: string) => ConnectionSchemaState | undefined;
 }
 
-export const useSchemaStore = create<SchemaStore>((set, get) => ({
-  connectionId: null,
-  currentDatabase: null,
-  databases: [],
-  databaseType: null,
-  isMultiDatabase: false,
-  tables: [],
-  views: [],
-  columnMap: {},
-  namespaceTree: EMPTY_NAMESPACE,
-  loadedPaths: new Set(),
-  pathItems: {},
-  pathAliases: {},
-  namespaceOwnedByPlugin: false,
-  schemaEpoch: 0,
-  expanded: new Set(),
-  selectedId: null,
-  loading: false,
-  ensuringCount: 0,
-  error: null,
+export const useSchemaStore = create<SchemaStore>((set, get) => {
+  type SchemaUpdater = Partial<SchemaStore> | ((state: SchemaStore) => Partial<SchemaStore>);
 
-  loadForConnection: async (connectionId, options) => {
-    set({
-      loading: true,
-      ensuringCount: 0,
-      error: null,
-      connectionId,
-      databaseType: options?.databaseType ?? null,
-      namespaceTree: EMPTY_NAMESPACE,
-      loadedPaths: new Set(),
-      pathItems: {},
-      pathAliases: {},
-      namespaceOwnedByPlugin: false,
-    });
-    try {
-      const allDatabases = await databaseCommands.getDatabases(connectionId);
-      const meta = options?.databaseType
-        ? DB_REGISTRY[options.databaseType as DatabaseType]
-        : undefined;
-      const { databases, preferred, lockedToConfigured } = resolveVisibleDatabases(
-        allDatabases,
-        options?.preferredDatabase,
+  const setSynced = (partial: SchemaUpdater) => {
+    if (typeof partial === 'function') {
+      set(
+        (state) => ({ ...state, ...mergePartialIntoStore(state, partial(state)) }) as SchemaStore,
       );
-      const isMultiDatabase =
-        !lockedToConfigured && computeIsMultiDatabase(meta?.hasMultiDatabase, databases.length);
-      set({ databases, isMultiDatabase, loading: false, currentDatabase: preferred });
-      if (isMultiDatabase) {
-        get().mergeNamespace([], 'branch', databases);
-      }
-      if (options?.skipLoadTables) return;
-      if (preferred) {
-        await get().loadTables(preferred);
-        get().setSelected(`db:${preferred}`);
-      }
-    } catch (e) {
-      set({
-        loading: false,
-        error: e instanceof Error ? e.message : t('schema.loadDbFailed'),
-        isMultiDatabase: false,
+    } else {
+      set((state) => ({ ...state, ...mergePartialIntoStore(state, partial) }) as SchemaStore);
+    }
+  };
+
+  const commitConnectionPatch = (
+    connectionId: string,
+    patch: Partial<ConnectionSchemaState>,
+    options?: { activate?: boolean },
+  ) => {
+    setSynced((state) => {
+      const schemas = patchConnectionSchema(state.schemas, connectionId, patch);
+      const activeConnectionId = options?.activate ? connectionId : state.activeConnectionId;
+      return {
+        schemas,
+        activeConnectionId,
+        ...activeFlatten(schemas, activeConnectionId),
+      };
+    });
+  };
+
+  const empty = createEmptyConnectionSchema();
+
+  return {
+    schemas: new Map(),
+    activeConnectionId: null,
+    connectionId: null,
+    ...empty,
+
+    setActiveConnection: (connectionId) => {
+      setSynced((state) => ({
+        activeConnectionId: connectionId,
+        ...activeFlatten(state.schemas, connectionId),
+      }));
+    },
+
+    removeConnection: (connectionId) => {
+      setSynced((state) => {
+        const schemas = new Map(state.schemas);
+        schemas.delete(connectionId);
+        const activeConnectionId =
+          state.activeConnectionId === connectionId ? null : state.activeConnectionId;
+        return {
+          schemas,
+          activeConnectionId,
+          ...activeFlatten(schemas, activeConnectionId),
+        };
       });
-    }
-  },
+    },
 
-  loadTables: async (database) => {
-    const { connectionId } = get();
-    if (!connectionId) return;
-    set({ loading: true, error: null });
-    try {
-      // Session switch for MySQL/MariaDB (and no-op for drivers without override).
-      await databaseCommands.useDatabase(connectionId, database);
-      const all = await databaseCommands.getTables(connectionId, database);
-      get().setLoadedTables(database, all);
-      set({ loading: false, schemaEpoch: get().schemaEpoch + 1 });
-    } catch (e) {
-      set({
-        loading: false,
-        error: e instanceof Error ? e.message : t('schema.loadTablesFailed'),
-      });
-    }
-  },
+    getConnectionSchema: (connectionId) => get().schemas.get(connectionId),
 
-  mergeNamespace: (segments, kind, names) => {
-    const { namespaceTree, loadedPaths } = get();
-    set({
-      namespaceTree: mergeNamespacePath(namespaceTree, segments, kind, names),
-      loadedPaths: new Set(loadedPaths).add(pathKey(segments)),
-    });
-  },
-
-  cachePathItems: (fetchPath, items) => {
-    if (!fetchPath) return;
-    set({ pathItems: { ...get().pathItems, [fetchPath]: items } });
-  },
-
-  registerPathAliases: (entries) => {
-    const nextIds = { ...get().pathAliases };
-    const names: string[] = [];
-    for (const { name, id } of entries) {
-      nextIds[name] = id;
-      names.push(name);
-    }
-    set({ pathAliases: nextIds, namespaceOwnedByPlugin: true });
-    get().mergeNamespace([], 'branch', names);
-  },
-
-  ensureNamespacePath: async (segments) => {
-    const s = get();
-    if (!s.connectionId) return;
-    const deps = {
-      connectionId: s.connectionId,
-      databaseType: s.databaseType,
-      isMultiDatabase: s.isMultiDatabase,
-      loadedPaths: s.loadedPaths,
-      pathItems: s.pathItems,
-      pathAliases: s.pathAliases,
-      namespaceTree: s.namespaceTree,
-      tables: s.tables,
-      databases: s.databases,
-      currentDatabase: s.currentDatabase,
-      mergeNamespace: get().mergeNamespace,
-      cachePathItems: get().cachePathItems,
-      registerPathAliases: get().registerPathAliases,
-      getDatabases: databaseCommands.getDatabases,
-      getTables: databaseCommands.getTables,
-      useDatabase: databaseCommands.useDatabase,
-    };
-    const pending = namespaceEnsurePending(segments, deps);
-    if (pending) set({ ensuringCount: get().ensuringCount + 1 });
-    try {
-      await ensureNamespacePathImpl(segments, deps);
-    } finally {
-      if (pending) set({ ensuringCount: Math.max(0, get().ensuringCount - 1) });
-    }
-  },
-
-  setLoadedTables: (database, all) => {
-    const { databaseType, isMultiDatabase, namespaceTree, loadedPaths, namespaceOwnedByPlugin } =
-      get();
-    const tables = all.filter((item) => item.tableType !== 'view');
-    const views = all.filter((item) => item.tableType === 'view');
-    const meta = databaseType ? DB_REGISTRY[databaseType as DatabaseType] : undefined;
-
-    let nextTree = namespaceTree;
-    let nextLoadedPaths = loadedPaths;
-
-    if (!namespaceOwnedByPlugin && !meta?.namespaceOwnedByPlugin) {
-      const hasSchemaGrouping = all.some((item) => isSchemaGroupingSchema(item.schema));
-
-      if (hasSchemaGrouping) {
-        const bySchema = new Map<string, string[]>();
-        for (const item of all) {
-          if (!isSchemaGroupingSchema(item.schema)) continue;
-          const list = bySchema.get(item.schema!) ?? [];
-          list.push(item.name);
-          bySchema.set(item.schema!, list);
+    loadForConnection: async (connectionId, options) => {
+      commitConnectionPatch(
+        connectionId,
+        {
+          loading: true,
+          ensuringCount: 0,
+          error: null,
+          databaseType: options?.databaseType ?? null,
+          namespaceTree: EMPTY_NAMESPACE,
+          loadedPaths: new Set(),
+          pathItems: {},
+          pathAliases: {},
+          namespaceOwnedByPlugin: false,
+        },
+        { activate: true },
+      );
+      try {
+        const allDatabases = await databaseCommands.getDatabases(connectionId);
+        const meta = options?.databaseType
+          ? DB_REGISTRY[options.databaseType as DatabaseType]
+          : undefined;
+        const { databases, preferred, lockedToConfigured } = resolveVisibleDatabases(
+          allDatabases,
+          options?.preferredDatabase,
+        );
+        const isMultiDatabase =
+          !lockedToConfigured && computeIsMultiDatabase(meta?.hasMultiDatabase, databases.length);
+        commitConnectionPatch(
+          connectionId,
+          { databases, isMultiDatabase, loading: false, currentDatabase: preferred },
+          { activate: true },
+        );
+        if (isMultiDatabase) {
+          get().mergeNamespace([], 'branch', databases, connectionId);
         }
-        nextLoadedPaths = new Set(loadedPaths);
-        for (const [schema, names] of bySchema) {
-          const segments = isMultiDatabase ? [database, schema] : [schema];
-          nextTree = mergeNamespacePath(nextTree, segments, 'tables', names, { replace: true });
-          nextLoadedPaths.add(pathKey(segments));
+        if (options?.skipLoadTables) return;
+        if (preferred) {
+          await get().loadTables(preferred, connectionId);
+          get().setSelected(`db:${preferred}`, connectionId);
         }
-      } else {
-        const names = all.map((item) => item.name);
-        nextTree = mergeNamespacePath(nextTree, [database], 'tables', names, { replace: true });
-        nextLoadedPaths = new Set(loadedPaths).add(pathKey([database]));
+      } catch (e) {
+        commitConnectionPatch(
+          connectionId,
+          {
+            loading: false,
+            error: e instanceof Error ? e.message : t('schema.loadDbFailed'),
+            isMultiDatabase: false,
+          },
+          { activate: true },
+        );
       }
-    }
+    },
 
-    set({
-      tables,
-      views,
-      currentDatabase: database,
-      columnMap: {},
-      namespaceTree: nextTree,
-      loadedPaths: nextLoadedPaths,
-    });
-  },
+    loadTables: async (database, connectionIdOverride) => {
+      const connectionId = resolveRealConnectionId(get(), connectionIdOverride);
+      if (!connectionId) return;
+      commitConnectionPatch(connectionId, { loading: true, error: null });
+      try {
+        await databaseCommands.useDatabase(connectionId, database);
+        const all = await databaseCommands.getTables(connectionId, database);
+        get().setLoadedTables(database, all, connectionId);
+        const schema = get().schemas.get(connectionId);
+        commitConnectionPatch(connectionId, {
+          loading: false,
+          schemaEpoch: (schema?.schemaEpoch ?? 0) + 1,
+        });
+      } catch (e) {
+        commitConnectionPatch(connectionId, {
+          loading: false,
+          error: e instanceof Error ? e.message : t('schema.loadTablesFailed'),
+        });
+      }
+    },
 
-  removeRelation: (name) => {
-    const { tables, views, namespaceTree, selectedId } = get();
-    const nextSelected =
-      selectedId === `table:${name}` || selectedId === `view:${name}` ? null : selectedId;
-    set({
-      tables: tables.filter((item) => item.name !== name),
-      views: views.filter((item) => item.name !== name),
-      namespaceTree: omitTableLeaf(namespaceTree, name),
-      selectedId: nextSelected,
-    });
-  },
+    mergeNamespace: (segments, kind, names, connectionIdOverride) => {
+      const connectionId = resolveTargetConnectionId(get(), connectionIdOverride);
+      const schema = get().schemas.get(connectionId) ?? createEmptyConnectionSchema();
+      commitConnectionPatch(connectionId, {
+        namespaceTree: mergeNamespacePath(schema.namespaceTree, segments, kind, names),
+        loadedPaths: new Set(schema.loadedPaths).add(pathKey(segments)),
+      });
+    },
 
-  ensureColumns: async (tableNames) => {
-    const { connectionId, columnMap, namespaceTree, tables, views, pathItems } = get();
-    if (!connectionId) return;
-    const known = knownTableNames(namespaceTree, tables, views, pathItems);
-    if (known.size === 0) return;
-    const wanted = [
-      ...new Set(
-        tableNames.map((name) => name.trim()).filter((name) => name.length > 0 && known.has(name)),
-      ),
-    ];
-    const missing = wanted.filter((name) => !(name in columnMap) && !columnInflight.has(name));
-    if (missing.length === 0) return;
+    cachePathItems: (fetchPath, items, connectionIdOverride) => {
+      if (!fetchPath) return;
+      const connectionId = resolveTargetConnectionId(get(), connectionIdOverride);
+      const schema = get().schemas.get(connectionId) ?? createEmptyConnectionSchema();
+      commitConnectionPatch(connectionId, {
+        pathItems: { ...schema.pathItems, [fetchPath]: items },
+      });
+    },
 
-    for (const name of missing) columnInflight.add(name);
-    try {
-      const settled = await Promise.all(
-        missing.map(async (name) => {
-          try {
-            return { name, cols: await databaseCommands.getColumns(connectionId, name) };
-          } catch {
-            return { name, cols: null };
+    registerPathAliases: (entries, connectionIdOverride) => {
+      const connectionId = resolveTargetConnectionId(get(), connectionIdOverride);
+      const schema = get().schemas.get(connectionId) ?? createEmptyConnectionSchema();
+      const nextIds = { ...schema.pathAliases };
+      const names: string[] = [];
+      for (const { name, id } of entries) {
+        nextIds[name] = id;
+        names.push(name);
+      }
+      commitConnectionPatch(connectionId, {
+        pathAliases: nextIds,
+        namespaceOwnedByPlugin: true,
+      });
+      get().mergeNamespace([], 'branch', names, connectionId);
+    },
+
+    ensureNamespacePath: async (segments, connectionIdOverride) => {
+      const connectionId = resolveRealConnectionId(get(), connectionIdOverride);
+      if (!connectionId) return;
+      const schema = get().schemas.get(connectionId) ?? createEmptyConnectionSchema();
+      const deps = {
+        connectionId,
+        databaseType: schema.databaseType,
+        isMultiDatabase: schema.isMultiDatabase,
+        loadedPaths: schema.loadedPaths,
+        pathItems: schema.pathItems,
+        pathAliases: schema.pathAliases,
+        namespaceTree: schema.namespaceTree,
+        tables: schema.tables,
+        databases: schema.databases,
+        currentDatabase: schema.currentDatabase,
+        mergeNamespace: (segs: string[], kind: NamespaceMergeKind, names: string[]) =>
+          get().mergeNamespace(segs, kind, names, connectionId),
+        cachePathItems: (fetchPath: string, items: TableInfo[]) =>
+          get().cachePathItems(fetchPath, items, connectionId),
+        registerPathAliases: (entries: { name: string; id: string }[]) =>
+          get().registerPathAliases(entries, connectionId),
+        getDatabases: databaseCommands.getDatabases,
+        getTables: databaseCommands.getTables,
+        useDatabase: databaseCommands.useDatabase,
+      };
+      const pending = namespaceEnsurePending(segments, deps);
+      if (pending) {
+        commitConnectionPatch(connectionId, { ensuringCount: schema.ensuringCount + 1 });
+      }
+      try {
+        await ensureNamespacePathImpl(segments, deps);
+      } finally {
+        if (pending) {
+          const latest = get().schemas.get(connectionId);
+          commitConnectionPatch(connectionId, {
+            ensuringCount: Math.max(0, (latest?.ensuringCount ?? 1) - 1),
+          });
+        }
+      }
+    },
+
+    setLoadedTables: (database, all, connectionIdOverride) => {
+      const connectionId = resolveTargetConnectionId(get(), connectionIdOverride);
+      const schema = get().schemas.get(connectionId) ?? createEmptyConnectionSchema();
+      const { databaseType, isMultiDatabase, namespaceTree, loadedPaths, namespaceOwnedByPlugin } =
+        schema;
+      const tables = all.filter((item) => item.tableType !== 'view');
+      const views = all.filter((item) => item.tableType === 'view');
+      const meta = databaseType ? DB_REGISTRY[databaseType as DatabaseType] : undefined;
+
+      let nextTree = namespaceTree;
+      let nextLoadedPaths = loadedPaths;
+
+      if (!namespaceOwnedByPlugin && !meta?.namespaceOwnedByPlugin) {
+        const hasSchemaGrouping = all.some((item) => isSchemaGroupingSchema(item.schema));
+
+        if (hasSchemaGrouping) {
+          const bySchema = new Map<string, string[]>();
+          for (const item of all) {
+            if (!isSchemaGroupingSchema(item.schema)) continue;
+            const list = bySchema.get(item.schema!) ?? [];
+            list.push(item.name);
+            bySchema.set(item.schema!, list);
           }
-        }),
-      );
-      const next = { ...get().columnMap };
-      let changed = false;
-      for (const row of settled) {
-        if (row.cols == null) continue;
-        next[row.name] = row.cols;
-        changed = true;
+          nextLoadedPaths = new Set(loadedPaths);
+          for (const [schemaName, names] of bySchema) {
+            const segments = isMultiDatabase ? [database, schemaName] : [schemaName];
+            nextTree = mergeNamespacePath(nextTree, segments, 'tables', names, { replace: true });
+            nextLoadedPaths.add(pathKey(segments));
+          }
+        } else {
+          const names = all.map((item) => item.name);
+          nextTree = mergeNamespacePath(nextTree, [database], 'tables', names, { replace: true });
+          nextLoadedPaths = new Set(loadedPaths).add(pathKey([database]));
+        }
       }
-      if (changed) set({ columnMap: next });
-    } finally {
-      for (const name of missing) columnInflight.delete(name);
-    }
-  },
 
-  loadColumnMap: async () => {
-    const { tables, views } = get();
-    const allNames = [...tables, ...views].map((item) => item.name);
-    await get().ensureColumns(allNames);
-  },
+      commitConnectionPatch(connectionId, {
+        tables,
+        views,
+        currentDatabase: database,
+        columnMap: {},
+        namespaceTree: nextTree,
+        loadedPaths: nextLoadedPaths,
+      });
+    },
 
-  toggleExpand: (id) =>
-    set((s) => {
-      const next = new Set(s.expanded);
+    removeRelation: (name, connectionIdOverride) => {
+      const connectionId = resolveTargetConnectionId(get(), connectionIdOverride);
+      const schema = get().schemas.get(connectionId) ?? createEmptyConnectionSchema();
+      const nextSelected =
+        schema.selectedId === `table:${name}` || schema.selectedId === `view:${name}`
+          ? null
+          : schema.selectedId;
+      commitConnectionPatch(connectionId, {
+        tables: schema.tables.filter((item) => item.name !== name),
+        views: schema.views.filter((item) => item.name !== name),
+        namespaceTree: omitTableLeaf(schema.namespaceTree, name),
+        selectedId: nextSelected,
+      });
+    },
+
+    ensureColumns: async (tableNames, connectionIdOverride) => {
+      const connectionId = resolveRealConnectionId(get(), connectionIdOverride);
+      if (!connectionId) return;
+      const schema = get().schemas.get(connectionId) ?? createEmptyConnectionSchema();
+      const { columnMap, namespaceTree, tables, views, pathItems, columnInflight } = schema;
+      const known = knownTableNames(namespaceTree, tables, views, pathItems);
+      if (known.size === 0) return;
+      const wanted = [
+        ...new Set(
+          tableNames
+            .map((name) => name.trim())
+            .filter((name) => name.length > 0 && known.has(name)),
+        ),
+      ];
+      const missing = wanted.filter((name) => !(name in columnMap) && !columnInflight.has(name));
+      if (missing.length === 0) return;
+
+      const nextInflight = new Set(columnInflight);
+      for (const name of missing) nextInflight.add(name);
+      commitConnectionPatch(connectionId, { columnInflight: nextInflight });
+
+      try {
+        const settled = await Promise.all(
+          missing.map(async (name) => {
+            try {
+              return { name, cols: await databaseCommands.getColumns(connectionId, name) };
+            } catch {
+              return { name, cols: null };
+            }
+          }),
+        );
+        const latest = get().schemas.get(connectionId) ?? createEmptyConnectionSchema();
+        const nextColumnMap = { ...latest.columnMap };
+        let changed = false;
+        for (const row of settled) {
+          if (row.cols == null) continue;
+          nextColumnMap[row.name] = row.cols;
+          changed = true;
+        }
+        const clearedInflight = new Set(latest.columnInflight);
+        for (const name of missing) clearedInflight.delete(name);
+        if (changed) {
+          commitConnectionPatch(connectionId, {
+            columnMap: nextColumnMap,
+            columnInflight: clearedInflight,
+          });
+        } else {
+          commitConnectionPatch(connectionId, { columnInflight: clearedInflight });
+        }
+      } catch {
+        const latest = get().schemas.get(connectionId) ?? createEmptyConnectionSchema();
+        const clearedInflight = new Set(latest.columnInflight);
+        for (const name of missing) clearedInflight.delete(name);
+        commitConnectionPatch(connectionId, { columnInflight: clearedInflight });
+      }
+    },
+
+    loadColumnMap: async (connectionIdOverride) => {
+      const connectionId = resolveRealConnectionId(get(), connectionIdOverride);
+      if (!connectionId) return;
+      const schema = get().schemas.get(connectionId) ?? createEmptyConnectionSchema();
+      const allNames = [...schema.tables, ...schema.views].map((item) => item.name);
+      await get().ensureColumns(allNames, connectionId);
+    },
+
+    toggleExpand: (id, connectionIdOverride) => {
+      const connectionId = resolveTargetConnectionId(get(), connectionIdOverride);
+      const schema = get().schemas.get(connectionId) ?? createEmptyConnectionSchema();
+      const next = new Set(schema.expanded);
       if (next.has(id)) next.delete(id);
       else next.add(id);
-      return { expanded: next };
-    }),
+      commitConnectionPatch(connectionId, { expanded: next });
+    },
 
-  setSelected: (id) => set({ selectedId: id }),
+    setSelected: (id, connectionIdOverride) => {
+      const connectionId = resolveTargetConnectionId(get(), connectionIdOverride);
+      commitConnectionPatch(connectionId, { selectedId: id });
+    },
 
-  reset: () =>
-    set({
-      connectionId: null,
-      currentDatabase: null,
-      databases: [],
-      databaseType: null,
-      isMultiDatabase: false,
-      tables: [],
-      views: [],
-      columnMap: {},
-      namespaceTree: EMPTY_NAMESPACE,
-      loadedPaths: new Set(),
-      pathItems: {},
-      pathAliases: {},
-      namespaceOwnedByPlugin: false,
-      schemaEpoch: 0,
-      expanded: new Set(),
-      selectedId: null,
-      loading: false,
-      ensuringCount: 0,
-      error: null,
-    }),
-}));
+    reset: () => {
+      const fresh = createEmptyConnectionSchema();
+      setSynced({
+        schemas: new Map(),
+        activeConnectionId: null,
+        connectionId: null,
+        ...fresh,
+      });
+    },
+  };
+});
+
+/** Route external `setState` partials into the keyed schema map (backward compatible). */
+const nativeSetState = useSchemaStore.setState.bind(useSchemaStore);
+useSchemaStore.setState = ((partial, replace) => {
+  const merge = (state: SchemaStore): SchemaStore =>
+    ({
+      ...state,
+      ...(typeof partial === 'function'
+        ? mergePartialIntoStore(state, partial(state))
+        : mergePartialIntoStore(state, partial)),
+    }) as SchemaStore;
+  if (replace) {
+    nativeSetState(merge as Parameters<typeof nativeSetState>[0], true);
+  } else if (typeof partial === 'function') {
+    nativeSetState((state) => merge(state));
+  } else {
+    nativeSetState((state) => merge(state));
+  }
+}) as typeof useSchemaStore.setState;

@@ -1091,8 +1091,8 @@ export function QueryPanel({ connectionId, configId, queryTabId, databaseType }:
                     className="min-w-0 flex-1 text-left"
                     onClick={() => updateSql(tab.id, f.sql)}
                   >
-                    <div className="selectable truncate text-xs font-medium text-fg">{f.title}</div>
-                    <div className="selectable mt-0.5 truncate font-mono text-[11px] text-fg-muted">
+                    <div className="truncate text-xs font-medium text-fg">{f.title}</div>
+                    <div className="mt-0.5 truncate font-mono text-[11px] text-fg-muted">
                       {f.sql}
                     </div>
                   </button>
@@ -1129,9 +1129,7 @@ export function QueryPanel({ connectionId, configId, queryTabId, databaseType }:
                   onClick={() => updateSql(tab.id, h.sql)}
                   onContextMenu={(e) => handleHistoryContextMenu(e, h.sql)}
                 >
-                  <div className="selectable truncate font-mono text-xs text-fg-secondary">
-                    {h.sql}
-                  </div>
+                  <div className="truncate font-mono text-xs text-fg-secondary">{h.sql}</div>
                   <div className="mt-1 flex items-center gap-2 text-[11px] text-fg-muted">
                     <span className={h.success ? 'text-green-400' : 'text-red-400'}>
                       {h.success ? t('common.success') : t('common.failed')}

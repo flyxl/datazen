@@ -740,7 +740,6 @@ const translations = {
   'backup.progressLog': '執行日誌',
   'backup.copyLog': '複製日誌',
   'backup.logCopied': '已複製',
-  'backup.logOmitted': '… {count} 行日誌已省略（為節省記憶體已截斷）',
   'win.backup': '備份數據庫 - DataZen',
   'win.restore': '恢復數據庫 - DataZen',
   'connSettings.title': '連接設置',

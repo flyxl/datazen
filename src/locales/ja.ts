@@ -753,7 +753,6 @@ const translations = {
   'backup.progressLog': 'Execution log',
   'backup.copyLog': 'Copy log',
   'backup.logCopied': 'Copied',
-  'backup.logOmitted': '… {count} 行を省略しました（メモリ節約のためログを削減）',
   'win.backup': 'データベースのバックアップ - DataZen',
   'win.restore': 'データベースの復元 - DataZen',
   'connSettings.title': '接続設定',

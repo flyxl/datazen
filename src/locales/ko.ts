@@ -747,7 +747,6 @@ const translations = {
   'backup.progressLog': 'Execution log',
   'backup.copyLog': 'Copy log',
   'backup.logCopied': 'Copied',
-  'backup.logOmitted': '… {count}줄 생략됨(메모리 절약을 위해 로그 축소)',
   'win.backup': '백업 데이터베이스 - DataZen',
   'win.restore': '데이터베이스 복원 - DataZen',
   'connSettings.title': '연결 설정',

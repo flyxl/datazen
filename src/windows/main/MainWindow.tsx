@@ -444,9 +444,6 @@ export function MainWindow() {
         const dy = e.clientY - dragStartPos.current.y;
         if (Math.abs(dx) < 5 && Math.abs(dy) < 5) return;
         dragActiveRef.current = true;
-        // Prevent text selection while reordering connections. Inline style
-        // beats descendant `.selectable` classes on the items being dragged.
-        document.body.style.userSelect = 'none';
         snapshotGroupRects();
         setDraggingConnId(dragConnRef.current.id);
       }
@@ -471,7 +468,6 @@ export function MainWindow() {
       dragStartPos.current = null;
       dragConnRef.current = null;
       dragActiveRef.current = false;
-      document.body.style.userSelect = '';
       setDraggingConnId(null);
       setDragOverGroup(null);
       setDragGhostPos(null);
@@ -482,7 +478,6 @@ export function MainWindow() {
     return () => {
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
-      document.body.style.userSelect = '';
     };
   }, [snapshotGroupRects, hitTestGroup, moveConnectionToGroup]);
 
@@ -781,7 +776,7 @@ export function MainWindow() {
                   {/* ── Group header ── */}
                   <div
                     data-group-header
-                    className="flex cursor-pointer items-center gap-1.5 px-3 py-2 hover:bg-surface-raised/50"
+                    className="flex cursor-pointer select-none items-center gap-1.5 px-3 py-2 hover:bg-surface-raised/50"
                     onClick={() => toggleGroup(groupName)}
                     onContextMenu={(e) => {
                       void handleGroupContextMenu(e, groupName);

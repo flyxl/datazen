@@ -521,3 +521,133 @@ describe('schemaStore.ensureNamespacePath ensuringCount', () => {
     expect(databaseCommands.getTables).not.toHaveBeenCalled();
   });
 });
+
+describe('schemaStore keyed multi-connection', () => {
+  let useSchemaStore: typeof import('../../stores/schemaStore').useSchemaStore;
+  let databaseCommands: typeof import('../../commands/database').databaseCommands;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    vi.clearAllMocks();
+    const storeMod = await import('../../stores/schemaStore');
+    useSchemaStore = storeMod.useSchemaStore;
+    const cmdMod = await import('../../commands/database');
+    databaseCommands = cmdMod.databaseCommands;
+    useSchemaStore.getState().reset();
+  });
+
+  it('keeps separate schema state per connection', async () => {
+    vi.mocked(databaseCommands.getDatabases).mockImplementation(async (conn) => {
+      if (conn === 'conn-a') return ['db_a'];
+      return ['db_b'];
+    });
+    vi.mocked(databaseCommands.getTables).mockImplementation(async (_conn, db) => {
+      if (db === 'db_a') {
+        return [{ name: 'users_a', tableType: 'TABLE', schema: null, rowCount: null }];
+      }
+      return [{ name: 'users_b', tableType: 'TABLE', schema: null, rowCount: null }];
+    });
+
+    await useSchemaStore.getState().loadForConnection('conn-a', {
+      databaseType: 'sqlite',
+    });
+    await useSchemaStore.getState().loadForConnection('conn-b', {
+      databaseType: 'sqlite',
+    });
+
+    expect(useSchemaStore.getState().connectionId).toBe('conn-b');
+    expect(useSchemaStore.getState().tables.map((t) => t.name)).toEqual(['users_b']);
+
+    useSchemaStore.getState().setActiveConnection('conn-a');
+    expect(useSchemaStore.getState().connectionId).toBe('conn-a');
+    expect(useSchemaStore.getState().tables.map((t) => t.name)).toEqual(['users_a']);
+    expect(useSchemaStore.getState().currentDatabase).toBe('db_a');
+  });
+
+  it('getConnectionSchema returns cached entry without switching active', async () => {
+    vi.mocked(databaseCommands.getDatabases)
+      .mockResolvedValueOnce(['db_a'])
+      .mockResolvedValueOnce(['db_b']);
+
+    await useSchemaStore.getState().loadForConnection('conn-a', {
+      databaseType: 'sqlite',
+      skipLoadTables: true,
+      preferredDatabase: 'db_a',
+    });
+    await useSchemaStore.getState().loadForConnection('conn-b', {
+      databaseType: 'sqlite',
+      skipLoadTables: true,
+      preferredDatabase: 'db_b',
+    });
+
+    const schemaA = useSchemaStore.getState().getConnectionSchema('conn-a');
+    expect(schemaA?.currentDatabase).toBe('db_a');
+    expect(useSchemaStore.getState().connectionId).toBe('conn-b');
+  });
+
+  it('removeConnection drops cached schema and clears active when removed', async () => {
+    await useSchemaStore.getState().loadForConnection('conn-a', {
+      databaseType: 'sqlite',
+      skipLoadTables: true,
+    });
+
+    useSchemaStore.getState().removeConnection('conn-a');
+    expect(useSchemaStore.getState().getConnectionSchema('conn-a')).toBeUndefined();
+    expect(useSchemaStore.getState().connectionId).toBeNull();
+    expect(useSchemaStore.getState().tables).toEqual([]);
+  });
+
+  it('setState with connectionId switches active and preserves per-connection fields', async () => {
+    vi.mocked(databaseCommands.getDatabases).mockImplementation(async (conn) => {
+      if (conn === 'conn-a') return ['db_a'];
+      return ['db_b'];
+    });
+    vi.mocked(databaseCommands.getTables).mockImplementation(async (_conn, db) => [
+      { name: `t_${db}`, tableType: 'TABLE', schema: null, rowCount: null },
+    ]);
+
+    await useSchemaStore.getState().loadForConnection('conn-a', {
+      databaseType: 'sqlite',
+    });
+    await useSchemaStore.getState().loadForConnection('conn-b', {
+      databaseType: 'sqlite',
+    });
+
+    useSchemaStore.setState({ connectionId: 'conn-a' });
+    expect(useSchemaStore.getState().tables.map((t) => t.name)).toEqual(['t_db_a']);
+
+    useSchemaStore.setState({ columnMap: { t_db_a: ['id'] } });
+    expect(useSchemaStore.getState().columnMap).toEqual({ t_db_a: ['id'] });
+    expect(useSchemaStore.getState().getConnectionSchema('conn-b')?.columnMap).toEqual({});
+
+    useSchemaStore.setState({ connectionId: 'conn-b' });
+    expect(useSchemaStore.getState().columnMap).toEqual({});
+  });
+
+  it('ensureColumns uses per-connection columnInflight', async () => {
+    useSchemaStore.setState({ connectionId: 'conn-a', columnMap: {} });
+    useSchemaStore
+      .getState()
+      .setLoadedTables('db', [{ name: 'users', tableType: 'table', schema: null, rowCount: null }]);
+
+    useSchemaStore.setState({ connectionId: 'conn-b', columnMap: {} });
+    useSchemaStore
+      .getState()
+      .setLoadedTables('db', [
+        { name: 'orders', tableType: 'table', schema: null, rowCount: null },
+      ]);
+
+    vi.mocked(databaseCommands.getColumns).mockClear();
+    await useSchemaStore.getState().ensureColumns(['users'], 'conn-a');
+    await useSchemaStore.getState().ensureColumns(['orders'], 'conn-b');
+
+    expect(databaseCommands.getColumns).toHaveBeenCalledWith('conn-a', 'users');
+    expect(databaseCommands.getColumns).toHaveBeenCalledWith('conn-b', 'orders');
+    expect(useSchemaStore.getState().getConnectionSchema('conn-a')?.columnMap).toEqual({
+      users: ['id', 'name'],
+    });
+    expect(useSchemaStore.getState().getConnectionSchema('conn-b')?.columnMap).toEqual({
+      orders: ['id', 'name'],
+    });
+  });
+});
