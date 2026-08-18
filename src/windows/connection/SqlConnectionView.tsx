@@ -1,21 +1,14 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState, type MouseEvent } from 'react';
 import {
   BookOpen,
-  Braces,
   Code2,
   Database,
   Download,
-  Eye,
-  Hash,
   KeyRound,
   GitFork,
   MessageSquare,
   Plus,
-  Shapes,
-  Table2,
   TableProperties,
-  X,
-  Zap,
 } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { useResizable } from '../../hooks/useResizable';
@@ -25,7 +18,20 @@ import { useSchemaStore } from '../../stores/schemaStore';
 import { useTableDataStore } from '../../stores/tableDataStore';
 import { useQueryStore } from '../../stores/queryStore';
 import { useSettingsStore } from '../../stores/settingsStore';
-import { useConnectionStore } from '../../stores/connectionStore';
+import {
+  usePanelStore,
+  nextPanelId,
+  type SubTabId,
+  type TablePanel,
+  type ViewPanel,
+  type QueryPanel as QueryPanelType,
+  type CreateTablePanel,
+  type ErDiagramPanel,
+  type ObjectsPanel,
+  type PrivilegesPanel,
+  type DatabaseObjectPanel,
+  type ConnectionContext,
+} from '../../stores/panelStore';
 import { cn } from '../../lib/cn';
 import { openDocsWindow } from '../../lib/windowManager';
 import { DB_REGISTRY, escapeIdent, getDbLabel } from '../../lib/databaseTypes';
@@ -68,8 +74,6 @@ import { ObjectBrowser } from './ObjectBrowser';
 import { DatabaseObjectView } from './DatabaseObjectView';
 import { PrivilegeView } from './PrivilegeView';
 
-type SubTabId = 'data' | 'structure' | 'indexes' | 'foreignKeys' | 'ddl';
-
 function getSubTabs(
   t: (key: TranslationKey) => string,
   readOnly?: boolean,
@@ -97,74 +101,6 @@ function getViewSubTabs(t: (key: TranslationKey) => string): { id: SubTabId; lab
   ];
 }
 
-interface TablePanel {
-  type: 'table';
-  id: string;
-  tableName: string;
-  subTab: SubTabId;
-  /** When true, structure sub-tab shows the inline alter editor. */
-  structureEditing?: boolean;
-}
-
-interface ViewPanel {
-  type: 'view';
-  id: string;
-  viewName: string;
-  subTab: SubTabId;
-}
-
-interface QueryPanelInfo {
-  type: 'query';
-  id: string;
-  queryTabId: string;
-  title: string;
-}
-
-interface CreateTablePanel {
-  type: 'create-table';
-  id: string;
-}
-
-interface ErDiagramPanel {
-  type: 'er-diagram';
-  id: string;
-  focusTable?: string;
-}
-
-interface ObjectsPanel {
-  type: 'objects';
-  id: string;
-}
-
-interface PrivilegesPanel {
-  type: 'privileges';
-  id: string;
-}
-
-interface DatabaseObjectPanel {
-  type: 'db-object';
-  id: string;
-  objectKind: 'function' | 'procedure' | 'trigger' | 'sequence' | 'type';
-  objectName: string;
-  objectSchema?: string;
-}
-
-type Panel =
-  | TablePanel
-  | ViewPanel
-  | QueryPanelInfo
-  | CreateTablePanel
-  | ErDiagramPanel
-  | ObjectsPanel
-  | PrivilegesPanel
-  | DatabaseObjectPanel;
-
-let panelCounter = 0;
-function nextPanelId(prefix: string) {
-  panelCounter += 1;
-  return `${prefix}-${panelCounter}`;
-}
-
 export function SqlConnectionView({
   connectionId,
   configId,
@@ -188,8 +124,13 @@ export function SqlConnectionView({
   const batchExportSupported = supportsFullTableExport(exportScope);
   const safeMode = useSettingsStore((s) => s.settings.safeMode);
 
-  const [panels, setPanels] = useState<Panel[]>([]);
-  const [activePanelId, setActivePanelId] = useState<string | null>(null);
+  const panels = usePanelStore((s) => s.panels.filter((p) => p.configId === configId));
+  const activePanelId = usePanelStore((s) => s.activePanelId);
+  const addPanel = usePanelStore((s) => s.addPanel);
+  const removePanel = usePanelStore((s) => s.removePanel);
+  const storeUpdatePanel = usePanelStore((s) => s.updatePanel);
+  const setActivePanel = usePanelStore((s) => s.setActivePanel);
+  const removeAllForConnection = usePanelStore((s) => s.removeAllForConnection);
   const [sidebarOpen] = useState(true);
   const [aiChatOpen, setAiChatOpen] = useState(false);
   // AI chat toggle is always visible; AiChatPanel handles unconfigured state
@@ -201,7 +142,11 @@ export function SqlConnectionView({
   const [batchExportInitialSelected, setBatchExportInitialSelected] = useState<string[]>([]);
   const [lastTableSchema, setLastTableSchema] = useState<string | null>(null);
 
-  const connGroup = useConnectionStore((s) => s.connections.find((c) => c.id === configId)?.group);
+  const connCtx: ConnectionContext = useMemo(
+    () => ({ configId, connectionId, connectionName, databaseType }),
+    [configId, connectionId, connectionName, databaseType],
+  );
+
   const currentDatabase = useSchemaStore((s) => s.currentDatabase);
   const schemaTables = useSchemaStore((s) => s.tables);
   const schemaViews = useSchemaStore((s) => s.views);
@@ -284,38 +229,37 @@ export function SqlConnectionView({
       if (schema) setLastTableSchema(schema);
       console.log('[SqlConnectionView] select table', table);
       const isView = schemaViews.some((v) => v.name === table);
-      setPanels((prev) => {
-        if (isView) {
-          const existing = prev.find((p) => p.type === 'view' && p.viewName === table);
-          if (existing) {
-            setActivePanelId(existing.id);
-            return prev;
-          }
-          const panel: ViewPanel = {
-            type: 'view',
-            id: nextPanelId('view'),
-            viewName: table,
-            subTab: 'data',
-          };
-          setActivePanelId(panel.id);
-          return [...prev, panel];
-        }
-        const existing = prev.find((p) => p.type === 'table' && p.tableName === table);
+      if (isView) {
+        const existing = panels.find((p) => p.type === 'view' && p.viewName === table);
         if (existing) {
-          setActivePanelId(existing.id);
-          return prev;
+          setActivePanel(existing.id);
+          return;
         }
-        const panel: TablePanel = {
-          type: 'table',
-          id: nextPanelId('tbl'),
-          tableName: table,
+        const panel: ViewPanel = {
+          ...connCtx,
+          type: 'view',
+          id: nextPanelId('view'),
+          viewName: table,
           subTab: 'data',
         };
-        setActivePanelId(panel.id);
-        return [...prev, panel];
-      });
+        addPanel(panel);
+        return;
+      }
+      const existing = panels.find((p) => p.type === 'table' && p.tableName === table);
+      if (existing) {
+        setActivePanel(existing.id);
+        return;
+      }
+      const panel: TablePanel = {
+        ...connCtx,
+        type: 'table',
+        id: nextPanelId('tbl'),
+        tableName: table,
+        subTab: 'data',
+      };
+      addPanel(panel);
     },
-    [schemaViews],
+    [schemaViews, panels, connCtx, addPanel, setActivePanel],
   );
 
   useLayoutEffect(() => {
@@ -328,37 +272,38 @@ export function SqlConnectionView({
   const handleCreateTable = useCallback(() => {
     const existing = panels.find((p) => p.type === 'create-table');
     if (existing) {
-      setActivePanelId(existing.id);
+      setActivePanel(existing.id);
       return;
     }
-    const panel: CreateTablePanel = { type: 'create-table', id: nextPanelId('new-tbl') };
-    setPanels((prev) => [...prev, panel]);
-    setActivePanelId(panel.id);
-  }, [panels]);
+    const panel: CreateTablePanel = {
+      ...connCtx,
+      type: 'create-table',
+      id: nextPanelId('new-tbl'),
+    };
+    addPanel(panel);
+  }, [panels, connCtx, addPanel, setActivePanel]);
 
   /** Enter alter-structure editor inside the table's Structure sub-tab (no new primary tab). */
-  const handleEditTableStructure = useCallback((name: string) => {
-    setPanels((prev) => {
-      const existing = prev.find((p) => p.type === 'table' && p.tableName === name);
+  const handleEditTableStructure = useCallback(
+    (name: string) => {
+      const existing = panels.find((p) => p.type === 'table' && p.tableName === name);
       if (existing) {
-        setActivePanelId(existing.id);
-        return prev.map((p) =>
-          p.id === existing.id
-            ? { ...p, subTab: 'structure' as SubTabId, structureEditing: true }
-            : p,
-        );
+        setActivePanel(existing.id);
+        storeUpdatePanel(existing.id, { subTab: 'structure', structureEditing: true });
+        return;
       }
       const panel: TablePanel = {
+        ...connCtx,
         type: 'table',
         id: nextPanelId('tbl'),
         tableName: name,
         subTab: 'structure',
         structureEditing: true,
       };
-      setActivePanelId(panel.id);
-      return [...prev, panel];
-    });
-  }, []);
+      addPanel(panel);
+    },
+    [panels, connCtx, addPanel, setActivePanel, storeUpdatePanel],
+  );
 
   /** Open Structure sub-tab (edit mode when structure editor is available). */
   const handleOpenStructure = useCallback(
@@ -367,70 +312,69 @@ export function SqlConnectionView({
         handleEditTableStructure(name);
         return;
       }
-      setPanels((prev) => {
-        const existing = prev.find((p) => p.type === 'table' && p.tableName === name);
-        if (existing) {
-          setActivePanelId(existing.id);
-          return prev.map((p) =>
-            p.id === existing.id ? { ...p, subTab: 'structure' as SubTabId } : p,
-          );
-        }
-        const panel: TablePanel = {
-          type: 'table',
-          id: nextPanelId('tbl'),
-          tableName: name,
-          subTab: 'structure',
-        };
-        setActivePanelId(panel.id);
-        return [...prev, panel];
-      });
+      const existing = panels.find((p) => p.type === 'table' && p.tableName === name);
+      if (existing) {
+        setActivePanel(existing.id);
+        storeUpdatePanel(existing.id, { subTab: 'structure' });
+        return;
+      }
+      const panel: TablePanel = {
+        ...connCtx,
+        type: 'table',
+        id: nextPanelId('tbl'),
+        tableName: name,
+        subTab: 'structure',
+      };
+      addPanel(panel);
     },
-    [showStructureEditor, handleEditTableStructure],
+    [
+      showStructureEditor,
+      handleEditTableStructure,
+      panels,
+      connCtx,
+      addPanel,
+      setActivePanel,
+      storeUpdatePanel,
+    ],
   );
 
-  const handleExitStructureEditing = useCallback((panelId: string) => {
-    setPanels((prev) =>
-      prev.map((p) =>
-        p.id === panelId && p.type === 'table' ? { ...p, structureEditing: false } : p,
-      ),
-    );
-  }, []);
+  const handleExitStructureEditing = useCallback(
+    (panelId: string) => {
+      storeUpdatePanel(panelId, { structureEditing: false });
+    },
+    [storeUpdatePanel],
+  );
 
   const handleOpenErDiagram = useCallback(
     (focus?: string) => {
       const existing = panels.find((p) => p.type === 'er-diagram');
       if (existing) {
         if (focus) {
-          setPanels((prev) =>
-            prev.map((p) =>
-              p.id === existing.id ? ({ ...p, focusTable: focus } as ErDiagramPanel) : p,
-            ),
-          );
+          storeUpdatePanel(existing.id, { focusTable: focus });
         }
-        setActivePanelId(existing.id);
+        setActivePanel(existing.id);
         return;
       }
       const panel: ErDiagramPanel = {
+        ...connCtx,
         type: 'er-diagram',
         id: nextPanelId('er'),
         focusTable: focus,
       };
-      setPanels((prev) => [...prev, panel]);
-      setActivePanelId(panel.id);
+      addPanel(panel);
     },
-    [panels],
+    [panels, connCtx, addPanel, setActivePanel, storeUpdatePanel],
   );
 
   const handleOpenObjects = useCallback(() => {
     const existing = panels.find((p) => p.type === 'objects');
     if (existing) {
-      setActivePanelId(existing.id);
+      setActivePanel(existing.id);
       return;
     }
-    const panel: ObjectsPanel = { type: 'objects', id: nextPanelId('obj') };
-    setPanels((prev) => [...prev, panel]);
-    setActivePanelId(panel.id);
-  }, [panels]);
+    const panel: ObjectsPanel = { ...connCtx, type: 'objects', id: nextPanelId('obj') };
+    addPanel(panel);
+  }, [panels, connCtx, addPanel, setActivePanel]);
 
   const handleOpenDbObject = useCallback(
     (
@@ -438,41 +382,38 @@ export function SqlConnectionView({
       name: string,
       schema?: string,
     ) => {
-      setPanels((prev) => {
-        const existing = prev.find(
-          (p) =>
-            p.type === 'db-object' &&
-            (p as DatabaseObjectPanel).objectName === name &&
-            (p as DatabaseObjectPanel).objectKind === kind,
-        );
-        if (existing) {
-          setActivePanelId(existing.id);
-          return prev;
-        }
-        const panel: DatabaseObjectPanel = {
-          type: 'db-object',
-          id: nextPanelId('dbobj'),
-          objectKind: kind,
-          objectName: name,
-          objectSchema: schema,
-        };
-        setActivePanelId(panel.id);
-        return [...prev, panel];
-      });
+      const existing = panels.find(
+        (p) =>
+          p.type === 'db-object' &&
+          (p as DatabaseObjectPanel).objectName === name &&
+          (p as DatabaseObjectPanel).objectKind === kind,
+      );
+      if (existing) {
+        setActivePanel(existing.id);
+        return;
+      }
+      const panel: DatabaseObjectPanel = {
+        ...connCtx,
+        type: 'db-object',
+        id: nextPanelId('dbobj'),
+        objectKind: kind,
+        objectName: name,
+        objectSchema: schema,
+      };
+      addPanel(panel);
     },
-    [],
+    [panels, connCtx, addPanel, setActivePanel],
   );
 
   const handleOpenPrivileges = useCallback(() => {
     const existing = panels.find((p) => p.type === 'privileges');
     if (existing) {
-      setActivePanelId(existing.id);
+      setActivePanel(existing.id);
       return;
     }
-    const panel: PrivilegesPanel = { type: 'privileges', id: nextPanelId('priv') };
-    setPanels((prev) => [...prev, panel]);
-    setActivePanelId(panel.id);
-  }, [panels]);
+    const panel: PrivilegesPanel = { ...connCtx, type: 'privileges', id: nextPanelId('priv') };
+    addPanel(panel);
+  }, [panels, connCtx, addPanel, setActivePanel]);
 
   const handleNewQuery = useCallback(
     (initialSql?: string) => {
@@ -481,100 +422,86 @@ export function SqlConnectionView({
       if (!latestTab) return;
       if (initialSql) updateQuerySql(latestTab.id, initialSql);
       const db = currentDatabase ?? initialDatabase ?? '';
-      const panel: QueryPanelInfo = {
+      const panel: QueryPanelType = {
+        ...connCtx,
         type: 'query',
         id: nextPanelId('qry'),
         queryTabId: latestTab.id,
         title: db ? `${connectionName}@${db}` : connectionName,
       };
-      setPanels((prev) => [...prev, panel]);
-      setActivePanelId(panel.id);
+      addPanel(panel);
     },
-    [createQueryTab, updateQuerySql],
+    [
+      createQueryTab,
+      updateQuerySql,
+      currentDatabase,
+      initialDatabase,
+      connectionName,
+      connCtx,
+      addPanel,
+    ],
   );
 
   const handleClosePanel = useCallback(
     (panelId: string) => {
-      setPanels((prev) => {
-        const idx = prev.findIndex((p) => p.id === panelId);
-        const closing = prev[idx];
-        const next = prev.filter((p) => p.id !== panelId);
-
-        if (closing?.type === 'query') {
-          closeQueryTab(closing.queryTabId);
-        }
-
-        setActivePanelId((current) => {
-          if (current !== panelId) return current;
-          if (next.length === 0) return null;
-          const newIdx = Math.min(idx, next.length - 1);
-          return next[newIdx].id;
-        });
-
-        return next;
-      });
+      const closing = panels.find((p) => p.id === panelId);
+      if (closing?.type === 'query') {
+        closeQueryTab(closing.queryTabId);
+      }
+      removePanel(panelId);
     },
-    [closeQueryTab],
+    [panels, closeQueryTab, removePanel],
   );
 
   const handleCloseOtherPanels = useCallback(
     (keepPanelId: string) => {
-      setPanels((prev) => {
-        for (const panel of prev) {
-          if (panel.id === keepPanelId) continue;
-          if (panel.type === 'query') {
-            closeQueryTab(panel.queryTabId);
-          }
-        }
-        return prev.filter((p) => p.id === keepPanelId);
-      });
-      setActivePanelId(keepPanelId);
-    },
-    [closeQueryTab],
-  );
-
-  const handleCloseAllPanels = useCallback(() => {
-    setPanels((prev) => {
-      for (const panel of prev) {
+      const toClose = panels.filter((p) => p.id !== keepPanelId);
+      for (const panel of toClose) {
         if (panel.type === 'query') {
           closeQueryTab(panel.queryTabId);
         }
+        removePanel(panel.id);
       }
-      return [];
-    });
-    setActivePanelId(null);
-  }, [closeQueryTab]);
+      setActivePanel(keepPanelId);
+    },
+    [panels, closeQueryTab, removePanel, setActivePanel],
+  );
+
+  const handleCloseAllPanels = useCallback(() => {
+    for (const panel of panels) {
+      if (panel.type === 'query') {
+        closeQueryTab(panel.queryTabId);
+      }
+    }
+    removeAllForConnection(configId);
+  }, [panels, closeQueryTab, removeAllForConnection, configId]);
 
   const handleClosePanelsToTheRight = useCallback(
     (panelId: string) => {
-      setPanels((prev) => {
-        const idx = prev.findIndex((p) => p.id === panelId);
-        if (idx < 0) return prev;
-        const keep = prev.slice(0, idx + 1);
-        for (const panel of prev.slice(idx + 1)) {
-          if (panel.type === 'query') closeQueryTab(panel.queryTabId);
-        }
-        return keep;
-      });
-      setActivePanelId(panelId);
+      const idx = panels.findIndex((p) => p.id === panelId);
+      if (idx < 0) return;
+      const toClose = panels.slice(idx + 1);
+      for (const panel of toClose) {
+        if (panel.type === 'query') closeQueryTab(panel.queryTabId);
+        removePanel(panel.id);
+      }
+      setActivePanel(panelId);
     },
-    [closeQueryTab],
+    [panels, closeQueryTab, removePanel, setActivePanel],
   );
 
   const handleClosePanelsToTheLeft = useCallback(
     (panelId: string) => {
-      setPanels((prev) => {
-        const idx = prev.findIndex((p) => p.id === panelId);
-        if (idx < 0) return prev;
-        const keep = prev.slice(idx);
-        for (const panel of prev.slice(0, idx)) {
-          if (panel.type === 'query') closeQueryTab(panel.queryTabId);
-        }
-        return keep;
-      });
-      setActivePanelId(panelId);
+      const idx = panels.findIndex((p) => p.id === panelId);
+      if (idx < 0) return;
+      const toClose = panels.slice(0, idx);
+      for (const panel of toClose) {
+        if (panel.type === 'query') closeQueryTab(panel.queryTabId);
+        removePanel(panel.id);
+      }
+      setActivePanel(panelId);
     },
-    [closeQueryTab],
+    [panels, closeQueryTab, removePanel, setActivePanel],
   );
 
   const handlePanelTabContextMenu = useCallback(
@@ -616,24 +543,24 @@ export function SqlConnectionView({
     ],
   );
 
-  const handleSetSubTab = useCallback((panelId: string, subTab: SubTabId) => {
-    setPanels((prev) =>
-      prev.map((p) => {
-        if (p.id !== panelId) return p;
-        if (p.type === 'table') {
-          return {
-            ...p,
-            subTab,
-            structureEditing: subTab === 'structure' ? p.structureEditing : false,
-          };
-        }
-        if (p.type === 'view') {
-          return { ...p, subTab };
-        }
-        return p;
-      }),
-    );
-  }, []);
+  const handleSetSubTab = useCallback(
+    (panelId: string, subTab: SubTabId) => {
+      const p = panels.find((panel) => panel.id === panelId);
+      if (!p) return;
+      if (p.type === 'table') {
+        storeUpdatePanel(panelId, {
+          subTab,
+          structureEditing: subTab === 'structure' ? p.structureEditing : false,
+        });
+      } else if (p.type === 'view') {
+        storeUpdatePanel(panelId, { subTab });
+      }
+    },
+    [panels, storeUpdatePanel],
+  );
+
+  // Kept for ConnectionWindow unified tab bar integration.
+  useEffect(() => {}, [handlePanelTabContextMenu]);
 
   const handleRefresh = useCallback(() => {
     if (!connectionId) return;
@@ -708,14 +635,10 @@ export function SqlConnectionView({
       };
 
       const closePanelsForTable = (tableName: string) => {
-        setPanels((prev) => {
-          const next = prev.filter((p) => !(p.type === 'table' && p.tableName === tableName));
-          setActivePanelId((current) => {
-            if (current && next.some((p) => p.id === current)) return current;
-            return next[next.length - 1]?.id ?? null;
-          });
-          return next;
-        });
+        const toClose = panels.filter((p) => p.type === 'table' && p.tableName === tableName);
+        for (const p of toClose) {
+          removePanel(p.id);
+        }
       };
 
       void showNativeContextMenu(
@@ -853,6 +776,8 @@ export function SqlConnectionView({
       exportDataSupported,
       batchExportSupported,
       safeMode,
+      panels,
+      removePanel,
     ],
   );
 
@@ -930,7 +855,7 @@ export function SqlConnectionView({
 
   const activeQueryTab =
     activePanel?.type === 'query'
-      ? queryTabs.find((tab) => tab.id === (activePanel as QueryPanelInfo).queryTabId)
+      ? queryTabs.find((tab) => tab.id === (activePanel as QueryPanelType).queryTabId)
       : null;
   const activeQueryResult = activeQueryTab?.results[activeQueryTab.activeResultIdx] ?? null;
 
@@ -1089,121 +1014,6 @@ export function SqlConnectionView({
         )}
 
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          {panels.length > 0 && (
-            <div className="flex shrink-0 items-center border-b border-edge bg-surface-alt">
-              <div
-                data-testid="connection-tab-bar"
-                className="scrollbar-hide flex min-w-0 flex-1 overflow-x-auto"
-                onWheel={(e) => {
-                  if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
-                  e.currentTarget.scrollLeft += e.deltaY;
-                }}
-              >
-                {panels.map((panel) => {
-                  const isActive = panel.id === activePanelId;
-                  const dbObjKind =
-                    panel.type === 'db-object' ? (panel as DatabaseObjectPanel).objectKind : null;
-                  const dbObjIcon =
-                    dbObjKind === 'trigger' ? (
-                      <Zap className="h-3.5 w-3.5 shrink-0 text-amber-400" />
-                    ) : dbObjKind === 'procedure' ? (
-                      <Braces className="h-3.5 w-3.5 shrink-0 text-emerald-400" />
-                    ) : dbObjKind === 'sequence' ? (
-                      <Hash className="h-3.5 w-3.5 shrink-0 text-cyan-400" />
-                    ) : dbObjKind === 'type' ? (
-                      <Shapes className="h-3.5 w-3.5 shrink-0 text-pink-400" />
-                    ) : dbObjKind ? (
-                      <Braces className="h-3.5 w-3.5 shrink-0 text-orange-400" />
-                    ) : null;
-                  const iconMap: Record<string, React.ReactNode> = {
-                    table: <Table2 className="h-3.5 w-3.5 shrink-0 text-blue-400" />,
-                    view: <Eye className="h-3.5 w-3.5 shrink-0 text-purple-400" />,
-                    query: <Code2 className="h-3.5 w-3.5 shrink-0" />,
-                    'create-table': <TableProperties className="h-3.5 w-3.5 shrink-0" />,
-                    'er-diagram': <GitFork className="h-3.5 w-3.5 shrink-0" />,
-                    objects: <Code2 className="h-3.5 w-3.5 shrink-0" />,
-                    privileges: <KeyRound className="h-3.5 w-3.5 shrink-0" />,
-                    'db-object': dbObjIcon,
-                  };
-                  const db = currentDatabase ?? initialDatabase ?? '';
-                  const labelMap: Record<string, string> = {
-                    table: (panel as TablePanel).tableName,
-                    view: (panel as ViewPanel).viewName,
-                    query: (panel as QueryPanelInfo).title,
-                    'create-table': t('connWin.newTable'),
-                    'er-diagram': t('erDiagram.title'),
-                    objects: t('objects.title'),
-                    privileges: t('privileges.title'),
-                    'db-object': (panel as DatabaseObjectPanel).objectName ?? '',
-                  };
-                  const icon = iconMap[panel.type];
-                  const label = labelMap[panel.type];
-
-                  const displayName =
-                    panel.type === 'table'
-                      ? (panel as TablePanel).tableName
-                      : panel.type === 'view'
-                        ? (panel as ViewPanel).viewName
-                        : panel.type === 'db-object'
-                          ? (panel as DatabaseObjectPanel).objectName
-                          : '';
-                  const tooltipLines = [
-                    `${t('connWin.tooltipConn')}: ${connectionName}`,
-                    connGroup ? `${t('connWin.tooltipGroup')}: ${connGroup}` : '',
-                    db ? `${t('connWin.tooltipDb')}: ${db}` : '',
-                    displayName ? `${t('connWin.tooltipTable')}: ${displayName}` : '',
-                  ]
-                    .filter(Boolean)
-                    .join('\n');
-
-                  return (
-                    <div
-                      key={panel.id}
-                      className={cn(
-                        'group relative flex items-center gap-1.5 border-r border-edge px-3 py-2 text-xs transition-colors',
-                        isActive
-                          ? 'bg-surface text-fg'
-                          : 'text-fg-secondary hover:bg-surface-raised hover:text-fg',
-                      )}
-                      title={tooltipLines}
-                      onContextMenu={(e) => handlePanelTabContextMenu(panel.id, e)}
-                    >
-                      <button
-                        type="button"
-                        className="flex items-center gap-1.5"
-                        onClick={() => setActivePanelId(panel.id)}
-                      >
-                        {icon}
-                        <span className="max-w-[160px] truncate">{label}</span>
-                      </button>
-                      <button
-                        type="button"
-                        className="rounded p-0.5 text-fg-muted opacity-0 hover:bg-surface-raised hover:text-fg group-hover:opacity-100"
-                        onClick={() => handleClosePanel(panel.id)}
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                      <span
-                        className={cn(
-                          'absolute inset-x-0 bottom-0 h-0.5 bg-accent transition-opacity duration-300',
-                          isActive ? 'opacity-100' : 'opacity-0',
-                        )}
-                      />
-                    </div>
-                  );
-                })}
-              </div>
-              <button
-                type="button"
-                className="shrink-0 px-2 py-2 text-fg-muted hover:text-fg"
-                title={`${t('connWin.newQuery')} (⌘N)`}
-                onClick={() => handleNewQuery()}
-              >
-                <Plus className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          )}
-
           {activePanel?.type === 'table' && (
             <>
               <div className="flex shrink-0 border-b border-edge bg-surface-alt">
@@ -1438,7 +1248,7 @@ export function SqlConnectionView({
                 onInsertSql={(sql) => {
                   if (activePanel?.type === 'query') {
                     const tab = queryTabs.find(
-                      (t) => t.id === (activePanel as QueryPanelInfo).queryTabId,
+                      (t) => t.id === (activePanel as QueryPanelType).queryTabId,
                     );
                     if (tab) updateQuerySql(tab.id, sql);
                   }
