@@ -1,4 +1,3 @@
-
 export type SqlDialectFamily = string;
 
 export interface DdlDialect {
@@ -29,4 +28,6 @@ export interface SqlDialectStrategy {
   ddl: DdlDialect;
   index: IndexDialect;
   backupOptions: BackupOption[];
+  /** SQL to empty a table; defaults to `TRUNCATE TABLE <quoted>`. */
+  getTruncateTableSql?: (quotedName: string) => string;
 }

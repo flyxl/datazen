@@ -17,9 +17,12 @@ export const sqliteDialect: SqlDialectStrategy = {
     },
     getCreateIndexSql(opts) {
       const uniqueKw = opts.unique ? 'UNIQUE ' : '';
-      const quotedCols = opts.columns.map((c) => `${opts.quoteChar}${c}${opts.quoteChar}`).join(', ');
+      const quotedCols = opts.columns
+        .map((c) => `${opts.quoteChar}${c}${opts.quoteChar}`)
+        .join(', ');
       return `CREATE ${uniqueKw}INDEX ${opts.quoteChar}${opts.indexName}${opts.quoteChar} ON ${opts.quoteChar}${opts.tableName}${opts.quoteChar} (${quotedCols})`;
     },
   },
   backupOptions: [],
+  getTruncateTableSql: (quotedName) => `DELETE FROM ${quotedName}`,
 };
