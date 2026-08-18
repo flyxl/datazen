@@ -1,26 +1,5 @@
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type MutableRefObject,
-  type ReactNode,
-} from 'react';
-import {
-  Braces,
-  Code2,
-  Database,
-  Eye,
-  GitFork,
-  Hash,
-  KeyRound,
-  PanelLeftOpen,
-  Shapes,
-  Table2,
-  TableProperties,
-  X,
-  Zap,
-} from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { PanelLeftOpen } from 'lucide-react';
 import { TitleBar } from '../../components/TitleBar';
 import { useI18n } from '../../hooks/useI18n';
 import { useSettings } from '../../hooks/useSettings';
@@ -32,27 +11,17 @@ import { useTableDataStore } from '../../stores/tableDataStore';
 import { useConnectionStore } from '../../stores/connectionStore';
 import { connectionCommands } from '../../commands/connection';
 import { emitCrossWindow, listenCrossWindow } from '../../lib/crossWindowBus';
-import { DB_REGISTRY, getDbLabel } from '../../lib/databaseTypes';
-import { getConnectionView } from '../../lib/connectionViews';
+import { getDbLabel } from '../../lib/databaseTypes';
 import { openNewConnectionWindow, PENDING_CONNECTION_KEY } from '../../lib/windowManager';
 import { useActiveConnectionStore } from '../../stores/activeConnectionStore';
-import {
-  usePanelStore,
-  nextPanelId,
-  type Panel,
-  type RedisDbPanel,
-  type TablePanel,
-  type ViewPanel,
-  type QueryPanel as QueryPanelType,
-  type DatabaseObjectPanel,
-} from '../../stores/panelStore';
-import { cn } from '../../lib/cn';
+import { usePanelStore, nextPanelId, type RedisDbPanel } from '../../stores/panelStore';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 import {
   ConnectionShareDialog,
   type ConnectionShareMode,
 } from '../../components/connection/ConnectionShareDialog';
 import { ConnectionNavigatorTree } from './ConnectionNavigatorTree';
+import { ContentView } from './ContentView';
 import type { DatabaseType } from '../../types';
 
 // ── Connection Tab ────────────────────────────────────────────────
@@ -106,62 +75,6 @@ function removeConnectionFromStores(connectionId: string) {
   useTableDataStore.getState().removeConnection(connectionId);
 }
 
-function getPanelIcon(panel: Panel): ReactNode {
-  switch (panel.type) {
-    case 'table':
-      return <Table2 className="h-3.5 w-3.5 shrink-0 text-blue-400" />;
-    case 'view':
-      return <Eye className="h-3.5 w-3.5 shrink-0 text-purple-400" />;
-    case 'query':
-      return <Code2 className="h-3.5 w-3.5 shrink-0" />;
-    case 'create-table':
-      return <TableProperties className="h-3.5 w-3.5 shrink-0" />;
-    case 'er-diagram':
-      return <GitFork className="h-3.5 w-3.5 shrink-0" />;
-    case 'objects':
-      return <Code2 className="h-3.5 w-3.5 shrink-0" />;
-    case 'privileges':
-      return <KeyRound className="h-3.5 w-3.5 shrink-0" />;
-    case 'db-object': {
-      const kind = (panel as DatabaseObjectPanel).objectKind;
-      if (kind === 'trigger') return <Zap className="h-3.5 w-3.5 shrink-0 text-amber-400" />;
-      if (kind === 'procedure') return <Braces className="h-3.5 w-3.5 shrink-0 text-emerald-400" />;
-      if (kind === 'sequence') return <Hash className="h-3.5 w-3.5 shrink-0 text-cyan-400" />;
-      if (kind === 'type') return <Shapes className="h-3.5 w-3.5 shrink-0 text-pink-400" />;
-      return <Braces className="h-3.5 w-3.5 shrink-0 text-orange-400" />;
-    }
-    case 'redis-db':
-      return <Database className="h-3.5 w-3.5 shrink-0 text-teal-400" />;
-    default:
-      return null;
-  }
-}
-
-function getPanelLabel(panel: Panel): string {
-  switch (panel.type) {
-    case 'table':
-      return (panel as TablePanel).tableName;
-    case 'view':
-      return (panel as ViewPanel).viewName;
-    case 'query':
-      return (panel as QueryPanelType).title;
-    case 'create-table':
-      return 'New Table';
-    case 'er-diagram':
-      return 'ER Diagram';
-    case 'objects':
-      return 'Objects';
-    case 'privileges':
-      return 'Privileges';
-    case 'db-object':
-      return (panel as DatabaseObjectPanel).objectName;
-    case 'redis-db':
-      return `${panel.connectionName}@${(panel as RedisDbPanel).dbName}`;
-    default:
-      return '';
-  }
-}
-
 // ── Component ─────────────────────────────────────────────────────
 
 export function ConnectionWindow() {
@@ -211,9 +124,6 @@ export function ConnectionWindow() {
 
   const allPanels = usePanelStore((s) => s.panels);
   const activePanelId = usePanelStore((s) => s.activePanelId);
-  const setActivePanel = usePanelStore((s) => s.setActivePanel);
-  const storePanelRemove = usePanelStore((s) => s.removePanel);
-
   const activePanel = allPanels.find((p) => p.id === activePanelId) ?? null;
 
   // ── Load connections + settings — fire-and-forget, once ──
@@ -606,13 +516,6 @@ export function ConnectionWindow() {
 
   // ── Render ──
 
-  const connectedTabs = tabs.filter(
-    (t): t is ConnectionTab & { connectionId: string } =>
-      t.status === 'connected' && !!t.connectionId,
-  );
-  const hasConnectingOrErrorTabs = tabs.some(
-    (t) => t.status === 'connecting' || t.status === 'error',
-  );
   const centerTitle = activePanel
     ? `${activePanel.connectionName} - ${getDbLabel(activePanel.databaseType)} - DataZen`
     : activeTab
@@ -680,64 +583,7 @@ export function ConnectionWindow() {
 
         {/* ── Main content area ── */}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          {/* ── Unified Tab Bar ── */}
-          {allPanels.length > 0 && (
-            <div className="flex shrink-0 items-center border-b border-edge bg-surface-alt">
-              <div
-                className="scrollbar-hide flex min-w-0 flex-1 overflow-x-auto"
-                onWheel={(e) => {
-                  if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
-                  e.currentTarget.scrollLeft += e.deltaY;
-                }}
-              >
-                {allPanels.map((panel) => {
-                  const isActive = panel.id === activePanelId;
-                  return (
-                    <div
-                      key={panel.id}
-                      className={cn(
-                        'group relative flex items-center gap-1.5 border-r border-edge px-3 py-2 text-xs transition-colors',
-                        isActive
-                          ? 'bg-surface text-fg'
-                          : 'text-fg-secondary hover:bg-surface-raised hover:text-fg',
-                      )}
-                      title={`${panel.connectionName} · ${getPanelLabel(panel)}`}
-                    >
-                      <button
-                        type="button"
-                        className="flex items-center gap-1.5"
-                        onClick={() => setActivePanel(panel.id)}
-                      >
-                        {getPanelIcon(panel)}
-                        <span className="max-w-[160px] truncate">{getPanelLabel(panel)}</span>
-                      </button>
-                      <button
-                        type="button"
-                        className="rounded p-0.5 text-fg-muted opacity-0 hover:bg-surface-raised hover:text-fg group-hover:opacity-100"
-                        onClick={() => storePanelRemove(panel.id)}
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                      <span
-                        className={cn(
-                          'absolute inset-x-0 bottom-0 h-0.5 bg-accent transition-opacity duration-300',
-                          isActive ? 'opacity-100' : 'opacity-0',
-                        )}
-                      />
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {allPanels.length === 0 && !hasConnectingOrErrorTabs && (
-            <div className="flex flex-1 flex-col items-center justify-center gap-3">
-              <p className="text-sm text-fg-muted">{t('connWin.noConnections')}</p>
-            </div>
-          )}
-
-          {activeTab?.status === 'error' && (
+          {activeTab?.status === 'error' && !activePanel && (
             <div className="flex flex-1 flex-col items-center justify-center gap-4">
               <div className="text-sm text-red-400">{activeTab.error}</div>
               <div className="flex gap-2">
@@ -767,92 +613,18 @@ export function ConnectionWindow() {
             </div>
           )}
 
-          {activeTab?.status === 'connecting' && (
+          {activeTab?.status === 'connecting' && !activePanel && (
             <div className="flex flex-1 flex-col items-center justify-center gap-4">
               <div className="h-6 w-6 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
               <div className="text-sm text-fg-muted">{t('conn.connecting')}</div>
             </div>
           )}
 
-          {connectedTabs
-            .filter((t) => {
-              const meta = DB_REGISTRY[t.databaseType];
-              return !meta?.isKeyValue;
-            })
-            .map((tab) => {
-              const hasActivePanel = activePanel?.configId === tab.configId;
-              const viewMode = DB_REGISTRY[tab.databaseType]?.connectionView ?? 'sql';
-              const View = getConnectionView(viewMode);
-              return (
-                <div
-                  key={tab.configId}
-                  className="min-h-0 min-w-0 flex-1 flex-col"
-                  style={{ display: hasActivePanel ? 'flex' : 'none' }}
-                >
-                  <View
-                    connectionId={tab.connectionId}
-                    configId={tab.configId}
-                    connectionName={tab.connectionName}
-                    databaseType={tab.databaseType}
-                    initialDatabase={tab.initialDatabase}
-                    hideSidebar
-                    isActive={hasActivePanel}
-                    selectTableRef={
-                      selectTableRef as MutableRefObject<
-                        ((table: string, schema?: string) => void) | undefined
-                      >
-                    }
-                    nodeContextMenuRef={
-                      nodeContextMenuRef as MutableRefObject<
-                        | ((payload: {
-                            kind: string;
-                            name: string;
-                            x: number;
-                            y: number;
-                            schema?: string;
-                          }) => void)
-                        | undefined
-                      >
-                    }
-                    actionsRef={
-                      actionsRef as MutableRefObject<
-                        | {
-                            newQuery: (initialSql?: string) => void;
-                            openErDiagram: (focusTable?: string) => void;
-                            refresh: () => void;
-                          }
-                        | undefined
-                      >
-                    }
-                  />
-                </div>
-              );
-            })}
-
-          {allPanels
-            .filter((p): p is RedisDbPanel => p.type === 'redis-db')
-            .map((panel) => {
-              const isActive = panel.id === activePanelId;
-              const viewMode = DB_REGISTRY[panel.databaseType]?.connectionView ?? 'sql';
-              const View = getConnectionView(viewMode);
-              return (
-                <div
-                  key={panel.id}
-                  className="min-h-0 min-w-0 flex-1 flex-col"
-                  style={{ display: isActive ? 'flex' : 'none' }}
-                >
-                  <View
-                    connectionId={panel.connectionId}
-                    configId={panel.configId}
-                    connectionName={panel.connectionName}
-                    databaseType={panel.databaseType}
-                    initialDatabase={panel.dbName}
-                    hideSidebar
-                    isActive={isActive}
-                  />
-                </div>
-              );
-            })}
+          <ContentView
+            selectTableRef={selectTableRef}
+            nodeContextMenuRef={nodeContextMenuRef}
+            actionsRef={actionsRef}
+          />
         </div>
       </div>
 
