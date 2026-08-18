@@ -858,7 +858,6 @@ const zhCN = {
   'backup.progressLog': '执行日志',
   'backup.copyLog': '复制日志',
   'backup.logCopied': '已复制',
-  'backup.logOmitted': '… {count} 行日志已省略（为节省内存已截断）',
 
   // ── Window titles ──
   'win.backup': '备份数据库 - DataZen',
