@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { X } from 'lucide-react';
+import { Plus, Search } from 'lucide-react';
 import { TitleBar } from '../../components/TitleBar';
-import { DbTypeBadge } from '../../components/DbTypeBadge';
 import { useI18n } from '../../hooks/useI18n';
 import { useSettings } from '../../hooks/useSettings';
 import { useSettingsStore } from '../../stores/settingsStore';
@@ -9,14 +8,16 @@ import { useAiStore } from '../../stores/aiStore';
 import { useSchemaStore } from '../../stores/schemaStore';
 import { useQueryStore } from '../../stores/queryStore';
 import { useTableDataStore } from '../../stores/tableDataStore';
+import { useConnectionStore } from '../../stores/connectionStore';
 import { connectionCommands } from '../../commands/connection';
 import { emitCrossWindow, listenCrossWindow } from '../../lib/crossWindowBus';
 import { DB_REGISTRY, getDbLabel } from '../../lib/databaseTypes';
 import { getConnectionView } from '../../lib/connectionViews';
-import { PENDING_CONNECTION_KEY } from '../../lib/windowManager';
+import { openNewConnectionWindow, PENDING_CONNECTION_KEY } from '../../lib/windowManager';
 import { useActiveConnectionStore } from '../../stores/activeConnectionStore';
-import { cn } from '../../lib/cn';
-import type { DatabaseType, TableInfo } from '../../types';
+import { useConfirmDialog } from '../../hooks/useConfirmDialog';
+import { ConnectionNavigatorTree } from './ConnectionNavigatorTree';
+import type { DatabaseType } from '../../types';
 import type { QueryTab } from '../../stores/queryStore';
 
 // ── Connection Tab ────────────────────────────────────────────────
@@ -31,13 +32,9 @@ interface ConnectionTab {
   error?: string;
 }
 
-// Snapshot of per-connection store state for save/restore on tab switch.
 interface StoreSnapshot {
   queryTabs: QueryTab[];
   queryActiveTabId: string;
-  schemaDatabases: string[];
-  schemaCurrentDatabase: string | null;
-  schemaTables: TableInfo[];
 }
 
 function makeTabFromPayload(data: Record<string, string>): ConnectionTab | null {
@@ -74,6 +71,11 @@ export function ConnectionWindow() {
   const loadSettings = useSettingsStore((s) => s.loadSettings);
   const loadAiConfig = useAiStore((s) => s.loadConfig);
   const setupAiListeners = useAiStore((s) => s.setupEventListeners);
+  const fetchConnections = useConnectionStore((s) => s.fetchConnections);
+  const fetchGroups = useConnectionStore((s) => s.fetchGroups);
+  const deleteConnection = useConnectionStore((s) => s.deleteConnection);
+  const connections = useConnectionStore((s) => s.connections);
+  const [confirmDelete, confirmDeleteDialog] = useConfirmDialog();
 
   const [tabs, setTabs] = useState<ConnectionTab[]>(() => {
     const pending = consumePendingConnection();
@@ -81,19 +83,34 @@ export function ConnectionWindow() {
   });
   const [activeIdx, setActiveIdx] = useState(0);
   const storeCache = useRef(new Map<string, StoreSnapshot>());
+  const [treeSearch, setTreeSearch] = useState('');
 
   const activeTab = tabs[activeIdx] ?? null;
 
-  // ── Settings / AI — fire-and-forget, once ──
+  // ── Load connections + settings — fire-and-forget, once ──
 
   useEffect(() => {
     void loadSettings();
     void loadAiConfig();
+    void fetchConnections();
+    void fetchGroups();
     const aiCleanupPromise = setupAiListeners();
     return () => {
       void aiCleanupPromise.then((fn) => fn());
     };
-  }, [loadSettings, loadAiConfig, setupAiListeners]);
+  }, [loadSettings, loadAiConfig, setupAiListeners, fetchConnections, fetchGroups]);
+
+  // Refresh connections when other windows update them
+  useEffect(() => {
+    let cleanup: (() => void) | undefined;
+    void listenCrossWindow('datazen:connections-changed', () => {
+      void fetchConnections();
+      void fetchGroups();
+    }).then((fn) => {
+      cleanup = fn;
+    });
+    return () => cleanup?.();
+  }, [fetchConnections, fetchGroups]);
 
   // ── Connect the initial tab (if not already connected) ──
 
@@ -144,7 +161,6 @@ export function ConnectionWindow() {
       const data = payload as Record<string, string> | undefined;
       if (!data?.configId) return;
 
-      // Clear localStorage to prevent duplicate pickup on remount
       try {
         localStorage.removeItem(PENDING_CONNECTION_KEY);
       } catch {}
@@ -200,10 +216,7 @@ export function ConnectionWindow() {
     void listenCrossWindow('datazen:disconnect-requested', (payload) => {
       const data = payload as { connectionId?: string } | undefined;
       if (!data?.connectionId) return;
-      setTabs((prev) => {
-        const filtered = prev.filter((t) => t.connectionId !== data.connectionId);
-        return filtered;
-      });
+      setTabs((prev) => prev.filter((t) => t.connectionId !== data.connectionId));
     }).then((fn) => cleanups.push(fn));
 
     return () => cleanups.forEach((fn) => fn());
@@ -264,13 +277,9 @@ export function ConnectionWindow() {
 
   const saveStoreSnapshot = useCallback((configId: string) => {
     const qState = useQueryStore.getState();
-    const sState = useSchemaStore.getState();
     storeCache.current.set(configId, {
       queryTabs: qState.tabs,
       queryActiveTabId: qState.activeTabId,
-      schemaDatabases: sState.databases,
-      schemaCurrentDatabase: sState.currentDatabase,
-      schemaTables: sState.tables,
     });
   }, []);
 
@@ -294,8 +303,6 @@ export function ConnectionWindow() {
     }
   }, [activeIdx, tabs, saveStoreSnapshot]);
 
-  // Restore after the active view has mounted and set its connectionId.
-  // Schedule on next tick to let the view's own effects run first.
   useEffect(() => {
     if (!activeTab?.connectionId) return;
     const timer = setTimeout(() => restoreStoreSnapshot(activeTab.configId), 50);
@@ -305,12 +312,13 @@ export function ConnectionWindow() {
   // ── Close a connection tab ──
 
   const handleCloseTab = useCallback(
-    async (idx: number) => {
+    async (configId: string) => {
+      const idx = tabs.findIndex((t) => t.configId === configId);
       const tab = tabs[idx];
       if (!tab) return;
 
-      // Save snapshot cleanup
       storeCache.current.delete(tab.configId);
+      useSchemaStore.getState().removeConnection(tab.connectionId);
 
       if (tab.connectionId) {
         try {
@@ -327,11 +335,6 @@ export function ConnectionWindow() {
 
       setTabs((prev) => {
         const next = prev.filter((_, i) => i !== idx);
-        if (next.length === 0 && '__TAURI_INTERNALS__' in globalThis) {
-          void import('@tauri-apps/api/window').then(({ getCurrentWindow }) =>
-            getCurrentWindow().close(),
-          );
-        }
         return next;
       });
 
@@ -341,7 +344,6 @@ export function ConnectionWindow() {
         return prev;
       });
 
-      // Reset stores when the last tab is closed
       if (tabs.length <= 1) {
         useSchemaStore.getState().reset();
         useQueryStore.getState().reset();
@@ -351,24 +353,66 @@ export function ConnectionWindow() {
     [tabs],
   );
 
-  const switchTab = useCallback(
-    (idx: number) => {
-      if (idx === activeIdx) return;
-      setActiveIdx(idx);
+  // ── Tree callbacks ──
+
+  const handleSelectConnection = useCallback(
+    (configId: string) => {
+      const existingIdx = tabs.findIndex((t) => t.configId === configId);
+      if (existingIdx >= 0) {
+        setActiveIdx(existingIdx);
+        return;
+      }
+      const conn = connections.find((c) => c.id === configId);
+      if (!conn) return;
+
+      const entry = useActiveConnectionStore.getState().connections[configId];
+      const connId = entry?.connectionId ?? '';
+      const newTab: ConnectionTab = {
+        configId,
+        connectionId: connId,
+        connectionName: conn.name,
+        databaseType: conn.databaseType,
+        initialDatabase: conn.database,
+        status: connId ? 'connected' : 'connecting',
+      };
+      setTabs((prev) => {
+        const next = [...prev, newTab];
+        setActiveIdx(next.length - 1);
+        return next;
+      });
     },
-    [activeIdx],
+    [tabs, connections],
   );
 
-  // ── Render ──
+  const handleDeleteConnection = useCallback(
+    (configId: string) => {
+      const conn = connections.find((c) => c.id === configId);
+      if (!conn) return;
+      void confirmDelete({
+        title: t('main.ctx.deleteConnection'),
+        message: t('main.ctx.confirmDeleteConnection', { name: conn.name }),
+        kind: 'warning',
+      }).then((ok) => {
+        if (!ok) return;
+        void handleCloseTab(configId);
+        void deleteConnection(configId);
+      });
+    },
+    [connections, confirmDelete, handleCloseTab, deleteConnection, t],
+  );
 
-  if (tabs.length === 0) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-surface text-fg">
-        <TitleBar title="DataZen" />
-        <div className="text-sm text-fg-muted">{t('connWin.noConnections')}</div>
-      </div>
-    );
-  }
+  const handleDisconnect = useCallback(
+    (configId: string) => {
+      void handleCloseTab(configId);
+    },
+    [handleCloseTab],
+  );
+
+  const handleSelectTable = useCallback((_tableName: string, _schema?: string) => {
+    // Table selection is handled by the ViewComponent's own SchemaTree
+  }, []);
+
+  // ── Render ──
 
   const connectedTab =
     activeTab?.status === 'connected' && activeTab.connectionId ? activeTab : null;
@@ -382,84 +426,51 @@ export function ConnectionWindow() {
 
   return (
     <div className="flex h-screen min-h-0 flex-col bg-surface text-fg">
-      <TitleBar
-        title={centerTitle}
-        leftContent={
-          activeTab && (
-            <div className="flex items-center gap-2">
-              <span
-                className={cn(
-                  'inline-flex h-2 w-2 rounded-full',
-                  activeTab.status === 'connected'
-                    ? 'bg-green-500'
-                    : activeTab.status === 'error'
-                      ? 'bg-red-500'
-                      : 'animate-pulse bg-yellow-400',
-                )}
-              />
-              <span className="text-xs text-fg-secondary">{activeTab.connectionName}</span>
-            </div>
-          )
-        }
-      />
+      <TitleBar title={centerTitle} />
 
       <div className="flex min-h-0 flex-1">
-        {/* ── Left connection sidebar (TablePlus-style) ── */}
-        {tabs.length > 1 && (
-          <aside className="flex w-44 shrink-0 flex-col border-r border-edge bg-surface-alt">
-            <div className="flex-1 overflow-y-auto py-1">
-              {tabs.map((tab, idx) => {
-                const isActive = idx === activeIdx;
-                return (
-                  <div
-                    key={tab.configId}
-                    className={cn(
-                      'group relative flex items-center gap-2 px-2.5 py-2 text-xs transition-colors cursor-pointer',
-                      isActive
-                        ? 'bg-accent/12 text-fg'
-                        : 'text-fg-secondary hover:bg-surface-raised hover:text-fg',
-                    )}
-                    onClick={() => switchTab(idx)}
-                  >
-                    <DbTypeBadge databaseType={tab.databaseType} size={20} className="shrink-0" />
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate font-medium">
-                        {tab.connectionName || tab.configId}
-                      </div>
-                      <div className="truncate text-[10px] text-fg-muted">
-                        {getDbLabel(tab.databaseType)}
-                      </div>
-                    </div>
-                    <span
-                      className={cn(
-                        'h-1.5 w-1.5 shrink-0 rounded-full',
-                        tab.status === 'connected'
-                          ? 'bg-green-500'
-                          : tab.status === 'error'
-                            ? 'bg-red-500'
-                            : 'animate-pulse bg-yellow-400',
-                      )}
-                    />
-                    <button
-                      type="button"
-                      className="shrink-0 rounded p-0.5 text-fg-muted opacity-0 hover:bg-surface hover:text-fg group-hover:opacity-100"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        void handleCloseTab(idx);
-                      }}
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                    {isActive && <span className="absolute inset-y-0 left-0 w-0.5 bg-accent" />}
-                  </div>
-                );
-              })}
+        {/* ── Left navigator tree (always visible) ── */}
+        <aside className="flex w-56 shrink-0 flex-col border-r border-edge bg-surface-alt">
+          <div className="flex items-center gap-1 border-b border-edge px-2 py-1.5">
+            <div className="relative flex-1">
+              <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-fg-muted" />
+              <input
+                type="text"
+                className="h-7 w-full rounded-md bg-surface pl-7 pr-2 text-xs text-fg placeholder:text-fg-muted focus:outline-none focus:ring-1 focus:ring-accent"
+                placeholder={t('common.search')}
+                value={treeSearch}
+                onChange={(e) => setTreeSearch(e.target.value)}
+              />
             </div>
-          </aside>
-        )}
+            <button
+              type="button"
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-fg-muted hover:bg-surface-raised hover:text-fg"
+              onClick={() => openNewConnectionWindow()}
+              title={t('main.newConnection')}
+            >
+              <Plus className="h-4 w-4" />
+            </button>
+          </div>
+          <ConnectionNavigatorTree
+            searchQuery={treeSearch}
+            activeConfigId={activeTab?.configId ?? null}
+            onSelectConnection={handleSelectConnection}
+            onSelectTable={handleSelectTable}
+            onNewConnection={() => openNewConnectionWindow()}
+            onEditConnection={(id) => openNewConnectionWindow(id)}
+            onDeleteConnection={handleDeleteConnection}
+            onDisconnect={handleDisconnect}
+          />
+        </aside>
 
         {/* ── Main content area ── */}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          {!activeTab && (
+            <div className="flex flex-1 flex-col items-center justify-center gap-3">
+              <p className="text-sm text-fg-muted">{t('connWin.noConnections')}</p>
+            </div>
+          )}
+
           {activeTab?.status === 'error' && (
             <div className="flex flex-1 flex-col items-center justify-center gap-4">
               <div className="text-sm text-red-400">{activeTab.error}</div>
@@ -482,7 +493,7 @@ export function ConnectionWindow() {
                 <button
                   className="rounded-md bg-surface-raised px-4 py-1.5 text-sm text-fg-secondary hover:text-fg"
                   type="button"
-                  onClick={() => void handleCloseTab(activeIdx)}
+                  onClick={() => void handleCloseTab(activeTab.configId)}
                 >
                   {t('common.close')}
                 </button>
@@ -509,6 +520,8 @@ export function ConnectionWindow() {
           )}
         </div>
       </div>
+
+      {confirmDeleteDialog}
     </div>
   );
 }
