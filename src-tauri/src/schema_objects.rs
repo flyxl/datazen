@@ -8,6 +8,8 @@ pub enum ObjectKind {
     Function,
     Procedure,
     Trigger,
+    Sequence,
+    Type,
 }
 
 impl ObjectKind {
@@ -16,6 +18,8 @@ impl ObjectKind {
             Self::Function => "function",
             Self::Procedure => "procedure",
             Self::Trigger => "trigger",
+            Self::Sequence => "sequence",
+            Self::Type => "type",
         }
     }
 
@@ -24,6 +28,8 @@ impl ObjectKind {
             "function" => Some(Self::Function),
             "procedure" => Some(Self::Procedure),
             "trigger" => Some(Self::Trigger),
+            "sequence" => Some(Self::Sequence),
+            "type" => Some(Self::Type),
             _ => None,
         }
     }
@@ -72,6 +78,21 @@ pub fn list_objects_sql(db_type: &str, kind: ObjectKind) -> Option<String> {
              ORDER BY 1, 2"
                 .into(),
         ),
+        ("postgresql", ObjectKind::Sequence) => Some(
+            "SELECT schemaname AS schema, sequencename AS name \
+             FROM pg_sequences \
+             WHERE schemaname NOT IN ('pg_catalog','information_schema') \
+             ORDER BY 1, 2"
+                .into(),
+        ),
+        ("postgresql", ObjectKind::Type) => Some(
+            "SELECT n.nspname AS schema, t.typname AS name \
+             FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace \
+             WHERE n.nspname NOT IN ('pg_catalog','information_schema') \
+               AND t.typtype IN ('c','e','d','r') \
+             ORDER BY 1, 2"
+                .into(),
+        ),
         ("mysql", ObjectKind::Function) => {
             Some("SHOW FUNCTION STATUS WHERE Db = DATABASE()".into())
         }
@@ -117,6 +138,40 @@ pub fn object_ddl_sql(
             sql_string(name),
             sql_string(schema.unwrap_or("public")),
         )),
+        ("postgresql", ObjectKind::Sequence) => {
+            let schema_str = sql_string(schema.unwrap_or("public"));
+            let name_str = sql_string(name);
+            Some(format!(
+                "SELECT 'CREATE SEQUENCE ' || quote_ident(schemaname) || '.' || quote_ident(sequencename) \
+                 || ' AS ' || data_type \
+                 || ' INCREMENT BY ' || increment_by \
+                 || ' MINVALUE ' || min_value \
+                 || ' MAXVALUE ' || max_value \
+                 || ' START WITH ' || start_value \
+                 || CASE WHEN cycle THEN ' CYCLE' ELSE ' NO CYCLE' END \
+                 || ';' AS ddl \
+                 FROM pg_sequences WHERE schemaname = {schema_str} AND sequencename = {name_str}"
+            ))
+        }
+        ("postgresql", ObjectKind::Type) => {
+            let schema_str = sql_string(schema.unwrap_or("public"));
+            let name_str = sql_string(name);
+            Some(format!(
+                "SELECT pg_catalog.format_type(t.oid, NULL) || ' = ' || \
+                 CASE t.typtype \
+                   WHEN 'e' THEN 'ENUM (' || string_agg(quote_literal(e.enumlabel), ', ' ORDER BY e.enumsortorder) || ')' \
+                   WHEN 'c' THEN 'COMPOSITE (...)' \
+                   WHEN 'd' THEN 'DOMAIN ' || pg_catalog.format_type(t.typbasetype, t.typtypmod) \
+                   WHEN 'r' THEN 'RANGE' \
+                   ELSE t.typtype::text \
+                 END AS ddl \
+                 FROM pg_type t \
+                 JOIN pg_namespace n ON n.oid = t.typnamespace \
+                 LEFT JOIN pg_enum e ON e.enumtypid = t.oid \
+                 WHERE n.nspname = {schema_str} AND t.typname = {name_str} \
+                 GROUP BY t.oid, t.typtype, t.typbasetype, t.typtypmod"
+            ))
+        }
         ("mysql", ObjectKind::Function) => Some(format!("SHOW CREATE FUNCTION {ident}")),
         ("mysql", ObjectKind::Procedure) => Some(format!("SHOW CREATE PROCEDURE {ident}")),
         ("mysql", ObjectKind::Trigger) => Some(format!("SHOW CREATE TRIGGER {ident}")),

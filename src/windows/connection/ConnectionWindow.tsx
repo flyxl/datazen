@@ -26,11 +26,14 @@ import type { DatabaseType } from '../../types';
 // ── Connection Tab ────────────────────────────────────────────────
 
 interface ConnectionTab {
+  tabId: string;
   configId: string;
   connectionId: string;
   connectionName: string;
   databaseType: DatabaseType;
   initialDatabase?: string;
+  /** For KV databases (e.g. Redis), which db this tab targets. */
+  kvDatabase?: string;
   status: 'connecting' | 'connected' | 'error';
   error?: string;
 }
@@ -40,6 +43,7 @@ function makeTabFromPayload(data: Record<string, string>): ConnectionTab | null 
   if (!configId) return null;
   const connectionId = data.connectionId ?? '';
   return {
+    tabId: configId,
     configId,
     connectionId,
     connectionName: data.connectionName ?? '',
@@ -110,6 +114,11 @@ export function ConnectionWindow() {
         newQuery: (initialSql?: string) => void;
         openErDiagram: (focusTable?: string) => void;
         refresh: () => void;
+        openObject?: (
+          kind: 'function' | 'procedure' | 'trigger' | 'sequence' | 'type',
+          name: string,
+          schema?: string,
+        ) => void;
       }
     | undefined
   >();
@@ -316,22 +325,22 @@ export function ConnectionWindow() {
     return () => unlisten?.();
   }, [tabs]);
 
-  // ── Close a connection tab (and cleanup all store data) ──
+  // ── Close all tabs for a connection (and cleanup store data) ──
 
   const handleCloseTab = useCallback(
     async (configId: string) => {
-      const idx = tabs.findIndex((t) => t.configId === configId);
-      const tab = tabs[idx];
-      if (!tab) return;
+      const matchingTabs = tabs.filter((t) => t.configId === configId);
+      if (matchingTabs.length === 0) return;
 
-      if (tab.connectionId) {
-        removeConnectionFromStores(tab.connectionId);
-        useActiveConnectionStore.getState().removeByConnectionId(tab.connectionId);
+      const connectionId = matchingTabs[0].connectionId;
+      if (connectionId) {
+        removeConnectionFromStores(connectionId);
+        useActiveConnectionStore.getState().removeByConnectionId(connectionId);
         try {
-          const wasDisconnected = await connectionCommands.releaseConnection(tab.connectionId);
+          const wasDisconnected = await connectionCommands.releaseConnection(connectionId);
           if (wasDisconnected) {
             void emitCrossWindow('datazen:connection-closed', {
-              connectionId: tab.connectionId,
+              connectionId,
             });
           }
         } catch {
@@ -339,15 +348,14 @@ export function ConnectionWindow() {
         }
       }
 
-      setTabs((prev) => {
-        const next = prev.filter((_, i) => i !== idx);
-        return next;
-      });
-
+      const firstIdx = tabs.findIndex((t) => t.configId === configId);
+      const removedCount = matchingTabs.length;
+      setTabs((prev) => prev.filter((t) => t.configId !== configId));
       setActiveIdx((prev) => {
-        if (idx < prev) return prev - 1;
-        if (idx === prev) return Math.min(prev, tabs.length - 2);
-        return prev;
+        if (prev < firstIdx) return prev;
+        if (prev < firstIdx + removedCount)
+          return Math.min(firstIdx, tabs.length - removedCount - 1);
+        return prev - removedCount;
       });
     },
     [tabs],
@@ -357,7 +365,7 @@ export function ConnectionWindow() {
 
   const handleSelectConnection = useCallback(
     (configId: string) => {
-      const existingIdx = tabs.findIndex((t) => t.configId === configId);
+      const existingIdx = tabs.findIndex((t) => t.tabId === configId && !t.kvDatabase);
       if (existingIdx >= 0) {
         const existingTab = tabs[existingIdx];
         if (existingTab.connectionId) {
@@ -372,11 +380,49 @@ export function ConnectionWindow() {
       const entry = useActiveConnectionStore.getState().connections[configId];
       const connId = entry?.connectionId ?? '';
       const newTab: ConnectionTab = {
+        tabId: configId,
         configId,
         connectionId: connId,
         connectionName: conn.name,
         databaseType: conn.databaseType,
         initialDatabase: conn.database,
+        status: connId ? 'connected' : 'connecting',
+      };
+      if (connId) syncStoresActiveConnection(connId);
+      setTabs((prev) => {
+        const next = [...prev, newTab];
+        setActiveIdx(next.length - 1);
+        return next;
+      });
+    },
+    [tabs, connections],
+  );
+
+  const handleSelectKvDb = useCallback(
+    (configId: string, dbName: string) => {
+      const kvTabId = `${configId}::${dbName}`;
+      const existingIdx = tabs.findIndex((t) => t.tabId === kvTabId);
+      if (existingIdx >= 0) {
+        const existingTab = tabs[existingIdx];
+        if (existingTab.connectionId) {
+          syncStoresActiveConnection(existingTab.connectionId);
+        }
+        setActiveIdx(existingIdx);
+        return;
+      }
+      const conn = connections.find((c) => c.id === configId);
+      if (!conn) return;
+
+      const entry = useActiveConnectionStore.getState().connections[configId];
+      const connId = entry?.connectionId ?? '';
+      const newTab: ConnectionTab = {
+        tabId: kvTabId,
+        configId,
+        connectionId: connId,
+        connectionName: `${conn.name}@${dbName}`,
+        databaseType: conn.databaseType,
+        initialDatabase: dbName,
+        kvDatabase: dbName,
         status: connId ? 'connected' : 'connecting',
       };
       if (connId) syncStoresActiveConnection(connId);
@@ -414,7 +460,11 @@ export function ConnectionWindow() {
   );
 
   const handleSelectTable = useCallback((tableName: string, schema?: string) => {
-    selectTableRef.current?.(tableName, schema);
+    // Defer so that any preceding handleSelectConnection state flush + useLayoutEffect
+    // has time to update selectTableRef to the correct connection's handler.
+    requestAnimationFrame(() => {
+      selectTableRef.current?.(tableName, schema);
+    });
   }, []);
 
   const handleRefresh = useCallback(() => {
@@ -497,6 +547,7 @@ export function ConnectionWindow() {
                 activeConfigId={activeTab?.configId ?? null}
                 onSelectConnection={handleSelectConnection}
                 onSelectTable={handleSelectTable}
+                onSelectKvDb={handleSelectKvDb}
                 onNewConnection={() => openNewConnectionWindow()}
                 onRefresh={handleRefresh}
                 onExportConnections={() => {
@@ -516,6 +567,7 @@ export function ConnectionWindow() {
                   newQuery: (...args) => actionsRef.current?.newQuery(...args),
                   openErDiagram: (...args) => actionsRef.current?.openErDiagram(...args),
                   refresh: () => actionsRef.current?.refresh(),
+                  openObject: (...args) => actionsRef.current?.openObject?.(...args),
                 }}
               />
             </aside>
@@ -573,12 +625,12 @@ export function ConnectionWindow() {
           )}
 
           {connectedTabs.map((tab) => {
-            const isTabActive = tab.configId === activeTab?.configId;
+            const isTabActive = tab.tabId === activeTab?.tabId;
             const viewMode = DB_REGISTRY[tab.databaseType]?.connectionView ?? 'sql';
             const View = getConnectionView(viewMode);
             return (
               <div
-                key={tab.configId}
+                key={tab.tabId}
                 className="min-h-0 min-w-0 flex-1 flex-col"
                 style={{ display: isTabActive ? 'flex' : 'none' }}
               >

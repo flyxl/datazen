@@ -176,13 +176,13 @@ describe('SchemaTree routing', () => {
     });
   });
 
-  it('routes mysql without initialDatabase to MultiDatabaseSchemaTree when length === 1', async () => {
+  it('uses single-db mode when only one database is visible (shows category headers)', async () => {
     mockGetDatabases.mockResolvedValueOnce(['only_db']);
 
-    const { findByText, queryByText } = render(<SchemaTree {...baseProps} databaseType="mysql" />);
+    const { findByText } = render(<SchemaTree {...baseProps} databaseType="mysql" />);
 
     expect(await findByText('only_db')).toBeInTheDocument();
-    expect(queryByText(/schemaTree\.tables/)).not.toBeInTheDocument();
+    expect(await findByText(/schemaTree\.tables/)).toBeInTheDocument();
     await waitFor(() => {
       expect(useSchemaStore.getState().isMultiDatabase).toBe(false);
     });
@@ -302,7 +302,7 @@ describe('SchemaTree routing', () => {
   });
 
   it('groups tables by schema when multiple schemas exist (PostgreSQL)', async () => {
-    mockGetDatabases.mockResolvedValueOnce(['mydb']);
+    mockGetDatabases.mockResolvedValueOnce(['mydb', 'otherdb']);
     mockGetTables.mockResolvedValueOnce([
       { name: 'users', tableType: 'table', schema: 'public', rowCount: null },
       { name: 'audit_log', tableType: 'table', schema: 'audit', rowCount: null },
@@ -335,7 +335,7 @@ describe('SchemaTree routing', () => {
   });
 
   it('shows public schema layer even when only public schema exists', async () => {
-    mockGetDatabases.mockResolvedValueOnce(['mydb']);
+    mockGetDatabases.mockResolvedValueOnce(['mydb', 'otherdb']);
     mockGetTables.mockResolvedValueOnce([
       { name: 'users', tableType: 'table', schema: 'public', rowCount: null },
       { name: 'orders', tableType: 'table', schema: 'public', rowCount: null },

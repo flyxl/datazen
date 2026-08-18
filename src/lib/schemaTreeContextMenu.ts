@@ -9,7 +9,9 @@ export type SchemaTreeNodeKind =
   | 'blank'
   | 'function'
   | 'procedure'
-  | 'trigger';
+  | 'trigger'
+  | 'sequence'
+  | 'type';
 
 /** Caller-supplied labels (typically from `t()`). No hardcoded locale strings here. */
 export type SchemaTreeContextMenuLabels = {

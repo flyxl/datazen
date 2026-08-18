@@ -120,6 +120,8 @@ const en: Record<TranslationKey, string> = {
   // ── Main / Group Dialog ──
   'main.newGroupTitle': 'New Group',
   'main.groupNamePlaceholder': 'Enter group name',
+  'main.confirmDeleteGroup':
+    'Are you sure you want to delete group "{name}"? Connections in this group will be moved to ungrouped.',
 
   // ── Main / Backup & Restore ──
   'main.backupSuccess': 'Database backed up successfully',
@@ -442,6 +444,8 @@ const en: Record<TranslationKey, string> = {
   'schemaTree.functions': 'Functions',
   'schemaTree.procedures': 'Procedures',
   'schemaTree.triggers': 'Triggers',
+  'schemaTree.sequences': 'Sequences',
+  'schemaTree.types': 'Types',
   'schemaTree.keys': 'Keys',
   'schemaTree.noMatchingTables': 'No matching tables or views',
   'schemaTree.noTables': 'No tables',

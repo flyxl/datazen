@@ -9,11 +9,14 @@ import {
   Eye,
   FolderClosed,
   FolderOpen,
+  FolderPlus,
+  Hash,
   Loader2,
   PanelLeftClose,
   Plus,
   RefreshCw,
   Search,
+  Shapes,
   Table2,
   Upload,
   Zap,
@@ -23,6 +26,7 @@ import { Button } from '../../components/ui/Button';
 import { Dialog } from '../../components/ui/Dialog';
 import { Input } from '../../components/ui/Input';
 import { DbTypeBadge } from '../../components/DbTypeBadge';
+import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 import { useI18n } from '../../hooks/useI18n';
 import { cn } from '../../lib/cn';
 import { formatGroupLabel } from '../../lib/connectionGroups';
@@ -51,13 +55,41 @@ interface CategoryDef {
   color: string;
 }
 
-const CATEGORIES: CategoryDef[] = [
+const BASE_CATEGORIES: CategoryDef[] = [
   { id: 'tables', labelKey: 'schemaTree.tables', icon: Table2, color: 'text-blue-400' },
   { id: 'views', labelKey: 'schemaTree.views', icon: Eye, color: 'text-purple-400' },
-  { id: 'function', labelKey: 'schemaTree.functions', icon: Braces, color: 'text-orange-400' },
-  { id: 'procedure', labelKey: 'schemaTree.procedures', icon: Braces, color: 'text-emerald-400' },
-  { id: 'trigger', labelKey: 'schemaTree.triggers', icon: Zap, color: 'text-amber-400' },
 ];
+
+const OBJECT_KIND_CATEGORIES: Record<string, CategoryDef> = {
+  function: {
+    id: 'function',
+    labelKey: 'schemaTree.functions',
+    icon: Braces,
+    color: 'text-orange-400',
+  },
+  procedure: {
+    id: 'procedure',
+    labelKey: 'schemaTree.procedures',
+    icon: Braces,
+    color: 'text-emerald-400',
+  },
+  trigger: { id: 'trigger', labelKey: 'schemaTree.triggers', icon: Zap, color: 'text-amber-400' },
+  sequence: {
+    id: 'sequence',
+    labelKey: 'schemaTree.sequences',
+    icon: Hash,
+    color: 'text-cyan-400',
+  },
+  type: { id: 'type', labelKey: 'schemaTree.types', icon: Shapes, color: 'text-pink-400' },
+};
+
+function getCategoriesForDriver(databaseType: string): CategoryDef[] {
+  const meta = DB_REGISTRY[databaseType as keyof typeof DB_REGISTRY];
+  const objectKinds = meta?.supportedObjectKinds;
+  if (!objectKinds || objectKinds.length === 0) return BASE_CATEGORIES;
+  const objectCats = objectKinds.map((kind) => OBJECT_KIND_CATEGORIES[kind]).filter(Boolean);
+  return [...BASE_CATEGORIES, ...objectCats];
+}
 
 const LEAF_KIND_ICON: Record<
   string,
@@ -70,6 +102,8 @@ const LEAF_KIND_ICON: Record<
   function: { icon: Braces, color: 'text-orange-400' },
   procedure: { icon: Braces, color: 'text-emerald-400' },
   trigger: { icon: Zap, color: 'text-amber-400' },
+  sequence: { icon: Hash, color: 'text-cyan-400' },
+  type: { icon: Shapes, color: 'text-pink-400' },
 };
 
 // ── Flat row types ──────────────────────────────────────────────
@@ -118,6 +152,14 @@ type UnifiedRow =
       configId: string;
     }
   | { type: 'object'; obj: DatabaseObject; depth: number; catId: string }
+  | {
+      type: 'kv-db';
+      configId: string;
+      connectionId: string;
+      dbName: string;
+      depth: number;
+      isSelected: boolean;
+    }
   | { type: 'db-loading'; depth: number }
   | {
       type: 'namespace-node';
@@ -257,6 +299,7 @@ function groupBySchema(items: TableInfo[]): Map<string, TableInfo[]> | null {
 export interface ConnectionNavigatorTreeProps {
   onSelectConnection: (configId: string) => void;
   onSelectTable: (tableName: string, schema?: string) => void;
+  onSelectKvDb?: (configId: string, dbName: string) => void;
   activeConfigId: string | null;
   onNewConnection: () => void;
   onRefresh?: () => void;
@@ -277,6 +320,11 @@ export interface ConnectionNavigatorTreeProps {
     newQuery?: (initialSql?: string) => void;
     openErDiagram?: (focusTable?: string) => void;
     refresh?: () => void;
+    openObject?: (
+      kind: 'function' | 'procedure' | 'trigger' | 'sequence' | 'type',
+      name: string,
+      schema?: string,
+    ) => void;
   };
 }
 
@@ -285,6 +333,7 @@ export interface ConnectionNavigatorTreeProps {
 export function ConnectionNavigatorTree({
   onSelectConnection,
   onSelectTable,
+  onSelectKvDb,
   activeConfigId,
   onNewConnection,
   onRefresh,
@@ -314,6 +363,7 @@ export function ConnectionNavigatorTree({
   const [newGroupName, setNewGroupName] = useState('');
   const [renamingGroup, setRenamingGroup] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
+  const [confirmDeleteGroup, confirmDeleteGroupDialog] = useConfirmDialog();
   const schemas = useSchemaStore((s) => s.schemas);
   const loadForConnection = useSchemaStore((s) => s.loadForConnection);
   const ensureNamespacePath = useSchemaStore((s) => s.ensureNamespacePath);
@@ -595,13 +645,21 @@ export function ConnectionNavigatorTree({
             setRenameValue(formatGroupLabel(groupName, t));
           },
           onDeleteGroup: () => {
-            void deleteGroup(groupName);
+            void (async () => {
+              const ok = await confirmDeleteGroup({
+                title: t('main.ctx.deleteGroup'),
+                message: t('main.confirmDeleteGroup', { name: formatGroupLabel(groupName, t) }),
+                confirmLabel: t('common.delete'),
+                kind: 'warning',
+              });
+              if (ok) void deleteGroup(groupName);
+            })();
           },
         }),
         { x: e.clientX, y: e.clientY },
       );
     },
-    [contextLabels, deleteGroup, t],
+    [contextLabels, confirmDeleteGroup, deleteGroup, t],
   );
 
   const handleConnectionContextMenu = useCallback(
@@ -970,6 +1028,7 @@ export function ConnectionNavigatorTree({
       dbName: string,
       schemaName: string | undefined,
       baseDepth: number,
+      dbType: string,
     ) => {
       const tblItems = allItems.filter(
         (i) => i.tableType === 'table' || i.tableType === 'systemTable',
@@ -978,7 +1037,7 @@ export function ConnectionNavigatorTree({
         (i) => i.tableType === 'view' || i.tableType === 'materializedView',
       );
 
-      for (const cat of CATEGORIES) {
+      for (const cat of getCategoriesForDriver(dbType)) {
         const catKey = schemaName
           ? `${configId}::${dbName}::${schemaName}::${cat.id}`
           : `${configId}::${dbName}::${cat.id}`;
@@ -1142,6 +1201,27 @@ export function ConnectionNavigatorTree({
           continue;
         }
 
+        // KV stores (Redis): databases as non-expandable leaf nodes
+        if (meta?.isKeyValue) {
+          const dbs = schemaData.databases;
+          if (schemaData.loading && dbs.length === 0) {
+            rows.push({ type: 'db-loading', depth: 2 });
+          } else {
+            const filteredDbs = query ? dbs.filter((d) => d.toLowerCase().includes(query)) : dbs;
+            for (const dbName of filteredDbs) {
+              rows.push({
+                type: 'kv-db',
+                configId: conn.id,
+                connectionId,
+                dbName,
+                depth: 2,
+                isSelected: false,
+              });
+            }
+          }
+          continue;
+        }
+
         const isMultiDb = shouldUseMultiDatabaseTree(meta, conn.database);
 
         if (isMultiDb) {
@@ -1211,11 +1291,27 @@ export function ConnectionNavigatorTree({
                 });
 
                 if (schemaExpanded) {
-                  addCategories(schemaItems, conn.id, connectionId, dbName, schemaName, 4);
+                  addCategories(
+                    schemaItems,
+                    conn.id,
+                    connectionId,
+                    dbName,
+                    schemaName,
+                    4,
+                    conn.databaseType,
+                  );
                 }
               }
             } else {
-              addCategories(allItems, conn.id, connectionId, dbName, undefined, 3);
+              addCategories(
+                allItems,
+                conn.id,
+                connectionId,
+                dbName,
+                undefined,
+                3,
+                conn.databaseType,
+              );
             }
           }
         } else {
@@ -1271,11 +1367,19 @@ export function ConnectionNavigatorTree({
               });
 
               if (schemaExpanded) {
-                addCategories(schemaItems, conn.id, connectionId, dbName, schemaName, 4);
+                addCategories(
+                  schemaItems,
+                  conn.id,
+                  connectionId,
+                  dbName,
+                  schemaName,
+                  4,
+                  conn.databaseType,
+                );
               }
             }
           } else {
-            addCategories(allItems, conn.id, connectionId, dbName, undefined, 3);
+            addCategories(allItems, conn.id, connectionId, dbName, undefined, 3, conn.databaseType);
           }
         }
       }
@@ -1384,26 +1488,26 @@ export function ConnectionNavigatorTree({
               onContextMenu={(e) => handleConnectionContextMenu(e, row.conn)}
             >
               {row.isSelected && <span className="absolute inset-y-0 left-0 w-0.5 bg-accent" />}
-              {row.status === 'connected' ? (
-                <button
-                  type="button"
-                  className="flex h-4 w-4 shrink-0 items-center justify-center rounded text-fg-muted hover:text-fg"
-                  onClick={(e) => {
-                    e.stopPropagation();
+              <button
+                type="button"
+                className="flex h-4 w-4 shrink-0 items-center justify-center rounded text-fg-muted hover:text-fg"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (row.status === 'connected') {
                     toggleConnection(row.conn.id);
-                  }}
-                  onDoubleClick={(e) => e.stopPropagation()}
-                  aria-expanded={row.expanded}
-                >
-                  {row.expanded ? (
-                    <ChevronDown className="h-3 w-3" />
-                  ) : (
-                    <ChevronRight className="h-3 w-3" />
-                  )}
-                </button>
-              ) : (
-                <span className="h-4 w-4 shrink-0" aria-hidden />
-              )}
+                  } else {
+                    handleConnectionDoubleClick(row.conn);
+                  }
+                }}
+                onDoubleClick={(e) => e.stopPropagation()}
+                aria-expanded={row.status === 'connected' ? row.expanded : undefined}
+              >
+                {row.status === 'connected' && row.expanded ? (
+                  <ChevronDown className="h-3 w-3" />
+                ) : (
+                  <ChevronRight className="h-3 w-3" />
+                )}
+              </button>
               <DbTypeBadge databaseType={row.conn.databaseType} size={18} className="shrink-0" />
               <span className="min-w-0 flex-1 truncate font-medium">{row.conn.name}</span>
               {renderStatusDot(row.conn.id)}
@@ -1451,7 +1555,11 @@ export function ConnectionNavigatorTree({
             ) : (
               <ChevronRight className="h-3 w-3 shrink-0" />
             )}
-            <Database className="h-3.5 w-3.5 shrink-0 text-teal-400" />
+            {row.expanded ? (
+              <FolderOpen className="h-3.5 w-3.5 shrink-0 text-teal-400" />
+            ) : (
+              <FolderClosed className="h-3.5 w-3.5 shrink-0 text-teal-400" />
+            )}
             <span className="min-w-0 truncate">{row.schemaName || t('common.default')}</span>
           </button>
         );
@@ -1502,7 +1610,10 @@ export function ConnectionNavigatorTree({
               row.isSelected ? 'bg-surface-raised text-fg' : 'text-fg-secondary',
             )}
             style={{ paddingLeft: depthPadding(row.depth) }}
-            onClick={() => onSelectTable(row.item.name, row.item.schema)}
+            onClick={() => {
+              onSelectConnection(row.configId);
+              onSelectTable(row.item.name, row.item.schema);
+            }}
             onContextMenu={(e) => {
               e.preventDefault();
               e.stopPropagation();
@@ -1530,16 +1641,47 @@ export function ConnectionNavigatorTree({
               : 'text-orange-400';
         const ObjIcon = row.catId === 'trigger' ? Zap : Braces;
         return (
-          <div
-            className="flex items-center gap-1.5 py-1 pr-2 text-[13px] text-fg-secondary"
+          <button
+            type="button"
+            data-tree-node={row.catId}
+            data-item-name={row.obj.name}
+            className="flex w-full items-center gap-1.5 py-1 pr-2 text-left text-[13px] text-fg-secondary hover:bg-surface-raised"
             style={{ paddingLeft: depthPadding(row.depth) }}
+            onClick={() => {
+              const kind = row.obj.kind ?? row.catId;
+              if (kind === 'function' || kind === 'procedure' || kind === 'trigger') {
+                viewActions?.openObject?.(kind, row.obj.name, row.obj.schema ?? undefined);
+              }
+            }}
             onContextMenu={(e) => handleObjectContextMenu(e, row.obj.name)}
           >
             <ObjIcon className={`h-3.5 w-3.5 shrink-0 ${objColor}`} />
             <span className="min-w-0 truncate">{row.obj.name}</span>
-          </div>
+          </button>
         );
       }
+
+      case 'kv-db':
+        return (
+          <button
+            type="button"
+            data-tree-node="kv-db"
+            data-db-name={row.dbName}
+            className="flex w-full items-center gap-1.5 py-1 pr-2 text-left text-[13px] hover:bg-surface-raised text-fg-secondary"
+            style={{ paddingLeft: depthPadding(row.depth) }}
+            onClick={() => {
+              if (onSelectKvDb) {
+                onSelectKvDb(row.configId, row.dbName);
+              } else {
+                onSelectConnection(row.configId);
+                onSelectTable(row.dbName);
+              }
+            }}
+          >
+            <Database className="h-3.5 w-3.5 shrink-0 text-teal-400" />
+            <span className="selectable min-w-0 truncate">{row.dbName}</span>
+          </button>
+        );
 
       case 'db-loading':
         return (
@@ -1670,6 +1812,17 @@ export function ConnectionNavigatorTree({
             title={t('main.newConnection')}
           >
             <Plus className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            className="flex h-6 w-6 items-center justify-center rounded-md text-fg-muted hover:bg-surface-raised hover:text-fg"
+            onClick={() => {
+              setNewGroupName('');
+              setNewGroupDialogOpen(true);
+            }}
+            title={t('main.newGroupTitle')}
+          >
+            <FolderPlus className="h-3.5 w-3.5" />
           </button>
           <button
             type="button"
@@ -1820,6 +1973,8 @@ export function ConnectionNavigatorTree({
           autoCapitalize="off"
         />
       </Dialog>
+
+      {confirmDeleteGroupDialog}
     </div>
   );
 }

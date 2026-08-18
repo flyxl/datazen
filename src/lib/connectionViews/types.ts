@@ -13,6 +13,11 @@ export interface ConnectionViewActions {
   newQuery: (initialSql?: string) => void;
   openErDiagram: (focusTable?: string) => void;
   refresh: () => void;
+  openObject?: (
+    kind: 'function' | 'procedure' | 'trigger' | 'sequence' | 'type',
+    name: string,
+    schema?: string,
+  ) => void;
 }
 
 export interface ConnectionViewProps {

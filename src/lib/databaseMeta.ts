@@ -3,6 +3,7 @@
  * Extracted to avoid circular deps between types/index.ts ↔ plugins/generated.ts.
  */
 
+import type { DatabaseObjectKind } from '../types';
 import type { StructureEditorUiConfig } from './structureEditor/types';
 
 export type ConnectionMode = 'server' | 'file' | 'url';
@@ -98,6 +99,12 @@ export interface DatabaseTypeMeta {
    * (plugin owns hierarchy via SDK `syncSchemaNamespace` / aliases).
    */
   namespaceOwnedByPlugin?: boolean;
+  /**
+   * Database object kinds this driver supports (function, procedure, trigger, sequence, type).
+   * When set, schema tree only shows categories matching these kinds.
+   * When omitted, no database-object categories are shown (tables/views are always shown if supportsTables is true).
+   */
+  supportedObjectKinds?: DatabaseObjectKind[];
   /** Table structure editor UI config; omit or `enabled: false` for non-SQL / opt-out drivers. */
   structureEditor?: StructureEditorUiConfig;
   /**
