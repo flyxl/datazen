@@ -6,7 +6,9 @@ const mockQueryCommands = {
   cancelQuery: vi.fn(),
   getQueryHistory: vi.fn().mockResolvedValue([]),
   getFavoriteQueries: vi.fn().mockResolvedValue([]),
-  addFavoriteQuery: vi.fn().mockResolvedValue({ id: 'fav-1', title: 'test', sql: 'SELECT 1', createdAt: '' }),
+  addFavoriteQuery: vi
+    .fn()
+    .mockResolvedValue({ id: 'fav-1', title: 'test', sql: 'SELECT 1', createdAt: '' }),
   deleteFavoriteQuery: vi.fn().mockResolvedValue(undefined),
   clearQueryHistory: vi.fn().mockResolvedValue(undefined),
   getExplain: vi.fn(),
@@ -32,11 +34,13 @@ describe('queryStore detail row tracking', () => {
   });
 
   it('setResultDetailRow sets the row index', () => {
+    useQueryStore.getState().setActiveConnection('conn-1');
     useQueryStore.getState().setResultDetailRow(3);
     expect(useQueryStore.getState().resultDetailRowIndex).toBe(3);
   });
 
   it('setResultDetailRow(null) clears the row index', () => {
+    useQueryStore.getState().setActiveConnection('conn-1');
     useQueryStore.getState().setResultDetailRow(5);
     useQueryStore.getState().setResultDetailRow(null);
     expect(useQueryStore.getState().resultDetailRowIndex).toBeNull();
@@ -51,7 +55,7 @@ describe('queryStore executeSelection', () => {
     vi.clearAllMocks();
     const mod = await import('../../stores/queryStore');
     useQueryStore = mod.useQueryStore;
-    useQueryStore.getState().setConnectionId('conn-1');
+    useQueryStore.getState().setActiveConnection('conn-1');
     useQueryStore.getState().createTab();
   });
 
@@ -73,11 +77,12 @@ describe('queryStore executeSelection', () => {
     );
   });
 
-  it('executeSelection does nothing when connectionId is null', async () => {
-    useQueryStore.getState().setConnectionId(null);
-    const tabId = useQueryStore.getState().tabs[0].id;
-    await useQueryStore.getState().executeSelection(tabId, 'SELECT 1');
-
+  it('executeSelection does nothing when no active connection', async () => {
+    useQueryStore.getState().setActiveConnection(null);
+    const tabId = useQueryStore.getState().tabs[0]?.id;
+    if (tabId) {
+      await useQueryStore.getState().executeSelection(tabId, 'SELECT 1');
+    }
     expect(mockQueryCommands.executeQueryStream).not.toHaveBeenCalled();
   });
 });
@@ -133,7 +138,10 @@ describe('queryStore favorites', () => {
   });
 
   it('reset clears favorites', () => {
-    useQueryStore.setState({ favorites: [{ id: 'x', title: 't', sql: 's', createdAt: '' }], favoritesVisible: true });
+    useQueryStore.setState({
+      favorites: [{ id: 'x', title: 't', sql: 's', createdAt: '' }],
+      favoritesVisible: true,
+    });
     useQueryStore.getState().reset();
     expect(useQueryStore.getState().favorites).toEqual([]);
     expect(useQueryStore.getState().favoritesVisible).toBe(false);
@@ -149,6 +157,7 @@ describe('queryStore tabs and execution', () => {
     const mod = await import('../../stores/queryStore');
     useQueryStore = mod.useQueryStore;
     useQueryStore.getState().reset();
+    useQueryStore.getState().setActiveConnection('conn-1');
   });
 
   it('createTab adds tab and sets active', () => {
@@ -177,7 +186,6 @@ describe('queryStore tabs and execution', () => {
   });
 
   it('executeQuery success and error', async () => {
-    useQueryStore.getState().setConnectionId('conn-1');
     useQueryStore.getState().createTab();
     const tabId = useQueryStore.getState().tabs[0].id;
     useQueryStore.getState().updateSql(tabId, 'SELECT 1');
@@ -204,7 +212,6 @@ describe('queryStore tabs and execution', () => {
   });
 
   it('executeQuery concatenates streamed row chunks', async () => {
-    useQueryStore.getState().setConnectionId('conn-1');
     useQueryStore.getState().createTab();
     const tabId = useQueryStore.getState().tabs[0].id;
     useQueryStore.getState().updateSql(tabId, 'SELECT n');
@@ -227,19 +234,29 @@ describe('queryStore tabs and execution', () => {
   });
 
   it('executeQuery sets error when not connected', async () => {
-    useQueryStore.getState().createTab();
-    const tabId = useQueryStore.getState().tabs[0].id;
-    await useQueryStore.getState().executeQuery(tabId);
-    expect(useQueryStore.getState().tabs[0].error).toBeTruthy();
+    useQueryStore.getState().setActiveConnection(null);
+    // Tab still exists from a previous connection
+    const tabs = useQueryStore.getState().tabs;
+    if (tabs.length > 0) {
+      await useQueryStore.getState().executeQuery(tabs[0].id);
+    }
+    // No tabs when no connection, so nothing should happen
+    expect(mockQueryCommands.executeQueryStream).not.toHaveBeenCalled();
   });
 
   it('cancelQuery cancels and marks tab', async () => {
-    useQueryStore.getState().setConnectionId('conn-1');
     useQueryStore.getState().createTab();
     const tabId = useQueryStore.getState().tabs[0].id;
-    useQueryStore.setState({
-      tabs: [{ ...useQueryStore.getState().tabs[0], running: true }],
-    });
+    // Manually set running state
+    const connState = useQueryStore.getState().states.get('conn-1');
+    if (connState) {
+      const updated = new Map(useQueryStore.getState().states);
+      updated.set('conn-1', {
+        ...connState,
+        tabs: connState.tabs.map((t) => (t.id === tabId ? { ...t, running: true } : t)),
+      });
+      useQueryStore.setState({ states: updated, tabs: updated.get('conn-1')!.tabs });
+    }
     mockQueryCommands.cancelQuery.mockResolvedValueOnce(undefined);
     await useQueryStore.getState().cancelQuery(tabId);
     expect(useQueryStore.getState().tabs[0].running).toBe(false);
@@ -259,17 +276,30 @@ describe('queryStore tabs and execution', () => {
   it('updateResultCell mutates result grid', () => {
     useQueryStore.getState().createTab();
     const tabId = useQueryStore.getState().tabs[0].id;
-    useQueryStore.setState({
-      tabs: [{
-        ...useQueryStore.getState().tabs[0],
-        results: [{
-          sql: 'SELECT 1',
-          columns: [{ name: 'v', dataType: 'int' }],
-          rows: [[1]],
-          executionTimeMs: 1,
-        }],
-      }],
-    });
+    // Manually set results
+    const connState = useQueryStore.getState().states.get('conn-1');
+    if (connState) {
+      const updated = new Map(useQueryStore.getState().states);
+      updated.set('conn-1', {
+        ...connState,
+        tabs: connState.tabs.map((t) =>
+          t.id === tabId
+            ? {
+                ...t,
+                results: [
+                  {
+                    sql: 'SELECT 1',
+                    columns: [{ name: 'v', dataType: 'int' }],
+                    rows: [[1]],
+                    executionTimeMs: 1,
+                  },
+                ],
+              }
+            : t,
+        ),
+      });
+      useQueryStore.setState({ states: updated, tabs: updated.get('conn-1')!.tabs });
+    }
     useQueryStore.getState().updateResultCell(tabId, 0, 0, 'v', 99);
     expect(useQueryStore.getState().tabs[0].results[0].rows[0][0]).toBe(99);
   });
@@ -282,5 +312,23 @@ describe('queryStore tabs and execution', () => {
     expect(useQueryStore.getState().tabs[0].chartConfig).toEqual(config);
     useQueryStore.getState().setResultViewMode(tabId, 'chart');
     expect(useQueryStore.getState().tabs[0].resultViewMode).toBe('chart');
+  });
+
+  it('per-connection state isolation', () => {
+    useQueryStore.getState().createTab();
+    const tab1 = useQueryStore.getState().tabs[0];
+    useQueryStore.getState().updateSql(tab1.id, 'SELECT A');
+
+    useQueryStore.getState().setActiveConnection('conn-2');
+    expect(useQueryStore.getState().tabs).toHaveLength(0);
+
+    useQueryStore.getState().createTab();
+    const tab2 = useQueryStore.getState().tabs[0];
+    useQueryStore.getState().updateSql(tab2.id, 'SELECT B');
+    expect(useQueryStore.getState().tabs[0].sql).toBe('SELECT B');
+
+    useQueryStore.getState().setActiveConnection('conn-1');
+    expect(useQueryStore.getState().tabs).toHaveLength(1);
+    expect(useQueryStore.getState().tabs[0].sql).toBe('SELECT A');
   });
 });

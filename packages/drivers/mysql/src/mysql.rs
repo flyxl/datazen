@@ -764,7 +764,7 @@ impl DatabaseDriver for MysqlDriver {
             .map(|r| {
                 let tt: String = r.get("TABLE_TYPE");
                 TableInfo {
-                    schema: Some(database.to_string()),
+                    schema: None,
                     name: r.get("TABLE_NAME"),
                     table_type: match tt.as_str() {
                         "VIEW" => TableType::View,

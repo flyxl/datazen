@@ -22,7 +22,6 @@ import {
 } from '../../components/connection/ConnectionShareDialog';
 import { ConnectionNavigatorTree } from './ConnectionNavigatorTree';
 import type { DatabaseType } from '../../types';
-import type { QueryTab } from '../../stores/queryStore';
 
 // ── Connection Tab ────────────────────────────────────────────────
 
@@ -34,11 +33,6 @@ interface ConnectionTab {
   initialDatabase?: string;
   status: 'connecting' | 'connected' | 'error';
   error?: string;
-}
-
-interface StoreSnapshot {
-  queryTabs: QueryTab[];
-  queryActiveTabId: string;
 }
 
 function makeTabFromPayload(data: Record<string, string>): ConnectionTab | null {
@@ -66,6 +60,20 @@ function consumePendingConnection(): ConnectionTab | null {
   }
 }
 
+// ── Sync all keyed stores to a specific connection ────────────────
+
+function syncStoresActiveConnection(connectionId: string | null) {
+  useSchemaStore.getState().setActiveConnection(connectionId);
+  useQueryStore.getState().setActiveConnection(connectionId);
+  useTableDataStore.getState().setActiveConnection(connectionId);
+}
+
+function removeConnectionFromStores(connectionId: string) {
+  useSchemaStore.getState().removeConnection(connectionId);
+  useQueryStore.getState().removeConnection(connectionId);
+  useTableDataStore.getState().removeConnection(connectionId);
+}
+
 // ── Component ─────────────────────────────────────────────────────
 
 export function ConnectionWindow() {
@@ -88,7 +96,6 @@ export function ConnectionWindow() {
     return pending ? [pending] : [];
   });
   const [activeIdx, setActiveIdx] = useState(0);
-  const storeCache = useRef(new Map<string, StoreSnapshot>());
   const [sidebarWidth, setSidebarWidth] = useState(280);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const isResizingRef = useRef(false);
@@ -133,6 +140,13 @@ export function ConnectionWindow() {
     });
     return () => cleanup?.();
   }, [fetchConnections, fetchGroups]);
+
+  // ── Sync keyed stores whenever active connection changes ──
+
+  useEffect(() => {
+    const connId = activeTab?.connectionId || null;
+    syncStoresActiveConnection(connId);
+  }, [activeTab?.connectionId]);
 
   // ── Connect the initial tab (if not already connected) ──
 
@@ -194,9 +208,14 @@ export function ConnectionWindow() {
       const newTab = makeTabFromPayload(data);
       if (!newTab) return;
 
+      if (newTab.connectionId) syncStoresActiveConnection(newTab.connectionId);
+
       setTabs((prev) => {
         const existingIdx = prev.findIndex((t) => t.configId === newTab.configId);
         if (existingIdx >= 0) {
+          if (prev[existingIdx].connectionId) {
+            syncStoresActiveConnection(prev[existingIdx].connectionId);
+          }
           setActiveIdx(existingIdx);
           return prev;
         }
@@ -297,45 +316,7 @@ export function ConnectionWindow() {
     return () => unlisten?.();
   }, [tabs]);
 
-  // ── Tab switching with store snapshot save/restore ──
-
-  const prevActiveIdx = useRef(activeIdx);
-
-  const saveStoreSnapshot = useCallback((configId: string) => {
-    const qState = useQueryStore.getState();
-    storeCache.current.set(configId, {
-      queryTabs: qState.tabs,
-      queryActiveTabId: qState.activeTabId,
-    });
-  }, []);
-
-  const restoreStoreSnapshot = useCallback((configId: string) => {
-    const cached = storeCache.current.get(configId);
-    if (cached) {
-      useQueryStore.setState({
-        tabs: cached.queryTabs,
-        activeTabId: cached.queryActiveTabId,
-      });
-    }
-  }, []);
-
-  useEffect(() => {
-    if (prevActiveIdx.current !== activeIdx) {
-      const prevTab = tabs[prevActiveIdx.current];
-      if (prevTab?.configId) {
-        saveStoreSnapshot(prevTab.configId);
-      }
-      prevActiveIdx.current = activeIdx;
-    }
-  }, [activeIdx, tabs, saveStoreSnapshot]);
-
-  useEffect(() => {
-    if (!activeTab?.connectionId) return;
-    const timer = setTimeout(() => restoreStoreSnapshot(activeTab.configId), 50);
-    return () => clearTimeout(timer);
-  }, [activeTab?.configId, activeTab?.connectionId, restoreStoreSnapshot]);
-
-  // ── Close a connection tab ──
+  // ── Close a connection tab (and cleanup all store data) ──
 
   const handleCloseTab = useCallback(
     async (configId: string) => {
@@ -343,11 +324,9 @@ export function ConnectionWindow() {
       const tab = tabs[idx];
       if (!tab) return;
 
-      storeCache.current.delete(tab.configId);
-      useSchemaStore.getState().removeConnection(tab.connectionId);
-      useActiveConnectionStore.getState().removeByConnectionId(tab.connectionId);
-
       if (tab.connectionId) {
+        removeConnectionFromStores(tab.connectionId);
+        useActiveConnectionStore.getState().removeByConnectionId(tab.connectionId);
         try {
           const wasDisconnected = await connectionCommands.releaseConnection(tab.connectionId);
           if (wasDisconnected) {
@@ -370,12 +349,6 @@ export function ConnectionWindow() {
         if (idx === prev) return Math.min(prev, tabs.length - 2);
         return prev;
       });
-
-      if (tabs.length <= 1) {
-        useSchemaStore.getState().reset();
-        useQueryStore.getState().reset();
-        useTableDataStore.getState().reset();
-      }
     },
     [tabs],
   );
@@ -386,6 +359,10 @@ export function ConnectionWindow() {
     (configId: string) => {
       const existingIdx = tabs.findIndex((t) => t.configId === configId);
       if (existingIdx >= 0) {
+        const existingTab = tabs[existingIdx];
+        if (existingTab.connectionId) {
+          syncStoresActiveConnection(existingTab.connectionId);
+        }
         setActiveIdx(existingIdx);
         return;
       }
@@ -402,6 +379,7 @@ export function ConnectionWindow() {
         initialDatabase: conn.database,
         status: connId ? 'connected' : 'connecting',
       };
+      if (connId) syncStoresActiveConnection(connId);
       setTabs((prev) => {
         const next = [...prev, newTab];
         setActiveIdx(next.length - 1);
@@ -484,12 +462,10 @@ export function ConnectionWindow() {
 
   // ── Render ──
 
-  const connectedTab =
-    activeTab?.status === 'connected' && activeTab.connectionId ? activeTab : null;
-  const viewMode = connectedTab
-    ? (DB_REGISTRY[connectedTab.databaseType]?.connectionView ?? 'sql')
-    : 'sql';
-  const ViewComponent = getConnectionView(viewMode);
+  const connectedTabs = tabs.filter(
+    (t): t is ConnectionTab & { connectionId: string } =>
+      t.status === 'connected' && !!t.connectionId,
+  );
   const centerTitle = activeTab
     ? `${activeTab.connectionName} - ${getDbLabel(activeTab.databaseType)} - DataZen`
     : 'DataZen';
@@ -596,44 +572,55 @@ export function ConnectionWindow() {
             </div>
           )}
 
-          {connectedTab && (
-            <ViewComponent
-              key={connectedTab.configId}
-              connectionId={connectedTab.connectionId}
-              configId={connectedTab.configId}
-              connectionName={connectedTab.connectionName}
-              databaseType={connectedTab.databaseType}
-              initialDatabase={connectedTab.initialDatabase}
-              hideSidebar
-              selectTableRef={
-                selectTableRef as MutableRefObject<
-                  ((table: string, schema?: string) => void) | undefined
-                >
-              }
-              nodeContextMenuRef={
-                nodeContextMenuRef as MutableRefObject<
-                  | ((payload: {
-                      kind: string;
-                      name: string;
-                      x: number;
-                      y: number;
-                      schema?: string;
-                    }) => void)
-                  | undefined
-                >
-              }
-              actionsRef={
-                actionsRef as MutableRefObject<
-                  | {
-                      newQuery: (initialSql?: string) => void;
-                      openErDiagram: (focusTable?: string) => void;
-                      refresh: () => void;
-                    }
-                  | undefined
-                >
-              }
-            />
-          )}
+          {connectedTabs.map((tab) => {
+            const isTabActive = tab.configId === activeTab?.configId;
+            const viewMode = DB_REGISTRY[tab.databaseType]?.connectionView ?? 'sql';
+            const View = getConnectionView(viewMode);
+            return (
+              <div
+                key={tab.configId}
+                className="min-h-0 min-w-0 flex-1 flex-col"
+                style={{ display: isTabActive ? 'flex' : 'none' }}
+              >
+                <View
+                  connectionId={tab.connectionId}
+                  configId={tab.configId}
+                  connectionName={tab.connectionName}
+                  databaseType={tab.databaseType}
+                  initialDatabase={tab.initialDatabase}
+                  hideSidebar
+                  isActive={isTabActive}
+                  selectTableRef={
+                    selectTableRef as MutableRefObject<
+                      ((table: string, schema?: string) => void) | undefined
+                    >
+                  }
+                  nodeContextMenuRef={
+                    nodeContextMenuRef as MutableRefObject<
+                      | ((payload: {
+                          kind: string;
+                          name: string;
+                          x: number;
+                          y: number;
+                          schema?: string;
+                        }) => void)
+                      | undefined
+                    >
+                  }
+                  actionsRef={
+                    actionsRef as MutableRefObject<
+                      | {
+                          newQuery: (initialSql?: string) => void;
+                          openErDiagram: (focusTable?: string) => void;
+                          refresh: () => void;
+                        }
+                      | undefined
+                    >
+                  }
+                />
+              </div>
+            );
+          })}
         </div>
       </div>
 

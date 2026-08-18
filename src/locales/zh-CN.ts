@@ -420,6 +420,10 @@ const zhCN = {
   'connWin.noConnections': '从主窗口打开一个连接',
   'connWin.collapseSidebar': '收起侧边栏',
   'connWin.expandSidebar': '展开侧边栏',
+  'connWin.tooltipConn': '连接',
+  'connWin.tooltipGroup': '分组',
+  'connWin.tooltipDb': '数据库',
+  'connWin.tooltipTable': '表',
 
   // ── Table View ──
   'tableView.loadingData': '加载表数据…',

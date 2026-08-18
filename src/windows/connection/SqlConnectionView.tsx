@@ -8,14 +8,11 @@ import {
   GitFork,
   MessageSquare,
   Plus,
-  RefreshCw,
-  Search,
   Table2,
   TableProperties,
   X,
 } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
-import { Input } from '../../components/ui/Input';
 import { useResizable } from '../../hooks/useResizable';
 import { useI18n } from '../../hooks/useI18n';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
@@ -23,6 +20,7 @@ import { useSchemaStore } from '../../stores/schemaStore';
 import { useTableDataStore } from '../../stores/tableDataStore';
 import { useQueryStore } from '../../stores/queryStore';
 import { useSettingsStore } from '../../stores/settingsStore';
+import { useConnectionStore } from '../../stores/connectionStore';
 import { cn } from '../../lib/cn';
 import { openDocsWindow } from '../../lib/windowManager';
 import { DB_REGISTRY, escapeIdent, getDbLabel } from '../../lib/databaseTypes';
@@ -143,6 +141,7 @@ export function SqlConnectionView({
   databaseType,
   initialDatabase,
   hideSidebar: externalSidebar,
+  isActive = true,
   selectTableRef,
   nodeContextMenuRef,
   actionsRef,
@@ -160,8 +159,7 @@ export function SqlConnectionView({
 
   const [panels, setPanels] = useState<Panel[]>([]);
   const [activePanelId, setActivePanelId] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen] = useState(true);
   const [aiChatOpen, setAiChatOpen] = useState(false);
   // AI chat toggle is always visible; AiChatPanel handles unconfigured state
   const [exportOpen, setExportOpen] = useState(false);
@@ -172,6 +170,7 @@ export function SqlConnectionView({
   const [batchExportInitialSelected, setBatchExportInitialSelected] = useState<string[]>([]);
   const [lastTableSchema, setLastTableSchema] = useState<string | null>(null);
 
+  const connGroup = useConnectionStore((s) => s.connections.find((c) => c.id === configId)?.group);
   const currentDatabase = useSchemaStore((s) => s.currentDatabase);
   const schemaTables = useSchemaStore((s) => s.tables);
   const schemaViews = useSchemaStore((s) => s.views);
@@ -191,7 +190,6 @@ export function SqlConnectionView({
 
   const createQueryTab = useQueryStore((s) => s.createTab);
   const closeQueryTab = useQueryStore((s) => s.closeTab);
-  const setQueryConnectionId = useQueryStore((s) => s.setConnectionId);
   const queryTabs = useQueryStore((s) => s.tabs);
   const updateQuerySql = useQueryStore((s) => s.updateSql);
   const resultDetailRowIndex = useQueryStore((s) => s.resultDetailRowIndex);
@@ -245,10 +243,6 @@ export function SqlConnectionView({
   });
 
   useEffect(() => {
-    if (connectionId) setQueryConnectionId(connectionId);
-  }, [connectionId, setQueryConnectionId]);
-
-  useEffect(() => {
     setDbType(databaseType);
   }, [databaseType, setDbType]);
 
@@ -273,11 +267,11 @@ export function SqlConnectionView({
   }, []);
 
   useEffect(() => {
-    if (selectTableRef) selectTableRef.current = handleSelectTable;
+    if (selectTableRef && isActive) selectTableRef.current = handleSelectTable;
     return () => {
-      if (selectTableRef) selectTableRef.current = undefined;
+      if (selectTableRef && isActive) selectTableRef.current = undefined;
     };
-  }, [selectTableRef, handleSelectTable]);
+  }, [selectTableRef, handleSelectTable, isActive]);
 
   const handleCreateTable = useCallback(() => {
     const existing = panels.find((p) => p.type === 'create-table');
@@ -403,11 +397,12 @@ export function SqlConnectionView({
       const latestTab = useQueryStore.getState().tabs.at(-1);
       if (!latestTab) return;
       if (initialSql) updateQuerySql(latestTab.id, initialSql);
+      const db = currentDatabase ?? initialDatabase ?? '';
       const panel: QueryPanelInfo = {
         type: 'query',
         id: nextPanelId('qry'),
         queryTabId: latestTab.id,
-        title: latestTab.title,
+        title: db ? `${connectionName}@${db}` : connectionName,
       };
       setPanels((prev) => [...prev, panel]);
       setActivePanelId(panel.id);
@@ -775,17 +770,17 @@ export function SqlConnectionView({
   );
 
   useEffect(() => {
-    if (nodeContextMenuRef) {
+    if (nodeContextMenuRef && isActive) {
       nodeContextMenuRef.current = (payload) =>
         handleNodeContextMenu(payload as SchemaTreeNodeContextMenuPayload);
     }
     return () => {
-      if (nodeContextMenuRef) nodeContextMenuRef.current = undefined;
+      if (nodeContextMenuRef && isActive) nodeContextMenuRef.current = undefined;
     };
-  }, [nodeContextMenuRef, handleNodeContextMenu]);
+  }, [nodeContextMenuRef, handleNodeContextMenu, isActive]);
 
   useEffect(() => {
-    if (actionsRef) {
+    if (actionsRef && isActive) {
       actionsRef.current = {
         newQuery: handleNewQuery,
         openErDiagram: handleOpenErDiagram,
@@ -793,24 +788,17 @@ export function SqlConnectionView({
       };
     }
     return () => {
-      if (actionsRef) actionsRef.current = undefined;
+      if (actionsRef && isActive) actionsRef.current = undefined;
     };
-  }, [actionsRef, handleNewQuery, handleOpenErDiagram, handleRefresh]);
+  }, [actionsRef, handleNewQuery, handleOpenErDiagram, handleRefresh, isActive]);
 
   useKeyboardShortcuts([
-    {
-      key: 'mod+b',
-      scope: 'global',
-      description: t('connWin.toggleSidebar') ?? 'Toggle Sidebar',
-      action: () => setSidebarOpen((v) => !v),
-    },
     {
       key: 'mod+n',
       scope: 'global',
       description: t('connWin.newQuery'),
       action: () => handleNewQuery(),
     },
-    { key: 'mod+r', scope: 'global', description: t('connWin.refresh'), action: handleRefresh },
     {
       key: 'mod+w',
       scope: 'global',
@@ -897,14 +885,6 @@ export function SqlConnectionView({
   return (
     <>
       <div className="flex h-12 min-h-[48px] shrink-0 items-center gap-2 border-b border-edge bg-surface-alt px-4">
-        <Button
-          variant="secondary"
-          className="h-8 w-8 !px-0"
-          title={`${t('connWin.refresh')} (⌘R)`}
-          onClick={handleRefresh}
-        >
-          <RefreshCw className="h-4 w-4" />
-        </Button>
         <Button variant="primary" className="h-8" onClick={() => handleNewQuery()}>
           <Plus className="h-4 w-4" />
           {t('connWin.newQuery')}
@@ -945,17 +925,6 @@ export function SqlConnectionView({
             {t('batchExport.title')}
           </Button>
         )}
-        <div className="mx-1 h-6 w-px bg-edge" />
-
-        <div className="relative min-w-0 max-w-[280px] flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fg-muted" />
-          <Input
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder={t('connWin.searchTables')}
-            className="h-8 pl-9 text-xs"
-          />
-        </div>
 
         <div className="flex-1" />
 
@@ -993,7 +962,7 @@ export function SqlConnectionView({
                 databaseType={databaseType}
                 initialDatabase={initialDatabase}
                 selectedTable={activePanel?.type === 'table' ? activePanel.tableName : null}
-                searchQuery={searchQuery}
+                searchQuery=""
                 onSelectTable={handleSelectTable}
                 onNodeContextMenu={handleNodeContextMenu}
               />
@@ -1039,6 +1008,7 @@ export function SqlConnectionView({
                     objects: <Code2 className="h-3.5 w-3.5 shrink-0" />,
                     privileges: <KeyRound className="h-3.5 w-3.5 shrink-0" />,
                   };
+                  const db = currentDatabase ?? initialDatabase ?? '';
                   const labelMap: Record<string, string> = {
                     table: (panel as TablePanel).tableName,
                     query: (panel as QueryPanelInfo).title,
@@ -1050,15 +1020,27 @@ export function SqlConnectionView({
                   const icon = iconMap[panel.type];
                   const label = labelMap[panel.type];
 
+                  const tooltipLines = [
+                    `${t('connWin.tooltipConn')}: ${connectionName}`,
+                    connGroup ? `${t('connWin.tooltipGroup')}: ${connGroup}` : '',
+                    db ? `${t('connWin.tooltipDb')}: ${db}` : '',
+                    panel.type === 'table'
+                      ? `${t('connWin.tooltipTable')}: ${(panel as TablePanel).tableName}`
+                      : '',
+                  ]
+                    .filter(Boolean)
+                    .join('\n');
+
                   return (
                     <div
                       key={panel.id}
                       className={cn(
-                        'group relative flex items-center gap-1.5 border-r border-edge px-3 py-2 text-xs',
+                        'group relative flex items-center gap-1.5 border-r border-edge px-3 py-2 text-xs transition-colors',
                         isActive
                           ? 'bg-surface text-fg'
                           : 'text-fg-secondary hover:bg-surface-raised hover:text-fg',
                       )}
+                      title={tooltipLines}
                       onContextMenu={(e) => handlePanelTabContextMenu(panel.id, e)}
                     >
                       <button
@@ -1067,7 +1049,7 @@ export function SqlConnectionView({
                         onClick={() => setActivePanelId(panel.id)}
                       >
                         {icon}
-                        <span className="max-w-[120px] truncate">{label}</span>
+                        <span className="max-w-[160px] truncate">{label}</span>
                       </button>
                       <button
                         type="button"
@@ -1297,7 +1279,6 @@ export function SqlConnectionView({
         </div>
         <div className="shrink-0 text-fg-muted">
           <kbd className="font-mono">⌘N</kbd> {t('connWin.newQuery')} ·{' '}
-          <kbd className="font-mono">⌘R</kbd> {t('connWin.refresh')} ·{' '}
           <kbd className="font-mono">⌘W</kbd> {t('common.close')} ·{' '}
           <kbd className="font-mono">Space</kbd> {t('detail.title')}
         </div>
