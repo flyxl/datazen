@@ -1005,6 +1005,18 @@ export function SqlConnectionView({
             />
           </>
         )}
+        {externalSidebar && (
+          <div className="hidden">
+            <SchemaTree
+              connectionId={connectionId}
+              databaseType={databaseType}
+              initialDatabase={initialDatabase}
+              selectedTable={null}
+              searchQuery=""
+              onSelectTable={handleSelectTable}
+            />
+          </div>
+        )}
 
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           {panels.length > 0 && (

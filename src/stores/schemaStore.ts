@@ -373,7 +373,9 @@ export const useSchemaStore = create<SchemaStore>((set, get) => {
           { databases, isMultiDatabase, loading: false, currentDatabase: preferred },
           { activate: true },
         );
-        if (isMultiDatabase) {
+        const isPathHierarchy =
+          meta?.schemaTreeMode === 'custom' || meta?.namespaceEnsure === 'path-hierarchy';
+        if (isMultiDatabase && !isPathHierarchy) {
           get().mergeNamespace([], 'branch', databases, connectionId);
         }
         if (options?.skipLoadTables) return;
