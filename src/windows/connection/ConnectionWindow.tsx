@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type MutableRefObject } from 'react';
 import { Plus, Search } from 'lucide-react';
 import { TitleBar } from '../../components/TitleBar';
 import { useI18n } from '../../hooks/useI18n';
@@ -84,6 +84,7 @@ export function ConnectionWindow() {
   const [activeIdx, setActiveIdx] = useState(0);
   const storeCache = useRef(new Map<string, StoreSnapshot>());
   const [treeSearch, setTreeSearch] = useState('');
+  const selectTableRef = useRef<((table: string, schema?: string) => void) | undefined>();
 
   const activeTab = tabs[activeIdx] ?? null;
 
@@ -408,8 +409,8 @@ export function ConnectionWindow() {
     [handleCloseTab],
   );
 
-  const handleSelectTable = useCallback((_tableName: string, _schema?: string) => {
-    // Table selection is handled by the ViewComponent's own SchemaTree
+  const handleSelectTable = useCallback((tableName: string, schema?: string) => {
+    selectTableRef.current?.(tableName, schema);
   }, []);
 
   // ── Render ──
@@ -516,6 +517,12 @@ export function ConnectionWindow() {
               connectionName={connectedTab.connectionName}
               databaseType={connectedTab.databaseType}
               initialDatabase={connectedTab.initialDatabase}
+              hideSidebar
+              selectTableRef={
+                selectTableRef as MutableRefObject<
+                  ((table: string, schema?: string) => void) | undefined
+                >
+              }
             />
           )}
         </div>
