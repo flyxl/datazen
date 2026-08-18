@@ -1,14 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  Database,
-  FileJson,
-  Loader2,
-  Plus,
-  RefreshCw,
-  Search,
-  Trash2,
-  X,
-} from 'lucide-react';
+import { Database, FileJson, Loader2, Plus, RefreshCw, Search, Trash2, X } from 'lucide-react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
@@ -267,15 +258,7 @@ export function DocumentConnectionView({
     } finally {
       setMutating(false);
     }
-  }, [
-    connectionId,
-    editText,
-    filterText,
-    loadDocuments,
-    selectedCollection,
-    selectedDb,
-    t,
-  ]);
+  }, [connectionId, editText, filterText, loadDocuments, selectedCollection, selectedDb, t]);
 
   const handleInsertDocument = useCallback(async () => {
     if (!selectedCollection || !selectedDb) return;
@@ -303,14 +286,7 @@ export function DocumentConnectionView({
     } finally {
       setMutating(false);
     }
-  }, [
-    connectionId,
-    editText,
-    filterText,
-    loadDocuments,
-    selectedCollection,
-    selectedDb,
-  ]);
+  }, [connectionId, editText, filterText, loadDocuments, selectedCollection, selectedDb]);
 
   const handleDeleteDocument = useCallback(async () => {
     if (!selectedCollection || !selectedDb) return;
@@ -638,11 +614,7 @@ function DocumentDetailEditor({
             disabled={mutating || !canSave}
             title={!canSave ? t('mongo.noIdHint') : undefined}
           >
-            {mutating ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              t('common.save')
-            )}
+            {mutating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : t('common.save')}
           </Button>
         )}
         {!insertMode && (
@@ -765,19 +737,17 @@ function DocumentResultTable({
   );
 }
 
-function DocumentQueryPanel({ connectionId }: { connectionId: string }) {
+function DocumentQueryPanel({ connectionId: _connectionId }: { connectionId: string }) {
   const { t } = useI18n();
   const tab = useQueryStore((s) => s.tabs[0]);
-  const setConnectionId = useQueryStore((s) => s.setConnectionId);
   const updateSql = useQueryStore((s) => s.updateSql);
   const executeQuery = useQueryStore((s) => s.executeQuery);
   const createTab = useQueryStore((s) => s.createTab);
   const setActiveResult = useQueryStore((s) => s.setActiveResult);
 
   useEffect(() => {
-    setConnectionId(connectionId);
     if (!tab) createTab();
-  }, [connectionId, setConnectionId, tab, createTab]);
+  }, [tab, createTab]);
 
   const handleExecute = useCallback(() => {
     if (tab) void executeQuery(tab.id);

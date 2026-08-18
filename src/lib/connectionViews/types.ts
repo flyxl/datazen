@@ -24,6 +24,8 @@ export interface ConnectionViewProps {
   initialDatabase?: string;
   /** When true, the view hides its own schema sidebar (used when an outer navigator tree is present). */
   hideSidebar?: boolean;
+  /** Whether this view is the currently active (visible) tab. Shared refs are only wired when true. */
+  isActive?: boolean;
   /** Ref for the parent to receive the view's table-selection handler. */
   selectTableRef?: MutableRefObject<((table: string, schema?: string) => void) | undefined>;
   /** Ref for the parent to receive the view's context-menu handler (for table/view/blank nodes). */

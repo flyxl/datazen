@@ -91,6 +91,7 @@ vi.mock('../../../stores/schemaStore', () => ({
     getState: () => ({
       reset: vi.fn(),
       removeConnection: vi.fn(),
+      setActiveConnection: vi.fn(),
       databases: [],
       currentDatabase: null,
       tables: [],
@@ -100,14 +101,24 @@ vi.mock('../../../stores/schemaStore', () => ({
 
 vi.mock('../../../stores/queryStore', () => ({
   useQueryStore: {
-    getState: () => ({ reset: vi.fn(), tabs: [], activeTabId: '' }),
+    getState: () => ({
+      reset: vi.fn(),
+      setActiveConnection: vi.fn(),
+      removeConnection: vi.fn(),
+      tabs: [],
+      activeTabId: '',
+    }),
     setState: vi.fn(),
   },
 }));
 
 vi.mock('../../../stores/tableDataStore', () => ({
   useTableDataStore: {
-    getState: () => ({ reset: vi.fn() }),
+    getState: () => ({
+      reset: vi.fn(),
+      setActiveConnection: vi.fn(),
+      removeConnection: vi.fn(),
+    }),
   },
 }));
 

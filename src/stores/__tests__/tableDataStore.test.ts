@@ -39,6 +39,7 @@ describe('tableDataStore', () => {
     const mod = await import('../tableDataStore');
     useTableDataStore = mod.useTableDataStore;
     useTableDataStore.getState().reset();
+    useTableDataStore.getState().setActiveConnection('conn-1');
   });
 
   async function loadTable() {
@@ -267,7 +268,7 @@ describe('tableDataStore', () => {
   it('reset clears all state', async () => {
     await loadTable();
     useTableDataStore.getState().reset();
-    expect(useTableDataStore.getState().connectionId).toBeNull();
+    expect(useTableDataStore.getState().activeConnectionId).toBeNull();
     expect(useTableDataStore.getState().rows).toEqual([]);
   });
 

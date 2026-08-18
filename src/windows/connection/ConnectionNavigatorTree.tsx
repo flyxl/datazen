@@ -1177,7 +1177,14 @@ export function ConnectionNavigatorTree({
             }
 
             const allItems = dbTablesMap[tableKey] ?? [];
-            const schemaGroups = groupBySchema(allItems);
+            let schemaGroups = groupBySchema(allItems);
+
+            if (schemaGroups) {
+              const schemaKeys = [...schemaGroups.keys()];
+              if (schemaKeys.length === 1 && schemaKeys[0] === dbName) {
+                schemaGroups = null;
+              }
+            }
 
             if (schemaGroups) {
               const preferred = DB_REGISTRY[conn.databaseType]?.defaultSchema;
@@ -1240,9 +1247,12 @@ export function ConnectionNavigatorTree({
           const schemaGroups = groupBySchema(allItems);
 
           if (schemaGroups) {
+            const preferred = DB_REGISTRY[conn.databaseType]?.defaultSchema;
             const sortedSchemas = [...schemaGroups.keys()].sort((a, b) => {
-              if (a === 'public') return -1;
-              if (b === 'public') return 1;
+              if (preferred) {
+                if (a === preferred) return -1;
+                if (b === preferred) return 1;
+              }
               return a.localeCompare(b);
             });
 

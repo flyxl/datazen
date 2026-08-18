@@ -428,6 +428,10 @@ const en: Record<TranslationKey, string> = {
   'connWin.noConnections': 'Open a connection from the main window',
   'connWin.collapseSidebar': 'Collapse Sidebar',
   'connWin.expandSidebar': 'Expand Sidebar',
+  'connWin.tooltipConn': 'Connection',
+  'connWin.tooltipGroup': 'Group',
+  'connWin.tooltipDb': 'Database',
+  'connWin.tooltipTable': 'Table',
 
   // ── Table View ──
   'tableView.loadingData': 'Loading table data…',

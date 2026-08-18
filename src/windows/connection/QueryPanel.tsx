@@ -110,7 +110,6 @@ export function QueryPanel({ connectionId, configId, queryTabId, databaseType }:
   const tab = useQueryStore((s) => s.tabs.find((t) => t.id === queryTabId));
   const historyVisible = useQueryStore((s) => s.historyVisible);
   const history = useQueryStore((s) => s.history);
-  const setConnectionId = useQueryStore((s) => s.setConnectionId);
   const updateSql = useQueryStore((s) => s.updateSql);
   const setActiveResult = useQueryStore((s) => s.setActiveResult);
   const executeQuery = useQueryStore((s) => s.executeQuery);
@@ -267,14 +266,9 @@ export function QueryPanel({ connectionId, configId, queryTabId, databaseType }:
   }, [tab?.sql, syncContextFromSql]);
 
   useEffect(() => {
-    setConnectionId(connectionId);
     void loadHistory();
     void loadFavorites();
-  }, [connectionId, setConnectionId, loadHistory, loadFavorites]);
-
-  useEffect(() => {
-    useSchemaStore.setState({ connectionId, databaseType: databaseType ?? null });
-  }, [connectionId, databaseType]);
+  }, [connectionId, loadHistory, loadFavorites]);
 
   useEffect(() => {
     const names = tablesReferencedInSql(tab?.sql ?? '');
