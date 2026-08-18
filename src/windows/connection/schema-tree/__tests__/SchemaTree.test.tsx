@@ -33,7 +33,13 @@ vi.mock('../../../../plugins/generated', () => {
     hasMultiDatabase: true,
   };
   const DRIVER_DB_ENTRIES = {
-    postgresql: { ...sqlMulti, label: 'PostgreSQL', quoteChar: '"', sqlDialect: 'postgresql' },
+    postgresql: {
+      ...sqlMulti,
+      label: 'PostgreSQL',
+      quoteChar: '"',
+      sqlDialect: 'postgresql',
+      defaultSchema: 'public',
+    },
     mysql: {
       ...sqlMulti,
       label: 'MySQL',

@@ -20,6 +20,8 @@ const labels: SchemaTreeContextMenuLabels = {
   truncate: 'Truncate',
   drop: 'Drop',
   dropView: 'Drop View',
+  viewErDiagram: 'View ER Diagram',
+  newSchema: 'New Schema',
 };
 
 function ids(items: ReturnType<typeof buildSchemaTreeContextMenuItems>): string[] {

@@ -320,6 +320,9 @@ export function MainWindow() {
       moveToGroup: t('main.ctx.moveToGroup'),
       removeFromGroup: t('main.ctx.removeFromGroup'),
       deleteConnection: t('main.ctx.deleteConnection'),
+      copyName: t('main.ctx.copyName'),
+      newQuery: t('main.ctx.newQuery'),
+      refresh: t('main.ctx.refresh'),
     }),
     [t],
   );
@@ -370,6 +373,15 @@ export function MainWindow() {
           onOpenOrDisconnect: () => {
             if (isConnected) void disconnectAction(conn.id);
             else void handleConnect(conn);
+          },
+          onCopyName: () => {
+            void navigator.clipboard.writeText(conn.name);
+          },
+          onNewQuery: () => {
+            void handleConnect(conn);
+          },
+          onRefresh: () => {
+            void fetchConnections();
           },
           onEdit: () => openNewConnectionWindow(conn.id),
           onDuplicate: () => {

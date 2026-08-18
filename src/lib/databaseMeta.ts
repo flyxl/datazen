@@ -89,6 +89,11 @@ export interface DatabaseTypeMeta {
    */
   namespaceEnsure?: 'default-sql' | 'postgresql' | 'path-hierarchy';
   /**
+   * Default schema name to sort first in schema tree (e.g. 'public' for PostgreSQL, 'dbo' for SQL Server).
+   * When set, this schema is always displayed first in the schema list.
+   */
+  defaultSchema?: string;
+  /**
    * When true, host `setLoadedTables` does not merge into `namespaceTree`
    * (plugin owns hierarchy via SDK `syncSchemaNamespace` / aliases).
    */

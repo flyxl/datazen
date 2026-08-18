@@ -12,6 +12,9 @@ export type MainWindowContextMenuLabels = {
   moveToGroup: string;
   removeFromGroup: string;
   deleteConnection: string;
+  copyName: string;
+  newQuery: string;
+  refresh: string;
 };
 
 export function buildMainBlankContextMenuItems(args: {
@@ -43,8 +46,18 @@ export function buildMainGroupContextMenuItems(args: {
   if (!args.isUngrouped) {
     items.push(
       { kind: 'separator' },
-      { kind: 'item', id: 'rename-group', label: args.labels.renameGroup, action: args.onRenameGroup },
-      { kind: 'item', id: 'delete-group', label: args.labels.deleteGroup, action: args.onDeleteGroup },
+      {
+        kind: 'item',
+        id: 'rename-group',
+        label: args.labels.renameGroup,
+        action: args.onRenameGroup,
+      },
+      {
+        kind: 'item',
+        id: 'delete-group',
+        label: args.labels.deleteGroup,
+        action: args.onDeleteGroup,
+      },
     );
   }
   return items;
@@ -56,6 +69,9 @@ export function buildMainConnectionContextMenuItems(args: {
   grouped: boolean;
   moveTargets: Array<{ id: string; label: string }>;
   onOpenOrDisconnect: () => void;
+  onCopyName: () => void;
+  onNewQuery: () => void;
+  onRefresh: () => void;
   onEdit: () => void;
   onDuplicate: () => void;
   onMoveToGroup: (groupId: string) => void;
@@ -69,7 +85,10 @@ export function buildMainConnectionContextMenuItems(args: {
       label: args.isConnected ? args.labels.disconnect : args.labels.openConnection,
       action: args.onOpenOrDisconnect,
     },
+    { kind: 'item', id: 'copy-name', label: args.labels.copyName, action: args.onCopyName },
+    { kind: 'item', id: 'new-query', label: args.labels.newQuery, action: args.onNewQuery },
     { kind: 'separator' },
+    { kind: 'item', id: 'refresh', label: args.labels.refresh, action: args.onRefresh },
     { kind: 'item', id: 'edit-connection', label: args.labels.editConnection, action: args.onEdit },
     {
       kind: 'item',

@@ -111,6 +111,9 @@ const en: Record<TranslationKey, string> = {
   'main.ctx.removeFromGroup': 'Remove from Group',
   'main.ctx.moveToGroup': 'Move to Group',
   'main.ctx.deleteConnection': 'Delete Connection',
+  'main.ctx.copyName': 'Copy Name',
+  'main.ctx.newQuery': 'New Query',
+  'main.ctx.refresh': 'Refresh',
   'main.ctx.confirmDeleteConnection':
     'Are you sure you want to delete connection "{name}"? This cannot be undone.',
 
@@ -451,6 +454,12 @@ const en: Record<TranslationKey, string> = {
   'schemaTree.dropView': 'Drop View',
   'schemaTree.confirmTruncate': 'Truncate table "{name}"? All rows will be deleted.',
   'schemaTree.confirmDrop': 'Drop table "{name}"? This cannot be undone.',
+  'schemaTree.viewErDiagram': 'View ER Diagram',
+  'schemaTree.searchInDatabase': 'Search in Database',
+  'schemaTree.newSchema': 'New Schema',
+  'schemaTree.dataTransfer': 'Data Transfer',
+  'schemaTree.compareSchema': 'Compare Schema',
+  'schemaTree.compareData': 'Compare Data',
   'schemaTree.confirmDropView': 'Drop view "{name}"? This cannot be undone.',
 
   // ── ER Diagram ──
@@ -878,6 +887,7 @@ const en: Record<TranslationKey, string> = {
   'backup.progressLog': 'Execution log',
   'backup.copyLog': 'Copy log',
   'backup.logCopied': 'Copied',
+  'backup.logOmitted': '… {count} lines omitted …',
 
   // ── Window titles ──
   'win.backup': 'Backup Database - DataZen',

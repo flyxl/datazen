@@ -94,6 +94,18 @@ export function ConnectionWindow() {
   const isResizingRef = useRef(false);
   const resizeHandleRef = useRef<HTMLDivElement>(null);
   const selectTableRef = useRef<((table: string, schema?: string) => void) | undefined>();
+  const nodeContextMenuRef = useRef<
+    | ((payload: { kind: string; name: string; x: number; y: number; schema?: string }) => void)
+    | undefined
+  >();
+  const actionsRef = useRef<
+    | {
+        newQuery: (initialSql?: string) => void;
+        openErDiagram: (focusTable?: string) => void;
+        refresh: () => void;
+      }
+    | undefined
+  >();
 
   const activeTab = tabs[activeIdx] ?? null;
 
@@ -523,6 +535,12 @@ export function ConnectionWindow() {
                 onDeleteConnection={handleDeleteConnection}
                 onDisconnect={handleDisconnect}
                 onCollapseSidebar={() => setSidebarCollapsed(true)}
+                onNodeContextMenu={(payload) => nodeContextMenuRef.current?.(payload)}
+                viewActions={{
+                  newQuery: (...args) => actionsRef.current?.newQuery(...args),
+                  openErDiagram: (...args) => actionsRef.current?.openErDiagram(...args),
+                  refresh: () => actionsRef.current?.refresh(),
+                }}
               />
             </aside>
             <div
@@ -590,6 +608,28 @@ export function ConnectionWindow() {
               selectTableRef={
                 selectTableRef as MutableRefObject<
                   ((table: string, schema?: string) => void) | undefined
+                >
+              }
+              nodeContextMenuRef={
+                nodeContextMenuRef as MutableRefObject<
+                  | ((payload: {
+                      kind: string;
+                      name: string;
+                      x: number;
+                      y: number;
+                      schema?: string;
+                    }) => void)
+                  | undefined
+                >
+              }
+              actionsRef={
+                actionsRef as MutableRefObject<
+                  | {
+                      newQuery: (initialSql?: string) => void;
+                      openErDiagram: (focusTable?: string) => void;
+                      refresh: () => void;
+                    }
+                  | undefined
                 >
               }
             />

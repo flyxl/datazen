@@ -55,7 +55,7 @@ export function BackupWindow() {
   const [statusMessage, setStatusMessage] = useState('');
   const [progress, setProgress] = useState<BackupProgressPayload | null>(null);
   const [progressLog, setProgressLog] = useState<string[]>([]);
-  const logPumpRef = useRef(createProgressLogPump(setProgressLog, 80, t));
+  const logPumpRef = useRef(createProgressLogPump(setProgressLog));
   const [searchConn, setSearchConn] = useState('');
   const [searchDb, setSearchDb] = useState('');
 

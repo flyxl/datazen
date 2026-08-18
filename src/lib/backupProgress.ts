@@ -65,7 +65,7 @@ const LOG_TAIL_KEEP = MAX_PROGRESS_LOG_LINES - LOG_HEAD_KEEP - 1;
  * Every "N lines omitted" marker (localized or fallback) starts with `… ` so
  * it can be recognized again on the next trim and its count carried forward.
  */
-const OMITTED_MARKER_RE = /^… (\d+)/;
+const OMITTED_MARKER_RE = /^…\s.*?(\d+)/;
 
 function totalChars(lines: string[]): number {
   let total = 0;
