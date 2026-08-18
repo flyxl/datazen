@@ -8,6 +8,7 @@ const zhCN = {
   'common.delete': '删除',
   'common.retry': '重试',
   'common.loading': '加载中…',
+  'common.default': '默认',
   'common.confirm': '确认',
   'common.search': '搜索',
   'common.new': '新建',
@@ -412,13 +413,20 @@ const zhCN = {
   'connWin.closeTabsToRight': '关闭右侧标签',
   'connWin.closeTabsToLeft': '关闭左侧标签',
   'connWin.closeConnection': '关闭连接',
+  'connWin.collapseAll': '全部折叠',
   'connWin.noConnections': '从主窗口打开一个连接',
+  'connWin.collapseSidebar': '收起侧边栏',
+  'connWin.expandSidebar': '展开侧边栏',
 
   // ── Table View ──
   'tableView.loadingData': '加载表数据…',
 
   // ── Schema Tree ──
   'schemaTree.tables': '表',
+  'schemaTree.views': '视图',
+  'schemaTree.functions': '函数',
+  'schemaTree.procedures': '存储过程',
+  'schemaTree.triggers': '触发器',
   'schemaTree.keys': '键',
   'schemaTree.noMatchingTables': '没有匹配的表或视图',
   'schemaTree.noTables': '没有表',

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type MutableRefObject } from 'react';
-import { Plus, Search } from 'lucide-react';
+import { PanelLeftOpen } from 'lucide-react';
 import { TitleBar } from '../../components/TitleBar';
 import { useI18n } from '../../hooks/useI18n';
 import { useSettings } from '../../hooks/useSettings';
@@ -16,6 +16,10 @@ import { getConnectionView } from '../../lib/connectionViews';
 import { openNewConnectionWindow, PENDING_CONNECTION_KEY } from '../../lib/windowManager';
 import { useActiveConnectionStore } from '../../stores/activeConnectionStore';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
+import {
+  ConnectionShareDialog,
+  type ConnectionShareMode,
+} from '../../components/connection/ConnectionShareDialog';
 import { ConnectionNavigatorTree } from './ConnectionNavigatorTree';
 import type { DatabaseType } from '../../types';
 import type { QueryTab } from '../../stores/queryStore';
@@ -76,6 +80,8 @@ export function ConnectionWindow() {
   const deleteConnection = useConnectionStore((s) => s.deleteConnection);
   const connections = useConnectionStore((s) => s.connections);
   const [confirmDelete, confirmDeleteDialog] = useConfirmDialog();
+  const [connShareOpen, setConnShareOpen] = useState(false);
+  const [connShareMode, setConnShareMode] = useState<ConnectionShareMode>('export');
 
   const [tabs, setTabs] = useState<ConnectionTab[]>(() => {
     const pending = consumePendingConnection();
@@ -83,7 +89,10 @@ export function ConnectionWindow() {
   });
   const [activeIdx, setActiveIdx] = useState(0);
   const storeCache = useRef(new Map<string, StoreSnapshot>());
-  const [treeSearch, setTreeSearch] = useState('');
+  const [sidebarWidth, setSidebarWidth] = useState(280);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const isResizingRef = useRef(false);
+  const resizeHandleRef = useRef<HTMLDivElement>(null);
   const selectTableRef = useRef<((table: string, schema?: string) => void) | undefined>();
 
   const activeTab = tabs[activeIdx] ?? null;
@@ -418,6 +427,49 @@ export function ConnectionWindow() {
     selectTableRef.current?.(tableName, schema);
   }, []);
 
+  const handleRefresh = useCallback(() => {
+    void fetchConnections();
+    void fetchGroups();
+  }, [fetchConnections, fetchGroups]);
+
+  useEffect(() => {
+    const handle = resizeHandleRef.current;
+    if (!handle) return;
+
+    const clampWidth = (width: number) => Math.max(200, Math.min(500, width));
+
+    const onMouseDown = (e: MouseEvent) => {
+      e.preventDefault();
+      isResizingRef.current = true;
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+    };
+
+    const onMouseMove = (e: MouseEvent) => {
+      if (!isResizingRef.current) return;
+      setSidebarWidth(clampWidth(e.clientX));
+    };
+
+    const onMouseUp = () => {
+      if (!isResizingRef.current) return;
+      isResizingRef.current = false;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+
+    handle.addEventListener('mousedown', onMouseDown);
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+
+    return () => {
+      handle.removeEventListener('mousedown', onMouseDown);
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+  }, []);
+
   // ── Render ──
 
   const connectedTab =
@@ -435,39 +487,51 @@ export function ConnectionWindow() {
       <TitleBar title={centerTitle} />
 
       <div className="flex min-h-0 flex-1">
-        {/* ── Left navigator tree (always visible) ── */}
-        <aside className="flex w-56 shrink-0 flex-col border-r border-edge bg-surface-alt">
-          <div className="flex items-center gap-1 border-b border-edge px-2 py-1.5">
-            <div className="relative flex-1">
-              <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-fg-muted" />
-              <input
-                type="text"
-                className="h-7 w-full rounded-md bg-surface pl-7 pr-2 text-xs text-fg placeholder:text-fg-muted focus:outline-none focus:ring-1 focus:ring-accent"
-                placeholder={t('common.search')}
-                value={treeSearch}
-                onChange={(e) => setTreeSearch(e.target.value)}
-              />
-            </div>
+        {/* ── Left navigator tree ── */}
+        {sidebarCollapsed ? (
+          <div className="flex shrink-0 flex-col items-center border-r border-edge bg-surface-alt py-2">
             <button
               type="button"
-              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-fg-muted hover:bg-surface-raised hover:text-fg"
-              onClick={() => openNewConnectionWindow()}
-              title={t('main.newConnection')}
+              className="flex h-7 w-7 items-center justify-center rounded-md text-fg-muted hover:bg-surface-raised hover:text-fg"
+              onClick={() => setSidebarCollapsed(false)}
+              title={t('connWin.expandSidebar')}
             >
-              <Plus className="h-4 w-4" />
+              <PanelLeftOpen className="h-4 w-4" />
             </button>
           </div>
-          <ConnectionNavigatorTree
-            searchQuery={treeSearch}
-            activeConfigId={activeTab?.configId ?? null}
-            onSelectConnection={handleSelectConnection}
-            onSelectTable={handleSelectTable}
-            onNewConnection={() => openNewConnectionWindow()}
-            onEditConnection={(id) => openNewConnectionWindow(id)}
-            onDeleteConnection={handleDeleteConnection}
-            onDisconnect={handleDisconnect}
-          />
-        </aside>
+        ) : (
+          <>
+            <aside
+              style={{ width: sidebarWidth }}
+              className="flex shrink-0 flex-col border-r border-edge bg-surface-alt"
+            >
+              <ConnectionNavigatorTree
+                activeConfigId={activeTab?.configId ?? null}
+                onSelectConnection={handleSelectConnection}
+                onSelectTable={handleSelectTable}
+                onNewConnection={() => openNewConnectionWindow()}
+                onRefresh={handleRefresh}
+                onExportConnections={() => {
+                  setConnShareMode('export');
+                  setConnShareOpen(true);
+                }}
+                onImportConnections={() => {
+                  setConnShareMode('import');
+                  setConnShareOpen(true);
+                }}
+                onEditConnection={(id) => openNewConnectionWindow(id)}
+                onDeleteConnection={handleDeleteConnection}
+                onDisconnect={handleDisconnect}
+                onCollapseSidebar={() => setSidebarCollapsed(true)}
+              />
+            </aside>
+            <div
+              ref={resizeHandleRef}
+              className="w-px shrink-0 cursor-col-resize bg-edge hover:bg-accent/30"
+              title={t('main.sidebar.resize')}
+            />
+          </>
+        )}
 
         {/* ── Main content area ── */}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -534,6 +598,18 @@ export function ConnectionWindow() {
       </div>
 
       {confirmDeleteDialog}
+      <ConnectionShareDialog
+        open={connShareOpen}
+        mode={connShareMode}
+        importSource="file"
+        onClose={() => setConnShareOpen(false)}
+        onExportSuccess={() => setConnShareOpen(false)}
+        onImportSuccess={() => {
+          setConnShareOpen(false);
+          handleRefresh();
+        }}
+        onError={() => setConnShareOpen(false)}
+      />
     </div>
   );
 }

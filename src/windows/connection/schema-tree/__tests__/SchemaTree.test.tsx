@@ -88,6 +88,7 @@ vi.mock('../../../../commands/database', () => ({
     getTables: (...args: unknown[]) => mockGetTables(...args),
     useDatabase: (...args: unknown[]) => mockUseDatabase(...args),
     getColumns: vi.fn().mockResolvedValue([]),
+    getDatabaseObjects: vi.fn().mockResolvedValue([]),
   },
 }));
 
@@ -100,7 +101,7 @@ afterEach(() => {
 beforeEach(() => {
   mockGetDatabases.mockResolvedValue(['db_a', 'db_b']);
   mockGetTables.mockResolvedValue([
-    { name: 'users', tableType: 'TABLE', schema: null, rowCount: null },
+    { name: 'users', tableType: 'table', schema: null, rowCount: null },
   ]);
   mockUseDatabase.mockResolvedValue(undefined);
   useSchemaStore.getState().reset();
@@ -216,7 +217,7 @@ describe('SchemaTree routing', () => {
   it('expands a postgresql database node and loads tables', async () => {
     mockGetDatabases.mockResolvedValueOnce(['db1', 'db2']);
     mockGetTables.mockResolvedValueOnce([
-      { name: 'orders', tableType: 'TABLE', schema: 'public', rowCount: null },
+      { name: 'orders', tableType: 'table', schema: 'public', rowCount: null },
     ]);
 
     const { findByText } = render(<SchemaTree {...baseProps} databaseType="postgresql" />);
@@ -229,10 +230,13 @@ describe('SchemaTree routing', () => {
       expect(mockGetTables).toHaveBeenCalledWith('conn-1', 'db1');
       expect(useSchemaStore.getState().currentDatabase).toBe('db1');
       expect(useSchemaStore.getState().tables.map((t) => t.name)).toEqual(['orders']);
-      expect(useSchemaStore.getState().namespaceTree).toMatchObject({
-        db1: { public: { orders: [] } },
-      });
     });
+
+    const publicSchema = await findByText('public');
+    fireEvent.click(publicSchema.closest('button')!);
+
+    const tablesCategory = await findByText('schemaTree.tables');
+    fireEvent.click(tablesCategory.closest('button')!);
 
     expect(await findByText('orders')).toBeInTheDocument();
   });
@@ -240,8 +244,8 @@ describe('SchemaTree routing', () => {
   it('expands a mysql database node and loads tables', async () => {
     mockGetDatabases.mockResolvedValueOnce(['alpha', 'beta']);
     mockGetTables.mockResolvedValueOnce([
-      { name: 't1', tableType: 'TABLE', schema: null, rowCount: null },
-      { name: 't2', tableType: 'TABLE', schema: null, rowCount: null },
+      { name: 't1', tableType: 'table', schema: null, rowCount: null },
+      { name: 't2', tableType: 'table', schema: null, rowCount: null },
     ]);
 
     const { findByText, getByText } = render(<SchemaTree {...baseProps} databaseType="mysql" />);
@@ -254,10 +258,10 @@ describe('SchemaTree routing', () => {
       expect(mockGetTables).toHaveBeenCalledWith('conn-1', 'alpha');
       expect(useSchemaStore.getState().currentDatabase).toBe('alpha');
       expect(useSchemaStore.getState().tables.map((t) => t.name)).toEqual(['t1', 't2']);
-      expect(useSchemaStore.getState().namespaceTree).toMatchObject({
-        alpha: { t1: [], t2: [] },
-      });
     });
+
+    const tablesCategory = await findByText('schemaTree.tables');
+    fireEvent.click(tablesCategory.closest('button')!);
 
     expect(await findByText('t1')).toBeInTheDocument();
     expect(getByText('t2')).toBeInTheDocument();
@@ -266,13 +270,21 @@ describe('SchemaTree routing', () => {
   it('removes a dropped table from the multi-db sidebar without remounting', async () => {
     mockGetDatabases.mockResolvedValueOnce(['alpha', 'beta']);
     mockGetTables.mockResolvedValueOnce([
-      { name: 't1', tableType: 'TABLE', schema: null, rowCount: null },
-      { name: 't2', tableType: 'TABLE', schema: null, rowCount: null },
+      { name: 't1', tableType: 'table', schema: null, rowCount: null },
+      { name: 't2', tableType: 'table', schema: null, rowCount: null },
     ]);
 
     const { findByText, queryByText } = render(<SchemaTree {...baseProps} databaseType="mysql" />);
 
     fireEvent.click((await findByText('alpha')).closest('button')!);
+
+    await waitFor(() => {
+      expect(useSchemaStore.getState().tables.length).toBeGreaterThan(0);
+    });
+
+    const tablesCategory = await findByText('schemaTree.tables');
+    fireEvent.click(tablesCategory.closest('button')!);
+
     expect(await findByText('t2')).toBeInTheDocument();
 
     useSchemaStore.getState().removeRelation('t2');
@@ -281,5 +293,58 @@ describe('SchemaTree routing', () => {
       expect(queryByText('t2')).not.toBeInTheDocument();
     });
     expect(await findByText('t1')).toBeInTheDocument();
+  });
+
+  it('groups tables by schema when multiple schemas exist (PostgreSQL)', async () => {
+    mockGetDatabases.mockResolvedValueOnce(['mydb']);
+    mockGetTables.mockResolvedValueOnce([
+      { name: 'users', tableType: 'table', schema: 'public', rowCount: null },
+      { name: 'audit_log', tableType: 'table', schema: 'audit', rowCount: null },
+      { name: 'active_users', tableType: 'view', schema: 'public', rowCount: null },
+    ]);
+
+    const { findByText, getByText, getAllByText } = render(
+      <SchemaTree {...baseProps} databaseType="postgresql" />,
+    );
+
+    const dbBtn = await findByText('mydb');
+    fireEvent.click(dbBtn.closest('button')!);
+
+    expect(await findByText('public')).toBeInTheDocument();
+    expect(getByText('audit')).toBeInTheDocument();
+
+    fireEvent.click(getByText('public').closest('button')!);
+    const publicTablesBtn = getAllByText('schemaTree.tables')[0];
+    fireEvent.click(publicTablesBtn.closest('button')!);
+    expect(await findByText('users')).toBeInTheDocument();
+
+    const publicViewsBtn = getAllByText('schemaTree.views')[0];
+    fireEvent.click(publicViewsBtn.closest('button')!);
+    expect(await findByText('active_users')).toBeInTheDocument();
+
+    fireEvent.click(getByText('audit').closest('button')!);
+    const auditTablesBtn = getAllByText('schemaTree.tables')[1];
+    fireEvent.click(auditTablesBtn.closest('button')!);
+    expect(await findByText('audit_log')).toBeInTheDocument();
+  });
+
+  it('shows public schema layer even when only public schema exists', async () => {
+    mockGetDatabases.mockResolvedValueOnce(['mydb']);
+    mockGetTables.mockResolvedValueOnce([
+      { name: 'users', tableType: 'table', schema: 'public', rowCount: null },
+      { name: 'orders', tableType: 'table', schema: 'public', rowCount: null },
+    ]);
+
+    const { findByText } = render(<SchemaTree {...baseProps} databaseType="postgresql" />);
+
+    const dbBtn = await findByText('mydb');
+    fireEvent.click(dbBtn.closest('button')!);
+
+    expect(await findByText('public')).toBeInTheDocument();
+
+    fireEvent.click((await findByText('public')).closest('button')!);
+    fireEvent.click((await findByText('schemaTree.tables')).closest('button')!);
+    expect(await findByText('users')).toBeInTheDocument();
+    expect(await findByText('orders')).toBeInTheDocument();
   });
 });

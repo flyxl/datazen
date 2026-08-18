@@ -764,6 +764,7 @@ pub fn run() {
             commands::get_connections,
             commands::save_connection,
             commands::delete_connection,
+            commands::reorder_connections,
             commands::get_groups,
             commands::save_groups,
             commands::test_connection,

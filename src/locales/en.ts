@@ -10,6 +10,7 @@ const en: Record<TranslationKey, string> = {
   'common.delete': 'Delete',
   'common.retry': 'Retry',
   'common.loading': 'Loading…',
+  'common.default': 'Default',
   'common.confirm': 'Confirm',
   'common.search': 'Search',
   'common.new': 'New',
@@ -420,13 +421,20 @@ const en: Record<TranslationKey, string> = {
   'connWin.closeTabsToRight': 'Close to the Right',
   'connWin.closeTabsToLeft': 'Close to the Left',
   'connWin.closeConnection': 'Close Connection',
+  'connWin.collapseAll': 'Collapse All',
   'connWin.noConnections': 'Open a connection from the main window',
+  'connWin.collapseSidebar': 'Collapse Sidebar',
+  'connWin.expandSidebar': 'Expand Sidebar',
 
   // ── Table View ──
   'tableView.loadingData': 'Loading table data…',
 
   // ── Schema Tree ──
   'schemaTree.tables': 'Tables',
+  'schemaTree.views': 'Views',
+  'schemaTree.functions': 'Functions',
+  'schemaTree.procedures': 'Procedures',
+  'schemaTree.triggers': 'Triggers',
   'schemaTree.keys': 'Keys',
   'schemaTree.noMatchingTables': 'No matching tables or views',
   'schemaTree.noTables': 'No tables',

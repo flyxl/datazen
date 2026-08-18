@@ -660,3 +660,20 @@ useSchemaStore.setState = ((partial, replace) => {
     nativeSetState((state) => merge(state));
   }
 }) as typeof useSchemaStore.setState;
+
+/**
+ * Read a field from the keyed per-connection schema store.
+ * Falls back to the global (active-connection) field when the keyed entry
+ * is not yet populated, keeping backward compatibility for callers that
+ * only have a single connection open.
+ */
+export function useConnectionSchemaField<K extends keyof ConnectionSchemaState>(
+  connectionId: string,
+  field: K,
+): ConnectionSchemaState[K] {
+  return useSchemaStore((s) => {
+    const entry = s.schemas.get(connectionId);
+    if (entry) return entry[field];
+    return (s as unknown as ConnectionSchemaState)[field];
+  });
+}
