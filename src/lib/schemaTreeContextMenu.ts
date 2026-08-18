@@ -1,6 +1,13 @@
 import type { NativeMenuItemDef } from './nativeContextMenu';
 
-export type SchemaTreeNodeKind = 'table' | 'view' | 'database' | 'blank';
+export type SchemaTreeNodeKind =
+  | 'table'
+  | 'view'
+  | 'database'
+  | 'blank'
+  | 'function'
+  | 'procedure'
+  | 'trigger';
 
 /** Caller-supplied labels (typically from `t()`). No hardcoded locale strings here. */
 export type SchemaTreeContextMenuLabels = {
@@ -166,5 +173,7 @@ export function buildSchemaTreeContextMenuItems(
         !readOnly ? item('import', labels.importData, handlers.onImport) : null,
         !readOnly && showNewTable ? item('new-table', labels.newTable, handlers.onNewTable) : null,
       );
+    default:
+      return push(item('copy-name', labels.copyName, handlers.onCopyName));
   }
 }

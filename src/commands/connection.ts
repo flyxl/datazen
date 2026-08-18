@@ -8,6 +8,8 @@ export const connectionCommands = {
 
   deleteConnection: (id: string) => invoke<void>('delete_connection', { id }),
 
+  reorderConnections: (orderedIds: string[]) => invoke<void>('reorder_connections', { orderedIds }),
+
   testConnection: (config: ConnectionConfig) => invoke<ServerInfo>('test_connection', { config }),
 
   connect: (configId: string) => invoke<string>('connect', { configId }),

@@ -159,6 +159,34 @@ impl Store {
         self.save_json_file("groups.json", &snapshot).await
     }
 
+    /// Reorder connections to match the given list of IDs.
+    /// IDs not present in the current list are ignored; connections
+    /// whose IDs are not in `ordered_ids` are appended at the end.
+    pub async fn reorder_connections(&self, ordered_ids: Vec<String>) -> Result<(), StoreError> {
+        {
+            let mut cache = self.cache.write().await;
+            let mut by_id: std::collections::HashMap<String, ConnectionConfig> = cache
+                .connections
+                .drain(..)
+                .map(|c| (c.id.clone(), c))
+                .collect();
+            for id in &ordered_ids {
+                if let Some(c) = by_id.remove(id) {
+                    cache.connections.push(c);
+                }
+            }
+            // Append any remaining connections not mentioned in ordered_ids.
+            let mut remaining: Vec<ConnectionConfig> = by_id.into_values().collect();
+            remaining.sort_by(|a, b| a.name.cmp(&b.name));
+            cache.connections.extend(remaining);
+        }
+        let snapshot = {
+            let cache = self.cache.read().await;
+            cache.connections.clone()
+        };
+        self.persist_connections(&snapshot).await
+    }
+
     pub fn decrypt_password(&self, encrypted: &str) -> Result<String, StoreError> {
         self.decrypt(encrypted)
     }
