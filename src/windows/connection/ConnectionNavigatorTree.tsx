@@ -27,7 +27,7 @@ import { useI18n } from '../../hooks/useI18n';
 import { cn } from '../../lib/cn';
 import { formatGroupLabel } from '../../lib/connectionGroups';
 import { DB_REGISTRY } from '../../lib/databaseTypes';
-import { getPluginSchemaTree } from '../../plugins/generated';
+import { isLeaf, pathKey, type SqlNamespace } from '../../lib/sqlNamespace';
 import {
   buildMainConnectionContextMenuItems,
   buildMainGroupContextMenuItems,
@@ -40,7 +40,7 @@ import { showWebContextMenu } from '../../stores/contextMenuStore';
 import { shouldUseMultiDatabaseTree } from './schema-tree/SchemaTree';
 import { connectionCommands } from '../../commands/connection';
 import { openDataSyncWindow, openSchemaDiffWindow } from '../../lib/windowManager';
-import type { ConnectionConfig, DatabaseObject, DatabaseType, TableInfo } from '../../types';
+import type { ConnectionConfig, DatabaseObject, TableInfo } from '../../types';
 
 // ── Category definitions ────────────────────────────────────────
 
@@ -58,6 +58,19 @@ const CATEGORIES: CategoryDef[] = [
   { id: 'procedure', labelKey: 'schemaTree.procedures', icon: Braces, color: 'text-emerald-400' },
   { id: 'trigger', labelKey: 'schemaTree.triggers', icon: Zap, color: 'text-amber-400' },
 ];
+
+const LEAF_KIND_ICON: Record<
+  string,
+  { icon: React.ComponentType<{ className?: string }>; color: string }
+> = {
+  table: { icon: Table2, color: 'text-blue-400' },
+  view: { icon: Eye, color: 'text-purple-400' },
+  materializedView: { icon: Eye, color: 'text-purple-400' },
+  systemTable: { icon: Table2, color: 'text-gray-400' },
+  function: { icon: Braces, color: 'text-orange-400' },
+  procedure: { icon: Braces, color: 'text-emerald-400' },
+  trigger: { icon: Zap, color: 'text-amber-400' },
+};
 
 // ── Flat row types ──────────────────────────────────────────────
 
@@ -106,9 +119,118 @@ type UnifiedRow =
     }
   | { type: 'object'; obj: DatabaseObject; depth: number; catId: string }
   | { type: 'db-loading'; depth: number }
-  | { type: 'custom-tree'; configId: string; connectionId: string; databaseType: DatabaseType }
+  | {
+      type: 'namespace-node';
+      name: string;
+      depth: number;
+      expanded: boolean;
+      isLeaf: boolean;
+      /** Object kind for leaf nodes (table, view, function, etc.) */
+      leafKind?:
+        | 'table'
+        | 'view'
+        | 'materializedView'
+        | 'systemTable'
+        | 'function'
+        | 'procedure'
+        | 'trigger';
+      /** Path segments from root to this node (for ensureNamespacePath) */
+      segments: string[];
+      key: string;
+      configId: string;
+      connectionId: string;
+    }
   | { type: 'empty-group' }
   | { type: 'no-connections' };
+
+/** Check if any key in the namespace tree contains the query string. */
+function namespaceTreeContains(tree: SqlNamespace, query: string): boolean {
+  if (isLeaf(tree)) return false;
+  for (const [key, child] of Object.entries(tree)) {
+    if (key.toLowerCase().includes(query)) return true;
+    if (!isLeaf(child) && namespaceTreeContains(child, query)) return true;
+  }
+  return false;
+}
+
+/**
+ * Flatten a SqlNamespace tree into UnifiedRow entries for path-hierarchy drivers.
+ * Branches become expandable namespace-node rows; leaves get their kind from tables metadata.
+ */
+function flattenNamespaceTree(
+  tree: SqlNamespace,
+  configId: string,
+  connectionId: string,
+  baseDepth: number,
+  rows: UnifiedRow[],
+  expandedDbs: Set<string>,
+  query: string,
+  tableTypeMap: Map<string, TableInfo['tableType']>,
+  loadedPaths: Set<string>,
+  parentSegments: string[] = [],
+): void {
+  if (isLeaf(tree)) return;
+
+  const entries = Object.entries(tree).sort(([a], [b]) => a.localeCompare(b));
+  for (const [name, child] of entries) {
+    if (query && !name.toLowerCase().includes(query)) {
+      if (isLeaf(child)) continue;
+      if (!namespaceTreeContains(child, query)) continue;
+    }
+
+    const segments = [...parentSegments, name];
+    const nodeKey = `${configId}::ns::${segments.join('/')}`;
+    const nodeIsLeaf = isLeaf(child);
+
+    if (nodeIsLeaf) {
+      rows.push({
+        type: 'namespace-node',
+        name,
+        depth: baseDepth,
+        expanded: false,
+        isLeaf: true,
+        leafKind: tableTypeMap.get(name) ?? 'table',
+        segments,
+        key: nodeKey,
+        configId,
+        connectionId,
+      });
+    } else {
+      const expanded = expandedDbs.has(nodeKey) || !!query;
+      rows.push({
+        type: 'namespace-node',
+        name,
+        depth: baseDepth,
+        expanded,
+        isLeaf: false,
+        segments,
+        key: nodeKey,
+        configId,
+        connectionId,
+      });
+      if (expanded) {
+        const childEntries = Object.entries(child);
+        const pathLoaded = loadedPaths.has(pathKey(segments));
+        if (childEntries.length === 0 && !pathLoaded && !query) {
+          rows.push({ type: 'db-loading', depth: baseDepth + 1 });
+        } else {
+          flattenNamespaceTree(
+            child,
+            configId,
+            connectionId,
+            baseDepth + 1,
+            rows,
+            expandedDbs,
+            query,
+            tableTypeMap,
+            loadedPaths,
+            segments,
+          );
+        }
+      }
+    }
+  }
+}
 
 const ROW_HEIGHT = 28;
 
@@ -194,6 +316,7 @@ export function ConnectionNavigatorTree({
   const [renameValue, setRenameValue] = useState('');
   const schemas = useSchemaStore((s) => s.schemas);
   const loadForConnection = useSchemaStore((s) => s.loadForConnection);
+  const ensureNamespacePath = useSchemaStore((s) => s.ensureNamespacePath);
 
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -270,22 +393,29 @@ export function ConnectionNavigatorTree({
       if (!conn) continue;
 
       const meta = DB_REGISTRY[conn.databaseType];
+      const isCustomTree = meta?.schemaTreeMode === 'custom';
+      const isPathHierarchyOnly = meta?.namespaceEnsure === 'path-hierarchy' && !isCustomTree;
+      const isPluginManaged = isCustomTree || isPathHierarchyOnly;
       const isMultiDb = shouldUseMultiDatabaseTree(meta, conn.database);
 
       void loadForConnection(entry.connectionId, {
         preferredDatabase: conn.database,
-        skipLoadTables: isMultiDb,
+        skipLoadTables: isMultiDb || isPluginManaged,
         databaseType: conn.databaseType,
+      }).then(() => {
+        if (isPathHierarchyOnly) {
+          void ensureNamespacePath([], entry.connectionId);
+        }
       });
 
       // Auto-expand default database for standard schema trees
-      if (!isMultiDb && conn.database) {
+      if (!isMultiDb && !isPluginManaged && conn.database) {
         const dbKey = `${configId}::${conn.database}`;
         setExpandedDbs((prev) => new Set(prev).add(dbKey));
         setExpandedCats((prev) => new Set(prev).add(`${dbKey}::tables`));
       }
     }
-  }, [expandedConnections, activeConnections, connections, loadForConnection]);
+  }, [expandedConnections, activeConnections, connections, loadForConnection, ensureNamespacePath]);
 
   // ── Context menu labels ──
 
@@ -813,9 +943,22 @@ export function ConnectionNavigatorTree({
     [activeConnections, connect, onSelectConnection],
   );
 
+  // ── Debounced search (100ms) ──
+
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  useEffect(() => {
+    const raw = searchQuery.trim();
+    if (!raw) {
+      setDebouncedSearch('');
+      return;
+    }
+    const timer = setTimeout(() => setDebouncedSearch(raw), 100);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
   // ── Build unified flat rows ──
 
-  const query = searchQuery.trim().toLowerCase();
+  const query = debouncedSearch.toLowerCase();
 
   const flatRows = useMemo<UnifiedRow[]>(() => {
     const rows: UnifiedRow[] = [];
@@ -917,6 +1060,12 @@ export function ConnectionNavigatorTree({
         if (!key.startsWith(cEntry.connectionId + '::')) continue;
         if (items.some((i) => i.name.toLowerCase().includes(query))) return true;
       }
+      // Check namespace tree keys (path-hierarchy / custom drivers)
+      if (!isLeaf(sd.namespaceTree) && namespaceTreeContains(sd.namespaceTree, query)) return true;
+      // Check cached path items
+      for (const items of Object.values(sd.pathItems)) {
+        if (items.some((i) => i.name.toLowerCase().includes(query))) return true;
+      }
       return false;
     };
 
@@ -968,13 +1117,28 @@ export function ConnectionNavigatorTree({
 
         const meta = DB_REGISTRY[conn.databaseType];
 
-        if (meta?.schemaTreeMode === 'custom') {
-          rows.push({
-            type: 'custom-tree',
-            configId: conn.id,
+        if (meta?.schemaTreeMode === 'custom' || meta?.namespaceEnsure === 'path-hierarchy') {
+          const tree = schemaData.namespaceTree;
+          const treeEmpty = isLeaf(tree) || Object.keys(tree).length === 0;
+          if (treeEmpty) {
+            if (!query && (schemaData.loading || schemaData.ensuringCount > 0)) {
+              rows.push({ type: 'db-loading', depth: 2 });
+            }
+            continue;
+          }
+          const typeMap = new Map<string, TableInfo['tableType']>();
+          for (const t of schemaData.tables) typeMap.set(t.name, t.tableType);
+          flattenNamespaceTree(
+            tree,
+            conn.id,
             connectionId,
-            databaseType: conn.databaseType,
-          });
+            2,
+            rows,
+            expandedDbs,
+            query,
+            typeMap,
+            schemaData.loadedPaths,
+          );
           continue;
         }
 
@@ -1130,7 +1294,7 @@ export function ConnectionNavigatorTree({
   const virtualizer = useVirtualizer({
     count: flatRows.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: (i) => (flatRows[i]?.type === 'custom-tree' ? 400 : ROW_HEIGHT),
+    estimateSize: () => ROW_HEIGHT,
     overscan: 25,
   });
 
@@ -1277,7 +1441,7 @@ export function ConnectionNavigatorTree({
             ) : (
               <ChevronRight className="h-3 w-3 shrink-0" />
             )}
-            <FolderOpen className="h-3.5 w-3.5 shrink-0 text-amber-400" />
+            <Database className="h-3.5 w-3.5 shrink-0 text-teal-400" />
             <span className="min-w-0 truncate">{row.schemaName || t('common.default')}</span>
           </button>
         );
@@ -1378,21 +1542,64 @@ export function ConnectionNavigatorTree({
           </div>
         );
 
-      case 'custom-tree': {
-        const PluginTree = getPluginSchemaTree(row.databaseType);
-        if (!PluginTree) {
-          return <div className="px-3 py-1.5 text-[11px] text-fg-muted">{t('common.loading')}</div>;
+      case 'namespace-node': {
+        if (row.isLeaf) {
+          const leafIcon = LEAF_KIND_ICON[row.leafKind ?? 'table'];
+          const LeafIcon = leafIcon.icon;
+          const menuKind =
+            row.leafKind === 'view' || row.leafKind === 'materializedView'
+              ? 'view'
+              : row.leafKind === 'function' ||
+                  row.leafKind === 'procedure' ||
+                  row.leafKind === 'trigger'
+                ? row.leafKind
+                : 'table';
+          return (
+            <button
+              type="button"
+              data-tree-node={menuKind}
+              data-item-name={row.name}
+              className="flex w-full items-center gap-1.5 py-1 pr-2 text-left text-[13px] text-fg-secondary hover:bg-surface-raised"
+              style={{ paddingLeft: depthPadding(row.depth) }}
+              onClick={() => onSelectTable(row.name)}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onNodeContextMenu?.({ kind: menuKind, name: row.name, x: e.clientX, y: e.clientY });
+              }}
+            >
+              <LeafIcon className={`h-3.5 w-3.5 shrink-0 ${leafIcon.color}`} />
+              <span className="selectable min-w-0 truncate">{row.name}</span>
+            </button>
+          );
         }
         return (
-          <div className="pl-4">
-            <PluginTree
-              connectionId={row.connectionId}
-              databaseType={row.databaseType}
-              onSelectTable={(table: string, schema?: string) => onSelectTable(table, schema)}
-              selectedTable={null}
-              searchQuery={searchQuery}
-            />
-          </div>
+          <button
+            type="button"
+            data-tree-node="namespace"
+            className="flex w-full items-center gap-1.5 py-1 pr-2 text-left text-[13px] text-fg-secondary hover:bg-surface-raised"
+            style={{ paddingLeft: depthPadding(row.depth) }}
+            onClick={() => {
+              const willExpand = !expandedDbs.has(row.key);
+              setExpandedDbs((prev) => {
+                const next = new Set(prev);
+                if (next.has(row.key)) next.delete(row.key);
+                else next.add(row.key);
+                return next;
+              });
+              if (willExpand) {
+                void ensureNamespacePath(row.segments, row.connectionId);
+              }
+            }}
+          >
+            {row.expanded ? (
+              <ChevronDown className="h-3 w-3 shrink-0" />
+            ) : (
+              <ChevronRight className="h-3 w-3 shrink-0" />
+            )}
+            <FolderOpen className="h-3.5 w-3.5 shrink-0 text-amber-400" />
+            <span className="min-w-0 truncate">{row.name}</span>
+          </button>
         );
       }
 
@@ -1502,27 +1709,21 @@ export function ConnectionNavigatorTree({
       {/* Unified virtual list */}
       <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto py-1">
         <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
-          {virtualizer.getVirtualItems().map((virtualRow) => {
-            const row = flatRows[virtualRow.index];
-            const isCustom = row?.type === 'custom-tree';
-            return (
-              <div
-                key={virtualRow.index}
-                ref={isCustom ? virtualizer.measureElement : undefined}
-                data-index={isCustom ? virtualRow.index : undefined}
-                style={{
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  width: '100%',
-                  height: isCustom ? undefined : virtualRow.size,
-                  transform: `translateY(${virtualRow.start}px)`,
-                }}
-              >
-                {renderRow(row)}
-              </div>
-            );
-          })}
+          {virtualizer.getVirtualItems().map((virtualRow) => (
+            <div
+              key={virtualRow.index}
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '100%',
+                height: virtualRow.size,
+                transform: `translateY(${virtualRow.start}px)`,
+              }}
+            >
+              {renderRow(flatRows[virtualRow.index])}
+            </div>
+          ))}
         </div>
       </div>
 
