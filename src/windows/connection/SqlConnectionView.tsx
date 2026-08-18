@@ -705,8 +705,10 @@ export function SqlConnectionView({
             onTruncate:
               kind === 'table' && !isReadOnly && !safeMode
                 ? () => {
-                    const sql =
-                      dbType === 'sqlite' ? `DELETE FROM ${quoted}` : `TRUNCATE TABLE ${quoted}`;
+                    const dialect = getSqlDialect(dbType);
+                    const sql = dialect?.getTruncateTableSql
+                      ? dialect.getTruncateTableSql(quoted)
+                      : `TRUNCATE TABLE ${quoted}`;
                     void confirmAndRun(
                       t('schemaTree.confirmTruncate', { name }),
                       t('schemaTree.truncate'),

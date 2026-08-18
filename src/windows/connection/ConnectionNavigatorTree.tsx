@@ -27,6 +27,7 @@ import { useI18n } from '../../hooks/useI18n';
 import { cn } from '../../lib/cn';
 import { formatGroupLabel } from '../../lib/connectionGroups';
 import { DB_REGISTRY } from '../../lib/databaseTypes';
+import { getPluginSchemaTree } from '../../plugins/generated';
 import {
   buildMainConnectionContextMenuItems,
   buildMainGroupContextMenuItems,
@@ -39,7 +40,7 @@ import { showWebContextMenu } from '../../stores/contextMenuStore';
 import { shouldUseMultiDatabaseTree } from './schema-tree/SchemaTree';
 import { connectionCommands } from '../../commands/connection';
 import { openDataSyncWindow, openSchemaDiffWindow } from '../../lib/windowManager';
-import type { ConnectionConfig, DatabaseObject, TableInfo } from '../../types';
+import type { ConnectionConfig, DatabaseObject, DatabaseType, TableInfo } from '../../types';
 
 // ── Category definitions ────────────────────────────────────────
 
@@ -105,6 +106,7 @@ type UnifiedRow =
     }
   | { type: 'object'; obj: DatabaseObject; depth: number; catId: string }
   | { type: 'db-loading'; depth: number }
+  | { type: 'custom-tree'; configId: string; connectionId: string; databaseType: DatabaseType }
   | { type: 'empty-group' }
   | { type: 'no-connections' };
 
@@ -965,6 +967,17 @@ export function ConnectionNavigatorTree({
         }
 
         const meta = DB_REGISTRY[conn.databaseType];
+
+        if (meta?.schemaTreeMode === 'custom') {
+          rows.push({
+            type: 'custom-tree',
+            configId: conn.id,
+            connectionId,
+            databaseType: conn.databaseType,
+          });
+          continue;
+        }
+
         const isMultiDb = shouldUseMultiDatabaseTree(meta, conn.database);
 
         if (isMultiDb) {
@@ -1117,7 +1130,7 @@ export function ConnectionNavigatorTree({
   const virtualizer = useVirtualizer({
     count: flatRows.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => ROW_HEIGHT,
+    estimateSize: (i) => (flatRows[i]?.type === 'custom-tree' ? 400 : ROW_HEIGHT),
     overscan: 25,
   });
 
@@ -1365,6 +1378,24 @@ export function ConnectionNavigatorTree({
           </div>
         );
 
+      case 'custom-tree': {
+        const PluginTree = getPluginSchemaTree(row.databaseType);
+        if (!PluginTree) {
+          return <div className="px-3 py-1.5 text-[11px] text-fg-muted">{t('common.loading')}</div>;
+        }
+        return (
+          <div className="pl-4">
+            <PluginTree
+              connectionId={row.connectionId}
+              databaseType={row.databaseType}
+              onSelectTable={(table: string, schema?: string) => onSelectTable(table, schema)}
+              selectedTable={null}
+              searchQuery={searchQuery}
+            />
+          </div>
+        );
+      }
+
       case 'empty-group':
         return (
           <div className="px-4 py-1.5 text-[11px] text-fg-muted">{t('main.noConnections')}</div>
@@ -1471,21 +1502,27 @@ export function ConnectionNavigatorTree({
       {/* Unified virtual list */}
       <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto py-1">
         <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
-          {virtualizer.getVirtualItems().map((virtualRow) => (
-            <div
-              key={virtualRow.index}
-              style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                width: '100%',
-                height: virtualRow.size,
-                transform: `translateY(${virtualRow.start}px)`,
-              }}
-            >
-              {renderRow(flatRows[virtualRow.index])}
-            </div>
-          ))}
+          {virtualizer.getVirtualItems().map((virtualRow) => {
+            const row = flatRows[virtualRow.index];
+            const isCustom = row?.type === 'custom-tree';
+            return (
+              <div
+                key={virtualRow.index}
+                ref={isCustom ? virtualizer.measureElement : undefined}
+                data-index={isCustom ? virtualRow.index : undefined}
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: '100%',
+                  height: isCustom ? undefined : virtualRow.size,
+                  transform: `translateY(${virtualRow.start}px)`,
+                }}
+              >
+                {renderRow(row)}
+              </div>
+            );
+          })}
         </div>
       </div>
 
