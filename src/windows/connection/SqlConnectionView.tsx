@@ -142,6 +142,8 @@ export function SqlConnectionView({
   connectionName,
   databaseType,
   initialDatabase,
+  hideSidebar: externalSidebar,
+  selectTableRef,
 }: ConnectionViewProps) {
   const { t } = useI18n();
   const [confirmAction, confirmActionDialog] = useConfirmDialog();
@@ -267,6 +269,13 @@ export function SqlConnectionView({
       return [...prev, panel];
     });
   }, []);
+
+  useEffect(() => {
+    if (selectTableRef) selectTableRef.current = handleSelectTable;
+    return () => {
+      if (selectTableRef) selectTableRef.current = undefined;
+    };
+  }, [selectTableRef, handleSelectTable]);
 
   const handleCreateTable = useCallback(() => {
     const existing = panels.find((p) => p.type === 'create-table');
@@ -941,7 +950,7 @@ export function SqlConnectionView({
       </div>
 
       <div className="flex min-h-0 flex-1">
-        {sidebarOpen && (
+        {sidebarOpen && !externalSidebar && (
           <>
             <aside
               style={{ width: sidebarWidth }}
