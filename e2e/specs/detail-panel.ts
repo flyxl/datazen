@@ -1,7 +1,7 @@
 import { expect, browser, $ } from '@wdio/globals';
 import { t } from '../i18n.js';
 import {
-  clickCardConnectButton,
+  connectSeededPgInWorkspace,
   closeExtraWindows,
   executeSQL,
   openQueryTab,
@@ -25,22 +25,9 @@ describe('详情面板 (DP-001~DP-004)', () => {
 
   before(async () => {
     mainWindow = await browser.getWindowHandle();
-    await $(`button*=${t('action.newConnection')}`).waitForDisplayed({ timeout: 10000 });
-    await browser.pause(1500);
-
-    let handles = await browser.getWindowHandles();
-    if (handles.length === 1) {
-      await clickCardConnectButton();
-      await browser.waitUntil(
-        async () => (await browser.getWindowHandles()).length > 1,
-        { timeout: 30000, timeoutMsg: 'Timed out waiting for connection window' },
-      );
-      handles = await browser.getWindowHandles();
-    }
-    const connWindow = handles.find((h) => h !== mainWindow)!;
-    await browser.switchToWindow(connWindow);
+    await connectSeededPgInWorkspace();
     await $(`button*=${t('connWin.newQuery')}`).waitForDisplayed({ timeout: 20000 });
-    await browser.pause(2000);
+    await browser.pause(1500);
 
     await openQueryTab();
     await executeSQL(`DROP TABLE IF EXISTS ${TEST_TABLE}`);
@@ -65,15 +52,9 @@ describe('详情面板 (DP-001~DP-004)', () => {
 
   after(async () => {
     try {
-      const handles = await browser.getWindowHandles();
-      if (handles.length > 1) {
-        const connWindow = handles.find((h) => h !== mainWindow);
-        if (connWindow) {
-          await browser.switchToWindow(connWindow);
-          await openQueryTab();
-          await executeSQL(`DROP TABLE IF EXISTS ${TEST_TABLE}`);
-        }
-      }
+      await browser.switchToWindow(mainWindow);
+      await openQueryTab();
+      await executeSQL(`DROP TABLE IF EXISTS ${TEST_TABLE}`);
     } catch {
       // best-effort cleanup
     }
@@ -85,10 +66,10 @@ describe('详情面板 (DP-001~DP-004)', () => {
     await browser.pause(2000);
     await switchSubTab(t('connWin.data'));
 
-    await browser.waitUntil(
-      async () => (await $('body').getText()).includes('Alice'),
-      { timeout: 15000, timeoutMsg: 'Timed out waiting for table data to load' },
-    );
+    await browser.waitUntil(async () => (await $('body').getText()).includes('Alice'), {
+      timeout: 15000,
+      timeoutMsg: 'Timed out waiting for table data to load',
+    });
 
     // The detail panel toggle button should exist at the window level
     const toggleBtn = await $(`button[title="${t('detail.show')}"]`);

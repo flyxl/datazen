@@ -4,7 +4,7 @@
  */
 import { expect, browser, $ } from '@wdio/globals';
 import {
-  clickCardConnectButton,
+  connectSeededPgInWorkspace,
   closeExtraWindows,
   openQueryTab,
   setEditorContent,
@@ -36,7 +36,7 @@ describe('快捷键 (TC-HOTKEY-001~005)', () => {
     await browser.pause(800);
     let handles = await browser.getWindowHandles();
     if (handles.length === 1) {
-      const btn = await $(`button*=${t('action.newConnection')}`);
+      const btn = await $(`button[title="${t('main.newConnection')}"]`);
       await btn.click();
       await switchToNewWindow(mainWindow);
       handles = await browser.getWindowHandles();
@@ -68,15 +68,8 @@ describe('快捷键 (TC-HOTKEY-001~005)', () => {
     expect(opened).toBe(true);
   });
 
-  it('TC-HOTKEY-003: 连接窗口中 Cmd+Enter 应能执行查询', async () => {
-    await clickCardConnectButton();
-    await browser.waitUntil(
-      async () => (await browser.getWindowHandles()).length > 1,
-      { timeout: 30000, timeoutMsg: '等待连接窗口超时' },
-    );
-    const handles = await browser.getWindowHandles();
-    const connWindow = handles.find((h) => h !== mainWindow)!;
-    await browser.switchToWindow(connWindow);
+  it('TC-HOTKEY-003: 已连接工作区中 Cmd+Enter 应能执行查询', async () => {
+    await connectSeededPgInWorkspace();
     await $(`button*=${t('connWin.newQuery')}`).waitForDisplayed({ timeout: 20000 });
     await openQueryTab();
     await setEditorContent('SELECT 42 AS hotkey_col');
@@ -84,21 +77,18 @@ describe('快捷键 (TC-HOTKEY-001~005)', () => {
     await browser.waitUntil(
       async () => {
         const body = await $('body').getText();
-        return body.includes('hotkey_col') || body.includes(`1 ${t('common.rows')}`) || body.includes(t('query.totalTime'));
+        return (
+          body.includes('hotkey_col') ||
+          body.includes(`1 ${t('common.rows')}`) ||
+          body.includes(t('query.totalTime'))
+        );
       },
       { timeout: 20000, timeoutMsg: '等待 Cmd+Enter 执行结果超时' },
     );
   });
 
-  it('TC-HOTKEY-004: Cmd+W 应关闭连接窗口或额外标签而不崩溃', async () => {
-    await clickCardConnectButton();
-    await browser.waitUntil(
-      async () => (await browser.getWindowHandles()).length > 1,
-      { timeout: 30000 },
-    );
-    const handles = await browser.getWindowHandles();
-    const connWindow = handles.find((h) => h !== mainWindow)!;
-    await browser.switchToWindow(connWindow);
+  it('TC-HOTKEY-004: Cmd+W 关闭 panel 后应用仍可用', async () => {
+    await connectSeededPgInWorkspace();
     await $(`button*=${t('connWin.newQuery')}`).waitForDisplayed({ timeout: 20000 });
     await browser.keys(['Meta', 'w']);
     await browser.pause(1500);
@@ -108,14 +98,7 @@ describe('快捷键 (TC-HOTKEY-001~005)', () => {
   });
 
   it('TC-HOTKEY-005: Cmd+B 应切换侧边栏', async () => {
-    await clickCardConnectButton();
-    await browser.waitUntil(
-      async () => (await browser.getWindowHandles()).length > 1,
-      { timeout: 30000 },
-    );
-    const handles = await browser.getWindowHandles();
-    const connWindow = handles.find((h) => h !== mainWindow)!;
-    await browser.switchToWindow(connWindow);
+    await connectSeededPgInWorkspace();
     await $(`button*=${t('connWin.newQuery')}`).waitForDisplayed({ timeout: 20000 });
 
     const before = await browser.execute(() => document.body.innerText.length);

@@ -7,7 +7,7 @@
 import { expect, browser, $, $$ } from '@wdio/globals';
 import { t } from '../i18n.js';
 import {
-  clickCardConnectButton,
+  connectSeededPgInWorkspace,
   closeExtraWindows,
   openQueryTab,
   executeSQL,
@@ -143,29 +143,9 @@ describe('导航树上下文菜单 (Navigator Context Menu)', () => {
   let mainWindow: string;
 
   before(async () => {
-    let handles = await browser.getWindowHandles();
-    const connHandle = handles.find((h) => h.startsWith('connection'));
-    mainWindow =
-      handles.find((h) => h === 'main') ?? handles.find((h) => !h.startsWith('connection')) ?? '';
-
-    if (connHandle) {
-      await browser.switchToWindow(connHandle);
-    } else {
-      await browser.switchToWindow(mainWindow || handles[0]);
-      await $(`button*=${t('action.newConnection')}`).waitForDisplayed({ timeout: 10000 });
-      await browser.pause(1500);
-      await clickCardConnectButton();
-      await browser.waitUntil(async () => (await browser.getWindowHandles()).length > 1, {
-        timeout: 30000,
-        timeoutMsg: 'Timed out waiting for connection window',
-      });
-      handles = await browser.getWindowHandles();
-      const newConn =
-        handles.find((h) => h.startsWith('connection')) ?? handles.find((h) => h !== mainWindow)!;
-      await browser.switchToWindow(newConn);
-    }
-
-    await browser.pause(3000);
+    mainWindow = await browser.getWindowHandle();
+    await connectSeededPgInWorkspace();
+    await browser.pause(1500);
 
     await openQueryTab();
     await executeSQL(`DROP TABLE IF EXISTS ${TEST_TABLE}`);

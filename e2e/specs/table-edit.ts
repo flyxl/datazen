@@ -1,7 +1,7 @@
 import { expect, browser, $ } from '@wdio/globals';
 import { t } from '../i18n.js';
 import {
-  clickCardConnectButton,
+  connectSeededPgInWorkspace,
   closeExtraWindows,
   executeSQL,
   openQueryTab,
@@ -31,22 +31,9 @@ describe('表数据编辑 (DE-002~DE-005)', () => {
 
   before(async () => {
     mainWindow = await browser.getWindowHandle();
-    await $(`button*=${t('action.newConnection')}`).waitForDisplayed({ timeout: 10000 });
-    await browser.pause(1500);
-
-    let handles = await browser.getWindowHandles();
-    if (handles.length === 1) {
-      await clickCardConnectButton();
-      await browser.waitUntil(
-        async () => (await browser.getWindowHandles()).length > 1,
-        { timeout: 30000, timeoutMsg: 'Timed out waiting for connection window' },
-      );
-      handles = await browser.getWindowHandles();
-    }
-    const connWindow = handles.find((h) => h !== mainWindow)!;
-    await browser.switchToWindow(connWindow);
+    await connectSeededPgInWorkspace();
     await $(`button*=${t('connWin.newQuery')}`).waitForDisplayed({ timeout: 20000 });
-    await browser.pause(2000);
+    await browser.pause(1500);
 
     await openQueryTab();
     await executeSQL(`DROP TABLE IF EXISTS ${TEST_TABLE}`);
@@ -71,15 +58,9 @@ describe('表数据编辑 (DE-002~DE-005)', () => {
 
   after(async () => {
     try {
-      const handles = await browser.getWindowHandles();
-      if (handles.length > 1) {
-        const connWindow = handles.find((h) => h !== mainWindow);
-        if (connWindow) {
-          await browser.switchToWindow(connWindow);
-          await openQueryTab();
-          await executeSQL(`DROP TABLE IF EXISTS ${TEST_TABLE}`);
-        }
-      }
+      await browser.switchToWindow(mainWindow);
+      await openQueryTab();
+      await executeSQL(`DROP TABLE IF EXISTS ${TEST_TABLE}`);
     } catch {
       // best-effort cleanup
     }
@@ -97,7 +78,9 @@ describe('表数据编辑 (DE-002~DE-005)', () => {
     await browser.waitUntil(
       async () => {
         const body = await $('body').getText();
-        return body.includes(t('common.selectAll')) && (body.includes('1-') || body.includes('Alice'));
+        return (
+          body.includes(t('common.selectAll')) && (body.includes('1-') || body.includes('Alice'))
+        );
       },
       { timeout: 15000, timeoutMsg: 'Timed out waiting for table data to load' },
     );
@@ -129,7 +112,9 @@ describe('表数据编辑 (DE-002~DE-005)', () => {
 
     await browser.execute(() => {
       const el = document.querySelector('input.font-mono') as HTMLInputElement;
-      el?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true }));
+      el?.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true }),
+      );
     });
     await browser.pause(500);
 
@@ -171,10 +156,10 @@ describe('表数据编辑 (DE-002~DE-005)', () => {
     await browser.pause(1500);
     await switchSubTab(t('connWin.data'));
 
-    await browser.waitUntil(
-      async () => (await $('body').getText()).includes('Charlie'),
-      { timeout: 10000, timeoutMsg: 'Timed out waiting for table data to load' },
-    );
+    await browser.waitUntil(async () => (await $('body').getText()).includes('Charlie'), {
+      timeout: 10000,
+      timeoutMsg: 'Timed out waiting for table data to load',
+    });
 
     await doubleClickCellByText('Charlie');
     await waitForEditInput();
@@ -182,7 +167,9 @@ describe('表数据编辑 (DE-002~DE-005)', () => {
     // Cancel the edit
     await browser.execute(() => {
       const el = document.querySelector('input.font-mono') as HTMLInputElement;
-      el?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true }));
+      el?.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true }),
+      );
     });
     await browser.pause(500);
 

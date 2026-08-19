@@ -1,7 +1,7 @@
 {
   "id": "community.tokyo-night",
   "name": "Tokyo Night",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "apiVersion": 1,
   "modes": ["dark"],
   "author": "DataZen Community",

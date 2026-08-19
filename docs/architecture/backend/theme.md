@@ -13,7 +13,8 @@
 ├── fonts.css           # 可选 @font-face
 ├── editor.json         # 可选 CodeMirror 色板覆盖
 ├── charts.json         # 可选图表调色板
-└── icons/              # 语义 ID 或 db.<type> 图标
+└── icons/              # 语义 ID 或 db.<type> 图标（见 src/lib/iconIds.ts）
+    ├── nav.connections.svg
     ├── nav.settings.svg
     └── db.postgresql.svg
 ```

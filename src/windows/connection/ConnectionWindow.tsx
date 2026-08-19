@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef, useState, type ComponentType } from 'react';
-import { Database, LayoutDashboard, PanelLeftOpen, Workflow } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Database, LayoutDashboard, PanelLeftOpen, Workflow, type LucideIcon } from 'lucide-react';
 import { TitleBar } from '../../components/TitleBar';
 import { MenuBar } from '../../components/MenuBar';
 import { ThemeToggle } from '../../components/ThemeToggle';
+import { ThemedIcon } from '../../components/ThemedIcon';
 import { Dialog } from '../../components/ui/Dialog';
 import { useI18n } from '../../hooks/useI18n';
 import { useSettings } from '../../hooks/useSettings';
@@ -35,13 +36,15 @@ import {
 import type { ConnectionViewActions } from '../../lib/connectionViews/types';
 import { ConnectionNavigatorTree } from './ConnectionNavigatorTree';
 import { ContentView } from './ContentView';
+import type { UiIconId } from '../../lib/iconIds';
 import type { DatabaseType } from '../../types';
 import { useDashboardStore } from '../../stores/dashboardStore';
 import { DashboardPanel } from '../dashboard/DashboardPanel';
 import { WorkflowWindow } from '../workflow/WorkflowWindow';
 
 interface WorkspaceShortcutButtonProps {
-  icon: ComponentType<{ className?: string }>;
+  icon: LucideIcon;
+  iconId: UiIconId;
   label: string;
   testId: string;
   onClick: () => void;
@@ -50,6 +53,7 @@ interface WorkspaceShortcutButtonProps {
 
 function WorkspaceModeButton({
   icon: Icon,
+  iconId,
   label,
   testId,
   onClick,
@@ -67,7 +71,7 @@ function WorkspaceModeButton({
           : 'border-transparent text-fg-secondary hover:border-edge hover:bg-surface-raised hover:text-fg'
       }`}
     >
-      <Icon className="h-4 w-4 shrink-0" />
+      <ThemedIcon id={iconId} className="h-4 w-4 shrink-0" fallback={Icon} />
     </button>
   );
 }
@@ -898,6 +902,7 @@ export function ConnectionWindow() {
         <aside className="flex h-full w-14 shrink-0 flex-col items-center gap-2 self-stretch border-r border-edge bg-surface-alt px-2 pb-3">
           <WorkspaceModeButton
             icon={Database}
+            iconId="nav.connections"
             label={t('nav.connections')}
             testId="workspace-nav-connections"
             active={workspaceMode === 'connections'}
@@ -905,6 +910,7 @@ export function ConnectionWindow() {
           />
           <WorkspaceModeButton
             icon={Workflow}
+            iconId="action.workflow"
             label={t('nav.workflow')}
             testId="workspace-nav-workflow"
             active={workspaceMode === 'workflow'}
@@ -912,6 +918,7 @@ export function ConnectionWindow() {
           />
           <WorkspaceModeButton
             icon={LayoutDashboard}
+            iconId="action.dashboard"
             label={t('nav.dashboard')}
             testId="workspace-nav-dashboard"
             active={workspaceMode === 'dashboard'}

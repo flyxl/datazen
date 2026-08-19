@@ -1,5 +1,5 @@
 import { expect, browser, $, $$ } from '@wdio/globals';
-import { closeExtraWindows, switchToNewWindow } from '../helpers.js';
+import { closeExtraWindows } from '../helpers.js';
 import { t } from '../i18n.js';
 
 /**
@@ -90,13 +90,14 @@ async function findAndClickButton(textFragments: string[]) {
   }, textFragments);
 }
 
-async function openWorkflowFromMain(mainHandle: string) {
+async function openWorkflowWorkspace(mainHandle: string) {
   await browser.switchToWindow(mainHandle);
-  await browser.pause(500);
-  await findAndClickButton(['工作流', 'Workflow']);
-  const wfWindow = await switchToNewWindow(mainHandle);
-  await browser.pause(2000);
-  return wfWindow;
+  await browser.pause(300);
+  const workflowNav = await $('[data-testid="workspace-nav-workflow"]');
+  await workflowNav.waitForDisplayed({ timeout: 15000 });
+  await workflowNav.click();
+  const workflowWorkspace = await $('[data-testid="workflow-workspace"]');
+  await workflowWorkspace.waitForDisplayed({ timeout: 15000 });
 }
 
 async function waitForWorkflowList() {
@@ -167,25 +168,19 @@ describe('Workflow Tab System (WORKFLOW-WINDOW)', () => {
     await browser.pause(500);
   });
 
-  it('主窗口应显示工作流入口按钮', async () => {
-    const hasBtn = await browser.execute(() => {
-      const buttons = document.querySelectorAll('button');
-      for (const btn of buttons) {
-        const text = btn.textContent || '';
-        if (text.includes('工作流') || text.includes('Workflow')) return true;
-      }
-      return false;
-    });
-    expect(hasBtn).toBe(true);
+  it('主窗口应显示工作流导航入口', async () => {
+    const workflowNav = await $('[data-testid="workspace-nav-workflow"]');
+    await expect(workflowNav).toBeDisplayed();
   });
 
-  it('点击工作流按钮应打开独立窗口', async () => {
-    const wfWindow = await openWorkflowFromMain(mainWindow);
-    expect(wfWindow).toBeTruthy();
+  it('点击工作流导航应切换到嵌入工作区', async () => {
+    await openWorkflowWorkspace(mainWindow);
+    const workflowWorkspace = await $('[data-testid="workflow-workspace"]');
+    await expect(workflowWorkspace).toBeDisplayed();
   });
 
-  it('窗口应显示 Workflows 和执行记录侧边栏标签', async () => {
-    await openWorkflowFromMain(mainWindow);
+  it('工作区应显示 Workflows 和执行记录侧边栏标签', async () => {
+    await openWorkflowWorkspace(mainWindow);
     const body = await $('body').getText();
     expect(body.includes('Workflows')).toBe(true);
     const hasHistory = body.includes('执行记录') || body.includes('History');
@@ -193,14 +188,14 @@ describe('Workflow Tab System (WORKFLOW-WINDOW)', () => {
   });
 
   it('侧边栏应列出已创建的测试 workflow', async () => {
-    await openWorkflowFromMain(mainWindow);
+    await openWorkflowWorkspace(mainWindow);
     await waitForWorkflowList();
     const item = await $('div*=E2E Tab Test WF');
     await expect(item).toBeDisplayed();
   });
 
   it('WF-CTX-001: workflow 右键菜单无运行项', async () => {
-    await openWorkflowFromMain(mainWindow);
+    await openWorkflowWorkspace(mainWindow);
     await waitForWorkflowList();
     const item = await $('div*=E2E Tab Test WF');
     await item.click({ button: 'right' });
@@ -214,7 +209,7 @@ describe('Workflow Tab System (WORKFLOW-WINDOW)', () => {
   });
 
   it('WF-CTX-002: 执行记录右键不弹出菜单', async () => {
-    await openWorkflowFromMain(mainWindow);
+    await openWorkflowWorkspace(mainWindow);
     await waitForWorkflowList();
     const historyTab = await $(`button*=${t('workflows.history.title')}`);
     await historyTab.click();
@@ -232,7 +227,7 @@ describe('Workflow Tab System (WORKFLOW-WINDOW)', () => {
   });
 
   it('选中 workflow 后右侧应出现空状态提示', async () => {
-    await openWorkflowFromMain(mainWindow);
+    await openWorkflowWorkspace(mainWindow);
     await selectWorkflow();
     const body = await $('body').getText();
     const hasEmptyOrTab = body.includes('选择一个工作流并执行') || body.includes('E2E Tab Test WF');
@@ -241,7 +236,7 @@ describe('Workflow Tab System (WORKFLOW-WINDOW)', () => {
 
   it('执行后应在 tab 栏打开结果 tab', async function () {
     this.timeout(45000);
-    await openWorkflowFromMain(mainWindow);
+    await openWorkflowWorkspace(mainWindow);
     await selectWorkflow();
     await executeAndWait();
 
@@ -251,7 +246,7 @@ describe('Workflow Tab System (WORKFLOW-WINDOW)', () => {
 
   it('结果 tab 应显示步骤子导航（step_a / step_b）', async function () {
     this.timeout(45000);
-    await openWorkflowFromMain(mainWindow);
+    await openWorkflowWorkspace(mainWindow);
     await selectWorkflow();
     await executeAndWait();
 
@@ -263,7 +258,7 @@ describe('Workflow Tab System (WORKFLOW-WINDOW)', () => {
 
   it('点击步骤标签应展示 DataTable 查询结果', async function () {
     this.timeout(45000);
-    await openWorkflowFromMain(mainWindow);
+    await openWorkflowWorkspace(mainWindow);
     await selectWorkflow();
     await executeAndWait();
 
@@ -277,7 +272,7 @@ describe('Workflow Tab System (WORKFLOW-WINDOW)', () => {
 
   it('关闭 tab 后应回到空状态', async function () {
     this.timeout(45000);
-    await openWorkflowFromMain(mainWindow);
+    await openWorkflowWorkspace(mainWindow);
     await selectWorkflow();
     await executeAndWait();
 
@@ -303,7 +298,7 @@ describe('Workflow Tab System (WORKFLOW-WINDOW)', () => {
 
   it('切换到执行记录标签应可查看历史', async function () {
     this.timeout(45000);
-    await openWorkflowFromMain(mainWindow);
+    await openWorkflowWorkspace(mainWindow);
     await selectWorkflow();
     await executeAndWait();
     await browser.pause(500);
@@ -317,7 +312,7 @@ describe('Workflow Tab System (WORKFLOW-WINDOW)', () => {
 
   it('重复点击同一历史记录只打开一个 tab', async function () {
     this.timeout(60000);
-    await openWorkflowFromMain(mainWindow);
+    await openWorkflowWorkspace(mainWindow);
     await selectWorkflow();
     await executeAndWait();
     await browser.pause(500);
@@ -371,7 +366,7 @@ describe('Workflow Tab System (WORKFLOW-WINDOW)', () => {
 
   it('执行后默认显示第一个 step 结果', async function () {
     this.timeout(45000);
-    await openWorkflowFromMain(mainWindow);
+    await openWorkflowWorkspace(mainWindow);
     await selectWorkflow();
     await executeAndWait();
 
@@ -397,7 +392,7 @@ describe('Workflow Tab System (WORKFLOW-WINDOW)', () => {
 
   it('参数输入框应在步骤标签栏上方', async function () {
     this.timeout(45000);
-    await openWorkflowFromMain(mainWindow);
+    await openWorkflowWorkspace(mainWindow);
     await selectWorkflow();
     await executeAndWait();
 
@@ -432,7 +427,7 @@ describe('Workflow Tab System (WORKFLOW-WINDOW)', () => {
 
   it('打开工作流目录按钮应通过 open_workflows_dir 命令打开文件夹', async function () {
     this.timeout(20000);
-    await openWorkflowFromMain(mainWindow);
+    await openWorkflowWorkspace(mainWindow);
     await browser.pause(1000);
 
     const openDirBtn = await browser.execute(() => {
@@ -478,7 +473,7 @@ describe('Workflow Tab System (WORKFLOW-WINDOW)', () => {
 
   it('输入框有焦点时单击侧边栏标签应立即切换', async function () {
     this.timeout(30000);
-    await openWorkflowFromMain(mainWindow);
+    await openWorkflowWorkspace(mainWindow);
     await browser.pause(1000);
 
     const focusWfItem = await $('div*=E2E Focus Test WF');
@@ -522,7 +517,7 @@ describe('Workflow Tab System (WORKFLOW-WINDOW)', () => {
   });
 
   it('WF-SQL-001: 可视化编辑查询步骤应使用 SQL 高亮编辑器', async () => {
-    await openWorkflowFromMain(mainWindow);
+    await openWorkflowWorkspace(mainWindow);
     await waitForWorkflowList();
     await browser.execute(() => {
       const edit = document.querySelector(

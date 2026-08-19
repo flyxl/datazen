@@ -135,34 +135,64 @@ export async function dblclickConnByExactName(connName: string) {
   }, connName);
 }
 
-// ── connection window helpers ───────────────────────────────────────
+// ── unified workspace / connection helpers ──────────────────────────
 
-/**
- * Open a connection from main window and switch to the connection window.
- * Returns { mainWindow, connWindow }.
- */
-export async function openConnectionWindow() {
-  const mainWindow = await browser.getWindowHandle();
-  // Expand groups and wait for the main window to render connection items
+/** Wait until the connection content toolbar is visible (connected state). */
+export async function waitForConnectionToolbar(timeout = 20000) {
+  await browser.waitUntil(
+    async () => {
+      const body = await $('body').getText();
+      return (
+        body.includes('新建查询') ||
+        body.includes('New Query') ||
+        body.includes('新查詢') ||
+        body.includes('Neue Abfrage')
+      );
+    },
+    { timeout, timeoutMsg: 'Timed out waiting for connection toolbar' },
+  );
+  await browser.pause(800);
+}
+
+/** Double-click seeded PG connection and wait for toolbar in the unified main window. */
+export async function connectSeededPgInWorkspace() {
   await expandAllGroups();
   await browser.waitUntil(async () => (await $$('[data-conn-item]')).length > 0, {
     timeout: 15000,
     timeoutMsg: '等待连接项加载超时',
   });
-  await browser.pause(1500);
-
   await clickCardConnectButton();
-  await browser.waitUntil(async () => (await browser.getWindowHandles()).length > 1, {
-    timeout: 30000,
-    timeoutMsg: '等待连接窗口打开超时',
-  });
-  const handles = await browser.getWindowHandles();
-  const connWindow = handles.find((h) => h !== mainWindow)!;
-  await browser.switchToWindow(connWindow);
-  await $('button*=新建查询').waitForDisplayed({ timeout: 20000 });
-  await browser.pause(2000);
+  await waitForConnectionToolbar();
+}
 
-  return { mainWindow, connWindow };
+/**
+ * Open a connection from the unified main workspace.
+ * Returns `{ mainWindow, connWindow }` where both handles refer to the same OS window.
+ */
+export async function openConnectionWindow() {
+  const mainWindow = await browser.getWindowHandle();
+  await connectSeededPgInWorkspace();
+  return { mainWindow, connWindow: mainWindow };
+}
+
+/** @deprecated Use {@link openConnectionWindow}; kept for contract matrix imports. */
+export async function openSeededPgConnectionWindow(mainWindow: string) {
+  await browser.switchToWindow(mainWindow);
+  const body = await $('body').getText();
+  const connected =
+    body.includes('新建查询') || body.includes('New Query') || body.includes('新查詢');
+  if (!connected) {
+    await connectSeededPgInWorkspace();
+  } else {
+    await waitForConnectionToolbar();
+  }
+  return mainWindow;
+}
+
+async function finishConnectInWorkspace(mainWindow: string) {
+  await browser.switchToWindow(mainWindow);
+  await waitForConnectionToolbar();
+  return { mainWindow, connWindow: mainWindow };
 }
 
 // ── MySQL connection helpers ─────────────────────────────────────────
@@ -201,16 +231,7 @@ export async function createAndConnectMySQL(
   const existingItem = await findCardByName(name);
   if (existingItem) {
     await dblclickConnByExactName(name);
-    await browser.waitUntil(async () => (await browser.getWindowHandles()).length > 1, {
-      timeout: 30000,
-      timeoutMsg: '等待 MySQL 连接窗口打开超时',
-    });
-    const handles = await browser.getWindowHandles();
-    const connWindow = handles.find((h) => h !== mainWindow)!;
-    await browser.switchToWindow(connWindow);
-    await $('button*=新建查询').waitForDisplayed({ timeout: 20000 });
-    await browser.pause(2000);
-    return { mainWindow, connWindow };
+    return finishConnectInWorkspace(mainWindow);
   }
 
   // Create a new MySQL connection (icon-only toolbar button OR text button in empty state)
@@ -292,17 +313,7 @@ export async function createAndConnectMySQL(
   if (!card) throw new Error(`未找到 MySQL 连接 "${name}"`);
   await dblclickConnByExactName(name);
 
-  await browser.waitUntil(async () => (await browser.getWindowHandles()).length > 1, {
-    timeout: 30000,
-    timeoutMsg: '等待 MySQL 连接窗口打开超时',
-  });
-  const handles = await browser.getWindowHandles();
-  const connWindow = handles.find((h) => h !== mainWindow)!;
-  await browser.switchToWindow(connWindow);
-  await $('button*=新建查询').waitForDisplayed({ timeout: 20000 });
-  await browser.pause(2000);
-
-  return { mainWindow, connWindow };
+  return finishConnectInWorkspace(mainWindow);
 }
 
 /**
@@ -337,16 +348,7 @@ export async function createAndConnectPostgreSQL(
   const existingItem = await findCardByName(name);
   if (existingItem) {
     await dblclickConnByExactName(name);
-    await browser.waitUntil(async () => (await browser.getWindowHandles()).length > 1, {
-      timeout: 30000,
-      timeoutMsg: '等待 PostgreSQL 连接窗口打开超时',
-    });
-    const handles = await browser.getWindowHandles();
-    const connWindow = handles.find((h) => h !== mainWindow)!;
-    await browser.switchToWindow(connWindow);
-    await $('button*=新建查询').waitForDisplayed({ timeout: 20000 });
-    await browser.pause(2000);
-    return { mainWindow, connWindow };
+    return finishConnectInWorkspace(mainWindow);
   }
 
   const clickedNew = await browser.execute(() => {
@@ -418,17 +420,7 @@ export async function createAndConnectPostgreSQL(
   if (!card) throw new Error(`未找到 PostgreSQL 连接 "${name}"`);
   await dblclickConnByExactName(name);
 
-  await browser.waitUntil(async () => (await browser.getWindowHandles()).length > 1, {
-    timeout: 30000,
-    timeoutMsg: '等待 PostgreSQL 连接窗口打开超时',
-  });
-  const handles = await browser.getWindowHandles();
-  const connWindow = handles.find((h) => h !== mainWindow)!;
-  await browser.switchToWindow(connWindow);
-  await $('button*=新建查询').waitForDisplayed({ timeout: 20000 });
-  await browser.pause(2000);
-
-  return { mainWindow, connWindow };
+  return finishConnectInWorkspace(mainWindow);
 }
 
 /**
@@ -442,16 +434,7 @@ export async function connectToCard(cardName: string) {
 
   await dblclickConnByExactName(cardName);
 
-  await browser.waitUntil(async () => (await browser.getWindowHandles()).length > 1, {
-    timeout: 30000,
-    timeoutMsg: `等待 "${cardName}" 连接窗口打开超时`,
-  });
-  const handles = await browser.getWindowHandles();
-  const connWindow = handles.find((h) => h !== mainWindow)!;
-  await browser.switchToWindow(connWindow);
-  await $('button*=新建查询').waitForDisplayed({ timeout: 20000 });
-  await browser.pause(2000);
-  return { mainWindow, connWindow };
+  return finishConnectInWorkspace(mainWindow);
 }
 
 // ── SQL / CodeMirror ────────────────────────────────────────────────
@@ -711,28 +694,4 @@ export async function selectDzOption(triggerLabel: string, optionLabel: string) 
     optionLabel,
   );
   await browser.pause(200);
-}
-
-/** Ensure connection window is open on the seeded PG connection. */
-export async function openSeededPgConnectionWindow(mainWindow: string) {
-  let handles = await browser.getWindowHandles();
-  if (handles.length === 1) {
-    await clickCardConnectButton();
-    await browser.waitUntil(async () => (await browser.getWindowHandles()).length > 1, {
-      timeout: 30000,
-      timeoutMsg: 'Timed out waiting for connection window',
-    });
-    handles = await browser.getWindowHandles();
-  }
-  const connWindow = handles.find((h) => h !== mainWindow)!;
-  await browser.switchToWindow(connWindow);
-  await browser.waitUntil(
-    async () => {
-      const body = await $('body').getText();
-      return body.includes('新建查询') || body.includes('New Query') || body.includes('新查詢');
-    },
-    { timeout: 20000, timeoutMsg: 'Timed out waiting for connection toolbar' },
-  );
-  await browser.pause(800);
-  return connWindow;
 }

@@ -41,10 +41,12 @@
 
 | 用户路径 | Spec | 状态 |
 |----------|------|------|
-| 主页操作面板、搜索、分组 | `main-window.ts`, `homepage-features.ts` | Covered |
+| 主页操作面板、搜索、分组 | `main-window.ts`, `homepage-features.ts`, `unified-main-window.ts` | Covered |
 | 主页空白右键 Web 菜单（含边缘不截断） | `homepage-features.ts` (HOME-021) | Covered（需 webdriver 二进制；无二进制时 BLOCKED） |
+| 统一工作区导航（连接 / 工作流 / 看板） | `unified-main-window.ts` | Covered |
+| 连接工作区首页（无 panel 空状态） | `unified-main-window.ts`, `unified-tab-bar.ts` (UTB-005) | Covered |
 | 新建 / 编辑 / 删除连接 | `new-connection.ts`, `edit-delete-connection.ts` | Covered |
-| 连接窗口工具栏、表树、子标签 | `connection-window.ts` | Covered |
+| 连接工具栏、表树、子标签（统一主窗口内） | `connection-window.ts`, `unified-tab-bar.ts` | Covered |
 | 侧栏删表后树立即刷新（不再需关窗） | `schemaStore.test.ts` / `SchemaTree.test.tsx` / `sqlNamespace.test.ts` | Covered（原生 Drop 确认框见例外） |
 | 查询执行 / 历史 / 收藏 | `sql-query.ts` | Covered |
 | 绑定参数面板填值并执行 | `sql-query.ts` (SQ-BIND-*) | Covered |
@@ -72,6 +74,7 @@
 |----------|------|------|
 | 设置：主题 / 持久化 / 分区导航（通用·浏览·编辑器·行为·日志·AI·Prompt·MCP·扩展） | `settings.ts` | Covered |
 | Workflow 列表 / 执行 / 历史 / 列表右键无运行 / 历史无菜单 | `workflow.ts`, `workflow-window.ts` (WF-CTX-*) | Covered |
+| 嵌入主窗口的工作流工作区（非独立 OS 窗口） | `workflow-window.ts`, `unified-main-window.ts` | Covered |
 | Workflow 可视化 ↔ YAML 切换与保存入口 | `workflow-window.ts` (WF-YAML-*) | Covered |
 | Workflow / 数据看板 SQL 编辑（SqlEditor 高亮 + Web 右键） | `workflow-window.ts` (WF-SQL-001 / WF-SQL-002), `data-dashboard-widget-ux.ts` (UJ-06) | Covered |
 | 恢复执行日志（virtual scroll + 复制） | `BackupWindow.test.tsx` | Covered（原生文件对话框为例外） |

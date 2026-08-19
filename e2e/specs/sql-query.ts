@@ -1,7 +1,7 @@
 import { expect, browser, $, $$ } from '@wdio/globals';
 import { t } from '../i18n.js';
 import {
-  clickCardConnectButton,
+  connectSeededPgInWorkspace,
   closeExtraWindows,
   setEditorContent,
   openQueryTab,
@@ -17,19 +17,7 @@ describe('SQL 查询模块 (SQ-001~SQ-012, TC-QUERY-006/008)', () => {
 
   before(async () => {
     mainWindow = await browser.getWindowHandle();
-    await $(`button*=${t('action.newConnection')}`).waitForDisplayed({ timeout: 10000 });
-    await browser.pause(1500);
-
-    await clickCardConnectButton();
-
-    await browser.waitUntil(async () => (await browser.getWindowHandles()).length > 1, {
-      timeout: 20000,
-      timeoutMsg: 'Timed out waiting for connection window',
-    });
-    const handles = await browser.getWindowHandles();
-    const connWindow = handles.find((h) => h !== mainWindow)!;
-    await browser.switchToWindow(connWindow);
-
+    await connectSeededPgInWorkspace();
     await $(`button*=${t('connWin.newQuery')}`).waitForDisplayed({ timeout: 20000 });
     await browser.pause(1000);
 
