@@ -21,7 +21,6 @@ import { IndexesView } from './IndexesView';
 import { ForeignKeysView } from './ForeignKeysView';
 import { DDLView } from './DDLView';
 import { QueryPanel } from './QueryPanel';
-import { SqlFilePanel } from './SqlFilePanel';
 import { TableStructureEditor } from './TableStructureEditor';
 import { ErDiagramView } from './ErDiagramView';
 import { ObjectBrowser } from './ObjectBrowser';
@@ -249,18 +248,6 @@ function SqlPanelContent({
         connectionId={panel.connectionId}
         configId={panel.configId}
         databaseType={panel.databaseType}
-      />
-    );
-  }
-
-  if (panel.type === 'sql-file') {
-    return (
-      <SqlFilePanel
-        panelId={panel.id}
-        connectionId={panel.connectionId}
-        databaseType={panel.databaseType}
-        fileName={(panel as import('../../stores/panelStore').SqlFilePanel).fileName}
-        sql={(panel as import('../../stores/panelStore').SqlFilePanel).sql}
       />
     );
   }

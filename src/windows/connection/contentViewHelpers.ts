@@ -4,7 +4,6 @@ import {
   Code2,
   Database,
   Eye,
-  FileCode,
   GitFork,
   Hash,
   KeyRound,
@@ -19,7 +18,6 @@ import {
   type TablePanel,
   type ViewPanel,
   type QueryPanel,
-  type SqlFilePanel,
   type DatabaseObjectPanel,
   type RedisDbPanel,
   type ConnectionContext,
@@ -61,8 +59,6 @@ export function getPanelIcon(panel: Panel): ReactNode {
     }
     case 'redis-db':
       return createElement(Database, { className: `${iconClass} text-teal-400` });
-    case 'sql-file':
-      return createElement(FileCode, { className: `${iconClass} text-sky-400` });
     default:
       return null;
   }
@@ -88,8 +84,6 @@ export function getPanelLabel(panel: Panel): string {
       return (panel as DatabaseObjectPanel).objectName;
     case 'redis-db':
       return `${panel.connectionName}@${(panel as RedisDbPanel).dbName}`;
-    case 'sql-file':
-      return (panel as SqlFilePanel).fileName;
     default:
       return '';
   }

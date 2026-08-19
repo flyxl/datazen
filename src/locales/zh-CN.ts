@@ -514,6 +514,8 @@ const zhCN = {
   'query.notConnected': '未连接数据库',
   'query.cancelled': '查询已取消',
   'query.executeFailed': '执行失败',
+  'query.postgresDoubleQuoteHint':
+    "PostgreSQL 中双引号用于标识符，不用于字符串。请把值改成单引号，例如 `backend = 'quark'`。",
   'query.favorites': '收藏',
   'query.favoritesTitle': 'SQL 收藏',
   'query.noFavorites': '暂无收藏',
@@ -543,6 +545,13 @@ const zhCN = {
   'query.txAbortedSkip': '跳过',
   'sqlFile.clickRun': '点击"运行"执行 SQL 文件',
   'sqlFile.noResults': '没有结果行',
+  'sqlFile.dialogTitle': '执行 SQL 文件',
+  'sqlFile.selectAndRun': '选择 SQL 文件…',
+  'sqlFile.targetDatabase': '目标数据库：{database}',
+  'sqlFile.noDatabase': '未选择数据库',
+  'sqlFile.executeConfirm':
+    'SQL 文件可能包含删除表或记录的语句（如 DROP、DELETE、TRUNCATE）。是否继续在当前数据库上执行？',
+  'sqlFile.executeSuccess': 'SQL 文件执行成功',
   'createDb.title': '创建数据库',
   'createDb.name': '数据库名称',
   'createDb.encoding': '字符编码',

@@ -152,7 +152,7 @@ export function StructureView({ connectionId, tableName, onEditStructure }: Stru
                   className="border-b border-edge bg-surface hover:bg-surface-alt/50"
                 >
                   <td className="selectable px-4 py-2.5 font-mono text-fg">{col.name}</td>
-                  <td className={cn('px-4 py-2.5 font-mono', typeColor(col.dataType))}>
+                  <td className={cn('copyable px-4 py-2.5 font-mono', typeColor(col.dataType))}>
                     {col.dataType}
                   </td>
                   <td className="px-4 py-2.5">
@@ -164,7 +164,7 @@ export function StructureView({ connectionId, tableName, onEditStructure }: Stru
                   </td>
                   <td className="px-4 py-2.5">
                     {col.defaultValue ? (
-                      <span className="font-mono text-green-400">{col.defaultValue}</span>
+                      <span className="copyable font-mono text-green-400">{col.defaultValue}</span>
                     ) : (
                       <span className="text-fg-muted">—</span>
                     )}
@@ -176,7 +176,7 @@ export function StructureView({ connectionId, tableName, onEditStructure }: Stru
                       {col.isAutoIncrement && <KeyBadge label="AI" tone="green" />}
                     </div>
                   </td>
-                  <td className="px-4 py-2.5 text-fg-muted">{col.comment ?? ''}</td>
+                  <td className="copyable px-4 py-2.5 text-fg-muted">{col.comment ?? ''}</td>
                 </tr>
               );
             })}

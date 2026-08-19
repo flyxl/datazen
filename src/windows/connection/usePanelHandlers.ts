@@ -8,7 +8,6 @@ import {
   type TablePanel,
   type ViewPanel,
   type QueryPanel,
-  type SqlFilePanel,
   type CreateTablePanel,
   type ErDiagramPanel,
   type ObjectsPanel,
@@ -16,7 +15,6 @@ import {
   type DatabaseObjectPanel,
   type ConnectionContext,
 } from '../../stores/panelStore';
-import { fileCommands } from '../../commands/file';
 import { showNativeContextMenu } from '../../lib/nativeContextMenu';
 import { buildConnectionTabContextMenuItems } from '../../lib/connectionTabContextMenu';
 
@@ -35,7 +33,6 @@ export interface PanelHandlers {
   ) => void;
   handleOpenPrivileges: () => void;
   handleNewQuery: (initialSql?: string) => void;
-  handleOpenSqlFile: () => void;
   handleClosePanel: (panelId: string) => void;
   handleCloseOtherPanels: (keepPanelId: string) => void;
   handleCloseAllPanels: () => void;
@@ -290,22 +287,6 @@ export function usePanelHandlers({
     [sidebarConnCtx, currentDatabase, initialDatabase, addPanel, updateSql],
   );
 
-  const handleOpenSqlFile = useCallback(async () => {
-    const ctx = connCtxRef.current;
-    if (!ctx) return;
-    const file = await fileCommands.openTextWithDialog('SQL', ['sql', 'ddl', 'dml']);
-    if (!file) return;
-    const panelId = nextPanelId('sqlfile');
-    const panel: SqlFilePanel = {
-      ...ctx,
-      type: 'sql-file',
-      id: panelId,
-      fileName: file.fileName,
-      sql: file.content,
-    };
-    addPanel(panel);
-  }, [addPanel]);
-
   const handleClosePanel = useCallback(
     (panelId: string) => {
       removePanel(panelId);
@@ -406,7 +387,6 @@ export function usePanelHandlers({
     handleOpenDbObject,
     handleOpenPrivileges,
     handleNewQuery,
-    handleOpenSqlFile,
     handleClosePanel,
     handleCloseOtherPanels,
     handleCloseAllPanels,

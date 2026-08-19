@@ -106,6 +106,10 @@ function ToolbarButton({ compact, label, icon, className, title, ...props }: Too
   );
 }
 
+function hasSuspiciousPostgresDoubleQuotedLiteral(sql: string): boolean {
+  return /(?:=|<>|!=|\bLIKE\b|\bILIKE\b)\s*"[^"]+"/i.test(sql);
+}
+
 export function QueryPanel({ panelId, connectionId, configId, databaseType }: QueryPanelProps) {
   const { t } = useI18n();
   const exec = useQueryExec(panelId);
@@ -349,6 +353,14 @@ export function QueryPanel({ panelId, connectionId, configId, databaseType }: Qu
 
   const runExecute = useCallback(
     async (kind: 'full' | 'selection', selectionSql?: string) => {
+      const sqlToRun =
+        kind === 'selection' && selectionSql != null
+          ? selectionSql
+          : editorRef.current?.getSelection()?.trim() || exec.sql;
+      if (databaseType === 'postgresql' && hasSuspiciousPostgresDoubleQuotedLiteral(sqlToRun)) {
+        window.alert(t('query.postgresDoubleQuoteHint'));
+        return;
+      }
       await syncContextFromSql(
         kind === 'selection' && selectionSql != null ? selectionSql : exec.sql,
       );
@@ -379,6 +391,7 @@ export function QueryPanel({ panelId, connectionId, configId, databaseType }: Qu
     },
     [
       exec.sql,
+      databaseType,
       panelId,
       autoCommit,
       inTransaction,
@@ -389,6 +402,7 @@ export function QueryPanel({ panelId, connectionId, configId, databaseType }: Qu
       maybeOfferAbortedDialog,
       refreshTxStatus,
       syncContextFromSql,
+      t,
     ],
   );
 

@@ -75,6 +75,8 @@ export type BuildSchemaTreeContextMenuArgs = {
   handlers: SchemaTreeContextMenuHandlers;
   /** Hide import / truncate / drop / new table when true. */
   readOnly?: boolean;
+  /** Hide execute-sql-file and other mutating entries when safe mode disables them. */
+  safeMode?: boolean;
   /** Include open-structure item for tables. */
   showOpenStructure?: boolean;
   /** Include ER focus item for tables. */
@@ -123,6 +125,7 @@ export function buildSchemaTreeContextMenuItems(
     labels,
     handlers,
     readOnly = false,
+    safeMode = false,
     showOpenStructure = false,
     showErFocus = false,
     showExport,
@@ -181,7 +184,9 @@ export function buildSchemaTreeContextMenuItems(
       const dbMain = push(
         item('refresh', labels.refresh, handlers.onRefresh),
         item('new-query', labels.newQuery, handlers.onNewQuery),
-        item('execute-sql-file', labels.executeSqlFile, handlers.onExecuteSqlFile),
+        !readOnly && !safeMode
+          ? item('execute-sql-file', labels.executeSqlFile, handlers.onExecuteSqlFile)
+          : null,
         item('copy-database-name', labels.copyDatabaseName, handlers.onCopyDatabaseName),
         item('view-er-diagram', labels.viewErDiagram, handlers.onViewErDiagram),
         batchExportShown('database')
@@ -208,7 +213,9 @@ export function buildSchemaTreeContextMenuItems(
       const schemaMain = push(
         item('refresh', labels.refresh, handlers.onRefresh),
         item('new-query', labels.newQuery, handlers.onNewQuery),
-        item('execute-sql-file', labels.executeSqlFile, handlers.onExecuteSqlFile),
+        !readOnly && !safeMode
+          ? item('execute-sql-file', labels.executeSqlFile, handlers.onExecuteSqlFile)
+          : null,
         item('copy-schema-name', labels.copyName, handlers.onCopyName),
         item('view-er-diagram', labels.viewErDiagram, handlers.onViewErDiagram),
         batchExportShown('schema')

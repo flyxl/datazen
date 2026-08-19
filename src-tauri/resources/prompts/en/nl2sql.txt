@@ -7,6 +7,7 @@ Schema:
 Rules:
 - Return ONLY executable SQL, no explanations or markdown
 - Use the correct dialect for {{db_type}}
+- String literals must use single quotes like `'value'`; reserve double quotes for identifiers only
 - Use table aliases for readability
 - If the description is ambiguous, use the most common reasonable interpretation
 - Reference only tables and columns that exist in the schema{{recent}}
