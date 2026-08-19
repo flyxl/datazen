@@ -11,16 +11,10 @@ import { useI18n } from '../../hooks/useI18n';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 import { useSchemaStore } from '../../stores/schemaStore';
 import { useTableDataStore } from '../../stores/tableDataStore';
-import { useQueryStore } from '../../stores/queryStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useConnectionStore } from '../../stores/connectionStore';
 import { useActiveConnectionStore } from '../../stores/activeConnectionStore';
-import {
-  usePanelStore,
-  type ViewPanel,
-  type QueryPanel as QueryPanelType,
-  type ConnectionContext,
-} from '../../stores/panelStore';
+import { usePanelStore, type ViewPanel, type ConnectionContext } from '../../stores/panelStore';
 import { DB_REGISTRY, escapeIdent } from '../../lib/databaseTypes';
 import { canOpenStructureEditor } from '../../lib/structureEditor/canOpenStructureEditor';
 import {
@@ -159,9 +153,11 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
   const applyColumnToRows = useTableDataStore((s) => s.applyColumnToRows);
   const [detailOpen, setDetailOpen] = useState(false);
 
-  const updateQuerySql = useQueryStore((s) => s.updateSql);
-  const resultDetailRowIndex = useQueryStore((s) => s.resultDetailRowIndex);
-  const updateResultCell = useQueryStore((s) => s.updateResultCell);
+  const updateQuerySql = usePanelStore((s) => s.updateSql);
+  const activeQueryExec = usePanelStore((s) =>
+    activePanel?.type === 'query' ? s.queryExec.get(activePanel.id) : undefined,
+  );
+  const updateResultCell = usePanelStore((s) => s.updateResultCell);
 
   const detailPanelApplicable =
     activePanel != null &&
@@ -506,11 +502,10 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [detailPanelApplicable]);
 
-  const activeQueryTabId =
-    activePanel?.type === 'query' ? (activePanel as QueryPanelType).queryTabId : null;
-  const activeQueryTab =
-    useQueryStore((s) => (activeQueryTabId ? s.findTab(activeQueryTabId) : undefined)) ?? null;
-  const activeQueryResult = activeQueryTab?.results[activeQueryTab.activeResultIdx] ?? null;
+  const activeQueryResult =
+    activeQueryExec && activeQueryExec.results.length > 0
+      ? (activeQueryExec.results[activeQueryExec.activeResultIdx] ?? null)
+      : null;
 
   const detailColumnDefs: ColumnDef[] = useMemo(() => {
     if (activePanel?.type === 'table') {
@@ -522,6 +517,7 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
     return [];
   }, [activePanel?.type, tableColumns, activeQueryResult]);
 
+  const resultDetailRowIndex = activeQueryExec?.resultDetailRowIndex ?? null;
   const detailRowIdx = activePanel?.type === 'table' ? detailRowIndex : resultDetailRowIndex;
 
   const detailRow: Record<string, unknown> | null = useMemo(() => {
@@ -548,11 +544,11 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
         } else {
           updateCell(row, col, value);
         }
-      } else if (activePanel?.type === 'query' && activeQueryTab) {
-        updateResultCell(activeQueryTab.id, activeQueryTab.activeResultIdx, row, col, value);
+      } else if (activePanel?.type === 'query' && activeQueryExec) {
+        updateResultCell(activePanel.id, activeQueryExec.activeResultIdx, row, col, value);
       }
     },
-    [activePanel, activeQueryTab, updateCell, updateResultCell, applyColumnToRows, selectedRows],
+    [activePanel, activeQueryExec, updateCell, updateResultCell, applyColumnToRows, selectedRows],
   );
 
   return (
@@ -632,10 +628,7 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
                 database={currentDatabase ?? undefined}
                 onInsertSql={(sql) => {
                   if (activePanel?.type === 'query') {
-                    const tab = useQueryStore
-                      .getState()
-                      .findTab((activePanel as QueryPanelType).queryTabId);
-                    if (tab) updateQuerySql(tab.id, sql);
+                    updateQuerySql(activePanel.id, sql);
                   }
                 }}
               />

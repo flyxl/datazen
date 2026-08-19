@@ -160,7 +160,7 @@ export interface ExplainResult {
 
 export interface QueryHistoryEntry {
   id: string;
-  connectionId: string;
+  configId: string;
   database: string;
   sql: string;
   executedAt: string;
@@ -172,6 +172,7 @@ export interface QueryHistoryEntry {
 
 export interface FavoriteQuery {
   id: string;
+  configId: string;
   title: string;
   sql: string;
   createdAt: string;

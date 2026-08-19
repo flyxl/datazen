@@ -4,6 +4,25 @@ vi.mock('../../locales/t', () => ({
   t: (key: string) => key,
 }));
 
+const mockGetQueryHistory = vi.fn().mockResolvedValue([]);
+const mockGetFavoriteQueries = vi.fn().mockResolvedValue([]);
+const mockAddFavoriteQuery = vi.fn().mockResolvedValue(undefined);
+const mockDeleteFavoriteQuery = vi.fn().mockResolvedValue(undefined);
+const mockExecuteQueryStream = vi.fn().mockResolvedValue(undefined);
+const mockCancelQuery = vi.fn().mockResolvedValue(undefined);
+
+vi.mock('../../commands/query', () => ({
+  queryCommands: {
+    getQueryHistory: (...args: unknown[]) => mockGetQueryHistory(...args),
+    getFavoriteQueries: (...args: unknown[]) => mockGetFavoriteQueries(...args),
+    addFavoriteQuery: (...args: unknown[]) => mockAddFavoriteQuery(...args),
+    deleteFavoriteQuery: (...args: unknown[]) => mockDeleteFavoriteQuery(...args),
+    executeQueryStream: (...args: unknown[]) => mockExecuteQueryStream(...args),
+    cancelQuery: (...args: unknown[]) => mockCancelQuery(...args),
+    executeQuery: vi.fn().mockResolvedValue({ results: [], totalTimeMs: 10 }),
+  },
+}));
+
 describe('panelStore', () => {
   let usePanelStore: typeof import('../panelStore').usePanelStore;
   let nextPanelId: typeof import('../panelStore').nextPanelId;
@@ -32,7 +51,7 @@ describe('panelStore', () => {
     const mod = await import('../panelStore');
     usePanelStore = mod.usePanelStore;
     nextPanelId = mod.nextPanelId;
-    usePanelStore.setState({ panels: [], activePanelId: null });
+    usePanelStore.setState({ panels: [], activePanelId: null, queryExec: new Map() });
   });
 
   // ── addPanel ─────────────────────────────────────────────────
@@ -335,6 +354,78 @@ describe('panelStore', () => {
     expect(state.panels[0].configId).toBe('cfg-2');
   });
 
+  // ── queryExec lifecycle ────────────────────────────────────────
+
+  it('addPanel creates queryExec entry for query panels', () => {
+    const panel: Panel = {
+      ...base,
+      type: 'query',
+      id: nextPanelId('qry'),
+      title: 'Query 1',
+    };
+    usePanelStore.getState().addPanel(panel);
+    const exec = usePanelStore.getState().queryExec.get(panel.id);
+    expect(exec).toBeDefined();
+    expect(exec!.sql).toBe('');
+    expect(exec!.running).toBe(false);
+  });
+
+  it('addPanel does not create queryExec entry for table panels', () => {
+    const panel = makeTable('users');
+    usePanelStore.getState().addPanel(panel);
+    expect(usePanelStore.getState().queryExec.has(panel.id)).toBe(false);
+  });
+
+  it('removePanel cleans up queryExec entry', () => {
+    const panel: Panel = {
+      ...base,
+      type: 'query',
+      id: nextPanelId('qry'),
+      title: 'Query 1',
+    };
+    usePanelStore.getState().addPanel(panel);
+    expect(usePanelStore.getState().queryExec.has(panel.id)).toBe(true);
+
+    usePanelStore.getState().removePanel(panel.id);
+    expect(usePanelStore.getState().queryExec.has(panel.id)).toBe(false);
+  });
+
+  it('closeAllPanels cleans up all queryExec entries', () => {
+    const q1: Panel = { ...base, type: 'query', id: nextPanelId('qry'), title: 'Q1' };
+    const q2: Panel = { ...base, type: 'query', id: nextPanelId('qry'), title: 'Q2' };
+    usePanelStore.getState().addPanel(q1);
+    usePanelStore.getState().addPanel(q2, false);
+
+    usePanelStore.getState().closeAllPanels();
+    expect(usePanelStore.getState().queryExec.size).toBe(0);
+  });
+
+  it('updateSql updates queryExec sql field', () => {
+    const panel: Panel = { ...base, type: 'query', id: nextPanelId('qry'), title: 'Q1' };
+    usePanelStore.getState().addPanel(panel);
+
+    usePanelStore.getState().updateSql(panel.id, 'SELECT 1');
+    expect(usePanelStore.getState().queryExec.get(panel.id)!.sql).toBe('SELECT 1');
+  });
+
+  it('removeAllForConnection cleans up queryExec for that connection', () => {
+    const q1: Panel = { ...base, type: 'query', id: nextPanelId('qry'), title: 'Q1' };
+    const q2: Panel = {
+      ...base,
+      configId: 'cfg-2',
+      connectionId: 'conn-2',
+      type: 'query',
+      id: nextPanelId('qry'),
+      title: 'Q2',
+    };
+    usePanelStore.getState().addPanel(q1);
+    usePanelStore.getState().addPanel(q2, false);
+
+    usePanelStore.getState().removeAllForConnection('cfg-1');
+    expect(usePanelStore.getState().queryExec.has(q1.id)).toBe(false);
+    expect(usePanelStore.getState().queryExec.has(q2.id)).toBe(true);
+  });
+
   // ── Redis panel ──────────────────────────────────────────────
 
   it('supports redis-db panel type', () => {
@@ -353,5 +444,150 @@ describe('panelStore', () => {
     expect(state.panels).toHaveLength(1);
     expect(state.panels[0].type).toBe('redis-db');
     expect(state.activePanelId).toBe(redisPanel.id);
+  });
+
+  // ── History / Favorites async actions ─────────────────────────
+
+  function makeQueryPanel(title: string): Panel {
+    return {
+      ...base,
+      type: 'query',
+      id: nextPanelId('qry'),
+      title,
+    };
+  }
+
+  it('loadHistory calls IPC and sets queryHistory', async () => {
+    const history = [
+      {
+        id: 'h1',
+        configId: 'cfg-1',
+        database: 'db',
+        sql: 'SELECT 1',
+        executedAt: '',
+        executionTimeMs: 10,
+        success: true,
+      },
+    ];
+    mockGetQueryHistory.mockResolvedValueOnce(history);
+
+    await usePanelStore.getState().loadHistory('cfg-1');
+
+    expect(mockGetQueryHistory).toHaveBeenCalledWith(100, 'cfg-1');
+    expect(usePanelStore.getState().queryHistory).toEqual(history);
+  });
+
+  it('loadFavorites calls IPC and sets queryFavorites', async () => {
+    const favorites = [
+      { id: 'f1', configId: 'cfg-1', title: 'Fav', sql: 'SELECT 1', createdAt: '' },
+    ];
+    mockGetFavoriteQueries.mockResolvedValueOnce(favorites);
+
+    await usePanelStore.getState().loadFavorites('cfg-1');
+
+    expect(mockGetFavoriteQueries).toHaveBeenCalledWith('cfg-1');
+    expect(usePanelStore.getState().queryFavorites).toEqual(favorites);
+  });
+
+  it('addFavorite calls IPC then reloads favorites', async () => {
+    const favorites = [
+      { id: 'f1', configId: 'cfg-1', title: 'My Fav', sql: 'SELECT 1', createdAt: '' },
+    ];
+    mockGetFavoriteQueries.mockResolvedValueOnce(favorites);
+
+    await usePanelStore.getState().addFavorite('My Fav', 'SELECT 1', 'cfg-1');
+
+    expect(mockAddFavoriteQuery).toHaveBeenCalledWith('cfg-1', 'My Fav', 'SELECT 1');
+    expect(mockGetFavoriteQueries).toHaveBeenCalledWith('cfg-1');
+    expect(usePanelStore.getState().queryFavorites).toEqual(favorites);
+  });
+
+  it('deleteFavorite calls IPC then reloads favorites', async () => {
+    const panel = makeQueryPanel('Q1');
+    usePanelStore.getState().addPanel(panel);
+    mockGetFavoriteQueries.mockResolvedValueOnce([]);
+
+    await usePanelStore.getState().deleteFavorite('f1');
+
+    expect(mockDeleteFavoriteQuery).toHaveBeenCalledWith('f1');
+    expect(mockGetFavoriteQueries).toHaveBeenCalledWith('cfg-1');
+  });
+
+  it('toggleHistory flips historyVisible', () => {
+    expect(usePanelStore.getState().historyVisible).toBe(false);
+    usePanelStore.getState().toggleHistory();
+    expect(usePanelStore.getState().historyVisible).toBe(true);
+    usePanelStore.getState().toggleHistory();
+    expect(usePanelStore.getState().historyVisible).toBe(false);
+  });
+
+  it('toggleFavorites flips favoritesVisible', () => {
+    expect(usePanelStore.getState().favoritesVisible).toBe(false);
+    usePanelStore.getState().toggleFavorites();
+    expect(usePanelStore.getState().favoritesVisible).toBe(true);
+    usePanelStore.getState().toggleFavorites();
+    expect(usePanelStore.getState().favoritesVisible).toBe(false);
+  });
+
+  // ── cancelQuery ────────────────────────────────────────────────
+
+  it('cancelQuery sets running=false and error=Cancelled', async () => {
+    const panel = makeQueryPanel('Q1');
+    usePanelStore.getState().addPanel(panel);
+    usePanelStore.setState((s) => ({
+      queryExec: new Map(s.queryExec).set(panel.id, {
+        ...s.queryExec.get(panel.id)!,
+        running: true,
+      }),
+    }));
+
+    await usePanelStore.getState().cancelQuery(panel.id);
+
+    expect(mockCancelQuery).toHaveBeenCalledWith('conn-1');
+    const exec = usePanelStore.getState().queryExec.get(panel.id)!;
+    expect(exec.running).toBe(false);
+    expect(exec.error).toBe('Cancelled');
+  });
+
+  // ── setActiveResult / setResultDetailRow / setChartConfig / setResultViewMode ──
+
+  it('setActiveResult updates activeResultIdx', () => {
+    const panel = makeQueryPanel('Q1');
+    usePanelStore.getState().addPanel(panel);
+    usePanelStore.getState().setActiveResult(panel.id, 2);
+    expect(usePanelStore.getState().queryExec.get(panel.id)!.activeResultIdx).toBe(2);
+  });
+
+  it('setResultDetailRow updates resultDetailRowIndex', () => {
+    const panel = makeQueryPanel('Q1');
+    usePanelStore.getState().addPanel(panel);
+    usePanelStore.getState().setResultDetailRow(panel.id, 5);
+    expect(usePanelStore.getState().queryExec.get(panel.id)!.resultDetailRowIndex).toBe(5);
+  });
+
+  it('setResultViewMode updates resultViewMode', () => {
+    const panel = makeQueryPanel('Q1');
+    usePanelStore.getState().addPanel(panel);
+    usePanelStore.getState().setResultViewMode(panel.id, 'chart');
+    expect(usePanelStore.getState().queryExec.get(panel.id)!.resultViewMode).toBe('chart');
+  });
+
+  // ── reset ──────────────────────────────────────────────────────
+
+  it('reset clears all state', () => {
+    const panel = makeQueryPanel('Q1');
+    usePanelStore.getState().addPanel(panel);
+    usePanelStore.setState({ queryHistory: [{ id: 'h1' }] as any, historyVisible: true });
+
+    usePanelStore.getState().reset();
+
+    const state = usePanelStore.getState();
+    expect(state.panels).toHaveLength(0);
+    expect(state.activePanelId).toBeNull();
+    expect(state.queryExec.size).toBe(0);
+    expect(state.queryHistory).toHaveLength(0);
+    expect(state.queryFavorites).toHaveLength(0);
+    expect(state.historyVisible).toBe(false);
+    expect(state.favoritesVisible).toBe(false);
   });
 });

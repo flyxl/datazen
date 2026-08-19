@@ -38,7 +38,7 @@ mod tests {
     fn sample_entry(sql: &str) -> QueryHistoryEntry {
         QueryHistoryEntry {
             id: Uuid::new_v4().to_string(),
-            connection_id: "c1".into(),
+            config_id: "cfg1".into(),
             database: "app".into(),
             sql: sql.into(),
             executed_at: Utc::now(),
@@ -61,7 +61,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(deleted, 1);
-        assert!(test.store.get_query_history(10).await.is_empty());
+        assert!(test.store.get_query_history(10, None).await.is_empty());
     }
 
     #[tokio::test]

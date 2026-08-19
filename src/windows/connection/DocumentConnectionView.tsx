@@ -5,7 +5,8 @@ import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { SqlEditor } from '../../components/SqlEditor';
 import { useSchemaStore } from '../../stores/schemaStore';
-import { useQueryStore } from '../../stores/queryStore';
+import { usePanelStore, nextPanelId } from '../../stores/panelStore';
+import { useQueryExec } from '../../hooks/useQueryExec';
 import { useColumnResize } from '../../hooks/useColumnResize';
 import { useI18n } from '../../hooks/useI18n';
 import { databaseCommands } from '../../commands/database';
@@ -31,7 +32,9 @@ type ActiveTab = 'documents' | 'queries';
 
 export function DocumentConnectionView({
   connectionId,
+  configId,
   connectionName,
+  databaseType,
   initialDatabase,
 }: ConnectionViewProps) {
   const { t } = useI18n();
@@ -552,7 +555,12 @@ export function DocumentConnectionView({
           </div>
         </div>
       ) : (
-        <DocumentQueryPanel connectionId={connectionId} />
+        <DocumentQueryPanel
+          connectionId={connectionId}
+          configId={configId}
+          connectionName={connectionName}
+          databaseType={databaseType}
+        />
       )}
     </div>
   );
@@ -737,24 +745,72 @@ function DocumentResultTable({
   );
 }
 
-function DocumentQueryPanel({ connectionId: _connectionId }: { connectionId: string }) {
-  const { t } = useI18n();
-  const tab = useQueryStore((s) => s.tabs[0]);
-  const updateSql = useQueryStore((s) => s.updateSql);
-  const executeQuery = useQueryStore((s) => s.executeQuery);
-  const createTab = useQueryStore((s) => s.createTab);
-  const setActiveResult = useQueryStore((s) => s.setActiveResult);
+function DocumentQueryPanel({
+  connectionId,
+  configId,
+  connectionName,
+  databaseType,
+}: {
+  connectionId: string;
+  configId: string;
+  connectionName: string;
+  databaseType: string;
+}) {
+  const queryPanelId = usePanelStore(
+    (s) => s.panels.find((p) => p.type === 'query' && p.connectionId === connectionId)?.id,
+  );
+  const updateSql = usePanelStore((s) => s.updateSql);
+  const executeQuery = usePanelStore((s) => s.executeQuery);
+  const setActiveResult = usePanelStore((s) => s.setActiveResult);
 
   useEffect(() => {
-    if (!tab) createTab();
-  }, [tab, createTab]);
+    if (!queryPanelId) {
+      const panelId = nextPanelId('doc-qry');
+      usePanelStore.getState().addPanel(
+        {
+          type: 'query',
+          id: panelId,
+          connectionId,
+          configId,
+          connectionName,
+          databaseType: databaseType as import('../../types').DatabaseType,
+          title: 'Query',
+        },
+        false,
+      );
+    }
+  }, [queryPanelId, connectionId, configId, connectionName, databaseType]);
+
+  if (!queryPanelId) return null;
+  return (
+    <DocumentQueryPanelInner
+      panelId={queryPanelId}
+      updateSql={updateSql}
+      executeQuery={executeQuery}
+      setActiveResult={setActiveResult}
+    />
+  );
+}
+
+function DocumentQueryPanelInner({
+  panelId,
+  updateSql,
+  executeQuery,
+  setActiveResult,
+}: {
+  panelId: string;
+  updateSql: (panelId: string, sql: string) => void;
+  executeQuery: (panelId: string) => Promise<void>;
+  setActiveResult: (panelId: string, idx: number) => void;
+}) {
+  const { t } = useI18n();
+  const exec = useQueryExec(panelId);
 
   const handleExecute = useCallback(() => {
-    if (tab) void executeQuery(tab.id);
-  }, [tab, executeQuery]);
+    void executeQuery(panelId);
+  }, [panelId, executeQuery]);
 
-  if (!tab) return null;
-  const { results, activeResultIdx } = tab;
+  const { results, activeResultIdx } = exec;
   const activeResult = results[activeResultIdx];
 
   return (
@@ -764,20 +820,20 @@ function DocumentQueryPanel({ connectionId: _connectionId }: { connectionId: str
           variant="primary"
           className="h-7 gap-1 px-2 text-xs"
           onClick={handleExecute}
-          disabled={tab.running}
+          disabled={exec.running}
         >
           {t('query.execute')}
         </Button>
         <span className="text-[11px] text-fg-muted">⌘+Enter — {t('mongo.queries')}</span>
         <div className="flex-1" />
-        {tab.executionTimeMs != null && (
-          <span className="text-[11px] text-fg-muted">{tab.executionTimeMs} ms</span>
+        {exec.executionTimeMs != null && (
+          <span className="text-[11px] text-fg-muted">{exec.executionTimeMs} ms</span>
         )}
       </div>
       <div className="min-h-[100px] border-b border-edge" style={{ height: '30%' }}>
         <SqlEditor
-          value={tab.sql}
-          onChange={(v) => updateSql(tab.id, v)}
+          value={exec.sql}
+          onChange={(v) => updateSql(panelId, v)}
           onExecute={handleExecute}
           placeholder={
             '{\n  "collection": "orders",\n  "filter": { "status": "paid" },\n  "limit": 20\n}'
@@ -786,16 +842,16 @@ function DocumentQueryPanel({ connectionId: _connectionId }: { connectionId: str
         />
       </div>
       <div className="flex min-h-0 flex-1 flex-col">
-        {tab.running && results.length === 0 && (
+        {exec.running && results.length === 0 && (
           <div className="flex flex-1 items-center justify-center gap-2 text-fg-muted">
             <Loader2 className="h-5 w-5 animate-spin" />
             {t('query.executing')}
           </div>
         )}
-        {tab.error && !tab.running && (
+        {exec.error && !exec.running && (
           <div className="flex-1 overflow-auto p-4">
             <div className="rounded-md border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">
-              {tab.error}
+              {exec.error}
             </div>
           </div>
         )}
@@ -813,7 +869,7 @@ function DocumentQueryPanel({ connectionId: _connectionId }: { connectionId: str
                         ? 'font-medium text-fg'
                         : 'text-fg-muted hover:text-fg-secondary',
                     )}
-                    onClick={() => setActiveResult(tab.id, idx)}
+                    onClick={() => setActiveResult(panelId, idx)}
                   >
                     {t('query.result')} {idx + 1}
                     <span
@@ -833,7 +889,7 @@ function DocumentQueryPanel({ connectionId: _connectionId }: { connectionId: str
             />
           </>
         )}
-        {results.length === 0 && !tab.running && !tab.error && (
+        {results.length === 0 && !exec.running && !exec.error && (
           <div className="flex flex-1 items-center justify-center text-sm text-fg-muted">
             {t('mongo.queryHint')}
           </div>

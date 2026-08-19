@@ -55,7 +55,8 @@ import { ChartView } from '../../components/chart/ChartView';
 import { Nl2SqlPanel } from '../../components/ai/Nl2SqlPanel';
 import { DiagnosisPanel } from '../../components/ai/DiagnosisPanel';
 import { ExplainPanel } from '../../components/ai/ExplainPanel';
-import { useQueryStore } from '../../stores/queryStore';
+import { usePanelStore } from '../../stores/panelStore';
+import { useQueryExec } from '../../hooks/useQueryExec';
 import { useSchemaStore } from '../../stores/schemaStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useI18n } from '../../hooks/useI18n';
@@ -78,10 +79,10 @@ import { Dialog } from '../../components/ui/Dialog';
 import { analyzeTransactionSql, isAbortedTransactionError } from '../../lib/sqlTransactionGuard';
 
 interface QueryPanelProps {
+  panelId: string;
   connectionId: string;
   /** Persistent saved-connection ID (stable across restarts). */
   configId: string;
-  queryTabId: string;
   databaseType?: string;
 }
 
@@ -105,26 +106,26 @@ function ToolbarButton({ compact, label, icon, className, title, ...props }: Too
   );
 }
 
-export function QueryPanel({ connectionId, configId, queryTabId, databaseType }: QueryPanelProps) {
+export function QueryPanel({ panelId, connectionId, configId, databaseType }: QueryPanelProps) {
   const { t } = useI18n();
-  const tab = useQueryStore((s) => s.findTab(queryTabId));
-  const historyVisible = useQueryStore((s) => s.historyVisible);
-  const history = useQueryStore((s) => s.history);
-  const updateSql = useQueryStore((s) => s.updateSql);
-  const setActiveResult = useQueryStore((s) => s.setActiveResult);
-  const executeQuery = useQueryStore((s) => s.executeQuery);
-  const executeSelection = useQueryStore((s) => s.executeSelection);
-  const cancelQuery = useQueryStore((s) => s.cancelQuery);
-  const loadHistory = useQueryStore((s) => s.loadHistory);
-  const toggleHistory = useQueryStore((s) => s.toggleHistory);
-  const favorites = useQueryStore((s) => s.favorites);
-  const favoritesVisible = useQueryStore((s) => s.favoritesVisible);
-  const loadFavorites = useQueryStore((s) => s.loadFavorites);
-  const addFavorite = useQueryStore((s) => s.addFavorite);
-  const deleteFavorite = useQueryStore((s) => s.deleteFavorite);
-  const toggleFavorites = useQueryStore((s) => s.toggleFavorites);
-  const setResultDetailRow = useQueryStore((s) => s.setResultDetailRow);
-  const setChartConfig = useQueryStore((s) => s.setChartConfig);
+  const exec = useQueryExec(panelId);
+  const historyVisible = usePanelStore((s) => s.historyVisible);
+  const history = usePanelStore((s) => s.queryHistory);
+  const updateSql = usePanelStore((s) => s.updateSql);
+  const setActiveResult = usePanelStore((s) => s.setActiveResult);
+  const storeExecuteQuery = usePanelStore((s) => s.executeQuery);
+  const storeExecuteSelection = usePanelStore((s) => s.executeSelection);
+  const cancelQuery = usePanelStore((s) => s.cancelQuery);
+  const loadHistory = usePanelStore((s) => s.loadHistory);
+  const toggleHistory = usePanelStore((s) => s.toggleHistory);
+  const favorites = usePanelStore((s) => s.queryFavorites);
+  const favoritesVisible = usePanelStore((s) => s.favoritesVisible);
+  const loadFavorites = usePanelStore((s) => s.loadFavorites);
+  const storeAddFavorite = usePanelStore((s) => s.addFavorite);
+  const deleteFavorite = usePanelStore((s) => s.deleteFavorite);
+  const toggleFavorites = usePanelStore((s) => s.toggleFavorites);
+  const setResultDetailRow = usePanelStore((s) => s.setResultDetailRow);
+  const setChartConfig = usePanelStore((s) => s.setChartConfig);
 
   // AI entry points are always visible; panels handle unconfigured state internally
 
@@ -149,13 +150,13 @@ export function QueryPanel({ connectionId, configId, queryTabId, databaseType }:
   const [addToDashboardOpen, setAddToDashboardOpen] = useState(false);
   const safeMode = useSettingsStore((s) => s.settings.safeMode);
   const autoCommit = useSettingsStore((s) => s.settings.autoCommit);
-  const resultViewMode = tab?.resultViewMode ?? 'table';
-  const setResultViewModeStore = useQueryStore((s) => s.setResultViewMode);
+  const resultViewMode = exec.resultViewMode ?? 'table';
+  const setResultViewModeStore = usePanelStore((s) => s.setResultViewMode);
   const setResultViewMode = useCallback(
     (mode: 'table' | 'chart') => {
-      if (tab) setResultViewModeStore(tab.id, mode);
+      setResultViewModeStore(panelId, mode);
     },
-    [tab, setResultViewModeStore],
+    [panelId, setResultViewModeStore],
   );
 
   const { size: editorHeight, handleRef: editorResizeRef } = useResizable({
@@ -197,7 +198,7 @@ export function QueryPanel({ connectionId, configId, queryTabId, databaseType }:
     [namespaceTree, tables, views, columnMap, currentDatabase, contextPath],
   );
   const editorDefaultSchema = useMemo(() => inferDefaultSchema(tables, views), [tables, views]);
-  const editorDefaultTable = useMemo(() => inferDefaultTable(tab?.sql ?? ''), [tab?.sql]);
+  const editorDefaultTable = useMemo(() => inferDefaultTable(exec.sql), [exec.sql]);
 
   const ensureTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -257,29 +258,28 @@ export function QueryPanel({ connectionId, configId, queryTabId, databaseType }:
   );
 
   useEffect(() => {
-    const sql = tab?.sql ?? '';
-    if (!sql.trim()) return;
+    if (!exec.sql.trim()) return;
     const timer = setTimeout(() => {
-      void syncContextFromSql(sql);
+      void syncContextFromSql(exec.sql);
     }, 50);
     return () => clearTimeout(timer);
-  }, [tab?.sql, syncContextFromSql]);
+  }, [exec.sql, syncContextFromSql]);
 
   useEffect(() => {
-    void loadHistory();
-    void loadFavorites();
-  }, [connectionId, loadHistory, loadFavorites]);
+    void loadHistory(configId);
+    void loadFavorites(configId);
+  }, [configId, loadHistory, loadFavorites]);
 
   useEffect(() => {
-    const names = tablesReferencedInSql(tab?.sql ?? '');
+    const names = tablesReferencedInSql(exec.sql);
     if (names.length === 0) return;
     const timer = setTimeout(() => {
       void ensureColumns(names);
     }, 120);
     return () => clearTimeout(timer);
-  }, [tab?.sql, ensureColumns, namespaceTree, tables, views]);
+  }, [exec.sql, ensureColumns, namespaceTree, tables, views]);
 
-  const sqlParams = useMemo(() => parseSqlParams(tab?.sql ?? ''), [tab?.sql]);
+  const sqlParams = useMemo(() => parseSqlParams(exec.sql), [exec.sql]);
   const boundPayload = useMemo(
     () => (sqlParams.length > 0 ? paramsToPayload(sqlParams, paramValues) : undefined),
     [sqlParams, paramValues],
@@ -349,9 +349,8 @@ export function QueryPanel({ connectionId, configId, queryTabId, databaseType }:
 
   const runExecute = useCallback(
     async (kind: 'full' | 'selection', selectionSql?: string) => {
-      if (!tab) return;
       await syncContextFromSql(
-        kind === 'selection' && selectionSql != null ? selectionSql : tab.sql,
+        kind === 'selection' && selectionSql != null ? selectionSql : exec.sql,
       );
       if (!autoCommit && !inTransaction) {
         try {
@@ -362,16 +361,16 @@ export function QueryPanel({ connectionId, configId, queryTabId, databaseType }:
         }
       }
       if (kind === 'selection' && selectionSql != null) {
-        await executeSelection(tab.id, selectionSql, boundPayload);
+        await storeExecuteSelection(panelId, selectionSql, boundPayload);
       } else {
         const sel = editorRef.current?.getSelection()?.trim();
         if (sel) {
-          await executeSelection(tab.id, sel, boundPayload);
+          await storeExecuteSelection(panelId, sel, boundPayload);
         } else {
-          await executeQuery(tab.id, boundPayload);
+          await storeExecuteQuery(panelId, boundPayload);
         }
       }
-      const err = useQueryStore.getState().findTab(tab.id)?.error ?? null;
+      const err = usePanelStore.getState().queryExec.get(panelId)?.error ?? null;
       if (err) {
         await maybeOfferAbortedDialog(err);
       } else {
@@ -379,12 +378,13 @@ export function QueryPanel({ connectionId, configId, queryTabId, databaseType }:
       }
     },
     [
-      tab,
+      exec.sql,
+      panelId,
       autoCommit,
       inTransaction,
       connectionId,
-      executeSelection,
-      executeQuery,
+      storeExecuteSelection,
+      storeExecuteQuery,
       boundPayload,
       maybeOfferAbortedDialog,
       refreshTxStatus,
@@ -394,11 +394,10 @@ export function QueryPanel({ connectionId, configId, queryTabId, databaseType }:
 
   const requestExecute = useCallback(
     (kind: 'full' | 'selection', selectionSql?: string) => {
-      if (!tab) return;
       const sqlForCheck =
         kind === 'selection' && selectionSql != null
           ? selectionSql
-          : editorRef.current?.getSelection()?.trim() || tab.sql;
+          : editorRef.current?.getSelection()?.trim() || exec.sql;
       if (analyzeTransactionSql(sqlForCheck).hasUnclosedBegin) {
         pendingExecuteRef.current = { kind, sql: selectionSql };
         setTxUnclosedOpen(true);
@@ -406,7 +405,7 @@ export function QueryPanel({ connectionId, configId, queryTabId, databaseType }:
       }
       void runExecute(kind, selectionSql);
     },
-    [tab, runExecute],
+    [exec.sql, runExecute],
   );
 
   const handleExecute = useCallback(() => {
@@ -453,32 +452,32 @@ export function QueryPanel({ connectionId, configId, queryTabId, databaseType }:
   }, []);
 
   const handleFormat = useCallback(() => {
-    if (!tab?.sql.trim()) return;
+    if (!exec.sql.trim()) return;
     try {
-      updateSql(tab.id, formatSql(tab.sql, databaseType));
+      updateSql(panelId, formatSql(exec.sql, databaseType));
     } catch {
       /* keep original SQL if formatter rejects dialect-specific syntax */
     }
-  }, [tab, databaseType, updateSql]);
+  }, [exec.sql, panelId, databaseType, updateSql]);
 
   const handleCancel = useCallback(() => {
-    if (tab) void cancelQuery(tab.id);
-  }, [tab, cancelQuery]);
+    void cancelQuery(panelId);
+  }, [panelId, cancelQuery]);
 
   const handleApplyAiSql = useCallback(
     (sql: string) => {
-      if (tab) updateSql(tab.id, sql);
+      updateSql(panelId, sql);
     },
-    [tab, updateSql],
+    [panelId, updateSql],
   );
 
   const handleExplain = useCallback(async () => {
-    if (!tab?.sql.trim()) return;
+    if (!exec.sql.trim()) return;
     setExplainLoading(true);
     setExplainError(null);
     setShowExplain(true);
     try {
-      const result = await queryCommands.getExplain(connectionId, tab.sql);
+      const result = await queryCommands.getExplain(connectionId, exec.sql);
       setExplainResult(result);
     } catch (e) {
       setExplainResult(null);
@@ -486,7 +485,7 @@ export function QueryPanel({ connectionId, configId, queryTabId, databaseType }:
     } finally {
       setExplainLoading(false);
     }
-  }, [connectionId, tab]);
+  }, [connectionId, exec.sql]);
 
   const openAddFavoriteDialog = useCallback((sql: string) => {
     const trimmed = sql.trim();
@@ -537,7 +536,6 @@ export function QueryPanel({ connectionId, configId, queryTabId, databaseType }:
     (e: ReactMouseEvent, favorite: { id: string; sql: string }) => {
       e.preventDefault();
       e.stopPropagation();
-      if (!tab) return;
       void showNativeContextMenu(
         buildFavoriteSidebarContextMenuItems({
           labels: {
@@ -546,7 +544,7 @@ export function QueryPanel({ connectionId, configId, queryTabId, databaseType }:
             delete: t('common.delete'),
           },
           handlers: {
-            onApplySql: () => updateSql(tab.id, favorite.sql),
+            onApplySql: () => updateSql(panelId, favorite.sql),
             onCopySql: () => copySqlToClipboard(favorite.sql),
             onDelete: () => {
               void deleteFavorite(favorite.id);
@@ -556,14 +554,13 @@ export function QueryPanel({ connectionId, configId, queryTabId, databaseType }:
         { x: e.clientX, y: e.clientY },
       );
     },
-    [tab, t, updateSql, copySqlToClipboard, deleteFavorite],
+    [panelId, t, updateSql, copySqlToClipboard, deleteFavorite],
   );
 
   const handleHistoryContextMenu = useCallback(
     (e: ReactMouseEvent, sql: string) => {
       e.preventDefault();
       e.stopPropagation();
-      if (!tab) return;
       void showNativeContextMenu(
         buildHistorySidebarContextMenuItems({
           labels: {
@@ -571,14 +568,14 @@ export function QueryPanel({ connectionId, configId, queryTabId, databaseType }:
             copySql: t('query.copySql'),
           },
           handlers: {
-            onApplySql: () => updateSql(tab.id, sql),
+            onApplySql: () => updateSql(panelId, sql),
             onCopySql: () => copySqlToClipboard(sql),
           },
         }),
         { x: e.clientX, y: e.clientY },
       );
     },
-    [tab, t, updateSql, copySqlToClipboard],
+    [panelId, t, updateSql, copySqlToClipboard],
   );
 
   const handleHistoryHeaderContextMenu = useCallback(
@@ -592,7 +589,7 @@ export function QueryPanel({ connectionId, configId, queryTabId, databaseType }:
             onClearHistory: () => {
               void (async () => {
                 await queryCommands.clearQueryHistory();
-                await loadHistory();
+                await loadHistory(configId);
               })();
             },
           },
@@ -600,24 +597,22 @@ export function QueryPanel({ connectionId, configId, queryTabId, databaseType }:
         { x: e.clientX, y: e.clientY },
       );
     },
-    [t, loadHistory],
+    [t, configId, loadHistory],
   );
 
   // Keep event bridge for E2E / menubar emit compatibility.
   useEffect(() => {
     const unlisten = listen('menu:add-favorite', () => {
       const sql =
-        pendingFavSqlRef.current || useQueryStore.getState().findTab(queryTabId)?.sql || '';
+        pendingFavSqlRef.current || usePanelStore.getState().queryExec.get(panelId)?.sql || '';
       openAddFavoriteDialog(sql);
     });
     return () => {
       void unlisten.then((fn) => fn());
     };
-  }, [openAddFavoriteDialog, queryTabId]);
+  }, [openAddFavoriteDialog, panelId]);
 
-  if (!tab) return null;
-
-  const { results, activeResultIdx } = tab;
+  const { results, activeResultIdx } = exec;
   const activeResult: StatementResult | undefined = results[activeResultIdx];
 
   return (
@@ -645,9 +640,9 @@ export function QueryPanel({ connectionId, configId, queryTabId, databaseType }:
           label={t('query.execute')}
           icon={<Play className="h-3.5 w-3.5" />}
           onClick={handleExecute}
-          disabled={tab.running}
+          disabled={exec.running}
         />
-        {tab.running && (
+        {exec.running && (
           <ToolbarButton
             compact={compactToolbar}
             variant="danger"
@@ -663,7 +658,7 @@ export function QueryPanel({ connectionId, configId, queryTabId, databaseType }:
             label={t('explain.title')}
             icon={<FileSearch className="h-3.5 w-3.5" />}
             onClick={() => void handleExplain()}
-            disabled={tab.running || !tab.sql.trim()}
+            disabled={exec.running || !exec.sql.trim()}
           />
         )}
         <ToolbarButton
@@ -672,7 +667,7 @@ export function QueryPanel({ connectionId, configId, queryTabId, databaseType }:
           label={t('query.format')}
           icon={<Wand2 className="h-3.5 w-3.5" />}
           onClick={handleFormat}
-          disabled={tab.running || !tab.sql.trim()}
+          disabled={exec.running || !exec.sql.trim()}
         />
         <div className="mx-1 h-4 w-px shrink-0 bg-edge" />
         <ToolbarButton
@@ -681,7 +676,7 @@ export function QueryPanel({ connectionId, configId, queryTabId, databaseType }:
           label={t('query.beginTx')}
           icon={<CirclePlay className="h-3.5 w-3.5" />}
           onClick={() => void handleBeginTx()}
-          disabled={tab.running || txBusy || inTransaction}
+          disabled={exec.running || txBusy || inTransaction}
         />
         <ToolbarButton
           compact={compactToolbar}
@@ -689,7 +684,7 @@ export function QueryPanel({ connectionId, configId, queryTabId, databaseType }:
           label={t('query.commitTx')}
           icon={<Check className="h-3.5 w-3.5" />}
           onClick={() => void handleCommitTx()}
-          disabled={tab.running || txBusy || !inTransaction}
+          disabled={exec.running || txBusy || !inTransaction}
         />
         <ToolbarButton
           compact={compactToolbar}
@@ -697,7 +692,7 @@ export function QueryPanel({ connectionId, configId, queryTabId, databaseType }:
           label={t('query.rollbackTx')}
           icon={<Undo2 className="h-3.5 w-3.5" />}
           onClick={() => void handleRollbackTx()}
-          disabled={tab.running || txBusy || !inTransaction}
+          disabled={exec.running || txBusy || !inTransaction}
         />
         {inTransaction && (
           <span
@@ -721,11 +716,11 @@ export function QueryPanel({ connectionId, configId, queryTabId, databaseType }:
           </span>
         )}
         <div className="min-w-0 flex-1" />
-        {tab.executionTimeMs != null && (
+        {exec.executionTimeMs != null && (
           <span className="shrink-0 whitespace-nowrap text-[11px] text-fg-muted">
             {compactToolbar
-              ? `${tab.executionTimeMs} ms`
-              : `${t('query.totalTime')} ${tab.executionTimeMs} ms`}
+              ? `${exec.executionTimeMs} ms`
+              : `${t('query.totalTime')} ${exec.executionTimeMs} ms`}
           </span>
         )}
         <ToolbarButton
@@ -773,8 +768,8 @@ export function QueryPanel({ connectionId, configId, queryTabId, databaseType }:
           <div className="relative shrink-0 border-b border-edge" style={{ height: editorHeight }}>
             <SqlEditor
               ref={editorRef}
-              value={tab.sql}
-              onChange={(v) => updateSql(tab.id, v)}
+              value={exec.sql}
+              onChange={(v) => updateSql(panelId, v)}
               onExecute={handleExecute}
               onExecuteSelection={handleExecuteSelection}
               onContextMenu={handleEditorContextMenu}
@@ -816,7 +811,7 @@ export function QueryPanel({ connectionId, configId, queryTabId, databaseType }:
                     autoFocus
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' && favoriteName.trim()) {
-                        void addFavorite(favoriteName.trim(), favoriteDialogSql);
+                        void storeAddFavorite(favoriteName.trim(), favoriteDialogSql, configId);
                         setFavoriteName('');
                         setShowFavoriteDialog(false);
                       }
@@ -846,7 +841,7 @@ export function QueryPanel({ connectionId, configId, queryTabId, databaseType }:
                     disabled={!favoriteName.trim()}
                     onClick={() => {
                       if (favoriteName.trim()) {
-                        void addFavorite(favoriteName.trim(), favoriteDialogSql);
+                        void storeAddFavorite(favoriteName.trim(), favoriteDialogSql, configId);
                         setFavoriteName('');
                         setShowFavoriteDialog(false);
                       }
@@ -862,7 +857,7 @@ export function QueryPanel({ connectionId, configId, queryTabId, databaseType }:
           {/* Results area */}
           <div className="flex min-h-0 flex-1 flex-col">
             {/* EXPLAIN view */}
-            {showExplain && !tab.running && (
+            {showExplain && !exec.running && (
               <div className="flex min-h-0 flex-1 flex-col">
                 <div className="flex shrink-0 items-center gap-0 border-b border-edge bg-surface-alt px-1">
                   {results.length > 0 && (
@@ -900,7 +895,7 @@ export function QueryPanel({ connectionId, configId, queryTabId, databaseType }:
                 {!explainLoading && explainResult && (
                   <ExplainPanel
                     connectionId={connectionId}
-                    sql={tab.sql}
+                    sql={exec.sql}
                     explainOutput={explainResult.planText}
                     planJson={explainResult.planJson}
                     onApplySql={handleApplyAiSql}
@@ -909,18 +904,18 @@ export function QueryPanel({ connectionId, configId, queryTabId, databaseType }:
               </div>
             )}
 
-            {!showExplain && tab.running && results.length === 0 && (
+            {!showExplain && exec.running && results.length === 0 && (
               <div className="flex flex-1 items-center justify-center gap-2 text-fg-muted">
                 <Loader2 className="h-5 w-5 animate-spin" />
                 {t('query.executing')}
               </div>
             )}
 
-            {!showExplain && tab.error && !tab.running && (
+            {!showExplain && exec.error && !exec.running && (
               <div className="flex-1 overflow-auto">
                 <div className="p-4">
                   <QueryErrorPanel
-                    message={tab.error}
+                    message={exec.error}
                     onDiagnose={currentDatabase ? () => setDiagnosisVisible(true) : undefined}
                   />
                 </div>
@@ -928,8 +923,8 @@ export function QueryPanel({ connectionId, configId, queryTabId, databaseType }:
                   <DiagnosisPanel
                     connectionId={connectionId}
                     database={currentDatabase}
-                    sql={tab.sql}
-                    errorMessage={tab.error}
+                    sql={exec.sql}
+                    errorMessage={exec.error}
                     onApplySql={handleApplyAiSql}
                     onClose={() => setDiagnosisVisible(false)}
                   />
@@ -937,7 +932,7 @@ export function QueryPanel({ connectionId, configId, queryTabId, databaseType }:
               </div>
             )}
 
-            {!showExplain && !tab.error && results.length > 0 && (
+            {!showExplain && !exec.error && results.length > 0 && (
               <>
                 {/* Result tabs */}
                 {(results.length > 1 || explainResult) && (
@@ -952,12 +947,12 @@ export function QueryPanel({ connectionId, configId, queryTabId, databaseType }:
                             ? 'text-fg font-medium'
                             : 'text-fg-muted hover:text-fg-secondary',
                         )}
-                        onClick={() => setActiveResult(tab.id, idx)}
+                        onClick={() => setActiveResult(panelId, idx)}
                       >
                         {t('query.result')} {idx + 1}
                         <span className="ml-1.5 text-[10px] text-fg-muted">
                           ({r.rows.length} {t('common.rows')}
-                          {tab.running ? '' : `, ${r.executionTimeMs}ms`})
+                          {exec.running ? '' : `, ${r.executionTimeMs}ms`})
                         </span>
                         <span
                           className={cn(
@@ -982,7 +977,7 @@ export function QueryPanel({ connectionId, configId, queryTabId, databaseType }:
                 {/* View mode toggle + active result */}
                 {activeResult && (
                   <>
-                    {tab.running && (
+                    {exec.running && (
                       <div className="flex shrink-0 items-center gap-2 border-b border-edge bg-surface-alt px-3 py-1.5 text-xs text-fg-muted">
                         <Loader2 className="h-3 w-3 animate-spin" />
                         {t('query.streamingRows', { n: String(activeResult.rows.length) })}
@@ -1034,17 +1029,17 @@ export function QueryPanel({ connectionId, configId, queryTabId, databaseType }:
                         {t('dashboard.addToDashboard')}
                       </Button>
                     </div>
-                    {tab.running || resultViewMode === 'table' ? (
-                      <ResultTable result={activeResult} />
+                    {exec.running || resultViewMode === 'table' ? (
+                      <ResultTable result={activeResult} panelId={panelId} />
                     ) : (
                       <ChartView
-                        key={tab.id}
+                        key={panelId}
                         result={activeResult}
-                        savedConfig={tab.chartConfig}
-                        onConfigChange={(cfg) => setChartConfig(tab.id, cfg)}
+                        savedConfig={exec.chartConfig}
+                        onConfigChange={(cfg) => setChartConfig(panelId, cfg)}
                         onDataPointClick={(rowIndex) => {
                           setResultViewMode('table');
-                          setResultDetailRow(rowIndex);
+                          setResultDetailRow(panelId, rowIndex);
                         }}
                       />
                     )}
@@ -1053,7 +1048,7 @@ export function QueryPanel({ connectionId, configId, queryTabId, databaseType }:
               </>
             )}
 
-            {!showExplain && results.length === 0 && !tab.running && !tab.error && (
+            {!showExplain && results.length === 0 && !exec.running && !exec.error && (
               <div className="flex flex-1 items-center justify-center text-sm text-fg-muted">
                 {t('query.shortcutHint')}
               </div>
@@ -1081,7 +1076,7 @@ export function QueryPanel({ connectionId, configId, queryTabId, databaseType }:
                   <button
                     type="button"
                     className="min-w-0 flex-1 text-left"
-                    onClick={() => updateSql(tab.id, f.sql)}
+                    onClick={() => updateSql(panelId, f.sql)}
                   >
                     <div className="truncate text-xs font-medium text-fg">{f.title}</div>
                     <div className="mt-0.5 truncate font-mono text-[11px] text-fg-muted">
@@ -1118,7 +1113,7 @@ export function QueryPanel({ connectionId, configId, queryTabId, databaseType }:
                   key={h.id}
                   type="button"
                   className="w-full border-b border-edge px-3 py-2 text-left hover:bg-surface-raised"
-                  onClick={() => updateSql(tab.id, h.sql)}
+                  onClick={() => updateSql(panelId, h.sql)}
                   onContextMenu={(e) => handleHistoryContextMenu(e, h.sql)}
                 >
                   <div className="truncate font-mono text-xs text-fg-secondary">{h.sql}</div>
@@ -1180,7 +1175,7 @@ export function QueryPanel({ connectionId, configId, queryTabId, databaseType }:
         onClose={() => setAddToDashboardOpen(false)}
         onConfirm={(dashboardId, newName) => {
           void (async () => {
-            if (!tab?.sql.trim() || !activeResult?.rows.length) return;
+            if (!exec.sql.trim() || !activeResult?.rows.length) return;
             setAddToDashboardOpen(false);
             try {
               let targetId = dashboardId;
@@ -1192,10 +1187,15 @@ export function QueryPanel({ connectionId, configId, queryTabId, databaseType }:
               const created = await dashboardCommands.createWidgetFromSql({
                 dashboardId: targetId,
                 configId,
-                sql: tab.sql,
-                title: tab.title || undefined,
+                sql: exec.sql,
+                title:
+                  (
+                    usePanelStore.getState().panels.find((p) => p.id === panelId) as
+                      | import('../../stores/panelStore').QueryPanel
+                      | undefined
+                  )?.title || undefined,
                 viewMode: resultViewMode,
-                chartConfig: tab.chartConfig,
+                chartConfig: exec.chartConfig,
               });
               void emitCrossWindow('dashboard:changed', { dashboardId: created.dashboard.id });
               openDashboardWindow(created.dashboard.id, created.dashboard.name);
@@ -1209,11 +1209,13 @@ export function QueryPanel({ connectionId, configId, queryTabId, databaseType }:
   );
 }
 
-function ResultTable({ result }: { result: StatementResult }) {
+function ResultTable({ result, panelId }: { result: StatementResult; panelId: string }) {
   const { t } = useI18n();
   const queryResultLimit = useSettingsStore((s) => s.settings.queryResultLimit);
-  const setResultDetailRow = useQueryStore((s) => s.setResultDetailRow);
-  const resultDetailRowIndex = useQueryStore((s) => s.resultDetailRowIndex);
+  const setResultDetailRow = usePanelStore((s) => s.setResultDetailRow);
+  const resultDetailRowIndex = usePanelStore(
+    (s) => s.queryExec.get(panelId)?.resultDetailRowIndex ?? null,
+  );
 
   const [editingCell, setEditingCell] = useState<{ row: number; col: string } | null>(null);
 
@@ -1258,10 +1260,10 @@ function ResultTable({ result }: { result: StatementResult }) {
 
   const handleCellDoubleClick = useCallback(
     (row: number, col: string) => {
-      setResultDetailRow(row);
+      setResultDetailRow(panelId, row);
       setEditingCell({ row, col });
     },
-    [setResultDetailRow],
+    [panelId, setResultDetailRow],
   );
 
   return (
@@ -1275,7 +1277,7 @@ function ResultTable({ result }: { result: StatementResult }) {
       onCellEdit={(_row, _col, _value) => setEditingCell(null)}
       onCellEditCancel={() => setEditingCell(null)}
       enableSetNull={false}
-      onRowClick={setResultDetailRow}
+      onRowClick={(idx) => setResultDetailRow(panelId, idx)}
       highlightedRow={resultDetailRowIndex}
       exportTableName="query_result"
     />

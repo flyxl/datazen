@@ -861,7 +861,11 @@ fn db_tool_definitions() -> Vec<ToolDefinition> {
 fn is_db_tool(name: &str) -> bool {
     matches!(
         name,
-        "list_connections" | "list_databases" | "list_tables" | "get_table_schema"
+        "list_connections"
+            | "list_databases"
+            | "list_tables"
+            | "search_tables"
+            | "get_table_schema"
     )
 }
 
@@ -1999,12 +2003,16 @@ pub(crate) async fn ai_analyze_queries_impl(
     tracing::info!(connection_id = ?connection_id, "ai_analyze_queries: start");
     let (provider, ai_config) = resolve_ai(&state).await?;
 
-    let history = state.store.get_query_history(200).await;
-    let filtered: Vec<_> = if let Some(ref cid) = connection_id {
-        history.iter().filter(|h| &h.connection_id == cid).collect()
+    let config_id = if let Some(ref cid) = connection_id {
+        state.connection_manager.resolve_config_id(cid).await
     } else {
-        history.iter().collect()
+        None
     };
+    let history = state
+        .store
+        .get_query_history(200, config_id.as_deref())
+        .await;
+    let filtered: Vec<_> = history.iter().collect();
 
     if filtered.is_empty() {
         return Err(CommandError::Validation(
@@ -2289,7 +2297,7 @@ mod tests {
     #[test]
     fn test_db_tool_definitions_count() {
         let tools = db_tool_definitions();
-        assert_eq!(tools.len(), 4);
+        assert_eq!(tools.len(), 5);
         let names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
         assert!(names.contains(&"list_connections"));
         assert!(names.contains(&"list_databases"));

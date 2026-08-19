@@ -84,9 +84,17 @@ async fn record_sql_command_outcome(
     let Some(connection_id) = connection_id else {
         return;
     };
+    let Some(config_id) = state
+        .connection_manager
+        .resolve_config_id(connection_id)
+        .await
+    else {
+        tracing::warn!(connection_id, "Skipping history: config_id not found");
+        return;
+    };
     let entry = crate::store::QueryHistoryEntry {
         id: uuid::Uuid::new_v4().to_string(),
-        connection_id: connection_id.to_string(),
+        config_id,
         database: String::new(),
         sql: sql.to_string(),
         executed_at: chrono::Utc::now(),
@@ -385,10 +393,8 @@ mod tests {
                 || result.data.get("columns").is_some()
                 || result.data.is_object()
         );
-        let history = test.state.store.get_query_history(10).await;
-        assert!(history
-            .iter()
-            .any(|e| e.connection_id == conn_id && e.success));
+        let history = test.state.store.get_query_history(10, None).await;
+        assert!(history.iter().any(|e| e.success));
     }
 
     #[tokio::test]

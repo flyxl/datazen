@@ -345,7 +345,7 @@ async fn save_ai_config_uses_atomic_encrypted_write() {
 fn sample_history_entry(sql: &str) -> QueryHistoryEntry {
     QueryHistoryEntry {
         id: uuid::Uuid::new_v4().to_string(),
-        connection_id: "conn-1".into(),
+        config_id: "cfg-1".into(),
         database: "db".into(),
         sql: sql.into(),
         executed_at: Utc::now(),
@@ -420,18 +420,18 @@ async fn query_history_dedup_and_clear() {
         .add_query_history(sample_history_entry("SELECT 2"))
         .await
         .unwrap();
-    assert_eq!(store.get_query_history(10).await.len(), 2);
+    assert_eq!(store.get_query_history(10, None).await.len(), 2);
 
     // Dedup only applies when SQL matches the most recent entry.
     let mut dup = sample_history_entry("SELECT 2");
     dup.execution_time_ms = 99;
     store.add_query_history(dup).await.unwrap();
-    let history = store.get_query_history(10).await;
+    let history = store.get_query_history(10, None).await;
     assert_eq!(history.len(), 2);
     assert_eq!(history[0].execution_time_ms, 99);
 
     store.clear_query_history().await.unwrap();
-    assert!(store.get_query_history(10).await.is_empty());
+    assert!(store.get_query_history(10, None).await.is_empty());
 }
 
 #[tokio::test]
@@ -441,15 +441,16 @@ async fn favorite_queries_crud() {
 
     let fav = FavoriteQuery {
         id: "f1".into(),
+        config_id: "cfg-1".into(),
         title: "Users".into(),
         sql: "SELECT * FROM users".into(),
         created_at: Utc::now(),
     };
     store.add_favorite_query(fav).await.unwrap();
-    assert_eq!(store.get_favorite_queries().await.len(), 1);
+    assert_eq!(store.get_favorite_queries(None).await.len(), 1);
 
     store.delete_favorite_query("f1").await.unwrap();
-    assert!(store.get_favorite_queries().await.is_empty());
+    assert!(store.get_favorite_queries(None).await.is_empty());
 }
 
 #[tokio::test]
