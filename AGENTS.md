@@ -133,6 +133,8 @@ YAML 驱动的通用执行引擎，GUI、Tauri IPC 和 MCP 共用同一 runtime�
 | AI Chat | `components/ai/AiChatPanel.tsx` | `commands/ai.rs` |
 | Workflows | `windows/workflow/WorkflowWindow.tsx` | `workflow/executor.rs` / `workflow/command_runtime.rs` |
 | 数据同步 | `windows/data-sync/` | `data_sync/` + `commands/sync/`（`inspect_data_sync` / `execute_data_sync`） |
+| 权限管理 | `windows/connection/PrivilegeView.tsx` | `commands/schema.rs → get_privileges` + Driver `admin_commands` |
+| 管理命令 | `Create*Dialog.tsx` + `schemaTreeContextMenu.ts` | Driver `admin_commands`（create/drop DB/schema/user, grant/revoke） |
 | Redis 深度运维 | `packages/drivers/redis/ui/*` | `execute_command` / `execute_driver_command` |
 | 主题包 | `windows/settings/ThemePackSection.tsx` | `theme/` + `commands/theme.rs` |
 
