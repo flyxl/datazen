@@ -586,6 +586,7 @@ describe('MainWindow', () => {
       'Local PG',
       'postgres',
       'postgresql',
+      undefined,
     );
 
     activeState.connections = { c1: { status: 'connected', connectionId: 'live-1' } };
@@ -595,6 +596,7 @@ describe('MainWindow', () => {
       'Local PG',
       'postgres',
       'postgresql',
+      undefined,
     );
   });
 

@@ -117,4 +117,10 @@ export interface DatabaseTypeMeta {
    * Omit the field for drivers that support full-table export.
    */
   exportScope?: 'none' | 'loaded_only' | 'full_table';
+  /** Whether this driver supports CREATE DATABASE via Driver Command. */
+  supportsCreateDatabase?: boolean;
+  /** Whether this driver supports CREATE SCHEMA (e.g. PostgreSQL). */
+  supportsCreateSchema?: boolean;
+  /** Whether this driver supports CREATE USER via Driver Command. */
+  supportsCreateUser?: boolean;
 }

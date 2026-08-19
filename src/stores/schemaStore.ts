@@ -75,6 +75,8 @@ export interface ConnectionSchemaState {
   isMultiDatabase: boolean;
   tables: TableInfo[];
   views: TableInfo[];
+  /** All schema names including those with no tables (e.g. from PG schemata). */
+  schemaNames: string[];
   columnMap: Record<string, string[]>;
   namespaceTree: SqlNamespace;
   loadedPaths: Set<string>;
@@ -97,6 +99,7 @@ const CONNECTION_STATE_KEYS = [
   'isMultiDatabase',
   'tables',
   'views',
+  'schemaNames',
   'columnMap',
   'namespaceTree',
   'loadedPaths',
@@ -120,6 +123,7 @@ function createEmptyConnectionSchema(): ConnectionSchemaState {
     isMultiDatabase: false,
     tables: [],
     views: [],
+    schemaNames: [],
     columnMap: {},
     namespaceTree: EMPTY_NAMESPACE,
     loadedPaths: new Set(),
@@ -497,8 +501,9 @@ export const useSchemaStore = create<SchemaStore>((set, get) => {
       const schema = get().schemas.get(connectionId) ?? createEmptyConnectionSchema();
       const { databaseType, isMultiDatabase, namespaceTree, loadedPaths, namespaceOwnedByPlugin } =
         schema;
-      const tables = all.filter((item) => item.tableType !== 'view');
-      const views = all.filter((item) => item.tableType === 'view');
+      const realItems = all.filter((item) => item.name !== '');
+      const tables = realItems.filter((item) => item.tableType !== 'view');
+      const views = realItems.filter((item) => item.tableType === 'view');
       const meta = databaseType ? DB_REGISTRY[databaseType as DatabaseType] : undefined;
 
       let nextTree = namespaceTree;
@@ -511,6 +516,10 @@ export const useSchemaStore = create<SchemaStore>((set, get) => {
           const bySchema = new Map<string, string[]>();
           for (const item of all) {
             if (!isSchemaGroupingSchema(item.schema)) continue;
+            if (!item.name) {
+              if (!bySchema.has(item.schema!)) bySchema.set(item.schema!, []);
+              continue;
+            }
             const list = bySchema.get(item.schema!) ?? [];
             list.push(item.name);
             bySchema.set(item.schema!, list);
@@ -522,15 +531,20 @@ export const useSchemaStore = create<SchemaStore>((set, get) => {
             nextLoadedPaths.add(pathKey(segments));
           }
         } else {
-          const names = all.map((item) => item.name);
+          const names = realItems.map((item) => item.name);
           nextTree = mergeNamespacePath(nextTree, [database], 'tables', names, { replace: true });
           nextLoadedPaths = new Set(loadedPaths).add(pathKey([database]));
         }
       }
 
+      const schemaNames = [
+        ...new Set(all.map((item) => item.schema).filter((s): s is string => !!s)),
+      ];
+
       commitConnectionPatch(connectionId, {
         tables,
         views,
+        schemaNames,
         currentDatabase: database,
         columnMap: {},
         namespaceTree: nextTree,
@@ -678,4 +692,8 @@ export function useConnectionSchemaField<K extends keyof ConnectionSchemaState>(
     if (entry) return entry[field];
     return (s as unknown as ConnectionSchemaState)[field];
   });
+}
+
+if (import.meta.env.DEV) {
+  (window as unknown as Record<string, unknown>).__schemaStore = useSchemaStore;
 }

@@ -19,6 +19,7 @@ import {
   ConnectionShareDialog,
   type ConnectionShareMode,
 } from '../../components/connection/ConnectionShareDialog';
+import type { ConnectionViewActions } from '../../lib/connectionViews/types';
 import { ConnectionNavigatorTree } from './ConnectionNavigatorTree';
 import { ContentView } from './ContentView';
 import type { DatabaseType } from '../../types';
@@ -49,12 +50,15 @@ function makeTabFromPayload(data: Record<string, string>): ConnectionTab | null 
   };
 }
 
-function consumePendingConnection(): ConnectionTab | null {
+function consumePendingConnection(): { tab: ConnectionTab; action?: string } | null {
   try {
     const raw = localStorage.getItem(PENDING_CONNECTION_KEY);
     localStorage.removeItem(PENDING_CONNECTION_KEY);
     if (!raw) return null;
-    return makeTabFromPayload(JSON.parse(raw));
+    const data = JSON.parse(raw) as Record<string, string>;
+    const tab = makeTabFromPayload(data);
+    if (!tab) return null;
+    return { tab, action: data.action };
   } catch {
     return null;
   }
@@ -89,13 +93,14 @@ export function ConnectionWindow() {
   const [connShareOpen, setConnShareOpen] = useState(false);
   const [connShareMode, setConnShareMode] = useState<ConnectionShareMode>('export');
 
+  const initialPendingRef = useRef(consumePendingConnection());
   const [tabs, setTabs] = useState<ConnectionTab[]>(() => {
-    const pending = consumePendingConnection();
-    return pending ? [pending] : [];
+    return initialPendingRef.current ? [initialPendingRef.current.tab] : [];
   });
   const [activeIdx, setActiveIdx] = useState(0);
   const [sidebarWidth, setSidebarWidth] = useState(280);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const pendingActionRef = useRef<string | null>(null);
   const isResizingRef = useRef(false);
   const resizeHandleRef = useRef<HTMLDivElement>(null);
   const selectTableRef = useRef<((table: string, schema?: string) => void) | undefined>();
@@ -103,21 +108,30 @@ export function ConnectionWindow() {
     | ((payload: { kind: string; name: string; x: number; y: number; schema?: string }) => void)
     | undefined
   >();
-  const actionsRef = useRef<
-    | {
-        newQuery: (initialSql?: string) => void;
-        openErDiagram: (focusTable?: string) => void;
-        refresh: () => void;
-        openObject?: (
-          kind: 'function' | 'procedure' | 'trigger' | 'sequence' | 'type',
-          name: string,
-          schema?: string,
-        ) => void;
-      }
-    | undefined
-  >();
+  const actionsRef = useRef<ConnectionViewActions | undefined>();
 
   const activeTab = tabs[activeIdx] ?? null;
+
+  const executePendingAction = useCallback(() => {
+    const action = pendingActionRef.current;
+    if (!action) return;
+    pendingActionRef.current = null;
+    if (action === 'openSqlFile') {
+      setTimeout(() => actionsRef.current?.openSqlFile?.(), 500);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (initialPendingRef.current?.action) {
+      pendingActionRef.current = initialPendingRef.current.action;
+      initialPendingRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!activeTab?.connectionId || activeTab.status !== 'connected') return;
+    executePendingAction();
+  }, [activeTab?.connectionId, activeTab?.status, executePendingAction]);
 
   const allPanels = usePanelStore((s) => s.panels);
   const activePanelId = usePanelStore((s) => s.activePanelId);
@@ -225,6 +239,8 @@ export function ConnectionWindow() {
       const newTab = makeTabFromPayload(data);
       if (!newTab) return;
 
+      if (data.action) pendingActionRef.current = data.action;
+
       if (newTab.connectionId) syncStoresActiveConnection(newTab.connectionId);
 
       setTabs((prev) => {
@@ -234,6 +250,9 @@ export function ConnectionWindow() {
             syncStoresActiveConnection(prev[existingIdx].connectionId);
           }
           setActiveIdx(existingIdx);
+          if (prev[existingIdx].status === 'connected' && data.action) {
+            setTimeout(() => executePendingAction(), 500);
+          }
           return prev;
         }
         const next = [...prev, newTab];
@@ -564,6 +583,11 @@ export function ConnectionWindow() {
                 onNodeContextMenu={(payload) => nodeContextMenuRef.current?.(payload)}
                 viewActions={{
                   newQuery: (...args) => actionsRef.current?.newQuery(...args),
+                  openSqlFile: () => actionsRef.current?.openSqlFile?.(),
+                  createTable: () => actionsRef.current?.createTable?.(),
+                  openCreateDatabase: () => actionsRef.current?.openCreateDatabase?.(),
+                  openCreateSchema: () => actionsRef.current?.openCreateSchema?.(),
+                  openCreateUser: () => actionsRef.current?.openCreateUser?.(),
                   openErDiagram: (...args) => actionsRef.current?.openErDiagram(...args),
                   refresh: () => actionsRef.current?.refresh(),
                   openObject: (...args) => actionsRef.current?.openObject?.(...args),

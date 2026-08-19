@@ -95,6 +95,14 @@ impl PostgresDriver {
             SELECT table_schema, table_name, table_type
             FROM information_schema.tables
             WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
+            UNION ALL
+            SELECT s.schema_name, '', 'SCHEMA_MARKER'
+            FROM information_schema.schemata s
+            WHERE s.schema_name NOT IN ('pg_catalog', 'information_schema')
+              AND NOT EXISTS (
+                SELECT 1 FROM information_schema.tables t
+                WHERE t.table_schema = s.schema_name
+              )
             ORDER BY table_schema, table_name
             "#,
         )
@@ -106,11 +114,13 @@ impl PostgresDriver {
             .iter()
             .map(|r| {
                 let tt: String = r.get("table_type");
+                let name: String = r.get("table_name");
                 TableInfo {
                     schema: r.get("table_schema"),
-                    name: r.get("table_name"),
+                    name,
                     table_type: match tt.as_str() {
                         "VIEW" => TableType::View,
+                        "SCHEMA_MARKER" => TableType::SystemTable,
                         _ => TableType::Table,
                     },
                     row_count: None,
@@ -1447,6 +1457,25 @@ impl DatabaseDriver for PostgresDriver {
     ) -> Result<StructureChangePlan, DriverError> {
         let caps = self.structure_capabilities(handle).await?;
         plan_structure_changes_with_caps(&caps, request)
+    }
+
+    fn command_definitions(&self) -> Vec<DriverCommandDefinition> {
+        crate::admin_commands::pg_admin_command_definitions()
+    }
+
+    async fn execute_command(
+        &self,
+        handle: &ConnectionHandle,
+        command: &str,
+        input: serde_json::Value,
+    ) -> Result<CommandResult, DriverError> {
+        match execute_standard_sql_command(self, handle, command, input.clone()).await {
+            Err(DriverError::Unsupported(_)) => {}
+            other => return other,
+        }
+        let pools = self.pools.read().await;
+        let pool = Self::get_pool(&pools, handle)?;
+        crate::admin_commands::execute_pg_admin_command(pool, command, input).await
     }
 }
 

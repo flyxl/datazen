@@ -63,6 +63,9 @@ export const postgresqlMeta = {
   defaultDatabase: 'postgres',
   supportedObjectKinds: ['function', 'procedure', 'trigger', 'sequence', 'type'],
   structureEditor: postgresqlStructureEditor,
+  supportsCreateDatabase: true,
+  supportsCreateSchema: true,
+  supportsCreateUser: true,
 } satisfies DatabaseTypeMeta;
 
 export const questdbMeta = {

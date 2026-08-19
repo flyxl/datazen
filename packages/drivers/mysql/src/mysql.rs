@@ -1621,6 +1621,25 @@ impl DatabaseDriver for MysqlDriver {
         let caps = self.structure_capabilities(handle).await?;
         structure::plan_structure_changes(&caps, request)
     }
+
+    fn command_definitions(&self) -> Vec<DriverCommandDefinition> {
+        crate::admin_commands::mysql_admin_command_definitions()
+    }
+
+    async fn execute_command(
+        &self,
+        handle: &ConnectionHandle,
+        command: &str,
+        input: serde_json::Value,
+    ) -> Result<CommandResult, DriverError> {
+        match execute_standard_sql_command(self, handle, command, input.clone()).await {
+            Err(DriverError::Unsupported(_)) => {}
+            other => return other,
+        }
+        let pools = self.pools.read().await;
+        let pool = Self::get_pool(&pools, handle)?;
+        crate::admin_commands::execute_mysql_admin_command(pool, command, input).await
+    }
 }
 
 /// Best-effort dump of stored procedures and functions via SHOW CREATE.

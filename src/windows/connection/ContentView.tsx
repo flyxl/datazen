@@ -48,6 +48,9 @@ import { PanelTabBar } from './PanelTabBar';
 import { ContentStatusBar } from './ContentStatusBar';
 import { PanelContentRenderer } from './PanelContentRenderer';
 import { usePanelHandlers } from './usePanelHandlers';
+import { CreateDatabaseDialog } from './CreateDatabaseDialog';
+import { CreateSchemaDialog } from './CreateSchemaDialog';
+import { CreateUserDialog } from './CreateUserDialog';
 
 export interface ContentViewProps {
   selectTableRef?: MutableRefObject<((table: string, schema?: string) => void) | undefined>;
@@ -129,6 +132,9 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
     !isRedisPanel && !isKvSidebar && toolbarDbMeta?.readOnly !== true && !!toolbarDbType;
 
   const [aiChatOpen, setAiChatOpen] = useState(false);
+  const [createDbOpen, setCreateDbOpen] = useState(false);
+  const [createSchemaOpen, setCreateSchemaOpen] = useState(false);
+  const [createUserOpen, setCreateUserOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [exportTableName, setExportTableName] = useState<string | null>(null);
@@ -324,8 +330,12 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
             truncate: t('schemaTree.truncate'),
             drop: t('schemaTree.drop'),
             dropView: t('schemaTree.dropView'),
+            dropDatabase: t('schemaTree.dropDatabase'),
+            dropSchema: t('schemaTree.dropSchema'),
             viewErDiagram: t('schemaTree.viewErDiagram'),
             newSchema: t('schemaTree.newSchema'),
+            createSchema: t('createSchema.create'),
+            executeSqlFile: t('main.ctx.executeSqlFile'),
             dataTransfer: t('schemaTree.dataTransfer'),
             compareSchema: t('schemaTree.compareSchema'),
             compareData: t('schemaTree.compareData'),
@@ -453,6 +463,11 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
     if (actionsRef) {
       actionsRef.current = {
         newQuery: handlers.handleNewQuery,
+        openSqlFile: handlers.handleOpenSqlFile,
+        createTable: handlers.handleCreateTable,
+        openCreateDatabase: () => setCreateDbOpen(true),
+        openCreateSchema: () => setCreateSchemaOpen(true),
+        openCreateUser: () => setCreateUserOpen(true),
         openErDiagram: handlers.handleOpenErDiagram,
         refresh: handlers.handleRefresh,
         openObject: handlers.handleOpenDbObject,
@@ -697,6 +712,70 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
       )}
 
       {confirmActionDialog}
+
+      {sidebarConnCtx && (
+        <CreateDatabaseDialog
+          open={createDbOpen}
+          onClose={() => setCreateDbOpen(false)}
+          connectionId={sidebarConnCtx.connectionId}
+          databaseType={sidebarConnCtx.databaseType as DatabaseType}
+          onCreated={async () => {
+            const connId = sidebarConnCtx.connectionId;
+            const dbType = sidebarConnCtx.databaseType;
+            await loadForConnection(connId, {
+              preferredDatabase: initialDatabase,
+              databaseType: dbType,
+              skipLoadTables: true,
+            });
+          }}
+        />
+      )}
+
+      {sidebarConnCtx && (
+        <CreateSchemaDialog
+          open={createSchemaOpen}
+          onClose={() => setCreateSchemaOpen(false)}
+          connectionId={sidebarConnCtx.connectionId}
+          databaseType={sidebarConnCtx.databaseType as DatabaseType}
+          onCreated={async () => {
+            const connId = sidebarConnCtx.connectionId;
+            const db = currentDatabase ?? initialDatabase;
+            if (db) {
+              await useSchemaStore.getState().loadTables(db, connId);
+            }
+            await loadForConnection(connId, {
+              preferredDatabase: initialDatabase,
+              databaseType: sidebarConnCtx.databaseType,
+              skipLoadTables: false,
+            });
+          }}
+        />
+      )}
+
+      {sidebarConnCtx && (
+        <CreateUserDialog
+          open={createUserOpen}
+          onClose={() => setCreateUserOpen(false)}
+          connectionId={sidebarConnCtx.connectionId}
+          databaseType={sidebarConnCtx.databaseType as DatabaseType}
+          onCreated={() => {
+            const ctx = sidebarConnCtx;
+            const store = usePanelStore.getState();
+            const existingPriv = store.panels.find(
+              (p) => p.type === 'privileges' && p.connectionId === ctx.connectionId,
+            );
+            if (existingPriv) {
+              store.removePanel(existingPriv.id);
+            }
+            const panel = {
+              ...ctx,
+              type: 'privileges' as const,
+              id: `priv-${Date.now()}`,
+            };
+            store.addPanel(panel);
+          }}
+        />
+      )}
     </>
   );
 }

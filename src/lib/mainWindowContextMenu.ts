@@ -13,7 +13,12 @@ export type MainWindowContextMenuLabels = {
   removeFromGroup: string;
   deleteConnection: string;
   copyName: string;
+  copyConnectionUrl: string;
   newQuery: string;
+  executeSqlFile: string;
+  createDatabase: string;
+  createSchema: string;
+  createUser: string;
   refresh: string;
 };
 
@@ -70,7 +75,12 @@ export function buildMainConnectionContextMenuItems(args: {
   moveTargets: Array<{ id: string; label: string }>;
   onOpenOrDisconnect: () => void;
   onCopyName: () => void;
+  onCopyUrl: () => void;
   onNewQuery: () => void;
+  onExecuteSqlFile?: () => void;
+  onCreateDatabase?: () => void;
+  onCreateSchema?: () => void;
+  onCreateUser?: () => void;
   onRefresh: () => void;
   onEdit: () => void;
   onDuplicate: () => void;
@@ -86,8 +96,55 @@ export function buildMainConnectionContextMenuItems(args: {
       action: args.onOpenOrDisconnect,
     },
     { kind: 'item', id: 'copy-name', label: args.labels.copyName, action: args.onCopyName },
+    {
+      kind: 'item',
+      id: 'copy-connection-url',
+      label: args.labels.copyConnectionUrl,
+      action: args.onCopyUrl,
+    },
     { kind: 'item', id: 'new-query', label: args.labels.newQuery, action: args.onNewQuery },
-    { kind: 'separator' },
+  ];
+
+  if (args.onExecuteSqlFile) {
+    items.push({
+      kind: 'item',
+      id: 'execute-sql-file',
+      label: args.labels.executeSqlFile,
+      action: args.onExecuteSqlFile,
+    });
+  }
+
+  items.push({ kind: 'separator' });
+
+  if (args.onCreateDatabase || args.onCreateSchema || args.onCreateUser) {
+    if (args.onCreateDatabase) {
+      items.push({
+        kind: 'item',
+        id: 'create-database',
+        label: args.labels.createDatabase,
+        action: args.onCreateDatabase,
+      });
+    }
+    if (args.onCreateSchema) {
+      items.push({
+        kind: 'item',
+        id: 'create-schema',
+        label: args.labels.createSchema,
+        action: args.onCreateSchema,
+      });
+    }
+    if (args.onCreateUser) {
+      items.push({
+        kind: 'item',
+        id: 'create-user',
+        label: args.labels.createUser,
+        action: args.onCreateUser,
+      });
+    }
+    items.push({ kind: 'separator' });
+  }
+
+  items.push(
     { kind: 'item', id: 'refresh', label: args.labels.refresh, action: args.onRefresh },
     { kind: 'item', id: 'edit-connection', label: args.labels.editConnection, action: args.onEdit },
     {
@@ -97,7 +154,7 @@ export function buildMainConnectionContextMenuItems(args: {
       action: args.onDuplicate,
     },
     { kind: 'separator' },
-  ];
+  );
 
   if (args.moveTargets.length > 0 || args.grouped) {
     const sub: NativeMenuItemDef[] = args.moveTargets.map((g) => ({
