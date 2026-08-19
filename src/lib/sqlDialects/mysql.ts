@@ -18,6 +18,12 @@ export const mysqlDialect: SqlDialectStrategy = {
         extractColumnIndex: 1,
       };
     },
+    getViewDdlQuery(viewName: string) {
+      return {
+        sql: `SHOW CREATE VIEW \`${viewName}\``,
+        extractColumnIndex: 1,
+      };
+    },
   },
   index: {
     supportedIndexMethods: ['btree', 'hash'],
@@ -27,7 +33,9 @@ export const mysqlDialect: SqlDialectStrategy = {
     getCreateIndexSql(opts) {
       const uniqueKw = opts.unique ? 'UNIQUE ' : '';
       const usingKw = opts.method === 'hash' ? ' USING hash' : '';
-      const quotedCols = opts.columns.map((c) => `${opts.quoteChar}${c}${opts.quoteChar}`).join(', ');
+      const quotedCols = opts.columns
+        .map((c) => `${opts.quoteChar}${c}${opts.quoteChar}`)
+        .join(', ');
       return `CREATE ${uniqueKw}INDEX ${opts.quoteChar}${opts.indexName}${opts.quoteChar} ON ${opts.quoteChar}${opts.tableName}${opts.quoteChar}${usingKw} (${quotedCols})`;
     },
   },

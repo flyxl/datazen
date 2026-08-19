@@ -9,6 +9,12 @@ export const sqliteDialect: SqlDialectStrategy = {
         extractColumnIndex: 0,
       };
     },
+    getViewDdlQuery(viewName: string) {
+      return {
+        sql: `SELECT sql FROM sqlite_master WHERE type='view' AND name='${viewName}'`,
+        extractColumnIndex: 0,
+      };
+    },
   },
   index: {
     supportedIndexMethods: ['btree'],
