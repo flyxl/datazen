@@ -38,6 +38,8 @@ const zhCN = {
   'menu.newConnection': '新建连接',
   'menu.dataSync': '数据同步',
   'menu.schemaDiff': '结构对比',
+  'menu.workflow': '工作流',
+  'menu.dashboard': '数据看板',
   'menu.backup': '备份数据库',
   'menu.restore': '恢复数据库',
   'menu.settings': '设置',

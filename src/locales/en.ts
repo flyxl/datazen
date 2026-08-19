@@ -40,6 +40,8 @@ const en: Record<TranslationKey, string> = {
   'menu.newConnection': 'New Connection',
   'menu.dataSync': 'Data Sync',
   'menu.schemaDiff': 'Schema Diff',
+  'menu.workflow': 'Workflow',
+  'menu.dashboard': 'Dashboards',
   'menu.backup': 'Backup Database',
   'menu.restore': 'Restore Database',
   'menu.settings': 'Settings',

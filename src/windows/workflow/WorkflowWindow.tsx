@@ -68,6 +68,11 @@ import type {
 } from '../../types';
 import type { ChartConfig } from '../../types/chart';
 
+interface WorkflowWindowProps {
+  embedded?: boolean;
+  onOpenDashboardInShell?: (dashboardId?: string, dashboardName?: string) => void;
+}
+
 // ── Panel types (same pattern as ConnectionWindow) ──────────────────
 
 interface WorkflowRunPanel {
@@ -115,7 +120,10 @@ function nextPanelId(prefix: string) {
 
 // ── Main Component ──────────────────────────────────────────────────
 
-export function WorkflowWindow() {
+export function WorkflowWindow({
+  embedded = false,
+  onOpenDashboardInShell,
+}: Readonly<WorkflowWindowProps>) {
   useSettings();
   const { t } = useI18n();
   const [confirmWf, confirmWfDialog] = useConfirmDialog();
@@ -603,67 +611,79 @@ export function WorkflowWindow() {
           title: wfPanel.workflowName,
           viewMode: 'table',
         });
-        openDashboardWindow(created.dashboard.id, created.dashboard.name);
+        if (embedded && onOpenDashboardInShell) {
+          onOpenDashboardInShell(created.dashboard.id, created.dashboard.name);
+        } else {
+          openDashboardWindow(created.dashboard.id, created.dashboard.name);
+        }
       } catch (e) {
         window.alert(String(e));
       }
     },
-    [activePanel, t],
+    [activePanel, embedded, onOpenDashboardInShell, t],
   );
 
   // ── Render ────────────────────────────────────────────────────────
 
+  const workflowToolbar = (
+    <div
+      className={`flex items-center gap-1 ${embedded ? 'border-b border-edge px-3 py-2' : 'ml-2'}`}
+    >
+      <Button
+        variant="secondary"
+        className="h-6 w-6 !px-0"
+        title={t('workflows.reload')}
+        onClick={() => void handleReload()}
+      >
+        <RefreshCw className="h-3 w-3" />
+      </Button>
+      <Button
+        variant="secondary"
+        className="h-6 w-6 !px-0"
+        title={t('workflows.create')}
+        onClick={handleCreate}
+      >
+        <Plus className="h-3 w-3" />
+      </Button>
+      <Button
+        variant="secondary"
+        className="h-6 w-6 !px-0"
+        title={t('workflows.aiCreate.title')}
+        onClick={handleAiCreate}
+      >
+        <Sparkles className="h-3 w-3" />
+      </Button>
+      {workflowsDir && (
+        <Button
+          variant="secondary"
+          className="h-6 w-6 !px-0"
+          title={t('workflows.openDir')}
+          onClick={() => void handleOpenDir()}
+        >
+          <FolderOpen className="h-3 w-3" />
+        </Button>
+      )}
+      <Button
+        variant="secondary"
+        className="h-6 w-6 !px-0"
+        title={t('docs.openWorkflowHelp')}
+        onClick={() => openDocsWindow('workflows')}
+      >
+        <BookOpen className="h-3 w-3" />
+      </Button>
+    </div>
+  );
+
   return (
-    <div className="flex h-screen flex-col bg-surface text-fg">
-      <TitleBar
-        title={t('win.workflow')}
-        leftContent={
-          <div className="flex items-center gap-1 ml-2">
-            <Button
-              variant="secondary"
-              className="h-6 w-6 !px-0"
-              title={t('workflows.reload')}
-              onClick={() => void handleReload()}
-            >
-              <RefreshCw className="h-3 w-3" />
-            </Button>
-            <Button
-              variant="secondary"
-              className="h-6 w-6 !px-0"
-              title={t('workflows.create')}
-              onClick={handleCreate}
-            >
-              <Plus className="h-3 w-3" />
-            </Button>
-            <Button
-              variant="secondary"
-              className="h-6 w-6 !px-0"
-              title={t('workflows.aiCreate.title')}
-              onClick={handleAiCreate}
-            >
-              <Sparkles className="h-3 w-3" />
-            </Button>
-            {workflowsDir && (
-              <Button
-                variant="secondary"
-                className="h-6 w-6 !px-0"
-                title={t('workflows.openDir')}
-                onClick={() => void handleOpenDir()}
-              >
-                <FolderOpen className="h-3 w-3" />
-              </Button>
-            )}
-            <Button
-              variant="secondary"
-              className="h-6 w-6 !px-0"
-              title={t('docs.openWorkflowHelp')}
-              onClick={() => openDocsWindow('workflows')}
-            >
-              <BookOpen className="h-3 w-3" />
-            </Button>
-          </div>
-        }
-      />
+    <div
+      className={`flex ${embedded ? 'h-full min-h-0' : 'h-screen'} flex-col bg-surface text-fg`}
+      data-testid={embedded ? 'workflow-workspace' : 'workflow-window'}
+    >
+      {embedded ? (
+        workflowToolbar
+      ) : (
+        <TitleBar title={t('win.workflow')} leftContent={workflowToolbar} />
+      )}
 
       <div className="flex min-h-0 flex-1">
         {/* Left sidebar: workflow list / history */}
@@ -1057,7 +1077,7 @@ export function WorkflowWindow() {
 
       {confirmWfDialog}
 
-      <StatusBar />
+      {!embedded ? <StatusBar /> : null}
     </div>
   );
 }

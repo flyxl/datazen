@@ -60,6 +60,8 @@ const RUST_TO_LOCALE = {
   'new-connection': 'menu.newConnection',
   'data-sync': 'menu.dataSync',
   'schema-diff': 'menu.schemaDiff',
+  workflow: 'menu.workflow',
+  dashboard: 'menu.dashboard',
   backup: 'menu.backup',
   restore: 'menu.restore',
   'export-config': 'menu.exportConfig',

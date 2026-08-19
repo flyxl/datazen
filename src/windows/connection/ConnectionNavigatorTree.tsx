@@ -1985,9 +1985,9 @@ export function ConnectionNavigatorTree({
   // ── Main render ──
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col bg-surface">
+    <div className="flex h-full min-h-0 flex-1 flex-col bg-surface">
       {/* Toolbar */}
-      <div className="flex shrink-0 items-center justify-between border-b border-edge px-2 py-1.5">
+      <div className="flex h-12 min-h-[48px] shrink-0 items-center justify-between border-b border-edge px-2">
         <span className="text-[13px] font-semibold text-fg">{t('nav.connections')}</span>
         <div className="flex items-center gap-0.5">
           {onExportConnections && (
@@ -2067,7 +2067,7 @@ export function ConnectionNavigatorTree({
           <input
             type="text"
             className="h-7 w-full rounded-md bg-surface pl-7 pr-2 text-xs text-fg placeholder:text-fg-muted focus:outline-none focus:ring-1 focus:ring-accent"
-            placeholder={t('common.search')}
+            placeholder={t('main.searchPlaceholder')}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />

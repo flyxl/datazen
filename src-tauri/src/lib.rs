@@ -103,6 +103,8 @@ pub(crate) fn menu_action_for_id(id: &str) -> MenuAction {
         "open-settings" => MenuAction::Emit("menu:open-settings"),
         "new-connection" => MenuAction::Emit("menu:new-connection"),
         "schema-diff" => MenuAction::Emit("menu:schema-diff"),
+        "workflow" => MenuAction::Emit("menu:workflow"),
+        "dashboard" => MenuAction::Emit("menu:dashboard"),
         "backup" => MenuAction::Emit("menu:backup"),
         "restore" => MenuAction::Emit("menu:restore"),
         "export-config" => MenuAction::Emit("menu:export-config"),
@@ -361,6 +363,12 @@ fn setup_menu(
     let schema_diff_item = MenuItemBuilder::new(t("schema-diff"))
         .id("schema-diff")
         .build(handle)?;
+    let workflow_item = MenuItemBuilder::new(t("workflow"))
+        .id("workflow")
+        .build(handle)?;
+    let dashboard_item = MenuItemBuilder::new(t("dashboard"))
+        .id("dashboard")
+        .build(handle)?;
     let backup_item = MenuItemBuilder::new(t("backup"))
         .id("backup")
         .build(handle)?;
@@ -439,6 +447,9 @@ fn setup_menu(
     // ── Tools ──
     let tools_menu = SubmenuBuilder::new(handle, t("tools"))
         .item(&schema_diff_item)
+        .separator()
+        .item(&workflow_item)
+        .item(&dashboard_item)
         .separator()
         .item(&backup_item)
         .item(&restore_item)
@@ -726,7 +737,14 @@ pub fn run() {
                 tray::sync_tray(&handle);
             }
 
-            let _ = app.get_webview_window("main");
+            if let Some(main) = app.get_webview_window("main") {
+                commands::window::ensure_main_window_size(&main);
+                let main_for_deferred = main.clone();
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_millis(500));
+                    commands::window::ensure_main_window_size(&main_for_deferred);
+                });
+            }
 
             // Optional embedded MCP: only if user explicitly enabled it in settings (default off).
             {
@@ -1244,6 +1262,8 @@ mod tests {
             "open-settings",
             "new-connection",
             "schema-diff",
+            "workflow",
+            "dashboard",
             "backup",
             "restore",
             "export-config",
