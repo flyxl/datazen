@@ -72,6 +72,8 @@ export const mysqlMeta = {
   hasMultiDatabase: true,
   supportedObjectKinds: ['function', 'procedure', 'trigger'],
   ...mysqlStructureEditorSpread,
+  supportsCreateDatabase: true,
+  supportsCreateUser: true,
 } satisfies DatabaseTypeMeta;
 
 export const mariadbMeta = {

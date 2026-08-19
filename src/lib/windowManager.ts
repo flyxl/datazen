@@ -252,12 +252,14 @@ export function openConnectionWindow(
   connectionName: string,
   database?: string,
   databaseType?: string,
+  action?: string,
 ) {
   const payload: Record<string, string> = { connectionName };
   if (opts.connectionId) payload.connectionId = opts.connectionId;
   if (opts.configId) payload.configId = opts.configId;
   if (database) payload.database = database;
   if (databaseType) payload.databaseType = databaseType;
+  if (action) payload.action = action;
 
   try {
     localStorage.setItem(PENDING_CONNECTION_KEY, JSON.stringify(payload));

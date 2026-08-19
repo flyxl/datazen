@@ -31,8 +31,12 @@ export type SchemaTreeContextMenuLabels = {
   truncate: string;
   drop: string;
   dropView: string;
+  dropDatabase: string;
   viewErDiagram: string;
   newSchema: string;
+  createSchema: string;
+  dropSchema: string;
+  executeSqlFile: string;
   dataTransfer: string;
   compareSchema: string;
   compareData: string;
@@ -54,8 +58,12 @@ export type SchemaTreeContextMenuHandlers = {
   onBatchExport?: () => void;
   onTruncate?: () => void;
   onDrop?: () => void;
+  onDropDatabase?: () => void;
   onViewErDiagram?: () => void;
   onNewSchema?: () => void;
+  onCreateSchema?: () => void;
+  onDropSchema?: () => void;
+  onExecuteSqlFile?: () => void;
   onDataTransfer?: () => void;
   onCompareSchema?: () => void;
   onCompareData?: () => void;
@@ -173,6 +181,7 @@ export function buildSchemaTreeContextMenuItems(
       const dbMain = push(
         item('refresh', labels.refresh, handlers.onRefresh),
         item('new-query', labels.newQuery, handlers.onNewQuery),
+        item('execute-sql-file', labels.executeSqlFile, handlers.onExecuteSqlFile),
         item('copy-database-name', labels.copyDatabaseName, handlers.onCopyDatabaseName),
         item('view-er-diagram', labels.viewErDiagram, handlers.onViewErDiagram),
         batchExportShown('database')
@@ -180,19 +189,26 @@ export function buildSchemaTreeContextMenuItems(
           : null,
         !readOnly ? item('import', labels.importData, handlers.onImport) : null,
         !readOnly && showNewTable ? item('new-table', labels.newTable, handlers.onNewTable) : null,
+        item('create-schema', labels.createSchema, handlers.onCreateSchema),
       );
       const syncItems = push(
         item('data-transfer', labels.dataTransfer, handlers.onDataTransfer),
         item('compare-schema', labels.compareSchema, handlers.onCompareSchema),
         item('compare-data', labels.compareData, handlers.onCompareData),
       );
-      if (syncItems.length === 0) return dbMain;
-      return [...dbMain, { kind: 'separator' }, ...syncItems];
+      const dropDb = !readOnly
+        ? item('drop-database', labels.dropDatabase, handlers.onDropDatabase)
+        : null;
+      const parts =
+        syncItems.length > 0 ? [...dbMain, { kind: 'separator' as const }, ...syncItems] : dbMain;
+      if (dropDb) return [...parts, { kind: 'separator' as const }, dropDb];
+      return parts;
     }
     case 'schema': {
       const schemaMain = push(
         item('refresh', labels.refresh, handlers.onRefresh),
         item('new-query', labels.newQuery, handlers.onNewQuery),
+        item('execute-sql-file', labels.executeSqlFile, handlers.onExecuteSqlFile),
         item('copy-schema-name', labels.copyName, handlers.onCopyName),
         item('view-er-diagram', labels.viewErDiagram, handlers.onViewErDiagram),
         batchExportShown('schema')
@@ -206,11 +222,15 @@ export function buildSchemaTreeContextMenuItems(
         item('compare-schema', labels.compareSchema, handlers.onCompareSchema),
         item('compare-data', labels.compareData, handlers.onCompareData),
       );
-      if (schemaSyncItems.length === 0) return schemaMain;
-      return [
-        ...schemaMain,
-        ...(schemaSyncItems.length > 0 ? [{ kind: 'separator' as const }, ...schemaSyncItems] : []),
-      ];
+      const dropSch = !readOnly
+        ? item('drop-schema', labels.dropSchema, handlers.onDropSchema)
+        : null;
+      const parts =
+        schemaSyncItems.length > 0
+          ? [...schemaMain, { kind: 'separator' as const }, ...schemaSyncItems]
+          : schemaMain;
+      if (dropSch) return [...parts, { kind: 'separator' as const }, dropSch];
+      return parts;
     }
     case 'category':
       return push(

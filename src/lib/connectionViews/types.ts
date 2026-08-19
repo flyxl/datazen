@@ -11,6 +11,11 @@ export interface NodeContextMenuPayload {
 
 export interface ConnectionViewActions {
   newQuery: (initialSql?: string) => void;
+  openSqlFile?: () => void;
+  createTable?: () => void;
+  openCreateDatabase?: () => void;
+  openCreateSchema?: () => void;
+  openCreateUser?: () => void;
   openErDiagram: (focusTable?: string) => void;
   refresh: () => void;
   openObject?: (

@@ -189,15 +189,24 @@ pub fn object_ddl_sql(
 pub fn list_privileges_sql(db_type: &str) -> Option<String> {
     match dialect_family(db_type) {
         "postgresql" => Some(
-            "SELECT grantee, table_schema AS schema, table_name AS name, privilege_type AS privilege \
+            "SELECT rolname AS grantee, '*' AS schema, '*' AS name, \
+               CASE WHEN rolsuper THEN 'SUPERUSER' \
+                    WHEN rolcreatedb THEN 'CREATEDB' \
+                    WHEN rolcreaterole THEN 'CREATEROLE' \
+                    ELSE 'LOGIN' END AS privilege \
+             FROM pg_roles WHERE rolname NOT LIKE 'pg_%' AND rolcanlogin \
+             UNION ALL \
+             SELECT grantee, table_schema AS schema, table_name AS name, privilege_type AS privilege \
              FROM information_schema.role_table_grants \
              WHERE table_schema NOT IN ('pg_catalog','information_schema') \
              ORDER BY 1, 2, 3 LIMIT 500"
                 .into(),
         ),
-        // Alias as `table_schema` — MySQL treats bare `schema` as a reserved word (1064).
         "mysql" => Some(
-            "SELECT GRANTEE AS grantee, TABLE_SCHEMA AS table_schema, TABLE_NAME AS name, PRIVILEGE_TYPE AS privilege \
+            "SELECT GRANTEE AS grantee, '*' AS table_schema, '*' AS name, PRIVILEGE_TYPE AS privilege \
+             FROM information_schema.USER_PRIVILEGES \
+             UNION ALL \
+             SELECT GRANTEE AS grantee, TABLE_SCHEMA AS table_schema, TABLE_NAME AS name, PRIVILEGE_TYPE AS privilege \
              FROM information_schema.TABLE_PRIVILEGES \
              WHERE TABLE_SCHEMA = DATABASE() \
              ORDER BY 1, 2, 3 LIMIT 500"
@@ -253,11 +262,18 @@ mod tests {
 
     #[test]
     fn privilege_sql_for_pg_and_mysql() {
-        assert!(list_privileges_sql("postgres")
-            .unwrap()
-            .contains("role_table_grants"));
+        let pg = list_privileges_sql("postgres").unwrap();
+        assert!(pg.contains("role_table_grants"));
+        assert!(
+            pg.contains("pg_roles"),
+            "PG should include role-level privileges"
+        );
         let mysql = list_privileges_sql("mariadb").unwrap();
         assert!(mysql.contains("TABLE_PRIVILEGES"));
+        assert!(
+            mysql.contains("USER_PRIVILEGES"),
+            "MySQL should include user-level privileges"
+        );
         assert!(
             mysql.contains("AS table_schema"),
             "MySQL must not alias as bare `schema` (reserved word)"

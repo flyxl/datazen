@@ -6,6 +6,8 @@ import {
   buildMainConnectionContextMenuItems,
   buildMainGroupContextMenuItems,
 } from '../../lib/mainWindowContextMenu';
+import { buildConnectionUrl } from '../../lib/buildConnectionUrl';
+import { DB_REGISTRY } from '../../lib/databaseTypes';
 import { StatusBar } from '../../components/StatusBar';
 import { Dialog } from '../../components/ui/Dialog';
 import { Input } from '../../components/ui/Input';
@@ -229,7 +231,7 @@ export function MainWindow() {
   const connectAction = useActiveConnectionStore((s) => s.connect);
 
   const handleConnect = useCallback(
-    (cfg: ConnectionConfig) => {
+    (cfg: ConnectionConfig, action?: string) => {
       const existing = useActiveConnectionStore.getState().connections[cfg.id];
       if (existing?.status === 'connected' && existing.connectionId) {
         openConnectionWindow(
@@ -237,15 +239,14 @@ export function MainWindow() {
           cfg.name,
           cfg.database,
           cfg.databaseType,
+          action,
         );
         return;
       }
       if (existing?.status !== 'connecting') {
-        // Preconnect: start the IPC connection before the window opens.
-        // get_or_connect is idempotent so ConnectionWindow can safely call it again.
         void connectAction(cfg);
       }
-      openConnectionWindow({ configId: cfg.id }, cfg.name, cfg.database, cfg.databaseType);
+      openConnectionWindow({ configId: cfg.id }, cfg.name, cfg.database, cfg.databaseType, action);
     },
     [connectAction],
   );
@@ -321,7 +322,12 @@ export function MainWindow() {
       removeFromGroup: t('main.ctx.removeFromGroup'),
       deleteConnection: t('main.ctx.deleteConnection'),
       copyName: t('main.ctx.copyName'),
+      copyConnectionUrl: t('main.ctx.copyConnectionUrl'),
       newQuery: t('main.ctx.newQuery'),
+      executeSqlFile: t('main.ctx.executeSqlFile'),
+      createDatabase: t('createDb.create'),
+      createSchema: t('createSchema.create'),
+      createUser: t('createUser.create'),
       refresh: t('main.ctx.refresh'),
     }),
     [t],
@@ -360,6 +366,7 @@ export function MainWindow() {
       setSelectedId(conn.id);
 
       const isConnected = activeConnections[conn.id]?.status === 'connected';
+      const dbMeta = DB_REGISTRY[conn.databaseType];
       const moveTargets = groups
         .filter((g) => g !== conn.group)
         .map((g) => ({ id: g, label: formatGroupLabel(g, t) }));
@@ -377,9 +384,19 @@ export function MainWindow() {
           onCopyName: () => {
             void navigator.clipboard.writeText(conn.name);
           },
+          onCopyUrl: () => {
+            const url = buildConnectionUrl(conn);
+            if (url) void navigator.clipboard.writeText(url);
+          },
           onNewQuery: () => {
             void handleConnect(conn);
           },
+          onExecuteSqlFile:
+            dbMeta?.supportsSQL !== false
+              ? () => {
+                  void handleConnect(conn, 'openSqlFile');
+                }
+              : undefined,
           onRefresh: () => {
             void fetchConnections();
           },

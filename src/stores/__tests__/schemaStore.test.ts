@@ -151,6 +151,54 @@ describe('schemaStore.loadForConnection isMultiDatabase', () => {
     expect(useSchemaStore.getState().isMultiDatabase).toBe(true);
   });
 
+  it('refresh after creating a new DB preserves locked database when preferred is passed', async () => {
+    vi.mocked(databaseCommands.getDatabases).mockResolvedValueOnce(['db_a', 'db_b']);
+
+    await useSchemaStore.getState().loadForConnection('conn-1', {
+      databaseType: 'mysql',
+      skipLoadTables: true,
+      preferredDatabase: 'db_a',
+    });
+
+    expect(useSchemaStore.getState().databases).toEqual(['db_a']);
+    expect(useSchemaStore.getState().currentDatabase).toBe('db_a');
+    expect(useSchemaStore.getState().isMultiDatabase).toBe(false);
+
+    vi.mocked(databaseCommands.getDatabases).mockResolvedValueOnce(['db_a', 'db_b', 'db_new']);
+
+    await useSchemaStore.getState().loadForConnection('conn-1', {
+      databaseType: 'mysql',
+      skipLoadTables: true,
+      preferredDatabase: 'db_a',
+    });
+
+    expect(useSchemaStore.getState().databases).toEqual(['db_a']);
+    expect(useSchemaStore.getState().currentDatabase).toBe('db_a');
+    expect(useSchemaStore.getState().isMultiDatabase).toBe(false);
+  });
+
+  it('refresh after creating a new DB shows all DBs when no preferred', async () => {
+    vi.mocked(databaseCommands.getDatabases).mockResolvedValueOnce(['db_a', 'db_b']);
+
+    await useSchemaStore.getState().loadForConnection('conn-1', {
+      databaseType: 'mysql',
+      skipLoadTables: true,
+    });
+
+    expect(useSchemaStore.getState().databases).toEqual(['db_a', 'db_b']);
+    expect(useSchemaStore.getState().isMultiDatabase).toBe(true);
+
+    vi.mocked(databaseCommands.getDatabases).mockResolvedValueOnce(['db_a', 'db_b', 'db_new']);
+
+    await useSchemaStore.getState().loadForConnection('conn-1', {
+      databaseType: 'mysql',
+      skipLoadTables: true,
+    });
+
+    expect(useSchemaStore.getState().databases).toEqual(['db_a', 'db_b', 'db_new']);
+    expect(useSchemaStore.getState().isMultiDatabase).toBe(true);
+  });
+
   it('seeds top-level database branches only when multi-db', async () => {
     vi.mocked(databaseCommands.getDatabases).mockResolvedValueOnce(['db1', 'db2']);
 

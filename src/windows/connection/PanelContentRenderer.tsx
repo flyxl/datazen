@@ -21,6 +21,7 @@ import { IndexesView } from './IndexesView';
 import { ForeignKeysView } from './ForeignKeysView';
 import { DDLView } from './DDLView';
 import { QueryPanel } from './QueryPanel';
+import { SqlFilePanel } from './SqlFilePanel';
 import { TableStructureEditor } from './TableStructureEditor';
 import { ErDiagramView } from './ErDiagramView';
 import { ObjectBrowser } from './ObjectBrowser';
@@ -252,6 +253,18 @@ function SqlPanelContent({
     );
   }
 
+  if (panel.type === 'sql-file') {
+    return (
+      <SqlFilePanel
+        panelId={panel.id}
+        connectionId={panel.connectionId}
+        databaseType={panel.databaseType}
+        fileName={(panel as import('../../stores/panelStore').SqlFilePanel).fileName}
+        sql={(panel as import('../../stores/panelStore').SqlFilePanel).sql}
+      />
+    );
+  }
+
   if (panel.type === 'create-table') {
     const schema = resolveCreateTableSchema(panel.databaseType, {
       currentDatabase,
@@ -291,7 +304,7 @@ function SqlPanelContent({
   }
 
   if (panel.type === 'privileges') {
-    return <PrivilegeView connectionId={panel.connectionId} />;
+    return <PrivilegeView connectionId={panel.connectionId} databaseType={panel.databaseType} />;
   }
 
   if (panel.type === 'db-object') {
