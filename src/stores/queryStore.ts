@@ -62,6 +62,18 @@ function flattenActive(
   return states.get(activeConnectionId) ?? emptyConnectionQueryState();
 }
 
+/** Search for a tab by ID across all connection states. */
+function findTabAcrossConnections(
+  states: Map<string, ConnectionQueryState>,
+  tabId: string,
+): { tab: QueryTab; connectionId: string } | null {
+  for (const [connectionId, connState] of states) {
+    const tab = connState.tabs.find((t) => t.id === tabId);
+    if (tab) return { tab, connectionId };
+  }
+  return null;
+}
+
 function patchConnection(
   states: Map<string, ConnectionQueryState>,
   connectionId: string,
@@ -84,9 +96,13 @@ interface QueryStore extends ConnectionQueryState {
   favorites: FavoriteQuery[];
   favoritesVisible: boolean;
 
+  /** Find a query tab by ID across all connections. */
+  findTab: (tabId: string) => QueryTab | undefined;
+  /** Get the last tab created under a specific connection. */
+  getLastTabForConnection: (connectionId: string) => QueryTab | undefined;
   setActiveConnection: (connectionId: string | null) => void;
   removeConnection: (connectionId: string) => void;
-  createTab: () => void;
+  createTab: (connectionId?: string) => void;
   closeTab: (id: string) => void;
   setActiveTab: (id: string) => void;
   updateSql: (tabId: string, sql: string) => void;
@@ -123,10 +139,10 @@ interface QueryStore extends ConnectionQueryState {
 let tabCounter = 0;
 let streamRunCounter = 0;
 
-/** Resolve the connectionId for a query tab, falling back to the global active. */
+/** Resolve the connectionId for a query tab by searching across all connections. */
 function resolveTabConnectionId(state: QueryStore, tabId: string): string | null {
-  const tab = state.tabs.find((t) => t.id === tabId);
-  return tab?.connectionId ?? state.activeConnectionId;
+  const hit = findTabAcrossConnections(state.states, tabId);
+  return hit?.connectionId ?? state.activeConnectionId;
 }
 
 /**
@@ -309,6 +325,15 @@ export const useQueryStore = create<QueryStore>((set, get) => ({
   favorites: [],
   favoritesVisible: false,
 
+  findTab: (tabId) => {
+    return findTabAcrossConnections(get().states, tabId)?.tab;
+  },
+
+  getLastTabForConnection: (connectionId) => {
+    const connState = get().states.get(connectionId);
+    return connState?.tabs.at(-1);
+  },
+
   setActiveConnection: (connectionId) => {
     const state = get();
     const states = state.states;
@@ -330,30 +355,30 @@ export const useQueryStore = create<QueryStore>((set, get) => ({
     set({ states, activeConnectionId, ...flattenActive(states, activeConnectionId) });
   },
 
-  createTab: () => {
-    const { activeConnectionId } = get();
-    if (!activeConnectionId) return;
+  createTab: (connectionId?: string) => {
+    const cid = connectionId ?? get().activeConnectionId;
+    if (!cid) return;
     tabCounter += 1;
-    const tab = newTab(activeConnectionId);
+    const tab = newTab(cid);
     tab.title = t('query.tab', { n: String(tabCounter) });
     const state = get();
-    const connState = state.states.get(activeConnectionId) ?? emptyConnectionQueryState();
-    commitPatch(get, set, activeConnectionId, {
+    const connState = state.states.get(cid) ?? emptyConnectionQueryState();
+    commitPatch(get, set, cid, {
       tabs: [...connState.tabs, tab],
       activeTabId: tab.id,
     });
   },
 
   closeTab: (id) => {
-    const { activeConnectionId } = get();
-    if (!activeConnectionId) return;
     const state = get();
-    const connState = state.states.get(activeConnectionId) ?? emptyConnectionQueryState();
+    const hit = findTabAcrossConnections(state.states, id);
+    if (!hit) return;
+    const connState = state.states.get(hit.connectionId) ?? emptyConnectionQueryState();
     if (connState.tabs.length <= 1) return;
     const tabs = connState.tabs.filter((t) => t.id !== id);
     const activeTabId =
       connState.activeTabId === id ? (tabs[0]?.id ?? connState.activeTabId) : connState.activeTabId;
-    commitPatch(get, set, activeConnectionId, { tabs, activeTabId });
+    commitPatch(get, set, hit.connectionId, { tabs, activeTabId });
   },
 
   setActiveTab: (id) => {
@@ -377,13 +402,13 @@ export const useQueryStore = create<QueryStore>((set, get) => ({
   },
 
   executeQuery: async (tabId, params) => {
-    const tab = get().tabs.find((t) => t.id === tabId);
-    if (!tab) return;
+    const hit = findTabAcrossConnections(get().states, tabId);
+    if (!hit) return;
     if (params && Object.keys(params).length > 0) {
-      await runBoundQuery(get, set, tabId, tab.sql, params);
+      await runBoundQuery(get, set, tabId, hit.tab.sql, params);
       return;
     }
-    await runStreamingQuery(get, set, tabId, tab.sql);
+    await runStreamingQuery(get, set, tabId, hit.tab.sql);
   },
 
   executeSelection: async (tabId, sql, params) => {

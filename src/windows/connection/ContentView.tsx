@@ -159,7 +159,6 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
   const applyColumnToRows = useTableDataStore((s) => s.applyColumnToRows);
   const [detailOpen, setDetailOpen] = useState(false);
 
-  const queryTabs = useQueryStore((s) => s.tabs);
   const updateQuerySql = useQueryStore((s) => s.updateSql);
   const resultDetailRowIndex = useQueryStore((s) => s.resultDetailRowIndex);
   const updateResultCell = useQueryStore((s) => s.updateResultCell);
@@ -507,10 +506,10 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [detailPanelApplicable]);
 
+  const activeQueryTabId =
+    activePanel?.type === 'query' ? (activePanel as QueryPanelType).queryTabId : null;
   const activeQueryTab =
-    activePanel?.type === 'query'
-      ? queryTabs.find((tab) => tab.id === (activePanel as QueryPanelType).queryTabId)
-      : null;
+    useQueryStore((s) => (activeQueryTabId ? s.findTab(activeQueryTabId) : undefined)) ?? null;
   const activeQueryResult = activeQueryTab?.results[activeQueryTab.activeResultIdx] ?? null;
 
   const detailColumnDefs: ColumnDef[] = useMemo(() => {
@@ -633,9 +632,9 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
                 database={currentDatabase ?? undefined}
                 onInsertSql={(sql) => {
                   if (activePanel?.type === 'query') {
-                    const tab = queryTabs.find(
-                      (qt) => qt.id === (activePanel as QueryPanelType).queryTabId,
-                    );
+                    const tab = useQueryStore
+                      .getState()
+                      .findTab((activePanel as QueryPanelType).queryTabId);
                     if (tab) updateQuerySql(tab.id, sql);
                   }
                 }}
