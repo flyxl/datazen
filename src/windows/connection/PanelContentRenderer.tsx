@@ -53,8 +53,6 @@ export function PanelContentRenderer({
   onRefresh,
   resolveTableSchema,
 }: PanelContentRendererProps) {
-  const { t } = useI18n();
-
   if (!activePanel) {
     return null;
   }

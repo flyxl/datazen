@@ -575,39 +575,6 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
     void get().commitChanges();
   },
 
-  applyColumnToRows: (col, value, rows) => {
-    const { activeTable, tableStates } = get();
-    if (!activeTable) return;
-    const ts = getState(tableStates, activeTable);
-    const pkCols = ts.columns.filter((c) => c.isPrimaryKey);
-    const nextBuffer = new Map(ts.editBuffer);
-    const nextRows = [...ts.rows];
-
-    for (const row of rows) {
-      const rowObj = nextRows[row];
-      if (!rowObj) continue;
-      const pkSnapshot: Record<string, unknown> = {};
-      for (const pk of pkCols) {
-        pkSnapshot[pk.name] = rowObj[pk.name];
-      }
-      const key = editKey(row, col);
-      nextBuffer.set(key, {
-        rowIndex: row,
-        columnName: col,
-        originalValue: rowObj[col],
-        newValue: value,
-        pkSnapshot,
-      });
-      nextRows[row] = { ...rowObj, [col]: value as Value };
-    }
-
-    if (nextBuffer.size === 0) return;
-    const next = new Map(tableStates);
-    next.set(activeTable, { ...ts, rows: nextRows, editBuffer: nextBuffer, editingCell: null });
-    set({ tableStates: next, ...syncFlat(activeTable, next) });
-    void get().commitChanges();
-  },
-
   cancelEdit: () => updateActive(get, set, () => ({ editingCell: null })),
 
   commitChanges: async () => {
