@@ -51,9 +51,14 @@ function nextWidgetLayout(widgets: DashboardWidget[]): DashboardWidget['layout']
 export interface DashboardPanelProps {
   initialDashboardId?: string;
   onDashboardChange?: (id: string, name: string) => void;
+  onOpenWorkflowEditor?: () => void;
 }
 
-export function DashboardPanel({ initialDashboardId, onDashboardChange }: DashboardPanelProps) {
+export function DashboardPanel({
+  initialDashboardId,
+  onDashboardChange,
+  onOpenWorkflowEditor,
+}: DashboardPanelProps) {
   const { t } = useI18n();
   const [activeDashboardId, setActiveDashboardId] = useState(initialDashboardId ?? '');
   const dashboardId = activeDashboardId;
@@ -601,7 +606,7 @@ export function DashboardPanel({ initialDashboardId, onDashboardChange }: Dashbo
         isNew={isNewWidget}
         hiddenSql={editorHiddenSql}
         userWorkflows={userWorkflows}
-        onOpenWorkflowEditor={() => openWorkflowWindow()}
+        onOpenWorkflowEditor={onOpenWorkflowEditor ?? (() => openWorkflowWindow())}
         onClose={() => {
           setEditorOpen(false);
           setEditingWidget(null);

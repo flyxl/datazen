@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { PanelLeftOpen } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState, type ComponentType } from 'react';
+import { Database, LayoutDashboard, PanelLeftOpen, Workflow } from 'lucide-react';
 import { TitleBar } from '../../components/TitleBar';
 import { MenuBar } from '../../components/MenuBar';
 import { ThemeToggle } from '../../components/ThemeToggle';
@@ -36,6 +36,43 @@ import type { ConnectionViewActions } from '../../lib/connectionViews/types';
 import { ConnectionNavigatorTree } from './ConnectionNavigatorTree';
 import { ContentView } from './ContentView';
 import type { DatabaseType } from '../../types';
+import { useDashboardStore } from '../../stores/dashboardStore';
+import { DashboardPanel } from '../dashboard/DashboardPanel';
+import { WorkflowWindow } from '../workflow/WorkflowWindow';
+
+interface WorkspaceShortcutButtonProps {
+  icon: ComponentType<{ className?: string }>;
+  label: string;
+  testId: string;
+  onClick: () => void;
+  active?: boolean;
+}
+
+function WorkspaceModeButton({
+  icon: Icon,
+  label,
+  testId,
+  onClick,
+  active = false,
+}: Readonly<WorkspaceShortcutButtonProps>) {
+  return (
+    <button
+      type="button"
+      data-testid={testId}
+      onClick={onClick}
+      title={label}
+      className={`flex h-10 w-10 items-center justify-center rounded-lg border text-left text-xs transition-colors ${
+        active
+          ? 'border-accent/40 bg-accent/10 text-accent'
+          : 'border-transparent text-fg-secondary hover:border-edge hover:bg-surface-raised hover:text-fg'
+      }`}
+    >
+      <Icon className="h-4 w-4 shrink-0" />
+    </button>
+  );
+}
+
+type WorkspaceMode = 'connections' | 'workflow' | 'dashboard';
 
 // ── Connection Tab ────────────────────────────────────────────────
 
@@ -110,6 +147,10 @@ export function ConnectionWindow() {
   const [messageDialogOpen, setMessageDialogOpen] = useState(false);
   const [messageDialogText, setMessageDialogText] = useState('');
   const [messageDialogKind, setMessageDialogKind] = useState<'error' | 'success'>('error');
+  const fetchDashboards = useDashboardStore((s) => s.fetchDashboards);
+  const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>('connections');
+  const [embeddedDashboardId, setEmbeddedDashboardId] = useState<string | undefined>(undefined);
+  const [dashboardTitle, setDashboardTitle] = useState('');
 
   const initialPendingRef = useRef(consumePendingConnection());
   const [tabs, setTabs] = useState<ConnectionTab[]>(() => {
@@ -140,6 +181,7 @@ export function ConnectionWindow() {
     const action = pendingActionRef.current;
     if (!action) return;
     pendingActionRef.current = null;
+    setWorkspaceMode('connections');
     if (action === 'openSqlFile') {
       actionsRef.current?.openSqlFile?.();
     }
@@ -269,6 +311,7 @@ export function ConnectionWindow() {
     void listenCrossWindow('datazen:open-connection', (payload) => {
       const data = payload as Record<string, string> | undefined;
       if (!data?.configId) return;
+      setWorkspaceMode('connections');
 
       try {
         localStorage.removeItem(PENDING_CONNECTION_KEY);
@@ -428,6 +471,7 @@ export function ConnectionWindow() {
 
   const handleSelectConnection = useCallback(
     (configId: string) => {
+      setWorkspaceMode('connections');
       const existingIdx = tabs.findIndex((t) => t.configId === configId);
       if (existingIdx >= 0) {
         const existingTab = tabs[existingIdx];
@@ -462,6 +506,7 @@ export function ConnectionWindow() {
 
   const handleSelectKvDb = useCallback(
     (configId: string, dbName: string) => {
+      setWorkspaceMode('connections');
       handleSelectConnection(configId);
 
       const panels = usePanelStore.getState().panels;
@@ -581,6 +626,33 @@ export function ConnectionWindow() {
     }
   }, [showMessageDialog, t]);
 
+  const handleOpenDashboard = useCallback(async () => {
+    await fetchDashboards();
+    const list = useDashboardStore.getState().list;
+    if (list.length > 0) {
+      setEmbeddedDashboardId(list[0]!.id);
+      setDashboardTitle(list[0]!.name);
+      setWorkspaceMode('dashboard');
+      return;
+    }
+    setEmbeddedDashboardId(undefined);
+    setDashboardTitle(t('dashboard.title'));
+    setWorkspaceMode('dashboard');
+  }, [fetchDashboards, t]);
+
+  const handleOpenDashboardById = useCallback(
+    (dashboardId?: string, dashboardName?: string) => {
+      setEmbeddedDashboardId(dashboardId);
+      setDashboardTitle(dashboardName ?? t('dashboard.title'));
+      setWorkspaceMode('dashboard');
+    },
+    [t],
+  );
+
+  const handleOpenWorkflow = useCallback(() => {
+    setWorkspaceMode('workflow');
+  }, []);
+
   useEffect(() => {
     const cleanups: Array<() => void> = [];
 
@@ -595,6 +667,12 @@ export function ConnectionWindow() {
     }).then((fn) => cleanups.push(fn));
     void listenCrossWindow('menu:schema-diff', () => {
       openSchemaDiffWindow();
+    }).then((fn) => cleanups.push(fn));
+    void listenCrossWindow('menu:workflow', () => {
+      handleOpenWorkflow();
+    }).then((fn) => cleanups.push(fn));
+    void listenCrossWindow('menu:dashboard', () => {
+      void handleOpenDashboard();
     }).then((fn) => cleanups.push(fn));
     void listenCrossWindow('menu:backup', () => {
       openBackupWindow('backup');
@@ -637,7 +715,13 @@ export function ConnectionWindow() {
     }).then((fn) => cleanups.push(fn));
 
     return () => cleanups.forEach((fn) => fn());
-  }, [handleExportConfig, handleImportConfig, openConnShare]);
+  }, [
+    handleExportConfig,
+    handleImportConfig,
+    handleOpenDashboard,
+    handleOpenWorkflow,
+    openConnShare,
+  ]);
 
   useEffect(() => {
     const handle = resizeHandleRef.current;
@@ -679,35 +763,37 @@ export function ConnectionWindow() {
 
   // ── Render ──
 
-  const centerTitle = activePanel
-    ? `${activePanel.connectionName} - ${getDbLabel(activePanel.databaseType)} - DataZen`
-    : activeTab
-      ? `${activeTab.connectionName} - ${getDbLabel(activeTab.databaseType)} - DataZen`
-      : 'DataZen';
+  const centerTitle =
+    workspaceMode === 'workflow'
+      ? t('win.workflow')
+      : workspaceMode === 'dashboard'
+        ? dashboardTitle || t('dashboard.title')
+        : activePanel
+          ? `${activePanel.connectionName} - ${getDbLabel(activePanel.databaseType)} - DataZen`
+          : activeTab
+            ? `${activeTab.connectionName} - ${getDbLabel(activeTab.databaseType)} - DataZen`
+            : 'DataZen';
 
-  return (
-    <div className="flex h-screen min-h-0 flex-col bg-surface text-fg">
-      <TitleBar title={centerTitle} leftContent={<MenuBar />} rightContent={<ThemeToggle />} />
-
-      <div className="flex min-h-0 flex-1">
-        {/* ── Left navigator tree ── */}
-        {sidebarCollapsed ? (
-          <div className="flex shrink-0 flex-col items-center border-r border-edge bg-surface-alt py-2">
-            <button
-              type="button"
-              className="flex h-7 w-7 items-center justify-center rounded-md text-fg-muted hover:bg-surface-raised hover:text-fg"
-              onClick={() => setSidebarCollapsed(false)}
-              title={t('connWin.expandSidebar')}
-            >
-              <PanelLeftOpen className="h-4 w-4" />
-            </button>
-          </div>
-        ) : (
-          <>
-            <aside
-              style={{ width: sidebarWidth }}
-              className="flex shrink-0 flex-col border-r border-edge bg-surface-alt"
-            >
+  const connectionWorkspace = (
+    <div className="flex h-full min-h-0 flex-1">
+      {sidebarCollapsed ? (
+        <div className="flex shrink-0 flex-col items-center border-r border-edge bg-surface-alt py-2">
+          <button
+            type="button"
+            className="flex h-7 w-7 items-center justify-center rounded-md text-fg-muted hover:bg-surface-raised hover:text-fg"
+            onClick={() => setSidebarCollapsed(false)}
+            title={t('connWin.expandSidebar')}
+          >
+            <PanelLeftOpen className="h-4 w-4" />
+          </button>
+        </div>
+      ) : (
+        <>
+          <aside
+            style={{ width: sidebarWidth }}
+            className="flex h-full min-h-0 shrink-0 flex-col border-r border-edge bg-surface-alt"
+          >
+            <div className="flex min-h-0 flex-1 flex-col">
               <ConnectionNavigatorTree
                 activeConfigId={activeTab?.configId ?? null}
                 onSelectConnection={handleSelectConnection}
@@ -740,59 +826,104 @@ export function ConnectionWindow() {
                   openObject: (...args) => actionsRef.current?.openObject?.(...args),
                 }}
               />
-            </aside>
-            <div
-              ref={resizeHandleRef}
-              className="w-px shrink-0 cursor-col-resize bg-edge hover:bg-accent/30"
-              title={t('main.sidebar.resize')}
-            />
-          </>
+            </div>
+          </aside>
+          <div
+            ref={resizeHandleRef}
+            className="w-px shrink-0 cursor-col-resize bg-edge hover:bg-accent/30"
+            title={t('main.sidebar.resize')}
+          />
+        </>
+      )}
+
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        {activeTab?.status === 'error' && !activePanel && (
+          <div className="flex flex-1 flex-col items-center justify-center gap-4">
+            <div className="copyable text-sm text-red-400">{activeTab.error}</div>
+            <div className="flex gap-2">
+              <button
+                className="rounded-md bg-blue-500 px-4 py-1.5 text-sm text-white hover:bg-blue-600"
+                type="button"
+                onClick={() => {
+                  setTabs((prev) =>
+                    prev.map((tab, i) =>
+                      i === activeIdx
+                        ? { ...tab, status: 'connecting', connectionId: '', error: undefined }
+                        : tab,
+                    ),
+                  );
+                }}
+              >
+                {t('common.retry')}
+              </button>
+              <button
+                className="rounded-md bg-surface-raised px-4 py-1.5 text-sm text-fg-secondary hover:text-fg"
+                type="button"
+                onClick={() => void handleCloseTab(activeTab.configId)}
+              >
+                {t('common.close')}
+              </button>
+            </div>
+          </div>
         )}
 
-        {/* ── Main content area ── */}
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          {activeTab?.status === 'error' && !activePanel && (
-            <div className="flex flex-1 flex-col items-center justify-center gap-4">
-              <div className="copyable text-sm text-red-400">{activeTab.error}</div>
-              <div className="flex gap-2">
-                <button
-                  className="rounded-md bg-blue-500 px-4 py-1.5 text-sm text-white hover:bg-blue-600"
-                  type="button"
-                  onClick={() => {
-                    setTabs((prev) =>
-                      prev.map((tab, i) =>
-                        i === activeIdx
-                          ? { ...tab, status: 'connecting', connectionId: '', error: undefined }
-                          : tab,
-                      ),
-                    );
-                  }}
-                >
-                  {t('common.retry')}
-                </button>
-                <button
-                  className="rounded-md bg-surface-raised px-4 py-1.5 text-sm text-fg-secondary hover:text-fg"
-                  type="button"
-                  onClick={() => void handleCloseTab(activeTab.configId)}
-                >
-                  {t('common.close')}
-                </button>
-              </div>
-            </div>
-          )}
+        {activeTab?.status === 'connecting' && !activePanel && (
+          <div className="flex flex-1 flex-col items-center justify-center gap-4">
+            <div className="h-6 w-6 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
+            <div className="text-sm text-fg-muted">{t('conn.connecting')}</div>
+          </div>
+        )}
 
-          {activeTab?.status === 'connecting' && !activePanel && (
-            <div className="flex flex-1 flex-col items-center justify-center gap-4">
-              <div className="h-6 w-6 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
-              <div className="text-sm text-fg-muted">{t('conn.connecting')}</div>
-            </div>
-          )}
+        <ContentView
+          selectTableRef={selectTableRef}
+          nodeContextMenuRef={nodeContextMenuRef}
+          actionsRef={actionsRef}
+        />
+      </div>
+    </div>
+  );
 
-          <ContentView
-            selectTableRef={selectTableRef}
-            nodeContextMenuRef={nodeContextMenuRef}
-            actionsRef={actionsRef}
+  return (
+    <div className="flex h-full min-h-0 flex-col bg-surface text-fg">
+      <TitleBar title={centerTitle} leftContent={<MenuBar />} rightContent={<ThemeToggle />} />
+
+      <div className="flex min-h-0 flex-1">
+        <aside className="flex h-full w-14 shrink-0 flex-col items-center gap-2 self-stretch border-r border-edge bg-surface-alt px-2 pb-3">
+          <WorkspaceModeButton
+            icon={Database}
+            label={t('nav.connections')}
+            testId="workspace-nav-connections"
+            active={workspaceMode === 'connections'}
+            onClick={() => setWorkspaceMode('connections')}
           />
+          <WorkspaceModeButton
+            icon={Workflow}
+            label={t('nav.workflow')}
+            testId="workspace-nav-workflow"
+            active={workspaceMode === 'workflow'}
+            onClick={handleOpenWorkflow}
+          />
+          <WorkspaceModeButton
+            icon={LayoutDashboard}
+            label={t('nav.dashboard')}
+            testId="workspace-nav-dashboard"
+            active={workspaceMode === 'dashboard'}
+            onClick={() => void handleOpenDashboard()}
+          />
+        </aside>
+
+        <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
+          {workspaceMode === 'connections' ? (
+            connectionWorkspace
+          ) : workspaceMode === 'workflow' ? (
+            <WorkflowWindow embedded onOpenDashboardInShell={handleOpenDashboardById} />
+          ) : (
+            <DashboardPanel
+              initialDashboardId={embeddedDashboardId}
+              onDashboardChange={(_id, name) => setDashboardTitle(name)}
+              onOpenWorkflowEditor={handleOpenWorkflow}
+            />
+          )}
         </div>
       </div>
 

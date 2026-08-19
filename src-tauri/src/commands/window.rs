@@ -3,7 +3,18 @@ use crate::theme::surface_bg::{parse_css_hex, SurfaceBgCache};
 use serde::Deserialize;
 use tauri::webview::PageLoadEvent;
 use tauri::window::Color;
-use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{
+    AppHandle, LogicalSize, Manager, Size, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
+};
+
+/// Main window defaults from `tauri.conf.json`.
+const MAIN_WINDOW_DEFAULT_W: f64 = 1280.0;
+const MAIN_WINDOW_DEFAULT_H: f64 = 820.0;
+const MAIN_WINDOW_MIN_W: f64 = 960.0;
+const MAIN_WINDOW_MIN_H: f64 = 640.0;
+/// Legacy launcher size before the unified workspace shell.
+const MAIN_WINDOW_LEGACY_W: f64 = 800.0;
+const MAIN_WINDOW_LEGACY_H: f64 = 600.0;
 
 /// Built-in dark `--c-surface` / splash fallback (`#0f172a`).
 const WINDOW_BG_DARK: Color = Color(0x0f, 0x17, 0x2a, 0xff);
@@ -187,6 +198,38 @@ pub async fn create_sub_window(
     }
 }
 
+pub(crate) fn main_window_needs_default_size(logical_width: f64, logical_height: f64) -> bool {
+    logical_width < MAIN_WINDOW_MIN_W
+        || logical_height < MAIN_WINDOW_MIN_H
+        || ((logical_width - MAIN_WINDOW_LEGACY_W).abs() < 1.0
+            && (logical_height - MAIN_WINDOW_LEGACY_H).abs() < 1.0)
+}
+
+/// Resize the main window when macOS restores an old 800×600 frame or a size below min bounds.
+pub fn ensure_main_window_size(window: &WebviewWindow) {
+    let Ok(size) = window.inner_size() else {
+        return;
+    };
+    let scale = window.scale_factor().unwrap_or(1.0);
+    let logical_w = size.width as f64 / scale;
+    let logical_h = size.height as f64 / scale;
+    if !main_window_needs_default_size(logical_w, logical_h) {
+        return;
+    }
+    let _ = window.set_size(Size::Logical(LogicalSize::new(
+        MAIN_WINDOW_DEFAULT_W,
+        MAIN_WINDOW_DEFAULT_H,
+    )));
+    let _ = window.center();
+    tracing::info!(
+        from_w = logical_w,
+        from_h = logical_h,
+        to_w = MAIN_WINDOW_DEFAULT_W,
+        to_h = MAIN_WINDOW_DEFAULT_H,
+        "main window resized to configured default"
+    );
+}
+
 /// Labels of open windows excluding the main window.
 pub fn non_main_window_labels<I, S>(labels: I) -> Vec<String>
 where
@@ -229,6 +272,14 @@ fn focus_existing_window(app: &AppHandle, label: &str, url: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn main_window_needs_default_size_for_legacy_and_too_small() {
+        assert!(main_window_needs_default_size(800.0, 600.0));
+        assert!(main_window_needs_default_size(900.0, 700.0));
+        assert!(!main_window_needs_default_size(1280.0, 820.0));
+        assert!(!main_window_needs_default_size(1440.0, 900.0));
+    }
 
     #[test]
     fn create_window_options_defaults() {

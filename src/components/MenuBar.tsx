@@ -83,6 +83,9 @@ function useMenus(): Menu[] {
       items: [
         { id: 'schema-diff', label: t('menu.schemaDiff') },
         { id: 'sep-3', label: '', separator: true },
+        { id: 'workflow', label: t('menu.workflow') },
+        { id: 'dashboard', label: t('menu.dashboard') },
+        { id: 'sep-3b', label: '', separator: true },
         { id: 'backup', label: t('menu.backup') },
         { id: 'restore', label: t('menu.restore') },
         { id: 'sep-4', label: '', separator: true },
