@@ -205,8 +205,14 @@ pub(crate) fn main_window_needs_default_size(logical_width: f64, logical_height:
             && (logical_height - MAIN_WINDOW_LEGACY_H).abs() < 1.0)
 }
 
+/// Resize when macOS restores a legacy frame, then center on startup.
+pub fn prepare_main_window(window: &WebviewWindow) {
+    ensure_main_window_size(window);
+    let _ = window.center();
+}
+
 /// Resize the main window when macOS restores an old 800×600 frame or a size below min bounds.
-pub fn ensure_main_window_size(window: &WebviewWindow) {
+fn ensure_main_window_size(window: &WebviewWindow) {
     let Ok(size) = window.inner_size() else {
         return;
     };
@@ -220,7 +226,6 @@ pub fn ensure_main_window_size(window: &WebviewWindow) {
         MAIN_WINDOW_DEFAULT_W,
         MAIN_WINDOW_DEFAULT_H,
     )));
-    let _ = window.center();
     tracing::info!(
         from_w = logical_w,
         from_h = logical_h,

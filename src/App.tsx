@@ -46,22 +46,10 @@ const BackupWindow = lazy(() =>
     return { default: m.BackupWindow };
   }),
 );
-const WorkflowWindow = lazy(() =>
-  import('./windows/workflow/WorkflowWindow').then((m) => {
-    mark('WorkflowWindow chunk loaded');
-    return { default: m.WorkflowWindow };
-  }),
-);
 const DocsWindow = lazy(() =>
   import('./windows/docs/DocsWindow').then((m) => {
     mark('DocsWindow chunk loaded');
     return { default: m.DocsWindow };
-  }),
-);
-const DashboardWindow = lazy(() =>
-  import('./windows/dashboard/DashboardWindow').then((m) => {
-    mark('DashboardWindow chunk loaded');
-    return { default: m.DashboardWindow };
   }),
 );
 
@@ -76,8 +64,6 @@ function WindowContent() {
   switch (windowKind) {
     case 'new-connection':
       return <NewConnectionWindow />;
-    case 'connection':
-      return <MainWindow />;
     case 'settings':
       return <SettingsWindow />;
     case 'data-sync':
@@ -86,12 +72,8 @@ function WindowContent() {
       return <SchemaDiffWindow />;
     case 'backup':
       return <BackupWindow />;
-    case 'workflow':
-      return <WorkflowWindow />;
     case 'docs':
       return <DocsWindow />;
-    case 'dashboard':
-      return <DashboardWindow />;
     case 'main':
     default:
       return <MainWindow />;

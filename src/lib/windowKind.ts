@@ -1,6 +1,16 @@
-export type WindowKind = 'main' | 'new-connection' | 'connection' | 'settings' | 'data-sync' | 'schema-diff' | 'backup' | 'workflow' | 'docs' | 'dashboard';
+export type WindowKind =
+  | 'main'
+  | 'new-connection'
+  | 'settings'
+  | 'data-sync'
+  | 'schema-diff'
+  | 'backup'
+  | 'docs';
 
 let cachedKind: WindowKind | null = null;
+
+/** Legacy sub-window kinds that now route to the unified main shell. */
+const LEGACY_MAIN_ALIASES = new Set(['connection', 'workflow', 'dashboard']);
 
 export function getWindowKind(): WindowKind {
   if (cachedKind) return cachedKind;
@@ -9,14 +19,12 @@ export function getWindowKind(): WindowKind {
   const w = params.get('window');
 
   if (w === 'new-connection') cachedKind = 'new-connection';
-  else if (w === 'connection') cachedKind = 'connection';
   else if (w === 'settings') cachedKind = 'settings';
   else if (w === 'data-sync') cachedKind = 'data-sync';
   else if (w === 'schema-diff') cachedKind = 'schema-diff';
   else if (w === 'backup') cachedKind = 'backup';
-  else if (w === 'workflow') cachedKind = 'workflow';
   else if (w === 'docs') cachedKind = 'docs';
-  else if (w === 'dashboard') cachedKind = 'dashboard';
+  else if (w && LEGACY_MAIN_ALIASES.has(w)) cachedKind = 'main';
   else cachedKind = 'main';
 
   return cachedKind;

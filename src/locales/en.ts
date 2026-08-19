@@ -439,6 +439,10 @@ const en: Record<TranslationKey, string> = {
   'connWin.tooltipGroup': 'Group',
   'connWin.tooltipDb': 'Database',
   'connWin.tooltipTable': 'Table',
+  'connWin.home.selectConnection': 'Select a connection from the left sidebar',
+  'connWin.home.subtitle': 'Pick a quick action or reopen a recent panel',
+  'connWin.home.quickActions': 'Quick Actions',
+  'connWin.home.recentPanels': 'Recent Panels',
 
   // ── Table View ──
   'tableView.loadingData': 'Loading table data…',
@@ -1355,6 +1359,7 @@ const en: Record<TranslationKey, string> = {
   'schemaDiff.extraOnTarget': 'Extra on target (DROP)',
   'win.workflow': 'Workflow - DataZen',
   'win.dashboard': 'Dashboards - DataZen',
+  'win.connections': 'Connections - DataZen',
 
   // ── Dashboard ──
   'dashboard.title': 'Dashboards',
