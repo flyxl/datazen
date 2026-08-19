@@ -77,12 +77,6 @@ export interface RedisDbPanel extends PanelBase {
   dbName: string;
 }
 
-export interface SqlFilePanel extends PanelBase {
-  type: 'sql-file';
-  fileName: string;
-  sql: string;
-}
-
 export type Panel =
   | TablePanel
   | ViewPanel
@@ -92,8 +86,7 @@ export type Panel =
   | ObjectsPanel
   | PrivilegesPanel
   | DatabaseObjectPanel
-  | RedisDbPanel
-  | SqlFilePanel;
+  | RedisDbPanel;
 
 // ── ID generation ────────────────────────────────────────────────
 
@@ -120,7 +113,7 @@ function cancelAndCleanupExec(
 ): Map<string, QueryExecState> {
   const nextExec = new Map(currentExec);
   for (const panel of panelsToRemove) {
-    if (panel.type === 'query' || panel.type === 'sql-file') {
+    if (panel.type === 'query') {
       const exec = nextExec.get(panel.id);
       if (exec?.running) {
         queryCommands.cancelQuery(panel.connectionId).catch(() => {});
@@ -205,7 +198,7 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
   // ── Panel CRUD ──────────────────────────────────────────────
 
   addPanel: (panel, activate = true) => {
-    const needsExec = panel.type === 'query' || panel.type === 'sql-file';
+    const needsExec = panel.type === 'query';
     const nextExec = needsExec
       ? new Map(get().queryExec).set(panel.id, emptyQueryExecState())
       : get().queryExec;
@@ -309,7 +302,7 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
   executeQuery: async (panelId, params) => {
     const { panels, queryExec } = get();
     const panel = panels.find((p) => p.id === panelId);
-    if (!panel || (panel.type !== 'query' && panel.type !== 'sql-file')) return;
+    if (!panel || panel.type !== 'query') return;
     const exec = queryExec.get(panelId);
     if (!exec) return;
     const sql = exec.sql.trim();

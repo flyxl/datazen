@@ -844,6 +844,7 @@ pub fn run() {
             commands::backup_database_with_dialog,
             commands::restore_database,
             commands::restore_database_with_dialog,
+            commands::execute_sql_file_with_dialog,
             commands::compare_databases,
             commands::classify_sync_pair,
             commands::compare_table_schemas,

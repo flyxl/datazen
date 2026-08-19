@@ -94,6 +94,7 @@ progress {
 /* Content opt-in, per concrete layout element. */
 .selectable,
 .select-text,
+.copyable,
 input,
 textarea,
 [contenteditable='true'],

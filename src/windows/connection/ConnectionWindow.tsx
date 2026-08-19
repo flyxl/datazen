@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { PanelLeftOpen } from 'lucide-react';
 import { TitleBar } from '../../components/TitleBar';
+import { MenuBar } from '../../components/MenuBar';
+import { ThemeToggle } from '../../components/ThemeToggle';
+import { Dialog } from '../../components/ui/Dialog';
 import { useI18n } from '../../hooks/useI18n';
 import { useSettings } from '../../hooks/useSettings';
 import { useSettingsStore } from '../../stores/settingsStore';
@@ -9,14 +12,24 @@ import { useSchemaStore } from '../../stores/schemaStore';
 import { useTableDataStore } from '../../stores/tableDataStore';
 import { useConnectionStore } from '../../stores/connectionStore';
 import { connectionCommands } from '../../commands/connection';
+import { backupCommands } from '../../commands/backup';
+import { settingsCommands } from '../../commands/settings';
 import { emitCrossWindow, listenCrossWindow } from '../../lib/crossWindowBus';
 import { getDbLabel } from '../../lib/databaseTypes';
-import { openNewConnectionWindow, PENDING_CONNECTION_KEY } from '../../lib/windowManager';
+import {
+  openBackupWindow,
+  openDataSyncWindow,
+  openNewConnectionWindow,
+  openSchemaDiffWindow,
+  openSettingsWindow,
+  PENDING_CONNECTION_KEY,
+} from '../../lib/windowManager';
 import { useActiveConnectionStore } from '../../stores/activeConnectionStore';
 import { usePanelStore, nextPanelId, type RedisDbPanel } from '../../stores/panelStore';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 import {
   ConnectionShareDialog,
+  type ConnectionImportSource,
   type ConnectionShareMode,
 } from '../../components/connection/ConnectionShareDialog';
 import type { ConnectionViewActions } from '../../lib/connectionViews/types';
@@ -92,6 +105,11 @@ export function ConnectionWindow() {
   const [confirmDelete, confirmDeleteDialog] = useConfirmDialog();
   const [connShareOpen, setConnShareOpen] = useState(false);
   const [connShareMode, setConnShareMode] = useState<ConnectionShareMode>('export');
+  const [connShareImportSource, setConnShareImportSource] =
+    useState<ConnectionImportSource>('file');
+  const [messageDialogOpen, setMessageDialogOpen] = useState(false);
+  const [messageDialogText, setMessageDialogText] = useState('');
+  const [messageDialogKind, setMessageDialogKind] = useState<'error' | 'success'>('error');
 
   const initialPendingRef = useRef(consumePendingConnection());
   const [tabs, setTabs] = useState<ConnectionTab[]>(() => {
@@ -112,12 +130,18 @@ export function ConnectionWindow() {
 
   const activeTab = tabs[activeIdx] ?? null;
 
+  const showMessageDialog = useCallback((text: string, kind: 'error' | 'success') => {
+    setMessageDialogText(text);
+    setMessageDialogKind(kind);
+    setMessageDialogOpen(true);
+  }, []);
+
   const executePendingAction = useCallback(() => {
     const action = pendingActionRef.current;
     if (!action) return;
     pendingActionRef.current = null;
     if (action === 'openSqlFile') {
-      setTimeout(() => actionsRef.current?.openSqlFile?.(), 500);
+      actionsRef.current?.openSqlFile?.();
     }
   }, []);
 
@@ -161,6 +185,20 @@ export function ConnectionWindow() {
     });
     return () => cleanup?.();
   }, [fetchConnections, fetchGroups]);
+
+  useEffect(() => {
+    let cleanup: (() => void) | undefined;
+    void listenCrossWindow('datazen:refresh-connection', (payload) => {
+      const data = payload as { connectionId?: string } | undefined;
+      if (!data?.connectionId) return;
+      const hasMatchingTab = tabs.some((tab) => tab.connectionId === data.connectionId);
+      if (!hasMatchingTab) return;
+      actionsRef.current?.refresh?.();
+    }).then((fn) => {
+      cleanup = fn;
+    });
+    return () => cleanup?.();
+  }, [tabs]);
 
   // ── Derive active connection from active panel or active tab ──
 
@@ -492,6 +530,115 @@ export function ConnectionWindow() {
     void fetchGroups();
   }, [fetchConnections, fetchGroups]);
 
+  const openConnShare = useCallback(
+    (mode: ConnectionShareMode, source: ConnectionImportSource = 'file') => {
+      setConnShareMode(mode);
+      setConnShareImportSource(source);
+      setConnShareOpen(true);
+    },
+    [],
+  );
+
+  const handleExportConfig = useCallback(async () => {
+    let saved: boolean;
+    try {
+      const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+      saved = await backupCommands.exportAppDataWithDialog(`datazen-backup-${date}.zip`);
+    } catch (e) {
+      showMessageDialog(e instanceof Error ? e.message : t('appData.exportFailed'), 'error');
+      return;
+    }
+    if (!saved) return;
+    showMessageDialog(t('appData.exportSuccess'), 'success');
+
+    try {
+      const { ask } = await import('@tauri-apps/plugin-dialog');
+      const wantKey = await ask(t('appData.backupKeyMessage'), {
+        title: t('appData.backupKeyTitle'),
+        kind: 'info',
+      });
+      if (wantKey) {
+        const keySaved = await backupCommands.saveEncryptionKeyWithDialog('datazen.key');
+        if (keySaved) {
+          showMessageDialog(t('appData.backupKeySaved'), 'success');
+        }
+      }
+    } catch (e) {
+      showMessageDialog(e instanceof Error ? e.message : t('appData.backupKeyFailed'), 'error');
+    }
+  }, [showMessageDialog, t]);
+
+  const handleImportConfig = useCallback(async () => {
+    try {
+      const imported = await backupCommands.importAppDataWithDialog(
+        t('appData.importConfirmTitle'),
+        t('appData.importConfirmMessage'),
+      );
+      if (!imported) return;
+      await backupCommands.restartApp();
+    } catch (e) {
+      showMessageDialog(e instanceof Error ? e.message : t('appData.importFailed'), 'error');
+    }
+  }, [showMessageDialog, t]);
+
+  useEffect(() => {
+    const cleanups: Array<() => void> = [];
+
+    void listenCrossWindow('menu:open-settings', () => {
+      openSettingsWindow();
+    }).then((fn) => cleanups.push(fn));
+    void listenCrossWindow('menu:new-connection', () => {
+      openNewConnectionWindow();
+    }).then((fn) => cleanups.push(fn));
+    void listenCrossWindow('menu:data-sync', () => {
+      openDataSyncWindow();
+    }).then((fn) => cleanups.push(fn));
+    void listenCrossWindow('menu:schema-diff', () => {
+      openSchemaDiffWindow();
+    }).then((fn) => cleanups.push(fn));
+    void listenCrossWindow('menu:backup', () => {
+      openBackupWindow('backup');
+    }).then((fn) => cleanups.push(fn));
+    void listenCrossWindow('menu:restore', () => {
+      openBackupWindow('restore');
+    }).then((fn) => cleanups.push(fn));
+    void listenCrossWindow('menu:view-logs', () => {
+      void settingsCommands.openLogDir();
+    }).then((fn) => cleanups.push(fn));
+    void listenCrossWindow('menu:export-config', () => {
+      void handleExportConfig();
+    }).then((fn) => cleanups.push(fn));
+    void listenCrossWindow('menu:import-config', () => {
+      void handleImportConfig();
+    }).then((fn) => cleanups.push(fn));
+    void listenCrossWindow('menu:export-connections', () => {
+      openConnShare('export');
+    }).then((fn) => cleanups.push(fn));
+    void listenCrossWindow('menu:import-connections', () => {
+      openConnShare('import');
+    }).then((fn) => cleanups.push(fn));
+    void listenCrossWindow('menu:import-connections-file', () => {
+      openConnShare('import', 'file');
+    }).then((fn) => cleanups.push(fn));
+    void listenCrossWindow('menu:import-connections-dbx', () => {
+      openConnShare('import', 'dbx');
+    }).then((fn) => cleanups.push(fn));
+    void listenCrossWindow('menu:import-connections-navicat', () => {
+      openConnShare('import', 'navicat');
+    }).then((fn) => cleanups.push(fn));
+    void listenCrossWindow('menu:import-connections-datagrip', () => {
+      openConnShare('import', 'datagrip');
+    }).then((fn) => cleanups.push(fn));
+    void listenCrossWindow('menu:import-connections-dbeaver', () => {
+      openConnShare('import', 'dbeaver');
+    }).then((fn) => cleanups.push(fn));
+    void listenCrossWindow('menu:import-connections-tableplus', () => {
+      openConnShare('import', 'tableplus');
+    }).then((fn) => cleanups.push(fn));
+
+    return () => cleanups.forEach((fn) => fn());
+  }, [handleExportConfig, handleImportConfig, openConnShare]);
+
   useEffect(() => {
     const handle = resizeHandleRef.current;
     if (!handle) return;
@@ -540,7 +687,7 @@ export function ConnectionWindow() {
 
   return (
     <div className="flex h-screen min-h-0 flex-col bg-surface text-fg">
-      <TitleBar title={centerTitle} />
+      <TitleBar title={centerTitle} leftContent={<MenuBar />} rightContent={<ThemeToggle />} />
 
       <div className="flex min-h-0 flex-1">
         {/* ── Left navigator tree ── */}
@@ -606,7 +753,7 @@ export function ConnectionWindow() {
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           {activeTab?.status === 'error' && !activePanel && (
             <div className="flex flex-1 flex-col items-center justify-center gap-4">
-              <div className="text-sm text-red-400">{activeTab.error}</div>
+              <div className="copyable text-sm text-red-400">{activeTab.error}</div>
               <div className="flex gap-2">
                 <button
                   className="rounded-md bg-blue-500 px-4 py-1.5 text-sm text-white hover:bg-blue-600"
@@ -653,15 +800,42 @@ export function ConnectionWindow() {
       <ConnectionShareDialog
         open={connShareOpen}
         mode={connShareMode}
-        importSource="file"
+        importSource={connShareImportSource}
         onClose={() => setConnShareOpen(false)}
-        onExportSuccess={() => setConnShareOpen(false)}
-        onImportSuccess={() => {
+        onExportSuccess={(count) => {
           setConnShareOpen(false);
+          showMessageDialog(t('connShare.exportSuccess', { count }), 'success');
+        }}
+        onImportSuccess={(result) => {
+          setConnShareOpen(false);
+          showMessageDialog(
+            t('connShare.importSuccess', {
+              imported: result.imported,
+              skipped: result.skipped?.length ?? 0,
+            }),
+            'success',
+          );
           handleRefresh();
         }}
-        onError={() => setConnShareOpen(false)}
+        onError={(message) => {
+          setConnShareOpen(false);
+          showMessageDialog(message, 'error');
+        }}
       />
+      <Dialog
+        open={messageDialogOpen}
+        title={messageDialogKind === 'error' ? t('common.error') : t('common.success')}
+        onClose={() => setMessageDialogOpen(false)}
+        footer={null}
+      >
+        <div
+          className={`copyable whitespace-pre-wrap break-words text-sm ${
+            messageDialogKind === 'error' ? 'text-red-400' : 'text-green-400'
+          }`}
+        >
+          {messageDialogText}
+        </div>
+      </Dialog>
     </div>
   );
 }

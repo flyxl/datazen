@@ -523,6 +523,8 @@ const en: Record<TranslationKey, string> = {
   'query.notConnected': 'Not connected',
   'query.cancelled': 'Query cancelled',
   'query.executeFailed': 'Execution failed',
+  'query.postgresDoubleQuoteHint':
+    "PostgreSQL treats double quotes as identifier quotes, not string quotes. Use single quotes for values, e.g. `backend = 'quark'`.",
   'query.favorites': 'Favorites',
   'query.favoritesTitle': 'SQL Favorites',
   'query.noFavorites': 'No favorites yet',
@@ -552,6 +554,13 @@ const en: Record<TranslationKey, string> = {
   'query.txAbortedSkip': 'Skip',
   'sqlFile.clickRun': 'Click Run to execute the SQL file',
   'sqlFile.noResults': 'No result rows',
+  'sqlFile.dialogTitle': 'Execute SQL File',
+  'sqlFile.selectAndRun': 'Select SQL File…',
+  'sqlFile.targetDatabase': 'Target database: {database}',
+  'sqlFile.noDatabase': 'No database selected',
+  'sqlFile.executeConfirm':
+    'The SQL file may contain statements that delete tables or rows (e.g. DROP, DELETE, TRUNCATE). Continue executing against the selected database?',
+  'sqlFile.executeSuccess': 'SQL file executed successfully',
   'createDb.title': 'Create Database',
   'createDb.name': 'Database Name',
   'createDb.encoding': 'Encoding',

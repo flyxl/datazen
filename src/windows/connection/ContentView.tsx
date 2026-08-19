@@ -51,6 +51,7 @@ import { usePanelHandlers } from './usePanelHandlers';
 import { CreateDatabaseDialog } from './CreateDatabaseDialog';
 import { CreateSchemaDialog } from './CreateSchemaDialog';
 import { CreateUserDialog } from './CreateUserDialog';
+import { ExecuteSqlFileDialog } from './ExecuteSqlFileDialog';
 
 export interface ContentViewProps {
   selectTableRef?: MutableRefObject<((table: string, schema?: string) => void) | undefined>;
@@ -142,6 +143,7 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
   const [batchExportOpen, setBatchExportOpen] = useState(false);
   const [batchExportInitialSelected, setBatchExportInitialSelected] = useState<string[]>([]);
   const [lastTableSchema, setLastTableSchema] = useState<string | null>(null);
+  const [sqlFileDialogOpen, setSqlFileDialogOpen] = useState(false);
 
   const currentDatabase = useSchemaStore((s) => s.currentDatabase);
   const schemaTables = useSchemaStore((s) => s.tables);
@@ -212,6 +214,18 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
     schemaViews,
   });
 
+  const handleOpenSqlFile = useCallback(() => {
+    if (!sidebarConnCtx) return;
+    const saved = savedConnections.find((c) => c.id === sidebarConnCtx.configId);
+    const driverReadOnly = sidebarConnCtx.databaseType
+      ? DB_REGISTRY[sidebarConnCtx.databaseType as DatabaseType]?.readOnly === true
+      : false;
+    if (saved?.readOnly || driverReadOnly || safeMode) {
+      return;
+    }
+    setSqlFileDialogOpen(true);
+  }, [safeMode, savedConnections, sidebarConnCtx]);
+
   const handleSelectTableWithSchema = useCallback(
     (table: string, schema?: string) => {
       if (schema) setLastTableSchema(schema);
@@ -260,7 +274,8 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
       const { kind, name, schema } = payload;
       const ctxDbType = ctx.databaseType as DatabaseType;
       const ctxDbMeta = DB_REGISTRY[ctxDbType];
-      const ctxIsReadOnly = ctxDbMeta?.readOnly === true;
+      const saved = savedConnections.find((c) => c.id === ctx.configId);
+      const ctxIsReadOnly = ctxDbMeta?.readOnly === true || saved?.readOnly === true;
       const ctxShowStructureEditor = canOpenStructureEditor(ctxDbMeta) && !ctxIsReadOnly;
       const ctxSupportsErDiagram = ctxDbMeta?.supportsErDiagram !== false;
       const ctxExportScope = resolveExportScope(ctxDbMeta);
@@ -427,6 +442,7 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
                 : undefined,
           },
           readOnly: ctxIsReadOnly,
+          safeMode,
           showOpenStructure: true,
           showErFocus: ctxSupportsErDiagram,
           showExport: kind === 'table' ? false : ctxExportDataSupported,
@@ -463,7 +479,7 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
     if (actionsRef) {
       actionsRef.current = {
         newQuery: handlers.handleNewQuery,
-        openSqlFile: handlers.handleOpenSqlFile,
+        openSqlFile: handleOpenSqlFile,
         createTable: handlers.handleCreateTable,
         openCreateDatabase: () => setCreateDbOpen(true),
         openCreateSchema: () => setCreateSchemaOpen(true),
@@ -476,7 +492,7 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
     return () => {
       if (actionsRef) actionsRef.current = undefined;
     };
-  }, [actionsRef, handlers]);
+  }, [actionsRef, handlers, handleOpenSqlFile]);
 
   useKeyboardShortcuts([
     {
@@ -712,6 +728,17 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
       )}
 
       {confirmActionDialog}
+
+      {sidebarConnCtx && (
+        <ExecuteSqlFileDialog
+          open={sqlFileDialogOpen}
+          onClose={() => setSqlFileDialogOpen(false)}
+          connectionId={sidebarConnCtx.connectionId}
+          database={currentDatabase ?? initialDatabase ?? null}
+          connectionName={sidebarConnCtx.connectionName}
+          onExecuted={handlers.handleRefresh}
+        />
+      )}
 
       {sidebarConnCtx && (
         <CreateDatabaseDialog

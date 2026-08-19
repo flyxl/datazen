@@ -42,6 +42,7 @@ import { groupConnections, useConnectionStore } from '../../stores/connectionSto
 import { useActiveConnectionStore } from '../../stores/activeConnectionStore';
 import { useSchemaStore } from '../../stores/schemaStore';
 import { showWebContextMenu } from '../../stores/contextMenuStore';
+import { useSettingsStore } from '../../stores/settingsStore';
 import { shouldUseMultiDatabaseTree } from './schema-tree/SchemaTree';
 import { connectionCommands } from '../../commands/connection';
 import { driverCommands } from '../../commands/driver';
@@ -361,6 +362,7 @@ export function ConnectionNavigatorTree({
   viewActions,
 }: ConnectionNavigatorTreeProps) {
   const { t } = useI18n();
+  const safeMode = useSettingsStore((s) => s.settings.safeMode);
   const [searchQuery, setSearchQuery] = useState('');
   const connections = useConnectionStore((s) => s.connections);
   const groups = useConnectionStore((s) => s.groups);
@@ -843,6 +845,7 @@ export function ConnectionNavigatorTree({
       const connectionId = entry?.connectionId;
       const conn = connections.find((c) => c.id === configId);
       const dbMeta = conn ? DB_REGISTRY[conn.databaseType] : undefined;
+      const readOnly = conn?.readOnly === true || dbMeta?.readOnly === true;
       showWebContextMenu(
         buildSchemaTreeContextMenuItems({
           kind: 'database',
@@ -872,12 +875,13 @@ export function ConnectionNavigatorTree({
               onSelectConnection(configId);
               viewActions?.openErDiagram?.();
             },
-            onExecuteSqlFile: viewActions?.openSqlFile
-              ? () => {
-                  onSelectConnection(configId);
-                  viewActions.openSqlFile!();
-                }
-              : undefined,
+            onExecuteSqlFile:
+              viewActions?.openSqlFile && !readOnly && !safeMode
+                ? () => {
+                    onSelectConnection(configId);
+                    viewActions.openSqlFile!();
+                  }
+                : undefined,
             onNewTable: viewActions?.createTable
               ? () => {
                   onSelectConnection(configId);
@@ -920,6 +924,8 @@ export function ConnectionNavigatorTree({
             onCompareSchema: () => openSchemaDiffWindow(),
             onCompareData: () => openDataSyncWindow(),
           },
+          readOnly,
+          safeMode,
           showNewTable: true,
         }),
         { x: e.clientX, y: e.clientY },
@@ -944,6 +950,8 @@ export function ConnectionNavigatorTree({
       const entry = activeConnections[configId];
       const connectionId = entry?.connectionId;
       const conn = connections.find((c) => c.id === configId);
+      const dbMeta = conn ? DB_REGISTRY[conn.databaseType] : undefined;
+      const readOnly = conn?.readOnly === true || dbMeta?.readOnly === true;
       showWebContextMenu(
         buildSchemaTreeContextMenuItems({
           kind: 'schema',
@@ -964,12 +972,13 @@ export function ConnectionNavigatorTree({
               onSelectConnection(configId);
               viewActions?.newQuery?.();
             },
-            onExecuteSqlFile: viewActions?.openSqlFile
-              ? () => {
-                  onSelectConnection(configId);
-                  viewActions.openSqlFile!();
-                }
-              : undefined,
+            onExecuteSqlFile:
+              viewActions?.openSqlFile && !readOnly && !safeMode
+                ? () => {
+                    onSelectConnection(configId);
+                    viewActions.openSqlFile!();
+                  }
+                : undefined,
             onNewTable: viewActions?.createTable
               ? () => {
                   onSelectConnection(configId);
@@ -1015,6 +1024,8 @@ export function ConnectionNavigatorTree({
             onCompareSchema: () => openSchemaDiffWindow(),
             onCompareData: () => openDataSyncWindow(),
           },
+          readOnly,
+          safeMode,
         }),
         { x: e.clientX, y: e.clientY },
       );

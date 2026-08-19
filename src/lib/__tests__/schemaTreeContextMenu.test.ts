@@ -366,6 +366,34 @@ describe('buildSchemaTreeContextMenuItems', () => {
     expect(ids(items)).not.toContain('create-schema');
   });
 
+  it('database menu hides execute-sql-file in read-only or safe mode', () => {
+    const readOnlyItems = buildSchemaTreeContextMenuItems({
+      kind: 'database',
+      labels,
+      handlers: {
+        onRefresh: vi.fn(),
+        onNewQuery: vi.fn(),
+        onCopyDatabaseName: vi.fn(),
+        onExecuteSqlFile: vi.fn(),
+      },
+      readOnly: true,
+    });
+    expect(ids(readOnlyItems)).not.toContain('execute-sql-file');
+
+    const safeModeItems = buildSchemaTreeContextMenuItems({
+      kind: 'database',
+      labels,
+      handlers: {
+        onRefresh: vi.fn(),
+        onNewQuery: vi.fn(),
+        onCopyDatabaseName: vi.fn(),
+        onExecuteSqlFile: vi.fn(),
+      },
+      safeMode: true,
+    });
+    expect(ids(safeModeItems)).not.toContain('execute-sql-file');
+  });
+
   it('schema menu includes execute-sql-file and new-table', () => {
     const onExecuteSqlFile = vi.fn();
     const onNewTable = vi.fn();
@@ -406,6 +434,34 @@ describe('buildSchemaTreeContextMenuItems', () => {
       readOnly: true,
     });
     expect(ids(items)).not.toContain('new-table');
+  });
+
+  it('schema menu hides execute-sql-file in read-only or safe mode', () => {
+    const readOnlyItems = buildSchemaTreeContextMenuItems({
+      kind: 'schema',
+      labels,
+      handlers: {
+        onRefresh: vi.fn(),
+        onNewQuery: vi.fn(),
+        onCopyName: vi.fn(),
+        onExecuteSqlFile: vi.fn(),
+      },
+      readOnly: true,
+    });
+    expect(ids(readOnlyItems)).not.toContain('execute-sql-file');
+
+    const safeModeItems = buildSchemaTreeContextMenuItems({
+      kind: 'schema',
+      labels,
+      handlers: {
+        onRefresh: vi.fn(),
+        onNewQuery: vi.fn(),
+        onCopyName: vi.fn(),
+        onExecuteSqlFile: vi.fn(),
+      },
+      safeMode: true,
+    });
+    expect(ids(safeModeItems)).not.toContain('execute-sql-file');
   });
 
   it('category tables includes new-table when not readOnly', () => {
