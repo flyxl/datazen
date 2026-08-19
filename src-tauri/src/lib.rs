@@ -1004,7 +1004,11 @@ pub fn run() {
 mod tests {
     use super::*;
     use crate::store::Store;
-    use std::sync::Arc;
+    use std::sync::{Arc, Mutex};
+
+    /// Guards tests that read/write the shared global `settings.json` so they
+    /// don't race when `cargo test` runs them in parallel.
+    static SETTINGS_FILE_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn menu_labels_en_contains_core_keys() {
@@ -1030,6 +1034,7 @@ mod tests {
 
     #[test]
     fn resolve_log_settings_defaults_without_settings_file() {
+        let _guard = SETTINGS_FILE_LOCK.lock().unwrap();
         let data_dir = Store::default_app_data_dir().unwrap();
         let settings_path = data_dir.join("settings.json");
         let backup = settings_path
@@ -1048,6 +1053,7 @@ mod tests {
 
     #[test]
     fn resolve_log_settings_reads_custom_level_and_path() {
+        let _guard = SETTINGS_FILE_LOCK.lock().unwrap();
         let data_dir = Store::default_app_data_dir().unwrap();
         std::fs::create_dir_all(&data_dir).unwrap();
         let settings_path = data_dir.join("settings.json");

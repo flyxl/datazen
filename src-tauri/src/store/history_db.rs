@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-use super::models::QueryHistoryEntry;
+use super::models::{FavoriteQuery, QueryHistoryEntry};
 use crate::workflow::workflows::WorkflowExecutionResult;
 
 pub const MAX_QUERY_HISTORY: usize = 1000;
@@ -86,6 +86,7 @@ impl HistoryDb {
             conn: Mutex::new(conn),
         });
         db.init_schema()?;
+        db.run_migrations()?;
         db.migrate_legacy_json(data_dir)?;
         Ok(db)
     }
@@ -137,6 +138,56 @@ impl HistoryDb {
         })
     }
 
+    fn run_migrations(&self) -> Result<(), HistoryDbError> {
+        self.with_conn(|conn| {
+            conn.execute_batch(
+                "CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL);",
+            )?;
+            let version: i32 = conn.query_row(
+                "SELECT COALESCE(MAX(version), 0) FROM schema_version",
+                [],
+                |r| r.get(0),
+            )?;
+
+            if version < 2 {
+                let has_connection_id_col = conn
+                    .prepare("SELECT connection_id FROM query_history LIMIT 0")
+                    .is_ok();
+
+                if has_connection_id_col {
+                    conn.execute_batch(
+                        "
+                        DELETE FROM query_history;
+                        ALTER TABLE query_history RENAME COLUMN connection_id TO config_id;
+                        ",
+                    )?;
+                    tracing::info!(
+                        "Migrated query_history: connection_id → config_id (cleared old data)"
+                    );
+                }
+
+                conn.execute_batch(
+                    "
+                    CREATE INDEX IF NOT EXISTS idx_query_history_config_id
+                        ON query_history(config_id);
+                    CREATE TABLE IF NOT EXISTS favorite_queries (
+                        id TEXT PRIMARY KEY NOT NULL,
+                        config_id TEXT NOT NULL,
+                        title TEXT NOT NULL,
+                        sql TEXT NOT NULL,
+                        created_at TEXT NOT NULL
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_favorite_queries_config_id
+                        ON favorite_queries(config_id);
+                    INSERT OR IGNORE INTO schema_version (version) VALUES (2);
+                    ",
+                )?;
+                tracing::info!("Database schema migrated to version 2");
+            }
+            Ok(())
+        })
+    }
+
     fn migrate_legacy_json(&self, data_dir: &Path) -> Result<(), HistoryDbError> {
         migrate_queries_json(self, data_dir)?;
         migrate_workflow_json_dir(self, data_dir)?;
@@ -148,8 +199,8 @@ impl HistoryDb {
     pub fn add_query_history(&self, entry: QueryHistoryEntry) -> Result<(), HistoryDbError> {
         self.with_conn(|conn| {
             let dominated: Option<String> = match conn.query_row(
-                "SELECT sql FROM query_history ORDER BY executed_at DESC LIMIT 1",
-                [],
+                "SELECT sql FROM query_history WHERE config_id = ?1 ORDER BY executed_at DESC LIMIT 1",
+                params![entry.config_id],
                 |row| row.get(0),
             ) {
                 Ok(v) => Some(v),
@@ -170,7 +221,7 @@ impl HistoryDb {
                         success = ?4,
                         error_message = ?5
                      WHERE id = (
-                        SELECT id FROM query_history ORDER BY executed_at DESC LIMIT 1
+                        SELECT id FROM query_history WHERE config_id = ?6 ORDER BY executed_at DESC LIMIT 1
                      )",
                     params![
                         entry.executed_at.to_rfc3339(),
@@ -178,17 +229,18 @@ impl HistoryDb {
                         entry.rows_affected.map(|v| v as i64),
                         entry.success as i32,
                         entry.error_message,
+                        entry.config_id,
                     ],
                 )?;
             } else {
                 conn.execute(
                     "INSERT INTO query_history (
-                        id, connection_id, database, sql, executed_at,
+                        id, config_id, database, sql, executed_at,
                         execution_time_ms, rows_affected, success, error_message
                      ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
                     params![
                         entry.id,
-                        entry.connection_id,
+                        entry.config_id,
                         entry.database,
                         entry.sql,
                         entry.executed_at.to_rfc3339(),
@@ -208,24 +260,93 @@ impl HistoryDb {
     pub fn get_query_history(
         &self,
         limit: usize,
+        config_id: Option<&str>,
     ) -> Result<Vec<QueryHistoryEntry>, HistoryDbError> {
         self.with_conn(|conn| {
-            let mut stmt = conn.prepare(
-                "SELECT id, connection_id, database, sql, executed_at,
-                        execution_time_ms, rows_affected, success, error_message
-                 FROM query_history
-                 ORDER BY executed_at DESC
-                 LIMIT ?1",
-            )?;
-            let rows = stmt.query_map(params![limit as i64], map_query_row)?;
-            rows.collect::<Result<Vec<_>, _>>()
-                .map_err(HistoryDbError::from)
+            if let Some(cid) = config_id {
+                let mut stmt = conn.prepare(
+                    "SELECT id, config_id, database, sql, executed_at,
+                            execution_time_ms, rows_affected, success, error_message
+                     FROM query_history
+                     WHERE config_id = ?1
+                     ORDER BY executed_at DESC
+                     LIMIT ?2",
+                )?;
+                let rows = stmt.query_map(params![cid, limit as i64], map_query_row)?;
+                rows.collect::<Result<Vec<_>, _>>()
+                    .map_err(HistoryDbError::from)
+            } else {
+                let mut stmt = conn.prepare(
+                    "SELECT id, config_id, database, sql, executed_at,
+                            execution_time_ms, rows_affected, success, error_message
+                     FROM query_history
+                     ORDER BY executed_at DESC
+                     LIMIT ?1",
+                )?;
+                let rows = stmt.query_map(params![limit as i64], map_query_row)?;
+                rows.collect::<Result<Vec<_>, _>>()
+                    .map_err(HistoryDbError::from)
+            }
         })
     }
 
     pub fn clear_query_history(&self) -> Result<(), HistoryDbError> {
         self.with_conn(|conn| {
             conn.execute("DELETE FROM query_history", [])?;
+            Ok(())
+        })
+    }
+
+    // ── Favorite queries ──────────────────────────────────────────────────
+
+    pub fn add_favorite_query(&self, fav: FavoriteQuery) -> Result<(), HistoryDbError> {
+        self.with_conn(|conn| {
+            conn.execute(
+                "INSERT INTO favorite_queries (id, config_id, title, sql, created_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![
+                    fav.id,
+                    fav.config_id,
+                    fav.title,
+                    fav.sql,
+                    fav.created_at.to_rfc3339(),
+                ],
+            )?;
+            Ok(())
+        })
+    }
+
+    pub fn get_favorite_queries(
+        &self,
+        config_id: Option<&str>,
+    ) -> Result<Vec<FavoriteQuery>, HistoryDbError> {
+        self.with_conn(|conn| {
+            if let Some(cid) = config_id {
+                let mut stmt = conn.prepare(
+                    "SELECT id, config_id, title, sql, created_at
+                     FROM favorite_queries
+                     WHERE config_id = ?1
+                     ORDER BY created_at DESC",
+                )?;
+                let rows = stmt.query_map(params![cid], map_favorite_row)?;
+                rows.collect::<Result<Vec<_>, _>>()
+                    .map_err(HistoryDbError::from)
+            } else {
+                let mut stmt = conn.prepare(
+                    "SELECT id, config_id, title, sql, created_at
+                     FROM favorite_queries
+                     ORDER BY created_at DESC",
+                )?;
+                let rows = stmt.query_map([], map_favorite_row)?;
+                rows.collect::<Result<Vec<_>, _>>()
+                    .map_err(HistoryDbError::from)
+            }
+        })
+    }
+
+    pub fn delete_favorite_query(&self, id: &str) -> Result<(), HistoryDbError> {
+        self.with_conn(|conn| {
+            conn.execute("DELETE FROM favorite_queries WHERE id = ?1", params![id])?;
             Ok(())
         })
     }
@@ -437,7 +558,7 @@ fn map_query_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<QueryHistoryEntry>
     let rows_affected: Option<i64> = row.get(6)?;
     Ok(QueryHistoryEntry {
         id: row.get(0)?,
-        connection_id: row.get(1)?,
+        config_id: row.get(1)?,
         database: row.get(2)?,
         sql: row.get(3)?,
         executed_at,
@@ -445,6 +566,20 @@ fn map_query_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<QueryHistoryEntry>
         rows_affected: rows_affected.map(|v| v as u64),
         success: row.get::<_, i32>(7)? != 0,
         error_message: row.get(8)?,
+    })
+}
+
+fn map_favorite_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<FavoriteQuery> {
+    let created_at: String = row.get(4)?;
+    let created_at = DateTime::parse_from_rfc3339(&created_at)
+        .map(|dt| dt.with_timezone(&Utc))
+        .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+    Ok(FavoriteQuery {
+        id: row.get(0)?,
+        config_id: row.get(1)?,
+        title: row.get(2)?,
+        sql: row.get(3)?,
+        created_at,
     })
 }
 
@@ -462,6 +597,21 @@ fn map_workflow_list_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<HistoryLis
     })
 }
 
+/// Legacy JSON entry format (has `connectionId` instead of `configId`).
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LegacyQueryHistoryEntry {
+    id: String,
+    connection_id: String,
+    database: String,
+    sql: String,
+    executed_at: DateTime<Utc>,
+    execution_time_ms: u64,
+    rows_affected: Option<u64>,
+    success: bool,
+    error_message: Option<String>,
+}
+
 fn migrate_queries_json(db: &HistoryDb, data_dir: &Path) -> Result<(), HistoryDbError> {
     let json_path = data_dir.join("history/queries.json");
     let migrated_path = data_dir.join("history/queries.json.migrated");
@@ -470,7 +620,7 @@ fn migrate_queries_json(db: &HistoryDb, data_dir: &Path) -> Result<(), HistoryDb
     }
 
     let content = std::fs::read_to_string(&json_path)?;
-    let entries: Vec<QueryHistoryEntry> = match serde_json::from_str(&content) {
+    let entries: Vec<LegacyQueryHistoryEntry> = match serde_json::from_str(&content) {
         Ok(v) => v,
         Err(e) => {
             tracing::warn!(path = %json_path.display(), error = %e, "Skipping invalid queries.json during migration");
@@ -483,7 +633,7 @@ fn migrate_queries_json(db: &HistoryDb, data_dir: &Path) -> Result<(), HistoryDb
         for entry in entries {
             let _ = conn.execute(
                 "INSERT OR IGNORE INTO query_history (
-                    id, connection_id, database, sql, executed_at,
+                    id, config_id, database, sql, executed_at,
                     execution_time_ms, rows_affected, success, error_message
                  ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
                 params![
@@ -621,10 +771,24 @@ mod tests {
     fn sample_query(sql: &str, days_ago: i64) -> QueryHistoryEntry {
         QueryHistoryEntry {
             id: Uuid::new_v4().to_string(),
-            connection_id: "c1".into(),
+            config_id: "cfg1".into(),
             database: "app".into(),
             sql: sql.into(),
             executed_at: Utc::now() - Duration::days(days_ago),
+            execution_time_ms: 10,
+            rows_affected: Some(1),
+            success: true,
+            error_message: None,
+        }
+    }
+
+    fn sample_query_for_config(sql: &str, config_id: &str) -> QueryHistoryEntry {
+        QueryHistoryEntry {
+            id: Uuid::new_v4().to_string(),
+            config_id: config_id.into(),
+            database: "app".into(),
+            sql: sql.into(),
+            executed_at: Utc::now(),
             execution_time_ms: 10,
             rows_affected: Some(1),
             success: true,
@@ -655,15 +819,24 @@ mod tests {
     fn migrates_queries_json_once() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(dir.path().join("history")).unwrap();
-        let entry = sample_query("SELECT 1", 0);
+        let legacy = serde_json::json!([{
+            "id": "test-id",
+            "connectionId": "c1",
+            "database": "app",
+            "sql": "SELECT 1",
+            "executedAt": chrono::Utc::now().to_rfc3339(),
+            "executionTimeMs": 10,
+            "rowsAffected": 1,
+            "success": true
+        }]);
         std::fs::write(
             dir.path().join("history/queries.json"),
-            serde_json::to_string_pretty(&vec![entry.clone()]).unwrap(),
+            serde_json::to_string_pretty(&legacy).unwrap(),
         )
         .unwrap();
 
         let db = HistoryDb::open(dir.path()).unwrap();
-        let loaded = db.get_query_history(10).unwrap();
+        let loaded = db.get_query_history(10, None).unwrap();
         assert_eq!(loaded.len(), 1);
         assert_eq!(loaded[0].sql, "SELECT 1");
         assert!(!dir.path().join("history/queries.json").exists());
@@ -671,7 +844,7 @@ mod tests {
 
         // Re-open must not duplicate.
         let db2 = HistoryDb::open(dir.path()).unwrap();
-        assert_eq!(db2.get_query_history(10).unwrap().len(), 1);
+        assert_eq!(db2.get_query_history(10, None).unwrap().len(), 1);
         let _ = db;
         let _ = db2;
     }
@@ -704,6 +877,92 @@ mod tests {
     }
 
     #[test]
+    fn query_history_config_id_filter() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = HistoryDb::open(dir.path()).unwrap();
+        db.add_query_history(sample_query_for_config("SELECT 1", "cfg-a"))
+            .unwrap();
+        db.add_query_history(sample_query_for_config("SELECT 2", "cfg-b"))
+            .unwrap();
+        db.add_query_history(sample_query_for_config("SELECT 3", "cfg-a"))
+            .unwrap();
+
+        let all = db.get_query_history(10, None).unwrap();
+        assert_eq!(all.len(), 3);
+
+        let a_only = db.get_query_history(10, Some("cfg-a")).unwrap();
+        assert_eq!(a_only.len(), 2);
+        assert!(a_only.iter().all(|e| e.config_id == "cfg-a"));
+
+        let b_only = db.get_query_history(10, Some("cfg-b")).unwrap();
+        assert_eq!(b_only.len(), 1);
+        assert_eq!(b_only[0].config_id, "cfg-b");
+    }
+
+    #[test]
+    fn query_history_dedup_scoped_by_config_id() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = HistoryDb::open(dir.path()).unwrap();
+        db.add_query_history(sample_query_for_config("SELECT 1", "cfg-a"))
+            .unwrap();
+        db.add_query_history(sample_query_for_config("SELECT 1", "cfg-b"))
+            .unwrap();
+        let all = db.get_query_history(10, None).unwrap();
+        assert_eq!(
+            all.len(),
+            2,
+            "same SQL on different configs should not dedup"
+        );
+    }
+
+    #[test]
+    fn favorite_queries_crud() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = HistoryDb::open(dir.path()).unwrap();
+
+        assert!(db.get_favorite_queries(None).unwrap().is_empty());
+
+        let fav = FavoriteQuery {
+            id: "fav1".into(),
+            config_id: "cfg-a".into(),
+            title: "My query".into(),
+            sql: "SELECT 1".into(),
+            created_at: Utc::now(),
+        };
+        db.add_favorite_query(fav).unwrap();
+
+        let fav2 = FavoriteQuery {
+            id: "fav2".into(),
+            config_id: "cfg-b".into(),
+            title: "Other".into(),
+            sql: "SELECT 2".into(),
+            created_at: Utc::now(),
+        };
+        db.add_favorite_query(fav2).unwrap();
+
+        let all = db.get_favorite_queries(None).unwrap();
+        assert_eq!(all.len(), 2);
+
+        let a_only = db.get_favorite_queries(Some("cfg-a")).unwrap();
+        assert_eq!(a_only.len(), 1);
+        assert_eq!(a_only[0].title, "My query");
+
+        db.delete_favorite_query("fav1").unwrap();
+        assert_eq!(db.get_favorite_queries(None).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn schema_version_survives_reopen() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = HistoryDb::open(dir.path()).unwrap();
+        drop(db);
+        let db2 = HistoryDb::open(dir.path()).unwrap();
+        db2.add_query_history(sample_query("SELECT 1", 0)).unwrap();
+        let loaded = db2.get_query_history(10, None).unwrap();
+        assert_eq!(loaded.len(), 1);
+    }
+
+    #[test]
     fn purge_retains_recent_rows_only() {
         let dir = tempfile::tempdir().unwrap();
         let db = HistoryDb::open(dir.path()).unwrap();
@@ -731,8 +990,8 @@ mod tests {
 
         let deleted = db.purge(HistoryScope::All, Some(30)).unwrap();
         assert_eq!(deleted, 2);
-        assert_eq!(db.get_query_history(10).unwrap().len(), 1);
-        assert_eq!(db.get_query_history(10).unwrap()[0].sql, "recent");
+        assert_eq!(db.get_query_history(10, None).unwrap().len(), 1);
+        assert_eq!(db.get_query_history(10, None).unwrap()[0].sql, "recent");
         assert_eq!(db.list_workflow_history(None).unwrap().len(), 1);
         assert_eq!(db.list_workflow_history(None).unwrap()[0].id, "w-new");
     }
@@ -753,7 +1012,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(db.purge(HistoryScope::Query, None).unwrap(), 1);
-        assert!(db.get_query_history(10).unwrap().is_empty());
+        assert!(db.get_query_history(10, None).unwrap().is_empty());
         assert_eq!(db.list_workflow_history(None).unwrap().len(), 1);
 
         assert_eq!(db.purge(HistoryScope::Workflow, None).unwrap(), 1);
@@ -768,7 +1027,7 @@ mod tests {
         db.add_query_history(e1.clone()).unwrap();
         e1.execution_time_ms = 99;
         db.add_query_history(e1).unwrap();
-        let history = db.get_query_history(10).unwrap();
+        let history = db.get_query_history(10, None).unwrap();
         assert_eq!(history.len(), 1);
         assert_eq!(history[0].execution_time_ms, 99);
     }

@@ -244,9 +244,9 @@ function SqlPanelContent({
   if (panel.type === 'query') {
     return (
       <QueryPanel
+        panelId={panel.id}
         connectionId={panel.connectionId}
         configId={panel.configId}
-        queryTabId={(panel as import('../../stores/panelStore').QueryPanel).queryTabId}
         databaseType={panel.databaseType}
       />
     );

@@ -2,48 +2,34 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { render, cleanup, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 
-const { getConnectionViewMock, schemaState, tableDataState, queryState, MockRedisView } =
-  vi.hoisted(() => {
-    const MockRedisView = () => <div data-testid="mock-redis-view">redis</div>;
-    return {
-      getConnectionViewMock: vi.fn(() => MockRedisView),
-      MockRedisView,
-      schemaState: {
-        activeConnectionId: null as string | null,
-        currentDatabase: null as string | null,
-        tables: [] as { name: string; schema?: string }[],
-        views: [] as { name: string; schema?: string }[],
-        databases: [] as string[],
-        loadForConnection: vi.fn(),
-        loadTables: vi.fn(),
-        removeRelation: vi.fn(),
-      },
-      tableDataState: {
-        columns: [] as { name: string; dataType: string }[],
-        rows: [] as Record<string, unknown>[],
-        totalRows: 0,
-        selectedRows: new Set<number>(),
-        tableName: null as string | null,
-        detailRowIndex: null as number | null,
-        setDatabaseType: vi.fn(),
-        updateCell: vi.fn(),
-        applyColumnToRows: vi.fn(),
-      },
-      queryState: {
-        tabs: [] as {
-          id: string;
-          results: { columns: { name: string; dataType: string }[] }[];
-          activeResultIdx: number;
-        }[],
-        activeTabId: '',
-        resultDetailRowIndex: null as number | null,
-        createTab: vi.fn(),
-        closeTab: vi.fn(),
-        updateSql: vi.fn(),
-        updateResultCell: vi.fn(),
-      },
-    };
-  });
+const { getConnectionViewMock, schemaState, tableDataState, MockRedisView } = vi.hoisted(() => {
+  const MockRedisView = () => <div data-testid="mock-redis-view">redis</div>;
+  return {
+    getConnectionViewMock: vi.fn(() => MockRedisView),
+    MockRedisView,
+    schemaState: {
+      activeConnectionId: null as string | null,
+      currentDatabase: null as string | null,
+      tables: [] as { name: string; schema?: string }[],
+      views: [] as { name: string; schema?: string }[],
+      databases: [] as string[],
+      loadForConnection: vi.fn(),
+      loadTables: vi.fn(),
+      removeRelation: vi.fn(),
+    },
+    tableDataState: {
+      columns: [] as { name: string; dataType: string }[],
+      rows: [] as Record<string, unknown>[],
+      totalRows: 0,
+      selectedRows: new Set<number>(),
+      tableName: null as string | null,
+      detailRowIndex: null as number | null,
+      setDatabaseType: vi.fn(),
+      updateCell: vi.fn(),
+      applyColumnToRows: vi.fn(),
+    },
+  };
+});
 
 function mockDiv(testId: string) {
   return ({ children }: { children?: ReactNode }) => <div data-testid={testId}>{children}</div>;
@@ -95,12 +81,6 @@ vi.mock('../../../stores/tableDataStore', () => ({
     (sel: (s: typeof tableDataState) => unknown) => sel(tableDataState),
     { getState: () => tableDataState },
   ),
-}));
-
-vi.mock('../../../stores/queryStore', () => ({
-  useQueryStore: Object.assign((sel: (s: typeof queryState) => unknown) => sel(queryState), {
-    getState: () => queryState,
-  }),
 }));
 
 vi.mock('../../../lib/databaseTypes', () => ({
@@ -244,7 +224,7 @@ describe('ContentView', () => {
     getConnectionViewMock.mockImplementation(() => MockRedisView);
     vi.resetModules();
     panelStore = await import('../../../stores/panelStore');
-    panelStore.usePanelStore.setState({ panels: [], activePanelId: null });
+    panelStore.usePanelStore.setState({ panels: [], activePanelId: null, queryExec: new Map() });
     ({ ContentView } = await import('../ContentView'));
   });
 

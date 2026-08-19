@@ -39,12 +39,7 @@ src/
 │   │   │   ├── ForeignKeysTab.tsx
 │   │   │   └── DdlTab.tsx
 │   │   └── DataToolbar.tsx
-│   └── query/                  # 查询窗口 - SQL 编辑器
-│       ├── QueryWindow.tsx
-│       ├── SqlEditor.tsx
-│       ├── ResultPanel.tsx
-│       ├── QueryTabs.tsx
-│       └── HistoryPanel.tsx
+│   └── query/                  # SQL 查询组件（已内联到 connection 窗口的 ContentView 中）
 ├── components/                 # 共享组件
 │   ├── ui/                     # shadcn/ui 基础组件
 │   ├── DataTable/              # 核心数据表格组件
@@ -66,7 +61,7 @@ src/
 │   ├── activeConnectionStore.ts# 活动连接状态
 │   ├── schemaStore.ts          # Schema 树状态
 │   ├── tableDataStore.ts       # 表数据 & 编辑状态
-│   ├── queryStore.ts           # SQL 查询状态
+│   ├── panelStore.ts           # 面板 + 查询执行 + 历史/收藏状态
 │   ├── settingsStore.ts        # 应用设置
 │   └── uiStore.ts              # UI 临时状态
 ├── commands/                   # Tauri IPC 调用封装
@@ -105,14 +100,14 @@ src/
 ┌─────────────────────────────────────────────────────────────┐
 │                        前端状态全景                          │
 ├──────────────┬──────────────┬──────────────┬───────────────┤
-│ connectionStore │ schemaStore  │ tableDataStore │ queryStore  │
+│ connectionStore │ schemaStore  │ tableDataStore │ panelStore    │
 │              │              │              │               │
-│ - connections│ - databases  │ - rows       │ - tabs        │
-│ - groups     │ - tables     │ - columns    │ - activeTabId │
-│ - loading    │ - views      │ - filters    │ - results     │
+│ - connections│ - databases  │ - rows       │ - panels      │
+│ - groups     │ - tables     │ - columns    │ - activePanelId│
+│ - loading    │ - views      │ - filters    │ - queryExec   │
 │ - error      │ - expanded   │ - sorts      │ - history     │
 │              │ - selected   │ - editBuffer │ - favorites   │
-│              │              │ - page       │ - running     │
+│              │              │ - page       │               │
 ├──────────────┼──────────────┼──────────────┼───────────────┤
 │ activeConnectionStore       │ settingsStore │ uiStore       │
 │                             │              │               │
@@ -220,42 +215,58 @@ interface TableDataStore {
 
 **核心设计**：`editBuffer` 使用 Map 而非数组，O(1) 查找是否有未提交修改；`rows` 只持有当前页数据，避免内存膨胀。
 
-#### queryStore — SQL 查询状态
+#### panelStore — 面板 + 查询执行状态
+
+统一管理所有连接的面板（Tab）和查询执行状态。面板元数据（轻量）和查询执行数据（重量级）分开存储。
+
+详细设计参见 [Unified Panel Store RFC](../../architecture/rfc/unified-panel-store.md)。
 
 ```typescript
-interface QueryTab {
-  id: string;
-  title: string;
+type Panel = TablePanel | ViewPanel | QueryPanel | DatabaseObjectPanel | RedisDbPanel;
+
+interface QueryExecState {
   sql: string;
-  result: QueryResult | null;
+  results: StatementResult[];
+  activeResultIdx: number;
   error: string | null;
   running: boolean;
   executionTimeMs: number | null;
   chartConfig?: ChartConfig;
   resultViewMode?: 'table' | 'chart';
+  resultDetailRowIndex: number | null;
 }
 
-interface QueryStore {
-  // --- 状态 ---
-  tabs: QueryTab[];
-  activeTabId: string;
+interface PanelState {
+  panels: Panel[];                          // 轻量面板元数据
+  activePanelId: string | null;
+  queryExec: Map<string, QueryExecState>;   // 重量级查询状态（panelId → state）
+  queryHistory: QueryHistoryEntry[];
+  queryFavorites: FavoriteQuery[];
   historyVisible: boolean;
-  history: QueryHistoryEntry[];
+  favoritesVisible: boolean;
+}
 
-  // --- 操作 ---
-  createTab: () => void;
-  closeTab: (id: string) => void;
-  setActiveTab: (id: string) => void;
-  updateSql: (tabId: string, sql: string) => void;
-  executeQuery: (tabId: string) => Promise<void>;
-  executeSelection: (tabId: string, sql: string) => Promise<void>;
-  cancelQuery: (tabId: string) => Promise<void>;
-  loadHistory: () => Promise<void>;
-  toggleHistory: () => void;
-  setChartConfig: (tabId: string, config: ChartConfig) => void;
-  setResultViewMode: (tabId: string, mode: 'table' | 'chart') => void;
+interface PanelActions {
+  addPanel: (panel: Panel, activate?: boolean) => void;
+  removePanel: (panelId: string) => void;
+  removeAllForConnection: (configId: string) => void;
+  setActivePanel: (panelId: string) => void;
+  updatePanel: (panelId: string, patch: Partial<Panel>) => void;
+  closeOtherPanels: (panelId: string) => void;
+  closeAllPanels: () => void;
+
+  updateSql: (panelId: string, sql: string) => void;
+  executeQuery: (panelId: string, params?: BindParams) => Promise<void>;
+  cancelQuery: (panelId: string) => Promise<void>;
+  loadHistory: (configId?: string) => Promise<void>;
+  loadFavorites: (configId?: string) => Promise<void>;
+  addFavorite: (title: string, sql: string, configId: string) => Promise<void>;
+  deleteFavorite: (id: string) => Promise<void>;
+  // ...more actions
 }
 ```
+
+辅助 hook `useQueryExec(panelId)` 提供字段级订阅，避免 Map 变更导致的不必要重渲染。
 
 #### settingsStore — 全局设置
 

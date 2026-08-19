@@ -6,7 +6,6 @@ import { useSettings } from '../../hooks/useSettings';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useAiStore } from '../../stores/aiStore';
 import { useSchemaStore } from '../../stores/schemaStore';
-import { useQueryStore } from '../../stores/queryStore';
 import { useTableDataStore } from '../../stores/tableDataStore';
 import { useConnectionStore } from '../../stores/connectionStore';
 import { connectionCommands } from '../../commands/connection';
@@ -65,13 +64,11 @@ function consumePendingConnection(): ConnectionTab | null {
 
 function syncStoresActiveConnection(connectionId: string | null) {
   useSchemaStore.getState().setActiveConnection(connectionId);
-  useQueryStore.getState().setActiveConnection(connectionId);
   useTableDataStore.getState().setActiveConnection(connectionId);
 }
 
 function removeConnectionFromStores(connectionId: string) {
   useSchemaStore.getState().removeConnection(connectionId);
-  useQueryStore.getState().removeConnection(connectionId);
   useTableDataStore.getState().removeConnection(connectionId);
 }
 

@@ -1,7 +1,6 @@
 import { useCallback, useMemo, type MouseEvent } from 'react';
 import { useI18n } from '../../hooks/useI18n';
 import { useSchemaStore } from '../../stores/schemaStore';
-import { useQueryStore } from '../../stores/queryStore';
 import {
   usePanelStore,
   nextPanelId,
@@ -51,7 +50,6 @@ export function usePanelHandlers({
   initialDatabase,
   schemaViews,
 }: {
-  /** The effective connection context. Toolbar actions and panel creation use this. */
   connCtx: ConnectionContext | null;
   showStructureEditor: boolean;
   currentDatabase: string | null;
@@ -63,10 +61,7 @@ export function usePanelHandlers({
   const removePanel = usePanelStore((s) => s.removePanel);
   const storeUpdatePanel = usePanelStore((s) => s.updatePanel);
   const setActivePanel = usePanelStore((s) => s.setActivePanel);
-
-  const createQueryTab = useQueryStore((s) => s.createTab);
-  const closeQueryTab = useQueryStore((s) => s.closeTab);
-  const updateQuerySql = useQueryStore((s) => s.updateSql);
+  const updateSql = usePanelStore((s) => s.updateSql);
 
   const loadForConnection = useSchemaStore((s) => s.loadForConnection);
   const loadTables = useSchemaStore((s) => s.loadTables);
@@ -271,95 +266,45 @@ export function usePanelHandlers({
     addPanel(panel);
   }, [sidebarConnCtx, connPanels, addPanel, setActivePanel]);
 
-  const getLastTabForConnection = useQueryStore((s) => s.getLastTabForConnection);
-
   const handleNewQuery = useCallback(
     (initialSql?: string) => {
       if (!sidebarConnCtx) return;
-      createQueryTab(sidebarConnCtx.connectionId);
-      const latestTab = getLastTabForConnection(sidebarConnCtx.connectionId);
-      if (!latestTab) return;
-      if (initialSql) updateQuerySql(latestTab.id, initialSql);
+      const panelId = nextPanelId('qry');
       const db = currentDatabase ?? initialDatabase ?? '';
       const panel: QueryPanel = {
         ...sidebarConnCtx,
         type: 'query',
-        id: nextPanelId('qry'),
-        queryTabId: latestTab.id,
+        id: panelId,
         title: db ? `${sidebarConnCtx.connectionName}@${db}` : sidebarConnCtx.connectionName,
       };
       addPanel(panel);
+      if (initialSql) updateSql(panelId, initialSql);
     },
-    [
-      sidebarConnCtx,
-      createQueryTab,
-      getLastTabForConnection,
-      updateQuerySql,
-      currentDatabase,
-      initialDatabase,
-      addPanel,
-    ],
+    [sidebarConnCtx, currentDatabase, initialDatabase, addPanel, updateSql],
   );
 
   const handleClosePanel = useCallback(
     (panelId: string) => {
-      const closing = usePanelStore.getState().panels.find((p) => p.id === panelId);
-      if (closing?.type === 'query') {
-        closeQueryTab((closing as QueryPanel).queryTabId);
-      }
       removePanel(panelId);
     },
-    [closeQueryTab, removePanel],
+    [removePanel],
   );
 
-  const handleCloseOtherPanels = useCallback(
-    (keepPanelId: string) => {
-      const toClose = usePanelStore.getState().panels.filter((p) => p.id !== keepPanelId);
-      for (const panel of toClose) {
-        if (panel.type === 'query') closeQueryTab((panel as QueryPanel).queryTabId);
-        removePanel(panel.id);
-      }
-      setActivePanel(keepPanelId);
-    },
-    [closeQueryTab, removePanel, setActivePanel],
-  );
+  const handleCloseOtherPanels = useCallback((keepPanelId: string) => {
+    usePanelStore.getState().closeOtherPanels(keepPanelId);
+  }, []);
 
   const handleCloseAllPanels = useCallback(() => {
-    for (const panel of usePanelStore.getState().panels) {
-      if (panel.type === 'query') closeQueryTab((panel as QueryPanel).queryTabId);
-    }
     usePanelStore.getState().closeAllPanels();
-  }, [closeQueryTab]);
+  }, []);
 
-  const handleClosePanelsToTheRight = useCallback(
-    (panelId: string) => {
-      const panels = usePanelStore.getState().panels;
-      const idx = panels.findIndex((p) => p.id === panelId);
-      if (idx < 0) return;
-      const toClose = panels.slice(idx + 1);
-      for (const panel of toClose) {
-        if (panel.type === 'query') closeQueryTab((panel as QueryPanel).queryTabId);
-        removePanel(panel.id);
-      }
-      setActivePanel(panelId);
-    },
-    [closeQueryTab, removePanel, setActivePanel],
-  );
+  const handleClosePanelsToTheRight = useCallback((panelId: string) => {
+    usePanelStore.getState().closePanelsToTheRight(panelId);
+  }, []);
 
-  const handleClosePanelsToTheLeft = useCallback(
-    (panelId: string) => {
-      const panels = usePanelStore.getState().panels;
-      const idx = panels.findIndex((p) => p.id === panelId);
-      if (idx < 0) return;
-      const toClose = panels.slice(0, idx);
-      for (const panel of toClose) {
-        if (panel.type === 'query') closeQueryTab((panel as QueryPanel).queryTabId);
-        removePanel(panel.id);
-      }
-      setActivePanel(panelId);
-    },
-    [closeQueryTab, removePanel, setActivePanel],
-  );
+  const handleClosePanelsToTheLeft = useCallback((panelId: string) => {
+    usePanelStore.getState().closePanelsToTheLeft(panelId);
+  }, []);
 
   const handlePanelTabContextMenu = useCallback(
     (panelId: string, e: MouseEvent) => {
