@@ -11,7 +11,9 @@ function standardIndex(dropPattern: 'table' | 'bare'): SqlDialectStrategy['index
     },
     getCreateIndexSql(opts) {
       const uniqueKw = opts.unique ? 'UNIQUE ' : '';
-      const quotedCols = opts.columns.map((c) => `${opts.quoteChar}${c}${opts.quoteChar}`).join(', ');
+      const quotedCols = opts.columns
+        .map((c) => `${opts.quoteChar}${c}${opts.quoteChar}`)
+        .join(', ');
       return `CREATE ${uniqueKw}INDEX ${opts.quoteChar}${opts.indexName}${opts.quoteChar} ON ${opts.quoteChar}${opts.tableName}${opts.quoteChar} (${quotedCols})`;
     },
   };
@@ -58,6 +60,12 @@ export const duckdbDialect: SqlDialectStrategy = {
     getTableDdlQuery(tableName: string) {
       return {
         sql: `SELECT sql FROM duckdb_tables() WHERE table_name = '${tableName.replace(/'/g, "''")}'`,
+        extractColumnIndex: 0,
+      };
+    },
+    getViewDdlQuery(viewName: string) {
+      return {
+        sql: `SELECT sql FROM duckdb_views() WHERE view_name = '${viewName.replace(/'/g, "''")}'`,
         extractColumnIndex: 0,
       };
     },
