@@ -3,6 +3,7 @@
  * Extracted to avoid circular deps between types/index.ts ↔ plugins/generated.ts.
  */
 
+import type { DatabaseObjectKind } from '../types';
 import type { StructureEditorUiConfig } from './structureEditor/types';
 
 export type ConnectionMode = 'server' | 'file' | 'url';
@@ -89,10 +90,21 @@ export interface DatabaseTypeMeta {
    */
   namespaceEnsure?: 'default-sql' | 'postgresql' | 'path-hierarchy';
   /**
+   * Default schema name to sort first in schema tree (e.g. 'public' for PostgreSQL, 'dbo' for SQL Server).
+   * When set, this schema is always displayed first in the schema list.
+   */
+  defaultSchema?: string;
+  /**
    * When true, host `setLoadedTables` does not merge into `namespaceTree`
    * (plugin owns hierarchy via SDK `syncSchemaNamespace` / aliases).
    */
   namespaceOwnedByPlugin?: boolean;
+  /**
+   * Database object kinds this driver supports (function, procedure, trigger, sequence, type).
+   * When set, schema tree only shows categories matching these kinds.
+   * When omitted, no database-object categories are shown (tables/views are always shown if supportsTables is true).
+   */
+  supportedObjectKinds?: DatabaseObjectKind[];
   /** Table structure editor UI config; omit or `enabled: false` for non-SQL / opt-out drivers. */
   structureEditor?: StructureEditorUiConfig;
   /**
@@ -105,4 +117,10 @@ export interface DatabaseTypeMeta {
    * Omit the field for drivers that support full-table export.
    */
   exportScope?: 'none' | 'loaded_only' | 'full_table';
+  /** Whether this driver supports CREATE DATABASE via Driver Command. */
+  supportsCreateDatabase?: boolean;
+  /** Whether this driver supports CREATE SCHEMA (e.g. PostgreSQL). */
+  supportsCreateSchema?: boolean;
+  /** Whether this driver supports CREATE USER via Driver Command. */
+  supportsCreateUser?: boolean;
 }

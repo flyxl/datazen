@@ -1635,9 +1635,7 @@ dependencies = [
  "datazen-driver-postgres",
  "datazen-driver-redis",
  "datazen-driver-sqlite",
- "datazen-plugin-kiwi",
- "datazen-plugin-superset",
- "dirs 6.0.0",
+ "dirs",
  "flate2",
  "futures-util",
  "hmac 0.12.1",
@@ -1947,43 +1945,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "datazen-plugin-kiwi"
-version = "0.0.7"
-dependencies = [
- "async-trait",
- "base64 0.22.1",
- "cbc 0.1.2",
- "datazen-driver-api",
- "des",
- "dirs 5.0.1",
- "reqwest",
- "serde",
- "serde_json",
- "tauri",
- "tauri-plugin",
- "tokio",
- "tracing",
- "urlencoding",
- "uuid",
-]
-
-[[package]]
-name = "datazen-plugin-superset"
-version = "0.0.7"
-dependencies = [
- "async-trait",
- "datazen-driver-api",
- "dirs 5.0.1",
- "regex",
- "reqwest",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
- "uuid",
-]
-
-[[package]]
 name = "dbus"
 version = "0.9.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2108,15 +2069,6 @@ dependencies = [
  "rustc_version",
  "syn 2.0.119",
  "unicode-xid",
-]
-
-[[package]]
-name = "des"
-version = "0.8.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ffdd80ce8ce993de27e9f063a444a4d53ce8e8db4c1f00cc03af5ad5a9867a1e"
-dependencies = [
- "cipher 0.4.4",
 ]
 
 [[package]]
@@ -5981,17 +5933,6 @@ dependencies = [
 
 [[package]]
 name = "redox_users"
-version = "0.4.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ba009ff324d1fc1b900bd1fdb31564febe58a8ccc8a6fdbb93b543d33b13ca43"
-dependencies = [
- "getrandom 0.2.17",
- "libredox",
- "thiserror 1.0.69",
-]
-
-[[package]]
-name = "redox_users"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a4e608c6638b9c18977b00b475ac1f28d14e84b27d8d42f70e0bf1e3dec127ac"
@@ -8122,7 +8063,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "806d9dac662c2e4594ff03c647a552f2c9bd544e7d0f683ec58f872f952ce4af"
 dependencies = [
  "base64 0.22.1",
- "dirs 6.0.0",
+ "dirs",
  "flate2",
  "futures-util",
  "http",

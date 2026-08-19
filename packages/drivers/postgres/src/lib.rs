@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use datazen_driver_api::*;
 
+mod admin_commands;
 mod postgres;
 mod structure;
 mod sync_adapter;

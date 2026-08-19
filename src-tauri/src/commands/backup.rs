@@ -290,6 +290,29 @@ pub async fn restore_database_with_dialog(
     database: Option<String>,
     options: Option<Vec<String>>,
 ) -> Result<bool, CommandError> {
+    sql_file_with_dialog(&app, &state, connection_id, database, options).await
+}
+
+/// Native open dialog + execute a `.sql` file against the current connection.
+/// Shares the same streaming restore pipeline as `restore_database_with_dialog`.
+#[tauri::command]
+pub async fn execute_sql_file_with_dialog(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    connection_id: String,
+    database: Option<String>,
+    options: Option<Vec<String>>,
+) -> Result<bool, CommandError> {
+    sql_file_with_dialog(&app, &state, connection_id, database, options).await
+}
+
+async fn sql_file_with_dialog(
+    app: &tauri::AppHandle,
+    state: &AppState,
+    connection_id: String,
+    database: Option<String>,
+    options: Option<Vec<String>>,
+) -> Result<bool, CommandError> {
     use tauri_plugin_dialog::DialogExt;
 
     let picked = app
@@ -303,7 +326,7 @@ pub async fn restore_database_with_dialog(
     let path = fp
         .into_path()
         .map_err(|e| CommandError::Validation(format!("Invalid dialog path: {e}")))?;
-    restore_database_from_path(&state, Some(&app), connection_id, database, path, options).await?;
+    restore_database_from_path(state, Some(app), connection_id, database, path, options).await?;
     Ok(true)
 }
 
@@ -409,6 +432,21 @@ async fn restore_database_from_path(
         .get_connection(&connection_id)
         .await
         .cmd_err("restore_database")?;
+    let config = state
+        .connection_manager
+        .get_connection_config(&connection_id)
+        .await
+        .cmd_err("restore_database")?;
+    if config.read_only {
+        return Err(CommandError::Validation(
+            "Connection is read-only; restore / execute SQL file is not allowed".into(),
+        ));
+    }
+    if state.store.get_settings().await.safe_mode {
+        return Err(CommandError::Validation(
+            "Safe mode is enabled; restore / execute SQL file is not allowed".into(),
+        ));
+    }
 
     let restore_opts = parse_restore_options(&options.unwrap_or_default());
     tracing::info!(
@@ -420,11 +458,6 @@ async fn restore_database_from_path(
         let db_name = if let Some(name) = database.as_deref().filter(|s| !s.is_empty()) {
             name.to_string()
         } else {
-            let config = state
-                .connection_manager
-                .get_connection_config(&connection_id)
-                .await
-                .cmd_err("restore_database")?;
             config.database.unwrap_or_default()
         };
         if !db_name.is_empty() {
@@ -663,5 +696,56 @@ mod tests {
         )
         .await
         .is_err());
+    }
+
+    #[tokio::test]
+    async fn restore_database_rejects_read_only_connection() {
+        use crate::testing::app_state::TestAppState;
+
+        let test = TestAppState::with_tables().await;
+        let mut cfg = test.save_connection("backup-ro").await;
+        cfg.read_only = true;
+        test.state.store.save_connection(cfg).await.unwrap();
+        let conn_id = test.connect_config("backup-ro").await;
+        let backup_path = test._temp.path().join("readonly.sql");
+        std::fs::write(&backup_path, "SELECT 1;").unwrap();
+
+        let err = restore_database_from_path(
+            &test.state,
+            None,
+            conn_id,
+            Some("app".into()),
+            backup_path,
+            None,
+        )
+        .await
+        .unwrap_err();
+        assert!(err.to_string().contains("Connection is read-only"));
+    }
+
+    #[tokio::test]
+    async fn restore_database_rejects_safe_mode() {
+        use crate::testing::app_state::TestAppState;
+
+        let test = TestAppState::with_tables().await;
+        let mut settings = test.state.store.get_settings().await;
+        settings.safe_mode = true;
+        test.state.store.save_settings(settings).await.unwrap();
+
+        let (_, conn_id) = test.save_and_connect("backup-safe").await;
+        let backup_path = test._temp.path().join("safe-mode.sql");
+        std::fs::write(&backup_path, "SELECT 1;").unwrap();
+
+        let err = restore_database_from_path(
+            &test.state,
+            None,
+            conn_id,
+            Some("app".into()),
+            backup_path,
+            None,
+        )
+        .await
+        .unwrap_err();
+        assert!(err.to_string().contains("Safe mode is enabled"));
     }
 }

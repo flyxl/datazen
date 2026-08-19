@@ -58,6 +58,7 @@
 | 索引列表 / 新建对话框 / 删除 / 在结构中编辑 | `table-indexes.ts`, `connection-window.ts` | Covered |
 | FK / DDL 子标签 | `connection-window.ts` | Covered |
 | Objects / Privileges 面板 / 例程 Web 右键菜单 | `object-browser.ts` (OBJ-003) | Covered |
+| 管理命令（创建/删除数据库·Schema·用户·授权/撤销权限） | `bugfix-admin-commands.ts` | Covered |
 | 侧栏导出 / 导入 | `export-import.ts` | Covered |
 | 顶栏导出对话框 / DataTable 导出 / 整表范围 / Schema 树 Web 菜单导出 | `export-import.ts` (EI-BE / EI-GRID / EI-001 / EI-002) | Covered |
 | ER 图 | `er-diagram.ts` | Partial |

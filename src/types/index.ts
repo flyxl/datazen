@@ -52,7 +52,7 @@ export interface ServerInfo {
 
 export type TableType = 'table' | 'view' | 'materializedView' | 'systemTable';
 
-export type DatabaseObjectKind = 'function' | 'procedure' | 'trigger';
+export type DatabaseObjectKind = 'function' | 'procedure' | 'trigger' | 'sequence' | 'type';
 
 export interface DatabaseObject {
   kind: DatabaseObjectKind;
@@ -160,7 +160,7 @@ export interface ExplainResult {
 
 export interface QueryHistoryEntry {
   id: string;
-  connectionId: string;
+  configId: string;
   database: string;
   sql: string;
   executedAt: string;
@@ -172,6 +172,7 @@ export interface QueryHistoryEntry {
 
 export interface FavoriteQuery {
   id: string;
+  configId: string;
   title: string;
   sql: string;
   createdAt: string;

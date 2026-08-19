@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { render, cleanup, waitFor, fireEvent, screen } from '@testing-library/react';
+import { render, cleanup, waitFor, screen, fireEvent } from '@testing-library/react';
 import { ConnectionWindow } from '../ConnectionWindow';
 
 const {
@@ -13,6 +13,16 @@ const {
   listenCrossWindowMock,
   getActiveConnectionState,
   closeMock,
+  fetchConnectionsMock,
+  fetchGroupsMock,
+  fetchDashboardsMock,
+  openWorkflowWindowMock,
+  openDashboardWindowMock,
+  openBackupWindowMock,
+  openDataSyncWindowMock,
+  openSchemaDiffWindowMock,
+  openSettingsWindowMock,
+  openNewConnectionWindowMock,
 } = vi.hoisted(() => ({
   connectMock: vi.fn(),
   releaseConnectionMock: vi.fn(),
@@ -26,6 +36,16 @@ const {
     connections: {} as Record<string, { status: string; connectionId?: string }>,
   })),
   closeMock: vi.fn().mockResolvedValue(undefined),
+  fetchConnectionsMock: vi.fn().mockResolvedValue(undefined),
+  fetchGroupsMock: vi.fn().mockResolvedValue(undefined),
+  fetchDashboardsMock: vi.fn().mockResolvedValue(undefined),
+  openWorkflowWindowMock: vi.fn(),
+  openDashboardWindowMock: vi.fn(),
+  openBackupWindowMock: vi.fn(),
+  openDataSyncWindowMock: vi.fn(),
+  openSchemaDiffWindowMock: vi.fn(),
+  openSettingsWindowMock: vi.fn(),
+  openNewConnectionWindowMock: vi.fn(),
 }));
 
 vi.mock('../../../hooks/useI18n', () => ({
@@ -36,9 +56,13 @@ vi.mock('../../../hooks/useSettings', () => ({
   useSettings: () => {},
 }));
 
+vi.mock('../../../hooks/useConfirmDialog', () => ({
+  useConfirmDialog: () => [vi.fn().mockResolvedValue(false), null],
+}));
+
 vi.mock('../../../stores/settingsStore', () => ({
   useSettingsStore: (sel: (s: { loadSettings: () => Promise<void> }) => unknown) =>
-    sel({ loadSettings: loadSettingsMock }),
+    sel({ loadSettings: loadSettingsMock, settings: { theme: { mode: 'dark' } } }),
 }));
 
 vi.mock('../../../stores/aiStore', () => ({
@@ -50,30 +74,72 @@ vi.mock('../../../stores/aiStore', () => ({
   ) => sel({ loadConfig: loadAiConfigMock, setupEventListeners: setupAiListenersMock }),
 }));
 
+vi.mock('../../../stores/connectionStore', () => ({
+  useConnectionStore: (sel: (s: Record<string, unknown>) => unknown) =>
+    sel({
+      connections: [],
+      groups: [],
+      fetchConnections: fetchConnectionsMock,
+      fetchGroups: fetchGroupsMock,
+      deleteConnection: vi.fn(),
+    }),
+  groupConnections: () => [],
+}));
+
 vi.mock('../../../stores/activeConnectionStore', () => ({
-  useActiveConnectionStore: {
-    getState: () => getActiveConnectionState(),
-  },
+  useActiveConnectionStore: Object.assign(
+    (sel: (s: Record<string, unknown>) => unknown) =>
+      sel({ connections: getActiveConnectionState().connections, connect: vi.fn() }),
+    {
+      getState: () => ({
+        ...getActiveConnectionState(),
+        markConnecting: vi.fn(),
+        markConnected: vi.fn(),
+        markError: vi.fn(),
+        removeByConnectionId: vi.fn(),
+      }),
+    },
+  ),
 }));
 
 vi.mock('../../../stores/schemaStore', () => ({
   useSchemaStore: {
-    getState: () => ({ reset: vi.fn(), databases: [], currentDatabase: null, tables: [] }),
-  },
-}));
-
-vi.mock('../../../stores/queryStore', () => ({
-  useQueryStore: {
-    getState: () => ({ reset: vi.fn(), tabs: [], activeTabId: '' }),
-    setState: vi.fn(),
+    getState: () => ({
+      reset: vi.fn(),
+      removeConnection: vi.fn(),
+      setActiveConnection: vi.fn(),
+      databases: [],
+      currentDatabase: null,
+      tables: [],
+    }),
   },
 }));
 
 vi.mock('../../../stores/tableDataStore', () => ({
   useTableDataStore: {
-    getState: () => ({ reset: vi.fn() }),
+    getState: () => ({
+      reset: vi.fn(),
+      setActiveConnection: vi.fn(),
+      removeConnection: vi.fn(),
+    }),
   },
 }));
+
+vi.mock('../../../stores/panelStore', () => {
+  const mockState = { panels: [], activePanelId: null };
+  const store = (sel: (s: typeof mockState) => unknown) => sel(mockState);
+  store.getState = () => ({
+    ...mockState,
+    addPanel: vi.fn(),
+    removePanel: vi.fn(),
+    setActivePanel: vi.fn(),
+    removeAllForConnection: vi.fn(),
+  });
+  return {
+    usePanelStore: store,
+    nextPanelId: (prefix: string) => `panel-${prefix}-test`,
+  };
+});
 
 vi.mock('../../../commands/connection', () => ({
   connectionCommands: {
@@ -85,6 +151,13 @@ vi.mock('../../../commands/connection', () => ({
 
 vi.mock('../../../lib/windowManager', () => ({
   PENDING_CONNECTION_KEY: 'datazen:pending-connection',
+  openNewConnectionWindow: (...args: unknown[]) => openNewConnectionWindowMock(...args),
+  openBackupWindow: (...args: unknown[]) => openBackupWindowMock(...args),
+  openDataSyncWindow: (...args: unknown[]) => openDataSyncWindowMock(...args),
+  openSchemaDiffWindow: (...args: unknown[]) => openSchemaDiffWindowMock(...args),
+  openSettingsWindow: (...args: unknown[]) => openSettingsWindowMock(...args),
+  openWorkflowWindow: (...args: unknown[]) => openWorkflowWindowMock(...args),
+  openDashboardWindow: (...args: unknown[]) => openDashboardWindowMock(...args),
 }));
 
 vi.mock('../../../lib/crossWindowBus', () => ({
@@ -92,26 +165,70 @@ vi.mock('../../../lib/crossWindowBus', () => ({
   listenCrossWindow: (...args: unknown[]) => listenCrossWindowMock(...args),
 }));
 
-vi.mock('../../../lib/connectionViews', () => ({
-  getConnectionView: () =>
-    function MockSqlView({ connectionId, configId }: { connectionId: string; configId: string }) {
-      return (
-        <div data-testid="mock-view" data-config-id={configId}>
-          view:{connectionId}
-        </div>
-      );
-    },
+vi.mock('../ContentView', () => ({
+  ContentView: () => <div data-testid="mock-content-view">content-view</div>,
 }));
 
 vi.mock('../../../components/TitleBar', () => ({
   TitleBar: ({ title }: { title: string }) => <div data-testid="title-bar">{title}</div>,
 }));
 
-vi.mock('../../../components/DbTypeBadge', () => ({
-  DbTypeBadge: ({ databaseType }: { databaseType: string }) => (
-    <span data-testid="db-badge">{databaseType}</span>
+vi.mock('../../../components/MenuBar', () => ({
+  MenuBar: () => <div data-testid="menu-bar">menu</div>,
+}));
+
+vi.mock('../../../components/ThemeToggle', () => ({
+  ThemeToggle: () => <div data-testid="theme-toggle">theme</div>,
+}));
+
+vi.mock('../../../components/ui/Dialog', () => ({
+  Dialog: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
+}));
+
+vi.mock('../ConnectionNavigatorTree', () => ({
+  ConnectionNavigatorTree: () => <div data-testid="navigator-tree">tree</div>,
+}));
+
+vi.mock('../../dashboard/DashboardPanel', () => ({
+  DashboardPanel: ({ onOpenWorkflowEditor }: { onOpenWorkflowEditor?: () => void }) => (
+    <div data-testid="dashboard-panel">
+      dashboard
+      <button type="button" data-testid="dashboard-open-workflow" onClick={onOpenWorkflowEditor}>
+        open workflow
+      </button>
+    </div>
   ),
 }));
+
+vi.mock('../../workflow/WorkflowWindow', () => ({
+  WorkflowWindow: ({
+    onOpenDashboardInShell,
+  }: {
+    onOpenDashboardInShell?: (dashboardId?: string, dashboardName?: string) => void;
+  }) => (
+    <div data-testid="workflow-window">
+      workflow
+      <button
+        type="button"
+        data-testid="workflow-open-dashboard"
+        onClick={() => onOpenDashboardInShell?.('dash-from-workflow', 'Workflow Board')}
+      >
+        open dashboard
+      </button>
+    </div>
+  ),
+}));
+
+vi.mock('../../../stores/dashboardStore', () => {
+  const state = {
+    list: [] as Array<{ id: string; name: string }>,
+    fetchDashboards: fetchDashboardsMock,
+  };
+  const store = (sel: (s: typeof state) => unknown) => sel(state);
+  store.getState = () => state;
+  store.setState = (partial: Partial<typeof state>) => Object.assign(state, partial);
+  return { useDashboardStore: store };
+});
 
 vi.mock('../../../lib/databaseTypes', async () => {
   const actual = await vi.importActual<typeof import('../../../lib/databaseTypes')>(
@@ -153,12 +270,23 @@ afterEach(() => {
 });
 
 describe('ConnectionWindow', () => {
-  it('TC-window: shows empty state when no pending connection', () => {
+  it('TC-window: always renders navigator tree sidebar', () => {
     render(<ConnectionWindow />);
-    expect(screen.getByText('connWin.noConnections')).toBeInTheDocument();
+    expect(screen.getByTestId('navigator-tree')).toBeInTheDocument();
   });
 
-  it('TC-window: connects via localStorage pending connection and renders view', async () => {
+  it('TC-window: renders content view even with no active tab', () => {
+    render(<ConnectionWindow />);
+    expect(screen.getByTestId('mock-content-view')).toBeInTheDocument();
+  });
+
+  it('TC-window: fetches connections and groups on mount', () => {
+    render(<ConnectionWindow />);
+    expect(fetchConnectionsMock).toHaveBeenCalled();
+    expect(fetchGroupsMock).toHaveBeenCalled();
+  });
+
+  it('TC-window: connects via localStorage pending connection and renders content view', async () => {
     setPendingConnection({
       configId: 'cfg-1',
       connectionName: 'Local PG',
@@ -168,9 +296,7 @@ describe('ConnectionWindow', () => {
     render(<ConnectionWindow />);
 
     await waitFor(() => expect(connectMock).toHaveBeenCalledWith('cfg-1'));
-    await waitFor(() =>
-      expect(screen.getByTestId('mock-view')).toHaveTextContent('view:conn-live-1'),
-    );
+    await waitFor(() => expect(screen.getByTestId('mock-content-view')).toBeInTheDocument());
     expect(emitCrossWindowMock).toHaveBeenCalledWith(
       'datazen:connection-ready',
       expect.objectContaining({ configId: 'cfg-1', connectionId: 'conn-live-1' }),
@@ -202,9 +328,7 @@ describe('ConnectionWindow', () => {
 
     render(<ConnectionWindow />);
 
-    await waitFor(() =>
-      expect(screen.getByTestId('mock-view')).toHaveTextContent('view:already-open'),
-    );
+    await waitFor(() => expect(screen.getByTestId('mock-content-view')).toBeInTheDocument());
     expect(connectMock).not.toHaveBeenCalled();
   });
 
@@ -222,11 +346,11 @@ describe('ConnectionWindow', () => {
     });
 
     render(<ConnectionWindow />);
-    await waitFor(() => expect(screen.getByTestId('mock-view')).toHaveTextContent('view:reuse-1'));
+    await waitFor(() => expect(screen.getByTestId('mock-content-view')).toBeInTheDocument());
     expect(connectMock).not.toHaveBeenCalled();
   });
 
-  it('TC-window: passes configId to view component for dashboard use', async () => {
+  it('TC-window: renders content view after successful connection', async () => {
     setPendingConnection({
       configId: 'cfg-dash',
       connectionName: 'Dashboard PG',
@@ -235,8 +359,7 @@ describe('ConnectionWindow', () => {
 
     render(<ConnectionWindow />);
 
-    await waitFor(() => expect(screen.getByTestId('mock-view')).toBeInTheDocument());
-    expect(screen.getByTestId('mock-view').getAttribute('data-config-id')).toBe('cfg-dash');
+    await waitFor(() => expect(screen.getByTestId('mock-content-view')).toBeInTheDocument());
   });
 
   it('TC-window: shows loading spinner while connect is pending', async () => {
@@ -258,6 +381,36 @@ describe('ConnectionWindow', () => {
       timeout: 2000,
     });
     resolveConnect('conn-slow');
-    await waitFor(() => expect(screen.getByTestId('mock-view')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId('mock-content-view')).toBeInTheDocument());
+  });
+
+  it('TC-window: switches workspace via icon rail', async () => {
+    const { useDashboardStore } = await import('../../../stores/dashboardStore');
+    useDashboardStore.setState({
+      list: [{ id: 'dash-1', name: 'Ops Board' }],
+    });
+
+    render(<ConnectionWindow />);
+
+    fireEvent.click(screen.getByTestId('workspace-nav-workflow'));
+    expect(screen.getByTestId('workflow-window')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('workspace-nav-dashboard'));
+    await waitFor(() => expect(fetchDashboardsMock).toHaveBeenCalledOnce());
+    expect(screen.getByTestId('dashboard-panel')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('workspace-nav-connections'));
+    expect(screen.getByTestId('navigator-tree')).toBeInTheDocument();
+  });
+
+  it('TC-window: allows embedded workflow and dashboard to switch each other', async () => {
+    render(<ConnectionWindow />);
+
+    fireEvent.click(screen.getByTestId('workspace-nav-workflow'));
+    fireEvent.click(screen.getByTestId('workflow-open-dashboard'));
+    await waitFor(() => expect(screen.getByTestId('dashboard-panel')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByTestId('dashboard-open-workflow'));
+    await waitFor(() => expect(screen.getByTestId('workflow-window')).toBeInTheDocument());
   });
 });

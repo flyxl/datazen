@@ -13,9 +13,10 @@ interface DDLViewProps {
   connectionId: string;
   tableName: string;
   databaseType?: string;
+  isView?: boolean;
 }
 
-export function DDLView({ connectionId, tableName, databaseType }: DDLViewProps) {
+export function DDLView({ connectionId, tableName, databaseType, isView }: DDLViewProps) {
   const { t } = useI18n();
   const [ddl, setDdl] = useState('');
   const [loading, setLoading] = useState(false);
@@ -35,7 +36,10 @@ export function DDLView({ connectionId, tableName, databaseType }: DDLViewProps)
       return;
     }
 
-    const { sql, extractColumnIndex } = dialect.ddl.getTableDdlQuery(tableName);
+    const { sql, extractColumnIndex } =
+      isView && dialect.ddl.getViewDdlQuery
+        ? dialect.ddl.getViewDdlQuery(tableName)
+        : dialect.ddl.getTableDdlQuery(tableName);
 
     getCachedDDL(connectionId, tableName, sql, (rows) => {
       const row = rows[0];
@@ -60,7 +64,7 @@ export function DDLView({ connectionId, tableName, databaseType }: DDLViewProps)
     return () => {
       cancelled = true;
     };
-  }, [connectionId, tableName, databaseType, t]);
+  }, [connectionId, tableName, databaseType, isView, t]);
 
   const handleCopy = useCallback(async () => {
     if (!ddl) return;
@@ -78,16 +82,19 @@ export function DDLView({ connectionId, tableName, databaseType }: DDLViewProps)
       e.preventDefault();
       e.stopPropagation();
       if (!ddl) return;
-      void showNativeContextMenu([
-        {
-          kind: 'item',
-          id: 'copy-ddl',
-          label: t('common.copy'),
-          action: () => {
-            void handleCopy();
+      void showNativeContextMenu(
+        [
+          {
+            kind: 'item',
+            id: 'copy-ddl',
+            label: t('common.copy'),
+            action: () => {
+              void handleCopy();
+            },
           },
-        },
-      ], { x: e.clientX, y: e.clientY });
+        ],
+        { x: e.clientX, y: e.clientY },
+      );
     },
     [ddl, handleCopy, t],
   );

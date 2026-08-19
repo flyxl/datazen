@@ -17,6 +17,14 @@ const labels = {
   moveToGroup: 'Move to group',
   removeFromGroup: 'Remove from group',
   deleteConnection: 'Delete',
+  copyName: 'Copy Name',
+  copyConnectionUrl: 'Copy URL',
+  newQuery: 'New Query',
+  executeSqlFile: 'Execute SQL File',
+  createDatabase: 'Create Database',
+  createSchema: 'Create Schema',
+  createUser: 'Create User',
+  refresh: 'Refresh',
 };
 
 describe('mainWindowContextMenu', () => {
@@ -59,6 +67,10 @@ describe('mainWindowContextMenu', () => {
       grouped: true,
       moveTargets: [{ id: 'Prod', label: 'Prod' }],
       onOpenOrDisconnect: () => undefined,
+      onCopyName: () => undefined,
+      onCopyUrl: () => undefined,
+      onNewQuery: () => undefined,
+      onRefresh: () => undefined,
       onEdit: () => undefined,
       onDuplicate: () => undefined,
       onMoveToGroup: move,
@@ -74,5 +86,94 @@ describe('mainWindowContextMenu', () => {
     const prod = sub.items.find((i) => i.kind === 'item' && i.id === 'move-group-Prod');
     if (prod?.kind === 'item') prod.action();
     expect(move).toHaveBeenCalledWith('Prod');
+  });
+
+  it('includes execute-sql-file when handler provided and omits when not', () => {
+    const baseArgs = {
+      labels,
+      isConnected: true,
+      grouped: false,
+      moveTargets: [],
+      onOpenOrDisconnect: () => undefined,
+      onCopyName: () => undefined,
+      onCopyUrl: () => undefined,
+      onNewQuery: () => undefined,
+      onRefresh: () => undefined,
+      onEdit: () => undefined,
+      onDuplicate: () => undefined,
+      onMoveToGroup: () => undefined,
+      onRemoveFromGroup: () => undefined,
+      onDelete: () => undefined,
+    };
+
+    const withSql = buildMainConnectionContextMenuItems({
+      ...baseArgs,
+      onExecuteSqlFile: vi.fn(),
+    });
+    expect(withSql.some((i) => i.kind === 'item' && i.id === 'execute-sql-file')).toBe(true);
+
+    const withoutSql = buildMainConnectionContextMenuItems(baseArgs);
+    expect(withoutSql.some((i) => i.kind === 'item' && i.id === 'execute-sql-file')).toBe(false);
+  });
+
+  it('includes create-database/schema/user when handlers provided', () => {
+    const onCreateDb = vi.fn();
+    const onCreateSchema = vi.fn();
+    const onCreateUser = vi.fn();
+    const items = buildMainConnectionContextMenuItems({
+      labels,
+      isConnected: true,
+      grouped: false,
+      moveTargets: [],
+      onOpenOrDisconnect: () => undefined,
+      onCopyName: () => undefined,
+      onCopyUrl: () => undefined,
+      onNewQuery: () => undefined,
+      onRefresh: () => undefined,
+      onEdit: () => undefined,
+      onDuplicate: () => undefined,
+      onMoveToGroup: () => undefined,
+      onRemoveFromGroup: () => undefined,
+      onDelete: () => undefined,
+      onCreateDatabase: onCreateDb,
+      onCreateSchema: onCreateSchema,
+      onCreateUser: onCreateUser,
+    });
+    const dbItem = items.find((i) => i.kind === 'item' && i.id === 'create-database');
+    expect(dbItem).toBeDefined();
+    if (dbItem?.kind === 'item') dbItem.action();
+    expect(onCreateDb).toHaveBeenCalledOnce();
+
+    const schemaItem = items.find((i) => i.kind === 'item' && i.id === 'create-schema');
+    expect(schemaItem).toBeDefined();
+    if (schemaItem?.kind === 'item') schemaItem.action();
+    expect(onCreateSchema).toHaveBeenCalledOnce();
+
+    const userItem = items.find((i) => i.kind === 'item' && i.id === 'create-user');
+    expect(userItem).toBeDefined();
+    if (userItem?.kind === 'item') userItem.action();
+    expect(onCreateUser).toHaveBeenCalledOnce();
+  });
+
+  it('omits admin items when none of the admin handlers are provided', () => {
+    const items = buildMainConnectionContextMenuItems({
+      labels,
+      isConnected: true,
+      grouped: false,
+      moveTargets: [],
+      onOpenOrDisconnect: () => undefined,
+      onCopyName: () => undefined,
+      onCopyUrl: () => undefined,
+      onNewQuery: () => undefined,
+      onRefresh: () => undefined,
+      onEdit: () => undefined,
+      onDuplicate: () => undefined,
+      onMoveToGroup: () => undefined,
+      onRemoveFromGroup: () => undefined,
+      onDelete: () => undefined,
+    });
+    expect(items.some((i) => i.kind === 'item' && i.id === 'create-database')).toBe(false);
+    expect(items.some((i) => i.kind === 'item' && i.id === 'create-schema')).toBe(false);
+    expect(items.some((i) => i.kind === 'item' && i.id === 'create-user')).toBe(false);
   });
 });

@@ -561,7 +561,7 @@ export async function exportChart(
 
 ### 8.1 图表配置存储
 
-图表配置不需要持久化到数据库，存在 queryStore 的 tab 中即可：
+图表配置不需要持久化到数据库，存在 panelStore 的 QueryExecState 中即可：
 
 ```typescript
 // 扩展 QueryTab
@@ -700,7 +700,7 @@ src/
 | 3.1 | 图表 ↔ 表格联动（点击图表高亮表格行） |
 | 3.2 | 配色方案切换 |
 | 3.3 | 数值格式化（千分位、百分比） |
-| 3.4 | 图表配置持久化到 queryStore |
+| 3.4 | 图表配置持久化到 panelStore |
 
 ### Phase 4：AI 集成（预计 2-3 天）
 

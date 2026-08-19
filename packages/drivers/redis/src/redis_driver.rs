@@ -476,17 +476,6 @@ where
         .map_err(|e| e.to_string())
 }
 
-async fn info_keyspace_on<C>(conn: &mut C) -> Result<redis::Value, String>
-where
-    C: AsyncCommands + redis::aio::ConnectionLike + Send,
-{
-    redis::cmd("INFO")
-        .arg("keyspace")
-        .query_async(conn)
-        .await
-        .map_err(|e| e.to_string())
-}
-
 async fn query_cmd_on<C>(
     conn: &mut C,
     cmd_name: &str,
@@ -1195,25 +1184,26 @@ impl DatabaseDriver for RedisDriver {
         );
         let rc = Self::get_conn(&mut conns, handle)?;
 
-        // Single-command approach: INFO keyspace returns all non-empty dbs at once
-        // e.g. "# Keyspace\r\ndb0:keys=732,expires=0\r\ndb1:keys=3886,expires=100\r\n"
-        let info_raw: redis::Value = with_redis_conn!(&mut rc.live, |conn| info_keyspace_on(conn)
-            .await)
-        .map_err(DriverError::QueryFailed)?;
-
-        let info_str = value_to_string(&info_raw);
-        let mut out = Vec::new();
-        for line in info_str.lines() {
-            let line = line.trim();
-            // lines look like "db0:keys=732,expires=0,avg_ttl=0"
-            if let Some(colon) = line.find(':') {
-                let db_name = &line[..colon];
-                if db_name.starts_with("db") && db_name[2..].chars().all(|c| c.is_ascii_digit()) {
-                    out.push(db_name.to_string());
-                }
+        // Query CONFIG GET databases to find the total number of databases,
+        // then return all db0..dbN-1 regardless of whether they have keys.
+        let db_count: u32 = match with_redis_conn!(&mut rc.live, |conn| {
+            redis::cmd("CONFIG")
+                .arg("GET")
+                .arg("databases")
+                .query_async::<redis::Value>(conn)
+                .await
+        }) {
+            Ok(val) => {
+                let s = value_to_string(&val);
+                s.lines()
+                    .filter_map(|l| l.trim().parse::<u32>().ok())
+                    .next()
+                    .unwrap_or(16)
             }
-        }
-        out.sort_by_key(|s| s[2..].parse::<u32>().unwrap_or(0));
+            Err(_) => 16,
+        };
+
+        let out: Vec<String> = (0..db_count).map(|i| format!("db{i}")).collect();
         tracing::info!(
             count = out.len(),
             ms = t0.elapsed().as_millis() as u64,

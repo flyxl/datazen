@@ -483,7 +483,7 @@ export function DataSyncWindow() {
                       });
                     }}
                   />
-                  <div className="selectable min-w-0 flex-1 truncate font-mono text-xs">{name}</div>
+                  <div className="min-w-0 flex-1 truncate font-mono text-xs">{name}</div>
                   <div className="w-56 text-right text-xs text-fg-secondary">
                     {row.status === 'MATCHED' && tableHasRowDiffs(row)
                       ? t('sync.rowDiffs', rowDiffCounts(row))

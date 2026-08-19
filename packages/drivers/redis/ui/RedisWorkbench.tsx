@@ -44,12 +44,14 @@ const REDIS_DB_COUNT = 16;
 export interface RedisWorkbenchProps {
   connectionId: string;
   initialDatabase?: string;
+  hideSidebar?: boolean;
   onDbIndexChange?: (dbIndex: number) => void;
   onKeysChange?: (keys: string[]) => void;
 }
 
 export interface RedisWorkbenchHandle {
   refreshKeys: () => void;
+  selectDatabase: (db: string) => void;
 }
 
 function allRedisDbs(): string[] {
@@ -69,7 +71,10 @@ function formatSize(size: number): string {
 }
 
 export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchProps>(
-  function RedisWorkbench({ connectionId, initialDatabase, onDbIndexChange, onKeysChange }, ref) {
+  function RedisWorkbench(
+    { connectionId, initialDatabase, hideSidebar, onDbIndexChange, onKeysChange },
+    ref,
+  ) {
     const { t } = useI18n();
     const databasesFromStore = useSchemaStore((s) => s.databases);
     const loading = useSchemaStore((s) => s.loading);
@@ -214,7 +219,10 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
       refreshKeys();
     }, [connectionId, loadForConnection, refreshKeys]);
 
-    useImperativeHandle(ref, () => ({ refreshKeys }), [refreshKeys]);
+    useImperativeHandle(ref, () => ({ refreshKeys, selectDatabase: handleSelectDb }), [
+      refreshKeys,
+      handleSelectDb,
+    ]);
 
     const handleLoadMore = useCallback(() => {
       if (cursor !== 0) {
@@ -463,46 +471,48 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
 
     return (
       <div className="flex min-h-0 flex-1">
-        <aside className="flex w-48 shrink-0 flex-col overflow-y-auto border-r border-edge bg-surface-alt">
-          <div className="border-b border-edge p-2">
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-fg-muted" />
-              <Input
-                value={searchPattern}
-                onChange={(e) => setSearchPattern(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') handleSearch();
-                }}
-                placeholder={t('redis.searchKeys')}
-                className="h-7 pl-7 text-xs"
-              />
+        {!hideSidebar && (
+          <aside className="flex w-48 shrink-0 flex-col overflow-y-auto border-r border-edge bg-surface-alt">
+            <div className="border-b border-edge p-2">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-fg-muted" />
+                <Input
+                  value={searchPattern}
+                  onChange={(e) => setSearchPattern(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleSearch();
+                  }}
+                  placeholder={t('redis.searchKeys')}
+                  className="h-7 pl-7 text-xs"
+                />
+              </div>
             </div>
-          </div>
 
-          {loading && (
-            <div className="flex items-center gap-2 px-3 py-2 text-xs text-fg-muted">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              {t('common.loading')}
-            </div>
-          )}
+            {loading && (
+              <div className="flex items-center gap-2 px-3 py-2 text-xs text-fg-muted">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                {t('common.loading')}
+              </div>
+            )}
 
-          {databases.map((db) => (
-            <button
-              key={db}
-              type="button"
-              className={cn(
-                'flex items-center gap-2 px-3 py-2 text-left text-sm transition-colors',
-                selectedDb === db
-                  ? 'bg-accent/10 text-accent font-medium'
-                  : 'text-fg-secondary hover:bg-surface-raised hover:text-fg',
-              )}
-              onClick={() => handleSelectDb(db)}
-            >
-              <Database className="h-4 w-4 shrink-0" />
-              {db}
-            </button>
-          ))}
-        </aside>
+            {databases.map((db) => (
+              <button
+                key={db}
+                type="button"
+                className={cn(
+                  'flex items-center gap-2 px-3 py-2 text-left text-sm transition-colors',
+                  selectedDb === db
+                    ? 'bg-accent/10 text-accent font-medium'
+                    : 'text-fg-secondary hover:bg-surface-raised hover:text-fg',
+                )}
+                onClick={() => handleSelectDb(db)}
+              >
+                <Database className="h-4 w-4 shrink-0" />
+                {db}
+              </button>
+            ))}
+          </aside>
+        )}
 
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           {selectedDb ? (

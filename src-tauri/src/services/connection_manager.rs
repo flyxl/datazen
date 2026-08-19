@@ -147,6 +147,12 @@ impl ConnectionManager {
             .ok_or_else(|| ConnectionError::DriverNotFound(database_type.clone()))
     }
 
+    /// Resolve the persistent `config_id` for a given runtime `connection_id`.
+    /// Returns `None` if the mapping does not exist (e.g. connection was never registered).
+    pub async fn resolve_config_id(&self, connection_id: &str) -> Option<String> {
+        self.config_id_map.read().await.get(connection_id).cloned()
+    }
+
     #[cfg(test)]
     pub(crate) async fn ui_session_map_len(&self) -> usize {
         self.config_id_map.read().await.len()

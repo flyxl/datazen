@@ -164,7 +164,7 @@ async fn ai_analyze_queries_with_history() {
         .store
         .add_query_history(crate::store::QueryHistoryEntry {
             id: uuid::Uuid::new_v4().to_string(),
-            connection_id: conn_id.clone(),
+            config_id: "hist-cfg".into(),
             database: "app".into(),
             sql: "SELECT 1".into(),
             executed_at: chrono::Utc::now(),
@@ -695,7 +695,7 @@ async fn ai_analyze_queries_all_history() {
         .store
         .add_query_history(crate::store::QueryHistoryEntry {
             id: uuid::Uuid::new_v4().to_string(),
-            connection_id: conn_id,
+            config_id: "all-hist".into(),
             database: "app".into(),
             sql: "SELECT 2".into(),
             executed_at: chrono::Utc::now(),

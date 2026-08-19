@@ -98,7 +98,7 @@ Host 各模块内 `#[cfg(test)]`。驱动实现的单测在 `packages/drivers/<i
 
 | 测试文件 | 覆盖范围 |
 |---------|---------|
-| `stores/__tests__/queryStore.test.ts` | 查询 Store |
+| `stores/__tests__/panelStore.test.ts` | 面板 + 查询执行 Store |
 | `stores/__tests__/schemaStore.test.ts` | Schema Store |
 | `stores/__tests__/tableDataStore.test.ts` | 表数据 Store |
 

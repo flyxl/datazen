@@ -1,6 +1,17 @@
 import type { NativeMenuItemDef } from './nativeContextMenu';
 
-export type SchemaTreeNodeKind = 'table' | 'view' | 'database' | 'blank';
+export type SchemaTreeNodeKind =
+  | 'table'
+  | 'view'
+  | 'database'
+  | 'schema'
+  | 'category'
+  | 'blank'
+  | 'function'
+  | 'procedure'
+  | 'trigger'
+  | 'sequence'
+  | 'type';
 
 /** Caller-supplied labels (typically from `t()`). No hardcoded locale strings here. */
 export type SchemaTreeContextMenuLabels = {
@@ -20,6 +31,15 @@ export type SchemaTreeContextMenuLabels = {
   truncate: string;
   drop: string;
   dropView: string;
+  dropDatabase: string;
+  viewErDiagram: string;
+  newSchema: string;
+  createSchema: string;
+  dropSchema: string;
+  executeSqlFile: string;
+  dataTransfer: string;
+  compareSchema: string;
+  compareData: string;
 };
 
 export type SchemaTreeContextMenuHandlers = {
@@ -38,6 +58,15 @@ export type SchemaTreeContextMenuHandlers = {
   onBatchExport?: () => void;
   onTruncate?: () => void;
   onDrop?: () => void;
+  onDropDatabase?: () => void;
+  onViewErDiagram?: () => void;
+  onNewSchema?: () => void;
+  onCreateSchema?: () => void;
+  onDropSchema?: () => void;
+  onExecuteSqlFile?: () => void;
+  onDataTransfer?: () => void;
+  onCompareSchema?: () => void;
+  onCompareData?: () => void;
 };
 
 export type BuildSchemaTreeContextMenuArgs = {
@@ -46,6 +75,8 @@ export type BuildSchemaTreeContextMenuArgs = {
   handlers: SchemaTreeContextMenuHandlers;
   /** Hide import / truncate / drop / new table when true. */
   readOnly?: boolean;
+  /** Hide execute-sql-file and other mutating entries when safe mode disables them. */
+  safeMode?: boolean;
   /** Include open-structure item for tables. */
   showOpenStructure?: boolean;
   /** Include ER focus item for tables. */
@@ -65,6 +96,8 @@ export type BuildSchemaTreeContextMenuArgs = {
   showBatchExport?: boolean;
   /** Include new-table on database / blank when !readOnly. */
   showNewTable?: boolean;
+  /** Category id for `kind: 'category'` (e.g. `'tables'`). */
+  categoryId?: string;
 };
 
 function item(
@@ -92,11 +125,13 @@ export function buildSchemaTreeContextMenuItems(
     labels,
     handlers,
     readOnly = false,
+    safeMode = false,
     showOpenStructure = false,
     showErFocus = false,
     showExport,
     showBatchExport,
     showNewTable = false,
+    categoryId,
   } = args;
 
   /** Default `showBatchExport` to follow `showExport` when not explicitly provided. */
@@ -145,16 +180,72 @@ export function buildSchemaTreeContextMenuItems(
       if (!drop) return main;
       return [...main, { kind: 'separator' }, drop];
     }
-    case 'database':
-      return push(
+    case 'database': {
+      const dbMain = push(
         item('refresh', labels.refresh, handlers.onRefresh),
         item('new-query', labels.newQuery, handlers.onNewQuery),
+        !readOnly && !safeMode
+          ? item('execute-sql-file', labels.executeSqlFile, handlers.onExecuteSqlFile)
+          : null,
         item('copy-database-name', labels.copyDatabaseName, handlers.onCopyDatabaseName),
+        item('view-er-diagram', labels.viewErDiagram, handlers.onViewErDiagram),
         batchExportShown('database')
           ? item('batch-export', labels.batchExport, handlers.onBatchExport)
           : null,
         !readOnly ? item('import', labels.importData, handlers.onImport) : null,
         !readOnly && showNewTable ? item('new-table', labels.newTable, handlers.onNewTable) : null,
+        item('create-schema', labels.createSchema, handlers.onCreateSchema),
+      );
+      const syncItems = push(
+        item('data-transfer', labels.dataTransfer, handlers.onDataTransfer),
+        item('compare-schema', labels.compareSchema, handlers.onCompareSchema),
+        item('compare-data', labels.compareData, handlers.onCompareData),
+      );
+      const dropDb = !readOnly
+        ? item('drop-database', labels.dropDatabase, handlers.onDropDatabase)
+        : null;
+      const parts =
+        syncItems.length > 0 ? [...dbMain, { kind: 'separator' as const }, ...syncItems] : dbMain;
+      if (dropDb) return [...parts, { kind: 'separator' as const }, dropDb];
+      return parts;
+    }
+    case 'schema': {
+      const schemaMain = push(
+        item('refresh', labels.refresh, handlers.onRefresh),
+        item('new-query', labels.newQuery, handlers.onNewQuery),
+        !readOnly && !safeMode
+          ? item('execute-sql-file', labels.executeSqlFile, handlers.onExecuteSqlFile)
+          : null,
+        item('copy-schema-name', labels.copyName, handlers.onCopyName),
+        item('view-er-diagram', labels.viewErDiagram, handlers.onViewErDiagram),
+        batchExportShown('schema')
+          ? item('batch-export', labels.batchExport, handlers.onBatchExport)
+          : null,
+        !readOnly ? item('import', labels.importData, handlers.onImport) : null,
+        !readOnly ? item('new-table', labels.newTable, handlers.onNewTable) : null,
+      );
+      const schemaSyncItems = push(
+        item('data-transfer', labels.dataTransfer, handlers.onDataTransfer),
+        item('compare-schema', labels.compareSchema, handlers.onCompareSchema),
+        item('compare-data', labels.compareData, handlers.onCompareData),
+      );
+      const dropSch = !readOnly
+        ? item('drop-schema', labels.dropSchema, handlers.onDropSchema)
+        : null;
+      const parts =
+        schemaSyncItems.length > 0
+          ? [...schemaMain, { kind: 'separator' as const }, ...schemaSyncItems]
+          : schemaMain;
+      if (dropSch) return [...parts, { kind: 'separator' as const }, dropSch];
+      return parts;
+    }
+    case 'category':
+      return push(
+        item('refresh', labels.refresh, handlers.onRefresh),
+        !readOnly && categoryId === 'tables'
+          ? item('new-table', labels.newTable, handlers.onNewTable)
+          : null,
+        !readOnly ? item('import', labels.importData, handlers.onImport) : null,
       );
     case 'blank':
       return push(
@@ -166,5 +257,7 @@ export function buildSchemaTreeContextMenuItems(
         !readOnly ? item('import', labels.importData, handlers.onImport) : null,
         !readOnly && showNewTable ? item('new-table', labels.newTable, handlers.onNewTable) : null,
       );
+    default:
+      return push(item('copy-name', labels.copyName, handlers.onCopyName));
   }
 }

@@ -604,6 +604,31 @@ impl DatabaseDriver for SqlServerDriver {
             .ok_or_else(|| DriverError::ConnectionFailed("Connection pool not found".into()))?;
         Self::run(client, &sql).await.map(|_| ())
     }
+
+    fn command_definitions(&self) -> Vec<DriverCommandDefinition> {
+        crate::admin_commands::sqlserver_admin_command_definitions()
+    }
+
+    async fn execute_command(
+        &self,
+        handle: &ConnectionHandle,
+        command: &str,
+        input: serde_json::Value,
+    ) -> Result<CommandResult, DriverError> {
+        match execute_standard_sql_command(self, handle, command, input.clone()).await {
+            Err(DriverError::Unsupported(_)) => {}
+            other => return other,
+        }
+        let sql = crate::admin_commands::build_admin_sql(command, &input)?;
+        let mut map = self.clients.write().await;
+        let client = map
+            .get_mut(&handle.pool_id)
+            .ok_or_else(|| DriverError::ConnectionFailed("Connection pool not found".into()))?;
+        Self::run(client, &sql).await?;
+        Ok(CommandResult {
+            data: serde_json::json!({ "ok": true }),
+        })
+    }
 }
 
 #[cfg(test)]

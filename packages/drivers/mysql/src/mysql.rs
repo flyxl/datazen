@@ -764,7 +764,7 @@ impl DatabaseDriver for MysqlDriver {
             .map(|r| {
                 let tt: String = r.get("TABLE_TYPE");
                 TableInfo {
-                    schema: Some(database.to_string()),
+                    schema: None,
                     name: r.get("TABLE_NAME"),
                     table_type: match tt.as_str() {
                         "VIEW" => TableType::View,
@@ -1620,6 +1620,25 @@ impl DatabaseDriver for MysqlDriver {
     ) -> Result<StructureChangePlan, DriverError> {
         let caps = self.structure_capabilities(handle).await?;
         structure::plan_structure_changes(&caps, request)
+    }
+
+    fn command_definitions(&self) -> Vec<DriverCommandDefinition> {
+        crate::admin_commands::mysql_admin_command_definitions()
+    }
+
+    async fn execute_command(
+        &self,
+        handle: &ConnectionHandle,
+        command: &str,
+        input: serde_json::Value,
+    ) -> Result<CommandResult, DriverError> {
+        match execute_standard_sql_command(self, handle, command, input.clone()).await {
+            Err(DriverError::Unsupported(_)) => {}
+            other => return other,
+        }
+        let pools = self.pools.read().await;
+        let pool = Self::get_pool(&pools, handle)?;
+        crate::admin_commands::execute_mysql_admin_command(pool, command, input).await
     }
 }
 

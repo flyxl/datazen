@@ -44,14 +44,16 @@ export const queryCommands = {
 
   cancelQuery: (connectionId: string) => invoke<void>('cancel_query', { connectionId }),
 
-  getQueryHistory: (limit: number) => invoke<QueryHistoryEntry[]>('get_query_history', { limit }),
+  getQueryHistory: (limit: number, configId?: string) =>
+    invoke<QueryHistoryEntry[]>('get_query_history', { limit, configId }),
 
   clearQueryHistory: () => invoke<void>('clear_query_history'),
 
-  getFavoriteQueries: () => invoke<FavoriteQuery[]>('get_favorite_queries'),
+  getFavoriteQueries: (configId?: string) =>
+    invoke<FavoriteQuery[]>('get_favorite_queries', { configId }),
 
-  addFavoriteQuery: (title: string, sql: string) =>
-    invoke<FavoriteQuery>('add_favorite_query', { title, sql }),
+  addFavoriteQuery: (configId: string, title: string, sql: string) =>
+    invoke<FavoriteQuery>('add_favorite_query', { configId, title, sql }),
 
   deleteFavoriteQuery: (id: string) => invoke<void>('delete_favorite_query', { id }),
 

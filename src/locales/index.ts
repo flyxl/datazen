@@ -1,67 +1,65 @@
 import zhCN, { type TranslationKey } from './zh-CN';
 import en from './en';
-import zhTW from './zh-TW';
-import es from './es';
-import fr from './fr';
-import de from './de';
-import ja from './ja';
-import ptBR from './pt-BR';
-import ru from './ru';
-import ko from './ko';
 import type { MongoTranslationKey } from '../../packages/drivers/mongodb/locales/en';
-import {
-  PLUGIN_LOCALES,
-  type PluginTranslationKey,
-} from '../plugins/generated-locales';
+import { PLUGIN_LOCALES, type PluginTranslationKey } from '../plugins/generated-locales';
 
 export type { TranslationKey, PluginTranslationKey, MongoTranslationKey };
 
 /** Host keys plus merged plugin keys from enabled drivers. */
 export type I18nKey = TranslationKey | PluginTranslationKey | MongoTranslationKey;
 
-export const SUPPORTED_LOCALES = [
-  'en',
-  'zh-CN',
-  'zh-TW',
-  'es',
-  'fr',
-  'de',
-  'ja',
-  'pt-BR',
-  'ru',
-  'ko',
-] as const;
+/** Built-in locales bundled with the application. */
+export const BUILTIN_LOCALES = ['en', 'zh-CN'] as const;
 
-export type SupportedLocale = (typeof SUPPORTED_LOCALES)[number];
+export type BuiltinLocale = (typeof BUILTIN_LOCALES)[number];
 
-/** Locales with complete translations (not English placeholders). */
-export const FULLY_TRANSLATED_LOCALES = [...SUPPORTED_LOCALES] as const satisfies readonly SupportedLocale[];
+/**
+ * Registered extension locale packs (added at runtime by language plugins).
+ * Key = locale code, Value = { label, translations }.
+ */
+const extensionLocales = new Map<string, { label: string; translations: Record<string, string> }>();
 
-/** Former beta locales — now empty; all supported locales are fully translated. */
-export const BETA_LOCALES = [] as const satisfies readonly SupportedLocale[];
-
-export function isBetaLocale(locale: string): boolean {
-  return (BETA_LOCALES as readonly string[]).includes(locale);
+/** All available locale codes (built-in + extensions). */
+export function getAvailableLocales(): string[] {
+  return [...BUILTIN_LOCALES, ...extensionLocales.keys()];
 }
 
-const locales: Record<SupportedLocale, Record<TranslationKey, string>> = {
+export type SupportedLocale = string;
+
+/**
+ * Register a language extension pack at runtime.
+ * Plugins call this to add support for additional locales.
+ */
+export function registerLocale(
+  locale: string,
+  label: string,
+  translations: Record<string, string>,
+): void {
+  extensionLocales.set(locale, { label, translations });
+}
+
+/** Unregister a previously registered extension locale. */
+export function unregisterLocale(locale: string): void {
+  extensionLocales.delete(locale);
+}
+
+/** Get all registered extension locales with their display labels. */
+export function getExtensionLocales(): Array<{ value: string; label: string }> {
+  return [...extensionLocales.entries()].map(([value, { label }]) => ({
+    value,
+    label,
+  }));
+}
+
+const builtinLocales: Record<BuiltinLocale, Record<TranslationKey, string>> = {
   en,
   'zh-CN': zhCN,
-  'zh-TW': zhTW,
-  es,
-  fr,
-  de,
-  ja,
-  'pt-BR': ptBR,
-  ru,
-  ko,
 };
 
 const pluginLocalesEn = PLUGIN_LOCALES.en;
 
-function resolveLocale(locale: string): SupportedLocale {
-  if (locale in locales) return locale as SupportedLocale;
-  return 'en';
+function isBuiltinLocale(locale: string): locale is BuiltinLocale {
+  return (BUILTIN_LOCALES as readonly string[]).includes(locale);
 }
 
 export function getTranslation(
@@ -69,16 +67,28 @@ export function getTranslation(
   key: I18nKey,
   params?: Record<string, string | number>,
 ): string {
-  const resolved = resolveLocale(locale);
-  const dict = locales[resolved];
-  const pluginDict = PLUGIN_LOCALES[resolved];
-  let text =
-    dict[key as TranslationKey]
-    ?? pluginDict[key]
-    ?? en[key as TranslationKey]
-    ?? pluginLocalesEn[key]
-    ?? zhCN[key as TranslationKey]
-    ?? key;
+  let text: string | undefined;
+
+  if (isBuiltinLocale(locale)) {
+    const dict = builtinLocales[locale];
+    const pluginDict = PLUGIN_LOCALES[locale];
+    text =
+      dict[key as TranslationKey] ??
+      pluginDict[key] ??
+      en[key as TranslationKey] ??
+      pluginLocalesEn[key] ??
+      zhCN[key as TranslationKey];
+  } else {
+    const ext = extensionLocales.get(locale);
+    text =
+      ext?.translations[key] ??
+      en[key as TranslationKey] ??
+      pluginLocalesEn[key] ??
+      zhCN[key as TranslationKey];
+  }
+
+  text = text ?? key;
+
   if (params) {
     for (const [k, v] of Object.entries(params)) {
       text = text.replace(new RegExp(`\\{${k}\\}`, 'g'), String(v));
@@ -89,11 +99,16 @@ export function getTranslation(
 
 /** Host locale strings only (excludes plugin driver keys). */
 export function getHostTranslations(locale: SupportedLocale | string): Record<string, string> {
-  return locales[resolveLocale(locale)];
+  if (isBuiltinLocale(locale)) return builtinLocales[locale];
+  const ext = extensionLocales.get(locale);
+  return ext?.translations ?? builtinLocales.en;
 }
 
 /** Host + merged plugin locale strings for the active driver set. */
 export function getAllTranslations(locale: SupportedLocale | string): Record<string, string> {
-  const resolved = resolveLocale(locale);
-  return { ...locales[resolved], ...PLUGIN_LOCALES[resolved] };
+  if (isBuiltinLocale(locale)) {
+    return { ...builtinLocales[locale], ...PLUGIN_LOCALES[locale] };
+  }
+  const ext = extensionLocales.get(locale);
+  return { ...(ext?.translations ?? builtinLocales.en), ...PLUGIN_LOCALES.en };
 }
