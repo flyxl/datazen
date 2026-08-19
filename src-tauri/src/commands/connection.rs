@@ -240,6 +240,19 @@ pub async fn get_connection_info(
 }
 
 #[tauri::command]
+pub async fn reorder_connections(
+    state: State<'_, AppState>,
+    ordered_ids: Vec<String>,
+) -> Result<(), CommandError> {
+    tracing::info!(count = ordered_ids.len(), "reorder_connections");
+    state
+        .store
+        .reorder_connections(ordered_ids)
+        .await
+        .cmd_err("reorder_connections")
+}
+
+#[tauri::command]
 pub async fn get_available_drivers(
     state: State<'_, AppState>,
 ) -> Result<Vec<String>, CommandError> {

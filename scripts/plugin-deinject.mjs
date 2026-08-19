@@ -216,24 +216,14 @@ export function cleanGeneratedLocalesContent() {
  * Merges locale dictionaries from enabled driver packages.
  * Regenerated every time the build runs with different --drivers args.
  */
-import type { SupportedLocale } from '../locales';
-
 export type PluginTranslationKey = never;
 
 const EMPTY: Record<string, string> = {};
 
 /** Plugin locale strings keyed by translation key, merged per host locale. */
-export const PLUGIN_LOCALES: Record<SupportedLocale, Record<string, string>> = {
+export const PLUGIN_LOCALES: Record<string, Record<string, string>> = {
   en: EMPTY,
   'zh-CN': EMPTY,
-  'zh-TW': EMPTY,
-  es: EMPTY,
-  fr: EMPTY,
-  de: EMPTY,
-  ja: EMPTY,
-  'pt-BR': EMPTY,
-  ru: EMPTY,
-  ko: EMPTY,
 };
 `;
 }

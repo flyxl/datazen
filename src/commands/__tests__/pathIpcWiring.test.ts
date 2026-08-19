@@ -44,9 +44,9 @@ describe('path IPC frontend wiring', () => {
     expect(backup).toContain("'save_encryption_key_with_dialog'");
     expect(backup).toContain('saveEncryptionKeyWithDialog');
 
-    const main = readSrc('windows/main/MainWindow.tsx');
-    expect(main).toContain('saveEncryptionKeyWithDialog');
-    expect(main).toContain('appData.backupKeyTitle');
+    const connectionWindow = readSrc('windows/connection/ConnectionWindow.tsx');
+    expect(connectionWindow).toContain('saveEncryptionKeyWithDialog');
+    expect(connectionWindow).toContain('appData.backupKeyTitle');
   });
 
   it('connection share uses dialog IPC and menu events', () => {
@@ -75,12 +75,12 @@ describe('path IPC frontend wiring', () => {
     expect(pickFn).not.toContain('.pick_file(');
     expect(pickFn).not.toContain('.pick_folder(');
 
-    const main = readSrc('windows/main/MainWindow.tsx');
-    expect(main).toContain('ConnectionShareDialog');
-    expect(main).toContain('menu:export-connections');
-    expect(main).toContain('menu:import-connections');
-    expect(main).toContain('menu:import-connections-dbx');
-    expect(main).toContain('menu:import-connections-navicat');
+    const connectionWindow = readSrc('windows/connection/ConnectionWindow.tsx');
+    expect(connectionWindow).toContain('ConnectionShareDialog');
+    expect(connectionWindow).toContain('menu:export-connections');
+    expect(connectionWindow).toContain('menu:import-connections');
+    expect(connectionWindow).toContain('menu:import-connections-dbx');
+    expect(connectionWindow).toContain('menu:import-connections-navicat');
 
     const menuBar = readSrc('components/MenuBar.tsx');
     expect(menuBar).toContain('export-connections');

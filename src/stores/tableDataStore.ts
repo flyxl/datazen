@@ -80,7 +80,6 @@ export interface TableState {
   /** Applied filters used by queries. */
   filters: FilterCondition[];
   filterLogic: 'and' | 'or';
-  /** In-progress filter editor state; committed via applyFilters(). */
   draftFilters: FilterCondition[];
   draftFilterLogic: 'and' | 'or';
   filterPanelOpen: boolean;
@@ -115,70 +114,22 @@ function emptyTableState(): TableState {
   };
 }
 
-interface TableDataStore {
-  connectionId: string | null;
-  databaseType: string | null;
+// ── Per-connection state ──────────────────────────────────────────
+
+interface ConnectionTableState {
   activeTable: string | null;
+  databaseType: string | null;
   tableStates: Map<string, TableState>;
-
-  /** Convenience selectors that read from the active table's state */
-  columns: ColumnSchema[];
-  rows: Record<string, unknown>[];
-  totalRows: number;
-  page: number;
-  pageSize: number;
-  filters: FilterCondition[];
-  filterLogic: 'and' | 'or';
-  draftFilters: FilterCondition[];
-  draftFilterLogic: 'and' | 'or';
-  filterPanelOpen: boolean;
-  sorts: SortCondition[];
-  editBuffer: Map<string, CellEdit>;
-  selectedRows: Set<number>;
-  lastSelectedIndex: number | null;
-  editingCell: { row: number; col: string } | null;
-  loading: boolean;
-  error: string | null;
-  tableName: string | null;
-
-  setDatabaseType: (dbType: string) => void;
-  switchToTable: (table: string) => void;
-  loadTableData: (params: {
-    connectionId: string;
-    table: string;
-    skipCount?: boolean;
-  }) => Promise<void>;
-  setPage: (page: number) => void;
-  setPageSize: (size: number) => void;
-  /** Draft-only; opens the filter panel. Does not query until applyFilters(). */
-  addFilter: (filter: FilterCondition) => void;
-  /** Apply immediately (e.g. AI NL filter). Updates draft + applied and reloads. */
-  setFilters: (filters: FilterCondition[]) => void;
-  updateFilter: (index: number, filter: FilterCondition) => void;
-  setFilterLogic: (logic: 'and' | 'or') => void;
-  removeFilter: (index: number) => void;
-  /** Clears draft + applied and reloads. */
-  clearFilters: () => void;
-  /** Commits draft → applied and reloads. */
-  applyFilters: () => void;
-  setFilterPanelOpen: (open: boolean) => void;
-  setSort: (sort: SortCondition) => void;
-  startEdit: (row: number, col: string) => void;
-  updateCell: (row: number, col: string, value: unknown) => void;
-  applyColumnToRows: (col: string, value: unknown, rows: number[]) => void;
-  cancelEdit: () => void;
-  commitChanges: () => Promise<void>;
-  discardChanges: () => void;
-  selectRow: (index: number, opts?: { multi?: boolean; range?: boolean }) => void;
-  toggleSelectAll: () => void;
-  deleteSelectedRows: () => Promise<void>;
-  /** Delete by explicit page-row indices (selects them first). */
-  deleteRows: (rowIndices: number[]) => Promise<void>;
-  closeTable: (table: string) => void;
-
   detailRowIndex: number | null;
-  setDetailRow: (index: number | null) => void;
-  reset: () => void;
+}
+
+function emptyConnectionTableState(): ConnectionTableState {
+  return {
+    activeTable: null,
+    databaseType: null,
+    tableStates: new Map(),
+    detailRowIndex: null,
+  };
 }
 
 function getState(states: Map<string, TableState>, table: string | null): TableState {
@@ -210,67 +161,198 @@ function syncFlat(active: string | null, states: Map<string, TableState>) {
   };
 }
 
-function reloadActive(get: () => TableDataStore): void {
-  const { connectionId, activeTable } = get();
-  if (connectionId && activeTable) {
-    void get().loadTableData({ connectionId, table: activeTable });
-  }
+function flattenActive(
+  perConnection: Map<string, ConnectionTableState>,
+  activeConnectionId: string | null,
+): ConnectionTableState & ReturnType<typeof syncFlat> {
+  const cs = activeConnectionId
+    ? (perConnection.get(activeConnectionId) ?? emptyConnectionTableState())
+    : emptyConnectionTableState();
+  return {
+    ...cs,
+    ...syncFlat(cs.activeTable, cs.tableStates),
+  };
 }
 
+function patchConnection(
+  perConnection: Map<string, ConnectionTableState>,
+  connectionId: string,
+  patch: Partial<ConnectionTableState>,
+): Map<string, ConnectionTableState> {
+  const next = new Map(perConnection);
+  const current = perConnection.get(connectionId) ?? emptyConnectionTableState();
+  next.set(connectionId, { ...current, ...patch });
+  return next;
+}
+
+// ── Store ─────────────────────────────────────────────────────────
+
+interface TableDataStore extends ConnectionTableState {
+  perConnection: Map<string, ConnectionTableState>;
+  activeConnectionId: string | null;
+
+  columns: ColumnSchema[];
+  rows: Record<string, unknown>[];
+  totalRows: number;
+  page: number;
+  pageSize: number;
+  filters: FilterCondition[];
+  filterLogic: 'and' | 'or';
+  draftFilters: FilterCondition[];
+  draftFilterLogic: 'and' | 'or';
+  filterPanelOpen: boolean;
+  sorts: SortCondition[];
+  editBuffer: Map<string, CellEdit>;
+  selectedRows: Set<number>;
+  lastSelectedIndex: number | null;
+  editingCell: { row: number; col: string } | null;
+  loading: boolean;
+  error: string | null;
+  tableName: string | null;
+
+  setActiveConnection: (connectionId: string | null) => void;
+  removeConnection: (connectionId: string) => void;
+  setDatabaseType: (dbType: string) => void;
+  switchToTable: (table: string) => void;
+  loadTableData: (params: {
+    connectionId: string;
+    table: string;
+    skipCount?: boolean;
+  }) => Promise<void>;
+  setPage: (page: number) => void;
+  setPageSize: (size: number) => void;
+  addFilter: (filter: FilterCondition) => void;
+  setFilters: (filters: FilterCondition[]) => void;
+  updateFilter: (index: number, filter: FilterCondition) => void;
+  setFilterLogic: (logic: 'and' | 'or') => void;
+  removeFilter: (index: number) => void;
+  clearFilters: () => void;
+  applyFilters: () => void;
+  setFilterPanelOpen: (open: boolean) => void;
+  setSort: (sort: SortCondition) => void;
+  startEdit: (row: number, col: string) => void;
+  updateCell: (row: number, col: string, value: unknown) => void;
+  applyColumnToRows: (col: string, value: unknown, rows: number[]) => void;
+  cancelEdit: () => void;
+  commitChanges: () => Promise<void>;
+  discardChanges: () => void;
+  selectRow: (index: number, opts?: { multi?: boolean; range?: boolean }) => void;
+  toggleSelectAll: () => void;
+  deleteSelectedRows: () => Promise<void>;
+  deleteRows: (rowIndices: number[]) => Promise<void>;
+  closeTable: (table: string) => void;
+
+  setDetailRow: (index: number | null) => void;
+  reset: () => void;
+}
+
+/** Get the active connection's state. */
+function getActiveConn(get: () => TableDataStore): ConnectionTableState {
+  const { activeConnectionId, perConnection } = get();
+  if (!activeConnectionId) return emptyConnectionTableState();
+  return perConnection.get(activeConnectionId) ?? emptyConnectionTableState();
+}
+
+/** Commit a per-connection patch and re-flatten. */
+function commitPatch(
+  get: () => TableDataStore,
+  set: (partial: Partial<TableDataStore>) => void,
+  connectionId: string | null,
+  patch: Partial<ConnectionTableState>,
+): void {
+  const state = get();
+  const cid = connectionId ?? state.activeConnectionId;
+  if (!cid) return;
+  const perConnection = patchConnection(state.perConnection, cid, patch);
+  set({ perConnection, ...flattenActive(perConnection, state.activeConnectionId) });
+}
+
+/** Update active table's state within the active connection. */
 function updateActive(
   get: () => TableDataStore,
   set: (partial: Partial<TableDataStore>) => void,
   updater: (ts: TableState) => Partial<TableState>,
 ): void {
-  const { activeTable, tableStates } = get();
-  if (!activeTable) return;
-  const current = getState(tableStates, activeTable);
+  const conn = getActiveConn(get);
+  if (!conn.activeTable) return;
+  const current = getState(conn.tableStates, conn.activeTable);
   const patched = { ...current, ...updater(current) };
-  const next = new Map(tableStates);
-  next.set(activeTable, patched);
-  set({ tableStates: next, ...syncFlat(activeTable, next) });
+  const next = new Map(conn.tableStates);
+  next.set(conn.activeTable, patched);
+  commitPatch(get, set, null, { tableStates: next });
+}
+
+function reloadActive(get: () => TableDataStore): void {
+  const conn = getActiveConn(get);
+  const { activeConnectionId } = get();
+  if (activeConnectionId && conn.activeTable) {
+    void get().loadTableData({ connectionId: activeConnectionId, table: conn.activeTable });
+  }
 }
 
 export const useTableDataStore = create<TableDataStore>((set, get) => ({
-  connectionId: null,
-  databaseType: null,
-  activeTable: null,
-  tableStates: new Map(),
+  perConnection: new Map(),
+  activeConnectionId: null,
+  ...emptyConnectionTableState(),
   ...syncFlat(null, new Map()),
 
-  detailRowIndex: null,
-  setDetailRow: (index) => set({ detailRowIndex: index }),
+  setActiveConnection: (connectionId) => {
+    const state = get();
+    let perConnection = state.perConnection;
+    if (connectionId && !perConnection.has(connectionId)) {
+      perConnection = new Map(perConnection);
+      perConnection.set(connectionId, emptyConnectionTableState());
+    }
+    set({
+      perConnection,
+      activeConnectionId: connectionId,
+      ...flattenActive(perConnection, connectionId),
+    });
+  },
 
-  setDatabaseType: (dbType: string) => set({ databaseType: dbType }),
+  removeConnection: (connectionId) => {
+    const state = get();
+    const perConnection = new Map(state.perConnection);
+    perConnection.delete(connectionId);
+    const activeConnectionId =
+      state.activeConnectionId === connectionId ? null : state.activeConnectionId;
+    set({
+      perConnection,
+      activeConnectionId,
+      ...flattenActive(perConnection, activeConnectionId),
+    });
+  },
+
+  setDetailRow: (index) => {
+    commitPatch(get, set, null, { detailRowIndex: index });
+  },
+
+  setDatabaseType: (dbType: string) => {
+    commitPatch(get, set, null, { databaseType: dbType });
+  },
 
   switchToTable: (table: string) => {
-    const { tableStates } = get();
-    set({ activeTable: table, ...syncFlat(table, tableStates) });
+    commitPatch(get, set, null, { activeTable: table });
   },
 
   loadTableData: async ({ connectionId, table, skipCount }) => {
-    const { tableStates, databaseType } = get();
-    const existing = tableStates.get(table) ?? emptyTableState();
+    const state = get();
+    const connState = state.perConnection.get(connectionId) ?? emptyConnectionTableState();
+    const existing = connState.tableStates.get(table) ?? emptyTableState();
 
-    // Prevent duplicate concurrent loads for the same table
     if (existing.loading) return;
 
     const { page, filters, sorts, filterLogic } = existing;
-    const driverPageSize = DB_REGISTRY[databaseType as DatabaseType]?.defaultPageSize;
+    const driverPageSize = DB_REGISTRY[connState.databaseType as DatabaseType]?.defaultPageSize;
     const settingsPageSize = useSettingsStore.getState().settings.defaultPageSize;
     const pageSize =
       existing.columns.length > 0
         ? existing.pageSize
         : settingsPageSize || driverPageSize || existing.pageSize;
 
-    const next = new Map(tableStates);
-    next.set(table, { ...existing, loading: true, error: null });
-    set({
-      connectionId,
-      activeTable: table,
-      tableStates: next,
-      ...syncFlat(table, next),
-    });
+    const nextStates = new Map(connState.tableStates);
+    nextStates.set(table, { ...existing, loading: true, error: null });
+    commitPatch(get, set, connectionId, { activeTable: table, tableStates: nextStates });
 
     try {
       const res = await databaseCommands.getTableData({
@@ -283,7 +365,8 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
         skipCount,
         filterLogic,
       });
-      const updated = new Map(get().tableStates);
+      const latestConn = get().perConnection.get(connectionId) ?? emptyConnectionTableState();
+      const updated = new Map(latestConn.tableStates);
       const ts = updated.get(table) ?? emptyTableState();
       const patched: TableState = {
         ...ts,
@@ -299,37 +382,42 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
         error: null,
       };
       updated.set(table, patched);
-      set({
-        tableStates: updated,
-        ...(get().activeTable === table ? syncFlat(table, updated) : {}),
-      });
+      commitPatch(get, set, connectionId, { tableStates: updated });
     } catch (e) {
-      const updated = new Map(get().tableStates);
+      const latestConn = get().perConnection.get(connectionId) ?? emptyConnectionTableState();
+      const updated = new Map(latestConn.tableStates);
       const ts = updated.get(table) ?? emptyTableState();
       updated.set(table, {
         ...ts,
         loading: false,
         error: extractErrorMessage(e, t('tableData.loadFailed')),
       });
-      set({
-        tableStates: updated,
-        ...(get().activeTable === table ? syncFlat(table, updated) : {}),
-      });
+      commitPatch(get, set, connectionId, { tableStates: updated });
     }
   },
 
   setPage: (page) => {
     updateActive(get, set, () => ({ page }));
-    const { connectionId, activeTable } = get();
-    if (connectionId && activeTable)
-      void get().loadTableData({ connectionId, table: activeTable, skipCount: true });
+    const conn = getActiveConn(get);
+    const { activeConnectionId } = get();
+    if (activeConnectionId && conn.activeTable)
+      void get().loadTableData({
+        connectionId: activeConnectionId,
+        table: conn.activeTable,
+        skipCount: true,
+      });
   },
 
   setPageSize: (size) => {
     updateActive(get, set, () => ({ pageSize: size, page: 0 }));
-    const { connectionId, activeTable } = get();
-    if (connectionId && activeTable)
-      void get().loadTableData({ connectionId, table: activeTable, skipCount: true });
+    const conn = getActiveConn(get);
+    const { activeConnectionId } = get();
+    if (activeConnectionId && conn.activeTable)
+      void get().loadTableData({
+        connectionId: activeConnectionId,
+        table: conn.activeTable,
+        skipCount: true,
+      });
   },
 
   addFilter: (filter) => {
@@ -378,9 +466,9 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
   },
 
   applyFilters: () => {
-    const { activeTable, tableStates } = get();
-    if (!activeTable) return;
-    const ts = getState(tableStates, activeTable);
+    const conn = getActiveConn(get);
+    if (!conn.activeTable) return;
+    const ts = getState(conn.tableStates, conn.activeTable);
     if (
       filterDraftEqualsApplied(ts.draftFilters, ts.draftFilterLogic, ts.filters, ts.filterLogic)
     ) {
@@ -400,17 +488,22 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
 
   setSort: (sort) => {
     updateActive(get, set, () => ({ sorts: [sort], page: 0 }));
-    const { connectionId, activeTable } = get();
-    if (connectionId && activeTable)
-      void get().loadTableData({ connectionId, table: activeTable, skipCount: true });
+    const conn = getActiveConn(get);
+    const { activeConnectionId } = get();
+    if (activeConnectionId && conn.activeTable)
+      void get().loadTableData({
+        connectionId: activeConnectionId,
+        table: conn.activeTable,
+        skipCount: true,
+      });
   },
 
   startEdit: (row, col) => updateActive(get, set, () => ({ editingCell: { row, col } })),
 
   updateCell: (row, col, value) => {
-    const { activeTable, tableStates } = get();
-    if (!activeTable) return;
-    const ts = getState(tableStates, activeTable);
+    const conn = getActiveConn(get);
+    if (!conn.activeTable) return;
+    const ts = getState(conn.tableStates, conn.activeTable);
     const rowObj = ts.rows[row];
     if (!rowObj) return;
     const originalValue = rowObj[col];
@@ -433,9 +526,52 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
     const nextRows = [...ts.rows];
     nextRows[row] = { ...rowObj, [col]: value as Value };
 
-    const next = new Map(tableStates);
-    next.set(activeTable, { ...ts, rows: nextRows, editBuffer: nextBuffer, editingCell: null });
-    set({ tableStates: next, ...syncFlat(activeTable, next) });
+    const next = new Map(conn.tableStates);
+    next.set(conn.activeTable, {
+      ...ts,
+      rows: nextRows,
+      editBuffer: nextBuffer,
+      editingCell: null,
+    });
+    commitPatch(get, set, null, { tableStates: next });
+    void get().commitChanges();
+  },
+
+  applyColumnToRows: (col, value, rows) => {
+    const conn = getActiveConn(get);
+    if (!conn.activeTable) return;
+    const ts = getState(conn.tableStates, conn.activeTable);
+    const pkCols = ts.columns.filter((c) => c.isPrimaryKey);
+    const nextBuffer = new Map(ts.editBuffer);
+    const nextRows = [...ts.rows];
+
+    for (const row of rows) {
+      const rowObj = nextRows[row];
+      if (!rowObj) continue;
+      const pkSnapshot: Record<string, unknown> = {};
+      for (const pk of pkCols) {
+        pkSnapshot[pk.name] = rowObj[pk.name];
+      }
+      const key = editKey(row, col);
+      nextBuffer.set(key, {
+        rowIndex: row,
+        columnName: col,
+        originalValue: rowObj[col],
+        newValue: value,
+        pkSnapshot,
+      });
+      nextRows[row] = { ...rowObj, [col]: value as Value };
+    }
+
+    if (nextBuffer.size === 0) return;
+    const next = new Map(conn.tableStates);
+    next.set(conn.activeTable, {
+      ...ts,
+      rows: nextRows,
+      editBuffer: nextBuffer,
+      editingCell: null,
+    });
+    commitPatch(get, set, null, { tableStates: next });
     void get().commitChanges();
   },
 
@@ -475,9 +611,10 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
   cancelEdit: () => updateActive(get, set, () => ({ editingCell: null })),
 
   commitChanges: async () => {
-    const { activeTable, tableStates, connectionId } = get();
-    if (!activeTable || !connectionId) return;
-    const ts = getState(tableStates, activeTable);
+    const conn = getActiveConn(get);
+    const { activeConnectionId } = get();
+    if (!conn.activeTable || !activeConnectionId) return;
+    const ts = getState(conn.tableStates, conn.activeTable);
     if (ts.editBuffer.size === 0) return;
 
     const pkCols = ts.columns.filter((c) => c.isPrimaryKey);
@@ -512,10 +649,11 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
     }
 
     try {
-      await databaseCommands.commitRowUpdates(connectionId, activeTable, batches);
-      void get().loadTableData({ connectionId, table: activeTable });
+      await databaseCommands.commitRowUpdates(activeConnectionId, conn.activeTable, batches);
+      void get().loadTableData({ connectionId: activeConnectionId, table: conn.activeTable });
     } catch (e) {
-      const current = getState(get().tableStates, activeTable);
+      const latestConn = getActiveConn(get);
+      const current = getState(latestConn.tableStates, conn.activeTable);
       const merged = new Map(current.editBuffer);
       for (const [key, edit] of snapshot) merged.set(key, edit);
       updateActive(get, set, () => ({
@@ -526,10 +664,12 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
   },
 
   discardChanges: () => {
-    const { activeTable, connectionId } = get();
-    if (!activeTable) return;
+    const conn = getActiveConn(get);
+    const { activeConnectionId } = get();
+    if (!conn.activeTable) return;
     updateActive(get, set, () => ({ editBuffer: new Map(), editingCell: null }));
-    if (connectionId) void get().loadTableData({ connectionId, table: activeTable });
+    if (activeConnectionId)
+      void get().loadTableData({ connectionId: activeConnectionId, table: conn.activeTable });
   },
 
   selectRow: (index, opts) => {
@@ -561,9 +701,10 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
   },
 
   deleteSelectedRows: async () => {
-    const { activeTable, tableStates, connectionId } = get();
-    if (!activeTable || !connectionId) return;
-    const ts = getState(tableStates, activeTable);
+    const conn = getActiveConn(get);
+    const { activeConnectionId } = get();
+    if (!conn.activeTable || !activeConnectionId) return;
+    const ts = getState(conn.tableStates, conn.activeTable);
     const indices = Array.from(ts.selectedRows).sort((a, b) => a - b);
     if (indices.length === 0) return;
 
@@ -587,8 +728,8 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
     if (deletes.length === 0) return;
 
     try {
-      await databaseCommands.commitRowDeletes(connectionId, activeTable, deletes);
-      void get().loadTableData({ connectionId, table: activeTable });
+      await databaseCommands.commitRowDeletes(activeConnectionId, conn.activeTable, deletes);
+      void get().loadTableData({ connectionId: activeConnectionId, table: conn.activeTable });
     } catch (e) {
       updateActive(get, set, () => ({
         error: extractErrorMessage(e, t('tableData.deleteFailed')),
@@ -596,10 +737,9 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
     }
   },
 
-  /** Delete specific row indices (e.g. right-clicked row when nothing is selected). */
   deleteRows: async (rowIndices: number[]) => {
-    const { activeTable } = get();
-    if (!activeTable) return;
+    const conn = getActiveConn(get);
+    if (!conn.activeTable) return;
     const unique = [...new Set(rowIndices.filter((i) => Number.isInteger(i) && i >= 0))];
     if (unique.length === 0) return;
     updateActive(get, set, () => ({
@@ -610,19 +750,18 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
   },
 
   closeTable: (table: string) => {
-    const { tableStates, activeTable } = get();
-    const next = new Map(tableStates);
+    const conn = getActiveConn(get);
+    const next = new Map(conn.tableStates);
     next.delete(table);
-    const newActive = activeTable === table ? null : activeTable;
-    set({ tableStates: next, activeTable: newActive, ...syncFlat(newActive, next) });
+    const newActive = conn.activeTable === table ? null : conn.activeTable;
+    commitPatch(get, set, null, { activeTable: newActive, tableStates: next });
   },
 
   reset: () =>
     set({
-      connectionId: null,
-      databaseType: null,
-      activeTable: null,
-      tableStates: new Map(),
+      perConnection: new Map(),
+      activeConnectionId: null,
+      ...emptyConnectionTableState(),
       ...syncFlat(null, new Map()),
     }),
 }));

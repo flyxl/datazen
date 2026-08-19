@@ -659,9 +659,9 @@ interface DataTableProps {
 | Builder | 路径 | 调用方 |
 |---------|------|--------|
 | SQL 编辑器 | `src/lib/sqlEditorContextMenu.ts` | `QueryPanel` |
-| Schema 树 | `src/lib/schemaTreeContextMenu.ts` | `SqlConnectionView` |
+| Schema 树 | `src/lib/schemaTreeContextMenu.ts` | `ContentView` |
 | DataTable | `src/lib/dataTableContextMenu.ts` | `DataTable` |
-| 连接 Tab | `src/lib/connectionTabContextMenu.ts` | `SqlConnectionView` |
+| 连接 Tab | `src/lib/connectionTabContextMenu.ts` | `ContentView` |
 | 收藏 / 历史侧栏 | `src/lib/querySidebarContextMenu.ts` | `QueryPanel` |
 | Workflow 列表 / 历史 | `src/lib/workflowListContextMenu.ts` | `WorkflowWindow` |
 | ER 节点 | `src/lib/erNodeContextMenu.ts` | `ErDiagramView` |
@@ -772,7 +772,7 @@ function SchemaTree() {
 查询结果支持表格/图表双视图切换，基于 **Recharts** 实现。核心设计原则：
 
 - **零配置启动**：通过字段类型推断 + 规则引擎自动推荐最佳图表
-- **配置持久化**：图表配置绑定到 `queryStore.QueryTab`，切换标签页/重新执行不丢失
+- **配置持久化**：图表配置绑定到 `panelStore.QueryExecState`，切换标签页/重新执行不丢失
 - **渐进增强**：先看到合理的默认图表，再通过 UI 或自然语言微调
 
 ### 6.2 组件结构
@@ -829,17 +829,17 @@ StatementResult
 
 ### 6.6 配置持久化
 
-图表配置通过 `queryStore` 中的 `QueryTab` 进行持久化：
+图表配置通过 `panelStore` 中的 `QueryExecState` 进行持久化：
 
 ```typescript
-interface QueryTab {
+interface QueryExecState {
   // ...existing fields...
   chartConfig?: ChartConfig;
   resultViewMode?: 'table' | 'chart';
 }
 ```
 
-通过 `setChartConfig(tabId, config)` 和 `setResultViewMode(tabId, mode)` 更新。
+通过 `setChartConfig(panelId, config)` 和 `setResultViewMode(panelId, mode)` 更新。
 
 ## 7. 窗口路由与多窗口管理
 
@@ -963,7 +963,7 @@ export async function openQueryWindow(connectionId: string, database: string) {
 ### 8.1 组件结构
 
 ```
-SqlConnectionView
+ContentView
 ├── 工具栏「ER 图」按钮 → 打开数据库级 ER 图
 ├── Schema Tree 右键菜单「聚焦此表」→ 以该表为焦点的 ER 图
 └── ErDiagramView (src/windows/connection/ErDiagramView.tsx)

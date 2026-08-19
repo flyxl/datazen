@@ -5,8 +5,7 @@ import type { SchemaTreeNodeKind } from '../../../lib/schemaTreeContextMenu';
 import { getPluginSchemaTree } from '../../../plugins/generated';
 import { useSchemaStore } from '../../../stores/schemaStore';
 import type { DatabaseType } from '../../../types';
-import { MultiDatabaseSchemaTree } from './MultiDatabaseSchemaTree';
-import { StandardSchemaTree } from './StandardSchemaTree';
+import { UnifiedSchemaTree } from './UnifiedSchemaTree';
 
 export type SchemaTreeNodeContextMenuPayload = {
   kind: SchemaTreeNodeKind;
@@ -52,13 +51,10 @@ export function SchemaTree(props: SchemaTreeProps) {
     }
   }
 
-  if (shouldUseMultiDatabaseTree(meta, props.initialDatabase)) {
-    // Domain is not a logical DB — don't pass it as preferredDatabase.
-    const treeProps =
-      meta?.databaseFieldType === 'domain' ? { ...props, initialDatabase: undefined } : props;
-    return <MultiDatabaseSchemaTree {...treeProps} />;
-  }
-  return <StandardSchemaTree {...props} isKeyValue={meta?.isKeyValue ?? false} />;
+  // Domain is not a logical DB — don't pass it as preferredDatabase.
+  const treeProps =
+    meta?.databaseFieldType === 'domain' ? { ...props, initialDatabase: undefined } : props;
+  return <UnifiedSchemaTree {...treeProps} isKeyValue={meta?.isKeyValue ?? false} />;
 }
 
 /** Ensure schemaStore.connectionId is set for custom trees (column autocomplete). */

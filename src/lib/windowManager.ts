@@ -8,13 +8,23 @@
 
 import { invoke } from '@tauri-apps/api/core';
 import { t } from '../locales/t';
+import { emitCrossWindow } from './crossWindowBus';
 
-let counter = 0;
-
-function nextLabel(prefix: string) {
-  counter += 1;
-  return `${prefix}-${Date.now()}-${counter}`;
-}
+/**
+ * Representative window labels that must match
+ * `src-tauri/capabilities/default.json` → `windows` globs.
+ * Keep in sync when adding open*Window helpers.
+ */
+export const WINDOW_CAPABILITY_LABEL_SAMPLES = [
+  'main',
+  'new-connection-singleton',
+  'data-sync-singleton',
+  'schema-diff-singleton',
+  'backup-singleton',
+  'backup-restore-singleton',
+  'settings-singleton',
+  'docs-singleton',
+] as const;
 
 /**
  * Representative window labels that must match
@@ -47,6 +57,16 @@ interface OpenWindowOptions {
 
 function isTauri(): boolean {
   return '__TAURI_INTERNALS__' in window;
+}
+
+async function focusMainWindow(): Promise<void> {
+  if (!isTauri()) return;
+  const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
+  const main = await WebviewWindow.getByLabel('main');
+  if (!main) return;
+  await main.show();
+  await main.unminimize();
+  await main.setFocus();
 }
 
 /** Sub-window HTML entry — no splash (see `window.html`). Main stays on `index.html`. */
@@ -168,14 +188,7 @@ export function openBackupWindow(mode: 'backup' | 'restore' = 'backup') {
 }
 
 export function openWorkflowWindow() {
-  openSingletonWindow('workflow-singleton', {
-    params: { window: 'workflow' },
-    width: 1100,
-    height: 750,
-    minWidth: 700,
-    minHeight: 500,
-    title: t('win.workflow'),
-  });
+  void focusMainWindow().then(() => emitCrossWindow('menu:workflow'));
 }
 
 export function openSettingsWindow(section?: string) {
@@ -209,15 +222,12 @@ export function openDocsWindow(section?: string) {
 // ── Multi-instance windows ──────────────────────────────────────────
 
 export function openDashboardWindow(dashboardId?: string, dashboardName?: string) {
-  const params: Record<string, string> = { window: 'dashboard' };
-  if (dashboardId) params.dashboardId = dashboardId;
-  openWindow('dashboard-main', {
-    params,
-    width: 1200,
-    height: 800,
-    minWidth: 800,
-    minHeight: 500,
-    title: dashboardName ? `${dashboardName} - DataZen` : t('win.dashboard'),
+  void focusMainWindow().then(() => {
+    if (dashboardId) {
+      void emitCrossWindow('menu:open-dashboard', { dashboardId, dashboardName });
+      return;
+    }
+    void emitCrossWindow('menu:dashboard');
   });
 }
 
@@ -229,7 +239,7 @@ export function openDashboardWindow(dashboardId?: string, dashboardName?: string
 export const PENDING_CONNECTION_KEY = 'datazen:pending-connection';
 
 /**
- * Open the singleton ConnectionWindow and add a connection tab.
+ * Open the main workspace and add a connection tab.
  *
  * Connection-specific params are NOT included in the URL (only `window=connection`)
  * so that the Rust-side `focus_existing_window` never re-navigates the webview
@@ -244,12 +254,14 @@ export function openConnectionWindow(
   connectionName: string,
   database?: string,
   databaseType?: string,
+  action?: string,
 ) {
   const payload: Record<string, string> = { connectionName };
   if (opts.connectionId) payload.connectionId = opts.connectionId;
   if (opts.configId) payload.configId = opts.configId;
   if (database) payload.database = database;
   if (databaseType) payload.databaseType = databaseType;
+  if (action) payload.action = action;
 
   try {
     localStorage.setItem(PENDING_CONNECTION_KEY, JSON.stringify(payload));
@@ -257,16 +269,6 @@ export function openConnectionWindow(
     // localStorage unavailable; event-only fallback
   }
 
-  import('../lib/crossWindowBus').then(({ emitCrossWindow }) => {
-    void emitCrossWindow('datazen:open-connection', payload);
-  });
-
-  openSingletonWindow('connection-singleton', {
-    params: { window: 'connection' },
-    width: 1200,
-    height: 800,
-    minWidth: 600,
-    minHeight: 480,
-    title: `${connectionName} - DataZen`,
-  });
+  void emitCrossWindow('datazen:open-connection', payload);
+  void focusMainWindow();
 }

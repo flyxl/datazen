@@ -1,0 +1,320 @@
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Loader2 } from 'lucide-react';
+import { Dialog } from '../../components/ui/Dialog';
+import { Button } from '../../components/ui/Button';
+import { Input } from '../../components/ui/Input';
+import { Select } from '../../components/ui/Select';
+import { driverCommands } from '../../commands/driver';
+import { databaseCommands } from '../../commands/database';
+import { useI18n } from '../../hooks/useI18n';
+import type { DatabaseType } from '../../types';
+
+const MYSQL_PRIVILEGES = [
+  'SELECT',
+  'INSERT',
+  'UPDATE',
+  'DELETE',
+  'CREATE',
+  'DROP',
+  'ALTER',
+  'INDEX',
+] as const;
+
+const PG_TABLE_PRIVILEGES = [
+  'SELECT',
+  'INSERT',
+  'UPDATE',
+  'DELETE',
+  'TRUNCATE',
+  'REFERENCES',
+  'TRIGGER',
+] as const;
+
+const PG_DATABASE_PRIVILEGES = ['CONNECT', 'CREATE', 'TEMPORARY'] as const;
+
+interface PrivilegeGroup {
+  label: string;
+  privileges: readonly string[];
+}
+
+function getPrivilegesForType(dbType?: string): { groups: PrivilegeGroup[]; all: string[] } {
+  if (dbType === 'postgresql') {
+    return {
+      groups: [
+        { label: 'Table', privileges: PG_TABLE_PRIVILEGES },
+        { label: 'Database', privileges: PG_DATABASE_PRIVILEGES },
+      ],
+      all: [...PG_TABLE_PRIVILEGES, ...PG_DATABASE_PRIVILEGES],
+    };
+  }
+  return {
+    groups: [{ label: '', privileges: MYSQL_PRIVILEGES }],
+    all: [...MYSQL_PRIVILEGES],
+  };
+}
+
+interface CreateUserDialogProps {
+  open: boolean;
+  onClose: () => void;
+  connectionId: string;
+  databaseType?: DatabaseType;
+  onCreated?: (username: string) => void;
+}
+
+export function CreateUserDialog({
+  open,
+  onClose,
+  connectionId,
+  databaseType,
+  onCreated,
+}: CreateUserDialogProps) {
+  const { t } = useI18n();
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [selectedPrivileges, setSelectedPrivileges] = useState<Set<string>>(new Set());
+  const [grantOption, setGrantOption] = useState(false);
+  const [targetDatabase, setTargetDatabase] = useState('');
+  const [databases, setDatabases] = useState<string[]>([]);
+  const [running, setRunning] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [step, setStep] = useState<'create' | 'grant'>('create');
+  const [createdUsername, setCreatedUsername] = useState('');
+
+  useEffect(() => {
+    if (open && connectionId) {
+      databaseCommands
+        .getDatabases(connectionId)
+        .then(setDatabases)
+        .catch(() => {});
+    }
+  }, [open, connectionId]);
+
+  const resetForm = useCallback(() => {
+    setUsername('');
+    setPassword('');
+    setSelectedPrivileges(new Set());
+    setGrantOption(false);
+    setTargetDatabase('');
+    setError(null);
+    setStep('create');
+    setCreatedUsername('');
+  }, []);
+
+  const handleClose = useCallback(() => {
+    resetForm();
+    onClose();
+  }, [resetForm, onClose]);
+
+  const togglePrivilege = useCallback((priv: string) => {
+    setSelectedPrivileges((prev) => {
+      const next = new Set(prev);
+      if (next.has(priv)) next.delete(priv);
+      else next.add(priv);
+      return next;
+    });
+  }, []);
+
+  const privInfo = useMemo(() => getPrivilegesForType(databaseType), [databaseType]);
+
+  const selectAllPrivileges = useCallback(() => {
+    setSelectedPrivileges((prev) => {
+      if (prev.size === privInfo.all.length) return new Set();
+      return new Set(privInfo.all);
+    });
+  }, [privInfo]);
+
+  const handleCreate = useCallback(async () => {
+    if (!username.trim()) return;
+    setRunning(true);
+    setError(null);
+    try {
+      const input: Record<string, unknown> = { username: username.trim() };
+      if (password) input.password = password;
+      await driverCommands.execute({ connectionId, command: 'create_user', input });
+      setCreatedUsername(username.trim());
+      setStep('grant');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setRunning(false);
+    }
+  }, [username, password, connectionId]);
+
+  const handleGrant = useCallback(async () => {
+    if (selectedPrivileges.size === 0) return;
+    setRunning(true);
+    setError(null);
+    try {
+      await driverCommands.execute({
+        connectionId,
+        command: 'grant_privileges',
+        input: {
+          username: createdUsername,
+          database: targetDatabase,
+          privileges: [...selectedPrivileges],
+          grantOption,
+        },
+      });
+      resetForm();
+      onCreated?.(createdUsername);
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setRunning(false);
+    }
+  }, [
+    selectedPrivileges,
+    connectionId,
+    createdUsername,
+    targetDatabase,
+    grantOption,
+    resetForm,
+    onCreated,
+    onClose,
+  ]);
+
+  const handleSkipGrant = useCallback(() => {
+    const name = createdUsername;
+    resetForm();
+    onCreated?.(name);
+    onClose();
+  }, [createdUsername, resetForm, onCreated, onClose]);
+
+  return (
+    <Dialog
+      open={open}
+      title={step === 'create' ? t('createUser.title') : t('createUser.grantPrivileges')}
+      onClose={handleClose}
+      className="max-w-md"
+      footer={
+        step === 'create' ? (
+          <>
+            <Button variant="ghost" onClick={handleClose}>
+              {t('common.cancel')}
+            </Button>
+            <Button
+              variant="primary"
+              onClick={() => void handleCreate()}
+              disabled={!username.trim() || running}
+            >
+              {running && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {t('createUser.create')}
+            </Button>
+          </>
+        ) : (
+          <>
+            <Button variant="ghost" onClick={handleSkipGrant}>
+              {t('common.skip') ?? 'Skip'}
+            </Button>
+            <Button
+              variant="primary"
+              onClick={() => void handleGrant()}
+              disabled={selectedPrivileges.size === 0 || running}
+            >
+              {running && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {t('createUser.createAndGrant')}
+            </Button>
+          </>
+        )
+      }
+    >
+      {step === 'create' ? (
+        <div className="space-y-4">
+          <div>
+            <label className="block text-xs text-fg-muted mb-1">{t('createUser.username')}</label>
+            <Input
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') void handleCreate();
+              }}
+              placeholder="new_user"
+              autoFocus
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-fg-muted mb-1">{t('createUser.password')}</label>
+            <Input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') void handleCreate();
+              }}
+              placeholder="••••••••"
+            />
+          </div>
+          {error && <div className="rounded bg-red-500/10 p-3 text-sm text-red-400">{error}</div>}
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <div className="rounded bg-green-500/10 p-2 text-sm text-green-400">
+            {t('createUser.success').replace('{name}', createdUsername)}
+          </div>
+          <div>
+            <label className="block text-xs text-fg-muted mb-1">{t('createUser.database')}</label>
+            <Select
+              value={targetDatabase}
+              onChange={setTargetDatabase}
+              placeholder={t('createUser.allDatabases')}
+              options={[
+                { value: '', label: t('createUser.allDatabases') },
+                ...databases.map((db) => ({ value: db, label: db })),
+              ]}
+            />
+          </div>
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-xs text-fg-muted">{t('createUser.privileges')}</label>
+              <button
+                type="button"
+                className="text-xs text-accent hover:underline"
+                onClick={selectAllPrivileges}
+              >
+                {t('createUser.selectAll')}
+              </button>
+            </div>
+            {privInfo.groups.map((group) => (
+              <div key={group.label} className={group.label ? 'mb-3' : ''}>
+                {group.label && (
+                  <div className="text-[11px] font-medium text-fg-muted mb-1.5 uppercase tracking-wide">
+                    {group.label}
+                  </div>
+                )}
+                <div className="grid grid-cols-2 gap-2">
+                  {group.privileges.map((priv) => (
+                    <label
+                      key={priv}
+                      className="flex items-center gap-2 text-sm text-fg cursor-pointer"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedPrivileges.has(priv)}
+                        onChange={() => togglePrivilege(priv)}
+                        className="rounded border-edge"
+                      />
+                      {priv}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+          {(databaseType === 'postgresql' || databaseType === 'mysql') && (
+            <label className="flex items-center gap-2 text-sm text-fg cursor-pointer">
+              <input
+                type="checkbox"
+                checked={grantOption}
+                onChange={(e) => setGrantOption(e.target.checked)}
+                className="rounded border-edge"
+              />
+              {t('createUser.grantOption')}
+            </label>
+          )}
+          {error && <div className="rounded bg-red-500/10 p-3 text-sm text-red-400">{error}</div>}
+        </div>
+      )}
+    </Dialog>
+  );
+}

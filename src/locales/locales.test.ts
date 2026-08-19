@@ -1,14 +1,15 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import zhCN from './zh-CN';
 import en from './en';
 import {
-  SUPPORTED_LOCALES,
+  BUILTIN_LOCALES,
   getAllTranslations,
   getHostTranslations,
   getTranslation,
-  BETA_LOCALES,
-  FULLY_TRANSLATED_LOCALES,
-  type SupportedLocale,
+  registerLocale,
+  unregisterLocale,
+  getAvailableLocales,
+  getExtensionLocales,
   type TranslationKey,
 } from './index';
 
@@ -27,51 +28,22 @@ const CRITICAL_KEYS: TranslationKey[] = [
 ];
 
 describe('locales', () => {
-  it('registers all 10 supported locales', () => {
-    expect(SUPPORTED_LOCALES).toHaveLength(10);
-    expect([...SUPPORTED_LOCALES].sort()).toEqual(
-      ['de', 'en', 'es', 'fr', 'ja', 'ko', 'pt-BR', 'ru', 'zh-CN', 'zh-TW'].sort(),
-    );
+  it('registers 2 built-in locales (en, zh-CN)', () => {
+    expect(BUILTIN_LOCALES).toHaveLength(2);
+    expect([...BUILTIN_LOCALES].sort()).toEqual(['en', 'zh-CN'].sort());
   });
 
-  it('loads every supported locale with non-empty host dictionaries', () => {
-    for (const locale of SUPPORTED_LOCALES) {
+  it('loads every built-in locale with non-empty host dictionaries', () => {
+    for (const locale of BUILTIN_LOCALES) {
       const dict = getHostTranslations(locale);
       expect(Object.keys(dict).length).toBeGreaterThan(0);
     }
   });
 
-  it('keeps host key parity with en across all locales', () => {
+  it('keeps host key parity between en and zh-CN', () => {
     const enKeys = Object.keys(getHostTranslations('en')).sort();
-    for (const locale of SUPPORTED_LOCALES) {
-      const keys = Object.keys(getHostTranslations(locale)).sort();
-      expect(keys, `${locale} key mismatch`).toEqual(enKeys);
-    }
-  });
-
-  it('former beta locales are not mostly English copies', () => {
-    const enDict = getHostTranslations('en');
-    const enKeys = Object.keys(enDict);
-    for (const locale of ['de', 'es', 'fr', 'ja', 'ko', 'pt-BR', 'ru'] as const) {
-      const dict = getHostTranslations(locale);
-      let same = 0;
-      for (const key of enKeys) {
-        if (dict[key] === enDict[key]) same += 1;
-      }
-      const ratio = same / enKeys.length;
-      expect(ratio, locale).toBeLessThan(0.35);
-    }
-  });
-
-  it('marks no locales as beta', () => {
-    expect(BETA_LOCALES).toEqual([]);
-  });
-
-  it('fully translated locales differ from en on user-facing strings', () => {
-    for (const locale of FULLY_TRANSLATED_LOCALES) {
-      if (locale === 'en') continue;
-      expect(getTranslation(locale, 'common.ok')).not.toBe(en['common.ok']);
-    }
+    const zhKeys = Object.keys(getHostTranslations('zh-CN')).sort();
+    expect(zhKeys).toEqual(enKeys);
   });
 
   it('falls back to en for unsupported locale codes', () => {
@@ -79,8 +51,8 @@ describe('locales', () => {
     expect(getAllTranslations('invalid-locale')).toEqual(getAllTranslations('en'));
   });
 
-  it('interpolates params for every locale', () => {
-    for (const locale of SUPPORTED_LOCALES) {
+  it('interpolates params for built-in locales', () => {
+    for (const locale of BUILTIN_LOCALES) {
       expect(getTranslation(locale, 'win.query', { db: 'testdb' })).toContain('testdb');
     }
   });
@@ -102,8 +74,8 @@ describe('locales', () => {
     'sync.windowTitle',
   ];
 
-  it('resolves Data Sync workspace keys for every locale', () => {
-    for (const locale of SUPPORTED_LOCALES) {
+  it('resolves Data Sync workspace keys for built-in locales', () => {
+    for (const locale of BUILTIN_LOCALES) {
       for (const key of SYNC_KEYS) {
         const text = getTranslation(locale, key);
         expect(text.length, `${locale}:${key}`).toBeGreaterThan(0);
@@ -112,8 +84,8 @@ describe('locales', () => {
     }
   });
 
-  it('interpolates sync.mappingSummary placeholders in every locale', () => {
-    for (const locale of SUPPORTED_LOCALES) {
+  it('interpolates sync.mappingSummary placeholders', () => {
+    for (const locale of BUILTIN_LOCALES) {
       const text = getTranslation(locale, 'sync.mappingSummary', {
         matched: 3,
         incompatible: 1,
@@ -126,8 +98,8 @@ describe('locales', () => {
     }
   });
 
-  it('resolves critical UI keys for every locale', () => {
-    for (const locale of SUPPORTED_LOCALES) {
+  it('resolves critical UI keys for built-in locales', () => {
+    for (const locale of BUILTIN_LOCALES) {
       for (const key of CRITICAL_KEYS) {
         const text = getTranslation(locale, key);
         expect(text.length, `${locale}:${key}`).toBeGreaterThan(0);
@@ -141,17 +113,7 @@ describe('locales', () => {
     expect(zhCN['settings.language']).not.toBe(en['settings.language']);
   });
 
-  it('zh-TW uses traditional form for language label', () => {
-    expect(getAllTranslations('zh-TW')['settings.language']).toBe('語言');
-  });
-
-  it('getTranslation accepts SupportedLocale union members', () => {
-    const locale: SupportedLocale = 'ko';
-    expect(getTranslation(locale, 'common.cancel')).toBeTruthy();
-  });
-
   it('replaces multiple distinct params', () => {
-    // Prefer a key that uses one param; verify replace does not leave braces for known keys
     const text = getTranslation('en', 'appData.exportSuccess');
     expect(text.includes('{')).toBe(false);
   });
@@ -160,5 +122,34 @@ describe('locales', () => {
     const missing = 'this.key.does.not.exist' as TranslationKey;
     expect(getTranslation('en', missing)).toBe(missing);
     expect(getTranslation('zh-CN', missing)).toBe(missing);
+  });
+
+  describe('extension locale registration', () => {
+    afterEach(() => {
+      unregisterLocale('test-lang');
+    });
+
+    it('registers and uses an extension locale', () => {
+      registerLocale('test-lang', 'Test Language', { 'common.ok': 'TestOK' });
+      expect(getAvailableLocales()).toContain('test-lang');
+      expect(getTranslation('test-lang', 'common.ok')).toBe('TestOK');
+    });
+
+    it('falls back to en for missing keys in extension locale', () => {
+      registerLocale('test-lang', 'Test Language', {});
+      expect(getTranslation('test-lang', 'common.ok')).toBe(en['common.ok']);
+    });
+
+    it('lists extension locales with labels', () => {
+      registerLocale('test-lang', 'Test Language', {});
+      const exts = getExtensionLocales();
+      expect(exts).toContainEqual({ value: 'test-lang', label: 'Test Language' });
+    });
+
+    it('unregisters an extension locale', () => {
+      registerLocale('test-lang', 'Test Language', {});
+      unregisterLocale('test-lang');
+      expect(getAvailableLocales()).not.toContain('test-lang');
+    });
   });
 });

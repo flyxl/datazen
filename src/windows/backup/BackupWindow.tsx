@@ -13,17 +13,17 @@ import {
   backupProgressRatio,
   createProgressLogPump,
   formatBackupProgress,
-  formatRestoreProgress,
   type BackupProgressPayload,
 } from '../../lib/backupProgress';
+import { runSqlFileExecution } from '../../lib/sqlFileExecution';
 import { ProgressLog } from './ProgressLog';
 import { cn } from '../../lib/cn';
-import { listenCrossWindow } from '../../lib/crossWindowBus';
+import { emitCrossWindow, listenCrossWindow } from '../../lib/crossWindowBus';
 import { DbTypeBadge } from '../../components/DbTypeBadge';
 import { getDbLabel, DB_REGISTRY } from '../../lib/databaseTypes';
 import { getSqlDialect } from '../../lib/sqlDialects';
 import { getUrlParam } from '../../lib/windowKind';
-import type { ConnectionConfig, TableInfo } from '../../types';
+import type { ConnectionConfig } from '../../types';
 
 interface DatabaseInfo {
   name: string;
@@ -55,7 +55,7 @@ export function BackupWindow() {
   const [statusMessage, setStatusMessage] = useState('');
   const [progress, setProgress] = useState<BackupProgressPayload | null>(null);
   const [progressLog, setProgressLog] = useState<string[]>([]);
-  const logPumpRef = useRef(createProgressLogPump(setProgressLog, 80, t));
+  const logPumpRef = useRef(createProgressLogPump(setProgressLog));
   const [searchConn, setSearchConn] = useState('');
   const [searchDb, setSearchDb] = useState('');
 
@@ -177,60 +177,35 @@ export function BackupWindow() {
   const handleRestore = useCallback(async () => {
     if (!connectedId || !selectedDb) return;
     try {
-      const { invoke } = await import('@tauri-apps/api/core');
-      await invoke('use_database', { connectionId: connectedId, database: selectedDb });
-
-      const tables = await invoke<TableInfo[]>('get_tables', {
-        connectionId: connectedId,
-        database: selectedDb,
-      }).catch(() => [] as TableInfo[]);
-
-      const options: string[] = [];
-      if (tables.length > 0) {
-        const ok = await confirmRestore({
-          title: t('backup.restoreTitle'),
-          message: t('backup.restoreOverwriteConfirm', {
-            database: selectedDb,
-            count: tables.length,
-          }),
-          kind: 'warning',
-        });
-        if (!ok) return;
-        options.push('overwrite');
-      }
-
       setBacking(true);
       setProgress(null);
       logPumpRef.current.reset([t('backup.restoring')]);
       setStatusMessage(t('backup.restoring'));
 
-      const { listen } = await import('@tauri-apps/api/event');
-      const unlisten = await listen<BackupProgressPayload>('restore-progress', (event) => {
-        const line = formatRestoreProgress(event.payload, t);
-        setProgress(event.payload);
-        setStatusMessage(line);
-        logPumpRef.current.push(line);
+      const executed = await runSqlFileExecution({
+        connectionId: connectedId,
+        database: selectedDb,
+        t,
+        logPump: logPumpRef.current,
+        command: 'restore_database_with_dialog',
+        confirmOverwrite: async (count) =>
+          confirmRestore({
+            title: t('backup.restoreTitle'),
+            message: t('backup.restoreOverwriteConfirm', {
+              database: selectedDb,
+              count,
+            }),
+            kind: 'warning',
+          }),
+        onProgress: (payload, line) => {
+          if (payload) setProgress(payload);
+          setStatusMessage(line);
+        },
       });
-
-      try {
-        const restored = await invoke<boolean>('restore_database_with_dialog', {
+      if (executed) {
+        await emitCrossWindow('datazen:refresh-connection', {
           connectionId: connectedId,
-          database: selectedDb,
-          options,
         });
-        if (!restored) {
-          setStatusMessage('');
-          setProgress(null);
-          logPumpRef.current.reset([]);
-          return;
-        }
-        setStatusMessage(t('backup.restoreSuccess'));
-        setProgress({ current: 0, total: 0, objectName: '', phase: 'done' });
-        logPumpRef.current.push(t('backup.restoreSuccess'));
-        logPumpRef.current.flush();
-      } finally {
-        unlisten();
-        setBacking(false);
       }
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
@@ -238,9 +213,10 @@ export function BackupWindow() {
       setProgress(null);
       logPumpRef.current.push(message);
       logPumpRef.current.flush();
+    } finally {
       setBacking(false);
     }
-  }, [connectedId, selectedDb, t]);
+  }, [connectedId, selectedDb, confirmRestore, t]);
 
   const handleBackup = useCallback(async () => {
     if (!connectedId || !selectedDb) return;
@@ -514,7 +490,7 @@ export function BackupWindow() {
               className="mb-3 rounded border border-edge bg-surface-alt px-3 py-2 text-xs text-fg-secondary"
               data-testid="backup-status"
             >
-              <div className="h-5 truncate leading-5" title={statusMessage}>
+              <div className="copyable h-5 truncate leading-5" title={statusMessage}>
                 {statusMessage}
               </div>
               {(backing || progress) && (

@@ -37,6 +37,13 @@ export const postgresqlDialect: SqlDialectStrategy = {
         extractColumnIndex: 0,
       };
     },
+    getViewDdlQuery(viewName: string) {
+      const escaped = viewName.replace(/'/g, "''");
+      return {
+        sql: `SELECT 'CREATE OR REPLACE VIEW ' || quote_ident(schemaname) || '.' || quote_ident(viewname) || ' AS ' || E'\\n' || definition AS ddl FROM pg_views WHERE viewname = '${escaped}'`,
+        extractColumnIndex: 0,
+      };
+    },
   },
   index: {
     supportedIndexMethods: ['btree', 'hash', 'gin', 'gist'],

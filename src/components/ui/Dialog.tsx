@@ -14,7 +14,15 @@ export interface DialogProps {
   className?: string;
 }
 
-export function Dialog({ open, title, description, children, onClose, footer, className }: DialogProps) {
+export function Dialog({
+  open,
+  title,
+  description,
+  children,
+  onClose,
+  footer,
+  className,
+}: DialogProps) {
   useEffect(() => {
     if (!open) return;
     function onKeyDown(e: KeyboardEvent) {
@@ -35,6 +43,9 @@ export function Dialog({ open, title, description, children, onClose, footer, cl
         onClick={onClose}
       />
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
         className={cn(
           'relative z-10 w-full max-w-xl overflow-hidden rounded-xl border border-edge bg-surface-alt shadow-xl',
           className,
@@ -54,7 +65,11 @@ export function Dialog({ open, title, description, children, onClose, footer, cl
           </button>
         </div>
         <div className="max-h-[70vh] overflow-auto px-5 py-4">{children}</div>
-        {footer ? <div className="flex items-center justify-end gap-2 border-t border-edge px-5 py-3">{footer}</div> : null}
+        {footer ? (
+          <div className="flex items-center justify-end gap-2 border-t border-edge px-5 py-3">
+            {footer}
+          </div>
+        ) : null}
       </div>
     </div>,
     document.body,

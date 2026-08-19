@@ -11,7 +11,7 @@ use super::settings::AppSettings;
 #[serde(rename_all = "camelCase")]
 pub struct QueryHistoryEntry {
     pub id: String,
-    pub connection_id: String,
+    pub config_id: String,
     pub database: String,
     pub sql: String,
     pub executed_at: DateTime<Utc>,
@@ -25,6 +25,7 @@ pub struct QueryHistoryEntry {
 #[serde(rename_all = "camelCase")]
 pub struct FavoriteQuery {
     pub id: String,
+    pub config_id: String,
     pub title: String,
     pub sql: String,
     pub created_at: DateTime<Utc>,
@@ -63,9 +64,7 @@ pub(crate) struct StoreCache {
     pub(super) connections: Vec<ConnectionConfig>,
     pub(super) groups: Vec<String>,
     pub(super) settings: AppSettings,
-    /// Lazy: loaded on first favorites / sync / AI access.
-    pub(super) favorite_queries: Vec<FavoriteQuery>,
-    pub(super) favorite_queries_loaded: bool,
+    /// Lazy: loaded on first sync / AI access.
     pub(super) sync_tasks: Vec<SyncTask>,
     pub(super) sync_tasks_loaded: bool,
     pub(super) ai_config: Option<AiProviderConfig>,

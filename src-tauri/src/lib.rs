@@ -103,6 +103,8 @@ pub(crate) fn menu_action_for_id(id: &str) -> MenuAction {
         "open-settings" => MenuAction::Emit("menu:open-settings"),
         "new-connection" => MenuAction::Emit("menu:new-connection"),
         "schema-diff" => MenuAction::Emit("menu:schema-diff"),
+        "workflow" => MenuAction::Emit("menu:workflow"),
+        "dashboard" => MenuAction::Emit("menu:dashboard"),
         "backup" => MenuAction::Emit("menu:backup"),
         "restore" => MenuAction::Emit("menu:restore"),
         "export-config" => MenuAction::Emit("menu:export-config"),
@@ -361,6 +363,12 @@ fn setup_menu(
     let schema_diff_item = MenuItemBuilder::new(t("schema-diff"))
         .id("schema-diff")
         .build(handle)?;
+    let workflow_item = MenuItemBuilder::new(t("workflow"))
+        .id("workflow")
+        .build(handle)?;
+    let dashboard_item = MenuItemBuilder::new(t("dashboard"))
+        .id("dashboard")
+        .build(handle)?;
     let backup_item = MenuItemBuilder::new(t("backup"))
         .id("backup")
         .build(handle)?;
@@ -439,6 +447,9 @@ fn setup_menu(
     // ── Tools ──
     let tools_menu = SubmenuBuilder::new(handle, t("tools"))
         .item(&schema_diff_item)
+        .separator()
+        .item(&workflow_item)
+        .item(&dashboard_item)
         .separator()
         .item(&backup_item)
         .item(&restore_item)
@@ -726,7 +737,14 @@ pub fn run() {
                 tray::sync_tray(&handle);
             }
 
-            let _ = app.get_webview_window("main");
+            if let Some(main) = app.get_webview_window("main") {
+                commands::window::prepare_main_window(&main);
+                let main_for_deferred = main.clone();
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_millis(500));
+                    commands::window::prepare_main_window(&main_for_deferred);
+                });
+            }
 
             // Optional embedded MCP: only if user explicitly enabled it in settings (default off).
             {
@@ -764,6 +782,7 @@ pub fn run() {
             commands::get_connections,
             commands::save_connection,
             commands::delete_connection,
+            commands::reorder_connections,
             commands::get_groups,
             commands::save_groups,
             commands::test_connection,
@@ -843,6 +862,7 @@ pub fn run() {
             commands::backup_database_with_dialog,
             commands::restore_database,
             commands::restore_database_with_dialog,
+            commands::execute_sql_file_with_dialog,
             commands::compare_databases,
             commands::classify_sync_pair,
             commands::compare_table_schemas,
@@ -1003,7 +1023,11 @@ pub fn run() {
 mod tests {
     use super::*;
     use crate::store::Store;
-    use std::sync::Arc;
+    use std::sync::{Arc, Mutex};
+
+    /// Guards tests that read/write the shared global `settings.json` so they
+    /// don't race when `cargo test` runs them in parallel.
+    static SETTINGS_FILE_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn menu_labels_en_contains_core_keys() {
@@ -1029,6 +1053,7 @@ mod tests {
 
     #[test]
     fn resolve_log_settings_defaults_without_settings_file() {
+        let _guard = SETTINGS_FILE_LOCK.lock().unwrap();
         let data_dir = Store::default_app_data_dir().unwrap();
         let settings_path = data_dir.join("settings.json");
         let backup = settings_path
@@ -1047,6 +1072,7 @@ mod tests {
 
     #[test]
     fn resolve_log_settings_reads_custom_level_and_path() {
+        let _guard = SETTINGS_FILE_LOCK.lock().unwrap();
         let data_dir = Store::default_app_data_dir().unwrap();
         std::fs::create_dir_all(&data_dir).unwrap();
         let settings_path = data_dir.join("settings.json");
@@ -1236,6 +1262,8 @@ mod tests {
             "open-settings",
             "new-connection",
             "schema-diff",
+            "workflow",
+            "dashboard",
             "backup",
             "restore",
             "export-config",

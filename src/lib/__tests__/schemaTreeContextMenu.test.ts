@@ -20,6 +20,15 @@ const labels: SchemaTreeContextMenuLabels = {
   truncate: 'Truncate',
   drop: 'Drop',
   dropView: 'Drop View',
+  dropDatabase: 'Drop Database',
+  viewErDiagram: 'View ER Diagram',
+  newSchema: 'New Schema',
+  createSchema: 'Create Schema',
+  dropSchema: 'Drop Schema',
+  executeSqlFile: 'Execute SQL File',
+  dataTransfer: 'Data Transfer',
+  compareSchema: 'Compare Schema',
+  compareData: 'Compare Data',
 };
 
 function ids(items: ReturnType<typeof buildSchemaTreeContextMenuItems>): string[] {
@@ -310,5 +319,182 @@ describe('buildSchemaTreeContextMenuItems', () => {
     });
     expect(ids(items)).not.toContain('export');
     expect(ids(items)).not.toContain('batch-export');
+  });
+
+  it('database menu includes execute-sql-file and create-schema when handlers provided', () => {
+    const onExecuteSqlFile = vi.fn();
+    const onCreateSchema = vi.fn();
+    const items = buildSchemaTreeContextMenuItems({
+      kind: 'database',
+      labels,
+      handlers: {
+        onRefresh: vi.fn(),
+        onNewQuery: vi.fn(),
+        onCopyDatabaseName: vi.fn(),
+        onExecuteSqlFile,
+        onCreateSchema,
+        onNewTable: vi.fn(),
+      },
+      readOnly: false,
+      showNewTable: true,
+    });
+    expect(ids(items)).toContain('execute-sql-file');
+    expect(ids(items)).toContain('create-schema');
+    expect(ids(items)).toContain('new-table');
+
+    const sqlFileItem = items.find((i) => i.kind === 'item' && i.id === 'execute-sql-file');
+    if (sqlFileItem?.kind === 'item') sqlFileItem.action();
+    expect(onExecuteSqlFile).toHaveBeenCalledOnce();
+
+    const schemaItem = items.find((i) => i.kind === 'item' && i.id === 'create-schema');
+    if (schemaItem?.kind === 'item') schemaItem.action();
+    expect(onCreateSchema).toHaveBeenCalledOnce();
+  });
+
+  it('database menu omits execute-sql-file when handler is missing', () => {
+    const items = buildSchemaTreeContextMenuItems({
+      kind: 'database',
+      labels,
+      handlers: {
+        onRefresh: vi.fn(),
+        onNewQuery: vi.fn(),
+        onCopyDatabaseName: vi.fn(),
+      },
+      readOnly: false,
+    });
+    expect(ids(items)).not.toContain('execute-sql-file');
+    expect(ids(items)).not.toContain('create-schema');
+  });
+
+  it('database menu hides execute-sql-file in read-only or safe mode', () => {
+    const readOnlyItems = buildSchemaTreeContextMenuItems({
+      kind: 'database',
+      labels,
+      handlers: {
+        onRefresh: vi.fn(),
+        onNewQuery: vi.fn(),
+        onCopyDatabaseName: vi.fn(),
+        onExecuteSqlFile: vi.fn(),
+      },
+      readOnly: true,
+    });
+    expect(ids(readOnlyItems)).not.toContain('execute-sql-file');
+
+    const safeModeItems = buildSchemaTreeContextMenuItems({
+      kind: 'database',
+      labels,
+      handlers: {
+        onRefresh: vi.fn(),
+        onNewQuery: vi.fn(),
+        onCopyDatabaseName: vi.fn(),
+        onExecuteSqlFile: vi.fn(),
+      },
+      safeMode: true,
+    });
+    expect(ids(safeModeItems)).not.toContain('execute-sql-file');
+  });
+
+  it('schema menu includes execute-sql-file and new-table', () => {
+    const onExecuteSqlFile = vi.fn();
+    const onNewTable = vi.fn();
+    const items = buildSchemaTreeContextMenuItems({
+      kind: 'schema',
+      labels,
+      handlers: {
+        onRefresh: vi.fn(),
+        onNewQuery: vi.fn(),
+        onCopyName: vi.fn(),
+        onExecuteSqlFile,
+        onNewTable,
+      },
+      readOnly: false,
+    });
+    expect(ids(items)).toContain('execute-sql-file');
+    expect(ids(items)).toContain('new-table');
+
+    const sqlFileItem = items.find((i) => i.kind === 'item' && i.id === 'execute-sql-file');
+    if (sqlFileItem?.kind === 'item') sqlFileItem.action();
+    expect(onExecuteSqlFile).toHaveBeenCalledOnce();
+
+    const tableItem = items.find((i) => i.kind === 'item' && i.id === 'new-table');
+    if (tableItem?.kind === 'item') tableItem.action();
+    expect(onNewTable).toHaveBeenCalledOnce();
+  });
+
+  it('schema menu hides new-table when readOnly', () => {
+    const items = buildSchemaTreeContextMenuItems({
+      kind: 'schema',
+      labels,
+      handlers: {
+        onRefresh: vi.fn(),
+        onNewQuery: vi.fn(),
+        onCopyName: vi.fn(),
+        onNewTable: vi.fn(),
+      },
+      readOnly: true,
+    });
+    expect(ids(items)).not.toContain('new-table');
+  });
+
+  it('schema menu hides execute-sql-file in read-only or safe mode', () => {
+    const readOnlyItems = buildSchemaTreeContextMenuItems({
+      kind: 'schema',
+      labels,
+      handlers: {
+        onRefresh: vi.fn(),
+        onNewQuery: vi.fn(),
+        onCopyName: vi.fn(),
+        onExecuteSqlFile: vi.fn(),
+      },
+      readOnly: true,
+    });
+    expect(ids(readOnlyItems)).not.toContain('execute-sql-file');
+
+    const safeModeItems = buildSchemaTreeContextMenuItems({
+      kind: 'schema',
+      labels,
+      handlers: {
+        onRefresh: vi.fn(),
+        onNewQuery: vi.fn(),
+        onCopyName: vi.fn(),
+        onExecuteSqlFile: vi.fn(),
+      },
+      safeMode: true,
+    });
+    expect(ids(safeModeItems)).not.toContain('execute-sql-file');
+  });
+
+  it('category tables includes new-table when not readOnly', () => {
+    const onNewTable = vi.fn();
+    const items = buildSchemaTreeContextMenuItems({
+      kind: 'category',
+      labels,
+      handlers: {
+        onRefresh: vi.fn(),
+        onImport: vi.fn(),
+        onNewTable,
+      },
+      readOnly: false,
+      categoryId: 'tables',
+    });
+    expect(ids(items)).toContain('new-table');
+    const tableItem = items.find((i) => i.kind === 'item' && i.id === 'new-table');
+    if (tableItem?.kind === 'item') tableItem.action();
+    expect(onNewTable).toHaveBeenCalledOnce();
+  });
+
+  it('category non-tables does not include new-table', () => {
+    const items = buildSchemaTreeContextMenuItems({
+      kind: 'category',
+      labels,
+      handlers: {
+        onRefresh: vi.fn(),
+        onImport: vi.fn(),
+        onNewTable: vi.fn(),
+      },
+      readOnly: false,
+      categoryId: 'views',
+    });
+    expect(ids(items)).not.toContain('new-table');
   });
 });

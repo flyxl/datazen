@@ -213,9 +213,27 @@ export async function createAndConnectMySQL(
     return { mainWindow, connWindow };
   }
 
-  // Create a new MySQL connection
-  const newConnBtn = await $('button*=新建连接');
-  await newConnBtn.click();
+  // Create a new MySQL connection (icon-only toolbar button OR text button in empty state)
+  const clickedNew = await browser.execute(() => {
+    // Try text button first (empty state)
+    const textBtn = Array.from(document.querySelectorAll('button')).find(
+      (b) => b.textContent?.includes('新建连接') || b.textContent?.includes('New Connection'),
+    );
+    if (textBtn) {
+      textBtn.click();
+      return true;
+    }
+    // Fallback: icon-only toolbar button by title
+    const titleBtn = document.querySelector(
+      'button[title="新建连接"], button[title="New Connection"]',
+    ) as HTMLButtonElement | null;
+    if (titleBtn) {
+      titleBtn.click();
+      return true;
+    }
+    return false;
+  });
+  if (!clickedNew) throw new Error('Could not find "新建连接" button');
   const newConnWindow = await switchToNewWindow(mainWindow);
 
   // Select MySQL type
@@ -331,8 +349,24 @@ export async function createAndConnectPostgreSQL(
     return { mainWindow, connWindow };
   }
 
-  const newConnBtn = await $('button*=新建连接');
-  await newConnBtn.click();
+  const clickedNew = await browser.execute(() => {
+    const textBtn = Array.from(document.querySelectorAll('button')).find(
+      (b) => b.textContent?.includes('新建连接') || b.textContent?.includes('New Connection'),
+    );
+    if (textBtn) {
+      textBtn.click();
+      return true;
+    }
+    const titleBtn = document.querySelector(
+      'button[title="新建连接"], button[title="New Connection"]',
+    ) as HTMLButtonElement | null;
+    if (titleBtn) {
+      titleBtn.click();
+      return true;
+    }
+    return false;
+  });
+  if (!clickedNew) throw new Error('Could not find "新建连接" button');
   const newConnWindow = await switchToNewWindow(mainWindow);
 
   // PostgreSQL is the default type; ensure it is selected

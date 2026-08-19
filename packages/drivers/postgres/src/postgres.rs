@@ -92,9 +92,29 @@ impl PostgresDriver {
     async fn fetch_tables_from_pool(pool: &PgPool) -> Result<Vec<TableInfo>, DriverError> {
         let rows = sqlx::query(
             r#"
-            SELECT table_schema, table_name, table_type
-            FROM information_schema.tables
-            WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
+            SELECT n.nspname AS table_schema, c.relname AS table_name,
+                   CASE c.relkind
+                     WHEN 'v' THEN 'VIEW'
+                     WHEN 'm' THEN 'VIEW'
+                     ELSE 'BASE TABLE'
+                   END AS table_type
+            FROM pg_catalog.pg_class c
+            JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+            WHERE c.relkind IN ('r', 'v', 'm', 'f', 'p')
+              AND n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+              AND NOT pg_catalog.pg_is_other_temp_schema(n.oid)
+              AND (pg_catalog.pg_my_temp_schema() = 0 OR n.oid <> pg_catalog.pg_my_temp_schema())
+            UNION ALL
+            SELECT n.nspname AS table_schema, '' AS table_name, 'SCHEMA_MARKER' AS table_type
+            FROM pg_catalog.pg_namespace n
+            WHERE n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+              AND NOT pg_catalog.pg_is_other_temp_schema(n.oid)
+              AND (pg_catalog.pg_my_temp_schema() = 0 OR n.oid <> pg_catalog.pg_my_temp_schema())
+              AND NOT EXISTS (
+                SELECT 1 FROM pg_catalog.pg_class c
+                WHERE c.relnamespace = n.oid
+                  AND c.relkind IN ('r', 'v', 'm', 'f', 'p')
+              )
             ORDER BY table_schema, table_name
             "#,
         )
@@ -106,11 +126,13 @@ impl PostgresDriver {
             .iter()
             .map(|r| {
                 let tt: String = r.get("table_type");
+                let name: String = r.get("table_name");
                 TableInfo {
                     schema: r.get("table_schema"),
-                    name: r.get("table_name"),
+                    name,
                     table_type: match tt.as_str() {
                         "VIEW" => TableType::View,
+                        "SCHEMA_MARKER" => TableType::SystemTable,
                         _ => TableType::Table,
                     },
                     row_count: None,
@@ -1448,6 +1470,25 @@ impl DatabaseDriver for PostgresDriver {
         let caps = self.structure_capabilities(handle).await?;
         plan_structure_changes_with_caps(&caps, request)
     }
+
+    fn command_definitions(&self) -> Vec<DriverCommandDefinition> {
+        crate::admin_commands::pg_admin_command_definitions()
+    }
+
+    async fn execute_command(
+        &self,
+        handle: &ConnectionHandle,
+        command: &str,
+        input: serde_json::Value,
+    ) -> Result<CommandResult, DriverError> {
+        match execute_standard_sql_command(self, handle, command, input.clone()).await {
+            Err(DriverError::Unsupported(_)) => {}
+            other => return other,
+        }
+        let pools = self.pools.read().await;
+        let pool = Self::get_pool(&pools, handle)?;
+        crate::admin_commands::execute_pg_admin_command(pool, command, input).await
+    }
 }
 
 fn is_pg_result_query(sql: &str) -> bool {
@@ -1876,6 +1917,21 @@ async fn fetch_pg_table_ddl_from_catalog(
 mod tests {
     use super::*;
     use datazen_driver_api::DatabaseDriver;
+
+    #[test]
+    fn fetch_tables_sql_uses_pg_catalog_system_schema_filters() {
+        const SQL: &str = r#"
+            FROM pg_catalog.pg_class c
+            JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+            WHERE c.relkind IN ('r', 'v', 'm', 'f', 'p')
+              AND n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+              AND NOT pg_catalog.pg_is_other_temp_schema(n.oid)
+              AND (pg_catalog.pg_my_temp_schema() = 0 OR n.oid <> pg_catalog.pg_my_temp_schema())
+        "#;
+        assert!(SQL.contains("pg_is_other_temp_schema"));
+        assert!(SQL.contains("pg_my_temp_schema"));
+        assert!(!SQL.contains("LIKE 'pg_%'"));
+    }
 
     #[test]
     fn validate_database_name_trims_and_accepts() {

@@ -1,9 +1,10 @@
-
 export type SqlDialectFamily = string;
 
 export interface DdlDialect {
-  /** SQL to fetch DDL; returns how to extract DDL string from first result row */
+  /** SQL to fetch DDL for a table; returns how to extract DDL string from first result row */
   getTableDdlQuery(tableName: string, schema?: string): { sql: string; extractColumnIndex: number };
+  /** SQL to fetch DDL for a view; falls back to getTableDdlQuery if not provided */
+  getViewDdlQuery?(viewName: string, schema?: string): { sql: string; extractColumnIndex: number };
 }
 
 export interface IndexDialect {
@@ -29,4 +30,6 @@ export interface SqlDialectStrategy {
   ddl: DdlDialect;
   index: IndexDialect;
   backupOptions: BackupOption[];
+  /** SQL to empty a table; defaults to `TRUNCATE TABLE <quoted>`. */
+  getTruncateTableSql?: (quotedName: string) => string;
 }

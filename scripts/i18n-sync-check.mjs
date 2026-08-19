@@ -20,7 +20,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
 const localesDir = resolve(root, 'src/locales');
 
-const LOCALE_FILES = ['zh-CN', 'zh-TW', 'de', 'es', 'fr', 'ja', 'ko', 'pt-BR', 'ru'];
+const LOCALE_FILES = ['zh-CN'];
 
 function extractKeys(filePath) {
   const src = readFileSync(filePath, 'utf-8');

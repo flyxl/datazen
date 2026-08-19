@@ -103,18 +103,26 @@ pub(crate) async fn execute_query_stream_impl(
     match driver.query_stream(&handle, &sql, limit, wrapped).await {
         Ok(()) => {
             if opts.record_history {
-                let entry = crate::store::QueryHistoryEntry {
-                    id: uuid::Uuid::new_v4().to_string(),
-                    connection_id: connection_id.clone(),
-                    database: String::new(),
-                    sql: sql.clone(),
-                    executed_at: chrono::Utc::now(),
-                    execution_time_ms: total_ms.load(Ordering::Relaxed),
-                    rows_affected: Some(rows_affected.load(Ordering::Relaxed)),
-                    success: true,
-                    error_message: None,
-                };
-                let _ = state.store.add_query_history(entry).await;
+                if let Some(config_id) = state
+                    .connection_manager
+                    .resolve_config_id(&connection_id)
+                    .await
+                {
+                    let entry = crate::store::QueryHistoryEntry {
+                        id: uuid::Uuid::new_v4().to_string(),
+                        config_id,
+                        database: String::new(),
+                        sql: sql.clone(),
+                        executed_at: chrono::Utc::now(),
+                        execution_time_ms: total_ms.load(Ordering::Relaxed),
+                        rows_affected: Some(rows_affected.load(Ordering::Relaxed)),
+                        success: true,
+                        error_message: None,
+                    };
+                    let _ = state.store.add_query_history(entry).await;
+                } else {
+                    tracing::warn!(%connection_id, "Skipping history: config_id not found");
+                }
             }
             if crate::cache::sql_may_mutate_schema(&sql) {
                 state.schema_cache.clear_connection(&connection_id).await;
@@ -123,18 +131,24 @@ pub(crate) async fn execute_query_stream_impl(
         }
         Err(err) => {
             if opts.record_history {
-                let entry = crate::store::QueryHistoryEntry {
-                    id: uuid::Uuid::new_v4().to_string(),
-                    connection_id: connection_id.clone(),
-                    database: String::new(),
-                    sql: sql.clone(),
-                    executed_at: chrono::Utc::now(),
-                    execution_time_ms: 0,
-                    rows_affected: None,
-                    success: false,
-                    error_message: Some(err.to_string()),
-                };
-                let _ = state.store.add_query_history(entry).await;
+                if let Some(config_id) = state
+                    .connection_manager
+                    .resolve_config_id(&connection_id)
+                    .await
+                {
+                    let entry = crate::store::QueryHistoryEntry {
+                        id: uuid::Uuid::new_v4().to_string(),
+                        config_id,
+                        database: String::new(),
+                        sql: sql.clone(),
+                        executed_at: chrono::Utc::now(),
+                        execution_time_ms: 0,
+                        rows_affected: None,
+                        success: false,
+                        error_message: Some(err.to_string()),
+                    };
+                    let _ = state.store.add_query_history(entry).await;
+                }
             }
             Err(err).cmd_err("execute_query_stream")
         }
@@ -173,8 +187,12 @@ pub(crate) async fn cancel_query_impl(
 pub(crate) async fn get_query_history_impl(
     state: &AppState,
     limit: usize,
+    config_id: Option<String>,
 ) -> Result<Vec<QueryHistoryEntry>, CommandError> {
-    Ok(state.store.get_query_history(limit).await)
+    Ok(state
+        .store
+        .get_query_history(limit, config_id.as_deref())
+        .await)
 }
 
 pub(crate) async fn clear_query_history_impl(state: &AppState) -> Result<(), CommandError> {
@@ -188,17 +206,20 @@ pub(crate) async fn clear_query_history_impl(state: &AppState) -> Result<(), Com
 
 pub(crate) async fn get_favorite_queries_impl(
     state: &AppState,
+    config_id: Option<String>,
 ) -> Result<Vec<crate::store::FavoriteQuery>, CommandError> {
-    Ok(state.store.get_favorite_queries().await)
+    Ok(state.store.get_favorite_queries(config_id.as_deref()).await)
 }
 
 pub(crate) async fn add_favorite_query_impl(
     state: &AppState,
+    config_id: String,
     title: String,
     sql: String,
 ) -> Result<crate::store::FavoriteQuery, CommandError> {
     let fav = crate::store::FavoriteQuery {
         id: uuid::Uuid::new_v4().to_string(),
+        config_id,
         title,
         sql,
         created_at: chrono::Utc::now(),
@@ -277,8 +298,9 @@ pub async fn cancel_query(
 pub async fn get_query_history(
     state: State<'_, AppState>,
     limit: usize,
+    config_id: Option<String>,
 ) -> Result<Vec<QueryHistoryEntry>, CommandError> {
-    get_query_history_impl(&state, limit).await
+    get_query_history_impl(&state, limit, config_id).await
 }
 
 #[tauri::command]
@@ -289,17 +311,19 @@ pub async fn clear_query_history(state: State<'_, AppState>) -> Result<(), Comma
 #[tauri::command]
 pub async fn get_favorite_queries(
     state: State<'_, AppState>,
+    config_id: Option<String>,
 ) -> Result<Vec<crate::store::FavoriteQuery>, CommandError> {
-    get_favorite_queries_impl(&state).await
+    get_favorite_queries_impl(&state, config_id).await
 }
 
 #[tauri::command]
 pub async fn add_favorite_query(
     state: State<'_, AppState>,
+    config_id: String,
     title: String,
     sql: String,
 ) -> Result<crate::store::FavoriteQuery, CommandError> {
-    add_favorite_query_impl(&state, title, sql).await
+    add_favorite_query_impl(&state, config_id, title, sql).await
 }
 
 #[tauri::command]
@@ -484,7 +508,7 @@ mod tests {
             .unwrap();
         assert_eq!(result.results.len(), 1);
 
-        let history = get_query_history_impl(&test.state, 10).await.unwrap();
+        let history = get_query_history_impl(&test.state, 10, None).await.unwrap();
         assert_eq!(history.len(), 1);
         assert!(history[0].success);
     }
@@ -538,23 +562,31 @@ mod tests {
     #[tokio::test]
     async fn favorite_queries_roundtrip() {
         let test = TestAppState::new().await;
-        assert!(get_favorite_queries_impl(&test.state)
+        assert!(get_favorite_queries_impl(&test.state, None)
             .await
             .unwrap()
             .is_empty());
 
-        let fav = add_favorite_query_impl(&test.state, "My query".into(), "SELECT 1".into())
-            .await
-            .unwrap();
+        let fav = add_favorite_query_impl(
+            &test.state,
+            "cfg-test".into(),
+            "My query".into(),
+            "SELECT 1".into(),
+        )
+        .await
+        .unwrap();
         assert_eq!(
-            get_favorite_queries_impl(&test.state).await.unwrap().len(),
+            get_favorite_queries_impl(&test.state, None)
+                .await
+                .unwrap()
+                .len(),
             1
         );
 
         delete_favorite_query_impl(&test.state, fav.id)
             .await
             .unwrap();
-        assert!(get_favorite_queries_impl(&test.state)
+        assert!(get_favorite_queries_impl(&test.state, None)
             .await
             .unwrap()
             .is_empty());
@@ -568,7 +600,7 @@ mod tests {
             .await
             .unwrap();
         clear_query_history_impl(&test.state).await.unwrap();
-        assert!(get_query_history_impl(&test.state, 10)
+        assert!(get_query_history_impl(&test.state, 10, None)
             .await
             .unwrap()
             .is_empty());
@@ -624,7 +656,7 @@ mod tests {
         assert!(events
             .iter()
             .any(|e| matches!(e, QueryStreamEvent::Done { .. })));
-        let history = get_query_history_impl(&test.state, 10).await.unwrap();
+        let history = get_query_history_impl(&test.state, 10, None).await.unwrap();
         assert!(history.iter().any(|e| e.success));
     }
 
@@ -673,7 +705,7 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(test.mock.last_query_limit(), Some(None));
-        let history = get_query_history_impl(&test.state, 10).await.unwrap();
+        let history = get_query_history_impl(&test.state, 10, None).await.unwrap();
         assert!(history.is_empty());
     }
 
@@ -696,7 +728,7 @@ mod tests {
         .await
         .unwrap_err();
         assert!(err.to_string().contains("boom"));
-        let history = get_query_history_impl(&test.state, 10).await.unwrap();
+        let history = get_query_history_impl(&test.state, 10, None).await.unwrap();
         assert_eq!(history.len(), 1);
         assert!(!history[0].success);
         assert!(history[0]
