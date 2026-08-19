@@ -271,11 +271,13 @@ export function usePanelHandlers({
     addPanel(panel);
   }, [sidebarConnCtx, connPanels, addPanel, setActivePanel]);
 
+  const getLastTabForConnection = useQueryStore((s) => s.getLastTabForConnection);
+
   const handleNewQuery = useCallback(
     (initialSql?: string) => {
       if (!sidebarConnCtx) return;
-      createQueryTab();
-      const latestTab = useQueryStore.getState().tabs.at(-1);
+      createQueryTab(sidebarConnCtx.connectionId);
+      const latestTab = getLastTabForConnection(sidebarConnCtx.connectionId);
       if (!latestTab) return;
       if (initialSql) updateQuerySql(latestTab.id, initialSql);
       const db = currentDatabase ?? initialDatabase ?? '';
@@ -288,7 +290,15 @@ export function usePanelHandlers({
       };
       addPanel(panel);
     },
-    [sidebarConnCtx, createQueryTab, updateQuerySql, currentDatabase, initialDatabase, addPanel],
+    [
+      sidebarConnCtx,
+      createQueryTab,
+      getLastTabForConnection,
+      updateQuerySql,
+      currentDatabase,
+      initialDatabase,
+      addPanel,
+    ],
   );
 
   const handleClosePanel = useCallback(

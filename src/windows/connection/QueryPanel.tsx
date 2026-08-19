@@ -107,7 +107,7 @@ function ToolbarButton({ compact, label, icon, className, title, ...props }: Too
 
 export function QueryPanel({ connectionId, configId, queryTabId, databaseType }: QueryPanelProps) {
   const { t } = useI18n();
-  const tab = useQueryStore((s) => s.tabs.find((t) => t.id === queryTabId));
+  const tab = useQueryStore((s) => s.findTab(queryTabId));
   const historyVisible = useQueryStore((s) => s.historyVisible);
   const history = useQueryStore((s) => s.history);
   const updateSql = useQueryStore((s) => s.updateSql);
@@ -371,7 +371,7 @@ export function QueryPanel({ connectionId, configId, queryTabId, databaseType }:
           await executeQuery(tab.id, boundPayload);
         }
       }
-      const err = useQueryStore.getState().tabs.find((item) => item.id === tab.id)?.error ?? null;
+      const err = useQueryStore.getState().findTab(tab.id)?.error ?? null;
       if (err) {
         await maybeOfferAbortedDialog(err);
       } else {
@@ -607,9 +607,7 @@ export function QueryPanel({ connectionId, configId, queryTabId, databaseType }:
   useEffect(() => {
     const unlisten = listen('menu:add-favorite', () => {
       const sql =
-        pendingFavSqlRef.current ||
-        useQueryStore.getState().tabs.find((t) => t.id === queryTabId)?.sql ||
-        '';
+        pendingFavSqlRef.current || useQueryStore.getState().findTab(queryTabId)?.sql || '';
       openAddFavoriteDialog(sql);
     });
     return () => {
