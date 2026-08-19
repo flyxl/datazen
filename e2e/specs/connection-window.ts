@@ -9,6 +9,7 @@ import {
   clickTableInSidebar,
   switchSubTab,
   waitForSchemaTreeLoaded,
+  connectSeededPgInWorkspace,
 } from '../helpers.js';
 
 const TEST_PARENT = '_e2e_idx_parent';
@@ -22,34 +23,10 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
   let mainWindow: string;
 
   before(async () => {
-    let handles = await browser.getWindowHandles();
-
-    // Detect if a connection window already exists
-    const connHandle = handles.find((h) => h.startsWith('connection'));
-    mainWindow =
-      handles.find((h) => h === 'main') ?? handles.find((h) => !h.startsWith('connection')) ?? '';
-
-    if (connHandle) {
-      // Already have a connection window, use it directly
-      await browser.switchToWindow(connHandle);
-    } else {
-      // Only main window — need to open a connection
-      await browser.switchToWindow(mainWindow || handles[0]);
-      await $(`button*=${t('action.newConnection')}`).waitForDisplayed({ timeout: 10000 });
-      await browser.pause(1500);
-      await clickCardConnectButton();
-      await browser.waitUntil(async () => (await browser.getWindowHandles()).length > 1, {
-        timeout: 30000,
-        timeoutMsg: 'Timed out waiting for connection window',
-      });
-      handles = await browser.getWindowHandles();
-      const newConn =
-        handles.find((h) => h.startsWith('connection')) ?? handles.find((h) => h !== mainWindow)!;
-      await browser.switchToWindow(newConn);
-    }
-
+    mainWindow = await browser.getWindowHandle();
+    await connectSeededPgInWorkspace();
     await $(`button*=${t('connWin.newQuery')}`).waitForDisplayed({ timeout: 20000 });
-    await browser.pause(2000);
+    await browser.pause(1500);
 
     await openQueryTab();
     await executeSQL(`DROP TABLE IF EXISTS ${TEST_CHILD}`);
@@ -88,15 +65,10 @@ describe('数据库浏览模块 (DB-001~DB-010, DE-001, DE-006)', () => {
 
   after(async () => {
     try {
-      const handles = await browser.getWindowHandles();
-      const connWindow =
-        handles.find((h) => h.startsWith('connection')) ?? handles.find((h) => h !== mainWindow);
-      if (connWindow) {
-        await browser.switchToWindow(connWindow);
-        await openQueryTab();
-        await executeSQL(`DROP TABLE IF EXISTS ${TEST_CHILD}`);
-        await executeSQL(`DROP TABLE IF EXISTS ${TEST_PARENT}`);
-      }
+      await browser.switchToWindow(mainWindow);
+      await openQueryTab();
+      await executeSQL(`DROP TABLE IF EXISTS ${TEST_CHILD}`);
+      await executeSQL(`DROP TABLE IF EXISTS ${TEST_PARENT}`);
     } catch {
       // best-effort cleanup
     }

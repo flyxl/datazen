@@ -1,9 +1,9 @@
 import { expect, browser, $, $$ } from '@wdio/globals';
 import { t } from '../i18n.js';
 import {
-  clickCardConnectButton,
-  clickFirstTable,
+  connectSeededPgInWorkspace,
   openQueryTab,
+  clickFirstTable,
   waitForSchemaTreeLoaded,
 } from '../helpers.js';
 
@@ -15,32 +15,10 @@ import {
  * Requires a PostgreSQL connection (seeded by wdio.conf.ts before hook).
  */
 describe('统一 Tab Bar (UTB-001~UTB-006)', () => {
-  let mainWindow: string;
-
   before(async () => {
-    let handles = await browser.getWindowHandles();
-    const connHandle = handles.find((h) => h.startsWith('connection'));
-    mainWindow =
-      handles.find((h) => h === 'main') ?? handles.find((h) => !h.startsWith('connection')) ?? '';
-
-    if (connHandle) {
-      await browser.switchToWindow(connHandle);
-    } else {
-      await browser.switchToWindow(mainWindow || handles[0]);
-      await $(`button*=${t('action.newConnection')}`).waitForDisplayed({ timeout: 10000 });
-      await browser.pause(1500);
-      await clickCardConnectButton();
-      await browser.waitUntil(async () => (await browser.getWindowHandles()).length > 1, {
-        timeout: 30000,
-      });
-      handles = await browser.getWindowHandles();
-      const newConn =
-        handles.find((h) => h.startsWith('connection')) ?? handles.find((h) => h !== mainWindow)!;
-      await browser.switchToWindow(newConn);
-    }
-
+    await connectSeededPgInWorkspace();
     await $(`button*=${t('connWin.newQuery')}`).waitForDisplayed({ timeout: 20000 });
-    await browser.pause(2000);
+    await browser.pause(1000);
   });
 
   it('工具栏应显示新建查询按钮 (UTB-001)', async () => {
@@ -87,17 +65,15 @@ describe('统一 Tab Bar (UTB-001~UTB-006)', () => {
     }
   });
 
-  it('空状态应显示提示文本 (UTB-005)', async () => {
+  it('空状态应显示工作区首页 (UTB-005)', async () => {
     await browser.execute(() => {
       const closeBtns = document.querySelectorAll('[data-testid="panel-tab-close"]');
       closeBtns.forEach((btn) => (btn as HTMLElement).click());
     });
     await browser.pause(500);
 
-    const hasEmptyState = await browser.execute(() => {
-      return document.body.innerText.includes('⌘N');
-    });
-    expect(hasEmptyState).toBe(true);
+    const home = await $('[data-testid="connection-workspace-home"]');
+    await expect(home).toBeDisplayed();
   });
 
   it('多个 tab 可以来回切换 (UTB-006)', async () => {

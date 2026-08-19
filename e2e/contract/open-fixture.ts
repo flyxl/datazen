@@ -12,6 +12,7 @@ import {
   findCardByName,
   openSeededPgConnectionWindow,
   switchToNewWindow,
+  waitForConnectionToolbar,
 } from '../helpers.js';
 import { t } from '../i18n.js';
 import * as path from 'node:path';
@@ -32,7 +33,8 @@ async function openSqlite(fixture: DriverFixtureDefinition, mainWindow: string) 
   if (existing) {
     await dblclickConnByExactName(fixture.displayName);
   } else {
-    await $(`button*=${t('action.newConnection')}`).click();
+    const titleBtn = await $(`button[title="${t('main.newConnection')}"]`);
+    await titleBtn.click();
     await switchToNewWindow(mainWindow);
     await $('button*=SQLite').click();
     await browser.pause(300);
@@ -47,15 +49,9 @@ async function openSqlite(fixture: DriverFixtureDefinition, mainWindow: string) 
     await browser.pause(500);
     await dblclickConnByExactName(fixture.displayName);
   }
-  await browser.waitUntil(async () => (await browser.getWindowHandles()).length > 1, {
-    timeout: 30000,
-  });
-  const handles = await browser.getWindowHandles();
-  const connWindow = handles.find((h) => h !== mainWindow)!;
-  await browser.switchToWindow(connWindow);
-  await $(`button*=${t('connWin.newQuery')}`).waitForDisplayed({ timeout: 20000 });
-  await browser.pause(800);
-  return connWindow;
+  await browser.switchToWindow(mainWindow);
+  await waitForConnectionToolbar();
+  return mainWindow;
 }
 
 /** Close extras, open fixture connection, return ctx focused on connection window. */

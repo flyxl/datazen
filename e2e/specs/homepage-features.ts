@@ -2,7 +2,7 @@
  * E2E tests for the redesigned homepage, data sync, and drag-and-drop features.
  */
 import { expect, browser, $, $$ } from '@wdio/globals';
-import { closeExtraWindows, expandAllGroups } from '../helpers.js';
+import { closeExtraWindows, expandAllGroups, connectSeededPgInWorkspace } from '../helpers.js';
 import { t } from '../i18n.js';
 
 describe('主页 TablePlus 风格 (HOME)', () => {
@@ -42,19 +42,14 @@ describe('主页 TablePlus 风格 (HOME)', () => {
     await expect(await $(`button*=${t('backup.startRestore')}`)).toBeDisplayed();
   });
 
-  it('HOME-001: 左侧应显示操作面板', async () => {
-    const backup = await $(`button*=${t('action.backup')}`);
-    const restore = await $(`button*=${t('action.restore')}`);
-    const newConn = await $(`button*=${t('action.newConnection')}`);
-    await expect(backup).toBeDisplayed();
-    await expect(restore).toBeDisplayed();
-    await expect(newConn).toBeDisplayed();
+  it('HOME-001: 应显示统一工作区导航', async () => {
+    await expect(await $('[data-testid="workspace-nav-connections"]')).toBeDisplayed();
+    await expect(await $('[data-testid="workspace-nav-workflow"]')).toBeDisplayed();
+    await expect(await $('[data-testid="workspace-nav-dashboard"]')).toBeDisplayed();
   });
 
-  it('HOME-002: 左侧面板应显示 Logo 和应用名称', async () => {
-    const logo = await $('img[alt="DataZen"]');
-    await expect(logo).toBeDisplayed();
-    const body = await $('aside').getText();
+  it('HOME-002: 标题栏应显示应用名称', async () => {
+    const body = await $('body').getText();
     expect(body).toContain('DataZen');
   });
 
@@ -194,22 +189,11 @@ describe('主页 TablePlus 风格 (HOME)', () => {
 
   // ── Double-click to connect ──────────────────────────────────────
 
-  it('HOME-040: 双击连接应打开连接窗口', async () => {
-    const items = await $$('[data-conn-item]');
-    if (items.length === 0) return;
-
-    await browser.execute(() => {
-      const el = document.querySelector('[data-conn-item]');
-      if (!el) return;
-      el.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
-    });
-
-    await browser.waitUntil(async () => (await browser.getWindowHandles()).length > 1, {
-      timeout: 30000,
-      timeoutMsg: 'Timed out waiting for connection window',
-    });
+  it('HOME-040: 双击连接应在主窗口显示工具栏', async () => {
+    await connectSeededPgInWorkspace();
+    await expect(await $(`button*=${t('connWin.newQuery')}`)).toBeDisplayed();
     const handles = await browser.getWindowHandles();
-    expect(handles.length).toBeGreaterThan(1);
+    expect(handles.length).toBe(1);
   });
 
   it('HOME-041: 连接后应显示绿色状态指示器', async () => {
@@ -244,9 +228,9 @@ describe('主页 TablePlus 风格 (HOME)', () => {
 
   // ── Action panel buttons ─────────────────────────────────────────
 
-  it('HOME-060: 点击"新建连接"应打开新连接窗口', async () => {
-    const newConnBtn = await $(`button*=${t('action.newConnection')}`);
-    await newConnBtn.click();
+  it('HOME-060: 点击"新建连接"应打开新连接子窗口', async () => {
+    const plusBtn = await $(`button[title="${t('main.newConnection')}"]`);
+    await plusBtn.click();
     await browser.waitUntil(async () => (await browser.getWindowHandles()).length > 1, {
       timeout: 15000,
       timeoutMsg: 'Timed out waiting for new connection window',

@@ -34,6 +34,15 @@ describe('统一主窗口回归', () => {
     expect(size.height).toBeGreaterThan(700);
   });
 
+  it('未打开 panel 时应显示工作区首页', async () => {
+    const connectionsNav = await $('[data-testid="workspace-nav-connections"]');
+    await connectionsNav.click();
+    await browser.pause(500);
+    const home = await $('[data-testid="connection-workspace-home"]');
+    await home.waitForDisplayed({ timeout: 10000 });
+    await expect(home).toBeDisplayed();
+  });
+
   it('启动完成后不应再显示 splash logo', async () => {
     const visibleSplashLogo = await browser.execute(() => {
       const img = document.querySelector<HTMLImageElement>('#splash img.logo');

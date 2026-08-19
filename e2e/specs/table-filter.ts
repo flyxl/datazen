@@ -59,7 +59,6 @@ describe('表数据筛选 (TF-001~TF-010)', () => {
 
   before(async () => {
     mainWindow = await browser.getWindowHandle();
-    await $(`button*=${t('action.newConnection')}`).waitForDisplayed({ timeout: 10000 });
     await openSeededPgConnectionWindow(mainWindow);
 
     await openQueryTab();
@@ -93,15 +92,9 @@ describe('表数据筛选 (TF-001~TF-010)', () => {
 
   after(async () => {
     try {
-      const handles = await browser.getWindowHandles();
-      if (handles.length > 1) {
-        const connWindow = handles.find((h) => h !== mainWindow);
-        if (connWindow) {
-          await browser.switchToWindow(connWindow);
-          await openQueryTab();
-          await executeSQL(`DROP TABLE IF EXISTS ${TEST_TABLE}`);
-        }
-      }
+      await browser.switchToWindow(mainWindow);
+      await openQueryTab();
+      await executeSQL(`DROP TABLE IF EXISTS ${TEST_TABLE}`);
     } catch {
       /* cleanup best-effort */
     }

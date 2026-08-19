@@ -57,9 +57,11 @@ export interface ThemedIconProps {
   id: string;
   className?: string;
   resolver?: IconResolver;
+  /** Lucide component used when the theme pack has no asset for `id`. */
+  fallback?: LucideIcon;
 }
 
-export function ThemedIcon({ id, className, resolver }: ThemedIconProps) {
+export function ThemedIcon({ id, className, resolver, fallback }: ThemedIconProps) {
   const [, bump] = useState(0);
   useEffect(() => {
     const onPackChanged = () => bump((n) => n + 1);
@@ -81,7 +83,7 @@ export function ThemedIcon({ id, className, resolver }: ThemedIconProps) {
   }
 
   if (resolved.kind === 'lucide') {
-    const Icon = LUCIDE_MAP[resolved.name];
+    const Icon = LUCIDE_MAP[resolved.name] ?? fallback;
     if (Icon) {
       return <Icon className={cn('shrink-0', className)} aria-hidden />;
     }

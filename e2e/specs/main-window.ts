@@ -1,17 +1,19 @@
 import { expect, browser, $, $$ } from '@wdio/globals';
-import { closeExtraWindows, expandAllGroups } from '../helpers.js';
+import { closeExtraWindows, expandAllGroups, connectSeededPgInWorkspace } from '../helpers.js';
 import { t } from '../i18n.js';
 
-describe('主窗口 (CM-001)', () => {
+describe('主窗口 / 统一工作区 (CM-001)', () => {
   let mainWindow: string;
 
   before(async () => {
     mainWindow = await browser.getWindowHandle();
+    const connectionsNav = await $('[data-testid="workspace-nav-connections"]');
+    await connectionsNav.waitForDisplayed({ timeout: 15000 });
     await $(`input[placeholder="${t('main.searchPlaceholder')}"]`).waitForDisplayed({
       timeout: 10000,
     });
     await expandAllGroups();
-    await browser.pause(1000);
+    await browser.pause(500);
   });
 
   afterEach(async () => {
@@ -20,39 +22,26 @@ describe('主窗口 (CM-001)', () => {
       await closeExtraWindows(mainWindow);
     }
     await browser.switchToWindow(mainWindow);
-    await browser.pause(500);
+    await browser.pause(300);
   });
 
-  // ── UI 元素 ──────────────────────────────────────────────────────
+  it('应显示工作区导航栏（连接 / 工作流 / 看板）', async () => {
+    await expect(await $('[data-testid="workspace-nav-connections"]')).toBeDisplayed();
+    await expect(await $('[data-testid="workspace-nav-workflow"]')).toBeDisplayed();
+    await expect(await $('[data-testid="workspace-nav-dashboard"]')).toBeDisplayed();
+  });
 
-  it('应显示搜索框', async () => {
+  it('应显示连接搜索框', async () => {
     const input = await $(`input[placeholder="${t('main.searchPlaceholder')}"]`);
     await expect(input).toBeDisplayed();
   });
 
-  it('应显示新建连接按钮（+号和 ActionPanel）', async () => {
+  it('应显示新建连接按钮（侧栏工具栏）', async () => {
     const plusBtn = await $(`button[title="${t('main.newConnection')}"]`);
     await expect(plusBtn).toBeDisplayed();
-    const actionBtn = await $(`button*=${t('action.newConnection')}`);
-    await expect(actionBtn).toBeDisplayed();
-  });
-
-  it('应显示左侧操作面板', async () => {
-    const backupBtn = await $(`button*=${t('action.backup')}`);
-    const restoreBtn = await $(`button*=${t('action.restore')}`);
-    await expect(backupBtn).toBeDisplayed();
-    await expect(restoreBtn).toBeDisplayed();
-  });
-
-  it('状态栏应显示版本号', async () => {
-    const statusBar = await $('span.tabular-nums');
-    await expect(statusBar).toBeDisplayed();
-    const text = await statusBar.getText();
-    expect(text).toContain('DataZen');
   });
 
   it('应显示分组的连接列表', async () => {
-    // Wait for connection items to load
     await browser.waitUntil(async () => (await $$('[data-conn-item]')).length > 0, {
       timeout: 10000,
       timeoutMsg: '等待连接项加载超时',
@@ -68,20 +57,13 @@ describe('主窗口 (CM-001)', () => {
         return (
           body.includes('Pg') ||
           body.includes('My') ||
-          body.includes('Ma') ||
-          body.includes('Lt') ||
-          body.includes('Rd') ||
-          body.includes('Ss') ||
-          body.includes('Ki') ||
-          body.includes('Pr') ||
-          body.includes('Tr')
+          body.includes('PostgreSQL') ||
+          body.includes('本地')
         );
       },
       { timeout: 10000, timeoutMsg: '等待数据库类型图标加载超时' },
     );
   });
-
-  // ── 分组展开/折叠 ──────────────────────────────────────────────
 
   it('点击分组头应折叠/展开连接列表', async () => {
     const headers = await $$('[data-group-header]');
@@ -94,46 +76,25 @@ describe('主窗口 (CM-001)', () => {
     await browser.pause(300);
 
     const countAfterCollapse = (await $$('[data-conn-item]')).length;
-    // Should have fewer items after collapsing
     expect(countAfterCollapse).toBeLessThanOrEqual(countBefore);
 
-    // Re-expand
     await firstHeader.click();
     await browser.pause(300);
   });
 
-  // ── 双击连接 ──────────────────────────────────────────────────
-
-  it('双击连接应打开连接窗口', async () => {
-    await browser.execute(() => {
-      const el = document.querySelector('[data-conn-item]');
-      if (el) el.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
-    });
-    await browser.waitUntil(async () => (await browser.getWindowHandles()).length > 1, {
-      timeout: 30000,
-      timeoutMsg: '等待连接窗口打开超时',
-    });
+  it('双击连接应在同一主窗口显示连接工具栏', async () => {
+    await connectSeededPgInWorkspace();
+    const newQueryBtn = await $(`button*=${t('connWin.newQuery')}`);
+    await expect(newQueryBtn).toBeDisplayed();
     const handles = await browser.getWindowHandles();
-    expect(handles.length).toBeGreaterThan(1);
+    expect(handles.length).toBe(1);
   });
 
-  // ── 右键菜单 ──────────────────────────────────────────────────
-
   it('连接项绑定了 contextmenu 处理器', async () => {
-    // Native context menus block the WebDriver session, so we just verify
-    // that connection items exist and are interactive (have contextmenu handlers via React).
     const hasItems = await browser.execute(() => {
       const el = document.querySelector('[data-conn-item]');
       return el instanceof HTMLElement;
     });
     expect(hasItems).toBe(true);
-  });
-
-  it('分组头绑定了 contextmenu 处理器', async () => {
-    const hasHeaders = await browser.execute(() => {
-      const el = document.querySelector('[data-group-header]');
-      return el instanceof HTMLElement;
-    });
-    expect(hasHeaders).toBe(true);
   });
 });

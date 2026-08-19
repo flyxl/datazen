@@ -354,6 +354,27 @@ mod tests {
     }
 
     #[test]
+    fn validates_all_community_theme_packs() {
+        let themes_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../packages/themes");
+        for entry in fs::read_dir(&themes_root).expect("read packages/themes") {
+            let entry = entry.expect("dir entry");
+            let path = entry.path();
+            if !path.is_dir() {
+                continue;
+            }
+            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            if !name.starts_with("community.") {
+                continue;
+            }
+            let manifest = validate_pack_dir(&path).unwrap_or_else(|e| {
+                panic!("community pack `{name}` failed validation: {e}");
+            });
+            assert_eq!(manifest.id, name, "manifest id must match folder `{name}`");
+            assert_eq!(manifest.api_version, THEME_API_VERSION);
+        }
+    }
+
+    #[test]
     fn rejects_unsupported_api_version() {
         let dir = TempDir::new().unwrap();
         write_file(
