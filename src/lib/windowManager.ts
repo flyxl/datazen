@@ -26,25 +26,6 @@ export const WINDOW_CAPABILITY_LABEL_SAMPLES = [
   'docs-singleton',
 ] as const;
 
-/**
- * Representative window labels that must match
- * `src-tauri/capabilities/default.json` → `windows` globs.
- * Keep in sync when adding open*Window helpers.
- */
-export const WINDOW_CAPABILITY_LABEL_SAMPLES = [
-  'main',
-  'new-connection-singleton',
-  'data-sync-singleton',
-  'schema-diff-singleton',
-  'backup-singleton',
-  'backup-restore-singleton',
-  'workflow-singleton',
-  'settings-singleton',
-  'docs-singleton',
-  'connection-singleton',
-  'dashboard-sample-id',
-] as const;
-
 interface OpenWindowOptions {
   params?: Record<string, string>;
   width?: number;
