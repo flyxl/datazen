@@ -19,13 +19,13 @@ describe('getWindowKind', () => {
   it('maps window query param to kind', async () => {
     const cases: Array<[string, string]> = [
       ['?window=new-connection', 'new-connection'],
-      ['?window=connection', 'connection'],
+      ['?window=connection', 'main'],
       ['?window=settings', 'settings'],
       ['?window=data-sync', 'data-sync'],
       ['?window=backup', 'backup'],
-      ['?window=workflow', 'workflow'],
+      ['?window=workflow', 'main'],
       ['?window=docs', 'docs'],
-      ['?window=dashboard', 'dashboard'],
+      ['?window=dashboard', 'main'],
     ];
     for (const [search, kind] of cases) {
       const { getWindowKind } = await loadModule(search);

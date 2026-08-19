@@ -48,12 +48,10 @@ describe('windowManager — browser', () => {
     );
   });
 
-  it('openConnectionWindow stores pending connection in localStorage and opens with stable URL', async () => {
+  it('openConnectionWindow stores pending connection and focuses main workspace', async () => {
     const { openConnectionWindow, PENDING_CONNECTION_KEY } = await import('../windowManager');
     openConnectionWindow({ connectionId: 'c1', configId: 'cfg1' }, 'My DB', 'app', 'postgresql');
-    const url = String(vi.mocked(window.open).mock.calls[0][0]);
-    expect(url).toContain('window=connection');
-    expect(url).not.toContain('connectionId');
+    expect(window.open).not.toHaveBeenCalled();
     const pending = JSON.parse(localStorage.getItem(PENDING_CONNECTION_KEY) ?? '{}');
     expect(pending.configId).toBe('cfg1');
     expect(pending.connectionId).toBe('c1');
@@ -90,12 +88,9 @@ describe('windowManager — browser', () => {
       expect.any(String),
     );
 
+    const openCallsBeforeWorkflow = vi.mocked(window.open).mock.calls.length;
     openWorkflowWindow();
-    expect(window.open).toHaveBeenLastCalledWith(
-      '/window.html?window=workflow',
-      '_blank',
-      expect.any(String),
-    );
+    expect(vi.mocked(window.open).mock.calls.length).toBe(openCallsBeforeWorkflow);
 
     openDocsWindow('getting-started');
     expect(window.open).toHaveBeenLastCalledWith(
@@ -104,12 +99,9 @@ describe('windowManager — browser', () => {
       expect.any(String),
     );
 
+    const openCallsBeforeDashboard = vi.mocked(window.open).mock.calls.length;
     openDashboardWindow('dash-1', 'Sales');
-    expect(window.open).toHaveBeenLastCalledWith(
-      '/window.html?window=dashboard&dashboardId=dash-1',
-      '_blank',
-      expect.any(String),
-    );
+    expect(vi.mocked(window.open).mock.calls.length).toBe(openCallsBeforeDashboard);
   });
 });
 

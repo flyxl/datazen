@@ -674,6 +674,10 @@ export function ConnectionWindow() {
     void listenCrossWindow('menu:dashboard', () => {
       void handleOpenDashboard();
     }).then((fn) => cleanups.push(fn));
+    void listenCrossWindow('menu:open-dashboard', (payload) => {
+      const data = payload as { dashboardId?: string; dashboardName?: string } | undefined;
+      handleOpenDashboardById(data?.dashboardId, data?.dashboardName);
+    }).then((fn) => cleanups.push(fn));
     void listenCrossWindow('menu:backup', () => {
       openBackupWindow('backup');
     }).then((fn) => cleanups.push(fn));
@@ -763,16 +767,19 @@ export function ConnectionWindow() {
 
   // ── Render ──
 
-  const centerTitle =
-    workspaceMode === 'workflow'
-      ? t('win.workflow')
-      : workspaceMode === 'dashboard'
-        ? dashboardTitle || t('dashboard.title')
-        : activePanel
-          ? `${activePanel.connectionName} - ${getDbLabel(activePanel.databaseType)} - DataZen`
-          : activeTab
-            ? `${activeTab.connectionName} - ${getDbLabel(activeTab.databaseType)} - DataZen`
-            : 'DataZen';
+  const centerTitle = (() => {
+    if (workspaceMode === 'workflow') return t('win.workflow');
+    if (workspaceMode === 'dashboard') {
+      return dashboardTitle ? `${dashboardTitle} - DataZen` : t('win.dashboard');
+    }
+    if (activePanel) {
+      return `${activePanel.connectionName} - ${getDbLabel(activePanel.databaseType)} - DataZen`;
+    }
+    if (activeTab) {
+      return `${activeTab.connectionName} - ${getDbLabel(activeTab.databaseType)} - DataZen`;
+    }
+    return t('win.connections');
+  })();
 
   const connectionWorkspace = (
     <div className="flex h-full min-h-0 flex-1">

@@ -1,4 +1,3 @@
-import { Database } from 'lucide-react';
 import { useI18n } from '../../hooks/useI18n';
 import { cn } from '../../lib/cn';
 import { DB_REGISTRY } from '../../lib/databaseTypes';
@@ -57,16 +56,7 @@ export function PanelContentRenderer({
   const { t } = useI18n();
 
   if (!activePanel) {
-    return (
-      <div className="flex flex-1 items-center justify-center text-fg-muted">
-        <div className="text-center">
-          <Database className="mx-auto h-10 w-10 opacity-20" />
-          <div className="mt-3 text-sm">
-            {`${t('connWin.selectTable')} (⌘N ${t('connWin.newQuery')})`}
-          </div>
-        </div>
-      </div>
-    );
+    return null;
   }
 
   if (activePanel.type === 'redis-db') {

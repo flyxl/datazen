@@ -92,16 +92,28 @@ impl PostgresDriver {
     async fn fetch_tables_from_pool(pool: &PgPool) -> Result<Vec<TableInfo>, DriverError> {
         let rows = sqlx::query(
             r#"
-            SELECT table_schema, table_name, table_type
-            FROM information_schema.tables
-            WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
+            SELECT n.nspname AS table_schema, c.relname AS table_name,
+                   CASE c.relkind
+                     WHEN 'v' THEN 'VIEW'
+                     WHEN 'm' THEN 'VIEW'
+                     ELSE 'BASE TABLE'
+                   END AS table_type
+            FROM pg_catalog.pg_class c
+            JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+            WHERE c.relkind IN ('r', 'v', 'm', 'f', 'p')
+              AND n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+              AND NOT pg_catalog.pg_is_other_temp_schema(n.oid)
+              AND (pg_catalog.pg_my_temp_schema() = 0 OR n.oid <> pg_catalog.pg_my_temp_schema())
             UNION ALL
-            SELECT s.schema_name, '', 'SCHEMA_MARKER'
-            FROM information_schema.schemata s
-            WHERE s.schema_name NOT IN ('pg_catalog', 'information_schema')
+            SELECT n.nspname AS table_schema, '' AS table_name, 'SCHEMA_MARKER' AS table_type
+            FROM pg_catalog.pg_namespace n
+            WHERE n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+              AND NOT pg_catalog.pg_is_other_temp_schema(n.oid)
+              AND (pg_catalog.pg_my_temp_schema() = 0 OR n.oid <> pg_catalog.pg_my_temp_schema())
               AND NOT EXISTS (
-                SELECT 1 FROM information_schema.tables t
-                WHERE t.table_schema = s.schema_name
+                SELECT 1 FROM pg_catalog.pg_class c
+                WHERE c.relnamespace = n.oid
+                  AND c.relkind IN ('r', 'v', 'm', 'f', 'p')
               )
             ORDER BY table_schema, table_name
             "#,
@@ -1905,6 +1917,21 @@ async fn fetch_pg_table_ddl_from_catalog(
 mod tests {
     use super::*;
     use datazen_driver_api::DatabaseDriver;
+
+    #[test]
+    fn fetch_tables_sql_uses_pg_catalog_system_schema_filters() {
+        const SQL: &str = r#"
+            FROM pg_catalog.pg_class c
+            JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+            WHERE c.relkind IN ('r', 'v', 'm', 'f', 'p')
+              AND n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+              AND NOT pg_catalog.pg_is_other_temp_schema(n.oid)
+              AND (pg_catalog.pg_my_temp_schema() = 0 OR n.oid <> pg_catalog.pg_my_temp_schema())
+        "#;
+        assert!(SQL.contains("pg_is_other_temp_schema"));
+        assert!(SQL.contains("pg_my_temp_schema"));
+        assert!(!SQL.contains("LIKE 'pg_%'"));
+    }
 
     #[test]
     fn validate_database_name_trims_and_accepts() {

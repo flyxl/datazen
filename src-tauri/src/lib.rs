@@ -738,11 +738,11 @@ pub fn run() {
             }
 
             if let Some(main) = app.get_webview_window("main") {
-                commands::window::ensure_main_window_size(&main);
+                commands::window::prepare_main_window(&main);
                 let main_for_deferred = main.clone();
                 std::thread::spawn(move || {
                     std::thread::sleep(std::time::Duration::from_millis(500));
-                    commands::window::ensure_main_window_size(&main_for_deferred);
+                    commands::window::prepare_main_window(&main_for_deferred);
                 });
             }
 

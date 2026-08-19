@@ -430,6 +430,10 @@ const zhCN = {
   'connWin.tooltipGroup': '分组',
   'connWin.tooltipDb': '数据库',
   'connWin.tooltipTable': '表',
+  'connWin.home.selectConnection': '请在左侧选择一个连接',
+  'connWin.home.subtitle': '选择快捷操作，或重新打开最近的 Panel',
+  'connWin.home.quickActions': '快捷操作',
+  'connWin.home.recentPanels': '最近打开',
 
   // ── Table View ──
   'tableView.loadingData': '加载表数据…',
@@ -1334,6 +1338,7 @@ const zhCN = {
   'schemaDiff.extraOnTarget': '目标多余（将 DROP）',
   'win.workflow': '工作流 - DataZen',
   'win.dashboard': '数据看板 - DataZen',
+  'win.connections': '连接 - DataZen',
 
   // ── Dashboard ──
   'dashboard.title': '数据看板',

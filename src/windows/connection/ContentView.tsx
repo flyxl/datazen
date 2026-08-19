@@ -52,6 +52,8 @@ import { CreateDatabaseDialog } from './CreateDatabaseDialog';
 import { CreateSchemaDialog } from './CreateSchemaDialog';
 import { CreateUserDialog } from './CreateUserDialog';
 import { ExecuteSqlFileDialog } from './ExecuteSqlFileDialog';
+import { ConnectionWorkspaceHome } from './ConnectionWorkspaceHome';
+import { openNewConnectionWindow } from '../../lib/windowManager';
 
 export interface ContentViewProps {
   selectTableRef?: MutableRefObject<((table: string, schema?: string) => void) | undefined>;
@@ -92,6 +94,7 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
   ]);
 
   const savedConnections = useConnectionStore((s) => s.connections);
+  const hasSavedConnections = savedConnections.length > 0;
   const activeConnections = useActiveConnectionStore((s) => s.connections);
   const storeActiveConnectionId = useSchemaStore((s) => s.activeConnectionId);
 
@@ -131,6 +134,14 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
     !isRedisPanel && !isKvSidebar && toolbarDbMeta?.supportsErDiagram !== false && !!toolbarDbType;
   const showObjectsToolbar =
     !isRedisPanel && !isKvSidebar && toolbarDbMeta?.readOnly !== true && !!toolbarDbType;
+
+  const recentPanels = useMemo(() => {
+    if (!sidebarConnCtx) return [];
+    return allPanels
+      .filter((panel) => panel.configId === sidebarConnCtx.configId)
+      .slice(-6)
+      .reverse();
+  }, [allPanels, sidebarConnCtx]);
 
   const [aiChatOpen, setAiChatOpen] = useState(false);
   const [createDbOpen, setCreateDbOpen] = useState(false);
@@ -584,24 +595,26 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
 
   return (
     <>
-      <ContentToolbar
-        showNewQuery={showNewQuery}
-        showNewTable={showNewTable}
-        showErDiagram={showErDiagramToolbar}
-        showObjects={showObjectsToolbar}
-        showBatchExport={batchExportSupported}
-        aiChatOpen={aiChatOpen}
-        detailPanelApplicable={detailPanelApplicable}
-        detailOpen={detailOpen}
-        onNewQuery={() => handlers.handleNewQuery()}
-        onCreateTable={handlers.handleCreateTable}
-        onOpenErDiagram={() => handlers.handleOpenErDiagram()}
-        onOpenObjects={handlers.handleOpenObjects}
-        onOpenPrivileges={handlers.handleOpenPrivileges}
-        onBatchExport={handleOpenBatchExportFromToolbar}
-        onToggleAiChat={() => setAiChatOpen((v) => !v)}
-        onToggleDetail={() => setDetailOpen((p) => !p)}
-      />
+      {activePanel && (
+        <ContentToolbar
+          showNewQuery={showNewQuery}
+          showNewTable={showNewTable}
+          showErDiagram={showErDiagramToolbar}
+          showObjects={showObjectsToolbar}
+          showBatchExport={batchExportSupported}
+          aiChatOpen={aiChatOpen}
+          detailPanelApplicable={detailPanelApplicable}
+          detailOpen={detailOpen}
+          onNewQuery={() => handlers.handleNewQuery()}
+          onCreateTable={handlers.handleCreateTable}
+          onOpenErDiagram={() => handlers.handleOpenErDiagram()}
+          onOpenObjects={handlers.handleOpenObjects}
+          onOpenPrivileges={handlers.handleOpenPrivileges}
+          onBatchExport={handleOpenBatchExportFromToolbar}
+          onToggleAiChat={() => setAiChatOpen((v) => !v)}
+          onToggleDetail={() => setDetailOpen((p) => !p)}
+        />
+      )}
 
       <PanelTabBar
         panels={allPanels}
@@ -613,19 +626,37 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
 
       <div className="flex min-h-0 flex-1">
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          <PanelContentRenderer
-            activePanel={activePanel}
-            currentDatabase={currentDatabase}
-            lastTableSchema={lastTableSchema}
-            onSetSubTab={handlers.handleSetSubTab}
-            onExitStructureEditing={handlers.handleExitStructureEditing}
-            onEditTableStructure={handlers.handleEditTableStructure}
-            onSelectTable={handleSelectTableWithSchema}
-            onOpenErDiagram={handlers.handleOpenErDiagram}
-            onClosePanel={handlers.handleClosePanel}
-            onRefresh={handlers.handleRefresh}
-            resolveTableSchema={resolveTableSchema}
-          />
+          {!activePanel ? (
+            <ConnectionWorkspaceHome
+              hasConnections={hasSavedConnections}
+              connectionContext={sidebarConnCtx}
+              recentPanels={recentPanels}
+              showNewQuery={showNewQuery}
+              showNewTable={showNewTable}
+              showErDiagram={showErDiagramToolbar}
+              showObjects={showObjectsToolbar}
+              onNewConnection={() => openNewConnectionWindow()}
+              onNewQuery={() => handlers.handleNewQuery()}
+              onCreateTable={handlers.handleCreateTable}
+              onOpenErDiagram={() => handlers.handleOpenErDiagram()}
+              onOpenObjects={handlers.handleOpenObjects}
+              onOpenPanel={setActivePanel}
+            />
+          ) : (
+            <PanelContentRenderer
+              activePanel={activePanel}
+              currentDatabase={currentDatabase}
+              lastTableSchema={lastTableSchema}
+              onSetSubTab={handlers.handleSetSubTab}
+              onExitStructureEditing={handlers.handleExitStructureEditing}
+              onEditTableStructure={handlers.handleEditTableStructure}
+              onSelectTable={handleSelectTableWithSchema}
+              onOpenErDiagram={handlers.handleOpenErDiagram}
+              onClosePanel={handlers.handleClosePanel}
+              onRefresh={handlers.handleRefresh}
+              resolveTableSchema={resolveTableSchema}
+            />
+          )}
         </div>
 
         {detailPanelApplicable && (
@@ -668,14 +699,16 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
         )}
       </div>
 
-      <ContentStatusBar
-        databaseType={databaseType}
-        connectionName={connectionName}
-        currentDatabase={currentDatabase}
-        tableName={tableName ?? ''}
-        columnCount={tableColumns.length}
-        totalRows={totalRows}
-      />
+      {activePanel && (
+        <ContentStatusBar
+          databaseType={databaseType}
+          connectionName={connectionName}
+          currentDatabase={currentDatabase}
+          tableName={tableName ?? ''}
+          columnCount={tableColumns.length}
+          totalRows={totalRows}
+        />
+      )}
 
       {exportOpen && exportTableName && sidebarConnCtx && (
         <ExportDialog

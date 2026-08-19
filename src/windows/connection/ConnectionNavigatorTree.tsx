@@ -485,13 +485,20 @@ export function ConnectionNavigatorTree({
     });
   }, [groups]);
 
-  // Auto-expand newly connected connections
+  // Auto-expand connected connections in the tree
   useEffect(() => {
-    if (!activeConfigId) return;
-    if (activeConnections[activeConfigId]?.status === 'connected') {
-      setExpandedConnections((prev) => new Set(prev).add(activeConfigId));
-    }
-  }, [activeConfigId, activeConnections]);
+    setExpandedConnections((prev) => {
+      let changed = false;
+      const next = new Set(prev);
+      for (const [configId, entry] of Object.entries(activeConnections)) {
+        if (entry?.status === 'connected' && !next.has(configId)) {
+          next.add(configId);
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [activeConnections]);
 
   // ── Load schema when connection expanded ──
 
@@ -534,16 +541,38 @@ export function ConnectionNavigatorTree({
         if (isPathHierarchyOnly) {
           void ensureNamespacePath([], entry.connectionId);
         }
+
+        if (isMultiDb) {
+          const sd = useSchemaStore.getState().schemas.get(entry.connectionId);
+          const configuredDb = conn.database?.trim();
+          const dbName =
+            configuredDb && sd?.databases.includes(configuredDb)
+              ? configuredDb
+              : (sd?.currentDatabase ?? sd?.databases[0]);
+          if (dbName) {
+            const dbKey = `${configId}::${dbName}`;
+            setExpandedDbs((prev) => new Set(prev).add(dbKey));
+            setExpandedCats((prev) => new Set(prev).add(`${dbKey}::tables`));
+            void reloadDbTables(entry.connectionId, dbName);
+          }
+        }
       });
 
-      // Auto-expand default database for standard schema trees
+      // Auto-expand default database for standard single-db schema trees
       if (!isMultiDb && !isPluginManaged && conn.database) {
         const dbKey = `${configId}::${conn.database}`;
         setExpandedDbs((prev) => new Set(prev).add(dbKey));
         setExpandedCats((prev) => new Set(prev).add(`${dbKey}::tables`));
       }
     }
-  }, [expandedConnections, activeConnections, connections, loadForConnection, ensureNamespacePath]);
+  }, [
+    expandedConnections,
+    activeConnections,
+    connections,
+    loadForConnection,
+    ensureNamespacePath,
+    reloadDbTables,
+  ]);
 
   // ── Context menu labels ──
 
@@ -1184,18 +1213,21 @@ export function ConnectionNavigatorTree({
       onSelectConnection(conn.id);
       const entry = activeConnections[conn.id];
       if (entry?.status === 'connected') {
-        toggleConnection(conn.id);
+        setExpandedConnections((prev) => {
+          if (prev.has(conn.id)) return prev;
+          return new Set(prev).add(conn.id);
+        });
       }
     },
-    [onSelectConnection, activeConnections, toggleConnection],
+    [onSelectConnection, activeConnections],
   );
 
   const handleConnectionDoubleClick = useCallback(
     (conn: ConnectionConfig) => {
+      onSelectConnection(conn.id);
       const status = activeConnections[conn.id]?.status ?? 'idle';
-      if (status === 'connected') {
-        onSelectConnection(conn.id);
-      } else if (status !== 'connecting') {
+      if (status === 'connected') return;
+      if (status !== 'connecting') {
         void connect(conn);
       }
     },

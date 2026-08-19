@@ -102,6 +102,7 @@ vi.mock('../../../lib/databaseTypes', () => ({
   },
   escapeIdent: (name: string) => `"${name}"`,
   getDbLabel: (t: string) => t,
+  getDbIcon: () => ({ label: 'PG', bg: 'bg-blue-500' }),
 }));
 
 vi.mock('../../../lib/structureEditor/canOpenStructureEditor', () => ({
@@ -153,6 +154,7 @@ vi.mock('../../../lib/connectionViews/types', () => ({}));
 
 vi.mock('../../../lib/windowManager', () => ({
   openDocsWindow: vi.fn(),
+  openNewConnectionWindow: vi.fn(),
 }));
 
 vi.mock('../../../lib/loadBatchExportTable', () => ({
@@ -232,9 +234,10 @@ describe('ContentView', () => {
     cleanup();
   });
 
-  it('shows empty state when no panels exist', () => {
+  it('shows workspace home when no panels exist', () => {
     render(<ContentView />);
-    expect(screen.getByText(/connWin.selectTable/)).toBeInTheDocument();
+    expect(screen.getByTestId('connection-workspace-home')).toBeInTheDocument();
+    expect(screen.getByText('main.noConnections')).toBeInTheDocument();
   });
 
   it('renders tab bar with panels', () => {
