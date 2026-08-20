@@ -22,9 +22,9 @@ describe('path IPC frontend wiring', () => {
     expect(settingsCmd).toContain("invoke<void>('open_workflows_dir')");
     expect(settingsCmd).toContain("invoke<void>('open_context_dir')");
 
-    const settingsWin = readSrc('windows/settings/SettingsWindow.tsx');
-    expect(settingsWin).toContain('openLogDir');
-    expect(settingsWin).not.toMatch(/openPath\(\s*(localDir|dir|defaultDir)/);
+    const settingsContent = readSrc('windows/settings/SettingsContent.tsx');
+    expect(settingsContent).toContain('openLogDir');
+    expect(settingsContent).not.toMatch(/openPath\(\s*(localDir|dir|defaultDir)/);
 
     const aiSettings = readSrc('windows/settings/AiSettingsSection.tsx');
     expect(aiSettings).toContain('openContextDir');

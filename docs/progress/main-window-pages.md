@@ -31,7 +31,7 @@
 
 | Bug ID | 关联 | 标题 | 状态 | 复现步骤 | 发现 commit |
 |--------|------|------|------|----------|-------------|
-| F1-BUG-001 | F1 | `pathIpcWiring.test.ts` 断言 `SettingsWindow` 含 `openLogDir`（F1 迁移后失效） | 验证不通过 | `pnpm vitest run src/commands/__tests__/pathIpcWiring.test.ts` | 测试 commit |
+| F1-BUG-001 | F1 | `pathIpcWiring.test.ts` 断言 `SettingsWindow` 含 `openLogDir`（F1 迁移后失效） | 待验证 | `pnpm vitest run src/commands/__tests__/pathIpcWiring.test.ts` | 测试 commit |
 
 Bug 状态：`待验证` | `验证不通过` | `已修复` | `已关闭`
 
