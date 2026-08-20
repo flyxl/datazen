@@ -64,6 +64,8 @@ interface ConnectionStore {
   selectedGroup: string | null;
   searchQuery: string;
   loading: boolean;
+  /** True after the first fetchConnections attempt completes (success or error). */
+  connectionsLoaded: boolean;
   error: string | null;
 
   fetchConnections: () => Promise<void>;
@@ -86,16 +88,18 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
   selectedGroup: null,
   searchQuery: '',
   loading: false,
+  connectionsLoaded: false,
   error: null,
 
   fetchConnections: async () => {
     set({ loading: true, error: null });
     try {
       const connections = await connectionCommands.getConnections();
-      set({ connections, loading: false });
+      set({ connections, loading: false, connectionsLoaded: true });
     } catch (e) {
       set({
         loading: false,
+        connectionsLoaded: true,
         error: e instanceof Error ? e.message : t('connStore.loadFailed'),
       });
     }

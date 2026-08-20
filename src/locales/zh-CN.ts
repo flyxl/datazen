@@ -100,6 +100,19 @@ const zhCN = {
   'main.connectionCount': '连接：{count}',
   'main.allGroups': '全部',
 
+  // ── Welcome (first run) ──
+  'welcome.title': '欢迎使用 DataZen',
+  'welcome.subtitle': '跨平台数据库管理工具，集成 AI 辅助与工作流。',
+  'welcome.feature.connections.title': '数据库管理',
+  'welcome.feature.connections.description': '连接 PostgreSQL、MySQL、SQLite、Redis 等多种数据库。',
+  'welcome.feature.dashboard.title': '数据看板',
+  'welcome.feature.dashboard.description': '基于查询结果构建可视化数据看板。',
+  'welcome.feature.workflow.title': '工作流',
+  'welcome.feature.workflow.description': '通过 YAML 驱动的工作流自动化重复任务。',
+  'welcome.feature.ai.title': 'AI 助手',
+  'welcome.feature.ai.description': '生成 SQL、解释查询，并支持多种 AI 提供商。',
+  'welcome.createConnection': '创建第一个连接',
+
   // ── Main / Context Menu ──
   'main.ctx.newGroup': '新建分组',
   'main.ctx.renameGroup': '重命名分组',
