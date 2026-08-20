@@ -30,8 +30,8 @@ src/components/connection/    # 共享连接表单
 src/windows/connection/
 ├── ConnectionWindow.tsx        # 统一主工作区壳：导航 + 连接 Tab + Workflow/Dashboard
 ├── ConnectionNavigatorTree.tsx # 左侧连接/Schema 导航
-├── SqlConnectionView.tsx       # SQL 连接全部 UI（若仍使用）
-├── RedisConnectionView / DocumentConnectionView
+├── SqlConnectionView.tsx       # SQL 连接 UI
+├── DocumentConnectionView.tsx  # 文档型连接 UI
 └── schema-tree/
     ├── SchemaTree.tsx
     ├── StandardSchemaTree.tsx
@@ -69,4 +69,4 @@ src/windows/connection/
 | 注册 | `drivers-registry.json` + `DB_REGISTRY` | 文件系统 + `manifest.json` |
 | 扩展 | Rust crate + 前端 meta | CSS / JSON / SVG\|PNG\|WebP / 字体（无 JS） |
 
-驱动在无主题包（`packId: null`）下正常工作；主题包可覆盖 `db.<type>` 图标与 `--dt-*` DataTable 单元格色，但不改变驱动协议。Token 契约见 [theme.md](../backend/theme.md) 与 `packages/themes/README.md`。
+驱动在无主题包（`packId: null`）下正常工作；主题包可覆盖 `db.<type>` 图标与 `--dt-*`（含 `--dt-binary`）DataTable 单元格色，但不改变驱动协议。Redis 深度 UI 位于 `packages/drivers/redis/ui/`（非 Host `src/windows/connection/`）。
