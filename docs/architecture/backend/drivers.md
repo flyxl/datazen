@@ -975,7 +975,7 @@ pub async fn init_drivers() -> DriverRegistry {
 | `query.rs` | SQL 执行、explain、查询历史/收藏 |
 | `data.rs` | 行级更新（`commit_row_updates`） |
 | `backup.rs` | 备份/恢复 |
-| `commands/sync/` | Data Sync IPC（`inspect_data_sync` / `execute_data_sync`；旧 `sync_tables` 拒绝 DROP+INSERT） |
+| `commands/sync/` | Data Sync IPC（`inspect_data_sync` / `compare_data_sync` / `execute_data_sync`；legacy sync IPC 已移除） |
 | `kiwi.rs` | Kiwi OAuth 登录/实例列表 |
 | `config.rs` | 设置、分组、导入导出（含加密） |
 | `file.rs` | 文件读写、编辑器右键菜单 |
