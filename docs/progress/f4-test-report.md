@@ -101,15 +101,15 @@ pnpm vitest run --coverage \
 
 **未执行（环境阻塞）**
 
-与 F1–F3 相同：需 `pnpm tauri build --debug --features webdriver` 后跑 Host E2E。F4 编码已更新 `path-ipc-hardening.ts` 源码断言路径（`SettingsContent.tsx`），但 **PIH-004/005 运行时步骤仍用 legacy 子窗口 URL**（见 F4-BUG-001）。
+与 F1–F3 相同：需 `pnpm tauri build --debug --features webdriver` 后跑 Host E2E。F4-BUG-001/002 已改为 `openSettingsInMainWindow`（见 fix commit）；待 webdriver 构建后验证 PIH-004/005 与 TC-HOTKEY-002。
 
-## Bugs（仅登记，本轮不修）
+## Bugs
 
 | Bug ID | 关联 | 标题 | 状态 | 复现 / 说明 |
 |--------|------|------|------|-------------|
-| F4-BUG-001 | F4 | `path-ipc-hardening.ts` PIH-004/005 仍 `browser.url('…?window=settings&section=…')` | 待验证 | F4 删除 `SettingsWindow` 后，`windowKind` 将 `settings` 别名到 `main`，子窗口加载 `MainPage`→`ConnectionPage`，**不会**渲染 `SettingsContent`；「查看日志」「打开上下文目录」按钮不可见。应改为 `openSettingsInMainWindow('logging'|'ai')`（同 F1 `settings.ts`）。 |
-| F4-BUG-002 | F4 | `hotkeys.ts` TC-HOTKEY-002 fallback 仍打开 `window.html?window=settings` | 待验证 | Cmd+, 未开新窗时 fallback 导航至 legacy settings 子窗口 URL；F4 后无法保证设置 UI。应改为主窗 `openSettingsInMainWindow()`。 |
-| F4-BUG-003 | F4 | PRD `docs/prd/data-dashboard*.md` 仍列已删 `DashboardWindow.tsx` / `SettingsWindow.tsx` | 待验证 | 文档债；不影响构建。R1 文档 sweep 时清理。 |
+| F4-BUG-001 | F4 | `path-ipc-hardening.ts` PIH-004/005 legacy settings 子窗口 URL | 待验证 | 已改 `openSettingsInMainWindow('logging'|'ai')`；待 E2E 执行确认。 |
+| F4-BUG-002 | F4 | `hotkeys.ts` TC-HOTKEY-002 fallback legacy settings URL | 待验证 | 已改 `openSettingsInMainWindow()`；待 E2E 执行确认。 |
+| F4-BUG-003 | F4 | PRD `docs/prd/data-dashboard*.md` 仍列已删 `DashboardWindow.tsx` / `SettingsWindow.tsx` | 待验证 | 文档债；不影响构建。**留 R1** 文档 sweep（`DashboardPanel` / `SettingsPage` 路径替换）。 |
 
 ## 验收结论
 

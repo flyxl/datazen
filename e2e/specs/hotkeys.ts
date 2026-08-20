@@ -7,6 +7,7 @@ import {
   connectSeededPgInWorkspace,
   closeExtraWindows,
   openQueryTab,
+  openSettingsInMainWindow,
   setEditorContent,
   switchToNewWindow,
 } from '../helpers.js';
@@ -47,13 +48,12 @@ describe('快捷键 (TC-HOTKEY-001~005)', () => {
     await expect(await $(`button*=${t('newConn.testConnection')}`)).toBeDisplayed();
   });
 
-  it('TC-HOTKEY-002: Cmd+, 或 settings URL 应打开设置', async () => {
+  it('TC-HOTKEY-002: Cmd+, 或主窗 SettingsPage 应打开设置', async () => {
     await browser.keys(['Meta', ',']);
     await browser.pause(800);
     let handles = await browser.getWindowHandles();
     if (handles.length === 1) {
-      await browser.url('tauri://localhost/window.html?window=settings');
-      await browser.pause(1500);
+      await openSettingsInMainWindow();
     } else {
       const settingsHandle = handles.find((h) => h !== mainWindow)!;
       await browser.switchToWindow(settingsHandle);

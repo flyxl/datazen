@@ -52,3 +52,4 @@ Bug 状态：`待验证` | `验证不通过` | `已修复` | `已关闭`
 | 2026-08-20 | F4 编码：删除 DashboardWindow、SettingsWindow 及 main/ 遗留组件；SettingsContent 单测迁移 |
 | 2026-08-20 | F4 测试：Vitest 57/57；f4-test-report.md；登记 F4-BUG-001~003（E2E legacy URL / PRD 文档债） |
 | 2026-08-20 | F3-BUG-001 验证：源码无 `active=`；Vitest 16/16；bug → 已修复 |
+| 2026-08-20 | F4-BUG-001/002 修复：`path-ipc-hardening.ts`、`hotkeys.ts` 改 `openSettingsInMainWindow`；F4-BUG-003 PRD 文档债留 R1 |

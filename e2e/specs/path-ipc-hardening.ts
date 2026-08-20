@@ -16,7 +16,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { expect, browser, $ } from '@wdio/globals';
-import { closeExtraWindows } from '../helpers.js';
+import { closeExtraWindows, openSettingsInMainWindow } from '../helpers.js';
 
 const ROOT = path.resolve(import.meta.dirname, '../..');
 const FILE_CONNECTION_FIELDS = path.join(
@@ -136,8 +136,7 @@ describe('Path IPC Hardening (PIH-001~PIH-006)', () => {
     const cmdSrc = fs.readFileSync(SETTINGS_TS, 'utf8');
     expect(cmdSrc).toContain("invoke<void>('open_log_dir')");
 
-    await browser.url('tauri://localhost/window.html?window=settings&section=logging');
-    await browser.pause(1500);
+    await openSettingsInMainWindow('logging');
 
     const viewLogs = await $('button*=查看日志');
     await viewLogs.waitForDisplayed({ timeout: 10000 });
@@ -156,8 +155,7 @@ describe('Path IPC Hardening (PIH-001~PIH-006)', () => {
     const cmdSrc = fs.readFileSync(SETTINGS_TS, 'utf8');
     expect(cmdSrc).toContain("invoke<void>('open_context_dir')");
 
-    await browser.url('tauri://localhost/window.html?window=settings&section=ai');
-    await browser.pause(1500);
+    await openSettingsInMainWindow('ai');
 
     const openCtx = await $('button*=打开上下文目录');
     await openCtx.waitForDisplayed({ timeout: 10000 });
