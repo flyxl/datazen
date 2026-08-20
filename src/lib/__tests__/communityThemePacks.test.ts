@@ -35,6 +35,16 @@ const REQUIRED_CM_TOKENS = [
   '--cm-cursor',
 ] as const;
 
+/** Optional for third-party packs; community samples ship them. */
+const RECOMMENDED_DT_TOKENS = [
+  '--dt-null',
+  '--dt-bool',
+  '--dt-number',
+  '--dt-datetime',
+  '--dt-json',
+  '--dt-text',
+] as const;
+
 const EDITOR_JSON_KEYS = [
   'keyword',
   'string',
@@ -51,7 +61,15 @@ const EDITOR_JSON_KEYS = [
 function listCommunityPackDirs(): string[] {
   return readdirSync(PACKS_ROOT, { withFileTypes: true })
     .filter((e) => e.isDirectory() && e.name.startsWith('community.'))
-    .map((e) => e.name);
+    .map((e) => e.name)
+    .filter((name) => {
+      try {
+        readFileSync(join(PACKS_ROOT, name, 'manifest.json'), 'utf8');
+        return true;
+      } catch {
+        return false;
+      }
+    });
 }
 
 const RECOMMENDED_WORKSPACE_ICONS = [
@@ -104,6 +122,12 @@ describe('community theme packs', () => {
         }
       });
 
+      it('tokens.css defines DataTable cell color variables', () => {
+        for (const token of RECOMMENDED_DT_TOKENS) {
+          expect(tokensCss, `${dirName} missing ${token}`).toContain(`${token}:`);
+        }
+      });
+
       it('targets the correct root selector for its mode', () => {
         const isLight = manifest.modes.includes('light') && !manifest.modes.includes('dark');
         if (isLight) {
@@ -144,5 +168,6 @@ describe('theme pack icon contract', () => {
     expect(readme).toContain('nav.settings');
     expect(readme).toContain('query.run');
     expect(readme).toContain('nav.connections');
+    expect(readme).toContain('--dt-number');
   });
 });

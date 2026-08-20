@@ -411,7 +411,7 @@ pub struct AppState {
 
 | 安全措施 | 实现方式 | 位置 |
 |----------|----------|------|
-| **密码加密存储** | AES-256-GCM + 系统密钥链 | `Store::encrypt/decrypt` |
+| **密码加密存储** | AES-256-GCM；主密钥在 OS 钥匙串或 `{appData}/.key` | `Store::encrypt/decrypt` + `key_store` |
 | **连接池管理** | sqlx 连接池 + 超时清理 | `PostgresDriver::pools` |
 | **空闲连接清理** | 定时任务 (每5分钟) | `ConnectionManager::start_cleanup_task` |
 | **连接泄露检测** | 守卫模式 + 超时警告 | `GuardManager` |

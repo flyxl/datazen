@@ -2,24 +2,25 @@
 
 > [返回架构总览](README.md)
 
-## 1. 多窗口架构
+## 1. 统一主工作区 + 少量子窗口
 
-DataZen 采用 Tauri 的多窗口模型，每个主要功能区域在独立的原生窗口中运行：
+自统一连接树改版后，**连接浏览 / Workflow / Dashboard 不再各自开独立 OS 窗口**，而是挂在主窗口（`main`）内的导航与 Tab。仍保留若干用途单一的原生子窗口：
 
-| 窗口 | 用途 | Label 模式 |
-|------|------|-----------|
-| main | 连接管理主页 | `main` |
-| new-connection | 新建/编辑连接（单例） | `new-connection-singleton` |
-| connection | 数据库浏览/编辑 | `connection-{ts}-{n}` |
-| settings | 应用设置（单例） | `settings-singleton` |
-| docs | 内置使用说明（单例） | `docs-singleton` |
-| backup | 备份/恢复（单例） | `backup-singleton` |
-| data-sync | 数据同步 Diff Workspace（单例；Apply 未接线） | `data-sync-singleton` |
-| workflow | Workflow 管理（单例） | `workflow-singleton` |
+| 窗口 | 用途 | Label / `?window=` |
+|------|------|-------------------|
+| **main**（主工作区） | 连接导航树、连接 Tab、Workflow、Dashboard、查询与 Schema 浏览 | `main`；legacy `connection` / `workflow` / `dashboard` 会别名到 `main` |
+| new-connection | 新建/编辑连接（单例） | `new-connection-singleton` / `new-connection` |
+| settings | 应用设置（单例） | `settings-singleton` / `settings` |
+| docs | 内置使用说明（单例） | `docs-singleton` / `docs` |
+| backup | 备份/恢复（单例） | `backup-singleton` / `backup` |
+| data-sync | 同族 Data Sync Diff Workspace（单例） | `data-sync-singleton` / `data-sync` |
+| schema-diff | Schema Diff（单例） | `schema-diff` |
+
+前端入口：`src/windows/connection/ConnectionWindow.tsx` 在 **main** 工作区内渲染（含 `ConnectionNavigatorTree`、`ConnectionWorkspaceHome`、面板 Tab）。`openConnectionWindow()`（`src/lib/windowManager.ts`）会 `focusMainWindow()`，并通过 `localStorage` + 跨窗口事件 `datazen:open-connection` 投递连接 payload，**不再**创建 `connection-*` 子窗口。
 
 ## 2. Rust 端窗口创建
 
-所有子窗口通过 Rust 命令 `create_sub_window` 创建（`src-tauri/src/commands/window.rs`），确保原生窗口属性在 Rust 层正确设置：
+子窗口仍通过 Rust 命令 `create_sub_window`（`src-tauri/src/commands/window.rs`）创建，保证原生属性在 Rust 层设置：
 
 ```rust
 #[tauri::command]
@@ -45,11 +46,11 @@ pub fn create_sub_window(app: AppHandle, options: CreateWindowOptions) -> Result
 
 ### 2.1 macOS acceptFirstMouse
 
-macOS 默认行为是第一次点击非活跃窗口只会聚焦该窗口，不会触发控件事件。通过在 Rust 层设置 `accept_first_mouse(true)`，确保用户第一次点击即可直接操作控件。
+macOS 默认第一次点击非活跃窗口只会聚焦。Rust 层 `accept_first_mouse(true)` 使首次点击即可操作控件。
 
 ## 3. 前端窗口管理器
 
-`src/lib/windowManager.ts` 提供统一的窗口创建 API：
+`src/lib/windowManager.ts` 提供统一 API：
 
 ```typescript
 function openWindow(label: string, options: OpenWindowOptions) {
@@ -61,42 +62,38 @@ function openWindow(label: string, options: OpenWindowOptions) {
 }
 ```
 
-导出函数：
-- `openNewConnectionWindow(editId?)` — 新建/编辑连接
-- `openConnectionWindow(connectionId, connectionName, database?, databaseType?)` — 数据库浏览（含 SQL 查询面板）
-- `openSettingsWindow(section?)` — 设置窗口（单例模式）
-- `openDataSyncWindow()` — 数据同步
-- `openBackupWindow()` — 备份/恢复
+导出函数（摘要）：
+
+- `openNewConnectionWindow(editId?)` — 新建/编辑连接（子窗口）
+- `openConnectionWindow(...)` — **聚焦主工作区**并打开/追加连接 Tab（非新 OS 窗口）
+- `openSettingsWindow(section?)` — 设置（单例子窗口）
+- `openDataSyncWindow()` / `openBackupWindow()` — 对应单例子窗口
+- Workflow / Dashboard — 主工作区内导航（`menu:workflow` / `menu:dashboard` 等）
 
 ### 3.1 Settings 窗口单例
 
-Settings 窗口使用固定 label `settings-singleton`，打开时先检查是否已存在：
-
-```typescript
-const existing = await WebviewWindow.getByLabel(SETTINGS_LABEL);
-if (existing) {
-  await existing.setFocus();
-  return;
-}
-```
+固定 label `settings-singleton`，已存在则 `setFocus()`。
 
 ## 4. 窗口路由
 
-前端使用 URL query parameter `window` 区分窗口类型：
+`src/lib/windowKind.ts` 用 URL 参数 `window` 区分：
 
 ```typescript
-function getWindowKind(): string {
-  const params = new URLSearchParams(window.location.search);
-  return params.get('window') ?? 'main';
-}
+export type WindowKind =
+  | 'main'
+  | 'new-connection'
+  | 'settings'
+  | 'data-sync'
+  | 'schema-diff'
+  | 'backup'
+  | 'docs';
+
+/** Legacy sub-window kinds that now route to the unified main shell. */
+const LEGACY_MAIN_ALIASES = new Set(['connection', 'workflow', 'dashboard']);
 ```
 
-`App.tsx` 根据 `windowKind` 懒加载对应的窗口组件。
+`App.tsx` 按 `getWindowKind()` 懒加载对应页面；legacy 别名一律落到 `main`。
 
 ## 5. ErrorBoundary
 
-全局 `ErrorBoundary` 组件包裹整个应用，防止未处理的 React 错误导致白屏：
-
-- 捕获 `getDerivedStateFromError` + `componentDidCatch`
-- 显示错误信息 + Dismiss / Reload 按钮
-- 错误日志输出到 console
+全局 `ErrorBoundary` 包裹应用，防止未处理 React 错误导致白屏（Dismiss / Reload）。

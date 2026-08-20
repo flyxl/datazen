@@ -108,9 +108,10 @@ YAML 驱动的通用执行引擎，GUI、Tauri IPC 和 MCP 共用同一 runtime�
 ## 前端约定
 
 - 零硬编码：行为差异通过 `DB_REGISTRY` + `DatabaseTypeMeta` 元数据驱动
-- 多窗口：`windowManager.ts` + `windowKind.ts` URL 参数路由
+- **统一主工作区**：连接 / Workflow / Dashboard 在 `main` 窗口内导航（`ConnectionWindow` + `ConnectionNavigatorTree`）；`windowKind` 将 legacy `connection`/`workflow`/`dashboard` 别名到 `main`。设置 / 备份 / 同步等仍为子窗口（`windowManager.ts`）
 - IPC：前端 camelCase，Rust snake_case；Tauri 自动映射
 - 右键菜单统一使用 Web Context Menu，禁止 Tauri 原生 `Menu.popup()`
+- **主题包 DataTable 色**：`--dt-*` token + `src/lib/dataTypeColors.ts`（CellRenderer、StructureView、TableHeader 等共用）
 - **Data Synchronization ≠ Transfer ≠ Structure Sync**：Sync 仅同族 + 结构/PK 完全一致；异构 IR 是 Transfer。详见 [docs/architecture/backend/data-sync.md](docs/architecture/backend/data-sync.md)
 
 ## IPC 通信
@@ -216,6 +217,7 @@ PR 合并前：`pnpm test:unit` + `cargo test -p datazen --lib`。改了驱动�
 - `PROTOCOL_VERSION`（`packages/driver-api`）变更时需同步更新所有插件
 - `AI_PROTOCOL_VERSION`（`packages/ai-api`）变更时需同步更新所有 AI Provider 插件
 - AI 配置加密存储在 `ai_config.enc`，不会出现在日志中
+- 连接密码等凭据：AES-256-GCM；**主密钥**默认在系统钥匙串，开发/adhoc 或 `DATAZEN_KEYRING=file` 时用 `{appData}/.key`（见 `store/key_store.rs`）
 - Prompt 模板在 `src-tauri/resources/prompts/{lang}/`，支持用户覆盖
 - 日志文件位于 `{data_dir}/logs/`
-- 主题包与驱动选型独立：`{appData}/themes/` 不由 `resolve-drivers.mjs` 管理；删除主题包不影响 `packages/drivers/`
+- 主题包与驱动选型独立：`{appData}/themes/` 不由 `resolve-drivers.mjs` 管理；删除主题包不影响 `packages/drivers/`；DataTable 单元格色 token 为 `--dt-*`

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Loader2, Pencil } from 'lucide-react';
 import { getCachedTableSchema } from '../../lib/schemaCache';
+import { dataTypeTextClass } from '../../lib/dataTypeColors';
 import { Button } from '../../components/ui/Button';
 import type { TableSchema } from '../../types';
 import { cn } from '../../lib/cn';
@@ -10,19 +11,6 @@ interface StructureViewProps {
   connectionId: string;
   tableName: string;
   onEditStructure?: (tableName: string) => void;
-}
-
-function typeColor(dataType: string): string {
-  const t = dataType.toLowerCase();
-  if (/^(bigint|int|integer|smallint|serial|bigserial|numeric|decimal|real|double|float)/.test(t))
-    return 'text-green-400';
-  if (/^(varchar|char|text|citext|name)/.test(t)) return 'text-amber-400';
-  if (/^(timestamp|date|time|interval)/.test(t)) return 'text-purple-400';
-  if (/^(bool)/.test(t)) return 'text-sky-400';
-  if (/^(json|jsonb)/.test(t)) return 'text-pink-400';
-  if (/^(uuid)/.test(t)) return 'text-teal-400';
-  if (/^(bytea|blob)/.test(t)) return 'text-red-400';
-  return 'text-fg-secondary';
 }
 
 function KeyBadge({ label, tone }: { label: string; tone: 'blue' | 'amber' | 'green' }) {
@@ -152,7 +140,12 @@ export function StructureView({ connectionId, tableName, onEditStructure }: Stru
                   className="border-b border-edge bg-surface hover:bg-surface-alt/50"
                 >
                   <td className="selectable px-4 py-2.5 font-mono text-fg">{col.name}</td>
-                  <td className={cn('copyable px-4 py-2.5 font-mono', typeColor(col.dataType))}>
+                  <td
+                    className={cn(
+                      'copyable px-4 py-2.5 font-mono',
+                      dataTypeTextClass(col.dataType),
+                    )}
+                  >
                     {col.dataType}
                   </td>
                   <td className="px-4 py-2.5">

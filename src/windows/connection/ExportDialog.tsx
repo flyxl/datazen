@@ -13,7 +13,9 @@ import { isStreamableExportFormat, streamTableExportToSaveDialog } from '../../l
 import { supportsFullTableExport, type DataExportCapability } from '../../lib/exportCapability';
 import type { ColumnSchema } from '../../types';
 import { useI18n } from '../../hooks/useI18n';
+import { cn } from '../../lib/cn';
 import { getCachedTableSchema } from '../../lib/schemaCache';
+import { dataTypeTextClass } from '../../lib/dataTypeColors';
 
 interface ExportDialogProps {
   open: boolean;
@@ -268,7 +270,9 @@ export function ExportDialog({
                   className="accent-accent"
                 />
                 <span className="text-xs text-fg-secondary">{col.name}</span>
-                <span className="text-[10px] text-fg-muted">{col.dataType}</span>
+                <span className={cn('text-[10px]', dataTypeTextClass(col.dataType))}>
+                  {col.dataType}
+                </span>
               </label>
             ))}
           </div>

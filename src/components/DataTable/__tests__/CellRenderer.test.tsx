@@ -18,6 +18,7 @@ describe('CellRenderer no-wrap', () => {
     );
     const span = container.querySelector('span')!;
     expect(span.className).toContain('truncate');
+    expect(span.className).toContain('text-dt-json');
   });
 
   it('timestamp cell should not wrap text', () => {
@@ -33,6 +34,7 @@ describe('CellRenderer no-wrap', () => {
     );
     const span = container.querySelector('span')!;
     expect(span.className).toContain('truncate');
+    expect(span.className).toContain('text-dt-datetime');
   });
 
   it('boolean cell should not wrap text', () => {
@@ -48,6 +50,7 @@ describe('CellRenderer no-wrap', () => {
     );
     const span = container.querySelector('span')!;
     expect(span.className).toContain('truncate');
+    expect(span.className).toContain('text-dt-bool');
   });
 
   it('numeric cell should not wrap text', () => {
@@ -63,6 +66,7 @@ describe('CellRenderer no-wrap', () => {
     );
     const span = container.querySelector('span')!;
     expect(span.className).toContain('truncate');
+    expect(span.className).toContain('text-dt-number');
   });
 
   it('NULL cell should not wrap text', () => {
@@ -78,5 +82,6 @@ describe('CellRenderer no-wrap', () => {
     );
     const span = container.querySelector('span')!;
     expect(span.className).toContain('truncate');
+    expect(span.className).toContain('text-dt-null');
   });
 });

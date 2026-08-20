@@ -2,6 +2,8 @@
 
 > [返回架构总览](../README.md)
 
+> 下文部分 Rust 片段为**架构示意**；实现以 `src-tauri/src/store/` 为准（主密钥见 `key_store.rs`）。
+
 ### 1.1 存储架构
 
 ```rust
@@ -22,7 +24,7 @@ use rand::RngCore;
 pub struct Store {
     /// 存储目录
     data_dir: PathBuf,
-    /// 加密密钥 (从系统密钥链获取)
+    /// AES-256 master key（来自 OS keychain 或 `{appData}/.key`，见 key_store）
     encryption_key: [u8; 32],
     /// 内存缓存
     cache: Arc<RwLock<StoreCache>>,
@@ -116,7 +118,7 @@ impl Store {
             .await
             .map_err(|e| StoreError::InitError(e.to_string()))?;
         
-        // 获取或创建加密密钥
+        // 获取或创建主加密密钥（key_store：钥匙串 / `.key`）
         let encryption_key = Self::get_or_create_encryption_key(&data_dir).await?;
         
         let store = Self {
@@ -129,36 +131,6 @@ impl Store {
         store.load_all().await?;
         
         Ok(store)
-    }
-    
-    /// 从系统密钥链获取或创建加密密钥
-    async fn get_or_create_encryption_key(data_dir: &PathBuf) -> Result<[u8; 32], StoreError> {
-        // 尝试从 keyring 获取
-        let keyring = keyring::Entry::new("DataZen", "encryption_key");
-        
-        match keyring.get_password() {
-            Ok(key_b64) => {
-                // 解码现有密钥
-                let key_bytes = BASE64.decode(&key_b64)
-                    .map_err(|e| StoreError::EncryptionError(e.to_string()))?;
-                
-                let mut key = [0u8; 32];
-                key.copy_from_slice(&key_bytes);
-                Ok(key)
-            }
-            Err(_) => {
-                // 生成新密钥
-                let mut key = [0u8; 32];
-                OsRng.fill_bytes(&mut key);
-                
-                // 存储到 keyring
-                let key_b64 = BASE64.encode(&key);
-                keyring.set_password(&key_b64)
-                    .map_err(|e| StoreError::EncryptionError(e.to_string()))?;
-                
-                Ok(key)
-            }
-        }
     }
     
     /// 加密数据
@@ -408,3 +380,25 @@ pub enum StoreError {
 /// 类型别名
 pub type ConfigStore = Store;
 ```
+
+## 主加密密钥（`key_store`）
+
+连接密码、SSH 凭据、`ai_config.enc` 等均用 **AES-256-GCM**；磁盘上存密文。主密钥（32 字节）由 `src-tauri/src/store/key_store.rs` 管理，**不是**写死只用钥匙串或只用文件，而是双后端：
+
+| 后端 | 位置 | 何时使用 |
+|------|------|----------|
+| **OS Keychain** | macOS Keychain / Windows Credential Manager / Linux Secret Service；账户 `app-encryption-key`（服务标识 `APP_IDENTIFIER`） | 正式签名构建的默认路径；`DATAZEN_KEYRING=keyring` 强制 |
+| **文件 `.key`** | `{appData}/.key`（base64 主密钥） | `DATAZEN_KEYRING=file`（dev/CI）；macOS **adhoc/未签名** 二进制（`tauri:dev` 等）自动优先，避免每次重链弹钥匙串 ACL |
+
+选择逻辑摘要：
+
+```text
+DATAZEN_KEYRING=file     → File
+DATAZEN_KEYRING=keyring  → Keyring
+unset + macOS adhoc      → File
+unset + 其它             → Keyring（失败可回退已有 `.key`）
+```
+
+- 首次启动随机生成主密钥并写入当前后端；已有 `.key` 时可迁移进钥匙串后删除文件。
+- 应用数据 ZIP **不包含** `.key`；跨机恢复密文需另行备份主密钥（设置流程可走 `save_encryption_key_with_dialog`）。
+- 实现入口：`Store::get_or_create_encryption_key` → `key_store::load_or_create_master_key`。

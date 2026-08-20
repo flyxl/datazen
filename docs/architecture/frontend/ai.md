@@ -17,7 +17,7 @@ src/components/ai/
 └── WorkflowChatPanel.tsx  # AI 辅助 Workflow 生成对话
 
 src/windows/workflow/
-├── WorkflowWindow.tsx     # Workflow 独立窗口（含 tab 系统 + DataTable 结果展示）
+├── WorkflowWindow.tsx     # Workflow 视图（主工作区内嵌；含 tab + DataTable）
 └── WorkflowForm.tsx       # Workflow 创建/编辑表单
 ```
 

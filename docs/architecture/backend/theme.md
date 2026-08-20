@@ -9,7 +9,7 @@
 ```
 {appData}/themes/{packId}/
 ├── manifest.json
-├── tokens.css          # 按 mode 的 CSS 变量（:root / .dark）
+├── tokens.css          # 按 mode 的 CSS 变量（:root / .dark；含可选 --dt-* DataTable 单元格色）
 ├── fonts.css           # 可选 @font-face
 ├── editor.json         # 可选 CodeMirror 色板覆盖
 ├── charts.json         # 可选图表调色板
@@ -33,6 +33,19 @@
 | 校验 | `src-tauri/src/theme/validate.rs` | manifest 解析、扩展名白名单、路径守卫、体积限制 |
 | 安装 | `src-tauri/src/theme/install.rs` | ZIP 解压、原子写入 `{appData}/themes/{id}/` |
 | 入口 | `src-tauri/src/theme/mod.rs` | 导出 `ThemeManifest`、`THEME_API_VERSION` |
+
+### tokens.css 契约
+
+主题包应覆盖 Host `src/styles/themes.css` 中的语义变量（社区包单测强制 surface / cm 全集）：
+
+- **Surface / text**：`--c-surface`、`--c-surface-alt`、`--c-surface-raised`、`--c-surface-inset`、`--c-edge`、`--c-fg`、`--c-fg-secondary`、`--c-fg-muted`、`--c-accent`、`--c-success`、`--c-warning`、`--c-danger`、`--c-titlebar`
+- **Fonts**：`--font-sans`、`--font-mono`、`--font-editor`
+- **CodeMirror**：`--cm-*`（也可经 `editor.json` 覆盖）
+- **DataTable 单元格色（推荐）**：`--dt-null`、`--dt-bool`、`--dt-number`、`--dt-datetime`、`--dt-json`、`--dt-text`
+
+`--dt-*` 为可选覆盖：省略时使用 Host 默认。前端 `CellRenderer` 通过 Tailwind `text-dt-*`（`tailwind.config.ts` → `var(--dt-*)`）着色。社区样例包已全部定义这些变量。
+
+Dark 包写在 `.dark { … }`；Light 包写在 `:root { … }`。
 
 ## IPC 命令
 

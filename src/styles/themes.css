@@ -31,8 +31,10 @@
   --c-titlebar: #f1f5f9;
 
   /* Font stacks (overridable by theme packs) */
-  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
-  --font-mono: Menlo, Monaco, Consolas, "Courier New", ui-monospace, monospace;
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  --font-mono: Menlo, Monaco, Consolas, 'Courier New', ui-monospace, monospace;
   --font-editor: var(--font-mono);
 
   /* CodeMirror syntax colors (light) */
@@ -46,6 +48,14 @@
   --cm-background: #ffffff;
   --cm-selection: rgba(59, 130, 246, 0.15);
   --cm-cursor: #0f172a;
+
+  /* DataTable cell value colors by SQL-ish type family (overridable by theme packs) */
+  --dt-null: var(--c-fg-muted);
+  --dt-bool: #a855f7;
+  --dt-number: #d97706;
+  --dt-datetime: #7c3aed;
+  --dt-json: var(--c-fg);
+  --dt-text: var(--c-fg);
 }
 
 .dark {
@@ -73,4 +83,12 @@
   --cm-background: #0f172a;
   --cm-selection: rgba(59, 130, 246, 0.25);
   --cm-cursor: #f1f5f9;
+
+  /* DataTable cell value colors by SQL-ish type family */
+  --dt-null: var(--c-fg-muted);
+  --dt-bool: #c084fc;
+  --dt-number: #fcd34d;
+  --dt-datetime: #c4b5fd;
+  --dt-json: var(--c-fg);
+  --dt-text: var(--c-fg);
 }
