@@ -13,6 +13,25 @@ vi.mock('../../../hooks/useConfirmDialog', () => ({
 const getPrivileges = vi.fn();
 const executeQuery = vi.fn();
 const driverExecute = vi.fn();
+const getConnectionCommands = vi.fn();
+
+const mockCommandDefinitions = [
+  {
+    id: 'grant_privileges',
+    label: 'Grant',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        privileges: {
+          type: 'array',
+          items: { type: 'string', enum: ['SELECT', 'INSERT', 'UPDATE', 'DELETE'] },
+        },
+      },
+    },
+  },
+  { id: 'revoke_privileges', label: 'Revoke', inputSchema: { type: 'object', properties: {} } },
+  { id: 'drop_user', label: 'Drop user', inputSchema: { type: 'object', properties: {} } },
+];
 
 vi.mock('../../../commands/database', () => ({
   databaseCommands: {
@@ -29,6 +48,7 @@ vi.mock('../../../commands/query', () => ({
 vi.mock('../../../commands/driver', () => ({
   driverCommands: {
     execute: (...args: unknown[]) => driverExecute(...args),
+    getConnectionCommands: (...args: unknown[]) => getConnectionCommands(...args),
   },
 }));
 
@@ -36,6 +56,7 @@ afterEach(cleanup);
 
 beforeEach(() => {
   vi.clearAllMocks();
+  getConnectionCommands.mockResolvedValue(mockCommandDefinitions);
   getPrivileges.mockResolvedValue([
     { grantee: 'alice', objectSchema: 'public', objectName: 'users', privilege: 'SELECT' },
   ]);
