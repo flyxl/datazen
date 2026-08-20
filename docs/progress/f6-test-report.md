@@ -64,26 +64,26 @@
 | `docs-singleton` | 2 | 仅 **负向断言**（`windowManager.test.ts`、`pathIpcWiring.test.ts`） |
 | `openSingletonWindow('docs-singleton'` | 1 | 仅 `pathIpcWiring.test.ts` 断言 **不存在** |
 | `create_sub_window` + docs | **0** | Rust/TS 均无 docs 标签创建 |
-| `DocsWindow` | 3 | `pathIpcWiring.test.ts` 负向断言；`f4-test-report.md` 历史描述（文档债） |
+| `DocsWindow` | 2 | `pathIpcWiring.test.ts` 负向断言；`docs-online.ts` 负向断言 |
 | `?window=docs` | 1 | `windowKind.test.ts` legacy 别名测试 |
 | `src/windows/docs/` | **0** | 目录已清空 |
 
-**结论**：无运行时 docs 子窗口残留；仅测试负向断言与 F4 测试报告历史文案需 R1  sweep。
+**结论**：无运行时 docs 子窗口残留；仅测试负向断言。
 
 ## E2E 用例清单（F6 新增 / 回归）
 
 | ID | 规格文件（建议） | 步骤 | 期望 |
 |----|------------------|------|------|
-| F6-E2E-001 | 新建 `e2e/specs/help-docs.ts` | macOS：Help → User Guide；Win/Linux：`MenuBar` Help → 使用说明 | **系统浏览器**打开 `https://flyxl.github.io/datazen/docs.html`（或 zh 版）；**无** `docs-singleton` Tauri 子窗口 |
-| F6-E2E-002 | 同上 | 设置语言 `zh-CN` 后重复 F6-E2E-001 | URL 为 `.../zh/docs.html` |
-| F6-E2E-003 | 同上 | 主窗 Workflow 页点击帮助（`?`） | 浏览器打开 `...#workflows`；页面滚动至 Workflows section |
-| F6-E2E-004 | 同上 | AI Chat 侧栏 Context 帮助 | 浏览器打开 `...#context` |
-| F6-E2E-005 | 同上 | Connection SQL 工具栏 AI 帮助 | 浏览器打开 `...#ai` |
-| F6-E2E-006 | 同上 | Dashboard panel Ops 帮助 | 浏览器打开 `...#opsDashboard` |
-| F6-E2E-007 | 负向 | 直接访问 `window.html?window=docs&section=workflows` | `windowKind=main`；渲染主工作区；**不**出现 in-app Docs 侧栏 |
+| F6-E2E-001 | **`e2e/specs/docs-online.ts` DOCS-006** | macOS：Help → User Guide；Win/Linux：`MenuBar` Help → 使用说明 | **系统浏览器**打开 `https://flyxl.github.io/datazen/docs.html`（或 zh 版）；**无** `docs-singleton` Tauri 子窗口 |
+| F6-E2E-002 | **`docs-online.ts` DOCS-004**（zh-CN 全局 seed） | wdio `before` 已设 `zh-CN`；`open_path` 接受 `.../zh/docs.html` | URL 为 `.../zh/docs.html` |
+| F6-E2E-003 | **`docs-online.ts` DOCS-004** | `open_path` 带 `#workflows` hash | IPC 接受 section 深链 URL |
+| F6-E2E-004 | **`docs-online.ts` DOCS-004** | `open_path` 带 `#context` hash | 同上 |
+| F6-E2E-005 | **`docs-online.ts` DOCS-001/004** | 源码断言 `ContentToolbar` → `openDocsWindow('ai')`；IPC `#ai` | 浏览器打开 `...#ai` |
+| F6-E2E-006 | **`docs-online.ts` DOCS-001/004** | 源码断言 `DashboardPanel` → `openDocsWindow('opsDashboard')` | 浏览器打开 `...#opsDashboard` |
+| F6-E2E-007 | **`docs-online.ts` DOCS-007** | 直接访问 `window.html?window=docs&section=workflows` | `windowKind=main`；渲染主工作区；**不**出现 in-app Docs 侧栏 |
 | F6-E2E-008 | 回归 | F1–F5 主窗 / settings / welcome 路径 | 不回归 |
 
-**说明**：当前仓库 **无** Help→浏览器 E2E spec（见 Bugs F6-BUG-002）。Webdriver 环境需 mock 或 OS 级断言 `open_path` / 默认浏览器 URL（可参考 settings `openLogDir` 模式）。
+**说明**：`e2e/specs/docs-online.ts`（DOCS-001~007）已实现源码 + IPC + Help 菜单 + legacy URL 负向断言；OS 级浏览器 URL 实跑仍依赖 webdriver 构建（F6-E2E-001~003 菜单点击已覆盖窗口计数负向）。
 
 ## 单元测试结果
 
@@ -136,7 +136,7 @@ pnpm vitest run --coverage \
 
 ## E2E 执行结果
 
-**未实跑**（需 `pnpm tauri build --debug --features webdriver` + 浏览器 URL 断言能力）。
+**静态 + IPC 验证通过**（`e2e/specs/docs-online.ts` DOCS-001~007）；**全量 webdriver 实跑**待 `pnpm tauri build --debug --features webdriver`。
 
 **线上 smoke**（2026-08-20）：
 
@@ -149,9 +149,9 @@ pnpm vitest run --coverage \
 
 | Bug ID | 关联 | 标题 | 状态 | 复现 / 说明 |
 |--------|------|------|------|-------------|
-| F6-BUG-001 | F6 | GitHub Pages `docs.html` / `zh/docs.html` 返回 404 | 待验证 | 浏览器访问 `https://flyxl.github.io/datazen/docs.html` → 404；仓库 `site/docs.html` 已存在，需 merge/deploy |
-| F6-BUG-002 | F6 | Host E2E 无 Help→浏览器 / section 深链 journey | 待验证 | `e2e/specs/` 无 `help-docs` 或等效 spec；F6-E2E-001~007 待实现 |
-| F6-BUG-003 | F6 | `f4-test-report.md` 仍描述 in-app `DocsWindow` / `docs-singleton` | 待验证 | 文档债；**留 R1** sweep（F4 报告历史快照，非运行时） |
+| F6-BUG-001 | F6 | GitHub Pages `docs.html` / `zh/docs.html` 返回 404 | 待部署验证 | 浏览器访问 `https://flyxl.github.io/datazen/docs.html` → 404；仓库 `site/docs.html` 已存在；**merge 并部署 GitHub Pages 后验证** |
+| F6-BUG-002 | F6 | Host E2E 无 Help→浏览器 / section 深链 journey | 已修复 | `e2e/specs/docs-online.ts` DOCS-001~007（源码 + `open_path` IPC + Help 菜单 + legacy URL 负向） |
+| F6-BUG-003 | F6 | `f4-test-report.md` 仍描述 in-app `DocsWindow` / `docs-singleton` | 已修复 | F4 报告已更新为 F6 官网跳转描述 |
 
 ## 验收结论
 
@@ -160,5 +160,5 @@ pnpm vitest run --coverage \
 | 删 Docs 子窗口 / 官网 HTML | **通过**（仓库内） |
 | 残留引用扫描 | **通过**（无运行时 docs 子窗口） |
 | Vitest | **18/18 通过**；F6 路径 lines **≥80%** |
-| E2E | **未实跑**；用例已文档化；线上 docs **404**（F6-BUG-001） |
+| E2E | **静态 + IPC 通过**（`docs-online.ts`）；全量 webdriver 实跑待构建；线上 docs **404**（F6-BUG-001 待部署验证） |
 | 工作项 F6 | **已完成**（实现与单测通过；部署 / E2E 债登记 Bugs） |

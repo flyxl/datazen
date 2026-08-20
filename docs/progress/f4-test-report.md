@@ -1,4 +1,4 @@
-# F4 测试报告 — 删除多余窗口壳；保留 Docs
+# F4 测试报告 — 删除多余窗口壳；保留使用说明入口（F6 改官网跳转）
 
 > 分支：`feat/main-window-pages`  
 > 编码 commit：`7e60b32c`  
@@ -18,17 +18,17 @@
 | `src/windows/main/GroupPanel.tsx` | ✓ 已删除 |
 | `src/windows/main/NewConnectionDialog.tsx` | ✓ 已删除 |
 
-### 保留项
+### 保留项（F4 时点；F6 已移除 in-app Docs 子窗口）
 
-| 检查项 | 位置 | 结果 |
-|--------|------|------|
-| `DocsWindow` 组件 | `src/windows/docs/DocsWindow.tsx` | ✓ 存在 |
-| `openDocsWindow(section?)` | `src/lib/windowManager.ts` L180–192 | ✓ 存在；单例 `docs-singleton` |
-| `App.tsx` lazy 路由 `case 'docs'` | `src/App.tsx` L43–48, L67–68 | ✓ 仅 Docs 仍为独立子窗口 |
-| `MainPage` 薄壳 | `src/windows/main/MainPage.tsx` | ✓ 委托 `ConnectionPage` |
-| Settings 单测迁移 | `SettingsWindow.test.tsx` → `SettingsContent.test.tsx` | ✓ R092 重命名 |
+| 检查项 | 位置 | F4 结果 | F6 后状态 |
+|--------|------|---------|-----------|
+| `openDocsWindow(section?)` | `src/lib/windowManager.ts` | ✓ 存在 | ✓ 改 `buildDocsUrl` + `openPath` 跳转 GitHub Pages |
+| `MainPage` 薄壳 | `src/windows/main/MainPage.tsx` | ✓ 委托 `ConnectionPage` | ✓ 不变 |
+| Settings 单测迁移 | `SettingsWindow.test.tsx` → `SettingsContent.test.tsx` | ✓ R092 重命名 | ✓ 不变 |
+| ~~`DocsWindow` 组件~~ | ~~`src/windows/docs/DocsWindow.tsx`~~ | F4 时 ✓ 存在 | **F6 已删**；入口改系统浏览器 |
+| ~~`App.tsx` `case 'docs'`~~ | ~~`src/App.tsx`~~ | F4 时 ✓ 独立子窗口 | **F6 已移除**；`?window=docs` 别名 → `main` |
 
-**结论**：F4 编码目标（删 legacy 壳、保留 Docs 入口）与文件树一致。
+**结论**：F4 编码目标（删 legacy 壳、保留使用说明入口）与 F4 文件树一致；**F6** 将 Docs 从 in-app 子窗口改为官网跳转（见 `f6-test-report.md`）。
 
 ## 全库引用扫描
 
@@ -50,14 +50,14 @@
 | ID | 规格文件（建议） | 步骤 | 期望 |
 |----|------------------|------|------|
 | F4-E2E-001 | `e2e/specs/main-window.ts` 回归 | 打开主窗口 | `workspace-nav-connections` / `workflow` / `dashboard` / `settings` 可见；应用不崩溃 |
-| F4-E2E-002 | 新建或 `e2e/specs/docs-window.ts` | 主窗 AI 面板或菜单触发 `openDocsWindow()` | 出现 `docs-singleton` 子窗口；`DocsWindow` 侧栏与正文可见 |
-| F4-E2E-003 | 同上 | `window.html?window=docs&section=workflows` | 路由至 Docs；非 MainPage |
+| F4-E2E-002 | ~~`docs-window.ts`~~ → **`e2e/specs/docs-online.ts`（F6）** | 主窗 Help 或 UI 触发 `openDocsWindow()` | **系统浏览器**打开 GitHub Pages；**无** `docs-singleton` 子窗口 |
+| F4-E2E-003 | **`docs-online.ts` DOCS-007** | `window.html?window=docs&section=workflows` | `windowKind=main`；主工作区；**不**出现 in-app Docs 侧栏 |
 | F4-E2E-004 | `e2e/specs/unified-main-window.ts` 回归 | 点击 `workspace-nav-dashboard` | `[data-testid="dashboard-panel"]` 在主窗内可见（非独立 DashboardWindow） |
 | F4-E2E-005 | `e2e/specs/settings.ts` 回归 | sidebar / `menu:open-settings` 打开设置 | `[data-testid="settings-page"]` 在主窗内；**无**新 OS 窗口 |
 | F4-E2E-006 | 负向 | 直接访问 `window.html?window=settings&section=logging` | **不应**再出现独立 Settings 壳；应为主工作区或需迁移至 `openSettingsInMainWindow`（见 F4-BUG-001） |
 | F4-E2E-007 | 负向 | 直接访问 `window.html?window=dashboard` | `windowKind` 别名 → `main`；Dashboard 仅在主窗 panel，无 `DashboardWindow` 组件 |
 
-**说明**：当前仓库 **无** Docs 专用 E2E spec；F4-E2E-002/003 为待实现用例。Settings 主窗路径已在 F1/F3 覆盖；**子窗口 legacy URL** 仍残留在 PIH / hotkeys（见 Bugs）。
+**说明**：F4-E2E-002/003 已由 F6 `e2e/specs/docs-online.ts`（DOCS-001~007）覆盖（源码 + IPC + 负向 legacy URL）。Settings 主窗路径已在 F1/F3 覆盖。
 
 ## 单元测试结果
 
@@ -91,7 +91,7 @@ pnpm vitest run --coverage \
 | 文件 | Stmts | Lines | F4 路径 | 达标 |
 |------|-------|-------|---------|------|
 | `SettingsContent.tsx` | 85.33% | **87.69%** | 自 SettingsWindow 迁出的设置正文 | ✓ |
-| `windowManager.ts` | 93.84% | **96.29%** | `openDocsWindow` 保留；settings/dashboard 改 emit | ✓ |
+| `windowManager.ts` | 93.84% | **96.29%** | `openDocsWindow` 保留（F6 改官网跳转）；settings/dashboard 改 emit | ✓ |
 | `windowKind.ts` | 95.23% | **100%** | legacy 别名 `settings`/`dashboard` → `main` | ✓ |
 | `MainPage.tsx` | 100% | **100%** | 薄壳 | ✓ |
 
@@ -115,7 +115,7 @@ pnpm vitest run --coverage \
 
 | 维度 | 结论 |
 |------|------|
-| 删文件 / 保留 Docs | **通过** |
+| 删文件 / 保留使用说明入口 | **通过**（F6 改官网跳转） |
 | 坏引用扫描 | **通过**（无 import 级断裂） |
 | Vitest | **57/57 通过**；F4 路径 coverage ≥80% |
 | E2E | **静态验证通过**（legacy URL 已清除）；PIH-004/005、TC-HOTKEY-002 待 webdriver 构建后实跑 |

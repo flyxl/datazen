@@ -39,9 +39,9 @@
 | F5-BUG-001 | F5 | Host E2E 无欢迎页 journey；wdio 全局 seed 连接 | 已修复 | `e2e/specs/welcome.ts` | bbefb6bf |
 | F5-BUG-002 | F5 | `WelcomePage.tsx` 未纳入 vitest coverage gate | 已修复 | `vitest.config.ts` L43/L72 | bbefb6bf |
 | F5-BUG-003 | F5 | 首次 `fetchConnections` 失败时误显示欢迎页 | 已修复 | `welcome-load-error` + retry；Vitest 覆盖 | bbefb6bf |
-| F6-BUG-001 | F6 | GitHub Pages `docs.html` 返回 404（仓库已有 `site/docs.html`） | 待验证 | 访问 `https://flyxl.github.io/datazen/docs.html` | 96c7a3be |
-| F6-BUG-002 | F6 | Host E2E 无 Help→浏览器 / section 深链 spec | 待验证 | 见 `docs/progress/f6-test-report.md` F6-E2E-001~007 | 96c7a3be |
-| F6-BUG-003 | F6 | `f4-test-report.md` 仍描述 in-app DocsWindow（文档债） | 待验证 | 见 f6-test-report；留 R1 | 96c7a3be |
+| F6-BUG-001 | F6 | GitHub Pages `docs.html` 返回 404（仓库已有 `site/docs.html`） | 待部署验证 | merge 并部署 GitHub Pages 后访问 `https://flyxl.github.io/datazen/docs.html` | 96c7a3be |
+| F6-BUG-002 | F6 | Host E2E 无 Help→浏览器 / section 深链 spec | 已修复 | `e2e/specs/docs-online.ts` DOCS-001~007 | 96c7a3be |
+| F6-BUG-003 | F6 | `f4-test-report.md` 仍描述 in-app DocsWindow（文档债） | 已修复 | F4 报告已更新为官网跳转 | 96c7a3be |
 
 Bug 状态：`待验证` | `验证不通过` | `已修复` | `已关闭`
 
@@ -66,3 +66,4 @@ Bug 状态：`待验证` | `验证不通过` | `已修复` | `已关闭`
 | 2026-08-20 | F5-BUG-001~003 验证：Vitest 10/10；coverage gate + welcome.ts 静态审查；bugs → 已修复 |
 | 2026-08-20 | F6 编码：Docs 子窗口移除；openDocsWindow / open_docs_window 跳转官网 docs.html |
 | 2026-08-20 | F6 测试：Vitest 18/18；f6-test-report.md；登记 F6-BUG-001~003（Pages 404 / E2E 债 / F4 报告文档债） |
+| 2026-08-20 | F6 修复：`docs-online.ts` E2E wiring；f4-test-report 官网跳转；F6-BUG-002/003 → 已修复；F6-BUG-001 → 待部署验证 |
