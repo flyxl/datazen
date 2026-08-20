@@ -410,11 +410,13 @@ impl DatabaseDriver for ElasticsearchDriver {
     }
 
     fn command_definitions(&self) -> Vec<DriverCommandDefinition> {
-        statement_command_definitions(
+        let mut cmds = statement_command_definitions(
             "Run an Elasticsearch SQL query",
             "Run an Elasticsearch SQL statement",
             "Elasticsearch SQL",
-        )
+        );
+        cmds.push(query_stream_command_definition());
+        cmds
     }
 
     async fn cancel_query(&self, _handle: &ConnectionHandle) -> Result<(), DriverError> {
@@ -461,6 +463,7 @@ mod tests {
             last_connected_at: None,
             server_version: None,
             options: None,
+            read_only: false,
         }
     }
 

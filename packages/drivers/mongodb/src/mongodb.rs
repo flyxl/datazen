@@ -597,11 +597,13 @@ impl DatabaseDriver for MongodbDriver {
     }
 
     fn command_definitions(&self) -> Vec<DriverCommandDefinition> {
-        statement_command_definitions(
+        let mut cmds = statement_command_definitions(
             "Run a MongoDB JSON command (find/aggregate)",
             "Run a MongoDB JSON write command (insert/update/delete)",
             "JSON command",
-        )
+        );
+        cmds.push(query_stream_command_definition());
+        cmds
     }
 
     async fn cancel_query(&self, _handle: &ConnectionHandle) -> Result<(), DriverError> {
@@ -638,7 +640,7 @@ mod tests {
             .into_iter()
             .map(|d| d.id)
             .collect();
-        assert_eq!(ids, vec!["query", "execute"]);
+        assert_eq!(ids, vec!["query", "execute", "query_stream"]);
         let query = MongodbDriver::new()
             .command_definitions()
             .into_iter()

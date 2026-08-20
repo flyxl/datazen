@@ -439,7 +439,11 @@ impl DatabaseDriver for ClickHouseDriver {
     }
 
     fn command_definitions(&self) -> Vec<DriverCommandDefinition> {
-        vec![query_command_definition(), execute_command_definition()]
+        vec![
+            query_command_definition(),
+            execute_command_definition(),
+            query_stream_command_definition(),
+        ]
     }
 
     async fn execute_command(

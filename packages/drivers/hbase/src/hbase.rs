@@ -429,7 +429,12 @@ impl DatabaseDriver for HBaseDriver {
     }
 
     fn command_definitions(&self) -> Vec<DriverCommandDefinition> {
-        query_only_command_definitions("Scan an HBase table. Use `scan <table>`.", "scan <table>")
+        let mut cmds = query_only_command_definitions(
+            "Scan an HBase table. Use `scan <table>`.",
+            "scan <table>",
+        );
+        cmds.push(query_stream_command_definition());
+        cmds
     }
 
     async fn cancel_query(&self, _handle: &ConnectionHandle) -> Result<(), DriverError> {
@@ -448,7 +453,7 @@ mod tests {
             .into_iter()
             .map(|d| d.id)
             .collect();
-        assert_eq!(ids, vec!["query"]);
+        assert_eq!(ids, vec!["query", "query_stream"]);
     }
 
     #[test]
@@ -506,6 +511,7 @@ mod tests {
             last_connected_at: None,
             server_version: None,
             options: None,
+            read_only: false,
         }
     }
 

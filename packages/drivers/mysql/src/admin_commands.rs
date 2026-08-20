@@ -2,7 +2,11 @@ use datazen_driver_api::*;
 use serde_json::json;
 
 pub fn mysql_admin_command_definitions() -> Vec<DriverCommandDefinition> {
-    let mut cmds = vec![query_command_definition(), execute_command_definition()];
+    let mut cmds = vec![
+        query_command_definition(),
+        execute_command_definition(),
+        query_stream_command_definition(),
+    ];
 
     cmds.push(DriverCommandDefinition {
         id: "create_database".into(),
@@ -271,6 +275,7 @@ mod tests {
         let ids: Vec<&str> = defs.iter().map(|d| d.id.as_str()).collect();
         assert!(ids.contains(&"query"));
         assert!(ids.contains(&"execute"));
+        assert!(ids.contains(&"query_stream"));
         assert!(ids.contains(&"create_database"));
         assert!(ids.contains(&"create_user"));
         assert!(ids.contains(&"list_objects"));
