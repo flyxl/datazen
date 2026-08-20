@@ -46,3 +46,4 @@ Bug 状态：`待验证` | `验证不通过` | `已修复` | `已关闭`
 | 2026-08-20 | F2 测试：重命名完整性通过；Vitest 33/33；f2-test-report.md；登记 F1-BUG-001（pathIpcWiring） |
 | 2026-08-20 | F1-BUG-001 验证：`pathIpcWiring.test.ts` 6/6 通过（断言已迁至 `SettingsContent.tsx`） |
 | 2026-08-20 | F3 测试：Vitest 19/19；f3-test-report.md；登记 F3-BUG-001（active 态不可达） |
+| 2026-08-20 | F3-BUG-001 修复：移除 Settings 按钮不可达的 `active` prop（保持全页替换设计）→ 待验证 |

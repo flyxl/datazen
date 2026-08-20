@@ -84,7 +84,7 @@ pnpm vitest run --coverage \
 
 | Bug ID | 关联 | 标题 | 状态 | 说明 |
 |--------|------|------|------|------|
-| F3-BUG-001 | F3 | Settings 按钮 `active={mainView === 'settings'}` 永不可达 | 待验证 | `mainView === 'settings'` 时整棵 workspace shell（含 icon rail）被 `SettingsPage` 替换，按钮不在 DOM 中，`active` 分支无法生效；Settings 入口无高亮反馈。 |
+| F3-BUG-001 | F3 | Settings 按钮 `active={mainView === 'settings'}` 永不可达 | 待验证 | 已移除不可达 `active` prop（全页替换设计下 Settings 不在 rail 内，无需高亮）。 |
 
 **复现步骤（F3-BUG-001）**：
 

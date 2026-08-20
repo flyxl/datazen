@@ -965,7 +965,6 @@ export function ConnectionPage() {
                   iconId="nav.settings"
                   label={t('nav.settings')}
                   testId="workspace-nav-settings"
-                  active={mainView === 'settings'}
                   onClick={() => openSettingsInShell()}
                 />
               </div>
