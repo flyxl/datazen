@@ -89,13 +89,18 @@ describe('path IPC frontend wiring', () => {
     expect(menuBar).toContain('import-connections-file');
   });
 
-  it('docs window is a singleton and overlay chrome has a drag fallback', () => {
+  it('overlay chrome has a drag fallback and docs open via official URL', () => {
     const app = readSrc('App.tsx');
     expect(app).toContain('WindowChromeFallback');
     expect(app).not.toContain('fallback={null}');
+    expect(app).not.toContain('DocsWindow');
 
     const wm = readSrc('lib/windowManager.ts');
-    expect(wm).toContain("openSingletonWindow('docs-singleton'");
+    expect(wm).toContain('buildDocsUrl');
+    expect(wm).not.toContain("openSingletonWindow('docs-singleton'");
+
+    const docsUrls = readSrc('lib/docsUrls.ts');
+    expect(docsUrls).toContain('flyxl.github.io/datazen/docs.html');
 
     const rustMenu = fs.readFileSync(path.join(ROOT, '../src-tauri/src/lib.rs'), 'utf8');
     expect(rustMenu).toContain('register_handler_once');

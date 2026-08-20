@@ -24,7 +24,7 @@ describe('getWindowKind', () => {
       ['?window=data-sync', 'data-sync'],
       ['?window=backup', 'backup'],
       ['?window=workflow', 'main'],
-      ['?window=docs', 'docs'],
+      ['?window=docs', 'main'],
       ['?window=dashboard', 'main'],
     ];
     for (const [search, kind] of cases) {

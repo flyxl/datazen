@@ -22,7 +22,7 @@
 | F3 | 左侧功能 sidebar 底部增加 Settings 入口；进入 SettingsPage；返回恢复先前页面 | 已完成 | ff09481f | （本轮） | Vitest 19/19；F3 路径覆盖 ≥80%；E2E sidebar 用例已文档化待 webdriver；F3-BUG-001 登记 |
 | F4 | 删除多余窗口（DashboardWindow 等独立窗口壳）；保留使用说明入口 | 已完成 | 7e60b32c | （本轮） | Vitest 57/57；Docs 保留；E2E legacy URL bug 已登记 |
 | F5 | 首次安装欢迎页（介绍连接/看板/工作流/AI，引导创建首个连接；有连接后进主界面） | 已完成 | 2024f465 | （本轮） | Vitest 21/21；F5 路径 ≥80%；E2E 用例已文档化；F5-BUG-001~003 登记 |
-| F6 | 帮助文档改为官网上线文档；点击使用说明跳转官网 | 未开始 | — | — | |
+| F6 | 帮助文档改为官网上线文档；点击使用说明跳转官网 | 待测试 | — | — | site/docs.html + openDocsWindow → GitHub Pages |
 | R1 | 全量回归 + 文档更新（架构 / AGENTS.md）+ 合并 main | 未开始 | — | — | |
 
 状态枚举：`未开始` | `进行中` | `待测试` | `测试中` | `验证不通过` | `待验证` | `已完成`
@@ -61,3 +61,4 @@ Bug 状态：`待验证` | `验证不通过` | `已修复` | `已关闭`
 | 2026-08-20 | F5 测试：Vitest 21/21；f5-test-report.md；登记 F5-BUG-001~003 |
 | 2026-08-20 | F5 修复：welcome load error、coverage gate、E2E welcome.ts；bugs → 待验证 |
 | 2026-08-20 | F5-BUG-001~003 验证：Vitest 10/10；coverage gate + welcome.ts 静态审查；bugs → 已修复 |
+| 2026-08-20 | F6 编码：Docs 子窗口移除；openDocsWindow / open_docs_window 跳转官网 docs.html |

@@ -270,12 +270,10 @@ mod native_menu {
                     let _ = app_handle.emit(event, ());
                 }
                 MenuAction::OpenDocs => {
-                    // Open directly in Rust — do not emit to every webview (that
-                    // previously caused concurrent create_sub_window races).
                     let app = app_handle.clone();
                     tauri::async_runtime::spawn(async move {
                         if let Err(e) = commands::open_docs_window(app, None).await {
-                            tracing::warn!(error = %e, "menu help-docs: open docs window failed");
+                            tracing::warn!(error = %e, "menu help-docs: open docs URL failed");
                         }
                     });
                 }
