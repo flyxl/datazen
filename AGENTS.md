@@ -40,7 +40,7 @@ datazen/
 │   │   ├── cache/               # SchemaCache
 │   │   ├── store/               # AES-256-GCM 加密持久化
 │   │   ├── data_sync/           # 同族 Data Synchronization（门闸 / 比较 / ChangeSet / 执行）
-│   │   └── sync/                # 旧 IR 适配器与抽样 compare（非 Sync 执行引擎）
+│   │   └── transfer/            # 异构 IR 适配器 / DDL 生成（非 data_sync 执行引擎）
 │   └── resources/               # 菜单翻译、Prompt 模板
 ├── packages/
 │   ├── driver-api/              # DatabaseDriver + Command API + inventory + ReuseDriver
@@ -116,7 +116,7 @@ YAML 驱动的通用执行引擎，GUI、Tauri IPC 和 MCP 共用同一 runtime�
 
 ## IPC 通信
 
-前端 `src/commands/` ↔ 后端 `src-tauri/src/commands/`，按领域对齐。Driver Command IPC 统一走 `execute_driver_command`，SQL 编辑器的 `query` / `execute` 也通过同一路径。
+前端 `src/commands/` ↔ 后端 `src-tauri/src/commands/`，按领域对齐。Driver Command IPC 统一走 `execute_driver_command`；SQL 编辑器的 `query` / `execute`、流式 `query_stream`、Schema 对象浏览（`list_objects` 等）、Redis KV、管理对话框均通过同一路径，Host 不按驱动类型硬编码。
 
 ## 错误处理
 
@@ -134,8 +134,9 @@ YAML 驱动的通用执行引擎，GUI、Tauri IPC 和 MCP 共用同一 runtime�
 | AI Chat | `components/ai/AiChatPanel.tsx` | `commands/ai.rs` |
 | Workflows | `windows/workflow/WorkflowWindow.tsx` | `workflow/executor.rs` / `workflow/command_runtime.rs` |
 | 数据同步 | `windows/data-sync/` | `data_sync/` + `commands/sync/`（`inspect_data_sync` / `execute_data_sync`） |
-| 权限管理 | `windows/connection/PrivilegeView.tsx` | `commands/schema.rs → get_privileges` + Driver `admin_commands` |
-| 管理命令 | `Create*Dialog.tsx` + `schemaTreeContextMenu.ts` | Driver `admin_commands`（create/drop DB/schema/user, grant/revoke） |
+| 权限管理 | `windows/connection/PrivilegeView.tsx` | `execute_driver_command` + Driver `admin_commands`（动态 schema） |
+| 管理命令 | `Create*Dialog.tsx` + `schemaTreeContextMenu.ts` | `execute_driver_command` + Driver `admin_commands`（create/drop DB/schema/user, grant/revoke） |
+| Schema 对象 | 连接树 routines/triggers 等 | `execute_driver_command`（`list_objects` / `get_object_ddl` / `list_privileges`） |
 | Redis 深度运维 | `packages/drivers/redis/ui/*` | `execute_command` / `execute_driver_command` |
 | 主题包 | `windows/settings/ThemePackSection.tsx` | `theme/` + `commands/theme.rs` |
 
