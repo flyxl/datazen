@@ -18,11 +18,10 @@ import { useSchemaStore } from '../../../../src/stores/schemaStore';
 import { useSettingsStore } from '../../../../src/stores/settingsStore';
 import { useColumnResize } from '../../../../src/hooks/useColumnResize';
 import { useI18n } from '../../../../src/hooks/useI18n';
-import { databaseCommands } from '../../../../src/commands/database';
 import { cn } from '../../../../src/lib/cn';
 import { showNativeContextMenu } from '../../../../src/lib/nativeContextMenu';
 import { readBooleanField } from '../../../../src/plugin-sdk/settings';
-import { redisCommandInvoke } from './redisInvoke';
+import { invokeGetKey, invokeScanKeys, redisCommandInvoke } from './redisInvoke';
 import type { KeyDetail, KeyEntry } from '../../../../src/types';
 import { BatchBar, invokeDeleteKeys } from './BatchBar';
 import { hasRedisJson } from './hasRedisJson';
@@ -149,13 +148,7 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
       async (idx: number, pattern: string, cur: number, reset: boolean) => {
         setKeysLoading(true);
         try {
-          const result = await databaseCommands.kvScanKeys(
-            connectionId,
-            idx,
-            pattern || '*',
-            cur,
-            PAGE_SIZE,
-          );
+          const result = await invokeScanKeys(connectionId, idx, pattern || '*', cur, PAGE_SIZE);
           if (reset) {
             setKeys(result.keys);
           } else {
@@ -164,7 +157,7 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
           setCursor(result.cursor);
           setDbSize(result.dbSize);
         } catch (e) {
-          console.error('kvScanKeys failed:', e);
+          console.error('scan_keys failed:', e);
         } finally {
           setKeysLoading(false);
         }
@@ -244,10 +237,10 @@ export const RedisWorkbench = forwardRef<RedisWorkbenchHandle, RedisWorkbenchPro
         setSelectedKey(key);
         setKeyDetailLoading(true);
         try {
-          const detail = await databaseCommands.kvGetKey(connectionId, dbIndex, key);
+          const detail = await invokeGetKey(connectionId, dbIndex, key);
           setKeyDetail(detail);
         } catch (e) {
-          console.error('kvGetKey failed:', e);
+          console.error('get_key failed:', e);
           setKeyDetail(null);
         } finally {
           setKeyDetailLoading(false);

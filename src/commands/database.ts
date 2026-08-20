@@ -1,8 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import type {
   FilterCondition,
-  KeyDetail,
-  KeyScanResult,
   SortCondition,
   DatabaseObject,
   PrivilegeGrant,
@@ -68,17 +66,6 @@ export const databaseCommands = {
     }),
 
   executeSQL: (connectionId: string, sql: string) => queryCommands.executeQuery(connectionId, sql),
-
-  kvScanKeys: (
-    connectionId: string,
-    dbIndex: number,
-    pattern: string,
-    cursor: number,
-    count: number,
-  ) => invoke<KeyScanResult>('kv_scan_keys', { connectionId, dbIndex, pattern, cursor, count }),
-
-  kvGetKey: (connectionId: string, dbIndex: number, key: string) =>
-    invoke<KeyDetail>('kv_get_key', { connectionId, dbIndex, key }),
 
   commitRowUpdates: (connectionId: string, table: string, updates: RowUpdateBatch[]) =>
     invoke<void>('commit_row_updates', { connectionId, table, updates }),

@@ -973,7 +973,6 @@ pub async fn init_drivers() -> DriverRegistry {
 | `connection.rs` | 连接 CRUD、测试、connect/disconnect |
 | `schema.rs` | 数据库/表/列/表数据 |
 | `query.rs` | SQL 执行、explain、查询历史/收藏 |
-| `kv.rs` | KV 扫描/读取（通过 `KeyValueDriver`） |
 | `data.rs` | 行级更新（`commit_row_updates`） |
 | `backup.rs` | 备份/恢复 |
 | `commands/sync/` | Data Sync IPC（`inspect_data_sync` / `execute_data_sync`；旧 `sync_tables` 拒绝 DROP+INSERT） |
@@ -989,13 +988,13 @@ DatabaseDriver (SQL 通用)
 ├── build_update_sql()       # UPDATE 语句构建
 └── skip_count_query()       # 是否跳过 COUNT(*)（Kiwi 覆盖为 true）
 
-KeyValueDriver (KV 专用, db/traits/kv.rs)
+KeyValueDriver (Redis 驱动内部实现；UI 经 `scan_keys`/`get_key` Driver Command)
 ├── scan_keys_with_info()
 └── get_key_detail()
 ```
 
 - `DriverRegistry::get()` — 获取 `Arc<dyn DatabaseDriver>`
-- `DriverRegistry::get_kv_driver()` — 获取 `Arc<dyn KeyValueDriver>`（目前 Redis）
+- Redis KV 浏览器经 `execute_driver_command`（`scan_keys` / `get_key`），不再走 Host 专用 IPC
 
 ### 3.3 添加新 DB 类型检查清单
 

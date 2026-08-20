@@ -1,4 +1,5 @@
 import { driverCommands } from '../../../../src/commands/driver';
+import type { KeyDetail, KeyScanResult } from '../../../../src/types';
 
 /** Test-injectable invoke used by Redis UI helpers. */
 export type RedisInvokeFn = (
@@ -31,4 +32,34 @@ export async function redisCommandInvoke<T = unknown>(
   delete input.connectionId;
   const result = await driverCommands.execute({ connectionId, command, input });
   return unwrapData(result.data) as T;
+}
+
+export async function invokeScanKeys(
+  connectionId: string,
+  dbIndex: number,
+  pattern: string,
+  cursor: number,
+  count: number,
+  invoke: RedisInvokeFn = redisCommandInvoke,
+): Promise<KeyScanResult> {
+  return (await invoke('redis', 'scan_keys', {
+    connectionId,
+    dbIndex,
+    pattern,
+    cursor,
+    count,
+  })) as KeyScanResult;
+}
+
+export async function invokeGetKey(
+  connectionId: string,
+  dbIndex: number,
+  key: string,
+  invoke: RedisInvokeFn = redisCommandInvoke,
+): Promise<KeyDetail> {
+  return (await invoke('redis', 'get_key', {
+    connectionId,
+    dbIndex,
+    key,
+  })) as KeyDetail;
 }

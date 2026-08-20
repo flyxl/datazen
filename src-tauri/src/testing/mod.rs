@@ -1,5 +1,4 @@
 pub mod mock_driver;
-pub mod mock_kv_driver;
 
 #[cfg(test)]
 pub mod app_state;
