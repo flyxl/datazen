@@ -28,12 +28,11 @@ export const queryCommands = {
     onEvent: (event: QueryStreamEvent) => void,
     options?: { applyResultLimit?: boolean; recordHistory?: boolean },
   ) => {
-    const onEventChannel = new Channel<QueryStreamEvent>();
-    onEventChannel.onmessage = onEvent;
-    await invoke<void>('execute_query_stream', {
+    await driverCommands.executeStream({
       connectionId,
-      sql,
-      onEvent: onEventChannel,
+      command: 'query_stream',
+      input: { sql },
+      onEvent,
       applyResultLimit: options?.applyResultLimit,
       recordHistory: options?.recordHistory,
     });
