@@ -31,7 +31,7 @@
 
 | Bug ID | 关联 | 标题 | 状态 | 复现步骤 | 发现 commit |
 |--------|------|------|------|----------|-------------|
-| F1-BUG-001 | F1 | `pathIpcWiring.test.ts` 断言 `SettingsWindow` 含 `openLogDir`（F1 迁移后失效） | 待验证 | `pnpm vitest run src/commands/__tests__/pathIpcWiring.test.ts` | 测试 commit |
+| F1-BUG-001 | F1 | `pathIpcWiring.test.ts` 断言 `SettingsWindow` 含 `openLogDir`（F1 迁移后失效） | 已修复 | `pnpm vitest run src/commands/__tests__/pathIpcWiring.test.ts` | 测试 commit |
 
 Bug 状态：`待验证` | `验证不通过` | `已修复` | `已关闭`
 
@@ -43,3 +43,4 @@ Bug 状态：`待验证` | `验证不通过` | `已修复` | `已关闭`
 | 2026-08-20 | F1 编码：SettingsPage 嵌入主窗口；openSettingsWindow 改 emit；抽取 SettingsContent |
 | 2026-08-20 | F2 编码：主工作区 ConnectionPage / WorkflowPage / MainPage 重命名；架构文档与 AGENTS.md 同步 |
 | 2026-08-20 | F2 测试：重命名完整性通过；Vitest 33/33；f2-test-report.md；登记 F1-BUG-001（pathIpcWiring） |
+| 2026-08-20 | F1-BUG-001 验证：`pathIpcWiring.test.ts` 6/6 通过（断言已迁至 `SettingsContent.tsx`） |
