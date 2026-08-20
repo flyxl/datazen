@@ -33,8 +33,8 @@
 |--------|------|------|------|----------|-------------|
 | F1-BUG-001 | F1 | `pathIpcWiring.test.ts` 断言 `SettingsWindow` 含 `openLogDir`（F1 迁移后失效） | 已修复 | `pnpm vitest run src/commands/__tests__/pathIpcWiring.test.ts` | 测试 commit |
 | F3-BUG-001 | F3 | Settings 按钮 `active={mainView === 'settings'}` 永不可达（无高亮） | 已修复 | 见 `docs/progress/f3-test-report.md` | ff09481f |
-| F4-BUG-001 | F4 | `path-ipc-hardening.ts` PIH-004/005 仍用 `window=settings` 子窗口 URL | 待验证 | 见 `docs/progress/f4-test-report.md` | 7e60b32c |
-| F4-BUG-002 | F4 | `hotkeys.ts` TC-HOTKEY-002 fallback 仍用 `window=settings` URL | 待验证 | 见 `docs/progress/f4-test-report.md` | 7e60b32c |
+| F4-BUG-001 | F4 | `path-ipc-hardening.ts` PIH-004/005 仍用 `window=settings` 子窗口 URL | 已修复 | 见 `docs/progress/f4-test-report.md` | 7e60b32c |
+| F4-BUG-002 | F4 | `hotkeys.ts` TC-HOTKEY-002 fallback 仍用 `window=settings` URL | 已修复 | 见 `docs/progress/f4-test-report.md` | 7e60b32c |
 | F4-BUG-003 | F4 | PRD 仍引用已删 `DashboardWindow` / `SettingsWindow` 路径 | 待验证 | `docs/prd/data-dashboard*.md` | 7e60b32c |
 
 Bug 状态：`待验证` | `验证不通过` | `已修复` | `已关闭`
@@ -53,3 +53,4 @@ Bug 状态：`待验证` | `验证不通过` | `已修复` | `已关闭`
 | 2026-08-20 | F4 测试：Vitest 57/57；f4-test-report.md；登记 F4-BUG-001~003（E2E legacy URL / PRD 文档债） |
 | 2026-08-20 | F3-BUG-001 验证：源码无 `active=`；Vitest 16/16；bug → 已修复 |
 | 2026-08-20 | F4-BUG-001/002 修复：`path-ipc-hardening.ts`、`hotkeys.ts` 改 `openSettingsInMainWindow`；F4-BUG-003 PRD 文档债留 R1 |
+| 2026-08-20 | F4-BUG-001/002 静态验证：`rg 'window.html?window=settings' e2e/` → 0；bug → 已修复；E2E 实跑待 webdriver |
