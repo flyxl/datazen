@@ -5,6 +5,7 @@ import { Dialog } from '../ui/Dialog';
 import type { ColumnDef } from './TableHeader';
 import { toEditString } from './EditableCell';
 import { formatCell } from '../../lib/formatters';
+import { dataTypeTextClass } from '../../lib/dataTypeColors';
 import { useI18n } from '../../hooks/useI18n';
 import { cn } from '../../lib/cn';
 
@@ -186,7 +187,9 @@ function FieldRow({ column, value, editable, onCommit }: FieldRowProps) {
         </span>
         <div className="flex shrink-0 items-center gap-1.5">
           {column.type && (
-            <span className="font-mono text-[10px] text-fg-muted">{column.type}</span>
+            <span className={cn('font-mono text-[10px]', dataTypeTextClass(column.type))}>
+              {column.type}
+            </span>
           )}
           {canQuickLook && (
             <button

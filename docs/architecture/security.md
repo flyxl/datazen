@@ -6,7 +6,7 @@
 
 | 安全措施 | 实现方式 | 位置 |
 |----------|----------|------|
-| **密码加密存储** | AES-256-GCM + 系统密钥链 | `Store::encrypt/decrypt` |
+| **密码加密存储** | AES-256-GCM；主密钥在 OS 钥匙串或 `{appData}/.key`（见 `key_store`） | `Store::encrypt/decrypt` + `store/key_store.rs` |
 | **密码派生** | Argon2id KDF（替代双轮 SHA-256） | `commands/config.rs::derive_key_from_password` |
 | **AI Key 加密** | 随 Store 整体 AES-256-GCM 加密 | `store/mod.rs::ai_config.enc` |
 | **连接池管理** | sqlx 连接池 + 超时清理 | 各数据库驱动 |
@@ -29,7 +29,7 @@ plaintext → 生成随机 nonce(12字节) → AES-256-GCM 加密 → base64(non
 encrypted → base64 解码 → 分离 nonce(前12字节) + ciphertext → 解密 → plaintext
 ```
 
-加密密钥从系统密钥链（macOS Keychain / Windows Credential Store / Linux Secret Service）获取，首次启动时随机生成。
+加密主密钥由 `store/key_store.rs` 管理：**正式签名版默认存 OS 钥匙串**（macOS Keychain / Windows Credential Store / Linux Secret Service）；`DATAZEN_KEYRING=file` 或 macOS adhoc/未签名开发构建则使用 `{appData}/.key`。钥匙串不可用时可回退到已有 `.key`。首次启动随机生成 32 字节密钥。详见 [持久化存储 — 主加密密钥](backend/store.md#主加密密钥key_store)。
 
 ### 2.2 密码派生（导入/导出）
 

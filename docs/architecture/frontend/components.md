@@ -88,29 +88,14 @@ function VirtualBody({ rows, columns, rowHeight }: Props) {
 const CellRenderer = memo(function CellRenderer({ value, type, isEditing }: Props) {
   if (isEditing) return <EditableCell value={value} type={type} />;
 
-  switch (type) {
-    case 'boolean':
-      return <span className="text-purple-400">{String(value)}</span>;
-    case 'integer':
-    case 'bigint':
-    case 'float':
-    case 'double precision':
-      return <span className="text-amber-400 font-mono">{value}</span>;
-    case 'timestamp':
-    case 'timestamptz':
-      return <span className="text-slate-400 font-mono text-xs">{formatTimestamp(value)}</span>;
-    case 'json':
-    case 'jsonb':
-      return <JsonCell value={value} />;
-    default:
-      // 长文本截断 + title tooltip
-      const text = String(value ?? 'NULL');
-      return (
-        <span className={value === null ? 'text-slate-600 italic' : 'text-slate-100'} title={text}>
-          {text.length > 120 ? text.slice(0, 120) + '…' : text}
-        </span>
-      );
-  }
+  // Colors come from theme tokens `--dt-*` (Host defaults; packs may override).
+  if (value == null) return <span className="text-dt-null italic">NULL</span>;
+  if (type.includes('bool')) return <span className="text-dt-bool font-mono">{String(value)}</span>;
+  if (isNumeric(type)) return <span className="text-dt-number font-mono">{value}</span>;
+  if (type.includes('timestamp') || type.includes('date'))
+    return <span className="text-dt-datetime font-mono text-xs">{formatTimestamp(value)}</span>;
+  if (type.includes('json')) return <span className="text-dt-json font-mono">{formatCell(value)}</span>;
+  return <span className="text-dt-text" title={String(value)}>{truncate(String(value))}</span>;
 });
 ```
 
@@ -181,50 +166,17 @@ CSS 实现：
 </div>
 ```
 
-#### 连接窗口 (connection-window)
+#### 主工作区连接视图 (main → ConnectionWindow)
+
+连接 / Workflow / Dashboard 在同一 OS 窗口内切换；左侧 `ConnectionNavigatorTree`，右侧连接 Tab（结构 / 数据 / 查询等）。查询编辑器内联在 ContentView，**不再**使用独立 `query-window` OS 窗口。独立子窗口仅保留新建连接、设置、备份、同步、Schema Diff、文档等。详见 [窗口管理](../windows.md)。
 
 ```
-┌──────────────────────────────────────────────────┐  ← h-10
-│ 标题栏                                           │
-├──────────────────────────────────────────────────┤  ← h-12
-│ 工具栏                                           │
+┌──────────────────────────────────────────────────┐
+│ 标题栏 + 工作区导航（Connections / Workflow / Dashboard）│
 ├──────────┬───────────────────────────────────────┤
-│          │ Tab栏: 结构 | 数据 | 索引 | 外键 | DDL │  ← h-10
-│ 数据库树  ├───────────────────────────────────────┤
-│ (280px   │                                       │
-│  可拖拽)  │          Tab 内容区                    │  ← flex-1
-│          │                                       │
-├──────────┴───────────────────────────────────────┤  ← h-10
-│ 状态栏                                           │
-└──────────────────────────────────────────────────┘
-```
-
-#### 查询窗口 (query-window)
-
-```
-┌──────────────────────────────────────────────────┐  ← h-10
-│ 标题栏                                           │
-├──────────────────────────────────────────────────┤  ← h-12
-│ 工具栏 (执行/取消/格式化/保存/收藏/历史/执行计划)  │
-├──────────────────────────────────────────────────┤
-│ 编辑器 Tab栏                                     │  ← h-8
-├──────────────────────────────────────────────────┤
-│                                                  │
-│   CodeMirror SQL 编辑器                            │  ← 可拖拽高度
-│                                                  │
-├──────────────────────────────────────────────────┤  ← 拖拽分割线
-│ 结果 Tab栏 (结果 | 消息)                          │  ← h-8
-├──────────────────────────────────────────────────┤
-│ 查询信息 (成功/行数/耗时)                         │  ← h-8
-├──────────────────────────────────────────────────┤
-│                                                  │
-│   结果表格 (虚拟滚动)                             │  ← flex-1
-│                                                  │
-├──────────────────────────────────────────────────┤  ← h-10
-│ 分页控制                                         │
-├──────────────────────────────────────────────────┤  ← h-10
-│ 状态栏                                           │
-└──────────────────────────────────────────────────┘
+│ 连接导航树 │ Tab 栏 + ContentView（结构/数据/查询…） │
+│ (可拖拽)  │                                       │
+└──────────┴───────────────────────────────────────┘
 ```
 
 ### 6.3 可拖拽分割器
@@ -323,68 +275,47 @@ export function useResizable({ direction, initialSize, minSize, maxSize, storage
 
 ### 7.1 CSS 变量方案
 
+Host 语义 token 定义在 `src/styles/themes.css`（非旧版 `--bg-primary` 命名）：
+
 ```css
-/* styles/themes.css */
 :root {
-  /* 亮色主题 */
-  --bg-primary: #ffffff;
-  --bg-secondary: #f8fafc;
-  --bg-tertiary: #f1f5f9;
-  --border: #e2e8f0;
-  --text-primary: #0f172a;
-  --text-secondary: #64748b;
-  --text-muted: #94a3b8;
-  --accent: #3b82f6;
-  --success: #22c55e;
-  --warning: #f59e0b;
-  --danger: #ef4444;
+  --c-surface: #ffffff;
+  --c-fg: #0f172a;
+  --c-accent: #3b82f6;
+  /* … surface / edge / status … */
+  --dt-null: var(--c-fg-muted);
+  --dt-bool: #a855f7;
+  --dt-number: #d97706;
+  --dt-datetime: #7c3aed;
+  --dt-json: var(--c-fg);
+  --dt-text: var(--c-fg);
+  --cm-keyword: #7c3aed;
+  /* … CodeMirror … */
 }
 
 .dark {
-  --bg-primary: #0f172a;
-  --bg-secondary: #1e293b;
-  --bg-tertiary: #334155;
-  --border: #334155;
-  --text-primary: #f1f5f9;
-  --text-secondary: #94a3b8;
-  --text-muted: #64748b;
-  --accent: #60a5fa;
-  --success: #4ade80;
-  --warning: #fbbf24;
-  --danger: #f87171;
+  --c-surface: #0f172a;
+  --dt-number: #fcd34d;
+  /* … */
 }
 ```
 
 ### 7.2 Tailwind 配置
 
 ```typescript
-// tailwind.config.ts
-export default {
-  darkMode: 'class',
-  theme: {
-    extend: {
-      colors: {
-        bg: {
-          primary: 'var(--bg-primary)',
-          secondary: 'var(--bg-secondary)',
-          tertiary: 'var(--bg-tertiary)',
-        },
-        border: 'var(--border)',
-        text: {
-          primary: 'var(--text-primary)',
-          secondary: 'var(--text-secondary)',
-          muted: 'var(--text-muted)',
-        },
-        accent: 'var(--accent)',
-      },
-      fontFamily: {
-        sans: ['Inter', 'sans-serif'],
-        mono: ['JetBrains Mono', 'monospace'],
-      },
-    },
+// tailwind.config.ts — 摘录
+colors: {
+  surface: { DEFAULT: 'var(--c-surface)', alt: 'var(--c-surface-alt)', /* … */ },
+  fg: { DEFAULT: 'var(--c-fg)', secondary: 'var(--c-fg-secondary)', muted: 'var(--c-fg-muted)' },
+  accent: { DEFAULT: 'var(--c-accent)' },
+  dt: {
+    null: 'var(--dt-null)', bool: 'var(--dt-bool)', number: 'var(--dt-number)',
+    datetime: 'var(--dt-datetime)', json: 'var(--dt-json)', text: 'var(--dt-text)',
   },
-};
+},
 ```
+
+**DataTable / 结构视图类型色**：`src/lib/dataTypeColors.ts` 将 SQL 类型映射到 `text-dt-*`；`CellRenderer`、`StructureView`、`TableHeader`、`DetailPanel`、`ExportDialog`、`IndexesView` 共用。
 
 ### 7.3 模式切换（light / dark / system）
 
@@ -439,6 +370,19 @@ settings.theme.packId  →  read_theme_pack_file (IPC)
 - 主题包可通过 `fonts.css` 覆盖；用户显式设置的 `editorFontFamily` **优先于** 主题 `--font-editor`。
 
 后端安装与校验见 [运行时主题包](../backend/theme.md)。
+
+**DataTable 单元格类型色**
+
+| CSS 变量 | Tailwind | 用途 |
+|----------|----------|------|
+| `--dt-null` | `text-dt-null` | NULL |
+| `--dt-bool` | `text-dt-bool` | 布尔 |
+| `--dt-number` | `text-dt-number` | 数值 |
+| `--dt-datetime` | `text-dt-datetime` | 日期/时间 |
+| `--dt-json` | `text-dt-json` | JSON |
+| `--dt-text` | `text-dt-text` | 普通文本 |
+
+Host 在 `src/styles/themes.css` 提供 light/dark 默认；主题包可在 `tokens.css` 覆盖。实现：`CellRenderer.tsx`。
 
 ## 4. Tauri IPC 通信层
 
@@ -845,58 +789,29 @@ interface QueryExecState {
 
 ### 10.1 窗口入口分发
 
-Tauri 多窗口模式下，每个窗口加载同一个 HTML，通过 URL 参数或 window label 区分窗口类型：
+各 webview 加载同一 HTML，通过 URL `?window=`（`getWindowKind()`）区分。连接 / Workflow / Dashboard 统一进 `main`：
 
 ```typescript
-// main.tsx
-import { getCurrentWindow } from '@tauri-apps/api/window';
+// windowKind.ts — legacy aliases map to main
+const LEGACY_MAIN_ALIASES = new Set(['connection', 'workflow', 'dashboard']);
 
-const windowLabel = getCurrentWindow().label;
-
-function App() {
-  if (windowLabel === 'main') return <MainWindow />;
-  if (windowLabel.startsWith('connection-')) return <ConnectionWindow />;
-  if (windowLabel.startsWith('query-')) return <QueryWindow />;
-  return <div>Unknown window</div>;
+// App.tsx（示意）
+switch (getWindowKind()) {
+  case 'main': return <MainWindow />; // → ConnectionWindow 统一工作区
+  case 'settings': return <SettingsWindow />;
+  case 'new-connection': return <NewConnectionWindow />;
+  // backup / data-sync / schema-diff / docs …
 }
 ```
 
-### 10.2 窗口创建
+### 10.2 打开连接（主工作区 Tab）
 
 ```typescript
-// lib/tauri.ts
-import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
-
-export async function openConnectionWindow(connectionId: string, connectionName: string) {
-  const label = `connection-${connectionId}`;
-  const existing = await WebviewWindow.getByLabel(label);
-  if (existing) {
-    await existing.setFocus();
-    return;
-  }
-
-  new WebviewWindow(label, {
-    url: `/?window=connection&id=${connectionId}`,
-    title: `${connectionName} - DataZen`,
-    width: 1400,
-    height: 900,
-    minWidth: 800,
-    minHeight: 600,
-    decorations: false,       // 自定义标题栏
-  });
-}
-
-export async function openQueryWindow(connectionId: string, database: string) {
-  const label = `query-${Date.now()}`;
-  new WebviewWindow(label, {
-    url: `/?window=query&connectionId=${connectionId}&db=${database}`,
-    title: `查询 - ${database} - DataZen`,
-    width: 1400,
-    height: 900,
-    minWidth: 800,
-    minHeight: 600,
-    decorations: false,
-  });
+// lib/windowManager.ts — 不再创建 connection-* OS 窗口
+export function openConnectionWindow(opts, connectionName, database?, databaseType?, action?) {
+  localStorage.setItem(PENDING_CONNECTION_KEY, JSON.stringify(payload));
+  void emitCrossWindow('datazen:open-connection', payload);
+  void focusMainWindow();
 }
 ```
 
@@ -909,7 +824,7 @@ export async function openQueryWindow(connectionId: string, database: string) {
 | 标题栏高度 | 40px | `h-10` |
 | 工具栏高度 | 48-56px | `h-12` / `h-14` |
 | 状态栏高度 | 40px | `h-10` |
-| 左侧边栏宽度 | 220px (主窗口) / 280px (连接窗口) | 可拖拽，默认值 |
+| 左侧边栏宽度 | 220–280px（主工作区导航树） | 可拖拽 |
 | Tab 栏高度 | 40px | `h-10` |
 | 表格行高 | 40-48px | `h-10` / `h-12` |
 | 卡片圆角 | 12px | `rounded-xl` |

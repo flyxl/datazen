@@ -10,7 +10,7 @@
 
 | 维度 | 更受欢迎 / 更强的一侧 | 对 DataZen 的含义 |
 |------|------------------------|-------------------|
-| 现代多窗口体验 | **TablePlus**（连接≈窗口，窗内轻标签） | 已对齐该模型，应继续强化而非转向 Navicat 式单窗聚合 |
+| 现代工作区体验 | **TablePlus 式轻量** + **统一主窗**（非每连接一 OS 窗口） | 已收敛为单主工作区 + 连接 Tab；子窗口仅保留设置/备份等 |
 | SQL IDE 智能 | **DataGrip** | 最大差距；补全/重构/工程化 SQL 是长期追赶方向 |
 | 运维工具箱广度 | **Navicat** | 不必全面对标；按场景挑关键能力 |
 | DataZen 差异化 | AI / Workflow / MCP / 轻量包 / 跨库 IR 同步 | 保持，不要用「做成 DataGrip」替代定位 |
@@ -43,9 +43,11 @@
 
 边界：企业 DBA / 重度运维仍常选 Navicat / DataGrip 类功能密集体。「更受欢迎」指**现代产品默认体验**，不是所有场景都更好。
 
-### 2.3 与 DataZen
+### 2.3 与 DataZen（2026-08 统一工作区改版后）
 
-DataZen「主窗管连接列表、连接窗独立」更接近 **TablePlus**，而不是 Navicat 的重型单窗对象聚合。产品默认应对齐 TablePlus；Navicat 式密度适合作为高级功能入口，而非主壳。
+DataZen 采用 **单一主 OS 窗口**：左侧 `ConnectionNavigatorTree`，右侧连接 Tab（结构 / 数据 / 查询 / Workflow / Dashboard 内嵌导航）。`openConnectionWindow()` 仅聚焦主窗并追加 Tab，**不再**为每个连接创建 `connection-*` 子窗口。设置、备份、数据同步、Schema Diff、新建连接等仍为独立子窗口。
+
+相对 TablePlus：更接近「单窗 + 多 Tab」的 Navicat 密度，但保留 TablePlus 式轻量 UI 与原生子窗口（设置等）。产品默认应继续强化主工作区内的并行 Tab 与多屏（单窗全屏 / 外接显示器），而非回到「每连接一新 OS 窗口」。
 
 ---
 

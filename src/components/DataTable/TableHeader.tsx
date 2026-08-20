@@ -1,6 +1,7 @@
 import { ArrowDown, ArrowUp, Filter } from 'lucide-react';
 import type { SortCondition } from '../../types';
 import { cn } from '../../lib/cn';
+import { dataTypeTextClass } from '../../lib/dataTypeColors';
 
 export interface ColumnDef {
   id: string;
@@ -18,7 +19,15 @@ export interface TableHeaderProps {
   onFilterColumn?: (column: string) => void;
 }
 
-export function TableHeader({ columns, sorts, onSort, columnWidths, onResizeStart, sortable = true, onFilterColumn }: TableHeaderProps) {
+export function TableHeader({
+  columns,
+  sorts,
+  onSort,
+  columnWidths,
+  onResizeStart,
+  sortable = true,
+  onFilterColumn,
+}: TableHeaderProps) {
   const active = sorts[0];
 
   return (
@@ -49,7 +58,10 @@ export function TableHeader({ columns, sorts, onSort, columnWidths, onResizeStar
                 {col.name}
               </div>
               {col.type ? (
-                <div className="truncate font-mono text-[11px] text-fg-muted" title={col.type}>
+                <div
+                  className={cn('truncate font-mono text-[11px]', dataTypeTextClass(col.type))}
+                  title={col.type}
+                >
                   {col.type}
                 </div>
               ) : null}

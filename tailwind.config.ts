@@ -2,7 +2,11 @@ import type { Config } from 'tailwindcss';
 
 export default {
   darkMode: 'class',
-  content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}', './packages/drivers/**/ui/**/*.{js,ts,jsx,tsx}'],
+  content: [
+    './index.html',
+    './src/**/*.{js,ts,jsx,tsx}',
+    './packages/drivers/**/ui/**/*.{js,ts,jsx,tsx}',
+  ],
   theme: {
     extend: {
       fontFamily: {
@@ -38,6 +42,14 @@ export default {
         },
         danger: {
           DEFAULT: 'var(--c-danger)',
+        },
+        dt: {
+          null: 'var(--dt-null)',
+          bool: 'var(--dt-bool)',
+          number: 'var(--dt-number)',
+          datetime: 'var(--dt-datetime)',
+          json: 'var(--dt-json)',
+          text: 'var(--dt-text)',
         },
       },
     },

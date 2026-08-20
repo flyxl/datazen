@@ -28,11 +28,12 @@ src/components/connection/    # 共享连接表单
 └── StandardConnectionFields.tsx
 
 src/windows/connection/
-├── ConnectionWindow.tsx        # 薄壳：TitleBar + getConnectionView()
-├── SqlConnectionView.tsx       # SQL 连接全部 UI
-├── RedisConnectionView.tsx     # KV 连接 UI
+├── ConnectionWindow.tsx        # 统一主工作区壳：导航 + 连接 Tab + Workflow/Dashboard
+├── ConnectionNavigatorTree.tsx # 左侧连接/Schema 导航
+├── SqlConnectionView.tsx       # SQL 连接全部 UI（若仍使用）
+├── RedisConnectionView / DocumentConnectionView
 └── schema-tree/
-    ├── SchemaTree.tsx          # 路由（< 30 行）
+    ├── SchemaTree.tsx
     ├── StandardSchemaTree.tsx
     └── MultiDatabaseSchemaTree.tsx
 ```
@@ -68,4 +69,4 @@ src/windows/connection/
 | 注册 | `drivers-registry.json` + `DB_REGISTRY` | 文件系统 + `manifest.json` |
 | 扩展 | Rust crate + 前端 meta | CSS / JSON / SVG\|PNG\|WebP / 字体（无 JS） |
 
-驱动在无主题包（`packId: null`）下正常工作；主题包可覆盖 `db.<type>` 图标但不改变驱动协议。
+驱动在无主题包（`packId: null`）下正常工作；主题包可覆盖 `db.<type>` 图标与 `--dt-*` DataTable 单元格色，但不改变驱动协议。Token 契约见 [theme.md](../backend/theme.md) 与 `packages/themes/README.md`。

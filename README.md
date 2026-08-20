@@ -27,7 +27,7 @@ DataZen is a desktop database client built with **Tauri + Rust**. It combines th
 - **Visual** — turn query results into charts without exporting to another tool.
 - **Automatable** — compose SQL and AI operations into reusable YAML workflows across databases.
 - **Extensible** — database drivers are integrated at compile time through the DataZen Driver API.
-- **Local-first** — credentials and database access stay on your machine.
+- **Local-first** — credentials stay on your machine (AES-256-GCM; master key in the OS keychain or a local `.key` file for unsigned/dev builds). Theme packs can customize DataTable type colors via `--dt-*` CSS tokens.
 - **Open source** — GPLv3, with an architecture designed for community drivers and contributions.
 
 ## A database client built around real workflows

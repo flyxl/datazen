@@ -14,8 +14,8 @@
   --c-danger: #bf616a;
   --c-titlebar: #3b4252;
 
-  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --font-mono: "Fira Code", Menlo, Monaco, Consolas, monospace;
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'Fira Code', Menlo, Monaco, Consolas, monospace;
   --font-editor: var(--font-mono);
 
   --cm-keyword: #81a1c1;
@@ -28,4 +28,12 @@
   --cm-background: #2e3440;
   --cm-selection: rgba(136, 192, 208, 0.25);
   --cm-cursor: #eceff4;
+
+  /* DataTable cell value colors */
+  --dt-null: var(--c-fg-muted);
+  --dt-bool: #b48ead;
+  --dt-number: #ebcb8b;
+  --dt-datetime: #81a1c1;
+  --dt-json: #88c0d0;
+  --dt-text: var(--c-fg);
 }

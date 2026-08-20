@@ -21,68 +21,24 @@
 
 ```
 src/
-├── main.tsx                    # 应用入口，Tauri 窗口路由分发
-├── App.tsx                     # 根组件
-├── windows/                    # 窗口级页面（一个窗口对应一个入口）
-│   ├── main/                   # 主窗口 - 连接管理
-│   │   ├── MainWindow.tsx
-│   │   ├── ConnectionCard.tsx
-│   │   ├── GroupPanel.tsx
-│   │   └── EmptyState.tsx
-│   ├── connection/             # 连接窗口 - 数据库浏览与编辑
+├── main.tsx / App.tsx          # 入口；按 windowKind 分发
+├── windows/
+│   ├── connection/             # 统一主工作区壳（连接 / Workflow / Dashboard 导航）
 │   │   ├── ConnectionWindow.tsx
-│   │   ├── SchemaTree.tsx
-│   │   ├── tabs/
-│   │   │   ├── StructureTab.tsx
-│   │   │   ├── DataTab.tsx
-│   │   │   ├── IndexesTab.tsx
-│   │   │   ├── ForeignKeysTab.tsx
-│   │   │   └── DdlTab.tsx
-│   │   └── DataToolbar.tsx
-│   └── query/                  # SQL 查询组件（已内联到 connection 窗口的 ContentView 中）
-├── components/                 # 共享组件
-│   ├── ui/                     # shadcn/ui 基础组件
-│   ├── DataTable/              # 核心数据表格组件
-│   │   ├── DataTable.tsx       # 表格容器
-│   │   ├── VirtualBody.tsx     # 虚拟滚动行渲染
-│   │   ├── TableHeader.tsx     # 表头（排序/筛选/拖拽列宽）
-│   │   ├── EditableCell.tsx    # 可编辑单元格
-│   │   ├── CellRenderer.tsx    # 按类型渲染单元格
-│   │   └── types.ts
-│   ├── Toolbar.tsx             # 通用工具栏
-│   ├── StatusBar.tsx           # 状态栏
-│   ├── FilterBar.tsx           # 筛选条件栏
-│   └── dialogs/                # 对话框
-│       ├── NewConnectionDialog.tsx
-│       ├── ConfirmDialog.tsx
-│       └── ExportDialog.tsx
-├── stores/                     # Zustand 状态管理
-│   ├── connectionStore.ts      # 连接配置管理
-│   ├── activeConnectionStore.ts# 活动连接状态
-│   ├── schemaStore.ts          # Schema 树状态
-│   ├── tableDataStore.ts       # 表数据 & 编辑状态
-│   ├── panelStore.ts           # 面板 + 查询执行 + 历史/收藏状态
-│   ├── settingsStore.ts        # 应用设置
-│   └── uiStore.ts              # UI 临时状态
-├── commands/                   # Tauri IPC 调用封装
-│   ├── connection.ts
-│   ├── database.ts
-│   ├── query.ts
-│   └── settings.ts
-├── hooks/                      # 自定义 Hooks
-│   ├── useVirtualTable.ts      # 虚拟滚动表格逻辑
-│   ├── useCellEditor.ts        # 单元格编辑逻辑
-│   ├── useKeyboardShortcuts.ts # 快捷键管理
-│   ├── useResizable.ts         # 可拖拽调整大小
-│   └── useTauriEvent.ts        # Tauri 事件监听
-├── lib/                        # 工具函数
-│   ├── tauri.ts                # Tauri API 封装
-│   ├── formatters.ts           # 数据格式化
-│   ├── sql.ts                  # SQL 解析/构建
-│   └── cn.ts                   # className 工具
-└── styles/
-    ├── globals.css             # Tailwind 入口 + CSS 变量
-    └── themes.css              # 亮色/暗色主题变量
+│   │   ├── ConnectionNavigatorTree.tsx
+│   │   ├── ConnectionWorkspaceHome.tsx
+│   │   ├── ContentView.tsx / QueryPanel.tsx / …
+│   │   └── schema-tree/
+│   ├── main/                   # MainWindow → 直接渲染 ConnectionWindow
+│   ├── workflow/ / dashboard/  # 工作区内嵌视图
+│   ├── settings/ / backup/ / data-sync/ / schema-diff / docs / new-connection/
+├── components/
+│   ├── DataTable/              # CellRenderer 使用 text-dt-*（主题 --dt-*）
+│   ├── ui/ / chart/ / ai/ …
+├── stores/                     # Zustand（connection / panel / schema / settings / …）
+├── commands/                   # Tauri IPC 封装
+├── lib/                        # windowManager、windowKind、themePackApply、databaseTypes…
+└── styles/themes.css           # Host --c-* / --dt-* / --cm-* 默认 token
 ```
 
 ## 3. 状态管理设计

@@ -11,6 +11,7 @@ import { DB_REGISTRY } from '../../lib/databaseTypes';
 import { getSqlDialect } from '../../lib/sqlDialects';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { suggestedIndexName } from './structure/StructureIndexTable';
+import { dataTypeTextClass } from '../../lib/dataTypeColors';
 
 interface IndexesViewProps {
   connectionId: string;
@@ -147,7 +148,9 @@ function CreateIndexDialog({
                     className="accent-blue-500"
                   />
                   <span className="font-mono text-fg">{col.name}</span>
-                  <span className="text-xs text-fg-muted">{col.dataType}</span>
+                  <span className={cn('text-xs', dataTypeTextClass(col.dataType))}>
+                    {col.dataType}
+                  </span>
                   {order && (
                     <span className="ml-auto rounded bg-blue-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-blue-400">
                       #{order}
