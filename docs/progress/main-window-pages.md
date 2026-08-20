@@ -21,7 +21,7 @@
 | F2 | 主窗口内页面 Window→Page 重命名（如 ConnectionWindow→ConnectionPage），同步文档 | 已完成 | 2b91921d | （本轮） | 无漏改；Page 单测 33/33 通过；MainPage 100% 覆盖；E2E 用例已文档化，待 webdriver 构建 |
 | F3 | 左侧功能 sidebar 底部增加 Settings 入口；进入 SettingsPage；返回恢复先前页面 | 已完成 | ff09481f | （本轮） | Vitest 19/19；F3 路径覆盖 ≥80%；E2E sidebar 用例已文档化待 webdriver；F3-BUG-001 登记 |
 | F4 | 删除多余窗口（DashboardWindow 等独立窗口壳）；保留使用说明入口 | 已完成 | 7e60b32c | （本轮） | Vitest 57/57；Docs 保留；E2E legacy URL bug 已登记 |
-| F5 | 首次安装欢迎页（介绍连接/看板/工作流/AI，引导创建首个连接；有连接后进主界面） | 待测试 | — | — | |
+| F5 | 首次安装欢迎页（介绍连接/看板/工作流/AI，引导创建首个连接；有连接后进主界面） | 已完成 | 2024f465 | （本轮） | Vitest 21/21；F5 路径 ≥80%；E2E 用例已文档化；F5-BUG-001~003 登记 |
 | F6 | 帮助文档改为官网上线文档；点击使用说明跳转官网 | 未开始 | — | — | |
 | R1 | 全量回归 + 文档更新（架构 / AGENTS.md）+ 合并 main | 未开始 | — | — | |
 
@@ -36,6 +36,9 @@
 | F4-BUG-001 | F4 | `path-ipc-hardening.ts` PIH-004/005 仍用 `window=settings` 子窗口 URL | 已修复 | 见 `docs/progress/f4-test-report.md` | 7e60b32c |
 | F4-BUG-002 | F4 | `hotkeys.ts` TC-HOTKEY-002 fallback 仍用 `window=settings` URL | 已修复 | 见 `docs/progress/f4-test-report.md` | 7e60b32c |
 | F4-BUG-003 | F4 | PRD 仍引用已删 `DashboardWindow` / `SettingsWindow` 路径 | 待验证 | `docs/prd/data-dashboard*.md` | 7e60b32c |
+| F5-BUG-001 | F5 | Host E2E 无欢迎页 journey；wdio 全局 seed 连接 | 待验证 | 见 `docs/progress/f5-test-report.md` F5-E2E-001~005 | 2024f465 |
+| F5-BUG-002 | F5 | `WelcomePage.tsx` 未纳入 vitest coverage gate | 待验证 | `vitest.config.ts` 仅含 `MainPage.tsx` | 2024f465 |
+| F5-BUG-003 | F5 | 首次 `fetchConnections` 失败时误显示欢迎页 | 待验证 | IPC 失败 + 空 connections → WelcomePage | 2024f465 |
 
 Bug 状态：`待验证` | `验证不通过` | `已修复` | `已关闭`
 
@@ -55,3 +58,4 @@ Bug 状态：`待验证` | `验证不通过` | `已修复` | `已关闭`
 | 2026-08-20 | F4-BUG-001/002 修复：`path-ipc-hardening.ts`、`hotkeys.ts` 改 `openSettingsInMainWindow`；F4-BUG-003 PRD 文档债留 R1 |
 | 2026-08-20 | F4-BUG-001/002 静态验证：`rg 'window.html?window=settings' e2e/` → 0；bug → 已修复；E2E 实跑待 webdriver |
 | 2026-08-20 | F5 编码：MainPage 无连接时 WelcomePage；connectionsLoaded 防闪烁；Vitest 21/21 |
+| 2026-08-20 | F5 测试：Vitest 21/21；f5-test-report.md；登记 F5-BUG-001~003 |
