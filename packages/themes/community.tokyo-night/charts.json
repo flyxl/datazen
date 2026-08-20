@@ -1,5 +1,0 @@
-{
-  "default": ["#7aa2f7", "#bb9af7", "#7dcfff", "#9ece6a", "#e0af68", "#f7768e", "#ff9e64", "#73daca"],
-  "ocean": ["#7dcfff", "#7aa2f7", "#2ac3de", "#bb9af7", "#565f89", "#3b4261", "#c0caf5", "#a9b1d6"],
-  "warm": ["#f7768e", "#ff9e64", "#e0af68", "#bb9af7", "#9ece6a", "#ff007c", "#db4b4b", "#e0af68"]
-}

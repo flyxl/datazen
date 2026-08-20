@@ -1,9 +1,0 @@
-{
-  "id": "community.tokyo-night",
-  "name": "Tokyo Night",
-  "version": "1.1.0",
-  "apiVersion": 1,
-  "modes": ["dark"],
-  "author": "DataZen Community",
-  "description": "Tokyo Night storm — deep indigo surfaces with neon blue accents"
-}
