@@ -4,60 +4,17 @@ import { Dialog } from '../../components/ui/Dialog';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Select } from '../../components/ui/Select';
+import { PrivilegeSelector, usePrivilegeOptions } from '../../components/admin/PrivilegeSelector';
 import { driverCommands } from '../../commands/driver';
 import { databaseCommands } from '../../commands/database';
+import { useConnectionCommand } from '../../hooks/useConnectionCommand';
+import { hasSchemaField } from '../../lib/commandSchema';
 import { useI18n } from '../../hooks/useI18n';
-import type { DatabaseType } from '../../types';
-
-const MYSQL_PRIVILEGES = [
-  'SELECT',
-  'INSERT',
-  'UPDATE',
-  'DELETE',
-  'CREATE',
-  'DROP',
-  'ALTER',
-  'INDEX',
-] as const;
-
-const PG_TABLE_PRIVILEGES = [
-  'SELECT',
-  'INSERT',
-  'UPDATE',
-  'DELETE',
-  'TRUNCATE',
-  'REFERENCES',
-  'TRIGGER',
-] as const;
-
-const PG_DATABASE_PRIVILEGES = ['CONNECT', 'CREATE', 'TEMPORARY'] as const;
-
-interface PrivilegeGroup {
-  label: string;
-  privileges: readonly string[];
-}
-
-function getPrivilegesForType(dbType?: string): { groups: PrivilegeGroup[]; all: string[] } {
-  if (dbType === 'postgresql') {
-    return {
-      groups: [
-        { label: 'Table', privileges: PG_TABLE_PRIVILEGES },
-        { label: 'Database', privileges: PG_DATABASE_PRIVILEGES },
-      ],
-      all: [...PG_TABLE_PRIVILEGES, ...PG_DATABASE_PRIVILEGES],
-    };
-  }
-  return {
-    groups: [{ label: '', privileges: MYSQL_PRIVILEGES }],
-    all: [...MYSQL_PRIVILEGES],
-  };
-}
 
 interface CreateUserDialogProps {
   open: boolean;
   onClose: () => void;
   connectionId: string;
-  databaseType?: DatabaseType;
   onCreated?: (username: string) => void;
 }
 
@@ -65,10 +22,14 @@ export function CreateUserDialog({
   open,
   onClose,
   connectionId,
-  databaseType,
   onCreated,
 }: CreateUserDialogProps) {
   const { t } = useI18n();
+  const { definition: grantDefinition } = useConnectionCommand(
+    open ? connectionId : undefined,
+    'grant_privileges',
+  );
+  const { all: allPrivileges } = usePrivilegeOptions(grantDefinition);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [selectedPrivileges, setSelectedPrivileges] = useState<Set<string>>(new Set());
@@ -79,6 +40,8 @@ export function CreateUserDialog({
   const [error, setError] = useState<string | null>(null);
   const [step, setStep] = useState<'create' | 'grant'>('create');
   const [createdUsername, setCreatedUsername] = useState('');
+
+  const showGrantOption = hasSchemaField(grantDefinition, 'grantOption');
 
   useEffect(() => {
     if (open && connectionId) {
@@ -114,14 +77,12 @@ export function CreateUserDialog({
     });
   }, []);
 
-  const privInfo = useMemo(() => getPrivilegesForType(databaseType), [databaseType]);
-
   const selectAllPrivileges = useCallback(() => {
     setSelectedPrivileges((prev) => {
-      if (prev.size === privInfo.all.length) return new Set();
-      return new Set(privInfo.all);
+      if (prev.size === allPrivileges.length) return new Set();
+      return new Set(allPrivileges);
     });
-  }, [privInfo]);
+  }, [allPrivileges]);
 
   const handleCreate = useCallback(async () => {
     if (!username.trim()) return;
@@ -180,6 +141,11 @@ export function CreateUserDialog({
     onCreated?.(name);
     onClose();
   }, [createdUsername, resetForm, onCreated, onClose]);
+
+  const showGrantStep = useMemo(
+    () => allPrivileges.length > 0 || hasSchemaField(grantDefinition, 'database'),
+    [allPrivileges.length, grantDefinition],
+  );
 
   return (
     <Dialog
@@ -247,7 +213,7 @@ export function CreateUserDialog({
           </div>
           {error && <div className="rounded bg-red-500/10 p-3 text-sm text-red-400">{error}</div>}
         </div>
-      ) : (
+      ) : showGrantStep ? (
         <div className="space-y-4">
           <div className="rounded bg-green-500/10 p-2 text-sm text-green-400">
             {t('createUser.success').replace('{name}', createdUsername)}
@@ -264,44 +230,26 @@ export function CreateUserDialog({
               ]}
             />
           </div>
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <label className="text-xs text-fg-muted">{t('createUser.privileges')}</label>
-              <button
-                type="button"
-                className="text-xs text-accent hover:underline"
-                onClick={selectAllPrivileges}
-              >
-                {t('createUser.selectAll')}
-              </button>
-            </div>
-            {privInfo.groups.map((group) => (
-              <div key={group.label} className={group.label ? 'mb-3' : ''}>
-                {group.label && (
-                  <div className="text-[11px] font-medium text-fg-muted mb-1.5 uppercase tracking-wide">
-                    {group.label}
-                  </div>
-                )}
-                <div className="grid grid-cols-2 gap-2">
-                  {group.privileges.map((priv) => (
-                    <label
-                      key={priv}
-                      className="flex items-center gap-2 text-sm text-fg cursor-pointer"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selectedPrivileges.has(priv)}
-                        onChange={() => togglePrivilege(priv)}
-                        className="rounded border-edge"
-                      />
-                      {priv}
-                    </label>
-                  ))}
-                </div>
+          {allPrivileges.length > 0 && (
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-xs text-fg-muted">{t('createUser.privileges')}</label>
+                <button
+                  type="button"
+                  className="text-xs text-accent hover:underline"
+                  onClick={selectAllPrivileges}
+                >
+                  {t('createUser.selectAll')}
+                </button>
               </div>
-            ))}
-          </div>
-          {(databaseType === 'postgresql' || databaseType === 'mysql') && (
+              <PrivilegeSelector
+                definition={grantDefinition}
+                selected={selectedPrivileges}
+                onToggle={togglePrivilege}
+              />
+            </div>
+          )}
+          {showGrantOption && (
             <label className="flex items-center gap-2 text-sm text-fg cursor-pointer">
               <input
                 type="checkbox"
@@ -312,6 +260,13 @@ export function CreateUserDialog({
               {t('createUser.grantOption')}
             </label>
           )}
+          {error && <div className="rounded bg-red-500/10 p-3 text-sm text-red-400">{error}</div>}
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <div className="rounded bg-green-500/10 p-2 text-sm text-green-400">
+            {t('createUser.success').replace('{name}', createdUsername)}
+          </div>
           {error && <div className="rounded bg-red-500/10 p-3 text-sm text-red-400">{error}</div>}
         </div>
       )}

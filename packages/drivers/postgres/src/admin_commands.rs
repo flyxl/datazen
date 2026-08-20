@@ -12,8 +12,16 @@ pub fn pg_admin_command_definitions() -> Vec<DriverCommandDefinition> {
             "type": "object",
             "properties": {
                 "name": { "type": "string", "description": "Database name" },
-                "encoding": { "type": "string", "description": "Character encoding (e.g. UTF8)" },
-                "owner": { "type": "string", "description": "Database owner role" }
+                "encoding": {
+                    "type": "string",
+                    "description": "Character encoding (e.g. UTF8)",
+                    "examples": ["UTF8"]
+                },
+                "owner": {
+                    "type": "string",
+                    "description": "Database owner role",
+                    "examples": ["postgres"]
+                }
             },
             "required": ["name"]
         }),
@@ -30,7 +38,11 @@ pub fn pg_admin_command_definitions() -> Vec<DriverCommandDefinition> {
             "type": "object",
             "properties": {
                 "name": { "type": "string", "description": "Schema name" },
-                "owner": { "type": "string", "description": "Schema owner role" }
+                "owner": {
+                    "type": "string",
+                    "description": "Schema owner role",
+                    "examples": ["postgres"]
+                }
             },
             "required": ["name"]
         }),
@@ -72,7 +84,27 @@ pub fn pg_admin_command_definitions() -> Vec<DriverCommandDefinition> {
                 },
                 "grantOption": { "type": "boolean", "description": "WITH GRANT OPTION" }
             },
-            "required": ["username", "privileges"]
+            "required": ["username", "privileges"],
+            "x-datazen": {
+                "privilegeGroups": [
+                    {
+                        "label": "Table",
+                        "privileges": [
+                            "SELECT",
+                            "INSERT",
+                            "UPDATE",
+                            "DELETE",
+                            "TRUNCATE",
+                            "REFERENCES",
+                            "TRIGGER"
+                        ]
+                    },
+                    {
+                        "label": "Database",
+                        "privileges": ["CONNECT", "CREATE", "TEMPORARY"]
+                    }
+                ]
+            }
         }),
         output_schema: None,
         permissions: vec![],

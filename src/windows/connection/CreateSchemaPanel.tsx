@@ -2,7 +2,9 @@ import { useCallback, useState } from 'react';
 import { FolderPlus, Loader2 } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
+import { AdminSchemaFields } from '../../components/admin/AdminSchemaFields';
 import { driverCommands } from '../../commands/driver';
+import { useConnectionCommand } from '../../hooks/useConnectionCommand';
 import { useSchemaStore } from '../../stores/schemaStore';
 import { useI18n } from '../../hooks/useI18n';
 import type { DatabaseType } from '../../types';
@@ -14,13 +16,18 @@ interface CreateSchemaPanelProps {
 
 export function CreateSchemaPanel({ connectionId, databaseType }: CreateSchemaPanelProps) {
   const { t } = useI18n();
+  const { definition } = useConnectionCommand(connectionId, 'create_schema');
   const [name, setName] = useState('');
-  const [owner, setOwner] = useState('');
+  const [optionalValues, setOptionalValues] = useState<Record<string, string>>({});
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
   const loadForConnection = useSchemaStore((s) => s.loadForConnection);
+
+  const handleOptionalChange = useCallback((field: string, value: string) => {
+    setOptionalValues((prev) => ({ ...prev, [field]: value }));
+  }, []);
 
   const handleCreate = useCallback(async () => {
     if (!name.trim()) return;
@@ -29,7 +36,9 @@ export function CreateSchemaPanel({ connectionId, databaseType }: CreateSchemaPa
     setSuccess(null);
     try {
       const input: Record<string, unknown> = { name: name.trim() };
-      if (owner.trim()) input.owner = owner.trim();
+      for (const [field, value] of Object.entries(optionalValues)) {
+        if (value.trim()) input[field] = value.trim();
+      }
 
       await driverCommands.execute({
         connectionId,
@@ -38,14 +47,14 @@ export function CreateSchemaPanel({ connectionId, databaseType }: CreateSchemaPa
       });
       setSuccess(t('createSchema.success', { name: name.trim() }));
       setName('');
-      setOwner('');
+      setOptionalValues({});
       void loadForConnection(connectionId, { databaseType });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setRunning(false);
     }
-  }, [name, owner, connectionId, databaseType, loadForConnection, t]);
+  }, [name, optionalValues, connectionId, databaseType, loadForConnection, t]);
 
   return (
     <div className="flex flex-1 flex-col overflow-auto">
@@ -63,16 +72,15 @@ export function CreateSchemaPanel({ connectionId, databaseType }: CreateSchemaPa
             autoFocus
           />
         </div>
-        {databaseType === 'postgresql' && (
-          <div>
-            <label className="block text-xs text-fg-muted mb-1">{t('createSchema.owner')}</label>
-            <Input
-              value={owner}
-              onChange={(e) => setOwner(e.target.value)}
-              placeholder="postgres"
-            />
-          </div>
-        )}
+        <AdminSchemaFields
+          definition={definition}
+          values={optionalValues}
+          onChange={handleOptionalChange}
+          exclude={['name']}
+          labels={{
+            owner: t('createSchema.owner'),
+          }}
+        />
 
         {error && <div className="rounded bg-red-500/10 p-3 text-sm text-red-400">{error}</div>}
         {success && (
