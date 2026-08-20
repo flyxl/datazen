@@ -305,11 +305,35 @@ pub struct ForeignKeyInfo {
     pub on_delete: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ExplainPlanDetail {
+    pub key: String,
+    pub value: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ExplainPlanNode {
+    pub id: String,
+    pub label: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cost: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rows: Option<i64>,
+    #[serde(default)]
+    pub details: Vec<ExplainPlanDetail>,
+    #[serde(default)]
+    pub children: Vec<ExplainPlanNode>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExplainResult {
     pub plan_text: String,
     pub plan_json: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plan_tree: Option<ExplainPlanNode>,
     pub total_cost: Option<f64>,
     pub estimated_rows: Option<i64>,
 }

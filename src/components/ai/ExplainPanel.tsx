@@ -6,6 +6,7 @@ import { DataTable } from '../DataTable/DataTable';
 import type { ColumnDef } from '../DataTable/TableHeader';
 import { useI18n } from '../../hooks/useI18n';
 import { useAiStore } from '../../stores/aiStore';
+import type { ExplainPlanNode } from '../../types';
 import { cn } from '../../lib/cn';
 import { openSettingsWindow } from '../../lib/windowManager';
 
@@ -14,6 +15,7 @@ interface ExplainPanelProps {
   sql: string;
   explainOutput: string;
   planJson?: unknown;
+  planTree?: ExplainPlanNode | null;
   onApplySql?: (sql: string) => void;
 }
 
@@ -34,6 +36,7 @@ export function ExplainPanel({
   sql,
   explainOutput,
   planJson,
+  planTree,
   onApplySql,
 }: ExplainPanelProps) {
   const { t } = useI18n();
@@ -119,9 +122,9 @@ export function ExplainPanel({
       </div>
 
       {/* Plan tree */}
-      {planJson != null && (
+      {(planTree != null || planJson != null) && (
         <div className="border-b border-edge p-3">
-          <ExplainPlanTree planJson={planJson} />
+          <ExplainPlanTree planTree={planTree} />
         </div>
       )}
 

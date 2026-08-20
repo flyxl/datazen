@@ -12,8 +12,8 @@ vi.mock('../../../lib/windowManager', () => ({
 }));
 
 vi.mock('../../query/ExplainPlanTree', () => ({
-  ExplainPlanTree: ({ planJson }: { planJson: unknown }) => (
-    <div data-testid="explain-plan">{JSON.stringify(planJson)}</div>
+  ExplainPlanTree: ({ planTree }: { planTree?: unknown }) => (
+    <div data-testid="explain-plan">{JSON.stringify(planTree)}</div>
   ),
 }));
 
@@ -62,7 +62,12 @@ describe('ExplainPanel', () => {
         connectionId="c1"
         sql="SELECT 1"
         explainOutput="Seq Scan on users"
-        planJson={{ Plan: { 'Node Type': 'Seq Scan' } }}
+        planTree={{
+          id: 'pg',
+          label: 'Seq Scan',
+          details: [],
+          children: [],
+        }}
       />,
     );
     expect(getByText('Seq Scan on users')).toBeInTheDocument();

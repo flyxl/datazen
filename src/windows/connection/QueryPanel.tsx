@@ -912,6 +912,7 @@ export function QueryPanel({ panelId, connectionId, configId, databaseType }: Qu
                     sql={exec.sql}
                     explainOutput={explainResult.planText}
                     planJson={explainResult.planJson}
+                    planTree={explainResult.planTree}
                     onApplySql={handleApplyAiSql}
                   />
                 )}

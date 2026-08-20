@@ -151,9 +151,24 @@ export type QueryStreamEvent =
     }
   | { type: 'done'; totalTimeMs: number };
 
+export interface ExplainPlanDetail {
+  key: string;
+  value: string;
+}
+
+export interface ExplainPlanNode {
+  id: string;
+  label: string;
+  cost?: number;
+  rows?: number;
+  details: ExplainPlanDetail[];
+  children: ExplainPlanNode[];
+}
+
 export interface ExplainResult {
   planText: string;
   planJson?: unknown;
+  planTree?: ExplainPlanNode;
   totalCost?: number;
   estimatedRows?: number;
 }

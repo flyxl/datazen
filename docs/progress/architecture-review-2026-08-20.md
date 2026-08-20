@@ -20,7 +20,7 @@ Base: `main` @ 91283919
 | F1 | Host schema_objects SQL → Driver Command | dev_done |
 | F2 | Redis KV IPC → execute_driver_command | dev_done |
 | F3 | Admin UI 硬编码 → Command definitions | dev_done |
-| F4 | EXPLAIN 方言解析下沉驱动 | pending |
+| F4 | EXPLAIN 方言解析下沉驱动 | dev_done |
 | F5 | 测试落点迁移 | dev_done |
 | F6 | 移除 query-* capabilities | tested_pass |
 | F7 | Restore sql_guard + debug SQL 脱敏 | dev_done |
