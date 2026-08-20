@@ -604,6 +604,9 @@ where
     Ok(true)
 }
 
+/// Optional per-statement policy check before executing restore SQL.
+pub type RestoreStatementGuard = Box<dyn Fn(&str) -> Result<(), DriverError> + Send>;
+
 /// Default restore pipeline: incremental split + execute.
 ///
 /// Host feeds file chunks via [`RestoreSession::feed`]; drivers that want a
@@ -615,6 +618,7 @@ pub struct RestoreSession<'a, D: DatabaseDriver + ?Sized> {
     scanner: SqlStatementScanner,
     use_tx: bool,
     overwrite: bool,
+    statement_guard: Option<RestoreStatementGuard>,
     tx_open: bool,
     executed: u32,
     errors: Vec<String>,
@@ -635,10 +639,17 @@ impl<'a, D: DatabaseDriver + ?Sized> RestoreSession<'a, D> {
             // is snapshot isolation while dumping, not restore atomicity.
             use_tx: opts.map(|o| o.single_transaction).unwrap_or(false),
             overwrite: opts.map(|o| o.overwrite).unwrap_or(false),
+            statement_guard: None,
             tx_open: false,
             executed: 0,
             errors: Vec::new(),
         }
+    }
+
+    /// Run `guard` on each non-empty statement (without trailing `;`) before execute.
+    pub fn with_statement_guard(mut self, guard: RestoreStatementGuard) -> Self {
+        self.statement_guard = Some(guard);
+        self
     }
 
     pub async fn feed(
@@ -697,6 +708,15 @@ impl<'a, D: DatabaseDriver + ?Sized> RestoreSession<'a, D> {
                 object_name: restore_statement_label(&stmt),
                 phase: DumpPhase::Object,
             });
+            if let Some(guard) = &self.statement_guard {
+                if let Err(e) = guard(&stmt) {
+                    if self.tx_open {
+                        let _ = self.driver.execute(self.handle, "ROLLBACK").await;
+                        self.tx_open = false;
+                    }
+                    return Err(e);
+                }
+            }
             let full = format!("{};", stmt);
             let mut err = self.driver.execute(self.handle, &full).await.err();
             if let Some(ref e) = err {
@@ -956,5 +976,155 @@ mod tests {
         );
         assert!(small.matches("INSERT INTO").count() >= 2);
         assert!(small.contains("VALUES (1)"));
+    }
+
+    #[tokio::test]
+    async fn restore_feed_rejects_write_sql_when_guard_read_only() {
+        use crate::traits::DatabaseDriver;
+        use async_trait::async_trait;
+
+        struct StubDriver;
+
+        #[async_trait]
+        impl DatabaseDriver for StubDriver {
+            fn driver_type(&self) -> DatabaseType {
+                "stub".into()
+            }
+
+            async fn connect(
+                &self,
+                _config: &ConnectionConfig,
+            ) -> Result<ConnectionHandle, DriverError> {
+                Ok(ConnectionHandle {
+                    id: "conn".into(),
+                    pool_id: "pool".into(),
+                })
+            }
+
+            async fn test_connection(
+                &self,
+                _config: &ConnectionConfig,
+            ) -> Result<ServerInfo, DriverError> {
+                Ok(ServerInfo {
+                    server_version: String::new(),
+                    server_type: self.driver_type(),
+                })
+            }
+
+            async fn disconnect(&self, _handle: ConnectionHandle) -> Result<(), DriverError> {
+                Ok(())
+            }
+
+            async fn get_databases(
+                &self,
+                _handle: &ConnectionHandle,
+            ) -> Result<Vec<String>, DriverError> {
+                Ok(vec![])
+            }
+
+            async fn get_tables(
+                &self,
+                _handle: &ConnectionHandle,
+                _database: &str,
+            ) -> Result<Vec<TableInfo>, DriverError> {
+                Ok(vec![])
+            }
+
+            async fn get_table_schema(
+                &self,
+                _handle: &ConnectionHandle,
+                _table: &str,
+            ) -> Result<TableSchema, DriverError> {
+                Ok(TableSchema {
+                    table_name: String::new(),
+                    columns: vec![],
+                    primary_keys: vec![],
+                    indexes: vec![],
+                    foreign_keys: vec![],
+                })
+            }
+
+            async fn query(
+                &self,
+                _handle: &ConnectionHandle,
+                _sql: &str,
+            ) -> Result<QueryResult, DriverError> {
+                Ok(QueryResult {
+                    columns: vec![],
+                    rows: vec![],
+                    rows_affected: None,
+                    execution_time_ms: 0,
+                })
+            }
+
+            async fn query_multi(
+                &self,
+                _handle: &ConnectionHandle,
+                _sql: &str,
+                _limit: Option<u32>,
+            ) -> Result<MultiQueryResult, DriverError> {
+                Ok(MultiQueryResult {
+                    results: vec![],
+                    total_time_ms: 0,
+                })
+            }
+
+            async fn query_with_params(
+                &self,
+                _handle: &ConnectionHandle,
+                _sql: &str,
+                _params: &[Value],
+            ) -> Result<QueryResult, DriverError> {
+                Ok(QueryResult {
+                    columns: vec![],
+                    rows: vec![],
+                    rows_affected: None,
+                    execution_time_ms: 0,
+                })
+            }
+
+            async fn execute(
+                &self,
+                _handle: &ConnectionHandle,
+                _sql: &str,
+            ) -> Result<u64, DriverError> {
+                Ok(0)
+            }
+
+            async fn cancel_query(&self, _handle: &ConnectionHandle) -> Result<(), DriverError> {
+                Ok(())
+            }
+        }
+
+        let driver = StubDriver;
+        let handle = ConnectionHandle {
+            id: "conn".into(),
+            pool_id: "pool".into(),
+        };
+        let guard = Box::new(|stmt: &str| {
+            let upper = stmt.trim_start().to_ascii_uppercase();
+            if upper.starts_with("INSERT")
+                || upper.starts_with("UPDATE")
+                || upper.starts_with("DELETE")
+                || upper.starts_with("CREATE")
+                || upper.starts_with("DROP")
+            {
+                Err(DriverError::QueryFailed(
+                    "Connection is read-only; write statements are not allowed".into(),
+                ))
+            } else {
+                Ok(())
+            }
+        });
+        let mut session = RestoreSession::new(&driver, &handle, SqlStatementScanner::new(), None)
+            .with_statement_guard(guard);
+        let err = session
+            .feed("SELECT 1;\nINSERT INTO t VALUES (1);", &mut |_| {})
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(err, DriverError::QueryFailed(ref msg) if msg.contains("read-only")),
+            "{err:?}"
+        );
     }
 }
