@@ -8,18 +8,13 @@ See [`docs/architecture/backend/theme.md`](../../docs/architecture/backend/theme
 
 | Id | Name | Modes | Look |
 |----|------|-------|------|
-| `community.dracula` | Dracula | dark | Purple / pink accents on charcoal |
-| `community.nord` | Nord | dark | Cool arctic blues & frost |
-| `community.tokyo-night` | Tokyo Night | dark | Indigo storm + neon blue |
-| `community.solarized-light` | Solarized Light | light | Warm paper Solarized |
-| `community.paper` | Paper | light | Clean gray + ink-blue |
-| `community.slate-blue` | Slate Blue | light | Slate surfaces, dark title bar, blue accents |
+| `community.slate-blue` | Slate Blue | light / dark | Slate surfaces, dark title bar, blue accents |
 
 ## Token contract
 
 Theme packs must mirror Host semantic tokens in `src/styles/themes.css`:
 
-- Surface / text: `--c-surface`, `--c-surface-alt`, `--c-surface-raised`, `--c-surface-inset`, `--c-edge`, `--c-fg`, `--c-fg-secondary`, `--c-fg-muted`, `--c-accent`, `--c-success`, `--c-warning`, `--c-danger`, `--c-titlebar`
+- Surface / text: `--c-surface`, `--c-surface-alt`, `--c-surface-raised`, `--c-surface-inset`, `--c-edge`, `--c-fg`, `--c-fg-secondary`, `--c-fg-muted`, `--c-accent`, `--c-success`, `--c-warning`, `--c-danger`, `--c-titlebar`, `--c-titlebar-fg`, `--c-titlebar-fg-muted`, `--c-titlebar-hover`, `--c-query-run`
 - Fonts: `--font-sans`, `--font-mono`, `--font-editor`
 - CodeMirror (also overridable via `editor.json`): `--cm-*` variables listed above
 - DataTable cell colors (optional; Host has defaults): `--dt-null`, `--dt-bool`, `--dt-number`, `--dt-datetime`, `--dt-json`, `--dt-text`, `--dt-binary` — mapped in `src/lib/dataTypeColors.ts`
@@ -78,14 +73,14 @@ From this directory:
 
 ```bash
 # one pack
-node ../../scripts/pack-community-theme.mjs community.dracula
+node ../../scripts/pack-community-theme.mjs community.slate-blue
 
 # all packs → packages/themes/dist/*.zip
 node ../../scripts/pack-community-theme.mjs --all
 ```
 
 Then in DataZen: **Settings → Theme pack → Import…** and select the zip.  
-For dark packs, switch appearance mode to **Dark** (or System in dark OS); for light packs use **Light**.
+For light packs use **Light** appearance mode.
 
 ## Notes
 

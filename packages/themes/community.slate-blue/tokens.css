@@ -1,4 +1,6 @@
-/* Slate Blue — light mode tokens (from the DataZen main-window design) */
+/* Slate Blue — light + dark mode tokens (from the DataZen main-window design) */
+
+/* Light */
 :root {
   --c-surface: #f8fafc;
   --c-surface-alt: #f1f5f9;
@@ -12,7 +14,11 @@
   --c-success: #22c55e;
   --c-warning: #f59e0b;
   --c-danger: #ef4444;
+  --c-query-run: #22c55e;
   --c-titlebar: #1e293b;
+  --c-titlebar-fg: #f1f5f9;
+  --c-titlebar-fg-muted: #cbd5e1;
+  --c-titlebar-hover: rgba(255, 255, 255, 0.12);
 
   --font-sans:
     -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'PingFang SC',
@@ -38,6 +44,48 @@
   --dt-number: #ea580c;
   --dt-datetime: #0e7490;
   --dt-json: #0369a1;
+  --dt-text: var(--c-fg);
+  --dt-binary: var(--c-danger);
+}
+
+/* Dark (black) */
+.dark {
+  --c-surface: #0b0f1a;
+  --c-surface-alt: #111827;
+  --c-surface-raised: #1e293b;
+  --c-surface-inset: #060913;
+  --c-edge: #334155;
+  --c-fg: #f1f5f9;
+  --c-fg-secondary: #cbd5e1;
+  --c-fg-muted: #64748b;
+  --c-accent: #60a5fa;
+  --c-success: #22c55e;
+  --c-warning: #f59e0b;
+  --c-danger: #f87171;
+  --c-query-run: #22c55e;
+  --c-titlebar: #0f172a;
+  --c-titlebar-fg: #e2e8f0;
+  --c-titlebar-fg-muted: #94a3b8;
+  --c-titlebar-hover: rgba(255, 255, 255, 0.1);
+
+  /* CodeMirror syntax (slate-blue, sky accents, on black) */
+  --cm-keyword: #60a5fa;
+  --cm-string: #5eead4;
+  --cm-number: #fbbf24;
+  --cm-comment: #64748b;
+  --cm-operator: #22d3ee;
+  --cm-punctuation: #cbd5e1;
+  --cm-foreground: #f1f5f9;
+  --cm-background: #0b0f1a;
+  --cm-selection: rgba(96, 165, 250, 0.25);
+  --cm-cursor: #f1f5f9;
+
+  /* DataTable cell value colors */
+  --dt-null: var(--c-fg-muted);
+  --dt-bool: #60a5fa;
+  --dt-number: #fbbf24;
+  --dt-datetime: #5eead4;
+  --dt-json: #67e8f9;
   --dt-text: var(--c-fg);
   --dt-binary: var(--c-danger);
 }
