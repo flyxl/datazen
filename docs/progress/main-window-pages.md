@@ -23,7 +23,7 @@
 | F4 | 删除多余窗口（DashboardWindow 等独立窗口壳）；保留使用说明入口 | 已完成 | 7e60b32c | （本轮） | Vitest 57/57；Docs 保留；E2E legacy URL bug 已登记 |
 | F5 | 首次安装欢迎页（介绍连接/看板/工作流/AI，引导创建首个连接；有连接后进主界面） | 已完成 | 2024f465 | （本轮） | Vitest 21/21；F5 路径 ≥80%；E2E 用例已文档化；F5-BUG-001~003 登记 |
 | F6 | 帮助文档改为官网上线文档；点击使用说明跳转官网 | 已完成 | 96c7a3be | （本轮） | Vitest 18/18；E2E 用例已文档化；F6-BUG-001~003 登记 |
-| R1 | 全量回归 + 文档更新（架构 / AGENTS.md）+ 合并 main | 未开始 | — | — | |
+| R1 | 全量回归 + 文档更新（架构 / AGENTS.md）+ 合并 main | 待文档与合并 | — | （本轮） | Host Vitest 1466/1466 通过；见 `r1-regression-report.md`；E2E / 架构文档 / 合并 main 待续 |
 
 状态枚举：`未开始` | `进行中` | `待测试` | `测试中` | `验证不通过` | `待验证` | `已完成`
 
@@ -67,3 +67,4 @@ Bug 状态：`待验证` | `验证不通过` | `已修复` | `已关闭`
 | 2026-08-20 | F6 编码：Docs 子窗口移除；openDocsWindow / open_docs_window 跳转官网 docs.html |
 | 2026-08-20 | F6 测试：Vitest 18/18；f6-test-report.md；登记 F6-BUG-001~003（Pages 404 / E2E 债 / F4 报告文档债） |
 | 2026-08-20 | F6 修复：`docs-online.ts` E2E wiring；f4-test-report 官网跳转；F6-BUG-002/003 → 已修复；F6-BUG-001 → 待部署验证 |
+| 2026-08-20 | R1 回归：Host Vitest 全量 1466/1466 通过；`r1-regression-report.md`；R1 → 待文档与合并 |
