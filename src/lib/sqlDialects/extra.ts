@@ -57,7 +57,12 @@ export const clickhouseDialect: SqlDialectStrategy = {
     },
   },
   index: standardIndex('table'),
-  backupOptions: [],
+  backupOptions: [
+    { id: 'schema-only', label: '--schema-only' },
+    { id: 'data-only', label: '--data-only' },
+    { id: 'clean', label: '--clean' },
+    { id: 'no-owner', label: '--no-owner' },
+  ],
 };
 
 export const duckdbDialect: SqlDialectStrategy = {
@@ -77,7 +82,13 @@ export const duckdbDialect: SqlDialectStrategy = {
     },
   },
   index: standardIndex('bare'),
-  backupOptions: [],
+  backupOptions: [
+    { id: 'schema-only', label: '--schema-only' },
+    { id: 'data-only', label: '--data-only' },
+    { id: 'clean', label: '--clean' },
+    { id: 'no-owner', label: '--no-owner' },
+    { id: 'single-transaction', label: '--single-transaction' },
+  ],
 };
 
 export const elasticsearchDialect: SqlDialectStrategy = {

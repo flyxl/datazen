@@ -103,6 +103,19 @@ pub fn list_objects_sql(db_type: &str, kind: ObjectKind) -> Option<String> {
         ("sqlite", ObjectKind::Trigger) => {
             Some("SELECT name FROM sqlite_master WHERE type = 'trigger' ORDER BY name".into())
         }
+        ("duckdb", ObjectKind::Trigger) => Some(
+            "SELECT NULL AS schema, trigger_name AS name \
+             FROM information_schema.triggers \
+             ORDER BY 1, 2"
+                .into(),
+        ),
+        ("duckdb", ObjectKind::Sequence) => Some(
+            "SELECT sequence_schema AS schema, sequence_name AS name \
+             FROM information_schema.sequences \
+             WHERE sequence_schema NOT IN ('information_schema') \
+             ORDER BY 1, 2"
+                .into(),
+        ),
         ("sqlserver", ObjectKind::Function) => Some(
             "SELECT s.name AS schema, o.name AS name \
              FROM sys.objects o JOIN sys.schemas s ON s.schema_id = o.schema_id \
@@ -122,6 +135,21 @@ pub fn list_objects_sql(db_type: &str, kind: ObjectKind) -> Option<String> {
              FROM sys.triggers t \
              JOIN sys.schemas s ON s.schema_id = t.schema_id \
              WHERE t.is_ms_shipped = 0 \
+             ORDER BY 1, 2"
+                .into(),
+        ),
+        ("sqlserver", ObjectKind::Sequence) => Some(
+            "SELECT s.name AS schema, q.name AS name \
+             FROM sys.sequences q \
+             JOIN sys.schemas s ON s.schema_id = q.schema_id \
+             ORDER BY 1, 2"
+                .into(),
+        ),
+        ("sqlserver", ObjectKind::Type) => Some(
+            "SELECT s.name AS schema, t.name AS name \
+             FROM sys.types t \
+             JOIN sys.schemas s ON s.schema_id = t.schema_id \
+             WHERE t.is_user_defined = 1 \
              ORDER BY 1, 2"
                 .into(),
         ),
@@ -201,10 +229,46 @@ pub fn object_ddl_sql(
             "SELECT sql AS ddl FROM sqlite_master WHERE type = 'trigger' AND name = {}",
             sql_string(name),
         )),
+        ("duckdb", ObjectKind::Trigger) => Some(format!(
+            "SELECT sql AS ddl FROM information_schema.triggers WHERE trigger_name = {} LIMIT 1",
+            sql_string(name),
+        )),
+        ("duckdb", ObjectKind::Sequence) => Some(format!(
+            "SELECT sql AS ddl FROM duckdb_sequences() WHERE sequence_name = {} LIMIT 1",
+            sql_string(name),
+        )),
         ("sqlserver", ObjectKind::Function | ObjectKind::Procedure | ObjectKind::Trigger) => {
             let schema_str = schema.filter(|s| !s.is_empty()).unwrap_or("dbo");
             Some(format!(
                 "SELECT OBJECT_DEFINITION(OBJECT_ID('{schema_str}.{name}')) AS ddl"
+            ))
+        }
+        ("sqlserver", ObjectKind::Sequence) => {
+            let schema_str = schema.filter(|s| !s.is_empty()).unwrap_or("dbo");
+            Some(format!(
+                "SELECT 'CREATE SEQUENCE [{schema_str}].[{name}] AS [' + ty.name + '] ' \
+                 + 'START WITH ' + CAST(q.start_value AS varchar) \
+                 + ' INCREMENT BY ' + CAST(q.increment AS varchar) \
+                 + CASE WHEN q.is_cycling = 1 THEN ' CYCLE' ELSE ' NO CYCLE' END \
+                 AS ddl \
+                 FROM sys.sequences q \
+                 JOIN sys.types ty ON ty.user_type_id = q.user_type_id \
+                 WHERE q.name = '{}'",
+                name
+            ))
+        }
+        ("sqlserver", ObjectKind::Type) => {
+            let schema_str = schema.filter(|s| !s.is_empty()).unwrap_or("dbo");
+            Some(format!(
+                "SELECT 'CREATE TYPE {schema_str}.[' + t.name + '] FROM [' + ty.name + '](' \
+                 + CASE WHEN ty.max_length > 0 THEN CAST(ty.max_length AS varchar) \
+                        ELSE CAST(t.precision AS varchar) + ',' + CAST(t.scale AS varchar) END \
+                 + ')' AS ddl \
+                 FROM sys.types t \
+                 JOIN sys.types ty ON ty.user_type_id = t.system_type_id \
+                 WHERE t.is_user_defined = 1 AND t.schema_id = SCHEMA_ID('{schema_str}') \
+                   AND t.name = '{}'",
+                name
             ))
         }
         _ => {
@@ -260,7 +324,8 @@ pub fn dialect_family(db_type: &str) -> &'static str {
     match db_type.to_ascii_lowercase().as_str() {
         "postgresql" | "postgres" | "cockroach" | "cloudberry" | "questdb" => "postgresql",
         "mysql" | "mariadb" | "tidb" | "doris" | "starrocks" | "manticore" | "ob_oracle" => "mysql",
-        "sqlite" => "sqlite",
+        "sqlite" | "rqlite" | "turso" => "sqlite",
+        "duckdb" => "duckdb",
         "sqlserver" | "mssql" => "sqlserver",
         _ => "other",
     }
@@ -303,6 +368,16 @@ mod tests {
         assert_eq!(dialect_family("starrocks"), "mysql");
         assert_eq!(dialect_family("manticore"), "mysql");
         assert_eq!(dialect_family("ob_oracle"), "mysql");
+        // SQLite-compatible drivers map to the sqlite family.
+        assert_eq!(dialect_family("rqlite"), "sqlite");
+        assert_eq!(dialect_family("turso"), "sqlite");
+        assert!(list_objects_sql("rqlite", ObjectKind::Trigger).is_some());
+        assert!(list_objects_sql("turso", ObjectKind::Trigger).is_some());
+        // DuckDB has its own sequence/trigger family.
+        assert_eq!(dialect_family("duckdb"), "duckdb");
+        assert!(list_objects_sql("duckdb", ObjectKind::Trigger).is_some());
+        assert!(list_objects_sql("duckdb", ObjectKind::Sequence).is_some());
+        assert!(object_ddl_sql("duckdb", ObjectKind::Sequence, "seq", None).is_some());
     }
 
     #[test]
@@ -313,12 +388,20 @@ mod tests {
             ObjectKind::Function,
             ObjectKind::Procedure,
             ObjectKind::Trigger,
+            ObjectKind::Sequence,
+            ObjectKind::Type,
         ] {
             let sql = list_objects_sql("sqlserver", kind)
                 .unwrap_or_else(|| panic!("sqlserver should list object kind {kind:?}"));
+            let catalog = match kind {
+                ObjectKind::Sequence => "sys.sequences",
+                ObjectKind::Type => "sys.types",
+                _ => "sys.objects",
+            };
             assert!(
-                sql.contains("sys.objects") || sql.contains("sys.triggers"),
-                "sqlserver list should read catalog views: {sql}"
+                sql.contains(catalog)
+                    || (kind == ObjectKind::Trigger && sql.contains("sys.triggers")),
+                "sqlserver list should read catalog views for {kind:?}: {sql}"
             );
         }
         let fn_ddl = object_ddl_sql("sqlserver", ObjectKind::Function, "fn", Some("dbo")).unwrap();
@@ -327,6 +410,14 @@ mod tests {
         // Without schema it falls back to dbo.
         let no_schema = object_ddl_sql("sqlserver", ObjectKind::Procedure, "p", None).unwrap();
         assert!(no_schema.contains("dbo.p"));
+        // Sequences/types are reconstructed from catalog metadata.
+        let seq_ddl =
+            object_ddl_sql("sqlserver", ObjectKind::Sequence, "seq", Some("dbo")).unwrap();
+        assert!(seq_ddl.contains("sys.sequences"));
+        assert!(seq_ddl.contains("CREATE SEQUENCE"));
+        let type_ddl = object_ddl_sql("sqlserver", ObjectKind::Type, "phone", Some("dbo")).unwrap();
+        assert!(type_ddl.contains("sys.types"));
+        assert!(type_ddl.contains("CREATE TYPE"));
         assert!(list_privileges_sql("sqlserver").is_some());
         assert!(list_privileges_sql("mssql").is_some());
         // SQL Server uses bracket-quoted identifiers.

@@ -5,6 +5,7 @@ use std::sync::Arc;
 use datazen_driver_api::*;
 
 mod clickhouse;
+mod structure;
 mod sync_adapter;
 pub use clickhouse::*;
 pub use sync_adapter::ClickHouseSyncAdapter;

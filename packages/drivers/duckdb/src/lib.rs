@@ -5,6 +5,7 @@ use std::sync::Arc;
 use datazen_driver_api::*;
 
 mod duckdb;
+mod structure;
 mod sync_adapter;
 pub use duckdb::*;
 pub use sync_adapter::DuckDbSyncAdapter;

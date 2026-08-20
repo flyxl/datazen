@@ -29,6 +29,12 @@ export const sqliteDialect: SqlDialectStrategy = {
       return `CREATE ${uniqueKw}INDEX ${opts.quoteChar}${opts.indexName}${opts.quoteChar} ON ${opts.quoteChar}${opts.tableName}${opts.quoteChar} (${quotedCols})`;
     },
   },
-  backupOptions: [],
+  backupOptions: [
+    { id: 'schema-only', label: '--schema-only' },
+    { id: 'data-only', label: '--data-only' },
+    { id: 'clean', label: '--clean' },
+    { id: 'no-owner', label: '--no-owner' },
+    { id: 'single-transaction', label: '--single-transaction' },
+  ],
   getTruncateTableSql: (quotedName) => `DELETE FROM ${quotedName}`,
 };

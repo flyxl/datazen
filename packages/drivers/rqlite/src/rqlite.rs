@@ -1,6 +1,7 @@
 //! RQLite driver — distributed SQLite via HTTP JSON API.
 
 use async_trait::async_trait;
+use datazen_driver_api::sqlite_structure as sqlite_struct;
 use datazen_driver_api::*;
 use datazen_driver_http_support::*;
 use std::collections::HashMap;
@@ -346,6 +347,47 @@ impl DatabaseDriver for RqliteDriver {
 
     async fn cancel_query(&self, _handle: &ConnectionHandle) -> Result<(), DriverError> {
         Ok(())
+    }
+
+    fn command_definitions(&self) -> Vec<DriverCommandDefinition> {
+        let mut cmds = vec![query_command_definition(), execute_command_definition()];
+        cmds.extend(schema_object_command_definitions());
+        cmds
+    }
+
+    async fn execute_command(
+        &self,
+        handle: &ConnectionHandle,
+        command: &str,
+        input: serde_json::Value,
+    ) -> Result<CommandResult, DriverError> {
+        if is_schema_object_command(command) {
+            return execute_schema_object_command(
+                self,
+                &self.driver_type(),
+                handle,
+                command,
+                input,
+            )
+            .await;
+        }
+        execute_standard_sql_command(self, handle, command, input).await
+    }
+
+    async fn structure_capabilities(
+        &self,
+        _handle: &ConnectionHandle,
+    ) -> Result<StructureCapabilities, DriverError> {
+        Ok(sqlite_struct::capabilities(&self.driver_type()))
+    }
+
+    async fn plan_structure_changes(
+        &self,
+        _handle: &ConnectionHandle,
+        request: &StructureChangeRequest,
+    ) -> Result<StructureChangePlan, DriverError> {
+        let caps = sqlite_struct::capabilities(&self.driver_type());
+        sqlite_struct::plan_changes(request, &caps)
     }
 }
 
