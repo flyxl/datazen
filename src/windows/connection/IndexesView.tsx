@@ -7,6 +7,7 @@ import { cn } from '../../lib/cn';
 import { Button } from '../../components/ui/Button';
 import { Select } from '../../components/ui/Select';
 import { useI18n } from '../../hooks/useI18n';
+import { CopyableError } from '../../components/ui/CopyableError';
 import { DB_REGISTRY } from '../../lib/databaseTypes';
 import { getSqlDialect } from '../../lib/sqlDialects';
 import { useSettingsStore } from '../../stores/settingsStore';
@@ -365,8 +366,8 @@ export function IndexesView({
 
   if (error) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-2">
-        <span className="text-sm text-red-400">{error}</span>
+      <div className="flex flex-1 flex-col items-center justify-center gap-2 p-4">
+        <CopyableError message={error} className="max-w-lg text-sm text-red-400" />
         <Button
           variant="secondary"
           className="h-7 text-xs"

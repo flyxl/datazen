@@ -19,7 +19,7 @@ import { showNativeContextMenu } from '../../lib/nativeContextMenu';
 import { buildConnectionTabContextMenuItems } from '../../lib/connectionTabContextMenu';
 
 export interface PanelHandlers {
-  handleSelectTable: (table: string, schema?: string) => void;
+  handleSelectTable: (table: string, schema?: string, database?: string) => void;
   handleCreateTable: () => void;
   handleEditTableStructure: (name: string) => void;
   handleOpenStructure: (name: string) => void;
@@ -77,15 +77,22 @@ export function usePanelHandlers({
   );
 
   const handleSelectTable = useCallback(
-    (table: string, _schema?: string) => {
+    (table: string, schema?: string, database?: string) => {
       const ctx = sidebarConnCtx;
       if (!ctx) return;
       const currentPanels = usePanelStore
         .getState()
         .panels.filter((p) => p.configId === ctx.configId);
-      const isView = schemaViews.some((v) => v.name === table);
+      const isView = schemaViews.some(
+        (v) => v.name === table && (schema == null || v.schema === schema),
+      );
       if (isView) {
-        const existing = currentPanels.find((p) => p.type === 'view' && p.viewName === table);
+        const existing = currentPanels.find(
+          (p) =>
+            p.type === 'view' &&
+            p.viewName === table &&
+            (database == null || p.database === database),
+        );
         if (existing) {
           setActivePanel(existing.id);
           return;
@@ -95,12 +102,19 @@ export function usePanelHandlers({
           type: 'view',
           id: nextPanelId('view'),
           viewName: table,
+          database,
+          viewSchema: schema,
           subTab: 'data',
         };
         addPanel(panel);
         return;
       }
-      const existing = currentPanels.find((p) => p.type === 'table' && p.tableName === table);
+      const existing = currentPanels.find(
+        (p) =>
+          p.type === 'table' &&
+          p.tableName === table &&
+          (database == null || p.database === database),
+      );
       if (existing) {
         setActivePanel(existing.id);
         return;
@@ -110,6 +124,8 @@ export function usePanelHandlers({
         type: 'table',
         id: nextPanelId('tbl'),
         tableName: table,
+        database,
+        tableSchema: schema,
         subTab: 'data',
       };
       addPanel(panel);

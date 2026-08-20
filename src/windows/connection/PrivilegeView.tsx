@@ -16,6 +16,7 @@ import {
 import { Button } from '../../components/ui/Button';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 import { useI18n } from '../../hooks/useI18n';
+import { CopyableError } from '../../components/ui/CopyableError';
 import { databaseCommands } from '../../commands/database';
 import { driverCommands } from '../../commands/driver';
 import { queryCommands } from '../../commands/query';
@@ -356,9 +357,13 @@ function GrantDialog({
           </div>
 
           {error && (
-            <div className="flex items-center gap-2 rounded bg-red-500/10 px-2 py-1.5">
-              <span className="flex-1 text-[11px] text-red-400">{error}</span>
-              <button type="button" className="text-red-400" onClick={() => setError(null)}>
+            <div className="flex items-start gap-2 rounded bg-red-500/10 px-2 py-1.5">
+              <CopyableError message={error} className="min-w-0 flex-1 text-[11px] text-red-400" />
+              <button
+                type="button"
+                className="shrink-0 text-red-400"
+                onClick={() => setError(null)}
+              >
                 <X className="h-3 w-3" />
               </button>
             </div>
@@ -469,11 +474,11 @@ function ByUserView({
   return (
     <div className="min-h-0 flex-1 overflow-auto">
       {actionError && (
-        <div className="flex items-center gap-2 border-b border-edge bg-red-500/10 px-3 py-2">
-          <span className="flex-1 text-xs text-red-400">{actionError}</span>
+        <div className="flex items-start gap-2 border-b border-edge bg-red-500/10 px-3 py-2">
+          <CopyableError message={actionError} className="min-w-0 flex-1 text-xs text-red-400" />
           <button
             type="button"
-            className="rounded p-0.5 text-red-400 hover:bg-red-500/20"
+            className="shrink-0 rounded p-0.5 text-red-400 hover:bg-red-500/20"
             onClick={() => setActionError(null)}
           >
             <X className="h-3 w-3" />
@@ -651,11 +656,11 @@ function ByObjectView({
   return (
     <div className="min-h-0 flex-1 overflow-auto">
       {actionError && (
-        <div className="flex items-center gap-2 border-b border-edge bg-red-500/10 px-3 py-2">
-          <span className="flex-1 text-xs text-red-400">{actionError}</span>
+        <div className="flex items-start gap-2 border-b border-edge bg-red-500/10 px-3 py-2">
+          <CopyableError message={actionError} className="min-w-0 flex-1 text-xs text-red-400" />
           <button
             type="button"
-            className="rounded p-0.5 text-red-400 hover:bg-red-500/20"
+            className="shrink-0 rounded p-0.5 text-red-400 hover:bg-red-500/20"
             onClick={() => setActionError(null)}
           >
             <X className="h-3 w-3" />
@@ -861,7 +866,7 @@ export function PrivilegeView({ connectionId }: PrivilegeViewProps) {
           {t('common.loading')}
         </div>
       )}
-      {error && <div className="p-3 text-xs text-red-400">{error}</div>}
+      {error && <CopyableError message={error} className="p-3 text-xs text-red-400" />}
 
       {!loading && !error && viewMode === 'by-user' && (
         <ByUserView

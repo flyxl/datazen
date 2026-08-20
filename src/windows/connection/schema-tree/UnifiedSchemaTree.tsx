@@ -16,6 +16,7 @@ import {
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useSchemaStore, useConnectionSchemaField } from '../../../stores/schemaStore';
 import { useI18n } from '../../../hooks/useI18n';
+import { CopyableError } from '../../../components/ui/CopyableError';
 import { cn } from '../../../lib/cn';
 import { matchingColumns, tableMatchesObjectSearch } from '../../../lib/schemaObjectSearch';
 import type { DatabaseObject, TableInfo } from '../../../types';
@@ -580,7 +581,11 @@ export function UnifiedSchemaTree({
   });
 
   if (error) {
-    return <div className="p-3 text-xs text-red-400">{error}</div>;
+    return (
+      <div className="p-3">
+        <CopyableError message={error} className="text-xs text-red-400" />
+      </div>
+    );
   }
 
   const depthPadding = (depth: number) => `${0.5 + depth * 1.25}rem`;

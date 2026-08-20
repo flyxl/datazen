@@ -33,6 +33,9 @@ interface PanelBase {
 export interface TablePanel extends PanelBase {
   type: 'table';
   tableName: string;
+  /** Database the table was opened from (multi-db drivers). */
+  database?: string;
+  tableSchema?: string;
   subTab: SubTabId;
   structureEditing?: boolean;
 }
@@ -40,6 +43,9 @@ export interface TablePanel extends PanelBase {
 export interface ViewPanel extends PanelBase {
   type: 'view';
   viewName: string;
+  /** Database the view was opened from (multi-db drivers). */
+  database?: string;
+  viewSchema?: string;
   subTab: SubTabId;
 }
 

@@ -136,7 +136,7 @@ function SqlPanelContent({
           {panel.subTab === 'data' && (
             <TableView
               connectionId={panel.connectionId}
-              database={currentDatabase ?? ''}
+              database={panel.database ?? currentDatabase ?? ''}
               tableName={panel.tableName}
               databaseType={panel.databaseType}
               dataExportCapability={panelExportScope}
@@ -147,7 +147,7 @@ function SqlPanelContent({
               <TableStructureEditor
                 connectionId={panel.connectionId}
                 databaseType={panel.databaseType}
-                schema={resolveTableSchema(panel.tableName)}
+                schema={panel.tableSchema ?? resolveTableSchema(panel.tableName)}
                 mode="alter"
                 tableName={panel.tableName}
                 showBackButton
@@ -204,7 +204,7 @@ function SqlPanelContent({
           {(panel as ViewPanel).subTab === 'data' && (
             <TableView
               connectionId={panel.connectionId}
-              database={currentDatabase ?? ''}
+              database={(panel as ViewPanel).database ?? currentDatabase ?? ''}
               tableName={(panel as ViewPanel).viewName}
               databaseType={panel.databaseType}
               dataExportCapability={panelExportScope}

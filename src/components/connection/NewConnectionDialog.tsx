@@ -123,11 +123,10 @@ export function NewConnectionDialog({
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <button
-        type="button"
-        aria-label={t('common.close')}
+      <div
+        aria-hidden="true"
+        data-testid="new-connection-dialog-backdrop"
         className="absolute inset-0 bg-black/50"
-        onClick={handleClose}
       />
       <div
         role="dialog"
@@ -228,5 +227,12 @@ export function NewConnectionDialog({
 export function ConnectionEditorDialogHost() {
   const open = useConnectionEditorStore((s) => s.open);
   const editId = useConnectionEditorStore((s) => s.editId);
-  return <NewConnectionDialog open={open} editId={editId} />;
+  const openSeq = useConnectionEditorStore((s) => s.openSeq);
+  return (
+    <NewConnectionDialog
+      key={open ? `${editId ?? 'create'}-${openSeq}` : 'closed'}
+      open={open}
+      editId={editId}
+    />
+  );
 }

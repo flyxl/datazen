@@ -7,7 +7,7 @@ import {
 
 describe('connectionEditor', () => {
   beforeEach(() => {
-    useConnectionEditorStore.setState({ open: false, editId: null });
+    useConnectionEditorStore.setState({ open: false, editId: null, openSeq: 0 });
   });
 
   it('openNewConnectionDialog opens with optional editId', () => {
@@ -21,6 +21,16 @@ describe('connectionEditor', () => {
     openNewConnectionDialog();
     expect(useConnectionEditorStore.getState().open).toBe(true);
     expect(useConnectionEditorStore.getState().editId).toBeNull();
+  });
+
+  it('openNewConnectionDialog increments openSeq on each open', () => {
+    openNewConnectionDialog();
+    expect(useConnectionEditorStore.getState().openSeq).toBe(1);
+    closeNewConnectionDialog();
+    openNewConnectionDialog('cfg-1');
+    expect(useConnectionEditorStore.getState().openSeq).toBe(2);
+    openNewConnectionDialog();
+    expect(useConnectionEditorStore.getState().openSeq).toBe(3);
   });
 
   it('closeNewConnectionDialog resets state', () => {

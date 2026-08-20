@@ -3,6 +3,7 @@ import { ChevronDown, ChevronRight, Database, Eye, Loader2, Table2 } from 'lucid
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useSchemaStore } from '../../../stores/schemaStore';
 import { useI18n } from '../../../hooks/useI18n';
+import { CopyableError } from '../../../components/ui/CopyableError';
 import { cn } from '../../../lib/cn';
 import { matchingColumns, tableMatchesObjectSearch } from '../../../lib/schemaObjectSearch';
 import type { DatabaseType, TableInfo } from '../../../types';
@@ -143,7 +144,11 @@ export function StandardSchemaTree({
   });
 
   if (error) {
-    return <div className="p-3 text-xs text-red-400">{error}</div>;
+    return (
+      <div className="p-3">
+        <CopyableError message={error} className="text-xs text-red-400" />
+      </div>
+    );
   }
 
   return (

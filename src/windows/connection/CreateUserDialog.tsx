@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { Dialog } from '../../components/ui/Dialog';
 import { Button } from '../../components/ui/Button';
+import { CopyableError } from '../../components/ui/CopyableError';
 import { Input } from '../../components/ui/Input';
 import { Select } from '../../components/ui/Select';
 import { PrivilegeSelector, usePrivilegeOptions } from '../../components/admin/PrivilegeSelector';
@@ -211,7 +212,12 @@ export function CreateUserDialog({
               placeholder="••••••••"
             />
           </div>
-          {error && <div className="rounded bg-red-500/10 p-3 text-sm text-red-400">{error}</div>}
+          {error && (
+            <CopyableError
+              message={error}
+              className="rounded bg-red-500/10 p-3 text-sm text-red-400"
+            />
+          )}
         </div>
       ) : showGrantStep ? (
         <div className="space-y-4">
@@ -260,14 +266,24 @@ export function CreateUserDialog({
               {t('createUser.grantOption')}
             </label>
           )}
-          {error && <div className="rounded bg-red-500/10 p-3 text-sm text-red-400">{error}</div>}
+          {error && (
+            <CopyableError
+              message={error}
+              className="rounded bg-red-500/10 p-3 text-sm text-red-400"
+            />
+          )}
         </div>
       ) : (
         <div className="space-y-4">
           <div className="rounded bg-green-500/10 p-2 text-sm text-green-400">
             {t('createUser.success').replace('{name}', createdUsername)}
           </div>
-          {error && <div className="rounded bg-red-500/10 p-3 text-sm text-red-400">{error}</div>}
+          {error && (
+            <CopyableError
+              message={error}
+              className="rounded bg-red-500/10 p-3 text-sm text-red-400"
+            />
+          )}
         </div>
       )}
     </Dialog>

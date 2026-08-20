@@ -1,9 +1,15 @@
 import { useCallback, useEffect, useState } from 'react';
 import { AlertTriangle, FileText, Loader2 } from 'lucide-react';
 import { Dialog } from '../../components/ui/Dialog';
+import { CopyableError } from '../../components/ui/CopyableError';
 import { Button } from '../../components/ui/Button';
 import { fileCommands } from '../../commands/file';
-import { parseImportData, parseXLSX, detectImportFormat, generateInsertSQL } from '../../lib/importData';
+import {
+  parseImportData,
+  parseXLSX,
+  detectImportFormat,
+  generateInsertSQL,
+} from '../../lib/importData';
 import type { ParsedData } from '../../lib/importData';
 import { queryCommands } from '../../commands/query';
 import { cn } from '../../lib/cn';
@@ -18,7 +24,14 @@ interface ImportDialogProps {
   databaseType?: string;
 }
 
-export function ImportDialog({ open: isOpen, onClose, connectionId, tableName, onImported, databaseType }: ImportDialogProps) {
+export function ImportDialog({
+  open: isOpen,
+  onClose,
+  connectionId,
+  tableName,
+  onImported,
+  databaseType,
+}: ImportDialogProps) {
   const { t } = useI18n();
   const [filePath, setFilePath] = useState<string | null>(null);
   const [parsedData, setParsedData] = useState<ParsedData | null>(null);
@@ -46,12 +59,15 @@ export function ImportDialog({ open: isOpen, onClose, connectionId, tableName, o
         setError('Unsupported file format');
         return;
       }
-      const data = format === 'xlsx'
-        ? parseXLSX(opened.dataBase64)
-        : parseImportData(
-            new TextDecoder().decode(Uint8Array.from(atob(opened.dataBase64), (c) => c.charCodeAt(0))),
-            format,
-          );
+      const data =
+        format === 'xlsx'
+          ? parseXLSX(opened.dataBase64)
+          : parseImportData(
+              new TextDecoder().decode(
+                Uint8Array.from(atob(opened.dataBase64), (c) => c.charCodeAt(0)),
+              ),
+              format,
+            );
       setParsedData(data);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -94,7 +110,9 @@ export function ImportDialog({ open: isOpen, onClose, connectionId, tableName, o
       onClose={onClose}
       footer={
         <>
-          <Button variant="secondary" onClick={onClose}>{t('common.cancel')}</Button>
+          <Button variant="secondary" onClick={onClose}>
+            {t('common.cancel')}
+          </Button>
           <Button
             variant="primary"
             onClick={() => void handleImport()}
@@ -108,7 +126,9 @@ export function ImportDialog({ open: isOpen, onClose, connectionId, tableName, o
       <div className="space-y-4">
         {/* File picker */}
         <div>
-          <label className="mb-1 block text-xs font-medium text-fg-secondary">{t('import.selectFile')}</label>
+          <label className="mb-1 block text-xs font-medium text-fg-secondary">
+            {t('import.selectFile')}
+          </label>
           <Button variant="secondary" className="h-8 text-xs" onClick={() => void handlePickFile()}>
             <FileText className="h-3.5 w-3.5" />
             {filePath ? filePath.split('/').pop() : t('import.selectFile')}
@@ -117,7 +137,9 @@ export function ImportDialog({ open: isOpen, onClose, connectionId, tableName, o
 
         {/* Target table */}
         <div>
-          <label className="mb-1 block text-xs font-medium text-fg-secondary">{t('import.targetTable')}</label>
+          <label className="mb-1 block text-xs font-medium text-fg-secondary">
+            {t('import.targetTable')}
+          </label>
           <input
             type="text"
             value={targetTable}
@@ -138,14 +160,18 @@ export function ImportDialog({ open: isOpen, onClose, connectionId, tableName, o
         {parsedData && (
           <div>
             <label className="mb-1 block text-xs font-medium text-fg-secondary">
-              {t('common.preview')} ({parsedData.rows.length} {t('common.rows')}, {parsedData.columns.length} {t('common.columns')})
+              {t('common.preview')} ({parsedData.rows.length} {t('common.rows')},{' '}
+              {parsedData.columns.length} {t('common.columns')})
             </label>
             <div className="max-h-52 overflow-auto rounded-md border border-edge bg-surface">
               <table className="w-full border-collapse text-xs">
                 <thead className="sticky top-0">
                   <tr className="bg-surface-alt">
                     {parsedData.columns.map((col) => (
-                      <th key={col} className="border-b border-r border-edge px-2 py-1.5 text-left font-medium text-fg-secondary">
+                      <th
+                        key={col}
+                        className="border-b border-r border-edge px-2 py-1.5 text-left font-medium text-fg-secondary"
+                      >
                         {col}
                       </th>
                     ))}
@@ -155,11 +181,16 @@ export function ImportDialog({ open: isOpen, onClose, connectionId, tableName, o
                   {parsedData.rows.slice(0, 10).map((row, ri) => (
                     <tr key={ri} className={cn(ri % 2 === 0 ? 'bg-surface' : 'bg-surface-alt/30')}>
                       {parsedData.columns.map((col) => (
-                        <td key={col} className="border-b border-r border-edge px-2 py-1 font-mono text-fg-secondary">
+                        <td
+                          key={col}
+                          className="border-b border-r border-edge px-2 py-1 font-mono text-fg-secondary"
+                        >
                           {row[col] === null ? (
                             <span className="italic text-fg-muted">NULL</span>
+                          ) : typeof row[col] === 'object' ? (
+                            JSON.stringify(row[col])
                           ) : (
-                            typeof row[col] === 'object' ? JSON.stringify(row[col]) : String(row[col])
+                            String(row[col])
                           )}
                         </td>
                       ))}
@@ -191,9 +222,10 @@ export function ImportDialog({ open: isOpen, onClose, connectionId, tableName, o
         )}
 
         {error && (
-          <div className="rounded-md border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-400">
-            {error}
-          </div>
+          <CopyableError
+            message={error}
+            className="rounded-md border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-400"
+          />
         )}
       </div>
     </Dialog>

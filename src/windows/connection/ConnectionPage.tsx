@@ -36,7 +36,10 @@ import { useActiveConnectionStore } from '../../stores/activeConnectionStore';
 import { usePanelStore, nextPanelId, type RedisDbPanel } from '../../stores/panelStore';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 import type { ConnectionViewActions } from '../../lib/connectionViews/types';
-import { ConnectionNavigatorTree } from './ConnectionNavigatorTree';
+import {
+  ConnectionNavigatorTree,
+  type ConnectionNavigatorTreeHandle,
+} from './ConnectionNavigatorTree';
 import { ContentView } from './ContentView';
 import type { UiIconId } from '../../lib/iconIds';
 import type { DatabaseType } from '../../types';
@@ -176,6 +179,7 @@ export function ConnectionPage() {
     | undefined
   >();
   const actionsRef = useRef<ConnectionViewActions | undefined>();
+  const navigatorRef = useRef<ConnectionNavigatorTreeHandle>(null);
 
   const activeTab = tabs[activeIdx] ?? null;
 
@@ -570,17 +574,18 @@ export function ConnectionPage() {
     [handleCloseTab],
   );
 
-  const handleSelectTable = useCallback((tableName: string, schema?: string) => {
+  const handleSelectTable = useCallback((tableName: string, schema?: string, database?: string) => {
     // Defer so that any preceding handleSelectConnection state flush + useLayoutEffect
     // has time to update selectTableRef to the correct connection's handler.
     requestAnimationFrame(() => {
-      selectTableRef.current?.(tableName, schema);
+      selectTableRef.current?.(tableName, schema, database);
     });
   }, []);
 
   const handleRefresh = useCallback(() => {
     void fetchConnections();
     void fetchGroups();
+    void navigatorRef.current?.refreshAllConnections();
   }, [fetchConnections, fetchGroups]);
 
   const handleExportConfig = useCallback(async () => {
@@ -790,6 +795,7 @@ export function ConnectionPage() {
           >
             <div className="flex min-h-0 flex-1 flex-col">
               <ConnectionNavigatorTree
+                ref={navigatorRef}
                 activeConfigId={activeTab?.configId ?? null}
                 onSelectConnection={handleSelectConnection}
                 onSelectTable={handleSelectTable}
@@ -803,6 +809,7 @@ export function ConnectionPage() {
                 onDisconnect={handleDisconnect}
                 onCollapseSidebar={() => setSidebarCollapsed(true)}
                 onNodeContextMenu={(payload) => nodeContextMenuRef.current?.(payload)}
+                onShowMessage={showMessageDialog}
                 viewActions={{
                   newQuery: (...args) => actionsRef.current?.newQuery(...args),
                   openSqlFile: () => actionsRef.current?.openSqlFile?.(),

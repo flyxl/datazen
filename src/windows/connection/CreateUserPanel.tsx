@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 import { Loader2, UserPlus } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
+import { CopyableError } from '../../components/ui/CopyableError';
 import { Input } from '../../components/ui/Input';
 import { driverCommands } from '../../commands/driver';
 import { useI18n } from '../../hooks/useI18n';
@@ -67,7 +68,12 @@ export function CreateUserPanel({ connectionId }: CreateUserPanelProps) {
           />
         </div>
 
-        {error && <div className="rounded bg-red-500/10 p-3 text-sm text-red-400">{error}</div>}
+        {error && (
+          <CopyableError
+            message={error}
+            className="rounded bg-red-500/10 p-3 text-sm text-red-400"
+          />
+        )}
         {success && (
           <div className="rounded bg-green-500/10 p-3 text-sm text-green-400">{success}</div>
         )}
