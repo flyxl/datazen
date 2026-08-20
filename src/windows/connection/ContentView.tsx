@@ -778,7 +778,6 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
           open={createDbOpen}
           onClose={() => setCreateDbOpen(false)}
           connectionId={sidebarConnCtx.connectionId}
-          databaseType={sidebarConnCtx.databaseType as DatabaseType}
           onCreated={async () => {
             const connId = sidebarConnCtx.connectionId;
             const dbType = sidebarConnCtx.databaseType;
@@ -796,7 +795,6 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
           open={createSchemaOpen}
           onClose={() => setCreateSchemaOpen(false)}
           connectionId={sidebarConnCtx.connectionId}
-          databaseType={sidebarConnCtx.databaseType as DatabaseType}
           onCreated={async () => {
             const connId = sidebarConnCtx.connectionId;
             const db = currentDatabase ?? initialDatabase;
@@ -817,7 +815,6 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
           open={createUserOpen}
           onClose={() => setCreateUserOpen(false)}
           connectionId={sidebarConnCtx.connectionId}
-          databaseType={sidebarConnCtx.databaseType as DatabaseType}
           onCreated={() => {
             const ctx = sidebarConnCtx;
             const store = usePanelStore.getState();

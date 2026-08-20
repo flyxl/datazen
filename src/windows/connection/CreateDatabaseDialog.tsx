@@ -3,15 +3,15 @@ import { Loader2 } from 'lucide-react';
 import { Dialog } from '../../components/ui/Dialog';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
+import { AdminSchemaFields } from '../../components/admin/AdminSchemaFields';
 import { driverCommands } from '../../commands/driver';
+import { useConnectionCommand } from '../../hooks/useConnectionCommand';
 import { useI18n } from '../../hooks/useI18n';
-import type { DatabaseType } from '../../types';
 
 interface CreateDatabaseDialogProps {
   open: boolean;
   onClose: () => void;
   connectionId: string;
-  databaseType: DatabaseType;
   onCreated?: (dbName: string) => void | Promise<void>;
 }
 
@@ -19,20 +19,18 @@ export function CreateDatabaseDialog({
   open,
   onClose,
   connectionId,
-  databaseType,
   onCreated,
 }: CreateDatabaseDialogProps) {
   const { t } = useI18n();
+  const { definition } = useConnectionCommand(open ? connectionId : undefined, 'create_database');
   const [name, setName] = useState('');
-  const [encoding, setEncoding] = useState('');
-  const [owner, setOwner] = useState('');
+  const [optionalValues, setOptionalValues] = useState<Record<string, string>>({});
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const resetForm = useCallback(() => {
     setName('');
-    setEncoding('');
-    setOwner('');
+    setOptionalValues({});
     setError(null);
   }, []);
 
@@ -41,14 +39,19 @@ export function CreateDatabaseDialog({
     onClose();
   }, [resetForm, onClose]);
 
+  const handleOptionalChange = useCallback((field: string, value: string) => {
+    setOptionalValues((prev) => ({ ...prev, [field]: value }));
+  }, []);
+
   const handleCreate = useCallback(async () => {
     if (!name.trim()) return;
     setRunning(true);
     setError(null);
     try {
       const input: Record<string, unknown> = { name: name.trim() };
-      if (encoding.trim()) input.encoding = encoding.trim();
-      if (owner.trim()) input.owner = owner.trim();
+      for (const [field, value] of Object.entries(optionalValues)) {
+        if (value.trim()) input[field] = value.trim();
+      }
 
       await driverCommands.execute({ connectionId, command: 'create_database', input });
       const created = name.trim();
@@ -60,7 +63,7 @@ export function CreateDatabaseDialog({
     } finally {
       setRunning(false);
     }
-  }, [name, encoding, owner, connectionId, resetForm, onCreated, onClose]);
+  }, [name, optionalValues, connectionId, resetForm, onCreated, onClose]);
 
   return (
     <Dialog
@@ -97,26 +100,16 @@ export function CreateDatabaseDialog({
             autoFocus
           />
         </div>
-        {(databaseType === 'postgresql' || databaseType === 'mysql') && (
-          <div>
-            <label className="block text-xs text-fg-muted mb-1">{t('createDb.encoding')}</label>
-            <Input
-              value={encoding}
-              onChange={(e) => setEncoding(e.target.value)}
-              placeholder={databaseType === 'postgresql' ? 'UTF8' : 'utf8mb4'}
-            />
-          </div>
-        )}
-        {databaseType === 'postgresql' && (
-          <div>
-            <label className="block text-xs text-fg-muted mb-1">{t('createDb.owner')}</label>
-            <Input
-              value={owner}
-              onChange={(e) => setOwner(e.target.value)}
-              placeholder="postgres"
-            />
-          </div>
-        )}
+        <AdminSchemaFields
+          definition={definition}
+          values={optionalValues}
+          onChange={handleOptionalChange}
+          exclude={['name']}
+          labels={{
+            encoding: t('createDb.encoding'),
+            owner: t('createDb.owner'),
+          }}
+        />
         {error && <div className="rounded bg-red-500/10 p-3 text-sm text-red-400">{error}</div>}
       </div>
     </Dialog>

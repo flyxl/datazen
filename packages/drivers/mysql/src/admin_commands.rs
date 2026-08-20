@@ -54,7 +54,24 @@ pub fn mysql_admin_command_definitions() -> Vec<DriverCommandDefinition> {
                 },
                 "grantOption": { "type": "boolean", "description": "WITH GRANT OPTION" }
             },
-            "required": ["username", "privileges"]
+            "required": ["username", "privileges"],
+            "x-datazen": {
+                "privilegeGroups": [
+                    {
+                        "label": "Privileges",
+                        "privileges": [
+                            "SELECT",
+                            "INSERT",
+                            "UPDATE",
+                            "DELETE",
+                            "CREATE",
+                            "DROP",
+                            "ALTER",
+                            "INDEX"
+                        ]
+                    }
+                ]
+            }
         }),
         output_schema: None,
         permissions: vec![],

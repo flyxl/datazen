@@ -2,7 +2,9 @@ import { useCallback, useState } from 'react';
 import { DatabaseZap, Loader2 } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
+import { AdminSchemaFields } from '../../components/admin/AdminSchemaFields';
 import { driverCommands } from '../../commands/driver';
+import { useConnectionCommand } from '../../hooks/useConnectionCommand';
 import { useSchemaStore } from '../../stores/schemaStore';
 import { useI18n } from '../../hooks/useI18n';
 import type { DatabaseType } from '../../types';
@@ -14,14 +16,18 @@ interface CreateDatabasePanelProps {
 
 export function CreateDatabasePanel({ connectionId, databaseType }: CreateDatabasePanelProps) {
   const { t } = useI18n();
+  const { definition } = useConnectionCommand(connectionId, 'create_database');
   const [name, setName] = useState('');
-  const [encoding, setEncoding] = useState('');
-  const [owner, setOwner] = useState('');
+  const [optionalValues, setOptionalValues] = useState<Record<string, string>>({});
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
   const loadForConnection = useSchemaStore((s) => s.loadForConnection);
+
+  const handleOptionalChange = useCallback((field: string, value: string) => {
+    setOptionalValues((prev) => ({ ...prev, [field]: value }));
+  }, []);
 
   const handleCreate = useCallback(async () => {
     if (!name.trim()) return;
@@ -30,8 +36,9 @@ export function CreateDatabasePanel({ connectionId, databaseType }: CreateDataba
     setSuccess(null);
     try {
       const input: Record<string, unknown> = { name: name.trim() };
-      if (encoding.trim()) input.encoding = encoding.trim();
-      if (owner.trim()) input.owner = owner.trim();
+      for (const [field, value] of Object.entries(optionalValues)) {
+        if (value.trim()) input[field] = value.trim();
+      }
 
       await driverCommands.execute({
         connectionId,
@@ -40,15 +47,14 @@ export function CreateDatabasePanel({ connectionId, databaseType }: CreateDataba
       });
       setSuccess(t('createDb.success', { name: name.trim() }));
       setName('');
-      setEncoding('');
-      setOwner('');
+      setOptionalValues({});
       void loadForConnection(connectionId, { databaseType });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setRunning(false);
     }
-  }, [name, encoding, owner, connectionId, databaseType, loadForConnection, t]);
+  }, [name, optionalValues, connectionId, databaseType, loadForConnection, t]);
 
   return (
     <div className="flex flex-1 flex-col overflow-auto">
@@ -66,26 +72,16 @@ export function CreateDatabasePanel({ connectionId, databaseType }: CreateDataba
             autoFocus
           />
         </div>
-        {(databaseType === 'postgresql' || databaseType === 'mysql') && (
-          <div>
-            <label className="block text-xs text-fg-muted mb-1">{t('createDb.encoding')}</label>
-            <Input
-              value={encoding}
-              onChange={(e) => setEncoding(e.target.value)}
-              placeholder={databaseType === 'postgresql' ? 'UTF8' : 'utf8mb4'}
-            />
-          </div>
-        )}
-        {databaseType === 'postgresql' && (
-          <div>
-            <label className="block text-xs text-fg-muted mb-1">{t('createDb.owner')}</label>
-            <Input
-              value={owner}
-              onChange={(e) => setOwner(e.target.value)}
-              placeholder="postgres"
-            />
-          </div>
-        )}
+        <AdminSchemaFields
+          definition={definition}
+          values={optionalValues}
+          onChange={handleOptionalChange}
+          exclude={['name']}
+          labels={{
+            encoding: t('createDb.encoding'),
+            owner: t('createDb.owner'),
+          }}
+        />
 
         {error && <div className="rounded bg-red-500/10 p-3 text-sm text-red-400">{error}</div>}
         {success && (

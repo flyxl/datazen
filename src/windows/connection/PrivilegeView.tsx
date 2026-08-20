@@ -19,6 +19,9 @@ import { useI18n } from '../../hooks/useI18n';
 import { databaseCommands } from '../../commands/database';
 import { driverCommands } from '../../commands/driver';
 import { queryCommands } from '../../commands/query';
+import { PrivilegeSelector, usePrivilegeOptions } from '../../components/admin/PrivilegeSelector';
+import { useConnectionCommand, useConnectionCommands } from '../../hooks/useConnectionCommand';
+import { hasCommand } from '../../lib/commandSchema';
 import type { PrivilegeGrant } from '../../types';
 
 // ─── Types ────────────────────────────────────────────────────────────
@@ -213,51 +216,22 @@ function PrivilegeLeafRow({
 
 // ─── Grant Dialog ─────────────────────────────────────────────────────
 
-const PG_TABLE_PRIVILEGES = [
-  'SELECT',
-  'INSERT',
-  'UPDATE',
-  'DELETE',
-  'TRUNCATE',
-  'REFERENCES',
-  'TRIGGER',
-] as const;
-const PG_DB_PRIVILEGES = ['CONNECT', 'CREATE', 'TEMPORARY'] as const;
-const MYSQL_PRIVILEGES = [
-  'SELECT',
-  'INSERT',
-  'UPDATE',
-  'DELETE',
-  'CREATE',
-  'DROP',
-  'ALTER',
-  'INDEX',
-] as const;
-
 function GrantDialog({
   connectionId,
-  databaseType,
   users,
   initialUser,
   onGranted,
   onClose,
 }: {
   connectionId: string;
-  databaseType?: string;
   users: string[];
   initialUser?: string;
   onGranted: () => void;
   onClose: () => void;
 }) {
   const { t } = useI18n();
-  const [username, setUsername] = useState(initialUser ?? '');
-  const [database, setDatabase] = useState('');
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const isPg = databaseType === 'postgresql';
-  const allPrivs = isPg ? [...PG_TABLE_PRIVILEGES, ...PG_DB_PRIVILEGES] : [...MYSQL_PRIVILEGES];
+  const { definition: grantDefinition } = useConnectionCommand(connectionId, 'grant_privileges');
+  const { all: allPrivs } = usePrivilegeOptions(grantDefinition);
 
   const toggle = (p: string) => {
     setSelected((prev) => {
@@ -366,66 +340,13 @@ function GrantDialog({
               </div>
             </div>
 
-            {isPg && (
-              <>
-                <div className="mb-1 text-[10px] font-medium uppercase tracking-wide text-fg-muted">
-                  Table
-                </div>
-                <div className="mb-2 grid grid-cols-3 gap-1.5">
-                  {PG_TABLE_PRIVILEGES.map((p) => (
-                    <label
-                      key={p}
-                      className="flex cursor-pointer items-center gap-1.5 text-[11px] text-fg"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selected.has(p)}
-                        onChange={() => toggle(p)}
-                        className="rounded border-edge"
-                      />
-                      {p}
-                    </label>
-                  ))}
-                </div>
-                <div className="mb-1 text-[10px] font-medium uppercase tracking-wide text-fg-muted">
-                  Database
-                </div>
-                <div className="grid grid-cols-3 gap-1.5">
-                  {PG_DB_PRIVILEGES.map((p) => (
-                    <label
-                      key={p}
-                      className="flex cursor-pointer items-center gap-1.5 text-[11px] text-fg"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selected.has(p)}
-                        onChange={() => toggle(p)}
-                        className="rounded border-edge"
-                      />
-                      {p}
-                    </label>
-                  ))}
-                </div>
-              </>
-            )}
-            {!isPg && (
-              <div className="grid grid-cols-3 gap-1.5">
-                {MYSQL_PRIVILEGES.map((p) => (
-                  <label
-                    key={p}
-                    className="flex cursor-pointer items-center gap-1.5 text-[11px] text-fg"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selected.has(p)}
-                      onChange={() => toggle(p)}
-                      className="rounded border-edge"
-                    />
-                    {p}
-                  </label>
-                ))}
-              </div>
-            )}
+            <PrivilegeSelector
+              definition={grantDefinition}
+              selected={selected}
+              onToggle={toggle}
+              className="grid grid-cols-3 gap-1.5"
+              itemClassName="flex cursor-pointer items-center gap-1.5 text-[11px] text-fg"
+            />
           </div>
 
           {error && (
@@ -465,14 +386,14 @@ function GrantDialog({
 function ByUserView({
   grants,
   connectionId,
-  databaseType,
+  supportsDropUser,
   onRefresh,
   actionError,
   setActionError,
 }: {
   grants: PrivilegeGrant[];
   connectionId: string;
-  databaseType?: string;
+  supportsDropUser: boolean;
   onRefresh: () => void;
   actionError: string | null;
   setActionError: (e: string | null) => void;
@@ -524,8 +445,6 @@ function ByUserView({
       setActionError(e instanceof Error ? e.message : String(e));
     }
   };
-
-  const supportsDropUser = databaseType === 'postgresql' || databaseType === 'mysql';
 
   const revokeAllBtn = (user: string, privs: string[], objectName: string) => (
     <button
@@ -830,8 +749,10 @@ function ByObjectView({
 
 // ─── Main Component ───────────────────────────────────────────────────
 
-export function PrivilegeView({ connectionId, databaseType }: PrivilegeViewProps) {
+export function PrivilegeView({ connectionId }: PrivilegeViewProps) {
   const { t } = useI18n();
+  const { definitions } = useConnectionCommands(connectionId);
+  const supportsDropUser = hasCommand(definitions, 'drop_user');
   const [grants, setGrants] = useState<PrivilegeGrant[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -940,7 +861,7 @@ export function PrivilegeView({ connectionId, databaseType }: PrivilegeViewProps
         <ByUserView
           grants={grants}
           connectionId={connectionId}
-          databaseType={databaseType}
+          supportsDropUser={supportsDropUser}
           onRefresh={() => void load()}
           actionError={actionError}
           setActionError={setActionError}
@@ -982,7 +903,6 @@ export function PrivilegeView({ connectionId, databaseType }: PrivilegeViewProps
       {showGrant && (
         <GrantDialog
           connectionId={connectionId}
-          databaseType={databaseType}
           users={uniqueGrantees}
           initialUser={grantUser}
           onGranted={() => void load()}
