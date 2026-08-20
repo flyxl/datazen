@@ -9,7 +9,7 @@ use super::tasks::{
 use crate::commands::schema_diff::{compare_table_data_impl, compare_table_schemas_impl};
 use crate::schema_diff::diff_table_schemas;
 use crate::store::SyncTask;
-use crate::sync::ir::{IRColumn, IRTable, IRType};
+use crate::transfer::ir::{IRColumn, IRTable, IRType};
 
 use crate::db::{ColumnSchema, TableSchema, Value};
 

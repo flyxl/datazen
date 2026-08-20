@@ -18,8 +18,8 @@ mod sql_guard;
 mod ssh_known_hosts;
 pub mod ssh_tunnel;
 mod store;
-pub mod sync;
 mod theme;
+pub mod transfer;
 mod tray;
 pub mod workflow;
 
@@ -41,7 +41,6 @@ use monitor::MonitorEngine;
 use services::ConnectionManager;
 use std::collections::HashMap;
 use store::Store;
-use sync::adapter_registry::SyncAdapterRegistry;
 #[cfg(target_os = "macos")]
 use tauri::menu::{
     AboutMetadata, CheckMenuItemBuilder, MenuBuilder, MenuItemBuilder, PredefinedMenuItem,
@@ -50,6 +49,7 @@ use tauri::menu::{
 #[cfg(target_os = "macos")]
 use tauri::Emitter;
 use tauri::Manager;
+use transfer::adapter_registry::SyncAdapterRegistry;
 
 pub(crate) fn menu_labels(lang: &str) -> HashMap<String, String> {
     static MENU_JSON: &str = include_str!("../resources/menu-labels.json");
@@ -588,7 +588,7 @@ async fn build_app_state(
 pub(crate) fn finish_app_state(
     store: Arc<Store>,
     registry: Arc<db::DriverRegistry>,
-    sync_adapters: Arc<sync::adapter_registry::SyncAdapterRegistry>,
+    sync_adapters: Arc<transfer::adapter_registry::SyncAdapterRegistry>,
     prompts_dir: Option<PathBuf>,
 ) -> AppState {
     let schema_cache = Arc::new(SchemaCache::new(registry.clone()));
@@ -1281,8 +1281,8 @@ mod tests {
     #[tokio::test]
     async fn finish_app_state_wires_core_services() {
         use crate::db::registry::DriverRegistry;
-        use crate::sync::adapter_registry::SyncAdapterRegistry;
         use crate::testing::mock_driver::{MockDriver, MockDriverOptions};
+        use crate::transfer::adapter_registry::SyncAdapterRegistry;
 
         let temp = tempfile::tempdir().unwrap();
         let store = Arc::new(

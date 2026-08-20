@@ -54,7 +54,7 @@ use crate::mcp::McpClientManager;
 use crate::monitor::{MonitorConnectionRegistry, MonitorEngine};
 use crate::services::ConnectionManager;
 use crate::store::Store;
-use crate::sync::adapter_registry::SyncAdapterRegistry;
+use crate::transfer::adapter_registry::SyncAdapterRegistry;
 use crate::workflow::scheduler::WorkflowScheduler;
 use crate::workflow::{WorkflowHistoryManager, WorkflowRegistry};
 use std::collections::HashMap;
