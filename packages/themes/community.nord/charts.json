@@ -1,5 +1,0 @@
-{
-  "default": ["#88c0d0", "#81a1c1", "#5e81ac", "#a3be8c", "#ebcb8b", "#d08770", "#bf616a", "#b48ead"],
-  "ocean": ["#8fbcbb", "#88c0d0", "#81a1c1", "#5e81ac", "#4c566a", "#3b4252", "#eceff4", "#d8dee9"],
-  "forest": ["#a3be8c", "#8fbcbb", "#88c0d0", "#ebcb8b", "#5e81ac", "#bf616a", "#d08770", "#b48ead"]
-}
