@@ -21,7 +21,7 @@ Theme packs must mirror Host semantic tokens in `src/styles/themes.css`:
 - Surface / text: `--c-surface`, `--c-surface-alt`, `--c-surface-raised`, `--c-surface-inset`, `--c-edge`, `--c-fg`, `--c-fg-secondary`, `--c-fg-muted`, `--c-accent`, `--c-success`, `--c-warning`, `--c-danger`, `--c-titlebar`
 - Fonts: `--font-sans`, `--font-mono`, `--font-editor`
 - CodeMirror (also overridable via `editor.json`): `--cm-*` variables listed above
-- DataTable cell colors (optional; Host has defaults): `--dt-null`, `--dt-bool`, `--dt-number`, `--dt-datetime`, `--dt-json`, `--dt-text` — mapped in `src/lib/dataTypeColors.ts`
+- DataTable cell colors (optional; Host has defaults): `--dt-null`, `--dt-bool`, `--dt-number`, `--dt-datetime`, `--dt-json`, `--dt-text`, `--dt-binary` — mapped in `src/lib/dataTypeColors.ts`
 
 Dark packs target `.dark { … }`; light packs target `:root { … }`. Host applies packs at runtime via `applyThemePack()` (`src/lib/themePackApply.ts`).
 
