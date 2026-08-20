@@ -10,6 +10,7 @@ const openNewConnectionWindowMock = vi.fn();
 const storeState = {
   connections: [] as Array<{ id: string }>,
   connectionsLoaded: false,
+  error: null as string | null,
   fetchConnections: fetchConnectionsMock,
   fetchGroups: fetchGroupsMock,
 };
@@ -61,10 +62,27 @@ vi.mock('../../../components/ThemeToggle', () => ({
   ThemeToggle: () => <div data-testid="theme-toggle">theme</div>,
 }));
 
+vi.mock('../../../components/ui/Button', () => ({
+  Button: ({
+    children,
+    onClick,
+    ...rest
+  }: {
+    children: React.ReactNode;
+    onClick?: () => void;
+    'data-testid'?: string;
+  }) => (
+    <button type="button" onClick={onClick} {...rest}>
+      {children}
+    </button>
+  ),
+}));
+
 beforeEach(() => {
   vi.clearAllMocks();
   storeState.connections = [];
   storeState.connectionsLoaded = false;
+  storeState.error = null;
 });
 
 afterEach(() => {
@@ -79,12 +97,44 @@ describe('MainPage', () => {
     expect(screen.queryByTestId('connection-page-shell')).not.toBeInTheDocument();
   });
 
-  it('renders WelcomePage when loaded with no connections', () => {
+  it('renders WelcomePage when loaded with no connections and no error', () => {
     storeState.connectionsLoaded = true;
+    storeState.error = null;
 
     render(<MainPage />);
     expect(screen.getByTestId('welcome-page')).toBeInTheDocument();
     expect(screen.queryByTestId('connection-page-shell')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('welcome-load-error')).not.toBeInTheDocument();
+  });
+
+  it('shows load error instead of WelcomePage when fetch failed with no connections', () => {
+    storeState.connectionsLoaded = true;
+    storeState.error = 'network down';
+
+    render(<MainPage />);
+    expect(screen.getByTestId('welcome-load-error')).toBeInTheDocument();
+    expect(screen.getByText('network down')).toBeInTheDocument();
+    expect(screen.queryByTestId('welcome-page')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('connection-page-shell')).not.toBeInTheDocument();
+  });
+
+  it('retry button refetches connections after load error', () => {
+    storeState.connectionsLoaded = true;
+    storeState.error = 'network down';
+
+    render(<MainPage />);
+    fireEvent.click(screen.getByTestId('welcome-load-retry'));
+    expect(fetchConnectionsMock).toHaveBeenCalled();
+  });
+
+  it('renders ConnectionPage when connections exist even if load error is set', () => {
+    storeState.connectionsLoaded = true;
+    storeState.error = 'stale error';
+    storeState.connections = [{ id: 'conn-1' }];
+
+    render(<MainPage />);
+    expect(screen.getByTestId('connection-page-shell')).toBeInTheDocument();
+    expect(screen.queryByTestId('welcome-load-error')).not.toBeInTheDocument();
   });
 
   it('renders ConnectionPage when connections exist', () => {
