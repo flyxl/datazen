@@ -776,17 +776,17 @@ interface QueryExecState {
 
 ### 10.1 窗口入口分发
 
-各 webview 加载同一 HTML，通过 URL `?window=`（`getWindowKind()`）区分。连接 / Workflow / Dashboard 统一进 `main`：
+各 webview 加载同一 HTML，通过 URL `?window=`（`getWindowKind()`）区分。连接 / Workflow / Dashboard / Settings 统一进 `main`；Docs 跳转官网，无 in-app 子窗口：
 
 ```typescript
 // windowKind.ts — legacy aliases map to main
-const LEGACY_MAIN_ALIASES = new Set(['connection', 'workflow', 'dashboard']);
+const LEGACY_MAIN_ALIASES = new Set(['connection', 'workflow', 'dashboard', 'settings', 'docs']);
 
 // App.tsx（示意）
 switch (getWindowKind()) {
-  case 'main': return <MainPage />; // → ConnectionPage 统一工作区
+  case 'main': return <MainPage />; // WelcomePage | ConnectionPage | SettingsPage
   case 'new-connection': return <NewConnectionWindow />;
-  // backup / data-sync / schema-diff / docs …
+  // backup / data-sync / schema-diff
 }
 ```
 

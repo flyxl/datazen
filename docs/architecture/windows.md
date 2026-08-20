@@ -2,25 +2,40 @@
 
 > [返回架构总览](README.md)
 
-## 1. 统一主工作区 + 少量子窗口
+## 1. 主工作区 Page + 少量子窗口
 
-自统一连接树改版后，**连接浏览 / Workflow / Dashboard 不再各自开独立 OS 窗口**，而是挂在主窗口（`main`）内的导航与 Tab。React 侧主工作区页面组件以 `*Page` 命名（如 `ConnectionPage`、`WorkflowPage`）；仍保留若干用途单一的原生子窗口（`*Window`）：
+**连接 / Workflow / Dashboard / Settings** 均在 `main` OS 窗口内以 `*Page` 组件呈现，不再各自开独立 OS 窗口。仍保留用途单一的原生子窗口（`*Window`）：
 
-| 窗口 | 用途 | Label / `?window=` |
-|------|------|-------------------|
-| **main**（主工作区） | 连接导航树、连接 Tab、Workflow、Dashboard、Settings、查询与 Schema 浏览 | `main`；legacy `connection` / `workflow` / `dashboard` / `settings` / `docs` 会别名到 `main` |
-| new-connection | 新建/编辑连接（单例） | `new-connection-singleton` / `new-connection` |
-| backup | 备份/恢复（单例） | `backup-singleton` / `backup` |
-| data-sync | 同族 Data Sync Diff Workspace（单例） | `data-sync-singleton` / `data-sync` |
-| schema-diff | Schema Diff（单例） | `schema-diff` |
+| 类型 | 组件 / 窗口 | 说明 |
+|------|-------------|------|
+| **main** | `MainPage` | 路由壳：无连接 → `WelcomePage`；有连接 → `ConnectionPage` |
+| Page | `WelcomePage` | 首次安装 / 无保存连接时的功能介绍与「创建第一个连接」引导 |
+| Page | `ConnectionPage` | 统一工作区：`ConnectionNavigatorTree`、连接 Tab、Workflow / Dashboard 内嵌导航 |
+| Page | `SettingsPage` | 设置（含返回主界面）；sidebar 底部入口或 `openSettingsWindow(section?)` |
+| Page | `WorkflowPage` / `DashboardPanel` | 由 `ConnectionPage` 内嵌渲染，非独立 OS 窗口 |
+| 子窗口 | `NewConnectionWindow` | 新建/编辑连接（单例） |
+| 子窗口 | `BackupWindow` | 备份/恢复（单例） |
+| 子窗口 | `DataSyncWindow` | 同族 Data Sync Diff Workspace（单例） |
+| 子窗口 | `SchemaDiffWindow` | Schema Diff（单例） |
 
-**使用说明 / Help 文档**不再作为应用内子窗口。菜单与各 UI 入口通过 `openDocsWindow(section?)`（`src/lib/windowManager.ts`）在系统浏览器打开 GitHub Pages 官方文档（`src/lib/docsUrls.ts` → `https://flyxl.github.io/datazen/docs.html` 或 `/zh/docs.html`，可选 `#section` 锚点）。原生 Help 菜单由 Rust `open_docs_window` 同样打开该 URL。
+| 窗口 | Label / `?window=` |
+|------|-------------------|
+| main | `main`；legacy `connection` / `workflow` / `dashboard` / `settings` / `docs` 别名 → `main` |
+| new-connection | `new-connection-singleton` / `new-connection` |
+| backup | `backup-singleton` / `backup` |
+| data-sync | `data-sync-singleton` / `data-sync` |
+| schema-diff | `schema-diff` |
 
-前端入口：`src/windows/main/MainPage.tsx` → `ConnectionPage.tsx` 在 **main** 工作区内渲染（含 `ConnectionNavigatorTree`、`ConnectionWorkspaceHome`、面板 Tab）。`openConnectionWindow()`（`src/lib/windowManager.ts`）会 `focusMainWindow()`，并通过 `localStorage` + 跨窗口事件 `datazen:open-connection` 投递连接 payload，**不再**创建 `connection-*` 子窗口。
+**Settings** 与 **Docs** 均不是子窗口：
+
+- **Settings**：`openSettingsWindow(section?)` 聚焦 `main` 并 emit `menu:open-settings`，渲染 `SettingsPage`。
+- **Docs / Help**：`openDocsWindow(section?)` 在系统浏览器打开 GitHub Pages（`src/lib/docsUrls.ts` → `https://flyxl.github.io/datazen/docs.html` 或 `/zh/docs.html`，可选 `#section`）。Rust `open_docs_window` 同样打开该 URL。
+
+`openConnectionWindow()` 聚焦主工作区并通过 `localStorage` + `datazen:open-connection` 投递连接 payload，**不再**创建 `connection-*` 子窗口。
 
 ## 2. Rust 端窗口创建
 
-子窗口仍通过 Rust 命令 `create_sub_window`（`src-tauri/src/commands/window.rs`）创建，保证原生属性在 Rust 层设置：
+子窗口通过 Rust 命令 `create_sub_window`（`src-tauri/src/commands/window.rs`）创建：
 
 ```rust
 #[tauri::command]
@@ -65,11 +80,11 @@ function openWindow(label: string, options: OpenWindowOptions) {
 导出函数（摘要）：
 
 - `openNewConnectionWindow(editId?)` — 新建/编辑连接（子窗口）
-- `openConnectionWindow(...)` — **聚焦主工作区**并打开/追加连接 Tab（非新 OS 窗口）
-- `openSettingsWindow(section?)` — 主工作区内打开 `SettingsPage`（emit `menu:open-settings`）
-- `openDocsWindow(section?)` — 系统浏览器打开官网使用说明（`open_path` IPC / `window.open` 降级）
+- `openConnectionWindow(...)` — 聚焦主工作区并打开/追加连接 Tab
+- `openSettingsWindow(section?)` — 主工作区内 `SettingsPage`（emit `menu:open-settings`）
+- `openDocsWindow(section?)` — 系统浏览器打开官网（`open_path` IPC / `window.open` 降级）
+- `openDashboardWindow()` / `openWorkflowWindow()` — 主工作区内导航（emit `menu:dashboard` / `menu:workflow`）
 - `openDataSyncWindow()` / `openBackupWindow()` — 对应单例子窗口
-- Workflow / Dashboard / Settings — 主工作区内导航（`menu:workflow` / `menu:dashboard` / `menu:open-settings` 等）
 
 ## 4. 窗口路由
 

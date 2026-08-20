@@ -635,17 +635,17 @@ Workflow 窗口最终结果区
 
 | 路径 | 职责 |
 |------|------|
-| `src/windows/dashboard/DashboardWindow.tsx` | 壳：Tabs、工具栏、空状态 |
+| `src/windows/dashboard/DashboardPanel.tsx` | 看板面板：Tabs、工具栏、空状态 |
 | `src/windows/dashboard/WidgetTile.tsx` | 原 ChartWidgetTile 扩展图/表 |
 | `src/windows/dashboard/WidgetEditorDrawer.tsx` | 新模型编辑 |
 | `src/windows/dashboard/AddToDashboardDialog.tsx` | 共用选择器 |
 | `src/windows/dashboard/RunHistoryDrawer.tsx` | SQLite runs |
 | `src/lib/dashboard/*` | parse final、日期注入预览、refresh 警告、迁移类型 |
 | `src/stores/dashboardStore.ts` | 面板暂停、viewMode、事件 |
-| `src/windows/main/MainWindow.tsx` | 直达开窗 |
-| `src/windows/settings/SettingsWindow.tsx` | 删 monitor |
+| `src/windows/main/MainPage.tsx` | 主窗入口；`openDashboardWindow()` 聚焦主窗并导航至看板 |
+| `src/windows/settings/SettingsPage.tsx` | 删 monitor（`SettingsContent` 无 monitor section） |
 | `src/windows/connection/QueryPanel.tsx` | 添加入口 |
-| `src/windows/workflow/WorkflowWindow.tsx` | 添加入口 + 删除拦截 UI |
+| `src/windows/workflow/WorkflowPage.tsx` | 添加入口 + 删除拦截 UI |
 
 ---
 
@@ -744,13 +744,13 @@ Workflow 窗口最终结果区
 |----|------|------|
 | UT-FE-01 | `dashboardStore` | run-updated、paused、viewMode 切换不 invoke run |
 | UT-FE-02 | `lib/dashboard` | runToChart/Result、日期格式、dense refresh warn |
-| UT-FE-03 | `MainWindow` | 点击开窗、**无** dialog |
-| UT-FE-04 | `SettingsWindow` | 无 monitor section |
+| UT-FE-03 | `MainPage` / `ConnectionPage` | 点击导航至看板、**无** dialog |
+| UT-FE-04 | `SettingsPage` / `SettingsContent` | 无 monitor section |
 | UT-FE-05 | `WidgetTile` | 图⇄表切换渲染 |
 | UT-FE-06 | `WidgetEditorDrawer` | refresh 三模式、`<60` 警告、保存 payload |
 | UT-FE-07 | `AddToDashboardDialog` | 选面板 / 新建 |
 | UT-FE-08 | QueryPanel 入口 | 无结果禁用；有结果可点 |
-| UT-FE-09 | WorkflowWindow | 删除引用错误展示；添加入口 |
+| UT-FE-09 | `WorkflowPage` | 删除引用错误展示；添加入口 |
 | UT-FE-10 | i18n keys | 关键文案存在（可轻量 snapshot） |
 
 ### 8.6 手工 / 黑盒（`test/`，可选补充）
@@ -878,7 +878,7 @@ src/stores/dashboardStore.ts
 | `src/stores/dashboardStore.ts` | 80 | 80 | 75 | 55 |
 | `src/windows/dashboard/**` | 80 | 80 | 70 | 55 |
 
-`MainWindow` / `SettingsWindow` / `workflow/**` 已有 80% 门禁，本需求改动必须保持不降。
+`MainPage` / `SettingsPage` / `workflow/**` 已有 80% 门禁，本需求改动必须保持不降。
 
 命令：`pnpm test:unit:coverage`（CI 已有则对齐）。
 

@@ -41,7 +41,7 @@
 | `openSettingsWindow` / `openDashboardWindow`（`windowManager.ts`） | **预期保留** — 聚焦主窗口 + cross-window emit，非独立 OS 壳 |
 | `vitest.config.ts` coverage | `SettingsContent.tsx` 替代 `SettingsWindow`；`dashboard/**` 保留（`DashboardPanel` 等） |
 | 架构文档 `docs/architecture/**` | 已标注 legacy 组件移除 / 主工作区路由 |
-| PRD `docs/prd/data-dashboard*.md` | 仍引用已删 `DashboardWindow.tsx` / `SettingsWindow.tsx` — 见 Bugs（文档债，非运行时引用） |
+| PRD `docs/prd/data-dashboard*.md` | R1 已更新为 `DashboardPanel` / `SettingsPage` / `MainPage` 路径 |
 
 **结论**：无编译期坏引用；运行时入口均已迁至主工作区或 `windowManager` emit。
 
@@ -109,7 +109,7 @@ pnpm vitest run --coverage \
 |--------|------|------|------|-------------|
 | F4-BUG-001 | F4 | `path-ipc-hardening.ts` PIH-004/005 legacy settings 子窗口 URL | 已修复 | 11fa9ce2 改 `openSettingsInMainWindow('logging'|'ai')`；静态检查通过（e2e/ 无 legacy URL）。E2E 实跑待 webdriver 构建。 |
 | F4-BUG-002 | F4 | `hotkeys.ts` TC-HOTKEY-002 fallback legacy settings URL | 已修复 | 11fa9ce2 改 `openSettingsInMainWindow()`；静态检查通过。E2E 实跑待 webdriver 构建。 |
-| F4-BUG-003 | F4 | PRD `docs/prd/data-dashboard*.md` 仍列已删 `DashboardWindow.tsx` / `SettingsWindow.tsx` | 待验证 | 文档债；不影响构建。**留 R1** 文档 sweep（`DashboardPanel` / `SettingsPage` 路径替换）。 |
+| F4-BUG-003 | F4 | PRD `docs/prd/data-dashboard*.md` 仍列已删 `DashboardWindow.tsx` / `SettingsWindow.tsx` | 已修复 | R1 已替换为 `DashboardPanel` / `SettingsPage` / `MainPage` 路径 |
 
 ## 验收结论
 
