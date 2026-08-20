@@ -125,7 +125,7 @@ fn cell_as_string(value: &Option<Value>) -> Option<&str> {
     }
 }
 
-/// Same shape as Host `list_objects_sql` for PostgreSQL functions, forced empty.
+/// Same shape as `datazen_driver_api::schema_objects::list_objects_sql` for PostgreSQL functions, forced empty.
 const EMPTY_FUNCTION_LIST_SQL: &str = "SELECT n.nspname AS schema, p.proname AS name \
      FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace \
      WHERE false \

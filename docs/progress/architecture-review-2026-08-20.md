@@ -30,6 +30,13 @@ Base: `main` @ 91283919
 | F11 | --dt-binary token | tested_pass |
 | F12 | sync/ 模块重命名为 transfer/ | dev_done |
 
+## F5 notes
+
+- `schema_objects` SQL + shared tests → `packages/driver-api/src/schema_objects.rs`
+- Dialect tests → `packages/drivers/{postgres,mysql,sqlite}/tests/schema_objects_sql.rs`
+- Removed Host `schema_objects` dialect tests + `sqlite_function_list_is_empty` IPC test
+- `e2e/specs/data-sync-real.ts` documented as Host IPC contract (kept in `e2e/specs/`)
+
 ## QA log
 
 | Date | Agent | Feature | Result |

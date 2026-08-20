@@ -1,5 +1,9 @@
 /**
- * E2E tests for real data synchronization between PostgreSQL and MySQL.
+ * Host IPC contract E2E for Data Sync (`inspect_data_sync`, `compare_data_sync`, etc.).
+ *
+ * Uses live PostgreSQL / MySQL instances as fixtures but asserts Host-level IPC
+ * behavior only — not driver-specific sync adapters. Driver dialect / adapter tests
+ * belong in `packages/drivers/<id>/` (see AGENTS.md「驱动测试落点」).
  *
  * Prerequisites: run `e2e/setup-sync-dbs.sh` first to create test databases
  * and the restricted `datazen_readonly` user in both PG and MySQL.
