@@ -101,11 +101,6 @@ impl Store {
     }
 
     pub async fn save_connection(&self, config: ConnectionConfig) -> Result<(), StoreError> {
-        // Keep the cache update, snapshot, and disk write in one critical section.
-        // Otherwise concurrent saves can take snapshots in an order different from
-        // their cache updates and a stale snapshot can overwrite a newer one.
-        let _write_guard = self.write_lock.lock().await;
-
         {
             let mut cache = self.cache.write().await;
             if let Some(pos) = cache.connections.iter().position(|c| c.id == config.id) {
@@ -124,8 +119,6 @@ impl Store {
     }
 
     pub async fn delete_connection(&self, id: &str) -> Result<(), StoreError> {
-        let _write_guard = self.write_lock.lock().await;
-
         {
             let mut cache = self.cache.write().await;
             cache.connections.retain(|c| c.id != id);

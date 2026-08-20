@@ -673,7 +673,7 @@ mod tests {
         Arc<Store>,
         Arc<MockDriver>,
     ) {
-        let keyring = crate::testing::FileKeyringGuard::set().await;
+        let keyring = crate::testing::FileKeyringGuard::set();
         let dir = tempfile::tempdir().unwrap();
         let store = Arc::new(Store::init_with_path(dir.path()).await.unwrap());
         let registry = Arc::new(DriverRegistry::new());
