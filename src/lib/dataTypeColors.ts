@@ -11,7 +11,7 @@ const FAMILY_CLASS: Record<DataTypeFamily, string> = {
   number: 'text-dt-number',
   datetime: 'text-dt-datetime',
   json: 'text-dt-json',
-  binary: 'text-danger',
+  binary: 'text-dt-binary',
   text: 'text-dt-text',
 };
 

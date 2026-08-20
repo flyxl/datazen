@@ -391,6 +391,7 @@ pub struct AppState {
 | 模块 | 文件 | 关键命令 |
 |------|------|---------|
 | 连接管理 | `connection.rs` | `get_connections`, `save_connection`, `test_connection`, `connect`, `disconnect`, `ping`, `get_server_info`, `available_drivers` |
+| **Driver Command** | `driver_command.rs` | `execute_driver_command`, `get_connection_commands`, `get_driver_commands` — SQL `query`/`execute`、Workflow、Redis 深度运维等统一入口 |
 | SQL 查询 | `query.rs` | `execute_query`, `execute_query_stream`, `get_explain`, `cancel_query`, `get_query_history`, `favorite_query` |
 | Schema | `schema.rs` | `get_databases`, `get_tables`, `get_columns`, `get_table_schema`, `get_table_data`, `get_er_data` |
 | 表编辑 | `data.rs` | `commit_edits`（批量行 UPDATE） |

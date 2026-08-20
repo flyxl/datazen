@@ -17,7 +17,7 @@ describe('dataTypeTextClass', () => {
   it('returns theme token tailwind classes', () => {
     expect(dataTypeTextClass('numeric')).toBe('text-dt-number');
     expect(dataTypeTextClass('jsonb')).toBe('text-dt-json');
-    expect(dataTypeTextClass('bytea')).toBe('text-danger');
+    expect(dataTypeTextClass('bytea')).toBe('text-dt-binary');
   });
 });
 

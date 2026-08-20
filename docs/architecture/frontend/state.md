@@ -9,7 +9,7 @@
 | React | 18 | UI 框架 |
 | TypeScript | 5.x | 类型安全 |
 | Vite | 5.x | 构建工具 |
-| Tailwind CSS | 3.x | 样式系统 |
+| Tailwind CSS | 4.x | 样式系统（`@tailwindcss/vite`） |
 | shadcn/ui | latest | 组件库 |
 | Zustand | 4.x | 状态管理 |
 | @tanstack/react-virtual | 3.x | 虚拟滚动 |

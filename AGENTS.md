@@ -21,7 +21,7 @@ datazen/
 │   ├── components/              # UI 组件（ai/, chart/, connection/, DataTable/, ui/）
 │   ├── windows/                 # 窗口页面（main, connection, settings, workflow, backup, data-sync）
 │   │   └── connection/er/       # ER 图模块（React Flow）
-│   ├── stores/                  # Zustand stores（8 个：ai, connection, query, schema, settings 等）
+│   ├── stores/                  # Zustand stores（connection / panel / schema / settings / ai / dashboard 等）
 │   ├── commands/                # Tauri IPC 封装
 │   ├── lib/                     # 工具库
 │   ├── hooks/                   # React hooks

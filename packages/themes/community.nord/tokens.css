@@ -36,4 +36,5 @@
   --dt-datetime: #81a1c1;
   --dt-json: #88c0d0;
   --dt-text: var(--c-fg);
+  --dt-binary: var(--c-danger);
 }

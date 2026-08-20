@@ -50,6 +50,7 @@ export default {
           datetime: 'var(--dt-datetime)',
           json: 'var(--dt-json)',
           text: 'var(--dt-text)',
+          binary: 'var(--dt-binary)',
         },
       },
     },

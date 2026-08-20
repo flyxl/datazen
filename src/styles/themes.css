@@ -56,6 +56,7 @@
   --dt-datetime: #7c3aed;
   --dt-json: var(--c-fg);
   --dt-text: var(--c-fg);
+  --dt-binary: var(--c-danger);
 }
 
 .dark {
@@ -91,4 +92,5 @@
   --dt-datetime: #c4b5fd;
   --dt-json: var(--c-fg);
   --dt-text: var(--c-fg);
+  --dt-binary: var(--c-danger);
 }

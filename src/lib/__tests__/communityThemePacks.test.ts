@@ -43,6 +43,7 @@ const RECOMMENDED_DT_TOKENS = [
   '--dt-datetime',
   '--dt-json',
   '--dt-text',
+  '--dt-binary',
 ] as const;
 
 const EDITOR_JSON_KEYS = [
