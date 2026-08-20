@@ -25,7 +25,7 @@ impl TestAppState {
     }
 
     pub async fn with_options(opts: MockDriverOptions) -> Self {
-        let keyring = super::FileKeyringGuard::set().await;
+        let keyring = super::FileKeyringGuard::set();
         let temp = tempfile::tempdir().expect("tempdir");
         let store = Arc::new(
             Store::init_with_path(temp.path())
