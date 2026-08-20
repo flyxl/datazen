@@ -33,13 +33,13 @@
 
 | ID | 规格文件（建议） | 步骤 | 期望 |
 |----|------------------|------|------|
-| F5-E2E-001 | 新建 `e2e/specs/welcome-page.ts` | 1. 清空所有连接（IPC `delete_connection` 或独立 profile）<br>2. 打开主窗口 | `[data-testid="welcome-page"]` 可见；**无** `[data-testid="workspace-nav-connections"]` |
+| F5-E2E-001 | `e2e/specs/welcome.ts` | 1. 清空所有连接（IPC `delete_connection`）<br>2. reload 主窗口 | `[data-testid="welcome-page"]` 可见；**无** `[data-testid="workspace-nav-connections"]` |
 | F5-E2E-002 | 同上 | 欢迎页加载完成 | 标题含 `welcome.title`（zh-CN：`欢迎使用 DataZen`）；四宫格功能卡片可见 |
-| F5-E2E-003 | 同上 | 点击 `[data-testid="welcome-create-connection"]` | 打开 `new-connection-singleton` 子窗口 |
+| F5-E2E-003 | 同上 | 点击 `[data-testid="welcome-create-connection"]` | 打开新建连接子窗口（保存按钮可见） |
 | F5-E2E-004 | 同上 | 在新建连接窗保存首个连接并关闭 | 主窗自动显示 `[data-testid="workspace-nav-connections"]` 与连接列表；**无** welcome-page |
-| F5-E2E-005 | 同上 | 删除最后一个连接 | 主窗回到 `[data-testid="welcome-page"]` |
+| F5-E2E-005 | 同上 | 删除最后一个连接后 reload | 主窗回到 `[data-testid="welcome-page"]` |
 | F5-E2E-006 | `e2e/specs/main-window.ts` 回归 | 现有 seeded 连接环境（wdio `before` hook） | 仍显示 ConnectionPage 工作区；**不**出现 welcome-page |
-| F5-E2E-007 | 负向 | 首次 `fetchConnections` 网络失败 | 当前显示欢迎页（connections 仍为 `[]`）；无专用错误 UI — 见 Bugs |
+| F5-E2E-007 | 负向 | 首次 `fetchConnections` 失败 | 显示 `[data-testid="welcome-load-error"]` + 重试按钮；**不**显示 welcome-page |
 
 **说明**：`e2e/wdio.conf.ts` 的 `before` hook **始终 upsert** `conn_e2e_pg`，故现有 Host E2E **不会**覆盖无连接欢迎路径；F5-E2E-001~005 需独立 profile 或 before-hook 变体。
 
@@ -48,9 +48,9 @@
 | 套件 | 结果 |
 |------|------|
 | `WelcomePage.test.tsx` | **通过**（2/2） |
-| `MainPage.test.tsx` | **通过**（5/5） |
+| `MainPage.test.tsx` | **通过**（8/8） |
 | `connectionStore.test.ts` | **通过**（14/14，含 `connectionsLoaded` 断言） |
-| **F5 相关合计** | **21/21 通过** |
+| **F5 相关合计** | **24/24 通过** |
 
 命令：
 
@@ -75,6 +75,9 @@ pnpm vitest run --coverage \
 | MainPage ConnectionPage when connections exist | 有连接项时渲染 connection shell |
 | MainPage welcome CTA | CTA 触发 `openNewConnectionWindow` |
 | MainPage mount fetch + cross-window listen | `fetchConnections` / `fetchGroups` / `listenCrossWindow` |
+| MainPage load error when fetch failed | `welcome-load-error` + retry；无 welcome-page |
+| MainPage retry refetches connections | retry 按钮调用 `fetchConnections` |
+| MainPage ConnectionPage when connections exist despite error | 有连接时优先工作区 |
 | connectionStore fetchConnections sets connectionsLoaded | 成功与失败路径均 `connectionsLoaded=true` |
 
 ## Vitest 覆盖率（F5 相关源文件）
@@ -87,7 +90,7 @@ pnpm vitest run --coverage \
 
 **结论**：F5 变更路径 lines **≥80%**；单测全绿。
 
-**备注**：`vitest.config.ts` coverage gate 已含 `MainPage.tsx`，**未**纳入 `WelcomePage.tsx`（见 F5-BUG-002，非阻塞）。
+**备注**：`vitest.config.ts` coverage gate 已含 `MainPage.tsx` 与 `WelcomePage.tsx`（F5-BUG-002 已修复）。
 
 ## E2E 执行结果
 
@@ -99,11 +102,11 @@ pnpm vitest run --coverage \
 
 | Bug ID | 关联 | 标题 | 状态 | 复现 / 说明 |
 |--------|------|------|------|-------------|
-| F5-BUG-001 | F5 | Host E2E 无欢迎页 journey；wdio `before` 始终 seed PG 连接 | 待验证 | 见 F5-E2E-001~005；不影响 seeded 回归（F5-E2E-006 预期仍走 ConnectionPage） |
-| F5-BUG-002 | F5 | `WelcomePage.tsx` 未列入 `vitest.config.ts` coverage include/thresholds | 待验证 | 单测 100% 覆盖；CI gate 仅校验 `MainPage.tsx`。**留 R1** 或下一配置 sweep |
-| F5-BUG-003 | F5 | 首次启动 `fetchConnections` 失败时显示欢迎页而非错误态 | 待验证 | 模拟 IPC 失败：`connections=[]` + `connectionsLoaded=true` → WelcomePage；`error` 未在 UI 展示 |
+| F5-BUG-001 | F5 | Host E2E 无欢迎页 journey；wdio 全局 seed 连接 | 待验证 | `e2e/specs/welcome.ts` 本地清连接 + after 恢复 seed | — |
+| F5-BUG-002 | F5 | `WelcomePage.tsx` 未列入 `vitest.config.ts` coverage include/thresholds | 待验证 | `vitest.config.ts` 已纳入 WelcomePage | — |
+| F5-BUG-003 | F5 | 首次启动 `fetchConnections` 失败时显示欢迎页而非错误态 | 待验证 | MainPage `welcome-load-error` + retry；Vitest 覆盖 | — |
 
-Bug 状态：`待验证`（本轮回合仅登记，未修复）
+Bug 状态：`待验证`（编码修复已提交，待测试 agent 验证）
 
 ## 验收结论
 
