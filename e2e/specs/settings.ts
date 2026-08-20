@@ -1,4 +1,5 @@
 import { expect, browser, $ } from '@wdio/globals';
+import { backFromSettingsInMainWindow, openSettingsInMainWindow } from '../helpers.js';
 import { t } from '../i18n.js';
 
 async function invokeBackend<T>(cmd: string, args: Record<string, unknown> = {}): Promise<T> {
@@ -177,8 +178,7 @@ describe('Settings (SS-001~SS-006)', () => {
   });
 
   it('TC-SET-003: 设置窗口编辑器分区应显示字体相关控件', async () => {
-    await browser.url('tauri://localhost/window.html?window=settings');
-    await browser.pause(1500);
+    await openSettingsInMainWindow();
     const editorNav = await $('button*=编辑器');
     if (await editorNav.isExisting()) {
       await editorNav.click();
@@ -194,8 +194,7 @@ describe('Settings (SS-001~SS-006)', () => {
   });
 
   it('TC-SET-004: 设置窗口数据浏览分区应显示分页/限制相关项', async () => {
-    await browser.url('tauri://localhost/window.html?window=settings');
-    await browser.pause(1500);
+    await openSettingsInMainWindow();
     const dataNav = await $('button*=数据浏览');
     if (await dataNav.isExisting()) {
       await dataNav.click();
@@ -212,8 +211,7 @@ describe('Settings (SS-001~SS-006)', () => {
   });
 
   it('TC-SET-007: 设置窗口应有 Prompt 自定义入口', async () => {
-    await browser.url('tauri://localhost/window.html?window=settings');
-    await browser.pause(1500);
+    await openSettingsInMainWindow();
     const promptNav = await $('button*=Prompt 管理');
     const promptNavAlt = await $('button*=Prompt');
     if (await promptNav.isExisting()) {
@@ -232,8 +230,7 @@ describe('Settings (SS-001~SS-006)', () => {
   });
 
   it('SS-NAV-001: 设置侧栏应能进入行为 / 日志 / AI / MCP / 扩展分区', async () => {
-    await browser.url('tauri://localhost/window.html?window=settings');
-    await browser.pause(1500);
+    await openSettingsInMainWindow();
 
     const sections: Array<{ label: string; expectText: string[] }> = [
       {
@@ -264,13 +261,43 @@ describe('Settings (SS-001~SS-006)', () => {
   });
 
   it('SS-CLN-001: 行为分区应能看到数据清理入口', async () => {
-    await browser.url('tauri://localhost/window.html?window=settings');
-    await browser.pause(1200);
+    await openSettingsInMainWindow();
     await $(`button*=${t('settings.behavior')}`).click();
     await browser.pause(400);
     const body = await $('body').getText();
     expect(body).toContain(t('settings.dataCleanup.title'));
     expect(body).toContain(t('settings.dataCleanup.run'));
+  });
+
+  // ── F1: SettingsPage in main window ──
+
+  describe('F1 SettingsPage navigation (F1-E2E)', () => {
+    it('F1-E2E-001: menu:open-settings opens SettingsPage in main window', async () => {
+      await openSettingsInMainWindow();
+      await expect(await $('[data-testid="settings-page"]')).toBeDisplayed();
+      await expect(await $('[data-testid="settings-back"]')).toBeDisplayed();
+      await expect(await $('[data-testid="workspace-nav-connections"]')).not.toBeDisplayed();
+    });
+
+    it('F1-E2E-002: back button returns to main workspace shell', async () => {
+      await openSettingsInMainWindow();
+      await backFromSettingsInMainWindow();
+      await expect(await $('[data-testid="workspace-nav-connections"]')).toBeDisplayed();
+      await expect(await $('[data-testid="workspace-nav-workflow"]')).toBeDisplayed();
+      await expect(await $('[data-testid="settings-page"]')).not.toBeExisting();
+    });
+
+    it('F1-E2E-003: menu:open-settings with section opens target nav', async () => {
+      await openSettingsInMainWindow('ai');
+      const aiNav = await $(`button*=${t('settings.ai')}`);
+      await aiNav.waitForDisplayed({ timeout: 8000 });
+      const body = await $('body').getText();
+      expect(
+        body.includes(t('settings.ai.provider')) ||
+          body.includes('API') ||
+          body.includes('Provider'),
+      ).toBe(true);
+    });
   });
 
   // ── Restore defaults ──

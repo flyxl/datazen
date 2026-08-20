@@ -142,6 +142,6 @@ export async function openDashboardFromMain(mainHandle: string): Promise<string>
 }
 
 export async function openSettingsWindow() {
-  await browser.url('tauri://localhost/window.html?window=settings');
-  await browser.pause(1500);
+  const { openSettingsInMainWindow } = await import('../helpers.js');
+  await openSettingsInMainWindow();
 }

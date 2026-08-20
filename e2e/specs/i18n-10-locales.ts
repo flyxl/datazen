@@ -80,8 +80,8 @@ async function invokeBackend<T>(cmd: string, args: Record<string, unknown> = {})
 }
 
 async function openSettingsWindow() {
-  await browser.url('tauri://localhost/window.html?window=settings');
-  await browser.pause(1500);
+  const { openSettingsInMainWindow } = await import('../helpers.js');
+  await openSettingsInMainWindow();
 }
 
 async function openMainWindow() {
@@ -247,10 +247,7 @@ describe('10-Locale i18n (I18N10-001~I18N10-005)', () => {
     expect(en).toMatch(/'menu\.exportConfig': 'Export App Data/);
     expect(en).toMatch(/'menu\.importConfig': 'Import App Data/);
 
-    const mainSrc = fs.readFileSync(
-      path.join(root, 'src/windows/main/MainWindow.tsx'),
-      'utf8',
-    );
+    const mainSrc = fs.readFileSync(path.join(root, 'src/windows/main/MainWindow.tsx'), 'utf8');
     expect(mainSrc).toContain('menu:export-config');
     expect(mainSrc).toContain('menu:import-config');
   });
