@@ -103,6 +103,28 @@ pub fn list_objects_sql(db_type: &str, kind: ObjectKind) -> Option<String> {
         ("sqlite", ObjectKind::Trigger) => {
             Some("SELECT name FROM sqlite_master WHERE type = 'trigger' ORDER BY name".into())
         }
+        ("sqlserver", ObjectKind::Function) => Some(
+            "SELECT s.name AS schema, o.name AS name \
+             FROM sys.objects o JOIN sys.schemas s ON s.schema_id = o.schema_id \
+             WHERE o.type IN ('FN','FS','FT','IF','TF') \
+             ORDER BY 1, 2"
+                .into(),
+        ),
+        ("sqlserver", ObjectKind::Procedure) => Some(
+            "SELECT s.name AS schema, o.name AS name \
+             FROM sys.objects o JOIN sys.schemas s ON s.schema_id = o.schema_id \
+             WHERE o.type IN ('P','PC') \
+             ORDER BY 1, 2"
+                .into(),
+        ),
+        ("sqlserver", ObjectKind::Trigger) => Some(
+            "SELECT s.name AS schema, t.name AS name \
+             FROM sys.triggers t \
+             JOIN sys.schemas s ON s.schema_id = t.schema_id \
+             WHERE t.is_ms_shipped = 0 \
+             ORDER BY 1, 2"
+                .into(),
+        ),
         _ => None,
     }
 }
@@ -179,6 +201,12 @@ pub fn object_ddl_sql(
             "SELECT sql AS ddl FROM sqlite_master WHERE type = 'trigger' AND name = {}",
             sql_string(name),
         )),
+        ("sqlserver", ObjectKind::Function | ObjectKind::Procedure | ObjectKind::Trigger) => {
+            let schema_str = schema.filter(|s| !s.is_empty()).unwrap_or("dbo");
+            Some(format!(
+                "SELECT OBJECT_DEFINITION(OBJECT_ID('{schema_str}.{name}')) AS ddl"
+            ))
+        }
         _ => {
             let _ = qualified;
             None
@@ -212,15 +240,28 @@ pub fn list_privileges_sql(db_type: &str) -> Option<String> {
              ORDER BY 1, 2, 3 LIMIT 500"
                 .into(),
         ),
+        "sqlserver" => Some(
+            "SELECT pr.name AS grantee, \
+                    CASE WHEN p.class = 0 THEN '<server>' ELSE OBJECT_SCHEMA_NAME(p.major_id) END AS schema, \
+                    CASE WHEN p.class = 0 THEN '*' ELSE OBJECT_NAME(p.major_id) END AS name, \
+                    p.permission_name AS privilege \
+             FROM sys.database_permissions p \
+             JOIN sys.database_principals pr ON p.grantee_principal_id = pr.principal_id \
+             WHERE pr.type IN ('S','U','G','R') \
+             ORDER BY 1, 2, 3 \
+             OFFSET 0 ROWS FETCH NEXT 500 ROWS ONLY"
+                .into(),
+        ),
         _ => None,
     }
 }
 
 pub fn dialect_family(db_type: &str) -> &'static str {
     match db_type.to_ascii_lowercase().as_str() {
-        "postgresql" | "postgres" | "cockroach" => "postgresql",
-        "mysql" | "mariadb" | "tidb" => "mysql",
+        "postgresql" | "postgres" | "cockroach" | "cloudberry" | "questdb" => "postgresql",
+        "mysql" | "mariadb" | "tidb" | "doris" | "starrocks" | "manticore" | "ob_oracle" => "mysql",
         "sqlite" => "sqlite",
+        "sqlserver" | "mssql" => "sqlserver",
         _ => "other",
     }
 }
@@ -228,6 +269,7 @@ pub fn dialect_family(db_type: &str) -> &'static str {
 fn quote_ident(family: &str, name: &str) -> String {
     match family {
         "mysql" => format!("`{}`", name.replace('`', "``")),
+        "sqlserver" => format!("[{}]", name.replace(']', "]]")),
         _ => format!("\"{}\"", name.replace('"', "\"\"")),
     }
 }
@@ -254,5 +296,40 @@ mod tests {
         assert!(list_objects_sql("cockroach", ObjectKind::Function).is_some());
         assert!(list_objects_sql("tidb", ObjectKind::Procedure).is_some());
         assert!(list_objects_sql("redis", ObjectKind::Function).is_none());
+        // PG/MySQL reuse engines map to their protocol family.
+        assert_eq!(dialect_family("cloudberry"), "postgresql");
+        assert_eq!(dialect_family("questdb"), "postgresql");
+        assert_eq!(dialect_family("doris"), "mysql");
+        assert_eq!(dialect_family("starrocks"), "mysql");
+        assert_eq!(dialect_family("manticore"), "mysql");
+        assert_eq!(dialect_family("ob_oracle"), "mysql");
+    }
+
+    #[test]
+    fn sqlserver_objects_cover_all_kinds() {
+        assert_eq!(dialect_family("sqlserver"), "sqlserver");
+        assert_eq!(dialect_family("mssql"), "sqlserver");
+        for kind in [
+            ObjectKind::Function,
+            ObjectKind::Procedure,
+            ObjectKind::Trigger,
+        ] {
+            let sql = list_objects_sql("sqlserver", kind)
+                .unwrap_or_else(|| panic!("sqlserver should list object kind {kind:?}"));
+            assert!(
+                sql.contains("sys.objects") || sql.contains("sys.triggers"),
+                "sqlserver list should read catalog views: {sql}"
+            );
+        }
+        let fn_ddl = object_ddl_sql("sqlserver", ObjectKind::Function, "fn", Some("dbo")).unwrap();
+        assert!(fn_ddl.contains("OBJECT_DEFINITION"));
+        assert!(fn_ddl.contains("dbo.fn"));
+        // Without schema it falls back to dbo.
+        let no_schema = object_ddl_sql("sqlserver", ObjectKind::Procedure, "p", None).unwrap();
+        assert!(no_schema.contains("dbo.p"));
+        assert!(list_privileges_sql("sqlserver").is_some());
+        assert!(list_privileges_sql("mssql").is_some());
+        // SQL Server uses bracket-quoted identifiers.
+        assert_eq!(quote_ident("sqlserver", "my table"), "[my table]");
     }
 }

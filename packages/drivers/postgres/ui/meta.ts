@@ -79,8 +79,8 @@ export const questdbMeta = {
   quoteChar: '"',
   connectionMode: 'server',
   supportsSSH: true,
-  supportsSSL: false,
-  supportsBackup: false,
+  supportsSSL: true,
+  supportsBackup: true,
   supportsTables: true,
   isKeyValue: false,
   supportsSQL: true,
@@ -94,6 +94,9 @@ export const questdbMeta = {
   hasMultiDatabase: true,
   supportedObjectKinds: ['function', 'procedure', 'trigger', 'sequence', 'type'],
   structureEditor: postgresqlStructureEditor,
+  supportsCreateDatabase: true,
+  supportsCreateSchema: true,
+  supportsCreateUser: true,
 } satisfies DatabaseTypeMeta;
 
 export const cloudberryMeta = {
@@ -108,7 +111,7 @@ export const cloudberryMeta = {
   connectionMode: 'server',
   supportsSSH: true,
   supportsSSL: true,
-  supportsBackup: false,
+  supportsBackup: true,
   supportsTables: true,
   isKeyValue: false,
   supportsSQL: true,
@@ -122,4 +125,7 @@ export const cloudberryMeta = {
   hasMultiDatabase: true,
   supportedObjectKinds: ['function', 'procedure', 'trigger', 'sequence', 'type'],
   structureEditor: postgresqlStructureEditor,
+  supportsCreateDatabase: true,
+  supportsCreateSchema: true,
+  supportsCreateUser: true,
 } satisfies DatabaseTypeMeta;

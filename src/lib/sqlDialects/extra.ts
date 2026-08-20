@@ -37,7 +37,13 @@ export const sqlserverDialect: SqlDialectStrategy = {
     },
   },
   index: standardIndex('table'),
-  backupOptions: [],
+  backupOptions: [
+    { id: 'schema-only', label: '--schema-only' },
+    { id: 'data-only', label: '--data-only' },
+    { id: 'clean', label: '--clean' },
+    { id: 'no-owner', label: '--no-owner' },
+    { id: 'single-transaction', label: '--single-transaction' },
+  ],
 };
 
 export const clickhouseDialect: SqlDialectStrategy = {

@@ -102,6 +102,8 @@ export const mariadbMeta = {
   hasMultiDatabase: true,
   supportedObjectKinds: ['function', 'procedure', 'trigger'],
   ...mysqlStructureEditorSpread,
+  supportsCreateDatabase: true,
+  supportsCreateUser: true,
 } satisfies DatabaseTypeMeta;
 
 export const dorisMeta = {
@@ -116,7 +118,7 @@ export const dorisMeta = {
   connectionMode: 'server',
   supportsSSH: true,
   supportsSSL: true,
-  supportsBackup: false,
+  supportsBackup: true,
   supportsTables: true,
   isKeyValue: false,
   supportsSQL: true,
@@ -130,6 +132,8 @@ export const dorisMeta = {
   hasMultiDatabase: true,
   supportedObjectKinds: ['function', 'procedure', 'trigger'],
   ...mysqlStructureEditorSpread,
+  supportsCreateDatabase: true,
+  supportsCreateUser: true,
 } satisfies DatabaseTypeMeta;
 
 export const starrocksMeta = {
@@ -144,7 +148,7 @@ export const starrocksMeta = {
   connectionMode: 'server',
   supportsSSH: true,
   supportsSSL: true,
-  supportsBackup: false,
+  supportsBackup: true,
   supportsTables: true,
   isKeyValue: false,
   supportsSQL: true,
@@ -158,6 +162,8 @@ export const starrocksMeta = {
   hasMultiDatabase: true,
   supportedObjectKinds: ['function', 'procedure', 'trigger'],
   ...mysqlStructureEditorSpread,
+  supportsCreateDatabase: true,
+  supportsCreateUser: true,
 } satisfies DatabaseTypeMeta;
 
 export const manticoreMeta = {
@@ -171,8 +177,8 @@ export const manticoreMeta = {
   quoteChar: '`',
   connectionMode: 'server',
   supportsSSH: true,
-  supportsSSL: false,
-  supportsBackup: false,
+  supportsSSL: true,
+  supportsBackup: true,
   supportsTables: true,
   isKeyValue: false,
   supportsSQL: true,
@@ -186,6 +192,8 @@ export const manticoreMeta = {
   hasMultiDatabase: true,
   supportedObjectKinds: ['function', 'procedure', 'trigger'],
   ...mysqlStructureEditorSpread,
+  supportsCreateDatabase: true,
+  supportsCreateUser: true,
 } satisfies DatabaseTypeMeta;
 
 export const obOracleMeta = {
@@ -200,7 +208,7 @@ export const obOracleMeta = {
   connectionMode: 'server',
   supportsSSH: true,
   supportsSSL: true,
-  supportsBackup: false,
+  supportsBackup: true,
   supportsTables: true,
   isKeyValue: false,
   supportsSQL: true,
@@ -214,4 +222,6 @@ export const obOracleMeta = {
   hasMultiDatabase: true,
   supportedObjectKinds: ['function', 'procedure', 'trigger'],
   ...mysqlStructureEditorSpread,
+  supportsCreateDatabase: true,
+  supportsCreateUser: true,
 } satisfies DatabaseTypeMeta;
