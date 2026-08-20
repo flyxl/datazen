@@ -46,11 +46,10 @@ src-tauri/src/commands/sync/
 ├── inspect.rs      # inspect_data_sync：get_tables + schema → classify_tables
 ├── apply.rs        # compare_data_sync / apply_data_sync：行比较 + ChangeSet SQL
 ├── jobs.rs         # cancel_data_sync 与 execute 共用的 job 取消标志
-├── exec.rs         # execute_data_sync：不经 execute_query / sql_guard；可带 jobId
-└── table_sync.rs   # sync_table / sync_tables 仅 refuse_overwrite_copy
+└── exec.rs         # execute_data_sync：不经 execute_query / sql_guard；可带 jobId
 ```
 
-`src-tauri/src/transfer/` 仍保留 IR 适配器与旧 `compare_databases` 抽样对比；**不得**再作为 Synchronization 执行引擎。
+`src-tauri/src/transfer/` 保留异构 IR 适配器与 DDL 生成（Schema Diff Deploy 等）；**不得**再作为 Data Synchronization 执行引擎。Legacy `compare_databases` / `sync_table` / `sync_tables` IPC 已移除。
 
 ## 3. 执行链
 

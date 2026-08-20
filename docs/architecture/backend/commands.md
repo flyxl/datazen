@@ -391,12 +391,12 @@ pub struct AppState {
 | 模块 | 文件 | 关键命令 |
 |------|------|---------|
 | 连接管理 | `connection.rs` | `get_connections`, `save_connection`, `test_connection`, `connect`, `disconnect`, `ping`, `get_server_info`, `available_drivers` |
-| **Driver Command** | `driver_command.rs` | `execute_driver_command`, `get_connection_commands`, `get_driver_commands` — SQL `query`/`execute`、Workflow、Redis `scan_keys`/`get_key` 等统一入口 |
-| SQL 查询 | `query.rs` | `execute_query`, `execute_query_stream`, `get_explain`, `cancel_query`, `get_query_history`, `favorite_query` |
-| Schema | `schema.rs` | `get_databases`, `get_tables`, `get_columns`, `get_table_schema`, `get_table_data`, `get_er_data` |
+| **Driver Command** | `driver_command.rs` | `execute_driver_command`, `execute_driver_command_stream`, `get_connection_commands`, `get_driver_commands` — SQL `query`/`query_stream`/`execute`、Workflow、Redis `scan_keys`/`get_key`、Schema 对象 `list_objects` 等统一入口 |
+| SQL 查询 | `query.rs` | `execute_query`, `execute_query_stream`（委托 `execute_driver_command_stream`）, `get_explain`, `cancel_query`, `get_query_history`, `favorite_query` |
+| Schema | `schema.rs` | `get_databases`, `get_tables`, `get_columns`, `get_table_schema`, `get_table_data`, `get_er_data`；对象/权限经 Driver Command |
 | 表编辑 | `data.rs` | `commit_edits`（批量行 UPDATE） |
 | 备份 | `backup.rs` | `backup_database`, `restore_database` |
-| 同步 | `commands/sync/` | `inspect_data_sync`, `execute_data_sync`, `classify_sync_pair`；`sync_table`/`sync_tables` 拒绝覆盖拷贝；旧 `compare_*` 抽样仍在 |
+| 同步 | `commands/sync/` | `inspect_data_sync`, `compare_data_sync`, `execute_data_sync`, `classify_sync_pair`；legacy `compare_databases`/`sync_table`/`sync_tables` 已移除 |
 | Schema Diff Deploy | `schema_diff.rs` | `prepare_schema_diff_plan`, `execute_schema_diff_deploy` |
 | 配置 | `config.rs` | `get_settings`, `save_settings`, `get_groups`, `get_log_path`, `export_connections`, `import_connections` |
 | 主题包 | `theme.rs` | `list_theme_packs`, `install_theme_pack_with_dialog`, `remove_theme_pack`, `read_theme_pack_file` |
