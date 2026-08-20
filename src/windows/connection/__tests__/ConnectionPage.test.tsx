@@ -478,4 +478,14 @@ describe('ConnectionPage', () => {
     await waitFor(() => expect(screen.queryByTestId('settings-page')).not.toBeInTheDocument());
     expect(screen.getByTestId('workflow-window')).toBeInTheDocument();
   });
+
+  it('TC-window: sidebar Settings button has no unreachable active highlight (F3-BUG-001)', () => {
+    render(<ConnectionPage />);
+
+    const connectionsNav = screen.getByTestId('workspace-nav-connections');
+    const settingsNav = screen.getByTestId('workspace-nav-settings');
+
+    expect(connectionsNav.className).toMatch(/bg-accent\/20/);
+    expect(settingsNav.className).not.toMatch(/bg-accent\/20/);
+  });
 });
