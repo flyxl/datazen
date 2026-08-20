@@ -1485,6 +1485,16 @@ impl DatabaseDriver for PostgresDriver {
             Err(DriverError::Unsupported(_)) => {}
             other => return other,
         }
+        if is_schema_object_command(command) {
+            return execute_schema_object_command(
+                self,
+                &self.driver_type(),
+                handle,
+                command,
+                input,
+            )
+            .await;
+        }
         let pools = self.pools.read().await;
         let pool = Self::get_pool(&pools, handle)?;
         crate::admin_commands::execute_pg_admin_command(pool, command, input).await

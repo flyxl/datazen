@@ -216,6 +216,7 @@ mod tests {
                 explain_plan: crate::db::ExplainResult {
                     plan_text: "Seq Scan".into(),
                     plan_json: None,
+                    plan_tree: None,
                     total_cost: Some(1.0),
                     estimated_rows: Some(100),
                 },

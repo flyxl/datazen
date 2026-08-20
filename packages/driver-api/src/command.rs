@@ -157,6 +157,30 @@ pub fn validate_command_input(
     Ok(())
 }
 
+/// Build the standard SQL `query_stream` command definition.
+pub fn query_stream_command_definition() -> DriverCommandDefinition {
+    DriverCommandDefinition {
+        id: "query_stream".into(),
+        name: "Query Stream".into(),
+        description: Some("Execute a SQL query and stream result rows in batches".into()),
+        input_schema: serde_json::json!({
+            "type": "object",
+            "properties": {
+                "sql": { "type": "string" },
+                "limit": { "type": ["integer", "null"], "minimum": 1 },
+                "params": {
+                    "description": "Named or positional bind values substituted by the host before execution",
+                    "type": ["object", "array", "null"]
+                }
+            },
+            "required": ["sql"]
+        }),
+        output_schema: None,
+        permissions: vec!["driver.query".into()],
+        metadata: DriverCommandMetadata::new(CommandCategory::Stream, CommandAccessLevel::Read),
+    }
+}
+
 /// Build the standard SQL `query` command definition.
 pub fn query_command_definition() -> DriverCommandDefinition {
     DriverCommandDefinition {

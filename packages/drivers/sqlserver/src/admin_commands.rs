@@ -2,7 +2,11 @@ use datazen_driver_api::*;
 use serde_json::json;
 
 pub fn sqlserver_admin_command_definitions() -> Vec<DriverCommandDefinition> {
-    let mut cmds = vec![query_command_definition(), execute_command_definition()];
+    let mut cmds = vec![
+        query_command_definition(),
+        execute_command_definition(),
+        query_stream_command_definition(),
+    ];
 
     cmds.push(DriverCommandDefinition {
         id: "create_database".into(),

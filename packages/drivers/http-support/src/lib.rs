@@ -107,6 +107,7 @@ pub fn explain_result_from_query(result: QueryResult) -> ExplainResult {
     ExplainResult {
         plan_text: plan_lines.join("\n"),
         plan_json: None,
+        plan_tree: None,
         total_cost: None,
         estimated_rows: None,
     }

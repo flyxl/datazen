@@ -1,12 +1,14 @@
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
-use super::driver_command::query_result_limit_from_settings;
+use super::driver_command::{
+    execute_driver_command_stream_impl, ExecuteDriverCommandStreamOpts,
+    ExecuteDriverCommandStreamRequest,
+};
 use super::error::{CmdExt, CommandError};
 use super::AppState;
 use crate::db::{ExplainResult, MultiQueryResult};
 use crate::store::QueryHistoryEntry;
-use datazen_driver_api::{QueryStreamCallback, QueryStreamEvent};
+use datazen_driver_api::QueryStreamCallback;
 use tauri::ipc::Channel;
 use tauri::State;
 
@@ -52,107 +54,22 @@ pub(crate) async fn execute_query_stream_impl(
     on_event: QueryStreamCallback,
     opts: ExecuteQueryStreamOpts,
 ) -> Result<(), CommandError> {
-    tracing::info!(%connection_id, sql_len = sql.len(), "execute_query_stream");
-    tracing::debug!(
-        %connection_id,
-        sql_preview = %sql.chars().take(500).collect::<String>(),
-        "execute_query_stream sql"
-    );
-
-    let (_runtime_id, driver, handle) = state
-        .connection_manager
-        .resolve_session(&connection_id)
-        .await
-        .cmd_err("execute_query_stream")?;
-
-    let read_only = state
-        .connection_manager
-        .get_connection_config(&handle.id)
-        .await
-        .map(|c| c.read_only)
-        .unwrap_or(false);
-    let safe_mode = state.store.get_settings().await.safe_mode;
-    crate::sql_guard::check_sql(&sql, read_only, safe_mode).map_err(CommandError::Validation)?;
-
-    let limit = if opts.apply_result_limit {
-        query_result_limit_from_settings(state).await
-    } else {
-        None
-    };
-    let rows_affected = Arc::new(AtomicU64::new(0));
-    let total_ms = Arc::new(AtomicU64::new(0));
-    let rows_cb = Arc::clone(&rows_affected);
-    let ms_cb = Arc::clone(&total_ms);
-    let user_cb = Arc::clone(&on_event);
-    let wrapped: QueryStreamCallback = Arc::new(move |event| {
-        match &event {
-            QueryStreamEvent::StatementEnd {
-                rows_affected: Some(n),
-                ..
-            } => {
-                rows_cb.fetch_add(*n, Ordering::Relaxed);
-            }
-            QueryStreamEvent::Done { total_time_ms } => {
-                ms_cb.store(*total_time_ms, Ordering::Relaxed);
-            }
-            _ => {}
-        }
-        user_cb(event);
-    });
-
-    match driver.query_stream(&handle, &sql, limit, wrapped).await {
-        Ok(()) => {
-            if opts.record_history {
-                if let Some(config_id) = state
-                    .connection_manager
-                    .resolve_config_id(&connection_id)
-                    .await
-                {
-                    let entry = crate::store::QueryHistoryEntry {
-                        id: uuid::Uuid::new_v4().to_string(),
-                        config_id,
-                        database: String::new(),
-                        sql: sql.clone(),
-                        executed_at: chrono::Utc::now(),
-                        execution_time_ms: total_ms.load(Ordering::Relaxed),
-                        rows_affected: Some(rows_affected.load(Ordering::Relaxed)),
-                        success: true,
-                        error_message: None,
-                    };
-                    let _ = state.store.add_query_history(entry).await;
-                } else {
-                    tracing::warn!(%connection_id, "Skipping history: config_id not found");
-                }
-            }
-            if crate::cache::sql_may_mutate_schema(&sql) {
-                state.schema_cache.clear_connection(&connection_id).await;
-            }
-            Ok(())
-        }
-        Err(err) => {
-            if opts.record_history {
-                if let Some(config_id) = state
-                    .connection_manager
-                    .resolve_config_id(&connection_id)
-                    .await
-                {
-                    let entry = crate::store::QueryHistoryEntry {
-                        id: uuid::Uuid::new_v4().to_string(),
-                        config_id,
-                        database: String::new(),
-                        sql: sql.clone(),
-                        executed_at: chrono::Utc::now(),
-                        execution_time_ms: 0,
-                        rows_affected: None,
-                        success: false,
-                        error_message: Some(err.to_string()),
-                    };
-                    let _ = state.store.add_query_history(entry).await;
-                }
-            }
-            Err(err).cmd_err("execute_query_stream")
-        }
-    }
+    execute_driver_command_stream_impl(
+        state,
+        ExecuteDriverCommandStreamRequest {
+            connection_id: Some(connection_id),
+            command: "query_stream".into(),
+            input: serde_json::json!({ "sql": sql }),
+            apply_result_limit: Some(opts.apply_result_limit),
+            record_history: Some(opts.record_history),
+        },
+        on_event,
+        ExecuteDriverCommandStreamOpts {
+            apply_result_limit: opts.apply_result_limit,
+            record_history: opts.record_history,
+        },
+    )
+    .await
 }
 
 pub(crate) async fn get_explain_impl(
@@ -479,14 +396,14 @@ mod log_hygiene_tests {
 
     #[test]
     fn execute_query_stream_source_does_not_info_log_sql_preview() {
-        let src = include_str!("query.rs");
+        let src = include_str!("driver_command.rs");
         let start = src
-            .find("pub(crate) async fn execute_query_stream_impl")
+            .find("pub(crate) async fn execute_driver_command_stream_impl")
             .expect("fn");
         let chunk = &src[start..start + 900];
         assert!(
             !chunk.contains("tracing::info!(") || !chunk.contains("%sql_preview"),
-            "execute_query_stream must not info!-log sql_preview"
+            "execute_driver_command_stream must not info!-log sql_preview"
         );
     }
 }
@@ -533,6 +450,7 @@ mod tests {
             explain_plan: ExplainResult {
                 plan_text: "Seq Scan".into(),
                 plan_json: None,
+                plan_tree: None,
                 total_cost: Some(1.0),
                 estimated_rows: Some(10),
             },

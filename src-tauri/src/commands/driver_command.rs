@@ -1,3 +1,4 @@
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 use super::error::{CmdExt, CommandError};
@@ -5,9 +6,11 @@ use super::AppState;
 use crate::mcp::permission::McpPermissionMode;
 use datazen_driver_api::{
     check_command_access, validate_command_input, CommandAccessLevel, CommandResult,
-    ConnectionHandle, DatabaseDriver, DriverCommandDefinition,
+    ConnectionHandle, DatabaseDriver, DriverCommandDefinition, QueryStreamCallback,
+    QueryStreamEvent,
 };
 use serde::{Deserialize, Serialize};
+use tauri::ipc::Channel;
 use tauri::State;
 
 pub(crate) fn access_level_for_mode(mode: Option<McpPermissionMode>) -> CommandAccessLevel {
@@ -15,6 +18,35 @@ pub(crate) fn access_level_for_mode(mode: Option<McpPermissionMode>) -> CommandA
         None | Some(McpPermissionMode::HighRiskWrite) => CommandAccessLevel::HighRisk,
         Some(McpPermissionMode::SafeWrite) => CommandAccessLevel::Write,
         Some(McpPermissionMode::ReadOnly) => CommandAccessLevel::Read,
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExecuteDriverCommandStreamRequest {
+    #[serde(default)]
+    pub connection_id: Option<String>,
+    pub command: String,
+    #[serde(default)]
+    pub input: serde_json::Value,
+    #[serde(default)]
+    pub apply_result_limit: Option<bool>,
+    #[serde(default)]
+    pub record_history: Option<bool>,
+}
+
+#[derive(Clone, Copy)]
+pub struct ExecuteDriverCommandStreamOpts {
+    pub apply_result_limit: bool,
+    pub record_history: bool,
+}
+
+impl Default for ExecuteDriverCommandStreamOpts {
+    fn default() -> Self {
+        Self {
+            apply_result_limit: true,
+            record_history: true,
+        }
     }
 }
 
@@ -173,6 +205,150 @@ pub(crate) async fn execute_driver_command_impl(
     execute_driver_command_with_mode(state, request, None).await
 }
 
+pub(crate) async fn execute_driver_command_stream_impl(
+    state: &AppState,
+    mut request: ExecuteDriverCommandStreamRequest,
+    on_event: QueryStreamCallback,
+    opts: ExecuteDriverCommandStreamOpts,
+) -> Result<(), CommandError> {
+    if request.command != "query_stream" {
+        return Err(CommandError::Validation(format!(
+            "Streaming is only supported for command 'query_stream', got '{}'",
+            request.command
+        )));
+    }
+
+    let connection_id = request
+        .connection_id
+        .as_ref()
+        .map(String::as_str)
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| CommandError::Validation("connectionId is required".into()))?;
+
+    let (driver, handle, _bound) =
+        resolve_command_driver(state, request.connection_id.as_ref(), None).await?;
+
+    let definition = driver
+        .command_definitions()
+        .into_iter()
+        .find(|definition| definition.id == request.command)
+        .ok_or_else(|| {
+            CommandError::Validation(format!(
+                "Unsupported streaming driver command: {}",
+                request.command
+            ))
+        })?;
+
+    if opts.apply_result_limit {
+        apply_query_result_limit(state, &mut request.input).await;
+    }
+
+    validate_command_input(&definition, &request.input).map_err(CommandError::Validation)?;
+    check_command_access(&definition, CommandAccessLevel::Read)
+        .map_err(CommandError::Validation)?;
+
+    let sql = sql_from_input(&request.input).ok_or_else(|| {
+        CommandError::Validation("command 'query_stream' requires string input 'sql'".into())
+    })?;
+
+    if let Some(params) = request.input.get("params").cloned() {
+        let bound_sql =
+            crate::sql_guard::apply_params(&sql, &params).map_err(CommandError::Validation)?;
+        request.input["sql"] = serde_json::Value::String(bound_sql);
+    }
+    let sql = request
+        .input
+        .get("sql")
+        .and_then(|v| v.as_str())
+        .map(str::to_string)
+        .ok_or_else(|| {
+            CommandError::Validation("command 'query_stream' requires string input 'sql'".into())
+        })?;
+
+    tracing::info!(
+        connection_id,
+        sql_len = sql.len(),
+        "execute_driver_command_stream"
+    );
+    tracing::debug!(
+        connection_id,
+        sql_preview = %sql.chars().take(500).collect::<String>(),
+        "execute_driver_command_stream sql"
+    );
+
+    let read_only = state
+        .connection_manager
+        .get_connection_config(&handle.id)
+        .await
+        .map(|c| c.read_only)
+        .unwrap_or(false);
+    let safe_mode = state.store.get_settings().await.safe_mode;
+    crate::sql_guard::check_sql(&sql, read_only, safe_mode).map_err(CommandError::Validation)?;
+
+    let limit = if opts.apply_result_limit {
+        query_result_limit_from_settings(state).await
+    } else {
+        None
+    };
+    let rows_affected = Arc::new(AtomicU64::new(0));
+    let total_ms = Arc::new(AtomicU64::new(0));
+    let rows_cb = Arc::clone(&rows_affected);
+    let ms_cb = Arc::clone(&total_ms);
+    let user_cb = Arc::clone(&on_event);
+    let wrapped: QueryStreamCallback = Arc::new(move |event| {
+        match &event {
+            QueryStreamEvent::StatementEnd {
+                rows_affected: Some(n),
+                ..
+            } => {
+                rows_cb.fetch_add(*n, Ordering::Relaxed);
+            }
+            QueryStreamEvent::Done { total_time_ms } => {
+                ms_cb.store(*total_time_ms, Ordering::Relaxed);
+            }
+            _ => {}
+        }
+        user_cb(event);
+    });
+
+    match driver.query_stream(&handle, &sql, limit, wrapped).await {
+        Ok(()) => {
+            if opts.record_history {
+                record_sql_command_outcome(
+                    state,
+                    Some(connection_id),
+                    &sql,
+                    true,
+                    total_ms.load(Ordering::Relaxed),
+                    Some(rows_affected.load(Ordering::Relaxed)),
+                    None,
+                )
+                .await;
+            }
+            if crate::cache::sql_may_mutate_schema(&sql) {
+                state.schema_cache.clear_connection(connection_id).await;
+            }
+            Ok(())
+        }
+        Err(err) => {
+            if opts.record_history {
+                record_sql_command_outcome(
+                    state,
+                    Some(connection_id),
+                    &sql,
+                    false,
+                    0,
+                    None,
+                    Some(err.to_string()),
+                )
+                .await;
+            }
+            Err(err).cmd_err("execute_driver_command_stream")
+        }
+    }
+}
+
 pub(crate) async fn execute_driver_command_with_mode(
     state: &AppState,
     mut request: ExecuteDriverCommandRequest,
@@ -329,6 +505,29 @@ pub async fn execute_driver_command(
     request: ExecuteDriverCommandRequest,
 ) -> Result<CommandResult, CommandError> {
     execute_driver_command_impl(&state, request).await
+}
+
+#[tauri::command]
+pub async fn execute_driver_command_stream(
+    state: State<'_, AppState>,
+    request: ExecuteDriverCommandStreamRequest,
+    on_event: Channel<QueryStreamEvent>,
+    apply_result_limit: Option<bool>,
+    record_history: Option<bool>,
+) -> Result<(), CommandError> {
+    let callback: QueryStreamCallback = Arc::new(move |event| {
+        let _ = on_event.send(event);
+    });
+    execute_driver_command_stream_impl(
+        &state,
+        request,
+        callback,
+        ExecuteDriverCommandStreamOpts {
+            apply_result_limit: apply_result_limit.unwrap_or(true),
+            record_history: record_history.unwrap_or(true),
+        },
+    )
+    .await
 }
 
 #[cfg(test)]

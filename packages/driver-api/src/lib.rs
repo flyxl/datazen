@@ -11,6 +11,7 @@ pub mod command;
 mod factory;
 mod query_stream;
 mod reuse;
+pub mod schema_object_commands;
 pub mod schema_objects;
 pub mod sql_dump;
 pub mod sql_split;
@@ -31,6 +32,9 @@ pub use query_stream::{
     QueryRowBatcher, QueryStreamCallback, QueryStreamEvent, QUERY_STREAM_BATCH_SIZE,
 };
 pub use reuse::ReuseDriver;
+pub use schema_object_commands::{
+    execute_schema_object_command, is_schema_object_command, schema_object_command_definitions,
+};
 pub use schema_objects::{
     dialect_family, list_objects_sql, list_privileges_sql, object_ddl_sql, DatabaseObject,
     ObjectKind, PrivilegeGrant,
