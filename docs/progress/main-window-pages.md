@@ -17,7 +17,7 @@
 
 | ID | 功能 | 状态 | 编码 commit | 测试 commit | 备注 |
 |----|------|------|-------------|-------------|------|
-| F1 | Settings 改为主窗口内独立 SettingsPage（含返回按钮，返回主界面） | 进行中 | — | — | |
+| F1 | Settings 改为主窗口内独立 SettingsPage（含返回按钮，返回主界面） | 待测试 | 8172b113 | — | 编码完成，待测试 agent |
 | F2 | 主窗口内页面 Window→Page 重命名（如 ConnectionWindow→ConnectionPage），同步文档 | 未开始 | — | — | |
 | F3 | 左侧功能 sidebar 底部增加 Settings 入口；进入 SettingsPage；返回恢复先前页面 | 未开始 | — | — | 依赖 F1 |
 | F4 | 删除多余窗口（DashboardWindow、WorkflowWindow 等独立窗口壳）；保留使用说明入口 | 未开始 | — | — | |
@@ -40,3 +40,4 @@ Bug 状态：`待验证` | `验证不通过` | `已修复` | `已关闭`
 | 日期 | 说明 |
 |------|------|
 | 2026-08-20 | 初始化进度文件与分支 |
+| 2026-08-20 | F1 编码：SettingsPage 嵌入主窗口；openSettingsWindow 改 emit；抽取 SettingsContent |

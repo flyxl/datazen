@@ -22,7 +22,6 @@ import {
   openDataSyncWindow,
   openNewConnectionWindow,
   openSchemaDiffWindow,
-  openSettingsWindow,
   PENDING_CONNECTION_KEY,
 } from '../../lib/windowManager';
 import { useActiveConnectionStore } from '../../stores/activeConnectionStore';
@@ -41,6 +40,7 @@ import type { DatabaseType } from '../../types';
 import { useDashboardStore } from '../../stores/dashboardStore';
 import { DashboardPanel } from '../dashboard/DashboardPanel';
 import { WorkflowWindow } from '../workflow/WorkflowWindow';
+import { SettingsPage } from '../settings/SettingsPage';
 
 interface WorkspaceShortcutButtonProps {
   icon: LucideIcon;
@@ -77,6 +77,7 @@ function WorkspaceModeButton({
 }
 
 type WorkspaceMode = 'connections' | 'workflow' | 'dashboard';
+type MainView = 'workspace' | 'settings';
 
 // ── Connection Tab ────────────────────────────────────────────────
 
@@ -153,6 +154,10 @@ export function ConnectionWindow() {
   const [messageDialogKind, setMessageDialogKind] = useState<'error' | 'success'>('error');
   const fetchDashboards = useDashboardStore((s) => s.fetchDashboards);
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>('connections');
+  const [mainView, setMainView] = useState<MainView>('workspace');
+  const [settingsSection, setSettingsSection] = useState<string | undefined>(undefined);
+  /** Preserved for F3 sidebar Settings entry — restore workspace mode on back. */
+  const settingsReturnModeRef = useRef<WorkspaceMode>('connections');
   const [embeddedDashboardId, setEmbeddedDashboardId] = useState<string | undefined>(undefined);
   const [dashboardTitle, setDashboardTitle] = useState('');
 
@@ -657,11 +662,27 @@ export function ConnectionWindow() {
     setWorkspaceMode('workflow');
   }, []);
 
+  const openSettingsInShell = useCallback(
+    (section?: string) => {
+      settingsReturnModeRef.current = workspaceMode;
+      setSettingsSection(section);
+      setMainView('settings');
+    },
+    [workspaceMode],
+  );
+
+  const handleSettingsBack = useCallback(() => {
+    setMainView('workspace');
+    setSettingsSection(undefined);
+    setWorkspaceMode(settingsReturnModeRef.current);
+  }, []);
+
   useEffect(() => {
     const cleanups: Array<() => void> = [];
 
-    void listenCrossWindow('menu:open-settings', () => {
-      openSettingsWindow();
+    void listenCrossWindow('menu:open-settings', (payload) => {
+      const data = payload as { section?: string } | undefined;
+      openSettingsInShell(data?.section);
     }).then((fn) => cleanups.push(fn));
     void listenCrossWindow('menu:new-connection', () => {
       openNewConnectionWindow();
@@ -729,6 +750,7 @@ export function ConnectionWindow() {
     handleOpenDashboard,
     handleOpenWorkflow,
     openConnShare,
+    openSettingsInShell,
   ]);
 
   useEffect(() => {
@@ -896,50 +918,56 @@ export function ConnectionWindow() {
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-surface text-fg">
-      <TitleBar title={centerTitle} leftContent={<MenuBar />} rightContent={<ThemeToggle />} />
+      {mainView === 'settings' ? (
+        <SettingsPage initialSection={settingsSection} onBack={handleSettingsBack} />
+      ) : (
+        <>
+          <TitleBar title={centerTitle} leftContent={<MenuBar />} rightContent={<ThemeToggle />} />
 
-      <div className="flex min-h-0 flex-1">
-        <aside className="flex h-full w-10 shrink-0 flex-col self-stretch border-r border-edge bg-surface-alt">
-          <WorkspaceModeButton
-            icon={Database}
-            iconId="nav.connections"
-            label={t('nav.connections')}
-            testId="workspace-nav-connections"
-            active={workspaceMode === 'connections'}
-            onClick={() => setWorkspaceMode('connections')}
-          />
-          <WorkspaceModeButton
-            icon={Workflow}
-            iconId="action.workflow"
-            label={t('nav.workflow')}
-            testId="workspace-nav-workflow"
-            active={workspaceMode === 'workflow'}
-            onClick={handleOpenWorkflow}
-          />
-          <WorkspaceModeButton
-            icon={LayoutDashboard}
-            iconId="action.dashboard"
-            label={t('nav.dashboard')}
-            testId="workspace-nav-dashboard"
-            active={workspaceMode === 'dashboard'}
-            onClick={() => void handleOpenDashboard()}
-          />
-        </aside>
+          <div className="flex min-h-0 flex-1">
+            <aside className="flex h-full w-10 shrink-0 flex-col self-stretch border-r border-edge bg-surface-alt">
+              <WorkspaceModeButton
+                icon={Database}
+                iconId="nav.connections"
+                label={t('nav.connections')}
+                testId="workspace-nav-connections"
+                active={workspaceMode === 'connections'}
+                onClick={() => setWorkspaceMode('connections')}
+              />
+              <WorkspaceModeButton
+                icon={Workflow}
+                iconId="action.workflow"
+                label={t('nav.workflow')}
+                testId="workspace-nav-workflow"
+                active={workspaceMode === 'workflow'}
+                onClick={handleOpenWorkflow}
+              />
+              <WorkspaceModeButton
+                icon={LayoutDashboard}
+                iconId="action.dashboard"
+                label={t('nav.dashboard')}
+                testId="workspace-nav-dashboard"
+                active={workspaceMode === 'dashboard'}
+                onClick={() => void handleOpenDashboard()}
+              />
+            </aside>
 
-        <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
-          {workspaceMode === 'connections' ? (
-            connectionWorkspace
-          ) : workspaceMode === 'workflow' ? (
-            <WorkflowWindow embedded onOpenDashboardInShell={handleOpenDashboardById} />
-          ) : (
-            <DashboardPanel
-              initialDashboardId={embeddedDashboardId}
-              onDashboardChange={(_id, name) => setDashboardTitle(name)}
-              onOpenWorkflowEditor={handleOpenWorkflow}
-            />
-          )}
-        </div>
-      </div>
+            <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
+              {workspaceMode === 'connections' ? (
+                connectionWorkspace
+              ) : workspaceMode === 'workflow' ? (
+                <WorkflowWindow embedded onOpenDashboardInShell={handleOpenDashboardById} />
+              ) : (
+                <DashboardPanel
+                  initialDashboardId={embeddedDashboardId}
+                  onDashboardChange={(_id, name) => setDashboardTitle(name)}
+                  onOpenWorkflowEditor={handleOpenWorkflow}
+                />
+              )}
+            </div>
+          </div>
+        </>
+      )}
 
       {confirmDeleteDialog}
       <ConnectionShareDialog

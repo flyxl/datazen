@@ -2,6 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockInvoke = vi.fn().mockResolvedValue(undefined);
 const mockMessage = vi.fn().mockResolvedValue(undefined);
+const mockEmitCrossWindow = vi.fn().mockResolvedValue(undefined);
+const mockShow = vi.fn().mockResolvedValue(undefined);
+const mockUnminimize = vi.fn().mockResolvedValue(undefined);
+const mockSetFocus = vi.fn().mockResolvedValue(undefined);
 
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: (...args: unknown[]) => mockInvoke(...args),
@@ -9,6 +13,20 @@ vi.mock('@tauri-apps/api/core', () => ({
 
 vi.mock('@tauri-apps/plugin-dialog', () => ({
   message: (...args: unknown[]) => mockMessage(...args),
+}));
+
+vi.mock('../crossWindowBus', () => ({
+  emitCrossWindow: (...args: unknown[]) => mockEmitCrossWindow(...args),
+}));
+
+vi.mock('@tauri-apps/api/webviewWindow', () => ({
+  WebviewWindow: {
+    getByLabel: vi.fn().mockResolvedValue({
+      show: mockShow,
+      unminimize: mockUnminimize,
+      setFocus: mockSetFocus,
+    }),
+  },
 }));
 
 describe('windowManager — browser', () => {
@@ -22,20 +40,26 @@ describe('windowManager — browser', () => {
     vi.restoreAllMocks();
   });
 
-  it('exports capability label samples', async () => {
+  it('exports capability label samples without settings sub-window', async () => {
     const { WINDOW_CAPABILITY_LABEL_SAMPLES } = await import('../windowManager');
     expect(WINDOW_CAPABILITY_LABEL_SAMPLES).toContain('main');
-    expect(WINDOW_CAPABILITY_LABEL_SAMPLES).toContain('settings-singleton');
+    expect(WINDOW_CAPABILITY_LABEL_SAMPLES).not.toContain('settings-singleton');
   });
 
-  it('openSettingsWindow opens browser tab with params', async () => {
+  it('openSettingsWindow emits menu:open-settings with section in browser mode', async () => {
     const { openSettingsWindow } = await import('../windowManager');
     openSettingsWindow('ai');
-    expect(window.open).toHaveBeenCalledWith(
-      '/window.html?window=settings&section=ai',
-      '_blank',
-      expect.stringContaining('width=720'),
-    );
+    await vi.waitFor(() => expect(mockEmitCrossWindow).toHaveBeenCalled());
+    expect(mockEmitCrossWindow).toHaveBeenCalledWith('menu:open-settings', { section: 'ai' });
+    expect(window.open).not.toHaveBeenCalled();
+  });
+
+  it('openSettingsWindow emits menu:open-settings without payload when no section', async () => {
+    const { openSettingsWindow } = await import('../windowManager');
+    openSettingsWindow();
+    await vi.waitFor(() => expect(mockEmitCrossWindow).toHaveBeenCalled());
+    expect(mockEmitCrossWindow).toHaveBeenCalledWith('menu:open-settings', undefined);
+    expect(window.open).not.toHaveBeenCalled();
   });
 
   it('openNewConnectionWindow with editId', async () => {
@@ -116,25 +140,23 @@ describe('windowManager — Tauri', () => {
     delete (window as Record<string, unknown>).__TAURI_INTERNALS__;
   });
 
-  it('openSettingsWindow invokes create_sub_window', async () => {
+  it('openSettingsWindow focuses main and emits menu:open-settings instead of create_sub_window', async () => {
     vi.resetModules();
     const { openSettingsWindow } = await import('../windowManager');
-    openSettingsWindow();
-    await vi.waitFor(() => expect(mockInvoke).toHaveBeenCalled());
-    expect(mockInvoke).toHaveBeenCalledWith('create_sub_window', {
-      options: expect.objectContaining({
-        label: 'settings-singleton',
-        url: 'window.html?window=settings',
-      }),
-    });
+    openSettingsWindow('logging');
+    await vi.waitFor(() => expect(mockEmitCrossWindow).toHaveBeenCalled());
+    expect(mockEmitCrossWindow).toHaveBeenCalledWith('menu:open-settings', { section: 'logging' });
+    expect(mockShow).toHaveBeenCalled();
+    expect(mockSetFocus).toHaveBeenCalled();
+    expect(mockInvoke).not.toHaveBeenCalled();
   });
 
-  it('shows error dialog when invoke fails', async () => {
+  it('shows error dialog when invoke fails for other singleton windows', async () => {
     vi.resetModules();
     mockInvoke.mockRejectedValue(new Error('permission denied'));
     const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const { openSettingsWindow } = await import('../windowManager');
-    openSettingsWindow();
+    const { openDataSyncWindow } = await import('../windowManager');
+    openDataSyncWindow();
     await vi.waitFor(() => expect(mockMessage).toHaveBeenCalled());
     expect(mockMessage).toHaveBeenCalledWith(
       expect.stringContaining('permission denied'),

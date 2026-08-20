@@ -22,12 +22,6 @@ const NewConnectionWindow = lazy(() =>
     return { default: m.NewConnectionWindow };
   }),
 );
-const SettingsWindow = lazy(() =>
-  import('./windows/settings/SettingsWindow').then((m) => {
-    mark('SettingsWindow chunk loaded');
-    return { default: m.SettingsWindow };
-  }),
-);
 const DataSyncWindow = lazy(() =>
   import('./windows/data-sync/DataSyncWindow').then((m) => {
     mark('DataSyncWindow chunk loaded');
@@ -64,8 +58,6 @@ function WindowContent() {
   switch (windowKind) {
     case 'new-connection':
       return <NewConnectionWindow />;
-    case 'settings':
-      return <SettingsWindow />;
     case 'data-sync':
       return <DataSyncWindow />;
     case 'schema-diff':

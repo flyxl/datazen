@@ -22,7 +22,6 @@ export const WINDOW_CAPABILITY_LABEL_SAMPLES = [
   'schema-diff-singleton',
   'backup-singleton',
   'backup-restore-singleton',
-  'settings-singleton',
   'docs-singleton',
 ] as const;
 
@@ -173,17 +172,9 @@ export function openWorkflowWindow() {
 }
 
 export function openSettingsWindow(section?: string) {
-  const params: Record<string, string> = { window: 'settings' };
-  if (section) params.section = section;
-
-  openSingletonWindow('settings-singleton', {
-    params,
-    title: t('win.settings'),
-    width: 720,
-    height: 560,
-    minWidth: 560,
-    minHeight: 400,
-  });
+  void focusMainWindow().then(() =>
+    emitCrossWindow('menu:open-settings', section ? { section } : undefined),
+  );
 }
 
 export function openDocsWindow(section?: string) {

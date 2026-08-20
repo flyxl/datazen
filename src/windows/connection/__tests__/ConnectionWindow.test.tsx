@@ -21,8 +21,8 @@ const {
   openBackupWindowMock,
   openDataSyncWindowMock,
   openSchemaDiffWindowMock,
-  openSettingsWindowMock,
   openNewConnectionWindowMock,
+  menuOpenSettingsHandler,
 } = vi.hoisted(() => ({
   connectMock: vi.fn(),
   releaseConnectionMock: vi.fn(),
@@ -31,7 +31,12 @@ const {
   loadAiConfigMock: vi.fn().mockResolvedValue(undefined),
   setupAiListenersMock: vi.fn().mockResolvedValue(() => {}),
   emitCrossWindowMock: vi.fn().mockResolvedValue(undefined),
-  listenCrossWindowMock: vi.fn().mockResolvedValue(() => {}),
+  listenCrossWindowMock: vi.fn((event: string, handler: (payload?: unknown) => void) => {
+    if (event === 'menu:open-settings') {
+      menuOpenSettingsHandler.current = handler;
+    }
+    return Promise.resolve(() => {});
+  }),
   getActiveConnectionState: vi.fn(() => ({
     connections: {} as Record<string, { status: string; connectionId?: string }>,
   })),
@@ -44,8 +49,8 @@ const {
   openBackupWindowMock: vi.fn(),
   openDataSyncWindowMock: vi.fn(),
   openSchemaDiffWindowMock: vi.fn(),
-  openSettingsWindowMock: vi.fn(),
   openNewConnectionWindowMock: vi.fn(),
+  menuOpenSettingsHandler: { current: null as ((payload?: unknown) => void) | null },
 }));
 
 vi.mock('../../../hooks/useI18n', () => ({
@@ -155,7 +160,6 @@ vi.mock('../../../lib/windowManager', () => ({
   openBackupWindow: (...args: unknown[]) => openBackupWindowMock(...args),
   openDataSyncWindow: (...args: unknown[]) => openDataSyncWindowMock(...args),
   openSchemaDiffWindow: (...args: unknown[]) => openSchemaDiffWindowMock(...args),
-  openSettingsWindow: (...args: unknown[]) => openSettingsWindowMock(...args),
   openWorkflowWindow: (...args: unknown[]) => openWorkflowWindowMock(...args),
   openDashboardWindow: (...args: unknown[]) => openDashboardWindowMock(...args),
 }));
@@ -219,6 +223,17 @@ vi.mock('../../workflow/WorkflowWindow', () => ({
   ),
 }));
 
+vi.mock('../../settings/SettingsPage', () => ({
+  SettingsPage: ({ initialSection, onBack }: { initialSection?: string; onBack: () => void }) => (
+    <div data-testid="settings-page">
+      settings-page section={initialSection ?? 'general'}
+      <button type="button" data-testid="settings-back" onClick={onBack}>
+        back
+      </button>
+    </div>
+  ),
+}));
+
 vi.mock('../../../stores/dashboardStore', () => {
   const state = {
     list: [] as Array<{ id: string; name: string }>,
@@ -253,6 +268,7 @@ function setPendingConnection(data: Record<string, string>) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  menuOpenSettingsHandler.current = null;
   localStorage.clear();
   getActiveConnectionState.mockReturnValue({ connections: {} });
   connectMock.mockResolvedValue('conn-live-1');
@@ -412,5 +428,31 @@ describe('ConnectionWindow', () => {
 
     fireEvent.click(screen.getByTestId('dashboard-open-workflow'));
     await waitFor(() => expect(screen.getByTestId('workflow-window')).toBeInTheDocument());
+  });
+
+  it('TC-window: menu:open-settings shows SettingsPage with section', async () => {
+    render(<ConnectionWindow />);
+
+    await waitFor(() => expect(menuOpenSettingsHandler.current).not.toBeNull());
+    menuOpenSettingsHandler.current?.({ section: 'ai' });
+
+    await waitFor(() => expect(screen.getByTestId('settings-page')).toBeInTheDocument());
+    expect(screen.getByTestId('settings-page')).toHaveTextContent('section=ai');
+    expect(screen.queryByTestId('navigator-tree')).not.toBeInTheDocument();
+  });
+
+  it('TC-window: SettingsPage back returns to workspace and restores mode', async () => {
+    render(<ConnectionWindow />);
+
+    fireEvent.click(screen.getByTestId('workspace-nav-workflow'));
+    expect(screen.getByTestId('workflow-window')).toBeInTheDocument();
+
+    await waitFor(() => expect(menuOpenSettingsHandler.current).not.toBeNull());
+    menuOpenSettingsHandler.current?.({ section: 'general' });
+    await waitFor(() => expect(screen.getByTestId('settings-page')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByTestId('settings-back'));
+    await waitFor(() => expect(screen.queryByTestId('settings-page')).not.toBeInTheDocument());
+    expect(screen.getByTestId('workflow-window')).toBeInTheDocument();
   });
 });
