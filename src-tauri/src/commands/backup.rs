@@ -474,6 +474,8 @@ async fn restore_database_from_path(
                 driver.as_ref(),
                 &handle,
                 &restore_opts,
+                config.read_only,
+                state.store.get_settings().await.safe_mode,
                 &mut on_progress,
             )
             .await?;
@@ -507,6 +509,8 @@ async fn stream_sql_file_into_session(
     driver: &dyn DatabaseDriver,
     handle: &ConnectionHandle,
     opts: &BackupRestoreOptions,
+    read_only: bool,
+    safe_mode: bool,
     on_progress: &mut (dyn FnMut(DumpProgress) + Send),
 ) -> Result<(), CommandError> {
     let gz = path
@@ -534,7 +538,11 @@ async fn stream_sql_file_into_session(
         Ok::<(), String>(())
     });
 
-    let mut session = RestoreSession::new(driver, handle, driver.new_sql_scanner(), Some(opts));
+    let mut session = RestoreSession::new(driver, handle, driver.new_sql_scanner(), Some(opts))
+        .with_statement_guard(Box::new(move |stmt| {
+            crate::sql_guard::check_sql(stmt, read_only, safe_mode)
+                .map_err(DriverError::QueryFailed)
+        }));
     let mut utf8 = Utf8ChunkDecoder::new();
     while let Some(item) = rx.recv().await {
         let bytes = item.map_err(CommandError::Validation)?;
@@ -666,6 +674,10 @@ mod tests {
 
         let sql = std::fs::read_to_string(&backup_path).unwrap();
         assert!(sql.contains("INSERT INTO"));
+
+        let mut settings = test.state.store.get_settings().await;
+        settings.safe_mode = false;
+        test.state.store.save_settings(settings).await.unwrap();
 
         restore_database_from_path(
             &test.state,

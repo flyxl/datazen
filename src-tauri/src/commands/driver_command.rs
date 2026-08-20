@@ -365,6 +365,15 @@ mod tests {
         assert!(request.driver_type.is_none());
     }
 
+    #[test]
+    fn debug_sql_preview_redacts_secrets() {
+        let sql = "SELECT * FROM t WHERE url = 'mysql://root:hunter2@127.0.0.1/app'";
+        let preview: String = sql.chars().take(500).collect();
+        let redacted = crate::log_redact::redact_secrets_for_log(&preview);
+        assert!(!redacted.contains("hunter2"), "{redacted}");
+        assert!(redacted.contains("mysql://***@"), "{redacted}");
+    }
+
     #[tokio::test]
     async fn discovers_standard_commands_from_connection() {
         let test = crate::testing::app_state::TestAppState::new().await;
