@@ -18,7 +18,7 @@
 | ID | 功能 | 状态 | 编码 commit | 测试 commit | 备注 |
 |----|------|------|-------------|-------------|------|
 | F1 | Settings 改为主窗口内独立 SettingsPage（含返回按钮，返回主界面） | 已完成 | e00cc340 | 85c122a7 | Vitest 通过；E2E 用例已更新，待 CI/本地 webdriver 构建后执行 |
-| F2 | 主窗口内页面 Window→Page 重命名（如 ConnectionWindow→ConnectionPage），同步文档 | 待测试 | — | — | ConnectionPage / WorkflowPage / MainPage；文档已同步 |
+| F2 | 主窗口内页面 Window→Page 重命名（如 ConnectionWindow→ConnectionPage），同步文档 | 已完成 | 2b91921d | （本轮） | 无漏改；Page 单测 33/33 通过；MainPage 100% 覆盖；E2E 用例已文档化，待 webdriver 构建 |
 | F3 | 左侧功能 sidebar 底部增加 Settings 入口；进入 SettingsPage；返回恢复先前页面 | 未开始 | — | — | 依赖 F1 |
 | F4 | 删除多余窗口（DashboardWindow 等独立窗口壳）；保留使用说明入口 | 未开始 | — | — | |
 | F5 | 首次安装欢迎页（介绍连接/看板/工作流/AI，引导创建首个连接；有连接后进主界面） | 未开始 | — | — | |
@@ -31,7 +31,7 @@
 
 | Bug ID | 关联 | 标题 | 状态 | 复现步骤 | 发现 commit |
 |--------|------|------|------|----------|-------------|
-| — | — | — | — | — | — |
+| F1-BUG-001 | F1 | `pathIpcWiring.test.ts` 断言 `SettingsWindow` 含 `openLogDir`（F1 迁移后失效） | 验证不通过 | `pnpm vitest run src/commands/__tests__/pathIpcWiring.test.ts` | 测试 commit |
 
 Bug 状态：`待验证` | `验证不通过` | `已修复` | `已关闭`
 
@@ -42,3 +42,4 @@ Bug 状态：`待验证` | `验证不通过` | `已修复` | `已关闭`
 | 2026-08-20 | 初始化进度文件与分支 |
 | 2026-08-20 | F1 编码：SettingsPage 嵌入主窗口；openSettingsWindow 改 emit；抽取 SettingsContent |
 | 2026-08-20 | F2 编码：主工作区 ConnectionPage / WorkflowPage / MainPage 重命名；架构文档与 AGENTS.md 同步 |
+| 2026-08-20 | F2 测试：重命名完整性通过；Vitest 33/33；f2-test-report.md；登记 F1-BUG-001（pathIpcWiring） |
