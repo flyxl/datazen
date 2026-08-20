@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import type { TableDataCompare, TableSchemaDiff } from '../types';
 
 export type StatementRisk = 'additive' | 'destructive' | 'rewrite';
 
@@ -74,6 +75,24 @@ export function exportPlanSql(plan: SchemaDiffPlan): string {
 }
 
 export const schemaDiffCommands = {
+  compareTableSchemas: (
+    sourceConnectionId: string,
+    targetConnectionId: string,
+    tableName: string,
+  ) =>
+    invoke<TableSchemaDiff>('compare_table_schemas', {
+      sourceConnectionId,
+      targetConnectionId,
+      tableName,
+    }),
+
+  compareTableData: (sourceConnectionId: string, targetConnectionId: string, tableName: string) =>
+    invoke<TableDataCompare>('compare_table_data', {
+      sourceConnectionId,
+      targetConnectionId,
+      tableName,
+    }),
+
   preparePlan: (params: {
     sourceConnectionId: string;
     targetConnectionId: string;

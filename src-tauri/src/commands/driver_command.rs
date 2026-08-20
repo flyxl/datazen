@@ -247,7 +247,11 @@ pub(crate) async fn execute_driver_command_with_mode(
         "execute_driver_command"
     );
     if let Some(sql) = sql.as_ref() {
-        tracing::debug!(sql_preview = %sql.chars().take(500).collect::<String>(), "execute_driver_command sql");
+        let preview: String = sql.chars().take(500).collect();
+        tracing::debug!(
+            sql_preview = %crate::log_redact::redact_secrets_for_log(&preview),
+            "execute_driver_command sql"
+        );
     }
 
     match driver

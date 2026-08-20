@@ -1,13 +1,12 @@
 use super::compare::{
-    compare_databases_impl, compare_table_data_impl, compare_table_schemas_impl,
     diff_table_schemas_ir, format_ir_type, resolve_pk_columns, row_key, row_to_json_map,
     rows_equal, rows_to_key_map, value_key_part, values_equal,
 };
-use super::table_sync::{sync_table_impl, sync_tables_impl};
 use super::tasks::{
     check_sync_conflicts_impl, delete_sync_task_impl, get_sync_tasks_impl,
     save_sync_task_direct_impl,
 };
+use crate::commands::schema_diff::{compare_table_data_impl, compare_table_schemas_impl};
 use crate::schema_diff::diff_table_schemas;
 use crate::store::SyncTask;
 use crate::sync::ir::{IRColumn, IRTable, IRType};
@@ -318,7 +317,8 @@ fn values_equal_treats_missing_and_null_as_distinct() {
 }
 
 #[tokio::test]
-async fn sync_task_crud_and_compare() {
+async fn sync_task_crud_and_inspect() {
+    use crate::data_sync::TableMappingStatus;
     use crate::testing::app_state::{sample_postgres_config, TestAppState};
     use chrono::Utc;
 
@@ -340,11 +340,12 @@ async fn sync_task_crud_and_compare() {
     let tgt_conn = test.connect_config("tgt-cfg").await;
 
     let results =
-        compare_databases_impl(&test.state, src_conn.clone(), tgt_conn.clone(), None, None)
+        super::inspect_data_sync_impl(&test.state, src_conn.clone(), tgt_conn.clone(), None, None)
             .await
             .unwrap();
-    assert!(!results.is_empty());
-    assert_eq!(results[0]["status"], "identical");
+    assert!(results
+        .iter()
+        .any(|r| r.status == TableMappingStatus::Matched && r.source_table == "users"));
 
     let task = SyncTask {
         id: "task-1".into(),
@@ -415,65 +416,25 @@ async fn compare_table_schemas_and_data_impl() {
     assert_eq!(data_diff["table"], "users");
 }
 
-#[tokio::test]
-async fn sync_table_impl_refuses_overwrite_copy() {
-    use crate::testing::app_state::TestAppState;
-
-    let test = TestAppState::new().await;
-    let err = sync_table_impl(&test.state, "src".into(), "tgt".into(), "users".into())
-        .await
-        .unwrap_err();
-    assert!(crate::data_sync::is_overwrite_copy_retired_message(
-        &err.to_string()
-    ));
-}
-
-#[tokio::test]
-async fn sync_tables_impl_refuses_overwrite_copy() {
-    use crate::testing::app_state::TestAppState;
-
-    let test = TestAppState::new().await;
-    let err = sync_tables_impl(
-        &test.state,
-        "task-1".into(),
-        "src".into(),
-        "tgt".into(),
-        "src-cfg".into(),
-        "tgt-cfg".into(),
-        vec!["users".into()],
-        vec![],
-        "overwrite".into(),
-        None,
-        0,
-        None,
-        None,
-        std::collections::HashMap::new(),
-    )
-    .await
-    .unwrap_err();
-    assert!(crate::data_sync::is_overwrite_copy_retired_message(
-        &err.to_string()
-    ));
-}
-
 #[test]
-fn table_sync_module_has_no_drop_insert_body() {
-    let src = include_str!("table_sync.rs");
+fn legacy_transfer_ir_compare_ipc_removed() {
+    let compare_src = include_str!("compare.rs");
     assert!(
-        !src.contains("DROP TABLE"),
-        "overwrite-copy DROP TABLE body must be deleted"
+        !compare_src.contains("compare_databases_impl"),
+        "Transfer IR compare_databases must stay removed"
+    );
+    let sync_mod = include_str!("mod.rs");
+    assert!(
+        !sync_mod.contains("compare_databases"),
+        "legacy compare_databases IPC must not be registered in sync mod"
     );
     assert!(
-        !src.contains("sync_one_table"),
-        "legacy sync_one_table must be deleted"
+        !sync_mod.contains("sync_table"),
+        "legacy sync_table IPC must not be registered in sync mod"
     );
     assert!(
-        !src.contains("sync_table_impl_legacy"),
-        "legacy sync_table_impl_legacy must be deleted"
-    );
-    assert!(
-        src.contains("refuse_overwrite_copy"),
-        "compat IPC must still refuse overwrite copy"
+        !sync_mod.contains("sync_tables"),
+        "legacy sync_tables IPC must not be registered in sync mod"
     );
 }
 
