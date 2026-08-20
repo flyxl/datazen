@@ -93,14 +93,14 @@ async function invokeBackend<T>(cmd: string, args: Record<string, unknown> = {})
   return result as T;
 }
 
-async function expectOverwriteRetired(invoke: () => Promise<unknown>): Promise<void> {
+async function expectCommandNotFound(invoke: () => Promise<unknown>): Promise<void> {
   let message = '';
   try {
     await invoke();
   } catch (e) {
     message = e instanceof Error ? e.message : String(e);
   }
-  expect(message).toContain('overwrite copy is no longer Data Synchronization');
+  expect(message.toLowerCase()).toMatch(/command .+ not found|unknown command/i);
 }
 
 async function saveAndConnect(cfg: typeof PG_SRC): Promise<string> {
@@ -117,11 +117,17 @@ async function runSQL(connectionId: string, sql: string): Promise<void> {
   await run();
 }
 
-interface TableComparison {
-  table: string;
-  status: 'identical' | 'different' | 'source_only' | 'target_only';
-  sourceRows: number | null;
-  targetRows: number | null;
+interface InspectResult {
+  sourceTable: string;
+  targetTable: string;
+  status: string;
+}
+
+interface CompareDataSyncResult {
+  sourceTable: string;
+  targetTable: string;
+  status: string;
+  rows?: Array<{ operation: string }>;
 }
 
 // ── Live connection IDs (filled by before hook) ─────────────────────
@@ -189,8 +195,7 @@ describe('数据同步: PG→PG 基础功能 (SYNC-REAL)', () => {
     }
   });
 
-  it('SYNC-REAL-001: compare — source has table, target is empty → source_only', async () => {
-    // Use integer (not serial) to avoid sequence-copy issues in sync_table
+  it('SYNC-REAL-001: inspect — source has table, target is empty → UNMAPPED_SOURCE', async () => {
     await runSQL(
       srcConnId,
       `
@@ -207,21 +212,18 @@ describe('数据同步: PG→PG 基础功能 (SYNC-REAL)', () => {
     `,
     );
 
-    const results = await invokeBackend<TableComparison[]>('compare_databases', {
+    const results = await invokeBackend<InspectResult[]>('inspect_data_sync', {
       sourceConnectionId: srcConnId,
       targetConnectionId: tgtConnId,
     });
 
-    const users = results.find((r) => r.table === 'sync_users');
+    const users = results.find((r) => r.sourceTable === 'sync_users');
     expect(users).toBeDefined();
-    expect(users!.status).toBe('source_only');
-    // get_tables returns row_count: None for both PG and MySQL
-    expect(users!.sourceRows).toBeNull();
-    expect(users!.targetRows).toBeNull();
+    expect(users!.status).toBe('UNMAPPED_SOURCE');
   });
 
-  it('SYNC-REAL-002: sync_table overwrite copy is refused', async () => {
-    await expectOverwriteRetired(() =>
+  it('SYNC-REAL-002: legacy sync_table IPC is removed', async () => {
+    await expectCommandNotFound(() =>
       invokeBackend('sync_table', {
         sourceConnectionId: srcConnId,
         targetConnectionId: tgtConnId,
@@ -230,18 +232,18 @@ describe('数据同步: PG→PG 基础功能 (SYNC-REAL)', () => {
     );
   });
 
-  it('SYNC-REAL-003: compare without overwrite — table remains source_only', async () => {
-    const results = await invokeBackend<TableComparison[]>('compare_databases', {
+  it('SYNC-REAL-003: inspect without sync — table remains UNMAPPED_SOURCE', async () => {
+    const results = await invokeBackend<InspectResult[]>('inspect_data_sync', {
       sourceConnectionId: srcConnId,
       targetConnectionId: tgtConnId,
     });
 
-    const users = results.find((r) => r.table === 'sync_users');
+    const users = results.find((r) => r.sourceTable === 'sync_users');
     expect(users).toBeDefined();
-    expect(users!.status).toBe('source_only');
+    expect(users!.status).toBe('UNMAPPED_SOURCE');
   });
 
-  it('SYNC-REAL-004: compare — same schema different rows reports different', async () => {
+  it('SYNC-REAL-004: compare_data_sync — same schema different rows reports INSERT rows', async () => {
     await runSQL(
       tgtConnId,
       `
@@ -266,17 +268,19 @@ describe('数据同步: PG→PG 基础功能 (SYNC-REAL)', () => {
     `,
     );
 
-    const results = await invokeBackend<TableComparison[]>('compare_databases', {
+    const results = await invokeBackend<CompareDataSyncResult[]>('compare_data_sync', {
       sourceConnectionId: srcConnId,
       targetConnectionId: tgtConnId,
+      tables: ['sync_users'],
     });
 
-    const users = results.find((r) => r.table === 'sync_users');
+    const users = results.find((r) => r.sourceTable === 'sync_users');
     expect(users).toBeDefined();
-    expect(users!.status).toBe('different');
+    expect(users!.status).toBe('MATCHED');
+    expect(users!.rows?.some((r) => r.operation === 'INSERT')).toBe(true);
   });
 
-  it('SYNC-REAL-005: compare — different schemas → different', async () => {
+  it('SYNC-REAL-005: inspect — different schemas → INCOMPATIBLE', async () => {
     // Source: 3 columns
     await runSQL(
       srcConnId,
@@ -304,32 +308,31 @@ describe('数据同步: PG→PG 基础功能 (SYNC-REAL)', () => {
     `,
     );
 
-    const results = await invokeBackend<TableComparison[]>('compare_databases', {
+    const results = await invokeBackend<InspectResult[]>('inspect_data_sync', {
       sourceConnectionId: srcConnId,
       targetConnectionId: tgtConnId,
     });
 
-    const products = results.find((r) => r.table === 'sync_products');
+    const products = results.find((r) => r.sourceTable === 'sync_products');
     expect(products).toBeDefined();
-    expect(products!.status).toBe('different');
+    expect(products!.status).toBe('INCOMPATIBLE');
   });
 
-  it('SYNC-REAL-006: compare — target_only table', async () => {
+  it('SYNC-REAL-006: inspect — UNMAPPED_TARGET table', async () => {
     await runSQL(tgtConnId, 'CREATE TABLE sync_tgt_only (id int);');
 
-    const results = await invokeBackend<TableComparison[]>('compare_databases', {
+    const results = await invokeBackend<InspectResult[]>('inspect_data_sync', {
       sourceConnectionId: srcConnId,
       targetConnectionId: tgtConnId,
     });
 
-    const tgtOnly = results.find((r) => r.table === 'sync_tgt_only');
+    const tgtOnly = results.find((r) => r.targetTable === 'sync_tgt_only');
     expect(tgtOnly).toBeDefined();
-    expect(tgtOnly!.status).toBe('target_only');
-    expect(tgtOnly!.sourceRows).toBeNull();
+    expect(tgtOnly!.status).toBe('UNMAPPED_TARGET');
   });
 
-  it('SYNC-REAL-007: overwrite of mismatched schema is refused', async () => {
-    await expectOverwriteRetired(() =>
+  it('SYNC-REAL-007: legacy sync_table IPC is removed for mismatched schema', async () => {
+    await expectCommandNotFound(() =>
       invokeBackend('sync_table', {
         sourceConnectionId: srcConnId,
         targetConnectionId: tgtConnId,
@@ -379,8 +382,8 @@ describe('数据同步: 权限错误 (SYNC-PERM)', () => {
     myRoConnId = await saveAndConnect(MY_RO);
   });
 
-  it('SYNC-REAL-010: overwrite copy refused even for PG read-only target', async () => {
-    await expectOverwriteRetired(() =>
+  it('SYNC-REAL-010: legacy sync_table IPC is removed for PG read-only target', async () => {
+    await expectCommandNotFound(() =>
       invokeBackend('sync_table', {
         sourceConnectionId: srcConnId,
         targetConnectionId: roConnId,
@@ -389,8 +392,8 @@ describe('数据同步: 权限错误 (SYNC-PERM)', () => {
     );
   });
 
-  it('SYNC-REAL-011: overwrite copy refused even for MySQL read-only target', async () => {
-    await expectOverwriteRetired(() =>
+  it('SYNC-REAL-011: legacy sync_table IPC is removed for MySQL read-only target', async () => {
+    await expectCommandNotFound(() =>
       invokeBackend('sync_table', {
         sourceConnectionId: srcConnId,
         targetConnectionId: myRoConnId,
@@ -459,20 +462,16 @@ describe('数据同步: PG→MySQL 跨库 (SYNC-CROSS)', () => {
     }
   });
 
-  it('SYNC-REAL-020: compare PG source vs MySQL target → PG tables are source_only', async () => {
-    const results = await invokeBackend<TableComparison[]>('compare_databases', {
-      sourceConnectionId: srcConnId,
-      targetConnectionId: myTgtConnId,
+  it('SYNC-REAL-020: classify_sync_pair rejects PG→MySQL heterogeneous pair', async () => {
+    const view = await invokeBackend<{ path: string; supported: boolean }>('classify_sync_pair', {
+      sourceDatabaseType: 'postgresql',
+      targetDatabaseType: 'mysql',
     });
-
-    expect(results.length).toBeGreaterThan(0);
-    // sync_users exists in PG source but not in MySQL target
-    const users = results.find((r) => r.table === 'sync_users');
-    expect(users).toBeDefined();
-    expect(users!.status).toBe('source_only');
+    expect(view.path).toBe('ir');
+    expect(view.supported).toBe(false);
   });
 
-  it('SYNC-REAL-021: sync simple compatible types PG→MySQL → success', async () => {
+  it('SYNC-REAL-021: legacy sync_table IPC is removed for PG→MySQL', async () => {
     try {
       await runSQL(srcConnId, 'DROP TABLE IF EXISTS sync_simple;');
     } catch {
@@ -493,7 +492,7 @@ describe('数据同步: PG→MySQL 跨库 (SYNC-CROSS)', () => {
     `,
     );
 
-    await expectOverwriteRetired(() =>
+    await expectCommandNotFound(() =>
       invokeBackend('sync_table', {
         sourceConnectionId: srcConnId,
         targetConnectionId: myTgtConnId,
@@ -502,7 +501,7 @@ describe('数据同步: PG→MySQL 跨库 (SYNC-CROSS)', () => {
     );
   });
 
-  it('SYNC-REAL-022: sync PG table with diverse types PG→MySQL → success', async () => {
+  it('SYNC-REAL-022: legacy sync_table IPC is removed for diverse types PG→MySQL', async () => {
     try {
       await runSQL(srcConnId, 'DROP TABLE IF EXISTS sync_diverse;');
     } catch {
@@ -526,7 +525,7 @@ describe('数据同步: PG→MySQL 跨库 (SYNC-CROSS)', () => {
     `,
     );
 
-    await expectOverwriteRetired(() =>
+    await expectCommandNotFound(() =>
       invokeBackend('sync_table', {
         sourceConnectionId: srcConnId,
         targetConnectionId: myTgtConnId,
@@ -535,7 +534,7 @@ describe('数据同步: PG→MySQL 跨库 (SYNC-CROSS)', () => {
     );
   });
 
-  it('SYNC-REAL-023: sync PG array type to MySQL → error (no array equivalent)', async () => {
+  it('SYNC-REAL-023: legacy sync_table IPC is removed for PG array type PG→MySQL', async () => {
     try {
       await runSQL(srcConnId, 'DROP TABLE IF EXISTS sync_pg_arrays;');
     } catch {
@@ -552,7 +551,7 @@ describe('数据同步: PG→MySQL 跨库 (SYNC-CROSS)', () => {
     `,
     );
 
-    await expectOverwriteRetired(() =>
+    await expectCommandNotFound(() =>
       invokeBackend('sync_table', {
         sourceConnectionId: srcConnId,
         targetConnectionId: myTgtConnId,
@@ -563,7 +562,7 @@ describe('数据同步: PG→MySQL 跨库 (SYNC-CROSS)', () => {
 });
 
 // ═════════════════════════════════════════════════════════════════════
-// Group 4: Batch sync with progress events (sync_tables)
+// Group 4: Batch sync task persistence (legacy sync_tables removed)
 // ═════════════════════════════════════════════════════════════════════
 
 describe('数据同步: 批量同步与进度 (SYNC-BATCH)', () => {
@@ -644,10 +643,9 @@ describe('数据同步: 批量同步与进度 (SYNC-BATCH)', () => {
     expect(results.find((r) => r.sourceTable === 'sync_batch_a')?.status).toBe('MATCHED');
   });
 
-  it('SYNC-BATCH-001: sync_tables refuses overwrite copy', async () => {
-    let message = '';
-    try {
-      await invokeBackend('sync_tables', {
+  it('SYNC-BATCH-001: legacy sync_tables IPC is removed', async () => {
+    await expectCommandNotFound(() =>
+      invokeBackend('sync_tables', {
         taskId: 'test-batch-001',
         sourceConnectionId: batchSrcId,
         targetConnectionId: batchTgtId,
@@ -656,11 +654,8 @@ describe('数据同步: 批量同步与进度 (SYNC-BATCH)', () => {
         tables: ['sync_batch_a', 'sync_batch_b', 'sync_batch_c'],
         skipTables: [],
         strategy: 'full',
-      });
-    } catch (e) {
-      message = e instanceof Error ? e.message : String(e);
-    }
-    expect(message).toContain('overwrite copy is no longer Data Synchronization');
+      }),
+    );
   });
 
   it('SYNC-BATCH-002: classify_sync_pair rejects heterogeneous IR for Data Sync', async () => {
@@ -672,18 +667,14 @@ describe('数据同步: 批量同步与进度 (SYNC-BATCH)', () => {
     expect(view.supported).toBe(false);
   });
 
-  it('SYNC-BATCH-003: sync_table also refuses overwrite copy', async () => {
-    let message = '';
-    try {
-      await invokeBackend('sync_table', {
+  it('SYNC-BATCH-003: legacy sync_table IPC is removed', async () => {
+    await expectCommandNotFound(() =>
+      invokeBackend('sync_table', {
         sourceConnectionId: batchSrcId,
         targetConnectionId: batchTgtId,
         tableName: 'sync_batch_a',
-      });
-    } catch (e) {
-      message = e instanceof Error ? e.message : String(e);
-    }
-    expect(message).toContain('overwrite copy is no longer Data Synchronization');
+      }),
+    );
   });
 
   it('SYNC-BATCH-004: sync task CRUD still works without overwrite copy', async () => {
@@ -825,10 +816,9 @@ describe('数据同步: 断点续传与冲突检测 (SYNC-RESUME)', () => {
     expect(conflictB!.currentRows).toBe(3);
   });
 
-  it('SYNC-RESUME-003: resume via sync_tables is refused', async () => {
-    let message = '';
-    try {
-      await invokeBackend('sync_tables', {
+  it('SYNC-RESUME-003: legacy sync_tables IPC is removed', async () => {
+    await expectCommandNotFound(() =>
+      invokeBackend('sync_tables', {
         taskId: 'test-resume-skip',
         sourceConnectionId: resumeSrcId,
         targetConnectionId: resumeTgtId,
@@ -837,11 +827,8 @@ describe('数据同步: 断点续传与冲突检测 (SYNC-RESUME)', () => {
         tables: ['sync_resume_a', 'sync_resume_b'],
         skipTables: ['sync_resume_a'],
         strategy: 'continue',
-      });
-    } catch (e) {
-      message = e instanceof Error ? e.message : String(e);
-    }
-    expect(message).toContain('overwrite copy is no longer Data Synchronization');
+      }),
+    );
     await invokeBackend('delete_sync_task', { taskId: 'test-resume-conflict' });
   });
 });

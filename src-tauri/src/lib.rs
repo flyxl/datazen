@@ -863,14 +863,11 @@ pub fn run() {
             commands::restore_database,
             commands::restore_database_with_dialog,
             commands::execute_sql_file_with_dialog,
-            commands::compare_databases,
             commands::classify_sync_pair,
-            commands::compare_table_schemas,
-            commands::compare_table_data,
             commands::prepare_schema_diff_plan,
             commands::execute_schema_diff_deploy,
-            commands::sync_table,
-            commands::sync_tables,
+            commands::compare_table_schemas,
+            commands::compare_table_data,
             commands::execute_data_sync,
             commands::cancel_data_sync,
             commands::compare_data_sync,
@@ -978,17 +975,13 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             if let tauri::WindowEvent::Resized(size) = event {
                 let win = window.clone();
-                let size = *size;
+                let width = size.width;
+                let height = size.height;
                 std::thread::spawn(move || {
                     std::thread::sleep(std::time::Duration::from_millis(200));
                     if let Some(monitor) = win.current_monitor().ok().flatten() {
                         let mon = monitor.size();
-                        let is_fs = is_fullscreen_for_monitor(
-                            size.width,
-                            size.height,
-                            mon.width,
-                            mon.height,
-                        );
+                        let is_fs = is_fullscreen_for_monitor(width, height, mon.width, mon.height);
                         let _ = win.emit("fullscreen-changed", is_fs);
                     }
                 });

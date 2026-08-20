@@ -1,89 +1,40 @@
-# Architecture Review Progress — 2026-08-20
+# Architecture Review Progress — 2026-08-20 (完整修复)
 
-Branch: `feat/architecture-review-2026-08`  
-Worktree: `../datazen-arch-review`  
-Base: `main` @ c5e9c656
-
-## Review source
-
-Full-repo review against AGENTS.md + `docs/architecture/` (12 findings F1–F12).  
-Large refactors (F1–F4 driver command migration) deferred; this branch targets quick, testable alignment fixes.
+Branch: `feat/arch-review-all`  
+Worktree: `../datazen-arch-review-all`  
+Base: `main` @ 91283919
 
 ## Status legend
 
 | Status | Meaning |
 |--------|---------|
-| pending | Not started |
-| dev_done | Implemented + unit tests; awaiting QA agent |
-| tested_fail | QA found bugs; needs fix |
-| tested_pass | QA passed |
-| deferred | Out of scope this branch |
+| pending | 未开始 |
+| dev_done | 已开发 + 单测，待 QA |
+| tested_fail | QA 失败，待修复 |
+| tested_pass | QA 通过 |
 
 ---
 
-## F11 — `--dt-binary` theme token
-
-| Field | Value |
-|-------|-------|
-| Severity | low |
-| Status | **tested_pass** |
-| Scope | Add `--dt-binary`; map `dataTypeColors` binary family; align Host + community packs |
-| Unit tests | `dataTypeColors.test.ts`, `communityThemePacks.test.ts` |
-| E2E | N/A (visual token) |
-
----
-
-## F6 — Stale `query-*` window capabilities
-
-| Field | Value |
-|-------|-------|
-| Severity | medium |
-| Status | **tested_pass** |
-| Scope | Remove unused `query-*` / legacy `connection-*` labels from `default.json.host` |
-| Unit tests | capability merge smoke / existing window tests |
-| E2E | settings/backup sub-window smoke |
-
----
-
-## F9 — Architecture doc drift (subset)
-
-| Field | Value |
-|-------|-------|
-| Severity | medium |
-| Status | **tested_pass** |
-| Scope | Fix store count, Tailwind 4, Redis UI path, IPC list in architecture docs |
-| Unit tests | none |
-| E2E | none |
-
----
-
-## F8 — Legacy sync IPC surface
-
-| Field | Value |
-|-------|-------|
-| Severity | medium |
-| Status | deferred |
-| Notes | Requires E2E migration `data-sync-real.ts`; separate PR |
-
----
-
-## F1–F4 — Host driver hardcoding
-
-| Field | Value |
-|-------|-------|
-| Status | **deferred** |
-| Notes | Requires driver Command API migration; track as RFC |
-
----
+| ID | 标题 | Status |
+|----|------|--------|
+| F1 | Host schema_objects SQL → Driver Command | pending |
+| F2 | Redis KV IPC → execute_driver_command | pending |
+| F3 | Admin UI 硬编码 → Command definitions | pending |
+| F4 | EXPLAIN 方言解析下沉驱动 | pending |
+| F5 | 测试落点迁移 | pending |
+| F6 | 移除 query-* capabilities | tested_pass |
+| F7 | Restore sql_guard + debug SQL 脱敏 | pending |
+| F8 | 移除 legacy sync IPC | dev_done |
+| F9 | 架构文档漂移 | tested_pass |
+| F10 | 流式查询统一 execute_driver_command | pending |
+| F11 | --dt-binary token | tested_pass |
+| F12 | sync/ 模块重命名为 transfer/ | pending |
 
 ## QA log
 
-| Date | Agent | Feature | Result | Notes |
-|------|-------|---------|--------|-------|
-| 2026-08-20 | QA shell agent | F11/F6/F9 | **PASS** | 36 unit tests; dataTypeColors 100% stmt coverage; 0 bugs |
+| Date | Agent | Feature | Result |
+|------|-------|---------|--------|
 
 ## Bugs
 
-| ID | Feature | Steps | Status |
-|----|---------|-------|--------|
-| — | — | — | none |
+| ID | Feature | Status |

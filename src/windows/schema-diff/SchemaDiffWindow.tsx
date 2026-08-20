@@ -6,7 +6,6 @@ import { StatusBar } from '../../components/StatusBar';
 import { Button } from '../../components/ui/Button';
 import { Select } from '../../components/ui/Select';
 import { SchemaDiffPanel, formatSchemaDiffText } from '../../components/schema/SchemaDiffPanel';
-import { syncCommands } from '../../commands/sync';
 import {
   dialectSupportsTransactionalDdl,
   exportPlanSql,
@@ -153,7 +152,7 @@ export function SchemaDiffWindow() {
       if (!srcConnId || !tgtConnId) return;
       const results: TableSchemaDiff[] = [];
       for (const table of tables) {
-        results.push(await syncCommands.compareTableSchemas(srcConnId, tgtConnId, table));
+        results.push(await schemaDiffCommands.compareTableSchemas(srcConnId, tgtConnId, table));
       }
       setDiffs(results);
     } catch (e) {
