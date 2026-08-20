@@ -61,6 +61,7 @@ describe('connectionStore actions', () => {
       selectedGroup: null,
       searchQuery: '',
       loading: false,
+      connectionsLoaded: false,
       error: null,
     });
   });
@@ -72,10 +73,12 @@ describe('connectionStore actions', () => {
     expect(useConnectionStore.getState().connections).toEqual(conns);
     expect(mockConnectionCommands.saveConnection).not.toHaveBeenCalled();
     expect(useConnectionStore.getState().loading).toBe(false);
+    expect(useConnectionStore.getState().connectionsLoaded).toBe(true);
 
     mockConnectionCommands.getConnections.mockRejectedValueOnce(new Error('network'));
     await useConnectionStore.getState().fetchConnections();
     expect(useConnectionStore.getState().error).toBe('network');
+    expect(useConnectionStore.getState().connectionsLoaded).toBe(true);
   });
 
   it('fetchGroups loads groups as-is without write-backs', async () => {

@@ -102,6 +102,21 @@ const en: Record<TranslationKey, string> = {
   'main.connectionCount': 'Connections: {count}',
   'main.allGroups': 'All',
 
+  // ── Welcome (first run) ──
+  'welcome.title': 'Welcome to DataZen',
+  'welcome.subtitle': 'A cross-platform database manager with AI-assisted workflows.',
+  'welcome.feature.connections.title': 'Database Management',
+  'welcome.feature.connections.description':
+    'Connect to PostgreSQL, MySQL, SQLite, Redis, and more.',
+  'welcome.feature.dashboard.title': 'Data Dashboards',
+  'welcome.feature.dashboard.description': 'Build visual dashboards from your query results.',
+  'welcome.feature.workflow.title': 'Workflows',
+  'welcome.feature.workflow.description': 'Automate repetitive tasks with YAML-driven workflows.',
+  'welcome.feature.ai.title': 'AI Assistant',
+  'welcome.feature.ai.description':
+    'Generate SQL, explain queries, and get help from multiple AI providers.',
+  'welcome.createConnection': 'Create Your First Connection',
+
   // ── Main / Context Menu ──
   'main.ctx.newGroup': 'New Group',
   'main.ctx.renameGroup': 'Rename Group',

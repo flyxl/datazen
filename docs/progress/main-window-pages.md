@@ -21,7 +21,7 @@
 | F2 | 主窗口内页面 Window→Page 重命名（如 ConnectionWindow→ConnectionPage），同步文档 | 已完成 | 2b91921d | （本轮） | 无漏改；Page 单测 33/33 通过；MainPage 100% 覆盖；E2E 用例已文档化，待 webdriver 构建 |
 | F3 | 左侧功能 sidebar 底部增加 Settings 入口；进入 SettingsPage；返回恢复先前页面 | 已完成 | ff09481f | （本轮） | Vitest 19/19；F3 路径覆盖 ≥80%；E2E sidebar 用例已文档化待 webdriver；F3-BUG-001 登记 |
 | F4 | 删除多余窗口（DashboardWindow 等独立窗口壳）；保留使用说明入口 | 已完成 | 7e60b32c | （本轮） | Vitest 57/57；Docs 保留；E2E legacy URL bug 已登记 |
-| F5 | 首次安装欢迎页（介绍连接/看板/工作流/AI，引导创建首个连接；有连接后进主界面） | 未开始 | — | — | |
+| F5 | 首次安装欢迎页（介绍连接/看板/工作流/AI，引导创建首个连接；有连接后进主界面） | 待测试 | — | — | |
 | F6 | 帮助文档改为官网上线文档；点击使用说明跳转官网 | 未开始 | — | — | |
 | R1 | 全量回归 + 文档更新（架构 / AGENTS.md）+ 合并 main | 未开始 | — | — | |
 
@@ -54,3 +54,4 @@ Bug 状态：`待验证` | `验证不通过` | `已修复` | `已关闭`
 | 2026-08-20 | F3-BUG-001 验证：源码无 `active=`；Vitest 16/16；bug → 已修复 |
 | 2026-08-20 | F4-BUG-001/002 修复：`path-ipc-hardening.ts`、`hotkeys.ts` 改 `openSettingsInMainWindow`；F4-BUG-003 PRD 文档债留 R1 |
 | 2026-08-20 | F4-BUG-001/002 静态验证：`rg 'window.html?window=settings' e2e/` → 0；bug → 已修复；E2E 实跑待 webdriver |
+| 2026-08-20 | F5 编码：MainPage 无连接时 WelcomePage；connectionsLoaded 防闪烁；Vitest 21/21 |
