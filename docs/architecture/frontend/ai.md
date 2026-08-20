@@ -94,13 +94,13 @@ src/windows/workflow/
 | QueryPanel 结果 Tab | `ExplainPanel` | EXPLAIN AI 分析 |
 | SqlConnectionView 侧边栏 | `AiChatPanel` | AI 对话 + Workflows（`@` 上下文引用） |
 | SqlConnectionView 侧边栏 | `WorkflowPanel` | Workflows 管理和执行 |
-| 主窗口侧边栏 | `ActionPanel` → `WorkflowPage` | 主工作区内 Workflow 入口 |
+| 主窗口功能 sidebar | `ConnectionPage` 内 Workflow / Dashboard 入口 | 主工作区内导航 |
 | TableView 筛选区域 | `NlFilterInput` | 自然语言筛选 |
 | ChartToolbar NL输入 | `nlConfig.ts` | 自然语言图表配置调整 |
-| SettingsWindow | AI 配置 | Provider/Model/Key/MaxTokens |
-| SettingsWindow | MCP Server/Client | 启停/连接管理 |
-| SettingsWindow | 上下文目录 | `contextDir` 路径配置 |
-| SettingsWindow | Prompt 覆盖 | 各场景 Prompt 自定义 |
+| SettingsPage / SettingsContent | AI 配置 | Provider/Model/Key/MaxTokens |
+| SettingsPage / SettingsContent | MCP Server/Client | 启停/连接管理 |
+| SettingsPage / SettingsContent | 上下文目录 | `contextDir` 路径配置 |
+| SettingsPage / SettingsContent | Prompt 覆盖 | 各场景 Prompt 自定义 |
 
 ### 1.8 AI 入口可见性
 
