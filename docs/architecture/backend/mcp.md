@@ -25,7 +25,7 @@ Workflow 引擎本身在 [`workflow` 模块](./workflow.md)（若尚未拆文档
 | `mcpDisabledTools` | 工具 denylist |
 | `mcpAllowedConnectionIds` | 连接白名单；**空数组 = 暴露全部已保存连接** |
 
-修改权限/白名单/工具后需重启 MCP（或重新运行 `datazen --mcp`）。
+修改权限/白名单/工具后，嵌入式 MCP Server 会自动热重载；独立 `datazen --mcp` 进程需重启后生效。
 
 **Server Tools:**
 - `list_connections` / `list_databases` / `list_tables` / `search_tables` / `query` / `get_schema`

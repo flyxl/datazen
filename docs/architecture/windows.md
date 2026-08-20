@@ -13,15 +13,14 @@
 | Page | `ConnectionPage` | 统一工作区：`ConnectionNavigatorTree`、连接 Tab、Workflow / Dashboard 内嵌导航 |
 | Page | `SettingsPage` | 设置（含返回主界面）；sidebar 底部入口或 `openSettingsWindow(section?)` |
 | Page | `WorkflowPage` / `DashboardPanel` | 由 `ConnectionPage` 内嵌渲染，非独立 OS 窗口 |
-| 子窗口 | `NewConnectionWindow` | 新建/编辑连接（单例） |
+| 对话框 | `NewConnectionDialog` | 新建/编辑连接（主窗内 modal，非 OS 子窗口） |
 | 子窗口 | `BackupWindow` | 备份/恢复（单例） |
 | 子窗口 | `DataSyncWindow` | 同族 Data Sync Diff Workspace（单例） |
 | 子窗口 | `SchemaDiffWindow` | Schema Diff（单例） |
 
 | 窗口 | Label / `?window=` |
 |------|-------------------|
-| main | `main`；legacy `connection` / `workflow` / `dashboard` / `settings` / `docs` 别名 → `main` |
-| new-connection | `new-connection-singleton` / `new-connection` |
+| main | `main`；legacy `connection` / `workflow` / `dashboard` / `settings` / `docs` / `new-connection` 别名 → `main` |
 | backup | `backup-singleton` / `backup` |
 | data-sync | `data-sync-singleton` / `data-sync` |
 | schema-diff | `schema-diff` |
@@ -79,7 +78,7 @@ function openWindow(label: string, options: OpenWindowOptions) {
 
 导出函数（摘要）：
 
-- `openNewConnectionWindow(editId?)` — 新建/编辑连接（子窗口）
+- `openNewConnectionDialog(editId?)` — 主窗内新建/编辑连接对话框
 - `openConnectionWindow(...)` — 聚焦主工作区并打开/追加连接 Tab
 - `openSettingsWindow(section?)` — 主工作区内 `SettingsPage`（emit `menu:open-settings`）
 - `openDocsWindow(section?)` — 系统浏览器打开官网（`open_path` IPC / `window.open` 降级）
@@ -91,15 +90,12 @@ function openWindow(label: string, options: OpenWindowOptions) {
 `src/lib/windowKind.ts` 用 URL 参数 `window` 区分：
 
 ```typescript
-export type WindowKind =
-  | 'main'
-  | 'new-connection'
-  | 'data-sync'
-  | 'schema-diff'
-  | 'backup';
+export type WindowKind = 'main' | 'data-sync' | 'schema-diff' | 'backup';
 
 /** Legacy sub-window kinds that now route to the unified main shell. */
-const LEGACY_MAIN_ALIASES = new Set(['connection', 'workflow', 'dashboard', 'settings', 'docs']);
+const LEGACY_MAIN_ALIASES = new Set([
+  'connection', 'workflow', 'dashboard', 'settings', 'docs', 'new-connection',
+]);
 ```
 
 `App.tsx` 按 `getWindowKind()` 懒加载对应页面；legacy 别名一律落到 `main`。

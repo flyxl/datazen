@@ -6,7 +6,7 @@ import {
   setEditorContent,
   openQueryTab,
   clickFirstTable,
-  switchToNewWindow,
+  waitForNewConnectionDialog,
 } from '../helpers.js';
 
 async function invokeBackend<T>(cmd: string, args: Record<string, unknown> = {}): Promise<T> {
@@ -249,7 +249,7 @@ describe('Client parity P0–P2', () => {
     await closeExtraWindows(mainWindow);
     const btn = await $(`button*=${t('action.newConnection')}`);
     await btn.click();
-    await switchToNewWindow(mainWindow);
+    await waitForNewConnectionDialog();
     const ssh = await $(`label*=${t('newConn.sshTunnel')}`);
     await ssh.waitForDisplayed({ timeout: 10000 });
     await ssh.click();

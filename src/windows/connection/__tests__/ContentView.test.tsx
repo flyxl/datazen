@@ -154,7 +154,7 @@ vi.mock('../../../lib/connectionViews/types', () => ({}));
 
 vi.mock('../../../lib/windowManager', () => ({
   openDocsWindow: vi.fn(),
-  openNewConnectionWindow: vi.fn(),
+  openNewConnectionDialog: vi.fn(),
 }));
 
 vi.mock('../../../lib/loadBatchExportTable', () => ({

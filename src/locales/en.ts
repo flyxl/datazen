@@ -116,6 +116,9 @@ const en: Record<TranslationKey, string> = {
   'welcome.feature.ai.description':
     'Generate SQL, explain queries, and get help from multiple AI providers.',
   'welcome.createConnection': 'Create Your First Connection',
+  'welcome.importConnection': 'Import Connections',
+  'welcome.importConnectionHint':
+    'Import from TablePlus, Navicat, DataGrip, DBeaver, DBX, or a DataZen export file.',
 
   // ── Main / Context Menu ──
   'main.ctx.newGroup': 'New Group',
@@ -1140,7 +1143,8 @@ const en: Record<TranslationKey, string> = {
   'mcp.tools.description': 'Choose which tools to expose via MCP Server to external AI clients',
   'mcp.tools.enableAll': 'Enable All',
   'mcp.tools.disableAll': 'Disable All',
-  'mcp.tools.restartHint': 'MCP Server needs to be restarted for tool changes to take effect',
+  'mcp.tools.restartHint': 'Save to apply tool changes immediately when MCP Server is running',
+  'mcp.tools.applyHint': 'Save to apply tool changes immediately when MCP Server is running',
   'mcp.toggleError': 'Failed to start/stop MCP Server',
   'mcp.permission.title': 'Permission Mode',
   'mcp.permission.readOnly': 'Read-only',
@@ -1151,13 +1155,17 @@ const en: Record<TranslationKey, string> = {
   'mcp.permission.highRiskWrite': 'High-risk write',
   'mcp.permission.highRiskWriteHint': 'No SQL restrictions; only the tool denylist applies',
   'mcp.permission.restartHint':
-    'Restart MCP Server (or relaunch datazen --mcp) for permission mode changes to take effect',
+    'Applies immediately when MCP Server is running (embedded mode reloads automatically)',
+  'mcp.permission.applyHint':
+    'Applies immediately when MCP Server is running (embedded mode reloads automatically)',
   'mcp.allowlist.title': 'Connection allowlist',
   'mcp.allowlist.description':
     'Only selected connections are visible to MCP clients. Leave all unchecked to expose every saved connection.',
   'mcp.allowlist.empty': 'No saved connections yet.',
   'mcp.allowlist.restartHint':
-    'Restart MCP Server (or relaunch datazen --mcp) for allowlist changes to take effect',
+    'Save to apply allowlist changes immediately when MCP Server is running',
+  'mcp.allowlist.applyHint':
+    'Save to apply allowlist changes immediately when MCP Server is running',
   'mcp.config.cursor': 'Cursor',
   'mcp.config.claude': 'Claude Desktop',
   'mcp.config.copy': 'Copy',

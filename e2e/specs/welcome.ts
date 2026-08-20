@@ -6,7 +6,7 @@
  * the seeded PG connection in `after` so later specs keep working.
  */
 import { expect, browser, $, $$ } from '@wdio/globals';
-import { closeExtraWindows, switchToNewWindow } from '../helpers.js';
+import { closeExtraWindows, waitForNewConnectionDialog } from '../helpers.js';
 import { t } from '../i18n.js';
 
 interface Conn {
@@ -112,28 +112,28 @@ describe('首次安装欢迎页 (F5-E2E-001 ~ F5-E2E-005)', () => {
     expect(body).toContain(t('welcome.feature.ai.title'));
   });
 
-  it('F5-E2E-003: 欢迎页 CTA 打开新建连接子窗口', async () => {
+  it('F5-E2E-003: 欢迎页 CTA 打开新建连接弹窗', async () => {
     await $('[data-testid="welcome-page"]').waitForDisplayed({ timeout: 15000 });
     const cta = await $('[data-testid="welcome-create-connection"]');
     await cta.click();
-    const newHandle = await switchToNewWindow(mainWindow);
-    expect(newHandle).not.toBe(mainWindow);
+    await waitForNewConnectionDialog();
+    await expect(await $('[data-testid="new-connection-dialog"]')).toBeDisplayed();
     await expect(await $('button*=保存')).toBeDisplayed();
   });
 
   it('F5-E2E-004: 保存首个连接后主窗进入 ConnectionPage 工作区', async () => {
     await $('[data-testid="welcome-page"]').waitForDisplayed({ timeout: 15000 });
     await $('[data-testid="welcome-create-connection"]').click();
-    await switchToNewWindow(mainWindow);
+    await waitForNewConnectionDialog();
 
     const nameInput = await $('input[placeholder="例如：主数据库"]');
     await nameInput.setValue(welcomeConnName);
     await $('button*=保存').click();
 
-    await browser.waitUntil(async () => (await browser.getWindowHandles()).length === 1, {
-      timeout: 15000,
-      timeoutMsg: '等待新建连接窗口关闭超时',
-    });
+    await browser.waitUntil(
+      async () => !(await $('[data-testid="new-connection-dialog"]').isExisting()),
+      { timeout: 15000, timeoutMsg: '等待新建连接弹窗关闭超时' },
+    );
     await browser.switchToWindow(mainWindow);
 
     const nav = await $('[data-testid="workspace-nav-connections"]');

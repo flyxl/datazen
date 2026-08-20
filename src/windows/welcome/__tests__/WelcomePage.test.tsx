@@ -2,14 +2,19 @@ import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { describe, expect, it, vi, afterEach } from 'vitest';
 import { WelcomePage } from '../WelcomePage';
 
-const openNewConnectionWindowMock = vi.fn();
+const openNewConnectionDialogMock = vi.fn();
+const openConnectionShareDialogMock = vi.fn();
 
 vi.mock('../../../hooks/useI18n', () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));
 
 vi.mock('../../../lib/windowManager', () => ({
-  openNewConnectionWindow: (...args: unknown[]) => openNewConnectionWindowMock(...args),
+  openNewConnectionDialog: (...args: unknown[]) => openNewConnectionDialogMock(...args),
+}));
+
+vi.mock('../../../lib/connectionShare', () => ({
+  openConnectionShareDialog: (...args: unknown[]) => openConnectionShareDialogMock(...args),
 }));
 
 vi.mock('../../../components/TitleBar', () => ({
@@ -26,12 +31,15 @@ vi.mock('../../../components/ThemeToggle', () => ({
 
 afterEach(() => {
   cleanup();
+  vi.clearAllMocks();
 });
 
 describe('WelcomePage', () => {
-  it('renders feature overview and create-connection CTA', () => {
+  it('renders app icon, feature overview, and connection CTAs', () => {
     render(<WelcomePage />);
     expect(screen.getByTestId('welcome-page')).toBeInTheDocument();
+    expect(screen.getByTestId('welcome-app-icon')).toBeInTheDocument();
+    expect(screen.getByTestId('welcome-app-icon')).toHaveAttribute('src', './logo.png');
     expect(screen.getByText('welcome.title')).toBeInTheDocument();
     expect(screen.getByText('welcome.feature.connections.title')).toBeInTheDocument();
     expect(screen.getByText('welcome.feature.dashboard.title')).toBeInTheDocument();
@@ -40,11 +48,22 @@ describe('WelcomePage', () => {
     expect(screen.getByTestId('welcome-create-connection')).toHaveTextContent(
       'welcome.createConnection',
     );
+    expect(screen.getByTestId('welcome-import-connection')).toHaveTextContent(
+      'welcome.importConnection',
+    );
+    expect(screen.getByText('welcome.importConnectionHint')).toBeInTheDocument();
   });
 
-  it('create-connection CTA opens new connection window', () => {
+  it('create-connection CTA opens new connection dialog', () => {
     render(<WelcomePage />);
     fireEvent.click(screen.getByTestId('welcome-create-connection'));
-    expect(openNewConnectionWindowMock).toHaveBeenCalledOnce();
+    expect(openNewConnectionDialogMock).toHaveBeenCalledOnce();
+  });
+
+  it('import-connection CTA opens connection share dialog in import mode', () => {
+    render(<WelcomePage />);
+    fireEvent.click(screen.getByTestId('welcome-import-connection'));
+    expect(openConnectionShareDialogMock).toHaveBeenCalledOnce();
+    expect(openConnectionShareDialogMock).toHaveBeenCalledWith('import');
   });
 });

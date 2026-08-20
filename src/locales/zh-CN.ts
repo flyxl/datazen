@@ -112,6 +112,9 @@ const zhCN = {
   'welcome.feature.ai.title': 'AI 助手',
   'welcome.feature.ai.description': '生成 SQL、解释查询，并支持多种 AI 提供商。',
   'welcome.createConnection': '创建第一个连接',
+  'welcome.importConnection': '导入连接',
+  'welcome.importConnectionHint':
+    '支持从 TablePlus、Navicat、DataGrip、DBeaver、DBX 或 DataZen 导出文件导入。',
 
   // ── Main / Context Menu ──
   'main.ctx.newGroup': '新建分组',
@@ -1122,7 +1125,8 @@ const zhCN = {
   'mcp.tools.description': '选择通过 MCP Server 暴露哪些工具给外部 AI 客户端',
   'mcp.tools.enableAll': '全部启用',
   'mcp.tools.disableAll': '全部禁用',
-  'mcp.tools.restartHint': '修改工具配置后，需要重启 MCP Server 才能生效',
+  'mcp.tools.restartHint': '保存后若 MCP Server 正在运行，将立即生效',
+  'mcp.tools.applyHint': '保存后若 MCP Server 正在运行，将立即生效',
   'mcp.toggleError': '启动/停止 MCP Server 失败',
   'mcp.permission.title': '权限模式',
   'mcp.permission.readOnly': '只读',
@@ -1131,13 +1135,14 @@ const zhCN = {
   'mcp.permission.safeWriteHint': '允许 DML；拒绝 DROP、TRUNCATE、ALTER、CREATE USER 等高危语句',
   'mcp.permission.highRiskWrite': '高危写入',
   'mcp.permission.highRiskWriteHint': '不限制 SQL；仅受工具禁用列表约束',
-  'mcp.permission.restartHint':
-    '修改权限模式后需重启 MCP Server（或重新运行 datazen --mcp）才能生效',
+  'mcp.permission.restartHint': 'MCP Server 运行中时修改权限模式会立即生效',
+  'mcp.permission.applyHint': 'MCP Server 运行中时修改权限模式会立即生效',
   'mcp.allowlist.title': '连接白名单',
   'mcp.allowlist.description':
     '仅勾选的连接会对 MCP 客户端可见。全部不勾选表示暴露所有已保存连接。',
   'mcp.allowlist.empty': '暂无已保存的连接。',
-  'mcp.allowlist.restartHint': '修改白名单后需重启 MCP Server（或重新运行 datazen --mcp）才能生效',
+  'mcp.allowlist.restartHint': '保存后若 MCP Server 正在运行，白名单变更将立即生效',
+  'mcp.allowlist.applyHint': '保存后若 MCP Server 正在运行，白名单变更将立即生效',
   'mcp.config.cursor': 'Cursor',
   'mcp.config.claude': 'Claude Desktop',
   'mcp.config.copy': '复制',

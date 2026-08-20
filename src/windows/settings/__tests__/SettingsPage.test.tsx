@@ -47,15 +47,12 @@ vi.mock('../../../commands/settings', () => ({
 vi.mock('../../../components/TitleBar', () => ({
   TitleBar: ({
     title,
-    leftContent,
     rightContent,
   }: {
     title?: React.ReactNode;
-    leftContent?: React.ReactNode;
     rightContent?: React.ReactNode;
   }) => (
     <div data-testid="title-bar">
-      {leftContent}
       <span>{title}</span>
       {rightContent}
     </div>
@@ -67,8 +64,21 @@ vi.mock('../../../components/ThemeToggle', () => ({
 }));
 
 vi.mock('../SettingsContent', () => ({
-  SettingsContent: ({ initialSection }: { initialSection?: string }) => (
-    <div data-testid="settings-content-mock">section={initialSection ?? 'general'}</div>
+  SettingsContent: ({
+    initialSection,
+    onBack,
+  }: {
+    initialSection?: string;
+    onBack?: () => void;
+  }) => (
+    <div data-testid="settings-content-mock">
+      section={initialSection ?? 'general'}
+      {onBack && (
+        <button type="button" data-testid="settings-back" onClick={onBack}>
+          common.back
+        </button>
+      )}
+    </div>
   ),
 }));
 
@@ -89,6 +99,9 @@ describe('SettingsPage', () => {
     expect(screen.getByText('common.back')).toBeInTheDocument();
     expect(screen.getByTestId('settings-content-mock')).toHaveTextContent('section=ai');
     expect(screen.getByText('win.settings')).toBeInTheDocument();
+    expect(
+      screen.queryByTestId('title-bar')?.querySelector('[data-testid="settings-back"]'),
+    ).toBeNull();
   });
 
   it('calls onBack when back button is clicked', () => {

@@ -5,18 +5,31 @@ import { useConnectionStore } from '../../stores/connectionStore';
 import { useI18n } from '../../hooks/useI18n';
 import { cn } from '../../lib/cn';
 import { aiCommands } from '../../commands/ai';
-import {
-  buildMcpAgentSnippet,
-  type McpAgentTarget,
-} from '../../lib/mcpAgentConfig';
+import { buildMcpAgentSnippet, type McpAgentTarget } from '../../lib/mcpAgentConfig';
 import type { McpPermissionMode } from '../../types';
 import type { TranslationKey } from '../../locales';
 import { SectionTitle, SettingRow, ToggleRow } from './settingsUi';
 
-const MCP_PERMISSION_MODES: { value: McpPermissionMode; labelKey: TranslationKey; hintKey: TranslationKey }[] = [
-  { value: 'read_only', labelKey: 'mcp.permission.readOnly', hintKey: 'mcp.permission.readOnlyHint' },
-  { value: 'safe_write', labelKey: 'mcp.permission.safeWrite', hintKey: 'mcp.permission.safeWriteHint' },
-  { value: 'high_risk_write', labelKey: 'mcp.permission.highRiskWrite', hintKey: 'mcp.permission.highRiskWriteHint' },
+const MCP_PERMISSION_MODES: {
+  value: McpPermissionMode;
+  labelKey: TranslationKey;
+  hintKey: TranslationKey;
+}[] = [
+  {
+    value: 'read_only',
+    labelKey: 'mcp.permission.readOnly',
+    hintKey: 'mcp.permission.readOnlyHint',
+  },
+  {
+    value: 'safe_write',
+    labelKey: 'mcp.permission.safeWrite',
+    hintKey: 'mcp.permission.safeWriteHint',
+  },
+  {
+    value: 'high_risk_write',
+    labelKey: 'mcp.permission.highRiskWrite',
+    hintKey: 'mcp.permission.highRiskWriteHint',
+  },
 ];
 
 export function McpSettingsSection() {
@@ -36,7 +49,10 @@ export function McpSettingsSection() {
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    void aiCommands.mcpListAllTools().then(setAllTools).catch(() => {});
+    void aiCommands
+      .mcpListAllTools()
+      .then(setAllTools)
+      .catch(() => {});
     void fetchConnections().catch(() => {});
   }, [fetchConnections]);
 
@@ -63,6 +79,12 @@ export function McpSettingsSection() {
     return () => window.clearInterval(id);
   }, []);
 
+  const reloadMcpIfRunning = async () => {
+    if (!running) return;
+    await aiCommands.mcpReload();
+    await refreshStatus();
+  };
+
   const handleToggleEnabled = async (enabled: boolean) => {
     setToggling(true);
     setToggleError(null);
@@ -76,12 +98,20 @@ export function McpSettingsSection() {
       await refreshStatus();
     } catch (e) {
       setToggleError(e instanceof Error ? e.message : t('mcp.toggleError'));
-      // Revert preference if start failed after enabling
       if (enabled) {
         await updateSettings({ ...settings, mcpServerEnabled: false }).catch(() => {});
       }
     } finally {
       setToggling(false);
+    }
+  };
+
+  const handlePermissionChange = async (mode: McpPermissionMode) => {
+    await updateSettings({ ...settings, mcpPermissionMode: mode });
+    try {
+      await reloadMcpIfRunning();
+    } catch (e) {
+      setToggleError(e instanceof Error ? e.message : t('mcp.toggleError'));
     }
   };
 
@@ -92,9 +122,7 @@ export function McpSettingsSection() {
   };
 
   const toggleAllowed = (id: string) => {
-    setAllowedIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
-    );
+    setAllowedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   };
 
   const handleSaveTools = async () => {
@@ -103,6 +131,11 @@ export function McpSettingsSection() {
       mcpDisabledTools: disabledTools,
       mcpAllowedConnectionIds: allowedIds,
     });
+    try {
+      await reloadMcpIfRunning();
+    } catch (e) {
+      setToggleError(e instanceof Error ? e.message : t('mcp.toggleError'));
+    }
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
@@ -146,15 +179,11 @@ export function McpSettingsSection() {
           <span
             className={`inline-block h-2 w-2 rounded-full ${running ? 'bg-green-500' : 'bg-fg-muted'}`}
           />
-          <span className="text-sm text-fg">
-            {running ? t('mcp.running') : t('mcp.stopped')}
-          </span>
+          <span className="text-sm text-fg">{running ? t('mcp.running') : t('mcp.stopped')}</span>
         </div>
       </SettingRow>
 
-      {toggleError && (
-        <p className="text-xs text-red-500">{toggleError}</p>
-      )}
+      {toggleError && <p className="text-xs text-red-500">{toggleError}</p>}
 
       <SettingRow label={t('mcp.permission.title')}>
         <div className="space-y-2 pt-1">
@@ -172,7 +201,7 @@ export function McpSettingsSection() {
                   name="mcp-permission-mode"
                   value={value}
                   checked={selected}
-                  onChange={() => void updateSettings({ mcpPermissionMode: value })}
+                  onChange={() => void handlePermissionChange(value)}
                   className="mt-0.5 accent-accent"
                 />
                 <span className="min-w-0">
@@ -184,7 +213,7 @@ export function McpSettingsSection() {
           })}
         </div>
       </SettingRow>
-      <p className="text-xs text-fg-muted -mt-3">{t('mcp.permission.restartHint')}</p>
+      <p className="text-xs text-fg-muted -mt-3">{t('mcp.permission.applyHint')}</p>
 
       <SettingRow label={t('mcp.allowlist.title')}>
         <div className="space-y-2 pt-1">
@@ -208,14 +237,16 @@ export function McpSettingsSection() {
                     />
                     <span className="min-w-0 truncate text-sm text-fg">
                       {c.name}
-                      <span className="ml-2 font-mono text-xs text-fg-muted">{c.id.slice(0, 8)}</span>
+                      <span className="ml-2 font-mono text-xs text-fg-muted">
+                        {c.id.slice(0, 8)}
+                      </span>
                     </span>
                   </label>
                 );
               })}
             </div>
           )}
-          <p className="text-xs text-fg-muted">{t('mcp.allowlist.restartHint')}</p>
+          <p className="text-xs text-fg-muted">{t('mcp.allowlist.applyHint')}</p>
         </div>
       </SettingRow>
 
@@ -259,11 +290,19 @@ export function McpSettingsSection() {
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-medium text-fg">{t('mcp.tools')}</h3>
             <div className="flex items-center gap-2">
-              <button type="button" onClick={handleEnableAll} className="text-xs text-accent hover:underline">
+              <button
+                type="button"
+                onClick={handleEnableAll}
+                className="text-xs text-accent hover:underline"
+              >
                 {t('mcp.tools.enableAll')}
               </button>
               <span className="text-fg-muted">|</span>
-              <button type="button" onClick={handleDisableAll} className="text-xs text-accent hover:underline">
+              <button
+                type="button"
+                onClick={handleDisableAll}
+                className="text-xs text-accent hover:underline"
+              >
                 {t('mcp.tools.disableAll')}
               </button>
             </div>
@@ -274,7 +313,10 @@ export function McpSettingsSection() {
             {allTools.map((tool) => {
               const enabled = !disabledTools.includes(tool);
               return (
-                <div key={tool} className="flex items-center justify-between rounded-md border border-edge bg-surface px-3 py-2">
+                <div
+                  key={tool}
+                  className="flex items-center justify-between rounded-md border border-edge bg-surface px-3 py-2"
+                >
                   <span className="text-sm font-mono text-fg">{tool}</span>
                   <button
                     type="button"
@@ -296,7 +338,7 @@ export function McpSettingsSection() {
             })}
           </div>
 
-          <p className="text-xs text-fg-muted">{t('mcp.tools.restartHint')}</p>
+          <p className="text-xs text-fg-muted">{t('mcp.tools.applyHint')}</p>
 
           <div className="flex items-center gap-3">
             {saved && <span className="text-xs text-green-500">{t('settings.saved')}</span>}

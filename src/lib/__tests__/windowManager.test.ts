@@ -43,6 +43,10 @@ vi.mock('../../stores/settingsStore', () => ({
   },
 }));
 
+vi.mock('../connectionEditor', () => ({
+  openNewConnectionDialog: vi.fn(),
+}));
+
 describe('windowManager — browser', () => {
   beforeEach(() => {
     delete (window as Record<string, unknown>).__TAURI_INTERNALS__;
@@ -54,9 +58,10 @@ describe('windowManager — browser', () => {
     vi.restoreAllMocks();
   });
 
-  it('exports capability label samples without settings sub-window', async () => {
+  it('exports capability label samples without new-connection sub-window', async () => {
     const { WINDOW_CAPABILITY_LABEL_SAMPLES } = await import('../windowManager');
     expect(WINDOW_CAPABILITY_LABEL_SAMPLES).toContain('main');
+    expect(WINDOW_CAPABILITY_LABEL_SAMPLES).not.toContain('new-connection-singleton');
     expect(WINDOW_CAPABILITY_LABEL_SAMPLES).not.toContain('settings-singleton');
     expect(WINDOW_CAPABILITY_LABEL_SAMPLES).not.toContain('docs-singleton');
   });
@@ -77,14 +82,14 @@ describe('windowManager — browser', () => {
     expect(window.open).not.toHaveBeenCalled();
   });
 
-  it('openNewConnectionWindow with editId', async () => {
-    const { openNewConnectionWindow } = await import('../windowManager');
-    openNewConnectionWindow('cfg-1');
-    expect(window.open).toHaveBeenCalledWith(
-      '/window.html?window=new-connection&editId=cfg-1',
-      '_blank',
-      expect.any(String),
+  it('openNewConnectionDialog opens in-app editor instead of sub-window', async () => {
+    const connectionEditor = await import('../connectionEditor');
+    const { openNewConnectionDialog } = await import('../windowManager');
+    openNewConnectionDialog('cfg-1');
+    await vi.waitFor(() =>
+      expect(connectionEditor.openNewConnectionDialog).toHaveBeenCalledWith('cfg-1'),
     );
+    expect(window.open).not.toHaveBeenCalled();
   });
 
   it('openConnectionWindow stores pending connection and focuses main workspace', async () => {

@@ -5,7 +5,7 @@ import { MainPage } from '../MainPage';
 const fetchConnectionsMock = vi.fn().mockResolvedValue(undefined);
 const fetchGroupsMock = vi.fn().mockResolvedValue(undefined);
 const listenCrossWindowMock = vi.fn().mockResolvedValue(() => {});
-const openNewConnectionWindowMock = vi.fn();
+const openNewConnectionDialogMock = vi.fn();
 
 const storeState = {
   connections: [] as Array<{ id: string }>,
@@ -28,7 +28,7 @@ vi.mock('../../../lib/crossWindowBus', () => ({
 }));
 
 vi.mock('../../../lib/windowManager', () => ({
-  openNewConnectionWindow: (...args: unknown[]) => openNewConnectionWindowMock(...args),
+  openNewConnectionDialog: (...args: unknown[]) => openNewConnectionDialogMock(...args),
 }));
 
 vi.mock('../../connection/ConnectionPage', () => ({
@@ -42,7 +42,7 @@ vi.mock('../welcome/WelcomePage', () => ({
       <button
         type="button"
         data-testid="welcome-create-connection"
-        onClick={() => openNewConnectionWindowMock()}
+        onClick={() => openNewConnectionDialogMock()}
       >
         create
       </button>
@@ -60,6 +60,14 @@ vi.mock('../../../components/MenuBar', () => ({
 
 vi.mock('../../../components/ThemeToggle', () => ({
   ThemeToggle: () => <div data-testid="theme-toggle">theme</div>,
+}));
+
+vi.mock('../../../components/connection/NewConnectionDialog', () => ({
+  ConnectionEditorDialogHost: () => null,
+}));
+
+vi.mock('../../../components/connection/ConnectionShareDialogHost', () => ({
+  ConnectionShareDialogHost: () => null,
 }));
 
 vi.mock('../../../components/ui/Button', () => ({
@@ -146,12 +154,34 @@ describe('MainPage', () => {
     expect(screen.queryByTestId('welcome-page')).not.toBeInTheDocument();
   });
 
-  it('welcome CTA calls openNewConnectionWindow', () => {
+  it('welcome CTA calls openNewConnectionDialog', () => {
     storeState.connectionsLoaded = true;
 
     render(<MainPage />);
     fireEvent.click(screen.getByTestId('welcome-create-connection'));
-    expect(openNewConnectionWindowMock).toHaveBeenCalledOnce();
+    expect(openNewConnectionDialogMock).toHaveBeenCalledOnce();
+  });
+
+  it('listens for menu:new-connection', async () => {
+    storeState.connectionsLoaded = true;
+    render(<MainPage />);
+    await waitFor(() =>
+      expect(listenCrossWindowMock).toHaveBeenCalledWith(
+        'menu:new-connection',
+        expect.any(Function),
+      ),
+    );
+  });
+
+  it('listens for menu:import-connections on welcome state', async () => {
+    storeState.connectionsLoaded = true;
+    render(<MainPage />);
+    await waitFor(() =>
+      expect(listenCrossWindowMock).toHaveBeenCalledWith(
+        'menu:import-connections',
+        expect.any(Function),
+      ),
+    );
   });
 
   it('fetches connections on mount and listens for cross-window updates', async () => {

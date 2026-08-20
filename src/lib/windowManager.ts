@@ -12,6 +12,7 @@ import { t } from '../locales/t';
 import { useSettingsStore } from '../stores/settingsStore';
 import { buildDocsUrl } from './docsUrls';
 import { emitCrossWindow } from './crossWindowBus';
+import { openNewConnectionDialog as openConnectionEditorDialog } from './connectionEditor';
 
 /**
  * Representative window labels that must match
@@ -20,7 +21,6 @@ import { emitCrossWindow } from './crossWindowBus';
  */
 export const WINDOW_CAPABILITY_LABEL_SAMPLES = [
   'main',
-  'new-connection-singleton',
   'data-sync-singleton',
   'schema-diff-singleton',
   'backup-singleton',
@@ -116,21 +116,14 @@ function openSingletonWindow(label: string, options: OpenWindowOptions) {
   openWindow(label, options);
 }
 
-// ── Singleton windows ───────────────────────────────────────────────
+// ── In-app dialogs (main window) ────────────────────────────────────
 
-export function openNewConnectionWindow(editId?: string) {
-  const params: Record<string, string> = { window: 'new-connection' };
-  if (editId) params.editId = editId;
-
-  openSingletonWindow('new-connection-singleton', {
-    params,
-    width: 800,
-    height: 680,
-    minWidth: 600,
-    minHeight: 480,
-    title: editId ? t('win.editConnection') : t('win.newConnection'),
-  });
+/** Open the new/edit connection dialog in the main window. */
+export function openNewConnectionDialog(editId?: string) {
+  void focusMainWindow().then(() => openConnectionEditorDialog(editId));
 }
+
+// ── Singleton windows ───────────────────────────────────────────────
 
 export function openDataSyncWindow() {
   openSingletonWindow('data-sync-singleton', {

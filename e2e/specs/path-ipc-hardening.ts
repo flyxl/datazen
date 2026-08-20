@@ -182,13 +182,13 @@ describe('Path IPC Hardening (PIH-001~PIH-006)', () => {
 
     const newBtn = await $('button*=新建连接');
     await newBtn.click();
-    await browser.waitUntil(async () => (await browser.getWindowHandles()).length > 1, {
-      timeout: 15000,
-      timeoutMsg: 'new-connection window did not open',
-    });
-    const handles = await browser.getWindowHandles();
-    const connWin = handles.find((h) => h !== mainWindow)!;
-    await browser.switchToWindow(connWin);
+    await browser.waitUntil(
+      async () => await $('[data-testid="new-connection-dialog"]').isExisting(),
+      {
+        timeout: 15000,
+        timeoutMsg: 'new-connection dialog did not open',
+      },
+    );
     await browser.pause(800);
 
     await (await $('button*=SQLite')).click();

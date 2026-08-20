@@ -21,7 +21,7 @@ const {
   openBackupWindowMock,
   openDataSyncWindowMock,
   openSchemaDiffWindowMock,
-  openNewConnectionWindowMock,
+  openNewConnectionDialogMock,
   menuOpenSettingsHandler,
 } = vi.hoisted(() => ({
   connectMock: vi.fn(),
@@ -49,7 +49,7 @@ const {
   openBackupWindowMock: vi.fn(),
   openDataSyncWindowMock: vi.fn(),
   openSchemaDiffWindowMock: vi.fn(),
-  openNewConnectionWindowMock: vi.fn(),
+  openNewConnectionDialogMock: vi.fn(),
   menuOpenSettingsHandler: { current: null as ((payload?: unknown) => void) | null },
 }));
 
@@ -156,7 +156,7 @@ vi.mock('../../../commands/connection', () => ({
 
 vi.mock('../../../lib/windowManager', () => ({
   PENDING_CONNECTION_KEY: 'datazen:pending-connection',
-  openNewConnectionWindow: (...args: unknown[]) => openNewConnectionWindowMock(...args),
+  openNewConnectionDialog: (...args: unknown[]) => openNewConnectionDialogMock(...args),
   openBackupWindow: (...args: unknown[]) => openBackupWindowMock(...args),
   openDataSyncWindow: (...args: unknown[]) => openDataSyncWindowMock(...args),
   openSchemaDiffWindow: (...args: unknown[]) => openSchemaDiffWindowMock(...args),

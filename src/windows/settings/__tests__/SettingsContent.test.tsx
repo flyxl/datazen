@@ -29,6 +29,7 @@ const {
   mcpGetStatusMock,
   mcpStartStdioMock,
   mcpStopMock,
+  mcpReloadMock,
   currentSettings,
   aiState,
 } = vi.hoisted(() => {
@@ -136,6 +137,7 @@ const {
     mcpGetStatusMock: vi.fn().mockResolvedValue({ running: false, transport: 'stdio' }),
     mcpStartStdioMock: vi.fn().mockResolvedValue(undefined),
     mcpStopMock: vi.fn().mockResolvedValue(undefined),
+    mcpReloadMock: vi.fn().mockResolvedValue(undefined),
     currentSettings,
     aiState,
   };
@@ -213,6 +215,7 @@ vi.mock('../../../commands/ai', () => ({
     mcpGetStatus: (...a: unknown[]) => mcpGetStatusMock(...a),
     mcpStartStdio: (...a: unknown[]) => mcpStartStdioMock(...a),
     mcpStop: (...a: unknown[]) => mcpStopMock(...a),
+    mcpReload: (...a: unknown[]) => mcpReloadMock(...a),
   },
 }));
 
@@ -326,6 +329,7 @@ beforeEach(() => {
   mcpGetStatusMock.mockResolvedValue({ running: false, transport: 'stdio' });
   mcpStartStdioMock.mockResolvedValue(undefined);
   mcpStopMock.mockResolvedValue(undefined);
+  mcpReloadMock.mockResolvedValue(undefined);
 
   Object.assign(currentSettings, {
     theme: { mode: 'dark', packId: null },
@@ -417,6 +421,26 @@ describe('SettingsContent', () => {
     expect(onCloseMock).toHaveBeenCalled();
   });
 
+  it('renders back button in nav when onBack is provided', async () => {
+    const onBackMock = vi.fn();
+    render(<SettingsContent onBack={onBackMock} />);
+    await waitForSettingsLoad();
+
+    const nav = screen.getByTestId('settings-nav');
+    const backBtn = within(nav).getByTestId('settings-back');
+    expect(backBtn).toBeInTheDocument();
+    expect(backBtn).toHaveTextContent('common.back');
+
+    fireEvent.click(backBtn);
+    expect(onBackMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not render back button when onBack is omitted', async () => {
+    render(<SettingsContent />);
+    await waitForSettingsLoad();
+    expect(screen.queryByTestId('settings-back')).not.toBeInTheDocument();
+  });
+
   it('covers data browsing section toggles and limits', async () => {
     render(<SettingsContent />);
     await waitForSettingsLoad();
@@ -466,7 +490,7 @@ describe('SettingsContent', () => {
     goToSection('settings.logging');
 
     pickSelectOption(0, 'Debug');
-    const logPathInput = document.querySelector('input[type="text"]') as HTMLInputElement;
+    const logPathInput = screen.getByTestId('path-input');
     fireEvent.change(logPathInput, { target: { value: '/var/log/datazen' } });
     fireEvent.click(screen.getByText('settings.viewLogs'));
     expect(openLogDirMock).toHaveBeenCalled();
@@ -597,9 +621,12 @@ describe('SettingsContent', () => {
     await waitFor(() => expect(mcpStartStdioMock).toHaveBeenCalled());
 
     fireEvent.click(document.querySelector('input[value="safe_write"]') as HTMLInputElement);
-    expect(updateSettingsMock).toHaveBeenCalledWith(
-      expect.objectContaining({ mcpPermissionMode: 'safe_write' }),
+    await waitFor(() =>
+      expect(updateSettingsMock).toHaveBeenCalledWith(
+        expect.objectContaining({ mcpPermissionMode: 'safe_write' }),
+      ),
     );
+    await waitFor(() => expect(mcpReloadMock).toHaveBeenCalled());
 
     fireEvent.click(screen.getByText('mcp.tools.disableAll'));
     fireEvent.click(screen.getByText('common.save'));
@@ -610,6 +637,7 @@ describe('SettingsContent', () => {
         }),
       ),
     );
+    await waitFor(() => expect(mcpReloadMock).toHaveBeenCalledTimes(2));
 
     fireEvent.click(screen.getByText('mcp.tools.enableAll'));
     fireEvent.click(enabledSwitch);

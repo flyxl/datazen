@@ -5,6 +5,7 @@ use crate::ai::prompt_resolver;
 use crate::commands::AppState;
 use crate::mcp::allowlist;
 use crate::mcp::permission::{self, McpPermissionMode};
+use crate::mcp::tool_help;
 use datazen_driver_api::PromptScenario;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::*;
@@ -174,9 +175,13 @@ impl DataZenMcpServer {
         McpError::internal_error(e, None)
     }
 
-    fn ensure_allowed(&self, config_id: &str) -> Result<(), McpError> {
+    fn ensure_allowed(&self, tool_name: &str, config_id: &str) -> Result<(), McpError> {
         allowlist::ensure_connection_allowed(config_id, &self.allowed_connection_ids)
-            .map_err(|e| McpError::invalid_params(e, None))
+            .map_err(|e| tool_help::tool_error(tool_name, &e))
+    }
+
+    fn tool_is_registered(&self, name: &str) -> bool {
+        Self::tool_router().get(name).is_some()
     }
 
     async fn resolve_connection(
@@ -190,7 +195,7 @@ impl DataZenMcpServer {
         ),
         McpError,
     > {
-        self.ensure_allowed(id)?;
+        self.ensure_allowed("list_connections", id)?;
         crate::services::db_tools::resolve_connection_with_id(
             &self.app_state.connection_manager,
             id,
@@ -281,7 +286,7 @@ impl DataZenMcpServer {
         &self,
         Parameters(input): Parameters<ListDatabasesInput>,
     ) -> Result<String, McpError> {
-        self.ensure_allowed(&input.config_id)?;
+        self.ensure_allowed("list_databases", &input.config_id)?;
         crate::services::db_tools::list_databases(
             &self.app_state.connection_manager,
             &input.config_id,
@@ -297,7 +302,7 @@ impl DataZenMcpServer {
         &self,
         Parameters(input): Parameters<ListTablesInput>,
     ) -> Result<String, McpError> {
-        self.ensure_allowed(&input.config_id)?;
+        self.ensure_allowed("list_tables", &input.config_id)?;
         let db = input.database.as_deref().unwrap_or("");
         crate::services::db_tools::list_tables(
             &self.app_state.connection_manager,
@@ -315,7 +320,7 @@ impl DataZenMcpServer {
         &self,
         Parameters(input): Parameters<SearchTablesInput>,
     ) -> Result<String, McpError> {
-        self.ensure_allowed(&input.config_id)?;
+        self.ensure_allowed("search_tables", &input.config_id)?;
         let db = input.database.as_deref().unwrap_or("");
         let limit = input.limit.unwrap_or(20) as usize;
         crate::services::db_tools::search_tables(
@@ -333,9 +338,9 @@ impl DataZenMcpServer {
         description = "Execute a SQL query on a connected database. Returns results as JSON. Use list_connections first to get valid config IDs. Default row limit is 100 (max 50000)."
     )]
     async fn query(&self, Parameters(input): Parameters<QueryInput>) -> Result<String, McpError> {
-        self.ensure_allowed(&input.config_id)?;
+        self.ensure_allowed("query", &input.config_id)?;
         permission::check_sql_allowed(&input.sql, self.permission_mode)
-            .map_err(|e| McpError::invalid_params(e, None))?;
+            .map_err(|e| tool_help::tool_error("query", &e))?;
         crate::services::db_tools::query(
             &self.app_state.connection_manager,
             &input.config_id,
@@ -354,7 +359,7 @@ impl DataZenMcpServer {
         &self,
         Parameters(input): Parameters<GetSchemaInput>,
     ) -> Result<String, McpError> {
-        self.ensure_allowed(&input.config_id)?;
+        self.ensure_allowed("get_schema", &input.config_id)?;
         let tables = vec![input.table.clone()];
         crate::services::db_tools::get_table_schema(
             &self.app_state.connection_manager,
@@ -372,7 +377,7 @@ impl DataZenMcpServer {
         &self,
         Parameters(input): Parameters<ExplainQueryInput>,
     ) -> Result<String, McpError> {
-        self.ensure_allowed(&input.config_id)?;
+        self.ensure_allowed("explain_query", &input.config_id)?;
         crate::services::db_tools::explain_query(
             &self.app_state.connection_manager,
             &input.config_id,
@@ -389,7 +394,7 @@ impl DataZenMcpServer {
         &self,
         Parameters(input): Parameters<DescribeTableInput>,
     ) -> Result<String, McpError> {
-        self.ensure_allowed(&input.config_id)?;
+        self.ensure_allowed("describe_table", &input.config_id)?;
         let schema = crate::services::db_tools::get_single_table_schema(
             &self.app_state.connection_manager,
             &input.config_id,
@@ -423,9 +428,9 @@ impl DataZenMcpServer {
             .get(&input.workflow_id)
             .await
             .ok_or_else(|| {
-                McpError::invalid_params(
-                    format!("Workflow '{}' not found", input.workflow_id),
-                    None,
+                tool_help::tool_error(
+                    "run_workflow",
+                    &format!("Workflow '{}' not found", input.workflow_id),
                 )
             })?;
 
@@ -657,7 +662,7 @@ impl DataZenMcpServer {
     ) -> Result<CallToolResult, McpError> {
         let arg_map = arguments.as_ref().and_then(|v| v.as_object());
         permission::check_tool_call(name, self.permission_mode, &self.disabled_tools, arg_map)
-            .map_err(|e| McpError::invalid_params(e, None))?;
+            .map_err(|e| tool_help::tool_error(name, &e))?;
 
         let text = match name {
             "list_connections" => self.list_connections().await?,
@@ -746,12 +751,7 @@ impl DataZenMcpServer {
                 }))
                 .await?
             }
-            other => {
-                return Err(McpError::invalid_params(
-                    format!("Unknown tool: {other}"),
-                    None,
-                ));
-            }
+            other => return Err(tool_help::unknown_tool_error(other)),
         };
 
         Ok(CallToolResult::success(vec![ContentBlock::text(text)]))
@@ -798,22 +798,31 @@ impl ServerHandler for DataZenMcpServer {
         request: CallToolRequestParams,
         context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, McpError> {
+        let tool_name = request.name.to_string();
+
+        if !self.tool_is_registered(&tool_name) {
+            return Err(tool_help::unknown_tool_error(&tool_name));
+        }
+
         permission::check_tool_call(
-            request.name.as_ref(),
+            &tool_name,
             self.permission_mode,
             &self.disabled_tools,
             request.arguments.as_ref(),
         )
-        .map_err(|e| McpError::invalid_params(e, None))?;
+        .map_err(|e| tool_help::tool_error(&tool_name, &e))?;
 
         if let Some(args) = request.arguments.as_ref() {
             if let Some(config_id) = args.get("config_id").and_then(|v| v.as_str()) {
-                self.ensure_allowed(config_id)?;
+                self.ensure_allowed(&tool_name, config_id)?;
             }
         }
 
         let tcc = rmcp::handler::server::tool::ToolCallContext::new(self, request, context);
-        Self::tool_router().call(tcc).await
+        Self::tool_router()
+            .call(tcc)
+            .await
+            .map_err(|e| tool_help::enrich_tool_error(&tool_name, e))
     }
 
     fn get_info(&self) -> ServerInfo {
@@ -1293,6 +1302,71 @@ mod tests {
             .await
             .unwrap_err();
         assert!(err.to_string().contains("Unknown resource"));
+    }
+
+    #[tokio::test]
+    async fn mcp_call_tool_inner_unknown_tool_includes_help() {
+        use crate::testing::app_state::TestAppState;
+        use std::sync::Arc;
+
+        let test = TestAppState::new().await;
+        let server = DataZenMcpServer::new(Arc::new(test.state));
+
+        let err = server
+            .call_tool_inner("missing_tool", None)
+            .await
+            .unwrap_err();
+        let msg = err.message.to_string();
+        assert!(msg.contains("Unknown or disabled tool"));
+        assert!(msg.contains("list_connections"));
+        assert!(msg.contains("Example"));
+    }
+
+    #[tokio::test]
+    async fn mcp_call_tool_inner_disabled_tool_includes_help() {
+        use crate::mcp::permission::McpPermissionMode;
+        use crate::testing::app_state::TestAppState;
+        use std::sync::Arc;
+
+        let test = TestAppState::new().await;
+        let server = DataZenMcpServer::new(Arc::new(test.state))
+            .with_disabled_tools(&["query".into()])
+            .with_permission_mode(McpPermissionMode::SafeWrite);
+
+        let err = server
+            .call_tool_inner(
+                "query",
+                Some(serde_json::json!({"config_id":"x","sql":"SELECT 1"})),
+            )
+            .await
+            .unwrap_err();
+        let msg = err.message.to_string();
+        assert!(msg.contains("disabled"));
+        assert!(msg.contains("Tool: query"));
+        assert!(msg.contains("config_id"));
+    }
+
+    #[tokio::test]
+    async fn mcp_call_tool_inner_allowlist_error_includes_help() {
+        use crate::testing::app_state::TestAppState;
+        use std::sync::Arc;
+
+        let test = TestAppState::with_tables().await;
+        test.save_connection("blocked-cfg").await;
+        let server = DataZenMcpServer::new(Arc::new(test.state))
+            .with_allowed_connections(&["allowed-only".into()]);
+
+        let err = server
+            .call_tool_inner(
+                "list_databases",
+                Some(serde_json::json!({"config_id":"blocked-cfg"})),
+            )
+            .await
+            .unwrap_err();
+        let msg = err.message.to_string();
+        assert!(msg.contains("allowlist"));
+        assert!(msg.contains("Tool: list_databases"));
+        assert!(msg.contains("Example:"));
     }
 
     #[tokio::test]
