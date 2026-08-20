@@ -3,7 +3,7 @@
 Branch: `feat/arch-review-all`  
 Worktree: `../datazen-arch-review-all`  
 Base: `main` @ 91283919  
-Merged: pending
+Merged: `main` @ 45096691 (pushed)
 
 ## Status legend
 
