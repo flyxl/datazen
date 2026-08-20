@@ -17,6 +17,9 @@ const REQUIRED_SURFACE_TOKENS = [
   '--c-warning',
   '--c-danger',
   '--c-titlebar',
+  '--c-titlebar-fg',
+  '--c-titlebar-fg-muted',
+  '--c-query-run',
   '--font-sans',
   '--font-mono',
   '--font-editor',
@@ -92,12 +95,7 @@ describe('community theme packs', () => {
   it('includes all documented community packs', () => {
     expect(packIds.sort()).toEqual(
       [
-        'community.dracula',
-        'community.nord',
-        'community.paper',
         'community.slate-blue',
-        'community.solarized-light',
-        'community.tokyo-night',
       ].sort(),
     );
   });
