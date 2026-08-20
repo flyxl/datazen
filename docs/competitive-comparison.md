@@ -45,9 +45,9 @@
 
 ### 2.3 与 DataZen（2026-08 统一工作区改版后）
 
-DataZen 采用 **单一主 OS 窗口**：左侧 `ConnectionNavigatorTree`，右侧连接 Tab（结构 / 数据 / 查询 / Workflow / Dashboard 内嵌导航）。`openConnectionWindow()` 仅聚焦主窗并追加 Tab，**不再**为每个连接创建 `connection-*` 子窗口。设置、备份、数据同步、Schema Diff、新建连接等仍为独立子窗口。
+DataZen 采用 **单一主 OS 窗口**：左侧 `ConnectionNavigatorTree`，右侧连接 Tab（结构 / 数据 / 查询 / Workflow / Dashboard / Settings 内嵌导航）。`openConnectionWindow()` 仅聚焦主窗并追加 Tab，**不再**为每个连接创建 `connection-*` 子窗口。备份、数据同步、Schema Diff、新建连接等仍为独立子窗口；Settings 与 Docs 均在主窗内（Docs 跳转官网）。
 
-相对 TablePlus：更接近「单窗 + 多 Tab」的 Navicat 密度，但保留 TablePlus 式轻量 UI 与原生子窗口（设置等）。产品默认应继续强化主工作区内的并行 Tab 与多屏（单窗全屏 / 外接显示器），而非回到「每连接一新 OS 窗口」。
+相对 TablePlus：更接近「单窗 + 多 Tab」的 Navicat 密度，但保留 TablePlus 式轻量 UI 与少量原生子窗口（新建连接等）。产品默认应继续强化主工作区内的并行 Tab 与多屏（单窗全屏 / 外接显示器），而非回到「每连接一新 OS 窗口」。
 
 ---
 

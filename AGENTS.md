@@ -19,7 +19,7 @@ DataZen 是一个跨平台桌面数据库管理工具，基于 **Tauri v2**（Ru
 datazen/
 ├── src/                         # React 前端源码
 │   ├── components/              # UI 组件（ai/, chart/, connection/, DataTable/, ui/）
-│   ├── windows/                 # 窗口页面（main, connection, settings, workflow, backup, data-sync）
+│   ├── windows/                 # 主工作区 *Page + 子窗口 *Window（见 architecture/windows.md）
 │   │   └── connection/er/       # ER 图模块（React Flow）
 │   ├── stores/                  # Zustand stores（connection / panel / schema / settings / ai / dashboard 等）
 │   ├── commands/                # Tauri IPC 封装
@@ -108,7 +108,7 @@ YAML 驱动的通用执行引擎，GUI、Tauri IPC 和 MCP 共用同一 runtime�
 ## 前端约定
 
 - 零硬编码：行为差异通过 `DB_REGISTRY` + `DatabaseTypeMeta` 元数据驱动
-- **统一主工作区**：连接 / Workflow / Dashboard 在 `main` 窗口内导航（`ConnectionPage` + `ConnectionNavigatorTree`）；`windowKind` 将 legacy `connection`/`workflow`/`dashboard` 别名到 `main`。Settings 已嵌入主工作区（`SettingsPage`）；备份 / 同步等仍为子窗口（`windowManager.ts`）
+- **主工作区 Page**：`main` 内用 `*Page` 导航（`WelcomePage` / `ConnectionPage` / `SettingsPage` 等）；Settings 嵌入主窗，Docs 跳转官网（非子窗口）。子窗口仅 new-connection / backup / data-sync / schema-diff — 详见 [docs/architecture/windows.md](docs/architecture/windows.md)
 - IPC：前端 camelCase，Rust snake_case；Tauri 自动映射
 - 右键菜单统一使用 Web Context Menu，禁止 Tauri 原生 `Menu.popup()`
 - **主题包 DataTable 色**：`--dt-*` token + `src/lib/dataTypeColors.ts`（CellRenderer、StructureView、TableHeader 等共用）

@@ -29,9 +29,11 @@ src/
 │   │   ├── ConnectionWorkspaceHome.tsx
 │   │   ├── ContentView.tsx / QueryPanel.tsx / …
 │   │   └── schema-tree/
-│   ├── main/                   # MainPage → 直接渲染 ConnectionPage
-│   ├── workflow/ / dashboard/  # 工作区内嵌视图
-│   ├── settings/ / backup/ / data-sync/ / schema-diff / docs / new-connection/
+│   ├── main/                   # MainPage → WelcomePage | ConnectionPage
+│   ├── welcome/                # WelcomePage（无连接时）
+│   ├── settings/               # SettingsPage / SettingsContent（主工作区内）
+│   ├── workflow/ / dashboard/  # 工作区内嵌视图（WorkflowPage / DashboardPanel）
+│   ├── backup/ / data-sync/ / schema-diff/ / new-connection/  # 子窗口 *Window
 ├── components/
 │   ├── DataTable/              # CellRenderer 使用 text-dt-*（主题 --dt-*）
 │   ├── ui/ / chart/ / ai/ …

@@ -547,9 +547,9 @@ interface DashboardWidget {
 
 ### 16.3 参考代码
 
-- 看板 UI：`src/windows/dashboard/`  
-- 主入口 Dialog：`src/windows/main/MainWindow.tsx`（待改为直达）  
-- 设置监控：`src/windows/settings/SettingsWindow.tsx`（待移除分区）  
+- 看板 UI：`src/windows/dashboard/`（`DashboardPanel` 等）  
+- 主入口：`src/windows/main/MainPage.tsx` → `ConnectionPage` 内嵌 `DashboardPanel`  
+- 设置：`src/windows/settings/SettingsPage.tsx` / `SettingsContent.tsx`（monitor 分区已移除）  
 - SQL：`src/windows/connection/QueryPanel.tsx`  
-- Workflow：`src/windows/workflow/WorkflowWindow.tsx`  
+- Workflow：`src/windows/workflow/WorkflowPage.tsx`  
 - 执行：`src-tauri/src/dashboard/execute.rs`、`monitor/engine.rs`、`workflow/executor.rs`

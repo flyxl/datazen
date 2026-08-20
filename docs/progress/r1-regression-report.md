@@ -75,7 +75,7 @@ npx vitest run \
 
 | Bug ID | 关联 | 标题 | 状态 | 说明 |
 |--------|------|------|------|------|
-| F4-BUG-003 | F4 | PRD 仍引用已删 DashboardWindow / SettingsWindow 路径 | 待验证 | 文档债，留 R1 架构/PRD 更新 |
+| F4-BUG-003 | F4 | PRD 仍引用已删 DashboardWindow / SettingsWindow 路径 | 已修复 | R1 已更新 `docs/prd/data-dashboard*.md` 为 DashboardPanel / SettingsPage |
 | F6-BUG-001 | F6 | GitHub Pages `docs.html` 返回 404 | 待部署验证 | merge 并部署 Pages 后 smoke |
 
 ## 未覆盖项（本轮 R1 范围外）
@@ -84,8 +84,8 @@ npx vitest run \
 |------|------|------|
 | Host E2E（webdriver） | 未执行 | 需 `pnpm tauri build --debug --features webdriver`；F1–F6 用例已文档化 |
 | Rust 单测 `cargo test -p datazen` | 未执行 | R1 后续步骤 |
-| 架构文档 / AGENTS.md 更新 | 未执行 | R1 后续步骤 |
-| 合并 `main` | **禁止**（本轮） | 待文档更新与 E2E/部署验证后由编码 agent 执行 |
+| 架构文档 / AGENTS.md 更新 | **已完成** | R1 文档 commit |
+| 合并 `main` | **禁止**（本轮） | 由编排者合并 |
 
 ## 验收结论
 
@@ -93,4 +93,4 @@ npx vitest run \
 |------|------|
 | Host Vitest 全量回归 | **通过**（187 文件 / 1466 用例） |
 | F1–F6 相关路径 | **通过**（无失败、无新 regression bug） |
-| R1 整体 | **Vitest 阶段通过**；待架构文档更新、E2E 实跑、F6-BUG-001 部署验证后合并 main |
+| R1 整体 | **Vitest 阶段通过**；架构/AGENTS/PRD 已同步；待 E2E 实跑、F6-BUG-001 部署验证后合并 main |

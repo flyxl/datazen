@@ -23,7 +23,7 @@
 | F4 | 删除多余窗口（DashboardWindow 等独立窗口壳）；保留使用说明入口 | 已完成 | 7e60b32c | （本轮） | Vitest 57/57；Docs 保留；E2E legacy URL bug 已登记 |
 | F5 | 首次安装欢迎页（介绍连接/看板/工作流/AI，引导创建首个连接；有连接后进主界面） | 已完成 | 2024f465 | （本轮） | Vitest 21/21；F5 路径 ≥80%；E2E 用例已文档化；F5-BUG-001~003 登记 |
 | F6 | 帮助文档改为官网上线文档；点击使用说明跳转官网 | 已完成 | 96c7a3be | （本轮） | Vitest 18/18；E2E 用例已文档化；F6-BUG-001~003 登记 |
-| R1 | 全量回归 + 文档更新（架构 / AGENTS.md）+ 合并 main | 待文档与合并 | — | （本轮） | Host Vitest 1466/1466 通过；见 `r1-regression-report.md`；E2E / 架构文档 / 合并 main 待续 |
+| R1 | 全量回归 + 文档更新（架构 / AGENTS.md）+ 合并 main | 待合并 | — | （本轮） | Host Vitest 1466/1466 通过；架构/AGENTS/PRD 已同步；合并 main 由编排者执行 |
 
 状态枚举：`未开始` | `进行中` | `待测试` | `测试中` | `验证不通过` | `待验证` | `已完成`
 
@@ -35,7 +35,7 @@
 | F3-BUG-001 | F3 | Settings 按钮 `active={mainView === 'settings'}` 永不可达（无高亮） | 已修复 | 见 `docs/progress/f3-test-report.md` | ff09481f |
 | F4-BUG-001 | F4 | `path-ipc-hardening.ts` PIH-004/005 仍用 `window=settings` 子窗口 URL | 已修复 | 见 `docs/progress/f4-test-report.md` | 7e60b32c |
 | F4-BUG-002 | F4 | `hotkeys.ts` TC-HOTKEY-002 fallback 仍用 `window=settings` URL | 已修复 | 见 `docs/progress/f4-test-report.md` | 7e60b32c |
-| F4-BUG-003 | F4 | PRD 仍引用已删 `DashboardWindow` / `SettingsWindow` 路径 | 待验证 | `docs/prd/data-dashboard*.md` | 7e60b32c |
+| F4-BUG-003 | F4 | PRD 仍引用已删 `DashboardWindow` / `SettingsWindow` 路径 | 已修复 | `docs/prd/data-dashboard*.md` | 7e60b32c |
 | F5-BUG-001 | F5 | Host E2E 无欢迎页 journey；wdio 全局 seed 连接 | 已修复 | `e2e/specs/welcome.ts` | bbefb6bf |
 | F5-BUG-002 | F5 | `WelcomePage.tsx` 未纳入 vitest coverage gate | 已修复 | `vitest.config.ts` L43/L72 | bbefb6bf |
 | F5-BUG-003 | F5 | 首次 `fetchConnections` 失败时误显示欢迎页 | 已修复 | `welcome-load-error` + retry；Vitest 覆盖 | bbefb6bf |
@@ -68,3 +68,4 @@ Bug 状态：`待验证` | `验证不通过` | `已修复` | `已关闭`
 | 2026-08-20 | F6 测试：Vitest 18/18；f6-test-report.md；登记 F6-BUG-001~003（Pages 404 / E2E 债 / F4 报告文档债） |
 | 2026-08-20 | F6 修复：`docs-online.ts` E2E wiring；f4-test-report 官网跳转；F6-BUG-002/003 → 已修复；F6-BUG-001 → 待部署验证 |
 | 2026-08-20 | R1 回归：Host Vitest 全量 1466/1466 通过；`r1-regression-report.md`；R1 → 待文档与合并 |
+| 2026-08-20 | R1 文档：同步 `AGENTS.md`、`docs/architecture/windows.md`、frontend 架构与 PRD 路径；F4-BUG-003 已修复；R1 → 待合并 |
