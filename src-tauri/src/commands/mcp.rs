@@ -6,6 +6,7 @@ use crate::mcp;
 use serde::Serialize;
 use std::sync::Arc;
 use tauri::State;
+use tokio::io::DuplexStream;
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
@@ -19,6 +20,8 @@ pub struct McpServerStatus {
 struct McpHandle {
     task: tokio::task::JoinHandle<()>,
     cancel: CancellationToken,
+    /// Holds the client end of the embedded duplex so the server side stays open.
+    keepalive: Option<DuplexStream>,
 }
 
 static MCP_HANDLE: Mutex<Option<McpHandle>> = Mutex::const_new(None);
@@ -43,7 +46,15 @@ fn clone_app_state(state: &AppState) -> Arc<AppState> {
     })
 }
 
-/// Start embedded MCP stdio if not already running. Used by settings toggle and optional GUI auto-start.
+async fn mcp_is_running() -> bool {
+    let guard = MCP_HANDLE.lock().await;
+    guard
+        .as_ref()
+        .map(|h| !h.task.is_finished())
+        .unwrap_or(false)
+}
+
+/// Start embedded MCP if not already running. Uses an in-process duplex so GUI stdin EOF does not stop the server.
 pub async fn start_embedded_mcp(state: &AppState) -> Result<(), CommandError> {
     let mut guard = MCP_HANDLE.lock().await;
     if let Some(ref h) = *guard {
@@ -55,22 +66,52 @@ pub async fn start_embedded_mcp(state: &AppState) -> Result<(), CommandError> {
     let app_state = clone_app_state(state);
     let cancel = CancellationToken::new();
     let cancel_clone = cancel.clone();
+    let (keepalive, server_end) = tokio::io::duplex(256 * 1024);
+    let (reader, writer) = tokio::io::split(server_end);
 
     let task = tokio::spawn(async move {
-        mcp::start_mcp_stdio(app_state, cancel_clone).await;
+        mcp::start_mcp_transport(app_state, cancel_clone, reader, writer).await;
     });
 
-    *guard = Some(McpHandle { task, cancel });
+    *guard = Some(McpHandle {
+        task,
+        cancel,
+        keepalive: Some(keepalive),
+    });
+    Ok(())
+}
+
+/// Stop embedded MCP if running.
+pub async fn stop_embedded_mcp() -> Result<(), CommandError> {
+    let mut guard = MCP_HANDLE.lock().await;
+    if let Some(mut h) = guard.take() {
+        h.cancel.cancel();
+        h.keepalive = None;
+        let task = h.task;
+        let abort = task.abort_handle();
+        if tokio::time::timeout(std::time::Duration::from_secs(3), task)
+            .await
+            .is_err()
+        {
+            abort.abort();
+        }
+    }
+    Ok(())
+}
+
+/// Stop and restart embedded MCP so settings (permission, tools, allowlist) take effect immediately.
+pub async fn reload_embedded_mcp(state: &AppState) -> Result<(), CommandError> {
+    let was_running = mcp_is_running().await;
+    stop_embedded_mcp().await?;
+    if was_running {
+        start_embedded_mcp(state).await?;
+    }
     Ok(())
 }
 
 #[tauri::command]
 pub async fn mcp_get_status() -> Result<McpServerStatus, CommandError> {
-    let guard = MCP_HANDLE.lock().await;
-    let running = guard
-        .as_ref()
-        .map(|h| !h.task.is_finished())
-        .unwrap_or(false);
+    let running = mcp_is_running().await;
     Ok(McpServerStatus {
         running,
         transport: if running {
@@ -88,12 +129,12 @@ pub async fn mcp_start_stdio(state: State<'_, AppState>) -> Result<(), CommandEr
 
 #[tauri::command]
 pub async fn mcp_stop() -> Result<(), CommandError> {
-    let mut guard = MCP_HANDLE.lock().await;
-    if let Some(h) = guard.take() {
-        h.cancel.cancel();
-        let _ = h.task.await;
-    }
-    Ok(())
+    stop_embedded_mcp().await
+}
+
+#[tauri::command]
+pub async fn mcp_reload(state: State<'_, AppState>) -> Result<(), CommandError> {
+    reload_embedded_mcp(&state).await
 }
 
 #[tauri::command]
@@ -224,12 +265,60 @@ pub async fn mcp_client_call_tool(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::testing::app_state::TestAppState;
+
+    async fn reset_mcp_handle() {
+        let _ = stop_embedded_mcp().await;
+    }
 
     #[tokio::test]
     async fn mcp_get_status_when_stopped() {
+        reset_mcp_handle().await;
         let status = mcp_get_status().await.unwrap();
         assert!(!status.running);
         assert_eq!(status.transport, "none");
+    }
+
+    #[tokio::test]
+    async fn start_embedded_mcp_reports_running() {
+        reset_mcp_handle().await;
+        let test = TestAppState::new().await;
+        start_embedded_mcp(&test.state).await.unwrap();
+
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        let status = mcp_get_status().await.unwrap();
+        assert!(
+            status.running,
+            "embedded MCP should stay running with duplex keepalive"
+        );
+        assert_eq!(status.transport, "stdio");
+
+        stop_embedded_mcp().await.unwrap();
+        let status = mcp_get_status().await.unwrap();
+        assert!(!status.running);
+    }
+
+    #[tokio::test]
+    async fn reload_embedded_mcp_restarts_when_running() {
+        reset_mcp_handle().await;
+        let test = TestAppState::new().await;
+        start_embedded_mcp(&test.state).await.unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        assert!(mcp_is_running().await);
+
+        reload_embedded_mcp(&test.state).await.unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        assert!(mcp_is_running().await);
+
+        stop_embedded_mcp().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn reload_embedded_mcp_noop_when_stopped() {
+        reset_mcp_handle().await;
+        let test = TestAppState::new().await;
+        reload_embedded_mcp(&test.state).await.unwrap();
+        assert!(!mcp_is_running().await);
     }
 
     #[tokio::test]
@@ -243,8 +332,6 @@ mod tests {
 
     #[tokio::test]
     async fn mcp_client_list_empty_and_disconnect_unknown() {
-        use crate::testing::app_state::TestAppState;
-
         let test = TestAppState::new().await;
         assert!(mcp_client_list_impl(&test.state).await.unwrap().is_empty());
         assert!(mcp_client_tools_impl(&test.state).await.unwrap().is_empty());

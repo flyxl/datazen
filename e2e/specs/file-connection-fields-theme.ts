@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { expect, browser, $ } from '@wdio/globals';
-import { switchToNewWindow, closeExtraWindows } from '../helpers.js';
+import { waitForNewConnectionDialog, closeExtraWindows } from '../helpers.js';
 
 const ROOT = path.resolve(import.meta.dirname, '../..');
 const FILE_CONNECTION_FIELDS = path.join(
@@ -27,11 +27,7 @@ const REQUIRED_CSS_VARS = [
   '--c-fg-secondary',
   '--c-fg-muted',
 ];
-const REQUIRED_TAILWIND_KEYS = [
-  'surface:',
-  'edge:',
-  'fg:',
-];
+const REQUIRED_TAILWIND_KEYS = ['surface:', 'edge:', 'fg:'];
 
 async function invokeBackend<T>(cmd: string, args: Record<string, unknown> = {}): Promise<T> {
   const result = await browser.executeAsync(
@@ -72,7 +68,7 @@ async function setTheme(theme: 'light' | 'dark') {
 async function openSqliteConnectionForm() {
   const btn = await $('button*=新建连接');
   await btn.click();
-  await switchToNewWindow(await browser.getWindowHandle());
+  await waitForNewConnectionDialog();
 
   const sqliteBtn = await $('button*=SQLite');
   await sqliteBtn.click();
@@ -212,9 +208,7 @@ describe('FileConnectionFields 浅色主题适配 (FCF-001~FCF-010)', () => {
       const surfaceAlt = getComputedStyle(document.documentElement)
         .getPropertyValue('--c-surface-alt')
         .trim();
-      const edge = getComputedStyle(document.documentElement)
-        .getPropertyValue('--c-edge')
-        .trim();
+      const edge = getComputedStyle(document.documentElement).getPropertyValue('--c-edge').trim();
 
       const labels = Array.from(document.querySelectorAll('label'));
       const adbLabel = labels.find((l) => l.textContent?.includes('从 Android 设备拉取'));
@@ -259,9 +253,7 @@ describe('FileConnectionFields 浅色主题适配 (FCF-001~FCF-010)', () => {
       const surfaceAlt = getComputedStyle(document.documentElement)
         .getPropertyValue('--c-surface-alt')
         .trim();
-      const edge = getComputedStyle(document.documentElement)
-        .getPropertyValue('--c-edge')
-        .trim();
+      const edge = getComputedStyle(document.documentElement).getPropertyValue('--c-edge').trim();
 
       const labels = Array.from(document.querySelectorAll('label'));
       const adbLabel = labels.find((l) => l.textContent?.includes('从 Android 设备拉取'));

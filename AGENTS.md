@@ -108,7 +108,7 @@ YAML 驱动的通用执行引擎，GUI、Tauri IPC 和 MCP 共用同一 runtime�
 ## 前端约定
 
 - 零硬编码：行为差异通过 `DB_REGISTRY` + `DatabaseTypeMeta` 元数据驱动
-- **主工作区 Page**：`main` 内用 `*Page` 导航（`WelcomePage` / `ConnectionPage` / `SettingsPage` 等）；Settings 嵌入主窗，Docs 跳转官网（非子窗口）。子窗口仅 new-connection / backup / data-sync / schema-diff — 详见 [docs/architecture/windows.md](docs/architecture/windows.md)
+- **主工作区 Page**：`main` 内用 `*Page` 导航（`WelcomePage` / `ConnectionPage` / `SettingsPage` 等）；Settings / 新建连接为 main 内嵌；Docs 跳转官网（非子窗口）。子窗口仅 backup / data-sync / schema-diff — 详见 [docs/architecture/windows.md](docs/architecture/windows.md)
 - IPC：前端 camelCase，Rust snake_case；Tauri 自动映射
 - 右键菜单统一使用 Web Context Menu，禁止 Tauri 原生 `Menu.popup()`
 - **主题包 DataTable 色**：`--dt-*` token + `src/lib/dataTypeColors.ts`（CellRenderer、StructureView、TableHeader 等共用）

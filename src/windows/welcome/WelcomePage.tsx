@@ -1,10 +1,19 @@
-import { Database, LayoutDashboard, Plus, Sparkles, Workflow, type LucideIcon } from 'lucide-react';
+import {
+  Database,
+  LayoutDashboard,
+  Plus,
+  Sparkles,
+  Upload,
+  Workflow,
+  type LucideIcon,
+} from 'lucide-react';
 import { TitleBar } from '../../components/TitleBar';
 import { MenuBar } from '../../components/MenuBar';
 import { ThemeToggle } from '../../components/ThemeToggle';
 import { Button } from '../../components/ui/Button';
 import { useI18n } from '../../hooks/useI18n';
-import { openNewConnectionWindow } from '../../lib/windowManager';
+import { openConnectionShareDialog } from '../../lib/connectionShare';
+import { openNewConnectionDialog } from '../../lib/windowManager';
 
 interface FeatureItemProps {
   icon: LucideIcon;
@@ -61,7 +70,13 @@ export function WelcomePage() {
       <div className="flex flex-1 items-center justify-center overflow-auto px-6 py-10">
         <div className="w-full max-w-2xl">
           <div className="text-center">
-            <h1 className="text-2xl font-semibold text-fg">{t('welcome.title')}</h1>
+            <img
+              src="./logo.png"
+              alt=""
+              data-testid="welcome-app-icon"
+              className="mx-auto h-16 w-16"
+            />
+            <h1 className="mt-4 text-2xl font-semibold text-fg">{t('welcome.title')}</h1>
             <p className="mt-2 text-sm text-fg-muted">{t('welcome.subtitle')}</p>
           </div>
 
@@ -71,14 +86,27 @@ export function WelcomePage() {
             ))}
           </div>
 
-          <div className="mt-8 flex justify-center">
-            <Button
-              data-testid="welcome-create-connection"
-              onClick={() => openNewConnectionWindow()}
-            >
-              <Plus className="h-4 w-4" />
-              {t('welcome.createConnection')}
-            </Button>
+          <div className="mt-8 flex flex-col items-center gap-3">
+            <div className="flex flex-wrap justify-center gap-3">
+              <Button
+                data-testid="welcome-create-connection"
+                onClick={() => openNewConnectionDialog()}
+              >
+                <Plus className="h-4 w-4" />
+                {t('welcome.createConnection')}
+              </Button>
+              <Button
+                variant="secondary"
+                data-testid="welcome-import-connection"
+                onClick={() => openConnectionShareDialog('import')}
+              >
+                <Upload className="h-4 w-4" />
+                {t('welcome.importConnection')}
+              </Button>
+            </div>
+            <p className="max-w-md text-center text-xs text-fg-muted">
+              {t('welcome.importConnectionHint')}
+            </p>
           </div>
         </div>
       </div>

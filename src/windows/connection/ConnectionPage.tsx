@@ -24,21 +24,17 @@ import { backupCommands } from '../../commands/backup';
 import { settingsCommands } from '../../commands/settings';
 import { emitCrossWindow, listenCrossWindow } from '../../lib/crossWindowBus';
 import { getDbLabel } from '../../lib/databaseTypes';
+import { openConnectionShareDialog } from '../../lib/connectionShare';
 import {
   openBackupWindow,
   openDataSyncWindow,
-  openNewConnectionWindow,
+  openNewConnectionDialog,
   openSchemaDiffWindow,
   PENDING_CONNECTION_KEY,
 } from '../../lib/windowManager';
 import { useActiveConnectionStore } from '../../stores/activeConnectionStore';
 import { usePanelStore, nextPanelId, type RedisDbPanel } from '../../stores/panelStore';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
-import {
-  ConnectionShareDialog,
-  type ConnectionImportSource,
-  type ConnectionShareMode,
-} from '../../components/connection/ConnectionShareDialog';
 import type { ConnectionViewActions } from '../../lib/connectionViews/types';
 import { ConnectionNavigatorTree } from './ConnectionNavigatorTree';
 import { ContentView } from './ContentView';
@@ -152,10 +148,6 @@ export function ConnectionPage() {
   const deleteConnection = useConnectionStore((s) => s.deleteConnection);
   const connections = useConnectionStore((s) => s.connections);
   const [confirmDelete, confirmDeleteDialog] = useConfirmDialog();
-  const [connShareOpen, setConnShareOpen] = useState(false);
-  const [connShareMode, setConnShareMode] = useState<ConnectionShareMode>('export');
-  const [connShareImportSource, setConnShareImportSource] =
-    useState<ConnectionImportSource>('file');
   const [messageDialogOpen, setMessageDialogOpen] = useState(false);
   const [messageDialogText, setMessageDialogText] = useState('');
   const [messageDialogKind, setMessageDialogKind] = useState<'error' | 'success'>('error');
@@ -591,15 +583,6 @@ export function ConnectionPage() {
     void fetchGroups();
   }, [fetchConnections, fetchGroups]);
 
-  const openConnShare = useCallback(
-    (mode: ConnectionShareMode, source: ConnectionImportSource = 'file') => {
-      setConnShareMode(mode);
-      setConnShareImportSource(source);
-      setConnShareOpen(true);
-    },
-    [],
-  );
-
   const handleExportConfig = useCallback(async () => {
     let saved: boolean;
     try {
@@ -691,9 +674,6 @@ export function ConnectionPage() {
       const data = payload as { section?: string } | undefined;
       openSettingsInShell(data?.section);
     }).then((fn) => cleanups.push(fn));
-    void listenCrossWindow('menu:new-connection', () => {
-      openNewConnectionWindow();
-    }).then((fn) => cleanups.push(fn));
     void listenCrossWindow('menu:data-sync', () => {
       openDataSyncWindow();
     }).then((fn) => cleanups.push(fn));
@@ -725,30 +705,6 @@ export function ConnectionPage() {
     void listenCrossWindow('menu:import-config', () => {
       void handleImportConfig();
     }).then((fn) => cleanups.push(fn));
-    void listenCrossWindow('menu:export-connections', () => {
-      openConnShare('export');
-    }).then((fn) => cleanups.push(fn));
-    void listenCrossWindow('menu:import-connections', () => {
-      openConnShare('import');
-    }).then((fn) => cleanups.push(fn));
-    void listenCrossWindow('menu:import-connections-file', () => {
-      openConnShare('import', 'file');
-    }).then((fn) => cleanups.push(fn));
-    void listenCrossWindow('menu:import-connections-dbx', () => {
-      openConnShare('import', 'dbx');
-    }).then((fn) => cleanups.push(fn));
-    void listenCrossWindow('menu:import-connections-navicat', () => {
-      openConnShare('import', 'navicat');
-    }).then((fn) => cleanups.push(fn));
-    void listenCrossWindow('menu:import-connections-datagrip', () => {
-      openConnShare('import', 'datagrip');
-    }).then((fn) => cleanups.push(fn));
-    void listenCrossWindow('menu:import-connections-dbeaver', () => {
-      openConnShare('import', 'dbeaver');
-    }).then((fn) => cleanups.push(fn));
-    void listenCrossWindow('menu:import-connections-tableplus', () => {
-      openConnShare('import', 'tableplus');
-    }).then((fn) => cleanups.push(fn));
 
     return () => cleanups.forEach((fn) => fn());
   }, [
@@ -756,7 +712,6 @@ export function ConnectionPage() {
     handleImportConfig,
     handleOpenDashboard,
     handleOpenWorkflow,
-    openConnShare,
     openSettingsInShell,
   ]);
 
@@ -839,17 +794,11 @@ export function ConnectionPage() {
                 onSelectConnection={handleSelectConnection}
                 onSelectTable={handleSelectTable}
                 onSelectKvDb={handleSelectKvDb}
-                onNewConnection={() => openNewConnectionWindow()}
+                onNewConnection={() => openNewConnectionDialog()}
                 onRefresh={handleRefresh}
-                onExportConnections={() => {
-                  setConnShareMode('export');
-                  setConnShareOpen(true);
-                }}
-                onImportConnections={() => {
-                  setConnShareMode('import');
-                  setConnShareOpen(true);
-                }}
-                onEditConnection={(id) => openNewConnectionWindow(id)}
+                onExportConnections={() => openConnectionShareDialog('export')}
+                onImportConnections={() => openConnectionShareDialog('import')}
+                onEditConnection={(id) => openNewConnectionDialog(id)}
                 onDeleteConnection={handleDeleteConnection}
                 onDisconnect={handleDisconnect}
                 onCollapseSidebar={() => setSidebarCollapsed(true)}
@@ -988,31 +937,6 @@ export function ConnectionPage() {
       )}
 
       {confirmDeleteDialog}
-      <ConnectionShareDialog
-        open={connShareOpen}
-        mode={connShareMode}
-        importSource={connShareImportSource}
-        onClose={() => setConnShareOpen(false)}
-        onExportSuccess={(count) => {
-          setConnShareOpen(false);
-          showMessageDialog(t('connShare.exportSuccess', { count }), 'success');
-        }}
-        onImportSuccess={(result) => {
-          setConnShareOpen(false);
-          showMessageDialog(
-            t('connShare.importSuccess', {
-              imported: result.imported,
-              skipped: result.skipped?.length ?? 0,
-            }),
-            'success',
-          );
-          handleRefresh();
-        }}
-        onError={(message) => {
-          setConnShareOpen(false);
-          showMessageDialog(message, 'error');
-        }}
-      />
       <Dialog
         open={messageDialogOpen}
         title={messageDialogKind === 'error' ? t('common.error') : t('common.success')}

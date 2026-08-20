@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { t } from '../i18n.js';
 import {
   closeExtraWindows,
-  switchToNewWindow,
+  waitForNewConnectionDialog,
   findCardByName,
   dblclickConnByExactName,
   expandAllGroups,
@@ -28,10 +28,9 @@ async function createAndConnectSQLite() {
   const existingItem = await findCardByName(CONN_NAME);
   if (existingItem) {
     await dblclickConnByExactName(CONN_NAME);
-    await browser.waitUntil(
-      async () => (await browser.getWindowHandles()).length > 1,
-      { timeout: 30000 },
-    );
+    await browser.waitUntil(async () => (await browser.getWindowHandles()).length > 1, {
+      timeout: 30000,
+    });
     const handles = await browser.getWindowHandles();
     const connWindow = handles.find((h) => h !== mainWindow)!;
     await browser.switchToWindow(connWindow);
@@ -43,7 +42,7 @@ async function createAndConnectSQLite() {
   // Create new connection
   const newConnBtn = await $(`button*=${t('action.newConnection')}`);
   await newConnBtn.click();
-  await switchToNewWindow(mainWindow);
+  await waitForNewConnectionDialog();
 
   // Select SQLite type
   const sqliteBtn = await $('button*=SQLite');
@@ -74,7 +73,7 @@ async function createAndConnectSQLite() {
   const saveBtn = await $(`button*=${t('common.save')}`);
   await saveBtn.click();
   await browser.waitUntil(
-    async () => (await browser.getWindowHandles()).length === 1,
+    async () => !(await $('[data-testid="new-connection-dialog"]').isExisting()),
     { timeout: 10000 },
   );
   await browser.switchToWindow(mainWindow);
@@ -85,10 +84,9 @@ async function createAndConnectSQLite() {
   if (!card) throw new Error(`SQLite connection "${CONN_NAME}" not found`);
   await dblclickConnByExactName(CONN_NAME);
 
-  await browser.waitUntil(
-    async () => (await browser.getWindowHandles()).length > 1,
-    { timeout: 30000 },
-  );
+  await browser.waitUntil(async () => (await browser.getWindowHandles()).length > 1, {
+    timeout: 30000,
+  });
   const handles = await browser.getWindowHandles();
   const connWindow = handles.find((h) => h !== mainWindow)!;
   await browser.switchToWindow(connWindow);

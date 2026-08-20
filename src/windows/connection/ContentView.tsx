@@ -53,7 +53,7 @@ import { CreateSchemaDialog } from './CreateSchemaDialog';
 import { CreateUserDialog } from './CreateUserDialog';
 import { ExecuteSqlFileDialog } from './ExecuteSqlFileDialog';
 import { ConnectionWorkspaceHome } from './ConnectionWorkspaceHome';
-import { openNewConnectionWindow } from '../../lib/windowManager';
+import { openNewConnectionDialog } from '../../lib/windowManager';
 
 export interface ContentViewProps {
   selectTableRef?: MutableRefObject<((table: string, schema?: string) => void) | undefined>;
@@ -635,7 +635,7 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
               showNewTable={showNewTable}
               showErDiagram={showErDiagramToolbar}
               showObjects={showObjectsToolbar}
-              onNewConnection={() => openNewConnectionWindow()}
+              onNewConnection={() => openNewConnectionDialog()}
               onNewQuery={() => handlers.handleNewQuery()}
               onCreateTable={handlers.handleCreateTable}
               onOpenErDiagram={() => handlers.handleOpenErDiagram()}

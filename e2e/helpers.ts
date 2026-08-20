@@ -8,6 +8,51 @@ import { browser, $, $$ } from '@wdio/globals';
 
 // ── window management ───────────────────────────────────────────────
 
+/** Wait until the in-app new-connection dialog is visible. */
+export async function waitForNewConnectionDialog(timeout = 15000) {
+  const dialog = await $('[data-testid="new-connection-dialog"]');
+  await dialog.waitForDisplayed({ timeout, timeoutMsg: '等待新建连接弹窗打开超时' });
+  return dialog;
+}
+
+/** Click the main-window "New Connection" entry point and wait for the dialog. */
+export async function openNewConnectionDialogFromUi() {
+  const clicked = await browser.execute(() => {
+    const textBtn = Array.from(document.querySelectorAll('button')).find(
+      (b) => b.textContent?.includes('新建连接') || b.textContent?.includes('New Connection'),
+    );
+    if (textBtn) {
+      textBtn.click();
+      return true;
+    }
+    const titleBtn = document.querySelector(
+      'button[title="新建连接"], button[title="New Connection"]',
+    ) as HTMLButtonElement | null;
+    if (titleBtn) {
+      titleBtn.click();
+      return true;
+    }
+    return false;
+  });
+  if (!clicked) throw new Error('Could not find "新建连接" button');
+  await waitForNewConnectionDialog();
+}
+
+/** Close the new-connection dialog via Cancel (stays on main window). */
+export async function closeNewConnectionDialogFromUi() {
+  const cancelBtn = await $('[data-testid="new-connection-dialog"] button*=取消');
+  if (!(await cancelBtn.isExisting())) {
+    const cancelEn = await $('[data-testid="new-connection-dialog"] button*=Cancel');
+    await cancelEn.click();
+  } else {
+    await cancelBtn.click();
+  }
+  await browser.waitUntil(
+    async () => !(await $('[data-testid="new-connection-dialog"]').isExisting()),
+    { timeout: 10000, timeoutMsg: '等待新建连接弹窗关闭超时' },
+  );
+}
+
 export async function switchToNewWindow(originalHandle: string): Promise<string> {
   await browser.waitUntil(async () => (await browser.getWindowHandles()).length > 1, {
     timeout: 15000,
@@ -255,7 +300,7 @@ export async function createAndConnectMySQL(
     return false;
   });
   if (!clickedNew) throw new Error('Could not find "新建连接" button');
-  const newConnWindow = await switchToNewWindow(mainWindow);
+  await waitForNewConnectionDialog();
 
   // Select MySQL type
   const mysqlBtn = await $('button*=MySQL');
@@ -301,11 +346,13 @@ export async function createAndConnectMySQL(
   // Save
   const saveBtn = await $('button*=保存');
   await saveBtn.click();
-  await browser.waitUntil(async () => (await browser.getWindowHandles()).length === 1, {
-    timeout: 10000,
-    timeoutMsg: '保存连接后窗口未关闭',
-  });
-  await browser.switchToWindow(mainWindow);
+  await browser.waitUntil(
+    async () => !(await $('[data-testid="new-connection-dialog"]').isExisting()),
+    {
+      timeout: 10000,
+      timeoutMsg: '保存连接后弹窗未关闭',
+    },
+  );
   await browser.pause(1000);
 
   // Now connect by double-clicking the item
@@ -369,7 +416,7 @@ export async function createAndConnectPostgreSQL(
     return false;
   });
   if (!clickedNew) throw new Error('Could not find "新建连接" button');
-  const newConnWindow = await switchToNewWindow(mainWindow);
+  await waitForNewConnectionDialog();
 
   // PostgreSQL is the default type; ensure it is selected
   const pgBtn = await $('button*=PostgreSQL');
@@ -409,11 +456,13 @@ export async function createAndConnectPostgreSQL(
 
   const saveBtn = await $('button*=保存');
   await saveBtn.click();
-  await browser.waitUntil(async () => (await browser.getWindowHandles()).length === 1, {
-    timeout: 10000,
-    timeoutMsg: '保存连接后窗口未关闭',
-  });
-  await browser.switchToWindow(mainWindow);
+  await browser.waitUntil(
+    async () => !(await $('[data-testid="new-connection-dialog"]').isExisting()),
+    {
+      timeout: 10000,
+      timeoutMsg: '保存连接后弹窗未关闭',
+    },
+  );
   await browser.pause(1000);
 
   const card = await findCardByName(name);

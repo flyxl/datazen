@@ -1,6 +1,10 @@
 import { expect, browser, $, $$ } from '@wdio/globals';
-import { switchToNewWindow, closeExtraWindows, expandAllGroups } from '../helpers.js';
-import { t } from '../i18n.js';
+import {
+  closeNewConnectionDialogFromUi,
+  openNewConnectionDialogFromUi,
+  closeExtraWindows,
+  expandAllGroups,
+} from '../helpers.js';
 
 describe('新建连接 (CM-002, CM-005)', () => {
   let mainWindow: string;
@@ -10,6 +14,13 @@ describe('新建连接 (CM-002, CM-005)', () => {
   });
 
   afterEach(async () => {
+    try {
+      if (await $('[data-testid="new-connection-dialog"]').isExisting()) {
+        await closeNewConnectionDialogFromUi();
+      }
+    } catch {
+      /* dialog already closed */
+    }
     await closeExtraWindows(mainWindow);
   });
 
@@ -34,17 +45,13 @@ describe('新建连接 (CM-002, CM-005)', () => {
     await browser.pause(300);
   });
 
-  it('点击新建连接按钮应打开新窗口 (CM-002)', async () => {
-    const btn = await $('button*=新建连接');
-    await btn.click();
-    const newHandle = await switchToNewWindow(mainWindow);
-    expect(newHandle).not.toBe(mainWindow);
+  it('点击新建连接按钮应打开弹窗 (CM-002)', async () => {
+    await openNewConnectionDialogFromUi();
+    await expect(await $('[data-testid="new-connection-dialog"]')).toBeDisplayed();
   });
 
-  it('新建连接窗口应显示完整表单 (CM-002)', async () => {
-    const btn = await $('button*=新建连接');
-    await btn.click();
-    await switchToNewWindow(mainWindow);
+  it('新建连接弹窗应显示完整表单 (CM-002)', async () => {
+    await openNewConnectionDialogFromUi();
 
     await expect(await $('div*=选择数据库类型')).toBeDisplayed();
     await expect(await $('div*=连接配置')).toBeDisplayed();
@@ -55,9 +62,7 @@ describe('新建连接 (CM-002, CM-005)', () => {
   });
 
   it('应默认选中 PostgreSQL 并显示对应字段 (CM-002)', async () => {
-    const btn = await $('button*=新建连接');
-    await btn.click();
-    await switchToNewWindow(mainWindow);
+    await openNewConnectionDialogFromUi();
 
     const hostInput = await $('input[placeholder="prod-db.example.com"]');
     await expect(hostInput).toBeDisplayed();
@@ -66,7 +71,10 @@ describe('新建连接 (CM-002, CM-005)', () => {
     const allInputs = await $$('input');
     let portFound = false;
     for (const inp of allInputs) {
-      if ((await inp.getValue()) === '5432') { portFound = true; break; }
+      if ((await inp.getValue()) === '5432') {
+        portFound = true;
+        break;
+      }
     }
     expect(portFound).toBe(true);
 
@@ -75,9 +83,7 @@ describe('新建连接 (CM-002, CM-005)', () => {
   });
 
   it('切换数据库类型为 SQLite 应显示文件路径输入框 (CM-002)', async () => {
-    const btn = await $('button*=新建连接');
-    await btn.click();
-    await switchToNewWindow(mainWindow);
+    await openNewConnectionDialogFromUi();
 
     const sqliteBtn = await $('button*=SQLite');
     await sqliteBtn.click();
@@ -88,9 +94,7 @@ describe('新建连接 (CM-002, CM-005)', () => {
   });
 
   it('切换数据库类型为 MySQL 应更新默认端口 (CM-002)', async () => {
-    const btn = await $('button*=新建连接');
-    await btn.click();
-    await switchToNewWindow(mainWindow);
+    await openNewConnectionDialogFromUi();
 
     const mysqlBtn = await $('button*=MySQL');
     await mysqlBtn.click();
@@ -98,15 +102,16 @@ describe('新建连接 (CM-002, CM-005)', () => {
     const allInputs = await $$('input');
     let port3306Found = false;
     for (const inp of allInputs) {
-      if ((await inp.getValue()) === '3306') { port3306Found = true; break; }
+      if ((await inp.getValue()) === '3306') {
+        port3306Found = true;
+        break;
+      }
     }
     expect(port3306Found).toBe(true);
   });
 
   it('切换数据库类型为 MariaDB 应更新默认端口 (CM-002)', async () => {
-    const btn = await $('button*=新建连接');
-    await btn.click();
-    await switchToNewWindow(mainWindow);
+    await openNewConnectionDialogFromUi();
 
     const mariaBtn = await $('button*=MariaDB');
     if (await mariaBtn.isExisting()) {
@@ -115,16 +120,17 @@ describe('新建连接 (CM-002, CM-005)', () => {
       const allInputs = await $$('input');
       let port3306Found = false;
       for (const inp of allInputs) {
-        if ((await inp.getValue()) === '3306') { port3306Found = true; break; }
+        if ((await inp.getValue()) === '3306') {
+          port3306Found = true;
+          break;
+        }
       }
       expect(port3306Found).toBe(true);
     }
   });
 
   it('应能填写连接表单 (CM-002)', async () => {
-    const btn = await $('button*=新建连接');
-    await btn.click();
-    await switchToNewWindow(mainWindow);
+    await openNewConnectionDialogFromUi();
 
     const nameInput = await $('input[placeholder="例如：主数据库"]');
     await nameInput.setValue('E2E-测试连接');
@@ -136,9 +142,7 @@ describe('新建连接 (CM-002, CM-005)', () => {
   });
 
   it('展开高级设置应显示 SSL、分组和 SSH 选项 (CM-002)', async () => {
-    const btn = await $('button*=新建连接');
-    await btn.click();
-    await switchToNewWindow(mainWindow);
+    await openNewConnectionDialogFromUi();
 
     const advBtn = await $('button*=高级设置');
     await advBtn.click();
@@ -149,26 +153,15 @@ describe('新建连接 (CM-002, CM-005)', () => {
     await expect(await $('label*=通过 SSH 隧道连接')).toBeDisplayed();
   });
 
-  it('点击取消按钮应关闭窗口 (CM-005)', async () => {
-    const btn = await $('button*=新建连接');
-    await btn.click();
-    await switchToNewWindow(mainWindow);
-
-    const cancelBtn = await $('button*=取消');
-    await cancelBtn.click();
-    await browser.waitUntil(
-      async () => (await browser.getWindowHandles()).length === 1,
-      { timeout: 10000, timeoutMsg: '等待取消后窗口关闭超时' },
-    );
-    const handles = await browser.getWindowHandles();
-    expect(handles.length).toBe(1);
+  it('点击取消按钮应关闭弹窗 (CM-005)', async () => {
+    await openNewConnectionDialogFromUi();
+    await closeNewConnectionDialogFromUi();
+    await expect(await $('[data-testid="new-connection-dialog"]')).not.toBeExisting();
   });
 
-  it('保存连接后窗口应关闭且主窗口显示新连接 (CM-002)', async () => {
+  it('保存连接后弹窗应关闭且主窗口显示新连接 (CM-002)', async () => {
     await browser.switchToWindow(mainWindow);
-    const btn = await $('button*=新建连接');
-    await btn.click();
-    await switchToNewWindow(mainWindow);
+    await openNewConnectionDialogFromUi();
 
     const nameInput = await $('input[placeholder="例如：主数据库"]');
     await nameInput.setValue('E2E-自动测试');
@@ -176,7 +169,7 @@ describe('新建连接 (CM-002, CM-005)', () => {
     await saveBtn.click();
 
     await browser.waitUntil(
-      async () => (await browser.getWindowHandles()).length === 1,
+      async () => !(await $('[data-testid="new-connection-dialog"]').isExisting()),
       { timeout: 10000 },
     );
     await browser.switchToWindow(mainWindow);

@@ -33,7 +33,8 @@ src/
 │   ├── welcome/                # WelcomePage（无连接时）
 │   ├── settings/               # SettingsPage / SettingsContent（主工作区内）
 │   ├── workflow/ / dashboard/  # 工作区内嵌视图（WorkflowPage / DashboardPanel）
-│   ├── backup/ / data-sync/ / schema-diff/ / new-connection/  # 子窗口 *Window
+│   ├── backup/ / data-sync/ / schema-diff/  # 子窗口 *Window
+│   ├── components/connection/NewConnectionDialog.tsx  # 主窗内连接编辑对话框
 ├── components/
 │   ├── DataTable/              # CellRenderer 使用 text-dt-*（主题 --dt-*）
 │   ├── ui/ / chart/ / ai/ …

@@ -5,7 +5,7 @@ import { execSync } from 'node:child_process';
 import { t } from '../i18n.js';
 import {
   closeExtraWindows,
-  switchToNewWindow,
+  waitForNewConnectionDialog,
   findCardByName,
   expandAllGroups,
   waitForSchemaTreeLoaded,
@@ -48,10 +48,10 @@ async function createAndConnectSQLite() {
         }
       }
     }, CONN_NAME);
-    await browser.waitUntil(
-      async () => (await browser.getWindowHandles()).length > 1,
-      { timeout: 30000, timeoutMsg: '等待 SQLite 连接窗口打开超时' },
-    );
+    await browser.waitUntil(async () => (await browser.getWindowHandles()).length > 1, {
+      timeout: 30000,
+      timeoutMsg: '等待 SQLite 连接窗口打开超时',
+    });
     const handles = await browser.getWindowHandles();
     const connWindow = handles.find((h) => h !== mainWindow)!;
     await browser.switchToWindow(connWindow);
@@ -62,7 +62,7 @@ async function createAndConnectSQLite() {
 
   const newConnBtn = await $(`button*=${t('action.newConnection')}`);
   await newConnBtn.click();
-  await switchToNewWindow(mainWindow);
+  await waitForNewConnectionDialog();
 
   const sqliteBtn = await $('button*=SQLite');
   await sqliteBtn.click();
@@ -87,7 +87,7 @@ async function createAndConnectSQLite() {
   const saveBtn = await $(`button*=${t('common.save')}`);
   await saveBtn.click();
   await browser.waitUntil(
-    async () => (await browser.getWindowHandles()).length === 1,
+    async () => !(await $('[data-testid="new-connection-dialog"]').isExisting()),
     { timeout: 10000 },
   );
   await browser.switchToWindow(mainWindow);
@@ -106,10 +106,9 @@ async function createAndConnectSQLite() {
     }
   }, CONN_NAME);
 
-  await browser.waitUntil(
-    async () => (await browser.getWindowHandles()).length > 1,
-    { timeout: 30000 },
-  );
+  await browser.waitUntil(async () => (await browser.getWindowHandles()).length > 1, {
+    timeout: 30000,
+  });
   const handles = await browser.getWindowHandles();
   const connWindow = handles.find((h) => h !== mainWindow)!;
   await browser.switchToWindow(connWindow);
@@ -141,10 +140,10 @@ async function aiChatTextarea() {
 }
 
 async function waitForPicker() {
-  await browser.waitUntil(
-    async () => await $('[data-testid="context-picker"]').isExisting(),
-    { timeout: 10000, timeoutMsg: 'context picker did not appear' },
-  );
+  await browser.waitUntil(async () => await $('[data-testid="context-picker"]').isExisting(), {
+    timeout: 10000,
+    timeoutMsg: 'context picker did not appear',
+  });
 }
 
 async function resetAiInput() {

@@ -784,8 +784,7 @@ const LEGACY_MAIN_ALIASES = new Set(['connection', 'workflow', 'dashboard', 'set
 
 // App.tsx（示意）
 switch (getWindowKind()) {
-  case 'main': return <MainPage />; // WelcomePage | ConnectionPage | SettingsPage
-  case 'new-connection': return <NewConnectionWindow />;
+  case 'main': return <MainPage />; // WelcomePage | ConnectionPage | SettingsPage | NewConnectionDialog
   // backup / data-sync / schema-diff
 }
 ```

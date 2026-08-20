@@ -2,7 +2,7 @@
  * Connection validation / reverse-path E2E (TC-CONN-005/006/007, TC-EDGE-007).
  */
 import { expect, browser, $, $$ } from '@wdio/globals';
-import { switchToNewWindow, closeExtraWindows } from '../helpers.js';
+import { waitForNewConnectionDialog, closeExtraWindows } from '../helpers.js';
 import { t } from '../i18n.js';
 
 const PG_HOST = process.env.E2E_PG_HOST || '127.0.0.1';
@@ -12,10 +12,10 @@ const MYSQL_HOST = process.env.E2E_MYSQL_HOST || '127.0.0.1';
 const MYSQL_USER = process.env.E2E_MYSQL_USER || 'root';
 const MYSQL_DB = process.env.E2E_MYSQL_DB || 'datazen_test';
 
-async function openNewConnectionForm(mainWindow: string) {
+async function openNewConnectionForm(_mainWindow: string) {
   const btn = await $(`button*=${t('action.newConnection')}`);
   await btn.click();
-  await switchToNewWindow(mainWindow);
+  await waitForNewConnectionDialog();
   await $(`button*=${t('newConn.testConnection')}`).waitForDisplayed({ timeout: 10000 });
 }
 
@@ -90,7 +90,12 @@ describe('连接校验反向用例 (TC-CONN-005/006/007, TC-EDGE-007)', () => {
     await browser.waitUntil(
       async () => {
         const body = await $('body').getText();
-        return body.includes(t('newConn.testFailed')) || body.includes('失败') || body.includes('error') || body.includes('Error');
+        return (
+          body.includes(t('newConn.testFailed')) ||
+          body.includes('失败') ||
+          body.includes('error') ||
+          body.includes('Error')
+        );
       },
       { timeout: 30000, timeoutMsg: '等待无效 Host 测试失败超时' },
     );

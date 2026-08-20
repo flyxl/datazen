@@ -4,8 +4,13 @@ import { MenuBar } from '../../components/MenuBar';
 import { ThemeToggle } from '../../components/ThemeToggle';
 import { useI18n } from '../../hooks/useI18n';
 import { listenCrossWindow } from '../../lib/crossWindowBus';
+import { openConnectionShareDialog } from '../../lib/connectionShare';
+import type { ConnectionImportSource } from '../../components/connection/ConnectionShareDialog';
+import { openNewConnectionDialog } from '../../lib/windowManager';
 import { useConnectionStore } from '../../stores/connectionStore';
 import { Button } from '../../components/ui/Button';
+import { ConnectionEditorDialogHost } from '../../components/connection/NewConnectionDialog';
+import { ConnectionShareDialogHost } from '../../components/connection/ConnectionShareDialogHost';
 import { ConnectionPage } from '../connection/ConnectionPage';
 import { WelcomePage } from '../welcome/WelcomePage';
 
@@ -37,6 +42,50 @@ export function MainPage() {
     return () => cleanup?.();
   }, [fetchConnections, fetchGroups]);
 
+  useEffect(() => {
+    let cleanup: (() => void) | undefined;
+    void listenCrossWindow('menu:new-connection', () => {
+      openNewConnectionDialog();
+    }).then((fn) => {
+      cleanup = fn;
+    });
+    return () => cleanup?.();
+  }, []);
+
+  useEffect(() => {
+    const cleanups: Array<() => void> = [];
+    const openImport = (source: ConnectionImportSource = 'file') => {
+      openConnectionShareDialog('import', source);
+    };
+
+    void listenCrossWindow('menu:export-connections', () => {
+      openConnectionShareDialog('export');
+    }).then((fn) => cleanups.push(fn));
+    void listenCrossWindow('menu:import-connections', () => {
+      openImport();
+    }).then((fn) => cleanups.push(fn));
+    void listenCrossWindow('menu:import-connections-file', () => {
+      openImport('file');
+    }).then((fn) => cleanups.push(fn));
+    void listenCrossWindow('menu:import-connections-dbx', () => {
+      openImport('dbx');
+    }).then((fn) => cleanups.push(fn));
+    void listenCrossWindow('menu:import-connections-navicat', () => {
+      openImport('navicat');
+    }).then((fn) => cleanups.push(fn));
+    void listenCrossWindow('menu:import-connections-datagrip', () => {
+      openImport('datagrip');
+    }).then((fn) => cleanups.push(fn));
+    void listenCrossWindow('menu:import-connections-dbeaver', () => {
+      openImport('dbeaver');
+    }).then((fn) => cleanups.push(fn));
+    void listenCrossWindow('menu:import-connections-tableplus', () => {
+      openImport('tableplus');
+    }).then((fn) => cleanups.push(fn));
+
+    return () => cleanups.forEach((fn) => fn());
+  }, []);
+
   if (!connectionsLoaded) {
     return (
       <div className="flex h-full min-h-0 flex-col bg-surface text-fg">
@@ -51,6 +100,8 @@ export function MainPage() {
         >
           <div className="h-6 w-6 animate-spin rounded-full border-2 border-accent border-t-transparent" />
         </div>
+        <ConnectionEditorDialogHost />
+        <ConnectionShareDialogHost />
       </div>
     );
   }
@@ -72,13 +123,27 @@ export function MainPage() {
             {t('common.retry')}
           </Button>
         </div>
+        <ConnectionEditorDialogHost />
+        <ConnectionShareDialogHost />
       </div>
     );
   }
 
   if (connections.length === 0) {
-    return <WelcomePage />;
+    return (
+      <>
+        <WelcomePage />
+        <ConnectionEditorDialogHost />
+        <ConnectionShareDialogHost />
+      </>
+    );
   }
 
-  return <ConnectionPage />;
+  return (
+    <>
+      <ConnectionPage />
+      <ConnectionEditorDialogHost />
+      <ConnectionShareDialogHost />
+    </>
+  );
 }

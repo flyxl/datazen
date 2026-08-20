@@ -9,7 +9,7 @@ import {
   openQueryTab,
   openSettingsInMainWindow,
   setEditorContent,
-  switchToNewWindow,
+  waitForNewConnectionDialog,
 } from '../helpers.js';
 import { t } from '../i18n.js';
 
@@ -32,19 +32,14 @@ describe('快捷键 (TC-HOTKEY-001~005)', () => {
     }
   });
 
-  it('TC-HOTKEY-001: Cmd+N 或新建按钮应打开新建连接窗口', async () => {
+  it('TC-HOTKEY-001: Cmd+N 或新建按钮应打开新建连接弹窗', async () => {
     await browser.keys(['Meta', 'n']);
     await browser.pause(800);
-    let handles = await browser.getWindowHandles();
-    if (handles.length === 1) {
+    if (!(await $('[data-testid="new-connection-dialog"]').isExisting())) {
       const btn = await $(`button[title="${t('main.newConnection')}"]`);
       await btn.click();
-      await switchToNewWindow(mainWindow);
-      handles = await browser.getWindowHandles();
-    } else {
-      await switchToNewWindow(mainWindow);
     }
-    expect(handles.length).toBeGreaterThan(1);
+    await waitForNewConnectionDialog();
     await expect(await $(`button*=${t('newConn.testConnection')}`)).toBeDisplayed();
   });
 

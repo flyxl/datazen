@@ -64,10 +64,13 @@ async function nodeReachable(node: string, timeoutMs = 2000): Promise<boolean> {
   });
 }
 
-async function openRedisNewConnectionWindow(mainWindow: string) {
+async function openRedisNewConnectionDialog(mainWindow: string) {
   const newConnBtn = await $(`button*=${t('action.newConnection')}`);
   await newConnBtn.click();
-  await switchToNewWindow(mainWindow);
+  await browser.waitUntil(
+    async () => await $('[data-testid="new-connection-dialog"]').isExisting(),
+    { timeout: 15000, timeoutMsg: 'new-connection dialog did not open' },
+  );
 
   const redisBtn = await $('button*=Redis');
   await redisBtn.click();
@@ -83,9 +86,7 @@ async function setConnectionName(name: string) {
 
 async function selectWizardTopology(kind: 'cluster' | 'sentinel') {
   const label =
-    kind === 'cluster'
-      ? t('redis.wizard.topologyCluster')
-      : t('redis.wizard.topologySentinel');
+    kind === 'cluster' ? t('redis.wizard.topologyCluster') : t('redis.wizard.topologySentinel');
   const trigger = await $('[data-testid="redis-topology"] button');
   await trigger.waitForDisplayed({ timeout: 10000 });
   await trigger.click();
@@ -209,7 +210,7 @@ describe('Redis Cluster topology (E3, optional)', () => {
 
   it('应能通过集群拓扑测试连接 (RD-CL-001)', async () => {
     const nodes = parseNodeList(CLUSTER_NODES_RAW);
-    await openRedisNewConnectionWindow(mainWindow);
+    await openRedisNewConnectionDialog(mainWindow);
     await setConnectionName(CLUSTER_CONN);
     await selectWizardTopology('cluster');
     await setWizardMonoTextarea(nodes.join('\n'));
@@ -272,7 +273,7 @@ describe('Redis Sentinel topology (E3, optional)', () => {
 
   it('应能通过哨兵拓扑测试连接 (RD-SN-001)', async () => {
     const nodes = parseNodeList(SENTINEL_NODES_RAW);
-    await openRedisNewConnectionWindow(mainWindow);
+    await openRedisNewConnectionDialog(mainWindow);
     await setConnectionName(SENTINEL_CONN);
     await selectWizardTopology('sentinel');
     await setWizardInputByPlaceholder('mymaster', SENTINEL_MASTER);

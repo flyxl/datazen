@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowLeft } from 'lucide-react';
 import { ThemedIcon } from '../../components/ThemedIcon';
 import { Button } from '../../components/ui/Button';
+import { PathInput } from '../../components/ui/PathInput';
 import { Select } from '../../components/ui/Select';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useSettings } from '../../hooks/useSettings';
@@ -58,12 +60,14 @@ export interface SettingsContentProps {
   /** Show legacy Close button in the draft/save footer (standalone sub-window). */
   showCloseButton?: boolean;
   onClose?: () => void;
+  onBack?: () => void;
 }
 
 export function SettingsContent({
   initialSection,
   showCloseButton = false,
   onClose,
+  onBack,
 }: Readonly<SettingsContentProps>) {
   useSettings();
   const { t } = useI18n();
@@ -141,6 +145,18 @@ export function SettingsContent({
           className="flex w-[180px] shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-edge bg-surface-alt px-2 py-3"
           data-testid="settings-nav"
         >
+          {onBack && (
+            <Button
+              variant="ghost"
+              className="mb-1 h-8 w-full justify-start gap-1.5 px-2 text-xs"
+              onClick={onBack}
+              data-testid="settings-back"
+              title={t('common.back')}
+            >
+              <ArrowLeft className="h-3.5 w-3.5 shrink-0" />
+              {t('common.back')}
+            </Button>
+          )}
           {SETTINGS_SECTIONS.map((sec) => {
             const isActive = activeSection === sec.id;
             return (
@@ -328,12 +344,11 @@ export function SettingsContent({
                 </SettingRow>
 
                 <SettingRow label={t('settings.logPath')}>
-                  <input
-                    type="text"
+                  <PathInput
                     value={draft.logPath}
-                    onChange={(e) => updateField('logPath', e.target.value)}
+                    onChange={(v) => updateField('logPath', v)}
                     placeholder={defaultLogPath || t('settings.logPathPlaceholder')}
-                    className="h-9 w-full rounded-md border border-edge bg-surface px-3 text-sm text-fg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/25"
+                    dialogOptions={{ directory: true }}
                   />
                 </SettingRow>
 

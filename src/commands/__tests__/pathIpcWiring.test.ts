@@ -75,12 +75,15 @@ describe('path IPC frontend wiring', () => {
     expect(pickFn).not.toContain('.pick_file(');
     expect(pickFn).not.toContain('.pick_folder(');
 
+    const mainPage = readSrc('windows/main/MainPage.tsx');
+    expect(mainPage).toContain('ConnectionShareDialogHost');
+    expect(mainPage).toContain('menu:export-connections');
+    expect(mainPage).toContain('menu:import-connections');
+    expect(mainPage).toContain('menu:import-connections-dbx');
+    expect(mainPage).toContain('menu:import-connections-navicat');
+
     const connectionPage = readSrc('windows/connection/ConnectionPage.tsx');
-    expect(connectionPage).toContain('ConnectionShareDialog');
-    expect(connectionPage).toContain('menu:export-connections');
-    expect(connectionPage).toContain('menu:import-connections');
-    expect(connectionPage).toContain('menu:import-connections-dbx');
-    expect(connectionPage).toContain('menu:import-connections-navicat');
+    expect(connectionPage).toContain('openConnectionShareDialog');
 
     const menuBar = readSrc('components/MenuBar.tsx');
     expect(menuBar).toContain('export-connections');
@@ -94,10 +97,21 @@ describe('path IPC frontend wiring', () => {
     expect(app).toContain('WindowChromeFallback');
     expect(app).not.toContain('fallback={null}');
     expect(app).not.toContain('DocsWindow');
+    expect(app).not.toContain('NewConnectionWindow');
 
     const wm = readSrc('lib/windowManager.ts');
     expect(wm).toContain('buildDocsUrl');
     expect(wm).not.toContain("openSingletonWindow('docs-singleton'");
+    expect(wm).not.toContain("openSingletonWindow('new-connection");
+    expect(wm).not.toContain("openSingletonWindow('settings-singleton'");
+
+    const hostCaps = fs.readFileSync(
+      path.join(ROOT, '../src-tauri/capabilities/default.json.host'),
+      'utf8',
+    );
+    expect(hostCaps).not.toContain('settings-singleton');
+    expect(hostCaps).not.toContain('docs-singleton');
+    expect(hostCaps).not.toContain('new-connection-*');
 
     const docsUrls = readSrc('lib/docsUrls.ts');
     expect(docsUrls).toContain('flyxl.github.io/datazen/docs.html');

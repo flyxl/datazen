@@ -241,10 +241,7 @@ describe('System Menu (MENU-001~MENU-005)', () => {
     expect(canListen).toBe(true);
   });
 
-  it('MENU-005: menu:new-connection event should trigger new connection window', async () => {
-    const handles1 = await browser.getWindowHandles();
-    const initialCount = handles1.length;
-
+  it('MENU-005: menu:new-connection event should trigger new connection dialog', async () => {
     await browser.execute(() => {
       (window as any).__TAURI_INTERNALS__
         ?.invoke?.('plugin:event|emit', {
@@ -253,17 +250,7 @@ describe('System Menu (MENU-001~MENU-005)', () => {
         })
         .catch(() => {});
     });
-    await browser.pause(2000);
-
-    const handles2 = await browser.getWindowHandles();
-    if (handles2.length > initialCount) {
-      for (const h of handles2) {
-        if (!handles1.includes(h)) {
-          await browser.switchToWindow(h);
-          await browser.closeWindow();
-        }
-      }
-      await browser.switchToWindow(handles1[0]);
-    }
+    await browser.pause(1000);
+    await expect(await $('[data-testid="new-connection-dialog"]')).toBeDisplayed();
   });
 });

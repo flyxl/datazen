@@ -18,7 +18,7 @@ describe('getWindowKind', () => {
 
   it('maps window query param to kind', async () => {
     const cases: Array<[string, string]> = [
-      ['?window=new-connection', 'new-connection'],
+      ['?window=new-connection', 'main'],
       ['?window=connection', 'main'],
       ['?window=settings', 'main'],
       ['?window=data-sync', 'data-sync'],
