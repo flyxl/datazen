@@ -795,8 +795,6 @@ pub fn run() {
             commands::get_databases,
             commands::use_database,
             commands::get_tables,
-            commands::kv_scan_keys,
-            commands::kv_get_key,
             commands::get_columns,
             commands::get_table_schema,
             commands::get_structure_capabilities,

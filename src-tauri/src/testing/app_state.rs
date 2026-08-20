@@ -74,21 +74,6 @@ impl TestAppState {
         let conn_id = self.connect_config(id).await;
         (config, conn_id)
     }
-
-    /// Register a redis SQL driver + mock KV driver for kv command tests.
-    pub async fn register_redis_kv(
-        &self,
-        kv_opts: crate::testing::mock_kv_driver::MockKvDriverOptions,
-    ) {
-        use crate::testing::mock_kv_driver::MockKvDriver;
-
-        let redis_driver = MockDriver::new("redis", MockDriverOptions::default());
-        self.registry
-            .register_test_driver("redis", redis_driver)
-            .await;
-        let kv = MockKvDriver::new("redis", kv_opts);
-        self.registry.register_test_kv_driver("redis", kv).await;
-    }
 }
 
 pub fn sample_postgres_config(id: &str) -> ConnectionConfig {

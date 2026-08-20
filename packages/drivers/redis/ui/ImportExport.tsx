@@ -4,9 +4,8 @@ import { Button } from '../../../../src/components/ui/Button';
 import { Dialog } from '../../../../src/components/ui/Dialog';
 import { Input } from '../../../../src/components/ui/Input';
 import { fileCommands } from '../../../../src/commands/file';
-import { databaseCommands } from '../../../../src/commands/database';
 import { useI18n } from '../../../../src/hooks/useI18n';
-import { redisCommandInvoke } from './redisInvoke';
+import { invokeScanKeys, redisCommandInvoke } from './redisInvoke';
 import { invokeCountMatching } from './BatchBar';
 import {
   base64ToZip,
@@ -49,7 +48,7 @@ async function scanKeysForPattern(
   const keys: string[] = [];
   let cursor = 0;
   do {
-    const page = await databaseCommands.kvScanKeys(connectionId, dbIndex, pattern, cursor, 500);
+    const page = await invokeScanKeys(connectionId, dbIndex, pattern, cursor, 500);
     keys.push(...page.keys.map((entry) => entry.key));
     cursor = page.cursor;
   } while (cursor !== 0);
@@ -218,7 +217,12 @@ export function ImportExport({
       if (restoreEntries.length === 0) {
         throw new Error(t('redis.importExportEmptyArchive'));
       }
-      const result = await invokeRestoreKeys(connectionId, dbIndex, restoreEntries, replaceExisting);
+      const result = await invokeRestoreKeys(
+        connectionId,
+        dbIndex,
+        restoreEntries,
+        replaceExisting,
+      );
       const errCount = result.errors.length;
       showSummary([
         t('redis.importExportRestored').replace('{count}', String(result.restored)),
@@ -283,19 +287,43 @@ export function ImportExport({
                 disabled={busy}
               />
               <div className="flex items-center gap-2">
-                <Button type="button" className="h-7 px-2 text-xs" variant="ghost" onClick={() => void loadPatternCount()} disabled={busy}>
-                  {t('redis.matchCount').replace('{count}', matchCount == null ? '…' : String(matchCount))}
+                <Button
+                  type="button"
+                  className="h-7 px-2 text-xs"
+                  variant="ghost"
+                  onClick={() => void loadPatternCount()}
+                  disabled={busy}
+                >
+                  {t('redis.matchCount').replace(
+                    '{count}',
+                    matchCount == null ? '…' : String(matchCount),
+                  )}
                 </Button>
               </div>
             </div>
           ) : null}
 
           <div className="flex flex-wrap gap-2">
-            <Button type="button" className="h-7 px-2 text-xs" onClick={() => void handleExportZip()} disabled={busy}>
-              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+            <Button
+              type="button"
+              className="h-7 px-2 text-xs"
+              onClick={() => void handleExportZip()}
+              disabled={busy}
+            >
+              {busy ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Download className="h-4 w-4" />
+              )}
               {t('redis.importExportZip')}
             </Button>
-            <Button type="button" className="h-7 px-2 text-xs" variant="ghost" onClick={() => void handleExportJson()} disabled={busy}>
+            <Button
+              type="button"
+              className="h-7 px-2 text-xs"
+              variant="ghost"
+              onClick={() => void handleExportJson()}
+              disabled={busy}
+            >
               {t('redis.importExportJson')}
             </Button>
           </div>
@@ -313,7 +341,12 @@ export function ImportExport({
             {t('redis.importExportReplace')}
           </label>
           <p className="text-xs text-fg-muted">{t('redis.importExportReplaceHint')}</p>
-          <Button type="button" className="h-7 px-2 text-xs" onClick={() => void handleImportZip()} disabled={busy}>
+          <Button
+            type="button"
+            className="h-7 px-2 text-xs"
+            onClick={() => void handleImportZip()}
+            disabled={busy}
+          >
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
             {t('redis.importExportImportZip')}
           </Button>

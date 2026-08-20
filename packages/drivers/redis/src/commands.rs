@@ -1041,6 +1041,7 @@ mod tests {
         assert!(ids.contains(&"set_string".into()));
         assert!(ids.contains(&"flush_db".into()));
         assert!(ids.contains(&"scan_keys".into()));
+        assert!(ids.contains(&"get_key".into()));
         assert!(ids.contains(&"pubsub_subscribe".into()));
         assert!(ids.contains(&"pubsub_unsubscribe".into()));
         let subscribe = redis_command_definitions()
@@ -1063,5 +1064,32 @@ mod tests {
             .unwrap()
             .iter()
             .any(|v| v == "key"));
+    }
+
+    #[test]
+    fn scan_keys_command_accepts_pagination_input() {
+        let scan = redis_command_definitions()
+            .into_iter()
+            .find(|d| d.id == "scan_keys")
+            .unwrap();
+        let props = &scan.input_schema["properties"];
+        assert!(props.get("dbIndex").is_some());
+        assert!(props.get("pattern").is_some());
+        assert!(props.get("cursor").is_some());
+        assert!(props.get("count").is_some());
+        assert_eq!(scan.permissions, vec!["redis:allow-info"]);
+    }
+
+    #[test]
+    fn get_key_command_requires_key_input() {
+        let get = redis_command_definitions()
+            .into_iter()
+            .find(|d| d.id == "get_key")
+            .unwrap();
+        assert_eq!(
+            get.input_schema["required"].as_array().unwrap(),
+            &vec![serde_json::json!("key")]
+        );
+        assert_eq!(get.permissions, vec!["redis:allow-info"]);
     }
 }

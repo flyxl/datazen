@@ -17,8 +17,8 @@ Base: `main` @ 91283919
 
 | ID | 标题 | Status |
 |----|------|--------|
-| F1 | Host schema_objects SQL → Driver Command | pending |
-| F2 | Redis KV IPC → execute_driver_command | pending |
+| F1 | Host schema_objects SQL → Driver Command | dev_done |
+| F2 | Redis KV IPC → execute_driver_command | dev_done |
 | F3 | Admin UI 硬编码 → Command definitions | pending |
 | F4 | EXPLAIN 方言解析下沉驱动 | pending |
 | F5 | 测试落点迁移 | dev_done |
@@ -30,12 +30,24 @@ Base: `main` @ 91283919
 | F11 | --dt-binary token | tested_pass |
 | F12 | sync/ 模块重命名为 transfer/ | dev_done |
 
+## F2 notes
+
+- Removed Host `kv_scan_keys` / `kv_get_key` IPC (`commands/kv.rs`)
+- Redis workbench/import UI now calls `scan_keys` / `get_key` via `execute_driver_command`
+- KV invoke helpers: `packages/drivers/redis/ui/redisInvoke.ts`
+
 ## F5 notes
 
 - `schema_objects` SQL + shared tests → `packages/driver-api/src/schema_objects.rs`
 - Dialect tests → `packages/drivers/{postgres,mysql,sqlite}/tests/schema_objects_sql.rs`
 - Removed Host `schema_objects` dialect tests + `sqlite_function_list_is_empty` IPC test
 - `e2e/specs/data-sync-real.ts` documented as Host IPC contract (kept in `e2e/specs/`)
+
+## F1 notes
+
+- Added `list_objects`, `get_object_ddl`, `list_privileges` Driver Commands in `driver-api` + postgres/mysql/sqlite drivers
+- Host `commands/schema.rs` dispatches via `execute_driver_command`; dialect SQL stays in driver-api for drivers only
+- Driver tests: `packages/drivers/{postgres,mysql,sqlite}/tests/schema_object_commands.rs` (+ sqlite integration)
 
 ## QA log
 
