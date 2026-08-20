@@ -593,7 +593,7 @@ mod tests {
             Ok(0)
         }
 
-        async fn cancel_query(&self, _handle: ConnectionHandle) -> Result<(), DriverError> {
+        async fn cancel_query(&self, _handle: &ConnectionHandle) -> Result<(), DriverError> {
             Ok(())
         }
     }
