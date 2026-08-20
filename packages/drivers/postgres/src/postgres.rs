@@ -1218,9 +1218,14 @@ impl DatabaseDriver for PostgresDriver {
             .map(Self::extract_pg_plan_metrics)
             .unwrap_or((None, None));
 
+        let plan_tree = plan_json
+            .as_ref()
+            .and_then(datazen_driver_api::normalize_postgres_explain_plan);
+
         Ok(ExplainResult {
             plan_text,
             plan_json,
+            plan_tree,
             total_cost,
             estimated_rows,
         })

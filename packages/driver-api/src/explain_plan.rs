@@ -58,7 +58,19 @@ fn parse_postgres_node(node: &serde_json::Map<String, Value>, id: &str) -> Expla
 
     let details = node
         .iter()
-        .filter(|(key, _)| key.as_str() != "Plans" && key.as_str() != "Node Type")
+        .filter(|(key, _)| {
+            !matches!(
+                key.as_str(),
+                "Plans"
+                    | "Node Type"
+                    | "Total Cost"
+                    | "Plan Rows"
+                    | "Startup Cost"
+                    | "Relation Name"
+                    | "Index Name"
+                    | "Alias"
+            )
+        })
         .map(|(key, value)| ExplainPlanDetail {
             key: key.clone(),
             value: format_value(value),
@@ -73,9 +85,8 @@ fn parse_postgres_node(node: &serde_json::Map<String, Value>, id: &str) -> Expla
                 .iter()
                 .enumerate()
                 .filter_map(|(index, child)| {
-                    is_record(child).map(|child_obj| {
-                        parse_postgres_node(child_obj, &format!("{id}.{index}"))
-                    })
+                    is_record(child)
+                        .map(|child_obj| parse_postgres_node(child_obj, &format!("{id}.{index}")))
                 })
                 .collect()
         })

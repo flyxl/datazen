@@ -8,6 +8,7 @@ pub use async_trait::async_trait;
 pub use inventory;
 
 pub mod command;
+mod explain_plan;
 mod factory;
 mod query_stream;
 mod reuse;
@@ -22,10 +23,11 @@ mod types;
 pub use command::{
     check_command_access, execute_command_definition, execute_command_definition_for,
     query_command_definition, query_command_definition_for, query_only_command_definitions,
-    required_access_level, statement_command_definitions, validate_command_input,
-    CommandAccessLevel, CommandCategory, CommandResult, DriverCommandDefinition,
-    DriverCommandMetadata,
+    query_stream_command_definition, required_access_level, statement_command_definitions,
+    validate_command_input, CommandAccessLevel, CommandCategory, CommandResult,
+    DriverCommandDefinition, DriverCommandMetadata,
 };
+pub use explain_plan::{normalize_mysql_explain_plan, normalize_postgres_explain_plan};
 pub use factory::*;
 pub use query_stream::{
     append_select_limit, emit_execute_statement, emit_multi_query_as_stream, stream_decoded_rows,
