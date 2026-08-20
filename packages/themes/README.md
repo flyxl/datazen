@@ -13,6 +13,7 @@ See [`docs/architecture/backend/theme.md`](../../docs/architecture/backend/theme
 | `community.tokyo-night` | Tokyo Night | dark | Indigo storm + neon blue |
 | `community.solarized-light` | Solarized Light | light | Warm paper Solarized |
 | `community.paper` | Paper | light | Clean gray + ink-blue |
+| `community.slate-blue` | Slate Blue | light | Slate surfaces, dark title bar, blue accents |
 
 ## Token contract
 

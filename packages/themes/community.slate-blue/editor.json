@@ -1,0 +1,12 @@
+{
+  "keyword": "#3b82f6",
+  "string": "#0e7490",
+  "number": "#c2410c",
+  "comment": "#94a3b8",
+  "operator": "#0891b2",
+  "punctuation": "#475569",
+  "foreground": "#0f172a",
+  "background": "#ffffff",
+  "selection": "rgba(59, 130, 246, 0.15)",
+  "cursor": "#0f172a"
+}
