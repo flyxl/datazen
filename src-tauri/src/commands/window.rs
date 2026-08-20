@@ -1,10 +1,11 @@
 use super::error::{CmdExt, CommandError};
 use crate::theme::surface_bg::{parse_css_hex, SurfaceBgCache};
+use crate::AppState;
 use serde::Deserialize;
 use tauri::webview::PageLoadEvent;
 use tauri::window::Color;
 use tauri::{
-    AppHandle, LogicalSize, Manager, Size, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
+    AppHandle, LogicalSize, Manager, Size, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
 };
 
 /// Main window defaults from `tauri.conf.json`.
@@ -71,34 +72,40 @@ fn resolved_window_background(app: &AppHandle, override_hex: Option<&str>) -> Co
     window_background_color(cached.as_deref().or(override_hex))
 }
 
-pub const DOCS_WINDOW_LABEL: &str = "docs-singleton";
+const DOCS_BASE_EN: &str = "https://flyxl.github.io/datazen/docs.html";
+const DOCS_BASE_ZH: &str = "https://flyxl.github.io/datazen/zh/docs.html";
 
-pub fn docs_window_options(section: Option<&str>) -> CreateWindowOptions {
-    let mut qs = String::from("window=docs");
+const DOCS_SECTIONS: &[&str] = &[
+    "overview",
+    "features",
+    "ai",
+    "context",
+    "workflows",
+    "opsDashboard",
+    "schemaDiff",
+];
+
+/// Official help docs URL (GitHub Pages). Mirrors `src/lib/docsUrls.ts`.
+pub fn docs_url(language: &str, section: Option<&str>) -> String {
+    let base = if language.starts_with("zh") {
+        DOCS_BASE_ZH
+    } else {
+        DOCS_BASE_EN
+    };
     if let Some(section) = section.map(str::trim).filter(|s| !s.is_empty()) {
-        // Section ids are app-controlled (`overview`, `workflows`, …).
-        qs.push_str("&section=");
-        qs.push_str(section);
+        if DOCS_SECTIONS.contains(&section) {
+            return format!("{base}#{section}");
+        }
     }
-    CreateWindowOptions {
-        label: DOCS_WINDOW_LABEL.into(),
-        url: format!("window.html?{qs}"),
-        title: "DataZen".into(),
-        width: 920.0,
-        height: 680.0,
-        min_width: Some(640.0),
-        min_height: Some(480.0),
-        center: true,
-        accept_first_mouse: true,
-        transparent: None,
-        background_color: None,
-    }
+    base.to_string()
 }
 
-/// Open (or focus) the in-app docs singleton. Prefer calling this from Rust
-/// menu handlers instead of `emit` → frontend → IPC round-trips.
+/// Open official help docs in the system browser (native Help menu).
 pub async fn open_docs_window(app: AppHandle, section: Option<&str>) -> Result<(), CommandError> {
-    create_sub_window(app, docs_window_options(section)).await
+    let state = app.state::<AppState>();
+    let settings = state.store.get_settings().await;
+    let url = docs_url(&settings.language, section);
+    open::that(&url).map_err(|e| CommandError::Internal(format!("open_docs_window: {e}")))
 }
 
 /// Create (or focus) a sub-window.
@@ -323,25 +330,24 @@ mod tests {
     }
 
     #[test]
-    fn docs_window_options_are_singleton_with_docs_kind() {
-        let opts = docs_window_options(None);
-        assert_eq!(opts.label, DOCS_WINDOW_LABEL);
-        assert_eq!(opts.url, "window.html?window=docs");
-        assert_eq!(opts.width, 920.0);
-        assert_eq!(opts.min_width, Some(640.0));
+    fn docs_url_uses_english_base_by_default() {
+        assert_eq!(docs_url("en", None), DOCS_BASE_EN);
+        assert_eq!(docs_url("de", Some("ai")), format!("{DOCS_BASE_EN}#ai"));
     }
 
     #[test]
-    fn docs_window_options_append_section() {
-        let opts = docs_window_options(Some("workflows"));
-        assert_eq!(opts.label, DOCS_WINDOW_LABEL);
-        assert_eq!(opts.url, "window.html?window=docs&section=workflows");
+    fn docs_url_uses_chinese_base_for_zh_locales() {
+        assert_eq!(docs_url("zh-CN", None), DOCS_BASE_ZH);
+        assert_eq!(
+            docs_url("zh-TW", Some("workflows")),
+            format!("{DOCS_BASE_ZH}#workflows")
+        );
     }
 
     #[test]
-    fn docs_window_options_ignore_blank_section() {
-        let opts = docs_window_options(Some("  "));
-        assert_eq!(opts.url, "window.html?window=docs");
+    fn docs_url_ignores_unknown_sections() {
+        assert_eq!(docs_url("en", Some("getting-started")), DOCS_BASE_EN);
+        assert_eq!(docs_url("en", Some("  ")), DOCS_BASE_EN);
     }
 
     #[test]

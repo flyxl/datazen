@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { DOCS_BASE_EN, DOCS_BASE_ZH } from '../docsUrls';
 
 const mockInvoke = vi.fn().mockResolvedValue(undefined);
+const mockOpenPath = vi.fn().mockResolvedValue(undefined);
 const mockMessage = vi.fn().mockResolvedValue(undefined);
 const mockEmitCrossWindow = vi.fn().mockResolvedValue(undefined);
 const mockShow = vi.fn().mockResolvedValue(undefined);
@@ -29,6 +31,18 @@ vi.mock('@tauri-apps/api/webviewWindow', () => ({
   },
 }));
 
+vi.mock('../../commands/settings', () => ({
+  settingsCommands: {
+    openPath: (...args: unknown[]) => mockOpenPath(...args),
+  },
+}));
+
+vi.mock('../../stores/settingsStore', () => ({
+  useSettingsStore: {
+    getState: () => ({ settings: { language: 'en' } }),
+  },
+}));
+
 describe('windowManager — browser', () => {
   beforeEach(() => {
     delete (window as Record<string, unknown>).__TAURI_INTERNALS__;
@@ -44,6 +58,7 @@ describe('windowManager — browser', () => {
     const { WINDOW_CAPABILITY_LABEL_SAMPLES } = await import('../windowManager');
     expect(WINDOW_CAPABILITY_LABEL_SAMPLES).toContain('main');
     expect(WINDOW_CAPABILITY_LABEL_SAMPLES).not.toContain('settings-singleton');
+    expect(WINDOW_CAPABILITY_LABEL_SAMPLES).not.toContain('docs-singleton');
   });
 
   it('openSettingsWindow emits menu:open-settings with section in browser mode', async () => {
@@ -116,16 +131,19 @@ describe('windowManager — browser', () => {
     openWorkflowWindow();
     expect(vi.mocked(window.open).mock.calls.length).toBe(openCallsBeforeWorkflow);
 
-    openDocsWindow('getting-started');
-    expect(window.open).toHaveBeenLastCalledWith(
-      '/window.html?window=docs&section=getting-started',
-      '_blank',
-      expect.any(String),
-    );
+    openDocsWindow('workflows');
+    expect(window.open).toHaveBeenLastCalledWith(`${DOCS_BASE_EN}#workflows`, '_blank', 'noopener');
+    expect(mockOpenPath).not.toHaveBeenCalled();
 
     const openCallsBeforeDashboard = vi.mocked(window.open).mock.calls.length;
     openDashboardWindow('dash-1', 'Sales');
     expect(vi.mocked(window.open).mock.calls.length).toBe(openCallsBeforeDashboard);
+  });
+
+  it('openDocsWindow ignores unknown section hash', async () => {
+    const { openDocsWindow } = await import('../windowManager');
+    openDocsWindow('getting-started');
+    expect(window.open).toHaveBeenLastCalledWith(DOCS_BASE_EN, '_blank', 'noopener');
   });
 });
 
@@ -134,10 +152,28 @@ describe('windowManager — Tauri', () => {
     (window as Record<string, unknown>).__TAURI_INTERNALS__ = {};
     vi.clearAllMocks();
     mockInvoke.mockResolvedValue(undefined);
+    mockOpenPath.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
     delete (window as Record<string, unknown>).__TAURI_INTERNALS__;
+  });
+
+  it('openDocsWindow uses open_path IPC and does not create a sub-window', async () => {
+    vi.resetModules();
+    const openSpy = vi.spyOn(window, 'open').mockReturnValue(null);
+    const settingsStore = await import('../../stores/settingsStore');
+    vi.spyOn(settingsStore.useSettingsStore, 'getState').mockReturnValue({
+      settings: { language: 'zh-CN' },
+    } as ReturnType<typeof settingsStore.useSettingsStore.getState>);
+
+    const { openDocsWindow } = await import('../windowManager');
+    openDocsWindow('ai');
+    await vi.waitFor(() => expect(mockOpenPath).toHaveBeenCalled());
+    expect(mockOpenPath).toHaveBeenCalledWith(`${DOCS_BASE_ZH}#ai`);
+    expect(mockInvoke).not.toHaveBeenCalledWith('create_sub_window', expect.anything());
+    expect(openSpy).not.toHaveBeenCalled();
+    openSpy.mockRestore();
   });
 
   it('openSettingsWindow focuses main and emits menu:open-settings instead of create_sub_window', async () => {

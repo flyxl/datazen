@@ -40,12 +40,6 @@ const BackupWindow = lazy(() =>
     return { default: m.BackupWindow };
   }),
 );
-const DocsWindow = lazy(() =>
-  import('./windows/docs/DocsWindow').then((m) => {
-    mark('DocsWindow chunk loaded');
-    return { default: m.DocsWindow };
-  }),
-);
 
 const windowKind = getWindowKind();
 mark(`windowKind resolved: "${windowKind}"`);
@@ -64,8 +58,6 @@ function WindowContent() {
       return <SchemaDiffWindow />;
     case 'backup':
       return <BackupWindow />;
-    case 'docs':
-      return <DocsWindow />;
     case 'main':
     default:
       return <MainPage />;

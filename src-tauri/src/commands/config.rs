@@ -144,6 +144,10 @@ pub async fn open_context_dir(state: State<'_, AppState>) -> Result<(), CommandE
 /// Open a path only if it lies under the app data dir or configured context dir.
 /// Prefer open_log_dir / open_workflows_dir / open_context_dir when possible.
 pub(crate) async fn open_path_impl(state: &AppState, path: String) -> Result<(), CommandError> {
+    if path.starts_with("http://") || path.starts_with("https://") {
+        return open::that(&path).map_err(|e| CommandError::Internal(format!("open_path: {e}")));
+    }
+
     require_webdriver_path_ipc(
         "open_path disabled; use open_log_dir / open_workflows_dir / open_context_dir",
     )?;

@@ -7,7 +7,10 @@
  */
 
 import { invoke } from '@tauri-apps/api/core';
+import { settingsCommands } from '../commands/settings';
 import { t } from '../locales/t';
+import { useSettingsStore } from '../stores/settingsStore';
+import { buildDocsUrl } from './docsUrls';
 import { emitCrossWindow } from './crossWindowBus';
 
 /**
@@ -22,7 +25,6 @@ export const WINDOW_CAPABILITY_LABEL_SAMPLES = [
   'schema-diff-singleton',
   'backup-singleton',
   'backup-restore-singleton',
-  'docs-singleton',
 ] as const;
 
 interface OpenWindowOptions {
@@ -109,9 +111,6 @@ function openWindow(label: string, options: OpenWindowOptions) {
  * only focus the window, which silently does nothing when the window
  * exists but never became visible.
  *
- * Native Help → Documentation opens docs from Rust (`open_docs_window`) so
- * it never fans out through every webview. In-app buttons still use this
- * helper via `invoke('create_sub_window')`.
  */
 function openSingletonWindow(label: string, options: OpenWindowOptions) {
   openWindow(label, options);
@@ -177,18 +176,17 @@ export function openSettingsWindow(section?: string) {
   );
 }
 
+/** Open official help docs in the system browser (GitHub Pages). */
 export function openDocsWindow(section?: string) {
-  const params: Record<string, string> = { window: 'docs' };
-  if (section) params.section = section;
-
-  openSingletonWindow('docs-singleton', {
-    params,
-    title: t('win.docs'),
-    width: 920,
-    height: 680,
-    minWidth: 640,
-    minHeight: 480,
-  });
+  const language = useSettingsStore.getState().settings.language;
+  const url = buildDocsUrl(language, section);
+  if (isTauri()) {
+    void settingsCommands.openPath(url).catch(() => {
+      window.open(url, '_blank', 'noopener');
+    });
+  } else {
+    window.open(url, '_blank', 'noopener');
+  }
 }
 
 // ── Multi-instance windows ──────────────────────────────────────────

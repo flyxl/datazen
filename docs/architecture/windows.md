@@ -8,12 +8,13 @@
 
 | 窗口 | 用途 | Label / `?window=` |
 |------|------|-------------------|
-| **main**（主工作区） | 连接导航树、连接 Tab、Workflow、Dashboard、Settings、查询与 Schema 浏览 | `main`；legacy `connection` / `workflow` / `dashboard` / `settings` 会别名到 `main` |
+| **main**（主工作区） | 连接导航树、连接 Tab、Workflow、Dashboard、Settings、查询与 Schema 浏览 | `main`；legacy `connection` / `workflow` / `dashboard` / `settings` / `docs` 会别名到 `main` |
 | new-connection | 新建/编辑连接（单例） | `new-connection-singleton` / `new-connection` |
-| docs | 内置使用说明（单例） | `docs-singleton` / `docs` |
 | backup | 备份/恢复（单例） | `backup-singleton` / `backup` |
 | data-sync | 同族 Data Sync Diff Workspace（单例） | `data-sync-singleton` / `data-sync` |
 | schema-diff | Schema Diff（单例） | `schema-diff` |
+
+**使用说明 / Help 文档**不再作为应用内子窗口。菜单与各 UI 入口通过 `openDocsWindow(section?)`（`src/lib/windowManager.ts`）在系统浏览器打开 GitHub Pages 官方文档（`src/lib/docsUrls.ts` → `https://flyxl.github.io/datazen/docs.html` 或 `/zh/docs.html`，可选 `#section` 锚点）。原生 Help 菜单由 Rust `open_docs_window` 同样打开该 URL。
 
 前端入口：`src/windows/main/MainPage.tsx` → `ConnectionPage.tsx` 在 **main** 工作区内渲染（含 `ConnectionNavigatorTree`、`ConnectionWorkspaceHome`、面板 Tab）。`openConnectionWindow()`（`src/lib/windowManager.ts`）会 `focusMainWindow()`，并通过 `localStorage` + 跨窗口事件 `datazen:open-connection` 投递连接 payload，**不再**创建 `connection-*` 子窗口。
 
@@ -65,13 +66,10 @@ function openWindow(label: string, options: OpenWindowOptions) {
 
 - `openNewConnectionWindow(editId?)` — 新建/编辑连接（子窗口）
 - `openConnectionWindow(...)` — **聚焦主工作区**并打开/追加连接 Tab（非新 OS 窗口）
-- `openSettingsWindow(section?)` — 主工作区内打开 `SettingsPage`（emit `menu:settings`）
+- `openSettingsWindow(section?)` — 主工作区内打开 `SettingsPage`（emit `menu:open-settings`）
+- `openDocsWindow(section?)` — 系统浏览器打开官网使用说明（`open_path` IPC / `window.open` 降级）
 - `openDataSyncWindow()` / `openBackupWindow()` — 对应单例子窗口
 - Workflow / Dashboard / Settings — 主工作区内导航（`menu:workflow` / `menu:dashboard` / `menu:open-settings` 等）
-
-### 3.1 Docs 窗口单例
-
-固定 label `docs-singleton`，已存在则 `setFocus()`。
 
 ## 4. 窗口路由
 
@@ -83,11 +81,10 @@ export type WindowKind =
   | 'new-connection'
   | 'data-sync'
   | 'schema-diff'
-  | 'backup'
-  | 'docs';
+  | 'backup';
 
 /** Legacy sub-window kinds that now route to the unified main shell. */
-const LEGACY_MAIN_ALIASES = new Set(['connection', 'workflow', 'dashboard', 'settings']);
+const LEGACY_MAIN_ALIASES = new Set(['connection', 'workflow', 'dashboard', 'settings', 'docs']);
 ```
 
 `App.tsx` 按 `getWindowKind()` 懒加载对应页面；legacy 别名一律落到 `main`。
