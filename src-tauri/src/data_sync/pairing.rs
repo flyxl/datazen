@@ -1,6 +1,6 @@
 //! Data Sync pairing: Direct same-family only. IR / heterogeneous → Transfer.
 
-use crate::sync::pairing::{normalize_sync_family, resolve_sync_pairing, SyncPairing};
+use crate::transfer::pairing::{normalize_sync_family, resolve_sync_pairing, SyncPairing};
 
 use super::error::DataSyncError;
 

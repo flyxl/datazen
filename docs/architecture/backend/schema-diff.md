@@ -26,7 +26,7 @@ Cross-dialect plans call `SyncAdapterRegistry::ensure_pair`, then:
 
 Unsupported mappings become plan **warnings** (statement skipped).
 
-Compare-only DDL previews in Data Sync still use `sync/ddl.rs` `build_create_table_ddl`.
+Compare-only DDL previews in Data Sync still use `transfer/ddl.rs` `build_create_table_ddl`.
 
 ## User docs
 

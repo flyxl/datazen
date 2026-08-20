@@ -55,7 +55,7 @@ impl SyncAdapterRegistry {
 
     fn register_from_inventory(&self, db_type: &DatabaseType) -> Result<(), String> {
         // Touch residual module; path/git driver crates link via Cargo features / tests.
-        crate::sync::adapters::force_link();
+        crate::transfer::adapters::force_link();
         #[cfg(test)]
         force_link_driver_sync_adapters();
 

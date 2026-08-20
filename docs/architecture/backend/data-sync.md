@@ -50,7 +50,7 @@ src-tauri/src/commands/sync/
 └── table_sync.rs   # sync_table / sync_tables 仅 refuse_overwrite_copy
 ```
 
-`src-tauri/src/sync/` 仍保留 IR 适配器与旧 `compare_databases` 抽样对比；**不得**再作为 Synchronization 执行引擎。
+`src-tauri/src/transfer/` 仍保留 IR 适配器与旧 `compare_databases` 抽样对比；**不得**再作为 Synchronization 执行引擎。
 
 ## 3. 执行链
 

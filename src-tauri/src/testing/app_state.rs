@@ -6,8 +6,8 @@ use crate::commands::AppState;
 use crate::db::registry::DriverRegistry;
 use crate::db::{ConnectionConfig, SslMode, TableInfo, TableType};
 use crate::store::Store;
-use crate::sync::adapter_registry::SyncAdapterRegistry;
 use crate::testing::mock_driver::{MockDriver, MockDriverOptions};
+use crate::transfer::adapter_registry::SyncAdapterRegistry;
 
 /// Temp store + mock postgres driver + keyring guard for command tests.
 pub struct TestAppState {

@@ -10,7 +10,7 @@ pub use datazen_driver_api::sync::{
     SyncTargetAdapter,
 };
 
-/// Compatibility re-exports so existing `crate::sync::adapter` / `crate::sync::ir` paths keep working.
+/// Compatibility re-exports so existing `crate::transfer::adapter` / `crate::transfer::ir` paths keep working.
 pub mod adapter {
     pub use super::{SyncSourceAdapter, SyncTargetAdapter};
 }

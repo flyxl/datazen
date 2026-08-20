@@ -61,7 +61,7 @@ pub fn build_create_table_ddl(ir_table: &IRTable, tgt: &dyn SyncTargetAdapter) -
 mod tests {
     use super::*;
     use crate::db::Value;
-    use crate::sync::ir::{IRColumn, IRDefault, IRType};
+    use crate::transfer::ir::{IRColumn, IRDefault, IRType};
 
     struct DummyTarget {
         suffix: Option<String>,

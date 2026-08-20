@@ -15,8 +15,8 @@ use crate::schema_diff::diff_table_schemas;
 use crate::schema_diff::plan::{build_schema_diff_plan, PlanOptions};
 use crate::schema_diff::types::TableColumnDiff;
 use crate::schema_diff::types::{normalize_dialect, SchemaDiffDeployResult, SchemaDiffPlan};
-use crate::sync::adapter::{SyncSourceAdapter, SyncTargetAdapter};
-use crate::sync::ddl::build_create_table_ddl;
+use crate::transfer::adapter::{SyncSourceAdapter, SyncTargetAdapter};
+use crate::transfer::ddl::build_create_table_ddl;
 use std::sync::Arc;
 use tauri::State;
 

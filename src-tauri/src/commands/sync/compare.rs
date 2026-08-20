@@ -2,7 +2,7 @@ use super::super::error::{CmdExt, CommandError};
 use super::types::DATA_COMPARE_SAMPLE_LIMIT;
 use crate::db::{TableSchema, Value};
 use crate::schema_diff::types::{ChangedColumnDiff, ColumnSnapshot, TableColumnDiff};
-use crate::sync::ir::{IRColumn, IRTable, IRType};
+use crate::transfer::ir::{IRColumn, IRTable, IRType};
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 
@@ -24,7 +24,7 @@ pub(super) async fn maybe_use_database(
 
 /// Run adapter-provided full-type SQL (if any) and map `(name, full_type)` rows.
 pub(crate) async fn fetch_full_column_types(
-    adapter: &dyn crate::sync::adapter::SyncSourceAdapter,
+    adapter: &dyn crate::transfer::adapter::SyncSourceAdapter,
     driver: &dyn crate::db::DatabaseDriver,
     handle: &crate::db::ConnectionHandle,
     table: &str,
