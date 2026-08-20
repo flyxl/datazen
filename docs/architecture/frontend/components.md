@@ -120,7 +120,21 @@ const CellRenderer = memo(function CellRenderer({ value, type, isEditing }: Prop
 
 ### 6.2 窗口布局结构
 
-#### 主窗口 (main-window)
+#### 主窗口 (main → ConnectionPage)
+
+> 旧版连接卡片启动器（`GroupPanel` / `ActionPanel` 等）已移除；主窗口现统一为 `ConnectionPage` 工作区（左侧 `ConnectionNavigatorTree` + 功能 sidebar + 内容 Tab）。
+
+```
+┌──────────────────────────────────────────────────┐
+│ TitleBar + 功能 sidebar（连接 / Workflow / Dashboard / Settings）│
+├──────────┬───────────────────────────────────────┤
+│ 连接导航树 │  ConnectionWorkspaceHome / Tab 内容   │
+│          │  （QueryPanel、TableView、WorkflowPage…）│
+└──────────┴───────────────────────────────────────┘
+```
+
+<details>
+<summary>已移除：旧版连接卡片启动器布局（F4）</summary>
 
 ```
 ┌──────────────────────────────────────────────────┐  ← 固定 h-10 (40px)
@@ -137,34 +151,7 @@ const CellRenderer = memo(function CellRenderer({ value, type, isEditing }: Prop
 │ 状态栏                                           │
 └──────────────────────────────────────────────────┘
 ```
-
-CSS 实现：
-
-```tsx
-<div className="flex flex-col h-screen overflow-hidden">
-  {/* 标题栏 */}
-  <header className="h-10 shrink-0 bg-slate-800" data-tauri-drag-region />
-
-  {/* 工具栏 */}
-  <div className="h-14 shrink-0 bg-slate-800 border-b border-slate-700" />
-
-  {/* 内容区 */}
-  <div className="flex flex-1 min-h-0">
-    {/* 分组面板 - 可拖拽宽度 */}
-    <aside style={{ width: sidebarWidth }} className="shrink-0 bg-slate-800 border-r border-slate-700">
-      <GroupPanel />
-    </aside>
-    <ResizeHandle onResize={setSidebarWidth} />
-    {/* 卡片网格 */}
-    <main className="flex-1 overflow-auto p-6">
-      <ConnectionGrid />
-    </main>
-  </div>
-
-  {/* 状态栏 */}
-  <footer className="h-10 shrink-0 bg-slate-800 border-t border-slate-700" />
-</div>
-```
+</details>
 
 #### 主工作区连接视图 (main → ConnectionPage)
 
@@ -798,7 +785,6 @@ const LEGACY_MAIN_ALIASES = new Set(['connection', 'workflow', 'dashboard']);
 // App.tsx（示意）
 switch (getWindowKind()) {
   case 'main': return <MainPage />; // → ConnectionPage 统一工作区
-  case 'settings': return <SettingsWindow />;
   case 'new-connection': return <NewConnectionWindow />;
   // backup / data-sync / schema-diff / docs …
 }

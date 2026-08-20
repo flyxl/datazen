@@ -1,20 +1,18 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { render, cleanup, waitFor, fireEvent, screen, within } from '@testing-library/react';
-import { SettingsWindow } from '../SettingsWindow';
+import { SettingsContent } from '../SettingsContent';
 import type { AppSettings, PromptScenario } from '../../../types';
 
-const closeWindowMock = vi.fn().mockResolvedValue(undefined);
+const onCloseMock = vi.fn();
 
 const {
   loadSettingsMock,
   updateSettingsMock,
-  loadAiConfigMock,
   loadProvidersMock,
   validateConfigMock,
   saveConfigMock,
   deleteConfigMock,
   fetchRemoteModelsMock,
-  clearErrorMock,
   loadMcpServersMock,
   connectMcpServerMock,
   disconnectMcpServerMock,
@@ -31,7 +29,6 @@ const {
   mcpGetStatusMock,
   mcpStartStdioMock,
   mcpStopMock,
-  getUrlParamMock,
   currentSettings,
   aiState,
 } = vi.hoisted(() => {
@@ -118,13 +115,11 @@ const {
       }
       Object.assign(currentSettings, partial);
     }),
-    loadAiConfigMock: aiState.loadConfig,
     loadProvidersMock: aiState.loadProviders,
     validateConfigMock: aiState.validateConfig,
     saveConfigMock: aiState.saveConfig,
     deleteConfigMock: aiState.deleteConfig,
     fetchRemoteModelsMock: aiState.fetchRemoteModels,
-    clearErrorMock: aiState.clearError,
     loadMcpServersMock: aiState.loadMcpServers,
     connectMcpServerMock: aiState.connectMcpServer,
     disconnectMcpServerMock: aiState.disconnectMcpServer,
@@ -141,7 +136,6 @@ const {
     mcpGetStatusMock: vi.fn().mockResolvedValue({ running: false, transport: 'stdio' }),
     mcpStartStdioMock: vi.fn().mockResolvedValue(undefined),
     mcpStopMock: vi.fn().mockResolvedValue(undefined),
-    getUrlParamMock: vi.fn().mockReturnValue(null),
     currentSettings,
     aiState,
   };
@@ -157,10 +151,6 @@ vi.mock('../../../hooks/useSettings', () => ({
 
 vi.mock('../../../hooks/useConfirmDialog', () => ({
   useConfirmDialog: () => [vi.fn().mockResolvedValue(true), null],
-}));
-
-vi.mock('../../../lib/windowKind', () => ({
-  getUrlParam: (...args: unknown[]) => getUrlParamMock(...args),
 }));
 
 vi.mock('../../../stores/settingsStore', () => {
@@ -226,10 +216,6 @@ vi.mock('../../../commands/ai', () => ({
   },
 }));
 
-vi.mock('@tauri-apps/api/window', () => ({
-  getCurrentWindow: () => ({ close: closeWindowMock }),
-}));
-
 vi.mock('../../../components/ui/PathInput', () => ({
   PathInput: ({
     value,
@@ -251,10 +237,6 @@ vi.mock('../../../components/ui/PathInput', () => ({
       onChange={(e) => onChange(e.target.value)}
     />
   ),
-}));
-
-vi.mock('../../../components/TitleBar', () => ({
-  TitleBar: ({ title }: { title: string }) => <div data-testid="title-bar">{title}</div>,
 }));
 
 vi.mock('../../../components/ThemedIcon', () => ({
@@ -336,7 +318,6 @@ const samplePrompts = [
 beforeEach(() => {
   vi.clearAllMocks();
   Element.prototype.scrollIntoView = vi.fn();
-  getUrlParamMock.mockReturnValue(null);
   loadSettingsMock.mockResolvedValue(undefined);
   getLogPathMock.mockResolvedValue('/tmp/logs');
   getContextDirMock.mockResolvedValue('/default/context');
@@ -392,31 +373,28 @@ beforeEach(() => {
   aiState.fetchRemoteModels.mockResolvedValue([]);
   aiState.connectMcpServer.mockResolvedValue(undefined);
   aiState.disconnectMcpServer.mockResolvedValue(undefined);
-
-  delete (globalThis as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
 });
 
 afterEach(cleanup);
 
-describe('SettingsWindow', () => {
+describe('SettingsContent', () => {
   it('renders general section by default', async () => {
-    render(<SettingsWindow />);
+    render(<SettingsContent />);
     await waitForSettingsLoad();
     expect(screen.getByText('settings.language')).toBeInTheDocument();
     expect(screen.getByTestId('theme-pack')).toBeInTheDocument();
     expect(screen.getByTestId('update-section')).toBeInTheDocument();
   });
 
-  it('opens section from URL deep-link param', async () => {
-    getUrlParamMock.mockReturnValue('ai');
-    render(<SettingsWindow />);
+  it('opens section from initialSection prop', async () => {
+    render(<SettingsContent initialSection="ai" />);
     await waitForSettingsLoad();
     expect(screen.getByText('settings.ai.description')).toBeInTheDocument();
     expect(loadProvidersMock).toHaveBeenCalled();
   });
 
   it('edits general settings and saves draft', async () => {
-    render(<SettingsWindow />);
+    render(<SettingsContent />);
     await waitForSettingsLoad();
 
     pickSelectOption(0, 'English');
@@ -432,16 +410,15 @@ describe('SettingsWindow', () => {
     await waitFor(() => expect(screen.getByText('settings.saved')).toBeInTheDocument());
   });
 
-  it('closes window when Tauri is available', async () => {
-    (globalThis as { __TAURI_INTERNALS__?: object }).__TAURI_INTERNALS__ = {};
-    render(<SettingsWindow />);
+  it('calls onClose when close button is shown', async () => {
+    render(<SettingsContent showCloseButton onClose={onCloseMock} />);
     await waitForSettingsLoad();
     fireEvent.click(screen.getByText('common.close'));
-    await waitFor(() => expect(closeWindowMock).toHaveBeenCalled());
+    expect(onCloseMock).toHaveBeenCalled();
   });
 
   it('covers data browsing section toggles and limits', async () => {
-    render(<SettingsWindow />);
+    render(<SettingsContent />);
     await waitForSettingsLoad();
     goToSection('settings.dataBrowsing');
 
@@ -461,7 +438,7 @@ describe('SettingsWindow', () => {
   });
 
   it('covers editor and behavior sections', async () => {
-    render(<SettingsWindow />);
+    render(<SettingsContent />);
     await waitForSettingsLoad();
 
     goToSection('settings.editor');
@@ -484,7 +461,7 @@ describe('SettingsWindow', () => {
   });
 
   it('covers logging section actions', async () => {
-    render(<SettingsWindow />);
+    render(<SettingsContent />);
     await waitForSettingsLoad();
     goToSection('settings.logging');
 
@@ -502,7 +479,7 @@ describe('SettingsWindow', () => {
   });
 
   it('removes monitor section from settings navigation', async () => {
-    render(<SettingsWindow />);
+    render(<SettingsContent />);
     await waitForSettingsLoad();
     expect(screen.queryByText('settings.monitor')).not.toBeInTheDocument();
   });
@@ -518,7 +495,7 @@ describe('SettingsWindow', () => {
     aiState.isConfigured = true;
     aiState.remoteModels = [{ id: 'gpt-4o', displayName: 'GPT-4o' }];
 
-    render(<SettingsWindow />);
+    render(<SettingsContent />);
     await waitForSettingsLoad();
     goToSection('settings.ai');
 
@@ -541,7 +518,7 @@ describe('SettingsWindow', () => {
 
   it('covers custom AI provider protocol and manual model input', async () => {
     aiState.remoteModels = [{ id: 'claude-3', displayName: 'Claude 3' }];
-    render(<SettingsWindow />);
+    render(<SettingsContent />);
     await waitForSettingsLoad();
     goToSection('settings.ai');
 
@@ -564,7 +541,7 @@ describe('SettingsWindow', () => {
   });
 
   it('covers context directory setting in AI section', async () => {
-    render(<SettingsWindow />);
+    render(<SettingsContent />);
     await waitForSettingsLoad();
     goToSection('settings.ai');
 
@@ -583,7 +560,7 @@ describe('SettingsWindow', () => {
   });
 
   it('covers prompts edit, save, and reset flows', async () => {
-    render(<SettingsWindow />);
+    render(<SettingsContent />);
     await waitForSettingsLoad();
     goToSection('settings.prompts');
     await waitFor(() => expect(promptListMock).toHaveBeenCalled());
@@ -608,7 +585,7 @@ describe('SettingsWindow', () => {
   it('covers MCP server enable, tools, and permission modes', async () => {
     mcpGetStatusMock.mockResolvedValue({ running: true, transport: 'stdio' });
 
-    render(<SettingsWindow />);
+    render(<SettingsContent />);
     await waitForSettingsLoad();
     goToSection('mcp.title');
 
@@ -642,7 +619,7 @@ describe('SettingsWindow', () => {
   it('reverts MCP server enable when start fails', async () => {
     mcpStartStdioMock.mockRejectedValueOnce(new Error('start failed'));
 
-    render(<SettingsWindow />);
+    render(<SettingsContent />);
     await waitForSettingsLoad();
     goToSection('mcp.title');
     await waitFor(() => expect(mcpListAllToolsMock).toHaveBeenCalled());
@@ -655,7 +632,7 @@ describe('SettingsWindow', () => {
     aiState.mcpServers = [{ serverId: 'srv1', serverName: 'Test MCP', toolsCount: 3 }];
     aiState.mcpError = 'connect failed';
 
-    render(<SettingsWindow />);
+    render(<SettingsContent />);
     await waitForSettingsLoad();
     goToSection('mcpClient.title');
 
@@ -671,7 +648,7 @@ describe('SettingsWindow', () => {
     aiState.mcpServers = [];
     aiState.mcpError = null;
     cleanup();
-    render(<SettingsWindow />);
+    render(<SettingsContent />);
     await waitForSettingsLoad();
     goToSection('mcpClient.title');
 
@@ -693,7 +670,7 @@ describe('SettingsWindow', () => {
   });
 
   it('shows extensions section', async () => {
-    render(<SettingsWindow />);
+    render(<SettingsContent />);
     await waitForSettingsLoad();
     goToSection('settings.extensions.title');
     expect(screen.getByTestId('plugin-settings')).toBeInTheDocument();
@@ -701,7 +678,7 @@ describe('SettingsWindow', () => {
 
   it('shows config error in AI section', async () => {
     aiState.configError = 'Invalid API key';
-    render(<SettingsWindow />);
+    render(<SettingsContent />);
     await waitForSettingsLoad();
     goToSection('settings.ai');
     expect(screen.getByText('Invalid API key')).toBeInTheDocument();

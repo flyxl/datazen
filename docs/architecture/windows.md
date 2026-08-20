@@ -8,9 +8,8 @@
 
 | 窗口 | 用途 | Label / `?window=` |
 |------|------|-------------------|
-| **main**（主工作区） | 连接导航树、连接 Tab、Workflow、Dashboard、查询与 Schema 浏览 | `main`；legacy `connection` / `workflow` / `dashboard` 会别名到 `main` |
+| **main**（主工作区） | 连接导航树、连接 Tab、Workflow、Dashboard、Settings、查询与 Schema 浏览 | `main`；legacy `connection` / `workflow` / `dashboard` / `settings` 会别名到 `main` |
 | new-connection | 新建/编辑连接（单例） | `new-connection-singleton` / `new-connection` |
-| settings | 应用设置（主工作区内 `SettingsPage`；legacy 子窗口路由仍保留） | `settings-singleton` / `settings` |
 | docs | 内置使用说明（单例） | `docs-singleton` / `docs` |
 | backup | 备份/恢复（单例） | `backup-singleton` / `backup` |
 | data-sync | 同族 Data Sync Diff Workspace（单例） | `data-sync-singleton` / `data-sync` |
@@ -68,11 +67,11 @@ function openWindow(label: string, options: OpenWindowOptions) {
 - `openConnectionWindow(...)` — **聚焦主工作区**并打开/追加连接 Tab（非新 OS 窗口）
 - `openSettingsWindow(section?)` — 主工作区内打开 `SettingsPage`（emit `menu:settings`）
 - `openDataSyncWindow()` / `openBackupWindow()` — 对应单例子窗口
-- Workflow / Dashboard — 主工作区内导航（`menu:workflow` / `menu:dashboard` 等）
+- Workflow / Dashboard / Settings — 主工作区内导航（`menu:workflow` / `menu:dashboard` / `menu:open-settings` 等）
 
-### 3.1 Settings 窗口单例
+### 3.1 Docs 窗口单例
 
-固定 label `settings-singleton`，已存在则 `setFocus()`。
+固定 label `docs-singleton`，已存在则 `setFocus()`。
 
 ## 4. 窗口路由
 
@@ -82,14 +81,13 @@ function openWindow(label: string, options: OpenWindowOptions) {
 export type WindowKind =
   | 'main'
   | 'new-connection'
-  | 'settings'
   | 'data-sync'
   | 'schema-diff'
   | 'backup'
   | 'docs';
 
 /** Legacy sub-window kinds that now route to the unified main shell. */
-const LEGACY_MAIN_ALIASES = new Set(['connection', 'workflow', 'dashboard']);
+const LEGACY_MAIN_ALIASES = new Set(['connection', 'workflow', 'dashboard', 'settings']);
 ```
 
 `App.tsx` 按 `getWindowKind()` 懒加载对应页面；legacy 别名一律落到 `main`。

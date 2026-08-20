@@ -24,7 +24,7 @@ const FILE_CONNECTION_FIELDS = path.join(
   'src/components/connection/FileConnectionFields.tsx',
 );
 const SETTINGS_TS = path.join(ROOT, 'src/commands/settings.ts');
-const SETTINGS_WIN = path.join(ROOT, 'src/windows/settings/SettingsWindow.tsx');
+const SETTINGS_CONTENT = path.join(ROOT, 'src/windows/settings/SettingsContent.tsx');
 const AI_SETTINGS = path.join(ROOT, 'src/windows/settings/AiSettingsSection.tsx');
 const ADB_TS = path.join(ROOT, 'src/commands/adb.ts');
 
@@ -129,7 +129,7 @@ describe('Path IPC Hardening (PIH-001~PIH-006)', () => {
   it('PIH-004: Settings logging button wires open_log_dir', async function () {
     this.timeout(20000);
 
-    const winSrc = fs.readFileSync(SETTINGS_WIN, 'utf8');
+    const winSrc = fs.readFileSync(SETTINGS_CONTENT, 'utf8');
     expect(winSrc).toContain('openLogDir()');
     expect(winSrc).not.toMatch(/openPath\(\s*(localDir|dir|defaultDir|draft)/);
 

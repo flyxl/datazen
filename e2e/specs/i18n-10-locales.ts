@@ -189,7 +189,7 @@ describe('10-Locale i18n (I18N10-001~I18N10-005)', () => {
 
   it('I18N10-002: LANGUAGE_OPTIONS values should match SUPPORTED_LOCALES set', async () => {
     const parity = await browser.execute(() => {
-      // SettingsWindow hardcodes LANGUAGE_OPTIONS; SUPPORTED_LOCALES lives in locales/index.
+      // SettingsContent hardcodes BUILTIN_LANGUAGE_OPTIONS; SUPPORTED_LOCALES lives in locales/index.
       // Compare via dynamic import if Vite exposes modules, else verify dropdown data attributes.
       return { ok: true, msg: 'checked via dropdown labels in I18N10-001' };
     });

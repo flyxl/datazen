@@ -5,7 +5,7 @@ import { resolve } from 'path';
 /**
  * Option C coverage gate (approved):
  * - Core: lib / stores / DataTable / ai components ≥80%
- * - Windows: Connection shell, Workflow package, SettingsWindow, MainPage ≥80%
+ * - Windows: Connection shell, Workflow package, SettingsContent, MainPage ≥80%
  * - Thin `src/commands/**` invoke wrappers and React chart shells stay
  *   out of the fail gate (logic covered via lib/chart + E2E).
  */
@@ -38,7 +38,7 @@ export default defineConfig({
         'src/components/query/BindParamPanel.tsx',
         'src/components/connection/SshTunnelFields.tsx',
         'src/windows/workflow/**/*.{ts,tsx}',
-        'src/windows/settings/SettingsWindow.tsx',
+        'src/windows/settings/SettingsContent.tsx',
         'src/windows/main/MainPage.tsx',
         'src/windows/dashboard/**/*.{ts,tsx}',
         'src/lib/dashboard/**/*.{ts,tsx}',
@@ -66,7 +66,7 @@ export default defineConfig({
         'src/components/query/BindParamPanel.tsx': { lines: 80 },
         'src/components/connection/SshTunnelFields.tsx': { lines: 80 },
         'src/windows/workflow/**': { lines: 80 },
-        'src/windows/settings/SettingsWindow.tsx': { lines: 80 },
+        'src/windows/settings/SettingsContent.tsx': { lines: 80 },
         'src/windows/main/MainPage.tsx': { lines: 80 },
         'src/lib/dashboard/**': { lines: 80, statements: 80, functions: 75, branches: 70 },
         'src/windows/dashboard/**': { lines: 80, statements: 80, functions: 70, branches: 55 },
