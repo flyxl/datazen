@@ -3,6 +3,7 @@ import { Dialog } from '../../components/ui/Dialog';
 import { CopyableError } from '../../components/ui/CopyableError';
 import { Button } from '../../components/ui/Button';
 import { Select } from '../../components/ui/Select';
+import { ExportSuccessPanel } from '../../components/export/ExportSuccessPanel';
 import { generateExport } from '../../lib/exportData';
 import type { ExportFormat, ExportScope } from '../../lib/exportData';
 import {
@@ -64,12 +65,16 @@ export function ExportDialog({
     () => new Set(columns.map((c) => c.name)),
   );
   const [exporting, setExporting] = useState(false);
+  const [status, setStatus] = useState<'form' | 'exporting' | 'success'>('form');
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setLoadedColumns(columns);
     setSelectedCols(new Set(columns.map((c) => c.name)));
-    if (!open || !connectionId) return;
+    if (!open) return;
+    setStatus('form');
+    setError(null);
+    if (!connectionId) return;
     let cancelled = false;
     void getCachedTableSchema(connectionId, tableName)
       .then((schema) => {
@@ -135,6 +140,7 @@ export function ExportDialog({
   const handleExport = useCallback(async () => {
     setError(null);
     setExporting(true);
+    setStatus('exporting');
     try {
       const colNames = loadedColumns.map((c) => c.name).filter((n) => selectedCols.has(n));
       if (scope === 'entire_table') {
@@ -154,10 +160,11 @@ export function ExportDialog({
           pkName,
         });
         if (result === 'cancelled') {
+          setStatus('form');
           setExporting(false);
           return;
         }
-        onClose();
+        setStatus('success');
         return;
       }
 
@@ -174,11 +181,13 @@ export function ExportDialog({
 
       const saved = await saveExportResultWithDialog(result, tableName, format);
       if (!saved) {
+        setStatus('form');
         setExporting(false);
         return;
       }
-      onClose();
+      setStatus('success');
     } catch (e) {
+      setStatus('form');
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setExporting(false);
@@ -203,97 +212,107 @@ export function ExportDialog({
       description={t('export.description', { table: tableName })}
       onClose={onClose}
       footer={
-        <>
-          <Button variant="secondary" onClick={onClose}>
-            {t('common.cancel')}
+        status === 'success' ? (
+          <Button variant="primary" onClick={onClose}>
+            {t('common.close')}
           </Button>
-          <Button
-            variant="primary"
-            onClick={() => void handleExport()}
-            disabled={
-              exporting || exportLocked || (loadedColumns.length > 0 && selectedCols.size === 0)
-            }
-          >
-            {exporting ? t('export.exporting') : t('export.export')}
-          </Button>
-        </>
+        ) : (
+          <>
+            <Button variant="secondary" onClick={onClose} disabled={exporting}>
+              {t('common.cancel')}
+            </Button>
+            <Button
+              variant="primary"
+              onClick={() => void handleExport()}
+              disabled={
+                exporting || exportLocked || (loadedColumns.length > 0 && selectedCols.size === 0)
+              }
+            >
+              {exporting ? t('export.exporting') : t('export.export')}
+            </Button>
+          </>
+        )
       }
     >
-      <div className="space-y-4">
-        {exportLocked && (
-          <div className="rounded-md border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-500">
-            {t('export.disabledByDriver')}
-          </div>
-        )}
-        <div>
-          <label className="mb-1 block text-xs font-medium text-fg-secondary">
-            {t('export.format')}
-          </label>
-          <Select
-            value={format}
-            options={formatOptions}
-            onChange={(v) => setFormat(v as ExportFormat)}
-          />
-        </div>
-
-        <div>
-          <label className="mb-1 block text-xs font-medium text-fg-secondary">
-            {t('export.range')}
-          </label>
-          <Select value={scope} options={scopeOptions} onChange={handleScopeChange} />
-        </div>
-
-        <div>
-          <div className="mb-1 flex items-center justify-between">
-            <label className="text-xs font-medium text-fg-secondary">
-              {t('export.selectColumns')}
+      {status === 'success' ? (
+        <ExportSuccessPanel message={t('export.success')} />
+      ) : (
+        <div className="space-y-4">
+          {exportLocked && (
+            <div className="rounded-md border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-500">
+              {t('export.disabledByDriver')}
+            </div>
+          )}
+          <div>
+            <label className="mb-1 block text-xs font-medium text-fg-secondary">
+              {t('export.format')}
             </label>
-            <button
-              type="button"
-              className="text-xs text-accent hover:underline"
-              onClick={toggleAll}
-            >
-              {selectedCols.size === loadedColumns.length
-                ? t('common.deselectAll')
-                : t('common.selectAll')}
-            </button>
+            <Select
+              value={format}
+              options={formatOptions}
+              onChange={(v) => setFormat(v as ExportFormat)}
+            />
           </div>
-          <div className="max-h-40 overflow-y-auto rounded-md border border-edge bg-surface p-2">
-            {loadedColumns.map((col) => (
-              <label
-                key={col.name}
-                className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 hover:bg-surface-raised"
-              >
-                <input
-                  type="checkbox"
-                  checked={selectedCols.has(col.name)}
-                  onChange={() => toggleColumn(col.name)}
-                  className="accent-accent"
-                />
-                <span className="text-xs text-fg-secondary">{col.name}</span>
-                <span className={cn('text-[10px]', dataTypeTextClass(col.dataType))}>
-                  {col.dataType}
-                </span>
+
+          <div>
+            <label className="mb-1 block text-xs font-medium text-fg-secondary">
+              {t('export.range')}
+            </label>
+            <Select value={scope} options={scopeOptions} onChange={handleScopeChange} />
+          </div>
+
+          <div>
+            <div className="mb-1 flex items-center justify-between">
+              <label className="text-xs font-medium text-fg-secondary">
+                {t('export.selectColumns')}
               </label>
-            ))}
+              <button
+                type="button"
+                className="text-xs text-accent hover:underline"
+                onClick={toggleAll}
+              >
+                {selectedCols.size === loadedColumns.length
+                  ? t('common.deselectAll')
+                  : t('common.selectAll')}
+              </button>
+            </div>
+            <div className="max-h-40 overflow-y-auto rounded-md border border-edge bg-surface p-2">
+              {loadedColumns.map((col) => (
+                <label
+                  key={col.name}
+                  className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 hover:bg-surface-raised"
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedCols.has(col.name)}
+                    onChange={() => toggleColumn(col.name)}
+                    className="accent-accent"
+                  />
+                  <span className="text-xs text-fg-secondary">{col.name}</span>
+                  <span className={cn('text-[10px]', dataTypeTextClass(col.dataType))}>
+                    {col.dataType}
+                  </span>
+                </label>
+              ))}
+            </div>
           </div>
-        </div>
 
-        <div className="rounded-md border border-edge bg-surface px-3 py-2 text-xs text-fg-muted">
-          {t('export.willExport', { rows: rowCount, cols: selectedCols.size })},{' '}
-          {t('export.formatAs')}{' '}
-          <span className="font-medium text-fg-secondary">
-            {OBJECT_EXPORT_FORMAT_OPTIONS.find((o) => o.value === format)?.label}
-          </span>
-        </div>
+          <div className="rounded-md border border-edge bg-surface px-3 py-2 text-xs text-fg-muted">
+            {t('export.willExport', { rows: rowCount, cols: selectedCols.size })},{' '}
+            {t('export.formatAs')}{' '}
+            <span className="font-medium text-fg-secondary">
+              {OBJECT_EXPORT_FORMAT_OPTIONS.find((o) => o.value === format)?.label}
+            </span>
+          </div>
 
-        {error && (
-          <CopyableError
-            message={error}
-            className="rounded-md border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-400"
-          />
-        )}
-      </div>
+          {error && (
+            <CopyableError
+              message={error}
+              className="rounded-md border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-400"
+            />
+          )}
+        </div>
+      )}
     </Dialog>
   );
 }

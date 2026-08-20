@@ -51,7 +51,7 @@ export function QueryErrorPanel({ message, onDiagnose }: Readonly<QueryErrorPane
       </div>
       <pre
         data-testid="query-error-message"
-        className="copyable mt-2 whitespace-pre-wrap break-words font-mono text-sm leading-relaxed text-red-400"
+        className="selectable mt-2 whitespace-pre-wrap break-words font-mono text-sm leading-relaxed text-red-400"
       >
         {message}
       </pre>

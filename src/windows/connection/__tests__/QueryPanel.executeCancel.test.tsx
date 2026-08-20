@@ -1,0 +1,194 @@
+import { describe, expect, it, vi, afterEach, beforeEach } from 'vitest';
+import { render, fireEvent, cleanup, screen, act } from '@testing-library/react';
+import { QueryPanel } from '../QueryPanel';
+import { usePanelStore } from '../../../stores/panelStore';
+import { EMPTY_QUERY_EXEC } from '../../../stores/queryExecActions';
+
+vi.mock('../../../hooks/useI18n', () => ({
+  useI18n: () => ({ t: (key: string) => key }),
+}));
+
+vi.mock('../../../hooks/useResizable', () => ({
+  useResizable: () => ({ size: 280, handleRef: { current: null } }),
+}));
+
+vi.mock('../../../hooks/useCompactToolbar', () => ({
+  useCompactToolbar: () => ({ ref: { current: null }, compact: false }),
+}));
+
+vi.mock('../../../stores/settingsStore', () => ({
+  useSettingsStore: (
+    sel: (s: { settings: { safeMode: boolean; autoCommit: boolean } }) => unknown,
+  ) => sel({ settings: { safeMode: false, autoCommit: true } }),
+}));
+
+vi.mock('../../../stores/schemaStore', () => ({
+  useSchemaStore: (sel: (s: Record<string, unknown>) => unknown) =>
+    sel({
+      tables: [],
+      views: [],
+      columnMap: new Map(),
+      namespaceTree: [],
+      pathAliases: {},
+      databases: [],
+      currentDatabase: 'app',
+      isMultiDatabase: false,
+      ensuringCount: 0,
+      ensureColumns: vi.fn(),
+      loadTables: vi.fn(),
+      ensureNamespacePath: vi.fn(),
+    }),
+}));
+
+vi.mock('../../../components/SqlEditor', () => ({
+  SqlEditor: () => <div data-testid="mock-sql-editor" />,
+}));
+
+vi.mock('../../../components/DataTable/DataTable', () => ({
+  DataTable: () => null,
+}));
+
+vi.mock('../../../components/chart/ChartView', () => ({
+  ChartView: () => null,
+}));
+
+vi.mock('../../../components/ai/Nl2SqlPanel', () => ({
+  Nl2SqlPanel: () => null,
+}));
+
+vi.mock('../../../components/ai/DiagnosisPanel', () => ({
+  DiagnosisPanel: () => null,
+}));
+
+vi.mock('../../../components/ai/ExplainPanel', () => ({
+  ExplainPanel: () => null,
+}));
+
+vi.mock('../../../components/query/BindParamPanel', () => ({
+  BindParamPanel: () => null,
+}));
+
+vi.mock('../../../components/query/QueryContextSelectors', () => ({
+  QueryContextSelectors: () => null,
+}));
+
+vi.mock('../../../components/query/QueryErrorPanel', () => ({
+  QueryErrorPanel: () => null,
+}));
+
+vi.mock('../dashboard/AddToDashboardDialog', () => ({
+  AddToDashboardDialog: () => null,
+}));
+
+vi.mock('@tauri-apps/api/event', () => ({
+  listen: vi.fn().mockResolvedValue(() => {}),
+}));
+
+const PANEL_ID = 'panel-test';
+
+afterEach(cleanup);
+
+describe('QueryPanel execute/cancel button', () => {
+  const cancelQuery = vi.fn().mockResolvedValue(undefined);
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+    usePanelStore.setState({
+      queryExec: new Map([
+        [
+          PANEL_ID,
+          {
+            ...EMPTY_QUERY_EXEC,
+            sql: 'SELECT 1',
+            running: false,
+          },
+        ],
+      ]),
+      historyVisible: false,
+      favoritesVisible: false,
+      queryHistory: [],
+      queryFavorites: [],
+      loadHistory: vi.fn().mockResolvedValue(undefined),
+      loadFavorites: vi.fn().mockResolvedValue(undefined),
+      cancelQuery,
+    } as Partial<ReturnType<typeof usePanelStore.getState>>);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function setRunning(running: boolean) {
+    usePanelStore.setState((s) => {
+      const exec = s.queryExec.get(PANEL_ID)!;
+      return {
+        queryExec: new Map(s.queryExec).set(PANEL_ID, { ...exec, running }),
+      };
+    });
+  }
+
+  function renderPanel() {
+    return render(
+      <QueryPanel
+        panelId={PANEL_ID}
+        connectionId="conn-1"
+        configId="cfg-1"
+        databaseType="postgresql"
+      />,
+    );
+  }
+
+  it('shows Execute while running for less than 300ms', () => {
+    setRunning(true);
+    renderPanel();
+    expect(screen.getByRole('button', { name: 'query.execute' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'query.stop' })).toBeNull();
+  });
+
+  it('replaces Execute with Cancel after 300ms of running', () => {
+    setRunning(true);
+    renderPanel();
+    act(() => {
+      vi.advanceTimersByTime(299);
+    });
+    expect(screen.getByRole('button', { name: 'query.execute' })).toBeDisabled();
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+    expect(screen.queryByRole('button', { name: 'query.execute' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'query.stop' })).toBeInTheDocument();
+  });
+
+  it('calls cancelQuery when Cancel is clicked', () => {
+    setRunning(true);
+    renderPanel();
+    act(() => {
+      vi.advanceTimersByTime(300);
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'query.stop' }));
+    expect(cancelQuery).toHaveBeenCalledWith(PANEL_ID);
+  });
+
+  it('resets to Execute when running stops before 300ms', () => {
+    setRunning(true);
+    const { rerender } = renderPanel();
+    act(() => {
+      vi.advanceTimersByTime(100);
+    });
+    setRunning(false);
+    rerender(
+      <QueryPanel
+        panelId={PANEL_ID}
+        connectionId="conn-1"
+        configId="cfg-1"
+        databaseType="postgresql"
+      />,
+    );
+    act(() => {
+      vi.advanceTimersByTime(300);
+    });
+    expect(screen.getByRole('button', { name: 'query.execute' })).not.toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'query.stop' })).toBeNull();
+  });
+});

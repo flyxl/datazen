@@ -142,6 +142,7 @@ export function QueryPanel({ panelId, connectionId, configId, databaseType }: Qu
   const [nl2sqlVisible, setNl2sqlVisible] = useState(false);
   const [diagnosisVisible, setDiagnosisVisible] = useState(false);
   const [explainResult, setExplainResult] = useState<ExplainResult | null>(null);
+  const [showCancel, setShowCancel] = useState(false);
   const [explainLoading, setExplainLoading] = useState(false);
   const [explainError, setExplainError] = useState<string | null>(null);
   const [showExplain, setShowExplain] = useState(false);
@@ -172,6 +173,15 @@ export function QueryPanel({ panelId, connectionId, configId, databaseType }: Qu
     storageKey: 'query-editor-height',
   });
   const { ref: toolbarRef, compact: compactToolbar } = useCompactToolbar();
+
+  useEffect(() => {
+    if (!exec.running) {
+      setShowCancel(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setShowCancel(true), 300);
+    return () => window.clearTimeout(timer);
+  }, [exec.running]);
 
   const tables = useSchemaStore((s) => s.tables);
   const views = useSchemaStore((s) => s.views);
@@ -649,21 +659,28 @@ export function QueryPanel({ panelId, connectionId, configId, databaseType }: Qu
             void applyContextPath([...contextPath.slice(0, index), value]);
           }}
         />
-        <ToolbarButton
-          compact={compactToolbar}
-          variant="run"
-          label={t('query.execute')}
-          icon={<Play className="h-3.5 w-3.5" />}
-          onClick={handleExecute}
-          disabled={exec.running}
-        />
-        {exec.running && (
+        {exec.running && showCancel ? (
           <ToolbarButton
             compact={compactToolbar}
             variant="danger"
             label={t('query.stop')}
             icon={<Square className="h-3.5 w-3.5" />}
             onClick={handleCancel}
+          />
+        ) : (
+          <ToolbarButton
+            compact={compactToolbar}
+            variant="run"
+            label={t('query.execute')}
+            icon={
+              exec.running ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Play className="h-3.5 w-3.5" />
+              )
+            }
+            onClick={handleExecute}
+            disabled={exec.running}
           />
         )}
         {supportsExplain && (
@@ -804,14 +821,8 @@ export function QueryPanel({ panelId, connectionId, configId, databaseType }: Qu
           />
 
           {showFavoriteDialog && (
-            <div
-              className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-              onClick={() => setShowFavoriteDialog(false)}
-            >
-              <div
-                className="w-[400px] rounded-lg border border-edge bg-surface p-4 shadow-xl"
-                onClick={(e) => e.stopPropagation()}
-              >
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+              <div className="w-[400px] rounded-lg border border-edge bg-surface p-4 shadow-xl">
                 <div className="mb-3 text-sm font-medium text-fg">{t('query.addFavorite')}</div>
                 <div className="mb-2">
                   <label className="mb-1 block text-xs text-fg-muted">
@@ -828,9 +839,6 @@ export function QueryPanel({ panelId, connectionId, configId, databaseType }: Qu
                       if (e.key === 'Enter' && favoriteName.trim()) {
                         void storeAddFavorite(favoriteName.trim(), favoriteDialogSql, configId);
                         setFavoriteName('');
-                        setShowFavoriteDialog(false);
-                      }
-                      if (e.key === 'Escape') {
                         setShowFavoriteDialog(false);
                       }
                     }}

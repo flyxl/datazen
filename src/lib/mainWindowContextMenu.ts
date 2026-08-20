@@ -89,6 +89,8 @@ export function buildMainConnectionContextMenuItems(args: {
   onDelete: () => void | Promise<void>;
 }): NativeMenuItemDef[] {
   const items: NativeMenuItemDef[] = [
+    { kind: 'item', id: 'refresh', label: args.labels.refresh, action: args.onRefresh },
+    { kind: 'separator' },
     {
       kind: 'item',
       id: args.isConnected ? 'disconnect' : 'open-connection',
@@ -114,9 +116,8 @@ export function buildMainConnectionContextMenuItems(args: {
     });
   }
 
-  items.push({ kind: 'separator' });
-
   if (args.onCreateDatabase || args.onCreateSchema || args.onCreateUser) {
+    items.push({ kind: 'separator' });
     if (args.onCreateDatabase) {
       items.push({
         kind: 'item',
@@ -141,11 +142,9 @@ export function buildMainConnectionContextMenuItems(args: {
         action: args.onCreateUser,
       });
     }
-    items.push({ kind: 'separator' });
   }
 
   items.push(
-    { kind: 'item', id: 'refresh', label: args.labels.refresh, action: args.onRefresh },
     { kind: 'item', id: 'edit-connection', label: args.labels.editConnection, action: args.onEdit },
     {
       kind: 'item',

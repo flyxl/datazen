@@ -34,7 +34,7 @@ export function CopyableError({
   }, [message]);
 
   const textClass = cn(
-    'copyable whitespace-pre-wrap break-words',
+    'selectable whitespace-pre-wrap break-words',
     mono && 'font-mono text-sm leading-relaxed',
     copyButton && 'min-w-0 flex-1',
   );

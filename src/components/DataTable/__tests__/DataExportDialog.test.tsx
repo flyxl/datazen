@@ -85,7 +85,7 @@ describe('DataExportDialog', () => {
     expect(Array.from(range.options).map((o) => o.value)).toContain('entire_table');
   });
 
-  it('exports csv text and closes on success', async () => {
+  it('shows success state and close button on successful export', async () => {
     const onClose = vi.fn();
     const { getByText } = render(
       <DataExportDialog
@@ -99,8 +99,11 @@ describe('DataExportDialog', () => {
     fireEvent.click(getByText('export.export'));
     await waitFor(() => {
       expect(saveTextWithDialog).toHaveBeenCalled();
-      expect(onClose).toHaveBeenCalled();
+      expect(getByText('export.success')).toBeInTheDocument();
     });
+    expect(onClose).not.toHaveBeenCalled();
+    fireEvent.click(getByText('common.close'));
+    expect(onClose).toHaveBeenCalled();
   });
 
   it('exports xlsx as binary', async () => {

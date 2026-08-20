@@ -227,14 +227,6 @@ function ChartExpandOverlay({
   onConfigChange: (c: ChartConfig) => void;
   onClose: () => void;
 }) {
-  useEffect(() => {
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose();
-    }
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  });
-
   const handleExport = async (format: 'png' | 'svg') => {
     const el = chartRef.current;
     if (!el) return;

@@ -131,12 +131,7 @@ export function RunHistoryDrawer({
       data-no-drag
       data-testid="run-history-drawer"
     >
-      <button
-        type="button"
-        className="absolute inset-0 bg-black/40"
-        aria-label={t('common.close')}
-        onClick={onClose}
-      />
+      <div aria-hidden="true" className="absolute inset-0 bg-black/40" />
       <aside className="relative flex h-full w-full max-w-3xl flex-col border-l border-edge bg-surface shadow-xl">
         <div className="flex shrink-0 items-center justify-between border-b border-edge px-4 py-3">
           <div className="min-w-0">

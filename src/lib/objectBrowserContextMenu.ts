@@ -48,10 +48,10 @@ export function buildObjectBrowserListMenuItems(args: {
 }): NativeMenuItemDef[] {
   const { labels, handlers } = args;
   return push(
+    item('refresh', labels.refresh, handlers.onRefresh),
     item('open', labels.open, handlers.onOpen),
     item('copy-name', labels.copyName, handlers.onCopyName),
     item('copy-ddl', labels.copyDdl, handlers.onCopyDdl),
-    item('refresh', labels.refresh, handlers.onRefresh),
   );
 }
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, Download, Loader2, Plus } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
@@ -31,6 +31,8 @@ import { StructurePlanPreview } from './structure/StructurePlanPreview';
 interface TableStructureEditorProps {
   connectionId: string;
   databaseType: DatabaseType;
+  /** Logical database for multi-db drivers; ensures session before plan/execute. */
+  database?: string | null;
   /** SQL schema namespace for plan IPC (PG schema, MySQL database, etc.). */
   schema?: string | null;
   mode: 'create' | 'alter';
@@ -80,6 +82,7 @@ async function executePlanStatements(
 export function TableStructureEditor({
   connectionId,
   databaseType,
+  database = null,
   schema: requestSchema = null,
   mode,
   tableName: initialTableName,
@@ -103,6 +106,21 @@ export function TableStructureEditor({
   const [previewPlan, setPreviewPlan] = useState<StructureChangePlan | null>(null);
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [exportingStructure, setExportingStructure] = useState(false);
+
+  const dbSwitchedRef = useRef<string | null>(null);
+
+  const ensureDatabase = useCallback(async () => {
+    if (!database) return;
+    const key = `${connectionId}\0${database}`;
+    if (dbSwitchedRef.current === key) return;
+    await databaseCommands.useDatabase(connectionId, database);
+    dbSwitchedRef.current = key;
+  }, [connectionId, database]);
+
+  useEffect(() => {
+    if (!database) return;
+    void ensureDatabase().catch(() => {});
+  }, [database, ensureDatabase]);
 
   useEffect(() => {
     if (!uiConfig) {
@@ -244,6 +262,7 @@ export function TableStructureEditor({
     setError(null);
     setPreviewing(true);
     try {
+      await ensureDatabase();
       const plan = await structureCommands.planTableStructureChanges(connectionId, request);
       setPreviewPlan(plan);
     } catch (e) {
@@ -257,7 +276,7 @@ export function TableStructureEditor({
     } finally {
       setPreviewing(false);
     }
-  }, [buildRequest, connectionId, t]);
+  }, [buildRequest, connectionId, ensureDatabase, t]);
 
   const handleExecute = useCallback(async () => {
     const request = buildRequest();
@@ -265,6 +284,7 @@ export function TableStructureEditor({
     setError(null);
     setExecuting(true);
     try {
+      await ensureDatabase();
       const plan = await structureCommands.planTableStructureChanges(connectionId, request);
       if (plan.statements.length === 0) {
         setError(t('structEditor.noChanges'));
@@ -297,7 +317,7 @@ export function TableStructureEditor({
     } finally {
       setExecuting(false);
     }
-  }, [buildRequest, connectionId, onSuccess, t]);
+  }, [buildRequest, connectionId, ensureDatabase, onSuccess, t]);
 
   const handleExportStructure = useCallback(async () => {
     if (mode !== 'alter' || !initialTableName) return;

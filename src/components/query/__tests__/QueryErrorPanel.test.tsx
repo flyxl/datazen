@@ -26,6 +26,7 @@ describe('QueryErrorPanel', () => {
     render(<QueryErrorPanel message={longMessage} />);
     const pre = screen.getByTestId('query-error-message');
     expect(pre).toBeInTheDocument();
+    expect(pre).toHaveClass('selectable');
     expect(pre.textContent).toBe(longMessage);
     // Not rendered as a table: no error column.
     expect(screen.queryByRole('table')).toBeNull();

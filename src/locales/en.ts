@@ -752,6 +752,7 @@ const en: Record<TranslationKey, string> = {
   'export.formatAs': 'as',
   'export.exporting': 'Exporting…',
   'export.export': 'Export',
+  'export.success': 'Export completed successfully',
   'export.disabledByDriver': 'This driver does not allow exporting data.',
 
   // ── Batch Export Dialog ──

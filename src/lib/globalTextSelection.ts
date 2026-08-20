@@ -109,7 +109,15 @@ export function installDragSelectionGuard(): () => void {
 
   const isSelectable = (el: Element | null): boolean => {
     if (!el) return false;
-    return getComputedStyle(el).userSelect === 'text';
+    if (el.closest('.selectable, .select-text, .copyable, [role="alert"], pre, code')) {
+      return true;
+    }
+    let node: Element | null = el;
+    while (node && node !== document.body) {
+      if (getComputedStyle(node).userSelect === 'text') return true;
+      node = node.parentElement;
+    }
+    return false;
   };
 
   const onMouseDown = (e: MouseEvent) => {

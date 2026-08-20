@@ -1,17 +1,22 @@
+import { useEffect, useRef, useState } from 'react';
 import { useI18n } from '../../hooks/useI18n';
 import { cn } from '../../lib/cn';
 import { DB_REGISTRY } from '../../lib/databaseTypes';
+import { formatPanelContextPath } from '../../lib/panelContextPath';
 import { canOpenStructureEditor } from '../../lib/structureEditor/canOpenStructureEditor';
 import { resolveExportScope } from '../../lib/exportCapability';
 import { resolveCreateTableSchema } from '../../lib/structureEditor/resolveCreateTableSchema';
 import { invalidateSchemaCache } from '../../lib/schemaCache';
 import { getConnectionView } from '../../lib/connectionViews';
+import { databaseCommands } from '../../commands/database';
+import { useSchemaStore } from '../../stores/schemaStore';
 import {
   type Panel,
   type SubTabId,
   type ViewPanel,
   type ErDiagramPanel,
   type RedisDbPanel,
+  type CreateTablePanel,
 } from '../../stores/panelStore';
 import { getSubTabs, getViewSubTabs } from './contentViewHelpers';
 import { StructureView } from './StructureView';
@@ -131,6 +136,11 @@ function SqlPanelContent({
           tabs={getSubTabs(t, panelIsReadOnly)}
           activeTab={panel.subTab}
           onSelect={(id) => onSetSubTab(panel.id, id)}
+          contextPath={formatPanelContextPath({
+            connectionName: panel.connectionName,
+            database: panel.database ?? currentDatabase,
+            schema: panel.tableSchema,
+          })}
         />
         <div className="flex min-h-0 flex-1 flex-col">
           {panel.subTab === 'data' && (
@@ -147,6 +157,7 @@ function SqlPanelContent({
               <TableStructureEditor
                 connectionId={panel.connectionId}
                 databaseType={panel.databaseType}
+                database={panel.database ?? currentDatabase}
                 schema={panel.tableSchema ?? resolveTableSchema(panel.tableName)}
                 mode="alter"
                 tableName={panel.tableName}
@@ -199,6 +210,11 @@ function SqlPanelContent({
           tabs={getViewSubTabs(t)}
           activeTab={(panel as ViewPanel).subTab}
           onSelect={(id) => onSetSubTab(panel.id, id)}
+          contextPath={formatPanelContextPath({
+            connectionName: panel.connectionName,
+            database: (panel as ViewPanel).database ?? currentDatabase,
+            schema: (panel as ViewPanel).viewSchema,
+          })}
         />
         <div className="flex min-h-0 flex-1 flex-col">
           {(panel as ViewPanel).subTab === 'data' && (
@@ -241,16 +257,18 @@ function SqlPanelContent({
   }
 
   if (panel.type === 'create-table') {
+    const createPanel = panel as CreateTablePanel;
+    const panelDatabase = createPanel.database ?? currentDatabase;
     const schema = resolveCreateTableSchema(panel.databaseType, {
-      currentDatabase,
-      contextSchema: lastTableSchema,
+      currentDatabase: panelDatabase,
+      contextSchema: createPanel.tableSchema ?? lastTableSchema,
     });
     return (
-      <TableStructureEditor
+      <CreateTablePanelContent
         connectionId={panel.connectionId}
         databaseType={panel.databaseType}
+        database={panelDatabase}
         schema={schema}
-        mode="create"
         onSuccess={() => {
           onClosePanel(panel.id);
           onRefresh();
@@ -297,38 +315,123 @@ function SqlPanelContent({
   return null;
 }
 
+interface CreateTablePanelContentProps {
+  connectionId: string;
+  databaseType: import('../../types').DatabaseType;
+  database: string | null;
+  schema: string | null;
+  onSuccess: () => void;
+  onCancel: () => void;
+}
+
+/** Ensures multi-db session is on the target database before rendering the editor. */
+function CreateTablePanelContent({
+  connectionId,
+  databaseType,
+  database,
+  schema,
+  onSuccess,
+  onCancel,
+}: CreateTablePanelContentProps) {
+  const { t } = useI18n();
+  const isMultiDb = useSchemaStore((s) => s.isMultiDatabase);
+  const [dbReady, setDbReady] = useState(!isMultiDb || !database);
+  const dbSwitchedRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!isMultiDb || !database) {
+      setDbReady(true);
+      return;
+    }
+    const key = `${connectionId}\0${database}`;
+    if (dbSwitchedRef.current === key) {
+      setDbReady(true);
+      return;
+    }
+    let cancelled = false;
+    setDbReady(false);
+    void databaseCommands
+      .useDatabase(connectionId, database)
+      .then(() => {
+        if (cancelled) return;
+        dbSwitchedRef.current = key;
+        setDbReady(true);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setDbReady(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [connectionId, database, isMultiDb]);
+
+  if (!dbReady) {
+    return (
+      <div className="flex flex-1 items-center justify-center text-sm text-fg-muted">
+        {t('common.loading')}
+      </div>
+    );
+  }
+
+  return (
+    <TableStructureEditor
+      connectionId={connectionId}
+      databaseType={databaseType}
+      database={database}
+      schema={schema}
+      mode="create"
+      onSuccess={onSuccess}
+      onCancel={onCancel}
+    />
+  );
+}
+
 function SubTabBar({
   tabs,
   activeTab,
   onSelect,
+  contextPath,
 }: {
   tabs: { id: SubTabId; label: string }[];
   activeTab: SubTabId;
   onSelect: (id: SubTabId) => void;
+  contextPath?: string;
 }) {
   return (
-    <div className="flex shrink-0 border-b border-edge bg-surface-alt">
-      {tabs.map((tab) => (
-        <button
-          key={tab.id}
-          type="button"
-          className={cn(
-            'relative px-5 py-2 text-[13px] transition-colors',
-            activeTab === tab.id
-              ? 'bg-surface text-fg font-medium'
-              : 'text-fg-secondary hover:text-fg',
-          )}
-          onClick={() => onSelect(tab.id)}
-        >
-          {tab.label}
-          <span
+    <div className="flex shrink-0 items-center border-b border-edge bg-surface-alt">
+      <div className="flex min-w-0 flex-1">
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
             className={cn(
-              'absolute inset-x-0 bottom-0 h-0.5 bg-accent transition-opacity duration-300',
-              activeTab === tab.id ? 'opacity-100' : 'opacity-0',
+              'relative px-5 py-2 text-[13px] transition-colors',
+              activeTab === tab.id
+                ? 'bg-surface text-fg font-medium'
+                : 'text-fg-secondary hover:text-fg',
             )}
-          />
-        </button>
-      ))}
+            onClick={() => onSelect(tab.id)}
+          >
+            {tab.label}
+            <span
+              className={cn(
+                'absolute inset-x-0 bottom-0 h-0.5 bg-accent transition-opacity duration-300',
+                activeTab === tab.id ? 'opacity-100' : 'opacity-0',
+              )}
+            />
+          </button>
+        ))}
+      </div>
+      {contextPath ? (
+        <span
+          data-testid="panel-context-path"
+          className="max-w-[45%] shrink-0 truncate px-4 text-xs text-fg-muted"
+          title={contextPath}
+        >
+          {contextPath}
+        </span>
+      ) : null}
     </div>
   );
 }

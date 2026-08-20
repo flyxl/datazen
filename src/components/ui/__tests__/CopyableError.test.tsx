@@ -19,11 +19,11 @@ describe('CopyableError', () => {
     clipboardSpy = vi.spyOn(window.navigator.clipboard, 'writeText').mockResolvedValue(undefined);
   });
 
-  it('renders the full message with copyable styling', () => {
+  it('renders the full message with selectable styling', () => {
     const longMessage = 'line one\nline two with more detail';
     render(<CopyableError message={longMessage} />);
     const el = screen.getByTestId('copyable-error-message');
-    expect(el).toHaveClass('copyable', 'whitespace-pre-wrap', 'break-words');
+    expect(el).toHaveClass('selectable', 'whitespace-pre-wrap', 'break-words');
     expect(el.textContent).toBe(longMessage);
   });
 

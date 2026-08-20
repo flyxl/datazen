@@ -740,6 +740,7 @@ const zhCN = {
   'export.formatAs': '格式为',
   'export.exporting': '导出中...',
   'export.export': '导出',
+  'export.success': '导出成功',
   'export.disabledByDriver': '该驱动不允许导出数据。',
 
   // ── Batch Export Dialog ──

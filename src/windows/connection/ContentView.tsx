@@ -224,6 +224,7 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
     showStructureEditor,
     currentDatabase,
     initialDatabase,
+    lastTableSchema,
     schemaViews,
   });
 

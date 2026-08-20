@@ -15,10 +15,10 @@ describe('buildObjectBrowserListMenuItems', () => {
       handlers: { onOpen, onCopyName, onCopyDdl, onRefresh },
     });
     expect(items.map((i) => (i.kind === 'item' ? i.id : i.kind))).toEqual([
+      'refresh',
       'open',
       'copy-name',
       'copy-ddl',
-      'refresh',
     ]);
     for (const it of items) {
       if (it.kind === 'item') it.action();
