@@ -353,11 +353,13 @@ impl DatabaseDriver for InfluxDbDriver {
     }
 
     fn command_definitions(&self) -> Vec<DriverCommandDefinition> {
-        statement_command_definitions(
+        let mut cmds = statement_command_definitions(
             "Run an InfluxQL query",
             "Run an InfluxQL write/admin statement",
             "InfluxQL",
-        )
+        );
+        cmds.push(query_stream_command_definition());
+        cmds
     }
 
     async fn cancel_query(&self, _handle: &ConnectionHandle) -> Result<(), DriverError> {

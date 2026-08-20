@@ -360,10 +360,12 @@ impl DatabaseDriver for VectorDriver {
     }
 
     fn command_definitions(&self) -> Vec<DriverCommandDefinition> {
-        query_only_command_definitions(
+        let mut cmds = query_only_command_definitions(
             "Search a vector collection with a JSON command",
             "JSON command",
-        )
+        );
+        cmds.push(query_stream_command_definition());
+        cmds
     }
 
     async fn cancel_query(&self, _handle: &ConnectionHandle) -> Result<(), DriverError> {

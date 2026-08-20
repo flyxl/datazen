@@ -611,7 +611,11 @@ impl DatabaseDriver for SqliteDriver {
     }
 
     fn command_definitions(&self) -> Vec<DriverCommandDefinition> {
-        let mut cmds = vec![query_command_definition(), execute_command_definition()];
+        let mut cmds = vec![
+            query_command_definition(),
+            execute_command_definition(),
+            query_stream_command_definition(),
+        ];
         cmds.extend(schema_object_command_definitions());
         cmds
     }

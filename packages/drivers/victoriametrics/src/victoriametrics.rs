@@ -336,7 +336,9 @@ impl DatabaseDriver for VictoriaMetricsDriver {
     }
 
     fn command_definitions(&self) -> Vec<DriverCommandDefinition> {
-        query_only_command_definitions("Run a PromQL instant query", "PromQL")
+        let mut cmds = query_only_command_definitions("Run a PromQL instant query", "PromQL");
+        cmds.push(query_stream_command_definition());
+        cmds
     }
 
     async fn cancel_query(&self, _handle: &ConnectionHandle) -> Result<(), DriverError> {

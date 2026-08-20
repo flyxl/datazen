@@ -5,8 +5,8 @@
 
 use datazen_driver_api::{
     execute_command_definition, execute_standard_sql_command, query_command_definition,
-    CommandCategory, CommandResult, ConnectionHandle, DriverCommandDefinition,
-    DriverCommandMetadata, DriverError,
+    query_stream_command_definition, CommandCategory, CommandResult, ConnectionHandle,
+    DriverCommandDefinition, DriverCommandMetadata, DriverError,
 };
 use serde_json::Value as JsonValue;
 
@@ -70,6 +70,7 @@ pub fn redis_command_definitions() -> Vec<DriverCommandDefinition> {
     vec![
         query_command_definition(),
         execute_command_definition(),
+        query_stream_command_definition(),
         cmd(
             "scan_keys",
             "Scan keys",
