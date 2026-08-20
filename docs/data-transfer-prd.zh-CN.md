@@ -13,7 +13,7 @@ Data Synchronization **只**在「同类型、表结构完全一致、双方有�
 
 迁库、异构、改列名、目标表还不存在、没有主键——这些是 **Data Transfer**。不能塞进 Sync，否则会再次做成「DROP + 灌数」却挂着同步的名字。
 
-仓库里现有 Data Sync 的 `DROP TABLE → CREATE → INSERT` + 跨库 IR，本质上是**没有映射 UI 的简陋 Transfer**。正式做 Transfer 时：吸收可用的 IR 适配器，**不要**从 Sync 引擎长出来。
+仓库里原有的 DROP+INSERT 覆盖拷贝路径已拆除；异构 IR 适配器保留在 `src-tauri/src/transfer/` 供 Schema Diff 与未来 Transfer 使用。
 
 本文对标 Navicat Data Transfer，给出产品定义与 V1 草案，供后续立项。实施前再出独立实施方案。
 
@@ -244,7 +244,7 @@ BLOB / 编码 / 时区：映射规则里写明（如 DATETIME 按 UTC 还是按 
 | 现有 | Transfer 中的角色 |
 |---|---|
 | `packages/driver-api/src/sync/` IR 适配器 | **类型默认映射**、跨方言 CREATE |
-| `commands/sync/table_sync.rs` DROP+INSERT | 仅作为 Write Mode 之一的参考实现；正式 Transfer 要加映射层后才能用 |
+| `src-tauri/src/transfer/` IR 适配器 | Schema Diff / 未来 Transfer 的 DDL 生成 |
 | Schema Diff Deploy | 结构对齐用它；Transfer 建新表用 CREATE，不替代 ALTER 部署 |
 | Data Sync 新引擎 | **不共用** Change Set / PK Diff |
 

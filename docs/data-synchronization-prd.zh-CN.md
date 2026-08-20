@@ -5,7 +5,7 @@
 **版本：** V1.2  
 **状态：** Draft  
 **参考：** Navicat Data Synchronization  
-**关联方案：** `docs/data-synchronization-implementation-plan.zh-CN.md`  
+**关联架构：** [data-sync.md](./architecture/backend/data-sync.md)  
 **相关文档：** [Data Transfer PRD](./data-transfer-prd.zh-CN.md) · [Schema Diff / 结构同步](./schema-diff-guide.md)
 
 ## 0. 三套能力，不要混用

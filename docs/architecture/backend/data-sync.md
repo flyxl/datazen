@@ -10,7 +10,7 @@ DataZen 把三类能力拆开，**本模块只实现 Data Synchronization**（�
 | **Data Transfer** | 异构 / 需 IR 转换 | **不实现**（pairing 标 `path: ir, supported: false`） |
 | **Structure Sync** | 只改 DDL | Schema Diff Deploy，见 [schema-diff.md](schema-diff.md) |
 
-旧产品路径 **DROP + INSERT 覆盖拷贝**已拆除。兼容 IPC `sync_table` / `sync_tables` 立即拒绝，文案见 `data_sync::OVERWRITE_COPY_RETIRED`。
+旧产品路径 **DROP + INSERT 覆盖拷贝**与 legacy IPC（`compare_databases` / `sync_table` / `sync_tables`）已完全移除。
 
 ## 1. 硬门闸
 
@@ -93,4 +93,4 @@ execute_statements（begin → query_with_params → commit；失败/Cancel 则 
 | Host E2E | `e2e/specs/data-sync-window.ts`、`e2e/specs/data-sync-real.ts` |
 | 驱动方言深度 | **不要**放进 Host；写在 `packages/drivers/<id>/` |
 
-进度与切片报告：`docs/progress/data-sync-navicat.md`。
+进度记录：`docs/progress/architecture-review-2026-08-20.md`（F8 legacy sync IPC 移除）。
