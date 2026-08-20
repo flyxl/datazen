@@ -233,6 +233,12 @@ function GrantDialog({
   const { definition: grantDefinition } = useConnectionCommand(connectionId, 'grant_privileges');
   const { all: allPrivs } = usePrivilegeOptions(grantDefinition);
 
+  const [username, setUsername] = useState(initialUser ?? '');
+  const [database, setDatabase] = useState('');
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
   const toggle = (p: string) => {
     setSelected((prev) => {
       const next = new Set(prev);

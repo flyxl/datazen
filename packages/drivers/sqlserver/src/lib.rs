@@ -6,6 +6,7 @@ use datazen_driver_api::*;
 
 mod admin_commands;
 mod sqlserver;
+mod structure;
 mod sync_adapter;
 pub use sqlserver::*;
 pub use sync_adapter::SqlServerSyncAdapter;
