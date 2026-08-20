@@ -226,18 +226,39 @@ pub(crate) async fn get_er_data_impl(
     Ok(schemas)
 }
 
-fn value_as_string(value: Option<&crate::db::Value>) -> Option<String> {
-    match value {
-        Some(crate::db::Value::String(s)) if !s.is_empty() => Some(s.clone()),
-        Some(crate::db::Value::Integer(n)) => Some(n.to_string()),
-        _ => None,
-    }
+fn parse_objects_from_command(
+    data: &serde_json::Value,
+) -> Vec<crate::schema_objects::DatabaseObject> {
+    data.get("objects")
+        .and_then(|v| serde_json::from_value(v.clone()).ok())
+        .unwrap_or_default()
 }
 
-fn column_index(columns: &[crate::db::ColumnInfo], names: &[&str]) -> Option<usize> {
-    columns
-        .iter()
-        .position(|c| names.iter().any(|n| c.name.eq_ignore_ascii_case(n)))
+fn parse_grants_from_command(
+    data: &serde_json::Value,
+) -> Vec<crate::schema_objects::PrivilegeGrant> {
+    data.get("grants")
+        .and_then(|v| serde_json::from_value(v.clone()).ok())
+        .unwrap_or_default()
+}
+
+async fn run_schema_object_command(
+    state: &AppState,
+    connection_id: &str,
+    command: &str,
+    input: serde_json::Value,
+) -> Result<serde_json::Value, CommandError> {
+    let result = super::driver_command::execute_driver_command_impl(
+        state,
+        super::driver_command::ExecuteDriverCommandRequest {
+            connection_id: Some(connection_id.to_string()),
+            driver_type: None,
+            command: command.to_string(),
+            input,
+        },
+    )
+    .await?;
+    Ok(result.data)
 }
 
 pub(crate) async fn get_database_objects_impl(
@@ -245,45 +266,19 @@ pub(crate) async fn get_database_objects_impl(
     connection_id: String,
     kind: String,
 ) -> Result<Vec<crate::schema_objects::DatabaseObject>, CommandError> {
-    let parsed = crate::schema_objects::ObjectKind::parse(&kind)
-        .ok_or_else(|| CommandError::Validation(format!("Unknown object kind: {kind}")))?;
-    let (driver, handle) = state
-        .connection_manager
-        .get_connection(&connection_id)
-        .await
-        .cmd_err("get_database_objects")?;
-    let config = state
-        .connection_manager
-        .get_connection_config(&connection_id)
-        .await
-        .cmd_err("get_database_objects")?;
-    let Some(sql) = crate::schema_objects::list_objects_sql(&config.database_type, parsed) else {
-        return Ok(Vec::new());
-    };
-    let result = driver
-        .query(&handle, &sql)
-        .await
-        .cmd_err("get_database_objects")?;
-    // Some drivers (notably PostgreSQL via sqlx) omit column metadata when the result set is empty.
-    if result.columns.is_empty() && result.rows.is_empty() {
-        return Ok(Vec::new());
+    if crate::schema_objects::ObjectKind::parse(&kind).is_none() {
+        return Err(CommandError::Validation(format!(
+            "Unknown object kind: {kind}"
+        )));
     }
-    let name_idx = column_index(&result.columns, &["name", "Name", "Trigger", "proname"])
-        .ok_or_else(|| CommandError::Internal("Object list query missing name column".into()))?;
-    let schema_idx = column_index(&result.columns, &["schema", "Db", "nspname"]);
-    let mut out = Vec::new();
-    for row in result.rows {
-        let Some(name) = value_as_string(row.get(name_idx).and_then(|v| v.as_ref())) else {
-            continue;
-        };
-        let schema = schema_idx.and_then(|i| value_as_string(row.get(i).and_then(|v| v.as_ref())));
-        out.push(crate::schema_objects::DatabaseObject {
-            kind: parsed.as_str().into(),
-            schema,
-            name,
-        });
-    }
-    Ok(out)
+    let data = run_schema_object_command(
+        state,
+        &connection_id,
+        "list_objects",
+        serde_json::json!({ "kind": kind }),
+    )
+    .await?;
+    Ok(parse_objects_from_command(&data))
 }
 
 pub(crate) async fn get_object_ddl_impl(
@@ -293,110 +288,41 @@ pub(crate) async fn get_object_ddl_impl(
     name: String,
     schema: Option<String>,
 ) -> Result<String, CommandError> {
-    let parsed = crate::schema_objects::ObjectKind::parse(&kind)
-        .ok_or_else(|| CommandError::Validation(format!("Unknown object kind: {kind}")))?;
-    let (driver, handle) = state
-        .connection_manager
-        .get_connection(&connection_id)
-        .await
-        .cmd_err("get_object_ddl")?;
-    let config = state
-        .connection_manager
-        .get_connection_config(&connection_id)
-        .await
-        .cmd_err("get_object_ddl")?;
-    let Some(sql) = crate::schema_objects::object_ddl_sql(
-        &config.database_type,
-        parsed,
-        &name,
-        schema.as_deref(),
-    ) else {
-        return Err(CommandError::Validation(
-            "This database type does not expose object DDL".into(),
-        ));
-    };
-    let result = driver
-        .query(&handle, &sql)
-        .await
-        .cmd_err("get_object_ddl")?;
-    let ddl_idx = column_index(
-        &result.columns,
-        &[
-            "ddl",
-            "Create Function",
-            "Create Procedure",
-            "Create Trigger",
-            "SQL Original Statement",
-            "pg_get_functiondef",
-            "pg_get_triggerdef",
-        ],
+    if crate::schema_objects::ObjectKind::parse(&kind).is_none() {
+        return Err(CommandError::Validation(format!(
+            "Unknown object kind: {kind}"
+        )));
+    }
+    let data = run_schema_object_command(
+        state,
+        &connection_id,
+        "get_object_ddl",
+        serde_json::json!({
+            "kind": kind,
+            "name": name,
+            "schema": schema,
+        }),
     )
-    .or_else(|| {
-        // SHOW CREATE * typically has DDL in the second column.
-        if result.columns.len() >= 2 {
-            Some(1)
-        } else {
-            result.columns.first().map(|_| 0)
-        }
-    });
-    let Some(idx) = ddl_idx else {
-        return Ok(String::new());
-    };
-    let ddl = result
-        .rows
-        .first()
-        .and_then(|row| value_as_string(row.get(idx).and_then(|v| v.as_ref())))
-        .unwrap_or_default();
-    Ok(ddl)
+    .await?;
+    Ok(data
+        .get("ddl")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+        .to_string())
 }
 
 pub(crate) async fn get_privileges_impl(
     state: &AppState,
     connection_id: String,
 ) -> Result<Vec<crate::schema_objects::PrivilegeGrant>, CommandError> {
-    let (driver, handle) = state
-        .connection_manager
-        .get_connection(&connection_id)
-        .await
-        .cmd_err("get_privileges")?;
-    let config = state
-        .connection_manager
-        .get_connection_config(&connection_id)
-        .await
-        .cmd_err("get_privileges")?;
-    let Some(sql) = crate::schema_objects::list_privileges_sql(&config.database_type) else {
-        return Ok(Vec::new());
-    };
-    let result = driver
-        .query(&handle, &sql)
-        .await
-        .cmd_err("get_privileges")?;
-    let grantee_idx = column_index(&result.columns, &["grantee"]);
-    let schema_idx = column_index(&result.columns, &["schema", "table_schema"]);
-    let name_idx = column_index(&result.columns, &["name", "table_name"]);
-    let priv_idx = column_index(&result.columns, &["privilege", "privilege_type"]);
-    let mut out = Vec::new();
-    for row in result.rows {
-        let Some(grantee) =
-            grantee_idx.and_then(|i| value_as_string(row.get(i).and_then(|v| v.as_ref())))
-        else {
-            continue;
-        };
-        let object_name = name_idx
-            .and_then(|i| value_as_string(row.get(i).and_then(|v| v.as_ref())))
-            .unwrap_or_default();
-        let privilege = priv_idx
-            .and_then(|i| value_as_string(row.get(i).and_then(|v| v.as_ref())))
-            .unwrap_or_default();
-        out.push(crate::schema_objects::PrivilegeGrant {
-            grantee,
-            object_schema: schema_idx
-                .and_then(|i| value_as_string(row.get(i).and_then(|v| v.as_ref()))),
-            object_name,
-            privilege,
-        });
-    }
-    Ok(out)
+    let data = run_schema_object_command(
+        state,
+        &connection_id,
+        "list_privileges",
+        serde_json::json!({}),
+    )
+    .await?;
+    Ok(parse_grants_from_command(&data))
 }
 
 #[tauri::command]

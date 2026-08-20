@@ -1,7 +1,7 @@
 //! Dialect SQL for routines, triggers, and privilege listings.
 //!
-//! Host runs these through the live driver `query` / `execute` APIs so object
-//! browsers stay driver-agnostic until F1 moves them to Driver Commands.
+//! Dialect SQL helpers used by driver `list_objects` / `get_object_ddl` /
+//! `list_privileges` commands. Host must not execute these SQL strings directly.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ObjectKind {

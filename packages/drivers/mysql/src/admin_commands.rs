@@ -115,6 +115,8 @@ pub fn mysql_admin_command_definitions() -> Vec<DriverCommandDefinition> {
         metadata: DriverCommandMetadata::new(CommandCategory::Admin, CommandAccessLevel::HighRisk),
     });
 
+    cmds.extend(schema_object_command_definitions());
+
     cmds
 }
 
@@ -254,6 +256,9 @@ mod tests {
         assert!(ids.contains(&"execute"));
         assert!(ids.contains(&"create_database"));
         assert!(ids.contains(&"create_user"));
+        assert!(ids.contains(&"list_objects"));
+        assert!(ids.contains(&"get_object_ddl"));
+        assert!(ids.contains(&"list_privileges"));
     }
 
     #[test]

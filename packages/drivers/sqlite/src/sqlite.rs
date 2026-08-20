@@ -569,6 +569,7 @@ impl DatabaseDriver for SqliteDriver {
         Ok(ExplainResult {
             plan_text: plan_lines.join("\n"),
             plan_json: None,
+            plan_tree: None,
             total_cost: None,
             estimated_rows: None,
         })
@@ -607,6 +608,37 @@ impl DatabaseDriver for SqliteDriver {
     ) -> Result<StructureChangePlan, DriverError> {
         let caps = structure::capabilities(&self.driver_type());
         structure::plan_changes(request, &caps)
+    }
+
+    fn command_definitions(&self) -> Vec<DriverCommandDefinition> {
+        let mut cmds = vec![query_command_definition(), execute_command_definition()];
+        cmds.extend(schema_object_command_definitions());
+        cmds
+    }
+
+    async fn execute_command(
+        &self,
+        handle: &ConnectionHandle,
+        command: &str,
+        input: serde_json::Value,
+    ) -> Result<CommandResult, DriverError> {
+        match execute_standard_sql_command(self, handle, command, input.clone()).await {
+            Err(DriverError::Unsupported(_)) => {}
+            other => return other,
+        }
+        if is_schema_object_command(command) {
+            return execute_schema_object_command(
+                self,
+                &self.driver_type(),
+                handle,
+                command,
+                input,
+            )
+            .await;
+        }
+        Err(DriverError::Unsupported(format!(
+            "unsupported driver command: {command}"
+        )))
     }
 }
 

@@ -809,6 +809,7 @@ pub fn run() {
             commands::get_driver_commands,
             commands::get_connection_commands,
             commands::execute_driver_command,
+            commands::execute_driver_command_stream,
             commands::get_explain,
             commands::cancel_query,
             commands::begin_session_transaction,

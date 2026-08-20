@@ -12,8 +12,9 @@ use crate::db::{
     TableInfo, TableSchema, TransactionHandle, Value,
 };
 use datazen_driver_api::{
-    execute_command_definition, execute_standard_sql_command, query_command_definition,
-    CommandResult, DriverCommandDefinition,
+    execute_command_definition, execute_schema_object_command, execute_standard_sql_command,
+    is_schema_object_command, query_command_definition, query_stream_command_definition,
+    schema_object_command_definitions, CommandResult, DriverCommandDefinition,
 };
 
 #[derive(Clone)]
@@ -44,6 +45,7 @@ impl Default for MockDriverOptions {
             explain_plan: ExplainResult {
                 plan_text: String::new(),
                 plan_json: None,
+                plan_tree: None,
                 total_cost: None,
                 estimated_rows: None,
             },
@@ -324,7 +326,12 @@ impl DatabaseDriver for MockDriver {
     }
 
     fn command_definitions(&self) -> Vec<DriverCommandDefinition> {
-        let mut definitions = vec![query_command_definition(), execute_command_definition()];
+        let mut definitions = vec![
+            query_command_definition(),
+            query_stream_command_definition(),
+            execute_command_definition(),
+        ];
+        definitions.extend(schema_object_command_definitions());
         definitions.extend(self.opts.extra_commands.clone());
         definitions
     }
@@ -345,6 +352,10 @@ impl DatabaseDriver for MockDriver {
                 "command": command,
                 "input": input,
             })));
+        }
+        if is_schema_object_command(command) {
+            return execute_schema_object_command(self, &self.db_type, handle, command, input)
+                .await;
         }
         execute_standard_sql_command(self, handle, command, input).await
     }
