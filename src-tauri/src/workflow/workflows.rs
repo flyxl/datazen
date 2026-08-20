@@ -14,6 +14,8 @@ pub(crate) use crate::workflow::model;
 pub(crate) mod conditions;
 #[path = "context.rs"]
 pub(crate) mod context;
+#[path = "data_step.rs"]
+pub(crate) mod data_step;
 #[path = "executor.rs"]
 pub(crate) mod executor;
 

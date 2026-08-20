@@ -8,20 +8,20 @@
 
 ## 1. 概述
 
-Workflow 是可复用的自动化流程：把 **SQL 查询、AI 分析、条件分支、循环** 串成 YAML，支持变量替换与**跨库**（每步可绑定不同连接）。
+Workflow 是可复用的自动化流程：把 **SQL 查询、AI 分析、条件分支、循环、数据整合** 串成 YAML，支持变量替换与**跨库**（每步可绑定不同连接）。
 
 | 能力 | 说明 |
 |------|------|
-| 步骤类型 | `query` / `ai` / `condition` / `foreach` |
+| 步骤类型 | `query` / `command` / `ai` / `condition` / `foreach` / `merge` / `transform` |
 | 变量 | `string` / `number` / `connection`，可带默认值 |
 | 模板 | `{{...}}` 替换 SQL、prompt、connection、output 等 |
-| 跨库 | 步骤级 `connection` / `database` |
+| 跨库 | 步骤级 `connection` / `database`；多库结果可用 `merge` 并表 |
 | 错误策略 | 全局或步骤级：`abort` / `skip` / `fallback` |
 | 运行入口 | 连接窗口 AI 侧栏、独立 Workflow 窗口、MCP `run_workflow`、AI 对话生成 |
 
 **不能做什么（当前实现边界）**
 
-- 没有独立「脚本/HTTP」步骤类型  
+- 没有「脚本/HTTP」步骤类型；`merge` / `transform` 是**纯数据变换**，不支持任意代码
 - `condition` 右侧比较值**不会**再解析为步骤路径（见 [§7](#7-条件表达式)）  
 - `foreach` 默认最多 100 次迭代  
 - MCP `run_workflow` 通常只返回最终文本输出，不含逐步详情  
@@ -144,7 +144,7 @@ error_handling:            # 可选，默认 strategy: abort
 | `timeout_secs` | u64 | 否 | `300` | 全局超时（秒） |
 | `error_handling` | object | 否 | `abort` | 默认错误策略 |
 
-Serde 使用 `#[serde(tag = "type")]` 区分步骤：每个步骤对象必须有 `type: query|ai|condition|foreach`。
+Serde 使用 `#[serde(tag = "type")]` 区分步骤：每个步骤对象必须有 `type: query|command|ai|condition|foreach|merge|transform`。
 
 ---
 
@@ -464,6 +464,115 @@ items: "steps.get_orders.rows"
 
 ---
 
+### 8.5 `merge` — 跨库/多结果并表
+
+把多个行集**按行拼接**成一张表，常用于把多库（PG / MySQL / Redis 等）的同类结果合并后交给显示器/图表或后续 `transform`。
+
+```yaml
+- type: merge
+  id: merged
+  sources:
+    - source: "steps.pg_orders.rows"     # 路径或 JSON 数组
+      columns:                           # 可选：投影/重命名（省略=保留全部列）
+        customer: customer
+        amount: amount
+      add: { src: "PG" }                # 注入常量列
+    - source: "steps.my_orders.rows"
+      add: { src: "MY" }
+  columns:                              # 可选：全局输出列顺序
+    - customer
+    - amount
+    - src
+```
+
+| 字段 | 必填 | 默认 | 说明 |
+|------|------|------|------|
+| `id` | 是 | — | 步骤 ID |
+| `sources` | 是 | — | 有序合并分组列表 |
+| `sources[].source` | 是 | — | 取值表达式（`steps.<id>.rows` 或 JSON 数组字面量） |
+| `sources[].columns` | 否 | 保留原列 | 投影/重命名：`输出列名 -> 源字段路径`；写这项后仅保留所列列 |
+| `sources[].add` | 否 | — | 向该组每行注入常量列 |
+| `columns` | 否 | 首个出现的列顺序 | 全局输出列顺序（额外列自动附后） |
+| `on_error` / `timeout_secs` | 否 | 同 query | 见 [§10](#10-超时与错误处理) |
+
+**结果结构**：与 query 一致 `{ "rows": [{...}], "columns": [...], "rows_count": N }`，可直接被 Dashboard 的 `output` 消费。
+
+### 8.6 `transform` — 行级计算 / 过滤 / 排序 / 截断
+
+对单一行集做**逐行**变换：计算列、过滤、排序、offset/limit。表达式求值是**非图灵的声明式子集**（字段 / 数字 / 四则 / 比较 / `&& || !` / 括号），不嵌任何脚本引擎。
+
+```yaml
+- type: transform
+  id: enriched
+  from: "steps.merged.rows"            # 取值表达式
+  addColumns:                          # 行级计算列
+    - name: profit
+      expr: "amount - cost"
+    - name: ratio
+      expr: "amount / total * 100"
+  filter: "profit > 0 && src == 'PG'"  # 行级过滤
+  sortBy: "-profit"                    # 排序；前缀 `-` 降序
+  offset: 0                            # 跳过前 N 行
+  limit: 100                           # 最多输出行数
+```
+
+| 字段 | 必填 | 默认 | 说明 |
+|------|------|------|------|
+| `id` | 是 | — | 步骤 ID |
+| `from` | 是 | — | 取值表达式（`steps.<id>.rows` 或 JSON 数组字面量） |
+| `addColumns` | 否 | — | 计算列：`name` 新列名 + `expr` 表达式 |
+| `filter` | 否 | — | 行级过滤表达式（真值为 True） |
+| `sortBy` | 否 | — | 排序列；前缀 `-` 表示降序 |
+| `offset` | 否 | 0 | 跳过的前导行数 |
+| `limit` | 否 | — | 最多输出的行数 |
+| `on_error` / `timeout_secs` | 否 | 同 query | 见 [§10](#10-超时与错误处理) |
+
+**表达式支持**：
+
+| 形式 | 示例 | 结果 |
+|------|------|------|
+| 字段引用 | `amount`、`order.tax` | 该行对应值 |
+| 字符串 | `'PG'` | 字面量 |
+| 数字 / 四则 | `amount - cost`、`net / total * 100` | 数值运算（除零报错） |
+| 字符串拼接 | `name + '!'` | 任一侧为字符串时按字符串拼接 |
+| 比较 | `amount > 10`、`src == 'PG'` | 布尔；数值按数值、否则按字符串比较 |
+| 逻辑 | `&&` `\|\|` `!` | 布尔组合 |
+| 括号 | `(a + b) * 2` | 分组 |
+
+未知字段按 `null`（数值上下文按 `0`、字符串拼接按空串）处理，不中断执行。
+
+**与 Dashboard 的关系**：`merge` / `transform` 的输出仍为 `{ rows, columns }`，因此工作流把跨库多步结果收敛成**一张表**的推荐做法是：
+
+```yaml
+steps:
+  - type: query
+    id: pg_orders
+    connection: "{{pg_conn}}"
+    sql: "SELECT customer, amount FROM orders"
+  - type: query
+    id: my_orders
+    connection: "{{mysql_conn}}"
+    sql: "SELECT customer, amount FROM orders"
+  - type: merge          # 并把 PG/MySQL 结果并成一张带 src 列的表
+    id: combined
+    sources:
+      - source: "steps.pg_orders.rows"
+        add: { src: "PG" }
+      - source: "steps.my_orders.rows"
+        add: { src: "MY" }
+  - type: transform
+    id: top
+    from: "steps.combined.rows"
+    sortBy: "-amount"
+    limit: 10
+
+output:
+  format: json
+  template: '{{steps.top.result}}'   # 一张表，可被 Dashboard 直接展示
+```
+
+`merge` / `transform` 都是**纯 Rust**（不内嵌 JS），后端引擎、`condition`/`foreach`/Dashboard 共用同一 context，因此可直接用在 GUI、MCP、定时调度等任何执行入口。
+
 ## 9. 连接与跨库
 
 ### 9.1 三层绑定
@@ -780,6 +889,8 @@ output:
 | ai | `result`（字符串） |
 | condition | 执行记录含 `condition` 布尔；一般不靠模板引用 |
 | foreach | `iterations_completed`, `iterations` |
+| merge | `rows`, `columns`, `rows_count`（并表成一张表） |
+| transform | `rows`, `columns`, `rows_count`（变换后的行集） |
 
 ### 15.3 默认值速查
 

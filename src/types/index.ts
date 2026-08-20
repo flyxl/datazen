@@ -447,7 +447,7 @@ export interface DriverCommandDefinition {
   metadata: DriverCommandMetadata;
 }
 
-export type WorkflowStepType = 'query' | 'command' | 'ai' | 'condition' | 'foreach';
+export type WorkflowStepType = 'query' | 'command' | 'ai' | 'condition' | 'foreach' | 'merge' | 'transform';
 
 export interface ErrorHandlingConfig {
   strategy: 'abort' | 'skip' | 'fallback';
@@ -472,6 +472,27 @@ export interface WorkflowStep {
   asVar?: string;
   steps?: WorkflowStep[];
   maxIterations?: number;
+  // merge step
+  sources?: MergeSource[];
+  columns?: string[];
+  // transform step
+  from?: string;
+  addColumns?: TransformColumn[];
+  filter?: string;
+  sortBy?: string;
+  offset?: number;
+  limit?: number;
+}
+
+export interface MergeSource {
+  source: string;
+  columns?: Record<string, string>;
+  add?: Record<string, unknown>;
+}
+
+export interface TransformColumn {
+  name: string;
+  expr: string;
 }
 
 export interface WorkflowOutput {
