@@ -16,6 +16,7 @@ pub mod schema_object_commands;
 pub mod schema_objects;
 pub mod sql_dump;
 pub mod sql_split;
+pub mod sqlite_structure;
 pub mod sync;
 mod traits;
 mod types;

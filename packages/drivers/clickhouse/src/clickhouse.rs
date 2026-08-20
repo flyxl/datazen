@@ -437,6 +437,37 @@ impl DatabaseDriver for ClickHouseDriver {
     async fn cancel_query(&self, _handle: &ConnectionHandle) -> Result<(), DriverError> {
         Ok(())
     }
+
+    fn command_definitions(&self) -> Vec<DriverCommandDefinition> {
+        vec![query_command_definition(), execute_command_definition()]
+    }
+
+    async fn execute_command(
+        &self,
+        handle: &ConnectionHandle,
+        command: &str,
+        input: serde_json::Value,
+    ) -> Result<CommandResult, DriverError> {
+        execute_standard_sql_command(self, handle, command, input).await
+    }
+
+    async fn structure_capabilities(
+        &self,
+        _handle: &ConnectionHandle,
+    ) -> Result<StructureCapabilities, DriverError> {
+        Ok(crate::structure::clickhouse_capabilities(
+            &self.driver_type(),
+        ))
+    }
+
+    async fn plan_structure_changes(
+        &self,
+        _handle: &ConnectionHandle,
+        request: &StructureChangeRequest,
+    ) -> Result<StructureChangePlan, DriverError> {
+        let caps = crate::structure::clickhouse_capabilities(&self.driver_type());
+        crate::structure::plan_structure_changes(&caps, request)
+    }
 }
 
 #[cfg(test)]
@@ -503,6 +534,7 @@ mod tests {
             last_connected_at: None,
             server_version: None,
             options: None,
+            read_only: false,
         }
     }
 

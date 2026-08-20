@@ -24,7 +24,7 @@ export const sqlserverMeta = {
   clipboardSchemes: ['sqlserver', 'mssql'],
   supportsExplain: true,
   hasMultiDatabase: true,
-  supportedObjectKinds: ['function', 'procedure', 'trigger'],
+  supportedObjectKinds: ['function', 'procedure', 'trigger', 'sequence', 'type'],
   supportsCreateDatabase: true,
   supportsCreateSchema: true,
   supportsCreateUser: true,

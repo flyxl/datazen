@@ -12,7 +12,7 @@ export const sqliteMeta = {
   connectionMode: 'file',
   supportsSSH: false,
   supportsSSL: false,
-  supportsBackup: false,
+  supportsBackup: true,
   supportsTables: true,
   isKeyValue: false,
   supportsSQL: true,
