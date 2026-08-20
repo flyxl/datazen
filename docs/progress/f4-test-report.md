@@ -101,14 +101,14 @@ pnpm vitest run --coverage \
 
 **未执行（环境阻塞）**
 
-与 F1–F3 相同：需 `pnpm tauri build --debug --features webdriver` 后跑 Host E2E。F4-BUG-001/002 已改为 `openSettingsInMainWindow`（见 fix commit）；待 webdriver 构建后验证 PIH-004/005 与 TC-HOTKEY-002。
+与 F1–F3 相同：需 `pnpm tauri build --debug --features webdriver` 后跑 Host E2E。F4-BUG-001/002 静态验证已通过（`rg 'window.html\?window=settings' e2e/` → 0；`path-ipc-hardening.ts` / `hotkeys.ts` 使用 `openSettingsInMainWindow`）；PIH-004/005 与 TC-HOTKEY-002 **仍待 webdriver 构建后实跑**。
 
 ## Bugs
 
 | Bug ID | 关联 | 标题 | 状态 | 复现 / 说明 |
 |--------|------|------|------|-------------|
-| F4-BUG-001 | F4 | `path-ipc-hardening.ts` PIH-004/005 legacy settings 子窗口 URL | 待验证 | 已改 `openSettingsInMainWindow('logging'|'ai')`；待 E2E 执行确认。 |
-| F4-BUG-002 | F4 | `hotkeys.ts` TC-HOTKEY-002 fallback legacy settings URL | 待验证 | 已改 `openSettingsInMainWindow()`；待 E2E 执行确认。 |
+| F4-BUG-001 | F4 | `path-ipc-hardening.ts` PIH-004/005 legacy settings 子窗口 URL | 已修复 | 11fa9ce2 改 `openSettingsInMainWindow('logging'|'ai')`；静态检查通过（e2e/ 无 legacy URL）。E2E 实跑待 webdriver 构建。 |
+| F4-BUG-002 | F4 | `hotkeys.ts` TC-HOTKEY-002 fallback legacy settings URL | 已修复 | 11fa9ce2 改 `openSettingsInMainWindow()`；静态检查通过。E2E 实跑待 webdriver 构建。 |
 | F4-BUG-003 | F4 | PRD `docs/prd/data-dashboard*.md` 仍列已删 `DashboardWindow.tsx` / `SettingsWindow.tsx` | 待验证 | 文档债；不影响构建。**留 R1** 文档 sweep（`DashboardPanel` / `SettingsPage` 路径替换）。 |
 
 ## 验收结论
@@ -118,5 +118,5 @@ pnpm vitest run --coverage \
 | 删文件 / 保留 Docs | **通过** |
 | 坏引用扫描 | **通过**（无 import 级断裂） |
 | Vitest | **57/57 通过**；F4 路径 coverage ≥80% |
-| E2E | **用例已文档化**；legacy URL 缺陷已登记；待 webdriver 构建后执行 |
+| E2E | **静态验证通过**（legacy URL 已清除）；PIH-004/005、TC-HOTKEY-002 待 webdriver 构建后实跑 |
 | 工作项 F4 | **已完成**（Vitest 通过；E2E 阻塞项与已知 bug 已登记） |
