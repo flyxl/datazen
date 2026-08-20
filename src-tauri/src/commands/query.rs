@@ -8,7 +8,7 @@ use super::error::{CmdExt, CommandError};
 use super::AppState;
 use crate::db::{ExplainResult, MultiQueryResult};
 use crate::store::QueryHistoryEntry;
-use datazen_driver_api::QueryStreamCallback;
+use datazen_driver_api::{QueryStreamCallback, QueryStreamEvent};
 use tauri::ipc::Channel;
 use tauri::State;
 
