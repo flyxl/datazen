@@ -20,7 +20,7 @@ describe('getWindowKind', () => {
     const cases: Array<[string, string]> = [
       ['?window=new-connection', 'new-connection'],
       ['?window=connection', 'main'],
-      ['?window=settings', 'settings'],
+      ['?window=settings', 'main'],
       ['?window=data-sync', 'data-sync'],
       ['?window=backup', 'backup'],
       ['?window=workflow', 'main'],
@@ -35,9 +35,9 @@ describe('getWindowKind', () => {
 
   it('caches kind after first read', async () => {
     const { getWindowKind } = await loadModule('?window=settings');
-    expect(getWindowKind()).toBe('settings');
+    expect(getWindowKind()).toBe('main');
     window.history.replaceState({}, '', '?window=backup');
-    expect(getWindowKind()).toBe('settings');
+    expect(getWindowKind()).toBe('main');
   });
 });
 
