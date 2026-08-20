@@ -48,13 +48,16 @@ vi.mock('../../../components/TitleBar', () => ({
   TitleBar: ({
     title,
     leftContent,
+    rightContent,
   }: {
     title?: React.ReactNode;
     leftContent?: React.ReactNode;
+    rightContent?: React.ReactNode;
   }) => (
     <div data-testid="title-bar">
       {leftContent}
       <span>{title}</span>
+      {rightContent}
     </div>
   ),
 }));
@@ -93,5 +96,17 @@ describe('SettingsPage', () => {
 
     fireEvent.click(screen.getByTestId('settings-back'));
     expect(onBackMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('defaults initialSection to general when omitted', () => {
+    render(<SettingsPage onBack={onBackMock} />);
+
+    expect(screen.getByTestId('settings-content-mock')).toHaveTextContent('section=general');
+  });
+
+  it('renders theme toggle in title bar', () => {
+    render(<SettingsPage onBack={onBackMock} />);
+
+    expect(screen.getByTestId('theme-toggle')).toBeInTheDocument();
   });
 });

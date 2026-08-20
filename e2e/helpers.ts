@@ -695,3 +695,51 @@ export async function selectDzOption(triggerLabel: string, optionLabel: string) 
   );
   await browser.pause(200);
 }
+
+// ── settings (F1: main-window SettingsPage) ─────────────────────────
+
+/** Emit a cross-window menu event on the main Tauri window. */
+export async function emitCrossWindowEvent(event: string, payload?: Record<string, unknown>) {
+  await browser.execute(
+    (evt: string, pl: Record<string, unknown> | null) => {
+      (window as unknown as { __TAURI_INTERNALS__?: { invoke: Function } }).__TAURI_INTERNALS__
+        ?.invoke?.('plugin:event|emit', {
+          event: evt,
+          payload: pl ?? {},
+        })
+        .catch(() => {});
+    },
+    event,
+    payload ?? null,
+  );
+  await browser.pause(300);
+}
+
+/** Open SettingsPage inside the main window (F1; replaces legacy settings sub-window URL). */
+export async function openSettingsInMainWindow(section?: string) {
+  await browser.url('tauri://localhost');
+  await browser.waitUntil(
+    async () => {
+      const nav = await $('[data-testid="workspace-nav-connections"]');
+      return nav.isDisplayed().catch(() => false);
+    },
+    { timeout: 20000, timeoutMsg: 'Main window workspace nav not ready' },
+  );
+  await emitCrossWindowEvent('menu:open-settings', section ? { section } : undefined);
+  const settingsPage = await $('[data-testid="settings-page"]');
+  await settingsPage.waitForDisplayed({ timeout: 15000 });
+}
+
+/** Click SettingsPage back control and wait for workspace shell. */
+export async function backFromSettingsInMainWindow() {
+  const backBtn = await $('[data-testid="settings-back"]');
+  await backBtn.waitForDisplayed({ timeout: 8000 });
+  await backBtn.click();
+  await browser.pause(400);
+  const settingsPage = await $('[data-testid="settings-page"]');
+  await browser.waitUntil(async () => !(await settingsPage.isDisplayed().catch(() => false)), {
+    timeout: 10000,
+    timeoutMsg: 'SettingsPage did not close after back',
+  });
+  await $('[data-testid="workspace-nav-connections"]').waitForDisplayed({ timeout: 10000 });
+}
