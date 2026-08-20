@@ -34,9 +34,9 @@
 
 | 套件 | 结果 |
 |------|------|
-| `ConnectionPage.test.tsx` | **通过**（15/15，含 F3 新增 2 条） |
+| `ConnectionPage.test.tsx` | **通过**（16/16，含 F3 新增 3 条） |
 | `SettingsPage.test.tsx` | **通过**（4/4） |
-| **合计** | **19/19 通过** |
+| **合计** | **20/20 通过** |
 
 F3 相关 Vitest 用例：
 
@@ -44,6 +44,7 @@ F3 相关 Vitest 用例：
 |---------|------|
 | TC-window: sidebar Settings opens SettingsPage | 默认 connections 模式下点击 `workspace-nav-settings` → SettingsPage |
 | TC-window: sidebar Settings from workflow returns to workflow on back | workflow → settings → back → workflow 恢复 |
+| TC-window: sidebar Settings button has no unreachable active highlight (F3-BUG-001) | `workspace-nav-settings` 无 `active` 高亮；修复 commit `151c1b0a` 验证通过 |
 | TC-window: menu:open-settings shows SettingsPage with section | 菜单路径 + section（F1/F3 共用栈） |
 | TC-window: SettingsPage back returns to workspace and restores mode | 菜单打开 + workflow 恢复（F1 已有，F3 回归） |
 
@@ -84,12 +85,12 @@ pnpm vitest run --coverage \
 
 | Bug ID | 关联 | 标题 | 状态 | 说明 |
 |--------|------|------|------|------|
-| F3-BUG-001 | F3 | Settings 按钮 `active={mainView === 'settings'}` 永不可达 | 待验证 | 已移除不可达 `active` prop（全页替换设计下 Settings 不在 rail 内，无需高亮）。 |
+| F3-BUG-001 | F3 | Settings 按钮 `active={mainView === 'settings'}` 永不可达 | **已修复** | 修复 commit `151c1b0a` 移除不可达 `active` prop；Vitest `TC-window: sidebar Settings button has no unreachable active highlight` 验证通过。 |
 
-**复现步骤（F3-BUG-001）**：
+**F3-BUG-001 验证（2026-08-20）**：
 
-1. 阅读 `ConnectionPage.tsx` L928–971：`mainView === 'settings'` 时渲染 `SettingsPage`，else 分支才含 `workspace-nav-settings`。
-2. L968 `active={mainView === 'settings'}` 在按钮可见时 `mainView` 恒为 `'workspace'`，active 样式永不应用。
+1. 源码：`ConnectionPage.tsx` L963–969 `workspace-nav-settings` 无 `active=` prop（修复 commit `151c1b0a`）。
+2. Vitest：`ConnectionPage.test.tsx` 16/16 通过；新增用例断言 settings 按钮无 `bg-accent/20` 高亮类。
 
 **测试缺口（非 Bug，不修）**：
 
