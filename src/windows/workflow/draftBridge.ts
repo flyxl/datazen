@@ -12,7 +12,7 @@ export function forgetWorkflowDraft(id: string): void {
 }
 
 /**
- * The legacy WorkflowWindow callback currently reconstructs WorkflowStep and
+ * The legacy WorkflowPage callback currently reconstructs WorkflowStep and
  * therefore only forwards the historical fields. Keep the richer editor draft
  * here until that callback is migrated, so Command fields are not silently lost.
  */

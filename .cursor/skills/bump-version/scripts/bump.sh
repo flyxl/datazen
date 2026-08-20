@@ -71,7 +71,7 @@ echo ""
 echo "[2/5] Updating display strings..."
 
 DISPLAY_FILES=(
-  "src/windows/main/MainWindow.tsx"
+  "src/windows/main/MainPage.tsx"
   "src/windows/data-sync/DataSyncWindow.tsx"
   "e2e/specs/homepage-features.ts"
 )

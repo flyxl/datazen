@@ -108,7 +108,7 @@ YAML 驱动的通用执行引擎，GUI、Tauri IPC 和 MCP 共用同一 runtime�
 ## 前端约定
 
 - 零硬编码：行为差异通过 `DB_REGISTRY` + `DatabaseTypeMeta` 元数据驱动
-- **统一主工作区**：连接 / Workflow / Dashboard 在 `main` 窗口内导航（`ConnectionWindow` + `ConnectionNavigatorTree`）；`windowKind` 将 legacy `connection`/`workflow`/`dashboard` 别名到 `main`。设置 / 备份 / 同步等仍为子窗口（`windowManager.ts`）
+- **统一主工作区**：连接 / Workflow / Dashboard 在 `main` 窗口内导航（`ConnectionPage` + `ConnectionNavigatorTree`）；`windowKind` 将 legacy `connection`/`workflow`/`dashboard` 别名到 `main`。Settings 已嵌入主工作区（`SettingsPage`）；备份 / 同步等仍为子窗口（`windowManager.ts`）
 - IPC：前端 camelCase，Rust snake_case；Tauri 自动映射
 - 右键菜单统一使用 Web Context Menu，禁止 Tauri 原生 `Menu.popup()`
 - **主题包 DataTable 色**：`--dt-*` token + `src/lib/dataTypeColors.ts`（CellRenderer、StructureView、TableHeader 等共用）
@@ -132,7 +132,7 @@ YAML 驱动的通用执行引擎，GUI、Tauri IPC 和 MCP 共用同一 runtime�
 | 导出（多表） | `windows/connection/BatchExportDialog.tsx` + `lib/batchExport.ts` | — |
 | 导出表结构 | `TableStructureEditor` + `lib/exportTableStructure.ts` | — |
 | AI Chat | `components/ai/AiChatPanel.tsx` | `commands/ai.rs` |
-| Workflows | `windows/workflow/WorkflowWindow.tsx` | `workflow/executor.rs` / `workflow/command_runtime.rs` |
+| Workflows | `windows/workflow/WorkflowPage.tsx` | `workflow/executor.rs` / `workflow/command_runtime.rs` |
 | 数据同步 | `windows/data-sync/` | `data_sync/` + `commands/sync/`（`inspect_data_sync` / `execute_data_sync`） |
 | 权限管理 | `windows/connection/PrivilegeView.tsx` | `execute_driver_command` + Driver `admin_commands`（动态 schema） |
 | 管理命令 | `Create*Dialog.tsx` + `schemaTreeContextMenu.ts` | `execute_driver_command` + Driver `admin_commands`（create/drop DB/schema/user, grant/revoke） |

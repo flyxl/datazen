@@ -4,19 +4,19 @@
 
 ## 1. 统一主工作区 + 少量子窗口
 
-自统一连接树改版后，**连接浏览 / Workflow / Dashboard 不再各自开独立 OS 窗口**，而是挂在主窗口（`main`）内的导航与 Tab。仍保留若干用途单一的原生子窗口：
+自统一连接树改版后，**连接浏览 / Workflow / Dashboard 不再各自开独立 OS 窗口**，而是挂在主窗口（`main`）内的导航与 Tab。React 侧主工作区页面组件以 `*Page` 命名（如 `ConnectionPage`、`WorkflowPage`）；仍保留若干用途单一的原生子窗口（`*Window`）：
 
 | 窗口 | 用途 | Label / `?window=` |
 |------|------|-------------------|
 | **main**（主工作区） | 连接导航树、连接 Tab、Workflow、Dashboard、查询与 Schema 浏览 | `main`；legacy `connection` / `workflow` / `dashboard` 会别名到 `main` |
 | new-connection | 新建/编辑连接（单例） | `new-connection-singleton` / `new-connection` |
-| settings | 应用设置（单例） | `settings-singleton` / `settings` |
+| settings | 应用设置（主工作区内 `SettingsPage`；legacy 子窗口路由仍保留） | `settings-singleton` / `settings` |
 | docs | 内置使用说明（单例） | `docs-singleton` / `docs` |
 | backup | 备份/恢复（单例） | `backup-singleton` / `backup` |
 | data-sync | 同族 Data Sync Diff Workspace（单例） | `data-sync-singleton` / `data-sync` |
 | schema-diff | Schema Diff（单例） | `schema-diff` |
 
-前端入口：`src/windows/connection/ConnectionWindow.tsx` 在 **main** 工作区内渲染（含 `ConnectionNavigatorTree`、`ConnectionWorkspaceHome`、面板 Tab）。`openConnectionWindow()`（`src/lib/windowManager.ts`）会 `focusMainWindow()`，并通过 `localStorage` + 跨窗口事件 `datazen:open-connection` 投递连接 payload，**不再**创建 `connection-*` 子窗口。
+前端入口：`src/windows/main/MainPage.tsx` → `ConnectionPage.tsx` 在 **main** 工作区内渲染（含 `ConnectionNavigatorTree`、`ConnectionWorkspaceHome`、面板 Tab）。`openConnectionWindow()`（`src/lib/windowManager.ts`）会 `focusMainWindow()`，并通过 `localStorage` + 跨窗口事件 `datazen:open-connection` 投递连接 payload，**不再**创建 `connection-*` 子窗口。
 
 ## 2. Rust 端窗口创建
 
@@ -66,7 +66,7 @@ function openWindow(label: string, options: OpenWindowOptions) {
 
 - `openNewConnectionWindow(editId?)` — 新建/编辑连接（子窗口）
 - `openConnectionWindow(...)` — **聚焦主工作区**并打开/追加连接 Tab（非新 OS 窗口）
-- `openSettingsWindow(section?)` — 设置（单例子窗口）
+- `openSettingsWindow(section?)` — 主工作区内打开 `SettingsPage`（emit `menu:settings`）
 - `openDataSyncWindow()` / `openBackupWindow()` — 对应单例子窗口
 - Workflow / Dashboard — 主工作区内导航（`menu:workflow` / `menu:dashboard` 等）
 

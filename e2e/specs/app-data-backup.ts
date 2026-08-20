@@ -33,18 +33,7 @@ async function invokeBackend<T>(cmd: string, args: Record<string, unknown> = {})
   return result as T;
 }
 
-const SUPPORTED = new Set([
-  'en',
-  'zh-CN',
-  'zh-TW',
-  'es',
-  'fr',
-  'de',
-  'ja',
-  'pt-BR',
-  'ru',
-  'ko',
-]);
+const SUPPORTED = new Set(['en', 'zh-CN', 'zh-TW', 'es', 'fr', 'de', 'ja', 'pt-BR', 'ru', 'ko']);
 
 function makeTraversalZip(dest: string) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dz-evil-'));
@@ -97,7 +86,7 @@ describe('App Data Backup (ADB-001~ADB-005)', () => {
 
     // macOS uses native menu (MenuBar returns null); assert product wiring instead of DOM buttons.
     const mainSrc = fs.readFileSync(
-      path.resolve(import.meta.dirname, '../../src/windows/main/MainWindow.tsx'),
+      path.resolve(import.meta.dirname, '../../src/windows/connection/ConnectionPage.tsx'),
       'utf8',
     );
     expect(mainSrc).toContain('exportAppDataWithDialog');
@@ -164,9 +153,7 @@ sys.exit(1 if bad else 0)
       expect(listing.length).toBeGreaterThan(0);
     } catch (e: unknown) {
       const err = e as { stdout?: string; status?: number };
-      throw new Error(
-        `ZIP contains excluded entries.\nListing:\n${err.stdout ?? String(e)}`,
-      );
+      throw new Error(`ZIP contains excluded entries.\nListing:\n${err.stdout ?? String(e)}`);
     }
   });
 
@@ -195,11 +182,7 @@ sys.exit(1 if bad else 0)
   it('ADB-007: export label locale keys match current UI language', async () => {
     const settings = await invokeBackend<{ language: string }>('get_settings');
     const localeFile =
-      settings.language === 'zh-CN'
-        ? 'zh-CN.ts'
-        : settings.language === 'en'
-          ? 'en.ts'
-          : 'en.ts';
+      settings.language === 'zh-CN' ? 'zh-CN.ts' : settings.language === 'en' ? 'en.ts' : 'en.ts';
     const src = fs.readFileSync(
       path.resolve(import.meta.dirname, `../../src/locales/${localeFile}`),
       'utf8',

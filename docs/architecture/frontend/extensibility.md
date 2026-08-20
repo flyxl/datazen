@@ -28,7 +28,7 @@ src/components/connection/    # 共享连接表单
 └── StandardConnectionFields.tsx
 
 src/windows/connection/
-├── ConnectionWindow.tsx        # 统一主工作区壳：导航 + 连接 Tab + Workflow/Dashboard
+├── ConnectionPage.tsx        # 统一主工作区壳：导航 + 连接 Tab + Workflow/Dashboard
 ├── ConnectionNavigatorTree.tsx # 左侧连接/Schema 导航
 ├── SqlConnectionView.tsx       # SQL 连接 UI
 ├── DocumentConnectionView.tsx  # 文档型连接 UI

@@ -446,10 +446,7 @@ describe('Workflow Tab System (WORKFLOW-WINDOW)', () => {
     const fs = await import('node:fs');
     const path = await import('node:path');
     const root = path.resolve(import.meta.dirname, '../..');
-    const wfWin = fs.readFileSync(
-      path.join(root, 'src/windows/workflow/WorkflowWindow.tsx'),
-      'utf8',
-    );
+    const wfWin = fs.readFileSync(path.join(root, 'src/windows/workflow/WorkflowPage.tsx'), 'utf8');
     // Prefer dedicated command; tolerate either window or shared settings wrapper.
     const settingsCmd = fs.readFileSync(path.join(root, 'src/commands/settings.ts'), 'utf8');
     expect(settingsCmd).toContain("invoke<void>('open_workflows_dir')");
