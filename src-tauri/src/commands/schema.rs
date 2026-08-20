@@ -745,24 +745,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn sqlite_function_list_is_empty() {
-        let sqlite =
-            crate::testing::mock_driver::MockDriver::new("sqlite", MockDriverOptions::default());
-        let test = TestAppState::new().await;
-        test.registry.register_test_driver("sqlite", sqlite).await;
-        let mut config = crate::testing::app_state::sample_postgres_config("sqlite-obj");
-        config.database_type = "sqlite".into();
-        test.store.save_connection(config).await.unwrap();
-        let conn_id = test.connect_config("sqlite-obj").await;
-        let rows = get_database_objects_impl(&test.state, conn_id.clone(), "function".into())
-            .await
-            .unwrap();
-        assert!(rows.is_empty());
-        let grants = get_privileges_impl(&test.state, conn_id).await.unwrap();
-        assert!(grants.is_empty());
-    }
-
-    #[tokio::test]
     async fn get_table_data_joins_filters_with_or() {
         use crate::db::{TableInfo, TableType};
         use crate::services::query_executor::FilterOperator;

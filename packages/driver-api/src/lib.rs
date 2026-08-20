@@ -11,6 +11,7 @@ pub mod command;
 mod factory;
 mod query_stream;
 mod reuse;
+pub mod schema_objects;
 pub mod sql_dump;
 pub mod sql_split;
 pub mod sync;
@@ -30,7 +31,11 @@ pub use query_stream::{
     QueryRowBatcher, QueryStreamCallback, QueryStreamEvent, QUERY_STREAM_BATCH_SIZE,
 };
 pub use reuse::ReuseDriver;
-pub use sql_dump::RestoreSession;
+pub use schema_objects::{
+    dialect_family, list_objects_sql, list_privileges_sql, object_ddl_sql, DatabaseObject,
+    ObjectKind, PrivilegeGrant,
+};
+pub use sql_dump::{RestoreSession, RestoreStatementGuard};
 pub use sql_split::{SqlStatementScanner, Utf8ChunkDecoder};
 pub use sync::{
     BoxedSyncAdapter, IRColumn, IRDefault, IRTable, IRType, SyncAdapterFactory, SyncSourceAdapter,
