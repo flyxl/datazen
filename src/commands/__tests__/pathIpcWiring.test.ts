@@ -29,8 +29,8 @@ describe('path IPC frontend wiring', () => {
     const aiSettings = readSrc('windows/settings/AiSettingsSection.tsx');
     expect(aiSettings).toContain('openContextDir');
 
-    const workflowWindow = readSrc('windows/workflow/WorkflowWindow.tsx');
-    expect(workflowWindow).toContain('openWorkflowsDir');
+    const workflowPage = readSrc('windows/workflow/WorkflowPage.tsx');
+    expect(workflowPage).toContain('openWorkflowsDir');
   });
 
   it('adb command wrapper exposes dialog IPC', () => {
@@ -44,9 +44,9 @@ describe('path IPC frontend wiring', () => {
     expect(backup).toContain("'save_encryption_key_with_dialog'");
     expect(backup).toContain('saveEncryptionKeyWithDialog');
 
-    const connectionWindow = readSrc('windows/connection/ConnectionWindow.tsx');
-    expect(connectionWindow).toContain('saveEncryptionKeyWithDialog');
-    expect(connectionWindow).toContain('appData.backupKeyTitle');
+    const connectionPage = readSrc('windows/connection/ConnectionPage.tsx');
+    expect(connectionPage).toContain('saveEncryptionKeyWithDialog');
+    expect(connectionPage).toContain('appData.backupKeyTitle');
   });
 
   it('connection share uses dialog IPC and menu events', () => {
@@ -75,12 +75,12 @@ describe('path IPC frontend wiring', () => {
     expect(pickFn).not.toContain('.pick_file(');
     expect(pickFn).not.toContain('.pick_folder(');
 
-    const connectionWindow = readSrc('windows/connection/ConnectionWindow.tsx');
-    expect(connectionWindow).toContain('ConnectionShareDialog');
-    expect(connectionWindow).toContain('menu:export-connections');
-    expect(connectionWindow).toContain('menu:import-connections');
-    expect(connectionWindow).toContain('menu:import-connections-dbx');
-    expect(connectionWindow).toContain('menu:import-connections-navicat');
+    const connectionPage = readSrc('windows/connection/ConnectionPage.tsx');
+    expect(connectionPage).toContain('ConnectionShareDialog');
+    expect(connectionPage).toContain('menu:export-connections');
+    expect(connectionPage).toContain('menu:import-connections');
+    expect(connectionPage).toContain('menu:import-connections-dbx');
+    expect(connectionPage).toContain('menu:import-connections-navicat');
 
     const menuBar = readSrc('components/MenuBar.tsx');
     expect(menuBar).toContain('export-connections');

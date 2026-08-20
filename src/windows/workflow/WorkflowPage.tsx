@@ -68,12 +68,12 @@ import type {
 } from '../../types';
 import type { ChartConfig } from '../../types/chart';
 
-interface WorkflowWindowProps {
+interface WorkflowPageProps {
   embedded?: boolean;
   onOpenDashboardInShell?: (dashboardId?: string, dashboardName?: string) => void;
 }
 
-// ── Panel types (same pattern as ConnectionWindow) ──────────────────
+// ── Panel types (same pattern as ConnectionPage) ──────────────────
 
 interface WorkflowRunPanel {
   type: 'run';
@@ -120,10 +120,10 @@ function nextPanelId(prefix: string) {
 
 // ── Main Component ──────────────────────────────────────────────────
 
-export function WorkflowWindow({
+export function WorkflowPage({
   embedded = false,
   onOpenDashboardInShell,
-}: Readonly<WorkflowWindowProps>) {
+}: Readonly<WorkflowPageProps>) {
   useSettings();
   const { t } = useI18n();
   const [confirmWf, confirmWfDialog] = useConfirmDialog();

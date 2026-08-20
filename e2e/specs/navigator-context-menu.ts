@@ -1,5 +1,5 @@
 /**
- * E2E tests for navigator tree context menus in ConnectionWindow.
+ * E2E tests for navigator tree context menus in ConnectionPage.
  *
  * Tests context menu items for connections, databases, schemas, categories,
  * and table/view nodes. Requires a PostgreSQL connection (seeded by wdio.conf.ts).

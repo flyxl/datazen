@@ -5,7 +5,7 @@ import { resolve } from 'path';
 /**
  * Option C coverage gate (approved):
  * - Core: lib / stores / DataTable / ai components ≥80%
- * - Windows: Connection shell, Workflow package, SettingsWindow, MainWindow ≥80%
+ * - Windows: Connection shell, Workflow package, SettingsWindow, MainPage ≥80%
  * - Thin `src/commands/**` invoke wrappers and React chart shells stay
  *   out of the fail gate (logic covered via lib/chart + E2E).
  */
@@ -30,7 +30,7 @@ export default defineConfig({
         'src/stores/**/*.{ts,tsx}',
         'src/components/DataTable/**/*.{ts,tsx}',
         'src/components/ai/**/*.{ts,tsx}',
-        'src/windows/connection/ConnectionWindow.tsx',
+        'src/windows/connection/ConnectionPage.tsx',
         'src/windows/connection/ConnectionSettingsDialog.tsx',
         'src/windows/connection/ObjectBrowser.tsx',
         'src/windows/connection/PrivilegeView.tsx',
@@ -39,7 +39,7 @@ export default defineConfig({
         'src/components/connection/SshTunnelFields.tsx',
         'src/windows/workflow/**/*.{ts,tsx}',
         'src/windows/settings/SettingsWindow.tsx',
-        'src/windows/main/MainWindow.tsx',
+        'src/windows/main/MainPage.tsx',
         'src/windows/dashboard/**/*.{ts,tsx}',
         'src/lib/dashboard/**/*.{ts,tsx}',
       ],
@@ -58,7 +58,7 @@ export default defineConfig({
         'src/stores/**': { lines: 80, statements: 80, functions: 75, branches: 55 },
         'src/components/DataTable/**': { lines: 80, statements: 80, functions: 70, branches: 60 },
         'src/components/ai/**': { lines: 80, statements: 75, functions: 60, branches: 60 },
-        'src/windows/connection/ConnectionWindow.tsx': { lines: 80 },
+        'src/windows/connection/ConnectionPage.tsx': { lines: 80 },
         'src/windows/connection/ConnectionSettingsDialog.tsx': { lines: 80 },
         'src/windows/connection/ObjectBrowser.tsx': { lines: 80 },
         'src/windows/connection/PrivilegeView.tsx': { lines: 80 },
@@ -67,7 +67,7 @@ export default defineConfig({
         'src/components/connection/SshTunnelFields.tsx': { lines: 80 },
         'src/windows/workflow/**': { lines: 80 },
         'src/windows/settings/SettingsWindow.tsx': { lines: 80 },
-        'src/windows/main/MainWindow.tsx': { lines: 80 },
+        'src/windows/main/MainPage.tsx': { lines: 80 },
         'src/lib/dashboard/**': { lines: 80, statements: 80, functions: 75, branches: 70 },
         'src/windows/dashboard/**': { lines: 80, statements: 80, functions: 70, branches: 55 },
       },

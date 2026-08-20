@@ -205,7 +205,7 @@ export function openDashboardWindow(dashboardId?: string, dashboardName?: string
 
 /**
  * Key used by {@link openConnectionWindow} to hand the first connection
- * payload to the newly created ConnectionWindow via `localStorage`.
+ * payload to the main workspace ConnectionPage via `localStorage`.
  * Subsequent connections use the `datazen:open-connection` cross-window event.
  */
 export const PENDING_CONNECTION_KEY = 'datazen:pending-connection';

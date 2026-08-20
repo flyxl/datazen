@@ -199,7 +199,7 @@ Command 的输入使用 JSON，Driver 通过 manifest / definition 声明 schema
 ## 入口
 
 - IPC：`commands/ai.rs` → `workflow_*` / `workflow_history_*`；以及 Driver Command IPC
-- GUI：`WorkflowPanel` / `WorkflowWindow`
+- GUI：`WorkflowPanel` / `WorkflowPage`
 - MCP：`list_workflows` / `run_workflow`、`datazen://workflows`（实现位于 `mcp/server.rs`）
 - Driver API：`packages/driver-api/src/command.rs`、`traits.rs`
 

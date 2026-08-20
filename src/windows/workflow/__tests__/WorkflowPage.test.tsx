@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { render, cleanup, waitFor, fireEvent, screen, within } from '@testing-library/react';
-import { WorkflowWindow } from '../WorkflowWindow';
+import { WorkflowPage } from '../WorkflowPage';
 import type {
   StepExecutionResult,
   WorkflowExecutionResult,
@@ -265,7 +265,7 @@ const chartableStep: StepExecutionResult = {
 };
 
 async function renderAndLoad() {
-  render(<WorkflowWindow />);
+  render(<WorkflowPage />);
   await waitFor(() => expect(loadWorkflowsMock).toHaveBeenCalled());
 }
 
@@ -327,7 +327,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('WorkflowWindow', () => {
+describe('WorkflowPage', () => {
   it('loads workflows and shows empty hint', async () => {
     await renderAndLoad();
     expect(screen.getByText('Demo Workflow')).toBeInTheDocument();

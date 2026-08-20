@@ -32,7 +32,7 @@ Examples:
 2. Updates bare semver in config files:
    - `package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json`
 3. Updates `DataZen vX.Y.Z` display strings in:
-   - `src/windows/main/MainWindow.tsx`
+   - `src/windows/main/MainPage.tsx`
    - `src/windows/data-sync/DataSyncWindow.tsx`
    - `e2e/specs/homepage-features.ts`
 4. Runs `cargo check` to regenerate `Cargo.lock`.

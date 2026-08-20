@@ -17,7 +17,7 @@ src/components/ai/
 └── WorkflowChatPanel.tsx  # AI 辅助 Workflow 生成对话
 
 src/windows/workflow/
-├── WorkflowWindow.tsx     # Workflow 视图（主工作区内嵌；含 tab + DataTable）
+├── WorkflowPage.tsx     # Workflow 视图（主工作区内嵌；含 tab + DataTable）
 └── WorkflowForm.tsx       # Workflow 创建/编辑表单
 ```
 
@@ -94,7 +94,7 @@ src/windows/workflow/
 | QueryPanel 结果 Tab | `ExplainPanel` | EXPLAIN AI 分析 |
 | SqlConnectionView 侧边栏 | `AiChatPanel` | AI 对话 + Workflows（`@` 上下文引用） |
 | SqlConnectionView 侧边栏 | `WorkflowPanel` | Workflows 管理和执行 |
-| 主窗口侧边栏 | `ActionPanel` → `WorkflowWindow` | 独立 Workflow 窗口入口 |
+| 主窗口侧边栏 | `ActionPanel` → `WorkflowPage` | 主工作区内 Workflow 入口 |
 | TableView 筛选区域 | `NlFilterInput` | 自然语言筛选 |
 | ChartToolbar NL输入 | `nlConfig.ts` | 自然语言图表配置调整 |
 | SettingsWindow | AI 配置 | Provider/Model/Key/MaxTokens |

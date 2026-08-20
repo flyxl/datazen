@@ -166,7 +166,7 @@ CSS 实现：
 </div>
 ```
 
-#### 主工作区连接视图 (main → ConnectionWindow)
+#### 主工作区连接视图 (main → ConnectionPage)
 
 连接 / Workflow / Dashboard 在同一 OS 窗口内切换；左侧 `ConnectionNavigatorTree`，右侧连接 Tab（结构 / 数据 / 查询等）。查询编辑器内联在 ContentView，**不再**使用独立 `query-window` OS 窗口。独立子窗口仅保留新建连接、设置、备份、同步、Schema Diff、文档等。详见 [窗口管理](../windows.md)。
 
@@ -607,10 +607,10 @@ interface DataTableProps {
 | DataTable | `src/lib/dataTableContextMenu.ts` | `DataTable` |
 | 连接 Tab | `src/lib/connectionTabContextMenu.ts` | `ContentView` |
 | 收藏 / 历史侧栏 | `src/lib/querySidebarContextMenu.ts` | `QueryPanel` |
-| Workflow 列表 / 历史 | `src/lib/workflowListContextMenu.ts` | `WorkflowWindow` |
+| Workflow 列表 / 历史 | `src/lib/workflowListContextMenu.ts` | `WorkflowPage` |
 | ER 节点 | `src/lib/erNodeContextMenu.ts` | `ErDiagramView` |
 | Redis Key | `packages/drivers/redis/ui/redisKeyContextMenu.ts` | `RedisWorkbench` |
-| 主窗口连接/分组 | `src/lib/mainWindowContextMenu.ts` | `MainWindow` |
+| 主窗口连接/分组 | `src/lib/mainWindowContextMenu.ts` | `ConnectionPage` |
 
 Connection Window 菜单项对齐 TablePlus：Schema（Open Structure / New Query / Copy DDL / Truncate / Drop / New Table / Import）、SQL 编辑器（Run / Run Selection / Format / Comment）、Tab（Close to the Right/Left）、DDL 视图右键 Copy。
 
@@ -797,7 +797,7 @@ const LEGACY_MAIN_ALIASES = new Set(['connection', 'workflow', 'dashboard']);
 
 // App.tsx（示意）
 switch (getWindowKind()) {
-  case 'main': return <MainWindow />; // → ConnectionWindow 统一工作区
+  case 'main': return <MainPage />; // → ConnectionPage 统一工作区
   case 'settings': return <SettingsWindow />;
   case 'new-connection': return <NewConnectionWindow />;
   // backup / data-sync / schema-diff / docs …

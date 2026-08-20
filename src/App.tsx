@@ -10,10 +10,10 @@ import {
   installRightDragSelectionSuppressor,
 } from './lib/globalTextSelection';
 
-const MainWindow = lazy(() =>
-  import('./windows/main/MainWindow').then((m) => {
-    mark('MainWindow chunk loaded');
-    return { default: m.MainWindow };
+const MainPage = lazy(() =>
+  import('./windows/main/MainPage').then((m) => {
+    mark('MainPage chunk loaded');
+    return { default: m.MainPage };
   }),
 );
 const NewConnectionWindow = lazy(() =>
@@ -68,7 +68,7 @@ function WindowContent() {
       return <DocsWindow />;
     case 'main':
     default:
-      return <MainWindow />;
+      return <MainPage />;
   }
 }
 

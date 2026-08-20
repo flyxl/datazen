@@ -39,7 +39,7 @@ import type { UiIconId } from '../../lib/iconIds';
 import type { DatabaseType } from '../../types';
 import { useDashboardStore } from '../../stores/dashboardStore';
 import { DashboardPanel } from '../dashboard/DashboardPanel';
-import { WorkflowWindow } from '../workflow/WorkflowWindow';
+import { WorkflowPage } from '../workflow/WorkflowPage';
 import { SettingsPage } from '../settings/SettingsPage';
 
 interface WorkspaceShortcutButtonProps {
@@ -133,7 +133,7 @@ function removeConnectionFromStores(connectionId: string) {
 
 // ── Component ─────────────────────────────────────────────────────
 
-export function ConnectionWindow() {
+export function ConnectionPage() {
   useSettings();
 
   const { t } = useI18n();
@@ -313,7 +313,7 @@ export function ConnectionWindow() {
     }
   }, [tabs, connectTab, t]);
 
-  // ── Listen for new connection requests from MainWindow ──
+  // ── Listen for new connection requests from MainPage ──
 
   useEffect(() => {
     let cleanup: (() => void) | undefined;
@@ -956,7 +956,7 @@ export function ConnectionWindow() {
               {workspaceMode === 'connections' ? (
                 connectionWorkspace
               ) : workspaceMode === 'workflow' ? (
-                <WorkflowWindow embedded onOpenDashboardInShell={handleOpenDashboardById} />
+                <WorkflowPage embedded onOpenDashboardInShell={handleOpenDashboardById} />
               ) : (
                 <DashboardPanel
                   initialDashboardId={embeddedDashboardId}

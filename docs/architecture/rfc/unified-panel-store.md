@@ -544,7 +544,7 @@ const detailRowIdx = activePanel?.type === 'table'
   : activeQueryExec?.resultDetailRowIndex ?? null;
 ```
 
-### ConnectionWindow
+### ConnectionPage
 
 ```typescript
 // 移除 queryStore 同步
@@ -800,7 +800,7 @@ const bad = usePanelStore(s => ({ sql: s.queryExec.get(panelId)?.sql }));
 | `src/windows/connection/ContentView.tsx` | resultDetailRowIndex、activeQueryTab 更新 |
 | `src/windows/connection/usePanelHandlers.ts` | 移除 createQueryTab 和独立 close 循环，简化 handleNewQuery，统一走 panelStore close 路径 |
 | `src/windows/connection/PanelContentRenderer.tsx` | QueryPanel props 变更 |
-| `src/windows/connection/ConnectionWindow.tsx` | 移除 queryStore 同步 |
+| `src/windows/connection/ConnectionPage.tsx` | 移除 queryStore 同步 |
 | `src/windows/connection/DocumentConnectionView.tsx` | 从 `useQueryStore(s.tabs[0])` 改为 panelStore；懒创建隐式 query panel |
 | `src/commands/query.ts` | `addFavoriteQuery` 增加 configId；`getFavoriteQueries` 增加 configId 过滤；`getQueryHistory` 增加 configId 过滤 |
 | `src/types/index.ts` | `QueryHistoryEntry.configId`；`FavoriteQuery.configId` |
@@ -812,7 +812,7 @@ const bad = usePanelStore(s => ({ sql: s.queryExec.get(panelId)?.sql }));
 | `src/stores/__tests__/panelStore.test.ts` | 增加 queryExec 生命周期、executeQuery、cancel、history/favorites 加载测试 |
 | `src/stores/__tests__/queryStore.test.ts` | **移除**（相关测试迁移到 panelStore 测试后） |
 | `src/windows/connection/__tests__/ContentView.test.tsx` | 移除 queryStore mock |
-| `src/windows/connection/__tests__/ConnectionWindow.test.tsx` | 移除 queryStore mock |
+| `src/windows/connection/__tests__/ConnectionPage.test.tsx` | 移除 queryStore mock |
 | `src/stores/__tests__/aiStore.test.ts` | analyze queries 行为/过滤变更测试 |
 | `src-tauri/src/store/history_db.rs` tests | 版本化 migration 测试 + favorites CRUD + config_id filter + dedup 分区测试 |
 | `e2e/specs/sql-query.ts` | `menu:add-favorite` 事件桥接 + favorite 按连接隔离验证 |
@@ -849,7 +849,7 @@ const bad = usePanelStore(s => ({ sql: s.queryExec.get(panelId)?.sql }));
 6. `usePanelHandlers.ts` 简化（统一走 panelStore close 路径，移除独立 queryStore 循环）
 7. `PanelContentRenderer.tsx` props
 8. `DocumentConnectionView.tsx` 适配（懒创建隐式 query panel）
-9. `ConnectionWindow.tsx` 移除 queryStore 同步
+9. `ConnectionPage.tsx` 移除 queryStore 同步
 10. `queryStore.ts` 移除
 11. `loadHistory(configId)` / `loadFavorites(configId)` 传参
 12. `addFavorite` 调用链传入 `configId`

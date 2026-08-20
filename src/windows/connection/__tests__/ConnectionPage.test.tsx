@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { render, cleanup, waitFor, screen, fireEvent } from '@testing-library/react';
-import { ConnectionWindow } from '../ConnectionWindow';
+import { ConnectionPage } from '../ConnectionPage';
 
 const {
   connectMock,
@@ -21,7 +21,7 @@ const {
   openBackupWindowMock,
   openDataSyncWindowMock,
   openSchemaDiffWindowMock,
-  openNewConnectionWindowMock,
+  openNewConnectionPageMock,
   menuOpenSettingsHandler,
 } = vi.hoisted(() => ({
   connectMock: vi.fn(),
@@ -49,7 +49,7 @@ const {
   openBackupWindowMock: vi.fn(),
   openDataSyncWindowMock: vi.fn(),
   openSchemaDiffWindowMock: vi.fn(),
-  openNewConnectionWindowMock: vi.fn(),
+  openNewConnectionPageMock: vi.fn(),
   menuOpenSettingsHandler: { current: null as ((payload?: unknown) => void) | null },
 }));
 
@@ -156,7 +156,7 @@ vi.mock('../../../commands/connection', () => ({
 
 vi.mock('../../../lib/windowManager', () => ({
   PENDING_CONNECTION_KEY: 'datazen:pending-connection',
-  openNewConnectionWindow: (...args: unknown[]) => openNewConnectionWindowMock(...args),
+  openNewConnectionPage: (...args: unknown[]) => openNewConnectionPageMock(...args),
   openBackupWindow: (...args: unknown[]) => openBackupWindowMock(...args),
   openDataSyncWindow: (...args: unknown[]) => openDataSyncWindowMock(...args),
   openSchemaDiffWindow: (...args: unknown[]) => openSchemaDiffWindowMock(...args),
@@ -204,8 +204,8 @@ vi.mock('../../dashboard/DashboardPanel', () => ({
   ),
 }));
 
-vi.mock('../../workflow/WorkflowWindow', () => ({
-  WorkflowWindow: ({
+vi.mock('../../workflow/WorkflowPage', () => ({
+  WorkflowPage: ({
     onOpenDashboardInShell,
   }: {
     onOpenDashboardInShell?: (dashboardId?: string, dashboardName?: string) => void;
@@ -285,19 +285,19 @@ afterEach(() => {
   Reflect.deleteProperty(globalThis, '__TAURI_INTERNALS__');
 });
 
-describe('ConnectionWindow', () => {
+describe('ConnectionPage', () => {
   it('TC-window: always renders navigator tree sidebar', () => {
-    render(<ConnectionWindow />);
+    render(<ConnectionPage />);
     expect(screen.getByTestId('navigator-tree')).toBeInTheDocument();
   });
 
   it('TC-window: renders content view even with no active tab', () => {
-    render(<ConnectionWindow />);
+    render(<ConnectionPage />);
     expect(screen.getByTestId('mock-content-view')).toBeInTheDocument();
   });
 
   it('TC-window: fetches connections and groups on mount', () => {
-    render(<ConnectionWindow />);
+    render(<ConnectionPage />);
     expect(fetchConnectionsMock).toHaveBeenCalled();
     expect(fetchGroupsMock).toHaveBeenCalled();
   });
@@ -309,7 +309,7 @@ describe('ConnectionWindow', () => {
       databaseType: 'postgresql',
     });
 
-    render(<ConnectionWindow />);
+    render(<ConnectionPage />);
 
     await waitFor(() => expect(connectMock).toHaveBeenCalledWith('cfg-1'));
     await waitFor(() => expect(screen.getByTestId('mock-content-view')).toBeInTheDocument());
@@ -327,7 +327,7 @@ describe('ConnectionWindow', () => {
     });
     connectMock.mockRejectedValue(new Error('boom'));
 
-    render(<ConnectionWindow />);
+    render(<ConnectionPage />);
 
     await waitFor(() => expect(screen.getByText('boom')).toBeInTheDocument());
     expect(screen.getByText('common.retry')).toBeInTheDocument();
@@ -342,7 +342,7 @@ describe('ConnectionWindow', () => {
       databaseType: 'postgresql',
     });
 
-    render(<ConnectionWindow />);
+    render(<ConnectionPage />);
 
     await waitFor(() => expect(screen.getByTestId('mock-content-view')).toBeInTheDocument());
     expect(connectMock).not.toHaveBeenCalled();
@@ -361,7 +361,7 @@ describe('ConnectionWindow', () => {
       databaseType: 'postgresql',
     });
 
-    render(<ConnectionWindow />);
+    render(<ConnectionPage />);
     await waitFor(() => expect(screen.getByTestId('mock-content-view')).toBeInTheDocument());
     expect(connectMock).not.toHaveBeenCalled();
   });
@@ -373,7 +373,7 @@ describe('ConnectionWindow', () => {
       databaseType: 'postgresql',
     });
 
-    render(<ConnectionWindow />);
+    render(<ConnectionPage />);
 
     await waitFor(() => expect(screen.getByTestId('mock-content-view')).toBeInTheDocument());
   });
@@ -392,7 +392,7 @@ describe('ConnectionWindow', () => {
       databaseType: 'postgresql',
     });
 
-    render(<ConnectionWindow />);
+    render(<ConnectionPage />);
     await waitFor(() => expect(screen.getByText('conn.connecting')).toBeInTheDocument(), {
       timeout: 2000,
     });
@@ -406,7 +406,7 @@ describe('ConnectionWindow', () => {
       list: [{ id: 'dash-1', name: 'Ops Board' }],
     });
 
-    render(<ConnectionWindow />);
+    render(<ConnectionPage />);
 
     fireEvent.click(screen.getByTestId('workspace-nav-workflow'));
     expect(screen.getByTestId('workflow-window')).toBeInTheDocument();
@@ -420,7 +420,7 @@ describe('ConnectionWindow', () => {
   });
 
   it('TC-window: allows embedded workflow and dashboard to switch each other', async () => {
-    render(<ConnectionWindow />);
+    render(<ConnectionPage />);
 
     fireEvent.click(screen.getByTestId('workspace-nav-workflow'));
     fireEvent.click(screen.getByTestId('workflow-open-dashboard'));
@@ -431,7 +431,7 @@ describe('ConnectionWindow', () => {
   });
 
   it('TC-window: menu:open-settings shows SettingsPage with section', async () => {
-    render(<ConnectionWindow />);
+    render(<ConnectionPage />);
 
     await waitFor(() => expect(menuOpenSettingsHandler.current).not.toBeNull());
     menuOpenSettingsHandler.current?.({ section: 'ai' });
@@ -442,7 +442,7 @@ describe('ConnectionWindow', () => {
   });
 
   it('TC-window: SettingsPage back returns to workspace and restores mode', async () => {
-    render(<ConnectionWindow />);
+    render(<ConnectionPage />);
 
     fireEvent.click(screen.getByTestId('workspace-nav-workflow'));
     expect(screen.getByTestId('workflow-window')).toBeInTheDocument();

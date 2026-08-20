@@ -17,10 +17,10 @@
 
 | ID | 功能 | 状态 | 编码 commit | 测试 commit | 备注 |
 |----|------|------|-------------|-------------|------|
-| F1 | Settings 改为主窗口内独立 SettingsPage（含返回按钮，返回主界面） | 已完成 | e00cc340 | 70f9c138 | Vitest 通过；E2E 用例已更新，待 CI/本地 webdriver 构建后执行 |
-| F2 | 主窗口内页面 Window→Page 重命名（如 ConnectionWindow→ConnectionPage），同步文档 | 未开始 | — | — | |
+| F1 | Settings 改为主窗口内独立 SettingsPage（含返回按钮，返回主界面） | 已完成 | e00cc340 | 85c122a7 | Vitest 通过；E2E 用例已更新，待 CI/本地 webdriver 构建后执行 |
+| F2 | 主窗口内页面 Window→Page 重命名（如 ConnectionWindow→ConnectionPage），同步文档 | 待测试 | — | — | ConnectionPage / WorkflowPage / MainPage；文档已同步 |
 | F3 | 左侧功能 sidebar 底部增加 Settings 入口；进入 SettingsPage；返回恢复先前页面 | 未开始 | — | — | 依赖 F1 |
-| F4 | 删除多余窗口（DashboardWindow、WorkflowWindow 等独立窗口壳）；保留使用说明入口 | 未开始 | — | — | |
+| F4 | 删除多余窗口（DashboardWindow 等独立窗口壳）；保留使用说明入口 | 未开始 | — | — | |
 | F5 | 首次安装欢迎页（介绍连接/看板/工作流/AI，引导创建首个连接；有连接后进主界面） | 未开始 | — | — | |
 | F6 | 帮助文档改为官网上线文档；点击使用说明跳转官网 | 未开始 | — | — | |
 | R1 | 全量回归 + 文档更新（架构 / AGENTS.md）+ 合并 main | 未开始 | — | — | |
@@ -41,4 +41,4 @@ Bug 状态：`待验证` | `验证不通过` | `已修复` | `已关闭`
 |------|------|
 | 2026-08-20 | 初始化进度文件与分支 |
 | 2026-08-20 | F1 编码：SettingsPage 嵌入主窗口；openSettingsWindow 改 emit；抽取 SettingsContent |
-| 2026-08-20 | F1 测试：SettingsPage/windowManager 单测与覆盖率；E2E 改主窗口打开路径（F1-E2E-001~003）；E2E 未跑通（无 webdriver 构建产物） |
+| 2026-08-20 | F2 编码：主工作区 ConnectionPage / WorkflowPage / MainPage 重命名；架构文档与 AGENTS.md 同步 |

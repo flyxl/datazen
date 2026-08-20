@@ -24,12 +24,12 @@ src/
 ├── main.tsx / App.tsx          # 入口；按 windowKind 分发
 ├── windows/
 │   ├── connection/             # 统一主工作区壳（连接 / Workflow / Dashboard 导航）
-│   │   ├── ConnectionWindow.tsx
+│   │   ├── ConnectionPage.tsx
 │   │   ├── ConnectionNavigatorTree.tsx
 │   │   ├── ConnectionWorkspaceHome.tsx
 │   │   ├── ContentView.tsx / QueryPanel.tsx / …
 │   │   └── schema-tree/
-│   ├── main/                   # MainWindow → 直接渲染 ConnectionWindow
+│   ├── main/                   # MainPage → 直接渲染 ConnectionPage
 │   ├── workflow/ / dashboard/  # 工作区内嵌视图
 │   ├── settings/ / backup/ / data-sync/ / schema-diff / docs / new-connection/
 ├── components/
@@ -361,7 +361,7 @@ export function useKeyboardShortcuts(shortcuts: ShortcutDef[]) {
 **各窗口快捷键注册**：
 
 ```typescript
-// windows/main/MainWindow.tsx
+// windows/main/MainPage.tsx
 useKeyboardShortcuts([
   { key: 'mod+n', scope: 'global', action: openNewConnectionDialog, description: '新建连接' },
   { key: 'mod+,', scope: 'global', action: openSettings, description: '打开设置' },
