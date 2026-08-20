@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Database, LayoutDashboard, PanelLeftOpen, Workflow, type LucideIcon } from 'lucide-react';
+import {
+  Database,
+  LayoutDashboard,
+  PanelLeftOpen,
+  Settings,
+  Workflow,
+  type LucideIcon,
+} from 'lucide-react';
 import { TitleBar } from '../../components/TitleBar';
 import { MenuBar } from '../../components/MenuBar';
 import { ThemeToggle } from '../../components/ThemeToggle';
@@ -926,30 +933,42 @@ export function ConnectionPage() {
 
           <div className="flex min-h-0 flex-1">
             <aside className="flex h-full w-10 shrink-0 flex-col self-stretch border-r border-edge bg-surface-alt">
-              <WorkspaceModeButton
-                icon={Database}
-                iconId="nav.connections"
-                label={t('nav.connections')}
-                testId="workspace-nav-connections"
-                active={workspaceMode === 'connections'}
-                onClick={() => setWorkspaceMode('connections')}
-              />
-              <WorkspaceModeButton
-                icon={Workflow}
-                iconId="action.workflow"
-                label={t('nav.workflow')}
-                testId="workspace-nav-workflow"
-                active={workspaceMode === 'workflow'}
-                onClick={handleOpenWorkflow}
-              />
-              <WorkspaceModeButton
-                icon={LayoutDashboard}
-                iconId="action.dashboard"
-                label={t('nav.dashboard')}
-                testId="workspace-nav-dashboard"
-                active={workspaceMode === 'dashboard'}
-                onClick={() => void handleOpenDashboard()}
-              />
+              <div className="flex flex-col">
+                <WorkspaceModeButton
+                  icon={Database}
+                  iconId="nav.connections"
+                  label={t('nav.connections')}
+                  testId="workspace-nav-connections"
+                  active={workspaceMode === 'connections'}
+                  onClick={() => setWorkspaceMode('connections')}
+                />
+                <WorkspaceModeButton
+                  icon={Workflow}
+                  iconId="action.workflow"
+                  label={t('nav.workflow')}
+                  testId="workspace-nav-workflow"
+                  active={workspaceMode === 'workflow'}
+                  onClick={handleOpenWorkflow}
+                />
+                <WorkspaceModeButton
+                  icon={LayoutDashboard}
+                  iconId="action.dashboard"
+                  label={t('nav.dashboard')}
+                  testId="workspace-nav-dashboard"
+                  active={workspaceMode === 'dashboard'}
+                  onClick={() => void handleOpenDashboard()}
+                />
+              </div>
+              <div className="mt-auto">
+                <WorkspaceModeButton
+                  icon={Settings}
+                  iconId="nav.settings"
+                  label={t('nav.settings')}
+                  testId="workspace-nav-settings"
+                  active={mainView === 'settings'}
+                  onClick={() => openSettingsInShell()}
+                />
+              </div>
             </aside>
 
             <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col">

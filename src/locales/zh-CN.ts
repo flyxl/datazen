@@ -134,6 +134,7 @@ const zhCN = {
   // ── Workspace Nav ──
   'nav.connections': '连接',
   'nav.dashboard': '看板',
+  'nav.settings': '设置',
   'nav.workflow': '工作流',
 
   // ── Action Panel ──
