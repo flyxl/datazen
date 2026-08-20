@@ -65,10 +65,10 @@ function WorkspaceModeButton({
       data-testid={testId}
       onClick={onClick}
       title={label}
-      className={`flex h-10 w-10 items-center justify-center rounded-lg border text-left text-xs transition-colors ${
+      className={`flex h-10 w-full items-center justify-center text-xs transition-colors ${
         active
-          ? 'border-accent/40 bg-accent/10 text-accent'
-          : 'border-transparent text-fg-secondary hover:border-edge hover:bg-surface-raised hover:text-fg'
+          ? 'bg-accent/20 text-accent'
+          : 'text-fg-secondary hover:bg-surface-raised hover:text-fg'
       }`}
     >
       <ThemedIcon id={iconId} className="h-4 w-4 shrink-0" fallback={Icon} />
@@ -899,7 +899,7 @@ export function ConnectionWindow() {
       <TitleBar title={centerTitle} leftContent={<MenuBar />} rightContent={<ThemeToggle />} />
 
       <div className="flex min-h-0 flex-1">
-        <aside className="flex h-full w-14 shrink-0 flex-col items-center gap-2 self-stretch border-r border-edge bg-surface-alt px-2 pb-3">
+        <aside className="flex h-full w-10 shrink-0 flex-col self-stretch border-r border-edge bg-surface-alt">
           <WorkspaceModeButton
             icon={Database}
             iconId="nav.connections"
