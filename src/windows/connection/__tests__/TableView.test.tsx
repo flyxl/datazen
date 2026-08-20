@@ -103,7 +103,7 @@ describe('TableView', () => {
     );
 
     const message = screen.getByTestId('copyable-error-message');
-    expect(message).toHaveClass('copyable', 'whitespace-pre-wrap', 'break-words');
+    expect(message).toHaveClass('selectable', 'whitespace-pre-wrap', 'break-words');
     expect(message.textContent).toBe(errorMsg);
     expect(screen.queryByText(/truncate/)).toBeNull();
     fireEvent.click(screen.getByTestId('copyable-error-copy'));
@@ -135,7 +135,7 @@ describe('TableView', () => {
     );
 
     const message = screen.getByTestId('copyable-error-message');
-    expect(message).toHaveClass('copyable', 'whitespace-pre-wrap', 'break-words');
+    expect(message).toHaveClass('selectable', 'whitespace-pre-wrap', 'break-words');
     expect(message.className).not.toMatch(/truncate/);
     expect(message.textContent).toBe(errorMsg);
     expect(screen.getByTestId('mock-data-table')).toBeInTheDocument();

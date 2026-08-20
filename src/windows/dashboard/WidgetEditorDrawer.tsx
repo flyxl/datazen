@@ -132,12 +132,7 @@ export function WidgetEditorDrawer({
       data-no-drag
       data-testid="widget-editor-drawer"
     >
-      <button
-        type="button"
-        className="absolute inset-0 bg-black/40"
-        aria-label={t('common.close')}
-        onClick={onClose}
-      />
+      <div aria-hidden="true" className="absolute inset-0 bg-black/40" />
       <aside className="relative flex h-full w-full max-w-md flex-col border-l border-edge bg-surface shadow-xl">
         <div className="flex shrink-0 items-center justify-between border-b border-edge px-4 py-3">
           <h2 className="text-sm font-semibold text-fg">

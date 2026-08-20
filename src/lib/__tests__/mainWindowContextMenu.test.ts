@@ -59,6 +59,28 @@ describe('mainWindowContextMenu', () => {
     expect(grouped.some((i) => i.kind === 'item' && i.id === 'rename-group')).toBe(true);
   });
 
+  it('puts refresh first on connection menu', () => {
+    const items = buildMainConnectionContextMenuItems({
+      labels,
+      isConnected: true,
+      grouped: false,
+      moveTargets: [],
+      onOpenOrDisconnect: () => undefined,
+      onCopyName: () => undefined,
+      onCopyUrl: () => undefined,
+      onNewQuery: () => undefined,
+      onRefresh: () => undefined,
+      onEdit: () => undefined,
+      onDuplicate: () => undefined,
+      onMoveToGroup: () => undefined,
+      onRemoveFromGroup: () => undefined,
+      onDelete: () => undefined,
+    });
+    expect(items[0]).toMatchObject({ kind: 'item', id: 'refresh' });
+    expect(items[1]).toMatchObject({ kind: 'separator' });
+    expect(items[2]).toMatchObject({ kind: 'item', id: 'disconnect' });
+  });
+
   it('puts move targets in a submenu so they can flip at the window edge', () => {
     const move = vi.fn();
     const items = buildMainConnectionContextMenuItems({

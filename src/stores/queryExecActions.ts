@@ -1,6 +1,8 @@
 import { queryCommands } from '../commands/query';
+import { emitCrossWindow } from '../lib/crossWindowBus';
 import { applyQueryStreamEvent } from '../lib/queryStream';
 import { resolvePostQueryViewMode } from '../lib/chart/postQueryView';
+import { sqlContainsSchemaChangingDdl } from '../lib/schemaChangingSql';
 import { t } from '../locales/t';
 import type { QueryStreamEvent, StatementResult } from '../types';
 import type { ChartConfig } from '../types/chart';
@@ -38,6 +40,11 @@ function extractError(e: unknown): string {
   if (typeof e === 'string') return e;
   if (e instanceof Error) return e.message;
   return t('query.executeFailed');
+}
+
+async function notifySchemaChangedIfNeeded(connectionId: string, sql: string): Promise<void> {
+  if (!sqlContainsSchemaChangingDdl(sql)) return;
+  await emitCrossWindow('datazen:refresh-connection', { connectionId });
 }
 
 let streamRunCounter = 0;
@@ -85,6 +92,9 @@ export async function runStreamingQuery(
     if (exec && exec.streamRunId === runId) {
       const viewMode = resolvePostQueryViewMode(exec.results[0]);
       setExec(patchExec(getExec(), panelId, { resultViewMode: viewMode, running: false }));
+      if (!exec.error) {
+        await notifySchemaChangedIfNeeded(connectionId, sql);
+      }
     }
   } catch (e) {
     const exec = getExec().get(panelId);
@@ -117,6 +127,7 @@ export async function runBoundQuery(
         resultViewMode: viewMode,
       }),
     );
+    await notifySchemaChangedIfNeeded(connectionId, sql);
   } catch (e) {
     setExec(
       patchExec(getExec(), panelId, {

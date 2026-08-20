@@ -19,14 +19,19 @@ export function resolveCreateTableSchemaFromMeta(
   databaseType: string,
   params: ResolveCreateTableSchemaParams,
 ): string | null {
-  if (!meta) return params.contextSchema ?? params.currentDatabase ?? null;
+  if (!meta) {
+    if (databaseType === 'postgresql') {
+      return params.contextSchema ?? 'public';
+    }
+    return params.contextSchema ?? params.currentDatabase ?? null;
+  }
 
   const namespaceEnsure =
-    meta.namespaceEnsure ??
-    (databaseType === 'postgresql' ? 'postgresql' : 'default-sql');
+    meta.namespaceEnsure ?? (databaseType === 'postgresql' ? 'postgresql' : 'default-sql');
 
   if (namespaceEnsure === 'postgresql') {
-    return params.contextSchema ?? null;
+    // PG schema namespace — never use the logical database name as schema.
+    return params.contextSchema ?? 'public';
   }
 
   if (meta.databaseFieldType === 'path') {

@@ -38,7 +38,7 @@ describe('resolveCreateTableSchemaFromMeta', () => {
     ).toBe('public');
   });
 
-  it('returns null for PostgreSQL without context schema (search_path)', () => {
+  it('defaults to public for PostgreSQL without context schema', () => {
     const meta: DatabaseTypeMeta = {
       ...baseMeta,
       databaseFieldType: 'name',
@@ -48,7 +48,20 @@ describe('resolveCreateTableSchemaFromMeta', () => {
       resolveCreateTableSchemaFromMeta(meta, 'postgresql', {
         currentDatabase: 'mydb',
       }),
-    ).toBeNull();
+    ).toBe('public');
+  });
+
+  it('never uses database name as schema for PostgreSQL', () => {
+    const meta: DatabaseTypeMeta = {
+      ...baseMeta,
+      databaseFieldType: 'name',
+      namespaceEnsure: 'postgresql',
+    };
+    const result = resolveCreateTableSchemaFromMeta(meta, 'postgresql', {
+      currentDatabase: 'mydb',
+    });
+    expect(result).not.toBe('mydb');
+    expect(result).toBe('public');
   });
 
   it('uses database name for MySQL', () => {

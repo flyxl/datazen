@@ -245,8 +245,9 @@ export function ConnectionPage() {
     void listenCrossWindow('datazen:refresh-connection', (payload) => {
       const data = payload as { connectionId?: string } | undefined;
       if (!data?.connectionId) return;
-      const hasMatchingTab = tabs.some((tab) => tab.connectionId === data.connectionId);
-      if (!hasMatchingTab) return;
+      const tab = tabs.find((t) => t.connectionId === data.connectionId);
+      if (!tab) return;
+      void navigatorRef.current?.refreshConnection(tab.configId);
       actionsRef.current?.refresh?.();
     }).then((fn) => {
       cleanup = fn;

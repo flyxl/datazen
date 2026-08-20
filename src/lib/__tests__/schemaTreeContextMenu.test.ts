@@ -464,6 +464,25 @@ describe('buildSchemaTreeContextMenuItems', () => {
     expect(ids(safeModeItems)).not.toContain('execute-sql-file');
   });
 
+  it('category tables puts refresh first', () => {
+    const onRefresh = vi.fn();
+    const items = buildSchemaTreeContextMenuItems({
+      kind: 'category',
+      labels,
+      handlers: {
+        onRefresh,
+        onImport: vi.fn(),
+        onNewTable: vi.fn(),
+      },
+      readOnly: false,
+      categoryId: 'tables',
+    });
+    expect(ids(items)[0]).toBe('refresh');
+    const first = items[0]!;
+    if (first.kind === 'item') first.action();
+    expect(onRefresh).toHaveBeenCalledOnce();
+  });
+
   it('category tables includes new-table when not readOnly', () => {
     const onNewTable = vi.fn();
     const items = buildSchemaTreeContextMenuItems({

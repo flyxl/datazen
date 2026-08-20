@@ -343,12 +343,7 @@ function TileExpandOverlay({
   );
 
   return (
-    <div
-      className="fixed inset-0 top-10 z-50 flex flex-col bg-surface/95 backdrop-blur-sm"
-      onKeyDown={(e) => {
-        if (e.key === 'Escape') onClose();
-      }}
-    >
+    <div className="fixed inset-0 top-10 z-50 flex flex-col bg-surface/95 backdrop-blur-sm">
       <div className="flex shrink-0 items-center gap-2 border-b border-edge px-4 py-2">
         <span className="text-sm font-medium text-fg">{widget.title}</span>
         <div className="flex-1" />

@@ -56,6 +56,10 @@ export interface QueryPanel extends PanelBase {
 
 export interface CreateTablePanel extends PanelBase {
   type: 'create-table';
+  /** Database the create-table panel was opened from (multi-db drivers). */
+  database?: string;
+  /** PG schema namespace when known from sidebar selection. */
+  tableSchema?: string;
 }
 
 export interface ErDiagramPanel extends PanelBase {

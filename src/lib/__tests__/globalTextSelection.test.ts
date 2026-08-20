@@ -110,6 +110,17 @@ describe('installDragSelectionGuard', () => {
     expect(removeAllRanges).not.toHaveBeenCalled();
   });
 
+  it('keeps the selection when the press started on a .selectable marker', () => {
+    const removeAllRanges = mockSelection(true);
+    el.className = 'selectable';
+    el.style.userSelect = 'none';
+    el.dispatchEvent(
+      new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0, buttons: 1 }),
+    );
+    fire('mousemove', { buttons: 1 });
+    expect(removeAllRanges).not.toHaveBeenCalled();
+  });
+
   it('does not clear on a plain click without movement', () => {
     const removeAllRanges = mockSelection(true);
     el.style.userSelect = 'none';

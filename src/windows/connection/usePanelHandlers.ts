@@ -48,12 +48,14 @@ export function usePanelHandlers({
   showStructureEditor,
   currentDatabase,
   initialDatabase,
+  lastTableSchema,
   schemaViews,
 }: {
   connCtx: ConnectionContext | null;
   showStructureEditor: boolean;
   currentDatabase: string | null;
   initialDatabase: string | undefined;
+  lastTableSchema: string | null;
   schemaViews: { name: string; schema?: string }[];
 }): PanelHandlers {
   const { t } = useI18n();
@@ -144,9 +146,19 @@ export function usePanelHandlers({
       ...sidebarConnCtx,
       type: 'create-table',
       id: nextPanelId('new-tbl'),
+      database: currentDatabase ?? initialDatabase ?? undefined,
+      tableSchema: lastTableSchema ?? undefined,
     };
     addPanel(panel);
-  }, [sidebarConnCtx, connPanels, addPanel, setActivePanel]);
+  }, [
+    sidebarConnCtx,
+    connPanels,
+    addPanel,
+    setActivePanel,
+    currentDatabase,
+    initialDatabase,
+    lastTableSchema,
+  ]);
 
   const handleEditTableStructure = useCallback(
     (name: string) => {

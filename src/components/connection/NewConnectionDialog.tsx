@@ -110,15 +110,6 @@ export function NewConnectionDialog({
     [groups, t],
   );
 
-  useEffect(() => {
-    if (!open) return;
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape') handleClose();
-    }
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [open, handleClose]);
-
   if (!open) return null;
 
   return createPortal(
