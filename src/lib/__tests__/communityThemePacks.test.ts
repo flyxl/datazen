@@ -95,6 +95,7 @@ describe('community theme packs', () => {
         'community.dracula',
         'community.nord',
         'community.paper',
+        'community.slate-blue',
         'community.solarized-light',
         'community.tokyo-night',
       ].sort(),
