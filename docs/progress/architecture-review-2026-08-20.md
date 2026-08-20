@@ -26,7 +26,7 @@ Large refactors (F1–F4 driver command migration) deferred; this branch targets
 | Field | Value |
 |-------|-------|
 | Severity | low |
-| Status | **dev_done** |
+| Status | **tested_pass** |
 | Scope | Add `--dt-binary`; map `dataTypeColors` binary family; align Host + community packs |
 | Unit tests | `dataTypeColors.test.ts`, `communityThemePacks.test.ts` |
 | E2E | N/A (visual token) |
@@ -38,7 +38,7 @@ Large refactors (F1–F4 driver command migration) deferred; this branch targets
 | Field | Value |
 |-------|-------|
 | Severity | medium |
-| Status | **dev_done** |
+| Status | **tested_pass** |
 | Scope | Remove unused `query-*` / legacy `connection-*` labels from `default.json.host` |
 | Unit tests | capability merge smoke / existing window tests |
 | E2E | settings/backup sub-window smoke |
@@ -50,7 +50,7 @@ Large refactors (F1–F4 driver command migration) deferred; this branch targets
 | Field | Value |
 |-------|-------|
 | Severity | medium |
-| Status | **dev_done** |
+| Status | **tested_pass** |
 | Scope | Fix store count, Tailwind 4, Redis UI path, IPC list in architecture docs |
 | Unit tests | none |
 | E2E | none |
@@ -80,10 +80,10 @@ Large refactors (F1–F4 driver command migration) deferred; this branch targets
 
 | Date | Agent | Feature | Result | Notes |
 |------|-------|---------|--------|-------|
-| — | — | — | — | — |
+| 2026-08-20 | QA shell agent | F11/F6/F9 | **PASS** | 36 unit tests; dataTypeColors 100% stmt coverage; 0 bugs |
 
 ## Bugs
 
 | ID | Feature | Steps | Status |
 |----|---------|-------|--------|
-| — | — | — | — |
+| — | — | — | none |
