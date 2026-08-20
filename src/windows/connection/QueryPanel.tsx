@@ -650,7 +650,7 @@ export function QueryPanel({ panelId, connectionId, configId, databaseType }: Qu
         />
         <ToolbarButton
           compact={compactToolbar}
-          variant="primary"
+          variant="run"
           label={t('query.execute')}
           icon={<Play className="h-3.5 w-3.5" />}
           onClick={handleExecute}

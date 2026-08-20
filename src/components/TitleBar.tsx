@@ -39,7 +39,9 @@ export function TitleBar({ title, leftContent, rightContent }: TitleBarProps) {
       });
     })();
 
-    return () => { unlisten?.(); };
+    return () => {
+      unlisten?.();
+    };
   }, [isMac]);
 
   /**
@@ -52,31 +54,34 @@ export function TitleBar({ title, leftContent, rightContent }: TitleBarProps) {
    * focus changes. Waiting for real movement keeps plain clicks intact
    * (same fix Wails applied for frameless-window drag).
    */
-  const handleDragMouseDown = useCallback((e: React.MouseEvent) => {
-    if (isMac) return;
-    if (e.button !== 0) return;
-    if ((e.target as HTMLElement).closest('button, a, input, [data-no-drag]')) return;
+  const handleDragMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      if (isMac) return;
+      if (e.button !== 0) return;
+      if ((e.target as HTMLElement).closest('button, a, input, [data-no-drag]')) return;
 
-    const startX = e.clientX;
-    const startY = e.clientY;
+      const startX = e.clientX;
+      const startY = e.clientY;
 
-    const cleanup = () => {
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', cleanup);
-    };
+      const cleanup = () => {
+        window.removeEventListener('mousemove', onMove);
+        window.removeEventListener('mouseup', cleanup);
+      };
 
-    const onMove = (ev: MouseEvent) => {
-      if (Math.abs(ev.clientX - startX) < 4 && Math.abs(ev.clientY - startY) < 4) return;
-      cleanup();
-      void (async () => {
-        const { getCurrentWindow } = await import('@tauri-apps/api/window');
-        await getCurrentWindow().startDragging();
-      })();
-    };
+      const onMove = (ev: MouseEvent) => {
+        if (Math.abs(ev.clientX - startX) < 4 && Math.abs(ev.clientY - startY) < 4) return;
+        cleanup();
+        void (async () => {
+          const { getCurrentWindow } = await import('@tauri-apps/api/window');
+          await getCurrentWindow().startDragging();
+        })();
+      };
 
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', cleanup);
-  }, [isMac]);
+      window.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseup', cleanup);
+    },
+    [isMac],
+  );
 
   const leftPad = isMac && !isFullscreen ? 'pl-[78px]' : 'pl-3';
   const rightPad = isMac ? 'pr-[14px]' : 'pr-[140px]';
@@ -91,19 +96,13 @@ export function TitleBar({ title, leftContent, rightContent }: TitleBarProps) {
       {/* Windows/Linux: web window controls (absolute positioned at right) */}
       {!isMac && <WindowControls />}
 
-      <div className={`relative z-10 flex items-center ${leftPad}`}>
-        {leftContent}
-      </div>
+      <div className={`relative z-10 flex items-center ${leftPad}`}>{leftContent}</div>
 
       <div className="pointer-events-none flex min-w-0 flex-1 justify-center">
-        {title && (
-          <div className="truncate text-xs font-medium text-fg-secondary">{title}</div>
-        )}
+        {title && <div className="truncate text-xs font-medium text-titlebar-fg">{title}</div>}
       </div>
 
-      <div className={`relative z-10 flex items-center ${rightPad}`}>
-        {rightContent}
-      </div>
+      <div className={`relative z-10 flex items-center ${rightPad}`}>{rightContent}</div>
     </header>
   );
 }

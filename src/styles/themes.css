@@ -26,9 +26,15 @@
   --c-success: #22c55e;
   --c-warning: #f59e0b;
   --c-danger: #ef4444;
+  /* Query execute / run button — themed so SQL run can match a design accent */
+  --c-query-run: var(--c-success);
 
   /* Title bar background (TrafficLights area) */
   --c-titlebar: #f1f5f9;
+  /* Title bar foreground / text (contrast against --c-titlebar) */
+  --c-titlebar-fg: #0f172a;
+  --c-titlebar-fg-muted: #475569;
+  --c-titlebar-hover: rgba(15, 23, 42, 0.08);
 
   /* Font stacks (overridable by theme packs) */
   --font-sans:
@@ -72,6 +78,9 @@
   --c-fg-muted: #64748b;
 
   --c-titlebar: #1e293b;
+  --c-titlebar-fg: #f1f5f9;
+  --c-titlebar-fg-muted: #94a3b8;
+  --c-titlebar-hover: rgba(148, 163, 184, 0.18);
 
   /* CodeMirror syntax colors (dark, One Dark–ish) */
   --cm-keyword: #c678dd;

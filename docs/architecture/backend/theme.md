@@ -38,7 +38,7 @@
 
 主题包应覆盖 Host `src/styles/themes.css` 中的语义变量（社区包单测强制 surface / cm 全集）：
 
-- **Surface / text**：`--c-surface`、`--c-surface-alt`、`--c-surface-raised`、`--c-surface-inset`、`--c-edge`、`--c-fg`、`--c-fg-secondary`、`--c-fg-muted`、`--c-accent`、`--c-success`、`--c-warning`、`--c-danger`、`--c-titlebar`
+- **Surface / text**：`--c-surface`、`--c-surface-alt`、`--c-surface-raised`、`--c-surface-inset`、`--c-edge`、`--c-fg`、`--c-fg-secondary`、`--c-fg-muted`、`--c-accent`、`--c-success`、`--c-warning`、`--c-danger`、`--c-titlebar`、`--c-titlebar-fg`、`--c-titlebar-fg-muted`、`--c-titlebar-hover`、`--c-query-run`
 - **Fonts**：`--font-sans`、`--font-mono`、`--font-editor`
 - **CodeMirror**：`--cm-*`（也可经 `editor.json` 覆盖）
 - **DataTable 单元格色（推荐）**：`--dt-null`、`--dt-bool`、`--dt-number`、`--dt-datetime`、`--dt-json`、`--dt-text`

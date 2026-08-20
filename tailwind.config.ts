@@ -30,12 +30,18 @@ export default {
         },
         titlebar: {
           DEFAULT: 'var(--c-titlebar)',
+          fg: 'var(--c-titlebar-fg)',
+          'fg-muted': 'var(--c-titlebar-fg-muted)',
+          hover: 'var(--c-titlebar-hover)',
         },
         accent: {
           DEFAULT: 'var(--c-accent)',
         },
         success: {
           DEFAULT: 'var(--c-success)',
+        },
+        'query-run': {
+          DEFAULT: 'var(--c-query-run)',
         },
         warning: {
           DEFAULT: 'var(--c-warning)',
