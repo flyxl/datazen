@@ -9,9 +9,9 @@ describe('normalizeThemePreference', () => {
   });
 
   it('keeps object shape', () => {
-    expect(normalizeThemePreference({ mode: 'light', packId: 'community.dracula' })).toEqual({
+    expect(normalizeThemePreference({ mode: 'light', packId: 'community.slate-blue' })).toEqual({
       mode: 'light',
-      packId: 'community.dracula',
+      packId: 'community.slate-blue',
     });
   });
 
