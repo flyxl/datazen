@@ -22,7 +22,7 @@
 | F3 | 左侧功能 sidebar 底部增加 Settings 入口；进入 SettingsPage；返回恢复先前页面 | 已完成 | ff09481f | （本轮） | Vitest 19/19；F3 路径覆盖 ≥80%；E2E sidebar 用例已文档化待 webdriver；F3-BUG-001 登记 |
 | F4 | 删除多余窗口（DashboardWindow 等独立窗口壳）；保留使用说明入口 | 已完成 | 7e60b32c | （本轮） | Vitest 57/57；Docs 保留；E2E legacy URL bug 已登记 |
 | F5 | 首次安装欢迎页（介绍连接/看板/工作流/AI，引导创建首个连接；有连接后进主界面） | 已完成 | 2024f465 | （本轮） | Vitest 21/21；F5 路径 ≥80%；E2E 用例已文档化；F5-BUG-001~003 登记 |
-| F6 | 帮助文档改为官网上线文档；点击使用说明跳转官网 | 待测试 | — | — | site/docs.html + openDocsWindow → GitHub Pages |
+| F6 | 帮助文档改为官网上线文档；点击使用说明跳转官网 | 已完成 | 96c7a3be | （本轮） | Vitest 18/18；E2E 用例已文档化；F6-BUG-001~003 登记 |
 | R1 | 全量回归 + 文档更新（架构 / AGENTS.md）+ 合并 main | 未开始 | — | — | |
 
 状态枚举：`未开始` | `进行中` | `待测试` | `测试中` | `验证不通过` | `待验证` | `已完成`
@@ -39,6 +39,9 @@
 | F5-BUG-001 | F5 | Host E2E 无欢迎页 journey；wdio 全局 seed 连接 | 已修复 | `e2e/specs/welcome.ts` | bbefb6bf |
 | F5-BUG-002 | F5 | `WelcomePage.tsx` 未纳入 vitest coverage gate | 已修复 | `vitest.config.ts` L43/L72 | bbefb6bf |
 | F5-BUG-003 | F5 | 首次 `fetchConnections` 失败时误显示欢迎页 | 已修复 | `welcome-load-error` + retry；Vitest 覆盖 | bbefb6bf |
+| F6-BUG-001 | F6 | GitHub Pages `docs.html` 返回 404（仓库已有 `site/docs.html`） | 待验证 | 访问 `https://flyxl.github.io/datazen/docs.html` | 96c7a3be |
+| F6-BUG-002 | F6 | Host E2E 无 Help→浏览器 / section 深链 spec | 待验证 | 见 `docs/progress/f6-test-report.md` F6-E2E-001~007 | 96c7a3be |
+| F6-BUG-003 | F6 | `f4-test-report.md` 仍描述 in-app DocsWindow（文档债） | 待验证 | 见 f6-test-report；留 R1 | 96c7a3be |
 
 Bug 状态：`待验证` | `验证不通过` | `已修复` | `已关闭`
 
@@ -62,3 +65,4 @@ Bug 状态：`待验证` | `验证不通过` | `已修复` | `已关闭`
 | 2026-08-20 | F5 修复：welcome load error、coverage gate、E2E welcome.ts；bugs → 待验证 |
 | 2026-08-20 | F5-BUG-001~003 验证：Vitest 10/10；coverage gate + welcome.ts 静态审查；bugs → 已修复 |
 | 2026-08-20 | F6 编码：Docs 子窗口移除；openDocsWindow / open_docs_window 跳转官网 docs.html |
+| 2026-08-20 | F6 测试：Vitest 18/18；f6-test-report.md；登记 F6-BUG-001~003（Pages 404 / E2E 债 / F4 报告文档债） |
