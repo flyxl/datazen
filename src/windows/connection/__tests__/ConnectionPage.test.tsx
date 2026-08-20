@@ -455,4 +455,27 @@ describe('ConnectionPage', () => {
     await waitFor(() => expect(screen.queryByTestId('settings-page')).not.toBeInTheDocument());
     expect(screen.getByTestId('workflow-window')).toBeInTheDocument();
   });
+
+  it('TC-window: sidebar Settings opens SettingsPage', async () => {
+    render(<ConnectionPage />);
+
+    fireEvent.click(screen.getByTestId('workspace-nav-settings'));
+    await waitFor(() => expect(screen.getByTestId('settings-page')).toBeInTheDocument());
+    expect(screen.queryByTestId('navigator-tree')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('workspace-nav-connections')).not.toBeInTheDocument();
+  });
+
+  it('TC-window: sidebar Settings from workflow returns to workflow on back', async () => {
+    render(<ConnectionPage />);
+
+    fireEvent.click(screen.getByTestId('workspace-nav-workflow'));
+    expect(screen.getByTestId('workflow-window')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('workspace-nav-settings'));
+    await waitFor(() => expect(screen.getByTestId('settings-page')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByTestId('settings-back'));
+    await waitFor(() => expect(screen.queryByTestId('settings-page')).not.toBeInTheDocument());
+    expect(screen.getByTestId('workflow-window')).toBeInTheDocument();
+  });
 });

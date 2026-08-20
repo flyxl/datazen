@@ -19,7 +19,7 @@
 |----|------|------|-------------|-------------|------|
 | F1 | Settings 改为主窗口内独立 SettingsPage（含返回按钮，返回主界面） | 已完成 | e00cc340 | 85c122a7 | Vitest 通过；E2E 用例已更新，待 CI/本地 webdriver 构建后执行 |
 | F2 | 主窗口内页面 Window→Page 重命名（如 ConnectionWindow→ConnectionPage），同步文档 | 已完成 | 2b91921d | （本轮） | 无漏改；Page 单测 33/33 通过；MainPage 100% 覆盖；E2E 用例已文档化，待 webdriver 构建 |
-| F3 | 左侧功能 sidebar 底部增加 Settings 入口；进入 SettingsPage；返回恢复先前页面 | 未开始 | — | — | 依赖 F1 |
+| F3 | 左侧功能 sidebar 底部增加 Settings 入口；进入 SettingsPage；返回恢复先前页面 | 待测试 | — | — | sidebar 底部 `workspace-nav-settings`；Vitest 已加 |
 | F4 | 删除多余窗口（DashboardWindow 等独立窗口壳）；保留使用说明入口 | 未开始 | — | — | |
 | F5 | 首次安装欢迎页（介绍连接/看板/工作流/AI，引导创建首个连接；有连接后进主界面） | 未开始 | — | — | |
 | F6 | 帮助文档改为官网上线文档；点击使用说明跳转官网 | 未开始 | — | — | |

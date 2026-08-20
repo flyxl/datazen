@@ -138,6 +138,7 @@ const en: Record<TranslationKey, string> = {
   // ── Workspace Nav ──
   'nav.connections': 'Connections',
   'nav.dashboard': 'Dashboards',
+  'nav.settings': 'Settings',
   'nav.workflow': 'Workflows',
 
   // ── Action Panel ──
