@@ -56,7 +56,9 @@ import { ConnectionWorkspaceHome } from './ConnectionWorkspaceHome';
 import { openNewConnectionDialog } from '../../lib/windowManager';
 
 export interface ContentViewProps {
-  selectTableRef?: MutableRefObject<((table: string, schema?: string) => void) | undefined>;
+  selectTableRef?: MutableRefObject<
+    ((table: string, schema?: string, database?: string) => void) | undefined
+  >;
   nodeContextMenuRef?: MutableRefObject<((payload: NodeContextMenuPayload) => void) | undefined>;
   actionsRef?: MutableRefObject<ConnectionViewActions | undefined>;
 }
@@ -238,9 +240,9 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
   }, [safeMode, savedConnections, sidebarConnCtx]);
 
   const handleSelectTableWithSchema = useCallback(
-    (table: string, schema?: string) => {
+    (table: string, schema?: string, database?: string) => {
       if (schema) setLastTableSchema(schema);
-      handlers.handleSelectTable(table, schema);
+      handlers.handleSelectTable(table, schema, database);
     },
     [handlers.handleSelectTable],
   );

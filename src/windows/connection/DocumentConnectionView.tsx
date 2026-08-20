@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Database, FileJson, Loader2, Plus, RefreshCw, Search, Trash2, X } from 'lucide-react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { Button } from '../../components/ui/Button';
+import { CopyableError } from '../../components/ui/CopyableError';
 import { Input } from '../../components/ui/Input';
 import { SqlEditor } from '../../components/SqlEditor';
 import { useSchemaStore } from '../../stores/schemaStore';
@@ -498,14 +499,16 @@ export function DocumentConnectionView({
                   )}
                 </div>
                 {filterError && (
-                  <div className="border-b border-red-500/20 bg-red-500/10 px-3 py-1.5 text-xs text-red-400">
-                    {filterError}
-                  </div>
+                  <CopyableError
+                    message={filterError}
+                    className="border-b border-red-500/20 bg-red-500/10 px-3 py-1.5 text-xs text-red-400"
+                  />
                 )}
                 {docsError && (
-                  <div className="border-b border-red-500/20 bg-red-500/10 px-3 py-1.5 text-xs text-red-400">
-                    {docsError}
-                  </div>
+                  <CopyableError
+                    message={docsError}
+                    className="border-b border-red-500/20 bg-red-500/10 px-3 py-1.5 text-xs text-red-400"
+                  />
                 )}
                 <div className="flex min-h-0 flex-1">
                   <div className="flex min-w-0 flex-1 flex-col">
@@ -650,9 +653,10 @@ function DocumentDetailEditor({
         </div>
       )}
       {editError && (
-        <div className="shrink-0 border-b border-red-500/20 bg-red-500/10 px-3 py-1.5 text-xs text-red-400">
-          {editError}
-        </div>
+        <CopyableError
+          message={editError}
+          className="shrink-0 border-b border-red-500/20 bg-red-500/10 px-3 py-1.5 text-xs text-red-400"
+        />
       )}
       <div className="min-h-0 flex-1 p-2">
         <textarea
@@ -850,9 +854,11 @@ function DocumentQueryPanelInner({
         )}
         {exec.error && !exec.running && (
           <div className="flex-1 overflow-auto p-4">
-            <div className="rounded-md border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">
-              {exec.error}
-            </div>
+            <CopyableError
+              message={exec.error}
+              copyButton
+              className="rounded-md border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400"
+            />
           </div>
         )}
         {results.length > 0 && activeResult && (

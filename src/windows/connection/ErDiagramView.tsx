@@ -18,6 +18,7 @@ import { Download, Loader2, Search } from 'lucide-react';
 import { databaseCommands } from '../../commands/database';
 import { fileCommands } from '../../commands/file';
 import { Button } from '../../components/ui/Button';
+import { CopyableError } from '../../components/ui/CopyableError';
 import { useI18n } from '../../hooks/useI18n';
 import { buildErNodeContextMenuItems } from '../../lib/erNodeContextMenu';
 import { showNativeContextMenu } from '../../lib/nativeContextMenu';
@@ -243,7 +244,9 @@ function ErDiagramInner({
 
   if (error) {
     return (
-      <div className="flex h-full items-center justify-center text-sm text-red-400">{error}</div>
+      <div className="flex h-full items-center justify-center p-4">
+        <CopyableError message={error} className="max-w-lg text-sm text-red-400" />
+      </div>
     );
   }
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { Filter, Loader2 } from 'lucide-react';
 import { DataTable } from '../../components/DataTable/DataTable';
 import type { ColumnDef } from '../../components/DataTable/TableHeader';
@@ -8,6 +8,8 @@ import { useSettingsStore } from '../../stores/settingsStore';
 import { useI18n } from '../../hooks/useI18n';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 import { cn } from '../../lib/cn';
+import { databaseCommands } from '../../commands/database';
+import { CopyableError } from '../../components/ui/CopyableError';
 
 interface TableViewProps {
   connectionId: string;
@@ -71,6 +73,15 @@ export function TableView({
   const ts: TableState | undefined = tableStates.get(tableName);
   const hasData = ts != null && ts.columns.length > 0;
 
+  const dbSwitchedRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!database) return;
+    if (dbSwitchedRef.current === `${connectionId}\0${database}`) return;
+    dbSwitchedRef.current = `${connectionId}\0${database}`;
+    void databaseCommands.useDatabase(connectionId, database).catch(() => {});
+  }, [connectionId, database]);
+
   useEffect(() => {
     if (hasData && activeTable !== tableName) {
       switchToTable(tableName);
@@ -124,8 +135,8 @@ export function TableView({
   if (error && columns.length === 0) {
     return (
       <div className="flex flex-1 items-center justify-center">
-        <div className="text-center">
-          <div className="text-sm text-red-400">{error}</div>
+        <div className="max-w-lg text-center">
+          <CopyableError message={error} copyButton className="text-sm text-red-400" />
           <button
             type="button"
             className="mt-2 text-xs text-accent hover:underline"
@@ -153,8 +164,8 @@ export function TableView({
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       {error && (
-        <div className="flex items-center gap-3 border-b border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
-          <span className="flex-1 truncate">{error}</span>
+        <div className="flex items-start gap-3 border-b border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
+          <CopyableError message={error} copyButton className="min-w-0 flex-1" />
           <button
             type="button"
             className="shrink-0 text-xs text-accent hover:underline"

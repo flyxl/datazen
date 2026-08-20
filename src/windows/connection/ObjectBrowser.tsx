@@ -3,6 +3,7 @@ import { Loader2, Play, RefreshCw } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { SqlEditor, type SqlEditorHandle } from '../../components/SqlEditor';
 import { useI18n } from '../../hooks/useI18n';
+import { CopyableError } from '../../components/ui/CopyableError';
 import { databaseCommands } from '../../commands/database';
 import { queryCommands } from '../../commands/query';
 import { cn } from '../../lib/cn';
@@ -203,7 +204,7 @@ export function ObjectBrowser({ connectionId, databaseType }: ObjectBrowserProps
               {t('common.loading')}
             </div>
           )}
-          {error && <div className="px-3 py-2 text-xs text-red-400">{error}</div>}
+          {error && <CopyableError message={error} className="px-3 py-2 text-xs text-red-400" />}
           {!loading && objects.length === 0 && !error && (
             <div className="px-3 py-3 text-xs text-fg-muted">{t('objects.empty')}</div>
           )}

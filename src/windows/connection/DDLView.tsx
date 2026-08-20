@@ -4,6 +4,7 @@ import { getCachedDDL } from '../../lib/schemaCache';
 import { SqlCodeBlock } from '../../components/SqlCodeBlock';
 import { Button } from '../../components/ui/Button';
 import { useI18n } from '../../hooks/useI18n';
+import { CopyableError } from '../../components/ui/CopyableError';
 import { DB_REGISTRY } from '../../lib/databaseTypes';
 import { showNativeContextMenu } from '../../lib/nativeContextMenu';
 import { getSqlDialect } from '../../lib/sqlDialects';
@@ -110,7 +111,9 @@ export function DDLView({ connectionId, tableName, databaseType, isView }: DDLVi
 
   if (error) {
     return (
-      <div className="flex flex-1 items-center justify-center text-sm text-red-400">{error}</div>
+      <div className="flex flex-1 items-center justify-center p-4">
+        <CopyableError message={error} className="max-w-lg text-sm text-red-400" />
+      </div>
     );
   }
 

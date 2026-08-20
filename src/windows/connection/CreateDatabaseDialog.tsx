@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { Dialog } from '../../components/ui/Dialog';
+import { CopyableError } from '../../components/ui/CopyableError';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { AdminSchemaFields } from '../../components/admin/AdminSchemaFields';
@@ -110,7 +111,12 @@ export function CreateDatabaseDialog({
             owner: t('createDb.owner'),
           }}
         />
-        {error && <div className="rounded bg-red-500/10 p-3 text-sm text-red-400">{error}</div>}
+        {error && (
+          <CopyableError
+            message={error}
+            className="rounded bg-red-500/10 p-3 text-sm text-red-400"
+          />
+        )}
       </div>
     </Dialog>
   );

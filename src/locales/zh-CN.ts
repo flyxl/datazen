@@ -492,6 +492,8 @@ const zhCN = {
   'schemaTree.dropSchema': '删除 Schema',
   'schemaTree.confirmDropSchema':
     '确定要删除 Schema「{name}」吗？该 Schema 下的所有对象将永久丢失，此操作不可撤销。',
+  'schemaTree.dropDatabaseFailed': '删除数据库失败。',
+  'schemaTree.dropSchemaFailed': '删除 Schema 失败。',
 
   // ── ER Diagram ──
   'erDiagram.title': 'ER 图',

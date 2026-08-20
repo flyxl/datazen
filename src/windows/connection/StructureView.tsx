@@ -6,6 +6,7 @@ import { Button } from '../../components/ui/Button';
 import type { TableSchema } from '../../types';
 import { cn } from '../../lib/cn';
 import { useI18n } from '../../hooks/useI18n';
+import { CopyableError } from '../../components/ui/CopyableError';
 
 interface StructureViewProps {
   connectionId: string;
@@ -76,7 +77,9 @@ export function StructureView({ connectionId, tableName, onEditStructure }: Stru
 
   if (error) {
     return (
-      <div className="flex flex-1 items-center justify-center text-sm text-red-400">{error}</div>
+      <div className="flex flex-1 items-center justify-center p-4">
+        <CopyableError message={error} className="max-w-lg text-sm text-red-400" />
+      </div>
     );
   }
 

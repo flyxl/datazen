@@ -1,4 +1,5 @@
 import { Input } from '../ui/Input';
+import { CopyableError } from '../ui/CopyableError';
 import { Select } from '../ui/Select';
 import { useI18n } from '../../hooks/useI18n';
 import { DB_REGISTRY } from '../../lib/databaseTypes';
@@ -97,13 +98,15 @@ export function ConnectionFormBody({
       <div ref={form.testResultRef}>
         {form.testOk && (
           <div className="mt-4 rounded-md border border-green-500/20 bg-green-500/10 p-3 text-xs text-green-400">
-            {t('newConn.testSuccess')}{form.testOk}
+            {t('newConn.testSuccess')}
+            {form.testOk}
           </div>
         )}
         {form.testErr && (
-          <div className="mt-4 rounded-md border border-red-500/20 bg-red-500/10 p-3 text-xs text-red-400 break-all">
-            {form.testErr}
-          </div>
+          <CopyableError
+            message={form.testErr}
+            className="mt-4 rounded-md border border-red-500/20 bg-red-500/10 p-3 text-xs text-red-400"
+          />
         )}
       </div>
     </>

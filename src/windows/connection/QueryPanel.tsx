@@ -49,6 +49,7 @@ import {
 } from '../../lib/queryContextPath';
 import { QueryContextSelectors } from '../../components/query/QueryContextSelectors';
 import { QueryErrorPanel } from '../../components/query/QueryErrorPanel';
+import { CopyableError } from '../../components/ui/CopyableError';
 import { DataTable } from '../../components/DataTable/DataTable';
 import type { ColumnDef } from '../../components/DataTable/TableHeader';
 import { ChartView } from '../../components/chart/ChartView';
@@ -901,9 +902,11 @@ export function QueryPanel({ panelId, connectionId, configId, databaseType }: Qu
                 )}
                 {!explainLoading && explainError && (
                   <div className="p-4">
-                    <div className="rounded-md border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">
-                      {explainError}
-                    </div>
+                    <CopyableError
+                      message={explainError}
+                      copyButton
+                      className="rounded-md border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400"
+                    />
                   </div>
                 )}
                 {!explainLoading && explainResult && (
@@ -1181,7 +1184,7 @@ export function QueryPanel({ panelId, connectionId, configId, databaseType }: Qu
         }
       >
         {txAbortedDetail ? (
-          <pre className="max-h-40 overflow-auto whitespace-pre-wrap rounded border border-edge bg-surface p-2 font-mono text-[11px] text-red-400">
+          <pre className="copyable max-h-40 overflow-auto whitespace-pre-wrap break-words rounded border border-edge bg-surface p-2 font-mono text-[11px] text-red-400">
             {txAbortedDetail}
           </pre>
         ) : null}

@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 import { FolderPlus, Loader2 } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
+import { CopyableError } from '../../components/ui/CopyableError';
 import { Input } from '../../components/ui/Input';
 import { AdminSchemaFields } from '../../components/admin/AdminSchemaFields';
 import { driverCommands } from '../../commands/driver';
@@ -82,7 +83,12 @@ export function CreateSchemaPanel({ connectionId, databaseType }: CreateSchemaPa
           }}
         />
 
-        {error && <div className="rounded bg-red-500/10 p-3 text-sm text-red-400">{error}</div>}
+        {error && (
+          <CopyableError
+            message={error}
+            className="rounded bg-red-500/10 p-3 text-sm text-red-400"
+          />
+        )}
         {success && (
           <div className="rounded bg-green-500/10 p-3 text-sm text-green-400">{success}</div>
         )}
