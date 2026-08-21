@@ -487,7 +487,8 @@ async fn fetch_pg_process_list(pool: &sqlx::PgPool) -> Result<CommandResult, Dri
             datname AS database,
             state,
             LEFT(query, 500) AS query,
-            COALESCE(EXTRACT(EPOCH FROM (now() - query_start)) * 1000, 0)::bigint AS "durationMs"
+            COALESCE(EXTRACT(EPOCH FROM (now() - query_start)) * 1000, 0)::bigint AS "durationMs",
+            client_addr::text AS clientIp
         FROM pg_stat_activity
         WHERE pid <> pg_backend_pid()
         ORDER BY query_start NULLS LAST
@@ -507,6 +508,7 @@ async fn fetch_pg_process_list(pool: &sqlx::PgPool) -> Result<CommandResult, Dri
                 "state": row.try_get::<String, _>("state").ok(),
                 "query": row.try_get::<String, _>("query").ok(),
                 "durationMs": row.try_get::<i64, _>("durationMs").unwrap_or(0),
+                "clientIp": row.try_get::<String, _>("clientIp").ok(),
             })
         })
         .collect();
@@ -540,6 +542,11 @@ async fn kill_pg_process(
 }
 
 async fn fetch_pg_server_status(pool: &sqlx::PgPool) -> Result<CommandResult, DriverError> {
+    let max_connections: i64 = sqlx::query_scalar("SELECT current_setting('max_connections')::int")
+        .fetch_one(pool)
+        .await
+        .unwrap_or(0);
+
     let row = sqlx::query(
         r#"
         SELECT
@@ -555,14 +562,35 @@ async fn fetch_pg_server_status(pool: &sqlx::PgPool) -> Result<CommandResult, Dr
     .await
     .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
 
+    // PG 状态变量：由驱动决定提供哪些设置，Host 仅渲染返回数组（数据驱动分叉）。
+    let pg_settings = sqlx::query(
+        "SELECT name, setting FROM pg_settings WHERE unit IS NOT NULL OR source = 'configuration file' ORDER BY name LIMIT 150",
+    )
+    .fetch_all(pool)
+    .await;
+    let status_variables: Vec<serde_json::Value> = match pg_settings {
+        Ok(rows) => rows
+            .iter()
+            .map(|r| {
+                json!({
+                    "name": r.get::<String, _>("name"),
+                    "value": r.try_get::<String, _>("setting").ok(),
+                })
+            })
+            .collect(),
+        Err(_) => vec![],
+    };
+
     Ok(CommandResult {
         data: json!({
             "version": row.get::<String, _>("version"),
             "database": row.get::<String, _>("database"),
             "uptimeSeconds": row.get::<i64, _>("uptime_seconds"),
             "connections": row.get::<i64, _>("connections"),
+            "maxConnections": max_connections,
             "activeQueries": row.get::<i64, _>("active_queries"),
             "databaseSize": row.get::<String, _>("database_size"),
+            "statusVariables": status_variables,
         }),
     })
 }
@@ -790,6 +818,53 @@ mod tests {
     fn unknown_command_returns_error() {
         let input = json!({ "name": "x" });
         assert!(build_admin_sql("some_unknown_cmd", &input).is_err());
+    }
+
+    /// 临场联调测试：连真实本地 PG（postgres/postgres），验证进程列表非空 + 状态变量返回。
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn live_process_list_and_status_on_local_pg() {
+        let host = std::env::var("PGHOST").unwrap_or_else(|_| "127.0.0.1".into());
+        let port = std::env::var("PGPORT")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(5432);
+        let user = std::env::var("PGUSER").unwrap_or_else(|_| "postgres".into());
+        let pass = std::env::var("PGPASSWORD").unwrap_or_else(|_| "postgres".into());
+        let db = std::env::var("PGDATABASE").unwrap_or_else(|_| "postgres".into());
+        let opts = sqlx::postgres::PgConnectOptions::new()
+            .host(&host)
+            .port(port)
+            .username(&user)
+            .password(&pass)
+            .database(&db);
+        let pool = match sqlx::postgres::PgPoolOptions::new()
+            .max_connections(2)
+            .connect_with(opts)
+            .await
+        {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("skip live pg: {e}");
+                return;
+            }
+        };
+
+        let pl = fetch_pg_process_list(&pool).await;
+        eprintln!("PG list_processes -> {pl:?}");
+        let procs = pl.unwrap().data["processes"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        assert!(!procs.is_empty(), "PG process list EMPTY — bug!");
+
+        let ss = fetch_pg_server_status(&pool).await;
+        let ss_data = ss.unwrap().data;
+        let vars = ss_data["statusVariables"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        eprintln!("PG statusVariables count = {}", vars.len());
+        pool.close().await;
     }
 }
 

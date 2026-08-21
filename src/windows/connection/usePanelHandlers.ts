@@ -1,6 +1,8 @@
 import { useCallback, useMemo, useRef, type MouseEvent } from 'react';
 import { useI18n } from '../../hooks/useI18n';
+import type { ConnectionOpenTarget } from '../../lib/connectionViews/types';
 import { useSchemaStore } from '../../stores/schemaStore';
+import { useActiveConnectionStore } from '../../stores/activeConnectionStore';
 import {
   usePanelStore,
   nextPanelId,
@@ -12,8 +14,6 @@ import {
   type ErDiagramPanel,
   type ObjectsPanel,
   type PrivilegesPanel,
-  type ProcessesPanel,
-  type ServerStatusPanel,
   type DatabaseObjectPanel,
   type ConnectionContext,
 } from '../../stores/panelStore';
@@ -34,8 +34,8 @@ export interface PanelHandlers {
     schema?: string,
   ) => void;
   handleOpenPrivileges: () => void;
-  handleOpenServerStatus: () => void;
-  handleOpenProcessList: () => void;
+  handleOpenServerStatus: (ctx?: ConnectionOpenTarget) => void;
+  handleOpenProcessList: (ctx?: ConnectionOpenTarget) => void;
   handleNewQuery: (initialSql?: string) => void;
   handleOpenQueryHistory: () => void;
   handleClosePanel: (panelId: string) => void;
@@ -46,6 +46,29 @@ export interface PanelHandlers {
   handlePanelTabContextMenu: (panelId: string, e: MouseEvent) => void;
   handleSetSubTab: (panelId: string, subTab: SubTabId) => void;
   handleRefresh: () => void;
+}
+
+/**
+ * 右键菜单打开「进程列表 / 服务器仪表盘」时，调用方会显式传入被点击的连接 target，
+ * 面板据此绑定（configId + connectionId），不依赖「全局活动连接」，避免 MySQL/PG 串数据。
+ * 未传入时（如从已绑定视图内部调用）回退到当前侧栏上下文。
+ */
+function resolveOpenTarget(
+  target: ConnectionOpenTarget | undefined,
+  sidebar: ConnectionContext | null,
+): ConnectionContext | null {
+  // 有显式目标时，以其 configId 为准，并从活动连接表中解析当前实时 connectionId，
+  // 绝不对齐到传入的 target 可能带有的旧 id、也不回落到其它连接的上下文。
+  if (target && target.configId) {
+    const live = useActiveConnectionStore.getState().connections[target.configId]?.connectionId;
+    return {
+      configId: target.configId,
+      connectionId: live || target.connectionId,
+      connectionName: target.connectionName,
+      databaseType: target.databaseType,
+    };
+  }
+  return sidebar;
 }
 
 export function usePanelHandlers({
@@ -303,35 +326,36 @@ export function usePanelHandlers({
     addPanel(panel);
   }, [sidebarConnCtx, connPanels, addPanel, setActivePanel]);
 
-  const handleOpenServerStatus = useCallback(() => {
-    if (!sidebarConnCtx) return;
-    const existing = connPanels.find((p) => p.type === 'server-status');
-    if (existing) {
-      setActivePanel(existing.id);
-      return;
-    }
-    const panel: ServerStatusPanel = {
-      ...sidebarConnCtx,
-      type: 'server-status',
-      id: nextPanelId('status'),
-    };
-    addPanel(panel);
-  }, [sidebarConnCtx, connPanels, addPanel, setActivePanel]);
+  const handleOpenServerStatus = useCallback(
+    (target?: ConnectionOpenTarget) => {
+      const ctx = resolveOpenTarget(target, sidebarConnCtx);
+      if (!ctx) return;
+      const all = usePanelStore.getState().panels;
+      // 每个连接的服务器仪表盘面板唯一，按 configId 绑定，绝不复用其它连接的面板。
+      const existing = all.find((p) => p.type === 'server-status' && p.configId === ctx.configId);
+      if (existing) {
+        setActivePanel(existing.id);
+        return;
+      }
+      addPanel({ ...ctx, type: 'server-status', id: nextPanelId('status') });
+    },
+    [sidebarConnCtx, addPanel, setActivePanel],
+  );
 
-  const handleOpenProcessList = useCallback(() => {
-    if (!sidebarConnCtx) return;
-    const existing = connPanels.find((p) => p.type === 'processes');
-    if (existing) {
-      setActivePanel(existing.id);
-      return;
-    }
-    const panel: ProcessesPanel = {
-      ...sidebarConnCtx,
-      type: 'processes',
-      id: nextPanelId('proc'),
-    };
-    addPanel(panel);
-  }, [sidebarConnCtx, connPanels, addPanel, setActivePanel]);
+  const handleOpenProcessList = useCallback(
+    (target?: ConnectionOpenTarget) => {
+      const ctx = resolveOpenTarget(target, sidebarConnCtx);
+      if (!ctx) return;
+      const all = usePanelStore.getState().panels;
+      const existing = all.find((p) => p.type === 'processes' && p.configId === ctx.configId);
+      if (existing) {
+        setActivePanel(existing.id);
+        return;
+      }
+      addPanel({ ...ctx, type: 'processes', id: nextPanelId('proc') });
+    },
+    [sidebarConnCtx, addPanel, setActivePanel],
+  );
 
   const handleNewQuery = useCallback(
     (initialSql?: string) => {

@@ -354,7 +354,7 @@ async fn fetch_mysql_server_status(pool: &sqlx::MySqlPool) -> Result<CommandResu
         .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
 
     let status_rows = sqlx::query(
-        "SHOW GLOBAL STATUS WHERE Variable_name IN ('Uptime', 'Threads_connected', 'Threads_running')",
+        "SHOW GLOBAL STATUS WHERE Variable_name IN ('Uptime', 'Threads_connected', 'Threads_running', 'Questions', 'Threads_created', 'Slow_queries', 'Bytes_received', 'Bytes_sent', 'Com_select', 'Com_insert', 'Com_update', 'Com_delete')",
     )
     .fetch_all(pool)
     .await
@@ -363,6 +363,15 @@ async fn fetch_mysql_server_status(pool: &sqlx::MySqlPool) -> Result<CommandResu
     let mut uptime_seconds: i64 = 0;
     let mut connections: i64 = 0;
     let mut active_queries: i64 = 0;
+    let mut questions: i64 = 0;
+    let mut new_sessions: i64 = 0;
+    let mut slow_queries: i64 = 0;
+    let mut bytes_received: i64 = 0;
+    let mut bytes_sent: i64 = 0;
+    let mut com_select: i64 = 0;
+    let mut com_insert: i64 = 0;
+    let mut com_update: i64 = 0;
+    let mut com_delete: i64 = 0;
     for row in status_rows {
         let name: String = row.get("Variable_name");
         let value: String = row.get("Value");
@@ -371,12 +380,31 @@ async fn fetch_mysql_server_status(pool: &sqlx::MySqlPool) -> Result<CommandResu
             "Uptime" => uptime_seconds = parsed,
             "Threads_connected" => connections = parsed,
             "Threads_running" => active_queries = parsed,
+            "Questions" => questions = parsed,
+            "Threads_created" => new_sessions = parsed,
+            "Slow_queries" => slow_queries = parsed,
+            "Bytes_received" => bytes_received = parsed,
+            "Bytes_sent" => bytes_sent = parsed,
+            "Com_select" => com_select = parsed,
+            "Com_insert" => com_insert = parsed,
+            "Com_update" => com_update = parsed,
+            "Com_delete" => com_delete = parsed,
             _ => {}
         }
     }
+    let qps = if uptime_seconds > 0 {
+        format!("{:.2}", questions as f64 / uptime_seconds as f64)
+    } else {
+        "0.00".to_string()
+    };
+
+    let max_connections: i64 = sqlx::query_scalar("SELECT @@GLOBAL.max_connections")
+        .fetch_one(pool)
+        .await
+        .unwrap_or(0);
 
     let database_size_mb: Option<f64> = sqlx::query_scalar(
-        "SELECT ROUND(SUM(data_length + index_length) / 1024 / 1024, 2) FROM information_schema.tables WHERE table_schema = DATABASE()",
+        "SELECT CAST(ROUND(SUM(data_length + index_length) / 1024 / 1024, 2) AS DOUBLE) FROM information_schema.tables WHERE table_schema = DATABASE()",
     )
     .fetch_one(pool)
     .await
@@ -386,14 +414,51 @@ async fn fetch_mysql_server_status(pool: &sqlx::MySqlPool) -> Result<CommandResu
         .map(|mb| format!("{mb} MB"))
         .unwrap_or_else(|| "0 MB".into());
 
+    // 状态变量列表（MySQL 专属，供「状态变量」明细面板渲染）。
+    // 由驱动决定提供哪些变量；Host 仅渲染返回的数组，不感知方言差异。
+    // 返回完整列表（与其它 DB 管理软件一致，通常 ~500 项）；仅跳过 Rsa_public_key
+    // 这一个超长二进制块，避免把仪表盘明细撑爆。
+    let all_status = sqlx::query("SHOW GLOBAL STATUS")
+        .fetch_all(pool)
+        .await
+        .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+    let mut status_variables: Vec<serde_json::Value> = Vec::new();
+    for row in all_status {
+        let name: String = row.get("Variable_name");
+        if name.eq_ignore_ascii_case("Rsa_public_key") {
+            continue;
+        }
+        let value: String = row.get("Value");
+        status_variables.push(json!({ "name": name, "value": value }));
+    }
+
+    let statement_counters = json!({
+        "select": com_select,
+        "insert": com_insert,
+        "update": com_update,
+        "delete": com_delete,
+    });
+
     Ok(CommandResult {
         data: json!({
             "version": version,
             "database": database.unwrap_or_default(),
             "uptimeSeconds": uptime_seconds,
             "connections": connections,
+            "maxConnections": max_connections,
             "activeQueries": active_queries,
             "databaseSize": database_size,
+            "qps": qps,
+            "slowQueries": slow_queries,
+            "networkIn": bytes_received,
+            "networkOut": bytes_sent,
+            // 累积计数器：Host 跨刷新做差分得到每秒速率。
+            "questionsCounter": questions,
+            "newSessionsCounter": new_sessions,
+            "bytesInCounter": bytes_received,
+            "bytesOutCounter": bytes_sent,
+            "statementCounters": statement_counters,
+            "statusVariables": status_variables,
         }),
     })
 }
@@ -435,14 +500,14 @@ async fn fetch_mysql_process_list(pool: &sqlx::MySqlPool) -> Result<CommandResul
     let rows = sqlx::query(
         r#"
         SELECT
-            ID AS pid,
+            CAST(ID AS SIGNED) AS pid,
             USER AS user,
-            DB AS database,
+            DB AS `database`,
             COMMAND AS state,
             LEFT(INFO, 500) AS query,
-            TIME * 1000 AS durationMs
+            CAST(TIME AS SIGNED) * 1000 AS durationMs,
+            SUBSTRING_INDEX(HOST, ':', 1) AS clientIp
         FROM information_schema.PROCESSLIST
-        WHERE ID <> CONNECTION_ID()
         ORDER BY TIME DESC
         "#,
     )
@@ -460,6 +525,7 @@ async fn fetch_mysql_process_list(pool: &sqlx::MySqlPool) -> Result<CommandResul
                 "state": row.try_get::<String, _>("state").ok(),
                 "query": row.try_get::<String, _>("query").ok(),
                 "durationMs": row.try_get::<i64, _>("durationMs").unwrap_or(0),
+                "clientIp": row.try_get::<String, _>("clientIp").ok(),
             })
         })
         .collect();
@@ -578,5 +644,58 @@ mod tests {
     fn unknown_command_returns_error() {
         let input = json!({ "name": "x" });
         assert!(build_admin_sql("some_unknown_cmd", &input).is_err());
+    }
+
+    /// 临场联调测试：连真实本地 MySQL（root 空密码），验证进程列表非空 + 状态变量完整。
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn live_process_list_and_status_variables_on_local_mysql() {
+        let host = std::env::var("MYSQL_HOST").unwrap_or_else(|_| "127.0.0.1".into());
+        let port = std::env::var("MYSQL_PORT")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(3306);
+        let user = std::env::var("MYSQL_USER").unwrap_or_else(|_| "root".into());
+        let pass = std::env::var("MYSQL_PASSWORD").unwrap_or_default();
+        let db = std::env::var("MYSQL_DB").unwrap_or_else(|_| "mysql".into());
+        let opts = sqlx::mysql::MySqlConnectOptions::new()
+            .host(&host)
+            .port(port)
+            .username(&user)
+            .password(&pass)
+            .database(&db);
+        let pool = match sqlx::mysql::MySqlPoolOptions::new()
+            .max_connections(2)
+            .connect_with(opts)
+            .await
+        {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("skip live mysql: {e}");
+                return;
+            }
+        };
+
+        let pl = fetch_mysql_process_list(&pool).await;
+        eprintln!("MYSQL list_processes -> {pl:?}");
+        let pl_data = pl.unwrap().data;
+        let procs = pl_data["processes"].as_array().cloned().unwrap_or_default();
+        assert!(
+            !procs.is_empty(),
+            "MYSQL process list is EMPTY — bug! got {pl_data}"
+        );
+
+        let ss = fetch_mysql_server_status(&pool).await;
+        let ss_data = ss.unwrap().data;
+        let vars = ss_data["statusVariables"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        eprintln!("MYSQL statusVariables count = {}", vars.len());
+        assert!(
+            vars.len() > 200,
+            "expected full status vars, got {}",
+            vars.len()
+        );
+        pool.close().await;
     }
 }

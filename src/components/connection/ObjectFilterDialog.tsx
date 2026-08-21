@@ -1,10 +1,14 @@
 import { useEffect, useState } from 'react';
-import { Button } from '../components/ui/Button';
-import { Dialog } from '../components/ui/Dialog';
-import { Input } from '../components/ui/Input';
-import { useI18n } from '../hooks/useI18n';
-import { getObjectFilter, type ObjectFilterPrefs, withObjectFilterOptions } from './objectFilter';
-import type { ConnectionConfig } from '../types';
+import { Button } from '../ui/Button';
+import { Dialog } from '../ui/Dialog';
+import { Input } from '../ui/Input';
+import { useI18n } from '../../hooks/useI18n';
+import {
+  getObjectFilter,
+  type ObjectFilterPrefs,
+  withObjectFilterOptions,
+} from '../../lib/objectFilter';
+import type { ConnectionConfig } from '../../types';
 
 export interface ObjectFilterDialogProps {
   open: boolean;
