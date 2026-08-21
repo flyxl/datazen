@@ -1,5 +1,6 @@
 use datazen_driver_api::*;
 use serde_json::json;
+use sqlx::Row;
 
 pub fn mysql_admin_command_definitions() -> Vec<DriverCommandDefinition> {
     let mut cmds = vec![
@@ -7,6 +8,35 @@ pub fn mysql_admin_command_definitions() -> Vec<DriverCommandDefinition> {
         execute_command_definition(),
         query_stream_command_definition(),
     ];
+
+    cmds.push(DriverCommandDefinition {
+        id: "server_status_snapshot".into(),
+        name: "Server Status Snapshot".into(),
+        description: Some(
+            "Read-only snapshot of server uptime, connections, and database size".into(),
+        ),
+        input_schema: json!({ "type": "object", "properties": {} }),
+        output_schema: None,
+        permissions: vec![],
+        metadata: DriverCommandMetadata::new(CommandCategory::Observe, CommandAccessLevel::Read),
+    });
+
+    cmds.push(DriverCommandDefinition {
+        id: "estimate_table_rows".into(),
+        name: "Estimate Table Rows".into(),
+        description: Some("Cheap row estimate from information_schema.tables".into()),
+        input_schema: json!({
+            "type": "object",
+            "properties": {
+                "table": { "type": "string", "description": "Table name" },
+                "schema": { "type": "string", "description": "Database name (defaults to current)" }
+            },
+            "required": ["table"]
+        }),
+        output_schema: None,
+        permissions: vec![],
+        metadata: DriverCommandMetadata::new(CommandCategory::Observe, CommandAccessLevel::Read),
+    });
 
     cmds.push(DriverCommandDefinition {
         id: "create_database".into(),
@@ -136,6 +166,46 @@ pub fn mysql_admin_command_definitions() -> Vec<DriverCommandDefinition> {
         metadata: DriverCommandMetadata::new(CommandCategory::Admin, CommandAccessLevel::HighRisk),
     });
 
+    cmds.push(DriverCommandDefinition {
+        id: "list_processes".into(),
+        name: "List Processes".into(),
+        description: Some("List active server processes / sessions".into()),
+        input_schema: json!({
+            "type": "object",
+            "properties": {},
+            "x-datazen": {
+                "columns": [
+                    { "id": "pid", "name": "PID" },
+                    { "id": "user", "name": "User" },
+                    { "id": "database", "name": "Database" },
+                    { "id": "state", "name": "State" },
+                    { "id": "query", "name": "Query" },
+                    { "id": "durationMs", "name": "Duration (ms)" }
+                ]
+            }
+        }),
+        output_schema: None,
+        permissions: vec![],
+        metadata: DriverCommandMetadata::new(CommandCategory::Observe, CommandAccessLevel::Read),
+    });
+
+    cmds.push(DriverCommandDefinition {
+        id: "kill_process".into(),
+        name: "Kill Process".into(),
+        description: Some("Kill a connection or query by process ID".into()),
+        input_schema: json!({
+            "type": "object",
+            "properties": {
+                "pid": { "type": "integer", "description": "Process ID" },
+                "force": { "type": "boolean", "description": "Use KILL CONNECTION instead of KILL QUERY" }
+            },
+            "required": ["pid"]
+        }),
+        output_schema: None,
+        permissions: vec![],
+        metadata: DriverCommandMetadata::new(CommandCategory::Admin, CommandAccessLevel::HighRisk),
+    });
+
     cmds.extend(schema_object_command_definitions());
 
     cmds
@@ -255,7 +325,163 @@ pub async fn execute_mysql_admin_command(
     command: &str,
     input: serde_json::Value,
 ) -> Result<CommandResult, DriverError> {
-    let sql = build_admin_sql(command, &input)?;
+    match command {
+        "server_status_snapshot" => fetch_mysql_server_status(pool).await,
+        "estimate_table_rows" => estimate_mysql_table_rows(pool, &input).await,
+        "list_processes" => fetch_mysql_process_list(pool).await,
+        "kill_process" => kill_mysql_process(pool, &input).await,
+        _ => {
+            let sql = build_admin_sql(command, &input)?;
+            sqlx::query(&sql)
+                .execute(pool)
+                .await
+                .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+            Ok(CommandResult {
+                data: json!({ "ok": true }),
+            })
+        }
+    }
+}
+
+async fn fetch_mysql_server_status(pool: &sqlx::MySqlPool) -> Result<CommandResult, DriverError> {
+    let version: String = sqlx::query_scalar("SELECT VERSION()")
+        .fetch_one(pool)
+        .await
+        .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+    let database: Option<String> = sqlx::query_scalar("SELECT DATABASE()")
+        .fetch_one(pool)
+        .await
+        .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+
+    let status_rows = sqlx::query(
+        "SHOW GLOBAL STATUS WHERE Variable_name IN ('Uptime', 'Threads_connected', 'Threads_running')",
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+
+    let mut uptime_seconds: i64 = 0;
+    let mut connections: i64 = 0;
+    let mut active_queries: i64 = 0;
+    for row in status_rows {
+        let name: String = row.get("Variable_name");
+        let value: String = row.get("Value");
+        let parsed = value.parse::<i64>().unwrap_or(0);
+        match name.as_str() {
+            "Uptime" => uptime_seconds = parsed,
+            "Threads_connected" => connections = parsed,
+            "Threads_running" => active_queries = parsed,
+            _ => {}
+        }
+    }
+
+    let database_size_mb: Option<f64> = sqlx::query_scalar(
+        "SELECT ROUND(SUM(data_length + index_length) / 1024 / 1024, 2) FROM information_schema.tables WHERE table_schema = DATABASE()",
+    )
+    .fetch_one(pool)
+    .await
+    .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+
+    let database_size = database_size_mb
+        .map(|mb| format!("{mb} MB"))
+        .unwrap_or_else(|| "0 MB".into());
+
+    Ok(CommandResult {
+        data: json!({
+            "version": version,
+            "database": database.unwrap_or_default(),
+            "uptimeSeconds": uptime_seconds,
+            "connections": connections,
+            "activeQueries": active_queries,
+            "databaseSize": database_size,
+        }),
+    })
+}
+
+async fn estimate_mysql_table_rows(
+    pool: &sqlx::MySqlPool,
+    input: &serde_json::Value,
+) -> Result<CommandResult, DriverError> {
+    let table = input["table"]
+        .as_str()
+        .ok_or_else(|| DriverError::InvalidConfig("table is required".into()))?;
+    let schema = input["schema"].as_str();
+
+    let estimated_rows: Option<i64> = if let Some(db) = schema {
+        sqlx::query_scalar(
+            "SELECT TABLE_ROWS FROM information_schema.tables WHERE table_schema = ? AND table_name = ?",
+        )
+        .bind(db)
+        .bind(table)
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| DriverError::QueryFailed(e.to_string()))?
+    } else {
+        sqlx::query_scalar(
+            "SELECT TABLE_ROWS FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?",
+        )
+        .bind(table)
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| DriverError::QueryFailed(e.to_string()))?
+    };
+
+    Ok(CommandResult {
+        data: json!({ "estimatedRows": estimated_rows.unwrap_or(0) }),
+    })
+}
+
+async fn fetch_mysql_process_list(pool: &sqlx::MySqlPool) -> Result<CommandResult, DriverError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT
+            ID AS pid,
+            USER AS user,
+            DB AS database,
+            COMMAND AS state,
+            LEFT(INFO, 500) AS query,
+            TIME * 1000 AS durationMs
+        FROM information_schema.PROCESSLIST
+        WHERE ID <> CONNECTION_ID()
+        ORDER BY TIME DESC
+        "#,
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+
+    let processes: Vec<serde_json::Value> = rows
+        .iter()
+        .map(|row| {
+            json!({
+                "pid": row.get::<i64, _>("pid"),
+                "user": row.try_get::<String, _>("user").ok(),
+                "database": row.try_get::<String, _>("database").ok(),
+                "state": row.try_get::<String, _>("state").ok(),
+                "query": row.try_get::<String, _>("query").ok(),
+                "durationMs": row.try_get::<i64, _>("durationMs").unwrap_or(0),
+            })
+        })
+        .collect();
+
+    Ok(CommandResult {
+        data: json!({ "processes": processes }),
+    })
+}
+
+async fn kill_mysql_process(
+    pool: &sqlx::MySqlPool,
+    input: &serde_json::Value,
+) -> Result<CommandResult, DriverError> {
+    let pid = input["pid"]
+        .as_i64()
+        .ok_or_else(|| DriverError::InvalidConfig("pid is required".into()))?;
+    let force = input["force"].as_bool().unwrap_or(false);
+    let sql = if force {
+        format!("KILL {pid}")
+    } else {
+        format!("KILL QUERY {pid}")
+    };
     sqlx::query(&sql)
         .execute(pool)
         .await
@@ -276,11 +502,15 @@ mod tests {
         assert!(ids.contains(&"query"));
         assert!(ids.contains(&"execute"));
         assert!(ids.contains(&"query_stream"));
+        assert!(ids.contains(&"server_status_snapshot"));
+        assert!(ids.contains(&"estimate_table_rows"));
         assert!(ids.contains(&"create_database"));
         assert!(ids.contains(&"create_user"));
         assert!(ids.contains(&"list_objects"));
         assert!(ids.contains(&"get_object_ddl"));
         assert!(ids.contains(&"list_privileges"));
+        assert!(ids.contains(&"list_processes"));
+        assert!(ids.contains(&"kill_process"));
     }
 
     #[test]

@@ -752,6 +752,7 @@ mod tests {
             server_version: None,
             options: None,
             read_only: false,
+            pinned: false,
         };
         let uri = MongodbDriver::uri(&config).unwrap();
         assert!(!uri.contains("s3cret"), "{uri}");

@@ -82,6 +82,7 @@ fn sample_connection_with_ssh() -> ConnectionConfig {
         server_version: None,
         options: None,
         read_only: false,
+        pinned: false,
     }
 }
 

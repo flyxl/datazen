@@ -20,6 +20,16 @@ export function filterConnections(
   });
 }
 
+/** Pinned connections first, then by name within a group. */
+export function sortConnectionsInGroup(connections: ConnectionConfig[]): ConnectionConfig[] {
+  return [...connections].sort((a, b) => {
+    const aPinned = a.pinned === true ? 1 : 0;
+    const bPinned = b.pinned === true ? 1 : 0;
+    if (aPinned !== bPinned) return bPinned - aPinned;
+    return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+  });
+}
+
 /** Group connections by their `group` field; ungrouped come last. */
 export function groupConnections(
   connections: ConnectionConfig[],
@@ -39,6 +49,9 @@ export function groupConnections(
     const key = c.group || '';
     if (!map.has(key)) map.set(key, []);
     map.get(key)!.push(c);
+  }
+  for (const [key, conns] of map) {
+    map.set(key, sortConnectionsInGroup(conns));
   }
   const result: { group: string; connections: ConnectionConfig[] }[] = [];
   const seen = new Set<string>();
@@ -78,6 +91,7 @@ interface ConnectionStore {
   renameGroup: (oldName: string, newName: string) => Promise<void>;
   deleteGroup: (name: string) => Promise<void>;
   moveConnectionToGroup: (connectionId: string, group: string | undefined) => Promise<void>;
+  toggleConnectionPinned: (connectionId: string) => Promise<void>;
   setSelectedGroup: (group: string | null) => void;
   setSearchQuery: (query: string) => void;
 }
@@ -204,6 +218,15 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
     const conn = connections.find((c) => c.id === connectionId);
     if (!conn) return;
     await connectionCommands.saveConnection({ ...conn, group: group || undefined });
+    await get().fetchConnections();
+    void emitCrossWindow(EVENT_CONNECTIONS_CHANGED);
+  },
+
+  toggleConnectionPinned: async (connectionId) => {
+    const { connections } = get();
+    const conn = connections.find((c) => c.id === connectionId);
+    if (!conn) return;
+    await connectionCommands.saveConnection({ ...conn, pinned: !conn.pinned });
     await get().fetchConnections();
     void emitCrossWindow(EVENT_CONNECTIONS_CHANGED);
   },

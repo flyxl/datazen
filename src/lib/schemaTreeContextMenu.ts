@@ -41,6 +41,8 @@ export type SchemaTreeContextMenuLabels = {
   dataTransfer: string;
   compareSchema: string;
   compareData: string;
+  backup: string;
+  restore: string;
 };
 
 export type SchemaTreeContextMenuHandlers = {
@@ -69,6 +71,8 @@ export type SchemaTreeContextMenuHandlers = {
   onDataTransfer?: () => void;
   onCompareSchema?: () => void;
   onCompareData?: () => void;
+  onBackup?: () => void;
+  onRestore?: () => void;
 };
 
 export type BuildSchemaTreeContextMenuArgs = {
@@ -204,11 +208,16 @@ export function buildSchemaTreeContextMenuItems(
         item('compare-schema', labels.compareSchema, handlers.onCompareSchema),
         item('compare-data', labels.compareData, handlers.onCompareData),
       );
+      const backupItems = push(
+        item('backup', labels.backup, handlers.onBackup),
+        item('restore', labels.restore, handlers.onRestore),
+      );
       const dropDb = !readOnly
         ? item('drop-database', labels.dropDatabase, handlers.onDropDatabase)
         : null;
-      const parts =
-        syncItems.length > 0 ? [...dbMain, { kind: 'separator' as const }, ...syncItems] : dbMain;
+      const parts = [...dbMain];
+      if (syncItems.length > 0) parts.push({ kind: 'separator' as const }, ...syncItems);
+      if (backupItems.length > 0) parts.push({ kind: 'separator' as const }, ...backupItems);
       if (dropDb) return [...parts, { kind: 'separator' as const }, dropDb];
       return parts;
     }

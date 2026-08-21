@@ -507,6 +507,8 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
         refresh: handlers.handleRefresh,
         openObject: handlers.handleOpenDbObject,
         openQueryHistory: handlers.handleOpenQueryHistory,
+        openServerStatus: handlers.handleOpenServerStatus,
+        openProcessList: handlers.handleOpenProcessList,
       };
     }
     return () => {

@@ -403,6 +403,7 @@ fn build_from_entry(
             server_version: None,
             options: None,
             read_only: false,
+            pinned: false,
         },
         folder,
     ))
@@ -629,6 +630,7 @@ pub fn parse_xml(xml: &str) -> Result<ParsedImport, CommandError> {
                 server_version: None,
                 options: None,
                 read_only: false,
+                pinned: false,
             });
             continue;
         };
@@ -698,6 +700,7 @@ pub fn parse_xml(xml: &str) -> Result<ParsedImport, CommandError> {
             server_version: None,
             options: None,
             read_only: false,
+            pinned: false,
         });
     }
 

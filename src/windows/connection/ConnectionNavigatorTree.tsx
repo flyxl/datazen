@@ -54,12 +54,24 @@ import { useSettingsStore } from '../../stores/settingsStore';
 import { shouldUseMultiDatabaseTree } from './schema-tree/SchemaTree';
 import { connectionCommands } from '../../commands/connection';
 import { driverCommands } from '../../commands/driver';
+import { hasCommand } from '../../lib/commandSchema';
+import { SERVER_STATUS_SNAPSHOT_COMMAND, LIST_PROCESSES_COMMAND } from '../../lib/driverCommandIds';
 import {
   openDataSyncWindow,
   openDataTransferWindow,
   openSchemaDiffWindow,
+  openBackupWindow,
 } from '../../lib/windowManager';
+import { ObjectFilterDialog } from '../../components/connection/ObjectFilterDialog';
+import {
+  filterTableItems,
+  getObjectFilter,
+  matchesTableNameFilter,
+  shouldShowDatabase,
+  shouldShowSchema,
+} from '../../lib/objectFilter';
 import type { ConnectionConfig, DatabaseObject, TableInfo } from '../../types';
+import type { ObjectFilterPrefs } from '../../lib/objectFilter';
 
 // ── Category definitions ────────────────────────────────────────
 
@@ -379,6 +391,8 @@ export interface ConnectionNavigatorTreeProps {
       schema?: string,
     ) => void;
     openQueryHistory?: () => void;
+    openServerStatus?: () => void;
+    openProcessList?: () => void;
   };
 }
 
@@ -417,6 +431,8 @@ export const ConnectionNavigatorTree = forwardRef<
   const deleteGroup = useConnectionStore((s) => s.deleteGroup);
   const renameGroup = useConnectionStore((s) => s.renameGroup);
   const moveConnectionToGroup = useConnectionStore((s) => s.moveConnectionToGroup);
+  const toggleConnectionPinned = useConnectionStore((s) => s.toggleConnectionPinned);
+  const saveConnection = useConnectionStore((s) => s.saveConnection);
   const activeConnections = useActiveConnectionStore((s) => s.connections);
   const connect = useActiveConnectionStore((s) => s.connect);
 
@@ -428,6 +444,7 @@ export const ConnectionNavigatorTree = forwardRef<
   const [confirmDeleteGroup, confirmDeleteGroupDialog] = useConfirmDialog();
   const [confirmDropDatabase, confirmDropDatabaseDialog] = useConfirmDialog();
   const [confirmDropSchema, confirmDropSchemaDialog] = useConfirmDialog();
+  const [objectFilterConn, setObjectFilterConn] = useState<ConnectionConfig | null>(null);
   const schemas = useSchemaStore((s) => s.schemas);
   const loadForConnection = useSchemaStore((s) => s.loadForConnection);
   const ensureNamespacePath = useSchemaStore((s) => s.ensureNamespacePath);
@@ -707,6 +724,13 @@ export const ConnectionNavigatorTree = forwardRef<
       createSchema: t('createSchema.create'),
       createUser: t('createUser.create'),
       refresh: t('main.ctx.refresh'),
+      pinConnection: t('main.ctx.pinConnection'),
+      unpinConnection: t('main.ctx.unpinConnection'),
+      objectFilter: t('main.ctx.objectFilter'),
+      processList: t('main.ctx.processList'),
+      serverStatus: t('main.ctx.serverStatus'),
+      backup: t('main.ctx.backup'),
+      restore: t('main.ctx.restore'),
     }),
     [t],
   );
@@ -738,6 +762,8 @@ export const ConnectionNavigatorTree = forwardRef<
       dataTransfer: t('schemaTree.dataTransfer'),
       compareSchema: t('schemaTree.compareSchema'),
       compareData: t('schemaTree.compareData'),
+      backup: t('main.ctx.backup'),
+      restore: t('main.ctx.restore'),
     }),
     [t],
   );
@@ -1035,76 +1061,113 @@ export const ConnectionNavigatorTree = forwardRef<
       e.preventDefault();
       e.stopPropagation();
 
-      const isConnected = activeConnections[conn.id]?.status === 'connected';
-      const dbMeta = DB_REGISTRY[conn.databaseType];
-      const isMultiDb = shouldUseMultiDatabaseTree(dbMeta, conn.database);
-      const moveTargets = groups
-        .filter((g) => g !== conn.group)
-        .map((g) => ({ id: g, label: formatGroupLabel(g, t) }));
+      void (async () => {
+        const isConnected = activeConnections[conn.id]?.status === 'connected';
+        const dbMeta = DB_REGISTRY[conn.databaseType];
+        const isMultiDb = shouldUseMultiDatabaseTree(dbMeta, conn.database);
+        const moveTargets = groups
+          .filter((g) => g !== conn.group)
+          .map((g) => ({ id: g, label: formatGroupLabel(g, t) }));
 
-      showWebContextMenu(
-        buildMainConnectionContextMenuItems({
-          labels: contextLabels,
-          isConnected,
-          grouped: Boolean(conn.group),
-          moveTargets,
-          onOpenOrDisconnect: () => {
-            if (isConnected) {
-              onDisconnect(conn.id);
-            } else {
+        const commands = await driverCommands.getDriverCommands(conn.databaseType);
+        const supportsServerStatus =
+          isConnected && hasCommand(commands, SERVER_STATUS_SNAPSHOT_COMMAND);
+        const supportsProcessList = isConnected && hasCommand(commands, LIST_PROCESSES_COMMAND);
+        const supportsBackup = dbMeta?.supportsBackup === true;
+
+        showWebContextMenu(
+          buildMainConnectionContextMenuItems({
+            labels: contextLabels,
+            isConnected,
+            grouped: Boolean(conn.group),
+            pinned: conn.pinned === true,
+            moveTargets,
+            onOpenOrDisconnect: () => {
+              if (isConnected) {
+                onDisconnect(conn.id);
+              } else {
+                onSelectConnection(conn.id);
+                toggleConnection(conn.id);
+                void connect(conn);
+              }
+            },
+            onCopyName: () => {
+              void navigator.clipboard.writeText(conn.name);
+            },
+            onCopyUrl: () => {
+              const url = buildConnectionUrl(conn);
+              if (url) void navigator.clipboard.writeText(url);
+            },
+            onNewQuery: () => {
               onSelectConnection(conn.id);
-              toggleConnection(conn.id);
-              void connect(conn);
-            }
-          },
-          onCopyName: () => {
-            void navigator.clipboard.writeText(conn.name);
-          },
-          onCopyUrl: () => {
-            const url = buildConnectionUrl(conn);
-            if (url) void navigator.clipboard.writeText(url);
-          },
-          onNewQuery: () => {
-            onSelectConnection(conn.id);
-            viewActions?.newQuery?.();
-          },
-          onQueryHistory: () => {
-            onSelectConnection(conn.id);
-            viewActions?.openQueryHistory?.();
-          },
-          onExecuteSqlFile: undefined,
-          onCreateDatabase:
-            dbMeta?.supportsCreateDatabase && isMultiDb
+              viewActions?.newQuery?.();
+            },
+            onQueryHistory: () => {
+              onSelectConnection(conn.id);
+              viewActions?.openQueryHistory?.();
+            },
+            onExecuteSqlFile: undefined,
+            onCreateDatabase:
+              dbMeta?.supportsCreateDatabase && isMultiDb
+                ? () => {
+                    onSelectConnection(conn.id);
+                    viewActions?.openCreateDatabase?.();
+                  }
+                : undefined,
+            onCreateUser: dbMeta?.supportsCreateUser
               ? () => {
                   onSelectConnection(conn.id);
-                  viewActions?.openCreateDatabase?.();
+                  viewActions?.openCreateUser?.();
                 }
               : undefined,
-          onCreateUser: dbMeta?.supportsCreateUser
-            ? () => {
-                onSelectConnection(conn.id);
-                viewActions?.openCreateUser?.();
+            onServerStatus: supportsServerStatus
+              ? () => {
+                  onSelectConnection(conn.id);
+                  viewActions?.openServerStatus?.();
+                }
+              : undefined,
+            onPin: () => {
+              void toggleConnectionPinned(conn.id);
+            },
+            onObjectFilter: () => {
+              setObjectFilterConn(conn);
+            },
+            onProcessList: supportsProcessList
+              ? () => {
+                  onSelectConnection(conn.id);
+                  viewActions?.openProcessList?.();
+                }
+              : undefined,
+            onBackup: supportsBackup
+              ? () => {
+                  openBackupWindow('backup', { configId: conn.id, database: conn.database });
+                }
+              : undefined,
+            onRestore: supportsBackup
+              ? () => {
+                  openBackupWindow('restore', { configId: conn.id, database: conn.database });
+                }
+              : undefined,
+            onRefresh: () => {
+              if (activeConnections[conn.id]?.connectionId) {
+                void refreshConnection(conn.id);
               }
-            : undefined,
-          onRefresh: () => {
-            if (activeConnections[conn.id]?.connectionId) {
-              void refreshConnection(conn.id);
-            }
-          },
-          onEdit: () => onEditConnection(conn.id),
-          onDuplicate: () => {
-            void duplicateConnection(conn.id);
-          },
-          onMoveToGroup: (groupId) => {
-            void moveConnectionToGroup(conn.id, groupId);
-          },
-          onRemoveFromGroup: () => {
-            void moveConnectionToGroup(conn.id, undefined);
-          },
-          onDelete: () => onDeleteConnection(conn.id),
-        }),
-        { x: e.clientX, y: e.clientY },
-      );
+            },
+            onEdit: () => onEditConnection(conn.id),
+            onDuplicate: () => {
+              void duplicateConnection(conn.id);
+            },
+            onMoveToGroup: (groupId) => {
+              void moveConnectionToGroup(conn.id, groupId);
+            },
+            onRemoveFromGroup: () => {
+              void moveConnectionToGroup(conn.id, undefined);
+            },
+            onDelete: () => onDeleteConnection(conn.id),
+          }),
+          { x: e.clientX, y: e.clientY },
+        );
+      })();
     },
     [
       activeConnections,
@@ -1112,15 +1175,16 @@ export const ConnectionNavigatorTree = forwardRef<
       contextLabels,
       duplicateConnection,
       groups,
-      loadForConnection,
       moveConnectionToGroup,
       onDeleteConnection,
       onDisconnect,
       onEditConnection,
-      onNodeContextMenu,
       onSelectConnection,
       refreshConnection,
       t,
+      toggleConnection,
+      toggleConnectionPinned,
+      viewActions,
     ],
   );
 
@@ -1239,6 +1303,16 @@ export const ConnectionNavigatorTree = forwardRef<
             onDataTransfer: () => openDataTransferWindow(),
             onCompareSchema: () => openSchemaDiffWindow(),
             onCompareData: () => openDataSyncWindow(),
+            onBackup: dbMeta?.supportsBackup
+              ? () => {
+                  openBackupWindow('backup', { configId, database: dbName });
+                }
+              : undefined,
+            onRestore: dbMeta?.supportsBackup
+              ? () => {
+                  openBackupWindow('restore', { configId, database: dbName });
+                }
+              : undefined,
           },
           readOnly,
           safeMode,
@@ -1563,8 +1637,10 @@ export const ConnectionNavigatorTree = forwardRef<
       schemaName: string | undefined,
       baseDepth: number,
       dbType: string,
+      objectFilter: ObjectFilterPrefs,
     ) => {
-      const realItems = allItems.filter((i) => i.name !== '');
+      const filteredItems = filterTableItems(allItems, objectFilter);
+      const realItems = filteredItems.filter((i) => i.name !== '');
       const tblItems = realItems.filter(
         (i) => i.tableType === 'table' || i.tableType === 'systemTable',
       );
@@ -1598,6 +1674,13 @@ export const ConnectionNavigatorTree = forwardRef<
           if (cat.id === 'tables') items = tblItems;
           else if (cat.id === 'views') items = viewItems;
           else objs = dbObjectsMap[catKey] ?? [];
+          if (
+            objectFilter.hideSystemSchemas ||
+            objectFilter.tableNameInclude ||
+            objectFilter.tableNameExclude
+          ) {
+            objs = objs.filter((o) => matchesTableNameFilter(o.name, objectFilter));
+          }
 
           if (query) {
             items = items.filter((i) => i.name.toLowerCase().includes(query));
@@ -1688,6 +1771,7 @@ export const ConnectionNavigatorTree = forwardRef<
       }
 
       for (const conn of filteredConns) {
+        const objectFilter = getObjectFilter(conn);
         const entry = activeConnections[conn.id];
         const status = entry?.status ?? 'idle';
         const isConnected = status === 'connected';
@@ -1762,7 +1846,7 @@ export const ConnectionNavigatorTree = forwardRef<
         const isMultiDb = shouldUseMultiDatabaseTree(meta, conn.database);
 
         if (isMultiDb) {
-          const dbs = query
+          let dbs = query
             ? schemaData.databases.filter((d) => {
                 if (d.toLowerCase().includes(query)) return true;
                 const tblKey = `${connectionId}::${d}`;
@@ -1770,6 +1854,7 @@ export const ConnectionNavigatorTree = forwardRef<
                 return tbls?.some((tbl) => tbl.name.toLowerCase().includes(query)) ?? false;
               })
             : schemaData.databases;
+          dbs = dbs.filter((d) => shouldShowDatabase(d, objectFilter));
 
           for (const dbName of dbs) {
             const dbKey = `${conn.id}::${dbName}`;
@@ -1817,6 +1902,7 @@ export const ConnectionNavigatorTree = forwardRef<
               });
 
               for (const schemaName of sortedSchemas) {
+                if (!shouldShowSchema(schemaName, objectFilter)) continue;
                 const schemaKey = `${conn.id}::${dbName}::${schemaName}`;
                 const schemaItems = schemaGroups.get(schemaName) ?? [];
                 const schemaExpanded = expandedSchemas.has(schemaKey) || !!query;
@@ -1839,6 +1925,7 @@ export const ConnectionNavigatorTree = forwardRef<
                     schemaName,
                     4,
                     conn.databaseType,
+                    objectFilter,
                   );
                 }
               }
@@ -1851,6 +1938,7 @@ export const ConnectionNavigatorTree = forwardRef<
                 undefined,
                 3,
                 conn.databaseType,
+                objectFilter,
               );
             }
           }
@@ -1893,6 +1981,7 @@ export const ConnectionNavigatorTree = forwardRef<
             });
 
             for (const schemaName of sortedSchemas) {
+              if (!shouldShowSchema(schemaName, objectFilter)) continue;
               const schemaKey = `${conn.id}::${dbName}::${schemaName}`;
               const schemaItems = schemaGroups.get(schemaName) ?? [];
               const schemaExpanded = expandedSchemas.has(schemaKey) || !!query;
@@ -1915,11 +2004,21 @@ export const ConnectionNavigatorTree = forwardRef<
                   schemaName,
                   4,
                   conn.databaseType,
+                  objectFilter,
                 );
               }
             }
           } else {
-            addCategories(allItems, conn.id, connectionId, dbName, undefined, 3, conn.databaseType);
+            addCategories(
+              allItems,
+              conn.id,
+              connectionId,
+              dbName,
+              undefined,
+              3,
+              conn.databaseType,
+              objectFilter,
+            );
           }
         }
       }
@@ -2518,6 +2617,13 @@ export const ConnectionNavigatorTree = forwardRef<
           autoCapitalize="off"
         />
       </Dialog>
+
+      <ObjectFilterDialog
+        open={objectFilterConn != null}
+        connection={objectFilterConn}
+        onClose={() => setObjectFilterConn(null)}
+        onSave={saveConnection}
+      />
 
       {confirmDeleteGroupDialog}
       {confirmDropDatabaseDialog}

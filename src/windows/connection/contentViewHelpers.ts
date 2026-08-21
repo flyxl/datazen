@@ -7,6 +7,7 @@ import {
   GitFork,
   Hash,
   KeyRound,
+  Activity,
   Shapes,
   Table2,
   TableProperties,
@@ -45,6 +46,10 @@ export function getPanelIcon(panel: Panel): ReactNode {
       return createElement(Code2, { className: iconClass });
     case 'privileges':
       return createElement(KeyRound, { className: iconClass });
+    case 'server-status':
+      return createElement(Activity, { className: `${iconClass} text-emerald-400` });
+    case 'processes':
+      return createElement(Database, { className: `${iconClass} text-rose-400` });
     case 'db-object': {
       const kind = (panel as DatabaseObjectPanel).objectKind;
       if (kind === 'trigger')
@@ -80,6 +85,10 @@ export function getPanelLabel(panel: Panel): string {
       return 'Objects';
     case 'privileges':
       return 'Privileges';
+    case 'server-status':
+      return 'Server Status';
+    case 'processes':
+      return 'Processes';
     case 'db-object':
       return (panel as DatabaseObjectPanel).objectName;
     case 'redis-db':

@@ -137,6 +137,7 @@ fn connection_config(cfg: &MysqlTestConfig) -> ConnectionConfig {
         server_version: None,
         options: None,
         read_only: false,
+        pinned: false,
     }
 }
 

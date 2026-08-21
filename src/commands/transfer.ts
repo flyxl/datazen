@@ -53,6 +53,8 @@ export interface TransferTableResult {
   createNew: boolean;
   enabled: boolean;
   columnMappings: TransferColumnMapping[];
+  sourceColumns?: string[];
+  targetColumns?: string[];
   incompatibleReason?: string | null;
   sourceRowCount?: number | null;
 }

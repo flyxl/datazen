@@ -5,16 +5,23 @@ import { Input } from '../../components/ui/Input';
 import { databaseCommands } from '../../commands/database';
 import { queryCommands } from '../../commands/query';
 import { structureCommands } from '../../commands/structure';
+import { driverCommands } from '../../commands/driver';
 import { DB_REGISTRY } from '../../lib/databaseTypes';
 import { exportTableStructureToFile } from '../../lib/exportTableStructure';
 import { buildStructureChangeRequest } from '../../lib/structureEditor/buildStructureChangeRequest';
 import { capEnabled } from '../../lib/structureEditor/controlHints';
+import {
+  buildAlterApplyWarningMessage,
+  shouldConfirmAlterApply,
+} from '../../lib/structureEditor/ddlApplyWarnings';
 import {
   defaultCreateColumns,
   emptyColumnDraft,
   emptyIndexDraft,
 } from '../../lib/structureEditor/draftDefaults';
 import { schemaToDraft } from '../../lib/structureEditor/schemaToDraft';
+import { ESTIMATE_TABLE_ROWS_COMMAND } from '../../lib/driverCommandIds';
+import { hasCommand } from '../../lib/commandSchema';
 import type {
   StructureCapabilities,
   StructureChangePlan,
@@ -23,6 +30,7 @@ import type {
   StructureIndexDraft,
 } from '../../lib/structureEditor/types';
 import { useI18n } from '../../hooks/useI18n';
+import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 import type { DatabaseType } from '../../types';
 import { StructureColumnTable } from './structure/StructureColumnTable';
 import { StructureIndexTable, suggestedIndexName } from './structure/StructureIndexTable';
@@ -79,6 +87,32 @@ async function executePlanStatements(
   return { executed };
 }
 
+async function fetchEstimatedTableRows(args: {
+  connectionId: string;
+  table: string;
+  schema?: string | null;
+}): Promise<number | null> {
+  try {
+    const definitions = await driverCommands.getConnectionCommands(args.connectionId);
+    if (!hasCommand(definitions, ESTIMATE_TABLE_ROWS_COMMAND)) {
+      return null;
+    }
+    const input: Record<string, unknown> = { table: args.table };
+    if (args.schema) input.schema = args.schema;
+    const result = await driverCommands.execute({
+      connectionId: args.connectionId,
+      command: ESTIMATE_TABLE_ROWS_COMMAND,
+      input,
+    });
+    const data = result.data;
+    if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
+    const rows = (data as { estimatedRows?: unknown }).estimatedRows;
+    return typeof rows === 'number' ? rows : null;
+  } catch {
+    return null;
+  }
+}
+
 export function TableStructureEditor({
   connectionId,
   databaseType,
@@ -91,6 +125,7 @@ export function TableStructureEditor({
   onCancel,
 }: TableStructureEditorProps) {
   const { t } = useI18n();
+  const [confirmApply, confirmApplyDialog] = useConfirmDialog();
   const uiConfig = useMemo(() => resolveUiConfig(databaseType), [databaseType]);
 
   const [tableName, setTableName] = useState(initialTableName ?? '');
@@ -290,6 +325,26 @@ export function TableStructureEditor({
         setError(t('structEditor.noChanges'));
         return;
       }
+
+      let estimatedRows: number | null = null;
+      if (mode === 'alter' && initialTableName) {
+        estimatedRows = await fetchEstimatedTableRows({
+          connectionId,
+          table: initialTableName,
+          schema: requestSchema,
+        });
+      }
+
+      if (shouldConfirmAlterApply({ mode, plan, estimatedRows })) {
+        const ok = await confirmApply({
+          title: t('structEditor.ddlWarn.title'),
+          message: buildAlterApplyWarningMessage({ t, plan, estimatedRows }),
+          confirmLabel: t('structEditor.ddlWarn.confirm'),
+          kind: 'warning',
+        });
+        if (!ok) return;
+      }
+
       const result = await executePlanStatements(connectionId, plan);
       if (result.error) {
         if (result.executed > 0) {
@@ -317,7 +372,17 @@ export function TableStructureEditor({
     } finally {
       setExecuting(false);
     }
-  }, [buildRequest, connectionId, ensureDatabase, onSuccess, t]);
+  }, [
+    buildRequest,
+    connectionId,
+    confirmApply,
+    ensureDatabase,
+    initialTableName,
+    mode,
+    onSuccess,
+    requestSchema,
+    t,
+  ]);
 
   const handleExportStructure = useCallback(async () => {
     if (mode !== 'alter' || !initialTableName) return;
@@ -509,6 +574,8 @@ export function TableStructureEditor({
       {previewPlan && (
         <StructurePlanPreview plan={previewPlan} onClose={() => setPreviewPlan(null)} />
       )}
+
+      {confirmApplyDialog}
     </div>
   );
 }

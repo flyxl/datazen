@@ -229,6 +229,7 @@ impl MonitorConnectionRegistry {
                     server_version: None,
                     options: None,
                     read_only: false,
+                    pinned: false,
                 },
                 last_used: Instant::now(),
                 _tunnel: None,

@@ -26,6 +26,13 @@ const labels = {
   createSchema: 'Create Schema',
   createUser: 'Create User',
   refresh: 'Refresh',
+  pinConnection: 'Pin Connection',
+  unpinConnection: 'Unpin Connection',
+  objectFilter: 'Object Filter',
+  processList: 'Process List',
+  serverStatus: 'Server Status',
+  backup: 'Backup',
+  restore: 'Restore',
 };
 
 describe('mainWindowContextMenu', () => {
@@ -203,6 +210,31 @@ describe('mainWindowContextMenu', () => {
     expect(onCreateUser).toHaveBeenCalledOnce();
   });
 
+  it('includes server-status when handler provided', () => {
+    const onServerStatus = vi.fn();
+    const items = buildMainConnectionContextMenuItems({
+      labels,
+      isConnected: true,
+      grouped: false,
+      moveTargets: [],
+      onOpenOrDisconnect: () => undefined,
+      onCopyName: () => undefined,
+      onCopyUrl: () => undefined,
+      onNewQuery: () => undefined,
+      onRefresh: () => undefined,
+      onEdit: () => undefined,
+      onDuplicate: () => undefined,
+      onMoveToGroup: () => undefined,
+      onRemoveFromGroup: () => undefined,
+      onDelete: () => undefined,
+      onServerStatus,
+    });
+    expect(items.some((i) => i.kind === 'item' && i.id === 'server-status')).toBe(true);
+    const item = items.find((i) => i.kind === 'item' && i.id === 'server-status');
+    if (item?.kind === 'item') item.action();
+    expect(onServerStatus).toHaveBeenCalledOnce();
+  });
+
   it('omits admin items when none of the admin handlers are provided', () => {
     const items = buildMainConnectionContextMenuItems({
       labels,
@@ -223,5 +255,59 @@ describe('mainWindowContextMenu', () => {
     expect(items.some((i) => i.kind === 'item' && i.id === 'create-database')).toBe(false);
     expect(items.some((i) => i.kind === 'item' && i.id === 'create-schema')).toBe(false);
     expect(items.some((i) => i.kind === 'item' && i.id === 'create-user')).toBe(false);
+  });
+
+  it('includes pin/unpin and process list when handlers provided', () => {
+    const onPin = vi.fn();
+    const onProcessList = vi.fn();
+    const pinned = buildMainConnectionContextMenuItems({
+      labels,
+      isConnected: true,
+      grouped: false,
+      pinned: true,
+      moveTargets: [],
+      onOpenOrDisconnect: () => undefined,
+      onCopyName: () => undefined,
+      onCopyUrl: () => undefined,
+      onNewQuery: () => undefined,
+      onRefresh: () => undefined,
+      onEdit: () => undefined,
+      onDuplicate: () => undefined,
+      onMoveToGroup: () => undefined,
+      onRemoveFromGroup: () => undefined,
+      onDelete: () => undefined,
+      onPin,
+      onProcessList,
+    });
+    expect(pinned.some((i) => i.kind === 'item' && i.id === 'unpin-connection')).toBe(true);
+    expect(pinned.some((i) => i.kind === 'item' && i.id === 'process-list')).toBe(true);
+    const proc = pinned.find((i) => i.kind === 'item' && i.id === 'process-list');
+    if (proc?.kind === 'item') proc.action();
+    expect(onProcessList).toHaveBeenCalledOnce();
+  });
+
+  it('includes backup and restore when handlers provided', () => {
+    const onBackup = vi.fn();
+    const onRestore = vi.fn();
+    const items = buildMainConnectionContextMenuItems({
+      labels,
+      isConnected: true,
+      grouped: false,
+      moveTargets: [],
+      onOpenOrDisconnect: () => undefined,
+      onCopyName: () => undefined,
+      onCopyUrl: () => undefined,
+      onNewQuery: () => undefined,
+      onRefresh: () => undefined,
+      onEdit: () => undefined,
+      onDuplicate: () => undefined,
+      onMoveToGroup: () => undefined,
+      onRemoveFromGroup: () => undefined,
+      onDelete: () => undefined,
+      onBackup,
+      onRestore,
+    });
+    expect(items.some((i) => i.kind === 'item' && i.id === 'backup')).toBe(true);
+    expect(items.some((i) => i.kind === 'item' && i.id === 'restore')).toBe(true);
   });
 });

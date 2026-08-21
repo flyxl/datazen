@@ -1973,6 +1973,7 @@ mod tests {
             server_version: None,
             options: None,
             read_only: false,
+            pinned: false,
         };
         let opts = build_mysql_options(&config).unwrap();
         let debug = format!("{opts:?}");

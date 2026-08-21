@@ -45,6 +45,16 @@ describe('filterConnections / groupConnections', () => {
     expect(grouped.find((g) => g.group === 'prod')?.connections).toHaveLength(2);
     expect(grouped.find((g) => g.group === 'dev')?.connections).toHaveLength(1);
   });
+
+  it('sortConnectionsInGroup puts pinned connections first', async () => {
+    const { sortConnectionsInGroup } = await import('../connectionStore');
+    const sorted = sortConnectionsInGroup([
+      makeConn({ id: '1', name: 'Beta' }),
+      makeConn({ id: '2', name: 'Alpha', pinned: true }),
+      makeConn({ id: '3', name: 'Gamma' }),
+    ]);
+    expect(sorted.map((c) => c.id)).toEqual(['2', '1', '3']);
+  });
 });
 
 describe('connectionStore actions', () => {

@@ -106,7 +106,7 @@ export function BackupWindow() {
   );
 
   const handleSelectConnection = useCallback(
-    async (conn: ConnectionConfig) => {
+    async (conn: ConnectionConfig, preferredDatabase?: string) => {
       setSelectedConnId(conn.id);
       setSelectedDb(null);
       setDatabases([]);
@@ -138,8 +138,9 @@ export function BackupWindow() {
         const dbs = await invoke<string[]>('get_databases', { connectionId });
         setDatabases(dbs.map((name) => ({ name })));
 
-        if (conn.database && dbs.includes(conn.database)) {
-          setSelectedDb(conn.database);
+        const dbPick = preferredDatabase ?? conn.database;
+        if (dbPick && dbs.includes(dbPick)) {
+          setSelectedDb(dbPick);
         }
 
         const defaults = new Set<string>();
@@ -155,6 +156,17 @@ export function BackupWindow() {
     },
     [t],
   );
+
+  const prefillAppliedRef = useRef(false);
+  useEffect(() => {
+    if (prefillAppliedRef.current || connections.length === 0) return;
+    const prefillConfigId = getUrlParam('configId');
+    if (!prefillConfigId) return;
+    const conn = connections.find((c) => c.id === prefillConfigId);
+    if (!conn) return;
+    prefillAppliedRef.current = true;
+    void handleSelectConnection(conn, getUrlParam('database') ?? undefined);
+  }, [connections, handleSelectConnection]);
 
   const toggleGroup = useCallback((group: string) => {
     setExpandedGroups((prev) => {
