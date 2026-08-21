@@ -90,11 +90,14 @@ export function ProcessListView({
     }
   }, [connectionId, onDataChange]);
 
-  // 挂载后总是拉取最新进程列表；initialData 仅用于首帧展示，避免陈旧/空缓存残留。
+  // 按 connectionId 拉取；切换进程列表 tab 时若组件被复用，必须重新加载，避免串数据。
+  // 故意不依赖 load：onDataChange 每帧可能是新引用，纳入依赖会无限重拉。
   useEffect(() => {
+    setResult(initialData ? panelDataToQueryResult(initialData) : null);
+    setHighlightedRow(null);
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [connectionId]);
 
   const columns: ColumnDef[] = useMemo(() => {
     if (!result) return commandResultColumns([], t);
