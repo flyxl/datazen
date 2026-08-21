@@ -9,6 +9,18 @@ export interface NodeContextMenuPayload {
   schema?: string;
 }
 
+/**
+ * 右键菜单打开「服务器仪表盘 / 进程列表」时的显式目标连接。
+ * 由调用方（连接树右键）把用户实际点击的连接传进来，面板据此绑定，
+ * 不再依赖全局「当前活动连接」，避免 MySQL/PG 面板串数据。
+ */
+export interface ConnectionOpenTarget {
+  configId: string;
+  connectionId: string;
+  connectionName: string;
+  databaseType: DatabaseType;
+}
+
 export interface ConnectionViewActions {
   newQuery: (initialSql?: string) => void;
   openSqlFile?: () => void;
@@ -24,8 +36,10 @@ export interface ConnectionViewActions {
     schema?: string,
   ) => void;
   openQueryHistory?: () => void;
-  openServerStatus?: () => void;
-  openProcessList?: () => void;
+  /** 打开目标连接的服务器仪表盘；ctx 由右键菜单显式传入被点击的连接。 */
+  openServerStatus?: (ctx?: ConnectionOpenTarget) => void;
+  /** 打开目标连接的进程列表；ctx 由右键菜单显式传入被点击的连接。 */
+  openProcessList?: (ctx?: ConnectionOpenTarget) => void;
 }
 
 export interface ConnectionViewProps {

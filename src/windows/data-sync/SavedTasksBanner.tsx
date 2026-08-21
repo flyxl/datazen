@@ -22,7 +22,7 @@ export function SavedTasksBanner({
 }: SavedTasksBannerProps) {
   const { t } = useI18n();
 
-  if (savedTasks.length === 0 || syncState === 'syncing') {
+  if (savedTasks.length === 0 || syncState === 'executing') {
     return null;
   }
 
@@ -34,25 +34,45 @@ export function SavedTasksBanner({
       </div>
       <div className="space-y-2">
         {savedTasks.map((task) => {
-          const srcName = connections.find((c) => c.id === task.sourceConfigId)?.name ?? task.sourceConfigId;
-          const tgtName = connections.find((c) => c.id === task.targetConfigId)?.name ?? task.targetConfigId;
+          const srcName =
+            connections.find((c) => c.id === task.sourceConfigId)?.name ?? task.sourceConfigId;
+          const tgtName =
+            connections.find((c) => c.id === task.targetConfigId)?.name ?? task.targetConfigId;
           return (
-            <div key={task.id} className="flex items-center gap-3 rounded-lg border border-edge bg-surface px-3 py-2 text-xs">
+            <div
+              key={task.id}
+              className="flex items-center gap-3 rounded-lg border border-edge bg-surface px-3 py-2 text-xs"
+            >
               <div className="min-w-0 flex-1">
                 <span className="font-medium text-fg">{srcName}</span>
                 <span className="mx-1 text-fg-muted">→</span>
                 <span className="font-medium text-fg">{tgtName}</span>
                 <span className="ml-2 text-fg-muted">
-                  ({t('sync.tablesCompleted', { done: task.completedTables.length, total: task.tables.length })})
+                  (
+                  {t('sync.tablesCompleted', {
+                    done: task.completedTables.length,
+                    total: task.tables.length,
+                  })}
+                  )
                 </span>
                 {task.status === 'failed' && task.errorMessage && (
-                  <span className="ml-2 text-red-500">{t('sync.failedMsg')} {task.errorMessage.slice(0, 60)}…</span>
+                  <span className="ml-2 text-red-500">
+                    {t('sync.failedMsg')} {task.errorMessage.slice(0, 60)}…
+                  </span>
                 )}
               </div>
-              <Button variant="ghost" className="h-7 gap-1 px-2 text-xs" onClick={() => void onResume(task)}>
+              <Button
+                variant="ghost"
+                className="h-7 gap-1 px-2 text-xs"
+                onClick={() => void onResume(task)}
+              >
                 <Play className="h-3 w-3" /> {t('sync.continue')}
               </Button>
-              <Button variant="ghost" className="h-7 px-2 text-xs text-red-500 hover:text-red-600" onClick={() => void onDelete(task.id)}>
+              <Button
+                variant="ghost"
+                className="h-7 px-2 text-xs text-red-500 hover:text-red-600"
+                onClick={() => void onDelete(task.id)}
+              >
                 <Trash2 className="h-3 w-3" />
               </Button>
             </div>

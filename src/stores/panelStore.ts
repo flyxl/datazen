@@ -75,12 +75,29 @@ export interface PrivilegesPanel extends PanelBase {
   type: 'privileges';
 }
 
+/** 服务器仪表盘面板（含 仪表盘 / 状态变量 / 服务器详情 三个内部子标签）。 */
 export interface ServerStatusPanel extends PanelBase {
   type: 'server-status';
+  /** 该面板自身缓存的数据（与 configId 绑定，切换时保留已加载内容）。 */
+  data?: ServerStatusCache;
 }
 
+export interface ServerStatusCache {
+  status: Record<string, string | number | boolean | null>;
+  variables?: { name: string; value: string | null }[];
+  history?: Record<string, number[]>;
+}
+
+/** 进程列表面板（独立于服务器仪表盘）。 */
 export interface ProcessesPanel extends PanelBase {
   type: 'processes';
+  /** 该面板自身缓存的数据（与 configId 绑定）。 */
+  data?: ProcessListCacheData;
+}
+
+export interface ProcessListCacheData {
+  rows: (string | number | boolean | null)[][];
+  columns?: { name: string; dataType: string; nullable?: boolean }[];
 }
 
 export interface DatabaseObjectPanel extends PanelBase {
