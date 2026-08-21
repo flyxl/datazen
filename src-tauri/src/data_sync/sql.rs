@@ -23,6 +23,28 @@ pub fn quote_ident_sql(name: &str, quote: char) -> String {
     format!("{quote}{doubled}{quote}")
 }
 
+/// Qualify `table` as `schema.table` when `schema` is non-empty (PostgreSQL etc.).
+pub fn qualify_table_sql(schema: Option<&str>, table: &str, quote: char) -> String {
+    match schema.map(str::trim).filter(|s| !s.is_empty()) {
+        Some(schema) => format!(
+            "{}.{}",
+            quote_ident_sql(schema, quote),
+            quote_ident_sql(table, quote)
+        ),
+        None => quote_ident_sql(table, quote),
+    }
+}
+
+pub fn qualify_table_ident<Q>(schema: Option<&str>, table: &str, quote_ident: Q) -> String
+where
+    Q: Fn(&str) -> String,
+{
+    match schema.map(str::trim).filter(|s| !s.is_empty()) {
+        Some(schema) => format!("{}.{}", quote_ident(schema), quote_ident(table)),
+        None => quote_ident(table),
+    }
+}
+
 pub fn mysql_placeholder(_index: usize) -> String {
     "?".into()
 }
@@ -47,13 +69,14 @@ pub fn format_literal(value: &Option<Value>) -> String {
 
 pub fn generate_table_sql<Q, P>(
     table: &TableChangeSet,
+    target_schema: Option<&str>,
     pk_columns: &[String],
     column_names: &[String],
     quote_ident: Q,
     placeholder: P,
 ) -> Result<Vec<SqlStatement>, DataSyncError>
 where
-    Q: Fn(&str) -> String,
+    Q: Fn(&str) -> String + Copy,
     P: Fn(usize) -> String,
 {
     if pk_columns.is_empty() {
@@ -65,6 +88,7 @@ where
     for change in &table.changes {
         out.push(statement_for_change(
             &table.target_table,
+            target_schema,
             change,
             pk_columns,
             column_names,
@@ -77,6 +101,7 @@ where
 
 fn statement_for_change<Q, P>(
     table: &str,
+    schema: Option<&str>,
     change: &RowChange,
     pk_columns: &[String],
     column_names: &[String],
@@ -88,26 +113,43 @@ where
     P: Fn(usize) -> String,
 {
     match change.operation {
-        ChangeOperation::Insert => {
-            insert_sql(table, change, column_names, quote_ident, placeholder)
-        }
+        ChangeOperation::Insert => insert_sql(
+            table,
+            schema,
+            change,
+            column_names,
+            quote_ident,
+            placeholder,
+        ),
         ChangeOperation::Update => update_sql(
             table,
+            schema,
             change,
             pk_columns,
             column_names,
             quote_ident,
             placeholder,
         ),
-        ChangeOperation::Delete => delete_sql(table, change, pk_columns, quote_ident, placeholder),
+        ChangeOperation::Delete => {
+            delete_sql(table, schema, change, pk_columns, quote_ident, placeholder)
+        }
         ChangeOperation::Unchanged => Err(DataSyncError::validation(
             "unchanged rows must not generate SQL",
         )),
     }
 }
 
+fn sql_table_ref<Q: Fn(&str) -> String>(
+    table: &str,
+    schema: Option<&str>,
+    quote_ident: &Q,
+) -> String {
+    qualify_table_ident(schema, table, quote_ident)
+}
+
 fn insert_sql<Q, P>(
     table: &str,
+    schema: Option<&str>,
     change: &RowChange,
     column_names: &[String],
     quote_ident: &Q,
@@ -139,7 +181,7 @@ where
         params.push(cell.clone().unwrap_or(Value::Null));
         preview_vals.push(format_literal(cell));
     }
-    let qtable = quote_ident(table);
+    let qtable = sql_table_ref(table, schema, quote_ident);
     Ok(SqlStatement {
         table: table.into(),
         operation: ChangeOperation::Insert,
@@ -158,6 +200,7 @@ where
 
 fn update_sql<Q, P>(
     table: &str,
+    schema: Option<&str>,
     change: &RowChange,
     pk_columns: &[String],
     column_names: &[String],
@@ -194,7 +237,7 @@ where
     let (where_ph, where_lit, where_params) =
         where_pk(pk_columns, &change.key, idx, quote_ident, placeholder)?;
     params.extend(where_params);
-    let qtable = quote_ident(table);
+    let qtable = sql_table_ref(table, schema, quote_ident);
     Ok(SqlStatement {
         table: table.into(),
         operation: ChangeOperation::Update,
@@ -215,6 +258,7 @@ where
 
 fn delete_sql<Q, P>(
     table: &str,
+    schema: Option<&str>,
     change: &RowChange,
     pk_columns: &[String],
     quote_ident: &Q,
@@ -226,7 +270,7 @@ where
 {
     let (where_ph, where_lit, params) =
         where_pk(pk_columns, &change.key, 1, quote_ident, placeholder)?;
-    let qtable = quote_ident(table);
+    let qtable = sql_table_ref(table, schema, quote_ident);
     Ok(SqlStatement {
         table: table.into(),
         operation: ChangeOperation::Delete,
@@ -319,6 +363,7 @@ mod tests {
         };
         let stmts = generate_table_sql(
             &table,
+            None,
             &["id".into()],
             &["id".into(), "name".into()],
             q,
@@ -358,6 +403,7 @@ mod tests {
         };
         let stmts = generate_table_sql(
             &table,
+            None,
             &["id".into()],
             &["id".into()],
             |n| quote_ident_sql(n, '`'),
@@ -379,11 +425,46 @@ mod tests {
             target_table: "t".into(),
             changes: vec![same],
         };
+        assert!(generate_table_sql(
+            &table,
+            None,
+            &["id".into()],
+            &["id".into()],
+            q,
+            mysql_placeholder
+        )
+        .is_err());
         assert!(
-            generate_table_sql(&table, &["id".into()], &["id".into()], q, mysql_placeholder)
-                .is_err()
+            generate_table_sql(&table, None, &[], &["id".into()], q, mysql_placeholder).is_err()
         );
-        assert!(generate_table_sql(&table, &[], &["id".into()], q, mysql_placeholder).is_err());
+    }
+
+    #[test]
+    fn schema_qualified_target_table() {
+        let options = SyncOptions::default();
+        let insert = RowChange::insert(
+            vec![Value::Integer(1)],
+            vec![Some(Value::Integer(1)), Some(Value::String("a".into()))],
+            &options,
+        );
+        let table = TableChangeSet {
+            source_table: "users".into(),
+            target_table: "clients".into(),
+            changes: vec![insert],
+        };
+        let stmts = generate_table_sql(
+            &table,
+            Some("public"),
+            &["id".into()],
+            &["id".into(), "name".into()],
+            q,
+            postgres_placeholder,
+        )
+        .unwrap();
+        assert_eq!(
+            stmts[0].sql,
+            r#"INSERT INTO "public"."clients" ("id", "name") VALUES ($1, $2)"#
+        );
     }
 
     #[test]
@@ -399,6 +480,7 @@ mod tests {
         };
         let stmts = generate_table_sql(
             &table,
+            None,
             &["id".into()],
             &["id".into()],
             q,

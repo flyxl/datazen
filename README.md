@@ -184,6 +184,10 @@ Download the latest release from **[GitHub Releases](https://github.com/flyxl/da
 
 DataZen is free and does not require an account.
 
+**macOS Gatekeeper:** If the app is blocked as damaged or from an unidentified developer, clear quarantine: `xattr -cr /Applications/DataZen.app`, or right-click → Open once. See [packaging.md](docs/packaging.md) for details and the notarization checklist.
+
+Optional drivers (MongoDB, ClickHouse, DuckDB, SQL Server, …) are compile-time selections — see [optional-drivers.md](docs/optional-drivers.md).
+
 ## Build from source
 
 ### Prerequisites
@@ -231,6 +235,9 @@ Always review the privacy and security policies of the AI provider and endpoint 
 - [Driver API dependency boundary](docs/driver-api/public-api-dependency-boundary.md)
 - [datazen-driver-api on crates.io](https://crates.io/crates/datazen-driver-api)
 - [Workflow Guide](docs/workflow-guide.en.md)
+- [Optional path drivers](docs/optional-drivers.md) (MongoDB, ClickHouse, DuckDB, SQL Server)
+- [Packaging & release channels](docs/packaging.md) (macOS Gatekeeper, Linux packages)
+- [Auto-update](docs/updater.md)
 - [Contributing](CONTRIBUTING.md)
 
 ## Contributing

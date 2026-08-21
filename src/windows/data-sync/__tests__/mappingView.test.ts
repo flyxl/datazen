@@ -52,6 +52,7 @@ describe('mappingView', () => {
       matched: 1,
       incompatible: 1,
       unmapped: 2,
+      disabled: 0,
     });
   });
 
@@ -61,21 +62,65 @@ describe('mappingView', () => {
       targetTable: 'users',
       status: 'MATCHED',
       rows: [
-        { operation: 'INSERT' },
-        { operation: 'UPDATE' },
-        { operation: 'UPDATE' },
-        { operation: 'DELETE' },
-        { operation: 'UNCHANGED' },
+        {
+          operation: 'INSERT',
+          key: [1],
+          sourceRow: [[1]],
+          targetRow: null,
+          changedColumns: [],
+          selected: true,
+        },
+        {
+          operation: 'UPDATE',
+          key: [2],
+          sourceRow: [[2, 'a']],
+          targetRow: [[2, 'b']],
+          changedColumns: ['name'],
+          selected: true,
+        },
+        {
+          operation: 'UPDATE',
+          key: [3],
+          sourceRow: [[3]],
+          targetRow: [[3]],
+          changedColumns: [],
+          selected: false,
+        },
+        {
+          operation: 'DELETE',
+          key: [4],
+          sourceRow: null,
+          targetRow: [[4]],
+          changedColumns: [],
+          selected: false,
+        },
+        {
+          operation: 'UNCHANGED',
+          key: [5],
+          sourceRow: [[5]],
+          targetRow: [[5]],
+          changedColumns: [],
+          selected: false,
+        },
       ],
     };
-    expect(rowDiffCounts(row)).toEqual({ inserts: 1, updates: 2, deletes: 1 });
+    expect(rowDiffCounts(row)).toEqual({ inserts: 1, updates: 2, deletes: 1, unchanged: 1 });
     expect(tableHasRowDiffs(row)).toBe(true);
     expect(
       tableHasRowDiffs({
         sourceTable: 'users',
         targetTable: 'users',
         status: 'MATCHED',
-        rows: [{ operation: 'UNCHANGED' }],
+        rows: [
+          {
+            operation: 'UNCHANGED',
+            key: [1],
+            sourceRow: [[1]],
+            targetRow: [[1]],
+            changedColumns: [],
+            selected: false,
+          },
+        ],
       }),
     ).toBe(false);
   });

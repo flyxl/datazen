@@ -1,34 +1,59 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { ArrowRight, Loader2, RefreshCcw } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { TitleBar } from '../../components/TitleBar';
 import { StatusBar } from '../../components/StatusBar';
 import { Button } from '../../components/ui/Button';
-import { Select } from '../../components/ui/Select';
 import { Dialog } from '../../components/ui/Dialog';
-import { syncCommands } from '../../commands/sync';
+import { aiCommands } from '../../commands/ai';
+import {
+  DEFAULT_SYNC_OPTIONS,
+  syncCommands,
+  type DataSyncRowChange,
+  type SyncOptions,
+} from '../../commands/sync';
 import { databaseCommands } from '../../commands/database';
 import { useI18n } from '../../hooks/useI18n';
 import { useSettings } from '../../hooks/useSettings';
 import { useSettingsStore } from '../../stores/settingsStore';
+import { useAiStore } from '../../stores/aiStore';
 import { listenCrossWindow } from '../../lib/crossWindowBus';
-import { cn } from '../../lib/cn';
-import { resolveSyncPairing } from '../../lib/syncPairing';
+import { openDataTransferWindow, openSchemaDiffWindow } from '../../lib/windowManager';
+import { resolveSyncPairing, isSyncTargetSupported } from '../../lib/syncPairing';
 import type { ConnectionConfig } from '../../types';
 import type { SyncState } from './utils';
+import { pickDefaultSchema, uniqueSchemasFromTables } from './utils';
+import { CompareSummary } from './CompareSummary';
+import { DiffDetail } from './DiffDetail';
+import { EndpointsBar } from './EndpointsBar';
+import { ExecuteBar } from './ExecuteBar';
+import { MappingPanel } from './MappingPanel';
+import { OptionsBar } from './OptionsBar';
+import { SqlPreview } from './SqlPreview';
+import { TableListPanel } from './TableListPanel';
 import {
-  displayTableName,
-  mappingLabelKey,
-  rowDiffCounts,
-  summarizeMappings,
+  applyOptionsToRows,
+  markDisabledTables,
+  mergeCompareIntoMappings,
+  operationAllowed,
+  selectedRowCount,
+  summarizeCompare,
   tableHasRowDiffs,
+  tableKey,
+  tablesForCompare,
   type DataSyncTableResult,
+  type TableDiffFilter,
 } from './mappingView';
+import { buildCompareReportText } from './compareReport';
+
+type RightPanel = 'detail' | 'preview';
 
 export function DataSyncWindow() {
   useSettings();
   const { t } = useI18n();
   const loadSettings = useSettingsStore((s) => s.loadSettings);
+  const isAiConfigured = useAiStore((s) => s.isConfigured);
+  const loadAiConfig = useAiStore((s) => s.loadConfig);
 
   const [connections, setConnections] = useState<ConnectionConfig[]>([]);
   const [activeConns, setActiveConns] = useState<Record<string, string>>({});
@@ -38,16 +63,31 @@ export function DataSyncWindow() {
   const [targetDatabases, setTargetDatabases] = useState<string[]>([]);
   const [sourceDatabase, setSourceDatabase] = useState('');
   const [targetDatabase, setTargetDatabase] = useState('');
+  const [sourceSchemas, setSourceSchemas] = useState<string[]>([]);
+  const [targetSchemas, setTargetSchemas] = useState<string[]>([]);
+  const [sourceSchema, setSourceSchema] = useState('');
+  const [targetSchema, setTargetSchema] = useState('');
+  const [syncOptions, setSyncOptions] = useState<SyncOptions>(DEFAULT_SYNC_OPTIONS);
   const [mappingResults, setMappingResults] = useState<DataSyncTableResult[]>([]);
-  const [selectedTables, setSelectedTables] = useState<Set<string>>(new Set());
+  const [disabledTables, setDisabledTables] = useState<Set<string>>(new Set());
   const [syncState, setSyncState] = useState<SyncState>('idle');
+  const [selectedTableKey, setSelectedTableKey] = useState<string | null>(null);
+  const [tableFilter, setTableFilter] = useState<TableDiffFilter>('all');
+  const [tableSearch, setTableSearch] = useState('');
+  const [rightPanel, setRightPanel] = useState<RightPanel>('detail');
   const [errorMsg, setErrorMsg] = useState('');
   const [errorOpen, setErrorOpen] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [executeConfirmOpen, setExecuteConfirmOpen] = useState(false);
+  const [explainOpen, setExplainOpen] = useState(false);
+  const [explainLoading, setExplainLoading] = useState(false);
+  const [explainText, setExplainText] = useState('');
   const jobIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     void loadSettings();
-  }, [loadSettings]);
+    void loadAiConfig();
+  }, [loadSettings, loadAiConfig]);
 
   useEffect(() => {
     let cleanup: (() => void) | undefined;
@@ -85,49 +125,38 @@ export function DataSyncWindow() {
     return () => cleanup?.();
   }, [loadConnections]);
 
-  useEffect(() => {
-    if (!sourceId || !targetId) return;
-    const src = connections.find((c) => c.id === sourceId);
-    const tgt = connections.find((c) => c.id === targetId);
-    if (!src || !tgt) return;
-    if (
-      sourceId === targetId ||
-      !resolveSyncPairing(src.databaseType, tgt.databaseType).supported
-    ) {
-      setTargetId('');
-    }
-  }, [sourceId, connections, targetId]);
-
   const sourceConn = useMemo(
     () => connections.find((c) => c.id === sourceId),
     [connections, sourceId],
   );
+  const targetConn = useMemo(
+    () => connections.find((c) => c.id === targetId),
+    [connections, targetId],
+  );
 
-  const connOptions = useMemo(() => {
-    return connections.map((c) => ({
-      value: c.id,
-      label: `${c.name} (${c.databaseType})`,
-    }));
-  }, [connections]);
+  const connOptions = useMemo(
+    () =>
+      connections.map((c) => ({
+        value: c.id,
+        label: `${c.name} (${c.databaseType})`,
+      })),
+    [connections],
+  );
 
   const targetOptions = useMemo(() => {
     const hint = t('sync.unsupportedHint');
     const srcType = sourceConn?.databaseType;
     return connections.map((c) => {
-      const sameConnection = c.id === sourceId;
-      const unsupported = Boolean(
-        srcType && !sameConnection && !resolveSyncPairing(srcType, c.databaseType).supported,
-      );
-      const disabled = sameConnection || unsupported;
+      const unsupported = Boolean(srcType && !isSyncTargetSupported(srcType, c.databaseType));
       const base = `${c.name} (${c.databaseType})`;
       return {
         value: c.id,
         label: unsupported ? `${base} — ${hint}` : base,
-        disabled,
+        disabled: unsupported,
         title: unsupported ? hint : undefined,
       };
     });
-  }, [connections, sourceId, sourceConn?.databaseType, t]);
+  }, [connections, sourceConn?.databaseType, t]);
 
   const activePairing = useMemo(() => {
     if (!sourceConn || !targetId) return null;
@@ -135,6 +164,8 @@ export function DataSyncWindow() {
     if (!tgt) return null;
     return resolveSyncPairing(sourceConn.databaseType, tgt.databaseType);
   }, [connections, sourceConn, targetId]);
+
+  const targetReadOnly = targetConn?.readOnly === true;
 
   const ensureConnected = useCallback(
     async (configId: string): Promise<string | null> => {
@@ -152,9 +183,20 @@ export function DataSyncWindow() {
     [activeConns, t],
   );
 
-  // Load the source connection's databases when it is selected.
+  const resetCompareState = useCallback(() => {
+    setMappingResults([]);
+    setDisabledTables(new Set());
+    setSelectedTableKey(null);
+    setSyncState('idle');
+  }, []);
+
   useEffect(() => {
-    if (!sourceId) return;
+    if (!sourceId) {
+      setSourceDatabases([]);
+      setSourceSchemas([]);
+      setSourceSchema('');
+      return;
+    }
     let cancelled = false;
     const cfg = connections.find((c) => c.id === sourceId);
     (async () => {
@@ -178,9 +220,13 @@ export function DataSyncWindow() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sourceId, connections, ensureConnected]);
 
-  // Load the target connection's databases when it is selected.
   useEffect(() => {
-    if (!targetId) return;
+    if (!targetId) {
+      setTargetDatabases([]);
+      setTargetSchemas([]);
+      setTargetSchema('');
+      return;
+    }
     let cancelled = false;
     const cfg = connections.find((c) => c.id === targetId);
     (async () => {
@@ -204,26 +250,160 @@ export function DataSyncWindow() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [targetId, connections, ensureConnected]);
 
-  const handleCompare = useCallback(async () => {
+  useEffect(() => {
+    if (!sourceId || !sourceDatabase || sourceConn?.databaseType !== 'postgresql') {
+      setSourceSchemas([]);
+      setSourceSchema('');
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const connId = await ensureConnected(sourceId);
+        if (!connId || cancelled) return;
+        const tables = await databaseCommands.getTables(connId, sourceDatabase);
+        if (cancelled) return;
+        const schemas = uniqueSchemasFromTables(tables);
+        setSourceSchemas(schemas);
+        setSourceSchema((prev) => pickDefaultSchema(schemas, prev));
+      } catch {
+        if (!cancelled) {
+          setSourceSchemas([]);
+          setSourceSchema('');
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [sourceId, sourceDatabase, sourceConn?.databaseType, ensureConnected]);
+
+  useEffect(() => {
+    if (!targetId || !targetDatabase || targetConn?.databaseType !== 'postgresql') {
+      setTargetSchemas([]);
+      setTargetSchema('');
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const connId = await ensureConnected(targetId);
+        if (!connId || cancelled) return;
+        const tables = await databaseCommands.getTables(connId, targetDatabase);
+        if (cancelled) return;
+        const schemas = uniqueSchemasFromTables(tables);
+        setTargetSchemas(schemas);
+        setTargetSchema((prev) => pickDefaultSchema(schemas, prev));
+      } catch {
+        if (!cancelled) {
+          setTargetSchemas([]);
+          setTargetSchema('');
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [targetId, targetDatabase, targetConn?.databaseType, ensureConnected]);
+
+  const isSameEndpoint = useCallback(() => {
+    const norm = (s: string) => s.trim();
+    return (
+      sourceId === targetId &&
+      sourceDatabase !== '' &&
+      targetDatabase !== '' &&
+      sourceDatabase === targetDatabase &&
+      norm(sourceSchema) === norm(targetSchema)
+    );
+  }, [sourceId, targetId, sourceDatabase, targetDatabase, sourceSchema, targetSchema]);
+
+  const handleSwap = useCallback(() => {
+    setSourceId(targetId);
+    setTargetId(sourceId);
+    setSourceDatabase(targetDatabase);
+    setTargetDatabase(sourceDatabase);
+    setSourceDatabases(targetDatabases);
+    setTargetDatabases(sourceDatabases);
+    setSourceSchemas(targetSchemas);
+    setTargetSchemas(sourceSchemas);
+    setSourceSchema(targetSchema);
+    setTargetSchema(sourceSchema);
+    resetCompareState();
+  }, [
+    sourceId,
+    targetId,
+    sourceDatabase,
+    targetDatabase,
+    sourceDatabases,
+    targetDatabases,
+    sourceSchemas,
+    targetSchemas,
+    sourceSchema,
+    targetSchema,
+    resetCompareState,
+  ]);
+
+  const handleSourceDatabaseChange = useCallback(
+    (db: string) => {
+      setSourceDatabase(db);
+      resetCompareState();
+    },
+    [resetCompareState],
+  );
+
+  const handleTargetDatabaseChange = useCallback(
+    (db: string) => {
+      setTargetDatabase(db);
+      resetCompareState();
+    },
+    [resetCompareState],
+  );
+
+  const handleSourceSchemaChange = useCallback(
+    (schema: string) => {
+      setSourceSchema(schema);
+      resetCompareState();
+    },
+    [resetCompareState],
+  );
+
+  const handleTargetSchemaChange = useCallback(
+    (schema: string) => {
+      setTargetSchema(schema);
+      resetCompareState();
+    },
+    [resetCompareState],
+  );
+
+  const validateEndpoints = useCallback((): boolean => {
     if (!sourceId || !targetId) {
       setErrorMsg(t('sync.selectBoth'));
       setErrorOpen(true);
-      return;
+      return false;
     }
-    if (sourceId === targetId) {
-      setErrorMsg(t('sync.cannotSame'));
+    if (isSameEndpoint()) {
+      setErrorMsg(t('sync.cannotSameDb'));
       setErrorOpen(true);
-      return;
+      return false;
     }
     if (!sourceDatabase || !targetDatabase) {
       setErrorMsg(t('sync.selectDbRequired'));
       setErrorOpen(true);
-      return;
+      return false;
     }
+    if (!activePairing?.supported) {
+      setErrorMsg(t('sync.useTransferHint'));
+      setErrorOpen(true);
+      return false;
+    }
+    return true;
+  }, [sourceId, targetId, isSameEndpoint, sourceDatabase, targetDatabase, activePairing, t]);
 
-    setSyncState('comparing');
-    setSelectedTables(new Set());
-    setMappingResults([]);
+  const handleCompare = useCallback(async () => {
+    if (!validateEndpoints()) return;
+
+    setSyncState('inspecting');
+    setSelectedTableKey(null);
     const jobId = crypto.randomUUID();
     jobIdRef.current = jobId;
 
@@ -235,26 +415,60 @@ export function DataSyncWindow() {
         return;
       }
 
-      const mappings = (await syncCommands.compareDataSync(
+      const inspected = await syncCommands.inspectDataSync(
         srcConnId,
         tgtConnId,
-        [],
+        sourceDatabase,
+        targetDatabase,
+        sourceSchema || undefined,
+        targetSchema || undefined,
+      );
+      const withDisabled = markDisabledTables(inspected, disabledTables);
+      setMappingResults(withDisabled);
+
+      const toCompare = tablesForCompare(withDisabled);
+      setSyncState('comparing');
+
+      const compared = await syncCommands.compareDataSync(
+        srcConnId,
+        tgtConnId,
+        toCompare,
         jobId,
         sourceDatabase,
         targetDatabase,
-      )) as DataSyncTableResult[];
-      setMappingResults(mappings);
-      const autoSelect = new Set(
-        mappings.filter((r) => r.status === 'MATCHED').map((r) => displayTableName(r)),
+        sourceSchema || undefined,
+        targetSchema || undefined,
+        syncOptions,
       );
-      setSelectedTables(autoSelect);
+
+      const merged = mergeCompareIntoMappings(withDisabled, compared).map((row) => {
+        if (row.status !== 'MATCHED' || !row.rows) return row;
+        return {
+          ...row,
+          rows: applyOptionsToRows(row.rows, syncOptions),
+        };
+      });
+      setMappingResults(merged);
+      const firstDiff = merged.find((r) => r.status === 'MATCHED' && tableHasRowDiffs(r));
+      if (firstDiff) setSelectedTableKey(tableKey(firstDiff));
       setSyncState('compared');
     } catch (e) {
       setErrorMsg(e instanceof Error ? e.message : String(e));
       setErrorOpen(true);
       setSyncState('idle');
     }
-  }, [sourceId, targetId, ensureConnected, t, sourceDatabase, targetDatabase]);
+  }, [
+    validateEndpoints,
+    ensureConnected,
+    sourceId,
+    targetId,
+    sourceDatabase,
+    targetDatabase,
+    sourceSchema,
+    targetSchema,
+    disabledTables,
+    syncOptions,
+  ]);
 
   const handleCancel = useCallback(async () => {
     const jobId = jobIdRef.current;
@@ -262,16 +476,70 @@ export function DataSyncWindow() {
     await syncCommands.cancelDataSync(jobId);
   }, []);
 
-  const handleApply = useCallback(async () => {
-    if (!sourceId || !targetId) return;
-    const selected = mappingResults.filter(
-      (r) =>
-        r.status === 'MATCHED' && selectedTables.has(displayTableName(r)) && tableHasRowDiffs(r),
+  const toggleDisabledTable = useCallback((sourceTable: string) => {
+    setDisabledTables((prev) => {
+      const next = new Set(prev);
+      if (next.has(sourceTable)) next.delete(sourceTable);
+      else next.add(sourceTable);
+      return next;
+    });
+    setMappingResults((rows) =>
+      rows.map((r) => {
+        if (r.sourceTable !== sourceTable) return r;
+        if (r.status === 'DISABLED') return { ...r, status: 'MATCHED' as const };
+        if (r.status === 'MATCHED') return { ...r, status: 'DISABLED' as const, rows: undefined };
+        return r;
+      }),
     );
-    if (selected.length === 0) return;
-    setSyncState('syncing');
+  }, []);
+
+  const handleOptionsChange = useCallback((next: SyncOptions) => {
+    setSyncOptions(next);
+    setMappingResults((rows) =>
+      rows.map((row) => {
+        if (!row.rows) return row;
+        return { ...row, rows: applyOptionsToRows(row.rows, next) };
+      }),
+    );
+  }, []);
+
+  const handleEnableDelete = useCallback(() => {
+    setDeleteConfirmOpen(true);
+  }, []);
+
+  const confirmEnableDelete = useCallback(() => {
+    setSyncOptions((prev) => ({ ...prev, delete: true }));
+    setDeleteConfirmOpen(false);
+  }, []);
+
+  const selectedTable = useMemo(
+    () => mappingResults.find((r) => tableKey(r) === selectedTableKey) ?? null,
+    [mappingResults, selectedTableKey],
+  );
+
+  const totalSelectedRows = useMemo(() => {
+    let n = 0;
+    for (const row of mappingResults) {
+      n += selectedRowCount(row, syncOptions);
+    }
+    return n;
+  }, [mappingResults, syncOptions]);
+
+  const hasSelectedDeletes = useMemo(() => {
+    for (const table of mappingResults) {
+      for (const row of table.rows ?? []) {
+        if (row.selected && row.operation === 'DELETE' && syncOptions.delete) return true;
+      }
+    }
+    return false;
+  }, [mappingResults, syncOptions]);
+
+  const runExecute = useCallback(async () => {
+    if (!sourceId || !targetId) return;
+    setSyncState('executing');
     const jobId = crypto.randomUUID();
     jobIdRef.current = jobId;
+
     try {
       const srcConnId = await ensureConnected(sourceId);
       const tgtConnId = await ensureConnected(targetId);
@@ -279,31 +547,81 @@ export function DataSyncWindow() {
         setSyncState('compared');
         return;
       }
-      const result = await syncCommands.applyDataSync(
-        srcConnId,
-        tgtConnId,
-        selected.map((r) => r.sourceTable),
-        jobId,
-        sourceDatabase,
-        targetDatabase,
+
+      const tablesWithSelection = mappingResults.filter(
+        (r) => r.status === 'MATCHED' && selectedRowCount(r, syncOptions) > 0,
       );
-      if (result.rolledBack) {
-        setErrorMsg(t('sync.failedMsg') + t('common.cancel'));
-        setErrorOpen(true);
-        setSyncState('compared');
-        return;
+
+      let executed = false;
+      try {
+        const stmts = await syncCommands.generateDataSyncSql(
+          srcConnId,
+          tgtConnId,
+          tablesWithSelection,
+          syncOptions,
+          sourceDatabase,
+          targetDatabase,
+          sourceSchema || undefined,
+          targetSchema || undefined,
+        );
+        const selected = stmts.filter((s) => operationAllowed(s.operation, syncOptions));
+        if (selected.length > 0) {
+          const result = await syncCommands.executeDataSync(
+            tgtConnId,
+            selected,
+            jobId,
+            targetDatabase,
+          );
+          if (result.rolledBack) {
+            setErrorMsg(t('sync.failedMsg') + t('common.cancel'));
+            setErrorOpen(true);
+            setSyncState('compared');
+            return;
+          }
+          executed = true;
+        }
+      } catch {
+        /* backend generate not available */
       }
-      const mappings = (await syncCommands.compareDataSync(
+
+      if (!executed) {
+        const tableNames = tablesWithSelection.map((r) => r.sourceTable);
+        const result = await syncCommands.applyDataSync(
+          srcConnId,
+          tgtConnId,
+          tableNames,
+          jobId,
+          sourceDatabase,
+          targetDatabase,
+          sourceSchema || undefined,
+          targetSchema || undefined,
+          syncOptions,
+        );
+        if (result.rolledBack) {
+          setErrorMsg(t('sync.failedMsg') + t('common.cancel'));
+          setErrorOpen(true);
+          setSyncState('compared');
+          return;
+        }
+      }
+
+      const recompared = await syncCommands.compareDataSync(
         srcConnId,
         tgtConnId,
-        selected.map((r) => r.sourceTable),
+        tablesWithSelection.map((r) => r.sourceTable),
         jobId,
         sourceDatabase,
         targetDatabase,
-      )) as DataSyncTableResult[];
+        sourceSchema || undefined,
+        targetSchema || undefined,
+        syncOptions,
+      );
       setMappingResults((prev) => {
-        const byName = new Map(mappings.map((m) => [m.sourceTable || m.targetTable, m]));
-        return prev.map((row) => byName.get(row.sourceTable || row.targetTable) ?? row);
+        const merged = mergeCompareIntoMappings(prev, recompared);
+        return merged.map((row) => {
+          if (row.status !== 'MATCHED' || !row.rows) return row;
+          return { ...row, rows: applyOptionsToRows(row.rows, syncOptions) };
+        });
       });
       setSyncState('done');
     } catch (e) {
@@ -315,24 +633,81 @@ export function DataSyncWindow() {
     sourceId,
     targetId,
     mappingResults,
-    selectedTables,
+    syncOptions,
     ensureConnected,
-    t,
     sourceDatabase,
     targetDatabase,
+    sourceSchema,
+    targetSchema,
+    t,
   ]);
 
-  const selectAll = useCallback(() => {
-    setSelectedTables(
-      new Set(mappingResults.filter((r) => r.status === 'MATCHED').map((r) => displayTableName(r))),
-    );
-  }, [mappingResults]);
+  const handleExecute = useCallback(() => {
+    if (targetReadOnly) return;
+    if (hasSelectedDeletes) {
+      setExecuteConfirmOpen(true);
+      return;
+    }
+    void runExecute();
+  }, [targetReadOnly, hasSelectedDeletes, runExecute]);
 
-  const deselectAll = useCallback(() => {
-    setSelectedTables(new Set());
+  const updateTableRows = useCallback((key: string, rows: DataSyncRowChange[]) => {
+    setMappingResults((prev) => prev.map((r) => (tableKey(r) === key ? { ...r, rows } : r)));
   }, []);
 
-  const compared = syncState === 'compared' || syncState === 'syncing' || syncState === 'done';
+  const compared = syncState === 'compared' || syncState === 'executing' || syncState === 'done';
+  const busy = syncState === 'inspecting' || syncState === 'comparing' || syncState === 'executing';
+  const compareStats = useMemo(() => summarizeCompare(mappingResults), [mappingResults]);
+
+  const handleCopyCompareReport = useCallback(() => {
+    const text = buildCompareReportText(mappingResults, compareStats);
+    void navigator.clipboard.writeText(text);
+  }, [mappingResults, compareStats]);
+
+  const handleExplainDiff = useCallback(() => {
+    if (!isAiConfigured) {
+      setErrorMsg(t('sync.explainDiffNoAi'));
+      setErrorOpen(true);
+      return;
+    }
+    const report = buildCompareReportText(mappingResults, compareStats);
+    const prompt = t('sync.explainDiffPrompt', { report });
+    setExplainOpen(true);
+    setExplainLoading(true);
+    setExplainText('');
+    void (async () => {
+      try {
+        const connectionId = activeConns[sourceId] ?? activeConns[targetId];
+        const text = await aiCommands.chat({
+          connectionId,
+          database: sourceDatabase || targetDatabase || undefined,
+          messages: [{ role: 'user', content: prompt }],
+          requestId: crypto.randomUUID(),
+          includeSchema: false,
+        });
+        setExplainText(text);
+      } catch (e) {
+        setExplainText('');
+        setExplainOpen(false);
+        setErrorMsg(
+          `${t('sync.explainDiffFailed')}: ${e instanceof Error ? e.message : String(e)}`,
+        );
+        setErrorOpen(true);
+      } finally {
+        setExplainLoading(false);
+      }
+    })();
+  }, [
+    isAiConfigured,
+    mappingResults,
+    compareStats,
+    activeConns,
+    sourceId,
+    targetId,
+    sourceDatabase,
+    targetDatabase,
+    t,
+  ]);
 
   return (
     <div className="flex h-screen min-h-0 flex-col bg-surface text-fg">
@@ -345,221 +720,155 @@ export function DataSyncWindow() {
         {t('sync.overwriteRetiredBanner')}
       </div>
 
-      <div className="flex shrink-0 items-center gap-4 border-b border-edge px-6 py-4">
-        <div className="min-w-0 flex-1" data-testid="data-sync-source">
-          <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-fg-muted">
-            {t('sync.source')}
-          </label>
-          <Select
-            value={sourceId}
-            options={connOptions}
-            onChange={setSourceId}
-            placeholder={t('sync.selectSource')}
-          />
-          <div data-testid="data-sync-source-database" className="mt-2">
-            <Select
-              value={sourceDatabase}
-              options={sourceDatabases.map((db) => ({ value: db, label: db }))}
-              onChange={setSourceDatabase}
-              placeholder={t('sync.selectDatabase')}
-            />
-          </div>
-        </div>
-        <ArrowRight className="mt-5 h-5 w-5 shrink-0 text-fg-muted" />
-        <div className="min-w-0 flex-1" data-testid="data-sync-target">
-          <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-fg-muted">
-            {t('sync.target')}
-          </label>
-          <Select
-            value={targetId}
-            options={targetOptions}
-            onChange={setTargetId}
-            placeholder={t('sync.selectTarget')}
-          />
-          <div data-testid="data-sync-target-database" className="mt-2">
-            <Select
-              value={targetDatabase || ''}
-              options={targetDatabases.map((db) => ({ value: db, label: db }))}
-              onChange={setTargetDatabase}
-              placeholder={t('sync.selectDatabase')}
-            />
-          </div>
-        </div>
-        <div className="mt-5 flex shrink-0 flex-col items-end gap-1">
-          {activePairing?.supported && (
-            <span
-              data-testid="data-sync-path"
-              className="text-[10px] font-medium uppercase tracking-wide text-fg-muted"
-            >
-              {activePairing.path === 'direct' ? t('sync.pathDirect') : t('sync.pathIr')}
-            </span>
-          )}
-          <Button
-            variant="primary"
-            data-testid="data-sync-compare"
-            onClick={() => void handleCompare()}
-            disabled={syncState === 'comparing' || syncState === 'syncing'}
-          >
-            {syncState === 'comparing' ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <RefreshCcw className="h-4 w-4" />
-            )}
-            {t('sync.compare')}
-          </Button>
-        </div>
-      </div>
+      <EndpointsBar
+        sourceId={sourceId}
+        targetId={targetId}
+        sourceDatabase={sourceDatabase}
+        targetDatabase={targetDatabase}
+        sourceSchema={sourceSchema}
+        targetSchema={targetSchema}
+        sourceDatabases={sourceDatabases}
+        targetDatabases={targetDatabases}
+        sourceSchemas={sourceSchemas}
+        targetSchemas={targetSchemas}
+        connOptions={connOptions}
+        targetOptions={targetOptions}
+        activePairing={activePairing}
+        busy={busy}
+        onSourceChange={setSourceId}
+        onTargetChange={setTargetId}
+        onSourceDatabaseChange={handleSourceDatabaseChange}
+        onTargetDatabaseChange={handleTargetDatabaseChange}
+        onSourceSchemaChange={handleSourceSchemaChange}
+        onTargetSchemaChange={handleTargetSchemaChange}
+        onSwap={handleSwap}
+        onCompare={() => void handleCompare()}
+      />
 
-      <div className="min-h-0 flex-1 overflow-auto">
-        {syncState === 'idle' && (
-          <div className="flex h-full items-center justify-center text-sm text-fg-muted">
+      <OptionsBar
+        options={syncOptions}
+        onChange={handleOptionsChange}
+        onEnableDelete={handleEnableDelete}
+      />
+
+      <div className="min-h-0 flex-1 overflow-hidden flex flex-col">
+        {syncState === 'idle' && mappingResults.length === 0 && (
+          <div className="flex flex-1 items-center justify-center text-sm text-fg-muted">
             {t('sync.selectPrompt')}
           </div>
         )}
 
-        {syncState === 'comparing' && (
-          <div className="flex h-full items-center justify-center gap-2 text-sm text-fg-muted">
+        {(syncState === 'inspecting' || syncState === 'comparing') && (
+          <div className="flex flex-1 items-center justify-center gap-2 text-sm text-fg-muted">
             <Loader2 className="h-4 w-4 animate-spin" />
-            {t('sync.comparing')}
-          </div>
-        )}
-
-        {compared && (
-          <div className="min-h-0 flex-1 overflow-auto p-4">
-            <div className="mb-3 flex items-center gap-2">
-              <Button
-                variant="ghost"
-                className="text-xs"
-                data-testid="data-sync-select-all"
-                onClick={selectAll}
-              >
-                {t('common.selectAll')}
-              </Button>
-              <Button
-                variant="ghost"
-                className="text-xs"
-                data-testid="data-sync-deselect-all"
-                onClick={deselectAll}
-              >
-                {t('common.deselectAll')}
-              </Button>
-              <div className="flex-1" />
-              <span data-testid="data-sync-mapping-summary" className="text-xs text-fg-muted">
-                {t('sync.mappingSummary', summarizeMappings(mappingResults))}
-              </span>
-            </div>
-
-            <div className="flex items-center gap-3 rounded-t-lg border border-edge bg-surface-alt px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-fg-muted">
-              <div className="w-6" />
-              <div className="min-w-0 flex-1">{t('sync.tableName')}</div>
-              <div className="w-40 text-right">{t('sync.status')}</div>
-            </div>
-
-            {mappingResults.map((row) => {
-              const name = displayTableName(row);
-              const isSelected = selectedTables.has(name);
-              const disabled = row.status !== 'MATCHED';
-              return (
-                <div
-                  key={`${row.status}:${name}`}
-                  data-testid="data-sync-mapping-row"
-                  className={cn(
-                    'flex items-center gap-3 border-b border-edge px-3 py-2 text-sm',
-                    disabled && 'opacity-60',
-                  )}
-                >
-                  <input
-                    type="checkbox"
-                    className="h-3.5 w-3.5"
-                    checked={isSelected}
-                    disabled={disabled}
-                    onChange={() => {
-                      if (disabled) return;
-                      setSelectedTables((prev) => {
-                        const next = new Set(prev);
-                        if (next.has(name)) next.delete(name);
-                        else next.add(name);
-                        return next;
-                      });
-                    }}
-                  />
-                  <div className="min-w-0 flex-1 truncate font-mono text-xs">{name}</div>
-                  <div className="w-56 text-right text-xs text-fg-secondary">
-                    {row.status === 'MATCHED' && tableHasRowDiffs(row)
-                      ? t('sync.rowDiffs', rowDiffCounts(row))
-                      : t(mappingLabelKey(row.status))}
-                  </div>
-                  {row.incompatibleReason && (
-                    <div
-                      className="max-w-xs truncate text-[11px] text-amber-600 dark:text-amber-400"
-                      title={row.incompatibleReason}
-                    >
-                      {row.incompatibleReason}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {compared && (
-        <div className="flex shrink-0 items-center gap-3 border-t border-edge px-6 py-3">
-          <span data-testid="data-sync-selected" className="text-xs text-fg-muted">
-            {t('sync.selected', { selected: selectedTables.size, total: mappingResults.length })}
-          </span>
-          <div className="flex-1" />
-          {syncState === 'syncing' && (
+            {syncState === 'inspecting' ? t('sync.inspecting') : t('sync.comparing')}
             <Button
               variant="ghost"
+              size="sm"
               data-testid="data-sync-cancel"
               onClick={() => void handleCancel()}
             >
               {t('common.cancel')}
             </Button>
-          )}
-          <Button
-            variant="primary"
-            onClick={() => void handleApply()}
-            disabled={
-              syncState === 'syncing' ||
-              !mappingResults.some(
-                (r) =>
-                  r.status === 'MATCHED' &&
-                  selectedTables.has(displayTableName(r)) &&
-                  tableHasRowDiffs(r),
-              )
-            }
-            title={
-              mappingResults.some(
-                (r) =>
-                  r.status === 'MATCHED' &&
-                  selectedTables.has(displayTableName(r)) &&
-                  tableHasRowDiffs(r),
-              )
-                ? undefined
-                : t('sync.applyUnavailable')
-            }
-            data-testid={
-              mappingResults.some(
-                (r) =>
-                  r.status === 'MATCHED' &&
-                  selectedTables.has(displayTableName(r)) &&
-                  tableHasRowDiffs(r),
-              )
-                ? 'data-sync-start'
-                : 'data-sync-start-disabled'
-            }
-          >
-            {syncState === 'syncing' ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <RefreshCcw className="h-4 w-4" />
+          </div>
+        )}
+
+        {mappingResults.length > 0 && syncState !== 'inspecting' && syncState !== 'comparing' && (
+          <>
+            <MappingPanel
+              rows={mappingResults}
+              disabledTables={disabledTables}
+              compared={compared}
+              onToggleDisabled={toggleDisabledTable}
+              onOpenSchemaDiff={openSchemaDiffWindow}
+              onOpenDataTransfer={openDataTransferWindow}
+            />
+
+            {compared && (
+              <CompareSummary
+                stats={compareStats}
+                onCopyReport={handleCopyCompareReport}
+                onExplainDiff={handleExplainDiff}
+                explainLoading={explainLoading}
+              />
             )}
-            {t('sync.startSync')}
-          </Button>
-        </div>
+
+            {compared && (
+              <div className="flex min-h-0 flex-1">
+                <TableListPanel
+                  rows={mappingResults}
+                  filter={tableFilter}
+                  search={tableSearch}
+                  selectedTableKey={selectedTableKey}
+                  onFilterChange={setTableFilter}
+                  onSearchChange={setTableSearch}
+                  onSelectTable={(key) => {
+                    setSelectedTableKey(key);
+                    setRightPanel('detail');
+                  }}
+                />
+
+                <div className="flex min-h-0 min-w-0 flex-[1.4] flex-col">
+                  <div className="flex shrink-0 border-b border-edge">
+                    <button
+                      type="button"
+                      className={`px-4 py-2 text-xs font-medium ${rightPanel === 'detail' ? 'border-b-2 border-accent text-fg' : 'text-fg-muted'}`}
+                      onClick={() => setRightPanel('detail')}
+                    >
+                      {t('sync.rowDiffTab')}
+                    </button>
+                    <button
+                      type="button"
+                      className={`px-4 py-2 text-xs font-medium ${rightPanel === 'preview' ? 'border-b-2 border-accent text-fg' : 'text-fg-muted'}`}
+                      onClick={() => setRightPanel('preview')}
+                    >
+                      {t('sync.sqlPreviewTab')}
+                    </button>
+                  </div>
+
+                  <div className="min-h-0 flex-1 overflow-hidden flex flex-col">
+                    {rightPanel === 'detail' && selectedTable && (
+                      <DiffDetail
+                        table={selectedTable}
+                        options={syncOptions}
+                        onUpdateRows={(rows) => updateTableRows(tableKey(selectedTable), rows)}
+                      />
+                    )}
+                    {rightPanel === 'detail' && !selectedTable && (
+                      <div className="flex flex-1 items-center justify-center text-sm text-fg-muted">
+                        {t('sync.selectTableForDetail')}
+                      </div>
+                    )}
+                    {rightPanel === 'preview' && activeConns[sourceId] && activeConns[targetId] && (
+                      <SqlPreview
+                        sourceConnId={activeConns[sourceId]}
+                        targetConnId={activeConns[targetId]}
+                        sourceDatabase={sourceDatabase}
+                        targetDatabase={targetDatabase}
+                        sourceSchema={sourceSchema}
+                        targetSchema={targetSchema}
+                        tables={mappingResults}
+                        options={syncOptions}
+                      />
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      {compared && (
+        <ExecuteBar
+          selectedRows={totalSelectedRows}
+          hasDeletes={hasSelectedDeletes}
+          targetReadOnly={targetReadOnly}
+          executing={syncState === 'executing'}
+          canExecute={mappingResults.some((r) => r.status === 'MATCHED' && tableHasRowDiffs(r))}
+          onExecute={() => void handleExecute()}
+          onCancel={() => void handleCancel()}
+        />
       )}
 
       <StatusBar
@@ -583,6 +892,73 @@ export function DataSyncWindow() {
         >
           {errorMsg}
         </p>
+      </Dialog>
+
+      <Dialog
+        open={deleteConfirmOpen}
+        title={t('sync.deleteConfirmTitle')}
+        onClose={() => setDeleteConfirmOpen(false)}
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setDeleteConfirmOpen(false)}>
+              {t('common.cancel')}
+            </Button>
+            <Button variant="danger" onClick={confirmEnableDelete}>
+              {t('sync.enableDelete')}
+            </Button>
+          </>
+        }
+      >
+        <p className="text-sm text-fg-secondary">{t('sync.deleteConfirmBody')}</p>
+      </Dialog>
+
+      <Dialog
+        open={explainOpen}
+        title={t('sync.explainDiffTitle')}
+        onClose={() => setExplainOpen(false)}
+        footer={
+          <Button variant="primary" onClick={() => setExplainOpen(false)}>
+            {t('common.close')}
+          </Button>
+        }
+      >
+        {explainLoading ? (
+          <div className="flex items-center gap-2 text-sm text-fg-muted">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            {t('query.executing')}
+          </div>
+        ) : (
+          <p
+            data-testid="data-sync-explain-result"
+            className="whitespace-pre-wrap text-sm text-fg-secondary"
+          >
+            {explainText}
+          </p>
+        )}
+      </Dialog>
+
+      <Dialog
+        open={executeConfirmOpen}
+        title={t('sync.executeDeleteTitle')}
+        onClose={() => setExecuteConfirmOpen(false)}
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setExecuteConfirmOpen(false)}>
+              {t('common.cancel')}
+            </Button>
+            <Button
+              variant="danger"
+              onClick={() => {
+                setExecuteConfirmOpen(false);
+                void runExecute();
+              }}
+            >
+              {t('sync.execute')}
+            </Button>
+          </>
+        }
+      >
+        <p className="text-sm text-fg-secondary">{t('sync.executeDeleteBody')}</p>
       </Dialog>
     </div>
   );

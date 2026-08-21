@@ -1,4 +1,4 @@
-export type WindowKind = 'main' | 'data-sync' | 'schema-diff' | 'backup';
+export type WindowKind = 'main' | 'data-sync' | 'data-transfer' | 'schema-diff' | 'backup';
 
 let cachedKind: WindowKind | null = null;
 
@@ -19,6 +19,7 @@ export function getWindowKind(): WindowKind {
   const w = params.get('window');
 
   if (w === 'data-sync') cachedKind = 'data-sync';
+  else if (w === 'data-transfer') cachedKind = 'data-transfer';
   else if (w === 'schema-diff') cachedKind = 'schema-diff';
   else if (w === 'backup') cachedKind = 'backup';
   else if (w && LEGACY_MAIN_ALIASES.has(w)) cachedKind = 'main';

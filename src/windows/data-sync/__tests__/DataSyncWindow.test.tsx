@@ -1,15 +1,19 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { render, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import type { ConnectionConfig } from '../../../types';
+import type { DataSyncRowChange } from '../../../commands/sync';
 
 const {
   invokeMock,
   inspectDataSyncMock,
   compareDataSyncMock,
   applyDataSyncMock,
+  executeDataSyncMock,
+  generateDataSyncSqlMock,
   cancelDataSyncMock,
   getSyncTasksMock,
   getDatabasesMock,
+  getTablesMock,
   stableT,
 } = vi.hoisted(() => {
   const stableT = (key: string, params?: Record<string, string | number>) =>
@@ -19,9 +23,12 @@ const {
     inspectDataSyncMock: vi.fn(),
     compareDataSyncMock: vi.fn(),
     applyDataSyncMock: vi.fn(),
+    executeDataSyncMock: vi.fn(),
+    generateDataSyncSqlMock: vi.fn(),
     cancelDataSyncMock: vi.fn().mockResolvedValue(true),
     getSyncTasksMock: vi.fn(),
     getDatabasesMock: vi.fn(),
+    getTablesMock: vi.fn(),
     stableT,
   };
 });
@@ -52,15 +59,24 @@ vi.mock('../../../commands/sync', () => ({
     inspectDataSync: (...args: unknown[]) => inspectDataSyncMock(...args),
     compareDataSync: (...args: unknown[]) => compareDataSyncMock(...args),
     applyDataSync: (...args: unknown[]) => applyDataSyncMock(...args),
+    executeDataSync: (...args: unknown[]) => executeDataSyncMock(...args),
+    generateDataSyncSql: (...args: unknown[]) => generateDataSyncSqlMock(...args),
     cancelDataSync: (...args: unknown[]) => cancelDataSyncMock(...args),
     getSyncTasks: (...args: unknown[]) => getSyncTasksMock(...args),
   },
+  DEFAULT_SYNC_OPTIONS: { insert: true, update: true, delete: false },
 }));
 
 vi.mock('../../../commands/database', () => ({
   databaseCommands: {
     getDatabases: (...args: unknown[]) => getDatabasesMock(...args),
+    getTables: (...args: unknown[]) => getTablesMock(...args),
   },
+}));
+
+vi.mock('../../../lib/windowManager', () => ({
+  openSchemaDiffWindow: vi.fn(),
+  openDataTransferWindow: vi.fn(),
 }));
 
 vi.mock('../../../components/TitleBar', () => ({
@@ -71,10 +87,6 @@ vi.mock('../../../components/TitleBar', () => ({
 
 vi.mock('../../../components/StatusBar', () => ({
   StatusBar: ({ left }: { left?: unknown }) => <div data-testid="status-bar">{left as never}</div>,
-}));
-
-vi.mock('../../../components/schema/SchemaDiffPanel', () => ({
-  SchemaDiffPanel: () => null,
 }));
 
 import { DataSyncWindow } from '../DataSyncWindow';
@@ -115,6 +127,17 @@ const mysqlTgt: ConnectionConfig = {
   sslMode: 'disable',
 };
 
+function insertRow(): DataSyncRowChange {
+  return {
+    operation: 'INSERT',
+    key: [1],
+    sourceRow: [[1, 'alice']],
+    targetRow: null,
+    changedColumns: [],
+    selected: true,
+  };
+}
+
 async function pickSelect(testId: string, optionLabel: string) {
   const wrap = screen.getByTestId(testId);
   const trigger = within(wrap).getAllByRole('button')[0];
@@ -131,16 +154,23 @@ async function pickSelect(testId: string, optionLabel: string) {
   fireEvent.mouseDown(option!);
 }
 
-describe('DataSyncWindow (F9 Diff Workspace shell)', () => {
+describe('DataSyncWindow (Diff Workspace)', () => {
   beforeEach(() => {
     invokeMock.mockReset();
     inspectDataSyncMock.mockReset();
+    compareDataSyncMock.mockReset();
+    applyDataSyncMock.mockReset();
+    executeDataSyncMock.mockReset();
+    generateDataSyncSqlMock.mockReset();
+    generateDataSyncSqlMock.mockRejectedValue(new Error('not registered'));
     getSyncTasksMock.mockReset();
     getSyncTasksMock.mockResolvedValue([]);
     getDatabasesMock.mockReset();
     getDatabasesMock.mockImplementation(async (connId: string) =>
       connId.includes('pg-src') || connId.includes('my') ? ['src', 'other'] : ['tgt'],
     );
+    getTablesMock.mockReset();
+    getTablesMock.mockResolvedValue([{ name: 'users', tableType: 'table' }]);
     invokeMock.mockImplementation(async (cmd: string, args?: { configId?: string }) => {
       if (cmd === 'get_connections') return [pgSrc, pgTgt, mysqlTgt];
       if (cmd === 'connect') return `live-${args?.configId}`;
@@ -155,10 +185,13 @@ describe('DataSyncWindow (F9 Diff Workspace shell)', () => {
   it('shows the overwrite-retired banner and idle prompt', async () => {
     render(<DataSyncWindow />);
     await waitFor(() => expect(invokeMock).toHaveBeenCalledWith('get_connections'));
-    const banner = screen.getByTestId('data-sync-overwrite-retired');
-    expect(banner).toHaveTextContent('sync.overwriteRetiredBanner');
+    expect(screen.getByTestId('data-sync-overwrite-retired')).toHaveTextContent(
+      'sync.overwriteRetiredBanner',
+    );
     expect(screen.getByText('sync.selectPrompt')).toBeTruthy();
     expect(screen.getByTestId('data-sync-compare')).toBeTruthy();
+    expect(screen.getByTestId('data-sync-swap')).toBeTruthy();
+    expect(screen.getByTestId('data-sync-option-insert')).toBeTruthy();
     expect(screen.queryByTestId('data-sync-start-disabled')).toBeNull();
   });
 
@@ -167,46 +200,64 @@ describe('DataSyncWindow (F9 Diff Workspace shell)', () => {
     await waitFor(() => expect(invokeMock).toHaveBeenCalledWith('get_connections'));
     fireEvent.click(screen.getByTestId('data-sync-compare'));
     expect(await screen.findByTestId('data-sync-error')).toHaveTextContent('sync.selectBoth');
+    expect(inspectDataSyncMock).not.toHaveBeenCalled();
     expect(compareDataSyncMock).not.toHaveBeenCalled();
   });
 
-  it('compares same-family connections and enables Apply when row diffs exist', async () => {
+  it('inspects then compares and enables Execute when row diffs exist', async () => {
+    inspectDataSyncMock.mockResolvedValue([
+      { sourceTable: 'users', targetTable: 'users', status: 'MATCHED' },
+      { sourceTable: 'orders', targetTable: '', status: 'UNMAPPED_SOURCE' },
+    ]);
     compareDataSyncMock.mockResolvedValue([
       {
         sourceTable: 'users',
         targetTable: 'users',
         status: 'MATCHED',
-        rows: [{ operation: 'INSERT' }],
+        rows: [insertRow()],
       },
-      { sourceTable: 'orders', targetTable: '', status: 'UNMAPPED_SOURCE' },
     ]);
     applyDataSyncMock.mockResolvedValue({ applied: 1, rolledBack: false });
     render(<DataSyncWindow />);
     await waitFor(() => expect(invokeMock).toHaveBeenCalledWith('get_connections'));
     await pickSelect('data-sync-source', 'PG Src');
     await pickSelect('data-sync-target', 'PG Tgt');
-    // Both connections auto-connect to enumerate databases; default DBs are selected.
     await waitFor(() =>
       expect(screen.getByTestId('data-sync-source-database')).toHaveTextContent('src'),
     );
     fireEvent.click(screen.getByTestId('data-sync-compare'));
     await waitFor(() =>
+      expect(inspectDataSyncMock).toHaveBeenCalledWith(
+        'live-pg-src',
+        'live-pg-tgt',
+        'src',
+        'tgt',
+        undefined,
+        undefined,
+      ),
+    );
+    await waitFor(() =>
       expect(compareDataSyncMock).toHaveBeenCalledWith(
         'live-pg-src',
         'live-pg-tgt',
-        [],
+        ['users'],
         expect.any(String),
         'src',
         'tgt',
+        undefined,
+        undefined,
+        expect.objectContaining({ insert: true, update: true, delete: false }),
       ),
     );
     const rows = await screen.findAllByTestId('data-sync-mapping-row');
     expect(rows).toHaveLength(2);
-    expect(screen.getByText(/sync.rowDiffs/)).toBeTruthy();
+    expect(screen.getByTestId('data-sync-summary')).toBeTruthy();
+    expect(screen.getByTestId('data-sync-row-diff')).toBeTruthy();
+    expect(screen.getAllByText(/sync.rowDiffs/).length).toBeGreaterThan(0);
     expect(screen.getByText('sync.mappingUnmappedSource')).toBeTruthy();
-    const apply = screen.getByTestId('data-sync-start');
-    expect(apply).not.toBeDisabled();
-    fireEvent.click(apply);
+    const execute = screen.getByTestId('data-sync-start');
+    expect(execute).not.toBeDisabled();
+    fireEvent.click(execute);
     await waitFor(() =>
       expect(applyDataSyncMock).toHaveBeenCalledWith(
         'live-pg-src',
@@ -215,9 +266,11 @@ describe('DataSyncWindow (F9 Diff Workspace shell)', () => {
         expect.any(String),
         'src',
         'tgt',
+        undefined,
+        undefined,
+        expect.objectContaining({ insert: true }),
       ),
     );
-    // Drain the post-apply re-compare so it does not leak into the next test.
     await waitFor(() =>
       expect(compareDataSyncMock).toHaveBeenLastCalledWith(
         'live-pg-src',
@@ -226,11 +279,28 @@ describe('DataSyncWindow (F9 Diff Workspace shell)', () => {
         expect.any(String),
         'src',
         'tgt',
+        undefined,
+        undefined,
+        expect.any(Object),
       ),
     );
   });
 
-  it('marks heterogeneous targets as unsupported', async () => {
+  it('shows schema pickers for PostgreSQL when get_tables returns schemas', async () => {
+    getTablesMock.mockResolvedValue([
+      { name: 'users', schema: 'public', tableType: 'table' },
+      { name: 'users', schema: 'app', tableType: 'table' },
+    ]);
+    render(<DataSyncWindow />);
+    await waitFor(() => expect(invokeMock).toHaveBeenCalledWith('get_connections'));
+    await pickSelect('data-sync-source', 'PG Src');
+    await pickSelect('data-sync-target', 'PG Tgt');
+    await waitFor(() => expect(screen.getByTestId('data-sync-source-schema')).toBeTruthy());
+    expect(screen.getByTestId('data-sync-target-schema')).toBeTruthy();
+    expect(screen.getByTestId('data-sync-source-schema')).toHaveTextContent('public');
+  });
+
+  it('marks heterogeneous targets as unsupported in the picker', async () => {
     render(<DataSyncWindow />);
     await waitFor(() => expect(invokeMock).toHaveBeenCalledWith('get_connections'));
     await pickSelect('data-sync-source', 'PG Src');
@@ -258,17 +328,11 @@ describe('DataSyncWindow (F9 Diff Workspace shell)', () => {
     await waitFor(() => expect(invokeMock).toHaveBeenCalledWith('get_connections'));
     await pickSelect('data-sync-source', 'PG Src');
     await pickSelect('data-sync-target', 'PG Tgt');
-    // The target database list failed to enumerate, so compare stays gated.
     fireEvent.click(screen.getByTestId('data-sync-compare'));
     expect(await screen.findByTestId('data-sync-error')).toHaveTextContent('sync.selectDbRequired');
   });
 
   it('surfaces data-sync comparison errors', async () => {
-    invokeMock.mockImplementation(async (cmd: string, args?: { configId?: string }) => {
-      if (cmd === 'get_connections') return [pgSrc, pgTgt, mysqlTgt];
-      if (cmd === 'connect') return `live-${args?.configId}`;
-      return null;
-    });
     render(<DataSyncWindow />);
     await waitFor(() => expect(invokeMock).toHaveBeenCalledWith('get_connections'));
     await pickSelect('data-sync-source', 'PG Src');
@@ -276,13 +340,13 @@ describe('DataSyncWindow (F9 Diff Workspace shell)', () => {
     await waitFor(() =>
       expect(screen.getByTestId('data-sync-source-database')).toHaveTextContent('src'),
     );
-    compareDataSyncMock.mockRejectedValue(new Error('gate failed'));
+    inspectDataSyncMock.mockRejectedValue(new Error('gate failed'));
     fireEvent.click(screen.getByTestId('data-sync-compare'));
     expect(await screen.findByTestId('data-sync-error')).toHaveTextContent('gate failed');
   });
 
-  it('toggles MATCHED rows and select-all / deselect-all', async () => {
-    compareDataSyncMock.mockResolvedValue([
+  it('toggles mapping include checkboxes and shows incompatible reason', async () => {
+    inspectDataSyncMock.mockResolvedValue([
       { sourceTable: 'users', targetTable: 'users', status: 'MATCHED' },
       {
         sourceTable: 'legacy',
@@ -290,6 +354,9 @@ describe('DataSyncWindow (F9 Diff Workspace shell)', () => {
         status: 'INCOMPATIBLE',
         incompatibleReason: 'pk mismatch',
       },
+    ]);
+    compareDataSyncMock.mockResolvedValue([
+      { sourceTable: 'users', targetTable: 'users', status: 'MATCHED', rows: [] },
     ]);
     render(<DataSyncWindow />);
     await waitFor(() => expect(invokeMock).toHaveBeenCalledWith('get_connections'));
@@ -302,14 +369,9 @@ describe('DataSyncWindow (F9 Diff Workspace shell)', () => {
     await screen.findAllByTestId('data-sync-mapping-row');
     expect(screen.getByTestId('data-sync-path')).toHaveTextContent('sync.pathDirect');
     expect(screen.getByText('pk mismatch')).toBeTruthy();
-    expect(screen.getByTestId('data-sync-selected').textContent).toContain('"selected":1');
 
     const matchedRow = screen.getAllByTestId('data-sync-mapping-row')[0];
     fireEvent.click(within(matchedRow).getByRole('checkbox'));
-    expect(screen.getByTestId('data-sync-selected').textContent).toContain('"selected":0');
-    fireEvent.click(screen.getByTestId('data-sync-select-all'));
-    expect(screen.getByTestId('data-sync-selected').textContent).toContain('"selected":1');
-    fireEvent.click(screen.getByTestId('data-sync-deselect-all'));
-    expect(screen.getByTestId('data-sync-selected').textContent).toContain('"selected":0');
+    expect(within(matchedRow).getByRole('checkbox')).not.toBeChecked();
   });
 });

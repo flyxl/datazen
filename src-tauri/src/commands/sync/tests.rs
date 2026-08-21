@@ -339,10 +339,18 @@ async fn sync_task_crud_and_inspect() {
     let src_conn = test.connect_config("src-cfg").await;
     let tgt_conn = test.connect_config("tgt-cfg").await;
 
-    let results =
-        super::inspect_data_sync_impl(&test.state, src_conn.clone(), tgt_conn.clone(), None, None)
-            .await
-            .unwrap();
+    let results = super::inspect_data_sync_impl(
+        &test.state,
+        src_conn.clone(),
+        tgt_conn.clone(),
+        None,
+        None,
+        None,
+        None,
+        &[],
+    )
+    .await
+    .unwrap();
     assert!(results
         .iter()
         .any(|r| r.status == TableMappingStatus::Matched && r.source_table == "users"));
@@ -439,6 +447,49 @@ fn legacy_transfer_ir_compare_ipc_removed() {
 }
 
 #[test]
+fn filter_tables_by_schema_keeps_matching_schema_only() {
+    use crate::db::{TableInfo, TableType};
+
+    let tables = vec![
+        TableInfo {
+            schema: Some("public".into()),
+            name: "a".into(),
+            table_type: TableType::Table,
+            row_count: None,
+        },
+        TableInfo {
+            schema: Some("app".into()),
+            name: "b".into(),
+            table_type: TableType::Table,
+            row_count: None,
+        },
+    ];
+    let filtered = super::types::filter_tables_by_schema(tables, Some("public"));
+    assert_eq!(filtered.len(), 1);
+    assert_eq!(filtered[0].name, "a");
+}
+
+#[test]
+fn is_self_sync_requires_matching_schema_on_same_connection() {
+    assert!(super::types::is_self_sync(
+        "c1",
+        "c1",
+        "db",
+        "db",
+        Some("public"),
+        Some("public")
+    ));
+    assert!(!super::types::is_self_sync(
+        "c1",
+        "c1",
+        "db",
+        "db",
+        Some("public"),
+        Some("app")
+    ));
+}
+
+#[test]
 fn classify_sync_pair_rejects_ir_and_allows_mysql_family() {
     let mysql = super::classify_sync_pair("mysql".into(), "mariadb".into()).unwrap();
     assert_eq!(mysql["path"], "direct");
@@ -458,7 +509,7 @@ async fn inspect_data_sync_returns_matched_tables() {
     test.save_and_connect("tgt-ins").await;
     let src = test.connect_config("src-ins").await;
     let tgt = test.connect_config("tgt-ins").await;
-    let results = super::inspect_data_sync_impl(&test.state, src, tgt, None, None)
+    let results = super::inspect_data_sync_impl(&test.state, src, tgt, None, None, None, None, &[])
         .await
         .unwrap();
     assert!(results
@@ -551,6 +602,10 @@ async fn compare_data_sync_fills_row_diff_for_matched_tables() {
         None,
         None,
         None,
+        None,
+        None,
+        crate::data_sync::SyncOptions::default(),
+        &[],
     )
     .await
     .unwrap();
@@ -579,6 +634,9 @@ async fn apply_data_sync_rejects_empty_change_set() {
         None,
         None,
         None,
+        None,
+        None,
+        crate::data_sync::SyncOptions::default(),
     )
     .await
     .unwrap_err();

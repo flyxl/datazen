@@ -37,6 +37,7 @@ export type SchemaTreeContextMenuLabels = {
   createSchema: string;
   dropSchema: string;
   executeSqlFile: string;
+  queryHistory: string;
   dataTransfer: string;
   compareSchema: string;
   compareData: string;
@@ -64,6 +65,7 @@ export type SchemaTreeContextMenuHandlers = {
   onCreateSchema?: () => void;
   onDropSchema?: () => void;
   onExecuteSqlFile?: () => void;
+  onQueryHistory?: () => void;
   onDataTransfer?: () => void;
   onCompareSchema?: () => void;
   onCompareData?: () => void;
@@ -184,6 +186,7 @@ export function buildSchemaTreeContextMenuItems(
       const dbMain = push(
         item('refresh', labels.refresh, handlers.onRefresh),
         item('new-query', labels.newQuery, handlers.onNewQuery),
+        item('query-history', labels.queryHistory, handlers.onQueryHistory),
         !readOnly && !safeMode
           ? item('execute-sql-file', labels.executeSqlFile, handlers.onExecuteSqlFile)
           : null,
@@ -213,6 +216,7 @@ export function buildSchemaTreeContextMenuItems(
       const schemaMain = push(
         item('refresh', labels.refresh, handlers.onRefresh),
         item('new-query', labels.newQuery, handlers.onNewQuery),
+        item('query-history', labels.queryHistory, handlers.onQueryHistory),
         !readOnly && !safeMode
           ? item('execute-sql-file', labels.executeSqlFile, handlers.onExecuteSqlFile)
           : null,

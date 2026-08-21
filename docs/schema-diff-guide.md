@@ -111,13 +111,13 @@ SQLite 侧仍以 `ADD COLUMN` / 索引为主；复杂 `DROP`/`MODIFY` 会提示�
 
 ## 8. 与 Data Sync / Data Transfer 的关系
 
-| 产品 | 做什么 |
-|---|---|
-| **Schema Diff（本文）** | 结构对齐与受控 DDL 部署，不灌行数据 |
-| **Data Synchronization** | 仅当表结构完全一致且双方有相同 PK 时，比较并应用行差异。见 `docs/data-synchronization-prd.zh-CN.md` |
-| **Data Transfer** | 异构或结构不同时的单向搬运（字段映射 + 类型映射）。本次不实施。见 `docs/data-transfer-prd.zh-CN.md` |
+| 产品 | 做什么 | 用户手册 |
+|---|---|---|
+| **Schema Diff（本文）** | 结构对齐与受控 DDL 部署，不灌行数据 | 本文 |
+| **Data Synchronization** | 结构完全一致 + 相同 PK → 行 Diff → 审查 → Execute | [data-sync-guide.md](./data-sync-guide.md) |
+| **Data Transfer** | 异构 / 结构不同 / 无 PK → 单向搬运（V1 基础） | [data-transfer-guide.md](./data-transfer-guide.md) |
 
-结构不一致时不要用 Data Sync「只同步部分列」；应先 Schema Diff，或改用 Transfer。
+结构不一致时不要用 Data Sync「只同步部分列」；应先 **Schema Diff** 对齐 DDL，或改用 **Data Transfer**。
 
 跨库建表 DDL 属于 Transfer / 适配器 IR；Deploy 路径是已有表上的 ALTER，不要和 Sync 的 Change Set 混用。
 

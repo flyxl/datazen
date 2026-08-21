@@ -26,6 +26,7 @@ const labels: SchemaTreeContextMenuLabels = {
   createSchema: 'Create Schema',
   dropSchema: 'Drop Schema',
   executeSqlFile: 'Execute SQL File',
+  queryHistory: 'Query History',
   dataTransfer: 'Data Transfer',
   compareSchema: 'Compare Schema',
   compareData: 'Compare Data',
@@ -319,6 +320,41 @@ describe('buildSchemaTreeContextMenuItems', () => {
     });
     expect(ids(items)).not.toContain('export');
     expect(ids(items)).not.toContain('batch-export');
+  });
+
+  it('database menu includes query-history when handler provided', () => {
+    const onQueryHistory = vi.fn();
+    const items = buildSchemaTreeContextMenuItems({
+      kind: 'database',
+      labels,
+      handlers: {
+        onRefresh: vi.fn(),
+        onNewQuery: vi.fn(),
+        onQueryHistory,
+        onCopyDatabaseName: vi.fn(),
+      },
+      readOnly: false,
+    });
+    expect(ids(items)).toContain('query-history');
+    const historyItem = items.find((i) => i.kind === 'item' && i.id === 'query-history');
+    if (historyItem?.kind === 'item') historyItem.action();
+    expect(onQueryHistory).toHaveBeenCalledOnce();
+  });
+
+  it('schema menu includes query-history when handler provided', () => {
+    const onQueryHistory = vi.fn();
+    const items = buildSchemaTreeContextMenuItems({
+      kind: 'schema',
+      labels,
+      handlers: {
+        onRefresh: vi.fn(),
+        onNewQuery: vi.fn(),
+        onQueryHistory,
+        onCopyName: vi.fn(),
+      },
+      readOnly: false,
+    });
+    expect(ids(items)).toContain('query-history');
   });
 
   it('database menu includes execute-sql-file and create-schema when handlers provided', () => {

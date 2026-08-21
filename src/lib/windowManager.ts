@@ -22,6 +22,7 @@ import { openNewConnectionDialog as openConnectionEditorDialog } from './connect
 export const WINDOW_CAPABILITY_LABEL_SAMPLES = [
   'main',
   'data-sync-singleton',
+  'data-transfer-singleton',
   'schema-diff-singleton',
   'backup-singleton',
   'backup-restore-singleton',
@@ -133,6 +134,17 @@ export function openDataSyncWindow() {
     minWidth: 600,
     minHeight: 480,
     title: t('win.dataSync'),
+  });
+}
+
+export function openDataTransferWindow() {
+  openSingletonWindow('data-transfer-singleton', {
+    params: { window: 'data-transfer' },
+    width: 1000,
+    height: 720,
+    minWidth: 640,
+    minHeight: 480,
+    title: t('win.dataTransfer'),
   });
 }
 

@@ -157,6 +157,18 @@ pub fn compare_sorted_rows(
     Ok(changes)
 }
 
+fn page_starts_after_key(
+    page: &[Row],
+    pk_indexes: &[usize],
+    after_key: &[Value],
+) -> Result<bool, DataSyncError> {
+    let Some(first) = page.first() else {
+        return Ok(true);
+    };
+    let key = extract_key(first, pk_indexes)?;
+    Ok(cmp_keys(&key, after_key) == Ordering::Greater)
+}
+
 pub async fn compare_table_pages<S, T>(
     source_table: &str,
     target_table: &str,
@@ -187,11 +199,17 @@ where
         if i >= src_page.len() && !src_page.is_empty() {
             let after = extract_key(src_page.last().unwrap(), pk_indexes)?;
             src_page = source.next_page(Some(&after), options.batch_size).await?;
+            if !page_starts_after_key(&src_page, pk_indexes, &after)? {
+                src_page.clear();
+            }
             i = 0;
         }
         if j >= tgt_page.len() && !tgt_page.is_empty() {
             let after = extract_key(tgt_page.last().unwrap(), pk_indexes)?;
             tgt_page = target.next_page(Some(&after), options.batch_size).await?;
+            if !page_starts_after_key(&tgt_page, pk_indexes, &after)? {
+                tgt_page.clear();
+            }
             j = 0;
         }
         if src_page.is_empty() && tgt_page.is_empty() {

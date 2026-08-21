@@ -54,7 +54,11 @@ import { useSettingsStore } from '../../stores/settingsStore';
 import { shouldUseMultiDatabaseTree } from './schema-tree/SchemaTree';
 import { connectionCommands } from '../../commands/connection';
 import { driverCommands } from '../../commands/driver';
-import { openDataSyncWindow, openSchemaDiffWindow } from '../../lib/windowManager';
+import {
+  openDataSyncWindow,
+  openDataTransferWindow,
+  openSchemaDiffWindow,
+} from '../../lib/windowManager';
 import type { ConnectionConfig, DatabaseObject, TableInfo } from '../../types';
 
 // ── Category definitions ────────────────────────────────────────
@@ -374,6 +378,7 @@ export interface ConnectionNavigatorTreeProps {
       name: string,
       schema?: string,
     ) => void;
+    openQueryHistory?: () => void;
   };
 }
 
@@ -696,6 +701,7 @@ export const ConnectionNavigatorTree = forwardRef<
       copyName: t('main.ctx.copyName'),
       copyConnectionUrl: t('main.ctx.copyConnectionUrl'),
       newQuery: t('main.ctx.newQuery'),
+      queryHistory: t('main.ctx.queryHistory'),
       executeSqlFile: t('main.ctx.executeSqlFile'),
       createDatabase: t('createDb.create'),
       createSchema: t('createSchema.create'),
@@ -716,6 +722,7 @@ export const ConnectionNavigatorTree = forwardRef<
       importData: t('connWin.importData'),
       refresh: t('connWin.refresh'),
       newQuery: t('connWin.newQuery'),
+      queryHistory: t('main.ctx.queryHistory'),
       copyDatabaseName: t('schemaTree.copyDatabaseName'),
       newTable: t('connWin.newTable'),
       batchExport: `${t('batchExport.title')}…`,
@@ -1061,6 +1068,10 @@ export const ConnectionNavigatorTree = forwardRef<
             onSelectConnection(conn.id);
             viewActions?.newQuery?.();
           },
+          onQueryHistory: () => {
+            onSelectConnection(conn.id);
+            viewActions?.openQueryHistory?.();
+          },
           onExecuteSqlFile: undefined,
           onCreateDatabase:
             dbMeta?.supportsCreateDatabase && isMultiDb
@@ -1137,6 +1148,10 @@ export const ConnectionNavigatorTree = forwardRef<
             onNewQuery: () => {
               onSelectConnection(configId);
               viewActions?.newQuery?.();
+            },
+            onQueryHistory: () => {
+              onSelectConnection(configId);
+              viewActions?.openQueryHistory?.();
             },
             onCopyDatabaseName: () => {
               void navigator.clipboard.writeText(dbName);
@@ -1221,7 +1236,7 @@ export const ConnectionNavigatorTree = forwardRef<
                   })();
                 }
               : undefined,
-            onDataTransfer: () => openDataSyncWindow(),
+            onDataTransfer: () => openDataTransferWindow(),
             onCompareSchema: () => openSchemaDiffWindow(),
             onCompareData: () => openDataSyncWindow(),
           },
@@ -1268,6 +1283,10 @@ export const ConnectionNavigatorTree = forwardRef<
             onNewQuery: () => {
               onSelectConnection(configId);
               viewActions?.newQuery?.();
+            },
+            onQueryHistory: () => {
+              onSelectConnection(configId);
+              viewActions?.openQueryHistory?.();
             },
             onExecuteSqlFile:
               viewActions?.openSqlFile && !readOnly && !safeMode
@@ -1320,7 +1339,7 @@ export const ConnectionNavigatorTree = forwardRef<
                     })();
                   }
                 : undefined,
-            onDataTransfer: () => openDataSyncWindow(),
+            onDataTransfer: () => openDataTransferWindow(),
             onCompareSchema: () => openSchemaDiffWindow(),
             onCompareData: () => openDataSyncWindow(),
           },

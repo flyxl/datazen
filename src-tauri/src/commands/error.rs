@@ -92,6 +92,15 @@ impl From<crate::data_sync::DataSyncError> for CommandError {
     }
 }
 
+impl From<crate::data_transfer::TransferError> for CommandError {
+    fn from(e: crate::data_transfer::TransferError) -> Self {
+        match e {
+            crate::data_transfer::TransferError::NotImplemented(msg) => Self::Validation(msg),
+            other => Self::Validation(other.to_string()),
+        }
+    }
+}
+
 impl From<String> for CommandError {
     fn from(s: String) -> Self {
         Self::Internal(s)

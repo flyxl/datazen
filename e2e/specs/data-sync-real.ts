@@ -1,14 +1,14 @@
 /**
- * Host IPC contract E2E for Data Sync (`inspect_data_sync`, `compare_data_sync`, etc.).
+ * Host IPC contract E2E for Data Sync.
  *
- * Uses live PostgreSQL / MySQL instances as fixtures but asserts Host-level IPC
- * behavior only — not driver-specific sync adapters. Driver dialect / adapter tests
- * belong in `packages/drivers/<id>/` (see AGENTS.md「驱动测试落点」).
+ * Covers: `inspect_data_sync`, `compare_data_sync`, `generate_data_sync_sql`,
+ * `apply_data_sync`, `revalidate_data_sync`. Uses live PostgreSQL / MySQL fixtures;
+ * asserts Host-level IPC only — driver dialect tests belong in `packages/drivers/<id>/`.
  *
- * Prerequisites: run `e2e/setup-sync-dbs.sh` first to create test databases
- * and the restricted `datazen_readonly` user in both PG and MySQL.
+ * Prerequisites: run `e2e/setup-sync-dbs.sh` for `datazen_sync_src` / `datazen_sync_tgt`
+ * and the restricted `datazen_readonly` user. Apply/recompare tests require writable PG target.
  *
- * Tests call Tauri IPC commands directly (no UI interaction) for speed.
+ * UI Diff Workspace smoke: `e2e/specs/data-sync-window.ts`.
  */
 import { expect, browser, $ } from '@wdio/globals';
 import { t } from '../i18n.js';
@@ -131,7 +131,18 @@ interface CompareDataSyncResult {
   sourceTable: string;
   targetTable: string;
   status: string;
-  rows?: Array<{ operation: string }>;
+  rows?: Array<{ operation: string; selected?: boolean }>;
+}
+
+interface ExecutionResult {
+  applied: number;
+  rolledBack: boolean;
+}
+
+interface SqlStatement {
+  table: string;
+  operation: string;
+  sql: string;
 }
 
 // ── Live connection IDs (filled by before hook) ─────────────────────
@@ -164,6 +175,7 @@ describe('数据同步: PG→PG 基础功能 (SYNC-REAL)', () => {
       DROP TABLE IF EXISTS sync_tgt_only;
       DROP TABLE IF EXISTS sync_simple;
       DROP TABLE IF EXISTS sync_pg_types;
+      DROP TABLE IF EXISTS sync_apply_exec;
     `;
     await runSQL(srcConnId, cleanSQL);
     await runSQL(tgtConnId, cleanSQL);
@@ -177,6 +189,7 @@ describe('数据同步: PG→PG 基础功能 (SYNC-REAL)', () => {
       DROP TABLE IF EXISTS sync_tgt_only;
       DROP TABLE IF EXISTS sync_simple;
       DROP TABLE IF EXISTS sync_pg_types;
+      DROP TABLE IF EXISTS sync_apply_exec;
     `;
     try {
       await runSQL(srcConnId, cleanSQL);
@@ -343,6 +356,88 @@ describe('数据同步: PG→PG 基础功能 (SYNC-REAL)', () => {
         tableName: 'sync_products',
       }),
     );
+  });
+
+  it('SYNC-REAL-008: generate_data_sync_sql — INSERT diff yields parameterized statements', async () => {
+    await runSQL(
+      srcConnId,
+      `
+      DROP TABLE IF EXISTS sync_apply_exec;
+      CREATE TABLE sync_apply_exec (
+        id integer NOT NULL,
+        val text NOT NULL,
+        PRIMARY KEY (id)
+      );
+      INSERT INTO sync_apply_exec (id, val) VALUES (1, 'a'), (2, 'b'), (3, 'c');
+    `,
+    );
+    await runSQL(
+      tgtConnId,
+      `
+      DROP TABLE IF EXISTS sync_apply_exec;
+      CREATE TABLE sync_apply_exec (
+        id integer NOT NULL,
+        val text NOT NULL,
+        PRIMARY KEY (id)
+      );
+      INSERT INTO sync_apply_exec (id, val) VALUES (1, 'a'), (2, 'b');
+    `,
+    );
+
+    const compared = await invokeBackend<CompareDataSyncResult[]>('compare_data_sync', {
+      sourceConnectionId: srcConnId,
+      targetConnectionId: tgtConnId,
+      tables: ['sync_apply_exec'],
+      options: { insert: true, update: true, delete: false },
+    });
+    const table = compared.find((r) => r.sourceTable === 'sync_apply_exec');
+    expect(table).toBeDefined();
+    expect(table!.rows?.some((r) => r.operation === 'INSERT')).toBe(true);
+
+    const stmts = await invokeBackend<SqlStatement[]>('generate_data_sync_sql', {
+      sourceConnectionId: srcConnId,
+      targetConnectionId: tgtConnId,
+      tables: compared.filter((r) => r.sourceTable === 'sync_apply_exec'),
+      options: { insert: true, update: true, delete: false },
+    });
+    expect(stmts.length).toBeGreaterThan(0);
+    expect(stmts.some((s) => s.operation === 'INSERT')).toBe(true);
+    expect(stmts[0]!.sql.toUpperCase()).toContain('INSERT');
+  });
+
+  it('SYNC-REAL-009: apply_data_sync → recompare — pending INSERTs cleared', async () => {
+    const revalidate = await invokeBackend<{ ok: boolean; staleTables: unknown[] }>(
+      'revalidate_data_sync',
+      {
+        sourceConnectionId: srcConnId,
+        targetConnectionId: tgtConnId,
+        tables: ['sync_apply_exec'],
+      },
+    );
+    expect(revalidate.ok).toBe(true);
+    expect(revalidate.staleTables.length).toBe(0);
+
+    const applyResult = await invokeBackend<ExecutionResult>('apply_data_sync', {
+      sourceConnectionId: srcConnId,
+      targetConnectionId: tgtConnId,
+      tables: ['sync_apply_exec'],
+      options: { insert: true, update: true, delete: false },
+    });
+    expect(applyResult.applied).toBeGreaterThan(0);
+    expect(applyResult.rolledBack).toBe(false);
+
+    const after = await invokeBackend<CompareDataSyncResult[]>('compare_data_sync', {
+      sourceConnectionId: srcConnId,
+      targetConnectionId: tgtConnId,
+      tables: ['sync_apply_exec'],
+      options: { insert: true, update: true, delete: false },
+    });
+    const table = after.find((r) => r.sourceTable === 'sync_apply_exec');
+    expect(table).toBeDefined();
+    const pending = (table!.rows ?? []).filter(
+      (r) => r.operation === 'INSERT' || r.operation === 'UPDATE' || r.operation === 'DELETE',
+    );
+    expect(pending.length).toBe(0);
   });
 });
 

@@ -9,6 +9,7 @@ pub mod compare;
 pub mod error;
 pub mod execute;
 pub mod gate;
+pub mod keyset;
 pub mod legacy;
 pub mod mapping;
 pub mod model;
@@ -26,6 +27,7 @@ pub use compare::{
 pub use error::DataSyncError;
 pub use execute::{execute_statements, ExecutionResult, StatementExecutor};
 pub use gate::{check_table_gate, CompatCode, CompatIssue, GateVerdict};
+pub use keyset::build_keyset_select_sql;
 pub use legacy::{
     is_overwrite_copy_retired_message, refuse_overwrite_copy, OVERWRITE_COPY_RETIRED,
 };

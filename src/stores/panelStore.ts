@@ -187,6 +187,7 @@ interface PanelActions {
   setResultViewMode: (panelId: string, mode: 'table' | 'chart') => void;
 
   loadHistory: (configId?: string) => Promise<void>;
+  openQueryHistory: (configId?: string) => Promise<void>;
   toggleHistory: () => void;
   loadFavorites: (configId?: string) => Promise<void>;
   addFavorite: (title: string, sql: string, configId: string) => Promise<void>;
@@ -401,6 +402,11 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
   loadHistory: async (configId) => {
     const queryHistory = await queryCommands.getQueryHistory(100, configId);
     set({ queryHistory });
+  },
+
+  openQueryHistory: async (configId) => {
+    set({ historyVisible: true, favoritesVisible: false });
+    await get().loadHistory(configId);
   },
 
   toggleHistory: () => set((s) => ({ historyVisible: !s.historyVisible })),

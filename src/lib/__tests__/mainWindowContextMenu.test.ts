@@ -20,6 +20,7 @@ const labels = {
   copyName: 'Copy Name',
   copyConnectionUrl: 'Copy URL',
   newQuery: 'New Query',
+  queryHistory: 'Query History',
   executeSqlFile: 'Execute SQL File',
   createDatabase: 'Create Database',
   createSchema: 'Create Schema',
@@ -136,6 +137,31 @@ describe('mainWindowContextMenu', () => {
 
     const withoutSql = buildMainConnectionContextMenuItems(baseArgs);
     expect(withoutSql.some((i) => i.kind === 'item' && i.id === 'execute-sql-file')).toBe(false);
+  });
+
+  it('includes query-history when handler provided', () => {
+    const onQueryHistory = vi.fn();
+    const items = buildMainConnectionContextMenuItems({
+      labels,
+      isConnected: true,
+      grouped: false,
+      moveTargets: [],
+      onOpenOrDisconnect: () => undefined,
+      onCopyName: () => undefined,
+      onCopyUrl: () => undefined,
+      onNewQuery: () => undefined,
+      onQueryHistory,
+      onRefresh: () => undefined,
+      onEdit: () => undefined,
+      onDuplicate: () => undefined,
+      onMoveToGroup: () => undefined,
+      onRemoveFromGroup: () => undefined,
+      onDelete: () => undefined,
+    });
+    expect(items.some((i) => i.kind === 'item' && i.id === 'query-history')).toBe(true);
+    const item = items.find((i) => i.kind === 'item' && i.id === 'query-history');
+    if (item?.kind === 'item') item.action();
+    expect(onQueryHistory).toHaveBeenCalledOnce();
   });
 
   it('includes create-database/schema/user when handlers provided', () => {

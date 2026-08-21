@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import type { Value } from '../types';
 
 export interface SyncTask {
   id: string;
@@ -18,6 +19,65 @@ export interface SyncTask {
   updatedAt: string;
 }
 
+export type DataSyncOperation = 'INSERT' | 'UPDATE' | 'DELETE' | 'UNCHANGED';
+
+export type DataSyncMappingStatus =
+  | 'MATCHED'
+  | 'UNMAPPED_SOURCE'
+  | 'UNMAPPED_TARGET'
+  | 'DISABLED'
+  | 'INCOMPATIBLE';
+
+export interface DataSyncRowChange {
+  operation: DataSyncOperation;
+  key: Value[];
+  sourceRow: (Value | null)[] | null;
+  targetRow: (Value | null)[] | null;
+  changedColumns: string[];
+  selected: boolean;
+}
+
+export interface DataSyncTableResult {
+  sourceTable: string;
+  targetTable: string;
+  status: DataSyncMappingStatus;
+  incompatibleReason?: string | null;
+  warnings?: string[];
+  rows?: DataSyncRowChange[];
+}
+
+export interface SyncOptions {
+  insert: boolean;
+  update: boolean;
+  delete: boolean;
+  matchingStrategy?: 'primaryKey';
+  batchSize?: number;
+  largeValueMode?: 'full' | 'hash';
+}
+
+export interface DataSyncSqlStatement {
+  table: string;
+  operation: DataSyncOperation;
+  sql: string;
+  previewSql: string;
+  parameters: Value[];
+  rowKey: Value[];
+}
+
+export interface DataSyncExecutionResult {
+  applied: number;
+  rolledBack: boolean;
+}
+
+export const DEFAULT_SYNC_OPTIONS: SyncOptions = {
+  insert: true,
+  update: true,
+  delete: false,
+  matchingStrategy: 'primaryKey',
+  batchSize: 1000,
+  largeValueMode: 'full',
+};
+
 export const syncCommands = {
   getSyncTasks: () => invoke<SyncTask[]>('get_sync_tasks'),
 
@@ -31,11 +91,11 @@ export const syncCommands = {
 
   executeDataSync: (
     targetConnectionId: string,
-    statements: unknown[],
+    statements: DataSyncSqlStatement[],
     jobId?: string,
     targetDatabase?: string,
   ) =>
-    invoke<{ applied: number; rolledBack: boolean }>('execute_data_sync', {
+    invoke<DataSyncExecutionResult>('execute_data_sync', {
       targetConnectionId,
       statements,
       jobId: jobId ?? null,
@@ -51,23 +111,20 @@ export const syncCommands = {
     jobId?: string,
     sourceDatabase?: string,
     targetDatabase?: string,
+    sourceSchema?: string,
+    targetSchema?: string,
+    options?: SyncOptions,
   ) =>
-    invoke<
-      Array<{
-        sourceTable: string;
-        targetTable: string;
-        status: string;
-        incompatibleReason?: string | null;
-        warnings?: string[];
-        rows?: Array<{ operation: string }>;
-      }>
-    >('compare_data_sync', {
+    invoke<DataSyncTableResult[]>('compare_data_sync', {
       sourceConnectionId,
       targetConnectionId,
       tables: tables ?? null,
       jobId: jobId ?? null,
       sourceDatabase: sourceDatabase ?? null,
       targetDatabase: targetDatabase ?? null,
+      sourceSchema: sourceSchema ?? null,
+      targetSchema: targetSchema ?? null,
+      options: options ?? null,
     }),
 
   applyDataSync: (
@@ -77,14 +134,20 @@ export const syncCommands = {
     jobId?: string,
     sourceDatabase?: string,
     targetDatabase?: string,
+    sourceSchema?: string,
+    targetSchema?: string,
+    options?: SyncOptions,
   ) =>
-    invoke<{ applied: number; rolledBack: boolean }>('apply_data_sync', {
+    invoke<DataSyncExecutionResult>('apply_data_sync', {
       sourceConnectionId,
       targetConnectionId,
       tables,
       jobId: jobId ?? null,
       sourceDatabase: sourceDatabase ?? null,
       targetDatabase: targetDatabase ?? null,
+      sourceSchema: sourceSchema ?? null,
+      targetSchema: targetSchema ?? null,
+      options: options ?? null,
     }),
 
   inspectDataSync: (
@@ -92,20 +155,37 @@ export const syncCommands = {
     targetConnectionId: string,
     sourceDatabase?: string,
     targetDatabase?: string,
+    sourceSchema?: string,
+    targetSchema?: string,
   ) =>
-    invoke<
-      Array<{
-        sourceTable: string;
-        targetTable: string;
-        status: string;
-        incompatibleReason?: string | null;
-        warnings?: string[];
-        rows?: Array<{ operation: string }>;
-      }>
-    >('inspect_data_sync', {
+    invoke<DataSyncTableResult[]>('inspect_data_sync', {
       sourceConnectionId,
       targetConnectionId,
       sourceDatabase: sourceDatabase ?? null,
       targetDatabase: targetDatabase ?? null,
+      sourceSchema: sourceSchema ?? null,
+      targetSchema: targetSchema ?? null,
+    }),
+
+  /** Expects backend `generate_data_sync_sql` (Phase A); falls back client-side in UI. */
+  generateDataSyncSql: (
+    sourceConnectionId: string,
+    targetConnectionId: string,
+    tables: DataSyncTableResult[],
+    options: SyncOptions,
+    sourceDatabase?: string,
+    targetDatabase?: string,
+    sourceSchema?: string,
+    targetSchema?: string,
+  ) =>
+    invoke<DataSyncSqlStatement[]>('generate_data_sync_sql', {
+      sourceConnectionId,
+      targetConnectionId,
+      tables,
+      options,
+      sourceDatabase: sourceDatabase ?? null,
+      targetDatabase: targetDatabase ?? null,
+      sourceSchema: sourceSchema ?? null,
+      targetSchema: targetSchema ?? null,
     }),
 };

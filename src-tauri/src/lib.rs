@@ -4,6 +4,7 @@ mod cache;
 mod commands;
 mod dashboard;
 pub mod data_sync;
+mod data_transfer;
 pub mod db;
 mod i18n_locale;
 mod log_redact;
@@ -103,6 +104,8 @@ pub(crate) fn menu_action_for_id(id: &str) -> MenuAction {
         "open-settings" => MenuAction::Emit("menu:open-settings"),
         "new-connection" => MenuAction::Emit("menu:new-connection"),
         "schema-diff" => MenuAction::Emit("menu:schema-diff"),
+        "data-sync" => MenuAction::Emit("menu:data-sync"),
+        "data-transfer" => MenuAction::Emit("menu:data-transfer"),
         "workflow" => MenuAction::Emit("menu:workflow"),
         "dashboard" => MenuAction::Emit("menu:dashboard"),
         "backup" => MenuAction::Emit("menu:backup"),
@@ -361,6 +364,12 @@ fn setup_menu(
     let schema_diff_item = MenuItemBuilder::new(t("schema-diff"))
         .id("schema-diff")
         .build(handle)?;
+    let data_sync_item = MenuItemBuilder::new(t("data-sync"))
+        .id("data-sync")
+        .build(handle)?;
+    let data_transfer_item = MenuItemBuilder::new(t("data-transfer"))
+        .id("data-transfer")
+        .build(handle)?;
     let workflow_item = MenuItemBuilder::new(t("workflow"))
         .id("workflow")
         .build(handle)?;
@@ -445,6 +454,8 @@ fn setup_menu(
     // ── Tools ──
     let tools_menu = SubmenuBuilder::new(handle, t("tools"))
         .item(&schema_diff_item)
+        .item(&data_sync_item)
+        .item(&data_transfer_item)
         .separator()
         .item(&workflow_item)
         .item(&dashboard_item)
@@ -869,7 +880,14 @@ pub fn run() {
             commands::cancel_data_sync,
             commands::compare_data_sync,
             commands::apply_data_sync,
+            commands::generate_data_sync_sql,
+            commands::revalidate_data_sync,
             commands::inspect_data_sync,
+            commands::classify_transfer_pair,
+            commands::inspect_data_transfer,
+            commands::preview_data_transfer,
+            commands::execute_data_transfer,
+            commands::cancel_data_transfer,
             commands::get_sync_tasks,
             commands::save_sync_task_direct,
             commands::delete_sync_task,

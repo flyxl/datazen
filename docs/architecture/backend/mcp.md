@@ -31,7 +31,9 @@ Workflow 引擎本身在 [`workflow` 模块](./workflow.md)（若尚未拆文档
 - `list_connections` / `list_databases` / `list_tables` / `search_tables` / `query` / `get_schema`
 - `explain_query` / `describe_table` / `list_workflows` / `run_workflow`
 
-`search_tables` 是 `list_tables` 的补充：当数据库表数量很大（>500）时，LLM 优先使用 `search_tables` 按关键字搜索匹配的表，而不是列出全部表名。
+**Data Sync (not exposed via MCP in V1):** GUI Data Sync (`compare_data_sync` / `apply_data_sync` / `execute_data_sync`) is intentionally **not** registered as MCP tools. Row-level sync apply is high-risk write; compare would require runtime `connection_id` pairs and table mapping context. External agents should use read-only schema tools (`list_tables`, `get_schema`) plus the GUI or future dedicated APIs if added. Any future MCP exposure must reuse the same permission model: compare-only tools allowed in `read_only`; apply/execute tools blocked by default (`mcpDisabledTools`) and must honor target connection `read_only` gates.
+
+`search_tables` is `list_tables` 的补充：当数据库表数量很大（>500）时，LLM 优先使用 `search_tables` 按关键字搜索匹配的表，而不是列出全部表名。
 
 **Server Resources:**
 - `datazen://connections` / `datazen://query-history`
