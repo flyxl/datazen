@@ -43,6 +43,8 @@ export interface ConnectionConfig {
   options?: Record<string, unknown>;
   /** When true, the host rejects mutating SQL and row edits. */
   readOnly?: boolean;
+  /** When true, sorted first within the connection group in the navigator. */
+  pinned?: boolean;
 }
 
 export interface ServerInfo {

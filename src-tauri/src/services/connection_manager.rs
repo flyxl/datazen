@@ -633,6 +633,7 @@ mod tests {
             server_version: None,
             options: None,
             read_only: false,
+            pinned: false,
         }
     }
 
@@ -712,6 +713,7 @@ mod tests {
             server_version: None,
             options: None,
             read_only: false,
+            pinned: false,
         }
     }
 

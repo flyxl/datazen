@@ -134,6 +134,13 @@ const zhCN = {
   'main.ctx.queryHistory': '历史查询',
   'main.ctx.executeSqlFile': '执行 SQL 文件...',
   'main.ctx.refresh': '刷新',
+  'main.ctx.pinConnection': '置顶连接',
+  'main.ctx.unpinConnection': '取消置顶',
+  'main.ctx.objectFilter': '对象过滤器…',
+  'main.ctx.processList': '进程列表…',
+  'main.ctx.serverStatus': '服务器状态…',
+  'main.ctx.backup': '备份数据库…',
+  'main.ctx.restore': '恢复数据库…',
   'main.ctx.confirmDeleteConnection': '确定要删除连接「{name}」吗？此操作不可撤消。',
 
   // ── Main / Group Dialog ──
@@ -654,6 +661,22 @@ const zhCN = {
   'schema.loadDbFailed': '加载数据库失败',
   'schema.loadTablesFailed': '加载表失败',
 
+  // ── Object filter ──
+  'objectFilter.title': '对象过滤器',
+  'objectFilter.hideSystemSchemas': '隐藏系统 schema 和数据库',
+  'objectFilter.include': '表名包含',
+  'objectFilter.exclude': '表名排除',
+  'objectFilter.includePlaceholder': '例如 app_* 或 users',
+  'objectFilter.excludePlaceholder': '例如 *_tmp 或 pg_*',
+  'objectFilter.hint': '模式使用 * 作为通配符；否则按不区分大小写的子串匹配。',
+
+  // ── Process list ──
+  'processList.title': '进程列表',
+  'processList.refresh': '刷新',
+  'processList.kill': '终止',
+  'processList.killTitle': '终止进程',
+  'processList.killConfirm': '终止进程 {pid}？这可能会中断正在执行的查询。',
+
   // ── DataTable ──
   'dataTable.selectAll': '全选',
   'dataTable.selected': '已选',
@@ -817,6 +840,27 @@ const zhCN = {
   'structEditor.exportingStructure': '导出中…',
   'structEditor.exportFailed': '导出表结构失败',
   'structEditor.exportUnsupported': '当前连接类型不支持导出表结构',
+  'structEditor.ddlWarn.title': '确认结构变更',
+  'structEditor.ddlWarn.risky': '此计划包含 {risks} 语句，可能会锁定或重写表。',
+  'structEditor.ddlWarn.largeTable':
+    '估计行数约 {rows}。对大表执行在线 DDL 可能耗时较长并阻塞写入。',
+  'structEditor.ddlWarn.footer': '继续前请仔细审阅生成的 SQL。生产环境建议安排维护窗口。',
+  'structEditor.ddlWarn.confirm': '应用变更',
+
+  // ── Server Status ──
+  'serverStatus.title': '服务器状态',
+  'serverStatus.refresh': '刷新',
+  'serverStatus.loading': '正在加载服务器状态…',
+  'serverStatus.loadFailed': '加载服务器状态失败',
+  'serverStatus.invalidResponse': '服务器状态命令返回了意外数据',
+  'serverStatus.empty': '无状态数据',
+  'serverStatus.version': '版本',
+  'serverStatus.database': '数据库',
+  'serverStatus.uptime': '运行时间',
+  'serverStatus.connections': '连接数',
+  'serverStatus.activeQueries': '活动查询',
+  'serverStatus.databaseSize': '数据库大小',
+  'serverStatus.uptimeFormat': '{hours} 时 {minutes} 分 {seconds} 秒',
 
   // ── Indexes View ──
   'indexes.newIndex': '新建索引',
@@ -1430,6 +1474,17 @@ const zhCN = {
   'transfer.step.preview': '预览',
   'transfer.step.execute': '执行',
   'transfer.step.result': '结果',
+  'transfer.mapping.tables': '表',
+  'transfer.mapping.noTables': '没有可映射的已启用表。',
+  'transfer.mapping.targetTable': '目标表',
+  'transfer.mapping.createNew': '创建新表',
+  'transfer.mapping.sourceColumn': '源列',
+  'transfer.mapping.targetColumn': '目标列',
+  'transfer.mapping.skip': '跳过',
+  'transfer.mapping.pickTargetColumn': '— 未映射 —',
+  'transfer.mapping.autoMatch': '按名称自动匹配',
+  'transfer.mapping.clearUnmapped': '清除未映射',
+  'transfer.mapping.unmappedTargetWarning': '以下目标列未映射：{columns}',
   'schemaDiff.title': '结构对比',
   'schemaDiff.description':
     '以源库为目标态，对比并生成 DDL，审阅后部署到目标连接。默认仅加法变更。',

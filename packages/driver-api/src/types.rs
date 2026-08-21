@@ -81,6 +81,9 @@ pub struct ConnectionConfig {
     /// When true, mutating SQL and row edits are rejected by the host.
     #[serde(default)]
     pub read_only: bool,
+    /// When true, the connection is sorted first within its group in the navigator.
+    #[serde(default)]
+    pub pinned: bool,
 }
 
 fn default_connection_timeout() -> u32 {
@@ -124,6 +127,7 @@ mod connection_config_tests {
             server_version: None,
             options: None,
             read_only: false,
+            pinned: false,
         }
     }
 
@@ -138,6 +142,7 @@ mod connection_config_tests {
         assert_eq!(c.max_pool_size, 10);
         assert_eq!(c.effective_max_pool_size(), 10);
         assert!(!c.read_only);
+        assert!(!c.pinned);
     }
 
     #[test]

@@ -21,6 +21,13 @@ export type MainWindowContextMenuLabels = {
   createSchema: string;
   createUser: string;
   refresh: string;
+  pinConnection: string;
+  unpinConnection: string;
+  objectFilter: string;
+  processList: string;
+  serverStatus: string;
+  backup: string;
+  restore: string;
 };
 
 export function buildMainBlankContextMenuItems(args: {
@@ -73,6 +80,7 @@ export function buildMainConnectionContextMenuItems(args: {
   labels: MainWindowContextMenuLabels;
   isConnected: boolean;
   grouped: boolean;
+  pinned?: boolean;
   moveTargets: Array<{ id: string; label: string }>;
   onOpenOrDisconnect: () => void;
   onCopyName: () => void;
@@ -83,6 +91,12 @@ export function buildMainConnectionContextMenuItems(args: {
   onCreateDatabase?: () => void;
   onCreateSchema?: () => void;
   onCreateUser?: () => void;
+  onPin?: () => void;
+  onObjectFilter?: () => void;
+  onProcessList?: () => void;
+  onServerStatus?: () => void;
+  onBackup?: () => void;
+  onRestore?: () => void;
   onRefresh: () => void;
   onEdit: () => void;
   onDuplicate: () => void;
@@ -151,6 +165,65 @@ export function buildMainConnectionContextMenuItems(args: {
         id: 'create-user',
         label: args.labels.createUser,
         action: args.onCreateUser,
+      });
+    }
+  }
+
+  if (
+    args.onPin ||
+    args.onObjectFilter ||
+    args.onProcessList ||
+    args.onServerStatus ||
+    args.onBackup ||
+    args.onRestore
+  ) {
+    items.push({ kind: 'separator' });
+    if (args.onPin) {
+      items.push({
+        kind: 'item',
+        id: args.pinned ? 'unpin-connection' : 'pin-connection',
+        label: args.pinned ? args.labels.unpinConnection : args.labels.pinConnection,
+        action: args.onPin,
+      });
+    }
+    if (args.onObjectFilter) {
+      items.push({
+        kind: 'item',
+        id: 'object-filter',
+        label: args.labels.objectFilter,
+        action: args.onObjectFilter,
+      });
+    }
+    if (args.onProcessList) {
+      items.push({
+        kind: 'item',
+        id: 'process-list',
+        label: args.labels.processList,
+        action: args.onProcessList,
+      });
+    }
+    if (args.onServerStatus) {
+      items.push({
+        kind: 'item',
+        id: 'server-status',
+        label: args.labels.serverStatus,
+        action: args.onServerStatus,
+      });
+    }
+    if (args.onBackup) {
+      items.push({
+        kind: 'item',
+        id: 'backup',
+        label: args.labels.backup,
+        action: args.onBackup,
+      });
+    }
+    if (args.onRestore) {
+      items.push({
+        kind: 'item',
+        id: 'restore',
+        label: args.labels.restore,
+        action: args.onRestore,
       });
     }
   }

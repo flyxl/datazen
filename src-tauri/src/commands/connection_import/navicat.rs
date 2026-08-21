@@ -558,6 +558,7 @@ pub fn parse(xml: &str) -> Result<ParsedImport, CommandError> {
             server_version: None,
             options: None,
             read_only: false,
+            pinned: false,
         });
     }
 

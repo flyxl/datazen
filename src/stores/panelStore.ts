@@ -75,6 +75,14 @@ export interface PrivilegesPanel extends PanelBase {
   type: 'privileges';
 }
 
+export interface ServerStatusPanel extends PanelBase {
+  type: 'server-status';
+}
+
+export interface ProcessesPanel extends PanelBase {
+  type: 'processes';
+}
+
 export interface DatabaseObjectPanel extends PanelBase {
   type: 'db-object';
   objectKind: 'function' | 'procedure' | 'trigger' | 'sequence' | 'type';
@@ -95,6 +103,8 @@ export type Panel =
   | ErDiagramPanel
   | ObjectsPanel
   | PrivilegesPanel
+  | ServerStatusPanel
+  | ProcessesPanel
   | DatabaseObjectPanel
   | RedisDbPanel;
 

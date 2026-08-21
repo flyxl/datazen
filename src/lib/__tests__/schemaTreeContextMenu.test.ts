@@ -30,6 +30,8 @@ const labels: SchemaTreeContextMenuLabels = {
   dataTransfer: 'Data Transfer',
   compareSchema: 'Compare Schema',
   compareData: 'Compare Data',
+  backup: 'Backup',
+  restore: 'Restore',
 };
 
 function ids(items: ReturnType<typeof buildSchemaTreeContextMenuItems>): string[] {
@@ -551,5 +553,25 @@ describe('buildSchemaTreeContextMenuItems', () => {
       categoryId: 'views',
     });
     expect(ids(items)).not.toContain('new-table');
+  });
+
+  it('database menu includes backup/restore when handlers provided', () => {
+    const onBackup = vi.fn();
+    const onRestore = vi.fn();
+    const items = buildSchemaTreeContextMenuItems({
+      kind: 'database',
+      labels,
+      handlers: {
+        onRefresh: vi.fn(),
+        onNewQuery: vi.fn(),
+        onCopyDatabaseName: vi.fn(),
+        onViewErDiagram: vi.fn(),
+        onBackup,
+        onRestore,
+      },
+      readOnly: false,
+    });
+    expect(ids(items)).toContain('backup');
+    expect(ids(items)).toContain('restore');
   });
 });

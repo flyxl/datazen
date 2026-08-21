@@ -24,6 +24,8 @@ export interface ConnectionViewActions {
     schema?: string,
   ) => void;
   openQueryHistory?: () => void;
+  openServerStatus?: () => void;
+  openProcessList?: () => void;
 }
 
 export interface ConnectionViewProps {

@@ -301,6 +301,8 @@ mod tests {
                 target_column: "id".into(),
                 skip: false,
             }],
+            source_columns: vec!["id".into()],
+            target_columns: vec!["id".into()],
             incompatible_reason: None,
             source_row_count: Some(10),
         }];
@@ -333,6 +335,8 @@ mod tests {
                 target_column: "id".into(),
                 skip: false,
             }],
+            source_columns: vec!["id".into()],
+            target_columns: vec!["id".into()],
             incompatible_reason: None,
             source_row_count: Some(10),
         }];
@@ -380,6 +384,8 @@ mod tests {
             create_new: true,
             enabled: true,
             column_mappings: vec![],
+            source_columns: vec!["id".into()],
+            target_columns: vec![],
             incompatible_reason: None,
             source_row_count: None,
         }];

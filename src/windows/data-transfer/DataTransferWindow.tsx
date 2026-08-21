@@ -12,6 +12,7 @@ import {
   type TransferJob,
   type TransferMode,
   type TransferPreview,
+  type TransferTableMapping,
   type TransferTableResult,
   type TransferExecutionResult,
   type WriteMode,
@@ -23,6 +24,8 @@ import { useSettingsStore } from '../../stores/settingsStore';
 import { listenCrossWindow } from '../../lib/crossWindowBus';
 import { isTransferTargetSupported, resolveTransferPairing } from '../../lib/transferPairing';
 import type { ConnectionConfig } from '../../types';
+import { TransferMappingStep } from './TransferMappingStep';
+import { normalizeColumnMappings, tableHasActiveMappings } from './transferMappingView';
 
 type WizardStep =
   | 'endpoints'
@@ -71,6 +74,7 @@ export function DataTransferWindow() {
   const [executing, setExecuting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [errorOpen, setErrorOpen] = useState(false);
+  const [selectedMappingTable, setSelectedMappingTable] = useState('');
   const jobIdRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -191,6 +195,20 @@ export function DataTransferWindow() {
     };
   }, [targetId, connections, ensureConnected]);
 
+  const tablesToMappings = useCallback(
+    (): TransferTableMapping[] =>
+      tables
+        .filter((tbl) => tbl.enabled && tbl.sourceTable)
+        .map((tbl) => ({
+          sourceTable: tbl.sourceTable,
+          targetTable: tbl.targetTable,
+          createNew: tbl.createNew,
+          enabled: tbl.enabled,
+          columnMappings: normalizeColumnMappings(tbl),
+        })),
+    [tables],
+  );
+
   const buildJob = useCallback((): TransferJob | null => {
     const srcConnId = activeConns[sourceId];
     const tgtConnId = activeConns[targetId];
@@ -200,15 +218,7 @@ export function DataTransferWindow() {
       target: { connectionId: tgtConnId, database: targetDatabase },
       mode,
       writeMode,
-      tables: tables
-        .filter((tbl) => tbl.enabled && tbl.sourceTable)
-        .map((tbl) => ({
-          sourceTable: tbl.sourceTable,
-          targetTable: tbl.targetTable,
-          createNew: tbl.createNew,
-          enabled: tbl.enabled,
-          columnMappings: tbl.columnMappings,
-        })),
+      tables: tablesToMappings(),
       options: {
         batchSize,
         stopOnError,
@@ -224,6 +234,7 @@ export function DataTransferWindow() {
     mode,
     writeMode,
     tables,
+    tablesToMappings,
     batchSize,
     stopOnError,
     confirmedDestructive,
@@ -246,7 +257,20 @@ export function DataTransferWindow() {
         sourceDatabase,
         targetDatabase,
       );
-      setTables(rows.filter((r) => r.sourceTable));
+      const enabled = rows
+        .filter((r) => r.sourceTable)
+        .map((r) => ({
+          ...r,
+          columnMappings: normalizeColumnMappings(r),
+        }));
+      setTables(enabled);
+      if (enabled.length > 0) {
+        setSelectedMappingTable((prev) =>
+          prev && enabled.some((t) => t.sourceTable === prev)
+            ? prev
+            : (enabled.find((t) => t.enabled)?.sourceTable ?? enabled[0].sourceTable),
+        );
+      }
     } catch (e) {
       setErrorMsg(e instanceof Error ? e.message : String(e));
       setErrorOpen(true);
@@ -314,9 +338,9 @@ export function DataTransferWindow() {
       case 'mode':
         return true;
       case 'objects':
-        return tables.some((tbl) => tbl.enabled);
+        return tables.length === 0 || tables.some((tbl) => tbl.enabled);
       case 'mapping':
-        return tables.some((tbl) => tbl.enabled && tbl.columnMappings.some((c) => !c.skip));
+        return tables.some((tbl) => tbl.enabled && tableHasActiveMappings(tbl));
       case 'options':
         if (writeMode !== 'insert' && !confirmedDestructive) return false;
         return true;
@@ -363,6 +387,54 @@ export function DataTransferWindow() {
     const prev = STEPS[stepIndex - 1];
     if (prev) setStep(prev);
   };
+
+  const updateTable = useCallback((sourceTable: string, patch: Partial<TransferTableResult>) => {
+    setTables((prev) =>
+      prev.map((tbl) => (tbl.sourceTable === sourceTable ? { ...tbl, ...patch } : tbl)),
+    );
+  }, []);
+
+  const refreshTableMapping = useCallback(
+    async (sourceTable: string) => {
+      const srcConnId = activeConns[sourceId];
+      const tgtConnId = activeConns[targetId];
+      if (!srcConnId || !tgtConnId || !sourceDatabase || !targetDatabase) return;
+
+      const payload = tablesToMappings();
+      if (payload.length === 0) return;
+
+      try {
+        const rows = await transferCommands.inspect(
+          srcConnId,
+          tgtConnId,
+          mode,
+          sourceDatabase,
+          targetDatabase,
+          payload,
+        );
+        setTables((prev) =>
+          prev.map((tbl) => {
+            if (tbl.sourceTable !== sourceTable) return tbl;
+            const inspected = rows.find((r) => r.sourceTable === sourceTable);
+            if (!inspected) return tbl;
+            return {
+              ...tbl,
+              status: inspected.status,
+              targetColumns: inspected.targetColumns,
+              sourceColumns: inspected.sourceColumns,
+              incompatibleReason: inspected.incompatibleReason,
+              createNew: tbl.createNew,
+              targetTable: tbl.targetTable,
+              columnMappings: tbl.columnMappings,
+            };
+          }),
+        );
+      } catch {
+        // Keep local edits if refresh fails.
+      }
+    },
+    [activeConns, sourceId, targetId, sourceDatabase, targetDatabase, mode, tablesToMappings],
+  );
 
   const toggleTable = (sourceTable: string) => {
     setTables((prev) =>
@@ -502,22 +574,14 @@ export function DataTransferWindow() {
         )}
 
         {step === 'mapping' && (
-          <div className="space-y-3">
-            {tables
-              .filter((tbl) => tbl.enabled)
-              .map((tbl) => (
-                <div key={tbl.sourceTable} className="rounded border border-border p-3">
-                  <div className="mb-2 text-sm font-medium">{tbl.sourceTable}</div>
-                  <ul className="text-xs text-fg-muted">
-                    {tbl.columnMappings.map((col) => (
-                      <li key={col.sourceColumn}>
-                        {col.sourceColumn} → {col.targetColumn}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ))}
-          </div>
+          <TransferMappingStep
+            tables={tables}
+            selectedSourceTable={selectedMappingTable}
+            mode={mode}
+            onSelectTable={setSelectedMappingTable}
+            onUpdateTable={updateTable}
+            onTargetTableCommit={(sourceTable) => void refreshTableMapping(sourceTable)}
+          />
         )}
 
         {step === 'options' && (

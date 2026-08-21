@@ -145,6 +145,10 @@ pub struct TableInspectResult {
     pub create_new: bool,
     pub enabled: bool,
     pub column_mappings: Vec<ColumnMapping>,
+    #[serde(default)]
+    pub source_columns: Vec<String>,
+    #[serde(default)]
+    pub target_columns: Vec<String>,
     pub incompatible_reason: Option<String>,
     pub source_row_count: Option<u64>,
 }

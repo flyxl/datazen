@@ -30,6 +30,8 @@ import { ErDiagramView } from './ErDiagramView';
 import { ObjectBrowser } from './ObjectBrowser';
 import { DatabaseObjectView } from './DatabaseObjectView';
 import { PrivilegeView } from './PrivilegeView';
+import { ProcessListView } from './ProcessListView';
+import { ServerStatusView } from './ServerStatusView';
 
 export interface PanelContentRendererProps {
   activePanel: Panel | null;
@@ -298,6 +300,14 @@ function SqlPanelContent({
 
   if (panel.type === 'privileges') {
     return <PrivilegeView connectionId={panel.connectionId} databaseType={panel.databaseType} />;
+  }
+
+  if (panel.type === 'server-status') {
+    return <ServerStatusView connectionId={panel.connectionId} />;
+  }
+
+  if (panel.type === 'processes') {
+    return <ProcessListView connectionId={panel.connectionId} />;
   }
 
   if (panel.type === 'db-object') {

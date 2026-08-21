@@ -138,6 +138,13 @@ const en: Record<TranslationKey, string> = {
   'main.ctx.queryHistory': 'Query History',
   'main.ctx.executeSqlFile': 'Execute SQL File...',
   'main.ctx.refresh': 'Refresh',
+  'main.ctx.pinConnection': 'Pin Connection',
+  'main.ctx.unpinConnection': 'Unpin Connection',
+  'main.ctx.objectFilter': 'Object Filter…',
+  'main.ctx.processList': 'Process List…',
+  'main.ctx.serverStatus': 'Server Status…',
+  'main.ctx.backup': 'Backup Database…',
+  'main.ctx.restore': 'Restore Database…',
   'main.ctx.confirmDeleteConnection':
     'Are you sure you want to delete connection "{name}"? This cannot be undone.',
 
@@ -665,6 +672,23 @@ const en: Record<TranslationKey, string> = {
   'schema.loadDbFailed': 'Failed to load databases',
   'schema.loadTablesFailed': 'Failed to load tables',
 
+  // ── Object filter ──
+  'objectFilter.title': 'Object Filter',
+  'objectFilter.hideSystemSchemas': 'Hide system schemas and databases',
+  'objectFilter.include': 'Table name include',
+  'objectFilter.exclude': 'Table name exclude',
+  'objectFilter.includePlaceholder': 'e.g. app_* or users',
+  'objectFilter.excludePlaceholder': 'e.g. *_tmp or pg_*',
+  'objectFilter.hint':
+    'Patterns use * as a wildcard; otherwise a case-insensitive substring match is used.',
+
+  // ── Process list ──
+  'processList.title': 'Process List',
+  'processList.refresh': 'Refresh',
+  'processList.kill': 'Kill',
+  'processList.killTitle': 'Kill Process',
+  'processList.killConfirm': 'Kill process {pid}? This may terminate an active query.',
+
   // ── DataTable ──
   'dataTable.selectAll': 'Select All',
   'dataTable.selected': 'Selected',
@@ -830,6 +854,29 @@ const en: Record<TranslationKey, string> = {
   'structEditor.exportFailed': 'Failed to export table structure',
   'structEditor.exportUnsupported':
     'Exporting table structure is not supported for this connection type',
+  'structEditor.ddlWarn.title': 'Confirm structure change',
+  'structEditor.ddlWarn.risky':
+    'This plan includes {risks} statements that may lock or rewrite the table.',
+  'structEditor.ddlWarn.largeTable':
+    'Estimated row count is about {rows}. Online DDL on large tables can take a long time and block writes.',
+  'structEditor.ddlWarn.footer':
+    'Review the generated SQL carefully before continuing. Consider a maintenance window for production.',
+  'structEditor.ddlWarn.confirm': 'Apply changes',
+
+  // ── Server Status ──
+  'serverStatus.title': 'Server Status',
+  'serverStatus.refresh': 'Refresh',
+  'serverStatus.loading': 'Loading server status…',
+  'serverStatus.loadFailed': 'Failed to load server status',
+  'serverStatus.invalidResponse': 'Unexpected response from server status command',
+  'serverStatus.empty': 'No status data',
+  'serverStatus.version': 'Version',
+  'serverStatus.database': 'Database',
+  'serverStatus.uptime': 'Uptime',
+  'serverStatus.connections': 'Connections',
+  'serverStatus.activeQueries': 'Active queries',
+  'serverStatus.databaseSize': 'Database size',
+  'serverStatus.uptimeFormat': '{hours}h {minutes}m {seconds}s',
 
   // ── Indexes View ──
   'indexes.newIndex': 'New Index',
@@ -1457,6 +1504,17 @@ const en: Record<TranslationKey, string> = {
   'transfer.step.preview': 'Preview',
   'transfer.step.execute': 'Execute',
   'transfer.step.result': 'Result',
+  'transfer.mapping.tables': 'Tables',
+  'transfer.mapping.noTables': 'No enabled tables to map.',
+  'transfer.mapping.targetTable': 'Target table',
+  'transfer.mapping.createNew': 'Create new table',
+  'transfer.mapping.sourceColumn': 'Source column',
+  'transfer.mapping.targetColumn': 'Target column',
+  'transfer.mapping.skip': 'Skip',
+  'transfer.mapping.pickTargetColumn': '— unmapped —',
+  'transfer.mapping.autoMatch': 'Auto-match by name',
+  'transfer.mapping.clearUnmapped': 'Clear unmapped',
+  'transfer.mapping.unmappedTargetWarning': 'Target columns not mapped: {columns}',
   'schemaDiff.title': 'Schema Diff',
   'schemaDiff.description':
     'Treat source as desired state: compare, generate DDL, review, then deploy to target. Additive-only by default.',

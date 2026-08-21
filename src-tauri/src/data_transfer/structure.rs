@@ -277,6 +277,8 @@ mod tests {
             create_new: true,
             enabled: true,
             column_mappings: vec![],
+            source_columns: vec![],
+            target_columns: vec![],
             incompatible_reason: None,
             source_row_count: None,
         };

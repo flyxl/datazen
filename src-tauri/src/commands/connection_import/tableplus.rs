@@ -561,6 +561,7 @@ fn from_items(items: Vec<TablePlusConnection>) -> Result<ParsedImport, CommandEr
             server_version: None,
             options: None,
             read_only: false,
+            pinned: false,
         });
     }
 
@@ -644,6 +645,7 @@ mod tests {
             server_version: None,
             options: None,
             read_only: false,
+            pinned: false,
         };
         let bytes = export_connections(&[conn], "share-secret").unwrap();
         assert_eq!(&bytes[0..2], &[0x03, 0x01]);
@@ -678,6 +680,7 @@ mod tests {
             server_version: None,
             options: None,
             read_only: false,
+            pinned: false,
         };
         let bytes = export_connections(&[conn], "pw").unwrap();
         let parsed = parse(&bytes, "pw").unwrap();

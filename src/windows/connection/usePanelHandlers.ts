@@ -12,6 +12,8 @@ import {
   type ErDiagramPanel,
   type ObjectsPanel,
   type PrivilegesPanel,
+  type ProcessesPanel,
+  type ServerStatusPanel,
   type DatabaseObjectPanel,
   type ConnectionContext,
 } from '../../stores/panelStore';
@@ -32,6 +34,8 @@ export interface PanelHandlers {
     schema?: string,
   ) => void;
   handleOpenPrivileges: () => void;
+  handleOpenServerStatus: () => void;
+  handleOpenProcessList: () => void;
   handleNewQuery: (initialSql?: string) => void;
   handleOpenQueryHistory: () => void;
   handleClosePanel: (panelId: string) => void;
@@ -299,6 +303,36 @@ export function usePanelHandlers({
     addPanel(panel);
   }, [sidebarConnCtx, connPanels, addPanel, setActivePanel]);
 
+  const handleOpenServerStatus = useCallback(() => {
+    if (!sidebarConnCtx) return;
+    const existing = connPanels.find((p) => p.type === 'server-status');
+    if (existing) {
+      setActivePanel(existing.id);
+      return;
+    }
+    const panel: ServerStatusPanel = {
+      ...sidebarConnCtx,
+      type: 'server-status',
+      id: nextPanelId('status'),
+    };
+    addPanel(panel);
+  }, [sidebarConnCtx, connPanels, addPanel, setActivePanel]);
+
+  const handleOpenProcessList = useCallback(() => {
+    if (!sidebarConnCtx) return;
+    const existing = connPanels.find((p) => p.type === 'processes');
+    if (existing) {
+      setActivePanel(existing.id);
+      return;
+    }
+    const panel: ProcessesPanel = {
+      ...sidebarConnCtx,
+      type: 'processes',
+      id: nextPanelId('proc'),
+    };
+    addPanel(panel);
+  }, [sidebarConnCtx, connPanels, addPanel, setActivePanel]);
+
   const handleNewQuery = useCallback(
     (initialSql?: string) => {
       if (!sidebarConnCtx) return;
@@ -426,6 +460,8 @@ export function usePanelHandlers({
     handleOpenObjects,
     handleOpenDbObject,
     handleOpenPrivileges,
+    handleOpenServerStatus,
+    handleOpenProcessList,
     handleNewQuery,
     handleOpenQueryHistory,
     handleClosePanel,

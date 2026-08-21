@@ -159,10 +159,18 @@ export function openSchemaDiffWindow() {
   });
 }
 
-export function openBackupWindow(mode: 'backup' | 'restore' = 'backup') {
+export function openBackupWindow(
+  mode: 'backup' | 'restore' = 'backup',
+  prefill?: { configId?: string; database?: string },
+) {
   const restore = mode === 'restore';
   openSingletonWindow(restore ? 'backup-restore-singleton' : 'backup-singleton', {
-    params: { window: 'backup', ...(restore ? { mode: 'restore' } : {}) },
+    params: {
+      window: 'backup',
+      ...(restore ? { mode: 'restore' } : {}),
+      ...(prefill?.configId ? { configId: prefill.configId } : {}),
+      ...(prefill?.database ? { database: prefill.database } : {}),
+    },
     width: 750,
     height: 520,
     minWidth: 600,

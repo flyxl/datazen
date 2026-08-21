@@ -115,6 +115,7 @@ fn sample_config(cfg: &PgTestConfig, id: &str) -> ConnectionConfig {
         server_version: None,
         options: None,
         read_only: false,
+        pinned: false,
     }
 }
 

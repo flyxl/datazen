@@ -1,5 +1,6 @@
 use datazen_driver_api::*;
 use serde_json::json;
+use sqlx::Row;
 
 pub fn pg_admin_command_definitions() -> Vec<DriverCommandDefinition> {
     let mut cmds = vec![
@@ -7,6 +8,35 @@ pub fn pg_admin_command_definitions() -> Vec<DriverCommandDefinition> {
         execute_command_definition(),
         query_stream_command_definition(),
     ];
+
+    cmds.push(DriverCommandDefinition {
+        id: "server_status_snapshot".into(),
+        name: "Server Status Snapshot".into(),
+        description: Some(
+            "Read-only snapshot of server uptime, connections, and database size".into(),
+        ),
+        input_schema: json!({ "type": "object", "properties": {} }),
+        output_schema: None,
+        permissions: vec![],
+        metadata: DriverCommandMetadata::new(CommandCategory::Observe, CommandAccessLevel::Read),
+    });
+
+    cmds.push(DriverCommandDefinition {
+        id: "estimate_table_rows".into(),
+        name: "Estimate Table Rows".into(),
+        description: Some("Cheap row estimate from pg_class statistics".into()),
+        input_schema: json!({
+            "type": "object",
+            "properties": {
+                "table": { "type": "string", "description": "Table name" },
+                "schema": { "type": "string", "description": "Schema name (defaults to public)" }
+            },
+            "required": ["table"]
+        }),
+        output_schema: None,
+        permissions: vec![],
+        metadata: DriverCommandMetadata::new(CommandCategory::Observe, CommandAccessLevel::Read),
+    });
 
     cmds.push(DriverCommandDefinition {
         id: "create_database".into(),
@@ -180,6 +210,46 @@ pub fn pg_admin_command_definitions() -> Vec<DriverCommandDefinition> {
                 "name": { "type": "string", "description": "Database name to drop" }
             },
             "required": ["name"]
+        }),
+        output_schema: None,
+        permissions: vec![],
+        metadata: DriverCommandMetadata::new(CommandCategory::Admin, CommandAccessLevel::HighRisk),
+    });
+
+    cmds.push(DriverCommandDefinition {
+        id: "list_processes".into(),
+        name: "List Processes".into(),
+        description: Some("List active server processes / sessions".into()),
+        input_schema: json!({
+            "type": "object",
+            "properties": {},
+            "x-datazen": {
+                "columns": [
+                    { "id": "pid", "name": "PID" },
+                    { "id": "user", "name": "User" },
+                    { "id": "database", "name": "Database" },
+                    { "id": "state", "name": "State" },
+                    { "id": "query", "name": "Query" },
+                    { "id": "durationMs", "name": "Duration (ms)" }
+                ]
+            }
+        }),
+        output_schema: None,
+        permissions: vec![],
+        metadata: DriverCommandMetadata::new(CommandCategory::Observe, CommandAccessLevel::Read),
+    });
+
+    cmds.push(DriverCommandDefinition {
+        id: "kill_process".into(),
+        name: "Kill Process".into(),
+        description: Some("Cancel or terminate a backend process by PID".into()),
+        input_schema: json!({
+            "type": "object",
+            "properties": {
+                "pid": { "type": "integer", "description": "Backend PID" },
+                "force": { "type": "boolean", "description": "Use pg_terminate_backend instead of pg_cancel_backend" }
+            },
+            "required": ["pid"]
         }),
         output_schema: None,
         permissions: vec![],
@@ -399,6 +469,141 @@ pub async fn execute_pg_admin_command(
     command: &str,
     input: serde_json::Value,
 ) -> Result<CommandResult, DriverError> {
+    match command {
+        "server_status_snapshot" => fetch_pg_server_status(pool).await,
+        "estimate_table_rows" => estimate_pg_table_rows(pool, &input).await,
+        "list_processes" => fetch_pg_process_list(pool).await,
+        "kill_process" => kill_pg_process(pool, &input).await,
+        _ => execute_pg_admin_sql(pool, command, input).await,
+    }
+}
+
+async fn fetch_pg_process_list(pool: &sqlx::PgPool) -> Result<CommandResult, DriverError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT
+            pid,
+            usename AS "user",
+            datname AS database,
+            state,
+            LEFT(query, 500) AS query,
+            COALESCE(EXTRACT(EPOCH FROM (now() - query_start)) * 1000, 0)::bigint AS "durationMs"
+        FROM pg_stat_activity
+        WHERE pid <> pg_backend_pid()
+        ORDER BY query_start NULLS LAST
+        "#,
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+
+    let processes: Vec<serde_json::Value> = rows
+        .iter()
+        .map(|row| {
+            json!({
+                "pid": row.get::<i32, _>("pid"),
+                "user": row.try_get::<String, _>("user").ok(),
+                "database": row.try_get::<String, _>("database").ok(),
+                "state": row.try_get::<String, _>("state").ok(),
+                "query": row.try_get::<String, _>("query").ok(),
+                "durationMs": row.try_get::<i64, _>("durationMs").unwrap_or(0),
+            })
+        })
+        .collect();
+
+    Ok(CommandResult {
+        data: json!({ "processes": processes }),
+    })
+}
+
+async fn kill_pg_process(
+    pool: &sqlx::PgPool,
+    input: &serde_json::Value,
+) -> Result<CommandResult, DriverError> {
+    use sqlx::Executor;
+    let pid = input["pid"]
+        .as_i64()
+        .ok_or_else(|| DriverError::InvalidConfig("pid is required".into()))?;
+    let force = input["force"].as_bool().unwrap_or(false);
+    let fn_name = if force {
+        "pg_terminate_backend"
+    } else {
+        "pg_cancel_backend"
+    };
+    let sql = format!("SELECT {fn_name}({pid})");
+    pool.execute(sql.as_str())
+        .await
+        .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+    Ok(CommandResult {
+        data: json!({ "ok": true }),
+    })
+}
+
+async fn fetch_pg_server_status(pool: &sqlx::PgPool) -> Result<CommandResult, DriverError> {
+    let row = sqlx::query(
+        r#"
+        SELECT
+            version() AS version,
+            current_database() AS database,
+            EXTRACT(EPOCH FROM (now() - pg_postmaster_start_time()))::bigint AS uptime_seconds,
+            (SELECT count(*)::bigint FROM pg_stat_activity) AS connections,
+            (SELECT count(*)::bigint FROM pg_stat_activity WHERE state = 'active' AND pid <> pg_backend_pid()) AS active_queries,
+            pg_size_pretty(pg_database_size(current_database())) AS database_size
+        "#,
+    )
+    .fetch_one(pool)
+    .await
+    .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+
+    Ok(CommandResult {
+        data: json!({
+            "version": row.get::<String, _>("version"),
+            "database": row.get::<String, _>("database"),
+            "uptimeSeconds": row.get::<i64, _>("uptime_seconds"),
+            "connections": row.get::<i64, _>("connections"),
+            "activeQueries": row.get::<i64, _>("active_queries"),
+            "databaseSize": row.get::<String, _>("database_size"),
+        }),
+    })
+}
+
+async fn estimate_pg_table_rows(
+    pool: &sqlx::PgPool,
+    input: &serde_json::Value,
+) -> Result<CommandResult, DriverError> {
+    let table = input["table"]
+        .as_str()
+        .ok_or_else(|| DriverError::InvalidConfig("table is required".into()))?;
+    let schema = input["schema"].as_str().unwrap_or("public");
+
+    let row = sqlx::query(
+        r#"
+        SELECT COALESCE(c.reltuples, 0)::bigint AS estimated_rows
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE c.relkind = 'r'
+          AND c.relname = $1
+          AND n.nspname = $2
+        "#,
+    )
+    .bind(table)
+    .bind(schema)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
+
+    let estimated_rows = row.map(|r| r.get::<i64, _>("estimated_rows")).unwrap_or(0);
+
+    Ok(CommandResult {
+        data: json!({ "estimatedRows": estimated_rows }),
+    })
+}
+
+async fn execute_pg_admin_sql(
+    pool: &sqlx::PgPool,
+    command: &str,
+    input: serde_json::Value,
+) -> Result<CommandResult, DriverError> {
     use sqlx::Executor;
     let sql = build_admin_sql(command, &input)?;
     for stmt in sql.split("; ") {
@@ -426,12 +631,16 @@ mod tests {
         assert!(ids.contains(&"query"));
         assert!(ids.contains(&"execute"));
         assert!(ids.contains(&"query_stream"));
+        assert!(ids.contains(&"server_status_snapshot"));
+        assert!(ids.contains(&"estimate_table_rows"));
         assert!(ids.contains(&"create_database"));
         assert!(ids.contains(&"create_schema"));
         assert!(ids.contains(&"create_user"));
         assert!(ids.contains(&"list_objects"));
         assert!(ids.contains(&"get_object_ddl"));
         assert!(ids.contains(&"list_privileges"));
+        assert!(ids.contains(&"list_processes"));
+        assert!(ids.contains(&"kill_process"));
     }
 
     #[test]

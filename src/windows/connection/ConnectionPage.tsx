@@ -826,6 +826,8 @@ export function ConnectionPage() {
                   refresh: () => actionsRef.current?.refresh(),
                   openObject: (...args) => actionsRef.current?.openObject?.(...args),
                   openQueryHistory: () => actionsRef.current?.openQueryHistory?.(),
+                  openServerStatus: () => actionsRef.current?.openServerStatus?.(),
+                  openProcessList: () => actionsRef.current?.openProcessList?.(),
                 }}
               />
             </div>
