@@ -178,6 +178,7 @@ pub fn mysql_admin_command_definitions() -> Vec<DriverCommandDefinition> {
                     { "id": "pid", "name": "PID" },
                     { "id": "user", "name": "User" },
                     { "id": "database", "name": "Database" },
+                    { "id": "client", "name": "Client" },
                     { "id": "state", "name": "State" },
                     { "id": "query", "name": "Query" },
                     { "id": "durationMs", "name": "Duration (ms)" }
@@ -439,28 +440,57 @@ async fn fetch_mysql_server_status(pool: &sqlx::MySqlPool) -> Result<CommandResu
         "delete": com_delete,
     });
 
-    Ok(CommandResult {
-        data: json!({
-            "version": version,
-            "database": database.unwrap_or_default(),
-            "uptimeSeconds": uptime_seconds,
-            "connections": connections,
-            "maxConnections": max_connections,
-            "activeQueries": active_queries,
-            "databaseSize": database_size,
-            "qps": qps,
-            "slowQueries": slow_queries,
-            "networkIn": bytes_received,
-            "networkOut": bytes_sent,
-            // 累积计数器：Host 跨刷新做差分得到每秒速率。
-            "questionsCounter": questions,
-            "newSessionsCounter": new_sessions,
-            "bytesInCounter": bytes_received,
-            "bytesOutCounter": bytes_sent,
-            "statementCounters": statement_counters,
-            "statusVariables": status_variables,
-        }),
-    })
+    // InnoDB 缓存命中率（百分比）：read_requests 命中 / 总读取请求。
+    // 从 SHOW GLOBAL STATUS 中已读取的变量里取（缺省任一统计时隐藏该卡片/指标）。
+    let innodb_read_requests: Option<i64> = sqlx::query_scalar::<_, String>(
+        "SELECT VARIABLE_VALUE FROM information_schema.GLOBAL_STATUS WHERE VARIABLE_NAME = 'Innodb_buffer_pool_read_requests'",
+    )
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten()
+    .and_then(|s| s.parse::<i64>().ok());
+    let innodb_reads: Option<i64> = sqlx::query_scalar::<_, String>(
+        "SELECT VARIABLE_VALUE FROM information_schema.GLOBAL_STATUS WHERE VARIABLE_NAME = 'Innodb_buffer_pool_reads'",
+    )
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten()
+    .and_then(|s| s.parse::<i64>().ok());
+    let mut innodb_hit_ratio: Option<String> = None;
+    if let (Some(req), Some(read)) = (innodb_read_requests, innodb_reads) {
+        let hit = req - read;
+        if req > 0 {
+            innodb_hit_ratio = Some(format!("{:.2}%", (hit as f64 / req as f64) * 100.0));
+        }
+    }
+
+    let mut data = json!({
+        "version": version,
+        "database": database.unwrap_or_default(),
+        "uptimeSeconds": uptime_seconds,
+        "connections": connections,
+        "maxConnections": max_connections,
+        "activeQueries": active_queries,
+        "databaseSize": database_size,
+        "qps": qps,
+        "slowQueries": slow_queries,
+        "networkIn": bytes_received,
+        "networkOut": bytes_sent,
+        // 累积计数器：Host 跨刷新做差分得到每秒速率。
+        "questionsCounter": questions,
+        "newSessionsCounter": new_sessions,
+        "bytesInCounter": bytes_received,
+        "bytesOutCounter": bytes_sent,
+        "statementCounters": statement_counters,
+        "statusVariables": status_variables,
+    });
+    if let Some(hit) = innodb_hit_ratio {
+        data["innodbHitRatio"] = json!(hit);
+    }
+
+    Ok(CommandResult { data })
 }
 
 async fn estimate_mysql_table_rows(
@@ -506,7 +536,7 @@ async fn fetch_mysql_process_list(pool: &sqlx::MySqlPool) -> Result<CommandResul
             COMMAND AS state,
             LEFT(INFO, 500) AS query,
             CAST(TIME AS SIGNED) * 1000 AS durationMs,
-            SUBSTRING_INDEX(HOST, ':', 1) AS clientIp
+            SUBSTRING_INDEX(HOST, ':', 1) AS client
         FROM information_schema.PROCESSLIST
         ORDER BY TIME DESC
         "#,
@@ -525,7 +555,7 @@ async fn fetch_mysql_process_list(pool: &sqlx::MySqlPool) -> Result<CommandResul
                 "state": row.try_get::<String, _>("state").ok(),
                 "query": row.try_get::<String, _>("query").ok(),
                 "durationMs": row.try_get::<i64, _>("durationMs").unwrap_or(0),
-                "clientIp": row.try_get::<String, _>("clientIp").ok(),
+                "client": row.try_get::<String, _>("client").ok(),
             })
         })
         .collect();
@@ -696,6 +726,20 @@ mod tests {
             "expected full status vars, got {}",
             vars.len()
         );
+        // 扩展契约：卡片/图表面板依赖的字段应被返回。
+        for key in [
+            "questionsCounter",
+            "newSessionsCounter",
+            "bytesInCounter",
+            "bytesOutCounter",
+            "slowQueries",
+            "statementCounters",
+        ] {
+            assert!(
+                ss_data.get(key).is_some(),
+                "MySQL snapshot must expose {key} (extended dashboard contract), got {ss_data}"
+            );
+        }
         pool.close().await;
     }
 }

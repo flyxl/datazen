@@ -316,6 +316,7 @@ function SqlPanelContent({
     const sp = panel as ServerStatusPanel;
     return (
       <ServerStatusView
+        key={panel.id}
         connectionId={panel.connectionId}
         connectionName={panel.connectionName}
         panelId={panel.id}
@@ -336,6 +337,7 @@ function SqlPanelContent({
     const pp = panel as ProcessesPanel;
     return (
       <ProcessListView
+        key={panel.id}
         connectionId={panel.connectionId}
         connectionName={panel.connectionName}
         panelId={panel.id}

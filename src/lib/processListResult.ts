@@ -6,10 +6,10 @@ const DEFAULT_PROCESS_COLUMNS: ColumnInfo[] = [
   { name: 'pid', dataType: 'integer', nullable: false },
   { name: 'user', dataType: 'string', nullable: true },
   { name: 'database', dataType: 'string', nullable: true },
+  { name: 'client', dataType: 'string', nullable: true },
   { name: 'state', dataType: 'string', nullable: true },
   { name: 'query', dataType: 'string', nullable: true },
   { name: 'durationMs', dataType: 'integer', nullable: true },
-  { name: 'clientIp', dataType: 'string', nullable: true },
 ];
 
 /** Map process-list column keys to localized header keys. */
@@ -17,10 +17,10 @@ const PROCESS_COLUMN_LABELS: Record<string, I18nKey> = {
   pid: 'processList.colPid',
   user: 'processList.colUser',
   database: 'processList.colDatabase',
+  client: 'processList.colClient',
   state: 'processList.colState',
   query: 'processList.colQuery',
   durationMs: 'processList.colDuration',
-  clientIp: 'processList.colClientIp',
 };
 
 function isQueryResultShape(data: unknown): data is QueryResult {
