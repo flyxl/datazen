@@ -353,6 +353,7 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
             importData: t('connWin.importData'),
             refresh: t('connWin.refresh'),
             newQuery: t('connWin.newQuery'),
+            queryHistory: t('main.ctx.queryHistory'),
             copyDatabaseName: t('schemaTree.copyDatabaseName'),
             newTable: t('connWin.newTable'),
             batchExport: `${t('batchExport.title')}…`,
@@ -409,6 +410,10 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
                 handlers.handleNewQuery();
               }
             },
+            onQueryHistory:
+              kind === 'database' || kind === 'schema'
+                ? () => handlers.handleOpenQueryHistory()
+                : undefined,
             onCopyDatabaseName: kind === 'database' ? () => copyText(name) : undefined,
             onNewTable: handlers.handleCreateTable,
             onTruncate:
@@ -501,6 +506,7 @@ export function ContentView({ selectTableRef, nodeContextMenuRef, actionsRef }: 
         openErDiagram: handlers.handleOpenErDiagram,
         refresh: handlers.handleRefresh,
         openObject: handlers.handleOpenDbObject,
+        openQueryHistory: handlers.handleOpenQueryHistory,
       };
     }
     return () => {

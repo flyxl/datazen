@@ -23,6 +23,7 @@ export interface ConnectionViewActions {
     name: string,
     schema?: string,
   ) => void;
+  openQueryHistory?: () => void;
 }
 
 export interface ConnectionViewProps {

@@ -521,6 +521,20 @@ describe('panelStore', () => {
     expect(usePanelStore.getState().historyVisible).toBe(false);
   });
 
+  it('openQueryHistory shows drawer, hides favorites, and loads filtered history', async () => {
+    const history = [{ id: 'h1', sql: 'SELECT 1' }];
+    mockGetQueryHistory.mockResolvedValueOnce(history);
+    usePanelStore.setState({ favoritesVisible: true, historyVisible: false });
+
+    await usePanelStore.getState().openQueryHistory('cfg-1');
+
+    expect(mockGetQueryHistory).toHaveBeenCalledWith(100, 'cfg-1');
+    const state = usePanelStore.getState();
+    expect(state.historyVisible).toBe(true);
+    expect(state.favoritesVisible).toBe(false);
+    expect(state.queryHistory).toEqual(history);
+  });
+
   it('toggleFavorites flips favoritesVisible', () => {
     expect(usePanelStore.getState().favoritesVisible).toBe(false);
     usePanelStore.getState().toggleFavorites();

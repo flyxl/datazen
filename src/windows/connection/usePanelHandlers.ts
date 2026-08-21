@@ -33,6 +33,7 @@ export interface PanelHandlers {
   ) => void;
   handleOpenPrivileges: () => void;
   handleNewQuery: (initialSql?: string) => void;
+  handleOpenQueryHistory: () => void;
   handleClosePanel: (panelId: string) => void;
   handleCloseOtherPanels: (keepPanelId: string) => void;
   handleCloseAllPanels: () => void;
@@ -315,6 +316,17 @@ export function usePanelHandlers({
     [sidebarConnCtx, currentDatabase, initialDatabase, addPanel, updateSql],
   );
 
+  const handleOpenQueryHistory = useCallback(() => {
+    if (!sidebarConnCtx) return;
+    const existing = connPanels.find((p) => p.type === 'query');
+    if (existing) {
+      setActivePanel(existing.id);
+    } else {
+      handleNewQuery();
+    }
+    void usePanelStore.getState().openQueryHistory(sidebarConnCtx.configId);
+  }, [sidebarConnCtx, connPanels, setActivePanel, handleNewQuery]);
+
   const handleClosePanel = useCallback(
     (panelId: string) => {
       removePanel(panelId);
@@ -415,6 +427,7 @@ export function usePanelHandlers({
     handleOpenDbObject,
     handleOpenPrivileges,
     handleNewQuery,
+    handleOpenQueryHistory,
     handleClosePanel,
     handleCloseOtherPanels,
     handleCloseAllPanels,

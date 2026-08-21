@@ -78,6 +78,7 @@ import type { ExplainResult, StatementResult } from '../../types';
 import type { ButtonProps } from '../../components/ui/Button';
 import { Dialog } from '../../components/ui/Dialog';
 import { analyzeTransactionSql, isAbortedTransactionError } from '../../lib/sqlTransactionGuard';
+import { formatLastConnected } from '../../lib/formatters';
 
 interface QueryPanelProps {
   panelId: string;
@@ -147,6 +148,7 @@ export function QueryPanel({ panelId, connectionId, configId, databaseType }: Qu
   const [explainError, setExplainError] = useState<string | null>(null);
   const [showExplain, setShowExplain] = useState(false);
   const [paramValues, setParamValues] = useState<Record<string, string>>({});
+  const [historySearch, setHistorySearch] = useState('');
   const [inTransaction, setInTransaction] = useState(false);
   const [txBusy, setTxBusy] = useState(false);
   const [txUnclosedOpen, setTxUnclosedOpen] = useState(false);
@@ -624,6 +626,19 @@ export function QueryPanel({ panelId, connectionId, configId, databaseType }: Qu
     },
     [t, configId, loadHistory],
   );
+
+  const filteredHistory = useMemo(() => {
+    const q = historySearch.trim().toLowerCase();
+    if (!q) return history;
+    return history.filter((h) => h.sql.toLowerCase().includes(q));
+  }, [history, historySearch]);
+
+  const handleClearHistory = useCallback(() => {
+    void (async () => {
+      await queryCommands.clearQueryHistory();
+      await loadHistory(configId);
+    })();
+  }, [configId, loadHistory]);
 
   // Keep event bridge for E2E / menubar emit compatibility.
   useEffect(() => {
@@ -1124,17 +1139,46 @@ export function QueryPanel({ panelId, connectionId, configId, databaseType }: Qu
         {historyVisible && (
           <aside className="w-64 shrink-0 overflow-y-auto border-l border-edge bg-surface-alt">
             <div
-              className="border-b border-edge px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-fg-muted"
+              className="flex items-center justify-between border-b border-edge px-3 py-2"
               onContextMenu={handleHistoryHeaderContextMenu}
             >
-              {t('query.historyTitle')}
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-fg-muted">
+                {t('query.historyTitle')}
+              </span>
+              {history.length > 0 && (
+                <button
+                  type="button"
+                  className="p-1 text-fg-muted hover:text-red-400"
+                  title={t('query.clearHistory')}
+                  aria-label={t('query.clearHistory')}
+                  onClick={handleClearHistory}
+                >
+                  <Trash2 className="h-3 w-3" />
+                </button>
+              )}
             </div>
+            {history.length > 0 && (
+              <div className="border-b border-edge px-2 py-1.5">
+                <input
+                  type="search"
+                  value={historySearch}
+                  onChange={(e) => setHistorySearch(e.target.value)}
+                  placeholder={t('query.searchHistory')}
+                  className="w-full rounded border border-edge bg-surface px-2 py-1 text-xs text-fg placeholder:text-fg-muted focus:border-accent focus:outline-none"
+                  aria-label={t('query.searchHistory')}
+                />
+              </div>
+            )}
             {history.length === 0 ? (
               <div className="px-3 py-4 text-center text-xs text-fg-muted">
                 {t('query.noHistory')}
               </div>
+            ) : filteredHistory.length === 0 ? (
+              <div className="px-3 py-4 text-center text-xs text-fg-muted">
+                {t('query.noHistoryMatch')}
+              </div>
             ) : (
-              history.map((h) => (
+              filteredHistory.map((h) => (
                 <button
                   key={h.id}
                   type="button"
@@ -1145,11 +1189,15 @@ export function QueryPanel({ panelId, connectionId, configId, databaseType }: Qu
                   <div className="selectable truncate font-mono text-xs text-fg-secondary">
                     {h.sql}
                   </div>
-                  <div className="mt-1 flex items-center gap-2 text-[11px] text-fg-muted">
+                  <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-fg-muted">
                     <span className={h.success ? 'text-green-400' : 'text-red-400'}>
                       {h.success ? t('common.success') : t('common.failed')}
                     </span>
                     <span>{h.executionTimeMs}ms</span>
+                    {h.rowsAffected != null && (
+                      <span>{t('query.historyRows', { count: h.rowsAffected })}</span>
+                    )}
+                    <span>{formatLastConnected(h.executedAt)}</span>
                   </div>
                 </button>
               ))

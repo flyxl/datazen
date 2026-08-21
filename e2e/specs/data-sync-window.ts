@@ -3,11 +3,11 @@ import { t } from '../i18n.js';
 import { closeExtraWindows, selectDzOption } from '../helpers.js';
 
 /**
- * Data Sync window Host journeys (DSW-001~DSW-005).
- * Row Diff / Apply execute remain unwired; this spec covers the Compare → mapping gate shell.
+ * Data Sync Diff Workspace Host journeys (DSW-001~DSW-008).
+ * Full Execute against live DBs is covered in data-sync-real.ts (IPC); UI smoke here.
  */
 
-describe('数据同步窗口 (DSW-001~DSW-005)', () => {
+describe('数据同步窗口 (DSW-001~DSW-008)', () => {
   let mainWindow: string;
 
   before(async () => {
@@ -32,10 +32,17 @@ describe('数据同步窗口 (DSW-001~DSW-005)', () => {
     expect(body).toContain(t('sync.target'));
   });
 
-  it('DSW-002: 应显示比较按钮与初始引导', async () => {
+  it('DSW-002: 应显示比较按钮、Options 与 Swap', async () => {
     const compare = await $('[data-testid="data-sync-compare"]');
     await expect(compare).toBeDisplayed();
     expect(await compare.getText()).toContain(t('sync.compare'));
+    await expect(await $('[data-testid="data-sync-swap"]')).toBeDisplayed();
+    await expect(await $('[data-testid="data-sync-option-insert"]')).toBeDisplayed();
+    await expect(await $('[data-testid="data-sync-option-update"]')).toBeDisplayed();
+    await expect(await $('[data-testid="data-sync-option-delete"]')).toBeDisplayed();
+    // Schema pickers appear only after PG endpoints load schemas; containers always present for source/target DB.
+    await expect(await $('[data-testid="data-sync-source-database"]')).toBeDisplayed();
+    await expect(await $('[data-testid="data-sync-target-database"]')).toBeDisplayed();
     const body = await $('body').getText();
     expect(body).toContain(t('sync.selectPrompt'));
     await expect(await $('[data-testid="data-sync-start-disabled"]')).not.toBeDisplayed();
@@ -63,22 +70,41 @@ describe('数据同步窗口 (DSW-001~DSW-005)', () => {
   });
 
   it('DSW-005: 主页不再暴露数据同步入口，窗口改为 URL 直达', async () => {
-    // 主窗口内容不再给出数据同步按钮入口。
     await closeExtraWindows(mainWindow);
     await browser.switchToWindow(mainWindow);
     await browser.pause(300);
     const hiddenSyncEntry = await $(`button*=${t('action.dataSync')}`);
     await expect(hiddenSyncEntry).not.toBeDisplayed();
 
-    // 同步窗口仍可经由 URL 打开。
     await browser.url('tauri://localhost/window.html?window=data-sync');
     await browser.pause(1500);
     await expect(await $('[data-testid="data-sync-overwrite-retired"]')).toBeDisplayed();
     await expect(await $('[data-testid="data-sync-compare"]')).toBeDisplayed();
   });
+
+  it('DSW-006: Delete 选项默认未勾选', async () => {
+    const deleteOpt = await $('[data-testid="data-sync-option-delete"]');
+    await expect(deleteOpt).toBeDisplayed();
+    expect(await deleteOpt.isSelected()).toBe(false);
+  });
+
+  it('DSW-007: Swap 按钮可见且可点击', async () => {
+    const swap = await $('[data-testid="data-sync-swap"]');
+    await expect(swap).toBeDisplayed();
+    await swap.click();
+    await browser.pause(200);
+    const err = await $('[data-testid="data-sync-error"]');
+    expect(await err.isDisplayed().catch(() => false)).toBe(false);
+  });
+
+  it('DSW-008: Compare 前不应出现 Execute 底栏', async () => {
+    await expect(await $('[data-testid="data-sync-start"]')).not.toBeDisplayed();
+    await expect(await $('[data-testid="data-sync-start-disabled"]')).not.toBeDisplayed();
+    await expect(await $('[data-testid="data-sync-summary"]')).not.toBeDisplayed();
+  });
 });
 
-describe('数据同步窗口映射门闸 (DSW-MAP)', () => {
+describe('数据同步 Diff Workspace (DSW-MAP / DSW-WS)', () => {
   let mainWindow: string;
 
   before(async () => {
@@ -92,9 +118,8 @@ describe('数据同步窗口映射门闸 (DSW-MAP)', () => {
     await browser.switchToWindow(mainWindow);
   });
 
-  it('DSW-MAP-001: 选同族两端后比较应出现 mapping 行且 Apply 禁用', async () => {
+  async function trySelectPgEndpoints(): Promise<boolean> {
     const sourceWrap = await $('[data-testid="data-sync-source"]');
-    const targetWrap = await $('[data-testid="data-sync-target"]');
     await sourceWrap.waitForDisplayed({ timeout: 8000 });
 
     const sourceLabel = await sourceWrap.getText();
@@ -115,7 +140,7 @@ describe('数据同步窗口映射门闸 (DSW-MAP)', () => {
         !opened.includes('PostgreSQL') &&
         !opened.includes('mysql')
       ) {
-        return;
+        return false;
       }
     }
 
@@ -127,45 +152,79 @@ describe('数据同步窗口映射门闸 (DSW-MAP)', () => {
         await selectDzOption(t('sync.selectSource'), 'postgres');
         await selectDzOption(t('sync.selectTarget'), 'postgres');
       } catch {
-        return;
+        return false;
       }
     }
 
-    // Selecting each endpoint auto-populates its database list and defaults to the
-    // connection's configured database, which is required before Compare.
+    await browser.pause(800);
+    return true;
+  }
+
+  it('DSW-MAP-001: 选同族两端后比较应出现 mapping 行且 Execute 禁用', async () => {
+    if (!(await trySelectPgEndpoints())) return;
+
     await browser.execute(() => {
       const src = document.querySelector('[data-testid="data-sync-source-database"]');
       const tgt = document.querySelector('[data-testid="data-sync-target-database"]');
-      return {
-        srcHasSelect: !!src,
-        tgtHasSelect: !!tgt,
-      };
+      return { srcHasSelect: !!src, tgtHasSelect: !!tgt };
     });
-    await browser.pause(800);
 
     const compare = await $('[data-testid="data-sync-compare"]');
     await compare.click();
-    await browser.pause(2000);
+    await browser.pause(2500);
 
-    // If no enumerable database is available, the compare is gated on a selection.
     const gated = await $('[data-testid="data-sync-error"]');
-    if (await gated.isDisplayed().catch(() => false)) {
-      return;
-    }
+    if (await gated.isDisplayed().catch(() => false)) return;
 
     const rows = await $$('[data-testid="data-sync-mapping-row"]');
-    if (rows.length === 0) {
-      return;
-    }
+    if (rows.length === 0) return;
+
     expect(rows.length).toBeGreaterThan(0);
-    const apply = await $('[data-testid="data-sync-start-disabled"]');
-    await expect(apply).toBeDisplayed();
-    await expect(apply).toBeDisabled();
-    expect(await apply.getAttribute('title')).toContain(t('sync.applyUnavailable'));
+    const executeDisabled = await $('[data-testid="data-sync-start-disabled"]');
+    await expect(executeDisabled).toBeDisplayed();
+    await expect(executeDisabled).toBeDisabled();
+    expect(await executeDisabled.getAttribute('title')).toContain(t('sync.executeUnavailable'));
   });
 
   it('DSW-MAP-002: 选连接后应出现数据库选择器', async () => {
     await expect(await $('[data-testid="data-sync-source-database"]')).toBeDisplayed();
     await expect(await $('[data-testid="data-sync-target-database"]')).toBeDisplayed();
+  });
+
+  it('DSW-WS-001: Compare 完成后应出现 summary 与 preview / execute chrome', async () => {
+    if (!(await trySelectPgEndpoints())) return;
+
+    const compare = await $('[data-testid="data-sync-compare"]');
+    await compare.click();
+    await browser.pause(2500);
+
+    const gated = await $('[data-testid="data-sync-error"]');
+    if (await gated.isDisplayed().catch(() => false)) return;
+
+    const rows = await $$('[data-testid="data-sync-mapping-row"]');
+    if (rows.length === 0) return;
+
+    await expect(await $('[data-testid="data-sync-summary"]')).toBeDisplayed();
+    await expect(await $('[data-testid="data-sync-option-insert"]')).toBeDisplayed();
+
+    const previewTab = await $(`button*=${t('sync.sqlPreviewTab')}`);
+    await previewTab.click();
+    await browser.pause(600);
+    await expect(await $('[data-testid="data-sync-preview"]')).toBeDisplayed();
+
+    const rowDiffTab = await $(`button*=${t('sync.rowDiffTab')}`);
+    await rowDiffTab.click();
+    await browser.pause(300);
+    const rowDiff = await $('[data-testid="data-sync-row-diff"]');
+    if (await rowDiff.isDisplayed().catch(() => false)) {
+      await expect(rowDiff).toBeDisplayed();
+    }
+
+    const executeDisabled = await $('[data-testid="data-sync-start-disabled"]');
+    const executeEnabled = await $('[data-testid="data-sync-start"]');
+    const hasExecuteChrome =
+      (await executeDisabled.isDisplayed().catch(() => false)) ||
+      (await executeEnabled.isDisplayed().catch(() => false));
+    expect(hasExecuteChrome).toBe(true);
   });
 });

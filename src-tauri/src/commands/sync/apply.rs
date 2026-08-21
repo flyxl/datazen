@@ -1,28 +1,24 @@
-//! Compare selected tables and apply the resulting ChangeSet.
+//! Compare selected tables, generate ChangeSet SQL, and apply.
 
 use super::super::error::{CmdExt, CommandError};
 use super::super::AppState;
 use super::exec::execute_data_sync_impl;
 use super::inspect::inspect_data_sync_impl;
+use super::keyset_source::DriverKeysetSource;
+pub(crate) use super::types::resolve_options;
+use super::types::SyncOptionsInput;
 use crate::data_sync::{
-    compare_sorted_rows, generate_table_sql, mysql_placeholder, postgres_placeholder,
-    quote_ident_sql, ChangeSet, ComparisonResult, SyncOptions, TableMappingStatus, TableResult,
+    compare_table_pages, generate_table_sql, mysql_placeholder, postgres_placeholder,
+    quote_ident_sql, ChangeSet, ComparisonResult, SyncOptions, TableMapping, TableMappingStatus,
+    TableResult,
 };
+
 fn ident_quote(family: &str) -> char {
     if family == "mysql" {
         '`'
     } else {
         '"'
     }
-}
-
-fn select_sql(table: &str, columns: &[String], quote: char) -> String {
-    let cols = columns
-        .iter()
-        .map(|c| quote_ident_sql(c, quote))
-        .collect::<Vec<_>>()
-        .join(", ");
-    format!("SELECT {cols} FROM {}", quote_ident_sql(table, quote))
 }
 
 pub(crate) async fn compare_data_sync_impl(
@@ -33,17 +29,24 @@ pub(crate) async fn compare_data_sync_impl(
     job_id: Option<String>,
     source_database: Option<String>,
     target_database: Option<String>,
+    source_schema: Option<String>,
+    target_schema: Option<String>,
+    options: SyncOptions,
+    mappings: &[TableMapping],
 ) -> Result<Vec<TableResult>, CommandError> {
     let cancelled = match job_id.as_deref() {
         Some(id) => Some(super::jobs::ensure_job(id).await),
         None => None,
     };
-    let mappings = inspect_data_sync_impl(
+    let inspected = inspect_data_sync_impl(
         state,
         source_connection_id.clone(),
         target_connection_id.clone(),
         source_database.clone(),
         target_database.clone(),
+        source_schema.clone(),
+        target_schema.clone(),
+        mappings,
     )
     .await?;
     let wanted: std::collections::HashSet<String> = tables.into_iter().collect();
@@ -73,7 +76,6 @@ pub(crate) async fn compare_data_sync_impl(
         .await
         .cmd_err("compare_data_sync")?;
 
-    // Keep both connections scoped to their chosen databases for the row queries.
     let src_db = source_database
         .as_deref()
         .filter(|s| !s.trim().is_empty())
@@ -85,9 +87,8 @@ pub(crate) async fn compare_data_sync_impl(
     super::compare::maybe_use_database(src_driver.as_ref(), &src_handle, src_db).await?;
     super::compare::maybe_use_database(tgt_driver.as_ref(), &tgt_handle, tgt_db).await?;
 
-    let options = SyncOptions::default();
     let mut out = Vec::new();
-    for mapping in mappings {
+    for mapping in inspected {
         if mapping.status != TableMappingStatus::Matched
             || (!wanted.is_empty() && !wanted.contains(&mapping.source_table))
         {
@@ -107,32 +108,114 @@ pub(crate) async fn compare_data_sync_impl(
             .await
             .cmd_err("compare_data_sync")?;
         let column_names: Vec<String> = schema.columns.iter().map(|c| c.name.clone()).collect();
-        let pk_indexes: Vec<usize> = schema
-            .primary_keys
+        let pk_columns = schema.primary_keys.clone();
+        let pk_indexes: Vec<usize> = pk_columns
             .iter()
             .filter_map(|pk| column_names.iter().position(|c| c == pk))
             .collect();
-        let sql = select_sql(&mapping.source_table, &column_names, quote);
-        let src_rows = src_driver
-            .query(&src_handle, &sql)
-            .await
-            .cmd_err("compare_data_sync")?
-            .rows;
-        let tgt_sql = select_sql(&mapping.target_table, &column_names, quote);
-        let tgt_rows = tgt_driver
-            .query(&tgt_handle, &tgt_sql)
-            .await
-            .cmd_err("compare_data_sync")?
-            .rows;
-        let rows = compare_sorted_rows(&src_rows, &tgt_rows, &pk_indexes, &column_names, &options)
-            .map_err(CommandError::from)?;
-        out.push(TableResult::matched(
-            mapping.source_table,
-            mapping.target_table,
-            rows,
-        ));
+        let mut src_source = DriverKeysetSource::new(
+            src_driver.clone(),
+            src_handle.clone(),
+            mapping.source_table.clone(),
+            source_schema.clone(),
+            column_names.clone(),
+            pk_columns.clone(),
+            quote,
+            &family,
+        );
+        let mut tgt_source = DriverKeysetSource::new(
+            tgt_driver.clone(),
+            tgt_handle.clone(),
+            mapping.target_table.clone(),
+            target_schema.clone(),
+            column_names.clone(),
+            pk_columns,
+            quote,
+            &family,
+        );
+        let table_result = compare_table_pages(
+            &mapping.source_table,
+            &mapping.target_table,
+            &pk_indexes,
+            &column_names,
+            &options,
+            &mut src_source,
+            &mut tgt_source,
+            cancelled.clone(),
+        )
+        .await
+        .map_err(CommandError::from)?;
+        out.push(table_result);
     }
     Ok(out)
+}
+
+pub(crate) async fn generate_data_sync_sql_impl(
+    state: &AppState,
+    target_connection_id: String,
+    tables: Vec<TableResult>,
+    options: SyncOptions,
+    target_database: Option<String>,
+    target_schema: Option<String>,
+) -> Result<Vec<crate::data_sync::SqlStatement>, CommandError> {
+    options.validate().map_err(CommandError::from)?;
+    let comparison = ComparisonResult::new(tables);
+    let set = ChangeSet::from_comparison("ui-preview", &comparison, &options);
+    set.validate_executable().map_err(CommandError::from)?;
+
+    let tgt_config = state
+        .connection_manager
+        .get_connection_config(&target_connection_id)
+        .await
+        .cmd_err("generate_data_sync_sql")?;
+    let family = crate::data_sync::require_data_sync_family(
+        &tgt_config.database_type,
+        &tgt_config.database_type,
+    )?;
+    let quote = ident_quote(&family);
+    let (tgt_driver, tgt_handle) = state
+        .connection_manager
+        .get_connection(&target_connection_id)
+        .await
+        .cmd_err("generate_data_sync_sql")?;
+
+    let tgt_db = target_database
+        .as_deref()
+        .filter(|s| !s.trim().is_empty())
+        .or(tgt_config.database.as_deref());
+    super::compare::maybe_use_database(tgt_driver.as_ref(), &tgt_handle, tgt_db).await?;
+
+    let mut statements = Vec::new();
+    for table in &set.tables {
+        let schema = tgt_driver
+            .get_table_schema(&tgt_handle, &table.target_table)
+            .await
+            .cmd_err("generate_data_sync_sql")?;
+        let column_names: Vec<String> = schema.columns.iter().map(|c| c.name.clone()).collect();
+        let pk = schema.primary_keys.clone();
+        let stmts = if family == "mysql" {
+            generate_table_sql(
+                table,
+                None,
+                &pk,
+                &column_names,
+                |n| quote_ident_sql(n, quote),
+                mysql_placeholder,
+            )
+        } else {
+            generate_table_sql(
+                table,
+                target_schema.as_deref(),
+                &pk,
+                &column_names,
+                |n| quote_ident_sql(n, quote),
+                postgres_placeholder,
+            )
+        }
+        .map_err(CommandError::from)?;
+        statements.extend(stmts);
+    }
+    Ok(statements)
 }
 
 pub(crate) async fn apply_data_sync_impl(
@@ -143,6 +226,9 @@ pub(crate) async fn apply_data_sync_impl(
     job_id: Option<String>,
     source_database: Option<String>,
     target_database: Option<String>,
+    source_schema: Option<String>,
+    target_schema: Option<String>,
+    options: SyncOptions,
 ) -> Result<crate::data_sync::ExecutionResult, CommandError> {
     let compared = compare_data_sync_impl(
         state,
@@ -152,54 +238,21 @@ pub(crate) async fn apply_data_sync_impl(
         job_id.clone(),
         source_database.clone(),
         target_database.clone(),
+        source_schema.clone(),
+        target_schema.clone(),
+        options.clone(),
+        &[],
     )
     .await?;
-    let options = SyncOptions::default();
-    let comparison = ComparisonResult::new(compared);
-    let set = ChangeSet::from_comparison("ui-apply", &comparison, &options);
-    let tgt_config = state
-        .connection_manager
-        .get_connection_config(&target_connection_id)
-        .await
-        .cmd_err("apply_data_sync")?;
-    let family = crate::data_sync::require_data_sync_family(
-        &tgt_config.database_type,
-        &tgt_config.database_type,
-    )?;
-    let quote = ident_quote(&family);
-    let (tgt_driver, tgt_handle) = state
-        .connection_manager
-        .get_connection(&target_connection_id)
-        .await
-        .cmd_err("apply_data_sync")?;
-    let mut statements = Vec::new();
-    for table in &set.tables {
-        let schema = tgt_driver
-            .get_table_schema(&tgt_handle, &table.target_table)
-            .await
-            .cmd_err("apply_data_sync")?;
-        let column_names: Vec<String> = schema.columns.iter().map(|c| c.name.clone()).collect();
-        let pk = schema.primary_keys.clone();
-        let stmts = if family == "mysql" {
-            generate_table_sql(
-                table,
-                &pk,
-                &column_names,
-                |n| quote_ident_sql(n, quote),
-                mysql_placeholder,
-            )
-        } else {
-            generate_table_sql(
-                table,
-                &pk,
-                &column_names,
-                |n| quote_ident_sql(n, quote),
-                postgres_placeholder,
-            )
-        }
-        .map_err(CommandError::from)?;
-        statements.extend(stmts);
-    }
+    let statements = generate_data_sync_sql_impl(
+        state,
+        target_connection_id.clone(),
+        compared,
+        options,
+        target_database.clone(),
+        target_schema,
+    )
+    .await?;
     execute_data_sync_impl(
         state,
         target_connection_id,
@@ -210,13 +263,76 @@ pub(crate) async fn apply_data_sync_impl(
     .await
 }
 
+/// Re-run inspect gates for selected tables; returns stale table names when structure/PK drifted.
+pub(crate) async fn revalidate_data_sync_impl(
+    state: &AppState,
+    source_connection_id: String,
+    target_connection_id: String,
+    tables: Vec<String>,
+    source_database: Option<String>,
+    target_database: Option<String>,
+    source_schema: Option<String>,
+    target_schema: Option<String>,
+) -> Result<serde_json::Value, CommandError> {
+    let inspected = inspect_data_sync_impl(
+        state,
+        source_connection_id,
+        target_connection_id,
+        source_database,
+        target_database,
+        source_schema,
+        target_schema,
+        &[],
+    )
+    .await?;
+    let wanted: std::collections::HashSet<String> = tables.into_iter().collect();
+    let mut stale = Vec::new();
+    for row in inspected {
+        if !wanted.is_empty()
+            && !wanted.contains(&row.source_table)
+            && !wanted.contains(&row.target_table)
+        {
+            continue;
+        }
+        if row.status != TableMappingStatus::Matched {
+            stale.push(serde_json::json!({
+                "sourceTable": row.source_table,
+                "targetTable": row.target_table,
+                "status": row.status,
+                "reason": row.incompatible_reason,
+            }));
+        }
+    }
+    Ok(serde_json::json!({
+        "ok": stale.is_empty(),
+        "staleTables": stale,
+    }))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::ident_quote;
+    use super::{ident_quote, resolve_options, SyncOptionsInput};
 
     #[test]
     fn mysql_uses_backticks_postgres_uses_double_quotes() {
         assert_eq!(ident_quote("mysql"), '`');
         assert_eq!(ident_quote("postgresql"), '"');
+    }
+
+    #[test]
+    fn sync_options_input_overrides_defaults() {
+        let input = SyncOptionsInput {
+            insert: Some(false),
+            update: Some(true),
+            delete: Some(true),
+            matching_strategy: None,
+            batch_size: Some(50),
+            large_value_mode: None,
+        };
+        let opts = resolve_options(Some(input));
+        assert!(!opts.insert);
+        assert!(opts.update);
+        assert!(opts.delete);
+        assert_eq!(opts.batch_size, 50);
     }
 }

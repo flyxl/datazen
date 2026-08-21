@@ -64,6 +64,16 @@ curl -sfL https://github.com/flyxl/datazen/releases/latest/download/latest.json 
 
 Only **Basic** SKU builds include the updater; All / Akulaku variants are installed separately.
 
+## Linux and other install channels
+
+- **In-app updater:** Basic Linux builds publish **AppImage** + `.sig` in `latest.json`. Install or replace the AppImage when an update is offered.
+- **deb / rpm:** Not served by the updater; download new packages from [GitHub Releases](https://github.com/flyxl/datazen/releases). See [`packaging.md`](packaging.md) for install commands and dependencies.
+- **Homebrew / WinGet:** Package managers track release tags separately; they do not use `latest.json`. After upgrading via brew/winget, the in-app updater may still report a newer GitHub Basic build — pick one channel and stick to it, or disable “Check on startup” in Settings.
+
+## macOS install vs updater
+
+Release DMGs may be unsigned with respect to **notarization** even when updater artifacts are minisign-signed. If Gatekeeper blocks launch, see [`packaging.md`](packaging.md) (`xattr -cr` workaround). Notarization is a release-ops checklist item, not required for the updater signature chain.
+
 ## Troubleshooting
 
 - **Update check fails in dev**: `createUpdaterArtifacts` is off by default; use a release build.

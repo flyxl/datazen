@@ -84,7 +84,9 @@
 | 新建查询不弹出对象加载补全框 | `connection-window.ts` (SQ-AC-001), `mysql.ts` (MY-AC-001) | Covered |
 | SQL 补全只拉取语句中已加载完整表名的列（禁止前缀 get_columns） | `schemaStore.test.ts` / `sqlEditorDefaults.test.ts` / `buildEditorSchema.test.ts` | Covered |
 | Schema Diff 窗口打开与步骤控件 | `schema-diff-window.ts` | Covered |
-| 数据同步窗口 | `data-sync-window.ts`, `homepage-features.ts`, `data-sync-real.ts` | Covered（横幅 / Compare / 行 Diff 计数 / 有差异可 Apply / Cancel IPC；`data-sync-real.ts` 为 Host `inspect_data_sync` / `compare_data_sync` IPC 契约，非驱动方言 E2E） |
+| 数据同步 Diff Workspace（Options / Swap / Compare / Summary / row-diff / preview / Execute chrome） | `data-sync-window.ts` (DSW-001~008, DSW-MAP/WS) | Covered（Execute 对 live DB 见 IPC spec；无 PG 夹具时 MAP/WS 用例 soft-skip） |
+| 数据同步 IPC（inspect / compare / generate SQL / apply / revalidate） | `data-sync-real.ts` | Covered（需 `e2e/setup-sync-dbs.sh` PG 夹具；SYNC-REAL-009 apply→recompare） |
+| 数据传输窗口（V1 向导 shell） | `data-transfer-window.ts` | Partial（打开 / 步骤 / 模式 / 未选端点校验；跨方言 Execute 未 E2E） |
 | 数据看板 | `data-dashboard-*.ts` | Covered（表格视图底部导出按钮交互见 UJ-05） |
 | 应用数据备份标签 | `app-data-backup.ts` | Covered |
 | 路径 IPC 加固 | `path-ipc-hardening.ts` | Covered |

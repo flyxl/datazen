@@ -1,7 +1,7 @@
 {
   "identifier": "default",
   "description": "Default capability set for DataZen",
-  "windows": ["main", "data-sync-*", "schema-diff-*", "backup-*"],
+  "windows": ["main", "data-sync-*", "data-transfer-*", "schema-diff-*", "backup-*"],
   "permissions": [
     "core:default",
     "core:window:allow-create",

@@ -306,3 +306,7 @@ datazen-driver-xxx/         # Git 仓库目录名
 | Kiwi | [datazen-driver-kiwi](https://github.com/flyxl/datazen-driver-kiwi) | 自定义连接表单 + SSO 登录 |
 | OLAP | [datazen-driver-olap](https://github.com/flyxl/datazen-driver-olap) | Presto/Trino, Catalog 表单 + 自定义 SQL 方言 |
 | Superset | [datazen-driver-superset](https://github.com/flyxl/datazen-driver-superset) | Superset 数据探索平台 |
+
+### 内置 path 可选驱动
+
+MongoDB、ClickHouse、DuckDB、SQL Server 等位于 `packages/drivers/`，在 `drivers-registry.json` 中 `"source": "path"`。启用方式、`DB_REGISTRY` 元数据与 Host 能力对齐见 **[optional-drivers.md](optional-drivers.md)**。

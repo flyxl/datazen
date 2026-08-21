@@ -1,4 +1,4 @@
-# Packaging checklist (Homebrew / WinGet)
+# Packaging and release channels
 
 Templates live in-repo; publishing the tap / winget-pkgs PR is a release ops step.
 
@@ -22,8 +22,69 @@ Templates live in-repo; publishing the tap / winget-pkgs PR is a release ops ste
 5. WinGet: open a PR against [microsoft/winget-pkgs](https://github.com/microsoft/winget-pkgs) with the updated manifest.
 6. Document any All-SKU packages separately — templates currently target **Basic** only (matches updater scope).
 
+---
+
+## macOS: Gatekeeper, quarantine, and notarization
+
+### User workaround (unsigned / not-notarized builds)
+
+Current public releases are **code-signed** but **not Apple-notarized**. macOS Gatekeeper may show “已损坏” / “无法验证开发者” on first launch.
+
+**Option A — clear quarantine (recommended for Homebrew/manual install):**
+
+```bash
+xattr -cr /Applications/DataZen.app
+```
+
+**Option B — one-time open:** Right-click the app → **Open** → confirm in the dialog.
+
+The Homebrew cask template runs `xattr -cr` in `postflight` (see [`packaging/homebrew/datazen.rb`](../packaging/homebrew/datazen.rb)). GitHub release bodies include the same instructions (`.github/workflows/release.yml`).
+
+### Notarization checklist (release ops — docs only)
+
+Do **not** commit signing secrets. When enabling notarization in CI or manual release:
+
+| Step | Action |
+|------|--------|
+| 1. Apple Developer | Enroll in Apple Developer Program; create **Developer ID Application** certificate |
+| 2. Keychain / CI secret | Export cert + private key as `.p12`; store as GitHub **release** environment secret (e.g. `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`) |
+| 3. Notary credentials | App-specific password or App Store Connect API key (`APPLE_ID`, `APPLE_TEAM_ID`, `APPLE_API_KEY_*`) |
+| 4. Sign app bundle | `codesign --force --deep --options runtime --sign "Developer ID Application: …" DataZen.app` |
+| 5. Notarize | `xcrun notarytool submit DataZen.dmg --apple-id … --team-id … --password … --wait` (or API key variant) |
+| 6. Staple | `xcrun stapler staple DataZen.dmg` (and/or staple the `.app` before bundling) |
+| 7. Verify | `spctl -a -vv -t install /Applications/DataZen.app` → `accepted` / `source=Notarized Developer ID` |
+| 8. User docs | Once notarized, update release notes to **remove** mandatory `xattr` steps; keep as fallback for side-loaded copies |
+
+Tauri v2 signing hooks live in `tauri.conf.json` (`bundle.macOS.signingIdentity`, etc.). Updater minisign keys ([`docs/updater.md`](updater.md)) are **independent** of Apple code signing.
+
+---
+
+## Linux package channels
+
+GitHub Releases ship **x86_64** artifacts for each SKU:
+
+| Format | Install | Notes |
+|--------|---------|-------|
+| **AppImage** | `chmod +x DataZen_*.AppImage && ./DataZen_*.AppImage` | May require `libfuse2` on some distros |
+| **deb** | `sudo apt install ./DataZen_*_amd64.deb` | Debian/Ubuntu derivatives |
+| **rpm** | `sudo rpm -i ./DataZen_*_x86_64.rpm` | RHEL/Fedora/openSUSE |
+
+Runtime dependency: **WebKitGTK** (e.g. `libwebkit2gtk-4.1-0` / `webkit2gtk4.1`).
+
+There is **no** official distro repository yet — install from [GitHub Releases](https://github.com/flyxl/datazen/releases). In-app auto-update ([`docs/updater.md`](updater.md)) applies to **Basic** builds only (AppImage + `.sig`); `.deb` / `.rpm` users reinstall from releases or future package repos.
+
+Flatpak / Snap / AUR are not maintained in-repo; community packages should track the same release URLs and SHA256.
+
+---
+
+## Windows
+
+- **NSIS `.exe`** and **`.msi`** on GitHub Releases (Basic / All / Akulaku suffixes).
+- **WinGet:** manifest template in [`packaging/winget/`](../packaging/winget/); prefer WinGet over Scoop (Scoop not maintained).
+
+---
+
 ## Notes
 
-- macOS Gatekeeper: cask `postflight` runs `xattr -cr` on the app bundle.
 - Updater (`docs/updater.md`) is independent of brew/winget and only serves signed Basic artifacts via `latest.json`.
-- Scoop is not maintained yet; prefer WinGet on Windows.
+- Optional drivers and SKU matrix: [`optional-drivers.md`](optional-drivers.md).

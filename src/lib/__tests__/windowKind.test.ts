@@ -22,6 +22,7 @@ describe('getWindowKind', () => {
       ['?window=connection', 'main'],
       ['?window=settings', 'main'],
       ['?window=data-sync', 'data-sync'],
+      ['?window=data-transfer', 'data-transfer'],
       ['?window=backup', 'backup'],
       ['?window=workflow', 'main'],
       ['?window=docs', 'main'],

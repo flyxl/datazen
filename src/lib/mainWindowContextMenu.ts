@@ -15,6 +15,7 @@ export type MainWindowContextMenuLabels = {
   copyName: string;
   copyConnectionUrl: string;
   newQuery: string;
+  queryHistory: string;
   executeSqlFile: string;
   createDatabase: string;
   createSchema: string;
@@ -77,6 +78,7 @@ export function buildMainConnectionContextMenuItems(args: {
   onCopyName: () => void;
   onCopyUrl: () => void;
   onNewQuery: () => void;
+  onQueryHistory?: () => void;
   onExecuteSqlFile?: () => void;
   onCreateDatabase?: () => void;
   onCreateSchema?: () => void;
@@ -106,6 +108,15 @@ export function buildMainConnectionContextMenuItems(args: {
     },
     { kind: 'item', id: 'new-query', label: args.labels.newQuery, action: args.onNewQuery },
   ];
+
+  if (args.onQueryHistory) {
+    items.push({
+      kind: 'item',
+      id: 'query-history',
+      label: args.labels.queryHistory,
+      action: args.onQueryHistory,
+    });
+  }
 
   if (args.onExecuteSqlFile) {
     items.push({

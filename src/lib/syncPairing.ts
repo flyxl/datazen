@@ -23,7 +23,7 @@ export interface SyncPairingResult {
 
 type SyncCategory = 'sql' | 'document' | 'kv' | 'other';
 
-function syncCategory(dbType: string): SyncCategory {
+export function syncCategory(dbType: string): SyncCategory {
   switch (dbType.toLowerCase()) {
     case 'redis':
       return 'kv';

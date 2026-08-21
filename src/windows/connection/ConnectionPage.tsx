@@ -28,6 +28,7 @@ import { openConnectionShareDialog } from '../../lib/connectionShare';
 import {
   openBackupWindow,
   openDataSyncWindow,
+  openDataTransferWindow,
   openNewConnectionDialog,
   openSchemaDiffWindow,
   PENDING_CONNECTION_KEY,
@@ -683,6 +684,9 @@ export function ConnectionPage() {
     void listenCrossWindow('menu:data-sync', () => {
       openDataSyncWindow();
     }).then((fn) => cleanups.push(fn));
+    void listenCrossWindow('menu:data-transfer', () => {
+      openDataTransferWindow();
+    }).then((fn) => cleanups.push(fn));
     void listenCrossWindow('menu:schema-diff', () => {
       openSchemaDiffWindow();
     }).then((fn) => cleanups.push(fn));
@@ -821,6 +825,7 @@ export function ConnectionPage() {
                   openErDiagram: (...args) => actionsRef.current?.openErDiagram(...args),
                   refresh: () => actionsRef.current?.refresh(),
                   openObject: (...args) => actionsRef.current?.openObject?.(...args),
+                  openQueryHistory: () => actionsRef.current?.openQueryHistory?.(),
                 }}
               />
             </div>
