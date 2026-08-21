@@ -16,6 +16,7 @@ mod export;
 mod file;
 mod history;
 pub mod mcp;
+mod plugins;
 mod query;
 mod schema;
 mod schema_diff;
@@ -38,6 +39,7 @@ pub use export::*;
 pub use file::*;
 pub use history::*;
 pub use mcp::*;
+pub use plugins::*;
 pub use query::*;
 pub use schema::*;
 pub use schema_diff::*;
@@ -52,6 +54,7 @@ use crate::db::registry::DriverRegistry;
 use crate::db::TransactionHandle;
 use crate::mcp::McpClientManager;
 use crate::monitor::{MonitorConnectionRegistry, MonitorEngine};
+use crate::plugins::PluginManager;
 use crate::services::ConnectionManager;
 use crate::store::Store;
 use crate::transfer::adapter_registry::SyncAdapterRegistry;
@@ -78,6 +81,7 @@ pub struct AppState {
     pub mcp_client_manager: Arc<McpClientManager>,
     pub session_transactions: Arc<tokio::sync::Mutex<HashMap<String, TransactionHandle>>>,
     pub workflow_scheduler: Arc<WorkflowScheduler>,
+    pub plugins: Arc<PluginManager>,
 }
 
 impl AppState {

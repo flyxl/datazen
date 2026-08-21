@@ -11,6 +11,7 @@ mod log_redact;
 pub mod mcp;
 mod monitor;
 mod plugin_init;
+mod plugins;
 mod redis_flush_gate;
 pub mod schema_diff;
 mod schema_objects;
@@ -612,6 +613,12 @@ pub(crate) fn finish_app_state(
     let history_db = store.history_db();
     let app_db = store.app_db();
 
+    // Runtime plugins: scan {appData}/plugins/ for installed packages.
+    // Invalid packages are skipped (warn) so one bad install can't break boot.
+    let plugin_manager = Arc::new(plugins::PluginManager::new(data_dir.join("plugins")));
+    let plugin_count = plugin_manager.load_from_disk();
+    tracing::info!("[startup]   ui plugins loaded: {plugin_count}");
+
     // AI / prompts / workflows / history / MCP client: empty shells.
     // Nothing here touches disk or network — window can show immediately.
     let state = AppState {
@@ -633,6 +640,7 @@ pub(crate) fn finish_app_state(
         mcp_client_manager: Arc::new(mcp::McpClientManager::new()),
         session_transactions: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
         workflow_scheduler: workflow::scheduler::WorkflowScheduler::new(),
+        plugins: plugin_manager,
     };
     monitor_engine.attach_app_state(Arc::new(state.clone()));
     state
@@ -960,6 +968,15 @@ pub fn run() {
             commands::update_hidden_widget_sql,
             commands::get_monitor_paused,
             commands::set_monitor_paused,
+            commands::list_plugins,
+            commands::install_plugin_from_path,
+            commands::remove_plugin,
+            commands::set_plugin_enabled,
+            commands::get_plugin_manifest,
+            commands::plugin_storage_get,
+            commands::plugin_storage_set,
+            commands::plugin_storage_remove,
+            commands::read_plugin_file,
             rebuild_menu,
         ])
         .on_window_event(|window, event| {
