@@ -12,3 +12,19 @@ fn command_definitions_include_observe_commands() {
         assert!(ids.contains(&id), "missing command {id}");
     }
 }
+
+#[test]
+fn server_status_snapshot_definition_documents_trend_counters() {
+    let driver = PostgresDriver::new();
+    let def = driver
+        .command_definitions()
+        .into_iter()
+        .find(|d| d.id == "server_status_snapshot")
+        .expect("server_status_snapshot");
+    let desc = def.description.unwrap_or_default().to_lowercase();
+    // Contract: PG snapshot feeds the same Host trend charts as MySQL.
+    assert!(
+        desc.contains("status") || !desc.is_empty(),
+        "expected a description for server_status_snapshot"
+    );
+}

@@ -1,17 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Activity,
+  AlertTriangle,
   ArrowDownRight,
+  ArrowUpRight,
+  Clock,
+  Database,
+  Files,
+  Gauge,
+  HardDrive,
   LayoutDashboard,
   Loader2,
   RefreshCw,
-  Server,
   Users,
   Zap,
-  Clock,
-  HardDrive,
-  Database,
-  TerminalSquare,
 } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Select } from '../../components/ui/Select';
@@ -21,13 +23,28 @@ import { driverCommands } from '../../commands/driver';
 import { useI18n } from '../../hooks/useI18n';
 import { SERVER_STATUS_SNAPSHOT_COMMAND } from '../../lib/driverCommandIds';
 import type { ChartConfig, ChartDataPoint } from '../../types/chart';
+import {
+  COMMAND_KEYS,
+  HISTORY_WINDOW_MS,
+  alignTimestamp,
+  cardRateFromHistory,
+  computeTrendTimeAxis,
+  formatByteRate,
+  formatBytes,
+  latestSeriesValue,
+  updateTrendHistory,
+  type TrendPrevSample,
+  type TrendSeries,
+} from '../../lib/serverStatusTrends';
 
 import type { TranslationKey } from '../../locales';
 
 export interface ServerStatusCache {
   status: Record<string, string | number | boolean | null>;
   variables?: { name: string; value: string | null }[];
-  history?: Record<string, number[]>;
+  history?: Record<string, TrendSeries>;
+  /** 上次成功刷新时刻（wall-clock ms），用于「上次更新时间」显示。 */
+  updatedAt?: number;
 }
 
 interface ServerStatusViewProps {
@@ -66,20 +83,14 @@ const METRIC_LABELS: Record<string, TranslationKey> = {
   slowQueries: 'serverStatus.slowQueries',
   networkIn: 'serverStatus.networkIn',
   networkOut: 'serverStatus.networkOut',
+  deadlocks: 'serverStatus.deadlocks',
+  tempFiles: 'serverStatus.tempFiles',
+  tempBytes: 'serverStatus.tempBytes',
+  walBytes: 'serverStatus.walRate',
+  cacheHitRatio: 'serverStatus.cacheHitRatio',
+  innodbHitRatio: 'serverStatus.innodbHitRatio',
+  txsPerSec: 'serverStatus.qps',
 };
-
-/**
- * 四个实时趋势仪表盘：由于 Host 驱动返回的「累积计数器」差分得到的每秒速率。
- * 驱动不返回某计数器时，对应趋势卡自动隐藏（数据驱动，Host 不感知驱动差异）。
- */
-const TREND_SERIES: Record<string, string> = {
-  qps: 'questionsCounter',
-  sessions: 'newSessionsCounter',
-  netIn: 'bytesInCounter',
-  netOut: 'bytesOutCounter',
-};
-
-const HISTORY_MAX = 30;
 
 function asStatusRecord(data: unknown): StatusRecord | null {
   if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
@@ -116,26 +127,27 @@ function parseStatusVariables(data: unknown): StatusVariable[] {
   return out;
 }
 
-function parseStatementTotal(data: unknown): number | null {
+function parseStatementTotal(data: unknown): Record<string, unknown> | null {
   if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
   const sc = (data as Record<string, unknown>).statementCounters;
   if (!sc || typeof sc !== 'object' || Array.isArray(sc)) return null;
-  let total = 0;
-  for (const v of Object.values(sc as Record<string, unknown>)) {
-    const n = typeof v === 'number' ? v : Number(v);
-    if (Number.isFinite(n)) total += n;
-  }
-  return total;
+  return sc as Record<string, unknown>;
 }
 
 function formatUptime(seconds: number, t: (key: TranslationKey) => string): string {
-  const hours = Math.floor(seconds / 3600);
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
-  const secs = seconds % 60;
+  if (days > 0) {
+    return t('serverStatus.uptimeFormatDays')
+      .replace('{days}', String(days))
+      .replace('{hours}', String(hours))
+      .replace('{minutes}', String(minutes));
+  }
   return t('serverStatus.uptimeFormat')
     .replace('{hours}', String(hours))
     .replace('{minutes}', String(minutes))
-    .replace('{seconds}', String(secs));
+    .replace('{seconds}', String(seconds));
 }
 
 function formatValue(
@@ -155,6 +167,13 @@ function labelForKey(key: string, t: (key: TranslationKey) => string): string {
   return labelKey ? t(labelKey) : key;
 }
 
+/** 把 wall-clock ms 格式化为 `HH:mm:ss`（本地时区）。 */
+function formatClock(ts: number): string {
+  const d = new Date(ts);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
 function numberFrom(value: string | number | boolean | null): number | null {
   if (typeof value === 'number') return value;
   if (typeof value === 'string' && value.trim() !== '') {
@@ -164,54 +183,77 @@ function numberFrom(value: string | number | boolean | null): number | null {
   return null;
 }
 
-function latestValue(series?: number[]): number | null {
-  if (!series || series.length === 0) return null;
-  return series[series.length - 1];
+/**
+ * 把多个同一 timeline 的时间戳序列合并成 recharts 数据点：
+ * x = 真实时间戳（ms），各 series 值按 `v` 展开；t 会被 renderer 的
+ * `formatAxisTick` 显示为 `HH:mm:ss`。
+ */
+function toChartData(
+  keys: string[],
+  history: Record<string, { t: number; v: number }[]>,
+): ChartDataPoint[] {
+  // 取所有序列的时间戳并集（通常各序列共享同一采样时刻，直接对齐）。
+  const tsSet = new Map<number, ChartDataPoint>();
+  for (const k of keys) {
+    const series = history[k];
+    if (!series) continue;
+    for (const p of series) {
+      let pt = tsSet.get(p.t);
+      if (!pt) {
+        pt = { t: p.t };
+        tsSet.set(p.t, pt);
+      }
+      pt[k] = p.v;
+    }
+  }
+  return [...tsSet.entries()]
+    .map(([t, pt]) => ({ ...pt, t }))
+    .sort((a, b) => (a.t as number) - (b.t as number));
 }
 
-function formatRate(value: number): string {
-  if (value < 10) return value.toFixed(2);
-  if (value < 1000) return value.toFixed(1);
-  if (value < 1000000) return `${(value / 1000).toFixed(1)}K`;
-  return `${(value / 1000000).toFixed(1)}M`;
-}
-
-/** 把一段历史序列转成 ChartCanvas(line) 所需的 recharts 数据点。 */
-function toChartData(series: number[]): ChartDataPoint[] {
-  return series.map((v, i) => ({ t: i, value: v }));
-}
-
-/** 构造一个紧凑的折线图配置。 */
-function lineConfig(): ChartConfig {
+/** 构造带图例的折线/面积图配置。传 timeAxis 时启用固定 1h 时间窗口。 */
+function seriesChartConfig(
+  chartType: 'line' | 'area',
+  keys: string[],
+  timeAxis?: { domain: [number, number]; ticks: number[] },
+): ChartConfig {
   return {
-    chartType: 'line',
+    chartType,
     xAxis: 't',
-    yAxes: ['value'],
+    yAxes: keys,
     groupBy: null,
     aggregation: 'none',
     sortBy: 'none',
-    showLegend: false,
+    showLegend: true,
     showGrid: true,
     showValues: false,
     colorScheme: 'default',
+    timeDomain: timeAxis?.domain,
+    timeTicks: timeAxis?.ticks,
   };
 }
 
+/** 数据卡片：数据驱动，字段缺失时隐藏。 */
 interface MetricCard {
   key: string;
   label: string;
   value: string;
   icon: React.ReactNode;
+  /** 是否具备渲染数据。 */
+  available: boolean;
 }
 
-interface TrendCard {
+/** 全尺寸图表卡片。 */
+interface ChartCard {
   key: string;
   label: string;
-  icon: React.ReactNode;
-  color: string;
-  unit: string;
-  series: number[];
-  latest: number | null;
+  /** 各趋势系列的展示名（图例）。 */
+  seriesLabels: string[];
+  /** 趋势 series key（对应 serverStatusTrends.TREND_SERIES 或 cmd_*）。 */
+  seriesKeys: string[];
+  chartType: 'line' | 'area';
+  /** 全宽（true 时占满一行）。 */
+  fullWidth?: boolean;
 }
 
 export function ServerStatusView({
@@ -222,12 +264,23 @@ export function ServerStatusView({
 }: ServerStatusViewProps) {
   const { t } = useI18n();
   const [loading, setLoading] = useState(true);
+  /** 仅手动刷新时点亮按钮旋转图标；自动刷新保持静默（不闪按钮）。 */
+  const [buttonLoading, setButtonLoading] = useState(false);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<number | null>(initialData?.updatedAt ?? null);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<StatusRecord | null>(initialData?.status ?? null);
   const [statusVariables, setStatusVariables] = useState<StatusVariable[]>(
     initialData?.variables ?? [],
   );
-  const [history, setHistory] = useState<Record<string, number[]>>(initialData?.history ?? {});
+  const [history, setHistory] = useState<Record<string, TrendSeries>>(initialData?.history ?? {});
+  // 图表时间窗口的右缘（最新对齐后的采样时刻）；用于固定 1h domain 与刻度。
+  const [chartNow, setChartNow] = useState(() => {
+    const ts = Object.values(initialData?.history ?? {})
+      .flat()
+      .map((p) => p.t)
+      .pop();
+    return ts ?? Date.now();
+  });
   const [autoRefresh, setAutoRefresh] = useState(5000);
   const [viewTab, setViewTab] = useState<'dashboard' | 'variables' | 'details'>('dashboard');
 
@@ -237,97 +290,86 @@ export function ServerStatusView({
     { id: 'details', label: t('serverStatus.detailTitle') },
   ];
 
-  const prevRef = useRef<{ ts: number; values: Record<string, number | null> }>({
-    ts: 0,
-    values: {},
-  });
+  const prevRef = useRef<TrendPrevSample>({ ts: 0, values: {} });
+  const historyRef = useRef<Record<string, TrendSeries>>(initialData?.history ?? {});
 
   const persist = useCallback(
-    (record: StatusRecord | null, variables: StatusVariable[], hist: Record<string, number[]>) => {
+    (
+      record: StatusRecord | null,
+      variables: StatusVariable[],
+      hist: Record<string, TrendSeries>,
+      updatedAt: number,
+    ) => {
       if (record == null) return;
-      onDataChange?.({ status: record, variables, history: hist });
+      onDataChange?.({ status: record, variables, history: hist, updatedAt });
     },
     [onDataChange],
   );
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await driverCommands.execute({
-        connectionId,
-        command: SERVER_STATUS_SNAPSHOT_COMMAND,
-        input: {},
-      });
-      const raw = result?.data;
-      const record = asStatusRecord(raw);
-      if (!record) {
-        setError(t('serverStatus.invalidResponse'));
+  const load = useCallback(
+    async (opts?: { manual?: boolean }) => {
+      // 首帧/切换连接仍显示整页加载；按钮旋转图标仅手动刷新点亮，自动刷新静默。
+      setLoading(true);
+      if (opts?.manual) setButtonLoading(true);
+      setError(null);
+      try {
+        const result = await driverCommands.execute({
+          connectionId,
+          command: SERVER_STATUS_SNAPSHOT_COMMAND,
+          input: {},
+        });
+        const raw = result?.data;
+        const record = asStatusRecord(raw);
+        if (!record) {
+          setError(t('serverStatus.invalidResponse'));
+          setStatus(null);
+          return;
+        }
+        const variables = parseStatusVariables(raw);
+        const statements = parseStatementTotal(raw);
+        const { history: nextHist, prev: nextPrev } = updateTrendHistory({
+          record,
+          now: Date.now(),
+          periodMs: autoRefresh,
+          prev: prevRef.current,
+          history: historyRef.current,
+          statements,
+        });
+
+        historyRef.current = nextHist;
+        prevRef.current = nextPrev;
+        setStatus(record);
+        setStatusVariables(variables);
+        setHistory(nextHist);
+        const alignedNow = alignTimestamp(Date.now(), autoRefresh);
+        setChartNow(alignedNow);
+        setLastUpdatedAt(Date.now());
+        persist(record, variables, nextHist, Date.now());
+      } catch (e) {
+        const msg =
+          typeof e === 'string' ? e : e instanceof Error ? e.message : t('serverStatus.loadFailed');
+        setError(msg);
         setStatus(null);
-        return;
+      } finally {
+        setLoading(false);
+        setButtonLoading(false);
       }
-      const variables = parseStatusVariables(raw);
+    },
+    [connectionId, t, persist, autoRefresh],
+  );
 
-      // 用驱动返回的累积计数器做跨刷新差分，得到每秒速率。
-      const now = Date.now();
-      const prev = prevRef.current;
-      const dtSec = prev.ts > 0 ? (now - prev.ts) / 1000 : 0;
-      const rateFor = (counterKey: string): number | null => {
-        const cur = numberFrom(record[counterKey]);
-        const prevVal = prev.values[counterKey];
-        if (cur == null || prevVal == null || dtSec <= 0) return null;
-        const delta = cur - prevVal;
-        return delta < 0 ? 0 : delta / dtSec;
-      };
-
-      const nextHist: Record<string, number[]> = { ...history };
-      for (const chartKey of Object.keys(TREND_SERIES)) {
-        const rate = rateFor(TREND_SERIES[chartKey]);
-        if (rate != null) {
-          const series = nextHist[chartKey] ?? [];
-          nextHist[chartKey] = [...series, rate].slice(-HISTORY_MAX);
-        }
-      }
-      const cmdTotal = parseStatementTotal(raw);
-      if (cmdTotal != null && prev.values['__cmd_total'] != null && dtSec > 0) {
-        const rate = (cmdTotal - prev.values['__cmd_total']!) / dtSec;
-        if (rate >= 0) {
-          const series = nextHist.commands ?? [];
-          nextHist.commands = [...series, rate].slice(-HISTORY_MAX);
-        }
-      }
-
-      setStatus(record);
-      setStatusVariables(variables);
-      setHistory(nextHist);
-      persist(record, variables, nextHist);
-
-      prevRef.current = {
-        ts: now,
-        values: {
-          questionsCounter: numberFrom(record.questionsCounter),
-          newSessionsCounter: numberFrom(record.newSessionsCounter),
-          bytesInCounter: numberFrom(record.bytesInCounter),
-          bytesOutCounter: numberFrom(record.bytesOutCounter),
-          __cmd_total: cmdTotal,
-        },
-      };
-    } catch (e) {
-      const msg =
-        typeof e === 'string' ? e : e instanceof Error ? e.message : t('serverStatus.loadFailed');
-      setError(msg);
-      setStatus(null);
-    } finally {
-      setLoading(false);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [connectionId, t, persist]);
-
-  // 挂载后总是拉取最新仪表盘；initialData 仅用于首帧展示（数据绑定到 tab，不残留陈旧内容）。
+  // 按 connectionId 拉取；切换服务器详情 tab 时若组件被复用，必须重新加载。
+  // 故意不依赖 load：onDataChange 每帧可能是新引用，纳入依赖会重置 history 并无限重拉。
   useEffect(() => {
+    historyRef.current = initialData?.history ?? {};
+    prevRef.current = { ts: 0, values: {} };
+    setStatus(initialData?.status ?? null);
+    setStatusVariables(initialData?.variables ?? []);
+    setHistory(initialData?.history ?? {});
+    setLastUpdatedAt(initialData?.updatedAt ?? null);
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [connectionId]);
 
   useEffect(() => {
     if (autoRefresh <= 0) return;
@@ -337,50 +379,219 @@ export function ServerStatusView({
     return () => window.clearInterval(id);
   }, [autoRefresh, load]);
 
-  const trendCards = useMemo<TrendCard[]>(
-    () => [
+  // ---- 数据卡片（数据驱动，字段缺失自动隐藏） ----
+  const cards = useMemo<MetricCard[]>(() => {
+    if (!status) return [];
+    const uptime = numberFrom(status.uptimeSeconds);
+    const connections = numberFrom(status.connections);
+    const maxConnections = numberFrom(status.maxConnections);
+    const hasCacheHit =
+      status.cacheHitRatio != null && status.cacheHitRatio !== '' ? status.cacheHitRatio : null;
+    const hasInnodb =
+      status.innodbHitRatio != null && status.innodbHitRatio !== '' ? status.innodbHitRatio : null;
+    const netInLatest = latestSeriesValue(history.netIn);
+    const netOutLatest = latestSeriesValue(history.netOut);
+    const qpsValue = cardRateFromHistory(history, 'qps', status.qps);
+    const deadlocks = numberFrom(status.deadlocks);
+    const tempFiles = numberFrom(status.tempFiles);
+    const walBytes = numberFrom(status.walBytes);
+
+    const defs: MetricCard[] = [
       {
         key: 'qps',
-        label: t('serverStatus.chartQps'),
+        label: t('serverStatus.qps'),
         icon: <Activity className="h-4 w-4 text-emerald-400" />,
-        color: 'stroke-emerald-400',
-        unit: '/s',
-        series: history.qps ?? [],
-        latest: latestValue(history.qps),
+        value: qpsValue,
+        available: qpsValue !== '—',
       },
       {
-        key: 'sessions',
-        label: t('serverStatus.chartSessions'),
+        key: 'connections',
+        label: t('serverStatus.connections'),
+        value:
+          connections != null && maxConnections != null
+            ? `${connections} / ${maxConnections}`
+            : connections != null
+              ? String(connections)
+              : '—',
         icon: <Users className="h-4 w-4 text-blue-400" />,
-        color: 'stroke-blue-400',
-        unit: '/s',
-        series: history.sessions ?? [],
-        latest: latestValue(history.sessions),
+        available: connections != null,
+      },
+      {
+        key: 'cacheHit',
+        label: t('serverStatus.cacheHitRatio'),
+        value:
+          hasCacheHit != null ? String(hasCacheHit) : hasInnodb != null ? String(hasInnodb) : '—',
+        icon: <Database className="h-4 w-4 text-violet-400" />,
+        available: hasCacheHit != null || hasInnodb != null,
+      },
+      {
+        key: 'activeQueries',
+        label: t('serverStatus.activeQueries'),
+        value: String(numberFrom(status.activeQueries) ?? '—'),
+        icon: <Zap className="h-4 w-4 text-amber-400" />,
+        available: numberFrom(status.activeQueries) != null,
       },
       {
         key: 'netIn',
-        label: t('serverStatus.chartNetIn'),
+        label: t('serverStatus.networkIn'),
+        value: netInLatest != null ? formatByteRate(netInLatest) : '—',
         icon: <ArrowDownRight className="h-4 w-4 text-cyan-400" />,
-        color: 'stroke-cyan-400',
-        unit: 'B/s',
-        series: history.netIn ?? [],
-        latest: latestValue(history.netIn),
+        available: netInLatest != null,
       },
       {
-        key: 'commands',
-        label: t('serverStatus.chartCommands'),
-        icon: <TerminalSquare className="h-4 w-4 text-amber-400" />,
-        color: 'stroke-amber-400',
-        unit: '/s',
-        series: history.commands ?? [],
-        latest: latestValue(history.commands),
+        key: 'netOut',
+        label: t('serverStatus.networkOut'),
+        value: netOutLatest != null ? formatByteRate(netOutLatest) : '—',
+        icon: <ArrowUpRight className="h-4 w-4 text-cyan-400" />,
+        available: netOutLatest != null,
       },
-    ],
-    [t, history],
-  );
+      {
+        key: 'deadlocks',
+        label: t('serverStatus.deadlocks'),
+        value: deadlocks != null ? String(deadlocks) : '—',
+        icon: <AlertTriangle className="h-4 w-4 text-rose-400" />,
+        available: deadlocks != null,
+      },
+      {
+        key: 'tempFiles',
+        label: t('serverStatus.tempFiles'),
+        value: tempFiles != null ? String(tempFiles) : '—',
+        icon: <Files className="h-4 w-4 text-orange-400" />,
+        available: tempFiles != null,
+      },
+      {
+        key: 'slowQueries',
+        label: t('serverStatus.slowQueries'),
+        value: String(numberFrom(status.slowQueries) ?? '—'),
+        icon: <AlertTriangle className="h-4 w-4 text-rose-400" />,
+        available: numberFrom(status.slowQueries) != null,
+      },
+      {
+        key: 'walRate',
+        label: t('serverStatus.walRate'),
+        value: walBytes != null ? formatBytes(walBytes) : '—',
+        icon: <HardDrive className="h-4 w-4 text-sky-400" />,
+        available: walBytes != null,
+      },
+      {
+        key: 'uptime',
+        label: t('serverStatus.uptime'),
+        value: uptime != null ? formatUptime(uptime, t) : '—',
+        icon: <Clock className="h-4 w-4 text-cyan-400" />,
+        available: uptime != null,
+      },
+    ];
+    return defs.filter((c) => c.available);
+  }, [status, history, t]);
 
-  const visibleTrends = trendCards.filter((c) => c.series.length > 1);
-  const hasTrend = visibleTrends.length > 0;
+  // ---- 图表卡片（数据驱动：无数据则隐藏） ----
+  const chartCards = useMemo<ChartCard[]>(() => {
+    const has = (keys: string[]) => keys.some((k) => (history[k]?.length ?? 0) > 0);
+    // MySQL / 通用：每秒查询（QPS）
+    const transactions: ChartCard = {
+      key: 'transactions',
+      label: t('serverStatus.qps'),
+      seriesKeys: ['qps'],
+      seriesLabels: [t('serverStatus.trendTotal')],
+      chartType: 'area',
+    };
+    const netTraffic: ChartCard = {
+      key: 'netTraffic',
+      label: t('serverStatus.chartNetIn'),
+      seriesKeys: ['netIn', 'netOut'],
+      seriesLabels: [t('serverStatus.networkIn'), t('serverStatus.networkOut')],
+      chartType: 'line',
+    };
+    const commands: ChartCard = {
+      key: 'commands',
+      label: t('serverStatus.chartCommands'),
+      seriesKeys: COMMAND_KEYS.map((c) => `cmd_${c}`),
+      seriesLabels: COMMAND_KEYS.map((c) => t(`serverStatus.cmd${cap(c)}` as TranslationKey)),
+      chartType: 'line',
+    };
+    const sessions: ChartCard = {
+      key: 'sessions',
+      label: t('serverStatus.chartSessions'),
+      seriesKeys: ['sessions'],
+      seriesLabels: [t('serverStatus.chartSessions')],
+      chartType: 'area',
+    };
+    const sessionsState: ChartCard = {
+      key: 'sessionsState',
+      label: t('serverStatus.chartServerSessions'),
+      seriesKeys: ['sessionTotal', 'sessionActive', 'sessionIdle'],
+      seriesLabels: [
+        t('serverStatus.trendTotal'),
+        t('serverStatus.trendActive'),
+        t('serverStatus.trendIdle'),
+      ],
+      chartType: 'line',
+    };
+    const blockIO: ChartCard = {
+      key: 'blockIO',
+      label: t('serverStatus.chartBlockIO'),
+      seriesKeys: ['blksRead', 'blksHit'],
+      seriesLabels: [t('serverStatus.trendBlockRead'), t('serverStatus.trendBlockHit')],
+      chartType: 'line',
+    };
+    const tupleWrite: ChartCard = {
+      key: 'tupleWrite',
+      label: t('serverStatus.chartTupleWrite'),
+      seriesKeys: ['tupInserted', 'tupUpdated', 'tupDeleted'],
+      seriesLabels: [
+        t('serverStatus.cmdInsert'),
+        t('serverStatus.cmdUpdate'),
+        t('serverStatus.cmdDelete'),
+      ],
+      chartType: 'line',
+    };
+    const tupleRead: ChartCard = {
+      key: 'tupleRead',
+      label: t('serverStatus.chartTupleRead'),
+      seriesKeys: ['tupFetched', 'tupReturned'],
+      seriesLabels: [t('serverStatus.trendFetched'), t('serverStatus.trendReturned')],
+      chartType: 'line',
+    };
+    const txRate: ChartCard = {
+      key: 'txRate',
+      label: t('serverStatus.chartTransactions'),
+      seriesKeys: ['commits', 'rollbacks'],
+      seriesLabels: [t('serverStatus.trendCommit'), t('serverStatus.trendRollback')],
+      chartType: 'area',
+      fullWidth: true,
+    };
+
+    const panels: ChartCard[] = [];
+    if (has(['qps'])) panels.push(transactions);
+    if (has(['sessionTotal', 'sessionActive', 'sessionIdle'])) panels.push(sessionsState);
+    if (has(['sessions'])) panels.push(sessions);
+    if (has(['netIn', 'netOut'])) panels.push(netTraffic);
+    if (has(['cmd_insert', 'cmd_select', 'cmd_update', 'cmd_delete'])) panels.push(commands);
+    if (has(['blksRead', 'blksHit'])) panels.push(blockIO);
+    if (has(['tupInserted', 'tupUpdated', 'tupDeleted'])) panels.push(tupleWrite);
+    if (has(['tupFetched', 'tupReturned'])) panels.push(tupleRead);
+    if (has(['commits', 'rollbacks'])) panels.push(txRate);
+    return panels;
+  }, [history, t]);
+
+  // 时间窗口：右缘＝最新采样；左缘取「数据实际跨度」与 1min/1h 上下限之间的值，
+  // 因此冷启动从最近 1 分钟开始，随数据积累逐步拉长到 1 小时（见 computeTrendTimeAxis）。
+  const timeAxis = useMemo(() => {
+    const lastSample = Math.max(chartNow, 0);
+    // 全部序列里最早的一个采样点，作为数据实际跨度左端。
+    let earliest = Infinity;
+    for (const series of Object.values(history)) {
+      if (!series || series.length === 0) continue;
+      const firstT = series[0].t;
+      if (firstT < earliest) earliest = firstT;
+    }
+    if (!Number.isFinite(earliest)) earliest = lastSample - HISTORY_WINDOW_MS;
+    return computeTrendTimeAxis(earliest, lastSample);
+  }, [chartNow, history]);
+
+  function cap(s: string): string {
+    return s.length > 0 ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+  }
 
   const detailRows = useMemo(() => {
     if (!status) return [];
@@ -389,6 +600,21 @@ export function ServerStatusView({
       'newSessionsCounter',
       'bytesInCounter',
       'bytesOutCounter',
+      'xactCommitCounter',
+      'xactRollbackCounter',
+      'blksReadCounter',
+      'blksHitCounter',
+      'tupFetchedCounter',
+      'tupReturnedCounter',
+      'tupInsertedCounter',
+      'tupUpdatedCounter',
+      'tupDeletedCounter',
+      'tempBytesCounter',
+      'walBytes',
+      'tempBytes',
+      'sessionTotal',
+      'sessionActive',
+      'sessionIdle',
       'statementCounters',
       'statusVariables',
     ]);
@@ -401,9 +627,14 @@ export function ServerStatusView({
       'activeQueries',
       'databaseSize',
       'qps',
+      'txsPerSec',
       'slowQueries',
       'networkIn',
       'networkOut',
+      'cacheHitRatio',
+      'innodbHitRatio',
+      'deadlocks',
+      'tempFiles',
     ];
     const keys = [
       ...order.filter((k) => k in status && !internalKeys.has(k)),
@@ -416,65 +647,6 @@ export function ServerStatusView({
       label: labelForKey(key, t),
       value: formatValue(key, status[key], t),
     }));
-  }, [status, t]);
-
-  const cards = useMemo<MetricCard[]>(() => {
-    if (!status) return [];
-    const uptime = numberFrom(status.uptimeSeconds);
-    const connections = numberFrom(status.connections);
-    const maxConnections = numberFrom(status.maxConnections);
-    const activeQueries = numberFrom(status.activeQueries);
-    const version = status.version;
-    const database = status.database;
-    return [
-      {
-        key: 'qps',
-        label: t('serverStatus.qps'),
-        value: String(status.qps ?? '—'),
-        icon: <Activity className="h-4 w-4 text-emerald-400" />,
-      },
-      {
-        key: 'connections',
-        label: t('serverStatus.connections'),
-        value:
-          connections != null && maxConnections != null
-            ? `${connections} / ${maxConnections}`
-            : connections != null
-              ? String(connections)
-              : '—',
-        icon: <Users className="h-4 w-4 text-blue-400" />,
-      },
-      {
-        key: 'activeQueries',
-        label: t('serverStatus.activeQueries'),
-        value: String(activeQueries ?? '—'),
-        icon: <Zap className="h-4 w-4 text-amber-400" />,
-      },
-      {
-        key: 'uptime',
-        label: t('serverStatus.uptime'),
-        value: uptime != null ? formatUptime(uptime, t) : '—',
-        icon: <Clock className="h-4 w-4 text-cyan-400" />,
-      },
-      {
-        key: 'databaseSize',
-        label: t('serverStatus.databaseSize'),
-        value: formatValue('databaseSize', status.databaseSize, t),
-        icon: <HardDrive className="h-4 w-4 text-violet-400" />,
-      },
-      {
-        key: 'version',
-        label: t('serverStatus.version'),
-        value: version != null ? String(version) : '—',
-        icon: <Server className="h-4 w-4 text-slate-400" />,
-      },
-      {
-        key: 'database',
-        label: t('serverStatus.database'),
-        value: database != null ? String(database) : '—',
-        icon: <Database className="h-4 w-4 text-rose-400" />,
-      },
-    ];
   }, [status, t]);
 
   if (loading && !status && !initialData?.status) {
@@ -518,6 +690,16 @@ export function ServerStatusView({
           </span>
         )}
         <div className="flex-1" />
+        {lastUpdatedAt != null && (
+          <span
+            className="mr-2 flex items-center gap-1 text-xs text-fg-muted"
+            title={t('serverStatus.lastUpdatedTitle')}
+            data-testid="server-status-last-updated"
+          >
+            <Clock className="h-3 w-3" />
+            {formatClock(lastUpdatedAt)}
+          </span>
+        )}
         <div className="flex items-center gap-1.5 text-xs text-fg-muted">
           {t('serverStatus.autoRefresh')}
           <Select
@@ -534,11 +716,11 @@ export function ServerStatusView({
         <Button
           variant="secondary"
           className="h-8 gap-1 text-xs"
-          onClick={() => void load()}
-          disabled={loading}
+          onClick={() => void load({ manual: true })}
+          disabled={buttonLoading}
           data-testid="server-dashboard-refresh"
         >
-          {loading ? (
+          {buttonLoading ? (
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
           ) : (
             <RefreshCw className="h-3.5 w-3.5" />
@@ -576,8 +758,9 @@ export function ServerStatusView({
 
       <div className="min-h-0 flex-1 overflow-auto p-4">
         {viewTab === 'dashboard' && (
-          <>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="flex flex-col gap-4">
+            {/* 数据卡片：2×4 网格（数据驱动，缺字段隐藏） */}
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
               {cards.map((card) => (
                 <div
                   key={card.key}
@@ -586,7 +769,7 @@ export function ServerStatusView({
                   <div className="mt-0.5 shrink-0">{card.icon}</div>
                   <div className="min-w-0">
                     <div className="truncate text-xs text-fg-muted">{card.label}</div>
-                    <div className="mt-0.5 truncate font-mono text-base font-medium text-fg">
+                    <div className="mt-0.5 truncate font-mono text-lg font-medium text-fg">
                       {card.value}
                     </div>
                   </div>
@@ -594,37 +777,43 @@ export function ServerStatusView({
               ))}
             </div>
 
-            {hasTrend && (
-              <div className="mt-4">
-                <div className="mb-2 flex items-center gap-2">
+            {/* 全尺寸图表卡片网格 */}
+            {chartCards.length > 0 && (
+              <>
+                <div className="flex items-center gap-2">
                   <Activity className="h-3.5 w-3.5 text-fg-muted" />
                   <span className="text-sm font-medium text-fg">
                     {t('serverStatus.chartTitle')}
                   </span>
                 </div>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                  {visibleTrends.map((card) => (
-                    <div key={card.key} className="rounded-lg border border-edge bg-surface p-3">
-                      <div className="flex items-center gap-2">
-                        {card.icon}
-                        <span className="truncate text-xs text-fg-muted">{card.label}</span>
+                <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+                  {chartCards.map((panel) => (
+                    <div
+                      key={panel.key}
+                      className={cn(
+                        'rounded-lg border border-edge bg-surface',
+                        panel.fullWidth && 'xl:col-span-2',
+                      )}
+                    >
+                      <div className="flex items-center gap-2 border-b border-edge px-4 py-3">
+                        <Gauge className="h-4 w-4 text-fg-muted" />
+                        <span className="text-sm font-medium text-fg">{panel.label}</span>
                       </div>
-                      <div className="my-1 font-mono text-lg font-medium text-fg">
-                        {card.latest != null ? `${formatRate(card.latest)}${card.unit}` : '—'}
-                      </div>
-                      <div className="relative h-24">
+                      {/* `relative` 必须与 ChartCanvas 的 `absolute inset-0` 配对：
+                         否则画布定位基准会漂移到页面级祖先，recharts 按全屏尺寸
+                         绘制导致折线横飞覆盖整页。与 ChartView.tsx 的用法一致。 */}
+                      <div className="relative h-56 p-2">
                         <ChartCanvas
-                          data={toChartData(card.series)}
-                          config={lineConfig()}
-                          compact
+                          data={toChartData(panel.seriesKeys, history)}
+                          config={seriesChartConfig(panel.chartType, panel.seriesKeys, timeAxis)}
                         />
                       </div>
                     </div>
                   ))}
                 </div>
-              </div>
+              </>
             )}
-          </>
+          </div>
         )}
 
         {viewTab === 'variables' &&

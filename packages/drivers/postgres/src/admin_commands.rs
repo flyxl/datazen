@@ -13,7 +13,7 @@ pub fn pg_admin_command_definitions() -> Vec<DriverCommandDefinition> {
         id: "server_status_snapshot".into(),
         name: "Server Status Snapshot".into(),
         description: Some(
-            "Read-only snapshot of server uptime, connections, and database size".into(),
+            "Read-only snapshot of server status, trend counters, and database size".into(),
         ),
         input_schema: json!({ "type": "object", "properties": {} }),
         output_schema: None,
@@ -228,6 +228,7 @@ pub fn pg_admin_command_definitions() -> Vec<DriverCommandDefinition> {
                     { "id": "pid", "name": "PID" },
                     { "id": "user", "name": "User" },
                     { "id": "database", "name": "Database" },
+                    { "id": "client", "name": "Client" },
                     { "id": "state", "name": "State" },
                     { "id": "query", "name": "Query" },
                     { "id": "durationMs", "name": "Duration (ms)" }
@@ -488,7 +489,11 @@ async fn fetch_pg_process_list(pool: &sqlx::PgPool) -> Result<CommandResult, Dri
             state,
             LEFT(query, 500) AS query,
             COALESCE(EXTRACT(EPOCH FROM (now() - query_start)) * 1000, 0)::bigint AS "durationMs",
-            client_addr::text AS clientIp
+            CASE
+                WHEN client_addr IS NOT NULL THEN client_addr::text
+                WHEN btrim(application_name) IS NOT NULL AND btrim(application_name) <> '' THEN application_name
+                ELSE '[local]'
+            END AS client
         FROM pg_stat_activity
         WHERE pid <> pg_backend_pid()
         ORDER BY query_start NULLS LAST
@@ -508,7 +513,7 @@ async fn fetch_pg_process_list(pool: &sqlx::PgPool) -> Result<CommandResult, Dri
                 "state": row.try_get::<String, _>("state").ok(),
                 "query": row.try_get::<String, _>("query").ok(),
                 "durationMs": row.try_get::<i64, _>("durationMs").unwrap_or(0),
-                "clientIp": row.try_get::<String, _>("clientIp").ok(),
+                "client": row.try_get::<String, _>("client").ok(),
             })
         })
         .collect();
@@ -562,6 +567,157 @@ async fn fetch_pg_server_status(pool: &sqlx::PgPool) -> Result<CommandResult, Dr
     .await
     .map_err(|e| DriverError::QueryFailed(e.to_string()))?;
 
+    // 累积计数器与瞬时指标：供 Host 差分/播种折线图并渲染数据卡片（数据驱动，无则隐藏）。
+    let counters = sqlx::query(
+        r#"
+        SELECT
+            xact_commit::bigint AS xact_commit,
+            xact_rollback::bigint AS xact_rollback,
+            (xact_commit + xact_rollback)::bigint AS questions,
+            tup_fetched::bigint AS tup_fetched,
+            tup_returned::bigint AS tup_returned,
+            tup_inserted::bigint AS tup_inserted,
+            tup_updated::bigint AS tup_updated,
+            tup_deleted::bigint AS tup_deleted,
+            blks_read::bigint AS blks_read,
+            blks_hit::bigint AS blks_hit,
+            deadlocks::bigint AS deadlocks,
+            temp_files::bigint AS temp_files,
+            temp_bytes::bigint AS temp_bytes,
+            (blks_read * 8192)::bigint AS bytes_in,
+            (blks_hit * 8192)::bigint AS bytes_out
+        FROM pg_stat_database
+        WHERE datname = current_database()
+        "#,
+    )
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten();
+
+    let xact_commit: i64 = counters
+        .as_ref()
+        .map(|r| r.get::<i64, _>("xact_commit"))
+        .unwrap_or(0);
+    let xact_rollback: i64 = counters
+        .as_ref()
+        .map(|r| r.get::<i64, _>("xact_rollback"))
+        .unwrap_or(0);
+    let questions: i64 = counters
+        .as_ref()
+        .map(|r| r.get::<i64, _>("questions"))
+        .unwrap_or(0);
+    let tup_fetched: i64 = counters
+        .as_ref()
+        .map(|r| r.get::<i64, _>("tup_fetched"))
+        .unwrap_or(0);
+    let tup_returned: i64 = counters
+        .as_ref()
+        .map(|r| r.get::<i64, _>("tup_returned"))
+        .unwrap_or(0);
+    let tup_inserted: i64 = counters
+        .as_ref()
+        .map(|r| r.get::<i64, _>("tup_inserted"))
+        .unwrap_or(0);
+    let tup_updated: i64 = counters
+        .as_ref()
+        .map(|r| r.get::<i64, _>("tup_updated"))
+        .unwrap_or(0);
+    let tup_deleted: i64 = counters
+        .as_ref()
+        .map(|r| r.get::<i64, _>("tup_deleted"))
+        .unwrap_or(0);
+    let blks_read: i64 = counters
+        .as_ref()
+        .map(|r| r.get::<i64, _>("blks_read"))
+        .unwrap_or(0);
+    let blks_hit: i64 = counters
+        .as_ref()
+        .map(|r| r.get::<i64, _>("blks_hit"))
+        .unwrap_or(0);
+    let deadlocks: i64 = counters
+        .as_ref()
+        .map(|r| r.get::<i64, _>("deadlocks"))
+        .unwrap_or(0);
+    let temp_files: i64 = counters
+        .as_ref()
+        .map(|r| r.get::<i64, _>("temp_files"))
+        .unwrap_or(0);
+    let temp_bytes: i64 = counters
+        .as_ref()
+        .map(|r| r.get::<i64, _>("temp_bytes"))
+        .unwrap_or(0);
+    let bytes_in: i64 = counters
+        .as_ref()
+        .map(|r| r.get::<i64, _>("bytes_in"))
+        .unwrap_or(0);
+    let bytes_out: i64 = counters
+        .as_ref()
+        .map(|r| r.get::<i64, _>("bytes_out"))
+        .unwrap_or(0);
+
+    // 缓存命中率（百分比）：blks_hit / (blks_hit + blks_read)。
+    let cache_hit: Option<f64> = {
+        let total = blks_hit + blks_read;
+        if total > 0 {
+            Some((blks_hit as f64 / total as f64) * 100.0)
+        } else {
+            None
+        }
+    };
+    let cache_hit_ratio: Option<String> = cache_hit.map(|v| format!("{v:.2}%"));
+
+    // 当前 WAL 字节数（累积）：pg_current_wal_lsn − '0/0'。无该函数（旧 PG < 10）时为 None。
+    let wal_bytes: Option<i64> =
+        sqlx::query_scalar("SELECT pg_wal_lsn_diff(pg_current_wal_lsn(), '0/0')::bigint")
+            .fetch_optional(pool)
+            .await
+            .ok()
+            .flatten();
+
+    // 会话状态计数（瞬时 gauge，供「服务器会话」图：总/活跃/空闲）。
+    let session_stats = sqlx::query(
+        r#"
+        SELECT
+            count(*)::int AS total,
+            count(*) FILTER (WHERE state = 'active')::int AS active,
+            count(*) FILTER (WHERE state = 'idle')::int AS idle
+        FROM pg_stat_activity
+        "#,
+    )
+    .fetch_one(pool)
+    .await
+    .ok();
+    let (session_total, session_active, session_idle) = match session_stats {
+        Some(r) => (
+            r.get::<i32, _>("total"),
+            r.get::<i32, _>("active"),
+            r.get::<i32, _>("idle"),
+        ),
+        None => (-1, -1, -1),
+    };
+
+    // PG14+ `sessions` 为累积会话数；旧版本无该列时省略字段（对应趋势卡自动隐藏）。
+    let new_sessions: Option<i64> = sqlx::query_scalar(
+        "SELECT sessions::bigint FROM pg_stat_database WHERE datname = current_database()",
+    )
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten();
+
+    let uptime_seconds = row.get::<i64, _>("uptime_seconds");
+    let qps = if uptime_seconds > 0 {
+        format!("{:.2}", questions as f64 / uptime_seconds as f64)
+    } else {
+        "0.00".to_string()
+    };
+    let txs_per_sec = if uptime_seconds > 0 {
+        format!("{:.2}", questions as f64 / uptime_seconds as f64)
+    } else {
+        "0.00".to_string()
+    };
+
     // PG 状态变量：由驱动决定提供哪些设置，Host 仅渲染返回数组（数据驱动分叉）。
     let pg_settings = sqlx::query(
         "SELECT name, setting FROM pg_settings WHERE unit IS NOT NULL OR source = 'configuration file' ORDER BY name LIMIT 150",
@@ -581,18 +737,58 @@ async fn fetch_pg_server_status(pool: &sqlx::PgPool) -> Result<CommandResult, Dr
         Err(_) => vec![],
     };
 
-    Ok(CommandResult {
-        data: json!({
-            "version": row.get::<String, _>("version"),
-            "database": row.get::<String, _>("database"),
-            "uptimeSeconds": row.get::<i64, _>("uptime_seconds"),
-            "connections": row.get::<i64, _>("connections"),
-            "maxConnections": max_connections,
-            "activeQueries": row.get::<i64, _>("active_queries"),
-            "databaseSize": row.get::<String, _>("database_size"),
-            "statusVariables": status_variables,
-        }),
-    })
+    let statement_counters = json!({
+        "select": tup_fetched,
+        "insert": tup_inserted,
+        "update": tup_updated,
+        "delete": tup_deleted,
+    });
+
+    let mut data = json!({
+        "version": row.get::<String, _>("version"),
+        "database": row.get::<String, _>("database"),
+        "uptimeSeconds": uptime_seconds,
+        "connections": row.get::<i64, _>("connections"),
+        "maxConnections": max_connections,
+        "activeQueries": row.get::<i64, _>("active_queries"),
+        "databaseSize": row.get::<String, _>("database_size"),
+        "qps": qps,
+        "txsPerSec": txs_per_sec,
+        "networkIn": bytes_in,
+        "networkOut": bytes_out,
+        "deadlocks": deadlocks,
+        "tempFiles": temp_files,
+        "tempBytes": temp_bytes,
+        "sessionTotal": session_total,
+        "sessionActive": session_active,
+        "sessionIdle": session_idle,
+        "questionsCounter": questions,
+        "xactCommitCounter": xact_commit,
+        "xactRollbackCounter": xact_rollback,
+        "blksReadCounter": blks_read,
+        "blksHitCounter": blks_hit,
+        "tupFetchedCounter": tup_fetched,
+        "tupReturnedCounter": tup_returned,
+        "tupInsertedCounter": tup_inserted,
+        "tupUpdatedCounter": tup_updated,
+        "tupDeletedCounter": tup_deleted,
+        "tempBytesCounter": temp_bytes,
+        "bytesInCounter": bytes_in,
+        "bytesOutCounter": bytes_out,
+        "statementCounters": statement_counters,
+        "statusVariables": status_variables,
+    });
+    if let Some(hit) = cache_hit_ratio {
+        data["cacheHitRatio"] = json!(hit);
+    }
+    if let Some(wal) = wal_bytes {
+        data["walBytes"] = json!(wal);
+    }
+    if let Some(sessions) = new_sessions {
+        data["newSessionsCounter"] = json!(sessions);
+    }
+
+    Ok(CommandResult { data })
 }
 
 async fn estimate_pg_table_rows(
@@ -864,6 +1060,33 @@ mod tests {
             .cloned()
             .unwrap_or_default();
         eprintln!("PG statusVariables count = {}", vars.len());
+        assert!(
+            ss_data.get("questionsCounter").is_some(),
+            "PG snapshot must expose questionsCounter for trend charts, got {ss_data}"
+        );
+        assert!(
+            ss_data.get("qps").is_some(),
+            "PG snapshot must expose qps for dashboard cards, got {ss_data}"
+        );
+        // 扩展契约：卡片/图表面板依赖的字段应被返回（值依环境而定，仅校验存在）。
+        for key in [
+            "xactCommitCounter",
+            "xactRollbackCounter",
+            "blksReadCounter",
+            "blksHitCounter",
+            "tupFetchedCounter",
+            "tupReturnedCounter",
+            "tupInsertedCounter",
+            "tupUpdatedCounter",
+            "tupDeletedCounter",
+            "deadlocks",
+            "tempFiles",
+        ] {
+            assert!(
+                ss_data.get(key).is_some(),
+                "PG snapshot must expose {key} (extended dashboard contract), got {ss_data}"
+            );
+        }
         pool.close().await;
     }
 }

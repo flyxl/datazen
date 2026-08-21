@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { queryCommands } from '../commands/query';
 import type { DatabaseType, FavoriteQuery, QueryHistoryEntry, Value } from '../types';
 import type { ChartConfig } from '../types/chart';
+import type { TrendSeries } from '../lib/serverStatusTrends';
 import {
   type BindParams,
   type QueryExecState,
@@ -85,7 +86,9 @@ export interface ServerStatusPanel extends PanelBase {
 export interface ServerStatusCache {
   status: Record<string, string | number | boolean | null>;
   variables?: { name: string; value: string | null }[];
-  history?: Record<string, number[]>;
+  history?: Record<string, TrendSeries>;
+  /** 上次成功刷新时刻（wall-clock ms），用于「上次更新时间」显示。 */
+  updatedAt?: number;
 }
 
 /** 进程列表面板（独立于服务器仪表盘）。 */

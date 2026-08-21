@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatAxisTick, formatNumber, formatPercent } from '../format';
+import { formatAxisTick, formatEpochMs, formatNumber, formatPercent } from '../format';
 
 describe('formatNumber', () => {
   it('returns empty for null/undefined', () => {
@@ -28,6 +28,17 @@ describe('formatPercent', () => {
 
 describe('formatAxisTick', () => {
   it('delegates numbers to formatNumber', () => {
+    expect(formatAxisTick(1000)).toMatch(/1.*000/);
+  });
+
+  it('renders epoch-ms values as a clock time (HH:mm:ss)', () => {
+    // 2026-01-01 12:34:56 UTC
+    const ts = Date.UTC(2026, 0, 1, 12, 34, 56);
+    expect(formatAxisTick(ts)).toBe(formatEpochMs(ts));
+    expect(formatEpochMs(ts)).toMatch(/^\d{2}:\d{2}:\d{2}$/);
+  });
+
+  it('leaves epoch-ms range untouched for ordinary small numbers', () => {
     expect(formatAxisTick(1000)).toMatch(/1.*000/);
   });
 
