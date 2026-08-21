@@ -621,6 +621,7 @@ mod tests {
                 std::collections::HashMap::new(),
             )),
             workflow_scheduler: crate::workflow::scheduler::WorkflowScheduler::new(),
+            plugins: Arc::new(crate::plugins::PluginManager::new(data_dir.join("plugins"))),
         };
 
         let ctx_dir = resolve_context_dir_from_state(&state).await.unwrap();
@@ -684,6 +685,7 @@ mod tests {
                 std::collections::HashMap::new(),
             )),
             workflow_scheduler: crate::workflow::scheduler::WorkflowScheduler::new(),
+            plugins: Arc::new(crate::plugins::PluginManager::new(data_dir.join("plugins"))),
         };
 
         let ctx_dir = resolve_context_dir_from_state(&state).await.unwrap();
