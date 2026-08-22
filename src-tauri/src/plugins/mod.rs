@@ -7,6 +7,9 @@ pub mod install;
 pub mod manifest;
 pub mod storage;
 
+#[cfg(test)]
+mod integration_tests;
+
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
