@@ -75,7 +75,7 @@ interface ErrEnvelope {
   reqId?: string;
   target: 'host';
   ok: false;
-  payload: { code: string; message: string };
+  payload?: { code: string; message: string };
 }
 
 type ResponseEnvelope<P = unknown> = OkEnvelope<P> | ErrEnvelope;
@@ -344,11 +344,17 @@ export function createClient(options: CreateClientOptions = {}): UiPluginClient 
     if (data.ok) {
       entry.resolve(data.payload);
     } else {
-      const code = data.payload.code;
+      // Malformed host frames may omit or null the err payload entirely
+      // (BUG-F8-01); read defensively so the listener can never throw and
+      // the pending request always settles as UiPluginError(E_INTERNAL).
+      const payload: { code?: unknown; message?: unknown } = isRecord(data.payload)
+        ? data.payload
+        : {};
+      const code = payload.code;
       entry.reject(
         new UiPluginError(
           (typeof code === 'string' ? code : BRIDGE_ERROR.INTERNAL) as UiPluginErrorCode,
-          data.payload.message || entry.type,
+          (typeof payload.message === 'string' && payload.message) || entry.type,
         ),
       );
     }

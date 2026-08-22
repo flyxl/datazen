@@ -28,7 +28,7 @@
 | BUG-F4-04 | F4 | 管理页默认过滤器为「全部」（规格为默认 Workspace），且「全部」视图平铺不分组 | 打开管理页未点 chip 即显示全部插件平铺列表（PluginManagementPage.tsx:57 初值 'all'）。规格 §4.3：默认 Workspace、「全部」分组 | 已修复（ca2218bc） |
 | BUG-F6-01 | F6 | 【处置：backlog/P2 加固，不阻断】【低危/协议卫生，无安全影响】原型链键名作为 API type 时回 `E_PERMISSION` 而非设计文档声明的 `E_NOT_FOUND`：`API_ROUTES` 为普通对象字面量，`__proto__`/`constructor`/`hasOwnProperty`/`toString`/`valueOf` 经 Object.prototype 原型链解析为非 undefined 值，绕过「unknown api → E_NOT_FOUND」门（uiPluginBridge.ts:374-380），落入权限判定后被拒。**无法到达任何 handler**（granted Set 仅含 manifest 字符串），不消耗并发配额 | attachBridge 后从 iframe window 投递 `{ch:'ui-plugin',type:'__proto__',target:'host',reqId:'r1'}` → 收到 `__proto__.err{code:'E_PERMISSION'}`；同型 `constructor`/`hasOwnProperty`/`toString`/`valueOf` 一致。按 uiPluginBridge.ts:126 自述契约与 §3.2 路由语义应为 `E_NOT_FOUND('unknown api')`。修复建议：`Object.prototype.hasOwnProperty.call(API_ROUTES, type)` 或 `Map`/null-prototype 路由表。回归锚点：security.test「denies prototype-chain api type …」（5 例） | 新建 |
 | BUG-F7-01 | F7 | 【处置：低危外观缺陷，不阻断】Settings 左侧导航「外观」项图标渲染为「?」占位方块而非 Palette 图标，双重缺口：① commit 1d9c398b **漏提交** `hostLucideMap.ts` 的 `appearance: 'Palette'` 映射行（当前工作区存在该一行未提交修复）——HEAD 状态下 `buildHostLucideById()` 无 `settings.appearance` 键，iconResolver 直接回 UI_PLACEHOLDER；② 即使补上 ①，`ThemedIcon.tsx` 内部 `LUCIDE_MAP`（31-54 行）也**未导入 Palette 组件**，`LUCIDE_MAP['Palette'] ?? fallback` 为 undefined → ThemedIcon.tsx:90-100 渲染 `?` 占位 span。纯视觉问题，功能与切换行为不受影响 | 打开 Settings → 观察左侧导航第 2 项「外观」：图标为灰底「?」小方块，其余菜单项均为正常 lucide 图标。链路：`settingsSectionIconId('appearance')='settings.appearance'` → resolver 解析成功为 `{kind:'lucide',name:'Palette'}` 但 ThemedIcon 查表失败（或 HEAD 下解析即失败）。修复建议：① 提交 hostLucideMap.ts 该行；② ThemedIcon.tsx 导入 Palette 并加入 LUCIDE_MAP。回归锚点：settingsSectionIcons.test.tsx「documents BUG-F7-01…」（修复后翻转为断言 svg 渲染）。备注：`extensions→Puzzle` 存在同型缺口（存量问题、非 F7 引入），建议随修 | 新建 |
-| BUG-F8-01 | F8 | 【处置：低危健壮性缺口，不阻断】【SDK 侧容错】`.err` 响应 payload 缺失或 null 时请求路由崩溃并永久泄漏：bridge.ts onMessage 的 `.err` 分支 `const code = data.payload.code` 未守卫 payload 存在性，而 `pending.delete(reqId)` + `clearTimeout(entry.timer)` 在该解引用**之前**已执行 → TypeError 以 uncaught error 形态逃逸监听器，该请求 Promise **永不结算**（超时定时器已被清、map 条目已被删，后续同 reqId 应答亦无法补救）。宿主正常 `errEnvelope` 恒带 `{code,message}`，仅畸形/被篡改宿主帧可触发；`event.source === parent` 反欺骗门不受影响，无安全越权面；§5「E_* 错误类型 + 容错」语义要求优雅降级为 UiPluginError(E_INTERNAL) | 插件页 `const dz=createClient({parentWindow:parent}); await dz.ready(); const p=dz.storage.get('k');` 后投递 `{ch:'ui-plugin',type:'storage.get.err',target:'host',reqId:<p的在途reqId>,ok:false}`（payload 缺失或 null）→ 页面 uncaught `TypeError: Cannot read properties of null/undefined (reading 'code')`，p 永久 pending。回归锚点：bridge.faults.test.ts C-03 源码钉住正则 `/const code = data\.payload\.code;/`（修复改为 `data.payload?.code` 后翻转锚点并补动态优雅拒绝断言） | 验证不通过（修复中）|
+| BUG-F8-01 | F8 | 【处置：低危健壮性缺口，不阻断】【SDK 侧容错】`.err` 响应 payload 缺失或 null 时请求路由崩溃并永久泄漏：bridge.ts onMessage 的 `.err` 分支 `const code = data.payload.code` 未守卫 payload 存在性，而 `pending.delete(reqId)` + `clearTimeout(entry.timer)` 在该解引用**之前**已执行 → TypeError 以 uncaught error 形态逃逸监听器，该请求 Promise **永不结算**（超时定时器已被清、map 条目已被删，后续同 reqId 应答亦无法补救）。宿主正常 `errEnvelope` 恒带 `{code,message}`，仅畸形/被篡改宿主帧可触发；`event.source === parent` 反欺骗门不受影响，无安全越权面；§5「E_* 错误类型 + 容错」语义要求优雅降级为 UiPluginError(E_INTERNAL) | 插件页 `const dz=createClient({parentWindow:parent}); await dz.ready(); const p=dz.storage.get('k');` 后投递 `{ch:'ui-plugin',type:'storage.get.err',target:'host',reqId:<p的在途reqId>,ok:false}`（payload 缺失或 null）→ 页面 uncaught `TypeError: Cannot read properties of null/undefined (reading 'code')`，p 永久 pending。回归锚点：bridge.faults.test.ts C-03/C-04 动态优雅拒绝用例（payload 缺失 / null / undefined 键均断言 reject UiPluginError(E_INTERNAL) 且 window error 监听为零；原源码钉住正则已随修复翻转移除） | 待验证 |
 
 Bug 状态流转：`新建 → 验证不通过(修复中) → 待验证 → 已修复`
 
@@ -500,12 +500,13 @@ E2E 说明：按本任务约定，AGENTS.md「Host UI 变更须同 PR 补 E2E」
 | token 名单 | DEFAULT_THEME_TOKENS 21 键 | THEME_TOKENS 21 名 | ✅ 双向精确相等；themes.css 定义齐全；theme.css 消费 19 个 var() 引用 ⊆ THEME_TOKENS（--c-query-run/--c-titlebar* 五个宿主 chrome 专属 token 有意不被插件消费）（X-05） |
 | css 色值纪律 | theme.css「仅 var() 引用」 | — | ✅ 移除全部 var(...) 后零 #hex/rgb(/hsl( 残留；41 个字面量全部位于 var() 回退位内且与 DEFAULT_THEME_TOKENS 一一对应（NOTE-F8-01） |
 
-#### 用例清单（新增 37 例，全部 PASS；scope 合计 68 = 开发 31 + 补充 37）
+#### 用例清单（新增 38 例，全部 PASS；scope 合计 69 = 开发 31 + 补充 38；C-03/C-04 为 BUG-F8-01 修复后翻转的回归锚点）
 
 | 编号组 | 场景 | 预期 | 实际 | 结论 |
 |--------|------|------|------|------|
 | C-01–02 | 畸形响应容错 | ok 信封缺 payload 字段 → 五个类型化 API 全部容错解包（null/[]/undefined）；string/number/null/array/undefined 非 JSON 数据一律忽略且不结算在途请求 | 符合 | PASS |
-| C-03 | F-BUG-PIN（BUG-F8-01） | 源码级钉住 `.err` 分支未守卫 payload 的缺陷行 `const code = data.payload.code;`；注释含完整动态重现步骤（见 Bug 跟踪） | 符合（缺陷已登记） | PASS |
+| C-03 | BUG-F8-01 回归（payload 缺失） | 无 `payload` 字段的 `.err` 帧立即结算为 UiPluginError(E_INTERNAL)、message 回退请求类型名；派发期间 window `error` 事件 + `window.onerror` 捕获为零（修复前该用例在缺陷代码上失败：TypeError 逃逸 + Promise 永不结算超时） | 符合 | PASS |
+| C-04 | BUG-F8-01 回归（payload null/undefined） | `payload:null`、`payload:undefined`、无 payload 键三种畸形 `.err` 帧均优雅拒绝为 E_INTERNAL 且零未捕获错误 | 符合 | PASS |
 | C-05 | err payload 原始类型降级 | `{code:7}`/false/0/'boom' 四种非法 payload 均立即拒绝为 UiPluginError(E_INTERNAL)，message 回退为请求类型名，无挂起 | 符合 | PASS |
 | C-06–08 | storage 序列化保真 | set 嵌套对象/数组逐字上线；set 原始值（0/false/null/undefined 键存在性）原样投递；get 返回 falsy（false/0/''）**不塌缩为 null**、对象深等透传、缺 value → null | 符合 | PASS |
 | C-09 | command.invoke 透传 | 投递对象与入参 **同一引用**（零重组）、键序一致、额外顶层字段与嵌套 args 原样保留、结果仅解 `.result` | 符合 | PASS |
@@ -530,7 +531,7 @@ E2E 说明：按本任务约定，AGENTS.md「Host UI 变更须同 PR 补 E2E」
 
 #### 执行命令与结果
 
-- `npx vitest run packages/ui-plugin-sdk` → **68 passed / 0 failed**（31 开发 + 37 新增）
+- `npx vitest run packages/ui-plugin-sdk` → BUG-F8-01 修复后复跑 **69 passed / 0 failed**（31 开发 + 38 新增；C-03/C-04 在未修复代码上验证为失败，翻转后通过）
 - `npx vitest run`（全量）→ 229 文件：225 passed / **4 failed files 与基线集合完全一致**（ConnectionNavigatorTree[文件级]、RunHistoryDrawer、WidgetEditorDrawer、ObjectBrowser），1800 passed / 3 failed tests——基线 4 个失败用例中 RunHistoryDrawer「loads index…」本轮自行通过（该文件已知 flaky，单独复跑仍不稳定），**零新增失败**
 - `npx tsc -p packages/ui-plugin-sdk --noEmit` → **零错误**
 
@@ -538,7 +539,7 @@ E2E 说明：按本任务约定，AGENTS.md「Host UI 变更须同 PR 补 E2E」
 
 | ID | 类型 | 描述 | 重现步骤 | 期望 vs 实际 | 状态 |
 |----|------|------|---------|-------------|------|
-| BUG-F8-01 | 低危健壮性缺口（详见 Bug 跟踪表） | `.err` 信封 payload 缺失/null → TypeError uncaught + 请求永久泄漏 | 见 Bug 跟踪表 | 规格 §5 容错语义：应如其他畸形 payload 一样优雅降级 UiPluginError(E_INTERNAL)；实际崩溃且永不结算 | 验证不通过（修复中）|
+| BUG-F8-01 | 低危健壮性缺口（详见 Bug 跟踪表） | `.err` 信封 payload 缺失/null → TypeError uncaught + 请求永久泄漏 | 见 Bug 跟踪表 | 规格 §5 容错语义：应如其他畸形 payload 一样优雅降级 UiPluginError(E_INTERNAL)；修复后 bridge.ts err 分支守卫读取（isRecord → 空对象兜底），任何畸形 err 帧均结算 E_INTERNAL，C-03/C-04 回归通过（缺陷代码上验证为失败） | 待验证 |
 | NOTE-F8-01 | 备注 | theme.css 含 41 处 hex 字面量，全部位于 `var(--token, #fallback)` 回退位（文件头注释明示「Literal fallbacks only cover the instant before the first snapshot lands」）。按「不含硬编码色值」最严格读法可判偏差；按任务书括号语义「仅 var() 引用」判定合规：所有颜色消费均经 var() 引用契约 token，回退色与 DEFAULT_THEME_TOKENS 逐一相符且有 R5 缺省兜底，测试已断言两计数相等防漂移 | interop.test.ts「fallback palette hexes agree…」+「color policy…」（41==41 断言） | 若产品要求零字面量，删除 var() 第二参即可由 DEFAULT_THEME_TOKENS 兜底，行为不变 | 备注 |
 
 ## 回归测试
