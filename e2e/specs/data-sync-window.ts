@@ -1,6 +1,6 @@
 import { expect, browser, $, $$ } from '@wdio/globals';
 import { t } from '../i18n.js';
-import { closeExtraWindows, selectDzOption, withSafeModeOff } from '../helpers.js';
+import { closeExtraWindows, queryScalar, selectDzOption, withSafeModeOff } from '../helpers.js';
 
 /**
  * Data Sync Diff Workspace Host journeys (DSW-001~DSW-008).
@@ -377,10 +377,10 @@ describe('数据同步 UI 执行闭环 (DSW-EXEC)', () => {
 
     // 落库校验：目标行数 = 5
     const tgt = await dSyncConnect(TGT_ID);
-    const rows2 = await invokeSync<{ data: Array<{ c: number }> }>('execute_query', {
+    const rows2 = await invokeSync('execute_query', {
       connectionId: tgt,
       sql: `SELECT count(*)::int AS c FROM ${TABLE}`,
     });
-    expect(Number(rows2?.data?.[0]?.c)).toBe(5);
+    expect(queryScalar(rows2, 'c')).toBe(5);
   });
 });

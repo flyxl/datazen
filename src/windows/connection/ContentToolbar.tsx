@@ -6,6 +6,7 @@ import {
   KeyRound,
   MessageSquare,
   Plus,
+  RefreshCw,
   TableProperties,
 } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
@@ -30,6 +31,7 @@ export interface ContentToolbarProps {
   onBatchExport: () => void;
   onToggleAiChat: () => void;
   onToggleDetail: () => void;
+  onRefresh: () => void;
 }
 
 export function ContentToolbar({
@@ -49,6 +51,7 @@ export function ContentToolbar({
   onBatchExport,
   onToggleAiChat,
   onToggleDetail,
+  onRefresh,
 }: ContentToolbarProps) {
   const { t } = useI18n();
 
@@ -98,6 +101,15 @@ export function ContentToolbar({
       )}
 
       <div className="flex-1" />
+
+      <Button
+        variant="ghost"
+        className="h-7 w-7 !px-0"
+        title={`${t('connWin.refresh')} (⌘R)`}
+        onClick={onRefresh}
+      >
+        <RefreshCw className="h-3.5 w-3.5" />
+      </Button>
 
       <Button
         variant="ghost"

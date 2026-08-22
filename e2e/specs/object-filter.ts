@@ -12,6 +12,7 @@ import { t } from '../i18n.js';
 import {
   closeExtraWindows,
   connectSeededPgInWorkspace,
+  E2E_PG_CONN_NAME,
   executeSQL,
   openQueryTab,
   withSafeModeOff,
@@ -97,23 +98,49 @@ async function visibleTableNames(): Promise<string[]> {
 }
 
 /** 展开连接 → 其下某 schema（默认 public）以加载表节点。 */
-async function expandSchemaTables(schemaFilter = 'public') {
+async function expandSchemaTables(schemaFilter = 'public', connName = E2E_PG_CONN_NAME) {
+  await browser.execute((name: string) => {
+    const expand = (el: Element | null | undefined) => {
+      if (!el) return;
+      const svg = el.querySelector('svg');
+      if (svg?.getAttribute('class')?.includes('chevron-right')) (el as HTMLElement).click();
+    };
+    const conn = Array.from(document.querySelectorAll('[data-conn-item]')).find((el) => {
+      const attr = el.getAttribute('data-conn-name');
+      if (attr) return attr === name;
+      return el.querySelector('span.truncate')?.textContent?.trim() === name;
+    });
+    expand(conn);
+  }, connName);
+  await browser.pause(800);
+
   await browser.execute(() => {
-    const items = Array.from(document.querySelectorAll('[data-conn-item]'));
-    const conn = items[0];
-    (conn as HTMLElement)?.click();
+    const db = document.querySelector('[data-tree-node="db"]');
+    const svg = db?.querySelector('svg');
+    if (svg?.getAttribute('class')?.includes('chevron-right')) (db as HTMLElement).click();
   });
-  await browser.pause(1500);
+  await browser.pause(800);
+
   await browser.execute((s: string) => {
+    const expand = (el: Element | null | undefined) => {
+      if (!el) return;
+      const svg = el.querySelector('svg');
+      if (svg?.getAttribute('class')?.includes('chevron-right')) (el as HTMLElement).click();
+    };
     const schemas = Array.from(document.querySelectorAll('[data-tree-node="schema"]'));
-    const target = schemas.find((el) => el.textContent?.toLowerCase().includes(s.toLowerCase()));
-    (target as HTMLElement)?.click();
+    const target =
+      schemas.find((el) => el.textContent?.toLowerCase().includes(s.toLowerCase())) ?? schemas[0];
+    expand(target);
   }, schemaFilter);
-  await browser.pause(1200);
+  await browser.pause(800);
+
   await browser.execute(() => {
-    const cats = Array.from(document.querySelectorAll('[data-tree-node="category"]'));
-    const tables = cats.find((c) => c.getAttribute('data-cat-id') === 'tables');
-    (tables as HTMLElement)?.click();
+    const tables = Array.from(document.querySelectorAll('[data-tree-node="category"]')).find(
+      (c) => c.getAttribute('data-cat-id') === 'tables',
+    );
+    if (!tables) return;
+    const svg = tables.querySelector('svg');
+    if (svg?.getAttribute('class')?.includes('chevron-right')) (tables as HTMLElement).click();
   });
   await browser.pause(1200);
 }
@@ -123,6 +150,28 @@ async function dialogInputValue(placeholder: string): Promise<string> {
   const el = await $(`input[placeholder="${placeholder}"]`);
   const v = await el.getValue();
   return v;
+}
+
+/** 点击对话框内 Save 按钮。 */
+async function clickDialogSave() {
+  await browser.execute((saveLabel: string) => {
+    const dialog = document.querySelector('[role="dialog"]');
+    if (!dialog) return;
+    const btn = Array.from(dialog.querySelectorAll('button')).find((b) =>
+      b.textContent?.includes(saveLabel),
+    );
+    btn?.click();
+  }, t('common.save'));
+  await browser.pause(600);
+}
+
+/** 打开对象过滤对话框。 */
+async function openObjectFilterDialog(connName = E2E_PG_CONN_NAME) {
+  const ok = await rightClickConn(connName);
+  expect(ok).toBe(true);
+  await clickMenuItem(t('main.ctx.objectFilter'));
+  await browser.pause(500);
+  await expect(await $(`[role="dialog"]`)).toBeDisplayed();
 }
 
 /** 清空一个输入框并 setValue。 */
@@ -169,7 +218,7 @@ describe('运维 §5.4: 对象过滤器 (OPS-FILTER)', () => {
   });
 
   it('OPS-FILTER-001: 右键连接菜单含「对象过滤」并打开对话框', async () => {
-    const ok = await rightClickConn('');
+    const ok = await rightClickConn(E2E_PG_CONN_NAME);
     expect(ok).toBe(true);
     const text = await menuText();
     expect(text).toContain(t('main.ctx.objectFilter'));
@@ -178,9 +227,18 @@ describe('运维 §5.4: 对象过滤器 (OPS-FILTER)', () => {
     await expect(await $(`[role="dialog"]`)).toBeDisplayed();
     const body = await $('body').getText();
     expect(body).toContain(t('objectFilter.title'));
+    await browser.execute((cancelLabel: string) => {
+      const dialog = document.querySelector('[role="dialog"]');
+      const btn = Array.from(dialog?.querySelectorAll('button') ?? []).find((b) =>
+        b.textContent?.includes(cancelLabel),
+      );
+      btn?.click();
+    }, t('common.cancel'));
+    await browser.pause(400);
   });
 
   it('OPS-FILTER-002: 设置 include=e2e_* 与隐藏系统库并保存', async () => {
+    await openObjectFilterDialog();
     // 检查框勾选隐藏系统库
     await browser.execute((label: string) => {
       const labels = Array.from(document.querySelectorAll('[role="dialog"] label'));
@@ -188,10 +246,7 @@ describe('运维 §5.4: 对象过滤器 (OPS-FILTER)', () => {
       if (target) (target.querySelector('input[type="checkbox"]') as HTMLElement)?.click();
     }, t('objectFilter.hideSystemSchemas'));
     await setInputByPlaceholder(t('objectFilter.includePlaceholder'), 'e2e_*');
-    // 保存
-    const save = await $(`[role="dialog"] button*=${t('common.save')}`);
-    await save.click();
-    await browser.pause(600);
+    await clickDialogSave();
     // 对话框应关闭
     await browser.waitUntil(
       async () =>
@@ -210,6 +265,9 @@ describe('运维 §5.4: 对象过滤器 (OPS-FILTER)', () => {
     await closeExtraWindows(mainWindow);
     await connectSeededPgInWorkspace();
     await browser.pause(1500);
+    const refreshBtn = await $(`button[title="${t('connWin.refresh')} (⌘R)"]`);
+    await refreshBtn.click();
+    await browser.pause(1500);
     await expandSchemaTables();
     const names = await visibleTableNames();
     expect(names).toContain(FT1);
@@ -218,23 +276,36 @@ describe('运维 §5.4: 对象过滤器 (OPS-FILTER)', () => {
   });
 
   it('OPS-FILTER-004: 重新打开对话框断言设置持久化回填', async () => {
-    await rightClickConn('');
-    await clickMenuItem(t('main.ctx.objectFilter'));
-    await browser.pause(500);
+    await openObjectFilterDialog();
     const includeVal = await dialogInputValue(t('objectFilter.includePlaceholder'));
     expect(includeVal).toBe('e2e_*');
-    // 取消关闭
-    const cancelBtn = await $(`[role="dialog"] button*=${t('common.cancel')}`);
-    await cancelBtn.click();
+    await browser.execute((cancelLabel: string) => {
+      const dialog = document.querySelector('[role="dialog"]');
+      const btn = Array.from(dialog?.querySelectorAll('button') ?? []).find((b) =>
+        b.textContent?.includes(cancelLabel),
+      );
+      btn?.click();
+    }, t('common.cancel'));
+    await browser.pause(400);
   });
 
   it('OPS-FILTER-005: 清空 include 保存后树恢复', async () => {
-    await rightClickConn('');
-    await clickMenuItem(t('main.ctx.objectFilter'));
+    await openObjectFilterDialog();
     await setInputByPlaceholder(t('objectFilter.includePlaceholder'), '');
-    const save = await $(`[role="dialog"] button*=${t('common.save')}`);
-    await save.click();
-    await browser.pause(500);
+    await clickDialogSave();
+    await browser.waitUntil(
+      async () =>
+        !(await $(`[role="dialog"]`)
+          .isDisplayed()
+          .catch(() => false)),
+      { timeout: 8000, timeoutMsg: '保存后对象过滤对话框未关闭' },
+    );
+    await closeExtraWindows(mainWindow);
+    await connectSeededPgInWorkspace();
+    await browser.pause(1500);
+    const refreshBtn = await $(`button[title="${t('connWin.refresh')} (⌘R)"]`);
+    await refreshBtn.click();
+    await browser.pause(1500);
     await expandSchemaTables();
     const names = await visibleTableNames();
     expect(names).toContain(PLAIN);

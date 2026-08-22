@@ -46,7 +46,11 @@ import {
 } from '../../lib/mainWindowContextMenu';
 import { buildSchemaTreeContextMenuItems } from '../../lib/schemaTreeContextMenu';
 import { buildConnectionUrl } from '../../lib/buildConnectionUrl';
-import { groupConnections, useConnectionStore } from '../../stores/connectionStore';
+import {
+  groupConnectionsWithPinnedSection,
+  PINNED_GROUP_KEY,
+  useConnectionStore,
+} from '../../stores/connectionStore';
 import { useActiveConnectionStore } from '../../stores/activeConnectionStore';
 import { useSchemaStore } from '../../stores/schemaStore';
 import type { ConnectionOpenTarget } from '../../lib/connectionViews/types';
@@ -471,7 +475,10 @@ export const ConnectionNavigatorTree = forwardRef<
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Always get all connections grouped; deep search filtering happens in flatRows
-  const grouped = useMemo(() => groupConnections(connections, groups, ''), [connections, groups]);
+  const grouped = useMemo(
+    () => groupConnectionsWithPinnedSection(connections, groups, ''),
+    [connections, groups],
+  );
 
   // ── Expansion states (composite keys) ──
 
@@ -1775,16 +1782,19 @@ export const ConnectionNavigatorTree = forwardRef<
       const filteredConns = query ? groupConns.filter(connectionMatchesQuery) : groupConns;
       if (query && filteredConns.length === 0) continue;
 
-      const expanded = expandedGroups.has(groupName) || !!query;
+      const isPinnedSection = groupName === PINNED_GROUP_KEY;
+      const expanded = isPinnedSection || expandedGroups.has(groupName) || !!query;
       const displayName = groupName ? formatGroupLabel(groupName, t) : t('main.ungrouped');
 
-      rows.push({
-        type: 'group',
-        groupName,
-        displayName,
-        count: filteredConns.length,
-        expanded,
-      });
+      if (!isPinnedSection) {
+        rows.push({
+          type: 'group',
+          groupName,
+          displayName,
+          count: filteredConns.length,
+          expanded,
+        });
+      }
 
       if (!expanded) continue;
 
@@ -2645,7 +2655,10 @@ export const ConnectionNavigatorTree = forwardRef<
         open={objectFilterConn != null}
         connection={objectFilterConn}
         onClose={() => setObjectFilterConn(null)}
-        onSave={saveConnection}
+        onSave={async (config) => {
+          await saveConnection(config);
+          await refreshConnection(config.id);
+        }}
       />
 
       {confirmDeleteGroupDialog}

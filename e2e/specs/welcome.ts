@@ -6,7 +6,11 @@
  * the seeded PG connection in `after` so later specs keep working.
  */
 import { expect, browser, $, $$ } from '@wdio/globals';
-import { closeExtraWindows, waitForNewConnectionDialog } from '../helpers.js';
+import {
+  closeExtraWindows,
+  waitForNewConnectionDialog,
+  closeNewConnectionDialogFromUi,
+} from '../helpers.js';
 import { t } from '../i18n.js';
 
 interface Conn {
@@ -119,6 +123,7 @@ describe('首次安装欢迎页 (F5-E2E-001 ~ F5-E2E-005)', () => {
     await waitForNewConnectionDialog();
     await expect(await $('[data-testid="new-connection-dialog"]')).toBeDisplayed();
     await expect(await $('button*=保存')).toBeDisplayed();
+    await closeNewConnectionDialogFromUi();
   });
 
   it('F5-E2E-004: 保存首个连接后主窗进入 ConnectionPage 工作区', async () => {

@@ -473,3 +473,100 @@
 | **失败** | 2 |
 | **阻塞** | 2 |
 | **新发现 Bug** | 1（BUG-008） |
+
+---
+
+## 第十轮：最近一次 remote 更新测试计划（2026-08-21）
+
+| 项目 | 内容 |
+|------|------|
+| **测试日期** | 2026-08-21 |
+| **测试人员** | AI Test Agent |
+| **计划文档** | `docs/test-plan-recent-update.md` |
+| **版本基准** | `origin/main` @ `a4d8ce3` |
+| **构建** | `pnpm build` + `with-plugin-inject --drivers=basic` + `e2e-tauri-build`（webdriver） |
+| **测试工具** | Vitest / Cargo / WebdriverIO；手工 computer-use（锁屏阻塞） |
+| **可视化报告** | Cursor Canvas `recent-update-test-report.canvas.tsx` |
+
+### 准入门槛
+
+| 项 | 结果 | 说明 |
+|----|------|------|
+| `pnpm typecheck` | ✅ | 0 错误 |
+| `npx vitest run` | ❌ | 1567 pass / 4 fail / 1 unhandled |
+| `cargo test -p datazen --lib`（inject） | ⚠️ | 985 pass；`reload_embedded_mcp_restarts_when_running` 偶发失败，隔离重跑 ✅ |
+| 驱动 process/server_status（pg+mysql） | ✅ | 全绿 |
+| `pnpm build` | ✅ | `tsc --noEmit` + dist |
+| E2E webdriver 构建 | ✅ | DataZen.app 已刷新 |
+
+### Vitest 失败
+
+| 文件 | 用例 | 现象 |
+|------|------|------|
+| `RunHistoryDrawer.test.tsx` | backdrop onClose | 关闭控件断言失败 |
+| `WidgetEditorDrawer.test.tsx` | cancel/backdrop | `common.close` label 未找到 |
+| `ConnectionNavigatorTree.test.tsx` | connection refresh | 菜单无 `refresh`；`getDriverCommands` 非函数 |
+| `ObjectBrowser.test.tsx` | routine context menu | 菜单 id 顺序：`refresh` 置前 |
+
+### §2 覆盖缺口
+
+- 缺：`ObjectFilterDialog.test.tsx`、`SavedTasksBanner` 状态机、`selectTableRef` 三参签名单测
+- 有：`objectFilter` / `processListResult` / `ContentView` / `ddlApplyWarnings` / `mainWindowContextMenu`（定向 51 绿）
+
+### WebdriverIO §4
+
+| 规格 | 通过 | 失败 | 要点 |
+|------|------|------|------|
+| `ops-pin.ts` | 3 | 1 | OPS-PIN-002 置顶索引 Expected 0 Received 1 |
+| `object-filter.ts` | 1 | 4 | 对话框可开；保存/过滤/回填失败；`plain_table` 仍可见 |
+| `ops-process-server.ts` | 2 | 2 | 服务器状态 OK；进程面板行/Kill 失败 |
+| `ops-ddl-backup.ts` | 3 | 0 | 备份/还原入口全绿 |
+| `settings.ts` + F1 | 17 | 0 | 设置内嵌主窗通过 |
+| `welcome.ts` F5 | 3 | 2 | F5-004 新建弹窗超时；F5-005 删连接 |
+| `docs-online.ts` | 5 | 2 | DOCS-001 源码断言；DOCS-006 帮助按钮超时 |
+| `main-window.ts` | 8 | 0 | 工作区导航通过 |
+| `data-sync-window.ts` | 3 | 2 | EXEC 落库 count NaN；部分 beforeAll 新建连接超时 |
+| `data-transfer-window.ts` | 2 | 2 | DTW-X-003 count NaN |
+| 回归冒烟 5 specs | 0 | 5 | beforeAll：`button[title="刷新 (⌘R)"]` 找不到 |
+
+### §5 手工黑盒
+
+| 项 | 结果 |
+|----|------|
+| 暗色主题右键可读性等 | ⛔ 阻塞：前台 `com.apple.loginwindow`（锁屏） |
+
+### 验收结论
+
+**未通过门禁，阻断合入。** 已更新 `docs/e2e-coverage.md` 登记 ops / Sync EXEC / Transfer 闭环为 Partial。
+
+### 建议下一步
+
+1. 修 4 个 Vitest 失败与 navigator `getDriverCommands` mock
+2. 排查对象过滤保存/应用、Pin 排序、进程列表面板
+3. 对齐「刷新」按钮 title 或更新 E2E 选择器
+4. 解锁屏幕后补 §5 手工；可选跑 `data-sync-real.ts` 全量 IPC
+
+---
+
+## 第十一轮：E2E 修复与回归（2026-08-22）
+
+| 项 | 结果 |
+|----|------|
+| `pnpm typecheck` | ✅ |
+| `npx vitest run` | ✅ 1571/1571 |
+| `cargo test -p datazen --lib`（inject） | ⚠️ 985 pass；`start_embedded_mcp_reports_running` 偶发 1 fail |
+| E2E §4 重点 | ✅ ops-pin / ops-process-server / object-filter / welcome / docs-online |
+| E2E sync/transfer 闭环 | ✅ DSW-EXEC 行数断言、DTW-X-003 落库 count |
+| E2E connection-window | ⚠️ 侧栏搜索框偶发不可见（环境/状态相关，非本轮改动回归） |
+
+### 应用修复摘要
+
+- `ContentToolbar` 恢复刷新按钮 `title` 含 `(⌘R)`
+- 全局 Pin 置顶：`groupConnectionsWithPinnedSection`
+- 对象过滤保存后 `refreshConnection`
+- E2E：`invokeBackend` / `queryScalar`；进程列表虚拟表选择器；docs/welcome/object-filter 稳定性
+
+### 验收结论
+
+**§4 运维/欢迎/文档 E2E 已通过；Vitest 全绿。** 合入前建议全量 E2E 矩阵与手工黑盒补跑。
+

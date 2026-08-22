@@ -20,6 +20,9 @@ export function filterConnections(
   });
 }
 
+/** Synthetic group key for navigator pinned section (not persisted). */
+export const PINNED_GROUP_KEY = '__pinned__';
+
 /** Pinned connections first, then by name within a group. */
 export function sortConnectionsInGroup(connections: ConnectionConfig[]): ConnectionConfig[] {
   return [...connections].sort((a, b) => {
@@ -28,6 +31,37 @@ export function sortConnectionsInGroup(connections: ConnectionConfig[]): Connect
     if (aPinned !== bPinned) return bPinned - aPinned;
     return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
   });
+}
+
+/** Hoist pinned connections into a dedicated first section (when not searching). */
+export function groupConnectionsWithPinnedSection(
+  connections: ConnectionConfig[],
+  groups: string[],
+  searchQuery: string,
+): { group: string; connections: ConnectionConfig[] }[] {
+  const grouped = groupConnections(connections, groups, searchQuery);
+  if (searchQuery.trim()) return grouped;
+
+  const pinned: ConnectionConfig[] = [];
+  const pinnedIds = new Set<string>();
+  for (const { connections: groupConns } of grouped) {
+    for (const conn of groupConns) {
+      if (conn.pinned === true && !pinnedIds.has(conn.id)) {
+        pinnedIds.add(conn.id);
+        pinned.push(conn);
+      }
+    }
+  }
+  if (pinned.length === 0) return grouped;
+
+  const rest = grouped
+    .map(({ group, connections: groupConns }) => ({
+      group,
+      connections: groupConns.filter((c) => !pinnedIds.has(c.id)),
+    }))
+    .filter(({ connections: groupConns }) => groupConns.length > 0);
+
+  return [{ group: PINNED_GROUP_KEY, connections: sortConnectionsInGroup(pinned) }, ...rest];
 }
 
 /** Group connections by their `group` field; ungrouped come last. */
