@@ -2,15 +2,12 @@
  * F8 test-agent additions: malformed host-response tolerance, value
  * serialization fidelity, argument pass-through and concurrent reqId routing.
  *
- * F-BUG-PIN cases deliberately pin the current (defective) behavior of an
- * `.err` response whose `payload` is missing entirely — see BUG-F8-01 in
- * docs/prd/ui-plugins-progress.md. They must be flipped to assert a graceful
- * rejection once the fix lands.
+ * C-03/C-04 lock in the BUG-F8-01 fix: malformed `.err` frames whose
+ * `payload` is absent or null must settle the pending request as
+ * UiPluginError(E_INTERNAL) with zero uncaught page errors (see
+ * docs/prd/ui-plugins-progress.md Bug 跟踪).
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import {
   BRIDGE_CHANNEL,
   BRIDGE_ERROR,
@@ -64,6 +61,30 @@ async function handshake(parent: Window): Promise<{ client: UiPluginClient }> {
   receive(parent, hostReady());
   await readyPromise;
   return { client };
+}
+
+/**
+ * Capture uncaught page errors during a synchronous dispatch window:
+ * both `window.addEventListener('error')` events and `window.onerror`
+ * assignments. `restore()` must always run (use try/finally).
+ */
+function trackUncaught(): { events: unknown[]; restore(): void } {
+  const events: unknown[] = [];
+  const onError = (event: ErrorEvent): void => {
+    events.push(event.error ?? event.message);
+  };
+  const prevOnerror = window.onerror;
+  window.addEventListener('error', onError);
+  window.onerror = () => {
+    events.push('window.onerror');
+  };
+  return {
+    events,
+    restore() {
+      window.removeEventListener('error', onError);
+      window.onerror = prevOnerror;
+    },
+  };
 }
 
 afterEach(() => {
@@ -120,24 +141,61 @@ describe('malformed host responses (F8 tolerance matrix)', () => {
     expect(settled).toBe(true);
   });
 
-  it('C-03 F-BUG-PIN (BUG-F8-01): .err routing dereferences data.payload.code without guarding a missing/null payload', async () => {
-    // Dynamic repro of the defect (kept out of the suite because the resulting
-    // TypeError surfaces as an uncaught page error):
-    //   client.storage.get('k');
-    //   window.dispatchEvent(new MessageEvent('message', { source: parent, data:
-    //     { ch: 'ui-plugin', type: 'storage.get.err', target: 'host',
-    //       reqId, ok: false } }));            // payload absent (or null)
-    //   → TypeError("Cannot read properties of null/undefined (reading 'code')")
-    //     thrown from the SDK message listener (bridge.ts onMessage), reported
-    //     as an uncaught error; the pending map entry was already deleted and
-    //     its timeout cleared, so the promise NEVER settles (leak).
-    // Desired post-fix: reject immediately with E_INTERNAL fallback like every
-    // other malformed err payload. Flip this anchor together with that fix.
-    const src = readFileSync(
-      resolve(dirname(fileURLToPath(import.meta.url)), '../src/bridge.ts'),
-      'utf8',
-    );
-    expect(src).toMatch(/const code = data\.payload\.code;/);
+  it('C-03 (BUG-F8-01) .err frame with no payload rejects E_INTERNAL and raises zero uncaught errors', async () => {
+    const { parent, sent } = makeParentWindow();
+    const { client } = await handshake(parent);
+
+    const tracked = trackUncaught();
+    const pending = client.storage.get('k').catch((error: unknown) => error);
+    try {
+      receive(parent, {
+        ch: BRIDGE_CHANNEL,
+        type: 'storage.get.err',
+        target: 'host',
+        reqId: sent[1].reqId as string,
+        ok: false,
+      });
+    } finally {
+      tracked.restore();
+    }
+
+    const failure = (await pending) as UiPluginError;
+    expect(tracked.events).toEqual([]);
+    expect(failure).toBeInstanceOf(UiPluginError);
+    expect(failure.code).toBe(BRIDGE_ERROR.INTERNAL);
+    expect(failure.message).toBe('storage.get');
+  });
+
+  it('C-04 (BUG-F8-01) .err frame with null payload rejects E_INTERNAL and raises zero uncaught errors', async () => {
+    const { parent, sent } = makeParentWindow();
+    const { client } = await handshake(parent);
+
+    for (const badFrame of [
+      { payload: null },
+      { payload: undefined },
+      {}, // payload key absent entirely
+    ]) {
+      const tracked = trackUncaught();
+      const pending = client.notify({ title: 'n' }).catch((error: unknown) => error);
+      try {
+        receive(parent, {
+          ch: BRIDGE_CHANNEL,
+          type: 'ui.notify.err',
+          target: 'host',
+          reqId: sent[sent.length - 1].reqId as string,
+          ok: false,
+          ...badFrame,
+        });
+      } finally {
+        tracked.restore();
+      }
+
+      const failure = (await pending) as UiPluginError;
+      expect(tracked.events).toEqual([]);
+      expect(failure).toBeInstanceOf(UiPluginError);
+      expect(failure.code).toBe(BRIDGE_ERROR.INTERNAL);
+      expect(failure.message).toBe('ui.notify');
+    }
   });
 
   it('C-05 err payload carrying non-string primitives still rejects immediately via E_INTERNAL fallback', async () => {
