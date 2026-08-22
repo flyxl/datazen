@@ -134,6 +134,7 @@ vi.mock('../../../commands/database', () => ({
 vi.mock('../../../commands/driver', () => ({
   driverCommands: {
     execute: (...args: unknown[]) => mockDriverExecute(...args),
+    getDriverCommands: vi.fn().mockResolvedValue([]),
   },
 }));
 
@@ -211,8 +212,14 @@ async function triggerDropDatabase(
 }
 
 async function triggerContextMenuRefresh(element: HTMLElement): Promise<void> {
-  fireEvent.contextMenu(element);
   const { showWebContextMenu } = await import('../../../stores/contextMenuStore');
+  fireEvent.contextMenu(element);
+  // The connection-level handler awaits driver command discovery before
+  // showing the menu — poll for the refresh item instead of reading syncly.
+  await waitFor(() => {
+    const items = vi.mocked(showWebContextMenu).mock.calls.at(-1)?.[0] ?? [];
+    expect(items.some((item) => item.id === 'refresh')).toBe(true);
+  });
   const menuItems = vi.mocked(showWebContextMenu).mock.calls.at(-1)?.[0] ?? [];
   const refreshItem = menuItems.find((item) => item.id === 'refresh');
   expect(refreshItem).toBeDefined();

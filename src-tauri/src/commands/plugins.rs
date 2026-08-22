@@ -376,6 +376,33 @@ pub async fn remove_plugin(
     Ok(())
 }
 
+/// Append a plugin-initiated audit entry to the host log file
+/// (`{dataDir}/logs/datazen.log` via the `tracing` rolling appender).
+///
+/// The frontend sends only the command name and target connection id — never
+/// argument contents — and both sides cap field lengths so a misbehaving
+/// plugin cannot flood the log.
+#[tauri::command]
+pub async fn plugin_audit_log(
+    plugin_id: String,
+    event: String,
+    detail: String,
+) -> Result<(), CommandError> {
+    if plugin_id.is_empty() || plugin_id.chars().count() > 64 {
+        return Err(CommandError::Validation("invalid plugin_id".into()));
+    }
+    let event = event.chars().take(64).collect::<String>();
+    let detail = detail.chars().take(200).collect::<String>();
+    tracing::info!(
+        target: "ui_plugin_audit",
+        plugin_id = %plugin_id,
+        event = %event,
+        detail = %detail,
+        "ui-plugin audit"
+    );
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn set_plugin_enabled(
     app: AppHandle,

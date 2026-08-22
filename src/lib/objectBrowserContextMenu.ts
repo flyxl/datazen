@@ -41,7 +41,7 @@ function push(...defs: Array<NativeMenuItemDef | null>): NativeMenuItemDef[] {
   return defs.filter((d): d is NativeMenuItemDef => d != null);
 }
 
-/** Routine list: open / copy name / copy DDL / refresh. */
+/** Routine list: refresh first (tree-menu convention), then open / copy name / copy DDL. */
 export function buildObjectBrowserListMenuItems(args: {
   labels: ObjectBrowserListMenuLabels;
   handlers: ObjectBrowserListMenuHandlers;
