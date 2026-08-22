@@ -164,8 +164,49 @@ const en: Record<TranslationKey, string> = {
   // ── Workspace Nav ──
   'nav.connections': 'Connections',
   'nav.dashboard': 'Dashboards',
+  'nav.plugins': 'Plugins',
   'nav.settings': 'Settings',
   'nav.workflow': 'Workflows',
+  'nav.workspacePages': 'Workspace',
+
+  // ── Workspace (plugin pages) ──
+  'workspace.defaultTitle': 'Workspace',
+  'workspace.defaultHint':
+    'Click an item in the left navigator or a card below to open a plugin page.',
+  'workspace.emptyTitle': 'No workspace plugins yet',
+  'workspace.emptyHint': 'Install a plugin from the Plugins page and it will show up here.',
+  'workspace.openPlugins': 'Open Plugins',
+  'workspace.shell.reload': 'Reload',
+  'workspace.shell.loadFailed': 'Plugin page failed to load.',
+
+  // ── Plugin Management ──
+  'plugins.page.title': 'Plugins',
+  'plugins.page.count': '{count} installed',
+  'plugins.page.subtitle': 'Manage installed plugins, install new packages, or browse themes.',
+  'plugins.page.searchPlaceholder': 'Search plugins…',
+  'plugins.page.filterAll': 'All ({count})',
+  'plugins.page.filterWorkspace': 'Workspace ({count})',
+  'plugins.page.filterTheme': 'Themes ({count})',
+  'plugins.page.install': 'Install Plugin…',
+  'plugins.page.open': 'Open',
+  'plugins.page.toggle': 'Enable plugin',
+  'plugins.page.uninstall': 'Uninstall plugin',
+  'plugins.page.uninstallTitle': 'Uninstall Plugin',
+  'plugins.page.uninstallMessage':
+    'Remove "{name}" from DataZen? Its workspace tabs will be closed.',
+  'plugins.page.themeBadge': 'Theme',
+  'plugins.page.themeHint': 'Switch themes in Settings → Appearance.',
+  'plugins.page.apiMismatch': 'API version not supported',
+  'plugins.page.apiMismatchHint': 'Plugin API v{plugin} does not match host API v{host}.',
+  'plugins.page.emptyTitle': 'No plugins found',
+  'plugins.page.emptyHint':
+    'Install a plugin package (.zip) to extend DataZen with new workspace pages or themes.',
+  'plugins.install.title': 'Install Plugin',
+  'plugins.install.description': 'Select a local plugin package (.zip) to install.',
+  'plugins.install.pathLabel': 'Plugin package (.zip)',
+  'plugins.install.pathPlaceholder': '/path/to/plugin.zip',
+  'plugins.install.confirm': 'Install',
+  'plugins.install.installing': 'Installing…',
 
   // ── Action Panel ──
   'action.backup': 'Backup Database…',

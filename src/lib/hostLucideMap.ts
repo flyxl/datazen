@@ -4,6 +4,8 @@ import type { UiIconId } from './iconIds';
 export const HOST_LUCIDE_MAP: Record<UiIconId, string> = {
   'nav.settings': 'Settings',
   'nav.connections': 'Database',
+  'nav.workspacePages': 'LayoutGrid',
+  'nav.plugins': 'Puzzle',
   'query.run': 'Play',
   'query.stop': 'Square',
   'ai.chat': 'Bot',
