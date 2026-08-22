@@ -685,7 +685,7 @@ E2E 说明：按本任务约定，AGENTS.md「Host UI 变更须同 PR 补 E2E」
 
 - [x] 全量回归（cargo test -p datazen --lib plugins → 116/116；npx vitest run → **229 文件 / 1822 测试全绿，零失败**——4 个基线既有失败文件已修复：RunHistoryDrawer / WidgetEditorDrawer 关闭按钮补 aria-label（a11y）、ObjectBrowser 例行菜单断言对齐 refresh-first 现状、ConnectionNavigatorTree 补 getDriverCommands mock + 菜单出现改轮询等待；2026-08-23）
 - [x] 文档更新（架构文档 docs/architecture/backend/plugins.md 新建；AGENTS.md 增补插件系统条目/模块表/主题包遗留注记；packages/extensions/README.md 随包交付；2026-08-23）
-- [ ] 合并 main
+- [x] 合并 main（main 在会话期间前进了 4 个提交——server dashboard 子标签/进程列表/同题测试修复；已先 `git merge main` 解 3 处同义冲突（抽屉 aria-label 属性顺序 ×2 取 main 序、导航树测试助手保留更强的轮询断言），合并后 vitest **1852/1852 全绿**、cargo plugins 116/116，再 ff-only 推进 main。另发现并修复 main 自带的 MCP 嵌入服务器测试全局态竞态（`MCP_HANDLE` 进程级静态被并行测试互踩）：生命周期用例持锁串行化 + 轮询就绪（5b4b97d3）。备注：高负载下 `install`/`store` 并发文件系统测试仍存在与本次改动无关的环境性偶发，隔离与复跑均通过）
 
 ### 收尾会话记录（2026-08-23 宿主会话）
 
