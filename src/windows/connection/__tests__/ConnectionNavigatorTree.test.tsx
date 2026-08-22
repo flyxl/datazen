@@ -134,6 +134,7 @@ vi.mock('../../../commands/database', () => ({
 vi.mock('../../../commands/driver', () => ({
   driverCommands: {
     execute: (...args: unknown[]) => mockDriverExecute(...args),
+    getDriverCommands: vi.fn().mockResolvedValue([]),
   },
 }));
 
@@ -213,6 +214,9 @@ async function triggerDropDatabase(
 async function triggerContextMenuRefresh(element: HTMLElement): Promise<void> {
   fireEvent.contextMenu(element);
   const { showWebContextMenu } = await import('../../../stores/contextMenuStore');
+  await waitFor(() => {
+    expect(vi.mocked(showWebContextMenu).mock.calls.length).toBeGreaterThan(0);
+  });
   const menuItems = vi.mocked(showWebContextMenu).mock.calls.at(-1)?.[0] ?? [];
   const refreshItem = menuItems.find((item) => item.id === 'refresh');
   expect(refreshItem).toBeDefined();

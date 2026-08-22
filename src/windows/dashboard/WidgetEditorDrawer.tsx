@@ -138,7 +138,12 @@ export function WidgetEditorDrawer({
           <h2 className="text-sm font-semibold text-fg">
             {isNew ? t('dashboard.newWidget') : t('dashboard.editWidget')}
           </h2>
-          <Button variant="ghost" className="h-7 w-7 px-0" onClick={onClose}>
+          <Button
+            variant="ghost"
+            className="h-7 w-7 px-0"
+            onClick={onClose}
+            aria-label={t('common.close')}
+          >
             <X className="h-4 w-4" />
           </Button>
         </div>
