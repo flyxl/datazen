@@ -15,7 +15,7 @@
 | F6 | RPC 桥 | uiPluginBridge：信封路由、权限判定、限流超时、token 快照推送（开发 31 + 测试补充 33 = 64 单测全绿；覆盖率 Lines 99.27%/100%；安全专项复核通过；登记 BUG-F6-01 低危协议偏差，见测试记录） | 测试完成（BUG-F6-01 低危新建，不阻断） | c77085c8 | —（仅追加测试文件，未 commit） |
 | F7 | Settings 外观 | settings.appearance 菜单项 + AppearanceSection 主题切换器（开发 54 + 测试补充 20 单测全绿；覆盖率 AppearanceSection Lines **100%**、themePackApply 全文件 Lines 96.68% / 插件路径子集 97.40%；规格复核 §4.5 六项通过；登记 BUG-F7-01 低危图标缺口，见测试记录） 已完成（BUG-F7-01 经验证 agent 复核通过，见 Bug 跟踪） | 1d9c398b | 9d518661（补 hostLucideMap.ts appearance→Palette 行 + ThemedIcon LUCIDE_MAP 导入 Palette；钉住例翻转为断言 svg 渲染，验证测试 45/45 PASS） |
 | F8 | SDK 包 | packages/ui-plugin-sdk（bridge/theme/theme.css/useTheme；开发 31 + 测试补充 38 = 69 单测全绿；覆盖率逻辑文件 Lines 98.27%–100%；契约互操作双向复核 §3/§4.4 通过；BUG-F8-01 低危健壮性缺口已修复并经验证 agent 复核 + NOTE-F8-01，见测试记录） | 已完成（BUG-F8-01 经验证 agent 复核通过，见 Bug 跟踪） | 51a91633 | 919a09f3（bridge.ts err 分支 isRecord 守卫 → 空对象兜底，任何畸形 err 帧均结算 UiPluginError(E_INTERNAL)；C-03 源码钉住翻转为 C-03/C-04 动态三态回归用例，SDK 69/69 PASS） |
-| F9 | 示例插件与 E2E | e2e/fixtures/sample-plugin + e2e/specs/plugins.spec.ts journeys 1-5（fixture 防腐化单测 3 例；Rust 111/111 全绿、vitest 零新增失败、spec 静态核对全过；**完整 E2E 实跑受阻塞于 BUG-F9-01 存量构建断裂，见测试记录 F9 小节**） | 受阻塞（解锁条件：修复 BUG-F9-01 后实跑 plugins.spec.ts） | e535f9a4 | — |
+| F9 | 示例插件与 E2E | e2e/fixtures/sample-plugin + e2e/specs/plugins.spec.ts journeys 1-5（fixture 防腐化单测 3 例；Rust 111/111 全绿、vitest 零新增失败、spec 静态核对全过；BUG-F9-01 经 4c5e755a 修复解锁后 **E2E 实跑 6/11 PASS**：J1/J3/J5 全过、J2-001 过、无产品缺陷证据；J2-002~004 受阻于 BUG-F9-02 WebKit/safaridriver iframe 自动化限制，J4-001/002 因 BUG-F9-03 spec 缺失 Settings 返回导航未执行到断言——两缺陷已登记待处理，见测试记录 F9 E2E 实跑小节） | 测试基本完成（6/11 PASS，零产品缺陷；余项受阻于 BUG-F9-02 基建限制 / BUG-F9-03 spec 缺陷） | e535f9a4+4c5e755a | — |
 
 ## Bug 跟踪
 
@@ -29,7 +29,9 @@
 | BUG-F6-01 | F6 | 【处置：backlog/P2 加固，不阻断】【低危/协议卫生，无安全影响】原型链键名作为 API type 时回 `E_PERMISSION` 而非设计文档声明的 `E_NOT_FOUND`：`API_ROUTES` 为普通对象字面量，`__proto__`/`constructor`/`hasOwnProperty`/`toString`/`valueOf` 经 Object.prototype 原型链解析为非 undefined 值，绕过「unknown api → E_NOT_FOUND」门（uiPluginBridge.ts:374-380），落入权限判定后被拒。**无法到达任何 handler**（granted Set 仅含 manifest 字符串），不消耗并发配额 | attachBridge 后从 iframe window 投递 `{ch:'ui-plugin',type:'__proto__',target:'host',reqId:'r1'}` → 收到 `__proto__.err{code:'E_PERMISSION'}`；同型 `constructor`/`hasOwnProperty`/`toString`/`valueOf` 一致。按 uiPluginBridge.ts:126 自述契约与 §3.2 路由语义应为 `E_NOT_FOUND('unknown api')`。修复建议：`Object.prototype.hasOwnProperty.call(API_ROUTES, type)` 或 `Map`/null-prototype 路由表。回归锚点：security.test「denies prototype-chain api type …」（5 例） | 新建 |
 | BUG-F7-01 | F7 | 【处置：低危外观缺陷，不阻断】Settings 左侧导航「外观」项图标渲染为「?」占位方块而非 Palette 图标，双重缺口：① commit 1d9c398b **漏提交** `hostLucideMap.ts` 的 `appearance: 'Palette'` 映射行（当前工作区存在该一行未提交修复）——HEAD 状态下 `buildHostLucideById()` 无 `settings.appearance` 键，iconResolver 直接回 UI_PLACEHOLDER；② 即使补上 ①，`ThemedIcon.tsx` 内部 `LUCIDE_MAP`（31-54 行）也**未导入 Palette 组件**，`LUCIDE_MAP['Palette'] ?? fallback` 为 undefined → ThemedIcon.tsx:90-100 渲染 `?` 占位 span。纯视觉问题，功能与切换行为不受影响 | 打开 Settings → 观察左侧导航第 2 项「外观」：图标为灰底「?」小方块，其余菜单项均为正常 lucide 图标。链路：`settingsSectionIconId('appearance')='settings.appearance'` → resolver 解析成功为 `{kind:'lucide',name:'Palette'}` 但 ThemedIcon 查表失败（或 HEAD 下解析即失败）。修复建议：① 提交 hostLucideMap.ts 该行；② ThemedIcon.tsx 导入 Palette 并加入 LUCIDE_MAP。回归锚点：settingsSectionIcons.test.tsx「documents BUG-F7-01…」（修复后翻转为断言 svg 渲染）。备注：`extensions→Puzzle` 存在同型缺口（存量问题、非 F7 引入），建议随修 | 新建 |
 | BUG-F8-01 | F8 | 【处置：低危健壮性缺口，不阻断】【SDK 侧容错】`.err` 响应 payload 缺失或 null 时请求路由崩溃并永久泄漏：bridge.ts onMessage 的 `.err` 分支 `const code = data.payload.code` 未守卫 payload 存在性，而 `pending.delete(reqId)` + `clearTimeout(entry.timer)` 在该解引用**之前**已执行 → TypeError 以 uncaught error 形态逃逸监听器，该请求 Promise **永不结算**（超时定时器已被清、map 条目已被删，后续同 reqId 应答亦无法补救）。宿主正常 `errEnvelope` 恒带 `{code,message}`，仅畸形/被篡改宿主帧可触发；`event.source === parent` 反欺骗门不受影响，无安全越权面；§5「E_* 错误类型 + 容错」语义要求优雅降级为 UiPluginError(E_INTERNAL) | 插件页 `const dz=createClient({parentWindow:parent}); await dz.ready(); const p=dz.storage.get('k');` 后投递 `{ch:'ui-plugin',type:'storage.get.err',target:'host',reqId:<p的在途reqId>,ok:false}`（payload 缺失或 null）→ 页面 uncaught `TypeError: Cannot read properties of null/undefined (reading 'code')`，p 永久 pending。回归锚点：bridge.faults.test.ts C-03/C-04 动态优雅拒绝用例（payload 缺失 / null / undefined 键均断言 reject UiPluginError(E_INTERNAL) 且 window error 监听为零；原源码钉住正则已随修复翻转移除） | 已修复（919a09f3） |
-| BUG-F9-01 | F9 | 【处置：构建阻塞，阻塞 F9 E2E 实跑】【存量缺陷、非插件代码引入】`src/components/connection/ObjectFilterDialog.tsx:2-6` 的相对导入按 `src/windows/connection/` 位置书写（`../components/ui/Button/Dialog/Input`、`../hooks/useI18n`、`./objectFilter`、`../types`），实际文件在 `src/components/connection/` → 解析目标不存在 → `pnpm build`（vite）必败 → e2e-tauri-build 无 webdriver 二进制可产出；ConnectionNavigatorTree vitest 文件级失败同根因（基线失败之一）。main 分支同样存在，引入于 a4d8ce37（ops §5.4 MVPs） | `pnpm build` → vite 报 `Could not resolve "../components/ui/Button" from "src/components/connection/ObjectFilterDialog.tsx"`（exit 1，beforeBuildCommand 失败）；或打开任一触发 ConnectionNavigatorTree 渲染的页面即模块加载失败。修复方向：导入改为 `../ui/*`、`../../hooks/useI18n`、`../../lib/objectFilter`、`../../types`（或将文件移回 windows/connection）。回归锚点：修复后 `pnpm build` 通过 + ConnectionNavigatorTree.test.tsx 转绿 + plugins.spec.ts 可实跑 | **待验证**（2026-08-22 导入路径已按真实位置修正：`../ui/{Button,Dialog,Input}`、`../../hooks/useI18n`、`../../lib/objectFilter`、`../../types`；`pnpm build` ✅；vitest 全量 ConnectionNavigatorTree 文件级失败消失——但暴露 1 个独立测试级失败「connection context menu refresh reloads that connection without viewActions.refresh」（`driverCommands.getDriverCommands is not a function`，mock 缺口，非本修复引入），RunHistoryDrawer / WidgetEditorDrawer / ObjectBrowser 各 1 例失败与基线一致属各自独立问题。待实跑 plugins.spec.ts 后关闭） |
+| BUG-F9-02 | F9 | 【处置：E2E 基建阻塞，不改代码】【非产品缺陷证据】macOS safaridriver/WebKit（webkit 605.1.15）WebDriver 无法在插件 iframe 内执行自动化命令：`browser.switchToFrame(iframe)` 本身成功，但帧内任何元素定位（`element` POST）均抛 `WebDriverError: A JavaScript exception occurred when running "element" with method "POST"`，20s waitUntil 全程 WARN 刷屏后超时 → J2-002~004 的桥内联断言不可自动化。注意：J2-001（导航项→Tab→iframe 存在）PASS；桥业务逻辑已有单测背书（宿主 uiPluginBridge 64 例 99.27% 行覆盖 + SDK 69 例），本失败不构成桥功能损坏的证据，仅证明该路径在 WebKit WebDriver 下不可测。疑与 sandbox opaque-origin iframe（datazen:// 协议加载）相关 | `pnpm e2e:skip-build -- --spec e2e/specs/plugins.spec.ts` → J2-002 在 insidePluginFrame 的首次 `$(...)` 即抛 JS exception；连续两次完整运行失败集合完全一致（确定性，非 flaky）。关键输出：`javascript error: WebDriverError: A JavaScript exception occurred when running "element" with method "POST"` @ plugins.spec.ts:93 textOfTestId | 新建（阻塞 J2-002~004 自动化；如需解锁可评估 ChromiumDriver 或宿主提供测试钩子，超出本次授权） |
+| BUG-F9-03 | F9 | 【处置：spec 缺陷（e535f9a4 测试脚本），非产品缺陷】plugins.spec.ts 在 J5-001 结束后停留在 Settings 视图，未调用 `backFromSettingsInMainWindow()`（helpers.ts:783）返回工作区壳即进入 J4：ConnectionPage.tsx:898-900 `mainView==='settings'` 三元分支**只渲染 SettingsPage、卸载整个 aside**，故 J4-001 第一步 `openWorkspaceMode()` 找不到 `workspace-nav-workspace-pages`、J4-002 找不到 `workspace-nav-plugins`，双双 10s 超时——J4 停用/卸载 journey 实际从未执行到断言。对照：J3/J5 在同一会话中点击同批 aside 按钮全部 PASS，排除产品回归与会话损坏 | 跑全套件至 J5 通过后：J4-001 报 `Error: element ("[data-testid="workspace-nav-workspace-pages"]") still not displayed after 10000ms` at openWorkspaceMode (plugins.spec.ts:67 ← :292)；J4-002 同型（workspace-nav-plugins，spec.ts:60 ← :312）。两次运行一致。静态根因：ConnectionPage.tsx:898 settings 分支无 aside。修复方向（spec 侧）：J4 开头或 J5 末尾调 backFromSettingsInMainWindow() | 验证不通过（修复中）|
+| BUG-F9-01 | F9 | 【存量缺陷、非插件代码引入】`src/components/connection/ObjectFilterDialog.tsx:2-6` 的相对导入按 `src/windows/connection/` 位置书写（`../components/ui/Button/Dialog/Input`、`../hooks/useI18n`、`./objectFilter`、`../types`），实际文件在 `src/components/connection/` → 解析目标不存在 → `pnpm build`（vite）必败 → e2e-tauri-build 无 webdriver 二进制可产出；ConnectionNavigatorTree vitest 文件级失败同根因（基线失败之一）。main 分支同样存在，引入于 a4d8ce37（ops §5.4 MVPs） | `pnpm build` → vite 报 `Could not resolve "../components/ui/Button" from "src/components/connection/ObjectFilterDialog.tsx"`（exit 1，beforeBuildCommand 失败）；或打开任一触发 ConnectionNavigatorTree 渲染的页面即模块加载失败。修复方向：导入改为 `../ui/*`、`../../hooks/useI18n`、`../../lib/objectFilter`、`../../types`（或将文件移回 windows/connection）。回归锚点：修复后 `pnpm build` 通过 + ConnectionNavigatorTree.test.tsx 转绿 + plugins.spec.ts 可实跑 | **已修复（4c5e755a）**（2026-08-22 验证 agent 复核关闭：导入路径按真实位置修正后 `pnpm build` ✅（vite 4.18s 构建成功）；webdriver 二进制经 `generate-menu-labels + with-plugin-inject --drivers=basic + e2e-tauri-build` 成功产出 DataZen.app（cargo dev profile 1m31s，仅 DMG 打包步骤失败，不影响 E2E）；`pnpm e2e:skip-build -- --spec e2e/specs/plugins.spec.ts` 实跑解锁，4445 就绪、11 用例全执行 → 6 PASS / 5 FAIL。剩余失败均为独立新问题：BUG-F9-02（WebKit iframe 自动化限制，J2-002~004）与 BUG-F9-03（spec 缺失返回导航，J4-001/002），与本修复无关。回归锚点三项全部兑现：pnpm build 通过 ✅ / plugins.spec.ts 可实跑 ✅ / ConnectionNavigatorTree 文件级失败消失（该会话已确认）✅） |
 
 Bug 状态流转：`新建 → 验证不通过(修复中) → 待验证 → 已修复`
 
@@ -599,6 +601,46 @@ E2E 说明：按本任务约定，AGENTS.md「Host UI 变更须同 PR 补 E2E」
 
 - 工作项 F9 → **受阻塞**。解锁条件：修复 BUG-F9-01 使 `pnpm build` 通过后，重跑 `with-plugin-inject + e2e-tauri-build`（debug+webdriver）与 `pnpm e2e:skip-build -- --spec e2e/specs/plugins.spec.ts`。
 - 可运行部分全绿：Rust plugins 111/111（fixture 守护 3/3）、vitest 无新增失败、spec↔宿主选择器与 PRD §4 行为静态核对全部一致。
+
+### F9 E2E 实跑验证（BUG-F9-01 经 4c5e755a 修复解锁，2026-08-22 验证 agent 会话）
+
+- 验证 agent 会话（全新），worktree `../datazen-ui-plugins` @ 4c5e755a，只验不改功能代码。
+
+#### 执行命令与结果
+
+| 步骤 | 命令 | 结果 |
+|------|------|------|
+| 1 | `pnpm build` | ✅ vite 构建成功（4.18s，仅既有 chunk>500kB 警告） |
+| 2 | `node scripts/generate-menu-labels.mjs && node scripts/with-plugin-inject.mjs --drivers=basic -- node scripts/e2e-tauri-build.mjs` | ✅ cargo dev profile 1m31s 编译通过 → `target/debug/bundle/macos/DataZen.app/Contents/MacOS/datazen`（15:49，新于 dist/index.html）。注：末尾 DMG 打包步骤失败（bundle_dmg.sh），不影响 E2E——run.mjs 在 macOS 使用 .app 包内二进制 |
+| 3 | `pnpm e2e:skip-build -- --spec e2e/specs/plugins.spec.ts` | ✅ 启动正常：setup-e2e-env → app 启动 → **WebDriver 4445 就绪** → wdio（webkit 605.1.15）执行全部 11 用例 → **6 passing / 5 failing**（31.6s）；复跑第二次结果完全一致（确定性） |
+
+#### Journey 结果表
+
+| Journey | 用例 | 结果 | 说明 |
+|---------|------|------|------|
+| J1 安装 | J1-001 两步对话框安装 + 卡片/权限徽标/toggle | ✅ PASS | |
+| J1 | J1-002 list_plugins enabled=true | ✅ PASS | |
+| J2 桥往返 | J2-001 导航项列出页面并开 Tab | ✅ PASS | iframe 存在性验证通过 |
+| J2 | J2-002 握手 ready/dark/token-count | ❌ FAIL | BUG-F9-02：switchToFrame 后帧内命令全抛 JS exception |
+| J2 | J2-003 storage set/get 往返 | ❌ FAIL | 同上 |
+| J2 | J2-004 conn-count 对账 | ❌ FAIL | 同上 |
+| J3 Tab 独立 | J3-001 模式往返保留 Tab | ✅ PASS | |
+| J3 | J3-002 关全部 Tab 回默认卡片 | ✅ PASS | |
+| J5 外观 | J5-001 Sample Light 应用且持久化 packId | ✅ PASS | settings.theme.packId == plugin:datazen.sample:sample-light |
+| J4 停用卸载 | J4-001 停用关 Tab/移除导航项 | ❌ FAIL | BUG-F9-03：J5 后停留在 Settings 视图，aside 已卸载，未执行到断言 |
+| J4 | J4-002 确认后卸载移除卡片 | ❌ FAIL | 同上 |
+
+**6/11 PASS；J1/J3/J5 全过。零产品缺陷证据**（J2 失败为基建限制、J4 失败为 spec 缺陷，均见 Bug 跟踪表 BUG-F9-02 / BUG-F9-03）。
+
+#### 关键日志摘录
+
+- J2-002~004（确定性）：`WebDriverError: A JavaScript exception occurred when running "element" with method "POST"` ← plugins.spec.ts:93 textOfTestId（insidePluginFrame 内首次 `$()` 即抛）
+- J4-001/002（确定性）：`Error: element ("[data-testid="workspace-nav-workspace-pages"]") still not displayed after 10000ms` at openWorkspaceMode (plugins.spec.ts:67←292)；J4-002 同型（workspace-nav-plugins，:60←312）
+
+#### 结论
+
+- 工作项 F9 → **测试基本完成（E2E 实跑 6/11 PASS，无产品缺陷）**。剩余自动化缺口：BUG-F9-02（WebKit/safaridriver 不支持在 sandbox opaque-origin 插件 iframe 内执行 WebDriver 命令——如需闭环可评估 ChromiumDriver/测试钩子，超出本次授权）、BUG-F9-03（spec 漏调 backFromSettingsInMainWindow，一行 spec 修复即可释放 J4 两条断言）。
+- BUG-F9-01 → **已修复（4c5e755a）并经实跑复核关闭**。
 
 ## 回归测试
 
