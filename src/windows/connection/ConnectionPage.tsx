@@ -2,7 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Database,
   LayoutDashboard,
+  LayoutGrid,
   PanelLeftOpen,
+  Puzzle,
   Settings,
   Workflow,
   type LucideIcon,
@@ -48,6 +50,8 @@ import { useDashboardStore } from '../../stores/dashboardStore';
 import { DashboardPanel } from '../dashboard/DashboardPanel';
 import { WorkflowPage } from '../workflow/WorkflowPage';
 import { SettingsPage } from '../settings/SettingsPage';
+import { WorkspaceView } from '../workspace/WorkspaceView';
+import { PluginManagementPage } from '../plugins/PluginManagementPage';
 
 interface WorkspaceShortcutButtonProps {
   icon: LucideIcon;
@@ -83,7 +87,7 @@ function WorkspaceModeButton({
   );
 }
 
-type WorkspaceMode = 'connections' | 'workflow' | 'dashboard';
+type WorkspaceMode = 'connections' | 'workflow' | 'dashboard' | 'workspace' | 'plugins';
 type MainView = 'workspace' | 'settings';
 
 // ── Connection Tab ────────────────────────────────────────────────
@@ -770,6 +774,8 @@ export function ConnectionPage() {
     if (workspaceMode === 'dashboard') {
       return dashboardTitle ? `${dashboardTitle} - DataZen` : t('win.dashboard');
     }
+    if (workspaceMode === 'workspace') return t('nav.workspacePages');
+    if (workspaceMode === 'plugins') return t('nav.plugins');
     if (activePanel) {
       return `${activePanel.connectionName} - ${getDbLabel(activePanel.databaseType)} - DataZen`;
     }
@@ -922,6 +928,22 @@ export function ConnectionPage() {
                   active={workspaceMode === 'dashboard'}
                   onClick={() => void handleOpenDashboard()}
                 />
+                <WorkspaceModeButton
+                  icon={LayoutGrid}
+                  iconId="nav.workspacePages"
+                  label={t('nav.workspacePages')}
+                  testId="workspace-nav-workspace-pages"
+                  active={workspaceMode === 'workspace'}
+                  onClick={() => setWorkspaceMode('workspace')}
+                />
+                <WorkspaceModeButton
+                  icon={Puzzle}
+                  iconId="nav.plugins"
+                  label={t('nav.plugins')}
+                  testId="workspace-nav-plugins"
+                  active={workspaceMode === 'plugins'}
+                  onClick={() => setWorkspaceMode('plugins')}
+                />
               </div>
               <div className="mt-auto">
                 <WorkspaceModeButton
@@ -939,6 +961,10 @@ export function ConnectionPage() {
                 connectionWorkspace
               ) : workspaceMode === 'workflow' ? (
                 <WorkflowPage embedded onOpenDashboardInShell={handleOpenDashboardById} />
+              ) : workspaceMode === 'workspace' ? (
+                <WorkspaceView onOpenPlugins={() => setWorkspaceMode('plugins')} />
+              ) : workspaceMode === 'plugins' ? (
+                <PluginManagementPage onOpenInWorkspace={() => setWorkspaceMode('workspace')} />
               ) : (
                 <DashboardPanel
                   initialDashboardId={embeddedDashboardId}
